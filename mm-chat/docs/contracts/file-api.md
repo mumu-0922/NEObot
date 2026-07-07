@@ -23,7 +23,7 @@ DELETE /v1/files/{fileId}
 | --- | --- | --- |
 | `file` | yes | File bytes. Backend enforces `MAX_UPLOAD_BYTES`. |
 | `purpose` | yes | `chat`, `workspace`, `knowledge`, `image`, `audio`, or `export`. |
-| `conversationId` | no | Required later when attaching to a chat message. |
+| `conversationId` | no | Optional upload metadata; message ownership is enforced later when linking by `fileId`. |
 | `workspaceId` | no | Workspace-scoped file metadata. |
 | `knowledgeCollectionId` | no | RAG import grouping, later phase. |
 | `clientFileId` | no | Optional frontend retry/correlation ID. |
@@ -84,3 +84,6 @@ If object write fails, do not create the metadata row.
 - `DELETE /v1/files/{fileId}` soft-deletes metadata and then deletes the object.
 - Ownership is currently scoped to the fixed development user until auth lands.
 - MinIO/S3 is still a later adapter behind the same `ObjectStore` interface.
+- Phase 6.3 message linking uses only returned `id` values. It does not trust
+  upload-time `conversationId` metadata for authorization and never exposes
+  object keys through message responses.

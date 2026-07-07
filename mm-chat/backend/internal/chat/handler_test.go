@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -16,6 +17,8 @@ const (
 	testConversationID = "11111111-1111-4111-8111-111111111111"
 	testMessageID      = "22222222-2222-4222-8222-222222222222"
 	testRunID          = "33333333-3333-4333-8333-333333333333"
+	testFileID         = "55555555-5555-4555-8555-555555555555"
+	testAttachmentID   = "66666666-6666-4666-8666-666666666666"
 )
 
 func TestHandlerCreatesAndListsConversations(t *testing.T) {
@@ -98,6 +101,46 @@ func TestHandlerCreatesAndListsMessages(t *testing.T) {
 	}
 	if listed.Items[0].Content != "hello" || listed.Items[1].Content != "system note" {
 		t.Fatalf("listed message contents = %#v", listed.Items)
+	}
+}
+
+func TestHandlerCreatesAndListsMessagesWithAttachments(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	handler := NewHandler(NewService(repo))
+
+	path := conversationsPath + "/" + testConversationID + "/messages"
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		path,
+		`{"content":"hello","attachments":[{"fileId":"55555555-5555-4555-8555-555555555555","purpose":"image"}]}`,
+	)
+	assertStatus(t, rec, http.StatusCreated)
+
+	var created ChatMessageDTO
+	decodeBody(t, rec, &created)
+	if len(created.Attachments) != 1 {
+		t.Fatalf("created attachments = %#v, want one", created.Attachments)
+	}
+	attachment := created.Attachments[0]
+	if attachment.ID != testAttachmentID || attachment.FileID != testFileID || attachment.Source != "server" {
+		t.Fatalf("created attachment identity = %#v", attachment)
+	}
+	if attachment.Purpose != "image" || attachment.FileName != "fixture.txt" || attachment.MimeType != "text/plain" {
+		t.Fatalf("created attachment metadata = %#v", attachment)
+	}
+
+	rec = performRequest(handler, http.MethodGet, path, "")
+	assertStatus(t, rec, http.StatusOK)
+
+	var listed Page[ChatMessageDTO]
+	decodeBody(t, rec, &listed)
+	if len(listed.Items) != 1 || len(listed.Items[0].Attachments) != 1 {
+		t.Fatalf("listed attachments = %#v", listed.Items)
+	}
+	if listed.Items[0].Attachments[0].FileID != testFileID {
+		t.Fatalf("listed attachment fileId = %q, want %q", listed.Items[0].Attachments[0].FileID, testFileID)
 	}
 }
 
@@ -534,6 +577,11 @@ func TestHandlerRejectsInvalidMessageInput(t *testing.T) {
 		{name: "tool role", body: `{"role":"tool","content":"nope"}`, wantCode: "FORBIDDEN_MESSAGE_FIELD"},
 		{name: "system role", body: `{"role":"system","content":"nope"}`, wantCode: "FORBIDDEN_MESSAGE_FIELD"},
 		{name: "empty content", body: `{"content":"   "}`, wantCode: "EMPTY_CONTENT"},
+		{name: "invalid attachment file id", body: `{"content":"hello","attachments":[{"fileId":"not-a-uuid"}]}`, wantCode: "INVALID_ATTACHMENT_FILE_ID"},
+		{name: "invalid attachment purpose", body: `{"content":"hello","attachments":[{"fileId":"55555555-5555-4555-8555-555555555555","purpose":"output"}]}`, wantCode: "INVALID_ATTACHMENT_PURPOSE"},
+		{name: "duplicate attachment", body: `{"content":"hello","attachments":[{"fileId":"55555555-5555-4555-8555-555555555555"},{"fileId":"55555555-5555-4555-8555-555555555555"}]}`, wantCode: "DUPLICATE_ATTACHMENT"},
+		{name: "unsupported attachment source", body: `{"content":"hello","attachments":[{"source":"opfs","fileId":"55555555-5555-4555-8555-555555555555"}]}`, wantCode: "UNSUPPORTED_ATTACHMENT_SOURCE"},
+		{name: "too many attachments", body: tooManyAttachmentJSON(), wantCode: "TOO_MANY_ATTACHMENTS"},
 	}
 
 	for _, tt := range tests {
@@ -543,6 +591,22 @@ func TestHandlerRejectsInvalidMessageInput(t *testing.T) {
 			assertErrorCode(t, rec, tt.wantCode)
 		})
 	}
+}
+
+func TestHandlerReturnsFileNotFoundForMissingAttachment(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	handler := NewHandler(NewService(repo))
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/messages",
+		`{"content":"hello","attachments":[{"fileId":"77777777-7777-4777-8777-777777777777"}]}`,
+	)
+
+	assertStatus(t, rec, http.StatusNotFound)
+	assertErrorCode(t, rec, "FILE_NOT_FOUND")
 }
 
 func TestHandlerRejectsForbiddenConversationFields(t *testing.T) {
@@ -819,10 +883,16 @@ func (f *fakeRepository) CreateMessage(
 	if input.IdempotencyKey == "conflict" {
 		return Message{}, ErrIdempotencyConflict
 	}
+	for _, attachment := range input.Attachments {
+		if attachment.FileID != testFileID {
+			return Message{}, ErrFileNotFound
+		}
+	}
 	messages := f.messages[conversationID]
 	message := fakeMessage(testMessageID, conversationID, len(messages), input.Role, input.Content)
 	message.ParentMessageID = input.ParentMessageID
 	message.Metadata = input.Metadata
+	message.Attachments = fakeAttachments(input.Attachments)
 	f.messages[conversationID] = append(messages, message)
 	for i := range f.conversations {
 		if f.conversations[i].ID == conversationID {
@@ -990,6 +1060,42 @@ func fakeAssistantMessage(id string, conversationID string, runID string, status
 		message.CompletedAt = nil
 	}
 	return message
+}
+
+func fakeAttachments(inputs []AttachmentInput) []Attachment {
+	if len(inputs) == 0 {
+		return nil
+	}
+	attachments := make([]Attachment, 0, len(inputs))
+	for _, input := range inputs {
+		attachments = append(attachments, Attachment{
+			ID:       testAttachmentID,
+			FileID:   input.FileID,
+			FileName: "fixture.txt",
+			MimeType: "text/plain",
+			Size:     11,
+			SHA256:   "b94d27b9934d3e08a52e52d7da7dabfadebca7838dfb27f4f9174e65a2f27f21",
+			Purpose:  input.Purpose,
+		})
+	}
+	return attachments
+}
+
+func tooManyAttachmentJSON() string {
+	var builder strings.Builder
+	builder.WriteString(`{"content":"hello","attachments":[`)
+	for i := 0; i < maxMessageAttachments+1; i++ {
+		if i > 0 {
+			builder.WriteByte(',')
+		}
+		fmt.Fprintf(
+			&builder,
+			`{"fileId":"55555555-5555-4555-8555-%012d"}`,
+			i,
+		)
+	}
+	builder.WriteString(`]}`)
+	return builder.String()
 }
 
 func testNow() time.Time {

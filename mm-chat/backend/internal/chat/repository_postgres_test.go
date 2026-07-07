@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -10,9 +11,199 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 
+	filemeta "neo-chat/mm-chat/backend/internal/files"
 	"neo-chat/mm-chat/backend/internal/migration"
 	migrationfiles "neo-chat/mm-chat/backend/migrations"
 )
+
+const testSHA256 = "b94d27b9934d3e08a52e52d7da7dabfadebca7838dfb27f4f9174e65a2f27f21"
+
+func TestPostgresCreateMessagePersistsAttachments(t *testing.T) {
+	db := openPostgresIntegrationDB(t)
+	repo := NewPostgresRepository(db)
+	fileRepo := filemeta.NewPostgresRepository(db)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	conversation, err := repo.CreateConversation(ctx, CreateConversationInput{
+		Title: "attachments",
+	})
+	if err != nil {
+		t.Fatalf("CreateConversation() error = %v", err)
+	}
+	fileID := mustTestUUID(t)
+	fileRecord, err := fileRepo.CreateFile(ctx, filemeta.CreateFileInput{
+		ID:               fileID,
+		OriginalFilename: "hello.txt",
+		MimeType:         "text/plain",
+		ByteSize:         11,
+		SHA256:           testSHA256,
+		StorageBackend:   "local",
+		ObjectKey:        "users/" + filemeta.DevUserID + "/files/" + fileID,
+		Metadata:         map[string]any{"purpose": "chat"},
+	})
+	if err != nil {
+		t.Fatalf("CreateFile() error = %v", err)
+	}
+
+	message, err := repo.CreateMessage(ctx, conversation.ID, CreateMessageInput{
+		Role:    "user",
+		Content: "with file",
+		Attachments: []AttachmentInput{
+			{FileID: fileRecord.ID, Purpose: "image"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateMessage() error = %v", err)
+	}
+	if len(message.Attachments) != 1 {
+		t.Fatalf("message attachments = %#v, want one", message.Attachments)
+	}
+	attachment := message.Attachments[0]
+	if attachment.FileID != fileRecord.ID || attachment.FileName != "hello.txt" || attachment.Purpose != "image" {
+		t.Fatalf("created attachment = %#v", attachment)
+	}
+
+	var linkCount int
+	if err := db.QueryRowContext(
+		ctx,
+		`SELECT COUNT(*) FROM message_attachments WHERE message_id = $1 AND file_id = $2 AND purpose = 'image'`,
+		message.ID,
+		fileRecord.ID,
+	).Scan(&linkCount); err != nil {
+		t.Fatalf("query message attachment link: %v", err)
+	}
+	if linkCount != 1 {
+		t.Fatalf("message attachment rows = %d, want 1", linkCount)
+	}
+
+	listed, err := repo.ListMessages(ctx, conversation.ID)
+	if err != nil {
+		t.Fatalf("ListMessages() error = %v", err)
+	}
+	if len(listed) != 1 || len(listed[0].Attachments) != 1 {
+		t.Fatalf("listed messages = %#v, want attachment", listed)
+	}
+	got, err := repo.GetMessage(ctx, conversation.ID, message.ID)
+	if err != nil {
+		t.Fatalf("GetMessage() error = %v", err)
+	}
+	if len(got.Attachments) != 1 || got.Attachments[0].SHA256 != testSHA256 {
+		t.Fatalf("GetMessage() attachments = %#v", got.Attachments)
+	}
+}
+
+func TestPostgresCreateMessageRejectsMissingOrDeletedAttachment(t *testing.T) {
+	db := openPostgresIntegrationDB(t)
+	repo := NewPostgresRepository(db)
+	fileRepo := filemeta.NewPostgresRepository(db)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	conversation, err := repo.CreateConversation(ctx, CreateConversationInput{
+		Title: "missing attachments",
+	})
+	if err != nil {
+		t.Fatalf("CreateConversation() error = %v", err)
+	}
+
+	if _, err := repo.CreateMessage(ctx, conversation.ID, CreateMessageInput{
+		Role:    "user",
+		Content: "missing file",
+		Attachments: []AttachmentInput{
+			{FileID: mustTestUUID(t), Purpose: "input"},
+		},
+	}); !errors.Is(err, ErrFileNotFound) {
+		t.Fatalf("CreateMessage() missing file error = %v, want ErrFileNotFound", err)
+	}
+	assertNoMessagesForConversation(t, ctx, db, conversation.ID)
+
+	fileID := mustTestUUID(t)
+	fileRecord, err := fileRepo.CreateFile(ctx, filemeta.CreateFileInput{
+		ID:               fileID,
+		OriginalFilename: "deleted.txt",
+		MimeType:         "text/plain",
+		ByteSize:         11,
+		SHA256:           testSHA256,
+		StorageBackend:   "local",
+		ObjectKey:        "users/" + filemeta.DevUserID + "/files/" + fileID,
+		Metadata:         map[string]any{"purpose": "chat"},
+	})
+	if err != nil {
+		t.Fatalf("CreateFile() error = %v", err)
+	}
+	if _, err := fileRepo.MarkFileDeleted(ctx, fileRecord.ID); err != nil {
+		t.Fatalf("MarkFileDeleted() error = %v", err)
+	}
+
+	if _, err := repo.CreateMessage(ctx, conversation.ID, CreateMessageInput{
+		Role:    "user",
+		Content: "deleted file",
+		Attachments: []AttachmentInput{
+			{FileID: fileRecord.ID, Purpose: "input"},
+		},
+	}); !errors.Is(err, ErrFileNotFound) {
+		t.Fatalf("CreateMessage() deleted file error = %v, want ErrFileNotFound", err)
+	}
+	assertNoMessagesForConversation(t, ctx, db, conversation.ID)
+}
+
+func TestPostgresCreateMessageRollsBackWhenLaterAttachmentIsMissing(t *testing.T) {
+	db := openPostgresIntegrationDB(t)
+	repo := NewPostgresRepository(db)
+	fileRepo := filemeta.NewPostgresRepository(db)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	conversation, err := repo.CreateConversation(ctx, CreateConversationInput{
+		Title: "attachment rollback",
+	})
+	if err != nil {
+		t.Fatalf("CreateConversation() error = %v", err)
+	}
+	fileID := mustTestUUID(t)
+	fileRecord, err := fileRepo.CreateFile(ctx, filemeta.CreateFileInput{
+		ID:               fileID,
+		OriginalFilename: "kept.txt",
+		MimeType:         "text/plain",
+		ByteSize:         11,
+		SHA256:           testSHA256,
+		StorageBackend:   "local",
+		ObjectKey:        "users/" + filemeta.DevUserID + "/files/" + fileID,
+		Metadata:         map[string]any{"purpose": "chat"},
+	})
+	if err != nil {
+		t.Fatalf("CreateFile() error = %v", err)
+	}
+
+	_, err = repo.CreateMessage(ctx, conversation.ID, CreateMessageInput{
+		Role:    "user",
+		Content: "valid then missing",
+		Attachments: []AttachmentInput{
+			{FileID: fileRecord.ID, Purpose: "input"},
+			{FileID: mustTestUUID(t), Purpose: "image"},
+		},
+	})
+	if !errors.Is(err, ErrFileNotFound) {
+		t.Fatalf("CreateMessage() error = %v, want ErrFileNotFound", err)
+	}
+	assertNoMessagesForConversation(t, ctx, db, conversation.ID)
+
+	var linkCount int
+	if err := db.QueryRowContext(
+		ctx,
+		`SELECT COUNT(*) FROM message_attachments WHERE file_id = $1`,
+		fileRecord.ID,
+	).Scan(&linkCount); err != nil {
+		t.Fatalf("query message attachment rollback count: %v", err)
+	}
+	if linkCount != 0 {
+		t.Fatalf("message attachment rows after rollback = %d, want 0", linkCount)
+	}
+}
 
 func TestPostgresCancelRunLocksConversationBeforeMessage(t *testing.T) {
 	db := openPostgresIntegrationDB(t)
@@ -215,4 +406,25 @@ func mustTestUUID(t *testing.T) string {
 		t.Fatalf("NewUUID() error = %v", err)
 	}
 	return id
+}
+
+func assertNoMessagesForConversation(
+	t *testing.T,
+	ctx context.Context,
+	db *sql.DB,
+	conversationID string,
+) {
+	t.Helper()
+
+	var messageCount int
+	if err := db.QueryRowContext(
+		ctx,
+		`SELECT COUNT(*) FROM messages WHERE conversation_id = $1`,
+		conversationID,
+	).Scan(&messageCount); err != nil {
+		t.Fatalf("query conversation message count: %v", err)
+	}
+	if messageCount != 0 {
+		t.Fatalf("messages after failed attachment link = %d, want 0", messageCount)
+	}
 }

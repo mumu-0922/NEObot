@@ -53,19 +53,31 @@ type ConversationDTO struct {
 }
 
 type ChatMessageDTO struct {
-	ID              string         `json:"id"`
-	ConversationID  string         `json:"conversationId"`
-	SequenceNo      int            `json:"sequenceNo"`
-	Role            string         `json:"role"`
-	Status          string         `json:"status"`
-	Content         string         `json:"content"`
-	ModelRef        *ModelRef      `json:"modelRef,omitempty"`
-	OutputBlocks    []any          `json:"outputBlocks"`
-	Metadata        map[string]any `json:"metadata"`
-	ParentMessageID string         `json:"parentMessageId,omitempty"`
-	CreatedAt       string         `json:"createdAt"`
-	UpdatedAt       string         `json:"updatedAt"`
-	CompletedAt     string         `json:"completedAt,omitempty"`
+	ID              string          `json:"id"`
+	ConversationID  string          `json:"conversationId"`
+	SequenceNo      int             `json:"sequenceNo"`
+	Role            string          `json:"role"`
+	Status          string          `json:"status"`
+	Content         string          `json:"content"`
+	ModelRef        *ModelRef       `json:"modelRef,omitempty"`
+	Attachments     []AttachmentDTO `json:"attachments"`
+	OutputBlocks    []any           `json:"outputBlocks"`
+	Metadata        map[string]any  `json:"metadata"`
+	ParentMessageID string          `json:"parentMessageId,omitempty"`
+	CreatedAt       string          `json:"createdAt"`
+	UpdatedAt       string          `json:"updatedAt"`
+	CompletedAt     string          `json:"completedAt,omitempty"`
+}
+
+type AttachmentDTO struct {
+	ID       string `json:"id"`
+	Source   string `json:"source"`
+	FileID   string `json:"fileId"`
+	FileName string `json:"fileName"`
+	MimeType string `json:"mimeType"`
+	Size     int64  `json:"size"`
+	SHA256   string `json:"sha256"`
+	Purpose  string `json:"purpose"`
 }
 
 type createConversationRequest struct {
@@ -79,11 +91,12 @@ type createConversationRequest struct {
 }
 
 type createMessageRequest struct {
-	Role            string         `json:"role"`
-	Content         string         `json:"content"`
-	ParentMessageID string         `json:"parentMessageId"`
-	Metadata        map[string]any `json:"metadata"`
-	IdempotencyKey  string         `json:"idempotencyKey"`
+	Role            string          `json:"role"`
+	Content         string          `json:"content"`
+	ParentMessageID string          `json:"parentMessageId"`
+	Metadata        map[string]any  `json:"metadata"`
+	IdempotencyKey  string          `json:"idempotencyKey"`
+	Attachments     []AttachmentDTO `json:"attachments"`
 }
 
 type fieldViolation struct {
@@ -334,6 +347,7 @@ func (h *Handler) createMessage(w http.ResponseWriter, r *http.Request, conversa
 		ParentMessageID: request.ParentMessageID,
 		Metadata:        request.Metadata,
 		IdempotencyKey:  request.IdempotencyKey,
+		Attachments:     newAttachmentInputs(request.Attachments),
 	})
 	if err != nil {
 		writeServiceError(w, err)
@@ -727,6 +741,9 @@ func serviceErrorFor(err error) (int, ErrorBody) {
 	if errors.Is(err, ErrIdempotencyConflict) {
 		return http.StatusConflict, ErrorBody{Code: "IDEMPOTENCY_CONFLICT", Message: "idempotency key already exists"}
 	}
+	if errors.Is(err, ErrFileNotFound) {
+		return http.StatusNotFound, ErrorBody{Code: "FILE_NOT_FOUND", Message: "file not found"}
+	}
 	if errors.Is(err, ErrRunNotFound) {
 		return http.StatusNotFound, ErrorBody{Code: "RUN_NOT_FOUND", Message: "run not found"}
 	}
@@ -897,6 +914,7 @@ func newMessageDTO(message Message) ChatMessageDTO {
 		Status:          message.Status,
 		Content:         message.Content,
 		ModelRef:        newModelRef(message.ModelProvider, message.ModelID),
+		Attachments:     newAttachmentDTOs(message.Attachments),
 		OutputBlocks:    ensureArray(message.OutputBlocks),
 		Metadata:        ensureObject(message.Metadata),
 		ParentMessageID: message.ParentMessageID,
@@ -904,6 +922,38 @@ func newMessageDTO(message Message) ChatMessageDTO {
 		UpdatedAt:       formatTime(message.UpdatedAt),
 		CompletedAt:     formatOptionalTime(message.CompletedAt),
 	}
+}
+
+func newAttachmentInputs(attachments []AttachmentDTO) []AttachmentInput {
+	if len(attachments) == 0 {
+		return nil
+	}
+	inputs := make([]AttachmentInput, 0, len(attachments))
+	for _, attachment := range attachments {
+		inputs = append(inputs, AttachmentInput{
+			Source:  attachment.Source,
+			FileID:  attachment.FileID,
+			Purpose: attachment.Purpose,
+		})
+	}
+	return inputs
+}
+
+func newAttachmentDTOs(attachments []Attachment) []AttachmentDTO {
+	items := make([]AttachmentDTO, 0, len(attachments))
+	for _, attachment := range attachments {
+		items = append(items, AttachmentDTO{
+			ID:       attachment.ID,
+			Source:   "server",
+			FileID:   attachment.FileID,
+			FileName: attachment.FileName,
+			MimeType: attachment.MimeType,
+			Size:     attachment.Size,
+			SHA256:   attachment.SHA256,
+			Purpose:  attachment.Purpose,
+		})
+	}
+	return items
 }
 
 func newModelRef(providerID string, modelID string) *ModelRef {

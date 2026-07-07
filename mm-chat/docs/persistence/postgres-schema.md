@@ -187,8 +187,9 @@ Boundary:
 
 Phase 5.1 is the first application repository consumer of the Phase 4 schema.
 Phase 5.2 extends the same narrow table subset with assistant streaming-row
-creation/finalization before auth, real provider configuration, files, Redis,
-MinIO, or RAG.
+creation/finalization before auth and real provider configuration. Phase 6.3
+allows the chat repository to read `files` and write `message_attachments` for
+server-uploaded user-message attachments.
 
 Allowed application tables:
 
@@ -196,6 +197,8 @@ Allowed application tables:
 users
 conversations
 messages
+files
+message_attachments
 ```
 
 Allowed repository behavior:
@@ -219,6 +222,12 @@ Allowed repository behavior:
 - Cancel Phase 5.4 assistant runs by looking up `metadata.runId`; `streaming`
   rows become `cancelled`, already `cancelled` rows return idempotently, and
   `completed` / `failed` rows return `409 RUN_NOT_CANCELLABLE`.
+- Link Phase 6.3 user-message attachments inside the same transaction as
+  message creation after validating that each file belongs to the fixed user,
+  is not deleted, and has `upload_status = 'available'`.
+- List/get message queries may join `message_attachments` to `files` for
+  browser-safe metadata (`file_id`, display filename, MIME type, byte size, and
+  SHA-256) but must not expose `object_key`.
 - Treat `conversations.idempotency_key` and `messages.idempotency_key` as
   optional retry guards. Phase 5.1 stores the key and returns
   `409 IDEMPOTENCY_CONFLICT` on duplicate non-empty keys when the violated
@@ -230,13 +239,11 @@ Explicitly outside the Phase 5.1 repository path:
 
 - `sessions`: auth and session revocation are later work.
 - `provider_configs`: provider selection/secret resolution is later work.
-- `files` and `message_attachments`: attachments and object-byte storage are
-  later work.
 - `audit_logs`: audit writes are not required for the first chat CRUD path.
 - Additional provider adapters, provider secret encryption, durable run
   records, assistant/tool tool-call rows, cross-process cancellation, and stream
   resume are later work.
-- Redis, MinIO/S3/local object storage, RAG indexes, browser import, and
+- Redis, MinIO/S3, RAG indexes, browser import, multimodal provider input, and
   multi-user permissions are later work.
 
 DB-disabled boundary:

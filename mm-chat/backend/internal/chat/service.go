@@ -5,6 +5,8 @@ import (
 	"strings"
 )
 
+const maxMessageAttachments = 20
+
 type Service struct {
 	repo Repository
 }
@@ -102,6 +104,11 @@ func (s *Service) CreateMessage(
 	if input.Metadata == nil {
 		input.Metadata = map[string]any{}
 	}
+	attachments, err := normalizeAttachmentInputs(input.Attachments)
+	if err != nil {
+		return Message{}, err
+	}
+	input.Attachments = attachments
 
 	return s.repo.CreateMessage(ctx, conversationID, input)
 }
@@ -215,5 +222,59 @@ func normalizeClientMessageRole(role string) (string, error) {
 			"FORBIDDEN_MESSAGE_FIELD",
 			"only user messages can be created by this endpoint",
 		)
+	}
+}
+
+func normalizeAttachmentInputs(inputs []AttachmentInput) ([]AttachmentInput, error) {
+	if len(inputs) == 0 {
+		return nil, nil
+	}
+	if len(inputs) > maxMessageAttachments {
+		return nil, newValidationError("TOO_MANY_ATTACHMENTS", "too many message attachments")
+	}
+
+	seen := make(map[string]struct{}, len(inputs))
+	normalized := make([]AttachmentInput, 0, len(inputs))
+	for _, input := range inputs {
+		source := strings.ToLower(strings.TrimSpace(input.Source))
+		if source != "" && source != "server" {
+			return nil, newValidationError("UNSUPPORTED_ATTACHMENT_SOURCE", "only server attachments can be linked")
+		}
+
+		fileID := strings.TrimSpace(input.FileID)
+		if !isUUID(fileID) {
+			return nil, newValidationError("INVALID_ATTACHMENT_FILE_ID", "attachment fileId must be a UUID")
+		}
+		fileKey := strings.ToLower(fileID)
+		if _, ok := seen[fileKey]; ok {
+			return nil, newValidationError("DUPLICATE_ATTACHMENT", "duplicate attachment fileId")
+		}
+		seen[fileKey] = struct{}{}
+
+		purpose, err := normalizeAttachmentPurpose(input.Purpose)
+		if err != nil {
+			return nil, err
+		}
+		normalized = append(normalized, AttachmentInput{
+			Source:  "server",
+			FileID:  fileID,
+			Purpose: purpose,
+		})
+	}
+
+	return normalized, nil
+}
+
+func normalizeAttachmentPurpose(purpose string) (string, error) {
+	purpose = strings.ToLower(strings.TrimSpace(purpose))
+	switch purpose {
+	case "", "input", "chat":
+		return "input", nil
+	case "image":
+		return "image", nil
+	case "knowledge", "knowledge_source":
+		return "knowledge_source", nil
+	default:
+		return "", newValidationError("INVALID_ATTACHMENT_PURPOSE", "attachment purpose is unsupported")
 	}
 }

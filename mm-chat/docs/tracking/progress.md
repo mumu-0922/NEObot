@@ -92,6 +92,8 @@ Update this file whenever a phase or task is completed. Every `[x]` entry must h
 - [x] Add file content download endpoint.
 - [x] Add fixed-development-user file ownership checks.
 - [x] Add SHA-256 hashing for uploaded file records.
+- [x] Link uploaded files to chat messages through `message_attachments`.
+- [x] Return server attachment metadata from message create/list endpoints.
 
 ## Phase 7 — Redis Temporary State
 

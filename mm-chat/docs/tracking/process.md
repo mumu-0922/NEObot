@@ -1359,3 +1359,83 @@ go test ./...: passed after rollback test
 Object deletion after metadata soft-delete is still best-effort in this local
 MVP. A future object cleanup/retry job should handle orphan cleanup when moving
 to MinIO/S3 or multi-worker deployment.
+
+## 2026-07-07 — Phase 6.3 Message Attachment Links
+
+### Action
+
+Added the first file-to-chat link path without changing the existing frontend
+or original app source. `POST /v1/chat/conversations/{id}/messages` now accepts
+server file references in `attachments`, validates UUIDs, source, purpose, and
+duplicates, then writes `message_attachments` in the same Postgres transaction
+as the user message. Message create/get/list responses include browser-safe
+attachment metadata.
+
+### Files
+
+```text
+mm-chat/backend/internal/chat/*
+mm-chat/docs/contracts/chat-crud-api.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/contracts/file-api.md
+mm-chat/docs/persistence/postgres-schema.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+### Decision
+
+Attachment linking is metadata-only in this slice. The stream endpoint still
+rejects `attachments` in its request body, and provider adapters do not yet
+consume file bytes as multimodal input. Message DTOs expose `fileId`,
+filename, MIME type, size, SHA-256, and purpose only; object keys, local paths,
+buckets, and direct object-store URLs remain private.
+
+### Verification
+
+```text
+go test ./...: passed with Docker Go 1.22
+handler attachment create/list tests: passed
+Postgres attachment integration tests against Docker Postgres: passed
+API smoke with Docker Postgres + Go API: upload -> attach -> list passed
+unsupported opfs attachment source smoke: 400 UNSUPPORTED_ATTACHMENT_SOURCE
+```
+
+### Next Step
+
+Run review, commit, and push Phase 6.3.
+
+## 2026-07-07 — Phase 6.3 Review Fixes
+
+### Action
+
+Reviewed the message attachment linking path across chat handler, service,
+Postgres repository, contracts, and tracking docs. Tightened attachment read
+queries to require both `message_attachments.user_id` and `files.user_id` to
+match the fixed development user, then added regression coverage for missing
+attachment mapping, attachment count limits, and transaction rollback when a
+later attachment link fails.
+
+### Files
+
+```text
+mm-chat/backend/internal/chat/handler_test.go
+mm-chat/backend/internal/chat/repository_postgres.go
+mm-chat/backend/internal/chat/repository_postgres_test.go
+mm-chat/docs/tracking/process.md
+```
+
+### Verification
+
+```text
+gofmt -l $(find . -name "*.go" -print): passed with Docker Go 1.22
+go test ./...: passed with Docker Go 1.22
+go vet ./...: passed with Docker Go 1.22
+Postgres attachment integration tests: passed against Docker Postgres 16
+API smoke after review fixes: upload -> attach -> list passed
+git diff --check -- mm-chat: passed
+```
+
+### Next Step
+
+Commit Phase 6.3 after final main-session review.

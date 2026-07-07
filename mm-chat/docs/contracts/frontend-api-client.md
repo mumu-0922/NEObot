@@ -384,6 +384,13 @@ Rules:
 
 - `appendUserMessage` persists a user message without starting generation.
 - Server-mode `streamAssistantMessage` requires a persisted `userMessageId`; callers must first use `appendUserMessage` for new user text.
+- Server-mode `appendUserMessage` may link only `source: "server"`
+  attachments that were already uploaded through `fileApi.upload`. The server
+  adapter sends only `{ source: "server", fileId, purpose? }`; it must not send
+  `opfs://` URLs, inline base64 data, remote URLs, object keys, or bucket names
+  to the Go message endpoint.
+- Server-mode attachment purpose defaults to `input`; `chat` maps to `input`
+  and `knowledge` maps to `knowledge_source` for compatibility.
 - Local mode may internally keep its existing one-step send behavior, but the server adapter must expose the two-step contract.
 - `idempotencyKey` is required at the contract boundary. If a caller does not provide one, the adapter must generate it before making a server request.
 - Local adapter may ignore pagination initially but must keep the method shape.

@@ -55,6 +55,23 @@ type CreateMessageInput struct {
 	ParentMessageID string
 	Metadata        map[string]any
 	IdempotencyKey  string
+	Attachments     []AttachmentInput
+}
+
+type AttachmentInput struct {
+	Source  string
+	FileID  string
+	Purpose string
+}
+
+type Attachment struct {
+	ID       string
+	FileID   string
+	FileName string
+	MimeType string
+	Size     int64
+	SHA256   string
+	Purpose  string
 }
 
 type CreateAssistantMessageInput struct {
@@ -93,6 +110,7 @@ type Message struct {
 	IdempotencyKey    string
 	OutputBlocks      []any
 	Metadata          map[string]any
+	Attachments       []Attachment
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 	CompletedAt       *time.Time

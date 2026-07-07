@@ -21,6 +21,11 @@ type sqlExecer interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
+type sqlQueryer interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
 type rowScanner interface {
 	Scan(dest ...any) error
 }
@@ -177,6 +182,9 @@ ORDER BY sequence_no ASC, created_at ASC, id ASC
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate messages: %w", err)
 	}
+	if err := r.populateMessageAttachments(ctx, messages); err != nil {
+		return nil, err
+	}
 
 	return messages, nil
 }
@@ -211,8 +219,12 @@ WHERE id = $1
 	if err != nil {
 		return Message{}, fmt.Errorf("query message: %w", err)
 	}
+	messages := []Message{message}
+	if err := r.populateMessageAttachments(ctx, messages); err != nil {
+		return Message{}, err
+	}
 
-	return message, nil
+	return messages[0], nil
 }
 
 func (r *PostgresRepository) CreateMessage(
@@ -239,6 +251,11 @@ func (r *PostgresRepository) CreateMessage(
 		return Message{}, newValidationError("INVALID_PARENT_MESSAGE_ID", "parent message id must be a UUID")
 	}
 	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
+	attachments, err := normalizeAttachmentInputs(input.Attachments)
+	if err != nil {
+		return Message{}, err
+	}
+	input.Attachments = attachments
 
 	id, err := r.generateID()
 	if err != nil {
@@ -280,6 +297,10 @@ func (r *PostgresRepository) CreateMessage(
 			return Message{}, ErrIdempotencyConflict
 		}
 		return Message{}, fmt.Errorf("insert message: %w", err)
+	}
+	message.Attachments, err = r.createMessageAttachments(ctx, tx, message.ID, input.Attachments)
+	if err != nil {
+		return Message{}, err
 	}
 
 	if _, err := tx.ExecContext(
@@ -619,6 +640,148 @@ WHERE id = $1
 	return nil
 }
 
+func (r *PostgresRepository) createMessageAttachments(
+	ctx context.Context,
+	tx *sql.Tx,
+	messageID string,
+	inputs []AttachmentInput,
+) ([]Attachment, error) {
+	if len(inputs) == 0 {
+		return nil, nil
+	}
+
+	attachments := make([]Attachment, 0, len(inputs))
+	for displayOrder, input := range inputs {
+		attachment, err := findAttachableFile(ctx, tx, input.FileID, r.userID)
+		if err != nil {
+			return nil, err
+		}
+		attachment.Purpose = input.Purpose
+
+		linkID, err := r.generateID()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tx.ExecContext(
+			ctx,
+			messageAttachmentInsertSQL,
+			linkID,
+			messageID,
+			attachment.FileID,
+			r.userID,
+			displayOrder,
+			attachment.Purpose,
+		); err != nil {
+			return nil, fmt.Errorf("insert message attachment: %w", err)
+		}
+		attachment.ID = linkID
+
+		attachments = append(attachments, attachment)
+	}
+
+	return attachments, nil
+}
+
+func findAttachableFile(
+	ctx context.Context,
+	queryer sqlQueryer,
+	fileID string,
+	userID string,
+) (Attachment, error) {
+	var attachment Attachment
+	err := queryer.QueryRowContext(ctx, attachableFileSelectSQL, fileID, userID).Scan(
+		&attachment.FileID,
+		&attachment.FileName,
+		&attachment.MimeType,
+		&attachment.Size,
+		&attachment.SHA256,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Attachment{}, ErrFileNotFound
+	}
+	if err != nil {
+		return Attachment{}, fmt.Errorf("query attachable file: %w", err)
+	}
+
+	return attachment, nil
+}
+
+func (r *PostgresRepository) populateMessageAttachments(
+	ctx context.Context,
+	messages []Message,
+) error {
+	if len(messages) == 0 {
+		return nil
+	}
+
+	messageIDs := make([]string, 0, len(messages))
+	for _, message := range messages {
+		messageIDs = append(messageIDs, message.ID)
+	}
+	attachmentsByMessageID, err := loadMessageAttachments(ctx, r.db, r.userID, messageIDs)
+	if err != nil {
+		return err
+	}
+	for i := range messages {
+		messages[i].Attachments = attachmentsByMessageID[messages[i].ID]
+	}
+
+	return nil
+}
+
+func loadMessageAttachments(
+	ctx context.Context,
+	queryer sqlQueryer,
+	userID string,
+	messageIDs []string,
+) (map[string][]Attachment, error) {
+	attachmentsByMessageID := make(map[string][]Attachment, len(messageIDs))
+	if len(messageIDs) == 0 {
+		return attachmentsByMessageID, nil
+	}
+
+	args := make([]any, 0, len(messageIDs)+1)
+	args = append(args, userID)
+	placeholders := make([]string, 0, len(messageIDs))
+	for index, messageID := range messageIDs {
+		args = append(args, messageID)
+		placeholders = append(placeholders, fmt.Sprintf("$%d", index+2))
+	}
+
+	rows, err := queryer.QueryContext(
+		ctx,
+		fmt.Sprintf(messageAttachmentsSelectSQL, strings.Join(placeholders, ", ")),
+		args...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query message attachments: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var messageID string
+		var attachment Attachment
+		if err := rows.Scan(
+			&messageID,
+			&attachment.ID,
+			&attachment.FileID,
+			&attachment.FileName,
+			&attachment.MimeType,
+			&attachment.Size,
+			&attachment.SHA256,
+			&attachment.Purpose,
+		); err != nil {
+			return nil, fmt.Errorf("scan message attachment: %w", err)
+		}
+		attachmentsByMessageID[messageID] = append(attachmentsByMessageID[messageID], attachment)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate message attachments: %w", err)
+	}
+
+	return attachmentsByMessageID, nil
+}
+
 func lockConversationForUser(
 	ctx context.Context,
 	tx *sql.Tx,
@@ -744,6 +907,51 @@ RETURNING
   updated_at,
   completed_at,
   deleted_at
+`
+
+const attachableFileSelectSQL = `
+SELECT
+  id,
+  original_filename,
+  mime_type,
+  byte_size,
+  sha256
+FROM files
+WHERE id = $1
+  AND user_id = $2
+  AND deleted_at IS NULL
+  AND upload_status = 'available'
+`
+
+const messageAttachmentInsertSQL = `
+INSERT INTO message_attachments (
+  id,
+  message_id,
+  file_id,
+  user_id,
+  display_order,
+  purpose
+) VALUES ($1, $2, $3, $4, $5, $6)
+`
+
+const messageAttachmentsSelectSQL = `
+SELECT
+  ma.message_id,
+  ma.id,
+  f.id,
+  f.original_filename,
+  f.mime_type,
+  f.byte_size,
+  f.sha256,
+  ma.purpose
+FROM message_attachments ma
+JOIN files f ON f.id = ma.file_id
+WHERE ma.user_id = $1
+  AND f.user_id = $1
+  AND ma.message_id IN (%s)
+  AND f.deleted_at IS NULL
+  AND f.upload_status = 'available'
+ORDER BY ma.message_id ASC, ma.display_order ASC, ma.created_at ASC, ma.id ASC
 `
 
 const assistantMessageInsertSQL = `
