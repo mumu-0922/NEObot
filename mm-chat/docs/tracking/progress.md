@@ -38,12 +38,12 @@ Update this file whenever a phase or task is completed. Every `[x]` entry must h
 
 ## Phase 3 — Go Backend Skeleton
 
-- [ ] Create backend directory under `mm-chat/backend/`.
-- [ ] Initialize Go module.
-- [ ] Add config loader.
-- [ ] Add router and middleware skeleton.
-- [ ] Add `/health`, `/ready`, `/v1/version`.
-- [ ] Add basic tests.
+- [x] Create backend directory under `mm-chat/backend/`
+- [x] Initialize Go module.
+- [x] Add config loader.
+- [x] Add router and middleware skeleton.
+- [x] Add `/health`, `/ready`, `/v1/version`.
+- [x] Add basic tests.
 
 ## Phase 4 — Postgres Persistence
 

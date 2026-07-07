@@ -327,3 +327,81 @@ Validated Markdown links, code fence balance, required inventory sections, and P
 ### Next Step
 
 Commit and push the Phase 2 call-site inventory, then proceed to Phase 3 Go backend skeleton planning.
+
+## 2026-07-07 — Phase 3 Go Backend Skeleton
+
+### Action
+
+Created the first Go backend skeleton under the isolated `mm-chat/backend/` workspace and added the Phase 3 single-server deployment draft.
+
+### Evidence
+
+Backend files created:
+
+```text
+mm-chat/backend/go.mod
+mm-chat/backend/cmd/api/main.go
+mm-chat/backend/internal/config/config.go
+mm-chat/backend/internal/config/config_test.go
+mm-chat/backend/internal/health/handler.go
+mm-chat/backend/internal/health/handler_test.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/httpserver/middleware.go
+mm-chat/backend/internal/httpserver/server_test.go
+```
+
+Deployment docs updated:
+
+```text
+mm-chat/docs/deployment/README.md
+mm-chat/docs/deployment/single-server-compose.md
+```
+
+Implemented runtime surface:
+
+```text
+MM_CHAT_ADDR default: :8080
+MM_CHAT_VERSION default: dev
+GET /health      -> {"status":"healthy"}
+GET /ready       -> {"status":"ready"}
+GET /v1/version  -> {"version":"..."}
+```
+
+### Decision
+
+Keep Phase 3 dependency-free by using the Go standard library only. The first backend pass proves process startup, env config, routing, health/readiness/version endpoints, JSON error envelopes, security headers, and panic recovery before adding Postgres, Redis, MinIO, or provider streaming.
+
+The single-server deployment document remains a runbook and topology contract only; no Compose implementation file is created in Phase 3.
+
+### Verification
+
+Validated with Docker Go 1.22 because host `go` is not installed:
+
+```bash
+docker run --rm -v "$PWD/mm-chat/backend":/app -w /app golang:1.22-alpine \
+  sh -lc '/usr/local/go/bin/gofmt -w $(find . -name "*.go" -print) && /usr/local/go/bin/go test ./...'
+```
+
+Result:
+
+```text
+?   	neo-chat/mm-chat/backend/cmd/api	[no test files]
+ok  	neo-chat/mm-chat/backend/internal/config
+ok  	neo-chat/mm-chat/backend/internal/health
+ok  	neo-chat/mm-chat/backend/internal/httpserver
+```
+
+Docker runtime smoke also passed:
+
+```text
+/health      {"status":"healthy"}
+/ready       {"status":"ready"}
+/v1/version  {"version":"smoke-test"}
+X-Content-Type-Options: nosniff
+```
+
+`git diff --check -- mm-chat/backend mm-chat/docs/deployment` passed.
+
+### Next Step
+
+Run a read-only reviewer pass across backend, deployment docs, and tracking docs. Then commit and push the Phase 3 skeleton if no blocking findings remain.
