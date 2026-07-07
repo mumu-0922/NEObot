@@ -188,3 +188,88 @@ Start Phase 2 contract work in:
 ```text
 mm-chat/docs/contracts/frontend-api-client.md
 ```
+
+
+## 2026-07-07 — Phase 2 Frontend API Client Contract Draft
+
+### Action
+
+Created the first Phase 2 contract for the frontend API client boundary.
+
+### Evidence
+
+New/updated documents:
+
+```text
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/contracts/README.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+The contract defines:
+
+```text
+ApiMode: local | server
+chatApi / fileApi / authApi / settingsApi / providerApi
+server endpoint mapping
+SSE event envelope and event types
+error envelope and error matrix
+migration sequence and test requirements
+```
+
+### Decision
+
+Keep `local` mode as the default rollback path. Server mode remains opt-in behind `NEXT_PUBLIC_API_MODE=server` and `NEXT_PUBLIC_API_BASE_URL` until Go backend and persistence phases are implemented.
+
+### Verification
+
+Read-only reviewer subagent requested by owner; findings recorded in the next process entry.
+
+### Next Step
+
+Apply accepted reviewer findings before commit.
+
+
+## 2026-07-07 — Phase 2 Reviewer Findings Applied
+
+### Action
+
+Applied the read-only reviewer findings for the frontend API client contract.
+
+### Evidence
+
+Reviewer found seven issues: provider/model identity ambiguity, incomplete endpoint mapping, undefined DTO/config types, loose attachment boundaries, missing SSE wire examples, weak runtime rollback semantics, and missing `pluginApi` placeholder.
+
+Updated contract areas:
+
+```text
+ModelRef providerId/modelId identity
+ApiClientConfig definition
+MessageOutputBlockDto and MessageVersionDto definitions
+message tree/version compatibility fields
+runtime config bootstrap via /api/config or /v1/config
+strict AttachmentRef source union and source matrix
+canonical SSE event/data frames
+settings/provider/plugin endpoint mapping
+pluginApi placeholder with plugins capability disabled for MVP
+```
+
+### Decision
+
+Treat `local` mode as default and require runtime config for safe rollback where possible. Treat plugin execution as deferred, but keep a minimal `pluginApi` boundary so future plugin work does not leak route calls into components.
+
+### Verification
+
+Local validation passed after edits:
+
+```text
+ok: Phase 2 contract fixes verified
+git diff --check: clean
+```
+
+Validated Markdown links, code fence balance, required contract sections, absence of stale `model: string` / `/v1/auth/verify` residues, and Phase 2 progress checkboxes.
+
+### Next Step
+
+Commit and push Phase 2 contract docs.

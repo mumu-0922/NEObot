@@ -26,10 +26,13 @@ Update this file whenever a phase or task is completed. Every `[x]` entry must h
 
 ## Phase 2 — Frontend API Boundary
 
-- [ ] Define API client contracts.
-- [ ] Define local-mode implementation contract.
-- [ ] Define server-mode implementation contract.
-- [ ] Add feature flag design for `local|server` mode.
+- [x] Define API client contracts.
+- [x] Define local-mode implementation contract.
+- [x] Define server-mode implementation contract.
+- [x] Add feature flag design for `local|server` mode.
+- [x] Produce `mm-chat/docs/contracts/frontend-api-client.md`.
+- [x] Address reviewer findings for Phase 2 contract.
+- [x] Define plugin API placeholder contract for deferred plugin migration.
 - [ ] Identify components that directly call storage or fetch.
 
 ## Phase 3 — Go Backend Skeleton

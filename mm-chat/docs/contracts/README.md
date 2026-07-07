@@ -1,9 +1,7 @@
 # Contract Docs
 
-Future home for frontend API client contracts, backend REST/SSE contracts, event schemas, and import/export schemas.
+Contract documents define stable boundaries before implementation starts.
 
-Planned first document:
+- [`frontend-api-client.md`](./frontend-api-client.md) — full frontend API client boundary for local/server migration, chat streaming, file access, auth, settings, provider metadata, plugin placeholders, errors, and rollout order.
 
-```text
-frontend-api-client.md
-```
+Future contract docs may cover backend REST/OpenAPI, SSE wire examples, import/export schemas, and database migration contracts.
