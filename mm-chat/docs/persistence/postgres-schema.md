@@ -178,11 +178,12 @@ Boundary:
 - Store stable output fields and scrubbed metadata, not raw provider responses
   or secrets.
 
-## 4. Phase 5.1 Repository Usage Boundary
+## 4. Phase 5.1/5.2 Repository Usage Boundary
 
-Phase 5.1 is the first application repository consumer of the Phase 4 schema. It
-uses a deliberately narrow subset so chat CRUD can land before auth, provider
-streaming, files, Redis, MinIO, or RAG.
+Phase 5.1 is the first application repository consumer of the Phase 4 schema.
+Phase 5.2 extends the same narrow table subset with assistant streaming-row
+creation/finalization before auth, real provider configuration, files, Redis,
+MinIO, or RAG.
 
 Allowed application tables:
 
@@ -203,6 +204,12 @@ Allowed repository behavior:
   to the fixed user.
 - Assign new user messages with `role = 'user'`, `status = 'completed'`, and a
   repository-owned `sequence_no`.
+- Create Phase 5.2 assistant streaming rows with `role = 'assistant'`,
+  `status = 'streaming'`, `parent_message_id` pointing at an existing user
+  message in the same conversation, and an assistant-scoped idempotency key.
+- Finalize Phase 5.2 assistant rows to `completed`, `failed`, or `cancelled`
+  after the provider stream terminates; finalization writes final content,
+  output blocks, metadata, `completed_at`, and touches the conversation.
 - Treat `conversations.idempotency_key` and `messages.idempotency_key` as
   optional retry guards. Phase 5.1 stores the key and returns
   `409 IDEMPOTENCY_CONFLICT` on duplicate non-empty keys when the violated
@@ -217,8 +224,9 @@ Explicitly outside the Phase 5.1 repository path:
 - `files` and `message_attachments`: attachments and object-byte storage are
   later work.
 - `audit_logs`: audit writes are not required for the first chat CRUD path.
-- Provider streaming persistence: assistant/tool message creation, streaming
-  status transitions, provider message IDs, and cancellation are later work.
+- Real provider adapters, provider secret resolution, explicit cancellation
+  endpoints, durable run records, assistant/tool tool-call rows, and stream
+  resume are later work.
 - Redis, MinIO/S3/local object storage, RAG indexes, browser import, and
   multi-user permissions are later work.
 

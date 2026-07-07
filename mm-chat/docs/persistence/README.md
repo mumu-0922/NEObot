@@ -30,8 +30,13 @@ Phase 5.1 adds the first narrow repository usage boundary for chat CRUD:
 `503 DATABASE_REQUIRED` when DB runtime wiring is disabled; they must not fall
 back to in-memory persistence.
 
-Phase 4/4.5/5.1 does **not** add provider streaming persistence, SSE
-cancellation, auth, multi-user permissions, MinIO file bytes, Redis
+Phase 5.2 adds the first assistant streaming-row persistence boundary: create a
+`streaming` assistant message for an existing user message, then finalize it to
+`completed`, `failed`, or `cancelled` after the provider stream. It still uses
+only `users`, `conversations`, and `messages`.
+
+Phase 4/4.5/5.1/5.2 does **not** add real provider adapters, explicit SSE
+cancellation endpoints, auth, multi-user permissions, MinIO file bytes, Redis
 session/cache/cancellation state, RAG services, browser data import, or a
 committed Docker Compose implementation. Those remain later phases unless a
 later task explicitly changes the boundary.

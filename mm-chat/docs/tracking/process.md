@@ -749,3 +749,121 @@ conversation and message creation, with regression tests.
 Run final reviewer and diff checks, then commit and push Phase 5.1. The next
 implementation phase should add the provider interface, mock provider, SSE
 streaming endpoint, cancellation path, and assistant-message persistence.
+
+## 2026-07-07 — Phase 5.2 Mock Provider and SSE Streaming Spine
+
+### Action
+
+Added the first provider-neutral streaming spine for `mm-chat/backend`: a
+provider interface, deterministic mock provider for tests, SSE stream route, and
+two-step assistant message persistence.
+
+### Evidence
+
+Backend files created or updated:
+
+```text
+mm-chat/backend/internal/chat/provider.go
+mm-chat/backend/internal/chat/errors.go
+mm-chat/backend/internal/chat/types.go
+mm-chat/backend/internal/chat/service.go
+mm-chat/backend/internal/chat/repository_postgres.go
+mm-chat/backend/internal/chat/handler.go
+mm-chat/backend/internal/chat/handler_test.go
+mm-chat/backend/internal/httpserver/server.go
+```
+
+Docs created or updated:
+
+```text
+mm-chat/docs/contracts/chat-stream-api.md
+mm-chat/docs/contracts/README.md
+mm-chat/docs/persistence/README.md
+mm-chat/docs/persistence/postgres-schema.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+Implemented stream surface:
+
+```text
+POST /v1/chat/conversations/{id}/stream
+```
+
+Request contract:
+
+```text
+userMessageId required
+modelRef required
+idempotencyKey required
+content/attachments/user identity/server-managed message fields rejected
+```
+
+Persistence behavior:
+
+```text
+existing user message -> create assistant role=assistant/status=streaming
+provider deltas       -> SSE message.delta frames
+provider usage        -> SSE usage.updated frame when present
+success               -> finalize assistant status=completed and emit message.completed
+provider error        -> finalize assistant status=failed and emit message.error
+request cancellation  -> finalize assistant status=cancelled and emit message.cancelled
+```
+
+### Decision
+
+Do not append user messages inside `/stream`. The caller must first persist the
+user message with `POST /v1/chat/conversations/{id}/messages`, then pass the
+returned `userMessageId` into `/stream`. This keeps user-message idempotency and
+assistant-run idempotency separate and avoids sequence-number ambiguity.
+
+Do not enable a provider by default in `cmd/api`. If no provider is injected,
+`/stream` returns `503 PROVIDER_REQUIRED`. The mock provider is available for
+unit tests and future explicit local smoke configuration; real provider adapters
+remain later work.
+
+### Verification
+
+Unit tests passed with Docker Go 1.22:
+
+```bash
+docker run --rm --user "$(id -u):$(id -g)" \
+  -v "$PWD/mm-chat/backend":/app -w /app \
+  -e GOCACHE=/tmp/go-cache -e GOMODCACHE=/tmp/go-mod-cache \
+  golang:1.22-alpine \
+  sh -lc '/usr/local/go/bin/gofmt -w $(find . -name "*.go" -print) && /usr/local/go/bin/go test ./...'
+```
+
+Covered behavior:
+
+```text
+mock provider emits message.started -> message.delta -> usage.updated -> message.completed
+assistant message is persisted with parent user message, modelRef, completed status, final content
+DB-disabled /stream returns 503 DATABASE_REQUIRED before JSON parsing
+provider-missing /stream returns 503 PROVIDER_REQUIRED
+unsupported stream body fields are rejected before streaming starts
+duplicate assistant stream idempotency key returns 409 IDEMPOTENCY_CONFLICT
+temporary Docker Postgres smoke verified streaming assistant insert, duplicate idempotency conflict, finalize completed, and message ordering
+```
+
+Reviewer fixes applied after the first Phase 5.2 review:
+
+```text
+SSE write failures now finalize the assistant row as cancelled instead of leaving status=streaming.
+Completed assistant messages may have empty content, matching the zero-delta SSE contract.
+chat-stream-api.md now documents pre-SSE 502 PROVIDER_ERROR.
+```
+
+### Boundary
+
+This phase does not add OpenAI/Gemini/OpenAI-compatible adapters, provider
+secret management, explicit run cancellation endpoint, Redis cancellation state,
+stream resume, durable run records, file attachments, tools/plugins, RAG, auth,
+or frontend integration.
+
+### Next Step
+
+Run final reviewer and integration checks, then commit and push Phase 5.2. The
+next implementation phase should add a first real provider adapter or the
+explicit cancellation endpoint, depending on whether provider execution or run
+control is more urgent.

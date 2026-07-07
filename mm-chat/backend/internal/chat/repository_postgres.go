@@ -181,6 +181,40 @@ ORDER BY sequence_no ASC, created_at ASC, id ASC
 	return messages, nil
 }
 
+func (r *PostgresRepository) GetMessage(
+	ctx context.Context,
+	conversationID string,
+	messageID string,
+) (Message, error) {
+	if err := r.requireDB(); err != nil {
+		return Message{}, err
+	}
+	if !isUUID(conversationID) {
+		return Message{}, newValidationError("INVALID_CONVERSATION_ID", "conversation id must be a UUID")
+	}
+	if !isUUID(messageID) {
+		return Message{}, newValidationError("INVALID_USER_MESSAGE_ID", "userMessageId must be a UUID")
+	}
+	if err := r.requireConversation(ctx, conversationID); err != nil {
+		return Message{}, err
+	}
+
+	row := r.db.QueryRowContext(ctx, messageSelectSQL+`
+WHERE id = $1
+  AND conversation_id = $2
+  AND deleted_at IS NULL
+`, messageID, conversationID)
+	message, err := scanMessage(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Message{}, newValidationError("INVALID_USER_MESSAGE_ID", "user message not found")
+	}
+	if err != nil {
+		return Message{}, fmt.Errorf("query message: %w", err)
+	}
+
+	return message, nil
+}
+
 func (r *PostgresRepository) CreateMessage(
 	ctx context.Context,
 	conversationID string,
@@ -264,6 +298,182 @@ func (r *PostgresRepository) CreateMessage(
 	return message, nil
 }
 
+func (r *PostgresRepository) CreateAssistantMessage(
+	ctx context.Context,
+	conversationID string,
+	input CreateAssistantMessageInput,
+) (Message, error) {
+	if err := r.requireDB(); err != nil {
+		return Message{}, err
+	}
+	if !isUUID(conversationID) {
+		return Message{}, newValidationError("INVALID_CONVERSATION_ID", "conversation id must be a UUID")
+	}
+	input.ParentMessageID = strings.TrimSpace(input.ParentMessageID)
+	if input.ParentMessageID == "" || !isUUID(input.ParentMessageID) {
+		return Message{}, newValidationError("INVALID_PARENT_MESSAGE_ID", "parent message id must be a UUID")
+	}
+	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
+	if input.IdempotencyKey == "" {
+		return Message{}, newValidationError("IDEMPOTENCY_KEY_REQUIRED", "idempotencyKey is required")
+	}
+
+	id := strings.TrimSpace(input.ID)
+	if id != "" && !isUUID(id) {
+		return Message{}, newValidationError("INVALID_MESSAGE_ID", "message id must be a UUID")
+	}
+	if id == "" {
+		generatedID, err := r.generateID()
+		if err != nil {
+			return Message{}, err
+		}
+		id = generatedID
+	}
+	metadata, err := marshalJSONObject(input.Metadata)
+	if err != nil {
+		return Message{}, err
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Message{}, fmt.Errorf("begin create assistant message: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	if err := r.ensureDevUser(ctx, tx); err != nil {
+		return Message{}, err
+	}
+	if err := lockConversationForUser(ctx, tx, conversationID, r.userID); err != nil {
+		return Message{}, err
+	}
+	if err := requireUserMessageInConversation(ctx, tx, conversationID, input.ParentMessageID); err != nil {
+		return Message{}, err
+	}
+
+	var nextSequence int
+	if err := tx.QueryRowContext(
+		ctx,
+		`SELECT COALESCE(MAX(sequence_no) + 1, 0) FROM messages WHERE conversation_id = $1`,
+		conversationID,
+	).Scan(&nextSequence); err != nil {
+		return Message{}, fmt.Errorf("calculate next assistant message sequence: %w", err)
+	}
+
+	row := tx.QueryRowContext(
+		ctx,
+		assistantMessageInsertSQL,
+		id,
+		conversationID,
+		r.userID,
+		nullIfEmpty(input.ParentMessageID),
+		nextSequence,
+		nullIfEmpty(input.ModelProvider),
+		nullIfEmpty(input.ModelID),
+		nullIfEmpty(input.ProviderMessageID),
+		string(metadata),
+		nullIfEmpty(input.IdempotencyKey),
+	)
+	message, err := scanMessage(row)
+	if err != nil {
+		if isIdempotencyConflict(err, input.IdempotencyKey, "idx_messages_conversation_idempotency") {
+			return Message{}, ErrIdempotencyConflict
+		}
+		return Message{}, fmt.Errorf("insert assistant message: %w", err)
+	}
+
+	if _, err := tx.ExecContext(
+		ctx,
+		`UPDATE conversations SET updated_at = now() WHERE id = $1 AND user_id = $2`,
+		conversationID,
+		r.userID,
+	); err != nil {
+		return Message{}, fmt.Errorf("touch conversation after assistant message: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return Message{}, fmt.Errorf("commit create assistant message: %w", err)
+	}
+
+	return message, nil
+}
+
+func (r *PostgresRepository) FinalizeAssistantMessage(
+	ctx context.Context,
+	conversationID string,
+	messageID string,
+	input FinalizeAssistantMessageInput,
+) (Message, error) {
+	if err := r.requireDB(); err != nil {
+		return Message{}, err
+	}
+	if !isUUID(conversationID) {
+		return Message{}, newValidationError("INVALID_CONVERSATION_ID", "conversation id must be a UUID")
+	}
+	if !isUUID(messageID) {
+		return Message{}, newValidationError("INVALID_MESSAGE_ID", "message id must be a UUID")
+	}
+	switch input.Status {
+	case "completed", "failed", "cancelled":
+	default:
+		return Message{}, newValidationError("INVALID_MESSAGE_STATUS", "assistant status must be completed, failed, or cancelled")
+	}
+	outputBlocks, err := marshalJSONArray(input.OutputBlocks)
+	if err != nil {
+		return Message{}, err
+	}
+	metadata, err := marshalJSONObject(input.Metadata)
+	if err != nil {
+		return Message{}, err
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Message{}, fmt.Errorf("begin finalize assistant message: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	if err := lockConversationForUser(ctx, tx, conversationID, r.userID); err != nil {
+		return Message{}, err
+	}
+
+	row := tx.QueryRowContext(
+		ctx,
+		assistantMessageFinalizeSQL,
+		input.Status,
+		input.Content,
+		string(outputBlocks),
+		string(metadata),
+		messageID,
+		conversationID,
+	)
+	message, err := scanMessage(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Message{}, newValidationError("INVALID_MESSAGE_ID", "assistant message not found")
+	}
+	if err != nil {
+		return Message{}, fmt.Errorf("finalize assistant message: %w", err)
+	}
+
+	if _, err := tx.ExecContext(
+		ctx,
+		`UPDATE conversations SET updated_at = now() WHERE id = $1 AND user_id = $2`,
+		conversationID,
+		r.userID,
+	); err != nil {
+		return Message{}, fmt.Errorf("touch conversation after assistant finalize: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return Message{}, fmt.Errorf("commit finalize assistant message: %w", err)
+	}
+
+	return message, nil
+}
+
 func (r *PostgresRepository) requireDB() error {
 	if r == nil || r.db == nil {
 		return ErrDatabaseRequired
@@ -338,6 +548,31 @@ FOR UPDATE
 	return nil
 }
 
+func requireUserMessageInConversation(
+	ctx context.Context,
+	tx *sql.Tx,
+	conversationID string,
+	messageID string,
+) error {
+	var id string
+	err := tx.QueryRowContext(ctx, `
+SELECT id
+FROM messages
+WHERE id = $1
+  AND conversation_id = $2
+  AND role = 'user'
+  AND deleted_at IS NULL
+`, messageID, conversationID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return newValidationError("INVALID_USER_MESSAGE_ID", "user message not found")
+	}
+	if err != nil {
+		return fmt.Errorf("query user message: %w", err)
+	}
+
+	return nil
+}
+
 const messageSelectSQL = `
 SELECT
   id,
@@ -376,6 +611,77 @@ INSERT INTO messages (
   metadata,
   completed_at
 ) VALUES ($1, $2, $3, $4, $5, $6, 'completed', $7, $8, '[]'::jsonb, $9::jsonb, now())
+RETURNING
+  id,
+  conversation_id,
+  user_id,
+  parent_message_id,
+  sequence_no,
+  role,
+  status,
+  content,
+  model_provider,
+  model_id,
+  provider_message_id,
+  idempotency_key,
+  output_blocks,
+  metadata,
+  created_at,
+  updated_at,
+  completed_at,
+  deleted_at
+`
+
+const assistantMessageInsertSQL = `
+INSERT INTO messages (
+  id,
+  conversation_id,
+  user_id,
+  parent_message_id,
+  sequence_no,
+  role,
+  status,
+  content,
+  model_provider,
+  model_id,
+  provider_message_id,
+  metadata,
+  idempotency_key
+) VALUES ($1, $2, $3, $4, $5, 'assistant', 'streaming', '', $6, $7, $8, $9::jsonb, $10)
+RETURNING
+  id,
+  conversation_id,
+  user_id,
+  parent_message_id,
+  sequence_no,
+  role,
+  status,
+  content,
+  model_provider,
+  model_id,
+  provider_message_id,
+  idempotency_key,
+  output_blocks,
+  metadata,
+  created_at,
+  updated_at,
+  completed_at,
+  deleted_at
+`
+
+const assistantMessageFinalizeSQL = `
+UPDATE messages
+SET
+  status = $1,
+  content = $2,
+  output_blocks = $3::jsonb,
+  metadata = $4::jsonb,
+  completed_at = now(),
+  updated_at = now()
+WHERE id = $5
+  AND conversation_id = $6
+  AND role = 'assistant'
+  AND deleted_at IS NULL
 RETURNING
   id,
   conversation_id,
@@ -515,6 +821,19 @@ func marshalJSONObject(value map[string]any) ([]byte, error) {
 	encoded, err := json.Marshal(value)
 	if err != nil {
 		return nil, fmt.Errorf("encode metadata: %w", err)
+	}
+
+	return encoded, nil
+}
+
+func marshalJSONArray(value []any) ([]byte, error) {
+	if value == nil {
+		value = []any{}
+	}
+
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return nil, fmt.Errorf("encode output blocks: %w", err)
 	}
 
 	return encoded, nil

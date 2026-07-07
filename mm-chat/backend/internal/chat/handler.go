@@ -1,8 +1,10 @@
 package chat
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -17,8 +19,11 @@ const (
 )
 
 type Handler struct {
-	service *Service
+	service  *Service
+	provider Provider
 }
+
+type HandlerOption func(*Handler)
 
 type ErrorResponse struct {
 	Error ErrorBody `json:"error"`
@@ -84,12 +89,52 @@ type fieldViolation struct {
 	Message string
 }
 
-func NewHandler(service *Service) *Handler {
+type streamMessageRequest struct {
+	UserMessageID     string         `json:"userMessageId"`
+	ModelRef          *ModelRef      `json:"modelRef"`
+	SystemInstruction string         `json:"systemInstruction"`
+	SystemPrompt      string         `json:"systemPrompt"`
+	Config            map[string]any `json:"config"`
+	Metadata          map[string]any `json:"metadata"`
+	IdempotencyKey    string         `json:"idempotencyKey"`
+}
+
+type streamEvent struct {
+	Type           string          `json:"type"`
+	RunID          string          `json:"runId"`
+	ConversationID string          `json:"conversationId"`
+	MessageID      string          `json:"messageId,omitempty"`
+	Sequence       int             `json:"sequence"`
+	CreatedAt      string          `json:"createdAt"`
+	Role           string          `json:"role,omitempty"`
+	ModelRef       *ModelRef       `json:"modelRef,omitempty"`
+	Delta          string          `json:"delta,omitempty"`
+	Usage          *TokenUsage     `json:"usage,omitempty"`
+	Message        *ChatMessageDTO `json:"message,omitempty"`
+	Error          *ErrorBody      `json:"error,omitempty"`
+}
+
+func WithProvider(provider Provider) HandlerOption {
+	return func(h *Handler) {
+		if provider != nil {
+			h.provider = provider
+		}
+	}
+}
+
+func NewHandler(service *Service, opts ...HandlerOption) *Handler {
 	if service == nil {
 		service = NewService(nil)
 	}
 
-	return &Handler{service: service}
+	handler := &Handler{service: service}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(handler)
+		}
+	}
+
+	return handler
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -115,8 +160,21 @@ func (h *Handler) handleConversations(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleConversationChild(w http.ResponseWriter, r *http.Request) {
-	conversationID, ok := parseMessagesPath(r.URL.Path)
+	conversationID, child, ok := parseConversationChildPath(r.URL.Path)
 	if !ok {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
+		return
+	}
+
+	if child == "stream" {
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w, http.MethodPost)
+			return
+		}
+		h.streamAssistantMessage(w, r, conversationID)
+		return
+	}
+	if child != "messages" {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
 		return
 	}
@@ -232,14 +290,254 @@ func (h *Handler) createMessage(w http.ResponseWriter, r *http.Request, conversa
 	writeJSON(w, http.StatusCreated, newMessageDTO(message))
 }
 
-func parseMessagesPath(path string) (string, bool) {
-	remainder := strings.TrimPrefix(path, conversationPathBase)
-	parts := strings.Split(remainder, "/")
-	if len(parts) != 2 || parts[0] == "" || parts[1] != "messages" {
-		return "", false
+func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request, conversationID string) {
+	if err := h.service.requireRepository(); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	if h.provider == nil {
+		writeServiceError(w, ErrProviderRequired)
+		return
 	}
 
-	return parts[0], true
+	var request streamMessageRequest
+	if err := decodeJSONWithForbiddenFields(w, r, &request, forbiddenStreamFields()); err != nil {
+		writeRequestDecodeError(w, err)
+		return
+	}
+
+	modelRef := request.ModelRef
+	if modelRef == nil {
+		writeError(w, http.StatusBadRequest, "MODEL_REF_REQUIRED", "modelRef is required")
+		return
+	}
+	request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
+	if request.IdempotencyKey == "" {
+		writeError(w, http.StatusBadRequest, "IDEMPOTENCY_KEY_REQUIRED", "idempotencyKey is required")
+		return
+	}
+	systemPrompt := request.SystemInstruction
+	if systemPrompt == "" {
+		systemPrompt = request.SystemPrompt
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "STREAMING_UNSUPPORTED", "streaming is not supported")
+		return
+	}
+
+	userMessage, err := h.service.GetMessage(r.Context(), conversationID, request.UserMessageID)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	if userMessage.Role != "user" {
+		writeRequestDecodeError(w, newValidationError("INVALID_USER_MESSAGE_ID", "userMessageId must reference a user message"))
+		return
+	}
+
+	runID, err := NewUUID()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
+	assistantMessageID, err := NewUUID()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
+
+	assistantMessage, err := h.service.CreateAssistantMessage(
+		r.Context(),
+		conversationID,
+		CreateAssistantMessageInput{
+			ID:              assistantMessageID,
+			ParentMessageID: userMessage.ID,
+			ModelProvider:   modelRef.ProviderID,
+			ModelID:         modelRef.ModelID,
+			Metadata: map[string]any{
+				"runId":  runID,
+				"config": ensureObject(request.Config),
+			},
+			IdempotencyKey: request.IdempotencyKey,
+		},
+	)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	events, err := h.provider.StreamChat(r.Context(), ProviderRequest{
+		RunID:              runID,
+		ConversationID:     conversationID,
+		UserMessageID:      userMessage.ID,
+		AssistantMessageID: assistantMessage.ID,
+		Prompt:             userMessage.Content,
+		SystemPrompt:       systemPrompt,
+		ModelRef:           *modelRef,
+		Metadata:           request.Metadata,
+	})
+	if err != nil {
+		h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
+			Status:   "failed",
+			Metadata: map[string]any{"runId": runID, "errorCode": "PROVIDER_ERROR"},
+		})
+		writeError(w, http.StatusBadGateway, "PROVIDER_ERROR", "provider stream failed")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+
+	sequence := 1
+	if err := writeSSEEvent(w, "message.started", streamEvent{
+		Type:           "message.started",
+		RunID:          runID,
+		ConversationID: conversationID,
+		MessageID:      assistantMessage.ID,
+		Sequence:       sequence,
+		CreatedAt:      formatTime(time.Now()),
+		Role:           "assistant",
+		ModelRef:       modelRef,
+	}); err != nil {
+		h.cancelAssistantAfterWriteError(conversationID, assistantMessage.ID, runID, "")
+		return
+	}
+	flusher.Flush()
+
+	var content strings.Builder
+	for providerEvent := range events {
+		if providerEvent.Error != nil {
+			sequence++
+			_ = writeSSEEvent(w, "message.error", streamEvent{
+				Type:           "message.error",
+				RunID:          runID,
+				ConversationID: conversationID,
+				MessageID:      assistantMessage.ID,
+				Sequence:       sequence,
+				CreatedAt:      formatTime(time.Now()),
+				Error:          &ErrorBody{Code: "PROVIDER_ERROR", Message: "provider stream failed"},
+			})
+			h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
+				Status:   "failed",
+				Content:  content.String(),
+				Metadata: map[string]any{"runId": runID, "errorCode": "PROVIDER_ERROR"},
+			})
+			flusher.Flush()
+			return
+		}
+
+		switch providerEvent.Type {
+		case ProviderEventDelta:
+			content.WriteString(providerEvent.Delta)
+			sequence++
+			if err := writeSSEEvent(w, "message.delta", streamEvent{
+				Type:           "message.delta",
+				RunID:          runID,
+				ConversationID: conversationID,
+				MessageID:      assistantMessage.ID,
+				Sequence:       sequence,
+				CreatedAt:      formatTime(time.Now()),
+				Delta:          providerEvent.Delta,
+			}); err != nil {
+				h.cancelAssistantAfterWriteError(conversationID, assistantMessage.ID, runID, content.String())
+				return
+			}
+			flusher.Flush()
+		case ProviderEventUsage:
+			sequence++
+			if err := writeSSEEvent(w, "usage.updated", streamEvent{
+				Type:           "usage.updated",
+				RunID:          runID,
+				ConversationID: conversationID,
+				MessageID:      assistantMessage.ID,
+				Sequence:       sequence,
+				CreatedAt:      formatTime(time.Now()),
+				Usage:          providerEvent.Usage,
+			}); err != nil {
+				h.cancelAssistantAfterWriteError(conversationID, assistantMessage.ID, runID, content.String())
+				return
+			}
+			flusher.Flush()
+		}
+	}
+
+	if err := r.Context().Err(); err != nil {
+		sequence++
+		_ = writeSSEEvent(w, "message.cancelled", streamEvent{
+			Type:           "message.cancelled",
+			RunID:          runID,
+			ConversationID: conversationID,
+			MessageID:      assistantMessage.ID,
+			Sequence:       sequence,
+			CreatedAt:      formatTime(time.Now()),
+		})
+		h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
+			Status:   "cancelled",
+			Content:  content.String(),
+			Metadata: map[string]any{"runId": runID},
+		})
+		flusher.Flush()
+		return
+	}
+
+	assistantMessage, err = h.finalizeAssistantMessage(
+		context.Background(),
+		conversationID,
+		assistantMessage.ID,
+		FinalizeAssistantMessageInput{
+			Status:  "completed",
+			Content: content.String(),
+			Metadata: map[string]any{
+				"runId": runID,
+			},
+		},
+	)
+	if err != nil {
+		sequence++
+		_, errorBody := serviceErrorFor(err)
+		_ = writeSSEEvent(w, "message.error", streamEvent{
+			Type:           "message.error",
+			RunID:          runID,
+			ConversationID: conversationID,
+			MessageID:      assistantMessageID,
+			Sequence:       sequence,
+			CreatedAt:      formatTime(time.Now()),
+			Error:          &errorBody,
+		})
+		flusher.Flush()
+		return
+	}
+
+	sequence++
+	assistantDTO := newMessageDTO(assistantMessage)
+	if err := writeSSEEvent(w, "message.completed", streamEvent{
+		Type:           "message.completed",
+		RunID:          runID,
+		ConversationID: conversationID,
+		MessageID:      assistantMessage.ID,
+		Sequence:       sequence,
+		CreatedAt:      formatTime(time.Now()),
+		Message:        &assistantDTO,
+	}); err != nil {
+		return
+	}
+	flusher.Flush()
+}
+
+func parseConversationChildPath(path string) (string, string, bool) {
+	remainder := strings.TrimPrefix(path, conversationPathBase)
+	parts := strings.Split(remainder, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", false
+	}
+
+	return parts[0], parts[1], true
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, destination any) error {
@@ -306,26 +604,30 @@ func writeRequestDecodeError(w http.ResponseWriter, err error) {
 }
 
 func writeServiceError(w http.ResponseWriter, err error) {
+	status, body := serviceErrorFor(err)
+	writeError(w, status, body.Code, body.Message)
+}
+
+func serviceErrorFor(err error) (int, ErrorBody) {
 	if errors.Is(err, ErrDatabaseRequired) {
-		writeError(w, http.StatusServiceUnavailable, "DATABASE_REQUIRED", "database is required for chat endpoints")
-		return
+		return http.StatusServiceUnavailable, ErrorBody{Code: "DATABASE_REQUIRED", Message: "database is required for chat endpoints"}
+	}
+	if errors.Is(err, ErrProviderRequired) {
+		return http.StatusServiceUnavailable, ErrorBody{Code: "PROVIDER_REQUIRED", Message: "provider is required for streaming endpoints"}
 	}
 	if errors.Is(err, ErrConversationNotFound) {
-		writeError(w, http.StatusNotFound, "CONVERSATION_NOT_FOUND", "conversation not found")
-		return
+		return http.StatusNotFound, ErrorBody{Code: "CONVERSATION_NOT_FOUND", Message: "conversation not found"}
 	}
 	if errors.Is(err, ErrIdempotencyConflict) {
-		writeError(w, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "idempotency key already exists")
-		return
+		return http.StatusConflict, ErrorBody{Code: "IDEMPOTENCY_CONFLICT", Message: "idempotency key already exists"}
 	}
 
 	var validationError ValidationError
 	if errors.As(err, &validationError) {
-		writeError(w, http.StatusBadRequest, validationError.Code, validationError.Message)
-		return
+		return http.StatusBadRequest, ErrorBody{Code: validationError.Code, Message: validationError.Message}
 	}
 
-	writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+	return http.StatusInternalServerError, ErrorBody{Code: "INTERNAL_ERROR", Message: "internal server error"}
 }
 
 func methodNotAllowed(w http.ResponseWriter, allow string) {
@@ -345,6 +647,15 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	if err := json.NewEncoder(w).Encode(payload); err != nil {
 		return
 	}
+}
+
+func writeSSEEvent(w io.Writer, event string, payload any) error {
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, encoded)
+	return err
 }
 
 func forbiddenConversationFields() map[string]fieldViolation {
@@ -404,6 +715,48 @@ func forbiddenMessageFields() map[string]fieldViolation {
 		"completedAt":       violation,
 		"deletedAt":         violation,
 	}
+}
+
+func forbiddenStreamFields() map[string]fieldViolation {
+	fields := forbiddenMessageFields()
+	delete(fields, "modelRef")
+	fields["role"] = fieldViolation{Code: "FORBIDDEN_MESSAGE_FIELD", Message: "message field is server-managed"}
+	fields["content"] = validationField("content is not supported in this streaming phase")
+	fields["attachments"] = validationField("attachments are not supported in this streaming phase")
+	return fields
+}
+
+func (h *Handler) finalizeAssistantMessage(
+	ctx context.Context,
+	conversationID string,
+	messageID string,
+	input FinalizeAssistantMessageInput,
+) (Message, error) {
+	finalizeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	return h.service.FinalizeAssistantMessage(finalizeCtx, conversationID, messageID, input)
+}
+
+func (h *Handler) cancelAssistantAfterWriteError(
+	conversationID string,
+	messageID string,
+	runID string,
+	content string,
+) {
+	_, _ = h.finalizeAssistantMessage(
+		context.Background(),
+		conversationID,
+		messageID,
+		FinalizeAssistantMessageInput{
+			Status:  "cancelled",
+			Content: content,
+			Metadata: map[string]any{
+				"runId":     runID,
+				"errorCode": "SSE_WRITE_FAILED",
+			},
+		},
+	)
 }
 
 func validationField(message string) fieldViolation {

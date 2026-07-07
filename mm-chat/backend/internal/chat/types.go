@@ -10,8 +10,11 @@ const DevUserID = "00000000-0000-0000-0000-000000000001"
 type Repository interface {
 	CreateConversation(ctx context.Context, input CreateConversationInput) (Conversation, error)
 	ListConversations(ctx context.Context) ([]Conversation, error)
+	GetMessage(ctx context.Context, conversationID string, messageID string) (Message, error)
 	ListMessages(ctx context.Context, conversationID string) ([]Message, error)
 	CreateMessage(ctx context.Context, conversationID string, input CreateMessageInput) (Message, error)
+	CreateAssistantMessage(ctx context.Context, conversationID string, input CreateAssistantMessageInput) (Message, error)
+	FinalizeAssistantMessage(ctx context.Context, conversationID string, messageID string, input FinalizeAssistantMessageInput) (Message, error)
 }
 
 type ModelRef struct {
@@ -51,6 +54,23 @@ type CreateMessageInput struct {
 	ParentMessageID string
 	Metadata        map[string]any
 	IdempotencyKey  string
+}
+
+type CreateAssistantMessageInput struct {
+	ID                string
+	ParentMessageID   string
+	ModelProvider     string
+	ModelID           string
+	ProviderMessageID string
+	Metadata          map[string]any
+	IdempotencyKey    string
+}
+
+type FinalizeAssistantMessageInput struct {
+	Status       string
+	Content      string
+	OutputBlocks []any
+	Metadata     map[string]any
 }
 
 type Message struct {

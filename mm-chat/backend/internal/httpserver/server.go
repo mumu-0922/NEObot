@@ -26,6 +26,7 @@ type Option func(*options)
 type options struct {
 	readyChecker   health.ReadinessChecker
 	chatRepository chat.Repository
+	chatProvider   chat.Provider
 }
 
 func WithReadyChecker(checker health.ReadinessChecker) Option {
@@ -37,6 +38,12 @@ func WithReadyChecker(checker health.ReadinessChecker) Option {
 func WithChatRepository(repo chat.Repository) Option {
 	return func(opts *options) {
 		opts.chatRepository = repo
+	}
+}
+
+func WithChatProvider(provider chat.Provider) Option {
+	return func(opts *options) {
+		opts.chatProvider = provider
 	}
 }
 
@@ -52,7 +59,10 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	resolvedOptions := resolveOptions(opts...)
 	mux := http.NewServeMux()
 	healthHandler := health.New(cfg.Version, resolvedOptions.readyChecker)
-	chatHandler := chat.NewHandler(chat.NewService(resolvedOptions.chatRepository))
+	chatHandler := chat.NewHandler(
+		chat.NewService(resolvedOptions.chatRepository),
+		chat.WithProvider(resolvedOptions.chatProvider),
+	)
 
 	mux.HandleFunc("/health", healthHandler.Health)
 	mux.HandleFunc("/ready", healthHandler.Ready)

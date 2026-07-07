@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -62,7 +63,7 @@ func TestHandlerCreatesAndListsConversations(t *testing.T) {
 func TestHandlerCreatesAndListsMessages(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
-	handler := NewHandler(NewService(repo))
+	handler := NewHandler(NewService(repo), WithProvider(NewMockProvider()))
 
 	path := conversationsPath + "/" + testConversationID + "/messages"
 	rec := performRequest(handler, http.MethodPost, path, `{"content":"hello"}`)
@@ -99,6 +100,151 @@ func TestHandlerCreatesAndListsMessages(t *testing.T) {
 	}
 }
 
+func TestHandlerStreamsMockAssistantAndPersistsMessages(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "hello"),
+	)
+	handler := NewHandler(NewService(repo), WithProvider(NewMockProvider()))
+
+	path := conversationsPath + "/" + testConversationID + "/stream"
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		path,
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"idempotencyKey":"stream-key-1"}`,
+	)
+
+	assertStreamStatus(t, rec, http.StatusOK)
+	body := rec.Body.String()
+	for _, want := range []string{
+		"event: message.started",
+		"event: message.delta",
+		"event: usage.updated",
+		"event: message.completed",
+		`"type":"message.completed"`,
+		`"role":"assistant"`,
+		`"content":"Mock response: hello"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("stream body missing %q; body=%s", want, body)
+		}
+	}
+
+	messages := repo.messages[testConversationID]
+	if len(messages) != 2 {
+		t.Fatalf("persisted messages = %d, want 2; messages=%#v", len(messages), messages)
+	}
+	if messages[0].Role != "user" || messages[0].Content != "hello" {
+		t.Fatalf("user message = %#v, want persisted hello user message", messages[0])
+	}
+	assistant := messages[1]
+	if assistant.Role != "assistant" || assistant.Status != "completed" {
+		t.Fatalf("assistant role/status = %s/%s, want assistant/completed", assistant.Role, assistant.Status)
+	}
+	if assistant.ParentMessageID != messages[0].ID {
+		t.Fatalf("assistant parent = %q, want user message id %q", assistant.ParentMessageID, messages[0].ID)
+	}
+	if assistant.Content != "Mock response: hello" {
+		t.Fatalf("assistant content = %q, want mock response", assistant.Content)
+	}
+	if assistant.ModelProvider != "mock" || assistant.ModelID != "mock-chat" {
+		t.Fatalf("assistant model = %s/%s, want mock/mock-chat", assistant.ModelProvider, assistant.ModelID)
+	}
+}
+
+func TestHandlerStreamsEmptyAssistantContent(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "hello"),
+	)
+	handler := NewHandler(NewService(repo), WithProvider(emptyProvider{}))
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"empty"},"idempotencyKey":"stream-key-empty"}`,
+	)
+
+	assertStreamStatus(t, rec, http.StatusOK)
+	if body := rec.Body.String(); !strings.Contains(body, `event: message.completed`) || !strings.Contains(body, `"content":""`) {
+		t.Fatalf("empty provider stream did not complete with empty content; body=%s", body)
+	}
+	messages := repo.messages[testConversationID]
+	if len(messages) != 2 || messages[1].Status != "completed" || messages[1].Content != "" {
+		t.Fatalf("messages after empty provider = %#v", messages)
+	}
+}
+
+func TestHandlerFinalizesFailedWhenProviderStartupFails(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "hello"),
+	)
+	handler := NewHandler(NewService(repo), WithProvider(errorProvider{}))
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"error"},"idempotencyKey":"stream-key-error"}`,
+	)
+
+	assertStatus(t, rec, http.StatusBadGateway)
+	assertErrorCode(t, rec, "PROVIDER_ERROR")
+	messages := repo.messages[testConversationID]
+	if len(messages) != 2 || messages[1].Status != "failed" {
+		t.Fatalf("assistant message was not finalized failed after provider startup error: %#v", messages)
+	}
+}
+
+func TestHandlerReturnsProviderRequiredForStreamWhenProviderIsNil(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "hello"),
+	)
+	handler := NewHandler(NewService(repo))
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"idempotencyKey":"stream-key-1"}`,
+	)
+
+	assertStatus(t, rec, http.StatusServiceUnavailable)
+	assertErrorCode(t, rec, "PROVIDER_REQUIRED")
+}
+
+func TestHandlerReturnsConflictForStreamIdempotencyReuse(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "hello"),
+	)
+	handler := NewHandler(NewService(repo), WithProvider(NewMockProvider()))
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"idempotencyKey":"conflict"}`,
+	)
+
+	assertStatus(t, rec, http.StatusConflict)
+	assertErrorCode(t, rec, "IDEMPOTENCY_CONFLICT")
+}
+
 func TestHandlerReturnsDatabaseRequiredWhenRepositoryIsNil(t *testing.T) {
 	handler := NewHandler(NewService(nil))
 
@@ -117,6 +263,16 @@ func TestHandlerReturnsDatabaseRequiredWhenRepositoryIsNil(t *testing.T) {
 		http.MethodPost,
 		conversationsPath+"/"+testConversationID+"/messages",
 		`{"content":"hello"}`,
+	)
+
+	assertStatus(t, rec, http.StatusServiceUnavailable)
+	assertErrorCode(t, rec, "DATABASE_REQUIRED")
+
+	rec = performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"content":`,
 	)
 
 	assertStatus(t, rec, http.StatusServiceUnavailable)
@@ -224,6 +380,36 @@ func TestHandlerRejectsForbiddenMessageFields(t *testing.T) {
 	}
 }
 
+func TestHandlerRejectsForbiddenStreamFields(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	handler := NewHandler(NewService(repo), WithProvider(NewMockProvider()))
+	path := conversationsPath + "/" + testConversationID + "/stream"
+
+	tests := []struct {
+		name     string
+		body     string
+		wantCode string
+	}{
+		{name: "owner id", body: `{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"idempotencyKey":"stream-key-1","ownerId":"00000000-0000-0000-0000-000000000001"}`, wantCode: "FORBIDDEN_MESSAGE_FIELD"},
+		{name: "role", body: `{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"idempotencyKey":"stream-key-1","role":"assistant"}`, wantCode: "FORBIDDEN_MESSAGE_FIELD"},
+		{name: "content unsupported", body: `{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"idempotencyKey":"stream-key-1","content":"hello"}`, wantCode: "VALIDATION_ERROR"},
+		{name: "status", body: `{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"idempotencyKey":"stream-key-1","status":"streaming"}`, wantCode: "FORBIDDEN_MESSAGE_FIELD"},
+		{name: "invalid user message id", body: `{"userMessageId":"not-a-uuid","modelRef":{"providerId":"mock","modelId":"mock-chat"},"idempotencyKey":"stream-key-1"}`, wantCode: "INVALID_USER_MESSAGE_ID"},
+		{name: "missing model ref", body: `{"userMessageId":"22222222-2222-4222-8222-222222222222","idempotencyKey":"stream-key-1"}`, wantCode: "MODEL_REF_REQUIRED"},
+		{name: "missing idempotency key", body: `{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"}}`, wantCode: "IDEMPOTENCY_KEY_REQUIRED"},
+		{name: "attachments unsupported", body: `{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"idempotencyKey":"stream-key-1","attachments":[]}`, wantCode: "VALIDATION_ERROR"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := performRequest(handler, http.MethodPost, path, tt.body)
+			assertStatus(t, rec, http.StatusBadRequest)
+			assertErrorCode(t, rec, tt.wantCode)
+		})
+	}
+}
+
 func TestHandlerReturnsNotFoundForUnknownConversation(t *testing.T) {
 	repo := newFakeRepository()
 	handler := NewHandler(NewService(repo))
@@ -268,6 +454,14 @@ func TestHandlerRejectsUnsupportedMethods(t *testing.T) {
 		t.Fatalf("Allow = %q, want %q", got, "GET, POST")
 	}
 	assertErrorCode(t, rec, "METHOD_NOT_ALLOWED")
+
+	path = conversationsPath + "/" + testConversationID + "/stream"
+	rec = performRequest(handler, http.MethodGet, path, "")
+	assertStatus(t, rec, http.StatusMethodNotAllowed)
+	if got := rec.Header().Get("Allow"); got != http.MethodPost {
+		t.Fatalf("Allow = %q, want %q", got, http.MethodPost)
+	}
+	assertErrorCode(t, rec, "METHOD_NOT_ALLOWED")
 }
 
 func TestHandlerRejectsInvalidConversationID(t *testing.T) {
@@ -303,6 +497,16 @@ func assertStatus(t *testing.T, rec *httptest.ResponseRecorder, want int) {
 	}
 	if contentType := rec.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "application/json") {
 		t.Fatalf("Content-Type = %q, want application/json", contentType)
+	}
+}
+
+func assertStreamStatus(t *testing.T, rec *httptest.ResponseRecorder, want int) {
+	t.Helper()
+	if rec.Code != want {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, want, rec.Body.String())
+	}
+	if contentType := rec.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "text/event-stream") {
+		t.Fatalf("Content-Type = %q, want text/event-stream", contentType)
 	}
 }
 
@@ -362,6 +566,23 @@ func (f *fakeRepository) ListMessages(_ context.Context, conversationID string) 
 	return items, nil
 }
 
+func (f *fakeRepository) GetMessage(
+	_ context.Context,
+	conversationID string,
+	messageID string,
+) (Message, error) {
+	if !f.hasConversation(conversationID) {
+		return Message{}, ErrConversationNotFound
+	}
+	for _, message := range f.messages[conversationID] {
+		if message.ID == messageID {
+			return message, nil
+		}
+	}
+
+	return Message{}, newValidationError("INVALID_USER_MESSAGE_ID", "user message not found")
+}
+
 func (f *fakeRepository) CreateMessage(
 	_ context.Context,
 	conversationID string,
@@ -369,6 +590,9 @@ func (f *fakeRepository) CreateMessage(
 ) (Message, error) {
 	if !f.hasConversation(conversationID) {
 		return Message{}, ErrConversationNotFound
+	}
+	if input.IdempotencyKey == "conflict" {
+		return Message{}, ErrIdempotencyConflict
 	}
 	messages := f.messages[conversationID]
 	message := fakeMessage(testMessageID, conversationID, len(messages), input.Role, input.Content)
@@ -381,6 +605,67 @@ func (f *fakeRepository) CreateMessage(
 		}
 	}
 	return message, nil
+}
+
+func (f *fakeRepository) CreateAssistantMessage(
+	_ context.Context,
+	conversationID string,
+	input CreateAssistantMessageInput,
+) (Message, error) {
+	if !f.hasConversation(conversationID) {
+		return Message{}, ErrConversationNotFound
+	}
+	if input.IdempotencyKey == "conflict" {
+		return Message{}, ErrIdempotencyConflict
+	}
+	messages := f.messages[conversationID]
+	id := input.ID
+	if id == "" {
+		id = "33333333-3333-4333-8333-333333333333"
+	}
+	message := fakeMessage(id, conversationID, len(messages), "assistant", "")
+	message.ParentMessageID = input.ParentMessageID
+	message.ModelProvider = input.ModelProvider
+	message.ModelID = input.ModelID
+	message.ProviderMessageID = input.ProviderMessageID
+	message.Status = "streaming"
+	message.Content = ""
+	message.Metadata = input.Metadata
+	message.IdempotencyKey = input.IdempotencyKey
+	f.messages[conversationID] = append(messages, message)
+	for i := range f.conversations {
+		if f.conversations[i].ID == conversationID {
+			f.conversations[i].MessageCount = len(f.messages[conversationID])
+		}
+	}
+	return message, nil
+}
+
+func (f *fakeRepository) FinalizeAssistantMessage(
+	_ context.Context,
+	conversationID string,
+	messageID string,
+	input FinalizeAssistantMessageInput,
+) (Message, error) {
+	if !f.hasConversation(conversationID) {
+		return Message{}, ErrConversationNotFound
+	}
+	for i := range f.messages[conversationID] {
+		message := &f.messages[conversationID][i]
+		if message.ID != messageID {
+			continue
+		}
+		message.Status = input.Status
+		message.Content = input.Content
+		message.OutputBlocks = input.OutputBlocks
+		message.Metadata = input.Metadata
+		completedAt := testNow()
+		message.CompletedAt = &completedAt
+		message.UpdatedAt = completedAt
+		return *message, nil
+	}
+
+	return Message{}, newValidationError("INVALID_MESSAGE_ID", "assistant message not found")
 }
 
 func (f *fakeRepository) hasConversation(conversationID string) bool {
@@ -425,4 +710,18 @@ func fakeMessage(id string, conversationID string, sequenceNo int, role string, 
 
 func testNow() time.Time {
 	return time.Date(2026, 7, 7, 12, 0, 0, 0, time.UTC)
+}
+
+type emptyProvider struct{}
+
+func (p emptyProvider) StreamChat(context.Context, ProviderRequest) (<-chan ProviderEvent, error) {
+	ch := make(chan ProviderEvent)
+	close(ch)
+	return ch, nil
+}
+
+type errorProvider struct{}
+
+func (p errorProvider) StreamChat(context.Context, ProviderRequest) (<-chan ProviderEvent, error) {
+	return nil, errors.New("provider startup failed")
 }
