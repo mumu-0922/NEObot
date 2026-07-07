@@ -1,9 +1,10 @@
 # Phase 4 Postgres Schema
 
 This document describes the actual Phase 4 migration contract created by
-`mm-chat/backend/migrations/001_initial_schema.*.sql`. It is a schema and data
-boundary reference only; DB repositories, runtime DB wiring, and Compose files
-are separate later work.
+`mm-chat/backend/migrations/001_initial_schema.*.sql` plus the Phase 4.5
+runtime-wiring boundary around Postgres connectivity, readiness, and migration
+execution. It is a schema and data boundary reference only; DB repositories and
+Compose files are separate later work.
 
 ## 1. Scope
 
@@ -28,7 +29,8 @@ In scope:
 Out of scope:
 
 - MinIO/S3 file-byte storage, Redis, RAG indexes, browser import, DB repository
-  code, and committed Docker Compose assets.
+  CRUD code, automatic migrations during API startup, and committed Docker
+  Compose assets.
 
 ## 2. Baseline Conventions
 
@@ -274,19 +276,50 @@ Boundary:
 - Do not store API keys, bearer tokens, raw file bytes, or unbounded prompt / raw
   provider payloads in audit `metadata`.
 
-## 4. Migration and Rollback Boundary
+## 4. Phase 4.5 Runtime Wiring Boundary
+
+The app-table schema above stays unchanged in Phase 4.5. Runtime wiring adds the
+operational boundary between the Go backend process and Postgres:
+
+- Backend reads `DATABASE_URL`, `DB_MAX_OPEN_CONNS`, `DB_MAX_IDLE_CONNS`, and
+  `DB_CONN_MAX_LIFETIME`.
+- `DATABASE_URL` empty means DB disabled mode: the API can start without
+  Postgres and `/ready` remains `200 OK` for the skeleton/runtime path.
+- `DATABASE_URL` non-empty means DB enabled mode: startup creates a Postgres
+  connector with `github.com/jackc/pgx/v5` through `database/sql`, runs
+  `PingContext`, and fails fast before serving HTTP if the initial ping fails.
+  `/ready` also pings DB and returns `503 Service Unavailable` on later DB ping
+  failure.
+- `/health` remains process liveness. `/ready` is the dependency gate once DB is
+  enabled.
+- API startup must not run migrations automatically. Schema changes are an
+  explicit operator/deployment step.
+- Migrations are exposed through a Go CLI with embedded SQL. Expected command
+  shape is `cd mm-chat/backend && go run ./cmd/migrate up`.
+- The runner records applied versions in
+  `schema_migrations(version, name, applied_at)`. This table is
+  migration-runner metadata, not an app/domain table.
+
+## 5. Migration and Rollback Boundary
 
 - Apply `*.up.sql` in ascending order and `*.down.sql` in descending order.
 - `001_initial_schema.down.sql` drops indexes, child tables, then foundational
   tables and leaves zero app tables in a clean development DB.
-- No enum types, custom functions, triggers, or extensions are created by the
-  initial migration.
-- A migration runner and schema version table are not selected yet; deployment
-  docs must be updated when that tool lands.
+- No enum types, custom functions, triggers, extensions, or explicit SQL
+  transaction control statements are created by the initial migration; the Go
+  runner owns transaction boundaries.
+- Phase 4.5 migration execution is owned by the Go migration CLI, not API
+  startup. Expected source-run command shape is
+  `cd mm-chat/backend && go run ./cmd/migrate up`.
+- Down migrations are for deliberate rollback/development resets; the draft
+  destructive command shape is `go run ./cmd/migrate down --all`.
+- The runner records applied versions in
+  `schema_migrations(version, name, applied_at)`. This table is
+  migration-runner metadata, not an application table in the domain model above.
 
-## 5. Acceptance Checks
+## 6. Acceptance Checks
 
-Phase 4 persistence is not complete until implementation work can verify:
+Phase 4/4.5 persistence is not complete until implementation work can verify:
 
 - The initial migration applies on an empty Postgres 16 database.
 - The down migration removes all Phase 4 app tables in development.
@@ -295,3 +328,10 @@ Phase 4 persistence is not complete until implementation work can verify:
 - File metadata rows do not require MinIO to be running.
 - Frontend rollback to `NEXT_PUBLIC_API_MODE=local` does not delete Postgres
   data.
+- With `DATABASE_URL` empty, DB disabled mode starts without Postgres and
+  `/ready` remains `200 OK`.
+- With `DATABASE_URL` set, startup attempts a Postgres connection and
+  `PingContext`, and `/ready` returns `503 Service Unavailable` when DB ping
+  fails.
+- API startup does not apply migrations automatically; operators can run the
+  migration CLI before backend deploy/restart.

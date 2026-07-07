@@ -1,14 +1,24 @@
 package health
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 )
 
-const contentTypeJSON = "application/json; charset=utf-8"
+const (
+	contentTypeJSON = "application/json; charset=utf-8"
+	readyTimeout    = 2 * time.Second
+)
+
+type ReadinessChecker interface {
+	CheckReady(ctx context.Context) error
+}
 
 type Handler struct {
-	version string
+	version      string
+	readyChecker ReadinessChecker
 }
 
 type StatusResponse struct {
@@ -28,12 +38,17 @@ type ErrorBody struct {
 	Message string `json:"message"`
 }
 
-func New(version string) *Handler {
+func New(version string, readyChecker ...ReadinessChecker) *Handler {
 	if version == "" {
 		version = "dev"
 	}
 
-	return &Handler{version: version}
+	var checker ReadinessChecker
+	if len(readyChecker) > 0 {
+		checker = readyChecker[0]
+	}
+
+	return &Handler{version: version, readyChecker: checker}
 }
 
 func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
@@ -47,6 +62,21 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Ready(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
+	}
+
+	if h.readyChecker != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), readyTimeout)
+		defer cancel()
+
+		if err := h.readyChecker.CheckReady(ctx); err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{
+				Error: ErrorBody{
+					Code:    "DATABASE_NOT_READY",
+					Message: "database readiness check failed",
+				},
+			})
+			return
+		}
 	}
 
 	writeJSON(w, http.StatusOK, StatusResponse{Status: "ready"})

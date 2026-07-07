@@ -55,6 +55,18 @@ Update this file whenever a phase or task is completed. Every `[x]` entry must h
 - [x] Create audit logs schema.
 - [x] Verify migration up/down locally.
 
+## Phase 4.5 — Postgres Runtime Wiring
+
+- [x] Add `DATABASE_URL` and DB pool config.
+- [x] Add pgx-backed database connector.
+- [x] Add DB-aware `/ready` behavior.
+- [x] Add embedded migration files.
+- [x] Add migration runner with `schema_migrations`.
+- [x] Add `cmd/migrate` CLI for `up` and `down --all`.
+- [x] Verify migration CLI against Docker Postgres.
+- [x] Verify API readiness with DB enabled.
+- [x] Document runtime wiring and deployment flow.
+
 ## Phase 5 — Chat Streaming Spine
 
 - [ ] Add provider interface.

@@ -1,12 +1,22 @@
 package health
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+type fakeReadyChecker struct {
+	err error
+}
+
+func (f fakeReadyChecker) CheckReady(context.Context) error {
+	return f.err
+}
 
 func TestHealthReturnsHealthyJSON(t *testing.T) {
 	h := New("test-version")
@@ -20,7 +30,7 @@ func TestHealthReturnsHealthyJSON(t *testing.T) {
 	assertJSONBody(t, rec, map[string]string{"status": "healthy"})
 }
 
-func TestReadyReturnsReadyJSON(t *testing.T) {
+func TestReadyReturnsReadyJSONWhenDatabaseDisabled(t *testing.T) {
 	h := New("test-version")
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
@@ -30,6 +40,37 @@ func TestReadyReturnsReadyJSON(t *testing.T) {
 	assertStatus(t, rec, http.StatusOK)
 	assertJSONContentType(t, rec)
 	assertJSONBody(t, rec, map[string]string{"status": "ready"})
+}
+
+func TestReadyReturnsReadyJSONWhenDatabaseReady(t *testing.T) {
+	h := New("test-version", fakeReadyChecker{})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+
+	h.Ready(rec, req)
+
+	assertStatus(t, rec, http.StatusOK)
+	assertJSONContentType(t, rec)
+	assertJSONBody(t, rec, map[string]string{"status": "ready"})
+}
+
+func TestReadyReturnsUnavailableWhenDatabaseFails(t *testing.T) {
+	h := New("test-version", fakeReadyChecker{err: errors.New("ping failed")})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+
+	h.Ready(rec, req)
+
+	assertStatus(t, rec, http.StatusServiceUnavailable)
+	assertJSONContentType(t, rec)
+
+	var body ErrorResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if body.Error.Code != "DATABASE_NOT_READY" {
+		t.Fatalf("error code = %q, want %q", body.Error.Code, "DATABASE_NOT_READY")
+	}
 }
 
 func TestVersionReturnsConfiguredVersionJSON(t *testing.T) {

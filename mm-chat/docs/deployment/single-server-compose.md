@@ -127,7 +127,9 @@ public/dev client
 ```
 
 No Postgres, Redis, or MinIO dependency should be required for `/health`,
-`/ready`, or `/v1/version` in the earliest skeleton.
+`/ready`, or `/v1/version` in the earliest skeleton. In Phase 4.5, Postgres is
+still optional when `DATABASE_URL` is empty; when `DATABASE_URL` is set, `/ready`
+becomes DB-aware and returns `503` on DB ping failure.
 
 ### MVP topology
 
@@ -195,6 +197,9 @@ PUBLIC_BASE_URL=https://chat.example.com
 CORS_ALLOWED_ORIGINS=https://chat.example.com
 SESSION_SECRET=<secret>
 DATABASE_URL=postgres://<user>:<password>@postgres:5432/<db>?sslmode=disable
+DB_MAX_OPEN_CONNS=10
+DB_MAX_IDLE_CONNS=5
+DB_CONN_MAX_LIFETIME=30m
 REDIS_URL=redis://:<password>@redis:6379/0
 OBJECTSTORE_DRIVER=s3
 S3_ENDPOINT=http://minio:9000
@@ -260,8 +265,8 @@ Rules:
 
 Back up these artifacts together:
 
-1. Postgres logical dump, including the migration version table once a
-   migration runner exists.
+1. Postgres logical dump, including the migration-runner metadata table
+   `schema_migrations`.
 2. MinIO bucket/object data for uploaded files and knowledge sources.
 3. Encrypted deployment environment/secrets backup.
 4. Release identifier or container image tags used during the backup window.
@@ -277,7 +282,7 @@ Do not treat these as canonical backups:
 
 Consistency rule: Postgres metadata and MinIO objects must be restorable as a
 pair. Prefer maintenance windows, filesystem snapshots, or an ordered backup
-that records the application release and migration state.
+that records the application release and migration-runner state.
 
 Minimum restore drill:
 
@@ -287,7 +292,7 @@ fresh server
   -> restore Postgres
   -> restore MinIO data
   -> start services
-  -> run /health and /ready
+  -> run /health and DB-aware /ready when DATABASE_URL is set
   -> upload/download test file
   -> verify historical conversation read
 ```

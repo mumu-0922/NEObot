@@ -20,17 +20,17 @@ type ErrorBody struct {
 	Message string `json:"message"`
 }
 
-func New(cfg config.Config) *http.Server {
+func New(cfg config.Config, readyChecker ...health.ReadinessChecker) *http.Server {
 	return &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           NewHandler(cfg),
+		Handler:           NewHandler(cfg, readyChecker...),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 }
 
-func NewHandler(cfg config.Config) http.Handler {
+func NewHandler(cfg config.Config, readyChecker ...health.ReadinessChecker) http.Handler {
 	mux := http.NewServeMux()
-	healthHandler := health.New(cfg.Version)
+	healthHandler := health.New(cfg.Version, readyChecker...)
 
 	mux.HandleFunc("/health", healthHandler.Health)
 	mux.HandleFunc("/ready", healthHandler.Ready)

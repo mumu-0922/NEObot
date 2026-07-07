@@ -1,5 +1,3 @@
-BEGIN;
-
 -- Drop application-created indexes before dependent tables. Unique constraint
 -- backing indexes are removed automatically with their owning tables.
 DROP INDEX IF EXISTS idx_audit_logs_request_id;
@@ -46,5 +44,3 @@ DROP TABLE IF EXISTS sessions;
 DROP TABLE IF EXISTS users;
 
 -- No custom enum/type objects are created by 001_initial_schema.up.sql.
-
-COMMIT;

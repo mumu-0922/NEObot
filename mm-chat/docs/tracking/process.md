@@ -501,3 +501,114 @@ This completes the Phase 4 schema, migration, and Postgres container-plan checkl
 ### Next Step
 
 Run the required reviewer agent across Phase 4 migrations, docs, and tracking updates. If clean, commit and push. Next implementation phase should add the Go database connector and migration runner before chat repositories.
+
+## 2026-07-07 — Phase 4.5 Postgres Runtime Wiring
+
+### Action
+
+Connected the Go backend skeleton to Postgres runtime wiring without adding chat repositories or CRUD endpoints.
+
+### Evidence
+
+Backend files created or updated:
+
+```text
+mm-chat/backend/cmd/api/main.go
+mm-chat/backend/cmd/migrate/main.go
+mm-chat/backend/go.mod
+mm-chat/backend/go.sum
+mm-chat/backend/internal/config/config.go
+mm-chat/backend/internal/config/config_test.go
+mm-chat/backend/internal/database/database.go
+mm-chat/backend/internal/database/database_test.go
+mm-chat/backend/internal/health/handler.go
+mm-chat/backend/internal/health/handler_test.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/migration/runner.go
+mm-chat/backend/internal/migration/runner_test.go
+mm-chat/backend/migrations/001_initial_schema.up.sql
+mm-chat/backend/migrations/001_initial_schema.down.sql
+mm-chat/backend/migrations/README.md
+mm-chat/backend/migrations/embed.go
+```
+
+Docs created or updated:
+
+```text
+mm-chat/docs/persistence/runtime-wiring.md
+mm-chat/docs/persistence/README.md
+mm-chat/docs/persistence/postgres-schema.md
+mm-chat/docs/deployment/README.md
+mm-chat/docs/deployment/postgres-single-server.md
+mm-chat/docs/deployment/single-server-compose.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+Runtime behavior now defined:
+
+```text
+DATABASE_URL empty    -> DB disabled, /ready returns 200
+DATABASE_URL nonempty -> startup opens Postgres with pgx and PingContext
+DB later unavailable  -> /ready returns 503 DATABASE_NOT_READY
+API startup           -> does not run migrations automatically
+Migration CLI         -> go run ./cmd/migrate up | down --all
+Runner metadata       -> schema_migrations(version, name, applied_at)
+```
+
+### Decision
+
+Use `github.com/jackc/pgx/v5 v5.6.0` through the `database/sql` stdlib adapter. The latest pgx release observed by Worker A required a newer Go toolchain, so this phase pins a Go 1.22-compatible pgx version.
+
+The migration runner owns transaction boundaries and updates `schema_migrations` in the same transaction as each migration. SQL migration files therefore do not contain `BEGIN`, `COMMIT`, or `ROLLBACK`.
+
+### Verification
+
+Unit tests passed with Docker Go 1.22:
+
+```bash
+docker run --rm -v "$PWD/mm-chat/backend":/app -w /app golang:1.22-alpine \
+  sh -lc '/usr/local/go/bin/gofmt -w $(find . -name "*.go" -print) && /usr/local/go/bin/go test ./...'
+```
+
+Result:
+
+```text
+?    neo-chat/mm-chat/backend/cmd/api       [no test files]
+?    neo-chat/mm-chat/backend/cmd/migrate   [no test files]
+ok   neo-chat/mm-chat/backend/internal/config
+ok   neo-chat/mm-chat/backend/internal/database
+ok   neo-chat/mm-chat/backend/internal/health
+ok   neo-chat/mm-chat/backend/internal/httpserver
+ok   neo-chat/mm-chat/backend/internal/migration
+?    neo-chat/mm-chat/backend/migrations    [no test files]
+```
+
+Docker Postgres 16 integration passed:
+
+```text
+go run ./cmd/migrate up      -> up 001_initial_schema
+public tables after up       -> audit_logs, conversations, files, message_attachments, messages, provider_configs, schema_migrations, sessions, users
+schema_migrations            -> 1:initial_schema
+API with DATABASE_URL set     -> /health 200, /ready 200, /v1/version integration-test
+go run ./cmd/migrate down --all -> down 001_initial_schema
+domain tables after down     -> 0
+schema_migrations rows       -> 0
+```
+
+Additional checks passed:
+
+```bash
+git diff --check -- mm-chat
+grep -R "BEGIN;\|COMMIT;\|ROLLBACK;" -n mm-chat/backend/migrations/*.sql
+```
+
+The grep produced no matches.
+
+### Boundary
+
+This phase adds DB connectivity, readiness, and migration execution only. It still does not implement conversation/message repositories, provider streaming persistence, DB-backed auth flows, file APIs, Redis, MinIO, or RAG.
+
+### Next Step
+
+Run the required reviewer agent across backend code, runtime docs, deployment docs, and tracking. If clean, commit and push. The next implementation phase should begin the chat repository and API spine.

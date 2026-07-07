@@ -1,7 +1,8 @@
 # mm-chat backend migrations
 
 This directory contains ordered SQL migrations for the `mm-chat` Go backend
-Postgres persistence layer.
+Postgres persistence layer. The Go migration runner owns transaction boundaries
+and records applied versions in `schema_migrations`.
 
 ## Naming
 
@@ -40,20 +41,23 @@ Rollback with matching `*.down.sql` files in descending sequence order:
 ```
 
 Down migrations must remove dependent objects first: application-created indexes,
-child tables, custom types if any, then foundational tables. The initial schema
-uses `CHECK` constraints instead of custom enum types, so there are no custom
-Postgres types to clean up.
+child tables, custom types if any, then foundational tables. Migration SQL files
+must not include `BEGIN`, `COMMIT`, or `ROLLBACK`; the Go runner wraps each
+migration and its `schema_migrations` row update in one transaction. The initial
+schema uses `CHECK` constraints instead of custom enum types, so there are no
+custom Postgres types to clean up.
 
 ## Verification
 
-Preferred local validation uses the official Postgres image and `psql` with
-`ON_ERROR_STOP=1`:
+Preferred local validation uses the official Postgres image plus the Go
+migration CLI. The example binds Postgres only to localhost:
 
 ```bash
 docker run --rm -d \
   --name mm-chat-pg-migration-test \
   -e POSTGRES_PASSWORD=postgres \
   -e POSTGRES_DB=mm_chat \
+  -p 127.0.0.1:15432:5432 \
   postgres:16-alpine
 
 until docker exec mm-chat-pg-migration-test \
@@ -61,19 +65,19 @@ until docker exec mm-chat-pg-migration-test \
   sleep 1
 done
 
-cat mm-chat/backend/migrations/001_initial_schema.up.sql | \
-  docker exec -i mm-chat-pg-migration-test \
-    psql -U postgres -d mm_chat -v ON_ERROR_STOP=1
+cd mm-chat/backend
 
-cat mm-chat/backend/migrations/001_initial_schema.down.sql | \
-  docker exec -i mm-chat-pg-migration-test \
-    psql -U postgres -d mm_chat -v ON_ERROR_STOP=1
+DATABASE_URL="postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable" \
+  go run ./cmd/migrate up
+
+DATABASE_URL="postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable" \
+  go run ./cmd/migrate down --all
 
 docker rm -f mm-chat-pg-migration-test
 ```
 
-If Docker is unavailable, at minimum run the same `psql` commands against any
-Postgres 16 database that can be destroyed after the check.
+If Docker is unavailable, run the same `go run ./cmd/migrate` commands against
+any Postgres 16 database that can be destroyed after the check.
 
 ## Storage boundaries
 

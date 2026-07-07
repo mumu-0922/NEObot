@@ -1,12 +1,13 @@
 # Single-Server Postgres Container Plan
 
-This document is the Phase 4 deployment plan for running Postgres on the
-`mm-chat` single-server path. It complements
-[`single-server-compose.md`](./single-server-compose.md) and intentionally does
-not create a Compose file, root `docker-compose.yml` replacement, or production
-repository implementation.
+This document is the Phase 4/4.5 deployment plan for running Postgres on the
+`mm-chat` single-server path and wiring the Go backend to it. It complements
+[`single-server-compose.md`](./single-server-compose.md) and
+[`../persistence/runtime-wiring.md`](../persistence/runtime-wiring.md), and
+intentionally does not create a Compose file, root `docker-compose.yml`
+replacement, or production repository implementation.
 
-Phase 4 target:
+Phase 4/4.5 target:
 
 ```text
 Next.js frontend -> Go backend -> Postgres container
@@ -32,6 +33,7 @@ Non-goals:
 - No public Postgres port exposure.
 - No MinIO/Redis/RAG deployment in Phase 4.
 - No claim that DB repository code has already landed.
+- No automatic migration execution during API startup.
 
 ## 2. Network and Port Policy
 
@@ -110,8 +112,8 @@ PGDATA=/var/lib/postgresql/data/pgdata
 ### Go backend
 
 Existing Phase 3 backend config already uses `MM_CHAT_ADDR` and
-`MM_CHAT_VERSION`. Phase 4 DB wiring should add a database URL or equivalent
-structured settings.
+`MM_CHAT_VERSION`. Phase 4.5 DB wiring reads `DATABASE_URL` plus DB pool
+settings.
 
 ```env
 APP_ENV=production
@@ -147,10 +149,17 @@ For a future Compose healthcheck, keep the same intent without exposing a port:
 pg_isready -U neo_chat -d neo_chat
 ```
 
-Application readiness should fail closed when Phase 4 endpoints require the
-database and the DB connection cannot be established. The existing skeleton
-`/health`, `/ready`, and `/v1/version` behavior may evolve as DB dependencies
-are wired, but this document does not claim that wiring already exists.
+Phase 4.5 application readiness contract:
+
+| Backend DB mode | Startup expectation | `/health` | `/ready` |
+| --- | --- | --- | --- |
+| `DATABASE_URL` empty | Start with DB disabled; do not require Postgres. | `200` if process is alive. | `200`; DB is intentionally disabled. |
+| `DATABASE_URL` set and DB ping succeeds | Create pgx-backed connector and pass `PingContext`. | `200` if process is alive. | `200` while DB ping succeeds. |
+| `DATABASE_URL` set and startup DB ping fails | Fail fast before serving HTTP. | Not served. | Not served. |
+
+Readiness must not mutate schema and must not run migrations. Migrations are an
+explicit CLI/deployment step before starting or restarting a DB-enabled backend
+release.
 
 Operational smoke checks after Postgres starts:
 
@@ -158,33 +167,45 @@ Operational smoke checks after Postgres starts:
 # from the host, through docker exec; no public port needed
 docker exec -i mm-chat-postgres psql -U neo_chat -d neo_chat -c 'select 1;'
 
-# backend checks once DB-aware readiness is implemented
+# backend process checks
 curl -fsS http://127.0.0.1:8080/health
 curl -fsS http://127.0.0.1:8080/ready
 ```
 
 ## 6. Migration Execution
 
-Migration files are owned by the backend/migration worker, not this deployment
-plan. The deployment contract is:
+Migration files are owned by the backend/migration worker. Phase 4.5 deployment
+uses the Go migration CLI with embedded SQL; API startup must not auto-migrate.
+
+Runbook draft:
 
 1. Start Postgres on the private network.
 2. Wait for `pg_isready` to pass.
-3. Run Phase 4 migrations from the same release artifact that will run the
-   backend.
-4. Verify the expected core tables exist. Once a migration runner is selected,
-   also verify its version table.
-5. Start or restart the backend with `DATABASE_URL` pointing at the migrated DB.
+3. Point `DATABASE_URL` at the target database from the same release context
+   that will run the backend.
+4. Run `up` migrations from `mm-chat/backend`.
+5. Verify the expected app tables and migration-runner metadata exist.
+6. Start or restart the backend with the same `DATABASE_URL`.
+7. Confirm `/ready` is `200` while the DB ping succeeds.
 
-Generic command shapes, to be replaced by the chosen migration tool:
+Source-run command shape:
 
 ```bash
 cd mm-chat/backend
 
-# examples only; use whichever tool the migration implementation selects
-# goose -dir migrations postgres "$DATABASE_URL" up
-# migrate -path migrations -database "$DATABASE_URL" up
-# go run ./cmd/migrate up
+export DATABASE_URL='postgres://neo_chat:<replace-with-strong-secret>@postgres:5432/neo_chat?sslmode=disable'
+
+go run ./cmd/migrate up
+```
+
+Development/destructive rollback command shape:
+
+```bash
+cd mm-chat/backend
+
+export DATABASE_URL='postgres://neo_chat:<replace-with-strong-secret>@postgres:5432/neo_chat?sslmode=disable'
+
+go run ./cmd/migrate down --all
 ```
 
 Post-migration inspection:
@@ -193,10 +214,13 @@ Post-migration inspection:
 docker exec -i mm-chat-postgres psql -U neo_chat -d neo_chat -c '\dt'
 docker exec -i mm-chat-postgres psql -U neo_chat -d neo_chat -c \
   "select tablename from pg_tables where schemaname = 'public' order by tablename;"
+
+docker exec -i mm-chat-postgres psql -U neo_chat -d neo_chat -c \
+  "select * from schema_migrations order by version;"
 ```
 
-A migration runner and schema version table are not selected yet. When that tool
-lands, update this runbook with the exact version-table inspection command.
+`schema_migrations` is the Phase 4.5 migration-runner metadata table. Treat it
+as runner state, not an application/domain table.
 
 ## 7. Backup Plan
 
@@ -205,10 +229,12 @@ portable across a single-server restore.
 
 Minimum backup contents:
 
-1. Postgres custom-format dump, including the migration version table once a runner exists.
+1. Postgres custom-format dump, including the migration-runner metadata table
+   (`schema_migrations`).
 2. Release identifier or container image tag for the backend using that schema.
 3. Encrypted copy of deployment environment/secrets.
-4. Backup manifest with timestamp, DB name, migration state if available, and checksum.
+4. Backup manifest with timestamp, DB name, migration state, release ID, and
+   checksum.
 
 Manual backup command:
 
@@ -270,7 +296,7 @@ Restore verification:
 docker exec -i mm-chat-postgres psql -U neo_chat -d neo_chat -c '\dt'
 docker exec -i mm-chat-postgres psql -U neo_chat -d neo_chat -c 'select 1;'
 
-# once DB-aware backend paths exist
+# with DATABASE_URL set, DB-aware readiness must ping Postgres
 curl -fsS http://127.0.0.1:8080/ready
 ```
 
@@ -293,7 +319,8 @@ NEXT_PUBLIC_API_MODE=local
 
 Database rollback:
 
-- In development, run the migration tool's down command when it exists.
+- In development, run `cd mm-chat/backend && go run ./cmd/migrate down --all`
+  only when an intentional destructive reset is acceptable.
 - In production-like use, prefer restoring the pre-migration dump only during a
   maintenance window, because destructive rollback can lose writes made after
   the migration.
