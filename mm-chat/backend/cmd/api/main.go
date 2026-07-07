@@ -15,7 +15,9 @@ import (
 	"neo-chat/mm-chat/backend/internal/chat"
 	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/database"
+	"neo-chat/mm-chat/backend/internal/files"
 	"neo-chat/mm-chat/backend/internal/httpserver"
+	"neo-chat/mm-chat/backend/internal/storage"
 )
 
 const (
@@ -34,8 +36,10 @@ func main() {
 	}
 
 	var chatRepo chat.Repository
+	var fileRepo files.Repository
 	if sqlDB := db.SQL(); sqlDB != nil {
 		chatRepo = chat.NewPostgresRepository(sqlDB)
+		fileRepo = files.NewPostgresRepository(sqlDB)
 	}
 
 	chatProvider, err := newChatProvider(cfg)
@@ -47,11 +51,20 @@ func main() {
 		log.Printf("mm-chat provider disabled: %s requires PROVIDER_BASE_URL, PROVIDER_MODEL, and PROVIDER_API_KEY", cfg.Provider.Type)
 	}
 
+	objectStore, err := newObjectStore(cfg)
+	if err != nil {
+		_ = db.Close()
+		log.Fatalf("mm-chat storage config failed: %v", err)
+	}
+
 	server := httpserver.New(
 		cfg,
 		httpserver.WithReadyChecker(db),
 		httpserver.WithChatRepository(chatRepo),
 		httpserver.WithChatProvider(chatProvider),
+		httpserver.WithFileRepository(fileRepo),
+		httpserver.WithObjectStore(objectStore),
+		httpserver.WithMaxUploadBytes(cfg.Storage.MaxUploadBytes),
 	)
 
 	errorsCh := make(chan error, 1)
@@ -82,6 +95,16 @@ func main() {
 	}
 	if err := db.Close(); err != nil {
 		log.Printf("mm-chat database close failed: %v", err)
+	}
+}
+
+func newObjectStore(cfg config.Config) (storage.ObjectStore, error) {
+	storageBackend := strings.ToLower(strings.TrimSpace(cfg.Storage.Backend))
+	switch storageBackend {
+	case "", "local":
+		return storage.NewLocalStore(cfg.Storage.LocalDir)
+	default:
+		return nil, fmt.Errorf("unsupported STORAGE_BACKEND %q", cfg.Storage.Backend)
 	}
 }
 

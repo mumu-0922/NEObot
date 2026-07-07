@@ -2,9 +2,9 @@
 
 ## Purpose
 
-This contract defines the server file API that will sit above the Phase 6.1
-`ObjectStore`. Phase 6.1 implements the storage boundary only; Phase 6.2 will
-wire these endpoints to Postgres `files` metadata and the object store.
+This contract defines the Phase 6.2 server file API above the Phase 6.1
+`ObjectStore`. The current implementation wires these endpoints to Postgres
+`files` metadata and the local object store.
 
 ## Endpoints
 
@@ -72,3 +72,15 @@ request multipart
 
 Rollback rule: if Postgres insert fails after object write, delete the object.
 If object write fails, do not create the metadata row.
+
+
+## Phase 6.2 Implementation Notes
+
+- `POST /v1/files` writes bytes through `ObjectStore`, computes SHA-256 while
+  streaming, inserts the Postgres `files` row, and deletes the object if the DB
+  insert fails.
+- `GET /v1/files/{fileId}` returns metadata only.
+- `GET /v1/files/{fileId}/content` streams bytes through the backend gateway.
+- `DELETE /v1/files/{fileId}` soft-deletes metadata and then deletes the object.
+- Ownership is currently scoped to the fixed development user until auth lands.
+- MinIO/S3 is still a later adapter behind the same `ObjectStore` interface.

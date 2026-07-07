@@ -65,3 +65,10 @@ Current Phase 6.1 tests cover:
 - unsafe key rejection
 - size mismatch cleanup
 - cancelled context cleanup
+
+## Phase 6.2 Usage
+
+Phase 6.2 now uses this interface from the file service: upload writes object
+bytes first, inserts Postgres metadata after SHA-256 is known, and removes the
+object if metadata insertion fails. Downloads and deletes always resolve the
+private object key from Postgres; browser responses never expose that key.

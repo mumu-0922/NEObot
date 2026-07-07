@@ -7,7 +7,9 @@ import (
 
 	"neo-chat/mm-chat/backend/internal/chat"
 	"neo-chat/mm-chat/backend/internal/config"
+	"neo-chat/mm-chat/backend/internal/files"
 	"neo-chat/mm-chat/backend/internal/health"
+	"neo-chat/mm-chat/backend/internal/storage"
 )
 
 const contentTypeJSON = "application/json; charset=utf-8"
@@ -27,6 +29,9 @@ type options struct {
 	readyChecker   health.ReadinessChecker
 	chatRepository chat.Repository
 	chatProvider   chat.Provider
+	fileRepository files.Repository
+	objectStore    storage.ObjectStore
+	maxUploadBytes int64
 }
 
 func WithReadyChecker(checker health.ReadinessChecker) Option {
@@ -47,6 +52,24 @@ func WithChatProvider(provider chat.Provider) Option {
 	}
 }
 
+func WithFileRepository(repo files.Repository) Option {
+	return func(opts *options) {
+		opts.fileRepository = repo
+	}
+}
+
+func WithObjectStore(store storage.ObjectStore) Option {
+	return func(opts *options) {
+		opts.objectStore = store
+	}
+}
+
+func WithMaxUploadBytes(maxUploadBytes int64) Option {
+	return func(opts *options) {
+		opts.maxUploadBytes = maxUploadBytes
+	}
+}
+
 func New(cfg config.Config, opts ...Option) *http.Server {
 	return &http.Server{
 		Addr:              cfg.Addr,
@@ -63,6 +86,14 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		chat.NewService(resolvedOptions.chatRepository),
 		chat.WithProvider(resolvedOptions.chatProvider),
 	)
+	fileHandler := files.NewHandler(
+		files.NewService(
+			resolvedOptions.fileRepository,
+			resolvedOptions.objectStore,
+			files.WithStorageBackend(cfg.Storage.Backend),
+		),
+		files.WithMaxUploadBytes(resolvedOptions.maxUploadBytes),
+	)
 
 	mux.HandleFunc("/health", healthHandler.Health)
 	mux.HandleFunc("/ready", healthHandler.Ready)
@@ -70,6 +101,8 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/chat/conversations", chatHandler)
 	mux.Handle("/v1/chat/conversations/", chatHandler)
 	mux.Handle("/v1/chat/runs/", chatHandler)
+	mux.Handle("/v1/files", fileHandler)
+	mux.Handle("/v1/files/", fileHandler)
 	mux.HandleFunc("/", notFound)
 
 	return chain(mux, withRecover, withSecurityHeaders)

@@ -1272,3 +1272,90 @@ adapter, auth, or attachment wiring was added in this slice.
 
 Commit and push Phase 6.1, then implement Phase 6.2 file metadata repository
 and upload/download/delete endpoints.
+
+## 2026-07-07 — Phase 6.2 File Metadata API and Local Storage Wiring
+
+### Action
+
+Added the first server file API implementation above the Phase 6.1 object-store
+boundary:
+
+```text
+POST   /v1/files
+GET    /v1/files/{fileId}
+GET    /v1/files/{fileId}/content
+DELETE /v1/files/{fileId}
+```
+
+The upload path streams bytes into `ObjectStore`, computes SHA-256, stores
+metadata in Postgres `files`, and deletes the object if metadata insertion
+fails. Metadata and content reads resolve the private object key from Postgres;
+responses do not expose local paths, object keys, buckets, or MinIO URLs.
+
+### Files
+
+```text
+mm-chat/backend/cmd/api/main.go
+mm-chat/backend/internal/files/*
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/httpserver/server_test.go
+mm-chat/docs/contracts/file-api.md
+mm-chat/docs/storage/object-storage.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+### Decision
+
+Keep this slice local-object-store first. MinIO/S3 remains a later adapter.
+Ownership checks are fixed-development-user scoped until auth lands. Message
+attachment linking remains separate from raw file upload/download.
+
+### Verification
+
+Docker Go 1.22 unit verification passed:
+
+```text
+go test ./...: passed
+internal/files handler tests: passed
+httpserver /v1/files route test: passed
+```
+
+Postgres integration and API smoke verification passed:
+
+```text
+TestPostgresRepositoryCreatesGetsAndDeletesFileMetadata: passed
+ready_status=200
+upload_status=201
+metadata_status=200
+content_status=200
+delete_status=204
+after_delete_status=404
+invalid_status=400
+db_row=deleted:chat
+```
+
+### Next Step
+
+Commit and push Phase 6.2, then continue with message attachment linking or MinIO/S3 adapter based on owner priority.
+
+## 2026-07-07 — Phase 6.2 Final Review Fixes
+
+### Action
+
+Ran final review for file metadata/API wiring. No blocking findings remained.
+Added an explicit service regression test for the rollback path: when metadata
+insert fails after object write, the service deletes the just-written object.
+
+### Verification
+
+```text
+review blocking findings: none
+go test ./...: passed after rollback test
+```
+
+### Boundary
+
+Object deletion after metadata soft-delete is still best-effort in this local
+MVP. A future object cleanup/retry job should handle orphan cleanup when moving
+to MinIO/S3 or multi-worker deployment.

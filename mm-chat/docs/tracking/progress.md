@@ -88,10 +88,10 @@ Update this file whenever a phase or task is completed. Every `[x]` entry must h
 - [x] Add object storage interface.
 - [x] Add local filesystem implementation for dev fallback.
 - [ ] Add S3/MinIO implementation.
-- [ ] Add file upload endpoint.
-- [ ] Add file content download endpoint.
-- [ ] Add permission checks.
-- [ ] Add SHA-256 verification.
+- [x] Add file upload endpoint.
+- [x] Add file content download endpoint.
+- [x] Add fixed-development-user file ownership checks.
+- [x] Add SHA-256 hashing for uploaded file records.
 
 ## Phase 7 — Redis Temporary State
 

@@ -170,4 +170,23 @@ func TestNewHandlerRegistersChatRoutesWithDatabaseRequired(t *testing.T) {
 	if body.Error.Code != "DATABASE_REQUIRED" {
 		t.Fatalf("cancel error code = %q, want %q", body.Error.Code, "DATABASE_REQUIRED")
 	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(
+		http.MethodGet,
+		"/v1/files/33333333-3333-4333-8333-333333333333",
+		nil,
+	)
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("file status = %d, want %d; body=%s", rec.Code, http.StatusServiceUnavailable, rec.Body.String())
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode file error response: %v", err)
+	}
+	if body.Error.Code != "DATABASE_REQUIRED" {
+		t.Fatalf("file error code = %q, want %q", body.Error.Code, "DATABASE_REQUIRED")
+	}
 }
