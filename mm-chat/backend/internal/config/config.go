@@ -16,22 +16,31 @@ const (
 	DefaultProviderTimeout   = 2 * time.Minute
 	DefaultStorageBackend    = "local"
 	DefaultLocalStorageDir   = "./data/files"
+	DefaultS3Region          = "us-east-1"
 	DefaultMaxUploadBytes    = int64(25 << 20)
 
-	EnvAddr              = "MM_CHAT_ADDR"
-	EnvVersion           = "MM_CHAT_VERSION"
-	EnvDatabaseURL       = "DATABASE_URL"
-	EnvDBMaxOpenConns    = "DB_MAX_OPEN_CONNS"
-	EnvDBMaxIdleConns    = "DB_MAX_IDLE_CONNS"
-	EnvDBConnMaxLifetime = "DB_CONN_MAX_LIFETIME"
-	EnvProviderType      = "PROVIDER_TYPE"
-	EnvProviderBaseURL   = "PROVIDER_BASE_URL"
-	EnvProviderModel     = "PROVIDER_MODEL"
-	EnvProviderAPIKey    = "PROVIDER_API_KEY"
-	EnvProviderTimeout   = "PROVIDER_TIMEOUT"
-	EnvStorageBackend    = "STORAGE_BACKEND"
-	EnvLocalStorageDir   = "LOCAL_STORAGE_DIR"
-	EnvMaxUploadBytes    = "MAX_UPLOAD_BYTES"
+	EnvAddr               = "MM_CHAT_ADDR"
+	EnvVersion            = "MM_CHAT_VERSION"
+	EnvDatabaseURL        = "DATABASE_URL"
+	EnvDBMaxOpenConns     = "DB_MAX_OPEN_CONNS"
+	EnvDBMaxIdleConns     = "DB_MAX_IDLE_CONNS"
+	EnvDBConnMaxLifetime  = "DB_CONN_MAX_LIFETIME"
+	EnvProviderType       = "PROVIDER_TYPE"
+	EnvProviderBaseURL    = "PROVIDER_BASE_URL"
+	EnvProviderModel      = "PROVIDER_MODEL"
+	EnvProviderAPIKey     = "PROVIDER_API_KEY"
+	EnvProviderTimeout    = "PROVIDER_TIMEOUT"
+	EnvStorageBackend     = "STORAGE_BACKEND"
+	EnvLocalStorageDir    = "LOCAL_STORAGE_DIR"
+	EnvS3Endpoint         = "S3_ENDPOINT"
+	EnvS3Bucket           = "S3_BUCKET"
+	EnvS3Region           = "S3_REGION"
+	EnvS3AccessKeyID      = "S3_ACCESS_KEY_ID"
+	EnvS3SecretAccessKey  = "S3_SECRET_ACCESS_KEY"
+	EnvS3UseSSL           = "S3_USE_SSL"
+	EnvS3ForcePathStyle   = "S3_FORCE_PATH_STYLE"
+	EnvS3BucketAutoCreate = "S3_BUCKET_AUTO_CREATE"
+	EnvMaxUploadBytes     = "MAX_UPLOAD_BYTES"
 )
 
 // Config contains the process-level settings required to start the API.
@@ -58,12 +67,25 @@ type ProviderConfig struct {
 	Timeout time.Duration
 }
 
-// StorageConfig contains file-byte storage settings. Object-store secrets are
-// intentionally omitted until the S3/MinIO adapter phase.
+// StorageConfig contains file-byte storage settings. Object-store secrets must
+// never be logged or serialized into API responses.
 type StorageConfig struct {
 	Backend        string
 	LocalDir       string
+	S3             S3Config
 	MaxUploadBytes int64
+}
+
+// S3Config contains MinIO/S3-compatible object storage settings.
+type S3Config struct {
+	Endpoint         string
+	Bucket           string
+	Region           string
+	AccessKeyID      string
+	SecretAccessKey  string
+	UseSSL           bool
+	ForcePathStyle   bool
+	BucketAutoCreate bool
 }
 
 // Load reads configuration from the process environment.
@@ -93,8 +115,18 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 		},
 
 		Storage: StorageConfig{
-			Backend:        strings.ToLower(envOrDefault(lookup, EnvStorageBackend, DefaultStorageBackend)),
-			LocalDir:       envOrDefault(lookup, EnvLocalStorageDir, DefaultLocalStorageDir),
+			Backend:  strings.ToLower(envOrDefault(lookup, EnvStorageBackend, DefaultStorageBackend)),
+			LocalDir: envOrDefault(lookup, EnvLocalStorageDir, DefaultLocalStorageDir),
+			S3: S3Config{
+				Endpoint:         optionalEnv(lookup, EnvS3Endpoint),
+				Bucket:           optionalEnv(lookup, EnvS3Bucket),
+				Region:           envOrDefault(lookup, EnvS3Region, DefaultS3Region),
+				AccessKeyID:      optionalEnv(lookup, EnvS3AccessKeyID),
+				SecretAccessKey:  optionalEnv(lookup, EnvS3SecretAccessKey),
+				UseSSL:           boolEnvOrDefault(lookup, EnvS3UseSSL, false),
+				ForcePathStyle:   boolEnvOrDefault(lookup, EnvS3ForcePathStyle, false),
+				BucketAutoCreate: boolEnvOrDefault(lookup, EnvS3BucketAutoCreate, false),
+			},
 			MaxUploadBytes: int64EnvOrDefault(lookup, EnvMaxUploadBytes, DefaultMaxUploadBytes),
 		},
 	}
@@ -140,6 +172,20 @@ func int64EnvOrDefault(lookup func(string) (string, bool), key string, fallback 
 
 	parsed, err := strconv.ParseInt(value, 10, 64)
 	if err != nil || parsed < 0 {
+		return fallback
+	}
+
+	return parsed
+}
+
+func boolEnvOrDefault(lookup func(string) (string, bool), key string, fallback bool) bool {
+	value, ok := optionalLookup(lookup, key)
+	if !ok {
+		return fallback
+	}
+
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
 		return fallback
 	}
 

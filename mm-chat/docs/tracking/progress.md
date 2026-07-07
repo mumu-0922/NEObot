@@ -87,7 +87,7 @@ Update this file whenever a phase or task is completed. Every `[x]` entry must h
 
 - [x] Add object storage interface.
 - [x] Add local filesystem implementation for dev fallback.
-- [ ] Add S3/MinIO implementation.
+- [x] Add S3/MinIO implementation.
 - [x] Add file upload endpoint.
 - [x] Add file content download endpoint.
 - [x] Add fixed-development-user file ownership checks.

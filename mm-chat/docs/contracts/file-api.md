@@ -2,9 +2,10 @@
 
 ## Purpose
 
-This contract defines the Phase 6.2 server file API above the Phase 6.1
+This contract defines the Phase 6 server file API above the backend
 `ObjectStore`. The current implementation wires these endpoints to Postgres
-`files` metadata and the local object store.
+`files` metadata and either the local object store or the Phase 6.4 MinIO/S3
+adapter, selected by `STORAGE_BACKEND`.
 
 ## Endpoints
 
@@ -83,7 +84,9 @@ If object write fails, do not create the metadata row.
 - `GET /v1/files/{fileId}/content` streams bytes through the backend gateway.
 - `DELETE /v1/files/{fileId}` soft-deletes metadata and then deletes the object.
 - Ownership is currently scoped to the fixed development user until auth lands.
-- MinIO/S3 is still a later adapter behind the same `ObjectStore` interface.
+- MinIO/S3 is available through the same `ObjectStore` interface when
+  `STORAGE_BACKEND=minio` or `STORAGE_BACKEND=s3`; the HTTP response contract
+  stays unchanged.
 - Phase 6.3 message linking uses only returned `id` values. It does not trust
   upload-time `conversationId` metadata for authorization and never exposes
   object keys through message responses.

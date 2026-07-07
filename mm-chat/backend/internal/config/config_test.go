@@ -49,6 +49,18 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 	if cfg.Storage.LocalDir != DefaultLocalStorageDir {
 		t.Fatalf("Storage.LocalDir = %q, want %q", cfg.Storage.LocalDir, DefaultLocalStorageDir)
 	}
+	if cfg.Storage.S3.Endpoint != "" ||
+		cfg.Storage.S3.Bucket != "" ||
+		cfg.Storage.S3.AccessKeyID != "" ||
+		cfg.Storage.S3.SecretAccessKey != "" {
+		t.Fatalf("Storage.S3 = %#v, want blank endpoint/bucket/credentials", cfg.Storage.S3)
+	}
+	if cfg.Storage.S3.Region != DefaultS3Region {
+		t.Fatalf("Storage.S3.Region = %q, want %q", cfg.Storage.S3.Region, DefaultS3Region)
+	}
+	if cfg.Storage.S3.UseSSL || cfg.Storage.S3.ForcePathStyle || cfg.Storage.S3.BucketAutoCreate {
+		t.Fatalf("Storage.S3 booleans = %#v, want false", cfg.Storage.S3)
+	}
 	if cfg.Storage.MaxUploadBytes != DefaultMaxUploadBytes {
 		t.Fatalf("Storage.MaxUploadBytes = %d, want %d", cfg.Storage.MaxUploadBytes, DefaultMaxUploadBytes)
 	}
@@ -56,20 +68,28 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 
 func TestLoadFromEnvOverrides(t *testing.T) {
 	values := map[string]string{
-		EnvAddr:              "127.0.0.1:9090",
-		EnvVersion:           "test-version",
-		EnvDatabaseURL:       " postgres://user:pass@localhost:5432/mmchat?sslmode=disable ",
-		EnvDBMaxOpenConns:    "12",
-		EnvDBMaxIdleConns:    "7",
-		EnvDBConnMaxLifetime: "45m",
-		EnvProviderType:      " openai_compatible ",
-		EnvProviderBaseURL:   " https://sub.example.test/v1/ ",
-		EnvProviderModel:     " gpt-5.5 ",
-		EnvProviderAPIKey:    " secret-key ",
-		EnvProviderTimeout:   "90s",
-		EnvStorageBackend:    " LOCAL ",
-		EnvLocalStorageDir:   " /srv/mm-chat/files ",
-		EnvMaxUploadBytes:    "1048576",
+		EnvAddr:               "127.0.0.1:9090",
+		EnvVersion:            "test-version",
+		EnvDatabaseURL:        " postgres://user:pass@localhost:5432/mmchat?sslmode=disable ",
+		EnvDBMaxOpenConns:     "12",
+		EnvDBMaxIdleConns:     "7",
+		EnvDBConnMaxLifetime:  "45m",
+		EnvProviderType:       " openai_compatible ",
+		EnvProviderBaseURL:    " https://sub.example.test/v1/ ",
+		EnvProviderModel:      " gpt-5.5 ",
+		EnvProviderAPIKey:     " secret-key ",
+		EnvProviderTimeout:    "90s",
+		EnvStorageBackend:     " MINIO ",
+		EnvLocalStorageDir:    " /srv/mm-chat/files ",
+		EnvS3Endpoint:         " http://minio:9000 ",
+		EnvS3Bucket:           " neo-chat-files ",
+		EnvS3Region:           " us-west-2 ",
+		EnvS3AccessKeyID:      " minio-user ",
+		EnvS3SecretAccessKey:  " minio-secret ",
+		EnvS3UseSSL:           " true ",
+		EnvS3ForcePathStyle:   " true ",
+		EnvS3BucketAutoCreate: " true ",
+		EnvMaxUploadBytes:     "1048576",
 	}
 
 	cfg := LoadFromEnv(func(key string) (string, bool) {
@@ -110,11 +130,29 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	if cfg.Provider.Timeout != 90*time.Second {
 		t.Fatalf("Provider.Timeout = %s, want 90s", cfg.Provider.Timeout)
 	}
-	if cfg.Storage.Backend != "local" {
-		t.Fatalf("Storage.Backend = %q, want local", cfg.Storage.Backend)
+	if cfg.Storage.Backend != "minio" {
+		t.Fatalf("Storage.Backend = %q, want minio", cfg.Storage.Backend)
 	}
 	if cfg.Storage.LocalDir != "/srv/mm-chat/files" {
 		t.Fatalf("Storage.LocalDir = %q", cfg.Storage.LocalDir)
+	}
+	if cfg.Storage.S3.Endpoint != "http://minio:9000" {
+		t.Fatalf("Storage.S3.Endpoint = %q", cfg.Storage.S3.Endpoint)
+	}
+	if cfg.Storage.S3.Bucket != "neo-chat-files" {
+		t.Fatalf("Storage.S3.Bucket = %q", cfg.Storage.S3.Bucket)
+	}
+	if cfg.Storage.S3.Region != "us-west-2" {
+		t.Fatalf("Storage.S3.Region = %q", cfg.Storage.S3.Region)
+	}
+	if cfg.Storage.S3.AccessKeyID != "minio-user" {
+		t.Fatalf("Storage.S3.AccessKeyID = %q", cfg.Storage.S3.AccessKeyID)
+	}
+	if cfg.Storage.S3.SecretAccessKey != "minio-secret" {
+		t.Fatalf("Storage.S3.SecretAccessKey = %q", cfg.Storage.S3.SecretAccessKey)
+	}
+	if !cfg.Storage.S3.UseSSL || !cfg.Storage.S3.ForcePathStyle || !cfg.Storage.S3.BucketAutoCreate {
+		t.Fatalf("Storage.S3 booleans = %#v, want true", cfg.Storage.S3)
 	}
 	if cfg.Storage.MaxUploadBytes != 1048576 {
 		t.Fatalf("Storage.MaxUploadBytes = %d, want 1048576", cfg.Storage.MaxUploadBytes)
@@ -123,20 +161,28 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 
 func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 	values := map[string]string{
-		EnvAddr:              "   ",
-		EnvVersion:           "\t",
-		EnvDatabaseURL:       " \n ",
-		EnvDBMaxOpenConns:    " ",
-		EnvDBMaxIdleConns:    "\t",
-		EnvDBConnMaxLifetime: " \n",
-		EnvProviderType:      " ",
-		EnvProviderBaseURL:   "\t",
-		EnvProviderModel:     " \n ",
-		EnvProviderAPIKey:    " ",
-		EnvProviderTimeout:   "\t",
-		EnvStorageBackend:    " ",
-		EnvLocalStorageDir:   "\t",
-		EnvMaxUploadBytes:    "\n",
+		EnvAddr:               "   ",
+		EnvVersion:            "\t",
+		EnvDatabaseURL:        " \n ",
+		EnvDBMaxOpenConns:     " ",
+		EnvDBMaxIdleConns:     "\t",
+		EnvDBConnMaxLifetime:  " \n",
+		EnvProviderType:       " ",
+		EnvProviderBaseURL:    "\t",
+		EnvProviderModel:      " \n ",
+		EnvProviderAPIKey:     " ",
+		EnvProviderTimeout:    "\t",
+		EnvStorageBackend:     " ",
+		EnvLocalStorageDir:    "\t",
+		EnvS3Endpoint:         " ",
+		EnvS3Bucket:           "\t",
+		EnvS3Region:           "\n",
+		EnvS3AccessKeyID:      " ",
+		EnvS3SecretAccessKey:  "\t",
+		EnvS3UseSSL:           " ",
+		EnvS3ForcePathStyle:   " ",
+		EnvS3BucketAutoCreate: "\n",
+		EnvMaxUploadBytes:     "\n",
 	}
 
 	cfg := LoadFromEnv(func(key string) (string, bool) {
@@ -171,18 +217,31 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 	}
 	if cfg.Storage.Backend != DefaultStorageBackend ||
 		cfg.Storage.LocalDir != DefaultLocalStorageDir ||
+		cfg.Storage.S3.Region != DefaultS3Region ||
 		cfg.Storage.MaxUploadBytes != DefaultMaxUploadBytes {
 		t.Fatalf("Storage = %#v, want defaults", cfg.Storage)
+	}
+	if cfg.Storage.S3.Endpoint != "" ||
+		cfg.Storage.S3.Bucket != "" ||
+		cfg.Storage.S3.AccessKeyID != "" ||
+		cfg.Storage.S3.SecretAccessKey != "" ||
+		cfg.Storage.S3.UseSSL ||
+		cfg.Storage.S3.ForcePathStyle ||
+		cfg.Storage.S3.BucketAutoCreate {
+		t.Fatalf("Storage.S3 = %#v, want blank/false defaults", cfg.Storage.S3)
 	}
 }
 
 func TestLoadFromEnvFallsBackForInvalidDBValues(t *testing.T) {
 	values := map[string]string{
-		EnvDBMaxOpenConns:    "not-an-int",
-		EnvDBMaxIdleConns:    "-1",
-		EnvDBConnMaxLifetime: "not-a-duration",
-		EnvProviderTimeout:   "-1s",
-		EnvMaxUploadBytes:    "-1",
+		EnvDBMaxOpenConns:     "not-an-int",
+		EnvDBMaxIdleConns:     "-1",
+		EnvDBConnMaxLifetime:  "not-a-duration",
+		EnvProviderTimeout:    "-1s",
+		EnvS3UseSSL:           "not-a-bool",
+		EnvS3ForcePathStyle:   "not-a-bool",
+		EnvS3BucketAutoCreate: "not-a-bool",
+		EnvMaxUploadBytes:     "-1",
 	}
 
 	cfg := LoadFromEnv(func(key string) (string, bool) {
@@ -204,5 +263,8 @@ func TestLoadFromEnvFallsBackForInvalidDBValues(t *testing.T) {
 	}
 	if cfg.Storage.MaxUploadBytes != DefaultMaxUploadBytes {
 		t.Fatalf("Storage.MaxUploadBytes = %d, want %d", cfg.Storage.MaxUploadBytes, DefaultMaxUploadBytes)
+	}
+	if cfg.Storage.S3.UseSSL || cfg.Storage.S3.ForcePathStyle || cfg.Storage.S3.BucketAutoCreate {
+		t.Fatalf("Storage.S3 booleans = %#v, want false fallback", cfg.Storage.S3)
 	}
 }

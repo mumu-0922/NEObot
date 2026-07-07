@@ -22,6 +22,7 @@ import (
 
 const (
 	databaseOpenTimeout = 5 * time.Second
+	storageOpenTimeout  = 10 * time.Second
 	shutdownTimeout     = 10 * time.Second
 )
 
@@ -103,6 +104,30 @@ func newObjectStore(cfg config.Config) (storage.ObjectStore, error) {
 	switch storageBackend {
 	case "", "local":
 		return storage.NewLocalStore(cfg.Storage.LocalDir)
+	case "minio", "s3":
+		forcePathStyle := cfg.Storage.S3.ForcePathStyle || storageBackend == "minio"
+		store, err := storage.NewS3Store(storage.S3Config{
+			Endpoint:        cfg.Storage.S3.Endpoint,
+			Bucket:          cfg.Storage.S3.Bucket,
+			Region:          cfg.Storage.S3.Region,
+			AccessKeyID:     cfg.Storage.S3.AccessKeyID,
+			SecretAccessKey: cfg.Storage.S3.SecretAccessKey,
+			UseSSL:          cfg.Storage.S3.UseSSL,
+			ForcePathStyle:  forcePathStyle,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if !cfg.Storage.S3.BucketAutoCreate {
+			return store, nil
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), storageOpenTimeout)
+		defer cancel()
+		if err := store.EnsureBucket(ctx); err != nil {
+			return nil, err
+		}
+		return store, nil
 	default:
 		return nil, fmt.Errorf("unsupported STORAGE_BACKEND %q", cfg.Storage.Backend)
 	}

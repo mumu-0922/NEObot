@@ -1439,3 +1439,76 @@ git diff --check -- mm-chat: passed
 ### Next Step
 
 Commit Phase 6.3 after final main-session review.
+
+## 2026-07-07 — Phase 6.4 MinIO/S3 Object Store Adapter
+
+### Action
+
+Added a MinIO/S3-compatible implementation behind the existing `ObjectStore`
+interface while keeping the file HTTP contract unchanged. The Go API now
+supports `STORAGE_BACKEND=local`, `STORAGE_BACKEND=minio`, and
+`STORAGE_BACKEND=s3`. The S3 adapter validates the same server-generated object
+keys as the local store, maps missing objects to `storage.ErrObjectNotFound`,
+and optionally creates the bucket only when `S3_BUCKET_AUTO_CREATE=true`.
+
+### Files
+
+```text
+mm-chat/backend/cmd/api/main.go
+mm-chat/backend/cmd/api/main_test.go
+mm-chat/backend/internal/config/config.go
+mm-chat/backend/internal/config/config_test.go
+mm-chat/backend/internal/storage/s3.go
+mm-chat/backend/internal/storage/s3_test.go
+mm-chat/backend/go.mod
+mm-chat/backend/go.sum
+mm-chat/backend/.env.example
+mm-chat/docs/storage/object-storage.md
+mm-chat/docs/deployment/README.md
+mm-chat/docs/deployment/single-server-compose.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+### Decision
+
+Use `github.com/minio/minio-go/v7` as the S3-compatible SDK, pinned to a Go
+1.22-compatible version instead of latest because recent latest releases require
+a newer Go toolchain. Use `S3_*` env names consistently:
+`S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`,
+`S3_SECRET_ACCESS_KEY`, `S3_USE_SSL`, `S3_FORCE_PATH_STYLE`, and
+`S3_BUCKET_AUTO_CREATE`.
+
+### Verification
+
+```text
+go test ./...: passed with Docker Go 1.22
+MinIO storage integration test: passed against private Docker MinIO
+API smoke with Docker Postgres + Docker MinIO: upload/download/delete passed
+DB file metadata storage_backend=minio: verified
+```
+
+### Next Step
+
+Run review, then commit and push Phase 6.4.
+
+## 2026-07-07 — Phase 6.4 Review Fix
+
+### Action
+
+Reviewed Phase 6.4 docs and fixed the stale file API contract wording that
+still described MinIO/S3 as a later adapter. The contract now states that
+`STORAGE_BACKEND=minio|s3` uses the same `ObjectStore` and keeps HTTP response
+shapes unchanged.
+
+### Verification
+
+```text
+go test ./...: passed with Docker Go 1.22
+go vet ./...: passed with Docker Go 1.22
+git diff --check -- mm-chat: passed
+```
+
+### Next Step
+
+Commit and push Phase 6.4.

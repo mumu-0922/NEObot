@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Phase 6.1 adds a backend object-storage boundary without exposing MinIO/S3 yet.
-The first implementation stores bytes on the local filesystem so a single-server
-MVP can upload/download files before MinIO is introduced.
+Phase 6 adds a backend object-storage boundary. Phase 6.1 introduced the local
+filesystem fallback; Phase 6.4 adds a MinIO/S3-compatible adapter behind the
+same interface.
 
 ## Backend Interface
 
@@ -43,28 +43,59 @@ Rules:
 - Local object metadata may store `contentType`; Postgres remains canonical for
   file metadata once Phase 6.2 lands.
 
-## S3/MinIO Handoff
+## MinIO/S3 Backend
 
-The later adapter should keep the same interface and replace only the backing
-implementation:
+Environment:
 
-```text
-backend file service -> ObjectStore -> local | minio | s3
+```env
+STORAGE_BACKEND=minio # local|minio|s3
+S3_ENDPOINT=http://minio:9000
+S3_BUCKET=neo-chat-files
+S3_REGION=us-east-1
+S3_ACCESS_KEY_ID=<app-scoped-access-key>
+S3_SECRET_ACCESS_KEY=<secret>
+S3_USE_SSL=false
+S3_FORCE_PATH_STYLE=true
+S3_BUCKET_AUTO_CREATE=false
+MAX_UPLOAD_BYTES=26214400
 ```
 
-The browser must still fetch through backend endpoints such as
-`GET /v1/files/{id}/content`; it must not receive bucket names, object keys, or
-direct MinIO URLs in the MVP.
+Rules:
+
+- `STORAGE_BACKEND=minio` and `STORAGE_BACKEND=s3` both use the S3-compatible
+  adapter. `minio` forces path-style bucket lookup; `s3` uses SDK auto lookup
+  unless `S3_FORCE_PATH_STYLE=true`.
+- `S3_BUCKET_AUTO_CREATE=false` is the production default. Enable it only for
+  local/dev smoke tests or tightly controlled single-server bootstrap.
+- With auto-create disabled, API startup does not ping MinIO/S3; upload/download
+  operations surface storage failures. With auto-create enabled, startup fails
+  fast if the bucket check/create path cannot reach object storage.
+- Use app-scoped object-store credentials, not MinIO root credentials, in
+  production.
+- The browser must still fetch through backend endpoints such as
+  `GET /v1/files/{id}/content`; it must not receive bucket names, object keys,
+  or direct MinIO/S3 URLs in the MVP.
+- SDK `NoSuchKey` / missing-bucket style errors are mapped to
+  `storage.ErrObjectNotFound` so the file API keeps returning
+  `404 FILE_NOT_FOUND`.
+
+Dependency note: the backend pins `github.com/minio/minio-go/v7` to a Go
+1.22-compatible release line. Do not blindly upgrade to the latest SDK unless
+the backend Go toolchain is upgraded too.
 
 ## Verification
 
-Current Phase 6.1 tests cover:
+Current Phase 6 tests cover:
 
 - put/get/delete round trip
 - metadata content type round trip
 - unsafe key rejection
 - size mismatch cleanup
 - cancelled context cleanup
+- MinIO/S3 config validation
+- MinIO/S3 unsafe key rejection before network calls
+- MinIO integration put/get/delete with `MM_CHAT_TEST_S3_*` environment
+- API smoke with Postgres + MinIO upload/download/delete
 
 ## Phase 6.2 Usage
 
@@ -72,3 +103,7 @@ Phase 6.2 now uses this interface from the file service: upload writes object
 bytes first, inserts Postgres metadata after SHA-256 is known, and removes the
 object if metadata insertion fails. Downloads and deletes always resolve the
 private object key from Postgres; browser responses never expose that key.
+
+Phase 6.4 does not change the file HTTP contract. Switching from local storage
+to MinIO/S3 is a deployment configuration change plus a metadata
+`storage_backend` value change for newly uploaded files.

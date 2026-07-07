@@ -20,7 +20,8 @@ then add MinIO/Redis/RAG only when their phase boundaries are ready.
 - Future Compose assets should stay isolated under `mm-chat/`, not overwrite the
   repository-root deployment files.
 - MinIO must remain private; the Go backend is the public file authorization
-  gateway.
+  gateway. Runtime config uses `STORAGE_BACKEND=minio|s3` plus `S3_*`
+  variables; do not use stale `OBJECTSTORE_DRIVER` / `FILE_MAX_BYTES` names.
 - MVP is `frontend -> Go backend -> Postgres -> provider stream`. Redis, MinIO,
   RAG, browser data import, and production backup automation are later phases.
 - Phase 4.5 runtime wiring keeps `DATABASE_URL` empty mode DB-disabled with
@@ -38,3 +39,6 @@ then add MinIO/Redis/RAG only when their phase boundaries are ready.
   `PROVIDER_TYPE=openai_compatible`,
   `PROVIDER_BASE_URL=<your OpenAI-compatible relay /v1 URL>`,
   `PROVIDER_MODEL=gpt-5.5`, and a local-only `PROVIDER_API_KEY`.
+- The current real object-store path supports `STORAGE_BACKEND=local`,
+  `minio`, or `s3`. Use `S3_BUCKET_AUTO_CREATE=false` in production and
+  provision the bucket/credentials outside the app release.
