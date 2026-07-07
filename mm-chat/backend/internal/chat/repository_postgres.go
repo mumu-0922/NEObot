@@ -474,6 +474,102 @@ func (r *PostgresRepository) FinalizeAssistantMessage(
 	return message, nil
 }
 
+func (r *PostgresRepository) CancelRun(
+	ctx context.Context,
+	runID string,
+	input CancelRunInput,
+) (Message, error) {
+	if err := r.requireDB(); err != nil {
+		return Message{}, err
+	}
+	runID = strings.TrimSpace(runID)
+	if !isUUID(runID) {
+		return Message{}, newValidationError("INVALID_RUN_ID", "run id must be a UUID")
+	}
+	metadata, err := marshalJSONObject(input.Metadata)
+	if err != nil {
+		return Message{}, err
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Message{}, fmt.Errorf("begin cancel run: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	if err := r.ensureDevUser(ctx, tx); err != nil {
+		return Message{}, err
+	}
+
+	target, err := findMessageByRunID(ctx, tx, runID, r.userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Message{}, ErrRunNotFound
+	}
+	if err != nil {
+		return Message{}, fmt.Errorf("query run for cancel: %w", err)
+	}
+	if err := lockConversationForUser(ctx, tx, target.ConversationID, r.userID); err != nil {
+		if errors.Is(err, ErrConversationNotFound) {
+			return Message{}, ErrRunNotFound
+		}
+		return Message{}, err
+	}
+
+	message, err := scanMessage(tx.QueryRowContext(
+		ctx,
+		cancelRunMessageSQL,
+		target.ID,
+		target.ConversationID,
+		string(metadata),
+	))
+	if err == nil {
+		if _, err := tx.ExecContext(
+			ctx,
+			`UPDATE conversations SET updated_at = now() WHERE id = $1 AND user_id = $2`,
+			message.ConversationID,
+			r.userID,
+		); err != nil {
+			return Message{}, fmt.Errorf("touch conversation after run cancel: %w", err)
+		}
+		if err := tx.Commit(); err != nil {
+			return Message{}, fmt.Errorf("commit cancel run: %w", err)
+		}
+		return message, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return Message{}, fmt.Errorf("cancel run: %w", err)
+	}
+
+	message, err = findMessageByIDInConversation(ctx, tx, target.ID, target.ConversationID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Message{}, ErrRunNotFound
+	}
+	if err != nil {
+		return Message{}, fmt.Errorf("query run after cancel miss: %w", err)
+	}
+	if message.Status != "cancelled" {
+		return Message{}, ErrRunNotCancellable
+	}
+
+	message, err = scanMessage(tx.QueryRowContext(
+		ctx,
+		mergeCancelledRunMetadataSQL,
+		target.ID,
+		target.ConversationID,
+		string(metadata),
+	))
+	if err != nil {
+		return Message{}, fmt.Errorf("merge cancelled run metadata: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return Message{}, fmt.Errorf("commit idempotent run cancel: %w", err)
+	}
+	return message, nil
+}
+
 func (r *PostgresRepository) requireDB() error {
 	if r == nil || r.db == nil {
 		return ErrDatabaseRequired
@@ -571,6 +667,24 @@ WHERE id = $1
 	}
 
 	return nil
+}
+
+func findMessageByRunID(
+	ctx context.Context,
+	tx *sql.Tx,
+	runID string,
+	userID string,
+) (Message, error) {
+	return scanMessage(tx.QueryRowContext(ctx, messageByRunIDSQL, runID, userID))
+}
+
+func findMessageByIDInConversation(
+	ctx context.Context,
+	tx *sql.Tx,
+	messageID string,
+	conversationID string,
+) (Message, error) {
+	return scanMessage(tx.QueryRowContext(ctx, messageByIDInConversationSQL, messageID, conversationID))
 }
 
 const messageSelectSQL = `
@@ -675,12 +789,16 @@ SET
   status = $1,
   content = $2,
   output_blocks = $3::jsonb,
-  metadata = $4::jsonb,
+  metadata = CASE
+    WHEN status = 'cancelled' AND $1 = 'cancelled' THEN metadata || $4::jsonb
+    ELSE $4::jsonb
+  END,
   completed_at = now(),
   updated_at = now()
 WHERE id = $5
   AND conversation_id = $6
   AND role = 'assistant'
+  AND NOT (status = 'cancelled' AND $1 <> 'cancelled')
   AND deleted_at IS NULL
 RETURNING
   id,
@@ -701,6 +819,129 @@ RETURNING
   updated_at,
   completed_at,
   deleted_at
+`
+
+const cancelRunMessageSQL = `
+UPDATE messages
+SET
+  status = 'cancelled',
+  metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb,
+  completed_at = COALESCE(completed_at, now()),
+  updated_at = now()
+WHERE id = $1
+  AND conversation_id = $2
+  AND role = 'assistant'
+  AND status = 'streaming'
+  AND deleted_at IS NULL
+RETURNING
+  id,
+  conversation_id,
+  user_id,
+  parent_message_id,
+  sequence_no,
+  role,
+  status,
+  content,
+  model_provider,
+  model_id,
+  provider_message_id,
+  idempotency_key,
+  output_blocks,
+  metadata,
+  created_at,
+  updated_at,
+  completed_at,
+  deleted_at
+`
+
+const mergeCancelledRunMetadataSQL = `
+UPDATE messages
+SET
+  metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb,
+  completed_at = COALESCE(completed_at, now()),
+  updated_at = now()
+WHERE id = $1
+  AND conversation_id = $2
+  AND role = 'assistant'
+  AND status = 'cancelled'
+  AND deleted_at IS NULL
+RETURNING
+  id,
+  conversation_id,
+  user_id,
+  parent_message_id,
+  sequence_no,
+  role,
+  status,
+  content,
+  model_provider,
+  model_id,
+  provider_message_id,
+  idempotency_key,
+  output_blocks,
+  metadata,
+  created_at,
+  updated_at,
+  completed_at,
+  deleted_at
+`
+
+const messageByRunIDSQL = `
+SELECT
+  m.id,
+  m.conversation_id,
+  m.user_id,
+  m.parent_message_id,
+  m.sequence_no,
+  m.role,
+  m.status,
+  m.content,
+  m.model_provider,
+  m.model_id,
+  m.provider_message_id,
+  m.idempotency_key,
+  m.output_blocks,
+  m.metadata,
+  m.created_at,
+  m.updated_at,
+  m.completed_at,
+  m.deleted_at
+FROM messages m
+JOIN conversations c ON c.id = m.conversation_id
+WHERE m.metadata ->> 'runId' = $1
+  AND m.role = 'assistant'
+  AND m.deleted_at IS NULL
+  AND c.user_id = $2
+  AND c.deleted_at IS NULL
+ORDER BY m.created_at DESC
+LIMIT 1
+`
+
+const messageByIDInConversationSQL = `
+SELECT
+  id,
+  conversation_id,
+  user_id,
+  parent_message_id,
+  sequence_no,
+  role,
+  status,
+  content,
+  model_provider,
+  model_id,
+  provider_message_id,
+  idempotency_key,
+  output_blocks,
+  metadata,
+  created_at,
+  updated_at,
+  completed_at,
+  deleted_at
+FROM messages
+WHERE id = $1
+  AND conversation_id = $2
+  AND role = 'assistant'
+  AND deleted_at IS NULL
 `
 
 func scanConversation(scanner rowScanner) (Conversation, error) {

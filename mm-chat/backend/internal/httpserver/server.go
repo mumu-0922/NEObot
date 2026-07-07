@@ -69,6 +69,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.HandleFunc("/v1/version", healthHandler.Version)
 	mux.Handle("/v1/chat/conversations", chatHandler)
 	mux.Handle("/v1/chat/conversations/", chatHandler)
+	mux.Handle("/v1/chat/runs/", chatHandler)
 	mux.HandleFunc("/", notFound)
 
 	return chain(mux, withRecover, withSecurityHeaders)

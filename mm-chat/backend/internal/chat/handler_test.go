@@ -15,6 +15,7 @@ import (
 const (
 	testConversationID = "11111111-1111-4111-8111-111111111111"
 	testMessageID      = "22222222-2222-4222-8222-222222222222"
+	testRunID          = "33333333-3333-4333-8333-333333333333"
 )
 
 func TestHandlerCreatesAndListsConversations(t *testing.T) {
@@ -274,6 +275,179 @@ func TestHandlerReturnsProviderRequiredForStreamWhenProviderIsNil(t *testing.T) 
 
 	assertStatus(t, rec, http.StatusServiceUnavailable)
 	assertErrorCode(t, rec, "PROVIDER_REQUIRED")
+}
+
+func TestHandlerCancelsStreamingRun(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "hello"),
+		fakeAssistantMessage("44444444-4444-4444-8444-444444444444", testConversationID, testRunID, "streaming"),
+	)
+	handler := NewHandler(NewService(repo))
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		"/v1/chat/runs/"+testRunID+"/cancel",
+		"",
+	)
+
+	assertStatus(t, rec, http.StatusOK)
+	var body cancelRunResponse
+	decodeBody(t, rec, &body)
+	if body.RunID != testRunID || body.Status != "cancelled" {
+		t.Fatalf("cancel response = %#v, want run cancelled", body)
+	}
+	messages := repo.messages[testConversationID]
+	if messages[1].Status != "cancelled" {
+		t.Fatalf("assistant status = %q, want cancelled", messages[1].Status)
+	}
+	if messages[1].Metadata["cancelledBy"] != "api" {
+		t.Fatalf("assistant metadata = %#v, want cancelledBy=api", messages[1].Metadata)
+	}
+}
+
+func TestHandlerCancelRunIsIdempotentForCancelledRun(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeAssistantMessage("44444444-4444-4444-8444-444444444444", testConversationID, testRunID, "cancelled"),
+	)
+	handler := NewHandler(NewService(repo))
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		"/v1/chat/runs/"+testRunID+"/cancel",
+		"",
+	)
+
+	assertStatus(t, rec, http.StatusOK)
+	var body cancelRunResponse
+	decodeBody(t, rec, &body)
+	if body.Status != "cancelled" || body.Message.Status != "cancelled" {
+		t.Fatalf("cancel response = %#v, want cancelled", body)
+	}
+	if body.Message.Metadata["cancelledBy"] != "api" {
+		t.Fatalf("cancel response metadata = %#v, want cancelledBy=api", body.Message.Metadata)
+	}
+}
+
+func TestHandlerCancelRunErrors(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeAssistantMessage("44444444-4444-4444-8444-444444444444", testConversationID, testRunID, "completed"),
+	)
+	handler := NewHandler(NewService(repo))
+
+	tests := []struct {
+		name       string
+		method     string
+		path       string
+		wantStatus int
+		wantCode   string
+	}{
+		{
+			name:       "invalid run id",
+			method:     http.MethodPost,
+			path:       "/v1/chat/runs/not-a-uuid/cancel",
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "INVALID_RUN_ID",
+		},
+		{
+			name:       "missing run",
+			method:     http.MethodPost,
+			path:       "/v1/chat/runs/55555555-5555-4555-8555-555555555555/cancel",
+			wantStatus: http.StatusNotFound,
+			wantCode:   "RUN_NOT_FOUND",
+		},
+		{
+			name:       "terminal run",
+			method:     http.MethodPost,
+			path:       "/v1/chat/runs/" + testRunID + "/cancel",
+			wantStatus: http.StatusConflict,
+			wantCode:   "RUN_NOT_CANCELLABLE",
+		},
+		{
+			name:       "method not allowed",
+			method:     http.MethodGet,
+			path:       "/v1/chat/runs/" + testRunID + "/cancel",
+			wantStatus: http.StatusMethodNotAllowed,
+			wantCode:   "METHOD_NOT_ALLOWED",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := performRequest(handler, tt.method, tt.path, "")
+			assertStatus(t, rec, tt.wantStatus)
+			assertErrorCode(t, rec, tt.wantCode)
+		})
+	}
+}
+
+func TestHandlerCancelRunStopsActiveStream(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "hello"),
+	)
+	provider := &blockingProvider{
+		started: make(chan ProviderRequest, 1),
+		release: make(chan struct{}),
+	}
+	handler := NewHandler(NewService(repo), WithProvider(provider))
+
+	streamDone := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		streamDone <- performRequest(
+			handler,
+			http.MethodPost,
+			conversationsPath+"/"+testConversationID+"/stream",
+			`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"blocking"},"idempotencyKey":"stream-key-active-cancel"}`,
+		)
+	}()
+
+	var providerRequest ProviderRequest
+	select {
+	case providerRequest = <-provider.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("provider did not start")
+	}
+
+	cancelRec := performRequest(
+		handler,
+		http.MethodPost,
+		"/v1/chat/runs/"+providerRequest.RunID+"/cancel",
+		"",
+	)
+	assertStatus(t, cancelRec, http.StatusOK)
+	close(provider.release)
+
+	var streamRec *httptest.ResponseRecorder
+	select {
+	case streamRec = <-streamDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("stream did not stop after cancel")
+	}
+
+	assertStreamStatus(t, streamRec, http.StatusOK)
+	if body := streamRec.Body.String(); !strings.Contains(body, "event: message.cancelled") {
+		t.Fatalf("stream body missing cancellation event; body=%s", body)
+	}
+	messages := repo.messages[testConversationID]
+	if len(messages) != 2 || messages[1].Status != "cancelled" {
+		t.Fatalf("messages after active cancel = %#v", messages)
+	}
+	if messages[1].Metadata["cancelledBy"] != "api" {
+		t.Fatalf("cancel metadata was overwritten: %#v", messages[1].Metadata)
+	}
 }
 
 func TestHandlerReturnsConflictForStreamIdempotencyReuse(t *testing.T) {
@@ -709,7 +883,16 @@ func (f *fakeRepository) FinalizeAssistantMessage(
 		message.Status = input.Status
 		message.Content = input.Content
 		message.OutputBlocks = input.OutputBlocks
-		message.Metadata = input.Metadata
+		if message.Status == "cancelled" && input.Status == "cancelled" {
+			if message.Metadata == nil {
+				message.Metadata = map[string]any{}
+			}
+			for key, value := range input.Metadata {
+				message.Metadata[key] = value
+			}
+		} else {
+			message.Metadata = input.Metadata
+		}
 		completedAt := testNow()
 		message.CompletedAt = &completedAt
 		message.UpdatedAt = completedAt
@@ -717,6 +900,46 @@ func (f *fakeRepository) FinalizeAssistantMessage(
 	}
 
 	return Message{}, newValidationError("INVALID_MESSAGE_ID", "assistant message not found")
+}
+
+func (f *fakeRepository) CancelRun(
+	_ context.Context,
+	runID string,
+	input CancelRunInput,
+) (Message, error) {
+	for conversationID := range f.messages {
+		for i := range f.messages[conversationID] {
+			message := &f.messages[conversationID][i]
+			if message.Role != "assistant" || message.Metadata["runId"] != runID {
+				continue
+			}
+			if message.Status == "cancelled" {
+				if message.Metadata == nil {
+					message.Metadata = map[string]any{}
+				}
+				for key, value := range input.Metadata {
+					message.Metadata[key] = value
+				}
+				return *message, nil
+			}
+			if message.Status != "streaming" {
+				return Message{}, ErrRunNotCancellable
+			}
+			message.Status = "cancelled"
+			if message.Metadata == nil {
+				message.Metadata = map[string]any{}
+			}
+			for key, value := range input.Metadata {
+				message.Metadata[key] = value
+			}
+			completedAt := testNow()
+			message.CompletedAt = &completedAt
+			message.UpdatedAt = completedAt
+			return *message, nil
+		}
+	}
+
+	return Message{}, ErrRunNotFound
 }
 
 func (f *fakeRepository) hasConversation(conversationID string) bool {
@@ -759,6 +982,16 @@ func fakeMessage(id string, conversationID string, sequenceNo int, role string, 
 	}
 }
 
+func fakeAssistantMessage(id string, conversationID string, runID string, status string) Message {
+	message := fakeMessage(id, conversationID, 1, "assistant", "")
+	message.Status = status
+	message.Metadata = map[string]any{"runId": runID}
+	if status == "streaming" {
+		message.CompletedAt = nil
+	}
+	return message
+}
+
 func testNow() time.Time {
 	return time.Date(2026, 7, 7, 12, 0, 0, 0, time.UTC)
 }
@@ -794,4 +1027,20 @@ type startupCancelledProvider struct{}
 
 func (p startupCancelledProvider) StreamChat(context.Context, ProviderRequest) (<-chan ProviderEvent, error) {
 	return nil, context.Canceled
+}
+
+type blockingProvider struct {
+	started chan ProviderRequest
+	release chan struct{}
+}
+
+func (p *blockingProvider) StreamChat(ctx context.Context, input ProviderRequest) (<-chan ProviderEvent, error) {
+	events := make(chan ProviderEvent)
+	p.started <- input
+	go func() {
+		defer close(events)
+		<-ctx.Done()
+		<-p.release
+	}()
+	return events, nil
 }

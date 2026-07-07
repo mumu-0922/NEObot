@@ -764,12 +764,17 @@ Backend files created or updated:
 
 ```text
 mm-chat/backend/internal/chat/provider.go
+mm-chat/backend/internal/chat/active_runs.go
 mm-chat/backend/internal/chat/errors.go
 mm-chat/backend/internal/chat/types.go
 mm-chat/backend/internal/chat/service.go
 mm-chat/backend/internal/chat/repository_postgres.go
 mm-chat/backend/internal/chat/handler.go
 mm-chat/backend/internal/chat/handler_test.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/httpserver/server_test.go
+mm-chat/backend/migrations/002_messages_run_id_index.up.sql
+mm-chat/backend/migrations/002_messages_run_id_index.down.sql
 mm-chat/backend/internal/httpserver/server.go
 ```
 
@@ -982,3 +987,208 @@ frontend integration, file attachments, tools/plugins, RAG, or auth.
 
 Commit and push Phase 5.3. Then implement the explicit cancellation endpoint
 before expanding provider features.
+
+## 2026-07-07 — Phase 5.4 Durable Run Cancellation Endpoint
+
+### Action
+
+Added the first backend cancellation endpoint for streaming assistant runs:
+
+```text
+POST /v1/chat/runs/{runId}/cancel
+```
+
+The endpoint validates `runId`, finds the assistant message by
+`messages.metadata.runId`, and marks a `streaming` assistant row as
+`cancelled`. Already cancelled runs return success idempotently; completed or
+failed runs return `409 RUN_NOT_CANCELLABLE`.
+
+### Evidence
+
+Backend files updated:
+
+```text
+mm-chat/backend/internal/chat/active_runs.go
+mm-chat/backend/internal/chat/errors.go
+mm-chat/backend/internal/chat/types.go
+mm-chat/backend/internal/chat/service.go
+mm-chat/backend/internal/chat/repository_postgres.go
+mm-chat/backend/internal/chat/handler.go
+mm-chat/backend/internal/chat/handler_test.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/httpserver/server_test.go
+mm-chat/backend/migrations/002_messages_run_id_index.up.sql
+mm-chat/backend/migrations/002_messages_run_id_index.down.sql
+```
+
+Docs updated:
+
+```text
+mm-chat/docs/contracts/README.md
+mm-chat/docs/contracts/chat-stream-api.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/persistence/postgres-schema.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+### Decision
+
+Keep Phase 5.4 cancellation narrow: it updates canonical Postgres state and
+interrupts in-flight provider streams inside the same API process via an active
+run registry. Redis cancellation flags remain Phase 7 work for cross-process
+and restart-safe cancellation. The repository prevents a later stream
+finalization from overwriting a row that has already reached `cancelled`.
+
+Cancel error semantics:
+
+```text
+400 INVALID_RUN_ID
+404 RUN_NOT_FOUND
+409 RUN_NOT_CANCELLABLE
+503 DATABASE_REQUIRED
+```
+
+### Verification
+
+Unit tests passed with Docker Go 1.22:
+
+```bash
+docker run --rm --user "$(id -u):$(id -g)" \
+  -v "$PWD/mm-chat/backend":/app -w /app \
+  -e GOCACHE=/tmp/go-cache -e GOMODCACHE=/tmp/go-mod-cache \
+  golang:1.22-alpine \
+  sh -lc '/usr/local/go/bin/gofmt -w $(find . -name "*.go" -print) && /usr/local/go/bin/go test ./...'
+```
+
+Postgres/API cancellation smoke passed:
+
+```text
+ready_status=200
+cancel_http_status=200
+idempotent_http_status=200
+terminal_http_status=409
+missing_http_status=404
+invalid_http_status=400
+db_status=cancelled:api
+run_id_index_exists=t
+```
+
+Covered behavior:
+
+```text
+streaming run -> 200 cancelled response and assistant row status=cancelled
+cancelled run -> 200 idempotent response
+completed run -> 409 RUN_NOT_CANCELLABLE
+missing run -> 404 RUN_NOT_FOUND
+invalid run id -> 400 INVALID_RUN_ID
+wrong method -> 405 METHOD_NOT_ALLOWED
+active stream cancel calls provider context cancel and emits message.cancelled
+outer httpserver mux routes /v1/chat/runs/{runId}/cancel
+002 migration creates idx_messages_assistant_run_id
+```
+
+### Boundary
+
+This phase does not add Redis-backed cancellation flags, provider request abort
+across processes, frontend wiring, run resume, durable run table, auth, or rate
+limiting.
+
+### Next Step
+
+Run final reviewer, commit, and push. Then move to Redis temporary state or
+frontend server-mode integration based on owner priority.
+
+## 2026-07-07 — Phase 5.4 Review Fix: Cancellation Lock Order
+
+### Action
+
+Fixed the reviewer-blocking Postgres deadlock risk in run cancellation.
+`CancelRun` now finds the run target, locks the parent conversation first, then
+updates the assistant message. This matches `FinalizeAssistantMessage` and avoids
+the previous message-before-conversation lock order.
+
+Also made already-cancelled runs merge cancel metadata so an API cancel cannot
+lose `cancelledBy=api` when the stream finalizer wins the race first.
+
+### Evidence
+
+Updated files:
+
+```text
+mm-chat/backend/internal/chat/repository_postgres.go
+mm-chat/backend/internal/chat/repository_postgres_test.go
+mm-chat/backend/internal/chat/handler_test.go
+mm-chat/docs/contracts/chat-stream-api.md
+mm-chat/docs/persistence/postgres-schema.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+### Verification
+
+Added Postgres integration coverage for:
+
+```text
+CancelRun waits on the conversation lock before taking the message lock
+already-cancelled CancelRun merges cancel metadata idempotently
+```
+
+Final Docker Go and Postgres smoke verification passed after the fix.
+
+```text
+go test ./...: passed
+TestPostgresCancelRunLocksConversationBeforeMessage: passed
+TestPostgresCancelRunMergesMetadataForAlreadyCancelledRun: passed
+ready_status=200
+cancel_http_status=200
+idempotent_http_status=200
+terminal_http_status=409
+missing_http_status=404
+invalid_http_status=400
+db_status=cancelled:api
+idempotent_metadata=cancelled:api
+run_id_index_exists=t
+```
+
+### Next Step
+
+Rerun unit tests, integration cancellation tests, final reviewer, then commit and
+push Phase 5.4.
+
+## 2026-07-07 — Phase 5.4 Final Review and Contract Sync
+
+### Action
+
+Ran final review after the cancellation lock-order fix. No blocking findings
+remained. Tightened the frontend API client contract so server-mode streaming
+requires a persisted `userMessageId` and does not accept direct `content` /
+`attachments` on `/stream`.
+
+### Verification
+
+Final reviewer result:
+
+```text
+Blocking findings: none
+Ship recommendation: ship
+```
+
+Local checks already passed after the lock-order fix:
+
+```text
+go test ./...: passed
+Postgres CancelRun lock-order integration: passed
+API cancellation smoke: passed
+```
+
+### Boundary
+
+No `.trellis/spec` file was updated because the owner constraint for this
+refactor is to keep implementation artifacts under `mm-chat/`. The executable
+API/DB contract is recorded in `mm-chat/docs/contracts/` and
+`mm-chat/docs/persistence/`.
+
+### Next Step
+
+Commit and push Phase 5.4, then continue with the next planned refactor slice.

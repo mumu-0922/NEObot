@@ -1,4 +1,4 @@
-# Phase 5.2/5.3 Chat Stream API Contract
+# Phase 5.2/5.4 Chat Stream API Contract
 
 ## 1. Purpose
 
@@ -12,8 +12,9 @@ POST /v1/chat/conversations/{id}/stream   -> streaming assistant message
 ```
 
 Phase 5.3 adds the first real provider adapter for OpenAI-compatible
-`/chat/completions` streaming APIs. Explicit cancel endpoints, Redis
-cancellation flags, files, tools, RAG, and auth remain later work.
+`/chat/completions` streaming APIs. Phase 5.4 adds the first durable cancel
+endpoint for streaming assistant rows. Redis cancellation flags, files, tools,
+RAG, and auth remain later work.
 
 ## 2. Endpoint
 
@@ -23,13 +24,29 @@ Accept: text/event-stream
 Content-Type: application/json
 ```
 
-Success response:
+Cancel endpoint:
+
+```http
+POST /v1/chat/runs/{runId}/cancel
+Content-Type: application/json
+```
+
+Stream success response:
 
 ```http
 HTTP/1.1 200 OK
 Content-Type: text/event-stream; charset=utf-8
 Cache-Control: no-cache
 X-Content-Type-Options: nosniff
+```
+
+Cancel success response:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"runId":"...","status":"cancelled","message":{"id":"...","status":"cancelled"}}
 ```
 
 ## 3. Request Body
@@ -114,6 +131,22 @@ Repository flow:
 
 `message.completed` must include the persisted final `ChatMessageDto`.
 
+Cancel flow:
+
+1. Validate `runId` as a UUID.
+2. Find the fixed development user's assistant message where
+   `metadata.runId == runId`.
+3. If the assistant message is `streaming`, mark it `cancelled`, set
+   `completed_at=now()`, and merge cancel metadata.
+4. If it is already `cancelled`, merge cancel metadata and return the message
+   (idempotent success).
+5. If it is `completed` or `failed`, return `409 RUN_NOT_CANCELLABLE`.
+
+The cancel endpoint updates durable state and interrupts in-flight provider
+requests inside the same API process. It does not yet interrupt streams across
+workers, processes, or restarts; Redis cancellation flags are reserved for
+Phase 7.
+
 ## 6. Error Contract
 
 Errors before the SSE response begins use the standard JSON envelope.
@@ -125,11 +158,14 @@ Errors before the SSE response begins use the standard JSON envelope.
 | `400` | `INVALID_USER_MESSAGE_ID` | `userMessageId` is missing, invalid, missing, or not a user message in the conversation. |
 | `400` | `MODEL_REF_REQUIRED` | `modelRef` is missing. |
 | `400` | `UNSUPPORTED_PROVIDER` | `modelRef.providerId` does not match the configured single provider. |
+| `400` | `INVALID_RUN_ID` | Cancel path `runId` is not a UUID. |
 | `400` | `IDEMPOTENCY_KEY_REQUIRED` | `idempotencyKey` is blank or missing. |
 | `400` | `VALIDATION_ERROR` | Unsupported stream fields such as `content` or `attachments`. |
 | `400` | `FORBIDDEN_MESSAGE_FIELD` | Server-managed message fields or identity hints are present. |
 | `404` | `CONVERSATION_NOT_FOUND` | Conversation is missing or not owned by the fixed dev user. |
+| `404` | `RUN_NOT_FOUND` | Cancel target run does not exist for the fixed dev user. |
 | `409` | `IDEMPOTENCY_CONFLICT` | Assistant stream key already exists for the conversation. |
+| `409` | `RUN_NOT_CANCELLABLE` | Cancel target is already completed or failed. |
 | `502` | `PROVIDER_ERROR` | Provider startup fails before SSE begins. |
 | `503` | `DATABASE_REQUIRED` | DB runtime wiring is disabled. |
 | `503` | `PROVIDER_REQUIRED` | No provider is configured for streaming. |
@@ -138,7 +174,40 @@ Errors before the SSE response begins use the standard JSON envelope.
 After SSE starts, provider or finalization failures are emitted as
 `message.error` frames with scrubbed error details.
 
-## 7. OpenAI-Compatible Provider Configuration
+## 7. Cancel Response
+
+Success response:
+
+```ts
+export interface CancelRunResponse {
+  runId: EntityId;
+  status: "cancelled";
+  message: ChatMessageDto;
+}
+```
+
+Example:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+```
+
+```json
+{
+  "runId": "33333333-3333-4333-8333-333333333333",
+  "status": "cancelled",
+  "message": {
+    "id": "...",
+    "conversationId": "...",
+    "role": "assistant",
+    "status": "cancelled",
+    "content": ""
+  }
+}
+```
+
+## 8. OpenAI-Compatible Provider Configuration
 
 The first real adapter uses the OpenAI-compatible Chat Completions stream
 shape:
@@ -181,9 +250,9 @@ The adapter reads `data:` SSE frames, emits `message.delta` for
 `choices[].delta.content`, emits `usage.updated` when a provider chunk includes
 `usage`, and stops on `data: [DONE]`.
 
-## 8. Non-Goals
+## 9. Non-Goals
 
 - Gemini and native OpenAI Responses API adapters.
-- Redis-backed cancellation state or `POST /v1/chat/runs/{runId}/cancel`.
+- Redis-backed cross-process cancellation state.
 - Streaming resume, cursor replay, or durable run records.
 - Tool calls, plugins, attachments, MinIO/S3, RAG, title generation, and auth.

@@ -1,10 +1,11 @@
 # Phase 4 Postgres Schema
 
 This document describes the actual Phase 4 migration contract created by
-`mm-chat/backend/migrations/001_initial_schema.*.sql` plus the Phase 4.5
-runtime-wiring boundary around Postgres connectivity, readiness, and migration
-execution. It is a schema and data boundary reference only; DB repositories and
-Compose files are separate later work.
+`mm-chat/backend/migrations/001_initial_schema.*.sql`, the Phase 5.4 run
+cancellation lookup index in `002_messages_run_id_index.*.sql`, plus the Phase
+4.5 runtime-wiring boundary around Postgres connectivity, readiness, and
+migration execution. It is a schema and data boundary reference only; DB
+repositories and Compose files are separate later work.
 
 ## 1. Scope
 
@@ -169,12 +170,16 @@ Indexes / constraints:
 - `idx_messages_user_id`
 - `idx_messages_parent_message_id`
 - `idx_messages_conversation_idempotency` unique partial index
+- `idx_messages_assistant_run_id` expression partial index on
+  `(metadata ->> 'runId')` for assistant-run cancellation lookup
 
 Boundary:
 
 - The backend should persist the user message before provider streaming begins.
 - Assistant messages can start as `streaming` and finish as `completed`,
   `failed`, or `cancelled`.
+- Streaming run identity is stored as `metadata.runId` on assistant messages
+  until a durable run table is introduced.
 - Store stable output fields and scrubbed metadata, not raw provider responses
   or secrets.
 
@@ -206,10 +211,14 @@ Allowed repository behavior:
   repository-owned `sequence_no`.
 - Create Phase 5.2 assistant streaming rows with `role = 'assistant'`,
   `status = 'streaming'`, `parent_message_id` pointing at an existing user
-  message in the same conversation, and an assistant-scoped idempotency key.
+  message in the same conversation, metadata containing the generated `runId`,
+  and an assistant-scoped idempotency key.
 - Finalize Phase 5.2 assistant rows to `completed`, `failed`, or `cancelled`
   after the provider stream terminates; finalization writes final content,
   output blocks, metadata, `completed_at`, and touches the conversation.
+- Cancel Phase 5.4 assistant runs by looking up `metadata.runId`; `streaming`
+  rows become `cancelled`, already `cancelled` rows return idempotently, and
+  `completed` / `failed` rows return `409 RUN_NOT_CANCELLABLE`.
 - Treat `conversations.idempotency_key` and `messages.idempotency_key` as
   optional retry guards. Phase 5.1 stores the key and returns
   `409 IDEMPOTENCY_CONFLICT` on duplicate non-empty keys when the violated
@@ -224,8 +233,8 @@ Explicitly outside the Phase 5.1 repository path:
 - `files` and `message_attachments`: attachments and object-byte storage are
   later work.
 - `audit_logs`: audit writes are not required for the first chat CRUD path.
-- Real provider adapters, provider secret resolution, explicit cancellation
-  endpoints, durable run records, assistant/tool tool-call rows, and stream
+- Additional provider adapters, provider secret encryption, durable run
+  records, assistant/tool tool-call rows, cross-process cancellation, and stream
   resume are later work.
 - Redis, MinIO/S3/local object storage, RAG indexes, browser import, and
   multi-user permissions are later work.

@@ -16,11 +16,13 @@ const (
 	maxRequestBodyBytes  = 1 << 20
 	conversationsPath    = "/v1/chat/conversations"
 	conversationPathBase = conversationsPath + "/"
+	runsPathBase         = "/v1/chat/runs/"
 )
 
 type Handler struct {
-	service  *Service
-	provider Provider
+	service    *Service
+	provider   Provider
+	activeRuns *activeRunRegistry
 }
 
 type HandlerOption func(*Handler)
@@ -114,6 +116,12 @@ type streamEvent struct {
 	Error          *ErrorBody      `json:"error,omitempty"`
 }
 
+type cancelRunResponse struct {
+	RunID   string         `json:"runId"`
+	Status  string         `json:"status"`
+	Message ChatMessageDTO `json:"message"`
+}
+
 func WithProvider(provider Provider) HandlerOption {
 	return func(h *Handler) {
 		if provider != nil {
@@ -127,7 +135,10 @@ func NewHandler(service *Service, opts ...HandlerOption) *Handler {
 		service = NewService(nil)
 	}
 
-	handler := &Handler{service: service}
+	handler := &Handler{
+		service:    service,
+		activeRuns: newActiveRunRegistry(),
+	}
 	for _, opt := range opts {
 		if opt != nil {
 			opt(handler)
@@ -143,6 +154,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handleConversations(w, r)
 	case strings.HasPrefix(r.URL.Path, conversationPathBase):
 		h.handleConversationChild(w, r)
+	case strings.HasPrefix(r.URL.Path, runsPathBase):
+		h.handleRunChild(w, r)
 	default:
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
 	}
@@ -157,6 +170,46 @@ func (h *Handler) handleConversations(w http.ResponseWriter, r *http.Request) {
 	default:
 		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
 	}
+}
+
+func (h *Handler) handleRunChild(w http.ResponseWriter, r *http.Request) {
+	runID, child, ok := parseRunChildPath(r.URL.Path)
+	if !ok {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
+		return
+	}
+	if child != "cancel" {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
+		return
+	}
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, http.MethodPost)
+		return
+	}
+
+	h.cancelRun(w, r, runID)
+}
+
+func (h *Handler) cancelRun(w http.ResponseWriter, r *http.Request, runID string) {
+	h.activeRuns.cancel(runID)
+
+	message, err := h.service.CancelRun(r.Context(), runID, CancelRunInput{
+		Metadata: map[string]any{
+			"runId":       runID,
+			"cancelledBy": "api",
+		},
+	})
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	h.activeRuns.cancel(runID)
+
+	writeJSON(w, http.StatusOK, cancelRunResponse{
+		RunID:   runID,
+		Status:  message.Status,
+		Message: newMessageDTO(message),
+	})
 }
 
 func (h *Handler) handleConversationChild(w http.ResponseWriter, r *http.Request) {
@@ -381,7 +434,12 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	events, err := h.provider.StreamChat(r.Context(), ProviderRequest{
+	streamCtx, streamCancel := context.WithCancel(r.Context())
+	unregisterRun := h.activeRuns.register(runID, streamCancel)
+	defer unregisterRun()
+	defer streamCancel()
+
+	events, err := h.provider.StreamChat(streamCtx, ProviderRequest{
 		RunID:              runID,
 		ConversationID:     conversationID,
 		UserMessageID:      userMessage.ID,
@@ -392,7 +450,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		Metadata:           request.Metadata,
 	})
 	if err != nil {
-		if r.Context().Err() != nil || errors.Is(err, context.Canceled) {
+		if streamCtx.Err() != nil || r.Context().Err() != nil || errors.Is(err, context.Canceled) {
 			h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 				Status:   "cancelled",
 				Metadata: map[string]any{"runId": runID},
@@ -433,6 +491,24 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	var content strings.Builder
 	for providerEvent := range events {
 		if providerEvent.Error != nil {
+			if streamCtx.Err() != nil {
+				sequence++
+				_ = writeSSEEvent(w, "message.cancelled", streamEvent{
+					Type:           "message.cancelled",
+					RunID:          runID,
+					ConversationID: conversationID,
+					MessageID:      assistantMessage.ID,
+					Sequence:       sequence,
+					CreatedAt:      formatTime(time.Now()),
+				})
+				h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
+					Status:   "cancelled",
+					Content:  content.String(),
+					Metadata: map[string]any{"runId": runID},
+				})
+				flusher.Flush()
+				return
+			}
 			sequence++
 			_ = writeSSEEvent(w, "message.error", streamEvent{
 				Type:           "message.error",
@@ -487,7 +563,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		}
 	}
 
-	if err := r.Context().Err(); err != nil {
+	if err := streamCtx.Err(); err != nil {
 		sequence++
 		_ = writeSSEEvent(w, "message.cancelled", streamEvent{
 			Type:           "message.cancelled",
@@ -552,6 +628,16 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 
 func parseConversationChildPath(path string) (string, string, bool) {
 	remainder := strings.TrimPrefix(path, conversationPathBase)
+	parts := strings.Split(remainder, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", false
+	}
+
+	return parts[0], parts[1], true
+}
+
+func parseRunChildPath(path string) (string, string, bool) {
+	remainder := strings.TrimPrefix(path, runsPathBase)
 	parts := strings.Split(remainder, "/")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return "", "", false
@@ -640,6 +726,12 @@ func serviceErrorFor(err error) (int, ErrorBody) {
 	}
 	if errors.Is(err, ErrIdempotencyConflict) {
 		return http.StatusConflict, ErrorBody{Code: "IDEMPOTENCY_CONFLICT", Message: "idempotency key already exists"}
+	}
+	if errors.Is(err, ErrRunNotFound) {
+		return http.StatusNotFound, ErrorBody{Code: "RUN_NOT_FOUND", Message: "run not found"}
+	}
+	if errors.Is(err, ErrRunNotCancellable) {
+		return http.StatusConflict, ErrorBody{Code: "RUN_NOT_CANCELLABLE", Message: "run is not cancellable"}
 	}
 
 	var validationError ValidationError

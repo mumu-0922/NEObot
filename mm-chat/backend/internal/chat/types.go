@@ -15,6 +15,7 @@ type Repository interface {
 	CreateMessage(ctx context.Context, conversationID string, input CreateMessageInput) (Message, error)
 	CreateAssistantMessage(ctx context.Context, conversationID string, input CreateAssistantMessageInput) (Message, error)
 	FinalizeAssistantMessage(ctx context.Context, conversationID string, messageID string, input FinalizeAssistantMessageInput) (Message, error)
+	CancelRun(ctx context.Context, runID string, input CancelRunInput) (Message, error)
 }
 
 type ModelRef struct {
@@ -71,6 +72,10 @@ type FinalizeAssistantMessageInput struct {
 	Content      string
 	OutputBlocks []any
 	Metadata     map[string]any
+}
+
+type CancelRunInput struct {
+	Metadata map[string]any
 }
 
 type Message struct {

@@ -78,8 +78,10 @@ Update this file whenever a phase or task is completed. Every `[x]` entry must h
 - [x] Add first real provider adapter.
 - [x] Add conversation/message CRUD endpoints.
 - [x] Add SSE streaming endpoint.
-- [ ] Add cancellation endpoint.
+- [x] Add cancellation endpoint.
 - [x] Persist assistant response after stream completion.
+- [x] Verify cancellation uses conversation-before-message lock order.
+- [x] Verify idempotent cancellation preserves cancel metadata.
 
 ## Phase 6 — File Storage with MinIO
 

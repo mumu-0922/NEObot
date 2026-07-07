@@ -174,6 +174,25 @@ func (s *Service) FinalizeAssistantMessage(
 	return s.repo.FinalizeAssistantMessage(ctx, conversationID, messageID, input)
 }
 
+func (s *Service) CancelRun(
+	ctx context.Context,
+	runID string,
+	input CancelRunInput,
+) (Message, error) {
+	if err := s.requireRepository(); err != nil {
+		return Message{}, err
+	}
+	runID = strings.TrimSpace(runID)
+	if !isUUID(runID) {
+		return Message{}, newValidationError("INVALID_RUN_ID", "run id must be a UUID")
+	}
+	if input.Metadata == nil {
+		input.Metadata = map[string]any{}
+	}
+
+	return s.repo.CancelRun(ctx, runID, input)
+}
+
 func (s *Service) requireRepository() error {
 	if s == nil || s.repo == nil {
 		return ErrDatabaseRequired

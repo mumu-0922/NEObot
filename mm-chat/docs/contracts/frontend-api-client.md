@@ -320,7 +320,7 @@ export interface ChatApi {
   listMessages(conversationId: EntityId, input?: ListMessagesInput): Promise<ApiPage<ChatMessageDto>>;
   appendUserMessage(conversationId: EntityId, input: AppendUserMessageInput): Promise<ChatMessageDto>;
   streamAssistantMessage(input: StreamAssistantMessageInput, handlers: ChatStreamHandlers): Promise<ChatRunResult>;
-  cancelRun(runId: EntityId): Promise<void>;
+  cancelRun(runId: EntityId): Promise<CancelRunResult>;
 
   generateTitle(input: GenerateTitleInput): Promise<{ title: string }>;
 }
@@ -367,9 +367,7 @@ export interface AppendUserMessageInput {
 
 export interface StreamAssistantMessageInput {
   conversationId: EntityId;
-  userMessageId?: EntityId;
-  content?: string;
-  attachments?: AttachmentRef[];
+  userMessageId: EntityId;
   modelRef: ModelRef;
   config?: ConversationConfig & { temperature?: number };
   systemInstruction?: string;
@@ -385,7 +383,8 @@ export interface GenerateTitleInput {
 Rules:
 
 - `appendUserMessage` persists a user message without starting generation.
-- `streamAssistantMessage` may append the user message and stream in one request if `userMessageId` is absent.
+- Server-mode `streamAssistantMessage` requires a persisted `userMessageId`; callers must first use `appendUserMessage` for new user text.
+- Local mode may internally keep its existing one-step send behavior, but the server adapter must expose the two-step contract.
 - `idempotencyKey` is required at the contract boundary. If a caller does not provide one, the adapter must generate it before making a server request.
 - Local adapter may ignore pagination initially but must keep the method shape.
 
@@ -401,7 +400,7 @@ Rules:
 | `listMessages` | `GET /v1/chat/conversations/:id/messages` | Cursor pagination |
 | `appendUserMessage` | `POST /v1/chat/conversations/:id/messages` | Role=user |
 | `streamAssistantMessage` | `POST /v1/chat/conversations/:id/stream` | SSE response |
-| `cancelRun` | `POST /v1/chat/runs/:runId/cancel` | Redis cancellation flag later |
+| `cancelRun` | `POST /v1/chat/runs/:runId/cancel` | Durable cancellation now; Redis flag later |
 | `generateTitle` | `POST /v1/chat/conversations/:id/title` | Later helper; not first MVP |
 
 ## 9. Streaming Contract
@@ -567,6 +566,12 @@ export interface ChatRunResult {
   messageId?: EntityId;
   status: "completed" | "cancelled" | "failed";
   finalMessage?: ChatMessageDto;
+}
+
+export interface CancelRunResult {
+  runId: EntityId;
+  status: "cancelled";
+  message: ChatMessageDto;
 }
 ```
 
