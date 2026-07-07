@@ -13,6 +13,8 @@ const (
 	DefaultDBMaxOpenConns    = 10
 	DefaultDBMaxIdleConns    = 5
 	DefaultDBConnMaxLifetime = 30 * time.Minute
+	DefaultRedisKeyPrefix    = "mm-chat"
+	DefaultRedisRunCancelTTL = 10 * time.Minute
 	DefaultProviderTimeout   = 2 * time.Minute
 	DefaultStorageBackend    = "local"
 	DefaultLocalStorageDir   = "./data/files"
@@ -25,6 +27,9 @@ const (
 	EnvDBMaxOpenConns     = "DB_MAX_OPEN_CONNS"
 	EnvDBMaxIdleConns     = "DB_MAX_IDLE_CONNS"
 	EnvDBConnMaxLifetime  = "DB_CONN_MAX_LIFETIME"
+	EnvRedisURL           = "REDIS_URL"
+	EnvRedisKeyPrefix     = "REDIS_KEY_PREFIX"
+	EnvRedisRunCancelTTL  = "REDIS_RUN_CANCEL_TTL"
 	EnvProviderType       = "PROVIDER_TYPE"
 	EnvProviderBaseURL    = "PROVIDER_BASE_URL"
 	EnvProviderModel      = "PROVIDER_MODEL"
@@ -53,8 +58,18 @@ type Config struct {
 	DBMaxIdleConns    int
 	DBConnMaxLifetime time.Duration
 
+	Redis RedisConfig
+
 	Provider ProviderConfig
 	Storage  StorageConfig
+}
+
+// RedisConfig contains non-authoritative temporary-state settings. Redis must
+// not store canonical conversations, messages, files, or provider secrets.
+type RedisConfig struct {
+	URL          string
+	KeyPrefix    string
+	RunCancelTTL time.Duration
 }
 
 // ProviderConfig contains outbound model-provider settings. Secrets must never
@@ -105,6 +120,12 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 		DBMaxOpenConns:    intEnvOrDefault(lookup, EnvDBMaxOpenConns, DefaultDBMaxOpenConns),
 		DBMaxIdleConns:    intEnvOrDefault(lookup, EnvDBMaxIdleConns, DefaultDBMaxIdleConns),
 		DBConnMaxLifetime: durationEnvOrDefault(lookup, EnvDBConnMaxLifetime, DefaultDBConnMaxLifetime),
+
+		Redis: RedisConfig{
+			URL:          optionalEnv(lookup, EnvRedisURL),
+			KeyPrefix:    envOrDefault(lookup, EnvRedisKeyPrefix, DefaultRedisKeyPrefix),
+			RunCancelTTL: durationEnvOrDefault(lookup, EnvRedisRunCancelTTL, DefaultRedisRunCancelTTL),
+		},
 
 		Provider: ProviderConfig{
 			Type:    optionalEnv(lookup, EnvProviderType),

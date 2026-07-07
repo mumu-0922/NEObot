@@ -97,11 +97,11 @@ Update this file whenever a phase or task is completed. Every `[x]` entry must h
 
 ## Phase 7 — Redis Temporary State
 
-- [ ] Add Redis container plan.
+- [x] Add Redis container plan.
 - [ ] Add rate limit middleware.
 - [ ] Add session cache integration.
-- [ ] Add stream cancellation flag storage.
-- [ ] Verify app survives Redis flush for non-temporary data.
+- [x] Add stream cancellation flag storage.
+- [x] Verify app survives Redis flush for non-temporary data.
 
 ## Phase 8 — Browser Data Import
 

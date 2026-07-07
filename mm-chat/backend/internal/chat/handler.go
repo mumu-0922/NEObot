@@ -20,9 +20,10 @@ const (
 )
 
 type Handler struct {
-	service    *Service
-	provider   Provider
-	activeRuns *activeRunRegistry
+	service          *Service
+	provider         Provider
+	activeRuns       *activeRunRegistry
+	cancellationRuns RunCancellationStore
 }
 
 type HandlerOption func(*Handler)
@@ -143,6 +144,12 @@ func WithProvider(provider Provider) HandlerOption {
 	}
 }
 
+func WithRunCancellationStore(store RunCancellationStore) HandlerOption {
+	return func(h *Handler) {
+		h.cancellationRuns = store
+	}
+}
+
 func NewHandler(service *Service, opts ...HandlerOption) *Handler {
 	if service == nil {
 		service = NewService(nil)
@@ -204,8 +211,6 @@ func (h *Handler) handleRunChild(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) cancelRun(w http.ResponseWriter, r *http.Request, runID string) {
-	h.activeRuns.cancel(runID)
-
 	message, err := h.service.CancelRun(r.Context(), runID, CancelRunInput{
 		Metadata: map[string]any{
 			"runId":       runID,
@@ -217,6 +222,7 @@ func (h *Handler) cancelRun(w http.ResponseWriter, r *http.Request, runID string
 		return
 	}
 	h.activeRuns.cancel(runID)
+	h.markRunCancelled(context.Background(), runID)
 
 	writeJSON(w, http.StatusOK, cancelRunResponse{
 		RunID:   runID,
@@ -450,7 +456,10 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 
 	streamCtx, streamCancel := context.WithCancel(r.Context())
 	unregisterRun := h.activeRuns.register(runID, streamCancel)
+	stopCancellationWatch := watchRunCancellation(streamCtx, h.cancellationRuns, runID, streamCancel)
 	defer unregisterRun()
+	defer h.clearRunCancelled(context.Background(), runID)
+	defer stopCancellationWatch()
 	defer streamCancel()
 
 	events, err := h.provider.StreamChat(streamCtx, ProviderRequest{
@@ -577,7 +586,8 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		}
 	}
 
-	if err := streamCtx.Err(); err != nil {
+	if streamCtx.Err() != nil || h.isRunCancelled(context.Background(), runID) {
+		streamCancel()
 		sequence++
 		_ = writeSSEEvent(w, "message.cancelled", streamEvent{
 			Type:           "message.cancelled",
@@ -890,6 +900,28 @@ func (h *Handler) cancelAssistantAfterWriteError(
 
 func validationField(message string) fieldViolation {
 	return fieldViolation{Code: "VALIDATION_ERROR", Message: message}
+}
+
+func (h *Handler) markRunCancelled(ctx context.Context, runID string) {
+	if h == nil || h.cancellationRuns == nil || !isUUID(strings.TrimSpace(runID)) {
+		return
+	}
+	_ = h.cancellationRuns.MarkRunCancelled(ctx, runID)
+}
+
+func (h *Handler) clearRunCancelled(ctx context.Context, runID string) {
+	if h == nil || h.cancellationRuns == nil || !isUUID(strings.TrimSpace(runID)) {
+		return
+	}
+	_ = h.cancellationRuns.ClearRunCancelled(ctx, runID)
+}
+
+func (h *Handler) isRunCancelled(ctx context.Context, runID string) bool {
+	if h == nil || h.cancellationRuns == nil || !isUUID(strings.TrimSpace(runID)) {
+		return false
+	}
+	cancelled, err := h.cancellationRuns.IsRunCancelled(ctx, runID)
+	return err == nil && cancelled
 }
 
 func newConversationDTO(conversation Conversation) ConversationDTO {

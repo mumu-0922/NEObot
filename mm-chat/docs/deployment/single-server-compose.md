@@ -201,6 +201,8 @@ DB_MAX_OPEN_CONNS=10
 DB_MAX_IDLE_CONNS=5
 DB_CONN_MAX_LIFETIME=30m
 REDIS_URL=redis://:<password>@redis:6379/0
+REDIS_KEY_PREFIX=mm-chat
+REDIS_RUN_CANCEL_TTL=10m
 STORAGE_BACKEND=minio
 S3_ENDPOINT=http://minio:9000
 S3_BUCKET=neo-chat-files
@@ -226,7 +228,13 @@ POSTGRES_PASSWORD=<secret>
 
 ```env
 REDIS_PASSWORD=<secret>
+REDIS_KEY_PREFIX=mm-chat
+REDIS_RUN_CANCEL_TTL=10m
 ```
+
+`REDIS_URL` belongs to the backend env and should point at the private Redis
+service, for example `redis://:<password>@redis:6379/0`. Redis stores temporary
+flags only; it is not part of the canonical backup set.
 
 ### MinIO
 
@@ -261,7 +269,8 @@ Rules:
 - Postgres remains the source of truth for structured records.
 - MinIO stores file bytes; Postgres stores ownership, metadata, hash, size, MIME,
   and object key.
-- Redis must not contain canonical conversations, messages, or files.
+- Redis must not contain canonical conversations, messages, files, or provider
+  secrets. Current usage is stream cancellation flags only.
 
 ## 8. Backup Boundary
 

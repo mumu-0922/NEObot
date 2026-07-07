@@ -1,12 +1,38 @@
 package main
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/storage"
 )
+
+func TestNewRedisStateDisabledWhenURLBlank(t *testing.T) {
+	client, store, err := newRedisState(context.Background(), config.Config{})
+	if err != nil {
+		t.Fatalf("newRedisState() error = %v", err)
+	}
+	if client != nil || store != nil {
+		t.Fatalf("newRedisState() = %#v/%#v, want nil client and store", client, store)
+	}
+}
+
+func TestNewRedisStateRejectsInvalidURLWithoutSecretLeak(t *testing.T) {
+	secret := "super-secret-password"
+	_, _, err := newRedisState(context.Background(), config.Config{
+		Redis: config.RedisConfig{
+			URL: "redis://:" + secret + "@[::1",
+		},
+	})
+	if err == nil {
+		t.Fatal("newRedisState() error = nil, want parse error")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("newRedisState() error leaks secret: %v", err)
+	}
+}
 
 func TestNewObjectStoreCreatesLocalStoreByDefault(t *testing.T) {
 	store, err := newObjectStore(config.Config{

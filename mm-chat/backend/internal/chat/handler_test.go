@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -328,7 +329,8 @@ func TestHandlerCancelsStreamingRun(t *testing.T) {
 		fakeMessage(testMessageID, testConversationID, 0, "user", "hello"),
 		fakeAssistantMessage("44444444-4444-4444-8444-444444444444", testConversationID, testRunID, "streaming"),
 	)
-	handler := NewHandler(NewService(repo))
+	cancelStore := newFakeRunCancellationStore()
+	handler := NewHandler(NewService(repo), WithRunCancellationStore(cancelStore))
 
 	rec := performRequest(
 		handler,
@@ -349,6 +351,9 @@ func TestHandlerCancelsStreamingRun(t *testing.T) {
 	}
 	if messages[1].Metadata["cancelledBy"] != "api" {
 		t.Fatalf("assistant metadata = %#v, want cancelledBy=api", messages[1].Metadata)
+	}
+	if !cancelStore.isMarked(testRunID) {
+		t.Fatal("cancellation store flag was not marked after durable cancel")
 	}
 }
 
@@ -434,6 +439,92 @@ func TestHandlerCancelRunErrors(t *testing.T) {
 	}
 }
 
+func TestHandlerCancelRunDoesNotMarkStoreWhenDurableCancelFails(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeAssistantMessage("44444444-4444-4444-8444-444444444444", testConversationID, testRunID, "completed"),
+	)
+	cancelStore := newFakeRunCancellationStore()
+	handler := NewHandler(NewService(repo), WithRunCancellationStore(cancelStore))
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		"/v1/chat/runs/"+testRunID+"/cancel",
+		"",
+	)
+
+	assertStatus(t, rec, http.StatusConflict)
+	assertErrorCode(t, rec, "RUN_NOT_CANCELLABLE")
+	if cancelStore.isMarked(testRunID) {
+		t.Fatal("cancellation store flag was marked even though durable cancel failed")
+	}
+}
+
+func TestHandlerCancelRunDoesNotStopActiveStreamWhenDurableCancelFails(t *testing.T) {
+	baseRepo := newFakeRepository()
+	baseRepo.conversations = append(baseRepo.conversations, fakeConversation(testConversationID, "First", 0))
+	baseRepo.messages[testConversationID] = append(
+		baseRepo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "hello"),
+	)
+	repo := &cancelFailRepository{
+		fakeRepository: baseRepo,
+		err:            ErrRunNotCancellable,
+	}
+	provider := &cancellationProbeProvider{
+		started:   make(chan ProviderRequest, 1),
+		cancelled: make(chan struct{}),
+		release:   make(chan struct{}),
+	}
+	releaseProvider := sync.OnceFunc(func() {
+		close(provider.release)
+	})
+	defer releaseProvider()
+	handler := NewHandler(NewService(repo), WithProvider(provider))
+
+	streamDone := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		streamDone <- performRequest(
+			handler,
+			http.MethodPost,
+			conversationsPath+"/"+testConversationID+"/stream",
+			`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"blocking"},"idempotencyKey":"stream-key-failed-cancel"}`,
+		)
+	}()
+
+	var providerRequest ProviderRequest
+	select {
+	case providerRequest = <-provider.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("provider did not start")
+	}
+
+	cancelRec := performRequest(
+		handler,
+		http.MethodPost,
+		"/v1/chat/runs/"+providerRequest.RunID+"/cancel",
+		"",
+	)
+	assertStatus(t, cancelRec, http.StatusConflict)
+	assertErrorCode(t, cancelRec, "RUN_NOT_CANCELLABLE")
+
+	select {
+	case <-provider.cancelled:
+		t.Fatal("provider context was cancelled before durable cancel succeeded")
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	releaseProvider()
+	select {
+	case <-streamDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("stream did not finish after provider release")
+	}
+}
+
 func TestHandlerCancelRunStopsActiveStream(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
@@ -490,6 +581,66 @@ func TestHandlerCancelRunStopsActiveStream(t *testing.T) {
 	}
 	if messages[1].Metadata["cancelledBy"] != "api" {
 		t.Fatalf("cancel metadata was overwritten: %#v", messages[1].Metadata)
+	}
+}
+
+func TestHandlerStopsActiveStreamFromCancellationStore(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "hello"),
+	)
+	provider := &blockingProvider{
+		started: make(chan ProviderRequest, 1),
+		release: make(chan struct{}),
+	}
+	cancelStore := newFakeRunCancellationStore()
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithRunCancellationStore(cancelStore),
+	)
+
+	streamDone := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		streamDone <- performRequest(
+			handler,
+			http.MethodPost,
+			conversationsPath+"/"+testConversationID+"/stream",
+			`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"blocking"},"idempotencyKey":"stream-key-redis-cancel"}`,
+		)
+	}()
+
+	var providerRequest ProviderRequest
+	select {
+	case providerRequest = <-provider.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("provider did not start")
+	}
+
+	if err := cancelStore.MarkRunCancelled(context.Background(), providerRequest.RunID); err != nil {
+		t.Fatalf("MarkRunCancelled() error = %v", err)
+	}
+	close(provider.release)
+
+	var streamRec *httptest.ResponseRecorder
+	select {
+	case streamRec = <-streamDone:
+	case <-time.After(3 * time.Second):
+		t.Fatal("stream did not stop after cancellation store flag")
+	}
+
+	assertStreamStatus(t, streamRec, http.StatusOK)
+	if body := streamRec.Body.String(); !strings.Contains(body, "event: message.cancelled") {
+		t.Fatalf("stream body missing cancellation event; body=%s", body)
+	}
+	messages := repo.messages[testConversationID]
+	if len(messages) != 2 || messages[1].Status != "cancelled" {
+		t.Fatalf("messages after cancellation store flag = %#v", messages)
+	}
+	if cancelStore.isMarked(providerRequest.RunID) {
+		t.Fatal("cancellation store flag was not cleared after stream exit")
 	}
 }
 
@@ -818,6 +969,19 @@ func decodeBody(t *testing.T, rec *httptest.ResponseRecorder, destination any) {
 type fakeRepository struct {
 	conversations []Conversation
 	messages      map[string][]Message
+}
+
+type cancelFailRepository struct {
+	*fakeRepository
+	err error
+}
+
+func (r *cancelFailRepository) CancelRun(
+	context.Context,
+	string,
+	CancelRunInput,
+) (Message, error) {
+	return Message{}, r.err
 }
 
 func newFakeRepository() *fakeRepository {
@@ -1149,4 +1313,60 @@ func (p *blockingProvider) StreamChat(ctx context.Context, input ProviderRequest
 		<-p.release
 	}()
 	return events, nil
+}
+
+type cancellationProbeProvider struct {
+	started   chan ProviderRequest
+	cancelled chan struct{}
+	release   chan struct{}
+}
+
+func (p *cancellationProbeProvider) StreamChat(ctx context.Context, input ProviderRequest) (<-chan ProviderEvent, error) {
+	events := make(chan ProviderEvent)
+	p.started <- input
+	go func() {
+		defer close(events)
+		select {
+		case <-ctx.Done():
+			close(p.cancelled)
+			<-p.release
+		case <-p.release:
+		}
+	}()
+	return events, nil
+}
+
+type fakeRunCancellationStore struct {
+	mu        sync.Mutex
+	cancelled map[string]bool
+}
+
+func newFakeRunCancellationStore() *fakeRunCancellationStore {
+	return &fakeRunCancellationStore{cancelled: map[string]bool{}}
+}
+
+func (s *fakeRunCancellationStore) MarkRunCancelled(_ context.Context, runID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cancelled[runID] = true
+	return nil
+}
+
+func (s *fakeRunCancellationStore) IsRunCancelled(_ context.Context, runID string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cancelled[runID], nil
+}
+
+func (s *fakeRunCancellationStore) ClearRunCancelled(_ context.Context, runID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.cancelled, runID)
+	return nil
+}
+
+func (s *fakeRunCancellationStore) isMarked(runID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cancelled[runID]
 }

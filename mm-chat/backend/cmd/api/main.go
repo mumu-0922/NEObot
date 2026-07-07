@@ -17,11 +17,13 @@ import (
 	"neo-chat/mm-chat/backend/internal/database"
 	"neo-chat/mm-chat/backend/internal/files"
 	"neo-chat/mm-chat/backend/internal/httpserver"
+	"neo-chat/mm-chat/backend/internal/redisstate"
 	"neo-chat/mm-chat/backend/internal/storage"
 )
 
 const (
 	databaseOpenTimeout = 5 * time.Second
+	redisOpenTimeout    = 5 * time.Second
 	storageOpenTimeout  = 10 * time.Second
 	shutdownTimeout     = 10 * time.Second
 )
@@ -36,6 +38,14 @@ func main() {
 		log.Fatalf("mm-chat database open failed: %v", err)
 	}
 
+	redisCtx, redisCancel := context.WithTimeout(context.Background(), redisOpenTimeout)
+	redisClient, runCancellationStore, err := newRedisState(redisCtx, cfg)
+	redisCancel()
+	if err != nil {
+		_ = db.Close()
+		log.Fatalf("mm-chat redis open failed: %v", err)
+	}
+
 	var chatRepo chat.Repository
 	var fileRepo files.Repository
 	if sqlDB := db.SQL(); sqlDB != nil {
@@ -45,6 +55,7 @@ func main() {
 
 	chatProvider, err := newChatProvider(cfg)
 	if err != nil {
+		_ = redisClient.Close()
 		_ = db.Close()
 		log.Fatalf("mm-chat provider config failed: %v", err)
 	}
@@ -54,6 +65,7 @@ func main() {
 
 	objectStore, err := newObjectStore(cfg)
 	if err != nil {
+		_ = redisClient.Close()
 		_ = db.Close()
 		log.Fatalf("mm-chat storage config failed: %v", err)
 	}
@@ -63,6 +75,7 @@ func main() {
 		httpserver.WithReadyChecker(db),
 		httpserver.WithChatRepository(chatRepo),
 		httpserver.WithChatProvider(chatProvider),
+		httpserver.WithRunCancellationStore(runCancellationStore),
 		httpserver.WithFileRepository(fileRepo),
 		httpserver.WithObjectStore(objectStore),
 		httpserver.WithMaxUploadBytes(cfg.Storage.MaxUploadBytes),
@@ -81,6 +94,7 @@ func main() {
 
 	select {
 	case err := <-errorsCh:
+		_ = redisClient.Close()
 		_ = db.Close()
 		log.Fatalf("mm-chat api failed: %v", err)
 	case sig := <-stopCh:
@@ -91,12 +105,28 @@ func main() {
 	defer cancel()
 
 	if err := server.Shutdown(ctx); err != nil {
+		_ = redisClient.Close()
 		_ = db.Close()
 		log.Fatalf("mm-chat api shutdown failed: %v", err)
+	}
+	if err := redisClient.Close(); err != nil {
+		log.Printf("mm-chat redis close failed: %v", err)
 	}
 	if err := db.Close(); err != nil {
 		log.Printf("mm-chat database close failed: %v", err)
 	}
+}
+
+func newRedisState(ctx context.Context, cfg config.Config) (*redisstate.Client, chat.RunCancellationStore, error) {
+	client, err := redisstate.Open(ctx, cfg.Redis)
+	if err != nil {
+		return nil, nil, err
+	}
+	if client == nil {
+		return nil, nil, nil
+	}
+
+	return client, client.RunCancellationStore(cfg.Redis.RunCancelTTL), nil
 }
 
 func newObjectStore(cfg config.Config) (storage.ObjectStore, error) {

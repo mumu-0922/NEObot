@@ -1512,3 +1512,88 @@ git diff --check -- mm-chat: passed
 ### Next Step
 
 Commit and push Phase 6.4.
+
+## 2026-07-08 — Phase 7 Redis Temporary Cancellation Flags
+
+### Action
+
+Added Redis as a non-authoritative temporary-state dependency for stream
+cancellation coordination only. The Go API now reads `REDIS_URL`,
+`REDIS_KEY_PREFIX`, and `REDIS_RUN_CANCEL_TTL`; an empty `REDIS_URL` disables
+Redis, while a configured but unreachable Redis fails startup. Cancel requests
+still update Postgres first, then set a short-lived Redis flag so other API
+processes can interrupt active provider streams.
+
+### Files
+
+```text
+mm-chat/backend/cmd/api/main.go
+mm-chat/backend/internal/config/*
+mm-chat/backend/internal/redisstate/*
+mm-chat/backend/internal/chat/handler.go
+mm-chat/backend/internal/chat/run_cancellation.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/.env.example
+mm-chat/docs/contracts/chat-stream-api.md
+mm-chat/docs/deployment/redis-temporary-state.md
+mm-chat/docs/deployment/README.md
+mm-chat/docs/deployment/single-server-compose.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+### Decision
+
+Redis must never become canonical storage. Postgres remains the source of truth
+for conversations, messages, files, and run status. Redis flags are best-effort
+coordination for active streams; runtime Redis errors degrade cross-process
+interruption but must not corrupt durable state or expose credentials.
+
+### Verification
+
+```text
+go test ./... with Docker Go 1.22: passed
+config/default/override/blank/invalid Redis tests: passed
+redisstate unit + Docker Redis integration: passed
+handler cancellation-store stream test: passed
+startup helper invalid REDIS_URL secret-leak test: passed
+Postgres + Redis API smoke after Redis FLUSHDB: conversation/message read passed
+```
+
+### Next Step
+
+Run final review agent, then commit and push Phase 7. Rate-limit middleware and
+session cache remain unchecked Phase 7 follow-up items.
+
+## 2026-07-08 — Phase 7 Review Fix: Durable-First Cancellation
+
+### Action
+
+Review found the cancel handler still cancelled same-process active streams before
+`CancelRun` durably updated Postgres. Removed the pre-DB active cancellation so
+all temporary interruption paths happen only after the durable cancel succeeds,
+matching Redis non-authoritative semantics.
+
+### Files
+
+```text
+mm-chat/backend/internal/chat/handler.go
+mm-chat/backend/internal/chat/handler_test.go
+mm-chat/docs/deployment/redis-temporary-state.md
+```
+
+### Verification
+
+```text
+docker run --rm -v "$PWD/mm-chat/backend":/src -w /src golang:1.22 go test ./internal/chat -run 'TestHandlerCancelRun' -count=1: passed
+docker run --rm -v "$PWD/mm-chat/backend":/src -w /src golang:1.22 go test -race ./internal/chat -run 'TestHandler(CancelRun|StopsActiveStream)' -count=1: passed
+docker run --rm -v "$PWD/mm-chat/backend":/src -w /src golang:1.22 go test ./...: passed
+docker run --rm -v "$PWD/mm-chat/backend":/src -w /src golang:1.22 /bin/sh -c 'test -z "$(gofmt -l .)" && go vet ./...': passed
+git diff --check -- mm-chat: passed
+main-session Docker Go 1.22 go test ./... && go vet ./... after review fix: passed
+main-session Docker Redis integration after review fix: passed
+```
+
+### Next Step
+
+Commit Phase 7 after main-session final review.

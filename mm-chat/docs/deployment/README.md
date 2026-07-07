@@ -11,6 +11,7 @@ then add MinIO/Redis/RAG only when their phase boundaries are ready.
 | --- | --- |
 | [`single-server-compose.md`](./single-server-compose.md) | Phase 3 single-server runbook and future Compose topology draft for backend, Postgres, Redis, MinIO, backup, ports, and file-security boundaries. |
 | [`postgres-single-server.md`](./postgres-single-server.md) | Phase 4/4.5 single-server Postgres container plan covering private ports, data directories, env draft, DB-aware health checks, migration execution, backup/restore, and rollback. |
+| [`redis-temporary-state.md`](./redis-temporary-state.md) | Phase 7 Redis runbook for non-authoritative temporary state, stream cancellation flags, private-network rules, and flush behavior. |
 | [`../persistence/runtime-wiring.md`](../persistence/runtime-wiring.md) | Phase 4.5 backend DB env, pgx connector behavior, readiness matrix, migration CLI flow, and rollback boundaries. |
 
 ## Current Boundary
@@ -22,8 +23,10 @@ then add MinIO/Redis/RAG only when their phase boundaries are ready.
 - MinIO must remain private; the Go backend is the public file authorization
   gateway. Runtime config uses `STORAGE_BACKEND=minio|s3` plus `S3_*`
   variables; do not use stale `OBJECTSTORE_DRIVER` / `FILE_MAX_BYTES` names.
-- MVP is `frontend -> Go backend -> Postgres -> provider stream`. Redis, MinIO,
-  RAG, browser data import, and production backup automation are later phases.
+- MVP is `frontend -> Go backend -> Postgres -> provider stream`. Redis is now
+  available only for non-authoritative temporary cancellation flags; rate limits,
+  sessions, RAG, browser data import, and production backup automation remain
+  later phases.
 - Phase 4.5 runtime wiring keeps `DATABASE_URL` empty mode DB-disabled with
   `/ready` returning `200`; when `DATABASE_URL` is set, startup and `/ready`
   ping Postgres and readiness returns `503` on DB ping failure.
@@ -42,3 +45,6 @@ then add MinIO/Redis/RAG only when their phase boundaries are ready.
 - The current real object-store path supports `STORAGE_BACKEND=local`,
   `minio`, or `s3`. Use `S3_BUCKET_AUTO_CREATE=false` in production and
   provision the bucket/credentials outside the app release.
+- Redis config uses `REDIS_URL`, `REDIS_KEY_PREFIX`, and
+  `REDIS_RUN_CANCEL_TTL`. Leave `REDIS_URL` empty to disable Redis; if set, the
+  API fails fast when Redis cannot be parsed or pinged.

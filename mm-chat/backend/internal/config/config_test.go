@@ -28,6 +28,15 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 	if cfg.DBConnMaxLifetime != DefaultDBConnMaxLifetime {
 		t.Fatalf("DBConnMaxLifetime = %s, want %s", cfg.DBConnMaxLifetime, DefaultDBConnMaxLifetime)
 	}
+	if cfg.Redis.URL != "" {
+		t.Fatalf("Redis.URL = %q, want empty", cfg.Redis.URL)
+	}
+	if cfg.Redis.KeyPrefix != DefaultRedisKeyPrefix {
+		t.Fatalf("Redis.KeyPrefix = %q, want %q", cfg.Redis.KeyPrefix, DefaultRedisKeyPrefix)
+	}
+	if cfg.Redis.RunCancelTTL != DefaultRedisRunCancelTTL {
+		t.Fatalf("Redis.RunCancelTTL = %s, want %s", cfg.Redis.RunCancelTTL, DefaultRedisRunCancelTTL)
+	}
 	if cfg.Provider.Type != "" {
 		t.Fatalf("Provider.Type = %q, want empty", cfg.Provider.Type)
 	}
@@ -74,6 +83,9 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 		EnvDBMaxOpenConns:     "12",
 		EnvDBMaxIdleConns:     "7",
 		EnvDBConnMaxLifetime:  "45m",
+		EnvRedisURL:           " redis://:redis-pass@redis:6379/1 ",
+		EnvRedisKeyPrefix:     " neo-test ",
+		EnvRedisRunCancelTTL:  "15m",
 		EnvProviderType:       " openai_compatible ",
 		EnvProviderBaseURL:    " https://sub.example.test/v1/ ",
 		EnvProviderModel:      " gpt-5.5 ",
@@ -114,6 +126,15 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	}
 	if cfg.DBConnMaxLifetime != 45*time.Minute {
 		t.Fatalf("DBConnMaxLifetime = %s, want 45m", cfg.DBConnMaxLifetime)
+	}
+	if cfg.Redis.URL != "redis://:redis-pass@redis:6379/1" {
+		t.Fatalf("Redis.URL = %q", cfg.Redis.URL)
+	}
+	if cfg.Redis.KeyPrefix != "neo-test" {
+		t.Fatalf("Redis.KeyPrefix = %q", cfg.Redis.KeyPrefix)
+	}
+	if cfg.Redis.RunCancelTTL != 15*time.Minute {
+		t.Fatalf("Redis.RunCancelTTL = %s, want 15m", cfg.Redis.RunCancelTTL)
 	}
 	if cfg.Provider.Type != "openai_compatible" {
 		t.Fatalf("Provider.Type = %q, want openai_compatible", cfg.Provider.Type)
@@ -167,6 +188,9 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 		EnvDBMaxOpenConns:     " ",
 		EnvDBMaxIdleConns:     "\t",
 		EnvDBConnMaxLifetime:  " \n",
+		EnvRedisURL:           " ",
+		EnvRedisKeyPrefix:     "\t",
+		EnvRedisRunCancelTTL:  "\n",
 		EnvProviderType:       " ",
 		EnvProviderBaseURL:    "\t",
 		EnvProviderModel:      " \n ",
@@ -208,6 +232,11 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 	if cfg.DBConnMaxLifetime != DefaultDBConnMaxLifetime {
 		t.Fatalf("DBConnMaxLifetime = %s, want %s", cfg.DBConnMaxLifetime, DefaultDBConnMaxLifetime)
 	}
+	if cfg.Redis.URL != "" ||
+		cfg.Redis.KeyPrefix != DefaultRedisKeyPrefix ||
+		cfg.Redis.RunCancelTTL != DefaultRedisRunCancelTTL {
+		t.Fatalf("Redis = %#v, want defaults", cfg.Redis)
+	}
 	if cfg.Provider.Type != "" || cfg.Provider.BaseURL != "" ||
 		cfg.Provider.Model != "" || cfg.Provider.APIKey != "" {
 		t.Fatalf("Provider = %#v, want blank strings", cfg.Provider)
@@ -237,6 +266,7 @@ func TestLoadFromEnvFallsBackForInvalidDBValues(t *testing.T) {
 		EnvDBMaxOpenConns:     "not-an-int",
 		EnvDBMaxIdleConns:     "-1",
 		EnvDBConnMaxLifetime:  "not-a-duration",
+		EnvRedisRunCancelTTL:  "not-a-duration",
 		EnvProviderTimeout:    "-1s",
 		EnvS3UseSSL:           "not-a-bool",
 		EnvS3ForcePathStyle:   "not-a-bool",
@@ -257,6 +287,9 @@ func TestLoadFromEnvFallsBackForInvalidDBValues(t *testing.T) {
 	}
 	if cfg.DBConnMaxLifetime != DefaultDBConnMaxLifetime {
 		t.Fatalf("DBConnMaxLifetime = %s, want %s", cfg.DBConnMaxLifetime, DefaultDBConnMaxLifetime)
+	}
+	if cfg.Redis.RunCancelTTL != DefaultRedisRunCancelTTL {
+		t.Fatalf("Redis.RunCancelTTL = %s, want %s", cfg.Redis.RunCancelTTL, DefaultRedisRunCancelTTL)
 	}
 	if cfg.Provider.Timeout != DefaultProviderTimeout {
 		t.Fatalf("Provider.Timeout = %s, want %s", cfg.Provider.Timeout, DefaultProviderTimeout)

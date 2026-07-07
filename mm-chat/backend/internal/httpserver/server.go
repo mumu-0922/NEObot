@@ -26,12 +26,13 @@ type ErrorBody struct {
 type Option func(*options)
 
 type options struct {
-	readyChecker   health.ReadinessChecker
-	chatRepository chat.Repository
-	chatProvider   chat.Provider
-	fileRepository files.Repository
-	objectStore    storage.ObjectStore
-	maxUploadBytes int64
+	readyChecker         health.ReadinessChecker
+	chatRepository       chat.Repository
+	chatProvider         chat.Provider
+	runCancellationStore chat.RunCancellationStore
+	fileRepository       files.Repository
+	objectStore          storage.ObjectStore
+	maxUploadBytes       int64
 }
 
 func WithReadyChecker(checker health.ReadinessChecker) Option {
@@ -49,6 +50,12 @@ func WithChatRepository(repo chat.Repository) Option {
 func WithChatProvider(provider chat.Provider) Option {
 	return func(opts *options) {
 		opts.chatProvider = provider
+	}
+}
+
+func WithRunCancellationStore(store chat.RunCancellationStore) Option {
+	return func(opts *options) {
+		opts.runCancellationStore = store
 	}
 }
 
@@ -85,6 +92,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	chatHandler := chat.NewHandler(
 		chat.NewService(resolvedOptions.chatRepository),
 		chat.WithProvider(resolvedOptions.chatProvider),
+		chat.WithRunCancellationStore(resolvedOptions.runCancellationStore),
 	)
 	fileHandler := files.NewHandler(
 		files.NewService(

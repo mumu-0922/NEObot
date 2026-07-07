@@ -13,8 +13,9 @@ POST /v1/chat/conversations/{id}/stream   -> streaming assistant message
 
 Phase 5.3 adds the first real provider adapter for OpenAI-compatible
 `/chat/completions` streaming APIs. Phase 5.4 adds the first durable cancel
-endpoint for streaming assistant rows. Redis cancellation flags, files, tools,
-RAG, and auth remain later work.
+endpoint for streaming assistant rows. Phase 7 adds Redis-backed temporary
+cancellation flags for cross-process stream interruption. Files, tools, RAG, and
+auth remain later work.
 
 ## 2. Endpoint
 
@@ -143,9 +144,10 @@ Cancel flow:
 5. If it is `completed` or `failed`, return `409 RUN_NOT_CANCELLABLE`.
 
 The cancel endpoint updates durable state and interrupts in-flight provider
-requests inside the same API process. It does not yet interrupt streams across
-workers, processes, or restarts; Redis cancellation flags are reserved for
-Phase 7.
+requests inside the same API process. When Redis is configured, the endpoint
+also writes a short-lived cancellation flag so another API process can stop the
+matching stream. Redis is temporary coordination only; Postgres remains the
+source of truth for message/run status.
 
 ## 6. Error Contract
 
@@ -245,6 +247,9 @@ Runtime rules:
   `message.error` frames.
 - Provider streams that end without `data: [DONE]` are treated as failed
   partial streams and map to scrubbed `message.error` frames.
+- With Redis enabled, active streams poll the cancellation flag and emit
+  `message.cancelled` when the flag appears. Redis errors are non-authoritative
+  and do not overwrite Postgres status.
 
 The adapter reads `data:` SSE frames, emits `message.delta` for
 `choices[].delta.content`, emits `usage.updated` when a provider chunk includes
@@ -253,6 +258,6 @@ The adapter reads `data:` SSE frames, emits `message.delta` for
 ## 9. Non-Goals
 
 - Gemini and native OpenAI Responses API adapters.
-- Redis-backed cross-process cancellation state.
+- Rate-limit/session Redis state.
 - Streaming resume, cursor replay, or durable run records.
 - Tool calls, plugins, attachments, MinIO/S3, RAG, title generation, and auth.
