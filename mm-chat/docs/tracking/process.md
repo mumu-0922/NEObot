@@ -273,3 +273,57 @@ Validated Markdown links, code fence balance, required contract sections, absenc
 ### Next Step
 
 Commit and push Phase 2 contract docs.
+
+
+## 2026-07-07 — Phase 2 Frontend Call-Site Inventory
+
+### Action
+
+Completed the Phase 2 inventory of frontend-facing direct API, storage, and OPFS call sites.
+
+### Evidence
+
+New/updated documents:
+
+```text
+mm-chat/docs/inventory/frontend-call-sites.md
+mm-chat/docs/inventory/README.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+Inventory sources:
+
+```text
+rg "fetch(" src --glob '!src/__tests__/**'
+rg "localStorage|localforage|indexedDB|getAppDbStorage|getBrowserLocalStorage|saveToOPFS|resolveOPFSUrl|deleteFromOPFS|writeToOPFS|listOPFSDirectory|opfs://" src --glob '!src/__tests__/**'
+rg service imports across src/components src/features src/lib src/store
+```
+
+Key findings:
+
+```text
+Direct component route calls exist in AccessPasswordPage, ChatApp, ProviderSettings, and DeploymentHealth.
+Service-layer fetches are concentrated in src/services/api/* and can become local adapters.
+OPFS display and upload paths are spread across chat, media, markdown, workspace, and knowledge UI.
+Zustand stores remain the local adapter source of truth for chat/settings/knowledge/memory until server mode is implemented.
+```
+
+### Decision
+
+Treat `chatService` wrapping, runtime config/model fetches, and OPFS file adapter extraction as the first code-migration targets. Keep plugin/RAG/doc-parse/voice/code-execution behind disabled or deferred capabilities.
+
+### Verification
+
+Local validation passed:
+
+```text
+ok: frontend call-site inventory verified
+git diff --check: clean
+```
+
+Validated Markdown links, code fence balance, required inventory sections, and Phase 2 progress checkboxes.
+
+### Next Step
+
+Commit and push the Phase 2 call-site inventory, then proceed to Phase 3 Go backend skeleton planning.

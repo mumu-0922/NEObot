@@ -33,7 +33,8 @@ Update this file whenever a phase or task is completed. Every `[x]` entry must h
 - [x] Produce `mm-chat/docs/contracts/frontend-api-client.md`.
 - [x] Address reviewer findings for Phase 2 contract.
 - [x] Define plugin API placeholder contract for deferred plugin migration.
-- [ ] Identify components that directly call storage or fetch.
+- [x] Identify components that directly call storage or fetch.
+- [x] Produce `mm-chat/docs/inventory/frontend-call-sites.md`.
 
 ## Phase 3 — Go Backend Skeleton
 
