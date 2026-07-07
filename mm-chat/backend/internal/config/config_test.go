@@ -43,6 +43,15 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 	if cfg.Provider.Timeout != DefaultProviderTimeout {
 		t.Fatalf("Provider.Timeout = %s, want %s", cfg.Provider.Timeout, DefaultProviderTimeout)
 	}
+	if cfg.Storage.Backend != DefaultStorageBackend {
+		t.Fatalf("Storage.Backend = %q, want %q", cfg.Storage.Backend, DefaultStorageBackend)
+	}
+	if cfg.Storage.LocalDir != DefaultLocalStorageDir {
+		t.Fatalf("Storage.LocalDir = %q, want %q", cfg.Storage.LocalDir, DefaultLocalStorageDir)
+	}
+	if cfg.Storage.MaxUploadBytes != DefaultMaxUploadBytes {
+		t.Fatalf("Storage.MaxUploadBytes = %d, want %d", cfg.Storage.MaxUploadBytes, DefaultMaxUploadBytes)
+	}
 }
 
 func TestLoadFromEnvOverrides(t *testing.T) {
@@ -58,6 +67,9 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 		EnvProviderModel:     " gpt-5.5 ",
 		EnvProviderAPIKey:    " secret-key ",
 		EnvProviderTimeout:   "90s",
+		EnvStorageBackend:    " LOCAL ",
+		EnvLocalStorageDir:   " /srv/mm-chat/files ",
+		EnvMaxUploadBytes:    "1048576",
 	}
 
 	cfg := LoadFromEnv(func(key string) (string, bool) {
@@ -98,6 +110,15 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	if cfg.Provider.Timeout != 90*time.Second {
 		t.Fatalf("Provider.Timeout = %s, want 90s", cfg.Provider.Timeout)
 	}
+	if cfg.Storage.Backend != "local" {
+		t.Fatalf("Storage.Backend = %q, want local", cfg.Storage.Backend)
+	}
+	if cfg.Storage.LocalDir != "/srv/mm-chat/files" {
+		t.Fatalf("Storage.LocalDir = %q", cfg.Storage.LocalDir)
+	}
+	if cfg.Storage.MaxUploadBytes != 1048576 {
+		t.Fatalf("Storage.MaxUploadBytes = %d, want 1048576", cfg.Storage.MaxUploadBytes)
+	}
 }
 
 func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
@@ -113,6 +134,9 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 		EnvProviderModel:     " \n ",
 		EnvProviderAPIKey:    " ",
 		EnvProviderTimeout:   "\t",
+		EnvStorageBackend:    " ",
+		EnvLocalStorageDir:   "\t",
+		EnvMaxUploadBytes:    "\n",
 	}
 
 	cfg := LoadFromEnv(func(key string) (string, bool) {
@@ -145,6 +169,11 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 	if cfg.Provider.Timeout != DefaultProviderTimeout {
 		t.Fatalf("Provider.Timeout = %s, want %s", cfg.Provider.Timeout, DefaultProviderTimeout)
 	}
+	if cfg.Storage.Backend != DefaultStorageBackend ||
+		cfg.Storage.LocalDir != DefaultLocalStorageDir ||
+		cfg.Storage.MaxUploadBytes != DefaultMaxUploadBytes {
+		t.Fatalf("Storage = %#v, want defaults", cfg.Storage)
+	}
 }
 
 func TestLoadFromEnvFallsBackForInvalidDBValues(t *testing.T) {
@@ -153,6 +182,7 @@ func TestLoadFromEnvFallsBackForInvalidDBValues(t *testing.T) {
 		EnvDBMaxIdleConns:    "-1",
 		EnvDBConnMaxLifetime: "not-a-duration",
 		EnvProviderTimeout:   "-1s",
+		EnvMaxUploadBytes:    "-1",
 	}
 
 	cfg := LoadFromEnv(func(key string) (string, bool) {
@@ -171,5 +201,8 @@ func TestLoadFromEnvFallsBackForInvalidDBValues(t *testing.T) {
 	}
 	if cfg.Provider.Timeout != DefaultProviderTimeout {
 		t.Fatalf("Provider.Timeout = %s, want %s", cfg.Provider.Timeout, DefaultProviderTimeout)
+	}
+	if cfg.Storage.MaxUploadBytes != DefaultMaxUploadBytes {
+		t.Fatalf("Storage.MaxUploadBytes = %d, want %d", cfg.Storage.MaxUploadBytes, DefaultMaxUploadBytes)
 	}
 }

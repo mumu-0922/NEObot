@@ -85,8 +85,8 @@ Update this file whenever a phase or task is completed. Every `[x]` entry must h
 
 ## Phase 6 — File Storage with MinIO
 
-- [ ] Add object storage interface.
-- [ ] Add local filesystem implementation for dev fallback.
+- [x] Add object storage interface.
+- [x] Add local filesystem implementation for dev fallback.
 - [ ] Add S3/MinIO implementation.
 - [ ] Add file upload endpoint.
 - [ ] Add file content download endpoint.

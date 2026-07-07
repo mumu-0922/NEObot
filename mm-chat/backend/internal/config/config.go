@@ -14,6 +14,9 @@ const (
 	DefaultDBMaxIdleConns    = 5
 	DefaultDBConnMaxLifetime = 30 * time.Minute
 	DefaultProviderTimeout   = 2 * time.Minute
+	DefaultStorageBackend    = "local"
+	DefaultLocalStorageDir   = "./data/files"
+	DefaultMaxUploadBytes    = int64(25 << 20)
 
 	EnvAddr              = "MM_CHAT_ADDR"
 	EnvVersion           = "MM_CHAT_VERSION"
@@ -26,6 +29,9 @@ const (
 	EnvProviderModel     = "PROVIDER_MODEL"
 	EnvProviderAPIKey    = "PROVIDER_API_KEY"
 	EnvProviderTimeout   = "PROVIDER_TIMEOUT"
+	EnvStorageBackend    = "STORAGE_BACKEND"
+	EnvLocalStorageDir   = "LOCAL_STORAGE_DIR"
+	EnvMaxUploadBytes    = "MAX_UPLOAD_BYTES"
 )
 
 // Config contains the process-level settings required to start the API.
@@ -39,6 +45,7 @@ type Config struct {
 	DBConnMaxLifetime time.Duration
 
 	Provider ProviderConfig
+	Storage  StorageConfig
 }
 
 // ProviderConfig contains outbound model-provider settings. Secrets must never
@@ -49,6 +56,14 @@ type ProviderConfig struct {
 	Model   string
 	APIKey  string
 	Timeout time.Duration
+}
+
+// StorageConfig contains file-byte storage settings. Object-store secrets are
+// intentionally omitted until the S3/MinIO adapter phase.
+type StorageConfig struct {
+	Backend        string
+	LocalDir       string
+	MaxUploadBytes int64
 }
 
 // Load reads configuration from the process environment.
@@ -75,6 +90,12 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 			Model:   optionalEnv(lookup, EnvProviderModel),
 			APIKey:  optionalEnv(lookup, EnvProviderAPIKey),
 			Timeout: durationEnvOrDefault(lookup, EnvProviderTimeout, DefaultProviderTimeout),
+		},
+
+		Storage: StorageConfig{
+			Backend:        strings.ToLower(envOrDefault(lookup, EnvStorageBackend, DefaultStorageBackend)),
+			LocalDir:       envOrDefault(lookup, EnvLocalStorageDir, DefaultLocalStorageDir),
+			MaxUploadBytes: int64EnvOrDefault(lookup, EnvMaxUploadBytes, DefaultMaxUploadBytes),
 		},
 	}
 }
@@ -104,6 +125,20 @@ func intEnvOrDefault(lookup func(string) (string, bool), key string, fallback in
 	}
 
 	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 0 {
+		return fallback
+	}
+
+	return parsed
+}
+
+func int64EnvOrDefault(lookup func(string) (string, bool), key string, fallback int64) int64 {
+	value, ok := optionalLookup(lookup, key)
+	if !ok {
+		return fallback
+	}
+
+	parsed, err := strconv.ParseInt(value, 10, 64)
 	if err != nil || parsed < 0 {
 		return fallback
 	}

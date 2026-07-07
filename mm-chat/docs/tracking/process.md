@@ -1192,3 +1192,83 @@ API/DB contract is recorded in `mm-chat/docs/contracts/` and
 ### Next Step
 
 Commit and push Phase 5.4, then continue with the next planned refactor slice.
+
+## 2026-07-07 — Phase 6.1 Local Object Storage Boundary
+
+### Action
+
+Added the first file-byte storage boundary under `mm-chat/backend/internal/storage`:
+
+```text
+ObjectStore.Put(ctx, key, body, size, contentType)
+ObjectStore.Get(ctx, key) -> reader + ObjectInfo
+ObjectStore.Delete(ctx, key)
+```
+
+Implemented a local filesystem backend for the single-server MVP. It rejects
+unsafe object keys, writes via temp file + rename, stores lightweight local
+content-type metadata, and cleans up failed writes.
+
+### Files
+
+```text
+mm-chat/backend/internal/storage/store.go
+mm-chat/backend/internal/storage/local.go
+mm-chat/backend/internal/storage/local_test.go
+mm-chat/backend/internal/config/config.go
+mm-chat/backend/internal/config/config_test.go
+mm-chat/backend/.env.example
+mm-chat/docs/storage/README.md
+mm-chat/docs/storage/object-storage.md
+mm-chat/docs/contracts/file-api.md
+mm-chat/docs/contracts/README.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+### Decision
+
+Keep Phase 6.1 storage-only. The object store does not own auth, file metadata,
+SHA-256, upload limits, or message attachments. Phase 6.2 will add the file
+service/repository and HTTP endpoints. MinIO/S3 will later implement the same
+interface without exposing object keys to the browser.
+
+### Verification
+
+Docker Go 1.22 verification passed:
+
+```text
+go test ./...: passed
+internal/storage tests: passed
+```
+
+### Next Step
+
+Run tests and reviewer, then commit/push. Next implementation slice is Phase
+6.2: file metadata repository plus upload/download/delete HTTP endpoints.
+
+## 2026-07-07 — Phase 6.1 Final Review Fixes
+
+### Action
+
+Ran final review for the local object-storage boundary. No blocking findings
+remained. Applied low-cost hardening from review: reject drive-style colon keys
+such as `C:/...`, document that rule, and close the test reader before delete
+for cross-platform hygiene.
+
+### Verification
+
+```text
+review blocking findings: none
+go test ./...: passed after review fixes
+```
+
+### Boundary
+
+Still storage-only. No file HTTP endpoint, file metadata repository, MinIO/S3
+adapter, auth, or attachment wiring was added in this slice.
+
+### Next Step
+
+Commit and push Phase 6.1, then implement Phase 6.2 file metadata repository
+and upload/download/delete endpoints.
