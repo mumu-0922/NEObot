@@ -1,4 +1,4 @@
-# Phase 5.2 Chat Stream API Contract
+# Phase 5.2/5.3 Chat Stream API Contract
 
 ## 1. Purpose
 
@@ -11,9 +11,9 @@ POST /v1/chat/conversations/{id}/messages -> persisted user message
 POST /v1/chat/conversations/{id}/stream   -> streaming assistant message
 ```
 
-This phase uses a mock provider in tests only. Real provider adapters, explicit
-cancel endpoints, Redis cancellation flags, files, tools, RAG, and auth remain
-later work.
+Phase 5.3 adds the first real provider adapter for OpenAI-compatible
+`/chat/completions` streaming APIs. Explicit cancel endpoints, Redis
+cancellation flags, files, tools, RAG, and auth remain later work.
 
 ## 2. Endpoint
 
@@ -51,7 +51,8 @@ Rules:
 - `conversationId` is path-only and rejected in the body.
 - `userMessageId` is required and must reference an existing `role="user"`
   message in the same conversation.
-- `modelRef` is required; Phase 5.2 does not resolve provider settings yet.
+- `modelRef` is required. `modelRef.modelId` is sent to the provider; if it is
+  blank, the backend falls back to `PROVIDER_MODEL`.
 - `idempotencyKey` is required and applies to the assistant streaming row only.
 - `content`, `attachments`, `role`, `status`, identity hints, and other
   server-managed message fields are rejected.
@@ -123,6 +124,7 @@ Errors before the SSE response begins use the standard JSON envelope.
 | `400` | `INVALID_CONVERSATION_ID` | Path conversation ID is not a UUID. |
 | `400` | `INVALID_USER_MESSAGE_ID` | `userMessageId` is missing, invalid, missing, or not a user message in the conversation. |
 | `400` | `MODEL_REF_REQUIRED` | `modelRef` is missing. |
+| `400` | `UNSUPPORTED_PROVIDER` | `modelRef.providerId` does not match the configured single provider. |
 | `400` | `IDEMPOTENCY_KEY_REQUIRED` | `idempotencyKey` is blank or missing. |
 | `400` | `VALIDATION_ERROR` | Unsupported stream fields such as `content` or `attachments`. |
 | `400` | `FORBIDDEN_MESSAGE_FIELD` | Server-managed message fields or identity hints are present. |
@@ -136,9 +138,52 @@ Errors before the SSE response begins use the standard JSON envelope.
 After SSE starts, provider or finalization failures are emitted as
 `message.error` frames with scrubbed error details.
 
-## 7. Non-Goals
+## 7. OpenAI-Compatible Provider Configuration
 
-- Real OpenAI/Gemini/OpenAI-compatible adapters.
+The first real adapter uses the OpenAI-compatible Chat Completions stream
+shape:
+
+```http
+POST ${PROVIDER_BASE_URL}/chat/completions
+Authorization: Bearer ${PROVIDER_API_KEY}
+Content-Type: application/json
+Accept: text/event-stream
+```
+
+Environment variables:
+
+```env
+PROVIDER_TYPE=openai_compatible
+PROVIDER_BASE_URL=https://your-openai-compatible-relay.example/v1
+PROVIDER_MODEL=gpt-5.5
+PROVIDER_API_KEY=change-me
+PROVIDER_TIMEOUT=2m
+```
+
+Runtime rules:
+
+- If `PROVIDER_TYPE` is empty, streaming returns `503 PROVIDER_REQUIRED`.
+- If `PROVIDER_TYPE=openai_compatible` but required provider fields are missing,
+  the provider remains disabled and streaming returns `503 PROVIDER_REQUIRED`.
+- Unsupported provider types fail API startup.
+- `modelRef.providerId` must match the configured single provider:
+  `openai_compatible` plus temporary aliases `openai-compatible` or `openai`.
+  Accepted aliases are persisted and emitted as canonical `openai_compatible`.
+- Provider API keys are process environment only; they are never returned in
+  API responses or committed to the repository.
+- Non-`2xx` provider startup responses map to pre-SSE `502 PROVIDER_ERROR`.
+- Malformed provider SSE frames after streaming begins map to scrubbed
+  `message.error` frames.
+- Provider streams that end without `data: [DONE]` are treated as failed
+  partial streams and map to scrubbed `message.error` frames.
+
+The adapter reads `data:` SSE frames, emits `message.delta` for
+`choices[].delta.content`, emits `usage.updated` when a provider chunk includes
+`usage`, and stops on `data: [DONE]`.
+
+## 8. Non-Goals
+
+- Gemini and native OpenAI Responses API adapters.
 - Redis-backed cancellation state or `POST /v1/chat/runs/{runId}/cancel`.
 - Streaming resume, cursor replay, or durable run records.
 - Tool calls, plugins, attachments, MinIO/S3, RAG, title generation, and auth.

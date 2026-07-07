@@ -311,6 +311,19 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusBadRequest, "MODEL_REF_REQUIRED", "modelRef is required")
 		return
 	}
+	if resolver, ok := h.provider.(ModelRefResolver); ok {
+		resolvedModelRef, err := resolver.ResolveModelRef(*modelRef)
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		modelRef = &resolvedModelRef
+	} else if validator, ok := h.provider.(ModelRefValidator); ok {
+		if err := validator.ValidateModelRef(*modelRef); err != nil {
+			writeServiceError(w, err)
+			return
+		}
+	}
 	request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
 	if request.IdempotencyKey == "" {
 		writeError(w, http.StatusBadRequest, "IDEMPOTENCY_KEY_REQUIRED", "idempotencyKey is required")
@@ -379,6 +392,13 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		Metadata:           request.Metadata,
 	})
 	if err != nil {
+		if r.Context().Err() != nil || errors.Is(err, context.Canceled) {
+			h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
+				Status:   "cancelled",
+				Metadata: map[string]any{"runId": runID},
+			})
+			return
+		}
 		h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 			Status:   "failed",
 			Metadata: map[string]any{"runId": runID, "errorCode": "PROVIDER_ERROR"},

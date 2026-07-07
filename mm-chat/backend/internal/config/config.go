@@ -13,6 +13,7 @@ const (
 	DefaultDBMaxOpenConns    = 10
 	DefaultDBMaxIdleConns    = 5
 	DefaultDBConnMaxLifetime = 30 * time.Minute
+	DefaultProviderTimeout   = 2 * time.Minute
 
 	EnvAddr              = "MM_CHAT_ADDR"
 	EnvVersion           = "MM_CHAT_VERSION"
@@ -20,6 +21,11 @@ const (
 	EnvDBMaxOpenConns    = "DB_MAX_OPEN_CONNS"
 	EnvDBMaxIdleConns    = "DB_MAX_IDLE_CONNS"
 	EnvDBConnMaxLifetime = "DB_CONN_MAX_LIFETIME"
+	EnvProviderType      = "PROVIDER_TYPE"
+	EnvProviderBaseURL   = "PROVIDER_BASE_URL"
+	EnvProviderModel     = "PROVIDER_MODEL"
+	EnvProviderAPIKey    = "PROVIDER_API_KEY"
+	EnvProviderTimeout   = "PROVIDER_TIMEOUT"
 )
 
 // Config contains the process-level settings required to start the API.
@@ -31,6 +37,18 @@ type Config struct {
 	DBMaxOpenConns    int
 	DBMaxIdleConns    int
 	DBConnMaxLifetime time.Duration
+
+	Provider ProviderConfig
+}
+
+// ProviderConfig contains outbound model-provider settings. Secrets must never
+// be logged or serialized into API responses.
+type ProviderConfig struct {
+	Type    string
+	BaseURL string
+	Model   string
+	APIKey  string
+	Timeout time.Duration
 }
 
 // Load reads configuration from the process environment.
@@ -50,6 +68,14 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 		DBMaxOpenConns:    intEnvOrDefault(lookup, EnvDBMaxOpenConns, DefaultDBMaxOpenConns),
 		DBMaxIdleConns:    intEnvOrDefault(lookup, EnvDBMaxIdleConns, DefaultDBMaxIdleConns),
 		DBConnMaxLifetime: durationEnvOrDefault(lookup, EnvDBConnMaxLifetime, DefaultDBConnMaxLifetime),
+
+		Provider: ProviderConfig{
+			Type:    optionalEnv(lookup, EnvProviderType),
+			BaseURL: optionalEnv(lookup, EnvProviderBaseURL),
+			Model:   optionalEnv(lookup, EnvProviderModel),
+			APIKey:  optionalEnv(lookup, EnvProviderAPIKey),
+			Timeout: durationEnvOrDefault(lookup, EnvProviderTimeout, DefaultProviderTimeout),
+		},
 	}
 }
 

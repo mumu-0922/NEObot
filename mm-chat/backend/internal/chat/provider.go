@@ -14,6 +14,14 @@ type Provider interface {
 	StreamChat(ctx context.Context, input ProviderRequest) (<-chan ProviderEvent, error)
 }
 
+type ModelRefValidator interface {
+	ValidateModelRef(modelRef ModelRef) error
+}
+
+type ModelRefResolver interface {
+	ResolveModelRef(modelRef ModelRef) (ModelRef, error)
+}
+
 type ProviderRequest struct {
 	RunID              string
 	ConversationID     string

@@ -28,3 +28,13 @@ then add MinIO/Redis/RAG only when their phase boundaries are ready.
   ping Postgres and readiness returns `503` on DB ping failure.
 - API startup must not auto-run migrations; operators use the migration CLI
   before starting or restarting a DB-enabled backend release.
+- Local provider secrets belong in `mm-chat/backend/.env`, which is ignored by
+  Git. Use `mm-chat/backend/.env.example` as the template and inject it with
+  Docker `--env-file` or a future Compose `env_file` entry. For direct local
+  `go run`, load it first with `set -a; . ./mm-chat/backend/.env; set +a`.
+  The Go API reads process environment variables; it does not auto-load `.env`,
+  commit provider API keys, or print provider API keys.
+- The current real provider path is OpenAI-compatible streaming:
+  `PROVIDER_TYPE=openai_compatible`,
+  `PROVIDER_BASE_URL=<your OpenAI-compatible relay /v1 URL>`,
+  `PROVIDER_MODEL=gpt-5.5`, and a local-only `PROVIDER_API_KEY`.

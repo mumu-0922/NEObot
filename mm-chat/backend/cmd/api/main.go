@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -36,10 +38,20 @@ func main() {
 		chatRepo = chat.NewPostgresRepository(sqlDB)
 	}
 
+	chatProvider, err := newChatProvider(cfg)
+	if err != nil {
+		_ = db.Close()
+		log.Fatalf("mm-chat provider config failed: %v", err)
+	}
+	if chatProvider == nil && strings.TrimSpace(cfg.Provider.Type) != "" {
+		log.Printf("mm-chat provider disabled: %s requires PROVIDER_BASE_URL, PROVIDER_MODEL, and PROVIDER_API_KEY", cfg.Provider.Type)
+	}
+
 	server := httpserver.New(
 		cfg,
 		httpserver.WithReadyChecker(db),
 		httpserver.WithChatRepository(chatRepo),
+		httpserver.WithChatProvider(chatProvider),
 	)
 
 	errorsCh := make(chan error, 1)
@@ -70,5 +82,26 @@ func main() {
 	}
 	if err := db.Close(); err != nil {
 		log.Printf("mm-chat database close failed: %v", err)
+	}
+}
+
+func newChatProvider(cfg config.Config) (chat.Provider, error) {
+	providerType := strings.ToLower(strings.TrimSpace(cfg.Provider.Type))
+	switch providerType {
+	case "", "none":
+		return nil, nil
+	case "openai", "openai_compatible", "openai-compatible":
+		if cfg.Provider.BaseURL == "" || cfg.Provider.Model == "" || cfg.Provider.APIKey == "" {
+			return nil, nil
+		}
+
+		return chat.NewOpenAICompatibleProvider(chat.OpenAICompatibleProviderConfig{
+			BaseURL:      cfg.Provider.BaseURL,
+			APIKey:       cfg.Provider.APIKey,
+			DefaultModel: cfg.Provider.Model,
+			Timeout:      cfg.Provider.Timeout,
+		})
+	default:
+		return nil, fmt.Errorf("unsupported PROVIDER_TYPE %q", cfg.Provider.Type)
 	}
 }

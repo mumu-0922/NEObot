@@ -867,3 +867,118 @@ Run final reviewer and integration checks, then commit and push Phase 5.2. The
 next implementation phase should add a first real provider adapter or the
 explicit cancellation endpoint, depending on whether provider execution or run
 control is more urgent.
+
+## 2026-07-07 — Phase 5.3 OpenAI-Compatible Provider Adapter
+
+### Action
+
+Verified the owner-provided relay settings from local `mm-chat/backend/.env`
+without printing secrets, normalized the file from CRLF to LF, and added the
+first real provider adapter for OpenAI-compatible streaming Chat Completions.
+
+### Evidence
+
+Provider probe:
+
+```text
+PROVIDER_BASE_URL=[configured OpenAI-compatible relay /v1 URL]
+PROVIDER_MODEL=gpt-5.5
+HTTP 200
+SSE sample returned delta content "pong" and usage.
+```
+
+Backend files created or updated:
+
+```text
+mm-chat/backend/.env.example
+mm-chat/backend/cmd/api/main.go
+mm-chat/backend/internal/chat/provider_openai_compatible.go
+mm-chat/backend/internal/chat/provider_openai_compatible_test.go
+mm-chat/backend/internal/config/config.go
+mm-chat/backend/internal/config/config_test.go
+```
+
+Docs updated:
+
+```text
+mm-chat/docs/contracts/README.md
+mm-chat/docs/contracts/chat-stream-api.md
+mm-chat/docs/deployment/README.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+### Decision
+
+Use Go standard-library `net/http` instead of a provider SDK for the first
+adapter. This keeps the relay boundary explicit, avoids SDK version churn, and
+matches OpenAI-compatible providers that expose `/v1/chat/completions`.
+
+Provider secrets stay in process environment variables only. `cmd/api` enables
+the provider only when `PROVIDER_TYPE=openai_compatible` and
+`PROVIDER_BASE_URL`, `PROVIDER_MODEL`, and `PROVIDER_API_KEY` are all present.
+Missing fields keep streaming disabled with `503 PROVIDER_REQUIRED`; unsupported
+provider types fail startup.
+
+### Verification
+
+Unit tests passed with Docker Go 1.22:
+
+```bash
+docker run --rm --user "$(id -u):$(id -g)" \
+  -v "$PWD/mm-chat/backend":/app -w /app \
+  -e GOCACHE=/tmp/go-cache -e GOMODCACHE=/tmp/go-mod-cache \
+  golang:1.22-alpine \
+  sh -lc '/usr/local/go/bin/gofmt -w $(find . -name "*.go" -print) && /usr/local/go/bin/go test ./...'
+```
+
+Live smoke passed against Docker Postgres + API + the configured relay before
+and after reviewer fixes:
+
+```text
+ready_status=200
+stream_http_status=200
+events: message.started -> message.delta -> usage.updated -> message.completed
+assistant persisted status=completed content="pong"
+```
+
+Covered behavior:
+
+```text
+OpenAI-compatible request path/header/body shape
+delta extraction from choices[].delta.content
+usage extraction from provider usage chunk
+data: [DONE] stream termination
+default model fallback
+non-2xx provider startup errors without API key leakage
+malformed stream frames become provider error events
+EOF without data: [DONE] becomes provider error event
+unsupported modelRef.providerId is rejected before persistence
+provider env config trimming/defaults
+handler regression: unsupported providerId does not create assistant row
+handler regression: provider startup cancellation finalizes cancelled
+```
+
+Reviewer fixes applied:
+
+```text
+EOF without data: [DONE] now emits provider error instead of silent completion.
+200 OK non-SSE bodies now emit provider error instead of empty completion.
+Unsupported modelRef.providerId is rejected before assistant persistence.
+Provider startup cancellation finalizes assistant status=cancelled instead of failed.
+Deployment docs now state .env is not auto-loaded by go run.
+Committed docs/templates no longer include the owner relay hostname.
+Handler-level tests now lock unsupported-provider and startup-cancel behavior.
+Final reviewer reported no blocking findings after the fixes.
+```
+
+### Boundary
+
+This phase does not add Redis cancellation flags, explicit cancel endpoint,
+Gemini/native OpenAI Responses API adapters, provider secret encryption at rest,
+frontend integration, file attachments, tools/plugins, RAG, or auth.
+
+### Next Step
+
+Commit and push Phase 5.3. Then implement the explicit cancellation endpoint
+before expanding provider features.

@@ -28,6 +28,21 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 	if cfg.DBConnMaxLifetime != DefaultDBConnMaxLifetime {
 		t.Fatalf("DBConnMaxLifetime = %s, want %s", cfg.DBConnMaxLifetime, DefaultDBConnMaxLifetime)
 	}
+	if cfg.Provider.Type != "" {
+		t.Fatalf("Provider.Type = %q, want empty", cfg.Provider.Type)
+	}
+	if cfg.Provider.BaseURL != "" {
+		t.Fatalf("Provider.BaseURL = %q, want empty", cfg.Provider.BaseURL)
+	}
+	if cfg.Provider.Model != "" {
+		t.Fatalf("Provider.Model = %q, want empty", cfg.Provider.Model)
+	}
+	if cfg.Provider.APIKey != "" {
+		t.Fatalf("Provider.APIKey = %q, want empty", cfg.Provider.APIKey)
+	}
+	if cfg.Provider.Timeout != DefaultProviderTimeout {
+		t.Fatalf("Provider.Timeout = %s, want %s", cfg.Provider.Timeout, DefaultProviderTimeout)
+	}
 }
 
 func TestLoadFromEnvOverrides(t *testing.T) {
@@ -38,6 +53,11 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 		EnvDBMaxOpenConns:    "12",
 		EnvDBMaxIdleConns:    "7",
 		EnvDBConnMaxLifetime: "45m",
+		EnvProviderType:      " openai_compatible ",
+		EnvProviderBaseURL:   " https://sub.example.test/v1/ ",
+		EnvProviderModel:     " gpt-5.5 ",
+		EnvProviderAPIKey:    " secret-key ",
+		EnvProviderTimeout:   "90s",
 	}
 
 	cfg := LoadFromEnv(func(key string) (string, bool) {
@@ -63,6 +83,21 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	if cfg.DBConnMaxLifetime != 45*time.Minute {
 		t.Fatalf("DBConnMaxLifetime = %s, want 45m", cfg.DBConnMaxLifetime)
 	}
+	if cfg.Provider.Type != "openai_compatible" {
+		t.Fatalf("Provider.Type = %q, want openai_compatible", cfg.Provider.Type)
+	}
+	if cfg.Provider.BaseURL != "https://sub.example.test/v1/" {
+		t.Fatalf("Provider.BaseURL = %q", cfg.Provider.BaseURL)
+	}
+	if cfg.Provider.Model != "gpt-5.5" {
+		t.Fatalf("Provider.Model = %q, want gpt-5.5", cfg.Provider.Model)
+	}
+	if cfg.Provider.APIKey != "secret-key" {
+		t.Fatalf("Provider.APIKey = %q, want secret-key", cfg.Provider.APIKey)
+	}
+	if cfg.Provider.Timeout != 90*time.Second {
+		t.Fatalf("Provider.Timeout = %s, want 90s", cfg.Provider.Timeout)
+	}
 }
 
 func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
@@ -73,6 +108,11 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 		EnvDBMaxOpenConns:    " ",
 		EnvDBMaxIdleConns:    "\t",
 		EnvDBConnMaxLifetime: " \n",
+		EnvProviderType:      " ",
+		EnvProviderBaseURL:   "\t",
+		EnvProviderModel:     " \n ",
+		EnvProviderAPIKey:    " ",
+		EnvProviderTimeout:   "\t",
 	}
 
 	cfg := LoadFromEnv(func(key string) (string, bool) {
@@ -98,6 +138,13 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 	if cfg.DBConnMaxLifetime != DefaultDBConnMaxLifetime {
 		t.Fatalf("DBConnMaxLifetime = %s, want %s", cfg.DBConnMaxLifetime, DefaultDBConnMaxLifetime)
 	}
+	if cfg.Provider.Type != "" || cfg.Provider.BaseURL != "" ||
+		cfg.Provider.Model != "" || cfg.Provider.APIKey != "" {
+		t.Fatalf("Provider = %#v, want blank strings", cfg.Provider)
+	}
+	if cfg.Provider.Timeout != DefaultProviderTimeout {
+		t.Fatalf("Provider.Timeout = %s, want %s", cfg.Provider.Timeout, DefaultProviderTimeout)
+	}
 }
 
 func TestLoadFromEnvFallsBackForInvalidDBValues(t *testing.T) {
@@ -105,6 +152,7 @@ func TestLoadFromEnvFallsBackForInvalidDBValues(t *testing.T) {
 		EnvDBMaxOpenConns:    "not-an-int",
 		EnvDBMaxIdleConns:    "-1",
 		EnvDBConnMaxLifetime: "not-a-duration",
+		EnvProviderTimeout:   "-1s",
 	}
 
 	cfg := LoadFromEnv(func(key string) (string, bool) {
@@ -120,5 +168,8 @@ func TestLoadFromEnvFallsBackForInvalidDBValues(t *testing.T) {
 	}
 	if cfg.DBConnMaxLifetime != DefaultDBConnMaxLifetime {
 		t.Fatalf("DBConnMaxLifetime = %s, want %s", cfg.DBConnMaxLifetime, DefaultDBConnMaxLifetime)
+	}
+	if cfg.Provider.Timeout != DefaultProviderTimeout {
+		t.Fatalf("Provider.Timeout = %s, want %s", cfg.Provider.Timeout, DefaultProviderTimeout)
 	}
 }

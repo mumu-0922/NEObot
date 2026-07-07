@@ -205,6 +205,57 @@ func TestHandlerFinalizesFailedWhenProviderStartupFails(t *testing.T) {
 	}
 }
 
+func TestHandlerRejectsUnsupportedProviderBeforeAssistantPersistence(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "hello"),
+	)
+	handler := NewHandler(NewService(repo), WithProvider(rejectingProvider{}))
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"anthropic","modelId":"claude-test"},"idempotencyKey":"stream-key-unsupported-provider"}`,
+	)
+
+	assertStatus(t, rec, http.StatusBadRequest)
+	assertErrorCode(t, rec, "UNSUPPORTED_PROVIDER")
+	if got := len(repo.messages[testConversationID]); got != 1 {
+		t.Fatalf("persisted messages = %d, want only original user message", got)
+	}
+}
+
+func TestHandlerFinalizesCancelledWhenProviderStartupIsCancelled(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "hello"),
+	)
+	handler := NewHandler(NewService(repo), WithProvider(startupCancelledProvider{}))
+
+	_ = performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"cancelled"},"idempotencyKey":"stream-key-startup-cancelled"}`,
+	)
+
+	messages := repo.messages[testConversationID]
+	if len(messages) != 2 {
+		t.Fatalf("persisted messages = %d, want user + cancelled assistant; messages=%#v", len(messages), messages)
+	}
+	if messages[1].Status != "cancelled" {
+		t.Fatalf("assistant status = %q, want cancelled; messages=%#v", messages[1].Status, messages)
+	}
+	if _, ok := messages[1].Metadata["errorCode"]; ok {
+		t.Fatalf("cancelled assistant metadata contains errorCode: %#v", messages[1].Metadata)
+	}
+}
+
 func TestHandlerReturnsProviderRequiredForStreamWhenProviderIsNil(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
@@ -724,4 +775,23 @@ type errorProvider struct{}
 
 func (p errorProvider) StreamChat(context.Context, ProviderRequest) (<-chan ProviderEvent, error) {
 	return nil, errors.New("provider startup failed")
+}
+
+type rejectingProvider struct{}
+
+func (p rejectingProvider) ResolveModelRef(ModelRef) (ModelRef, error) {
+	return ModelRef{}, ValidationError{
+		Code:    "UNSUPPORTED_PROVIDER",
+		Message: "modelRef.providerId is not supported by the configured provider",
+	}
+}
+
+func (p rejectingProvider) StreamChat(context.Context, ProviderRequest) (<-chan ProviderEvent, error) {
+	panic("StreamChat should not be called after modelRef validation fails")
+}
+
+type startupCancelledProvider struct{}
+
+func (p startupCancelledProvider) StreamChat(context.Context, ProviderRequest) (<-chan ProviderEvent, error) {
+	return nil, context.Canceled
 }
