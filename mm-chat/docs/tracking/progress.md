@@ -47,13 +47,13 @@ Update this file whenever a phase or task is completed. Every `[x]` entry must h
 
 ## Phase 4 — Postgres Persistence
 
-- [ ] Add Postgres container plan.
-- [ ] Add migrations directory.
-- [ ] Create users/sessions schema.
-- [ ] Create conversations/messages schema.
-- [ ] Create files metadata schema.
-- [ ] Create audit logs schema.
-- [ ] Verify migration up/down locally.
+- [x] Add Postgres container plan.
+- [x] Add migrations directory.
+- [x] Create users/sessions schema.
+- [x] Create conversations/messages schema.
+- [x] Create files metadata schema.
+- [x] Create audit logs schema.
+- [x] Verify migration up/down locally.
 
 ## Phase 5 — Chat Streaming Spine
 

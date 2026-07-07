@@ -260,7 +260,8 @@ Rules:
 
 Back up these artifacts together:
 
-1. Postgres logical dump, including migration version table.
+1. Postgres logical dump, including the migration version table once a
+   migration runner exists.
 2. MinIO bucket/object data for uploaded files and knowledge sources.
 3. Encrypted deployment environment/secrets backup.
 4. Release identifier or container image tags used during the backup window.
