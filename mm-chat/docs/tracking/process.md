@@ -1,0 +1,190 @@
+# mm-chat Refactor Process Log
+
+Record each completed action here. Keep entries factual: date, action, evidence, decision, next step.
+
+## 2026-07-07 — Initial Refactor Workspace
+
+### Action
+
+Created the isolated `mm-chat/` workspace and generated the first design documents.
+
+### Evidence
+
+Files created:
+
+```text
+mm-chat/README.md
+mm-chat/docs/architecture/server-refactor-design.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+Repository findings used for the plan:
+
+```text
+Current app: Next.js/React/TypeScript
+Current durable browser metadata: IndexedDB/localforage
+Current browser file storage: OPFS
+Existing S3/MinIO integration: not found
+Target single-server stack: Go + Postgres + Redis + MinIO, optional Python FastAPI RAG
+```
+
+### Decision
+
+Use a strangler migration instead of direct rewrite:
+
+```text
+Keep frontend stable
+Add API boundary
+Introduce Go backend
+Move conversations/messages to Postgres
+Move file bodies to MinIO
+Add Redis only for temporary state
+Add Python RAG only after core chat is stable
+```
+
+All future refactor work should stay under `mm-chat/` until a later task explicitly migrates a specific piece into the existing application.
+
+### Verification
+
+- Confirmed `mm-chat/` did not exist before creation.
+- Created planning, progress, and process documents only under `mm-chat/`.
+- No existing application source file was intentionally modified for this documentation step.
+
+### Next Step
+
+Review and lock MVP scope, then begin Phase 1 inventory:
+
+```text
+mm-chat/docs/inventory/api-routes.md
+mm-chat/docs/inventory/storage.md
+mm-chat/docs/inventory/chat-flow.md
+mm-chat/docs/inventory/provider-flow.md
+```
+
+## 2026-07-07 — Initial Documentation Verification
+
+### Action
+
+Ran a lightweight Markdown structure and checklist verification for the new `mm-chat/` documents.
+
+### Evidence
+
+```text
+ok: mm-chat markdown structure and completed checklist verified
+```
+
+Confirmed tracked scope for this step:
+
+```text
+mm-chat/
+.trellis/tasks/07-07-mm-chat-server-refactor-design/  # workflow metadata
+```
+
+### Decision
+
+Full `pnpm` checks were not run because this step changed documentation only and `node_modules/` is not installed in the workspace. Application source code was not modified by this step.
+
+### Next Step
+
+Start Phase 1 inventory and create:
+
+```text
+mm-chat/docs/inventory/api-routes.md
+mm-chat/docs/inventory/storage.md
+mm-chat/docs/inventory/chat-flow.md
+mm-chat/docs/inventory/provider-flow.md
+```
+
+## 2026-07-07 — Phase 1 Static Inventory
+
+### Action
+
+Completed the first static inventory pass for existing API routes, service wrappers, local storage, OPFS usage, chat streaming, and provider flow.
+
+### Evidence
+
+Inventory documents created:
+
+```text
+mm-chat/docs/inventory/api-routes.md
+mm-chat/docs/inventory/storage.md
+mm-chat/docs/inventory/chat-flow.md
+mm-chat/docs/inventory/provider-flow.md
+```
+
+Key findings:
+
+```text
+src/app/api/**/route.ts contains 25 current API route files.
+src/services/api/chatService.ts owns the browser-side streaming workflow.
+src/lib/api/chat-handler.ts owns current provider stream dispatch.
+src/lib/providers/base.ts owns OpenAI/Gemini client construction and API-key validation.
+src/store/storage/storageConfig.ts defines localStorage and IndexedDB storage keys.
+src/utils/opfs.ts owns opfs:// file storage helpers.
+```
+
+### Decision
+
+Treat chat streaming as the first backend migration spine. Defer plugins, code execution, document parsing, voice, and full RAG until the server chat path is stable.
+
+### Verification
+
+Static inspection covered:
+
+```text
+src/app/api
+src/services
+src/lib/api/chat-handler.ts
+src/lib/providers
+src/store/storage
+src/utils/opfs.ts
+src/store/README.md
+src/services/README.md
+```
+
+Updated `mm-chat/docs/tracking/progress.md` Phase 1 checklist to mark completed inventory outputs.
+
+### Next Step
+
+Begin Phase 2 by defining `mm-chat/docs/contracts/frontend-api-client.md`, including local/server mode boundaries and feature flags.
+
+
+## 2026-07-07 — Documentation Directory Reorganization
+
+### Action
+
+Moved `mm-chat` documentation into a categorized `docs/` tree and added category indexes for future work.
+
+### Evidence
+
+New documentation layout:
+
+```text
+mm-chat/docs/README.md
+mm-chat/docs/architecture/server-refactor-design.md
+mm-chat/docs/inventory/api-routes.md
+mm-chat/docs/inventory/storage.md
+mm-chat/docs/inventory/chat-flow.md
+mm-chat/docs/inventory/provider-flow.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+mm-chat/docs/contracts/README.md
+mm-chat/docs/deployment/README.md
+```
+
+### Decision
+
+Keep only the workspace entrypoint at `mm-chat/README.md`. All detailed planning, inventory, contracts, deployment, and tracking docs now live under `mm-chat/docs/`.
+
+### Verification
+
+Updated root README links and progress references to point at the new docs paths.
+
+### Next Step
+
+Start Phase 2 contract work in:
+
+```text
+mm-chat/docs/contracts/frontend-api-client.md
+```
