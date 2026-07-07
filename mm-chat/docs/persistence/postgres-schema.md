@@ -178,6 +178,58 @@ Boundary:
 - Store stable output fields and scrubbed metadata, not raw provider responses
   or secrets.
 
+## 4. Phase 5.1 Repository Usage Boundary
+
+Phase 5.1 is the first application repository consumer of the Phase 4 schema. It
+uses a deliberately narrow subset so chat CRUD can land before auth, provider
+streaming, files, Redis, MinIO, or RAG.
+
+Allowed application tables:
+
+```text
+users
+conversations
+messages
+```
+
+Allowed repository behavior:
+
+- Resolve every request to one fixed development user placeholder while auth is
+  absent. The placeholder ID must be stable and backend-owned; requests must not
+  accept a caller-supplied `user_id`.
+- Ensure or read that fixed user in `users` before chat CRUD operations.
+- Insert and list `conversations` scoped by the fixed user's `user_id`.
+- Insert and list `messages` only after proving the parent conversation belongs
+  to the fixed user.
+- Assign new user messages with `role = 'user'`, `status = 'completed'`, and a
+  repository-owned `sequence_no`.
+- Treat `conversations.idempotency_key` and `messages.idempotency_key` as
+  optional retry guards. Phase 5.1 stores the key and returns
+  `409 IDEMPOTENCY_CONFLICT` on duplicate non-empty keys when the violated
+  unique index is `idx_conversations_user_idempotency` or
+  `idx_messages_conversation_idempotency`; it does not replay the original
+  response.
+
+Explicitly outside the Phase 5.1 repository path:
+
+- `sessions`: auth and session revocation are later work.
+- `provider_configs`: provider selection/secret resolution is later work.
+- `files` and `message_attachments`: attachments and object-byte storage are
+  later work.
+- `audit_logs`: audit writes are not required for the first chat CRUD path.
+- Provider streaming persistence: assistant/tool message creation, streaming
+  status transitions, provider message IDs, and cancellation are later work.
+- Redis, MinIO/S3/local object storage, RAG indexes, browser import, and
+  multi-user permissions are later work.
+
+DB-disabled boundary:
+
+- The backend may still start and report `/ready` as `200 OK` when
+  `DATABASE_URL` is empty, per Phase 4.5 runtime wiring.
+- The Phase 5.1 chat CRUD endpoints require durable persistence and must return
+  `503 DATABASE_REQUIRED` when DB runtime wiring is disabled.
+- API startup and chat request handling must not run migrations automatically.
+
 ### `files`
 
 Purpose: metadata for uploaded/imported files. Bytes live in MinIO/S3/local
@@ -276,7 +328,7 @@ Boundary:
 - Do not store API keys, bearer tokens, raw file bytes, or unbounded prompt / raw
   provider payloads in audit `metadata`.
 
-## 4. Phase 4.5 Runtime Wiring Boundary
+## 5. Phase 4.5 Runtime Wiring Boundary
 
 The app-table schema above stays unchanged in Phase 4.5. Runtime wiring adds the
 operational boundary between the Go backend process and Postgres:
@@ -300,7 +352,7 @@ operational boundary between the Go backend process and Postgres:
   `schema_migrations(version, name, applied_at)`. This table is
   migration-runner metadata, not an app/domain table.
 
-## 5. Migration and Rollback Boundary
+## 6. Migration and Rollback Boundary
 
 - Apply `*.up.sql` in ascending order and `*.down.sql` in descending order.
 - `001_initial_schema.down.sql` drops indexes, child tables, then foundational
@@ -317,7 +369,7 @@ operational boundary between the Go backend process and Postgres:
   `schema_migrations(version, name, applied_at)`. This table is
   migration-runner metadata, not an application table in the domain model above.
 
-## 6. Acceptance Checks
+## 7. Acceptance Checks
 
 Phase 4/4.5 persistence is not complete until implementation work can verify:
 

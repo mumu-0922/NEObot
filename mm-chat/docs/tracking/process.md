@@ -612,3 +612,140 @@ This phase adds DB connectivity, readiness, and migration execution only. It sti
 ### Next Step
 
 Run the required reviewer agent across backend code, runtime docs, deployment docs, and tracking. If clean, commit and push. The next implementation phase should begin the chat repository and API spine.
+
+## 2026-07-07 — Phase 5.1 Chat Repository and CRUD API
+
+### Action
+
+Implemented the first Postgres-backed chat CRUD slice under the isolated
+`mm-chat/backend` workspace.
+
+### Evidence
+
+Backend files created or updated:
+
+```text
+mm-chat/backend/cmd/api/main.go
+mm-chat/backend/internal/chat/errors.go
+mm-chat/backend/internal/chat/handler.go
+mm-chat/backend/internal/chat/handler_test.go
+mm-chat/backend/internal/chat/repository_postgres.go
+mm-chat/backend/internal/chat/service.go
+mm-chat/backend/internal/chat/types.go
+mm-chat/backend/internal/chat/uuid.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/httpserver/server_test.go
+```
+
+Docs created or updated:
+
+```text
+mm-chat/docs/contracts/chat-crud-api.md
+mm-chat/docs/contracts/README.md
+mm-chat/docs/persistence/README.md
+mm-chat/docs/persistence/postgres-schema.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+Implemented API surface:
+
+```text
+POST /v1/chat/conversations
+GET  /v1/chat/conversations
+POST /v1/chat/conversations/{id}/messages
+GET  /v1/chat/conversations/{id}/messages
+```
+
+Implemented runtime behavior:
+
+```text
+DATABASE_URL empty -> chat endpoints return 503 DATABASE_REQUIRED
+fixed dev user     -> 00000000-0000-0000-0000-000000000001
+conversation DTO   -> modelRef + config
+message creation   -> role=user, status=completed, completedAt set
+not found          -> 404 CONVERSATION_NOT_FOUND
+forbidden message  -> 400 FORBIDDEN_MESSAGE_FIELD
+idempotency reuse  -> 409 IDEMPOTENCY_CONFLICT
+```
+
+### Decision
+
+Keep Phase 5.1 deliberately narrow: conversation/message CRUD only. Cursor
+pagination is not implemented yet; list endpoints retain the `ApiPage` envelope
+and return the full active set for the fixed development user. Idempotency keys
+are stored as retry guards and mapped to `409` on duplicate key conflicts, but
+response replay and payload-hash comparison are deferred.
+
+### Verification
+
+Unit tests passed with Docker Go 1.22 because host `go` is not installed:
+
+```bash
+docker run --rm --user "$(id -u):$(id -g)" \
+  -v "$PWD/mm-chat/backend":/app -w /app \
+  -e GOCACHE=/tmp/go-cache -e GOMODCACHE=/tmp/go-mod-cache \
+  golang:1.22-alpine \
+  sh -lc '/usr/local/go/bin/gofmt -w $(find . -name "*.go" -print) && /usr/local/go/bin/go test ./...'
+```
+
+Result:
+
+```text
+ok neo-chat/mm-chat/backend/internal/chat
+ok neo-chat/mm-chat/backend/internal/config
+ok neo-chat/mm-chat/backend/internal/database
+ok neo-chat/mm-chat/backend/internal/health
+ok neo-chat/mm-chat/backend/internal/httpserver
+ok neo-chat/mm-chat/backend/internal/migration
+```
+
+DB-disabled API smoke passed:
+
+```text
+/ready                                           -> 200 ready
+GET  /v1/chat/conversations                     -> 503 DATABASE_REQUIRED
+POST /v1/chat/conversations with malformed JSON -> 503 DATABASE_REQUIRED
+POST /v1/chat/conversations/{id}/messages       -> 503 DATABASE_REQUIRED
+```
+
+Docker Postgres 16 integration passed after `go run ./cmd/migrate up`:
+
+```text
+POST /v1/chat/conversations                  -> 201 conversation
+POST duplicate conversation idempotencyKey    -> 409 IDEMPOTENCY_CONFLICT
+POST forbidden conversation userId            -> 400 VALIDATION_ERROR
+GET  /v1/chat/conversations                   -> listed created conversation
+POST /v1/chat/conversations/{id}/messages     -> 201 user/completed message
+POST duplicate message idempotencyKey          -> 409 IDEMPOTENCY_CONFLICT
+POST role=assistant                           -> 400 FORBIDDEN_MESSAGE_FIELD
+POST status=streaming                         -> 400 FORBIDDEN_MESSAGE_FIELD
+GET  unknown conversation messages            -> 404 CONVERSATION_NOT_FOUND
+GET  /v1/chat/conversations/{id}/messages     -> listed one message
+Postgres table counts                         -> users=1, conversations=1, messages=1, other app tables=0
+```
+
+### Boundary
+
+This phase does not add provider interfaces, mock providers, real provider
+adapters, SSE streaming, stream cancellation, assistant streaming persistence,
+auth/sessions, Redis, MinIO/S3 file storage, RAG, browser import, or frontend
+integration.
+
+### Reviewer Notes
+
+A read-only reviewer found initial contract drift around DTO shape, pagination,
+forbidden fields, DB-disabled precedence, and idempotency conflict mapping. The
+accepted fixes were applied by making `modelRef/config` the Phase 5.1 canonical
+DTO, documenting pagination as not implemented, rejecting server-managed fields,
+checking DB-required before POST body parsing, and scoping duplicate-key mapping
+to the idempotency unique indexes. Final review also found that message append
+did not reject `ownerId`/identity-hint fields; the handler now rejects
+`ownerId`, session, token, authorization, and impersonation body fields for both
+conversation and message creation, with regression tests.
+
+### Next Step
+
+Run final reviewer and diff checks, then commit and push Phase 5.1. The next
+implementation phase should add the provider interface, mock provider, SSE
+streaming endpoint, cancellation path, and assistant-message persistence.

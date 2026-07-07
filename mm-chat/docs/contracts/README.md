@@ -3,5 +3,6 @@
 Contract documents define stable boundaries before implementation starts.
 
 - [`frontend-api-client.md`](./frontend-api-client.md) — full frontend API client boundary for local/server migration, chat streaming, file access, auth, settings, provider metadata, plugin placeholders, errors, and rollout order.
+- [`chat-crud-api.md`](./chat-crud-api.md) — Phase 5.1 backend REST contract for Postgres-backed conversation CRUD and completed user-message writes, including DB-disabled `503 DATABASE_REQUIRED` behavior and non-goals.
 
-Future contract docs may cover backend REST/OpenAPI, SSE wire examples, import/export schemas, and database migration contracts.
+Future contract docs may cover SSE wire examples, import/export schemas, and database migration contracts.

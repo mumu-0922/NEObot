@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"neo-chat/mm-chat/backend/internal/chat"
 	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/health"
 )
@@ -20,24 +21,58 @@ type ErrorBody struct {
 	Message string `json:"message"`
 }
 
-func New(cfg config.Config, readyChecker ...health.ReadinessChecker) *http.Server {
+type Option func(*options)
+
+type options struct {
+	readyChecker   health.ReadinessChecker
+	chatRepository chat.Repository
+}
+
+func WithReadyChecker(checker health.ReadinessChecker) Option {
+	return func(opts *options) {
+		opts.readyChecker = checker
+	}
+}
+
+func WithChatRepository(repo chat.Repository) Option {
+	return func(opts *options) {
+		opts.chatRepository = repo
+	}
+}
+
+func New(cfg config.Config, opts ...Option) *http.Server {
 	return &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           NewHandler(cfg, readyChecker...),
+		Handler:           NewHandler(cfg, opts...),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 }
 
-func NewHandler(cfg config.Config, readyChecker ...health.ReadinessChecker) http.Handler {
+func NewHandler(cfg config.Config, opts ...Option) http.Handler {
+	resolvedOptions := resolveOptions(opts...)
 	mux := http.NewServeMux()
-	healthHandler := health.New(cfg.Version, readyChecker...)
+	healthHandler := health.New(cfg.Version, resolvedOptions.readyChecker)
+	chatHandler := chat.NewHandler(chat.NewService(resolvedOptions.chatRepository))
 
 	mux.HandleFunc("/health", healthHandler.Health)
 	mux.HandleFunc("/ready", healthHandler.Ready)
 	mux.HandleFunc("/v1/version", healthHandler.Version)
+	mux.Handle("/v1/chat/conversations", chatHandler)
+	mux.Handle("/v1/chat/conversations/", chatHandler)
 	mux.HandleFunc("/", notFound)
 
 	return chain(mux, withRecover, withSecurityHeaders)
+}
+
+func resolveOptions(opts ...Option) options {
+	resolved := options{}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&resolved)
+		}
+	}
+
+	return resolved
 }
 
 func notFound(w http.ResponseWriter, r *http.Request) {

@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"neo-chat/mm-chat/backend/internal/chat"
 	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/database"
 	"neo-chat/mm-chat/backend/internal/httpserver"
@@ -30,7 +31,16 @@ func main() {
 		log.Fatalf("mm-chat database open failed: %v", err)
 	}
 
-	server := httpserver.New(cfg, db)
+	var chatRepo chat.Repository
+	if sqlDB := db.SQL(); sqlDB != nil {
+		chatRepo = chat.NewPostgresRepository(sqlDB)
+	}
+
+	server := httpserver.New(
+		cfg,
+		httpserver.WithReadyChecker(db),
+		httpserver.WithChatRepository(chatRepo),
+	)
 
 	errorsCh := make(chan error, 1)
 	go func() {

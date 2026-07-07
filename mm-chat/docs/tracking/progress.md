@@ -69,10 +69,14 @@ Update this file whenever a phase or task is completed. Every `[x]` entry must h
 
 ## Phase 5 — Chat Streaming Spine
 
+- [x] Add Phase 5.1 chat CRUD API contract.
+- [x] Add Postgres chat repository for development-user conversation/message CRUD.
+- [x] Add chat CRUD HTTP routes and DB-disabled `503 DATABASE_REQUIRED` behavior.
+- [x] Add idempotency-conflict and ownership-not-found error mapping.
 - [ ] Add provider interface.
 - [ ] Add mock provider for tests.
 - [ ] Add first real provider adapter.
-- [ ] Add conversation/message CRUD endpoints.
+- [x] Add conversation/message CRUD endpoints.
 - [ ] Add SSE streaming endpoint.
 - [ ] Add cancellation endpoint.
 - [ ] Persist assistant response after stream completion.

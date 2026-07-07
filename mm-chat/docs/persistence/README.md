@@ -1,15 +1,16 @@
 # Persistence Docs
 
-Persistence docs define the Phase 4 Postgres source-of-truth contract and the
-Phase 4.5 runtime-wiring boundary for the `mm-chat` server-backed refactor. They
-are schema and operations references for migration and deployment work; they do
-not claim that a database repository layer is already implemented.
+Persistence docs define the Phase 4 Postgres source-of-truth contract, the
+Phase 4.5 runtime-wiring boundary, and the Phase 5.1 repository usage boundary
+for the `mm-chat` server-backed refactor. They are schema and operations
+references for migration and deployment work; only the Phase 5.1 chat CRUD path
+claims a narrow repository usage boundary.
 
 ## Documents
 
 | Guide | Purpose |
 | --- | --- |
-| [`postgres-schema.md`](./postgres-schema.md) | Phase 4 Postgres schema responsibilities, field intent, relationships, indexes, and data-boundary rules for users, sessions, conversations, messages, file metadata, and audit logs. |
+| [`postgres-schema.md`](./postgres-schema.md) | Phase 4 Postgres schema responsibilities plus the Phase 5.1 repository usage boundary for `users`, `conversations`, and `messages`; files, provider configs, audit logs, and auth/session usage remain later work. |
 | [`runtime-wiring.md`](./runtime-wiring.md) | Phase 4.5 DB runtime wiring contract: env vars, pgx connector behavior, readiness matrix, migration CLI flow, and rollback boundaries. |
 
 ## Phase Boundary
@@ -24,14 +25,22 @@ Phase 4.5 wires the Go backend to Postgres when `DATABASE_URL` is set, keeps DB
 optional when it is empty, adds DB-aware `/ready`, and exposes migrations through
 an explicit CLI. API startup must not auto-migrate.
 
-Phase 4/4.5 does **not** add MinIO file bytes, Redis session/cache hardening,
-RAG services, browser data import, or a committed Docker Compose implementation.
-Those remain later phases unless a later task explicitly changes the boundary.
+Phase 5.1 adds the first narrow repository usage boundary for chat CRUD:
+`users`, `conversations`, and `messages` only. Chat CRUD endpoints must return
+`503 DATABASE_REQUIRED` when DB runtime wiring is disabled; they must not fall
+back to in-memory persistence.
+
+Phase 4/4.5/5.1 does **not** add provider streaming persistence, SSE
+cancellation, auth, multi-user permissions, MinIO file bytes, Redis
+session/cache/cancellation state, RAG services, browser data import, or a
+committed Docker Compose implementation. Those remain later phases unless a
+later task explicitly changes the boundary.
 
 ## Source-of-Truth Rules
 
 - Postgres is canonical for users, sessions, conversations, messages, file
-  metadata, provider configuration metadata, and audit logs.
+  metadata, provider configuration metadata, and audit logs. Phase 5.1 code uses
+  only `users`, `conversations`, and `messages`.
 - File bytes are not stored in Postgres. Store only metadata, ownership,
   integrity, and object-location references.
 - Redis, when introduced later, must remain non-authoritative temporary state.
@@ -44,6 +53,9 @@ Those remain later phases unless a later task explicitly changes the boundary.
 
 ## Related Docs
 
+- [`../contracts/chat-crud-api.md`](../contracts/chat-crud-api.md)
+  defines the Phase 5.1 REST contract for chat CRUD and DB-disabled endpoint
+  behavior.
 - [`../architecture/server-refactor-design.md`](../architecture/server-refactor-design.md)
   defines the full refactor phases and target architecture.
 - [`../inventory/storage.md`](../inventory/storage.md) inventories current
