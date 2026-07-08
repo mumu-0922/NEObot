@@ -1774,3 +1774,84 @@ git diff --check -- mm-chat: passed
 ### Next Step
 
 Run final Trellis quality check, commit, and push the Phase 7 session-cache slice.
+
+## 2026-07-08 — Phase 8 Browser Data Import Contract
+
+### Action
+
+Started Phase 8 with a documentation-first import contract. Inventoried the current browser export surfaces, including full-app `AppExportPayload`, single-session export payloads, IndexedDB/localforage keys, per-session message storage, and OPFS reference risks. Added a backend import contract for explicit preview-before-commit imports using `neo-chat-browser-import-v2.zip`, a normalized manifest, and SHA-256 addressed file blobs. Added the frontend `importApi` boundary so later UI code has one import surface.
+
+### Files
+
+```text
+mm-chat/docs/inventory/browser-data-export.md
+mm-chat/docs/inventory/README.md
+mm-chat/docs/contracts/browser-data-import.md
+mm-chat/docs/contracts/README.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/architecture/server-refactor-design.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+### Decision
+
+The Go backend should validate a normalized import manifest instead of parsing every historical Zustand/localforage shape. The browser-side exporter remains responsible for reading IndexedDB and OPFS, converting millisecond timestamps to UTC RFC3339, mapping local role `model` to server role `assistant`, and building SHA-256 addressed ZIP blobs for OPFS/inline files. Preview performs ZIP/schema/blob validation without writes; commit repeats the confirmed package and persists rows/objects. Runtime import code remains a later Phase 8 slice.
+
+### Verification
+
+```text
+Source inspection: src/lib/data/appExport.ts, src/lib/chat/sessionExport.ts, src/store/storage/storageConfig.ts, src/store/core/chatStore.ts, src/utils/opfs.ts
+Docs updated under mm-chat only; upgraded after Scout finding that current all-data JSON omits session_messages_* and OPFS bytes: pending final review
+```
+
+### Next Step
+
+Run review agent, fix contract gaps, then commit and push the Phase 8 contract slice.
+
+## 2026-07-08 — Phase 8 Review Fix: Import Package Atomicity
+
+### Action
+
+Addressed review findings in the browser import contract before runtime work.
+Removed the remaining old "file part" wording from the Phase 8 flow, hardened
+the uploaded ZIP whitelist, and aligned commit/batch statuses with an atomic
+all-or-nothing import model.
+
+### Files
+
+```text
+mm-chat/docs/architecture/server-refactor-design.md
+mm-chat/docs/contracts/browser-data-import.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/inventory/browser-data-export.md
+mm-chat/docs/tracking/process.md
+```
+
+### Decision
+
+The uploaded server import ZIP may contain only `manifest.json` and
+`files/sha256/*`. Diagnostic `stores/*` and `messages/*` exports are local-only
+debug artifacts and must be rejected if they appear in an uploaded package.
+Commit is atomic: validation, database, or object-storage failures abort the
+batch and return an error instead of exposing a partial-success state. Review
+also found an idempotency wording conflict; the contract now specifies same
+package replay returns the prior completed result, while reusing the same
+idempotency key with different package bytes returns `409 IDEMPOTENCY_CONFLICT`.
+
+### Verification
+
+```text
+Review agent found one P2 idempotency wording conflict after the first fix pass.
+Contract wording updated locally.
+Review agent rerun: P0/P1/P2 no findings.
+git diff --check -- mm-chat: passed.
+Trellis spec update: no `.trellis/spec` change; the executable import contract
+is task-scoped under `mm-chat/docs/contracts/browser-data-import.md`, preserving
+the owner rule that refactor artifacts stay under `mm-chat/`.
+```
+
+### Next Step
+
+Commit and push the Phase 8 browser import contract slice, then begin runtime
+conversation/message import implementation.

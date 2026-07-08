@@ -103,6 +103,7 @@ src/services/api/client/
     authApi.ts
     settingsApi.ts
     providerApi.ts
+    importApi.ts
 ```
 
 Factory sketch:
@@ -123,6 +124,7 @@ export interface NeoChatApiClient {
   settings: SettingsApi;
   providers: ProviderApi;
   plugins: PluginApi;
+  imports: ImportApi;
 }
 
 export function createNeoChatApiClient(config: ApiClientConfig): NeoChatApiClient;
@@ -682,7 +684,104 @@ not change yet because `/v1/auth/*` and request-scoped multi-user middleware are
 still deferred. Redis cache loss must behave like a cache miss and fall back to
 Postgres, not force a client-visible logout.
 
-## 12. `settingsApi`, `providerApi`, and `pluginApi` Contracts
+## 12. `importApi` Contract
+
+Phase 8 import must be explicit and previewed. The frontend builds
+`neo-chat-browser-import-v2.zip` from local IndexedDB/localforage plus OPFS bytes
+and sends it only after user action. See
+[`browser-data-import.md`](./browser-data-import.md) for the backend package
+contract.
+
+```ts
+export interface ImportApi {
+  buildBrowserImportPackage(input?: BuildBrowserImportPackageInput): Promise<BrowserImportPackage>;
+  previewBrowserImport(input: BrowserImportPackage): Promise<ImportPreviewResponse>;
+  commitBrowserImport(input: BrowserImportPackage): Promise<ImportCommitResponse>;
+  getBrowserImportBatch(batchId: EntityId): Promise<ImportBatchStatus>;
+  rollbackBrowserImportBatch(batchId: EntityId): Promise<void>;
+}
+
+export interface BuildBrowserImportPackageInput {
+  includeConversations?: EntityId[];
+  includeFiles?: boolean;
+}
+
+export interface BrowserImportPackage {
+  file: File; // neo-chat-browser-import-v2.zip
+  idempotencyKey: string;
+  summary: {
+    conversations: number;
+    messages: number;
+    files: number;
+    bytes: number;
+  };
+}
+
+export interface ImportPreviewResponse {
+  summary: {
+    conversations: number;
+    messages: number;
+    files: number;
+    bytes: number;
+    skippedDuplicates: number;
+  };
+  warnings: ImportIssue[];
+  errors: ImportIssue[];
+  commitAllowed: boolean;
+}
+
+export interface ImportCommitResponse {
+  batchId: EntityId;
+  status: "completed";
+  created: {
+    conversations: number;
+    messages: number;
+    files: number;
+    attachments: number;
+  };
+  mappings: {
+    conversations: Record<string, EntityId>;
+    messages: Record<string, EntityId>;
+    files: Record<string, EntityId>;
+  };
+  warnings: ImportIssue[];
+}
+
+export interface ImportBatchStatus {
+  batchId: EntityId;
+  status: "completed" | "rolled_back";
+  createdAt: IsoDateTime;
+}
+
+export interface ImportIssue {
+  code: string;
+  path: string;
+  message: string;
+  severity: "warning" | "error";
+}
+```
+
+Endpoint mapping:
+
+| Method | Server Endpoint | Local Behavior |
+|---|---|---|
+| `previewBrowserImport` | `POST /v1/import/browser/preview` | Validate generated package locally when server mode is off |
+| `commitBrowserImport` | `POST /v1/import/browser` | No-op unless server mode is enabled |
+| `getBrowserImportBatch` | `GET /v1/import/browser/:batchId` | Returns local preview/import state |
+| `rollbackBrowserImportBatch` | `DELETE /v1/import/browser/:batchId` | Does not delete browser-local data |
+
+Rules:
+
+- Never call import APIs automatically on startup.
+- Do not send raw `opfs://` URLs without packaged file bytes.
+- Treat commit as all-or-nothing: failed imports return an error response and
+  must not surface partial success in UI state.
+- Do not include provider secrets, local secret envelopes, RAG tokens, plugin
+  auth, cookies, or access tokens in the package.
+- Existing all-data JSON export is not a valid server import package because it
+  omits `session_messages_*` and OPFS bytes.
+
+## 13. `settingsApi`, `providerApi`, and `pluginApi` Contracts
 
 ```ts
 export interface SettingsApi {
@@ -798,7 +897,7 @@ Rules:
 - `RuntimeConfig.capabilities` gates UI visibility for features not yet migrated.
 - `plugins` capability remains `false` for the first server MVP; `pluginApi` exists to avoid later component-level route coupling.
 
-## 13. HTTP Client Rules
+## 14. HTTP Client Rules
 
 Server adapter must centralize HTTP behavior.
 
@@ -825,7 +924,7 @@ Rules:
   `X-RateLimit-Reset`.
 - `5xx` maps to `SERVER_ERROR` and is recoverable unless explicitly marked otherwise.
 
-## 14. Error Matrix
+## 15. Error Matrix
 
 | Condition | Code | Recoverable | Owner |
 |---|---|---:|---|
@@ -841,7 +940,7 @@ Rules:
 | Rate limited | `RATE_LIMITED` | Yes after wait | backend/Redis |
 | Invalid import/export payload | `INVALID_IMPORT_PAYLOAD` | No for current payload | import phase later |
 
-## 15. Migration Sequence
+## 16. Migration Sequence
 
 | Step | Contract Work | Runtime Change | Rollback |
 |---:|---|---|---|
@@ -854,7 +953,7 @@ Rules:
 | 7 | Add server file API | MinIO opt-in | Disable `serverFiles` capability |
 | 8 | Add provider config/model APIs | Provider secrets server-side | Fall back to local BYOK |
 
-## 16. Test Requirements
+## 17. Test Requirements
 
 When implementation begins, add tests for:
 
@@ -868,9 +967,9 @@ When implementation begins, add tests for:
 - Role mapping: local `model` ↔ API `assistant` round trip.
 - Date mapping: ISO API dates ↔ frontend timestamps where legacy components require numbers.
 
-## 17. Acceptance Criteria for Phase 2
+## 18. Acceptance Criteria for Phase 2
 
-- `frontend-api-client.md` defines stable `chatApi`, `fileApi`, `authApi`, `settingsApi`, and `providerApi` contracts.
+- `frontend-api-client.md` defines stable `chatApi`, `fileApi`, `authApi`, `settingsApi`, `providerApi`, and `importApi` contracts.
 - Contract includes local/server mode rules.
 - Contract includes SSE event envelope and event types.
 - Contract includes error envelope and error matrix.
@@ -878,7 +977,7 @@ When implementation begins, add tests for:
 - Contract includes provider/model identity, runtime config rollback, attachment source matrix, and plugin placeholder boundaries.
 - `progress.md` and `process.md` are updated after review.
 
-## 18. Open Decisions for Later Phases
+## 19. Open Decisions for Later Phases
 
 - Whether `server` mode initially supports anonymous single-user access or mandatory login.
 - Whether BYOK remains available in hosted server mode or only local mode.

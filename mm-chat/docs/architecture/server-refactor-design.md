@@ -397,10 +397,12 @@ Flow:
 
 ```text
 Frontend export local data
-  ↓ JSON/ZIP generated in browser
+  ↓ normalized manifest + ZIP blobs under files/sha256/* generated in browser
 User confirms upload
   ↓
-Go import endpoint validates schema
+Go preview endpoint validates schema
+  ↓ user confirms
+Go import endpoint commits
   ↓
 Postgres rows + MinIO file objects created
 ```
@@ -411,6 +413,8 @@ Rules:
 - Preview what will be imported.
 - Preserve original timestamps and message roles.
 - Reject malformed imports with detailed errors.
+- Keep `mm-chat/docs/contracts/browser-data-import.md` as the endpoint and
+  validation contract before implementing runtime code.
 
 Verification:
 

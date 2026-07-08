@@ -105,9 +105,10 @@ Update this file whenever a phase or task is completed. Every `[x]` entry must h
 
 ## Phase 8 — Browser Data Import
 
-- [ ] Define export format from local-first app.
-- [ ] Define import validation schema.
-- [ ] Add preview step before upload/import.
+- [x] Define export format from local-first app.
+- [x] Define import validation schema.
+- [x] Add preview step before upload/import.
+- [x] Address browser import contract review findings.
 - [ ] Import conversations and messages.
 - [ ] Import attachments into MinIO.
 - [ ] Add rollback/delete imported data path.
