@@ -2221,6 +2221,22 @@ This was a docs-first kickoff, so application tests were not run. Verification
 for this step is limited to the edited docs and diff hygiene. Functional checks
 belong to the later implementation slices.
 
+### Review
+
+Multi-agent review found and the lead fixed these documentation risks before
+implementation:
+
+- scoped the Phase 11 docs slice away from unrelated dirty files outside
+  `mm-chat/`;
+- marked `/v1/config`, `/v1/settings`, `/v1/providers*`, `/v1/auth*`, and
+  `/v1/plugins*` as unsupported in Phase 11 until Go routes exist;
+- hardened CRUD gap wording so server mode uses server-data derivation or
+  explicit unsupported responses, never implicit browser-local fallback;
+- corrected known stream/cancel error code handling and kept the complete set
+  tied to the Go handler contracts.
+
+Final review result: no remaining findings.
+
 ### Next Step
 
 Implement Phase 11.1 adapter scaffold next, then update `progress.md` and add a
