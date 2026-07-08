@@ -149,7 +149,6 @@ Updated `mm-chat/docs/tracking/progress.md` Phase 1 checklist to mark completed 
 
 Begin Phase 2 by defining `mm-chat/docs/contracts/frontend-api-client.md`, including local/server mode boundaries and feature flags.
 
-
 ## 2026-07-07 — Documentation Directory Reorganization
 
 ### Action
@@ -188,7 +187,6 @@ Start Phase 2 contract work in:
 ```text
 mm-chat/docs/contracts/frontend-api-client.md
 ```
-
 
 ## 2026-07-07 — Phase 2 Frontend API Client Contract Draft
 
@@ -229,7 +227,6 @@ Read-only reviewer subagent requested by owner; findings recorded in the next pr
 ### Next Step
 
 Apply accepted reviewer findings before commit.
-
 
 ## 2026-07-07 — Phase 2 Reviewer Findings Applied
 
@@ -273,7 +270,6 @@ Validated Markdown links, code fence balance, required contract sections, absenc
 ### Next Step
 
 Commit and push Phase 2 contract docs.
-
 
 ## 2026-07-07 — Phase 2 Frontend Call-Site Inventory
 
@@ -2477,3 +2473,87 @@ rewriting UI components or replacing frontend technology.
 Proceed to Phase 11.1B by adding the adapter boundary to the original app with
 minimal files and tests. Do not wire CRUD, SSE, files, auth, RAG, plugins, or
 provider-settings UI in 11.1B.
+
+## 2026-07-08 — Phase 11.1B: Original App Adapter Boundary
+
+### Action
+
+Added the Phase 11.1B API-client scaffold to the original Next.js app service
+layer without activating it from UI, stores, routes, or legacy
+`chatService.ts`.
+
+Created:
+
+```text
+src/services/api/client/types.ts
+src/services/api/client/mode.ts
+src/services/api/client/errors.ts
+src/services/api/client/index.ts
+src/services/api/client/local/chatApi.ts
+src/services/api/client/server/httpClient.ts
+src/services/api/client/server/chatApi.ts
+src/services/api/client/server/sse.ts
+src/__tests__/apiClientScaffold.test.ts
+```
+
+### Decision
+
+Keep this slice as a compile-safe boundary only. `createNeoChatApiClient()`
+resolves `local|server` mode, normalizes base URL/network-edge behavior, and
+exposes explicit unsupported local/server chat shells. Conversation CRUD, SSE
+streaming, files, auth, RAG, plugins, provider settings, and visible UI wiring
+remain deferred to later Phase 11 slices.
+
+Default behavior remains safe rollback:
+
+```text
+missing/invalid NEXT_PUBLIC_API_MODE -> local
+NEXT_PUBLIC_API_MODE=server without NEXT_PUBLIC_API_BASE_URL -> local + warning
+```
+
+### Verification
+
+Targeted verification passed:
+
+```text
+corepack pnpm dlx vitest@4.1.9 run src/__tests__/apiClientScaffold.test.ts
+  passed: 1 file, 11 tests
+
+corepack pnpm --package=typescript@5.9.3 dlx tsc --noEmit --target ES2020 --module ESNext --moduleResolution Bundler --lib DOM,ESNext --strict --skipLibCheck src/services/api/client/index.ts
+  passed
+
+corepack pnpm dlx prettier@3.9.4 --check 'src/services/api/client/**/*.ts' src/__tests__/apiClientScaffold.test.ts mm-chat/docs/tracking/progress.md mm-chat/docs/tracking/process.md
+  passed
+
+git diff --check -- src/services/api/client src/__tests__/apiClientScaffold.test.ts mm-chat/docs/tracking/progress.md mm-chat/docs/tracking/process.md
+  passed
+
+rg -n "services/api/client|createNeoChatApiClient" src/components src/features src/store src/services/api/chatService.ts
+  no matches
+```
+
+ESLint could not be run through the incomplete local dependency install
+(`corepack pnpm exec eslint` reported `Command "eslint" not found`). The
+targeted TypeScript, Vitest, Prettier, whitespace, and no-UI-import checks were
+used for this scaffold slice.
+
+### Review
+
+Multi-agent implementation plus independent review completed. Review result:
+no code findings. Review warning remains commit hygiene only: the root worktree
+contains many unrelated dirty files, so this slice must be staged with an
+explicit allowlist.
+
+### Boundary
+
+This slice intentionally does not import the new client from
+`src/components`, `src/features`, `src/store`, or
+`src/services/api/chatService.ts`. It therefore cannot change visible UI or
+runtime chat behavior until a later slice adds a narrow service-layer
+delegation point.
+
+### Next Step
+
+Proceed to Phase 11.2: implement server-mode conversation/message CRUD inside
+`src/services/api/client/server/chatApi.ts`, with targeted tests and no UI
+rewrite.

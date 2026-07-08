@@ -1,0 +1,181 @@
+export type ApiMode = "local" | "server";
+
+export type NetworkEdge = "same-origin-proxy" | "direct-cors";
+
+export type UnsupportedFeatureCode =
+  "FEATURE_NOT_IMPLEMENTED" | "SERVER_BASE_URL_REQUIRED";
+
+export interface ApiClientEnv {
+  NEXT_PUBLIC_API_MODE?: string;
+  NEXT_PUBLIC_API_BASE_URL?: string;
+}
+
+export interface ApiClientConfig {
+  mode?: string;
+  baseUrl?: string;
+  env?: ApiClientEnv;
+  frontendOrigin?: string;
+  networkEdge?: NetworkEdge;
+}
+
+export interface ResolvedApiClientConfig {
+  mode: ApiMode;
+  requestedMode: string;
+  baseUrl: string;
+  networkEdge: NetworkEdge;
+  serverConfigured: boolean;
+  warnings: string[];
+}
+
+export interface ApiCapabilities {
+  chatCrud: boolean;
+  chatStream: boolean;
+  files: boolean;
+  auth: boolean;
+  imports: boolean;
+  rag: boolean;
+  plugins: boolean;
+  providerSettings: boolean;
+}
+
+export interface ApiErrorEnvelope {
+  error: {
+    code: string;
+    message: string;
+    recoverable?: boolean;
+    requestId?: string;
+  };
+}
+
+export interface ModelRef {
+  providerId: string;
+  modelId: string;
+  displayName?: string;
+}
+
+export interface ConversationDTO {
+  id: string;
+  title: string;
+  status: "active" | "archived" | "deleted";
+  modelRef?: ModelRef;
+  messageCount: number;
+  config: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChatMessageDTO {
+  id: string;
+  conversationId: string;
+  role: "user" | "assistant";
+  status: "completed" | "streaming" | "failed" | "cancelled";
+  content: string;
+  sequenceNo: number;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+  modelRef?: ModelRef;
+  metadata?: Record<string, unknown>;
+  attachments?: ServerAttachmentDTO[];
+}
+
+export interface ServerAttachmentDTO {
+  fileId: string;
+  fileName?: string;
+  mimeType?: string;
+  size?: number;
+  sha256?: string;
+  purpose?: string;
+  downloadUrl?: string;
+}
+
+export interface CreateConversationInput {
+  title?: string;
+  modelRef?: ModelRef;
+  systemInstruction?: string;
+  config?: Record<string, unknown>;
+  idempotencyKey?: string;
+}
+
+export interface AppendUserMessageInput {
+  conversationId: string;
+  content: string;
+  parentMessageId?: string;
+  attachments?: Array<{
+    source?: "server";
+    fileId: string;
+    purpose?: string;
+  }>;
+  metadata?: Record<string, unknown>;
+  idempotencyKey?: string;
+}
+
+export interface StreamAssistantMessageInput {
+  conversationId: string;
+  userMessageId: string;
+  modelRef: ModelRef;
+  config?: Record<string, unknown>;
+  systemInstruction?: string;
+  systemPrompt?: string;
+  metadata?: Record<string, unknown>;
+  idempotencyKey: string;
+  signal?: AbortSignal;
+}
+
+export interface ChatStreamHandlers {
+  onStarted?: (event: ServerStreamEvent) => void;
+  onDelta?: (event: ServerStreamEvent) => void;
+  onUsage?: (event: ServerStreamEvent) => void;
+  onCompleted?: (event: ServerStreamEvent) => void;
+  onError?: (event: ServerStreamEvent) => void;
+  onCancelled?: (event: ServerStreamEvent) => void;
+}
+
+export interface ChatRunResult {
+  status: "completed" | "failed" | "cancelled" | "unsupported";
+  message?: ChatMessageDTO;
+  error?: ApiErrorEnvelope["error"];
+}
+
+export interface ChatApi {
+  createConversation(input: CreateConversationInput): Promise<ConversationDTO>;
+  listConversations(): Promise<ConversationDTO[]>;
+  appendUserMessage(input: AppendUserMessageInput): Promise<ChatMessageDTO>;
+  listMessages(conversationId: string): Promise<ChatMessageDTO[]>;
+  streamAssistantMessage(
+    input: StreamAssistantMessageInput,
+    handlers?: ChatStreamHandlers,
+  ): Promise<ChatRunResult>;
+  cancelRun(runId: string): Promise<ChatRunResult>;
+}
+
+export interface NeoChatApiClient {
+  mode: ApiMode;
+  config: ResolvedApiClientConfig;
+  capabilities: ApiCapabilities;
+  chat: ChatApi;
+}
+
+export type ServerStreamEventType =
+  | "message.started"
+  | "message.delta"
+  | "usage.updated"
+  | "message.completed"
+  | "message.error"
+  | "message.cancelled"
+  | string;
+
+export interface ServerStreamEvent {
+  type: ServerStreamEventType;
+  runId?: string;
+  conversationId?: string;
+  messageId?: string;
+  sequence?: number;
+  createdAt?: string;
+  role?: "assistant";
+  delta?: string;
+  usage?: unknown;
+  message?: ChatMessageDTO;
+  error?: ApiErrorEnvelope["error"];
+  [key: string]: unknown;
+}

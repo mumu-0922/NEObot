@@ -172,15 +172,15 @@ Owner integration constraint recorded on 2026-07-08:
 
 ### Phase 11.1 — Adapter scaffold
 
-- [ ] Identify the existing frontend API boundary, mode selector, and local-mode
+- [x] Identify the existing frontend API boundary, mode selector, and local-mode
       callers that must remain stable.
-- [ ] Add or complete the server-mode adapter scaffold behind the API boundary.
-- [ ] Document `NEXT_PUBLIC_API_MODE=local|server` and server base-URL behavior.
-- [ ] Document and verify the browser network edge for server mode: same-origin
+- [x] Add or complete the server-mode adapter scaffold behind the API boundary.
+- [x] Document `NEXT_PUBLIC_API_MODE=local|server` and server base-URL behavior.
+- [x] Document and verify the browser network edge for server mode: same-origin
       proxy/reverse proxy or explicit backend CORS allowlist.
-- [ ] Verify `NEXT_PUBLIC_API_MODE=local` still preserves the current local
+- [x] Verify `NEXT_PUBLIC_API_MODE=local` still preserves the current local
       rollback path.
-- [ ] Confirm the first slice does not touch browser import/export UI, auth
+- [x] Confirm the first slice does not touch browser import/export UI, auth
       UI/enforcement, RAG/knowledge flows, provider-settings redesign, or
       unrelated product UI.
 
@@ -197,6 +197,25 @@ wiring above.
 - [x] Add targeted tests for mode resolution, base URL/network-edge handling,
       HTTP error normalization, and SSE parsing.
 - [x] Confirm no original app `src/` files were modified by this scaffold.
+
+### Phase 11.1B — Original app adapter boundary
+
+This integration slice adds the same compile-safe adapter boundary to the
+existing app without activating it from UI, stores, routes, or legacy
+`chatService.ts`.
+
+- [x] Add `src/services/api/client/*` scaffold with `local|server` mode
+      resolution.
+- [x] Add explicit unsupported local/server chat shells for not-yet-wired CRUD
+      and stream methods.
+- [x] Add server HTTP helper and Go named-SSE parser under the original app
+      service layer.
+- [x] Add targeted tests for mode fallback, base URL handling, network-edge
+      classification, HTTP error normalization, and SSE protocol checks.
+- [x] Verify the scaffold is not imported by `src/components`, `src/features`,
+      `src/store`, or `src/services/api/chatService.ts`.
+- [x] Run multi-agent implementation plus independent review before marking the
+      slice complete.
 
 ### Phase 11.2 — Conversation and message CRUD
 
