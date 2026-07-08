@@ -21,13 +21,19 @@ const mocks = vi.hoisted(() => {
     appendUserMessage: vi.fn(),
     listMessages: vi.fn(),
   };
+  const streamService = {
+    streamEnabled: true,
+    streamAssistantMessage: vi.fn(),
+  };
 
   return {
     appDbMock,
     storedItems,
     deleteFromOPFSMock: vi.fn(() => Promise.resolve()),
     createChatCrudService: vi.fn(() => serverService),
+    createChatStreamService: vi.fn(() => streamService),
     serverService,
+    streamService,
   };
 });
 
@@ -102,6 +108,10 @@ vi.mock("../services/api/chatCrudService", () => ({
   },
 }));
 
+vi.mock("../services/api/chatStreamService", () => ({
+  createChatStreamService: mocks.createChatStreamService,
+}));
+
 const { normalizeSessionMessageTree } = await import("../lib/chat/messageTree");
 const { useChatStore } = await import("../store/core/chatStore");
 
@@ -135,7 +145,9 @@ describe("chat store server read path", () => {
     mocks.storedItems.clear();
     vi.clearAllMocks();
     mocks.createChatCrudService.mockReturnValue(mocks.serverService);
+    mocks.createChatStreamService.mockReturnValue(mocks.streamService);
     mocks.serverService.serverEnabled = true;
+    mocks.streamService.streamEnabled = true;
     mocks.serverService.listConversations.mockResolvedValue([
       makeServerSession("c1"),
       makeServerSession("c2"),
@@ -146,6 +158,10 @@ describe("chat store server read path", () => {
     mocks.serverService.appendUserMessage.mockResolvedValue(
       makeMessage("m3", "user"),
     );
+    mocks.streamService.streamAssistantMessage.mockResolvedValue({
+      status: "completed",
+      message: makeMessage("m4", "model"),
+    });
     mocks.serverService.listMessages.mockResolvedValue([
       makeMessage("m1", "user"),
       makeMessage("m2", "model"),
@@ -251,6 +267,7 @@ describe("chat store server read path", () => {
     expect(mocks.serverService.listMessages).not.toHaveBeenCalled();
     expect(mocks.serverService.createConversation).not.toHaveBeenCalled();
     expect(mocks.serverService.appendUserMessage).not.toHaveBeenCalled();
+    expect(mocks.streamService.streamAssistantMessage).not.toHaveBeenCalled();
     expect(mocks.appDbMock.getItem).not.toHaveBeenCalled();
     expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
   });
@@ -506,12 +523,198 @@ describe("chat store server read path", () => {
         content: "hello",
       }),
     ).resolves.toBeNull();
+    await expect(
+      useChatStore.getState().sendServerMessageAndStream({
+        sessionId: "c1",
+        content: "hello",
+      }),
+    ).resolves.toBeNull();
 
     expect(useChatStore.getState().serverReadState).toEqual(
       makeEmptyServerReadState(),
     );
     expect(mocks.serverService.createConversation).not.toHaveBeenCalled();
     expect(mocks.serverService.appendUserMessage).not.toHaveBeenCalled();
+    expect(mocks.streamService.streamAssistantMessage).not.toHaveBeenCalled();
+    expect(mocks.appDbMock.getItem).not.toHaveBeenCalled();
+    expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
+  });
+
+  it("sends a server user message and streams the assistant into the snapshot only", async () => {
+    const localMessage = makeMessage("local-m1", "user");
+    mocks.streamService.streamAssistantMessage.mockImplementation(
+      async (_input: unknown, handlers?: any) => {
+        handlers?.onStarted?.({
+          type: "message.started",
+          runId: "run-1",
+          conversationId: "c1",
+          messageId: "m4",
+          createdAt: "2026-07-08T00:00:02Z",
+        });
+        handlers?.onDelta?.({
+          type: "message.delta",
+          runId: "run-1",
+          conversationId: "c1",
+          messageId: "m4",
+          delta: "hel",
+        });
+        handlers?.onDelta?.({
+          type: "message.delta",
+          runId: "run-1",
+          conversationId: "c1",
+          messageId: "m4",
+          delta: "lo",
+        });
+        return {
+          status: "completed",
+          message: {
+            ...makeMessage("m4", "model"),
+            content: "hello",
+          },
+        };
+      },
+    );
+
+    useChatStore.setState({
+      selectedModel: "openai:gpt-5.5",
+      currentSessionId: "local",
+      activeMessages: [localMessage],
+      activeMessageTree: normalizeSessionMessageTree([localMessage]),
+      serverReadState: {
+        ...makeEmptyServerReadState(),
+        sessions: [{ ...makeServerSession("c1"), messageCount: 0 }],
+        currentSessionId: "c1",
+      },
+    });
+
+    await expect(
+      useChatStore.getState().sendServerMessageAndStream({
+        sessionId: "c1",
+        content: "hello user",
+        metadata: { source: "input" },
+        streamMetadata: { source: "stream" },
+        config: { useSearch: true },
+        userMessageIdempotencyKey: "user-key",
+        streamIdempotencyKey: "stream-key",
+      }),
+    ).resolves.toMatchObject({ status: "completed" });
+
+    const state = useChatStore.getState();
+    expect(
+      state.serverReadState.activeMessages.map((message) => [
+        message.id,
+        message.role,
+        message.content,
+      ]),
+    ).toEqual([
+      ["m3", "user", "user content"],
+      ["m4", "model", "hello"],
+    ]);
+    expect(state.serverReadState.sessions[0]?.messageCount).toBe(2);
+    expect(state.serverReadState.isLoading).toBe(false);
+    expect(state.serverReadState.error).toBeNull();
+    expect(state.currentSessionId).toBe("local");
+    expect(state.activeMessages).toEqual([localMessage]);
+    expect(mocks.serverService.appendUserMessage).toHaveBeenCalledWith({
+      conversationId: "c1",
+      content: "hello user",
+      parentMessageId: undefined,
+      attachments: undefined,
+      metadata: { source: "input" },
+      idempotencyKey: "user-key",
+    });
+    expect(mocks.streamService.streamAssistantMessage).toHaveBeenCalledWith(
+      {
+        conversationId: "c1",
+        userMessageId: "m3",
+        modelRef: { providerId: "openai", modelId: "gpt-5.5" },
+        config: { useSearch: true },
+        systemInstruction: undefined,
+        systemPrompt: undefined,
+        metadata: { source: "stream" },
+        idempotencyKey: "stream-key",
+        signal: undefined,
+      },
+      expect.objectContaining({
+        onStarted: expect.any(Function),
+        onDelta: expect.any(Function),
+      }),
+    );
+    expect(mocks.appDbMock.getItem).not.toHaveBeenCalled();
+    expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
+  });
+
+  it("does not overcount non-current assistant stream draft events", async () => {
+    const activeServerMessage = makeMessage("c2-m1", "user");
+    mocks.streamService.streamAssistantMessage.mockImplementation(
+      async (_input: unknown, handlers?: any) => {
+        handlers?.onStarted?.({
+          type: "message.started",
+          runId: "run-1",
+          conversationId: "c1",
+          messageId: "m4",
+        });
+        handlers?.onDelta?.({
+          type: "message.delta",
+          runId: "run-1",
+          conversationId: "c1",
+          messageId: "m4",
+          delta: "draft",
+        });
+        return {
+          status: "completed",
+          message: makeMessage("m4", "model"),
+        };
+      },
+    );
+
+    useChatStore.setState({
+      selectedModel: "openai:gpt-5.5",
+      serverReadState: {
+        ...makeEmptyServerReadState(),
+        sessions: [
+          { ...makeServerSession("c1"), messageCount: 0 },
+          { ...makeServerSession("c2"), messageCount: 1 },
+        ],
+        currentSessionId: "c2",
+        activeMessages: [activeServerMessage],
+        activeMessageTree: normalizeSessionMessageTree([activeServerMessage]),
+      },
+    });
+
+    await expect(
+      useChatStore.getState().sendServerMessageAndStream({
+        sessionId: "c1",
+        content: "hello user",
+      }),
+    ).resolves.toMatchObject({ status: "completed" });
+
+    const state = useChatStore.getState().serverReadState;
+    expect(state.sessions.find((session) => session.id === "c1")).toMatchObject(
+      {
+        messageCount: 2,
+      },
+    );
+    expect(state.activeMessages.map((message) => message.id)).toEqual([
+      "c2-m1",
+    ]);
+    expect(state.activeMessageTree.nodesById.m4).toBeUndefined();
+    expect(mocks.appDbMock.getItem).not.toHaveBeenCalled();
+    expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
+  });
+
+  it("returns null without local writes when server stream is disabled", async () => {
+    mocks.streamService.streamEnabled = false;
+
+    await expect(
+      useChatStore.getState().sendServerMessageAndStream({
+        sessionId: "c1",
+        content: "hello",
+      }),
+    ).resolves.toBeNull();
+
+    expect(mocks.serverService.appendUserMessage).not.toHaveBeenCalled();
+    expect(mocks.streamService.streamAssistantMessage).not.toHaveBeenCalled();
     expect(mocks.appDbMock.getItem).not.toHaveBeenCalled();
     expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
   });

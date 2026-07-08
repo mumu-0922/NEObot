@@ -3054,3 +3054,126 @@ terminal UI state mapping, and live Go backend verification remain later Phase
 Proceed to Phase 11.3B: add an opt-in server stream facade above the API client
 that can combine `appendServerUserMessage()` with `streamAssistantMessage()` and
 update `serverReadState` without touching the local chat write path.
+
+## 2026-07-08 — Phase 11.3B: Store Server Stream Facade
+
+### Action
+
+Added a hidden store-level server stream facade without wiring visible UI,
+`ChatApp`, or bootstrap to server streaming.
+
+Changed:
+
+```text
+src/services/api/chatStreamService.ts
+src/services/api/chatCrudService.ts
+src/store/core/chatStore.ts
+src/__tests__/chatStreamService.test.ts
+src/__tests__/chatCrudService.test.ts
+src/__tests__/chatStoreServerRead.test.ts
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+### Decision
+
+Keep stream lifecycle semantics out of `chatCrudService`. CRUD remains focused
+on conversation/message create/list and DTO mapping. `chatStreamService` owns
+server stream/cancel delegation and terminal message mapping.
+
+The store-level facade is still opt-in only:
+
+```text
+sendServerMessageAndStream(options)
+  -> chatCrudService.appendUserMessage()
+  -> chatStreamService.streamAssistantMessage()
+  -> serverReadState only
+```
+
+It does not call `createSession`, `addMessage`, `updateMessage`,
+`setMessages`, `syncActiveSession`, `selectSession`, local provider streaming,
+or any IndexedDB `session_messages_*` path.
+
+### Boundary
+
+Server stream state is written only into non-persisted `serverReadState`.
+Legacy local fields remain untouched:
+
+```text
+sessions
+currentSessionId
+activeMessages
+activeMessageTree
+isActiveSessionLoading
+```
+
+The facade creates/updates assistant placeholders from `message.started` and
+`message.delta`, then replaces the placeholder with the terminal server message
+when the stream result includes one. When CRUD or stream capability is disabled,
+it returns `null` and makes no server or local-storage writes.
+
+### Trellis-check Finding
+
+Review found one hidden snapshot edge case before handoff: assistant
+`message.started`/`message.delta` draft events for a non-current server session
+would call the shared message apply helper while the active tree did not contain
+that assistant id, inflating the non-current session `messageCount` once per
+draft event.
+
+Fix: assistant draft updates now no-op unless the streamed session is the
+current `serverReadState.currentSessionId`. The persisted user message and the
+terminal assistant message still update the target server session count once
+each, while the current server snapshot and legacy local chat state remain
+unchanged.
+
+### Verification
+
+Targeted verification passed:
+
+```text
+corepack pnpm vitest run src/__tests__/chatCrudService.test.ts src/__tests__/chatStreamService.test.ts src/__tests__/chatStoreServerRead.test.ts src/__tests__/apiClientScaffold.test.ts
+  passed: 4 files, 47 tests
+
+corepack pnpm exec eslint src/services/api/chatCrudService.ts src/services/api/chatStreamService.ts src/__tests__/chatCrudService.test.ts src/__tests__/chatStreamService.test.ts src/store/core/chatStore.ts src/__tests__/chatStoreServerRead.test.ts
+  passed
+
+corepack pnpm typecheck
+  passed
+
+corepack pnpm exec prettier --check src/services/api/chatCrudService.ts src/services/api/chatStreamService.ts src/__tests__/chatCrudService.test.ts src/__tests__/chatStreamService.test.ts src/store/core/chatStore.ts src/__tests__/chatStoreServerRead.test.ts
+  passed
+
+git diff --check -- src/services/api/chatCrudService.ts src/services/api/chatStreamService.ts src/__tests__/chatCrudService.test.ts src/__tests__/chatStreamService.test.ts src/store/core/chatStore.ts src/__tests__/chatStoreServerRead.test.ts
+  passed
+```
+
+Reviewer follow-up verification passed:
+
+```text
+corepack pnpm vitest run src/__tests__/chatCrudService.test.ts src/__tests__/chatStreamService.test.ts src/__tests__/chatStoreServerRead.test.ts
+  passed: 3 files, 22 tests
+
+corepack pnpm exec eslint src/services/api/chatCrudService.ts src/services/api/chatStreamService.ts src/__tests__/chatCrudService.test.ts src/__tests__/chatStreamService.test.ts src/store/core/chatStore.ts src/__tests__/chatStoreServerRead.test.ts
+  passed
+
+corepack pnpm typecheck
+  passed
+
+corepack pnpm exec prettier --check src/services/api/chatCrudService.ts src/services/api/chatStreamService.ts src/__tests__/chatCrudService.test.ts src/__tests__/chatStreamService.test.ts src/store/core/chatStore.ts src/__tests__/chatStoreServerRead.test.ts mm-chat/docs/tracking/progress.md mm-chat/docs/tracking/process.md
+  passed
+
+git diff --check -- src/services/api/chatCrudService.ts src/services/api/chatStreamService.ts src/__tests__/chatCrudService.test.ts src/__tests__/chatStreamService.test.ts src/store/core/chatStore.ts src/__tests__/chatStoreServerRead.test.ts mm-chat/docs/tracking/progress.md mm-chat/docs/tracking/process.md
+  passed
+```
+
+### Remaining Boundary
+
+This slice still does not map server stream lifecycle into the visible UI
+terminal state and has not been smoke-tested against the live Go backend. Those
+remain Phase 11.3 follow-up work.
+
+### Next Step
+
+Proceed to Phase 11.3C: decide whether to add non-persisted server generation
+state (`generation`, `activeServerRunId`) before any visible UI wiring, then
+verify against the local Go backend.

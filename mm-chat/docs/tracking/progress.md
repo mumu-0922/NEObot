@@ -344,6 +344,30 @@ wire visible UI, `ChatApp`, or store generation state to server streaming yet.
       errors, cancelled/EOF terminal handling, duplicate/gap sequence handling,
       CRLF chunk boundaries, abort cancellation, and cancel endpoint routing.
 
+### Phase 11.3B — Store server stream facade
+
+This slice adds a hidden server stream facade above the API client. It still
+does not wire visible UI or `ChatApp` to server streaming.
+
+- [x] Split stream concerns into `chatStreamService` instead of extending CRUD
+      service with SSE lifecycle semantics.
+- [x] Keep `chatCrudService` focused on conversation/message CRUD and DTO
+      mapping.
+- [x] Add `sendServerMessageAndStream()` to append a persisted server user
+      message and stream the assistant response.
+- [x] Update only non-persisted `serverReadState`; do not touch local
+      `sessions/currentSessionId/activeMessages/activeMessageTree`.
+- [x] Avoid `addMessage`, `syncActiveSession`, local provider streaming,
+      `session_messages_*`, and IndexedDB during the server stream facade.
+- [x] Insert/update assistant placeholders from `message.started` and
+      `message.delta`, then replace with terminal server message when present.
+- [x] Avoid applying assistant draft events to non-current server snapshots before
+      the terminal server message, preventing hidden message-count inflation.
+- [x] Fail closed when either server CRUD or server stream capability is
+      disabled.
+- [x] Add targeted tests for stream service mapping, capability gating, store
+      append+stream flow, local-state isolation, and IndexedDB isolation.
+
 ### Phase 11.4 — File upload and download
 
 - [ ] Upload browser-selected files through the server file API.

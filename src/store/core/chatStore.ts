@@ -49,6 +49,10 @@ import {
   type ChatCrudSession,
   modelStringToModelRef,
 } from "../../services/api/chatCrudService";
+import {
+  createChatStreamService,
+  type ChatStreamRunResult,
+} from "../../services/api/chatStreamService";
 import type { AppendUserMessageInput } from "../../services/api/client";
 
 let selectSessionRequestId = 0;
@@ -80,6 +84,22 @@ interface AppendServerUserMessageOptions {
   attachments?: AppendUserMessageInput["attachments"];
   metadata?: Record<string, unknown>;
   idempotencyKey?: string;
+}
+
+interface SendServerMessageAndStreamOptions {
+  sessionId: string;
+  content: string;
+  parentMessageId?: string;
+  attachments?: AppendUserMessageInput["attachments"];
+  metadata?: Record<string, unknown>;
+  streamMetadata?: Record<string, unknown>;
+  model?: string;
+  config?: SessionConfig;
+  systemInstruction?: string;
+  systemPrompt?: string;
+  userMessageIdempotencyKey?: string;
+  streamIdempotencyKey?: string;
+  signal?: AbortSignal;
 }
 
 const createEmptyServerReadState = (): ServerReadState => ({
@@ -135,6 +155,48 @@ const upsertServerReadSession = (
   if (existingIndex === -1) return [session, ...sessions];
 
   return sessions.map((item) => (item.id === session.id ? session : item));
+};
+
+const applyServerMessageToReadState = (
+  serverReadState: ServerReadState,
+  sessionId: string,
+  message: Message,
+): ServerReadState => {
+  const isCurrentServerSession = serverReadState.currentSessionId === sessionId;
+  const hasMessageInActiveTree = Boolean(
+    serverReadState.activeMessageTree.nodesById[message.id],
+  );
+  const activeMessageTree = isCurrentServerSession
+    ? hasMessageInActiveTree
+      ? updateMessageInTree(
+          serverReadState.activeMessageTree,
+          message.id,
+          () => message,
+        )
+      : appendMessageToActivePath(serverReadState.activeMessageTree, message)
+    : serverReadState.activeMessageTree;
+  const activeMessages = isCurrentServerSession
+    ? getActiveMessagePath(activeMessageTree)
+    : serverReadState.activeMessages;
+
+  return {
+    ...serverReadState,
+    activeMessages,
+    activeMessageTree,
+    sessions: serverReadState.sessions.map((session) => {
+      if (session.id !== sessionId) return session;
+      return {
+        ...session,
+        messageCount: isCurrentServerSession
+          ? Math.max(
+              session.messageCount + (hasMessageInActiveTree ? 0 : 1),
+              activeMessages.length,
+            )
+          : session.messageCount + 1,
+        updatedAt: message.timestamp,
+      };
+    }),
+  };
 };
 
 const getAttachmentUrls = (files: Attachment[] = []): string[] => {
@@ -333,6 +395,9 @@ interface ChatState {
   appendServerUserMessage: (
     options: AppendServerUserMessageOptions,
   ) => Promise<Message | null>;
+  sendServerMessageAndStream: (
+    options: SendServerMessageAndStreamOptions,
+  ) => Promise<ChatStreamRunResult | null>;
   deleteSession: (id: string) => Promise<void>;
   updateSessionTitle: (id: string, newTitle: string) => void;
   updateSessionInstruction: (id: string, instruction: string) => void;
@@ -817,55 +882,196 @@ export const useChatStore = create<ChatState>()(
             }),
           );
           if (requestId === serverReadRequestId) {
+            set((state) => ({
+              serverReadState: {
+                ...applyServerMessageToReadState(
+                  state.serverReadState,
+                  options.sessionId,
+                  message,
+                ),
+                isLoading: false,
+                error: null,
+              },
+            }));
+          }
+
+          return message;
+        } catch (error) {
+          if (requestId === serverReadRequestId) {
+            set((state) => ({
+              serverReadState: {
+                ...state.serverReadState,
+                isLoading: false,
+                error: getServerReadErrorMessage(error),
+              },
+            }));
+          }
+          throw error;
+        }
+      },
+
+      sendServerMessageAndStream: async (options) => {
+        const crudService = createChatCrudService();
+        const streamService = createChatStreamService();
+        if (!crudService.serverEnabled || !streamService.streamEnabled) {
+          return null;
+        }
+
+        const requestId = serverReadRequestId + 1;
+        serverReadRequestId = requestId;
+        set((state) => ({
+          serverReadState: {
+            ...state.serverReadState,
+            isLoading: true,
+            error: null,
+          },
+        }));
+
+        try {
+          const model = options.model ?? get().selectedModel;
+          const modelRef = modelStringToModelRef(model);
+          if (!modelRef) {
+            throw new Error("Server stream model is required.");
+          }
+
+          const userMessage = toStoreMessageFromServer(
+            await crudService.appendUserMessage({
+              conversationId: options.sessionId,
+              content: options.content,
+              parentMessageId: options.parentMessageId,
+              attachments: options.attachments,
+              metadata: options.metadata,
+              idempotencyKey: options.userMessageIdempotencyKey ?? uuidv7(),
+            }),
+          );
+
+          if (requestId !== serverReadRequestId) {
+            return {
+              status: "cancelled",
+              error: {
+                code: "STREAM_INTERRUPTED",
+                message: "Server stream request was superseded.",
+                recoverable: true,
+              },
+            };
+          }
+
+          set((state) => ({
+            serverReadState: {
+              ...applyServerMessageToReadState(
+                state.serverReadState,
+                options.sessionId,
+                userMessage,
+              ),
+              isLoading: true,
+              error: null,
+            },
+          }));
+
+          let assistantMessageId: string | null = null;
+          let assistantContent = "";
+          const updateAssistantDraft = (
+            eventMessageId: string | undefined,
+            update: (message: Message) => Message,
+          ) => {
+            if (requestId !== serverReadRequestId) return;
+            const messageId = eventMessageId ?? assistantMessageId;
+            if (!messageId) return;
+            assistantMessageId = messageId;
+
             set((state) => {
-              const isCurrentServerSession =
-                state.serverReadState.currentSessionId === options.sessionId;
-              const hasMessageInActiveTree = Boolean(
-                state.serverReadState.activeMessageTree.nodesById[message.id],
+              if (
+                state.serverReadState.currentSessionId !== options.sessionId
+              ) {
+                return {};
+              }
+
+              const existing =
+                state.serverReadState.activeMessageTree.nodesById[messageId]
+                  ?.message;
+              const message = update(
+                existing ?? {
+                  id: messageId,
+                  role: "model",
+                  content: "",
+                  timestamp: Date.now(),
+                  ...(model ? { model } : {}),
+                },
               );
-              const activeMessageTree = isCurrentServerSession
-                ? hasMessageInActiveTree
-                  ? updateMessageInTree(
-                      state.serverReadState.activeMessageTree,
-                      message.id,
-                      () => message,
-                    )
-                  : appendMessageToActivePath(
-                      state.serverReadState.activeMessageTree,
-                      message,
-                    )
-                : state.serverReadState.activeMessageTree;
-              const activeMessages = isCurrentServerSession
-                ? getActiveMessagePath(activeMessageTree)
-                : state.serverReadState.activeMessages;
 
               return {
                 serverReadState: {
-                  ...state.serverReadState,
-                  activeMessages,
-                  activeMessageTree,
-                  isLoading: false,
+                  ...applyServerMessageToReadState(
+                    state.serverReadState,
+                    options.sessionId,
+                    message,
+                  ),
+                  isLoading: true,
                   error: null,
-                  sessions: state.serverReadState.sessions.map((session) => {
-                    if (session.id !== options.sessionId) return session;
-                    return {
-                      ...session,
-                      messageCount: isCurrentServerSession
-                        ? Math.max(
-                            session.messageCount +
-                              (hasMessageInActiveTree ? 0 : 1),
-                            activeMessages.length,
-                          )
-                        : session.messageCount + 1,
-                      updatedAt: message.timestamp,
-                    };
-                  }),
+                },
+              };
+            });
+          };
+
+          const result = await streamService.streamAssistantMessage(
+            {
+              conversationId: options.sessionId,
+              userMessageId: userMessage.id,
+              modelRef,
+              config: options.config
+                ? { ...normalizeSessionConfig(options.config) }
+                : undefined,
+              systemInstruction: options.systemInstruction,
+              systemPrompt: options.systemPrompt,
+              metadata: options.streamMetadata,
+              idempotencyKey: options.streamIdempotencyKey ?? uuidv7(),
+              signal: options.signal,
+            },
+            {
+              onStarted: (event) => {
+                assistantContent = "";
+                updateAssistantDraft(event.messageId, (message) => ({
+                  ...message,
+                  role: "model",
+                  content: "",
+                  timestamp: event.createdAt
+                    ? Date.parse(event.createdAt)
+                    : message.timestamp,
+                  ...(model ? { model } : {}),
+                }));
+              },
+              onDelta: (event) => {
+                assistantContent +=
+                  typeof event.delta === "string" ? event.delta : "";
+                updateAssistantDraft(event.messageId, (message) => ({
+                  ...message,
+                  content: assistantContent,
+                }));
+              },
+            },
+          );
+
+          if (requestId === serverReadRequestId) {
+            set((state) => {
+              const nextServerReadState = result.message
+                ? applyServerMessageToReadState(
+                    state.serverReadState,
+                    options.sessionId,
+                    toStoreMessageFromServer(result.message),
+                  )
+                : state.serverReadState;
+
+              return {
+                serverReadState: {
+                  ...nextServerReadState,
+                  isLoading: false,
+                  error: result.error?.message ?? null,
                 },
               };
             });
           }
 
-          return message;
+          return result;
         } catch (error) {
           if (requestId === serverReadRequestId) {
             set((state) => ({

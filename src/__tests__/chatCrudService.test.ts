@@ -202,7 +202,6 @@ describe("chat CRUD service gateway", () => {
       expect.objectContaining({ id: "m1", role: "user" }),
       expect.objectContaining({ id: "m2", role: "model" }),
     ]);
-
     expect(calls).toEqual([
       "create:conversation-key",
       "list-conversations",
@@ -237,6 +236,7 @@ describe("chat CRUD service gateway", () => {
         recoverable: true,
       });
     }
+
     expect(called).toBe(false);
   });
 });
