@@ -16,7 +16,9 @@ const mocks = vi.hoisted(() => {
   };
   const serverService = {
     serverEnabled: true,
+    createConversation: vi.fn(),
     listConversations: vi.fn(),
+    appendUserMessage: vi.fn(),
     listMessages: vi.fn(),
   };
 
@@ -94,6 +96,10 @@ vi.mock("../store/storage/storageConfig", () => ({
 
 vi.mock("../services/api/chatCrudService", () => ({
   createChatCrudService: mocks.createChatCrudService,
+  modelStringToModelRef: (model: string) => {
+    const [providerId, modelId] = model.split(":");
+    return providerId && modelId ? { providerId, modelId } : undefined;
+  },
 }));
 
 const { normalizeSessionMessageTree } = await import("../lib/chat/messageTree");
@@ -134,6 +140,12 @@ describe("chat store server read path", () => {
       makeServerSession("c1"),
       makeServerSession("c2"),
     ]);
+    mocks.serverService.createConversation.mockResolvedValue(
+      makeServerSession("c3"),
+    );
+    mocks.serverService.appendUserMessage.mockResolvedValue(
+      makeMessage("m3", "user"),
+    );
     mocks.serverService.listMessages.mockResolvedValue([
       makeMessage("m1", "user"),
       makeMessage("m2", "model"),
@@ -237,6 +249,8 @@ describe("chat store server read path", () => {
     );
     expect(mocks.serverService.listConversations).not.toHaveBeenCalled();
     expect(mocks.serverService.listMessages).not.toHaveBeenCalled();
+    expect(mocks.serverService.createConversation).not.toHaveBeenCalled();
+    expect(mocks.serverService.appendUserMessage).not.toHaveBeenCalled();
     expect(mocks.appDbMock.getItem).not.toHaveBeenCalled();
     expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
   });
@@ -293,5 +307,212 @@ describe("chat store server read path", () => {
     expect(persisted.serverReadState).toBeUndefined();
     expect(persisted.sessions).toEqual([]);
     expect(persisted.currentSessionId).toBeNull();
+  });
+
+  it("creates server conversations without changing local chat state", async () => {
+    const localSession = makeServerSession("local");
+    useChatStore.setState({
+      sessions: [localSession],
+      currentSessionId: "local",
+      selectedModel: "openai:gpt-5.5",
+    });
+
+    await expect(
+      useChatStore.getState().createServerSession({
+        title: "  Server Draft  ",
+        config: { useSearch: true },
+      }),
+    ).resolves.toBe("c3");
+
+    const state = useChatStore.getState();
+    expect(state.serverReadState.currentSessionId).toBe("c3");
+    expect(state.serverReadState.sessions.map((session) => session.id)).toEqual(
+      ["c3"],
+    );
+    expect(state.serverReadState.activeMessages).toEqual([]);
+    expect(state.serverReadState.isLoading).toBe(false);
+    expect(state.sessions).toEqual([localSession]);
+    expect(state.currentSessionId).toBe("local");
+    expect(mocks.serverService.createConversation).toHaveBeenCalledWith({
+      title: "Server Draft",
+      modelRef: { providerId: "openai", modelId: "gpt-5.5" },
+      systemInstruction: undefined,
+      config: { useSearch: true },
+      idempotencyKey: "00000000-0000-7000-8000-000000000001",
+    });
+    expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
+  });
+
+  it("appends server user messages to the server snapshot only", async () => {
+    const localMessage = makeMessage("local-m1", "user");
+    useChatStore.setState({
+      currentSessionId: "local",
+      activeMessages: [localMessage],
+      activeMessageTree: normalizeSessionMessageTree([localMessage]),
+      serverReadState: {
+        ...makeEmptyServerReadState(),
+        sessions: [makeServerSession("c1")],
+        currentSessionId: "c1",
+      },
+    });
+
+    await expect(
+      useChatStore.getState().appendServerUserMessage({
+        sessionId: "c1",
+        content: "hello",
+        metadata: { source: "test" },
+      }),
+    ).resolves.toMatchObject({ id: "m3", role: "user" });
+
+    const state = useChatStore.getState();
+    expect(
+      state.serverReadState.activeMessages.map((message) => message.id),
+    ).toEqual(["m3"]);
+    expect(state.serverReadState.sessions[0]?.messageCount).toBe(2);
+    expect(state.currentSessionId).toBe("local");
+    expect(state.activeMessages).toEqual([localMessage]);
+    expect(mocks.serverService.appendUserMessage).toHaveBeenCalledWith({
+      conversationId: "c1",
+      content: "hello",
+      parentMessageId: undefined,
+      attachments: undefined,
+      metadata: { source: "test" },
+      idempotencyKey: "00000000-0000-7000-8000-000000000001",
+    });
+    expect(mocks.appDbMock.getItem).not.toHaveBeenCalled();
+    expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
+  });
+
+  it("does not duplicate idempotent server append results", async () => {
+    const existingMessage = makeMessage("m3", "user");
+    mocks.serverService.appendUserMessage.mockResolvedValueOnce({
+      ...existingMessage,
+      content: "updated user content",
+    });
+
+    useChatStore.setState({
+      serverReadState: {
+        ...makeEmptyServerReadState(),
+        sessions: [makeServerSession("c1")],
+        currentSessionId: "c1",
+        activeMessages: [existingMessage],
+        activeMessageTree: normalizeSessionMessageTree([existingMessage]),
+      },
+    });
+
+    await expect(
+      useChatStore.getState().appendServerUserMessage({
+        sessionId: "c1",
+        content: "hello",
+        idempotencyKey: "same-message-key",
+      }),
+    ).resolves.toMatchObject({
+      id: "m3",
+      content: "updated user content",
+    });
+
+    const state = useChatStore.getState();
+    expect(
+      state.serverReadState.activeMessages.map((message) => message.id),
+    ).toEqual(["m3"]);
+    expect(state.serverReadState.activeMessages[0]?.content).toBe(
+      "updated user content",
+    );
+    expect(state.serverReadState.sessions[0]?.messageCount).toBe(1);
+    expect(mocks.serverService.appendUserMessage).toHaveBeenCalledWith({
+      conversationId: "c1",
+      content: "hello",
+      parentMessageId: undefined,
+      attachments: undefined,
+      metadata: undefined,
+      idempotencyKey: "same-message-key",
+    });
+    expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
+  });
+
+  it("returns stale server-created ids without overwriting the latest snapshot", async () => {
+    let resolveFirst!: (session: Session) => void;
+    const firstCreate = new Promise<Session>((resolve) => {
+      resolveFirst = resolve;
+    });
+    mocks.serverService.createConversation
+      .mockReturnValueOnce(firstCreate)
+      .mockResolvedValueOnce(makeServerSession("c-latest"));
+
+    const first = useChatStore
+      .getState()
+      .createServerSession({ title: "first" });
+    const second = useChatStore
+      .getState()
+      .createServerSession({ title: "second" });
+
+    await expect(second).resolves.toBe("c-latest");
+    resolveFirst(makeServerSession("c-stale"));
+    await expect(first).resolves.toBe("c-stale");
+
+    const state = useChatStore.getState().serverReadState;
+    expect(state.currentSessionId).toBe("c-latest");
+    expect(state.sessions.map((session) => session.id)).toEqual(["c-latest"]);
+    expect(state.isLoading).toBe(false);
+  });
+
+  it("returns stale appended messages without overwriting the latest snapshot", async () => {
+    let resolveFirst!: (message: Message) => void;
+    const firstAppend = new Promise<Message>((resolve) => {
+      resolveFirst = resolve;
+    });
+    mocks.serverService.appendUserMessage
+      .mockReturnValueOnce(firstAppend)
+      .mockResolvedValueOnce(makeMessage("m-latest", "user"));
+
+    useChatStore.setState({
+      serverReadState: {
+        ...makeEmptyServerReadState(),
+        sessions: [{ ...makeServerSession("c1"), messageCount: 0 }],
+        currentSessionId: "c1",
+      },
+    });
+
+    const first = useChatStore.getState().appendServerUserMessage({
+      sessionId: "c1",
+      content: "stale",
+    });
+    const second = useChatStore.getState().appendServerUserMessage({
+      sessionId: "c1",
+      content: "latest",
+    });
+
+    await expect(second).resolves.toMatchObject({ id: "m-latest" });
+    resolveFirst(makeMessage("m-stale", "user"));
+    await expect(first).resolves.toMatchObject({ id: "m-stale" });
+
+    const state = useChatStore.getState().serverReadState;
+    expect(state.activeMessages.map((message) => message.id)).toEqual([
+      "m-latest",
+    ]);
+    expect(state.sessions[0]?.messageCount).toBe(1);
+    expect(state.isLoading).toBe(false);
+  });
+
+  it("does not write server conversations or messages when server CRUD is disabled", async () => {
+    mocks.serverService.serverEnabled = false;
+
+    await expect(
+      useChatStore.getState().createServerSession(),
+    ).resolves.toBeNull();
+    await expect(
+      useChatStore.getState().appendServerUserMessage({
+        sessionId: "c1",
+        content: "hello",
+      }),
+    ).resolves.toBeNull();
+
+    expect(useChatStore.getState().serverReadState).toEqual(
+      makeEmptyServerReadState(),
+    );
+    expect(mocks.serverService.createConversation).not.toHaveBeenCalled();
+    expect(mocks.serverService.appendUserMessage).not.toHaveBeenCalled();
+    expect(mocks.appDbMock.getItem).not.toHaveBeenCalled();
+    expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
   });
 });

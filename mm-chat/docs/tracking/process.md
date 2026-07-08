@@ -2837,3 +2837,106 @@ slice explicitly calls these server read actions.
 Proceed to Phase 11.2B-3: decide the write-path strategy for async server
 conversation creation versus the current synchronous `createSession(): string`
 contract.
+
+## 2026-07-08 — Phase 11.2B-3: Store Server Write Facade
+
+### Action
+
+Added opt-in async server write actions to `chatStore` while keeping the legacy
+visible UI and local write path unchanged.
+
+Changed:
+
+```text
+src/store/core/chatStore.ts
+src/__tests__/chatStoreServerRead.test.ts
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+### Decision
+
+Do not change `createSession(): string`. `ChatApp`, sidebar actions, shell
+hooks, and existing tests depend on getting a local session id synchronously.
+Instead, server writes use separate async facade actions:
+
+```text
+createServerSession(options) -> createConversation() -> serverReadState
+appendServerUserMessage(options) -> appendUserMessage() -> serverReadState
+```
+
+The facade is still hidden/opt-in. It is not called by UI/bootstrap or
+`chatService.ts`, and it does not claim a full server-backed send flow. Assistant
+streaming remains Phase 11.3.
+
+### Boundary
+
+Server write actions deliberately avoid the local persistence chain:
+
+```text
+createSession()
+addMessage()
+syncActiveSession()
+selectSession()
+session_messages_*
+sessions/currentSessionId/activeMessages
+```
+
+Results are stored only in non-persisted `serverReadState`. When server CRUD is
+disabled, the actions return `null` and do not call server APIs or IndexedDB.
+Missing `idempotencyKey` values are generated with `uuidv7()` before calling the
+server CRUD gateway, and the selected model is converted with
+`modelStringToModelRef()`.
+
+### Trellis-check Finding
+
+Review found two write-facade edge cases before this slice was closed:
+
+- A successful stale server write returned `null`, even though the server had
+  already created the conversation or persisted the user message. That would
+  make the later SSE slice lose the server `conversationId`/`userMessageId`.
+- Replaying an append with the same idempotency result could re-append the same
+  message id to the active server tree and could reduce a known server
+  `messageCount` when the active tree was not fully loaded.
+
+Fix: stale writes now skip outdated `serverReadState` updates but still return
+the persisted server id/message. Active server append updates now replace an
+existing message id instead of duplicating it and use a monotonic count update.
+
+### Verification
+
+Targeted verification passed:
+
+```text
+corepack pnpm vitest run src/__tests__/chatStoreServerRead.test.ts src/__tests__/chatCrudService.test.ts src/__tests__/apiClientScaffold.test.ts
+  passed: 3 files, 34 tests
+
+corepack pnpm exec eslint src/store/core/chatStore.ts src/__tests__/chatStoreServerRead.test.ts
+  passed
+
+corepack pnpm typecheck
+  passed
+
+corepack pnpm exec prettier --check src/store/core/chatStore.ts src/__tests__/chatStoreServerRead.test.ts mm-chat/docs/tracking/progress.md mm-chat/docs/tracking/process.md
+  passed
+
+git diff --check -- src/store/core/chatStore.ts src/__tests__/chatStoreServerRead.test.ts mm-chat/docs/tracking/progress.md mm-chat/docs/tracking/process.md
+  passed
+```
+
+### Review Inputs
+
+Parallel read-only review confirmed:
+
+- `createSession(): string` cannot be made async without breaking `ChatApp`,
+  sidebar, hooks, and existing local tests.
+- `chatService.ts` is not the persistence cut point; it streams provider output
+  and relies on callbacks/store actions for persistence.
+- The minimum safe B-3 scope is an async server write facade only, not visible
+  ChatApp send-path integration.
+
+### Next Step
+
+Proceed to Phase 11.3: implement server SSE streaming against persisted server
+messages, using the server-created `conversationId`, persisted `userMessageId`,
+`modelRef`, and `idempotencyKey` without duplicating local placeholders.

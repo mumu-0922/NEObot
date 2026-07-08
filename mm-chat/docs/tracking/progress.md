@@ -284,6 +284,30 @@ actions are not called by UI/bootstrap yet.
 - [x] Add targeted store tests for refresh, select, disabled mode, stale reads,
       and persist boundary.
 
+### Phase 11.2B-3 — Store server write facade
+
+This slice resolves the async create mismatch by adding opt-in server write
+actions. It still does not connect visible UI/bootstrap to server mode.
+
+- [x] Keep legacy `createSession(): string` unchanged for `ChatApp`, sidebar,
+      hooks, and local tests.
+- [x] Add async `createServerSession()` for server conversation creation.
+- [x] Add async `appendServerUserMessage()` for persisted server user messages.
+- [x] Generate `idempotencyKey` before server create/append calls when callers
+      omit one.
+- [x] Convert the selected legacy model string to server `ModelRef`.
+- [x] Store server write results only in non-persisted `serverReadState`.
+- [x] Avoid `addMessage`, `syncActiveSession`, legacy session fields, and
+      `session_messages_*` during server write actions.
+- [x] Return `null` without server or local-storage calls when server CRUD is
+      disabled.
+- [x] Return successful server write ids/messages even when their snapshot
+      update is stale, so later streaming can still use persisted server ids.
+- [x] Avoid duplicate active messages on idempotent append retries and keep
+      known server message counts monotonic.
+- [x] Add targeted store tests for create, append, disabled mode, local-state
+      isolation, and IndexedDB isolation.
+
 ### Phase 11.3 — SSE stream
 
 - [ ] Send persisted `userMessageId`, `modelRef`, and `idempotencyKey` to the
