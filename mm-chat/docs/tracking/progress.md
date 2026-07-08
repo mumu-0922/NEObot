@@ -145,6 +145,21 @@ Phase 11 starts as documentation-first planning. Do not mark any implementation
 checkbox complete until the slice is implemented, verified, and recorded in
 [`process.md`](./process.md).
 
+Phase 11.1 opening constraints recorded on 2026-07-08:
+
+- Target only adapter scaffold, `local|server` mode selection, and the browser
+  network-edge decision.
+- Do not wire conversation/message CRUD, SSE streaming, or file
+  upload/download in the 11.1 opening slice.
+- Original owner constraint remains active: refactor work belongs under
+  `mm-chat/`; changes under `src/` require owner approval or an explicit
+  pending decision before editing.
+- Multi-agent execution plus a review agent is required before any Phase 11.1
+  implementation checkbox can be marked complete.
+- First verify whether the scaffold can live entirely under `mm-chat/`. If not,
+  request/confirm the allowed original-app modification boundary before touching
+  the original app.
+
 ### Phase 11.1 — Adapter scaffold
 
 - [ ] Identify the existing frontend API boundary, mode selector, and local-mode
@@ -158,6 +173,20 @@ checkbox complete until the slice is implemented, verified, and recorded in
 - [ ] Confirm the first slice does not touch browser import/export UI, auth
       UI/enforcement, RAG/knowledge flows, provider-settings redesign, or
       unrelated product UI.
+
+### Phase 11.1A — Isolated scaffold under `mm-chat/`
+
+This pre-integration slice keeps the original app read-only while preparing the
+adapter code shape. It does not complete the full Phase 11.1 app-boundary
+wiring above.
+
+- [x] Identify the current frontend chat/API boundary read-only.
+- [x] Create an isolated `mm-chat/frontend/` TypeScript API-client scaffold.
+- [x] Add `local|server` mode resolution with safe fallback to local mode.
+- [x] Add server HTTP helper and Go SSE frame parser scaffolds.
+- [x] Add targeted tests for mode resolution, base URL/network-edge handling,
+      HTTP error normalization, and SSE parsing.
+- [x] Confirm no original app `src/` files were modified by this scaffold.
 
 ### Phase 11.2 — Conversation and message CRUD
 

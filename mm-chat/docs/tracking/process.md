@@ -2241,3 +2241,198 @@ Final review result: no remaining findings.
 
 Implement Phase 11.1 adapter scaffold next, then update `progress.md` and add a
 dated `process.md` entry only after the slice is implemented and verified.
+
+## 2026-07-08 — Phase 11.1 Start: Adapter Scaffold Constraints
+
+### Action
+
+Prepared the Phase 11.1 opening record only. No implementation checkbox is
+completed by this entry, and no application code is changed by this record.
+
+### Scope
+
+Phase 11.1 targets only:
+
+```text
+adapter scaffold
+local|server mode selection
+browser network-edge decision
+```
+
+Phase 11.1 explicitly does not wire:
+
+```text
+conversation/message CRUD
+SSE streaming
+file upload/download
+browser import/export
+auth enforcement
+RAG/knowledge flows
+provider-settings redesign
+unrelated product UI
+```
+
+### Constraints
+
+Original owner constraint remains active: refactor work stays under
+`mm-chat/`, and the original app must not be modified casually. If the Phase
+11.1 implementation needs changes under `src/`, that must be recorded before
+editing as either:
+
+```text
+owner approval required
+pending decision: confirm original-app modification boundary
+```
+
+Multi-agent execution plus a review agent is a Phase 11.1 execution
+requirement. The implementation pass should include an independent review
+before any progress checkbox is marked complete.
+
+### Decision
+
+The next implementation pass will first verify whether the adapter scaffold can
+live entirely under `mm-chat/`. If it can, proceed with the isolated scaffold
+and keep the original app read-only. If it cannot, stop before editing `src/`
+and request/confirm the permitted original-app modification boundary.
+
+### Verification
+
+Tracking-only preparation. Verification for this record is limited to checking
+that only these files changed:
+
+```text
+mm-chat/docs/tracking/process.md
+mm-chat/docs/tracking/progress.md
+```
+
+No `pnpm` or backend tests are required for this documentation-only opening
+record.
+
+### Next Step
+
+Start Phase 11.1 by inspecting the current frontend boundary read-only, then
+prove whether the scaffold can be placed only in `mm-chat/`. If not, record the
+needed `src/` boundary decision and ask for owner approval before editing.
+
+## 2026-07-08 — Phase 11.1A: Isolated Adapter Scaffold
+
+### Action
+
+Created the first Phase 11.1 adapter scaffold under `mm-chat/frontend/` only.
+The original Next.js app under `src/` remains read-only for this slice.
+
+The scaffold includes:
+
+```text
+mm-chat/frontend/README.md
+mm-chat/frontend/DESIGN.md
+mm-chat/frontend/src/api-client/types.ts
+mm-chat/frontend/src/api-client/mode.ts
+mm-chat/frontend/src/api-client/errors.ts
+mm-chat/frontend/src/api-client/index.ts
+mm-chat/frontend/src/api-client/local/chat-api.ts
+mm-chat/frontend/src/api-client/server/http-client.ts
+mm-chat/frontend/src/api-client/server/chat-api.ts
+mm-chat/frontend/src/api-client/server/sse.ts
+mm-chat/frontend/__tests__/api-client.test.ts
+```
+
+### Decision
+
+Use an isolated `mm-chat/frontend/` scaffold as the safe pre-integration path.
+This satisfies the owner constraint that refactor work stays under `mm-chat/`
+until original-app modification is explicitly approved.
+
+The full app-boundary Phase 11.1 work is still pending because wiring the
+scaffold into `src/services/api/*` would modify the existing Next.js app.
+That next step requires an explicit owner decision before editing `src/`.
+
+Read-only frontend boundary evidence from this pass:
+
+```text
+src/services/api/chatService.ts
+src/config/api.ts
+src/components/app/ChatApp.tsx
+src/features/chat/hooks/useChatGenerationController.ts
+src/store/core/chatStore.ts
+src/__tests__/chatServiceToolConfirmation.test.ts
+src/__tests__/clientApi.test.ts
+next.config.ts
+src/middleware.ts
+```
+
+The inspection confirmed that `src/services/api/chatService.ts` remains the
+current chat API boundary, `NEXT_PUBLIC_API_MODE` is not implemented in the
+original app, and there is no existing Next rewrite/proxy path for the Go API.
+
+### Coverage
+
+Implemented and tested scaffold behavior for:
+
+- `NEXT_PUBLIC_API_MODE` normalization with missing/invalid mode falling back
+  to `local`;
+- `NEXT_PUBLIC_API_BASE_URL` normalization without network calls;
+- browser network-edge classification as same-origin proxy or direct-CORS;
+- safe fallback to `local` when `server` mode lacks a base URL;
+- server HTTP URL building, JSON error envelope normalization, and network/CORS failure normalization;
+- Go SSE named-event parsing and fail-closed event/type mismatch handling;
+- compile-safe local/server chat adapter shells that return or throw explicit
+  unsupported results instead of silently falling back to browser-local
+  persistence.
+
+### Verification
+
+The root project has no installed local `pnpm` binaries in this environment, so
+targeted verification used `corepack pnpm dlx` with pinned tool versions.
+
+```text
+corepack pnpm dlx vitest@4.1.9 run mm-chat/frontend/__tests__/api-client.test.ts
+  passed: 1 file, 10 tests
+
+corepack pnpm --package=typescript@5.9.3 dlx tsc --noEmit --target ES2020 --module ESNext --moduleResolution Bundler --lib DOM,ESNext --strict --skipLibCheck mm-chat/frontend/src/api-client/index.ts
+  passed
+
+corepack pnpm dlx prettier@3.9.4 --check 'mm-chat/frontend/**/*.ts' mm-chat/frontend/README.md mm-chat/frontend/DESIGN.md
+  passed
+
+module scanner script unavailable; fallback README/DESIGN/__tests__ check
+  passed
+
+security scanner script unavailable; fallback secret-pattern grep under mm-chat/frontend
+  passed
+
+git diff --check -- mm-chat
+  passed
+```
+
+### Boundary
+
+No `src/` file is part of this slice. The current app still has no active
+`NEXT_PUBLIC_API_MODE` integration. The next implementation decision is whether
+the owner approves adding the scaffold to `src/services/api/client/*` while
+still avoiding `ChatApp`, stores, CRUD, SSE, files, auth, RAG, plugins, and
+provider-settings changes.
+
+### Review
+
+Multi-agent review result: no code/security findings after fixes.
+
+The only remaining review warning was commit hygiene: the root worktree still
+contains many unrelated dirty files outside `mm-chat/`. This slice must be
+staged with an explicit allowlist only:
+
+```text
+mm-chat/README.md
+mm-chat/docs/tracking/process.md
+mm-chat/docs/tracking/progress.md
+mm-chat/frontend/**
+```
+
+### Spec Update Judgment
+
+No `.trellis/spec/` file was changed for this slice. The project-level spec
+files are still generic placeholders, and the executable contract for this
+work is task-local: `mm-chat/frontend/DESIGN.md`,
+`mm-chat/docs/contracts/frontend-api-client.md`, and this process log. Keeping
+the spec update inside `mm-chat/` also avoids mixing this scoped refactor commit
+with unrelated untracked `.trellis/` workspace files.

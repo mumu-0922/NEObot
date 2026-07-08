@@ -12,6 +12,8 @@ All refactor documentation lives under [`docs/`](./docs/):
 - [`docs/tracking/process.md`](./docs/tracking/process.md) — chronological work log for decisions, commands, findings, and next steps.
 - [`docs/contracts/`](./docs/contracts/) — future API/client contracts.
 - [`docs/deployment/`](./docs/deployment/) — single-server Compose deployment, backup, restore, release, and rollback notes.
+- [`frontend/`](./frontend/) — isolated Phase 11 frontend API-client scaffold
+  kept outside the existing app until `src/` wiring is explicitly approved.
 
 ## Refactor Rules
 
