@@ -250,6 +250,21 @@ persistence.
 - [x] Add targeted unit tests for request bodies, URL paths, page unwrapping,
       blank-content blocking, and invalid page responses.
 
+### Phase 11.2B-1 — CRUD mapper and service gateway
+
+This slice prepares the legacy service/store bridge without wiring UI or store
+runtime behavior.
+
+- [x] Add a lightweight `chatCrudService` gateway above the API client.
+- [x] Map `ConversationDTO` into legacy-compatible session metadata.
+- [x] Map `ChatMessageDTO` into legacy-compatible message records.
+- [x] Convert server `ModelRef` values to the current provider/model string
+      convention.
+- [x] Convert server attachment metadata to backend file-content gateway URLs.
+- [x] Fail closed when server CRUD capability is disabled or unsupported server
+      roles are returned.
+- [x] Add targeted gateway and mapper tests.
+
 ### Phase 11.3 — SSE stream
 
 - [ ] Send persisted `userMessageId`, `modelRef`, and `idempotencyKey` to the

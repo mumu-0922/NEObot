@@ -162,6 +162,31 @@ Tracking checklist:
 
 - Use the Phase 11.2 checklist in `docs/tracking/progress.md`.
 
+#### 11.2B Sub-slices
+
+The service/store integration is split because the existing local frontend has a
+synchronous `createSession(): string` action while the server creates
+conversations asynchronously.
+
+- `11.2B-1` — add a CRUD mapper/gateway above the API client. It maps
+  `ConversationDTO`/`ChatMessageDTO` into legacy-compatible records and remains
+  unused by UI/store runtime.
+- `11.2B-2` — integrate only the server-mode read path for experiments:
+  `listConversations` for history metadata and `listMessages` for selected
+  conversation messages. Local mode remains the existing IndexedDB path.
+- `11.2B-3` — decide and implement the write path only after resolving the
+  async session-create mismatch. Do not claim full server-backed send/create
+  while `ChatApp` still creates local sessions and local assistant placeholders
+  first.
+
+Guardrails:
+
+- Do not branch on `/v1/chat/*` or `NEXT_PUBLIC_API_MODE` in components.
+- Do not change visible UI, state shape, message tree algorithms, or local
+  provider streaming in 11.2B.
+- Server mode must not silently fall back to browser-local persistence for
+  unsupported CRUD features.
+
 ### 11.3 — SSE Stream
 
 Objective: connect server-mode assistant streaming to the Go `/stream` SSE

@@ -2655,3 +2655,85 @@ callers. Those remain Phase 11.2B or later work.
 Proceed to Phase 11.2B: add the narrow legacy service-layer delegation point
 that can use the adapter in server mode while leaving local mode and visible UI
 unchanged.
+
+## 2026-07-08 — Phase 11.2B-1: CRUD Mapper and Service Gateway
+
+### Action
+
+Added a service-layer CRUD gateway above the Phase 11.2A API client adapter.
+This slice prepares the bridge for later store integration but does not import
+the gateway from UI, `ChatApp`, `chatStore`, or legacy `chatService.ts`.
+
+Created:
+
+```text
+src/services/api/chatCrudService.ts
+src/__tests__/chatCrudService.test.ts
+```
+
+Updated:
+
+```text
+mm-chat/docs/architecture/phase-11-plus-roadmap.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+### Decision
+
+Keep the gateway lightweight and dependency-narrow. It exposes
+legacy-compatible session/message records without importing the full app store
+or UI types. The service fails closed unless the API client is in configured
+server mode with `capabilities.chatCrud = true`.
+
+Mapping rules:
+
+```text
+ConversationDTO.updatedAt -> session.updatedAt (epoch ms)
+ConversationDTO.modelRef  -> session.model ("provider:model")
+ChatMessageDTO.role=user  -> message.role=user
+ChatMessageDTO.role=assistant -> message.role=model
+server file attachment -> /v1/files/{fileId}/content gateway URL
+```
+
+Unsupported backend roles such as `tool` or `system` are rejected with
+`UNSUPPORTED_MESSAGE_ROLE` instead of being silently rendered incorrectly.
+
+### Verification
+
+Targeted verification passed:
+
+```text
+corepack pnpm dlx vitest@4.1.9 run src/__tests__/chatCrudService.test.ts src/__tests__/apiClientScaffold.test.ts
+  passed: 2 files, 23 tests
+
+corepack pnpm --package=typescript@5.9.3 dlx tsc --noEmit --target ES2020 --module ESNext --moduleResolution Bundler --lib DOM,ESNext --strict --skipLibCheck src/services/api/client/index.ts src/services/api/chatCrudService.ts
+  passed
+
+corepack pnpm dlx prettier@3.9.4 --check src/services/api/chatCrudService.ts src/__tests__/chatCrudService.test.ts
+  passed
+```
+
+### Review
+
+Independent review found two mapper hardening issues, both fixed before
+commit:
+
+- server attachment `downloadUrl` is no longer trusted or forwarded; the mapper
+  always constructs the backend file-content gateway URL;
+- conversation `config` is now whitelisted to legacy-compatible fields
+  (`useSearch`, `useReasoning`, `activePlugins`, `activeSkills`) instead of
+  casting arbitrary server metadata.
+
+### Boundary
+
+This slice still does not solve the async `createSession(): string` versus
+server `createConversation(): Promise<ConversationDTO>` mismatch. Store
+hydration/select/write integration remains deferred so visible UI behavior and
+local rollback stay unchanged.
+
+### Next Step
+
+Proceed to Phase 11.2B-2: use the gateway for server-mode read path
+experiments (`listConversations` + `listMessages`) while keeping the legacy
+local path unchanged.
