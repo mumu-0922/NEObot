@@ -2557,3 +2557,101 @@ delegation point.
 Proceed to Phase 11.2: implement server-mode conversation/message CRUD inside
 `src/services/api/client/server/chatApi.ts`, with targeted tests and no UI
 rewrite.
+
+## 2026-07-08 — Phase 11.2A: Server Chat CRUD Adapter Methods
+
+### Action
+
+Implemented the first Phase 11.2 server adapter slice for conversation and
+message CRUD. This remains inside the API-client boundary and still does not
+modify `ChatApp`, stores, routes, or legacy `chatService.ts`.
+
+Changed:
+
+```text
+src/services/api/client/types.ts
+src/services/api/client/index.ts
+src/services/api/client/server/chatApi.ts
+src/__tests__/apiClientScaffold.test.ts
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+### Evidence
+
+Read-only backend contract inspection confirmed:
+
+```text
+POST /v1/chat/conversations                    -> 201 ConversationDTO
+GET  /v1/chat/conversations                    -> 200 { items: ConversationDTO[] }
+POST /v1/chat/conversations/{id}/messages      -> 201 ChatMessageDTO
+GET  /v1/chat/conversations/{id}/messages      -> 200 { items: ChatMessageDTO[] }
+```
+
+Idempotency keys are JSON body fields (`idempotencyKey`), not headers. Backend
+errors use `{ "error": { "code": string, "message": string } }`, which remains
+handled by the shared HTTP client.
+
+### Decision
+
+Enable `capabilities.chatCrud` only for configured server mode while keeping
+`chatStream`, `files`, `auth`, `imports`, `rag`, `plugins`, and
+`providerSettings` disabled. This makes CRUD availability explicit without
+turning on streaming or UI integration.
+
+Server adapter rules for this slice:
+
+```text
+createConversation -> POST /v1/chat/conversations
+listConversations  -> GET  /v1/chat/conversations, return page.items
+appendUserMessage  -> POST /v1/chat/conversations/{id}/messages
+listMessages       -> GET  /v1/chat/conversations/{id}/messages, return page.items
+```
+
+The adapter blocks blank user messages before the network call and only sends
+server file references in attachments. Server-managed fields remain absent from
+request bodies.
+
+### Verification
+
+Targeted verification passed:
+
+```text
+corepack pnpm dlx vitest@4.1.9 run src/__tests__/apiClientScaffold.test.ts
+  passed: 1 file, 17 tests
+
+corepack pnpm --package=typescript@5.9.3 dlx tsc --noEmit --target ES2020 --module ESNext --moduleResolution Bundler --lib DOM,ESNext --strict --skipLibCheck src/services/api/client/index.ts
+  passed
+
+corepack pnpm dlx prettier@3.9.4 --check 'src/services/api/client/**/*.ts' src/__tests__/apiClientScaffold.test.ts
+  passed
+
+git diff --check -- src/services/api/client src/__tests__/apiClientScaffold.test.ts
+  passed
+
+rg -n "services/api/client|createNeoChatApiClient" src/components src/features src/store src/services/api/chatService.ts
+  no matches
+```
+
+Direct `tsc` against the Vitest test file was not used because the temporary
+`dlx` TypeScript environment does not expose local `vitest` type declarations.
+The test file is covered by Vitest execution.
+
+### Review
+
+Independent review found no blocking CRUD adapter issue. One non-blocking DTO
+alignment risk was fixed by adding the backend-returned `outputBlocks`,
+`metadata`, `attachments`, and `parentMessageId` fields to the frontend
+`ChatMessageDTO` contract.
+
+### Boundary
+
+This slice does not prove browser refresh persistence or local-mode UI
+regression, because the new adapter is still not imported by existing UI/service
+callers. Those remain Phase 11.2B or later work.
+
+### Next Step
+
+Proceed to Phase 11.2B: add the narrow legacy service-layer delegation point
+that can use the adapter in server mode while leaving local mode and visible UI
+unchanged.

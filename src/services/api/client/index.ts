@@ -18,7 +18,10 @@ export function createNeoChatApiClient(
   return {
     mode: resolved.mode,
     config: resolved,
-    capabilities: { ...phase11Capabilities },
+    capabilities: {
+      ...phase11Capabilities,
+      chatCrud: resolved.mode === "server" && resolved.serverConfigured,
+    },
     chat,
   };
 }

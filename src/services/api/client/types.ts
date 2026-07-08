@@ -47,6 +47,11 @@ export interface ApiErrorEnvelope {
   };
 }
 
+export interface ApiPage<T> {
+  items: T[];
+  nextCursor?: string;
+}
+
 export interface ModelRef {
   providerId: string;
   modelId: string;
@@ -67,25 +72,29 @@ export interface ConversationDTO {
 export interface ChatMessageDTO {
   id: string;
   conversationId: string;
-  role: "user" | "assistant";
-  status: "completed" | "streaming" | "failed" | "cancelled";
+  role: "system" | "user" | "assistant" | "tool";
+  status: "pending" | "streaming" | "completed" | "failed" | "cancelled";
   content: string;
   sequenceNo: number;
   createdAt: string;
   updatedAt: string;
   completedAt?: string;
   modelRef?: ModelRef;
-  metadata?: Record<string, unknown>;
-  attachments?: ServerAttachmentDTO[];
+  attachments: ServerAttachmentDTO[];
+  outputBlocks: unknown[];
+  metadata: Record<string, unknown>;
+  parentMessageId?: string;
 }
 
 export interface ServerAttachmentDTO {
+  id: string;
+  source: "server";
   fileId: string;
-  fileName?: string;
-  mimeType?: string;
-  size?: number;
-  sha256?: string;
-  purpose?: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  sha256: string;
+  purpose: string;
   downloadUrl?: string;
 }
 

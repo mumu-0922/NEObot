@@ -234,6 +234,22 @@ existing app without activating it from UI, stores, routes, or legacy
 - [ ] Verify browser refresh reloads server-owned conversation/message state.
 - [ ] Verify local mode still creates and reads browser-local chat state.
 
+### Phase 11.2A — Server CRUD adapter methods
+
+This slice implements the server adapter methods and targeted tests only. It
+does not yet wire the legacy UI/service entrypoint or prove browser refresh
+persistence.
+
+- [x] Confirm current Go CRUD request/response shapes from backend handler and
+      contract docs.
+- [x] Add `ApiPage<T>` and align chat/message DTOs with backend CRUD fields.
+- [x] Implement server-mode `createConversation` and `listConversations`.
+- [x] Implement server-mode `appendUserMessage` and `listMessages`.
+- [x] Preserve unsupported/fail-closed behavior for SSE stream and cancel in
+      this slice.
+- [x] Add targeted unit tests for request bodies, URL paths, page unwrapping,
+      blank-content blocking, and invalid page responses.
+
 ### Phase 11.3 — SSE stream
 
 - [ ] Send persisted `userMessageId`, `modelRef`, and `idempotencyKey` to the
