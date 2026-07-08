@@ -438,6 +438,24 @@ does not wire visible UI, OPFS replacement, or message attachment flows.
       download, error normalization, local unsupported behavior, and capability
       gating.
 
+### Phase 11.4B — File service gateway and live attachment smoke
+
+This slice keeps visible UI unchanged while adding the service/mapper seam that
+the UI can call in the next wiring slice.
+
+- [x] Add `fileService` for server-mode chat file upload and download metadata
+      mapping.
+- [x] Add server attachment mapper for `Attachment[]` to
+      `AppendUserMessageInput.attachments`.
+- [x] Preserve server attachment metadata when mapping Go chat DTOs to legacy
+      frontend messages.
+- [x] Add reusable live smoke script for upload, metadata, byte download,
+      message attach, and message-list refresh verification.
+- [x] Add targeted tests for gateway fail-closed behavior, request conversion,
+      and metadata preservation.
+- [x] Record commands, artifacts, cleanup caveats, and review result in
+      `docs/tracking/process.md`.
+
 ### Phase 11.5 — Browser smoke and local rollback
 
 - [ ] Run server-mode browser smoke against the local Docker backend at

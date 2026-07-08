@@ -3531,3 +3531,150 @@ reported no findings.
 
 Proceed to Phase 11.4B: add a small file-service gateway and/or live backend
 file smoke for upload, download, message attachment, and refresh metadata.
+
+## 2026-07-08 — Phase 11.4B Plan: File Service Gateway and Attachment Smoke
+
+### Decision
+
+Split Phase 11.4 into two smaller frontend-safe slices:
+
+```text
+11.4B1 -> service gateway, server attachment mapper, DTO metadata preservation,
+          and reusable live API smoke
+11.4B2 -> MessageInput/ChatApp wiring for browser-selected files
+```
+
+Reason: `ChatApp.tsx`, `MessageInput.tsx`, and several UI files currently carry
+unrelated line-ending noise in the working tree. This slice avoids touching
+visible UI files and prevents accidental UI churn while still proving the
+server upload/download/attach contract.
+
+### Scope
+
+11.4B1 will change only service/test/docs/script boundaries:
+
+```text
+src/services/api/fileService.ts
+src/lib/utils/serverAttachments.ts
+src/services/api/chatCrudService.ts
+src/__tests__/fileService.test.ts
+src/__tests__/serverAttachments.test.ts
+src/__tests__/chatCrudService.test.ts
+mm-chat/scripts/smoke-phase-11-4b-file-attachments.sh
+```
+
+No `ChatApp`, `MessageInput`, OPFS utilities, visible component structure, or
+local attachment path changes are in scope for this slice.
+
+### Verification Plan
+
+- Unit tests prove server-mode file upload maps `FileRecordDTO` to a legacy
+  attachment with server metadata and fail-closed local mode.
+- Unit tests prove only server-backed attachments can become Go message
+  attachment references.
+- CRUD mapper tests prove refreshed message attachments keep `source`, `fileId`,
+  `size`, `sha256`, `purpose`, and a backend-gateway URL while ignoring any
+  unsafe server `downloadUrl`.
+- Live smoke script proves upload, metadata, byte download, message attach, and
+  list-message refresh against `http://127.0.0.1:8080`.
+
+### Risks
+
+- Browser UI remains unwired until 11.4B2.
+- Files uploaded during smoke are intentionally retained with their smoke
+  conversation/message rows because deleting the file would remove attachment
+  metadata from later list-message verification.
+- Attachment-only messages still need a policy decision in the UI wiring slice
+  because Go chat message creation requires non-empty `content`.
+
+## 2026-07-08 — Phase 11.4B1: File Service Gateway and Live Smoke
+
+### Action
+
+Added the service/mapper seam for server-backed file attachments without wiring
+visible UI:
+
+```text
+src/services/api/fileService.ts
+src/lib/utils/serverAttachments.ts
+src/services/api/chatCrudService.ts
+src/__tests__/fileService.test.ts
+src/__tests__/serverAttachments.test.ts
+src/__tests__/chatCrudService.test.ts
+mm-chat/scripts/smoke-phase-11-4b-file-attachments.sh
+```
+
+The file service uploads chat files with server file purpose `chat`, maps the
+returned `FileRecordDTO` into a legacy attachment carrying `source: "server"`,
+`fileId`, `size`, `sha256`, `purpose: "input"`, and a backend gateway URL.
+The server attachment mapper converts only server-backed attachments into Go
+message attachment refs and rejects local/base64/OPFS/remote attachments.
+
+### Verification
+
+Targeted checks passed:
+
+```text
+corepack pnpm vitest run src/__tests__/fileService.test.ts src/__tests__/serverAttachments.test.ts src/__tests__/chatCrudService.test.ts src/__tests__/apiClientScaffold.test.ts
+  passed: 4 files, 44 tests
+
+corepack pnpm typecheck
+  passed
+
+corepack pnpm exec eslint src/lib/utils/serverAttachments.ts src/services/api/fileService.ts src/services/api/chatCrudService.ts src/__tests__/serverAttachments.test.ts src/__tests__/fileService.test.ts src/__tests__/chatCrudService.test.ts
+  passed
+
+corepack pnpm exec prettier --check <11.4B1 ts/md files>
+  passed
+
+bash -n mm-chat/scripts/smoke-phase-11-4b-file-attachments.sh
+  passed
+```
+
+Local Compose services were healthy before smoke:
+
+```text
+backend: 127.0.0.1:8080 healthy
+postgres: healthy
+redis: up
+minio: up
+```
+
+Live API smoke passed:
+
+```text
+command:        mm-chat/scripts/smoke-phase-11-4b-file-attachments.sh
+run:            phase-11-4b-file-smoke-1783503755-27227
+fileId:         948591cb-52b7-497b-b9c7-157e2fefd490
+conversationId: feaec225-b164-4c9f-a189-b06977388e10
+messageId:      95851edd-b8c7-4c71-8d0b-5fb8914241b1
+artifacts:      /tmp/mm-chat-smoke/phase-11-4b-file-smoke-1783503755-27227
+sha256:         dd2696e7eaaa64645250e5d0a9b6c1cfea4949856fe7c2cd7e0f728901cf3bc0
+byte compare:   passed
+```
+
+Smoke verified upload metadata, `GET /v1/files/{id}`, byte download through
+`/content`, message append with `{source:"server", fileId, purpose:"input"}`,
+and list-message refresh preserving the same attachment metadata. Responses did
+not expose object keys, bucket names, local paths, MinIO/S3 URLs, or presigned
+URLs.
+
+### Review Follow-up
+
+A read-only review pass reported no target-code blockers. It warned that
+unrelated line-ending churn exists in visible UI/OPFS files and must remain
+excluded from this commit. It also suggested extending the smoke metadata check
+to reject forbidden storage fields on `GET /v1/files/{id}`; the smoke script now
+checks metadata responses for the same object-key, bucket, local-path,
+storage-backend, and presigned-URL leaks as upload responses.
+
+### Cleanup Notes
+
+The smoke intentionally leaves one test file, conversation, and message in the
+local Compose data so the refreshed attachment metadata remains auditable. Do
+not run `docker compose down -v` unless local smoke data loss is intended.
+
+### Next Step
+
+Run a review pass for 11.4B1, then proceed to 11.4B2: wire `MessageInput` and
+`ChatApp` to the service/mapper seam while preserving local OPFS behavior.

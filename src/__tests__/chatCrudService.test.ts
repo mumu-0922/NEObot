@@ -134,13 +134,21 @@ describe("chat CRUD DTO mappers", () => {
       attachments: [
         {
           id: "a1",
+          source: "server",
+          fileId: "file/1",
           fileName: "report.pdf",
           mimeType: "application/pdf",
+          size: 123,
+          sha256: "abc",
+          purpose: "input",
           url: "http://backend.test/v1/files/file%2F1/content",
         },
       ],
       outputBlocks: [{ id: "block-1", type: "text", content: "hi" }],
     });
+    expect(JSON.stringify(assistant.attachments)).not.toContain(
+      "object-store.example",
+    );
   });
 
   it("fails closed on invalid timestamps and unsupported server roles", () => {

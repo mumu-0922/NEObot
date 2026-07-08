@@ -383,6 +383,49 @@ Rollback:
 - Revert only the 11.4A API-client/test slice if file adapter behavior
   regresses.
 
+#### 11.4B — File Service Gateway and Live Attachment Smoke
+
+Objective: add a small frontend service boundary for server files and prove the
+Go upload/download/message-attachment chain without changing visible UI yet.
+
+Scope:
+
+- Add a `fileService` gateway that uploads chat files through the Phase 11 API
+  client and maps `FileRecordDTO` into legacy attachment metadata.
+- Add a server-attachment mapper for converting uploaded attachments into
+  `AppendUserMessageInput.attachments`.
+- Preserve server attachment metadata (`source`, `fileId`, `size`, `sha256`,
+  `purpose`) when mapping Go chat DTOs back to frontend messages.
+- Add a reusable live smoke script for:
+  - upload file;
+  - get metadata;
+  - download bytes;
+  - append a message with the uploaded `fileId`;
+  - list messages and verify refreshed attachment metadata.
+- Do not wire `MessageInput`, `ChatApp`, visible UI, OPFS replacement, or local
+  attachment behavior in this slice.
+
+Outputs:
+
+- Frontend file service gateway and server attachment mapper.
+- Targeted tests for upload mapping, fail-closed local mode, attachment request
+  conversion, and metadata preservation.
+- Shell smoke harness under `mm-chat/scripts/`.
+
+Verification:
+
+- Service upload requires configured server file capability.
+- Message attachment references contain only `source: "server"`, `fileId`, and
+  server-safe purpose values.
+- Download and list-message smoke responses do not expose object keys, buckets,
+  MinIO/S3 URLs, local paths, or presigned URLs.
+
+Rollback:
+
+- Keep `NEXT_PUBLIC_API_MODE=local`.
+- Revert only the 11.4B service/mapper/smoke slice if gateway behavior
+  regresses.
+
 ### 11.5 — Browser Smoke and Local Rollback
 
 Objective: prove the server-mode path end-to-end in a browser and prove the

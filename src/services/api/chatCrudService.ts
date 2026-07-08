@@ -31,8 +31,13 @@ export interface ChatCrudSession {
 
 export interface ChatCrudAttachment {
   id: string;
+  source: "server";
+  fileId: string;
   fileName: string;
   mimeType: string;
+  size: number;
+  sha256: string;
+  purpose: string;
   url: string;
 }
 
@@ -253,8 +258,13 @@ function mapServerAttachmentToAttachment(
 ): ChatCrudAttachment {
   return {
     id: attachment.id || attachment.fileId,
+    source: "server",
+    fileId: attachment.fileId,
     fileName: attachment.fileName || "download",
     mimeType: attachment.mimeType || "application/octet-stream",
+    size: attachment.size,
+    sha256: attachment.sha256,
+    purpose: attachment.purpose || "input",
     url: joinUrl(
       options.baseUrl ?? "",
       `/v1/files/${encodeURIComponent(attachment.fileId)}/content`,
