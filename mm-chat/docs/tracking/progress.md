@@ -141,13 +141,75 @@ Phase 15 as the active RAG implementation gate.
 
 ## Phase 11 — Frontend Server-Mode Integration
 
-- [ ] Add server-mode frontend API adapter.
-- [ ] Wire conversation CRUD to Go backend.
-- [ ] Wire message CRUD to Go backend.
-- [ ] Wire SSE assistant streaming to Go backend.
-- [ ] Wire file upload/download to Go backend.
-- [ ] Preserve local mode rollback through `NEXT_PUBLIC_API_MODE=local`.
-- [ ] Verify browser smoke against local Docker backend.
+Phase 11 starts as documentation-first planning. Do not mark any implementation
+checkbox complete until the slice is implemented, verified, and recorded in
+[`process.md`](./process.md).
+
+### Phase 11.1 — Adapter scaffold
+
+- [ ] Identify the existing frontend API boundary, mode selector, and local-mode
+      callers that must remain stable.
+- [ ] Add or complete the server-mode adapter scaffold behind the API boundary.
+- [ ] Document `NEXT_PUBLIC_API_MODE=local|server` and server base-URL behavior.
+- [ ] Document and verify the browser network edge for server mode: same-origin
+      proxy/reverse proxy or explicit backend CORS allowlist.
+- [ ] Verify `NEXT_PUBLIC_API_MODE=local` still preserves the current local
+      rollback path.
+- [ ] Confirm the first slice does not touch browser import/export UI, auth
+      UI/enforcement, RAG/knowledge flows, provider-settings redesign, or
+      unrelated product UI.
+
+### Phase 11.2 — Conversation and message CRUD
+
+- [ ] Map frontend conversation/message DTOs to the current Go chat CRUD
+      contract.
+- [ ] Wire supported conversation create/list behavior to the Go backend;
+      missing read/update/delete endpoints must use server-data derivation where
+      safe or explicit unsupported, not implicit browser-local fallback.
+- [ ] Wire supported message create/list behavior to the Go backend; missing
+      read/update/delete endpoints must use server-data derivation where safe
+      or explicit unsupported, not implicit browser-local fallback.
+- [ ] Map backend validation, not-found, conflict, and database-required errors
+      into existing frontend error handling.
+- [ ] Verify server mode can create/list conversations and create/list messages
+      against the local Go backend.
+- [ ] Verify browser refresh reloads server-owned conversation/message state.
+- [ ] Verify local mode still creates and reads browser-local chat state.
+
+### Phase 11.3 — SSE stream
+
+- [ ] Send persisted `userMessageId`, `modelRef`, and `idempotencyKey` to the
+      Go `/stream` endpoint in server mode.
+- [ ] Consume `message.started`, `message.delta`, `usage.updated`,
+      `message.completed`, `message.error`, and `message.cancelled` frames.
+- [ ] Map stream completion, cancellation, and provider errors to terminal UI
+      state without duplicate user messages.
+- [ ] Verify server mode streams and persists an assistant response against the
+      local Go backend.
+- [ ] Verify local-mode streaming behavior remains unchanged.
+
+### Phase 11.4 — File upload and download
+
+- [ ] Upload browser-selected files through the server file API.
+- [ ] Download file content through the backend gateway without exposing object
+      keys, buckets, MinIO URLs, or local paths.
+- [ ] Attach server file references to newly created messages where the current
+      UI already supports attachments.
+- [ ] Verify server mode uploads, downloads, attaches, and refreshes file
+      metadata against the local Go backend.
+- [ ] Verify local-mode OPFS/file behavior remains unchanged.
+
+### Phase 11.5 — Browser smoke and local rollback
+
+- [ ] Run server-mode browser smoke against the local Docker backend at
+      `http://127.0.0.1:8080`.
+- [ ] Smoke conversation creation, user message persistence, SSE assistant
+      stream, file upload/download, attachment rendering, and refresh
+      persistence.
+- [ ] Switch back to `NEXT_PUBLIC_API_MODE=local` and verify browser-local
+      behavior still works.
+- [ ] Record smoke commands, env flags, cleanup/reset notes, and known gaps in
+      `process.md`.
 
 ## Phase 12 — Browser Data Export/Import UI
 

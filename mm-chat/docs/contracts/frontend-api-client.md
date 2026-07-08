@@ -6,6 +6,11 @@ This contract defines the stable boundary between the existing Next.js/React fro
 
 The frontend must call domain clients, not raw backend routes, storage drivers, or provider SDKs from components.
 
+Phase 11 uses the implementation addendum in
+[§20](#20-phase-11-server-mode-integration-implementation-contract) as the
+authoritative slice contract. Where §20 narrows a future endpoint or capability
+listed earlier in this document, §20 wins for Phase 11.
+
 ```text
 React components/hooks
   ↓
@@ -28,6 +33,11 @@ This contract is derived from:
 - Existing plugin route inventory for deferred `pluginApi` shape.
 - Existing service boundary in `src/services/README.md`.
 - Existing chat types in `src/lib/chat/types.ts`.
+- Implemented Go chat CRUD contract in
+  [`chat-crud-api.md`](./chat-crud-api.md).
+- Implemented Go SSE contract in
+  [`chat-stream-api.md`](./chat-stream-api.md).
+- Implemented Go file contract in [`file-api.md`](./file-api.md).
 
 ## 3. Design Goals
 
@@ -70,13 +80,15 @@ Runtime configuration source:
 
 ```text
 local mode   -> existing /api/config or local defaults
-server mode  -> GET /v1/config from Go backend
+server mode  -> Phase 11: build-time env/static capabilities;
+                future: GET /v1/config after a Go route exists
 ```
 
 Rules:
 
 - `NEXT_PUBLIC_API_MODE` and `NEXT_PUBLIC_API_BASE_URL` are build-time defaults only.
-- Runtime rollback must be driven by `/api/config` or `/v1/config` where possible; otherwise a Next.js rebuild/redeploy is required.
+- Runtime rollback must be driven by `/api/config` or a future `/v1/config`
+  where possible; otherwise a Next.js rebuild/redeploy is required.
 - Missing or invalid mode resolves to `local`.
 - `server` mode requires a runtime or build-time API base URL.
 - Mode selection happens in one factory, not per component.
@@ -890,6 +902,11 @@ Endpoint mapping:
 | `plugins.install` | `POST /v1/plugins/install` | Later phase; validate manifest before install. |
 | `plugins.execute` | `POST /v1/plugins/execute` | Deferred until sandbox design exists. |
 
+The table above is the long-term server contract. Phase 11 must not call these
+routes unless they are implemented by the Go router and explicitly reopened in
+§20. The current Go backend does not register `/v1/config`, `/v1/settings`,
+`/v1/providers*`, `/v1/auth*`, or `/v1/plugins*`.
+
 Rules:
 
 - Server mode sends provider IDs/model IDs, not plaintext API keys.
@@ -946,7 +963,7 @@ Rules:
 |---:|---|---|---|
 | 1 | Add client interfaces and factory | No behavior change | Remove unused interfaces |
 | 2 | Wrap current local chat service as `local.chatApi` | Components still use local path | Keep old imports |
-| 3 | Add server HTTP adapter with health/config only | Can smoke test Go backend | Switch `NEXT_PUBLIC_API_MODE=local` |
+| 3 | Add server HTTP adapter with health/version only; config waits for an implemented route | Can smoke test Go backend reachability | Switch `NEXT_PUBLIC_API_MODE=local` |
 | 4 | Add server conversation/message CRUD | Server persistence opt-in | Switch mode local |
 | 5 | Add server stream events | SSE chat opt-in | Switch mode local |
 | 6 | Add file API local adapter wrapper | No server files yet | Keep OPFS path |
@@ -984,3 +1001,455 @@ When implementation begins, add tests for:
 - Whether server file downloads use backend streaming only or later presigned URLs.
 - Whether search/RAG helpers stay in chat API or move to dedicated APIs after MVP.
 - Whether plugin/tool execution is disabled, client-only, or sandboxed server-side in the first public server release.
+
+## 20. Phase 11 Server-Mode Integration Implementation Contract
+
+This section converts the broad frontend client contract into the concrete
+Phase 11 implementation slice against the Go API that exists now. It is an
+implementation contract, not a request to add frontend code in this document.
+
+Authoritative inputs:
+
+- Go routes registered by `mm-chat/backend/internal/httpserver/server.go`.
+- Chat DTOs and validation in `mm-chat/backend/internal/chat/handler.go`.
+- File DTOs and validation in `mm-chat/backend/internal/files/handler.go`.
+- Existing legacy frontend shapes in `src/lib/chat/types.ts`.
+
+### 20.1 Slice Objective
+
+Wire the current app to server-backed chat without breaking local mode.
+
+First implementation slice:
+
+- Implement `server` mode for backend-supported chat CRUD and assistant SSE
+  streaming only.
+- Keep `local` mode behavior as-is behind the same `ChatApi` contract.
+- Do not touch browser import UI, auth/login UI, RAG, plugin/tool execution,
+  voice, document parsing, image generation, memory, or provider settings UI.
+- Document file endpoint mapping now, but do not make file UI a dependency of
+  the first chat CRUD + stream slice.
+
+For this slice, "chat CRUD" means the currently implemented Go chat surface:
+
+- create and list conversations;
+- append and list messages;
+- create/cancel assistant stream runs.
+
+It does not include conversation `GET/PATCH/DELETE`, title generation,
+message edit/delete, branching mutation, or generated-image/code/tool helpers
+until matching Go endpoints exist.
+
+### 20.2 Local/Server Adapter Boundary
+
+Mode selection must happen once in the API client factory. Components, hooks,
+and stores must not branch on raw route paths.
+
+```text
+React/UI call site
+  -> NeoChatApiClient factory
+  -> local adapter OR server adapter
+  -> local stores/Next routes/OPFS OR Go HTTP/SSE API
+```
+
+Boundary rules:
+
+- `local` adapter remains the compatibility owner for current browser state:
+  Zustand, localforage/IndexedDB, `window.localStorage`, OPFS, and existing
+  Next.js API routes.
+- `server` adapter owns all Go calls under `NEXT_PUBLIC_API_BASE_URL`; it must
+  not read or mutate browser-local chat persistence as source of truth.
+- DTO-to-legacy mapping belongs inside the adapter/integration layer, not in
+  presentation components.
+- No component may directly call `/v1/chat/*`, `/v1/files/*`, `/api/chat`, or
+  OPFS helpers as a server/local switch.
+- Mixed mode is forbidden by default. A feature may remain local in server mode
+  only when an explicit capability flag marks it out of scope for the current
+  slice.
+- `server` mode never sends provider API keys, local secret envelopes,
+  `opfs://` URLs, MinIO/S3 object keys, buckets, or direct object-store URLs
+  to the browser-visible contract.
+- Browser server mode must choose one network edge before smoke testing:
+  same-origin proxy/reverse proxy to Go, or direct
+  `NEXT_PUBLIC_API_BASE_URL` only after backend CORS allowlisting is
+  implemented and verified. The current Go API does not emit CORS headers, so
+  a Next.js dev origin such as `http://localhost:3000` cannot directly fetch
+  `http://127.0.0.1:8080` until that gap is closed.
+
+Adapter ownership matrix:
+
+| Concern | Local Adapter | Server Adapter |
+| --- | --- | --- |
+| Conversation source of truth | Current chat store/localforage | Go `conversations` endpoints |
+| Message source of truth | Current `session_messages_*` trees | Go `messages` endpoints |
+| Generation | Existing `streamChatResponse` path | `POST /v1/chat/.../stream` SSE |
+| Files | OPFS/object URLs | Go `/v1/files`, backend-stream downloads |
+| Runtime mode | `NEXT_PUBLIC_API_MODE=local` or fallback | `NEXT_PUBLIC_API_MODE=server` plus base URL |
+| Unsupported features in slice 1 | Existing local behavior | Capability-gated off, no implicit local fallback |
+
+Server mode must fail closed for unsupported server features. For example,
+import/auth/RAG calls should stay unwired or capability-disabled rather than
+silently uploading local data or switching one component back to a local route.
+
+Unavailable Go routes in Phase 11:
+
+- Do not call `/v1/config`, `/v1/settings`, `/v1/providers*`, `/v1/auth*`, or
+  `/v1/plugins*` from server mode in this phase.
+- Mode, base URL, and coarse capability flags come from build-time env,
+  same-origin local config, or a static adapter capability object until a Go
+  config endpoint is implemented.
+- Missing server features return an explicit unsupported/capability-disabled
+  result. They must not silently fall back to browser-local persistence in
+  server mode.
+
+### 20.3 Server Adapter Endpoint Mapping
+
+The server adapter must target only implemented Go routes in Phase 11 slice 1.
+Earlier future mappings in §8.2 remain roadmap items.
+
+#### Conversations
+
+| Client method | Go endpoint | Phase 11 behavior |
+| --- | --- | --- |
+| `createConversation` | `POST /v1/chat/conversations` | Send `title`, `modelRef`, optional `systemInstruction`, `config`, `idempotencyKey`. |
+| `listConversations` | `GET /v1/chat/conversations` | Parse `{ items }`; no cursor support yet. |
+| `getConversation` | none | Derive from `listConversations` only if needed; otherwise report unsupported. |
+| `updateConversation` | none | Not implemented in server mode slice 1. |
+| `deleteConversation` | none | Not implemented in server mode slice 1. |
+| `generateTitle` | none | Keep out of server mode slice 1. |
+
+Server response shape is `ConversationDTO`:
+
+```ts
+{
+  id: string;
+  title: string;
+  status: "active" | "archived" | "deleted";
+  modelRef?: ModelRef;
+  messageCount: number;
+  config: Record<string, unknown>;
+  createdAt: IsoDateTime;
+  updatedAt: IsoDateTime;
+}
+```
+
+#### Messages
+
+| Client method | Go endpoint | Phase 11 behavior |
+| --- | --- | --- |
+| `appendUserMessage` | `POST /v1/chat/conversations/{id}/messages` | Creates one completed `role=user` message. |
+| `listMessages` | `GET /v1/chat/conversations/{id}/messages` | Parse `{ items }` in sequence order. |
+| message edit/delete/regenerate | none | Not implemented in server mode slice 1. |
+
+`appendUserMessage` must send only fields accepted by the Go handler:
+
+```ts
+{
+  role?: "user";
+  content: string;
+  attachments?: Array<{ source?: "server"; fileId: string; purpose?: string }>;
+  parentMessageId?: string;
+  metadata?: Record<string, unknown>;
+  idempotencyKey?: string;
+}
+```
+
+Rules:
+
+- The adapter may omit `role`; if present it must be `"user"`.
+- `content` must be non-blank before sending.
+- Server-managed fields (`id`, `conversationId`, `status`, `modelRef`,
+  `sequenceNo`, timestamps, output blocks, identity hints) must not be sent.
+- Attachments are server file references only. `opfs`, `inline`, `remote`,
+  base64 data, object keys, and bucket names are forbidden here.
+
+#### Stream Runs
+
+| Client method | Go endpoint | Phase 11 behavior |
+| --- | --- | --- |
+| `streamAssistantMessage` | `POST /v1/chat/conversations/{id}/stream` | POST body, parse `text/event-stream`. |
+| `cancelRun` | `POST /v1/chat/runs/{runId}/cancel` | Durable cancel; also interrupts active same-process stream. |
+
+`streamAssistantMessage` body:
+
+```ts
+{
+  userMessageId: string;
+  modelRef: ModelRef;
+  config?: Record<string, unknown>;
+  systemInstruction?: string;
+  systemPrompt?: string;
+  metadata?: Record<string, unknown>;
+  idempotencyKey: string;
+}
+```
+
+Rules:
+
+- The caller must persist the user message first via `appendUserMessage`.
+- The stream body must not include `content`, `attachments`, `role`, `status`,
+  timestamps, identity hints, or other server-managed message fields.
+- `idempotencyKey` is required. The adapter may generate one before the
+  request, but must not reuse it for a different assistant run.
+- `modelRef.providerId` must match the configured Go provider. Current aliases
+  are enforced by the backend provider resolver.
+
+#### Files
+
+The file mapping is part of the Phase 11 contract but is not required for the
+first chat CRUD + stream slice.
+
+| Client method | Go endpoint | Phase 11 mapping |
+| --- | --- | --- |
+| `files.upload` | `POST /v1/files` | `multipart/form-data` with `file`, `purpose`, optional IDs. |
+| `files.getMetadata` | `GET /v1/files/{fileId}` | Returns metadata plus relative `downloadUrl`. |
+| `files.getContent` | `GET /v1/files/{fileId}/content` | Optional `?disposition=attachment`. |
+| `files.delete` | `DELETE /v1/files/{fileId}` | `204 No Content`; no JSON body. |
+| `files.getObjectUrl` | composed from `getContent` | Browser object URL/cache wrapper around backend stream. |
+
+Rules:
+
+- There is no file list endpoint in the current Go API.
+- `downloadUrl` is a backend-stream path, not a presigned object-store URL.
+- The adapter must prefix relative `downloadUrl` values with the configured
+  server base URL when making browser fetches.
+- Upload purpose must be one of `chat`, `workspace`, `knowledge`, `image`,
+  `audio`, or `export`.
+- Server file metadata must never expose storage backend, object key, bucket,
+  local path, or MinIO/S3 URL.
+
+### 20.4 SSE Event Handling
+
+Server-mode streaming uses `fetch()` with `POST` and a request body. Do not use
+`EventSource` for this endpoint because native `EventSource` cannot send the
+required JSON body.
+
+Wire rules:
+
+- Request headers include `Accept: text/event-stream` and
+  `Content-Type: application/json`.
+- The parser reads `ReadableStream` bytes with `TextDecoder`, preserves partial
+  frames across chunks, and splits events on blank lines.
+- Each server frame has one named `event:` line and one JSON `data:` object.
+  The adapter should tolerate multi-line `data:` per SSE rules even though the
+  current Go server emits one line.
+- `event:` must match `data.type`; mismatches are recoverable
+  `STREAM_PROTOCOL_ERROR` events.
+- Ignore comments/empty keepalive frames if they are added later.
+
+Current Go event types:
+
+| Event | Handler | State effect |
+| --- | --- | --- |
+| `message.started` | `onStarted` | Capture `runId` and assistant `messageId`; mark generation streaming. |
+| `message.delta` | `onDelta` | Append `delta` to transient assistant content. |
+| `usage.updated` | `onUsage` | Merge optional usage metadata. |
+| `message.completed` | `onCompleted` | Replace transient content with persisted `message`; terminal success. |
+| `message.error` | `onError` | Terminal failure after SSE start. |
+| `message.cancelled` | `onCancelled` | Terminal cancellation. |
+
+Future events already defined in §9 (`message.reasoning_delta`, `tool.*`,
+`search.updated`, `image.generated`, `timing.updated`) must remain parsed by
+type but capability-gated. In Phase 11 slice 1, receiving those events should
+not trigger plugin/RAG/import UI.
+
+Sequence handling:
+
+- `sequence` is monotonic per `runId`.
+- Duplicate sequence numbers are ignored.
+- A sequence gap is recoverable: emit or synthesize `STREAM_INTERRUPTED`,
+  stop applying more deltas for that run, and refresh via `listMessages` when
+  the request settles.
+- `message.completed.message` is authoritative over accumulated deltas.
+- Exactly one terminal event is allowed. Extra frames after a terminal event
+  are ignored.
+
+Abort/cancel handling:
+
+- If `AbortSignal` fires before `message.started`, abort the fetch only; no
+  `runId` exists yet.
+- If `AbortSignal` fires after `message.started`, call
+  `POST /v1/chat/runs/{runId}/cancel`, then treat `message.cancelled` or the
+  cancel JSON response as terminal.
+- A cancelled or failed stream must not be rendered as completed even if some
+  deltas were received.
+
+### 20.5 Error Handling Contract
+
+All non-stream JSON errors use the standard envelope:
+
+```json
+{
+  "error": {
+    "code": "CONVERSATION_NOT_FOUND",
+    "message": "conversation not found"
+  }
+}
+```
+
+Server adapter normalization:
+
+- Parse the envelope for every non-`2xx` JSON response.
+- Preserve backend `error.code` and `error.message` exactly.
+- Add a synthesized `requestId` only when a response header supplies one or the
+  adapter creates a local correlation ID; do not invent backend trace data.
+- `204 No Content` from file delete is success and must not be JSON-parsed.
+- Network/CORS/timeout failures map to `NETWORK_ERROR` or
+  `STREAM_INTERRUPTED` with `recoverable: true`.
+- Invalid JSON from a JSON endpoint maps to `INVALID_SERVER_RESPONSE`.
+- Invalid SSE framing maps to `STREAM_PROTOCOL_ERROR`.
+
+Pre-SSE errors from `POST /stream` are ordinary JSON errors, including:
+
+- `400 MODEL_REF_REQUIRED`, `IDEMPOTENCY_KEY_REQUIRED`,
+  `INVALID_USER_MESSAGE_ID`, `INVALID_JSON`, `INVALID_CONVERSATION_ID`,
+  `VALIDATION_ERROR`, `FORBIDDEN_MESSAGE_FIELD`, `UNSUPPORTED_PROVIDER`;
+- `404 CONVERSATION_NOT_FOUND`;
+- `409 IDEMPOTENCY_CONFLICT`;
+- `500 STREAMING_UNSUPPORTED`;
+- `502 PROVIDER_ERROR`;
+- `503 DATABASE_REQUIRED` or `PROVIDER_REQUIRED`.
+
+Cancel errors from `POST /v1/chat/runs/{runId}/cancel` include
+`INVALID_RUN_ID`, `RUN_NOT_FOUND`, and `RUN_NOT_CANCELLABLE`. This list is a
+Phase 11 implementation aid, not a closed enum; preserve backend error codes
+from [`chat-stream-api.md`](./chat-stream-api.md) and the Go handlers.
+
+After SSE starts, provider/finalization failures arrive as `message.error`
+frames and must produce `ChatRunResult.status = "failed"`. The adapter must not
+retry automatically with the same idempotency key; retries require a new user
+action and a new assistant-run key.
+
+Rate-limit and infrastructure handling:
+
+- `429 RATE_LIMITED` remains recoverable after waiting. Preserve
+  `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and
+  `X-RateLimit-Reset` when present.
+- `503 DATABASE_REQUIRED`, `STORAGE_REQUIRED`, and `PROVIDER_REQUIRED` are
+  configuration errors. Surface them in server-mode smoke feedback and keep
+  rollback to local mode available.
+- `405 METHOD_NOT_ALLOWED` should include the backend `Allow` header when
+  surfaced for debugging.
+
+### 20.6 ISO Date to Legacy Timestamp Compatibility
+
+The Go API emits UTC RFC3339/RFC3339Nano strings. The current frontend still
+uses millisecond timestamps in several core types:
+
+- `Session.updatedAt: number`;
+- `Message.timestamp: number`;
+- `MessageVersion.timestamp: number`;
+- timing fields such as `startTime`, `endTime`, and `duration`.
+
+Compatibility rules:
+
+- Convert ISO strings to Unix epoch milliseconds with `Date.parse`.
+- Invalid or empty ISO values are adapter errors for required fields. Use a
+  documented fallback only for optional display fields.
+- Conversation mapping:
+  - `ConversationDTO.updatedAt` -> legacy `Session.updatedAt`;
+  - `ConversationDTO.modelRef` -> legacy `Session.model` using the existing
+    provider/model string convention;
+  - `ConversationDTO.config` -> legacy `Session.config`.
+- Message mapping:
+  - API `role: "assistant"` -> legacy `role: "model"`;
+  - API `role: "user"` -> legacy `role: "user"`;
+  - API `createdAt` -> legacy `Message.timestamp`;
+  - API `completedAt`, when present, may feed legacy timing `endTime`;
+  - API `modelRef` -> legacy `Message.model`;
+  - API `usage`/`usage.updated` -> legacy usage fields without dropping the
+    provider-neutral payload.
+- Server `sequenceNo` is ordering authority for server-mode message lists.
+  Legacy timestamps are for display/sorting compatibility only.
+- Local adapter may keep timestamps as numbers internally, but any value that
+  crosses the shared DTO boundary must still satisfy the `IsoDateTime` contract.
+
+Date conversion is part of the adapter boundary. Components should continue to
+receive the legacy shape they already render until a separate UI refactor
+changes those types.
+
+### 20.7 Rollback Contract
+
+Primary rollback is a configuration switch:
+
+```env
+NEXT_PUBLIC_API_MODE=local
+```
+
+Rollback rules:
+
+- Missing, invalid, or unsupported mode resolves to `local`.
+- If `NEXT_PUBLIC_API_MODE` is baked into a built Next.js bundle, rollback
+  requires rebuild/redeploy or a runtime config layer that explicitly overrides
+  it.
+- Rollback does not delete Postgres, Redis, or object-store data.
+- Server-mode data created before rollback remains on the Go backend for later
+  debugging or re-enable.
+- Browser-local data remains untouched by server-mode slice 1 because import UI
+  is out of scope.
+- If a release is partially deployed, prefer `local` mode over mixed component
+  fallbacks. One factory switch must determine behavior.
+
+Operational rollback smoke:
+
+1. Set `NEXT_PUBLIC_API_MODE=local`.
+2. Restart or rebuild the frontend as required by the deployment target.
+3. Load the app with the Go backend stopped.
+4. Confirm local chat creation, local streaming, and local history still work.
+
+### 20.8 Verification Checklist
+
+#### Backend ready
+
+- `mm-chat` Go backend is running with Postgres migrations applied.
+- `/health` returns `200 {"status":"healthy"}`.
+- `/ready` returns `200 {"status":"ready"}`.
+- `/v1/version` returns `200` with a version string.
+- `GET /v1/chat/conversations` returns `200` and an `{ items: [] }` page or
+  existing conversations.
+- `POST /v1/chat/conversations` creates a conversation.
+- `POST /v1/chat/conversations/{id}/messages` appends a completed user
+  message.
+- `POST /v1/chat/conversations/{id}/stream` emits at least
+  `message.started`, zero or more `message.delta`, and one terminal event.
+- `POST /v1/chat/runs/{runId}/cancel` cancels a streaming run when exercised.
+- File endpoints may be smoke-tested separately with `POST /v1/files`,
+  `GET /v1/files/{id}`, `GET /v1/files/{id}/content`, and
+  `DELETE /v1/files/{id}`, but they are not required for slice 1 UI wiring.
+
+#### Browser smoke in server mode
+
+- Set `NEXT_PUBLIC_API_MODE=server` and
+  `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8080` or the deployed backend URL.
+- If the frontend origin differs from the backend origin, verify one of these
+  first: same-origin proxy routing to Go, or explicit backend CORS headers for
+  the frontend origin. Do not use wildcard CORS for credentialed or hosted
+  deployments.
+- Create a new chat from the existing UI without directly calling Go routes
+  from components.
+- Send one user message; verify the network sequence is:
+  1. `POST /v1/chat/conversations` when needed;
+  2. `POST /v1/chat/conversations/{id}/messages`;
+  3. `POST /v1/chat/conversations/{id}/stream`.
+- Verify streamed deltas render once and the final persisted assistant message
+  replaces transient content.
+- Refresh the browser and confirm `listConversations` + `listMessages` restore
+  server data.
+- Cancel one active stream and confirm UI terminal state is cancelled, not
+  failed or completed.
+- Confirm no Phase 11 slice-1 path calls import, auth, RAG, plugin, voice,
+  document, image, or code-execution routes.
+- Confirm ISO dates render as valid legacy timestamps and conversation ordering
+  is stable after refresh.
+
+#### Local mode regression
+
+- Set `NEXT_PUBLIC_API_MODE=local`.
+- Run the app with the Go backend unavailable.
+- Create a local conversation, send a local streamed message, refresh, and
+  verify existing local history remains available.
+- Verify OPFS/local attachments still render through the local path.
+- Verify existing local helpers not in server slice 1 still behave as before:
+  title helpers, RAG/search settings, plugins where enabled, voice, and
+  document parsing.
+- Confirm no server-mode adapter code is imported in a way that performs
+  network calls during local bootstrap.

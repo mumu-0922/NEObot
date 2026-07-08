@@ -2159,3 +2159,69 @@ Phase 15 as the active RAG gate.
 
 Review and commit the roadmap docs, then start Phase 11 only after confirming
 the frontend integration slice.
+
+## 2026-07-08 — Phase 11 Kickoff: Documentation-First Slice Plan
+
+### Action
+
+Started Phase 11 with a documentation-only kickoff. Split frontend server-mode
+integration into five implementation slices:
+
+```text
+11.1 adapter scaffold
+11.2 conversation/message CRUD
+11.3 SSE stream
+11.4 file upload/download
+11.5 browser smoke/local rollback
+```
+
+No application code was changed in this kickoff.
+
+Scope note: that statement is scoped to the Phase 11 docs slice under
+`mm-chat/`. The repository worktree also contains unrelated out-of-scope dirty
+files outside `mm-chat/`; they are not part of this slice and must not be staged
+or committed with the Phase 11 docs work.
+
+### Evidence
+
+Updated planning/tracking documents only:
+
+```text
+mm-chat/docs/architecture/phase-11-plus-roadmap.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+The Phase 11 progress checklist is now split by slice. Implementation checkboxes
+remain unchecked until code, tests/smoke evidence, and a matching dated process
+entry exist.
+
+### Decision
+
+Follow the roadmap planning rule before implementation starts: each Phase 11
+slice must have objective, scope, outputs, verification, rollback, and a
+tracking checklist.
+
+The first implementation slice is intentionally narrow. Phase 11.1 may scaffold
+the server-mode adapter and mode selection only; it must not touch browser
+import/export UI, auth UI or enforcement, RAG/knowledge flows, provider-settings
+redesign, or unrelated product UI.
+
+Browser server-mode smoke needs an explicit network-edge decision before code
+work: either route the frontend through a same-origin proxy/reverse proxy to Go,
+or add and verify backend CORS allowlisting for the chosen frontend origin. The
+current Go API does not emit CORS headers, so direct browser fetches from a
+Next.js dev origin to `http://127.0.0.1:8080` are treated as a Phase 11.1 gap
+until one of those paths is implemented.
+
+### Verification
+
+This was a docs-first kickoff, so application tests were not run. Verification
+for this step is limited to the edited docs and diff hygiene. Functional checks
+belong to the later implementation slices.
+
+### Next Step
+
+Implement Phase 11.1 adapter scaffold next, then update `progress.md` and add a
+dated `process.md` entry only after the slice is implemented and verified.
