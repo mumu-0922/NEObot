@@ -1,6 +1,8 @@
 import { createLocalChatApiShell } from "./local/chatApi";
+import { createLocalFileApiShell } from "./local/fileApi";
 import { phase11Capabilities, resolveApiClientConfig } from "./mode";
 import { createServerChatApiShell } from "./server/chatApi";
+import { createServerFileApiShell } from "./server/fileApi";
 import { createHttpClient } from "./server/httpClient";
 import type { ApiClientConfig, NeoChatApiClient } from "./types";
 
@@ -14,6 +16,12 @@ export function createNeoChatApiClient(
           createHttpClient({ baseUrl: resolved.baseUrl }),
         )
       : createLocalChatApiShell();
+  const files =
+    resolved.mode === "server" && resolved.serverConfigured
+      ? createServerFileApiShell(
+          createHttpClient({ baseUrl: resolved.baseUrl }),
+        )
+      : createLocalFileApiShell();
 
   return {
     mode: resolved.mode,
@@ -22,8 +30,10 @@ export function createNeoChatApiClient(
       ...phase11Capabilities,
       chatCrud: resolved.mode === "server" && resolved.serverConfigured,
       chatStream: resolved.mode === "server" && resolved.serverConfigured,
+      files: resolved.mode === "server" && resolved.serverConfigured,
     },
     chat,
+    files,
   };
 }
 

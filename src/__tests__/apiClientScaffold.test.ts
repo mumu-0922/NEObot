@@ -10,6 +10,7 @@ import {
   resolveApiClientConfig,
 } from "../services/api/client";
 import { createServerChatApiShell } from "../services/api/client/server/chatApi";
+import { createServerFileApiShell } from "../services/api/client/server/fileApi";
 
 describe("Phase 11.1B API mode resolver", () => {
   it("defaults invalid or missing modes to local", () => {
@@ -67,7 +68,7 @@ describe("Phase 11.1B API mode resolver", () => {
     });
   });
 
-  it("enables chat CRUD and stream capability for configured server mode", () => {
+  it("enables supported server capabilities for configured server mode", () => {
     const client = createNeoChatApiClient({
       env: {
         NEXT_PUBLIC_API_MODE: "server",
@@ -79,7 +80,7 @@ describe("Phase 11.1B API mode resolver", () => {
     expect(client.capabilities).toMatchObject({
       chatCrud: true,
       chatStream: true,
-      files: false,
+      files: true,
     });
   });
 
@@ -147,6 +148,234 @@ describe("Phase 11.1B server HTTP scaffold", () => {
       code: "NETWORK_ERROR",
       recoverable: true,
     });
+  });
+});
+
+describe("Phase 11.4A server file API adapter", () => {
+  const fileId = "00000000-0000-4000-8000-000000000001";
+  const fileRecord = {
+    id: fileId,
+    fileName: "notes.txt",
+    mimeType: "text/plain",
+    size: 11,
+    sha256: "64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c",
+    purpose: "chat",
+    createdAt: "2026-07-08T00:00:00Z",
+    downloadUrl: `/v1/files/${fileId}/content`,
+  };
+
+  it("keeps local file adapter calls fail-closed", async () => {
+    const client = createNeoChatApiClient();
+
+    await expect(
+      client.files.uploadFile({
+        file: new Blob(["hello"], { type: "text/plain" }),
+        fileName: "hello.txt",
+        purpose: "chat",
+      }),
+    ).rejects.toMatchObject({ code: "FEATURE_NOT_IMPLEMENTED" });
+    expect(client.capabilities.files).toBe(false);
+  });
+
+  it("uploads files through multipart form data without manual content-type", async () => {
+    const requests: Array<{
+      url: string;
+      method?: string;
+      contentType?: string | null;
+      accept?: string | null;
+      fields: Record<string, unknown>;
+    }> = [];
+    const files = createServerFileApiShell(
+      createHttpClient({
+        baseUrl: "http://backend.test",
+        fetchImpl: async (input, init) => {
+          const headers = new Headers(init?.headers);
+          const body = init?.body;
+          if (!(body instanceof FormData)) {
+            throw new Error("Expected multipart FormData body.");
+          }
+          const uploadedFile = body.get("file") as File;
+          requests.push({
+            url: String(input),
+            method: init?.method,
+            contentType: headers.get("content-type"),
+            accept: headers.get("accept"),
+            fields: {
+              fileName: uploadedFile.name,
+              fileType: uploadedFile.type,
+              purpose: body.get("purpose"),
+              conversationId: body.get("conversationId"),
+              workspaceId: body.get("workspaceId"),
+              knowledgeCollectionId: body.get("knowledgeCollectionId"),
+              clientFileId: body.get("clientFileId"),
+            },
+          });
+          return Response.json(
+            {
+              ...fileRecord,
+              objectKey: "users/dev/files/file-1",
+              bucket: "neo-chat-files",
+            },
+            { status: 201 },
+          );
+        },
+      }),
+    );
+
+    await expect(
+      files.uploadFile({
+        file: new Blob(["hello world"], { type: "text/plain" }),
+        fileName: "notes.txt",
+        purpose: "chat",
+        conversationId: "conversation-1",
+        workspaceId: "workspace-1",
+        knowledgeCollectionId: "knowledge-1",
+        clientFileId: "client-file-1",
+      }),
+    ).resolves.toEqual(fileRecord);
+    expect(requests).toEqual([
+      {
+        url: "http://backend.test/v1/files",
+        method: "POST",
+        contentType: null,
+        accept: "application/json",
+        fields: {
+          fileName: "notes.txt",
+          fileType: "text/plain",
+          purpose: "chat",
+          conversationId: "conversation-1",
+          workspaceId: "workspace-1",
+          knowledgeCollectionId: "knowledge-1",
+          clientFileId: "client-file-1",
+        },
+      },
+    ]);
+  });
+
+  it("gets metadata and rejects unsafe file metadata", async () => {
+    const okFiles = createServerFileApiShell(
+      createHttpClient({
+        baseUrl: "http://backend.test",
+        fetchImpl: async (input, init) => {
+          expect(String(input)).toBe(`http://backend.test/v1/files/${fileId}`);
+          expect(init?.method).toBe("GET");
+          return Response.json(fileRecord);
+        },
+      }),
+    );
+    await expect(okFiles.getFile(fileId)).resolves.toEqual(fileRecord);
+
+    for (const unsafeRecord of [
+      {
+        ...fileRecord,
+        downloadUrl: "http://minio:9000/neo-chat-files/object-key",
+      },
+      {
+        ...fileRecord,
+        downloadUrl: "/v1/files/users/dev/files/file-1/content",
+      },
+      { ...fileRecord, downloadUrl: "/v1/files/../file-1/content" },
+      {
+        ...fileRecord,
+        downloadUrl: "/v1/files/00000000-0000-4000-8000-000000000002/content",
+      },
+      {
+        ...fileRecord,
+        id: "file/with-slash",
+        downloadUrl: "/v1/files/file%2Fwith-slash/content",
+      },
+      { ...fileRecord, purpose: "object-store" },
+    ]) {
+      const unsafeFiles = createServerFileApiShell(
+        createHttpClient({
+          baseUrl: "http://backend.test",
+          fetchImpl: async () => Response.json(unsafeRecord),
+        }),
+      );
+      await expect(unsafeFiles.getFile("file-1")).rejects.toMatchObject({
+        code: "INVALID_SERVER_RESPONSE",
+      });
+    }
+  });
+
+  it("downloads file content through the backend gateway", async () => {
+    const requests: Array<{
+      url: string;
+      method?: string;
+      accept?: string | null;
+    }> = [];
+    const files = createServerFileApiShell(
+      createHttpClient({
+        baseUrl: "http://backend.test",
+        fetchImpl: async (input, init) => {
+          const headers = new Headers(init?.headers);
+          requests.push({
+            url: String(input),
+            method: init?.method,
+            accept: headers.get("accept"),
+          });
+          return new Response("hello world", {
+            headers: {
+              "content-type": "text/plain",
+              "content-length": "11",
+            },
+          });
+        },
+      }),
+    );
+
+    const downloaded = await files.downloadFileContent({
+      fileId: "file/with slash",
+      disposition: "attachment",
+    });
+
+    await expect(downloaded.blob.text()).resolves.toBe("hello world");
+    expect(downloaded.contentType).toBe("text/plain");
+    expect(downloaded.size).toBe(11);
+    expect(requests).toEqual([
+      {
+        url: "http://backend.test/v1/files/file%2Fwith%20slash/content?disposition=attachment",
+        method: "GET",
+        accept: "application/octet-stream, */*",
+      },
+    ]);
+  });
+
+  it("normalizes binary download errors and deletes files", async () => {
+    const requests: Array<{ url: string; method?: string }> = [];
+    const files = createServerFileApiShell(
+      createHttpClient({
+        baseUrl: "http://backend.test",
+        fetchImpl: async (input, init) => {
+          requests.push({ url: String(input), method: init?.method });
+          if (init?.method === "DELETE") {
+            return new Response(null, { status: 204 });
+          }
+          return Response.json(
+            { error: { code: "FILE_NOT_FOUND", message: "file not found" } },
+            { status: 404 },
+          );
+        },
+      }),
+    );
+
+    await expect(
+      files.downloadFileContent({ fileId: "missing-file" }),
+    ).rejects.toMatchObject({
+      code: "FILE_NOT_FOUND",
+      status: 404,
+    });
+    await expect(files.deleteFile("file/with slash")).resolves.toBeUndefined();
+    expect(requests).toEqual([
+      {
+        url: "http://backend.test/v1/files/missing-file/content",
+        method: "GET",
+      },
+      {
+        url: "http://backend.test/v1/files/file%2Fwith%20slash",
+        method: "DELETE",
+      },
+    ]);
   });
 });
 

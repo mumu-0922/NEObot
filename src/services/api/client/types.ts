@@ -98,6 +98,43 @@ export interface ServerAttachmentDTO {
   downloadUrl?: string;
 }
 
+export type FilePurpose =
+  "chat" | "workspace" | "knowledge" | "image" | "audio" | "export";
+
+export interface FileRecordDTO {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  sha256: string;
+  purpose: FilePurpose;
+  createdAt: string;
+  downloadUrl: string;
+}
+
+export interface UploadFileInput {
+  file: Blob;
+  fileName?: string;
+  purpose: FilePurpose;
+  conversationId?: string;
+  workspaceId?: string;
+  knowledgeCollectionId?: string;
+  clientFileId?: string;
+  signal?: AbortSignal;
+}
+
+export interface DownloadFileContentInput {
+  fileId: string;
+  disposition?: "inline" | "attachment";
+  signal?: AbortSignal;
+}
+
+export interface DownloadedFileContent {
+  blob: Blob;
+  contentType: string;
+  size?: number;
+}
+
 export interface CreateConversationInput {
   title?: string;
   modelRef?: ModelRef;
@@ -158,11 +195,24 @@ export interface ChatApi {
   cancelRun(runId: string): Promise<ChatRunResult>;
 }
 
+export interface FileApi {
+  uploadFile(input: UploadFileInput): Promise<FileRecordDTO>;
+  getFile(
+    fileId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<FileRecordDTO>;
+  downloadFileContent(
+    input: DownloadFileContentInput,
+  ): Promise<DownloadedFileContent>;
+  deleteFile(fileId: string, options?: { signal?: AbortSignal }): Promise<void>;
+}
+
 export interface NeoChatApiClient {
   mode: ApiMode;
   config: ResolvedApiClientConfig;
   capabilities: ApiCapabilities;
   chat: ChatApi;
+  files: FileApi;
 }
 
 export type ServerStreamEventType =

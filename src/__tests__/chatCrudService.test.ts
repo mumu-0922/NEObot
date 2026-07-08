@@ -12,6 +12,7 @@ import type {
   ChatApi,
   ChatMessageDTO,
   ConversationDTO,
+  FileApi,
   NeoChatApiClient,
   ResolvedApiClientConfig,
 } from "../services/api/client";
@@ -272,5 +273,23 @@ function createMockClient(
     config: options.config ?? resolvedConfig,
     capabilities: options.capabilities ?? capabilities,
     chat,
+    files: options.files ?? createMockFileApi(),
+  };
+}
+
+function createMockFileApi(): FileApi {
+  return {
+    async uploadFile() {
+      throw new Error("uploadFile not mocked");
+    },
+    async getFile() {
+      throw new Error("getFile not mocked");
+    },
+    async downloadFileContent() {
+      throw new Error("downloadFileContent not mocked");
+    },
+    async deleteFile() {
+      throw new Error("deleteFile not mocked");
+    },
   };
 }

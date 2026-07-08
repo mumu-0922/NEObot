@@ -340,6 +340,49 @@ Tracking checklist:
 
 - Use the Phase 11.4 checklist in `docs/tracking/progress.md`.
 
+#### 11.4A — Server File API Client Adapter
+
+Objective: add the server-mode frontend API-client methods for the Go file API
+without wiring visible UI, OPFS replacement, or message attachment flows yet.
+
+Scope:
+
+- Extend the API-client contract with `files` methods for upload, metadata,
+  content download, and delete.
+- Implement server-mode calls for:
+  - `POST /v1/files` as `multipart/form-data`;
+  - `GET /v1/files/{id}`;
+  - `GET /v1/files/{id}/content`;
+  - `DELETE /v1/files/{id}`.
+- Keep local mode as explicit unsupported/fail-closed for this adapter.
+- Enable only the `files` API capability in configured server mode.
+- Do not change visible components, OPFS utilities, local attachment storage,
+  message input behavior, or `ChatApp` in this slice.
+
+Outputs:
+
+- Server file adapter methods and DTO/input types.
+- Shared HTTP helper support for multipart JSON responses and binary downloads.
+- Targeted tests for request shape, URL encoding, binary download, error
+  normalization, local unsupported behavior, and private object-store path
+  boundaries.
+
+Verification:
+
+- Server-mode upload sends browser `FormData` without manually setting a
+  multipart `Content-Type`.
+- Download content is fetched through `/v1/files/{id}/content`.
+- Responses do not expose object keys, bucket names, local paths, or MinIO/S3
+  URLs; returned `downloadUrl` values must exactly match
+  `/v1/files/{id}/content` for a UUID file ID.
+- Local mode remains disabled for file API calls.
+
+Rollback:
+
+- Switch `NEXT_PUBLIC_API_MODE=local`.
+- Revert only the 11.4A API-client/test slice if file adapter behavior
+  regresses.
+
 ### 11.5 — Browser Smoke and Local Rollback
 
 Objective: prove the server-mode path end-to-end in a browser and prove the

@@ -15,6 +15,25 @@ export interface JsonRequestOptions {
   signal?: AbortSignal;
 }
 
+export interface MultipartRequestOptions {
+  method?: string;
+  formData: FormData;
+  headers?: Record<string, string>;
+  signal?: AbortSignal;
+}
+
+export interface BinaryRequestOptions {
+  method?: string;
+  headers?: Record<string, string>;
+  signal?: AbortSignal;
+}
+
+export interface BinaryResponse {
+  blob: Blob;
+  contentType: string;
+  size?: number;
+}
+
 export interface SseRequestOptions extends JsonRequestOptions {
   onFrame: (frame: ParsedSseFrame) => void;
 }
@@ -22,6 +41,14 @@ export interface SseRequestOptions extends JsonRequestOptions {
 export interface HttpClient {
   buildUrl(path: string): string;
   requestJson<T>(path: string, options?: JsonRequestOptions): Promise<T>;
+  requestMultipartJson<T>(
+    path: string,
+    options: MultipartRequestOptions,
+  ): Promise<T>;
+  requestBinary(
+    path: string,
+    options?: BinaryRequestOptions,
+  ): Promise<BinaryResponse>;
   requestSse(path: string, options: SseRequestOptions): Promise<void>;
 }
 
@@ -77,6 +104,77 @@ export function createHttpClient(options: HttpClientOptions): HttpClient {
         );
       }
       return data as T;
+    },
+
+    async requestMultipartJson<T>(
+      path: string,
+      request: MultipartRequestOptions,
+    ): Promise<T> {
+      let response: Response;
+      try {
+        response = await fetchImpl(joinUrl(baseUrl, path), {
+          method: request.method ?? "POST",
+          headers: {
+            Accept: "application/json",
+            ...options.defaultHeaders,
+            ...request.headers,
+          },
+          body: request.formData,
+          signal: request.signal,
+        });
+      } catch (error) {
+        throw networkErrorFrom(error);
+      }
+
+      const text = await response.text();
+      const data = parseJson(text);
+
+      if (!response.ok) {
+        throw errorFromResponse(response, data);
+      }
+      if (data === null) {
+        throw new ApiClientError(
+          "INVALID_SERVER_RESPONSE",
+          "Server returned invalid JSON.",
+          { status: response.status },
+        );
+      }
+      return data as T;
+    },
+
+    async requestBinary(
+      path: string,
+      request: BinaryRequestOptions = {},
+    ): Promise<BinaryResponse> {
+      let response: Response;
+      try {
+        response = await fetchImpl(joinUrl(baseUrl, path), {
+          method: request.method ?? "GET",
+          headers: {
+            Accept: "application/octet-stream, */*",
+            ...options.defaultHeaders,
+            ...request.headers,
+          },
+          signal: request.signal,
+        });
+      } catch (error) {
+        throw networkErrorFrom(error);
+      }
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw errorFromResponse(response, parseJson(text));
+      }
+
+      const contentType =
+        response.headers.get("content-type") ?? "application/octet-stream";
+      const contentLength = response.headers.get("content-length");
+      const size = contentLength ? Number(contentLength) : undefined;
+      return {
+        blob: await response.blob(),
+        contentType,
+        ...(Number.isFinite(size) ? { size } : {}),
+      };
     },
 
     async requestSse(path: string, request: SseRequestOptions): Promise<void> {

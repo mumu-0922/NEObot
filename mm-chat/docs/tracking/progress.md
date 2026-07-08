@@ -419,6 +419,25 @@ visible frontend UI.
       metadata against the local Go backend.
 - [ ] Verify local-mode OPFS/file behavior remains unchanged.
 
+### Phase 11.4A — Server file API client adapter
+
+This slice adds file API methods to the hidden API-client boundary only. It
+does not wire visible UI, OPFS replacement, or message attachment flows.
+
+- [x] Add file DTO/input types and `FileApi` to the API-client contract.
+- [x] Add local-mode file shell that fails closed as unsupported.
+- [x] Add server-mode `uploadFile()` using `multipart/form-data` for
+      `POST /v1/files`.
+- [x] Add server-mode metadata, content download, and delete methods for
+      `GET /v1/files/{id}`, `GET /v1/files/{id}/content`, and
+      `DELETE /v1/files/{id}`.
+- [x] Enable `files` capability only for configured server mode.
+- [x] Verify the adapter never exposes object keys, bucket names, local paths,
+      or MinIO/S3 URLs in file records.
+- [x] Add targeted tests for upload request shape, URL encoding, binary
+      download, error normalization, local unsupported behavior, and capability
+      gating.
+
 ### Phase 11.5 — Browser smoke and local rollback
 
 - [ ] Run server-mode browser smoke against the local Docker backend at

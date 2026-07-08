@@ -3446,3 +3446,88 @@ visible UI wiring is not claimed
 ### Next Step
 
 Commit the Phase 11.3D smoke documentation slice only.
+
+## 2026-07-08 — Phase 11.4A: Server File API Client Adapter
+
+### Action
+
+Added the hidden server-mode file API adapter under the existing frontend API
+client boundary. This slice does not wire visible UI, `ChatApp`, OPFS
+replacement, message input uploads, or browser attachment rendering.
+
+Changed:
+
+```text
+src/services/api/client/types.ts
+src/services/api/client/index.ts
+src/services/api/client/server/httpClient.ts
+src/services/api/client/server/fileApi.ts
+src/services/api/client/local/fileApi.ts
+src/__tests__/apiClientScaffold.test.ts
+src/__tests__/chatCrudService.test.ts
+src/__tests__/chatStreamService.test.ts
+mm-chat/docs/architecture/phase-11-plus-roadmap.md
+mm-chat/docs/tracking/progress.md
+```
+
+### Decision
+
+Keep Phase 11.4A at the API-client transport boundary only:
+
+```text
+client.files.uploadFile()          -> POST /v1/files multipart/form-data
+client.files.getFile()             -> GET /v1/files/{id}
+client.files.downloadFileContent() -> GET /v1/files/{id}/content
+client.files.deleteFile()          -> DELETE /v1/files/{id}
+```
+
+Configured server mode now advertises `capabilities.files = true`. Local mode
+uses an explicit unsupported file shell so local OPFS behavior remains the
+existing rollback path and no server fallback is hidden inside UI code.
+
+### Boundary
+
+The server file adapter whitelists the public file record fields returned to
+frontend callers:
+
+```text
+id, fileName, mimeType, size, sha256, purpose, createdAt, downloadUrl
+```
+
+`downloadUrl` is accepted only when it exactly matches the backend gateway
+shape `/v1/files/{id}/content` for the returned UUID `id`. The adapter rejects
+absolute MinIO/S3 URLs, object-key style nested paths, path traversal, mismatched
+file IDs, encoded path segments, and unsupported purpose values.
+
+### Verification
+
+Targeted verification passed:
+
+```text
+corepack pnpm vitest run src/__tests__/apiClientScaffold.test.ts src/__tests__/chatCrudService.test.ts src/__tests__/chatStreamService.test.ts src/__tests__/chatStoreServerRead.test.ts
+  passed: 4 files, 57 tests
+
+corepack pnpm typecheck
+  passed
+
+corepack pnpm exec eslint src/services/api/client/types.ts src/services/api/client/index.ts src/services/api/client/server/httpClient.ts src/services/api/client/server/fileApi.ts src/services/api/client/local/fileApi.ts src/__tests__/apiClientScaffold.test.ts src/__tests__/chatCrudService.test.ts src/__tests__/chatStreamService.test.ts
+  passed
+```
+
+Tests cover server capability gating, local unsupported behavior, multipart
+upload request shape without manual multipart `Content-Type`, metadata URL
+encoding, binary download through the backend gateway, delete routing,
+error-envelope normalization, and private object-store path rejection.
+
+### Review Follow-up
+
+A read-only review pass flagged that file metadata should bind `downloadUrl` to
+its returned UUID `id`, not only to the generic `/v1/files/{segment}/content`
+shape. The adapter now requires an exact `/v1/files/{id}/content` match and
+rejects mismatched IDs plus encoded path-style IDs. The follow-up review
+reported no findings.
+
+### Next Step
+
+Proceed to Phase 11.4B: add a small file-service gateway and/or live backend
+file smoke for upload, download, message attachment, and refresh metadata.
