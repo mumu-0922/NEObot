@@ -1,4 +1,5 @@
 import { ApiClientError } from "../errors";
+import { createSseStreamParser, type ParsedSseFrame } from "./sse";
 import type { ApiErrorEnvelope } from "../types";
 
 export interface HttpClientOptions {
@@ -14,9 +15,14 @@ export interface JsonRequestOptions {
   signal?: AbortSignal;
 }
 
+export interface SseRequestOptions extends JsonRequestOptions {
+  onFrame: (frame: ParsedSseFrame) => void;
+}
+
 export interface HttpClient {
   buildUrl(path: string): string;
   requestJson<T>(path: string, options?: JsonRequestOptions): Promise<T>;
+  requestSse(path: string, options: SseRequestOptions): Promise<void>;
 }
 
 export function createHttpClient(options: HttpClientOptions): HttpClient {
@@ -72,6 +78,82 @@ export function createHttpClient(options: HttpClientOptions): HttpClient {
       }
       return data as T;
     },
+
+    async requestSse(path: string, request: SseRequestOptions): Promise<void> {
+      let response: Response;
+      try {
+        response = await fetchImpl(joinUrl(baseUrl, path), {
+          method: request.method ?? "POST",
+          headers: {
+            Accept: "text/event-stream",
+            ...(request.body === undefined
+              ? {}
+              : { "Content-Type": "application/json" }),
+            ...options.defaultHeaders,
+            ...request.headers,
+          },
+          body:
+            request.body === undefined
+              ? undefined
+              : JSON.stringify(request.body),
+          signal: request.signal,
+        });
+      } catch (error) {
+        throw networkErrorFrom(error);
+      }
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw errorFromResponse(response, parseJson(text));
+      }
+
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.toLowerCase().includes("text/event-stream")) {
+        throw new ApiClientError(
+          "INVALID_SERVER_RESPONSE",
+          "Server returned a non-SSE stream response.",
+          { status: response.status },
+        );
+      }
+
+      if (!response.body) {
+        throw new ApiClientError(
+          "INVALID_SERVER_RESPONSE",
+          "Server returned an empty stream response.",
+          { status: response.status },
+        );
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      const parser = createSseStreamParser();
+
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (!value) continue;
+          const chunk = decoder.decode(value, { stream: true });
+          for (const frame of parser.push(chunk)) {
+            request.onFrame(frame);
+          }
+        }
+
+        const tail = decoder.decode();
+        if (tail) {
+          for (const frame of parser.push(tail)) {
+            request.onFrame(frame);
+          }
+        }
+        for (const frame of parser.flush()) {
+          request.onFrame(frame);
+        }
+      } catch (error) {
+        throw networkErrorFrom(error);
+      } finally {
+        reader.releaseLock();
+      }
+    },
   };
 }
 
@@ -82,6 +164,10 @@ export function joinUrl(baseUrl: string, path: string): string {
 }
 
 function networkErrorFrom(error: unknown): ApiClientError {
+  if (error instanceof ApiClientError) {
+    return error;
+  }
+
   if (error instanceof DOMException && error.name === "AbortError") {
     return new ApiClientError("STREAM_INTERRUPTED", "Request was aborted.", {
       recoverable: true,

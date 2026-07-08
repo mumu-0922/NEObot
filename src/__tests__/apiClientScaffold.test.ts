@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ApiClientError,
+  createSseStreamParser,
   createHttpClient,
   createNeoChatApiClient,
   inferNetworkEdge,
@@ -66,7 +67,7 @@ describe("Phase 11.1B API mode resolver", () => {
     });
   });
 
-  it("enables only chat CRUD capability for configured server mode", () => {
+  it("enables chat CRUD and stream capability for configured server mode", () => {
     const client = createNeoChatApiClient({
       env: {
         NEXT_PUBLIC_API_MODE: "server",
@@ -77,7 +78,7 @@ describe("Phase 11.1B API mode resolver", () => {
     expect(client.mode).toBe("server");
     expect(client.capabilities).toMatchObject({
       chatCrud: true,
-      chatStream: false,
+      chatStream: true,
       files: false,
     });
   });
@@ -341,6 +342,494 @@ describe("Phase 11.2A server chat CRUD adapter", () => {
       code: "INVALID_SERVER_RESPONSE",
     });
   });
+
+  it("streams assistant messages from the Go SSE endpoint", async () => {
+    const requests: Array<{
+      url: string;
+      body: unknown;
+      method?: string;
+      accept?: string | null;
+      contentType?: string | null;
+    }> = [];
+    const chat = createServerChatApiShell(
+      createHttpClient({
+        baseUrl: "http://backend.test",
+        fetchImpl: async (input, init) => {
+          const headers = new Headers(init?.headers);
+          requests.push({
+            url: String(input),
+            method: init?.method,
+            body: JSON.parse(String(init?.body)),
+            accept: headers.get("accept"),
+            contentType: headers.get("content-type"),
+          });
+          return new Response(
+            [
+              "event: message.started",
+              'data: {"type":"message.started","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":1,"createdAt":"2026-07-08T00:00:00Z","role":"assistant"}',
+              "",
+              "event: message.delta",
+              'data: {"type":"message.delta","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":2,"createdAt":"2026-07-08T00:00:01Z","delta":"hel"}',
+              "",
+              "event: usage.updated",
+              'data: {"type":"usage.updated","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":3,"usage":{"total_tokens":3}}',
+              "",
+              "event: message.completed",
+              'data: {"type":"message.completed","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":4,"message":{"id":"m2","conversationId":"c1","role":"assistant","status":"completed","content":"hello","sequenceNo":2,"attachments":[],"outputBlocks":[],"metadata":{},"createdAt":"2026-07-08T00:00:02Z","updatedAt":"2026-07-08T00:00:02Z"}}',
+              "",
+            ].join("\n"),
+            {
+              headers: { "content-type": "text/event-stream; charset=utf-8" },
+            },
+          );
+        },
+      }),
+    );
+    const events: string[] = [];
+
+    const result = await chat.streamAssistantMessage(
+      {
+        conversationId: "c1",
+        userMessageId: "m1",
+        modelRef: { providerId: "openai", modelId: "gpt-5.5" },
+        config: { useSearch: true },
+        metadata: { source: "test" },
+        idempotencyKey: "stream-key",
+      },
+      {
+        onStarted: (event) => events.push(event.type),
+        onDelta: (event) => events.push(`${event.type}:${event.delta}`),
+        onUsage: (event) => events.push(event.type),
+        onCompleted: (event) => events.push(`${event.type}:${event.messageId}`),
+      },
+    );
+
+    expect(result).toMatchObject({
+      status: "completed",
+      message: { id: "m2", role: "assistant", content: "hello" },
+    });
+    expect(events).toEqual([
+      "message.started",
+      "message.delta:hel",
+      "usage.updated",
+      "message.completed:m2",
+    ]);
+    expect(requests).toEqual([
+      {
+        url: "http://backend.test/v1/chat/conversations/c1/stream",
+        method: "POST",
+        accept: "text/event-stream",
+        contentType: "application/json",
+        body: {
+          userMessageId: "m1",
+          modelRef: { providerId: "openai", modelId: "gpt-5.5" },
+          config: { useSearch: true },
+          metadata: { source: "test" },
+          idempotencyKey: "stream-key",
+        },
+      },
+    ]);
+  });
+
+  it("maps stream error frames and pre-SSE JSON errors to failed run results", async () => {
+    const errorEvents: string[] = [];
+    const streamErrorChat = createServerChatApiShell(
+      createHttpClient({
+        baseUrl: "http://backend.test",
+        fetchImpl: async () =>
+          new Response(
+            [
+              "event: message.error",
+              'data: {"type":"message.error","runId":"run-1","error":{"code":"PROVIDER_TIMEOUT","message":"Provider timed out.","recoverable":true}}',
+              "",
+            ].join("\n"),
+            { headers: { "content-type": "text/event-stream" } },
+          ),
+      }),
+    );
+
+    await expect(
+      streamErrorChat.streamAssistantMessage(
+        {
+          conversationId: "c1",
+          userMessageId: "m1",
+          modelRef: { providerId: "openai", modelId: "gpt-5.5" },
+          idempotencyKey: "stream-key",
+        },
+        {
+          onError: (event) => errorEvents.push(event.type),
+        },
+      ),
+    ).resolves.toMatchObject({
+      status: "failed",
+      error: { code: "PROVIDER_TIMEOUT", recoverable: true },
+    });
+    expect(errorEvents).toEqual(["message.error"]);
+
+    const jsonErrorChat = createServerChatApiShell(
+      createHttpClient({
+        baseUrl: "http://backend.test",
+        fetchImpl: async () =>
+          Response.json(
+            {
+              error: {
+                code: "IDEMPOTENCY_KEY_REQUIRED",
+                message: "idempotency required",
+              },
+            },
+            { status: 400 },
+          ),
+      }),
+    );
+
+    await expect(
+      jsonErrorChat.streamAssistantMessage({
+        conversationId: "c1",
+        userMessageId: "m1",
+        modelRef: { providerId: "openai", modelId: "gpt-5.5" },
+        idempotencyKey: "stream-key",
+      }),
+    ).resolves.toMatchObject({
+      status: "failed",
+      error: { code: "IDEMPOTENCY_KEY_REQUIRED" },
+    });
+  });
+
+  it("maps stream cancelled frames and EOF interruptions", async () => {
+    const cancelEvents: string[] = [];
+    const cancelledChat = createServerChatApiShell(
+      createHttpClient({
+        baseUrl: "http://backend.test",
+        fetchImpl: async () =>
+          new Response(
+            [
+              "event: message.cancelled",
+              'data: {"type":"message.cancelled","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":1,"message":{"id":"m2","conversationId":"c1","role":"assistant","status":"cancelled","content":"","sequenceNo":2,"attachments":[],"outputBlocks":[],"metadata":{},"createdAt":"2026-07-08T00:00:00Z","updatedAt":"2026-07-08T00:00:00Z"}}',
+              "",
+            ].join("\n"),
+            { headers: { "content-type": "text/event-stream" } },
+          ),
+      }),
+    );
+
+    await expect(
+      cancelledChat.streamAssistantMessage(
+        {
+          conversationId: "c1",
+          userMessageId: "m1",
+          modelRef: { providerId: "openai", modelId: "gpt-5.5" },
+          idempotencyKey: "stream-key",
+        },
+        {
+          onCancelled: (event) => cancelEvents.push(event.type),
+        },
+      ),
+    ).resolves.toMatchObject({
+      status: "cancelled",
+      message: { id: "m2", status: "cancelled" },
+    });
+    expect(cancelEvents).toEqual(["message.cancelled"]);
+
+    const eofChat = createServerChatApiShell(
+      createHttpClient({
+        baseUrl: "http://backend.test",
+        fetchImpl: async () =>
+          new Response(
+            [
+              "event: message.started",
+              'data: {"type":"message.started","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":1}',
+              "",
+            ].join("\n"),
+            { headers: { "content-type": "text/event-stream" } },
+          ),
+      }),
+    );
+
+    await expect(
+      eofChat.streamAssistantMessage({
+        conversationId: "c1",
+        userMessageId: "m1",
+        modelRef: { providerId: "openai", modelId: "gpt-5.5" },
+        idempotencyKey: "stream-key",
+      }),
+    ).resolves.toMatchObject({
+      status: "failed",
+      error: { code: "STREAM_INTERRUPTED", recoverable: true },
+    });
+  });
+
+  it("ignores duplicate stream sequences and fails on sequence gaps", async () => {
+    const duplicateChat = createServerChatApiShell(
+      createHttpClient({
+        baseUrl: "http://backend.test",
+        fetchImpl: async () =>
+          new Response(
+            [
+              "event: message.started",
+              'data: {"type":"message.started","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":1}',
+              "",
+              "event: message.delta",
+              'data: {"type":"message.delta","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":2,"delta":"first"}',
+              "",
+              "event: message.delta",
+              'data: {"type":"message.delta","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":2,"delta":"duplicate"}',
+              "",
+              "event: message.completed",
+              'data: {"type":"message.completed","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":3,"message":{"id":"m2","conversationId":"c1","role":"assistant","status":"completed","content":"first","sequenceNo":2,"attachments":[],"outputBlocks":[],"metadata":{},"createdAt":"2026-07-08T00:00:02Z","updatedAt":"2026-07-08T00:00:02Z"}}',
+              "",
+            ].join("\n"),
+            { headers: { "content-type": "text/event-stream" } },
+          ),
+      }),
+    );
+    const duplicateDeltas: string[] = [];
+
+    await expect(
+      duplicateChat.streamAssistantMessage(
+        {
+          conversationId: "c1",
+          userMessageId: "m1",
+          modelRef: { providerId: "openai", modelId: "gpt-5.5" },
+          idempotencyKey: "stream-key",
+        },
+        {
+          onDelta: (event) => duplicateDeltas.push(String(event.delta)),
+        },
+      ),
+    ).resolves.toMatchObject({ status: "completed" });
+    expect(duplicateDeltas).toEqual(["first"]);
+
+    const gapChat = createServerChatApiShell(
+      createHttpClient({
+        baseUrl: "http://backend.test",
+        fetchImpl: async () =>
+          new Response(
+            [
+              "event: message.started",
+              'data: {"type":"message.started","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":1}',
+              "",
+              "event: message.delta",
+              'data: {"type":"message.delta","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":3,"delta":"gap"}',
+              "",
+            ].join("\n"),
+            { headers: { "content-type": "text/event-stream" } },
+          ),
+      }),
+    );
+
+    await expect(
+      gapChat.streamAssistantMessage({
+        conversationId: "c1",
+        userMessageId: "m1",
+        modelRef: { providerId: "openai", modelId: "gpt-5.5" },
+        idempotencyKey: "stream-key",
+      }),
+    ).resolves.toMatchObject({
+      status: "failed",
+      error: { code: "STREAM_INTERRUPTED", recoverable: true },
+    });
+  });
+
+  it("cancels a server stream when aborted after run start", async () => {
+    const abortController = new AbortController();
+    const encoder = new TextEncoder();
+    const requests: Array<{ url: string; method?: string }> = [];
+    let streamChunkSent = false;
+    const chat = createServerChatApiShell(
+      createHttpClient({
+        baseUrl: "http://backend.test",
+        fetchImpl: async (input, init) => {
+          requests.push({ url: String(input), method: init?.method });
+          if (String(input).endsWith("/cancel")) {
+            return Response.json({
+              runId: "run-1",
+              status: "cancelled",
+              message: {
+                id: "m2",
+                conversationId: "c1",
+                role: "assistant",
+                status: "cancelled",
+                content: "",
+                sequenceNo: 2,
+                attachments: [],
+                outputBlocks: [],
+                metadata: {},
+                createdAt: "2026-07-08T00:00:00Z",
+                updatedAt: "2026-07-08T00:00:00Z",
+              },
+            });
+          }
+
+          return new Response(
+            new ReadableStream<Uint8Array>({
+              pull(controller) {
+                if (!streamChunkSent) {
+                  streamChunkSent = true;
+                  controller.enqueue(
+                    encoder.encode(
+                      [
+                        "event: message.started",
+                        'data: {"type":"message.started","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":1}',
+                        "",
+                        "",
+                      ].join("\n"),
+                    ),
+                  );
+                  abortController.abort();
+                  return;
+                }
+                controller.error(
+                  new DOMException("Request was aborted.", "AbortError"),
+                );
+              },
+            }),
+            { headers: { "content-type": "text/event-stream" } },
+          );
+        },
+      }),
+    );
+
+    await expect(
+      chat.streamAssistantMessage({
+        conversationId: "c1",
+        userMessageId: "m1",
+        modelRef: { providerId: "openai", modelId: "gpt-5.5" },
+        idempotencyKey: "stream-key",
+        signal: abortController.signal,
+      }),
+    ).resolves.toMatchObject({
+      status: "cancelled",
+      message: { id: "m2", status: "cancelled" },
+    });
+    expect(requests).toEqual([
+      {
+        url: "http://backend.test/v1/chat/conversations/c1/stream",
+        method: "POST",
+      },
+      {
+        url: "http://backend.test/v1/chat/runs/run-1/cancel",
+        method: "POST",
+      },
+    ]);
+  });
+
+  it("cancels buffered streams when the caller aborts from started", async () => {
+    const abortController = new AbortController();
+    const requests: Array<{ url: string; method?: string }> = [];
+    const events: string[] = [];
+    const chat = createServerChatApiShell(
+      createHttpClient({
+        baseUrl: "http://backend.test",
+        fetchImpl: async (input, init) => {
+          requests.push({ url: String(input), method: init?.method });
+          if (String(input).endsWith("/cancel")) {
+            return Response.json({
+              runId: "run-1",
+              status: "cancelled",
+              message: {
+                id: "m2",
+                conversationId: "c1",
+                role: "assistant",
+                status: "cancelled",
+                content: "",
+                sequenceNo: 2,
+                attachments: [],
+                outputBlocks: [],
+                metadata: {},
+                createdAt: "2026-07-08T00:00:00Z",
+                updatedAt: "2026-07-08T00:00:00Z",
+              },
+            });
+          }
+
+          return new Response(
+            [
+              "event: message.started",
+              'data: {"type":"message.started","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":1}',
+              "",
+              "event: message.completed",
+              'data: {"type":"message.completed","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":2,"message":{"id":"m2","conversationId":"c1","role":"assistant","status":"completed","content":"done","sequenceNo":2,"attachments":[],"outputBlocks":[],"metadata":{},"createdAt":"2026-07-08T00:00:00Z","updatedAt":"2026-07-08T00:00:00Z"}}',
+              "",
+            ].join("\n"),
+            { headers: { "content-type": "text/event-stream" } },
+          );
+        },
+      }),
+    );
+
+    await expect(
+      chat.streamAssistantMessage(
+        {
+          conversationId: "c1",
+          userMessageId: "m1",
+          modelRef: { providerId: "openai", modelId: "gpt-5.5" },
+          idempotencyKey: "stream-key",
+          signal: abortController.signal,
+        },
+        {
+          onStarted: (event) => {
+            events.push(event.type);
+            abortController.abort();
+          },
+          onCompleted: (event) => events.push(event.type),
+        },
+      ),
+    ).resolves.toMatchObject({
+      status: "cancelled",
+      message: { id: "m2", status: "cancelled" },
+    });
+    expect(events).toEqual(["message.started"]);
+    expect(requests).toEqual([
+      {
+        url: "http://backend.test/v1/chat/conversations/c1/stream",
+        method: "POST",
+      },
+      {
+        url: "http://backend.test/v1/chat/runs/run-1/cancel",
+        method: "POST",
+      },
+    ]);
+  });
+
+  it("cancels server runs through the Go cancel endpoint", async () => {
+    const requests: Array<{ url: string; method?: string }> = [];
+    const chat = createServerChatApiShell(
+      createHttpClient({
+        baseUrl: "http://backend.test",
+        fetchImpl: async (input, init) => {
+          requests.push({ url: String(input), method: init?.method });
+          return Response.json({
+            runId: "run/with slash",
+            status: "cancelled",
+            message: {
+              id: "m2",
+              conversationId: "c1",
+              role: "assistant",
+              status: "cancelled",
+              content: "",
+              sequenceNo: 2,
+              attachments: [],
+              outputBlocks: [],
+              metadata: {},
+              createdAt: "2026-07-08T00:00:00Z",
+              updatedAt: "2026-07-08T00:00:00Z",
+            },
+          });
+        },
+      }),
+    );
+
+    await expect(chat.cancelRun("run/with slash")).resolves.toMatchObject({
+      status: "cancelled",
+      message: { id: "m2", status: "cancelled" },
+    });
+    expect(requests).toEqual([
+      {
+        url: "http://backend.test/v1/chat/runs/run%2Fwith%20slash/cancel",
+        method: "POST",
+      },
+    ]);
+  });
 });
 
 describe("Phase 11.1B Go SSE scaffold", () => {
@@ -361,6 +850,24 @@ describe("Phase 11.1B Go SSE scaffold", () => {
     expect(frames[0]?.event).toBe("message.delta");
     expect(frames[0]?.data.delta).toBe("hel");
     expect(frames[1]?.data.message?.role).toBe("assistant");
+  });
+
+  it("preserves CRLF line endings split across chunks", () => {
+    const parser = createSseStreamParser();
+
+    expect(parser.push("event: message.delta\r")).toEqual([]);
+    expect(
+      parser.push(
+        '\ndata: {"type":"message.delta","runId":"run-1","sequence":1,"delta":"hel"}\r',
+      ),
+    ).toEqual([]);
+
+    const frames = parser.push("\n\r\n");
+
+    expect(frames).toHaveLength(1);
+    expect(frames[0]?.event).toBe("message.delta");
+    expect(frames[0]?.data.delta).toBe("hel");
+    expect(parser.flush()).toEqual([]);
   });
 
   it("fails closed when event and data.type disagree", () => {

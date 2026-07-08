@@ -1,4 +1,4 @@
-import { ApiClientError, unsupportedFeature } from "../errors";
+import { ApiClientError } from "../errors";
 import type {
   AppendUserMessageInput,
   ApiPage,
@@ -9,6 +9,7 @@ import type {
   ConversationDTO,
   CreateConversationInput,
   StreamAssistantMessageInput,
+  ServerStreamEvent,
 } from "../types";
 import type { HttpClient } from "./httpClient";
 
@@ -28,6 +29,27 @@ type AppendUserMessageRequestBody = {
   attachments?: AppendUserMessageInput["attachments"];
   metadata?: Record<string, unknown>;
   idempotencyKey?: string;
+};
+
+type StreamAssistantMessageRequestBody = {
+  userMessageId: string;
+  modelRef: StreamAssistantMessageInput["modelRef"];
+  config?: Record<string, unknown>;
+  systemInstruction?: string;
+  systemPrompt?: string;
+  metadata?: Record<string, unknown>;
+  idempotencyKey: string;
+};
+
+type CancelRunResponse = {
+  runId: string;
+  status: "cancelled";
+  message?: ChatMessageDTO;
+};
+
+type StreamDispatchState = {
+  startedRunId?: string;
+  lastSequenceByRunId: Map<string, number>;
 };
 
 export function createServerChatApiShell(httpClient: HttpClient): ChatApi {
@@ -65,20 +87,70 @@ export function createServerChatApiShell(httpClient: HttpClient): ChatApi {
       return getPageItems(page, "message list");
     },
     async streamAssistantMessage(
-      _input: StreamAssistantMessageInput,
-      _handlers?: ChatStreamHandlers,
+      input: StreamAssistantMessageInput,
+      handlers?: ChatStreamHandlers,
     ): Promise<ChatRunResult> {
-      return {
-        status: "unsupported",
-        error: unsupportedFeature("server streamAssistantMessage").toEnvelope()
-          .error,
+      let result: ChatRunResult | null = null;
+      const dispatchState: StreamDispatchState = {
+        lastSequenceByRunId: new Map(),
       };
+
+      try {
+        await httpClient.requestSse(
+          `${conversationPath(input.conversationId)}/stream`,
+          {
+            method: "POST",
+            body: streamAssistantMessageBody(input),
+            signal: input.signal,
+            onFrame: ({ data }) => {
+              if (result) return;
+              if (input.signal?.aborted && dispatchState.startedRunId) {
+                throw streamAbortedAfterStartError();
+              }
+              result = dispatchStreamEvent(data, handlers, dispatchState);
+              if (
+                !result &&
+                input.signal?.aborted &&
+                dispatchState.startedRunId
+              ) {
+                throw streamAbortedAfterStartError();
+              }
+            },
+          },
+        );
+      } catch (error) {
+        if (
+          isStreamInterrupted(error) &&
+          input.signal?.aborted &&
+          dispatchState.startedRunId
+        ) {
+          return cancelRunById(httpClient, dispatchState.startedRunId);
+        }
+
+        return runResultFromError(error, {
+          streamInterruptedStatus: input.signal?.aborted
+            ? "cancelled"
+            : "failed",
+        });
+      }
+
+      if (!result && input.signal?.aborted && dispatchState.startedRunId) {
+        return cancelRunById(httpClient, dispatchState.startedRunId);
+      }
+
+      return (
+        result ?? {
+          status: "failed",
+          error: new ApiClientError(
+            "STREAM_INTERRUPTED",
+            "Stream ended without a terminal event.",
+            { recoverable: true },
+          ).toEnvelope().error,
+        }
+      );
     },
-    async cancelRun(_runId: string): Promise<ChatRunResult> {
-      return {
-        status: "unsupported",
-        error: unsupportedFeature("server cancelRun").toEnvelope().error,
-      };
+    async cancelRun(runId: string): Promise<ChatRunResult> {
+      return cancelRunById(httpClient, runId);
     },
   };
 }
@@ -109,6 +181,174 @@ function appendUserMessageBody(
     metadata: input.metadata,
     idempotencyKey: input.idempotencyKey,
   });
+}
+
+function streamAssistantMessageBody(
+  input: StreamAssistantMessageInput,
+): StreamAssistantMessageRequestBody {
+  if (!input.idempotencyKey.trim()) {
+    throw new ApiClientError(
+      "IDEMPOTENCY_KEY_REQUIRED",
+      "stream idempotencyKey is required",
+    );
+  }
+
+  return removeUndefined({
+    userMessageId: input.userMessageId,
+    modelRef: input.modelRef,
+    config: input.config,
+    systemInstruction: input.systemInstruction,
+    systemPrompt: input.systemPrompt,
+    metadata: input.metadata,
+    idempotencyKey: input.idempotencyKey,
+  });
+}
+
+function dispatchStreamEvent(
+  event: ServerStreamEvent,
+  handlers?: ChatStreamHandlers,
+  state?: StreamDispatchState,
+): ChatRunResult | null {
+  if (state && !shouldDispatchSequencedEvent(event, state)) {
+    return null;
+  }
+
+  switch (event.type) {
+    case "message.started":
+      if (state && event.runId) {
+        state.startedRunId = event.runId;
+      }
+      handlers?.onStarted?.(event);
+      return null;
+    case "message.delta":
+      handlers?.onDelta?.(event);
+      return null;
+    case "usage.updated":
+      handlers?.onUsage?.(event);
+      return null;
+    case "message.completed":
+      handlers?.onCompleted?.(event);
+      return {
+        status: "completed",
+        ...(event.message ? { message: event.message } : {}),
+      };
+    case "message.error": {
+      handlers?.onError?.(event);
+      return {
+        status: "failed",
+        error:
+          event.error ??
+          new ApiClientError("STREAM_FAILED", "Server stream failed.", {
+            recoverable: true,
+          }).toEnvelope().error,
+      };
+    }
+    case "message.cancelled":
+      handlers?.onCancelled?.(event);
+      return {
+        status: "cancelled",
+        ...(event.message ? { message: event.message } : {}),
+      };
+    default:
+      return null;
+  }
+}
+
+async function cancelRunById(
+  httpClient: HttpClient,
+  runId: string,
+): Promise<ChatRunResult> {
+  try {
+    const response = await httpClient.requestJson<CancelRunResponse>(
+      `/v1/chat/runs/${encodeURIComponent(runId)}/cancel`,
+      { method: "POST" },
+    );
+    return {
+      status: "cancelled",
+      ...(response.message ? { message: response.message } : {}),
+    };
+  } catch (error) {
+    return runResultFromError(error);
+  }
+}
+
+function shouldDispatchSequencedEvent(
+  event: ServerStreamEvent,
+  state: StreamDispatchState,
+): boolean {
+  if (typeof event.sequence !== "number") return true;
+  if (!Number.isInteger(event.sequence) || event.sequence < 1) {
+    throw new ApiClientError(
+      "STREAM_PROTOCOL_ERROR",
+      "SSE event sequence must be a positive integer.",
+      { recoverable: true },
+    );
+  }
+
+  const runId = event.runId ?? state.startedRunId;
+  if (!runId) return true;
+
+  const previous = state.lastSequenceByRunId.get(runId);
+  if (previous === undefined) {
+    if (event.sequence !== 1) {
+      throw streamInterruptedError(runId, event.sequence, 1);
+    }
+    state.lastSequenceByRunId.set(runId, event.sequence);
+    return true;
+  }
+
+  if (event.sequence <= previous) return false;
+  const expected = previous + 1;
+  if (event.sequence !== expected) {
+    throw streamInterruptedError(runId, event.sequence, expected);
+  }
+
+  state.lastSequenceByRunId.set(runId, event.sequence);
+  return true;
+}
+
+function streamInterruptedError(
+  runId: string,
+  received: number,
+  expected: number,
+): ApiClientError {
+  return new ApiClientError(
+    "STREAM_INTERRUPTED",
+    `Stream sequence gap for run "${runId}": expected ${expected}, received ${received}.`,
+    { recoverable: true },
+  );
+}
+
+function isStreamInterrupted(error: unknown): boolean {
+  return error instanceof ApiClientError && error.code === "STREAM_INTERRUPTED";
+}
+
+function streamAbortedAfterStartError(): ApiClientError {
+  return new ApiClientError("STREAM_INTERRUPTED", "Stream was aborted.", {
+    recoverable: true,
+  });
+}
+
+function runResultFromError(
+  error: unknown,
+  options: { streamInterruptedStatus?: ChatRunResult["status"] } = {},
+): ChatRunResult {
+  const clientError =
+    error instanceof ApiClientError
+      ? error
+      : new ApiClientError(
+          "NETWORK_ERROR",
+          error instanceof Error ? error.message : "Stream request failed.",
+          { recoverable: true },
+        );
+
+  return {
+    status:
+      clientError.code === "STREAM_INTERRUPTED"
+        ? (options.streamInterruptedStatus ?? "failed")
+        : "failed",
+    error: clientError.toEnvelope().error,
+  };
 }
 
 function normalizeServerAttachments(

@@ -310,15 +310,39 @@ actions. It still does not connect visible UI/bootstrap to server mode.
 
 ### Phase 11.3 — SSE stream
 
-- [ ] Send persisted `userMessageId`, `modelRef`, and `idempotencyKey` to the
+- [x] Send persisted `userMessageId`, `modelRef`, and `idempotencyKey` to the
       Go `/stream` endpoint in server mode.
-- [ ] Consume `message.started`, `message.delta`, `usage.updated`,
+- [x] Consume `message.started`, `message.delta`, `usage.updated`,
       `message.completed`, `message.error`, and `message.cancelled` frames.
 - [ ] Map stream completion, cancellation, and provider errors to terminal UI
       state without duplicate user messages.
 - [ ] Verify server mode streams and persists an assistant response against the
       local Go backend.
 - [ ] Verify local-mode streaming behavior remains unchanged.
+
+### Phase 11.3A — Server API client SSE adapter
+
+This slice implements the server API client stream transport only. It does not
+wire visible UI, `ChatApp`, or store generation state to server streaming yet.
+
+- [x] Add incremental SSE parsing for chunked `ReadableStream` responses,
+      including CRLF line endings split across chunks.
+- [x] Implement `streamAssistantMessage()` against
+      `POST /v1/chat/conversations/{id}/stream`.
+- [x] Send only the stream body whitelist: `userMessageId`, `modelRef`,
+      optional config/instructions/metadata, and `idempotencyKey`.
+- [x] Dispatch `message.started`, `message.delta`, `usage.updated`,
+      `message.completed`, `message.error`, and `message.cancelled` to
+      handlers.
+- [x] Ignore duplicate `sequence` values and fail closed on sequence gaps with
+      recoverable `STREAM_INTERRUPTED`.
+- [x] Implement `cancelRun()` against `POST /v1/chat/runs/{runId}/cancel`.
+- [x] Abort after `message.started` calls the cancel endpoint using the captured
+      server `runId`.
+- [x] Enable server-mode `chatStream` capability in the API client scaffold.
+- [x] Add targeted tests for stream request shape, terminal results, JSON
+      errors, cancelled/EOF terminal handling, duplicate/gap sequence handling,
+      CRLF chunk boundaries, abort cancellation, and cancel endpoint routing.
 
 ### Phase 11.4 — File upload and download
 

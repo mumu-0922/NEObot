@@ -2940,3 +2940,117 @@ Parallel read-only review confirmed:
 Proceed to Phase 11.3: implement server SSE streaming against persisted server
 messages, using the server-created `conversationId`, persisted `userMessageId`,
 `modelRef`, and `idempotencyKey` without duplicating local placeholders.
+
+## 2026-07-08 — Phase 11.3A: Server API Client SSE Adapter
+
+### Action
+
+Implemented the server-mode API client stream transport without wiring visible
+UI, `ChatApp`, or store generation state to server streaming.
+
+Changed:
+
+```text
+src/services/api/client/server/sse.ts
+src/services/api/client/server/httpClient.ts
+src/services/api/client/server/chatApi.ts
+src/services/api/client/index.ts
+src/__tests__/apiClientScaffold.test.ts
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+### Decision
+
+Keep Phase 11.3A at the API-client boundary. The adapter now targets the Go
+streaming contract:
+
+```text
+POST /v1/chat/conversations/{conversationId}/stream
+Accept: text/event-stream
+Content-Type: application/json
+```
+
+The request body is restricted to:
+
+```text
+userMessageId
+modelRef
+config?
+systemInstruction?
+systemPrompt?
+metadata?
+idempotencyKey
+```
+
+`conversationId` stays in the path only. The adapter does not send message
+content, attachments, role/status, timestamps, identity hints, or other
+server-managed fields.
+
+### Implementation Notes
+
+- Added an incremental SSE parser that preserves partial frames across chunks.
+- Added `HttpClient.requestSse()` for POST + `ReadableStream` consumption.
+- Implemented `streamAssistantMessage()` event dispatch for:
+  - `message.started`
+  - `message.delta`
+  - `usage.updated`
+  - `message.completed`
+  - `message.error`
+  - `message.cancelled`
+- Implemented `cancelRun()` for `POST /v1/chat/runs/{runId}/cancel`.
+- Enabled server-mode `chatStream` capability in the API client scaffold.
+
+### Review Finding
+
+Parallel contract review flagged two missing stream semantics before commit:
+
+1. `sequence` values are monotonic per `runId`; duplicate sequence numbers must
+   be ignored and gaps must fail closed with recoverable `STREAM_INTERRUPTED`.
+2. If `AbortSignal` fires after `message.started`, the adapter must call the
+   cancel endpoint with the captured server `runId`.
+
+Both were implemented before commit. The adapter now ignores duplicate sequence
+frames, fails on gaps, and calls `cancelRun` after a started stream is aborted.
+
+Self-check follow-up fixed two adapter edge cases before handoff:
+
+1. Incremental SSE parsing now preserves `\r\n` line endings split across
+   chunks instead of treating a split CRLF as a blank-line frame delimiter.
+2. If a caller aborts inside `onStarted` while the response already has buffered
+   terminal frames, the adapter now stops consuming and posts the captured
+   `runId` to the cancel endpoint.
+
+### Verification
+
+Targeted verification passed:
+
+```text
+corepack pnpm vitest run src/__tests__/apiClientScaffold.test.ts src/__tests__/chatCrudService.test.ts
+  passed: 2 files, 31 tests
+
+corepack pnpm exec eslint src/services/api/client/server/sse.ts src/services/api/client/server/httpClient.ts src/services/api/client/server/chatApi.ts src/services/api/client/index.ts src/__tests__/apiClientScaffold.test.ts
+  passed
+
+corepack pnpm typecheck
+  passed
+
+corepack pnpm exec prettier --check src/services/api/client/server/sse.ts src/services/api/client/server/httpClient.ts src/services/api/client/server/chatApi.ts src/services/api/client/index.ts src/__tests__/apiClientScaffold.test.ts mm-chat/docs/tracking/progress.md mm-chat/docs/tracking/process.md
+  passed
+
+git diff --check -- src/services/api/client/server/sse.ts src/services/api/client/server/httpClient.ts src/services/api/client/server/chatApi.ts src/services/api/client/index.ts src/__tests__/apiClientScaffold.test.ts mm-chat/docs/tracking/progress.md mm-chat/docs/tracking/process.md
+  passed
+```
+
+### Boundary
+
+This is not yet full server-backed chat generation. The visible app still uses
+the existing local provider streaming path. Server-mode UI/store integration,
+terminal UI state mapping, and live Go backend verification remain later Phase
+11.3 work.
+
+### Next Step
+
+Proceed to Phase 11.3B: add an opt-in server stream facade above the API client
+that can combine `appendServerUserMessage()` with `streamAssistantMessage()` and
+update `serverReadState` without touching the local chat write path.
