@@ -66,8 +66,28 @@ interface ServerReadState {
   currentSessionId: string | null;
   activeMessages: Message[];
   activeMessageTree: SessionMessageTree;
+  generation: ServerGenerationState;
   isLoading: boolean;
   error: string | null;
+}
+
+type ServerGenerationStatus =
+  "idle" | "pending" | "streaming" | "completed" | "failed" | "cancelled";
+
+interface ServerGenerationError {
+  code?: string;
+  message: string;
+  recoverable?: boolean;
+  requestId?: string;
+}
+
+interface ServerGenerationState {
+  status: ServerGenerationStatus;
+  sessionId: string | null;
+  userMessageId: string | null;
+  assistantMessageId: string | null;
+  activeServerRunId: string | null;
+  error: ServerGenerationError | null;
 }
 
 interface CreateServerSessionOptions {
@@ -102,11 +122,21 @@ interface SendServerMessageAndStreamOptions {
   signal?: AbortSignal;
 }
 
+const createEmptyServerGenerationState = (): ServerGenerationState => ({
+  status: "idle",
+  sessionId: null,
+  userMessageId: null,
+  assistantMessageId: null,
+  activeServerRunId: null,
+  error: null,
+});
+
 const createEmptyServerReadState = (): ServerReadState => ({
   sessions: [],
   currentSessionId: null,
   activeMessages: [],
   activeMessageTree: createEmptyMessageTree(),
+  generation: createEmptyServerGenerationState(),
   isLoading: false,
   error: null,
 });
@@ -146,6 +176,28 @@ const toStoreMessageFromServer = (message: ChatCrudMessage): Message => ({
 
 const getServerReadErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : "Failed to load server chat data.";
+
+const getServerGenerationError = (error: unknown): ServerGenerationError => {
+  if (error instanceof Error) {
+    return { message: error.message };
+  }
+
+  return { message: "Server stream failed." };
+};
+
+const getTerminalServerGenerationStatus = (
+  result: ChatStreamRunResult,
+): Exclude<ServerGenerationStatus, "idle" | "pending" | "streaming"> => {
+  switch (result.status) {
+    case "completed":
+      return "completed";
+    case "cancelled":
+      return "cancelled";
+    case "failed":
+    case "unsupported":
+      return "failed";
+  }
+};
 
 const upsertServerReadSession = (
   sessions: Session[],
@@ -694,6 +746,7 @@ export const useChatStore = create<ChatState>()(
         set((state) => ({
           serverReadState: {
             ...state.serverReadState,
+            generation: createEmptyServerGenerationState(),
             isLoading: true,
             error: null,
           },
@@ -718,6 +771,7 @@ export const useChatStore = create<ChatState>()(
               currentSessionId: nextSessionId,
               activeMessages: [],
               activeMessageTree: createEmptyMessageTree(),
+              generation: createEmptyServerGenerationState(),
               isLoading: false,
               error: null,
             },
@@ -751,6 +805,7 @@ export const useChatStore = create<ChatState>()(
         set((state) => ({
           serverReadState: {
             ...state.serverReadState,
+            generation: createEmptyServerGenerationState(),
             isLoading: true,
             error: null,
           },
@@ -805,6 +860,7 @@ export const useChatStore = create<ChatState>()(
         set((state) => ({
           serverReadState: {
             ...state.serverReadState,
+            generation: createEmptyServerGenerationState(),
             isLoading: true,
             error: null,
           },
@@ -835,6 +891,7 @@ export const useChatStore = create<ChatState>()(
                 currentSessionId: session.id,
                 activeMessages: [],
                 activeMessageTree: createEmptyMessageTree(),
+                generation: createEmptyServerGenerationState(),
                 isLoading: false,
                 error: null,
               },
@@ -865,6 +922,7 @@ export const useChatStore = create<ChatState>()(
         set((state) => ({
           serverReadState: {
             ...state.serverReadState,
+            generation: createEmptyServerGenerationState(),
             isLoading: true,
             error: null,
           },
@@ -922,6 +980,11 @@ export const useChatStore = create<ChatState>()(
         set((state) => ({
           serverReadState: {
             ...state.serverReadState,
+            generation: {
+              ...createEmptyServerGenerationState(),
+              status: "pending",
+              sessionId: options.sessionId,
+            },
             isLoading: true,
             error: null,
           },
@@ -963,6 +1026,15 @@ export const useChatStore = create<ChatState>()(
                 options.sessionId,
                 userMessage,
               ),
+              generation: {
+                ...state.serverReadState.generation,
+                status: "pending",
+                sessionId: options.sessionId,
+                userMessageId: userMessage.id,
+                assistantMessageId: null,
+                activeServerRunId: null,
+                error: null,
+              },
               isLoading: true,
               error: null,
             },
@@ -970,6 +1042,19 @@ export const useChatStore = create<ChatState>()(
 
           let assistantMessageId: string | null = null;
           let assistantContent = "";
+          const setServerGeneration = (
+            update: (
+              generation: ServerGenerationState,
+            ) => ServerGenerationState,
+          ) => {
+            if (requestId !== serverReadRequestId) return;
+            set((state) => ({
+              serverReadState: {
+                ...state.serverReadState,
+                generation: update(state.serverReadState.generation),
+              },
+            }));
+          };
           const updateAssistantDraft = (
             eventMessageId: string | undefined,
             update: (message: Message) => Message,
@@ -1030,6 +1115,17 @@ export const useChatStore = create<ChatState>()(
             {
               onStarted: (event) => {
                 assistantContent = "";
+                setServerGeneration((generation) => ({
+                  ...generation,
+                  status: "streaming",
+                  sessionId: options.sessionId,
+                  userMessageId: userMessage.id,
+                  assistantMessageId:
+                    event.messageId ?? generation.assistantMessageId,
+                  activeServerRunId:
+                    event.runId ?? generation.activeServerRunId,
+                  error: null,
+                }));
                 updateAssistantDraft(event.messageId, (message) => ({
                   ...message,
                   role: "model",
@@ -1043,6 +1139,17 @@ export const useChatStore = create<ChatState>()(
               onDelta: (event) => {
                 assistantContent +=
                   typeof event.delta === "string" ? event.delta : "";
+                if (event.runId || event.messageId) {
+                  setServerGeneration((generation) => ({
+                    ...generation,
+                    sessionId: options.sessionId,
+                    userMessageId: userMessage.id,
+                    assistantMessageId:
+                      event.messageId ?? generation.assistantMessageId,
+                    activeServerRunId:
+                      event.runId ?? generation.activeServerRunId,
+                  }));
+                }
                 updateAssistantDraft(event.messageId, (message) => ({
                   ...message,
                   content: assistantContent,
@@ -1053,19 +1160,37 @@ export const useChatStore = create<ChatState>()(
 
           if (requestId === serverReadRequestId) {
             set((state) => {
-              const nextServerReadState = result.message
+              const terminalMessage = result.message
+                ? toStoreMessageFromServer(result.message)
+                : null;
+              const nextServerReadState = terminalMessage
                 ? applyServerMessageToReadState(
                     state.serverReadState,
                     options.sessionId,
-                    toStoreMessageFromServer(result.message),
+                    terminalMessage,
                   )
                 : state.serverReadState;
+              const terminalStatus = getTerminalServerGenerationStatus(result);
+              const terminalError =
+                terminalStatus === "failed"
+                  ? (result.error ?? { message: "Server stream failed." })
+                  : null;
 
               return {
                 serverReadState: {
                   ...nextServerReadState,
+                  generation: {
+                    ...nextServerReadState.generation,
+                    status: terminalStatus,
+                    sessionId: options.sessionId,
+                    userMessageId: userMessage.id,
+                    assistantMessageId:
+                      terminalMessage?.id ?? assistantMessageId,
+                    activeServerRunId: null,
+                    error: terminalError,
+                  },
                   isLoading: false,
-                  error: result.error?.message ?? null,
+                  error: terminalError?.message ?? null,
                 },
               };
             });
@@ -1074,11 +1199,18 @@ export const useChatStore = create<ChatState>()(
           return result;
         } catch (error) {
           if (requestId === serverReadRequestId) {
+            const generationError = getServerGenerationError(error);
             set((state) => ({
               serverReadState: {
                 ...state.serverReadState,
+                generation: {
+                  ...state.serverReadState.generation,
+                  status: "failed",
+                  activeServerRunId: null,
+                  error: generationError,
+                },
                 isLoading: false,
-                error: getServerReadErrorMessage(error),
+                error: generationError.message,
               },
             }));
           }

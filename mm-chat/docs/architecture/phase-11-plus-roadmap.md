@@ -227,6 +227,45 @@ Tracking checklist:
 
 - Use the Phase 11.3 checklist in `docs/tracking/progress.md`.
 
+#### 11.3C — Terminal Server Generation State
+
+Objective: make the hidden server stream facade expose explicit non-persisted
+lifecycle state before any visible UI wiring.
+
+Scope:
+
+- Add server-only generation state under `serverReadState`, including the
+  current server session id, persisted user message id, assistant message id,
+  active backend `runId`, terminal status, and terminal error details.
+- Capture `message.started.runId` while streaming and clear it when the stream
+  completes, fails, or is cancelled.
+- Keep the state non-persisted and separate from legacy local chat fields.
+- Do not add visible cancel controls, change `ChatApp`, or alter the local
+  provider stream path in this slice.
+
+Outputs:
+
+- Store-level terminal state for completed, failed, unsupported, and cancelled
+  server streams.
+- Targeted tests for run-id propagation, terminal status mapping, error
+  preservation, and persisted-state exclusion.
+- Progress entries proving the hidden lifecycle boundary.
+
+Verification:
+
+- Successful server streams end in a completed terminal state and no active
+  backend run id.
+- Provider errors and unsupported stream results end in failed terminal state
+  with the server error envelope preserved.
+- Cancelled streams end in cancelled terminal state and no active backend run
+  id.
+- Local mode and legacy persisted chat metadata remain unchanged.
+
+Rollback:
+
+- Switch `NEXT_PUBLIC_API_MODE=local`.
+- Revert only the 11.3C store/test slice if lifecycle mapping regresses.
+
 ### 11.4 — File Upload and Download
 
 Objective: wire server-mode file upload/download and message attachment

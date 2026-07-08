@@ -314,8 +314,8 @@ actions. It still does not connect visible UI/bootstrap to server mode.
       Go `/stream` endpoint in server mode.
 - [x] Consume `message.started`, `message.delta`, `usage.updated`,
       `message.completed`, `message.error`, and `message.cancelled` frames.
-- [ ] Map stream completion, cancellation, and provider errors to terminal UI
-      state without duplicate user messages.
+- [x] Map stream completion, cancellation, and provider errors to terminal
+      server-read state without duplicate user messages.
 - [ ] Verify server mode streams and persists an assistant response against the
       local Go backend.
 - [ ] Verify local-mode streaming behavior remains unchanged.
@@ -367,6 +367,25 @@ does not wire visible UI or `ChatApp` to server streaming.
       disabled.
 - [x] Add targeted tests for stream service mapping, capability gating, store
       append+stream flow, local-state isolation, and IndexedDB isolation.
+
+### Phase 11.3C — Terminal server generation state
+
+This slice maps hidden server streaming lifecycle into non-persisted
+`serverReadState` so later UI wiring has explicit terminal state. It still does
+not connect visible UI, `ChatApp`, or server cancel controls.
+
+- [x] Add non-persisted server generation state with session, user message,
+      assistant message, and active backend run identifiers.
+- [x] Capture `message.started.runId` as `activeServerRunId` during streaming
+      and clear it on terminal completion, failure, or cancellation.
+- [x] Map completed, failed, unsupported, and cancelled stream results to
+      terminal generation state without duplicating user messages.
+- [x] Preserve server read/write stale guards so superseded streams cannot
+      overwrite the latest server snapshot.
+- [x] Keep server generation state out of persisted chat metadata.
+- [x] Add targeted tests for successful streaming, provider failure,
+      unsupported fallback, cancellation, run-id propagation, and
+      error-envelope preservation.
 
 ### Phase 11.4 — File upload and download
 

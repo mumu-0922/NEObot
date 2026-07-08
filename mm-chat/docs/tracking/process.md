@@ -3177,3 +3177,123 @@ remain Phase 11.3 follow-up work.
 Proceed to Phase 11.3C: decide whether to add non-persisted server generation
 state (`generation`, `activeServerRunId`) before any visible UI wiring, then
 verify against the local Go backend.
+
+## 2026-07-08 — Phase 11.3C: Terminal Server Generation State
+
+### Action
+
+Added hidden, non-persisted server stream lifecycle state under
+`serverReadState` without wiring visible UI, `ChatApp`, or server cancel
+controls.
+
+Changed:
+
+```text
+src/store/core/chatStore.ts
+src/__tests__/chatStoreServerRead.test.ts
+src/__tests__/chatStreamService.test.ts
+mm-chat/docs/architecture/phase-11-plus-roadmap.md
+mm-chat/docs/tracking/progress.md
+```
+
+### Decision
+
+Keep Phase 11.3C at the hidden store snapshot boundary. Server streams now track
+an explicit lifecycle record in `serverReadState.generation`:
+
+```text
+status
+sessionId
+userMessageId
+assistantMessageId
+activeServerRunId
+error
+```
+
+`message.started.runId` is captured as `activeServerRunId` while the hidden
+server stream is active. Completed, failed, unsupported, and cancelled terminal
+results clear the active run id and set terminal generation state. The state is
+not written to the legacy local chat fields or persisted chat metadata.
+
+### Boundary
+
+This slice still does not connect the visible send path, visible stop/cancel UI,
+or `ChatApp` to server streaming. Local provider streaming remains the active UI
+path unless a later Phase 11 slice explicitly wires server mode into the UI.
+
+### Verification
+
+Targeted verification passed:
+
+```text
+corepack pnpm vitest run src/__tests__/chatStreamService.test.ts src/__tests__/chatStoreServerRead.test.ts src/__tests__/apiClientScaffold.test.ts src/__tests__/chatCrudService.test.ts
+  passed: 4 files, 51 tests
+
+corepack pnpm typecheck
+  passed
+
+corepack pnpm exec eslint src/store/core/chatStore.ts src/services/api/chatStreamService.ts src/__tests__/chatStoreServerRead.test.ts src/__tests__/chatStreamService.test.ts
+  passed
+```
+
+The new tests cover successful streaming, provider failure, cancellation,
+run-id propagation, stale terminal suppression after a newer server selection,
+error-envelope preservation, and persisted-state exclusion through the existing
+`serverReadState` partialize check.
+
+### Review
+
+A `trellis-check` review agent was dispatched for this slice. Findings, if any,
+will be recorded in the follow-up entry before commit.
+
+### Next Step
+
+Address review findings, then proceed to live Go backend smoke for server CRUD +
+SSE before any visible UI wiring.
+
+## 2026-07-08 — Phase 11.3C Review Follow-up
+
+### Action
+
+Applied the review-agent findings for the terminal server generation state slice.
+
+### Findings Fixed
+
+```text
+src/store/core/chatStore.ts
+  Unsupported stream terminal results now use the same terminal error fallback as
+  failed results, so both generation.error and serverReadState.error surface the
+  failure consistently.
+
+src/__tests__/chatStoreServerRead.test.ts
+  Added unsupported terminal mapping coverage and strengthened the persist
+  boundary test so active server run ids and request ids cannot leak into the
+  persisted chat payload.
+
+mm-chat/docs/architecture/phase-11-plus-roadmap.md
+  Clarified the 11.3C output as progress entries instead of implying a separate
+  process-entry output requirement inside the architecture doc.
+
+mm-chat/docs/tracking/progress.md
+  Updated 11.3C coverage notes to include unsupported fallback behavior.
+```
+
+### Verification
+
+Review-agent verification passed:
+
+```text
+corepack pnpm exec eslint src/store/core/chatStore.ts src/__tests__/chatStoreServerRead.test.ts src/__tests__/chatStreamService.test.ts
+  passed
+
+corepack pnpm exec tsc --noEmit --pretty false
+  passed
+
+corepack pnpm exec vitest run src/__tests__/chatStoreServerRead.test.ts src/__tests__/chatStreamService.test.ts
+  passed: 2 files, 21 tests
+```
+
+### Next Step
+
+Run final main-session verification for the full Phase 11.3C touched scope, then
+commit only the explicit slice files.

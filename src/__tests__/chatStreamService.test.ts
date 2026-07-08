@@ -64,6 +64,12 @@ describe("chat stream service", () => {
           calls.push(
             `stream:${input.conversationId}:${input.userMessageId}:${input.idempotencyKey}`,
           );
+          handlers?.onStarted?.({
+            type: "message.started",
+            runId: "run-1",
+            conversationId: "c1",
+            messageId: "m2",
+          });
           handlers?.onDelta?.({
             type: "message.delta",
             runId: "run-1",
@@ -78,6 +84,7 @@ describe("chat stream service", () => {
       }),
     });
     const deltas: string[] = [];
+    const startedRunIds: string[] = [];
 
     await expect(
       service.streamAssistantMessage(
@@ -88,6 +95,9 @@ describe("chat stream service", () => {
           idempotencyKey: "stream-key",
         },
         {
+          onStarted: (event) => {
+            if (event.runId) startedRunIds.push(event.runId);
+          },
           onDelta: (event) => deltas.push(String(event.delta)),
         },
       ),
@@ -107,12 +117,77 @@ describe("chat stream service", () => {
         outputBlocks: [{ id: "block-1", type: "text", content: "hi" }],
       },
     });
+    expect(startedRunIds).toEqual(["run-1"]);
     await expect(service.cancelRun("run-1")).resolves.toMatchObject({
       status: "cancelled",
       message: { id: "m2", role: "model" },
     });
     expect(deltas).toEqual(["hi"]);
     expect(calls).toEqual(["stream:c1:m1:stream-key", "cancel:run-1"]);
+  });
+
+  it("preserves failed and cancelled terminal error envelopes", async () => {
+    const service = createChatStreamService({
+      client: createMockClient({
+        async streamAssistantMessage(input) {
+          if (input.idempotencyKey === "cancel-key") {
+            return {
+              status: "cancelled",
+              error: {
+                code: "STREAM_INTERRUPTED",
+                message: "cancelled by user",
+                recoverable: true,
+                requestId: "req-cancel",
+              },
+            };
+          }
+
+          return {
+            status: "failed",
+            error: {
+              code: "PROVIDER_ERROR",
+              message: "provider failed",
+              recoverable: false,
+              requestId: "req-failed",
+            },
+          };
+        },
+      }),
+    });
+
+    await expect(
+      service.streamAssistantMessage({
+        conversationId: "c1",
+        userMessageId: "m1",
+        modelRef: { providerId: "openai", modelId: "gpt-5.5" },
+        idempotencyKey: "failed-key",
+      }),
+    ).resolves.toEqual({
+      status: "failed",
+      error: {
+        code: "PROVIDER_ERROR",
+        message: "provider failed",
+        recoverable: false,
+        requestId: "req-failed",
+      },
+    });
+
+    await expect(
+      service.streamAssistantMessage({
+        conversationId: "c1",
+        userMessageId: "m1",
+        modelRef: { providerId: "openai", modelId: "gpt-5.5" },
+        idempotencyKey: "cancel-key",
+      }),
+    ).resolves.toEqual({
+      status: "cancelled",
+      error: {
+        code: "STREAM_INTERRUPTED",
+        message: "cancelled by user",
+        recoverable: true,
+        requestId: "req-cancel",
+      },
+    });
   });
 
   it("fails closed when server stream is not enabled", async () => {
