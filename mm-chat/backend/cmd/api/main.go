@@ -17,6 +17,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/database"
 	"neo-chat/mm-chat/backend/internal/files"
 	"neo-chat/mm-chat/backend/internal/httpserver"
+	"neo-chat/mm-chat/backend/internal/ratelimit"
 	"neo-chat/mm-chat/backend/internal/redisstate"
 	"neo-chat/mm-chat/backend/internal/storage"
 )
@@ -39,7 +40,7 @@ func main() {
 	}
 
 	redisCtx, redisCancel := context.WithTimeout(context.Background(), redisOpenTimeout)
-	redisClient, runCancellationStore, err := newRedisState(redisCtx, cfg)
+	redisClient, runCancellationStore, rateLimitStore, err := newRedisState(redisCtx, cfg)
 	redisCancel()
 	if err != nil {
 		_ = db.Close()
@@ -76,6 +77,7 @@ func main() {
 		httpserver.WithChatRepository(chatRepo),
 		httpserver.WithChatProvider(chatProvider),
 		httpserver.WithRunCancellationStore(runCancellationStore),
+		httpserver.WithRateLimitStore(rateLimitStore),
 		httpserver.WithFileRepository(fileRepo),
 		httpserver.WithObjectStore(objectStore),
 		httpserver.WithMaxUploadBytes(cfg.Storage.MaxUploadBytes),
@@ -117,16 +119,23 @@ func main() {
 	}
 }
 
-func newRedisState(ctx context.Context, cfg config.Config) (*redisstate.Client, chat.RunCancellationStore, error) {
-	client, err := redisstate.Open(ctx, cfg.Redis)
-	if err != nil {
-		return nil, nil, err
-	}
-	if client == nil {
-		return nil, nil, nil
+func newRedisState(
+	ctx context.Context,
+	cfg config.Config,
+) (*redisstate.Client, chat.RunCancellationStore, ratelimit.Store, error) {
+	if cfg.Redis.RateLimitEnabled && strings.TrimSpace(cfg.Redis.URL) == "" {
+		return nil, nil, nil, fmt.Errorf("%s requires %s", config.EnvRedisRateLimitEnabled, config.EnvRedisURL)
 	}
 
-	return client, client.RunCancellationStore(cfg.Redis.RunCancelTTL), nil
+	client, err := redisstate.Open(ctx, cfg.Redis)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if client == nil {
+		return nil, nil, nil, nil
+	}
+
+	return client, client.RunCancellationStore(cfg.Redis.RunCancelTTL), client.RateLimitStore(), nil
 }
 
 func newObjectStore(cfg config.Config) (storage.ObjectStore, error) {

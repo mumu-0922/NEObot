@@ -209,6 +209,7 @@ Rules:
 | `404` | `FILE_NOT_FOUND` | Attachment file is absent, deleted, unavailable, or not owned by the fixed user. |
 | `405` | `METHOD_NOT_ALLOWED` | Method is not allowed; response includes `Allow`. |
 | `409` | `IDEMPOTENCY_CONFLICT` | Non-empty idempotency key already exists in scope. |
+| `429` | `RATE_LIMITED` | Redis rate-limit middleware blocked the request before handler execution. |
 | `503` | `DATABASE_REQUIRED` | `DATABASE_URL` is empty and chat persistence is disabled. |
 | `500` | `INTERNAL_ERROR` | Unexpected server error after sensitive details are scrubbed. |
 

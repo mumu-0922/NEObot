@@ -10,18 +10,23 @@ import (
 )
 
 func TestNewRedisStateDisabledWhenURLBlank(t *testing.T) {
-	client, store, err := newRedisState(context.Background(), config.Config{})
+	client, cancelStore, rateLimitStore, err := newRedisState(context.Background(), config.Config{})
 	if err != nil {
 		t.Fatalf("newRedisState() error = %v", err)
 	}
-	if client != nil || store != nil {
-		t.Fatalf("newRedisState() = %#v/%#v, want nil client and store", client, store)
+	if client != nil || cancelStore != nil || rateLimitStore != nil {
+		t.Fatalf(
+			"newRedisState() = %#v/%#v/%#v, want nil client and stores",
+			client,
+			cancelStore,
+			rateLimitStore,
+		)
 	}
 }
 
 func TestNewRedisStateRejectsInvalidURLWithoutSecretLeak(t *testing.T) {
 	secret := "super-secret-password"
-	_, _, err := newRedisState(context.Background(), config.Config{
+	_, _, _, err := newRedisState(context.Background(), config.Config{
 		Redis: config.RedisConfig{
 			URL: "redis://:" + secret + "@[::1",
 		},
@@ -31,6 +36,21 @@ func TestNewRedisStateRejectsInvalidURLWithoutSecretLeak(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), secret) {
 		t.Fatalf("newRedisState() error leaks secret: %v", err)
+	}
+}
+
+func TestNewRedisStateRejectsEnabledRateLimitWithoutRedisURL(t *testing.T) {
+	_, _, _, err := newRedisState(context.Background(), config.Config{
+		Redis: config.RedisConfig{
+			RateLimitEnabled: true,
+		},
+	})
+	if err == nil {
+		t.Fatal("newRedisState() error = nil, want missing REDIS_URL error")
+	}
+	if !strings.Contains(err.Error(), config.EnvRedisRateLimitEnabled) ||
+		!strings.Contains(err.Error(), config.EnvRedisURL) {
+		t.Fatalf("newRedisState() error = %v, want mention rate-limit env and redis url", err)
 	}
 }
 

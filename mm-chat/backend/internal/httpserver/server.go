@@ -9,6 +9,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/files"
 	"neo-chat/mm-chat/backend/internal/health"
+	"neo-chat/mm-chat/backend/internal/ratelimit"
 	"neo-chat/mm-chat/backend/internal/storage"
 )
 
@@ -30,6 +31,7 @@ type options struct {
 	chatRepository       chat.Repository
 	chatProvider         chat.Provider
 	runCancellationStore chat.RunCancellationStore
+	rateLimitStore       ratelimit.Store
 	fileRepository       files.Repository
 	objectStore          storage.ObjectStore
 	maxUploadBytes       int64
@@ -56,6 +58,12 @@ func WithChatProvider(provider chat.Provider) Option {
 func WithRunCancellationStore(store chat.RunCancellationStore) Option {
 	return func(opts *options) {
 		opts.runCancellationStore = store
+	}
+}
+
+func WithRateLimitStore(store ratelimit.Store) Option {
+	return func(opts *options) {
+		opts.rateLimitStore = store
 	}
 }
 
@@ -113,7 +121,12 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/files/", fileHandler)
 	mux.HandleFunc("/", notFound)
 
-	return chain(mux, withRecover, withSecurityHeaders)
+	middlewares := []Middleware{withRecover, withSecurityHeaders}
+	if cfg.Redis.RateLimitEnabled && resolvedOptions.rateLimitStore != nil {
+		middlewares = append(middlewares, withRateLimit(resolvedOptions.rateLimitStore, cfg.Redis, nil))
+	}
+
+	return chain(mux, middlewares...)
 }
 
 func resolveOptions(opts ...Option) options {

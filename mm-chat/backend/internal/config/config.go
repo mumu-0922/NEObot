@@ -8,44 +8,50 @@ import (
 )
 
 const (
-	DefaultAddr              = ":8080"
-	DefaultVersion           = "dev"
-	DefaultDBMaxOpenConns    = 10
-	DefaultDBMaxIdleConns    = 5
-	DefaultDBConnMaxLifetime = 30 * time.Minute
-	DefaultRedisKeyPrefix    = "mm-chat"
-	DefaultRedisRunCancelTTL = 10 * time.Minute
-	DefaultProviderTimeout   = 2 * time.Minute
-	DefaultStorageBackend    = "local"
-	DefaultLocalStorageDir   = "./data/files"
-	DefaultS3Region          = "us-east-1"
-	DefaultMaxUploadBytes    = int64(25 << 20)
+	DefaultAddr                   = ":8080"
+	DefaultVersion                = "dev"
+	DefaultDBMaxOpenConns         = 10
+	DefaultDBMaxIdleConns         = 5
+	DefaultDBConnMaxLifetime      = 30 * time.Minute
+	DefaultRedisKeyPrefix         = "mm-chat"
+	DefaultRedisRunCancelTTL      = 10 * time.Minute
+	DefaultRedisRateLimitEnabled  = false
+	DefaultRedisRateLimitRequests = 120
+	DefaultRedisRateLimitWindow   = time.Minute
+	DefaultProviderTimeout        = 2 * time.Minute
+	DefaultStorageBackend         = "local"
+	DefaultLocalStorageDir        = "./data/files"
+	DefaultS3Region               = "us-east-1"
+	DefaultMaxUploadBytes         = int64(25 << 20)
 
-	EnvAddr               = "MM_CHAT_ADDR"
-	EnvVersion            = "MM_CHAT_VERSION"
-	EnvDatabaseURL        = "DATABASE_URL"
-	EnvDBMaxOpenConns     = "DB_MAX_OPEN_CONNS"
-	EnvDBMaxIdleConns     = "DB_MAX_IDLE_CONNS"
-	EnvDBConnMaxLifetime  = "DB_CONN_MAX_LIFETIME"
-	EnvRedisURL           = "REDIS_URL"
-	EnvRedisKeyPrefix     = "REDIS_KEY_PREFIX"
-	EnvRedisRunCancelTTL  = "REDIS_RUN_CANCEL_TTL"
-	EnvProviderType       = "PROVIDER_TYPE"
-	EnvProviderBaseURL    = "PROVIDER_BASE_URL"
-	EnvProviderModel      = "PROVIDER_MODEL"
-	EnvProviderAPIKey     = "PROVIDER_API_KEY"
-	EnvProviderTimeout    = "PROVIDER_TIMEOUT"
-	EnvStorageBackend     = "STORAGE_BACKEND"
-	EnvLocalStorageDir    = "LOCAL_STORAGE_DIR"
-	EnvS3Endpoint         = "S3_ENDPOINT"
-	EnvS3Bucket           = "S3_BUCKET"
-	EnvS3Region           = "S3_REGION"
-	EnvS3AccessKeyID      = "S3_ACCESS_KEY_ID"
-	EnvS3SecretAccessKey  = "S3_SECRET_ACCESS_KEY"
-	EnvS3UseSSL           = "S3_USE_SSL"
-	EnvS3ForcePathStyle   = "S3_FORCE_PATH_STYLE"
-	EnvS3BucketAutoCreate = "S3_BUCKET_AUTO_CREATE"
-	EnvMaxUploadBytes     = "MAX_UPLOAD_BYTES"
+	EnvAddr                   = "MM_CHAT_ADDR"
+	EnvVersion                = "MM_CHAT_VERSION"
+	EnvDatabaseURL            = "DATABASE_URL"
+	EnvDBMaxOpenConns         = "DB_MAX_OPEN_CONNS"
+	EnvDBMaxIdleConns         = "DB_MAX_IDLE_CONNS"
+	EnvDBConnMaxLifetime      = "DB_CONN_MAX_LIFETIME"
+	EnvRedisURL               = "REDIS_URL"
+	EnvRedisKeyPrefix         = "REDIS_KEY_PREFIX"
+	EnvRedisRunCancelTTL      = "REDIS_RUN_CANCEL_TTL"
+	EnvRedisRateLimitEnabled  = "REDIS_RATE_LIMIT_ENABLED"
+	EnvRedisRateLimitRequests = "REDIS_RATE_LIMIT_REQUESTS"
+	EnvRedisRateLimitWindow   = "REDIS_RATE_LIMIT_WINDOW"
+	EnvProviderType           = "PROVIDER_TYPE"
+	EnvProviderBaseURL        = "PROVIDER_BASE_URL"
+	EnvProviderModel          = "PROVIDER_MODEL"
+	EnvProviderAPIKey         = "PROVIDER_API_KEY"
+	EnvProviderTimeout        = "PROVIDER_TIMEOUT"
+	EnvStorageBackend         = "STORAGE_BACKEND"
+	EnvLocalStorageDir        = "LOCAL_STORAGE_DIR"
+	EnvS3Endpoint             = "S3_ENDPOINT"
+	EnvS3Bucket               = "S3_BUCKET"
+	EnvS3Region               = "S3_REGION"
+	EnvS3AccessKeyID          = "S3_ACCESS_KEY_ID"
+	EnvS3SecretAccessKey      = "S3_SECRET_ACCESS_KEY"
+	EnvS3UseSSL               = "S3_USE_SSL"
+	EnvS3ForcePathStyle       = "S3_FORCE_PATH_STYLE"
+	EnvS3BucketAutoCreate     = "S3_BUCKET_AUTO_CREATE"
+	EnvMaxUploadBytes         = "MAX_UPLOAD_BYTES"
 )
 
 // Config contains the process-level settings required to start the API.
@@ -67,9 +73,12 @@ type Config struct {
 // RedisConfig contains non-authoritative temporary-state settings. Redis must
 // not store canonical conversations, messages, files, or provider secrets.
 type RedisConfig struct {
-	URL          string
-	KeyPrefix    string
-	RunCancelTTL time.Duration
+	URL               string
+	KeyPrefix         string
+	RunCancelTTL      time.Duration
+	RateLimitEnabled  bool
+	RateLimitRequests int
+	RateLimitWindow   time.Duration
 }
 
 // ProviderConfig contains outbound model-provider settings. Secrets must never
@@ -122,9 +131,12 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 		DBConnMaxLifetime: durationEnvOrDefault(lookup, EnvDBConnMaxLifetime, DefaultDBConnMaxLifetime),
 
 		Redis: RedisConfig{
-			URL:          optionalEnv(lookup, EnvRedisURL),
-			KeyPrefix:    envOrDefault(lookup, EnvRedisKeyPrefix, DefaultRedisKeyPrefix),
-			RunCancelTTL: durationEnvOrDefault(lookup, EnvRedisRunCancelTTL, DefaultRedisRunCancelTTL),
+			URL:               optionalEnv(lookup, EnvRedisURL),
+			KeyPrefix:         envOrDefault(lookup, EnvRedisKeyPrefix, DefaultRedisKeyPrefix),
+			RunCancelTTL:      durationEnvOrDefault(lookup, EnvRedisRunCancelTTL, DefaultRedisRunCancelTTL),
+			RateLimitEnabled:  boolEnvOrDefault(lookup, EnvRedisRateLimitEnabled, DefaultRedisRateLimitEnabled),
+			RateLimitRequests: intEnvOrDefault(lookup, EnvRedisRateLimitRequests, DefaultRedisRateLimitRequests),
+			RateLimitWindow:   durationEnvOrDefault(lookup, EnvRedisRateLimitWindow, DefaultRedisRateLimitWindow),
 		},
 
 		Provider: ProviderConfig{

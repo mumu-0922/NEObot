@@ -57,6 +57,7 @@ presigned URLs in the MVP.
 | `400` | `INVALID_FILE_PURPOSE` | Purpose is missing or unsupported. |
 | `413` | `FILE_TOO_LARGE` | File exceeds `MAX_UPLOAD_BYTES`. |
 | `404` | `FILE_NOT_FOUND` | Metadata row is absent or deleted. |
+| `429` | `RATE_LIMITED` | Redis rate-limit middleware blocked the request before upload/download work. |
 | `503` | `DATABASE_REQUIRED` | File metadata repository is unavailable. |
 | `503` | `STORAGE_REQUIRED` | Object store is unavailable. |
 

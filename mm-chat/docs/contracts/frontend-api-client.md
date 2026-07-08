@@ -814,7 +814,9 @@ Rules:
 - `404` maps to entity-specific `*_NOT_FOUND` where possible.
 - `409` maps to `CONFLICT` or idempotency conflict.
 - `413` maps to `FILE_TOO_LARGE`.
-- `429` maps to `RATE_LIMITED` and should preserve retry metadata when available.
+- `429` maps to `RATE_LIMITED` and should preserve retry metadata when
+  available: `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and
+  `X-RateLimit-Reset`.
 - `5xx` maps to `SERVER_ERROR` and is recoverable unless explicitly marked otherwise.
 
 ## 14. Error Matrix

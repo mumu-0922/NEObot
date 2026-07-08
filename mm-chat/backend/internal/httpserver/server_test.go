@@ -1,13 +1,17 @@
 package httpserver
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"neo-chat/mm-chat/backend/internal/config"
+	"neo-chat/mm-chat/backend/internal/ratelimit"
 )
 
 func TestNewHandlerRoutesHealthReadyAndVersion(t *testing.T) {
@@ -189,4 +193,165 @@ func TestNewHandlerRegistersChatRoutesWithDatabaseRequired(t *testing.T) {
 	if body.Error.Code != "DATABASE_REQUIRED" {
 		t.Fatalf("file error code = %q, want %q", body.Error.Code, "DATABASE_REQUIRED")
 	}
+}
+
+func TestRateLimitMiddlewareLimitsNonExemptRoutes(t *testing.T) {
+	store := newFakeRateLimitStore()
+	handler := NewHandler(
+		config.Config{
+			Addr:    ":0",
+			Version: "route-test",
+			Redis: config.RedisConfig{
+				RateLimitEnabled:  true,
+				RateLimitRequests: 2,
+				RateLimitWindow:   time.Minute,
+			},
+		},
+		WithRateLimitStore(store),
+	)
+
+	for i := 0; i < 2; i++ {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/missing", nil)
+		req.RemoteAddr = "203.0.113.10:4444"
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("request %d status = %d, want 404; body=%s", i+1, rec.Code, rec.Body.String())
+		}
+		if got := rec.Header().Get("X-RateLimit-Limit"); got != "2" {
+			t.Fatalf("request %d X-RateLimit-Limit = %q, want 2", i+1, got)
+		}
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/missing", nil)
+	req.RemoteAddr = "203.0.113.10:4444"
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429; body=%s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Retry-After"); got == "" {
+		t.Fatal("Retry-After header is blank")
+	}
+	if got := rec.Header().Get("X-RateLimit-Limit"); got != "2" {
+		t.Fatalf("X-RateLimit-Limit = %q, want 2", got)
+	}
+	if got := rec.Header().Get("X-RateLimit-Remaining"); got != "0" {
+		t.Fatalf("X-RateLimit-Remaining = %q, want 0", got)
+	}
+	if got := rec.Header().Get("X-RateLimit-Reset"); got == "" {
+		t.Fatal("X-RateLimit-Reset header is blank")
+	}
+	if contentType := rec.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "application/json") {
+		t.Fatalf("Content-Type = %q, want application/json", contentType)
+	}
+	var body ErrorResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode rate limit response: %v", err)
+	}
+	if body.Error.Code != "RATE_LIMITED" {
+		t.Fatalf("error code = %q, want RATE_LIMITED", body.Error.Code)
+	}
+}
+
+func TestRateLimitMiddlewareExemptsHealthReadyAndVersionRoutes(t *testing.T) {
+	store := newFakeRateLimitStore()
+	handler := NewHandler(
+		config.Config{
+			Addr:    ":0",
+			Version: "route-test",
+			Redis: config.RedisConfig{
+				RateLimitEnabled:  true,
+				RateLimitRequests: 1,
+				RateLimitWindow:   time.Minute,
+			},
+		},
+		WithRateLimitStore(store),
+	)
+
+	tests := []struct {
+		path string
+		code int
+	}{
+		{path: "/health", code: http.StatusOK},
+		{path: "/ready", code: http.StatusOK},
+		{path: "/v1/version", code: http.StatusOK},
+	}
+
+	for _, tt := range tests {
+		for i := 0; i < 3; i++ {
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			req.RemoteAddr = "203.0.113.10:4444"
+			handler.ServeHTTP(rec, req)
+			if rec.Code != tt.code {
+				t.Fatalf("%s request %d status = %d, want %d", tt.path, i+1, rec.Code, tt.code)
+			}
+		}
+	}
+	if store.calls != 0 {
+		t.Fatalf("rate limit store calls = %d, want 0 for exempt routes", store.calls)
+	}
+}
+
+func TestRateLimitMiddlewareFailsOpenOnStoreError(t *testing.T) {
+	store := newFakeRateLimitStore()
+	store.err = errors.New("redis down")
+	handler := NewHandler(
+		config.Config{
+			Addr:    ":0",
+			Version: "route-test",
+			Redis: config.RedisConfig{
+				RateLimitEnabled:  true,
+				RateLimitRequests: 1,
+				RateLimitWindow:   time.Minute,
+			},
+		},
+		WithRateLimitStore(store),
+	)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/missing", nil)
+	req.RemoteAddr = "203.0.113.10:4444"
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 fail-open; body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+type fakeRateLimitStore struct {
+	calls  int
+	counts map[string]int
+	err    error
+}
+
+func newFakeRateLimitStore() *fakeRateLimitStore {
+	return &fakeRateLimitStore{counts: map[string]int{}}
+}
+
+func (s *fakeRateLimitStore) Allow(
+	_ context.Context,
+	key string,
+	limit int,
+	window time.Duration,
+	now time.Time,
+) (ratelimit.Result, error) {
+	s.calls++
+	if s.err != nil {
+		return ratelimit.Result{}, s.err
+	}
+	s.counts[key]++
+	remaining := limit - s.counts[key]
+	if remaining < 0 {
+		remaining = 0
+	}
+	return ratelimit.Result{
+		Allowed:    s.counts[key] <= limit,
+		Limit:      limit,
+		Remaining:  remaining,
+		RetryAfter: window,
+		ResetAt:    now.Add(window),
+	}, nil
 }

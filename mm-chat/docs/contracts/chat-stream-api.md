@@ -168,13 +168,15 @@ Errors before the SSE response begins use the standard JSON envelope.
 | `404` | `RUN_NOT_FOUND` | Cancel target run does not exist for the fixed dev user. |
 | `409` | `IDEMPOTENCY_CONFLICT` | Assistant stream key already exists for the conversation. |
 | `409` | `RUN_NOT_CANCELLABLE` | Cancel target is already completed or failed. |
+| `429` | `RATE_LIMITED` | Redis rate-limit middleware blocked the request before SSE begins. |
 | `502` | `PROVIDER_ERROR` | Provider startup fails before SSE begins. |
 | `503` | `DATABASE_REQUIRED` | DB runtime wiring is disabled. |
 | `503` | `PROVIDER_REQUIRED` | No provider is configured for streaming. |
 | `500` | `STREAMING_UNSUPPORTED` | Response writer cannot flush SSE. |
 
 After SSE starts, provider or finalization failures are emitted as
-`message.error` frames with scrubbed error details.
+`message.error` frames with scrubbed error details. HTTP `429 RATE_LIMITED` can
+only be returned before the SSE response starts.
 
 ## 7. Cancel Response
 
@@ -258,6 +260,6 @@ The adapter reads `data:` SSE frames, emits `message.delta` for
 ## 9. Non-Goals
 
 - Gemini and native OpenAI Responses API adapters.
-- Rate-limit/session Redis state.
+- Session cache Redis state.
 - Streaming resume, cursor replay, or durable run records.
 - Tool calls, plugins, attachments, MinIO/S3, RAG, title generation, and auth.

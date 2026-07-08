@@ -37,6 +37,15 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 	if cfg.Redis.RunCancelTTL != DefaultRedisRunCancelTTL {
 		t.Fatalf("Redis.RunCancelTTL = %s, want %s", cfg.Redis.RunCancelTTL, DefaultRedisRunCancelTTL)
 	}
+	if cfg.Redis.RateLimitEnabled != DefaultRedisRateLimitEnabled {
+		t.Fatalf("Redis.RateLimitEnabled = %v, want %v", cfg.Redis.RateLimitEnabled, DefaultRedisRateLimitEnabled)
+	}
+	if cfg.Redis.RateLimitRequests != DefaultRedisRateLimitRequests {
+		t.Fatalf("Redis.RateLimitRequests = %d, want %d", cfg.Redis.RateLimitRequests, DefaultRedisRateLimitRequests)
+	}
+	if cfg.Redis.RateLimitWindow != DefaultRedisRateLimitWindow {
+		t.Fatalf("Redis.RateLimitWindow = %s, want %s", cfg.Redis.RateLimitWindow, DefaultRedisRateLimitWindow)
+	}
 	if cfg.Provider.Type != "" {
 		t.Fatalf("Provider.Type = %q, want empty", cfg.Provider.Type)
 	}
@@ -77,31 +86,34 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 
 func TestLoadFromEnvOverrides(t *testing.T) {
 	values := map[string]string{
-		EnvAddr:               "127.0.0.1:9090",
-		EnvVersion:            "test-version",
-		EnvDatabaseURL:        " postgres://user:pass@localhost:5432/mmchat?sslmode=disable ",
-		EnvDBMaxOpenConns:     "12",
-		EnvDBMaxIdleConns:     "7",
-		EnvDBConnMaxLifetime:  "45m",
-		EnvRedisURL:           " redis://:redis-pass@redis:6379/1 ",
-		EnvRedisKeyPrefix:     " neo-test ",
-		EnvRedisRunCancelTTL:  "15m",
-		EnvProviderType:       " openai_compatible ",
-		EnvProviderBaseURL:    " https://sub.example.test/v1/ ",
-		EnvProviderModel:      " gpt-5.5 ",
-		EnvProviderAPIKey:     " secret-key ",
-		EnvProviderTimeout:    "90s",
-		EnvStorageBackend:     " MINIO ",
-		EnvLocalStorageDir:    " /srv/mm-chat/files ",
-		EnvS3Endpoint:         " http://minio:9000 ",
-		EnvS3Bucket:           " neo-chat-files ",
-		EnvS3Region:           " us-west-2 ",
-		EnvS3AccessKeyID:      " minio-user ",
-		EnvS3SecretAccessKey:  " minio-secret ",
-		EnvS3UseSSL:           " true ",
-		EnvS3ForcePathStyle:   " true ",
-		EnvS3BucketAutoCreate: " true ",
-		EnvMaxUploadBytes:     "1048576",
+		EnvAddr:                   "127.0.0.1:9090",
+		EnvVersion:                "test-version",
+		EnvDatabaseURL:            " postgres://user:pass@localhost:5432/mmchat?sslmode=disable ",
+		EnvDBMaxOpenConns:         "12",
+		EnvDBMaxIdleConns:         "7",
+		EnvDBConnMaxLifetime:      "45m",
+		EnvRedisURL:               " redis://:redis-pass@redis:6379/1 ",
+		EnvRedisKeyPrefix:         " neo-test ",
+		EnvRedisRunCancelTTL:      "15m",
+		EnvRedisRateLimitEnabled:  "true",
+		EnvRedisRateLimitRequests: "42",
+		EnvRedisRateLimitWindow:   "30s",
+		EnvProviderType:           " openai_compatible ",
+		EnvProviderBaseURL:        " https://sub.example.test/v1/ ",
+		EnvProviderModel:          " gpt-5.5 ",
+		EnvProviderAPIKey:         " secret-key ",
+		EnvProviderTimeout:        "90s",
+		EnvStorageBackend:         " MINIO ",
+		EnvLocalStorageDir:        " /srv/mm-chat/files ",
+		EnvS3Endpoint:             " http://minio:9000 ",
+		EnvS3Bucket:               " neo-chat-files ",
+		EnvS3Region:               " us-west-2 ",
+		EnvS3AccessKeyID:          " minio-user ",
+		EnvS3SecretAccessKey:      " minio-secret ",
+		EnvS3UseSSL:               " true ",
+		EnvS3ForcePathStyle:       " true ",
+		EnvS3BucketAutoCreate:     " true ",
+		EnvMaxUploadBytes:         "1048576",
 	}
 
 	cfg := LoadFromEnv(func(key string) (string, bool) {
@@ -135,6 +147,15 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	}
 	if cfg.Redis.RunCancelTTL != 15*time.Minute {
 		t.Fatalf("Redis.RunCancelTTL = %s, want 15m", cfg.Redis.RunCancelTTL)
+	}
+	if !cfg.Redis.RateLimitEnabled {
+		t.Fatal("Redis.RateLimitEnabled = false, want true")
+	}
+	if cfg.Redis.RateLimitRequests != 42 {
+		t.Fatalf("Redis.RateLimitRequests = %d, want 42", cfg.Redis.RateLimitRequests)
+	}
+	if cfg.Redis.RateLimitWindow != 30*time.Second {
+		t.Fatalf("Redis.RateLimitWindow = %s, want 30s", cfg.Redis.RateLimitWindow)
 	}
 	if cfg.Provider.Type != "openai_compatible" {
 		t.Fatalf("Provider.Type = %q, want openai_compatible", cfg.Provider.Type)
@@ -234,7 +255,10 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 	}
 	if cfg.Redis.URL != "" ||
 		cfg.Redis.KeyPrefix != DefaultRedisKeyPrefix ||
-		cfg.Redis.RunCancelTTL != DefaultRedisRunCancelTTL {
+		cfg.Redis.RunCancelTTL != DefaultRedisRunCancelTTL ||
+		cfg.Redis.RateLimitEnabled != DefaultRedisRateLimitEnabled ||
+		cfg.Redis.RateLimitRequests != DefaultRedisRateLimitRequests ||
+		cfg.Redis.RateLimitWindow != DefaultRedisRateLimitWindow {
 		t.Fatalf("Redis = %#v, want defaults", cfg.Redis)
 	}
 	if cfg.Provider.Type != "" || cfg.Provider.BaseURL != "" ||
@@ -263,15 +287,18 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 
 func TestLoadFromEnvFallsBackForInvalidDBValues(t *testing.T) {
 	values := map[string]string{
-		EnvDBMaxOpenConns:     "not-an-int",
-		EnvDBMaxIdleConns:     "-1",
-		EnvDBConnMaxLifetime:  "not-a-duration",
-		EnvRedisRunCancelTTL:  "not-a-duration",
-		EnvProviderTimeout:    "-1s",
-		EnvS3UseSSL:           "not-a-bool",
-		EnvS3ForcePathStyle:   "not-a-bool",
-		EnvS3BucketAutoCreate: "not-a-bool",
-		EnvMaxUploadBytes:     "-1",
+		EnvDBMaxOpenConns:         "not-an-int",
+		EnvDBMaxIdleConns:         "-1",
+		EnvDBConnMaxLifetime:      "not-a-duration",
+		EnvRedisRunCancelTTL:      "not-a-duration",
+		EnvRedisRateLimitEnabled:  "not-a-bool",
+		EnvRedisRateLimitRequests: "-1",
+		EnvRedisRateLimitWindow:   "not-a-duration",
+		EnvProviderTimeout:        "-1s",
+		EnvS3UseSSL:               "not-a-bool",
+		EnvS3ForcePathStyle:       "not-a-bool",
+		EnvS3BucketAutoCreate:     "not-a-bool",
+		EnvMaxUploadBytes:         "-1",
 	}
 
 	cfg := LoadFromEnv(func(key string) (string, bool) {
@@ -290,6 +317,15 @@ func TestLoadFromEnvFallsBackForInvalidDBValues(t *testing.T) {
 	}
 	if cfg.Redis.RunCancelTTL != DefaultRedisRunCancelTTL {
 		t.Fatalf("Redis.RunCancelTTL = %s, want %s", cfg.Redis.RunCancelTTL, DefaultRedisRunCancelTTL)
+	}
+	if cfg.Redis.RateLimitEnabled != DefaultRedisRateLimitEnabled {
+		t.Fatalf("Redis.RateLimitEnabled = %v, want %v", cfg.Redis.RateLimitEnabled, DefaultRedisRateLimitEnabled)
+	}
+	if cfg.Redis.RateLimitRequests != DefaultRedisRateLimitRequests {
+		t.Fatalf("Redis.RateLimitRequests = %d, want %d", cfg.Redis.RateLimitRequests, DefaultRedisRateLimitRequests)
+	}
+	if cfg.Redis.RateLimitWindow != DefaultRedisRateLimitWindow {
+		t.Fatalf("Redis.RateLimitWindow = %s, want %s", cfg.Redis.RateLimitWindow, DefaultRedisRateLimitWindow)
 	}
 	if cfg.Provider.Timeout != DefaultProviderTimeout {
 		t.Fatalf("Provider.Timeout = %s, want %s", cfg.Provider.Timeout, DefaultProviderTimeout)

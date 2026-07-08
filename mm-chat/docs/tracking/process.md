@@ -1597,3 +1597,100 @@ main-session Docker Redis integration after review fix: passed
 ### Next Step
 
 Commit Phase 7 after main-session final review.
+
+## 2026-07-08 — Phase 7 Redis Rate Limit Middleware
+
+### Action
+
+Added opt-in Redis-backed fixed-window HTTP rate limiting. The backend now reads
+`REDIS_RATE_LIMIT_ENABLED`, `REDIS_RATE_LIMIT_REQUESTS`, and
+`REDIS_RATE_LIMIT_WINDOW`. When enabled and Redis is configured, non-health HTTP
+routes are limited by hashed `RemoteAddr` client identity. Health, readiness, and
+version endpoints remain exempt.
+
+### Files
+
+```text
+mm-chat/backend/internal/ratelimit/store.go
+mm-chat/backend/internal/redisstate/rate_limit.go
+mm-chat/backend/internal/redisstate/rate_limit_test.go
+mm-chat/backend/internal/httpserver/rate_limit.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/httpserver/server_test.go
+mm-chat/backend/internal/config/config.go
+mm-chat/backend/internal/config/config_test.go
+mm-chat/backend/cmd/api/main.go
+mm-chat/backend/cmd/api/main_test.go
+mm-chat/backend/.env.example
+mm-chat/docs/contracts/chat-crud-api.md
+mm-chat/docs/contracts/chat-stream-api.md
+mm-chat/docs/contracts/file-api.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/deployment/redis-temporary-state.md
+mm-chat/docs/deployment/README.md
+mm-chat/docs/deployment/single-server-compose.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+### Decision
+
+Rate limiting is non-authoritative temporary state. Startup still fails fast when
+`REDIS_URL` is configured but unreachable, but runtime Redis counter errors fail
+open so Redis outages do not block canonical Postgres-backed API reads/writes.
+`X-Forwarded-For` is not trusted yet; reverse-proxy-aware identity requires a
+future explicit trusted-proxy config. Enabling rate limits without `REDIS_URL`
+fails startup so deployments do not accidentally believe rate limiting is active
+when no Redis store exists. Redis counter increments use Lua to bind `INCR` and
+TTL assignment atomically for new window keys.
+
+### Verification
+
+```text
+Docker Go 1.22 go test ./...: passed
+httpserver rate-limit middleware tests: passed
+Docker Redis integration for cancellation + rate-limit stores: passed
+API smoke with Redis rate limit enabled: 404, 404, then 429 RATE_LIMITED; /health exempt
+Fail-fast smoke with REDIS_RATE_LIMIT_ENABLED=true and no REDIS_URL: passed
+```
+
+### Next Step
+
+Run review agent, then commit and push this Phase 7 slice. Session cache
+integration remains unchecked.
+
+## 2026-07-08 — Phase 7 Review Fix: Rate Limit Contract Coverage
+
+### Action
+
+Review found two consistency gaps: the stream contract still listed Redis
+rate-limit state as a non-goal, and tests did not cover every exempt health
+route or the full `429` header contract. Updated the stream contract, expanded
+HTTP middleware tests, and added Redis integration assertions that rate-limit
+counter TTL is positive and is not extended by later hits in the same window.
+
+### Files
+
+```text
+mm-chat/backend/internal/httpserver/server_test.go
+mm-chat/backend/internal/redisstate/rate_limit_test.go
+mm-chat/docs/contracts/chat-stream-api.md
+mm-chat/docs/tracking/process.md
+```
+
+### Verification
+
+```text
+Docker Go 1.22 gofmt check: passed
+Docker Go 1.22 go vet ./...: passed
+Docker Go 1.22 go test ./...: passed
+Docker Redis integration for cancellation + rate-limit stores: passed
+git diff --check -- mm-chat: passed
+main-session Docker Go 1.22 go test ./... && go vet ./... after review fix: passed
+main-session Redis integration/API rate-limit smoke/fail-fast after review fix: passed
+```
+
+### Next Step
+
+Commit Phase 7 after main-session review approval. Session cache integration
+remains unchecked.
