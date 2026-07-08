@@ -1921,3 +1921,97 @@ Final review agent rerun: P0/P1/P2 no findings.
 Run review agent for the Phase 8 runtime slice, fix findings, then commit and
 push. Next implementation slice: import `files[]` blobs into MinIO/S3 and link
 message attachments.
+
+## 2026-07-08 — Phase 8 Runtime: Browser Import File Attachments
+
+### Action
+
+Implemented the attachment slice for browser data import. ZIP blobs are now
+retained by `PackageReader`, validated against manifest `files[]`, uploaded to
+the configured object store during commit, inserted into `files`, and linked to
+imported messages through `message_attachments`.
+
+### Files
+
+```text
+mm-chat/backend/cmd/api/main.go
+mm-chat/backend/internal/browserimport/errors.go
+mm-chat/backend/internal/browserimport/handler.go
+mm-chat/backend/internal/browserimport/handler_test.go
+mm-chat/backend/internal/browserimport/package.go
+mm-chat/backend/internal/browserimport/package_test.go
+mm-chat/backend/internal/browserimport/repository_postgres.go
+mm-chat/backend/internal/browserimport/repository_postgres_test.go
+mm-chat/backend/internal/browserimport/types.go
+mm-chat/docs/contracts/browser-data-import.md
+mm-chat/docs/persistence/postgres-schema.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+### Decision
+
+Import keeps preview DB/storage-independent, but commit now requires object
+storage only when the package contains files. The repository writes object bytes
+with server-generated keys (`users/{userId}/files/{fileId}`), stores file
+metadata in the same import transaction, and compensates by deleting staged
+objects when any DB write or transaction commit fails. Rollback deletes
+`message_attachments`, soft-deletes imported `files/messages/conversations`,
+marks the batch `rolled_back`, then hard-deletes object bytes.
+
+Remote and `knowledge_ref` attachments remain metadata-only in message metadata;
+the backend does not fetch URLs or expose object keys/bucket URLs.
+
+### Verification
+
+```text
+Docker Go 1.22 gofmt ./cmd ./internal ./migrations: passed
+Docker Go 1.22 go test ./...: passed
+Disposable Docker Postgres integration for internal/browserimport PostgresRepository: passed
+```
+
+### Next Step
+
+Run review agent on the attachment slice, fix findings, then commit and push.
+
+## 2026-07-08 — Phase 8 Review Fix: Attachment Import Safety
+
+### Action
+
+Fixed review findings from the file-attachment import slice. Rollback now treats
+attachment links as part of the rollback safety boundary, commit-error handling
+avoids deleting objects when database commit state is unknown, and preview
+validation rejects duplicate file attachments on the same message.
+
+### Decision
+
+Rollback blocks when an imported file or imported message has any external
+`message_attachments` reference, preventing deletion of user-created links or
+file bytes after import. Commit cleanup still deletes staged objects for known
+pre-commit failures, but if `tx.Commit()` returns an error and the backend cannot
+verify whether the batch committed, it leaves objects in place instead of
+risking a committed DB row with missing bytes. If the committed batch can be
+verified by idempotency key and hashes, the stored completed response is
+returned.
+
+The import contract now explicitly allows attachment `purpose = "output"` to
+match the existing `message_attachments` schema. File `originalUrl` is limited to
+`opfs://...` and secret-like file metadata is rejected before persistence.
+
+### Verification
+
+```text
+Docker Go 1.22 gofmt ./cmd ./internal ./migrations: passed
+Docker Go 1.22 go test ./...: passed
+Docker Go 1.22 go vet ./...: passed
+Disposable Docker Postgres integration for internal/browserimport PostgresRepository: passed
+git diff --check -- mm-chat: passed
+Review fixes covered by tests: duplicate file attachment validation, object Put
+failure leaves no DB rows, response does not leak object keys, rollback rejects
+external attachment refs, modified imported files still block rollback.
+Final review agent rerun: P0/P1/P2 no findings.
+```
+
+### Next Step
+
+Commit and push the Phase 8 attachment import slice.

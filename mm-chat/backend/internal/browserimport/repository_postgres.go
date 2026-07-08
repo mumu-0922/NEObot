@@ -1,6 +1,7 @@
 package browserimport
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -11,14 +12,38 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"neo-chat/mm-chat/backend/internal/storage"
 )
 
-const idempotencyReplayWaitTimeout = 5 * time.Second
+const (
+	idempotencyReplayWaitTimeout = 5 * time.Second
+	defaultStorageBackend        = "local"
+)
 
 type PostgresRepository struct {
-	db     *sql.DB
-	userID string
-	newID  func() (string, error)
+	db             *sql.DB
+	userID         string
+	newID          func() (string, error)
+	objectStore    storage.ObjectStore
+	storageBackend string
+}
+
+type PostgresRepositoryOption func(*PostgresRepository)
+
+func WithObjectStore(store storage.ObjectStore) PostgresRepositoryOption {
+	return func(r *PostgresRepository) {
+		r.objectStore = store
+	}
+}
+
+func WithStorageBackend(backend string) PostgresRepositoryOption {
+	return func(r *PostgresRepository) {
+		backend = strings.ToLower(strings.TrimSpace(backend))
+		if backend != "" {
+			r.storageBackend = backend
+		}
+	}
 }
 
 type sqlExecer interface {
@@ -29,12 +54,19 @@ type rowScanner interface {
 	Scan(dest ...any) error
 }
 
-func NewPostgresRepository(db *sql.DB) *PostgresRepository {
-	return &PostgresRepository{
-		db:     db,
-		userID: DevUserID,
-		newID:  newUUID,
+func NewPostgresRepository(db *sql.DB, opts ...PostgresRepositoryOption) *PostgresRepository {
+	repo := &PostgresRepository{
+		db:             db,
+		userID:         DevUserID,
+		newID:          newUUID,
+		storageBackend: defaultStorageBackend,
 	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(repo)
+		}
+	}
+	return repo
 }
 
 func (r *PostgresRepository) Commit(ctx context.Context, pkg Package) (CommitResponse, error) {
@@ -51,6 +83,9 @@ func (r *PostgresRepository) Commit(ctx context.Context, pkg Package) (CommitRes
 		}
 		return CommitResponse{}, ErrIdempotencyConflict
 	}
+	if len(manifest.Files) > 0 && r.objectStore == nil {
+		return CommitResponse{}, ErrStorageRequired
+	}
 
 	batchID, err := r.generateID()
 	if err != nil {
@@ -63,6 +98,14 @@ func (r *PostgresRepository) Commit(ctx context.Context, pkg Package) (CommitRes
 	}
 	defer func() {
 		_ = tx.Rollback()
+	}()
+
+	uploadedObjectKeys := []string{}
+	cleanupObjects := true
+	defer func() {
+		if cleanupObjects {
+			_ = r.deleteObjects(context.Background(), uploadedObjectKeys)
+		}
 	}()
 
 	if err := r.ensureDevUser(ctx, tx); err != nil {
@@ -88,9 +131,13 @@ func (r *PostgresRepository) Commit(ctx context.Context, pkg Package) (CommitRes
 		return CommitResponse{}, fmt.Errorf("insert import batch: %w", err)
 	}
 
+	fileMappings, err := r.importFiles(ctx, tx, batchID, manifest, pkg.Blobs, &uploadedObjectKeys)
+	if err != nil {
+		return CommitResponse{}, err
+	}
+
 	conversationMappings := make(map[string]string, len(manifest.Conversations))
 	messageMappings := make(map[string]string, len(manifest.Messages))
-	fileMappings := map[string]string{}
 
 	for _, conversation := range manifest.Conversations {
 		serverID, err := r.generateID()
@@ -142,6 +189,7 @@ func (r *PostgresRepository) Commit(ctx context.Context, pkg Package) (CommitRes
 		}
 		return messages[i].ConversationClientID < messages[j].ConversationClientID
 	})
+	attachmentCount := 0
 	for _, message := range messages {
 		conversationID := conversationMappings[message.ConversationClientID]
 		if conversationID == "" {
@@ -166,8 +214,8 @@ func (r *PostgresRepository) Commit(ctx context.Context, pkg Package) (CommitRes
 			"idempotencyKey": manifest.IdempotencyKey,
 			"source":         "browser-import",
 		})
-		if len(message.Attachments) > 0 {
-			metadata["deferredAttachments"] = message.Attachments
+		if deferred := deferredImportAttachments(message.Attachments); len(deferred) > 0 {
+			metadata["deferredAttachments"] = deferred
 		}
 		encodedMetadata, err := marshalJSONObject(metadata)
 		if err != nil {
@@ -201,6 +249,12 @@ func (r *PostgresRepository) Commit(ctx context.Context, pkg Package) (CommitRes
 			return CommitResponse{}, fmt.Errorf("insert imported message: %w", err)
 		}
 		messageMappings[message.ClientID] = serverID
+
+		createdAttachments, err := r.importMessageAttachments(ctx, tx, serverID, message.Attachments, fileMappings)
+		if err != nil {
+			return CommitResponse{}, err
+		}
+		attachmentCount += createdAttachments
 	}
 
 	response := CommitResponse{
@@ -209,8 +263,8 @@ func (r *PostgresRepository) Commit(ctx context.Context, pkg Package) (CommitRes
 		Created: CreatedCounts{
 			Conversations: len(conversationMappings),
 			Messages:      len(messageMappings),
-			Files:         0,
-			Attachments:   0,
+			Files:         len(fileMappings),
+			Attachments:   attachmentCount,
 		},
 		Mappings: ImportMappings{
 			Conversations: conversationMappings,
@@ -227,10 +281,198 @@ func (r *PostgresRepository) Commit(ctx context.Context, pkg Package) (CommitRes
 		return CommitResponse{}, fmt.Errorf("complete import batch: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
+		committedResponse, ok, verifyErr := r.findCommittedImportAfterCommitError(manifest.IdempotencyKey, pkg)
+		if verifyErr != nil {
+			cleanupObjects = false
+			return CommitResponse{}, fmt.Errorf("commit browser import: %w; verify import commit state: %v", err, verifyErr)
+		}
+		if ok {
+			cleanupObjects = false
+			return committedResponse, nil
+		}
 		return CommitResponse{}, fmt.Errorf("commit browser import: %w", err)
 	}
+	cleanupObjects = false
 
 	return response, nil
+}
+
+func (r *PostgresRepository) findCommittedImportAfterCommitError(idempotencyKey string, pkg Package) (CommitResponse, bool, error) {
+	verifyCtx, cancel := context.WithTimeout(context.Background(), idempotencyReplayWaitTimeout)
+	defer cancel()
+
+	existing, ok, err := r.findExistingBatch(verifyCtx, idempotencyKey)
+	if err != nil {
+		return CommitResponse{}, false, err
+	}
+	if ok && existing.PackageHash == pkg.PackageHash && existing.ManifestHash == pkg.ManifestHash && existing.Status == "completed" {
+		return existing.Response, true, nil
+	}
+	return CommitResponse{}, false, nil
+}
+
+func (r *PostgresRepository) importFiles(
+	ctx context.Context,
+	tx *sql.Tx,
+	batchID string,
+	manifest Manifest,
+	blobs map[string]PackageBlob,
+	uploadedObjectKeys *[]string,
+) (map[string]string, error) {
+	fileMappings := make(map[string]string, len(manifest.Files))
+	if len(manifest.Files) == 0 {
+		return fileMappings, nil
+	}
+	if r.objectStore == nil {
+		return nil, ErrStorageRequired
+	}
+
+	for _, file := range manifest.Files {
+		blob, ok := blobs[file.BlobPath]
+		if !ok {
+			return nil, newValidationError("MISSING_FILE_BLOB", "referenced ZIP blob is missing")
+		}
+		if blob.Size != file.Size || blob.SHA256 != file.SHA256 {
+			return nil, newValidationError("FILE_HASH_MISMATCH", "file size or SHA-256 does not match ZIP blob")
+		}
+
+		fileID, err := r.generateID()
+		if err != nil {
+			return nil, err
+		}
+		objectKey := importedObjectKey(r.userID, fileID)
+		mimeType := normalizeImportMimeType(file.MimeType)
+		if err := r.objectStore.Put(ctx, objectKey, bytes.NewReader(blob.Data), file.Size, mimeType); err != nil {
+			_ = r.objectStore.Delete(context.Background(), objectKey)
+			return nil, fmt.Errorf("store imported file object: %w", err)
+		}
+		*uploadedObjectKeys = append(*uploadedObjectKeys, objectKey)
+
+		metadata := importFileMetadata(batchID, manifest.IdempotencyKey, file)
+		encodedMetadata, err := marshalJSONObject(metadata)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tx.ExecContext(
+			ctx,
+			fileImportInsertSQL,
+			fileID,
+			r.userID,
+			safeImportFilename(file.FileName),
+			mimeType,
+			file.Size,
+			file.SHA256,
+			r.normalizedStorageBackend(),
+			objectKey,
+			string(encodedMetadata),
+		); err != nil {
+			return nil, fmt.Errorf("insert imported file metadata: %w", err)
+		}
+		fileMappings[strings.TrimSpace(file.ClientFileID)] = fileID
+	}
+
+	return fileMappings, nil
+}
+
+func (r *PostgresRepository) importMessageAttachments(
+	ctx context.Context,
+	tx *sql.Tx,
+	messageID string,
+	attachments []ImportAttachment,
+	fileMappings map[string]string,
+) (int, error) {
+	created := 0
+	for displayOrder, attachment := range attachments {
+		if strings.ToLower(strings.TrimSpace(attachment.Source)) != "file" {
+			continue
+		}
+		fileID := fileMappings[strings.TrimSpace(attachment.ClientFileID)]
+		if fileID == "" {
+			return 0, newValidationError("MISSING_FILE_BLOB", "file attachment references an unknown imported file")
+		}
+		linkID, err := r.generateID()
+		if err != nil {
+			return 0, err
+		}
+		if _, err := tx.ExecContext(
+			ctx,
+			messageAttachmentImportInsertSQL,
+			linkID,
+			messageID,
+			fileID,
+			r.userID,
+			displayOrder,
+			normalizeAttachmentPurpose(attachment.Purpose),
+		); err != nil {
+			return 0, fmt.Errorf("insert imported message attachment: %w", err)
+		}
+		created++
+	}
+
+	return created, nil
+}
+
+func importFileMetadata(batchID string, idempotencyKey string, file ImportFile) map[string]any {
+	importInfo := map[string]any{
+		"batchId":        batchID,
+		"clientFileId":   strings.TrimSpace(file.ClientFileID),
+		"idempotencyKey": idempotencyKey,
+		"source":         "browser-import",
+		"fileSource":     normalizeImportFileSource(file.Source),
+		"blobPath":       file.BlobPath,
+	}
+	if originalURL := strings.TrimSpace(file.OriginalURL); originalURL != "" {
+		importInfo["originalUrl"] = originalURL
+	}
+	if len(file.SourceAttachmentIDs) > 0 {
+		importInfo["sourceAttachmentIds"] = file.SourceAttachmentIDs
+	}
+
+	return map[string]any{
+		"purpose": normalizeImportFilePurpose(file.Purpose),
+		"import":  importInfo,
+	}
+}
+
+func deferredImportAttachments(attachments []ImportAttachment) []ImportAttachment {
+	deferred := make([]ImportAttachment, 0, len(attachments))
+	for _, attachment := range attachments {
+		if strings.ToLower(strings.TrimSpace(attachment.Source)) == "file" {
+			continue
+		}
+		deferred = append(deferred, attachment)
+	}
+	return deferred
+}
+
+func (r *PostgresRepository) normalizedStorageBackend() string {
+	backend := strings.ToLower(strings.TrimSpace(r.storageBackend))
+	if backend == "" {
+		return defaultStorageBackend
+	}
+	return backend
+}
+
+func importedObjectKey(userID string, fileID string) string {
+	return "users/" + strings.TrimSpace(userID) + "/files/" + strings.TrimSpace(fileID)
+}
+
+func (r *PostgresRepository) deleteObjects(ctx context.Context, objectKeys []string) error {
+	if r == nil || r.objectStore == nil {
+		if len(objectKeys) == 0 {
+			return nil
+		}
+		return ErrStorageRequired
+	}
+	for _, objectKey := range objectKeys {
+		if strings.TrimSpace(objectKey) == "" {
+			continue
+		}
+		if err := r.objectStore.Delete(ctx, objectKey); err != nil {
+			return fmt.Errorf("delete imported file object: %w", err)
+		}
+	}
+	return nil
 }
 
 func (r *PostgresRepository) GetBatchStatus(ctx context.Context, batchID string) (BatchStatusResponse, error) {
@@ -281,8 +523,20 @@ FOR UPDATE
 	} else if err != nil {
 		return fmt.Errorf("query import batch for rollback: %w", err)
 	}
+
+	objectKeys, err := r.importedObjectKeys(ctx, tx, batchID)
+	if err != nil {
+		return err
+	}
+	if len(objectKeys) > 0 && r.objectStore == nil {
+		return ErrStorageRequired
+	}
+
 	if status == "rolled_back" {
-		return tx.Commit()
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit idempotent import rollback: %w", err)
+		}
+		return r.deleteObjects(ctx, objectKeys)
 	}
 	if status != "completed" || !completedAt.Valid {
 		return ErrBatchModified
@@ -290,6 +544,19 @@ FOR UPDATE
 
 	var modifiedCount int
 	if err := tx.QueryRowContext(ctx, `
+WITH imported_messages AS (
+  SELECT id, updated_at
+  FROM messages
+  WHERE user_id = $1
+    AND metadata #>> '{import,batchId}' = $2
+    AND deleted_at IS NULL
+), imported_files AS (
+  SELECT id, updated_at
+  FROM files
+  WHERE user_id = $1
+    AND metadata #>> '{import,batchId}' = $2
+    AND deleted_at IS NULL
+)
 SELECT COUNT(*)
 FROM (
   SELECT updated_at
@@ -298,11 +565,16 @@ FROM (
     AND metadata #>> '{import,batchId}' = $2
     AND deleted_at IS NULL
   UNION ALL
-  SELECT updated_at
-  FROM messages
-  WHERE user_id = $1
-    AND metadata #>> '{import,batchId}' = $2
-    AND deleted_at IS NULL
+  SELECT updated_at FROM imported_messages
+  UNION ALL
+  SELECT updated_at FROM imported_files
+  UNION ALL
+  SELECT ma.updated_at
+  FROM message_attachments ma
+  LEFT JOIN imported_messages im ON im.id = ma.message_id
+  LEFT JOIN imported_files ifi ON ifi.id = ma.file_id
+  WHERE ma.user_id = $1
+    AND (im.id IS NOT NULL OR ifi.id IS NOT NULL)
 ) imported_rows
 WHERE updated_at > $3
 `, r.userID, batchID, completedAt.Time).Scan(&modifiedCount); err != nil {
@@ -312,6 +584,62 @@ WHERE updated_at > $3
 		return ErrBatchModified
 	}
 
+	var externalAttachmentRefs int
+	if err := tx.QueryRowContext(ctx, `
+WITH imported_messages AS (
+  SELECT id
+  FROM messages
+  WHERE user_id = $1
+    AND metadata #>> '{import,batchId}' = $2
+), imported_files AS (
+  SELECT id
+  FROM files
+  WHERE user_id = $1
+    AND metadata #>> '{import,batchId}' = $2
+)
+SELECT COUNT(*)
+FROM message_attachments ma
+LEFT JOIN imported_messages im ON im.id = ma.message_id
+LEFT JOIN imported_files ifi ON ifi.id = ma.file_id
+WHERE ma.user_id = $1
+  AND (im.id IS NOT NULL OR ifi.id IS NOT NULL)
+  AND NOT (im.id IS NOT NULL AND ifi.id IS NOT NULL)
+`, r.userID, batchID).Scan(&externalAttachmentRefs); err != nil {
+		return fmt.Errorf("query external import attachment refs: %w", err)
+	}
+	if externalAttachmentRefs > 0 {
+		return ErrBatchModified
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM message_attachments
+WHERE user_id = $1
+  AND (
+    message_id IN (
+      SELECT id
+      FROM messages
+      WHERE user_id = $1
+        AND metadata #>> '{import,batchId}' = $2
+    )
+    OR file_id IN (
+      SELECT id
+      FROM files
+      WHERE user_id = $1
+        AND metadata #>> '{import,batchId}' = $2
+    )
+  )
+`, r.userID, batchID); err != nil {
+		return fmt.Errorf("delete imported message attachments: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+UPDATE files
+SET upload_status = 'deleted', deleted_at = now(), updated_at = now()
+WHERE user_id = $1
+  AND metadata #>> '{import,batchId}' = $2
+  AND deleted_at IS NULL
+`, r.userID, batchID); err != nil {
+		return fmt.Errorf("soft delete imported files: %w", err)
+	}
 	if _, err := tx.ExecContext(ctx, `
 UPDATE messages
 SET deleted_at = now(), updated_at = now()
@@ -342,7 +670,34 @@ WHERE id = $1
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit import rollback: %w", err)
 	}
-	return nil
+	return r.deleteObjects(ctx, objectKeys)
+}
+
+func (r *PostgresRepository) importedObjectKeys(ctx context.Context, tx *sql.Tx, batchID string) ([]string, error) {
+	rows, err := tx.QueryContext(ctx, `
+SELECT object_key
+FROM files
+WHERE user_id = $1
+  AND metadata #>> '{import,batchId}' = $2
+ORDER BY created_at ASC, id ASC
+`, r.userID, batchID)
+	if err != nil {
+		return nil, fmt.Errorf("query imported object keys: %w", err)
+	}
+	defer rows.Close()
+
+	keys := []string{}
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, fmt.Errorf("scan imported object key: %w", err)
+		}
+		keys = append(keys, key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate imported object keys: %w", err)
+	}
+	return keys, nil
 }
 
 func (r *PostgresRepository) findExistingBatch(ctx context.Context, idempotencyKey string) (existingImportBatch, bool, error) {
@@ -573,4 +928,29 @@ INSERT INTO messages (
   updated_at,
   completed_at
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14, $15, $16)
+`
+const fileImportInsertSQL = `
+INSERT INTO files (
+  id,
+  user_id,
+  original_filename,
+  mime_type,
+  byte_size,
+  sha256,
+  storage_backend,
+  object_key,
+  upload_status,
+  metadata
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'available', $9::jsonb)
+`
+
+const messageAttachmentImportInsertSQL = `
+INSERT INTO message_attachments (
+  id,
+  message_id,
+  file_id,
+  user_id,
+  display_order,
+  purpose
+) VALUES ($1, $2, $3, $4, $5, $6)
 `

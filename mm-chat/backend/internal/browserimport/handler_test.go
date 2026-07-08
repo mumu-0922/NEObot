@@ -56,6 +56,15 @@ func TestHandlerCommitCallsRepositoryForValidPackage(t *testing.T) {
 	}
 }
 
+func TestHandlerCommitMapsStorageRequired(t *testing.T) {
+	repo := &fakeRepository{err: ErrStorageRequired}
+	handler := NewHandler(NewService(repo, WithNow(fixedNow)))
+
+	rec := performMultipartRequest(t, handler, http.MethodPost, browserImportPath, testImportZip(t, validManifest()))
+	assertStatus(t, rec, http.StatusServiceUnavailable)
+	assertErrorCode(t, rec, "STORAGE_REQUIRED")
+}
+
 func TestHandlerCommitRequiresDatabase(t *testing.T) {
 	handler := NewHandler(NewService(nil, WithNow(fixedNow)))
 	rec := performMultipartRequest(t, handler, http.MethodPost, browserImportPath, testImportZip(t, validManifest()))
@@ -177,12 +186,16 @@ func assertErrorCode(t *testing.T, rec *httptest.ResponseRecorder, want string) 
 
 type fakeRepository struct {
 	commits      int
+	err          error
 	response     CommitResponse
 	statusErrFor string
 }
 
 func (r *fakeRepository) Commit(_ context.Context, _ Package) (CommitResponse, error) {
 	r.commits++
+	if r.err != nil {
+		return CommitResponse{}, r.err
+	}
 	return r.response, nil
 }
 

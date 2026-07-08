@@ -22,6 +22,13 @@ type Package struct {
 	PackageHash  string
 	ManifestHash string
 	Warnings     []Issue
+	Blobs        map[string]PackageBlob
+}
+
+type PackageBlob struct {
+	Size   int64
+	SHA256 string
+	Data   []byte
 }
 
 type Manifest struct {

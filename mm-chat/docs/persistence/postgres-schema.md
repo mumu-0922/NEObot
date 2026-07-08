@@ -348,10 +348,12 @@ Boundary:
   completed response instead of creating duplicate conversations/messages.
 - Same `idempotency_key` with different package bytes returns
   `409 IDEMPOTENCY_CONFLICT`.
-- Imported conversations/messages carry `metadata.import.batchId` and original
-  client IDs so `DELETE /v1/import/browser/{batchId}` can soft-delete the batch.
-- The first runtime slice imports chat rows only. `files[]` and file-backed
-  attachments are rejected until the MinIO/S3 attachment import slice is built.
+- Imported conversations, messages, and files carry `metadata.import.batchId`
+  plus original client IDs so `DELETE /v1/import/browser/{batchId}` can locate
+  and roll back the batch.
+- Browser import writes ZIP-backed file bytes through private object storage,
+  inserts `files` metadata rows, and links file-backed message attachments via
+  `message_attachments`; remote attachments remain metadata-only.
 
 ### `audit_logs`
 

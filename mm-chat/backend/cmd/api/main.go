@@ -55,7 +55,6 @@ func main() {
 	if sqlDB := db.SQL(); sqlDB != nil {
 		chatRepo = chat.NewPostgresRepository(sqlDB)
 		fileRepo = files.NewPostgresRepository(sqlDB)
-		importRepo = browserimport.NewPostgresRepository(sqlDB)
 	}
 
 	chatProvider, err := newChatProvider(cfg)
@@ -73,6 +72,13 @@ func main() {
 		_ = redisClient.Close()
 		_ = db.Close()
 		log.Fatalf("mm-chat storage config failed: %v", err)
+	}
+	if sqlDB := db.SQL(); sqlDB != nil {
+		importRepo = browserimport.NewPostgresRepository(
+			sqlDB,
+			browserimport.WithObjectStore(objectStore),
+			browserimport.WithStorageBackend(cfg.Storage.Backend),
+		)
 	}
 
 	server := httpserver.New(

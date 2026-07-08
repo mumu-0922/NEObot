@@ -4,6 +4,7 @@ import "errors"
 
 var (
 	ErrDatabaseRequired    = errors.New("database is required")
+	ErrStorageRequired     = errors.New("storage is required")
 	ErrIdempotencyConflict = errors.New("idempotency key conflict")
 	ErrBatchNotFound       = errors.New("import batch not found")
 	ErrBatchModified       = errors.New("import batch modified")

@@ -155,7 +155,7 @@ export interface ImportAttachment {
   size?: number;
   sha256?: string;
   url?: string;
-  purpose?: "input" | "image" | "knowledge_source";
+  purpose?: "input" | "output" | "image" | "knowledge_source";
 }
 
 export interface ImportFile {
@@ -221,10 +221,10 @@ export interface ImportPreviewResponse {
 Commits the exact package after confirmation. The server creates a batch ID,
 then inserts conversations/messages and uploads file bytes.
 
-Runtime rollout note: the first Go runtime slice commits conversations and
-messages only. Packages containing `files[]` or file-backed attachments must be
-rejected instead of imported without attachments until the MinIO/S3 attachment
-slice is implemented.
+Runtime behavior: the Go backend imports conversations, messages, ZIP-backed
+`files[]`, and `source = "file"` message attachments in one batch. Remote and
+knowledge-reference attachments remain metadata-only and are not fetched by the
+backend.
 
 ```ts
 export interface ImportCommitResponse {

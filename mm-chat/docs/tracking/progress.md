@@ -110,7 +110,7 @@ Update this file whenever a phase or task is completed. Every `[x]` entry must h
 - [x] Add preview step before upload/import.
 - [x] Address browser import contract review findings.
 - [x] Import conversations and messages.
-- [ ] Import attachments into MinIO.
+- [x] Import attachments into MinIO.
 - [x] Add rollback/delete imported data path.
 
 ## Phase 9 — Optional Python RAG Sidecar

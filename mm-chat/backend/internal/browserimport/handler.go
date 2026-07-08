@@ -183,6 +183,9 @@ func serviceErrorFor(err error) (int, ErrorBody) {
 	if errors.Is(err, ErrDatabaseRequired) {
 		return http.StatusServiceUnavailable, ErrorBody{Code: "DATABASE_REQUIRED", Message: "database is required for import endpoints"}
 	}
+	if errors.Is(err, ErrStorageRequired) {
+		return http.StatusServiceUnavailable, ErrorBody{Code: "STORAGE_REQUIRED", Message: "storage is required for import file attachments"}
+	}
 	if errors.Is(err, ErrIdempotencyConflict) {
 		return http.StatusConflict, ErrorBody{Code: "IDEMPOTENCY_CONFLICT", Message: "idempotency key conflicts with a different import package"}
 	}

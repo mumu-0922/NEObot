@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -30,11 +31,6 @@ var sha256HexPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 type PackageReader struct {
 	MaxPackageBytes int64
 	Now             func() time.Time
-}
-
-type blobRecord struct {
-	Size   int64
-	SHA256 string
 }
 
 func (r PackageReader) Read(reader io.Reader) (Package, []Issue, error) {
@@ -77,6 +73,7 @@ func (r PackageReader) Read(reader io.Reader) (Package, []Issue, error) {
 		Manifest:     manifest,
 		PackageHash:  hex.EncodeToString(packageSum[:]),
 		ManifestHash: hex.EncodeToString(manifestSum[:]),
+		Blobs:        blobs,
 	}
 	issues := validateManifest(pkg, blobs, r.now())
 	pkg.Warnings = filterIssues(issues, "warning")
@@ -99,9 +96,9 @@ func readLimited(reader io.Reader, maxBytes int64) ([]byte, error) {
 	return payload, nil
 }
 
-func readZipEntries(zipReader *zip.Reader, maxTotalBytes int64) ([]byte, map[string]blobRecord, error) {
+func readZipEntries(zipReader *zip.Reader, maxTotalBytes int64) ([]byte, map[string]PackageBlob, error) {
 	seen := map[string]struct{}{}
-	blobs := map[string]blobRecord{}
+	blobs := map[string]PackageBlob{}
 	var manifest []byte
 	var totalUncompressed int64
 
@@ -139,7 +136,7 @@ func readZipEntries(zipReader *zip.Reader, maxTotalBytes int64) ([]byte, map[str
 				return nil, nil, err
 			}
 			sum := sha256.Sum256(data)
-			blobs[name] = blobRecord{Size: int64(len(data)), SHA256: hex.EncodeToString(sum[:])}
+			blobs[name] = PackageBlob{Size: int64(len(data)), SHA256: hex.EncodeToString(sum[:]), Data: data}
 		default:
 			return nil, nil, newValidationError("INVALID_IMPORT_PACKAGE", "ZIP entry is not allowed")
 		}
@@ -198,7 +195,7 @@ func validateEntryPath(name string, entry *zip.File) error {
 	return newValidationError("INVALID_IMPORT_PACKAGE", "ZIP entry is not allowed")
 }
 
-func validateManifest(pkg Package, blobs map[string]blobRecord, now time.Time) []Issue {
+func validateManifest(pkg Package, blobs map[string]PackageBlob, now time.Time) []Issue {
 	manifest := pkg.Manifest
 	issues := []Issue{}
 	addError := func(code, path, message string) {
@@ -259,41 +256,62 @@ func validateManifest(pkg Package, blobs map[string]blobRecord, now time.Time) [
 	}
 
 	fileIDs := map[string]ImportFile{}
+	referencedBlobPaths := map[string]struct{}{}
 	var declaredBytes int64
 	for i, file := range manifest.Files {
 		base := fmt.Sprintf("files[%d]", i)
-		if strings.TrimSpace(file.ClientFileID) == "" {
+		clientFileID := strings.TrimSpace(file.ClientFileID)
+		if clientFileID == "" {
 			addError("INVALID_IMPORT_PAYLOAD", base+".clientFileId", "file clientFileId is required")
-		} else if _, ok := fileIDs[file.ClientFileID]; ok {
+		} else if _, ok := fileIDs[clientFileID]; ok {
 			addError("DUPLICATE_CLIENT_ID", base+".clientFileId", "file clientFileId is duplicated")
 		} else {
-			fileIDs[file.ClientFileID] = file
+			fileIDs[clientFileID] = file
 		}
 		declaredBytes += file.Size
+		if importFileContainsSecret(file) {
+			addError("FORBIDDEN_SECRET_FIELD", base, "file metadata contains forbidden secret-like fields")
+		}
+		if strings.TrimSpace(file.OriginalURL) != "" && !isOPFSURL(file.OriginalURL) {
+			addError("INVALID_IMPORT_PAYLOAD", base+".originalUrl", "file originalUrl must be an opfs:// URL")
+		}
+		if normalizeImportFileSource(file.Source) == "" {
+			addError("INVALID_IMPORT_PAYLOAD", base+".source", "file source is unsupported")
+		}
+		if safeImportFilename(file.FileName) == "upload.bin" && strings.TrimSpace(file.FileName) == "" {
+			addError("INVALID_IMPORT_PAYLOAD", base+".fileName", "fileName is required")
+		}
+		if normalizeImportFilePurpose(file.Purpose) == "" {
+			addError("INVALID_IMPORT_PAYLOAD", base+".purpose", "file purpose is unsupported")
+		}
+		if file.Size < 0 {
+			addError("INVALID_IMPORT_PAYLOAD", base+".size", "file size must be non-negative")
+		}
 		if !sha256HexPattern.MatchString(file.SHA256) {
 			addError("INVALID_IMPORT_PAYLOAD", base+".sha256", "file sha256 must be lowercase hex")
 		}
-		if !strings.HasPrefix(file.BlobPath, blobPathPrefix) {
-			addError("INVALID_IMPORT_PAYLOAD", base+".blobPath", "file blobPath must be under files/sha256")
+		blobHash := strings.TrimPrefix(file.BlobPath, blobPathPrefix)
+		if !strings.HasPrefix(file.BlobPath, blobPathPrefix) || !sha256HexPattern.MatchString(blobHash) {
+			addError("INVALID_IMPORT_PAYLOAD", base+".blobPath", "file blobPath must be files/sha256/{sha256}")
 			continue
 		}
+		referencedBlobPaths[file.BlobPath] = struct{}{}
 		blob, ok := blobs[file.BlobPath]
 		if !ok {
 			addError("MISSING_FILE_BLOB", base+".blobPath", "referenced ZIP blob is missing")
 			continue
 		}
-		if blob.Size != file.Size || blob.SHA256 != file.SHA256 || strings.TrimPrefix(file.BlobPath, blobPathPrefix) != file.SHA256 {
+		if blob.Size != file.Size || blob.SHA256 != file.SHA256 || blobHash != file.SHA256 {
 			addError("FILE_HASH_MISMATCH", base+".blobPath", "file size or SHA-256 does not match ZIP blob")
 		}
 	}
 	if manifest.Counts.Bytes != declaredBytes {
 		addError("INVALID_IMPORT_PAYLOAD", "counts.bytes", "byte count does not match manifest files")
 	}
-	if len(manifest.Files) > 0 {
-		addError("INVALID_IMPORT_PAYLOAD", "files", "file object import is deferred to the attachment phase")
-	}
-	if len(blobs) > 0 && len(manifest.Files) == 0 {
-		addError("INVALID_IMPORT_PACKAGE", "files/sha256", "unreferenced file blobs are not allowed")
+	for blobPath := range blobs {
+		if _, ok := referencedBlobPaths[blobPath]; !ok {
+			addError("INVALID_IMPORT_PACKAGE", "files/sha256", "unreferenced file blobs are not allowed")
+		}
 	}
 
 	messagesByID := map[string]ImportMessage{}
@@ -335,19 +353,38 @@ func validateManifest(pkg Package, blobs map[string]blobRecord, now time.Time) [
 		if containsForbiddenSecret(message.OutputBlocks) {
 			addError("FORBIDDEN_SECRET_FIELD", base+".outputBlocks", "message outputBlocks contain forbidden secret-like fields")
 		}
+		seenFileAttachments := map[string]struct{}{}
 		for j, attachment := range message.Attachments {
 			attachmentPath := fmt.Sprintf("%s.attachments[%d]", base, j)
+			if strings.TrimSpace(attachment.ClientAttachmentID) == "" {
+				addError("INVALID_IMPORT_PAYLOAD", attachmentPath+".clientAttachmentId", "attachment clientAttachmentId is required")
+			}
 			if attachmentContainsSecret(attachment) {
 				addError("FORBIDDEN_SECRET_FIELD", attachmentPath, "attachment contains forbidden secret-like fields")
+			}
+			if attachment.Purpose != "" && normalizeAttachmentPurpose(attachment.Purpose) == "" {
+				addError("INVALID_IMPORT_PAYLOAD", attachmentPath+".purpose", "attachment purpose is unsupported")
 			}
 			source := strings.ToLower(strings.TrimSpace(attachment.Source))
 			switch source {
 			case "remote", "knowledge_ref":
 			case "file":
-				if _, ok := fileIDs[attachment.ClientFileID]; !ok {
+				clientFileID := strings.TrimSpace(attachment.ClientFileID)
+				if _, ok := seenFileAttachments[clientFileID]; ok {
+					addError("INVALID_IMPORT_PAYLOAD", attachmentPath+".clientFileId", "file attachment is duplicated for this message")
+					continue
+				}
+				seenFileAttachments[clientFileID] = struct{}{}
+				file, ok := fileIDs[clientFileID]
+				if !ok {
 					addError("MISSING_FILE_BLOB", attachmentPath+".clientFileId", "file attachment references an unknown file")
-				} else {
-					addError("INVALID_IMPORT_PAYLOAD", attachmentPath, "file attachments are deferred to the attachment phase")
+					continue
+				}
+				if attachment.Size > 0 && attachment.Size != file.Size {
+					addError("FILE_HASH_MISMATCH", attachmentPath+".size", "attachment size does not match referenced file")
+				}
+				if attachment.SHA256 != "" && attachment.SHA256 != file.SHA256 {
+					addError("FILE_HASH_MISMATCH", attachmentPath+".sha256", "attachment sha256 does not match referenced file")
 				}
 			default:
 				addError("INVALID_IMPORT_PAYLOAD", attachmentPath+".source", "attachment source is unsupported")
@@ -386,6 +423,93 @@ func validateManifest(pkg Package, blobs map[string]blobRecord, now time.Time) [
 	}
 
 	return issues
+}
+
+func normalizeImportFileSource(source string) string {
+	switch strings.ToLower(strings.TrimSpace(source)) {
+	case "opfs", "inline":
+		return strings.ToLower(strings.TrimSpace(source))
+	default:
+		return ""
+	}
+}
+
+func normalizeImportFilePurpose(purpose string) string {
+	switch strings.ToLower(strings.TrimSpace(purpose)) {
+	case "chat", "workspace", "knowledge", "image", "audio", "export":
+		return strings.ToLower(strings.TrimSpace(purpose))
+	default:
+		return ""
+	}
+}
+
+func normalizeAttachmentPurpose(purpose string) string {
+	switch strings.ToLower(strings.TrimSpace(purpose)) {
+	case "", "input":
+		return "input"
+	case "output", "image", "knowledge_source":
+		return strings.ToLower(strings.TrimSpace(purpose))
+	default:
+		return ""
+	}
+}
+
+func safeImportFilename(name string) string {
+	name = strings.TrimSpace(filepath.Base(strings.ReplaceAll(name, "\\", "/")))
+	if name == "" || name == "." || name == string(filepath.Separator) {
+		return "upload.bin"
+	}
+	return name
+}
+
+func normalizeImportMimeType(mimeType string) string {
+	mimeType = strings.TrimSpace(mimeType)
+	if mimeType == "" {
+		return "application/octet-stream"
+	}
+	return mimeType
+}
+
+func importFileContainsSecret(file ImportFile) bool {
+	if isForbiddenSecretKey(file.ClientFileID) || isForbiddenSecretKey(file.FileName) || isForbiddenSecretKey(file.OriginalURL) {
+		return true
+	}
+	for _, attachmentID := range file.SourceAttachmentIDs {
+		if isForbiddenSecretKey(attachmentID) {
+			return true
+		}
+	}
+	if strings.TrimSpace(file.OriginalURL) == "" {
+		return false
+	}
+	parsed, err := url.Parse(file.OriginalURL)
+	if err != nil {
+		return false
+	}
+	if parsed.User != nil || isForbiddenSecretKey(parsed.Fragment) {
+		return true
+	}
+	for key, values := range parsed.Query() {
+		if isForbiddenSecretKey(key) {
+			return true
+		}
+		for _, value := range values {
+			if isForbiddenSecretKey(value) {
+				return true
+			}
+		}
+	}
+	for _, segment := range strings.Split(parsed.Path, "/") {
+		if isForbiddenSecretKey(segment) {
+			return true
+		}
+	}
+	return false
+}
+
+func isOPFSURL(value string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	return err == nil && parsed.Scheme == "opfs" && parsed.Host != ""
 }
 
 func attachmentContainsSecret(attachment ImportAttachment) bool {

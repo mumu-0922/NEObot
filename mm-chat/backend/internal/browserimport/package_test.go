@@ -26,6 +26,85 @@ func TestPackageReaderValidatesChatOnlyImport(t *testing.T) {
 	}
 }
 
+func TestPackageReaderValidatesFileImportPackage(t *testing.T) {
+	blob := []byte("hello")
+	manifest := validFileManifest()
+
+	pkg, issues, err := PackageReader{Now: fixedNow}.Read(bytes.NewReader(testImportZip(
+		t,
+		manifest,
+		zipEntry{name: manifest.Files[0].BlobPath, body: blob},
+	)))
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(filterIssues(issues, "error")) != 0 {
+		t.Fatalf("errors = %#v, want none", issues)
+	}
+	got := pkg.Blobs[manifest.Files[0].BlobPath]
+	if got.SHA256 != manifest.Files[0].SHA256 || !bytes.Equal(got.Data, blob) {
+		t.Fatalf("blob = %#v, want sha/data preserved", got)
+	}
+}
+
+func TestPackageReaderRejectsUnsupportedFileAttachmentFields(t *testing.T) {
+	manifest := validFileManifest()
+	manifest.Files[0].Source = "http"
+	manifest.Files[0].OriginalURL = "https://example.test/file.txt"
+	manifest.Messages[0].Attachments[0].Purpose = "bad"
+
+	_, issues, err := PackageReader{Now: fixedNow}.Read(bytes.NewReader(testImportZip(
+		t,
+		manifest,
+		zipEntry{name: manifest.Files[0].BlobPath, body: []byte("hello")},
+	)))
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	assertIssue(t, issues, "INVALID_IMPORT_PAYLOAD", "files[0].source")
+	assertIssue(t, issues, "INVALID_IMPORT_PAYLOAD", "files[0].originalUrl")
+	assertIssue(t, issues, "INVALID_IMPORT_PAYLOAD", "messages[0].attachments[0].purpose")
+}
+
+func TestPackageReaderRejectsDuplicateFileAttachmentOnSameMessage(t *testing.T) {
+	manifest := validFileManifest()
+	manifest.Messages[0].Attachments = append(manifest.Messages[0].Attachments, ImportAttachment{
+		ClientAttachmentID: "attachment-client-2",
+		Source:             "file",
+		ClientFileID:       "file-client-1",
+		FileName:           "hello-copy.txt",
+		MimeType:           "text/plain",
+		Size:               int64(len("hello")),
+		SHA256:             manifest.Files[0].SHA256,
+		Purpose:            "input",
+	})
+
+	_, issues, err := PackageReader{Now: fixedNow}.Read(bytes.NewReader(testImportZip(
+		t,
+		manifest,
+		zipEntry{name: manifest.Files[0].BlobPath, body: []byte("hello")},
+	)))
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	assertIssue(t, issues, "INVALID_IMPORT_PAYLOAD", "messages[0].attachments[1].clientFileId")
+}
+
+func TestPackageReaderRejectsSecretsInImportFileMetadata(t *testing.T) {
+	manifest := validFileManifest()
+	manifest.Files[0].OriginalURL = "opfs://neo-chat/files/access_token"
+
+	_, issues, err := PackageReader{Now: fixedNow}.Read(bytes.NewReader(testImportZip(
+		t,
+		manifest,
+		zipEntry{name: manifest.Files[0].BlobPath, body: []byte("hello")},
+	)))
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	assertIssueCode(t, issues, "FORBIDDEN_SECRET_FIELD")
+}
+
 func TestPackageReaderRejectsDiagnosticStoreEntries(t *testing.T) {
 	archive := testImportZip(t, validManifest(), zipEntry{name: "stores/chat.json", body: []byte(`{}`)})
 
@@ -250,6 +329,36 @@ func validManifest() Manifest {
 		},
 		Files: []ImportFile{},
 	}
+}
+
+func validFileManifest() Manifest {
+	manifest := validManifest()
+	sha := "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+	manifest.Counts.Files = 1
+	manifest.Counts.Bytes = int64(len("hello"))
+	manifest.Files = []ImportFile{{
+		ClientFileID:        "file-client-1",
+		Source:              "opfs",
+		OriginalURL:         "opfs://neo-chat/files/file-client-1",
+		SourceAttachmentIDs: []string{"attachment-client-1"},
+		FileName:            "hello.txt",
+		MimeType:            "text/plain",
+		Size:                int64(len("hello")),
+		SHA256:              sha,
+		BlobPath:            "files/sha256/" + sha,
+		Purpose:             "chat",
+	}}
+	manifest.Messages[0].Attachments = []ImportAttachment{{
+		ClientAttachmentID: "attachment-client-1",
+		Source:             "file",
+		ClientFileID:       "file-client-1",
+		FileName:           "hello.txt",
+		MimeType:           "text/plain",
+		Size:               int64(len("hello")),
+		SHA256:             sha,
+		Purpose:            "input",
+	}}
+	return manifest
 }
 
 type zipEntry struct {
