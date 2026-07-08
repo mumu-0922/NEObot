@@ -265,6 +265,25 @@ runtime behavior.
       roles are returned.
 - [x] Add targeted gateway and mapper tests.
 
+### Phase 11.2B-2 — Store server read path
+
+This slice adds explicit store actions for server-mode read experiments. The
+actions are not called by UI/bootstrap yet.
+
+- [x] Add `refreshServerSessions()` to load server conversation metadata through
+      the CRUD gateway.
+- [x] Add `selectServerSession(id)` to load server messages through the CRUD
+      gateway.
+- [x] Store server read results in non-persisted `serverReadState`, not the
+      legacy `sessions/currentSessionId/activeMessages` fields.
+- [x] Keep local IndexedDB select/hydration path unchanged.
+- [x] Avoid writing server-owned messages to `session_messages_*` during server
+      read actions.
+- [x] Return `false` without server or local-storage calls when server CRUD is
+      disabled.
+- [x] Add targeted store tests for refresh, select, disabled mode, stale reads,
+      and persist boundary.
+
 ### Phase 11.3 — SSE stream
 
 - [ ] Send persisted `userMessageId`, `modelRef`, and `idempotencyKey` to the

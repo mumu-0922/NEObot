@@ -43,11 +43,35 @@ import {
   switchMessageBranch,
   updateMessageInTree,
 } from "../../lib/chat/messageTree";
+import {
+  createChatCrudService,
+  type ChatCrudMessage,
+  type ChatCrudSession,
+} from "../../services/api/chatCrudService";
 
 let selectSessionRequestId = 0;
+let serverReadRequestId = 0;
 const sessionMessageWriteQueues = new Map<string, Promise<void>>();
 
 const createEmptyMessageTree = () => normalizeSessionMessageTree([]);
+
+interface ServerReadState {
+  sessions: Session[];
+  currentSessionId: string | null;
+  activeMessages: Message[];
+  activeMessageTree: SessionMessageTree;
+  isLoading: boolean;
+  error: string | null;
+}
+
+const createEmptyServerReadState = (): ServerReadState => ({
+  sessions: [],
+  currentSessionId: null,
+  activeMessages: [],
+  activeMessageTree: createEmptyMessageTree(),
+  isLoading: false,
+  error: null,
+});
 
 const normalizeStoredMessageTree = (
   stored: Message[] | SessionMessageTree | null | undefined,
@@ -58,6 +82,32 @@ const normalizeStoredMessageTree = (
 
   return normalizeSessionMessageTree(normalizeMessages(stored));
 };
+
+const toStoreSessionFromServer = (session: ChatCrudSession): Session =>
+  normalizeSession({
+    id: session.id,
+    title: session.title,
+    messageCount: session.messageCount,
+    updatedAt: session.updatedAt,
+    model: session.model,
+    pinned: session.pinned,
+    config: session.config,
+  });
+
+const toStoreMessageFromServer = (message: ChatCrudMessage): Message => ({
+  id: message.id,
+  role: message.role,
+  content: message.content,
+  timestamp: message.timestamp,
+  ...(message.attachments ? { attachments: message.attachments } : {}),
+  ...(message.model ? { model: message.model } : {}),
+  ...(message.outputBlocks
+    ? { outputBlocks: message.outputBlocks as MessageOutputBlock[] }
+    : {}),
+});
+
+const getServerReadErrorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : "Failed to load server chat data.";
 
 const getAttachmentUrls = (files: Attachment[] = []): string[] => {
   const urls = new Set<string>();
@@ -233,6 +283,7 @@ interface ChatState {
   activeMessages: Message[]; // Currently loaded messages
   activeMessageTree: SessionMessageTree;
   isActiveSessionLoading: boolean;
+  serverReadState: ServerReadState;
 
   selectedModel: string;
   chatConfig: ChatConfig;
@@ -246,6 +297,8 @@ interface ChatState {
     config?: SessionConfig,
   ) => string;
   selectSession: (id: string) => Promise<void>;
+  refreshServerSessions: () => Promise<boolean>;
+  selectServerSession: (id: string) => Promise<boolean>;
   deleteSession: (id: string) => Promise<void>;
   updateSessionTitle: (id: string, newTitle: string) => void;
   updateSessionInstruction: (id: string, instruction: string) => void;
@@ -412,6 +465,7 @@ export const useChatStore = create<ChatState>()(
       activeMessages: [],
       activeMessageTree: createEmptyMessageTree(),
       isActiveSessionLoading: false,
+      serverReadState: createEmptyServerReadState(),
       selectedModel: "",
       chatConfig: { ...DEFAULT_CHAT_CONFIG },
 
@@ -530,6 +584,117 @@ export const useChatStore = create<ChatState>()(
             s.id === id ? { ...s, messageCount: activeMessages.length } : s,
           ),
         });
+      },
+
+      refreshServerSessions: async () => {
+        const service = createChatCrudService();
+        if (!service.serverEnabled) return false;
+
+        const requestId = serverReadRequestId + 1;
+        serverReadRequestId = requestId;
+        set((state) => ({
+          serverReadState: {
+            ...state.serverReadState,
+            isLoading: true,
+            error: null,
+          },
+        }));
+
+        try {
+          const sessions = (await service.listConversations()).map(
+            toStoreSessionFromServer,
+          );
+          if (requestId !== serverReadRequestId) return false;
+
+          const currentSessionId = get().serverReadState.currentSessionId;
+          const nextSessionId =
+            currentSessionId &&
+            sessions.some((session) => session.id === currentSessionId)
+              ? currentSessionId
+              : (sessions[0]?.id ?? null);
+
+          set({
+            serverReadState: {
+              sessions,
+              currentSessionId: nextSessionId,
+              activeMessages: [],
+              activeMessageTree: createEmptyMessageTree(),
+              isLoading: false,
+              error: null,
+            },
+          });
+
+          if (nextSessionId) {
+            return get().selectServerSession(nextSessionId);
+          }
+
+          return true;
+        } catch (error) {
+          if (requestId === serverReadRequestId) {
+            set((state) => ({
+              serverReadState: {
+                ...state.serverReadState,
+                isLoading: false,
+                error: getServerReadErrorMessage(error),
+              },
+            }));
+          }
+          throw error;
+        }
+      },
+
+      selectServerSession: async (id) => {
+        const service = createChatCrudService();
+        if (!service.serverEnabled) return false;
+
+        const requestId = serverReadRequestId + 1;
+        serverReadRequestId = requestId;
+        set((state) => ({
+          serverReadState: {
+            ...state.serverReadState,
+            isLoading: true,
+            error: null,
+          },
+        }));
+
+        try {
+          const messages = (await service.listMessages(id)).map(
+            toStoreMessageFromServer,
+          );
+          if (requestId !== serverReadRequestId) return false;
+
+          const messageTree = normalizeSessionMessageTree(messages);
+          const activeMessages = getActiveMessagePath(messageTree);
+
+          set((state) => ({
+            serverReadState: {
+              ...state.serverReadState,
+              currentSessionId: id,
+              activeMessages,
+              activeMessageTree: messageTree,
+              isLoading: false,
+              error: null,
+              sessions: state.serverReadState.sessions.map((session) =>
+                session.id === id
+                  ? { ...session, messageCount: activeMessages.length }
+                  : session,
+              ),
+            },
+          }));
+
+          return true;
+        } catch (error) {
+          if (requestId === serverReadRequestId) {
+            set((state) => ({
+              serverReadState: {
+                ...state.serverReadState,
+                isLoading: false,
+                error: getServerReadErrorMessage(error),
+              },
+            }));
+          }
+          throw error;
+        }
       },
 
       deleteSession: async (id) => {
@@ -1455,6 +1620,7 @@ export const useChatStore = create<ChatState>()(
           ),
           activeMessages: normalizeMessages(state.activeMessages),
           activeMessageTree: normalizeSessionMessageTree(state.activeMessages),
+          serverReadState: createEmptyServerReadState(),
           selectedModel:
             state.selectedModel === DEPRECATED_DEFAULT_SELECTED_MODEL
               ? ""

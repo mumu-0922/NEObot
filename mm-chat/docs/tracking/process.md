@@ -2737,3 +2737,103 @@ local rollback stay unchanged.
 Proceed to Phase 11.2B-2: use the gateway for server-mode read path
 experiments (`listConversations` + `listMessages`) while keeping the legacy
 local path unchanged.
+
+## 2026-07-08 — Phase 11.2B-2: Store Server Read Path Actions
+
+### Action
+
+Added explicit server-mode read actions to `chatStore` without calling them
+from UI, bootstrap, `ChatApp`, or legacy `chatService.ts`.
+
+Changed:
+
+```text
+src/store/core/chatStore.ts
+src/__tests__/chatStoreServerRead.test.ts
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+### Decision
+
+Keep the new read path opt-in until the async write-path mismatch is resolved.
+The actions use `chatCrudService` only when server CRUD is enabled:
+
+```text
+refreshServerSessions() -> listConversations() -> serverReadState.sessions
+selectServerSession(id) -> listMessages(id) -> serverReadState.activeMessageTree
+```
+
+Both actions return `false` without server calls or IndexedDB reads/writes when
+server CRUD is disabled. Server-owned messages are not written to
+`session_messages_*`; server-owned metadata and current selection are also kept
+out of the persisted legacy `sessions/currentSessionId/activeMessages` path.
+The backend remains source of truth for this path.
+
+### Review Finding
+
+An initial draft wrote server conversation metadata into the legacy
+`sessions/currentSessionId` fields. Review flagged that those fields are
+persisted by Zustand `partialize` into the main IndexedDB chat metadata key.
+The implementation was corrected before commit by adding a non-persisted
+`serverReadState` snapshot:
+
+```text
+serverReadState.sessions
+serverReadState.currentSessionId
+serverReadState.activeMessages
+serverReadState.activeMessageTree
+serverReadState.isLoading
+serverReadState.error
+```
+
+`serverReadState` is initialized empty, reset during migration, and deliberately
+omitted from `partialize`.
+
+### Verification
+
+Trellis check found one test-harness quality issue: the targeted store test
+mock used a mutable `initialState` binding and invoked Zustand `partialize`
+without narrowing the optional function/unknown return type. This failed
+project lint/type-check. The test was tightened with an `initialStateRef`,
+a runtime partialize assertion, and a narrow persisted-state cast.
+
+Targeted verification passed after the fix:
+
+```text
+corepack pnpm vitest run src/__tests__/chatStoreServerRead.test.ts src/__tests__/chatCrudService.test.ts src/__tests__/apiClientScaffold.test.ts
+  passed: 3 files, 28 tests
+
+corepack pnpm typecheck
+  passed
+
+corepack pnpm exec eslint src/store/core/chatStore.ts src/__tests__/chatStoreServerRead.test.ts
+  passed
+
+corepack pnpm exec prettier --check src/store/core/chatStore.ts src/__tests__/chatStoreServerRead.test.ts mm-chat/docs/tracking/progress.md mm-chat/docs/tracking/process.md
+  passed
+
+git diff --check -- src/store/core/chatStore.ts src/__tests__/chatStoreServerRead.test.ts mm-chat/docs/tracking/progress.md mm-chat/docs/tracking/process.md
+  passed
+```
+
+Full-suite caveats:
+
+- `corepack pnpm lint` is blocked before linting by filesystem permissions while
+  ESLint scans `mm-chat/data/postgres`.
+- `corepack pnpm test` still has pre-existing/out-of-scope failures in
+  `darkThemeTokens.test.ts`, `byokRoutes.test.ts`,
+  `messageInputComposition.test.ts`, and `serverDefaults.test.ts`.
+
+### Boundary
+
+This slice still does not enable server mode in the visible UI. Existing local
+`selectSession`, IndexedDB hydration, message writes, local streaming, and
+rollback behavior remain unchanged until a later bootstrap/service integration
+slice explicitly calls these server read actions.
+
+### Next Step
+
+Proceed to Phase 11.2B-3: decide the write-path strategy for async server
+conversation creation versus the current synchronous `createSession(): string`
+contract.
