@@ -160,6 +160,16 @@ Phase 11.1 opening constraints recorded on 2026-07-08:
   request/confirm the allowed original-app modification boundary before touching
   the original app.
 
+Owner integration constraint recorded on 2026-07-08:
+
+- Preserve the existing Next.js/React frontend stack and visible UI.
+- Keep original-app changes minimal and service-layer first.
+- Use the adapter boundary to connect functionality; do not rewrite components,
+  styling, state shape, or product flows unless a later phase explicitly
+  authorizes it.
+- `src/` changes are allowed only for narrow API-client/service integration and
+  targeted tests.
+
 ### Phase 11.1 — Adapter scaffold
 
 - [ ] Identify the existing frontend API boundary, mode selector, and local-mode

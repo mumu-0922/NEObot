@@ -32,6 +32,9 @@ Scope:
   small reversible slices.
 - Wire conversation CRUD, message CRUD, SSE streaming, and file upload/download
   after the adapter scaffold is in place.
+- Preserve the existing Next.js/React frontend technology stack and UI. Phase
+  11 integration must be adapter/service-layer work first, not a component or
+  design-system rewrite.
 - Keep `local` mode as default rollback until server mode is verified.
 - Do not remove browser-local storage paths in this phase.
 - Defer browser import/export UI, real auth/session UI, RAG/knowledge flows, and
@@ -67,6 +70,8 @@ Execution rule:
   verification, rollback, and tracking checklist are documented.
 - Do not mark any Phase 11 progress checkbox complete without a matching dated
   entry in `docs/tracking/process.md`.
+- When original app files under `src/` are required, prefer additive adapter
+  files and one narrow service boundary change over UI/store rewrites.
 
 ### 11.1 — Adapter Scaffold
 
@@ -87,6 +92,9 @@ Scope:
 - First-slice boundary: do not touch browser import/export UI, auth/session UI
   or enforcement, RAG/knowledge flows, provider-settings redesign, or unrelated
   product UI.
+- Owner-approved original-app edits are limited to minimal service/API-client
+  integration files. Do not change visible UI, component composition, styling,
+  routes, or frontend framework choices in this slice.
 
 Outputs:
 

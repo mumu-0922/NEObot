@@ -2436,3 +2436,44 @@ work is task-local: `mm-chat/frontend/DESIGN.md`,
 `mm-chat/docs/contracts/frontend-api-client.md`, and this process log. Keeping
 the spec update inside `mm-chat/` also avoids mixing this scoped refactor commit
 with unrelated untracked `.trellis/` workspace files.
+
+## 2026-07-08 — Owner Decision: Preserve Frontend Stack and UI
+
+### Decision
+
+The original frontend technology stack and visible UI must stay unchanged while
+server-mode functionality is connected.
+
+```text
+Keep:
+- Next.js / React / TypeScript stack
+- current component layout and visual UI
+- current route structure and user-facing flows
+- existing local mode rollback behavior
+
+Change first:
+- service/API-client boundary
+- adapter mode selection
+- DTO/error/SSE mapping
+- targeted tests and docs
+```
+
+### Integration Rule
+
+Original app changes under `src/` are now allowed only when they are narrow,
+additive, and necessary to connect the adapter boundary. The preferred path is:
+
+```text
+src/services/api/client/*      -> add adapter boundary
+src/services/api/chatService.ts -> later one narrow delegation point
+ChatApp/components/store        -> unchanged unless a later phase authorizes it
+```
+
+This means functionality must be connected through the service layer, not by
+rewriting UI components or replacing frontend technology.
+
+### Next Step
+
+Proceed to Phase 11.1B by adding the adapter boundary to the original app with
+minimal files and tests. Do not wire CRUD, SSE, files, auth, RAG, plugins, or
+provider-settings UI in 11.1B.
