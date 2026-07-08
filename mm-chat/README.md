@@ -11,13 +11,13 @@ All refactor documentation lives under [`docs/`](./docs/):
 - [`docs/tracking/progress.md`](./docs/tracking/progress.md) — living checklist. Mark completed work with `[x]` and link evidence.
 - [`docs/tracking/process.md`](./docs/tracking/process.md) — chronological work log for decisions, commands, findings, and next steps.
 - [`docs/contracts/`](./docs/contracts/) — future API/client contracts.
-- [`docs/deployment/`](./docs/deployment/) — future single-server deployment and backup notes.
+- [`docs/deployment/`](./docs/deployment/) — single-server Compose deployment, backup, restore, release, and rollback notes.
 
 ## Refactor Rules
 
 1. Keep the current Next.js/React frontend working during every phase.
 2. Build by strangler migration: add a new backend path, switch one capability at a time, keep rollback flags.
-3. Start single-server first: Go backend + Postgres + Redis + MinIO through Docker Compose.
+3. Start single-server first: Go backend + Postgres + Redis + private MinIO through Docker Compose under this workspace.
 4. Store real files in object storage or local storage abstraction; store only metadata in Postgres.
 5. Do not silently upload existing browser-local data. Any migration from IndexedDB/OPFS must be user-initiated.
 6. Every completed phase must update both `docs/tracking/progress.md` and `docs/tracking/process.md`.

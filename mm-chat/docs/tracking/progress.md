@@ -124,9 +124,9 @@ Update this file whenever a phase or task is completed. Every `[x]` entry must h
 
 ## Phase 10 — Single-Server Deployment
 
-- [ ] Add Docker Compose topology under `mm-chat/`.
-- [ ] Add `.env.example` for new stack.
-- [ ] Add backup script/guide for Postgres and MinIO.
-- [ ] Add restore drill guide.
-- [ ] Add reverse proxy and private network notes.
-- [ ] Add release/rollback checklist.
+- [x] Add Docker Compose topology under `mm-chat/`.
+- [x] Add `.env.example` for new stack.
+- [x] Add backup script/guide for Postgres and MinIO.
+- [x] Add restore drill guide.
+- [x] Add reverse proxy and private network notes.
+- [x] Add release/rollback checklist.

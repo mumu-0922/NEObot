@@ -10,7 +10,7 @@ This directory is the documentation control plane for the `mm-chat` refactor. Ke
 | Inventory | [`inventory/`](./inventory/) | Static analysis of the existing Neo Chat app before migration. |
 | Tracking | [`tracking/`](./tracking/) | Progress checklist and chronological process log. |
 | Contracts | [`contracts/`](./contracts/) | Future frontend API, backend API, event, and data contracts. |
-| Deployment | [`deployment/`](./deployment/) | Future Docker Compose, backup, restore, and operations guides. |
+| Deployment | [`deployment/`](./deployment/) | Docker Compose, backup, restore, release, rollback, and operations guides. |
 
 ## Update Rule
 

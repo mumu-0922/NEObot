@@ -1,0 +1,8 @@
+# Local single-server runtime state. Keep real data and secrets out of Git.
+.env.single-server
+.env.single-server.local
+!.env.single-server.example
+.env.*.local
+
+data/
+backup/

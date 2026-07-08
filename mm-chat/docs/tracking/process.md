@@ -2015,3 +2015,105 @@ Final review agent rerun: P0/P1/P2 no findings.
 ### Next Step
 
 Commit and push the Phase 8 attachment import slice.
+
+## 2026-07-08 — Phase 10 Runtime: Single-Server Compose Deployment
+
+### Action
+
+Implemented the single-server Docker Compose runtime under `mm-chat/`. The stack
+now defines Postgres, Redis, private MinIO, MinIO bucket/user initialization, a
+Go backend image, an explicit migration service, and an ops-only MinIO client.
+Added sanitized stack env, gitignored runtime data/backup paths, backup scripts,
+restore drills, release/rollback docs, and updated deployment indexes.
+
+### Files
+
+```text
+mm-chat/.env.single-server.example
+mm-chat/.gitignore
+mm-chat/README.md
+mm-chat/backend/.dockerignore
+mm-chat/backend/Dockerfile
+mm-chat/compose.single-server.yml
+mm-chat/docs/README.md
+mm-chat/docs/deployment/README.md
+mm-chat/docs/deployment/backup-restore.md
+mm-chat/docs/deployment/release-rollback.md
+mm-chat/docs/deployment/single-server-compose.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+mm-chat/scripts/backup-minio.sh
+mm-chat/scripts/backup-postgres.sh
+```
+
+### Decision
+
+The Compose stack keeps only the backend port bound to `127.0.0.1:8080`;
+Postgres, Redis, MinIO API, and MinIO console stay on the private Compose
+network. API startup still does not run migrations: operators run the `migrate`
+service before starting or restarting the backend. MinIO initializes a private
+bucket and least-privilege app user; the backend remains the public file gateway.
+
+Backups are operator-triggered scripts. Postgres uses a custom-format
+`pg_dump`, MinIO uses `mc mirror` through the `minio-client` service, and both
+write `.sha256` sidecars. Restore documentation requires temporary DB/bucket
+drills before any destructive production restore.
+
+### Verification
+
+```text
+bash -n backup scripts: passed
+docker compose config with app+ops profiles: passed
+Docker backend image build: passed
+Docker Go 1.22 go test ./...: passed
+Disposable Compose smoke with temp bind mounts: passed
+  - postgres/redis healthy
+  - minio-init created bucket/user/policy
+  - migrate applied 001/002/003
+  - backend /health, /ready, /v1/version returned 200
+Backup script smoke against disposable stack: passed
+  - Postgres dump + sha256 created and verified
+  - MinIO archive + sha256 created and verified
+git diff --check -- mm-chat: passed
+```
+
+### Next Step
+
+Run a review agent on the Phase 10 deployment slice, fix findings, then commit
+and push only the `mm-chat/` changes.
+
+## 2026-07-08 — Phase 10 Review Fix: Deployment Safety
+
+### Action
+
+Fixed review findings in the single-server deployment slice. MinIO init is now
+fail-fast for policy attach and validates the app credentials by writing,
+statting, and deleting a temporary object before the backend can start. Backup
+checksum docs now match basename-based `.sha256` files, rollback docs use a
+real Compose `migrate ... down` command, and deployment docs distinguish
+Compose secrets from direct `go run` env files.
+
+### Verification
+
+```text
+bash -n backup scripts: passed
+docker compose config with app+ops profiles: passed
+Disposable Compose smoke with temp bind mounts: passed
+  - backend image build passed
+  - minio-init bucket/user/policy/app-credential smoke passed
+  - migrate up applied 001/002/003
+  - backend /health, /ready, /v1/version returned 200
+  - backup-postgres and backup-minio created sha256-verified artifacts
+  - documented migrate down command rolled back 003, then migrate up re-applied 003
+Cleanup removed disposable containers, network, and temp bind data.
+```
+
+### Review
+
+Final review agent rerun: P0/P1/P2 no findings. Remaining P3 is commit hygiene:
+only targeted `mm-chat/` paths may be staged because the root workspace contains
+unrelated dirty files.
+
+### Next Step
+
+Commit and push only the `mm-chat/` slice.
