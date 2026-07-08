@@ -84,6 +84,11 @@ Rollback for each migrated module is switching the flag back to `local` until th
 
 ## 6. Phase Plan
 
+The original plan below covers Phase 0-10. Post-Phase-10 work and all newly
+discovered plans must be recorded in
+[`phase-11-plus-roadmap.md`](./phase-11-plus-roadmap.md) before implementation
+starts.
+
 ### Phase 0 — Refactor Workspace and Documentation
 
 Objective: create a controlled workspace and living docs.
@@ -589,6 +594,10 @@ Error envelope:
 8. Redis session cache/rate limit.
 9. Import tool for local data.
 10. Optional Python RAG.
+
+Further frontend integration, import UI, auth hardening, production hardening,
+RAG resequencing, and multi-server/K8s migration are tracked in
+[`phase-11-plus-roadmap.md`](./phase-11-plus-roadmap.md).
 
 ## 10. Acceptance Gates
 

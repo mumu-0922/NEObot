@@ -2117,3 +2117,45 @@ unrelated dirty files.
 ### Next Step
 
 Commit and push only the `mm-chat/` slice.
+
+## 2026-07-08 — Roadmap Rule and Phase 11+ Planning
+
+### Action
+
+Recorded the owner decision that new plans and scope changes must be written to
+repository docs before implementation starts. Added the post-Phase-10 roadmap so
+frontend integration, import UI, auth hardening, production hardening, optional
+RAG, and future K8s/multi-server migration do not depend on chat memory.
+
+### Files
+
+```text
+mm-chat/docs/architecture/phase-11-plus-roadmap.md
+mm-chat/docs/architecture/server-refactor-design.md
+mm-chat/docs/architecture/README.md
+mm-chat/docs/README.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+### Decision
+
+Phase 11 becomes the next recommended implementation phase: frontend
+server-mode integration. Optional RAG is deferred until core chat, files, import,
+and frontend server mode are stable. Future plans must define objective, scope,
+outputs, verification, rollback, and tracking checklist before code changes.
+
+### Verification
+
+```text
+Docs-only change under mm-chat/.
+Roadmap linked from architecture and docs indexes.
+Progress checklist now includes Planning Rule and Phase 11-16 items.
+Original Phase 9 RAG placeholder is marked deferred behind Phase 11-14, with
+Phase 15 as the active RAG gate.
+```
+
+### Next Step
+
+Review and commit the roadmap docs, then start Phase 11 only after confirming
+the frontend integration slice.

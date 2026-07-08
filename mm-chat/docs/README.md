@@ -14,8 +14,11 @@ This directory is the documentation control plane for the `mm-chat` refactor. Ke
 
 ## Update Rule
 
-When a task completes:
+When a new plan or scope change appears:
 
-1. Update [`tracking/progress.md`](./tracking/progress.md).
-2. Add a dated entry to [`tracking/process.md`](./tracking/process.md).
-3. Put new docs in the matching category instead of the workspace root.
+1. Write it into an architecture, contract, deployment, or tracking document before implementation starts.
+2. Mirror new phases or checklist items in [`tracking/progress.md`](./tracking/progress.md).
+3. Add dated evidence to [`tracking/process.md`](./tracking/process.md) when work completes.
+4. Put new docs in the matching category instead of the workspace root.
+
+Current post-Phase-10 planning lives in [`architecture/phase-11-plus-roadmap.md`](./architecture/phase-11-plus-roadmap.md).

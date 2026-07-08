@@ -2,6 +2,11 @@
 
 Update this file whenever a phase or task is completed. Every `[x]` entry must have a matching dated note in [`process.md`](./process.md).
 
+## Planning Rule — New Work Must Be Documented
+
+- [x] Record the rule that new plans and scope changes must be written to docs before implementation.
+- [x] Add Phase 11+ roadmap under `docs/architecture/phase-11-plus-roadmap.md`.
+
 ## Phase 0 — Workspace and Planning
 
 - [x] Create isolated `mm-chat/` workspace.
@@ -115,6 +120,9 @@ Update this file whenever a phase or task is completed. Every `[x]` entry must h
 
 ## Phase 9 — Optional Python RAG Sidecar
 
+Deferred behind Phase 11-14. Keep this original placeholder for history; use
+Phase 15 as the active RAG implementation gate.
+
 - [ ] Define internal RAG API.
 - [ ] Add Python service skeleton.
 - [ ] Add document parsing flow.
@@ -130,3 +138,49 @@ Update this file whenever a phase or task is completed. Every `[x]` entry must h
 - [x] Add restore drill guide.
 - [x] Add reverse proxy and private network notes.
 - [x] Add release/rollback checklist.
+
+## Phase 11 — Frontend Server-Mode Integration
+
+- [ ] Add server-mode frontend API adapter.
+- [ ] Wire conversation CRUD to Go backend.
+- [ ] Wire message CRUD to Go backend.
+- [ ] Wire SSE assistant streaming to Go backend.
+- [ ] Wire file upload/download to Go backend.
+- [ ] Preserve local mode rollback through `NEXT_PUBLIC_API_MODE=local`.
+- [ ] Verify browser smoke against local Docker backend.
+
+## Phase 12 — Browser Data Export/Import UI
+
+- [ ] Add browser export package generation for IndexedDB/localforage and OPFS.
+- [ ] Add import preview UI.
+- [ ] Add user-confirmed import commit UI.
+- [ ] Add safe imported-batch rollback UI.
+
+## Phase 13 — Auth and Multi-User Hardening
+
+- [ ] Replace fixed development user with real session-aware identity.
+- [ ] Add login/logout/me or chosen auth-provider flow.
+- [ ] Enforce ownership across conversations, messages, files, imports, and runs.
+- [ ] Verify two-user isolation.
+
+## Phase 14 — Production Hardening and Observability
+
+- [ ] Add structured logs and request IDs.
+- [ ] Add metrics/health visibility for API, DB, Redis, and MinIO.
+- [ ] Run documented backup and restore drill.
+- [ ] Add reverse proxy/TLS production notes.
+- [ ] Add secret rotation notes.
+
+## Phase 15 — Optional Python RAG Sidecar
+
+- [ ] Define internal Go-to-RAG API after frontend server mode is stable.
+- [ ] Add Python FastAPI service skeleton.
+- [ ] Add indexing, retrieval, and citation flow.
+- [ ] Verify RAG failure does not break normal chat.
+
+## Phase 16 — Multi-Server or Kubernetes Migration
+
+- [ ] Define target deployment platform and managed service boundaries.
+- [ ] Add image tagging and migration-job strategy.
+- [ ] Add ingress, probes, and secrets plan.
+- [ ] Verify release and rollback in target environment.
