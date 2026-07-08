@@ -3297,3 +3297,152 @@ corepack pnpm exec vitest run src/__tests__/chatStoreServerRead.test.ts src/__te
 
 Run final main-session verification for the full Phase 11.3C touched scope, then
 commit only the explicit slice files.
+
+## 2026-07-08 — Phase 11.3D: Live Backend SSE Smoke
+
+### Action
+
+Verified the existing local single-server Go backend path end-to-end without
+wiring the visible frontend UI.
+
+### Runtime Boundary
+
+Used the already-running Compose stack from `mm-chat/compose.single-server.yml`
+with the local secret file passed by path only:
+
+```bash
+cd mm-chat
+docker compose --env-file .env.single-server -f compose.single-server.yml ps
+```
+
+Services observed running:
+
+```text
+backend   healthy   127.0.0.1:8080->8080/tcp
+postgres  healthy
+redis     healthy
+minio     running
+```
+
+The provider configuration was read by the backend process from
+`.env.single-server`; secrets were not copied into docs or command output.
+
+### Smoke Flow
+
+The smoke script called the local API directly:
+
+```text
+GET  /health
+GET  /ready
+GET  /v1/version
+POST /v1/chat/conversations
+POST /v1/chat/conversations/{conversationId}/messages
+POST /v1/chat/conversations/{conversationId}/stream  # Accept: text/event-stream
+GET  /v1/chat/conversations/{conversationId}/messages
+```
+
+Smoke identifiers:
+
+```text
+run:              phase-11-3-smoke-1783500901
+conversationId:   f47b6de9-dab7-4864-b8da-4e6e5a2a3934
+userMessageId:    89929427-e328-4b59-bc4c-5a9304d98744
+assistantRunId:   285338b6-3433-459f-9826-2547c3e270f8
+assistantMessage: d26c5c29-e0c1-4f90-bc73-389652e5ca60
+SSE artifact:     /tmp/mm-chat-smoke/phase-11-3-smoke-1783500901.sse
+```
+
+### Result
+
+Health/readiness/version:
+
+```text
+/health      200 healthy
+/ready       200 ready
+/v1/version  200 single-server-dev
+```
+
+Conversation/message/stream:
+
+```text
+POST conversation  201 created
+POST user message  201 completed user row
+SSE events         7 frames
+SSE terminal       message.completed
+assistant status   completed
+assistant content  16 bytes
+GET messages       200, 2 rows persisted
+```
+
+Observed SSE event sequence:
+
+```text
+message.started
+message.delta
+message.delta
+message.delta
+message.delta
+usage.updated
+message.completed
+```
+
+Post-stream list confirmed two persisted rows:
+
+```text
+user       completed  contentLength=48
+assistant  completed  contentLength=16
+```
+
+### Local-Mode Regression
+
+Ran targeted legacy local-mode/frontend rollback checks:
+
+```text
+corepack pnpm vitest run src/__tests__/chatServiceToolConfirmation.test.ts src/__tests__/chatStore.test.ts src/__tests__/apiClientScaffold.test.ts
+  passed: 3 files, 64 tests
+```
+
+### Cleanup / Reset Notes
+
+The smoke intentionally left one test conversation and its two messages in the
+local Postgres volume for auditability. Cleanup options for future destructive
+reset drills:
+
+```bash
+cd mm-chat
+docker compose --env-file .env.single-server -f compose.single-server.yml down
+# add `-v` only when intentionally deleting local Postgres/Redis/MinIO data
+```
+
+Do not use `down -v` unless local smoke data loss is intended.
+
+### Next Step
+
+Proceed to Phase 11.4 file upload/download adapter planning and implementation,
+or stop here if the goal is only to prove Phase 11.3 backend stream persistence.
+
+## 2026-07-08 — Phase 11.3D Review
+
+### Action
+
+Ran a read-only review agent against the Phase 11.3D live backend smoke docs.
+
+### Result
+
+```text
+no findings
+```
+
+Review confirmed:
+
+```text
+progress entries have dated process evidence
+process log records command shape, artifact path, results, and cleanup notes
+provider secrets are not copied into docs
+roadmap records objective, scope, outputs, verification, and rollback
+visible UI wiring is not claimed
+```
+
+### Next Step
+
+Commit the Phase 11.3D smoke documentation slice only.

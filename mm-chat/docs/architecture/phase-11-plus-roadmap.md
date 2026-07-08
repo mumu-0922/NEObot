@@ -266,6 +266,42 @@ Rollback:
 - Switch `NEXT_PUBLIC_API_MODE=local`.
 - Revert only the 11.3C store/test slice if lifecycle mapping regresses.
 
+#### 11.3D — Live Backend SSE Smoke
+
+Objective: verify the already-built Go backend can stream and persist an
+assistant response through the real local Compose stack before any visible UI
+wiring starts.
+
+Scope:
+
+- Use the existing single-server Compose stack and backend on
+  `http://127.0.0.1:8080`.
+- Exercise health, readiness, version, conversation create, user-message append,
+  assistant SSE stream, and post-stream message listing.
+- Use configured provider environment from `.env.single-server` but do not
+  record secrets in docs or logs.
+- Run targeted local-mode regression tests after the server smoke.
+- Do not change application code or visible frontend behavior in this slice.
+
+Outputs:
+
+- Dated process entry with command shape, redacted environment boundary, smoke
+  IDs/statuses, artifact path, and cleanup/reset notes.
+- Progress checklist entries proving server SSE persistence and local rollback
+  behavior.
+
+Verification:
+
+- `message.completed` is observed in the SSE stream.
+- Listing messages after the stream returns the persisted user row and assistant
+  row.
+- Legacy local `chatService`/store tests pass.
+
+Rollback:
+
+- Keep `NEXT_PUBLIC_API_MODE=local` for visible frontend use.
+- Stop or reset only the local Compose stack if smoke data needs cleanup.
+
 ### 11.4 — File Upload and Download
 
 Objective: wire server-mode file upload/download and message attachment

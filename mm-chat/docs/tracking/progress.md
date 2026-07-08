@@ -316,9 +316,9 @@ actions. It still does not connect visible UI/bootstrap to server mode.
       `message.completed`, `message.error`, and `message.cancelled` frames.
 - [x] Map stream completion, cancellation, and provider errors to terminal
       server-read state without duplicate user messages.
-- [ ] Verify server mode streams and persists an assistant response against the
+- [x] Verify server mode streams and persists an assistant response against the
       local Go backend.
-- [ ] Verify local-mode streaming behavior remains unchanged.
+- [x] Verify local-mode streaming behavior remains unchanged.
 
 ### Phase 11.3A — Server API client SSE adapter
 
@@ -386,6 +386,27 @@ not connect visible UI, `ChatApp`, or server cancel controls.
 - [x] Add targeted tests for successful streaming, provider failure,
       unsupported fallback, cancellation, run-id propagation, and
       error-envelope preservation.
+
+### Phase 11.3D — Live backend SSE smoke
+
+This slice verifies the Go backend runtime path directly. It does not wire the
+visible frontend UI.
+
+- [x] Confirm the single-server Compose backend, Postgres, Redis, and MinIO
+      services are running and healthy enough for smoke.
+- [x] Verify `/health`, `/ready`, and `/v1/version` on `127.0.0.1:8080`.
+- [x] Create a server conversation through `POST /v1/chat/conversations`.
+- [x] Append a persisted user message through
+      `POST /v1/chat/conversations/{id}/messages`.
+- [x] Stream an assistant response through
+      `POST /v1/chat/conversations/{id}/stream` and observe
+      `message.completed`.
+- [x] List server messages after streaming and verify both user and assistant
+      rows are persisted.
+- [x] Run targeted local-mode regression tests for the legacy
+      `chatService`/store path.
+- [x] Record smoke command shape, artifact path, result IDs, and cleanup notes
+      in `process.md`.
 
 ### Phase 11.4 — File upload and download
 
