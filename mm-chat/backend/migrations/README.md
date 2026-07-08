@@ -28,7 +28,9 @@ Apply `*.up.sql` files in ascending sequence order:
 
 ```text
 001_initial_schema.up.sql
-002_next_change.up.sql
+002_messages_run_id_index.up.sql
+003_import_batches.up.sql
+004_next_change.up.sql
 ...
 ```
 
@@ -36,7 +38,8 @@ Rollback with matching `*.down.sql` files in descending sequence order:
 
 ```text
 ...
-002_next_change.down.sql
+003_import_batches.down.sql
+002_messages_run_id_index.down.sql
 001_initial_schema.down.sql
 ```
 
@@ -87,6 +90,7 @@ Postgres is the source of truth for structured records:
 - provider configuration metadata and encrypted-secret references
 - conversations and messages
 - file ownership and metadata
+- browser import batch idempotency, replay, and rollback metadata
 - append-only audit logs
 
 Redis is only for short-lived state such as cache entries, rate limits, stream

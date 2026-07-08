@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"neo-chat/mm-chat/backend/internal/browserimport"
 	"neo-chat/mm-chat/backend/internal/chat"
 	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/files"
@@ -35,6 +36,8 @@ type options struct {
 	fileRepository       files.Repository
 	objectStore          storage.ObjectStore
 	maxUploadBytes       int64
+	importRepository     browserimport.Repository
+	maxImportBytes       int64
 }
 
 func WithReadyChecker(checker health.ReadinessChecker) Option {
@@ -85,6 +88,18 @@ func WithMaxUploadBytes(maxUploadBytes int64) Option {
 	}
 }
 
+func WithBrowserImportRepository(repo browserimport.Repository) Option {
+	return func(opts *options) {
+		opts.importRepository = repo
+	}
+}
+
+func WithMaxImportBytes(maxImportBytes int64) Option {
+	return func(opts *options) {
+		opts.maxImportBytes = maxImportBytes
+	}
+}
+
 func New(cfg config.Config, opts ...Option) *http.Server {
 	return &http.Server{
 		Addr:              cfg.Addr,
@@ -110,6 +125,13 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		),
 		files.WithMaxUploadBytes(resolvedOptions.maxUploadBytes),
 	)
+	importHandler := browserimport.NewHandler(
+		browserimport.NewService(
+			resolvedOptions.importRepository,
+			browserimport.WithMaxPackageBytes(resolvedOptions.maxImportBytes),
+		),
+		browserimport.WithHandlerMaxPackageBytes(resolvedOptions.maxImportBytes),
+	)
 
 	mux.HandleFunc("/health", healthHandler.Health)
 	mux.HandleFunc("/ready", healthHandler.Ready)
@@ -119,6 +141,8 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/chat/runs/", chatHandler)
 	mux.Handle("/v1/files", fileHandler)
 	mux.Handle("/v1/files/", fileHandler)
+	mux.Handle("/v1/import/browser", importHandler)
+	mux.Handle("/v1/import/browser/", importHandler)
 	mux.HandleFunc("/", notFound)
 
 	middlewares := []Middleware{withRecover, withSecurityHeaders}

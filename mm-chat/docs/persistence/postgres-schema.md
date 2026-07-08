@@ -2,10 +2,11 @@
 
 This document describes the actual Phase 4 migration contract created by
 `mm-chat/backend/migrations/001_initial_schema.*.sql`, the Phase 5.4 run
-cancellation lookup index in `002_messages_run_id_index.*.sql`, plus the Phase
-4.5 runtime-wiring boundary around Postgres connectivity, readiness, and
-migration execution. It is a schema and data boundary reference only; DB
-repositories and Compose files are separate later work.
+cancellation lookup index in `002_messages_run_id_index.*.sql`, the Phase 8
+browser import batch table in `003_import_batches.*.sql`, plus the Phase 4.5
+runtime-wiring boundary around Postgres connectivity, readiness, and migration
+execution. It is a schema and data boundary reference only; DB repositories and
+Compose files are separate later work.
 
 ## 1. Scope
 
@@ -15,6 +16,7 @@ Phase 4 makes Postgres the source of truth for structured server data:
 users -> sessions
 users -> provider_configs
 users -> conversations -> messages -> message_attachments -> files
+users -> import_batches
 users/sessions/actions -> audit_logs
 ```
 
@@ -24,6 +26,7 @@ In scope:
 - Provider configuration metadata and encrypted-secret references.
 - Conversations, messages, output block JSON, retry idempotency keys, and
   message status.
+- Browser import batch idempotency, response replay, and rollback state.
 - File ownership and metadata only; file bytes remain out of Postgres.
 - Append-only audit log rows for security and operational events.
 
@@ -41,7 +44,7 @@ Out of scope:
 | Timestamps | `created_at` / `updated_at` use `TIMESTAMPTZ DEFAULT now()` and are maintained by the application after insert. |
 | Soft delete | User-facing records use nullable `deleted_at` where lifecycle recovery matters. |
 | JSON | `metadata` and `config` use `JSONB` with object checks; message `output_blocks` uses a JSONB array check. |
-| Retry safety | `conversations.idempotency_key` and `messages.idempotency_key` are optional unique retry guards scoped to the owner/thread. |
+| Retry safety | `conversations.idempotency_key` and `messages.idempotency_key` are optional unique retry guards scoped to the owner/thread; `import_batches.idempotency_key` replays exact browser import packages. |
 | Secrets | Store token hashes or encrypted secret references only; never plaintext provider keys or bearer tokens. |
 | Files | `files` stores metadata and private `object_key` references only, not bytes. |
 
@@ -317,6 +320,38 @@ Boundary:
 - Application code must verify message owner and file owner match before insert.
 - Deleting a message removes only the attachment link; deleting file metadata is
   a separate product decision unless it cascades through user deletion.
+
+### `import_batches`
+
+Purpose: Phase 8 browser import idempotency, replay, and rollback metadata.
+
+Key columns:
+
+- `id UUID PRIMARY KEY`
+- `user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE`
+- `idempotency_key TEXT NOT NULL`
+- `package_hash` and `manifest_hash` as lowercase SHA-256 hex strings
+- `status TEXT NOT NULL DEFAULT 'pending'` with
+  `pending|completed|rolled_back` check
+- `response JSONB NOT NULL DEFAULT '{}'::jsonb`
+- `created_at`, `updated_at`, `completed_at`, `rolled_back_at`
+
+Indexes / constraints:
+
+- `idx_import_batches_user_idempotency` unique `(user_id, idempotency_key)`
+- `idx_import_batches_user_created`
+- `idx_import_batches_status`
+
+Boundary:
+
+- Same `idempotency_key` plus same package/manifest hash returns the stored
+  completed response instead of creating duplicate conversations/messages.
+- Same `idempotency_key` with different package bytes returns
+  `409 IDEMPOTENCY_CONFLICT`.
+- Imported conversations/messages carry `metadata.import.batchId` and original
+  client IDs so `DELETE /v1/import/browser/{batchId}` can soft-delete the batch.
+- The first runtime slice imports chat rows only. `files[]` and file-backed
+  attachments are rejected until the MinIO/S3 attachment import slice is built.
 
 ### `audit_logs`
 

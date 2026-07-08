@@ -221,6 +221,11 @@ export interface ImportPreviewResponse {
 Commits the exact package after confirmation. The server creates a batch ID,
 then inserts conversations/messages and uploads file bytes.
 
+Runtime rollout note: the first Go runtime slice commits conversations and
+messages only. Packages containing `files[]` or file-backed attachments must be
+rejected instead of imported without attachments until the MinIO/S3 attachment
+slice is implemented.
+
 ```ts
 export interface ImportCommitResponse {
   batchId: EntityId;
@@ -247,6 +252,21 @@ soft-deletes imported conversations/messages/files and deletes object-store
 bytes for files created by the batch. If later user edits are detected, return
 `409 IMPORT_BATCH_MODIFIED` and require an explicit force-delete design in a
 later phase.
+
+### `GET /v1/import/browser/{batchId}`
+
+Returns committed batch state for UI refresh and rollback confirmation.
+
+```ts
+export interface ImportBatchStatus {
+  batchId: EntityId;
+  status: "completed" | "rolled_back";
+  createdAt: IsoDateTime;
+}
+```
+
+If the batch does not exist for the current user, return
+`404 IMPORT_BATCH_NOT_FOUND`.
 
 ## 6. Validation Rules
 
@@ -285,9 +305,10 @@ Preview and commit use identical validation.
 | `ImportAttachment` | `message_attachments` row linking imported message/file. |
 | `ImportWorkspace` | Conversation metadata only until server workspaces exist. |
 
-Each imported row should carry `metadata.import.batchId` and original client IDs
-for rollback and audit. A later migration may add a first-class `import_batches`
-table; until then, batch metadata must be queryable from imported rows.
+Each imported row carries `metadata.import.batchId` and original client IDs for
+rollback and audit. Runtime migration `003_import_batches` stores batch
+idempotency, response replay, and `completed|rolled_back` state; row metadata
+remains queryable so rollback can find imported conversations/messages.
 
 ## 8. Error Contract
 
@@ -320,6 +341,7 @@ HTTP mapping:
 | `400` | `MISSING_FILE_BLOB` | Referenced ZIP blob is absent. |
 | `400` | `FILE_HASH_MISMATCH` | Uploaded bytes do not match declared SHA-256. |
 | `413` | `FILE_TOO_LARGE` | Any file or package exceeds configured limits. |
+| `404` | `IMPORT_BATCH_NOT_FOUND` | Requested import batch is unknown. |
 | `409` | `IDEMPOTENCY_CONFLICT` | Same `idempotencyKey` is reused with different package bytes or manifest hash. |
 | `409` | `IMPORT_BATCH_MODIFIED` | Rollback would delete user-edited data. |
 | `429` | `RATE_LIMITED` | Redis rate limit blocked the request. |
@@ -343,6 +365,9 @@ HTTP mapping:
   already completed batch.
 - Rollback must not touch browser-local data. The frontend local-mode data stays
   intact until the user separately clears it.
+- `POST /v1/import/browser/preview` is DB-independent and may validate packages
+  while the backend is running without `DATABASE_URL`; commit, GET, and rollback
+  require Postgres and return `503 DATABASE_REQUIRED` when DB wiring is absent.
 
 ## 10. Security Notes
 

@@ -1855,3 +1855,69 @@ the owner rule that refactor artifacts stay under `mm-chat/`.
 
 Commit and push the Phase 8 browser import contract slice, then begin runtime
 conversation/message import implementation.
+
+## 2026-07-08 — Phase 8 Runtime: Browser Import Chat Rows
+
+### Action
+
+Implemented the first browser import runtime slice in the Go backend. Added a
+dedicated `internal/browserimport` package for ZIP parsing, manifest validation,
+HTTP endpoints, Postgres persistence, idempotency replay, and rollback. Wired
+the handler into `/v1/import/browser/*` from the shared HTTP server and API
+startup path. Added migration `003_import_batches` to track committed import
+batches and preserve replay/rollback metadata.
+
+### Files
+
+```text
+mm-chat/backend/cmd/api/main.go
+mm-chat/backend/internal/browserimport/*
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/httpserver/server_test.go
+mm-chat/backend/migrations/003_import_batches.up.sql
+mm-chat/backend/migrations/003_import_batches.down.sql
+mm-chat/backend/migrations/README.md
+mm-chat/docs/contracts/browser-data-import.md
+mm-chat/docs/persistence/postgres-schema.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+### Decision
+
+Import uses a separate repository path instead of `chat.CreateMessage` because
+the normal chat CRUD endpoint intentionally accepts only new user messages and
+server-owned timestamps. Browser import must preserve historical
+`role/status/sequenceNo/createdAt/completedAt/outputBlocks` and original client
+ID mappings. This slice commits chat-only packages and rejects packages with
+`files[]` or file attachments until the MinIO attachment import slice is built,
+so no attachment data is silently dropped.
+
+Rollback is batch-scoped. `DELETE /v1/import/browser/{batchId}` soft-deletes
+imported messages and conversations and marks the batch `rolled_back`; if rows
+were modified after commit, it returns `409 IMPORT_BATCH_MODIFIED`.
+
+### Verification
+
+```text
+Docker Go 1.22 gofmt + go test ./...: passed
+Docker Go 1.22 go vet ./...: passed
+Disposable Docker Postgres integration for internal/browserimport: passed
+git diff --check -- mm-chat: passed
+Review agent first pass: P1 idempotency replay, top-level timestamp validation,
+secret scanning; P2 ZIP symlink, orphan blob, HTTP/docs sync.
+Fixes added: concurrent same-package replay, generatedAt/exportedAt validation,
+outputBlocks/attachment secret checks, symlink/orphan blob rejection, route
+matrix, rollback modified detection, 003 up/down integration, and GET/preview
+contract docs.
+Review agent second pass: P1 remote URL userinfo/fragment secret coverage and
+P2 imported-message modified rollback coverage remained. Added URL userinfo and
+fragment-token rejection plus message-row rollback modified integration test.
+Final review agent rerun: P0/P1/P2 no findings.
+```
+
+### Next Step
+
+Run review agent for the Phase 8 runtime slice, fix findings, then commit and
+push. Next implementation slice: import `files[]` blobs into MinIO/S3 and link
+message attachments.

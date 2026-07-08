@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"neo-chat/mm-chat/backend/internal/browserimport"
 	"neo-chat/mm-chat/backend/internal/chat"
 	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/database"
@@ -50,9 +51,11 @@ func main() {
 
 	var chatRepo chat.Repository
 	var fileRepo files.Repository
+	var importRepo browserimport.Repository
 	if sqlDB := db.SQL(); sqlDB != nil {
 		chatRepo = chat.NewPostgresRepository(sqlDB)
 		fileRepo = files.NewPostgresRepository(sqlDB)
+		importRepo = browserimport.NewPostgresRepository(sqlDB)
 	}
 
 	chatProvider, err := newChatProvider(cfg)
@@ -82,6 +85,8 @@ func main() {
 		httpserver.WithFileRepository(fileRepo),
 		httpserver.WithObjectStore(objectStore),
 		httpserver.WithMaxUploadBytes(cfg.Storage.MaxUploadBytes),
+		httpserver.WithBrowserImportRepository(importRepo),
+		httpserver.WithMaxImportBytes(cfg.Storage.MaxUploadBytes),
 	)
 
 	errorsCh := make(chan error, 1)
