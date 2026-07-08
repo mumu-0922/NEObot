@@ -676,6 +676,12 @@ Endpoint mapping:
 
 Auth naming rule: server mode uses `login`; local mode may implement `login` by calling the existing access verification route until that route is replaced.
 
+Session-cache boundary: Phase 7 adds backend-internal Postgres + Redis
+read-through session lookup for future server auth. The frontend contract does
+not change yet because `/v1/auth/*` and request-scoped multi-user middleware are
+still deferred. Redis cache loss must behave like a cache miss and fall back to
+Postgres, not force a client-visible logout.
+
 ## 12. `settingsApi`, `providerApi`, and `pluginApi` Contracts
 
 ```ts

@@ -67,8 +67,9 @@ Notes:
 
 ### `sessions`
 
-Purpose: canonical session records and revocation state. Redis may later cache
-lookups, but Postgres remains authoritative.
+Purpose: canonical session records and revocation state. Phase 7 may cache
+browser-safe lookup snapshots and short-lived revocation hints in Redis, but
+Postgres remains authoritative.
 
 Key columns:
 
@@ -237,7 +238,8 @@ Allowed repository behavior:
 
 Explicitly outside the Phase 5.1 repository path:
 
-- `sessions`: auth and session revocation are later work.
+- Runtime auth middleware and request-scoped use of `sessions`; Phase 7 only
+  provides the reusable session repository/resolver/cache substrate.
 - `provider_configs`: provider selection/secret resolution is later work.
 - `audit_logs`: audit writes are not required for the first chat CRUD path.
 - Additional provider adapters, provider secret encryption, durable run

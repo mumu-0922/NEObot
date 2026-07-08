@@ -19,6 +19,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/httpserver"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
 	"neo-chat/mm-chat/backend/internal/redisstate"
+	"neo-chat/mm-chat/backend/internal/sessioncache"
 	"neo-chat/mm-chat/backend/internal/storage"
 )
 
@@ -40,7 +41,7 @@ func main() {
 	}
 
 	redisCtx, redisCancel := context.WithTimeout(context.Background(), redisOpenTimeout)
-	redisClient, runCancellationStore, rateLimitStore, err := newRedisState(redisCtx, cfg)
+	redisClient, runCancellationStore, rateLimitStore, _, err := newRedisState(redisCtx, cfg)
 	redisCancel()
 	if err != nil {
 		_ = db.Close()
@@ -122,20 +123,24 @@ func main() {
 func newRedisState(
 	ctx context.Context,
 	cfg config.Config,
-) (*redisstate.Client, chat.RunCancellationStore, ratelimit.Store, error) {
+) (*redisstate.Client, chat.RunCancellationStore, ratelimit.Store, sessioncache.Store, error) {
 	if cfg.Redis.RateLimitEnabled && strings.TrimSpace(cfg.Redis.URL) == "" {
-		return nil, nil, nil, fmt.Errorf("%s requires %s", config.EnvRedisRateLimitEnabled, config.EnvRedisURL)
+		return nil, nil, nil, nil, fmt.Errorf("%s requires %s", config.EnvRedisRateLimitEnabled, config.EnvRedisURL)
 	}
 
 	client, err := redisstate.Open(ctx, cfg.Redis)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	if client == nil {
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, nil
 	}
 
-	return client, client.RunCancellationStore(cfg.Redis.RunCancelTTL), client.RateLimitStore(), nil
+	return client,
+		client.RunCancellationStore(cfg.Redis.RunCancelTTL),
+		client.RateLimitStore(),
+		client.SessionCacheStore(cfg.Redis.SessionCacheTTL),
+		nil
 }
 
 func newObjectStore(cfg config.Config) (storage.ObjectStore, error) {

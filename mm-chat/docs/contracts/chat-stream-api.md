@@ -260,6 +260,6 @@ The adapter reads `data:` SSE frames, emits `message.delta` for
 ## 9. Non-Goals
 
 - Gemini and native OpenAI Responses API adapters.
-- Session cache Redis state.
+- Stream endpoint auth enforcement through the new session-cache substrate.
 - Streaming resume, cursor replay, or durable run records.
 - Tool calls, plugins, attachments, MinIO/S3, RAG, title generation, and auth.

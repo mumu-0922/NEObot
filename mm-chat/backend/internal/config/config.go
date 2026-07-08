@@ -15,6 +15,7 @@ const (
 	DefaultDBConnMaxLifetime      = 30 * time.Minute
 	DefaultRedisKeyPrefix         = "mm-chat"
 	DefaultRedisRunCancelTTL      = 10 * time.Minute
+	DefaultRedisSessionCacheTTL   = 5 * time.Minute
 	DefaultRedisRateLimitEnabled  = false
 	DefaultRedisRateLimitRequests = 120
 	DefaultRedisRateLimitWindow   = time.Minute
@@ -33,6 +34,7 @@ const (
 	EnvRedisURL               = "REDIS_URL"
 	EnvRedisKeyPrefix         = "REDIS_KEY_PREFIX"
 	EnvRedisRunCancelTTL      = "REDIS_RUN_CANCEL_TTL"
+	EnvRedisSessionCacheTTL   = "REDIS_SESSION_CACHE_TTL"
 	EnvRedisRateLimitEnabled  = "REDIS_RATE_LIMIT_ENABLED"
 	EnvRedisRateLimitRequests = "REDIS_RATE_LIMIT_REQUESTS"
 	EnvRedisRateLimitWindow   = "REDIS_RATE_LIMIT_WINDOW"
@@ -76,6 +78,7 @@ type RedisConfig struct {
 	URL               string
 	KeyPrefix         string
 	RunCancelTTL      time.Duration
+	SessionCacheTTL   time.Duration
 	RateLimitEnabled  bool
 	RateLimitRequests int
 	RateLimitWindow   time.Duration
@@ -134,6 +137,7 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 			URL:               optionalEnv(lookup, EnvRedisURL),
 			KeyPrefix:         envOrDefault(lookup, EnvRedisKeyPrefix, DefaultRedisKeyPrefix),
 			RunCancelTTL:      durationEnvOrDefault(lookup, EnvRedisRunCancelTTL, DefaultRedisRunCancelTTL),
+			SessionCacheTTL:   durationEnvOrDefault(lookup, EnvRedisSessionCacheTTL, DefaultRedisSessionCacheTTL),
 			RateLimitEnabled:  boolEnvOrDefault(lookup, EnvRedisRateLimitEnabled, DefaultRedisRateLimitEnabled),
 			RateLimitRequests: intEnvOrDefault(lookup, EnvRedisRateLimitRequests, DefaultRedisRateLimitRequests),
 			RateLimitWindow:   durationEnvOrDefault(lookup, EnvRedisRateLimitWindow, DefaultRedisRateLimitWindow),

@@ -9,13 +9,14 @@ ownership. A Redis flush must not delete canonical user data.
 Implemented so far:
 
 - Redis client wiring in the Go API when `REDIS_URL` is set.
+- Read-through session-cache substrate for future auth middleware.
 - Short-lived stream cancellation flags for cross-process coordination.
 - Fixed-window HTTP rate-limit middleware when `REDIS_RATE_LIMIT_ENABLED=true`.
 - Startup fail-fast when Redis is configured but unreachable or invalid.
 
 Deferred:
 
-- Session cache integration.
+- Runtime `/v1/auth/*` endpoints and request-scoped multi-user auth middleware.
 - Temporary upload/job state.
 
 ## Runtime Configuration
@@ -24,6 +25,7 @@ Deferred:
 REDIS_URL=redis://:<password>@redis:6379/0
 REDIS_KEY_PREFIX=mm-chat
 REDIS_RUN_CANCEL_TTL=10m
+REDIS_SESSION_CACHE_TTL=5m
 REDIS_RATE_LIMIT_ENABLED=true
 REDIS_RATE_LIMIT_REQUESTS=120
 REDIS_RATE_LIMIT_WINDOW=1m
@@ -36,6 +38,8 @@ Rules:
 - Keep Redis on a private Docker/host network; do not publish `6379` publicly.
 - Do not log `REDIS_URL` because it may contain credentials.
 - Use one `REDIS_KEY_PREFIX` per environment to avoid key collisions.
+- Keep `REDIS_SESSION_CACHE_TTL` short. Redis is only a lookup cache and
+  revocation-hint layer; Postgres `sessions` remains canonical.
 - Keep `REDIS_RATE_LIMIT_ENABLED=false` in local development if repeated manual
   API smoke tests should never receive `429`.
 - Setting `REDIS_RATE_LIMIT_ENABLED=true` requires `REDIS_URL`; startup fails
@@ -79,6 +83,44 @@ Content-Type: application/json; charset=utf-8
 Runtime Redis errors fail open because Redis is temporary state; startup still
 fails fast when `REDIS_URL` is configured but cannot be parsed or pinged.
 
+## Session Cache Contract
+
+The auth substrate now has a Postgres-backed resolver and Redis cache store, but
+the HTTP routes still use the fixed development user until a later auth phase.
+
+Read-through behavior:
+
+```text
+token hash
+  -> Redis session cache lookup
+  -> Redis revocation hint check
+  -> Postgres sessions/users lookup on cache miss or Redis error
+  -> cache active session snapshot with short TTL
+```
+
+Redis key shapes:
+
+```text
+{prefix}:sessions:token:{sha256(token_hash)}
+{prefix}:sessions:{sessionId}:revoked
+```
+
+Cached values may include only browser-safe fields: `sessionId`, `userId`,
+`displayName`, `role`, `expiresAt`, and `cachedAt`. They must not include raw
+bearer tokens, token hashes, provider secrets, IP addresses, or user agents.
+
+Rules:
+
+- Cache TTL is the sooner of `REDIS_SESSION_CACHE_TTL` and the canonical
+  `sessions.expires_at`.
+- Redis cache read/write errors fall back to Postgres; Postgres errors fail
+  closed.
+- Expired or revoked sessions are not cached. Durable revoke must update
+  Postgres first, then delete the cache entry and optionally set the short-lived
+  revocation hint.
+- A Redis flush only causes cache misses; active sessions can be rebuilt from
+  Postgres.
+
 ## Cancellation Flag Contract
 
 Cancel endpoint flow:
@@ -98,19 +140,32 @@ clears the flag; TTL is the fallback cleanup path.
 ## Failure and Flush Behavior
 
 - Redis disabled: same-process cancellation and durable Postgres cancellation
-  still work; rate-limit middleware is inactive without a Redis store.
+  still work; session resolution falls back to Postgres when wired into HTTP,
+  and rate-limit middleware is inactive without a Redis store.
 - Redis outage after startup: durable cancel still writes Postgres; cross-process
-  provider interruption and rate limiting may degrade until Redis recovers.
-- Redis flush: active cross-process cancellation flags and rate-limit counters
-  are lost, but conversations, messages, files, and run status remain readable
-  from Postgres.
+  provider interruption, session-cache speed, and rate limiting may degrade
+  until Redis recovers.
+- Redis flush: session-cache entries, active cross-process cancellation flags,
+  and rate-limit counters are lost, but users, sessions, conversations,
+  messages, files, and run status remain readable from Postgres.
 
 ## Verification
 
 ```bash
 cd mm-chat/backend
 MM_CHAT_TEST_REDIS_URL=redis://:<password>@127.0.0.1:6379/0 go test ./internal/redisstate
+go test ./internal/auth -run SessionResolver
 go test ./internal/httpserver -run RateLimit
+```
+
+The auth integration test that exercises Redis `FLUSHDB` requires a disposable
+Redis database and an explicit guard:
+
+```bash
+MM_CHAT_TEST_REDIS_URL=redis://:<password>@127.0.0.1:6379/0 \
+MM_CHAT_TEST_REDIS_ALLOW_FLUSH=true \
+MM_CHAT_TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/mm_chat?sslmode=disable \
+go test ./internal/auth -run TestSessionResolverIntegrationFallsBackToPostgresAfterRedisFlush
 ```
 
 For full smoke, run Postgres and Redis together, create/read chat data through

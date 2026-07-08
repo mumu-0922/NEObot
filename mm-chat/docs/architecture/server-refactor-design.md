@@ -48,7 +48,7 @@ Next.js / React Frontend
   ↓ HTTP/SSE
 Go API Backend
   ├─ Postgres: users, sessions, conversations, messages, file metadata, audit logs
-  ├─ Redis: sessions, rate limits, short-lived jobs, cancellation flags
+  ├─ Redis: session cache, rate limits, short-lived jobs, cancellation flags
   ├─ MinIO: uploaded files, images, PDFs, audio, knowledge source files
   └─ Python FastAPI RAG Sidecar: optional later phase for parsing, embedding, retrieval
 ```
@@ -582,7 +582,7 @@ Error envelope:
 5. Frontend feature flag switch for chat.
 6. File metadata table.
 7. MinIO upload/download.
-8. Redis session/rate limit.
+8. Redis session cache/rate limit.
 9. Import tool for local data.
 10. Optional Python RAG.
 

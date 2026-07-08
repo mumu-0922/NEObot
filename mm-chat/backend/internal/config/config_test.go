@@ -37,6 +37,13 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 	if cfg.Redis.RunCancelTTL != DefaultRedisRunCancelTTL {
 		t.Fatalf("Redis.RunCancelTTL = %s, want %s", cfg.Redis.RunCancelTTL, DefaultRedisRunCancelTTL)
 	}
+	if cfg.Redis.SessionCacheTTL != DefaultRedisSessionCacheTTL {
+		t.Fatalf(
+			"Redis.SessionCacheTTL = %s, want %s",
+			cfg.Redis.SessionCacheTTL,
+			DefaultRedisSessionCacheTTL,
+		)
+	}
 	if cfg.Redis.RateLimitEnabled != DefaultRedisRateLimitEnabled {
 		t.Fatalf("Redis.RateLimitEnabled = %v, want %v", cfg.Redis.RateLimitEnabled, DefaultRedisRateLimitEnabled)
 	}
@@ -95,6 +102,7 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 		EnvRedisURL:               " redis://:redis-pass@redis:6379/1 ",
 		EnvRedisKeyPrefix:         " neo-test ",
 		EnvRedisRunCancelTTL:      "15m",
+		EnvRedisSessionCacheTTL:   "3m",
 		EnvRedisRateLimitEnabled:  "true",
 		EnvRedisRateLimitRequests: "42",
 		EnvRedisRateLimitWindow:   "30s",
@@ -147,6 +155,9 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	}
 	if cfg.Redis.RunCancelTTL != 15*time.Minute {
 		t.Fatalf("Redis.RunCancelTTL = %s, want 15m", cfg.Redis.RunCancelTTL)
+	}
+	if cfg.Redis.SessionCacheTTL != 3*time.Minute {
+		t.Fatalf("Redis.SessionCacheTTL = %s, want 3m", cfg.Redis.SessionCacheTTL)
 	}
 	if !cfg.Redis.RateLimitEnabled {
 		t.Fatal("Redis.RateLimitEnabled = false, want true")
@@ -203,31 +214,32 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 
 func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 	values := map[string]string{
-		EnvAddr:               "   ",
-		EnvVersion:            "\t",
-		EnvDatabaseURL:        " \n ",
-		EnvDBMaxOpenConns:     " ",
-		EnvDBMaxIdleConns:     "\t",
-		EnvDBConnMaxLifetime:  " \n",
-		EnvRedisURL:           " ",
-		EnvRedisKeyPrefix:     "\t",
-		EnvRedisRunCancelTTL:  "\n",
-		EnvProviderType:       " ",
-		EnvProviderBaseURL:    "\t",
-		EnvProviderModel:      " \n ",
-		EnvProviderAPIKey:     " ",
-		EnvProviderTimeout:    "\t",
-		EnvStorageBackend:     " ",
-		EnvLocalStorageDir:    "\t",
-		EnvS3Endpoint:         " ",
-		EnvS3Bucket:           "\t",
-		EnvS3Region:           "\n",
-		EnvS3AccessKeyID:      " ",
-		EnvS3SecretAccessKey:  "\t",
-		EnvS3UseSSL:           " ",
-		EnvS3ForcePathStyle:   " ",
-		EnvS3BucketAutoCreate: "\n",
-		EnvMaxUploadBytes:     "\n",
+		EnvAddr:                 "   ",
+		EnvVersion:              "\t",
+		EnvDatabaseURL:          " \n ",
+		EnvDBMaxOpenConns:       " ",
+		EnvDBMaxIdleConns:       "\t",
+		EnvDBConnMaxLifetime:    " \n",
+		EnvRedisURL:             " ",
+		EnvRedisKeyPrefix:       "\t",
+		EnvRedisRunCancelTTL:    "\n",
+		EnvRedisSessionCacheTTL: " ",
+		EnvProviderType:         " ",
+		EnvProviderBaseURL:      "\t",
+		EnvProviderModel:        " \n ",
+		EnvProviderAPIKey:       " ",
+		EnvProviderTimeout:      "\t",
+		EnvStorageBackend:       " ",
+		EnvLocalStorageDir:      "\t",
+		EnvS3Endpoint:           " ",
+		EnvS3Bucket:             "\t",
+		EnvS3Region:             "\n",
+		EnvS3AccessKeyID:        " ",
+		EnvS3SecretAccessKey:    "\t",
+		EnvS3UseSSL:             " ",
+		EnvS3ForcePathStyle:     " ",
+		EnvS3BucketAutoCreate:   "\n",
+		EnvMaxUploadBytes:       "\n",
 	}
 
 	cfg := LoadFromEnv(func(key string) (string, bool) {
@@ -256,6 +268,7 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 	if cfg.Redis.URL != "" ||
 		cfg.Redis.KeyPrefix != DefaultRedisKeyPrefix ||
 		cfg.Redis.RunCancelTTL != DefaultRedisRunCancelTTL ||
+		cfg.Redis.SessionCacheTTL != DefaultRedisSessionCacheTTL ||
 		cfg.Redis.RateLimitEnabled != DefaultRedisRateLimitEnabled ||
 		cfg.Redis.RateLimitRequests != DefaultRedisRateLimitRequests ||
 		cfg.Redis.RateLimitWindow != DefaultRedisRateLimitWindow {
@@ -291,6 +304,7 @@ func TestLoadFromEnvFallsBackForInvalidDBValues(t *testing.T) {
 		EnvDBMaxIdleConns:         "-1",
 		EnvDBConnMaxLifetime:      "not-a-duration",
 		EnvRedisRunCancelTTL:      "not-a-duration",
+		EnvRedisSessionCacheTTL:   "-1s",
 		EnvRedisRateLimitEnabled:  "not-a-bool",
 		EnvRedisRateLimitRequests: "-1",
 		EnvRedisRateLimitWindow:   "not-a-duration",
@@ -317,6 +331,13 @@ func TestLoadFromEnvFallsBackForInvalidDBValues(t *testing.T) {
 	}
 	if cfg.Redis.RunCancelTTL != DefaultRedisRunCancelTTL {
 		t.Fatalf("Redis.RunCancelTTL = %s, want %s", cfg.Redis.RunCancelTTL, DefaultRedisRunCancelTTL)
+	}
+	if cfg.Redis.SessionCacheTTL != DefaultRedisSessionCacheTTL {
+		t.Fatalf(
+			"Redis.SessionCacheTTL = %s, want %s",
+			cfg.Redis.SessionCacheTTL,
+			DefaultRedisSessionCacheTTL,
+		)
 	}
 	if cfg.Redis.RateLimitEnabled != DefaultRedisRateLimitEnabled {
 		t.Fatalf("Redis.RateLimitEnabled = %v, want %v", cfg.Redis.RateLimitEnabled, DefaultRedisRateLimitEnabled)

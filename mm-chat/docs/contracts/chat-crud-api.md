@@ -246,10 +246,12 @@ Allowed behavior:
   Duplicate detection is limited to the conversation/message idempotency unique
   indexes, not arbitrary database uniqueness failures.
 
-Not allowed yet: `sessions`, `provider_configs`, `audit_logs`, Redis,
-MinIO/S3, RAG, auth, browser IndexedDB/OPFS import, or sending attachments to
-the model provider as multimodal input. SSE streaming still consumes a
-persisted `userMessageId` and rejects `attachments` in the stream request body.
+Not allowed yet inside the chat CRUD handler/repository path: request-scoped
+`sessions`, `provider_configs`, `audit_logs`, Redis session-cache identity,
+RAG, auth, browser IndexedDB/OPFS import, direct object-store access, or sending
+attachments to the model provider as multimodal input. SSE streaming still
+consumes a persisted `userMessageId` and rejects `attachments` in the stream
+request body.
 
 ## 9. Verification Targets
 

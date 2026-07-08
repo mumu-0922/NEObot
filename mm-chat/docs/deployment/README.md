@@ -24,9 +24,10 @@ then add MinIO/Redis/RAG only when their phase boundaries are ready.
   gateway. Runtime config uses `STORAGE_BACKEND=minio|s3` plus `S3_*`
   variables; do not use stale `OBJECTSTORE_DRIVER` / `FILE_MAX_BYTES` names.
 - MVP is `frontend -> Go backend -> Postgres -> provider stream`. Redis is now
-  available only for non-authoritative temporary cancellation flags and HTTP
-  rate-limit counters; sessions, RAG, browser data import, and production backup
-  automation remain later phases.
+  available only for non-authoritative session-cache snapshots, temporary
+  cancellation flags, and HTTP rate-limit counters; runtime auth endpoints,
+  RAG, browser data import, and production backup automation remain later
+  phases.
 - Phase 4.5 runtime wiring keeps `DATABASE_URL` empty mode DB-disabled with
   `/ready` returning `200`; when `DATABASE_URL` is set, startup and `/ready`
   ping Postgres and readiness returns `503` on DB ping failure.
@@ -46,6 +47,7 @@ then add MinIO/Redis/RAG only when their phase boundaries are ready.
   `minio`, or `s3`. Use `S3_BUCKET_AUTO_CREATE=false` in production and
   provision the bucket/credentials outside the app release.
 - Redis config uses `REDIS_URL`, `REDIS_KEY_PREFIX`, `REDIS_RUN_CANCEL_TTL`,
-  `REDIS_RATE_LIMIT_ENABLED`, `REDIS_RATE_LIMIT_REQUESTS`, and
+  `REDIS_SESSION_CACHE_TTL`, `REDIS_RATE_LIMIT_ENABLED`,
+  `REDIS_RATE_LIMIT_REQUESTS`, and
   `REDIS_RATE_LIMIT_WINDOW`. Leave `REDIS_URL` empty to disable Redis; if set,
   the API fails fast when Redis cannot be parsed or pinged.

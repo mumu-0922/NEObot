@@ -1694,3 +1694,83 @@ main-session Redis integration/API rate-limit smoke/fail-fast after review fix: 
 
 Commit Phase 7 after main-session review approval. Session cache integration
 remains unchecked.
+
+## 2026-07-08 — Phase 7 Redis Session Cache Integration
+
+### Action
+
+Added the Redis-backed session-cache substrate without changing the current fixed-development-user HTTP behavior. The new auth resolver checks Redis first, falls back to Postgres on cache miss or Redis errors, refuses expired/revoked sessions, and caches only browser-safe session snapshots. The Redis store hashes token-hash cache keys again, stores short-lived revocation hints, and never stores raw bearer tokens, token hashes, provider secrets, IP addresses, or user agents.
+
+### Files
+
+```text
+mm-chat/backend/.env.example
+mm-chat/backend/cmd/api/main.go
+mm-chat/backend/cmd/api/main_test.go
+mm-chat/backend/internal/auth/session_repository_postgres.go
+mm-chat/backend/internal/auth/session_repository_postgres_test.go
+mm-chat/backend/internal/auth/session_resolver.go
+mm-chat/backend/internal/auth/session_resolver_test.go
+mm-chat/backend/internal/auth/types.go
+mm-chat/backend/internal/config/config.go
+mm-chat/backend/internal/config/config_test.go
+mm-chat/backend/internal/redisstate/session_cache.go
+mm-chat/backend/internal/redisstate/session_cache_test.go
+mm-chat/backend/internal/sessioncache/store.go
+mm-chat/docs/architecture/server-refactor-design.md
+mm-chat/docs/contracts/chat-crud-api.md
+mm-chat/docs/contracts/chat-stream-api.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/deployment/README.md
+mm-chat/docs/deployment/redis-temporary-state.md
+mm-chat/docs/deployment/single-server-compose.md
+mm-chat/docs/persistence/postgres-schema.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+### Decision
+
+Session cache is reusable infrastructure for the later auth phase, not runtime auth enforcement yet. Postgres remains the canonical session and revocation source. Redis flushes become cache misses; Redis runtime errors fall back to Postgres; Postgres errors fail closed. Cache TTL is bounded by both `REDIS_SESSION_CACHE_TTL` and `sessions.expires_at`.
+
+### Verification
+
+```text
+Docker Go 1.22 gofmt + go test ./... + go vet ./...: passed
+Docker Redis integration for session cache store: passed
+Docker Postgres integration for auth session repository: passed
+Docker Redis+Postgres integration for resolver fallback after Redis FLUSHDB: passed
+git diff --check -- mm-chat: passed
+```
+
+### Next Step
+
+Run Redis integration, vet/diff checks, review agent, then commit and push the Phase 7 session-cache slice.
+
+## 2026-07-08 — Phase 7 Review Fix: Session Cache Canonicality
+
+### Action
+
+Review found two P2 issues. Updated the resolver so a Redis revocation hint no longer rejects a session by itself; the resolver deletes the cached token snapshot, rechecks canonical Postgres state, and clears stale revocation hints after a successful active-session lookup. Also added `MM_CHAT_TEST_REDIS_ALLOW_FLUSH=true` as an explicit safety guard before any integration test calls Redis `FLUSHDB`.
+
+### Files
+
+```text
+mm-chat/backend/internal/auth/session_resolver.go
+mm-chat/backend/internal/auth/session_resolver_test.go
+mm-chat/backend/internal/auth/session_repository_postgres_test.go
+mm-chat/docs/deployment/redis-temporary-state.md
+mm-chat/docs/tracking/process.md
+```
+
+### Verification
+
+```text
+Docker Go 1.22 gofmt + go test ./... + go vet ./...: passed
+Docker Redis+Postgres integration with MM_CHAT_TEST_REDIS_ALLOW_FLUSH=true: passed
+git diff --check -- mm-chat: passed
+```
+
+### Next Step
+
+Run final Trellis quality check, commit, and push the Phase 7 session-cache slice.
