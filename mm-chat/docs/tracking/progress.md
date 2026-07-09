@@ -500,8 +500,8 @@ the UI can call in the next wiring slice.
 
 - [x] Replace fixed development user with real session-aware identity.
 - [x] Add login/logout/me or chosen auth-provider flow.
-- [ ] Enforce ownership across conversations, messages, files, imports, and runs.
-- [ ] Verify two-user isolation.
+- [x] Enforce ownership across conversations, messages, files, imports, and runs.
+- [x] Verify two-user isolation.
 
 ### Phase 13.1 — Request identity plumbing
 
@@ -538,6 +538,17 @@ the UI can call in the next wiring slice.
       public.
 - [x] Add targeted tests for required-mode rejection, public-route exemptions,
       missing resolver failure, and config parsing.
+
+### Phase 13.4 — Two-user isolation
+
+- [x] Add two-session/session-resolver integration coverage.
+- [x] Verify chat conversations, messages, attachments, assistant finalize, and
+      run cancellation are scoped by request user.
+- [x] Verify file metadata, delete, and object-store access do not cross users.
+- [x] Verify browser import commit/status/rollback/idempotency/object keys are
+      scoped by request user.
+- [x] Preserve not-found style errors for cross-user access to avoid leaking
+      resource existence.
 
 ## Phase 14 — Production Hardening and Observability
 

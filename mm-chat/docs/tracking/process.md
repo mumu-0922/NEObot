@@ -4207,8 +4207,19 @@ Verification:
 go version
   go version go1.22.12 linux/amd64
 
-cd mm-chat/backend && go test ./...
+cd mm-chat/backend && go test ./... && go vet ./...
   passed
+
+corepack pnpm exec prettier --check \
+  mm-chat/docs/tracking/process.md \
+  mm-chat/docs/tracking/progress.md
+  passed
+
+git diff --check -- <Phase 13.4 target files>
+  passed
+
+targeted secret-pattern scan
+  no real secrets found; hits are test token strings only
 ```
 
 Next: host-side Go backend tests can now be run directly with
@@ -4241,8 +4252,19 @@ corepack pnpm vitest run \
   src/__tests__/messagesParity.test.ts
   passed: 5 files, 44 tests
 
-cd mm-chat/backend && go test ./...
+cd mm-chat/backend && go test ./... && go vet ./...
   passed
+
+corepack pnpm exec prettier --check \
+  mm-chat/docs/tracking/process.md \
+  mm-chat/docs/tracking/progress.md
+  passed
+
+git diff --check -- <Phase 13.4 target files>
+  passed
+
+targeted secret-pattern scan
+  no real secrets found; hits are test token strings only
 ```
 
 Spec sync: executable browser-import contracts already live in
@@ -4297,8 +4319,19 @@ missing Authorization
 Verification:
 
 ```text
-cd mm-chat/backend && go test ./...
+cd mm-chat/backend && go test ./... && go vet ./...
   passed
+
+corepack pnpm exec prettier --check \
+  mm-chat/docs/tracking/process.md \
+  mm-chat/docs/tracking/progress.md
+  passed
+
+git diff --check -- <Phase 13.4 target files>
+  passed
+
+targeted secret-pattern scan
+  no real secrets found; hits are test token strings only
 ```
 
 Next: Phase 13.2 should add `/v1/me`, `POST /v1/auth/login`, and
@@ -4488,3 +4521,103 @@ targeted secret-pattern scan
 
 Next: Phase 13.4 should verify two-user isolation across chat, files, browser
 imports, and run cancellation.
+
+## 2026-07-09 — Phase 13.4 two-user isolation tests
+
+Action: added targeted two-user isolation coverage across the request-scoped
+backend data paths. This slice is test-first hardening: existing repository and
+service code already scopes by `auth.UserOrDevelopment(ctx)`, and the new tests
+pin that behavior so future changes do not accidentally reintroduce shared
+fixed-user access.
+
+Files:
+
+```text
+mm-chat/backend/internal/auth/session_repository_postgres_test.go
+mm-chat/backend/internal/chat/repository_postgres_test.go
+mm-chat/backend/internal/files/repository_postgres_test.go
+mm-chat/backend/internal/files/handler_test.go
+mm-chat/backend/internal/browserimport/repository_postgres_test.go
+mm-chat/docs/tracking/process.md
+mm-chat/docs/tracking/progress.md
+```
+
+Coverage:
+
+```text
+Auth/session
+  -> two distinct users can create independent sessions and resolve to their own identity
+
+Chat
+  -> user B cannot list/get/create/finalize messages in user A conversation
+  -> user B cannot attach user A files to user B messages
+  -> user B cannot cancel user A runId
+  -> same conversation idempotency key can exist for different users
+
+Files
+  -> user B cannot read or delete user A file metadata
+  -> user A object keys include users/{userId}/files/{fileId}
+  -> service does not call object-store Get/Delete when metadata lookup fails
+
+Browser import
+  -> user B cannot read or roll back user A import batch
+  -> same import idempotency key can create different batches for different users
+  -> imported object keys include users/{userId}/files/{fileId}
+  -> user A rollback does not delete user B objects or batch state
+```
+
+Review fixes:
+
+```text
+- Changed new integration tests to generate unique user IDs, tokens, and
+  idempotency keys so repeated runs do not pollute shared Postgres state.
+- Converted older auth Postgres fixture rows from fixed user/session/token/email
+  values to generated unique values.
+- Added post-rejected cross-user rollback assertions that user A batch status,
+  object, conversation, messages, file row, and attachment row remain active.
+- Added post-owner-rollback assertions that user B object, batch status,
+  conversation, messages, file row, and attachment row remain active.
+- Asserted two users can persist the same chat conversation idempotency key
+  without one user's row masking the other.
+- Ran the Phase 13.4 Postgres tests against a disposable postgres:16-alpine
+  container instead of relying on skip-only default `go test`.
+- Used `go test -p 1` for the multi-package disposable-Postgres verification so
+  package-level migration setup runs sequentially against the shared fresh DB.
+```
+
+Verification:
+
+```text
+MM_CHAT_TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:<ephemeral>/mm_chat_test?sslmode=disable \
+  go test -p 1 -count=1 ./internal/auth ./internal/chat ./internal/files ./internal/browserimport \
+  -run 'TestPostgresSessionRepositoryLookupSessionByTokenHash|TestPostgresSessionRepositoryCreatesTwoUserSessions|TestPostgresRepositoryEnforcesTwoUserIsolation|TestPostgresRepositoryEnforcesTwoUserFileIsolation|TestServiceDoesNotTouchObjectStoreWhenMetadataIsNotOwned|TestPostgresRepositoryEnforcesTwoUserImportIsolation'
+  passed
+
+MM_CHAT_TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:<ephemeral>/mm_chat_test?sslmode=disable \
+  go test -count=1 ./internal/browserimport -run TestPostgresRepositoryEnforcesTwoUserImportIsolation
+  passed
+
+MM_CHAT_TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:<ephemeral>/mm_chat_test?sslmode=disable \
+  go test -count=1 ./internal/chat -run TestPostgresRepositoryEnforcesTwoUserIsolation
+  passed
+
+cd mm-chat/backend && go test ./... && go vet ./...
+  passed
+
+corepack pnpm exec prettier --check \
+  mm-chat/docs/tracking/process.md \
+  mm-chat/docs/tracking/progress.md
+  passed
+
+git diff --check -- <Phase 13.4 target files>
+  passed
+
+targeted secret-pattern scan
+  no real secrets found; hits are test token strings only
+
+follow-up review agent
+  no findings
+```
+
+Next: Phase 14 should start production hardening and observability unless a
+browser-level auth/session UI slice is pulled forward first.

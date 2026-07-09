@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 
+	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/migration"
 	"neo-chat/mm-chat/backend/internal/storage"
 	migrationfiles "neo-chat/mm-chat/backend/migrations"
@@ -121,6 +122,104 @@ func TestPostgresRepositoryCommitsFileAttachmentsAndRollsBackObjects(t *testing.
 	}
 	assertRolledBack(t, ctx, db, response.BatchID)
 	assertImportedFilesRolledBack(t, ctx, db, response.BatchID)
+}
+
+func TestPostgresRepositoryEnforcesTwoUserImportIsolation(t *testing.T) {
+	db := openPostgresIntegrationDB(t)
+	store := newImportFakeObjectStore()
+	repoA := NewPostgresRepository(db, WithObjectStore(store), WithStorageBackend("local"))
+	repoB := NewPostgresRepository(db, WithObjectStore(store), WithStorageBackend("local"))
+
+	batchAID := mustIntegrationUUID(t)
+	fileAID := mustIntegrationUUID(t)
+	conversationAID := mustIntegrationUUID(t)
+	firstMessageAID := mustIntegrationUUID(t)
+	attachmentAID := mustIntegrationUUID(t)
+	secondMessageAID := mustIntegrationUUID(t)
+	repoA.newID = deterministicIDs(t, batchAID, fileAID, conversationAID, firstMessageAID, attachmentAID, secondMessageAID)
+
+	batchBID := mustIntegrationUUID(t)
+	fileBID := mustIntegrationUUID(t)
+	conversationBID := mustIntegrationUUID(t)
+	firstMessageBID := mustIntegrationUUID(t)
+	attachmentBID := mustIntegrationUUID(t)
+	secondMessageBID := mustIntegrationUUID(t)
+	repoB.newID = deterministicIDs(t, batchBID, fileBID, conversationBID, firstMessageBID, attachmentBID, secondMessageBID)
+
+	manifest := validFileManifest()
+	manifest.IdempotencyKey = "shared-import-" + batchAID
+	pkg := readPackageFromManifest(t, manifest, zipEntry{name: manifest.Files[0].BlobPath, body: []byte("hello")})
+
+	userAID := mustIntegrationUUID(t)
+	userBID := mustIntegrationUUID(t)
+	baseA := auth.WithUser(context.Background(), auth.User{ID: userAID, DisplayName: "User A"})
+	ctxA, cancelA := context.WithTimeout(baseA, 5*time.Second)
+	defer cancelA()
+	baseB := auth.WithUser(context.Background(), auth.User{ID: userBID, DisplayName: "User B"})
+	ctxB, cancelB := context.WithTimeout(baseB, 5*time.Second)
+	defer cancelB()
+
+	responseA, err := repoA.Commit(ctxA, pkg)
+	if err != nil {
+		t.Fatalf("Commit(user A) error = %v", err)
+	}
+	if responseA.BatchID != batchAID || responseA.Mappings.Files["file-client-1"] != fileAID {
+		t.Fatalf("response A = %#v", responseA)
+	}
+	objectKeyA := importedObjectKey(userAID, fileAID)
+	if _, ok := store.objects[objectKeyA]; !ok {
+		t.Fatalf("object %s missing after user A import; objects=%#v", objectKeyA, store.objects)
+	}
+
+	if _, err := repoB.GetBatchStatus(ctxB, responseA.BatchID); !errors.Is(err, ErrBatchNotFound) {
+		t.Fatalf("GetBatchStatus(user B on user A batch) error = %v, want ErrBatchNotFound", err)
+	}
+	if err := repoB.Rollback(ctxB, responseA.BatchID); !errors.Is(err, ErrBatchNotFound) {
+		t.Fatalf("Rollback(user B on user A batch) error = %v, want ErrBatchNotFound", err)
+	}
+	statusA, err := repoA.GetBatchStatus(ctxA, responseA.BatchID)
+	if err != nil {
+		t.Fatalf("GetBatchStatus(user A after cross-user rollback) error = %v", err)
+	}
+	if statusA.Status != "completed" {
+		t.Fatalf("status A after cross-user rollback = %#v, want completed", statusA)
+	}
+	if _, ok := store.objects[objectKeyA]; !ok {
+		t.Fatalf("user A object %s was deleted by user B rollback", objectKeyA)
+	}
+	assertImportedRows(t, ctxA, db, batchAID, firstMessageAID)
+	assertImportedFileRows(t, ctxA, db, batchAID, fileAID, firstMessageAID, attachmentAID)
+
+	responseB, err := repoB.Commit(ctxB, pkg)
+	if err != nil {
+		t.Fatalf("Commit(user B same idempotency key) error = %v", err)
+	}
+	if responseB.BatchID != batchBID || responseB.BatchID == responseA.BatchID {
+		t.Fatalf("response B = %#v, want distinct user B batch", responseB)
+	}
+	objectKeyB := importedObjectKey(userBID, fileBID)
+	if _, ok := store.objects[objectKeyB]; !ok {
+		t.Fatalf("object %s missing after user B import; objects=%#v", objectKeyB, store.objects)
+	}
+
+	if err := repoA.Rollback(ctxA, responseA.BatchID); err != nil {
+		t.Fatalf("Rollback(user A) error = %v", err)
+	}
+	if _, ok := store.objects[objectKeyA]; ok {
+		t.Fatalf("user A object %s still exists after rollback", objectKeyA)
+	}
+	if _, ok := store.objects[objectKeyB]; !ok {
+		t.Fatalf("user B object %s was deleted by user A rollback", objectKeyB)
+	}
+	statusB, err := repoB.GetBatchStatus(ctxB, responseB.BatchID)
+	if err != nil {
+		t.Fatalf("GetBatchStatus(user B after user A rollback) error = %v", err)
+	}
+	if statusB.Status != "completed" {
+		t.Fatalf("status B = %#v, want completed", statusB)
+	}
+	assertImportedRows(t, ctxB, db, batchBID, firstMessageBID)
+	assertImportedFileRows(t, ctxB, db, batchBID, fileBID, firstMessageBID, attachmentBID)
 }
 
 func TestPostgresRepositoryRequiresStorageForFileImport(t *testing.T) {

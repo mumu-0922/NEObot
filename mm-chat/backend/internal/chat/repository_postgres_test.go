@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 
+	"neo-chat/mm-chat/backend/internal/auth"
 	filemeta "neo-chat/mm-chat/backend/internal/files"
 	"neo-chat/mm-chat/backend/internal/migration"
 	migrationfiles "neo-chat/mm-chat/backend/migrations"
@@ -91,6 +92,140 @@ func TestPostgresCreateMessagePersistsAttachments(t *testing.T) {
 	}
 	if len(got.Attachments) != 1 || got.Attachments[0].SHA256 != testSHA256 {
 		t.Fatalf("GetMessage() attachments = %#v", got.Attachments)
+	}
+}
+
+func TestPostgresRepositoryEnforcesTwoUserIsolation(t *testing.T) {
+	db := openPostgresIntegrationDB(t)
+	repo := NewPostgresRepository(db)
+	fileRepo := filemeta.NewPostgresRepository(db)
+
+	userAID := mustTestUUID(t)
+	userBID := mustTestUUID(t)
+	sharedConversationKey := "shared-conversation-key-" + mustTestUUID(t)
+	baseA := auth.WithUser(context.Background(), auth.User{
+		ID:          userAID,
+		DisplayName: "User A",
+	})
+	ctxA, cancelA := context.WithTimeout(baseA, 5*time.Second)
+	defer cancelA()
+	baseB := auth.WithUser(context.Background(), auth.User{
+		ID:          userBID,
+		DisplayName: "User B",
+	})
+	ctxB, cancelB := context.WithTimeout(baseB, 5*time.Second)
+	defer cancelB()
+
+	conversationA, err := repo.CreateConversation(ctxA, CreateConversationInput{
+		Title:          "user A conversation",
+		IdempotencyKey: sharedConversationKey,
+	})
+	if err != nil {
+		t.Fatalf("CreateConversation(user A) error = %v", err)
+	}
+	initialB, err := repo.ListConversations(ctxB)
+	if err != nil {
+		t.Fatalf("ListConversations(user B initial) error = %v", err)
+	}
+	if len(initialB) != 0 {
+		t.Fatalf("user B conversations = %#v, want no user A rows", initialB)
+	}
+	conversationB, err := repo.CreateConversation(ctxB, CreateConversationInput{
+		Title:          "user B conversation",
+		IdempotencyKey: sharedConversationKey,
+	})
+	if err != nil {
+		t.Fatalf("CreateConversation(user B same idempotency key) error = %v", err)
+	}
+	if conversationA.ID == conversationB.ID || conversationA.UserID == conversationB.UserID {
+		t.Fatalf("conversations were not isolated: %#v/%#v", conversationA, conversationB)
+	}
+	if conversationA.IdempotencyKey != sharedConversationKey || conversationB.IdempotencyKey != sharedConversationKey {
+		t.Fatalf("conversation idempotency keys = %q/%q, want shared key %q", conversationA.IdempotencyKey, conversationB.IdempotencyKey, sharedConversationKey)
+	}
+
+	fileID := mustTestUUID(t)
+	fileRecord, err := fileRepo.CreateFile(ctxA, filemeta.CreateFileInput{
+		ID:               fileID,
+		OriginalFilename: "a-only.txt",
+		MimeType:         "text/plain",
+		ByteSize:         11,
+		SHA256:           testSHA256,
+		StorageBackend:   "local",
+		ObjectKey:        "users/" + conversationA.UserID + "/files/" + fileID,
+		Metadata:         map[string]any{"purpose": "chat"},
+	})
+	if err != nil {
+		t.Fatalf("CreateFile(user A) error = %v", err)
+	}
+	messageA, err := repo.CreateMessage(ctxA, conversationA.ID, CreateMessageInput{
+		Role:    "user",
+		Content: "user A message",
+		Attachments: []AttachmentInput{
+			{FileID: fileRecord.ID, Purpose: "input"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateMessage(user A) error = %v", err)
+	}
+	runID := mustTestUUID(t)
+	assistantA, err := repo.CreateAssistantMessage(ctxA, conversationA.ID, CreateAssistantMessageInput{
+		ID:              mustTestUUID(t),
+		ParentMessageID: messageA.ID,
+		IdempotencyKey:  "assistant-" + runID,
+		Metadata: map[string]any{
+			"runId": runID,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateAssistantMessage(user A) error = %v", err)
+	}
+
+	listB, err := repo.ListConversations(ctxB)
+	if err != nil {
+		t.Fatalf("ListConversations(user B) error = %v", err)
+	}
+	if len(listB) != 1 || listB[0].ID != conversationB.ID {
+		t.Fatalf("user B conversations = %#v, want only user B conversation", listB)
+	}
+	if _, err := repo.ListMessages(ctxB, conversationA.ID); !errors.Is(err, ErrConversationNotFound) {
+		t.Fatalf("ListMessages(user B on user A conversation) error = %v, want ErrConversationNotFound", err)
+	}
+	if _, err := repo.GetMessage(ctxB, conversationA.ID, messageA.ID); !errors.Is(err, ErrConversationNotFound) {
+		t.Fatalf("GetMessage(user B on user A conversation) error = %v, want ErrConversationNotFound", err)
+	}
+	if _, err := repo.CreateMessage(ctxB, conversationA.ID, CreateMessageInput{
+		Role:    "user",
+		Content: "cross-user write",
+	}); !errors.Is(err, ErrConversationNotFound) {
+		t.Fatalf("CreateMessage(user B on user A conversation) error = %v, want ErrConversationNotFound", err)
+	}
+	if _, err := repo.CreateMessage(ctxB, conversationB.ID, CreateMessageInput{
+		Role:    "user",
+		Content: "cross-user attachment",
+		Attachments: []AttachmentInput{
+			{FileID: fileRecord.ID, Purpose: "input"},
+		},
+	}); !errors.Is(err, ErrFileNotFound) {
+		t.Fatalf("CreateMessage(user B with user A file) error = %v, want ErrFileNotFound", err)
+	}
+	assertNoMessagesForConversation(t, ctxB, db, conversationB.ID)
+	if _, err := repo.FinalizeAssistantMessage(ctxB, conversationA.ID, assistantA.ID, FinalizeAssistantMessageInput{
+		Status:  "completed",
+		Content: "cross-user finalize",
+	}); !errors.Is(err, ErrConversationNotFound) {
+		t.Fatalf("FinalizeAssistantMessage(user B on user A assistant) error = %v, want ErrConversationNotFound", err)
+	}
+	if _, err := repo.CancelRun(ctxB, runID, CancelRunInput{Metadata: map[string]any{"cancelledBy": "user-b"}}); !errors.Is(err, ErrRunNotFound) {
+		t.Fatalf("CancelRun(user B on user A run) error = %v, want ErrRunNotFound", err)
+	}
+
+	messagesA, err := repo.ListMessages(ctxA, conversationA.ID)
+	if err != nil {
+		t.Fatalf("ListMessages(user A after cross-user attempts) error = %v", err)
+	}
+	if len(messagesA) != 2 || len(messagesA[0].Attachments) != 1 || messagesA[1].Status != "streaming" {
+		t.Fatalf("user A messages after cross-user attempts = %#v", messagesA)
 	}
 }
 

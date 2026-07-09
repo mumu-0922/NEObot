@@ -210,6 +210,38 @@ func TestServiceUploadUsesRequestUserForObjectKey(t *testing.T) {
 	}
 }
 
+func TestServiceDoesNotTouchObjectStoreWhenMetadataIsNotOwned(t *testing.T) {
+	repo := newFakeRepository()
+	store := newFakeObjectStore()
+	store.objects[objectKeyFor(testFileID)] = fakeObject{
+		payload:     []byte("owned elsewhere"),
+		contentType: "text/plain",
+	}
+	service := NewService(repo, store)
+
+	_, content, err := service.GetContent(context.Background(), testFileID)
+	if !errors.Is(err, ErrFileNotFound) {
+		t.Fatalf("GetContent() error = %v, want ErrFileNotFound", err)
+	}
+	if content != nil {
+		_ = content.Close()
+		t.Fatalf("GetContent() reader = %#v, want nil", content)
+	}
+	if store.getCalls != 0 {
+		t.Fatalf("object store Get calls = %d, want 0 when metadata is not owned", store.getCalls)
+	}
+
+	if err := service.Delete(context.Background(), testFileID); !errors.Is(err, ErrFileNotFound) {
+		t.Fatalf("Delete() error = %v, want ErrFileNotFound", err)
+	}
+	if store.deleteCalls != 0 {
+		t.Fatalf("object store Delete calls = %d, want 0 when metadata is not owned", store.deleteCalls)
+	}
+	if _, ok := store.objects[objectKeyFor(testFileID)]; !ok {
+		t.Fatalf("object key %q was deleted despite metadata ownership miss", objectKeyFor(testFileID))
+	}
+}
+
 func TestHandlerRequiresDatabaseAndStorage(t *testing.T) {
 	rec := performMultipartRequest(
 		NewHandler(NewService(nil, newFakeObjectStore())),
@@ -360,7 +392,9 @@ func (r *fakeRepository) MarkFileDeleted(_ context.Context, fileID string) (File
 }
 
 type fakeObjectStore struct {
-	objects map[string]fakeObject
+	objects     map[string]fakeObject
+	getCalls    int
+	deleteCalls int
 }
 
 type fakeObject struct {
@@ -385,6 +419,7 @@ func (s *fakeObjectStore) Put(_ context.Context, key string, body io.Reader, siz
 }
 
 func (s *fakeObjectStore) Get(_ context.Context, key string) (io.ReadCloser, storage.ObjectInfo, error) {
+	s.getCalls++
 	object, ok := s.objects[key]
 	if !ok {
 		return nil, storage.ObjectInfo{}, storage.ErrObjectNotFound
@@ -398,6 +433,7 @@ func (s *fakeObjectStore) Get(_ context.Context, key string) (io.ReadCloser, sto
 }
 
 func (s *fakeObjectStore) Delete(_ context.Context, key string) error {
+	s.deleteCalls++
 	delete(s.objects, key)
 	return nil
 }
