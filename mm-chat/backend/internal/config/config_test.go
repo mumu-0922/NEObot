@@ -92,6 +92,12 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 	if cfg.Auth.BootstrapToken != "" {
 		t.Fatalf("Auth.BootstrapToken = %q, want empty", cfg.Auth.BootstrapToken)
 	}
+	if cfg.Auth.Mode != DefaultAuthMode {
+		t.Fatalf("Auth.Mode = %q, want %q", cfg.Auth.Mode, DefaultAuthMode)
+	}
+	if cfg.Auth.RequireAuth() {
+		t.Fatal("Auth.RequireAuth() = true, want false for default development mode")
+	}
 	if cfg.Auth.BootstrapUserID != DefaultAuthBootstrapUserID {
 		t.Fatalf("Auth.BootstrapUserID = %q, want %q", cfg.Auth.BootstrapUserID, DefaultAuthBootstrapUserID)
 	}
@@ -134,6 +140,7 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 		EnvS3ForcePathStyle:       " true ",
 		EnvS3BucketAutoCreate:     " true ",
 		EnvMaxUploadBytes:         "1048576",
+		EnvAuthMode:               " required ",
 		EnvAuthBootstrapToken:     " bootstrap-secret ",
 		EnvAuthBootstrapUserID:    " 77777777-7777-4777-8777-777777777777 ",
 		EnvAuthBootstrapUserName:  " Server Owner ",
@@ -229,6 +236,12 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	if cfg.Auth.BootstrapToken != "bootstrap-secret" {
 		t.Fatalf("Auth.BootstrapToken = %q, want bootstrap-secret", cfg.Auth.BootstrapToken)
 	}
+	if cfg.Auth.Mode != AuthModeRequired {
+		t.Fatalf("Auth.Mode = %q, want required", cfg.Auth.Mode)
+	}
+	if !cfg.Auth.RequireAuth() {
+		t.Fatal("Auth.RequireAuth() = false, want true")
+	}
 	if cfg.Auth.BootstrapUserID != "77777777-7777-4777-8777-777777777777" {
 		t.Fatalf("Auth.BootstrapUserID = %q", cfg.Auth.BootstrapUserID)
 	}
@@ -269,6 +282,7 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 		EnvS3BucketAutoCreate:    "\n",
 		EnvMaxUploadBytes:        "\n",
 		EnvAuthBootstrapToken:    " ",
+		EnvAuthMode:              "\t",
 		EnvAuthBootstrapUserID:   "\t",
 		EnvAuthBootstrapUserName: "\n",
 		EnvAuthSessionTTL:        " ",
@@ -329,6 +343,7 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 		t.Fatalf("Storage.S3 = %#v, want blank/false defaults", cfg.Storage.S3)
 	}
 	if cfg.Auth.BootstrapToken != "" ||
+		cfg.Auth.Mode != DefaultAuthMode ||
 		cfg.Auth.BootstrapUserID != DefaultAuthBootstrapUserID ||
 		cfg.Auth.BootstrapDisplayName != DefaultAuthBootstrapUserName ||
 		cfg.Auth.SessionTTL != DefaultAuthSessionTTL {
@@ -351,6 +366,7 @@ func TestLoadFromEnvFallsBackForInvalidDBValues(t *testing.T) {
 		EnvS3ForcePathStyle:       "not-a-bool",
 		EnvS3BucketAutoCreate:     "not-a-bool",
 		EnvMaxUploadBytes:         "-1",
+		EnvAuthMode:               "typo",
 		EnvAuthSessionTTL:         "not-a-duration",
 	}
 
@@ -398,5 +414,8 @@ func TestLoadFromEnvFallsBackForInvalidDBValues(t *testing.T) {
 	}
 	if cfg.Auth.SessionTTL != DefaultAuthSessionTTL {
 		t.Fatalf("Auth.SessionTTL = %s, want %s", cfg.Auth.SessionTTL, DefaultAuthSessionTTL)
+	}
+	if cfg.Auth.Mode != AuthModeRequired {
+		t.Fatalf("Auth.Mode = %q, want required fail-closed fallback for unknown non-empty mode", cfg.Auth.Mode)
 	}
 }

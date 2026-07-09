@@ -59,7 +59,7 @@ func (r *SessionResolver) ResolveByTokenHash(ctx context.Context, tokenHash stri
 		return Session{}, err
 	}
 	if r == nil || r.repo == nil {
-		return Session{}, errors.New("session repository is required")
+		return Session{}, ErrDatabaseRequired
 	}
 
 	if r.cache != nil {

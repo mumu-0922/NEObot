@@ -132,6 +132,15 @@ func TestSessionResolverFailsClosedOnRepositoryError(t *testing.T) {
 	}
 }
 
+func TestSessionResolverRequiresRepository(t *testing.T) {
+	resolver := NewSessionResolver(nil)
+
+	_, err := resolver.ResolveByTokenHash(context.Background(), "token-hash")
+	if !errors.Is(err, ErrDatabaseRequired) {
+		t.Fatalf("ResolveByTokenHash() error = %v, want ErrDatabaseRequired", err)
+	}
+}
+
 func TestSessionResolverVerifiesRevocationHintAgainstRepository(t *testing.T) {
 	now := time.Unix(100, 0).UTC()
 	cache := newFakeSessionCache()

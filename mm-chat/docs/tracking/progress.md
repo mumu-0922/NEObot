@@ -527,6 +527,18 @@ the UI can call in the next wiring slice.
 - [x] Add targeted tests for config loading, login, logout, `/v1/me`, and auth
       route registration.
 
+### Phase 13.3 — Enforced hosted auth mode
+
+- [x] Add `AUTH_MODE=development|required` config with fail-closed handling for
+      unknown non-empty values.
+- [x] Keep development-user fallback only in `development` mode.
+- [x] Reject missing credentials before protected chat, file, import, and `/me`
+      routes in `required` mode.
+- [x] Keep `/health`, `/ready`, `/v1/version`, and `POST /v1/auth/login`
+      public.
+- [x] Add targeted tests for required-mode rejection, public-route exemptions,
+      missing resolver failure, and config parsing.
+
 ## Phase 14 — Production Hardening and Observability
 
 - [ ] Add structured logs and request IDs.

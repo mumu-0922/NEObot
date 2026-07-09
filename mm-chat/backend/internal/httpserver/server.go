@@ -172,8 +172,9 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.HandleFunc("/", notFound)
 
 	middlewares := []Middleware{withRecover, withSecurityHeaders}
-	if resolvedOptions.sessionResolver != nil {
-		middlewares = append(middlewares, withSessionIdentity(resolvedOptions.sessionResolver))
+	authRequired := cfg.Auth.RequireAuth()
+	if resolvedOptions.sessionResolver != nil || authRequired {
+		middlewares = append(middlewares, withSessionIdentity(resolvedOptions.sessionResolver, authRequired))
 	}
 	if cfg.Redis.RateLimitEnabled && resolvedOptions.rateLimitStore != nil {
 		middlewares = append(middlewares, withRateLimit(resolvedOptions.rateLimitStore, cfg.Redis, nil))
@@ -212,25 +213,29 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	}
 }
 
-func withSessionIdentity(resolver SessionResolver) Middleware {
+func withSessionIdentity(resolver SessionResolver, requireAuth bool) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if resolver == nil {
-				next.ServeHTTP(w, r)
-				return
-			}
-			if isAuthLoginRequest(r) {
+			if isPublicWithoutAuthRequest(r) {
 				next.ServeHTTP(w, r)
 				return
 			}
 
 			token, ok := bearerToken(r.Header.Get("Authorization"))
 			if !ok {
+				if requireAuth {
+					writeAuthError(w, auth.ErrSessionNotFound)
+					return
+				}
 				next.ServeHTTP(w, r)
 				return
 			}
 			if token == "" {
 				writeAuthError(w, auth.ErrSessionNotFound)
+				return
+			}
+			if resolver == nil {
+				writeAuthError(w, auth.ErrDatabaseRequired)
 				return
 			}
 
@@ -245,12 +250,19 @@ func withSessionIdentity(resolver SessionResolver) Middleware {
 	}
 }
 
-func isAuthLoginRequest(r *http.Request) bool {
+func isPublicWithoutAuthRequest(r *http.Request) bool {
 	if r == nil {
 		return false
 	}
 
-	return r.Method == http.MethodPost && r.URL.Path == "/v1/auth/login"
+	switch r.URL.Path {
+	case "/health", "/ready", "/v1/version":
+		return r.Method == http.MethodGet
+	case "/v1/auth/login":
+		return r.Method == http.MethodPost
+	default:
+		return false
+	}
 }
 
 func bearerToken(header string) (string, bool) {
@@ -270,6 +282,13 @@ func writeAuthError(w http.ResponseWriter, err error) {
 	switch {
 	case err == nil:
 		return
+	case errors.Is(err, auth.ErrDatabaseRequired):
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{
+			Error: ErrorBody{
+				Code:    "DATABASE_REQUIRED",
+				Message: "database is required for auth verification",
+			},
+		})
 	case errors.Is(err, auth.ErrSessionNotFound),
 		errors.Is(err, auth.ErrSessionExpired),
 		errors.Is(err, auth.ErrSessionRevoked):

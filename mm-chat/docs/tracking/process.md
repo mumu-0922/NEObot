@@ -4407,3 +4407,84 @@ targeted secret-pattern scan
 Next: Phase 13.3 should add explicit auth mode configuration so hosted/server
 mode can reject missing credentials instead of falling back to the development
 user.
+
+## 2026-07-09 — Phase 13.3 enforced hosted auth mode
+
+Action: added explicit backend auth mode configuration so local development can
+keep the development-user fallback while hosted/single-server deployments fail
+closed when credentials are missing. `AUTH_MODE=development` preserves current
+local smoke behavior. `AUTH_MODE=required` rejects unauthenticated protected
+routes before they reach chat, file, import, or `/v1/me` handlers. Health,
+readiness, version, and login stay public.
+
+Files:
+
+```text
+mm-chat/.env.single-server.example
+mm-chat/compose.single-server.yml
+mm-chat/backend/.env.example
+mm-chat/backend/internal/auth/session_resolver.go
+mm-chat/backend/internal/auth/session_resolver_test.go
+mm-chat/backend/internal/config/config.go
+mm-chat/backend/internal/config/config_test.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/httpserver/server_test.go
+mm-chat/docs/contracts/auth-session-api.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/tracking/process.md
+mm-chat/docs/tracking/progress.md
+```
+
+Runtime contract:
+
+```text
+AUTH_MODE=development
+  -> missing Authorization keeps development-user fallback
+  -> when a session resolver is installed, malformed/invalid Bearer returns
+     401 UNAUTHENTICATED
+
+AUTH_MODE=required
+  -> /health, /ready, /v1/version, POST /v1/auth/login remain public
+  -> protected routes without Authorization return 401 UNAUTHENTICATED
+  -> protected routes with Bearer but no session resolver return 503 DATABASE_REQUIRED
+  -> unknown non-empty AUTH_MODE values normalize to required
+```
+
+Review fixes:
+
+```text
+- Added a direct test proving development mode with an installed resolver still
+  falls back when Authorization is missing.
+- Narrowed the process note so malformed/invalid Bearer returning 401 is tied to
+  cases where session middleware is installed.
+- Follow-up review agent reported no blocker/major/minor findings.
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && go test -count=1 ./... && go vet ./...
+  passed
+
+corepack pnpm exec prettier --check \
+  mm-chat/docs/contracts/auth-session-api.md \
+  mm-chat/docs/contracts/frontend-api-client.md \
+  mm-chat/docs/tracking/progress.md \
+  mm-chat/docs/tracking/process.md \
+  mm-chat/compose.single-server.yml
+  passed
+
+docker compose --env-file .env.single-server.example \
+  -f compose.single-server.yml --profile app config
+  passed; rendered AUTH_MODE=required
+
+git diff --check -- <Phase 13.3 target files>
+  passed
+
+targeted secret-pattern scan
+  no real secrets found; hits are env placeholders, docs examples, and test
+  fixtures only
+```
+
+Next: Phase 13.4 should verify two-user isolation across chat, files, browser
+imports, and run cancellation.

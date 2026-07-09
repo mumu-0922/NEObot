@@ -48,8 +48,12 @@ auth.UserOrDevelopment(ctx) auth.User
   `role` to `context.Context`.
 - Repositories must read owner identity from context, not from request JSON, URL
   params, package manifests, or struct-level fixed-user fields.
-- Missing Bearer credentials keep the development-user fallback until enforced
-  auth mode is added.
+- `AUTH_MODE=development` preserves missing-Bearer development fallback for
+  local smoke tests.
+- `AUTH_MODE=required` fails closed for protected routes when Bearer credentials
+  are missing, malformed, expired, revoked, or unverifiable.
+- Unknown non-empty `AUTH_MODE` values normalize to `required` so typos do not
+  silently weaken hosted auth.
 
 ## 4. Endpoint DTOs
 
@@ -84,22 +88,23 @@ configured. Success returns `204 No Content`.
 ### `GET /v1/me`
 
 Returns the request user from context. In development fallback mode with no
-Bearer header, this returns the development user until Phase 13.3 makes hosted
-mode fail closed.
+Bearer header, this returns the development user. In required mode, missing
+Bearer credentials return `401 UNAUTHENTICATED`.
 
 ## 5. Validation & Error Matrix
 
-| Condition                      | Result                                            |
-| ------------------------------ | ------------------------------------------------- |
-| Missing `AUTH_BOOTSTRAP_TOKEN` | `503 AUTH_NOT_CONFIGURED` on login.               |
-| Wrong login token              | `401 INVALID_CREDENTIALS`.                        |
-| Missing `Authorization`        | Continue as development user in development mode. |
-| Malformed `Authorization`      | `401 UNAUTHENTICATED`.                            |
-| Unknown session hash           | `401 UNAUTHENTICATED`.                            |
-| Expired session                | `401 UNAUTHENTICATED`.                            |
-| Revoked session                | `401 UNAUTHENTICATED`.                            |
-| Redis session cache miss/error | Fall back to Postgres resolver.                   |
-| Postgres resolver error        | Fail closed with `401 UNAUTHENTICATED`.           |
+| Condition                      | Result                                                              |
+| ------------------------------ | ------------------------------------------------------------------- |
+| Missing `AUTH_BOOTSTRAP_TOKEN` | `503 AUTH_NOT_CONFIGURED` on login.                                 |
+| Wrong login token              | `401 INVALID_CREDENTIALS`.                                          |
+| Missing `Authorization`        | Dev fallback in `development`; `401 UNAUTHENTICATED` in `required`. |
+| Malformed `Authorization`      | `401 UNAUTHENTICATED`.                                              |
+| Unknown session hash           | `401 UNAUTHENTICATED`.                                              |
+| Expired session                | `401 UNAUTHENTICATED`.                                              |
+| Revoked session                | `401 UNAUTHENTICATED`.                                              |
+| Redis session cache miss/error | Fall back to Postgres resolver.                                     |
+| Postgres resolver error        | Fail closed with `401 UNAUTHENTICATED`.                             |
+| Bearer present but no resolver | `503 DATABASE_REQUIRED`.                                            |
 
 ## 6. Good/Base/Bad Cases
 
@@ -107,6 +112,8 @@ mode fail closed.
   bearer token once, and `/v1/me` resolves that token to the owner user.
 - Base: no `Authorization` during local development; existing dev-user smoke
   flows keep working.
+- Base: no `Authorization` in required mode; protected routes fail before
+  chat/files/import handlers run.
 - Bad: request body contains `userId`; handlers ignore it and repositories use
   context identity only.
 
@@ -119,6 +126,8 @@ mode fail closed.
 - Unit: middleware hashes raw Bearer tokens and attaches session user context.
 - Unit: invalid/expired/revoked sessions return 401 and do not call next
   handler.
+- Unit: required mode rejects missing credentials and keeps health/version/login
+  public.
 - Unit: file upload object key uses request user path.
 - Integration: two-user isolation for chat/files/imports/runs after enforced
   auth mode exists.

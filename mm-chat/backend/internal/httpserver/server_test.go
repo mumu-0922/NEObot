@@ -106,7 +106,7 @@ func TestSessionIdentityMiddlewareSetsRequestUser(t *testing.T) {
 	handler := chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotUser = auth.UserOrDevelopment(r.Context())
 		w.WriteHeader(http.StatusNoContent)
-	}), withSessionIdentity(resolver))
+	}), withSessionIdentity(resolver, false))
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/private", nil)
 	req.Header.Set("Authorization", "Bearer raw-token")
@@ -127,7 +127,7 @@ func TestSessionIdentityMiddlewareSetsRequestUser(t *testing.T) {
 func TestSessionIdentityMiddlewareRejectsInvalidSession(t *testing.T) {
 	handler := chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("next handler should not run for invalid bearer token")
-	}), withSessionIdentity(&fakeSessionResolver{err: auth.ErrSessionExpired}))
+	}), withSessionIdentity(&fakeSessionResolver{err: auth.ErrSessionExpired}, false))
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/private", nil)
 	req.Header.Set("Authorization", "Bearer expired-token")
@@ -146,6 +146,33 @@ func TestSessionIdentityMiddlewareRejectsInvalidSession(t *testing.T) {
 	}
 }
 
+func TestSessionIdentityMiddlewareKeepsDevelopmentFallbackWhenMissingBearer(t *testing.T) {
+	resolver := &fakeSessionResolver{err: auth.ErrSessionExpired}
+	nextCalled := false
+	handler := chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		user := auth.UserOrDevelopment(r.Context())
+		if user.ID != auth.DevelopmentUserID {
+			t.Fatalf("user = %#v, want development fallback", user)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}), withSessionIdentity(resolver, false))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/private", nil)
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusNoContent, rec.Body.String())
+	}
+	if !nextCalled {
+		t.Fatal("next handler was not called")
+	}
+	if resolver.tokenHash != "" {
+		t.Fatalf("resolver tokenHash = %q, want blank when bearer is missing", resolver.tokenHash)
+	}
+}
+
 func TestSessionIdentityMiddlewareSkipsLoginRoute(t *testing.T) {
 	handler := NewHandler(
 		config.Config{Addr: ":0", Version: "route-test"},
@@ -159,6 +186,86 @@ func TestSessionIdentityMiddlewareSkipsLoginRoute(t *testing.T) {
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusServiceUnavailable, rec.Body.String())
+	}
+	var body ErrorResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if body.Error.Code != "DATABASE_REQUIRED" {
+		t.Fatalf("error code = %q, want DATABASE_REQUIRED", body.Error.Code)
+	}
+}
+
+func TestAuthRequiredModeRejectsMissingCredentialsAndKeepsPublicRoutes(t *testing.T) {
+	handler := NewHandler(config.Config{
+		Addr:    ":0",
+		Version: "route-test",
+		Auth:    config.AuthConfig{Mode: config.AuthModeRequired},
+	})
+
+	publicRoutes := []struct {
+		method string
+		path   string
+		want   int
+	}{
+		{method: http.MethodGet, path: "/health", want: http.StatusOK},
+		{method: http.MethodGet, path: "/ready", want: http.StatusOK},
+		{method: http.MethodGet, path: "/v1/version", want: http.StatusOK},
+		{method: http.MethodPost, path: "/v1/auth/login", want: http.StatusServiceUnavailable},
+	}
+	for _, route := range publicRoutes {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(route.method, route.path, strings.NewReader(`{"token":"x"}`))
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != route.want {
+			t.Fatalf("%s %s status = %d, want %d; body=%s", route.method, route.path, rec.Code, route.want, rec.Body.String())
+		}
+	}
+
+	protectedRoutes := []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/v1/me"},
+		{method: http.MethodGet, path: "/v1/chat/conversations"},
+		{method: http.MethodGet, path: "/v1/files/33333333-3333-4333-8333-333333333333"},
+		{method: http.MethodGet, path: "/v1/import/browser/33333333-3333-4333-8333-333333333333"},
+	}
+	for _, route := range protectedRoutes {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(route.method, route.path, nil)
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("%s %s status = %d, want 401; body=%s", route.method, route.path, rec.Code, rec.Body.String())
+		}
+		var body ErrorResponse
+		if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+			t.Fatalf("decode %s %s response: %v", route.method, route.path, err)
+		}
+		if body.Error.Code != "UNAUTHENTICATED" {
+			t.Fatalf("%s %s error code = %q, want UNAUTHENTICATED", route.method, route.path, body.Error.Code)
+		}
+	}
+}
+
+func TestAuthRequiredModeFailsClosedWhenResolverIsMissing(t *testing.T) {
+	handler := NewHandler(config.Config{
+		Addr:    ":0",
+		Version: "route-test",
+		Auth:    config.AuthConfig{Mode: config.AuthModeRequired},
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
+	req.Header.Set("Authorization", "Bearer raw-session-token")
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503; body=%s", rec.Code, rec.Body.String())
 	}
 	var body ErrorResponse
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {

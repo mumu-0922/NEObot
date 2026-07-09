@@ -728,6 +728,11 @@ as `Authorization: Bearer <token>` for server API calls. Redis cache loss must
 behave like a cache miss and fall back to Postgres, not force a client-visible
 logout.
 
+Phase 13.3 adds backend `AUTH_MODE=development|required`. Server deployments use
+`required`, so clients must treat `401 UNAUTHENTICATED` as a login-required
+state and should not rely on the development-user fallback outside local smoke
+tests.
+
 ## 12. `importApi` Contract
 
 Phase 8 import must be explicit and previewed. The frontend builds

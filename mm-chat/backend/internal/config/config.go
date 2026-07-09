@@ -24,6 +24,9 @@ const (
 	DefaultLocalStorageDir        = "./data/files"
 	DefaultS3Region               = "us-east-1"
 	DefaultMaxUploadBytes         = int64(25 << 20)
+	AuthModeDevelopment           = "development"
+	AuthModeRequired              = "required"
+	DefaultAuthMode               = AuthModeDevelopment
 	DefaultAuthBootstrapUserID    = "00000000-0000-0000-0000-000000000001"
 	DefaultAuthBootstrapUserName  = "Owner"
 	DefaultAuthSessionTTL         = 7 * 24 * time.Hour
@@ -57,6 +60,7 @@ const (
 	EnvS3ForcePathStyle       = "S3_FORCE_PATH_STYLE"
 	EnvS3BucketAutoCreate     = "S3_BUCKET_AUTO_CREATE"
 	EnvMaxUploadBytes         = "MAX_UPLOAD_BYTES"
+	EnvAuthMode               = "AUTH_MODE"
 	EnvAuthBootstrapToken     = "AUTH_BOOTSTRAP_TOKEN"
 	EnvAuthBootstrapUserID    = "AUTH_BOOTSTRAP_USER_ID"
 	EnvAuthBootstrapUserName  = "AUTH_BOOTSTRAP_DISPLAY_NAME"
@@ -126,10 +130,15 @@ type S3Config struct {
 // AuthConfig contains local account/session bootstrap settings. Secrets must
 // never be logged or serialized into API responses.
 type AuthConfig struct {
+	Mode                 string
 	BootstrapToken       string
 	BootstrapUserID      string
 	BootstrapDisplayName string
 	SessionTTL           time.Duration
+}
+
+func (cfg AuthConfig) RequireAuth() bool {
+	return cfg.Mode == AuthModeRequired
 }
 
 // Load reads configuration from the process environment.
@@ -185,6 +194,7 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 		},
 
 		Auth: AuthConfig{
+			Mode:                 authModeEnvOrDefault(lookup, EnvAuthMode, DefaultAuthMode),
 			BootstrapToken:       optionalEnv(lookup, EnvAuthBootstrapToken),
 			BootstrapUserID:      envOrDefault(lookup, EnvAuthBootstrapUserID, DefaultAuthBootstrapUserID),
 			BootstrapDisplayName: envOrDefault(lookup, EnvAuthBootstrapUserName, DefaultAuthBootstrapUserName),
@@ -269,6 +279,22 @@ func durationEnvOrDefault(
 	}
 
 	return parsed
+}
+
+func authModeEnvOrDefault(lookup func(string) (string, bool), key string, fallback string) string {
+	value, ok := optionalLookup(lookup, key)
+	if !ok {
+		return fallback
+	}
+
+	switch strings.ToLower(value) {
+	case AuthModeDevelopment, "dev", "local":
+		return AuthModeDevelopment
+	case AuthModeRequired, "hosted", "server":
+		return AuthModeRequired
+	default:
+		return AuthModeRequired
+	}
 }
 
 func optionalLookup(lookup func(string) (string, bool), key string) (string, bool) {
