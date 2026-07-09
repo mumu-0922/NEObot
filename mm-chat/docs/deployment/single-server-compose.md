@@ -42,8 +42,8 @@ secret file.
 | `minio-client` | `ops`   | Utility container for backup/restore scripts.                               | None            |
 
 No database, Redis, or MinIO port is published. The backend binds to localhost
-only so a host-level reverse proxy can expose `/api` without opening data
-services.
+only so a host-level reverse proxy can expose the same-origin `/mm-api` path
+without opening data services.
 
 `minio-init` is intentionally fail-fast: it creates the bucket, applies the app
 policy, attaches it to the app user, then verifies the app credentials can write,
@@ -120,10 +120,19 @@ metrics scrape.
 
 Terminate TLS outside this stack (Nginx, Caddy, Traefik, or a cloud load
 balancer). Production firewall baseline: allow `80/tcp`, `443/tcp`, and trusted
-admin SSH only. Proxy only the backend API path to localhost:
+admin SSH only. Proxy only same-origin API paths to localhost; the full edge
+runbook is [`reverse-proxy-tls.md`](./reverse-proxy-tls.md).
 
 ```nginx
-location /api/ {
+location = /mm-api/metrics {
+  allow 127.0.0.1;
+  deny all;
+  rewrite ^/mm-api/(.*)$ /$1 break;
+  proxy_pass http://127.0.0.1:8080;
+}
+
+location /mm-api/ {
+  rewrite ^/mm-api/(.*)$ /$1 break;
   proxy_pass http://127.0.0.1:8080/;
   proxy_http_version 1.1;
   proxy_set_header Host $host;

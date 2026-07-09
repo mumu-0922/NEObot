@@ -556,8 +556,8 @@ the UI can call in the next wiring slice.
 - [x] Add health visibility for API, DB, Redis, and storage readiness.
 - [x] Add metrics visibility for API, DB, Redis, and MinIO.
 - [x] Run documented backup and restore drill.
-- [ ] Add reverse proxy/TLS production notes.
-- [ ] Add secret rotation notes.
+- [x] Add reverse proxy/TLS production notes.
+- [x] Add secret rotation notes.
 
 ## Phase 15 — Optional Python RAG Sidecar
 

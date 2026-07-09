@@ -5035,3 +5035,100 @@ git diff --check -- <Phase 14.3 target files>
 targeted secret-pattern scan
   no real secrets found; hits are documentation terms and fake regression-test strings only
 ```
+
+## 2026-07-09 — Phase 14.4/14.5 reverse proxy TLS and secret rotation notes
+
+Action: added the remaining Phase 14 production hardening runbooks after
+pushing the backup/restore and metrics commits.
+
+Files:
+
+```text
+mm-chat/docs/architecture/phase-14-production-hardening-plan.md
+mm-chat/docs/deployment/README.md
+mm-chat/docs/deployment/reverse-proxy-tls.md
+mm-chat/docs/deployment/secret-rotation.md
+mm-chat/docs/deployment/single-server-compose.md
+mm-chat/docs/tracking/process.md
+mm-chat/docs/tracking/progress.md
+```
+
+Reverse proxy/TLS contract:
+
+```text
+- Keep Go backend bound to 127.0.0.1:8080.
+- Expose only the frontend origin on 80/443.
+- Use same-origin /mm-api/* and strip the prefix before proxying to the Go API.
+- Disable API proxy buffering so SSE chat streams render incrementally.
+- Keep /metrics localhost-only or allowlisted.
+- Never expose MinIO API/console, Postgres, or Redis publicly.
+- Set proxy upload limits at or above MAX_UPLOAD_BYTES.
+```
+
+Secret rotation contract:
+
+```text
+- Rotate one secret class at a time.
+- Record only secret names and verification evidence, never secret values.
+- AUTH_BOOTSTRAP_TOKEN rotation does not revoke existing sessions.
+- Bulk session revocation requires Postgres session revocation plus Redis
+  session-cache cleanup or TTL wait.
+- Existing Postgres volumes require ALTER ROLE before changing DATABASE_URL.
+- Redis password rotation requires REDIS_PASSWORD and REDIS_URL to stay aligned.
+- MinIO app credential rotation should create a new app user, update backend
+  env, verify upload/download, then disable the old app user.
+```
+
+Verification before review:
+
+```text
+corepack pnpm exec prettier --write <Phase 14.4/14.5 docs>
+  applied formatting to secret-rotation.md; other checked docs unchanged
+
+markdown path sanity check
+  no /api residuals, TODO, or FIXME markers in the Phase 14.4/14.5 docs
+
+scout review
+  identified the /api residual in single-server-compose.md, confirmed the new
+  runbooks should be the source of truth, and called out same-origin/CORS plus
+  proxy-layer rate-limit caveats
+```
+
+Next: run final checks, review agent over the runbooks, then commit and push
+the Phase 14.4/14.5 docs.
+
+Review findings addressed:
+
+```text
+- Added NEXT_PUBLIC_API_MODE=server beside NEXT_PUBLIC_API_BASE_URL=/mm-api in
+  the reverse proxy/TLS verification section, and documented rollback to
+  NEXT_PUBLIC_API_MODE=local.
+- Added an explicit /mm-api/metrics allow/deny block before the summary
+  /mm-api/ Nginx location in single-server-compose.md so copied snippets do not
+  expose public metrics.
+```
+
+Final review:
+
+```text
+review agent: no findings
+- /mm-api/metrics is blocked before the summary /mm-api/ proxy location.
+- reverse-proxy-tls.md documents NEXT_PUBLIC_API_MODE=server and rollback to local mode.
+- secret-rotation.md has no obvious destructive or misleading command pattern.
+```
+
+Final verification before commit:
+
+```text
+corepack pnpm exec prettier --check <Phase 14.4/14.5 docs>
+  passed
+
+git diff --check -- <Phase 14.4/14.5 target files>
+  passed
+
+doc sanity check
+  no stale /api references, TODO, or FIXME markers in the Phase 14.4/14.5 docs
+
+targeted secret-pattern scan
+  no real secrets found; hits are documentation terms and placeholder examples only
+```

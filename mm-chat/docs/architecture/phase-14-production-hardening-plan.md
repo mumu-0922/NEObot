@@ -57,9 +57,27 @@ Rollback:
 - Revert the metrics handler/middleware commit. Existing `/health`, `/ready`,
   logs, and app routes are independent of `/metrics`.
 
-## Remaining Phase 14 Work
+## 14.4 Reverse Proxy and TLS Notes
 
-- Reverse proxy and TLS production notes.
-- Secret rotation notes.
+Status: complete.
+
+- Document same-origin `/mm-api` reverse proxy boundary.
+- Preserve SSE streaming with proxy buffering disabled.
+- Keep `/metrics` localhost-only or allowlisted.
+- Keep MinIO, Postgres, and Redis private.
+- Add Caddy and Nginx reference snippets plus rollback checks.
+
+## 14.5 Secret Rotation Notes
+
+Status: complete.
+
+- Document rotation for auth bootstrap, bearer sessions, provider keys,
+  Postgres, Redis, MinIO app/root credentials, and TLS certificates.
+- Separate restart scope by secret class.
+- Preserve the rule that only secret names and verification evidence are
+  recorded in docs.
+
+## Deferred Phase 14+ Work
+
 - Optional Prometheus/Grafana compose profile after the `/metrics` endpoint is
   stable.
