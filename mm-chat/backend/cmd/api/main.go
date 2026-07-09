@@ -125,6 +125,7 @@ func main() {
 	}
 	if db.SQL() != nil {
 		serverOptions = append(serverOptions, httpserver.WithReadyCheck("database", db))
+		serverOptions = append(serverOptions, httpserver.WithDatabaseStatsProvider(db.SQL()))
 	}
 	if redisClient != nil {
 		serverOptions = append(serverOptions, httpserver.WithReadyCheck("redis", redisClient))

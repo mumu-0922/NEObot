@@ -33,6 +33,11 @@ run explicitly by operators.
   configured, `/ready` checks Postgres, Redis, and storage with additive
   `checks` detail and returns `503` with `status=not_ready` if any configured
   dependency fails. Readiness checks must not run migrations or create buckets.
+- Phase 14 metrics are exposed by the Go API at `GET /metrics` in Prometheus
+  text format. Keep the endpoint on localhost or behind a reverse-proxy
+  allowlist. HTTP metrics use bounded route labels, dependency gauges mirror
+  configured `/ready` checks, and the single-server MinIO state is represented
+  by the `storage` dependency gauge rather than direct MinIO admin scraping.
 - API startup must not auto-run migrations; operators run the `migrate` service
   or `mm-chat-migrate` before starting or restarting a DB-enabled backend
   release.

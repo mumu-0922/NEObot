@@ -4869,3 +4869,169 @@ targeted secret-pattern scan
 
 Next: commit the Phase 14.2 script and docs changes, then continue with the
 remaining Phase 14 metrics, reverse proxy/TLS, and secret rotation items.
+
+## 2026-07-09 — Phase 14.3 API metrics visibility
+
+Action: added the first metrics visibility slice for the Go backend. The
+endpoint is intentionally lightweight and uses Prometheus text output without
+adding a monitoring stack or new Go dependency.
+
+Files:
+
+```text
+mm-chat/backend/cmd/api/main.go
+mm-chat/backend/internal/httpserver/metrics.go
+mm-chat/backend/internal/httpserver/metrics_test.go
+mm-chat/backend/internal/httpserver/rate_limit.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/httpserver/server_test.go
+mm-chat/docs/architecture/phase-14-production-hardening-plan.md
+mm-chat/docs/deployment/README.md
+mm-chat/docs/deployment/single-server-compose.md
+mm-chat/docs/persistence/runtime-wiring.md
+mm-chat/docs/tracking/process.md
+mm-chat/docs/tracking/progress.md
+```
+
+Runtime contract:
+
+```text
+GET /metrics
+  -> returns Prometheus text exposition
+  -> public alongside /health, /ready, and /v1/version so localhost or
+     allowlisted Prometheus can scrape in AUTH_MODE=required
+  -> exempt from Redis HTTP rate limiting
+  -> includes X-Content-Type-Options: nosniff
+  -> rejects non-GET with 405 METHOD_NOT_ALLOWED JSON
+
+HTTP metrics:
+  -> mm_chat_http_requests_total{method,path,status}
+  -> mm_chat_http_response_bytes_total{method,path,status}
+  -> mm_chat_http_request_duration_seconds histogram
+  -> dynamic route labels are bounded, for example /v1/files/{id}/content and
+     /v1/chat/runs/{id}/cancel
+  -> raw UUIDs, run IDs, object keys, query strings, bearer tokens, and
+     provider parameters must not appear in labels
+
+Dependency metrics:
+  -> mm_chat_dependency_ready{dependency="database|redis|storage"}
+  -> mirrors configured readiness checks; disabled dependencies are omitted
+  -> storage represents local storage or MinIO/S3 readiness, depending on
+     STORAGE_BACKEND
+
+Postgres pool metrics:
+  -> exposed when DATABASE_URL enables the database/sql pool
+  -> includes max/open/in-use/idle connections and wait counters
+```
+
+Implementation notes:
+
+```text
+- Reused the existing response-writer wrapper shape so metrics preserve
+  http.Flusher for SSE streaming.
+- Inserted request metrics before request logging/recovery so 401, 429, 404,
+  503, and recovered 500 responses are counted.
+- Kept MinIO visibility through the backend storage readiness gauge; direct
+  MinIO admin metrics are deferred until a dedicated Prometheus/Grafana stack is
+  planned.
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && go test ./internal/httpserver -run 'Metrics|RateLimit|AuthRequired|RequestLogging|Panic'
+  passed
+
+cd mm-chat/backend && go test ./...
+  passed
+
+cd mm-chat/backend && go vet ./...
+  passed
+
+corepack pnpm exec prettier --check \
+  mm-chat/docs/architecture/phase-14-production-hardening-plan.md \
+  mm-chat/docs/deployment/single-server-compose.md \
+  mm-chat/docs/deployment/README.md \
+  mm-chat/docs/persistence/runtime-wiring.md
+  passed
+
+local source-run smoke:
+  MM_CHAT_ADDR=127.0.0.1:18080 MM_CHAT_VERSION=metrics-smoke \
+  DATABASE_URL= REDIS_URL= STORAGE_BACKEND=local AUTH_MODE=development \
+  PROVIDER_TYPE=none go run ./cmd/api
+
+  curl -fsS http://127.0.0.1:18080/health
+  curl -fsS http://127.0.0.1:18080/metrics
+
+  observed:
+    mm_chat_build_info{version="metrics-smoke",storage_backend="local"} 1
+    mm_chat_http_requests_total{method="GET",path="/health",status="200"} 1
+```
+
+Next: run final formatting/diff/secret checks, send a review agent over the
+metrics slice, then commit if clean.
+
+Review finding addressed:
+
+```text
+Finding: unknown request paths and unknown HTTP methods could create unbounded
+metrics labels or preserve secret-like path segments.
+
+Fix:
+- Unknown paths collapse to /__unknown__.
+- Unknown HTTP methods collapse to OTHER.
+- Known dynamic routes use explicit route-pattern labels.
+- /v1/import/browser/preview is labeled distinctly, and browser import delete
+  remains /v1/import/browser/{id}.
+
+Regression tests:
+- TestMetricsEndpointBoundsUnknownPathAndMethodLabels verifies a request to
+  /missing/sk_live_secret_token?api_key=hidden is recorded only as
+  method="OTHER", path="/__unknown__".
+- TestNormalizeMetricPathBoundsKnownDynamicRoutes covers import preview,
+  import id, unknown UUID paths, and secret-like unknown paths.
+```
+
+Second review finding addressed:
+
+```text
+Finding: escaped or doubled slash unknown paths could bypass the unknown-path
+collapse and leak secret-like segments as labels, for example
+/%2Fmissing/sk_live_secret_token.
+
+Fix:
+- knownMetricPath miss now returns /__unknown__ directly.
+- Removed fallback UUID-only segment rewriting for unknown paths.
+- Added regression coverage for //missing/sk_live_secret_token and
+  /%2Fmissing/sk_live_secret_token.
+- Runtime smoke now probes curl --path-as-is against the escaped-slash path and
+  verifies metrics contain /__unknown__ but not the secret-like segment.
+```
+
+Final review:
+
+```text
+third review agent: no findings
+```
+
+Final verification before commit:
+
+```text
+cd mm-chat/backend && go test ./internal/httpserver -run 'Metrics|Flusher|Panic|RateLimit|AuthRequired' -count=1
+  passed
+
+cd mm-chat/backend && go test ./... -count=1 && go vet ./...
+  passed
+
+corepack pnpm exec prettier --check <Phase 14.3 docs>
+  passed
+
+runtime metrics smoke with escaped slash unknown path
+  passed; metrics contained /__unknown__ and did not contain the secret-like path segment
+
+git diff --check -- <Phase 14.3 target files>
+  passed
+
+targeted secret-pattern scan
+  no real secrets found; hits are documentation terms and fake regression-test strings only
+```

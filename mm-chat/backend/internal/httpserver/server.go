@@ -47,6 +47,8 @@ type options struct {
 	authService          *auth.Service
 	fileRepository       files.Repository
 	objectStore          storage.ObjectStore
+	metrics              *Metrics
+	dbStatsProvider      DatabaseStatsProvider
 	maxUploadBytes       int64
 	importRepository     browserimport.Repository
 	maxImportBytes       int64
@@ -118,6 +120,18 @@ func WithObjectStore(store storage.ObjectStore) Option {
 	}
 }
 
+func WithMetrics(metrics *Metrics) Option {
+	return func(opts *options) {
+		opts.metrics = metrics
+	}
+}
+
+func WithDatabaseStatsProvider(provider DatabaseStatsProvider) Option {
+	return func(opts *options) {
+		opts.dbStatsProvider = provider
+	}
+}
+
 func WithMaxUploadBytes(maxUploadBytes int64) Option {
 	return func(opts *options) {
 		opts.maxUploadBytes = maxUploadBytes
@@ -150,6 +164,13 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	metrics := resolvedOptions.metrics
+	if metrics == nil {
+		metrics = NewMetrics(cfg.Version, cfg.Storage.Backend)
+	}
+	metrics.SetReadyChecks(resolvedOptions.readyChecks)
+	metrics.SetDBStatsProvider(resolvedOptions.dbStatsProvider)
+
 	mux := http.NewServeMux()
 	healthHandler := health.NewWithChecks(cfg.Version, resolvedOptions.readyChecks...)
 	authHandler := auth.NewHandler(resolvedOptions.authService)
@@ -176,6 +197,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 
 	mux.HandleFunc("/health", healthHandler.Health)
 	mux.HandleFunc("/ready", healthHandler.Ready)
+	mux.Handle("/metrics", metrics)
 	mux.HandleFunc("/v1/version", healthHandler.Version)
 	mux.Handle("/v1/me", authHandler)
 	mux.Handle("/v1/auth/login", authHandler)
@@ -189,7 +211,13 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/import/browser/", importHandler)
 	mux.HandleFunc("/", notFound)
 
-	middlewares := []Middleware{withRequestID, withRequestLogging(logger), withRecover(logger), withSecurityHeaders}
+	middlewares := []Middleware{
+		withRequestID,
+		withRequestMetrics(metrics),
+		withRequestLogging(logger),
+		withRecover(logger),
+		withSecurityHeaders,
+	}
 	authRequired := cfg.Auth.RequireAuth()
 	if resolvedOptions.sessionResolver != nil || authRequired {
 		middlewares = append(middlewares, withSessionIdentity(resolvedOptions.sessionResolver, authRequired))
@@ -274,7 +302,7 @@ func isPublicWithoutAuthRequest(r *http.Request) bool {
 	}
 
 	switch r.URL.Path {
-	case "/health", "/ready", "/v1/version":
+	case "/health", "/ready", "/metrics", "/v1/version":
 		return r.Method == http.MethodGet
 	case "/v1/auth/login":
 		return r.Method == http.MethodPost

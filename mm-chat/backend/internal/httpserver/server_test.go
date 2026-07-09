@@ -356,6 +356,7 @@ func TestAuthRequiredModeRejectsMissingCredentialsAndKeepsPublicRoutes(t *testin
 	}{
 		{method: http.MethodGet, path: "/health", want: http.StatusOK},
 		{method: http.MethodGet, path: "/ready", want: http.StatusOK},
+		{method: http.MethodGet, path: "/metrics", want: http.StatusOK},
 		{method: http.MethodGet, path: "/v1/version", want: http.StatusOK},
 		{method: http.MethodPost, path: "/v1/auth/login", want: http.StatusServiceUnavailable},
 	}
@@ -629,7 +630,7 @@ func TestRateLimitMiddlewareLimitsNonExemptRoutes(t *testing.T) {
 	}
 }
 
-func TestRateLimitMiddlewareExemptsHealthReadyAndVersionRoutes(t *testing.T) {
+func TestRateLimitMiddlewareExemptsHealthReadyMetricsAndVersionRoutes(t *testing.T) {
 	store := newFakeRateLimitStore()
 	handler := NewHandler(
 		config.Config{
@@ -650,6 +651,7 @@ func TestRateLimitMiddlewareExemptsHealthReadyAndVersionRoutes(t *testing.T) {
 	}{
 		{path: "/health", code: http.StatusOK},
 		{path: "/ready", code: http.StatusOK},
+		{path: "/metrics", code: http.StatusOK},
 		{path: "/v1/version", code: http.StatusOK},
 	}
 

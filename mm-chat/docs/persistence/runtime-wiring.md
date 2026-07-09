@@ -100,6 +100,30 @@ return `503` with `status=not_ready` and `DEPENDENCY_NOT_READY`; raw dependency
 errors are not exposed in the HTTP body; `/ready` reports only per-check
 `ready`/`not_ready` state.
 
+### Phase 14 Metrics Extension
+
+The Go API exposes `GET /metrics` in Prometheus text format. The endpoint
+publishes bounded HTTP request counters, response-byte counters, latency
+histograms, process/build metadata, configured dependency readiness gauges, and
+Postgres `database/sql` pool stats when the DB pool is enabled.
+
+Dependency gauge rules:
+
+- `mm_chat_dependency_ready{dependency="database"}` mirrors the DB readiness
+  check when `DATABASE_URL` enables Postgres.
+- `mm_chat_dependency_ready{dependency="redis"}` mirrors Redis readiness only
+  when `REDIS_URL` enables Redis.
+- `mm_chat_dependency_ready{dependency="storage"}` mirrors the configured file
+  store. For `STORAGE_BACKEND=minio|s3`, this is the MinIO/S3 bucket readiness
+  check.
+
+HTTP metric labels must stay low-cardinality. Dynamic identifiers are rendered
+as route patterns such as `/v1/chat/conversations/{id}/stream` or
+`/v1/files/{id}/content`; unknown paths are collapsed to `/__unknown__`, and
+unknown HTTP methods are collapsed to `OTHER`. Never expose raw UUIDs, run IDs,
+object keys, query strings, bearer tokens, or provider parameters in metric
+labels.
+
 ## 5. Migration CLI Flow
 
 Migrations are run by an operator or deployment step before the API release is

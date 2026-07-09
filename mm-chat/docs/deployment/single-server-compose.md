@@ -75,6 +75,7 @@ Smoke test:
 curl -fsS http://127.0.0.1:8080/health
 curl -fsS http://127.0.0.1:8080/ready
 curl -fsS http://127.0.0.1:8080/v1/version
+curl -fsS http://127.0.0.1:8080/metrics | head
 ```
 
 `/ready` is additive: a healthy single-server stack should return
@@ -82,6 +83,38 @@ curl -fsS http://127.0.0.1:8080/v1/version
 `database`, `redis`, and `storage`. A dependency outage returns `503` with
 `status=not_ready`; the response intentionally does not expose raw connection
 errors or secrets.
+
+## Metrics
+
+The Go API exposes Prometheus text metrics at `GET /metrics`. The backend port
+is bound to `127.0.0.1:8080`, so single-server Prometheus should scrape the
+localhost endpoint or a reverse-proxy path protected by an allowlist.
+
+```yaml
+scrape_configs:
+  - job_name: mm-chat-api
+    static_configs:
+      - targets: ["127.0.0.1:8080"]
+    metrics_path: /metrics
+```
+
+Useful starting PromQL:
+
+```promql
+rate(mm_chat_http_requests_total[5m])
+rate(mm_chat_http_requests_total{status=~"5.."}[5m])
+histogram_quantile(0.95, rate(mm_chat_http_request_duration_seconds_bucket[5m]))
+mm_chat_dependency_ready
+mm_chat_postgres_open_connections
+```
+
+Metric labels use bounded route patterns such as
+`/v1/files/{id}/content`; unknown paths collapse to `/__unknown__`, and unknown
+HTTP methods collapse to `OTHER`. Raw UUIDs and object keys must not appear in
+labels. `mm_chat_dependency_ready{dependency="storage"}` represents the
+configured file storage readiness. In this Compose deployment that storage
+check is the MinIO/S3 bucket readiness check; it is not a direct MinIO admin
+metrics scrape.
 
 ## Reverse Proxy Boundary
 

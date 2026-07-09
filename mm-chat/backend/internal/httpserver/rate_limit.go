@@ -69,7 +69,7 @@ func withRateLimit(
 
 func isRateLimitExemptPath(path string) bool {
 	switch path {
-	case "/health", "/ready", "/v1/version":
+	case "/health", "/ready", "/metrics", "/v1/version":
 		return true
 	default:
 		return false
