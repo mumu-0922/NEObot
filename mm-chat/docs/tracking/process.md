@@ -3678,3 +3678,110 @@ not run `docker compose down -v` unless local smoke data loss is intended.
 
 Run a review pass for 11.4B1, then proceed to 11.4B2: wire `MessageInput` and
 `ChatApp` to the service/mapper seam while preserving local OPFS behavior.
+
+## 2026-07-08 — Phase 11.4C: Server-Mode Browser Send Wiring
+
+### Decision
+
+Use a smaller UI wiring path than originally sketched:
+
+```text
+MessageInput remains unchanged
+existing Attachment.data/base64 -> upload at send time -> server fileId refs
+ChatApp chooses local state or serverReadState based on API mode
+```
+
+This preserves visible UI and avoids changing the file picker/parser path.
+Local mode still uses the existing `processMessageForSending`, OPFS, IndexedDB,
+and `/api/chat` provider route.
+
+### Action
+
+Changed:
+
+```text
+eslint.config.mjs
+src/components/app/ChatApp.tsx
+src/components/chat/MessageInput.tsx
+src/features/chat/hooks/useChatGenerationController.ts
+src/features/chat/hooks/useChatShellState.ts
+src/services/api/fileService.ts
+src/__tests__/chatAppServerModeComposition.test.ts
+src/__tests__/fileService.test.ts
+src/__tests__/messageInputComposition.test.ts
+```
+
+Implementation notes:
+
+- `useChatShellState()` now exposes `serverReadState`,
+  `refreshServerSessions`, `selectServerSession`, `createServerSession`, and
+  `sendServerMessageAndStream`.
+- `ChatApp` computes a server-mode branch from `createNeoChatApiClient()`
+  without a network call.
+- In server mode, visible sidebar/messages read from `serverReadState`; in
+  local mode they still read from `sessions/activeMessages`.
+- Sending in server mode uploads inline/base64 attachments through
+  `uploadMessageAttachmentsForServer()`, converts them with
+  `toServerMessageAttachments()`, then calls `sendServerMessageAndStream()`.
+- Workspace OPFS attachment hydration is skipped in server mode; local mode
+  remains unchanged.
+- Local-only actions without Go endpoints fail closed with a visible error
+  instead of mutating local IndexedDB while viewing server messages.
+- `MessageInput` keeps the same visible tool buttons but receives
+  `localSessionToolsDisabled` in server mode. Plugin, skill, search, and
+  reasoning controls fail closed before calling local Zustand write actions.
+- `useChatGenerationController()` now exposes `abortActiveGeneration()`.
+  Server-mode stop, new-chat, and sidebar session selection use abort-only
+  handling instead of `stopActiveGeneration()`, so stopped server streams do not
+  persist local `activeMessages` into IndexedDB.
+- Server send uses the active server conversation config for `useSearch` and
+  `useReasoning`, and passes empty local plugin lists to the effective context
+  resolver until Go plugin/skill endpoints exist.
+
+### Review Follow-up
+
+Review found three blockers and they were fixed before handoff:
+
+1. `MessageInput` still read plugin/skill state directly from local stores.
+   Fixed with explicit server-mode fail-closed guards.
+2. Stop/new-chat/session-switch could call the local stopped-generation sync
+   path. Fixed by splitting abort-only generation control from persisted stop.
+3. Server session config was not consistently used by composer/send context.
+   Fixed by deriving `composerChatConfig` from server session config in server
+   mode and sending only the server-safe config subset.
+4. Full-project ESLint attempted to traverse local Docker runtime volumes under
+   `mm-chat/data`. Fixed by adding `mm-chat/data/**` and `mm-chat/backup/**`
+   to the global ESLint ignore list.
+
+### Verification
+
+Targeted checks passed:
+
+```text
+corepack pnpm vitest run src/__tests__/fileService.test.ts src/__tests__/chatStoreServerRead.test.ts src/__tests__/chatAppFirstScreenComposition.test.ts src/__tests__/chatAppServerModeComposition.test.ts src/__tests__/messageInputComposition.test.ts src/__tests__/sidebarComposition.test.ts src/__tests__/messageItemComposition.test.ts
+  passed: 7 files, 32 tests
+
+corepack pnpm typecheck
+  passed
+
+corepack pnpm exec eslint src/components/app/ChatApp.tsx src/components/chat/MessageInput.tsx src/features/chat/hooks/useChatGenerationController.ts src/features/chat/hooks/useChatShellState.ts src/services/api/fileService.ts src/__tests__/fileService.test.ts src/__tests__/messageInputComposition.test.ts src/__tests__/chatAppServerModeComposition.test.ts
+  passed
+
+corepack pnpm lint
+  passed: 0 errors, 19 existing unused-argument warnings
+
+corepack pnpm exec prettier --check src/components/app/ChatApp.tsx src/components/chat/MessageInput.tsx src/features/chat/hooks/useChatGenerationController.ts src/features/chat/hooks/useChatShellState.ts src/services/api/fileService.ts src/__tests__/fileService.test.ts src/__tests__/messageInputComposition.test.ts src/__tests__/chatAppServerModeComposition.test.ts mm-chat/docs/architecture/phase-11-plus-roadmap.md mm-chat/docs/tracking/progress.md mm-chat/docs/tracking/process.md
+  passed
+
+git diff --check -- src/components/app/ChatApp.tsx src/components/chat/MessageInput.tsx src/features/chat/hooks/useChatShellState.ts src/features/chat/hooks/useChatGenerationController.ts src/services/api/fileService.ts src/__tests__/fileService.test.ts src/__tests__/messageInputComposition.test.ts src/__tests__/chatAppServerModeComposition.test.ts mm-chat/docs/architecture/phase-11-plus-roadmap.md mm-chat/docs/tracking/progress.md mm-chat/docs/tracking/process.md
+  passed
+```
+
+### Remaining Gap
+
+Full browser validation is intentionally deferred to Phase 11.5. That smoke
+must start Next.js with `NEXT_PUBLIC_API_MODE=server` and
+`NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8080`, send a message with an
+attachment through the visible UI, refresh the page, verify server attachment
+metadata still renders, then restart in local mode and verify the local rollback
+path.

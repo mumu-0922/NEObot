@@ -19,6 +19,8 @@ import Tooltip from "@/components/ui/Tooltip";
 import FollowUpQuestions from "@/components/chat/FollowUpQuestions";
 import { Logo } from "@/components/ui/Icons";
 import type { ModelInfo } from "@/services/api/chatService";
+import { createNeoChatApiClient } from "@/services/api/client";
+import { uploadMessageAttachmentsForServer } from "@/services/api/fileService";
 import { resolveSkillsForMessage } from "@/services/api/skillService";
 import {
   buildProviderRuntimeConfig,
@@ -82,6 +84,7 @@ import {
   setChatPanelUrlState,
 } from "@/lib/chat/panelUrlState";
 import { buildSearchUpdate } from "@/lib/chat/searchUpdate";
+import { toServerMessageAttachments } from "@/lib/utils/serverAttachments";
 
 const ImagePreview = dynamic(() => import("@/components/media/ImagePreview"), {
   ssr: false,
@@ -125,10 +128,15 @@ const ChatApp = () => {
       currentSessionId,
       activeMessages,
       activeMessageTree,
+      serverReadState,
       selectedModel,
       chatConfig,
       createSession,
       selectSession,
+      refreshServerSessions,
+      selectServerSession,
+      createServerSession,
+      sendServerMessageAndStream,
       deleteSession,
       updateSessionTitle,
       updateSessionInstruction,
@@ -179,6 +187,13 @@ const ChatApp = () => {
 
   const t = useTranslations("ChatApp");
   const locale = useLocale();
+  const apiClientSnapshot = useMemo(() => createNeoChatApiClient(), []);
+  const serverModeEnabled =
+    apiClientSnapshot.mode === "server" &&
+    apiClientSnapshot.capabilities.chatCrud &&
+    apiClientSnapshot.capabilities.chatStream;
+  const serverFilesEnabled =
+    serverModeEnabled && apiClientSnapshot.capabilities.files;
 
   // --- Local UI State ---
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -189,6 +204,7 @@ const ChatApp = () => {
     beginActiveGeneration,
     isGenerationRunActive,
     finishActiveGeneration,
+    abortActiveGeneration,
     stopActiveGeneration,
   } = useChatGenerationController();
 
@@ -246,11 +262,38 @@ const ChatApp = () => {
   );
   const assistantSelectRequestRef = useRef(0);
   const defaultProviderFetchRef = useRef(false);
+  const serverBootstrapRef = useRef(false);
 
-  const currentSession = getCurrentSession(); // This is just metadata now
-  const messages = activeMessages ?? EMPTY_MESSAGES; // Use activeMessages from store
+  const visibleSessions = serverModeEnabled
+    ? serverReadState.sessions
+    : sessions;
+  const visibleCurrentSessionId = serverModeEnabled
+    ? serverReadState.currentSessionId
+    : currentSessionId;
+  const visibleActiveMessages = serverModeEnabled
+    ? serverReadState.activeMessages
+    : activeMessages;
+  const visibleActiveMessageTree = serverModeEnabled
+    ? serverReadState.activeMessageTree
+    : activeMessageTree;
+  const currentSession = serverModeEnabled
+    ? (visibleSessions.find(
+        (session) => session.id === visibleCurrentSessionId,
+      ) ?? null)
+    : getCurrentSession(); // This is just metadata now
+  const messages = visibleActiveMessages ?? EMPTY_MESSAGES; // Use activeMessages from store
   const currentSessionConfig = currentSession?.config;
   const currentSessionWorkspaceId = currentSession?.workspaceId;
+  const serverSessionChatConfig = {
+    useSearch: currentSessionConfig?.useSearch ?? false,
+    useReasoning: currentSessionConfig?.useReasoning ?? false,
+  };
+  const composerChatConfig = serverModeEnabled
+    ? {
+        ...chatConfig,
+        ...serverSessionChatConfig,
+      }
+    : chatConfig;
   useChatThemeEffects(theme, system.fontSize);
 
   const updateBrowserSearch = useCallback(
@@ -381,17 +424,17 @@ const ChatApp = () => {
   >("hidden");
   const messageInputVariant = welcomeState === "visible" ? "hero" : "default";
   const shouldShowChatTitleBar = welcomeState === "hidden";
-  const prevSessionIdRef = useRef(currentSessionId);
-  const inputSessionRef = useRef(currentSessionId);
+  const prevSessionIdRef = useRef(visibleCurrentSessionId);
+  const inputSessionRef = useRef(visibleCurrentSessionId);
   const workspaceAttachmentHydratedSessionRef = useRef<string | null>(null);
   const syncedSessionPluginPresetRef = useRef<string | null>(null);
 
   // Sync welcomeState with chat emptiness, handling animations only within the same session
   useEffect(() => {
     // If session ID changed, snap to correct state immediately (no animation)
-    if (prevSessionIdRef.current !== currentSessionId) {
+    if (prevSessionIdRef.current !== visibleCurrentSessionId) {
       setWelcomeState(isChatEmpty ? "visible" : "hidden");
-      prevSessionIdRef.current = currentSessionId;
+      prevSessionIdRef.current = visibleCurrentSessionId;
       return;
     }
 
@@ -403,7 +446,7 @@ const ChatApp = () => {
       // Chat cleared -> snap back (or animate in? standard is snap for clear)
       setWelcomeState("visible");
     }
-  }, [currentSessionId, isChatEmpty, welcomeState]);
+  }, [visibleCurrentSessionId, isChatEmpty, welcomeState]);
 
   // Handle Exiting Timer
   useEffect(() => {
@@ -419,6 +462,8 @@ const ChatApp = () => {
 
   // Sync Global Plugins from Session Config
   useEffect(() => {
+    if (serverModeEnabled) return;
+
     const sessionPlugins = normalizeActivePluginIds(
       currentSessionConfig?.activePlugins,
       installedPlugins,
@@ -457,11 +502,14 @@ const ChatApp = () => {
     _hasHydrated,
     installedPlugins,
     pluginConfigs,
+    serverModeEnabled,
     setActivePlugins,
   ]);
 
   // Hydrate workspace preset files once when entering an empty workspace chat.
   useEffect(() => {
+    if (serverModeEnabled) return;
+
     const inputSessionChanged = inputSessionRef.current !== currentSessionId;
     if (inputSessionChanged) {
       inputSessionRef.current = currentSessionId;
@@ -494,6 +542,7 @@ const ChatApp = () => {
     activeMessages.length,
     currentSessionId,
     currentSessionWorkspaceId,
+    serverModeEnabled,
     workspaces,
   ]);
 
@@ -691,8 +740,35 @@ const ChatApp = () => {
 
   // Ensure a session exists on mount
   useEffect(() => {
+    if (!serverModeEnabled || !chatHasHydrated || !serverModelBootstrapReady) {
+      return;
+    }
+    if (serverBootstrapRef.current) return;
+    serverBootstrapRef.current = true;
+
+    refreshServerSessions()
+      .then((loaded) => {
+        if (!loaded) return;
+        const state = useChatStore.getState().serverReadState;
+        if (state.sessions.length === 0) {
+          void createServerSession();
+        }
+      })
+      .catch((error) => {
+        logChatAppError("Failed to bootstrap server chat sessions", error);
+        showActionError("Failed to load server chat sessions.");
+      });
+  }, [
+    chatHasHydrated,
+    createServerSession,
+    refreshServerSessions,
+    serverModeEnabled,
+    serverModelBootstrapReady,
+  ]);
+
+  useEffect(() => {
     // Wait for chat store to hydrate before creating/selecting sessions
-    if (!chatHasHydrated) return;
+    if (!chatHasHydrated || serverModeEnabled) return;
 
     const timer = setTimeout(() => {
       if (sessions.length === 0) {
@@ -708,6 +784,7 @@ const ChatApp = () => {
     currentSessionId,
     createSession,
     selectSession,
+    serverModeEnabled,
   ]);
 
   const updateIsNearMessageBottom = useCallback(() => {
@@ -752,6 +829,10 @@ const ChatApp = () => {
     }, 5000);
   };
 
+  const showServerUnsupportedAction = (action: string) => {
+    showActionError(`Server mode does not support ${action} yet.`);
+  };
+
   const syncActiveSessionWithNotice = async (
     sessionId: string,
     logMessage: string,
@@ -774,6 +855,10 @@ const ChatApp = () => {
   };
 
   const handleStopGeneration = () => {
+    if (serverModeEnabled) {
+      abortActiveGeneration();
+      return;
+    }
     void stopActiveGenerationWithFeedback();
   };
 
@@ -797,15 +882,15 @@ const ChatApp = () => {
       provider,
       modelMetadata,
       customModelMetadata,
-      chatConfig,
+      chatConfig: composerChatConfig,
       search: {
         provider: search.provider,
         configs: search.configs,
       },
       rag,
-      installedPlugins,
+      installedPlugins: serverModeEnabled ? [] : installedPlugins,
       pluginConfigs,
-      activePlugins,
+      activePlugins: serverModeEnabled ? [] : activePlugins,
     });
   };
 
@@ -874,7 +959,77 @@ const ChatApp = () => {
     });
   };
 
+  const handleSendServerMessage = async (
+    text: string,
+    attachments: Attachment[],
+  ) => {
+    if ((!text.trim() && attachments.length === 0) || isGenerating) return;
+    if (!text.trim()) {
+      showActionError("Server mode requires message text with attachments.");
+      return;
+    }
+    if (attachments.length > 0 && !serverFilesEnabled) {
+      showActionError("Server file uploads are not enabled.");
+      return;
+    }
+
+    const generation = beginActiveGeneration();
+
+    try {
+      let targetSessionId = serverReadState.currentSessionId;
+      if (!targetSessionId) {
+        targetSessionId = await createServerSession();
+      }
+      if (!targetSessionId) {
+        throw new Error("Server conversation could not be created.");
+      }
+
+      const uploadedAttachments =
+        attachments.length > 0
+          ? await uploadMessageAttachmentsForServer({
+              attachments,
+              conversationId: targetSessionId,
+              signal: generation.controller.signal,
+            })
+          : [];
+      if (!isGenerationRunActive(generation)) return;
+
+      const sessionForProcessing =
+        useChatStore
+          .getState()
+          .serverReadState.sessions.find((s) => s.id === targetSessionId) ||
+        currentSession;
+      const effectiveContext =
+        getEffectiveContextForSession(sessionForProcessing);
+
+      await sendServerMessageAndStream({
+        sessionId: targetSessionId,
+        content: text,
+        attachments: toServerMessageAttachments(uploadedAttachments),
+        model: selectedModel,
+        config: serverSessionChatConfig,
+        systemInstruction: effectiveContext.systemInstruction,
+        signal: generation.controller.signal,
+      });
+    } catch (error: any) {
+      if (error.name === "AbortError" || generation.controller.signal.aborted) {
+        return;
+      }
+      logChatAppError("Server message generation failed:", error);
+      showActionError(
+        error instanceof Error ? error.message : "Server message failed.",
+      );
+    } finally {
+      finishActiveGeneration(generation);
+    }
+  };
+
   const handleSendMessage = async (text: string, attachments: Attachment[]) => {
+    if (serverModeEnabled) {
+      await handleSendServerMessage(text, attachments);
+      return;
+    }
+
     if ((!text.trim() && attachments.length === 0) || isGenerating) return;
 
     let targetSessionId = currentSessionId;
@@ -1485,6 +1640,10 @@ const ChatApp = () => {
   };
 
   const handleRegenerate = async (messageId: string) => {
+    if (serverModeEnabled) {
+      showServerUnsupportedAction("regeneration");
+      return;
+    }
     await generateModelResponseBranch(messageId, {
       errorMessage: t("errRegenerate"),
       logPrefix: "Regeneration",
@@ -1492,12 +1651,22 @@ const ChatApp = () => {
   };
 
   const handleVersionChange = (msgId: string, direction: "prev" | "next") => {
+    if (serverModeEnabled) {
+      showServerUnsupportedAction("message version switching");
+      return;
+    }
     if (currentSessionId) {
       switchMessageVersion(currentSessionId, msgId, direction);
     }
   };
 
   const handleAssistantSelect = async (agent: LobeAgent) => {
+    if (serverModeEnabled) {
+      showServerUnsupportedAction("assistant presets");
+      navigateToPanel("chat");
+      return;
+    }
+
     const requestId = assistantSelectRequestRef.current + 1;
     assistantSelectRequestRef.current = requestId;
 
@@ -1545,6 +1714,10 @@ const ChatApp = () => {
   };
 
   const handleEditMessage = (msgId: string, newContent: string) => {
+    if (serverModeEnabled) {
+      showServerUnsupportedAction("message editing");
+      return;
+    }
     if (currentSessionId) {
       updateMessageContent(currentSessionId, msgId, newContent);
       void syncActiveSessionWithNotice(
@@ -1558,6 +1731,11 @@ const ChatApp = () => {
     msgId: string,
     newContent: string,
   ) => {
+    if (serverModeEnabled) {
+      showServerUnsupportedAction("message edit branches");
+      return;
+    }
+
     const sessionId = currentSessionId;
     if (!sessionId || isGenerating || !newContent.trim()) return;
 
@@ -1787,6 +1965,11 @@ const ChatApp = () => {
   };
 
   const handleDeleteMessage = async (msgId: string) => {
+    if (serverModeEnabled) {
+      showServerUnsupportedAction("message deletion");
+      return;
+    }
+
     const sessionId = currentSessionId;
     if (!sessionId) return;
 
@@ -1799,6 +1982,11 @@ const ChatApp = () => {
   };
 
   const handleDeleteSession = async (sessionId: string) => {
+    if (serverModeEnabled) {
+      showServerUnsupportedAction("chat deletion");
+      return;
+    }
+
     try {
       if (
         shouldAbortActiveGenerationForSessionDelete({
@@ -1818,6 +2006,11 @@ const ChatApp = () => {
   };
 
   const handleDuplicateSession = async (sessionId: string) => {
+    if (serverModeEnabled) {
+      showServerUnsupportedAction("chat duplication");
+      return;
+    }
+
     try {
       await duplicateSession(sessionId);
     } catch (error) {
@@ -1827,6 +2020,11 @@ const ChatApp = () => {
   };
 
   const handleRetractMessage = async (msg: Message) => {
+    if (serverModeEnabled) {
+      showServerUnsupportedAction("message retraction");
+      return;
+    }
+
     const sessionId = currentSessionId;
     if (!sessionId) return;
 
@@ -1844,6 +2042,11 @@ const ChatApp = () => {
   };
 
   const handleSmartRename = async (sessionId: string) => {
+    if (serverModeEnabled) {
+      showServerUnsupportedAction("smart rename");
+      return;
+    }
+
     const snapshot = createSessionPostGenerationSnapshot(
       useChatStore
         .getState()
@@ -1884,6 +2087,19 @@ const ChatApp = () => {
   };
 
   const handleNewChat = () => {
+    if (serverModeEnabled) {
+      if (isGenerating) {
+        abortActiveGeneration();
+      }
+      createServerSession()
+        .then(() => navigateToPanel("chat"))
+        .catch((error) => {
+          logChatAppError("Failed to create server chat", error);
+          showActionError("Failed to create server chat.");
+        });
+      return;
+    }
+
     if (isGenerating) {
       void stopActiveGenerationWithFeedback();
     }
@@ -1916,19 +2132,34 @@ const ChatApp = () => {
 
       {/* Sidebar */}
       <Sidebar
-        sessions={sessions}
-        currentSessionId={currentSessionId}
+        sessions={visibleSessions}
+        currentSessionId={visibleCurrentSessionId}
         onSelectSession={(id) => {
-          if (isGenerating) {
-            void stopActiveGenerationWithFeedback();
+          if (serverModeEnabled) {
+            if (isGenerating) {
+              abortActiveGeneration();
+            }
+            void selectServerSession(id);
+          } else {
+            if (isGenerating) {
+              void stopActiveGenerationWithFeedback();
+            }
+            selectSession(id);
           }
-          selectSession(id);
           navigateToPanel("chat");
         }}
         onNewChat={handleNewChat}
         onDeleteSession={handleDeleteSession}
-        onRenameSession={updateSessionTitle}
-        onTogglePin={toggleSessionPin}
+        onRenameSession={
+          serverModeEnabled
+            ? () => showServerUnsupportedAction("chat renaming")
+            : updateSessionTitle
+        }
+        onTogglePin={
+          serverModeEnabled
+            ? () => showServerUnsupportedAction("pinning")
+            : toggleSessionPin
+        }
         onDuplicate={handleDuplicateSession}
         onSmartRename={handleSmartRename}
         isOpen={isSidebarOpen}
@@ -2047,12 +2278,23 @@ const ChatApp = () => {
                     <AssistantHeader
                       instruction={currentSession.systemInstruction || ""}
                       onUpdate={(newInst) =>
-                        updateSessionInstruction(currentSession.id, newInst)
+                        serverModeEnabled
+                          ? showServerUnsupportedAction(
+                              "system instruction editing",
+                            )
+                          : updateSessionInstruction(currentSession.id, newInst)
                       }
                       onDelete={
                         currentSession.systemInstruction
                           ? () =>
-                              updateSessionInstruction(currentSession.id, "")
+                              serverModeEnabled
+                                ? showServerUnsupportedAction(
+                                    "system instruction editing",
+                                  )
+                                : updateSessionInstruction(
+                                    currentSession.id,
+                                    "",
+                                  )
                           : undefined
                       }
                     />
@@ -2084,7 +2326,7 @@ const ChatApp = () => {
                             <MessageItem
                               message={msg}
                               branchInfo={getMessageBranchInfo(
-                                activeMessageTree,
+                                visibleActiveMessageTree,
                                 msg.id,
                               )}
                               onEdit={handleEditMessage}
@@ -2160,14 +2402,30 @@ const ChatApp = () => {
                   variant={messageInputVariant}
                   onSend={handleSendMessage}
                   onStop={isGenerating ? handleStopGeneration : undefined}
-                  disabled={isGenerating || availableModels.length === 0}
+                  disabled={
+                    isGenerating ||
+                    availableModels.length === 0 ||
+                    (serverModeEnabled && serverReadState.isLoading)
+                  }
                   availableModels={availableModels}
                   selectedModel={selectedModel}
                   onSelectModel={setModel}
-                  isSearchEnabled={chatConfig.useSearch}
+                  isSearchEnabled={composerChatConfig.useSearch}
                   onToggleSearch={() =>
-                    setChatConfig({ useSearch: !chatConfig.useSearch })
+                    serverModeEnabled
+                      ? showServerUnsupportedAction("search toggle")
+                      : setChatConfig({ useSearch: !chatConfig.useSearch })
                   }
+                  isReasoningEnabled={composerChatConfig.useReasoning}
+                  onToggleReasoning={() =>
+                    serverModeEnabled
+                      ? showServerUnsupportedAction("reasoning toggle")
+                      : setChatConfig({
+                          useReasoning: !chatConfig.useReasoning,
+                        })
+                  }
+                  localSessionToolsDisabled={serverModeEnabled}
+                  onLocalSessionToolUnavailable={showServerUnsupportedAction}
                 />
               </div>
             </div>

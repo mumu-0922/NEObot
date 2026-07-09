@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   createFileService,
   mapFileRecordToServerAttachment,
+  type UploadChatAttachmentInput,
+  uploadMessageAttachmentsForServer,
 } from "../services/api/fileService";
 import type {
   ApiCapabilities,
@@ -144,6 +146,75 @@ describe("Phase 11.4B file service gateway", () => {
         recoverable: true,
       });
     }
+  });
+
+  it("uploads inline message attachments and preserves server-backed ones", async () => {
+    const calls: UploadChatAttachmentInput[] = [];
+    const existing = mapFileRecordToServerAttachment(fileRecord);
+    const uploaded = await uploadMessageAttachmentsForServer({
+      conversationId: "conversation-1",
+      attachments: [
+        {
+          id: "local-attachment",
+          fileName: "hello.txt",
+          mimeType: "text/plain",
+          data: "aGVsbG8gd29ybGQ=",
+        },
+        existing,
+      ],
+      fileService: {
+        async uploadChatAttachment(input) {
+          calls.push(input);
+          await expect(input.file.text()).resolves.toBe("hello world");
+          return mapFileRecordToServerAttachment(fileRecord, {
+            baseUrl: "http://backend.test",
+            purpose: input.purpose,
+          });
+        },
+      },
+    });
+
+    expect(uploaded).toEqual([
+      expect.objectContaining({
+        source: "server",
+        fileId,
+        fileName: "notes.txt",
+        purpose: "input",
+      }),
+      existing,
+    ]);
+    expect(calls).toEqual([
+      expect.objectContaining({
+        fileName: "hello.txt",
+        conversationId: "conversation-1",
+        clientFileId: "local-attachment",
+        purpose: "input",
+      }),
+    ]);
+  });
+
+  it("rejects URL-only attachments in server upload conversion", async () => {
+    await expect(
+      uploadMessageAttachmentsForServer({
+        conversationId: "conversation-1",
+        attachments: [
+          {
+            id: "remote-attachment",
+            fileName: "remote.txt",
+            mimeType: "text/plain",
+            url: "https://example.test/file.txt",
+          },
+        ],
+        fileService: {
+          async uploadChatAttachment() {
+            throw new Error("uploadChatAttachment should not be called");
+          },
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "UNSUPPORTED_ATTACHMENT_SOURCE",
+      recoverable: true,
+    });
   });
 });
 

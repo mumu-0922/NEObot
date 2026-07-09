@@ -8,7 +8,9 @@ import {
   type FileRecordDTO,
   type NeoChatApiClient,
 } from "./client";
+import type { Attachment } from "../../types";
 import {
+  isServerBackedAttachment,
   normalizeServerMessageAttachmentPurpose,
   type ServerBackedAttachment,
   type ServerMessageAttachmentPurpose,
@@ -43,6 +45,13 @@ export interface FileService {
   downloadFileContent(
     input: DownloadFileContentInput,
   ): Promise<DownloadedFileContent>;
+}
+
+export interface UploadMessageAttachmentsForServerInput {
+  attachments: Attachment[];
+  conversationId: string;
+  fileService?: Pick<FileService, "uploadChatAttachment">;
+  signal?: AbortSignal;
 }
 
 export function createFileService(
@@ -121,4 +130,67 @@ export function mapFileRecordToServerAttachment(
       `/v1/files/${encodeURIComponent(record.id)}/content`,
     ),
   };
+}
+
+export async function uploadMessageAttachmentsForServer({
+  attachments,
+  conversationId,
+  fileService = createFileService(),
+  signal,
+}: UploadMessageAttachmentsForServerInput): Promise<ServerBackedAttachment[]> {
+  const uploaded: ServerBackedAttachment[] = [];
+
+  for (const attachment of attachments) {
+    if (isServerBackedAttachment(attachment)) {
+      uploaded.push(attachment);
+      continue;
+    }
+
+    uploaded.push(
+      await fileService.uploadChatAttachment({
+        file: attachmentToBlob(attachment),
+        fileName: attachment.fileName,
+        conversationId,
+        clientFileId: attachment.id,
+        purpose: inferServerMessagePurpose(attachment),
+        signal,
+      }),
+    );
+  }
+
+  return uploaded;
+}
+
+function attachmentToBlob(attachment: Attachment): Blob {
+  if (!attachment.data) {
+    throw new ApiClientError(
+      "UNSUPPORTED_ATTACHMENT_SOURCE",
+      "Server mode can only upload inline/base64 attachments or reuse server-backed file attachments.",
+      { recoverable: true },
+    );
+  }
+
+  const bytes = decodeBase64Bytes(attachment.data);
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return new Blob([buffer], {
+    type: attachment.mimeType || "application/octet-stream",
+  });
+}
+
+function decodeBase64Bytes(data: string): Uint8Array {
+  const normalized = data.includes(",") ? data.split(",").pop() || "" : data;
+  const binary = atob(normalized);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+function inferServerMessagePurpose(
+  attachment: Attachment,
+): ServerMessageAttachmentPurpose {
+  if (attachment.mimeType.startsWith("image/")) return "image";
+  return "input";
 }

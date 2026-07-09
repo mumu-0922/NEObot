@@ -59,6 +59,13 @@ export function useChatGenerationController({
     [isGenerationRunActive],
   );
 
+  const abortActiveGeneration = useCallback(() => {
+    generationRunRef.current = getNextGenerationRunId(generationRunRef.current);
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setIsGenerating(false);
+  }, []);
+
   const stopActiveGeneration = useCallback(async () => {
     const state = useChatStore.getState();
     const syncSnapshot = createActiveGenerationSyncSnapshot({
@@ -66,10 +73,7 @@ export function useChatGenerationController({
       activeMessages: state.activeMessages,
     });
 
-    generationRunRef.current = getNextGenerationRunId(generationRunRef.current);
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = null;
-    setIsGenerating(false);
+    abortActiveGeneration();
 
     if (!syncSnapshot) return;
 
@@ -82,13 +86,14 @@ export function useChatGenerationController({
       syncSnapshot.sessionId,
       syncSnapshot.messages,
     );
-  }, [persistStoppedGeneration]);
+  }, [abortActiveGeneration, persistStoppedGeneration]);
 
   return {
     isGenerating,
     beginActiveGeneration,
     isGenerationRunActive,
     finishActiveGeneration,
+    abortActiveGeneration,
     stopActiveGeneration,
   };
 }

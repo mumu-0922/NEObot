@@ -426,6 +426,50 @@ Rollback:
 - Revert only the 11.4B service/mapper/smoke slice if gateway behavior
   regresses.
 
+#### 11.4C — Server-Mode Browser Send Wiring
+
+Objective: route the existing chat UI through the Go server path when
+`NEXT_PUBLIC_API_MODE=server` is configured, while keeping the local-mode UI and
+OPFS attachment behavior unchanged.
+
+Scope:
+
+- Reuse the existing `MessageInput` attachment UI unchanged.
+- Upload inline/base64 message attachments at send time through `fileService`
+  before creating the server user message.
+- Convert uploaded attachments to `{source:"server", fileId, purpose}` message
+  references.
+- Display server sessions/messages from `serverReadState` in server mode and
+  keep local `sessions/activeMessages` as the rollback path.
+- Keep plugin, skill, search, reasoning, and stop-generation controls from
+  writing local persisted stores while the UI is showing server conversations.
+- Fail closed for local-only actions that do not yet have Go endpoints, such as
+  message deletion, regeneration, assistant presets, pinning, duplication, and
+  smart rename.
+
+Outputs:
+
+- Minimal `ChatApp` server-mode branch for refresh/create/select/send/stream.
+- `useChatShellState` exposes the existing server read/write store methods.
+- `MessageInput` keeps the same visible controls but gets a server-mode
+  fail-closed switch for local-only tool writes.
+- Targeted tests for send-time attachment upload conversion and existing UI
+  composition/local message-input behavior.
+
+Verification:
+
+- Server mode can create/select conversations, upload selected inline
+  attachments at send time, append the server file reference, and stream the
+  assistant response through the Go backend.
+- Local mode continues to use the existing local store, OPFS, and provider
+  route behavior.
+
+Rollback:
+
+- Restart the frontend with `NEXT_PUBLIC_API_MODE=local`.
+- Revert only the 11.4C UI-wiring slice if server-mode browser behavior
+  regresses.
+
 ### 11.5 — Browser Smoke and Local Rollback
 
 Objective: prove the server-mode path end-to-end in a browser and prove the

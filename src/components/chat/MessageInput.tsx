@@ -101,6 +101,10 @@ interface MessageInputProps {
   onSelectModel?: (model: string) => void;
   isSearchEnabled?: boolean;
   onToggleSearch?: () => void;
+  isReasoningEnabled?: boolean;
+  onToggleReasoning?: () => void;
+  localSessionToolsDisabled?: boolean;
+  onLocalSessionToolUnavailable?: (action: string) => void;
   variant?: MessageInputVariant;
 }
 
@@ -131,6 +135,10 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       onSelectModel,
       isSearchEnabled = false,
       onToggleSearch,
+      isReasoningEnabled,
+      onToggleReasoning,
+      localSessionToolsDisabled = false,
+      onLocalSessionToolUnavailable,
       variant = "default",
     },
     ref,
@@ -186,6 +194,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const attachImageInputId = useId();
     const attachTextFallbackInputId = useId();
     const isHeroVariant = variant === "hero";
+    const effectiveUseReasoning = isReasoningEnabled ?? chatConfig.useReasoning;
 
     // Browser Speech Rec
     const recognitionRef = useRef<any>(null);
@@ -404,7 +413,18 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         ? t("disableSearchWithMode", { mode: searchModeLabel })
         : t("enableSearchWithMode", { mode: searchModeLabel });
 
+    const notifyLocalSessionToolUnavailable = useCallback(
+      (action: string) => {
+        onLocalSessionToolUnavailable?.(action);
+      },
+      [onLocalSessionToolUnavailable],
+    );
+
     const handleSearchToggle = () => {
+      if (localSessionToolsDisabled) {
+        notifyLocalSessionToolUnavailable("search toggle");
+        return;
+      }
       if (!searchCompatibility.enabled) {
         setErrorMsg(getSearchUnavailableMessage(searchCompatibility.reason));
         return;
@@ -418,11 +438,17 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     );
     const activeSkillIds = useMemo(
       () =>
-        normalizeSkillIdRefs(
-          currentSession?.config?.activeSkills,
-          installedSkills,
-        ),
-      [currentSession?.config?.activeSkills, installedSkills],
+        localSessionToolsDisabled
+          ? []
+          : normalizeSkillIdRefs(
+              currentSession?.config?.activeSkills,
+              installedSkills,
+            ),
+      [
+        currentSession?.config?.activeSkills,
+        installedSkills,
+        localSessionToolsDisabled,
+      ],
     );
     const activeSkillSet = useMemo(
       () => new Set(activeSkillIds),
@@ -430,19 +456,33 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     );
     const skillsForMenu = useMemo(
       () =>
-        [...installedSkills].sort((a, b) =>
-          a.title.localeCompare(b.title, undefined, { sensitivity: "base" }),
-        ),
-      [installedSkills],
+        localSessionToolsDisabled
+          ? []
+          : [...installedSkills].sort((a, b) =>
+              a.title.localeCompare(b.title, undefined, {
+                sensitivity: "base",
+              }),
+            ),
+      [installedSkills, localSessionToolsDisabled],
     );
     const setSessionActiveSkillIds = useCallback(
       (skillIds: string[]) => {
+        if (localSessionToolsDisabled) {
+          notifyLocalSessionToolUnavailable("skills");
+          return;
+        }
         if (!currentSessionId) return;
         updateSessionConfig(currentSessionId, {
           activeSkills: normalizeSkillIdRefs(skillIds, installedSkills),
         });
       },
-      [currentSessionId, installedSkills, updateSessionConfig],
+      [
+        currentSessionId,
+        installedSkills,
+        localSessionToolsDisabled,
+        notifyLocalSessionToolUnavailable,
+        updateSessionConfig,
+      ],
     );
     const toggleSessionSkill = useCallback(
       (skillId: string) => {
@@ -508,6 +548,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
     // Filter plugins to show only those ready for use
     const validPlugins = useMemo(() => {
+      if (localSessionToolsDisabled) return [];
       return installedPlugins
         .filter((p) => {
           // If auth is required, check if we have a config value
@@ -518,7 +559,10 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           return true;
         })
         .map((p) => localizePluginMeta(p, tConfig));
-    }, [installedPlugins, pluginConfigs, tConfig]);
+    }, [installedPlugins, localSessionToolsDisabled, pluginConfigs, tConfig]);
+    const activePluginIdsForMenu = localSessionToolsDisabled
+      ? []
+      : activePlugins;
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
       if (
@@ -1324,6 +1368,11 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               <DropdownMenu
                 open={showSkillSelect}
                 onOpenChange={(open) => {
+                  if (localSessionToolsDisabled) {
+                    setShowSkillSelect(false);
+                    if (open) notifyLocalSessionToolUnavailable("skills");
+                    return;
+                  }
                   setShowAttachMenu(false);
                   setShowPluginSelect(false);
                   setShowModelSelect(false);
@@ -1407,6 +1456,11 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               <DropdownMenu
                 open={showPluginSelect}
                 onOpenChange={(open) => {
+                  if (localSessionToolsDisabled) {
+                    setShowPluginSelect(false);
+                    if (open) notifyLocalSessionToolUnavailable("plugins");
+                    return;
+                  }
                   setShowAttachMenu(false);
                   setShowSkillSelect(false);
                   setShowModelSelect(false);
@@ -1415,8 +1469,10 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               >
                 <Tooltip
                   content={
-                    activePlugins.length > 0
-                      ? t("activePluginsCount", { count: activePlugins.length })
+                    activePluginIdsForMenu.length > 0
+                      ? t("activePluginsCount", {
+                          count: activePluginIdsForMenu.length,
+                        })
                       : t("plugins")
                   }
                   position="top"
@@ -1425,13 +1481,13 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                     <button
                       type="button"
                       aria-label={
-                        activePlugins.length > 0
+                        activePluginIdsForMenu.length > 0
                           ? t("activePluginsAria", {
-                              count: activePlugins.length,
+                              count: activePluginIdsForMenu.length,
                             })
                           : t("plugins")
                       }
-                      className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${activePlugins.length > 0 ? "text-cyan-500 dark:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-900/20" : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"}`}
+                      className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${activePluginIdsForMenu.length > 0 ? "text-cyan-500 dark:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-900/20" : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"}`}
                       disabled={isInputBusy}
                     >
                       <Blocks size={16} aria-hidden="true" />
@@ -1450,7 +1506,9 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                         {t("installedPlugins")}
                       </DropdownMenuLabel>
                       {validPlugins.map((plugin) => {
-                        const isActive = activePlugins.includes(plugin.id);
+                        const isActive = activePluginIdsForMenu.includes(
+                          plugin.id,
+                        );
                         return (
                           <DropdownMenuCheckboxItem
                             checked={isActive}
@@ -1467,9 +1525,13 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                             }
                             key={plugin.id}
                             onSelect={(event) => event.preventDefault()}
-                            onCheckedChange={() =>
-                              togglePluginActive(plugin.id)
-                            }
+                            onCheckedChange={() => {
+                              if (localSessionToolsDisabled) {
+                                notifyLocalSessionToolUnavailable("plugins");
+                                return;
+                              }
+                              togglePluginActive(plugin.id);
+                            }}
                           >
                             <span className="flex min-w-0 items-center gap-2 truncate">
                               <SafeImage
@@ -1491,7 +1553,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                       className="px-3 py-4 text-center text-xs text-muted-foreground"
                       role="status"
                     >
-                      {installedPlugins.length > 0
+                      {!localSessionToolsDisabled && installedPlugins.length > 0
                         ? t("pluginsMissingAuth")
                         : t("noPluginsInstalled")}{" "}
                       <br /> {t("visitPluginMarket")}
@@ -1506,7 +1568,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               <div>
                 <Tooltip
                   content={
-                    chatConfig.useReasoning
+                    effectiveUseReasoning
                       ? t("disableReasoning")
                       : t("enableReasoning")
                   }
@@ -1515,15 +1577,23 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                   <button
                     type="button"
                     aria-label={
-                      chatConfig.useReasoning
+                      effectiveUseReasoning
                         ? t("disableReasoningAria")
                         : t("enableReasoningAria")
                     }
-                    aria-pressed={chatConfig.useReasoning}
-                    className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${chatConfig.useReasoning ? "text-violet-500 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20" : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"}`}
-                    onClick={() =>
-                      setChatConfig({ useReasoning: !chatConfig.useReasoning })
-                    }
+                    aria-pressed={effectiveUseReasoning}
+                    className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${effectiveUseReasoning ? "text-violet-500 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20" : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"}`}
+                    onClick={() => {
+                      if (localSessionToolsDisabled) {
+                        notifyLocalSessionToolUnavailable("reasoning toggle");
+                        return;
+                      }
+                      if (onToggleReasoning) {
+                        onToggleReasoning();
+                        return;
+                      }
+                      setChatConfig({ useReasoning: !chatConfig.useReasoning });
+                    }}
                     disabled={isInputBusy}
                   >
                     <Lightbulb size={16} aria-hidden="true" />

@@ -82,14 +82,30 @@ describe("MessageInput composition", () => {
     expect(messageInput).not.toContain(
       "dark:text-amber-300 dark:hover:bg-amber-900/20",
     );
-    expect(messageInput).toContain(
-      '<Library size={14} className="text-purple-500 dark:text-purple-400"',
-    );
+    expect(messageInput).toContain("text-purple-500 dark:text-purple-400");
     expect(messageInput).toContain('<span>{t("knowledgeBase")}</span>');
     expect(messageInput).toContain("open={showAttachMenu}");
     expect(messageInput).not.toContain("showAttachMenu && hasAttachmentMenu");
     expect(messageInput).toContain("textFallbackInputRef.current?.click()");
     expect(messageInput).not.toContain("const AttachmentPreviewCard");
+    expect(messageInput).toContain("localSessionToolsDisabled?: boolean");
+    expect(messageInput).toContain("onLocalSessionToolUnavailable?:");
+    expect(messageInput).toContain("isReasoningEnabled?: boolean");
+    expect(messageInput).toContain("onToggleReasoning?: () => void");
+    expect(messageInput).toContain(
+      'notifyLocalSessionToolUnavailable("search toggle")',
+    );
+    expect(messageInput).toContain(
+      'notifyLocalSessionToolUnavailable("skills")',
+    );
+    expect(messageInput).toContain(
+      'notifyLocalSessionToolUnavailable("plugins")',
+    );
+    expect(messageInput).toContain(
+      'notifyLocalSessionToolUnavailable("reasoning toggle")',
+    );
+    expect(messageInput).toContain("activePluginIdsForMenu");
+    expect(messageInput).toContain("effectiveUseReasoning");
     expect(messageInput.indexOf("{/* Reasoning Button")).toBeLessThan(
       messageInput.indexOf("{/* Search Button */}"),
     );

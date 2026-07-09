@@ -456,6 +456,24 @@ the UI can call in the next wiring slice.
 - [x] Record commands, artifacts, cleanup caveats, and review result in
       `docs/tracking/process.md`.
 
+### Phase 11.4C — Server-mode browser send wiring
+
+- [x] Expose existing server read/write store methods through the chat shell
+      state hook.
+- [x] Switch visible sessions/messages to `serverReadState` only in configured
+      server mode.
+- [x] Upload inline/base64 attachments at send time through `fileService` and
+      send only server `fileId` references to Go messages.
+- [x] Keep `MessageInput` UI, OPFS utilities, and local-mode send path
+      unchanged.
+- [x] Disable local plugin, skill, search, and reasoning writes while the
+      composer is showing server conversations.
+- [x] Use abort-only stop/new-chat/session-switch handling in server mode so
+      local IndexedDB sync is not invoked.
+- [x] Fail closed for local-only actions that do not yet have server endpoints.
+- [ ] Browser-smoke server-mode file upload, attachment rendering, refresh, and
+      local rollback in Phase 11.5.
+
 ### Phase 11.5 — Browser smoke and local rollback
 
 - [ ] Run server-mode browser smoke against the local Docker backend at
