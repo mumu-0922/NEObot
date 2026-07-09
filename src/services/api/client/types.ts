@@ -207,12 +207,79 @@ export interface FileApi {
   deleteFile(fileId: string, options?: { signal?: AbortSignal }): Promise<void>;
 }
 
+export interface BrowserImportPackageInput {
+  package: Blob;
+  fileName?: string;
+  signal?: AbortSignal;
+}
+
+export interface BrowserImportIssue {
+  code: string;
+  path: string;
+  message: string;
+  severity: "warning" | "error";
+}
+
+export interface BrowserImportPreviewResponse {
+  summary: {
+    conversations: number;
+    messages: number;
+    files: number;
+    bytes: number;
+    skippedDuplicates: number;
+  };
+  warnings: BrowserImportIssue[];
+  errors: BrowserImportIssue[];
+  commitAllowed: boolean;
+}
+
+export interface BrowserImportCommitResponse {
+  batchId: string;
+  status: "completed";
+  created: {
+    conversations: number;
+    messages: number;
+    files: number;
+    attachments: number;
+  };
+  mappings: {
+    conversations: Record<string, string>;
+    messages: Record<string, string>;
+    files: Record<string, string>;
+  };
+  warnings: BrowserImportIssue[];
+}
+
+export interface BrowserImportBatchStatus {
+  batchId: string;
+  status: "completed" | "rolled_back";
+  createdAt: string;
+}
+
+export interface BrowserImportApi {
+  previewBrowserImport(
+    input: BrowserImportPackageInput,
+  ): Promise<BrowserImportPreviewResponse>;
+  commitBrowserImport(
+    input: BrowserImportPackageInput,
+  ): Promise<BrowserImportCommitResponse>;
+  getBrowserImportBatch(
+    batchId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<BrowserImportBatchStatus>;
+  rollbackBrowserImportBatch(
+    batchId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<void>;
+}
+
 export interface NeoChatApiClient {
   mode: ApiMode;
   config: ResolvedApiClientConfig;
   capabilities: ApiCapabilities;
   chat: ChatApi;
   files: FileApi;
+  imports?: BrowserImportApi;
 }
 
 export type ServerStreamEventType =

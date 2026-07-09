@@ -14,12 +14,24 @@ describe("settings data export", () => {
       resolve(process.cwd(), "src/store/core/settingsStore.ts"),
       "utf8",
     );
+    const migrationPanel = readFileSync(
+      resolve(
+        process.cwd(),
+        "src/components/settings/BrowserDataMigrationPanel.tsx",
+      ),
+      "utf8",
+    );
 
     expect(systemSettings).toContain("handleExportAllData");
     expect(settingsStore).toContain("createBrowserAppExportPayload");
+    expect(systemSettings).toContain("BrowserDataMigrationPanel");
+    expect(migrationPanel).toContain("createBrowserImportPackage");
+    expect(migrationPanel).toContain("rollbackBatch");
     expect(en.System.exportAllData).toBeTruthy();
     expect(zh.System.exportAllData).toBeTruthy();
     expect(en.System.exportError).toBeTruthy();
     expect(zh.System.exportError).toBeTruthy();
+    expect(en.System.serverImportTitle).toBeTruthy();
+    expect(zh.System.serverImportTitle).toBeTruthy();
   });
 });

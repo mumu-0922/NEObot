@@ -7,6 +7,7 @@ import { useSetLocale } from "@/i18n/useSetLocale";
 import { SegmentedControl, SimpleSwitch } from "./SettingsUI";
 import { AppSettings } from "@/types";
 import { SYSTEM_SETTINGS_LIMITS } from "@/config/limits";
+import BrowserDataMigrationPanel from "./BrowserDataMigrationPanel";
 
 const SystemSettings = () => {
   const t = useTranslations("System");
@@ -437,6 +438,7 @@ const SystemSettings = () => {
             </div>
           ) : null}
         </div>
+        <BrowserDataMigrationPanel />
       </section>
 
       {/* Danger Zone */}

@@ -143,6 +143,37 @@ export async function listOPFSDirectory(path: string): Promise<string[]> {
 }
 
 /**
+ * Reads an OPFS URL as a Blob for explicit export/import flows.
+ */
+export async function readBlobFromOPFSUrl(url: string): Promise<Blob | null> {
+  if (!url.startsWith(OPFS_PROTOCOL)) return null;
+
+  const filePath = getSafeOPFSPath(url);
+  if (!filePath) {
+    logDevWarn("Invalid OPFS URL");
+    return null;
+  }
+
+  try {
+    const file = read(filePath);
+    if (!(await file.exists())) {
+      logDevWarn(`OPFS File not found: ${filePath}`);
+      return null;
+    }
+
+    const fileBlob = await file.getOriginFile();
+    if (!fileBlob) {
+      logDevWarn(`Failed to get file blob: ${filePath}`);
+      return null;
+    }
+    return fileBlob;
+  } catch (error) {
+    logDevError(`Failed to read OPFS file: ${filePath}`, error);
+    return null;
+  }
+}
+
+/**
  * Resolves an opfs:// URL to a local ObjectURL (blob:).
  * Remember to revoke the URL when no longer needed to prevent memory leaks.
  */

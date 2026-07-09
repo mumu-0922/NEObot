@@ -3970,3 +3970,282 @@ GET  /mm-api/v1/chat/conversations/{id}/messages -> go /v1/chat/conversations/{i
 - The smoke intentionally leaves test conversation/file data in the local
   Compose volumes for auditability. Do not run `docker compose down -v` unless
   losing local smoke data is intended.
+
+## 2026-07-09 — Phase 12 local browser import UI plan
+
+Action: started Phase 12 local-first browser migration work and created the
+detailed implementation plan before editing code.
+
+Evidence:
+
+```text
+plan:     mm-chat/docs/architecture/phase-12-browser-import-ui-plan.md
+tracking: mm-chat/docs/tracking/progress.md Phase 12 plan checkbox marked
+```
+
+Decision: keep the first implementation local-only: Next.js/React UI unchanged in
+shape, Go import endpoints reached through `/mm-api`, and browser-local data is
+never cleared by import or rollback.
+
+Next: implement the exporter package builder and server import API client, then
+add preview/commit/rollback UI in System Settings.
+
+## 2026-07-09 — Phase 12 local implementation slice
+
+Action: implemented the local browser-to-server import flow in the existing
+System Settings data-management section.
+
+Changed files owned by this slice:
+
+```text
+src/lib/data/browserImportPackage.ts
+src/utils/opfs.ts
+src/services/api/client/server/importApi.ts
+src/services/api/client/local/importApi.ts
+src/services/api/client/index.ts
+src/services/api/client/types.ts
+src/services/api/importService.ts
+src/components/settings/BrowserDataMigrationPanel.tsx
+src/components/settings/SystemSettings.tsx
+src/i18n/locales/{en,zh,ja}/System.json
+src/__tests__/browserImportPackage.test.ts
+src/__tests__/importApi.test.ts
+src/__tests__/settingsDataExport.test.ts
+```
+
+Evidence:
+
+```text
+corepack pnpm exec tsc --noEmit --pretty false
+  passed
+
+corepack pnpm vitest run \
+  src/__tests__/browserImportPackage.test.ts \
+  src/__tests__/importApi.test.ts \
+  src/__tests__/settingsDataExport.test.ts \
+  src/__tests__/apiClientScaffold.test.ts \
+  src/__tests__/messagesParity.test.ts
+  passed: 5 files, 44 tests
+
+corepack pnpm exec eslint \
+  src/lib/data/browserImportPackage.ts \
+  src/utils/opfs.ts \
+  src/services/api/client/types.ts \
+  src/services/api/client/index.ts \
+  src/services/api/client/server/importApi.ts \
+  src/services/api/client/local/importApi.ts \
+  src/services/api/importService.ts \
+  src/components/settings/BrowserDataMigrationPanel.tsx \
+  src/components/settings/SystemSettings.tsx \
+  src/__tests__/browserImportPackage.test.ts \
+  src/__tests__/importApi.test.ts \
+  src/__tests__/settingsDataExport.test.ts
+  passed
+```
+
+Notes:
+
+- The exporter builds only the backend-accepted ZIP layout: `manifest.json` and
+  `files/sha256/{sha256}`.
+- The UI keeps the existing JSON backup button and adds an explicit server
+  preview/confirm/rollback panel.
+- Preview and commit reuse the same in-memory ZIP blob to avoid idempotency hash
+  drift.
+- Browser-local IndexedDB and OPFS data are not deleted by import or rollback.
+
+Next: run local browser smoke through `/mm-api`: create/keep local data, preview
+the ZIP, confirm import, refresh server sessions, verify rendering, and test
+batch rollback if unmodified.
+
+## 2026-07-09 — Phase 12 review fix
+
+Action: reviewed the Phase 12 local browser import UI slice against the Phase 8
+Go import contract and tightened package generation so remote attachment URLs
+with secret-like query, fragment, userinfo, path, or non-HTTP(S) scheme data are
+not written into `manifest.json`.
+
+Evidence:
+
+```text
+corepack pnpm vitest run \
+  src/__tests__/browserImportPackage.test.ts \
+  src/__tests__/importApi.test.ts \
+  src/__tests__/settingsDataExport.test.ts
+  passed: 3 files, 7 tests
+
+corepack pnpm vitest run \
+  src/__tests__/apiClientScaffold.test.ts \
+  src/__tests__/messagesParity.test.ts
+  passed: 2 files, 37 tests
+
+corepack pnpm exec eslint \
+  src/lib/data/browserImportPackage.ts \
+  src/utils/opfs.ts \
+  src/services/api/client/types.ts \
+  src/services/api/client/index.ts \
+  src/services/api/client/server/importApi.ts \
+  src/services/api/client/local/importApi.ts \
+  src/services/api/importService.ts \
+  src/components/settings/BrowserDataMigrationPanel.tsx \
+  src/components/settings/SystemSettings.tsx \
+  src/__tests__/browserImportPackage.test.ts \
+  src/__tests__/importApi.test.ts \
+  src/__tests__/settingsDataExport.test.ts
+  passed
+
+corepack pnpm exec tsc --noEmit --pretty false
+  passed
+```
+
+Next: Go toolchain is not installed in this environment, so backend package tests
+must be run where `go` is available before the final Phase 12 smoke.
+
+## 2026-07-09 — Phase 12 local browser smoke
+
+Action: ran a Windows Chrome browser smoke against the local server-mode app via
+the same-origin `/mm-api` proxy. The smoke seeded browser-local IndexedDB and
+OPFS data, opened Settings → System → Data Management, previewed the generated
+server import package, confirmed import, verified server persistence, and rolled
+the imported batch back.
+
+Environment:
+
+```text
+browser URL: http://localhost:3000
+Next dev:    127.0.0.1:3001
+proxy:       127.0.0.1:3000 /mm-api -> 127.0.0.1:8080
+backend:     127.0.0.1:8080 /ready -> {"status":"ready"}
+```
+
+Smoke artifact values:
+
+```text
+token:          MM_CHAT_IMPORT_OPFS_OK_1783581485178
+local session:  phase-12-import-smoke-1783581485178
+opfs url:       opfs://chat/phase-12-import-smoke/source.txt
+source bytes:   MM_CHAT_IMPORT_OPFS_FILE_MM_CHAT_IMPORT_OPFS_OK_1783581485178
+batchId:        f509eca0-c199-4290-b4b4-c77685f98ddb
+conversationId: 15d7d1b6-c46f-4e06-86f0-bae1f8105d06
+fileId:         392c4023-52cd-4ef8-84f4-426b21316161
+file sha256:    a84aa30e338d2b7675a22fcf597663bfaec421dcfe04fbbcdac338917f608105
+```
+
+Observed UI results:
+
+```text
+preview summary: 1 conversation, 2 messages, 1 file, 61 B
+commit banner:   imported batch f509eca0-c199-4290-b4b4-c77685f98ddb
+rollback banner: rolled back
+```
+
+Observed proxy path:
+
+```text
+POST   /mm-api/v1/import/browser/preview
+POST   /mm-api/v1/import/browser
+GET    /mm-api/v1/chat/conversations
+GET    /mm-api/v1/chat/conversations/{id}/messages
+DELETE /mm-api/v1/import/browser/f509eca0-c199-4290-b4b4-c77685f98ddb
+GET    /mm-api/v1/chat/conversations
+```
+
+Backend verification before rollback:
+
+```text
+GET /v1/chat/conversations
+  found imported title: Phase 12 import smoke MM_CHAT_IMPORT_OPFS_OK_1783581485178
+  messageCount: 2
+
+GET /v1/chat/conversations/15d7d1b6-c46f-4e06-86f0-bae1f8105d06/messages
+  user attachment: source.txt text/plain size=61 fileId=392c4023-52cd-4ef8-84f4-426b21316161
+  assistant content: MM_CHAT_IMPORT_OPFS_OK_1783581485178
+
+GET /v1/files/392c4023-52cd-4ef8-84f4-426b21316161/content?disposition=attachment
+  bytes matched: MM_CHAT_IMPORT_OPFS_FILE_MM_CHAT_IMPORT_OPFS_OK_1783581485178
+```
+
+Rollback verification:
+
+```text
+GET /v1/import/browser/f509eca0-c199-4290-b4b4-c77685f98ddb
+  {"status":"rolled_back"}
+
+GET /v1/chat/conversations
+  imported smoke conversation present: false
+```
+
+Cleanup:
+
+```text
+stopped: Next dev on 127.0.0.1:3001
+stopped: temporary proxy on 127.0.0.1:3000
+left running: Go Compose backend on 127.0.0.1:8080 for auditability
+```
+
+Next: Phase 12 local browser path is complete. The next decision is whether to
+commit this slice now or proceed to VPS/deployment hardening planning.
+
+## 2026-07-09 — Local Go toolchain installed
+
+Action: installed a project-compatible Go toolchain for local backend development
+without requiring sudo. Ubuntu apt only offered Go 1.18, while
+`mm-chat/backend/go.mod` requires Go 1.22, so the official Go 1.22.12 linux/amd64
+archive was installed under the user profile.
+
+Environment change:
+
+```text
+installed: /home/mumu/.local/go
+symlink:   /home/mumu/.local/bin/go -> /home/mumu/.local/go/bin/go
+symlink:   /home/mumu/.local/bin/gofmt -> /home/mumu/.local/go/bin/gofmt
+shell rc:  ~/.bashrc exports /home/mumu/.local/go/bin for interactive shells
+```
+
+Verification:
+
+```text
+go version
+  go version go1.22.12 linux/amd64
+
+cd mm-chat/backend && go test ./...
+  passed
+```
+
+Next: host-side Go backend tests can now be run directly with
+`cd mm-chat/backend && go test ./...`; Docker Go is no longer required for the
+normal local backend verification loop.
+
+## 2026-07-09 — Phase 12 pre-commit verification
+
+Action: re-ran targeted frontend, backend, and formatting checks after the local
+Go toolchain was installed. This keeps the Phase 12 browser-import UI slice
+verifiable without Docker-only Go.
+
+Verification:
+
+```text
+corepack pnpm exec prettier --check <phase-12 touched files>
+  passed
+
+corepack pnpm exec eslint <phase-12 touched source/tests>
+  passed
+
+corepack pnpm exec tsc --noEmit --pretty false
+  passed
+
+corepack pnpm vitest run \
+  src/__tests__/browserImportPackage.test.ts \
+  src/__tests__/importApi.test.ts \
+  src/__tests__/settingsDataExport.test.ts \
+  src/__tests__/apiClientScaffold.test.ts \
+  src/__tests__/messagesParity.test.ts
+  passed: 5 files, 44 tests
+
+cd mm-chat/backend && go test ./...
+  passed
+```
+
+Spec sync: executable browser-import contracts already live in
+`mm-chat/docs/contracts/browser-data-import.md` and
+`mm-chat/docs/contracts/frontend-api-client.md`; no additional tracked spec file
+is required for this commit.

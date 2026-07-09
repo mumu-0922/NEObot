@@ -488,10 +488,13 @@ the UI can call in the next wiring slice.
 
 ## Phase 12 — Browser Data Export/Import UI
 
-- [ ] Add browser export package generation for IndexedDB/localforage and OPFS.
-- [ ] Add import preview UI.
-- [ ] Add user-confirmed import commit UI.
-- [ ] Add safe imported-batch rollback UI.
+- [x] Create detailed local implementation plan in
+      `docs/architecture/phase-12-browser-import-ui-plan.md`.
+- [x] Add browser export package generation for IndexedDB/localforage and OPFS.
+- [x] Add import preview UI.
+- [x] Add user-confirmed import commit UI.
+- [x] Add safe imported-batch rollback UI.
+- [x] Run local browser import smoke through `/mm-api` and record evidence.
 
 ## Phase 13 — Auth and Multi-User Hardening
 
