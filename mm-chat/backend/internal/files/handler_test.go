@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/storage"
 )
 
@@ -175,6 +176,37 @@ func TestServiceUploadDeletesObjectWhenRepositoryInsertFails(t *testing.T) {
 	}
 	if _, ok := store.objects[objectKeyFor(testFileID)]; ok {
 		t.Fatalf("object key %q still exists after repository insert failure", objectKeyFor(testFileID))
+	}
+}
+
+func TestServiceUploadUsesRequestUserForObjectKey(t *testing.T) {
+	repo := newFakeRepository()
+	store := newFakeObjectStore()
+	service := NewService(repo, store)
+	service.newID = func() (string, error) { return testFileID, nil }
+	userID := "77777777-7777-4777-8777-777777777777"
+	ctx := auth.WithUser(context.Background(), auth.User{ID: userID, DisplayName: "User Seven"})
+
+	record, err := service.Upload(ctx, UploadInput{
+		OriginalFilename: "owned.txt",
+		MimeType:         "text/plain",
+		Size:             5,
+		Purpose:          "chat",
+		Body:             strings.NewReader("owned"),
+	})
+	if err != nil {
+		t.Fatalf("Upload() error = %v", err)
+	}
+
+	wantKey := objectKeyForUser(userID, testFileID)
+	if record.ObjectKey != wantKey {
+		t.Fatalf("ObjectKey = %q, want %q", record.ObjectKey, wantKey)
+	}
+	if _, ok := store.objects[wantKey]; !ok {
+		t.Fatalf("object key %q not written; keys=%v", wantKey, store.objects)
+	}
+	if _, ok := store.objects[objectKeyFor(testFileID)]; ok {
+		t.Fatalf("dev object key %q was written for request user", objectKeyFor(testFileID))
 	}
 }
 

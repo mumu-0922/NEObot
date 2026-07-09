@@ -3,12 +3,14 @@ package browserimport
 import (
 	"context"
 	"time"
+
+	"neo-chat/mm-chat/backend/internal/auth"
 )
 
 const (
 	FormatName    = "neo-chat-browser-import"
 	SchemaVersion = "mm-chat.browser-import.v2"
-	DevUserID     = "00000000-0000-0000-0000-000000000001"
+	DevUserID     = auth.DevelopmentUserID
 )
 
 type Repository interface {

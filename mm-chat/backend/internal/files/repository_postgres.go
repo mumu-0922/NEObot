@@ -8,11 +8,12 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"neo-chat/mm-chat/backend/internal/auth"
 )
 
 type PostgresRepository struct {
-	db     *sql.DB
-	userID string
+	db *sql.DB
 }
 
 type sqlExecer interface {
@@ -25,8 +26,7 @@ type rowScanner interface {
 
 func NewPostgresRepository(db *sql.DB) *PostgresRepository {
 	return &PostgresRepository{
-		db:     db,
-		userID: DevUserID,
+		db: db,
 	}
 }
 
@@ -60,7 +60,8 @@ func (r *PostgresRepository) CreateFile(ctx context.Context, input CreateFileInp
 	defer func() {
 		_ = tx.Rollback()
 	}()
-	if err := r.ensureDevUser(ctx, tx); err != nil {
+	user := auth.UserOrDevelopment(ctx)
+	if err := r.ensureUser(ctx, tx, user); err != nil {
 		return FileRecord{}, err
 	}
 
@@ -68,7 +69,7 @@ func (r *PostgresRepository) CreateFile(ctx context.Context, input CreateFileInp
 		ctx,
 		fileInsertSQL,
 		input.ID,
-		r.userID,
+		user.ID,
 		input.OriginalFilename,
 		input.MimeType,
 		input.ByteSize,
@@ -96,7 +97,8 @@ func (r *PostgresRepository) GetFile(ctx context.Context, fileID string) (FileRe
 		return FileRecord{}, newValidationError("INVALID_FILE_ID", "file id must be a UUID")
 	}
 
-	record, err := scanFile(r.db.QueryRowContext(ctx, fileByIDSQL, fileID, r.userID))
+	userID := auth.UserOrDevelopment(ctx).ID
+	record, err := scanFile(r.db.QueryRowContext(ctx, fileByIDSQL, fileID, userID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return FileRecord{}, ErrFileNotFound
 	}
@@ -116,7 +118,8 @@ func (r *PostgresRepository) MarkFileDeleted(ctx context.Context, fileID string)
 		return FileRecord{}, newValidationError("INVALID_FILE_ID", "file id must be a UUID")
 	}
 
-	record, err := scanFile(r.db.QueryRowContext(ctx, fileMarkDeletedSQL, fileID, r.userID))
+	userID := auth.UserOrDevelopment(ctx).ID
+	record, err := scanFile(r.db.QueryRowContext(ctx, fileMarkDeletedSQL, fileID, userID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return FileRecord{}, ErrFileNotFound
 	}
@@ -134,14 +137,15 @@ func (r *PostgresRepository) requireDB() error {
 	return nil
 }
 
-func (r *PostgresRepository) ensureDevUser(ctx context.Context, execer sqlExecer) error {
+func (r *PostgresRepository) ensureUser(ctx context.Context, execer sqlExecer, user auth.User) error {
+	user = auth.UserOrDevelopment(auth.WithUser(context.Background(), user))
 	_, err := execer.ExecContext(ctx, `
 INSERT INTO users (id, display_name)
 VALUES ($1, $2)
 ON CONFLICT (id) DO NOTHING
-`, r.userID, "Development User")
+`, user.ID, user.DisplayName)
 	if err != nil {
-		return fmt.Errorf("ensure dev user: %w", err)
+		return fmt.Errorf("ensure request user: %w", err)
 	}
 
 	return nil

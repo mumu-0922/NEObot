@@ -13,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/storage"
 )
 
@@ -23,7 +24,6 @@ const (
 
 type PostgresRepository struct {
 	db             *sql.DB
-	userID         string
 	newID          func() (string, error)
 	objectStore    storage.ObjectStore
 	storageBackend string
@@ -57,7 +57,6 @@ type rowScanner interface {
 func NewPostgresRepository(db *sql.DB, opts ...PostgresRepositoryOption) *PostgresRepository {
 	repo := &PostgresRepository{
 		db:             db,
-		userID:         DevUserID,
 		newID:          newUUID,
 		storageBackend: defaultStorageBackend,
 	}
@@ -73,6 +72,8 @@ func (r *PostgresRepository) Commit(ctx context.Context, pkg Package) (CommitRes
 	if err := r.requireDB(); err != nil {
 		return CommitResponse{}, err
 	}
+	user := auth.UserOrDevelopment(ctx)
+	userID := user.ID
 
 	manifest := pkg.Manifest
 	if existing, ok, err := r.findExistingBatch(ctx, manifest.IdempotencyKey); err != nil {
@@ -108,14 +109,14 @@ func (r *PostgresRepository) Commit(ctx context.Context, pkg Package) (CommitRes
 		}
 	}()
 
-	if err := r.ensureDevUser(ctx, tx); err != nil {
+	if err := r.ensureUser(ctx, tx, user); err != nil {
 		return CommitResponse{}, err
 	}
 	if _, err := tx.ExecContext(
 		ctx,
 		importBatchInsertSQL,
 		batchID,
-		r.userID,
+		userID,
 		strings.TrimSpace(manifest.IdempotencyKey),
 		pkg.PackageHash,
 		pkg.ManifestHash,
@@ -131,7 +132,7 @@ func (r *PostgresRepository) Commit(ctx context.Context, pkg Package) (CommitRes
 		return CommitResponse{}, fmt.Errorf("insert import batch: %w", err)
 	}
 
-	fileMappings, err := r.importFiles(ctx, tx, batchID, manifest, pkg.Blobs, &uploadedObjectKeys)
+	fileMappings, err := r.importFiles(ctx, tx, userID, batchID, manifest, pkg.Blobs, &uploadedObjectKeys)
 	if err != nil {
 		return CommitResponse{}, err
 	}
@@ -166,7 +167,7 @@ func (r *PostgresRepository) Commit(ctx context.Context, pkg Package) (CommitRes
 			ctx,
 			conversationImportInsertSQL,
 			serverID,
-			r.userID,
+			userID,
 			conversation.Title,
 			normalizeConversationStatus(conversation.Status),
 			nullIfEmpty(modelProvider),
@@ -231,7 +232,7 @@ func (r *PostgresRepository) Commit(ctx context.Context, pkg Package) (CommitRes
 			messageImportInsertSQL,
 			serverID,
 			conversationID,
-			r.userID,
+			userID,
 			nullIfEmpty(parentID),
 			message.SequenceNo,
 			strings.ToLower(strings.TrimSpace(message.Role)),
@@ -250,7 +251,7 @@ func (r *PostgresRepository) Commit(ctx context.Context, pkg Package) (CommitRes
 		}
 		messageMappings[message.ClientID] = serverID
 
-		createdAttachments, err := r.importMessageAttachments(ctx, tx, serverID, message.Attachments, fileMappings)
+		createdAttachments, err := r.importMessageAttachments(ctx, tx, userID, serverID, message.Attachments, fileMappings)
 		if err != nil {
 			return CommitResponse{}, err
 		}
@@ -277,11 +278,11 @@ func (r *PostgresRepository) Commit(ctx context.Context, pkg Package) (CommitRes
 	if err != nil {
 		return CommitResponse{}, fmt.Errorf("encode import response: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, importBatchCompleteSQL, string(encodedResponse), batchID, r.userID); err != nil {
+	if _, err := tx.ExecContext(ctx, importBatchCompleteSQL, string(encodedResponse), batchID, userID); err != nil {
 		return CommitResponse{}, fmt.Errorf("complete import batch: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		committedResponse, ok, verifyErr := r.findCommittedImportAfterCommitError(manifest.IdempotencyKey, pkg)
+		committedResponse, ok, verifyErr := r.findCommittedImportAfterCommitError(ctx, manifest.IdempotencyKey, pkg)
 		if verifyErr != nil {
 			cleanupObjects = false
 			return CommitResponse{}, fmt.Errorf("commit browser import: %w; verify import commit state: %v", err, verifyErr)
@@ -297,8 +298,9 @@ func (r *PostgresRepository) Commit(ctx context.Context, pkg Package) (CommitRes
 	return response, nil
 }
 
-func (r *PostgresRepository) findCommittedImportAfterCommitError(idempotencyKey string, pkg Package) (CommitResponse, bool, error) {
-	verifyCtx, cancel := context.WithTimeout(context.Background(), idempotencyReplayWaitTimeout)
+func (r *PostgresRepository) findCommittedImportAfterCommitError(ctx context.Context, idempotencyKey string, pkg Package) (CommitResponse, bool, error) {
+	verifyBaseCtx := auth.WithUser(context.Background(), auth.UserOrDevelopment(ctx))
+	verifyCtx, cancel := context.WithTimeout(verifyBaseCtx, idempotencyReplayWaitTimeout)
 	defer cancel()
 
 	existing, ok, err := r.findExistingBatch(verifyCtx, idempotencyKey)
@@ -314,6 +316,7 @@ func (r *PostgresRepository) findCommittedImportAfterCommitError(idempotencyKey 
 func (r *PostgresRepository) importFiles(
 	ctx context.Context,
 	tx *sql.Tx,
+	userID string,
 	batchID string,
 	manifest Manifest,
 	blobs map[string]PackageBlob,
@@ -340,7 +343,7 @@ func (r *PostgresRepository) importFiles(
 		if err != nil {
 			return nil, err
 		}
-		objectKey := importedObjectKey(r.userID, fileID)
+		objectKey := importedObjectKey(userID, fileID)
 		mimeType := normalizeImportMimeType(file.MimeType)
 		if err := r.objectStore.Put(ctx, objectKey, bytes.NewReader(blob.Data), file.Size, mimeType); err != nil {
 			_ = r.objectStore.Delete(context.Background(), objectKey)
@@ -357,7 +360,7 @@ func (r *PostgresRepository) importFiles(
 			ctx,
 			fileImportInsertSQL,
 			fileID,
-			r.userID,
+			userID,
 			safeImportFilename(file.FileName),
 			mimeType,
 			file.Size,
@@ -377,6 +380,7 @@ func (r *PostgresRepository) importFiles(
 func (r *PostgresRepository) importMessageAttachments(
 	ctx context.Context,
 	tx *sql.Tx,
+	userID string,
 	messageID string,
 	attachments []ImportAttachment,
 	fileMappings map[string]string,
@@ -400,7 +404,7 @@ func (r *PostgresRepository) importMessageAttachments(
 			linkID,
 			messageID,
 			fileID,
-			r.userID,
+			userID,
 			displayOrder,
 			normalizeAttachmentPurpose(attachment.Purpose),
 		); err != nil {
@@ -479,6 +483,7 @@ func (r *PostgresRepository) GetBatchStatus(ctx context.Context, batchID string)
 	if err := r.requireDB(); err != nil {
 		return BatchStatusResponse{}, err
 	}
+	userID := auth.UserOrDevelopment(ctx).ID
 	var status BatchStatusResponse
 	var createdAt time.Time
 	err := r.db.QueryRowContext(ctx, `
@@ -486,7 +491,7 @@ SELECT id, status, created_at
 FROM import_batches
 WHERE id = $1
   AND user_id = $2
-`, batchID, r.userID).Scan(&status.BatchID, &status.Status, &createdAt)
+`, batchID, userID).Scan(&status.BatchID, &status.Status, &createdAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return BatchStatusResponse{}, ErrBatchNotFound
 	}
@@ -501,6 +506,7 @@ func (r *PostgresRepository) Rollback(ctx context.Context, batchID string) error
 	if err := r.requireDB(); err != nil {
 		return err
 	}
+	userID := auth.UserOrDevelopment(ctx).ID
 
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -518,13 +524,13 @@ FROM import_batches
 WHERE id = $1
   AND user_id = $2
 FOR UPDATE
-`, batchID, r.userID).Scan(&status, &completedAt); errors.Is(err, sql.ErrNoRows) {
+`, batchID, userID).Scan(&status, &completedAt); errors.Is(err, sql.ErrNoRows) {
 		return ErrBatchNotFound
 	} else if err != nil {
 		return fmt.Errorf("query import batch for rollback: %w", err)
 	}
 
-	objectKeys, err := r.importedObjectKeys(ctx, tx, batchID)
+	objectKeys, err := r.importedObjectKeys(ctx, tx, userID, batchID)
 	if err != nil {
 		return err
 	}
@@ -577,7 +583,7 @@ FROM (
     AND (im.id IS NOT NULL OR ifi.id IS NOT NULL)
 ) imported_rows
 WHERE updated_at > $3
-`, r.userID, batchID, completedAt.Time).Scan(&modifiedCount); err != nil {
+`, userID, batchID, completedAt.Time).Scan(&modifiedCount); err != nil {
 		return fmt.Errorf("query modified import rows: %w", err)
 	}
 	if modifiedCount > 0 {
@@ -604,7 +610,7 @@ LEFT JOIN imported_files ifi ON ifi.id = ma.file_id
 WHERE ma.user_id = $1
   AND (im.id IS NOT NULL OR ifi.id IS NOT NULL)
   AND NOT (im.id IS NOT NULL AND ifi.id IS NOT NULL)
-`, r.userID, batchID).Scan(&externalAttachmentRefs); err != nil {
+`, userID, batchID).Scan(&externalAttachmentRefs); err != nil {
 		return fmt.Errorf("query external import attachment refs: %w", err)
 	}
 	if externalAttachmentRefs > 0 {
@@ -628,7 +634,7 @@ WHERE user_id = $1
         AND metadata #>> '{import,batchId}' = $2
     )
   )
-`, r.userID, batchID); err != nil {
+`, userID, batchID); err != nil {
 		return fmt.Errorf("delete imported message attachments: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -637,7 +643,7 @@ SET upload_status = 'deleted', deleted_at = now(), updated_at = now()
 WHERE user_id = $1
   AND metadata #>> '{import,batchId}' = $2
   AND deleted_at IS NULL
-`, r.userID, batchID); err != nil {
+`, userID, batchID); err != nil {
 		return fmt.Errorf("soft delete imported files: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -646,7 +652,7 @@ SET deleted_at = now(), updated_at = now()
 WHERE user_id = $1
   AND metadata #>> '{import,batchId}' = $2
   AND deleted_at IS NULL
-`, r.userID, batchID); err != nil {
+`, userID, batchID); err != nil {
 		return fmt.Errorf("soft delete imported messages: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -655,7 +661,7 @@ SET status = 'deleted', deleted_at = now(), updated_at = now()
 WHERE user_id = $1
   AND metadata #>> '{import,batchId}' = $2
   AND deleted_at IS NULL
-`, r.userID, batchID); err != nil {
+`, userID, batchID); err != nil {
 		return fmt.Errorf("soft delete imported conversations: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -663,7 +669,7 @@ UPDATE import_batches
 SET status = 'rolled_back', rolled_back_at = now(), updated_at = now()
 WHERE id = $1
   AND user_id = $2
-`, batchID, r.userID); err != nil {
+`, batchID, userID); err != nil {
 		return fmt.Errorf("mark import batch rolled back: %w", err)
 	}
 
@@ -673,14 +679,14 @@ WHERE id = $1
 	return r.deleteObjects(ctx, objectKeys)
 }
 
-func (r *PostgresRepository) importedObjectKeys(ctx context.Context, tx *sql.Tx, batchID string) ([]string, error) {
+func (r *PostgresRepository) importedObjectKeys(ctx context.Context, tx *sql.Tx, userID string, batchID string) ([]string, error) {
 	rows, err := tx.QueryContext(ctx, `
 SELECT object_key
 FROM files
 WHERE user_id = $1
   AND metadata #>> '{import,batchId}' = $2
 ORDER BY created_at ASC, id ASC
-`, r.userID, batchID)
+`, userID, batchID)
 	if err != nil {
 		return nil, fmt.Errorf("query imported object keys: %w", err)
 	}
@@ -701,6 +707,7 @@ ORDER BY created_at ASC, id ASC
 }
 
 func (r *PostgresRepository) findExistingBatch(ctx context.Context, idempotencyKey string) (existingImportBatch, bool, error) {
+	userID := auth.UserOrDevelopment(ctx).ID
 	var existing existingImportBatch
 	var response []byte
 	err := r.db.QueryRowContext(ctx, `
@@ -708,7 +715,7 @@ SELECT package_hash, manifest_hash, status, response
 FROM import_batches
 WHERE user_id = $1
   AND idempotency_key = $2
-`, r.userID, strings.TrimSpace(idempotencyKey)).Scan(&existing.PackageHash, &existing.ManifestHash, &existing.Status, &response)
+`, userID, strings.TrimSpace(idempotencyKey)).Scan(&existing.PackageHash, &existing.ManifestHash, &existing.Status, &response)
 	if errors.Is(err, sql.ErrNoRows) {
 		return existingImportBatch{}, false, nil
 	}
@@ -765,14 +772,15 @@ func (r *PostgresRepository) generateID() (string, error) {
 	return r.newID()
 }
 
-func (r *PostgresRepository) ensureDevUser(ctx context.Context, execer sqlExecer) error {
+func (r *PostgresRepository) ensureUser(ctx context.Context, execer sqlExecer, user auth.User) error {
+	user = auth.UserOrDevelopment(auth.WithUser(context.Background(), user))
 	_, err := execer.ExecContext(ctx, `
 INSERT INTO users (id, display_name)
 VALUES ($1, $2)
 ON CONFLICT (id) DO NOTHING
-`, r.userID, "Development User")
+`, user.ID, user.DisplayName)
 	if err != nil {
-		return fmt.Errorf("ensure dev user: %w", err)
+		return fmt.Errorf("ensure request user: %w", err)
 	}
 	return nil
 }

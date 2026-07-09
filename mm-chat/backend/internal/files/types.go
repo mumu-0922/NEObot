@@ -4,9 +4,11 @@ import (
 	"context"
 	"io"
 	"time"
+
+	"neo-chat/mm-chat/backend/internal/auth"
 )
 
-const DevUserID = "00000000-0000-0000-0000-000000000001"
+const DevUserID = auth.DevelopmentUserID
 
 type Repository interface {
 	CreateFile(ctx context.Context, input CreateFileInput) (FileRecord, error)

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/storage"
 )
 
@@ -70,7 +71,7 @@ func (s *Service) Upload(ctx context.Context, input UploadInput) (FileRecord, er
 	if err != nil {
 		return FileRecord{}, err
 	}
-	objectKey := objectKeyFor(id)
+	objectKey := objectKeyForUser(auth.UserOrDevelopment(ctx).ID, id)
 
 	hasher := sha256.New()
 	tee := io.TeeReader(input.Body, hasher)
@@ -179,7 +180,15 @@ func (s *Service) generateID() (string, error) {
 }
 
 func objectKeyFor(fileID string) string {
-	return "users/" + DevUserID + "/files/" + fileID
+	return objectKeyForUser(DevUserID, fileID)
+}
+
+func objectKeyForUser(userID string, fileID string) string {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		userID = DevUserID
+	}
+	return "users/" + userID + "/files/" + strings.TrimSpace(fileID)
 }
 
 func safeDisplayFilename(name string) string {

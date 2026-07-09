@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/browserimport"
 	"neo-chat/mm-chat/backend/internal/chat"
 	"neo-chat/mm-chat/backend/internal/config"
@@ -42,7 +43,7 @@ func main() {
 	}
 
 	redisCtx, redisCancel := context.WithTimeout(context.Background(), redisOpenTimeout)
-	redisClient, runCancellationStore, rateLimitStore, _, err := newRedisState(redisCtx, cfg)
+	redisClient, runCancellationStore, rateLimitStore, sessionCache, err := newRedisState(redisCtx, cfg)
 	redisCancel()
 	if err != nil {
 		_ = db.Close()
@@ -52,9 +53,14 @@ func main() {
 	var chatRepo chat.Repository
 	var fileRepo files.Repository
 	var importRepo browserimport.Repository
+	var sessionResolver httpserver.SessionResolver
 	if sqlDB := db.SQL(); sqlDB != nil {
 		chatRepo = chat.NewPostgresRepository(sqlDB)
 		fileRepo = files.NewPostgresRepository(sqlDB)
+		sessionResolver = auth.NewSessionResolver(
+			auth.NewPostgresSessionRepository(sqlDB),
+			auth.WithSessionCache(sessionCache),
+		)
 	}
 
 	chatProvider, err := newChatProvider(cfg)
@@ -88,6 +94,7 @@ func main() {
 		httpserver.WithChatProvider(chatProvider),
 		httpserver.WithRunCancellationStore(runCancellationStore),
 		httpserver.WithRateLimitStore(rateLimitStore),
+		httpserver.WithSessionResolver(sessionResolver),
 		httpserver.WithFileRepository(fileRepo),
 		httpserver.WithObjectStore(objectStore),
 		httpserver.WithMaxUploadBytes(cfg.Storage.MaxUploadBytes),

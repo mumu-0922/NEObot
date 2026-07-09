@@ -4249,3 +4249,58 @@ Spec sync: executable browser-import contracts already live in
 `mm-chat/docs/contracts/browser-data-import.md` and
 `mm-chat/docs/contracts/frontend-api-client.md`; no additional tracked spec file
 is required for this commit.
+
+## 2026-07-09 — Phase 13.1 request identity plumbing
+
+Action: started Phase 13 with a documented auth/multi-user plan, then replaced
+backend fixed-user repository fields with request-scoped identity plumbing. The
+new middleware is optional: when a Bearer token is present it hashes the raw
+token with SHA-256, resolves the existing Postgres/Redis session substrate, and
+attaches browser-safe user identity to request context. Missing Bearer tokens
+still fall back to the development user until enforced auth mode is added.
+
+Files:
+
+```text
+mm-chat/docs/architecture/phase-13-auth-multi-user-plan.md
+mm-chat/docs/contracts/auth-session-api.md
+mm-chat/docs/contracts/README.md
+mm-chat/backend/cmd/api/main.go
+mm-chat/backend/internal/auth/context_test.go
+mm-chat/backend/internal/auth/types.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/httpserver/server_test.go
+mm-chat/backend/internal/chat/types.go
+mm-chat/backend/internal/chat/repository_postgres.go
+mm-chat/backend/internal/files/types.go
+mm-chat/backend/internal/files/service.go
+mm-chat/backend/internal/files/repository_postgres.go
+mm-chat/backend/internal/files/handler_test.go
+mm-chat/backend/internal/browserimport/types.go
+mm-chat/backend/internal/browserimport/repository_postgres.go
+mm-chat/docs/tracking/progress.md
+```
+
+Behavior:
+
+```text
+Authorization: Bearer <raw-token>
+  -> sha256(raw-token) lowercase hex
+  -> auth.SessionResolver.ResolveByTokenHash
+  -> auth.WithUser(request context, resolved session user)
+  -> chat/files/import repositories use context user ID
+
+missing Authorization
+  -> development-user fallback remains for local mode
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && go test ./...
+  passed
+```
+
+Next: Phase 13.2 should add `/v1/me`, `POST /v1/auth/login`, and
+`POST /v1/auth/logout`, then introduce an explicit auth mode so hosted requests
+can fail closed when credentials are missing.

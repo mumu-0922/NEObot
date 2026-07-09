@@ -9,12 +9,13 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"neo-chat/mm-chat/backend/internal/auth"
 )
 
 type PostgresRepository struct {
-	db     *sql.DB
-	userID string
-	newID  func() (string, error)
+	db    *sql.DB
+	newID func() (string, error)
 }
 
 type sqlExecer interface {
@@ -32,9 +33,8 @@ type rowScanner interface {
 
 func NewPostgresRepository(db *sql.DB) *PostgresRepository {
 	return &PostgresRepository{
-		db:     db,
-		userID: DevUserID,
-		newID:  NewUUID,
+		db:    db,
+		newID: NewUUID,
 	}
 }
 
@@ -45,7 +45,8 @@ func (r *PostgresRepository) CreateConversation(
 	if err := r.requireDB(); err != nil {
 		return Conversation{}, err
 	}
-	if err := r.ensureDevUser(ctx, r.db); err != nil {
+	user := auth.UserOrDevelopment(ctx)
+	if err := r.ensureUser(ctx, r.db, user); err != nil {
 		return Conversation{}, err
 	}
 
@@ -83,7 +84,7 @@ RETURNING
   updated_at,
   deleted_at,
   0::bigint AS message_count
-`, id, r.userID, input.Title, input.ModelProvider, input.ModelID, input.SystemPrompt, input.IdempotencyKey, string(metadata))
+`, id, user.ID, input.Title, input.ModelProvider, input.ModelID, input.SystemPrompt, input.IdempotencyKey, string(metadata))
 
 	conversation, err := scanConversation(row)
 	if err != nil {
@@ -100,6 +101,7 @@ func (r *PostgresRepository) ListConversations(ctx context.Context) ([]Conversat
 	if err := r.requireDB(); err != nil {
 		return nil, err
 	}
+	userID := auth.UserOrDevelopment(ctx).ID
 
 	rows, err := r.db.QueryContext(ctx, `
 SELECT
@@ -126,7 +128,7 @@ LEFT JOIN (
 WHERE c.user_id = $1
   AND c.deleted_at IS NULL
 ORDER BY c.updated_at DESC, c.created_at DESC, c.id DESC
-`, r.userID)
+`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("query conversations: %w", err)
 	}
@@ -157,7 +159,8 @@ func (r *PostgresRepository) ListMessages(
 	if !isUUID(conversationID) {
 		return nil, newValidationError("INVALID_CONVERSATION_ID", "conversation id must be a UUID")
 	}
-	if err := r.requireConversation(ctx, conversationID); err != nil {
+	userID := auth.UserOrDevelopment(ctx).ID
+	if err := r.requireConversation(ctx, conversationID, userID); err != nil {
 		return nil, err
 	}
 
@@ -182,7 +185,7 @@ ORDER BY sequence_no ASC, created_at ASC, id ASC
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate messages: %w", err)
 	}
-	if err := r.populateMessageAttachments(ctx, messages); err != nil {
+	if err := r.populateMessageAttachments(ctx, userID, messages); err != nil {
 		return nil, err
 	}
 
@@ -203,7 +206,8 @@ func (r *PostgresRepository) GetMessage(
 	if !isUUID(messageID) {
 		return Message{}, newValidationError("INVALID_USER_MESSAGE_ID", "userMessageId must be a UUID")
 	}
-	if err := r.requireConversation(ctx, conversationID); err != nil {
+	userID := auth.UserOrDevelopment(ctx).ID
+	if err := r.requireConversation(ctx, conversationID, userID); err != nil {
 		return Message{}, err
 	}
 
@@ -220,7 +224,7 @@ WHERE id = $1
 		return Message{}, fmt.Errorf("query message: %w", err)
 	}
 	messages := []Message{message}
-	if err := r.populateMessageAttachments(ctx, messages); err != nil {
+	if err := r.populateMessageAttachments(ctx, userID, messages); err != nil {
 		return Message{}, err
 	}
 
@@ -274,10 +278,11 @@ func (r *PostgresRepository) CreateMessage(
 		_ = tx.Rollback()
 	}()
 
-	if err := r.ensureDevUser(ctx, tx); err != nil {
+	user := auth.UserOrDevelopment(ctx)
+	if err := r.ensureUser(ctx, tx, user); err != nil {
 		return Message{}, err
 	}
-	if err := lockConversationForUser(ctx, tx, conversationID, r.userID); err != nil {
+	if err := lockConversationForUser(ctx, tx, conversationID, user.ID); err != nil {
 		return Message{}, err
 	}
 
@@ -290,7 +295,7 @@ func (r *PostgresRepository) CreateMessage(
 		return Message{}, fmt.Errorf("calculate next message sequence: %w", err)
 	}
 
-	row := tx.QueryRowContext(ctx, messageInsertSQL, id, conversationID, r.userID, nullIfEmpty(input.ParentMessageID), nextSequence, input.Role, input.Content, nullIfEmpty(input.IdempotencyKey), string(metadata))
+	row := tx.QueryRowContext(ctx, messageInsertSQL, id, conversationID, user.ID, nullIfEmpty(input.ParentMessageID), nextSequence, input.Role, input.Content, nullIfEmpty(input.IdempotencyKey), string(metadata))
 	message, err := scanMessage(row)
 	if err != nil {
 		if isIdempotencyConflict(err, input.IdempotencyKey, "idx_messages_conversation_idempotency") {
@@ -298,7 +303,7 @@ func (r *PostgresRepository) CreateMessage(
 		}
 		return Message{}, fmt.Errorf("insert message: %w", err)
 	}
-	message.Attachments, err = r.createMessageAttachments(ctx, tx, message.ID, input.Attachments)
+	message.Attachments, err = r.createMessageAttachments(ctx, tx, user.ID, message.ID, input.Attachments)
 	if err != nil {
 		return Message{}, err
 	}
@@ -307,7 +312,7 @@ func (r *PostgresRepository) CreateMessage(
 		ctx,
 		`UPDATE conversations SET updated_at = now() WHERE id = $1 AND user_id = $2`,
 		conversationID,
-		r.userID,
+		user.ID,
 	); err != nil {
 		return Message{}, fmt.Errorf("touch conversation: %w", err)
 	}
@@ -363,10 +368,11 @@ func (r *PostgresRepository) CreateAssistantMessage(
 		_ = tx.Rollback()
 	}()
 
-	if err := r.ensureDevUser(ctx, tx); err != nil {
+	user := auth.UserOrDevelopment(ctx)
+	if err := r.ensureUser(ctx, tx, user); err != nil {
 		return Message{}, err
 	}
-	if err := lockConversationForUser(ctx, tx, conversationID, r.userID); err != nil {
+	if err := lockConversationForUser(ctx, tx, conversationID, user.ID); err != nil {
 		return Message{}, err
 	}
 	if err := requireUserMessageInConversation(ctx, tx, conversationID, input.ParentMessageID); err != nil {
@@ -387,7 +393,7 @@ func (r *PostgresRepository) CreateAssistantMessage(
 		assistantMessageInsertSQL,
 		id,
 		conversationID,
-		r.userID,
+		user.ID,
 		nullIfEmpty(input.ParentMessageID),
 		nextSequence,
 		nullIfEmpty(input.ModelProvider),
@@ -408,7 +414,7 @@ func (r *PostgresRepository) CreateAssistantMessage(
 		ctx,
 		`UPDATE conversations SET updated_at = now() WHERE id = $1 AND user_id = $2`,
 		conversationID,
-		r.userID,
+		user.ID,
 	); err != nil {
 		return Message{}, fmt.Errorf("touch conversation after assistant message: %w", err)
 	}
@@ -457,7 +463,8 @@ func (r *PostgresRepository) FinalizeAssistantMessage(
 		_ = tx.Rollback()
 	}()
 
-	if err := lockConversationForUser(ctx, tx, conversationID, r.userID); err != nil {
+	userID := auth.UserOrDevelopment(ctx).ID
+	if err := lockConversationForUser(ctx, tx, conversationID, userID); err != nil {
 		return Message{}, err
 	}
 
@@ -483,7 +490,7 @@ func (r *PostgresRepository) FinalizeAssistantMessage(
 		ctx,
 		`UPDATE conversations SET updated_at = now() WHERE id = $1 AND user_id = $2`,
 		conversationID,
-		r.userID,
+		userID,
 	); err != nil {
 		return Message{}, fmt.Errorf("touch conversation after assistant finalize: %w", err)
 	}
@@ -520,18 +527,19 @@ func (r *PostgresRepository) CancelRun(
 		_ = tx.Rollback()
 	}()
 
-	if err := r.ensureDevUser(ctx, tx); err != nil {
+	user := auth.UserOrDevelopment(ctx)
+	if err := r.ensureUser(ctx, tx, user); err != nil {
 		return Message{}, err
 	}
 
-	target, err := findMessageByRunID(ctx, tx, runID, r.userID)
+	target, err := findMessageByRunID(ctx, tx, runID, user.ID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Message{}, ErrRunNotFound
 	}
 	if err != nil {
 		return Message{}, fmt.Errorf("query run for cancel: %w", err)
 	}
-	if err := lockConversationForUser(ctx, tx, target.ConversationID, r.userID); err != nil {
+	if err := lockConversationForUser(ctx, tx, target.ConversationID, user.ID); err != nil {
 		if errors.Is(err, ErrConversationNotFound) {
 			return Message{}, ErrRunNotFound
 		}
@@ -550,7 +558,7 @@ func (r *PostgresRepository) CancelRun(
 			ctx,
 			`UPDATE conversations SET updated_at = now() WHERE id = $1 AND user_id = $2`,
 			message.ConversationID,
-			r.userID,
+			user.ID,
 		); err != nil {
 			return Message{}, fmt.Errorf("touch conversation after run cancel: %w", err)
 		}
@@ -608,20 +616,21 @@ func (r *PostgresRepository) generateID() (string, error) {
 	return newID()
 }
 
-func (r *PostgresRepository) ensureDevUser(ctx context.Context, execer sqlExecer) error {
+func (r *PostgresRepository) ensureUser(ctx context.Context, execer sqlExecer, user auth.User) error {
+	user = auth.UserOrDevelopment(auth.WithUser(context.Background(), user))
 	_, err := execer.ExecContext(ctx, `
 INSERT INTO users (id, display_name)
 VALUES ($1, $2)
 ON CONFLICT (id) DO NOTHING
-`, r.userID, "Development User")
+`, user.ID, user.DisplayName)
 	if err != nil {
-		return fmt.Errorf("ensure dev user: %w", err)
+		return fmt.Errorf("ensure request user: %w", err)
 	}
 
 	return nil
 }
 
-func (r *PostgresRepository) requireConversation(ctx context.Context, conversationID string) error {
+func (r *PostgresRepository) requireConversation(ctx context.Context, conversationID string, userID string) error {
 	var id string
 	err := r.db.QueryRowContext(ctx, `
 SELECT id
@@ -629,7 +638,7 @@ FROM conversations
 WHERE id = $1
   AND user_id = $2
   AND deleted_at IS NULL
-`, conversationID, r.userID).Scan(&id)
+`, conversationID, userID).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrConversationNotFound
 	}
@@ -643,6 +652,7 @@ WHERE id = $1
 func (r *PostgresRepository) createMessageAttachments(
 	ctx context.Context,
 	tx *sql.Tx,
+	userID string,
 	messageID string,
 	inputs []AttachmentInput,
 ) ([]Attachment, error) {
@@ -652,7 +662,7 @@ func (r *PostgresRepository) createMessageAttachments(
 
 	attachments := make([]Attachment, 0, len(inputs))
 	for displayOrder, input := range inputs {
-		attachment, err := findAttachableFile(ctx, tx, input.FileID, r.userID)
+		attachment, err := findAttachableFile(ctx, tx, input.FileID, userID)
 		if err != nil {
 			return nil, err
 		}
@@ -668,7 +678,7 @@ func (r *PostgresRepository) createMessageAttachments(
 			linkID,
 			messageID,
 			attachment.FileID,
-			r.userID,
+			userID,
 			displayOrder,
 			attachment.Purpose,
 		); err != nil {
@@ -708,6 +718,7 @@ func findAttachableFile(
 
 func (r *PostgresRepository) populateMessageAttachments(
 	ctx context.Context,
+	userID string,
 	messages []Message,
 ) error {
 	if len(messages) == 0 {
@@ -718,7 +729,7 @@ func (r *PostgresRepository) populateMessageAttachments(
 	for _, message := range messages {
 		messageIDs = append(messageIDs, message.ID)
 	}
-	attachmentsByMessageID, err := loadMessageAttachments(ctx, r.db, r.userID, messageIDs)
+	attachmentsByMessageID, err := loadMessageAttachments(ctx, r.db, userID, messageIDs)
 	if err != nil {
 		return err
 	}

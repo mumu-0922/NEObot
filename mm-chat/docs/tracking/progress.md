@@ -503,6 +503,18 @@ the UI can call in the next wiring slice.
 - [ ] Enforce ownership across conversations, messages, files, imports, and runs.
 - [ ] Verify two-user isolation.
 
+### Phase 13.1 — Request identity plumbing
+
+- [x] Create detailed implementation plan in
+      `docs/architecture/phase-13-auth-multi-user-plan.md`.
+- [x] Add backend auth context helpers with development-user fallback.
+- [x] Add optional Bearer session middleware backed by the existing session
+      resolver and Redis cache path.
+- [x] Scope chat, file, browser-import, and run-cancellation repository
+      operations by request context identity instead of fixed struct user IDs.
+- [x] Add targeted tests for auth context, session middleware, and user-scoped
+      file object keys.
+
 ## Phase 14 — Production Hardening and Observability
 
 - [ ] Add structured logs and request IDs.

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
 )
@@ -88,6 +89,60 @@ func TestMiddlewareRecoversPanicsWithJSON(t *testing.T) {
 	}
 	if body.Error.Code != "INTERNAL_ERROR" {
 		t.Fatalf("error code = %q, want %q", body.Error.Code, "INTERNAL_ERROR")
+	}
+}
+
+func TestSessionIdentityMiddlewareSetsRequestUser(t *testing.T) {
+	resolver := &fakeSessionResolver{
+		session: auth.Session{
+			ID:          "session-1",
+			UserID:      "77777777-7777-4777-8777-777777777777",
+			DisplayName: "User Seven",
+			Role:        "owner",
+			ExpiresAt:   time.Now().Add(time.Hour),
+		},
+	}
+	var gotUser auth.User
+	handler := chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUser = auth.UserOrDevelopment(r.Context())
+		w.WriteHeader(http.StatusNoContent)
+	}), withSessionIdentity(resolver))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/private", nil)
+	req.Header.Set("Authorization", "Bearer raw-token")
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusNoContent, rec.Body.String())
+	}
+	if resolver.tokenHash != bearerTokenHash("raw-token") {
+		t.Fatalf("token hash = %q, want %q", resolver.tokenHash, bearerTokenHash("raw-token"))
+	}
+	if gotUser.ID != resolver.session.UserID || gotUser.DisplayName != "User Seven" || gotUser.Role != "owner" {
+		t.Fatalf("context user = %#v", gotUser)
+	}
+}
+
+func TestSessionIdentityMiddlewareRejectsInvalidSession(t *testing.T) {
+	handler := chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("next handler should not run for invalid bearer token")
+	}), withSessionIdentity(&fakeSessionResolver{err: auth.ErrSessionExpired}))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/private", nil)
+	req.Header.Set("Authorization", "Bearer expired-token")
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+	var body ErrorResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if body.Error.Code != "UNAUTHENTICATED" {
+		t.Fatalf("error code = %q, want UNAUTHENTICATED", body.Error.Code)
 	}
 }
 
@@ -373,4 +428,18 @@ func (s *fakeRateLimitStore) Allow(
 		RetryAfter: window,
 		ResetAt:    now.Add(window),
 	}, nil
+}
+
+type fakeSessionResolver struct {
+	session   auth.Session
+	err       error
+	tokenHash string
+}
+
+func (r *fakeSessionResolver) ResolveByTokenHash(_ context.Context, tokenHash string) (auth.Session, error) {
+	r.tokenHash = tokenHash
+	if r.err != nil {
+		return auth.Session{}, r.err
+	}
+	return r.session, nil
 }

@@ -1,10 +1,16 @@
 package httpserver
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"strings"
 	"time"
 
+	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/browserimport"
 	"neo-chat/mm-chat/backend/internal/chat"
 	"neo-chat/mm-chat/backend/internal/config"
@@ -27,12 +33,17 @@ type ErrorBody struct {
 
 type Option func(*options)
 
+type SessionResolver interface {
+	ResolveByTokenHash(ctx context.Context, tokenHash string) (auth.Session, error)
+}
+
 type options struct {
 	readyChecker         health.ReadinessChecker
 	chatRepository       chat.Repository
 	chatProvider         chat.Provider
 	runCancellationStore chat.RunCancellationStore
 	rateLimitStore       ratelimit.Store
+	sessionResolver      SessionResolver
 	fileRepository       files.Repository
 	objectStore          storage.ObjectStore
 	maxUploadBytes       int64
@@ -67,6 +78,12 @@ func WithRunCancellationStore(store chat.RunCancellationStore) Option {
 func WithRateLimitStore(store ratelimit.Store) Option {
 	return func(opts *options) {
 		opts.rateLimitStore = store
+	}
+}
+
+func WithSessionResolver(resolver SessionResolver) Option {
+	return func(opts *options) {
+		opts.sessionResolver = resolver
 	}
 }
 
@@ -146,6 +163,9 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.HandleFunc("/", notFound)
 
 	middlewares := []Middleware{withRecover, withSecurityHeaders}
+	if resolvedOptions.sessionResolver != nil {
+		middlewares = append(middlewares, withSessionIdentity(resolvedOptions.sessionResolver))
+	}
 	if cfg.Redis.RateLimitEnabled && resolvedOptions.rateLimitStore != nil {
 		middlewares = append(middlewares, withRateLimit(resolvedOptions.rateLimitStore, cfg.Redis, nil))
 	}
@@ -180,5 +200,75 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 
 	if err := json.NewEncoder(w).Encode(payload); err != nil {
 		return
+	}
+}
+
+func withSessionIdentity(resolver SessionResolver) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if resolver == nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			token, ok := bearerToken(r.Header.Get("Authorization"))
+			if !ok {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if token == "" {
+				writeAuthError(w, auth.ErrSessionNotFound)
+				return
+			}
+
+			session, err := resolver.ResolveByTokenHash(r.Context(), bearerTokenHash(token))
+			if err != nil {
+				writeAuthError(w, err)
+				return
+			}
+
+			next.ServeHTTP(w, r.WithContext(auth.WithUser(r.Context(), auth.UserFromSession(session))))
+		})
+	}
+}
+
+func bearerToken(header string) (string, bool) {
+	header = strings.TrimSpace(header)
+	if header == "" {
+		return "", false
+	}
+	parts := strings.Fields(header)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || strings.TrimSpace(parts[1]) == "" {
+		return "", true
+	}
+
+	return parts[1], true
+}
+
+func bearerTokenHash(token string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(token)))
+	return hex.EncodeToString(sum[:])
+}
+
+func writeAuthError(w http.ResponseWriter, err error) {
+	switch {
+	case err == nil:
+		return
+	case errors.Is(err, auth.ErrSessionNotFound),
+		errors.Is(err, auth.ErrSessionExpired),
+		errors.Is(err, auth.ErrSessionRevoked):
+		writeJSON(w, http.StatusUnauthorized, ErrorResponse{
+			Error: ErrorBody{
+				Code:    "UNAUTHENTICATED",
+				Message: "session is invalid or expired",
+			},
+		})
+	default:
+		writeJSON(w, http.StatusUnauthorized, ErrorResponse{
+			Error: ErrorBody{
+				Code:    "UNAUTHENTICATED",
+				Message: "session could not be verified",
+			},
+		})
 	}
 }
