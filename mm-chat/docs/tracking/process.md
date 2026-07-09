@@ -3971,6 +3971,77 @@ GET  /mm-api/v1/chat/conversations/{id}/messages -> go /v1/chat/conversations/{i
   Compose volumes for auditability. Do not run `docker compose down -v` unless
   losing local smoke data is intended.
 
+## 2026-07-09 — Phase 11.2 Top-Level Reconciliation
+
+Action: reconciled the seven remaining Phase 11.2 parent checklist items
+against completed sub-slices and review findings, then marked them complete in
+`progress.md`.
+
+Evidence mapping:
+
+```text
+DTO contract/mapping:
+  process.md Phase 11.2A confirmed Go CRUD shapes.
+  process.md Phase 11.2B-1 recorded ConversationDTO/ChatMessageDTO -> legacy
+  session/message mapping and targeted tests.
+
+Conversation create/list:
+  Phase 11.2A implemented createConversation/listConversations.
+  Phase 11.2B-2 added refreshServerSessions() through listConversations().
+  Phase 11.2B-3 added createServerSession().
+  Phase 11.4C wired ChatApp server mode to serverReadState.
+
+Message create/list:
+  Phase 11.2A implemented appendUserMessage/listMessages.
+  Phase 11.2B-2 added selectServerSession() through listMessages().
+  Phase 11.2B-3 added appendServerUserMessage().
+  Phase 11.5 browser smoke hit Go message append/list through /mm-api.
+
+Error mapping:
+  Phase 11.1/11.2A recorded backend error-envelope normalization.
+  The shared server HTTP client maps validation, not-found, conflict, and
+  database-required envelopes into ApiClientError.
+
+Browser refresh/local rollback:
+  Phase 11.5 recorded refresh reloading server-owned state through
+  GET /mm-api/v1/chat/conversations and GET /messages.
+  Phase 11.5 recorded local rollback using /api/chat only, with no /mm-api or
+  /v1/chat calls.
+```
+
+Review result: the first read-only evidence pass considered all seven parent
+items complete. The independent review agent found one documentation gap: the
+accepted Phase 11.5 browser smoke reused an existing conversation and did not
+show a frontend server-mode `POST /v1/chat/conversations`.
+
+Remediation smoke: ran the frontend server API client against the local Go
+backend at `http://127.0.0.1:8080` and verified create/list conversation plus
+append/list message with a fresh server-created conversation.
+
+```text
+command:
+  RUN_ID="phase-11-reconcile-20260709T191936" \
+  ARTIFACT="/tmp/mm-chat-smoke/phase-11-reconcile-api-client.json" \
+  corepack pnpm dlx tsx@4.20.6 /tmp/mm-chat-phase-11-reconcile-smoke.mts
+
+artifact:
+  /tmp/mm-chat-smoke/phase-11-reconcile-api-client.json
+
+observed requests:
+  POST /v1/chat/conversations -> 201
+  GET  /v1/chat/conversations -> 200 contains created conversation
+  POST /v1/chat/conversations/{id}/messages -> 201
+  GET  /v1/chat/conversations/{id}/messages -> 200 contains created message
+
+conversationId: 0dff0b88-e3f3-4017-aa44-ea1b11c4af95
+userMessageId:  e9e924f8-72c1-4567-ae77-e5286349ca36
+token:          MM_CHAT_PHASE11_RECONCILE_phase-11-reconcile-20260709T191936
+```
+
+Boundary: this reconciliation did not change runtime code. It only updated
+tracking docs after existing evidence plus the missing API-client smoke closed
+the parent checklist gap.
+
 ## 2026-07-09 — Phase 12 local browser import UI plan
 
 Action: started Phase 12 local-first browser migration work and created the

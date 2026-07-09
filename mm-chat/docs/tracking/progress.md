@@ -219,20 +219,20 @@ existing app without activating it from UI, stores, routes, or legacy
 
 ### Phase 11.2 — Conversation and message CRUD
 
-- [ ] Map frontend conversation/message DTOs to the current Go chat CRUD
+- [x] Map frontend conversation/message DTOs to the current Go chat CRUD
       contract.
-- [ ] Wire supported conversation create/list behavior to the Go backend;
+- [x] Wire supported conversation create/list behavior to the Go backend;
       missing read/update/delete endpoints must use server-data derivation where
       safe or explicit unsupported, not implicit browser-local fallback.
-- [ ] Wire supported message create/list behavior to the Go backend; missing
+- [x] Wire supported message create/list behavior to the Go backend; missing
       read/update/delete endpoints must use server-data derivation where safe
       or explicit unsupported, not implicit browser-local fallback.
-- [ ] Map backend validation, not-found, conflict, and database-required errors
+- [x] Map backend validation, not-found, conflict, and database-required errors
       into existing frontend error handling.
-- [ ] Verify server mode can create/list conversations and create/list messages
+- [x] Verify server mode can create/list conversations and create/list messages
       against the local Go backend.
-- [ ] Verify browser refresh reloads server-owned conversation/message state.
-- [ ] Verify local mode still creates and reads browser-local chat state.
+- [x] Verify browser refresh reloads server-owned conversation/message state.
+- [x] Verify local mode still creates and reads browser-local chat state.
 
 ### Phase 11.2A — Server CRUD adapter methods
 
