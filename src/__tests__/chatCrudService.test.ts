@@ -169,6 +169,10 @@ describe("chat CRUD DTO mappers", () => {
       providerId: "openai",
       modelId: "gpt-5.5",
     });
+    expect(modelStringToModelRef("SERVER_DEFAULT:gpt-5.5")).toEqual({
+      providerId: "openai_compatible",
+      modelId: "gpt-5.5",
+    });
   });
 });
 

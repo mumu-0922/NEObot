@@ -487,7 +487,9 @@ Scope:
 
 Outputs:
 
-- Browser smoke evidence for server mode against `http://127.0.0.1:8080`.
+- Browser smoke evidence for server mode against the local Go backend at
+  `http://127.0.0.1:8080`, reached from the browser through a same-origin
+  `/mm-api` development proxy unless CORS is explicitly enabled later.
 - Local-mode rollback evidence using `NEXT_PUBLIC_API_MODE=local`.
 - Known gaps and next-phase candidates documented before Phase 12 starts.
 

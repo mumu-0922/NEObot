@@ -11,6 +11,9 @@ import {
   type NeoChatApiClient,
   type ServerAttachmentDTO,
 } from "./client";
+import { SERVER_DEFAULT_PROVIDER_ID } from "../../lib/defaultConfig/shared";
+
+const SERVER_DEFAULT_BACKEND_PROVIDER_ID = "openai_compatible";
 
 export interface ChatCrudSessionConfig {
   useSearch?: boolean;
@@ -180,8 +183,13 @@ export function modelStringToModelRef(model: string): ModelRef | undefined {
   if (!trimmed) return undefined;
 
   const parsed = parseLegacyModelString(trimmed);
+  const providerId =
+    parsed.providerId === SERVER_DEFAULT_PROVIDER_ID
+      ? SERVER_DEFAULT_BACKEND_PROVIDER_ID
+      : (parsed.providerId ?? "");
+
   return {
-    providerId: parsed.providerId ?? "",
+    providerId,
     modelId: parsed.modelName,
   };
 }

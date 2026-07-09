@@ -25,7 +25,7 @@ export function normalizeApiMode(value: string | undefined): ApiMode {
 }
 
 export function readApiClientEnv(
-  env: ApiClientEnv | undefined = getProcessEnv(),
+  env: ApiClientEnv | undefined = getRuntimeEnv(),
 ): Required<ApiClientEnv> {
   return {
     NEXT_PUBLIC_API_MODE: env?.NEXT_PUBLIC_API_MODE ?? "",
@@ -100,9 +100,9 @@ export function defaultServerBaseUrl(): string {
   return DEFAULT_DIRECT_SERVER_BASE_URL;
 }
 
-function getProcessEnv(): ApiClientEnv | undefined {
-  const runtime = globalThis as typeof globalThis & {
-    process?: { env?: ApiClientEnv };
+function getRuntimeEnv(): ApiClientEnv {
+  return {
+    NEXT_PUBLIC_API_MODE: process.env.NEXT_PUBLIC_API_MODE,
+    NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
   };
-  return runtime.process?.env;
 }

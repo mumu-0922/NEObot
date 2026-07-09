@@ -39,6 +39,58 @@ describe("Phase 11.1B API mode resolver", () => {
     expect(resolved.networkEdge).toBe("direct-cors");
   });
 
+  it("supports relative same-origin proxy base URLs", () => {
+    const resolved = resolveApiClientConfig({
+      env: {
+        NEXT_PUBLIC_API_MODE: "server",
+        NEXT_PUBLIC_API_BASE_URL: "/mm-api/",
+      },
+      frontendOrigin: "http://127.0.0.1:3000",
+    });
+    const client = createNeoChatApiClient({
+      env: {
+        NEXT_PUBLIC_API_MODE: "server",
+        NEXT_PUBLIC_API_BASE_URL: "/mm-api/",
+      },
+    });
+
+    expect(resolved.mode).toBe("server");
+    expect(resolved.baseUrl).toBe("/mm-api");
+    expect(resolved.networkEdge).toBe("same-origin-proxy");
+    expect(client.mode).toBe("server");
+    expect(client.capabilities).toMatchObject({
+      chatCrud: true,
+      chatStream: true,
+      files: true,
+    });
+  });
+
+  it("reads bundled NEXT_PUBLIC env values by default", () => {
+    const previousMode = process.env.NEXT_PUBLIC_API_MODE;
+    const previousBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+    process.env.NEXT_PUBLIC_API_MODE = "server";
+    process.env.NEXT_PUBLIC_API_BASE_URL = "/mm-api";
+
+    try {
+      const resolved = resolveApiClientConfig();
+
+      expect(resolved.mode).toBe("server");
+      expect(resolved.baseUrl).toBe("/mm-api");
+      expect(resolved.networkEdge).toBe("same-origin-proxy");
+    } finally {
+      if (previousMode === undefined) {
+        delete process.env.NEXT_PUBLIC_API_MODE;
+      } else {
+        process.env.NEXT_PUBLIC_API_MODE = previousMode;
+      }
+      if (previousBaseUrl === undefined) {
+        delete process.env.NEXT_PUBLIC_API_BASE_URL;
+      } else {
+        process.env.NEXT_PUBLIC_API_BASE_URL = previousBaseUrl;
+      }
+    }
+  });
+
   it("falls back to local when server mode lacks a base URL", () => {
     const client = createNeoChatApiClient({
       env: { NEXT_PUBLIC_API_MODE: "server" },

@@ -410,14 +410,14 @@ visible frontend UI.
 
 ### Phase 11.4 — File upload and download
 
-- [ ] Upload browser-selected files through the server file API.
-- [ ] Download file content through the backend gateway without exposing object
+- [x] Upload browser-selected files through the server file API.
+- [x] Download file content through the backend gateway without exposing object
       keys, buckets, MinIO URLs, or local paths.
-- [ ] Attach server file references to newly created messages where the current
+- [x] Attach server file references to newly created messages where the current
       UI already supports attachments.
-- [ ] Verify server mode uploads, downloads, attaches, and refreshes file
+- [x] Verify server mode uploads, downloads, attaches, and refreshes file
       metadata against the local Go backend.
-- [ ] Verify local-mode OPFS/file behavior remains unchanged.
+- [x] Verify local-mode OPFS/file behavior remains unchanged.
 
 ### Phase 11.4A — Server file API client adapter
 
@@ -471,19 +471,19 @@ the UI can call in the next wiring slice.
 - [x] Use abort-only stop/new-chat/session-switch handling in server mode so
       local IndexedDB sync is not invoked.
 - [x] Fail closed for local-only actions that do not yet have server endpoints.
-- [ ] Browser-smoke server-mode file upload, attachment rendering, refresh, and
+- [x] Browser-smoke server-mode file upload, attachment rendering, refresh, and
       local rollback in Phase 11.5.
 
 ### Phase 11.5 — Browser smoke and local rollback
 
-- [ ] Run server-mode browser smoke against the local Docker backend at
-      `http://127.0.0.1:8080`.
-- [ ] Smoke conversation creation, user message persistence, SSE assistant
+- [x] Run server-mode browser smoke through `/mm-api` to the local Docker
+      backend at `http://127.0.0.1:8080`.
+- [x] Smoke conversation creation, user message persistence, SSE assistant
       stream, file upload/download, attachment rendering, and refresh
       persistence.
-- [ ] Switch back to `NEXT_PUBLIC_API_MODE=local` and verify browser-local
+- [x] Switch back to `NEXT_PUBLIC_API_MODE=local` and verify browser-local
       behavior still works.
-- [ ] Record smoke commands, env flags, cleanup/reset notes, and known gaps in
+- [x] Record smoke commands, env flags, cleanup/reset notes, and known gaps in
       `process.md`.
 
 ## Phase 12 — Browser Data Export/Import UI

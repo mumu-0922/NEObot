@@ -104,7 +104,12 @@ vi.mock("../services/api/chatCrudService", () => ({
   createChatCrudService: mocks.createChatCrudService,
   modelStringToModelRef: (model: string) => {
     const [providerId, modelId] = model.split(":");
-    return providerId && modelId ? { providerId, modelId } : undefined;
+    if (!providerId || !modelId) return undefined;
+    return {
+      providerId:
+        providerId === "SERVER_DEFAULT" ? "openai_compatible" : providerId,
+      modelId,
+    };
   },
 }));
 
@@ -687,6 +692,31 @@ describe("chat store server read path", () => {
     );
     expect(mocks.appDbMock.getItem).not.toHaveBeenCalled();
     expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
+  });
+
+  it("normalizes server default model refs before streaming", async () => {
+    useChatStore.setState({
+      selectedModel: "SERVER_DEFAULT:gpt-5.5",
+      serverReadState: {
+        ...makeEmptyServerReadState(),
+        sessions: [{ ...makeServerSession("c1"), messageCount: 0 }],
+        currentSessionId: "c1",
+      },
+    });
+
+    await expect(
+      useChatStore.getState().sendServerMessageAndStream({
+        sessionId: "c1",
+        content: "hello user",
+      }),
+    ).resolves.toMatchObject({ status: "completed" });
+
+    expect(mocks.streamService.streamAssistantMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelRef: { providerId: "openai_compatible", modelId: "gpt-5.5" },
+      }),
+      expect.any(Object),
+    );
   });
 
   it("maps server stream provider errors to terminal generation state", async () => {

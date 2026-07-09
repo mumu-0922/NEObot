@@ -3779,9 +3779,194 @@ git diff --check -- src/components/app/ChatApp.tsx src/components/chat/MessageIn
 
 ### Remaining Gap
 
-Full browser validation is intentionally deferred to Phase 11.5. That smoke
-must start Next.js with `NEXT_PUBLIC_API_MODE=server` and
-`NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8080`, send a message with an
-attachment through the visible UI, refresh the page, verify server attachment
-metadata still renders, then restart in local mode and verify the local rollback
-path.
+Full browser validation was deferred to Phase 11.5 and is now recorded in the
+2026-07-09 Phase 11.5 entry below. The accepted browser path uses
+`NEXT_PUBLIC_API_BASE_URL=/mm-api` through a same-origin development proxy
+instead of direct browser calls to `http://127.0.0.1:8080`, because the Go
+backend does not yet emit CORS headers.
+
+## 2026-07-09 — Phase 11.5: Browser Smoke and Local Rollback
+
+### Decision
+
+Browser smoke uses a same-origin development proxy instead of direct browser
+calls to the Go backend. The backend is still verified at
+`http://127.0.0.1:8080`, but the browser calls `/mm-api/v1/...` through a
+temporary local proxy on port `3000` to avoid CORS drift while Go has no CORS
+allowlist.
+
+Two frontend blockers were found during smoke and fixed before accepting the
+result:
+
+- `readApiClientEnv()` used a dynamic `globalThis.process?.env` lookup, so the
+  browser bundle did not inline `NEXT_PUBLIC_API_MODE=server` and silently stayed
+  on the local `/api/chat` path.
+- The frontend server-default model id `SERVER_DEFAULT:gpt-5.5` had to be
+  normalized to Go's configured provider id `openai_compatible:gpt-5.5` before
+  streaming, otherwise the backend would reject it as `UNSUPPORTED_PROVIDER`.
+
+### Action
+
+Changed:
+
+```text
+src/services/api/client/mode.ts
+src/services/api/chatCrudService.ts
+src/__tests__/apiClientScaffold.test.ts
+src/__tests__/chatCrudService.test.ts
+src/__tests__/chatStoreServerRead.test.ts
+mm-chat/docs/architecture/phase-11-plus-roadmap.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+Server-mode run shape:
+
+```bash
+rm -rf .next
+set -a; . mm-chat/.env.single-server; set +a
+
+NEXT_PUBLIC_API_MODE=server \
+NEXT_PUBLIC_API_BASE_URL=/mm-api \
+NEXT_PUBLIC_SITE_URL=http://127.0.0.1:3000 \
+DEFAULT_PROVIDER_TYPE="OpenAI Compatible" \
+DEFAULT_PROVIDER_NAME="Smoke Relay" \
+DEFAULT_PROVIDER_BASE_URL="$PROVIDER_BASE_URL" \
+DEFAULT_PROVIDER_API_KEY=[redacted] \
+DEFAULT_PROVIDER_MODELS="$PROVIDER_MODEL" \
+corepack pnpm dev -H 127.0.0.1 -p 3001
+
+node /tmp/mm-chat-phase-11-5-proxy.mjs
+# /mm-api/* -> http://127.0.0.1:8080/*
+# /*        -> http://127.0.0.1:3001/*
+```
+
+Important command correction: with this package script, use
+`corepack pnpm dev -H 127.0.0.1 -p <port>`. The `pnpm dev -- -H ...` form makes
+Next treat `-H` as a project directory and exits.
+
+### Verification
+
+Compose backend stayed healthy:
+
+```text
+docker compose -f mm-chat/compose.single-server.yml --env-file mm-chat/.env.single-server ps
+backend: 127.0.0.1:8080 healthy
+/ready:      {"status":"ready"}
+/v1/version: {"version":"single-server-dev"}
+```
+
+Targeted tests passed after the fixes:
+
+```text
+corepack pnpm vitest run src/__tests__/apiClientScaffold.test.ts src/__tests__/chatCrudService.test.ts src/__tests__/chatStoreServerRead.test.ts src/__tests__/fileService.test.ts src/__tests__/chatAppServerModeComposition.test.ts
+  passed: 5 files, 64 tests
+```
+
+Server-mode browser smoke passed with a real Chromium browser over the visible
+UI:
+
+```text
+artifacts:       /tmp/mm-chat-smoke/phase-11-5-browser-smoke-20260709-133930
+conversationId:  feaec225-b164-4c9f-a189-b06977388e10
+fileId:          36af1e00-796f-4532-9f23-f81fa8f8d649
+userMessageId:   95ed4c11-b36f-4dc7-a12a-97f428e24804
+assistantId:     3ff06dea-a8a5-4bf8-a4df-18f67275e99e
+token:           MM_CHAT_BROWSER_ATTACHMENT_OK_1783576072233
+file sha256:     5d7c8bf6af63ecd0de3a732c4333ae4154c18a6067bfe9cc1668a915402a7cdd
+```
+
+Observed browser network path:
+
+```text
+GET  /mm-api/v1/chat/conversations                         200 application/json
+GET  /mm-api/v1/chat/conversations/{id}/messages           200 application/json
+POST /mm-api/v1/files                                      201 application/json
+POST /mm-api/v1/chat/conversations/{id}/messages           201 application/json
+POST /mm-api/v1/chat/conversations/{id}/stream             200 text/event-stream
+```
+
+The stream request body used:
+
+```json
+{ "modelRef": { "providerId": "openai_compatible", "modelId": "gpt-5.5" } }
+```
+
+Backend verification confirmed:
+
+- the user message persisted with a server attachment reference;
+- the assistant message completed with the expected token;
+- `GET /v1/files/{fileId}` returned metadata only, with a relative
+  `downloadUrl`;
+- `GET /v1/files/{fileId}/content?disposition=attachment` returned bytes whose
+  SHA-256 matched the message attachment metadata;
+- a fresh browser reload reloaded the same token and attachment through only
+  `GET /mm-api/v1/chat/conversations` and `GET /mm-api/v1/chat/conversations/{id}/messages`.
+
+Local rollback passed after stopping the server-mode proxy and restarting Next
+directly on port `3000`:
+
+```bash
+NEXT_PUBLIC_API_MODE=local \
+NEXT_PUBLIC_API_BASE_URL= \
+NEXT_PUBLIC_SITE_URL=http://127.0.0.1:3000 \
+DEFAULT_PROVIDER_API_KEY=[redacted] \
+corepack pnpm dev -H 127.0.0.1 -p 3000
+```
+
+Rollback browser artifact:
+
+```text
+artifacts: /tmp/mm-chat-smoke/phase-11-5-browser-smoke-20260709-133930/local-rollback-localhost
+token:     MM_CHAT_BROWSER_ATTACHMENT_OK_1783576252663
+```
+
+Observed rollback network path:
+
+```text
+POST /api/chat                   200 text/event-stream
+POST /api/chat                   200 text/event-stream
+POST /api/chat/related-questions requested
+POST /api/chat/generate-title    requested
+```
+
+No `/mm-api` or `/v1/chat` calls were made during the accepted local rollback
+run.
+
+Visible Windows Chrome smoke also passed after the automated run:
+
+```text
+browser URL:    http://localhost:3000
+manual prompt:  请只回复：MM_CHAT_MANUAL_OK
+manual result:  MM_CHAT_MANUAL_OK
+file prompt:    读取附件内容，只回复：MM_CHAT_FILE_OK
+file result:    MM_CHAT_FILE_OK
+file path:      C:\Users\Administrator\Desktop\mm-chat-manual-file-test.txt
+```
+
+Proxy evidence confirmed the visible browser used the Go path:
+
+```text
+POST /mm-api/v1/chat/conversations/{id}/messages -> go /v1/chat/conversations/{id}/messages
+POST /mm-api/v1/chat/conversations/{id}/stream   -> go /v1/chat/conversations/{id}/stream
+POST /mm-api/v1/files                            -> go /v1/files
+GET  /mm-api/v1/chat/conversations               -> go /v1/chat/conversations
+GET  /mm-api/v1/chat/conversations/{id}/messages -> go /v1/chat/conversations/{id}/messages
+```
+
+### Known Gaps / Cleanup Notes
+
+- The temporary `/tmp/mm-chat-phase-11-5-proxy.mjs` is smoke harness only; no
+  repository proxy file was added in this slice.
+- Direct browser calls to `http://127.0.0.1:8080` still lack CORS headers. Keep
+  using same-origin proxy in development or add a documented CORS allowlist in a
+  later slice.
+- Local rollback should be opened as `http://localhost:3000` for browser smoke.
+  A direct `127.0.0.1:3000` POST can trip the existing Next request-origin guard
+  in dev.
+- Manual visible-Chrome server-mode testing used `3000` for the same-origin
+  proxy and `3001` for Next; both were stopped after the smoke. The Go Compose
+  backend on `127.0.0.1:8080` was intentionally left running.
+- The smoke intentionally leaves test conversation/file data in the local
+  Compose volumes for auditability. Do not run `docker compose down -v` unless
+  losing local smoke data is intended.
