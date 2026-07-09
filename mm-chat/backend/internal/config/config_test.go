@@ -89,6 +89,18 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 	if cfg.Storage.MaxUploadBytes != DefaultMaxUploadBytes {
 		t.Fatalf("Storage.MaxUploadBytes = %d, want %d", cfg.Storage.MaxUploadBytes, DefaultMaxUploadBytes)
 	}
+	if cfg.Auth.BootstrapToken != "" {
+		t.Fatalf("Auth.BootstrapToken = %q, want empty", cfg.Auth.BootstrapToken)
+	}
+	if cfg.Auth.BootstrapUserID != DefaultAuthBootstrapUserID {
+		t.Fatalf("Auth.BootstrapUserID = %q, want %q", cfg.Auth.BootstrapUserID, DefaultAuthBootstrapUserID)
+	}
+	if cfg.Auth.BootstrapDisplayName != DefaultAuthBootstrapUserName {
+		t.Fatalf("Auth.BootstrapDisplayName = %q, want %q", cfg.Auth.BootstrapDisplayName, DefaultAuthBootstrapUserName)
+	}
+	if cfg.Auth.SessionTTL != DefaultAuthSessionTTL {
+		t.Fatalf("Auth.SessionTTL = %s, want %s", cfg.Auth.SessionTTL, DefaultAuthSessionTTL)
+	}
 }
 
 func TestLoadFromEnvOverrides(t *testing.T) {
@@ -122,6 +134,10 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 		EnvS3ForcePathStyle:       " true ",
 		EnvS3BucketAutoCreate:     " true ",
 		EnvMaxUploadBytes:         "1048576",
+		EnvAuthBootstrapToken:     " bootstrap-secret ",
+		EnvAuthBootstrapUserID:    " 77777777-7777-4777-8777-777777777777 ",
+		EnvAuthBootstrapUserName:  " Server Owner ",
+		EnvAuthSessionTTL:         "24h",
 	}
 
 	cfg := LoadFromEnv(func(key string) (string, bool) {
@@ -210,36 +226,52 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	if cfg.Storage.MaxUploadBytes != 1048576 {
 		t.Fatalf("Storage.MaxUploadBytes = %d, want 1048576", cfg.Storage.MaxUploadBytes)
 	}
+	if cfg.Auth.BootstrapToken != "bootstrap-secret" {
+		t.Fatalf("Auth.BootstrapToken = %q, want bootstrap-secret", cfg.Auth.BootstrapToken)
+	}
+	if cfg.Auth.BootstrapUserID != "77777777-7777-4777-8777-777777777777" {
+		t.Fatalf("Auth.BootstrapUserID = %q", cfg.Auth.BootstrapUserID)
+	}
+	if cfg.Auth.BootstrapDisplayName != "Server Owner" {
+		t.Fatalf("Auth.BootstrapDisplayName = %q", cfg.Auth.BootstrapDisplayName)
+	}
+	if cfg.Auth.SessionTTL != 24*time.Hour {
+		t.Fatalf("Auth.SessionTTL = %s, want 24h", cfg.Auth.SessionTTL)
+	}
 }
 
 func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 	values := map[string]string{
-		EnvAddr:                 "   ",
-		EnvVersion:              "\t",
-		EnvDatabaseURL:          " \n ",
-		EnvDBMaxOpenConns:       " ",
-		EnvDBMaxIdleConns:       "\t",
-		EnvDBConnMaxLifetime:    " \n",
-		EnvRedisURL:             " ",
-		EnvRedisKeyPrefix:       "\t",
-		EnvRedisRunCancelTTL:    "\n",
-		EnvRedisSessionCacheTTL: " ",
-		EnvProviderType:         " ",
-		EnvProviderBaseURL:      "\t",
-		EnvProviderModel:        " \n ",
-		EnvProviderAPIKey:       " ",
-		EnvProviderTimeout:      "\t",
-		EnvStorageBackend:       " ",
-		EnvLocalStorageDir:      "\t",
-		EnvS3Endpoint:           " ",
-		EnvS3Bucket:             "\t",
-		EnvS3Region:             "\n",
-		EnvS3AccessKeyID:        " ",
-		EnvS3SecretAccessKey:    "\t",
-		EnvS3UseSSL:             " ",
-		EnvS3ForcePathStyle:     " ",
-		EnvS3BucketAutoCreate:   "\n",
-		EnvMaxUploadBytes:       "\n",
+		EnvAddr:                  "   ",
+		EnvVersion:               "\t",
+		EnvDatabaseURL:           " \n ",
+		EnvDBMaxOpenConns:        " ",
+		EnvDBMaxIdleConns:        "\t",
+		EnvDBConnMaxLifetime:     " \n",
+		EnvRedisURL:              " ",
+		EnvRedisKeyPrefix:        "\t",
+		EnvRedisRunCancelTTL:     "\n",
+		EnvRedisSessionCacheTTL:  " ",
+		EnvProviderType:          " ",
+		EnvProviderBaseURL:       "\t",
+		EnvProviderModel:         " \n ",
+		EnvProviderAPIKey:        " ",
+		EnvProviderTimeout:       "\t",
+		EnvStorageBackend:        " ",
+		EnvLocalStorageDir:       "\t",
+		EnvS3Endpoint:            " ",
+		EnvS3Bucket:              "\t",
+		EnvS3Region:              "\n",
+		EnvS3AccessKeyID:         " ",
+		EnvS3SecretAccessKey:     "\t",
+		EnvS3UseSSL:              " ",
+		EnvS3ForcePathStyle:      " ",
+		EnvS3BucketAutoCreate:    "\n",
+		EnvMaxUploadBytes:        "\n",
+		EnvAuthBootstrapToken:    " ",
+		EnvAuthBootstrapUserID:   "\t",
+		EnvAuthBootstrapUserName: "\n",
+		EnvAuthSessionTTL:        " ",
 	}
 
 	cfg := LoadFromEnv(func(key string) (string, bool) {
@@ -296,6 +328,12 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 		cfg.Storage.S3.BucketAutoCreate {
 		t.Fatalf("Storage.S3 = %#v, want blank/false defaults", cfg.Storage.S3)
 	}
+	if cfg.Auth.BootstrapToken != "" ||
+		cfg.Auth.BootstrapUserID != DefaultAuthBootstrapUserID ||
+		cfg.Auth.BootstrapDisplayName != DefaultAuthBootstrapUserName ||
+		cfg.Auth.SessionTTL != DefaultAuthSessionTTL {
+		t.Fatalf("Auth = %#v, want defaults", cfg.Auth)
+	}
 }
 
 func TestLoadFromEnvFallsBackForInvalidDBValues(t *testing.T) {
@@ -313,6 +351,7 @@ func TestLoadFromEnvFallsBackForInvalidDBValues(t *testing.T) {
 		EnvS3ForcePathStyle:       "not-a-bool",
 		EnvS3BucketAutoCreate:     "not-a-bool",
 		EnvMaxUploadBytes:         "-1",
+		EnvAuthSessionTTL:         "not-a-duration",
 	}
 
 	cfg := LoadFromEnv(func(key string) (string, bool) {
@@ -356,5 +395,8 @@ func TestLoadFromEnvFallsBackForInvalidDBValues(t *testing.T) {
 	}
 	if cfg.Storage.S3.UseSSL || cfg.Storage.S3.ForcePathStyle || cfg.Storage.S3.BucketAutoCreate {
 		t.Fatalf("Storage.S3 booleans = %#v, want false fallback", cfg.Storage.S3)
+	}
+	if cfg.Auth.SessionTTL != DefaultAuthSessionTTL {
+		t.Fatalf("Auth.SessionTTL = %s, want %s", cfg.Auth.SessionTTL, DefaultAuthSessionTTL)
 	}
 }

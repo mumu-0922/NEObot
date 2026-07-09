@@ -2,8 +2,6 @@ package httpserver
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -44,6 +42,7 @@ type options struct {
 	runCancellationStore chat.RunCancellationStore
 	rateLimitStore       ratelimit.Store
 	sessionResolver      SessionResolver
+	authService          *auth.Service
 	fileRepository       files.Repository
 	objectStore          storage.ObjectStore
 	maxUploadBytes       int64
@@ -84,6 +83,12 @@ func WithRateLimitStore(store ratelimit.Store) Option {
 func WithSessionResolver(resolver SessionResolver) Option {
 	return func(opts *options) {
 		opts.sessionResolver = resolver
+	}
+}
+
+func WithAuthService(service *auth.Service) Option {
+	return func(opts *options) {
+		opts.authService = service
 	}
 }
 
@@ -129,6 +134,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	resolvedOptions := resolveOptions(opts...)
 	mux := http.NewServeMux()
 	healthHandler := health.New(cfg.Version, resolvedOptions.readyChecker)
+	authHandler := auth.NewHandler(resolvedOptions.authService)
 	chatHandler := chat.NewHandler(
 		chat.NewService(resolvedOptions.chatRepository),
 		chat.WithProvider(resolvedOptions.chatProvider),
@@ -153,6 +159,9 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.HandleFunc("/health", healthHandler.Health)
 	mux.HandleFunc("/ready", healthHandler.Ready)
 	mux.HandleFunc("/v1/version", healthHandler.Version)
+	mux.Handle("/v1/me", authHandler)
+	mux.Handle("/v1/auth/login", authHandler)
+	mux.Handle("/v1/auth/logout", authHandler)
 	mux.Handle("/v1/chat/conversations", chatHandler)
 	mux.Handle("/v1/chat/conversations/", chatHandler)
 	mux.Handle("/v1/chat/runs/", chatHandler)
@@ -210,6 +219,10 @@ func withSessionIdentity(resolver SessionResolver) Middleware {
 				next.ServeHTTP(w, r)
 				return
 			}
+			if isAuthLoginRequest(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
 
 			token, ok := bearerToken(r.Header.Get("Authorization"))
 			if !ok {
@@ -221,7 +234,7 @@ func withSessionIdentity(resolver SessionResolver) Middleware {
 				return
 			}
 
-			session, err := resolver.ResolveByTokenHash(r.Context(), bearerTokenHash(token))
+			session, err := resolver.ResolveByTokenHash(r.Context(), auth.HashSessionToken(token))
 			if err != nil {
 				writeAuthError(w, err)
 				return
@@ -230,6 +243,14 @@ func withSessionIdentity(resolver SessionResolver) Middleware {
 			next.ServeHTTP(w, r.WithContext(auth.WithUser(r.Context(), auth.UserFromSession(session))))
 		})
 	}
+}
+
+func isAuthLoginRequest(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+
+	return r.Method == http.MethodPost && r.URL.Path == "/v1/auth/login"
 }
 
 func bearerToken(header string) (string, bool) {
@@ -243,11 +264,6 @@ func bearerToken(header string) (string, bool) {
 	}
 
 	return parts[1], true
-}
-
-func bearerTokenHash(token string) string {
-	sum := sha256.Sum256([]byte(strings.TrimSpace(token)))
-	return hex.EncodeToString(sum[:])
 }
 
 func writeAuthError(w http.ResponseWriter, err error) {

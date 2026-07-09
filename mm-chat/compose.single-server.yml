@@ -35,6 +35,10 @@ x-backend-env: &backend-env
   REDIS_RATE_LIMIT_ENABLED: ${REDIS_RATE_LIMIT_ENABLED:-true}
   REDIS_RATE_LIMIT_REQUESTS: ${REDIS_RATE_LIMIT_REQUESTS:-120}
   REDIS_RATE_LIMIT_WINDOW: ${REDIS_RATE_LIMIT_WINDOW:-1m}
+  AUTH_BOOTSTRAP_TOKEN: ${AUTH_BOOTSTRAP_TOKEN:?set AUTH_BOOTSTRAP_TOKEN before starting mm-chat}
+  AUTH_BOOTSTRAP_USER_ID: ${AUTH_BOOTSTRAP_USER_ID:-00000000-0000-0000-0000-000000000001}
+  AUTH_BOOTSTRAP_DISPLAY_NAME: ${AUTH_BOOTSTRAP_DISPLAY_NAME:-Owner}
+  AUTH_SESSION_TTL: ${AUTH_SESSION_TTL:-168h}
   PROVIDER_TYPE: ${PROVIDER_TYPE:-openai_compatible}
   PROVIDER_BASE_URL: ${PROVIDER_BASE_URL:-https://your-openai-compatible-relay.example/v1}
   PROVIDER_MODEL: ${PROVIDER_MODEL:-gpt-5.5}
@@ -60,7 +64,8 @@ services:
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      test:
+        ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
       interval: 10s
       timeout: 5s
       retries: 10
@@ -79,7 +84,8 @@ services:
     volumes:
       - ./data/redis:/data
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG"]
+      test:
+        ["CMD-SHELL", 'redis-cli -a "$${REDIS_PASSWORD}" ping | grep -q PONG']
       interval: 10s
       timeout: 5s
       retries: 10

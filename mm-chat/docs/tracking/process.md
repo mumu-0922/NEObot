@@ -4304,3 +4304,106 @@ cd mm-chat/backend && go test ./...
 Next: Phase 13.2 should add `/v1/me`, `POST /v1/auth/login`, and
 `POST /v1/auth/logout`, then introduce an explicit auth mode so hosted requests
 can fail closed when credentials are missing.
+
+## 2026-07-09 — Phase 13.2 bootstrap auth endpoints
+
+Action: added the first Go auth endpoint slice using a configured bootstrap owner
+token. The backend now exposes login/logout/me routes without introducing a
+password table or third-party OAuth. Login creates a new Postgres `sessions` row,
+returns the raw bearer token once, and stores only `sha256(raw-session-token)` in
+Postgres. Logout revokes the session row and clears Redis session-cache entries
+when Redis is configured.
+
+Files:
+
+```text
+mm-chat/.env.single-server.example
+mm-chat/compose.single-server.yml
+mm-chat/backend/.env.example
+mm-chat/backend/cmd/api/main.go
+mm-chat/backend/internal/auth/handler.go
+mm-chat/backend/internal/auth/handler_test.go
+mm-chat/backend/internal/auth/service.go
+mm-chat/backend/internal/auth/service_test.go
+mm-chat/backend/internal/auth/session_repository_postgres.go
+mm-chat/backend/internal/auth/token.go
+mm-chat/backend/internal/auth/types.go
+mm-chat/backend/internal/auth/uuid.go
+mm-chat/backend/internal/config/config.go
+mm-chat/backend/internal/config/config_test.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/httpserver/server_test.go
+mm-chat/docs/contracts/auth-session-api.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/deployment/redis-temporary-state.md
+mm-chat/docs/tracking/process.md
+mm-chat/docs/tracking/progress.md
+```
+
+Runtime contract:
+
+```text
+POST /v1/auth/login {"token":"<AUTH_BOOTSTRAP_TOKEN>"}
+  -> 200 {user, token, expiresAt}
+  -> DB sessions.token_hash = sha256(token)
+
+GET /v1/me
+  -> Bearer session user when Authorization is valid
+  -> development user while development fallback remains active
+
+POST /v1/auth/logout
+  -> requires Authorization: Bearer <token>
+  -> revokes Postgres session and clears Redis cache hints
+```
+
+Environment keys:
+
+```text
+AUTH_BOOTSTRAP_TOKEN
+AUTH_BOOTSTRAP_USER_ID
+AUTH_BOOTSTRAP_DISPLAY_NAME
+AUTH_SESSION_TTL
+```
+
+Review fixes:
+
+```text
+- Removed the Compose runtime fallback for AUTH_BOOTSTRAP_TOKEN; startup now
+  requires the variable to be set explicitly.
+- Exempted POST /v1/auth/login from optional session middleware so a stale or
+  expired bearer token cannot block re-login.
+- Aligned the frontend API contract with the backend `UNAUTHENTICATED` 401
+  error code.
+- Follow-up review agent reported no blocker/major/minor findings after these
+  fixes.
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && go test ./...
+  passed
+
+cd mm-chat/backend && go vet ./...
+  passed
+
+corepack pnpm exec prettier --check \
+  mm-chat/docs/contracts/auth-session-api.md \
+  mm-chat/docs/contracts/frontend-api-client.md \
+  mm-chat/docs/deployment/redis-temporary-state.md \
+  mm-chat/docs/tracking/progress.md \
+  mm-chat/docs/tracking/process.md \
+  mm-chat/compose.single-server.yml
+  passed
+
+git diff --check -- <Phase 13.2 target files>
+  passed
+
+targeted secret-pattern scan
+  no real secrets found; hits are env placeholders, docs examples, and test
+  fixtures only
+```
+
+Next: Phase 13.3 should add explicit auth mode configuration so hosted/server
+mode can reject missing credentials instead of falling back to the development
+user.

@@ -9,14 +9,14 @@ ownership. A Redis flush must not delete canonical user data.
 Implemented so far:
 
 - Redis client wiring in the Go API when `REDIS_URL` is set.
-- Read-through session-cache substrate for future auth middleware.
+- Read-through session-cache substrate for bearer session middleware.
 - Short-lived stream cancellation flags for cross-process coordination.
 - Fixed-window HTTP rate-limit middleware when `REDIS_RATE_LIMIT_ENABLED=true`.
 - Startup fail-fast when Redis is configured but unreachable or invalid.
 
 Deferred:
 
-- Runtime `/v1/auth/*` endpoints and request-scoped multi-user auth middleware.
+- Enforced hosted auth mode and full two-user isolation tests.
 - Temporary upload/job state.
 
 ## Runtime Configuration
@@ -85,8 +85,9 @@ fails fast when `REDIS_URL` is configured but cannot be parsed or pinged.
 
 ## Session Cache Contract
 
-The auth substrate now has a Postgres-backed resolver and Redis cache store, but
-the HTTP routes still use the fixed development user until a later auth phase.
+The auth substrate has a Postgres-backed resolver and Redis cache store. Phase 13
+uses it for optional bearer session middleware; missing credentials still fall
+back to the development user until enforced auth mode is enabled.
 
 Read-through behavior:
 

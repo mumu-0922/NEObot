@@ -64,10 +64,10 @@ The client boundary must support two modes.
 export type ApiMode = "local" | "server";
 ```
 
-| Mode | Meaning | Backing Systems | Default |
-|---|---|---|---|
-| `local` | Preserve current app behavior | Zustand, localStorage, IndexedDB/localforage, OPFS, existing Next.js API routes | Yes during migration |
-| `server` | Use new backend path | Go API, Postgres, Redis, MinIO, provider adapters | Opt-in per rollout |
+| Mode     | Meaning                       | Backing Systems                                                                 | Default              |
+| -------- | ----------------------------- | ------------------------------------------------------------------------------- | -------------------- |
+| `local`  | Preserve current app behavior | Zustand, localStorage, IndexedDB/localforage, OPFS, existing Next.js API routes | Yes during migration |
+| `server` | Use new backend path          | Go API, Postgres, Redis, MinIO, provider adapters                               | Opt-in per rollout   |
 
 Bootstrap configuration:
 
@@ -139,7 +139,9 @@ export interface NeoChatApiClient {
   imports: ImportApi;
 }
 
-export function createNeoChatApiClient(config: ApiClientConfig): NeoChatApiClient;
+export function createNeoChatApiClient(
+  config: ApiClientConfig,
+): NeoChatApiClient;
 ```
 
 The first implementation may live under `mm-chat/` as a prototype, but final integration should preserve the existing `src/services/api/*` import boundary until components are migrated safely.
@@ -184,7 +186,14 @@ export interface MessageVersionDto {
 export type MessageOutputBlockDto =
   | { id: EntityId; type: "text"; content: string }
   | { id: EntityId; type: "reasoning"; content: string }
-  | { id: EntityId; type: "search"; isSearching?: boolean; error?: string; sources: unknown[]; images: unknown[] }
+  | {
+      id: EntityId;
+      type: "search";
+      isSearching?: boolean;
+      error?: string;
+      sources: unknown[];
+      images: unknown[];
+    }
   | { id: EntityId; type: "tool_group"; toolCalls: unknown[] }
   | { id: EntityId; type: "image"; attachments: AttachmentRef[] };
 ```
@@ -295,12 +304,12 @@ export type AttachmentRef =
 
 Source matrix:
 
-| Source | Allowed Mode | Required Field | Forbidden Field | Notes |
-|---|---|---|---|---|
-| `opfs` | `local` only | `url: opfs://...` | `fileId` | Never send raw `opfs://` URLs to Go except inside explicit import payloads. |
-| `server` | `server` | `fileId` | MinIO bucket/key | Browser fetches through backend file API only. |
-| `remote` | both, policy-gated | `url` | direct secret-bearing URLs | Backend must apply safe outbound policy before provider use. |
-| `inline` | compatibility only | `data` | object storage keys | Use for small legacy/base64 payloads; migrate to files where possible. |
+| Source   | Allowed Mode       | Required Field    | Forbidden Field            | Notes                                                                       |
+| -------- | ------------------ | ----------------- | -------------------------- | --------------------------------------------------------------------------- |
+| `opfs`   | `local` only       | `url: opfs://...` | `fileId`                   | Never send raw `opfs://` URLs to Go except inside explicit import payloads. |
+| `server` | `server`           | `fileId`          | MinIO bucket/key           | Browser fetches through backend file API only.                              |
+| `remote` | both, policy-gated | `url`             | direct secret-bearing URLs | Backend must apply safe outbound policy before provider use.                |
+| `inline` | compatibility only | `data`            | object storage keys        | Use for small legacy/base64 payloads; migrate to files where possible.      |
 
 Rules:
 
@@ -325,15 +334,31 @@ export interface TokenUsage {
 
 ```ts
 export interface ChatApi {
-  createConversation(input: CreateConversationInput): Promise<ConversationSummary>;
-  listConversations(input?: ListConversationsInput): Promise<ApiPage<ConversationSummary>>;
+  createConversation(
+    input: CreateConversationInput,
+  ): Promise<ConversationSummary>;
+  listConversations(
+    input?: ListConversationsInput,
+  ): Promise<ApiPage<ConversationSummary>>;
   getConversation(id: EntityId): Promise<ConversationSummary>;
-  updateConversation(id: EntityId, patch: UpdateConversationInput): Promise<ConversationSummary>;
+  updateConversation(
+    id: EntityId,
+    patch: UpdateConversationInput,
+  ): Promise<ConversationSummary>;
   deleteConversation(id: EntityId): Promise<void>;
 
-  listMessages(conversationId: EntityId, input?: ListMessagesInput): Promise<ApiPage<ChatMessageDto>>;
-  appendUserMessage(conversationId: EntityId, input: AppendUserMessageInput): Promise<ChatMessageDto>;
-  streamAssistantMessage(input: StreamAssistantMessageInput, handlers: ChatStreamHandlers): Promise<ChatRunResult>;
+  listMessages(
+    conversationId: EntityId,
+    input?: ListMessagesInput,
+  ): Promise<ApiPage<ChatMessageDto>>;
+  appendUserMessage(
+    conversationId: EntityId,
+    input: AppendUserMessageInput,
+  ): Promise<ChatMessageDto>;
+  streamAssistantMessage(
+    input: StreamAssistantMessageInput,
+    handlers: ChatStreamHandlers,
+  ): Promise<ChatRunResult>;
   cancelRun(runId: EntityId): Promise<CancelRunResult>;
 
   generateTitle(input: GenerateTitleInput): Promise<{ title: string }>;
@@ -411,18 +436,18 @@ Rules:
 
 ### 8.2 Server Endpoint Mapping
 
-| `chatApi` Method | Server Endpoint | Notes |
-|---|---|---|
-| `createConversation` | `POST /v1/chat/conversations` | Creates metadata row |
-| `listConversations` | `GET /v1/chat/conversations` | Cursor pagination |
-| `getConversation` | `GET /v1/chat/conversations/:id` | Summary only |
-| `updateConversation` | `PATCH /v1/chat/conversations/:id` | No message writes |
-| `deleteConversation` | `DELETE /v1/chat/conversations/:id` | Soft delete preferred |
-| `listMessages` | `GET /v1/chat/conversations/:id/messages` | Cursor pagination |
-| `appendUserMessage` | `POST /v1/chat/conversations/:id/messages` | Role=user |
-| `streamAssistantMessage` | `POST /v1/chat/conversations/:id/stream` | SSE response |
-| `cancelRun` | `POST /v1/chat/runs/:runId/cancel` | Durable cancellation now; Redis flag later |
-| `generateTitle` | `POST /v1/chat/conversations/:id/title` | Later helper; not first MVP |
+| `chatApi` Method         | Server Endpoint                            | Notes                                      |
+| ------------------------ | ------------------------------------------ | ------------------------------------------ |
+| `createConversation`     | `POST /v1/chat/conversations`              | Creates metadata row                       |
+| `listConversations`      | `GET /v1/chat/conversations`               | Cursor pagination                          |
+| `getConversation`        | `GET /v1/chat/conversations/:id`           | Summary only                               |
+| `updateConversation`     | `PATCH /v1/chat/conversations/:id`         | No message writes                          |
+| `deleteConversation`     | `DELETE /v1/chat/conversations/:id`        | Soft delete preferred                      |
+| `listMessages`           | `GET /v1/chat/conversations/:id/messages`  | Cursor pagination                          |
+| `appendUserMessage`      | `POST /v1/chat/conversations/:id/messages` | Role=user                                  |
+| `streamAssistantMessage` | `POST /v1/chat/conversations/:id/stream`   | SSE response                               |
+| `cancelRun`              | `POST /v1/chat/runs/:runId/cancel`         | Durable cancellation now; Redis flag later |
+| `generateTitle`          | `POST /v1/chat/conversations/:id/title`    | Later helper; not first MVP                |
 
 ## 9. Streaming Contract
 
@@ -600,18 +625,18 @@ export interface CancelRunResult {
 
 Current chunks use event data such as `content`, `reasoning`, `tool_call`, `tool_result`, and usage payloads. The adapter mapping is:
 
-| Current Chunk | New Event |
-|---|---|
-| `content` | `message.delta` |
-| `reasoning` | `message.reasoning_delta` |
-| `tool_call` | `tool.call` |
-| `tool_result` | `tool.result` |
-| search status/results | `search.updated` |
-| generated images | `image.generated` |
-| timing metadata | `timing.updated` |
-| usage payload | `usage.updated` |
-| terminal success | `message.completed` |
-| error chunk or thrown error | `message.error` |
+| Current Chunk               | New Event                 |
+| --------------------------- | ------------------------- |
+| `content`                   | `message.delta`           |
+| `reasoning`                 | `message.reasoning_delta` |
+| `tool_call`                 | `tool.call`               |
+| `tool_result`               | `tool.result`             |
+| search status/results       | `search.updated`          |
+| generated images            | `image.generated`         |
+| timing metadata             | `timing.updated`          |
+| usage payload               | `usage.updated`           |
+| terminal success            | `message.completed`       |
+| error chunk or thrown error | `message.error`           |
 
 ## 10. `fileApi` Contract
 
@@ -663,7 +688,7 @@ First MVP may run as single-user or access-gated, but the client contract should
 ```ts
 export interface AuthApi {
   getCurrentUser(): Promise<CurrentUser | null>;
-  login(input: LoginInput): Promise<CurrentUser>;
+  login(input: LoginInput): Promise<LoginResult>;
   logout(): Promise<void>;
 }
 
@@ -678,23 +703,30 @@ export interface LoginInput {
   password?: string;
   token?: string;
 }
+
+export interface LoginResult {
+  user: CurrentUser;
+  token?: string; // server mode bearer token returned once
+  expiresAt?: IsoDateTime;
+}
 ```
 
 Endpoint mapping:
 
-| Method | Server Endpoint | Local Behavior |
-|---|---|---|
-| `getCurrentUser` | `GET /v1/me` | Returns synthetic local user |
-| `login` | `POST /v1/auth/login` | Existing `/api/access/verify` compatibility |
-| `logout` | `POST /v1/auth/logout` | Clears server/session state only when applicable |
+| Method           | Server Endpoint        | Local Behavior                                   |
+| ---------------- | ---------------------- | ------------------------------------------------ |
+| `getCurrentUser` | `GET /v1/me`           | Returns synthetic local user                     |
+| `login`          | `POST /v1/auth/login`  | Existing `/api/access/verify` compatibility      |
+| `logout`         | `POST /v1/auth/logout` | Clears server/session state only when applicable |
 
 Auth naming rule: server mode uses `login`; local mode may implement `login` by calling the existing access verification route until that route is replaced.
 
-Session-cache boundary: Phase 7 adds backend-internal Postgres + Redis
-read-through session lookup for future server auth. The frontend contract does
-not change yet because `/v1/auth/*` and request-scoped multi-user middleware are
-still deferred. Redis cache loss must behave like a cache miss and fall back to
-Postgres, not force a client-visible logout.
+Phase 13 server mode uses a bootstrap-token login first: `POST /v1/auth/login`
+returns `{ user, token, expiresAt }`, where `token` is the raw bearer session
+token returned once. The client stores it as runtime session state and sends it
+as `Authorization: Bearer <token>` for server API calls. Redis cache loss must
+behave like a cache miss and fall back to Postgres, not force a client-visible
+logout.
 
 ## 12. `importApi` Contract
 
@@ -706,9 +738,15 @@ contract.
 
 ```ts
 export interface ImportApi {
-  buildBrowserImportPackage(input?: BuildBrowserImportPackageInput): Promise<BrowserImportPackage>;
-  previewBrowserImport(input: BrowserImportPackage): Promise<ImportPreviewResponse>;
-  commitBrowserImport(input: BrowserImportPackage): Promise<ImportCommitResponse>;
+  buildBrowserImportPackage(
+    input?: BuildBrowserImportPackageInput,
+  ): Promise<BrowserImportPackage>;
+  previewBrowserImport(
+    input: BrowserImportPackage,
+  ): Promise<ImportPreviewResponse>;
+  commitBrowserImport(
+    input: BrowserImportPackage,
+  ): Promise<ImportCommitResponse>;
   getBrowserImportBatch(batchId: EntityId): Promise<ImportBatchStatus>;
   rollbackBrowserImportBatch(batchId: EntityId): Promise<void>;
 }
@@ -775,12 +813,12 @@ export interface ImportIssue {
 
 Endpoint mapping:
 
-| Method | Server Endpoint | Local Behavior |
-|---|---|---|
-| `previewBrowserImport` | `POST /v1/import/browser/preview` | Validate generated package locally when server mode is off |
-| `commitBrowserImport` | `POST /v1/import/browser` | No-op unless server mode is enabled |
-| `getBrowserImportBatch` | `GET /v1/import/browser/:batchId` | Returns local preview/import state |
-| `rollbackBrowserImportBatch` | `DELETE /v1/import/browser/:batchId` | Does not delete browser-local data |
+| Method                       | Server Endpoint                      | Local Behavior                                             |
+| ---------------------------- | ------------------------------------ | ---------------------------------------------------------- |
+| `previewBrowserImport`       | `POST /v1/import/browser/preview`    | Validate generated package locally when server mode is off |
+| `commitBrowserImport`        | `POST /v1/import/browser`            | No-op unless server mode is enabled                        |
+| `getBrowserImportBatch`      | `GET /v1/import/browser/:batchId`    | Returns local preview/import state                         |
+| `rollbackBrowserImportBatch` | `DELETE /v1/import/browser/:batchId` | Does not delete browser-local data                         |
 
 Rules:
 
@@ -799,7 +837,9 @@ Rules:
 export interface SettingsApi {
   getRuntimeConfig(): Promise<RuntimeConfig>;
   getUserSettings(): Promise<UserSettingsSnapshot>;
-  updateUserSettings(patch: Partial<UserSettingsSnapshot>): Promise<UserSettingsSnapshot>;
+  updateUserSettings(
+    patch: Partial<UserSettingsSnapshot>,
+  ): Promise<UserSettingsSnapshot>;
 }
 
 export interface ProviderApi {
@@ -890,17 +930,17 @@ export interface ModelInfo {
 
 Endpoint mapping:
 
-| Client Method | Server Endpoint | Notes |
-|---|---|---|
-| `settings.getRuntimeConfig` | `GET /v1/config` | Runtime mode/capability bootstrap; `/api/config` remains local compatibility. |
-| `settings.getUserSettings` | `GET /v1/settings` | User-visible settings only; no plaintext provider secrets. |
-| `settings.updateUserSettings` | `PATCH /v1/settings` | Partial update with server validation. |
-| `providers.listProviders` | `GET /v1/providers` | Returns provider metadata and `serverManaged` flags. |
-| `providers.listModels` | `POST /v1/providers/models` | Allows refresh and provider-specific lookup. |
-| `plugins.listAvailable` | `GET /v1/plugins` | Later phase; capability-gated. |
-| `plugins.listInstalled` | `GET /v1/plugins/installed` | Later phase; capability-gated. |
-| `plugins.install` | `POST /v1/plugins/install` | Later phase; validate manifest before install. |
-| `plugins.execute` | `POST /v1/plugins/execute` | Deferred until sandbox design exists. |
+| Client Method                 | Server Endpoint             | Notes                                                                         |
+| ----------------------------- | --------------------------- | ----------------------------------------------------------------------------- |
+| `settings.getRuntimeConfig`   | `GET /v1/config`            | Runtime mode/capability bootstrap; `/api/config` remains local compatibility. |
+| `settings.getUserSettings`    | `GET /v1/settings`          | User-visible settings only; no plaintext provider secrets.                    |
+| `settings.updateUserSettings` | `PATCH /v1/settings`        | Partial update with server validation.                                        |
+| `providers.listProviders`     | `GET /v1/providers`         | Returns provider metadata and `serverManaged` flags.                          |
+| `providers.listModels`        | `POST /v1/providers/models` | Allows refresh and provider-specific lookup.                                  |
+| `plugins.listAvailable`       | `GET /v1/plugins`           | Later phase; capability-gated.                                                |
+| `plugins.listInstalled`       | `GET /v1/plugins/installed` | Later phase; capability-gated.                                                |
+| `plugins.install`             | `POST /v1/plugins/install`  | Later phase; validate manifest before install.                                |
+| `plugins.execute`             | `POST /v1/plugins/execute`  | Deferred until sandbox design exists.                                         |
 
 The table above is the long-term server contract. Phase 11 must not call these
 routes unless they are implemented by the Go router and explicitly reopened in
@@ -931,7 +971,8 @@ Rules:
 - All server JSON requests send `Content-Type: application/json`.
 - All responses include or synthesize `requestId` for error reporting.
 - `AbortSignal` must be passed through for streaming and uploads.
-- `401` maps to `AUTH_REQUIRED`.
+- `401` maps to `UNAUTHENTICATED` when the server returns an auth error
+  envelope.
 - `403` maps to `FORBIDDEN`.
 - `404` maps to entity-specific `*_NOT_FOUND` where possible.
 - `409` maps to `CONFLICT` or idempotency conflict.
@@ -943,32 +984,32 @@ Rules:
 
 ## 15. Error Matrix
 
-| Condition | Code | Recoverable | Owner |
-|---|---|---:|---|
-| Missing/expired session | `AUTH_REQUIRED` | Yes | authApi/httpClient |
-| No access to conversation/file | `FORBIDDEN` | No | backend |
-| Conversation missing | `CONVERSATION_NOT_FOUND` | No | chatApi |
-| Message missing | `MESSAGE_NOT_FOUND` | No | chatApi |
-| File too large | `FILE_TOO_LARGE` | Yes after user action | fileApi/backend |
-| Unsupported MIME | `UNSUPPORTED_FILE_TYPE` | Yes after user action | fileApi/backend |
-| Provider not configured | `PROVIDER_NOT_CONFIGURED` | Yes after settings change | providerApi/chatApi |
-| Provider timeout | `PROVIDER_TIMEOUT` | Yes | provider adapter |
-| Stream interrupted | `STREAM_INTERRUPTED` | Yes | chatApi/httpClient |
-| Rate limited | `RATE_LIMITED` | Yes after wait | backend/Redis |
-| Invalid import/export payload | `INVALID_IMPORT_PAYLOAD` | No for current payload | import phase later |
+| Condition                      | Code                      |               Recoverable | Owner               |
+| ------------------------------ | ------------------------- | ------------------------: | ------------------- |
+| Missing/expired session        | `UNAUTHENTICATED`         |                       Yes | authApi/httpClient  |
+| No access to conversation/file | `FORBIDDEN`               |                        No | backend             |
+| Conversation missing           | `CONVERSATION_NOT_FOUND`  |                        No | chatApi             |
+| Message missing                | `MESSAGE_NOT_FOUND`       |                        No | chatApi             |
+| File too large                 | `FILE_TOO_LARGE`          |     Yes after user action | fileApi/backend     |
+| Unsupported MIME               | `UNSUPPORTED_FILE_TYPE`   |     Yes after user action | fileApi/backend     |
+| Provider not configured        | `PROVIDER_NOT_CONFIGURED` | Yes after settings change | providerApi/chatApi |
+| Provider timeout               | `PROVIDER_TIMEOUT`        |                       Yes | provider adapter    |
+| Stream interrupted             | `STREAM_INTERRUPTED`      |                       Yes | chatApi/httpClient  |
+| Rate limited                   | `RATE_LIMITED`            |            Yes after wait | backend/Redis       |
+| Invalid import/export payload  | `INVALID_IMPORT_PAYLOAD`  |    No for current payload | import phase later  |
 
 ## 16. Migration Sequence
 
-| Step | Contract Work | Runtime Change | Rollback |
-|---:|---|---|---|
-| 1 | Add client interfaces and factory | No behavior change | Remove unused interfaces |
-| 2 | Wrap current local chat service as `local.chatApi` | Components still use local path | Keep old imports |
-| 3 | Add server HTTP adapter with health/version only; config waits for an implemented route | Can smoke test Go backend reachability | Switch `NEXT_PUBLIC_API_MODE=local` |
-| 4 | Add server conversation/message CRUD | Server persistence opt-in | Switch mode local |
-| 5 | Add server stream events | SSE chat opt-in | Switch mode local |
-| 6 | Add file API local adapter wrapper | No server files yet | Keep OPFS path |
-| 7 | Add server file API | MinIO opt-in | Disable `serverFiles` capability |
-| 8 | Add provider config/model APIs | Provider secrets server-side | Fall back to local BYOK |
+| Step | Contract Work                                                                           | Runtime Change                         | Rollback                            |
+| ---: | --------------------------------------------------------------------------------------- | -------------------------------------- | ----------------------------------- |
+|    1 | Add client interfaces and factory                                                       | No behavior change                     | Remove unused interfaces            |
+|    2 | Wrap current local chat service as `local.chatApi`                                      | Components still use local path        | Keep old imports                    |
+|    3 | Add server HTTP adapter with health/version only; config waits for an implemented route | Can smoke test Go backend reachability | Switch `NEXT_PUBLIC_API_MODE=local` |
+|    4 | Add server conversation/message CRUD                                                    | Server persistence opt-in              | Switch mode local                   |
+|    5 | Add server stream events                                                                | SSE chat opt-in                        | Switch mode local                   |
+|    6 | Add file API local adapter wrapper                                                      | No server files yet                    | Keep OPFS path                      |
+|    7 | Add server file API                                                                     | MinIO opt-in                           | Disable `serverFiles` capability    |
+|    8 | Add provider config/model APIs                                                          | Provider secrets server-side           | Fall back to local BYOK             |
 
 ## 17. Test Requirements
 
@@ -1077,14 +1118,14 @@ Boundary rules:
 
 Adapter ownership matrix:
 
-| Concern | Local Adapter | Server Adapter |
-| --- | --- | --- |
-| Conversation source of truth | Current chat store/localforage | Go `conversations` endpoints |
-| Message source of truth | Current `session_messages_*` trees | Go `messages` endpoints |
-| Generation | Existing `streamChatResponse` path | `POST /v1/chat/.../stream` SSE |
-| Files | OPFS/object URLs | Go `/v1/files`, backend-stream downloads |
-| Runtime mode | `NEXT_PUBLIC_API_MODE=local` or fallback | `NEXT_PUBLIC_API_MODE=server` plus base URL |
-| Unsupported features in slice 1 | Existing local behavior | Capability-gated off, no implicit local fallback |
+| Concern                         | Local Adapter                            | Server Adapter                                   |
+| ------------------------------- | ---------------------------------------- | ------------------------------------------------ |
+| Conversation source of truth    | Current chat store/localforage           | Go `conversations` endpoints                     |
+| Message source of truth         | Current `session_messages_*` trees       | Go `messages` endpoints                          |
+| Generation                      | Existing `streamChatResponse` path       | `POST /v1/chat/.../stream` SSE                   |
+| Files                           | OPFS/object URLs                         | Go `/v1/files`, backend-stream downloads         |
+| Runtime mode                    | `NEXT_PUBLIC_API_MODE=local` or fallback | `NEXT_PUBLIC_API_MODE=server` plus base URL      |
+| Unsupported features in slice 1 | Existing local behavior                  | Capability-gated off, no implicit local fallback |
 
 Server mode must fail closed for unsupported server features. For example,
 import/auth/RAG calls should stay unwired or capability-disabled rather than
@@ -1108,14 +1149,14 @@ Earlier future mappings in §8.2 remain roadmap items.
 
 #### Conversations
 
-| Client method | Go endpoint | Phase 11 behavior |
-| --- | --- | --- |
+| Client method        | Go endpoint                   | Phase 11 behavior                                                                   |
+| -------------------- | ----------------------------- | ----------------------------------------------------------------------------------- |
 | `createConversation` | `POST /v1/chat/conversations` | Send `title`, `modelRef`, optional `systemInstruction`, `config`, `idempotencyKey`. |
-| `listConversations` | `GET /v1/chat/conversations` | Parse `{ items }`; no cursor support yet. |
-| `getConversation` | none | Derive from `listConversations` only if needed; otherwise report unsupported. |
-| `updateConversation` | none | Not implemented in server mode slice 1. |
-| `deleteConversation` | none | Not implemented in server mode slice 1. |
-| `generateTitle` | none | Keep out of server mode slice 1. |
+| `listConversations`  | `GET /v1/chat/conversations`  | Parse `{ items }`; no cursor support yet.                                           |
+| `getConversation`    | none                          | Derive from `listConversations` only if needed; otherwise report unsupported.       |
+| `updateConversation` | none                          | Not implemented in server mode slice 1.                                             |
+| `deleteConversation` | none                          | Not implemented in server mode slice 1.                                             |
+| `generateTitle`      | none                          | Keep out of server mode slice 1.                                                    |
 
 Server response shape is `ConversationDTO`:
 
@@ -1134,11 +1175,11 @@ Server response shape is `ConversationDTO`:
 
 #### Messages
 
-| Client method | Go endpoint | Phase 11 behavior |
-| --- | --- | --- |
-| `appendUserMessage` | `POST /v1/chat/conversations/{id}/messages` | Creates one completed `role=user` message. |
-| `listMessages` | `GET /v1/chat/conversations/{id}/messages` | Parse `{ items }` in sequence order. |
-| message edit/delete/regenerate | none | Not implemented in server mode slice 1. |
+| Client method                  | Go endpoint                                 | Phase 11 behavior                          |
+| ------------------------------ | ------------------------------------------- | ------------------------------------------ |
+| `appendUserMessage`            | `POST /v1/chat/conversations/{id}/messages` | Creates one completed `role=user` message. |
+| `listMessages`                 | `GET /v1/chat/conversations/{id}/messages`  | Parse `{ items }` in sequence order.       |
+| message edit/delete/regenerate | none                                        | Not implemented in server mode slice 1.    |
 
 `appendUserMessage` must send only fields accepted by the Go handler:
 
@@ -1164,10 +1205,10 @@ Rules:
 
 #### Stream Runs
 
-| Client method | Go endpoint | Phase 11 behavior |
-| --- | --- | --- |
-| `streamAssistantMessage` | `POST /v1/chat/conversations/{id}/stream` | POST body, parse `text/event-stream`. |
-| `cancelRun` | `POST /v1/chat/runs/{runId}/cancel` | Durable cancel; also interrupts active same-process stream. |
+| Client method            | Go endpoint                               | Phase 11 behavior                                           |
+| ------------------------ | ----------------------------------------- | ----------------------------------------------------------- |
+| `streamAssistantMessage` | `POST /v1/chat/conversations/{id}/stream` | POST body, parse `text/event-stream`.                       |
+| `cancelRun`              | `POST /v1/chat/runs/{runId}/cancel`       | Durable cancel; also interrupts active same-process stream. |
 
 `streamAssistantMessage` body:
 
@@ -1198,13 +1239,13 @@ Rules:
 The file mapping is part of the Phase 11 contract but is not required for the
 first chat CRUD + stream slice.
 
-| Client method | Go endpoint | Phase 11 mapping |
-| --- | --- | --- |
-| `files.upload` | `POST /v1/files` | `multipart/form-data` with `file`, `purpose`, optional IDs. |
-| `files.getMetadata` | `GET /v1/files/{fileId}` | Returns metadata plus relative `downloadUrl`. |
-| `files.getContent` | `GET /v1/files/{fileId}/content` | Optional `?disposition=attachment`. |
-| `files.delete` | `DELETE /v1/files/{fileId}` | `204 No Content`; no JSON body. |
-| `files.getObjectUrl` | composed from `getContent` | Browser object URL/cache wrapper around backend stream. |
+| Client method        | Go endpoint                      | Phase 11 mapping                                            |
+| -------------------- | -------------------------------- | ----------------------------------------------------------- |
+| `files.upload`       | `POST /v1/files`                 | `multipart/form-data` with `file`, `purpose`, optional IDs. |
+| `files.getMetadata`  | `GET /v1/files/{fileId}`         | Returns metadata plus relative `downloadUrl`.               |
+| `files.getContent`   | `GET /v1/files/{fileId}/content` | Optional `?disposition=attachment`.                         |
+| `files.delete`       | `DELETE /v1/files/{fileId}`      | `204 No Content`; no JSON body.                             |
+| `files.getObjectUrl` | composed from `getContent`       | Browser object URL/cache wrapper around backend stream.     |
 
 Rules:
 
@@ -1238,14 +1279,14 @@ Wire rules:
 
 Current Go event types:
 
-| Event | Handler | State effect |
-| --- | --- | --- |
-| `message.started` | `onStarted` | Capture `runId` and assistant `messageId`; mark generation streaming. |
-| `message.delta` | `onDelta` | Append `delta` to transient assistant content. |
-| `usage.updated` | `onUsage` | Merge optional usage metadata. |
+| Event               | Handler       | State effect                                                          |
+| ------------------- | ------------- | --------------------------------------------------------------------- |
+| `message.started`   | `onStarted`   | Capture `runId` and assistant `messageId`; mark generation streaming. |
+| `message.delta`     | `onDelta`     | Append `delta` to transient assistant content.                        |
+| `usage.updated`     | `onUsage`     | Merge optional usage metadata.                                        |
 | `message.completed` | `onCompleted` | Replace transient content with persisted `message`; terminal success. |
-| `message.error` | `onError` | Terminal failure after SSE start. |
-| `message.cancelled` | `onCancelled` | Terminal cancellation. |
+| `message.error`     | `onError`     | Terminal failure after SSE start.                                     |
+| `message.cancelled` | `onCancelled` | Terminal cancellation.                                                |
 
 Future events already defined in §9 (`message.reasoning_delta`, `tool.*`,
 `search.updated`, `image.generated`, `timing.updated`) must remain parsed by

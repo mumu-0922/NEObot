@@ -116,8 +116,8 @@ func TestSessionIdentityMiddlewareSetsRequestUser(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusNoContent, rec.Body.String())
 	}
-	if resolver.tokenHash != bearerTokenHash("raw-token") {
-		t.Fatalf("token hash = %q, want %q", resolver.tokenHash, bearerTokenHash("raw-token"))
+	if resolver.tokenHash != auth.HashSessionToken("raw-token") {
+		t.Fatalf("token hash = %q, want %q", resolver.tokenHash, auth.HashSessionToken("raw-token"))
 	}
 	if gotUser.ID != resolver.session.UserID || gotUser.DisplayName != "User Seven" || gotUser.Role != "owner" {
 		t.Fatalf("context user = %#v", gotUser)
@@ -143,6 +143,29 @@ func TestSessionIdentityMiddlewareRejectsInvalidSession(t *testing.T) {
 	}
 	if body.Error.Code != "UNAUTHENTICATED" {
 		t.Fatalf("error code = %q, want UNAUTHENTICATED", body.Error.Code)
+	}
+}
+
+func TestSessionIdentityMiddlewareSkipsLoginRoute(t *testing.T) {
+	handler := NewHandler(
+		config.Config{Addr: ":0", Version: "route-test"},
+		WithSessionResolver(&fakeSessionResolver{err: auth.ErrSessionExpired}),
+	)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(`{"token":"x"}`))
+	req.Header.Set("Authorization", "Bearer expired-token")
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusServiceUnavailable, rec.Body.String())
+	}
+	var body ErrorResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if body.Error.Code != "DATABASE_REQUIRED" {
+		t.Fatalf("error code = %q, want DATABASE_REQUIRED", body.Error.Code)
 	}
 }
 
@@ -266,6 +289,30 @@ func TestNewHandlerRegistersChatRoutesWithDatabaseRequired(t *testing.T) {
 	}
 	if body.Error.Code != "DATABASE_REQUIRED" {
 		t.Fatalf("import error code = %q, want %q", body.Error.Code, "DATABASE_REQUIRED")
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(`{"token":"x"}`))
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("auth login status = %d, want %d; body=%s", rec.Code, http.StatusServiceUnavailable, rec.Body.String())
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode auth login error response: %v", err)
+	}
+	if body.Error.Code != "DATABASE_REQUIRED" {
+		t.Fatalf("auth login error code = %q, want %q", body.Error.Code, "DATABASE_REQUIRED")
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/v1/me", nil)
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("me status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 }
 

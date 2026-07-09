@@ -24,6 +24,9 @@ const (
 	DefaultLocalStorageDir        = "./data/files"
 	DefaultS3Region               = "us-east-1"
 	DefaultMaxUploadBytes         = int64(25 << 20)
+	DefaultAuthBootstrapUserID    = "00000000-0000-0000-0000-000000000001"
+	DefaultAuthBootstrapUserName  = "Owner"
+	DefaultAuthSessionTTL         = 7 * 24 * time.Hour
 
 	EnvAddr                   = "MM_CHAT_ADDR"
 	EnvVersion                = "MM_CHAT_VERSION"
@@ -54,6 +57,10 @@ const (
 	EnvS3ForcePathStyle       = "S3_FORCE_PATH_STYLE"
 	EnvS3BucketAutoCreate     = "S3_BUCKET_AUTO_CREATE"
 	EnvMaxUploadBytes         = "MAX_UPLOAD_BYTES"
+	EnvAuthBootstrapToken     = "AUTH_BOOTSTRAP_TOKEN"
+	EnvAuthBootstrapUserID    = "AUTH_BOOTSTRAP_USER_ID"
+	EnvAuthBootstrapUserName  = "AUTH_BOOTSTRAP_DISPLAY_NAME"
+	EnvAuthSessionTTL         = "AUTH_SESSION_TTL"
 )
 
 // Config contains the process-level settings required to start the API.
@@ -70,6 +77,7 @@ type Config struct {
 
 	Provider ProviderConfig
 	Storage  StorageConfig
+	Auth     AuthConfig
 }
 
 // RedisConfig contains non-authoritative temporary-state settings. Redis must
@@ -113,6 +121,15 @@ type S3Config struct {
 	UseSSL           bool
 	ForcePathStyle   bool
 	BucketAutoCreate bool
+}
+
+// AuthConfig contains local account/session bootstrap settings. Secrets must
+// never be logged or serialized into API responses.
+type AuthConfig struct {
+	BootstrapToken       string
+	BootstrapUserID      string
+	BootstrapDisplayName string
+	SessionTTL           time.Duration
 }
 
 // Load reads configuration from the process environment.
@@ -165,6 +182,13 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 				BucketAutoCreate: boolEnvOrDefault(lookup, EnvS3BucketAutoCreate, false),
 			},
 			MaxUploadBytes: int64EnvOrDefault(lookup, EnvMaxUploadBytes, DefaultMaxUploadBytes),
+		},
+
+		Auth: AuthConfig{
+			BootstrapToken:       optionalEnv(lookup, EnvAuthBootstrapToken),
+			BootstrapUserID:      envOrDefault(lookup, EnvAuthBootstrapUserID, DefaultAuthBootstrapUserID),
+			BootstrapDisplayName: envOrDefault(lookup, EnvAuthBootstrapUserName, DefaultAuthBootstrapUserName),
+			SessionTTL:           durationEnvOrDefault(lookup, EnvAuthSessionTTL, DefaultAuthSessionTTL),
 		},
 	}
 }

@@ -54,12 +54,21 @@ func main() {
 	var fileRepo files.Repository
 	var importRepo browserimport.Repository
 	var sessionResolver httpserver.SessionResolver
+	var authService *auth.Service
 	if sqlDB := db.SQL(); sqlDB != nil {
+		authRepo := auth.NewPostgresSessionRepository(sqlDB)
 		chatRepo = chat.NewPostgresRepository(sqlDB)
 		fileRepo = files.NewPostgresRepository(sqlDB)
 		sessionResolver = auth.NewSessionResolver(
-			auth.NewPostgresSessionRepository(sqlDB),
+			authRepo,
 			auth.WithSessionCache(sessionCache),
+		)
+		authService = auth.NewService(
+			authRepo,
+			auth.WithAuthSessionCache(sessionCache),
+			auth.WithBootstrapToken(cfg.Auth.BootstrapToken),
+			auth.WithBootstrapUser(cfg.Auth.BootstrapUserID, cfg.Auth.BootstrapDisplayName),
+			auth.WithSessionTTL(cfg.Auth.SessionTTL),
 		)
 	}
 
@@ -95,6 +104,7 @@ func main() {
 		httpserver.WithRunCancellationStore(runCancellationStore),
 		httpserver.WithRateLimitStore(rateLimitStore),
 		httpserver.WithSessionResolver(sessionResolver),
+		httpserver.WithAuthService(authService),
 		httpserver.WithFileRepository(fileRepo),
 		httpserver.WithObjectStore(objectStore),
 		httpserver.WithMaxUploadBytes(cfg.Storage.MaxUploadBytes),

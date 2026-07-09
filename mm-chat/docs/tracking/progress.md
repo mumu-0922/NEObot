@@ -498,8 +498,8 @@ the UI can call in the next wiring slice.
 
 ## Phase 13 — Auth and Multi-User Hardening
 
-- [ ] Replace fixed development user with real session-aware identity.
-- [ ] Add login/logout/me or chosen auth-provider flow.
+- [x] Replace fixed development user with real session-aware identity.
+- [x] Add login/logout/me or chosen auth-provider flow.
 - [ ] Enforce ownership across conversations, messages, files, imports, and runs.
 - [ ] Verify two-user isolation.
 
@@ -514,6 +514,18 @@ the UI can call in the next wiring slice.
       operations by request context identity instead of fixed struct user IDs.
 - [x] Add targeted tests for auth context, session middleware, and user-scoped
       file object keys.
+
+### Phase 13.2 — Bootstrap auth endpoints
+
+- [x] Add bootstrap-token login service that creates Postgres session rows and
+      returns a raw bearer token once.
+- [x] Add `POST /v1/auth/login`, `POST /v1/auth/logout`, and `GET /v1/me` Go
+      routes.
+- [x] Revoke sessions durably on logout and clear Redis session-cache entries
+      when configured.
+- [x] Add auth environment keys for backend and single-server Compose startup.
+- [x] Add targeted tests for config loading, login, logout, `/v1/me`, and auth
+      route registration.
 
 ## Phase 14 — Production Hardening and Observability
 

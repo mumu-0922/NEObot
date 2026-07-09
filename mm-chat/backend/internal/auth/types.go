@@ -20,6 +20,10 @@ var (
 	ErrSessionNotFound = errors.New("session not found")
 	ErrSessionExpired  = errors.New("session expired")
 	ErrSessionRevoked  = errors.New("session revoked")
+
+	ErrDatabaseRequired  = errors.New("database is required")
+	ErrAuthNotConfigured = errors.New("auth bootstrap token is not configured")
+	ErrInvalidCredential = errors.New("invalid credentials")
 )
 
 // Session is the canonical application view of a Postgres session row joined to
@@ -34,6 +38,17 @@ type Session struct {
 	RevokedAt   *time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+}
+
+type LoginInput struct {
+	Token     string
+	UserAgent string
+}
+
+type LoginResult struct {
+	User      User
+	Token     string
+	ExpiresAt time.Time
 }
 
 type User struct {
