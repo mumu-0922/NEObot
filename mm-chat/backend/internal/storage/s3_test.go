@@ -111,6 +111,24 @@ func TestS3StoreRejectsUnsafeKeysBeforeNetwork(t *testing.T) {
 	}
 }
 
+func TestS3StoreCheckReadyHonorsCancelledContextBeforeNetwork(t *testing.T) {
+	store, err := NewS3Store(S3Config{
+		Endpoint:        "127.0.0.1:1",
+		Bucket:          "bucket",
+		AccessKeyID:     "key",
+		SecretAccessKey: "secret",
+	})
+	if err != nil {
+		t.Fatalf("NewS3Store() error = %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := store.CheckReady(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("CheckReady(cancelled) error = %v, want context.Canceled", err)
+	}
+}
+
 func TestS3StorePutGetDeleteIntegration(t *testing.T) {
 	cfg := s3IntegrationConfig(t)
 	store, err := NewS3Store(cfg)

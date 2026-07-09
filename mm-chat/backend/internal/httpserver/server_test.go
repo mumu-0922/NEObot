@@ -1,9 +1,11 @@
 package httpserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -67,12 +69,113 @@ func TestMiddlewareSetsSecurityHeaders(t *testing.T) {
 	}
 }
 
+func TestMiddlewareSetsAndPropagatesRequestID(t *testing.T) {
+	var contextRequestID string
+	handler := chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		contextRequestID = RequestIDFromContext(r.Context())
+		w.WriteHeader(http.StatusNoContent)
+	}), withRequestID)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/request-id", nil)
+	req.Header.Set(requestIDHeader, "client-request-1")
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNoContent)
+	}
+	if got := rec.Header().Get(requestIDHeader); got != "client-request-1" {
+		t.Fatalf("%s = %q, want client-request-1", requestIDHeader, got)
+	}
+	if contextRequestID != "client-request-1" {
+		t.Fatalf("context request id = %q, want client-request-1", contextRequestID)
+	}
+}
+
+func TestMiddlewareGeneratesRequestIDWhenMissingOrInvalid(t *testing.T) {
+	handler := chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if RequestIDFromContext(r.Context()) == "" {
+			t.Fatal("request id missing from context")
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}), withRequestID)
+	for _, headerValue := range []string{"", "bad request id"} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/request-id", nil)
+		req.Header.Set(requestIDHeader, headerValue)
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusNoContent)
+		}
+		if got := rec.Header().Get(requestIDHeader); got == "" || got == headerValue {
+			t.Fatalf("%s = %q, want generated value", requestIDHeader, got)
+		}
+	}
+}
+
+func TestMiddlewareLogsStructuredRequest(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
+	handler := chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte("created"))
+	}), withRequestID, withRequestLogging(logger))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/example?secret=hidden", nil)
+	req.Header.Set(requestIDHeader, "log-request-1")
+	req.RemoteAddr = "127.0.0.1:12345"
+
+	handler.ServeHTTP(rec, req)
+
+	var entry map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(logs.Bytes()), &entry); err != nil {
+		t.Fatalf("decode structured log: %v; log=%s", err, logs.String())
+	}
+	if entry["msg"] != "http_request" ||
+		entry["request_id"] != "log-request-1" ||
+		entry["method"] != http.MethodPost ||
+		entry["path"] != "/v1/example" {
+		t.Fatalf("structured log = %#v", entry)
+	}
+	if entry["status"] != float64(http.StatusCreated) {
+		t.Fatalf("log status = %#v, want %d", entry["status"], http.StatusCreated)
+	}
+	if strings.Contains(logs.String(), "secret=hidden") {
+		t.Fatalf("structured log includes query string: %s", logs.String())
+	}
+}
+
+func TestRequestLoggingPreservesFlusher(t *testing.T) {
+	flushAvailable := false
+	handler := chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		flushAvailable = ok
+		if ok {
+			flusher.Flush()
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}), withRequestID, withRequestLogging(slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/stream", nil)
+
+	handler.ServeHTTP(rec, req)
+
+	if !flushAvailable {
+		t.Fatal("logging response writer does not preserve http.Flusher")
+	}
+}
+
 func TestMiddlewareRecoversPanicsWithJSON(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 	handler := chain(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-		panic("boom")
-	}), withRecover, withSecurityHeaders)
+		panic("boom-secret")
+	}), withRequestID, withRecover(logger), withSecurityHeaders)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/panic", nil)
+	req.Header.Set(requestIDHeader, "panic-request-1")
 
 	handler.ServeHTTP(rec, req)
 
@@ -89,6 +192,49 @@ func TestMiddlewareRecoversPanicsWithJSON(t *testing.T) {
 	}
 	if body.Error.Code != "INTERNAL_ERROR" {
 		t.Fatalf("error code = %q, want %q", body.Error.Code, "INTERNAL_ERROR")
+	}
+	if !strings.Contains(logs.String(), "panic-request-1") {
+		t.Fatalf("panic log missing request id: %s", logs.String())
+	}
+	if strings.Contains(logs.String(), "boom-secret") {
+		t.Fatalf("panic log leaks panic payload: %s", logs.String())
+	}
+}
+
+func TestMiddlewareChainLogsPanicAndRequestWithRequestID(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
+	handler := chain(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		panic("chain-secret")
+	}), withRequestID, withRequestLogging(logger), withRecover(logger), withSecurityHeaders)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/panic-chain?token=hidden", nil)
+	req.Header.Set(requestIDHeader, "chain-request-1")
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusInternalServerError, rec.Body.String())
+	}
+	if got := rec.Header().Get(requestIDHeader); got != "chain-request-1" {
+		t.Fatalf("%s = %q, want chain-request-1", requestIDHeader, got)
+	}
+
+	entries := decodeJSONLogLines(t, logs.Bytes())
+	if len(entries) != 2 {
+		t.Fatalf("log entries = %#v, want panic and request entries; raw=%s", entries, logs.String())
+	}
+	if entries[0]["msg"] != "http_panic" || entries[0]["request_id"] != "chain-request-1" {
+		t.Fatalf("panic log = %#v", entries[0])
+	}
+	if entries[1]["msg"] != "http_request" ||
+		entries[1]["request_id"] != "chain-request-1" ||
+		entries[1]["status"] != float64(http.StatusInternalServerError) ||
+		entries[1]["path"] != "/panic-chain" {
+		t.Fatalf("request log = %#v", entries[1])
+	}
+	if strings.Contains(logs.String(), "chain-secret") || strings.Contains(logs.String(), "token=hidden") {
+		t.Fatalf("chain logs leak secret payload or query: %s", logs.String())
 	}
 }
 
@@ -557,6 +703,23 @@ type fakeRateLimitStore struct {
 
 func newFakeRateLimitStore() *fakeRateLimitStore {
 	return &fakeRateLimitStore{counts: map[string]int{}}
+}
+
+func decodeJSONLogLines(t *testing.T, payload []byte) []map[string]any {
+	t.Helper()
+	lines := bytes.Split(bytes.TrimSpace(payload), []byte("\n"))
+	entries := make([]map[string]any, 0, len(lines))
+	for _, line := range lines {
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal(line, &entry); err != nil {
+			t.Fatalf("decode log line %q: %v", line, err)
+		}
+		entries = append(entries, entry)
+	}
+	return entries
 }
 
 func (s *fakeRateLimitStore) Allow(

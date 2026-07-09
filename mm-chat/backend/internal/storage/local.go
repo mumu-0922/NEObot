@@ -39,6 +39,24 @@ func NewLocalStore(root string) (*LocalStore, error) {
 	return &LocalStore{root: absRoot}, nil
 }
 
+func (s *LocalStore) CheckReady(ctx context.Context) error {
+	if s == nil || s.root == "" {
+		return errors.New("local store is not initialized")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	stat, err := os.Stat(s.root)
+	if err != nil {
+		return fmt.Errorf("stat local storage root: %w", err)
+	}
+	if !stat.IsDir() {
+		return errors.New("local storage root is not a directory")
+	}
+
+	return nil
+}
+
 func (s *LocalStore) Put(
 	ctx context.Context,
 	key string,

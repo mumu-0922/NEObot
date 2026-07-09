@@ -35,6 +35,13 @@ curl -fsS http://127.0.0.1:8080/ready
 curl -fsS http://127.0.0.1:8080/v1/version
 ```
 
+For a full single-server release, inspect `/ready` and require configured
+dependency checks to be `ready`:
+
+```bash
+curl -fsS http://127.0.0.1:8080/ready | jq '.status, .checks'
+```
+
 ## Rollback Decision Tree
 
 - **API image bad, schema compatible**: checkout previous commit, rebuild, restart `backend`.

@@ -55,6 +55,47 @@ func TestNewRedisStateRejectsEnabledRateLimitWithoutRedisURL(t *testing.T) {
 	}
 }
 
+func TestRedactSensitiveLogText(t *testing.T) {
+	input := strings.Join([]string{
+		"postgres://neo_chat:super-secret@postgres:5432/neo_chat?sslmode=disable",
+		"postgres://standalone-token@postgres:5432/neo_chat",
+		"postgres://neo_chat:p@ss@postgres:5432/neo_chat",
+		"postgres://neo_chat:slash/secret@postgres:5432/neo_chat",
+		"redis://:redis-secret@redis:6379/0",
+		"password=plain-secret",
+		"api_key=provider-secret",
+		"S3_SECRET_ACCESS_KEY=minio-secret",
+		"secret_access_key=snake-secret",
+		"Authorization=Bearer-token",
+		"Authorization: Bearer header-secret-token",
+		"Authorization=Bearer assignment-secret-token",
+		"Bearer raw-bearer-token",
+	}, " ")
+
+	got := redactSensitiveLogText(input)
+	for _, secret := range []string{
+		"super-secret",
+		"redis-secret",
+		"plain-secret",
+		"provider-secret",
+		"minio-secret",
+		"snake-secret",
+		"standalone-token",
+		"p@ss",
+		"slash/secret",
+		"header-secret-token",
+		"assignment-secret-token",
+		"raw-bearer-token",
+	} {
+		if strings.Contains(got, secret) {
+			t.Fatalf("redacted text still contains %q: %s", secret, got)
+		}
+	}
+	if !strings.Contains(got, "[redacted]") {
+		t.Fatalf("redacted text = %q, want redaction marker", got)
+	}
+}
+
 func TestNewObjectStoreCreatesLocalStoreByDefault(t *testing.T) {
 	store, err := newObjectStore(config.Config{
 		Storage: config.StorageConfig{

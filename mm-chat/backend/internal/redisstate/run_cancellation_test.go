@@ -64,6 +64,13 @@ func TestOpenReturnsNilWhenRedisURLIsEmpty(t *testing.T) {
 	}
 }
 
+func TestNilClientCheckReadyIsReady(t *testing.T) {
+	var client *Client
+	if err := client.CheckReady(context.Background()); err != nil {
+		t.Fatalf("CheckReady() error = %v", err)
+	}
+}
+
 func TestOpenRejectsInvalidURLWithoutLeakingSecret(t *testing.T) {
 	secret := "top-secret-redis-password"
 	_, err := Open(context.Background(), config.RedisConfig{

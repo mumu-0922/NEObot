@@ -7,14 +7,14 @@ run explicitly by operators.
 
 ## Documents
 
-| Guide | Purpose |
-| --- | --- |
-| [`single-server-compose.md`](./single-server-compose.md) | Phase 10 Docker Compose topology, first boot, reverse proxy boundary, release, and rollback checklist. |
-| [`postgres-single-server.md`](./postgres-single-server.md) | Phase 4/4.5 single-server Postgres container plan covering private ports, data directories, env draft, DB-aware health checks, migration execution, backup/restore, and rollback. |
-| [`redis-temporary-state.md`](./redis-temporary-state.md) | Phase 7 Redis runbook for non-authoritative temporary state, stream cancellation flags, private-network rules, and flush behavior. |
-| [`backup-restore.md`](./backup-restore.md) | Backup scripts, checksum verification, Postgres restore drill, MinIO restore drill, retention, and destructive-restore warnings. |
-| [`release-rollback.md`](./release-rollback.md) | Compact release and rollback runbook for image deploys, migrations, and failed releases. |
-| [`../persistence/runtime-wiring.md`](../persistence/runtime-wiring.md) | Phase 4.5 backend DB env, pgx connector behavior, readiness matrix, migration CLI flow, and rollback boundaries. |
+| Guide                                                                  | Purpose                                                                                                                                                                           |
+| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`single-server-compose.md`](./single-server-compose.md)               | Phase 10 Docker Compose topology, first boot, reverse proxy boundary, release, and rollback checklist.                                                                            |
+| [`postgres-single-server.md`](./postgres-single-server.md)             | Phase 4/4.5 single-server Postgres container plan covering private ports, data directories, env draft, DB-aware health checks, migration execution, backup/restore, and rollback. |
+| [`redis-temporary-state.md`](./redis-temporary-state.md)               | Phase 7 Redis runbook for non-authoritative temporary state, stream cancellation flags, private-network rules, and flush behavior.                                                |
+| [`backup-restore.md`](./backup-restore.md)                             | Backup scripts, checksum verification, Postgres restore drill, MinIO restore drill, retention, and destructive-restore warnings.                                                  |
+| [`release-rollback.md`](./release-rollback.md)                         | Compact release and rollback runbook for image deploys, migrations, and failed releases.                                                                                          |
+| [`../persistence/runtime-wiring.md`](../persistence/runtime-wiring.md) | Phase 4.5 backend DB env, pgx connector behavior, readiness matrix, migration CLI flow, and rollback boundaries.                                                                  |
 
 ## Current Boundary
 
@@ -26,12 +26,13 @@ run explicitly by operators.
   gateway. Runtime config uses `STORAGE_BACKEND=minio|s3` plus `S3_*`
   variables; do not use stale `OBJECTSTORE_DRIVER` / `FILE_MAX_BYTES` names.
 - MVP is `frontend -> Go backend -> Postgres -> provider stream`. Redis is now
-  available only for non-authoritative session-cache snapshots, temporary
-  cancellation flags, and HTTP rate-limit counters; runtime auth endpoints and
-  RAG remain later phases.
-- Phase 4.5 runtime wiring keeps `DATABASE_URL` empty mode DB-disabled with
-  `/ready` returning `200`; when `DATABASE_URL` is set, startup and `/ready`
-  ping Postgres and readiness returns `503` on DB ping failure.
+  available for non-authoritative session-cache snapshots, temporary
+  cancellation flags, HTTP rate-limit counters, and optional auth cache.
+  Runtime auth endpoints are implemented; RAG remains a later phase.
+- Phase 14 runtime readiness keeps disabled dependencies out of `/ready`. When
+  configured, `/ready` checks Postgres, Redis, and storage with additive
+  `checks` detail and returns `503` with `status=not_ready` if any configured
+  dependency fails. Readiness checks must not run migrations or create buckets.
 - API startup must not auto-run migrations; operators run the `migrate` service
   or `mm-chat-migrate` before starting or restarting a DB-enabled backend
   release.

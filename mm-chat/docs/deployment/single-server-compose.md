@@ -31,15 +31,15 @@ secret file.
 
 ## Services and Profiles
 
-| Service | Profile | Purpose | Public exposure |
-| --- | --- | --- | --- |
-| `postgres` | default | Canonical data store for users, sessions, chat, files metadata, imports. | None |
-| `redis` | default | Non-authoritative temporary state: rate limit, session cache, cancellation. | None |
-| `minio` | default | Private object bytes for uploaded/imported files. | None |
-| `minio-init` | default | Creates bucket and least-privilege app user/policy. | None |
-| `migrate` | `ops` | One-shot `mm-chat-migrate up`; never auto-runs on API boot. | None |
-| `backend` | `app` | Go API on `127.0.0.1:8080` for reverse proxy or local smoke tests. | Localhost only |
-| `minio-client` | `ops` | Utility container for backup/restore scripts. | None |
+| Service        | Profile | Purpose                                                                     | Public exposure |
+| -------------- | ------- | --------------------------------------------------------------------------- | --------------- |
+| `postgres`     | default | Canonical data store for users, sessions, chat, files metadata, imports.    | None            |
+| `redis`        | default | Non-authoritative temporary state: rate limit, session cache, cancellation. | None            |
+| `minio`        | default | Private object bytes for uploaded/imported files.                           | None            |
+| `minio-init`   | default | Creates bucket and least-privilege app user/policy.                         | None            |
+| `migrate`      | `ops`   | One-shot `mm-chat-migrate up`; never auto-runs on API boot.                 | None            |
+| `backend`      | `app`   | Go API on `127.0.0.1:8080` for reverse proxy or local smoke tests.          | Localhost only  |
+| `minio-client` | `ops`   | Utility container for backup/restore scripts.                               | None            |
 
 No database, Redis, or MinIO port is published. The backend binds to localhost
 only so a host-level reverse proxy can expose `/api` without opening data
@@ -77,6 +77,12 @@ curl -fsS http://127.0.0.1:8080/ready
 curl -fsS http://127.0.0.1:8080/v1/version
 ```
 
+`/ready` is additive: a healthy single-server stack should return
+`{"status":"ready"}` plus `checks` entries for configured dependencies such as
+`database`, `redis`, and `storage`. A dependency outage returns `503` with
+`status=not_ready`; the response intentionally does not expose raw connection
+errors or secrets.
+
 ## Reverse Proxy Boundary
 
 Terminate TLS outside this stack (Nginx, Caddy, Traefik, or a cloud load
@@ -113,7 +119,8 @@ tunnel/VPN to the Docker network or host.
    ```bash
    docker compose --env-file .env.single-server -f compose.single-server.yml --profile app up -d backend
    ```
-6. Verify `/health`, `/ready`, `/v1/version`, chat CRUD, streaming, upload, and browser import smoke paths.
+6. Verify `/health`, `/ready` including configured dependency checks,
+   `/v1/version`, chat CRUD, streaming, upload, and browser import smoke paths.
 
 ## Rollback Checklist
 

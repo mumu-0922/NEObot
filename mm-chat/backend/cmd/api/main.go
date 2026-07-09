@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -32,14 +33,23 @@ const (
 	shutdownTimeout     = 10 * time.Second
 )
 
+var (
+	sensitiveURLUserInfoRE = regexp.MustCompile(`(?i)([a-z][a-z0-9+.-]*://)[^\s]*@`)
+	sensitiveAssignmentRE  = regexp.MustCompile(`(?i)([A-Za-z0-9_.-]*(?:api[_-]?key|authorization|password|secret|token)[A-Za-z0-9_.-]*\s*[=:]\s*)([^\s&]+)`)
+	bearerTokenRE          = regexp.MustCompile(`(?i)bearer\s+[A-Za-z0-9._~+/=-]+`)
+)
+
 func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
 	cfg := config.Load()
 
 	openCtx, openCancel := context.WithTimeout(context.Background(), databaseOpenTimeout)
 	db, err := database.Open(openCtx, cfg)
 	openCancel()
 	if err != nil {
-		log.Fatalf("mm-chat database open failed: %v", err)
+		logger.Error("database_open_failed", slog.String("error", redactSensitiveLogText(err.Error())))
+		os.Exit(1)
 	}
 
 	redisCtx, redisCancel := context.WithTimeout(context.Background(), redisOpenTimeout)
@@ -47,7 +57,8 @@ func main() {
 	redisCancel()
 	if err != nil {
 		_ = db.Close()
-		log.Fatalf("mm-chat redis open failed: %v", err)
+		logger.Error("redis_open_failed", slog.String("error", redactSensitiveLogText(err.Error())))
+		os.Exit(1)
 	}
 
 	var chatRepo chat.Repository
@@ -76,17 +87,19 @@ func main() {
 	if err != nil {
 		_ = redisClient.Close()
 		_ = db.Close()
-		log.Fatalf("mm-chat provider config failed: %v", err)
+		logger.Error("provider_config_failed", slog.String("error", redactSensitiveLogText(err.Error())))
+		os.Exit(1)
 	}
 	if chatProvider == nil && strings.TrimSpace(cfg.Provider.Type) != "" {
-		log.Printf("mm-chat provider disabled: %s requires PROVIDER_BASE_URL, PROVIDER_MODEL, and PROVIDER_API_KEY", cfg.Provider.Type)
+		logger.Warn("provider_disabled", slog.String("provider_type", cfg.Provider.Type))
 	}
 
 	objectStore, err := newObjectStore(cfg)
 	if err != nil {
 		_ = redisClient.Close()
 		_ = db.Close()
-		log.Fatalf("mm-chat storage config failed: %v", err)
+		logger.Error("storage_config_failed", slog.String("error", redactSensitiveLogText(err.Error())))
+		os.Exit(1)
 	}
 	if sqlDB := db.SQL(); sqlDB != nil {
 		importRepo = browserimport.NewPostgresRepository(
@@ -96,9 +109,7 @@ func main() {
 		)
 	}
 
-	server := httpserver.New(
-		cfg,
-		httpserver.WithReadyChecker(db),
+	serverOptions := []httpserver.Option{
 		httpserver.WithChatRepository(chatRepo),
 		httpserver.WithChatProvider(chatProvider),
 		httpserver.WithRunCancellationStore(runCancellationStore),
@@ -110,11 +121,25 @@ func main() {
 		httpserver.WithMaxUploadBytes(cfg.Storage.MaxUploadBytes),
 		httpserver.WithBrowserImportRepository(importRepo),
 		httpserver.WithMaxImportBytes(cfg.Storage.MaxUploadBytes),
-	)
+		httpserver.WithLogger(logger),
+	}
+	if db.SQL() != nil {
+		serverOptions = append(serverOptions, httpserver.WithReadyCheck("database", db))
+	}
+	if redisClient != nil {
+		serverOptions = append(serverOptions, httpserver.WithReadyCheck("redis", redisClient))
+	}
+	if checker, ok := objectStore.(interface {
+		CheckReady(context.Context) error
+	}); ok {
+		serverOptions = append(serverOptions, httpserver.WithReadyCheck("storage", checker))
+	}
+
+	server := httpserver.New(cfg, serverOptions...)
 
 	errorsCh := make(chan error, 1)
 	go func() {
-		log.Printf("mm-chat api listening on %s version=%s", cfg.Addr, cfg.Version)
+		logger.Info("api_listening", slog.String("addr", cfg.Addr), slog.String("version", cfg.Version))
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errorsCh <- err
 		}
@@ -127,9 +152,10 @@ func main() {
 	case err := <-errorsCh:
 		_ = redisClient.Close()
 		_ = db.Close()
-		log.Fatalf("mm-chat api failed: %v", err)
+		logger.Error("api_failed", slog.String("error", redactSensitiveLogText(err.Error())))
+		os.Exit(1)
 	case sig := <-stopCh:
-		log.Printf("mm-chat api shutting down: signal=%s", sig)
+		logger.Info("api_shutting_down", slog.String("signal", sig.String()))
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
@@ -138,14 +164,22 @@ func main() {
 	if err := server.Shutdown(ctx); err != nil {
 		_ = redisClient.Close()
 		_ = db.Close()
-		log.Fatalf("mm-chat api shutdown failed: %v", err)
+		logger.Error("api_shutdown_failed", slog.String("error", redactSensitiveLogText(err.Error())))
+		os.Exit(1)
 	}
 	if err := redisClient.Close(); err != nil {
-		log.Printf("mm-chat redis close failed: %v", err)
+		logger.Warn("redis_close_failed", slog.String("error", redactSensitiveLogText(err.Error())))
 	}
 	if err := db.Close(); err != nil {
-		log.Printf("mm-chat database close failed: %v", err)
+		logger.Warn("database_close_failed", slog.String("error", redactSensitiveLogText(err.Error())))
 	}
+}
+
+func redactSensitiveLogText(value string) string {
+	value = sensitiveURLUserInfoRE.ReplaceAllString(value, "${1}[redacted]@")
+	value = bearerTokenRE.ReplaceAllString(value, "Bearer [redacted]")
+	value = sensitiveAssignmentRE.ReplaceAllString(value, "$1[redacted]")
+	return value
 }
 
 func newRedisState(

@@ -51,7 +51,7 @@ func TestReadyReturnsReadyJSONWhenDatabaseReady(t *testing.T) {
 
 	assertStatus(t, rec, http.StatusOK)
 	assertJSONContentType(t, rec)
-	assertJSONBody(t, rec, map[string]string{"status": "ready"})
+	assertReadyBody(t, rec, "ready", map[string]string{"database": "ready"}, "")
 }
 
 func TestReadyReturnsUnavailableWhenDatabaseFails(t *testing.T) {
@@ -63,13 +63,84 @@ func TestReadyReturnsUnavailableWhenDatabaseFails(t *testing.T) {
 
 	assertStatus(t, rec, http.StatusServiceUnavailable)
 	assertJSONContentType(t, rec)
+	assertReadyBody(t, rec, "not_ready", map[string]string{"database": "not_ready"}, "DEPENDENCY_NOT_READY")
+}
 
-	var body ErrorResponse
-	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-		t.Fatalf("decode error response: %v", err)
+func TestReadyReportsMultipleNamedChecksWithoutLeakingErrors(t *testing.T) {
+	h := NewWithChecks(
+		"test-version",
+		Check{Name: "database", Checker: fakeReadyChecker{}},
+		Check{Name: "redis", Checker: fakeReadyChecker{err: errors.New("redis password leaked if exposed")}},
+		Check{Name: "object storage", Checker: fakeReadyChecker{}},
+	)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+
+	h.Ready(rec, req)
+
+	assertStatus(t, rec, http.StatusServiceUnavailable)
+	assertJSONContentType(t, rec)
+	assertReadyBody(t, rec, "not_ready", map[string]string{
+		"database":       "ready",
+		"redis":          "not_ready",
+		"object-storage": "ready",
+	}, "DEPENDENCY_NOT_READY")
+	if strings.Contains(rec.Body.String(), "password") {
+		t.Fatalf("ready response leaks dependency error: %s", rec.Body.String())
 	}
-	if body.Error.Code != "DATABASE_NOT_READY" {
-		t.Fatalf("error code = %q, want %q", body.Error.Code, "DATABASE_NOT_READY")
+}
+
+func TestReadyNormalizesDuplicateCheckNames(t *testing.T) {
+	h := NewWithChecks(
+		"test-version",
+		Check{Name: "Storage", Checker: fakeReadyChecker{}},
+		Check{Name: "storage", Checker: fakeReadyChecker{}},
+	)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+
+	h.Ready(rec, req)
+
+	assertStatus(t, rec, http.StatusOK)
+	assertReadyBody(t, rec, "ready", map[string]string{
+		"storage":   "ready",
+		"storage-2": "ready",
+	}, "")
+}
+
+func assertReadyBody(t *testing.T, rec *httptest.ResponseRecorder, status string, checks map[string]string, errorCode string) {
+	t.Helper()
+
+	var body StatusResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode ready response: %v", err)
+	}
+	if body.Status != status {
+		t.Fatalf("status body = %q, want %q; body=%#v", body.Status, status, body)
+	}
+	for name, want := range checks {
+		got, ok := body.Checks[name]
+		if !ok {
+			t.Fatalf("checks[%q] missing; checks=%#v", name, body.Checks)
+		}
+		if got.Status != want {
+			t.Fatalf("checks[%q].status = %q, want %q", name, got.Status, want)
+		}
+	}
+	if len(body.Checks) != len(checks) {
+		t.Fatalf("checks = %#v, want keys %#v", body.Checks, checks)
+	}
+	if errorCode == "" {
+		if body.Error != nil {
+			t.Fatalf("error = %#v, want nil", body.Error)
+		}
+		return
+	}
+	if body.Error == nil {
+		t.Fatalf("error = nil, want code %s", errorCode)
+	}
+	if body.Error.Code != errorCode {
+		t.Fatalf("error code = %q, want %q", body.Error.Code, errorCode)
 	}
 }
 

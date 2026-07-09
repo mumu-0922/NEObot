@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -36,7 +37,8 @@ type SessionResolver interface {
 }
 
 type options struct {
-	readyChecker         health.ReadinessChecker
+	readyChecks          []health.Check
+	logger               *slog.Logger
 	chatRepository       chat.Repository
 	chatProvider         chat.Provider
 	runCancellationStore chat.RunCancellationStore
@@ -52,7 +54,19 @@ type options struct {
 
 func WithReadyChecker(checker health.ReadinessChecker) Option {
 	return func(opts *options) {
-		opts.readyChecker = checker
+		opts.readyChecks = append(opts.readyChecks, health.Check{Name: "database", Checker: checker})
+	}
+}
+
+func WithReadyCheck(name string, checker health.ReadinessChecker) Option {
+	return func(opts *options) {
+		opts.readyChecks = append(opts.readyChecks, health.Check{Name: name, Checker: checker})
+	}
+}
+
+func WithLogger(logger *slog.Logger) Option {
+	return func(opts *options) {
+		opts.logger = logger
 	}
 }
 
@@ -132,8 +146,12 @@ func New(cfg config.Config, opts ...Option) *http.Server {
 
 func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	resolvedOptions := resolveOptions(opts...)
+	logger := resolvedOptions.logger
+	if logger == nil {
+		logger = slog.Default()
+	}
 	mux := http.NewServeMux()
-	healthHandler := health.New(cfg.Version, resolvedOptions.readyChecker)
+	healthHandler := health.NewWithChecks(cfg.Version, resolvedOptions.readyChecks...)
 	authHandler := auth.NewHandler(resolvedOptions.authService)
 	chatHandler := chat.NewHandler(
 		chat.NewService(resolvedOptions.chatRepository),
@@ -171,7 +189,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/import/browser/", importHandler)
 	mux.HandleFunc("/", notFound)
 
-	middlewares := []Middleware{withRecover, withSecurityHeaders}
+	middlewares := []Middleware{withRequestID, withRequestLogging(logger), withRecover(logger), withSecurityHeaders}
 	authRequired := cfg.Auth.RequireAuth()
 	if resolvedOptions.sessionResolver != nil || authRequired {
 		middlewares = append(middlewares, withSessionIdentity(resolvedOptions.sessionResolver, authRequired))

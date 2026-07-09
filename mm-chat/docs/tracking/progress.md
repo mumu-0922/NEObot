@@ -552,8 +552,9 @@ the UI can call in the next wiring slice.
 
 ## Phase 14 — Production Hardening and Observability
 
-- [ ] Add structured logs and request IDs.
-- [ ] Add metrics/health visibility for API, DB, Redis, and MinIO.
+- [x] Add structured logs and request IDs.
+- [x] Add health visibility for API, DB, Redis, and storage readiness.
+- [ ] Add metrics visibility for API, DB, Redis, and MinIO.
 - [ ] Run documented backup and restore drill.
 - [ ] Add reverse proxy/TLS production notes.
 - [ ] Add secret rotation notes.

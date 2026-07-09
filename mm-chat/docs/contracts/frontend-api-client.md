@@ -1448,7 +1448,9 @@ Operational rollback smoke:
 
 - `mm-chat` Go backend is running with Postgres migrations applied.
 - `/health` returns `200 {"status":"healthy"}`.
-- `/ready` returns `200 {"status":"ready"}`.
+- `/ready` returns `200 {"status":"ready"}`. Server deployments may include
+  additive `checks` detail, for example `database`, `redis`, and `storage`;
+  every returned check should have `{"status":"ready"}` before browser smoke.
 - `/v1/version` returns `200` with a version string.
 - `GET /v1/chat/conversations` returns `200` and an `{ items: [] }` page or
   existing conversations.

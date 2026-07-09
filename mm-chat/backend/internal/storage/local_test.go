@@ -53,6 +53,21 @@ func TestLocalStorePutGetDelete(t *testing.T) {
 	}
 }
 
+func TestLocalStoreCheckReady(t *testing.T) {
+	store, err := NewLocalStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewLocalStore() error = %v", err)
+	}
+	if err := store.CheckReady(context.Background()); err != nil {
+		t.Fatalf("CheckReady() error = %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := store.CheckReady(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("CheckReady(cancelled) error = %v, want context.Canceled", err)
+	}
+}
+
 func TestLocalStoreRejectsUnsafeKeys(t *testing.T) {
 	store, err := NewLocalStore(t.TempDir())
 	if err != nil {

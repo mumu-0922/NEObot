@@ -28,12 +28,12 @@ Out of scope:
 
 ## 2. Environment Variables
 
-| Variable | Required | Meaning |
-| --- | --- | --- |
-| `DATABASE_URL` | No | Postgres connection string. Empty means DB disabled mode. Non-empty enables DB startup ping and DB-aware readiness. |
-| `DB_MAX_OPEN_CONNS` | No | Maximum open DB connections. Backend default is code-defined when unset. |
-| `DB_MAX_IDLE_CONNS` | No | Maximum idle DB connections. Backend default is code-defined when unset. |
-| `DB_CONN_MAX_LIFETIME` | No | Maximum connection lifetime as a Go duration such as `30m`. Backend default is code-defined when unset. |
+| Variable               | Required | Meaning                                                                                                             |
+| ---------------------- | -------- | ------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`         | No       | Postgres connection string. Empty means DB disabled mode. Non-empty enables DB startup ping and DB-aware readiness. |
+| `DB_MAX_OPEN_CONNS`    | No       | Maximum open DB connections. Backend default is code-defined when unset.                                            |
+| `DB_MAX_IDLE_CONNS`    | No       | Maximum idle DB connections. Backend default is code-defined when unset.                                            |
+| `DB_CONN_MAX_LIFETIME` | No       | Maximum connection lifetime as a Go duration such as `30m`. Backend default is code-defined when unset.             |
 
 Rules:
 
@@ -68,16 +68,37 @@ Rules:
 
 ## 4. Readiness Matrix
 
-| Runtime state | Startup expectation | `/health` | `/ready` |
-| --- | --- | --- | --- |
-| `DATABASE_URL` empty | Start without DB connector. | `200` if process is alive. | `200`; DB is intentionally disabled. |
-| `DATABASE_URL` set and startup ping succeeds | Start with DB connector. | `200` if process is alive. | `200` while DB ping succeeds. |
-| `DATABASE_URL` set and startup ping fails | Fail fast before serving HTTP. | Not served. | Not served. |
-| `DATABASE_URL` set, startup passed, DB later fails | Keep process observable. | `200` if process is alive. | `503` until DB ping recovers. |
+| Runtime state                                      | Startup expectation            | `/health`                  | `/ready`                             |
+| -------------------------------------------------- | ------------------------------ | -------------------------- | ------------------------------------ |
+| `DATABASE_URL` empty                               | Start without DB connector.    | `200` if process is alive. | `200`; DB is intentionally disabled. |
+| `DATABASE_URL` set and startup ping succeeds       | Start with DB connector.       | `200` if process is alive. | `200` while DB ping succeeds.        |
+| `DATABASE_URL` set and startup ping fails          | Fail fast before serving HTTP. | Not served.                | Not served.                          |
+| `DATABASE_URL` set, startup passed, DB later fails | Keep process observable.       | `200` if process is alive. | `503` until DB ping recovers.        |
 
 Phase 4.5 readiness is connectivity-oriented. It should not run migrations and
 should not mutate schema. If a later phase adds schema-version readiness, that
 must be documented as a separate readiness gate.
+
+### Phase 14 Readiness Extension
+
+The Go API now reports configured dependency checks as additive JSON detail:
+
+```json
+{
+  "status": "ready",
+  "checks": {
+    "database": { "status": "ready" },
+    "redis": { "status": "ready" },
+    "storage": { "status": "ready" }
+  }
+}
+```
+
+Only configured dependencies appear. If Redis is disabled or storage is local,
+the check set reflects the runtime wiring that actually exists. Failed checks
+return `503` with `status=not_ready` and `DEPENDENCY_NOT_READY`; raw dependency
+errors are not exposed in the HTTP body; `/ready` reports only per-check
+`ready`/`not_ready` state.
 
 ## 5. Migration CLI Flow
 

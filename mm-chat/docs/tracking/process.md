@@ -4621,3 +4621,114 @@ follow-up review agent
 
 Next: Phase 14 should start production hardening and observability unless a
 browser-level auth/session UI slice is pulled forward first.
+
+## 2026-07-09 — Phase 14.1 request IDs, structured logs, and readiness detail
+
+Action: added the first production observability slice for the Go backend. This
+keeps the frontend unchanged and only hardens the server boundary.
+
+Files:
+
+```text
+mm-chat/backend/cmd/api/main.go
+mm-chat/backend/cmd/api/main_test.go
+mm-chat/backend/internal/health/handler.go
+mm-chat/backend/internal/health/handler_test.go
+mm-chat/backend/internal/httpserver/middleware.go
+mm-chat/backend/internal/httpserver/observability.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/httpserver/server_test.go
+mm-chat/backend/internal/redisstate/client.go
+mm-chat/backend/internal/redisstate/run_cancellation_test.go
+mm-chat/backend/internal/storage/local.go
+mm-chat/backend/internal/storage/local_test.go
+mm-chat/backend/internal/storage/s3.go
+mm-chat/backend/internal/storage/s3_test.go
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/deployment/README.md
+mm-chat/docs/deployment/release-rollback.md
+mm-chat/docs/deployment/single-server-compose.md
+mm-chat/docs/persistence/runtime-wiring.md
+mm-chat/docs/tracking/process.md
+mm-chat/docs/tracking/progress.md
+```
+
+Runtime contract:
+
+```text
+Every request:
+  -> accepts a clean incoming X-Request-Id or generates one
+  -> returns X-Request-Id in the response
+  -> stores request_id in context
+  -> emits a structured JSON http_request log with method, path, status, bytes,
+     duration_ms, remote_addr, and user_agent
+  -> does not log URL query strings, request bodies, Authorization headers, or
+     provider secrets
+  -> redacts URL userinfo, assignment values whose key names contain
+     password/secret/token/api_key/authorization, and Bearer tokens before
+     writing startup/lifecycle error strings
+
+Panic recovery:
+  -> emits structured http_panic log with request_id and panic type only
+  -> returns 500 INTERNAL_ERROR without leaking panic details to the client or
+     raw panic payload to logs
+
+/ready:
+  -> no configured checks: 200 {"status":"ready"}
+  -> configured checks ready: 200 with checks.<name>.status="ready"
+  -> any configured check fails: 503 status=not_ready and DEPENDENCY_NOT_READY
+  -> raw DB/Redis/S3 errors are not exposed in the HTTP body
+  -> readiness checks must not run migrations or create S3/MinIO buckets
+```
+
+Readiness wiring:
+
+```text
+database -> database.DB.CheckReady -> PingContext, only when DATABASE_URL enabled
+redis    -> redisstate.Client.CheckReady -> PING, only when REDIS_URL enabled
+storage  -> LocalStore.CheckReady or S3Store.CheckReady, when the store supports it
+```
+
+Review/scout notes addressed:
+
+```text
+- Added JSON slog default in cmd/api so request logs and lifecycle logs are
+  structured in production.
+- Added startup/lifecycle error-string redaction for URL userinfo,
+  assignment values whose key names contain password/secret/token/api_key or
+  authorization, and Bearer tokens.
+- Addressed review findings by covering S3_SECRET_ACCESS_KEY-style names,
+  token-only URL userinfo, malformed URL userinfo, Authorization Bearer header
+  shapes, and a full-chain panic test that emits both http_panic and
+  http_request logs with the same request_id.
+- Kept ObjectStore as Put/Get/Delete only; storage readiness uses an optional
+  CheckReady type assertion so file storage semantics do not widen.
+- Documented /ready checks as additive detail so old health consumers can keep
+  reading only status.
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && go test ./... && go vet ./...
+  passed
+
+corepack pnpm exec prettier --check \
+  mm-chat/docs/contracts/frontend-api-client.md \
+  mm-chat/docs/deployment/README.md \
+  mm-chat/docs/deployment/release-rollback.md \
+  mm-chat/docs/deployment/single-server-compose.md \
+  mm-chat/docs/persistence/runtime-wiring.md \
+  mm-chat/docs/tracking/process.md \
+  mm-chat/docs/tracking/progress.md
+  passed
+
+git diff --check -- <Phase 14.1 target files>
+  passed
+
+targeted secret-pattern scan
+  no real secrets found; hits are docs references to secret env names only
+```
+
+Next: Phase 14.2 should add metrics visibility or run the documented backup and
+restore drill.

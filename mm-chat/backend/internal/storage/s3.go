@@ -98,6 +98,25 @@ func (s *S3Store) EnsureBucket(ctx context.Context) error {
 	return nil
 }
 
+func (s *S3Store) CheckReady(ctx context.Context) error {
+	if err := s.requireReady(); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	exists, err := s.client.BucketExists(ctx, s.bucket)
+	if err != nil {
+		return fmt.Errorf("check s3 bucket: %w", err)
+	}
+	if !exists {
+		return errors.New("s3 bucket is not ready")
+	}
+
+	return nil
+}
+
 func (s *S3Store) Put(
 	ctx context.Context,
 	key string,

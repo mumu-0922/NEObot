@@ -57,6 +57,10 @@ func (c *Client) Ping(ctx context.Context) error {
 	return c.rdb.Ping(ctx).Err()
 }
 
+func (c *Client) CheckReady(ctx context.Context) error {
+	return c.Ping(ctx)
+}
+
 func (c *Client) RunCancellationStore(ttl time.Duration) *RunCancellationStore {
 	if c == nil || c.rdb == nil {
 		return nil
