@@ -124,6 +124,8 @@ elif [[ -z "${COMPOSE_PROFILES:-}" ]]; then
 fi
 
 docker compose "${compose_args[@]}" "${profile_args[@]}" run --rm -T \
+  --user "$(id -u):$(id -g)" \
+  -e HOME=/tmp \
   --entrypoint /bin/sh \
   -v "$staging_dir:/backup-target" \
   minio-client -euc '

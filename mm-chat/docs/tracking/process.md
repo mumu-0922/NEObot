@@ -4732,3 +4732,140 @@ targeted secret-pattern scan
 
 Next: Phase 14.2 should add metrics visibility or run the documented backup and
 restore drill.
+
+## 2026-07-09 — Phase 14.2 backup and restore drill
+
+Action: ran the documented Postgres plus MinIO backup/restore drill against the
+local single-server Docker Compose stack without restoring into production DB or
+production bucket.
+
+Files changed:
+
+```text
+mm-chat/scripts/backup-minio.sh
+mm-chat/docs/deployment/backup-restore.md
+mm-chat/docs/tracking/process.md
+mm-chat/docs/tracking/progress.md
+```
+
+Script fix:
+
+```text
+backup-minio.sh now runs the minio-client backup container as the invoking host
+UID/GID and sets HOME=/tmp. This prevents root-owned files in the host staging
+directory and lets the cleanup trap remove `.staging-*` reliably.
+```
+
+Backup artifacts used for the drill:
+
+```text
+/tmp/mm-chat-phase14-drill-rerun-20260709T100235Z-85834/postgres/postgres-20260709T100246Z.dump
+/tmp/mm-chat-phase14-drill-rerun-20260709T100235Z-85834/postgres/postgres-20260709T100246Z.dump.sha256
+/tmp/mm-chat-phase14-drill-rerun-20260709T100235Z-85834/minio/minio-20260709T100235Z.tar.gz
+/tmp/mm-chat-phase14-drill-rerun-20260709T100235Z-85834/minio/minio-20260709T100235Z.tar.gz.sha256
+```
+
+Commands executed, with only placeholder Compose interpolation values shown:
+
+```bash
+AUTH_BOOTSTRAP_TOKEN=drill-placeholder \
+BACKUP_DIR=/tmp/mm-chat-phase14-drill-rerun-20260709T100235Z-85834 \
+./mm-chat/scripts/backup-minio.sh
+
+AUTH_BOOTSTRAP_TOKEN=drill-placeholder \
+BACKUP_DIR=/tmp/mm-chat-phase14-drill-rerun-20260709T100235Z-85834 \
+./mm-chat/scripts/backup-postgres.sh
+
+(cd /tmp/mm-chat-phase14-drill-rerun-20260709T100235Z-85834/postgres && \
+  sha256sum -c postgres-20260709T100246Z.dump.sha256)
+
+(cd /tmp/mm-chat-phase14-drill-rerun-20260709T100235Z-85834/minio && \
+  sha256sum -c minio-20260709T100235Z.tar.gz.sha256)
+```
+
+Postgres restore drill:
+
+```text
+restore target: neo_chat_restore_drill_phase14
+checksum: postgres-20260709T100246Z.dump: OK
+schema_migrations: 1 initial_schema, 2 messages_run_id_index, 3 import_batches
+users: 1
+conversations: 7
+messages: 19
+files: 7
+available file object keys sampled for MinIO stat checks: 5
+cleanup: temporary drill database dropped
+```
+
+MinIO restore drill:
+
+```text
+restore target: temporary bucket neo-chat-files-restore-drill-phase14-100721
+checksum: minio-20260709T100235Z.tar.gz: OK
+local payload files: 5
+restored object count: 5
+Postgres files.object_key values checked with mc stat: 5
+cleanup: temporary drill bucket removed
+```
+
+Documentation updates:
+
+```text
+- Corrected the schema_migrations drill query to use version/name.
+- Added Postgres cleanup command for the temporary drill DB.
+- Added MinIO temporary-bucket cleanup and local staging cleanup.
+- Documented that app S3 credentials may not create drill buckets; use MinIO
+  root/admin credentials for the temporary-bucket drill.
+- Documented that PROJECT_NAME does not isolate bind-mounted data directories.
+```
+
+Verification:
+
+```text
+Postgres backup: created and checksum verified
+MinIO backup: created and checksum verified
+Postgres restore: restored into temporary DB and counted core tables
+MinIO restore: restored into temporary bucket and stat-checked DB object keys
+Cleanup: temporary DB removed; temporary bucket removed; failed root-owned
+staging from the first attempt removed
+```
+
+Risk notes:
+
+```text
+- The drill used the running local single-server stack and restored only to
+  temporary resources; production DB and production bucket were not overwritten.
+- Backup artifacts remain in /tmp for short-term inspection and must not be
+  committed.
+- Metrics visibility, reverse proxy/TLS notes, and secret rotation notes remain
+  open Phase 14 work.
+```
+
+Review agent:
+
+```text
+no findings
+- UID/GID + HOME=/tmp MinIO backup fix is reasonable.
+- Postgres drill uses a temporary DB and schema_migrations version/name.
+- MinIO drill uses a temporary bucket with root/admin credentials and cleanup.
+- progress.md has a matching process.md record and no real secrets were found.
+```
+
+Final verification before commit:
+
+```text
+corepack pnpm exec prettier --check <Phase 14.2 docs>
+  passed
+
+bash -n mm-chat/scripts/backup-minio.sh mm-chat/scripts/backup-postgres.sh
+  passed
+
+git diff --check -- <Phase 14.2 target files>
+  passed
+
+targeted secret-pattern scan
+  no real secrets found; hits are env-name references and placeholder token text
+```
+
+Next: commit the Phase 14.2 script and docs changes, then continue with the
+remaining Phase 14 metrics, reverse proxy/TLS, and secret rotation items.

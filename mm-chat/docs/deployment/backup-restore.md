@@ -42,6 +42,11 @@ BACKUP_DIR=/mnt/mm-chat-backup \
 which is useful for restore drills and CI smoke tests. Relative override paths
 are resolved from the caller's current directory.
 
+`PROJECT_NAME` changes Compose names and networks only. It does not isolate the
+bind mounts in `mm-chat/compose.single-server.yml`; those still point at
+`mm-chat/data/*`. For live-stack drills, restore into a temporary database and
+temporary bucket, or run a disposable copy from a separate project directory.
+
 ## Create backups
 
 Run Postgres and MinIO backups in the same maintenance window when possible so
@@ -66,7 +71,8 @@ mm-chat/backup/minio/minio-<UTC>.tar.gz.sha256
 The Postgres dump uses `pg_dump --format=custom --no-owner --no-acl` from the
 `postgres` service. The MinIO backup runs `mc mirror` from the `minio-client`
 Compose service, mirrors `S3_BUCKET`, then archives the mirrored tree as
-`tar.gz`.
+`tar.gz`. The MinIO backup container runs as the invoking host UID/GID so the
+operator can remove temporary staging files after the archive is created.
 
 ## Verify backup checksums
 
@@ -150,7 +156,28 @@ fi
 psql --username="$POSTGRES_USER" --dbname=neo_chat_restore_drill \
   --command="select 1;"
 psql --username="$POSTGRES_USER" --dbname=neo_chat_restore_drill \
-  --command="select version, dirty from schema_migrations order by version;"
+  --command="select version, name from schema_migrations order by version;"
+psql --username="$POSTGRES_USER" --dbname=neo_chat_restore_drill \
+  --command="select count(*) from conversations;"
+psql --username="$POSTGRES_USER" --dbname=neo_chat_restore_drill \
+  --command="select count(*) from messages;"
+psql --username="$POSTGRES_USER" --dbname=neo_chat_restore_drill \
+  --command="select count(*) from files;"
+'
+
+docker compose --project-directory mm-chat \
+  --env-file mm-chat/.env.single-server \
+  -f mm-chat/compose.single-server.yml \
+  exec -T postgres sh -ceu '
+: "${POSTGRES_USER:?POSTGRES_USER is required}"
+if [ -n "${POSTGRES_PASSWORD:-}" ]; then
+  export PGPASSWORD="$POSTGRES_PASSWORD"
+fi
+
+export PGHOST="${PGHOST:-127.0.0.1}"
+export PGPORT="${PGPORT:-5432}"
+
+dropdb --username="$POSTGRES_USER" --if-exists neo_chat_restore_drill
 '
 ```
 
@@ -168,8 +195,9 @@ MinIO restores are destructive when mirrored back to the production bucket with
 2. Extract the archive to a local restore staging directory.
 3. Use the `minio-client` Compose service to create a drill bucket.
 4. Mirror the staged backup into the drill bucket.
-5. List objects and run an upload/download check through the backend when the
-   backend is pointed at the drill bucket or a disposable environment.
+5. List objects and, when available, verify restored `files.object_key` values
+   from the Postgres drill with `mc stat`.
+6. Remove the drill bucket and local staging directory.
 
 ```bash
 cd /home/mumu/projects/neo-chat
@@ -185,36 +213,42 @@ docker compose --project-directory mm-chat \
   --env-file mm-chat/.env.single-server \
   -f mm-chat/compose.single-server.yml \
   --profile ops run --rm -T \
+  --user "$(id -u):$(id -g)" \
+  -e HOME=/tmp \
   --entrypoint /bin/sh \
   -v "$PWD/mm-chat/backup/restore/minio-drill:/restore-source:ro" \
   minio-client -euc '
 : "${S3_BUCKET:?S3_BUCKET is required}"
+: "${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}"
+: "${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}"
 
-alias_name="${MC_ALIAS:-minio}"
-host_var="MC_HOST_${alias_name}"
-host_value="$(printenv "$host_var" 2>/dev/null || true)"
+alias_name="rootdrill"
+endpoint="${S3_ENDPOINT:-${MINIO_ENDPOINT:-http://minio:9000}}"
+drill_bucket="${S3_BUCKET}-restore-drill-$(date +%Y%m%d%H%M%S)"
 
-if [ -z "$host_value" ]; then
-  endpoint="${S3_ENDPOINT:-${MINIO_ENDPOINT:-http://minio:9000}}"
-  access_key="${S3_ACCESS_KEY_ID:-${MINIO_ROOT_USER:-}}"
-  secret_key="${S3_SECRET_ACCESS_KEY:-${MINIO_ROOT_PASSWORD:-}}"
+mc alias set "$alias_name" "$endpoint" "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null
+mc mb --ignore-existing "${alias_name}/${drill_bucket}" >/dev/null
+mc mirror --overwrite --remove "/restore-source/${S3_BUCKET}" "${alias_name}/${drill_bucket}" >/dev/null
 
-  if [ -z "$access_key" ] || [ -z "$secret_key" ]; then
-    echo "MinIO credentials are missing in the minio-client container env" >&2
-    exit 1
+mc find "${alias_name}/${drill_bucket}" > /tmp/mm-chat-restore-objects.txt
+object_count=0
+while IFS= read -r object_path; do
+  if [ -n "$object_path" ]; then
+    object_count=$((object_count + 1))
   fi
+done < /tmp/mm-chat-restore-objects.txt
+echo "restored_object_count=${object_count}"
 
-  mc alias set "$alias_name" "$endpoint" "$access_key" "$secret_key" >/dev/null
-fi
-
-drill_bucket="${S3_BUCKET}-restore-drill"
-mc mb --ignore-existing "${alias_name}/${drill_bucket}"
-mc mirror --overwrite --remove \
-  "/restore-source/${S3_BUCKET}" \
-  "${alias_name}/${drill_bucket}"
-mc ls "${alias_name}/${drill_bucket}" >/dev/null
+mc rb --force "${alias_name}/${drill_bucket}" >/dev/null
+echo "cleanup=drill_bucket_removed"
 '
+
+rm -rf mm-chat/backup/restore/minio-drill
 ```
+
+Use root/admin MinIO credentials for the temporary-bucket drill. The application
+S3 credentials are intentionally scoped to the production bucket and may not be
+allowed to create or remove drill buckets.
 
 Only after the drill passes should an operator consider restoring into the real
 bucket. The production form replaces the destination bucket contents with the
