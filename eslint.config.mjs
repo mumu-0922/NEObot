@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     ".wrangler/**",
     "cloudflare-env.d.ts",
     "tmp/**",
+    "mm-chat/data/**",
+    "mm-chat/backup/**",
   ]),
   {
     rules: {
