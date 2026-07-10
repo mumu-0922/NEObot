@@ -122,6 +122,7 @@ interface PutConsentRequest {
   purposes: string[];
   dataTypes: string[];
   policyVersion: string;
+  expiresAt?: string;
 }
 ```
 
@@ -349,7 +350,7 @@ allocation order only; consumers rescan claimable rows, deduplicate by
 
 ## Execution Checklist
 
-- [ ] **15.1D-1 Contract and migration:** synchronize DTO/error/Consent/File
+- [x] **15.1D-1 Contract and migration:** synchronize DTO/error/Consent/File
       contracts and add reversible migration `006` with Job/idempotency gaps.
 - [ ] **15.1D-2 Collection service:** implement Personal/Team CRUD, cursor
       lists, immutable scope, disclosure order, revisions, and Outbox.

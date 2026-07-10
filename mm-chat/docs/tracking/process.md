@@ -5909,3 +5909,40 @@ and no Python/vector processing is allowed yet.
 Next: synchronize `knowledge-acl-api.md` with the 15.1D DTO/idempotency/Job
 contract, implement migration `006`, and run an independent review before
 starting repositories.
+
+## 2026-07-11 — Phase 15.1D-1 contract and migration implemented
+
+The public Knowledge contract now defines Collection/Document/Consent DTOs,
+authenticated paging, strict error/disclosure behavior, mutation idempotency,
+and the minimal future `knowledgeApi` adapter boundary. The existing
+Next.js/React Knowledge UI and local store were not changed.
+
+Reversible migration `006_phase15_knowledge_services` adds bounded Collection
+display fields, actor-scoped idempotency plus canonical request hashes,
+independent Document visibility epochs, one-nonterminal-Version fencing, exact
+Consent lookup support, and `knowledge_processing_jobs`. Jobs are split by
+`parse|passage_embedding|purge` stage and pin the exact Collection, Document,
+Version, File, Governance, Consent, and revision snapshot with composite foreign
+keys. This prevents a Collection Consent from authorizing another Collection's
+Document or a different source File.
+
+Verification completed against an automatically removed PostgreSQL 16
+container:
+
+```text
+001 -> 006 Up, 006 Down, 006 Up                         passed
+legacy 004/005 Collection and Document compatibility    passed
+Collection/Version idempotency and nonterminal conflict passed
+Governance + Consent + Processing Job insert            passed
+complete migration package PostgreSQL replay             passed
+go vet ./...                                             passed
+go test ./...                                            passed
+go test -race ./internal/migration                       passed
+```
+
+No Processor credential, Provider secret, object key, or source content was
+added to public DTOs or Outbox payload contracts. Runtime repositories/routes
+remain unchecked.
+
+Next: implement 15.1D-2 Personal/Team Collection service with the fixed
+Session -> Team/Membership -> Collection authorization and disclosure order.

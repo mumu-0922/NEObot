@@ -2,17 +2,16 @@
 
 ## 1. Status and Scope
 
-This is the authoritative Phase 15 contract for Team ACL and future
-Knowledge ACL surfaces. Migration `004` already landed the schema foundation
-for identities, teams, memberships, invites, knowledge collections/documents,
-processor governance, processing consent, and `knowledge_outbox`; the current
-Phase 15 identity/Team surface exposes auth/session routes and a
-new-account-only Invite Acceptance path, but no `/v1/teams*` routes. Phase
-15.1C is the slice that turns the existing Team,
-Membership, and Invitation schema into protected Team services and adds the
-reversible `005` idempotency/mail-outbox/fence migration. Knowledge Collection
-CRUD, Team deletion, Processor Consent, Python RAG wiring, and frontend
-integration remain outside 15.1C.
+This is the authoritative Phase 15 contract for Team and Knowledge ACL
+surfaces. Migration `004` provides the identity, Team, Collection,
+Document/Version, Governance, Consent, and Knowledge Outbox foundation.
+Phase 15.1B and 15.1C now expose independent auth/session plus protected
+Team/Membership/Invite services; migration `005` adds Team idempotency, durable
+encrypted Invite delivery, and Membership deletion fencing. Phase 15.1D adds
+the protected Knowledge APIs and reversible migration `006` for Collection
+display/replay metadata, independent Document visibility, and durable
+stage-specific Processing Jobs. Team deletion, Python RAG execution, search,
+citation minting, and frontend integration remain later slices.
 
 The current auth/session baseline is Phase 15.1B in
 [`auth-session-api.md`](./auth-session-api.md), with Phase 13 ownership
@@ -374,14 +373,17 @@ GET    /v1/knowledge/collections/{collectionId}
 PATCH  /v1/knowledge/collections/{collectionId}
 DELETE /v1/knowledge/collections/{collectionId}
 POST   /v1/knowledge/collections/{collectionId}/documents
+GET    /v1/knowledge/collections/{collectionId}/documents?cursor&limit
 GET    /v1/knowledge/documents/{documentId}
 GET    /v1/knowledge/documents/{documentId}/content
 POST   /v1/knowledge/documents/{documentId}/versions
 POST   /v1/knowledge/documents/{documentId}/reprocess
 DELETE /v1/knowledge/documents/{documentId}
 
+GET    /v1/knowledge/collections/{collectionId}/processing-consents
 PUT    /v1/knowledge/collections/{collectionId}/processing-consents/{processor}
 DELETE /v1/knowledge/collections/{collectionId}/processing-consents/{processor}
+GET    /v1/me/knowledge/query-consents
 PUT    /v1/me/knowledge/query-consents/{processor}
 DELETE /v1/me/knowledge/query-consents/{processor}
 POST   /v1/knowledge/search
@@ -481,9 +483,109 @@ interface ApiPage<T> {
   Invite delivery row is `sent`; wrong passwords, stale Credential revisions,
   unsent mail, and branch races all collapse to `410 INVITE_NOT_ACTIVE`.
 
-Collection creation accepts `name`, `scope`, and `teamId` only when
-`scope = "team"`. Go derives personal ownership from the Session and verifies
-Team-admin Membership before creating a Team collection.
+### Knowledge service DTOs, paging, and idempotency
+
+```ts
+type CollectionScope = "personal" | "team";
+
+interface CreateCollectionRequest {
+  name: string;
+  description?: string;
+  icon?: string;
+  color?: string;
+  scope: CollectionScope;
+  teamId?: string;
+  idempotencyKey: string;
+}
+
+interface CollectionDto {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
+  scope: CollectionScope;
+  teamId?: string;
+  permissions: { read: true; manage: boolean; manageConsent: boolean };
+  aclRevision: number;
+  visibilityEpoch: number;
+  collectionProcessingRevision: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface BindDocumentRequest {
+  fileId: string;
+  idempotencyKey: string;
+}
+
+interface ReprocessDocumentRequest {
+  idempotencyKey: string;
+}
+
+interface KnowledgeDocumentDto {
+  id: string;
+  collectionId: string;
+  status: "processing" | "active" | "tombstoned";
+  currentVersion?: KnowledgeDocumentVersionDto;
+  pendingVersion?: KnowledgeDocumentVersionDto;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface KnowledgeDocumentVersionDto {
+  id: string;
+  sourceVersion: number;
+  file: { id: string; name: string; mimeType: string; byteSize: number };
+  status: "uploaded" | "processing" | "failed" | "active" | "tombstoned";
+  createdAt: string;
+  updatedAt: string;
+  errorCode?: string;
+}
+
+interface PutConsentRequest {
+  purposes: (
+    "parse" | "passage_embedding" | "query_embedding" | "rerank" | "answer"
+  )[];
+  dataTypes: string[];
+  policyVersion: string;
+  expiresAt?: string;
+}
+
+interface ProcessingConsentDto {
+  processor: string;
+  purposes: string[];
+  dataTypes: string[];
+  policyVersion: string;
+  decision: "granted" | "revoked";
+  expiresAt?: string;
+  decidedAt: string;
+}
+```
+
+Collection creation accepts `teamId` only when `scope = "team"`; it is required
+for Team scope and forbidden for Personal scope. Go derives Personal ownership
+from the Session and verifies active Team-admin Membership before Team creation.
+Collection scope/owner/Team are immutable. PATCH accepts only `name`,
+`description`, `icon`, and `color`; names are 1-100 runes/256 bytes,
+descriptions at most 2,000 runes/8 KiB, and icon/color use the current frontend
+allowlists.
+
+Collection and Document lists use the authenticated cursor contract above;
+Collection/Document order is `(created_at DESC, id DESC)`. Consent reads expose
+only Processor alias, purposes, data types, policy version, decision, expiry,
+and decision time—not endpoint credentials or internal manifests.
+Collection Consent accepts only `parse|passage_embedding|rerank|answer`; User
+Query Consent accepts only `query_embedding|rerank|answer`. An optional
+`expiresAt` must be a future RFC 3339 timestamp within the configured policy
+horizon.
+
+Collection create and Document bind/version/reprocess require a 1-128 byte body
+`idempotencyKey`. Postgres persists a canonical request hash. Same-key/same-
+payload replay returns the original result; same-key/different-payload returns
+`409 IDEMPOTENCY_CONFLICT`. PATCH and Consent writes are semantic no-ops when
+the requested state already matches. Repeated DELETE by the still-authorized
+actor returns `204` without another revision or Outbox event.
 
 Recovery completion accepts `{ token, newPassword }`; raw invitation/recovery
 Tokens never appear in URL paths, queries, access logs, or metrics. Invite email
@@ -496,14 +598,17 @@ Completing recovery and `DELETE /v1/me/sessions` revoke all existing Sessions
 before issuing or requiring a new Login.
 
 `POST .../versions` accepts a new caller-owned `fileId` and atomically creates
-the next immutable Processing Version plus its Job/Outbox row. The old
+the next immutable Processing Version plus its stage-specific Job/Outbox row.
+The first bind and replacement require active Collection Consent for the
+server-selected Parse Processor. The old
 `currentVersionId` remains Active until the new Version passes verification;
 the publish transaction then switches the pointer and tombstones the old row.
-`POST .../reprocess` keeps the Source Version and creates a new Parse/Index Job
-for the server-selected Active Profile; public callers cannot choose Model,
-Endpoint, Generation, or Governance Profile. Bake-off Shadow Jobs use a private
-operator path. Reprocess never mutates active artifacts or the Active Generation
-in place.
+`POST .../reprocess` keeps the Source Version and creates a new Parse Job for
+the server-selected Active Profile; a verified Parse result later creates a
+separately fenced Passage Embedding Job. Public callers cannot choose Model,
+Endpoint, Generation, Governance Profile, or Job stage. Bake-off Shadow Jobs use
+a private operator path. Reprocess never mutates active artifacts or the Active
+Generation in place.
 
 ## 6. File Binding and Deletion
 
@@ -522,9 +627,9 @@ Document Version creation binds an already uploaded Phase 13-owned File:
   transaction before creating index work. Object keys, buckets, and direct
   object-store URLs remain private.
 - `knowledge_document_versions.file_id` uses `ON DELETE RESTRICT`. Both Version
-  binding and direct File deletion lock the same `files` row with `FOR UPDATE` before
-  checking status/bindings; replacement locks multiple file rows in sorted UUID
-  order. Binding inserts the Document Version, Job, and Outbox row before
+  binding and direct File deletion lock the same `files` row with `FOR UPDATE`
+  before checking status/bindings; replacement locks multiple file rows in
+  sorted UUID order. Binding inserts the Document Version, Job, and Outbox row before
   commit; first creation also inserts the Logical Document. Direct deletion
   returns `409 FILE_IN_USE` while a live/processing Version binding exists.
   This serialization prevents concurrent bind/delete from leaving an active
@@ -536,8 +641,11 @@ Document Version creation binds an already uploaded Phase 13-owned File:
   delete each authorized Document through the Knowledge endpoint first.
 - `DELETE /v1/knowledge/documents/{documentId}` logically tombstones the logical
   Document and every live Version, then queues derived-artifact/index cleanup;
-  it does not delete Source Files. After no live binding remains, the File Owner may use the
-  existing file deletion endpoint.
+  it does not delete Source Files. After no live binding remains, the File Owner
+  may use the existing file deletion endpoint. Metadata deletion commits before
+  object deletion and emits `file.object.delete.requested`; failed physical
+  deletion is retried by File ID without exposing the private object key in the
+  event.
 
 ## 7. Search Request and Authorization Fences
 
@@ -623,6 +731,9 @@ Consent and tombstones the old binding; it never edits ownership in place.
 | `400` | `INVALID_INVITE_PAYLOAD`          | Invite mailbox, `teamRole`, or `idempotencyKey` is invalid.                                |
 | `400` | `INVALID_MEMBERSHIP_PAYLOAD`      | Membership body shape or `teamRole` is invalid.                                            |
 | `400` | `INVALID_COLLECTION_SCOPE`        | Collection scope or its owner/team shape is invalid.                                       |
+| `400` | `INVALID_COLLECTION_PAYLOAD`      | Collection JSON, display fields, UUID, cursor, limit, or body shape is invalid.            |
+| `400` | `INVALID_DOCUMENT_PAYLOAD`        | File ID, idempotency key, or Document operation body is invalid.                           |
+| `400` | `INVALID_CONSENT_PAYLOAD`         | Processor, purpose, data type, policy version, or Consent body is invalid.                 |
 | `401` | `UNAUTHENTICATED`                 | Phase 15.1B Bearer Session resolution fails.                                               |
 | `401` | `INVALID_CREDENTIALS`             | Email/password or recovery completion is invalid without account disclosure.               |
 | `403` | `TEAM_ADMIN_REQUIRED`             | An active Member attempts a visible Team-admin operation.                                  |
@@ -635,7 +746,8 @@ Consent and tombstones the old binding; it never edits ownership in place.
 | `404` | `FILE_NOT_FOUND`                  | Binding file is missing, deleted, unavailable, or not owned by the caller.                 |
 | `409` | `LAST_TEAM_ADMIN`                 | A mutation or account disable would leave a Team without another usable admin.             |
 | `409` | `INVITE_CONFLICT`                 | An active Membership or pending Invite already exists for the Team/mailbox.                |
-| `409` | `IDEMPOTENCY_CONFLICT`            | A scoped Team or Invite `idempotencyKey` already exists.                                   |
+| `409` | `IDEMPOTENCY_CONFLICT`            | A scoped write key is reused for a different canonical request.                            |
+| `409` | `DOCUMENT_PROCESSING`             | A conflicting nonterminal Document Version or Processing Job already exists.               |
 | `409` | `FILE_IN_USE`                     | Direct file deletion would bypass a live knowledge-document binding.                       |
 | `409` | `PROJECTION_NOT_READY`            | The search projection cannot reach the required revision before deadline.                  |
 | `410` | `INVITE_NOT_ACTIVE`               | Invitation is accepted, revoked, expired, unsent, or otherwise unusable.                   |

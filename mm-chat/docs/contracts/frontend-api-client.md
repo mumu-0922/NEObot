@@ -40,6 +40,8 @@ This contract is derived from:
 - Implemented Go file contract in [`file-api.md`](./file-api.md).
 - Phase 15.1C Team design in
   `mm-chat/docs/architecture/phase-15-1c-team-services-plan.md`.
+- Phase 15.1D Knowledge service design in
+  `mm-chat/docs/architecture/phase-15-1d-collection-document-consent-plan.md`.
 - Existing Team/Invite schema baseline in
   `mm-chat/backend/migrations/004_phase15_identity_knowledge_acl.up.sql`.
 - Current auth/session route behavior in `mm-chat/backend/internal/auth/*`.
@@ -972,6 +974,176 @@ Unknown and cross-Team resources use the same `404` envelope. Only an active
 Member may receive `403` for a visible Team. Repeated deletion of an already
 revoked Invite is `204`; accepted or expired Invites return `410`.
 
+## 11B. `knowledgeApi` Contract (Phase 15.1D)
+
+Phase 15.1D defines the server adapter boundary only. Existing Knowledge UI,
+Zustand state, IndexedDB, OPFS, parsing, and local RAG behavior remain unchanged.
+Local mode must not emulate Team ACL or server Consent.
+
+```ts
+export type CollectionScope = "personal" | "team";
+export type KnowledgeDocumentStatus = "processing" | "active" | "tombstoned";
+export type KnowledgeVersionStatus =
+  "uploaded" | "processing" | "failed" | "active" | "tombstoned";
+
+export interface KnowledgeApi {
+  createCollection(input: CreateCollectionInput): Promise<CollectionDto>;
+  listCollections(
+    input?: ListCollectionsInput,
+  ): Promise<ApiPage<CollectionDto>>;
+  getCollection(collectionId: EntityId): Promise<CollectionDto>;
+  updateCollection(
+    collectionId: EntityId,
+    input: UpdateCollectionInput,
+  ): Promise<CollectionDto>;
+  deleteCollection(collectionId: EntityId): Promise<void>;
+  createDocument(
+    collectionId: EntityId,
+    input: BindKnowledgeFileInput,
+  ): Promise<KnowledgeDocumentDto>;
+  listDocuments(
+    collectionId: EntityId,
+    input?: CursorPageInput,
+  ): Promise<ApiPage<KnowledgeDocumentDto>>;
+  getDocument(documentId: EntityId): Promise<KnowledgeDocumentDto>;
+  getDocumentContent(documentId: EntityId): Promise<Blob>;
+  createVersion(
+    documentId: EntityId,
+    input: BindKnowledgeFileInput,
+  ): Promise<KnowledgeDocumentDto>;
+  reprocessDocument(
+    documentId: EntityId,
+    input: ReprocessDocumentInput,
+  ): Promise<KnowledgeDocumentDto>;
+  deleteDocument(documentId: EntityId): Promise<void>;
+  listCollectionConsents(
+    collectionId: EntityId,
+  ): Promise<ProcessingConsentDto[]>;
+  putCollectionConsent(
+    collectionId: EntityId,
+    processor: string,
+    input: PutProcessingConsentInput,
+  ): Promise<ProcessingConsentDto>;
+  deleteCollectionConsent(
+    collectionId: EntityId,
+    processor: string,
+  ): Promise<void>;
+  listQueryConsents(): Promise<ProcessingConsentDto[]>;
+  putQueryConsent(
+    processor: string,
+    input: PutProcessingConsentInput,
+  ): Promise<ProcessingConsentDto>;
+  deleteQueryConsent(processor: string): Promise<void>;
+}
+
+export interface CreateCollectionInput {
+  name: string;
+  description?: string;
+  icon?: string;
+  color?: string;
+  scope: CollectionScope;
+  teamId?: EntityId;
+  idempotencyKey: string;
+}
+
+export interface ListCollectionsInput extends CursorPageInput {
+  scope?: CollectionScope;
+  teamId?: EntityId;
+}
+
+export interface UpdateCollectionInput {
+  name?: string;
+  description?: string;
+  icon?: string;
+  color?: string;
+}
+
+export interface BindKnowledgeFileInput {
+  fileId: EntityId;
+  idempotencyKey: string;
+}
+
+export interface ReprocessDocumentInput {
+  idempotencyKey: string;
+}
+
+export interface CollectionDto {
+  id: EntityId;
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
+  scope: CollectionScope;
+  teamId?: EntityId;
+  permissions: { read: true; manage: boolean; manageConsent: boolean };
+  aclRevision: number;
+  visibilityEpoch: number;
+  collectionProcessingRevision: number;
+  createdAt: IsoDateTime;
+  updatedAt: IsoDateTime;
+}
+
+export interface KnowledgeDocumentDto {
+  id: EntityId;
+  collectionId: EntityId;
+  status: KnowledgeDocumentStatus;
+  currentVersion?: KnowledgeDocumentVersionDto;
+  pendingVersion?: KnowledgeDocumentVersionDto;
+  createdAt: IsoDateTime;
+  updatedAt: IsoDateTime;
+}
+
+export interface KnowledgeDocumentVersionDto {
+  id: EntityId;
+  sourceVersion: number;
+  file: { id: EntityId; name: string; mimeType: string; byteSize: number };
+  status: KnowledgeVersionStatus;
+  createdAt: IsoDateTime;
+  updatedAt: IsoDateTime;
+  errorCode?: string;
+}
+
+export interface PutProcessingConsentInput {
+  purposes: string[];
+  dataTypes: string[];
+  policyVersion: string;
+  expiresAt?: IsoDateTime;
+}
+
+export interface ProcessingConsentDto {
+  processor: string;
+  purposes: string[];
+  dataTypes: string[];
+  policyVersion: string;
+  decision: "granted" | "revoked";
+  expiresAt?: IsoDateTime;
+  decidedAt: IsoDateTime;
+}
+```
+
+Server route mapping is the exact `/v1/knowledge/*` and
+`/v1/me/knowledge/query-consents*` surface in
+[`knowledge-acl-api.md`](./knowledge-acl-api.md). All calls require Bearer auth.
+Personal ownership is Session-derived; Team management is permitted only when
+the returned `permissions.manage` is true. Components must not infer authority
+from global user role or construct ACL/revision fields.
+
+The adapter maps RFC 3339 timestamps and server statuses into the existing
+browser-local `Collection`/`KnowledgeFile` shape only at the store boundary.
+Source content streams through the authorized Knowledge content route; Team
+access never falls back to owner-only `/v1/files/:fileId`.
+
+Create Collection, bind File, replace Version, and reprocess require a 1-128
+byte idempotency key. Clients reuse the same key only when retrying the same
+canonical request. Collection scope/owner/Team are immutable. Consent scope
+purpose matrices are server-enforced; clients never choose Processor endpoint,
+Profile, model/API version, Governance revision, Job stage, or generation.
+
+Targeted authorization order is Session/input, Collection visibility, visible
+Team role, then nested Document/File/Consent/Processor. Cross-user and
+cross-Team targets are indistinguishable from unknown IDs (`404`); a visible
+Team Member receives `403 TEAM_ADMIN_REQUIRED` for management attempts.
+
 ## 12. `importApi` Contract
 
 Phase 8 import must be explicit and previewed. The frontend builds
@@ -1231,23 +1403,29 @@ Rules:
 
 ## 15. Error Matrix
 
-| Condition                      | Code                          |               Recoverable | Owner               |
-| ------------------------------ | ----------------------------- | ------------------------: | ------------------- |
-| Missing/expired session        | `UNAUTHENTICATED`             |                       Yes | authApi/httpClient  |
-| No access to conversation/file | `FORBIDDEN`                   |                        No | backend             |
-| Team missing/no membership     | `TEAM_NOT_FOUND`              |                        No | teamApi/backend     |
-| Team admin required            | `TEAM_ADMIN_REQUIRED`         |                        No | teamApi/backend     |
-| Last Team admin guard          | `LAST_TEAM_ADMIN`             |                        No | teamApi/backend     |
-| Invite delivery unavailable    | `INVITE_DELIVERY_UNAVAILABLE` |                       Yes | teamApi/backend     |
-| Conversation missing           | `CONVERSATION_NOT_FOUND`      |                        No | chatApi             |
-| Message missing                | `MESSAGE_NOT_FOUND`           |                        No | chatApi             |
-| File too large                 | `FILE_TOO_LARGE`              |     Yes after user action | fileApi/backend     |
-| Unsupported MIME               | `UNSUPPORTED_FILE_TYPE`       |     Yes after user action | fileApi/backend     |
-| Provider not configured        | `PROVIDER_NOT_CONFIGURED`     | Yes after settings change | providerApi/chatApi |
-| Provider timeout               | `PROVIDER_TIMEOUT`            |                       Yes | provider adapter    |
-| Stream interrupted             | `STREAM_INTERRUPTED`          |                       Yes | chatApi/httpClient  |
-| Rate limited                   | `RATE_LIMITED`                |            Yes after wait | backend/Redis       |
-| Invalid import/export payload  | `INVALID_IMPORT_PAYLOAD`      |    No for current payload | import phase later  |
+| Condition                       | Code                              |               Recoverable | Owner                |
+| ------------------------------- | --------------------------------- | ------------------------: | -------------------- |
+| Missing/expired session         | `UNAUTHENTICATED`                 |                       Yes | authApi/httpClient   |
+| No access to conversation/file  | `FORBIDDEN`                       |                        No | backend              |
+| Team missing/no membership      | `TEAM_NOT_FOUND`                  |                        No | teamApi/backend      |
+| Team admin required             | `TEAM_ADMIN_REQUIRED`             |                        No | teamApi/backend      |
+| Last Team admin guard           | `LAST_TEAM_ADMIN`                 |                        No | teamApi/backend      |
+| Invite delivery unavailable     | `INVITE_DELIVERY_UNAVAILABLE`     |                       Yes | teamApi/backend      |
+| Collection missing/not visible  | `COLLECTION_NOT_FOUND`            |                        No | knowledgeApi/backend |
+| Document missing/not visible    | `DOCUMENT_NOT_FOUND`              |                        No | knowledgeApi/backend |
+| Visible Team admin required     | `TEAM_ADMIN_REQUIRED`             |                        No | knowledgeApi/backend |
+| Processing consent missing      | `PROCESSING_CONSENT_REQUIRED`     |   Yes after user decision | knowledgeApi/backend |
+| File has live Knowledge binding | `FILE_IN_USE`                     | Yes after document delete | fileApi/backend      |
+| Knowledge processor unavailable | `KNOWLEDGE_PROCESSOR_UNAVAILABLE` |   Yes after configuration | knowledgeApi/backend |
+| Conversation missing            | `CONVERSATION_NOT_FOUND`          |                        No | chatApi              |
+| Message missing                 | `MESSAGE_NOT_FOUND`               |                        No | chatApi              |
+| File too large                  | `FILE_TOO_LARGE`                  |     Yes after user action | fileApi/backend      |
+| Unsupported MIME                | `UNSUPPORTED_FILE_TYPE`           |     Yes after user action | fileApi/backend      |
+| Provider not configured         | `PROVIDER_NOT_CONFIGURED`         | Yes after settings change | providerApi/chatApi  |
+| Provider timeout                | `PROVIDER_TIMEOUT`                |                       Yes | provider adapter     |
+| Stream interrupted              | `STREAM_INTERRUPTED`              |                       Yes | chatApi/httpClient   |
+| Rate limited                    | `RATE_LIMITED`                    |            Yes after wait | backend/Redis        |
+| Invalid import/export payload   | `INVALID_IMPORT_PAYLOAD`          |    No for current payload | import phase later   |
 
 ## 16. Migration Sequence
 
@@ -1261,6 +1439,8 @@ Rules:
 |    6 | Add file API local adapter wrapper                                                      | No server files yet                    | Keep OPFS path                      |
 |    7 | Add server file API                                                                     | MinIO opt-in                           | Disable `serverFiles` capability    |
 |    8 | Add provider config/model APIs                                                          | Provider secrets server-side           | Fall back to local BYOK             |
+|    9 | Add Team API contract/adapter                                                           | Team UI remains separately gated       | Keep Team UI disabled               |
+|   10 | Add Knowledge API contract/adapter                                                      | Existing local Knowledge stays default | Keep `knowledgeApi` local           |
 
 ## 17. Test Requirements
 
@@ -1279,7 +1459,8 @@ When implementation begins, add tests for:
 ## 18. Acceptance Criteria for Phase 2
 
 - `frontend-api-client.md` defines stable `chatApi`, `fileApi`, `authApi`,
-  `teamApi`, `settingsApi`, `providerApi`, and `importApi` contracts.
+  `teamApi`, `knowledgeApi`, `settingsApi`, `providerApi`, and `importApi`
+  contracts.
 - Contract includes local/server mode rules.
 - Contract includes SSE event envelope and event types.
 - Contract includes error envelope and error matrix.
