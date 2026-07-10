@@ -15,6 +15,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/files"
 	"neo-chat/mm-chat/backend/internal/health"
+	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
 	"neo-chat/mm-chat/backend/internal/storage"
 	"neo-chat/mm-chat/backend/internal/teams"
@@ -54,6 +55,7 @@ type options struct {
 	importRepository     browserimport.Repository
 	maxImportBytes       int64
 	teamService          *teams.Service
+	knowledgeService     *knowledge.Service
 }
 
 func WithReadyChecker(checker health.ReadinessChecker) Option {
@@ -158,6 +160,12 @@ func WithTeamService(service *teams.Service) Option {
 	}
 }
 
+func WithKnowledgeService(service *knowledge.Service) Option {
+	return func(opts *options) {
+		opts.knowledgeService = service
+	}
+}
+
 func New(cfg config.Config, opts ...Option) *http.Server {
 	return &http.Server{
 		Addr:              cfg.Addr,
@@ -206,6 +214,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		browserimport.WithHandlerMaxPackageBytes(resolvedOptions.maxImportBytes),
 	)
 	teamHandler := teams.NewHandler(resolvedOptions.teamService)
+	knowledgeHandler := knowledge.NewHandler(resolvedOptions.knowledgeService)
 
 	mux.HandleFunc("/health", healthHandler.Health)
 	mux.HandleFunc("/ready", healthHandler.Ready)
@@ -227,6 +236,8 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/import/browser/", importHandler)
 	mux.Handle("/v1/teams", teamHandler)
 	mux.Handle("/v1/teams/", teamHandler)
+	mux.Handle("/v1/knowledge/collections", knowledgeHandler)
+	mux.Handle("/v1/knowledge/collections/", knowledgeHandler)
 	mux.HandleFunc("/", notFound)
 
 	middlewares := []Middleware{
@@ -288,7 +299,7 @@ func withSessionIdentity(resolver SessionResolver, requireAuth bool) Middleware 
 
 			token, ok := bearerToken(r.Header.Get("Authorization"))
 			if !ok {
-				if requireAuth || isTeamAPIRequest(r) {
+				if requireAuth || isIndependentIdentityAPIRequest(r) {
 					writeAuthError(w, auth.ErrSessionNotFound)
 					return
 				}
@@ -315,11 +326,13 @@ func withSessionIdentity(resolver SessionResolver, requireAuth bool) Middleware 
 	}
 }
 
-func isTeamAPIRequest(r *http.Request) bool {
+func isIndependentIdentityAPIRequest(r *http.Request) bool {
 	if r == nil {
 		return false
 	}
-	return r.URL.Path == "/v1/teams" || strings.HasPrefix(r.URL.Path, "/v1/teams/")
+	return r.URL.Path == "/v1/teams" || strings.HasPrefix(r.URL.Path, "/v1/teams/") ||
+		r.URL.Path == "/v1/knowledge/collections" ||
+		strings.HasPrefix(r.URL.Path, "/v1/knowledge/collections/")
 }
 
 func isPublicWithoutAuthRequest(r *http.Request) bool {

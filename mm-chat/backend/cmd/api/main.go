@@ -24,6 +24,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/database"
 	"neo-chat/mm-chat/backend/internal/files"
 	"neo-chat/mm-chat/backend/internal/httpserver"
+	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
 	"neo-chat/mm-chat/backend/internal/redisstate"
 	"neo-chat/mm-chat/backend/internal/sessioncache"
@@ -52,6 +53,7 @@ var (
 type teamRuntime struct {
 	service *teams.Service
 	worker  *teams.InviteMailOutboxWorker
+	cursor  *teams.CursorCodec
 }
 
 type teamWorker interface {
@@ -138,6 +140,14 @@ func main() {
 		logger.Error("team_config_failed", slog.String("error", redactSensitiveLogText(err.Error())))
 		os.Exit(1)
 	}
+	var knowledgeRepo knowledge.Repository
+	if sqlDB != nil {
+		knowledgeRepo = knowledge.NewPostgresRepository(sqlDB)
+	}
+	knowledgeService := knowledge.NewService(
+		knowledgeRepo,
+		knowledge.WithCursorCodec(teamRuntime.cursor),
+	)
 
 	chatProvider, err := newChatProvider(cfg)
 	if err != nil {
@@ -178,6 +188,7 @@ func main() {
 		httpserver.WithBrowserImportRepository(importRepo),
 		httpserver.WithMaxImportBytes(cfg.Storage.MaxUploadBytes),
 		httpserver.WithTeamService(teamRuntime.service),
+		httpserver.WithKnowledgeService(knowledgeService),
 		httpserver.WithLogger(logger),
 	}
 	if db.SQL() != nil {
@@ -439,7 +450,7 @@ func newTeamRuntime(db *sql.DB, cfg config.Config) (*teamRuntime, error) {
 		return nil, err
 	}
 
-	runtime := &teamRuntime{}
+	runtime := &teamRuntime{cursor: cursorCodec}
 	if db != nil && mailCipher != nil && smtpTransport != nil &&
 		inviteURLBuilder != nil {
 		workerConfig := normalizedTeamMailWorkerConfig(cfg.Team.MailWorker)

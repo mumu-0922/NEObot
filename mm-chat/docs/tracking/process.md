@@ -5946,3 +5946,48 @@ remain unchecked.
 
 Next: implement 15.1D-2 Personal/Team Collection service with the fixed
 Session -> Team/Membership -> Collection authorization and disclosure order.
+
+## 2026-07-11 — Phase 15.1D-2 Collection service implemented
+
+The Go backend now registers protected Personal/Team Collection CRUD under
+`/v1/knowledge/collections`. The new `internal/knowledge` vertical slice owns
+strict DTO validation, canonical create hashes, HMAC cursor binding, Service
+rules, Postgres authorization/locking, revision changes, and transactional
+Knowledge Outbox events. The existing Next.js/React Knowledge UI remains
+unchanged.
+
+Personal Collections resolve only through the Session owner. Team Collections
+require an active Membership for reads and an active Admin Membership for
+writes. Unknown, cross-user, cross-Team, removed-Membership, and deleted targets
+share `404 COLLECTION_NOT_FOUND`; only a visible active Member receives
+`403 TEAM_ADMIN_REQUIRED`. List queries never expose totals and bind cursors to
+the request User plus normalized scope/Team filters.
+
+Create retries persist a canonical request hash under actor-scoped Postgres
+uniqueness. Same-key/same-payload requests return one Collection; changed
+payloads return `409 IDEMPOTENCY_CONFLICT`. Metadata no-ops emit no event and do
+not change ACL fences. Delete locks Team/Collection and dependent
+Document/Version/Job rows in deterministic order, cancels active Jobs,
+tombstones dependents, increments Collection ACL/Visibility exactly once, and
+writes `knowledge.collection.tombstoned` atomically. Repeated authorized delete
+is `204` without a second event.
+
+Verification evidence:
+
+```text
+go vet ./...                                             passed
+go test ./...                                            passed
+go test -race ./internal/knowledge ./internal/httpserver passed
+PostgreSQL 16 Personal/Team/Admin/Member/outsider ACL    passed
+PostgreSQL idempotency replay/conflict/concurrency       passed
+PostgreSQL update no-op and delete revision fencing      passed
+synthetic Outbox failure transaction rollback            passed
+protected routing and bounded metric labels              passed
+```
+
+The real PostgreSQL test runs in a fresh schema inside an automatically removed
+PostgreSQL 16 container. No Provider secret, source content, or object-store key
+is written to Collection responses or Outbox payloads.
+
+Next: implement 15.1D-3 logical Document/Version lifecycle and the shared
+File-row `FOR UPDATE` binding/deletion protocol.

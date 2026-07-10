@@ -1,8 +1,8 @@
 # Single-Server Docker Compose Deployment
 
 This is the single-server runtime topology for `mm-chat`, including Phase 15.1B
-Identity Services and Phase 15.1C Team Services. It keeps deployment files
-inside `mm-chat/` and does not modify the repository-root
+Identity Services, Phase 15.1C Team Services, and Phase 15.1D Personal/Team
+Collection CRUD. It keeps deployment files inside `mm-chat/` and does not modify the repository-root
 `docker-compose.yml`. The stack runs the Go API, Postgres, Redis, and MinIO on
 one server; the existing Next.js frontend remains outside this workspace until
 a later frontend cutover.

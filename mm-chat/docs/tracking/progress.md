@@ -610,7 +610,7 @@ the UI can call in the next wiring slice.
       `docs/architecture/phase-15-1d-collection-document-consent-plan.md`.
 - [x] Synchronize public Knowledge DTO/error contracts and add reversible
       migration `006` for display metadata, idempotency, and Processing Jobs.
-- [ ] Implement Personal/Team Collection repositories, ACLs, revisions, and
+- [x] Implement Personal/Team Collection repositories, ACLs, revisions, and
       transactional Outbox writes.
 - [ ] Implement logical Document/Version lifecycle, locked File binding/delete,
       authorized content reads, reprocess, and tombstones.

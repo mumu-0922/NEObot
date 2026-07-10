@@ -13,6 +13,11 @@ display/replay metadata, independent Document visibility, and durable
 stage-specific Processing Jobs. Team deletion, Python RAG execution, search,
 citation minting, and frontend integration remain later slices.
 
+Runtime status: Personal/Team Collection create/list/get/update/delete routes,
+ACLs, authenticated cursors, deletion revisions, and transactional Collection
+Outbox events are implemented. Document/Version, Consent, Governance command,
+and search routes in this contract are not implemented yet.
+
 The current auth/session baseline is Phase 15.1B in
 [`auth-session-api.md`](./auth-session-api.md), with Phase 13 ownership
 enforcement over the existing file API in [`file-api.md`](./file-api.md) until

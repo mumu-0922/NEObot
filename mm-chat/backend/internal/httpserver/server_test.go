@@ -420,6 +420,8 @@ func TestAuthRequiredModeRejectsMissingCredentialsAndKeepsPublicRoutes(t *testin
 		{method: http.MethodGet, path: "/v1/import/browser/33333333-3333-4333-8333-333333333333"},
 		{method: http.MethodGet, path: "/v1/teams"},
 		{method: http.MethodGet, path: "/v1/teams/33333333-3333-4333-8333-333333333333/members"},
+		{method: http.MethodGet, path: "/v1/knowledge/collections"},
+		{method: http.MethodGet, path: "/v1/knowledge/collections/33333333-3333-4333-8333-333333333333"},
 	}
 	for _, route := range protectedRoutes {
 		rec := httptest.NewRecorder()
@@ -460,6 +462,21 @@ func TestNewHandlerRegistersTeamRoutes(t *testing.T) {
 		}
 		if body.Error.Code != "UNAUTHENTICATED" {
 			t.Fatalf("GET %s code = %q, want UNAUTHENTICATED", path, body.Error.Code)
+		}
+	}
+}
+
+func TestNewHandlerRegistersKnowledgeCollectionRoutes(t *testing.T) {
+	handler := NewHandler(config.Config{Addr: ":0", Version: "route-test"})
+	for _, path := range []string{
+		"/v1/knowledge/collections",
+		"/v1/knowledge/collections/33333333-3333-4333-8333-333333333333",
+	} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		handler.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusUnauthorized {
+			t.Fatalf("GET %s status = %d, want 401; body=%s", path, recorder.Code, recorder.Body.String())
 		}
 	}
 }

@@ -352,7 +352,7 @@ allocation order only; consumers rescan claimable rows, deduplicate by
 
 - [x] **15.1D-1 Contract and migration:** synchronize DTO/error/Consent/File
       contracts and add reversible migration `006` with Job/idempotency gaps.
-- [ ] **15.1D-2 Collection service:** implement Personal/Team CRUD, cursor
+- [x] **15.1D-2 Collection service:** implement Personal/Team CRUD, cursor
       lists, immutable scope, disclosure order, revisions, and Outbox.
 - [ ] **15.1D-3 Document and File binding:** implement logical Document/Version
       lifecycle, locked binding/deletion, content authorization, Job creation,
