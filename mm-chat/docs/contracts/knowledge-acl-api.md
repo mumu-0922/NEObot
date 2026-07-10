@@ -2,10 +2,10 @@
 
 ## 1. Status and Scope
 
-This is a **future Phase 15 extension contract**, not an implementation report.
-The implemented Phase 13 baseline remains the request-scoped auth/session
-boundary in [`auth-session-api.md`](./auth-session-api.md) plus Phase 13
-ownership enforcement over the existing file API in
+This is a **future Phase 15 Knowledge ACL extension contract**, not an
+implementation report. The current auth/session baseline is Phase 15.1B in
+[`auth-session-api.md`](./auth-session-api.md), with Phase 13 ownership
+enforcement over the existing file API in
 [`file-api.md`](./file-api.md). The current backend has no team, membership,
 knowledge collection, knowledge document, or processing-consent schema.
 
@@ -16,20 +16,23 @@ availability does not grant data-processing consent or bypass any ACL check.
 
 ## 2. Trust and Identity Boundary
 
-- Every user authenticates with an independent Phase 13 session. Team members
-  never share a login, bearer token, or admin session.
-- Public registration is disabled by default. The initial operator is
-  bootstrapped out of band; subsequent users enter through a single-use,
-  expiring team-admin invitation.
+- Every user authenticates with an independent Phase 15.1B Email/Password
+  identity and Bearer Session. Team members never share a login, bearer token,
+  or admin session.
+- Public registration is disabled by default. The initial operator is created
+  out of band by the operator-only, one-time `admin bootstrap-identity` command;
+  it refuses to run after any Credential exists and is neither a password-reset
+  nor a break-glass path. Subsequent users enter through a single-use, expiring
+  team-admin invitation.
 - Raw invitation tokens are delivered only to the invited mailbox. The Team
   Admin API returns `inviteId`, masked email, role, status, and expiry but never
   the token. The server stores only the token hash, binds it to one Team, Role,
   and email address, and rejects it after acceptance, revocation, or expiry.
   Acceptance proves mailbox possession, sets that User's Argon2id password
   hash, and issues only that User's Session.
-- After Phase 15 cutover, ordinary `POST /v1/auth/login` uses the user's verified
-  email and password. The bootstrap token is limited to initial operator
-  provisioning or an audited break-glass path and cannot authenticate members.
+- Ordinary `POST /v1/auth/login` uses the user's verified email and password.
+  The current baseline has no `AUTH_BOOTSTRAP_TOKEN`; the old Bootstrap Token is
+  rejected and cannot authenticate an operator or member.
 - Password recovery uses a hashed, single-use, expiring token delivered only to
   the user's verified email. A team admin cannot set, receive, or reset a
   member's credential because that would expose the member's Personal

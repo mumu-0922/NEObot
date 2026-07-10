@@ -325,7 +325,11 @@ func TestSessionIdentityMiddlewareSkipsLoginRoute(t *testing.T) {
 		WithSessionResolver(&fakeSessionResolver{err: auth.ErrSessionExpired}),
 	)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(`{"token":"x"}`))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/auth/login",
+		strings.NewReader(`{"email":"owner@example.test","password":"not-the-user-password"}`),
+	)
 	req.Header.Set("Authorization", "Bearer expired-token")
 
 	handler.ServeHTTP(rec, req)
@@ -352,17 +356,45 @@ func TestAuthRequiredModeRejectsMissingCredentialsAndKeepsPublicRoutes(t *testin
 	publicRoutes := []struct {
 		method string
 		path   string
+		body   string
 		want   int
 	}{
 		{method: http.MethodGet, path: "/health", want: http.StatusOK},
 		{method: http.MethodGet, path: "/ready", want: http.StatusOK},
 		{method: http.MethodGet, path: "/metrics", want: http.StatusOK},
 		{method: http.MethodGet, path: "/v1/version", want: http.StatusOK},
-		{method: http.MethodPost, path: "/v1/auth/login", want: http.StatusServiceUnavailable},
+		{
+			method: http.MethodPost,
+			path:   "/v1/auth/login",
+			body:   `{"email":"owner@example.test","password":"not-the-user-password"}`,
+			want:   http.StatusServiceUnavailable,
+		},
+		{
+			method: http.MethodPost,
+			path:   "/v1/auth/invites/accept",
+			body:   `{"token":"token","password":"invite-password-value"}`,
+			want:   http.StatusServiceUnavailable,
+		},
+		{
+			method: http.MethodPost,
+			path:   "/v1/auth/recovery/request",
+			body:   `{"email":"owner@example.test"}`,
+			want:   http.StatusServiceUnavailable,
+		},
+		{
+			method: http.MethodPost,
+			path:   "/v1/auth/recovery/complete",
+			body:   `{"token":"token","newPassword":"replacement-password-value"}`,
+			want:   http.StatusServiceUnavailable,
+		},
 	}
 	for _, route := range publicRoutes {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(route.method, route.path, strings.NewReader(`{"token":"x"}`))
+		req := httptest.NewRequest(
+			route.method,
+			route.path,
+			strings.NewReader(route.body),
+		)
 
 		handler.ServeHTTP(rec, req)
 
@@ -376,6 +408,8 @@ func TestAuthRequiredModeRejectsMissingCredentialsAndKeepsPublicRoutes(t *testin
 		path   string
 	}{
 		{method: http.MethodGet, path: "/v1/me"},
+		{method: http.MethodDelete, path: "/v1/me/sessions"},
+		{method: http.MethodPost, path: "/v1/auth/logout"},
 		{method: http.MethodGet, path: "/v1/chat/conversations"},
 		{method: http.MethodGet, path: "/v1/files/33333333-3333-4333-8333-333333333333"},
 		{method: http.MethodGet, path: "/v1/import/browser/33333333-3333-4333-8333-333333333333"},
@@ -546,7 +580,11 @@ func TestNewHandlerRegistersChatRoutesWithDatabaseRequired(t *testing.T) {
 	}
 
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(`{"token":"x"}`))
+	req = httptest.NewRequest(
+		http.MethodPost,
+		"/v1/auth/login",
+		strings.NewReader(`{"email":"owner@example.test","password":"not-the-user-password"}`),
+	)
 
 	handler.ServeHTTP(rec, req)
 

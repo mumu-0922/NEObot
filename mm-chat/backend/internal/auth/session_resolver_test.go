@@ -9,7 +9,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/sessioncache"
 )
 
-func TestSessionResolverUsesCacheHitWithoutRepository(t *testing.T) {
+func TestSessionResolverRechecksRepositoryOnPositiveCacheHit(t *testing.T) {
 	now := time.Unix(100, 0).UTC()
 	cache := newFakeSessionCache()
 	cache.snapshot = sessioncache.Snapshot{
@@ -29,11 +29,11 @@ func TestSessionResolverUsesCacheHitWithoutRepository(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveByTokenHash() error = %v", err)
 	}
-	if session.ID != "session-1" || session.UserID != "user-1" || session.DisplayName != "User One" {
+	if session.ID != "repo-session" {
 		t.Fatalf("ResolveByTokenHash() session = %#v", session)
 	}
-	if repo.calls != 0 {
-		t.Fatalf("repo calls = %d, want 0 on cache hit", repo.calls)
+	if repo.calls != 1 {
+		t.Fatalf("repo calls = %d, want 1 on cache hit", repo.calls)
 	}
 }
 
@@ -112,8 +112,8 @@ func TestSessionResolverFallsBackToRepositoryWhenCachedSessionIsExpired(t *testi
 	if session.ID != "session-1" {
 		t.Fatalf("ResolveByTokenHash() session = %#v", session)
 	}
-	if cache.deleteCalls != 1 || repo.calls != 1 {
-		t.Fatalf("delete/repo calls = %d/%d, want 1/1", cache.deleteCalls, repo.calls)
+	if cache.deleteCalls != 0 || repo.calls != 1 {
+		t.Fatalf("delete/repo calls = %d/%d, want 0/1", cache.deleteCalls, repo.calls)
 	}
 }
 
@@ -163,12 +163,13 @@ func TestSessionResolverVerifiesRevocationHintAgainstRepository(t *testing.T) {
 	if session.ID != "session-1" {
 		t.Fatalf("ResolveByTokenHash() session = %#v", session)
 	}
-	if repo.calls != 1 || cache.deleteCalls != 1 || cache.clearRevokedCalls != 1 {
+	if repo.calls != 1 || cache.deleteCalls != 0 || cache.clearRevokedCalls != 0 || cache.cacheCalls != 1 {
 		t.Fatalf(
-			"repo/delete/clear calls = %d/%d/%d, want 1/1/1",
+			"repo/delete/clear/cache calls = %d/%d/%d/%d, want 1/0/0/1",
 			repo.calls,
 			cache.deleteCalls,
 			cache.clearRevokedCalls,
+			cache.cacheCalls,
 		)
 	}
 }

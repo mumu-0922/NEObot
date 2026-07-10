@@ -79,9 +79,9 @@ Rules:
   `storage.ErrObjectNotFound` so the file API keeps returning
   `404 FILE_NOT_FOUND`.
 
-Dependency note: the backend pins `github.com/minio/minio-go/v7` to a Go
-1.22-compatible release line. Do not blindly upgrade to the latest SDK unless
-the backend Go toolchain is upgraded too.
+Dependency note: the backend now targets Go 1.25. Keep
+`github.com/minio/minio-go/v7` upgrades inside an explicit dependency review;
+do not couple object-store SDK changes to unrelated feature work.
 
 ## Verification
 

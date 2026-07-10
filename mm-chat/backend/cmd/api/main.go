@@ -61,6 +61,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	recoveryDelivery, err := newRecoveryDelivery(cfg)
+	if err != nil {
+		_ = redisClient.Close()
+		_ = db.Close()
+		logger.Error("auth_recovery_delivery_config_failed", slog.String("error", redactSensitiveLogText(err.Error())))
+		os.Exit(1)
+	}
+
 	var chatRepo chat.Repository
 	var fileRepo files.Repository
 	var importRepo browserimport.Repository
@@ -77,9 +85,9 @@ func main() {
 		authService = auth.NewService(
 			authRepo,
 			auth.WithAuthSessionCache(sessionCache),
-			auth.WithBootstrapToken(cfg.Auth.BootstrapToken),
-			auth.WithBootstrapUser(cfg.Auth.BootstrapUserID, cfg.Auth.BootstrapDisplayName),
+			auth.WithRecoveryDelivery(recoveryDelivery),
 			auth.WithSessionTTL(cfg.Auth.SessionTTL),
+			auth.WithRecoveryTTL(cfg.Auth.RecoveryTTL),
 		)
 	}
 
@@ -174,6 +182,11 @@ func main() {
 	if err := db.Close(); err != nil {
 		logger.Warn("database_close_failed", slog.String("error", redactSensitiveLogText(err.Error())))
 	}
+	if closer, ok := recoveryDelivery.(interface{ Close() error }); ok {
+		if err := closer.Close(); err != nil {
+			logger.Warn("auth_recovery_delivery_close_failed")
+		}
+	}
 }
 
 func redactSensitiveLogText(value string) string {
@@ -238,6 +251,25 @@ func newObjectStore(cfg config.Config) (storage.ObjectStore, error) {
 	default:
 		return nil, fmt.Errorf("unsupported STORAGE_BACKEND %q", cfg.Storage.Backend)
 	}
+}
+
+func newRecoveryDelivery(cfg config.Config) (auth.RecoveryDelivery, error) {
+	smtpCfg := cfg.Auth.SMTP
+	if strings.TrimSpace(smtpCfg.Addr) == "" &&
+		strings.TrimSpace(smtpCfg.Username) == "" &&
+		smtpCfg.Password == "" &&
+		strings.TrimSpace(smtpCfg.From) == "" {
+		return nil, nil
+	}
+
+	return auth.NewSMTPRecoveryDelivery(auth.SMTPRecoveryConfig{
+		Addr:      smtpCfg.Addr,
+		Username:  smtpCfg.Username,
+		Password:  smtpCfg.Password,
+		From:      smtpCfg.From,
+		QueueSize: smtpCfg.QueueSize,
+		Timeout:   smtpCfg.Timeout,
+	})
 }
 
 func newChatProvider(cfg config.Config) (chat.Provider, error) {

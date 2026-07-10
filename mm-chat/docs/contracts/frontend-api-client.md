@@ -689,7 +689,11 @@ First MVP may run as single-user or access-gated, but the client contract should
 export interface AuthApi {
   getCurrentUser(): Promise<CurrentUser | null>;
   login(input: LoginInput): Promise<LoginResult>;
+  acceptInvite(input: AcceptInviteInput): Promise<LoginResult>;
+  requestRecovery(input: RecoveryRequestInput): Promise<void>;
+  completeRecovery(input: RecoveryCompleteInput): Promise<void>;
   logout(): Promise<void>;
+  revokeAllSessions(): Promise<void>;
 }
 
 export interface CurrentUser {
@@ -700,8 +704,22 @@ export interface CurrentUser {
 }
 
 export interface LoginInput {
-  password?: string;
-  token?: string;
+  email: string;
+  password: string;
+}
+
+export interface AcceptInviteInput {
+  token: string;
+  password: string;
+}
+
+export interface RecoveryRequestInput {
+  email: string;
+}
+
+export interface RecoveryCompleteInput {
+  token: string;
+  newPassword: string;
 }
 
 export interface LoginResult {
@@ -713,20 +731,29 @@ export interface LoginResult {
 
 Endpoint mapping:
 
-| Method           | Server Endpoint        | Local Behavior                                   |
-| ---------------- | ---------------------- | ------------------------------------------------ |
-| `getCurrentUser` | `GET /v1/me`           | Returns synthetic local user                     |
-| `login`          | `POST /v1/auth/login`  | Existing `/api/access/verify` compatibility      |
-| `logout`         | `POST /v1/auth/logout` | Clears server/session state only when applicable |
+| Method              | Server Endpoint                   | Local Behavior                                   |
+| ------------------- | --------------------------------- | ------------------------------------------------ |
+| `getCurrentUser`    | `GET /v1/me`                      | Returns synthetic local user                     |
+| `login`             | `POST /v1/auth/login`             | Existing `/api/access/verify` compatibility      |
+| `acceptInvite`      | `POST /v1/auth/invites/accept`    | Unsupported                                      |
+| `requestRecovery`   | `POST /v1/auth/recovery/request`  | Unsupported                                      |
+| `completeRecovery`  | `POST /v1/auth/recovery/complete` | Unsupported                                      |
+| `logout`            | `POST /v1/auth/logout`            | Clears server/session state only when applicable |
+| `revokeAllSessions` | `DELETE /v1/me/sessions`          | Unsupported                                      |
 
 Auth naming rule: server mode uses `login`; local mode may implement `login` by calling the existing access verification route until that route is replaced.
 
-Phase 13 server mode uses a bootstrap-token login first: `POST /v1/auth/login`
-returns `{ user, token, expiresAt }`, where `token` is the raw bearer session
-token returned once. The client stores it as runtime session state and sends it
-as `Authorization: Bearer <token>` for server API calls. Redis cache loss must
-behave like a cache miss and fall back to Postgres, not force a client-visible
-logout.
+Phase 15.1B supersedes the Phase 13 Bootstrap Token DTO. Server Login accepts
+only `{ email, password }` and returns `{ user, token, expiresAt }`, where
+`token` is the raw Bearer Session Token returned once. Invite Acceptance has
+the same success shape. The client stores the Token as runtime Session state
+and sends it as `Authorization: Bearer <token>` for server API calls. Recovery
+Request always renders the same accepted state; Recovery Completion and
+revoke-all clear runtime Session state. Frontend UI wiring remains pending and
+must preserve the existing React/UI stack rather than reimplementing it.
+
+Postgres is rechecked on every Bearer request. Redis cache loss or a stale
+positive snapshot cannot change the authoritative Session result.
 
 Phase 13.3 adds backend `AUTH_MODE=development|required`. Server deployments use
 `required`, so clients must treat `401 UNAUTHENTICATED` as a login-required

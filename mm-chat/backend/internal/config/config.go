@@ -30,6 +30,9 @@ const (
 	DefaultAuthBootstrapUserID    = "00000000-0000-0000-0000-000000000001"
 	DefaultAuthBootstrapUserName  = "Owner"
 	DefaultAuthSessionTTL         = 7 * 24 * time.Hour
+	DefaultAuthRecoveryTTL        = 30 * time.Minute
+	DefaultAuthSMTPQueueSize      = 100
+	DefaultAuthSMTPTimeout        = 10 * time.Second
 
 	EnvAddr                   = "MM_CHAT_ADDR"
 	EnvVersion                = "MM_CHAT_VERSION"
@@ -61,10 +64,16 @@ const (
 	EnvS3BucketAutoCreate     = "S3_BUCKET_AUTO_CREATE"
 	EnvMaxUploadBytes         = "MAX_UPLOAD_BYTES"
 	EnvAuthMode               = "AUTH_MODE"
-	EnvAuthBootstrapToken     = "AUTH_BOOTSTRAP_TOKEN"
 	EnvAuthBootstrapUserID    = "AUTH_BOOTSTRAP_USER_ID"
 	EnvAuthBootstrapUserName  = "AUTH_BOOTSTRAP_DISPLAY_NAME"
 	EnvAuthSessionTTL         = "AUTH_SESSION_TTL"
+	EnvAuthRecoveryTTL        = "AUTH_RECOVERY_TTL"
+	EnvAuthSMTPAddr           = "AUTH_SMTP_ADDR"
+	EnvAuthSMTPUsername       = "AUTH_SMTP_USERNAME"
+	EnvAuthSMTPPassword       = "AUTH_SMTP_PASSWORD"
+	EnvAuthSMTPFrom           = "AUTH_SMTP_FROM"
+	EnvAuthSMTPQueueSize      = "AUTH_SMTP_QUEUE_SIZE"
+	EnvAuthSMTPTimeout        = "AUTH_SMTP_TIMEOUT"
 )
 
 // Config contains the process-level settings required to start the API.
@@ -131,10 +140,22 @@ type S3Config struct {
 // never be logged or serialized into API responses.
 type AuthConfig struct {
 	Mode                 string
-	BootstrapToken       string
 	BootstrapUserID      string
 	BootstrapDisplayName string
 	SessionTTL           time.Duration
+	RecoveryTTL          time.Duration
+	SMTP                 SMTPRecoveryConfig
+}
+
+// SMTPRecoveryConfig contains server-only mailbox delivery settings. The
+// password and raw recovery tokens must never be logged or serialized.
+type SMTPRecoveryConfig struct {
+	Addr      string
+	Username  string
+	Password  string
+	From      string
+	QueueSize int
+	Timeout   time.Duration
 }
 
 func (cfg AuthConfig) RequireAuth() bool {
@@ -195,10 +216,18 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 
 		Auth: AuthConfig{
 			Mode:                 authModeEnvOrDefault(lookup, EnvAuthMode, DefaultAuthMode),
-			BootstrapToken:       optionalEnv(lookup, EnvAuthBootstrapToken),
 			BootstrapUserID:      envOrDefault(lookup, EnvAuthBootstrapUserID, DefaultAuthBootstrapUserID),
 			BootstrapDisplayName: envOrDefault(lookup, EnvAuthBootstrapUserName, DefaultAuthBootstrapUserName),
 			SessionTTL:           durationEnvOrDefault(lookup, EnvAuthSessionTTL, DefaultAuthSessionTTL),
+			RecoveryTTL:          durationEnvOrDefault(lookup, EnvAuthRecoveryTTL, DefaultAuthRecoveryTTL),
+			SMTP: SMTPRecoveryConfig{
+				Addr:      optionalEnv(lookup, EnvAuthSMTPAddr),
+				Username:  optionalEnv(lookup, EnvAuthSMTPUsername),
+				Password:  optionalEnv(lookup, EnvAuthSMTPPassword),
+				From:      optionalEnv(lookup, EnvAuthSMTPFrom),
+				QueueSize: intEnvOrDefault(lookup, EnvAuthSMTPQueueSize, DefaultAuthSMTPQueueSize),
+				Timeout:   durationEnvOrDefault(lookup, EnvAuthSMTPTimeout, DefaultAuthSMTPTimeout),
+			},
 		},
 	}
 }

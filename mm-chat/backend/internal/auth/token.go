@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -21,4 +22,16 @@ func GenerateSessionToken() (string, error) {
 func HashSessionToken(token string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(token)))
 	return hex.EncodeToString(sum[:])
+}
+
+func normalizeOneTimeToken(token string) (string, error) {
+	token = strings.TrimSpace(token)
+	if len(token) != sessionTokenBytes*2 || strings.ToLower(token) != token {
+		return "", errors.New("token must be 32-byte lowercase hex")
+	}
+	decoded, err := hex.DecodeString(token)
+	if err != nil || len(decoded) != sessionTokenBytes {
+		return "", errors.New("token must be 32-byte lowercase hex")
+	}
+	return token, nil
 }

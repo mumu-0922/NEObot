@@ -5718,3 +5718,79 @@ the final `go test ./...` all passed after those fixes.
 
 Next: commit Phase 15.1A with an explicit path allowlist, then start identity
 services in 15.1B.
+
+## 2026-07-10 — Phase 15.1B identity services verified
+
+Phase 15.1B replaced the public Bootstrap Token exchange with independent
+Email/Password identities while preserving the Bearer Session contract. The Go
+backend now provides Login, Invite Acceptance, Recovery Request/Completion,
+logout, `/me`, and revoke-all session flows. The existing Next.js/React UI was
+not changed in this slice.
+
+The implementation pins these authority and secret boundaries:
+
+```text
+password hash -> Argon2id PHC v=19, m=65536, t=3, p=2, bounded to 2 jobs
+email -> lower(trim(email)), one mailbox, at most 254 bytes
+password -> at least 15 UTF-8 runes, at most 256 bytes, no trim
+session/invite/recovery token -> 32 random bytes as lowercase hex
+persistence -> SHA-256 token hashes only
+Bearer authorization -> Postgres rechecked on every request
+Redis -> non-authoritative snapshot/revocation hints and rate limits only
+```
+
+Repository transactions now fence Login against `credential_revision`, consume
+Invites and Recovery Tokens once, prevent Invite credential overwrite, revoke
+all Sessions after Recovery, reject disabled/deleted accounts, and allow only a
+single operator-side bootstrap identity. The `mm-chat-admin` command reads the
+initial password from one stdin line; runtime Compose no longer receives
+`AUTH_BOOTSTRAP_TOKEN`.
+
+Public Identity routes use strict 8 KiB JSON bodies, reject unknown and
+caller-supplied identity fields, and apply independent IP plus hashed
+account/token limits. Redis failure falls back to a bounded process-local
+limiter. Recovery delivery uses one bounded SMTP worker, STARTTLS with TLS 1.2
+or newer, and never places a raw token in a URL, log, metric, response, command
+argument, environment value, or Git artifact. A syntactically valid Recovery
+Request keeps the same `202` response for known and unknown accounts and for
+delivery failure/overload.
+
+The security gate found `GO-2026-5004` in the previous
+`github.com/jackc/pgx/v5 v5.6.0`; the backend explicitly used the affected
+simple-protocol path. The dependency was upgraded to `pgx/v5 v5.9.2`, requiring
+the backend and Docker builder baseline to move from Go 1.22 to Go 1.25.
+`govulncheck` then reported zero called vulnerabilities.
+
+Parallel xhigh Workers synchronized deployment, secret-rotation, Redis,
+contract, architecture, and environment documentation. A separate xhigh Review
+Agent found one P1: loopback proxy requests trusted the first
+`X-Forwarded-For` address while Nginx preserved client-supplied prefixes. The
+backend now selects the rightmost valid proxy address, Nginx replaces the header
+with `$remote_addr`, and a spoof-prefix regression test covers the boundary.
+Independent re-review ended with `P0/P1/P2 = 0`.
+
+Verification completed after the review fix:
+
+```text
+gofmt + go vet ./...                                      passed
+go test -race ./internal/auth ./internal/ratelimit        passed
+go test ./...                                             passed
+govulncheck ./...                                         0 called vulnerabilities
+Docker Compose config + Go 1.25 backend image build       passed
+backend image API/migrate/admin binary check              passed
+PostgreSQL 16 migration 001 -> 004 and identity drill     passed
+Prettier Markdown + scoped git diff --check               passed
+diff-only quality/security/change gates                   passed
+```
+
+The PostgreSQL drill reproduced first-only bootstrap, Invite Acceptance,
+Recovery rotation and concurrent one-time consumption, credential revision
+fencing, disabled-account denial, required-mode Login/`/me`/revoke-all, and
+secret-free API logs. Temporary containers were removed automatically.
+
+The SMTP queue remains intentionally bounded and process-local: an accepted
+request is not a durable delivery guarantee. A transactional Mail Outbox is a
+future reliability enhancement, not part of the locked Phase 15.1B contract.
+
+Next: commit Phase 15.1B with the explicit task allowlist, then begin Phase
+15.1C Team services; do not start Python RAG processing before 15.1E passes.

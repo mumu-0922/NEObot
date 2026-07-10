@@ -1,5 +1,11 @@
 # Phase 13 Auth and Multi-User Hardening Plan
 
+> **Historical status:** Phase 15.1B supersedes the Phase 13 auth baseline. This
+> document retains the Phase 13 execution plan and historical decisions; use
+> [`phase-15-1b-identity-services-plan.md`](./phase-15-1b-identity-services-plan.md)
+> and [`../contracts/auth-session-api.md`](../contracts/auth-session-api.md) for
+> the current identity and session contract.
+
 ## Objective
 
 Replace fixed development-user behavior with request-scoped identity and prepare

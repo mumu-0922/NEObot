@@ -16,33 +16,105 @@ secrets, or copied provider keys.
 
 ## Secret Inventory
 
-| Secret                         | Used by                    | Rotation impact                                                         |
-| ------------------------------ | -------------------------- | ----------------------------------------------------------------------- |
-| `AUTH_BOOTSTRAP_TOKEN`         | Go backend login           | New logins use the new bootstrap token; existing sessions remain valid. |
-| Session bearer tokens          | Browser clients, Postgres  | Revoke by logout or DB session revocation; Redis cache may need purge.  |
-| `PROVIDER_API_KEY`             | Go backend provider client | Restart backend; verify chat streaming.                                 |
-| `POSTGRES_PASSWORD`            | Postgres role, backend     | Alter DB role, update `DATABASE_URL`, restart backend/migrate users.    |
-| `REDIS_PASSWORD` / `REDIS_URL` | Redis, backend             | Restart Redis and backend; temporary cache/cancel/rate state may reset. |
-| `S3_SECRET_ACCESS_KEY`         | Backend MinIO app user     | Prefer create-new app user, restart backend, then disable old user.     |
-| `MINIO_ROOT_PASSWORD`          | MinIO admin/bootstrap      | Maintenance restart; never use root credentials from the app.           |
-| TLS private key/cert           | Reverse proxy              | Reload proxy; backend/data services are unaffected.                     |
+| Secret                         | Used by                    | Rotation impact                                                          |
+| ------------------------------ | -------------------------- | ------------------------------------------------------------------------ |
+| Account passwords              | Identity users, Postgres   | Rotate through Recovery; all sessions for that user are revoked.         |
+| Recovery tokens                | Identity users, Postgres   | One-time, 30 minutes by default; completing Recovery consumes the token. |
+| SMTP username/password         | Go backend Recovery mailer | Restart backend; verify delivery before revoking the old credential.     |
+| Session bearer tokens          | Browser clients, Postgres  | Revoke through the authenticated session endpoints.                      |
+| `PROVIDER_API_KEY`             | Go backend provider client | Restart backend; verify chat streaming.                                  |
+| `POSTGRES_PASSWORD`            | Postgres role, backend     | Alter DB role, update `DATABASE_URL`, restart backend/migrate users.     |
+| `REDIS_PASSWORD` / `REDIS_URL` | Redis, backend             | Restart Redis and backend; temporary cache/cancel/rate state may reset.  |
+| `S3_SECRET_ACCESS_KEY`         | Backend MinIO app user     | Prefer create-new app user, restart backend, then disable old user.      |
+| `MINIO_ROOT_PASSWORD`          | MinIO admin/bootstrap      | Maintenance restart; never use root credentials from the app.            |
+| TLS private key/cert           | Reverse proxy              | Reload proxy; backend/data services are unaffected.                      |
 
-## Auth Bootstrap Token
+## Account Password Recovery
 
-Changing `AUTH_BOOTSTRAP_TOKEN` only changes the login bootstrap secret. It does
-not revoke already-issued bearer sessions.
+There is no rotatable `AUTH_BOOTSTRAP_TOKEN`. The one-time
+`admin bootstrap-identity` command provisions only the first Credential and
+refuses to run once any Credential exists; it is not a password-reset path.
+
+Request Recovery without revealing whether the mailbox exists:
 
 ```bash
-# edit mm-chat/.env.single-server: AUTH_BOOTSTRAP_TOKEN=<new-bootstrap-token>
-docker compose --env-file mm-chat/.env.single-server \
-  -f mm-chat/compose.single-server.yml --profile app up -d backend
-
-curl -fsS http://127.0.0.1:8080/ready
+curl -fsS -X POST http://127.0.0.1:8080/v1/auth/recovery/request \
+  -H "Content-Type: application/json" \
+  --data '{"email":"<user@example.com>"}'
+# HTTP 202: {"status":"accepted"}
 ```
 
-To revoke all active sessions during an incident, run a maintenance-window DB
-update and clear session cache keys or restart Redis after confirming Redis holds
-only non-authoritative temporary state:
+The one-time Recovery Token is delivered by email and expires after
+`AUTH_RECOVERY_TTL` (`30m` by default). Do not put the token or new password in
+command arguments, environment variables, shell history, logs, or tickets. One
+stdin-only completion method is:
+
+```bash
+python3 - <<'PY' |
+import getpass
+import json
+
+print(json.dumps({
+    "token": getpass.getpass("Recovery token: "),
+    "newPassword": getpass.getpass("New password: "),
+}))
+PY
+curl -fsS -o /dev/null -w '%{http_code}\n' \
+  -X POST http://127.0.0.1:8080/v1/auth/recovery/complete \
+  -H "Content-Type: application/json" --data-binary @-
+# 204
+```
+
+Completion atomically changes the password, increments its Credential revision,
+consumes the token, revokes sibling Recovery Tokens, and revokes every Session
+for that user. It does not issue a replacement Session; verify by logging in
+again through the normal client with the new password. Passwords must be 15-256
+UTF-8 characters/bytes and are not trimmed or normalized.
+
+## SMTP Credentials
+
+Rotate SMTP credentials independently of account passwords:
+
+1. Obtain a new relay credential without revoking the old one.
+2. Update `AUTH_SMTP_USERNAME` and `AUTH_SMTP_PASSWORD` together in
+   `mm-chat/.env.single-server`. If the relay changes, also update
+   `AUTH_SMTP_ADDR=<smtp-host:port>` and `AUTH_SMTP_FROM=<sender-mailbox>`.
+3. Restart only the backend and verify readiness:
+   ```bash
+   docker compose --env-file mm-chat/.env.single-server \
+     -f mm-chat/compose.single-server.yml --profile app up -d backend
+   curl -fsS http://127.0.0.1:8080/ready
+   ```
+4. Request Recovery for a known operator test mailbox and confirm that the
+   email arrives with a token and expiry. The API still returns the same `202`
+   when delivery fails or the queue is full, so the HTTP response alone is not
+   a delivery smoke.
+5. Revoke the old SMTP credential only after delivery succeeds.
+
+`AUTH_SMTP_ADDR` must be `host:port`; delivery requires `STARTTLS` with TLS 1.2
+or newer. If SMTP auth is not required, leave both username and password empty.
+A partial or invalid SMTP configuration prevents backend startup. Rollback by
+restoring the old SMTP fields and restarting `backend`.
+
+## Session Revocation
+
+A signed-in user revokes all of their own sessions, including the current one,
+through the authenticated Identity API:
+
+```bash
+curl -fsS -o /dev/null -w '%{http_code}\n' \
+  -X DELETE http://127.0.0.1:8080/v1/me/sessions \
+  -H "Authorization: Bearer <session-token>"
+# 204
+```
+
+Use `POST /v1/auth/logout` when only the current Session should be revoked.
+Postgres is authoritative on every Bearer request, and the API invalidates the
+corresponding Redis hints; no Redis purge is required for these normal user
+flows.
+
+For an all-user security incident only, an operator may revoke every active
+Session in a maintenance window with a database update:
 
 ```bash
 docker compose --project-directory mm-chat \
@@ -55,6 +127,11 @@ psql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" \
   --command="update sessions set revoked_at = coalesce(revoked_at, now()), updated_at = now() where revoked_at is null;"
 '
 ```
+
+This direct update bypasses API cache cleanup, but stale positive Redis entries
+cannot authorize a request because Postgres is rechecked. Restarting Redis is
+therefore not required for authorization correctness, though in-flight streams
+may still need operational cancellation.
 
 ## Provider API Key
 

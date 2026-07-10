@@ -89,9 +89,6 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 	if cfg.Storage.MaxUploadBytes != DefaultMaxUploadBytes {
 		t.Fatalf("Storage.MaxUploadBytes = %d, want %d", cfg.Storage.MaxUploadBytes, DefaultMaxUploadBytes)
 	}
-	if cfg.Auth.BootstrapToken != "" {
-		t.Fatalf("Auth.BootstrapToken = %q, want empty", cfg.Auth.BootstrapToken)
-	}
 	if cfg.Auth.Mode != DefaultAuthMode {
 		t.Fatalf("Auth.Mode = %q, want %q", cfg.Auth.Mode, DefaultAuthMode)
 	}
@@ -106,6 +103,15 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 	}
 	if cfg.Auth.SessionTTL != DefaultAuthSessionTTL {
 		t.Fatalf("Auth.SessionTTL = %s, want %s", cfg.Auth.SessionTTL, DefaultAuthSessionTTL)
+	}
+	if cfg.Auth.RecoveryTTL != DefaultAuthRecoveryTTL {
+		t.Fatalf("Auth.RecoveryTTL = %s, want %s", cfg.Auth.RecoveryTTL, DefaultAuthRecoveryTTL)
+	}
+	if cfg.Auth.SMTP.Addr != "" || cfg.Auth.SMTP.Username != "" ||
+		cfg.Auth.SMTP.Password != "" || cfg.Auth.SMTP.From != "" ||
+		cfg.Auth.SMTP.QueueSize != DefaultAuthSMTPQueueSize ||
+		cfg.Auth.SMTP.Timeout != DefaultAuthSMTPTimeout {
+		t.Fatalf("Auth.SMTP = %#v, want blank/default values", cfg.Auth.SMTP)
 	}
 }
 
@@ -141,10 +147,16 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 		EnvS3BucketAutoCreate:     " true ",
 		EnvMaxUploadBytes:         "1048576",
 		EnvAuthMode:               " required ",
-		EnvAuthBootstrapToken:     " bootstrap-secret ",
 		EnvAuthBootstrapUserID:    " 77777777-7777-4777-8777-777777777777 ",
 		EnvAuthBootstrapUserName:  " Server Owner ",
 		EnvAuthSessionTTL:         "24h",
+		EnvAuthRecoveryTTL:        "45m",
+		EnvAuthSMTPAddr:           " smtp.example.test:587 ",
+		EnvAuthSMTPUsername:       " mailer ",
+		EnvAuthSMTPPassword:       " mail-secret ",
+		EnvAuthSMTPFrom:           " no-reply@example.test ",
+		EnvAuthSMTPQueueSize:      "25",
+		EnvAuthSMTPTimeout:        "12s",
 	}
 
 	cfg := LoadFromEnv(func(key string) (string, bool) {
@@ -233,9 +245,6 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	if cfg.Storage.MaxUploadBytes != 1048576 {
 		t.Fatalf("Storage.MaxUploadBytes = %d, want 1048576", cfg.Storage.MaxUploadBytes)
 	}
-	if cfg.Auth.BootstrapToken != "bootstrap-secret" {
-		t.Fatalf("Auth.BootstrapToken = %q, want bootstrap-secret", cfg.Auth.BootstrapToken)
-	}
 	if cfg.Auth.Mode != AuthModeRequired {
 		t.Fatalf("Auth.Mode = %q, want required", cfg.Auth.Mode)
 	}
@@ -250,6 +259,17 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	}
 	if cfg.Auth.SessionTTL != 24*time.Hour {
 		t.Fatalf("Auth.SessionTTL = %s, want 24h", cfg.Auth.SessionTTL)
+	}
+	if cfg.Auth.RecoveryTTL != 45*time.Minute {
+		t.Fatalf("Auth.RecoveryTTL = %s, want 45m", cfg.Auth.RecoveryTTL)
+	}
+	if cfg.Auth.SMTP.Addr != "smtp.example.test:587" ||
+		cfg.Auth.SMTP.Username != "mailer" ||
+		cfg.Auth.SMTP.Password != "mail-secret" ||
+		cfg.Auth.SMTP.From != "no-reply@example.test" ||
+		cfg.Auth.SMTP.QueueSize != 25 ||
+		cfg.Auth.SMTP.Timeout != 12*time.Second {
+		t.Fatalf("Auth.SMTP = %#v, want overrides", cfg.Auth.SMTP)
 	}
 }
 
@@ -281,11 +301,17 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 		EnvS3ForcePathStyle:      " ",
 		EnvS3BucketAutoCreate:    "\n",
 		EnvMaxUploadBytes:        "\n",
-		EnvAuthBootstrapToken:    " ",
 		EnvAuthMode:              "\t",
 		EnvAuthBootstrapUserID:   "\t",
 		EnvAuthBootstrapUserName: "\n",
 		EnvAuthSessionTTL:        " ",
+		EnvAuthRecoveryTTL:       " ",
+		EnvAuthSMTPAddr:          " ",
+		EnvAuthSMTPUsername:      " ",
+		EnvAuthSMTPPassword:      " ",
+		EnvAuthSMTPFrom:          " ",
+		EnvAuthSMTPQueueSize:     " ",
+		EnvAuthSMTPTimeout:       " ",
 	}
 
 	cfg := LoadFromEnv(func(key string) (string, bool) {
@@ -342,11 +368,13 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 		cfg.Storage.S3.BucketAutoCreate {
 		t.Fatalf("Storage.S3 = %#v, want blank/false defaults", cfg.Storage.S3)
 	}
-	if cfg.Auth.BootstrapToken != "" ||
-		cfg.Auth.Mode != DefaultAuthMode ||
+	if cfg.Auth.Mode != DefaultAuthMode ||
 		cfg.Auth.BootstrapUserID != DefaultAuthBootstrapUserID ||
 		cfg.Auth.BootstrapDisplayName != DefaultAuthBootstrapUserName ||
-		cfg.Auth.SessionTTL != DefaultAuthSessionTTL {
+		cfg.Auth.SessionTTL != DefaultAuthSessionTTL ||
+		cfg.Auth.RecoveryTTL != DefaultAuthRecoveryTTL ||
+		cfg.Auth.SMTP.QueueSize != DefaultAuthSMTPQueueSize ||
+		cfg.Auth.SMTP.Timeout != DefaultAuthSMTPTimeout {
 		t.Fatalf("Auth = %#v, want defaults", cfg.Auth)
 	}
 }
@@ -368,6 +396,9 @@ func TestLoadFromEnvFallsBackForInvalidDBValues(t *testing.T) {
 		EnvMaxUploadBytes:         "-1",
 		EnvAuthMode:               "typo",
 		EnvAuthSessionTTL:         "not-a-duration",
+		EnvAuthRecoveryTTL:        "not-a-duration",
+		EnvAuthSMTPQueueSize:      "-1",
+		EnvAuthSMTPTimeout:        "not-a-duration",
 	}
 
 	cfg := LoadFromEnv(func(key string) (string, bool) {
@@ -414,6 +445,11 @@ func TestLoadFromEnvFallsBackForInvalidDBValues(t *testing.T) {
 	}
 	if cfg.Auth.SessionTTL != DefaultAuthSessionTTL {
 		t.Fatalf("Auth.SessionTTL = %s, want %s", cfg.Auth.SessionTTL, DefaultAuthSessionTTL)
+	}
+	if cfg.Auth.RecoveryTTL != DefaultAuthRecoveryTTL ||
+		cfg.Auth.SMTP.QueueSize != DefaultAuthSMTPQueueSize ||
+		cfg.Auth.SMTP.Timeout != DefaultAuthSMTPTimeout {
+		t.Fatalf("Auth recovery/SMTP defaults = %#v", cfg.Auth)
 	}
 	if cfg.Auth.Mode != AuthModeRequired {
 		t.Fatalf("Auth.Mode = %q, want required fail-closed fallback for unknown non-empty mode", cfg.Auth.Mode)

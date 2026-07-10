@@ -4,10 +4,38 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/storage"
 )
+
+func TestNewRecoveryDeliveryDisabledWhenSMTPBlank(t *testing.T) {
+	delivery, err := newRecoveryDelivery(config.Config{})
+	if err != nil || delivery != nil {
+		t.Fatalf("newRecoveryDelivery() = %T/%v, want nil/nil", delivery, err)
+	}
+}
+
+func TestNewRecoveryDeliveryValidatesConfiguredSMTP(t *testing.T) {
+	secret := "mail-secret-value"
+	_, err := newRecoveryDelivery(config.Config{Auth: config.AuthConfig{
+		SMTP: config.SMTPRecoveryConfig{
+			Addr:      "smtp.example.test:587",
+			Username:  "mailer",
+			Password:  secret,
+			From:      "",
+			QueueSize: 10,
+			Timeout:   time.Second,
+		},
+	}})
+	if err == nil {
+		t.Fatal("newRecoveryDelivery() error = nil, want invalid sender error")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("newRecoveryDelivery() leaked SMTP password: %v", err)
+	}
+}
 
 func TestNewRedisStateDisabledWhenURLBlank(t *testing.T) {
 	client, cancelStore, rateLimitStore, sessionCacheStore, err := newRedisState(context.Background(), config.Config{})

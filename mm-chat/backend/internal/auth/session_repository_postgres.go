@@ -40,6 +40,7 @@ FROM sessions s
 JOIN users u ON u.id = s.user_id
 WHERE s.token_hash = $1
   AND u.deleted_at IS NULL
+  AND u.account_status = 'active'
 `, tokenHash, defaultUserRole)
 
 	var session Session
@@ -75,9 +76,6 @@ func (r *PostgresSessionRepository) CreateSession(ctx context.Context, input Cre
 		return Session{}, errors.New("user id must be a UUID")
 	}
 	input.DisplayName = strings.TrimSpace(input.DisplayName)
-	if input.DisplayName == "" {
-		input.DisplayName = DevelopmentDisplayName
-	}
 	tokenHash, err := cleanTokenHash(input.TokenHash)
 	if err != nil {
 		return Session{}, err
@@ -94,15 +92,17 @@ func (r *PostgresSessionRepository) CreateSession(ctx context.Context, input Cre
 		_ = tx.Rollback()
 	}()
 
-	if _, err := tx.ExecContext(ctx, `
-INSERT INTO users (id, display_name)
-VALUES ($1, $2)
-ON CONFLICT (id) DO UPDATE
-SET display_name = EXCLUDED.display_name,
-    deleted_at = NULL,
-    updated_at = now()
-`, input.UserID, input.DisplayName); err != nil {
-		return Session{}, fmt.Errorf("upsert auth user: %w", err)
+	if err := tx.QueryRowContext(ctx, `
+SELECT COALESCE(display_name, '')
+FROM users
+WHERE id = $1
+  AND account_status = 'active'
+  AND deleted_at IS NULL
+FOR SHARE
+`, input.UserID).Scan(&input.DisplayName); errors.Is(err, sql.ErrNoRows) {
+		return Session{}, ErrInvalidCredential
+	} else if err != nil {
+		return Session{}, fmt.Errorf("lock auth user: %w", err)
 	}
 
 	session, err := scanSession(tx.QueryRowContext(ctx, `
@@ -149,6 +149,7 @@ FROM users u
 WHERE s.user_id = u.id
   AND s.token_hash = $1
   AND u.deleted_at IS NULL
+  AND u.account_status = 'active'
 RETURNING
   s.id,
   s.user_id,

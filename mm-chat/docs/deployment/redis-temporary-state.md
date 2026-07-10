@@ -1,22 +1,25 @@
 # Redis Temporary State Runbook
 
 Phase 7 introduces Redis as a non-authoritative coordination layer. Postgres
-remains the source of truth for conversations, messages, files, run status, and
-ownership. A Redis flush must not delete canonical user data.
+remains the source of truth for identity/session authorization, conversations,
+messages, files, run status, and ownership. A Redis flush must not delete
+canonical user data.
 
 ## Scope
 
 Implemented so far:
 
 - Redis client wiring in the Go API when `REDIS_URL` is set.
-- Read-through session-cache substrate for bearer session middleware.
+- Non-authoritative session snapshots and revocation hints for bearer session
+  middleware. Every bearer authorization still rechecks Postgres first.
 - Short-lived stream cancellation flags for cross-process coordination.
 - Fixed-window HTTP rate-limit middleware when `REDIS_RATE_LIMIT_ENABLED=true`.
 - Startup fail-fast when Redis is configured but unreachable or invalid.
+- Single-server Compose defaults to `AUTH_MODE=required`, so non-public routes
+  reject missing or invalid bearer credentials.
 
 Deferred:
 
-- Enforced hosted auth mode and full two-user isolation tests.
 - Temporary upload/job state.
 
 ## Runtime Configuration
@@ -38,8 +41,9 @@ Rules:
 - Keep Redis on a private Docker/host network; do not publish `6379` publicly.
 - Do not log `REDIS_URL` because it may contain credentials.
 - Use one `REDIS_KEY_PREFIX` per environment to avoid key collisions.
-- Keep `REDIS_SESSION_CACHE_TTL` short. Redis is only a lookup cache and
-  revocation-hint layer; Postgres `sessions` remains canonical.
+- Keep `REDIS_SESSION_CACHE_TTL` short. Redis stores only non-authoritative
+  snapshots and revocation hints; Postgres `sessions` and `users` remain
+  canonical for every authorization decision.
 - Keep `REDIS_RATE_LIMIT_ENABLED=false` in local development if repeated manual
   API smoke tests should never receive `429`.
 - Setting `REDIS_RATE_LIMIT_ENABLED=true` requires `REDIS_URL`; startup fails
@@ -55,10 +59,12 @@ The middleware applies to non-health HTTP routes only. Exempt paths:
 /v1/version
 ```
 
-Current identity is the request `RemoteAddr` host, hashed before it is stored in
-Redis. The backend does not trust `X-Forwarded-For` yet; if it is deployed
-behind a reverse proxy, all clients may share the proxy IP until a trusted-proxy
-configuration is added.
+The general HTTP limiter hashes the request `RemoteAddr` host before storing it
+in Redis. Public Identity routes add independent IP and hashed account/token
+limits. For those routes, `X-Forwarded-For` is accepted only when the immediate
+peer is loopback, and the backend uses the rightmost valid address supplied by
+that trusted proxy. The edge proxy must replace any client-supplied chain with
+`$remote_addr`; it must not use `$proxy_add_x_forwarded_for` on `/mm-api/`.
 
 Counters are incremented with a Redis Lua script so `INCR` and TTL assignment
 happen atomically for new window keys. Fixed-window key shape:
@@ -85,18 +91,26 @@ fails fast when `REDIS_URL` is configured but cannot be parsed or pinged.
 
 ## Session Cache Contract
 
-The auth substrate has a Postgres-backed resolver and Redis cache store. Phase 13
-uses it for optional bearer session middleware; missing credentials still fall
-back to the development user until enforced auth mode is enabled.
+The auth resolver hashes each presented bearer token and performs a mandatory
+Postgres `sessions`/`users` lookup before authorizing the request. A Redis
+positive cache hit must never authorize a request or bypass that lookup. This
+ensures session revocation, password recovery, account disablement, deletion,
+expiry, and revoke-all transactions take effect on the next bearer request.
 
-Read-through behavior:
+Single-server Compose currently defaults to `AUTH_MODE=required`. Missing
+credentials on non-public routes therefore fail closed. Direct backend
+development may still use `AUTH_MODE=development`, but every bearer credential
+that is presented is resolved through Postgres rather than trusted from Redis.
+
+Authorization behavior:
 
 ```text
-token hash
-  -> Redis session cache lookup
-  -> Redis revocation hint check
-  -> Postgres sessions/users lookup on cache miss or Redis error
-  -> cache active session snapshot with short TTL
+bearer token
+  -> SHA-256 token hash
+  -> mandatory Postgres sessions/users lookup
+  -> validate active account plus unexpired, unrevoked session
+  -> authorize from the canonical Postgres row
+  -> best-effort Redis snapshot write with a short TTL
 ```
 
 Redis key shapes:
@@ -114,13 +128,17 @@ Rules:
 
 - Cache TTL is the sooner of `REDIS_SESSION_CACHE_TTL` and the canonical
   `sessions.expires_at`.
-- Redis cache read/write errors fall back to Postgres; Postgres errors fail
-  closed.
+- Redis snapshot/hint errors do not change the Postgres authorization result;
+  Postgres lookup errors fail closed.
 - Expired or revoked sessions are not cached. Durable revoke must update
-  Postgres first, then delete the cache entry and optionally set the short-lived
-  revocation hint.
-- A Redis flush only causes cache misses; active sessions can be rebuilt from
-  Postgres.
+  Postgres first, then best-effort delete the snapshot and optionally set the
+  short-lived revocation hint.
+- Redis snapshot deletion, revocation-hint cleanup, and manual purge are cache
+  hygiene only. They are not prerequisites for authorization correctness
+  because no positive Redis entry can bypass the mandatory Postgres check.
+- A Redis flush removes only non-authoritative snapshots and hints. Active
+  sessions remain authorized, and revoked or disabled sessions remain denied,
+  according to Postgres.
 
 ## Cancellation Flag Contract
 
@@ -141,14 +159,15 @@ clears the flag; TTL is the fallback cleanup path.
 ## Failure and Flush Behavior
 
 - Redis disabled: same-process cancellation and durable Postgres cancellation
-  still work; session resolution falls back to Postgres when wired into HTTP,
-  and rate-limit middleware is inactive without a Redis store.
+  still work; bearer session resolution continues to require Postgres, and
+  rate-limit middleware is inactive without a Redis store.
 - Redis outage after startup: durable cancel still writes Postgres; cross-process
-  provider interruption, session-cache speed, and rate limiting may degrade
-  until Redis recovers.
+  provider interruption, session snapshot/hint maintenance, and rate limiting
+  may degrade until Redis recovers. Authorization still follows Postgres.
 - Redis flush: session-cache entries, active cross-process cancellation flags,
   and rate-limit counters are lost, but users, sessions, conversations,
-  messages, files, and run status remain readable from Postgres.
+  messages, files, and run status remain readable from Postgres. No Redis purge
+  or rebuild is required to preserve authorization correctness.
 
 ## Verification
 
@@ -159,8 +178,9 @@ go test ./internal/auth -run SessionResolver
 go test ./internal/httpserver -run RateLimit
 ```
 
-The auth integration test that exercises Redis `FLUSHDB` requires a disposable
-Redis database and an explicit guard:
+The auth integration test that exercises Redis `FLUSHDB` and confirms the next
+resolution still uses current Postgres state requires a disposable Redis
+database and an explicit guard:
 
 ```bash
 MM_CHAT_TEST_REDIS_URL=redis://:<password>@127.0.0.1:6379/0 \

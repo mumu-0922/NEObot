@@ -104,7 +104,8 @@ server {
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    # Replace any client-supplied chain before forwarding to the trusted backend.
+    proxy_set_header X-Forwarded-For $remote_addr;
     proxy_buffering off;
     proxy_cache off;
     proxy_read_timeout 300s;
@@ -115,7 +116,7 @@ server {
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-For $remote_addr;
   }
 }
 ```

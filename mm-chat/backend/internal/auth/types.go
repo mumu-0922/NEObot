@@ -21,9 +21,11 @@ var (
 	ErrSessionExpired  = errors.New("session expired")
 	ErrSessionRevoked  = errors.New("session revoked")
 
-	ErrDatabaseRequired  = errors.New("database is required")
-	ErrAuthNotConfigured = errors.New("auth bootstrap token is not configured")
-	ErrInvalidCredential = errors.New("invalid credentials")
+	ErrDatabaseRequired          = errors.New("database is required")
+	ErrInvalidCredential         = errors.New("invalid credentials")
+	ErrInvalidIdentityInput      = errors.New("identity input is invalid")
+	ErrInviteNotActive           = errors.New("invite is not active")
+	ErrBootstrapAlreadyCompleted = errors.New("bootstrap identity already exists")
 )
 
 // Session is the canonical application view of a Postgres session row joined to
@@ -41,7 +43,8 @@ type Session struct {
 }
 
 type LoginInput struct {
-	Token     string
+	Email     string
+	Password  string
 	UserAgent string
 }
 
@@ -49,6 +52,34 @@ type LoginResult struct {
 	User      User
 	Token     string
 	ExpiresAt time.Time
+}
+
+type AcceptInviteInput struct {
+	Token     string
+	Password  string
+	UserAgent string
+}
+
+type RecoveryRequestInput struct {
+	Email string
+}
+
+type RecoveryCompleteInput struct {
+	Token       string
+	NewPassword string
+}
+
+type LoginCredential struct {
+	UserID             string
+	Email              string
+	DisplayName        string
+	PasswordHash       string
+	CredentialRevision int64
+}
+
+type RevokedSession struct {
+	ID        string
+	TokenHash string
 }
 
 type User struct {

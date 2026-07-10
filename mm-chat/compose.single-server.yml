@@ -36,10 +36,16 @@ x-backend-env: &backend-env
   REDIS_RATE_LIMIT_REQUESTS: ${REDIS_RATE_LIMIT_REQUESTS:-120}
   REDIS_RATE_LIMIT_WINDOW: ${REDIS_RATE_LIMIT_WINDOW:-1m}
   AUTH_MODE: ${AUTH_MODE:-required}
-  AUTH_BOOTSTRAP_TOKEN: ${AUTH_BOOTSTRAP_TOKEN:?set AUTH_BOOTSTRAP_TOKEN before starting mm-chat}
   AUTH_BOOTSTRAP_USER_ID: ${AUTH_BOOTSTRAP_USER_ID:-00000000-0000-0000-0000-000000000001}
   AUTH_BOOTSTRAP_DISPLAY_NAME: ${AUTH_BOOTSTRAP_DISPLAY_NAME:-Owner}
   AUTH_SESSION_TTL: ${AUTH_SESSION_TTL:-168h}
+  AUTH_RECOVERY_TTL: ${AUTH_RECOVERY_TTL:-30m}
+  AUTH_SMTP_ADDR: ${AUTH_SMTP_ADDR:-}
+  AUTH_SMTP_USERNAME: ${AUTH_SMTP_USERNAME:-}
+  AUTH_SMTP_PASSWORD: ${AUTH_SMTP_PASSWORD:-}
+  AUTH_SMTP_FROM: ${AUTH_SMTP_FROM:-}
+  AUTH_SMTP_QUEUE_SIZE: ${AUTH_SMTP_QUEUE_SIZE:-100}
+  AUTH_SMTP_TIMEOUT: ${AUTH_SMTP_TIMEOUT:-10s}
   PROVIDER_TYPE: ${PROVIDER_TYPE:-openai_compatible}
   PROVIDER_BASE_URL: ${PROVIDER_BASE_URL:-https://your-openai-compatible-relay.example/v1}
   PROVIDER_MODEL: ${PROVIDER_MODEL:-gpt-5.5}
@@ -198,6 +204,26 @@ services:
       postgres:
         condition: service_healthy
     command: ["/usr/local/bin/mm-chat-migrate", "up"]
+    networks:
+      - private
+
+  admin:
+    image: mm-chat/backend:local
+    build: *backend-build
+    restart: "no"
+    profiles: ["ops"]
+    environment:
+      MM_CHAT_VERSION: ${MM_CHAT_VERSION:-single-server-dev}
+      DATABASE_URL: ${DATABASE_URL:-postgres://neo_chat:change-me-postgres@postgres:5432/neo_chat?sslmode=disable}
+      DB_MAX_OPEN_CONNS: ${DB_MAX_OPEN_CONNS:-10}
+      DB_MAX_IDLE_CONNS: ${DB_MAX_IDLE_CONNS:-5}
+      DB_CONN_MAX_LIFETIME: ${DB_CONN_MAX_LIFETIME:-30m}
+      AUTH_BOOTSTRAP_USER_ID: ${AUTH_BOOTSTRAP_USER_ID:-00000000-0000-0000-0000-000000000001}
+      AUTH_BOOTSTRAP_DISPLAY_NAME: ${AUTH_BOOTSTRAP_DISPLAY_NAME:-Owner}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/usr/local/bin/mm-chat-admin"]
     networks:
       - private
 

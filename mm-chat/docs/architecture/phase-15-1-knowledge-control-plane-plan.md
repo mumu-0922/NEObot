@@ -24,22 +24,23 @@ work is limited to later service-adapter wiring.
 ## Execution Order
 
 - [x] **15.1A — Schema foundation:** add reversible identity, Team,
-  Membership, Invite, Collection, logical Document/Version, Governance,
-  Consent, and Outbox schema. Active Documents pin an Active current Version;
-  Active Governance Heads pin an Approved Profile. Verify 001→004 Up, real
-  constraint failures, 004-only Down, and catalog cleanup on PostgreSQL 16.
-- [ ] **15.1B — Identity services:** add Argon2id credentials, mailbox invite
-  acceptance, recovery, independent login, session revocation, and audit-safe
-  token handling.
+      Membership, Invite, Collection, logical Document/Version, Governance,
+      Consent, and Outbox schema. Active Documents pin an Active current Version;
+      Active Governance Heads pin an Approved Profile. Verify 001→004 Up, real
+      constraint failures, 004-only Down, and catalog cleanup on PostgreSQL 16.
+- [x] **15.1B — Identity services:** follow
+      [`phase-15-1b-identity-services-plan.md`](./phase-15-1b-identity-services-plan.md)
+      to add Argon2id credentials, mailbox invite acceptance, recovery, independent
+      login, session revocation, and audit-safe token handling.
 - [ ] **15.1C — Team services:** add Team/Membership repositories and APIs,
-  version membership changes, and transactionally prevent removal of the last
-  active Admin.
+      version membership changes, and transactionally prevent removal of the last
+      active Admin.
 - [ ] **15.1D — Knowledge services:** add Collection and Document/Version CRUD,
-  owner/Admin authorization, locked File binding, Governance/Consent updates,
-  and transactional Outbox writes.
+      owner/Admin authorization, locked File binding, Governance/Consent updates,
+      and transactional Outbox writes.
 - [ ] **15.1E — Isolation gate:** pass two-user/two-team Personal/Team tests,
-  cross-scope `404` behavior, Consent-purpose tests, revision fencing,
-  deletion, idempotency, and Outbox replay tests.
+      cross-scope `404` behavior, Consent-purpose tests, revision fencing,
+      deletion, idempotency, and Outbox replay tests.
 
 ## Promotion and Rollback
 

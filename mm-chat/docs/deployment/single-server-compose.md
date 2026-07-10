@@ -1,10 +1,10 @@
 # Single-Server Docker Compose Deployment
 
-This is the Phase 10 runtime topology for `mm-chat`. It keeps deployment files
-inside `mm-chat/` and does not modify the repository-root `docker-compose.yml`.
-The stack runs the Go API, Postgres, Redis, and MinIO on one server; the
-existing Next.js frontend remains outside this workspace until a later frontend
-cutover.
+This is the single-server runtime topology for `mm-chat`, including the Phase
+15.1B Identity Services. It keeps deployment files inside `mm-chat/` and does
+not modify the repository-root `docker-compose.yml`. The stack runs the Go API,
+Postgres, Redis, and MinIO on one server; the existing Next.js frontend remains
+outside this workspace until a later frontend cutover.
 
 ## Files
 
@@ -12,7 +12,7 @@ cutover.
 mm-chat/compose.single-server.yml      # backend + data services
 mm-chat/.env.single-server.example     # committed template only
 mm-chat/.env.single-server             # local secrets, gitignored
-mm-chat/backend/Dockerfile             # Go API + migration binaries
+mm-chat/backend/Dockerfile             # Go API + migration + admin binaries
 mm-chat/data/                          # runtime volumes, gitignored
 mm-chat/backup/                        # backup output, gitignored
 ```
@@ -38,6 +38,7 @@ secret file.
 | `minio`        | default | Private object bytes for uploaded/imported files.                           | None            |
 | `minio-init`   | default | Creates bucket and least-privilege app user/policy.                         | None            |
 | `migrate`      | `ops`   | One-shot `mm-chat-migrate up`; never auto-runs on API boot.                 | None            |
+| `admin`        | `ops`   | One-shot local identity administration; no HTTP listener.                   | None            |
 | `backend`      | `app`   | Go API on `127.0.0.1:8080` for reverse proxy or local smoke tests.          | Localhost only  |
 | `minio-client` | `ops`   | Utility container for backup/restore scripts.                               | None            |
 
@@ -50,6 +51,10 @@ policy, attaches it to the app user, then verifies the app credentials can write
 stat, and delete a temporary object. If `S3_SECRET_ACCESS_KEY` is rotated,
 rerun `minio-init` during a maintenance window and do not start `backend` until
 that credential smoke passes.
+
+The `admin` service shares the backend image and database settings, but its
+entrypoint is `/usr/local/bin/mm-chat-admin`. It is an operator-only, one-shot
+container under the `ops` profile; it is not a long-running administration API.
 
 ## First Boot
 
@@ -65,9 +70,27 @@ docker compose --env-file .env.single-server \
 docker compose --env-file .env.single-server \
   -f compose.single-server.yml --profile ops run --rm migrate
 
+# Read the first Owner password without putting it in argv, an environment
+# variable, or shell history. The command accepts exactly one stdin line.
+read -r -s -p "Owner password: " OWNER_PASSWORD
+printf "\n"
+printf "%s\n" "$OWNER_PASSWORD" | docker compose \
+  --env-file .env.single-server -f compose.single-server.yml \
+  --profile ops run --rm -T admin bootstrap-identity \
+  --email "<owner@example.com>" --display-name "Owner" --password-stdin
+unset OWNER_PASSWORD
+
 docker compose --env-file .env.single-server \
   -f compose.single-server.yml --profile app up -d backend
 ```
+
+Run `bootstrap-identity` only after migrations on a fresh installation. It
+creates the initial Email/Password Owner, uses
+`AUTH_BOOTSTRAP_USER_ID`/`AUTH_BOOTSTRAP_DISPLAY_NAME` when the optional flags
+are omitted, and refuses to run after any Credential exists. It is not a
+password-reset or break-glass command. There is no `AUTH_BOOTSTRAP_TOKEN`; the
+old token is neither configured by this Compose stack nor accepted by
+`POST /v1/auth/login`. Passwords must be 15-256 UTF-8 characters/bytes.
 
 Smoke test:
 
@@ -83,6 +106,62 @@ curl -fsS http://127.0.0.1:8080/metrics | head
 `database`, `redis`, and `storage`. A dependency outage returns `503` with
 `status=not_ready`; the response intentionally does not expose raw connection
 errors or secrets.
+
+## Password Recovery and SMTP
+
+Recovery delivery is server-only and is configured on `backend` through the
+following Compose fields:
+
+| Variable               | Default | Contract                                                                |
+| ---------------------- | ------- | ----------------------------------------------------------------------- |
+| `AUTH_RECOVERY_TTL`    | `30m`   | Lifetime of a one-time Recovery Token.                                  |
+| `AUTH_SMTP_ADDR`       | empty   | SMTP `host:port`; blank connection/auth/sender fields disable delivery. |
+| `AUTH_SMTP_USERNAME`   | empty   | Optional SMTP username; configure it together with the password.        |
+| `AUTH_SMTP_PASSWORD`   | empty   | Optional SMTP password; keep it only in `.env.single-server`.           |
+| `AUTH_SMTP_FROM`       | empty   | Required sender mailbox when SMTP is configured.                        |
+| `AUTH_SMTP_QUEUE_SIZE` | `100`   | Bounded queue capacity; valid range is 1-10000.                         |
+| `AUTH_SMTP_TIMEOUT`    | `10s`   | Positive connect and delivery deadline per message.                     |
+
+Example values in `.env.single-server`:
+
+```dotenv
+AUTH_RECOVERY_TTL=30m
+AUTH_SMTP_ADDR=smtp.example.com:587
+AUTH_SMTP_USERNAME=<smtp-username>
+AUTH_SMTP_PASSWORD=<smtp-password>
+AUTH_SMTP_FROM=no-reply@example.com
+AUTH_SMTP_QUEUE_SIZE=100
+AUTH_SMTP_TIMEOUT=10s
+```
+
+If SMTP auth is not required, leave both `AUTH_SMTP_USERNAME` and
+`AUTH_SMTP_PASSWORD` empty. When any SMTP field is configured, the complete
+configuration must validate or the backend refuses to start. Delivery requires
+SMTP `STARTTLS` with TLS 1.2 or newer; use a relay endpoint that supports it.
+
+For a syntactically valid request, `POST /v1/auth/recovery/request` returns the
+same response whether the account exists, SMTP is disabled/unavailable,
+delivery fails, or the bounded queue is full:
+
+```bash
+curl -fsS -X POST http://127.0.0.1:8080/v1/auth/recovery/request \
+  -H "Content-Type: application/json" \
+  --data '{"email":"<user@example.com>"}'
+# {"status":"accepted"} with HTTP 202
+```
+
+Only a known active identity gets a one-time token queued for delivery. The
+email contains the token and its UTC expiry; no token is returned by the API.
+If SMTP is disabled, requests are still accepted but no email can be delivered,
+so do not expose the recovery UI until a known-mailbox delivery smoke passes.
+Malformed payloads and rate limits keep their normal `400`/`429` responses.
+Database unavailability remains a `503` and is not hidden as an accepted
+request.
+
+`POST /v1/auth/recovery/complete` consumes the token and returns `204`; it
+changes the password, increments the Credential revision, revokes sibling
+Recovery Tokens and every Session for that user, and does not issue a new
+Session. The user must log in again with the new password.
 
 ## Metrics
 
@@ -137,7 +216,8 @@ location /mm-api/ {
   proxy_http_version 1.1;
   proxy_set_header Host $host;
   proxy_set_header X-Forwarded-Proto $scheme;
-  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  # Replace any client-supplied chain; the backend trusts this loopback proxy.
+  proxy_set_header X-Forwarded-For $remote_addr;
   proxy_buffering off; # required for SSE chat streaming
 }
 ```

@@ -51,8 +51,10 @@ func NewSessionResolver(repo SessionRepository, opts ...ResolverOption) *Session
 	return resolver
 }
 
-// ResolveByTokenHash checks Redis first, then falls back to the canonical
-// repository on cache miss or Redis error. Repository errors fail closed.
+// ResolveByTokenHash always rechecks Postgres before authorizing a request.
+// Redis is populated only as a non-authoritative snapshot and revocation hint;
+// a positive cache hit cannot bypass a password recovery, account disable, or
+// revoke-all transaction.
 func (r *SessionResolver) ResolveByTokenHash(ctx context.Context, tokenHash string) (Session, error) {
 	tokenHash, err := cleanTokenHash(tokenHash)
 	if err != nil {
@@ -62,24 +64,11 @@ func (r *SessionResolver) ResolveByTokenHash(ctx context.Context, tokenHash stri
 		return Session{}, ErrDatabaseRequired
 	}
 
-	if r.cache != nil {
-		snapshot, ok, cacheErr := r.cache.LookupSession(ctx, tokenHash)
-		if cacheErr == nil && ok {
-			revoked, revokeErr := r.cache.IsSessionRevoked(ctx, snapshot.SessionID)
-			if revokeErr == nil && revoked {
-				_ = r.cache.DeleteSession(ctx, tokenHash)
-			} else if revokeErr == nil {
-				session := sessionFromSnapshot(snapshot)
-				if err := r.validateActiveSession(session); err == nil {
-					return session, nil
-				}
-				_ = r.cache.DeleteSession(ctx, tokenHash)
-			}
-		}
-	}
-
 	session, err := r.repo.LookupSessionByTokenHash(ctx, tokenHash)
 	if err != nil {
+		if r.cache != nil {
+			_ = r.cache.DeleteSession(ctx, tokenHash)
+		}
 		return Session{}, err
 	}
 	if err := r.validateActiveSession(session); err != nil {
@@ -93,7 +82,6 @@ func (r *SessionResolver) ResolveByTokenHash(ctx context.Context, tokenHash stri
 	}
 
 	if r.cache != nil {
-		_ = r.cache.ClearSessionRevoked(ctx, session.ID)
 		_ = r.cache.CacheSession(ctx, tokenHash, session.Snapshot())
 	}
 

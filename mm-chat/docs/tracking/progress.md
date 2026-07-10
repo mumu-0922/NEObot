@@ -581,7 +581,7 @@ the UI can call in the next wiring slice.
 - [x] Verify migration `001` through `004` Up, positive and negative database
       constraints, `004`-only Down, and zero Phase 15 catalog residue on an
       isolated PostgreSQL 16 database.
-- [ ] Add credential, invite, recovery, and independent-login services.
+- [x] Add credential, invite, recovery, and independent-login services.
 - [ ] Add Team/Membership repositories, APIs, revision updates, and last-Admin
       protection.
 - [ ] Add Collection/Document/Consent repositories and APIs with locked File

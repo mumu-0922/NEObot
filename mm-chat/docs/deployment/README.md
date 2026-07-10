@@ -14,7 +14,7 @@ run explicitly by operators.
 | [`redis-temporary-state.md`](./redis-temporary-state.md)               | Phase 7 Redis runbook for non-authoritative temporary state, stream cancellation flags, private-network rules, and flush behavior.                                                |
 | [`backup-restore.md`](./backup-restore.md)                             | Backup scripts, checksum verification, Postgres restore drill, MinIO restore drill, retention, and destructive-restore warnings.                                                  |
 | [`reverse-proxy-tls.md`](./reverse-proxy-tls.md)                       | Phase 14 reverse proxy and TLS edge runbook, including same-origin `/mm-api`, SSE buffering, upload limits, metrics exposure, and rollback.                                       |
-| [`secret-rotation.md`](./secret-rotation.md)                           | Phase 14 rotation procedures for auth bootstrap, sessions, provider keys, Postgres, Redis, MinIO app/root credentials, and TLS certificates.                                      |
+| [`secret-rotation.md`](./secret-rotation.md)                           | Identity/recovery/SMTP/session rotation procedures plus provider keys, Postgres, Redis, MinIO app/root credentials, and TLS certificates.                                         |
 | [`release-rollback.md`](./release-rollback.md)                         | Compact release and rollback runbook for image deploys, migrations, and failed releases.                                                                                          |
 | [`../persistence/runtime-wiring.md`](../persistence/runtime-wiring.md) | Phase 4.5 backend DB env, pgx connector behavior, readiness matrix, migration CLI flow, and rollback boundaries.                                                                  |
 
@@ -28,9 +28,11 @@ run explicitly by operators.
   gateway. Runtime config uses `STORAGE_BACKEND=minio|s3` plus `S3_*`
   variables; do not use stale `OBJECTSTORE_DRIVER` / `FILE_MAX_BYTES` names.
 - MVP is `frontend -> Go backend -> Postgres -> provider stream`. Redis is now
-  available for non-authoritative session-cache snapshots, temporary
-  cancellation flags, HTTP rate-limit counters, and optional auth cache.
-  Runtime auth endpoints are implemented; RAG remains a later phase.
+  available for non-authoritative session snapshots and revocation hints,
+  temporary cancellation flags, and HTTP rate-limit counters. Every bearer
+  authorization rechecks Postgres; Redis never participates in the final
+  authorization decision. Runtime auth endpoints are implemented; RAG remains
+  a later phase.
 - Phase 14 runtime readiness keeps disabled dependencies out of `/ready`. When
   configured, `/ready` checks Postgres, Redis, and storage with additive
   `checks` detail and returns `503` with `status=not_ready` if any configured

@@ -154,6 +154,10 @@ func TestRequestMetricsRecordsRecoveredPanicStatus(t *testing.T) {
 
 func TestNormalizeMetricPathBoundsKnownDynamicRoutes(t *testing.T) {
 	tests := map[string]string{
+		"/v1/auth/invites/accept":                              "/v1/auth/invites/accept",
+		"/v1/auth/recovery/request":                            "/v1/auth/recovery/request",
+		"/v1/auth/recovery/complete":                           "/v1/auth/recovery/complete",
+		"/v1/me/sessions":                                      "/v1/me/sessions",
 		"/v1/chat/conversations/anything/messages":             "/v1/chat/conversations/{id}/messages",
 		"/v1/chat/conversations/anything/stream":               "/v1/chat/conversations/{id}/stream",
 		"/v1/chat/runs/non-uuid-run-id/cancel":                 "/v1/chat/runs/{id}/cancel",

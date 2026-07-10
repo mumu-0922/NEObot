@@ -77,6 +77,17 @@ func TestPostgresSessionRepositoryCreatesTwoUserSessions(t *testing.T) {
 	tokenA := "raw-token-user-a-" + sessionAID
 	tokenB := "raw-token-user-b-" + sessionBID
 	expiresAt := time.Now().Add(time.Hour).UTC().Truncate(time.Microsecond)
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO users (id, email, display_name)
+VALUES ($1, $2, 'User A'), ($3, $4, 'User B')
+`,
+		userAID,
+		"session-a-"+userAID+"@example.test",
+		userBID,
+		"session-b-"+userBID+"@example.test",
+	); err != nil {
+		t.Fatalf("insert session users: %v", err)
+	}
 
 	sessionA, err := repo.CreateSession(ctx, CreateSessionInput{
 		SessionID:   sessionAID,

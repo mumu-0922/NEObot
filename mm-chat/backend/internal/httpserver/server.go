@@ -173,7 +173,10 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 
 	mux := http.NewServeMux()
 	healthHandler := health.NewWithChecks(cfg.Version, resolvedOptions.readyChecks...)
-	authHandler := auth.NewHandler(resolvedOptions.authService)
+	authHandler := auth.NewHandler(
+		resolvedOptions.authService,
+		auth.WithAuthRateLimitStore(resolvedOptions.rateLimitStore),
+	)
 	chatHandler := chat.NewHandler(
 		chat.NewService(resolvedOptions.chatRepository),
 		chat.WithProvider(resolvedOptions.chatProvider),
@@ -200,8 +203,12 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/metrics", metrics)
 	mux.HandleFunc("/v1/version", healthHandler.Version)
 	mux.Handle("/v1/me", authHandler)
+	mux.Handle("/v1/me/sessions", authHandler)
 	mux.Handle("/v1/auth/login", authHandler)
 	mux.Handle("/v1/auth/logout", authHandler)
+	mux.Handle("/v1/auth/invites/accept", authHandler)
+	mux.Handle("/v1/auth/recovery/request", authHandler)
+	mux.Handle("/v1/auth/recovery/complete", authHandler)
 	mux.Handle("/v1/chat/conversations", chatHandler)
 	mux.Handle("/v1/chat/conversations/", chatHandler)
 	mux.Handle("/v1/chat/runs/", chatHandler)
@@ -304,7 +311,8 @@ func isPublicWithoutAuthRequest(r *http.Request) bool {
 	switch r.URL.Path {
 	case "/health", "/ready", "/metrics", "/v1/version":
 		return r.Method == http.MethodGet
-	case "/v1/auth/login":
+	case "/v1/auth/login", "/v1/auth/invites/accept",
+		"/v1/auth/recovery/request", "/v1/auth/recovery/complete":
 		return r.Method == http.MethodPost
 	default:
 		return false
