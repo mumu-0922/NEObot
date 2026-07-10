@@ -5884,3 +5884,28 @@ removed after the clean replay.
 Next: commit this Phase 15.1C slice, then start Phase 15.1D
 Collection/Document/Consent APIs. Do not start Python RAG processing before the
 remaining Go/Postgres control-plane gates pass.
+
+## 2026-07-11 — Phase 15.1D Knowledge service design locked
+
+The Collection/Document/Consent implementation contract is now persisted in
+`docs/architecture/phase-15-1d-collection-document-consent-plan.md`. This slice
+keeps the existing Next.js/React UI unchanged and makes Go/Postgres authoritative
+for Personal/Team ACLs, immutable source Versions, Consent, Governance, Jobs,
+and Outbox revisions.
+
+Source inspection found that the current File delete path performs an owner-
+scoped `UPDATE` without `FOR UPDATE` or a Knowledge binding check. Migration
+`004` has the core Knowledge tables but lacks frontend display metadata,
+operation idempotency columns, and a durable Processing Job table. The plan
+therefore requires reversible migration `006` and one shared File-row locking
+protocol before any Document API can be promoted.
+
+The design fixes authorization disclosure order, immutable Collection scope,
+Version replacement semantics, Consent purpose matrices, wall-clock expiry,
+operator-only Governance, transaction lock order, safe Outbox payloads, and
+two-user/two-team concurrency gates. No runtime checkbox was marked complete,
+and no Python/vector processing is allowed yet.
+
+Next: synchronize `knowledge-acl-api.md` with the 15.1D DTO/idempotency/Job
+contract, implement migration `006`, and run an independent review before
+starting repositories.

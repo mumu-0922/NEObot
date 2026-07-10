@@ -604,6 +604,21 @@ the UI can call in the next wiring slice.
       metrics, and worker lifecycle.
 - [x] Pass unit/race/PostgreSQL 16/migration replay/security/promotion gates.
 
+#### Phase 15.1D — Collection, Document, and Consent services
+
+- [x] Lock the detailed design in
+      `docs/architecture/phase-15-1d-collection-document-consent-plan.md`.
+- [ ] Synchronize public Knowledge DTO/error contracts and add reversible
+      migration `006` for display metadata, idempotency, and Processing Jobs.
+- [ ] Implement Personal/Team Collection repositories, ACLs, revisions, and
+      transactional Outbox writes.
+- [ ] Implement logical Document/Version lifecycle, locked File binding/delete,
+      authorized content reads, reprocess, and tombstones.
+- [ ] Implement operator Governance and Collection/User Consent services with
+      purpose/data-type and expiry/revision fences.
+- [ ] Wire protected Knowledge routes and pass unit/race/PostgreSQL 16 ACL,
+      migration, deletion, idempotency, and Outbox replay gates.
+
 - [ ] Replace the single-bootstrap-user ceiling with admin-invited independent
       user sessions and versioned Team membership.
 - [ ] Add Team, Membership, Personal/Team Collection, Knowledge Document, and

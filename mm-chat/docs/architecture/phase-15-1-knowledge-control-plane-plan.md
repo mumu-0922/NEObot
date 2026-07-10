@@ -32,13 +32,15 @@ work is limited to later service-adapter wiring.
       [`phase-15-1b-identity-services-plan.md`](./phase-15-1b-identity-services-plan.md)
       to add Argon2id credentials, mailbox invite acceptance, recovery, independent
       login, session revocation, and audit-safe token handling.
-- [ ] **15.1C — Team services:** follow
+- [x] **15.1C — Team services:** follow
       [`phase-15-1c-team-services-plan.md`](./phase-15-1c-team-services-plan.md)
       to add Team/Membership repositories and APIs, mailbox Invite delivery,
       versioned Outbox-backed Membership changes, and transactional last-Admin
       protection.
-- [ ] **15.1D — Knowledge services:** add Collection and Document/Version CRUD,
-      owner/Admin authorization, locked File binding, Governance/Consent updates,
+- [ ] **15.1D — Knowledge services:** follow
+      [`phase-15-1d-collection-document-consent-plan.md`](./phase-15-1d-collection-document-consent-plan.md)
+      to add Collection and Document/Version CRUD, owner/Admin authorization,
+      locked File binding, Governance/Consent updates, durable Processing Jobs,
       and transactional Outbox writes.
 - [ ] **15.1E — Isolation gate:** pass two-user/two-team Personal/Team tests,
       cross-scope `404` behavior, Consent-purpose tests, revision fencing,
