@@ -219,6 +219,59 @@ func TestSMTPRecoveryDeliveryContinuesAfterSendErrorsWithoutSecretLeak(t *testin
 	}
 }
 
+func TestSMTPSyncTransportSendPlaintextKeepsStrictTLSAndMessageID(t *testing.T) {
+	transport, err := NewSMTPSyncTransport(SMTPTransportConfig{
+		Addr:     "smtp.example.com:587",
+		Username: "mailer",
+		Password: "smtp-password-secret",
+		From:     "Neo Chat <recovery@example.com>",
+		Timeout:  time.Second,
+	})
+	if err != nil {
+		t.Fatalf("NewSMTPSyncTransport() error = %v", err)
+	}
+
+	transport.dial = func(string, string, time.Duration) (net.Conn, error) {
+		return &smtpRecoveryTestConn{}, nil
+	}
+	var request smtpRecoverySendRequest
+	transport.send = func(_ net.Conn, got smtpRecoverySendRequest) error {
+		request = got
+		return nil
+	}
+
+	err = transport.SendPlaintext(SMTPPlaintextMessage{
+		To:        "Invitee <invitee@example.com>",
+		Subject:   "Neo Chat invite",
+		MessageID: "<invite-123@example.test>",
+		TextBody:  "accept the invite",
+	})
+	if err != nil {
+		t.Fatalf("SendPlaintext() error = %v", err)
+	}
+	if !transport.Ready() {
+		t.Fatal("Ready() = false")
+	}
+	if request.tlsConfig.MinVersion != tls.VersionTLS12 ||
+		request.tlsConfig.ServerName != "smtp.example.com" ||
+		request.tlsConfig.InsecureSkipVerify {
+		t.Fatalf("TLS config is not strict: %#v", request.tlsConfig)
+	}
+	if !strings.Contains(string(request.message), "Message-ID: <invite-123@example.test>\r\n") {
+		t.Fatalf("SMTP message missing Message-ID header: %q", string(request.message))
+	}
+
+	err = transport.SendPlaintext(SMTPPlaintextMessage{
+		To:        "invitee@example.com",
+		Subject:   "bad\r\nSubject",
+		MessageID: "<invite-123@example.test>",
+		TextBody:  "accept the invite",
+	})
+	if !errors.Is(err, ErrSMTPInvalidMessage) {
+		t.Fatalf("SendPlaintext() invalid message error = %v, want ErrSMTPInvalidMessage", err)
+	}
+}
+
 func TestSMTPRecoveryDeliveryConcurrentClose(t *testing.T) {
 	delivery := newTestSMTPRecoveryDelivery(t, 1)
 	delivery.Close()

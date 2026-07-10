@@ -2,59 +2,78 @@
 
 ## 1. Status and Scope
 
-This is a **future Phase 15 Knowledge ACL extension contract**, not an
-implementation report. The current auth/session baseline is Phase 15.1B in
-[`auth-session-api.md`](./auth-session-api.md), with Phase 13 ownership
-enforcement over the existing file API in
-[`file-api.md`](./file-api.md). The current backend has no team, membership,
-knowledge collection, knowledge document, or processing-consent schema.
+This is the authoritative Phase 15 contract for Team ACL and future
+Knowledge ACL surfaces. Migration `004` already landed the schema foundation
+for identities, teams, memberships, invites, knowledge collections/documents,
+processor governance, processing consent, and `knowledge_outbox`; the current
+Phase 15 identity/Team surface exposes auth/session routes and a
+new-account-only Invite Acceptance path, but no `/v1/teams*` routes. Phase
+15.1C is the slice that turns the existing Team,
+Membership, and Invitation schema into protected Team services and adds the
+reversible `005` idempotency/mail-outbox/fence migration. Knowledge Collection
+CRUD, Team deletion, Processor Consent, Python RAG wiring, and frontend
+integration remain outside 15.1C.
 
-Phase 15 adds small-team knowledge sharing without weakening personal-data
-isolation. A Jina credential is available for candidate evaluation; exact
-embedding and reranking endpoint entitlement remains unverified. Credential
-availability does not grant data-processing consent or bypass any ACL check.
+The current auth/session baseline is Phase 15.1B in
+[`auth-session-api.md`](./auth-session-api.md), with Phase 13 ownership
+enforcement over the existing file API in [`file-api.md`](./file-api.md) until
+Knowledge endpoints ship. A Jina credential is available for candidate
+evaluation; exact embedding and reranking endpoint entitlement remains
+unverified. Credential availability does not grant data-processing consent or
+bypass any ACL check.
 
 ## 2. Trust and Identity Boundary
 
 - Every user authenticates with an independent Phase 15.1B Email/Password
   identity and Bearer Session. Team members never share a login, bearer token,
   or admin session.
+- The global compatibility field `CurrentUser.role = "user"` never grants Team
+  authority. Every Team permission is resolved from the current Postgres
+  `team_memberships` row.
 - Public registration is disabled by default. The initial operator is created
   out of band by the operator-only, one-time `admin bootstrap-identity` command;
   it refuses to run after any Credential exists and is neither a password-reset
   nor a break-glass path. Subsequent users enter through a single-use, expiring
   team-admin invitation.
 - Raw invitation tokens are delivered only to the invited mailbox. The Team
-  Admin API returns `inviteId`, masked email, role, status, and expiry but never
-  the token. The server stores only the token hash, binds it to one Team, Role,
-  and email address, and rejects it after acceptance, revocation, or expiry.
-  Acceptance proves mailbox possession, sets that User's Argon2id password
-  hash, and issues only that User's Session.
+  Admin API returns `inviteId`, `maskedEmail`, `teamRole`, `status`,
+  `deliveryStatus`, and `expiresAt`, but never the token or token hash.
+  Migration `004` stores only the Invite token hash in `team_invites`; Phase
+  15.1C adds one encrypted durable `identity_mail_outbox` row per Invite so the
+  mailbox, raw token, and acceptance URL persist only inside authenticated
+  ciphertext.
+- Existing active accounts may accept invitations to additional Teams by
+  proving the invited mailbox Token and their current Password. New accounts use
+  the same `{ token, password }` DTO to set their first Password. Existing
+  Credentials are never replaced.
 - Ordinary `POST /v1/auth/login` uses the user's verified email and password.
   The current baseline has no `AUTH_BOOTSTRAP_TOKEN`; the old Bootstrap Token is
   rejected and cannot authenticate an operator or member.
 - Password recovery uses a hashed, single-use, expiring token delivered only to
-  the user's verified email. A team admin cannot set, receive, or reset a
-  member's credential because that would expose the member's Personal
+  the user's verified email. A Team admin cannot set, receive, or reset a
+  member's Credential because that would expose the member's Personal
   Knowledge. Recovery completion and account disable revoke all active sessions.
-- Session expiry or logout never destroys the long-lived credential; the user
+- Session expiry or logout never destroys the long-lived Credential; the user
   can authenticate again. A system operator may disable an account and revoke
   sessions through an audited maintenance path but receives no impersonation or
   Personal Knowledge access.
-- `admin` is a team membership role, not a global impersonation capability.
-  An admin cannot assume another user's identity or read that user's personal
+- `admin` is a Team Membership role, not a global impersonation capability. An
+  admin cannot assume another user's identity or read that user's personal
   knowledge.
-- Go resolves the actor exclusively from the authenticated session.
+- Go resolves the actor exclusively from the authenticated Session.
   Caller-controlled body or query fields that claim current identity or ACL,
   such as `userId`, `ownerId`, `actorId`, `sessionId`, `impersonateUserId`,
   `role`, `teamIds`, `aclGroups`, `allowedCollectionIds`, `aclRevision`, or
-  `visibilityEpoch`, fail with `400 FORBIDDEN_IDENTITY_FIELD`. Resource IDs in
-  server-defined paths remain inputs but never establish caller identity.
+  `visibilityEpoch`, fail with `400 FORBIDDEN_IDENTITY_FIELD`. Only the
+  documented Team write DTOs may carry `teamRole`; bare `role` remains
+  forbidden everywhere. Resource IDs in server-defined paths remain inputs but
+  never establish caller identity.
 
 ## 3. Entities and Invariants
 
-The Phase 15 migration must introduce explicit authoritative records; JSON
-metadata is not an ACL source.
+Migration `004` already introduced explicit authoritative records; Phase
+15.1C adds reversible `005` columns/indexes and encrypted Invite-delivery
+state. JSON metadata is not an ACL source.
 
 ### Team and membership
 
@@ -77,14 +96,53 @@ interface TeamMembership {
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
 }
+
+interface TeamInvite {
+  id: EntityId;
+  teamId: EntityId;
+  invitedByUserId: EntityId;
+  email: string;
+  role: TeamRole;
+  status: "pending" | "accepted" | "revoked";
+  expiresAt: IsoDateTime;
+  acceptedAt?: IsoDateTime;
+  revokedAt?: IsoDateTime;
+  createdAt: IsoDateTime;
+  updatedAt: IsoDateTime;
+}
+
+interface IdentityMailOutbox {
+  id: EntityId;
+  inviteId: EntityId;
+  keyId: string;
+  deliveryStatus: "pending" | "processing" | "sent" | "failed" | "cancelled";
+  attemptCount: number;
+  availableAt: IsoDateTime;
+  leasedUntil?: IsoDateTime;
+  createdAt: IsoDateTime;
+  updatedAt: IsoDateTime;
+}
 ```
 
+- `team_memberships` and `team_invites` already exist in migration `004`; Phase
+  15.1C migration `005` adds nullable scoped `idempotencyKey` support plus the
+  durable encrypted `identity_mail_outbox`.
 - A user has at most one active membership per team.
-- Every active team has at least one active admin. Removing, demoting, or
-  deactivating the last admin must fail atomically with `409 LAST_TEAM_ADMIN`.
-- Membership and role changes are serialized against the team row, increment
-  `Team.membershipRevision`, and invalidate authorization snapshots and caches.
-- Only active team admins may invite users or change team membership roles.
+- Every active team has at least one active admin whose User account is active
+  and not deleted. Removing, demoting, self-leaving, or disabling the last
+  usable admin must fail atomically with `409 LAST_TEAM_ADMIN`.
+- Membership add/reactivate/role/remove/self-leave changes are serialized
+  against the team row, increment `Team.membershipRevision` exactly once, and
+  invalidate authorization snapshots and caches.
+- A removed membership may be reactivated only through a new mailbox Invite.
+- Only active team admins may rename a Team, issue/list/revoke Invites, change
+  another Member's role, or remove another Member. Active Members may list
+  visible Team/member-safe metadata and leave their own Membership.
+- Public Team write DTOs use `teamRole`; bare `role` remains forbidden. Storage
+  rows keep `role` as the authoritative database field.
+- Each Invite owns exactly one durable Mail Outbox row. Raw token, mailbox, and
+  acceptance URL are never returned to admins and persist only inside
+  authenticated ciphertext; safe API responses expose only `deliveryStatus`.
 
 ### Collection and document
 
@@ -260,16 +318,21 @@ Collection lacks the required Consent; it cannot silently drop that Collection.
 
 ## 4. Permission Matrix
 
-| Action                                    | Personal: owner | Personal: anyone else | Team: admin | Team: member              |
-| ----------------------------------------- | --------------- | --------------------- | ----------- | ------------------------- |
-| List/read/query a personal collection     | Allow           | Deny as `404`         | N/A         | N/A                       |
-| Manage personal collection/documents      | Allow           | Deny as `404`         | N/A         | N/A                       |
-| Grant personal collection consent         | Allow           | Deny as `404`         | N/A         | N/A                       |
-| List/read/query an active team collection | N/A             | N/A                   | Allow       | Allow                     |
-| Manage team collection/documents          | N/A             | N/A                   | Allow       | `403 TEAM_ADMIN_REQUIRED` |
-| Grant team collection consent             | N/A             | N/A                   | Allow       | `403 TEAM_ADMIN_REQUIRED` |
-| Invite/manage team memberships            | N/A             | N/A                   | Allow       | `403 TEAM_ADMIN_REQUIRED` |
-| Grant the caller's query consent          | Allow           | Allow                 | Allow       | Allow                     |
+| Action                                    | Personal: owner | Personal: anyone else | Team: admin                   | Team: member              |
+| ----------------------------------------- | --------------- | --------------------- | ----------------------------- | ------------------------- |
+| List/get Team metadata                    | N/A             | N/A                   | Allow                         | Allow                     |
+| List Team members                         | N/A             | N/A                   | Allow                         | Allow                     |
+| Leave own Team membership                 | N/A             | N/A                   | Allow / `409 LAST_TEAM_ADMIN` | Allow                     |
+| Rename Team or manage Invites             | N/A             | N/A                   | Allow                         | `403 TEAM_ADMIN_REQUIRED` |
+| Change/remove another Team member         | N/A             | N/A                   | Allow                         | `403 TEAM_ADMIN_REQUIRED` |
+| List/read/query a personal collection     | Allow           | Deny as `404`         | N/A                           | N/A                       |
+| Manage personal collection/documents      | Allow           | Deny as `404`         | N/A                           | N/A                       |
+| Grant personal collection consent         | Allow           | Deny as `404`         | N/A                           | N/A                       |
+| List/read/query an active team collection | N/A             | N/A                   | Allow                         | Allow                     |
+| Manage team collection/documents          | N/A             | N/A                   | Allow                         | `403 TEAM_ADMIN_REQUIRED` |
+| Grant team collection consent             | N/A             | N/A                   | Allow                         | `403 TEAM_ADMIN_REQUIRED` |
+| Invite/manage team memberships            | N/A             | N/A                   | Allow                         | `403 TEAM_ADMIN_REQUIRED` |
+| Grant the caller's query consent          | Allow           | Allow                 | Allow                         | Allow                     |
 
 Search requires an explicit, non-empty `collectionIds` list. Go never silently
 adds personal or team collections. A missing, deleted, or unauthorized ID fails
@@ -278,27 +341,32 @@ from the search.
 
 ## 5. Public Endpoint Surface
 
-Only these Auth Endpoints are unauthenticated: invitation acceptance, login,
-recovery request, and recovery completion. They use strict IP/account rate
-limits, bounded bodies, uniform timing/response shapes where account discovery
-is possible. They never echo Invitation/Recovery Tokens. Invalid Login and
-Recovery Request do not disclose account existence; successful Login or Invite
-Acceptance returns one newly generated Bearer Session Token plus minimal safe
-User metadata exactly once. Every other Endpoint requires an independent Phase
-13 Bearer Session. Public self-registration is not exposed.
+Only Login, Invite Acceptance, Recovery Request, and Recovery Completion are
+unauthenticated. `POST /v1/auth/invites/accept` stays public because it proves
+mailbox possession rather than Team-admin authority. Every `/v1/teams` route
+requires an independent Phase 15.1B Bearer Session. Public self-registration is
+not exposed. Team services are Phase 15.1C; the Knowledge routes below remain
+later Phase 15 surfaces but inherit the same auth boundary.
 
 ```http
 POST   /v1/teams
-GET    /v1/teams
+GET    /v1/teams?cursor&limit
+GET    /v1/teams/{teamId}
+PATCH  /v1/teams/{teamId}
+GET    /v1/teams/{teamId}/members?cursor&limit
+DELETE /v1/teams/{teamId}/membership
+PATCH  /v1/teams/{teamId}/members/{userId}
+DELETE /v1/teams/{teamId}/members/{userId}
 POST   /v1/teams/{teamId}/invites
+GET    /v1/teams/{teamId}/invites?cursor&limit
 DELETE /v1/teams/{teamId}/invites/{inviteId}
 POST   /v1/auth/invites/accept
 POST   /v1/auth/login
 POST   /v1/auth/recovery/request
 POST   /v1/auth/recovery/complete
+POST   /v1/auth/logout
+GET    /v1/me
 DELETE /v1/me/sessions
-PATCH  /v1/teams/{teamId}/members/{userId}
-DELETE /v1/teams/{teamId}/members/{userId}
 
 POST   /v1/knowledge/collections
 GET    /v1/knowledge/collections
@@ -319,19 +387,113 @@ DELETE /v1/me/knowledge/query-consents/{processor}
 POST   /v1/knowledge/search
 ```
 
-Collection creation accepts `name`, `scope`, and `teamId` only when
-`scope = "team"`. Go derives personal ownership from the session and verifies
-team-admin membership before creating a team collection.
+### Team service DTOs and paging
 
-Invitation acceptance accepts `{ token, password }` over TLS and creates the
-long-lived Argon2id credential before issuing a session. Recovery completion
-accepts `{ token, newPassword }`; raw invitation/recovery tokens never appear in
-URL paths, access logs, or metrics. Phase 15 versions the login DTO from the
-bootstrap-token-only Phase 13 baseline to `{ email, password }`. Recovery request
-returns the same response for known and unknown email addresses; only the
-verified mailbox receives the raw recovery token. Completing recovery and
-`DELETE /v1/me/sessions` revoke all existing sessions before issuing or
-requiring a new login.
+```json
+POST /v1/teams
+{ "name": "Research", "idempotencyKey": "..." }
+
+PATCH /v1/teams/{teamId}
+{ "name": "Research Ops" }
+
+PATCH /v1/teams/{teamId}/members/{userId}
+{ "teamRole": "admin" }
+
+POST /v1/teams/{teamId}/invites
+{
+  "email": "user@example.com",
+  "teamRole": "member",
+  "idempotencyKey": "..."
+}
+```
+
+```ts
+type TeamRole = "admin" | "member";
+
+interface TeamDto {
+  id: string;
+  name: string;
+  membershipRevision: number;
+  myMembership: {
+    teamRole: TeamRole;
+    status: "active";
+    joinedAt: string;
+    updatedAt: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface TeamMemberDto {
+  userId: string;
+  displayName: string;
+  teamRole: TeamRole;
+  status: "active";
+  joinedAt: string;
+  updatedAt: string;
+}
+
+interface TeamInviteDto {
+  id: string;
+  teamId: string;
+  maskedEmail: string;
+  teamRole: TeamRole;
+  status: "pending" | "accepted" | "revoked" | "expired";
+  deliveryStatus: "pending" | "processing" | "sent" | "failed" | "cancelled";
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ApiPage<T> {
+  items: T[];
+  nextCursor?: string;
+}
+```
+
+- `teamId`, target `userId`, actor, ACL, and revision fields are path/context
+  derived and forbidden in bodies; public Team writes accept `teamRole`, never
+  bare `role`.
+- Team names are trimmed, valid UTF-8, free of control/format characters,
+  1-100 runes, and at most 256 bytes.
+- `POST /v1/teams` and `POST /v1/teams/{teamId}/invites` require an
+  `idempotencyKey` of 1-128 bytes. Duplicate scoped keys return
+  `409 IDEMPOTENCY_CONFLICT` and cannot emit a second Invite Token or email.
+- Lists use opaque, versioned, HMAC-SHA-256-authenticated cursors with
+  `limit=50` by default and a range of `1..100`. Encoded cursors above 1024
+  bytes fail before decode. Canonical signed content binds `keyId`, contract
+  version, endpoint/`resourceKind`, request User ID, optional Team ID,
+  normalized filter digest, and the sort tuple; verification uses constant-time
+  comparison. An active signing key plus verify-only key ring supports bounded
+  rotation. A cursor cannot be replayed across users, Teams, filters, or list
+  endpoints and is pagination state, never an authorization credential. Every
+  page rechecks current Membership and returns no total count. Team and Invite
+  sort order is `(created_at DESC, id DESC)`; Member sort order is
+  `(created_at ASC, user_id ASC)`.
+- Invite responses expose only the masked mailbox plus `teamRole`, `status`,
+  `deliveryStatus`, and expiry metadata. `POST /v1/teams/{teamId}/invites`
+  fails closed with `503 INVITE_DELIVERY_UNAVAILABLE` when SMTP, encryption, or
+  durable sender admission is unavailable.
+- `DELETE /v1/teams/{teamId}/membership` is self-leave only; removing another
+  member uses the admin-only `/members/{userId}` route.
+- `POST /v1/auth/invites/accept` keeps the same `{ token, password }` DTO for
+  both new and existing accounts. Acceptance succeeds only after the durable
+  Invite delivery row is `sent`; wrong passwords, stale Credential revisions,
+  unsent mail, and branch races all collapse to `410 INVITE_NOT_ACTIVE`.
+
+Collection creation accepts `name`, `scope`, and `teamId` only when
+`scope = "team"`. Go derives personal ownership from the Session and verifies
+Team-admin Membership before creating a Team collection.
+
+Recovery completion accepts `{ token, newPassword }`; raw invitation/recovery
+Tokens never appear in URL paths, queries, access logs, or metrics. Invite email
+links use a client-side `#token=...` fragment, which the future frontend clears
+before posting the Token in the acceptance JSON body. Phase 15 versions the
+Login DTO from the bootstrap-token-only Phase 13 baseline to `{ email,
+password }`. Recovery Request returns the same response for known and unknown
+email addresses; only the verified mailbox receives the raw Recovery Token.
+Completing recovery and `DELETE /v1/me/sessions` revoke all existing Sessions
+before issuing or requiring a new Login.
 
 `POST .../versions` accepts a new caller-owned `fileId` and atomically creates
 the next immutable Processing Version plus its Job/Outbox row. The old
@@ -454,28 +616,40 @@ Consent and tombstones the old binding; it never edits ownership in place.
 
 ## 8. Error and Disclosure Contract
 
-| HTTP  | Code                              | When                                                                         |
-| ----- | --------------------------------- | ---------------------------------------------------------------------------- |
-| `400` | `FORBIDDEN_IDENTITY_FIELD`        | A public request supplies identity, role, ACL, or authorization-fence hints. |
-| `400` | `INVALID_COLLECTION_SCOPE`        | Collection scope or its owner/team shape is invalid.                         |
-| `401` | `UNAUTHENTICATED`                 | Phase 13 session resolution fails.                                           |
-| `401` | `INVALID_CREDENTIALS`             | Email/password or recovery completion is invalid without account disclosure. |
-| `403` | `TEAM_ADMIN_REQUIRED`             | An active member attempts a visible team-admin operation.                    |
-| `403` | `PROCESSING_CONSENT_REQUIRED`     | Required collection or query consent is absent, expired, or revoked.         |
-| `404` | `TEAM_NOT_FOUND`                  | Team is missing, deleted, or outside the caller's membership visibility.     |
-| `404` | `COLLECTION_NOT_FOUND`            | Collection is missing, deleted, or outside the caller's ACL.                 |
-| `404` | `DOCUMENT_NOT_FOUND`              | Document is missing, deleted, or its collection is outside the caller's ACL. |
-| `404` | `FILE_NOT_FOUND`                  | Binding file is missing, deleted, unavailable, or not owned by the caller.   |
-| `409` | `LAST_TEAM_ADMIN`                 | A mutation would leave an active team without an admin.                      |
-| `409` | `FILE_IN_USE`                     | Direct file deletion would bypass a live knowledge-document binding.         |
-| `409` | `PROJECTION_NOT_READY`            | The search projection cannot reach the required revision before deadline.    |
-| `410` | `INVITE_NOT_ACTIVE`               | Invitation is accepted, revoked, expired, or otherwise unusable.             |
-| `503` | `KNOWLEDGE_PROCESSOR_UNAVAILABLE` | Governance Head/Profile is missing, disabled, stale, or not approved.        |
+| HTTP  | Code                              | When                                                                                       |
+| ----- | --------------------------------- | ------------------------------------------------------------------------------------------ |
+| `400` | `FORBIDDEN_IDENTITY_FIELD`        | A request supplies actor, target identity, bare `role`, ACL, or authorization-fence hints. |
+| `400` | `INVALID_TEAM_PAYLOAD`            | Team name, UUID, cursor, limit, JSON shape, or Team body fields are invalid.               |
+| `400` | `INVALID_INVITE_PAYLOAD`          | Invite mailbox, `teamRole`, or `idempotencyKey` is invalid.                                |
+| `400` | `INVALID_MEMBERSHIP_PAYLOAD`      | Membership body shape or `teamRole` is invalid.                                            |
+| `400` | `INVALID_COLLECTION_SCOPE`        | Collection scope or its owner/team shape is invalid.                                       |
+| `401` | `UNAUTHENTICATED`                 | Phase 15.1B Bearer Session resolution fails.                                               |
+| `401` | `INVALID_CREDENTIALS`             | Email/password or recovery completion is invalid without account disclosure.               |
+| `403` | `TEAM_ADMIN_REQUIRED`             | An active Member attempts a visible Team-admin operation.                                  |
+| `403` | `PROCESSING_CONSENT_REQUIRED`     | Required collection or query consent is absent, expired, or revoked.                       |
+| `404` | `TEAM_NOT_FOUND`                  | Team is missing, deleted, or outside the caller's active Membership visibility.            |
+| `404` | `TEAM_MEMBER_NOT_FOUND`           | A visible admin targets an absent, removed, or cross-Team Member.                          |
+| `404` | `INVITE_NOT_FOUND`                | A visible admin targets an absent or cross-Team Invite.                                    |
+| `404` | `COLLECTION_NOT_FOUND`            | Collection is missing, deleted, or outside the caller's ACL.                               |
+| `404` | `DOCUMENT_NOT_FOUND`              | Document is missing, deleted, or its collection is outside the caller's ACL.               |
+| `404` | `FILE_NOT_FOUND`                  | Binding file is missing, deleted, unavailable, or not owned by the caller.                 |
+| `409` | `LAST_TEAM_ADMIN`                 | A mutation or account disable would leave a Team without another usable admin.             |
+| `409` | `INVITE_CONFLICT`                 | An active Membership or pending Invite already exists for the Team/mailbox.                |
+| `409` | `IDEMPOTENCY_CONFLICT`            | A scoped Team or Invite `idempotencyKey` already exists.                                   |
+| `409` | `FILE_IN_USE`                     | Direct file deletion would bypass a live knowledge-document binding.                       |
+| `409` | `PROJECTION_NOT_READY`            | The search projection cannot reach the required revision before deadline.                  |
+| `410` | `INVITE_NOT_ACTIVE`               | Invitation is accepted, revoked, expired, unsent, or otherwise unusable.                   |
+| `503` | `INVITE_DELIVERY_UNAVAILABLE`     | SMTP, encryption, or durable sender admission is unavailable.                              |
+| `503` | `KNOWLEDGE_PROCESSOR_UNAVAILABLE` | Governance Head/Profile is missing, disabled, stale, or not approved.                      |
 
-Use `404` to hide the existence of another user's personal resources and teams
-outside the caller's membership. Use `403` only when the actor may know the
-resource exists but lacks the required team role or processing consent. List
-responses must omit unauthorized resources without exposing counts or IDs.
+Authorization order on Team routes is fixed: validate Session and bounded
+input, resolve Team visibility, distinguish visible Member from Admin, then
+resolve nested Member/Invite IDs. Use `404` to hide the existence of another
+user's personal resources and Teams outside the caller's Membership. Use `403`
+only when the actor may know the resource exists but lacks the required Team
+role or processing consent. Repeated deletion of an already revoked Invite is
+`204`; accepted or expired Invites return `410`. List responses must omit
+unauthorized resources without exposing counts or IDs.
 
 ## 9. Outbox, Tombstones, and Revocation
 
@@ -499,31 +673,40 @@ the same transaction as their new revision/fence.
 
 ## 10. Required Tests
 
-- Auth/invite: separate users receive separate sessions; invitation tokens are
-  hashed, single-use, expiring, team/role/email-bound, and revocable; public
-  registration is unavailable. Admin invite responses never contain the raw
-  Token, which is delivered only to the invited mailbox; Admin cannot consume
-  it without mailbox possession. Acceptance creates an Argon2id credential;
-  members can log in again after logout/expiry. Login/invite/recovery work
-  without a Session, are rate-limited, and do not enumerate accounts. Successful
+- Team services: Team create/list/get/rename/member/invite routes use Phase
+  15.1B Bearer Sessions, strict JSON DTOs, `teamRole` writes, no bare `role`,
+  default `limit=50`, `1..100` bounds, authenticated HMAC cursors, and the
+  fixed `404 -> 403` visibility/order contract.
+- Auth/invite: separate users receive separate Sessions; Invite Tokens are
+  hashed, single-use, expiring, Team/teamRole/email-bound, and revocable;
+  public registration is unavailable. Admin invite responses expose only masked
+  email, `teamRole`, `status`, `deliveryStatus`, and expiry. New-account
+  acceptance creates an Argon2id Credential; existing-account acceptance reuses
+  the Credential, requires the current Password, and fails closed on stale
+  Credential fences or unsent mail. Login/invite/recovery work without a
+  Session, are rate-limited, and do not enumerate accounts. Successful
   Login/Invite Acceptance returns a new raw Session Token exactly once without
   echoing the Invite Token. Recovery Tokens are mailbox-delivered, hashed,
-  single-use, and revoke all Sessions;
-  Team Admin cannot obtain/reset member credentials or use recovery to access
-  Personal Knowledge. Account disable rejects login and revokes all Sessions.
-- Identity input: every public DTO rejects caller identity, role, ACL, allowed
-  collection, and fence hints before repository or Python calls.
-- Personal isolation: a team admin cannot list, get, query, download, mutate,
+  single-use, and revoke all Sessions; Team admins cannot obtain/reset member
+  credentials, use recovery to access Personal Knowledge, or disable the last
+  usable Team admin.
+- Identity input: every public DTO rejects caller identity, bare `role`, ACL,
+  allowed collection, and fence hints before repository or Python calls; only
+  documented Team write DTOs may use `teamRole`.
+- Personal isolation: a Team admin cannot list, get, query, download, mutate,
   or infer another user's personal collection or documents; all targeted
   attempts return the same `404` shape as unknown IDs.
-- Team permissions: members can read/query team knowledge but receive `403` on
-  document, collection, consent, invite, and membership mutations; admins can
-  perform those mutations.
+- Team permissions: Members can read/query Team Knowledge, list safe
+  Team/member metadata, and self-leave; admins can rename Teams, manage
+  Invites, and change/remove other Memberships.
 - Collection selection: missing/empty `collectionIds` fails validation; Go
-  never adds a personal or team collection implicitly, and any unauthorized ID
+  never adds a personal or Team collection implicitly, and any unauthorized ID
   fails the whole request.
-- Last-admin invariant: concurrent remove/demote/leave operations cannot commit
-  a team with zero admins.
+- Team invariants: scoped idempotency uniqueness holds for Team create and
+  Invite create, only one pending Invite may exist per Team/mailbox, removed
+  Members rejoin only through a new mailbox Invite, and concurrent
+  remove/demote/leave/disable operations cannot commit a Team with zero usable
+  admins.
 - Consent: Parse/Passage Embedding checks Governance + Collection Consent; Query
   Embedding checks Governance + User Query Consent; Rerank/Answer checks all
   three. A Team Admin cannot grant a member's Query Consent, and credential
@@ -536,17 +719,21 @@ the same transaction as their new revision/fence.
   caches without requiring unsafe stale-point acceptance.
 - Evidence: Go rejects unauthorized, deleted, hash-mismatched, or stale Python
   source references both before prompt assembly and at strict commit.
-- File path: only caller-owned available Knowledge files bind; members cannot
+- File path: only caller-owned available Knowledge files bind; Members cannot
   bind Team Documents; concurrent bind/direct-delete serializes on the same File
   row and cannot create a dangling Document. Direct deletion of a bound File
   returns `409`; replacement creates a new immutable Version while the old
   `currentVersionId` remains Active until verified, and concurrent publishes
   cannot skip/reuse `sourceVersion`. Reprocess cannot mutate Active Artifacts;
-  Invitation revocation prevents acceptance; Team content reads never relax
+  Invite revocation prevents acceptance; Team content reads never relax
   `/v1/files` ownership.
-- Outbox/recovery: mutation plus outbox commit atomically, replay is idempotent,
-  Redis loss does not lose work, tombstones propagate to every serving
-  generation, and missing replay history forces an unready rebuild.
-- Error disclosure: cross-user/cross-team resources use indistinguishable
+- Outbox/recovery: Team Membership/Invite/account-disable mutation plus outbox
+  commit atomically; encrypted `identity_mail_outbox` rows provide durable
+  at-least-once delivery with a stable Message-ID, acceptance succeeds only
+  after `sent`, revoke/worker/accept races never permit a revoked or unsent
+  Token, replay is idempotent, Redis loss does not lose work, tombstones
+  propagate to every serving generation, and missing replay history forces an
+  unready rebuild.
+- Error disclosure: cross-user/cross-Team resources use indistinguishable
   `404` responses, while visible role and consent failures use `403` without
   leaking private metadata.

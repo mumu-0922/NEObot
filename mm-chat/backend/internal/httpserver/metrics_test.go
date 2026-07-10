@@ -154,26 +154,60 @@ func TestRequestMetricsRecordsRecoveredPanicStatus(t *testing.T) {
 
 func TestNormalizeMetricPathBoundsKnownDynamicRoutes(t *testing.T) {
 	tests := map[string]string{
-		"/v1/auth/invites/accept":                              "/v1/auth/invites/accept",
-		"/v1/auth/recovery/request":                            "/v1/auth/recovery/request",
-		"/v1/auth/recovery/complete":                           "/v1/auth/recovery/complete",
-		"/v1/me/sessions":                                      "/v1/me/sessions",
-		"/v1/chat/conversations/anything/messages":             "/v1/chat/conversations/{id}/messages",
-		"/v1/chat/conversations/anything/stream":               "/v1/chat/conversations/{id}/stream",
-		"/v1/chat/runs/non-uuid-run-id/cancel":                 "/v1/chat/runs/{id}/cancel",
-		"/v1/files/33333333-3333-4333-8333-333333333333":       "/v1/files/{id}",
-		"/v1/import/browser/preview":                           "/v1/import/browser/preview",
-		"/v1/import/browser/import-batch-id":                   "/v1/import/browser/{id}",
-		"/unknown/33333333-3333-4333-8333-333333333333/detail": unknownMetricPath,
-		"/missing/sk_live_secret_token":                        unknownMetricPath,
-		"//missing/sk_live_secret_token":                       unknownMetricPath,
-		"/%2Fmissing/sk_live_secret_token":                     unknownMetricPath,
+		"/v1/auth/invites/accept":                                   "/v1/auth/invites/accept",
+		"/v1/auth/recovery/request":                                 "/v1/auth/recovery/request",
+		"/v1/auth/recovery/complete":                                "/v1/auth/recovery/complete",
+		"/v1/me/sessions":                                           "/v1/me/sessions",
+		"/v1/teams":                                                 "/v1/teams",
+		"/v1/teams/11111111-1111-4111-8111-111111111111":            "/v1/teams/{teamId}",
+		"/v1/teams/11111111-1111-4111-8111-111111111111/members":    "/v1/teams/{teamId}/members",
+		"/v1/teams/11111111-1111-4111-8111-111111111111/membership": "/v1/teams/{teamId}/membership",
+		"/v1/teams/11111111-1111-4111-8111-111111111111/members/22222222-2222-4222-8222-222222222222": "/v1/teams/{teamId}/members/{userId}",
+		"/v1/teams/11111111-1111-4111-8111-111111111111/invites":                                      "/v1/teams/{teamId}/invites",
+		"/v1/teams/11111111-1111-4111-8111-111111111111/invites/33333333-3333-4333-8333-333333333333": "/v1/teams/{teamId}/invites/{inviteId}",
+		"/v1/chat/conversations/anything/messages":                                                    "/v1/chat/conversations/{id}/messages",
+		"/v1/chat/conversations/anything/stream":                                                      "/v1/chat/conversations/{id}/stream",
+		"/v1/chat/runs/non-uuid-run-id/cancel":                                                        "/v1/chat/runs/{id}/cancel",
+		"/v1/files/33333333-3333-4333-8333-333333333333":                                              "/v1/files/{id}",
+		"/v1/import/browser/preview":                                                                  "/v1/import/browser/preview",
+		"/v1/import/browser/import-batch-id":                                                          "/v1/import/browser/{id}",
+		"/unknown/33333333-3333-4333-8333-333333333333/detail":                                        unknownMetricPath,
+		"/missing/sk_live_secret_token":                                                               unknownMetricPath,
+		"//missing/sk_live_secret_token":                                                              unknownMetricPath,
+		"/%2Fmissing/sk_live_secret_token":                                                            unknownMetricPath,
 	}
 
 	for input, want := range tests {
 		if got := normalizeMetricPath(input); got != want {
 			t.Fatalf("normalizeMetricPath(%q) = %q, want %q", input, got, want)
 		}
+	}
+}
+
+func TestMetricsEndpointBoundsTeamDynamicLabels(t *testing.T) {
+	metrics := NewMetrics("metrics-test", "local")
+	handler := NewHandler(
+		config.Config{Addr: ":0", Version: "metrics-test"},
+		WithMetrics(metrics),
+	)
+	teamID := "11111111-1111-4111-8111-111111111111"
+	inviteID := "33333333-3333-4333-8333-333333333333"
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/v1/teams/"+teamID+"/invites/"+inviteID,
+		nil,
+	)
+	handler.ServeHTTP(rec, req)
+
+	body := metrics.Render(context.Background())
+	assertContains(
+		t,
+		body,
+		`mm_chat_http_requests_total{method="DELETE",path="/v1/teams/{teamId}/invites/{inviteId}",status="401"} 1`,
+	)
+	if strings.Contains(body, teamID) || strings.Contains(body, inviteID) {
+		t.Fatalf("metrics body leaks raw Team UUID: %s", body)
 	}
 }
 

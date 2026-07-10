@@ -1,6 +1,8 @@
 package config
 
 import (
+	"encoding/base64"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -33,6 +35,11 @@ const (
 	DefaultAuthRecoveryTTL        = 30 * time.Minute
 	DefaultAuthSMTPQueueSize      = 100
 	DefaultAuthSMTPTimeout        = 10 * time.Second
+	DefaultTeamMailWorkerLease    = 30 * time.Second
+	DefaultTeamMailWorkerPoll     = 500 * time.Millisecond
+	DefaultTeamMailBackoffBase    = 5 * time.Second
+	DefaultTeamMailBackoffMax     = 15 * time.Minute
+	maximumAuthSMTPQueueSize      = 10_000
 
 	EnvAddr                   = "MM_CHAT_ADDR"
 	EnvVersion                = "MM_CHAT_VERSION"
@@ -74,6 +81,15 @@ const (
 	EnvAuthSMTPFrom           = "AUTH_SMTP_FROM"
 	EnvAuthSMTPQueueSize      = "AUTH_SMTP_QUEUE_SIZE"
 	EnvAuthSMTPTimeout        = "AUTH_SMTP_TIMEOUT"
+	EnvTeamCursorActiveKeyID  = "TEAM_CURSOR_ACTIVE_KEY_ID"
+	EnvTeamCursorKeyring      = "TEAM_CURSOR_KEYRING"
+	EnvTeamMailActiveKeyID    = "TEAM_MAIL_ACTIVE_KEY_ID"
+	EnvTeamMailKeyring        = "TEAM_MAIL_KEYRING"
+	EnvTeamInviteAcceptURL    = "TEAM_INVITE_ACCEPT_URL_BASE"
+	EnvTeamMailWorkerLease    = "TEAM_MAIL_WORKER_LEASE_DURATION"
+	EnvTeamMailWorkerPoll     = "TEAM_MAIL_WORKER_POLL_INTERVAL"
+	EnvTeamMailBackoffBase    = "TEAM_MAIL_WORKER_BACKOFF_BASE"
+	EnvTeamMailBackoffMax     = "TEAM_MAIL_WORKER_BACKOFF_MAX"
 )
 
 // Config contains the process-level settings required to start the API.
@@ -91,6 +107,7 @@ type Config struct {
 	Provider ProviderConfig
 	Storage  StorageConfig
 	Auth     AuthConfig
+	Team     TeamConfig
 }
 
 // RedisConfig contains non-authoritative temporary-state settings. Redis must
@@ -158,8 +175,107 @@ type SMTPRecoveryConfig struct {
 	Timeout   time.Duration
 }
 
+// TeamConfig contains Team cursor signing and durable Invite delivery
+// settings. Encoded keyrings remain server-only and must never be logged.
+type TeamConfig struct {
+	Cursor              TeamKeyringConfig
+	Mail                TeamKeyringConfig
+	InviteAcceptURLBase string
+	MailWorker          TeamMailWorkerConfig
+
+	invalidFields []string
+}
+
+// TeamKeyringConfig stores an active key ID and a comma-separated keyring in
+// key-id=base64 form. Retained non-active keys are verify/decrypt-only.
+type TeamKeyringConfig struct {
+	ActiveKeyID string
+	Keyring     string
+}
+
+// TeamMailWorkerConfig controls the durable Invite mail worker loop.
+type TeamMailWorkerConfig struct {
+	LeaseDuration  time.Duration
+	PollInterval   time.Duration
+	BackoffBase    time.Duration
+	BackoffMaximum time.Duration
+}
+
 func (cfg AuthConfig) RequireAuth() bool {
 	return cfg.Mode == AuthModeRequired
+}
+
+// Validate rejects malformed Team settings without including encoded key
+// material in the returned error.
+func (cfg Config) Validate() error {
+	if len(cfg.Team.invalidFields) > 0 {
+		return fmt.Errorf("invalid configuration for %s", cfg.Team.invalidFields[0])
+	}
+	if err := validateOptionalKeyringPair(
+		cfg.Team.Cursor,
+		EnvTeamCursorActiveKeyID,
+		EnvTeamCursorKeyring,
+	); err != nil {
+		return err
+	}
+	if err := validateOptionalKeyringPair(
+		cfg.Team.Mail,
+		EnvTeamMailActiveKeyID,
+		EnvTeamMailKeyring,
+	); err != nil {
+		return err
+	}
+	hasCursorKeys := keyringConfigured(cfg.Team.Cursor)
+	if cfg.Auth.RequireAuth() && !hasCursorKeys {
+		return fmt.Errorf(
+			"%s and %s are required when %s=%s",
+			EnvTeamCursorActiveKeyID,
+			EnvTeamCursorKeyring,
+			EnvAuthMode,
+			AuthModeRequired,
+		)
+	}
+
+	hasMailKeys := keyringConfigured(cfg.Team.Mail)
+	hasInviteURL := strings.TrimSpace(cfg.Team.InviteAcceptURLBase) != ""
+	if hasMailKeys != hasInviteURL {
+		return fmt.Errorf(
+			"%s, %s, and %s must be configured together",
+			EnvTeamMailActiveKeyID,
+			EnvTeamMailKeyring,
+			EnvTeamInviteAcceptURL,
+		)
+	}
+	if hasMailKeys && smtpTransportBlank(cfg.Auth.SMTP) {
+		return fmt.Errorf(
+			"%s and %s are required when Team Invite delivery is configured",
+			EnvAuthSMTPAddr,
+			EnvAuthSMTPFrom,
+		)
+	}
+	worker := cfg.Team.MailWorker
+	for _, setting := range []struct {
+		field string
+		value time.Duration
+	}{
+		{field: EnvTeamMailWorkerLease, value: worker.LeaseDuration},
+		{field: EnvTeamMailWorkerPoll, value: worker.PollInterval},
+		{field: EnvTeamMailBackoffBase, value: worker.BackoffBase},
+		{field: EnvTeamMailBackoffMax, value: worker.BackoffMaximum},
+	} {
+		if setting.value < 0 {
+			return fmt.Errorf("%s must be positive", setting.field)
+		}
+	}
+	if worker.BackoffBase > 0 && worker.BackoffMaximum > 0 &&
+		worker.BackoffMaximum < worker.BackoffBase {
+		return fmt.Errorf(
+			"%s must be greater than or equal to %s",
+			EnvTeamMailBackoffMax,
+			EnvTeamMailBackoffBase,
+		)
+	}
+	return nil
 }
 
 // Load reads configuration from the process environment.
@@ -168,9 +284,11 @@ func Load() Config {
 }
 
 // LoadFromEnv reads configuration from the supplied lookup function. Empty or
-// whitespace-only values fall back to defaults so a partially configured
-// environment still starts with safe development settings.
+// whitespace-only values fall back to defaults. Call Validate before startup;
+// strict Team fields retain invalid-input state instead of silently enabling a
+// partially configured runtime.
 func LoadFromEnv(lookup func(string) (string, bool)) Config {
+	teamWorker, invalidTeamFields := loadTeamMailWorkerConfig(lookup)
 	return Config{
 		Addr:        envOrDefault(lookup, EnvAddr, DefaultAddr),
 		Version:     envOrDefault(lookup, EnvVersion, DefaultVersion),
@@ -229,7 +347,179 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 				Timeout:   durationEnvOrDefault(lookup, EnvAuthSMTPTimeout, DefaultAuthSMTPTimeout),
 			},
 		},
+
+		Team: TeamConfig{
+			Cursor: TeamKeyringConfig{
+				ActiveKeyID: optionalEnv(lookup, EnvTeamCursorActiveKeyID),
+				Keyring:     optionalEnv(lookup, EnvTeamCursorKeyring),
+			},
+			Mail: TeamKeyringConfig{
+				ActiveKeyID: optionalEnv(lookup, EnvTeamMailActiveKeyID),
+				Keyring:     optionalEnv(lookup, EnvTeamMailKeyring),
+			},
+			InviteAcceptURLBase: optionalEnv(lookup, EnvTeamInviteAcceptURL),
+			MailWorker:          teamWorker,
+			invalidFields:       invalidTeamFields,
+		},
 	}
+}
+
+// ParseBase64Keyring parses comma-separated key-id=base64 entries. Errors
+// identify only the field, entry, or key ID and never echo encoded key bytes.
+func ParseBase64Keyring(field string, value string) (map[string][]byte, error) {
+	field = strings.TrimSpace(field)
+	if field == "" {
+		field = "keyring"
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, fmt.Errorf("%s is required", field)
+	}
+
+	entries := strings.Split(value, ",")
+	keys := make(map[string][]byte, len(entries))
+	for index, entry := range entries {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			return nil, fmt.Errorf("%s entry %d is empty", field, index+1)
+		}
+		keyID, encoded, ok := strings.Cut(entry, "=")
+		keyID = strings.TrimSpace(keyID)
+		encoded = strings.TrimSpace(encoded)
+		if !ok || keyID == "" || encoded == "" {
+			return nil, fmt.Errorf(
+				"%s entry %d must use key-id=base64 format",
+				field,
+				index+1,
+			)
+		}
+		if !validTeamKeyID(keyID) {
+			return nil, fmt.Errorf("%s entry %d has an invalid key id", field, index+1)
+		}
+		if _, exists := keys[keyID]; exists {
+			return nil, fmt.Errorf("%s key id %q is duplicated", field, keyID)
+		}
+		decoded, err := base64.StdEncoding.Strict().DecodeString(encoded)
+		if err != nil || len(decoded) == 0 {
+			return nil, fmt.Errorf("%s key id %q is not valid base64", field, keyID)
+		}
+		keys[keyID] = append([]byte(nil), decoded...)
+	}
+	return keys, nil
+}
+
+func validateOptionalKeyringPair(
+	keyring TeamKeyringConfig,
+	activeField string,
+	keyringField string,
+) error {
+	hasActive := strings.TrimSpace(keyring.ActiveKeyID) != ""
+	hasKeyring := strings.TrimSpace(keyring.Keyring) != ""
+	if hasActive == hasKeyring {
+		return nil
+	}
+	return fmt.Errorf("%s and %s must be configured together", activeField, keyringField)
+}
+
+func keyringConfigured(keyring TeamKeyringConfig) bool {
+	return strings.TrimSpace(keyring.ActiveKeyID) != "" &&
+		strings.TrimSpace(keyring.Keyring) != ""
+}
+
+func smtpTransportBlank(cfg SMTPRecoveryConfig) bool {
+	return strings.TrimSpace(cfg.Addr) == "" &&
+		strings.TrimSpace(cfg.Username) == "" &&
+		cfg.Password == "" &&
+		strings.TrimSpace(cfg.From) == ""
+}
+
+func validTeamKeyID(value string) bool {
+	if len(value) < 1 || len(value) > 64 {
+		return false
+	}
+	for _, current := range value {
+		if current >= 'a' && current <= 'z' ||
+			current >= 'A' && current <= 'Z' ||
+			current >= '0' && current <= '9' ||
+			current == '-' || current == '_' || current == '.' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func loadTeamMailWorkerConfig(
+	lookup func(string) (string, bool),
+) (TeamMailWorkerConfig, []string) {
+	invalidFields := make([]string, 0, 6)
+	if value, configured := optionalLookup(lookup, EnvAuthSMTPQueueSize); configured {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 || parsed > maximumAuthSMTPQueueSize {
+			invalidFields = append(invalidFields, EnvAuthSMTPQueueSize)
+		}
+	}
+	if value, configured := optionalLookup(lookup, EnvAuthSMTPTimeout); configured {
+		parsed, err := time.ParseDuration(value)
+		if err != nil || parsed <= 0 {
+			invalidFields = append(invalidFields, EnvAuthSMTPTimeout)
+		}
+	}
+	lease, ok := positiveDurationEnvOrDefault(
+		lookup,
+		EnvTeamMailWorkerLease,
+		DefaultTeamMailWorkerLease,
+	)
+	if !ok {
+		invalidFields = append(invalidFields, EnvTeamMailWorkerLease)
+	}
+	poll, ok := positiveDurationEnvOrDefault(
+		lookup,
+		EnvTeamMailWorkerPoll,
+		DefaultTeamMailWorkerPoll,
+	)
+	if !ok {
+		invalidFields = append(invalidFields, EnvTeamMailWorkerPoll)
+	}
+	base, ok := positiveDurationEnvOrDefault(
+		lookup,
+		EnvTeamMailBackoffBase,
+		DefaultTeamMailBackoffBase,
+	)
+	if !ok {
+		invalidFields = append(invalidFields, EnvTeamMailBackoffBase)
+	}
+	maximum, ok := positiveDurationEnvOrDefault(
+		lookup,
+		EnvTeamMailBackoffMax,
+		DefaultTeamMailBackoffMax,
+	)
+	if !ok {
+		invalidFields = append(invalidFields, EnvTeamMailBackoffMax)
+	}
+
+	return TeamMailWorkerConfig{
+		LeaseDuration:  lease,
+		PollInterval:   poll,
+		BackoffBase:    base,
+		BackoffMaximum: maximum,
+	}, invalidFields
+}
+
+func positiveDurationEnvOrDefault(
+	lookup func(string) (string, bool),
+	key string,
+	fallback time.Duration,
+) (time.Duration, bool) {
+	value, ok := optionalLookup(lookup, key)
+	if !ok {
+		return fallback, true
+	}
+	parsed, err := time.ParseDuration(value)
+	if err != nil || parsed <= 0 {
+		return fallback, false
+	}
+	return parsed, true
 }
 
 func envOrDefault(lookup func(string) (string, bool), key string, fallback string) string {

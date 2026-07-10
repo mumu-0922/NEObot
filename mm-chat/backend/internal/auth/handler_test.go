@@ -91,6 +91,34 @@ func TestHandlerRejectsLegacyAndCallerIdentityPayloads(t *testing.T) {
 		`{"email":"owner@example.test","password":"not-the-user-password","userId":"bad"}`, "")
 	assertAuthStatus(t, rec, http.StatusBadRequest)
 	assertAuthErrorCode(t, rec, "FORBIDDEN_IDENTITY_FIELD")
+
+	rec = performAuthRequest(handler, http.MethodPost, authInviteAcceptPath,
+		`{"token":"`+testRawToken('d')+`","password":"invite-password-value","teamRole":"admin"}`, "")
+	assertAuthStatus(t, rec, http.StatusBadRequest)
+	assertAuthErrorCode(t, rec, "FORBIDDEN_IDENTITY_FIELD")
+
+	rec = performAuthRequest(handler, http.MethodPost, authInviteAcceptPath,
+		`{"token":"`+testRawToken('d')+`","password":"invite-password-value"} trailing`, "")
+	assertAuthStatus(t, rec, http.StatusBadRequest)
+	assertAuthErrorCode(t, rec, "INVALID_AUTH_PAYLOAD")
+
+	rec = performAuthRequest(handler, http.MethodPost,
+		authInviteAcceptPath+"?token="+testRawToken('d'),
+		`{"token":"`+testRawToken('d')+`","password":"invite-password-value"}`, "")
+	assertAuthStatus(t, rec, http.StatusBadRequest)
+	assertAuthErrorCode(t, rec, "INVALID_AUTH_PAYLOAD")
+
+	rec = performAuthRequest(handler, http.MethodPost,
+		authLoginPath+"?allowedCollectionIds=bad",
+		`{"email":"owner@example.test","password":"not-the-user-password"}`, "")
+	assertAuthStatus(t, rec, http.StatusBadRequest)
+	assertAuthErrorCode(t, rec, "FORBIDDEN_IDENTITY_FIELD")
+
+	rec = performAuthRequest(handler, http.MethodPost,
+		authLoginPath+"?ignored=one;ignored=two",
+		`{"email":"owner@example.test","password":"not-the-user-password"}`, "")
+	assertAuthStatus(t, rec, http.StatusBadRequest)
+	assertAuthErrorCode(t, rec, "INVALID_AUTH_PAYLOAD")
 }
 
 func TestHandlerBoundsAuthBodyAndRateLimits(t *testing.T) {

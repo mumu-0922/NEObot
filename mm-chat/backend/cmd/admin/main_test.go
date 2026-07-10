@@ -29,12 +29,14 @@ func TestReadPasswordLineRejectsMultipleLinesAndOversize(t *testing.T) {
 	}
 }
 
-func TestAdminRunRequiresExplicitBootstrapCommandAndPasswordStdin(t *testing.T) {
+func TestAdminRunRequiresExplicitCommandArguments(t *testing.T) {
 	for _, args := range [][]string{
 		nil,
 		{"unknown"},
 		{"bootstrap-identity"},
 		{"bootstrap-identity", "--email", "owner@example.test"},
+		{"disable-account"},
+		{"disable-account", "--user-id"},
 	} {
 		if err := run(args, strings.NewReader("password\n"), &strings.Builder{}); err == nil {
 			t.Fatalf("run(%v) error = nil, want usage error", args)

@@ -1,6 +1,9 @@
 package config
 
 import (
+	"bytes"
+	"encoding/base64"
+	"strings"
 	"testing"
 	"time"
 )
@@ -112,6 +115,20 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 		cfg.Auth.SMTP.QueueSize != DefaultAuthSMTPQueueSize ||
 		cfg.Auth.SMTP.Timeout != DefaultAuthSMTPTimeout {
 		t.Fatalf("Auth.SMTP = %#v, want blank/default values", cfg.Auth.SMTP)
+	}
+	if cfg.Team.Cursor != (TeamKeyringConfig{}) ||
+		cfg.Team.Mail != (TeamKeyringConfig{}) ||
+		cfg.Team.InviteAcceptURLBase != "" {
+		t.Fatalf("Team key/url config = %#v, want blank", cfg.Team)
+	}
+	if cfg.Team.MailWorker.LeaseDuration != DefaultTeamMailWorkerLease ||
+		cfg.Team.MailWorker.PollInterval != DefaultTeamMailWorkerPoll ||
+		cfg.Team.MailWorker.BackoffBase != DefaultTeamMailBackoffBase ||
+		cfg.Team.MailWorker.BackoffMaximum != DefaultTeamMailBackoffMax {
+		t.Fatalf("Team.MailWorker = %#v, want defaults", cfg.Team.MailWorker)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() defaults error = %v", err)
 	}
 }
 
@@ -453,5 +470,166 @@ func TestLoadFromEnvFallsBackForInvalidDBValues(t *testing.T) {
 	}
 	if cfg.Auth.Mode != AuthModeRequired {
 		t.Fatalf("Auth.Mode = %q, want required fail-closed fallback for unknown non-empty mode", cfg.Auth.Mode)
+	}
+}
+
+func TestLoadFromEnvLoadsTeamRuntimeSettings(t *testing.T) {
+	cursorActive := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32))
+	cursorOld := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{2}, 48))
+	mailActive := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{3}, 32))
+	mailOld := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{4}, 32))
+	values := map[string]string{
+		EnvTeamCursorActiveKeyID: " cursor-v2 ",
+		EnvTeamCursorKeyring:     " cursor-v2=" + cursorActive + ",cursor-v1=" + cursorOld + " ",
+		EnvTeamMailActiveKeyID:   " mail-v2 ",
+		EnvTeamMailKeyring:       " mail-v2=" + mailActive + ",mail-v1=" + mailOld + " ",
+		EnvTeamInviteAcceptURL:   " https://chat.example.test/invites/accept ",
+		EnvAuthSMTPAddr:          "smtp.example.test:587",
+		EnvAuthSMTPFrom:          "no-reply@example.test",
+		EnvTeamMailWorkerLease:   "45s",
+		EnvTeamMailWorkerPoll:    "750ms",
+		EnvTeamMailBackoffBase:   "3s",
+		EnvTeamMailBackoffMax:    "10m",
+	}
+	cfg := LoadFromEnv(func(key string) (string, bool) {
+		value, ok := values[key]
+		return value, ok
+	})
+
+	if cfg.Team.Cursor.ActiveKeyID != "cursor-v2" ||
+		cfg.Team.Cursor.Keyring != strings.TrimSpace(values[EnvTeamCursorKeyring]) {
+		t.Fatalf("Team.Cursor = %#v, want trimmed configured values", cfg.Team.Cursor)
+	}
+	if cfg.Team.Mail.ActiveKeyID != "mail-v2" ||
+		cfg.Team.InviteAcceptURLBase != "https://chat.example.test/invites/accept" {
+		t.Fatalf("Team mail/url config = %#v", cfg.Team)
+	}
+	if cfg.Team.MailWorker.LeaseDuration != 45*time.Second ||
+		cfg.Team.MailWorker.PollInterval != 750*time.Millisecond ||
+		cfg.Team.MailWorker.BackoffBase != 3*time.Second ||
+		cfg.Team.MailWorker.BackoffMaximum != 10*time.Minute {
+		t.Fatalf("Team.MailWorker = %#v, want overrides", cfg.Team.MailWorker)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestConfigValidateRejectsPartialAndInvalidTeamSettings(t *testing.T) {
+	tests := []struct {
+		name   string
+		values map[string]string
+		want   string
+	}{
+		{
+			name:   "cursor active without keyring",
+			values: map[string]string{EnvTeamCursorActiveKeyID: "cursor-v1"},
+			want:   EnvTeamCursorKeyring,
+		},
+		{
+			name:   "mail keyring without active",
+			values: map[string]string{EnvTeamMailKeyring: "mail-v1=ZmFrZQ=="},
+			want:   EnvTeamMailActiveKeyID,
+		},
+		{
+			name: "mail keys without acceptance URL",
+			values: map[string]string{
+				EnvTeamMailActiveKeyID: "mail-v1",
+				EnvTeamMailKeyring:     "mail-v1=ZmFrZS1tYWlsLWtleS1ub3QtcHJvZHVjdGlvbiEhISE=",
+			},
+			want: EnvTeamInviteAcceptURL,
+		},
+		{
+			name:   "acceptance URL without mail keys",
+			values: map[string]string{EnvTeamInviteAcceptURL: "https://chat.example.test/invites/accept"},
+			want:   EnvTeamMailKeyring,
+		},
+		{
+			name: "team mail without SMTP",
+			values: map[string]string{
+				EnvTeamMailActiveKeyID: "mail-v1",
+				EnvTeamMailKeyring:     "mail-v1=ZmFrZS1tYWlsLWtleS1ub3QtcHJvZHVjdGlvbiEhISE=",
+				EnvTeamInviteAcceptURL: "https://chat.example.test/invites/accept",
+			},
+			want: EnvAuthSMTPAddr,
+		},
+		{
+			name:   "required auth without cursor keys",
+			values: map[string]string{EnvAuthMode: AuthModeRequired},
+			want:   EnvTeamCursorKeyring,
+		},
+		{
+			name:   "invalid lease",
+			values: map[string]string{EnvTeamMailWorkerLease: "not-a-duration"},
+			want:   EnvTeamMailWorkerLease,
+		},
+		{
+			name:   "invalid smtp timeout",
+			values: map[string]string{EnvAuthSMTPTimeout: "not-a-duration"},
+			want:   EnvAuthSMTPTimeout,
+		},
+		{
+			name:   "invalid smtp queue",
+			values: map[string]string{EnvAuthSMTPQueueSize: "0"},
+			want:   EnvAuthSMTPQueueSize,
+		},
+		{
+			name: "backoff range",
+			values: map[string]string{
+				EnvTeamMailBackoffBase: "10s",
+				EnvTeamMailBackoffMax:  "5s",
+			},
+			want: EnvTeamMailBackoffMax,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := LoadFromEnv(func(key string) (string, bool) {
+				value, ok := tt.values[key]
+				return value, ok
+			})
+			err := cfg.Validate()
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Validate() error = %v, want field %s", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseBase64KeyringSupportsRotation(t *testing.T) {
+	active := bytes.Repeat([]byte{0x11}, 32)
+	old := bytes.Repeat([]byte{0x22}, 32)
+	encoded := "active=" + base64.StdEncoding.EncodeToString(active) +
+		",old=" + base64.StdEncoding.EncodeToString(old)
+
+	keys, err := ParseBase64Keyring(EnvTeamMailKeyring, encoded)
+	if err != nil {
+		t.Fatalf("ParseBase64Keyring() error = %v", err)
+	}
+	if !bytes.Equal(keys["active"], active) || !bytes.Equal(keys["old"], old) {
+		t.Fatalf("ParseBase64Keyring() keys do not match decoded rotation keyring")
+	}
+	active[0] = 0
+	if keys["active"][0] != 0x11 {
+		t.Fatal("ParseBase64Keyring() did not isolate decoded key bytes")
+	}
+}
+
+func TestParseBase64KeyringErrorsRedactSecretBytes(t *testing.T) {
+	secret := "super-secret-key-material-not-base64!"
+	_, err := ParseBase64Keyring(
+		EnvTeamCursorKeyring,
+		"cursor-v1="+secret,
+	)
+	if err == nil {
+		t.Fatal("ParseBase64Keyring() error = nil, want malformed base64 error")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("ParseBase64Keyring() leaked key bytes: %v", err)
+	}
+	if !strings.Contains(err.Error(), EnvTeamCursorKeyring) ||
+		!strings.Contains(err.Error(), "cursor-v1") {
+		t.Fatalf("ParseBase64Keyring() error = %v, want safe field and key id", err)
 	}
 }

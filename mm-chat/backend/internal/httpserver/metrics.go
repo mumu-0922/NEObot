@@ -400,6 +400,30 @@ func knownMetricPath(path string) (string, bool) {
 	}
 
 	parts := strings.Split(path, "/")
+	if len(parts) >= 3 && parts[1] == "v1" && parts[2] == "teams" {
+		switch len(parts) {
+		case 3:
+			return "/v1/teams", true
+		case 4:
+			return "/v1/teams/{teamId}", true
+		case 5:
+			switch parts[4] {
+			case "members":
+				return "/v1/teams/{teamId}/members", true
+			case "membership":
+				return "/v1/teams/{teamId}/membership", true
+			case "invites":
+				return "/v1/teams/{teamId}/invites", true
+			}
+		case 6:
+			switch parts[4] {
+			case "members":
+				return "/v1/teams/{teamId}/members/{userId}", true
+			case "invites":
+				return "/v1/teams/{teamId}/invites/{inviteId}", true
+			}
+		}
+	}
 	if len(parts) >= 4 && parts[1] == "v1" && parts[2] == "chat" && parts[3] == "conversations" {
 		switch len(parts) {
 		case 4:

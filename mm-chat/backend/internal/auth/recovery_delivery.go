@@ -3,6 +3,7 @@ package auth
 import (
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/mail"
@@ -19,10 +20,28 @@ const (
 )
 
 var (
-	errSMTPRecoveryDialFailed       = errors.New("smtp recovery dial failed")
-	errSMTPRecoveryDeadlineFailed   = errors.New("smtp recovery deadline failed")
-	errSMTPRecoveryDeliveryFailed   = errors.New("smtp recovery delivery failed")
-	errSMTPRecoveryInvalidRecipient = errors.New("smtp recovery recipient is invalid")
+	ErrSMTPDialFailed       = errors.New("smtp dial failed")
+	ErrSMTPDeadlineFailed   = errors.New("smtp deadline failed")
+	ErrSMTPDeliveryFailed   = errors.New("smtp delivery failed")
+	ErrSMTPInvalidRecipient = errors.New("smtp recipient is invalid")
+	ErrSMTPInvalidMessage   = errors.New("smtp message is invalid")
+
+	errSMTPRecoveryDialFailed = fmt.Errorf(
+		"smtp recovery dial failed: %w",
+		ErrSMTPDialFailed,
+	)
+	errSMTPRecoveryDeadlineFailed = fmt.Errorf(
+		"smtp recovery deadline failed: %w",
+		ErrSMTPDeadlineFailed,
+	)
+	errSMTPRecoveryDeliveryFailed = fmt.Errorf(
+		"smtp recovery delivery failed: %w",
+		ErrSMTPDeliveryFailed,
+	)
+	errSMTPRecoveryInvalidRecipient = fmt.Errorf(
+		"smtp recovery recipient is invalid: %w",
+		ErrSMTPInvalidRecipient,
+	)
 )
 
 type RecoveryMessage struct {
@@ -44,6 +63,14 @@ type SMTPRecoveryConfig struct {
 	Timeout   time.Duration
 }
 
+type SMTPTransportConfig struct {
+	Addr     string
+	Username string
+	Password string
+	From     string
+	Timeout  time.Duration
+}
+
 type smtpRecoverySettings struct {
 	addr        string
 	host        string
@@ -52,6 +79,13 @@ type smtpRecoverySettings struct {
 	fromAddress string
 	fromHeader  string
 	timeout     time.Duration
+}
+
+type SMTPPlaintextMessage struct {
+	To        string
+	Subject   string
+	MessageID string
+	TextBody  string
 }
 
 type smtpRecoverySendRequest struct {
@@ -75,6 +109,12 @@ type smtpRecoverySendFunc func(
 	request smtpRecoverySendRequest,
 ) error
 
+type SMTPSyncTransport struct {
+	settings smtpRecoverySettings
+	dial     smtpRecoveryDialFunc
+	send     smtpRecoverySendFunc
+}
+
 type SMTPRecoveryDelivery struct {
 	settings smtpRecoverySettings
 	queue    chan RecoveryMessage
@@ -91,6 +131,58 @@ var (
 	_ RecoveryDelivery = (*SMTPRecoveryDelivery)(nil)
 	_ io.Closer        = (*SMTPRecoveryDelivery)(nil)
 )
+
+func NewSMTPSyncTransport(
+	config SMTPTransportConfig,
+) (*SMTPSyncTransport, error) {
+	settings, err := validateSMTPTransportConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	return &SMTPSyncTransport{
+		settings: settings,
+		dial:     dialSMTPRecovery,
+		send:     sendSMTPRecovery,
+	}, nil
+}
+
+func (t *SMTPSyncTransport) Ready() bool {
+	return t != nil &&
+		t.settings.addr != "" &&
+		t.settings.host != "" &&
+		t.settings.fromAddress != "" &&
+		t.settings.timeout > 0
+}
+
+func (t *SMTPSyncTransport) SendPlaintext(
+	message SMTPPlaintextMessage,
+) error {
+	if !t.Ready() {
+		return ErrSMTPDeliveryFailed
+	}
+
+	request, err := buildSMTPPlaintextRequest(t.settings, message)
+	if err != nil {
+		return err
+	}
+
+	conn, err := t.dial("tcp", t.settings.addr, t.settings.timeout)
+	if err != nil {
+		return ErrSMTPDialFailed
+	}
+	defer func() {
+		_ = conn.Close()
+	}()
+
+	if err := conn.SetDeadline(time.Now().Add(t.settings.timeout)); err != nil {
+		return ErrSMTPDeadlineFailed
+	}
+	if err := t.send(conn, request); err != nil {
+		return ErrSMTPDeliveryFailed
+	}
+	return nil
+}
 
 func NewSMTPRecoveryDelivery(
 	config SMTPRecoveryConfig,
@@ -159,30 +251,54 @@ func (d *SMTPRecoveryDelivery) run() {
 }
 
 func (d *SMTPRecoveryDelivery) deliverRecovery(message RecoveryMessage) error {
-	request, err := buildSMTPRecoveryRequest(d.settings, message)
+	mailMessage, err := buildSMTPRecoveryMessage(message)
 	if err != nil {
 		return errSMTPRecoveryInvalidRecipient
 	}
 
-	conn, err := d.dial("tcp", d.settings.addr, d.settings.timeout)
-	if err != nil {
-		return errSMTPRecoveryDialFailed
+	transport := &SMTPSyncTransport{
+		settings: d.settings,
+		dial:     d.dial,
+		send:     d.send,
 	}
-	defer func() {
-		_ = conn.Close()
-	}()
-
-	if err := conn.SetDeadline(time.Now().Add(d.settings.timeout)); err != nil {
-		return errSMTPRecoveryDeadlineFailed
-	}
-	if err := d.send(conn, request); err != nil {
-		return errSMTPRecoveryDeliveryFailed
+	if err := transport.SendPlaintext(mailMessage); err != nil {
+		switch {
+		case errors.Is(err, ErrSMTPInvalidRecipient):
+			return errSMTPRecoveryInvalidRecipient
+		case errors.Is(err, ErrSMTPDialFailed):
+			return errSMTPRecoveryDialFailed
+		case errors.Is(err, ErrSMTPDeadlineFailed):
+			return errSMTPRecoveryDeadlineFailed
+		default:
+			return errSMTPRecoveryDeliveryFailed
+		}
 	}
 	return nil
 }
 
 func validateSMTPRecoveryConfig(
 	config SMTPRecoveryConfig,
+) (smtpRecoverySettings, error) {
+	settings, err := validateSMTPTransportConfig(SMTPTransportConfig{
+		Addr:     config.Addr,
+		Username: config.Username,
+		Password: config.Password,
+		From:     config.From,
+		Timeout:  config.Timeout,
+	})
+	if err != nil {
+		return smtpRecoverySettings{}, err
+	}
+	if config.QueueSize <= 0 || config.QueueSize > maxSMTPRecoveryQueueSize {
+		return smtpRecoverySettings{}, errors.New(
+			"smtp recovery queue size is invalid",
+		)
+	}
+	return settings, nil
+}
+
+func validateSMTPTransportConfig(
+	config SMTPTransportConfig,
 ) (smtpRecoverySettings, error) {
 	addr := strings.TrimSpace(config.Addr)
 	if addr == "" || containsHeaderNewline(addr) {
@@ -218,11 +334,6 @@ func validateSMTPRecoveryConfig(
 			"smtp username and password must be configured together",
 		)
 	}
-	if config.QueueSize <= 0 || config.QueueSize > maxSMTPRecoveryQueueSize {
-		return smtpRecoverySettings{}, errors.New(
-			"smtp recovery queue size is invalid",
-		)
-	}
 	if config.Timeout <= 0 {
 		return smtpRecoverySettings{}, errors.New(
 			"smtp recovery timeout must be positive",
@@ -240,11 +351,53 @@ func validateSMTPRecoveryConfig(
 	}, nil
 }
 
+func buildSMTPRecoveryMessage(
+	message RecoveryMessage,
+) (SMTPPlaintextMessage, error) {
+	if _, err := parseSMTPMailbox(message.Email); err != nil {
+		return SMTPPlaintextMessage{}, err
+	}
+
+	var body strings.Builder
+	body.WriteString("A password recovery was requested for your Neo Chat account.\r\n\r\n")
+	body.WriteString("Copy this recovery token:\r\n")
+	body.WriteString(message.Token)
+	body.WriteString("\r\n\r\n")
+	body.WriteString("This token expires at ")
+	body.WriteString(message.ExpiresAt.UTC().Format(time.RFC3339))
+	body.WriteString(".\r\n")
+
+	return SMTPPlaintextMessage{
+		To:       message.Email,
+		Subject:  recoveryEmailSubject,
+		TextBody: body.String(),
+	}, nil
+}
+
 func buildSMTPRecoveryRequest(
 	settings smtpRecoverySettings,
 	message RecoveryMessage,
 ) (smtpRecoverySendRequest, error) {
-	toAddress, err := parseSMTPMailbox(message.Email)
+	mailMessage, err := buildSMTPRecoveryMessage(message)
+	if err != nil {
+		return smtpRecoverySendRequest{}, err
+	}
+	return buildSMTPPlaintextRequest(settings, mailMessage)
+}
+
+func buildSMTPPlaintextRequest(
+	settings smtpRecoverySettings,
+	message SMTPPlaintextMessage,
+) (smtpRecoverySendRequest, error) {
+	toAddress, err := parseSMTPMailbox(message.To)
+	if err != nil {
+		return smtpRecoverySendRequest{}, ErrSMTPInvalidRecipient
+	}
+	subject, err := normalizeSMTPHeaderValue(message.Subject, false)
+	if err != nil {
+		return smtpRecoverySendRequest{}, err
+	}
+	messageID, err := normalizeSMTPHeaderValue(message.MessageID, true)
 	if err != nil {
 		return smtpRecoverySendRequest{}, err
 	}
@@ -253,18 +406,15 @@ func buildSMTPRecoveryRequest(
 	var email strings.Builder
 	writeSMTPHeader(&email, "From", settings.fromHeader)
 	writeSMTPHeader(&email, "To", toHeader)
-	writeSMTPHeader(&email, "Subject", recoveryEmailSubject)
+	writeSMTPHeader(&email, "Subject", subject)
+	if messageID != "" {
+		writeSMTPHeader(&email, "Message-ID", messageID)
+	}
 	writeSMTPHeader(&email, "MIME-Version", "1.0")
 	writeSMTPHeader(&email, "Content-Type", "text/plain; charset=UTF-8")
 	writeSMTPHeader(&email, "Content-Transfer-Encoding", "8bit")
 	email.WriteString("\r\n")
-	email.WriteString("A password recovery was requested for your Neo Chat account.\r\n\r\n")
-	email.WriteString("Copy this recovery token:\r\n")
-	email.WriteString(message.Token)
-	email.WriteString("\r\n\r\n")
-	email.WriteString("This token expires at ")
-	email.WriteString(message.ExpiresAt.UTC().Format(time.RFC3339))
-	email.WriteString(".\r\n")
+	writeSMTPBody(&email, message.TextBody)
 
 	return smtpRecoverySendRequest{
 		host:        settings.host,
@@ -278,6 +428,32 @@ func buildSMTPRecoveryRequest(
 		},
 		message: []byte(email.String()),
 	}, nil
+}
+
+func normalizeSMTPHeaderValue(value string, allowEmpty bool) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" && allowEmpty {
+		return "", nil
+	}
+	if value == "" || containsHeaderNewline(value) || containsControl(value) {
+		return "", ErrSMTPInvalidMessage
+	}
+	if len(value) > 998 {
+		return "", ErrSMTPInvalidMessage
+	}
+	return value, nil
+}
+
+func writeSMTPBody(email *strings.Builder, value string) {
+	value = strings.ReplaceAll(value, "\r\n", "\n")
+	value = strings.ReplaceAll(value, "\r", "\n")
+	lines := strings.Split(value, "\n")
+	for index, line := range lines {
+		if index > 0 {
+			email.WriteString("\r\n")
+		}
+		email.WriteString(line)
+	}
 }
 
 func writeSMTPHeader(email *strings.Builder, name string, value string) {
@@ -332,19 +508,19 @@ func sendSMTPRecovery(
 		request.tlsConfig.MinVersion < tls.VersionTLS12 ||
 		request.tlsConfig.ServerName != request.host ||
 		request.tlsConfig.InsecureSkipVerify {
-		return errSMTPRecoveryDeliveryFailed
+		return ErrSMTPDeliveryFailed
 	}
 
 	client, err := smtp.NewClient(conn, request.host)
 	if err != nil {
-		return errSMTPRecoveryDeliveryFailed
+		return ErrSMTPDeliveryFailed
 	}
 	defer func() {
 		_ = client.Close()
 	}()
 
 	if err := client.StartTLS(request.tlsConfig.Clone()); err != nil {
-		return errSMTPRecoveryDeliveryFailed
+		return ErrSMTPDeliveryFailed
 	}
 	if request.username != "" {
 		auth := smtp.PlainAuth(
@@ -354,29 +530,29 @@ func sendSMTPRecovery(
 			request.host,
 		)
 		if err := client.Auth(auth); err != nil {
-			return errSMTPRecoveryDeliveryFailed
+			return ErrSMTPDeliveryFailed
 		}
 	}
 	if err := client.Mail(request.fromAddress); err != nil {
-		return errSMTPRecoveryDeliveryFailed
+		return ErrSMTPDeliveryFailed
 	}
 	if err := client.Rcpt(request.toAddress); err != nil {
-		return errSMTPRecoveryDeliveryFailed
+		return ErrSMTPDeliveryFailed
 	}
 
 	writer, err := client.Data()
 	if err != nil {
-		return errSMTPRecoveryDeliveryFailed
+		return ErrSMTPDeliveryFailed
 	}
 	if _, err := writer.Write(request.message); err != nil {
 		_ = writer.Close()
-		return errSMTPRecoveryDeliveryFailed
+		return ErrSMTPDeliveryFailed
 	}
 	if err := writer.Close(); err != nil {
-		return errSMTPRecoveryDeliveryFailed
+		return ErrSMTPDeliveryFailed
 	}
 	if err := client.Quit(); err != nil {
-		return errSMTPRecoveryDeliveryFailed
+		return ErrSMTPDeliveryFailed
 	}
 	return nil
 }

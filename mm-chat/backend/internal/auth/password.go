@@ -33,6 +33,13 @@ var passwordHashSemaphore = make(chan struct{}, maximumPasswordHashes)
 
 var strictRawBase64 = base64.RawStdEncoding.Strict()
 
+// CanonicalizeEmail is the shared identity boundary for every mailbox-backed
+// auth and Team flow. Callers should map the returned validation error to their
+// endpoint-specific public error code rather than reimplementing these rules.
+func CanonicalizeEmail(value string) (string, error) {
+	return canonicalizeEmail(value)
+}
+
 func canonicalizeEmail(value string) (string, error) {
 	if !utf8.ValidString(value) {
 		return "", invalidIdentityInput("email must be valid UTF-8")

@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,6 +71,181 @@ func TestServiceLoginCollapsesUnknownAndWrongPassword(t *testing.T) {
 	})
 	if !errors.Is(err, ErrInvalidCredential) {
 		t.Fatalf("wrong password Login() error = %v", err)
+	}
+}
+
+func TestServiceAcceptInviteCreatesNewIdentityFromSnapshot(t *testing.T) {
+	now := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
+	repo := &fakeAuthRepository{
+		lookupErr: ErrInvalidCredential,
+		inviteSnapshot: InviteAcceptanceSnapshot{
+			TeamID: "33333333-3333-4333-8333-333333333333",
+			Email:  "new-member@example.test",
+		},
+	}
+	service := NewService(repo, WithServiceClock(func() time.Time { return now }))
+	ids := []string{
+		"44444444-4444-4444-8444-444444444444",
+		"55555555-5555-4555-8555-555555555555",
+	}
+	service.newID = func() (string, error) {
+		id := ids[0]
+		ids = ids[1:]
+		return id, nil
+	}
+	service.newToken = func() (string, error) { return testRawToken('e'), nil }
+
+	result, err := service.AcceptInvite(context.Background(), AcceptInviteInput{
+		Token:     testRawToken('f'),
+		Password:  "new-invite-password",
+		UserAgent: "invite-agent",
+	})
+	if err != nil {
+		t.Fatalf("AcceptInvite() error = %v", err)
+	}
+	if repo.inviteLookupTokenHash != HashSessionToken(testRawToken('f')) {
+		t.Fatalf("invite lookup token hash = %q", repo.inviteLookupTokenHash)
+	}
+	if repo.lookupEmail != repo.inviteSnapshot.Email {
+		t.Fatalf("lookup email = %q", repo.lookupEmail)
+	}
+	if repo.acceptInviteInput.UserID != "44444444-4444-4444-8444-444444444444" ||
+		repo.acceptInviteInput.CredentialRevision != 0 ||
+		repo.acceptInviteInput.InviteTeamID != repo.inviteSnapshot.TeamID ||
+		repo.acceptInviteInput.InviteEmail != repo.inviteSnapshot.Email {
+		t.Fatalf("accept invite input = %#v", repo.acceptInviteInput)
+	}
+	if !strings.HasPrefix(repo.acceptInviteInput.PasswordHash, "$argon2id$") {
+		t.Fatalf("password hash = %q", repo.acceptInviteInput.PasswordHash)
+	}
+	valid, verifyErr := verifyPassword(context.Background(), "new-invite-password", repo.acceptInviteInput.PasswordHash)
+	if verifyErr != nil || !valid {
+		t.Fatalf("verify new invite hash = %v/%v", valid, verifyErr)
+	}
+	if repo.acceptInviteInput.SessionID != "55555555-5555-4555-8555-555555555555" ||
+		repo.acceptInviteInput.SessionTokenHash != HashSessionToken(testRawToken('e')) {
+		t.Fatalf("session input = %#v", repo.acceptInviteInput)
+	}
+	if result.Token != testRawToken('e') || result.User.ID != repo.acceptInviteInput.UserID {
+		t.Fatalf("AcceptInvite() result = %#v", result)
+	}
+}
+
+func TestServiceAcceptInviteExistingCredentialUsesFence(t *testing.T) {
+	now := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
+	repo := &fakeAuthRepository{
+		credential: LoginCredential{
+			UserID:             "66666666-6666-4666-8666-666666666666",
+			Email:              "existing-member@example.test",
+			DisplayName:        "Existing Member",
+			PasswordHash:       defaultDummyPasswordHash,
+			CredentialRevision: 9,
+		},
+		inviteSnapshot: InviteAcceptanceSnapshot{
+			TeamID: "77777777-7777-4777-8777-777777777777",
+			Email:  "existing-member@example.test",
+		},
+	}
+	service := NewService(repo, WithServiceClock(func() time.Time { return now }))
+	ids := []string{"88888888-8888-4888-8888-888888888888"}
+	service.newID = func() (string, error) {
+		if len(ids) == 0 {
+			return "", errors.New("unexpected user id generation")
+		}
+		id := ids[0]
+		ids = ids[1:]
+		return id, nil
+	}
+	service.newToken = func() (string, error) { return testRawToken('a'), nil }
+
+	result, err := service.AcceptInvite(context.Background(), AcceptInviteInput{
+		Token:     testRawToken('b'),
+		Password:  validTestPassword,
+		UserAgent: "existing-agent",
+	})
+	if err != nil {
+		t.Fatalf("AcceptInvite() error = %v", err)
+	}
+	if repo.acceptInviteInput.UserID != repo.credential.UserID ||
+		repo.acceptInviteInput.CredentialRevision != repo.credential.CredentialRevision ||
+		repo.acceptInviteInput.PasswordHash != "" {
+		t.Fatalf("accept invite input = %#v", repo.acceptInviteInput)
+	}
+	if repo.acceptInviteInput.InviteTeamID != repo.inviteSnapshot.TeamID ||
+		repo.acceptInviteInput.InviteEmail != repo.inviteSnapshot.Email {
+		t.Fatalf("invite snapshot not forwarded = %#v", repo.acceptInviteInput)
+	}
+	if result.Token != testRawToken('a') || result.User.ID != repo.credential.UserID {
+		t.Fatalf("AcceptInvite() result = %#v", result)
+	}
+}
+
+func TestServiceAcceptInviteCollapsesWrongExistingPassword(t *testing.T) {
+	repo := &fakeAuthRepository{
+		credential: LoginCredential{
+			UserID:             "99999999-9999-4999-8999-999999999999",
+			Email:              "existing-member@example.test",
+			PasswordHash:       defaultDummyPasswordHash,
+			CredentialRevision: 2,
+		},
+		inviteSnapshot: InviteAcceptanceSnapshot{
+			TeamID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+			Email:  "existing-member@example.test",
+		},
+	}
+	service := NewService(repo)
+
+	_, err := service.AcceptInvite(context.Background(), AcceptInviteInput{
+		Token:    testRawToken('c'),
+		Password: "definitely-the-wrong-password",
+	})
+	if !errors.Is(err, ErrInviteNotActive) {
+		t.Fatalf("wrong existing password AcceptInvite() error = %v", err)
+	}
+	if repo.acceptInviteCalled {
+		t.Fatalf("AcceptInvite() should not reach repository, input = %#v", repo.acceptInviteInput)
+	}
+}
+
+func TestServiceAcceptInviteRejectsMalformedPasswordBeforeTokenSnapshot(t *testing.T) {
+	tests := []struct {
+		name string
+		repo *fakeAuthRepository
+	}{
+		{
+			name: "active invite",
+			repo: &fakeAuthRepository{
+				inviteSnapshot: InviteAcceptanceSnapshot{
+					TeamID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+					Email:  "invitee@example.test",
+				},
+			},
+		},
+		{
+			name: "inactive invite",
+			repo: &fakeAuthRepository{
+				inviteSnapshotErr: ErrInviteNotActive,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := NewService(tt.repo)
+
+			_, err := service.AcceptInvite(context.Background(), AcceptInviteInput{
+				Token:    testRawToken('d'),
+				Password: "too-short",
+			})
+			if !errors.Is(err, ErrInvalidIdentityInput) {
+				t.Fatalf("AcceptInvite() error = %v, want ErrInvalidIdentityInput", err)
+			}
+			if tt.repo.inviteLookupTokenHash != "" {
+				t.Fatalf("invite snapshot should not be queried, got %q", tt.repo.inviteLookupTokenHash)
+			}
+			if tt.repo.lookupEmail != "" || tt.repo.acceptInviteCalled {
+				t.Fatalf("unexpected downstream calls lookup=%q accept=%v", tt.repo.lookupEmail, tt.repo.acceptInviteCalled)
+			}
+		})
 	}
 }
 
@@ -149,22 +325,47 @@ func TestServiceLogoutRevokesSessionAndClearsCache(t *testing.T) {
 }
 
 type fakeAuthRepository struct {
-	credential       LoginCredential
-	lookupEmail      string
-	lookupErr        error
-	sessionInput     CreateCredentialSessionInput
-	recoveryInput    CreateRecoveryTokenInput
-	recoveryTarget   RecoveryTarget
-	deliverRecovery  bool
-	completeInput    CompleteRecoveryRepositoryInput
-	completeRevoked  []RevokedSession
-	revokedTokenHash string
-	revokedUserID    string
+	credential            LoginCredential
+	lookupEmail           string
+	lookupErr             error
+	inviteSnapshot        InviteAcceptanceSnapshot
+	inviteSnapshotErr     error
+	inviteLookupTokenHash string
+	sessionInput          CreateCredentialSessionInput
+	acceptInviteInput     AcceptInviteRepositoryInput
+	acceptInviteCalled    bool
+	recoveryInput         CreateRecoveryTokenInput
+	recoveryTarget        RecoveryTarget
+	deliverRecovery       bool
+	completeInput         CompleteRecoveryRepositoryInput
+	completeRevoked       []RevokedSession
+	revokedTokenHash      string
+	revokedUserID         string
 }
 
 func (r *fakeAuthRepository) LookupLoginCredential(_ context.Context, email string) (LoginCredential, error) {
 	r.lookupEmail = email
-	return r.credential, r.lookupErr
+	if r.lookupErr != nil {
+		return LoginCredential{}, r.lookupErr
+	}
+	if r.credential.Email != "" && !strings.EqualFold(r.credential.Email, email) {
+		return LoginCredential{}, ErrInvalidCredential
+	}
+	return r.credential, nil
+}
+
+func (r *fakeAuthRepository) LookupInviteAcceptanceSnapshot(_ context.Context, inviteTokenHash string) (InviteAcceptanceSnapshot, error) {
+	r.inviteLookupTokenHash = inviteTokenHash
+	if r.inviteSnapshotErr != nil {
+		return InviteAcceptanceSnapshot{}, r.inviteSnapshotErr
+	}
+	if r.inviteSnapshot.TeamID == "" {
+		return InviteAcceptanceSnapshot{
+			TeamID: "12345678-1234-4234-8234-123456789012",
+			Email:  "invitee@example.test",
+		}, nil
+	}
+	return r.inviteSnapshot, nil
 }
 
 func (r *fakeAuthRepository) CreateCredentialSession(_ context.Context, input CreateCredentialSessionInput) (Session, error) {
@@ -179,7 +380,15 @@ func (r *fakeAuthRepository) CreateCredentialSession(_ context.Context, input Cr
 }
 
 func (r *fakeAuthRepository) AcceptInvite(_ context.Context, input AcceptInviteRepositoryInput) (Session, error) {
-	return Session{ID: input.SessionID, UserID: input.UserID, ExpiresAt: input.SessionExpiresAt}, nil
+	r.acceptInviteCalled = true
+	r.acceptInviteInput = input
+	return Session{
+		ID:          input.SessionID,
+		UserID:      input.UserID,
+		DisplayName: r.credential.DisplayName,
+		Role:        defaultUserRole,
+		ExpiresAt:   input.SessionExpiresAt,
+	}, nil
 }
 
 func (r *fakeAuthRepository) CreateRecoveryToken(_ context.Context, input CreateRecoveryTokenInput) (RecoveryTarget, bool, error) {

@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -147,7 +149,27 @@ func (h *Handler) requireMethod(
 		methodNotAllowed(w, method)
 		return
 	}
+	if err := validateAuthQuery(r); err != nil {
+		writeDecodeError(w, err)
+		return
+	}
 	next(w, r)
+}
+
+func validateAuthQuery(r *http.Request) error {
+	if r == nil || r.URL.RawQuery == "" {
+		return nil
+	}
+	query, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		return errors.New("auth query parameters are invalid")
+	}
+	for key := range query {
+		if isForbiddenIdentityField(key) {
+			return &forbiddenIdentityFieldError{field: key}
+		}
+	}
+	return errors.New("auth query parameters are invalid")
 }
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
@@ -259,8 +281,11 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, destination any) error {
 	if err := decoder.Decode(destination); err != nil {
 		return classifyDecodeError(err)
 	}
-	if decoder.Decode(&struct{}{}) == nil {
-		return errors.New("multiple JSON values")
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("multiple JSON values")
+		}
+		return classifyDecodeError(err)
 	}
 	return nil
 }
@@ -288,16 +313,30 @@ func classifyDecodeError(err error) error {
 }
 
 func isForbiddenIdentityField(field string) bool {
-	field = strings.ToLower(strings.TrimSpace(field))
+	normalized := strings.NewReplacer("_", "", "-", "", " ", "").Replace(
+		strings.ToLower(strings.TrimSpace(field)),
+	)
+	if normalized == "" {
+		return false
+	}
+	if strings.Contains(normalized, "acl") ||
+		strings.Contains(normalized, "revision") ||
+		strings.Contains(normalized, "epoch") {
+		return true
+	}
 	for _, forbidden := range []string{
-		"userid", "user_id", "role", "teamid", "teamids", "sessionid",
-		"owneruserid", "acl", "aclgroups", "impersonate", "impersonation",
+		"userid", "role", "teamrole", "teamid", "teamids", "sessionid",
+		"actorid", "actoruserid", "targetuserid", "memberid", "inviteid",
+		"allowedcollectionids", "callerid", "calleruserid", "currentuserid",
+		"ownerid", "owneruserid", "principalid", "subjectuserid",
+		"createdbyuserid", "invitedbyuserid", "impersonate",
+		"impersonation", "impersonateuserid",
 	} {
-		if field == forbidden {
+		if normalized == forbidden {
 			return true
 		}
 	}
-	return strings.Contains(field, "revision") || strings.Contains(field, "epoch")
+	return false
 }
 
 func writeDecodeError(w http.ResponseWriter, err error) {

@@ -123,7 +123,12 @@ func TestMiddlewareLogsStructuredRequest(t *testing.T) {
 		_, _ = w.Write([]byte("created"))
 	}), withRequestID, withRequestLogging(logger))
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/v1/example?secret=hidden", nil)
+	teamID := "33333333-3333-4333-8333-333333333333"
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/teams/"+teamID+"/invites?token=hidden",
+		nil,
+	)
 	req.Header.Set(requestIDHeader, "log-request-1")
 	req.RemoteAddr = "127.0.0.1:12345"
 
@@ -136,14 +141,14 @@ func TestMiddlewareLogsStructuredRequest(t *testing.T) {
 	if entry["msg"] != "http_request" ||
 		entry["request_id"] != "log-request-1" ||
 		entry["method"] != http.MethodPost ||
-		entry["path"] != "/v1/example" {
+		entry["path"] != "/v1/teams/{teamId}/invites" {
 		t.Fatalf("structured log = %#v", entry)
 	}
 	if entry["status"] != float64(http.StatusCreated) {
 		t.Fatalf("log status = %#v, want %d", entry["status"], http.StatusCreated)
 	}
-	if strings.Contains(logs.String(), "secret=hidden") {
-		t.Fatalf("structured log includes query string: %s", logs.String())
+	if strings.Contains(logs.String(), "token=hidden") || strings.Contains(logs.String(), teamID) {
+		t.Fatalf("structured log includes query or raw Team id: %s", logs.String())
 	}
 }
 
@@ -230,7 +235,7 @@ func TestMiddlewareChainLogsPanicAndRequestWithRequestID(t *testing.T) {
 	if entries[1]["msg"] != "http_request" ||
 		entries[1]["request_id"] != "chain-request-1" ||
 		entries[1]["status"] != float64(http.StatusInternalServerError) ||
-		entries[1]["path"] != "/panic-chain" {
+		entries[1]["path"] != "/__unknown__" {
 		t.Fatalf("request log = %#v", entries[1])
 	}
 	if strings.Contains(logs.String(), "chain-secret") || strings.Contains(logs.String(), "token=hidden") {
@@ -413,6 +418,8 @@ func TestAuthRequiredModeRejectsMissingCredentialsAndKeepsPublicRoutes(t *testin
 		{method: http.MethodGet, path: "/v1/chat/conversations"},
 		{method: http.MethodGet, path: "/v1/files/33333333-3333-4333-8333-333333333333"},
 		{method: http.MethodGet, path: "/v1/import/browser/33333333-3333-4333-8333-333333333333"},
+		{method: http.MethodGet, path: "/v1/teams"},
+		{method: http.MethodGet, path: "/v1/teams/33333333-3333-4333-8333-333333333333/members"},
 	}
 	for _, route := range protectedRoutes {
 		rec := httptest.NewRecorder()
@@ -430,6 +437,64 @@ func TestAuthRequiredModeRejectsMissingCredentialsAndKeepsPublicRoutes(t *testin
 		if body.Error.Code != "UNAUTHENTICATED" {
 			t.Fatalf("%s %s error code = %q, want UNAUTHENTICATED", route.method, route.path, body.Error.Code)
 		}
+	}
+}
+
+func TestNewHandlerRegistersTeamRoutes(t *testing.T) {
+	handler := NewHandler(config.Config{Addr: ":0", Version: "route-test"})
+	for _, path := range []string{
+		"/v1/teams",
+		"/v1/teams/33333333-3333-4333-8333-333333333333",
+		"/v1/teams/33333333-3333-4333-8333-333333333333/members",
+	} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("GET %s status = %d, want 401; body=%s", path, rec.Code, rec.Body.String())
+		}
+		var body ErrorResponse
+		if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+			t.Fatalf("decode GET %s response: %v", path, err)
+		}
+		if body.Error.Code != "UNAUTHENTICATED" {
+			t.Fatalf("GET %s code = %q, want UNAUTHENTICATED", path, body.Error.Code)
+		}
+	}
+}
+
+func TestDevelopmentModeTeamRoutesRequireAndVerifyBearer(t *testing.T) {
+	resolver := &fakeSessionResolver{session: auth.Session{
+		ID:          "session-1",
+		UserID:      "77777777-7777-4777-8777-777777777777",
+		DisplayName: "Team User",
+		Role:        "user",
+		ExpiresAt:   time.Now().Add(time.Hour),
+	}}
+	handler := NewHandler(
+		config.Config{Addr: ":0", Version: "route-test"},
+		WithSessionResolver(resolver),
+	)
+
+	withoutBearer := httptest.NewRecorder()
+	handler.ServeHTTP(
+		withoutBearer,
+		httptest.NewRequest(http.MethodGet, "/v1/teams", nil),
+	)
+	if withoutBearer.Code != http.StatusUnauthorized {
+		t.Fatalf("development Team route without bearer status = %d", withoutBearer.Code)
+	}
+
+	withBearer := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/v1/teams", nil)
+	request.Header.Set("Authorization", "Bearer development-team-session")
+	handler.ServeHTTP(withBearer, request)
+	if withBearer.Code != http.StatusServiceUnavailable {
+		t.Fatalf("development Team route with bearer status = %d; body=%s", withBearer.Code, withBearer.Body.String())
+	}
+	if resolver.tokenHash != auth.HashSessionToken("development-team-session") {
+		t.Fatalf("development Team bearer hash = %q", resolver.tokenHash)
 	}
 }
 

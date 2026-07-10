@@ -38,6 +38,11 @@ This contract is derived from:
 - Implemented Go SSE contract in
   [`chat-stream-api.md`](./chat-stream-api.md).
 - Implemented Go file contract in [`file-api.md`](./file-api.md).
+- Phase 15.1C Team design in
+  `mm-chat/docs/architecture/phase-15-1c-team-services-plan.md`.
+- Existing Team/Invite schema baseline in
+  `mm-chat/backend/migrations/004_phase15_identity_knowledge_acl.up.sql`.
+- Current auth/session route behavior in `mm-chat/backend/internal/auth/*`.
 
 ## 3. Design Goals
 
@@ -106,6 +111,7 @@ src/services/api/client/
     chatApi.ts
     fileApi.ts
     authApi.ts
+    teamApi.ts
     settingsApi.ts
     providerApi.ts
   server/
@@ -113,6 +119,7 @@ src/services/api/client/
     chatApi.ts
     fileApi.ts
     authApi.ts
+    teamApi.ts
     settingsApi.ts
     providerApi.ts
     importApi.ts
@@ -133,6 +140,7 @@ export interface NeoChatApiClient {
   chat: ChatApi;
   files: FileApi;
   auth: AuthApi;
+  teams: TeamApi;
   settings: SettingsApi;
   providers: ProviderApi;
   plugins: PluginApi;
@@ -157,6 +165,11 @@ export type IsoDateTime = string;
 export interface ApiPage<T> {
   items: T[];
   nextCursor?: string;
+}
+
+export interface CursorPageInput {
+  cursor?: string;
+  limit?: number;
 }
 
 export interface ApiErrorEnvelope {
@@ -696,10 +709,12 @@ export interface AuthApi {
   revokeAllSessions(): Promise<void>;
 }
 
+export type GlobalUserRole = "owner" | "user" | "viewer";
+
 export interface CurrentUser {
   id: EntityId;
   displayName: string;
-  role: "owner" | "user" | "viewer";
+  role: GlobalUserRole;
   createdAt?: IsoDateTime;
 }
 
@@ -735,7 +750,7 @@ Endpoint mapping:
 | ------------------- | --------------------------------- | ------------------------------------------------ |
 | `getCurrentUser`    | `GET /v1/me`                      | Returns synthetic local user                     |
 | `login`             | `POST /v1/auth/login`             | Existing `/api/access/verify` compatibility      |
-| `acceptInvite`      | `POST /v1/auth/invites/accept`    | Unsupported                                      |
+| `acceptInvite`      | `POST /v1/auth/invites/accept`    | Unsupported; UI wiring remains pending           |
 | `requestRecovery`   | `POST /v1/auth/recovery/request`  | Unsupported                                      |
 | `completeRecovery`  | `POST /v1/auth/recovery/complete` | Unsupported                                      |
 | `logout`            | `POST /v1/auth/logout`            | Clears server/session state only when applicable |
@@ -755,10 +770,207 @@ must preserve the existing React/UI stack rather than reimplementing it.
 Postgres is rechecked on every Bearer request. Redis cache loss or a stale
 positive snapshot cannot change the authoritative Session result.
 
+`CurrentUser.role` is global compatibility metadata only. Phase 15.1B server
+responses use `"user"`; local compatibility adapters may still use `"owner"`
+or `"viewer"`. None grants Team authority or substitutes for a Team Membership
+lookup. Team authority is expressed only through `teamApi` responses such as
+`TeamDto.myMembership.teamRole` and `TeamMemberDto.teamRole`.
+
+`AcceptInviteInput.password` is a single field with branch-specific semantics:
+for a new invited mailbox it becomes the initial password, while for an
+existing active account it is proof of the current password and must not
+overwrite that account's existing credential.
+
+Invite email navigation uses an HTTPS UI URL with the raw Token only in the URL
+fragment (`/invites/accept#token=...`). Browser fragments are not sent to the
+HTTP server. The future acceptance screen must read `window.location.hash`,
+validate the 64-character lowercase-hex Token, immediately remove the fragment
+with `history.replaceState`, and pass the Token only to
+`authApi.acceptInvite({ token, password })`. It must never copy the raw Token
+into a path, query string, analytics event, log, metric label, or referrer-like
+application telemetry.
+
 Phase 13.3 adds backend `AUTH_MODE=development|required`. Server deployments use
 `required`, so clients must treat `401 UNAUTHENTICATED` as a login-required
 state and should not rely on the development-user fallback outside local smoke
 tests.
+
+## 11A. `teamApi` Contract (Phase 15.1C)
+
+Phase 15.1C adds only the frontend Team client contract. Existing React/UI
+wiring stays pending, and local mode must not invent browser-local Team state
+or silently emulate Team ACL behavior.
+
+```ts
+export type TeamRole = "admin" | "member";
+export type TeamInviteStatus = "pending" | "accepted" | "revoked" | "expired";
+export type InviteDeliveryStatus =
+  "pending" | "processing" | "sent" | "failed" | "cancelled";
+
+export interface TeamApi {
+  createTeam(input: CreateTeamInput): Promise<TeamDto>;
+  listTeams(input?: ListTeamsInput): Promise<ApiPage<TeamDto>>;
+  getTeam(teamId: EntityId): Promise<TeamDto>;
+  renameTeam(teamId: EntityId, input: RenameTeamInput): Promise<TeamDto>;
+  listMembers(
+    teamId: EntityId,
+    input?: ListTeamMembersInput,
+  ): Promise<ApiPage<TeamMemberDto>>;
+  updateMember(
+    teamId: EntityId,
+    userId: EntityId,
+    input: UpdateTeamMemberInput,
+  ): Promise<TeamMemberDto>;
+  removeMember(teamId: EntityId, userId: EntityId): Promise<void>;
+  leaveTeam(teamId: EntityId): Promise<void>;
+  createInvite(
+    teamId: EntityId,
+    input: CreateTeamInviteInput,
+  ): Promise<TeamInviteDto>;
+  listInvites(
+    teamId: EntityId,
+    input?: ListTeamInvitesInput,
+  ): Promise<ApiPage<TeamInviteDto>>;
+  revokeInvite(teamId: EntityId, inviteId: EntityId): Promise<void>;
+}
+
+export interface CreateTeamInput {
+  name: string;
+  idempotencyKey: string;
+}
+
+export interface ListTeamsInput extends CursorPageInput {}
+
+export interface RenameTeamInput {
+  name: string;
+}
+
+export interface ListTeamMembersInput extends CursorPageInput {}
+
+export interface UpdateTeamMemberInput {
+  teamRole: TeamRole;
+}
+
+export interface CreateTeamInviteInput {
+  email: string;
+  teamRole: TeamRole;
+  idempotencyKey: string;
+}
+
+export interface ListTeamInvitesInput extends CursorPageInput {}
+
+export interface TeamDto {
+  id: EntityId;
+  name: string;
+  membershipRevision: number;
+  myMembership: {
+    teamRole: TeamRole;
+    status: "active";
+    joinedAt: IsoDateTime;
+    updatedAt: IsoDateTime;
+  };
+  createdAt: IsoDateTime;
+  updatedAt: IsoDateTime;
+}
+
+export interface TeamMemberDto {
+  userId: EntityId;
+  displayName: string;
+  teamRole: TeamRole;
+  status: "active";
+  joinedAt: IsoDateTime;
+  updatedAt: IsoDateTime;
+}
+
+export interface TeamInviteDto {
+  id: EntityId;
+  teamId: EntityId;
+  maskedEmail: string;
+  teamRole: TeamRole;
+  status: TeamInviteStatus;
+  deliveryStatus: InviteDeliveryStatus;
+  expiresAt: IsoDateTime;
+  createdAt: IsoDateTime;
+  updatedAt: IsoDateTime;
+}
+```
+
+Endpoint mapping:
+
+| Client Method  | Server Endpoint                              | Local Behavior / Phase 15.1C Note             |
+| -------------- | -------------------------------------------- | --------------------------------------------- |
+| `createTeam`   | `POST /v1/teams`                             | Unsupported; contract only, UI wiring pending |
+| `listTeams`    | `GET /v1/teams?cursor&limit`                 | Unsupported; contract only, UI wiring pending |
+| `getTeam`      | `GET /v1/teams/:teamId`                      | Unsupported; contract only, UI wiring pending |
+| `renameTeam`   | `PATCH /v1/teams/:teamId`                    | Unsupported; contract only, UI wiring pending |
+| `listMembers`  | `GET /v1/teams/:teamId/members?cursor&limit` | Unsupported; contract only, UI wiring pending |
+| `updateMember` | `PATCH /v1/teams/:teamId/members/:userId`    | Unsupported; contract only, UI wiring pending |
+| `removeMember` | `DELETE /v1/teams/:teamId/members/:userId`   | Unsupported; contract only, UI wiring pending |
+| `leaveTeam`    | `DELETE /v1/teams/:teamId/membership`        | Unsupported; contract only, UI wiring pending |
+| `createInvite` | `POST /v1/teams/:teamId/invites`             | Unsupported; contract only, UI wiring pending |
+| `listInvites`  | `GET /v1/teams/:teamId/invites?cursor&limit` | Unsupported; contract only, UI wiring pending |
+| `revokeInvite` | `DELETE /v1/teams/:teamId/invites/:inviteId` | Unsupported; contract only, UI wiring pending |
+
+Rules:
+
+- All `teamApi` routes require a Phase 15.1B Bearer Session. The only invite
+  flow without Bearer auth remains `POST /v1/auth/invites/accept`.
+- Request bodies use `teamRole`, never bare `role`. `teamId`, target `userId`,
+  actor identity, ACL, and revision fields are path/context-derived and must
+  be rejected as `400 FORBIDDEN_IDENTITY_FIELD` when supplied by callers.
+- `CreateTeamInput.name` and `RenameTeamInput.name` are trimmed, valid UTF-8,
+  free of control/format characters, 1-100 runes, and at most 256 bytes.
+- `createTeam` and `createInvite` require `idempotencyKey` values of 1-128
+  bytes. Duplicate scoped keys return `409 IDEMPOTENCY_CONFLICT`; retries must
+  not mint a second Team row, Invite token, or email delivery.
+- Team list APIs use server-issued opaque cursors only. The cursor is a
+  versioned, HMAC-SHA-256-authenticated pagination token, not an authorization
+  credential. Clients must never construct or introspect cursor bytes.
+- Team list `limit` defaults to `50` and is bounded to `1..100`. Encoded
+  cursors over 1024 bytes are invalid before decode. Cursors are bound to the
+  endpoint/resource kind, request User ID, optional Team ID, normalized
+  filters, and the sort tuple, so they cannot be replayed across users, Teams,
+  filters, or list endpoints.
+- Team and Invite ordering is `(createdAt DESC, id DESC)`. Member ordering is
+  `(joinedAt ASC, userId ASC)`.
+- `TeamMemberDto` omits email. `TeamInviteDto` exposes only `maskedEmail` and
+  never returns a raw Invite token, token hash, acceptance URL, or password
+  material. `deliveryStatus` tracks durable Invite delivery and is distinct
+  from Invite acceptance `status`.
+- Cross-check with migration `004`: storage rows currently persist
+  `teams.membership_revision`, `team_memberships.role/status`, and
+  `team_invites.role/status/expires_at`. The client contract normalizes those
+  server-backed fields to `membershipRevision`, `teamRole`, and DTO-safe Invite
+  status values. `expired` is a server-derived terminal state, and
+  `deliveryStatus` comes from the 15.1C durable mail outbox path rather than
+  browser inference.
+- Phase 15.1C updates this contract only. Frontend Team screens and existing
+  React wiring remain pending until dedicated UI work reopens them.
+
+Authorization order is fixed for disclosure safety: validate Session and
+bounded input, resolve Team visibility, distinguish visible Member from Admin,
+and only then resolve nested Member or Invite IDs.
+
+| HTTP | Code                          | Contract                                                                 |
+| ---- | ----------------------------- | ------------------------------------------------------------------------ |
+| 400  | `INVALID_TEAM_PAYLOAD`        | Invalid name, JSON, body fields, UUID, cursor, or limit.                 |
+| 400  | `INVALID_INVITE_PAYLOAD`      | Invalid mailbox, Team Role, or idempotency key.                          |
+| 400  | `INVALID_MEMBERSHIP_PAYLOAD`  | Invalid Team Role or body shape.                                         |
+| 400  | `FORBIDDEN_IDENTITY_FIELD`    | Caller supplies actor, target identity, ACL, or revision hints.          |
+| 401  | `UNAUTHENTICATED`             | Bearer Session is absent or invalid.                                     |
+| 403  | `TEAM_ADMIN_REQUIRED`         | Active Member invokes an Admin-only operation.                           |
+| 404  | `TEAM_NOT_FOUND`              | Team is absent/deleted or caller has no active Membership.               |
+| 404  | `TEAM_MEMBER_NOT_FOUND`       | Visible Admin targets an absent/removed/cross-Team Member.               |
+| 404  | `INVITE_NOT_FOUND`            | Visible Admin targets an absent/cross-Team Invite.                       |
+| 409  | `LAST_TEAM_ADMIN`             | Mutation would leave no usable active Admin.                             |
+| 409  | `INVITE_CONFLICT`             | Active Membership or pending Invite already exists for the Team/mailbox. |
+| 409  | `IDEMPOTENCY_CONFLICT`        | Scoped idempotency key already exists.                                   |
+| 410  | `INVITE_NOT_ACTIVE`           | Invite is accepted, expired, or otherwise unusable.                      |
+| 503  | `INVITE_DELIVERY_UNAVAILABLE` | SMTP, encryption, or durable sender admission is unavailable.            |
+
+Unknown and cross-Team resources use the same `404` envelope. Only an active
+Member may receive `403` for a visible Team. Repeated deletion of an already
+revoked Invite is `204`; accepted or expired Invites return `410`.
 
 ## 12. `importApi` Contract
 
@@ -977,7 +1189,10 @@ Endpoint mapping:
 The table above is the long-term server contract. Phase 11 must not call these
 routes unless they are implemented by the Go router and explicitly reopened in
 §20. The current Go backend does not register `/v1/config`, `/v1/settings`,
-`/v1/providers*`, `/v1/auth*`, or `/v1/plugins*`.
+`/v1/providers*`, `/v1/plugins*`, or `/v1/teams*`. It does register the
+Phase 15.1B auth/session routes `/v1/auth/login`, `/v1/auth/logout`,
+`/v1/auth/invites/accept`, `/v1/auth/recovery/*`, `/v1/me`, and
+`/v1/me/sessions`.
 
 Rules:
 
@@ -1016,19 +1231,23 @@ Rules:
 
 ## 15. Error Matrix
 
-| Condition                      | Code                      |               Recoverable | Owner               |
-| ------------------------------ | ------------------------- | ------------------------: | ------------------- |
-| Missing/expired session        | `UNAUTHENTICATED`         |                       Yes | authApi/httpClient  |
-| No access to conversation/file | `FORBIDDEN`               |                        No | backend             |
-| Conversation missing           | `CONVERSATION_NOT_FOUND`  |                        No | chatApi             |
-| Message missing                | `MESSAGE_NOT_FOUND`       |                        No | chatApi             |
-| File too large                 | `FILE_TOO_LARGE`          |     Yes after user action | fileApi/backend     |
-| Unsupported MIME               | `UNSUPPORTED_FILE_TYPE`   |     Yes after user action | fileApi/backend     |
-| Provider not configured        | `PROVIDER_NOT_CONFIGURED` | Yes after settings change | providerApi/chatApi |
-| Provider timeout               | `PROVIDER_TIMEOUT`        |                       Yes | provider adapter    |
-| Stream interrupted             | `STREAM_INTERRUPTED`      |                       Yes | chatApi/httpClient  |
-| Rate limited                   | `RATE_LIMITED`            |            Yes after wait | backend/Redis       |
-| Invalid import/export payload  | `INVALID_IMPORT_PAYLOAD`  |    No for current payload | import phase later  |
+| Condition                      | Code                          |               Recoverable | Owner               |
+| ------------------------------ | ----------------------------- | ------------------------: | ------------------- |
+| Missing/expired session        | `UNAUTHENTICATED`             |                       Yes | authApi/httpClient  |
+| No access to conversation/file | `FORBIDDEN`                   |                        No | backend             |
+| Team missing/no membership     | `TEAM_NOT_FOUND`              |                        No | teamApi/backend     |
+| Team admin required            | `TEAM_ADMIN_REQUIRED`         |                        No | teamApi/backend     |
+| Last Team admin guard          | `LAST_TEAM_ADMIN`             |                        No | teamApi/backend     |
+| Invite delivery unavailable    | `INVITE_DELIVERY_UNAVAILABLE` |                       Yes | teamApi/backend     |
+| Conversation missing           | `CONVERSATION_NOT_FOUND`      |                        No | chatApi             |
+| Message missing                | `MESSAGE_NOT_FOUND`           |                        No | chatApi             |
+| File too large                 | `FILE_TOO_LARGE`              |     Yes after user action | fileApi/backend     |
+| Unsupported MIME               | `UNSUPPORTED_FILE_TYPE`       |     Yes after user action | fileApi/backend     |
+| Provider not configured        | `PROVIDER_NOT_CONFIGURED`     | Yes after settings change | providerApi/chatApi |
+| Provider timeout               | `PROVIDER_TIMEOUT`            |                       Yes | provider adapter    |
+| Stream interrupted             | `STREAM_INTERRUPTED`          |                       Yes | chatApi/httpClient  |
+| Rate limited                   | `RATE_LIMITED`                |            Yes after wait | backend/Redis       |
+| Invalid import/export payload  | `INVALID_IMPORT_PAYLOAD`      |    No for current payload | import phase later  |
 
 ## 16. Migration Sequence
 
@@ -1059,7 +1278,8 @@ When implementation begins, add tests for:
 
 ## 18. Acceptance Criteria for Phase 2
 
-- `frontend-api-client.md` defines stable `chatApi`, `fileApi`, `authApi`, `settingsApi`, `providerApi`, and `importApi` contracts.
+- `frontend-api-client.md` defines stable `chatApi`, `fileApi`, `authApi`,
+  `teamApi`, `settingsApi`, `providerApi`, and `importApi` contracts.
 - Contract includes local/server mode rules.
 - Contract includes SSE event envelope and event types.
 - Contract includes error envelope and error matrix.
@@ -1160,13 +1380,16 @@ Adapter ownership matrix:
 | Unsupported features in slice 1 | Existing local behavior                  | Capability-gated off, no implicit local fallback |
 
 Server mode must fail closed for unsupported server features. For example,
-import/auth/RAG calls should stay unwired or capability-disabled rather than
-silently uploading local data or switching one component back to a local route.
+import/team/RAG calls and currently unwired auth UI flows should stay
+capability-disabled rather than silently uploading local data or switching one
+component back to a local route.
 
 Unavailable Go routes in Phase 11:
 
-- Do not call `/v1/config`, `/v1/settings`, `/v1/providers*`, `/v1/auth*`, or
-  `/v1/plugins*` from server mode in this phase.
+- Do not call `/v1/config`, `/v1/settings`, `/v1/providers*`, `/v1/plugins*`,
+  or `/v1/teams*` from server mode in this phase.
+- The Phase 15.1B auth/session routes exist on the Go router, but frontend UI
+  wiring for login/invite/recovery remains outside the Phase 11 chat slice.
 - Mode, base URL, and coarse capability flags come from build-time env,
   same-origin local config, or a static adapter capability object until a Go
   config endpoint is implemented.

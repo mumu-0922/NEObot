@@ -55,7 +55,7 @@ func withRequestLogging(logger *slog.Logger) Middleware {
 					"http_request",
 					slog.String("request_id", RequestIDFromContext(r.Context())),
 					slog.String("method", r.Method),
-					slog.String("path", r.URL.Path),
+					slog.String("path", normalizeMetricPath(r.URL.Path)),
 					slog.Int("status", recorder.status),
 					slog.Int64("bytes", recorder.bytes),
 					slog.Int64("duration_ms", time.Since(start).Milliseconds()),

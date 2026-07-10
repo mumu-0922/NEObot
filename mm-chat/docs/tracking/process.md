@@ -5794,3 +5794,93 @@ future reliability enhancement, not part of the locked Phase 15.1B contract.
 
 Next: commit Phase 15.1B with the explicit task allowlist, then begin Phase
 15.1C Team services; do not start Python RAG processing before 15.1E passes.
+
+## 2026-07-10 — Phase 15.1C Team services design locked
+
+The Team/Membership/Invite slice now has an executable design in
+`docs/architecture/phase-15-1c-team-services-plan.md`. It keeps the existing
+Next.js/React UI unchanged and makes Postgres Membership rows, never the global
+`CurrentUser.role`, authoritative for Team permissions.
+
+The first independent xhigh review found three P1 and one P2 classes. The plan
+was corrected before implementation:
+
+```text
+account disable -> User fence, then UUID-ordered Team locks and membership reread
+invite acceptance -> existing/new identity branches plus credential revision fence
+invite delivery -> Invite + AES-256-GCM Mail Outbox in one transaction; no RAM queue
+cursor -> keyId + endpoint/user/team/filter/sort HMAC binding and rotation key ring
+```
+
+Membership-effective writes now share `User -> Team -> Membership/Invite ->
+Revision/Outbox` ordering. Recovery uses the same User-before-Credential fence.
+The durable Invite worker leases/reclaims rows, retries with capped backoff, and
+orders SMTP delivery against revocation by locking only its Mail Outbox row.
+Acceptance requires the corresponding delivery state to be `sent`.
+
+The second independent xhigh review returned `P0=0`, `P1=0`, and `P2=0`.
+Prettier and scoped `git diff --check` passed for the design set. No Team runtime
+or migration checkbox was marked complete.
+
+Next: synchronize the Auth, Knowledge ACL, frontend client, and RAG profile
+contracts; then implement migration `005` and the Team vertical slice with
+disjoint xhigh Workers plus an independent Review Agent.
+
+## 2026-07-11 — Phase 15.1C Team services implemented and verified
+
+Phase 15.1C now provides the authoritative Go/Postgres Team control plane while
+leaving the existing Next.js/React UI unchanged. Migration `005` adds scoped
+idempotency, pending-Invite uniqueness, the Membership User `RESTRICT` fence,
+and an AES-256-GCM identity Mail Outbox. The new `internal/teams` vertical
+slice implements Team CRUD, Membership roles and revisions, last-usable-Admin
+protection, hash-only Invites, authenticated cursors, durable delivery, and
+strict HTTP DTO/error mapping.
+
+Invite delivery is closed until Postgres, SMTP, Mail keys, acceptance URL, and
+the worker's first successful store probe are ready. Tokens persist only as a
+SHA-256 hash plus authenticated ciphertext. Email links carry the raw Token in
+`#token=...`, never in the HTTP path or query. The worker uses leased
+`SKIP LOCKED` claims, bounded retry, stable Message-ID, row-lock ordering
+against revoke/accept, and exits after three consecutive store failures so the
+API can shut down instead of silently losing delivery.
+
+Runtime wiring registers protected `/v1/teams*` routes, bounded log/metric
+labels, required-mode HTTPS, loopback-only development HTTP, key rotation, and
+operator-only `admin disable-account`. Cursor/Mail key material must be
+distinct from each other and from database, Redis, SMTP, provider, and object
+storage secrets. Published example keys are rejected in required mode.
+
+The first independent xhigh code review found and fixed P1/P2 issues in Token
+URL placement, key/config fail-closed behavior, worker readiness/lifecycle,
+lock and disclosure ordering, canonical mailbox reuse, strict body/query
+parsing, and bounded observability. A real PostgreSQL run then exposed one
+stale query-token E2E helper; it was changed to the fragment contract and
+independently re-reviewed. Final review result: `P0=0`, `P1=0`, `P2=0`.
+
+Verification evidence:
+
+```text
+gofmt + go vet ./...                                      passed
+go test ./...                                             passed
+go test -race auth/teams/httpserver/api/admin             passed
+PostgreSQL 16 migration 001 -> 005 and 005 replay         passed
+PostgreSQL 16 auth + Team/Invite/Mail worker race tests   passed
+Invite pending -> sent -> accept -> replay rejection      passed
+isolated PostgreSQL test schema residue                   0
+govulncheck ./...                                         0 called vulnerabilities
+Docker Compose app/ops config + Go 1.25 image build       passed
+independent xhigh review and post-PG re-review             P0/P1/P2 = 0
+```
+
+The generic security scanner's three High matches were inspected: all were
+synthetic Token/API-key literals in tests, including two pre-existing provider
+tests; no production credential was found. The quality scanner passed with
+non-blocking file-length/line-length warnings. The full-repository change
+analyzer remained noisy because hundreds of unrelated owner paths are dirty,
+so promotion used scoped `mm-chat/` checks and an explicit commit allowlist.
+The temporary PostgreSQL 16 container and local verification artifacts were
+removed after the clean replay.
+
+Next: commit this Phase 15.1C slice, then start Phase 15.1D
+Collection/Document/Consent APIs. Do not start Python RAG processing before the
+remaining Go/Postgres control-plane gates pass.

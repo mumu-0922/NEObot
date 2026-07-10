@@ -1,10 +1,11 @@
 # Single-Server Docker Compose Deployment
 
-This is the single-server runtime topology for `mm-chat`, including the Phase
-15.1B Identity Services. It keeps deployment files inside `mm-chat/` and does
-not modify the repository-root `docker-compose.yml`. The stack runs the Go API,
-Postgres, Redis, and MinIO on one server; the existing Next.js frontend remains
-outside this workspace until a later frontend cutover.
+This is the single-server runtime topology for `mm-chat`, including Phase 15.1B
+Identity Services and Phase 15.1C Team Services. It keeps deployment files
+inside `mm-chat/` and does not modify the repository-root
+`docker-compose.yml`. The stack runs the Go API, Postgres, Redis, and MinIO on
+one server; the existing Next.js frontend remains outside this workspace until
+a later frontend cutover.
 
 ## Files
 
@@ -22,7 +23,8 @@ Copy the template before first use:
 ```bash
 cd mm-chat
 cp .env.single-server.example .env.single-server
-# Edit every change-me value before production.
+# Edit every change-me value. Team key placeholders are intentionally unusable
+# until replaced with independently generated keys.
 ```
 
 Use `--env-file .env.single-server` for operator commands. The Compose file has
@@ -31,16 +33,16 @@ secret file.
 
 ## Services and Profiles
 
-| Service        | Profile | Purpose                                                                     | Public exposure |
-| -------------- | ------- | --------------------------------------------------------------------------- | --------------- |
-| `postgres`     | default | Canonical data store for users, sessions, chat, files metadata, imports.    | None            |
-| `redis`        | default | Non-authoritative temporary state: rate limit, session cache, cancellation. | None            |
-| `minio`        | default | Private object bytes for uploaded/imported files.                           | None            |
-| `minio-init`   | default | Creates bucket and least-privilege app user/policy.                         | None            |
-| `migrate`      | `ops`   | One-shot `mm-chat-migrate up`; never auto-runs on API boot.                 | None            |
-| `admin`        | `ops`   | One-shot local identity administration; no HTTP listener.                   | None            |
-| `backend`      | `app`   | Go API on `127.0.0.1:8080` for reverse proxy or local smoke tests.          | Localhost only  |
-| `minio-client` | `ops`   | Utility container for backup/restore scripts.                               | None            |
+| Service        | Profile | Purpose                                                                          | Public exposure |
+| -------------- | ------- | -------------------------------------------------------------------------------- | --------------- |
+| `postgres`     | default | Canonical users, sessions, Teams, chat, file metadata, imports, and mail outbox. | None            |
+| `redis`        | default | Non-authoritative temporary state: rate limit, session cache, cancellation.      | None            |
+| `minio`        | default | Private object bytes for uploaded/imported files.                                | None            |
+| `minio-init`   | default | Creates bucket and least-privilege app user/policy.                              | None            |
+| `migrate`      | `ops`   | One-shot `mm-chat-migrate up`; never auto-runs on API boot.                      | None            |
+| `admin`        | `ops`   | One-shot local identity administration; no HTTP listener.                        | None            |
+| `backend`      | `app`   | Go API on `127.0.0.1:8080` for reverse proxy or local smoke tests.               | Localhost only  |
+| `minio-client` | `ops`   | Utility container for backup/restore scripts.                                    | None            |
 
 No database, Redis, or MinIO port is published. The backend binds to localhost
 only so a host-level reverse proxy can expose the same-origin `/mm-api` path
@@ -92,6 +94,20 @@ password-reset or break-glass command. There is no `AUTH_BOOTSTRAP_TOKEN`; the
 old token is neither configured by this Compose stack nor accepted by
 `POST /v1/auth/login`. Passwords must be 15-256 UTF-8 characters/bytes.
 
+The supported account-disable maintenance path uses the Team fencing
+transaction rather than direct SQL. It locks the User first, then every active
+Membership Team in UUID order, rejects a last-usable-admin disable, revokes
+Sessions, advances affected Membership revisions, and writes Outbox events:
+
+```bash
+docker compose --env-file .env.single-server \
+  -f compose.single-server.yml --profile ops run --rm admin \
+  disable-account --user-id '<user-uuid>'
+```
+
+Do not replace this command with `UPDATE users SET account_status=...` because
+that bypasses last-admin and revision fencing.
+
 Smoke test:
 
 ```bash
@@ -103,9 +119,9 @@ curl -fsS http://127.0.0.1:8080/metrics | head
 
 `/ready` is additive: a healthy single-server stack should return
 `{"status":"ready"}` plus `checks` entries for configured dependencies such as
-`database`, `redis`, and `storage`. A dependency outage returns `503` with
-`status=not_ready`; the response intentionally does not expose raw connection
-errors or secrets.
+`database`, `redis`, `storage`, and `team_mail_worker` when Invite delivery is
+fully configured. A dependency outage returns `503` with `status=not_ready`;
+the response intentionally does not expose raw connection errors or secrets.
 
 ## Password Recovery and SMTP
 
@@ -163,6 +179,68 @@ changes the password, increments the Credential revision, revokes sibling
 Recovery Tokens and every Session for that user, and does not issue a new
 Session. The user must log in again with the new password.
 
+## Team Services and Invite Delivery
+
+`/v1/teams` and `/v1/teams/` are authenticated routes in both required and
+development modes. Team CRUD and
+membership authorization use Postgres; Invite creation additionally requires
+the synchronous SMTP transport, Mail cipher, acceptance URL builder, and the
+running durable Mail Outbox worker. When Mail Invite delivery is entirely
+unconfigured, normal Team operations remain wired while Invite creation fails
+closed with `503 INVITE_DELIVERY_UNAVAILABLE`; a partially configured delivery
+stack fails startup instead. If Postgres itself is disabled, the routes stay
+registered but database-backed Team operations return `503 DATABASE_REQUIRED`.
+
+| Variable                          | Default                 | Contract                                                                                        |
+| --------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------- |
+| `TEAM_CURSOR_ACTIVE_KEY_ID`       | required in hosted mode | Active HMAC signing key ID.                                                                     |
+| `TEAM_CURSOR_KEYRING`             | no usable default       | Comma-separated `key-id=base64`; each decoded key is at least 32 bytes.                         |
+| `TEAM_MAIL_ACTIVE_KEY_ID`         | none                    | Active AES-256-GCM encryption key ID.                                                           |
+| `TEAM_MAIL_KEYRING`               | no usable default       | Comma-separated `key-id=base64`; every decoded key is exactly 32 bytes.                         |
+| `TEAM_INVITE_ACCEPT_URL_BASE`     | none                    | HTTPS UI URL in required mode; loopback HTTP only in development. The worker adds `#token=...`. |
+| `TEAM_MAIL_WORKER_LEASE_DURATION` | `30s`                   | Positive durable claim lease.                                                                   |
+| `TEAM_MAIL_WORKER_POLL_INTERVAL`  | `500ms`                 | Positive idle/error poll interval.                                                              |
+| `TEAM_MAIL_WORKER_BACKOFF_BASE`   | `5s`                    | Positive retry-backoff floor.                                                                   |
+| `TEAM_MAIL_WORKER_BACKOFF_MAX`    | `15m`                   | Retry cap, not less than the base.                                                              |
+
+Generate independent production keys locally and place only the base64 output
+in the uncommitted `.env.single-server` file:
+
+```bash
+openssl rand -base64 32 # cursor key; run once
+openssl rand -base64 32 # mail key; run independently
+```
+
+The committed `change-me-base64-32-byte-random-key` text is intentionally
+invalid key material, not a fixed public encryption key. Cursor and Mail key
+bytes must differ from each other and from database/Redis passwords,
+SMTP/provider credentials, and object-store secrets. Required mode refuses
+missing Cursor keys and known committed example keys. Mail Invite
+delivery may remain explicitly disabled only when both the Mail keyring and
+acceptance URL are absent; once either is set, the complete Mail keyring, URL,
+and SMTP transport must validate or startup fails. Malformed base64, wrong key
+length, non-HTTPS hosted URL, invalid worker duration/backoff, or partial SMTP
+configuration also prevents startup. Startup errors contain field names and
+safe key IDs only, never key bytes.
+
+The emailed raw Token exists only after `#token=`. URL fragments are not sent
+to the frontend HTTP server, reverse proxy, access log, or backend metric. The
+frontend acceptance page must clear the fragment before posting the Token in
+the JSON body; do not rewrite it into a query parameter.
+
+Rotation is add-before-switch. First append the new `key-id=base64` entry while
+leaving the old active ID, deploy, then change the active ID and deploy again.
+Retained Cursor keys verify old cursors only; retained Mail keys decrypt old
+Outbox rows only. Remove an old Cursor key after the maximum cursor lifetime,
+and remove an old Mail key only after all rows encrypted with it are terminal
+and past retention. Never reuse one key in both keyrings.
+
+The Team Mail worker starts and stops with the API process. Invite admission
+remains closed until the worker enters its run loop. A worker exit is logged
+through the secret-redacting logger, triggers API shutdown, cancels the worker
+context, and is awaited before Postgres closes. Delivery is at-least-once; the
+stable Message-ID limits duplicates after a crash.
+
 ## Metrics
 
 The Go API exposes Prometheus text metrics at `GET /metrics`. The backend port
@@ -188,9 +266,11 @@ mm_chat_postgres_open_connections
 ```
 
 Metric labels use bounded route patterns such as
-`/v1/files/{id}/content`; unknown paths collapse to `/__unknown__`, and unknown
-HTTP methods collapse to `OTHER`. Raw UUIDs and object keys must not appear in
-labels. `mm_chat_dependency_ready{dependency="storage"}` represents the
+`/v1/files/{id}/content` and
+`/v1/teams/{teamId}/invites/{inviteId}`; unknown paths collapse to
+`/__unknown__`, and unknown HTTP methods collapse to `OTHER`. Raw UUIDs and
+object keys must not appear in labels.
+`mm_chat_dependency_ready{dependency="storage"}` represents the
 configured file storage readiness. In this Compose deployment that storage
 check is the MinIO/S3 bucket readiness check; it is not a direct MinIO admin
 metrics scrape.
@@ -242,7 +322,9 @@ tunnel/VPN to the Docker network or host.
    docker compose --env-file .env.single-server -f compose.single-server.yml --profile app up -d backend
    ```
 6. Verify `/health`, `/ready` including configured dependency checks,
-   `/v1/version`, chat CRUD, streaming, upload, and browser import smoke paths.
+   `/v1/version`, protected Team routes and bounded Team metrics, chat CRUD,
+   streaming, upload, and browser import smoke paths. Test Invite creation only
+   after a known-mailbox SMTP delivery smoke.
 
 ## Rollback Checklist
 

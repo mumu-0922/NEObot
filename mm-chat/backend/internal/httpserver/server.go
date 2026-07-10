@@ -17,6 +17,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/health"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
 	"neo-chat/mm-chat/backend/internal/storage"
+	"neo-chat/mm-chat/backend/internal/teams"
 )
 
 const contentTypeJSON = "application/json; charset=utf-8"
@@ -52,6 +53,7 @@ type options struct {
 	maxUploadBytes       int64
 	importRepository     browserimport.Repository
 	maxImportBytes       int64
+	teamService          *teams.Service
 }
 
 func WithReadyChecker(checker health.ReadinessChecker) Option {
@@ -150,6 +152,12 @@ func WithMaxImportBytes(maxImportBytes int64) Option {
 	}
 }
 
+func WithTeamService(service *teams.Service) Option {
+	return func(opts *options) {
+		opts.teamService = service
+	}
+}
+
 func New(cfg config.Config, opts ...Option) *http.Server {
 	return &http.Server{
 		Addr:              cfg.Addr,
@@ -197,6 +205,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		),
 		browserimport.WithHandlerMaxPackageBytes(resolvedOptions.maxImportBytes),
 	)
+	teamHandler := teams.NewHandler(resolvedOptions.teamService)
 
 	mux.HandleFunc("/health", healthHandler.Health)
 	mux.HandleFunc("/ready", healthHandler.Ready)
@@ -216,6 +225,8 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/files/", fileHandler)
 	mux.Handle("/v1/import/browser", importHandler)
 	mux.Handle("/v1/import/browser/", importHandler)
+	mux.Handle("/v1/teams", teamHandler)
+	mux.Handle("/v1/teams/", teamHandler)
 	mux.HandleFunc("/", notFound)
 
 	middlewares := []Middleware{
@@ -226,9 +237,10 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		withSecurityHeaders,
 	}
 	authRequired := cfg.Auth.RequireAuth()
-	if resolvedOptions.sessionResolver != nil || authRequired {
-		middlewares = append(middlewares, withSessionIdentity(resolvedOptions.sessionResolver, authRequired))
-	}
+	middlewares = append(
+		middlewares,
+		withSessionIdentity(resolvedOptions.sessionResolver, authRequired),
+	)
 	if cfg.Redis.RateLimitEnabled && resolvedOptions.rateLimitStore != nil {
 		middlewares = append(middlewares, withRateLimit(resolvedOptions.rateLimitStore, cfg.Redis, nil))
 	}
@@ -276,7 +288,7 @@ func withSessionIdentity(resolver SessionResolver, requireAuth bool) Middleware 
 
 			token, ok := bearerToken(r.Header.Get("Authorization"))
 			if !ok {
-				if requireAuth {
+				if requireAuth || isTeamAPIRequest(r) {
 					writeAuthError(w, auth.ErrSessionNotFound)
 					return
 				}
@@ -301,6 +313,13 @@ func withSessionIdentity(resolver SessionResolver, requireAuth bool) Middleware 
 			next.ServeHTTP(w, r.WithContext(auth.WithUser(r.Context(), auth.UserFromSession(session))))
 		})
 	}
+}
+
+func isTeamAPIRequest(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	return r.URL.Path == "/v1/teams" || strings.HasPrefix(r.URL.Path, "/v1/teams/")
 }
 
 func isPublicWithoutAuthRequest(r *http.Request) bool {

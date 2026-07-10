@@ -582,12 +582,27 @@ the UI can call in the next wiring slice.
       constraints, `004`-only Down, and zero Phase 15 catalog residue on an
       isolated PostgreSQL 16 database.
 - [x] Add credential, invite, recovery, and independent-login services.
-- [ ] Add Team/Membership repositories, APIs, revision updates, and last-Admin
+- [x] Add Team/Membership repositories, APIs, revision updates, and last-Admin
       protection.
 - [ ] Add Collection/Document/Consent repositories and APIs with locked File
       binding and transactional Outbox writes.
 - [ ] Pass the complete two-user/two-team ACL, Consent, revision, deletion,
       idempotency, and Outbox replay gate.
+
+#### Phase 15.1C — Team services
+
+- [x] Lock the detailed Team/Membership/Invite design in
+      `docs/architecture/phase-15-1c-team-services-plan.md`.
+- [x] Close the independent xhigh design review with `P0/P1/P2 = 0`.
+- [x] Synchronize Team/Auth/frontend contracts and add reversible migration
+      `005`.
+- [x] Implement Team CRUD, Membership revision/last-Admin fencing, and
+      account-disable coordination.
+- [x] Implement hash-only Invites, encrypted durable Mail Outbox delivery, and
+      new/existing-account acceptance.
+- [x] Wire protected Team routes, authenticated cursors, configuration,
+      metrics, and worker lifecycle.
+- [x] Pass unit/race/PostgreSQL 16/migration replay/security/promotion gates.
 
 - [ ] Replace the single-bootstrap-user ceiling with admin-invited independent
       user sessions and versioned Team membership.

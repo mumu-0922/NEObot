@@ -15,6 +15,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/database"
+	"neo-chat/mm-chat/backend/internal/teams"
 )
 
 const adminCommandTimeout = 45 * time.Second
@@ -27,10 +28,20 @@ func main() {
 }
 
 func run(args []string, stdin io.Reader, stdout io.Writer) error {
-	if len(args) == 0 || args[0] != "bootstrap-identity" {
+	if len(args) == 0 {
 		return usageError()
 	}
+	switch args[0] {
+	case "bootstrap-identity":
+		return runBootstrapIdentity(args[1:], stdin, stdout)
+	case "disable-account":
+		return runDisableAccount(args[1:], stdout)
+	default:
+		return usageError()
+	}
+}
 
+func runBootstrapIdentity(args []string, stdin io.Reader, stdout io.Writer) error {
 	flags := flag.NewFlagSet("bootstrap-identity", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	var email, userID, displayName string
@@ -39,7 +50,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	flags.StringVar(&userID, "user-id", "", "owner UUID (optional)")
 	flags.StringVar(&displayName, "display-name", "", "owner display name (optional)")
 	flags.BoolVar(&passwordStdin, "password-stdin", false, "read the password from standard input")
-	if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 {
+	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
 		return usageError()
 	}
 	if strings.TrimSpace(email) == "" || !passwordStdin {
@@ -81,6 +92,48 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	return err
 }
 
+func runDisableAccount(args []string, stdout io.Writer) error {
+	flags := flag.NewFlagSet("disable-account", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	var userID string
+	flags.StringVar(&userID, "user-id", "", "user UUID to disable")
+	if err := flags.Parse(args); err != nil || flags.NArg() != 0 ||
+		strings.TrimSpace(userID) == "" {
+		return usageError()
+	}
+
+	cfg := config.Load()
+	if strings.TrimSpace(cfg.DatabaseURL) == "" {
+		return errors.New("DATABASE_URL is required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), adminCommandTimeout)
+	defer cancel()
+	db, err := database.Open(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	if db == nil || db.SQL() == nil {
+		return auth.ErrDatabaseRequired
+	}
+	defer func() { _ = db.Close() }()
+
+	revoked, err := teams.NewService(
+		teams.NewPostgresRepository(db.SQL()),
+	).DisableAccount(
+		ctx,
+		strings.TrimSpace(userID),
+	)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(
+		stdout,
+		"account disable transaction completed; revoked_sessions=%d\n",
+		len(revoked),
+	)
+	return err
+}
+
 func readPasswordLine(reader io.Reader) (string, error) {
 	if reader == nil {
 		return "", errors.New("password stdin is required")
@@ -105,5 +158,5 @@ func readPasswordLine(reader io.Reader) (string, error) {
 }
 
 func usageError() error {
-	return errors.New("usage: admin bootstrap-identity --email <mailbox> --password-stdin [--user-id <uuid>] [--display-name <name>]")
+	return errors.New("usage: admin bootstrap-identity --email <mailbox> --password-stdin [--user-id <uuid>] [--display-name <name>] | admin disable-account --user-id <uuid>")
 }

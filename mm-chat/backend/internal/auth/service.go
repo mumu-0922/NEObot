@@ -14,6 +14,7 @@ const defaultDummyPasswordHash = "$argon2id$v=19$m=65536,t=3,p=2$bW0tY2hhdC1kdW1
 
 type AuthRepository interface {
 	LookupLoginCredential(ctx context.Context, canonicalEmail string) (LoginCredential, error)
+	LookupInviteAcceptanceSnapshot(ctx context.Context, inviteTokenHash string) (InviteAcceptanceSnapshot, error)
 	CreateCredentialSession(ctx context.Context, input CreateCredentialSessionInput) (Session, error)
 	AcceptInvite(ctx context.Context, input AcceptInviteRepositoryInput) (Session, error)
 	CreateRecoveryToken(ctx context.Context, input CreateRecoveryTokenInput) (RecoveryTarget, bool, error)
@@ -45,13 +46,21 @@ type CreateCredentialSessionInput struct {
 }
 
 type AcceptInviteRepositoryInput struct {
-	InviteTokenHash  string
-	PasswordHash     string
-	UserID           string
-	SessionID        string
-	SessionTokenHash string
-	UserAgent        string
-	SessionExpiresAt time.Time
+	InviteTokenHash    string
+	InviteTeamID       string
+	InviteEmail        string
+	PasswordHash       string
+	UserID             string
+	CredentialRevision int64
+	SessionID          string
+	SessionTokenHash   string
+	UserAgent          string
+	SessionExpiresAt   time.Time
+}
+
+type InviteAcceptanceSnapshot struct {
+	TeamID string
+	Email  string
 }
 
 type CreateRecoveryTokenInput struct {
@@ -225,30 +234,73 @@ func (s *Service) AcceptInvite(ctx context.Context, input AcceptInviteInput) (Lo
 	if err != nil {
 		return LoginResult{}, ErrInviteNotActive
 	}
-	passwordHash, err := hashPassword(ctx, input.Password)
-	if err != nil {
-		if errors.Is(err, ErrInvalidIdentityInput) {
-			return LoginResult{}, err
-		}
-		return LoginResult{}, fmt.Errorf("hash invite password: %w", err)
+	if err := validatePassword(input.Password); err != nil {
+		return LoginResult{}, err
 	}
-	userID, err := s.newUUID("user")
+	inviteTokenHash := HashSessionToken(token)
+	snapshot, err := s.repo.LookupInviteAcceptanceSnapshot(ctx, inviteTokenHash)
+	if errors.Is(err, ErrInviteNotActive) {
+		return LoginResult{}, ErrInviteNotActive
+	}
 	if err != nil {
 		return LoginResult{}, err
 	}
+
+	repoInput := AcceptInviteRepositoryInput{
+		InviteTokenHash: inviteTokenHash,
+		InviteTeamID:    snapshot.TeamID,
+		InviteEmail:     snapshot.Email,
+	}
+
+	credential, err := s.repo.LookupLoginCredential(ctx, snapshot.Email)
+	if err == nil {
+		credentialEmail, emailErr := canonicalizeEmail(credential.Email)
+		if emailErr != nil || credentialEmail != snapshot.Email ||
+			!isUUID(credential.UserID) ||
+			credential.CredentialRevision < 1 ||
+			credential.PasswordHash == "" {
+			err = ErrInvalidCredential
+		}
+	}
+	switch {
+	case err == nil:
+		valid, verifyErr := verifyPassword(ctx, input.Password, credential.PasswordHash)
+		if verifyErr != nil {
+			return LoginResult{}, fmt.Errorf("verify invite credential: %w", verifyErr)
+		}
+		if !valid {
+			return LoginResult{}, ErrInviteNotActive
+		}
+		repoInput.UserID = credential.UserID
+		repoInput.CredentialRevision = credential.CredentialRevision
+	case errors.Is(err, ErrInvalidCredential):
+		passwordHash, hashErr := hashPassword(ctx, input.Password)
+		if hashErr != nil {
+			if errors.Is(hashErr, ErrInvalidIdentityInput) {
+				return LoginResult{}, hashErr
+			}
+			return LoginResult{}, fmt.Errorf("hash invite password: %w", hashErr)
+		}
+		userID, idErr := s.newUUID("user")
+		if idErr != nil {
+			return LoginResult{}, idErr
+		}
+		repoInput.UserID = userID
+		repoInput.PasswordHash = passwordHash
+	default:
+		return LoginResult{}, err
+	}
+
 	material, err := s.newSessionMaterial(input.UserAgent)
 	if err != nil {
 		return LoginResult{}, err
 	}
-	session, err := s.repo.AcceptInvite(ctx, AcceptInviteRepositoryInput{
-		InviteTokenHash:  HashSessionToken(token),
-		PasswordHash:     passwordHash,
-		UserID:           userID,
-		SessionID:        material.sessionID,
-		SessionTokenHash: material.tokenHash,
-		UserAgent:        material.userAgent,
-		SessionExpiresAt: material.expiresAt,
-	})
+	repoInput.SessionID = material.sessionID
+	repoInput.SessionTokenHash = material.tokenHash
+	repoInput.UserAgent = material.userAgent
+	repoInput.SessionExpiresAt = material.expiresAt
+
+	session, err := s.repo.AcceptInvite(ctx, repoInput)
 	if errors.Is(err, ErrInviteNotActive) {
 		return LoginResult{}, ErrInviteNotActive
 	}
