@@ -1,0 +1,49 @@
+# Phase 15.1 Knowledge Control Plane Plan
+
+## Goal
+
+Build the authoritative identity, Team, Knowledge ACL, Consent, and Outbox
+control plane in Go/Postgres before Python parsing or retrieval is allowed to
+process user data. The existing Next.js/React UI remains unchanged; frontend
+work is limited to later service-adapter wiring.
+
+## Boundaries
+
+- Go owns public APIs, sessions, authorization, file binding, revisions,
+  consent decisions, outbox events, and citation reauthorization.
+- Postgres is authoritative. Redis and the future vector index are rebuildable
+  acceleration layers and never decide access.
+- Python receives only short-lived, workload-authenticated jobs after Go has
+  checked the relevant Governance and Consent matrix.
+- Team Admin authority never grants access to another user's Personal
+  Knowledge.
+- Outbox `BIGSERIAL` IDs are allocation order, not transaction commit order.
+  Replay checkpoints advance only across a contiguous applied prefix; workers
+  also rescan claimable rows below the checkpoint and deduplicate by `event_id`.
+
+## Execution Order
+
+- [x] **15.1A — Schema foundation:** add reversible identity, Team,
+  Membership, Invite, Collection, logical Document/Version, Governance,
+  Consent, and Outbox schema. Active Documents pin an Active current Version;
+  Active Governance Heads pin an Approved Profile. Verify 001→004 Up, real
+  constraint failures, 004-only Down, and catalog cleanup on PostgreSQL 16.
+- [ ] **15.1B — Identity services:** add Argon2id credentials, mailbox invite
+  acceptance, recovery, independent login, session revocation, and audit-safe
+  token handling.
+- [ ] **15.1C — Team services:** add Team/Membership repositories and APIs,
+  version membership changes, and transactionally prevent removal of the last
+  active Admin.
+- [ ] **15.1D — Knowledge services:** add Collection and Document/Version CRUD,
+  owner/Admin authorization, locked File binding, Governance/Consent updates,
+  and transactional Outbox writes.
+- [ ] **15.1E — Isolation gate:** pass two-user/two-team Personal/Team tests,
+  cross-scope `404` behavior, Consent-purpose tests, revision fencing,
+  deletion, idempotency, and Outbox replay tests.
+
+## Promotion and Rollback
+
+Each slice requires focused tests, `go test ./...`, an independent xhigh review,
+and tracking evidence before its checkbox is marked complete. Migrations move
+forward in production; the `004` Down path is for pre-release/local rollback
+only. Python RAG implementation begins only after 15.1E passes.

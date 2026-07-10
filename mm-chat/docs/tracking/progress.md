@@ -572,6 +572,23 @@ the UI can call in the next wiring slice.
       Team Knowledge, Team Admin management, and Jina credential availability.
 - [x] Define the future Phase 15 Knowledge ACL API, identity, consent, revision,
       file-binding, deletion, and isolation-test contract.
+
+### Phase 15.1 — Go/Postgres knowledge control plane
+
+- [x] Add reversible identity, Team, Membership, Invite, Collection, logical
+      Document/Version, Governance, Consent, and Outbox schema in migration
+      `004`.
+- [x] Verify migration `001` through `004` Up, positive and negative database
+      constraints, `004`-only Down, and zero Phase 15 catalog residue on an
+      isolated PostgreSQL 16 database.
+- [ ] Add credential, invite, recovery, and independent-login services.
+- [ ] Add Team/Membership repositories, APIs, revision updates, and last-Admin
+      protection.
+- [ ] Add Collection/Document/Consent repositories and APIs with locked File
+      binding and transactional Outbox writes.
+- [ ] Pass the complete two-user/two-team ACL, Consent, revision, deletion,
+      idempotency, and Outbox replay gate.
+
 - [ ] Replace the single-bootstrap-user ceiling with admin-invited independent
       user sessions and versioned Team membership.
 - [ ] Add Team, Membership, Personal/Team Collection, Knowledge Document, and

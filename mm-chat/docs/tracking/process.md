@@ -5652,3 +5652,69 @@ consistent. No runtime Team/RAG implementation item was marked complete.
 
 Next: keep the remaining fields from the existing one-shot Owner questionnaire
 open; this decision introduces no new Owner questions.
+
+## 2026-07-10 — Phase 15.1A schema foundation verified
+
+The first implementation slice from
+`docs/architecture/phase-15-1-knowledge-control-plane-plan.md` added migration
+`004_phase15_identity_knowledge_acl` and a static migration contract test. The
+schema establishes account status and credentials, recovery tokens, Teams,
+Memberships, Invites, Personal/Team Collections, logical Documents and
+immutable Versions, query-consent revisions, immutable Governance Profiles and
+Heads, Processing Consent, and the Knowledge Outbox.
+
+Review tightened the opening draft before runtime validation:
+
+```text
+outbox watermark -> BIGSERIAL id + independent UUID event_id
+email identity -> unique lower(email)
+new document -> processing with no current version
+serving document -> active with same-document Active-version composite FKs
+failed processing -> explicit Document Version state
+active governance head -> exact Approved Profile/Revision composite FK
+consent -> collection/query subject and purpose matrix enforced in Postgres
+file/governance binding -> composite or RESTRICT foreign keys
+```
+
+Validation used an automatically removed `postgres:16-alpine` container with a
+random loopback port, separate from the running Compose database and its data
+directory. The Go migration runner applied `001` through `004`; a transaction
+then proved positive inserts and rejection of case-insensitive duplicate email,
+invalid account/scope/lifecycle states, cross-document current versions,
+bound-file deletion, mismatched Governance revisions, invalid Consent purposes,
+and non-object Outbox payloads. Two Outbox inserts also proved advancing
+sequence allocation IDs. Sequence allocation is not transaction commit order:
+consumers may advance a durable high-watermark only across a contiguous applied
+prefix, must rescan claimable rows below it, and deduplicate replay by
+`event_id`. A one-step Down removed only `004`; catalog assertions found no
+Phase 15 table, index, sequence, column, or constraint residue and confirmed
+that migrations `001` through `003` remained.
+
+`go test ./internal/migration` passed. The first sandboxed `go test ./...` run
+was blocked only because `httptest` could not bind a loopback port; rerunning
+outside that network restriction passed every Go package. No Provider secret or
+real user data was used.
+
+The independent xhigh schema/rollback/security review found and fixed two P1
+and two P2 classes before commit:
+
+```text
+P1: Active Document could point to a non-Active Version
+P1: Active Governance Head could point to a Candidate/Retired Profile
+P2: composite-FK static assertions allowed extra columns and could false-pass
+P2: identity token, lifecycle, Outbox, and allocation-order wording was thin
+```
+
+Generated status columns plus exact composite FKs now bind an Active Document
+to an Active current Version and an Active Governance Head to an Approved
+Profile/Revision. Static tests now require exact FK mappings, strip comments,
+and cover additional lifecycle/token/Outbox constraints. The review ended with
+`P0/P1/P2 = 0` and `no findings`.
+
+Because the review changed executable DDL, the complete isolated PostgreSQL 16
+Up/constraint/Down/zero-residue drill was rerun from a new empty container and
+passed again. `gofmt`, `git diff --check`, `go test ./internal/migration`, and
+the final `go test ./...` all passed after those fixes.
+
+Next: commit Phase 15.1A with an explicit path allowlist, then start identity
+services in 15.1B.
