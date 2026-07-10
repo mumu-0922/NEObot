@@ -268,6 +268,9 @@ func serviceErrorFor(err error) (int, ErrorBody) {
 	if errors.Is(err, ErrFileNotFound) {
 		return http.StatusNotFound, ErrorBody{Code: "FILE_NOT_FOUND", Message: "file not found"}
 	}
+	if errors.Is(err, ErrFileInUse) {
+		return http.StatusConflict, ErrorBody{Code: "FILE_IN_USE", Message: "file is bound to a knowledge document"}
+	}
 	if errors.Is(err, storage.ErrObjectNotFound) {
 		return http.StatusNotFound, ErrorBody{Code: "FILE_NOT_FOUND", Message: "file not found"}
 	}

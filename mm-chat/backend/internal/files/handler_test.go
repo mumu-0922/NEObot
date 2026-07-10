@@ -179,6 +179,13 @@ func TestServiceUploadDeletesObjectWhenRepositoryInsertFails(t *testing.T) {
 	}
 }
 
+func TestServiceErrorForFileInUse(t *testing.T) {
+	status, body := serviceErrorFor(ErrFileInUse)
+	if status != http.StatusConflict || body.Code != "FILE_IN_USE" {
+		t.Fatalf("serviceErrorFor(ErrFileInUse) = %d/%s", status, body.Code)
+	}
+}
+
 func TestServiceUploadUsesRequestUserForObjectKey(t *testing.T) {
 	repo := newFakeRepository()
 	store := newFakeObjectStore()

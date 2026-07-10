@@ -3,6 +3,7 @@ package files
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -111,6 +112,106 @@ func TestPostgresRepositoryEnforcesTwoUserFileIsolation(t *testing.T) {
 	}
 	if _, err := repo.GetFile(ctxA, fileID); err != ErrFileNotFound {
 		t.Fatalf("GetFile(user A after delete) error = %v, want ErrFileNotFound", err)
+	}
+}
+
+func TestPostgresRepositorySerializesKnowledgeBindAndDelete(t *testing.T) {
+	db := openPostgresIntegrationDB(t)
+	repo := NewPostgresRepository(db)
+	userID := mustUUID(t)
+	ctx := auth.WithUser(context.Background(), auth.User{ID: userID, DisplayName: "Knowledge Owner"})
+	fileID := mustUUID(t)
+	file, err := repo.CreateFile(ctx, CreateFileInput{
+		ID: fileID, OriginalFilename: "source.txt", MimeType: "text/plain", ByteSize: 6,
+		SHA256:         "b94d27b9934d3e08a52e52d7da7dabfadebca7838dfb27f4f9174e65a2f27f21",
+		StorageBackend: "local", ObjectKey: objectKeyForUser(userID, fileID),
+		Metadata: map[string]any{"purpose": "knowledge"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	collectionID, documentID, versionID := mustUUID(t), mustUUID(t), mustUUID(t)
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO knowledge_collections (id, name, scope, owner_user_id)
+VALUES ($1, 'Binding Test', 'personal', $2);
+INSERT INTO knowledge_documents (id, collection_id) VALUES ($3, $1)
+`, collectionID, userID, documentID); err != nil {
+		t.Fatal(err)
+	}
+	binder, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = binder.Rollback() }()
+	var lockedID string
+	if err := binder.QueryRowContext(ctx, `SELECT id FROM files WHERE id = $1 FOR UPDATE`, fileID).Scan(&lockedID); err != nil {
+		t.Fatal(err)
+	}
+	deleteResult := make(chan error, 1)
+	go func() {
+		_, deleteErr := repo.MarkFileDeleted(ctx, fileID)
+		deleteResult <- deleteErr
+	}()
+	if _, err := binder.ExecContext(ctx, `
+INSERT INTO knowledge_document_versions (
+  id, document_id, file_id, source_version, status, content_hash
+) VALUES ($1, $2, $3, 1, 'uploaded', $4)
+`, versionID, documentID, fileID, file.SHA256); err != nil {
+		t.Fatal(err)
+	}
+	if err := binder.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-deleteResult; !errors.Is(err, ErrFileInUse) {
+		t.Fatalf("concurrent delete error = %v, want ErrFileInUse", err)
+	}
+	if got, err := repo.GetFile(ctx, fileID); err != nil || got.UploadStatus != "available" {
+		t.Fatalf("bound file after rejected delete = %#v, err=%v", got, err)
+	}
+	if _, err := db.ExecContext(ctx, `
+UPDATE knowledge_document_versions SET status = 'tombstoned' WHERE id = $1;
+UPDATE knowledge_documents
+SET status = 'tombstoned', deleted_at = now(), updated_at = now()
+WHERE id = $2
+`, versionID, documentID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.MarkFileDeleted(ctx, fileID); err != nil {
+		t.Fatalf("delete after tombstone: %v", err)
+	}
+	var events int
+	if err := db.QueryRowContext(ctx, `
+SELECT count(*) FROM knowledge_outbox
+WHERE aggregate_type = 'file' AND aggregate_key = $1
+  AND event_type = 'file.object.delete.requested'
+`, fileID).Scan(&events); err != nil {
+		t.Fatal(err)
+	}
+	if events != 1 {
+		t.Fatalf("file cleanup events = %d, want 1", events)
+	}
+}
+
+func TestPostgresRepositoryRollsBackFileDeleteWhenOutboxFails(t *testing.T) {
+	db := openPostgresIntegrationDB(t)
+	repo := NewPostgresRepository(db)
+	userID, fileID := mustUUID(t), mustUUID(t)
+	ctx := auth.WithUser(context.Background(), auth.User{ID: userID, DisplayName: "Rollback Owner"})
+	if _, err := repo.CreateFile(ctx, CreateFileInput{
+		ID: fileID, OriginalFilename: "rollback.txt", MimeType: "text/plain", ByteSize: 1,
+		SHA256:         "b94d27b9934d3e08a52e52d7da7dabfadebca7838dfb27f4f9174e65a2f27f21",
+		StorageBackend: "local", ObjectKey: objectKeyForUser(userID, fileID),
+		Metadata: map[string]any{"purpose": "knowledge"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	repo.newEventID = func() (string, error) { return "", errors.New("synthetic outbox failure") }
+	if _, err := repo.MarkFileDeleted(ctx, fileID); err == nil {
+		t.Fatal("MarkFileDeleted() error = nil when outbox generation fails")
+	}
+	got, err := repo.GetFile(ctx, fileID)
+	if err != nil || got.UploadStatus != "available" || got.DeletedAt != nil {
+		t.Fatalf("file after rolled-back delete = %#v, err=%v", got, err)
 	}
 }
 

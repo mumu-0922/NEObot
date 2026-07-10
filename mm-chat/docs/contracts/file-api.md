@@ -57,6 +57,7 @@ presigned URLs in the MVP.
 | `400` | `INVALID_FILE_PURPOSE` | Purpose is missing or unsupported.                                           |
 | `413` | `FILE_TOO_LARGE`       | File exceeds `MAX_UPLOAD_BYTES`.                                             |
 | `404` | `FILE_NOT_FOUND`       | Metadata row is absent or deleted.                                           |
+| `409` | `FILE_IN_USE`          | A live Knowledge Document Version still binds the File.                      |
 | `429` | `RATE_LIMITED`         | Redis rate-limit middleware blocked the request before upload/download work. |
 | `503` | `DATABASE_REQUIRED`    | File metadata repository is unavailable.                                     |
 | `503` | `STORAGE_REQUIRED`     | Object store is unavailable.                                                 |
@@ -82,7 +83,11 @@ If object write fails, do not create the metadata row.
   insert fails.
 - `GET /v1/files/{fileId}` returns metadata only.
 - `GET /v1/files/{fileId}/content` streams bytes through the backend gateway.
-- `DELETE /v1/files/{fileId}` soft-deletes metadata and then deletes the object.
+- `DELETE /v1/files/{fileId}` locks the caller-owned `files` row with
+  `FOR UPDATE`, rejects live Knowledge Version bindings with `409 FILE_IN_USE`,
+  and atomically soft-deletes metadata plus writes
+  `file.object.delete.requested`. It then attempts physical object deletion;
+  the durable event permits idempotent retry after storage failure.
 - Ownership is request-scoped through the implemented Phase 13 authenticated
   user context. Development fallback remains available only when the configured
   auth mode permits it; hosted/required mode never falls back to a fixed user.

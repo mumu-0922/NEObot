@@ -614,6 +614,9 @@ the UI can call in the next wiring slice.
       transactional Outbox writes.
 - [ ] Implement logical Document/Version lifecycle, locked File binding/delete,
       authorized content reads, reprocess, and tombstones.
+  - [x] Lock direct File deletion against live Knowledge Version bindings and
+        write durable `file.object.delete.requested` Outbox work.
+  - [ ] Add Document/Version routes and bind/reprocess/delete transactions.
 - [ ] Implement operator Governance and Collection/User Consent services with
       purpose/data-type and expiry/revision fences.
 - [ ] Wire protected Knowledge routes and pass unit/race/PostgreSQL 16 ACL,

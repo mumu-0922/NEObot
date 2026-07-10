@@ -13,7 +13,8 @@ import (
 )
 
 type PostgresRepository struct {
-	db *sql.DB
+	db         *sql.DB
+	newEventID func() (string, error)
 }
 
 type sqlExecer interface {
@@ -26,7 +27,8 @@ type rowScanner interface {
 
 func NewPostgresRepository(db *sql.DB) *PostgresRepository {
 	return &PostgresRepository{
-		db: db,
+		db:         db,
+		newEventID: newUUID,
 	}
 }
 
@@ -119,14 +121,52 @@ func (r *PostgresRepository) MarkFileDeleted(ctx context.Context, fileID string)
 	}
 
 	userID := auth.UserOrDevelopment(ctx).ID
-	record, err := scanFile(r.db.QueryRowContext(ctx, fileMarkDeletedSQL, fileID, userID))
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return FileRecord{}, fmt.Errorf("begin delete file: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	record, err := scanFile(tx.QueryRowContext(ctx, fileLockOwnedSQL, fileID, userID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return FileRecord{}, ErrFileNotFound
 	}
 	if err != nil {
+		return FileRecord{}, fmt.Errorf("lock file for deletion: %w", err)
+	}
+	var bound bool
+	if err := tx.QueryRowContext(ctx, `
+SELECT EXISTS (
+  SELECT 1 FROM knowledge_document_versions
+  WHERE file_id = $1
+    AND status IN ('uploaded', 'processing', 'failed', 'active', 'purging')
+)
+`, fileID).Scan(&bound); err != nil {
+		return FileRecord{}, fmt.Errorf("check file knowledge bindings: %w", err)
+	}
+	if bound {
+		return FileRecord{}, ErrFileInUse
+	}
+	record, err = scanFile(tx.QueryRowContext(ctx, fileMarkDeletedLockedSQL, fileID, userID))
+	if err != nil {
 		return FileRecord{}, fmt.Errorf("mark file deleted: %w", err)
 	}
-
+	eventID, err := r.newEventID()
+	if err != nil {
+		return FileRecord{}, fmt.Errorf("generate file cleanup event id: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO knowledge_outbox (
+  event_id, aggregate_type, aggregate_key, event_type, payload
+) VALUES (
+  $1, 'file', $2, 'file.object.delete.requested',
+  jsonb_build_object('schemaVersion', 1, 'fileId', $2)
+)
+`, eventID, fileID); err != nil {
+		return FileRecord{}, fmt.Errorf("insert file cleanup event: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return FileRecord{}, fmt.Errorf("commit delete file: %w", err)
+	}
 	return record, nil
 }
 
@@ -205,7 +245,15 @@ WHERE id = $1
   AND upload_status = 'available'
 `
 
-const fileMarkDeletedSQL = `
+const fileLockOwnedSQL = fileSelectSQL + `
+WHERE id = $1
+  AND user_id = $2
+  AND deleted_at IS NULL
+  AND upload_status = 'available'
+FOR UPDATE
+`
+
+const fileMarkDeletedLockedSQL = `
 UPDATE files
 SET
   upload_status = 'deleted',
@@ -214,6 +262,7 @@ SET
 WHERE id = $1
   AND user_id = $2
   AND deleted_at IS NULL
+  AND upload_status = 'available'
 RETURNING
   id,
   user_id,

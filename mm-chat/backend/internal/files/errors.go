@@ -6,6 +6,7 @@ var (
 	ErrDatabaseRequired = errors.New("database is required")
 	ErrStorageRequired  = errors.New("storage is required")
 	ErrFileNotFound     = errors.New("file not found")
+	ErrFileInUse        = errors.New("file is in use")
 )
 
 type ValidationError struct {

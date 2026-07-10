@@ -5991,3 +5991,32 @@ is written to Collection responses or Outbox payloads.
 
 Next: implement 15.1D-3 logical Document/Version lifecycle and the shared
 File-row `FOR UPDATE` binding/deletion protocol.
+
+## 2026-07-11 — Phase 15.1D-3A File deletion fence implemented
+
+Direct File deletion now starts a Postgres transaction, locks the caller-owned
+available `files` row with `FOR UPDATE`, and checks all live Knowledge Version
+states before changing metadata. A binding in
+`uploaded|processing|failed|active|purging` returns `409 FILE_IN_USE`; unknown,
+deleted, unavailable, and cross-user Files retain the same `404` disclosure.
+
+Successful metadata deletion and `file.object.delete.requested` Outbox insertion
+commit atomically. The existing synchronous ObjectStore deletion remains the
+fast path; the durable File-ID-only event is the retry/reconciliation source and
+does not expose bucket or object keys.
+
+A real PostgreSQL 16 race test held the File lock in a simulated Document bind,
+started concurrent direct deletion, inserted the Version, and committed. The
+waiting delete then observed the binding and failed closed; after Document and
+Version tombstoning, deletion succeeded and emitted exactly one cleanup event.
+
+```text
+go test ./internal/files                                 passed
+PostgreSQL bind/delete row-lock serialization            passed
+synthetic cleanup-Outbox failure rollback                passed
+two-user File disclosure behavior                        passed
+FILE_IN_USE HTTP mapping                                 passed
+```
+
+Next: complete 15.1D-3B Document/Version routes, Parse Job admission,
+authorized content reads, reprocess, and tombstone transactions.

@@ -357,6 +357,9 @@ allocation order only; consumers rescan claimable rows, deduplicate by
 - [ ] **15.1D-3 Document and File binding:** implement logical Document/Version
       lifecycle, locked binding/deletion, content authorization, Job creation,
       reprocess, tombstones, and idempotency.
+  - [x] Make direct File deletion lock the owned File row, reject live
+        Knowledge bindings, and persist object-cleanup Outbox work atomically.
+  - [ ] Implement Document/Version bind, read, replace, reprocess, and delete.
 - [ ] **15.1D-4 Governance and Consent:** implement operator Profile/Head
       management, Collection/User decisions, purpose/data-type validation,
       expiry handling, revision fences, and Outbox.
