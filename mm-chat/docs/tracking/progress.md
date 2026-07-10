@@ -128,7 +128,8 @@ Phase 15 as the active RAG implementation gate.
 - [ ] Add document parsing flow.
 - [ ] Add embedding/indexing flow.
 - [ ] Add retrieval/citation flow.
-- [ ] Ensure RAG failure does not break normal chat.
+- [ ] Superseded by Phase 15: separate strict-grounded fail-closed behavior from
+      optional-enrichment chat degradation.
 
 ## Phase 10 — Single-Server Deployment
 
@@ -559,12 +560,48 @@ the UI can call in the next wiring slice.
 - [x] Add reverse proxy/TLS production notes.
 - [x] Add secret rotation notes.
 
-## Phase 15 — Optional Python RAG Sidecar
+## Phase 15 — Accuracy-First Server RAG
 
-- [ ] Define internal Go-to-RAG API after frontend server mode is stable.
-- [ ] Add Python FastAPI service skeleton.
-- [ ] Add indexing, retrieval, and citation flow.
-- [ ] Verify RAG failure does not break normal chat.
+- [x] Create the evidence-based accuracy-first architecture in
+      `docs/architecture/phase-15-accuracy-first-rag-design.md`.
+- [x] Create the owner-review implementation profile in
+      `docs/architecture/phase-15-recommended-implementation-profile.md`.
+- [x] Record the Owner decision approving all-processor Collection Data Consent
+      for the Bootstrap Public Collection; runtime Consent rows remain pending.
+- [x] Confirm the small-team product model: per-user Personal Knowledge, Shared
+      Team Knowledge, Team Admin management, and Jina credential availability.
+- [x] Define the future Phase 15 Knowledge ACL API, identity, consent, revision,
+      file-binding, deletion, and isolation-test contract.
+- [ ] Replace the single-bootstrap-user ceiling with admin-invited independent
+      user sessions and versioned Team membership.
+- [ ] Add Team, Membership, Personal/Team Collection, Knowledge Document, and
+      per-processor Collection/User Consent schemas and APIs.
+- [ ] Enforce Personal-owner and Team-role ACLs across file binding, indexing,
+      query, citation, consent, deletion, and cross-user/cross-team tests.
+- [ ] Freeze the canonical block/chunk schema, ACL invariants, index profiles,
+      and golden evaluation corpus.
+- [ ] Define the workload-authenticated Go-to-RAG evidence API, Go-side source
+      reauthorization, citation minting, and strict/optional failure contracts.
+- [ ] Add private Python query and indexing services, Postgres outbox rescan,
+      and non-authoritative Redis wake-up/lease/cache handling.
+- [ ] Preserve original files and structured parser artifacts for reproducible
+      reindexing.
+- [ ] Add format/page-aware parsing, quality gates, and parent/child/window
+      chunking with exact provenance.
+- [ ] Bake off and pin the search projection; treat Qdrant as the leading
+      rebuildable ACL-filtered dense/sparse/multi-vector candidate.
+- [ ] Add hybrid recall, RRF fusion, measured cross-encoder reranking, dynamic
+      context expansion, and source-level citations.
+- [ ] Gate contextual retrieval, ColBERT, query decomposition, RAPTOR, and
+      GraphRAG by evaluation and query class.
+- [ ] Gate visual retrieval, sandboxed table execution, and tenant-safe domain
+      adaptation with dedicated relevance, security, privacy, and deletion
+      tests.
+- [ ] Add unified model-job admission control, external-processing governance,
+      generation/projection revision fencing, and coordinated backup manifests.
+- [ ] Pass parser, retrieval, citation, abstention, deletion, tenant-isolation,
+      injection, backup/restore/tombstone-replay, and strict/optional failure
+      gates on a frozen holdout.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

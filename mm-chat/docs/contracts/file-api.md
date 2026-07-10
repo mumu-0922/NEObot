@@ -20,14 +20,14 @@ DELETE /v1/files/{fileId}
 
 `POST /v1/files` accepts `multipart/form-data`:
 
-| Field | Required | Notes |
-| --- | --- | --- |
-| `file` | yes | File bytes. Backend enforces `MAX_UPLOAD_BYTES`. |
-| `purpose` | yes | `chat`, `workspace`, `knowledge`, `image`, `audio`, or `export`. |
-| `conversationId` | no | Optional upload metadata; message ownership is enforced later when linking by `fileId`. |
-| `workspaceId` | no | Workspace-scoped file metadata. |
-| `knowledgeCollectionId` | no | RAG import grouping, later phase. |
-| `clientFileId` | no | Optional frontend retry/correlation ID. |
+| Field                   | Required | Notes                                                                                   |
+| ----------------------- | -------- | --------------------------------------------------------------------------------------- |
+| `file`                  | yes      | File bytes. Backend enforces `MAX_UPLOAD_BYTES`.                                        |
+| `purpose`               | yes      | `chat`, `workspace`, `knowledge`, `image`, `audio`, or `export`.                        |
+| `conversationId`        | no       | Optional upload metadata; message ownership is enforced later when linking by `fileId`. |
+| `workspaceId`           | no       | Workspace-scoped file metadata.                                                         |
+| `knowledgeCollectionId` | no       | RAG import grouping, later phase.                                                       |
+| `clientFileId`          | no       | Optional frontend retry/correlation ID.                                                 |
 
 ## File Response
 
@@ -49,17 +49,17 @@ presigned URLs in the MVP.
 
 ## Validation & Errors
 
-| HTTP | Code | When |
-| --- | --- | --- |
-| `400` | `INVALID_FILE_ID` | `fileId` is not a UUID. |
-| `400` | `INVALID_MULTIPART` | Upload body is malformed. |
-| `400` | `FILE_REQUIRED` | No file part was supplied. |
-| `400` | `INVALID_FILE_PURPOSE` | Purpose is missing or unsupported. |
-| `413` | `FILE_TOO_LARGE` | File exceeds `MAX_UPLOAD_BYTES`. |
-| `404` | `FILE_NOT_FOUND` | Metadata row is absent or deleted. |
-| `429` | `RATE_LIMITED` | Redis rate-limit middleware blocked the request before upload/download work. |
-| `503` | `DATABASE_REQUIRED` | File metadata repository is unavailable. |
-| `503` | `STORAGE_REQUIRED` | Object store is unavailable. |
+| HTTP  | Code                   | When                                                                         |
+| ----- | ---------------------- | ---------------------------------------------------------------------------- |
+| `400` | `INVALID_FILE_ID`      | `fileId` is not a UUID.                                                      |
+| `400` | `INVALID_MULTIPART`    | Upload body is malformed.                                                    |
+| `400` | `FILE_REQUIRED`        | No file part was supplied.                                                   |
+| `400` | `INVALID_FILE_PURPOSE` | Purpose is missing or unsupported.                                           |
+| `413` | `FILE_TOO_LARGE`       | File exceeds `MAX_UPLOAD_BYTES`.                                             |
+| `404` | `FILE_NOT_FOUND`       | Metadata row is absent or deleted.                                           |
+| `429` | `RATE_LIMITED`         | Redis rate-limit middleware blocked the request before upload/download work. |
+| `503` | `DATABASE_REQUIRED`    | File metadata repository is unavailable.                                     |
+| `503` | `STORAGE_REQUIRED`     | Object store is unavailable.                                                 |
 
 ## Persistence Flow
 
@@ -75,7 +75,6 @@ request multipart
 Rollback rule: if Postgres insert fails after object write, delete the object.
 If object write fails, do not create the metadata row.
 
-
 ## Phase 6.2 Implementation Notes
 
 - `POST /v1/files` writes bytes through `ObjectStore`, computes SHA-256 while
@@ -84,7 +83,9 @@ If object write fails, do not create the metadata row.
 - `GET /v1/files/{fileId}` returns metadata only.
 - `GET /v1/files/{fileId}/content` streams bytes through the backend gateway.
 - `DELETE /v1/files/{fileId}` soft-deletes metadata and then deletes the object.
-- Ownership is currently scoped to the fixed development user until auth lands.
+- Ownership is request-scoped through the implemented Phase 13 authenticated
+  user context. Development fallback remains available only when the configured
+  auth mode permits it; hosted/required mode never falls back to a fixed user.
 - MinIO/S3 is available through the same `ObjectStore` interface when
   `STORAGE_BACKEND=minio` or `STORAGE_BACKEND=s3`; the HTTP response contract
   stays unchanged.

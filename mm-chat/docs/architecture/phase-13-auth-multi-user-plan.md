@@ -24,6 +24,36 @@ fallback for local testing, then later slices enforce login-required behavior.
 - No RAG identity model until Phase 15.
 - No production-only force-delete for modified import batches.
 
+## Phase 15 Team Knowledge Extension
+
+Phase 13 is the implemented request-identity baseline; it does not provide Team
+RBAC. Phase 15 extends it for the confirmed small-team product model:
+
+- every user has an independent account/session and a private Personal
+  Knowledge scope;
+- a Team has `admin|member` membership and Shared Team Knowledge;
+- Team Admin manages membership, Team documents, and Team processing consent,
+  but cannot read another user's Personal Knowledge;
+- Team Member queries Team Knowledge by default and cannot upload/delete Team
+  documents or change processing consent;
+- login defaults to Admin invitation with public registration disabled;
+- invite acceptance establishes an Argon2id password credential; ordinary
+  member login uses verified email/password after Phase 15 cutover;
+- password recovery uses a single-use token delivered to the verified mailbox,
+  revokes all sessions, and cannot be received or consumed by Team Admin;
+  anonymous recovery request remains uniformly answered and rate-limited, but
+  gives the requester no token or account-existence signal;
+- the Bootstrap Token is limited to initial operator provisioning/break-glass,
+  not ordinary member login;
+- the last Active Admin cannot be removed or downgraded;
+- Team Membership Revision becomes part of the RAG authorization fingerprint.
+
+Team Role is a membership attribute, not a global `users.role`, and Chat
+Workspace remains a UI grouping rather than an authorization scope. The future
+API and persistence boundary is defined in
+[`../contracts/knowledge-acl-api.md`](../contracts/knowledge-acl-api.md); this
+section does not claim the Phase 15 schema is already implemented.
+
 ## Implementation Slices
 
 ### 13.1 Request Identity Plumbing

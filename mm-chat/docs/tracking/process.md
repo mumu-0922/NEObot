@@ -5203,3 +5203,452 @@ doc sanity check
 targeted secret-pattern scan
   no real secrets found; hits are documentation terms and placeholder examples only
 ```
+
+## 2026-07-10 — Phase 15 accuracy-first RAG architecture research
+
+Action: replaced the placeholder-only Phase 15 direction with an evidence-based
+accuracy-first proposal before implementation. No runtime code, Compose service,
+database schema, or external index was changed.
+
+Created and updated:
+
+```text
+mm-chat/docs/architecture/phase-15-accuracy-first-rag-design.md
+mm-chat/docs/architecture/README.md
+mm-chat/docs/architecture/phase-11-plus-roadmap.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+Parallel research covered four independent areas plus local source inspection:
+
+```text
+1. Parsing and chunking:
+   format/page-aware routing, Docling, MinerU, LlamaParse, PyMuPDF, OCR,
+   canonical blocks, parent/child/window chunks, table/formula/image handling.
+
+2. Retrieval:
+   dense + BM25, learned sparse, RRF, ColBERT, cross-encoder reranking,
+   contextual retrieval, late chunking, query decomposition, RAPTOR, GraphRAG.
+
+3. Search engines:
+   pgvector, Qdrant, OpenSearch/Elasticsearch, and Vespa capabilities,
+   filtering, multi-vector support, single-server operation, and recovery.
+
+4. Evaluation and security:
+   golden qrels, Recall/nDCG/MRR, citation correctness, faithfulness,
+   abstention, prompt injection, ACL filtering, deletion fencing, and A/B gates.
+```
+
+Decision proposal:
+
+```text
+Go          public identity/ACL/files/chat/citations/degradation boundary
+Python      private parsing/indexing/query/reranking services
+Postgres    authoritative metadata, ACL, versions, jobs, outbox, citations
+MinIO       original files plus parser-native and canonical rebuild artifacts
+Redis       non-authoritative wake-up, lease, rate-limit, and query cache
+Qdrant      leading rebuildable search candidate, pending controlled bake-off
+```
+
+Accuracy pipeline:
+
+```text
+format/page-aware parse -> canonical blocks
+-> parent/child/window chunks with provenance
+-> dense + exact lexical + evaluated learned-sparse recall
+-> RRF candidate fusion
+-> evaluated ColBERT stage when beneficial
+-> cross-encoder reranking
+-> dynamic parent/sibling evidence expansion
+-> source-version/page/span citations and strict-grounded answer policy
+```
+
+The design explicitly does not enable every advanced method globally.
+Contextual retrieval, late chunking, ColBERT, query decomposition, RAPTOR, and
+GraphRAG are query/corpus-specific candidates and require measured gains. This
+avoids query drift, generated-summary contamination, duplicate evidence, and
+untraceable citations while retaining the target capabilities.
+
+Important current-state findings recorded during research and used to motivate
+the design:
+
+- the old browser RAG path flattens parser output to Markdown and loses page,
+  bbox, table-cell, image, and formula provenance;
+- the current splitter approximates tokens with `Intl.Segmenter`, applies a
+  generic overlap, and emits metadata without parent/page/version/ACL fields;
+- the current server-mode Go stack has no Phase 15 RAG service or search index;
+- the Compose Postgres image is plain `postgres:16-alpine`, so pgvector is not
+  already available despite earlier architectural discussion;
+- post-retrieval client filtering is not a multi-user security boundary.
+
+Primary evidence included official Anthropic Contextual Retrieval, Qwen3
+Embedding/Reranker, BGE-M3, Qdrant, Docling, MinerU, ColBERTv2, RAPTOR,
+Microsoft GraphRAG, BEIR, Ragas/ALCE, and OWASP sources. Public benchmark or
+vendor claims remain hypotheses until reproduced on Neo Chat's golden corpus.
+
+Independent review found no P0 blocker and required the following design
+hardening before owner lock:
+
+```text
+- Split strict-grounded fail-closed behavior from optional chat enrichment.
+- Add acl_revision/visibility_epoch deny fences and Go-side evidence reauthorization.
+- Make Postgres outbox rescan authoritative after Redis loss.
+- Add frozen-holdout, relative-regression, parser, judge-calibration, and
+  explicit injection gates.
+- Treat parser routes and Qdrant as evaluated candidates, not foregone winners.
+- Add service identity, scoped MinIO capabilities, parser sandboxing, and
+  external-parser data-governance controls.
+- Return evidence/source-span IDs from Python and mint citations only in Go.
+- Version derived artifacts and bind restore to tombstone/outbox watermarks.
+- Version lexical analyzers and separate BM25 from exact phrase/key/path search.
+```
+
+These findings were incorporated into the architecture, roadmap, and Phase 15
+checklist. The design also added source-aligned visual retrieval candidates,
+structured table execution, claim/evidence verification, and a two-phase
+versioned-alias publish protocol without turning them into unconditional global
+features.
+
+A second independent review found no P0 blocker and surfaced five P1 plus five
+P2 consistency gaps. All were incorporated:
+
+```text
+- Strict answers now buffer privately, verify, recheck fences, atomically
+  persist message+citations, and only then emit answer SSE.
+- Index generation is separate from mutable corpus projection revision;
+  aliases bind physical collections/configs and cache keys include both axes.
+- Search-only restore is separate from coordinated full DR with
+  timeline/LSN/WAL/outbox/MinIO/search watermarks and rebuild-on-gap behavior.
+- DuckDB runs in a no-secret/no-network/no-host-files sandbox behind an AST
+  SELECT allowlist and explicit escape/resource tests.
+- External parser/model/VLM egress, domain training data, and all heavy jobs
+  share governance, deletion lineage, admission control, and capacity gates.
+- Signed Go-to-Python requests bind method/path/body/profile/mTLS identity and
+  add replay, clock-skew, and key-rotation controls.
+- Evaluation now defines paired statistics, slice power, relevant-drop, and
+  dedicated visual/table/adaptation security and accuracy gates.
+- Roadmap and progress now mirror the new candidate lanes and required outputs.
+- Full-context wording now covers only candidate-retrieval truncation and
+  requires long-context/citation evaluation.
+```
+
+Final regression review:
+
+```text
+independent review agent: no findings
+- all five P1 and five P2 findings are closed;
+- no new P0/P1/P2 issue was introduced by the corrections.
+```
+
+Next: owner lock, then implement the canonical schema, ACL invariants, and
+frozen evaluation corpus before selecting a model or adding a container.
+
+## 2026-07-10 — Phase 15 design translated to Simplified Chinese
+
+Action: translated the complete accuracy-first RAG design in place so the owner
+can review and lock the architecture without relying on an abbreviated chat
+summary. Technical identifiers, field names, thresholds, state machines, code
+blocks, and primary-reference URLs remain unchanged where translation would
+alter their contract.
+
+Files:
+
+```text
+mm-chat/docs/architecture/phase-15-accuracy-first-rag-design.md
+mm-chat/docs/tracking/process.md
+```
+
+Completeness verification against the English source copy:
+
+```text
+headings:           23 -> 23
+fence markers:      16 -> 16
+bullet items:       69 -> 69
+numbered items:     17 -> 17
+reference URLs:     19 -> 19, identical set
+inline identifiers: 45 -> 45, identical ordered list
+Prettier:            passed
+git diff --check:    passed
+```
+
+Independent translation review found one P1 and two P2 wording issues. The
+translation now says that the Postgres fence rejects access to deleted data,
+not the delete operation; preserves the original bake-off attribution rule;
+and describes the MinerU route as high-compute rather than claiming accuracy in
+advance. Regression review returned `no findings`.
+
+Next: owner reads the Chinese design and decides whether to lock Phase 15.
+
+## 2026-07-10 — Phase 15 owner-review implementation profile
+
+Action: converted the architecture options into a concrete but unlocked Chinese
+recommendation for owner review. The new profile does not modify runtime code or
+silently lock a vendor; it records the recommended defaults and the conditions
+that require a different choice.
+
+Files:
+
+```text
+mm-chat/docs/architecture/phase-15-recommended-implementation-profile.md
+mm-chat/docs/architecture/README.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/process.md
+```
+
+Recommended profile:
+
+```text
+deterministic native parsers + MinerU Precise for complex visual documents
+Jina Embeddings v4 hosted 2048/1024 Development/Validation candidate
+Qdrant-first engine bake-off with versioned BM25 + exact-key/phrase manifests
+query-class-aware weighted RRF and mandatory cross-encoder reranking
+Go-owned strict-grounded answer, citation, ACL, and SSE boundaries
+Postgres/MinIO authority with Redis and the winning search engine as projections
+```
+
+Source inspection confirmed that the original app does not pin an embedding
+model. It sends raw chunk text to an external service implementing
+`upsert-data`, `query-data`, and `delete-data`; that upstream chooses the
+embedding. Text MIME types bypass document parsing, non-text files default to
+MinerU, and LlamaParse remains a selectable alternative.
+
+The draft explicitly records that the Jina API cannot be used as the old
+`DEFAULT_RAG_BASE_URL`: the Python sidecar must call the approved active
+embedding profile and store/query vectors in the winning search projection;
+Jina is one candidate. It also records the data-egress, model/dimension
+generation, storage sizing, evaluation, and the two-axis publish/rollback
+contract inherited from the master design.
+
+Independent review found no P0 and required six P1 plus four P2 corrections.
+The draft now:
+
+```text
+- tunes only on Development/Validation and reserves Frozen Holdout for one
+  preregistered final promotion;
+- treats Jina v4 Hosted as an accuracy candidate until license, SLA, limits,
+  latency, error rate, version pinning, data policy, and fallback gates pass;
+- defines parser, reranker, provenance, citation, visual/table, statistical,
+  and hosted-production gates;
+- defaults all external data egress to deny and adds a Processor x Data Type
+  consent/region/retention/deletion/training-use matrix;
+- versions the lexical compute location, tokenizer, BM25 parameters,
+  exact-match tiers, RRF formula/order/k/router/failure behavior, and digest;
+- preserves index_generation_id plus corpus_projection_revision with outbox
+  catch-up, active pointer, dual-write, and rollback readiness;
+- labels ten unresolved assumptions as explicit owner-lock blockers.
+```
+
+Regression review then found two remaining P1 and one P2 gap. The Qdrant BM25
+candidate now pins `model`, `modifier`, `k`, `b`, generated `avg_len`,
+`language`, `tokenizer`, and lowercase behavior on both ingest and query. Every
+RRF Query Class now has a complete enabled-lane order and equal-length weight
+array, including Title/Summary, Exact, and Visual behavior. The service and
+process wording now treats Jina and Qdrant as candidates rather than hard-coded
+active services.
+
+Final independent regression review returned `no findings`: P0/P1/P2 are all
+zero, and the recommendation, tracking checklist, document index, and process
+record are consistent.
+
+Next: owner answers the blocking assumption table before any profile is merged
+into the Phase 15 master design.
+
+## 2026-07-10 — MinerU API availability confirmed
+
+Owner confirmed that a MinerU API credential is available. The recommendation
+now records credential availability without recording or requesting the secret
+value. This closes only the credential-availability question; external document
+egress remains default-deny until the consent, classification, region,
+retention, deletion, training-use, and audit decision is approved.
+
+Recommended handling when implementation starts:
+
+```text
+store the token only in the Python worker/server secret environment
+never expose it through NEXT_PUBLIC_* or browser configuration
+never write the token to docs, logs, process records, or test fixtures
+use MinerU Precise only through the authenticated private ingestion worker
+```
+
+Next: confirm whether non-confidential knowledge documents may be sent to
+MinerU, then record the approved Processor x Data Type policy before any live
+API call.
+
+## 2026-07-10 — MinerU data-egress scope consent approved
+
+Owner confirmed that the current knowledge corpus contains no confidential
+documents and approved sending it to MinerU for document parsing. The approval
+is recorded narrowly as:
+
+```text
+approved processor: MinerU
+approved corpus: current non-confidential knowledge corpus
+approved purpose: document parsing
+approved data: original file plus required page/table/image assets
+```
+
+This does not authorize LlamaParse, Jina or another embedding API, a hosted
+reranker, or RAG evidence submission to an LLM provider. All remain
+default-deny. LlamaParse stays Disabled and does not block Owner Lock unless it
+is promoted into the candidate profile; Jina or another embedding API, a
+hosted reranker, and LLM RAG Evidence are current independent Owner Lock
+blockers. Any newly confidential corpus, changed classification, or expanded
+Processor scope requires a new decision before egress.
+
+Independent review separated this scope consent from Processor Governance.
+MinerU Region, Retention, Deletion, Training-use, and Audit behavior are not yet
+recorded; therefore the consent decision is complete, but the first real API
+call and Promotion remain blocked until those controls are verified. This
+preserves the owner's approval without misrepresenting vendor due diligence as
+complete.
+
+The implementation profile now also pins the recommended deterministic parser
+stack and requires every parser to emit versioned Canonical IR plus native
+artifacts instead of treating Markdown as the source of truth. MinerU tokens
+remain server-only secrets and are never written to Git, logs, docs, fixtures,
+or `NEXT_PUBLIC_*` variables.
+
+The same review required an executable XML hardening profile and an explicit
+Canonical IR locator union. The profile now pins entity/DTD/network/XInclude/
+XSLT restrictions and distinguishes text, line, page, slide, sheet, and OOXML
+locators instead of inventing BBox or Offset values for every format.
+
+Final independent regression review returned `no findings`: P0/P1/P2 are all
+zero across the recommendation, progress checklist, and process record.
+
+Next: verify MinerU Processor Governance before the first real parse call, then
+obtain a separate owner decision for sending non-confidential chunks and
+queries to the Jina Embeddings API before any live embedding call.
+
+## 2026-07-10 — Public-corpus egress approved for all processors
+
+Owner confirmed that the current corpus is public and contains no private data,
+then approved all external-processing paths listed in the Phase 15 profile:
+
+```text
+MinerU and LlamaParse: original files plus required page/table/image assets
+Jina or another embedding API: chunks, queries, code, and approved image crops
+Hosted reranker: queries, candidate children, and breadcrumbs
+LLM provider: queries, final evidence spans, and approved image crops
+```
+
+This closes the Data Owner Scope Consent blockers for the current public
+corpus. It does not waive Provider Governance, model/version pinning, SLA,
+rate-limit, retention/deletion/training-use documentation, audit, reliability,
+or accuracy gates. LlamaParse remains a disabled fallback despite having scope
+consent. Any future non-public or private corpus returns to Default Deny until
+separately approved.
+
+Owner also requested that every remaining question be asked in one batch. The
+next revision therefore consolidates only genuine product, workload, budget,
+SLO, recovery, and evaluation-staffing decisions; vendor research and Bake-off
+choices stay with the technical implementation rather than being delegated to
+the owner.
+
+Next: complete the one-shot Owner questionnaire, then record all answers before
+locking the Phase 15 implementation profile.
+
+The one-shot questionnaire is now persisted in
+`docs/architecture/phase-15-recommended-implementation-profile.md` §11.3. It
+contains ten grouped questions covering product failure behavior, future data
+scope, representative corpus, workload, server capacity, credential
+availability, Golden Set staffing, budget, SLO, and recovery/operations. Each
+question includes a recommended default and a compact reply template.
+
+Technical due diligence and Bake-off choices remain assigned to implementation:
+Provider Governance, exact Model/API versions, fallback profiles, dimensions,
+Reranker, Search Engine, Parser routes, Chunk/RRF/Top-K tuning, and security
+fences are not delegated back to the owner unless they cannot meet the declared
+constraints.
+
+Independent final review returned `no findings`: all-processor Scope Consent,
+LlamaParse Disabled status, remaining governance gates, the one-shot Owner
+questionnaire, and tracking records are consistent; P0/P1/P2 are all zero.
+
+## 2026-07-10 — Small-team Personal/Team Knowledge model confirmed
+
+Owner confirmed that Jina API credentials are available and that the product is
+for a small team with this knowledge model:
+
+```text
+each user -> private Personal Knowledge
+team -> Shared Team Knowledge
+team administrator -> manages Team Knowledge
+```
+
+No secret value was requested or recorded. Jina credential availability closes
+only the credential question; exact Model/API version, License, SLA, Region,
+Retention, Deletion, Training-use, and accuracy gates remain technical blockers.
+
+Source inspection found that the current Go backend has request-scoped
+`user_id` isolation but no Team, Membership, Knowledge Collection, Processing
+Consent, or usable RBAC schema. `workspaceId` and `knowledgeCollectionId` are
+currently metadata rather than authoritative entities, and the hosted login
+path still resolves a single Bootstrap User. The design therefore adopts these
+safe defaults without claiming implementation:
+
+```text
+Admin invite; public registration disabled; independent user sessions
+Personal Owner manages only their Personal Knowledge
+Team Admin manages Team members/documents/consent but cannot read Personal data
+Team Member queries Team Knowledge but cannot mutate it
+at least one Active Team Admin must remain
+```
+
+The earlier all-processor approval is now scoped to a concrete Bootstrap Public
+Collection. It cannot authorize future Personal/Team uploads or user queries.
+Those require Collection Data Consent plus Request User Query Consent, in
+addition to a passed Processor Governance profile. Upload alone is not consent.
+
+The Phase 15 architecture, recommendation, Phase 13 forward-compatibility note,
+progress checklist, and new Knowledge ACL contract record this superseding
+decision. Existing Phase 13 auth/file behavior remains the implemented baseline
+until the explicit Phase 15 schema and APIs are delivered.
+
+Next: retain the unanswered entries in the already-issued one-shot Owner
+questionnaire; no new Owner question is introduced by this ACL decision.
+
+## 2026-07-10 — Knowledge ACL contract security closure
+
+Independent review found five P1 and two P2 gaps in the first Personal/Team ACL
+contract. The design was corrected before Owner Lock:
+
+```text
+invite token -> delivered only to invited mailbox; Admin receives metadata only
+member auth -> Argon2id credential + email/password re-login + mailbox recovery
+external calls -> operation-specific Governance/Collection/Query consent matrix
+revisions -> Collection Processing, User Query, Governance Head/Profile split
+documents -> stable logical Document + immutable Version rows/current pointer
+files -> FK RESTRICT + shared FOR UPDATE serialization for bind/delete
+search -> one canonical Payload and Mutation-to-Fence contract
+```
+
+The previous process wording that future uploads and queries always require all
+three Governance + Collection + Query conditions is superseded. Parse/Passage
+Embedding requires Governance + Collection Consent; Query Embedding requires
+Governance + the requesting User's Query Consent; Rerank/Answer/Evidence
+requires Governance + Query Consent + every selected Collection's Consent.
+
+Consent changes advance their own Processing/Query/Governance Revisions and do
+not fake ACL/Visibility changes or force a Search Point rewrite. Content access
+tightening and deletion remain the operations that advance visibility fences
+and write Search tombstones. Processor-derived cleanup, when contractually
+required, is explicit Outbox work and disables the affected lane until rebuilt.
+
+The adjacent Phase 6 File Contract was also corrected to reflect implemented
+Phase 13 request-scoped ownership rather than the obsolete fixed development
+user. Runtime Team/Knowledge/Consent implementation remains unchecked in the
+progress plan.
+
+Next: complete regression review of the corrected contract, then retain only
+the unanswered items from the existing Owner questionnaire.
+
+Final independent regression returned `no findings`: P0/P1/P2 are all zero.
+Auth/recovery, Invite delivery, Personal/Team ACLs, operation-specific Consent,
+Governance Heads, independent Revisions, logical Document/Version identity,
+File bind/delete serialization, Search Payload, Outbox, tests, and tracking are
+consistent. No runtime Team/RAG implementation item was marked complete.
+
+Next: keep the remaining fields from the existing one-shot Owner questionnaire
+open; this decision introduces no new Owner questions.

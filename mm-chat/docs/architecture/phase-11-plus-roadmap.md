@@ -573,21 +573,61 @@ Rollback:
 
 - Revert to previous release image and verified backup pair.
 
-## Phase 15 — Optional Python RAG Sidecar
+## Phase 15 — Accuracy-First Server RAG
 
-Objective: add document parsing, embeddings, retrieval, and citations only after
-core server chat and frontend server mode are stable.
+Objective: add an evaluation-gated RAG subsystem after core server chat and
+frontend server mode are stable. The target architecture is defined in
+[`phase-15-accuracy-first-rag-design.md`](./phase-15-accuracy-first-rag-design.md).
+Execution state is tracked under
+[`../tracking/progress.md`](../tracking/progress.md#phase-15--accuracy-first-server-rag).
 
 Scope:
 
-- Define internal Go-to-RAG API.
-- Add Python FastAPI service skeleton.
-- Add indexing and retrieval flow for server-owned files.
-- Ensure RAG failure never breaks normal chat.
+- Keep Go as the public identity, ACL, file, chat, citation, and degradation
+  boundary.
+- Add private Python query and indexing services for parsing, chunking,
+  embedding, hybrid retrieval, reranking, and evidence packaging.
+- Preserve original files and structured parse artifacts in MinIO; keep
+  authoritative metadata, versions, jobs, and outbox state in Postgres.
+- Authenticate Go-to-Python calls with workload identity and short-lived,
+  audience-bound requests; reauthorize returned source spans in Go before
+  minting citations.
+- Bake off Qdrant as the leading rebuildable dense/sparse/multi-vector
+  candidate against equivalent search profiles. Measure relevance, ANN
+  fidelity against exhaustive search, ACL/filter correctness, and recovery as
+  separate gates.
+- Add structure-aware parent/child/window indexing, lexical plus dense recall,
+  RRF fusion, cross-encoder reranking, and source-level citations.
+- Gate contextual retrieval, ColBERT, RAPTOR, GraphRAG, and query expansion by
+  query class and corpus evaluation instead of enabling them globally.
+- Keep visual retrieval, sandboxed table execution, and tenant-safe domain
+  adaptation disabled until their dedicated relevance, security, data-egress,
+  and single-server capacity gates pass.
+- Fail closed for strict-grounded knowledge answers; allow an explicit warning
+  and no-RAG continuation only for ordinary optional-enrichment chat.
+
+Outputs:
+
+- Versioned canonical block/chunk/evidence schemas and authenticated internal
+  API contracts.
+- Frozen development/holdout corpus, source-span qrels, evaluation harness, and
+  signed profile comparison report.
+- Pinned parser, model, analyzer, search-engine, and projection manifests with
+  rebuild/rollback watermarks.
+- Private query/worker/model services, Go-owned citation persistence, and
+  strict-grounded answer verification.
+- Indexing, reconciliation, backup/restore, capacity, and data-governance
+  runbooks.
 
 Verification:
 
-- Index one uploaded document and answer a grounded question with citations.
+- Pass the retrieval, citation, abstention, ACL, deletion, and injection gates
+  in the Phase 15 design.
+- Index representative uploaded documents and answer grounded questions with
+  source-version and page/span citations.
+- Restore a search snapshot against live Postgres and replay a continuous
+  outbox; separately restore a coordinated full backup set. Verify a watermark
+  gap forces an unready full rebuild instead of claiming stale replay.
 
 Rollback:
 
