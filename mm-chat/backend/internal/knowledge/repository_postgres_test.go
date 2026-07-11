@@ -526,6 +526,12 @@ UPDATE knowledge_documents SET status='active',current_version_id=$3 WHERE id=$1
 		if reprocessErr != denied.want {
 			t.Fatalf("team reprocess actor=%s error=%v, want %v", denied.actorID, reprocessErr, denied.want)
 		}
+		deleteErr := NewPostgresRepository(db).DeleteDocument(ctx, DeleteDocumentRepositoryInput{
+			DocumentID: teamDocumentID, ActorUserID: denied.actorID,
+		})
+		if deleteErr != denied.want {
+			t.Fatalf("team delete actor=%s error=%v, want %v", denied.actorID, deleteErr, denied.want)
+		}
 	}
 	if _, err := NewPostgresRepository(db).CreateDocumentVersion(ctx, CreateDocumentVersionRepositoryInput{
 		VersionID: "50000000-0000-4000-8000-000000000096",
@@ -792,6 +798,286 @@ UPDATE knowledge_document_versions SET status='tombstoned',updated_at=now() WHER
 	}
 	if _, err := repo.ListDocuments(ctx, ListDocumentsRepositoryInput{CollectionID: teamColID, ActorUserID: memberID, Limit: 10}); err != ErrCollectionNotFound {
 		t.Fatalf("removed member list error = %v", err)
+	}
+}
+
+func TestPostgresDocumentDeletionTombstonesAndQueuesPurge(t *testing.T) {
+	db := openKnowledgeTestDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if _, err := migration.NewRunner(db, migrationfiles.FS).Up(ctx); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+	const (
+		ownerID      = "12000000-0000-4000-8000-000000000001"
+		outsiderID   = "12000000-0000-4000-8000-000000000002"
+		collectionID = "32000000-0000-4000-8000-000000000001"
+		documentID   = "42000000-0000-4000-8000-000000000001"
+		fileA        = "52000000-0000-4000-8000-000000000001"
+		fileB        = "52000000-0000-4000-8000-000000000002"
+		versionA     = "62000000-0000-4000-8000-000000000001"
+		versionB     = "62000000-0000-4000-8000-000000000002"
+		versionC     = "62000000-0000-4000-8000-000000000003"
+		cancelJobID  = "72000000-0000-4000-8000-000000000001"
+		seedEventID  = "82000000-0000-4000-8000-000000000000"
+	)
+	mustKnowledgeExec(t, ctx, db, `
+INSERT INTO users(id,email,display_name) VALUES
+ ($1,'delete-owner@example.test','Owner'),($2,'delete-outsider@example.test','Outsider');
+INSERT INTO knowledge_collections(id,name,scope,owner_user_id) VALUES ($3,'Delete','personal',$1);
+INSERT INTO files(id,user_id,original_filename,mime_type,byte_size,sha256,storage_backend,object_key,metadata) VALUES
+ ($4,$1,'a.txt','text/plain',1,$6,'local','delete/a','{"purpose":"knowledge"}'),
+ ($5,$1,'b.txt','text/plain',1,$7,'local','delete/b','{"purpose":"knowledge"}');
+INSERT INTO knowledge_documents(id,collection_id,status) VALUES ($8,$3,'processing');
+INSERT INTO knowledge_document_versions(id,document_id,file_id,source_version,status,content_hash) VALUES
+ ($9,$8,$4,1,'active',$6),($10,$8,$5,2,'failed',$7),
+ ($12,$8,$4,3,'tombstoned',$6);
+UPDATE knowledge_document_versions SET visibility_epoch=5 WHERE id=$12;
+UPDATE knowledge_documents SET status='active',current_version_id=$9 WHERE id=$8;
+INSERT INTO knowledge_processing_jobs(
+ id,collection_id,document_id,document_version_id,file_id,stage,operation,
+ collection_acl_revision,collection_visibility_epoch,collection_processing_revision,
+ document_visibility_epoch,idempotency_scope,idempotency_key,request_hash
+) VALUES ($11,$3,$8,$10,$5,'purge','purge',1,1,1,1,'seed:purge','seed',$6);
+INSERT INTO knowledge_outbox(event_id,aggregate_type,aggregate_key,event_type,payload)
+VALUES ($13,'test','seed','test.seed','{}')
+`, ownerID, outsiderID, collectionID, fileA, fileB, strings.Repeat("a", 64),
+		strings.Repeat("b", 64), documentID, versionA, versionB, cancelJobID, versionC,
+		seedEventID)
+
+	repo := NewPostgresRepository(db)
+	if err := repo.DeleteDocument(ctx, DeleteDocumentRepositoryInput{
+		DocumentID: documentID, ActorUserID: outsiderID,
+	}); err != ErrDocumentNotFound {
+		t.Fatalf("outsider deletion error = %v", err)
+	}
+
+	assertDeletionRolledBack := func(label string) {
+		t.Helper()
+		var status string
+		var visibility int64
+		var deleted bool
+		if err := db.QueryRowContext(ctx, `
+SELECT status,visibility_epoch,deleted_at IS NOT NULL FROM knowledge_documents WHERE id=$1
+`, documentID).Scan(&status, &visibility, &deleted); err != nil {
+			t.Fatal(err)
+		}
+		if status != "active" || visibility != 1 || deleted {
+			t.Fatalf("%s committed deletion = %s/%d/%v", label, status, visibility, deleted)
+		}
+		var generatedRows int
+		if err := db.QueryRowContext(ctx, `
+SELECT (SELECT count(*) FROM knowledge_processing_jobs WHERE document_id=$1 AND document_visibility_epoch=2)
+     + (SELECT count(*) FROM knowledge_outbox WHERE aggregate_key=$1)
+`, documentID).Scan(&generatedRows); err != nil {
+			t.Fatal(err)
+		}
+		if generatedRows != 0 {
+			t.Fatalf("%s left generated rows = %d", label, generatedRows)
+		}
+	}
+
+	idFailing := NewPostgresRepository(db)
+	generated := 0
+	idFailing.newEventID = func() (string, error) {
+		generated++
+		if generated == 1 {
+			return "", errors.New("synthetic purge id failure")
+		}
+		return fmt.Sprintf("82000000-0000-4000-8000-%012d", generated), nil
+	}
+	if err := idFailing.DeleteDocument(ctx, DeleteDocumentRepositoryInput{
+		DocumentID: documentID, ActorUserID: ownerID,
+	}); err == nil {
+		t.Fatal("deletion purge id failure error = nil")
+	}
+	assertDeletionRolledBack("purge id failure")
+
+	outboxFailing := NewPostgresRepository(db)
+	generated = 0
+	outboxFailing.newEventID = func() (string, error) {
+		generated++
+		if generated == 4 {
+			return seedEventID, nil
+		}
+		return fmt.Sprintf("83000000-0000-4000-8000-%012d", generated), nil
+	}
+	if err := outboxFailing.DeleteDocument(ctx, DeleteDocumentRepositoryInput{
+		DocumentID: documentID, ActorUserID: ownerID,
+	}); err == nil {
+		t.Fatal("deletion outbox insert failure error = nil")
+	}
+	assertDeletionRolledBack("outbox insert failure")
+
+	var status string
+	var visibility int64
+	var deleted bool
+
+	deleteErrors := make(chan error, 2)
+	var deleteWait sync.WaitGroup
+	for range 2 {
+		deleteWait.Add(1)
+		go func() {
+			defer deleteWait.Done()
+			deleteErrors <- repo.DeleteDocument(ctx, DeleteDocumentRepositoryInput{
+				DocumentID: documentID, ActorUserID: ownerID,
+			})
+		}()
+	}
+	deleteWait.Wait()
+	close(deleteErrors)
+	for deleteErr := range deleteErrors {
+		if deleteErr != nil {
+			t.Fatalf("concurrent delete error = %v", deleteErr)
+		}
+	}
+
+	if err := db.QueryRowContext(ctx, `
+SELECT status,visibility_epoch,deleted_at IS NOT NULL FROM knowledge_documents WHERE id=$1
+`, documentID).Scan(&status, &visibility, &deleted); err != nil {
+		t.Fatal(err)
+	}
+	if status != "tombstoned" || visibility != 2 || !deleted {
+		t.Fatalf("document tombstone = %s/%d/%v", status, visibility, deleted)
+	}
+	var tombstonedVersions, purgeJobs, cancelledJobs, tombstoneEvents, cancellationEvents int
+	for query, destination := range map[string]*int{
+		`SELECT count(*) FROM knowledge_document_versions WHERE document_id=$1 AND status='tombstoned'`:                  &tombstonedVersions,
+		`SELECT count(*) FROM knowledge_processing_jobs WHERE document_id=$1 AND operation='purge' AND status='pending'`: &purgeJobs,
+		`SELECT count(*) FROM knowledge_processing_jobs WHERE document_id=$1 AND status='cancelled'`:                     &cancelledJobs,
+		`SELECT count(*) FROM knowledge_outbox WHERE aggregate_key=$1 AND event_type='knowledge.document.tombstoned'`:    &tombstoneEvents,
+		`SELECT count(*) FROM knowledge_outbox WHERE aggregate_key=$1 AND event_type='knowledge.processing.cancelled'`:   &cancellationEvents,
+	} {
+		if err := db.QueryRowContext(ctx, query, documentID).Scan(destination); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if tombstonedVersions != 3 || purgeJobs != 3 || cancelledJobs != 1 ||
+		tombstoneEvents != 3 || cancellationEvents != 1 {
+		t.Fatalf("delete dependents versions/purge/cancel/events = %d/%d/%d/%d/%d",
+			tombstonedVersions, purgeJobs, cancelledJobs, tombstoneEvents, cancellationEvents)
+	}
+	var inconsistentTombstoneEvents int
+	if err := db.QueryRowContext(ctx, `
+SELECT count(*)
+FROM knowledge_outbox o
+JOIN knowledge_document_versions v
+  ON v.id=(o.payload->>'documentVersionId')::uuid
+JOIN knowledge_documents d ON d.id=v.document_id
+JOIN knowledge_collections c ON c.id=d.collection_id
+JOIN knowledge_processing_jobs j ON j.id=(o.payload->>'purgeJobId')::uuid
+WHERE o.aggregate_type='knowledge_document' AND o.aggregate_key=$1
+  AND o.event_type='knowledge.document.tombstoned'
+  AND (
+    (o.payload->>'schemaVersion')::int IS DISTINCT FROM 1
+    OR o.payload->>'collectionId' IS DISTINCT FROM d.collection_id::text
+    OR o.payload->>'documentId' IS DISTINCT FROM d.id::text
+    OR (o.payload->>'sourceVersion')::bigint IS DISTINCT FROM v.source_version
+    OR o.payload->>'fileId' IS DISTINCT FROM v.file_id::text
+    OR o.payload->>'contentHash' IS DISTINCT FROM v.content_hash
+    OR (o.payload->>'documentVisibilityEpoch')::bigint IS DISTINCT FROM d.visibility_epoch
+    OR (o.payload->>'versionVisibilityEpoch')::bigint IS DISTINCT FROM v.visibility_epoch
+    OR (o.payload->>'collectionAclRevision')::bigint IS DISTINCT FROM c.acl_revision
+    OR (o.payload->>'collectionVisibilityEpoch')::bigint IS DISTINCT FROM c.visibility_epoch
+    OR (o.payload->>'collectionProcessingRevision')::bigint IS DISTINCT FROM c.collection_processing_revision
+    OR j.document_id<>d.id OR j.document_version_id<>v.id
+    OR j.document_visibility_epoch<>d.visibility_epoch
+    OR j.stage<>'purge' OR j.operation<>'purge'
+  )
+`, documentID).Scan(&inconsistentTombstoneEvents); err != nil {
+		t.Fatal(err)
+	}
+	if inconsistentTombstoneEvents != 0 {
+		t.Fatalf("inconsistent document tombstone events = %d", inconsistentTombstoneEvents)
+	}
+
+	_, duplicatePurgeErr := db.ExecContext(ctx, `
+INSERT INTO knowledge_processing_jobs (
+ id,collection_id,document_id,document_version_id,file_id,stage,operation,
+ collection_acl_revision,collection_visibility_epoch,collection_processing_revision,
+ document_visibility_epoch,requested_by_user_id,idempotency_scope,idempotency_key,request_hash
+)
+SELECT '84000000-0000-4000-8000-000000000001',collection_id,document_id,
+ document_version_id,file_id,stage,operation,collection_acl_revision,
+ collection_visibility_epoch,collection_processing_revision,document_visibility_epoch,
+ requested_by_user_id,idempotency_scope||':duplicate','duplicate',request_hash
+FROM knowledge_processing_jobs
+WHERE document_id=$1 AND document_version_id=$2 AND stage='purge' AND operation='purge'
+  AND document_visibility_epoch=2
+`, documentID, versionA)
+	if !isConstraint(duplicatePurgeErr, "idx_knowledge_processing_jobs_purge_fence") {
+		t.Fatalf("duplicate purge fence error = %v", duplicatePurgeErr)
+	}
+	var historicalEpoch int64
+	if err := db.QueryRowContext(ctx, `
+SELECT visibility_epoch FROM knowledge_document_versions WHERE id=$1
+`, versionC).Scan(&historicalEpoch); err != nil {
+		t.Fatal(err)
+	}
+	if historicalEpoch != 5 {
+		t.Fatalf("historical tombstone epoch advanced: %d", historicalEpoch)
+	}
+	var historicalEventEpoch int64
+	if err := db.QueryRowContext(ctx, `
+SELECT (payload->>'versionVisibilityEpoch')::bigint FROM knowledge_outbox
+WHERE aggregate_key=$1 AND event_type='knowledge.document.tombstoned'
+  AND payload->>'documentVersionId'=$2
+`, documentID, versionC).Scan(&historicalEventEpoch); err != nil {
+		t.Fatal(err)
+	}
+	if historicalEventEpoch != historicalEpoch {
+		t.Fatalf("historical tombstone DB/event epoch = %d/%d", historicalEpoch, historicalEventEpoch)
+	}
+	var availableFiles int
+	if err := db.QueryRowContext(ctx, `
+SELECT count(*) FROM files WHERE id IN ($1,$2) AND upload_status='available' AND deleted_at IS NULL
+`, fileA, fileB).Scan(&availableFiles); err != nil {
+		t.Fatal(err)
+	}
+	if availableFiles != 2 {
+		t.Fatalf("source files changed by document deletion: %d", availableFiles)
+	}
+	var liveBindings int
+	if err := db.QueryRowContext(ctx, `
+SELECT count(*) FROM knowledge_document_versions
+WHERE document_id=$1 AND status IN ('uploaded','processing','failed','active','purging')
+`, documentID).Scan(&liveBindings); err != nil {
+		t.Fatal(err)
+	}
+	if liveBindings != 0 {
+		t.Fatalf("document deletion left live file bindings: %d", liveBindings)
+	}
+	var fileDeleteEvents int
+	if err := db.QueryRowContext(ctx, `
+SELECT count(*) FROM knowledge_outbox
+WHERE aggregate_type='file' AND event_type='file.object.delete.requested'
+  AND payload->>'fileId' IN ($1,$2)
+`, fileA, fileB).Scan(&fileDeleteEvents); err != nil {
+		t.Fatal(err)
+	}
+	if fileDeleteEvents != 0 {
+		t.Fatalf("document deletion queued source file cleanup: %d", fileDeleteEvents)
+	}
+	if _, err := repo.GetDocument(ctx, DocumentLookupInput{
+		DocumentID: documentID, ActorUserID: ownerID,
+	}); err != ErrDocumentNotFound {
+		t.Fatalf("deleted document read error = %v", err)
+	}
+	beforeReplayEvents := tombstoneEvents + cancellationEvents
+	if err := repo.DeleteDocument(ctx, DeleteDocumentRepositoryInput{
+		DocumentID: documentID, ActorUserID: ownerID,
+	}); err != nil {
+		t.Fatalf("repeat document delete: %v", err)
+	}
+	var afterReplayEvents int
+	if err := db.QueryRowContext(ctx, `
+SELECT count(*) FROM knowledge_outbox
+WHERE aggregate_key=$1 AND event_type IN ('knowledge.document.tombstoned','knowledge.processing.cancelled')
+`, documentID).Scan(&afterReplayEvents); err != nil {
+		t.Fatal(err)
+	}
+	if afterReplayEvents != beforeReplayEvents {
+		t.Fatalf("repeat deletion emitted events: %d -> %d", beforeReplayEvents, afterReplayEvents)
 	}
 }
 

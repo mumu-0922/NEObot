@@ -155,6 +155,33 @@ func TestHandlerCollectionCRUDAndStrictPayloads(t *testing.T) {
 		t.Fatalf("reprocess method = %d allow=%q", wrongReprocessMethod.Code,
 			wrongReprocessMethod.Header().Get("Allow"))
 	}
+	deletedDocument := perform(http.MethodDelete, documentsPathBase+repo.documentResult.ID, "")
+	if deletedDocument.Code != http.StatusNoContent || repo.deletedDocument.DocumentID != repo.documentResult.ID ||
+		repo.deletedDocument.ActorUserID != testActorID {
+		t.Fatalf("document delete = %d input=%#v", deletedDocument.Code, repo.deletedDocument)
+	}
+	documentDeleteBody := perform(http.MethodDelete, documentsPathBase+repo.documentResult.ID,
+		`{"ownerUserId":"`+testActorID+`"}`)
+	if documentDeleteBody.Code != http.StatusBadRequest ||
+		!strings.Contains(documentDeleteBody.Body.String(), ErrorCodeForbiddenIdentityField) {
+		t.Fatalf("document delete body = %d %s", documentDeleteBody.Code, documentDeleteBody.Body.String())
+	}
+	deleteQuery := perform(http.MethodDelete, documentsPathBase+repo.documentResult.ID+"?cursor=x", "")
+	if deleteQuery.Code != http.StatusBadRequest ||
+		!strings.Contains(deleteQuery.Body.String(), ErrorCodeInvalidDocumentPayload) {
+		t.Fatalf("document delete query = %d %s", deleteQuery.Code, deleteQuery.Body.String())
+	}
+	deleteInvalidBody := perform(http.MethodDelete, documentsPathBase+repo.documentResult.ID, `{}`)
+	if deleteInvalidBody.Code != http.StatusBadRequest ||
+		!strings.Contains(deleteInvalidBody.Body.String(), ErrorCodeInvalidDocumentPayload) {
+		t.Fatalf("document delete invalid body = %d %s", deleteInvalidBody.Code, deleteInvalidBody.Body.String())
+	}
+	wrongDocumentMethod := perform(http.MethodPost, documentsPathBase+repo.documentResult.ID, "")
+	if wrongDocumentMethod.Code != http.StatusMethodNotAllowed ||
+		wrongDocumentMethod.Header().Get("Allow") != http.MethodGet+", "+http.MethodDelete {
+		t.Fatalf("document method = %d allow=%q", wrongDocumentMethod.Code,
+			wrongDocumentMethod.Header().Get("Allow"))
+	}
 }
 
 func TestHandlerMapsDisclosureErrors(t *testing.T) {

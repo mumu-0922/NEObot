@@ -190,6 +190,7 @@ type fakeRepository struct {
 	contentResult    DocumentContentMetadata
 	versionCreated   CreateDocumentVersionRepositoryInput
 	reprocessCreated ReprocessDocumentRepositoryInput
+	deletedDocument  DeleteDocumentRepositoryInput
 	err              error
 }
 
@@ -237,6 +238,10 @@ func (repo *fakeRepository) CreateDocumentVersion(_ context.Context, input Creat
 func (repo *fakeRepository) ReprocessDocument(_ context.Context, input ReprocessDocumentRepositoryInput) (Document, error) {
 	repo.reprocessCreated = input
 	return repo.documentResult, repo.err
+}
+func (repo *fakeRepository) DeleteDocument(_ context.Context, input DeleteDocumentRepositoryInput) error {
+	repo.deletedDocument = input
+	return repo.err
 }
 func (repo *fakeRepository) ListDocuments(context.Context, ListDocumentsRepositoryInput) (DocumentPageResult, error) {
 	return repo.documentPage, repo.err

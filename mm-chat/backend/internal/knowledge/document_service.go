@@ -69,3 +69,20 @@ func (s *Service) ReprocessDocument(ctx context.Context, documentID string, inpu
 		ParseProcessor: "mineru",
 	})
 }
+
+func (s *Service) DeleteDocument(ctx context.Context, documentID string) error {
+	if err := s.requireRepository(); err != nil {
+		return err
+	}
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return err
+	}
+	documentID, err = normalizeUUID(documentID, "document id")
+	if err != nil {
+		return asDocumentValidation(err)
+	}
+	return s.repo.DeleteDocument(ctx, DeleteDocumentRepositoryInput{
+		DocumentID: documentID, ActorUserID: actor.ID,
+	})
+}

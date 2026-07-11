@@ -19,6 +19,7 @@ type Repository interface {
 	CreateDocument(context.Context, CreateDocumentRepositoryInput) (Document, error)
 	CreateDocumentVersion(context.Context, CreateDocumentVersionRepositoryInput) (Document, error)
 	ReprocessDocument(context.Context, ReprocessDocumentRepositoryInput) (Document, error)
+	DeleteDocument(context.Context, DeleteDocumentRepositoryInput) error
 	ListDocuments(context.Context, ListDocumentsRepositoryInput) (DocumentPageResult, error)
 	GetDocument(context.Context, DocumentLookupInput) (Document, error)
 	GetActiveDocumentContentMetadata(context.Context, DocumentLookupInput) (DocumentContentMetadata, error)
@@ -176,6 +177,10 @@ type ReprocessDocumentRepositoryInput struct {
 	JobID, DocumentID, ActorUserID string
 	IdempotencyKey, RequestHash    string
 	ParseProcessor                 string
+}
+
+type DeleteDocumentRepositoryInput struct {
+	DocumentID, ActorUserID string
 }
 
 type ListDocumentsInput struct {

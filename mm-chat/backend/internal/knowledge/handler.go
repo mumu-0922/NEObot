@@ -165,21 +165,44 @@ func (handler *Handler) handleDocument(w http.ResponseWriter, request *http.Requ
 		handler.handleDocumentReprocess(w, request, parts[0])
 		return
 	}
+	if len(parts) == 1 {
+		switch request.Method {
+		case http.MethodGet:
+			if err := requireNoQuery(request.URL.Query()); err != nil {
+				writeServiceError(w, asDocumentValidation(err))
+				return
+			}
+			document, err := handler.service.GetDocument(request.Context(), parts[0])
+			if err != nil {
+				writeServiceError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, newDocumentDTO(document))
+		case http.MethodDelete:
+			if err := requireNoQuery(request.URL.Query()); err != nil {
+				writeServiceError(w, asDocumentValidation(err))
+				return
+			}
+			if err := requireEmptyBody(w, request); err != nil {
+				writeDocumentDecodeError(w, err)
+				return
+			}
+			if err := handler.service.DeleteDocument(request.Context(), parts[0]); err != nil {
+				writeServiceError(w, err)
+				return
+			}
+			writeNoContent(w)
+		default:
+			methodNotAllowed(w, http.MethodGet+", "+http.MethodDelete)
+		}
+		return
+	}
 	if request.Method != http.MethodGet {
 		methodNotAllowed(w, http.MethodGet)
 		return
 	}
 	if err := requireNoQuery(request.URL.Query()); err != nil {
 		writeServiceError(w, asDocumentValidation(err))
-		return
-	}
-	if len(parts) == 1 {
-		document, err := handler.service.GetDocument(request.Context(), parts[0])
-		if err != nil {
-			writeServiceError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, newDocumentDTO(document))
 		return
 	}
 	metadata, reader, err := handler.service.GetDocumentContent(request.Context(), parts[0])

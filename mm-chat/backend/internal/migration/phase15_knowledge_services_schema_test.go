@@ -151,6 +151,13 @@ func TestPhase151DKnowledgeServicesSchemaContract(t *testing.T) {
 			[]string{"lease_expires_at", "id"},
 			[]string{"status = 'processing'"},
 		)
+		assertPhase151CPartialUniqueIndex(t, up,
+			"a document visibility transition may queue only one purge per version",
+			"idx_knowledge_processing_jobs_purge_fence",
+			"knowledge_processing_jobs",
+			[]string{"document_id", "document_version_id", "document_visibility_epoch"},
+			[]string{"stage = 'purge'", "operation = 'purge'"},
+		)
 	})
 
 	t.Run("down removes every phase 15.1d object", func(t *testing.T) {

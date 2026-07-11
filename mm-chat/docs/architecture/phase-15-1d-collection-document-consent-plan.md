@@ -197,6 +197,7 @@ Never edit committed migrations `004` or `005`. Add reversible migration `006`:
 - add a current-Consent lookup index including scope, subject, Processor,
   decision, expiry, and supersession state;
 - add constraints/indexes required for claim/reclaim and Version/Job replay;
+- enforce at most one purge Job per Document/Version/Document-visibility fence;
 - preserve all pre-`006` rows with nullable compatibility columns, then require
   non-null values for new writes in repository logic.
 
@@ -262,6 +263,9 @@ retries therefore produce one state transition and one event.
   current Version, active generation, or artifacts in place.
 - Document deletion increments its visibility epoch, tombstones all live
   Versions, marks pending Jobs cancelled/purge-required, and emits tombstones.
+  Its post-lock mutation timestamp uses PostgreSQL wall-clock time rather than
+  transaction-start `now()`, so waiting behind replace/reprocess cannot regress
+  Job completion or Version update timestamps.
 - Collection metadata-only edits do not change ACL fences. Visibility/delete
   mutations advance `acl_revision` and `visibility_epoch` exactly once.
 - Collection Consent changes advance `collection_processing_revision`; User
@@ -367,7 +371,8 @@ allocation order only; consumers rescan claimable rows, deduplicate by
         Parse authority, idempotency, Job, and Outbox.
   - [x] Implement same-Version reprocess admission with target selection,
         Parse authority, idempotent Job, and fenced Outbox.
-  - [ ] Implement Document delete transaction.
+  - [x] Implement Document tombstone deletion, Job cancellation, per-Version
+        purge admission, visibility fences, and deletion Outbox events.
 - [ ] **15.1D-4 Governance and Consent:** implement operator Profile/Head
       management, Collection/User decisions, purpose/data-type validation,
       expiry handling, revision fences, and Outbox.

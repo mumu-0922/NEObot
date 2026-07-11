@@ -25,8 +25,12 @@ the exact Active current Version serving while it creates one Pending Version,
 Parse Job, and Outbox event atomically. Reprocess admission targets the newest
 failed Version newer than the Active current Version when present; otherwise it
 uses the exact Active current Version. It creates only a new Parse Job and
-fenced Outbox event, never a new Source Version. Document delete, Consent,
-Governance command, and search routes remain unimplemented.
+fenced Outbox event, never a new Source Version. Document delete now
+tombstones the logical Document and all live Versions, cancels unfinished Jobs,
+and queues one fenced purge Job per Version without deleting Source Files. A
+partial database uniqueness constraint permits at most one purge Job for each
+`(documentId, documentVersionId, documentVisibilityEpoch)` fence.
+Consent, Governance command, and search routes remain unimplemented.
 
 The current auth/session baseline is Phase 15.1B in
 [`auth-session-api.md`](./auth-session-api.md), with Phase 13 ownership

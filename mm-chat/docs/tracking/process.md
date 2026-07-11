@@ -6170,3 +6170,42 @@ ACL, strict payload, caused-by, and Outbox assertions    passed
 
 Next: implement logical Document tombstone deletion and cancellation/purge
 Outbox work.
+
+## 2026-07-11 — Phase 15.1D-3G Document tombstone deletion implemented
+
+`DELETE /v1/knowledge/documents/{documentId}` now performs a metadata-only,
+transactional deletion. Go rechecks current Personal-owner or Team-admin
+authority, locks Collection then Document, locks all Version and cancelable Job
+rows in deterministic ID order, and advances the Document visibility epoch
+exactly once. Purge admission is additionally protected by a partial unique
+index on Document, Version, and Document visibility epoch. The post-lock
+mutation timestamp uses `clock_timestamp()` so lock waits behind
+replace/reprocess cannot write a stale transaction-start timestamp.
+
+The transaction cancels pending/processing Jobs, tombstones every non-deleted
+Version while advancing each Version visibility epoch, and tombstones the
+logical Document. It creates one authority-free `stage=purge, operation=purge`
+Job per immutable Version for derived artifact/index cleanup. Source File rows,
+object keys, and object bytes are untouched; after commit no live Version
+binding remains, so the File Owner may separately delete the Source File.
+
+Each cancelled Job emits `knowledge.processing.cancelled`. Each tombstoned
+Version emits `knowledge.document.tombstoned` with content-hash, File,
+visibility, Collection-revision, and purge-Job references, but no object key,
+filename, raw content, or credential. Concurrent/repeated authorized DELETEs
+return `204` while emitting one set of Jobs/events. Any purge-ID or Outbox
+failure rolls the entire tombstone transaction back.
+
+```text
+go test ./internal/knowledge ./internal/httpserver       passed
+PostgreSQL 16 deletion tests under -race                 passed
+concurrent/repeated delete idempotency                    passed
+Version tombstone + Job cancellation + purge admission   passed
+Source Files retained / live bindings removed            passed
+synthetic Outbox failure rollback                        passed
+synthetic purge-ID failure rollback                       passed
+database-enforced per-Version/fence purge uniqueness      passed
+```
+
+Next: reconcile the completed 15.1D Document/File lifecycle, then begin
+Governance and Collection/User Consent service APIs.

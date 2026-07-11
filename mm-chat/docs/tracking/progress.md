@@ -623,7 +623,8 @@ the UI can call in the next wiring slice.
   - [x] Add immutable replacement Version admission with deterministic File
         locks, Parse authority, idempotency, Job, and Outbox.
   - [x] Add same-Version reprocess admission with idempotent Job and Outbox.
-  - [ ] Add Document delete transaction.
+  - [x] Add Document tombstone deletion, Job cancellation, per-Version purge
+        admission, visibility fences, and deletion Outbox events.
 - [ ] Implement operator Governance and Collection/User Consent services with
       purpose/data-type and expiry/revision fences.
 - [ ] Wire protected Knowledge routes and pass unit/race/PostgreSQL 16 ACL,
