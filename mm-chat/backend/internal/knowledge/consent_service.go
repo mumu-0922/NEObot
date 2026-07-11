@@ -11,6 +11,59 @@ import (
 var collectionConsentPurposes = map[string]bool{
 	"parse": true, "passage_embedding": true, "rerank": true, "answer": true,
 }
+var queryConsentPurposes = map[string]bool{
+	"query_embedding": true, "rerank": true, "answer": true,
+}
+
+func (s *Service) ListQueryConsents(ctx context.Context) ([]ProcessingConsent, error) {
+	repo, err := s.queryConsentRepository()
+	if err != nil {
+		return nil, err
+	}
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return repo.ListQueryConsents(ctx, QueryConsentLookupInput{ActorUserID: actor.ID})
+}
+
+func (s *Service) PutQueryConsent(ctx context.Context, processor string, input PutConsentInput) (ProcessingConsent, error) {
+	repo, err := s.queryConsentRepository()
+	if err != nil {
+		return ProcessingConsent{}, err
+	}
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return ProcessingConsent{}, err
+	}
+	processor, err = normalizeGovernanceAlias(processor, "processor")
+	if err != nil {
+		return ProcessingConsent{}, invalidConsentPayload("processor is invalid")
+	}
+	purposes, dataTypes, policyVersion, expiresAt, err := normalizePutConsent(input, queryConsentPurposes)
+	if err != nil {
+		return ProcessingConsent{}, err
+	}
+	return repo.PutQueryConsent(ctx, PutQueryConsentRepositoryInput{ActorUserID: actor.ID,
+		Processor: processor, Purposes: purposes, DataTypes: dataTypes,
+		PolicyVersion: policyVersion, ExpiresAt: expiresAt})
+}
+
+func (s *Service) RevokeQueryConsent(ctx context.Context, processor string) error {
+	repo, err := s.queryConsentRepository()
+	if err != nil {
+		return err
+	}
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return err
+	}
+	processor, err = normalizeGovernanceAlias(processor, "processor")
+	if err != nil {
+		return invalidConsentPayload("processor is invalid")
+	}
+	return repo.RevokeQueryConsent(ctx, QueryConsentLookupInput{ActorUserID: actor.ID, Processor: processor})
+}
 
 func (s *Service) ListCollectionConsents(ctx context.Context, collectionID string) ([]ProcessingConsent, error) {
 	repo, err := s.collectionConsentRepository()
@@ -47,31 +100,50 @@ func (s *Service) PutCollectionConsent(ctx context.Context, collectionID, proces
 	if err != nil {
 		return ProcessingConsent{}, invalidConsentPayload("processor is invalid")
 	}
-	purposes, err := normalizeConsentList(input.Purposes, collectionConsentPurposes, "purposes")
+	purposes, dataTypes, policyVersion, expiresAt, err := normalizePutConsent(input, collectionConsentPurposes)
 	if err != nil {
 		return ProcessingConsent{}, err
-	}
-	dataTypes, err := normalizeConsentDataTypes(input.DataTypes)
-	if err != nil {
-		return ProcessingConsent{}, err
-	}
-	policyVersion := strings.TrimSpace(input.PolicyVersion)
-	if !governanceModelVersionPattern.MatchString(policyVersion) || len(policyVersion) > 128 {
-		return ProcessingConsent{}, invalidConsentPayload("policy version is invalid")
-	}
-	var expiresAt *time.Time
-	if strings.TrimSpace(input.ExpiresAt) != "" {
-		parsed, parseErr := time.Parse(time.RFC3339, input.ExpiresAt)
-		if parseErr != nil {
-			return ProcessingConsent{}, invalidConsentPayload("expiry is invalid")
-		}
-		parsed = parsed.UTC()
-		expiresAt = &parsed
 	}
 	return repo.PutCollectionConsent(ctx, PutCollectionConsentRepositoryInput{
 		CollectionID: collectionID, ActorUserID: actor.ID, Processor: processor,
 		Purposes: purposes, DataTypes: dataTypes, PolicyVersion: policyVersion, ExpiresAt: expiresAt,
 	})
+}
+
+func (s *Service) queryConsentRepository() (QueryConsentRepository, error) {
+	if err := s.requireRepository(); err != nil {
+		return nil, err
+	}
+	repo, ok := s.repo.(QueryConsentRepository)
+	if !ok {
+		return nil, fmt.Errorf("query consent repository is required")
+	}
+	return repo, nil
+}
+
+func normalizePutConsent(input PutConsentInput, allowedPurposes map[string]bool) ([]string, []string, string, *time.Time, error) {
+	purposes, err := normalizeConsentList(input.Purposes, allowedPurposes, "purposes")
+	if err != nil {
+		return nil, nil, "", nil, err
+	}
+	dataTypes, err := normalizeConsentDataTypes(input.DataTypes)
+	if err != nil {
+		return nil, nil, "", nil, err
+	}
+	policyVersion := strings.TrimSpace(input.PolicyVersion)
+	if !governanceModelVersionPattern.MatchString(policyVersion) || len(policyVersion) > 128 {
+		return nil, nil, "", nil, invalidConsentPayload("policy version is invalid")
+	}
+	var expiresAt *time.Time
+	if strings.TrimSpace(input.ExpiresAt) != "" {
+		parsed, parseErr := time.Parse(time.RFC3339, input.ExpiresAt)
+		if parseErr != nil {
+			return nil, nil, "", nil, invalidConsentPayload("expiry is invalid")
+		}
+		parsed = parsed.UTC().Truncate(time.Microsecond)
+		expiresAt = &parsed
+	}
+	return purposes, dataTypes, policyVersion, expiresAt, nil
 }
 
 func (s *Service) RevokeCollectionConsent(ctx context.Context, collectionID, processor string) error {

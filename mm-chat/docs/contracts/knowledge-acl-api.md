@@ -34,8 +34,9 @@ Operator-only Governance apply/disable commands now create immutable approved
 Profiles, advance active/disabled Heads, and emit transactional invalidation
 events. Collection Consent list/grant/revoke now enforces Personal-owner/Team
 ACL, exact active Governance binding, semantic idempotency, expiry checks, and
-processing-revision Outbox fences. User Query Consent and search remain
-unimplemented.
+processing-revision Outbox fences. User Query Consent list/grant/revoke is
+bound exclusively to the authenticated User and advances an independent query
+revision fence. Search remains unimplemented.
 
 The current auth/session baseline is Phase 15.1B in
 [`auth-session-api.md`](./auth-session-api.md), with Phase 13 ownership

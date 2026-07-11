@@ -625,13 +625,14 @@ the UI can call in the next wiring slice.
   - [x] Add same-Version reprocess admission with idempotent Job and Outbox.
   - [x] Add Document tombstone deletion, Job cancellation, per-Version purge
         admission, visibility fences, and deletion Outbox events.
-- [ ] Implement operator Governance and Collection/User Consent services with
+- [x] Implement operator Governance and Collection/User Consent services with
       purpose/data-type and expiry/revision fences.
   - [x] Add strict operator Governance manifest apply/disable commands,
         immutable Profiles, Head revisions, and transactional Outbox events.
   - [x] Add Collection Consent reads/grant/revoke, ACL, expiry validation,
         semantic idempotency, processing revisions, and Outbox.
-  - [ ] Add User Query Consent reads/grant/revoke and query revisions.
+  - [x] Add User Query Consent reads/grant/revoke, expiry validation, semantic
+        idempotency, query revisions, and Outbox.
 - [ ] Wire protected Knowledge routes and pass unit/race/PostgreSQL 16 ACL,
       migration, deletion, idempotency, and Outbox replay gates.
 

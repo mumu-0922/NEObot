@@ -378,14 +378,14 @@ allocation order only; consumers rescan claimable rows, deduplicate by
         Parse authority, idempotent Job, and fenced Outbox.
   - [x] Implement Document tombstone deletion, Job cancellation, per-Version
         purge admission, visibility fences, and deletion Outbox events.
-- [ ] **15.1D-4 Governance and Consent:** implement operator Profile/Head
+- [x] **15.1D-4 Governance and Consent:** implement operator Profile/Head
       management, Collection/User decisions, purpose/data-type validation,
       expiry handling, revision fences, and Outbox.
   - [x] Add operator-only Governance manifest apply/disable commands with
         immutable approved Profiles, atomic Head revisions, and Outbox.
   - [x] Add Collection Consent reads/grant/revoke with Personal-owner and Team
         Admin ACL, expiry, processing revisions, and Outbox.
-  - [ ] Add authenticated User Query Consent reads/grant/revoke with query
+  - [x] Add authenticated User Query Consent reads/grant/revoke with query
         consent revisions, expiry, and Outbox.
 - [ ] **15.1D-5 HTTP and wiring:** register protected routes, safe DTOs/errors,
       bounded metrics/logging, and later-frontend adapter documentation.

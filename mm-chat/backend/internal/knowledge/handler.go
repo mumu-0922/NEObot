@@ -18,6 +18,8 @@ const (
 	collectionsPath       = "/v1/knowledge/collections"
 	collectionsPathBase   = collectionsPath + "/"
 	documentsPathBase     = "/v1/knowledge/documents/"
+	queryConsentsPath     = "/v1/me/knowledge/query-consents"
+	queryConsentsBase     = queryConsentsPath + "/"
 	maxCollectionBodySize = 8 << 10
 )
 
@@ -100,6 +102,15 @@ func (handler *Handler) ServeHTTP(w http.ResponseWriter, request *http.Request) 
 		return
 	}
 	switch {
+	case request.URL.Path == queryConsentsPath:
+		handler.handleQueryConsentList(w, request)
+	case strings.HasPrefix(request.URL.Path, queryConsentsBase):
+		processor := strings.TrimPrefix(request.URL.Path, queryConsentsBase)
+		if processor == "" || strings.Contains(processor, "/") {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
+			return
+		}
+		handler.handleQueryConsent(w, request, processor)
 	case request.URL.Path == collectionsPath:
 		handler.handleCollectionRoot(w, request)
 	case strings.HasPrefix(request.URL.Path, collectionsPathBase):
@@ -128,6 +139,60 @@ func (handler *Handler) ServeHTTP(w http.ResponseWriter, request *http.Request) 
 		handler.handleDocument(w, request)
 	default:
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
+	}
+}
+
+func (handler *Handler) handleQueryConsentList(w http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
+		methodNotAllowed(w, http.MethodGet)
+		return
+	}
+	if err := requireNoQuery(request.URL.Query()); err != nil {
+		writeServiceError(w, asConsentValidation(err))
+		return
+	}
+	values, err := handler.service.ListQueryConsents(request.Context())
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	items := make([]processingConsentDTO, 0, len(values))
+	for _, value := range values {
+		items = append(items, newProcessingConsentDTO(value))
+	}
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (handler *Handler) handleQueryConsent(w http.ResponseWriter, request *http.Request, processor string) {
+	if err := requireNoQuery(request.URL.Query()); err != nil {
+		writeServiceError(w, asConsentValidation(err))
+		return
+	}
+	switch request.Method {
+	case http.MethodPut:
+		var input PutConsentInput
+		if err := decodeStrictJSON(w, request, &input); err != nil {
+			writeConsentDecodeError(w, err)
+			return
+		}
+		value, err := handler.service.PutQueryConsent(request.Context(), processor, input)
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, newProcessingConsentDTO(value))
+	case http.MethodDelete:
+		if err := requireEmptyBody(w, request); err != nil {
+			writeConsentDecodeError(w, err)
+			return
+		}
+		if err := handler.service.RevokeQueryConsent(request.Context(), processor); err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		writeNoContent(w)
+	default:
+		methodNotAllowed(w, http.MethodPut+", "+http.MethodDelete)
 	}
 }
 

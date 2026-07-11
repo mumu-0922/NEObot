@@ -35,3 +35,20 @@ type PutCollectionConsentRepositoryInput struct {
 	PolicyVersion                        string
 	ExpiresAt                            *time.Time
 }
+
+type QueryConsentRepository interface {
+	ListQueryConsents(context.Context, QueryConsentLookupInput) ([]ProcessingConsent, error)
+	PutQueryConsent(context.Context, PutQueryConsentRepositoryInput) (ProcessingConsent, error)
+	RevokeQueryConsent(context.Context, QueryConsentLookupInput) error
+}
+
+type QueryConsentLookupInput struct {
+	ActorUserID, Processor string
+}
+
+type PutQueryConsentRepositoryInput struct {
+	ActorUserID, Processor string
+	Purposes, DataTypes    []string
+	PolicyVersion          string
+	ExpiresAt              *time.Time
+}

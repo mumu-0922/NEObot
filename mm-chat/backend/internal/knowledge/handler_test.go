@@ -182,6 +182,40 @@ func TestHandlerCollectionCRUDAndStrictPayloads(t *testing.T) {
 	if deletedConsent.Code != http.StatusNoContent || repo.revokedConsent.Processor != "mineru" {
 		t.Fatalf("consent delete = %d input=%#v", deletedConsent.Code, repo.revokedConsent)
 	}
+	repo.queryConsents = []ProcessingConsent{{Processor: "jina", Decision: "granted",
+		Purposes: []string{"query_embedding"}, DataTypes: []string{"text/plain"},
+		PolicyVersion: "v1", DecidedAt: repo.createResult.CreatedAt}}
+	queryConsentPath := "/v1/me/knowledge/query-consents"
+	listedQueryConsents := perform(http.MethodGet, queryConsentPath, "")
+	if listedQueryConsents.Code != http.StatusOK || !strings.Contains(listedQueryConsents.Body.String(), `"processor":"jina"`) {
+		t.Fatalf("query consent list = %d %s", listedQueryConsents.Code, listedQueryConsents.Body.String())
+	}
+	if strings.Contains(listedQueryConsents.Body.String(), "governance") || strings.Contains(listedQueryConsents.Body.String(), "profile") {
+		t.Fatalf("query consent leaked authority fields: %s", listedQueryConsents.Body.String())
+	}
+	forbiddenQueryConsent := perform(http.MethodGet, queryConsentPath+"?userId="+testActorID, "")
+	if forbiddenQueryConsent.Code != http.StatusBadRequest || !strings.Contains(forbiddenQueryConsent.Body.String(), ErrorCodeForbiddenIdentityField) {
+		t.Fatalf("forbidden query consent query = %d %s", forbiddenQueryConsent.Code, forbiddenQueryConsent.Body.String())
+	}
+	putQueryConsent := perform(http.MethodPut, queryConsentPath+"/jina",
+		`{"purposes":["query_embedding"],"dataTypes":["text/plain"],"policyVersion":"v1"}`)
+	if putQueryConsent.Code != http.StatusOK || repo.putQueryConsent.ActorUserID != testActorID {
+		t.Fatalf("query consent put = %d %s input=%#v", putQueryConsent.Code, putQueryConsent.Body.String(), repo.putQueryConsent)
+	}
+	invalidQueryConsent := perform(http.MethodPut, queryConsentPath+"/jina",
+		`{"purposes":["query_embedding"],"dataTypes":["text/plain"],"policyVersion":"v1","unknown":true}`)
+	if invalidQueryConsent.Code != http.StatusBadRequest || !strings.Contains(invalidQueryConsent.Body.String(), ErrorCodeInvalidConsentPayload) {
+		t.Fatalf("invalid query consent = %d %s", invalidQueryConsent.Code, invalidQueryConsent.Body.String())
+	}
+	forbiddenQueryBody := perform(http.MethodPut, queryConsentPath+"/jina",
+		`{"purposes":["query_embedding"],"dataTypes":["text/plain"],"policyVersion":"v1","userId":"`+testActorID+`"}`)
+	if forbiddenQueryBody.Code != http.StatusBadRequest || !strings.Contains(forbiddenQueryBody.Body.String(), ErrorCodeForbiddenIdentityField) {
+		t.Fatalf("forbidden query consent body = %d %s", forbiddenQueryBody.Code, forbiddenQueryBody.Body.String())
+	}
+	deletedQueryConsent := perform(http.MethodDelete, queryConsentPath+"/jina", "")
+	if deletedQueryConsent.Code != http.StatusNoContent || repo.revokedQuery.ActorUserID != testActorID {
+		t.Fatalf("query consent delete = %d input=%#v", deletedQueryConsent.Code, repo.revokedQuery)
+	}
 	deletedDocument := perform(http.MethodDelete, documentsPathBase+repo.documentResult.ID, "")
 	if deletedDocument.Code != http.StatusNoContent || repo.deletedDocument.DocumentID != repo.documentResult.ID ||
 		repo.deletedDocument.ActorUserID != testActorID {

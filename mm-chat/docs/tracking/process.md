@@ -6272,3 +6272,36 @@ PostgreSQL 16 integration tests under race                  passed
 
 Next: implement authenticated User Query Consent list/grant/revoke with its
 independent query-consent revision fence and Outbox.
+
+## 2026-07-11 — Phase 15.1D-4C User Query Consent implemented
+
+Added protected `/v1/me/knowledge/query-consents` list, PUT, and DELETE routes.
+The subject is always derived from the authenticated Session; no path or body
+can nominate another User, and Team roles grant no authority to consent for a
+member. Transactions lock the active User before Governance and Consent state,
+serializing account disablement with new egress authorization.
+
+Query Consent accepts only `query_embedding`, `rerank`, and `answer`, exact
+MIME/global-wildcard data types, a bounded policy version, and an optional
+future expiry. PUT pins the unique active Approved Governance binding;
+equivalent PUT and repeated revoke are no-ops. Each real transition inserts an
+immutable history row, advances `user_query_consent_state`, and emits
+`knowledge.user.query-consent.changed` with the exact endpoint/Profile/Head
+tuple in the same transaction.
+
+```text
+Go unit/HTTP auth, strict payload, and redaction tests       passed
+two-user subject isolation                                  passed
+Governance replacement requires a new Consent revision      passed
+first transition query revision baseline 1 -> 2             passed
+concurrent identical PUT: one transition                    passed
+actual Outbox uniqueness failure rollback                   passed
+nanosecond expiry canonicalized to PostgreSQL microseconds   passed
+PUT/DELETE races and concurrent DELETE                      passed
+account-disable versus queued PUT serialization              passed
+DELETE Outbox failure restores Consent and state revision    passed
+PostgreSQL 16 integration tests under race                  passed
+```
+
+Next: reconcile Phase 15.1D Governance/Consent expiry and wiring contracts,
+then run the complete verification and promotion gates.

@@ -60,3 +60,27 @@ func TestConsentDataTypesCannotWidenGovernanceWildcard(t *testing.T) {
 		t.Fatal("global governance wildcard did not allow exact consent data type")
 	}
 }
+
+func TestQueryConsentServiceAllowsOnlyCurrentActorAndQueryPurposes(t *testing.T) {
+	repo := &fakeRepository{queryConsents: []ProcessingConsent{{Processor: "jina", Decision: "granted"}}}
+	service := NewService(repo)
+	ctx := auth.WithUser(context.Background(), auth.User{ID: testActorID})
+	_, err := service.PutQueryConsent(ctx, " jina ", PutConsentInput{
+		Purposes: []string{"rerank", "query_embedding"}, DataTypes: []string{"text/plain"}, PolicyVersion: "v1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repo.putQueryConsent.ActorUserID != testActorID || repo.putQueryConsent.Purposes[0] != "query_embedding" {
+		t.Fatalf("query consent input = %#v", repo.putQueryConsent)
+	}
+	if err := service.RevokeQueryConsent(ctx, "jina"); err != nil {
+		t.Fatal(err)
+	}
+	if repo.revokedQuery.ActorUserID != testActorID {
+		t.Fatalf("query revoke = %#v", repo.revokedQuery)
+	}
+	if _, err := service.PutQueryConsent(ctx, "jina", PutConsentInput{Purposes: []string{"parse"}, DataTypes: []string{"text/plain"}, PolicyVersion: "v1"}); err == nil {
+		t.Fatal("query consent accepted collection-only purpose")
+	}
+}

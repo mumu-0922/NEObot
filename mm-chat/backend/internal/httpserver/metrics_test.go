@@ -174,6 +174,8 @@ func TestNormalizeMetricPathBoundsKnownDynamicRoutes(t *testing.T) {
 		"/v1/knowledge/documents/11111111-1111-4111-8111-111111111111/content":                      "/v1/knowledge/documents/{documentId}/content",
 		"/v1/knowledge/documents/11111111-1111-4111-8111-111111111111/versions":                     "/v1/knowledge/documents/{documentId}/versions",
 		"/v1/knowledge/documents/11111111-1111-4111-8111-111111111111/reprocess":                    "/v1/knowledge/documents/{documentId}/reprocess",
+		"/v1/me/knowledge/query-consents":                                                           "/v1/me/knowledge/query-consents",
+		"/v1/me/knowledge/query-consents/mineru":                                                    "/v1/me/knowledge/query-consents/{processor}",
 		"/v1/chat/conversations/anything/messages":                                                  "/v1/chat/conversations/{id}/messages",
 		"/v1/chat/conversations/anything/stream":                                                    "/v1/chat/conversations/{id}/stream",
 		"/v1/chat/runs/non-uuid-run-id/cancel":                                                      "/v1/chat/runs/{id}/cancel",

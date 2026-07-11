@@ -239,6 +239,8 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/knowledge/collections", knowledgeHandler)
 	mux.Handle("/v1/knowledge/collections/", knowledgeHandler)
 	mux.Handle("/v1/knowledge/documents/", knowledgeHandler)
+	mux.Handle("/v1/me/knowledge/query-consents", knowledgeHandler)
+	mux.Handle("/v1/me/knowledge/query-consents/", knowledgeHandler)
 	mux.HandleFunc("/", notFound)
 
 	middlewares := []Middleware{
@@ -334,7 +336,9 @@ func isIndependentIdentityAPIRequest(r *http.Request) bool {
 	return r.URL.Path == "/v1/teams" || strings.HasPrefix(r.URL.Path, "/v1/teams/") ||
 		r.URL.Path == "/v1/knowledge/collections" ||
 		strings.HasPrefix(r.URL.Path, "/v1/knowledge/collections/") ||
-		strings.HasPrefix(r.URL.Path, "/v1/knowledge/documents/")
+		strings.HasPrefix(r.URL.Path, "/v1/knowledge/documents/") ||
+		r.URL.Path == "/v1/me/knowledge/query-consents" ||
+		strings.HasPrefix(r.URL.Path, "/v1/me/knowledge/query-consents/")
 }
 
 func isPublicWithoutAuthRequest(r *http.Request) bool {

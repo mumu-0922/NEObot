@@ -194,6 +194,9 @@ type fakeRepository struct {
 	consents         []ProcessingConsent
 	putConsent       PutCollectionConsentRepositoryInput
 	revokedConsent   CollectionConsentLookupInput
+	queryConsents    []ProcessingConsent
+	putQueryConsent  PutQueryConsentRepositoryInput
+	revokedQuery     QueryConsentLookupInput
 	err              error
 }
 
@@ -267,6 +270,20 @@ func (repo *fakeRepository) PutCollectionConsent(_ context.Context, input PutCol
 }
 func (repo *fakeRepository) RevokeCollectionConsent(_ context.Context, input CollectionConsentLookupInput) error {
 	repo.revokedConsent = input
+	return repo.err
+}
+func (repo *fakeRepository) ListQueryConsents(context.Context, QueryConsentLookupInput) ([]ProcessingConsent, error) {
+	return repo.queryConsents, repo.err
+}
+func (repo *fakeRepository) PutQueryConsent(_ context.Context, input PutQueryConsentRepositoryInput) (ProcessingConsent, error) {
+	repo.putQueryConsent = input
+	if len(repo.queryConsents) == 0 {
+		return ProcessingConsent{}, repo.err
+	}
+	return repo.queryConsents[0], repo.err
+}
+func (repo *fakeRepository) RevokeQueryConsent(_ context.Context, input QueryConsentLookupInput) error {
+	repo.revokedQuery = input
 	return repo.err
 }
 

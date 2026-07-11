@@ -392,14 +392,16 @@ func normalizeMetricMethod(method string) string {
 func knownMetricPath(path string) (string, bool) {
 	switch path {
 	case "/", "/health", "/ready", "/metrics", "/v1/version", "/v1/me",
-		"/v1/me/sessions":
+		"/v1/me/sessions", "/v1/me/knowledge/query-consents":
 		return path, true
 	case "/v1/auth/login", "/v1/auth/logout", "/v1/auth/invites/accept",
 		"/v1/auth/recovery/request", "/v1/auth/recovery/complete":
 		return path, true
 	}
-
 	parts := strings.Split(path, "/")
+	if len(parts) == 6 && parts[1] == "v1" && parts[2] == "me" && parts[3] == "knowledge" && parts[4] == "query-consents" {
+		return "/v1/me/knowledge/query-consents/{processor}", true
+	}
 	if len(parts) >= 4 && parts[1] == "v1" && parts[2] == "knowledge" && parts[3] == "collections" {
 		switch len(parts) {
 		case 4:
