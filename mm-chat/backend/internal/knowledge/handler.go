@@ -77,6 +77,16 @@ type documentPageDTO struct {
 	NextCursor string        `json:"nextCursor,omitempty"`
 }
 
+type processingConsentDTO struct {
+	Processor     string   `json:"processor"`
+	Purposes      []string `json:"purposes"`
+	DataTypes     []string `json:"dataTypes"`
+	PolicyVersion string   `json:"policyVersion"`
+	Decision      string   `json:"decision"`
+	ExpiresAt     string   `json:"expiresAt,omitempty"`
+	DecidedAt     string   `json:"decidedAt"`
+}
+
 func NewHandler(service *Service) *Handler {
 	if service == nil {
 		service = NewService(nil)
@@ -94,6 +104,17 @@ func (handler *Handler) ServeHTTP(w http.ResponseWriter, request *http.Request) 
 		handler.handleCollectionRoot(w, request)
 	case strings.HasPrefix(request.URL.Path, collectionsPathBase):
 		id := strings.TrimPrefix(request.URL.Path, collectionsPathBase)
+		if collectionID, suffix, ok := strings.Cut(id, "/processing-consents"); ok && collectionID != "" {
+			if suffix == "" {
+				handler.handleCollectionConsentList(w, request, collectionID)
+				return
+			}
+			processor := strings.TrimPrefix(suffix, "/")
+			if strings.HasPrefix(suffix, "/") && processor != "" && !strings.Contains(processor, "/") {
+				handler.handleCollectionConsent(w, request, collectionID, processor)
+				return
+			}
+		}
 		if collectionID, ok := strings.CutSuffix(id, "/documents"); ok && collectionID != "" && !strings.Contains(collectionID, "/") {
 			handler.handleCollectionDocuments(w, request, collectionID)
 			return
@@ -107,6 +128,60 @@ func (handler *Handler) ServeHTTP(w http.ResponseWriter, request *http.Request) 
 		handler.handleDocument(w, request)
 	default:
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
+	}
+}
+
+func (handler *Handler) handleCollectionConsentList(w http.ResponseWriter, request *http.Request, collectionID string) {
+	if request.Method != http.MethodGet {
+		methodNotAllowed(w, http.MethodGet)
+		return
+	}
+	if err := requireNoQuery(request.URL.Query()); err != nil {
+		writeServiceError(w, asConsentValidation(err))
+		return
+	}
+	values, err := handler.service.ListCollectionConsents(request.Context(), collectionID)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	items := make([]processingConsentDTO, 0, len(values))
+	for _, value := range values {
+		items = append(items, newProcessingConsentDTO(value))
+	}
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (handler *Handler) handleCollectionConsent(w http.ResponseWriter, request *http.Request, collectionID, processor string) {
+	if err := requireNoQuery(request.URL.Query()); err != nil {
+		writeServiceError(w, asConsentValidation(err))
+		return
+	}
+	switch request.Method {
+	case http.MethodPut:
+		var input PutConsentInput
+		if err := decodeStrictJSON(w, request, &input); err != nil {
+			writeConsentDecodeError(w, err)
+			return
+		}
+		value, err := handler.service.PutCollectionConsent(request.Context(), collectionID, processor, input)
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, newProcessingConsentDTO(value))
+	case http.MethodDelete:
+		if err := requireEmptyBody(w, request); err != nil {
+			writeConsentDecodeError(w, err)
+			return
+		}
+		if err := handler.service.RevokeCollectionConsent(request.Context(), collectionID, processor); err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		writeNoContent(w)
+	default:
+		methodNotAllowed(w, http.MethodPut+", "+http.MethodDelete)
 	}
 }
 
@@ -455,6 +530,16 @@ func newDocumentVersionDTO(value *DocumentVersion) *documentVersionDTO {
 		UpdatedAt: value.UpdatedAt.UTC().Format(time.RFC3339Nano), ErrorCode: value.ErrorCode}
 }
 
+func newProcessingConsentDTO(value ProcessingConsent) processingConsentDTO {
+	dto := processingConsentDTO{Processor: value.Processor, Purposes: value.Purposes,
+		DataTypes: value.DataTypes, PolicyVersion: value.PolicyVersion, Decision: value.Decision,
+		DecidedAt: value.DecidedAt.UTC().Format(time.RFC3339Nano)}
+	if value.ExpiresAt != nil {
+		dto.ExpiresAt = value.ExpiresAt.UTC().Format(time.RFC3339Nano)
+	}
+	return dto
+}
+
 func writeDecodeError(w http.ResponseWriter, err error) {
 	var maxErr *http.MaxBytesError
 	var forbidden forbiddenFieldError
@@ -478,6 +563,19 @@ func writeDocumentDecodeError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, ErrorCodeForbiddenIdentityField, "caller identity and authorization fields are not accepted")
 	default:
 		writeError(w, http.StatusBadRequest, ErrorCodeInvalidDocumentPayload, "document request body is invalid")
+	}
+}
+
+func writeConsentDecodeError(w http.ResponseWriter, err error) {
+	var maxErr *http.MaxBytesError
+	var forbidden forbiddenFieldError
+	switch {
+	case errors.As(err, &maxErr):
+		writeError(w, http.StatusRequestEntityTooLarge, "PAYLOAD_TOO_LARGE", "request body is too large")
+	case errors.As(err, &forbidden):
+		writeError(w, http.StatusBadRequest, ErrorCodeForbiddenIdentityField, "caller identity and authorization fields are not accepted")
+	default:
+		writeError(w, http.StatusBadRequest, ErrorCodeInvalidConsentPayload, "consent request body is invalid")
 	}
 }
 

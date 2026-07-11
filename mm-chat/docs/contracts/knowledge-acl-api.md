@@ -32,7 +32,10 @@ partial database uniqueness constraint permits at most one purge Job for each
 `(documentId, documentVersionId, documentVisibilityEpoch)` fence.
 Operator-only Governance apply/disable commands now create immutable approved
 Profiles, advance active/disabled Heads, and emit transactional invalidation
-events. Consent and search routes remain unimplemented.
+events. Collection Consent list/grant/revoke now enforces Personal-owner/Team
+ACL, exact active Governance binding, semantic idempotency, expiry checks, and
+processing-revision Outbox fences. User Query Consent and search remain
+unimplemented.
 
 The current auth/session baseline is Phase 15.1B in
 [`auth-session-api.md`](./auth-session-api.md), with Phase 13 ownership

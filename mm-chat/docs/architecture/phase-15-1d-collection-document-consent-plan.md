@@ -383,7 +383,7 @@ allocation order only; consumers rescan claimable rows, deduplicate by
       expiry handling, revision fences, and Outbox.
   - [x] Add operator-only Governance manifest apply/disable commands with
         immutable approved Profiles, atomic Head revisions, and Outbox.
-  - [ ] Add Collection Consent reads/grant/revoke with Personal-owner and Team
+  - [x] Add Collection Consent reads/grant/revoke with Personal-owner and Team
         Admin ACL, expiry, processing revisions, and Outbox.
   - [ ] Add authenticated User Query Consent reads/grant/revoke with query
         consent revisions, expiry, and Outbox.

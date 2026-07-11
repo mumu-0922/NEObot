@@ -155,6 +155,33 @@ func TestHandlerCollectionCRUDAndStrictPayloads(t *testing.T) {
 		t.Fatalf("reprocess method = %d allow=%q", wrongReprocessMethod.Code,
 			wrongReprocessMethod.Header().Get("Allow"))
 	}
+	repo.consents = []ProcessingConsent{{Processor: "mineru", Decision: "granted", Purposes: []string{"parse"},
+		DataTypes: []string{"application/pdf"}, PolicyVersion: "v1", DecidedAt: repo.createResult.CreatedAt}}
+	consentPath := collectionsPath + "/" + repo.createResult.ID + "/processing-consents"
+	listedConsents := perform(http.MethodGet, consentPath, "")
+	if listedConsents.Code != http.StatusOK || !strings.Contains(listedConsents.Body.String(), `"processor":"mineru"`) ||
+		strings.Contains(listedConsents.Body.String(), "governance") {
+		t.Fatalf("consent list = %d %s", listedConsents.Code, listedConsents.Body.String())
+	}
+	putConsent := perform(http.MethodPut, consentPath+"/mineru",
+		`{"purposes":["parse"],"dataTypes":["application/pdf"],"policyVersion":"v1"}`)
+	if putConsent.Code != http.StatusOK || repo.putConsent.ActorUserID != testActorID {
+		t.Fatalf("consent put = %d %s input=%#v", putConsent.Code, putConsent.Body.String(), repo.putConsent)
+	}
+	forbiddenConsent := perform(http.MethodPut, consentPath+"/mineru",
+		`{"purposes":["parse"],"dataTypes":["application/pdf"],"policyVersion":"v1","governanceRevision":1}`)
+	if forbiddenConsent.Code != http.StatusBadRequest || !strings.Contains(forbiddenConsent.Body.String(), ErrorCodeForbiddenIdentityField) {
+		t.Fatalf("forbidden consent = %d %s", forbiddenConsent.Code, forbiddenConsent.Body.String())
+	}
+	forbiddenConsentQuery := perform(http.MethodGet, consentPath+"?governanceRevision=1", "")
+	if forbiddenConsentQuery.Code != http.StatusBadRequest ||
+		!strings.Contains(forbiddenConsentQuery.Body.String(), ErrorCodeForbiddenIdentityField) {
+		t.Fatalf("forbidden consent query = %d %s", forbiddenConsentQuery.Code, forbiddenConsentQuery.Body.String())
+	}
+	deletedConsent := perform(http.MethodDelete, consentPath+"/mineru", "")
+	if deletedConsent.Code != http.StatusNoContent || repo.revokedConsent.Processor != "mineru" {
+		t.Fatalf("consent delete = %d input=%#v", deletedConsent.Code, repo.revokedConsent)
+	}
 	deletedDocument := perform(http.MethodDelete, documentsPathBase+repo.documentResult.ID, "")
 	if deletedDocument.Code != http.StatusNoContent || repo.deletedDocument.DocumentID != repo.documentResult.ID ||
 		repo.deletedDocument.ActorUserID != testActorID {

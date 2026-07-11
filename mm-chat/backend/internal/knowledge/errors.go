@@ -5,6 +5,7 @@ import "errors"
 const (
 	ErrorCodeInvalidCollectionPayload = "INVALID_COLLECTION_PAYLOAD"
 	ErrorCodeInvalidDocumentPayload   = "INVALID_DOCUMENT_PAYLOAD"
+	ErrorCodeInvalidConsentPayload    = "INVALID_CONSENT_PAYLOAD"
 	ErrorCodeForbiddenIdentityField   = "FORBIDDEN_IDENTITY_FIELD"
 )
 
@@ -43,10 +44,22 @@ func invalidDocumentPayload(message string) error {
 	return ValidationError{Code: ErrorCodeInvalidDocumentPayload, Message: message}
 }
 
+func invalidConsentPayload(message string) error {
+	return ValidationError{Code: ErrorCodeInvalidConsentPayload, Message: message}
+}
+
 func asDocumentValidation(err error) error {
 	var validation ValidationError
 	if errors.As(err, &validation) && validation.Code == ErrorCodeInvalidCollectionPayload {
 		return invalidDocumentPayload(validation.Message)
+	}
+	return err
+}
+
+func asConsentValidation(err error) error {
+	var validation ValidationError
+	if errors.As(err, &validation) && validation.Code == ErrorCodeInvalidCollectionPayload {
+		return invalidConsentPayload(validation.Message)
 	}
 	return err
 }

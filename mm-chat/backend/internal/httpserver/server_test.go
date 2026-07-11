@@ -422,6 +422,8 @@ func TestAuthRequiredModeRejectsMissingCredentialsAndKeepsPublicRoutes(t *testin
 		{method: http.MethodGet, path: "/v1/teams/33333333-3333-4333-8333-333333333333/members"},
 		{method: http.MethodGet, path: "/v1/knowledge/collections"},
 		{method: http.MethodGet, path: "/v1/knowledge/collections/33333333-3333-4333-8333-333333333333"},
+		{method: http.MethodGet, path: "/v1/knowledge/collections/33333333-3333-4333-8333-333333333333/processing-consents"},
+		{method: http.MethodPut, path: "/v1/knowledge/collections/33333333-3333-4333-8333-333333333333/processing-consents/mineru"},
 		{method: http.MethodGet, path: "/v1/knowledge/documents/33333333-3333-4333-8333-333333333333"},
 		{method: http.MethodDelete, path: "/v1/knowledge/documents/33333333-3333-4333-8333-333333333333"},
 		{method: http.MethodGet, path: "/v1/knowledge/documents/33333333-3333-4333-8333-333333333333/content"},

@@ -6244,3 +6244,31 @@ database-enforced Profile UPDATE/DELETE rejection           passed
 
 Next: implement Collection Consent reads, grant/revoke, ACL, expiry validation,
 processing revision fences, and transactional Outbox.
+
+## 2026-07-11 — Phase 15.1D-4B Collection Consent implemented
+
+Added strict authenticated Collection Consent routes for list, PUT grant, and
+DELETE revoke. Personal owners and Team Admins may mutate; active Team Members
+may read redacted current decisions. Outsiders and inactive memberships follow
+the disclosure-safe Collection `404` path. Public DTOs expose only Processor
+alias, terms, decision, expiry, and decision time.
+
+PUT resolves exactly one active Approved Governance Head/Profile, validates
+purposes and exact MIME/global-wildcard data types, and pins the resulting
+Profile and revisions. Canonically equivalent PUTs are no-ops. DELETE inserts
+an immutable revoked decision; repeated revoke is a no-op. Each real transition
+supersedes the old current row, advances `collection_processing_revision`, and
+writes `knowledge.collection.consent.changed` atomically.
+
+```text
+Go unit/HTTP strict payload and redaction tests             passed
+Personal owner / Team Admin / Team Member / outsider ACL    passed
+future-expiry validation and expired grant rejection        passed
+concurrent identical PUT: one revision and one event        passed
+second-endpoint apply versus PUT phantom serialization      passed
+actual Outbox uniqueness failure rollback                   passed
+PostgreSQL 16 integration tests under race                  passed
+```
+
+Next: implement authenticated User Query Consent list/grant/revoke with its
+independent query-consent revision fence and Outbox.

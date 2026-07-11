@@ -410,6 +410,13 @@ func knownMetricPath(path string) (string, bool) {
 			if parts[5] == "documents" {
 				return "/v1/knowledge/collections/{collectionId}/documents", true
 			}
+			if parts[5] == "processing-consents" {
+				return "/v1/knowledge/collections/{collectionId}/processing-consents", true
+			}
+		case 7:
+			if parts[5] == "processing-consents" {
+				return "/v1/knowledge/collections/{collectionId}/processing-consents/{processor}", true
+			}
 		}
 	}
 	if len(parts) >= 5 && parts[1] == "v1" && parts[2] == "knowledge" && parts[3] == "documents" {

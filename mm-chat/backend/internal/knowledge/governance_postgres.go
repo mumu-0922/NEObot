@@ -17,6 +17,9 @@ func (r *PostgresRepository) ApplyGovernance(ctx context.Context, manifest Gover
 		return ProcessorGovernanceHead{}, fmt.Errorf("begin governance apply: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := lockGovernanceProcessor(ctx, tx, manifest.Processor); err != nil {
+		return ProcessorGovernanceHead{}, err
+	}
 	if err := lockGovernanceBinding(ctx, tx, manifest.Processor, manifest.EndpointID); err != nil {
 		return ProcessorGovernanceHead{}, err
 	}
@@ -79,6 +82,9 @@ func (r *PostgresRepository) DisableGovernance(ctx context.Context, processor, e
 		return ProcessorGovernanceHead{}, fmt.Errorf("begin governance disable: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := lockGovernanceProcessor(ctx, tx, processor); err != nil {
+		return ProcessorGovernanceHead{}, err
+	}
 	if err := lockGovernanceBinding(ctx, tx, processor, endpointID); err != nil {
 		return ProcessorGovernanceHead{}, err
 	}
@@ -107,6 +113,14 @@ RETURNING updated_at`, processor, endpointID, head.HeadRevision).Scan(&head.Upda
 		return ProcessorGovernanceHead{}, fmt.Errorf("commit governance disable: %w", err)
 	}
 	return head, nil
+}
+
+func lockGovernanceProcessor(ctx context.Context, tx *sql.Tx, processor string) error {
+	if _, err := tx.ExecContext(ctx,
+		`SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, "processor\n"+processor); err != nil {
+		return fmt.Errorf("lock governance processor: %w", err)
+	}
+	return nil
 }
 
 func lockGovernanceBinding(ctx context.Context, tx *sql.Tx, processor, endpointID string) error {

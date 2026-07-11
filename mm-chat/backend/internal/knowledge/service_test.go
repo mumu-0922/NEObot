@@ -191,6 +191,9 @@ type fakeRepository struct {
 	versionCreated   CreateDocumentVersionRepositoryInput
 	reprocessCreated ReprocessDocumentRepositoryInput
 	deletedDocument  DeleteDocumentRepositoryInput
+	consents         []ProcessingConsent
+	putConsent       PutCollectionConsentRepositoryInput
+	revokedConsent   CollectionConsentLookupInput
 	err              error
 }
 
@@ -251,6 +254,20 @@ func (repo *fakeRepository) GetDocument(context.Context, DocumentLookupInput) (D
 }
 func (repo *fakeRepository) GetActiveDocumentContentMetadata(context.Context, DocumentLookupInput) (DocumentContentMetadata, error) {
 	return repo.contentResult, repo.err
+}
+func (repo *fakeRepository) ListCollectionConsents(context.Context, CollectionConsentLookupInput) ([]ProcessingConsent, error) {
+	return repo.consents, repo.err
+}
+func (repo *fakeRepository) PutCollectionConsent(_ context.Context, input PutCollectionConsentRepositoryInput) (ProcessingConsent, error) {
+	repo.putConsent = input
+	if len(repo.consents) == 0 {
+		return ProcessingConsent{}, repo.err
+	}
+	return repo.consents[0], repo.err
+}
+func (repo *fakeRepository) RevokeCollectionConsent(_ context.Context, input CollectionConsentLookupInput) error {
+	repo.revokedConsent = input
+	return repo.err
 }
 
 func testCollection(id string) Collection {
