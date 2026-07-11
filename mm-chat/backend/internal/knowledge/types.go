@@ -16,6 +16,7 @@ type Repository interface {
 	GetCollection(context.Context, CollectionLookupInput) (Collection, error)
 	UpdateCollection(context.Context, UpdateCollectionRepositoryInput) (Collection, error)
 	DeleteCollection(context.Context, DeleteCollectionRepositoryInput) error
+	CreateDocument(context.Context, CreateDocumentRepositoryInput) (Document, error)
 }
 
 type Permissions struct {
@@ -117,4 +118,35 @@ type UpdateCollectionRepositoryInput struct {
 type DeleteCollectionRepositoryInput struct {
 	CollectionID string
 	ActorUserID  string
+}
+
+type BindDocumentInput struct {
+	FileID         string `json:"fileId"`
+	IdempotencyKey string `json:"idempotencyKey"`
+}
+
+type DocumentFile struct {
+	ID, Name, MIMEType string
+	ByteSize           int64
+}
+
+type DocumentVersion struct {
+	ID, Status, ErrorCode string
+	SourceVersion         int64
+	File                  DocumentFile
+	CreatedAt, UpdatedAt  time.Time
+}
+
+type Document struct {
+	ID, CollectionID, Status string
+	CurrentVersion           *DocumentVersion
+	PendingVersion           *DocumentVersion
+	CreatedAt, UpdatedAt     time.Time
+}
+
+type CreateDocumentRepositoryInput struct {
+	DocumentID, VersionID, JobID string
+	CollectionID, ActorUserID    string
+	FileID, IdempotencyKey       string
+	RequestHash, ParseProcessor  string
 }

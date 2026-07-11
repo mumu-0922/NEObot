@@ -14,6 +14,8 @@ var (
 	ErrCollectionNotFound  = errors.New("collection not found")
 	ErrTeamAdminRequired   = errors.New("team admin required")
 	ErrIdempotencyConflict = errors.New("idempotency key conflict")
+	ErrFileNotFound        = errors.New("file not found")
+	ErrProcessingConsent   = errors.New("processing consent required")
 )
 
 type ValidationError struct {

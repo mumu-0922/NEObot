@@ -104,6 +104,9 @@ func (repo *fakeRepository) UpdateCollection(context.Context, UpdateCollectionRe
 func (repo *fakeRepository) DeleteCollection(context.Context, DeleteCollectionRepositoryInput) error {
 	return repo.err
 }
+func (repo *fakeRepository) CreateDocument(context.Context, CreateDocumentRepositoryInput) (Document, error) {
+	return Document{}, repo.err
+}
 
 func testCollection(id string) Collection {
 	return Collection{ID: id, Name: "Research", Description: "", Icon: "Folder", Color: "blue",

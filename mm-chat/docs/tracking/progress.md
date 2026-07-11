@@ -616,7 +616,10 @@ the UI can call in the next wiring slice.
       authorized content reads, reprocess, and tombstones.
   - [x] Lock direct File deletion against live Knowledge Version bindings and
         write durable `file.object.delete.requested` Outbox work.
-  - [ ] Add Document/Version routes and bind/reprocess/delete transactions.
+  - [x] Add first Document/Version bind, Parse admission, Job, and Outbox
+        transaction.
+  - [ ] Add Document metadata/content routes and replace/reprocess/delete
+        transactions.
 - [ ] Implement operator Governance and Collection/User Consent services with
       purpose/data-type and expiry/revision fences.
 - [ ] Wire protected Knowledge routes and pass unit/race/PostgreSQL 16 ACL,

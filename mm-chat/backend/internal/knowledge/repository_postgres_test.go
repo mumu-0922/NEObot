@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -84,6 +85,67 @@ INSERT INTO team_memberships (team_id, user_id, role) VALUES
 		Name: "Different", Scope: ScopePersonal, IdempotencyKey: "personal-1",
 	}); err != ErrIdempotencyConflict {
 		t.Fatalf("changed idempotency error = %v", err)
+	}
+
+	const (
+		documentID = "50000000-0000-4000-8000-000000000001"
+		versionID  = "50000000-0000-4000-8000-000000000002"
+		jobID      = "50000000-0000-4000-8000-000000000003"
+		fileID     = "50000000-0000-4000-8000-000000000004"
+		profileID  = "50000000-0000-4000-8000-000000000005"
+		consentID  = "50000000-0000-4000-8000-000000000006"
+	)
+	mustKnowledgeExec(t, ctx, db, `
+INSERT INTO files (
+  id,user_id,original_filename,mime_type,byte_size,sha256,storage_backend,object_key,metadata
+) VALUES ($1,$2,'source.pdf','application/pdf',10,$3,'local',$4,'{"purpose":"knowledge"}')
+`, fileID, adminID, strings.Repeat("a", 64), "users/"+adminID+"/files/"+fileID)
+	mustKnowledgeExec(t, ctx, db, `
+INSERT INTO processor_governance_profiles (
+ id,processor,endpoint_id,model_api_version,allowed_purposes,allowed_data_types,
+ region,retention_policy,deletion_contract,training_use,status,governance_revision,manifest_hash
+) VALUES ($1,'mineru','default','v1',ARRAY['parse'],ARRAY['application/pdf'],
+ 'global','none','delete','disabled','approved',1,$2);
+INSERT INTO processor_governance_heads (
+ processor,endpoint_id,status,active_profile_id,active_governance_revision,head_revision
+) VALUES ('mineru','default','active',$1,1,1);
+INSERT INTO processing_consents (
+ id,scope,collection_id,processor,endpoint_id,governance_profile_id,
+ governance_revision,governance_head_revision,purposes,data_types,policy_version,
+ decision,consent_revision,granted_by_user_id
+) VALUES ($3,'collection',$4,'mineru','default',$1,1,1,ARRAY['parse'],
+ ARRAY['application/pdf'],'v1','granted',1,$5)
+`, profileID, strings.Repeat("b", 64), consentID, personalID, adminID)
+	documentIDs := []string{documentID, versionID, jobID,
+		"50000000-0000-4000-8000-000000000007",
+		"50000000-0000-4000-8000-000000000008",
+		"50000000-0000-4000-8000-000000000009"}
+	documentService := NewService(NewPostgresRepository(db), WithIDGenerator(func() (string, error) {
+		id := documentIDs[0]
+		documentIDs = documentIDs[1:]
+		return id, nil
+	}))
+	document, err := documentService.CreateDocument(adminCtx, personalID, BindDocumentInput{
+		FileID: fileID, IdempotencyKey: "document-1",
+	})
+	if err != nil || document.ID != documentID || document.PendingVersion == nil || document.PendingVersion.ID != versionID {
+		t.Fatalf("create document = %#v, err=%v", document, err)
+	}
+	replayedDocument, err := documentService.CreateDocument(adminCtx, personalID, BindDocumentInput{
+		FileID: fileID, IdempotencyKey: "document-1",
+	})
+	if err != nil || replayedDocument.ID != documentID {
+		t.Fatalf("replay document = %#v, err=%v", replayedDocument, err)
+	}
+	var jobs, events int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM knowledge_processing_jobs WHERE document_id=$1`, documentID).Scan(&jobs); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM knowledge_outbox WHERE aggregate_key=$1 AND event_type='knowledge.document.version.requested'`, documentID).Scan(&events); err != nil {
+		t.Fatal(err)
+	}
+	if jobs != 1 || events != 1 {
+		t.Fatalf("document jobs/events = %d/%d", jobs, events)
 	}
 
 	teamCollection, err := service.CreateCollection(adminCtx, CreateCollectionInput{

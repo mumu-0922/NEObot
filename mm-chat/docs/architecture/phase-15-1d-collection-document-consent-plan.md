@@ -359,7 +359,9 @@ allocation order only; consumers rescan claimable rows, deduplicate by
       reprocess, tombstones, and idempotency.
   - [x] Make direct File deletion lock the owned File row, reject live
         Knowledge bindings, and persist object-cleanup Outbox work atomically.
-  - [ ] Implement Document/Version bind, read, replace, reprocess, and delete.
+  - [x] Implement first Document/Version bind with Parse Consent/Governance
+        admission and atomic Job/Outbox creation.
+  - [ ] Implement Document metadata/content routes, replace, reprocess, and delete.
 - [ ] **15.1D-4 Governance and Consent:** implement operator Profile/Head
       management, Collection/User decisions, purpose/data-type validation,
       expiry handling, revision fences, and Outbox.

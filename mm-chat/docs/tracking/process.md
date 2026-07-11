@@ -6020,3 +6020,33 @@ FILE_IN_USE HTTP mapping                                 passed
 
 Next: complete 15.1D-3B Document/Version routes, Parse Job admission,
 authorized content reads, reprocess, and tombstone transactions.
+
+## 2026-07-11 — Phase 15.1D-3B first Document binding implemented
+
+The internal Knowledge Service/Repository now accepts a caller-owned
+`purpose=knowledge` File and creates the first logical Document, immutable
+Source Version, Parse Processing Job, and
+`knowledge.document.version.requested` Outbox event in one transaction.
+
+The transaction first authorizes Personal owner or active Team Admin, locks the
+Collection, then locks the same File row used by direct deletion. Admission
+requires a current granted, unexpired Collection Consent whose purpose and MIME
+data type include Parse, plus an Active Governance Head pinned to the exact
+Approved Profile/Revision. Public callers cannot provide Processor, Endpoint,
+Profile, Governance revision, or Job stage; the server selects the `mineru`
+Processor alias.
+
+Actor/Collection-scoped idempotency returns the original Document for a
+same-key/same-File replay and creates only one Version, Job, and Outbox event.
+The real PostgreSQL 16 test proves the complete authority and persistence chain.
+HTTP routes and content streaming remain deliberately unregistered until D3C.
+
+```text
+go test ./internal/knowledge                             passed
+PostgreSQL 16 File lock + Consent/Governance admission   passed
+Document + Version + Parse Job + Outbox atomic insert    passed
+same-key replay produces one Job and one Outbox event    passed
+```
+
+Next: expose strict Document list/get/create routes, then add authorized source
+content, replacement, reprocess, and tombstone deletion.
