@@ -365,7 +365,9 @@ allocation order only; consumers rescan claimable rows, deduplicate by
   - [x] Implement ACL-checked Document list/get and Active-only content routes.
   - [x] Implement immutable replacement Version admission with locked Files,
         Parse authority, idempotency, Job, and Outbox.
-  - [ ] Implement Document reprocess and delete transactions.
+  - [x] Implement same-Version reprocess admission with target selection,
+        Parse authority, idempotent Job, and fenced Outbox.
+  - [ ] Implement Document delete transaction.
 - [ ] **15.1D-4 Governance and Consent:** implement operator Profile/Head
       management, Collection/User decisions, purpose/data-type validation,
       expiry handling, revision fences, and Outbox.

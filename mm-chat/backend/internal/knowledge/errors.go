@@ -39,6 +39,18 @@ func invalidCollectionPayload(message string) error {
 	return ValidationError{Code: ErrorCodeInvalidCollectionPayload, Message: message}
 }
 
+func invalidDocumentPayload(message string) error {
+	return ValidationError{Code: ErrorCodeInvalidDocumentPayload, Message: message}
+}
+
+func asDocumentValidation(err error) error {
+	var validation ValidationError
+	if errors.As(err, &validation) && validation.Code == ErrorCodeInvalidCollectionPayload {
+		return invalidDocumentPayload(validation.Message)
+	}
+	return err
+}
+
 func forbiddenIdentityPayload() error {
 	return ValidationError{
 		Code:    ErrorCodeForbiddenIdentityField,

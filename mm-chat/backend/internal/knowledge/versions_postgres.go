@@ -13,6 +13,10 @@ type parseAuthority struct {
 	GovernanceRevision, HeadRevision, ConsentRevision int64
 }
 
+func documentOperationIdempotencyScope(documentID, operation, actorUserID string) string {
+	return "document:" + documentID + ":" + operation + ":actor:" + actorUserID
+}
+
 func (r *PostgresRepository) CreateDocumentVersion(ctx context.Context, input CreateDocumentVersionRepositoryInput) (Document, error) {
 	if err := r.requireDB(); err != nil {
 		return Document{}, err
@@ -65,16 +69,9 @@ FOR UPDATE
 		return replay, nil
 	}
 
-	var nonterminal bool
-	if err := tx.QueryRowContext(ctx, `
-SELECT EXISTS (
-  SELECT 1 FROM knowledge_document_versions
-  WHERE document_id = $1 AND status IN ('uploaded','processing')
-)
-`, input.DocumentID).Scan(&nonterminal); err != nil {
-		return Document{}, fmt.Errorf("check replacement in progress: %w", err)
-	}
-	if nonterminal {
+	if processing, checkErr := hasDocumentProcessingWork(ctx, tx, input.DocumentID); checkErr != nil {
+		return Document{}, checkErr
+	} else if processing {
 		return Document{}, ErrDocumentProcessing
 	}
 
@@ -148,7 +145,8 @@ INSERT INTO knowledge_processing_jobs (
 		authority.GovernanceRevision, authority.HeadRevision, authority.ConsentID,
 		authority.ConsentRevision, collection.ACLRevision, collection.VisibilityEpoch,
 		collection.ProcessingRevision, visibilityEpoch, input.ActorUserID,
-		"document:"+input.DocumentID+":replace", input.IdempotencyKey, input.RequestHash)
+		documentOperationIdempotencyScope(input.DocumentID, "replace", input.ActorUserID),
+		input.IdempotencyKey, input.RequestHash)
 	if err != nil {
 		return Document{}, fmt.Errorf("insert replacement parse job: %w", err)
 	}

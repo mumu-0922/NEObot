@@ -6134,3 +6134,39 @@ replacement Job/Outbox/idempotency assertions            passed
 
 Next: implement same-Version reprocess admission, followed by logical Document
 tombstone deletion.
+
+## 2026-07-11 — Phase 15.1D-3F same-Version reprocess implemented
+
+`POST /v1/knowledge/documents/{documentId}/reprocess` now accepts only a strict
+`{ idempotencyKey }` body. It rechecks current Personal-owner or Team-admin
+authority, locks Collection then Document and source File, and resolves current
+MinerU Governance plus Parse Consent before creating work.
+
+Target selection is deterministic: the newest failed Version whose
+`source_version` is newer than the Active current Version is reopened as
+`uploaded`; otherwise the exact Active `current_version_id` is
+reprocessed without changing its status. The transaction creates no Source
+Version and never changes the serving pointer or Active artifacts. It inserts
+one `operation=reprocess` Parse Job linked through `caused_by_job_id`, plus a
+`knowledge.document.reprocess.requested` Outbox event carrying Governance,
+Consent, ACL, visibility, and processing fences.
+
+Same-key concurrent requests return the same Job-backed logical result and
+write one Job/Event. A different request while any Version or Job is
+nonterminal returns `409 DOCUMENT_PROCESSING`. Replacement admission now uses
+the same Version-or-Job processing gate, preventing replace/reprocess overlap.
+Initial bind, replacement, and reprocess Job idempotency scopes include the
+authenticated actor ID, preventing two Team Admins who reuse the same client
+key from replaying or conflicting with each other's operation.
+
+```text
+go test ./internal/knowledge ./internal/httpserver       passed
+PostgreSQL 16 reprocess tests under -race                passed
+same-key concurrent reprocess: one Job/Event             passed
+Active and failed-Pending target selection               passed
+no new Source Version / current pointer unchanged        passed
+ACL, strict payload, caused-by, and Outbox assertions    passed
+```
+
+Next: implement logical Document tombstone deletion and cancellation/purge
+Outbox work.

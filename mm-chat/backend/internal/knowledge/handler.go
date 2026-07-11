@@ -130,7 +130,7 @@ func (handler *Handler) handleCollectionDocuments(w http.ResponseWriter, request
 		writeJSON(w, http.StatusOK, documentPageDTO{Items: items, NextCursor: page.NextCursor})
 	case http.MethodPost:
 		if err := requireNoQuery(request.URL.Query()); err != nil {
-			writeServiceError(w, err)
+			writeServiceError(w, asDocumentValidation(err))
 			return
 		}
 		var input BindDocumentInput
@@ -153,7 +153,7 @@ func (handler *Handler) handleDocument(w http.ResponseWriter, request *http.Requ
 	remainder := strings.TrimPrefix(request.URL.Path, documentsPathBase)
 	parts := strings.Split(remainder, "/")
 	if len(parts) < 1 || parts[0] == "" || len(parts) > 2 ||
-		(len(parts) == 2 && parts[1] != "content" && parts[1] != "versions") {
+		(len(parts) == 2 && parts[1] != "content" && parts[1] != "versions" && parts[1] != "reprocess") {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
 		return
 	}
@@ -161,12 +161,16 @@ func (handler *Handler) handleDocument(w http.ResponseWriter, request *http.Requ
 		handler.handleDocumentVersionCreate(w, request, parts[0])
 		return
 	}
+	if len(parts) == 2 && parts[1] == "reprocess" {
+		handler.handleDocumentReprocess(w, request, parts[0])
+		return
+	}
 	if request.Method != http.MethodGet {
 		methodNotAllowed(w, http.MethodGet)
 		return
 	}
 	if err := requireNoQuery(request.URL.Query()); err != nil {
-		writeServiceError(w, err)
+		writeServiceError(w, asDocumentValidation(err))
 		return
 	}
 	if len(parts) == 1 {
@@ -195,28 +199,6 @@ func (handler *Handler) handleDocument(w http.ResponseWriter, request *http.Requ
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, reader)
-}
-
-func (handler *Handler) handleDocumentVersionCreate(w http.ResponseWriter, request *http.Request, documentID string) {
-	if request.Method != http.MethodPost {
-		methodNotAllowed(w, http.MethodPost)
-		return
-	}
-	if err := requireNoQuery(request.URL.Query()); err != nil {
-		writeServiceError(w, err)
-		return
-	}
-	var input BindDocumentInput
-	if err := decodeStrictJSON(w, request, &input); err != nil {
-		writeDocumentDecodeError(w, err)
-		return
-	}
-	document, err := handler.service.CreateDocumentVersion(request.Context(), documentID, input)
-	if err != nil {
-		writeServiceError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, newDocumentDTO(document))
 }
 
 func (handler *Handler) handleCollectionRoot(w http.ResponseWriter, request *http.Request) {

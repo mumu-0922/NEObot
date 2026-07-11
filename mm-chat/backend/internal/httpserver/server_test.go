@@ -425,6 +425,7 @@ func TestAuthRequiredModeRejectsMissingCredentialsAndKeepsPublicRoutes(t *testin
 		{method: http.MethodGet, path: "/v1/knowledge/documents/33333333-3333-4333-8333-333333333333"},
 		{method: http.MethodGet, path: "/v1/knowledge/documents/33333333-3333-4333-8333-333333333333/content"},
 		{method: http.MethodPost, path: "/v1/knowledge/documents/33333333-3333-4333-8333-333333333333/versions"},
+		{method: http.MethodPost, path: "/v1/knowledge/documents/33333333-3333-4333-8333-333333333333/reprocess"},
 	}
 	for _, route := range protectedRoutes {
 		rec := httptest.NewRecorder()
@@ -477,6 +478,7 @@ func TestNewHandlerRegistersKnowledgeCollectionRoutes(t *testing.T) {
 		"/v1/knowledge/documents/33333333-3333-4333-8333-333333333333",
 		"/v1/knowledge/documents/33333333-3333-4333-8333-333333333333/content",
 		"/v1/knowledge/documents/33333333-3333-4333-8333-333333333333/versions",
+		"/v1/knowledge/documents/33333333-3333-4333-8333-333333333333/reprocess",
 	} {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodGet, path, nil)

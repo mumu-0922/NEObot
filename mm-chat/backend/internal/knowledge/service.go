@@ -228,11 +228,11 @@ func (s *Service) CreateDocument(ctx context.Context, collectionID string, input
 	}
 	input.FileID, err = normalizeUUID(input.FileID, "fileId")
 	if err != nil {
-		return Document{}, err
+		return Document{}, asDocumentValidation(err)
 	}
 	input.IdempotencyKey, err = normalizeIdempotencyKey(input.IdempotencyKey)
 	if err != nil {
-		return Document{}, err
+		return Document{}, asDocumentValidation(err)
 	}
 	ids := make([]string, 3)
 	for index := range ids {
@@ -303,7 +303,7 @@ func (s *Service) GetDocument(ctx context.Context, documentID string) (Document,
 	}
 	documentID, err = normalizeUUID(documentID, "document id")
 	if err != nil {
-		return Document{}, err
+		return Document{}, asDocumentValidation(err)
 	}
 	return s.repo.GetDocument(ctx, DocumentLookupInput{DocumentID: documentID, ActorUserID: actor.ID})
 }
@@ -321,7 +321,7 @@ func (s *Service) GetDocumentContent(ctx context.Context, documentID string) (Do
 	}
 	documentID, err = normalizeUUID(documentID, "document id")
 	if err != nil {
-		return DocumentContentMetadata{}, nil, err
+		return DocumentContentMetadata{}, nil, asDocumentValidation(err)
 	}
 	metadata, err := s.repo.GetActiveDocumentContentMetadata(ctx, DocumentLookupInput{
 		DocumentID: documentID, ActorUserID: actor.ID,

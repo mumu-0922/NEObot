@@ -113,6 +113,7 @@ LEFT JOIN LATERAL (
   SELECT candidate.* FROM knowledge_document_versions candidate
   WHERE candidate.document_id = d.id
     AND candidate.status IN ('uploaded','processing','failed')
+    AND (cv.source_version IS NULL OR candidate.source_version > cv.source_version)
   ORDER BY candidate.source_version DESC LIMIT 1
 ) pv ON true
 LEFT JOIN files pf ON pf.id = pv.file_id
@@ -255,7 +256,8 @@ INSERT INTO knowledge_processing_jobs (
 		authority.GovernanceRevision, authority.HeadRevision,
 		authority.ConsentID, authority.ConsentRevision, collection.ACLRevision, collection.VisibilityEpoch,
 		collection.ProcessingRevision, input.ActorUserID,
-		"document:"+input.DocumentID+":initial", input.IdempotencyKey, input.RequestHash)
+		documentOperationIdempotencyScope(input.DocumentID, "initial", input.ActorUserID),
+		input.IdempotencyKey, input.RequestHash)
 	if err != nil {
 		return Document{}, fmt.Errorf("insert parse job: %w", err)
 	}

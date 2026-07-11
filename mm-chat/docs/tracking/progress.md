@@ -622,7 +622,8 @@ the UI can call in the next wiring slice.
   - [x] Add ACL-checked Document list/get and Active-only content routes.
   - [x] Add immutable replacement Version admission with deterministic File
         locks, Parse authority, idempotency, Job, and Outbox.
-  - [ ] Add Document reprocess/delete transactions.
+  - [x] Add same-Version reprocess admission with idempotent Job and Outbox.
+  - [ ] Add Document delete transaction.
 - [ ] Implement operator Governance and Collection/User Consent services with
       purpose/data-type and expiry/revision fences.
 - [ ] Wire protected Knowledge routes and pass unit/race/PostgreSQL 16 ACL,

@@ -422,6 +422,8 @@ func knownMetricPath(path string) (string, bool) {
 				return "/v1/knowledge/documents/{documentId}/content", true
 			case "versions":
 				return "/v1/knowledge/documents/{documentId}/versions", true
+			case "reprocess":
+				return "/v1/knowledge/documents/{documentId}/reprocess", true
 			}
 		}
 	}

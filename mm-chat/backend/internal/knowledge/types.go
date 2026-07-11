@@ -18,6 +18,7 @@ type Repository interface {
 	DeleteCollection(context.Context, DeleteCollectionRepositoryInput) error
 	CreateDocument(context.Context, CreateDocumentRepositoryInput) (Document, error)
 	CreateDocumentVersion(context.Context, CreateDocumentVersionRepositoryInput) (Document, error)
+	ReprocessDocument(context.Context, ReprocessDocumentRepositoryInput) (Document, error)
 	ListDocuments(context.Context, ListDocumentsRepositoryInput) (DocumentPageResult, error)
 	GetDocument(context.Context, DocumentLookupInput) (Document, error)
 	GetActiveDocumentContentMetadata(context.Context, DocumentLookupInput) (DocumentContentMetadata, error)
@@ -165,6 +166,16 @@ type CreateDocumentVersionRepositoryInput struct {
 	DocumentID, ActorUserID     string
 	FileID, IdempotencyKey      string
 	RequestHash, ParseProcessor string
+}
+
+type ReprocessDocumentInput struct {
+	IdempotencyKey string `json:"idempotencyKey"`
+}
+
+type ReprocessDocumentRepositoryInput struct {
+	JobID, DocumentID, ActorUserID string
+	IdempotencyKey, RequestHash    string
+	ParseProcessor                 string
 }
 
 type ListDocumentsInput struct {

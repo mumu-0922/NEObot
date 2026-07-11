@@ -160,15 +160,37 @@ func TestServiceCreatesServerSelectedReplacementVersion(t *testing.T) {
 	}
 }
 
+func TestServiceCreatesServerSelectedReprocessJob(t *testing.T) {
+	repo := &fakeRepository{documentResult: Document{ID: "22222222-2222-4222-8222-222222222222"}}
+	service := NewService(repo, WithIDGenerator(func() (string, error) {
+		return "33333333-3333-4333-8333-333333333333", nil
+	}))
+	ctx := auth.WithUser(context.Background(), auth.User{ID: testActorID})
+	_, err := service.ReprocessDocument(ctx, repo.documentResult.ID, ReprocessDocumentInput{
+		IdempotencyKey: " reprocess-1 ",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedHash := sha256.Sum256([]byte(repo.documentResult.ID))
+	input := repo.reprocessCreated
+	if input.JobID != "33333333-3333-4333-8333-333333333333" ||
+		input.ActorUserID != testActorID || input.IdempotencyKey != "reprocess-1" ||
+		input.ParseProcessor != "mineru" || input.RequestHash != hex.EncodeToString(expectedHash[:]) {
+		t.Fatalf("reprocess repository input = %#v", input)
+	}
+}
+
 type fakeRepository struct {
-	created        CreateCollectionRepositoryInput
-	createResult   Collection
-	listResult     CollectionPageResult
-	documentResult Document
-	documentPage   DocumentPageResult
-	contentResult  DocumentContentMetadata
-	versionCreated CreateDocumentVersionRepositoryInput
-	err            error
+	created          CreateCollectionRepositoryInput
+	createResult     Collection
+	listResult       CollectionPageResult
+	documentResult   Document
+	documentPage     DocumentPageResult
+	contentResult    DocumentContentMetadata
+	versionCreated   CreateDocumentVersionRepositoryInput
+	reprocessCreated ReprocessDocumentRepositoryInput
+	err              error
 }
 
 type fakeObjectStore struct {
@@ -210,6 +232,10 @@ func (repo *fakeRepository) CreateDocument(context.Context, CreateDocumentReposi
 }
 func (repo *fakeRepository) CreateDocumentVersion(_ context.Context, input CreateDocumentVersionRepositoryInput) (Document, error) {
 	repo.versionCreated = input
+	return repo.documentResult, repo.err
+}
+func (repo *fakeRepository) ReprocessDocument(_ context.Context, input ReprocessDocumentRepositoryInput) (Document, error) {
+	repo.reprocessCreated = input
 	return repo.documentResult, repo.err
 }
 func (repo *fakeRepository) ListDocuments(context.Context, ListDocumentsRepositoryInput) (DocumentPageResult, error) {

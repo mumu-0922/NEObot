@@ -178,11 +178,102 @@ INSERT INTO processing_consents (
 	mustKnowledgeExec(t, ctx, db, `
 UPDATE knowledge_document_versions SET status='active' WHERE id=$1;
 UPDATE knowledge_documents SET status='active',current_version_id=$1 WHERE id=$2;
+UPDATE knowledge_processing_jobs
+SET status='succeeded',attempt_count=1,completed_at=now(),updated_at=now()
+WHERE id=$7;
 INSERT INTO files (
   id,user_id,original_filename,mime_type,byte_size,sha256,storage_backend,object_key,metadata
 ) VALUES ($3,$4,'replacement.pdf','application/pdf',12,$5,'local',$6,'{"purpose":"knowledge"}')
 `, versionID, documentID, replacementFileID, adminID, strings.Repeat("c", 64),
-		"users/"+adminID+"/files/"+replacementFileID)
+		"users/"+adminID+"/files/"+replacementFileID, jobID)
+	reprocessInputs := []ReprocessDocumentRepositoryInput{
+		{JobID: "50000000-0000-4000-8000-000000000030", DocumentID: documentID,
+			ActorUserID: adminID, IdempotencyKey: "reprocess-race",
+			RequestHash: strings.Repeat("6", 64), ParseProcessor: "mineru"},
+		{JobID: "50000000-0000-4000-8000-000000000031", DocumentID: documentID,
+			ActorUserID: adminID, IdempotencyKey: "reprocess-race",
+			RequestHash: strings.Repeat("6", 64), ParseProcessor: "mineru"},
+	}
+	type reprocessResult struct {
+		document Document
+		err      error
+	}
+	reprocessResults := make(chan reprocessResult, len(reprocessInputs))
+	var reprocessWait sync.WaitGroup
+	reprocessRepo := NewPostgresRepository(db)
+	for _, input := range reprocessInputs {
+		reprocessWait.Add(1)
+		go func(input ReprocessDocumentRepositoryInput) {
+			defer reprocessWait.Done()
+			reprocessed, reprocessErr := reprocessRepo.ReprocessDocument(ctx, input)
+			reprocessResults <- reprocessResult{document: reprocessed, err: reprocessErr}
+		}(input)
+	}
+	reprocessWait.Wait()
+	close(reprocessResults)
+	for result := range reprocessResults {
+		if result.err != nil || result.document.CurrentVersion == nil ||
+			result.document.CurrentVersion.ID != versionID || result.document.PendingVersion != nil {
+			t.Fatalf("concurrent active reprocess = %#v, err=%v", result.document, result.err)
+		}
+	}
+	var reprocessJobID string
+	var reprocessScope string
+	var reprocessJobs, reprocessEvents, versionsAfterReprocess int
+	if err := db.QueryRowContext(ctx, `
+SELECT id,idempotency_scope FROM knowledge_processing_jobs
+WHERE document_id=$1 AND operation='reprocess' AND idempotency_key='reprocess-race'
+`, documentID).Scan(&reprocessJobID, &reprocessScope); err != nil {
+		t.Fatal(err)
+	}
+	if reprocessScope != documentOperationIdempotencyScope(documentID, "reprocess", adminID) {
+		t.Fatalf("reprocess idempotency scope = %q", reprocessScope)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM knowledge_processing_jobs WHERE document_id=$1 AND operation='reprocess'`, documentID).Scan(&reprocessJobs); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM knowledge_outbox WHERE aggregate_key=$1 AND event_type='knowledge.document.reprocess.requested'`, documentID).Scan(&reprocessEvents); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM knowledge_document_versions WHERE document_id=$1`, documentID).Scan(&versionsAfterReprocess); err != nil {
+		t.Fatal(err)
+	}
+	if reprocessJobs != 1 || reprocessEvents != 1 || versionsAfterReprocess != 1 {
+		t.Fatalf("reprocess jobs/events/versions = %d/%d/%d", reprocessJobs, reprocessEvents, versionsAfterReprocess)
+	}
+	var reprocessOperation, reprocessSourceVersion, reprocessCause, reprocessContentHash string
+	if err := db.QueryRowContext(ctx, `
+SELECT payload->>'operation',payload->>'sourceVersion',payload->>'causedByJobId',payload->>'contentHash'
+FROM knowledge_outbox WHERE aggregate_key=$1 AND payload->>'jobId'=$2
+`, documentID, reprocessJobID).Scan(
+		&reprocessOperation, &reprocessSourceVersion, &reprocessCause, &reprocessContentHash,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if reprocessOperation != "reprocess" || reprocessSourceVersion != "1" ||
+		reprocessCause != jobID || reprocessContentHash != strings.Repeat("a", 64) {
+		t.Fatalf("reprocess outbox operation/source/cause/hash = %s/%s/%s/%s",
+			reprocessOperation, reprocessSourceVersion, reprocessCause, reprocessContentHash)
+	}
+	if _, err := reprocessRepo.ReprocessDocument(ctx, ReprocessDocumentRepositoryInput{
+		JobID: "50000000-0000-4000-8000-000000000032", DocumentID: documentID,
+		ActorUserID: adminID, IdempotencyKey: "reprocess-race",
+		RequestHash: strings.Repeat("5", 64), ParseProcessor: "mineru",
+	}); err != ErrIdempotencyConflict {
+		t.Fatalf("changed reprocess replay error = %v", err)
+	}
+	if _, err := reprocessRepo.ReprocessDocument(ctx, ReprocessDocumentRepositoryInput{
+		JobID: "50000000-0000-4000-8000-000000000033", DocumentID: documentID,
+		ActorUserID: adminID, IdempotencyKey: "reprocess-second",
+		RequestHash: strings.Repeat("4", 64), ParseProcessor: "mineru",
+	}); err != ErrDocumentProcessing {
+		t.Fatalf("second reprocess error = %v", err)
+	}
+	mustKnowledgeExec(t, ctx, db, `
+UPDATE knowledge_processing_jobs
+SET status='succeeded',attempt_count=1,completed_at=now(),updated_at=now()
+WHERE id=$1
+`, reprocessJobID)
 	replacementIDs := []string{replacementVersionID, replacementJobID,
 		"50000000-0000-4000-8000-000000000013", "50000000-0000-4000-8000-000000000014",
 		"50000000-0000-4000-8000-000000000015", "50000000-0000-4000-8000-000000000016",
@@ -231,8 +322,15 @@ INSERT INTO files (
 		t.Fatalf("second nonterminal replacement error = %v", err)
 	}
 	var replacementJobs, replacementEvents int
+	var replacementScope string
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM knowledge_processing_jobs WHERE document_id=$1 AND operation='replace'`, documentID).Scan(&replacementJobs); err != nil {
 		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT idempotency_scope FROM knowledge_processing_jobs WHERE document_version_id=$1`, replacementVersionID).Scan(&replacementScope); err != nil {
+		t.Fatal(err)
+	}
+	if replacementScope != documentOperationIdempotencyScope(documentID, "replace", adminID) {
+		t.Fatalf("replacement idempotency scope = %q", replacementScope)
 	}
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM knowledge_outbox WHERE aggregate_key=$1 AND event_type='knowledge.document.version.requested'`, documentID).Scan(&replacementEvents); err != nil {
 		t.Fatal(err)
@@ -276,6 +374,30 @@ INSERT INTO files (
 `, replacementVersionID, raceFileA, raceFileB, adminID, strings.Repeat("d", 64),
 		"users/"+adminID+"/files/"+raceFileA, strings.Repeat("e", 64),
 		"users/"+adminID+"/files/"+raceFileB)
+	failedReprocess, err := NewPostgresRepository(db).ReprocessDocument(ctx, ReprocessDocumentRepositoryInput{
+		JobID: "50000000-0000-4000-8000-000000000034", DocumentID: documentID,
+		ActorUserID: adminID, IdempotencyKey: "failed-reprocess",
+		RequestHash: strings.Repeat("3", 64), ParseProcessor: "mineru",
+	})
+	if err != nil || failedReprocess.CurrentVersion == nil || failedReprocess.CurrentVersion.ID != versionID ||
+		failedReprocess.PendingVersion == nil || failedReprocess.PendingVersion.ID != replacementVersionID ||
+		failedReprocess.PendingVersion.Status != "uploaded" || failedReprocess.PendingVersion.SourceVersion != 2 {
+		t.Fatalf("failed pending reprocess = %#v, err=%v", failedReprocess, err)
+	}
+	var versionsAfterFailedReprocess int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM knowledge_document_versions WHERE document_id=$1`, documentID).
+		Scan(&versionsAfterFailedReprocess); err != nil {
+		t.Fatal(err)
+	}
+	if versionsAfterFailedReprocess != 2 {
+		t.Fatalf("failed reprocess created source version: %d", versionsAfterFailedReprocess)
+	}
+	mustKnowledgeExec(t, ctx, db, `
+UPDATE knowledge_document_versions SET status='failed',error_code='PARSE_FAILED' WHERE id=$1;
+UPDATE knowledge_processing_jobs
+SET status='failed',attempt_count=1,completed_at=now(),error_code='PARSE_FAILED',updated_at=now()
+WHERE id='50000000-0000-4000-8000-000000000034'
+`, replacementVersionID)
 	replayRaceInputs := []CreateDocumentVersionRepositoryInput{
 		{VersionID: "50000000-0000-4000-8000-000000000022", JobID: "50000000-0000-4000-8000-000000000023",
 			DocumentID: documentID, ActorUserID: adminID, FileID: raceFileA,
@@ -395,6 +517,14 @@ UPDATE knowledge_documents SET status='active',current_version_id=$3 WHERE id=$1
 		})
 		if replaceErr != denied.want {
 			t.Fatalf("team replacement actor=%s error=%v, want %v", denied.actorID, replaceErr, denied.want)
+		}
+		_, reprocessErr := NewPostgresRepository(db).ReprocessDocument(ctx, ReprocessDocumentRepositoryInput{
+			JobID: "50000000-0000-4000-8000-000000000099", DocumentID: teamDocumentID,
+			ActorUserID: denied.actorID, IdempotencyKey: "denied-reprocess",
+			RequestHash: strings.Repeat("6", 64), ParseProcessor: "mineru",
+		})
+		if reprocessErr != denied.want {
+			t.Fatalf("team reprocess actor=%s error=%v, want %v", denied.actorID, reprocessErr, denied.want)
 		}
 	}
 	if _, err := NewPostgresRepository(db).CreateDocumentVersion(ctx, CreateDocumentVersionRepositoryInput{
@@ -612,6 +742,39 @@ INSERT INTO knowledge_document_versions (id,document_id,file_id,source_version,s
 	content, err := repo.GetActiveDocumentContentMetadata(ctx, DocumentLookupInput{DocumentID: activeDocID, ActorUserID: memberID})
 	if err != nil || content.FileID != activeFileID || content.ObjectKey != "knowledge/active" {
 		t.Fatalf("active content metadata = %#v, err=%v", content, err)
+	}
+	publishTx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := publishTx.ExecContext(ctx, `
+INSERT INTO knowledge_document_versions (id,document_id,file_id,source_version,status,content_hash)
+VALUES ('61000000-0000-4000-8000-000000000005',$1,$2,3,'active',$3);
+UPDATE knowledge_documents
+SET current_version_id='61000000-0000-4000-8000-000000000005',updated_at=now()
+WHERE id=$1;
+UPDATE knowledge_document_versions SET status='tombstoned',updated_at=now() WHERE id=$4
+`, activeDocID, activeFileID, strings.Repeat("a", 64), activeVersionID); err != nil {
+		_ = publishTx.Rollback()
+		t.Fatal(err)
+	}
+	if err := publishTx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	published, err := repo.GetDocument(ctx, DocumentLookupInput{DocumentID: activeDocID, ActorUserID: memberID})
+	if err != nil || published.CurrentVersion == nil || published.CurrentVersion.SourceVersion != 3 ||
+		published.PendingVersion != nil {
+		t.Fatalf("historical failed version appeared pending = %#v, err=%v", published, err)
+	}
+	targetTx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, wasFailed, targetErr := resolveReprocessTarget(ctx, targetTx, activeDocID,
+		sql.NullString{String: "61000000-0000-4000-8000-000000000005", Valid: true})
+	_ = targetTx.Rollback()
+	if targetErr != nil || wasFailed || target == nil || target.SourceVersion != 3 {
+		t.Fatalf("historical failed reprocess target = %#v/%v, err=%v", target, wasFailed, targetErr)
 	}
 	for _, lookup := range []DocumentLookupInput{
 		{DocumentID: pendingDocID, ActorUserID: memberID},

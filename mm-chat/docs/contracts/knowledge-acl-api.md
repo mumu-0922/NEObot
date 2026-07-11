@@ -22,7 +22,10 @@ list/get, and Active-current-Version content routes are registered. Every read
 rechecks current Collection ownership or active Team Membership in Postgres;
 private object keys remain internal. Replacement Version admission now keeps
 the exact Active current Version serving while it creates one Pending Version,
-Parse Job, and Outbox event atomically. Document reprocess/delete, Consent,
+Parse Job, and Outbox event atomically. Reprocess admission targets the newest
+failed Version newer than the Active current Version when present; otherwise it
+uses the exact Active current Version. It creates only a new Parse Job and
+fenced Outbox event, never a new Source Version. Document delete, Consent,
 Governance command, and search routes remain unimplemented.
 
 The current auth/session baseline is Phase 15.1B in

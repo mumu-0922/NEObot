@@ -120,6 +120,41 @@ func TestHandlerCollectionCRUDAndStrictPayloads(t *testing.T) {
 	if wrongMethod.Code != http.StatusMethodNotAllowed || wrongMethod.Header().Get("Allow") != http.MethodPost {
 		t.Fatalf("replacement method = %d allow=%q", wrongMethod.Code, wrongMethod.Header().Get("Allow"))
 	}
+	reprocess := perform(http.MethodPost, documentsPathBase+repo.documentResult.ID+"/reprocess",
+		`{"idempotencyKey":"reprocess-1"}`)
+	if reprocess.Code != http.StatusCreated || !strings.Contains(reprocess.Body.String(), repo.documentResult.ID) {
+		t.Fatalf("reprocess response = %d %s", reprocess.Code, reprocess.Body.String())
+	}
+	invalidReprocess := perform(http.MethodPost, documentsPathBase+repo.documentResult.ID+"/reprocess",
+		`{"idempotencyKey":"reprocess-2","fileId":"44444444-4444-4444-8444-444444444444"}`)
+	if invalidReprocess.Code != http.StatusBadRequest ||
+		!strings.Contains(invalidReprocess.Body.String(), ErrorCodeInvalidDocumentPayload) {
+		t.Fatalf("invalid reprocess = %d %s", invalidReprocess.Code, invalidReprocess.Body.String())
+	}
+	emptyReprocess := perform(http.MethodPost, documentsPathBase+repo.documentResult.ID+"/reprocess",
+		`{"idempotencyKey":""}`)
+	if emptyReprocess.Code != http.StatusBadRequest ||
+		!strings.Contains(emptyReprocess.Body.String(), ErrorCodeInvalidDocumentPayload) {
+		t.Fatalf("empty reprocess = %d %s", emptyReprocess.Code, emptyReprocess.Body.String())
+	}
+	forbiddenReprocess := perform(http.MethodPost, documentsPathBase+repo.documentResult.ID+"/reprocess",
+		`{"idempotencyKey":"reprocess-2","ownerUserId":"`+testActorID+`"}`)
+	if forbiddenReprocess.Code != http.StatusBadRequest ||
+		!strings.Contains(forbiddenReprocess.Body.String(), ErrorCodeForbiddenIdentityField) {
+		t.Fatalf("forbidden reprocess = %d %s", forbiddenReprocess.Code, forbiddenReprocess.Body.String())
+	}
+	queryReprocess := perform(http.MethodPost, documentsPathBase+repo.documentResult.ID+"/reprocess?cursor=x",
+		`{"idempotencyKey":"reprocess-2"}`)
+	if queryReprocess.Code != http.StatusBadRequest ||
+		!strings.Contains(queryReprocess.Body.String(), ErrorCodeInvalidDocumentPayload) {
+		t.Fatalf("reprocess query = %d %s", queryReprocess.Code, queryReprocess.Body.String())
+	}
+	wrongReprocessMethod := perform(http.MethodGet, documentsPathBase+repo.documentResult.ID+"/reprocess", "")
+	if wrongReprocessMethod.Code != http.StatusMethodNotAllowed ||
+		wrongReprocessMethod.Header().Get("Allow") != http.MethodPost {
+		t.Fatalf("reprocess method = %d allow=%q", wrongReprocessMethod.Code,
+			wrongReprocessMethod.Header().Get("Allow"))
+	}
 }
 
 func TestHandlerMapsDisclosureErrors(t *testing.T) {
