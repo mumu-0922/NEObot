@@ -1085,6 +1085,9 @@ func openKnowledgeTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	databaseURL := os.Getenv("MM_CHAT_TEST_DATABASE_URL")
 	if databaseURL == "" {
+		if os.Getenv("MM_CHAT_REQUIRE_POSTGRES_TESTS") == "true" {
+			t.Fatal("MM_CHAT_REQUIRE_POSTGRES_TESTS=true requires MM_CHAT_TEST_DATABASE_URL")
+		}
 		t.Skip("set MM_CHAT_TEST_DATABASE_URL to run Postgres integration tests")
 	}
 	adminConfig, err := pgx.ParseConfig(databaseURL)
@@ -1111,6 +1114,7 @@ func openKnowledgeTestDB(t *testing.T) *sql.DB {
 	}
 	testConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
 	testConfig.RuntimeParams["search_path"] = schema
+	testConfig.RuntimeParams["application_name"] = schema
 	db := stdlib.OpenDB(*testConfig)
 	db.SetMaxOpenConns(4)
 	t.Cleanup(func() { _ = db.Close() })

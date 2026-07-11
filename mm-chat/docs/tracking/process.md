@@ -6416,6 +6416,7 @@ container's dynamically published local port, the replayable command was:
 
 ```bash
 MM_CHAT_TEST_DATABASE_URL="postgres://neo_chat:test-only-password@127.0.0.1:${PORT}/neo_chat?sslmode=disable" \
+MM_CHAT_REQUIRE_POSTGRES_TESTS=true \
 GOCACHE=/tmp/mm-chat-go-cache \
 go test -count=1 -race ./internal/knowledge \
   -run 'TestPostgresKnowledgeACLTwoUsersTwoTeamsAndDisabledActor|TestPostgresKnowledgeOutboxSourceRecoveryInvariants'
@@ -6423,3 +6424,41 @@ go test -count=1 -race ./internal/knowledge \
 
 Next: implement both lock schedules for Membership removal versus Team
 Collection/Document/Consent mutations, then delete versus reprocess.
+
+## 2026-07-11 — Phase 15.1D-6 Membership mutation races verified
+
+Added deterministic PostgreSQL concurrency coverage for Membership removal
+versus Team Collection update, Document deletion, and Collection Consent grant.
+Every case runs both legal schedules. A gate transaction locks the Team;
+`pg_blocking_pids` then proves the first operation is waiting on that exact
+backend and the second operation is waiting on the first operation's User lock.
+No timing-only scheduling is used.
+
+Removal-first commits the Membership removal before the Knowledge writer can
+recheck authorization, so the writer receives disclosure-safe Collection or
+Document `404` semantics and leaves no mutation event. Mutation-first commits
+the authorized Knowledge change before removal; removal then commits, and both
+effects remain as the equivalent serial order. Both schedules assert one
+Membership revision/event, final removed status, exact Knowledge revisions and
+events, and no timeout or deadlock.
+
+```text
+Collection update: removal-first / mutation-first             passed / passed
+Document delete: removal-first / mutation-first                passed / passed
+Collection Consent: removal-first / mutation-first             passed / passed
+exact backend blocking chain via pg_blocking_pids              passed
+PostgreSQL 16 targeted -race                                   passed
+```
+
+Replay command; `MM_CHAT_REQUIRE_POSTGRES_TESTS=true` converts a missing test
+URL from Skip into failure:
+
+```bash
+MM_CHAT_TEST_DATABASE_URL="postgres://neo_chat:test-only-password@127.0.0.1:${PORT}/neo_chat?sslmode=disable" \
+MM_CHAT_REQUIRE_POSTGRES_TESTS=true \
+GOCACHE=/tmp/mm-chat-go-cache \
+go test -count=1 -race ./internal/knowledge \
+  -run 'TestPostgresMembershipRemovalSerializesTeamKnowledgeMutations' -v
+```
+
+Next: run the final Document delete versus reprocess lock-order gate.
