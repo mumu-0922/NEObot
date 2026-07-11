@@ -6181,6 +6181,8 @@ exactly once. Purge admission is additionally protected by a partial unique
 index on Document, Version, and Document visibility epoch. The post-lock
 mutation timestamp uses `clock_timestamp()` so lock waits behind
 replace/reprocess cannot write a stale transaction-start timestamp.
+The index lives in additive migration `007`; committed migration `006` remains
+unchanged so databases that already recorded it still receive the new fence.
 
 The transaction cancels pending/processing Jobs, tombstones every non-deleted
 Version while advancing each Version visibility epoch, and tombstones the

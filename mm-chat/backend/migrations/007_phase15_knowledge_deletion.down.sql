@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS idx_knowledge_processing_jobs_purge_fence;

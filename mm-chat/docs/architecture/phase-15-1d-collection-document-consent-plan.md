@@ -197,9 +197,12 @@ Never edit committed migrations `004` or `005`. Add reversible migration `006`:
 - add a current-Consent lookup index including scope, subject, Processor,
   decision, expiry, and supersession state;
 - add constraints/indexes required for claim/reclaim and Version/Job replay;
-- enforce at most one purge Job per Document/Version/Document-visibility fence;
 - preserve all pre-`006` rows with nullable compatibility columns, then require
   non-null values for new writes in repository logic.
+
+Committed migrations remain immutable. Add reversible migration `007` to
+enforce at most one purge Job per Document/Version/Document-visibility fence
+for both fresh and already-migrated databases.
 
 `006 Down` is for isolated pre-release rollback only. It drops Job rows and the
 new indexes/columns without touching `004` Knowledge data. Verification runs
