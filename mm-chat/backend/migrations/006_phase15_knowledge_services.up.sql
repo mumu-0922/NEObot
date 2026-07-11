@@ -361,3 +361,10 @@ CREATE INDEX idx_knowledge_processing_jobs_document
   ON knowledge_processing_jobs(document_id, created_at DESC, id DESC);
 CREATE INDEX idx_knowledge_processing_jobs_version
   ON knowledge_processing_jobs(document_version_id, stage, created_at DESC);
+CREATE UNIQUE INDEX idx_knowledge_processing_jobs_purge_fence
+  ON knowledge_processing_jobs(
+    document_id,
+    document_version_id,
+    document_visibility_epoch
+  )
+  WHERE stage = 'purge' AND operation = 'purge';

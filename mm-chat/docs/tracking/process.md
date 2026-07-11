@@ -548,8 +548,8 @@ DATABASE_URL empty    -> DB disabled, /ready returns 200
 DATABASE_URL nonempty -> startup opens Postgres with pgx and PingContext
 DB later unavailable  -> /ready returns 503 DATABASE_NOT_READY
 API startup           -> does not run migrations automatically
-Migration CLI         -> go run ./cmd/migrate up | down --all
-Runner metadata       -> schema_migrations(version, name, applied_at)
+Migration CLI         -> go run ./cmd/migrate up | down --all | baseline
+Runner metadata       -> schema_migrations(version, name, checksum, applied_at)
 ```
 
 ### Decision
@@ -6338,3 +6338,42 @@ Knowledge security scan and diff check                       passed
 ```
 
 Next: execute Phase 15.1D-6 full verification and replay/migration drills.
+
+## 2026-07-11 — Phase 15.1D-6 migration replay gate hardened
+
+The first full verification audit found a release-blocking historical replay
+gap: the originally published migration `006` owned the purge-Job fence, while
+a later source variant removed it and migration `007` recreated the same index
+without `IF NOT EXISTS`. A database already migrated by commit `2010d73` would
+therefore fail while upgrading to `007`.
+
+Restored the original immutable `006` Up/Down pair. Migration `007` is now a
+compatibility reconciliation using `CREATE UNIQUE INDEX IF NOT EXISTS`; its
+Down preserves the index owned by `006`. The migration runner now records a
+SHA-256 checksum covering migration identity plus both SQL directions, checks
+the stored name/checksum before every Up/Down, and fails closed on legacy rows
+until an operator explicitly accepts the reviewed source with `baseline`.
+Up, Down, and baseline hold one PostgreSQL advisory lock across metadata setup,
+validation, and all requested migration changes.
+
+Added a tracked PostgreSQL integration drill covering fresh `001 -> 009`,
+verified PostgreSQL major version 16, `009 -> 007` tail rollback, `007 -> 009`
+reapply, no-op replay, and migration name/checksum drift rejection. A separate
+historical-artifact drill built the migrator from commit `2010d73`, applied its
+published `001 -> 006`, explicitly baselined those reviewed legacy rows, then
+upgraded with current source through `009`.
+
+```text
+historical 2010d73 migration 006 -> current 009             passed
+current 009 Down -> Up -> no-op replay                       passed
+fresh PostgreSQL 16 001 -> 009 integration                  passed
+migration name/checksum drift rejection                      passed
+legacy checksum baseline                                    passed
+two concurrent migrators serialized by advisory lock         passed
+held advisory lock forced a distinct backend PID to wait      passed
+Go migration unit and race suites                            passed
+```
+
+Phase 15.1D-6 remains open while the explicit two-User/two-Team ACL,
+membership/mutation race, delete/reprocess race, and Outbox replay gates are
+reconciled.

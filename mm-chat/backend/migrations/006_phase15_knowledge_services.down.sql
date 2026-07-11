@@ -1,3 +1,4 @@
+DROP INDEX IF EXISTS idx_knowledge_processing_jobs_purge_fence;
 DROP INDEX IF EXISTS idx_knowledge_processing_jobs_version;
 DROP INDEX IF EXISTS idx_knowledge_processing_jobs_document;
 DROP INDEX IF EXISTS idx_knowledge_processing_jobs_processing;

@@ -1,1 +1,3 @@
-DROP INDEX IF EXISTS idx_knowledge_processing_jobs_purge_fence;
+-- Migration 006 owns the purge fence. Migration 007 only reconciles databases
+-- created from the short-lived 006 variant that omitted it.
+SELECT 1;

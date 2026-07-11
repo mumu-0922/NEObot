@@ -36,6 +36,30 @@ func TestLoadOrdersMigrationsByNumericVersion(t *testing.T) {
 	}
 }
 
+func TestLoadChecksumCoversMigrationIdentityAndBothDirections(t *testing.T) {
+	files := fstest.MapFS{
+		"001_initial_schema.up.sql":   {Data: []byte("SELECT 1;")},
+		"001_initial_schema.down.sql": {Data: []byte("SELECT -1;")},
+	}
+	loaded, err := Load(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded[0].Checksum) != 64 {
+		t.Fatalf("checksum length = %d, want 64", len(loaded[0].Checksum))
+	}
+	original := loaded[0].Checksum
+
+	files["001_initial_schema.down.sql"] = &fstest.MapFile{Data: []byte("SELECT -2;")}
+	loaded, err = Load(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded[0].Checksum == original {
+		t.Fatal("checksum did not change when down migration changed")
+	}
+}
+
 func TestLoadRejectsInvalidFilename(t *testing.T) {
 	files := fstest.MapFS{
 		"001_initial_schema.up.sql":   {Data: []byte("SELECT 1;")},

@@ -151,7 +151,10 @@ Runner contract:
 
 - SQL migration files should be embedded into the Go CLI so the executed SQL
   matches the backend release artifact.
-- The runner records applied versions in `schema_migrations(version, name, applied_at)`.
+- The runner records applied versions in
+  `schema_migrations(version, name, checksum, applied_at)`, serializes every
+  operation with a PostgreSQL advisory lock, and requires explicit `baseline`
+  acceptance for legacy rows without checksums.
 - The metadata table is migration-runner state, not a domain application table
   like `users`, `conversations`, or `messages`.
 - Operators should verify both app tables and runner metadata after `up`.

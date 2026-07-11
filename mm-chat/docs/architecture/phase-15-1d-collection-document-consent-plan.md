@@ -200,15 +200,24 @@ Never edit committed migrations `004` or `005`. Add reversible migration `006`:
 - preserve all pre-`006` rows with nullable compatibility columns, then require
   non-null values for new writes in repository logic.
 
-Committed migrations remain immutable. Add reversible migration `007` to
-enforce at most one purge Job per Document/Version/Document-visibility fence
-for both fresh and already-migrated databases.
+Committed migrations remain immutable. The original published `006` owns the
+unique purge-Job fence. Migration `007` uses `IF NOT EXISTS` only to reconcile
+databases created from a short-lived `006` variant that omitted that fence;
+its Down deliberately preserves the `006` object.
 Add reversible migration `008` to reject every Governance Profile UPDATE or
 DELETE at the database boundary; policy changes always insert a new Profile.
+Migration `009` materializes elapsed Consent expiry. The migration runner
+records a SHA-256 checksum over each Up/Down pair, validates name/checksum on
+every run, and fails closed on legacy rows until an operator explicitly runs
+`migrate baseline` after verifying the checked-out migration source. All
+migration operations hold one PostgreSQL advisory lock from metadata setup
+through validation and the complete Up/Down/baseline operation.
 
-`006 Down` is for isolated pre-release rollback only. It drops Job rows and the
-new indexes/columns without touching `004` Knowledge data. Verification runs
-`001→006`, `005→006→Down→006`, and catalog residue checks on PostgreSQL 16.
+`006`-`009` Down is for isolated pre-release rollback only. `006 Down` drops
+Job rows and additive indexes/columns without touching `004` Knowledge data.
+Verification runs fresh `001→009`, historical published `006→009`,
+`007→009→Down→Up`, no-op replay, drift rejection, and catalog checks on an
+explicitly verified PostgreSQL 16 server.
 
 ## Transaction and Lock Contract
 
@@ -398,9 +407,11 @@ allocation order only; consumers rescan claimable rows, deduplicate by
 
 ## Rollback and Operational Safety
 
-Before frontend wiring, rollback uses the previous API image and migration
-`006 Down` only against isolated/pre-release data. After live Knowledge writes,
-rollback is forward-fix: do not drop authoritative Documents, Consent history,
-Jobs, or Outbox events. Disable new Knowledge writes, keep reads fail-closed,
-drain/replay Outbox from Postgres, and restore service with the same Governance
-and revision state. Test fixtures use isolated databases and object prefixes.
+Before frontend wiring, a tail migration may be rolled back one version at a
+time only against isolated/pre-release data; reaching `006 Down` destroys Job
+state and requires an explicit destructive-drill decision. After live
+Knowledge writes, rollback is forward-fix: do not drop authoritative
+Documents, Consent history, Jobs, or Outbox events. Disable new Knowledge
+writes, keep reads fail-closed, drain/replay Outbox from Postgres, and restore
+service with the same Governance and revision state. Test fixtures use
+isolated databases and object prefixes.

@@ -7,7 +7,13 @@ real secrets live in `mm-chat/.env.single-server` and runtime data lives in
 ## Pre-Release Gate
 
 ```bash
-cd mm-chat
+cd mm-chat/backend
+test -z "$(gofmt -l .)"
+go vet ./...
+go test -race ./...
+govulncheck ./...
+
+cd ..
 docker compose --env-file .env.single-server \
   -f compose.single-server.yml --profile app --profile ops config
 docker compose --env-file .env.single-server -f compose.single-server.yml build backend
@@ -16,7 +22,9 @@ docker compose --env-file .env.single-server -f compose.single-server.yml build 
 ```
 
 Confirm the backup files and `.sha256` sidecars exist before touching schema or
-restarting the API.
+restarting the API. The promotion record must also include the disposable
+PostgreSQL 16 Knowledge/migration race suite and fresh/historical migration
+replay results; a skipped integration suite is not a pass.
 
 ## Deploy
 
@@ -37,6 +45,20 @@ curl -fsS -H "Authorization: Bearer $SMOKE_TOKEN" \
   http://127.0.0.1:8080/v1/me/knowledge/query-consents
 ```
 
+If `up` fails because an already-applied legacy row has no checksum, stop the
+release. Review the checked-out migration pairs and historical replay evidence,
+then perform the one-time operator acceptance and rerun `up`:
+
+```bash
+docker compose --env-file .env.single-server -f compose.single-server.yml --profile ops \
+  run --rm migrate /usr/local/bin/mm-chat-migrate baseline
+docker compose --env-file .env.single-server -f compose.single-server.yml --profile ops run --rm migrate
+```
+
+Never place `baseline` in an unattended routine deploy. It explicitly accepts
+the checked-out Up/Down SQL for legacy rows; normal `up`/`down` must remain
+fail-closed until that one-time review occurs.
+
 For a full single-server release, inspect `/ready` and require configured
 dependency checks to be `ready`:
 
@@ -47,7 +69,10 @@ curl -fsS http://127.0.0.1:8080/ready | jq '.status, .checks'
 ## Rollback Decision Tree
 
 - **API image bad, schema compatible**: checkout previous commit, rebuild, restart `backend`.
-- **Migration bad before user traffic**: stop `backend`, run the migration image with `down`, then redeploy the previous image:
+- **Latest migration bad before user traffic**: stop `backend`, run the
+  migration image with `down` once for each explicitly approved version, then
+  redeploy the matching previous image. One invocation rolls back only one
+  version:
   ```bash
   docker compose --env-file .env.single-server \
     -f compose.single-server.yml --profile ops \

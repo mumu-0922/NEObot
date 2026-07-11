@@ -121,7 +121,7 @@ func openPhase151CMigrationIntegrationDB(t *testing.T) *sql.DB {
 	testConfig.RuntimeParams["search_path"] = schemaName
 
 	db := stdlib.OpenDB(*testConfig)
-	db.SetMaxOpenConns(1)
+	db.SetMaxOpenConns(4)
 	t.Cleanup(func() {
 		_ = db.Close()
 	})

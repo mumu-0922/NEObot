@@ -33,9 +33,9 @@ func run(args []string) error {
 	command := args[0]
 	var downAll bool
 	switch command {
-	case "up":
+	case "up", "baseline":
 		if len(args) != 1 {
-			return fmt.Errorf("up does not accept flags or arguments")
+			return fmt.Errorf("%s does not accept flags or arguments", command)
 		}
 	case "down":
 		flags := flag.NewFlagSet("down", flag.ContinueOnError)
@@ -76,6 +76,8 @@ func run(args []string) error {
 		changed, err = runner.Up(ctx)
 	case "down":
 		changed, err = runner.Down(ctx, downAll)
+	case "baseline":
+		changed, err = runner.BaselineLegacyChecksums(ctx)
 	}
 	if err != nil {
 		return err
@@ -93,5 +95,5 @@ func run(args []string) error {
 }
 
 func usageError() error {
-	return errors.New("usage: migrate <up|down> [--all]")
+	return errors.New("usage: migrate <up|down|baseline> [--all]")
 }

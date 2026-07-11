@@ -412,7 +412,9 @@ operational boundary between the Go backend process and Postgres:
 - Migrations are exposed through a Go CLI with embedded SQL. Expected command
   shape is `cd mm-chat/backend && go run ./cmd/migrate up`.
 - The runner records applied versions in
-  `schema_migrations(version, name, applied_at)`. This table is
+  `schema_migrations(version, name, checksum, applied_at)`. The checksum covers
+  migration identity and both SQL directions. Up, Down, and explicit legacy
+  baseline operations are serialized by a PostgreSQL advisory lock. This table is
   migration-runner metadata, not an app/domain table.
 
 ## 6. Migration and Rollback Boundary
@@ -429,7 +431,9 @@ operational boundary between the Go backend process and Postgres:
 - Down migrations are for deliberate rollback/development resets; the draft
   destructive command shape is `go run ./cmd/migrate down --all`.
 - The runner records applied versions in
-  `schema_migrations(version, name, applied_at)`. This table is
+  `schema_migrations(version, name, checksum, applied_at)`. Rows created before
+  checksum tracking require an explicit `go run ./cmd/migrate baseline` after
+  the operator verifies the embedded migration source. This table is
   migration-runner metadata, not an application table in the domain model above.
 
 ## 7. Acceptance Checks
