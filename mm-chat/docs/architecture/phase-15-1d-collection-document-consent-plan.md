@@ -361,6 +361,7 @@ allocation order only; consumers rescan claimable rows, deduplicate by
         Knowledge bindings, and persist object-cleanup Outbox work atomically.
   - [x] Implement first Document/Version bind with Parse Consent/Governance
         admission and atomic Job/Outbox creation.
+  - [x] Expose strict authenticated first-bind HTTP admission.
   - [ ] Implement Document metadata/content routes, replace, reprocess, and delete.
 - [ ] **15.1D-4 Governance and Consent:** implement operator Profile/Head
       management, Collection/User decisions, purpose/data-type validation,

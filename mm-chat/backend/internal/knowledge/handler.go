@@ -49,6 +49,15 @@ type pageDTO struct {
 	NextCursor string          `json:"nextCursor,omitempty"`
 }
 
+type documentDTO struct {
+	ID             string           `json:"id"`
+	CollectionID   string           `json:"collectionId"`
+	Status         string           `json:"status"`
+	PendingVersion *DocumentVersion `json:"pendingVersion,omitempty"`
+	CreatedAt      string           `json:"createdAt"`
+	UpdatedAt      string           `json:"updatedAt"`
+}
+
 func NewHandler(service *Service) *Handler {
 	if service == nil {
 		service = NewService(nil)
@@ -66,6 +75,10 @@ func (handler *Handler) ServeHTTP(w http.ResponseWriter, request *http.Request) 
 		handler.handleCollectionRoot(w, request)
 	case strings.HasPrefix(request.URL.Path, collectionsPathBase):
 		id := strings.TrimPrefix(request.URL.Path, collectionsPathBase)
+		if collectionID, ok := strings.CutSuffix(id, "/documents"); ok && collectionID != "" && !strings.Contains(collectionID, "/") {
+			handler.handleDocumentCreate(w, request, collectionID)
+			return
+		}
 		if id == "" || strings.Contains(id, "/") {
 			writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
 			return
@@ -74,6 +87,30 @@ func (handler *Handler) ServeHTTP(w http.ResponseWriter, request *http.Request) 
 	default:
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
 	}
+}
+
+func (handler *Handler) handleDocumentCreate(w http.ResponseWriter, request *http.Request, collectionID string) {
+	if request.Method != http.MethodPost {
+		methodNotAllowed(w, http.MethodPost)
+		return
+	}
+	if err := requireNoQuery(request.URL.Query()); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	var input BindDocumentInput
+	if err := decodeStrictJSON(w, request, &input); err != nil {
+		writeError(w, http.StatusBadRequest, ErrorCodeInvalidDocumentPayload, "document request body is invalid")
+		return
+	}
+	document, err := handler.service.CreateDocument(request.Context(), collectionID, input)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, documentDTO{ID: document.ID, CollectionID: document.CollectionID,
+		Status: document.Status, PendingVersion: document.PendingVersion,
+		CreatedAt: document.CreatedAt.UTC().Format(time.RFC3339Nano), UpdatedAt: document.UpdatedAt.UTC().Format(time.RFC3339Nano)})
 }
 
 func (handler *Handler) handleCollectionRoot(w http.ResponseWriter, request *http.Request) {
@@ -299,6 +336,10 @@ func serviceErrorFor(err error) (int, ErrorBody) {
 		return http.StatusForbidden, ErrorBody{"TEAM_ADMIN_REQUIRED", "team admin role is required"}
 	case errors.Is(err, ErrIdempotencyConflict):
 		return http.StatusConflict, ErrorBody{"IDEMPOTENCY_CONFLICT", "idempotency key conflicts with an existing request"}
+	case errors.Is(err, ErrFileNotFound):
+		return http.StatusNotFound, ErrorBody{"FILE_NOT_FOUND", "file not found"}
+	case errors.Is(err, ErrProcessingConsent):
+		return http.StatusForbidden, ErrorBody{"PROCESSING_CONSENT_REQUIRED", "processing consent is required"}
 	}
 	var validation ValidationError
 	if errors.As(err, &validation) {

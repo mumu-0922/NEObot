@@ -126,15 +126,20 @@ type BindDocumentInput struct {
 }
 
 type DocumentFile struct {
-	ID, Name, MIMEType string
-	ByteSize           int64
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	MIMEType string `json:"mimeType"`
+	ByteSize int64  `json:"byteSize"`
 }
 
 type DocumentVersion struct {
-	ID, Status, ErrorCode string
-	SourceVersion         int64
-	File                  DocumentFile
-	CreatedAt, UpdatedAt  time.Time
+	ID            string       `json:"id"`
+	Status        string       `json:"status"`
+	ErrorCode     string       `json:"errorCode,omitempty"`
+	SourceVersion int64        `json:"sourceVersion"`
+	File          DocumentFile `json:"file"`
+	CreatedAt     time.Time    `json:"createdAt"`
+	UpdatedAt     time.Time    `json:"updatedAt"`
 }
 
 type Document struct {

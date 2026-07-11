@@ -6050,3 +6050,15 @@ same-key replay produces one Job and one Outbox event    passed
 
 Next: expose strict Document list/get/create routes, then add authorized source
 content, replacement, reprocess, and tombstone deletion.
+
+## 2026-07-11 — Phase 15.1D-3C first-bind HTTP admission exposed
+
+`POST /v1/knowledge/collections/{collectionId}/documents` now exposes the
+verified first-bind transaction through the protected Knowledge handler. The
+route accepts only strict `{ fileId, idempotencyKey }` JSON, rejects query and
+identity/fence hints, maps hidden Files to `404 FILE_NOT_FOUND`, missing Parse
+authority to `403 PROCESSING_CONSENT_REQUIRED`, and returns the Processing
+Document plus pending immutable Version. Dynamic metrics use the bounded
+`/v1/knowledge/collections/{collectionId}/documents` label.
+
+Document list/get/content, replacement, reprocess, and delete remain closed.

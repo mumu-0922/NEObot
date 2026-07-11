@@ -16,6 +16,8 @@ func TestHandlerCollectionCRUDAndStrictPayloads(t *testing.T) {
 		ActiveKeyID: "test", Keys: map[string][]byte{"test": []byte("01234567890123456789012345678901")},
 	})
 	repo := &fakeRepository{createResult: testCollection("22222222-2222-4222-8222-222222222222")}
+	repo.documentResult = Document{ID: "33333333-3333-4333-8333-333333333333", CollectionID: repo.createResult.ID,
+		Status: "processing", CreatedAt: repo.createResult.CreatedAt, UpdatedAt: repo.createResult.UpdatedAt}
 	handler := NewHandler(NewService(repo, WithCursorCodec(codec), WithIDGenerator(func() (string, error) {
 		return repo.createResult.ID, nil
 	})))
@@ -59,6 +61,11 @@ func TestHandlerCollectionCRUDAndStrictPayloads(t *testing.T) {
 	)
 	if deleteBody.Code != http.StatusBadRequest || !strings.Contains(deleteBody.Body.String(), ErrorCodeForbiddenIdentityField) {
 		t.Fatalf("delete body response = %d %s", deleteBody.Code, deleteBody.Body.String())
+	}
+	document := perform(http.MethodPost, collectionsPath+"/"+repo.createResult.ID+"/documents",
+		`{"fileId":"44444444-4444-4444-8444-444444444444","idempotencyKey":"doc-1"}`)
+	if document.Code != http.StatusCreated || !strings.Contains(document.Body.String(), repo.documentResult.ID) {
+		t.Fatalf("document response = %d %s", document.Code, document.Body.String())
 	}
 }
 

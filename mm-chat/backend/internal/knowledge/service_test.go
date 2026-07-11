@@ -82,10 +82,11 @@ func TestServiceCollectionCursorIsUserAndFilterBound(t *testing.T) {
 }
 
 type fakeRepository struct {
-	created      CreateCollectionRepositoryInput
-	createResult Collection
-	listResult   CollectionPageResult
-	err          error
+	created        CreateCollectionRepositoryInput
+	createResult   Collection
+	listResult     CollectionPageResult
+	documentResult Document
+	err            error
 }
 
 func (repo *fakeRepository) CreateCollection(_ context.Context, input CreateCollectionRepositoryInput) (Collection, error) {
@@ -105,7 +106,7 @@ func (repo *fakeRepository) DeleteCollection(context.Context, DeleteCollectionRe
 	return repo.err
 }
 func (repo *fakeRepository) CreateDocument(context.Context, CreateDocumentRepositoryInput) (Document, error) {
-	return Document{}, repo.err
+	return repo.documentResult, repo.err
 }
 
 func testCollection(id string) Collection {

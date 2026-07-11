@@ -406,6 +406,10 @@ func knownMetricPath(path string) (string, bool) {
 			return "/v1/knowledge/collections", true
 		case 5:
 			return "/v1/knowledge/collections/{collectionId}", true
+		case 6:
+			if parts[5] == "documents" {
+				return "/v1/knowledge/collections/{collectionId}/documents", true
+			}
 		}
 	}
 	if len(parts) >= 3 && parts[1] == "v1" && parts[2] == "teams" {

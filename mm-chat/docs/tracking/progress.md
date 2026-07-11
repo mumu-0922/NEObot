@@ -618,6 +618,7 @@ the UI can call in the next wiring slice.
         write durable `file.object.delete.requested` Outbox work.
   - [x] Add first Document/Version bind, Parse admission, Job, and Outbox
         transaction.
+  - [x] Register strict authenticated first-bind HTTP admission.
   - [ ] Add Document metadata/content routes and replace/reprocess/delete
         transactions.
 - [ ] Implement operator Governance and Collection/User Consent services with

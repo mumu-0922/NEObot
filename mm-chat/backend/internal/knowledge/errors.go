@@ -4,6 +4,7 @@ import "errors"
 
 const (
 	ErrorCodeInvalidCollectionPayload = "INVALID_COLLECTION_PAYLOAD"
+	ErrorCodeInvalidDocumentPayload   = "INVALID_DOCUMENT_PAYLOAD"
 	ErrorCodeForbiddenIdentityField   = "FORBIDDEN_IDENTITY_FIELD"
 )
 
