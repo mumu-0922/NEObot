@@ -417,8 +417,11 @@ func knownMetricPath(path string) (string, bool) {
 		case 5:
 			return "/v1/knowledge/documents/{documentId}", true
 		case 6:
-			if parts[5] == "content" {
+			switch parts[5] {
+			case "content":
 				return "/v1/knowledge/documents/{documentId}/content", true
+			case "versions":
+				return "/v1/knowledge/documents/{documentId}/versions", true
 			}
 		}
 	}

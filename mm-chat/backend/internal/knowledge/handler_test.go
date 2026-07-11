@@ -91,6 +91,35 @@ func TestHandlerCollectionCRUDAndStrictPayloads(t *testing.T) {
 		strings.Contains(content.Body.String(), repo.contentResult.ObjectKey) {
 		t.Fatal("private object key leaked from content endpoint")
 	}
+	replacement := perform(http.MethodPost, documentsPathBase+repo.documentResult.ID+"/versions",
+		`{"fileId":"44444444-4444-4444-8444-444444444444","idempotencyKey":"replace-1"}`)
+	if replacement.Code != http.StatusCreated || !strings.Contains(replacement.Body.String(), repo.documentResult.ID) {
+		t.Fatalf("replacement response = %d %s", replacement.Code, replacement.Body.String())
+	}
+	for _, body := range []string{
+		`{"fileId":"44444444-4444-4444-8444-444444444444","idempotencyKey":"replace-2","unknown":true}`,
+		`[]`, `{`,
+	} {
+		invalid := perform(http.MethodPost, documentsPathBase+repo.documentResult.ID+"/versions", body)
+		if invalid.Code != http.StatusBadRequest || !strings.Contains(invalid.Body.String(), ErrorCodeInvalidDocumentPayload) {
+			t.Fatalf("invalid replacement body %q = %d %s", body, invalid.Code, invalid.Body.String())
+		}
+	}
+	forbiddenReplacement := perform(http.MethodPost, documentsPathBase+repo.documentResult.ID+"/versions",
+		`{"fileId":"44444444-4444-4444-8444-444444444444","idempotencyKey":"replace-2","ownerUserId":"`+testActorID+`"}`)
+	if forbiddenReplacement.Code != http.StatusBadRequest ||
+		!strings.Contains(forbiddenReplacement.Body.String(), ErrorCodeForbiddenIdentityField) {
+		t.Fatalf("forbidden replacement = %d %s", forbiddenReplacement.Code, forbiddenReplacement.Body.String())
+	}
+	queryReplacement := perform(http.MethodPost, documentsPathBase+repo.documentResult.ID+"/versions?aclRevision=1",
+		`{"fileId":"44444444-4444-4444-8444-444444444444","idempotencyKey":"replace-2"}`)
+	if queryReplacement.Code != http.StatusBadRequest {
+		t.Fatalf("replacement query = %d %s", queryReplacement.Code, queryReplacement.Body.String())
+	}
+	wrongMethod := perform(http.MethodGet, documentsPathBase+repo.documentResult.ID+"/versions", "")
+	if wrongMethod.Code != http.StatusMethodNotAllowed || wrongMethod.Header().Get("Allow") != http.MethodPost {
+		t.Fatalf("replacement method = %d allow=%q", wrongMethod.Code, wrongMethod.Header().Get("Allow"))
+	}
 }
 
 func TestHandlerMapsDisclosureErrors(t *testing.T) {
@@ -103,6 +132,8 @@ func TestHandlerMapsDisclosureErrors(t *testing.T) {
 		{ErrTeamAdminRequired, http.StatusForbidden, "TEAM_ADMIN_REQUIRED"},
 		{ErrIdempotencyConflict, http.StatusConflict, "IDEMPOTENCY_CONFLICT"},
 		{ErrDocumentNotFound, http.StatusNotFound, "DOCUMENT_NOT_FOUND"},
+		{ErrDocumentProcessing, http.StatusConflict, "DOCUMENT_PROCESSING"},
+		{ErrKnowledgeProcessorUnavailable, http.StatusServiceUnavailable, "KNOWLEDGE_PROCESSOR_UNAVAILABLE"},
 	} {
 		status, body := serviceErrorFor(test.err)
 		if status != test.want || body.Code != test.code {

@@ -17,6 +17,7 @@ type Repository interface {
 	UpdateCollection(context.Context, UpdateCollectionRepositoryInput) (Collection, error)
 	DeleteCollection(context.Context, DeleteCollectionRepositoryInput) error
 	CreateDocument(context.Context, CreateDocumentRepositoryInput) (Document, error)
+	CreateDocumentVersion(context.Context, CreateDocumentVersionRepositoryInput) (Document, error)
 	ListDocuments(context.Context, ListDocumentsRepositoryInput) (DocumentPageResult, error)
 	GetDocument(context.Context, DocumentLookupInput) (Document, error)
 	GetActiveDocumentContentMetadata(context.Context, DocumentLookupInput) (DocumentContentMetadata, error)
@@ -157,6 +158,13 @@ type CreateDocumentRepositoryInput struct {
 	CollectionID, ActorUserID    string
 	FileID, IdempotencyKey       string
 	RequestHash, ParseProcessor  string
+}
+
+type CreateDocumentVersionRepositoryInput struct {
+	VersionID, JobID            string
+	DocumentID, ActorUserID     string
+	FileID, IdempotencyKey      string
+	RequestHash, ParseProcessor string
 }
 
 type ListDocumentsInput struct {

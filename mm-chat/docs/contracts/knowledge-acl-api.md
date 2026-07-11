@@ -20,8 +20,10 @@ the caller-owned Knowledge File, validates current Parse Consent/Governance,
 and creates Document/Version/Job/Outbox atomically; first-bind, Document
 list/get, and Active-current-Version content routes are registered. Every read
 rechecks current Collection ownership or active Team Membership in Postgres;
-private object keys remain internal. Document replace/reprocess/delete,
-Consent, Governance command, and search routes remain unimplemented.
+private object keys remain internal. Replacement Version admission now keeps
+the exact Active current Version serving while it creates one Pending Version,
+Parse Job, and Outbox event atomically. Document reprocess/delete, Consent,
+Governance command, and search routes remain unimplemented.
 
 The current auth/session baseline is Phase 15.1B in
 [`auth-session-api.md`](./auth-session-api.md), with Phase 13 ownership

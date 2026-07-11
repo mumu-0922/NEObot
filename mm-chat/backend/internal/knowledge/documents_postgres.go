@@ -208,31 +208,9 @@ FOR UPDATE
 		return Document{}, ErrFileNotFound
 	}
 
-	var consentID, endpointID, profileID string
-	var governanceRevision, headRevision, consentRevision int64
-	err = tx.QueryRowContext(ctx, `
-SELECT pc.id, pc.endpoint_id, pc.governance_profile_id, pc.governance_revision,
-  pc.governance_head_revision, pc.consent_revision
-FROM processing_consents pc
-JOIN processor_governance_heads h
-  ON h.processor = pc.processor AND h.endpoint_id = pc.endpoint_id
-JOIN processor_governance_profiles p ON p.id = pc.governance_profile_id
-WHERE pc.scope = 'collection' AND pc.collection_id = $1 AND pc.processor = $2
-  AND pc.superseded_at IS NULL AND pc.decision = 'granted'
-  AND (pc.expires_at IS NULL OR pc.expires_at > now())
-  AND 'parse' = ANY(pc.purposes)
-  AND ($3 = ANY(pc.data_types) OR '*' = ANY(pc.data_types))
-  AND h.status = 'active' AND h.active_profile_id = pc.governance_profile_id
-  AND h.active_governance_revision = pc.governance_revision
-  AND h.head_revision = pc.governance_head_revision AND p.status = 'approved'
-FOR UPDATE OF pc, h
-`, input.CollectionID, input.ParseProcessor, file.MIMEType).Scan(
-		&consentID, &endpointID, &profileID, &governanceRevision, &headRevision, &consentRevision)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Document{}, ErrProcessingConsent
-	}
+	authority, err := resolveParseAuthority(ctx, tx, input.CollectionID, input.ParseProcessor, file.MIMEType)
 	if err != nil {
-		return Document{}, fmt.Errorf("resolve parse consent: %w", err)
+		return Document{}, err
 	}
 
 	var document Document
@@ -273,14 +251,18 @@ INSERT INTO knowledge_processing_jobs (
   $13,$14,$15,1,$16,$17,$18,$19
 )
 `, input.JobID, input.CollectionID, input.DocumentID, input.VersionID, input.FileID,
-		input.ParseProcessor, endpointID, profileID, governanceRevision, headRevision,
-		consentID, consentRevision, collection.ACLRevision, collection.VisibilityEpoch,
+		input.ParseProcessor, authority.EndpointID, authority.ProfileID,
+		authority.GovernanceRevision, authority.HeadRevision,
+		authority.ConsentID, authority.ConsentRevision, collection.ACLRevision, collection.VisibilityEpoch,
 		collection.ProcessingRevision, input.ActorUserID,
 		"document:"+input.DocumentID+":initial", input.IdempotencyKey, input.RequestHash)
 	if err != nil {
 		return Document{}, fmt.Errorf("insert parse job: %w", err)
 	}
-	if err := r.insertDocumentOutbox(ctx, tx, document, version, input.JobID, hash); err != nil {
+	if err := r.insertDocumentOutbox(
+		ctx, tx, document, version, input.JobID, hash, "initial",
+		authority, collection, 1,
+	); err != nil {
 		return Document{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -334,14 +316,52 @@ ORDER BY v.source_version DESC LIMIT 1
 	return version, nil
 }
 
-func (r *PostgresRepository) insertDocumentOutbox(ctx context.Context, tx *sql.Tx, document Document, version DocumentVersion, jobID, hash string) error {
+func queryVersionByID(ctx context.Context, tx *sql.Tx, documentID, versionID string) (*DocumentVersion, error) {
+	var version DocumentVersion
+	err := tx.QueryRowContext(ctx, `
+SELECT v.id, v.source_version, v.status, COALESCE(v.error_code,''),
+  f.id, f.original_filename, f.mime_type, f.byte_size, v.created_at, v.updated_at
+FROM knowledge_document_versions v JOIN files f ON f.id = v.file_id
+WHERE v.document_id = $1 AND v.id = $2
+`, documentID, versionID).Scan(&version.ID, &version.SourceVersion, &version.Status,
+		&version.ErrorCode, &version.File.ID, &version.File.Name, &version.File.MIMEType,
+		&version.File.ByteSize, &version.CreatedAt, &version.UpdatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("query document version: %w", err)
+	}
+	return &version, nil
+}
+
+func (r *PostgresRepository) insertDocumentOutbox(
+	ctx context.Context,
+	tx *sql.Tx,
+	document Document,
+	version DocumentVersion,
+	jobID, hash, operation string,
+	authority parseAuthority,
+	collection collectionRow,
+	documentVisibilityEpoch int64,
+) error {
 	eventID, err := r.newEventID()
 	if err != nil {
 		return err
 	}
-	payload, _ := json.Marshal(map[string]any{"schemaVersion": 1, "collectionId": document.CollectionID,
-		"documentId": document.ID, "documentVersionId": version.ID, "sourceVersion": 1,
-		"fileId": version.File.ID, "contentHash": hash, "jobId": jobID})
+	payload, _ := json.Marshal(map[string]any{
+		"schemaVersion": 1, "collectionId": document.CollectionID,
+		"documentId": document.ID, "documentVersionId": version.ID,
+		"sourceVersion": version.SourceVersion, "fileId": version.File.ID,
+		"contentHash": hash, "jobId": jobID, "operation": operation,
+		"processor": authority.Processor, "endpointId": authority.EndpointID,
+		"governanceProfileId":          authority.ProfileID,
+		"governanceRevision":           authority.GovernanceRevision,
+		"governanceHeadRevision":       authority.HeadRevision,
+		"collectionConsentId":          authority.ConsentID,
+		"collectionConsentRevision":    authority.ConsentRevision,
+		"collectionAclRevision":        collection.ACLRevision,
+		"collectionVisibilityEpoch":    collection.VisibilityEpoch,
+		"collectionProcessingRevision": collection.ProcessingRevision,
+		"documentVisibilityEpoch":      documentVisibilityEpoch,
+	})
 	_, err = tx.ExecContext(ctx, `INSERT INTO knowledge_outbox
 (event_id,aggregate_type,aggregate_key,event_type,payload)
 VALUES ($1,'knowledge_document',$2,'knowledge.document.version.requested',$3::jsonb)`, eventID, document.ID, string(payload))

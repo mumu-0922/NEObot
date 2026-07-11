@@ -9,16 +9,18 @@ const (
 )
 
 var (
-	ErrDatabaseRequired    = errors.New("database is required")
-	ErrCursorCodecRequired = errors.New("cursor codec is required")
-	ErrUnauthenticated     = errors.New("unauthenticated")
-	ErrCollectionNotFound  = errors.New("collection not found")
-	ErrDocumentNotFound    = errors.New("document not found")
-	ErrStorageRequired     = errors.New("storage is required")
-	ErrTeamAdminRequired   = errors.New("team admin required")
-	ErrIdempotencyConflict = errors.New("idempotency key conflict")
-	ErrFileNotFound        = errors.New("file not found")
-	ErrProcessingConsent   = errors.New("processing consent required")
+	ErrDatabaseRequired              = errors.New("database is required")
+	ErrCursorCodecRequired           = errors.New("cursor codec is required")
+	ErrUnauthenticated               = errors.New("unauthenticated")
+	ErrCollectionNotFound            = errors.New("collection not found")
+	ErrDocumentNotFound              = errors.New("document not found")
+	ErrStorageRequired               = errors.New("storage is required")
+	ErrTeamAdminRequired             = errors.New("team admin required")
+	ErrIdempotencyConflict           = errors.New("idempotency key conflict")
+	ErrFileNotFound                  = errors.New("file not found")
+	ErrProcessingConsent             = errors.New("processing consent required")
+	ErrDocumentProcessing            = errors.New("document processing")
+	ErrKnowledgeProcessorUnavailable = errors.New("knowledge processor unavailable")
 )
 
 type ValidationError struct {

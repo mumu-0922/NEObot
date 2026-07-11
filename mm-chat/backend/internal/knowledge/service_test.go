@@ -3,6 +3,8 @@ package knowledge
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"testing"
 	"time"
@@ -134,6 +136,30 @@ func TestServiceDocumentCursorAndContentAuthorizationOrder(t *testing.T) {
 	}
 }
 
+func TestServiceCreatesServerSelectedReplacementVersion(t *testing.T) {
+	repo := &fakeRepository{documentResult: Document{ID: "22222222-2222-4222-8222-222222222222"}}
+	ids := []string{"33333333-3333-4333-8333-333333333333", "44444444-4444-4444-8444-444444444444"}
+	service := NewService(repo, WithIDGenerator(func() (string, error) {
+		id := ids[0]
+		ids = ids[1:]
+		return id, nil
+	}))
+	ctx := auth.WithUser(context.Background(), auth.User{ID: testActorID})
+	_, err := service.CreateDocumentVersion(ctx, repo.documentResult.ID, BindDocumentInput{
+		FileID: "55555555-5555-4555-8555-555555555555", IdempotencyKey: " replace-1 ",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := repo.versionCreated
+	expectedHash := sha256.Sum256([]byte(repo.documentResult.ID + "\n55555555-5555-4555-8555-555555555555"))
+	if input.ActorUserID != testActorID || input.VersionID != "33333333-3333-4333-8333-333333333333" ||
+		input.JobID != "44444444-4444-4444-8444-444444444444" || input.ParseProcessor != "mineru" ||
+		input.IdempotencyKey != "replace-1" || input.RequestHash != hex.EncodeToString(expectedHash[:]) {
+		t.Fatalf("replacement repository input = %#v", input)
+	}
+}
+
 type fakeRepository struct {
 	created        CreateCollectionRepositoryInput
 	createResult   Collection
@@ -141,6 +167,7 @@ type fakeRepository struct {
 	documentResult Document
 	documentPage   DocumentPageResult
 	contentResult  DocumentContentMetadata
+	versionCreated CreateDocumentVersionRepositoryInput
 	err            error
 }
 
@@ -179,6 +206,10 @@ func (repo *fakeRepository) DeleteCollection(context.Context, DeleteCollectionRe
 	return repo.err
 }
 func (repo *fakeRepository) CreateDocument(context.Context, CreateDocumentRepositoryInput) (Document, error) {
+	return repo.documentResult, repo.err
+}
+func (repo *fakeRepository) CreateDocumentVersion(_ context.Context, input CreateDocumentVersionRepositoryInput) (Document, error) {
+	repo.versionCreated = input
 	return repo.documentResult, repo.err
 }
 func (repo *fakeRepository) ListDocuments(context.Context, ListDocumentsRepositoryInput) (DocumentPageResult, error) {

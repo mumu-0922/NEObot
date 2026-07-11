@@ -135,7 +135,7 @@ func (handler *Handler) handleCollectionDocuments(w http.ResponseWriter, request
 		}
 		var input BindDocumentInput
 		if err := decodeStrictJSON(w, request, &input); err != nil {
-			writeError(w, http.StatusBadRequest, ErrorCodeInvalidDocumentPayload, "document request body is invalid")
+			writeDocumentDecodeError(w, err)
 			return
 		}
 		document, err := handler.service.CreateDocument(request.Context(), collectionID, input)
@@ -152,8 +152,13 @@ func (handler *Handler) handleCollectionDocuments(w http.ResponseWriter, request
 func (handler *Handler) handleDocument(w http.ResponseWriter, request *http.Request) {
 	remainder := strings.TrimPrefix(request.URL.Path, documentsPathBase)
 	parts := strings.Split(remainder, "/")
-	if len(parts) < 1 || parts[0] == "" || len(parts) > 2 || (len(parts) == 2 && parts[1] != "content") {
+	if len(parts) < 1 || parts[0] == "" || len(parts) > 2 ||
+		(len(parts) == 2 && parts[1] != "content" && parts[1] != "versions") {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
+		return
+	}
+	if len(parts) == 2 && parts[1] == "versions" {
+		handler.handleDocumentVersionCreate(w, request, parts[0])
 		return
 	}
 	if request.Method != http.MethodGet {
@@ -190,6 +195,28 @@ func (handler *Handler) handleDocument(w http.ResponseWriter, request *http.Requ
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, reader)
+}
+
+func (handler *Handler) handleDocumentVersionCreate(w http.ResponseWriter, request *http.Request, documentID string) {
+	if request.Method != http.MethodPost {
+		methodNotAllowed(w, http.MethodPost)
+		return
+	}
+	if err := requireNoQuery(request.URL.Query()); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	var input BindDocumentInput
+	if err := decodeStrictJSON(w, request, &input); err != nil {
+		writeDocumentDecodeError(w, err)
+		return
+	}
+	document, err := handler.service.CreateDocumentVersion(request.Context(), documentID, input)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, newDocumentDTO(document))
 }
 
 func (handler *Handler) handleCollectionRoot(w http.ResponseWriter, request *http.Request) {
@@ -436,6 +463,19 @@ func writeDecodeError(w http.ResponseWriter, err error) {
 	}
 }
 
+func writeDocumentDecodeError(w http.ResponseWriter, err error) {
+	var maxErr *http.MaxBytesError
+	var forbidden forbiddenFieldError
+	switch {
+	case errors.As(err, &maxErr):
+		writeError(w, http.StatusRequestEntityTooLarge, "PAYLOAD_TOO_LARGE", "request body is too large")
+	case errors.As(err, &forbidden):
+		writeError(w, http.StatusBadRequest, ErrorCodeForbiddenIdentityField, "caller identity and authorization fields are not accepted")
+	default:
+		writeError(w, http.StatusBadRequest, ErrorCodeInvalidDocumentPayload, "document request body is invalid")
+	}
+}
+
 func writeServiceError(w http.ResponseWriter, err error) {
 	status, body := serviceErrorFor(err)
 	writeError(w, status, body.Code, body.Message)
@@ -463,6 +503,10 @@ func serviceErrorFor(err error) (int, ErrorBody) {
 		return http.StatusNotFound, ErrorBody{"FILE_NOT_FOUND", "file not found"}
 	case errors.Is(err, ErrProcessingConsent):
 		return http.StatusForbidden, ErrorBody{"PROCESSING_CONSENT_REQUIRED", "processing consent is required"}
+	case errors.Is(err, ErrDocumentProcessing):
+		return http.StatusConflict, ErrorBody{"DOCUMENT_PROCESSING", "document already has processing work"}
+	case errors.Is(err, ErrKnowledgeProcessorUnavailable):
+		return http.StatusServiceUnavailable, ErrorBody{"KNOWLEDGE_PROCESSOR_UNAVAILABLE", "knowledge processor is unavailable"}
 	}
 	var validation ValidationError
 	if errors.As(err, &validation) {

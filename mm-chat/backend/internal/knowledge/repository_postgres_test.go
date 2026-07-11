@@ -116,6 +116,28 @@ INSERT INTO processing_consents (
 ) VALUES ($3,'collection',$4,'mineru','default',$1,1,1,ARRAY['parse'],
  ARRAY['application/pdf'],'v1','granted',1,$5)
 `, profileID, strings.Repeat("b", 64), consentID, personalID, adminID)
+	for _, authorityTest := range []struct {
+		collectionID string
+		mimeType     string
+		want         error
+	}{
+		{personalID, "application/pdf", nil},
+		{"30000000-0000-4000-8000-000000000099", "application/pdf", ErrProcessingConsent},
+		{personalID, "text/html", ErrKnowledgeProcessorUnavailable},
+	} {
+		authorityTx, beginErr := db.BeginTx(ctx, nil)
+		if beginErr != nil {
+			t.Fatal(beginErr)
+		}
+		_, authorityErr := resolveParseAuthority(
+			ctx, authorityTx, authorityTest.collectionID, "mineru", authorityTest.mimeType,
+		)
+		_ = authorityTx.Rollback()
+		if authorityErr != authorityTest.want {
+			t.Fatalf("resolve authority collection=%s mime=%s error=%v, want %v",
+				authorityTest.collectionID, authorityTest.mimeType, authorityErr, authorityTest.want)
+		}
+	}
 	documentIDs := []string{documentID, versionID, jobID,
 		"50000000-0000-4000-8000-000000000007",
 		"50000000-0000-4000-8000-000000000008",
@@ -148,11 +170,241 @@ INSERT INTO processing_consents (
 		t.Fatalf("document jobs/events = %d/%d", jobs, events)
 	}
 
+	const (
+		replacementFileID    = "50000000-0000-4000-8000-000000000010"
+		replacementVersionID = "50000000-0000-4000-8000-000000000011"
+		replacementJobID     = "50000000-0000-4000-8000-000000000012"
+	)
+	mustKnowledgeExec(t, ctx, db, `
+UPDATE knowledge_document_versions SET status='active' WHERE id=$1;
+UPDATE knowledge_documents SET status='active',current_version_id=$1 WHERE id=$2;
+INSERT INTO files (
+  id,user_id,original_filename,mime_type,byte_size,sha256,storage_backend,object_key,metadata
+) VALUES ($3,$4,'replacement.pdf','application/pdf',12,$5,'local',$6,'{"purpose":"knowledge"}')
+`, versionID, documentID, replacementFileID, adminID, strings.Repeat("c", 64),
+		"users/"+adminID+"/files/"+replacementFileID)
+	replacementIDs := []string{replacementVersionID, replacementJobID,
+		"50000000-0000-4000-8000-000000000013", "50000000-0000-4000-8000-000000000014",
+		"50000000-0000-4000-8000-000000000015", "50000000-0000-4000-8000-000000000016",
+		"50000000-0000-4000-8000-000000000017", "50000000-0000-4000-8000-000000000018"}
+	replacementService := NewService(NewPostgresRepository(db), WithIDGenerator(func() (string, error) {
+		id := replacementIDs[0]
+		replacementIDs = replacementIDs[1:]
+		return id, nil
+	}))
+	if _, err := NewPostgresRepository(db).CreateDocumentVersion(ctx, CreateDocumentVersionRepositoryInput{
+		VersionID: "50000000-0000-4000-8000-000000000090",
+		JobID:     "50000000-0000-4000-8000-000000000091", DocumentID: documentID,
+		ActorUserID: outsiderID, FileID: replacementFileID, IdempotencyKey: "outsider-replace",
+		RequestHash: strings.Repeat("9", 64), ParseProcessor: "mineru",
+	}); err != ErrDocumentNotFound {
+		t.Fatalf("personal outsider replacement error = %v", err)
+	}
+	replacement, err := replacementService.CreateDocumentVersion(adminCtx, documentID, BindDocumentInput{
+		FileID: replacementFileID, IdempotencyKey: "replacement-1",
+	})
+	if err != nil || replacement.CurrentVersion == nil || replacement.CurrentVersion.ID != versionID ||
+		replacement.PendingVersion == nil || replacement.PendingVersion.ID != replacementVersionID ||
+		replacement.PendingVersion.SourceVersion != 2 {
+		t.Fatalf("replacement = %#v, err=%v", replacement, err)
+	}
+	activeContent, err := NewPostgresRepository(db).GetActiveDocumentContentMetadata(ctx, DocumentLookupInput{
+		DocumentID: documentID, ActorUserID: adminID,
+	})
+	if err != nil || activeContent.FileID != fileID {
+		t.Fatalf("content switched before publish = %#v, err=%v", activeContent, err)
+	}
+	replayedReplacement, err := replacementService.CreateDocumentVersion(adminCtx, documentID, BindDocumentInput{
+		FileID: replacementFileID, IdempotencyKey: "replacement-1",
+	})
+	if err != nil || replayedReplacement.PendingVersion == nil || replayedReplacement.PendingVersion.ID != replacementVersionID {
+		t.Fatalf("replacement replay = %#v, err=%v", replayedReplacement, err)
+	}
+	if _, err := replacementService.CreateDocumentVersion(adminCtx, documentID, BindDocumentInput{
+		FileID: "50000000-0000-4000-8000-000000000099", IdempotencyKey: "replacement-1",
+	}); err != ErrIdempotencyConflict {
+		t.Fatalf("replacement changed replay error = %v", err)
+	}
+	if _, err := replacementService.CreateDocumentVersion(adminCtx, documentID, BindDocumentInput{
+		FileID: replacementFileID, IdempotencyKey: "replacement-2",
+	}); err != ErrDocumentProcessing {
+		t.Fatalf("second nonterminal replacement error = %v", err)
+	}
+	var replacementJobs, replacementEvents int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM knowledge_processing_jobs WHERE document_id=$1 AND operation='replace'`, documentID).Scan(&replacementJobs); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM knowledge_outbox WHERE aggregate_key=$1 AND event_type='knowledge.document.version.requested'`, documentID).Scan(&replacementEvents); err != nil {
+		t.Fatal(err)
+	}
+	if replacementJobs != 1 || replacementEvents != 2 {
+		t.Fatalf("replacement jobs/total events = %d/%d", replacementJobs, replacementEvents)
+	}
+	var replacementOperation, replacementSourceVersion, replacementProcessor string
+	var replacementACLRevision, replacementDocumentEpoch int64
+	if err := db.QueryRowContext(ctx, `
+SELECT payload->>'operation',payload->>'sourceVersion',payload->>'processor',
+  (payload->>'collectionAclRevision')::bigint,(payload->>'documentVisibilityEpoch')::bigint
+FROM knowledge_outbox
+WHERE aggregate_key=$1 AND payload->>'documentVersionId'=$2
+`, documentID, replacementVersionID).Scan(
+		&replacementOperation, &replacementSourceVersion, &replacementProcessor,
+		&replacementACLRevision, &replacementDocumentEpoch,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if replacementOperation != "replace" || replacementSourceVersion != "2" ||
+		replacementProcessor != "mineru" || replacementACLRevision != 1 || replacementDocumentEpoch != 1 {
+		t.Fatalf("replacement outbox fences = %s/%s/%s/%d/%d", replacementOperation,
+			replacementSourceVersion, replacementProcessor, replacementACLRevision, replacementDocumentEpoch)
+	}
+
+	const (
+		raceFileA = "50000000-0000-4000-8000-000000000020"
+		raceFileB = "50000000-0000-4000-8000-000000000021"
+	)
+	mustKnowledgeExec(t, ctx, db, `
+UPDATE knowledge_document_versions SET status='failed',error_code='PARSE_FAILED' WHERE id=$1;
+UPDATE knowledge_processing_jobs
+SET status='failed',attempt_count=1,completed_at=now(),error_code='PARSE_FAILED',updated_at=now()
+WHERE document_version_id=$1;
+INSERT INTO files (
+ id,user_id,original_filename,mime_type,byte_size,sha256,storage_backend,object_key,metadata
+) VALUES
+ ($2,$4,'race-a.pdf','application/pdf',13,$5,'local',$6,'{"purpose":"knowledge"}'),
+ ($3,$4,'race-b.pdf','application/pdf',14,$7,'local',$8,'{"purpose":"knowledge"}')
+`, replacementVersionID, raceFileA, raceFileB, adminID, strings.Repeat("d", 64),
+		"users/"+adminID+"/files/"+raceFileA, strings.Repeat("e", 64),
+		"users/"+adminID+"/files/"+raceFileB)
+	replayRaceInputs := []CreateDocumentVersionRepositoryInput{
+		{VersionID: "50000000-0000-4000-8000-000000000022", JobID: "50000000-0000-4000-8000-000000000023",
+			DocumentID: documentID, ActorUserID: adminID, FileID: raceFileA,
+			IdempotencyKey: "race-replay", RequestHash: strings.Repeat("1", 64), ParseProcessor: "mineru"},
+		{VersionID: "50000000-0000-4000-8000-000000000024", JobID: "50000000-0000-4000-8000-000000000025",
+			DocumentID: documentID, ActorUserID: adminID, FileID: raceFileA,
+			IdempotencyKey: "race-replay", RequestHash: strings.Repeat("1", 64), ParseProcessor: "mineru"},
+	}
+	raceRepo := NewPostgresRepository(db)
+	type replacementResult struct {
+		document Document
+		err      error
+	}
+	replayResults := make(chan replacementResult, len(replayRaceInputs))
+	var raceWait sync.WaitGroup
+	for _, input := range replayRaceInputs {
+		raceWait.Add(1)
+		go func(input CreateDocumentVersionRepositoryInput) {
+			defer raceWait.Done()
+			replaced, replaceErr := raceRepo.CreateDocumentVersion(ctx, input)
+			replayResults <- replacementResult{document: replaced, err: replaceErr}
+		}(input)
+	}
+	raceWait.Wait()
+	close(replayResults)
+	var replayVersionID string
+	for result := range replayResults {
+		if result.err != nil || result.document.PendingVersion == nil {
+			t.Fatalf("concurrent replacement replay = %#v, err=%v", result.document, result.err)
+		}
+		if replayVersionID == "" {
+			replayVersionID = result.document.PendingVersion.ID
+		} else if result.document.PendingVersion.ID != replayVersionID {
+			t.Fatalf("concurrent replay version ids = %s/%s", replayVersionID, result.document.PendingVersion.ID)
+		}
+	}
+	var replayVersions, replayJobs int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM knowledge_document_versions WHERE document_id=$1 AND idempotency_key='race-replay'`, documentID).Scan(&replayVersions); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM knowledge_processing_jobs WHERE document_id=$1 AND idempotency_key='race-replay'`, documentID).Scan(&replayJobs); err != nil {
+		t.Fatal(err)
+	}
+	if replayVersions != 1 || replayJobs != 1 {
+		t.Fatalf("concurrent replay versions/jobs = %d/%d", replayVersions, replayJobs)
+	}
+	mustKnowledgeExec(t, ctx, db, `
+UPDATE knowledge_document_versions SET status='failed',error_code='PARSE_FAILED' WHERE id=$1;
+UPDATE knowledge_processing_jobs
+SET status='failed',attempt_count=1,completed_at=now(),error_code='PARSE_FAILED',updated_at=now()
+WHERE document_version_id=$1
+`, replayVersionID)
+
+	raceInputs := []CreateDocumentVersionRepositoryInput{
+		{VersionID: "50000000-0000-4000-8000-000000000026", JobID: "50000000-0000-4000-8000-000000000027",
+			DocumentID: documentID, ActorUserID: adminID, FileID: raceFileA,
+			IdempotencyKey: "race-a", RequestHash: strings.Repeat("2", 64), ParseProcessor: "mineru"},
+		{VersionID: "50000000-0000-4000-8000-000000000028", JobID: "50000000-0000-4000-8000-000000000029",
+			DocumentID: documentID, ActorUserID: adminID, FileID: raceFileB,
+			IdempotencyKey: "race-b", RequestHash: strings.Repeat("3", 64), ParseProcessor: "mineru"},
+	}
+	raceErrors := make(chan error, len(raceInputs))
+	raceWait = sync.WaitGroup{}
+	for _, input := range raceInputs {
+		raceWait.Add(1)
+		go func(input CreateDocumentVersionRepositoryInput) {
+			defer raceWait.Done()
+			_, replaceErr := raceRepo.CreateDocumentVersion(ctx, input)
+			raceErrors <- replaceErr
+		}(input)
+	}
+	raceWait.Wait()
+	close(raceErrors)
+	var winners, blocked int
+	for replaceErr := range raceErrors {
+		switch replaceErr {
+		case nil:
+			winners++
+		case ErrDocumentProcessing:
+			blocked++
+		default:
+			t.Fatalf("concurrent replacement error = %v", replaceErr)
+		}
+	}
+	if winners != 1 || blocked != 1 {
+		t.Fatalf("concurrent replacement winners/blocked = %d/%d", winners, blocked)
+	}
+
 	teamCollection, err := service.CreateCollection(adminCtx, CreateCollectionInput{
 		Name: "Shared", Scope: ScopeTeam, TeamID: teamID, IdempotencyKey: "team-1",
 	})
 	if err != nil || teamCollection.ID != teamColID {
 		t.Fatalf("create team collection = %#v, err=%v", teamCollection, err)
+	}
+	const (
+		teamDocumentID = "50000000-0000-4000-8000-000000000092"
+		teamVersionID  = "50000000-0000-4000-8000-000000000093"
+	)
+	mustKnowledgeExec(t, ctx, db, `
+INSERT INTO knowledge_documents (id,collection_id,status) VALUES ($1,$2,'processing');
+INSERT INTO knowledge_document_versions (id,document_id,file_id,source_version,status,content_hash)
+VALUES ($3,$1,$4,1,'active',$5);
+UPDATE knowledge_documents SET status='active',current_version_id=$3 WHERE id=$1
+`, teamDocumentID, teamColID, teamVersionID, fileID, strings.Repeat("a", 64))
+	for _, denied := range []struct {
+		actorID string
+		want    error
+	}{
+		{memberID, ErrTeamAdminRequired},
+		{outsiderID, ErrDocumentNotFound},
+	} {
+		_, replaceErr := NewPostgresRepository(db).CreateDocumentVersion(ctx, CreateDocumentVersionRepositoryInput{
+			VersionID: "50000000-0000-4000-8000-000000000094",
+			JobID:     "50000000-0000-4000-8000-000000000095", DocumentID: teamDocumentID,
+			ActorUserID: denied.actorID, FileID: replacementFileID, IdempotencyKey: "denied-replace",
+			RequestHash: strings.Repeat("8", 64), ParseProcessor: "mineru",
+		})
+		if replaceErr != denied.want {
+			t.Fatalf("team replacement actor=%s error=%v, want %v", denied.actorID, replaceErr, denied.want)
+		}
+	}
+	if _, err := NewPostgresRepository(db).CreateDocumentVersion(ctx, CreateDocumentVersionRepositoryInput{
+		VersionID: "50000000-0000-4000-8000-000000000096",
+		JobID:     "50000000-0000-4000-8000-000000000097", DocumentID: teamDocumentID,
+		ActorUserID: adminID, FileID: "50000000-0000-4000-8000-000000000098",
+		IdempotencyKey: "missing-file-replace", RequestHash: strings.Repeat("7", 64),
+		ParseProcessor: "mineru",
+	}); err != ErrFileNotFound {
+		t.Fatalf("replacement missing file error = %v", err)
 	}
 	if _, err := service.CreateCollection(memberCtx, CreateCollectionInput{
 		Name: "Forbidden", Scope: ScopeTeam, TeamID: teamID, IdempotencyKey: "member-1",

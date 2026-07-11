@@ -6098,3 +6098,39 @@ Pending object key or bytes are resolved by metadata routes.
 
 Next: implement immutable replacement Version admission, then reprocess and
 logical Document tombstone transactions.
+
+## 2026-07-11 — Phase 15.1D-3E replacement Version admission implemented
+
+`POST /v1/knowledge/documents/{documentId}/versions` now admits a new immutable
+Source Version without moving the serving pointer. Go rechecks current
+Personal-owner or Team-admin authority, locks Collection then active Document,
+and locks the current/new File rows in sorted UUID order. The new File must be
+caller-owned, available, non-deleted, and marked `purpose=knowledge`.
+
+The transaction allocates `source_version = max + 1`, resolves the current
+MinerU Parse Consent and approved Governance Head/Profile, then inserts the
+uploaded Version, `operation=replace` Processing Job, and version-requested
+Outbox event atomically. `current_version_id` remains unchanged, so readers
+continue receiving the old Active bytes. A second nonterminal replacement gets
+`409 DOCUMENT_PROCESSING`; same-key replay returns the original Version, while
+changed payload returns `409 IDEMPOTENCY_CONFLICT`.
+
+Processor admission locks the server-selected Active Governance Head and
+Approved Profile before the exact current Consent. Missing or incompatible
+processor authority returns `503 KNOWLEDGE_PROCESSOR_UNAVAILABLE`; missing,
+revoked, expired, or MIME-incompatible Collection Consent remains
+`403 PROCESSING_CONSENT_REQUIRED`. The Outbox payload carries immutable
+Governance, Consent, Collection, and Document revision fences but never an
+object key or credential.
+
+```text
+go test ./internal/knowledge ./internal/httpserver       passed
+PostgreSQL 16 replacement test under -race               passed
+two concurrent replacements: one winner, one 409         passed
+same-key concurrent replay: one Version/Job/Event          passed
+Active content pointer unchanged before publish          passed
+replacement Job/Outbox/idempotency assertions            passed
+```
+
+Next: implement same-Version reprocess admission, followed by logical Document
+tombstone deletion.

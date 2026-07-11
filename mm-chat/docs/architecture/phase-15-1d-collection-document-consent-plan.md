@@ -363,7 +363,9 @@ allocation order only; consumers rescan claimable rows, deduplicate by
         admission and atomic Job/Outbox creation.
   - [x] Expose strict authenticated first-bind HTTP admission.
   - [x] Implement ACL-checked Document list/get and Active-only content routes.
-  - [ ] Implement Document replace, reprocess, and delete transactions.
+  - [x] Implement immutable replacement Version admission with locked Files,
+        Parse authority, idempotency, Job, and Outbox.
+  - [ ] Implement Document reprocess and delete transactions.
 - [ ] **15.1D-4 Governance and Consent:** implement operator Profile/Head
       management, Collection/User decisions, purpose/data-type validation,
       expiry handling, revision fences, and Outbox.
