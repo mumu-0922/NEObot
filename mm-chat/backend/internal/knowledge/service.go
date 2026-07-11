@@ -5,13 +5,16 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
 
 	"neo-chat/mm-chat/backend/internal/auth"
+	"neo-chat/mm-chat/backend/internal/storage"
 	"neo-chat/mm-chat/backend/internal/teams"
 )
 
@@ -25,6 +28,8 @@ const (
 	maximumIdempotencyBytes           = 128
 	collectionCursorResource          = "knowledge_collections"
 	collectionCursorSort              = "created_at:desc,id:desc"
+	documentCursorResource            = "knowledge_documents"
+	documentCursorSort                = "created_at:desc,id:desc"
 )
 
 var validIcons = map[string]struct{}{
@@ -42,6 +47,7 @@ type Service struct {
 	repo        Repository
 	cursorCodec *teams.CursorCodec
 	newID       func() (string, error)
+	objectStore storage.ObjectStore
 }
 
 type ServiceOption func(*Service)
@@ -56,6 +62,10 @@ func WithIDGenerator(generator func() (string, error)) ServiceOption {
 			service.newID = generator
 		}
 	}
+}
+
+func WithObjectStore(store storage.ObjectStore) ServiceOption {
+	return func(service *Service) { service.objectStore = store }
 }
 
 func NewService(repo Repository, options ...ServiceOption) *Service {
@@ -239,6 +249,96 @@ func (s *Service) CreateDocument(ctx context.Context, collectionID string, input
 	})
 }
 
+func (s *Service) ListDocuments(ctx context.Context, collectionID string, input ListDocumentsInput) (ApiPage[Document], error) {
+	if err := s.requireRepository(); err != nil {
+		return ApiPage[Document]{}, err
+	}
+	if s.cursorCodec == nil {
+		return ApiPage[Document]{}, ErrCursorCodecRequired
+	}
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return ApiPage[Document]{}, err
+	}
+	collectionID, err = normalizeUUID(collectionID, "collection id")
+	if err != nil {
+		return ApiPage[Document]{}, err
+	}
+	input, err = normalizeDocumentListInput(input)
+	if err != nil {
+		return ApiPage[Document]{}, err
+	}
+	after, err := s.decodeDocumentCursor(input.Cursor, actor.ID, collectionID)
+	if err != nil {
+		return ApiPage[Document]{}, err
+	}
+	result, err := s.repo.ListDocuments(ctx, ListDocumentsRepositoryInput{
+		CollectionID: collectionID, ActorUserID: actor.ID, Limit: input.Limit, After: after,
+	})
+	if err != nil {
+		return ApiPage[Document]{}, err
+	}
+	page := ApiPage[Document]{Items: result.Items}
+	if result.HasMore && len(result.Items) > 0 {
+		last := result.Items[len(result.Items)-1]
+		page.NextCursor, err = s.cursorCodec.Encode(teams.Cursor{
+			Resource: documentCursorResource, UserID: actor.ID,
+			FilterDigest: documentFilterDigest(collectionID), Sort: documentCursorSort,
+			Values: []string{last.CreatedAt.UTC().Format(time.RFC3339Nano), last.ID},
+		})
+		if err != nil {
+			return ApiPage[Document]{}, fmt.Errorf("encode document cursor: %w", err)
+		}
+	}
+	return page, nil
+}
+
+func (s *Service) GetDocument(ctx context.Context, documentID string) (Document, error) {
+	if err := s.requireRepository(); err != nil {
+		return Document{}, err
+	}
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return Document{}, err
+	}
+	documentID, err = normalizeUUID(documentID, "document id")
+	if err != nil {
+		return Document{}, err
+	}
+	return s.repo.GetDocument(ctx, DocumentLookupInput{DocumentID: documentID, ActorUserID: actor.ID})
+}
+
+func (s *Service) GetDocumentContent(ctx context.Context, documentID string) (DocumentContentMetadata, io.ReadCloser, error) {
+	if err := s.requireRepository(); err != nil {
+		return DocumentContentMetadata{}, nil, err
+	}
+	if s.objectStore == nil {
+		return DocumentContentMetadata{}, nil, ErrStorageRequired
+	}
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return DocumentContentMetadata{}, nil, err
+	}
+	documentID, err = normalizeUUID(documentID, "document id")
+	if err != nil {
+		return DocumentContentMetadata{}, nil, err
+	}
+	metadata, err := s.repo.GetActiveDocumentContentMetadata(ctx, DocumentLookupInput{
+		DocumentID: documentID, ActorUserID: actor.ID,
+	})
+	if err != nil {
+		return DocumentContentMetadata{}, nil, err
+	}
+	reader, _, err := s.objectStore.Get(ctx, metadata.ObjectKey)
+	if errors.Is(err, storage.ErrObjectNotFound) {
+		return DocumentContentMetadata{}, nil, ErrDocumentNotFound
+	}
+	if err != nil {
+		return DocumentContentMetadata{}, nil, fmt.Errorf("read active document content: %w", err)
+	}
+	return metadata, reader, nil
+}
+
 func (s *Service) requireRepository() error {
 	if s == nil || s.repo == nil {
 		return ErrDatabaseRequired
@@ -362,6 +462,17 @@ func normalizeListInput(input ListCollectionsInput) (ListCollectionsInput, error
 	return input, nil
 }
 
+func normalizeDocumentListInput(input ListDocumentsInput) (ListDocumentsInput, error) {
+	if input.Limit == 0 {
+		input.Limit = defaultPageLimit
+	}
+	if input.Limit < 1 || input.Limit > maximumPageLimit {
+		return input, invalidCollectionPayload("limit must be between 1 and 100")
+	}
+	input.Cursor = strings.TrimSpace(input.Cursor)
+	return input, nil
+}
+
 func normalizeName(value string) (string, error) {
 	if !utf8.ValidString(value) || containsControlOrFormat(value) {
 		return "", invalidCollectionPayload("name contains invalid characters")
@@ -433,6 +544,10 @@ func collectionFilterDigest(scope, teamID string) string {
 	return teams.CursorFilterDigest("scope=" + scope + "\nteamId=" + teamID)
 }
 
+func documentFilterDigest(collectionID string) string {
+	return teams.CursorFilterDigest("collectionId=" + collectionID)
+}
+
 func (s *Service) decodeCursor(encoded, userID, scope, teamID string) (*CollectionPageCursor, error) {
 	if encoded == "" {
 		return nil, nil
@@ -453,4 +568,26 @@ func (s *Service) decodeCursor(encoded, userID, scope, teamID string) (*Collecti
 		return nil, invalidCollectionPayload("cursor is invalid")
 	}
 	return &CollectionPageCursor{CreatedAt: createdAt.UTC(), ID: id}, nil
+}
+
+func (s *Service) decodeDocumentCursor(encoded, userID, collectionID string) (*DocumentPageCursor, error) {
+	if encoded == "" {
+		return nil, nil
+	}
+	cursor, err := s.cursorCodec.Decode(encoded, teams.CursorContext{
+		Resource: documentCursorResource, UserID: userID,
+		FilterDigest: documentFilterDigest(collectionID), Sort: documentCursorSort,
+	})
+	if err != nil || len(cursor.Values) != 2 {
+		return nil, invalidCollectionPayload("cursor is invalid")
+	}
+	createdAt, err := time.Parse(time.RFC3339Nano, cursor.Values[0])
+	if err != nil {
+		return nil, invalidCollectionPayload("cursor is invalid")
+	}
+	id, err := normalizeUUID(cursor.Values[1], "cursor id")
+	if err != nil {
+		return nil, invalidCollectionPayload("cursor is invalid")
+	}
+	return &DocumentPageCursor{CreatedAt: createdAt.UTC(), ID: id}, nil
 }

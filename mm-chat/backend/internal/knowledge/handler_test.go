@@ -18,9 +18,13 @@ func TestHandlerCollectionCRUDAndStrictPayloads(t *testing.T) {
 	repo := &fakeRepository{createResult: testCollection("22222222-2222-4222-8222-222222222222")}
 	repo.documentResult = Document{ID: "33333333-3333-4333-8333-333333333333", CollectionID: repo.createResult.ID,
 		Status: "processing", CreatedAt: repo.createResult.CreatedAt, UpdatedAt: repo.createResult.UpdatedAt}
+	repo.documentPage = DocumentPageResult{Items: []Document{repo.documentResult}}
+	repo.contentResult = DocumentContentMetadata{DocumentID: repo.documentResult.ID,
+		ObjectKey: "private/never-expose", FileName: "source.html", MIMEType: "text/html", ByteSize: 6}
+	store := &fakeObjectStore{body: []byte("source")}
 	handler := NewHandler(NewService(repo, WithCursorCodec(codec), WithIDGenerator(func() (string, error) {
 		return repo.createResult.ID, nil
-	})))
+	}), WithObjectStore(store)))
 
 	perform := func(method, path, body string) *httptest.ResponseRecorder {
 		recorder := httptest.NewRecorder()
@@ -67,6 +71,26 @@ func TestHandlerCollectionCRUDAndStrictPayloads(t *testing.T) {
 	if document.Code != http.StatusCreated || !strings.Contains(document.Body.String(), repo.documentResult.ID) {
 		t.Fatalf("document response = %d %s", document.Code, document.Body.String())
 	}
+	listed := perform(http.MethodGet, collectionsPath+"/"+repo.createResult.ID+"/documents?limit=1", "")
+	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), repo.documentResult.ID) {
+		t.Fatalf("document list response = %d %s", listed.Code, listed.Body.String())
+	}
+	gotDocument := perform(http.MethodGet, documentsPathBase+repo.documentResult.ID, "")
+	if gotDocument.Code != http.StatusOK || !strings.Contains(gotDocument.Body.String(), repo.documentResult.ID) {
+		t.Fatalf("document get response = %d %s", gotDocument.Code, gotDocument.Body.String())
+	}
+	content := perform(http.MethodGet, documentsPathBase+repo.documentResult.ID+"/content", "")
+	if content.Code != http.StatusOK || content.Body.String() != "source" {
+		t.Fatalf("document content response = %d %q", content.Code, content.Body.String())
+	}
+	if content.Header().Get("Cache-Control") != "private, no-store" ||
+		!strings.HasPrefix(content.Header().Get("Content-Disposition"), "attachment") {
+		t.Fatalf("unsafe content headers = %#v", content.Header())
+	}
+	if strings.Contains(content.Header().Get("Content-Disposition"), "private") ||
+		strings.Contains(content.Body.String(), repo.contentResult.ObjectKey) {
+		t.Fatal("private object key leaked from content endpoint")
+	}
 }
 
 func TestHandlerMapsDisclosureErrors(t *testing.T) {
@@ -78,6 +102,7 @@ func TestHandlerMapsDisclosureErrors(t *testing.T) {
 		{ErrCollectionNotFound, http.StatusNotFound, "COLLECTION_NOT_FOUND"},
 		{ErrTeamAdminRequired, http.StatusForbidden, "TEAM_ADMIN_REQUIRED"},
 		{ErrIdempotencyConflict, http.StatusConflict, "IDEMPOTENCY_CONFLICT"},
+		{ErrDocumentNotFound, http.StatusNotFound, "DOCUMENT_NOT_FOUND"},
 	} {
 		status, body := serviceErrorFor(test.err)
 		if status != test.want || body.Code != test.code {

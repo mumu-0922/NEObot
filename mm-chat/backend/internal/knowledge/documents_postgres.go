@@ -8,6 +8,168 @@ import (
 	"fmt"
 )
 
+func (r *PostgresRepository) ListDocuments(ctx context.Context, input ListDocumentsRepositoryInput) (DocumentPageResult, error) {
+	if err := r.requireDB(); err != nil {
+		return DocumentPageResult{}, err
+	}
+	if _, _, err := queryVisibleCollection(ctx, r.db, input.CollectionID, input.ActorUserID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return DocumentPageResult{}, ErrCollectionNotFound
+		}
+		return DocumentPageResult{}, fmt.Errorf("authorize document list: %w", err)
+	}
+	limit := input.Limit
+	if limit < 1 || limit > maximumPageLimit {
+		limit = defaultPageLimit
+	}
+	query := documentReadSelect + `
+WHERE d.collection_id = $1 AND d.deleted_at IS NULL
+  AND d.status IN ('processing','active')
+  AND ` + visibleDocumentCollectionACL + "\n"
+	args := []any{input.CollectionID, input.ActorUserID}
+	if input.After != nil {
+		query += `  AND (d.created_at < $3 OR (d.created_at = $3 AND d.id < $4))
+`
+		args = append(args, input.After.CreatedAt.UTC(), input.After.ID)
+	}
+	query += fmt.Sprintf("ORDER BY d.created_at DESC, d.id DESC\nLIMIT $%d", len(args)+1)
+	args = append(args, limit+1)
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return DocumentPageResult{}, fmt.Errorf("list documents: %w", err)
+	}
+	defer rows.Close()
+	items := make([]Document, 0, limit)
+	for rows.Next() {
+		document, scanErr := scanDocument(rows)
+		if scanErr != nil {
+			return DocumentPageResult{}, fmt.Errorf("scan document: %w", scanErr)
+		}
+		if len(items) == limit {
+			return DocumentPageResult{Items: items, HasMore: true}, nil
+		}
+		items = append(items, document)
+	}
+	if err := rows.Err(); err != nil {
+		return DocumentPageResult{}, fmt.Errorf("iterate documents: %w", err)
+	}
+	return DocumentPageResult{Items: items}, nil
+}
+
+func (r *PostgresRepository) GetDocument(ctx context.Context, input DocumentLookupInput) (Document, error) {
+	if err := r.requireDB(); err != nil {
+		return Document{}, err
+	}
+	row := r.db.QueryRowContext(ctx, documentReadSelect+`
+WHERE d.id = $1 AND d.deleted_at IS NULL AND d.status IN ('processing','active')
+  AND `+visibleDocumentCollectionACL, input.DocumentID, input.ActorUserID)
+	document, err := scanDocument(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Document{}, ErrDocumentNotFound
+	}
+	if err != nil {
+		return Document{}, fmt.Errorf("get document: %w", err)
+	}
+	return document, nil
+}
+
+func (r *PostgresRepository) GetActiveDocumentContentMetadata(ctx context.Context, input DocumentLookupInput) (DocumentContentMetadata, error) {
+	if err := r.requireDB(); err != nil {
+		return DocumentContentMetadata{}, err
+	}
+	var metadata DocumentContentMetadata
+	err := r.db.QueryRowContext(ctx, `
+SELECT d.id, v.id, f.id, f.original_filename, f.mime_type, f.byte_size,
+  f.sha256, f.object_key
+FROM knowledge_documents d
+JOIN knowledge_document_versions v
+  ON v.id = d.current_version_id AND v.document_id = d.id AND v.status = 'active'
+JOIN files f ON f.id = v.file_id AND f.upload_status = 'available' AND f.deleted_at IS NULL
+WHERE d.id = $1 AND d.status = 'active' AND d.deleted_at IS NULL
+  AND `+visibleDocumentCollectionACL, input.DocumentID, input.ActorUserID).Scan(
+		&metadata.DocumentID, &metadata.VersionID, &metadata.FileID, &metadata.FileName,
+		&metadata.MIMEType, &metadata.ByteSize, &metadata.SHA256, &metadata.ObjectKey,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return DocumentContentMetadata{}, ErrDocumentNotFound
+	}
+	if err != nil {
+		return DocumentContentMetadata{}, fmt.Errorf("authorize active document content: %w", err)
+	}
+	return metadata, nil
+}
+
+const documentReadSelect = `
+SELECT d.id, d.collection_id, d.status, d.created_at, d.updated_at,
+  cv.id, cv.source_version, cv.status, cv.error_code,
+  cf.id, cf.original_filename, cf.mime_type, cf.byte_size, cv.created_at, cv.updated_at,
+  pv.id, pv.source_version, pv.status, pv.error_code,
+  pf.id, pf.original_filename, pf.mime_type, pf.byte_size, pv.created_at, pv.updated_at
+FROM knowledge_documents d
+LEFT JOIN knowledge_document_versions cv
+  ON cv.id = d.current_version_id AND cv.document_id = d.id
+LEFT JOIN files cf ON cf.id = cv.file_id
+LEFT JOIN LATERAL (
+  SELECT candidate.* FROM knowledge_document_versions candidate
+  WHERE candidate.document_id = d.id
+    AND candidate.status IN ('uploaded','processing','failed')
+  ORDER BY candidate.source_version DESC LIMIT 1
+) pv ON true
+LEFT JOIN files pf ON pf.id = pv.file_id
+`
+
+const visibleDocumentCollectionACL = `EXISTS (
+  SELECT 1 FROM knowledge_collections c
+  LEFT JOIN team_memberships m
+    ON m.team_id = c.team_id AND m.user_id = $2 AND m.status = 'active'
+  LEFT JOIN teams t ON t.id = c.team_id AND t.deleted_at IS NULL
+  WHERE c.id = d.collection_id AND c.deleted_at IS NULL
+    AND ((c.scope = 'personal' AND c.owner_user_id = $2)
+      OR (c.scope = 'team' AND m.user_id IS NOT NULL AND t.id IS NOT NULL))
+)`
+
+type rowScanner interface{ Scan(...any) error }
+
+type nullableDocumentVersion struct {
+	ID, Status, ErrorCode, FileID, FileName, MIMEType sql.NullString
+	SourceVersion, ByteSize                           sql.NullInt64
+	CreatedAt, UpdatedAt                              sql.NullTime
+}
+
+func (version *nullableDocumentVersion) scanTargets() []any {
+	return []any{&version.ID, &version.SourceVersion, &version.Status, &version.ErrorCode,
+		&version.FileID, &version.FileName, &version.MIMEType, &version.ByteSize,
+		&version.CreatedAt, &version.UpdatedAt}
+}
+
+func (version nullableDocumentVersion) value() *DocumentVersion {
+	if !version.ID.Valid {
+		return nil
+	}
+	return &DocumentVersion{ID: version.ID.String, SourceVersion: version.SourceVersion.Int64,
+		Status: version.Status.String, ErrorCode: version.ErrorCode.String,
+		File: DocumentFile{ID: version.FileID.String, Name: version.FileName.String,
+			MIMEType: version.MIMEType.String, ByteSize: version.ByteSize.Int64},
+		CreatedAt: version.CreatedAt.Time.UTC(), UpdatedAt: version.UpdatedAt.Time.UTC()}
+}
+
+func scanDocument(scanner rowScanner) (Document, error) {
+	var document Document
+	var current, pending nullableDocumentVersion
+	targets := []any{&document.ID, &document.CollectionID, &document.Status,
+		&document.CreatedAt, &document.UpdatedAt}
+	targets = append(targets, current.scanTargets()...)
+	targets = append(targets, pending.scanTargets()...)
+	if err := scanner.Scan(targets...); err != nil {
+		return Document{}, err
+	}
+	document.CreatedAt = document.CreatedAt.UTC()
+	document.UpdatedAt = document.UpdatedAt.UTC()
+	document.CurrentVersion = current.value()
+	document.PendingVersion = pending.value()
+	return document, nil
+}
+
 func (r *PostgresRepository) CreateDocument(ctx context.Context, input CreateDocumentRepositoryInput) (Document, error) {
 	if err := r.requireDB(); err != nil {
 		return Document{}, err

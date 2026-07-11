@@ -619,8 +619,8 @@ the UI can call in the next wiring slice.
   - [x] Add first Document/Version bind, Parse admission, Job, and Outbox
         transaction.
   - [x] Register strict authenticated first-bind HTTP admission.
-  - [ ] Add Document metadata/content routes and replace/reprocess/delete
-        transactions.
+  - [x] Add ACL-checked Document list/get and Active-only content routes.
+  - [ ] Add Document replace/reprocess/delete transactions.
 - [ ] Implement operator Governance and Collection/User Consent services with
       purpose/data-type and expiry/revision fences.
 - [ ] Wire protected Knowledge routes and pass unit/race/PostgreSQL 16 ACL,

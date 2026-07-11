@@ -6062,3 +6062,39 @@ Document plus pending immutable Version. Dynamic metrics use the bounded
 `/v1/knowledge/collections/{collectionId}/documents` label.
 
 Document list/get/content, replacement, reprocess, and delete remain closed.
+
+## 2026-07-11 — Phase 15.1D-3D Document reads exposed
+
+The protected Knowledge API now exposes cursor-paged Document metadata,
+single-Document metadata, and source-content reads. Personal reads require the
+current owner; Team reads require a current active Membership. Unknown,
+deleted, cross-user, cross-Team, and removed-Membership Documents collapse to
+`404` without exposing Collection, File, bucket, or object-key details.
+
+Content serving is fail-closed: only an `active` logical Document's exact
+`current_version_id` may resolve bytes, and that immutable Version must also be
+`active`. Uploaded, processing, failed, stale, or newer pending Versions are
+never served. Authorization and active-version resolution happen in Postgres
+before ObjectStore access; Team access does not relax owner-only `/v1/files/*`.
+The handler streams safe metadata with bounded route labels and independent
+auth enforcement for `/v1/knowledge/documents/*`.
+
+```text
+go test ./...                                             passed
+go vet ./...                                              passed
+PostgreSQL 16 knowledge package under -race               passed
+Owner/Member/outsider/removed-member ACL matrix           passed
+Active pointer wins over newer failed Pending Version     passed
+ObjectStore is not called before authorization            passed
+```
+
+Independent review raised two high-severity hypotheses. Same-origin active
+content was hardened to `Content-Disposition: attachment` plus
+`Cache-Control: private, no-store`, closing executable HTML/SVG preview risk.
+The recommendation to hide Pending metadata was not applied: the locked public
+DTO intentionally exposes processing/failed status to authorized Collection
+readers, while “Active-only” applies strictly to source-byte serving. No
+Pending object key or bytes are resolved by metadata routes.
+
+Next: implement immutable replacement Version admission, then reprocess and
+logical Document tombstone transactions.

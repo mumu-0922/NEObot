@@ -293,6 +293,93 @@ FROM knowledge_collections WHERE id = $1
 	}
 }
 
+func TestPostgresDocumentReadsEnforceACLAndActiveVersion(t *testing.T) {
+	db := openKnowledgeTestDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if _, err := migration.NewRunner(db, migrationfiles.FS).Up(ctx); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+	const (
+		adminID          = "11000000-0000-4000-8000-000000000001"
+		memberID         = "11000000-0000-4000-8000-000000000002"
+		outsiderID       = "11000000-0000-4000-8000-000000000003"
+		teamID           = "21000000-0000-4000-8000-000000000001"
+		teamColID        = "31000000-0000-4000-8000-000000000001"
+		personalID       = "31000000-0000-4000-8000-000000000002"
+		activeDocID      = "41000000-0000-4000-8000-000000000001"
+		pendingDocID     = "41000000-0000-4000-8000-000000000002"
+		privateDocID     = "41000000-0000-4000-8000-000000000003"
+		activeFileID     = "51000000-0000-4000-8000-000000000001"
+		pendingFileID    = "51000000-0000-4000-8000-000000000002"
+		activeVersionID  = "61000000-0000-4000-8000-000000000001"
+		pendingVersionID = "61000000-0000-4000-8000-000000000002"
+	)
+	mustKnowledgeExec(t, ctx, db, `
+INSERT INTO users (id,email,display_name) VALUES
+ ($1,'read-admin@example.test','Admin'),($2,'read-member@example.test','Member'),
+ ($3,'read-outsider@example.test','Outsider');
+INSERT INTO teams (id,name,created_by_user_id) VALUES ($4,'Read Team',$1);
+INSERT INTO team_memberships (team_id,user_id,role) VALUES ($4,$1,'admin'),($4,$2,'member');
+INSERT INTO knowledge_collections (id,name,scope,team_id) VALUES ($5,'Shared','team',$4);
+INSERT INTO knowledge_collections (id,name,scope,owner_user_id) VALUES ($6,'Private','personal',$1)
+`, adminID, memberID, outsiderID, teamID, teamColID, personalID)
+	mustKnowledgeExec(t, ctx, db, `
+INSERT INTO files (id,user_id,original_filename,mime_type,byte_size,sha256,storage_backend,object_key,metadata) VALUES
+ ($1,$3,'active.txt','text/plain',6,$4,'local','knowledge/active','{"purpose":"knowledge"}'),
+ ($2,$3,'pending.txt','text/plain',7,$5,'local','knowledge/pending','{"purpose":"knowledge"}')
+`, activeFileID, pendingFileID, adminID, strings.Repeat("a", 64), strings.Repeat("b", 64))
+	mustKnowledgeExec(t, ctx, db, `
+INSERT INTO knowledge_documents (id,collection_id,status) VALUES ($1,$2,'processing');
+INSERT INTO knowledge_document_versions (id,document_id,file_id,source_version,status,content_hash)
+ VALUES ($3,$1,$4,1,'active',$5);
+UPDATE knowledge_documents SET status='active',current_version_id=$3 WHERE id=$1;
+INSERT INTO knowledge_document_versions (id,document_id,file_id,source_version,status,content_hash,error_code)
+ VALUES ($6,$1,$7,2,'failed',$8,'PARSE_FAILED');
+INSERT INTO knowledge_documents (id,collection_id,status) VALUES ($9,$2,'processing');
+INSERT INTO knowledge_document_versions (id,document_id,file_id,source_version,status,content_hash)
+ VALUES ('61000000-0000-4000-8000-000000000003',$9,$7,1,'processing',$8);
+INSERT INTO knowledge_documents (id,collection_id,status) VALUES ($10,$11,'processing');
+INSERT INTO knowledge_document_versions (id,document_id,file_id,source_version,status,content_hash)
+ VALUES ('61000000-0000-4000-8000-000000000004',$10,$4,1,'processing',$5)
+`, activeDocID, teamColID, activeVersionID, activeFileID, strings.Repeat("a", 64),
+		pendingVersionID, pendingFileID, strings.Repeat("b", 64), pendingDocID, privateDocID, personalID)
+
+	repo := NewPostgresRepository(db)
+	page, err := repo.ListDocuments(ctx, ListDocumentsRepositoryInput{
+		CollectionID: teamColID, ActorUserID: memberID, Limit: 10,
+	})
+	if err != nil || len(page.Items) != 2 {
+		t.Fatalf("member list = %#v, err=%v", page, err)
+	}
+	active, err := repo.GetDocument(ctx, DocumentLookupInput{DocumentID: activeDocID, ActorUserID: memberID})
+	if err != nil || active.CurrentVersion == nil || active.CurrentVersion.ID != activeVersionID ||
+		active.PendingVersion == nil || active.PendingVersion.ID != pendingVersionID || active.PendingVersion.ErrorCode != "PARSE_FAILED" {
+		t.Fatalf("active metadata = %#v, err=%v", active, err)
+	}
+	content, err := repo.GetActiveDocumentContentMetadata(ctx, DocumentLookupInput{DocumentID: activeDocID, ActorUserID: memberID})
+	if err != nil || content.FileID != activeFileID || content.ObjectKey != "knowledge/active" {
+		t.Fatalf("active content metadata = %#v, err=%v", content, err)
+	}
+	for _, lookup := range []DocumentLookupInput{
+		{DocumentID: pendingDocID, ActorUserID: memberID},
+		{DocumentID: activeDocID, ActorUserID: outsiderID},
+		{DocumentID: privateDocID, ActorUserID: memberID},
+	} {
+		_, err := repo.GetActiveDocumentContentMetadata(ctx, lookup)
+		if err != ErrDocumentNotFound {
+			t.Fatalf("content lookup %#v error = %v", lookup, err)
+		}
+	}
+	mustKnowledgeExec(t, ctx, db, `UPDATE team_memberships SET status='removed', removed_at=now() WHERE team_id=$1 AND user_id=$2`, teamID, memberID)
+	if _, err := repo.GetDocument(ctx, DocumentLookupInput{DocumentID: activeDocID, ActorUserID: memberID}); err != ErrDocumentNotFound {
+		t.Fatalf("removed member document error = %v", err)
+	}
+	if _, err := repo.ListDocuments(ctx, ListDocumentsRepositoryInput{CollectionID: teamColID, ActorUserID: memberID, Limit: 10}); err != ErrCollectionNotFound {
+		t.Fatalf("removed member list error = %v", err)
+	}
+}
+
 func openKnowledgeTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	databaseURL := os.Getenv("MM_CHAT_TEST_DATABASE_URL")

@@ -1,11 +1,14 @@
 package knowledge
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"testing"
 	"time"
 
 	"neo-chat/mm-chat/backend/internal/auth"
+	"neo-chat/mm-chat/backend/internal/storage"
 	"neo-chat/mm-chat/backend/internal/teams"
 )
 
@@ -81,13 +84,83 @@ func TestServiceCollectionCursorIsUserAndFilterBound(t *testing.T) {
 	}
 }
 
+func TestServiceDocumentCursorAndContentAuthorizationOrder(t *testing.T) {
+	codec, err := teams.NewCursorCodec(teams.CursorKeyring{
+		ActiveKeyID: "test", Keys: map[string][]byte{"test": []byte("01234567890123456789012345678901")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	document := Document{ID: "22222222-2222-4222-8222-222222222222",
+		CollectionID: "33333333-3333-4333-8333-333333333333", Status: "active",
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	store := &fakeObjectStore{body: []byte("source")}
+	repo := &fakeRepository{documentPage: DocumentPageResult{Items: []Document{document}, HasMore: true},
+		documentResult: document, contentResult: DocumentContentMetadata{
+			DocumentID: document.ID, ObjectKey: "private/source", FileName: "source.txt",
+			MIMEType: "text/plain", ByteSize: 6,
+		}}
+	service := NewService(repo, WithCursorCodec(codec), WithObjectStore(store))
+	ctx := auth.WithUser(context.Background(), auth.User{ID: testActorID})
+	page, err := service.ListDocuments(ctx, document.CollectionID, ListDocumentsInput{Limit: 1})
+	if err != nil || page.NextCursor == "" {
+		t.Fatalf("ListDocuments() = %#v, %v", page, err)
+	}
+	if _, err := service.ListDocuments(ctx, "44444444-4444-4444-8444-444444444444",
+		ListDocumentsInput{Limit: 1, Cursor: page.NextCursor}); err == nil {
+		t.Fatal("document cursor replay across collections succeeded")
+	}
+
+	metadata, reader, err := service.GetDocumentContent(ctx, document.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	if metadata.ObjectKey != "private/source" || store.gets != 1 {
+		t.Fatalf("content metadata/store gets = %#v/%d", metadata, store.gets)
+	}
+
+	store.err = storage.ErrObjectNotFound
+	if _, _, err := service.GetDocumentContent(ctx, document.ID); err != ErrDocumentNotFound {
+		t.Fatalf("missing object error = %v", err)
+	}
+	store.err = nil
+	repo.err = ErrDocumentNotFound
+	if _, _, err := service.GetDocumentContent(ctx, document.ID); err != ErrDocumentNotFound {
+		t.Fatalf("hidden content error = %v", err)
+	}
+	if store.gets != 2 {
+		t.Fatalf("object store called before authorization: %d", store.gets)
+	}
+}
+
 type fakeRepository struct {
 	created        CreateCollectionRepositoryInput
 	createResult   Collection
 	listResult     CollectionPageResult
 	documentResult Document
+	documentPage   DocumentPageResult
+	contentResult  DocumentContentMetadata
 	err            error
 }
+
+type fakeObjectStore struct {
+	body []byte
+	gets int
+	err  error
+}
+
+func (store *fakeObjectStore) Put(context.Context, string, io.Reader, int64, string) error {
+	return nil
+}
+func (store *fakeObjectStore) Get(_ context.Context, key string) (io.ReadCloser, storage.ObjectInfo, error) {
+	store.gets++
+	if store.err != nil {
+		return nil, storage.ObjectInfo{}, store.err
+	}
+	return io.NopCloser(bytes.NewReader(store.body)), storage.ObjectInfo{Key: key, Size: int64(len(store.body))}, nil
+}
+func (store *fakeObjectStore) Delete(context.Context, string) error { return nil }
 
 func (repo *fakeRepository) CreateCollection(_ context.Context, input CreateCollectionRepositoryInput) (Collection, error) {
 	repo.created = input
@@ -107,6 +180,15 @@ func (repo *fakeRepository) DeleteCollection(context.Context, DeleteCollectionRe
 }
 func (repo *fakeRepository) CreateDocument(context.Context, CreateDocumentRepositoryInput) (Document, error) {
 	return repo.documentResult, repo.err
+}
+func (repo *fakeRepository) ListDocuments(context.Context, ListDocumentsRepositoryInput) (DocumentPageResult, error) {
+	return repo.documentPage, repo.err
+}
+func (repo *fakeRepository) GetDocument(context.Context, DocumentLookupInput) (Document, error) {
+	return repo.documentResult, repo.err
+}
+func (repo *fakeRepository) GetActiveDocumentContentMetadata(context.Context, DocumentLookupInput) (DocumentContentMetadata, error) {
+	return repo.contentResult, repo.err
 }
 
 func testCollection(id string) Collection {

@@ -140,15 +140,6 @@ func main() {
 		logger.Error("team_config_failed", slog.String("error", redactSensitiveLogText(err.Error())))
 		os.Exit(1)
 	}
-	var knowledgeRepo knowledge.Repository
-	if sqlDB != nil {
-		knowledgeRepo = knowledge.NewPostgresRepository(sqlDB)
-	}
-	knowledgeService := knowledge.NewService(
-		knowledgeRepo,
-		knowledge.WithCursorCodec(teamRuntime.cursor),
-	)
-
 	chatProvider, err := newChatProvider(cfg)
 	if err != nil {
 		_ = redisClient.Close()
@@ -167,6 +158,15 @@ func main() {
 		logger.Error("storage_config_failed", slog.String("error", redactSensitiveLogText(err.Error())))
 		os.Exit(1)
 	}
+	var knowledgeRepo knowledge.Repository
+	if sqlDB != nil {
+		knowledgeRepo = knowledge.NewPostgresRepository(sqlDB)
+	}
+	knowledgeService := knowledge.NewService(
+		knowledgeRepo,
+		knowledge.WithCursorCodec(teamRuntime.cursor),
+		knowledge.WithObjectStore(objectStore),
+	)
 	if sqlDB := db.SQL(); sqlDB != nil {
 		importRepo = browserimport.NewPostgresRepository(
 			sqlDB,

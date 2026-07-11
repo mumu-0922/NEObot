@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -15,6 +17,7 @@ import (
 const (
 	collectionsPath       = "/v1/knowledge/collections"
 	collectionsPathBase   = collectionsPath + "/"
+	documentsPathBase     = "/v1/knowledge/documents/"
 	maxCollectionBodySize = 8 << 10
 )
 
@@ -50,12 +53,28 @@ type pageDTO struct {
 }
 
 type documentDTO struct {
-	ID             string           `json:"id"`
-	CollectionID   string           `json:"collectionId"`
-	Status         string           `json:"status"`
-	PendingVersion *DocumentVersion `json:"pendingVersion,omitempty"`
-	CreatedAt      string           `json:"createdAt"`
-	UpdatedAt      string           `json:"updatedAt"`
+	ID             string              `json:"id"`
+	CollectionID   string              `json:"collectionId"`
+	Status         string              `json:"status"`
+	CurrentVersion *documentVersionDTO `json:"currentVersion,omitempty"`
+	PendingVersion *documentVersionDTO `json:"pendingVersion,omitempty"`
+	CreatedAt      string              `json:"createdAt"`
+	UpdatedAt      string              `json:"updatedAt"`
+}
+
+type documentVersionDTO struct {
+	ID            string       `json:"id"`
+	SourceVersion int64        `json:"sourceVersion"`
+	File          DocumentFile `json:"file"`
+	Status        string       `json:"status"`
+	CreatedAt     string       `json:"createdAt"`
+	UpdatedAt     string       `json:"updatedAt"`
+	ErrorCode     string       `json:"errorCode,omitempty"`
+}
+
+type documentPageDTO struct {
+	Items      []documentDTO `json:"items"`
+	NextCursor string        `json:"nextCursor,omitempty"`
 }
 
 func NewHandler(service *Service) *Handler {
@@ -76,7 +95,7 @@ func (handler *Handler) ServeHTTP(w http.ResponseWriter, request *http.Request) 
 	case strings.HasPrefix(request.URL.Path, collectionsPathBase):
 		id := strings.TrimPrefix(request.URL.Path, collectionsPathBase)
 		if collectionID, ok := strings.CutSuffix(id, "/documents"); ok && collectionID != "" && !strings.Contains(collectionID, "/") {
-			handler.handleDocumentCreate(w, request, collectionID)
+			handler.handleCollectionDocuments(w, request, collectionID)
 			return
 		}
 		if id == "" || strings.Contains(id, "/") {
@@ -84,33 +103,93 @@ func (handler *Handler) ServeHTTP(w http.ResponseWriter, request *http.Request) 
 			return
 		}
 		handler.handleCollection(w, request, id)
+	case strings.HasPrefix(request.URL.Path, documentsPathBase):
+		handler.handleDocument(w, request)
 	default:
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
 	}
 }
 
-func (handler *Handler) handleDocumentCreate(w http.ResponseWriter, request *http.Request, collectionID string) {
-	if request.Method != http.MethodPost {
-		methodNotAllowed(w, http.MethodPost)
+func (handler *Handler) handleCollectionDocuments(w http.ResponseWriter, request *http.Request, collectionID string) {
+	switch request.Method {
+	case http.MethodGet:
+		input, err := parseDocumentListQuery(request.URL.Query())
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		page, err := handler.service.ListDocuments(request.Context(), collectionID, input)
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		items := make([]documentDTO, 0, len(page.Items))
+		for _, document := range page.Items {
+			items = append(items, newDocumentDTO(document))
+		}
+		writeJSON(w, http.StatusOK, documentPageDTO{Items: items, NextCursor: page.NextCursor})
+	case http.MethodPost:
+		if err := requireNoQuery(request.URL.Query()); err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		var input BindDocumentInput
+		if err := decodeStrictJSON(w, request, &input); err != nil {
+			writeError(w, http.StatusBadRequest, ErrorCodeInvalidDocumentPayload, "document request body is invalid")
+			return
+		}
+		document, err := handler.service.CreateDocument(request.Context(), collectionID, input)
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, newDocumentDTO(document))
+	default:
+		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
+	}
+}
+
+func (handler *Handler) handleDocument(w http.ResponseWriter, request *http.Request) {
+	remainder := strings.TrimPrefix(request.URL.Path, documentsPathBase)
+	parts := strings.Split(remainder, "/")
+	if len(parts) < 1 || parts[0] == "" || len(parts) > 2 || (len(parts) == 2 && parts[1] != "content") {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
+		return
+	}
+	if request.Method != http.MethodGet {
+		methodNotAllowed(w, http.MethodGet)
 		return
 	}
 	if err := requireNoQuery(request.URL.Query()); err != nil {
 		writeServiceError(w, err)
 		return
 	}
-	var input BindDocumentInput
-	if err := decodeStrictJSON(w, request, &input); err != nil {
-		writeError(w, http.StatusBadRequest, ErrorCodeInvalidDocumentPayload, "document request body is invalid")
+	if len(parts) == 1 {
+		document, err := handler.service.GetDocument(request.Context(), parts[0])
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, newDocumentDTO(document))
 		return
 	}
-	document, err := handler.service.CreateDocument(request.Context(), collectionID, input)
+	metadata, reader, err := handler.service.GetDocumentContent(request.Context(), parts[0])
 	if err != nil {
 		writeServiceError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, documentDTO{ID: document.ID, CollectionID: document.CollectionID,
-		Status: document.Status, PendingVersion: document.PendingVersion,
-		CreatedAt: document.CreatedAt.UTC().Format(time.RFC3339Nano), UpdatedAt: document.UpdatedAt.UTC().Format(time.RFC3339Nano)})
+	defer reader.Close()
+	contentType := metadata.MIMEType
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", metadata.ByteSize))
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": metadata.FileName}))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, reader)
 }
 
 func (handler *Handler) handleCollectionRoot(w http.ResponseWriter, request *http.Request) {
@@ -222,6 +301,28 @@ func parseListQuery(query url.Values) (ListCollectionsInput, error) {
 	return input, nil
 }
 
+func parseDocumentListQuery(query url.Values) (ListDocumentsInput, error) {
+	input := ListDocumentsInput{}
+	for key, values := range query {
+		if forbiddenRequestField(key) {
+			return input, forbiddenIdentityPayload()
+		}
+		if (key != "cursor" && key != "limit") || len(values) != 1 {
+			return input, invalidCollectionPayload("query parameters are invalid")
+		}
+		if key == "cursor" {
+			input.Cursor = values[0]
+		} else {
+			limit, err := strconv.Atoi(strings.TrimSpace(values[0]))
+			if err != nil {
+				return input, invalidCollectionPayload("query parameters are invalid")
+			}
+			input.Limit = limit
+		}
+	}
+	return input, nil
+}
+
 func requireNoQuery(query url.Values) error {
 	for key := range query {
 		if forbiddenRequestField(key) {
@@ -304,6 +405,24 @@ func newCollectionDTO(value Collection) collectionDTO {
 		UpdatedAt:                    value.UpdatedAt.UTC().Format(time.RFC3339Nano)}
 }
 
+func newDocumentDTO(value Document) documentDTO {
+	return documentDTO{ID: value.ID, CollectionID: value.CollectionID, Status: value.Status,
+		CurrentVersion: newDocumentVersionDTO(value.CurrentVersion),
+		PendingVersion: newDocumentVersionDTO(value.PendingVersion),
+		CreatedAt:      value.CreatedAt.UTC().Format(time.RFC3339Nano),
+		UpdatedAt:      value.UpdatedAt.UTC().Format(time.RFC3339Nano)}
+}
+
+func newDocumentVersionDTO(value *DocumentVersion) *documentVersionDTO {
+	if value == nil {
+		return nil
+	}
+	return &documentVersionDTO{ID: value.ID, SourceVersion: value.SourceVersion,
+		File: value.File, Status: value.Status,
+		CreatedAt: value.CreatedAt.UTC().Format(time.RFC3339Nano),
+		UpdatedAt: value.UpdatedAt.UTC().Format(time.RFC3339Nano), ErrorCode: value.ErrorCode}
+}
+
 func writeDecodeError(w http.ResponseWriter, err error) {
 	var maxErr *http.MaxBytesError
 	var forbidden forbiddenFieldError
@@ -332,6 +451,10 @@ func serviceErrorFor(err error) (int, ErrorBody) {
 		return http.StatusUnauthorized, ErrorBody{"UNAUTHENTICATED", "session is invalid or expired"}
 	case errors.Is(err, ErrCollectionNotFound):
 		return http.StatusNotFound, ErrorBody{"COLLECTION_NOT_FOUND", "collection not found"}
+	case errors.Is(err, ErrDocumentNotFound):
+		return http.StatusNotFound, ErrorBody{"DOCUMENT_NOT_FOUND", "document not found"}
+	case errors.Is(err, ErrStorageRequired):
+		return http.StatusServiceUnavailable, ErrorBody{"STORAGE_REQUIRED", "storage is required for knowledge content"}
 	case errors.Is(err, ErrTeamAdminRequired):
 		return http.StatusForbidden, ErrorBody{"TEAM_ADMIN_REQUIRED", "team admin role is required"}
 	case errors.Is(err, ErrIdempotencyConflict):

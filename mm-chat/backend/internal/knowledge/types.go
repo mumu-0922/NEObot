@@ -17,6 +17,9 @@ type Repository interface {
 	UpdateCollection(context.Context, UpdateCollectionRepositoryInput) (Collection, error)
 	DeleteCollection(context.Context, DeleteCollectionRepositoryInput) error
 	CreateDocument(context.Context, CreateDocumentRepositoryInput) (Document, error)
+	ListDocuments(context.Context, ListDocumentsRepositoryInput) (DocumentPageResult, error)
+	GetDocument(context.Context, DocumentLookupInput) (Document, error)
+	GetActiveDocumentContentMetadata(context.Context, DocumentLookupInput) (DocumentContentMetadata, error)
 }
 
 type Permissions struct {
@@ -154,4 +157,44 @@ type CreateDocumentRepositoryInput struct {
 	CollectionID, ActorUserID    string
 	FileID, IdempotencyKey       string
 	RequestHash, ParseProcessor  string
+}
+
+type ListDocumentsInput struct {
+	Cursor string `json:"cursor,omitempty"`
+	Limit  int    `json:"limit,omitempty"`
+}
+
+type DocumentPageCursor struct {
+	CreatedAt time.Time
+	ID        string
+}
+
+type ListDocumentsRepositoryInput struct {
+	CollectionID string
+	ActorUserID  string
+	Limit        int
+	After        *DocumentPageCursor
+}
+
+type DocumentPageResult struct {
+	Items   []Document
+	HasMore bool
+}
+
+type DocumentLookupInput struct {
+	DocumentID  string
+	ActorUserID string
+}
+
+// DocumentContentMetadata is an internal authorization result. ObjectKey must
+// never be copied into a public DTO, response header, metric, or log field.
+type DocumentContentMetadata struct {
+	DocumentID string
+	VersionID  string
+	FileID     string
+	FileName   string
+	MIMEType   string
+	ByteSize   int64
+	SHA256     string
+	ObjectKey  string
 }

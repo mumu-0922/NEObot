@@ -17,9 +17,11 @@ Runtime status: Personal/Team Collection create/list/get/update/delete routes,
 ACLs, authenticated cursors, deletion revisions, and transactional Collection
 Outbox events are implemented. The internal first-bind transaction now locks
 the caller-owned Knowledge File, validates current Parse Consent/Governance,
-and creates Document/Version/Job/Outbox atomically; its public routes are not
-registered yet. Document read/replace/reprocess/delete, Consent, Governance
-command, and search routes remain unimplemented.
+and creates Document/Version/Job/Outbox atomically; first-bind, Document
+list/get, and Active-current-Version content routes are registered. Every read
+rechecks current Collection ownership or active Team Membership in Postgres;
+private object keys remain internal. Document replace/reprocess/delete,
+Consent, Governance command, and search routes remain unimplemented.
 
 The current auth/session baseline is Phase 15.1B in
 [`auth-session-api.md`](./auth-session-api.md), with Phase 13 ownership

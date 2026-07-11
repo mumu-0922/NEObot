@@ -238,6 +238,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/teams/", teamHandler)
 	mux.Handle("/v1/knowledge/collections", knowledgeHandler)
 	mux.Handle("/v1/knowledge/collections/", knowledgeHandler)
+	mux.Handle("/v1/knowledge/documents/", knowledgeHandler)
 	mux.HandleFunc("/", notFound)
 
 	middlewares := []Middleware{
@@ -332,7 +333,8 @@ func isIndependentIdentityAPIRequest(r *http.Request) bool {
 	}
 	return r.URL.Path == "/v1/teams" || strings.HasPrefix(r.URL.Path, "/v1/teams/") ||
 		r.URL.Path == "/v1/knowledge/collections" ||
-		strings.HasPrefix(r.URL.Path, "/v1/knowledge/collections/")
+		strings.HasPrefix(r.URL.Path, "/v1/knowledge/collections/") ||
+		strings.HasPrefix(r.URL.Path, "/v1/knowledge/documents/")
 }
 
 func isPublicWithoutAuthRequest(r *http.Request) bool {

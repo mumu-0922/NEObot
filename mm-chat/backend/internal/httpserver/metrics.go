@@ -412,6 +412,16 @@ func knownMetricPath(path string) (string, bool) {
 			}
 		}
 	}
+	if len(parts) >= 5 && parts[1] == "v1" && parts[2] == "knowledge" && parts[3] == "documents" {
+		switch len(parts) {
+		case 5:
+			return "/v1/knowledge/documents/{documentId}", true
+		case 6:
+			if parts[5] == "content" {
+				return "/v1/knowledge/documents/{documentId}/content", true
+			}
+		}
+	}
 	if len(parts) >= 3 && parts[1] == "v1" && parts[2] == "teams" {
 		switch len(parts) {
 		case 3:
