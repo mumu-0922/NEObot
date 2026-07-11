@@ -13,10 +13,11 @@ type PutConsentInput struct {
 }
 
 type ProcessingConsent struct {
-	Processor, Decision, PolicyVersion string
-	Purposes, DataTypes                []string
-	DecidedAt                          time.Time
-	ExpiresAt                          *time.Time
+	Processor, Decision, EffectiveStatus, PolicyVersion string
+	Purposes, DataTypes                                 []string
+	DecidedAt                                           time.Time
+	ExpiresAt                                           *time.Time
+	MaterializedAt                                      *time.Time
 }
 
 type CollectionConsentRepository interface {

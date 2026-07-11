@@ -80,13 +80,14 @@ type documentPageDTO struct {
 }
 
 type processingConsentDTO struct {
-	Processor     string   `json:"processor"`
-	Purposes      []string `json:"purposes"`
-	DataTypes     []string `json:"dataTypes"`
-	PolicyVersion string   `json:"policyVersion"`
-	Decision      string   `json:"decision"`
-	ExpiresAt     string   `json:"expiresAt,omitempty"`
-	DecidedAt     string   `json:"decidedAt"`
+	Processor       string   `json:"processor"`
+	Purposes        []string `json:"purposes"`
+	DataTypes       []string `json:"dataTypes"`
+	PolicyVersion   string   `json:"policyVersion"`
+	Decision        string   `json:"decision"`
+	EffectiveStatus string   `json:"effectiveStatus"`
+	ExpiresAt       string   `json:"expiresAt,omitempty"`
+	DecidedAt       string   `json:"decidedAt"`
 }
 
 func NewHandler(service *Service) *Handler {
@@ -598,7 +599,8 @@ func newDocumentVersionDTO(value *DocumentVersion) *documentVersionDTO {
 func newProcessingConsentDTO(value ProcessingConsent) processingConsentDTO {
 	dto := processingConsentDTO{Processor: value.Processor, Purposes: value.Purposes,
 		DataTypes: value.DataTypes, PolicyVersion: value.PolicyVersion, Decision: value.Decision,
-		DecidedAt: value.DecidedAt.UTC().Format(time.RFC3339Nano)}
+		EffectiveStatus: value.EffectiveStatus,
+		DecidedAt:       value.DecidedAt.UTC().Format(time.RFC3339Nano)}
 	if value.ExpiresAt != nil {
 		dto.ExpiresAt = value.ExpiresAt.UTC().Format(time.RFC3339Nano)
 	}

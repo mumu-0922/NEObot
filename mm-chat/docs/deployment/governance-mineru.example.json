@@ -1,0 +1,11 @@
+{
+  "processor": "mineru",
+  "endpointId": "default",
+  "modelApiVersion": "v1",
+  "allowedPurposes": ["parse"],
+  "allowedDataTypes": ["application/pdf"],
+  "region": "global",
+  "retentionPolicy": "none",
+  "deletionContract": "delete",
+  "trainingUse": "disabled"
+}

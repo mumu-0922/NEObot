@@ -159,8 +159,17 @@ func main() {
 		os.Exit(1)
 	}
 	var knowledgeRepo knowledge.Repository
+	var consentExpiryWorker teamWorker
 	if sqlDB != nil {
-		knowledgeRepo = knowledge.NewPostgresRepository(sqlDB)
+		postgresKnowledgeRepo := knowledge.NewPostgresRepository(sqlDB)
+		knowledgeRepo = postgresKnowledgeRepo
+		consentExpiryWorker, err = knowledge.NewConsentExpiryWorker(postgresKnowledgeRepo, 0, 0)
+		if err != nil {
+			_ = redisClient.Close()
+			_ = db.Close()
+			logger.Error("consent_expiry_worker_config_failed", slog.String("error", redactSensitiveLogText(err.Error())))
+			os.Exit(1)
+		}
 	}
 	knowledgeService := knowledge.NewService(
 		knowledgeRepo,
@@ -215,7 +224,7 @@ func main() {
 
 	server := httpserver.New(cfg, serverOptions...)
 
-	errorsCh := make(chan runtimeFailure, 2)
+	errorsCh := make(chan runtimeFailure, 3)
 	runtimeCtx, cancelRuntime := context.WithCancel(context.Background())
 	var teamWorkerDone <-chan struct{}
 	if teamRuntime.worker != nil {
@@ -230,6 +239,21 @@ func main() {
 				)
 				select {
 				case errorsCh <- runtimeFailure{component: "team_mail_worker", err: err}:
+				case <-runtimeCtx.Done():
+				}
+			}
+		}()
+	}
+	var consentExpiryWorkerDone <-chan struct{}
+	if consentExpiryWorker != nil {
+		done := make(chan struct{})
+		consentExpiryWorkerDone = done
+		go func() {
+			defer close(done)
+			if err := runBackgroundWorker(runtimeCtx, "consent expiry worker", consentExpiryWorker); err != nil {
+				logger.Error("consent_expiry_worker_failed", slog.String("error", redactSensitiveLogText(err.Error())))
+				select {
+				case errorsCh <- runtimeFailure{component: "consent_expiry_worker", err: err}:
 				case <-runtimeCtx.Done():
 				}
 			}
@@ -274,6 +298,10 @@ func main() {
 	)
 	if err := waitForTeamWorker(workerShutdownCtx, teamWorkerDone); err != nil {
 		logger.Error("team_mail_worker_shutdown_failed", slog.String("error", err.Error()))
+		runtimeErr = errors.Join(runtimeErr, err)
+	}
+	if err := waitForBackgroundWorker(workerShutdownCtx, consentExpiryWorkerDone, "consent expiry worker"); err != nil {
+		logger.Error("consent_expiry_worker_shutdown_failed", slog.String("error", err.Error()))
 		runtimeErr = errors.Join(runtimeErr, err)
 	}
 	cancelWorkerShutdown()
@@ -703,6 +731,32 @@ func runTeamWorker(ctx context.Context, worker teamWorker) error {
 		return errors.New("team mail worker exited unexpectedly")
 	}
 	return fmt.Errorf("team mail worker stopped: %w", err)
+}
+
+func runBackgroundWorker(ctx context.Context, name string, worker teamWorker) error {
+	if worker == nil {
+		return nil
+	}
+	err := worker.Run(ctx)
+	if ctx.Err() != nil && (err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) {
+		return nil
+	}
+	if err == nil {
+		return fmt.Errorf("%s exited unexpectedly", name)
+	}
+	return fmt.Errorf("%s stopped: %w", name, err)
+}
+
+func waitForBackgroundWorker(ctx context.Context, done <-chan struct{}, name string) error {
+	if done == nil {
+		return nil
+	}
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("timed out waiting for %s", name)
+	}
 }
 
 func waitForTeamWorker(ctx context.Context, done <-chan struct{}) error {

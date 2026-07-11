@@ -6305,3 +6305,36 @@ PostgreSQL 16 integration tests under race                  passed
 
 Next: reconcile Phase 15.1D Governance/Consent expiry and wiring contracts,
 then run the complete verification and promotion gates.
+
+## 2026-07-11 — Phase 15.1D-4D/5 expiry and wiring reconciled
+
+Migration `009` adds an indexed `expiry_materialized_at` time-fact marker.
+Expiry never forges a User `revoked` decision: the immutable grant remains
+auditable while `effectiveStatus=expired` is returned and emitted. The API
+runtime starts a Postgres expiry worker that scans candidates without locking,
+then reacquires User or Team/Collection locks in canonical order, rechecks the
+current due row, advances the applicable revision, and writes Outbox in one
+transaction. PUT/DELETE materialize an elapsed current grant first so a race
+cannot swallow its expiry fence/event.
+
+HTTP/wiring reconciliation confirmed every Phase 15.1D route is registered,
+Bearer protected, safely decoded/redacted, and assigned a bounded metric/log
+path. Contracts now register `KnowledgeApi` at the top-level frontend boundary,
+mark search explicitly future/unregistered, align runtime errors, and document
+the complete Knowledge deployment/rollback smoke. The executable frontend
+remains unchanged until its later minimal adapter slice.
+
+```text
+two concurrent expiry workers: exactly-once markers/events  passed
+expiry versus PUT/DELETE revision ordering                  passed
+expiry Outbox failure full rollback                         passed
+effectiveStatus redaction DTO                               passed
+migration 009 up/down schema contract                       passed
+18/18 Knowledge routes protected and metric-bounded         passed
+full Go race suite and go vet                               passed
+PostgreSQL 16 Knowledge/migration race suites                passed
+independent xhigh review P0/P1/P2                            0/0/0
+Knowledge security scan and diff check                       passed
+```
+
+Next: execute Phase 15.1D-6 full verification and replay/migration drills.

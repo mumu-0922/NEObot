@@ -2,7 +2,8 @@
 
 This is the single-server runtime topology for `mm-chat`, including Phase 15.1B
 Identity Services, Phase 15.1C Team Services, and Phase 15.1D Personal/Team
-Collection CRUD. It keeps deployment files inside `mm-chat/` and does not modify the repository-root
+Collections, Documents, private content, Governance, and Processing Consent.
+It keeps deployment files inside `mm-chat/` and does not modify the repository-root
 `docker-compose.yml`. The stack runs the Go API, Postgres, Redis, and MinIO on
 one server; the existing Next.js frontend remains outside this workspace until
 a later frontend cutover.
@@ -113,7 +114,7 @@ Unknown fields—including keys, tokens, URLs, IDs, status, and revisions—are
 rejected. Reapplying the exact active manifest is a no-op:
 
 ```bash
-cat governance-mineru.json | docker compose --env-file .env.single-server \
+cat docs/deployment/governance-mineru.example.json | docker compose --env-file .env.single-server \
   -f compose.single-server.yml --profile ops run --rm -T admin \
   governance-apply --manifest-stdin
 
@@ -344,9 +345,19 @@ tunnel/VPN to the Docker network or host.
    docker compose --env-file .env.single-server -f compose.single-server.yml --profile app up -d backend
    ```
 6. Verify `/health`, `/ready` including configured dependency checks,
-   `/v1/version`, protected Team routes and bounded Team metrics, chat CRUD,
-   streaming, upload, and browser import smoke paths. Test Invite creation only
-   after a known-mailbox SMTP delivery smoke.
+   `/v1/version`, protected Team and Knowledge routes, bounded metric labels,
+   chat CRUD/streaming, upload, and browser import. With a disposable test
+   account/token, require `GET /v1/me/knowledge/query-consents` to return `200`
+   and a missing Bearer token to return `401`; do not mutate production Consent
+   merely for smoke testing. Test Invite creation only after a known-mailbox
+   SMTP delivery smoke.
+
+```bash
+curl -fsS -H "Authorization: Bearer $SMOKE_TOKEN" \
+  http://127.0.0.1:8080/v1/me/knowledge/query-consents
+curl -fsS http://127.0.0.1:8080/metrics | \
+  grep '/v1/me/knowledge/query-consents'
+```
 
 ## Rollback Checklist
 

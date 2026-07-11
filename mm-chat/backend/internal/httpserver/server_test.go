@@ -421,11 +421,18 @@ func TestAuthRequiredModeRejectsMissingCredentialsAndKeepsPublicRoutes(t *testin
 		{method: http.MethodGet, path: "/v1/teams"},
 		{method: http.MethodGet, path: "/v1/teams/33333333-3333-4333-8333-333333333333/members"},
 		{method: http.MethodGet, path: "/v1/knowledge/collections"},
+		{method: http.MethodPost, path: "/v1/knowledge/collections"},
 		{method: http.MethodGet, path: "/v1/knowledge/collections/33333333-3333-4333-8333-333333333333"},
+		{method: http.MethodPatch, path: "/v1/knowledge/collections/33333333-3333-4333-8333-333333333333"},
+		{method: http.MethodDelete, path: "/v1/knowledge/collections/33333333-3333-4333-8333-333333333333"},
+		{method: http.MethodGet, path: "/v1/knowledge/collections/33333333-3333-4333-8333-333333333333/documents"},
+		{method: http.MethodPost, path: "/v1/knowledge/collections/33333333-3333-4333-8333-333333333333/documents"},
 		{method: http.MethodGet, path: "/v1/knowledge/collections/33333333-3333-4333-8333-333333333333/processing-consents"},
 		{method: http.MethodPut, path: "/v1/knowledge/collections/33333333-3333-4333-8333-333333333333/processing-consents/mineru"},
+		{method: http.MethodDelete, path: "/v1/knowledge/collections/33333333-3333-4333-8333-333333333333/processing-consents/mineru"},
 		{method: http.MethodGet, path: "/v1/me/knowledge/query-consents"},
 		{method: http.MethodPut, path: "/v1/me/knowledge/query-consents/mineru"},
+		{method: http.MethodDelete, path: "/v1/me/knowledge/query-consents/mineru"},
 		{method: http.MethodGet, path: "/v1/knowledge/documents/33333333-3333-4333-8333-333333333333"},
 		{method: http.MethodDelete, path: "/v1/knowledge/documents/33333333-3333-4333-8333-333333333333"},
 		{method: http.MethodGet, path: "/v1/knowledge/documents/33333333-3333-4333-8333-333333333333/content"},
@@ -477,21 +484,35 @@ func TestNewHandlerRegistersTeamRoutes(t *testing.T) {
 
 func TestNewHandlerRegistersKnowledgeCollectionRoutes(t *testing.T) {
 	handler := NewHandler(config.Config{Addr: ":0", Version: "route-test"})
-	for _, path := range []string{
-		"/v1/knowledge/collections",
-		"/v1/knowledge/collections/33333333-3333-4333-8333-333333333333",
-		"/v1/knowledge/documents/33333333-3333-4333-8333-333333333333",
-		"/v1/knowledge/documents/33333333-3333-4333-8333-333333333333/content",
-		"/v1/knowledge/documents/33333333-3333-4333-8333-333333333333/versions",
-		"/v1/knowledge/documents/33333333-3333-4333-8333-333333333333/reprocess",
-		"/v1/me/knowledge/query-consents",
-		"/v1/me/knowledge/query-consents/mineru",
-	} {
+	routes := []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/v1/knowledge/collections"},
+		{method: http.MethodPost, path: "/v1/knowledge/collections"},
+		{method: http.MethodGet, path: "/v1/knowledge/collections/33333333-3333-4333-8333-333333333333"},
+		{method: http.MethodPatch, path: "/v1/knowledge/collections/33333333-3333-4333-8333-333333333333"},
+		{method: http.MethodDelete, path: "/v1/knowledge/collections/33333333-3333-4333-8333-333333333333"},
+		{method: http.MethodGet, path: "/v1/knowledge/collections/33333333-3333-4333-8333-333333333333/documents"},
+		{method: http.MethodPost, path: "/v1/knowledge/collections/33333333-3333-4333-8333-333333333333/documents"},
+		{method: http.MethodGet, path: "/v1/knowledge/collections/33333333-3333-4333-8333-333333333333/processing-consents"},
+		{method: http.MethodPut, path: "/v1/knowledge/collections/33333333-3333-4333-8333-333333333333/processing-consents/mineru"},
+		{method: http.MethodDelete, path: "/v1/knowledge/collections/33333333-3333-4333-8333-333333333333/processing-consents/mineru"},
+		{method: http.MethodGet, path: "/v1/knowledge/documents/33333333-3333-4333-8333-333333333333"},
+		{method: http.MethodDelete, path: "/v1/knowledge/documents/33333333-3333-4333-8333-333333333333"},
+		{method: http.MethodGet, path: "/v1/knowledge/documents/33333333-3333-4333-8333-333333333333/content"},
+		{method: http.MethodPost, path: "/v1/knowledge/documents/33333333-3333-4333-8333-333333333333/versions"},
+		{method: http.MethodPost, path: "/v1/knowledge/documents/33333333-3333-4333-8333-333333333333/reprocess"},
+		{method: http.MethodGet, path: "/v1/me/knowledge/query-consents"},
+		{method: http.MethodPut, path: "/v1/me/knowledge/query-consents/mineru"},
+		{method: http.MethodDelete, path: "/v1/me/knowledge/query-consents/mineru"},
+	}
+	for _, route := range routes {
 		recorder := httptest.NewRecorder()
-		request := httptest.NewRequest(http.MethodGet, path, nil)
+		request := httptest.NewRequest(route.method, route.path, nil)
 		handler.ServeHTTP(recorder, request)
 		if recorder.Code != http.StatusUnauthorized {
-			t.Fatalf("GET %s status = %d, want 401; body=%s", path, recorder.Code, recorder.Body.String())
+			t.Fatalf("%s %s status = %d, want 401; body=%s", route.method, route.path, recorder.Code, recorder.Body.String())
 		}
 	}
 }

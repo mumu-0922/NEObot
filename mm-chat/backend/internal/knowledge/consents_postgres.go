@@ -23,6 +23,7 @@ type currentConsentRow struct {
 	Purposes, DataTypes                                []string
 	DecidedAt                                          time.Time
 	ExpiresAt                                          sql.NullTime
+	ExpiryMaterializedAt                               sql.NullTime
 }
 
 func (r *PostgresRepository) ListCollectionConsents(ctx context.Context, input CollectionConsentLookupInput) ([]ProcessingConsent, error) {
@@ -37,7 +38,9 @@ func (r *PostgresRepository) ListCollectionConsents(ctx context.Context, input C
 	if err := lockCollectionForConsentRead(ctx, tx, input.CollectionID, input.ActorUserID); err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT processor,decision,array_to_string(purposes,E'\x1f'),
+	rows, err := tx.QueryContext(ctx, `SELECT processor,decision,
+CASE WHEN decision='granted' AND expires_at<=clock_timestamp() THEN 'expired' ELSE decision END,
+array_to_string(purposes,E'\x1f'),
 array_to_string(data_types,E'\x1f'),policy_version,decided_at,expires_at
 FROM processing_consents WHERE scope='collection' AND collection_id=$1 AND superseded_at IS NULL ORDER BY processor`, input.CollectionID)
 	if err != nil {
@@ -49,7 +52,7 @@ FROM processing_consents WHERE scope='collection' AND collection_id=$1 AND super
 		var value ProcessingConsent
 		var expires sql.NullTime
 		var purposes, dataTypes string
-		if err := rows.Scan(&value.Processor, &value.Decision, &purposes, &dataTypes,
+		if err := rows.Scan(&value.Processor, &value.Decision, &value.EffectiveStatus, &purposes, &dataTypes,
 			&value.PolicyVersion, &value.DecidedAt, &expires); err != nil {
 			return nil, fmt.Errorf("scan collection consent: %w", err)
 		}
@@ -128,15 +131,32 @@ func (r *PostgresRepository) PutCollectionConsent(ctx context.Context, input Put
 		return ProcessingConsent{}, fmt.Errorf("read consent decision time: %w", err)
 	}
 	now = now.UTC()
-	if input.ExpiresAt != nil && !input.ExpiresAt.After(now) {
-		return ProcessingConsent{}, invalidConsentPayload("expiry must be in the future")
+	processingRevision := collection.ProcessingRevision
+	if found {
+		processingRevision, err = r.materializeLockedCollectionExpiry(
+			ctx, tx, input.CollectionID, input.Processor, current, processingRevision, now,
+		)
+		if err != nil {
+			return ProcessingConsent{}, err
+		}
 	}
-	if found && current.Decision == "granted" && current.EndpointID == authority.EndpointID &&
+	matchesCurrent := found && current.Decision == "granted" && current.EndpointID == authority.EndpointID &&
 		current.ProfileID == authority.ProfileID && current.GovernanceRevision == authority.GovernanceRevision &&
 		current.HeadRevision == authority.HeadRevision && slices.Equal(current.Purposes, input.Purposes) &&
 		slices.Equal(current.DataTypes, input.DataTypes) && current.PolicyVersion == input.PolicyVersion &&
-		nullTimeEqual(current.ExpiresAt, input.ExpiresAt) {
-		return consentFromRow(input.Processor, current), nil
+		nullTimeEqual(current.ExpiresAt, input.ExpiresAt)
+	if matchesCurrent {
+		value := consentFromRow(input.Processor, current)
+		if current.ExpiresAt.Valid && !current.ExpiresAt.Time.After(now) {
+			value.EffectiveStatus = "expired"
+			if err := tx.Commit(); err != nil {
+				return ProcessingConsent{}, fmt.Errorf("commit elapsed collection consent replay: %w", err)
+			}
+		}
+		return value, nil
+	}
+	if input.ExpiresAt != nil && !input.ExpiresAt.After(now) {
+		return ProcessingConsent{}, invalidConsentPayload("expiry must be in the future")
 	}
 	consentRevision := int64(1)
 	if found {
@@ -160,11 +180,11 @@ granted_by_user_id,decided_at,expires_at,created_at,updated_at
 	if err != nil {
 		return ProcessingConsent{}, fmt.Errorf("insert collection consent: %w", err)
 	}
-	processingRevision := collection.ProcessingRevision + 1
+	processingRevision++
 	if _, err := tx.ExecContext(ctx, `UPDATE knowledge_collections SET collection_processing_revision=$2,updated_at=$3 WHERE id=$1`, input.CollectionID, processingRevision, now); err != nil {
 		return ProcessingConsent{}, fmt.Errorf("advance collection processing revision: %w", err)
 	}
-	value := ProcessingConsent{Processor: input.Processor, Decision: "granted", Purposes: input.Purposes,
+	value := ProcessingConsent{Processor: input.Processor, Decision: "granted", EffectiveStatus: "granted", Purposes: input.Purposes,
 		DataTypes: input.DataTypes, PolicyVersion: input.PolicyVersion, DecidedAt: now, ExpiresAt: input.ExpiresAt}
 	if err := r.insertCollectionConsentEvent(ctx, tx, input.CollectionID, value, consentRevision, processingRevision, authority); err != nil {
 		return ProcessingConsent{}, err
@@ -200,6 +220,13 @@ func (r *PostgresRepository) RevokeCollectionConsent(ctx context.Context, input 
 		return fmt.Errorf("read consent revocation time: %w", err)
 	}
 	now = now.UTC()
+	processingRevision := collection.ProcessingRevision
+	processingRevision, err = r.materializeLockedCollectionExpiry(
+		ctx, tx, input.CollectionID, input.Processor, current, processingRevision, now,
+	)
+	if err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `UPDATE processing_consents SET superseded_at=$2,updated_at=$2 WHERE id=$1`, current.ID, now); err != nil {
 		return fmt.Errorf("supersede granted consent: %w", err)
 	}
@@ -218,13 +245,13 @@ granted_by_user_id,decided_at,created_at,updated_at
 	if err != nil {
 		return fmt.Errorf("insert revoked collection consent: %w", err)
 	}
-	processingRevision := collection.ProcessingRevision + 1
+	processingRevision++
 	if _, err := tx.ExecContext(ctx, `UPDATE knowledge_collections SET collection_processing_revision=$2,updated_at=$3 WHERE id=$1`, input.CollectionID, processingRevision, now); err != nil {
 		return fmt.Errorf("advance collection processing revision: %w", err)
 	}
 	authority := consentAuthority{EndpointID: current.EndpointID, ProfileID: current.ProfileID,
 		GovernanceRevision: current.GovernanceRevision, HeadRevision: current.HeadRevision}
-	value := ProcessingConsent{Processor: input.Processor, Decision: "revoked", Purposes: current.Purposes,
+	value := ProcessingConsent{Processor: input.Processor, Decision: "revoked", EffectiveStatus: "revoked", Purposes: current.Purposes,
 		DataTypes: current.DataTypes, PolicyVersion: current.PolicyVersion, DecidedAt: now}
 	if err := r.insertCollectionConsentEvent(ctx, tx, input.CollectionID, value, consentRevision, processingRevision, authority); err != nil {
 		return err
@@ -273,13 +300,13 @@ func lockCurrentCollectionConsent(ctx context.Context, tx *sql.Tx, collectionID,
 	var row currentConsentRow
 	query := tx.QueryRowContext(ctx, `SELECT id,endpoint_id,governance_profile_id,governance_revision,
 governance_head_revision,decision,array_to_string(purposes,E'\x1f'),
-array_to_string(data_types,E'\x1f'),policy_version,consent_revision,decided_at,expires_at
+array_to_string(data_types,E'\x1f'),policy_version,consent_revision,decided_at,expires_at,expiry_materialized_at
 FROM processing_consents WHERE scope='collection' AND collection_id=$1 AND processor=$2
 AND superseded_at IS NULL FOR UPDATE`, collectionID, processor)
 	var purposes, dataTypes string
 	err := query.Scan(&row.ID, &row.EndpointID, &row.ProfileID,
 		&row.GovernanceRevision, &row.HeadRevision, &row.Decision, &purposes, &dataTypes,
-		&row.PolicyVersion, &row.ConsentRevision, &row.DecidedAt, &row.ExpiresAt)
+		&row.PolicyVersion, &row.ConsentRevision, &row.DecidedAt, &row.ExpiresAt, &row.ExpiryMaterializedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return row, false, nil
 	}
@@ -296,11 +323,23 @@ func (r *PostgresRepository) insertCollectionConsentEvent(ctx context.Context, t
 	if err != nil {
 		return fmt.Errorf("generate collection consent event id: %w", err)
 	}
-	payload, err := json.Marshal(map[string]any{"schemaVersion": 1, "scope": "collection", "collectionId": collectionID,
+	payloadObject := map[string]any{"schemaVersion": 1, "scope": "collection", "collectionId": collectionID,
 		"processor": value.Processor, "endpointId": authority.EndpointID,
-		"decision": value.Decision, "consentRevision": consentRevision,
+		"decision": value.Decision, "effectiveStatus": value.EffectiveStatus, "consentRevision": consentRevision,
 		"collectionProcessingRevision": processingRevision, "governanceProfileId": authority.ProfileID,
-		"governanceRevision": authority.GovernanceRevision, "governanceHeadRevision": authority.HeadRevision})
+		"governanceRevision": authority.GovernanceRevision, "governanceHeadRevision": authority.HeadRevision}
+	if value.ExpiresAt != nil {
+		key := "expiresAt"
+		if value.MaterializedAt != nil {
+			key = "expiredAt"
+		}
+		payloadObject[key] = value.ExpiresAt.UTC().Format(time.RFC3339Nano)
+	}
+	if value.MaterializedAt != nil {
+		payloadObject["materializedAt"] = value.MaterializedAt.UTC().Format(time.RFC3339Nano)
+		payloadObject["reason"] = "expired"
+	}
+	payload, err := json.Marshal(payloadObject)
 	if err != nil {
 		return fmt.Errorf("marshal collection consent event: %w", err)
 	}
@@ -312,7 +351,11 @@ VALUES ($1,'knowledge_collection',$2,'knowledge.collection.consent.changed',$3::
 }
 
 func consentFromRow(processor string, row currentConsentRow) ProcessingConsent {
-	value := ProcessingConsent{Processor: processor, Decision: row.Decision, Purposes: row.Purposes,
+	effective := row.Decision
+	if row.Decision == "granted" && row.ExpiresAt.Valid && !row.ExpiresAt.Time.After(time.Now().UTC()) {
+		effective = "expired"
+	}
+	value := ProcessingConsent{Processor: processor, Decision: row.Decision, EffectiveStatus: effective, Purposes: row.Purposes,
 		DataTypes: row.DataTypes, PolicyVersion: row.PolicyVersion, DecidedAt: row.DecidedAt.UTC()}
 	if row.ExpiresAt.Valid {
 		expiry := row.ExpiresAt.Time.UTC()

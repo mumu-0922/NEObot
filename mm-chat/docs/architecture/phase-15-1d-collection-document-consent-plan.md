@@ -363,7 +363,7 @@ allocation order only; consumers rescan claimable rows, deduplicate by
       contracts and add reversible migration `006` with Job/idempotency gaps.
 - [x] **15.1D-2 Collection service:** implement Personal/Team CRUD, cursor
       lists, immutable scope, disclosure order, revisions, and Outbox.
-- [ ] **15.1D-3 Document and File binding:** implement logical Document/Version
+- [x] **15.1D-3 Document and File binding:** implement logical Document/Version
       lifecycle, locked binding/deletion, content authorization, Job creation,
       reprocess, tombstones, and idempotency.
   - [x] Make direct File deletion lock the owned File row, reject live
@@ -387,7 +387,9 @@ allocation order only; consumers rescan claimable rows, deduplicate by
         Admin ACL, expiry, processing revisions, and Outbox.
   - [x] Add authenticated User Query Consent reads/grant/revoke with query
         consent revisions, expiry, and Outbox.
-- [ ] **15.1D-5 HTTP and wiring:** register protected routes, safe DTOs/errors,
+  - [x] Materialize elapsed Consent expiry as a system time fact, advance the
+        applicable revision, and emit Outbox without forging a user revoke.
+- [x] **15.1D-5 HTTP and wiring:** register protected routes, safe DTOs/errors,
       bounded metrics/logging, and later-frontend adapter documentation.
 - [ ] **15.1D-6 Verification:** pass unit/race and real PostgreSQL 16 ACL,
       locking, idempotency, Consent, deletion, migration, and replay gates.

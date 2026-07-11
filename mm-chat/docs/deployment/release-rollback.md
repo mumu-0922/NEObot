@@ -33,6 +33,8 @@ Then verify:
 curl -fsS http://127.0.0.1:8080/health
 curl -fsS http://127.0.0.1:8080/ready
 curl -fsS http://127.0.0.1:8080/v1/version
+curl -fsS -H "Authorization: Bearer $SMOKE_TOKEN" \
+  http://127.0.0.1:8080/v1/me/knowledge/query-consents
 ```
 
 For a full single-server release, inspect `/ready` and require configured
@@ -52,6 +54,9 @@ curl -fsS http://127.0.0.1:8080/ready | jq '.status, .checks'
     run --rm migrate /usr/local/bin/mm-chat-migrate down
   ```
 - **Migration bad after user traffic**: prefer forward fix. Down migration may destroy or orphan data.
+- **Knowledge migrations `006`-`009` after live writes**: forward-fix only.
+  Never drop authoritative Documents, Consent history/materialization markers,
+  Processing Jobs, or Outbox rows to roll back an API image.
 - **Object storage issue**: stop upload/import paths, verify MinIO backup, restore into a temporary bucket first.
 - **Redis issue**: flush or recreate Redis only; Postgres/MinIO remain authoritative.
 

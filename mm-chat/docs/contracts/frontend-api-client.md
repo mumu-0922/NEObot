@@ -147,6 +147,7 @@ export interface NeoChatApiClient {
   providers: ProviderApi;
   plugins: PluginApi;
   imports: ImportApi;
+  knowledge: KnowledgeApi;
 }
 
 export function createNeoChatApiClient(
@@ -155,6 +156,9 @@ export function createNeoChatApiClient(
 ```
 
 The first implementation may live under `mm-chat/` as a prototype, but final integration should preserve the existing `src/services/api/*` import boundary until components are migrated safely.
+The current `mm-chat/frontend` executable scaffold remains intentionally
+chat-only; this interface is the required adapter boundary for the later
+minimal frontend wiring slice and does not authorize UI technology changes.
 
 ## 7. Shared Data Types
 
@@ -1116,6 +1120,7 @@ export interface ProcessingConsentDto {
   dataTypes: string[];
   policyVersion: string;
   decision: "granted" | "revoked";
+  effectiveStatus: "granted" | "revoked" | "expired";
   expiresAt?: IsoDateTime;
   decidedAt: IsoDateTime;
 }

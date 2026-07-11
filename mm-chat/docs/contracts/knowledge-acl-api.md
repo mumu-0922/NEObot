@@ -339,6 +339,11 @@ Collection lacks the required Consent; it cannot silently drop that Collection.
   The relevant revisions block new calls immediately and enter Authorization
   Fingerprints and Cache Keys; the service must not silently switch Processors
   with different egress semantics.
+- Elapsed expiry remains the original immutable `granted` decision but exposes
+  `effectiveStatus = "expired"`. A background worker materializes that time
+  fact exactly once, advances the subject revision, and emits an Outbox event
+  with `reason=expired`; it never impersonates the granting User with a
+  synthetic revoke.
 
 ## 4. Permission Matrix
 
@@ -411,7 +416,12 @@ DELETE /v1/knowledge/collections/{collectionId}/processing-consents/{processor}
 GET    /v1/me/knowledge/query-consents
 PUT    /v1/me/knowledge/query-consents/{processor}
 DELETE /v1/me/knowledge/query-consents/{processor}
-POST   /v1/knowledge/search
+```
+
+Future Phase 15 search contract (not registered by Phase 15.1D):
+
+```text
+POST /v1/knowledge/search
 ```
 
 ### Team service DTOs and paging
@@ -583,6 +593,7 @@ interface ProcessingConsentDto {
   dataTypes: string[];
   policyVersion: string;
   decision: "granted" | "revoked";
+  effectiveStatus: "granted" | "revoked" | "expired";
   expiresAt?: string;
   decidedAt: string;
 }
@@ -755,7 +766,6 @@ Consent and tombstones the old binding; it never edits ownership in place.
 | `400` | `INVALID_TEAM_PAYLOAD`            | Team name, UUID, cursor, limit, JSON shape, or Team body fields are invalid.               |
 | `400` | `INVALID_INVITE_PAYLOAD`          | Invite mailbox, `teamRole`, or `idempotencyKey` is invalid.                                |
 | `400` | `INVALID_MEMBERSHIP_PAYLOAD`      | Membership body shape or `teamRole` is invalid.                                            |
-| `400` | `INVALID_COLLECTION_SCOPE`        | Collection scope or its owner/team shape is invalid.                                       |
 | `400` | `INVALID_COLLECTION_PAYLOAD`      | Collection JSON, display fields, UUID, cursor, limit, or body shape is invalid.            |
 | `400` | `INVALID_DOCUMENT_PAYLOAD`        | File ID, idempotency key, or Document operation body is invalid.                           |
 | `400` | `INVALID_CONSENT_PAYLOAD`         | Processor, purpose, data type, policy version, or Consent body is invalid.                 |
@@ -778,6 +788,12 @@ Consent and tombstones the old binding; it never edits ownership in place.
 | `410` | `INVITE_NOT_ACTIVE`               | Invitation is accepted, revoked, expired, unsent, or otherwise unusable.                   |
 | `503` | `INVITE_DELIVERY_UNAVAILABLE`     | SMTP, encryption, or durable sender admission is unavailable.                              |
 | `503` | `KNOWLEDGE_PROCESSOR_UNAVAILABLE` | Governance Head/Profile is missing, disabled, stale, or not approved.                      |
+| `503` | `DATABASE_REQUIRED`               | The authoritative Postgres repository is unavailable.                                      |
+| `503` | `CURSOR_CODEC_REQUIRED`           | Signed list cursor configuration is unavailable.                                           |
+| `503` | `STORAGE_REQUIRED`                | Authorized content cannot reach its private object store.                                  |
+| `413` | `PAYLOAD_TOO_LARGE`               | A bounded Knowledge request body exceeds the server limit.                                 |
+| `405` | `METHOD_NOT_ALLOWED`              | The route exists but does not support the requested method.                                |
+| `500` | `INTERNAL_ERROR`                  | A non-disclosing unexpected server failure occurred.                                       |
 
 Authorization order on Team routes is fixed: validate Session and bounded
 input, resolve Team visibility, distinguish visible Member from Admin, then

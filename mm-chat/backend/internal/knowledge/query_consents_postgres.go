@@ -22,7 +22,9 @@ func (r *PostgresRepository) ListQueryConsents(ctx context.Context, input QueryC
 	if err := requireActiveConsentUser(ctx, tx, input.ActorUserID); err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT processor,decision,array_to_string(purposes,E'\x1f'),
+	rows, err := tx.QueryContext(ctx, `SELECT processor,decision,
+CASE WHEN decision='granted' AND expires_at<=clock_timestamp() THEN 'expired' ELSE decision END,
+array_to_string(purposes,E'\x1f'),
 array_to_string(data_types,E'\x1f'),policy_version,decided_at,expires_at
 FROM processing_consents WHERE scope='query' AND user_id=$1 AND superseded_at IS NULL ORDER BY processor`, input.ActorUserID)
 	if err != nil {
@@ -33,7 +35,7 @@ FROM processing_consents WHERE scope='query' AND user_id=$1 AND superseded_at IS
 		var value ProcessingConsent
 		var purposes, dataTypes string
 		var expires sql.NullTime
-		if err := rows.Scan(&value.Processor, &value.Decision, &purposes, &dataTypes,
+		if err := rows.Scan(&value.Processor, &value.Decision, &value.EffectiveStatus, &purposes, &dataTypes,
 			&value.PolicyVersion, &value.DecidedAt, &expires); err != nil {
 			_ = rows.Close()
 			return nil, fmt.Errorf("scan query consent: %w", err)
@@ -87,15 +89,28 @@ func (r *PostgresRepository) PutQueryConsent(ctx context.Context, input PutQuery
 		return ProcessingConsent{}, fmt.Errorf("read query consent decision time: %w", err)
 	}
 	now = now.UTC()
-	if input.ExpiresAt != nil && !input.ExpiresAt.After(now) {
-		return ProcessingConsent{}, invalidConsentPayload("expiry must be in the future")
+	if found {
+		if _, err := r.materializeLockedQueryExpiry(ctx, tx, input.ActorUserID, input.Processor, current, now); err != nil {
+			return ProcessingConsent{}, err
+		}
 	}
-	if found && current.Decision == "granted" && current.EndpointID == authority.EndpointID &&
+	matchesCurrent := found && current.Decision == "granted" && current.EndpointID == authority.EndpointID &&
 		current.ProfileID == authority.ProfileID && current.GovernanceRevision == authority.GovernanceRevision &&
 		current.HeadRevision == authority.HeadRevision && slices.Equal(current.Purposes, input.Purposes) &&
 		slices.Equal(current.DataTypes, input.DataTypes) && current.PolicyVersion == input.PolicyVersion &&
-		nullTimeEqual(current.ExpiresAt, input.ExpiresAt) {
-		return consentFromRow(input.Processor, current), nil
+		nullTimeEqual(current.ExpiresAt, input.ExpiresAt)
+	if matchesCurrent {
+		value := consentFromRow(input.Processor, current)
+		if current.ExpiresAt.Valid && !current.ExpiresAt.Time.After(now) {
+			value.EffectiveStatus = "expired"
+			if err := tx.Commit(); err != nil {
+				return ProcessingConsent{}, fmt.Errorf("commit elapsed query consent replay: %w", err)
+			}
+		}
+		return value, nil
+	}
+	if input.ExpiresAt != nil && !input.ExpiresAt.After(now) {
+		return ProcessingConsent{}, invalidConsentPayload("expiry must be in the future")
 	}
 	consentRevision := int64(1)
 	if found {
@@ -123,7 +138,7 @@ granted_by_user_id,decided_at,expires_at,created_at,updated_at
 	if err != nil {
 		return ProcessingConsent{}, fmt.Errorf("insert query consent: %w", err)
 	}
-	value := ProcessingConsent{Processor: input.Processor, Decision: "granted", Purposes: input.Purposes,
+	value := ProcessingConsent{Processor: input.Processor, Decision: "granted", EffectiveStatus: "granted", Purposes: input.Purposes,
 		DataTypes: input.DataTypes, PolicyVersion: input.PolicyVersion, DecidedAt: now, ExpiresAt: input.ExpiresAt}
 	if err := r.insertQueryConsentEvent(ctx, tx, input.ActorUserID, value, consentRevision, queryRevision, authority); err != nil {
 		return ProcessingConsent{}, err
@@ -158,6 +173,9 @@ func (r *PostgresRepository) RevokeQueryConsent(ctx context.Context, input Query
 		return fmt.Errorf("read query consent revocation time: %w", err)
 	}
 	now = now.UTC()
+	if _, err := r.materializeLockedQueryExpiry(ctx, tx, input.ActorUserID, input.Processor, current, now); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `UPDATE processing_consents SET superseded_at=$2,updated_at=$2 WHERE id=$1`, current.ID, now); err != nil {
 		return fmt.Errorf("supersede granted query consent: %w", err)
 	}
@@ -183,7 +201,7 @@ granted_by_user_id,decided_at,created_at,updated_at
 	}
 	authority := consentAuthority{EndpointID: current.EndpointID, ProfileID: current.ProfileID,
 		GovernanceRevision: current.GovernanceRevision, HeadRevision: current.HeadRevision}
-	value := ProcessingConsent{Processor: input.Processor, Decision: "revoked", Purposes: current.Purposes,
+	value := ProcessingConsent{Processor: input.Processor, Decision: "revoked", EffectiveStatus: "revoked", Purposes: current.Purposes,
 		DataTypes: current.DataTypes, PolicyVersion: current.PolicyVersion, DecidedAt: now}
 	if err := r.insertQueryConsentEvent(ctx, tx, input.ActorUserID, value, consentRevision, queryRevision, authority); err != nil {
 		return err
@@ -209,10 +227,11 @@ func lockCurrentQueryConsent(ctx context.Context, tx *sql.Tx, userID, processor 
 	var purposes, dataTypes string
 	err := tx.QueryRowContext(ctx, `SELECT id,endpoint_id,governance_profile_id,governance_revision,
 governance_head_revision,decision,array_to_string(purposes,E'\x1f'),array_to_string(data_types,E'\x1f'),
-policy_version,consent_revision,decided_at,expires_at FROM processing_consents
+policy_version,consent_revision,decided_at,expires_at,expiry_materialized_at FROM processing_consents
 WHERE scope='query' AND user_id=$1 AND processor=$2 AND superseded_at IS NULL FOR UPDATE`, userID, processor).Scan(
 		&row.ID, &row.EndpointID, &row.ProfileID, &row.GovernanceRevision, &row.HeadRevision,
-		&row.Decision, &purposes, &dataTypes, &row.PolicyVersion, &row.ConsentRevision, &row.DecidedAt, &row.ExpiresAt)
+		&row.Decision, &purposes, &dataTypes, &row.PolicyVersion, &row.ConsentRevision,
+		&row.DecidedAt, &row.ExpiresAt, &row.ExpiryMaterializedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return row, false, nil
 	}
@@ -245,11 +264,24 @@ func (r *PostgresRepository) insertQueryConsentEvent(ctx context.Context, tx *sq
 	if err != nil {
 		return fmt.Errorf("generate query consent event id: %w", err)
 	}
-	payload, err := json.Marshal(map[string]any{"schemaVersion": 1, "scope": "query", "userId": userID,
+	payloadObject := map[string]any{"schemaVersion": 1, "scope": "query", "userId": userID,
 		"processor": value.Processor, "endpointId": authority.EndpointID, "decision": value.Decision,
+		"effectiveStatus": value.EffectiveStatus,
 		"consentRevision": consentRevision, "queryConsentRevision": queryRevision,
 		"governanceProfileId": authority.ProfileID, "governanceRevision": authority.GovernanceRevision,
-		"governanceHeadRevision": authority.HeadRevision})
+		"governanceHeadRevision": authority.HeadRevision}
+	if value.ExpiresAt != nil {
+		key := "expiresAt"
+		if value.MaterializedAt != nil {
+			key = "expiredAt"
+		}
+		payloadObject[key] = value.ExpiresAt.UTC().Format(time.RFC3339Nano)
+	}
+	if value.MaterializedAt != nil {
+		payloadObject["materializedAt"] = value.MaterializedAt.UTC().Format(time.RFC3339Nano)
+		payloadObject["reason"] = "expired"
+	}
+	payload, err := json.Marshal(payloadObject)
 	if err != nil {
 		return fmt.Errorf("marshal query consent event: %w", err)
 	}

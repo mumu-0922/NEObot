@@ -612,7 +612,7 @@ the UI can call in the next wiring slice.
       migration `006` for display metadata, idempotency, and Processing Jobs.
 - [x] Implement Personal/Team Collection repositories, ACLs, revisions, and
       transactional Outbox writes.
-- [ ] Implement logical Document/Version lifecycle, locked File binding/delete,
+- [x] Implement logical Document/Version lifecycle, locked File binding/delete,
       authorized content reads, reprocess, and tombstones.
   - [x] Lock direct File deletion against live Knowledge Version bindings and
         write durable `file.object.delete.requested` Outbox work.
@@ -633,7 +633,11 @@ the UI can call in the next wiring slice.
         semantic idempotency, processing revisions, and Outbox.
   - [x] Add User Query Consent reads/grant/revoke, expiry validation, semantic
         idempotency, query revisions, and Outbox.
-- [ ] Wire protected Knowledge routes and pass unit/race/PostgreSQL 16 ACL,
+  - [x] Materialize elapsed Consent expiry, advance subject revisions, and
+        emit expiry Outbox without forging a user revocation decision.
+- [x] Wire protected Knowledge routes, safe DTOs/errors, bounded metrics, and
+      later-frontend adapter contracts.
+- [ ] Pass unit/race/PostgreSQL 16 ACL,
       migration, deletion, idempotency, and Outbox replay gates.
 
 - [ ] Replace the single-bootstrap-user ceiling with admin-invited independent

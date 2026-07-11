@@ -446,6 +446,60 @@ func TestRunTeamWorkerReportsUnexpectedExitAndHonorsCancellation(t *testing.T) {
 	}
 }
 
+func TestRunBackgroundWorkerReportsFailuresAndHonorsCancellation(t *testing.T) {
+	if err := runBackgroundWorker(context.Background(), "test worker", nil); err != nil {
+		t.Fatalf("runBackgroundWorker(nil) error = %v", err)
+	}
+
+	unexpected := teamWorkerFunc(func(context.Context) error { return nil })
+	if err := runBackgroundWorker(context.Background(), "test worker", unexpected); err == nil ||
+		!strings.Contains(err.Error(), "test worker exited unexpectedly") {
+		t.Fatalf("runBackgroundWorker() unexpected exit error = %v", err)
+	}
+
+	sentinel := errors.New("worker failure")
+	failing := teamWorkerFunc(func(context.Context) error { return sentinel })
+	if err := runBackgroundWorker(context.Background(), "test worker", failing); err == nil ||
+		!errors.Is(err, sentinel) || !strings.Contains(err.Error(), "test worker stopped") {
+		t.Fatalf("runBackgroundWorker() wrapped error = %v", err)
+	}
+
+	started := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- runBackgroundWorker(ctx, "test worker", teamWorkerFunc(func(ctx context.Context) error {
+			close(started)
+			<-ctx.Done()
+			return ctx.Err()
+		}))
+	}()
+	<-started
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("runBackgroundWorker() cancellation error = %v", err)
+	}
+}
+
+func TestWaitForBackgroundWorkerWaitsAndTimesOut(t *testing.T) {
+	if err := waitForBackgroundWorker(context.Background(), nil, "test worker"); err != nil {
+		t.Fatalf("waitForBackgroundWorker(nil) error = %v", err)
+	}
+
+	done := make(chan struct{})
+	close(done)
+	if err := waitForBackgroundWorker(context.Background(), done, "test worker"); err != nil {
+		t.Fatalf("waitForBackgroundWorker() closed error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := waitForBackgroundWorker(ctx, make(chan struct{}), "test worker"); err == nil ||
+		!strings.Contains(err.Error(), "test worker") {
+		t.Fatalf("waitForBackgroundWorker() timeout error = %v", err)
+	}
+}
+
 func TestWaitForTeamWorkerWaitsAndTimesOut(t *testing.T) {
 	done := make(chan struct{})
 	close(done)
