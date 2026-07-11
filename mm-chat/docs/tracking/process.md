@@ -6377,3 +6377,49 @@ Go migration unit and race suites                            passed
 Phase 15.1D-6 remains open while the explicit two-User/two-Team ACL,
 membership/mutation race, delete/reprocess race, and Outbox replay gates are
 reconciled.
+
+## 2026-07-11 — Phase 15.1D-6 ACL and Outbox source gates
+
+Added a real PostgreSQL two-User/two-Team matrix covering Personal ownership,
+cross-Team isolation, Team Admin inability to infer another User's Personal
+Knowledge, Collection/Document/content/Consent reads, cross-scope mutation
+denial, and disabled-actor read/write denial. Repository read predicates now
+require an active, non-deleted actor; existing Collection/Document/Consent
+mutations lock and recheck that User before Team, Membership, and Collection.
+
+Source inspection confirmed that this Go control plane currently produces
+`knowledge_outbox` rows but has no consumer, projection checkpoint, or search
+generation. The 15.1D gate was therefore corrected rather than faked: Go owns
+producer durability and source-recovery prerequisites, while real duplicate/
+out-of-order application, contiguous checkpoints, restart recovery, and search
+reconstruction remain mandatory Python RAG worker gates.
+
+Added a PostgreSQL source test proving BIGSERIAL allocation order is not commit
+order: a higher ID can commit and become visible while a lower allocated ID is
+still open, and a later full pending-row rescan recovers both. The same test verifies unique
+`event_id`, JSON-object payload, and status/timestamp constraints.
+
+```text
+two Users / two Teams Personal and Team ACL matrix           passed
+cross-Team and cross-Personal disclosure-safe denial         passed
+Team Admin plus representative Member/removed paths           passed
+disabled actor public repository read/write denial            passed
+Outbox allocation gap and post-commit full rescan             passed
+duplicate event ID and invalid Outbox shape rejection        passed
+PostgreSQL 16 targeted race suite                             passed
+```
+
+The integration evidence used `postgres:16-alpine` with an explicit disposable
+database URL; both named tests reported `RUN` and `PASS`. They skip without the
+URL, and a skip is not accepted as promotion evidence. With `PORT` set to the
+container's dynamically published local port, the replayable command was:
+
+```bash
+MM_CHAT_TEST_DATABASE_URL="postgres://neo_chat:test-only-password@127.0.0.1:${PORT}/neo_chat?sslmode=disable" \
+GOCACHE=/tmp/mm-chat-go-cache \
+go test -count=1 -race ./internal/knowledge \
+  -run 'TestPostgresKnowledgeACLTwoUsersTwoTeamsAndDisabledActor|TestPostgresKnowledgeOutboxSourceRecoveryInvariants'
+```
+
+Next: implement both lock schedules for Membership removal versus Team
+Collection/Document/Consent mutations, then delete versus reprocess.

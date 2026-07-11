@@ -359,9 +359,12 @@ allocation order only; consumers rescan claimable rows, deduplicate by
   delete versus reprocess, Consent PUT/DELETE races, Membership removal versus
   Team mutation, and same-idempotency retries. Assert one winner, no deadlock,
   no deleted bound File, and revisions equal committed events.
-- **Deletion/replay:** Document and Collection tombstones, Source File
-  preservation, stale Job cancellation, duplicate/out-of-order Outbox replay,
-  contiguous watermark behavior, and reconstruction from Postgres.
+- **Deletion/source recovery:** Document and Collection tombstones, Source File
+  preservation, stale Job cancellation, unique event identity, allocation-ID
+  versus commit-order gaps, and post-commit full-rescan prerequisites. This Go slice
+  has no `knowledge_outbox` consumer or projection checkpoint; duplicate and
+  out-of-order application, contiguous applied watermarks, and projection
+  reconstruction remain mandatory Python RAG gates once that consumer exists.
 - **Promotion:** `gofmt`, `go vet`, `go test -race`, `go test ./...`,
   `govulncheck`, Compose config/build, fresh/replay migration drills, secret
   scan, scoped diff gates, and independent xhigh review with `P0/P1/P2 = 0`.
@@ -401,7 +404,8 @@ allocation order only; consumers rescan claimable rows, deduplicate by
 - [x] **15.1D-5 HTTP and wiring:** register protected routes, safe DTOs/errors,
       bounded metrics/logging, and later-frontend adapter documentation.
 - [ ] **15.1D-6 Verification:** pass unit/race and real PostgreSQL 16 ACL,
-      locking, idempotency, Consent, deletion, migration, and replay gates.
+      locking, idempotency, Consent, deletion, migration, and Outbox
+      producer/source-recovery gates.
 - [ ] **15.1D-7 Promotion:** synchronize tracking/deployment/contracts, pass
       quality/security checks, independent review, and explicit-path commit.
 

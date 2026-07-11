@@ -637,8 +637,8 @@ the UI can call in the next wiring slice.
         emit expiry Outbox without forging a user revocation decision.
 - [x] Wire protected Knowledge routes, safe DTOs/errors, bounded metrics, and
       later-frontend adapter contracts.
-- [ ] Pass unit/race/PostgreSQL 16 ACL,
-      migration, deletion, idempotency, and Outbox replay gates.
+- [ ] Pass unit/race/PostgreSQL 16 ACL, migration, deletion, idempotency, and
+      Outbox producer/source-recovery gates.
 
 - [ ] Replace the single-bootstrap-user ceiling with admin-invited independent
       user sessions and versioned Team membership.
@@ -652,6 +652,9 @@ the UI can call in the next wiring slice.
       reauthorization, citation minting, and strict/optional failure contracts.
 - [ ] Add private Python query and indexing services, Postgres outbox rescan,
       and non-authoritative Redis wake-up/lease/cache handling.
+- [ ] Pass real `knowledge_outbox` consumer duplicate/out-of-order replay,
+      contiguous checkpoint, restart/Redis-loss recovery, tombstone
+      propagation, and Postgres-to-search projection reconstruction gates.
 - [ ] Preserve original files and structured parser artifacts for reproducible
       reindexing.
 - [ ] Add format/page-aware parsing, quality gates, and parent/child/window

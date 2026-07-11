@@ -118,6 +118,10 @@ SELECT c.id, c.name, c.description, c.icon, c.color, c.scope,
   c.created_at, c.updated_at, c.deleted_at,
   CASE WHEN c.scope = 'personal' THEN 'owner' ELSE m.role END AS actor_role
 FROM knowledge_collections c
+JOIN users actor
+  ON actor.id = $1
+ AND actor.account_status = 'active'
+ AND actor.deleted_at IS NULL
 LEFT JOIN team_memberships m
   ON c.scope = 'team'
  AND m.team_id = c.team_id
@@ -369,6 +373,10 @@ SELECT c.id, c.name, c.description, c.icon, c.color, c.scope,
   c.created_at, c.updated_at, c.deleted_at,
   CASE WHEN c.scope = 'personal' THEN 'owner' ELSE m.role END
 FROM knowledge_collections c
+JOIN users actor
+  ON actor.id = $2
+ AND actor.account_status = 'active'
+ AND actor.deleted_at IS NULL
 LEFT JOIN team_memberships m ON m.team_id = c.team_id AND m.user_id = $2 AND m.status = 'active'
 LEFT JOIN teams t ON t.id = c.team_id AND t.deleted_at IS NULL
 WHERE c.id = $1 AND c.deleted_at IS NULL
@@ -387,6 +395,12 @@ func lockCollectionForManage(ctx context.Context, tx *sql.Tx, collectionID, acto
 }
 
 func lockCollectionForManageIncludingDeleted(ctx context.Context, tx *sql.Tx, collectionID, actorID string) (collectionRow, string, error) {
+	if err := lockActiveUser(ctx, tx, actorID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return collectionRow{}, "", ErrCollectionNotFound
+		}
+		return collectionRow{}, "", fmt.Errorf("lock collection actor: %w", err)
+	}
 	var scope string
 	var ownerID, teamID sql.NullString
 	err := tx.QueryRowContext(ctx, `SELECT scope, owner_user_id, team_id FROM knowledge_collections WHERE id = $1`, collectionID).Scan(&scope, &ownerID, &teamID)

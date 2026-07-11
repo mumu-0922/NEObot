@@ -77,6 +77,12 @@ FROM processing_consents WHERE scope='collection' AND collection_id=$1 AND super
 }
 
 func lockCollectionForConsentRead(ctx context.Context, tx *sql.Tx, collectionID, actorID string) error {
+	if err := lockActiveUser(ctx, tx, actorID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrCollectionNotFound
+		}
+		return fmt.Errorf("lock consent actor: %w", err)
+	}
 	var scope string
 	var ownerID, teamID sql.NullString
 	if err := tx.QueryRowContext(ctx, `SELECT scope,owner_user_id,team_id FROM knowledge_collections WHERE id=$1`, collectionID).Scan(&scope, &ownerID, &teamID); err != nil {

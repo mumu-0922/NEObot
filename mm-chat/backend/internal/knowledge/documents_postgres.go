@@ -121,6 +121,10 @@ LEFT JOIN files pf ON pf.id = pv.file_id
 
 const visibleDocumentCollectionACL = `EXISTS (
   SELECT 1 FROM knowledge_collections c
+  JOIN users actor
+    ON actor.id = $2
+   AND actor.account_status = 'active'
+   AND actor.deleted_at IS NULL
   LEFT JOIN team_memberships m
     ON m.team_id = c.team_id AND m.user_id = $2 AND m.status = 'active'
   LEFT JOIN teams t ON t.id = c.team_id AND t.deleted_at IS NULL

@@ -44,7 +44,9 @@ work is limited to later service-adapter wiring.
       and transactional Outbox writes.
 - [ ] **15.1E — Isolation gate:** pass two-user/two-team Personal/Team tests,
       cross-scope `404` behavior, Consent-purpose tests, revision fencing,
-      deletion, idempotency, and Outbox replay tests.
+      deletion, idempotency, and Outbox producer/source-recovery prerequisites.
+      Consumer replay and projection reconstruction remain gated on the real
+      Python RAG worker and checkpoint schema.
 
 ## Promotion and Rollback
 
