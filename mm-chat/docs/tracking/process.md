@@ -6211,3 +6211,36 @@ database-enforced per-Version/fence purge uniqueness      passed
 
 Next: reconcile the completed 15.1D Document/File lifecycle, then begin
 Governance and Collection/User Consent service APIs.
+
+## 2026-07-11 — Phase 15.1D-4A operator Governance implemented
+
+Added operator-only `governance-apply --manifest-stdin` and
+`governance-disable --processor ... --endpoint-id ...` commands to
+`mm-chat-admin`. The strict, bounded JSON manifest contains policy declarations
+only; unknown fields and credential-like additions are rejected. Service-side
+normalization sorts/deduplicates purposes and data types and computes the
+versioned canonical SHA-256 manifest identity. Declaration values use bounded
+lowercase identifiers, data types use MIME/wildcard grammar, and duplicate or
+case-variant JSON keys are rejected.
+Policy declarations are closed to the reviewed baseline values, and data types
+permit exact MIME values or global `*` only so Governance and admission match.
+
+Postgres serializes each Processor/Endpoint binding with a transaction advisory
+lock, inserts immutable Approved Profiles, advances Active/Disabled Head
+revisions, and writes `knowledge.governance.head.changed` in the same
+transaction. Exact active-manifest reapply and repeated disable are semantic
+no-ops. Profile/event ID or Outbox failure rolls back both Profile and Head.
+Migration `008` enforces immutable Profile history by rejecting UPDATE/DELETE
+in PostgreSQL rather than relying only on Repository convention.
+
+```text
+Go unit tests for strict manifest and canonical hash       passed
+PostgreSQL 16 lifecycle tests with race detector           passed
+concurrent first apply serialization                       passed
+actual Outbox uniqueness failure rollback                  passed
+policy/credential fields absent from Outbox                passed
+database-enforced Profile UPDATE/DELETE rejection           passed
+```
+
+Next: implement Collection Consent reads, grant/revoke, ACL, expiry validation,
+processing revision fences, and transactional Outbox.

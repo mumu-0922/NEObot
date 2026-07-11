@@ -37,9 +37,36 @@ func TestAdminRunRequiresExplicitCommandArguments(t *testing.T) {
 		{"bootstrap-identity", "--email", "owner@example.test"},
 		{"disable-account"},
 		{"disable-account", "--user-id"},
+		{"governance-apply"},
+		{"governance-disable", "--processor", "mineru"},
 	} {
 		if err := run(args, strings.NewReader("password\n"), &strings.Builder{}); err == nil {
 			t.Fatalf("run(%v) error = nil, want usage error", args)
 		}
+	}
+}
+
+func TestReadGovernanceManifestIsStrictAndBounded(t *testing.T) {
+	valid := `{"processor":"mineru","endpointId":"default","modelApiVersion":"v1",` +
+		`"allowedPurposes":["parse"],"allowedDataTypes":["application/pdf"],` +
+		`"region":"global","retentionPolicy":"none","deletionContract":"delete",` +
+		`"trainingUse":"disabled"}`
+	manifest, err := readGovernanceManifest(strings.NewReader(valid))
+	if err != nil || manifest.Processor != "mineru" {
+		t.Fatalf("manifest = %#v, err=%v", manifest, err)
+	}
+	for name, input := range map[string]string{
+		"unknown":      strings.TrimSuffix(valid, "}") + `,"apiKey":"secret"}`,
+		"duplicate":    strings.TrimSuffix(valid, "}") + `,"processor":"other"}`,
+		"case variant": strings.Replace(valid, `"processor"`, `"Processor"`, 1),
+		"trailing":     valid + `{}`,
+		"empty":        "",
+		"oversize":     valid + strings.Repeat(" ", 64<<10),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := readGovernanceManifest(strings.NewReader(input)); err == nil {
+				t.Fatal("readGovernanceManifest() error = nil")
+			}
+		})
 	}
 }

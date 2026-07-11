@@ -30,7 +30,9 @@ tombstones the logical Document and all live Versions, cancels unfinished Jobs,
 and queues one fenced purge Job per Version without deleting Source Files. A
 partial database uniqueness constraint permits at most one purge Job for each
 `(documentId, documentVersionId, documentVisibilityEpoch)` fence.
-Consent, Governance command, and search routes remain unimplemented.
+Operator-only Governance apply/disable commands now create immutable approved
+Profiles, advance active/disabled Heads, and emit transactional invalidation
+events. Consent and search routes remain unimplemented.
 
 The current auth/session baseline is Phase 15.1B in
 [`auth-session-api.md`](./auth-session-api.md), with Phase 13 ownership

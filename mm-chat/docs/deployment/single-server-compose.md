@@ -108,6 +108,28 @@ docker compose --env-file .env.single-server \
 Do not replace this command with `UPDATE users SET account_status=...` because
 that bypasses last-admin and revision fencing.
 
+Apply Processor Governance from a reviewed, credential-free manifest on stdin.
+Unknown fields—including keys, tokens, URLs, IDs, status, and revisions—are
+rejected. Reapplying the exact active manifest is a no-op:
+
+```bash
+cat governance-mineru.json | docker compose --env-file .env.single-server \
+  -f compose.single-server.yml --profile ops run --rm -T admin \
+  governance-apply --manifest-stdin
+
+docker compose --env-file .env.single-server \
+  -f compose.single-server.yml --profile ops run --rm admin \
+  governance-disable --processor mineru --endpoint-id default
+```
+
+The manifest contains only bounded lowercase declaration identifiers for the
+Processor, endpoint, and model/API version, plus allowlisted purposes and exact
+MIME or global `*` data types. Policy declarations are deliberately closed to
+the reviewed baseline `global` / `none` / `delete` / `disabled`; supporting new
+provider terms requires a reviewed code change. Spaces, URLs, free-form policy
+text, duplicate/case-variant keys, and unknown fields are rejected. Credentials remain in service secret
+configuration and must never enter Governance JSON or SQL.
+
 Smoke test:
 
 ```bash

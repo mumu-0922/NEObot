@@ -627,6 +627,10 @@ the UI can call in the next wiring slice.
         admission, visibility fences, and deletion Outbox events.
 - [ ] Implement operator Governance and Collection/User Consent services with
       purpose/data-type and expiry/revision fences.
+  - [x] Add strict operator Governance manifest apply/disable commands,
+        immutable Profiles, Head revisions, and transactional Outbox events.
+  - [ ] Add Collection Consent reads/grant/revoke and processing revisions.
+  - [ ] Add User Query Consent reads/grant/revoke and query revisions.
 - [ ] Wire protected Knowledge routes and pass unit/race/PostgreSQL 16 ACL,
       migration, deletion, idempotency, and Outbox replay gates.
 

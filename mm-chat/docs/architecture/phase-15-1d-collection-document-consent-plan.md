@@ -203,6 +203,8 @@ Never edit committed migrations `004` or `005`. Add reversible migration `006`:
 Committed migrations remain immutable. Add reversible migration `007` to
 enforce at most one purge Job per Document/Version/Document-visibility fence
 for both fresh and already-migrated databases.
+Add reversible migration `008` to reject every Governance Profile UPDATE or
+DELETE at the database boundary; policy changes always insert a new Profile.
 
 `006 Down` is for isolated pre-release rollback only. It drops Job rows and the
 new indexes/columns without touching `004` Knowledge data. Verification runs
@@ -379,6 +381,12 @@ allocation order only; consumers rescan claimable rows, deduplicate by
 - [ ] **15.1D-4 Governance and Consent:** implement operator Profile/Head
       management, Collection/User decisions, purpose/data-type validation,
       expiry handling, revision fences, and Outbox.
+  - [x] Add operator-only Governance manifest apply/disable commands with
+        immutable approved Profiles, atomic Head revisions, and Outbox.
+  - [ ] Add Collection Consent reads/grant/revoke with Personal-owner and Team
+        Admin ACL, expiry, processing revisions, and Outbox.
+  - [ ] Add authenticated User Query Consent reads/grant/revoke with query
+        consent revisions, expiry, and Outbox.
 - [ ] **15.1D-5 HTTP and wiring:** register protected routes, safe DTOs/errors,
       bounded metrics/logging, and later-frontend adapter documentation.
 - [ ] **15.1D-6 Verification:** pass unit/race and real PostgreSQL 16 ACL,
