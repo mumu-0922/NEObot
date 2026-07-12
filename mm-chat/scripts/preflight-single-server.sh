@@ -3,6 +3,11 @@ set -euo pipefail
 
 env_file="${1:-.env.single-server}"
 
+if [[ -L "${env_file}" ]]; then
+  echo "single-server preflight: env file must not be a symbolic link" >&2
+  exit 1
+fi
+
 if [[ ! -f "${env_file}" ]]; then
   echo "single-server preflight: env file not found" >&2
   exit 1
@@ -16,6 +21,12 @@ fi
 mode="$(stat -c '%a' "${env_file}")"
 if (( (8#${mode}) & 077 )); then
   echo "single-server preflight: env file must not be group/world accessible (use chmod 600)" >&2
+  exit 1
+fi
+
+owner="$(stat -c '%u' "${env_file}")"
+if [[ "${owner}" != "$(id -u)" ]]; then
+  echo "single-server preflight: env file must be owned by the invoking user" >&2
   exit 1
 fi
 
@@ -49,7 +60,13 @@ def parse_env(path: Path) -> dict[str, str]:
             fail(f"reserved env name at line {number}")
         if key in values:
             fail(f"duplicate env name at line {number}")
-        if any(character.isspace() or character in "\"'\\#$" for character in value):
+        if any(
+            character.isspace()
+            or ord(character) < 0x20
+            or ord(character) == 0x7F
+            or character in "\"'\\#$"
+            for character in value
+        ):
             fail(f"{key} uses unsupported quoting, escaping, comment, or interpolation syntax")
         values[key] = value
     return values
@@ -104,8 +121,12 @@ for key, value in values.items():
 
 required = (
     "BACKEND_IMAGE",
+    "RAG_IMAGE",
     "MM_CHAT_VERSION",
+    "MIGRATION_DATABASE_URL",
     "DATABASE_URL",
+    "RAG_WORKER_DATABASE_URL",
+    "RAG_REPLAY_DATABASE_URL",
     "POSTGRES_DB",
     "POSTGRES_USER",
     "POSTGRES_PASSWORD",
@@ -138,23 +159,64 @@ for key in required:
 
 if values.get("AUTH_MODE") != "required":
     fail("AUTH_MODE must be required for promotion")
+if values.get("RAG_WORKER_DISPATCH_ENABLED") != "false":
+    fail("RAG_WORKER_DISPATCH_ENABLED must remain false in Phase 15.2B")
+if values.get("RAG_WORKER_JOB_STAGES", ""):
+    fail("RAG_WORKER_JOB_STAGES must remain empty in Phase 15.2B")
 
 image = values["BACKEND_IMAGE"]
 if not valid_image_digest(image):
     fail("BACKEND_IMAGE must use a full immutable sha256 registry digest")
+if not valid_image_digest(values["RAG_IMAGE"]):
+    fail("RAG_IMAGE must use a full immutable sha256 registry digest")
 
 if values["MM_CHAT_VERSION"].lower() in {"dev", "local", "single-server-dev"}:
     fail("MM_CHAT_VERSION must identify the release")
 
-database = urlsplit(values["DATABASE_URL"])
-if database.scheme not in {"postgres", "postgresql"} or not database.hostname:
-    fail("DATABASE_URL must be a PostgreSQL URL")
-if unquote(database.username or "") != values["POSTGRES_USER"]:
-    fail("DATABASE_URL user does not match POSTGRES_USER")
-if unquote(database.password or "") != values["POSTGRES_PASSWORD"]:
-    fail("DATABASE_URL password does not match POSTGRES_PASSWORD")
-if unquote(database.path.lstrip("/")) != values["POSTGRES_DB"]:
-    fail("DATABASE_URL database does not match POSTGRES_DB")
+database_urls = {}
+for key in (
+    "MIGRATION_DATABASE_URL",
+    "DATABASE_URL",
+    "RAG_WORKER_DATABASE_URL",
+    "RAG_REPLAY_DATABASE_URL",
+):
+    try:
+        parsed = urlsplit(values[key])
+        _ = parsed.port
+    except ValueError:
+        fail(f"{key} must be a PostgreSQL URL")
+    if (
+        parsed.scheme not in {"postgres", "postgresql"}
+        or not parsed.hostname
+        or not parsed.username
+        or not parsed.password
+    ):
+        fail(f"{key} must be a PostgreSQL URL with user and password")
+    database_urls[key] = parsed
+
+migration_database = database_urls["MIGRATION_DATABASE_URL"]
+if unquote(migration_database.username or "") != values["POSTGRES_USER"]:
+    fail("MIGRATION_DATABASE_URL user does not match POSTGRES_USER")
+if unquote(migration_database.password or "") != values["POSTGRES_PASSWORD"]:
+    fail("MIGRATION_DATABASE_URL password does not match POSTGRES_PASSWORD")
+if unquote(migration_database.path.lstrip("/")) != values["POSTGRES_DB"]:
+    fail("MIGRATION_DATABASE_URL database does not match POSTGRES_DB")
+
+for key, parsed in database_urls.items():
+    if parsed.hostname != migration_database.hostname:
+        fail(f"{key} host must match MIGRATION_DATABASE_URL")
+    if unquote(parsed.path.lstrip("/")) != values["POSTGRES_DB"]:
+        fail(f"{key} database does not match POSTGRES_DB")
+
+database_users = [unquote(parsed.username or "") for parsed in database_urls.values()]
+if len(set(database_users)) != len(database_users):
+    fail("migration, API, RAG worker, and RAG replay must use distinct database principals")
+
+database_passwords = [
+    unquote(parsed.password or "") for parsed in database_urls.values()
+]
+if len(set(database_passwords)) != len(database_passwords):
+    fail("database principals must use distinct passwords")
 
 redis = urlsplit(values["REDIS_URL"])
 if redis.scheme not in {"redis", "rediss"} or not redis.hostname:

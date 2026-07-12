@@ -12,18 +12,19 @@ import (
 )
 
 type consentAuthority struct {
-	EndpointID, ProfileID             string
-	GovernanceRevision, HeadRevision  int64
-	AllowedPurposes, AllowedDataTypes []string
+	EndpointID, ModelID, ProfileID, ProfileContractHash string
+	GovernanceRevision, HeadRevision                    int64
+	AllowedPurposes, AllowedDataTypes                   []string
 }
 
 type currentConsentRow struct {
-	ID, EndpointID, ProfileID, Decision, PolicyVersion string
-	GovernanceRevision, HeadRevision, ConsentRevision  int64
-	Purposes, DataTypes                                []string
-	DecidedAt                                          time.Time
-	ExpiresAt                                          sql.NullTime
-	ExpiryMaterializedAt                               sql.NullTime
+	ID, EndpointID, ModelID, ProfileID, ProfileContractHash string
+	Decision, PolicyVersion                                 string
+	GovernanceRevision, HeadRevision, ConsentRevision       int64
+	Purposes, DataTypes                                     []string
+	DecidedAt                                               time.Time
+	ExpiresAt                                               sql.NullTime
+	ExpiryMaterializedAt                                    sql.NullTime
 }
 
 func (r *PostgresRepository) ListCollectionConsents(ctx context.Context, input CollectionConsentLookupInput) ([]ProcessingConsent, error) {
@@ -38,23 +39,50 @@ func (r *PostgresRepository) ListCollectionConsents(ctx context.Context, input C
 	if err := lockCollectionForConsentRead(ctx, tx, input.CollectionID, input.ActorUserID); err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT processor,decision,
-CASE WHEN decision='granted' AND expires_at<=clock_timestamp() THEN 'expired' ELSE decision END,
-array_to_string(purposes,E'\x1f'),
-array_to_string(data_types,E'\x1f'),policy_version,decided_at,expires_at
-FROM processing_consents WHERE scope='collection' AND collection_id=$1 AND superseded_at IS NULL ORDER BY processor`, input.CollectionID)
+	capabilities, err := loadRuntimeSchemaCapabilities(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	query := `SELECT pc.processor,pc.endpoint_id,''::text,''::text,pc.decision,
+CASE WHEN pc.decision='granted' AND pc.expires_at<=clock_timestamp() THEN 'expired' ELSE pc.decision END,
+array_to_string(pc.purposes,E'\x1f'),array_to_string(pc.data_types,E'\x1f'),
+pc.policy_version,pc.decided_at,pc.expires_at
+FROM processing_consents pc WHERE pc.scope='collection' AND pc.collection_id=$1
+AND pc.superseded_at IS NULL ORDER BY pc.processor,pc.endpoint_id`
+	if capabilities.exactModelIdentity {
+		query = `SELECT pc.processor,pc.endpoint_id,pc.model_id,p.profile_contract_hash,pc.decision,
+CASE WHEN pc.decision='granted' AND pc.expires_at<=clock_timestamp() THEN 'expired' ELSE pc.decision END,
+array_to_string(pc.purposes,E'\x1f'),array_to_string(pc.data_types,E'\x1f'),
+pc.policy_version,pc.decided_at,pc.expires_at
+FROM processing_consents pc JOIN processor_governance_profiles p ON p.id=pc.governance_profile_id
+WHERE pc.scope='collection' AND pc.collection_id=$1 AND pc.superseded_at IS NULL
+ORDER BY pc.processor,pc.endpoint_id,pc.model_id`
+	}
+	rows, err := tx.QueryContext(ctx, query, input.CollectionID)
 	if err != nil {
 		return nil, fmt.Errorf("list collection consents: %w", err)
 	}
+	result, err := scanConsentRows(rows, "collection")
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit collection consent list: %w", err)
+	}
+	return result, nil
+}
+
+func scanConsentRows(rows *sql.Rows, scope string) ([]ProcessingConsent, error) {
 	defer rows.Close()
 	result := make([]ProcessingConsent, 0)
 	for rows.Next() {
 		var value ProcessingConsent
 		var expires sql.NullTime
 		var purposes, dataTypes string
-		if err := rows.Scan(&value.Processor, &value.Decision, &value.EffectiveStatus, &purposes, &dataTypes,
-			&value.PolicyVersion, &value.DecidedAt, &expires); err != nil {
-			return nil, fmt.Errorf("scan collection consent: %w", err)
+		if err := rows.Scan(&value.Processor, &value.EndpointID, &value.ModelID,
+			&value.ProfileContractHash, &value.Decision, &value.EffectiveStatus,
+			&purposes, &dataTypes, &value.PolicyVersion, &value.DecidedAt, &expires); err != nil {
+			return nil, fmt.Errorf("scan %s consent: %w", scope, err)
 		}
 		value.Purposes, value.DataTypes = splitSQLList(purposes), splitSQLList(dataTypes)
 		value.DecidedAt = value.DecidedAt.UTC()
@@ -65,13 +93,10 @@ FROM processing_consents WHERE scope='collection' AND collection_id=$1 AND super
 		result = append(result, value)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate collection consents: %w", err)
+		return nil, fmt.Errorf("iterate %s consents: %w", scope, err)
 	}
 	if err := rows.Close(); err != nil {
-		return nil, fmt.Errorf("close collection consents: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit collection consent list: %w", err)
+		return nil, fmt.Errorf("close %s consents: %w", scope, err)
 	}
 	return result, nil
 }
@@ -121,14 +146,21 @@ func (r *PostgresRepository) PutCollectionConsent(ctx context.Context, input Put
 	if err != nil {
 		return ProcessingConsent{}, err
 	}
-	authority, err := lockUniqueConsentAuthority(ctx, tx, input.Processor)
+	capabilities, err := loadRuntimeSchemaCapabilities(ctx, tx)
+	if err != nil {
+		return ProcessingConsent{}, err
+	}
+	authority, err := lockConsentAuthority(ctx, tx, capabilities, ProcessorModelIdentity{
+		Processor: input.Processor, EndpointID: input.EndpointID, ModelID: input.ModelID,
+	})
 	if err != nil {
 		return ProcessingConsent{}, err
 	}
 	if !isStringSubset(input.Purposes, authority.AllowedPurposes) || !isDataTypeSubset(input.DataTypes, authority.AllowedDataTypes) {
 		return ProcessingConsent{}, ErrKnowledgeProcessorUnavailable
 	}
-	current, found, err := lockCurrentCollectionConsent(ctx, tx, input.CollectionID, input.Processor)
+	current, found, err := lockCurrentCollectionConsent(ctx, tx, capabilities, input.CollectionID,
+		ProcessorModelIdentity{Processor: input.Processor, EndpointID: authority.EndpointID, ModelID: authority.ModelID})
 	if err != nil {
 		return ProcessingConsent{}, err
 	}
@@ -139,18 +171,18 @@ func (r *PostgresRepository) PutCollectionConsent(ctx context.Context, input Put
 	now = now.UTC()
 	processingRevision := collection.ProcessingRevision
 	if found {
-		processingRevision, err = r.materializeLockedCollectionExpiry(
-			ctx, tx, input.CollectionID, input.Processor, current, processingRevision, now,
-		)
+		processingRevision, err = r.materializeLockedCollectionExpiry(ctx, tx, input.CollectionID,
+			input.Processor, current, processingRevision, now)
 		if err != nil {
 			return ProcessingConsent{}, err
 		}
 	}
 	matchesCurrent := found && current.Decision == "granted" && current.EndpointID == authority.EndpointID &&
-		current.ProfileID == authority.ProfileID && current.GovernanceRevision == authority.GovernanceRevision &&
-		current.HeadRevision == authority.HeadRevision && slices.Equal(current.Purposes, input.Purposes) &&
-		slices.Equal(current.DataTypes, input.DataTypes) && current.PolicyVersion == input.PolicyVersion &&
-		nullTimeEqual(current.ExpiresAt, input.ExpiresAt)
+		current.ModelID == authority.ModelID && current.ProfileID == authority.ProfileID &&
+		current.ProfileContractHash == authority.ProfileContractHash &&
+		current.GovernanceRevision == authority.GovernanceRevision && current.HeadRevision == authority.HeadRevision &&
+		slices.Equal(current.Purposes, input.Purposes) && slices.Equal(current.DataTypes, input.DataTypes) &&
+		current.PolicyVersion == input.PolicyVersion && nullTimeEqual(current.ExpiresAt, input.ExpiresAt)
 	if matchesCurrent {
 		value := consentFromRow(input.Processor, current)
 		if current.ExpiresAt.Valid && !current.ExpiresAt.Time.After(now) {
@@ -175,14 +207,25 @@ func (r *PostgresRepository) PutCollectionConsent(ctx context.Context, input Put
 	if err != nil {
 		return ProcessingConsent{}, fmt.Errorf("generate collection consent id: %w", err)
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO processing_consents (
+	if capabilities.exactModelIdentity {
+		_, err = tx.ExecContext(ctx, `INSERT INTO processing_consents (
+id,scope,collection_id,processor,endpoint_id,model_id,governance_profile_id,governance_revision,
+governance_head_revision,purposes,data_types,policy_version,decision,consent_revision,
+granted_by_user_id,decided_at,expires_at,created_at,updated_at
+) VALUES ($1,'collection',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'granted',$12,$13,$14,$15,$14,$14)`,
+			consentID, input.CollectionID, input.Processor, authority.EndpointID, authority.ModelID,
+			authority.ProfileID, authority.GovernanceRevision, authority.HeadRevision, input.Purposes,
+			input.DataTypes, input.PolicyVersion, consentRevision, input.ActorUserID, now, input.ExpiresAt)
+	} else {
+		_, err = tx.ExecContext(ctx, `INSERT INTO processing_consents (
 id,scope,collection_id,processor,endpoint_id,governance_profile_id,governance_revision,
 governance_head_revision,purposes,data_types,policy_version,decision,consent_revision,
 granted_by_user_id,decided_at,expires_at,created_at,updated_at
 ) VALUES ($1,'collection',$2,$3,$4,$5,$6,$7,$8,$9,$10,'granted',$11,$12,$13,$14,$13,$13)`,
-		consentID, input.CollectionID, input.Processor, authority.EndpointID, authority.ProfileID,
-		authority.GovernanceRevision, authority.HeadRevision, input.Purposes, input.DataTypes,
-		input.PolicyVersion, consentRevision, input.ActorUserID, now, input.ExpiresAt)
+			consentID, input.CollectionID, input.Processor, authority.EndpointID, authority.ProfileID,
+			authority.GovernanceRevision, authority.HeadRevision, input.Purposes, input.DataTypes,
+			input.PolicyVersion, consentRevision, input.ActorUserID, now, input.ExpiresAt)
+	}
 	if err != nil {
 		return ProcessingConsent{}, fmt.Errorf("insert collection consent: %w", err)
 	}
@@ -190,7 +233,9 @@ granted_by_user_id,decided_at,expires_at,created_at,updated_at
 	if _, err := tx.ExecContext(ctx, `UPDATE knowledge_collections SET collection_processing_revision=$2,updated_at=$3 WHERE id=$1`, input.CollectionID, processingRevision, now); err != nil {
 		return ProcessingConsent{}, fmt.Errorf("advance collection processing revision: %w", err)
 	}
-	value := ProcessingConsent{Processor: input.Processor, Decision: "granted", EffectiveStatus: "granted", Purposes: input.Purposes,
+	value := ProcessingConsent{Processor: input.Processor, EndpointID: authority.EndpointID,
+		ModelID: authority.ModelID, ProfileContractHash: authority.ProfileContractHash,
+		Decision: "granted", EffectiveStatus: "granted", Purposes: input.Purposes,
 		DataTypes: input.DataTypes, PolicyVersion: input.PolicyVersion, DecidedAt: now, ExpiresAt: input.ExpiresAt}
 	if err := r.insertCollectionConsentEvent(ctx, tx, input.CollectionID, value, consentRevision, processingRevision, authority); err != nil {
 		return ProcessingConsent{}, err
@@ -214,7 +259,12 @@ func (r *PostgresRepository) RevokeCollectionConsent(ctx context.Context, input 
 	if err != nil {
 		return err
 	}
-	current, found, err := lockCurrentCollectionConsent(ctx, tx, input.CollectionID, input.Processor)
+	capabilities, err := loadRuntimeSchemaCapabilities(ctx, tx)
+	if err != nil {
+		return err
+	}
+	current, found, err := lockCurrentCollectionConsent(ctx, tx, capabilities, input.CollectionID,
+		ProcessorModelIdentity{Processor: input.Processor, EndpointID: input.EndpointID, ModelID: input.ModelID})
 	if err != nil {
 		return err
 	}
@@ -226,10 +276,8 @@ func (r *PostgresRepository) RevokeCollectionConsent(ctx context.Context, input 
 		return fmt.Errorf("read consent revocation time: %w", err)
 	}
 	now = now.UTC()
-	processingRevision := collection.ProcessingRevision
-	processingRevision, err = r.materializeLockedCollectionExpiry(
-		ctx, tx, input.CollectionID, input.Processor, current, processingRevision, now,
-	)
+	processingRevision, err := r.materializeLockedCollectionExpiry(ctx, tx, input.CollectionID,
+		input.Processor, current, collection.ProcessingRevision, now)
 	if err != nil {
 		return err
 	}
@@ -241,13 +289,25 @@ func (r *PostgresRepository) RevokeCollectionConsent(ctx context.Context, input 
 		return fmt.Errorf("generate revoked consent id: %w", err)
 	}
 	consentRevision := current.ConsentRevision + 1
-	_, err = tx.ExecContext(ctx, `INSERT INTO processing_consents (
+	if capabilities.exactModelIdentity {
+		_, err = tx.ExecContext(ctx, `INSERT INTO processing_consents (
+id,scope,collection_id,processor,endpoint_id,model_id,governance_profile_id,governance_revision,
+governance_head_revision,purposes,data_types,policy_version,decision,consent_revision,
+granted_by_user_id,decided_at,created_at,updated_at
+) VALUES ($1,'collection',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'revoked',$12,$13,$14,$14,$14)`,
+			consentID, input.CollectionID, input.Processor, current.EndpointID, current.ModelID,
+			current.ProfileID, current.GovernanceRevision, current.HeadRevision, current.Purposes,
+			current.DataTypes, current.PolicyVersion, consentRevision, input.ActorUserID, now)
+	} else {
+		_, err = tx.ExecContext(ctx, `INSERT INTO processing_consents (
 id,scope,collection_id,processor,endpoint_id,governance_profile_id,governance_revision,
 governance_head_revision,purposes,data_types,policy_version,decision,consent_revision,
 granted_by_user_id,decided_at,created_at,updated_at
 ) VALUES ($1,'collection',$2,$3,$4,$5,$6,$7,$8,$9,$10,'revoked',$11,$12,$13,$13,$13)`, consentID,
-		input.CollectionID, input.Processor, current.EndpointID, current.ProfileID, current.GovernanceRevision,
-		current.HeadRevision, current.Purposes, current.DataTypes, current.PolicyVersion, consentRevision, input.ActorUserID, now)
+			input.CollectionID, input.Processor, current.EndpointID, current.ProfileID, current.GovernanceRevision,
+			current.HeadRevision, current.Purposes, current.DataTypes, current.PolicyVersion, consentRevision,
+			input.ActorUserID, now)
+	}
 	if err != nil {
 		return fmt.Errorf("insert revoked collection consent: %w", err)
 	}
@@ -255,10 +315,9 @@ granted_by_user_id,decided_at,created_at,updated_at
 	if _, err := tx.ExecContext(ctx, `UPDATE knowledge_collections SET collection_processing_revision=$2,updated_at=$3 WHERE id=$1`, input.CollectionID, processingRevision, now); err != nil {
 		return fmt.Errorf("advance collection processing revision: %w", err)
 	}
-	authority := consentAuthority{EndpointID: current.EndpointID, ProfileID: current.ProfileID,
-		GovernanceRevision: current.GovernanceRevision, HeadRevision: current.HeadRevision}
-	value := ProcessingConsent{Processor: input.Processor, Decision: "revoked", EffectiveStatus: "revoked", Purposes: current.Purposes,
-		DataTypes: current.DataTypes, PolicyVersion: current.PolicyVersion, DecidedAt: now}
+	authority := authorityFromCurrent(current)
+	value := consentFromRow(input.Processor, current)
+	value.Decision, value.EffectiveStatus, value.DecidedAt, value.ExpiresAt = "revoked", "revoked", now, nil
 	if err := r.insertCollectionConsentEvent(ctx, tx, input.CollectionID, value, consentRevision, processingRevision, authority); err != nil {
 		return err
 	}
@@ -268,59 +327,118 @@ granted_by_user_id,decided_at,created_at,updated_at
 	return nil
 }
 
-func lockUniqueConsentAuthority(ctx context.Context, tx *sql.Tx, processor string) (consentAuthority, error) {
-	if err := lockGovernanceProcessor(ctx, tx, processor); err != nil {
+func lockConsentAuthority(ctx context.Context, tx *sql.Tx, capabilities runtimeSchemaCapabilities, identity ProcessorModelIdentity) (consentAuthority, error) {
+	if err := lockGovernanceProcessor(ctx, tx, identity.Processor); err != nil {
 		return consentAuthority{}, err
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT h.endpoint_id,h.active_profile_id,h.active_governance_revision,h.head_revision,
-array_to_string(p.allowed_purposes,E'\x1f'),array_to_string(p.allowed_data_types,E'\x1f')
+	if !capabilities.exactModelIdentity && identity.EndpointID != "" {
+		return consentAuthority{}, ErrKnowledgeProcessorUnavailable
+	}
+	query := `SELECT h.endpoint_id,''::text,h.active_profile_id,''::text,
+h.active_governance_revision,h.head_revision,array_to_string(p.allowed_purposes,E'\x1f'),
+array_to_string(p.allowed_data_types,E'\x1f')
 FROM processor_governance_heads h JOIN processor_governance_profiles p
 ON p.processor=h.processor AND p.endpoint_id=h.endpoint_id AND p.id=h.active_profile_id
 AND p.governance_revision=h.active_governance_revision WHERE h.processor=$1 AND h.status='active'
-AND p.status='approved' ORDER BY h.endpoint_id LIMIT 2 FOR UPDATE OF h,p`, processor)
+AND p.status='approved' ORDER BY h.endpoint_id LIMIT 2 FOR UPDATE OF h,p`
+	args := []any{identity.Processor}
+	if capabilities.exactModelIdentity {
+		query = `SELECT h.endpoint_id,h.model_id,h.active_profile_id,p.profile_contract_hash,
+h.active_governance_revision,h.head_revision,array_to_string(p.allowed_purposes,E'\x1f'),
+array_to_string(p.allowed_data_types,E'\x1f')
+FROM processor_governance_heads h JOIN processor_governance_profiles p
+ON p.processor=h.processor AND p.endpoint_id=h.endpoint_id AND p.model_id=h.model_id
+AND p.id=h.active_profile_id AND p.governance_revision=h.active_governance_revision
+WHERE h.processor=$1 AND h.status='active' AND p.status='approved'`
+		if identity.EndpointID != "" {
+			query += ` AND h.endpoint_id=$2 AND h.model_id=$3`
+			args = append(args, identity.EndpointID, identity.ModelID)
+		}
+		query += ` ORDER BY h.endpoint_id,h.model_id LIMIT 2 FOR UPDATE OF h,p`
+	}
+	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
-		return consentAuthority{}, fmt.Errorf("lock consent processor: %w", err)
+		return consentAuthority{}, fmt.Errorf("lock consent processor identity: %w", err)
 	}
 	defer rows.Close()
-	values := []consentAuthority{}
+	values := make([]consentAuthority, 0, 2)
 	for rows.Next() {
 		var value consentAuthority
 		var purposes, dataTypes string
-		if err := rows.Scan(&value.EndpointID, &value.ProfileID, &value.GovernanceRevision,
-			&value.HeadRevision, &purposes, &dataTypes); err != nil {
-			return consentAuthority{}, fmt.Errorf("scan consent processor: %w", err)
+		if err := rows.Scan(&value.EndpointID, &value.ModelID, &value.ProfileID,
+			&value.ProfileContractHash, &value.GovernanceRevision, &value.HeadRevision,
+			&purposes, &dataTypes); err != nil {
+			return consentAuthority{}, fmt.Errorf("scan consent processor identity: %w", err)
 		}
 		value.AllowedPurposes, value.AllowedDataTypes = splitSQLList(purposes), splitSQLList(dataTypes)
 		values = append(values, value)
 	}
 	if err := rows.Err(); err != nil {
-		return consentAuthority{}, fmt.Errorf("iterate consent processors: %w", err)
+		return consentAuthority{}, fmt.Errorf("iterate consent processor identities: %w", err)
+	}
+	if len(values) == 0 {
+		return consentAuthority{}, ErrKnowledgeProcessorUnavailable
 	}
 	if len(values) != 1 {
-		return consentAuthority{}, ErrKnowledgeProcessorUnavailable
+		return consentAuthority{}, ErrGovernanceIdentityAmbiguous
 	}
 	return values[0], nil
 }
 
-func lockCurrentCollectionConsent(ctx context.Context, tx *sql.Tx, collectionID, processor string) (currentConsentRow, bool, error) {
-	var row currentConsentRow
-	query := tx.QueryRowContext(ctx, `SELECT id,endpoint_id,governance_profile_id,governance_revision,
-governance_head_revision,decision,array_to_string(purposes,E'\x1f'),
-array_to_string(data_types,E'\x1f'),policy_version,consent_revision,decided_at,expires_at,expiry_materialized_at
-FROM processing_consents WHERE scope='collection' AND collection_id=$1 AND processor=$2
-AND superseded_at IS NULL FOR UPDATE`, collectionID, processor)
-	var purposes, dataTypes string
-	err := query.Scan(&row.ID, &row.EndpointID, &row.ProfileID,
-		&row.GovernanceRevision, &row.HeadRevision, &row.Decision, &purposes, &dataTypes,
-		&row.PolicyVersion, &row.ConsentRevision, &row.DecidedAt, &row.ExpiresAt, &row.ExpiryMaterializedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return row, false, nil
+func lockCurrentCollectionConsent(ctx context.Context, tx *sql.Tx, capabilities runtimeSchemaCapabilities,
+	collectionID string, identity ProcessorModelIdentity) (currentConsentRow, bool, error) {
+	query := `SELECT pc.id,pc.endpoint_id,''::text,pc.governance_profile_id,''::text,
+pc.governance_revision,pc.governance_head_revision,pc.decision,array_to_string(pc.purposes,E'\x1f'),
+array_to_string(pc.data_types,E'\x1f'),pc.policy_version,pc.consent_revision,pc.decided_at,
+pc.expires_at,pc.expiry_materialized_at FROM processing_consents pc
+WHERE pc.scope='collection' AND pc.collection_id=$1 AND pc.processor=$2
+AND pc.superseded_at IS NULL ORDER BY pc.endpoint_id LIMIT 2 FOR UPDATE OF pc`
+	args := []any{collectionID, identity.Processor}
+	if capabilities.exactModelIdentity {
+		query = `SELECT pc.id,pc.endpoint_id,pc.model_id,pc.governance_profile_id,p.profile_contract_hash,
+pc.governance_revision,pc.governance_head_revision,pc.decision,array_to_string(pc.purposes,E'\x1f'),
+array_to_string(pc.data_types,E'\x1f'),pc.policy_version,pc.consent_revision,pc.decided_at,
+pc.expires_at,pc.expiry_materialized_at FROM processing_consents pc
+JOIN processor_governance_profiles p ON p.id=pc.governance_profile_id
+WHERE pc.scope='collection' AND pc.collection_id=$1 AND pc.processor=$2 AND pc.superseded_at IS NULL`
+		if identity.EndpointID != "" {
+			query += ` AND pc.endpoint_id=$3 AND pc.model_id=$4`
+			args = append(args, identity.EndpointID, identity.ModelID)
+		}
+		query += ` ORDER BY pc.endpoint_id,pc.model_id LIMIT 2 FOR UPDATE OF pc`
 	}
+	return lockCurrentConsentRows(ctx, tx, "collection", query, args...)
+}
+
+func lockCurrentConsentRows(ctx context.Context, tx *sql.Tx, label, query string, args ...any) (currentConsentRow, bool, error) {
+	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
-		return row, false, fmt.Errorf("lock current collection consent: %w", err)
+		return currentConsentRow{}, false, fmt.Errorf("lock current %s consent: %w", label, err)
 	}
-	row.Purposes, row.DataTypes = splitSQLList(purposes), splitSQLList(dataTypes)
-	return row, true, nil
+	defer rows.Close()
+	values := make([]currentConsentRow, 0, 2)
+	for rows.Next() {
+		var row currentConsentRow
+		var purposes, dataTypes string
+		if err := rows.Scan(&row.ID, &row.EndpointID, &row.ModelID, &row.ProfileID,
+			&row.ProfileContractHash, &row.GovernanceRevision, &row.HeadRevision, &row.Decision,
+			&purposes, &dataTypes, &row.PolicyVersion, &row.ConsentRevision, &row.DecidedAt,
+			&row.ExpiresAt, &row.ExpiryMaterializedAt); err != nil {
+			return currentConsentRow{}, false, fmt.Errorf("scan current %s consent: %w", label, err)
+		}
+		row.Purposes, row.DataTypes = splitSQLList(purposes), splitSQLList(dataTypes)
+		values = append(values, row)
+	}
+	if err := rows.Err(); err != nil {
+		return currentConsentRow{}, false, fmt.Errorf("iterate current %s consents: %w", label, err)
+	}
+	if len(values) == 0 {
+		return currentConsentRow{}, false, nil
+	}
+	if len(values) != 1 {
+		return currentConsentRow{}, false, ErrConsentIdentityAmbiguous
+	}
+	return values[0], true, nil
 }
 
 func (r *PostgresRepository) insertCollectionConsentEvent(ctx context.Context, tx *sql.Tx, collectionID string,
@@ -330,21 +448,12 @@ func (r *PostgresRepository) insertCollectionConsentEvent(ctx context.Context, t
 		return fmt.Errorf("generate collection consent event id: %w", err)
 	}
 	payloadObject := map[string]any{"schemaVersion": 1, "scope": "collection", "collectionId": collectionID,
-		"processor": value.Processor, "endpointId": authority.EndpointID,
-		"decision": value.Decision, "effectiveStatus": value.EffectiveStatus, "consentRevision": consentRevision,
+		"processor": value.Processor, "endpointId": authority.EndpointID, "modelId": authority.ModelID,
+		"profileContractHash": authority.ProfileContractHash, "decision": value.Decision,
+		"effectiveStatus": value.EffectiveStatus, "consentRevision": consentRevision,
 		"collectionProcessingRevision": processingRevision, "governanceProfileId": authority.ProfileID,
 		"governanceRevision": authority.GovernanceRevision, "governanceHeadRevision": authority.HeadRevision}
-	if value.ExpiresAt != nil {
-		key := "expiresAt"
-		if value.MaterializedAt != nil {
-			key = "expiredAt"
-		}
-		payloadObject[key] = value.ExpiresAt.UTC().Format(time.RFC3339Nano)
-	}
-	if value.MaterializedAt != nil {
-		payloadObject["materializedAt"] = value.MaterializedAt.UTC().Format(time.RFC3339Nano)
-		payloadObject["reason"] = "expired"
-	}
+	addConsentExpiryEventFields(payloadObject, value)
 	payload, err := json.Marshal(payloadObject)
 	if err != nil {
 		return fmt.Errorf("marshal collection consent event: %w", err)
@@ -356,13 +465,35 @@ VALUES ($1,'knowledge_collection',$2,'knowledge.collection.consent.changed',$3::
 	return nil
 }
 
+func addConsentExpiryEventFields(payload map[string]any, value ProcessingConsent) {
+	if value.ExpiresAt != nil {
+		key := "expiresAt"
+		if value.MaterializedAt != nil {
+			key = "expiredAt"
+		}
+		payload[key] = value.ExpiresAt.UTC().Format(time.RFC3339Nano)
+	}
+	if value.MaterializedAt != nil {
+		payload["materializedAt"] = value.MaterializedAt.UTC().Format(time.RFC3339Nano)
+		payload["reason"] = "expired"
+	}
+}
+
+func authorityFromCurrent(row currentConsentRow) consentAuthority {
+	return consentAuthority{EndpointID: row.EndpointID, ModelID: row.ModelID, ProfileID: row.ProfileID,
+		ProfileContractHash: row.ProfileContractHash, GovernanceRevision: row.GovernanceRevision,
+		HeadRevision: row.HeadRevision}
+}
+
 func consentFromRow(processor string, row currentConsentRow) ProcessingConsent {
 	effective := row.Decision
 	if row.Decision == "granted" && row.ExpiresAt.Valid && !row.ExpiresAt.Time.After(time.Now().UTC()) {
 		effective = "expired"
 	}
-	value := ProcessingConsent{Processor: processor, Decision: row.Decision, EffectiveStatus: effective, Purposes: row.Purposes,
-		DataTypes: row.DataTypes, PolicyVersion: row.PolicyVersion, DecidedAt: row.DecidedAt.UTC()}
+	value := ProcessingConsent{Processor: processor, EndpointID: row.EndpointID, ModelID: row.ModelID,
+		ProfileContractHash: row.ProfileContractHash, Decision: row.Decision, EffectiveStatus: effective,
+		Purposes: row.Purposes, DataTypes: row.DataTypes, PolicyVersion: row.PolicyVersion,
+		DecidedAt: row.DecidedAt.UTC()}
 	if row.ExpiresAt.Valid {
 		expiry := row.ExpiresAt.Time.UTC()
 		value.ExpiresAt = &expiry
@@ -376,6 +507,7 @@ func nullTimeEqual(value sql.NullTime, expected *time.Time) bool {
 	}
 	return value.Time.Equal(*expected)
 }
+
 func isStringSubset(values, allowed []string) bool {
 	for _, value := range values {
 		if !slices.Contains(allowed, value) {
@@ -384,6 +516,7 @@ func isStringSubset(values, allowed []string) bool {
 	}
 	return true
 }
+
 func isDataTypeSubset(values, allowed []string) bool {
 	for _, value := range values {
 		if value == "*" && !slices.Contains(allowed, "*") {

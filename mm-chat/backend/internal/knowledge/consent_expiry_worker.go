@@ -119,6 +119,10 @@ func (r *PostgresRepository) MaterializeConsentExpiry(ctx context.Context, conse
 		return false, fmt.Errorf("begin consent expiry: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	capabilities, err := loadRuntimeSchemaCapabilities(ctx, tx)
+	if err != nil {
+		return false, err
+	}
 	var collection collectionRow
 	if scope == "collection" {
 		collection, err = lockSystemConsentCollection(ctx, tx, collectionID.String)
@@ -128,7 +132,7 @@ func (r *PostgresRepository) MaterializeConsentExpiry(ctx context.Context, conse
 	if err != nil {
 		return false, err
 	}
-	current, found, err := lockDueConsentByID(ctx, tx, consentID)
+	current, found, err := lockDueConsentByID(ctx, tx, capabilities, consentID)
 	if err != nil {
 		return false, err
 	}
@@ -144,11 +148,11 @@ func (r *PostgresRepository) MaterializeConsentExpiry(ctx context.Context, conse
 		return false, fmt.Errorf("mark consent expiry: %w", err)
 	}
 	expiry := current.ExpiresAt.Time.UTC()
-	value := ProcessingConsent{Processor: processor, Decision: "granted", EffectiveStatus: "expired",
+	value := ProcessingConsent{Processor: processor, EndpointID: current.EndpointID, ModelID: current.ModelID,
+		ProfileContractHash: current.ProfileContractHash, Decision: "granted", EffectiveStatus: "expired",
 		Purposes: current.Purposes, DataTypes: current.DataTypes, PolicyVersion: current.PolicyVersion,
 		DecidedAt: current.DecidedAt.UTC(), ExpiresAt: &expiry, MaterializedAt: &now}
-	authority := consentAuthority{EndpointID: current.EndpointID, ProfileID: current.ProfileID,
-		GovernanceRevision: current.GovernanceRevision, HeadRevision: current.HeadRevision}
+	authority := authorityFromCurrent(current)
 	if scope == "collection" {
 		revision := collection.ProcessingRevision + 1
 		if _, err := tx.ExecContext(ctx, `UPDATE knowledge_collections SET collection_processing_revision=$2,updated_at=$3 WHERE id=$1`, collectionID.String, revision, now); err != nil {
@@ -172,15 +176,25 @@ func (r *PostgresRepository) MaterializeConsentExpiry(ctx context.Context, conse
 	return true, nil
 }
 
-func lockDueConsentByID(ctx context.Context, tx *sql.Tx, consentID string) (currentConsentRow, bool, error) {
+func lockDueConsentByID(ctx context.Context, tx *sql.Tx, capabilities runtimeSchemaCapabilities, consentID string) (currentConsentRow, bool, error) {
 	var row currentConsentRow
 	var purposes, dataTypes string
-	err := tx.QueryRowContext(ctx, `SELECT id,endpoint_id,governance_profile_id,governance_revision,
-governance_head_revision,decision,array_to_string(purposes,E'\x1f'),array_to_string(data_types,E'\x1f'),
-policy_version,consent_revision,decided_at,expires_at,expiry_materialized_at
-FROM processing_consents WHERE id=$1 AND superseded_at IS NULL AND decision='granted'
-AND expires_at IS NOT NULL AND expires_at<=clock_timestamp() AND expiry_materialized_at IS NULL FOR UPDATE`, consentID).Scan(
-		&row.ID, &row.EndpointID, &row.ProfileID, &row.GovernanceRevision, &row.HeadRevision, &row.Decision,
+	query := `SELECT pc.id,pc.endpoint_id,''::text,pc.governance_profile_id,''::text,pc.governance_revision,
+pc.governance_head_revision,pc.decision,array_to_string(pc.purposes,E'\x1f'),array_to_string(pc.data_types,E'\x1f'),
+pc.policy_version,pc.consent_revision,pc.decided_at,pc.expires_at,pc.expiry_materialized_at
+FROM processing_consents pc WHERE pc.id=$1 AND pc.superseded_at IS NULL AND pc.decision='granted'
+AND pc.expires_at IS NOT NULL AND pc.expires_at<=clock_timestamp() AND pc.expiry_materialized_at IS NULL FOR UPDATE OF pc`
+	if capabilities.exactModelIdentity {
+		query = `SELECT pc.id,pc.endpoint_id,pc.model_id,pc.governance_profile_id,p.profile_contract_hash,pc.governance_revision,
+pc.governance_head_revision,pc.decision,array_to_string(pc.purposes,E'\x1f'),array_to_string(pc.data_types,E'\x1f'),
+pc.policy_version,pc.consent_revision,pc.decided_at,pc.expires_at,pc.expiry_materialized_at
+FROM processing_consents pc JOIN processor_governance_profiles p ON p.id=pc.governance_profile_id
+WHERE pc.id=$1 AND pc.superseded_at IS NULL AND pc.decision='granted' AND pc.expires_at IS NOT NULL
+AND pc.expires_at<=clock_timestamp() AND pc.expiry_materialized_at IS NULL FOR UPDATE OF pc`
+	}
+	err := tx.QueryRowContext(ctx, query, consentID).Scan(
+		&row.ID, &row.EndpointID, &row.ModelID, &row.ProfileID, &row.ProfileContractHash,
+		&row.GovernanceRevision, &row.HeadRevision, &row.Decision,
 		&purposes, &dataTypes, &row.PolicyVersion, &row.ConsentRevision, &row.DecidedAt,
 		&row.ExpiresAt, &row.ExpiryMaterializedAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -271,10 +285,10 @@ func consentExpiryDue(current currentConsentRow, now time.Time) bool {
 
 func expiredConsentEventValues(processor string, current currentConsentRow, now time.Time) (ProcessingConsent, consentAuthority) {
 	expiry := current.ExpiresAt.Time.UTC()
-	value := ProcessingConsent{Processor: processor, Decision: "granted", EffectiveStatus: "expired",
+	value := ProcessingConsent{Processor: processor, EndpointID: current.EndpointID, ModelID: current.ModelID,
+		ProfileContractHash: current.ProfileContractHash, Decision: "granted", EffectiveStatus: "expired",
 		Purposes: current.Purposes, DataTypes: current.DataTypes, PolicyVersion: current.PolicyVersion,
 		DecidedAt: current.DecidedAt.UTC(), ExpiresAt: &expiry, MaterializedAt: &now}
-	authority := consentAuthority{EndpointID: current.EndpointID, ProfileID: current.ProfileID,
-		GovernanceRevision: current.GovernanceRevision, HeadRevision: current.HeadRevision}
+	authority := authorityFromCurrent(current)
 	return value, authority
 }

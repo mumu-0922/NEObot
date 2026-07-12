@@ -21,7 +21,7 @@ func TestPostgresConsentExpiryWorkersMaterializeExactlyOnce(t *testing.T) {
 	const userID = "19000000-0000-4000-8000-000000000001"
 	const collectionID = "39000000-0000-4000-8000-000000000001"
 	mustKnowledgeExec(t, ctx, db, `INSERT INTO users(id,email,display_name) VALUES ($1,'expiry@example.test','Expiry'); INSERT INTO knowledge_collections(id,name,scope,owner_user_id) VALUES ($2,'Expiry','personal',$1)`, userID, collectionID)
-	manifest := GovernanceManifest{Processor: "mixed", EndpointID: "default", ModelAPIVersion: "v1",
+	manifest := GovernanceManifest{Processor: "mixed", EndpointID: "default", ModelID: "model-v1", ModelAPIVersion: "v1",
 		AllowedPurposes: []string{"parse", "query_embedding"}, AllowedDataTypes: []string{"text/plain"},
 		Region: "global", RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled"}
 	if _, err := NewGovernanceService(NewPostgresRepository(db)).Apply(ctx, manifest); err != nil {
@@ -101,7 +101,7 @@ func TestPostgresConsentExpiryOutboxFailureRollsBackMarkerAndRevision(t *testing
 	const userID = "1a000000-0000-4000-8000-000000000001"
 	const collectionID = "3a000000-0000-4000-8000-000000000001"
 	mustKnowledgeExec(t, ctx, db, `INSERT INTO users(id,email,display_name) VALUES ($1,'expiry-rollback@example.test','Rollback'); INSERT INTO knowledge_collections(id,name,scope,owner_user_id) VALUES ($2,'Rollback','personal',$1)`, userID, collectionID)
-	manifest := GovernanceManifest{Processor: "mixed", EndpointID: "default", ModelAPIVersion: "v1", AllowedPurposes: []string{"parse"}, AllowedDataTypes: []string{"text/plain"}, Region: "global", RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled"}
+	manifest := GovernanceManifest{Processor: "mixed", EndpointID: "default", ModelID: "model-v1", ModelAPIVersion: "v1", AllowedPurposes: []string{"parse"}, AllowedDataTypes: []string{"text/plain"}, Region: "global", RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled"}
 	if _, err := NewGovernanceService(NewPostgresRepository(db)).Apply(ctx, manifest); err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestPostgresConsentMutationMaterializesElapsedExpiryFirst(t *testing.T) {
 	const userID = "1b000000-0000-4000-8000-000000000001"
 	const collectionID = "3b000000-0000-4000-8000-000000000001"
 	mustKnowledgeExec(t, ctx, db, `INSERT INTO users(id,email,display_name) VALUES ($1,'expiry-mutation@example.test','Mutation'); INSERT INTO knowledge_collections(id,name,scope,owner_user_id) VALUES ($2,'Mutation','personal',$1)`, userID, collectionID)
-	manifest := GovernanceManifest{Processor: "mixed", EndpointID: "default", ModelAPIVersion: "v1", AllowedPurposes: []string{"parse", "query_embedding"}, AllowedDataTypes: []string{"text/plain"}, Region: "global", RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled"}
+	manifest := GovernanceManifest{Processor: "mixed", EndpointID: "default", ModelID: "model-v1", ModelAPIVersion: "v1", AllowedPurposes: []string{"parse", "query_embedding"}, AllowedDataTypes: []string{"text/plain"}, Region: "global", RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled"}
 	if _, err := NewGovernanceService(NewPostgresRepository(db)).Apply(ctx, manifest); err != nil {
 		t.Fatal(err)
 	}

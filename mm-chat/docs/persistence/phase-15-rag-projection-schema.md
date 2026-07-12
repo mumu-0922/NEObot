@@ -1,25 +1,27 @@
 # Phase 15 RAG Projection Schema 与 Migration Contract
 
-- 状态：Canonical contract；implementation pending
+- 状态：Canonical contract；`010` 与 durable dark-run Worker 已实现；`011`
+  pending
 - 日期：2026-07-12
-- 基线：migration `001`–`009`
-- 目标迁移：`010_phase15_rag_projection_consistency`、
-  `011_phase15_rag_search_projection`
+- 当前 Schema Head：migration `010_phase15_rag_projection_consistency`
+- 待实现迁移：`011_phase15_rag_search_projection`
 - 上位设计：
   [`phase-15-2-single-server-python-rag-consumer-indexing-plan.md`](../architecture/phase-15-2-single-server-python-rag-consumer-indexing-plan.md)
 
-> 本文冻结 Phase 15.2A 的数据库语义、对象边界、迁移顺序和测试门槛，供后续
-> SQL 与 Runtime 实现使用。本文不表示 migration `010`、`011`、Python Worker、
-> Search Function 或任何 Projection 已经实现。
+> Migration `010` 已实现本文定义的 extension-independent schema、受限 Functions、
+> lease/ledger/replay/purge 一致性机制；Phase 15.2B Python Worker 也已实现为默认不
+> claim 事件或 Job 的 durable dark-run Worker。Migration `011` 的 tokenizer、vector、
+> BM25/search-extension、Search Projection 和检索 DDL 仍 pending。当前状态不表示真实
+> Parser、Embedding、Projection Build/Search、Evidence API 或聊天 RAG 已 Ready。
 
 ## 1. 范围与不可越界项
 
-`010` 只建立不依赖 PostgreSQL Extension 的一致性骨架：Profile、Corpus Index
+`010` 已建立不依赖 PostgreSQL Extension 的一致性骨架：Profile、Corpus Index
 Generation、Document Materialization、Projection Head/State、Parser Artifact、
 Canonical Block、Parent/Child Chunk、Applied-event Ledger、Lease/CAS、Collection
 Purge Fan-out、原子 Publish/Purge Function 及权限边界。
 
-`011` 只承载 Bake-off 晋升后的 Search 物理细节：选定的 BM25 Extension、Dense
+待实现的 `011` 只承载 Bake-off 晋升后的 Search 物理细节：选定的 BM25 Extension、Dense
 存储类型和维度、Tokenizer/Analyzer、Extension-specific Search Projection、索引、
 受限检索 Function 与恢复校验。`011` 必须引用 Bake-off 报告中已晋升且带精确版本/
 Digest 的唯一 Profile；未晋升时不得编写“临时候选”DDL。
@@ -85,7 +87,7 @@ Active。
 
 ### 3.1 Processing Consent 唯一性必须包含 Endpoint 与 Model
 
-`004` 的四个 Partial/Revision Unique Index 当前只包含 `processor`：
+`004` 的四个 Partial/Revision Unique Index 原本只包含 `processor`：
 
 - `idx_processing_consents_current_collection_processor`
 - `idx_processing_consents_current_query_processor`
@@ -94,7 +96,7 @@ Active。
 
 这会把同一 Processor 的不同 Endpoint 错误压成一个 Consent Namespace。仅加
 Endpoint 仍不足够：产品要求 Team Admin 审批 Endpoint/Model Allowlist，同一
-OpenAI-compatible Endpoint 可同时批准多个 Model。`010` 必须使用以下
+OpenAI-compatible Endpoint 可同时批准多个 Model。`010` 已将它们替换为以下
 Canonical Key：
 
 ```text
@@ -118,8 +120,8 @@ query history:     (user_id, processor, endpoint_id, model_id,
    整个过程在一个 Migration Transaction 中完成，不留下无唯一约束窗口。
 5. 更新所有 Consent Lookup/Upsert/Supersede SQL，禁止仅按
    `subject + processor` 或 `subject + processor + endpoint_id` 使用 `LIMIT 1`。
-6. 在 Runtime 已完成精确 Endpoint/Model 查询前，功能开关禁止为同一
-   Subject/Processor 创建第二个 Endpoint 或 Model Consent。
+6. `010`-aware Runtime 已使用精确 Endpoint/Model 查询；任何旧 Runtime 在升级前都
+   必须禁止为同一 Subject/Processor 创建第二个 Endpoint 或 Model Consent。
 
 回滚到 `009` 前必须检测是否已出现同一 `subject + processor` 的多个 Current
 Endpoint/Model 或重复 Revision；若存在则拒绝 Down，禁止删除或合并 Consent
@@ -128,7 +130,7 @@ History。
 ### 3.2 Governance Profile 必须有独立 `model_id`
 
 `processor_governance_profiles.model_api_version` 不能同时代表 Model Identity 和 API
-Version。`010` 必须增加独立、不可空、非空白的 `model_id`，并增加
+Version。`010` 已增加独立、不可空、非空白的 `model_id`，并增加
 `profile_contract_hash`。其 Canonical Hash Envelope 至少包含：
 
 ```text
@@ -216,9 +218,11 @@ JSON 必须是 Object；文本非空；Hash 格式固定。该表不保存 Dimen
 Vector Type、BM25 Extension 或 Tokenizer Index。`BEFORE UPDATE OR DELETE` Trigger
 无条件拒绝 Mutation；修订配置只能 INSERT 新 Profile。
 
-`011` 添加独立、同样不可变的 `knowledge_search_profiles`，并由 Generation 的完整
-Profile Binding 组合 Base/Search Hash。`010` 不 Seed Profile/Generation，也不允许
-Generation 进入 `verified/active`；实现 Runtime 前必须先应用 `011`。
+`011` 将添加独立、同样不可变的 `knowledge_search_profiles`，并由 Generation 的完整
+Profile Binding 组合 Base/Search Hash。`010` 不 Seed Profile/Generation；当前
+durable dark-run Worker 也不 Claim 或执行真实 Stage。创建首个可服务
+`verified/active` Generation、启用真实 Parser/Embedding/Projection Runtime 前必须先
+实现并应用 `011`，再通过对应 Promotion Gate。
 
 ### 4.2 Corpus Index Generation 与 Corpus Head
 
@@ -513,6 +517,10 @@ Reconciliation 后不得再产生 Legacy Row。
 `knowledge_collection_purges` 保存 Fan-out Root：Collection ID、Tombstone
 `collection_visibility_epoch`、Source Event ID、枚举 Cursor、`enumeration_complete`、
 状态、Attempt、Lease Owner/Token/Expiry、Remaining Count Snapshot、Error Code 和时间戳。
+枚举 Cursor 是
+`(document_id, document_version_id, index_generation_id, materialization_id)`；最后一维
+用于在同 Version/Generation 存在 Reprocess Materialization 时稳定选择 Active Head
+（无 Head 时选最新 Seq）并保持分页边界确定。
 
 `knowledge_collection_purge_items` 至少包含：
 
@@ -694,18 +702,18 @@ Query Consent 和所有涉及 Collection Consent，并在结果纳入前再验�
 
 ## 7. Least-privilege Roles
 
-角色边界固定如下；Login Role 与密码由部署层创建，Migration 只向 NOLOGIN Group
-Role 授权。若 Migration Runner 无 `CREATEROLE`，Bootstrap 必须先创建 Group Role，
-Migration 只验证存在并 GRANT，不能回退到共用 Owner Credential。
+角色边界固定如下；Login Role 与密码由部署层创建。`010` 在 Migration Owner 具备
+`CREATEROLE` 时创建缺失的 NOLOGIN Capability Role，否则 Bootstrap 必须预先创建；
+Migration 始终验证其受限属性后再 GRANT，不能回退到共用 Owner Credential。
 
-| Role                   | 允许                                                                 | 禁止                                                                 |
-| ---------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Migration Owner        | DDL、Extension、Owner/GRANT                                          | 作为 Go/Python Runtime Credential                                    |
-| `rag_projection_owner` | 持有受限 SECURITY DEFINER Function                                   | LOGIN；业务直连                                                      |
-| `rag_worker_executor`  | EXECUTE Claim/CAS/Publish/Purge；写 Staging/Manifest 的受限 Function | ACL/Consent/Document/Corpus Head/Outbox 终态直接 UPDATE；读取 Secret |
-| `rag_api_reader`       | EXECUTE `011` Candidate/Expansion/Readiness Function                 | Base Table SELECT；任何 DML；Object Store Credential                 |
-| `go_evidence_hydrator` | EXECUTE `010` exact-ref Reauthorization/Hydration Function           | Base Table/Object-Key SELECT；任意 Projection 扫描；任何 DML         |
-| Go API Runtime         | 权威业务 Mutation 与按需继承 `go_evidence_hydrator`                  | Extension DDL；以 Python 身份执行；读取 Raw Object Key               |
+| Role                   | 允许                                                                          | 禁止                                                               |
+| ---------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Migration Owner        | DDL、Extension、Owner/GRANT                                                   | 作为 Go/Python Runtime Credential                                  |
+| `rag_projection_owner` | 持有受限 SECURITY DEFINER Function                                            | LOGIN；业务直连                                                    |
+| `rag_worker_executor`  | EXECUTE `010` Claim/CAS/Publish/Purge/Readiness Functions                     | Base Table DML；ACL/Consent/Document/Corpus Head 直写；读取 Secret |
+| `rag_api_reader`       | EXECUTE `010` Worker Readiness；`011` 后再增加 Candidate/Expansion            | Base Table SELECT；任何 DML；Object Store Credential               |
+| `go_evidence_hydrator` | EXECUTE `010` exact-ref Reauthorization/Hydration Function                    | Base Table/Object-Key SELECT；任意 Projection 扫描；任何 DML       |
+| Go API Runtime         | 权威业务 Mutation；显式 EXECUTE `010` Readiness/Hydration，无 Role Membership | Extension DDL；以 Python 身份执行；读取 Raw Object Key             |
 
 默认 `REVOKE ALL ... FROM PUBLIC`。Schema `CREATE`、Function Owner Membership、
 `SET ROLE`、Trigger Disable、Sequence Write 和 Migration Table Write 均不得授予 Python
@@ -761,6 +769,10 @@ Role。Artifact/Chunk 在 Published 后由 Trigger/Function 防止 Worker 直接
   验证。任何 Down Precondition 失败都保留新 Schema，不做部分降级。
 
 ## 10. Required Tests
+
+`010` 和 durable dark-run Worker 的 Migration、权限、lease/ledger/replay、恢复与
+默认不 Claim 行为已有实现测试；以下涉及 `011` Search DDL、真实 Parser/Embedding 或
+Projection Ready 的条目仍是后续 Promotion Acceptance，不得解释为当前已通过。
 
 ### 10.1 Schema 与 Migration
 

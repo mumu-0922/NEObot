@@ -666,6 +666,20 @@ the UI can call in the next wiring slice.
 - [ ] Implement the private Python consumer/worker, applied-event ledger,
       lease fencing, parser routing, artifacts, chunking, embedding, publish,
       purge, and reconstruction paths.
+
+##### Phase 15.2B — Durable Consumer dark-run
+
+- [x] Lock the executable Phase 15.2B plan, Governance Mapping input,
+      migration/function signatures, DLQ/Replay semantics, least-privilege
+      roles, dark-run gate, and verification matrix.
+- [x] Implement complete extension-independent migration `010`, model-aware
+      Governance/Consent compatibility, lease fencing, ledger, purge fan-out,
+      replay audit, and conservative rollback.
+- [x] Implement the Python worker package, Postgres Function adapter,
+      Poll/Rescan, Redis wake, job heartbeat/retry/DLQ, health, metrics, and
+      operator replay CLI with real handlers disabled.
+- [x] Add isolated Compose/credential/resource wiring and pass all migration,
+      replay, crash, Redis-loss, permission, Python, image, and review gates.
 - [ ] Implement private hybrid query, Go-side source reauthorization,
       strict grounded chat, visible degradation, and clickable citations with
       minimal frontend change.

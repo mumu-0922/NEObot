@@ -84,3 +84,23 @@ func TestQueryConsentServiceAllowsOnlyCurrentActorAndQueryPurposes(t *testing.T)
 		t.Fatal("query consent accepted collection-only purpose")
 	}
 }
+
+func TestConsentServiceBindsExactEndpointModelTogether(t *testing.T) {
+	repo := &fakeRepository{queryConsents: []ProcessingConsent{{Processor: "jina"}}}
+	service := NewService(repo)
+	ctx := auth.WithUser(context.Background(), auth.User{ID: testActorID})
+	input := PutConsentInput{Purposes: []string{"query_embedding"}, DataTypes: []string{"text/plain"}, PolicyVersion: "v1"}
+	identity := ProcessorModelIdentity{Processor: " jina ", EndpointID: " hosted ", ModelID: " embed-v4 "}
+	if _, err := service.PutQueryConsentForModel(ctx, identity, input); err != nil {
+		t.Fatal(err)
+	}
+	if repo.putQueryConsent.Processor != "jina" || repo.putQueryConsent.EndpointID != "hosted" ||
+		repo.putQueryConsent.ModelID != "embed-v4" {
+		t.Fatalf("exact query identity = %#v", repo.putQueryConsent)
+	}
+	if _, err := service.PutQueryConsentForModel(ctx, ProcessorModelIdentity{
+		Processor: "jina", EndpointID: "hosted",
+	}, input); err == nil {
+		t.Fatal("partial endpoint/model identity accepted")
+	}
+}

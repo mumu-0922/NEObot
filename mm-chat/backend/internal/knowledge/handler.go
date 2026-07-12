@@ -80,14 +80,17 @@ type documentPageDTO struct {
 }
 
 type processingConsentDTO struct {
-	Processor       string   `json:"processor"`
-	Purposes        []string `json:"purposes"`
-	DataTypes       []string `json:"dataTypes"`
-	PolicyVersion   string   `json:"policyVersion"`
-	Decision        string   `json:"decision"`
-	EffectiveStatus string   `json:"effectiveStatus"`
-	ExpiresAt       string   `json:"expiresAt,omitempty"`
-	DecidedAt       string   `json:"decidedAt"`
+	Processor           string   `json:"processor"`
+	EndpointID          string   `json:"endpointId"`
+	ModelID             string   `json:"modelId"`
+	ProfileContractHash string   `json:"profileContractHash"`
+	Purposes            []string `json:"purposes"`
+	DataTypes           []string `json:"dataTypes"`
+	PolicyVersion       string   `json:"policyVersion"`
+	Decision            string   `json:"decision"`
+	EffectiveStatus     string   `json:"effectiveStatus"`
+	ExpiresAt           string   `json:"expiresAt,omitempty"`
+	DecidedAt           string   `json:"decidedAt"`
 }
 
 func NewHandler(service *Service) *Handler {
@@ -165,8 +168,9 @@ func (handler *Handler) handleQueryConsentList(w http.ResponseWriter, request *h
 }
 
 func (handler *Handler) handleQueryConsent(w http.ResponseWriter, request *http.Request, processor string) {
-	if err := requireNoQuery(request.URL.Query()); err != nil {
-		writeServiceError(w, asConsentValidation(err))
+	identity, err := parseConsentIdentityQuery(processor, request.URL.Query())
+	if err != nil {
+		writeServiceError(w, err)
 		return
 	}
 	switch request.Method {
@@ -176,7 +180,7 @@ func (handler *Handler) handleQueryConsent(w http.ResponseWriter, request *http.
 			writeConsentDecodeError(w, err)
 			return
 		}
-		value, err := handler.service.PutQueryConsent(request.Context(), processor, input)
+		value, err := handler.service.PutQueryConsentForModel(request.Context(), identity, input)
 		if err != nil {
 			writeServiceError(w, err)
 			return
@@ -187,7 +191,7 @@ func (handler *Handler) handleQueryConsent(w http.ResponseWriter, request *http.
 			writeConsentDecodeError(w, err)
 			return
 		}
-		if err := handler.service.RevokeQueryConsent(request.Context(), processor); err != nil {
+		if err := handler.service.RevokeQueryConsentForModel(request.Context(), identity); err != nil {
 			writeServiceError(w, err)
 			return
 		}
@@ -219,8 +223,9 @@ func (handler *Handler) handleCollectionConsentList(w http.ResponseWriter, reque
 }
 
 func (handler *Handler) handleCollectionConsent(w http.ResponseWriter, request *http.Request, collectionID, processor string) {
-	if err := requireNoQuery(request.URL.Query()); err != nil {
-		writeServiceError(w, asConsentValidation(err))
+	identity, err := parseConsentIdentityQuery(processor, request.URL.Query())
+	if err != nil {
+		writeServiceError(w, err)
 		return
 	}
 	switch request.Method {
@@ -230,7 +235,7 @@ func (handler *Handler) handleCollectionConsent(w http.ResponseWriter, request *
 			writeConsentDecodeError(w, err)
 			return
 		}
-		value, err := handler.service.PutCollectionConsent(request.Context(), collectionID, processor, input)
+		value, err := handler.service.PutCollectionConsentForModel(request.Context(), collectionID, identity, input)
 		if err != nil {
 			writeServiceError(w, err)
 			return
@@ -241,7 +246,7 @@ func (handler *Handler) handleCollectionConsent(w http.ResponseWriter, request *
 			writeConsentDecodeError(w, err)
 			return
 		}
-		if err := handler.service.RevokeCollectionConsent(request.Context(), collectionID, processor); err != nil {
+		if err := handler.service.RevokeCollectionConsentForModel(request.Context(), collectionID, identity); err != nil {
 			writeServiceError(w, err)
 			return
 		}
@@ -508,6 +513,25 @@ func requireNoQuery(query url.Values) error {
 	return nil
 }
 
+func parseConsentIdentityQuery(processor string, query url.Values) (ProcessorModelIdentity, error) {
+	if len(query) == 0 {
+		return ProcessorModelIdentity{Processor: processor}, nil
+	}
+	for key, values := range query {
+		if (key != "endpointId" && key != "modelId") || len(values) != 1 {
+			return ProcessorModelIdentity{}, invalidConsentPayload("query parameters are invalid")
+		}
+	}
+	endpointValues, endpointOK := query["endpointId"]
+	modelValues, modelOK := query["modelId"]
+	if !endpointOK || !modelOK || len(endpointValues) != 1 || len(modelValues) != 1 {
+		return ProcessorModelIdentity{}, invalidConsentPayload("endpointId and modelId must be provided together")
+	}
+	return normalizeProcessorModelIdentity(ProcessorModelIdentity{
+		Processor: processor, EndpointID: endpointValues[0], ModelID: modelValues[0],
+	}, false)
+}
+
 type forbiddenFieldError struct{ field string }
 
 func (err forbiddenFieldError) Error() string { return "forbidden field " + err.field }
@@ -597,7 +621,8 @@ func newDocumentVersionDTO(value *DocumentVersion) *documentVersionDTO {
 }
 
 func newProcessingConsentDTO(value ProcessingConsent) processingConsentDTO {
-	dto := processingConsentDTO{Processor: value.Processor, Purposes: value.Purposes,
+	dto := processingConsentDTO{Processor: value.Processor, EndpointID: value.EndpointID,
+		ModelID: value.ModelID, ProfileContractHash: value.ProfileContractHash, Purposes: value.Purposes,
 		DataTypes: value.DataTypes, PolicyVersion: value.PolicyVersion, Decision: value.Decision,
 		EffectiveStatus: value.EffectiveStatus,
 		DecidedAt:       value.DecidedAt.UTC().Format(time.RFC3339Nano)}
@@ -677,6 +702,8 @@ func serviceErrorFor(err error) (int, ErrorBody) {
 		return http.StatusConflict, ErrorBody{"DOCUMENT_PROCESSING", "document already has processing work"}
 	case errors.Is(err, ErrKnowledgeProcessorUnavailable):
 		return http.StatusServiceUnavailable, ErrorBody{"KNOWLEDGE_PROCESSOR_UNAVAILABLE", "knowledge processor is unavailable"}
+	case errors.Is(err, ErrGovernanceIdentityAmbiguous), errors.Is(err, ErrConsentIdentityAmbiguous):
+		return http.StatusConflict, ErrorBody{"EXACT_PROCESSOR_IDENTITY_REQUIRED", "endpointId and modelId are required because the processor is ambiguous"}
 	}
 	var validation ValidationError
 	if errors.As(err, &validation) {

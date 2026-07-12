@@ -102,18 +102,19 @@ INSERT INTO files (
 `, fileID, adminID, strings.Repeat("a", 64), "users/"+adminID+"/files/"+fileID)
 	mustKnowledgeExec(t, ctx, db, `
 INSERT INTO processor_governance_profiles (
- id,processor,endpoint_id,model_api_version,allowed_purposes,allowed_data_types,
- region,retention_policy,deletion_contract,training_use,status,governance_revision,manifest_hash
-) VALUES ($1,'mineru','default','v1',ARRAY['parse'],ARRAY['application/pdf'],
- 'global','none','delete','disabled','approved',1,$2);
+ id,processor,endpoint_id,model_id,model_api_version,allowed_purposes,allowed_data_types,
+ region,retention_policy,deletion_contract,training_use,status,governance_revision,manifest_hash,
+ profile_contract_hash
+) VALUES ($1,'mineru','default','model-v1','v1',ARRAY['parse'],ARRAY['application/pdf'],
+ 'global','none','delete','disabled','approved',1,$2,$2);
 INSERT INTO processor_governance_heads (
- processor,endpoint_id,status,active_profile_id,active_governance_revision,head_revision
-) VALUES ('mineru','default','active',$1,1,1);
+ processor,endpoint_id,model_id,status,active_profile_id,active_governance_revision,head_revision
+) VALUES ('mineru','default','model-v1','active',$1,1,1);
 INSERT INTO processing_consents (
- id,scope,collection_id,processor,endpoint_id,governance_profile_id,
+ id,scope,collection_id,processor,endpoint_id,model_id,governance_profile_id,
  governance_revision,governance_head_revision,purposes,data_types,policy_version,
  decision,consent_revision,granted_by_user_id
-) VALUES ($3,'collection',$4,'mineru','default',$1,1,1,ARRAY['parse'],
+) VALUES ($3,'collection',$4,'mineru','default','model-v1',$1,1,1,ARRAY['parse'],
  ARRAY['application/pdf'],'v1','granted',1,$5)
 `, profileID, strings.Repeat("b", 64), consentID, personalID, adminID)
 	for _, authorityTest := range []struct {
@@ -168,6 +169,15 @@ INSERT INTO processing_consents (
 	}
 	if jobs != 1 || events != 1 {
 		t.Fatalf("document jobs/events = %d/%d", jobs, events)
+	}
+	var legacyUnbound bool
+	var jobModelID string
+	if err := db.QueryRowContext(ctx, `SELECT legacy_projection_unbound,model_id
+FROM knowledge_processing_jobs WHERE id=$1`, jobID).Scan(&legacyUnbound, &jobModelID); err != nil {
+		t.Fatal(err)
+	}
+	if !legacyUnbound || jobModelID != "model-v1" {
+		t.Fatalf("compatibility job identity = legacy:%v model:%q", legacyUnbound, jobModelID)
 	}
 
 	const (
@@ -837,13 +847,15 @@ UPDATE knowledge_documents SET status='active',current_version_id=$9 WHERE id=$8
 INSERT INTO knowledge_processing_jobs(
  id,collection_id,document_id,document_version_id,file_id,stage,operation,
  collection_acl_revision,collection_visibility_epoch,collection_processing_revision,
- document_visibility_epoch,idempotency_scope,idempotency_key,request_hash
-) VALUES ($11,$3,$8,$10,$5,'purge','purge',1,1,1,1,'seed:purge','seed',$6);
+ document_visibility_epoch,idempotency_scope,idempotency_key,request_hash,
+ status,attempt_count,lease_owner,lease_token,lease_expires_at,legacy_projection_unbound
+) VALUES ($11,$3,$8,$10,$5,'purge','purge',1,1,1,1,'seed:purge','seed',$6,
+ 'processing',1,$1,$13,clock_timestamp()+interval '1 hour',true);
 INSERT INTO knowledge_outbox(event_id,aggregate_type,aggregate_key,event_type,payload)
-VALUES ($13,'test','seed','test.seed','{}')
+VALUES ($14,'test','seed','test.seed','{}')
 `, ownerID, outsiderID, collectionID, fileA, fileB, strings.Repeat("a", 64),
 		strings.Repeat("b", 64), documentID, versionA, versionB, cancelJobID, versionC,
-		seedEventID)
+		"83000000-0000-4000-8000-000000000014", seedEventID)
 
 	repo := NewPostgresRepository(db)
 	if err := repo.DeleteDocument(ctx, DeleteDocumentRepositoryInput{
@@ -940,22 +952,31 @@ SELECT status,visibility_epoch,deleted_at IS NOT NULL FROM knowledge_documents W
 	if status != "tombstoned" || visibility != 2 || !deleted {
 		t.Fatalf("document tombstone = %s/%d/%v", status, visibility, deleted)
 	}
-	var tombstonedVersions, purgeJobs, cancelledJobs, tombstoneEvents, cancellationEvents int
+	var tombstonedVersions, purgeJobs, legacyPurgeJobs, cancelledJobs, tombstoneEvents, cancellationEvents int
 	for query, destination := range map[string]*int{
-		`SELECT count(*) FROM knowledge_document_versions WHERE document_id=$1 AND status='tombstoned'`:                  &tombstonedVersions,
-		`SELECT count(*) FROM knowledge_processing_jobs WHERE document_id=$1 AND operation='purge' AND status='pending'`: &purgeJobs,
-		`SELECT count(*) FROM knowledge_processing_jobs WHERE document_id=$1 AND status='cancelled'`:                     &cancelledJobs,
-		`SELECT count(*) FROM knowledge_outbox WHERE aggregate_key=$1 AND event_type='knowledge.document.tombstoned'`:    &tombstoneEvents,
-		`SELECT count(*) FROM knowledge_outbox WHERE aggregate_key=$1 AND event_type='knowledge.processing.cancelled'`:   &cancellationEvents,
+		`SELECT count(*) FROM knowledge_document_versions WHERE document_id=$1 AND status='tombstoned'`:                           &tombstonedVersions,
+		`SELECT count(*) FROM knowledge_processing_jobs WHERE document_id=$1 AND operation='purge' AND status='pending'`:          &purgeJobs,
+		`SELECT count(*) FROM knowledge_processing_jobs WHERE document_id=$1 AND operation='purge' AND legacy_projection_unbound`: &legacyPurgeJobs,
+		`SELECT count(*) FROM knowledge_processing_jobs WHERE document_id=$1 AND status='cancelled'`:                              &cancelledJobs,
+		`SELECT count(*) FROM knowledge_outbox WHERE aggregate_key=$1 AND event_type='knowledge.document.tombstoned'`:             &tombstoneEvents,
+		`SELECT count(*) FROM knowledge_outbox WHERE aggregate_key=$1 AND event_type='knowledge.processing.cancelled'`:            &cancellationEvents,
 	} {
 		if err := db.QueryRowContext(ctx, query, documentID).Scan(destination); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if tombstonedVersions != 3 || purgeJobs != 3 || cancelledJobs != 1 ||
+	if tombstonedVersions != 3 || purgeJobs != 3 || legacyPurgeJobs != 4 || cancelledJobs != 1 ||
 		tombstoneEvents != 3 || cancellationEvents != 1 {
-		t.Fatalf("delete dependents versions/purge/cancel/events = %d/%d/%d/%d/%d",
-			tombstonedVersions, purgeJobs, cancelledJobs, tombstoneEvents, cancellationEvents)
+		t.Fatalf("delete dependents versions/purge/legacy/cancel/events = %d/%d/%d/%d/%d/%d",
+			tombstonedVersions, purgeJobs, legacyPurgeJobs, cancelledJobs, tombstoneEvents, cancellationEvents)
+	}
+	var cancelledLeaseToken sql.NullString
+	if err := db.QueryRowContext(ctx, `SELECT lease_token FROM knowledge_processing_jobs WHERE id=$1`,
+		cancelJobID).Scan(&cancelledLeaseToken); err != nil {
+		t.Fatal(err)
+	}
+	if cancelledLeaseToken.Valid {
+		t.Fatalf("cancelled job retained lease token %q", cancelledLeaseToken.String)
 	}
 	var inconsistentTombstoneEvents int
 	if err := db.QueryRowContext(ctx, `
@@ -995,12 +1016,13 @@ WHERE o.aggregate_type='knowledge_document' AND o.aggregate_key=$1
 INSERT INTO knowledge_processing_jobs (
  id,collection_id,document_id,document_version_id,file_id,stage,operation,
  collection_acl_revision,collection_visibility_epoch,collection_processing_revision,
- document_visibility_epoch,requested_by_user_id,idempotency_scope,idempotency_key,request_hash
+ document_visibility_epoch,requested_by_user_id,idempotency_scope,idempotency_key,request_hash,
+ legacy_projection_unbound
 )
 SELECT '84000000-0000-4000-8000-000000000001',collection_id,document_id,
  document_version_id,file_id,stage,operation,collection_acl_revision,
  collection_visibility_epoch,collection_processing_revision,document_visibility_epoch,
- requested_by_user_id,idempotency_scope||':duplicate','duplicate',request_hash
+ requested_by_user_id,idempotency_scope||':duplicate','duplicate',request_hash,true
 FROM knowledge_processing_jobs
 WHERE document_id=$1 AND document_version_id=$2 AND stage='purge' AND operation='purge'
   AND document_visibility_epoch=2

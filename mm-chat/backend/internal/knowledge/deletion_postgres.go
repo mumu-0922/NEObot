@@ -31,6 +31,10 @@ func (r *PostgresRepository) DeleteDocument(ctx context.Context, input DeleteDoc
 		return fmt.Errorf("begin delete document: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	capabilities, err := loadRuntimeSchemaCapabilities(ctx, tx)
+	if err != nil {
+		return err
+	}
 
 	var collectionID string
 	err = tx.QueryRowContext(ctx, `SELECT collection_id FROM knowledge_documents WHERE id=$1`, input.DocumentID).
@@ -82,12 +86,21 @@ WHERE id=$1 AND collection_id=$2 FOR UPDATE
 		return fmt.Errorf("read document deletion time: %w", err)
 	}
 	newVisibilityEpoch := visibilityEpoch + 1
-	if _, err := tx.ExecContext(ctx, `
+	cancelQuery := `
 UPDATE knowledge_processing_jobs
 SET status='cancelled',lease_owner=NULL,lease_expires_at=NULL,
     completed_at=$2,updated_at=$2
 WHERE document_id=$1 AND status IN ('pending','processing')
-`, input.DocumentID, now); err != nil {
+`
+	if capabilities.jobLeaseToken {
+		cancelQuery = `
+UPDATE knowledge_processing_jobs
+SET status='cancelled',lease_owner=NULL,lease_token=NULL,lease_expires_at=NULL,
+    completed_at=$2,updated_at=$2
+WHERE document_id=$1 AND status IN ('pending','processing')
+`
+	}
+	if _, err := tx.ExecContext(ctx, cancelQuery, input.DocumentID, now); err != nil {
 		return fmt.Errorf("cancel document jobs: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -117,17 +130,32 @@ WHERE id=$1
 		requestHash := sha256.Sum256([]byte(
 			input.DocumentID + "\n" + versions[index].ID + "\n" + fmt.Sprint(newVisibilityEpoch),
 		))
-		_, err = tx.ExecContext(ctx, `
+		if capabilities.legacyProjectionUnbound {
+			_, err = tx.ExecContext(ctx, `
+INSERT INTO knowledge_processing_jobs (
+ id,collection_id,document_id,document_version_id,file_id,stage,operation,
+ collection_acl_revision,collection_visibility_epoch,collection_processing_revision,
+ document_visibility_epoch,requested_by_user_id,idempotency_scope,idempotency_key,request_hash,
+ legacy_projection_unbound
+) VALUES ($1,$2,$3,$4,$5,'purge','purge',$6,$7,$8,$9,$10,$11,$12,$13,true)
+`, versions[index].PurgeJobID, collectionID, input.DocumentID, versions[index].ID,
+				versions[index].FileID, collection.ACLRevision, collection.VisibilityEpoch,
+				collection.ProcessingRevision, newVisibilityEpoch, input.ActorUserID,
+				"document:"+input.DocumentID+":version:"+versions[index].ID+":purge",
+				fmt.Sprintf("visibility:%d", newVisibilityEpoch), hex.EncodeToString(requestHash[:]))
+		} else {
+			_, err = tx.ExecContext(ctx, `
 INSERT INTO knowledge_processing_jobs (
  id,collection_id,document_id,document_version_id,file_id,stage,operation,
  collection_acl_revision,collection_visibility_epoch,collection_processing_revision,
  document_visibility_epoch,requested_by_user_id,idempotency_scope,idempotency_key,request_hash
 ) VALUES ($1,$2,$3,$4,$5,'purge','purge',$6,$7,$8,$9,$10,$11,$12,$13)
 `, versions[index].PurgeJobID, collectionID, input.DocumentID, versions[index].ID,
-			versions[index].FileID, collection.ACLRevision, collection.VisibilityEpoch,
-			collection.ProcessingRevision, newVisibilityEpoch, input.ActorUserID,
-			"document:"+input.DocumentID+":version:"+versions[index].ID+":purge",
-			fmt.Sprintf("visibility:%d", newVisibilityEpoch), hex.EncodeToString(requestHash[:]))
+				versions[index].FileID, collection.ACLRevision, collection.VisibilityEpoch,
+				collection.ProcessingRevision, newVisibilityEpoch, input.ActorUserID,
+				"document:"+input.DocumentID+":version:"+versions[index].ID+":purge",
+				fmt.Sprintf("visibility:%d", newVisibilityEpoch), hex.EncodeToString(requestHash[:]))
+		}
 		if err != nil {
 			return fmt.Errorf("insert document purge job: %w", err)
 		}

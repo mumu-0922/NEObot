@@ -9,8 +9,9 @@ import (
 )
 
 type parseAuthority struct {
-	Processor, ConsentID, EndpointID, ProfileID       string
-	GovernanceRevision, HeadRevision, ConsentRevision int64
+	Processor, ConsentID, EndpointID, ModelID, ProfileID, ProfileContractHash string
+	GovernanceRevision, HeadRevision, ConsentRevision                         int64
+	ExactModelIdentity, LegacyProjectionUnbound                               bool
 }
 
 func documentOperationIdempotencyScope(documentID, operation, actorUserID string) string {
@@ -128,7 +129,29 @@ UPDATE knowledge_documents SET updated_at = now() WHERE id = $1 RETURNING update
 	}
 	document.PendingVersion = &version
 
-	_, err = tx.ExecContext(ctx, `
+	if authority.LegacyProjectionUnbound {
+		_, err = tx.ExecContext(ctx, `
+INSERT INTO knowledge_processing_jobs (
+  id, collection_id, document_id, document_version_id, file_id, stage, operation,
+  processor, endpoint_id, model_id, governance_profile_id, governance_revision,
+  governance_head_revision, collection_consent_id, collection_consent_revision,
+  collection_acl_revision, collection_visibility_epoch,
+  collection_processing_revision, document_visibility_epoch,
+  requested_by_user_id, idempotency_scope, idempotency_key, request_hash,
+  legacy_projection_unbound
+) VALUES (
+  $1,$2,$3,$4,$5,'parse','replace',$6,$7,$8,$9,$10,$11,$12,$13,
+  $14,$15,$16,$17,$18,$19,$20,$21,true
+)
+`, input.JobID, collectionID, input.DocumentID, input.VersionID, input.FileID,
+			input.ParseProcessor, authority.EndpointID, authority.ModelID, authority.ProfileID,
+			authority.GovernanceRevision, authority.HeadRevision, authority.ConsentID,
+			authority.ConsentRevision, collection.ACLRevision, collection.VisibilityEpoch,
+			collection.ProcessingRevision, visibilityEpoch, input.ActorUserID,
+			documentOperationIdempotencyScope(input.DocumentID, "replace", input.ActorUserID),
+			input.IdempotencyKey, input.RequestHash)
+	} else {
+		_, err = tx.ExecContext(ctx, `
 INSERT INTO knowledge_processing_jobs (
   id, collection_id, document_id, document_version_id, file_id, stage, operation,
   processor, endpoint_id, governance_profile_id, governance_revision,
@@ -141,12 +164,13 @@ INSERT INTO knowledge_processing_jobs (
   $13,$14,$15,$16,$17,$18,$19,$20
 )
 `, input.JobID, collectionID, input.DocumentID, input.VersionID, input.FileID,
-		input.ParseProcessor, authority.EndpointID, authority.ProfileID,
-		authority.GovernanceRevision, authority.HeadRevision, authority.ConsentID,
-		authority.ConsentRevision, collection.ACLRevision, collection.VisibilityEpoch,
-		collection.ProcessingRevision, visibilityEpoch, input.ActorUserID,
-		documentOperationIdempotencyScope(input.DocumentID, "replace", input.ActorUserID),
-		input.IdempotencyKey, input.RequestHash)
+			input.ParseProcessor, authority.EndpointID, authority.ProfileID,
+			authority.GovernanceRevision, authority.HeadRevision, authority.ConsentID,
+			authority.ConsentRevision, collection.ACLRevision, collection.VisibilityEpoch,
+			collection.ProcessingRevision, visibilityEpoch, input.ActorUserID,
+			documentOperationIdempotencyScope(input.DocumentID, "replace", input.ActorUserID),
+			input.IdempotencyKey, input.RequestHash)
+	}
 	if err != nil {
 		return Document{}, fmt.Errorf("insert replacement parse job: %w", err)
 	}
@@ -233,8 +257,72 @@ FROM files WHERE id = $1 FOR UPDATE
 }
 
 func resolveParseAuthority(ctx context.Context, tx *sql.Tx, collectionID, processor, mimeType string) (parseAuthority, error) {
-	authority := parseAuthority{Processor: processor}
-	err := tx.QueryRowContext(ctx, `
+	capabilities, err := loadRuntimeSchemaCapabilities(ctx, tx)
+	if err != nil {
+		return parseAuthority{}, err
+	}
+	authority := parseAuthority{Processor: processor, ExactModelIdentity: capabilities.exactModelIdentity,
+		LegacyProjectionUnbound: capabilities.legacyProjectionUnbound}
+	if capabilities.exactModelIdentity {
+		rows, queryErr := tx.QueryContext(ctx, `
+SELECT h.endpoint_id,h.model_id,h.active_profile_id,p.profile_contract_hash,
+       h.active_governance_revision,h.head_revision,pc.id,pc.consent_revision
+FROM processor_governance_heads h
+JOIN processor_governance_profiles p
+  ON p.processor=h.processor AND p.endpoint_id=h.endpoint_id AND p.model_id=h.model_id
+ AND p.id=h.active_profile_id AND p.governance_revision=h.active_governance_revision
+JOIN processing_consents pc
+  ON pc.scope='collection' AND pc.collection_id=$3 AND pc.processor=h.processor
+ AND pc.endpoint_id=h.endpoint_id AND pc.model_id=h.model_id
+ AND pc.governance_profile_id=h.active_profile_id
+ AND pc.governance_revision=h.active_governance_revision
+ AND pc.governance_head_revision=h.head_revision
+WHERE h.processor=$1 AND h.status='active' AND p.status='approved'
+  AND 'parse'=ANY(p.allowed_purposes)
+  AND ($2=ANY(p.allowed_data_types) OR '*'=ANY(p.allowed_data_types))
+  AND pc.superseded_at IS NULL AND pc.decision='granted'
+  AND (pc.expires_at IS NULL OR pc.expires_at>clock_timestamp())
+  AND 'parse'=ANY(pc.purposes)
+  AND ($2=ANY(pc.data_types) OR '*'=ANY(pc.data_types))
+ORDER BY h.endpoint_id,h.model_id LIMIT 2 FOR UPDATE OF h,p,pc
+`, processor, mimeType, collectionID)
+		if queryErr != nil {
+			return parseAuthority{}, fmt.Errorf("resolve exact parse authority: %w", queryErr)
+		}
+		defer rows.Close()
+		values := make([]parseAuthority, 0, 2)
+		for rows.Next() {
+			value := authority
+			if err := rows.Scan(&value.EndpointID, &value.ModelID, &value.ProfileID,
+				&value.ProfileContractHash, &value.GovernanceRevision, &value.HeadRevision,
+				&value.ConsentID, &value.ConsentRevision); err != nil {
+				return parseAuthority{}, fmt.Errorf("scan exact parse authority: %w", err)
+			}
+			values = append(values, value)
+		}
+		if err := rows.Err(); err != nil {
+			return parseAuthority{}, fmt.Errorf("iterate exact parse authorities: %w", err)
+		}
+		if len(values) > 1 {
+			return parseAuthority{}, ErrGovernanceIdentityAmbiguous
+		}
+		if len(values) == 1 {
+			return values[0], nil
+		}
+		var eligible bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS (
+SELECT 1 FROM processor_governance_heads h JOIN processor_governance_profiles p
+ON p.id=h.active_profile_id WHERE h.processor=$1 AND h.status='active' AND p.status='approved'
+AND 'parse'=ANY(p.allowed_purposes) AND ($2=ANY(p.allowed_data_types) OR '*'=ANY(p.allowed_data_types)))`,
+			processor, mimeType).Scan(&eligible); err != nil {
+			return parseAuthority{}, fmt.Errorf("check exact parse governance: %w", err)
+		}
+		if eligible {
+			return parseAuthority{}, ErrProcessingConsent
+		}
+		return parseAuthority{}, ErrKnowledgeProcessorUnavailable
+	}
+	err = tx.QueryRowContext(ctx, `
 SELECT h.endpoint_id,h.active_profile_id,h.active_governance_revision,h.head_revision
 FROM processor_governance_heads h
 JOIN processor_governance_profiles p

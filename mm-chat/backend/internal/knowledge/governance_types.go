@@ -8,6 +8,7 @@ import (
 type GovernanceManifest struct {
 	Processor        string   `json:"processor"`
 	EndpointID       string   `json:"endpointId"`
+	ModelID          string   `json:"modelId"`
 	ModelAPIVersion  string   `json:"modelApiVersion"`
 	AllowedPurposes  []string `json:"allowedPurposes"`
 	AllowedDataTypes []string `json:"allowedDataTypes"`
@@ -20,17 +21,19 @@ type GovernanceManifest struct {
 type ProcessorGovernanceHead struct {
 	Processor                string
 	EndpointID               string
+	ModelID                  string
 	Status                   string
 	ActiveProfileID          string
 	ActiveGovernanceRevision int64
 	HeadRevision             int64
 	ManifestHash             string
+	ProfileContractHash      string
 	UpdatedAt                time.Time
 }
 
 type GovernanceRepository interface {
 	ApplyGovernance(context.Context, GovernanceManifest, string) (ProcessorGovernanceHead, error)
-	DisableGovernance(context.Context, string, string) (ProcessorGovernanceHead, error)
+	DisableGovernance(context.Context, string, string, string) (ProcessorGovernanceHead, error)
 }
 
 var ErrGovernanceHeadNotFound = ValidationError{

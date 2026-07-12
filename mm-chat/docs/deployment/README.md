@@ -2,23 +2,24 @@
 
 Deployment docs define the single-server path for the `mm-chat` server-backed
 refactor. The current runtime path is Docker Compose under `mm-chat/`: Go API,
-Postgres, Redis, and private MinIO on one server, with migrations and backups
-run explicitly by operators. The Go/Postgres runtime now includes Identity,
+Postgres, Redis, private MinIO, and an optional Phase 15.2B dark-run Python
+Worker on one server, with migrations and backups run explicitly by operators.
+The Go/Postgres runtime now includes Identity,
 Teams, Knowledge Collections/Documents, Governance, Consent, Jobs, and durable
 Outbox state.
 
 ## Documents
 
-| Guide                                                                  | Purpose                                                                                                                                                                  |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [`single-server-compose.md`](./single-server-compose.md)               | Phase 10 Docker Compose topology, first boot, reverse proxy boundary, release, and rollback checklist.                                                                   |
-| [`postgres-single-server.md`](./postgres-single-server.md)             | Current Compose/Go Postgres runtime covering private ports, data directories, DB-aware health checks, migration head `009`, backup/restore, image fencing, and rollback. |
-| [`redis-temporary-state.md`](./redis-temporary-state.md)               | Phase 7 Redis runbook for non-authoritative temporary state, stream cancellation flags, private-network rules, and flush behavior.                                       |
-| [`backup-restore.md`](./backup-restore.md)                             | Backup scripts, checksum verification, Postgres restore drill, MinIO restore drill, retention, and destructive-restore warnings.                                         |
-| [`reverse-proxy-tls.md`](./reverse-proxy-tls.md)                       | Phase 14 reverse proxy and TLS edge runbook, including same-origin `/mm-api`, SSE buffering, upload limits, metrics exposure, and rollback.                              |
-| [`secret-rotation.md`](./secret-rotation.md)                           | Identity/recovery/SMTP/session rotation procedures plus provider keys, Postgres, Redis, MinIO app/root credentials, and TLS certificates.                                |
-| [`release-rollback.md`](./release-rollback.md)                         | Compact release and rollback runbook for image deploys, migrations, and failed releases.                                                                                 |
-| [`../persistence/runtime-wiring.md`](../persistence/runtime-wiring.md) | Phase 4.5 backend DB env, pgx connector behavior, readiness matrix, migration CLI flow, and rollback boundaries.                                                         |
+| Guide                                                                  | Purpose                                                                                                                                     |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`single-server-compose.md`](./single-server-compose.md)               | Compose topology, profiles, Phase 15.2B dark-run Worker boundary, first boot, release, and rollback checklist.                              |
+| [`postgres-single-server.md`](./postgres-single-server.md)             | Current Postgres runtime covering private ports, DB principals, health checks, migration head, backup/restore, image fencing, and rollback. |
+| [`redis-temporary-state.md`](./redis-temporary-state.md)               | Phase 7 Redis runbook for non-authoritative temporary state, stream cancellation flags, private-network rules, and flush behavior.          |
+| [`backup-restore.md`](./backup-restore.md)                             | Backup scripts, checksum verification, Postgres restore drill, MinIO restore drill, retention, and destructive-restore warnings.            |
+| [`reverse-proxy-tls.md`](./reverse-proxy-tls.md)                       | Phase 14 reverse proxy and TLS edge runbook, including same-origin `/mm-api`, SSE buffering, upload limits, metrics exposure, and rollback. |
+| [`secret-rotation.md`](./secret-rotation.md)                           | Identity/recovery/SMTP/session rotation procedures plus provider keys, Postgres, Redis, MinIO app/root credentials, and TLS certificates.   |
+| [`release-rollback.md`](./release-rollback.md)                         | Compact release and rollback runbook for image deploys, migrations, and failed releases.                                                    |
+| [`../persistence/runtime-wiring.md`](../persistence/runtime-wiring.md) | Phase 4.5 backend DB env, pgx connector behavior, readiness matrix, migration CLI flow, and rollback boundaries.                            |
 
 ## Current Boundary
 
@@ -33,8 +34,11 @@ Outbox state.
   Redis for non-authoritative session hints, temporary cancellation flags, and
   HTTP rate-limit counters, plus MinIO for private object bytes. Identity,
   Teams, Knowledge control-plane CRUD, immutable Document Versions,
-  Governance, Consent, Jobs, and Outbox producers are implemented. Search/RAG
-  consumers remain outside this Compose runtime. Every bearer authorization
+  Governance, Consent, Jobs, and Outbox producers are implemented. Active
+  Search/RAG consumers remain outside this Compose runtime. Phase 15.2B only
+  adds a default-disabled dark-run `rag-worker` profile for durable mechanics;
+  it receives no object-store or Provider credentials and cannot claim real
+  stages. Every bearer authorization
   rechecks Postgres; Redis never participates in the final authorization
   decision.
 - Phase 14 runtime readiness keeps disabled dependencies out of `/ready`. When
@@ -48,12 +52,29 @@ Outbox state.
   by the `storage` dependency gauge rather than direct MinIO admin scraping.
 - API startup must not auto-run migrations; operators run the `migrate` service
   or `mm-chat-migrate` before starting or restarting a DB-enabled backend
-  release. The current migration head is `009`.
-- Compose resolves `backend`, `migrate`, and `admin` from one `BACKEND_IMAGE`.
-  Production uses a full registry `@sha256:` digest, runs
+  release. The Phase 15.2B migration head is `010`.
+- Compose resolves `backend`, `migrate`, and `admin` from one `BACKEND_IMAGE`;
+  the Worker independently resolves `RAG_IMAGE`. Production uses full registry
+  `@sha256:` digests for both and runs
   `scripts/compose-single-server-production.sh` so host variables cannot
   override the validated env file and the production override removes every
-  `build:` path. Retain the previous image ID/digest through rollback.
+  `build:` path. Retain both previous image digests through rollback.
+- Database access has four distinct login principals and passwords.
+  `POSTGRES_USER` is the bootstrap/migrator login referenced only by the
+  separately required `MIGRATION_DATABASE_URL`; migration never falls back to
+  `DATABASE_URL`. The non-superuser, non-`CREATEROLE` API login inherits only
+  `go_api_runtime` and supplies `DATABASE_URL` to both `backend` and the
+  one-shot `admin`. Worker and Replay logins inherit `rag_worker_executor` and
+  `rag_replay_operator` respectively. Replay is operator-only and its URL is
+  never injected into the long-running Worker. Preflight validates this
+  boundary without printing values.
+- On a fresh database, run migration `010` first so it creates the NOLOGIN
+  capability roles, then create the API, Worker, and Replay LOGIN principals by
+  secure interactive password input and grant one matching capability to each.
+  Verify role attributes, memberships, and all four live connections before
+  promotion. A guarded `010.down` retains the API capability required by
+  migration `009`; never grant API capability to the migrator or projection
+  owner as a rollback shortcut.
 - The Consent expiry worker starts with every Postgres-backed API process using
   batch `100` and idle poll `1s`. `consent_expiry_worker_failed` is a paging
   signal: the API shuts down and exits non-zero rather than serving with expiry

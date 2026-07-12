@@ -243,7 +243,29 @@ RETURNING id, source_version, status, created_at, updated_at
 		return Document{}, fmt.Errorf("insert document version: %w", err)
 	}
 	document.PendingVersion = &version
-	_, err = tx.ExecContext(ctx, `
+	if authority.LegacyProjectionUnbound {
+		_, err = tx.ExecContext(ctx, `
+INSERT INTO knowledge_processing_jobs (
+  id, collection_id, document_id, document_version_id, file_id, stage, operation,
+  processor, endpoint_id, model_id, governance_profile_id, governance_revision,
+  governance_head_revision, collection_consent_id, collection_consent_revision,
+  collection_acl_revision, collection_visibility_epoch,
+  collection_processing_revision, document_visibility_epoch,
+  requested_by_user_id, idempotency_scope, idempotency_key, request_hash,
+  legacy_projection_unbound
+) VALUES (
+  $1,$2,$3,$4,$5,'parse','initial',$6,$7,$8,$9,$10,$11,$12,$13,
+  $14,$15,$16,1,$17,$18,$19,$20,true
+)
+`, input.JobID, input.CollectionID, input.DocumentID, input.VersionID, input.FileID,
+			input.ParseProcessor, authority.EndpointID, authority.ModelID, authority.ProfileID,
+			authority.GovernanceRevision, authority.HeadRevision, authority.ConsentID,
+			authority.ConsentRevision, collection.ACLRevision, collection.VisibilityEpoch,
+			collection.ProcessingRevision, input.ActorUserID,
+			documentOperationIdempotencyScope(input.DocumentID, "initial", input.ActorUserID),
+			input.IdempotencyKey, input.RequestHash)
+	} else {
+		_, err = tx.ExecContext(ctx, `
 INSERT INTO knowledge_processing_jobs (
   id, collection_id, document_id, document_version_id, file_id, stage, operation,
   processor, endpoint_id, governance_profile_id, governance_revision,
@@ -256,12 +278,13 @@ INSERT INTO knowledge_processing_jobs (
   $13,$14,$15,1,$16,$17,$18,$19
 )
 `, input.JobID, input.CollectionID, input.DocumentID, input.VersionID, input.FileID,
-		input.ParseProcessor, authority.EndpointID, authority.ProfileID,
-		authority.GovernanceRevision, authority.HeadRevision,
-		authority.ConsentID, authority.ConsentRevision, collection.ACLRevision, collection.VisibilityEpoch,
-		collection.ProcessingRevision, input.ActorUserID,
-		documentOperationIdempotencyScope(input.DocumentID, "initial", input.ActorUserID),
-		input.IdempotencyKey, input.RequestHash)
+			input.ParseProcessor, authority.EndpointID, authority.ProfileID,
+			authority.GovernanceRevision, authority.HeadRevision,
+			authority.ConsentID, authority.ConsentRevision, collection.ACLRevision, collection.VisibilityEpoch,
+			collection.ProcessingRevision, input.ActorUserID,
+			documentOperationIdempotencyScope(input.DocumentID, "initial", input.ActorUserID),
+			input.IdempotencyKey, input.RequestHash)
+	}
 	if err != nil {
 		return Document{}, fmt.Errorf("insert parse job: %w", err)
 	}
@@ -358,6 +381,7 @@ func (r *PostgresRepository) insertDocumentOutbox(
 		"sourceVersion": version.SourceVersion, "fileId": version.File.ID,
 		"contentHash": hash, "jobId": jobID, "operation": operation,
 		"processor": authority.Processor, "endpointId": authority.EndpointID,
+		"modelId": authority.ModelID, "profileContractHash": authority.ProfileContractHash,
 		"governanceProfileId":          authority.ProfileID,
 		"governanceRevision":           authority.GovernanceRevision,
 		"governanceHeadRevision":       authority.HeadRevision,

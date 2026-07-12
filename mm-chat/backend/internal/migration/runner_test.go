@@ -1,6 +1,7 @@
 package migration
 
 import (
+	"encoding/json"
 	"io/fs"
 	"strings"
 	"testing"
@@ -8,6 +9,95 @@ import (
 
 	migrationfiles "neo-chat/mm-chat/backend/migrations"
 )
+
+func TestParsePhase15GovernanceMappingCanonicalizesAndRejectsUnknownFields(t *testing.T) {
+	mapping, err := ParsePhase15GovernanceMapping([]byte(`{
+  "profiles": [{
+    "profileId": "00000000-0000-0000-0000-000000000002",
+    "modelId": "jina-embeddings-v4",
+    "profileContractHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }, {
+    "profileId": "00000000-0000-0000-0000-000000000001",
+    "modelId": "jina-embeddings-v3",
+    "profileContractHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  }],
+  "heads": []
+}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical, err := canonicalPhase15GovernanceMapping(mapping)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded Phase15GovernanceMapping
+	if err := json.Unmarshal([]byte(canonical), &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Profiles[0].ProfileID != "00000000-0000-0000-0000-000000000001" {
+		t.Fatalf("profiles were not canonicalized: %s", canonical)
+	}
+
+	_, err = ParsePhase15GovernanceMapping([]byte(
+		`{"profiles":[],"heads":[],"credentials":"forbidden"}`,
+	))
+	if err == nil {
+		t.Fatal("unknown field was accepted")
+	}
+}
+
+func TestCanonicalPhase15GovernanceMappingNormalizesZeroValueToArrays(t *testing.T) {
+	canonical, err := canonicalPhase15GovernanceMapping(Phase15GovernanceMapping{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = `{"profiles":[],"heads":[]}`
+	if canonical != want {
+		t.Fatalf("canonical zero-value mapping = %s, want %s", canonical, want)
+	}
+}
+
+func TestCanonicalPhase15GovernanceMappingStillRejectsConstructedDuplicates(t *testing.T) {
+	profile := Phase15GovernanceProfileMapping{
+		ProfileID:           "00000000-0000-0000-0000-000000000001",
+		ModelID:             "jina-embeddings-v4",
+		ProfileContractHash: strings.Repeat("a", 64),
+	}
+	_, err := canonicalPhase15GovernanceMapping(Phase15GovernanceMapping{
+		Profiles: []Phase15GovernanceProfileMapping{profile, profile},
+	})
+	if err == nil || !strings.Contains(err.Error(), "duplicate profileId") {
+		t.Fatalf("constructed duplicate error = %v", err)
+	}
+}
+
+func TestParsePhase15GovernanceMappingRejectsMalformedAndDuplicateValues(t *testing.T) {
+	sentinel := "MAPPING-CONTENT-MUST-NOT-BE-LOGGED"
+	tests := []string{
+		`{"profiles":null,"heads":[]}`,
+		`{"profiles":[],"heads":null}`,
+		`{"profiles":[],"heads":[]}{}`,
+		`{"profiles":[],"profiles":[],"heads":[]}`,
+		`{"profiles":[{"profileId":"00000000-0000-0000-0000-000000000001","profileId":"00000000-0000-0000-0000-000000000002","modelId":"m","profileContractHash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],"heads":[]}`,
+		`{"profiles":[{"profileId":"NOT-A-UUID","modelId":"m","profileContractHash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],"heads":[]}`,
+		`{"profiles":[{"profileId":"00000000-0000-0000-0000-000000000001","modelId":" m ","profileContractHash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],"heads":[]}`,
+		`{"profiles":[],"heads":[{"processor":"jina","endpointId":"hosted","modelId":"m"},{"processor":"jina","endpointId":"hosted","modelId":"m2"}]}`,
+	}
+	for _, input := range tests {
+		if _, err := ParsePhase15GovernanceMapping([]byte(input)); err == nil {
+			t.Errorf("accepted invalid mapping: %s", input)
+		}
+	}
+	_, err := ParsePhase15GovernanceMapping([]byte(
+		`{"profiles":[],"heads":[],"secret":"` + sentinel + `"}`,
+	))
+	if err == nil {
+		t.Fatal("mapping with unknown secret field was accepted")
+	}
+	if strings.Contains(err.Error(), sentinel) {
+		t.Fatalf("mapping parse error leaked file content: %v", err)
+	}
+}
 
 func TestLoadOrdersMigrationsByNumericVersion(t *testing.T) {
 	files := fstest.MapFS{
@@ -104,6 +194,15 @@ func TestEmbeddedMigrationsAvoidTransactionControl(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestPhase15SafeSearchPathPlacesPGTempLast(t *testing.T) {
+	if !strings.Contains(
+		phase15SafeSearchPathSQL,
+		"quote_ident(current_schema()) || ', pg_catalog, pg_temp'",
+	) {
+		t.Fatalf("unsafe Phase 15 search_path hardening: %s", phase15SafeSearchPathSQL)
 	}
 }
 

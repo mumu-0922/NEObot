@@ -18,6 +18,13 @@ import (
 
 const migrationAdvisoryLockID int64 = 0x4d4d43484154
 
+const phase15SafeSearchPathSQL = `
+SELECT set_config(
+  'search_path',
+  quote_ident(current_schema()) || ', pg_catalog, pg_temp',
+  true
+)`
+
 const createVersionTableSQL = `
 CREATE TABLE IF NOT EXISTS schema_migrations (
   version BIGINT PRIMARY KEY,
@@ -47,8 +54,9 @@ func (m Migration) ID() string {
 
 // Runner applies embedded SQL migrations against Postgres.
 type Runner struct {
-	db    *sql.DB
-	files fs.FS
+	db                       *sql.DB
+	files                    fs.FS
+	phase15GovernanceMapping string
 }
 
 type execer interface {
@@ -65,6 +73,21 @@ type migrationStore interface {
 // system.
 func NewRunner(db *sql.DB, files fs.FS) *Runner {
 	return &Runner{db: db, files: files}
+}
+
+// WithPhase15GovernanceMapping returns the runner configured to inject the
+// canonical mapping into migration 010's transaction. The value is not logged
+// or written to schema_migrations.
+func (r *Runner) WithPhase15GovernanceMapping(mapping Phase15GovernanceMapping) (*Runner, error) {
+	if r == nil {
+		return nil, errors.New("migration runner is required")
+	}
+	canonical, err := canonicalPhase15GovernanceMapping(mapping)
+	if err != nil {
+		return nil, err
+	}
+	r.phase15GovernanceMapping = canonical
+	return r, nil
 }
 
 // Up applies every unapplied migration in ascending version order.
@@ -443,6 +466,30 @@ func (r *Runner) applyUp(ctx context.Context, store migrationStore, m Migration)
 		_ = tx.Rollback()
 	}()
 
+	if m.Version == 10 {
+		// Capture the caller's intended schema and remove implicit/user-writable
+		// search-path entries before SECURITY DEFINER functions are created.
+		// Explicit pg_temp at the end suppresses PostgreSQL's implicit rule that
+		// otherwise searches the temporary schema before every listed schema.
+		if _, err := tx.ExecContext(
+			ctx,
+			phase15SafeSearchPathSQL,
+		); err != nil {
+			return fmt.Errorf("harden schema path for migration %s: %w", m.ID(), err)
+		}
+		mapping := r.phase15GovernanceMapping
+		if mapping == "" {
+			mapping = `{"profiles":[],"heads":[]}`
+		}
+		if _, err := tx.ExecContext(
+			ctx,
+			`SELECT set_config($1, $2, true)`,
+			phase15GovernanceMapSetting,
+			mapping,
+		); err != nil {
+			return fmt.Errorf("inject governance mapping for migration %s: %w", m.ID(), err)
+		}
+	}
 	if err := r.execSQLFile(ctx, tx, m.UpPath); err != nil {
 		return fmt.Errorf("apply migration %s: %w", m.ID(), err)
 	}
@@ -464,6 +511,13 @@ func (r *Runner) applyDown(ctx context.Context, store migrationStore, m Migratio
 	defer func() {
 		_ = tx.Rollback()
 	}()
+	if m.Version == 10 {
+		// Down uses the same trusted ordering as Up so temporary objects cannot
+		// shadow precondition checks or DDL targets.
+		if _, err := tx.ExecContext(ctx, phase15SafeSearchPathSQL); err != nil {
+			return fmt.Errorf("harden schema path for rollback %s: %w", m.ID(), err)
+		}
+	}
 
 	if err := r.execSQLFile(ctx, tx, m.DownPath); err != nil {
 		return fmt.Errorf("rollback migration %s: %w", m.ID(), err)

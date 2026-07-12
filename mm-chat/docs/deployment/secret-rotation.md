@@ -16,18 +16,21 @@ secrets, or copied provider keys.
 
 ## Secret Inventory
 
-| Secret                         | Used by                    | Rotation impact                                                          |
-| ------------------------------ | -------------------------- | ------------------------------------------------------------------------ |
-| Account passwords              | Identity users, Postgres   | Rotate through Recovery; all sessions for that user are revoked.         |
-| Recovery tokens                | Identity users, Postgres   | One-time, 30 minutes by default; completing Recovery consumes the token. |
-| SMTP username/password         | Go backend Recovery mailer | Restart backend; verify delivery before revoking the old credential.     |
-| Session bearer tokens          | Browser clients, Postgres  | Revoke through the authenticated session endpoints.                      |
-| `PROVIDER_API_KEY`             | Go backend provider client | Restart backend; verify chat streaming.                                  |
-| `POSTGRES_PASSWORD`            | Postgres role, backend     | Alter DB role, update `DATABASE_URL`, restart backend/migrate users.     |
-| `REDIS_PASSWORD` / `REDIS_URL` | Redis, backend             | Restart Redis and backend; temporary cache/cancel/rate state may reset.  |
-| `S3_SECRET_ACCESS_KEY`         | Backend MinIO app user     | Prefer create-new app user, restart backend, then disable old user.      |
-| `MINIO_ROOT_PASSWORD`          | MinIO admin/bootstrap      | Maintenance restart; never use root credentials from the app.            |
-| TLS private key/cert           | Reverse proxy              | Reload proxy; backend/data services are unaffected.                      |
+| Secret                                         | Used by                    | Rotation impact                                                          |
+| ---------------------------------------------- | -------------------------- | ------------------------------------------------------------------------ |
+| Account passwords                              | Identity users, Postgres   | Rotate through Recovery; all sessions for that user are revoked.         |
+| Recovery tokens                                | Identity users, Postgres   | One-time, 30 minutes by default; completing Recovery consumes the token. |
+| SMTP username/password                         | Go backend Recovery mailer | Restart backend; verify delivery before revoking the old credential.     |
+| Session bearer tokens                          | Browser clients, Postgres  | Revoke through the authenticated session endpoints.                      |
+| `PROVIDER_API_KEY`                             | Go backend provider client | Restart backend; verify chat streaming.                                  |
+| `POSTGRES_PASSWORD` / `MIGRATION_DATABASE_URL` | Bootstrap/migrator         | Rotate together; verify one-shot migration access.                       |
+| API password / `DATABASE_URL`                  | Go API and `admin`         | Restart API; future `admin` runs use the same API runtime login.         |
+| Worker password / `RAG_WORKER_DATABASE_URL`    | RAG Worker                 | Recreate only the long-running Worker.                                   |
+| Replay password / `RAG_REPLAY_DATABASE_URL`    | Replay CLI                 | Verify a one-shot dry-run; never inject it into the Worker.              |
+| `REDIS_PASSWORD` / `REDIS_URL`                 | Redis, backend             | Restart Redis and backend; temporary cache/cancel/rate state may reset.  |
+| `S3_SECRET_ACCESS_KEY`                         | Backend MinIO app user     | Prefer create-new app user, restart backend, then disable old user.      |
+| `MINIO_ROOT_PASSWORD`                          | MinIO admin/bootstrap      | Maintenance restart; never use root credentials from the app.            |
+| TLS private key/cert                           | Reverse proxy              | Reload proxy; backend/data services are unaffected.                      |
 
 ## Account Password Recovery
 
@@ -147,35 +150,70 @@ curl -fsS http://127.0.0.1:8080/ready
 Rollback: restore the old provider key in `.env.single-server` and restart
 `backend`.
 
-## Postgres Password
+## Postgres Login Passwords
 
-For an existing Postgres volume, changing `POSTGRES_PASSWORD` in the env file is
-not enough. Rotate the database role first, then update the backend connection
-string.
+The database has four independent credential routes. Their login names and
+passwords remain pairwise distinct during and after rotation:
+
+| Route     | LOGIN membership                     | Secret fields to update                       |
+| --------- | ------------------------------------ | --------------------------------------------- |
+| Migration | `POSTGRES_USER` bootstrap/migrator   | `POSTGRES_PASSWORD`, `MIGRATION_DATABASE_URL` |
+| API/admin | API LOGIN → `go_api_runtime`         | `DATABASE_URL`                                |
+| Worker    | Worker LOGIN → `rag_worker_executor` | `RAG_WORKER_DATABASE_URL`                     |
+| Replay    | Replay LOGIN → `rag_replay_operator` | `RAG_REPLAY_DATABASE_URL`                     |
+
+`MIGRATION_DATABASE_URL` is independently required and has no fallback to
+`DATABASE_URL`. `admin` uses the API runtime URL, never the migrator URL. Do not
+grant `go_api_runtime` to the bootstrap/migrator or
+`rag_projection_owner` during rotation.
+
+Changing an env-file field does not alter an existing Postgres role. In a
+maintenance window, first connect through the existing bootstrap/migrator
+route with interactive `psql`:
 
 ```bash
-docker compose --project-directory mm-chat \
-  --env-file mm-chat/.env.single-server \
-  -f mm-chat/compose.single-server.yml \
-  exec -T postgres sh -ceu '
-: "${POSTGRES_USER:?POSTGRES_USER is required}"
-: "${POSTGRES_DB:?POSTGRES_DB is required}"
-psql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" \
-  --command="alter role \"$POSTGRES_USER\" with password '\''<new-postgres-password>'\'';"
+cd mm-chat
+./scripts/compose-single-server-production.sh .env.single-server \
+  exec postgres sh -ceu '
+exec psql --set=ON_ERROR_STOP=1 \
+  --username="$POSTGRES_USER" --dbname="$POSTGRES_DB"
 '
 ```
 
-Then update both `POSTGRES_PASSWORD` and `DATABASE_URL` in
-`.env.single-server`, restart the backend, and verify readiness:
+Set only the non-secret target login name and invoke `\password`. The prompt
+reads the new value twice without echo; the password never appears in argv, an
+environment variable, shell history, SQL text, or server logs:
 
-```bash
-docker compose --env-file mm-chat/.env.single-server \
-  -f mm-chat/compose.single-server.yml --profile app up -d backend
-curl -fsS http://127.0.0.1:8080/ready
+```psql
+\set target_login 'neo_chat_api'
+\password :target_login
 ```
 
-Rollback: alter the role back to the previous password, restore the previous
-`DATABASE_URL`, then restart `backend`.
+Repeat one route at a time, replacing only `target_login`. Never use
+`ALTER ROLE ... PASSWORD '<literal>'`, `psql --command` with a password, a DSN
+on the command line, or `PGPASSWORD`. After the database change, update only the
+matching protected env-file fields with a secure editor or secret manager:
+
+- Migration: update `POSTGRES_PASSWORD` and `MIGRATION_DATABASE_URL` together,
+  then run preflight and a no-change `migrate up` to prove the dedicated route.
+- API/admin: update `DATABASE_URL`, recreate `backend`, verify `/ready`, and run
+  Compose config validation for the `ops` profile without printing its values.
+- Worker: update `RAG_WORKER_DATABASE_URL`, recreate only `rag-worker`, and
+  require healthy dark-run status.
+- Replay: update `RAG_REPLAY_DATABASE_URL` and run a non-executing Replay
+  dry-run. Do not restart or inject this credential into `rag-worker`.
+
+For every route, use `psql --password` to test the rotated login with
+`SELECT current_user;`, then rerun the live attribute and membership queries in
+[`postgres-single-server.md`](./postgres-single-server.md#live-role-verification).
+Do not print or record the DSN. Retain the prior value only in the approved
+rollback secret store, and discard it after the route smoke passes.
+
+Rollback is route-local: restore that route's prior protected env-file value,
+reset the same login through an interactive `\password` prompt, and recreate
+only its affected service. Bootstrap/migrator rotation requires a maintenance
+window because the database role and both migration fields must change as one
+unit.
 
 ## Redis Password
 

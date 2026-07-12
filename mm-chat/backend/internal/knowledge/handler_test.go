@@ -155,7 +155,8 @@ func TestHandlerCollectionCRUDAndStrictPayloads(t *testing.T) {
 		t.Fatalf("reprocess method = %d allow=%q", wrongReprocessMethod.Code,
 			wrongReprocessMethod.Header().Get("Allow"))
 	}
-	repo.consents = []ProcessingConsent{{Processor: "mineru", Decision: "granted", Purposes: []string{"parse"},
+	repo.consents = []ProcessingConsent{{Processor: "mineru", EndpointID: "hosted", ModelID: "model-v1",
+		ProfileContractHash: strings.Repeat("b", 64), Decision: "granted", Purposes: []string{"parse"},
 		DataTypes: []string{"application/pdf"}, PolicyVersion: "v1", DecidedAt: repo.createResult.CreatedAt}}
 	consentPath := collectionsPath + "/" + repo.createResult.ID + "/processing-consents"
 	listedConsents := perform(http.MethodGet, consentPath, "")
@@ -167,6 +168,27 @@ func TestHandlerCollectionCRUDAndStrictPayloads(t *testing.T) {
 		`{"purposes":["parse"],"dataTypes":["application/pdf"],"policyVersion":"v1"}`)
 	if putConsent.Code != http.StatusOK || repo.putConsent.ActorUserID != testActorID {
 		t.Fatalf("consent put = %d %s input=%#v", putConsent.Code, putConsent.Body.String(), repo.putConsent)
+	}
+	exactPutConsent := perform(http.MethodPut,
+		consentPath+"/mineru?endpointId=hosted&modelId=model-v1",
+		`{"purposes":["parse"],"dataTypes":["application/pdf"],"policyVersion":"v1"}`)
+	if exactPutConsent.Code != http.StatusOK || repo.putConsent.EndpointID != "hosted" ||
+		repo.putConsent.ModelID != "model-v1" {
+		t.Fatalf("exact consent put = %d %s input=%#v", exactPutConsent.Code,
+			exactPutConsent.Body.String(), repo.putConsent)
+	}
+	partialConsentIdentity := perform(http.MethodPut, consentPath+"/mineru?endpointId=hosted",
+		`{"purposes":["parse"],"dataTypes":["application/pdf"],"policyVersion":"v1"}`)
+	if partialConsentIdentity.Code != http.StatusBadRequest ||
+		!strings.Contains(partialConsentIdentity.Body.String(), ErrorCodeInvalidConsentPayload) {
+		t.Fatalf("partial consent identity = %d %s", partialConsentIdentity.Code,
+			partialConsentIdentity.Body.String())
+	}
+	duplicateConsentIdentity := perform(http.MethodDelete,
+		consentPath+"/mineru?endpointId=hosted&endpointId=other&modelId=model-v1", "")
+	if duplicateConsentIdentity.Code != http.StatusBadRequest {
+		t.Fatalf("duplicate consent identity = %d %s", duplicateConsentIdentity.Code,
+			duplicateConsentIdentity.Body.String())
 	}
 	forbiddenConsent := perform(http.MethodPut, consentPath+"/mineru",
 		`{"purposes":["parse"],"dataTypes":["application/pdf"],"policyVersion":"v1","governanceRevision":1}`)
@@ -182,7 +204,8 @@ func TestHandlerCollectionCRUDAndStrictPayloads(t *testing.T) {
 	if deletedConsent.Code != http.StatusNoContent || repo.revokedConsent.Processor != "mineru" {
 		t.Fatalf("consent delete = %d input=%#v", deletedConsent.Code, repo.revokedConsent)
 	}
-	repo.queryConsents = []ProcessingConsent{{Processor: "jina", Decision: "granted",
+	repo.queryConsents = []ProcessingConsent{{Processor: "jina", EndpointID: "default", ModelID: "model-v1",
+		ProfileContractHash: strings.Repeat("a", 64), Decision: "granted",
 		Purposes: []string{"query_embedding"}, DataTypes: []string{"text/plain"},
 		PolicyVersion: "v1", DecidedAt: repo.createResult.CreatedAt}}
 	queryConsentPath := "/v1/me/knowledge/query-consents"
@@ -190,8 +213,10 @@ func TestHandlerCollectionCRUDAndStrictPayloads(t *testing.T) {
 	if listedQueryConsents.Code != http.StatusOK || !strings.Contains(listedQueryConsents.Body.String(), `"processor":"jina"`) {
 		t.Fatalf("query consent list = %d %s", listedQueryConsents.Code, listedQueryConsents.Body.String())
 	}
-	if strings.Contains(listedQueryConsents.Body.String(), "governance") || strings.Contains(listedQueryConsents.Body.String(), "profile") {
-		t.Fatalf("query consent leaked authority fields: %s", listedQueryConsents.Body.String())
+	if !strings.Contains(listedQueryConsents.Body.String(), `"modelId":"model-v1"`) ||
+		!strings.Contains(listedQueryConsents.Body.String(), `"profileContractHash":"`+strings.Repeat("a", 64)+`"`) ||
+		strings.Contains(listedQueryConsents.Body.String(), "governanceRevision") {
+		t.Fatalf("query consent identity DTO = %s", listedQueryConsents.Body.String())
 	}
 	forbiddenQueryConsent := perform(http.MethodGet, queryConsentPath+"?userId="+testActorID, "")
 	if forbiddenQueryConsent.Code != http.StatusBadRequest || !strings.Contains(forbiddenQueryConsent.Body.String(), ErrorCodeForbiddenIdentityField) {
@@ -201,6 +226,14 @@ func TestHandlerCollectionCRUDAndStrictPayloads(t *testing.T) {
 		`{"purposes":["query_embedding"],"dataTypes":["text/plain"],"policyVersion":"v1"}`)
 	if putQueryConsent.Code != http.StatusOK || repo.putQueryConsent.ActorUserID != testActorID {
 		t.Fatalf("query consent put = %d %s input=%#v", putQueryConsent.Code, putQueryConsent.Body.String(), repo.putQueryConsent)
+	}
+	exactQueryConsent := perform(http.MethodPut,
+		queryConsentPath+"/jina?endpointId=default&modelId=model-v1",
+		`{"purposes":["query_embedding"],"dataTypes":["text/plain"],"policyVersion":"v1"}`)
+	if exactQueryConsent.Code != http.StatusOK || repo.putQueryConsent.EndpointID != "default" ||
+		repo.putQueryConsent.ModelID != "model-v1" {
+		t.Fatalf("exact query consent = %d %s input=%#v", exactQueryConsent.Code,
+			exactQueryConsent.Body.String(), repo.putQueryConsent)
 	}
 	invalidQueryConsent := perform(http.MethodPut, queryConsentPath+"/jina",
 		`{"purposes":["query_embedding"],"dataTypes":["text/plain"],"policyVersion":"v1","unknown":true}`)

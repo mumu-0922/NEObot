@@ -28,6 +28,10 @@ func (s *Service) ListQueryConsents(ctx context.Context) ([]ProcessingConsent, e
 }
 
 func (s *Service) PutQueryConsent(ctx context.Context, processor string, input PutConsentInput) (ProcessingConsent, error) {
+	return s.PutQueryConsentForModel(ctx, ProcessorModelIdentity{Processor: processor}, input)
+}
+
+func (s *Service) PutQueryConsentForModel(ctx context.Context, identity ProcessorModelIdentity, input PutConsentInput) (ProcessingConsent, error) {
 	repo, err := s.queryConsentRepository()
 	if err != nil {
 		return ProcessingConsent{}, err
@@ -36,20 +40,25 @@ func (s *Service) PutQueryConsent(ctx context.Context, processor string, input P
 	if err != nil {
 		return ProcessingConsent{}, err
 	}
-	processor, err = normalizeGovernanceAlias(processor, "processor")
+	identity, err = normalizeProcessorModelIdentity(identity, true)
 	if err != nil {
-		return ProcessingConsent{}, invalidConsentPayload("processor is invalid")
+		return ProcessingConsent{}, err
 	}
 	purposes, dataTypes, policyVersion, expiresAt, err := normalizePutConsent(input, queryConsentPurposes)
 	if err != nil {
 		return ProcessingConsent{}, err
 	}
 	return repo.PutQueryConsent(ctx, PutQueryConsentRepositoryInput{ActorUserID: actor.ID,
-		Processor: processor, Purposes: purposes, DataTypes: dataTypes,
+		Processor: identity.Processor, EndpointID: identity.EndpointID, ModelID: identity.ModelID,
+		Purposes: purposes, DataTypes: dataTypes,
 		PolicyVersion: policyVersion, ExpiresAt: expiresAt})
 }
 
 func (s *Service) RevokeQueryConsent(ctx context.Context, processor string) error {
+	return s.RevokeQueryConsentForModel(ctx, ProcessorModelIdentity{Processor: processor})
+}
+
+func (s *Service) RevokeQueryConsentForModel(ctx context.Context, identity ProcessorModelIdentity) error {
 	repo, err := s.queryConsentRepository()
 	if err != nil {
 		return err
@@ -58,11 +67,12 @@ func (s *Service) RevokeQueryConsent(ctx context.Context, processor string) erro
 	if err != nil {
 		return err
 	}
-	processor, err = normalizeGovernanceAlias(processor, "processor")
+	identity, err = normalizeProcessorModelIdentity(identity, true)
 	if err != nil {
-		return invalidConsentPayload("processor is invalid")
+		return err
 	}
-	return repo.RevokeQueryConsent(ctx, QueryConsentLookupInput{ActorUserID: actor.ID, Processor: processor})
+	return repo.RevokeQueryConsent(ctx, QueryConsentLookupInput{ActorUserID: actor.ID,
+		Processor: identity.Processor, EndpointID: identity.EndpointID, ModelID: identity.ModelID})
 }
 
 func (s *Service) ListCollectionConsents(ctx context.Context, collectionID string) ([]ProcessingConsent, error) {
@@ -84,6 +94,10 @@ func (s *Service) ListCollectionConsents(ctx context.Context, collectionID strin
 }
 
 func (s *Service) PutCollectionConsent(ctx context.Context, collectionID, processor string, input PutConsentInput) (ProcessingConsent, error) {
+	return s.PutCollectionConsentForModel(ctx, collectionID, ProcessorModelIdentity{Processor: processor}, input)
+}
+
+func (s *Service) PutCollectionConsentForModel(ctx context.Context, collectionID string, identity ProcessorModelIdentity, input PutConsentInput) (ProcessingConsent, error) {
 	repo, err := s.collectionConsentRepository()
 	if err != nil {
 		return ProcessingConsent{}, err
@@ -96,16 +110,17 @@ func (s *Service) PutCollectionConsent(ctx context.Context, collectionID, proces
 	if err != nil {
 		return ProcessingConsent{}, invalidConsentPayload("collection id is invalid")
 	}
-	processor, err = normalizeGovernanceAlias(processor, "processor")
+	identity, err = normalizeProcessorModelIdentity(identity, true)
 	if err != nil {
-		return ProcessingConsent{}, invalidConsentPayload("processor is invalid")
+		return ProcessingConsent{}, err
 	}
 	purposes, dataTypes, policyVersion, expiresAt, err := normalizePutConsent(input, collectionConsentPurposes)
 	if err != nil {
 		return ProcessingConsent{}, err
 	}
 	return repo.PutCollectionConsent(ctx, PutCollectionConsentRepositoryInput{
-		CollectionID: collectionID, ActorUserID: actor.ID, Processor: processor,
+		CollectionID: collectionID, ActorUserID: actor.ID, Processor: identity.Processor,
+		EndpointID: identity.EndpointID, ModelID: identity.ModelID,
 		Purposes: purposes, DataTypes: dataTypes, PolicyVersion: policyVersion, ExpiresAt: expiresAt,
 	})
 }
@@ -147,6 +162,10 @@ func normalizePutConsent(input PutConsentInput, allowedPurposes map[string]bool)
 }
 
 func (s *Service) RevokeCollectionConsent(ctx context.Context, collectionID, processor string) error {
+	return s.RevokeCollectionConsentForModel(ctx, collectionID, ProcessorModelIdentity{Processor: processor})
+}
+
+func (s *Service) RevokeCollectionConsentForModel(ctx context.Context, collectionID string, identity ProcessorModelIdentity) error {
 	repo, err := s.collectionConsentRepository()
 	if err != nil {
 		return err
@@ -159,13 +178,39 @@ func (s *Service) RevokeCollectionConsent(ctx context.Context, collectionID, pro
 	if err != nil {
 		return invalidConsentPayload("collection id is invalid")
 	}
-	processor, err = normalizeGovernanceAlias(processor, "processor")
+	identity, err = normalizeProcessorModelIdentity(identity, true)
 	if err != nil {
-		return invalidConsentPayload("processor is invalid")
+		return err
 	}
 	return repo.RevokeCollectionConsent(ctx, CollectionConsentLookupInput{
-		CollectionID: collectionID, ActorUserID: actor.ID, Processor: processor,
+		CollectionID: collectionID, ActorUserID: actor.ID, Processor: identity.Processor,
+		EndpointID: identity.EndpointID, ModelID: identity.ModelID,
 	})
+}
+
+func normalizeProcessorModelIdentity(input ProcessorModelIdentity, allowLegacy bool) (ProcessorModelIdentity, error) {
+	var err error
+	input.Processor, err = normalizeGovernanceAlias(input.Processor, "processor")
+	if err != nil {
+		return ProcessorModelIdentity{}, invalidConsentPayload("processor is invalid")
+	}
+	endpointPresent := strings.TrimSpace(input.EndpointID) != ""
+	modelPresent := strings.TrimSpace(input.ModelID) != ""
+	if endpointPresent != modelPresent || (!allowLegacy && !endpointPresent) {
+		return ProcessorModelIdentity{}, invalidConsentPayload("endpointId and modelId must be provided together")
+	}
+	if !endpointPresent {
+		return input, nil
+	}
+	input.EndpointID, err = normalizeGovernanceAlias(input.EndpointID, "endpoint id")
+	if err != nil {
+		return ProcessorModelIdentity{}, invalidConsentPayload("endpointId is invalid")
+	}
+	input.ModelID, err = normalizeGovernanceAlias(input.ModelID, "model id")
+	if err != nil {
+		return ProcessorModelIdentity{}, invalidConsentPayload("modelId is invalid")
+	}
+	return input, nil
 }
 
 func (s *Service) collectionConsentRepository() (CollectionConsentRepository, error) {

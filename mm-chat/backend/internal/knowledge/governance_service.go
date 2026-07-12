@@ -49,6 +49,17 @@ func (s *GovernanceService) Apply(ctx context.Context, manifest GovernanceManife
 }
 
 func (s *GovernanceService) Disable(ctx context.Context, processor, endpointID string) (ProcessorGovernanceHead, error) {
+	return s.disable(ctx, processor, endpointID, "")
+}
+
+// DisableModel disables one exact processor, endpoint, and model governance
+// head. Disable remains as a compatibility entrypoint and succeeds only when
+// the repository can prove that the processor and endpoint identify one head.
+func (s *GovernanceService) DisableModel(ctx context.Context, processor, endpointID, modelID string) (ProcessorGovernanceHead, error) {
+	return s.disable(ctx, processor, endpointID, modelID)
+}
+
+func (s *GovernanceService) disable(ctx context.Context, processor, endpointID, modelID string) (ProcessorGovernanceHead, error) {
 	if s == nil || s.repo == nil {
 		return ProcessorGovernanceHead{}, ErrDatabaseRequired
 	}
@@ -60,7 +71,13 @@ func (s *GovernanceService) Disable(ctx context.Context, processor, endpointID s
 	if err != nil {
 		return ProcessorGovernanceHead{}, err
 	}
-	return s.repo.DisableGovernance(ctx, processor, endpointID)
+	if modelID != "" {
+		modelID, err = normalizeGovernanceAlias(modelID, "model id")
+		if err != nil {
+			return ProcessorGovernanceHead{}, err
+		}
+	}
+	return s.repo.DisableGovernance(ctx, processor, endpointID, modelID)
 }
 
 func normalizeGovernanceManifest(input GovernanceManifest) (GovernanceManifest, string, error) {
@@ -72,6 +89,12 @@ func normalizeGovernanceManifest(input GovernanceManifest) (GovernanceManifest, 
 	input.EndpointID, err = normalizeGovernanceAlias(input.EndpointID, "endpoint id")
 	if err != nil {
 		return input, "", err
+	}
+	if strings.TrimSpace(input.ModelID) != "" {
+		input.ModelID, err = normalizeGovernanceAlias(input.ModelID, "model id")
+		if err != nil {
+			return input, "", err
+		}
 	}
 	for label, value := range map[string]*string{
 		"model API version": &input.ModelAPIVersion,
@@ -105,6 +128,7 @@ func normalizeGovernanceManifest(input GovernanceManifest) (GovernanceManifest, 
 		SchemaVersion    int      `json:"schemaVersion"`
 		Processor        string   `json:"processor"`
 		EndpointID       string   `json:"endpointId"`
+		ModelID          string   `json:"modelId"`
 		ModelAPIVersion  string   `json:"modelApiVersion"`
 		AllowedPurposes  []string `json:"allowedPurposes"`
 		AllowedDataTypes []string `json:"allowedDataTypes"`
@@ -112,7 +136,7 @@ func normalizeGovernanceManifest(input GovernanceManifest) (GovernanceManifest, 
 		RetentionPolicy  string   `json:"retentionPolicy"`
 		DeletionContract string   `json:"deletionContract"`
 		TrainingUse      string   `json:"trainingUse"`
-	}{1, input.Processor, input.EndpointID, input.ModelAPIVersion,
+	}{1, input.Processor, input.EndpointID, input.ModelID, input.ModelAPIVersion,
 		input.AllowedPurposes, input.AllowedDataTypes, input.Region,
 		input.RetentionPolicy, input.DeletionContract, input.TrainingUse}
 	encoded, err := json.Marshal(canonical)

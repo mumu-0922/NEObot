@@ -261,7 +261,7 @@ UPDATE knowledge_documents SET status='active',current_version_id=$9 WHERE id=$5
 		"users/"+membershipRaceTargetID+"/files/"+membershipRaceFileID,
 		membershipRaceVersionID)
 	manifest := GovernanceManifest{
-		Processor: "mineru", EndpointID: "default", ModelAPIVersion: "v1",
+		Processor: "mineru", EndpointID: "default", ModelID: "model-v1", ModelAPIVersion: "v1",
 		AllowedPurposes: []string{"parse"}, AllowedDataTypes: []string{"application/pdf"},
 		Region: "global", RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled",
 	}

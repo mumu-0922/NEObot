@@ -1,8 +1,8 @@
 # Single-Server Docker Compose Deployment
 
 This is the single-server runtime topology for `mm-chat`, including Phase 15.1B
-Identity Services, Phase 15.1C Team Services, and Phase 15.1D Personal/Team
-Collections, Documents, private content, Governance, and Processing Consent.
+Identity Services, Phase 15.1C Team Services, Phase 15.1D Personal/Team
+Collections, and the Phase 15.2B default-dark-run RAG worker wiring.
 It keeps deployment files inside `mm-chat/` and does not modify the repository-root
 `docker-compose.yml`. The stack runs the Go API, Postgres, Redis, and MinIO on
 one server; the existing Next.js frontend remains outside this workspace until
@@ -15,6 +15,7 @@ mm-chat/compose.single-server.yml      # backend + data services
 mm-chat/.env.single-server.example     # committed template only
 mm-chat/.env.single-server             # local secrets, gitignored
 mm-chat/backend/Dockerfile             # Go API + migration + admin binaries
+mm-chat/rag/Dockerfile                 # Python dark-run worker image
 mm-chat/scripts/preflight-single-server.sh # production promotion gate
 mm-chat/scripts/compose-single-server-production.sh # clean-env production entrypoint
 mm-chat/compose.production.yml          # removes all production build paths
@@ -37,20 +38,80 @@ secret file.
 
 ## Services and Profiles
 
-| Service        | Profile | Purpose                                                                          | Public exposure |
-| -------------- | ------- | -------------------------------------------------------------------------------- | --------------- |
-| `postgres`     | default | Canonical users, sessions, Teams, chat, file metadata, imports, and mail outbox. | None            |
-| `redis`        | default | Non-authoritative temporary state: rate limit, session cache, cancellation.      | None            |
-| `minio`        | default | Private object bytes for uploaded/imported files.                                | None            |
-| `minio-init`   | default | Creates bucket and least-privilege app user/policy.                              | None            |
-| `migrate`      | `ops`   | One-shot `mm-chat-migrate up`; never auto-runs on API boot.                      | None            |
-| `admin`        | `ops`   | One-shot local identity administration; no HTTP listener.                        | None            |
-| `backend`      | `app`   | Go API on `127.0.0.1:8080` for reverse proxy or local smoke tests.               | Localhost only  |
-| `minio-client` | `ops`   | Utility container for backup/restore scripts.                                    | None            |
+| Service        | Profile      | Purpose                                                                          | Public exposure |
+| -------------- | ------------ | -------------------------------------------------------------------------------- | --------------- |
+| `postgres`     | default      | Canonical users, sessions, Teams, chat, file metadata, imports, and mail outbox. | None            |
+| `redis`        | default      | Non-authoritative temporary state: rate limit, session cache, cancellation.      | None            |
+| `minio`        | default      | Private object bytes for uploaded/imported files.                                | None            |
+| `minio-init`   | default      | Creates bucket and least-privilege app user/policy.                              | None            |
+| `migrate`      | `ops`        | One-shot `mm-chat-migrate up`; never auto-runs on API boot.                      | None            |
+| `admin`        | `ops`        | One-shot local identity administration; no HTTP listener.                        | None            |
+| `backend`      | `app`        | Go API on `127.0.0.1:8080` for reverse proxy or local smoke tests.               | Localhost only  |
+| `minio-client` | `ops`        | Utility container for backup/restore scripts.                                    | None            |
+| `rag-worker`   | `rag-worker` | Phase 15.2B durable-consumer mechanics; dispatch defaults off.                   | None            |
+| `rag-replay`   | `rag-ops`    | One-shot, fail-closed Outbox/Job Replay CLI.                                     | None            |
 
 No database, Redis, or MinIO port is published. The backend binds to localhost
 only so a host-level reverse proxy can expose the same-origin `/mm-api` path
 without opening data services.
+
+### Phase 15.2B dark-run worker
+
+`rag-worker` has no host port and is attached only to the internal
+`rag-private` network. Postgres and Redis also join that network, but only a
+healthy Postgres service is a hard `depends_on` condition. Redis remains a
+non-authoritative wake hint: an outage may degrade wake latency but must not
+block startup or replace the Postgres poll and forced rescan.
+
+The container is fenced to one CPU, 448 MiB RAM, 64 PIDs, a read-only root
+filesystem, a 64 MiB `/tmp` tmpfs, `cap_drop: ALL`, and
+`no-new-privileges`. Its environment contains only the Worker Postgres URL,
+Redis wake settings, and bounded Worker controls. It receives no MinIO, S3,
+Provider, or Replay credential. The healthcheck calls container-local
+`GET /health` on port `8081`; no port is published or proxied.
+
+| Variable                  | Boundary                                                             |
+| ------------------------- | -------------------------------------------------------------------- |
+| `RAG_IMAGE`               | Python image; production requires a full registry `@sha256:` digest. |
+| `MIGRATION_DATABASE_URL`  | Required bootstrap/migrator URL; never falls back to the API URL.    |
+| `DATABASE_URL`            | Non-superuser API login; shared only by `backend` and `admin`.       |
+| `RAG_WORKER_DATABASE_URL` | Worker login inheriting only `rag_worker_executor`.                  |
+| `RAG_REPLAY_DATABASE_URL` | Replay login inheriting only `rag_replay_operator`.                  |
+
+`POSTGRES_USER` is the empty-volume bootstrap and migrator login referenced by
+`MIGRATION_DATABASE_URL`. The API login inherits only `go_api_runtime` and must
+be neither superuser nor `CREATEROLE`. All four routes use pairwise-distinct
+login names and passwords. The `migrate` service receives only
+`MIGRATION_DATABASE_URL`; `admin` deliberately uses the API `DATABASE_URL`, not
+the migrator credential. Production preflight checks separation and syntax
+without printing URL values.
+
+Phase 15.2B remains a dark-run boundary:
+
+```text
+RAG_WORKER_DISPATCH_ENABLED=false
+RAG_WORKER_JOB_STAGES=
+```
+
+At this gate the Worker may validate DB functions, its singleton lock, health,
+and metrics mechanics, but it must not claim real Parse, Embedding, Purge, or
+projection work. Healthy `/health` proves process/event-loop liveness only; it
+does not prove projection readiness or that Search/RAG is available.
+
+Replay runs as a separate one-shot service so its DSN never enters the
+long-running Worker. Dry-run validates an exact intent without touching the DB:
+
+```bash
+./scripts/compose-single-server-production.sh .env.single-server \
+  --profile rag-ops run --rm rag-replay outbox \
+  --id '<failed-event-uuid>' \
+  --expected-error-code '<stable-error-code>'
+```
+
+Execution additionally requires `--execute`, an operator UUID, and a non-empty
+reason; Job Replay also requires a fresh successor UUID. Never put a DSN on the
+command line or use Compose `-e` overrides. The production wrapper rejects env
+overrides, and `rag-replay` receives only `RAG_REPLAY_DATABASE_URL`.
 
 `minio-init` is intentionally fail-fast: it creates the bucket, applies the app
 policy, attaches it to the app user, then verifies the app credentials can write,
@@ -58,9 +119,11 @@ stat, and delete a temporary object. If `S3_SECRET_ACCESS_KEY` is rotated,
 rerun `minio-init` during a maintenance window and do not start `backend` until
 that credential smoke passes.
 
-The `admin` service shares the backend image and database settings, but its
-entrypoint is `/usr/local/bin/mm-chat-admin`. It is an operator-only, one-shot
-container under the `ops` profile; it is not a long-running administration API.
+The `admin` service shares the backend image and API runtime `DATABASE_URL`, but
+its entrypoint is `/usr/local/bin/mm-chat-admin`. It never receives
+`MIGRATION_DATABASE_URL` or the bootstrap/migrator credential. It is an
+operator-only, one-shot container under the `ops` profile; it is not a
+long-running administration API.
 
 `backend`, `migrate`, and `admin` all resolve the same `BACKEND_IMAGE`; this is
 the release fence that keeps API code, migration SQL, and operator commands on
@@ -71,6 +134,11 @@ production Compose command goes through
 precedence and applies `compose.production.yml` to remove all three `build:`
 paths. Retain the previous backend image ID and registry digest through the
 rollback window.
+
+`rag-worker` and `rag-replay` resolve the separate `RAG_IMAGE`. The production
+overlay removes both `build:` paths, and preflight rejects a mutable RAG image
+reference. Retain its previous digest independently from the backend rollback
+artifact.
 
 The production overlay uses Compose `!reset`; require Docker Compose `2.24.4`
 or newer. An older parser must fail the release rather than falling back to the
@@ -90,6 +158,16 @@ docker compose --env-file .env.single-server \
 docker compose --env-file .env.single-server \
   -f compose.single-server.yml --profile ops run --rm migrate
 
+# Existing schema-009 deployments only: mount the reviewed Governance Mapping
+# and pass --phase15-governance-map exactly as documented in
+# postgres-single-server.md. A normal no-argument migrate intentionally fails
+# closed when published Governance rows are not covered.
+
+# Fresh install only: stop here. Migration 010 has created the NOLOGIN
+# capability roles; securely create and grant the API, Worker, and Replay
+# LOGIN principals as documented in postgres-single-server.md. Do not start
+# admin, backend, or rag-worker until live role verification passes.
+
 # Read the first Owner password without putting it in argv, an environment
 # variable, or shell history. The command accepts exactly one stdin line.
 read -r -s -p "Owner password: " OWNER_PASSWORD
@@ -102,12 +180,18 @@ unset OWNER_PASSWORD
 
 docker compose --env-file .env.single-server \
   -f compose.single-server.yml --profile app up -d backend
+
+# Optional Phase 15.2B dark-run only; keep dispatch disabled and stages empty.
+docker compose --env-file .env.single-server \
+  -f compose.single-server.yml --profile rag-worker up -d rag-worker
 ```
 
 The `build backend` step is for a local first boot only. For production, publish
 the image elsewhere, set its full registry digest as `BACKEND_IMAGE`, and pull
 that exact artifact through the Production Release Checklist; never use this
-local-development sequence for a production release.
+local-development sequence for a production release. The exact secure role
+creation and live verification commands are in
+[`postgres-single-server.md`](./postgres-single-server.md#fresh-install-role-provisioning).
 
 Run `bootstrap-identity` only after migrations on a fresh installation. It
 creates the initial Email/Password Owner, uses
@@ -143,16 +227,26 @@ cat docs/deployment/governance-mineru.example.json | \
 
 ./scripts/compose-single-server-production.sh .env.single-server \
   --profile ops run --rm admin \
-  governance-disable --processor mineru --endpoint-id default
+  governance-disable --processor mineru --endpoint-id default \
+  --model-id model-v1
 ```
 
 The manifest contains only bounded lowercase declaration identifiers for the
-Processor, endpoint, and model/API version, plus allowlisted purposes and exact
-MIME or global `*` data types. Policy declarations are deliberately closed to
-the reviewed baseline `global` / `none` / `delete` / `disabled`; supporting new
-provider terms requires a reviewed code change. Spaces, URLs, free-form policy
-text, duplicate/case-variant keys, and unknown fields are rejected. Credentials remain in service secret
-configuration and must never enter Governance JSON or SQL.
+Processor, endpoint, model, and model/API version, plus allowlisted purposes and
+exact MIME or global `*` data types. Governance is keyed by the exact
+`processor + endpointId + modelId` identity. Policy declarations are
+deliberately closed to the reviewed baseline `global` / `none` / `delete` /
+`disabled`; supporting new provider terms requires a reviewed code change.
+Spaces, URLs, free-form policy text, duplicate/case-variant keys, and unknown
+fields are rejected. Credentials remain in service secret configuration and
+must never enter Governance JSON or SQL.
+
+Always pass `--model-id` to `governance-disable` so only the reviewed model Head
+is disabled, and include `modelId` in every new Governance manifest. A legacy
+apply manifest without `modelId`, or a legacy disable command without
+`--model-id`, resolves only when the given Processor and endpoint already
+identify exactly one model. Zero or multiple matches fail closed instead of
+creating or choosing a model implicitly.
 
 Smoke test:
 
@@ -370,31 +464,55 @@ tunnel/VPN to the Docker network or host.
 ## Release Checklist
 
 1. Pull the target Git commit and inspect `git diff --stat HEAD~1..HEAD -- mm-chat`.
-2. Set `MM_CHAT_VERSION` and the full registry `@sha256:` `BACKEND_IMAGE` for
-   the same release, then retain the currently running backend image ID and
-   registry digest as the rollback artifact.
+2. Set `MM_CHAT_VERSION` plus full registry `@sha256:` values for
+   `BACKEND_IMAGE` and `RAG_IMAGE`; retain each currently running digest as an
+   independent rollback artifact. Keep RAG dispatch disabled.
 3. Run the production promotion gate before any migration or restart:
    ```bash
    ./scripts/preflight-single-server.sh .env.single-server
    ./scripts/compose-single-server-production.sh .env.single-server \
-     --profile app --profile ops config --quiet
+     --profile app --profile ops --profile rag-worker --profile rag-ops \
+     config --quiet
    ```
 4. Pull the exact production digest without allowing a build:
    ```bash
    ./scripts/compose-single-server-production.sh .env.single-server \
      --profile app pull backend
    ```
-5. Run migrations explicitly from that same `BACKEND_IMAGE`:
+5. Run migrations explicitly from that same `BACKEND_IMAGE`. The service must
+   receive the separately required `MIGRATION_DATABASE_URL`; missing it is a
+   hard failure and must not fall back to `DATABASE_URL`. For a published
+   schema `009` with Governance rows, replace this fresh-database form with the
+   reviewed read-only Mapping mount documented in
+   [`postgres-single-server.md`](./postgres-single-server.md#migration-execution):
    ```bash
    ./scripts/compose-single-server-production.sh .env.single-server \
      --profile ops run --rm migrate
    ```
-6. Restart the API:
+6. On a fresh install, create the three runtime LOGIN principals only after
+   migration `010` has created the NOLOGIN capability roles. On every release,
+   run the live attribute, membership, and four-login connection checks in
+   [`postgres-single-server.md`](./postgres-single-server.md#live-role-verification).
+   Do not promote if the migrator has API capability, the API login has
+   owner/migrator membership, or any route shares a login/password.
+7. Restart the API. Both `backend` and future one-shot `admin` commands use the
+   least-privilege API `DATABASE_URL`:
    ```bash
    ./scripts/compose-single-server-production.sh .env.single-server \
      --profile app up -d --no-build backend
    ```
-7. Verify `/health`, `/ready` including configured dependency checks,
+8. Start or recreate the Phase 15.2B Worker only in dark-run mode:
+   ```bash
+   ./scripts/compose-single-server-production.sh .env.single-server \
+     --profile rag-worker pull rag-worker
+   ./scripts/compose-single-server-production.sh .env.single-server \
+     --profile rag-worker up -d --no-build rag-worker
+   ./scripts/compose-single-server-production.sh .env.single-server \
+     --profile rag-worker ps rag-worker
+   ```
+   Require the Compose health state to become healthy. Do not publish port
+   `8081`, and do not treat projection readiness as a Phase B promotion gate.
+9. Verify Go `/health`, `/ready` including configured dependency checks,
    `/v1/version`, protected Team and Knowledge routes, bounded metric labels,
    chat CRUD/streaming, upload, and browser import. With a disposable test
    account/token, require `GET /v1/me/knowledge/query-consents` to return `200`
@@ -422,6 +540,9 @@ curl -fsS http://127.0.0.1:8080/metrics | \
   ./scripts/compose-single-server-production.sh .env.rollback \
     --profile ops run --rm migrate /usr/local/bin/mm-chat-migrate down
   ```
+  Migration `010.down` must retain `go_api_runtime` and its schema-`009` API
+  capability. Keep the API login on that role; never grant API capability to
+  the bootstrap/migrator login or `rag_projection_owner` as a workaround.
 - Data rollback: restore Postgres/MinIO from a verified backup in a disposable
   drill first; production restore is destructive.
 - Frontend rollback: switch the existing frontend back to local mode until the
@@ -434,7 +555,8 @@ production env file):
 
 ```bash
 docker compose --env-file .env.single-server.example \
-  -f compose.single-server.yml --profile app --profile ops config
+  -f compose.single-server.yml --profile app --profile ops \
+  --profile rag-worker --profile rag-ops config
 ```
 
 Runtime validation should start with infra, run `migrate`, then start `backend`;

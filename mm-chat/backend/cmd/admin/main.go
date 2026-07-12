@@ -70,19 +70,26 @@ func runGovernanceApply(args []string, stdin io.Reader, stdout io.Writer) error 
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(stdout, "governance active processor=%s endpoint=%s profile=%s governance_revision=%d head_revision=%d\n",
-		head.Processor, head.EndpointID, head.ActiveProfileID, head.ActiveGovernanceRevision, head.HeadRevision)
-	return err
+	return writeGovernanceApplyResult(stdout, head)
 }
 
 func runGovernanceDisable(args []string, stdout io.Writer) error {
 	flags := flag.NewFlagSet("governance-disable", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	var processor, endpointID string
+	var processor, endpointID, modelID string
 	flags.StringVar(&processor, "processor", "", "processor alias")
 	flags.StringVar(&endpointID, "endpoint-id", "", "processor endpoint identifier")
-	if err := flags.Parse(args); err != nil || flags.NArg() != 0 ||
-		strings.TrimSpace(processor) == "" || strings.TrimSpace(endpointID) == "" {
+	flags.StringVar(&modelID, "model-id", "", "processor model identifier")
+	if err := flags.Parse(args); err != nil {
+		return usageError()
+	}
+	modelIDSet := false
+	flags.Visit(func(value *flag.Flag) {
+		modelIDSet = modelIDSet || value.Name == "model-id"
+	})
+	if flags.NArg() != 0 || strings.TrimSpace(processor) == "" ||
+		strings.TrimSpace(endpointID) == "" ||
+		(modelIDSet && strings.TrimSpace(modelID) == "") {
 		return usageError()
 	}
 	service, closeDatabase, err := openGovernanceService()
@@ -92,13 +99,46 @@ func runGovernanceDisable(args []string, stdout io.Writer) error {
 	defer closeDatabase()
 	ctx, cancel := context.WithTimeout(context.Background(), adminCommandTimeout)
 	defer cancel()
-	head, err := service.Disable(ctx, processor, endpointID)
+	head, err := disableGovernance(ctx, service, processor, endpointID, modelID)
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(stdout, "governance disabled processor=%s endpoint=%s head_revision=%d\n",
-		head.Processor, head.EndpointID, head.HeadRevision)
+	return writeGovernanceDisableResult(stdout, head)
+}
+
+func writeGovernanceApplyResult(
+	stdout io.Writer,
+	head knowledge.ProcessorGovernanceHead,
+) error {
+	_, err := fmt.Fprintf(stdout, "governance active processor=%s endpoint=%s model=%s profile=%s governance_revision=%d head_revision=%d\n",
+		head.Processor, head.EndpointID, head.ModelID, head.ActiveProfileID,
+		head.ActiveGovernanceRevision, head.HeadRevision)
 	return err
+}
+
+func writeGovernanceDisableResult(
+	stdout io.Writer,
+	head knowledge.ProcessorGovernanceHead,
+) error {
+	_, err := fmt.Fprintf(stdout, "governance disabled processor=%s endpoint=%s model=%s head_revision=%d\n",
+		head.Processor, head.EndpointID, head.ModelID, head.HeadRevision)
+	return err
+}
+
+type governanceDisableService interface {
+	Disable(context.Context, string, string) (knowledge.ProcessorGovernanceHead, error)
+	DisableModel(context.Context, string, string, string) (knowledge.ProcessorGovernanceHead, error)
+}
+
+func disableGovernance(
+	ctx context.Context,
+	service governanceDisableService,
+	processor, endpointID, modelID string,
+) (knowledge.ProcessorGovernanceHead, error) {
+	if modelID == "" {
+		return service.Disable(ctx, processor, endpointID)
+	}
+	return service.DisableModel(ctx, processor, endpointID, modelID)
 }
 
 func readGovernanceManifest(reader io.Reader) (knowledge.GovernanceManifest, error) {
@@ -130,7 +170,7 @@ func readGovernanceManifest(reader io.Reader) (knowledge.GovernanceManifest, err
 
 func validateGovernanceManifestKeys(payload []byte) error {
 	allowed := map[string]struct{}{
-		"processor": {}, "endpointId": {}, "modelApiVersion": {},
+		"processor": {}, "endpointId": {}, "modelId": {}, "modelApiVersion": {},
 		"allowedPurposes": {}, "allowedDataTypes": {}, "region": {},
 		"retentionPolicy": {}, "deletionContract": {}, "trainingUse": {},
 	}
@@ -297,5 +337,5 @@ func readPasswordLine(reader io.Reader) (string, error) {
 }
 
 func usageError() error {
-	return errors.New("usage: admin bootstrap-identity --email <mailbox> --password-stdin [--user-id <uuid>] [--display-name <name>] | admin disable-account --user-id <uuid> | admin governance-apply --manifest-stdin | admin governance-disable --processor <alias> --endpoint-id <id>")
+	return errors.New("usage: admin bootstrap-identity --email <mailbox> --password-stdin [--user-id <uuid>] [--display-name <name>] | admin disable-account --user-id <uuid> | admin governance-apply --manifest-stdin | admin governance-disable --processor <alias> --endpoint-id <id> [--model-id <id>]")
 }

@@ -259,6 +259,7 @@ interface ProcessorGovernanceProfile {
   id: EntityId;
   processor: string;
   endpointId: string;
+  modelId: string;
   modelApiVersion: string;
   allowedPurposes: ProcessingPurpose[];
   allowedDataTypes: string[];
@@ -269,25 +270,33 @@ interface ProcessorGovernanceProfile {
   status: "candidate" | "approved" | "retired";
   governanceRevision: number;
   manifestHash: string;
+  profileContractHash: string;
 }
 
 interface ProcessorGovernanceHead {
   processor: string;
   endpointId: string;
+  modelId: string;
   status: "active" | "disabled";
   activeProfileId?: EntityId;
   activeGovernanceRevision?: number;
+  profileContractHash?: string;
   headRevision: number;
   updatedAt: IsoDateTime;
 }
 ```
 
-Only the immutable `approved` Profile referenced by the authoritative Active
-Head may authorize a real external call. A Disabled Head has no Active Profile
-and immediately invalidates every older Approved Revision. Any endpoint,
-model/API version, purpose, region, retention, deletion, or training-use change
-creates a new Profile/`governanceRevision`, then atomically advances
-`headRevision`; it cannot mutate an Approved Profile in place.
+Governance identity is the exact `(processor, endpointId, modelId)` tuple;
+`modelApiVersion` is versioned Profile metadata, not part of that identity. Only
+the immutable `approved` Profile referenced by the authoritative Active Head
+may authorize a real external call. Its lowercase SHA-256
+`profileContractHash` binds the normalized contract and revision. A Disabled
+Head has no Active Profile or contract hash and immediately invalidates every
+older Approved Revision. Any endpoint, model, model/API version, purpose,
+region, retention, deletion, or training-use change creates or selects an exact
+model binding and, when its contract changes, creates a new
+Profile/`governanceRevision`, then atomically advances `headRevision`; it cannot
+mutate an Approved Profile in place.
 
 ### Processing consent
 
@@ -301,7 +310,10 @@ interface ProcessingConsent {
   collectionId?: EntityId;
   userId?: EntityId;
   processor: string;
+  endpointId: string;
+  modelId: string;
   governanceProfileId: EntityId;
+  profileContractHash: string;
   governanceRevision: number;
   governanceHeadRevision: number;
   purposes: ProcessingPurpose[];
@@ -424,12 +436,21 @@ POST   /v1/knowledge/documents/{documentId}/reprocess
 DELETE /v1/knowledge/documents/{documentId}
 
 GET    /v1/knowledge/collections/{collectionId}/processing-consents
-PUT    /v1/knowledge/collections/{collectionId}/processing-consents/{processor}
-DELETE /v1/knowledge/collections/{collectionId}/processing-consents/{processor}
+PUT    /v1/knowledge/collections/{collectionId}/processing-consents/{processor}?endpointId={endpointId}&modelId={modelId}
+DELETE /v1/knowledge/collections/{collectionId}/processing-consents/{processor}?endpointId={endpointId}&modelId={modelId}
 GET    /v1/me/knowledge/query-consents
-PUT    /v1/me/knowledge/query-consents/{processor}
-DELETE /v1/me/knowledge/query-consents/{processor}
+PUT    /v1/me/knowledge/query-consents/{processor}?endpointId={endpointId}&modelId={modelId}
+DELETE /v1/me/knowledge/query-consents/{processor}?endpointId={endpointId}&modelId={modelId}
 ```
+
+Consent item routes identify one exact Governance model. `endpointId` and
+`modelId` must either both be absent or each appear exactly once; partial,
+empty, repeated, or additional query parameters fail with
+`400 INVALID_CONSENT_PAYLOAD`. New clients must send both fields. Omission is a
+legacy compatibility path only: it succeeds when the processor resolves to one
+active Governance model (and, for revoke, one current Consent), but fails
+closed with `409 EXACT_PROCESSOR_IDENTITY_REQUIRED` when multiple bindings
+exist. Consent list routes accept no query parameters.
 
 Future search/RAG contract (not registered by Phase 15.1D):
 
@@ -602,6 +623,9 @@ interface PutConsentRequest {
 
 interface ProcessingConsentDto {
   processor: string;
+  endpointId: string;
+  modelId: string;
+  profileContractHash: string;
   purposes: string[];
   dataTypes: string[];
   policyVersion: string;
@@ -622,8 +646,9 @@ allowlists.
 
 Collection and Document lists use the authenticated cursor contract above;
 Collection/Document order is `(created_at DESC, id DESC)`. Consent reads expose
-only Processor alias, purposes, data types, policy version, decision, expiry,
-and decision time—not endpoint credentials or internal manifests.
+the exact Processor/endpoint/model identity and its `profileContractHash`, plus
+purposes, data types, policy version, decision, expiry, and decision time. They
+do not expose endpoint credentials or internal manifests.
 Collection Consent accepts only `parse|passage_embedding|rerank|answer`; User
 Query Consent accepts only `query_embedding|rerank|answer`. An optional
 `expiresAt` must be a future RFC 3339 timestamp.
@@ -773,40 +798,41 @@ Consent and tombstones the old binding; it never edits ownership in place.
 
 ## 8. Error and Disclosure Contract
 
-| HTTP  | Code                              | When                                                                                       |
-| ----- | --------------------------------- | ------------------------------------------------------------------------------------------ |
-| `400` | `FORBIDDEN_IDENTITY_FIELD`        | A request supplies actor, target identity, bare `role`, ACL, or authorization-fence hints. |
-| `400` | `INVALID_TEAM_PAYLOAD`            | Team name, UUID, cursor, limit, JSON shape, or Team body fields are invalid.               |
-| `400` | `INVALID_INVITE_PAYLOAD`          | Invite mailbox, `teamRole`, or `idempotencyKey` is invalid.                                |
-| `400` | `INVALID_MEMBERSHIP_PAYLOAD`      | Membership body shape or `teamRole` is invalid.                                            |
-| `400` | `INVALID_COLLECTION_PAYLOAD`      | Collection JSON, display fields, UUID, cursor, limit, or body shape is invalid.            |
-| `400` | `INVALID_DOCUMENT_PAYLOAD`        | File ID, idempotency key, or Document operation body is invalid.                           |
-| `400` | `INVALID_CONSENT_PAYLOAD`         | Processor, purpose, data type, policy version, or Consent body is invalid.                 |
-| `401` | `UNAUTHENTICATED`                 | Phase 15.1B Bearer Session resolution fails.                                               |
-| `401` | `INVALID_CREDENTIALS`             | Email/password or recovery completion is invalid without account disclosure.               |
-| `403` | `TEAM_ADMIN_REQUIRED`             | An active Member attempts a visible Team-admin operation.                                  |
-| `403` | `PROCESSING_CONSENT_REQUIRED`     | Required collection or query consent is absent, expired, or revoked.                       |
-| `404` | `TEAM_NOT_FOUND`                  | Team is missing, deleted, or outside the caller's active Membership visibility.            |
-| `404` | `TEAM_MEMBER_NOT_FOUND`           | A visible admin targets an absent, removed, or cross-Team Member.                          |
-| `404` | `INVITE_NOT_FOUND`                | A visible admin targets an absent or cross-Team Invite.                                    |
-| `404` | `COLLECTION_NOT_FOUND`            | Collection is missing, deleted, or outside the caller's ACL.                               |
-| `404` | `DOCUMENT_NOT_FOUND`              | Document is missing, deleted, or its collection is outside the caller's ACL.               |
-| `404` | `FILE_NOT_FOUND`                  | Binding file is missing, deleted, unavailable, or not owned by the caller.                 |
-| `409` | `LAST_TEAM_ADMIN`                 | A mutation or account disable would leave a Team without another usable admin.             |
-| `409` | `INVITE_CONFLICT`                 | An active Membership or pending Invite already exists for the Team/mailbox.                |
-| `409` | `IDEMPOTENCY_CONFLICT`            | A scoped write key is reused for a different canonical request.                            |
-| `409` | `DOCUMENT_PROCESSING`             | A conflicting nonterminal Document Version or Processing Job already exists.               |
-| `409` | `FILE_IN_USE`                     | Direct file deletion would bypass a live knowledge-document binding.                       |
-| `409` | `PROJECTION_NOT_READY`            | The search projection cannot reach the required revision before deadline.                  |
-| `410` | `INVITE_NOT_ACTIVE`               | Invitation is accepted, revoked, expired, unsent, or otherwise unusable.                   |
-| `503` | `INVITE_DELIVERY_UNAVAILABLE`     | SMTP, encryption, or durable sender admission is unavailable.                              |
-| `503` | `KNOWLEDGE_PROCESSOR_UNAVAILABLE` | Governance Head/Profile is missing, disabled, stale, or not approved.                      |
-| `503` | `DATABASE_REQUIRED`               | The authoritative Postgres repository is unavailable.                                      |
-| `503` | `CURSOR_CODEC_REQUIRED`           | Signed list cursor configuration is unavailable.                                           |
-| `503` | `STORAGE_REQUIRED`                | Authorized content cannot reach its private object store.                                  |
-| `413` | `PAYLOAD_TOO_LARGE`               | A bounded Knowledge request body exceeds the server limit.                                 |
-| `405` | `METHOD_NOT_ALLOWED`              | The route exists but does not support the requested method.                                |
-| `500` | `INTERNAL_ERROR`                  | A non-disclosing unexpected server failure occurred.                                       |
+| HTTP  | Code                                | When                                                                                       |
+| ----- | ----------------------------------- | ------------------------------------------------------------------------------------------ |
+| `400` | `FORBIDDEN_IDENTITY_FIELD`          | A request supplies actor, target identity, bare `role`, ACL, or authorization-fence hints. |
+| `400` | `INVALID_TEAM_PAYLOAD`              | Team name, UUID, cursor, limit, JSON shape, or Team body fields are invalid.               |
+| `400` | `INVALID_INVITE_PAYLOAD`            | Invite mailbox, `teamRole`, or `idempotencyKey` is invalid.                                |
+| `400` | `INVALID_MEMBERSHIP_PAYLOAD`        | Membership body shape or `teamRole` is invalid.                                            |
+| `400` | `INVALID_COLLECTION_PAYLOAD`        | Collection JSON, display fields, UUID, cursor, limit, or body shape is invalid.            |
+| `400` | `INVALID_DOCUMENT_PAYLOAD`          | File ID, idempotency key, or Document operation body is invalid.                           |
+| `400` | `INVALID_CONSENT_PAYLOAD`           | Processor, purpose, data type, policy version, or Consent body is invalid.                 |
+| `401` | `UNAUTHENTICATED`                   | Phase 15.1B Bearer Session resolution fails.                                               |
+| `401` | `INVALID_CREDENTIALS`               | Email/password or recovery completion is invalid without account disclosure.               |
+| `403` | `TEAM_ADMIN_REQUIRED`               | An active Member attempts a visible Team-admin operation.                                  |
+| `403` | `PROCESSING_CONSENT_REQUIRED`       | Required collection or query consent is absent, expired, or revoked.                       |
+| `404` | `TEAM_NOT_FOUND`                    | Team is missing, deleted, or outside the caller's active Membership visibility.            |
+| `404` | `TEAM_MEMBER_NOT_FOUND`             | A visible admin targets an absent, removed, or cross-Team Member.                          |
+| `404` | `INVITE_NOT_FOUND`                  | A visible admin targets an absent or cross-Team Invite.                                    |
+| `404` | `COLLECTION_NOT_FOUND`              | Collection is missing, deleted, or outside the caller's ACL.                               |
+| `404` | `DOCUMENT_NOT_FOUND`                | Document is missing, deleted, or its collection is outside the caller's ACL.               |
+| `404` | `FILE_NOT_FOUND`                    | Binding file is missing, deleted, unavailable, or not owned by the caller.                 |
+| `409` | `LAST_TEAM_ADMIN`                   | A mutation or account disable would leave a Team without another usable admin.             |
+| `409` | `INVITE_CONFLICT`                   | An active Membership or pending Invite already exists for the Team/mailbox.                |
+| `409` | `IDEMPOTENCY_CONFLICT`              | A scoped write key is reused for a different canonical request.                            |
+| `409` | `DOCUMENT_PROCESSING`               | A conflicting nonterminal Document Version or Processing Job already exists.               |
+| `409` | `FILE_IN_USE`                       | Direct file deletion would bypass a live knowledge-document binding.                       |
+| `409` | `EXACT_PROCESSOR_IDENTITY_REQUIRED` | A legacy Consent item request omitted `endpointId`/`modelId` for an ambiguous processor.   |
+| `409` | `PROJECTION_NOT_READY`              | The search projection cannot reach the required revision before deadline.                  |
+| `410` | `INVITE_NOT_ACTIVE`                 | Invitation is accepted, revoked, expired, unsent, or otherwise unusable.                   |
+| `503` | `INVITE_DELIVERY_UNAVAILABLE`       | SMTP, encryption, or durable sender admission is unavailable.                              |
+| `503` | `KNOWLEDGE_PROCESSOR_UNAVAILABLE`   | Governance Head/Profile is missing, disabled, stale, or not approved.                      |
+| `503` | `DATABASE_REQUIRED`                 | The authoritative Postgres repository is unavailable.                                      |
+| `503` | `CURSOR_CODEC_REQUIRED`             | Signed list cursor configuration is unavailable.                                           |
+| `503` | `STORAGE_REQUIRED`                  | Authorized content cannot reach its private object store.                                  |
+| `413` | `PAYLOAD_TOO_LARGE`                 | A bounded Knowledge request body exceeds the server limit.                                 |
+| `405` | `METHOD_NOT_ALLOWED`                | The route exists but does not support the requested method.                                |
+| `500` | `INTERNAL_ERROR`                    | A non-disclosing unexpected server failure occurred.                                       |
 
 Authorization order on Team routes is fixed: validate Session and bounded
 input, resolve Team visibility, distinguish visible Member from Admin, then

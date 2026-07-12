@@ -9,3 +9,4 @@
 - [`phase-15-1c-team-services-plan.md`](./phase-15-1c-team-services-plan.md) — executable Team, Membership, Invite delivery, last-Admin, revision, Outbox, and API plan.
 - [`phase-15-1d-collection-document-consent-plan.md`](./phase-15-1d-collection-document-consent-plan.md) — executable Collection, Document/Version, locked File binding, Governance, Consent, Job, and Outbox plan.
 - [`phase-15-2-single-server-python-rag-consumer-indexing-plan.md`](./phase-15-2-single-server-python-rag-consumer-indexing-plan.md) — owner-locked single-server Python Outbox consumer, parsing, Postgres hybrid indexing, query, citation, resource, and R2 recovery design.
+- [`phase-15-2b-durable-consumer-plan.md`](./phase-15-2b-durable-consumer-plan.md) — executable migration `010`, dark-run Python worker, lease/ledger, Redis wake, DLQ/replay, Compose, and verification plan.

@@ -178,7 +178,9 @@ BEGIN
       (8::BIGINT, 'phase15_governance_immutability',
        '3e5579e3ca2556db9a2fdad7af9553ee972153fc921fbd51a6279e51d64edc36'),
       (9::BIGINT, 'phase15_consent_expiry_materialization',
-       '288e94681c5ea0efb55a9c1489babc9f9d850b66196a9a15a8741a90c70b2774')
+       '288e94681c5ea0efb55a9c1489babc9f9d850b66196a9a15a8741a90c70b2774'),
+      (10::BIGINT, 'phase15_rag_projection_consistency',
+       '9e2ef61634edfd8b95f1f9ad3aad026159fc63a7d136a8fde2a047c861bb5c83')
   ), drift AS (
     (SELECT version, name, checksum FROM expected
      EXCEPT
@@ -204,7 +206,12 @@ BEGIN
     'processor_governance_heads',
     'processing_consents',
     'knowledge_processing_jobs',
-    'knowledge_outbox'
+    'knowledge_outbox',
+    'knowledge_index_profiles',
+    'knowledge_index_generations',
+    'knowledge_projection_state',
+    'knowledge_document_materializations',
+    'phase15_rag_projection_migration_baseline'
   ] LOOP
     IF to_regclass(format('%I.%I', current_schema(), required_table)) IS NULL THEN
       RAISE EXCEPTION 'restore acceptance: missing core table %', required_table;
@@ -279,6 +286,39 @@ BEGIN
     AND pg_get_expr(index_state.indpred, index_state.indrelid) LIKE '%purge%';
   IF object_count <> 1 THEN
     RAISE EXCEPTION 'restore acceptance: Knowledge purge fence invalid';
+  END IF;
+
+  IF to_regprocedure(
+    format('%I.knowledge_claim_outbox(text,uuid,uuid,integer)', current_schema())
+  ) IS NULL OR to_regprocedure(
+    format('%I.knowledge_rag_worker_readiness()', current_schema())
+  ) IS NULL THEN
+    RAISE EXCEPTION
+      'restore acceptance: migration 010 RAG functions missing';
+  END IF;
+
+  WITH expected_columns(table_name, column_name, data_type) AS (
+    VALUES
+      ('processor_governance_profiles', 'model_id', 'text'),
+      ('processor_governance_profiles', 'profile_contract_hash', 'text'),
+      ('knowledge_outbox', 'lock_token', 'uuid'),
+      ('knowledge_outbox', 'lock_expires_at', 'timestamp with time zone'),
+      ('knowledge_processing_jobs', 'model_id', 'text'),
+      ('knowledge_processing_jobs', 'materialization_id', 'uuid'),
+      ('knowledge_processing_jobs', 'index_generation_id', 'uuid'),
+      ('knowledge_processing_jobs', 'lease_token', 'uuid'),
+      ('knowledge_processing_jobs', 'legacy_projection_unbound', 'boolean')
+  )
+  SELECT count(*) INTO object_count
+  FROM expected_columns expected_column
+  JOIN information_schema.columns actual_column
+    ON actual_column.table_schema = current_schema()
+   AND actual_column.table_name = expected_column.table_name
+   AND actual_column.column_name = expected_column.column_name
+   AND actual_column.data_type = expected_column.data_type;
+  IF object_count <> 9 THEN
+    RAISE EXCEPTION
+      'restore acceptance: migration 010 key columns missing or invalid';
   END IF;
 
   SELECT count(*) INTO object_count
@@ -395,9 +435,10 @@ rm -f mm-chat/backup/restore/knowledge-object-sample.txt
 ```
 
 The Postgres acceptance block fails closed unless every migration `001` through
-`009` exactly matches the release's version, name, and embedded-SQL checksum;
-the Knowledge core tables are readable; migration `009`'s Consent expiry
-column/index exists; migration `008`'s Governance immutability trigger is
+`010` exactly matches the release's version, name, and runner checksum; the
+Knowledge core and migration `010` projection tables are readable; migration
+`010`'s RAG functions and key authority/lease/projection columns exist;
+the Consent expiry column/index exists; the Governance immutability trigger is
 enabled; and the purge fence is a valid unique index. It also rejects Document
 Version/File hash or object-key mismatches and exports up to five live Knowledge
 object keys. The MinIO drill must `mc stat` every exported key; an empty sample

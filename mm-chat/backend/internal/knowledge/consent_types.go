@@ -13,11 +13,18 @@ type PutConsentInput struct {
 }
 
 type ProcessingConsent struct {
-	Processor, Decision, EffectiveStatus, PolicyVersion string
+	Processor, EndpointID, ModelID, ProfileContractHash string
+	Decision, EffectiveStatus, PolicyVersion            string
 	Purposes, DataTypes                                 []string
 	DecidedAt                                           time.Time
 	ExpiresAt                                           *time.Time
 	MaterializedAt                                      *time.Time
+}
+
+type ProcessorModelIdentity struct {
+	Processor  string
+	EndpointID string
+	ModelID    string
 }
 
 type CollectionConsentRepository interface {
@@ -27,14 +34,14 @@ type CollectionConsentRepository interface {
 }
 
 type CollectionConsentLookupInput struct {
-	CollectionID, ActorUserID, Processor string
+	CollectionID, ActorUserID, Processor, EndpointID, ModelID string
 }
 
 type PutCollectionConsentRepositoryInput struct {
-	CollectionID, ActorUserID, Processor string
-	Purposes, DataTypes                  []string
-	PolicyVersion                        string
-	ExpiresAt                            *time.Time
+	CollectionID, ActorUserID, Processor, EndpointID, ModelID string
+	Purposes, DataTypes                                       []string
+	PolicyVersion                                             string
+	ExpiresAt                                                 *time.Time
 }
 
 type QueryConsentRepository interface {
@@ -44,12 +51,12 @@ type QueryConsentRepository interface {
 }
 
 type QueryConsentLookupInput struct {
-	ActorUserID, Processor string
+	ActorUserID, Processor, EndpointID, ModelID string
 }
 
 type PutQueryConsentRepositoryInput struct {
-	ActorUserID, Processor string
-	Purposes, DataTypes    []string
-	PolicyVersion          string
-	ExpiresAt              *time.Time
+	ActorUserID, Processor, EndpointID, ModelID string
+	Purposes, DataTypes                         []string
+	PolicyVersion                               string
+	ExpiresAt                                   *time.Time
 }

@@ -6811,3 +6811,85 @@ P0/P1/P2 = 0/0/0
 
 Phase 15.2A is complete. Production Search Profile Promotion remains open by
 design; the next implementation slice is Phase 15.2B Durable Consumer.
+
+## 2026-07-12 — Phase 15.2B plan and compatibility audit locked
+
+Three parallel xhigh read-only audits traced migration `009`, every current
+Knowledge Outbox/Job producer, Go worker lifecycle, Redis/Compose wiring and the
+future Python boundary before implementation. They found that adding a worker
+alone would be unsafe: the migration runner could not inject the explicit
+Governance Model Mapping; Consent and routes were still processor-only; current
+Go producers create Jobs before any Corpus Generation exists; and production
+DB credentials are shared.
+
+The executable response is recorded in
+`docs/architecture/phase-15-2b-durable-consumer-plan.md`:
+
+- Go remains the authority and migration owner; Postgres Functions own every
+  atomic Claim/Ack/Heartbeat/Finish/Replay transition;
+- Python runs in an independent `rag-worker` container and calls only those
+  Functions; it never runs DDL or direct authoritative DML;
+- migration `010` is complete and extension-independent, while current producer
+  Jobs are explicitly marked legacy and never Claimable;
+- Worker Dispatch defaults off and the real Stage Handler Registry is empty
+  until `011`, the first Generation and Phase 15.2C are promoted;
+- Redis Wake is optional acceleration around mandatory Postgres Poll/Rescan;
+- DLQ remains durable Postgres state and Replay is audited, exact-ID,
+  expected-error fenced and dry-run by default;
+- API, migrator, worker and replay credentials are separate.
+
+Four xhigh workers now own disjoint implementation slices: migration/functions,
+Go model-aware compatibility, Python worker, and Compose/operations. A separate
+review agent will run after integration; no Phase 15.2B runtime item is checked
+until executable evidence passes.
+
+## 2026-07-12 — Phase 15.2B implementation and independent review closed
+
+The independent final review exercised the complete uncommitted `mm-chat/**`
+slice and fixed the remaining fail-closed gaps before accepting the phase:
+
+- Governance Mapping now rejects duplicate JSON object keys, recomputes every
+  mapped `profileContractHash` from the locked schema-`009` row and mapped
+  Model, and rejects authority/head Model mismatch atomically;
+- capability roles must be restricted NOLOGIN roles with no inherited
+  memberships; `go_api_runtime` retains schema-`009` API capability across
+  `010.down` while remaining unable to claim Worker work, replay DLQ rows,
+  mutate migration state, or create schema objects;
+- Worker readiness now verifies the actual caller can execute the complete
+  durable function set instead of treating function presence as implicit;
+- legacy projection-unbound Jobs remain unclaimable and cannot create a stuck
+  Replay successor; replay remains exact-error fenced and audited;
+- Python Action/Stage allowlists now exactly match the `010` Functions, and a
+  heartbeat exception or shutdown cancellation fences and awaits the active
+  handler instead of allowing orphaned work;
+- the Python image installs a non-editable wheel into the same absolute venv
+  path used at runtime; the regression smoke starts both `rag-worker` and
+  `rag-replay` instead of accepting a build-only result;
+- durable Collection purge roots now have token-fenced claim and paginated,
+  resumable enumeration before item processing/completion;
+- published schema-`009` deployment docs now mount the reviewed Mapping as a
+  read-only one-shot file instead of showing a fresh-only migration command;
+- Compose keeps migrator, API/admin, Worker, and Replay database routes
+  isolated, production resolves digest-only images with no `build:` path, and
+  the RAG containers receive no MinIO or provider credential.
+- restore acceptance now pins migration `001-010`, asserts the durable
+  projection catalog/Functions, and the persistence/release runbooks use only
+  `MIGRATION_DATABASE_URL` for migration operations.
+
+Final executable evidence:
+
+```text
+Go vet + full race suite with PostgreSQL 16                    passed
+Fresh/Published/Mapping/Down-Up/Role/Lease/Purge integration  passed
+Python Ruff/format/Mypy/Pytest coverage                       passed / 87 tests / >=90%
+Python live PostgreSQL + Redis integration                    included / 2 tests
+pip-audit                                                     no vulnerabilities
+RAG Docker build/start/read-only/non-root/replay smoke        passed
+Compose dev/production render + no production build          passed
+preflight regression + shell syntax + scoped diff check       passed
+independent review rounds                                     0/1/2 -> 0/0/1 -> 0/0/1 -> 0/0/0
+```
+
+Phase 15.2B is complete only for durable dark-run mechanics. Real Parse,
+Embedding, Purge handlers, Search migration `011`, first Generation promotion,
+and user-visible RAG remain Phase 15.2C or later and stay disabled.

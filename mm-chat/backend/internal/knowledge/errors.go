@@ -22,6 +22,8 @@ var (
 	ErrProcessingConsent             = errors.New("processing consent required")
 	ErrDocumentProcessing            = errors.New("document processing")
 	ErrKnowledgeProcessorUnavailable = errors.New("knowledge processor unavailable")
+	ErrGovernanceIdentityAmbiguous   = errors.New("governance identity is ambiguous")
+	ErrConsentIdentityAmbiguous      = errors.New("consent identity is ambiguous")
 )
 
 type ValidationError struct {

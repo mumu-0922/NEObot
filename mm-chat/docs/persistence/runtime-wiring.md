@@ -1,43 +1,52 @@
-# Phase 4.5 Postgres Runtime Wiring
+# Postgres Runtime Wiring
 
-This document defines the Phase 4.5 runtime contract between the Go backend and
-Postgres. It is a documentation contract for the DB connector, pgx driver,
-migration runner, and DB-aware readiness path; verify exact package names and
-metadata table names against the backend implementation before release.
+This document defines the current runtime contract between the Go API,
+migration CLI, RAG Worker/Replay processes, and Postgres. The original Phase 4.5
+connector contract remains in force, while the current schema head is `010`.
 
 ## 1. Scope
 
-Phase 4.5 wires the existing backend skeleton to Postgres without changing the
-Phase 4 application schema.
-
 In scope:
 
-- Backend DB configuration from environment variables.
+- Separate Migration, API/admin, Worker, and Replay credential routes.
 - Postgres connector using the `pgx` driver.
 - Startup connectivity check when DB is enabled.
 - DB-aware `/ready` behavior.
 - Embedded SQL migrations exposed through a Go migration CLI.
+- Schema head `010` and the pending `011` boundary.
 - Operator-facing migration and rollback boundaries.
 
 Out of scope:
 
 - Automatic migrations during API startup.
-- DB repository CRUD for conversations/messages/provider configs.
 - Compose implementation files.
-- MinIO, Redis, RAG, browser import, or multi-server deployment.
+- MinIO, Redis, browser import, or multi-server deployment details.
+- Tokenizer, vector, BM25/search-extension, and restricted search DDL planned
+  for migration `011`.
 
 ## 2. Environment Variables
 
-| Variable               | Required | Meaning                                                                                                             |
-| ---------------------- | -------- | ------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`         | No       | Postgres connection string. Empty means DB disabled mode. Non-empty enables DB startup ping and DB-aware readiness. |
-| `DB_MAX_OPEN_CONNS`    | No       | Maximum open DB connections. Backend default is code-defined when unset.                                            |
-| `DB_MAX_IDLE_CONNS`    | No       | Maximum idle DB connections. Backend default is code-defined when unset.                                            |
-| `DB_CONN_MAX_LIFETIME` | No       | Maximum connection lifetime as a Go duration such as `30m`. Backend default is code-defined when unset.             |
+| Variable                  | Route        | Required | Meaning                                                                                                          |
+| ------------------------- | ------------ | -------- | ---------------------------------------------------------------------------------------------------------------- |
+| `MIGRATION_DATABASE_URL`  | Migration    | Yes      | Dedicated bootstrap/migrator connection string read only by `cmd/migrate`; there is no `DATABASE_URL` fallback.  |
+| `DATABASE_URL`            | API/admin    | No       | API Postgres connection string. Empty means DB disabled mode; non-empty enables startup ping and DB readiness.   |
+| `RAG_WORKER_DATABASE_URL` | RAG Worker   | Yes      | Dedicated long-running Worker connection string with only the `rag_worker_executor` capability.                  |
+| `RAG_REPLAY_DATABASE_URL` | RAG Replay   | Execute  | Dedicated one-shot Replay connection string; required for `rag-replay --execute`, not for dry-run intent output. |
+| `DB_MAX_OPEN_CONNS`       | Go API/admin | No       | Maximum open DB connections. Backend default is code-defined when unset.                                         |
+| `DB_MAX_IDLE_CONNS`       | Go API/admin | No       | Maximum idle DB connections. Backend default is code-defined when unset.                                         |
+| `DB_CONN_MAX_LIFETIME`    | Go API/admin | No       | Maximum connection lifetime as a Go duration such as `30m`. Backend default is code-defined when unset.          |
 
 Rules:
 
-- Do not log `DATABASE_URL` with credentials. Redact userinfo before logging.
+- Never log any database URL or credential. Redact URL userinfo before logging.
+- Use pairwise-distinct login names and passwords for Migration, API/admin,
+  Worker, and Replay. They target the same database but do not share runtime
+  capabilities.
+- The migration CLI requires `MIGRATION_DATABASE_URL` and reads no runtime URL.
+  An unset or blank value fails closed; it never falls back to `DATABASE_URL`.
+- The API/admin route uses only `DATABASE_URL`; Worker uses only
+  `RAG_WORKER_DATABASE_URL`; executable Replay uses only
+  `RAG_REPLAY_DATABASE_URL`.
 - `sslmode=disable` is acceptable only on a private single-server Docker
   network. Use TLS for cross-host or untrusted networks.
 - Invalid or blank pool settings fall back to backend defaults so startup does
@@ -50,9 +59,9 @@ Rules:
 - DB is disabled.
 - API startup must not require Postgres.
 - `/health` remains process liveness.
-- `/ready` remains `200 OK` for the skeleton/runtime without DB dependencies.
-- DB-backed product endpoints, when later added, must fail explicitly instead of
-  pretending durable persistence exists.
+- `/ready` remains `200 OK` for runtime with DB intentionally disabled.
+- DB-backed product endpoints fail explicitly instead of pretending durable
+  persistence exists.
 
 ### `DATABASE_URL` non-empty
 
@@ -66,7 +75,22 @@ Rules:
 - Shutdown should close the DB handle after HTTP serving stops accepting new
   work.
 
-## 4. Readiness Matrix
+## 4. Database Principal Boundary
+
+| Route     | URL variable              | LOGIN capability      | Boundary                                                                                       |
+| --------- | ------------------------- | --------------------- | ---------------------------------------------------------------------------------------------- |
+| Migration | `MIGRATION_DATABASE_URL`  | Bootstrap/migrator    | Owns DDL and migration metadata; never used by API, Worker, or Replay.                         |
+| API/admin | `DATABASE_URL`            | `go_api_runtime`      | Explicit `001`–`009` authoritative-table access plus only the `010` API functions it needs.    |
+| Worker    | `RAG_WORKER_DATABASE_URL` | `rag_worker_executor` | Executes `010` Claim/CAS/Publish/Purge functions; no authority-table DML or Replay capability. |
+| Replay    | `RAG_REPLAY_DATABASE_URL` | `rag_replay_operator` | Executes only the `010` replay functions in the operator-triggered one-shot process.           |
+
+Migration `010` creates and validates the capability roles as `NOLOGIN` roles.
+Deployment provisions separate LOGIN principals and grants exactly one matching
+runtime capability to each API, Worker, and Replay login. The migrator does not
+inherit a runtime capability; `go_api_runtime` does not inherit owner, Worker,
+or Replay roles.
+
+## 5. Readiness Matrix
 
 | Runtime state                                      | Startup expectation            | `/health`                  | `/ready`                             |
 | -------------------------------------------------- | ------------------------------ | -------------------------- | ------------------------------------ |
@@ -75,9 +99,9 @@ Rules:
 | `DATABASE_URL` set and startup ping fails          | Fail fast before serving HTTP. | Not served.                | Not served.                          |
 | `DATABASE_URL` set, startup passed, DB later fails | Keep process observable.       | `200` if process is alive. | `503` until DB ping recovers.        |
 
-Phase 4.5 readiness is connectivity-oriented. It should not run migrations and
-should not mutate schema. If a later phase adds schema-version readiness, that
-must be documented as a separate readiness gate.
+API readiness is connectivity-oriented. It does not run migrations or mutate
+schema. Operators establish schema head `010` before starting a release that
+depends on it.
 
 ### Phase 14 Readiness Extension
 
@@ -124,18 +148,20 @@ unknown HTTP methods are collapsed to `OTHER`. Never expose raw UUIDs, run IDs,
 object keys, query strings, bearer tokens, or provider parameters in metric
 labels.
 
-## 5. Migration CLI Flow
+## 6. Migration CLI Flow
 
 Migrations are run by an operator or deployment step before the API release is
-started/restarted. API startup must not auto-migrate.
+started/restarted. API startup must not auto-migrate. The current embedded chain
+ends at `010_phase15_rag_projection_consistency`; migration `011` does not yet
+exist.
 
 Expected source-run command shape:
 
 ```bash
 cd mm-chat/backend
 
-# DATABASE_URL must point at the target Postgres database.
-go run ./cmd/migrate up
+# Required independently; cmd/migrate never reads or falls back to DATABASE_URL.
+MIGRATION_DATABASE_URL="postgres://..." go run ./cmd/migrate up
 ```
 
 Rollback/reset command shape for development or an intentional destructive
@@ -144,7 +170,7 @@ rollback window:
 ```bash
 cd mm-chat/backend
 
-go run ./cmd/migrate down --all
+MIGRATION_DATABASE_URL="postgres://..." go run ./cmd/migrate down --all
 ```
 
 Runner contract:
@@ -160,18 +186,25 @@ Runner contract:
 - Operators should verify both app tables and runner metadata after `up`.
 - The runner owns each migration transaction; SQL migration files must not
   include `BEGIN`, `COMMIT`, or `ROLLBACK`.
+- `010` implements the extension-independent durable projection and contains no
+  extension-specific tokenizer/vector/search DDL. That DDL remains reserved for
+  pending migration `011`.
 
-Inspection draft:
+Inspect app tables and runner state through an approved migrator session without
+placing a password in SQL or command output:
 
-```bash
-docker exec -i mm-chat-postgres psql -U neo_chat -d neo_chat -c \
-  "select tablename from pg_tables where schemaname = 'public' order by tablename;"
+```sql
+SELECT tablename
+FROM pg_tables
+WHERE schemaname = 'public'
+ORDER BY tablename;
 
-docker exec -i mm-chat-postgres psql -U neo_chat -d neo_chat -c \
-  "select * from schema_migrations order by version;"
+SELECT version, name
+FROM schema_migrations
+ORDER BY version;
 ```
 
-## 6. Rollback Boundaries
+## 7. Rollback Boundaries
 
 Application rollback:
 
@@ -185,14 +218,24 @@ Database rollback:
 
 - Take a pre-migration logical dump before running `up` in any production-like
   environment.
-- Use `go run ./cmd/migrate down --all` only for development resets or an
-  explicit destructive rollback window.
+- Use
+  `MIGRATION_DATABASE_URL="postgres://..." go run ./cmd/migrate down --all`
+  only for development resets or an explicit destructive rollback window.
 - Prefer restoring the pre-migration dump for production-like rollback because
   down migrations can lose writes created after the migration.
+- `010.down` is guarded: it rejects active leases, generation-bound Jobs,
+  post-`010` authority rows, and non-empty projection state instead of silently
+  discarding them.
+- After those guards pass, `010.down` removes the `010` projection surface and
+  model-aware additions but retains `go_api_runtime`, schema usage, explicit
+  CRUD on the authoritative `001`–`009` relations, and access to
+  `knowledge_outbox_id_seq`. The API login therefore keeps the least-privilege
+  capability required by a rolled-back schema-`009` API; do not replace it with
+  the migrator or projection-owner credential.
 
 Configuration rollback:
 
-- Clearing `DATABASE_URL` returns the API to DB disabled mode for skeleton
-  readiness, but it also removes durable DB dependency from runtime behavior.
+- Clearing `DATABASE_URL` returns the API to DB-disabled readiness, but it also
+  removes durable DB dependency from runtime behavior.
 - Do not use DB disabled mode as a silent fallback for endpoints that require
   persisted conversations, sessions, files, or audit logs.

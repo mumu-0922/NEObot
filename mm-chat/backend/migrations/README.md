@@ -58,7 +58,8 @@ name/checksum validation, and the complete requested operation. Applied rows
 without a checksum are legacy state: normal `up` and `down` fail closed. After
 reviewing the checked-out migration source, an operator may accept those rows
 once with `go run ./cmd/migrate baseline`. Do not automate `baseline` in routine
-deployments.
+deployments. The migration CLI reads only `MIGRATION_DATABASE_URL`; it never
+falls back to the Go API's `DATABASE_URL` runtime credential.
 
 ## Verification
 
@@ -80,14 +81,26 @@ done
 
 cd mm-chat/backend
 
-DATABASE_URL="postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable" \
+MIGRATION_DATABASE_URL="postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable" \
   go run ./cmd/migrate up
 
-DATABASE_URL="postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable" \
+MIGRATION_DATABASE_URL="postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable" \
   go run ./cmd/migrate down --all
 
 docker rm -f mm-chat-pg-migration-test
 ```
+
+That `up` form is for a fresh database. Upgrading a published schema `009`
+with Governance rows requires the reviewed, credential-free Mapping:
+
+```bash
+MIGRATION_DATABASE_URL="postgres://..." go run ./cmd/migrate up \
+  --phase15-governance-map=/run/secrets/phase15-governance-map.json
+```
+
+Migration `010` rejects missing/extra/duplicate Mapping rows and recomputes the
+mapped Profile contract hashes before any persistent DDL is committed. The
+Mapping is transaction-local and is not written to migration metadata.
 
 If Docker is unavailable, run the same `go run ./cmd/migrate` commands against
 any Postgres 16 database that can be destroyed after the check.

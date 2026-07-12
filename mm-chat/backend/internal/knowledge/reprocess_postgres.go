@@ -91,7 +91,28 @@ ORDER BY created_at DESC,id DESC LIMIT 1
 `, input.DocumentID, target.ID).Scan(&causedByJobID); err != nil {
 		return Document{}, fmt.Errorf("resolve reprocess cause: %w", err)
 	}
-	_, err = tx.ExecContext(ctx, `
+	if authority.LegacyProjectionUnbound {
+		_, err = tx.ExecContext(ctx, `
+INSERT INTO knowledge_processing_jobs (
+ id,collection_id,document_id,document_version_id,file_id,stage,operation,
+ processor,endpoint_id,model_id,governance_profile_id,governance_revision,
+ governance_head_revision,collection_consent_id,collection_consent_revision,
+ collection_acl_revision,collection_visibility_epoch,collection_processing_revision,
+ document_visibility_epoch,requested_by_user_id,caused_by_job_id,
+ idempotency_scope,idempotency_key,request_hash,legacy_projection_unbound
+) VALUES (
+ $1,$2,$3,$4,$5,'parse','reprocess',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
+ $17,$18,$19,$20,$21,$22,true
+)
+`, input.JobID, collectionID, input.DocumentID, target.ID, target.File.ID,
+			input.ParseProcessor, authority.EndpointID, authority.ModelID, authority.ProfileID,
+			authority.GovernanceRevision, authority.HeadRevision, authority.ConsentID,
+			authority.ConsentRevision, collection.ACLRevision, collection.VisibilityEpoch,
+			collection.ProcessingRevision, visibilityEpoch, input.ActorUserID, causedByJobID,
+			documentOperationIdempotencyScope(input.DocumentID, "reprocess", input.ActorUserID),
+			input.IdempotencyKey, input.RequestHash)
+	} else {
+		_, err = tx.ExecContext(ctx, `
 INSERT INTO knowledge_processing_jobs (
  id,collection_id,document_id,document_version_id,file_id,stage,operation,
  processor,endpoint_id,governance_profile_id,governance_revision,
@@ -104,12 +125,13 @@ INSERT INTO knowledge_processing_jobs (
  $16,$17,$18,$19,$20,$21
 )
 `, input.JobID, collectionID, input.DocumentID, target.ID, target.File.ID,
-		input.ParseProcessor, authority.EndpointID, authority.ProfileID,
-		authority.GovernanceRevision, authority.HeadRevision, authority.ConsentID,
-		authority.ConsentRevision, collection.ACLRevision, collection.VisibilityEpoch,
-		collection.ProcessingRevision, visibilityEpoch, input.ActorUserID, causedByJobID,
-		documentOperationIdempotencyScope(input.DocumentID, "reprocess", input.ActorUserID),
-		input.IdempotencyKey, input.RequestHash)
+			input.ParseProcessor, authority.EndpointID, authority.ProfileID,
+			authority.GovernanceRevision, authority.HeadRevision, authority.ConsentID,
+			authority.ConsentRevision, collection.ACLRevision, collection.VisibilityEpoch,
+			collection.ProcessingRevision, visibilityEpoch, input.ActorUserID, causedByJobID,
+			documentOperationIdempotencyScope(input.DocumentID, "reprocess", input.ActorUserID),
+			input.IdempotencyKey, input.RequestHash)
+	}
 	if err != nil {
 		if isConstraint(err, "knowledge_processing_jobs_idempotency_unique") {
 			return Document{}, ErrIdempotencyConflict
@@ -273,6 +295,7 @@ func (r *PostgresRepository) insertReprocessOutbox(
 		"contentHash": contentHash, "jobId": jobID,
 		"causedByJobId": causedByJobID, "operation": "reprocess",
 		"processor": authority.Processor, "endpointId": authority.EndpointID,
+		"modelId": authority.ModelID, "profileContractHash": authority.ProfileContractHash,
 		"governanceProfileId":          authority.ProfileID,
 		"governanceRevision":           authority.GovernanceRevision,
 		"governanceHeadRevision":       authority.HeadRevision,

@@ -137,7 +137,7 @@ INSERT INTO files(
 `, deleteRaceOwnerID, deleteRaceCollectionID, deleteRaceFileID, strings.Repeat("a", 64),
 		"users/"+deleteRaceOwnerID+"/files/"+deleteRaceFileID)
 	manifest := GovernanceManifest{
-		Processor: "mineru", EndpointID: "default", ModelAPIVersion: "v1",
+		Processor: "mineru", EndpointID: "default", ModelID: "model-v1", ModelAPIVersion: "v1",
 		AllowedPurposes: []string{"parse"}, AllowedDataTypes: []string{"application/pdf"},
 		Region: "global", RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled",
 	}
@@ -232,7 +232,13 @@ func assertDocumentDeleteReprocessRace(t *testing.T, ctx context.Context, db *sq
 		var status, versionID string
 		var completed, leaseCleared bool
 		var documentEpoch, aclRevision, visibilityEpoch, processingRevision int64
-		if err := db.QueryRowContext(ctx, `SELECT status,completed_at IS NOT NULL,lease_owner IS NULL AND lease_expires_at IS NULL,document_version_id,document_visibility_epoch,collection_acl_revision,collection_visibility_epoch,collection_processing_revision FROM knowledge_processing_jobs WHERE id=$1`, deleteRaceReprocessJob).Scan(&status, &completed, &leaseCleared, &versionID, &documentEpoch, &aclRevision, &visibilityEpoch, &processingRevision); err != nil {
+		if err := db.QueryRowContext(ctx, `SELECT status,completed_at IS NOT NULL,
+lease_owner IS NULL AND lease_token IS NULL AND lease_expires_at IS NULL,
+document_version_id,document_visibility_epoch,collection_acl_revision,
+collection_visibility_epoch,collection_processing_revision
+FROM knowledge_processing_jobs WHERE id=$1`, deleteRaceReprocessJob).Scan(&status, &completed,
+			&leaseCleared, &versionID, &documentEpoch, &aclRevision, &visibilityEpoch,
+			&processingRevision); err != nil {
 			t.Fatal(err)
 		}
 		if status != "cancelled" || !completed || !leaseCleared || versionID != deleteRaceVersionID || documentEpoch != 1 || aclRevision != 1 || visibilityEpoch != 1 || processingRevision != 2 || reprocessJobs != 1 || reprocessEvents != 1 || exactReprocessEvents != 1 || cancellationEvents != 1 || exactCancellations != 1 {

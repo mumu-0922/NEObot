@@ -128,10 +128,10 @@ INSERT INTO knowledge_outbox(event_id,aggregate_type,aggregate_key,event_type,pa
 VALUES ('81000000-0000-4000-8000-000000000003','test','invalid','test.invalid','[]')`, constraint: "knowledge_outbox_payload_object"},
 		"processing without lock": {query: `
 INSERT INTO knowledge_outbox(event_id,aggregate_type,aggregate_key,event_type,payload,status)
-VALUES ('81000000-0000-4000-8000-000000000004','test','invalid','test.invalid','{}','processing')`, constraint: "knowledge_outbox_status_timestamps_check"},
+VALUES ('81000000-0000-4000-8000-000000000004','test','invalid','test.invalid','{}','processing')`, constraint: "knowledge_outbox_lease_shape_check"},
 		"published without timestamp": {query: `
 INSERT INTO knowledge_outbox(event_id,aggregate_type,aggregate_key,event_type,payload,status)
-VALUES ('81000000-0000-4000-8000-000000000005','test','invalid','test.invalid','{}','published')`, constraint: "knowledge_outbox_status_timestamps_check"},
+VALUES ('81000000-0000-4000-8000-000000000005','test','invalid','test.invalid','{}','published')`, constraint: "knowledge_outbox_lease_shape_check"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := db.ExecContext(ctx, testCase.query)

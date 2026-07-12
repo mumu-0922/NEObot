@@ -247,6 +247,10 @@ func (r *PostgresRepository) DeleteCollection(ctx context.Context, input DeleteC
 		return fmt.Errorf("begin delete collection: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	capabilities, err := loadRuntimeSchemaCapabilities(ctx, tx)
+	if err != nil {
+		return err
+	}
 	row, _, err := lockCollectionForManageIncludingDeleted(ctx, tx, input.CollectionID, input.ActorUserID)
 	if err != nil {
 		return err
@@ -267,12 +271,21 @@ func (r *PostgresRepository) DeleteCollection(ctx context.Context, input DeleteC
 	if err := tx.QueryRowContext(ctx, `SELECT now()`).Scan(&now); err != nil {
 		return fmt.Errorf("read collection deletion time: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	cancelQuery := `
 UPDATE knowledge_processing_jobs
 SET status = 'cancelled', lease_owner = NULL, lease_expires_at = NULL,
     completed_at = $2, updated_at = $2
 WHERE collection_id = $1 AND status IN ('pending', 'processing')
-`, input.CollectionID, now); err != nil {
+`
+	if capabilities.jobLeaseToken {
+		cancelQuery = `
+UPDATE knowledge_processing_jobs
+SET status = 'cancelled', lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
+    completed_at = $2, updated_at = $2
+WHERE collection_id = $1 AND status IN ('pending', 'processing')
+`
+	}
+	if _, err := tx.ExecContext(ctx, cancelQuery, input.CollectionID, now); err != nil {
 		return fmt.Errorf("cancel collection jobs: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `

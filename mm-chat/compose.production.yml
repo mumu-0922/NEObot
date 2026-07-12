@@ -5,6 +5,10 @@ services:
     build: !reset null
   admin:
     build: !reset null
+  rag-worker:
+    build: !reset null
+  rag-replay:
+    build: !reset null
   minio-restore:
     image: quay.io/minio/mc:RELEASE.2025-07-21T05-28-08Z
     profiles: ["restore"]

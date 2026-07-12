@@ -51,7 +51,7 @@ PostgreSQL 16 Knowledge/migration race suite and fresh/historical migration
 replay results; a skipped integration suite is not a pass. The migration suite
 pins the published `2010d73` `001-006` file hashes, materializes its legacy
 checksum-less metadata, requires explicit baseline acceptance, and upgrades it
-with the current `007-009` migrations.
+with the current `007-010` migrations.
 
 `DISPOSABLE_PG16_URL` must target an isolated PostgreSQL 16 database whose
 schemas may be created and dropped. Never point this verification script at the
@@ -84,6 +84,17 @@ cd mm-chat
 ./scripts/compose-single-server-production.sh .env.single-server \
   --profile app up -d --no-build backend
 ```
+
+That migration form is for a fresh database. When upgrading a published
+schema `009` that already has Governance rows, use the read-only Mapping mount
+and `--phase15-governance-map` command in
+[`postgres-single-server.md`](./postgres-single-server.md#5-migration-execution)
+instead; an un-mapped upgrade must fail closed.
+
+Every migration command in this runbook reads only the separately required
+`MIGRATION_DATABASE_URL` injected by the production wrapper from the protected
+env file. Migration never falls back to the API `DATABASE_URL`; do not replace
+the wrapper with an ad hoc environment override.
 
 Then verify:
 
@@ -132,15 +143,20 @@ curl -fsS http://127.0.0.1:8080/ready | jq '.status, .checks'
 - **Latest migration bad before user traffic**: stop `backend`, run the
   migration image with `down` once for each explicitly approved version, then
   redeploy the matching previous image. One invocation rolls back only one
-  version:
+  version. Migration `010` runs guarded preconditions before destructive DDL;
+  never bypass a rejected down migration:
   ```bash
   ./scripts/compose-single-server-production.sh .env.rollback \
     --profile ops run --rm migrate /usr/local/bin/mm-chat-migrate down
   ```
 - **Migration bad after user traffic**: prefer forward fix. Down migration may destroy or orphan data.
-- **Knowledge migrations `006`-`009` after live writes**: forward-fix only.
-  Never drop authoritative Documents, Consent history/materialization markers,
-  Processing Jobs, or Outbox rows to roll back an API image.
+- **Knowledge migrations `006`-`010` after live writes**: forward-fix only.
+  Prefer rolling back the application image while retaining schema `010` when
+  the previous image is schema-compatible. Migration `010` down rejects active
+  leases, bound jobs, post-`010` authority rows, namespace conflicts, and
+  projection state; never bypass those guards or drop authoritative Documents,
+  Consent history/materialization markers, Processing Jobs, Outbox rows, or RAG
+  projection state merely to roll back an API image.
 - **Object storage issue**: stop upload/import paths, verify MinIO backup, restore into a temporary bucket first.
 - **Redis issue**: flush or recreate Redis only; Postgres/MinIO remain authoritative.
 

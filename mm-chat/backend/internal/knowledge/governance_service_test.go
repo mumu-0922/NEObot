@@ -16,15 +16,15 @@ func (r *fakeGovernanceRepository) ApplyGovernance(_ context.Context, manifest G
 	r.manifest, r.hash = manifest, hash
 	return ProcessorGovernanceHead{Processor: manifest.Processor, EndpointID: manifest.EndpointID}, nil
 }
-func (r *fakeGovernanceRepository) DisableGovernance(_ context.Context, processor, endpointID string) (ProcessorGovernanceHead, error) {
+func (r *fakeGovernanceRepository) DisableGovernance(_ context.Context, processor, endpointID, modelID string) (ProcessorGovernanceHead, error) {
 	r.processor, r.endpointID = processor, endpointID
-	return ProcessorGovernanceHead{Processor: processor, EndpointID: endpointID}, nil
+	return ProcessorGovernanceHead{Processor: processor, EndpointID: endpointID, ModelID: modelID}, nil
 }
 
 func TestGovernanceServiceNormalizesAndHashesCanonicalManifest(t *testing.T) {
 	repo := &fakeGovernanceRepository{}
 	service := NewGovernanceService(repo)
-	input := GovernanceManifest{Processor: " mineru ", EndpointID: " default ", ModelAPIVersion: " v1 ",
+	input := GovernanceManifest{Processor: " mineru ", EndpointID: " default ", ModelID: " model-v1 ", ModelAPIVersion: " v1 ",
 		AllowedPurposes: []string{"parse", "answer", "parse"}, AllowedDataTypes: []string{"text/plain", "application/pdf"},
 		Region: " global ", RetentionPolicy: " none ", DeletionContract: " delete ", TrainingUse: " disabled "}
 	if _, err := service.Apply(context.Background(), input); err != nil {
@@ -33,7 +33,7 @@ func TestGovernanceServiceNormalizesAndHashesCanonicalManifest(t *testing.T) {
 	if repo.manifest.Processor != "mineru" || repo.manifest.AllowedPurposes[0] != "answer" || len(repo.hash) != 64 {
 		t.Fatalf("normalized manifest/hash = %#v %q", repo.manifest, repo.hash)
 	}
-	if repo.hash != "23deb95c5225ce334477c88ac4ee2a761032bce5fe3f5d74816936f7d1cfc688" {
+	if repo.hash != "d553e61282f52193f032718ba6664a861729cf7499a4f762229705e2603ad48e" {
 		t.Fatalf("canonical hash golden vector changed: %s", repo.hash)
 	}
 	firstHash := repo.hash
@@ -48,11 +48,12 @@ func TestGovernanceServiceNormalizesAndHashesCanonicalManifest(t *testing.T) {
 }
 
 func TestGovernanceServiceRejectsInvalidAuthorityFields(t *testing.T) {
-	base := GovernanceManifest{Processor: "mineru", EndpointID: "default", ModelAPIVersion: "v1",
+	base := GovernanceManifest{Processor: "mineru", EndpointID: "default", ModelID: "model-v1", ModelAPIVersion: "v1",
 		AllowedPurposes: []string{"parse"}, AllowedDataTypes: []string{"application/pdf"}, Region: "global",
 		RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled"}
 	for name, mutate := range map[string]func(*GovernanceManifest){
 		"processor":        func(v *GovernanceManifest) { v.Processor = "MinerU" },
+		"model":            func(v *GovernanceManifest) { v.ModelID = "Model V1" },
 		"model credential": func(v *GovernanceManifest) { v.ModelAPIVersion = "sk_live_secret123" },
 		"purpose":          func(v *GovernanceManifest) { v.AllowedPurposes = []string{"admin"} },
 		"data type":        func(v *GovernanceManifest) { v.AllowedDataTypes = []string{" "} },

@@ -1,10 +1,10 @@
-# Postgres Schema Through Migration 009
+# Postgres Schema Through Migration 010
 
 This document describes the current schema created by the ordered migrations in
 `mm-chat/backend/migrations`, from `001_initial_schema` through
-`009_phase15_consent_expiry_materialization`. Phase labels are retained where
-they explain rollout history; they do not narrow the current schema or its
-implemented repository consumers.
+`010_phase15_rag_projection_consistency`. Phase labels are retained where they
+explain rollout history; they do not narrow the current schema or its
+implemented repository consumers. Migration `011` does not yet exist.
 
 ## 1. Scope
 
@@ -20,6 +20,7 @@ users -> credentials/recovery tokens
 users -> teams -> memberships/invites -> encrypted mail outbox
 users/teams -> knowledge collections -> documents -> versions -> processing jobs
 governance heads/profiles -> processing consents -> knowledge jobs/outbox
+knowledge jobs/outbox -> projection ledger/materializations/chunks/purge fan-out
 ```
 
 In scope:
@@ -36,11 +37,17 @@ In scope:
 - Knowledge Collection/Document/Version lifecycle, ACL and processing revision
   fences, durable Processing Jobs, and transactional Outbox events.
 - Immutable Processor Governance Profiles, authoritative Governance Heads,
-  Processing Consent history, and one-time expiry materialization.
+  model-scoped Processing Consent history, and one-time expiry materialization.
+- Extension-independent RAG projection profiles, generations, materializations,
+  parser-artifact metadata, canonical blocks/chunks, applied-event ledger,
+  lease-fenced Functions, replay audit, and Collection purge fan-out.
+- Least-privilege capability roles and the database contract used by the
+  durable Phase 15.2B dark-run Worker.
 
 Out of scope:
 
-- MinIO/S3 file-byte storage, Redis data structures, search/RAG indexes and
+- MinIO/S3 file-byte storage, Redis data structures, migration `011`
+  tokenizer/vector/BM25/search-extension DDL, real Parser/Embedding/Search
   execution, automatic migrations during API startup, and deployment topology.
 
 ## 2. Baseline Conventions
@@ -68,6 +75,7 @@ Out of scope:
 | `007_phase15_knowledge_deletion`             | Uses `CREATE UNIQUE INDEX IF NOT EXISTS` to reconcile databases created from a short-lived `006` variant without the purge fence; current `006` already creates the same index.                                                                            |
 | `008_phase15_governance_immutability`        | Adds a trigger that rejects every `UPDATE` or `DELETE` of a Processor Governance Profile.                                                                                                                                                                  |
 | `009_phase15_consent_expiry_materialization` | Adds `expiry_materialized_at` and an index for current granted Consent rows whose finite expiry is due and not yet materialized.                                                                                                                           |
+| `010_phase15_rag_projection_consistency`     | Adds exact Endpoint/Model Governance and Consent bindings, extension-independent projection schema, lease/ledger/replay/purge Functions, conservative Down guards, and least-privilege capability roles used by the durable dark-run Worker.               |
 
 Published migration pairs are immutable and applied in numeric order. Migration
 SQL contains no transaction-control statements; the Go runner wraps each schema
@@ -381,14 +389,19 @@ terminal-state constraints. The Membership-to-User foreign key uses
 - `processor_governance_profiles` stores versioned Processor endpoint/model,
   purposes, data types, region, retention, deletion, training-use, and manifest
   declarations. Migration `008` makes every row immutable: a trigger rejects
-  both `UPDATE` and `DELETE`; policy changes require a new Profile.
+  both `UPDATE` and `DELETE`; policy changes require a new Profile. Migration
+  `010` adds independent `model_id` and `profile_contract_hash` fields instead
+  of treating `model_api_version` as Model identity.
 - `processor_governance_heads` is the mutable authoritative pointer to one
   Approved Profile/Revision or to a Disabled state, with its own monotonic head
-  revision.
+  revision. Migration `010` scopes each Head by
+  `(processor, endpoint_id, model_id)`.
 - `processing_consents` stores append-style Collection or User Query decisions
   pinned to Governance Profile, Governance Revision, and Head Revision. Current
   decisions are selected by `superseded_at IS NULL` and constrained to one
-  current row per subject/Processor.
+  current row per subject/Processor/Endpoint/Model. Migration `010` applies the
+  same exact identity to revision uniqueness and composite Profile/Head
+  bindings.
 - Migration `009` adds nullable `expiry_materialized_at`. It may be set only on
   a granted row with finite expiry and only at or after `expires_at`.
   `idx_processing_consents_expiry_due` selects current, granted, expired rows
@@ -414,6 +427,15 @@ Migration `006` creates durable stage-specific work with:
 - bounded idempotency scope/key plus canonical request hash, lease/attempt
   fields, and strict terminal-state constraints.
 
+Migration `010` adds lease-token fencing, exact `model_id` authority,
+`index_generation_id`/`materialization_id` projection bindings, and
+`legacy_projection_unbound`. Existing pre-`010` Jobs remain auditable and are
+excluded from new Worker claims. During the Phase 15.2B compatibility window,
+the current Go producers also mark every new Job
+`legacy_projection_unbound=true`, so the dark-run Worker can never claim it.
+Phase 15.2C must replace that bridge with a Generation-bound dispatcher before
+real stage handlers are enabled.
+
 The partial unique index `idx_knowledge_processing_jobs_purge_fence` permits at
 most one purge Job for each
 `(document_id, document_version_id, document_visibility_epoch)` fence where
@@ -427,6 +449,25 @@ The Knowledge Outbox is transactional durable work/event state keyed by an
 allocation-order `BIGSERIAL` cursor and unique event identity. Consumers must
 rescan claimable rows and treat the cursor as allocation order, not transaction
 commit order; only a contiguous applied prefix is a safe high-watermark.
+Migration `010` adds bounded attempts, owner/token/expiry lease fencing,
+sanitized terminal errors, `(id, event_id)` binding, scoped applied-event
+ledger rows, and audited replay state.
+
+### Phase 15 RAG projection consistency objects
+
+Migration `010` implements the extension-independent persistence and Function
+surface for Corpus Generation/Head state, per-Document Materializations and
+Heads, parser-artifact manifests, canonical Blocks, Parent/Child Chunks,
+chunk-to-block spans, applied-event ledger, replay, and Collection purge
+fan-out. The complete object and invariant contract is
+[`phase-15-rag-projection-schema.md`](./phase-15-rag-projection-schema.md).
+
+The migration seeds no Index Profile or Generation. The durable Python Worker
+is implemented but defaults to dark-run: it verifies its function capability
+and singleton lock, then exposes health/metrics without claiming Outbox rows or
+Jobs. No real Parser, Embedding, Search Projection, or active Corpus Projection
+is implied. Tokenizer/vector/BM25/search-extension DDL remains pending in
+migration `011`.
 
 ## 5. Historical Repository Activation Boundary
 
@@ -434,14 +475,17 @@ Phase 5.1 first activated repositories for `users`, `conversations`, and
 `messages`; Phase 5.2 added assistant streaming rows, Phase 5.4 run
 cancellation, and Phase 6.3 file attachments. Those labels explain rollout
 order only. The current runtime also consumes auth/session, Team, Knowledge,
-Governance, Consent, Job, and Outbox tables introduced through migration `009`.
-DB-backed endpoints fail with `503 DATABASE_REQUIRED` when DB wiring is
-disabled; request handling never applies migrations.
+Governance, Consent, Job, and Outbox tables through migration `010`, including
+exact Endpoint/Model authority bindings. The separate Phase 15.2B Python Worker
+uses only the `010` durable Function surface and remains non-claiming by
+default. DB-backed endpoints fail with `503 DATABASE_REQUIRED` when DB wiring
+is disabled; request handling never applies migrations.
 
 ## 6. Runtime Wiring and Migration Runner
 
 The historical Phase 4.5 work established the operational boundary between the
-Go backend process and Postgres:
+Go backend process and Postgres. The authoritative credential-route and process
+contract is [`runtime-wiring.md`](./runtime-wiring.md):
 
 - Backend reads `DATABASE_URL`, `DB_MAX_OPEN_CONNS`, `DB_MAX_IDLE_CONNS`, and
   `DB_CONN_MAX_LIFETIME`.
@@ -457,7 +501,10 @@ Go backend process and Postgres:
 - API startup must not run migrations automatically. Schema changes are an
   explicit operator/deployment step.
 - Migrations are exposed through a Go CLI with embedded SQL. Expected command
-  shape is `cd mm-chat/backend && go run ./cmd/migrate up`.
+  shape is
+  `cd mm-chat/backend && MIGRATION_DATABASE_URL="postgres://..." go run ./cmd/migrate up`.
+  `MIGRATION_DATABASE_URL` is mandatory; blank or absent input fails closed,
+  and the CLI never reads or falls back to `DATABASE_URL`.
 - The runner records applied versions in
   `schema_migrations(version, name, checksum, applied_at)`. The SHA-256 checksum
   covers migration identity and both SQL directions. `up`, `down`, and explicit
@@ -475,9 +522,10 @@ Go backend process and Postgres:
   runner owns transaction boundaries.
 - Migration execution is owned by the Go migration CLI, not API startup.
   Expected source-run command shape is
-  `cd mm-chat/backend && go run ./cmd/migrate up`.
+  `cd mm-chat/backend && MIGRATION_DATABASE_URL="postgres://..." go run ./cmd/migrate up`.
 - Down migrations are for deliberate rollback/development resets; the
-  destructive full-reset command is `go run ./cmd/migrate down --all`.
+  destructive full-reset command is
+  `MIGRATION_DATABASE_URL="postgres://..." go run ./cmd/migrate down --all`.
 - The runner records applied versions in
   `schema_migrations(version, name, checksum, applied_at)`. Rows created before
   checksum tracking require an explicit `go run ./cmd/migrate baseline` after
@@ -486,23 +534,57 @@ Go backend process and Postgres:
   migration-runner metadata, not an application table in the domain model
   above.
 
+Migration `010` creates missing capability roles only when the Migration Owner
+can create roles; otherwise all required roles must be pre-provisioned. Every
+capability role is validated as `NOLOGIN`, non-superuser, non-`CREATEROLE`,
+non-`CREATEDB`, non-replication, and non-`BYPASSRLS`. Runtime LOGIN principals
+are deployment-owned and receive only their matching capability:
+
+- `rag_projection_owner` owns the `SECURITY DEFINER` Functions and receives
+  only their required table access; its temporary schema `CREATE` grant is
+  revoked before `010.up` completes.
+- `rag_worker_executor` and `rag_replay_operator` receive only their respective
+  Worker and operator replay Function execution surfaces, not base-table DML.
+- `rag_api_reader` receives Worker-readiness execution only at schema head
+  `010`; the search Functions reserved for `011` do not yet exist.
+- `go_evidence_hydrator` and `go_api_runtime` may execute exact-reference
+  hydration; `go_api_runtime` also retains an explicit allowlist of
+  authoritative `001`–`009` table privileges, never projection-table blanket
+  access or owner/Worker/Replay membership.
+
+`010.down` is guarded before its first destructive DDL. It refuses rollback for
+an unsafe Function `search_path`, active Outbox/Job/Purge leases, non-legacy
+bound Jobs, post-`010` authority rows, Consent namespace conflicts, or nonempty
+projection state. A successful Down revokes the `010` Function/schema grants
+and removes the projection objects while preserving pre-`010` authority
+history; cluster-global capability roles are not dropped.
+
 ## 8. Acceptance Checks
 
 Current persistence verification covers:
 
-- Migrations `001` through `009` apply in order on an empty Postgres 16 database,
-  and `down --all` reverses app-schema objects in development while retaining
+- Migrations `001` through `010` apply in order on an empty Postgres 16 database;
+  guarded `010` Down/Up replay succeeds on safe fixtures, and `down --all`
+  reverses app-schema objects in an empty development fixture while retaining
   migration-runner metadata.
 - Constraints reject invalid message roles/statuses, invalid file hashes,
   negative byte sizes, non-object metadata, and non-array output blocks.
 - Knowledge tests enforce one nonterminal Version, pinned Processing Job
   authority, and one purge Job per
   `(document_id, document_version_id, document_visibility_epoch)` fence.
-- Governance Profile `UPDATE`/`DELETE` fails after migration `008`, and Consent
-  expiry work is selected and marked once through migration `009`.
+- Governance Profile `UPDATE`/`DELETE` fails after migration `008`; Consent
+  expiry work is selected and marked once through migration `009`; migration
+  `010` verifies exact Model identity, mapping rollback, multi-Model Consent
+  namespaces, projection constraints, least-privilege grants, and guarded Down
+  preconditions.
+- Durable Worker tests cover dark-run readiness, polling/rescan and Redis-loss
+  behavior, lease/DLQ/replay mechanics, and default-disabled dispatch; they do
+  not claim real Parser, Embedding, or Projection readiness.
 - Applied migration name/checksum drift fails closed; explicit legacy baseline
   fills only reviewed missing checksums; concurrent migration operations
   serialize on the advisory lock.
+- Migration CLI tests verify that `MIGRATION_DATABASE_URL` is required and that
+  `DATABASE_URL` is never used as fallback.
 - File metadata rows do not require MinIO to be running.
 - With `DATABASE_URL` empty, DB disabled mode starts without Postgres and
   `/ready` remains `200 OK`.
