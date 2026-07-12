@@ -6726,3 +6726,88 @@ P0/P1/P2 = 0/0/0
 ```
 
 Phase 15.2 design review is closed. Implementation remains pending.
+
+## 2026-07-12 — Phase 15.2A Evidence/schema contracts and Postgres bake-off
+
+Three disjoint xhigh workers froze the internal Evidence API, the future
+`010/011` persistence contract, and an isolated PostgreSQL search bake-off.
+The main integration pass reconciled one corpus-wide Index Generation with
+per-document Materializations, added the missing exact Projection identifiers
+to the Evidence DTO, fixed Query-Embedding versus Rerank Consent shapes, and
+froze Redis as the single fail-closed Replay Nonce Backend. Current runtime
+gaps remain explicit: authoritative `sessionId` is not propagated to handlers,
+Stream Chat has no Knowledge Selection DTO, user BYOK is not wired, Consent
+uniqueness omits Endpoint, Governance has no independent Model ID, and no
+Citation/Python RAG runtime exists.
+
+The Bake-off harness is isolated under `ops/bakeoff/postgres/`; its runner uses
+a unique Compose project, no Host Port, a disposable Volume and trap-scoped
+cleanup. It pins:
+
+```text
+PostgreSQL             16.14
+pg_search              0.24.2
+pgvector               0.8.2
+image digest           sha256:556edd8c...3dcf
+cgroup                  1 GiB / 2 CPU
+shared/work/maintenance 256MB / 4MB / 64MB
+```
+
+The first worker result only covered Jieba and used `shared_buffers=128MB`.
+Integration did not accept that partial result: Lindera Chinese,
+`chinese_compatible`, a separate Exact Keyword/Phrase Lane, filtered-HNSW
+exact-recall comparison, and full `halfvec(2048)` exact/HNSW recall were added;
+the locked 256MB Postgres setting was restored. The final clean run reported:
+
+```text
+Jieba/Lindera/chinese_compatible BM25 ACL hits       1 / 1 / 1
+vector(1024) HNSW recall@20                          1.00
+halfvec(2048) HNSW recall@20                         1.00
+4%-selectivity authorized HNSW top-10 / leakage      10 / 0
+filtered HNSW recall@10                              1.00
+Exact Keyword/Phrase authorized match                1
+template0 logical restore                            passed
+graceful restart / SIGKILL recovery                  passed / passed
+peak sampled memory under 1 GiB limit                196.2 MiB
+container / volume / network cleanup                 passed
+report                                                /tmp/mm-chat-phase15-pg-bakeoff.6NIInx
+```
+
+This is a Synthetic Operational Baseline, not Production Promotion. It proves
+the pinned image can execute all required mechanics and recovery paths without
+touching the running mm-chat stack. The Relevance Set must still choose the
+Tokenizer/Dimension winner; AGPL, real Tail Latency, Extension upgrade and
+rollback remain blocking before winner-specific `011` DDL.
+
+Next: close the independent xhigh review, commit only the explicit `mm-chat/`
+allowlist, then start Phase 15.2B Durable Consumer.
+
+## 2026-07-12 — Phase 15.2A independent review closed
+
+The independent xhigh reviewer first returned `P0/P1/P2 = 0/0/1`: all contract
+findings were fixed, while one P2 remained because executable SQL assertions
+added during review had not yet been rerun. The fixes established:
+
+- exact `processor + endpoint + model` Governance/Consent namespaces with
+  simultaneous approved Models per Endpoint;
+- Stage-aware Job Model binding, preserving `model_id=NULL` for Purge;
+- bounded, already-fenced Python Candidate/Expansion text for Jina without
+  arbitrary table reads or text in the Python→Go response;
+- a separate Go-only exact-ref Reauthorization/Hydration role and Function;
+- strict separation of Document Materialization Publish from Corpus Generation
+  Promotion;
+- a Composite Outbox ID/Event ID Ledger FK;
+- explicit Exact Lane GIN plans and Index-only-scan-disabled vector baselines.
+
+After those changes, Prettier, Bash syntax, Compose config, scoped diff checks,
+local Markdown links, cleanup checks, and the complete Bake-off passed. The
+security scanner reported only the same three synthetic password/API-key
+fixtures in existing auth/provider tests; no changed file contains a credential.
+A final read-only review returned:
+
+```text
+P0/P1/P2 = 0/0/0
+```
+
+Phase 15.2A is complete. Production Search Profile Promotion remains open by
+design; the next implementation slice is Phase 15.2B Durable Consumer.

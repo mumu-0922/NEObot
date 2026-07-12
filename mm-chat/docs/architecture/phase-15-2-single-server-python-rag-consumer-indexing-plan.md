@@ -1,6 +1,6 @@
 # Phase 15.2 单服务器 Python RAG 消费与索引设计
 
-- 状态：Owner scope decisions locked；technical promotion gates open；implementation pending
+- 状态：Phase 15.2A contracts/bake-off complete；production promotion gates open；runtime implementation pending
 - 日期：2026-07-12
 - 前置条件：Phase 15.1D Go/Postgres Knowledge Control Plane 已完成至 migration `009`
 - 适用规模：`≤10` 用户、`≤3` 并发、`≤500` 文件、`≤1GB` 原文
@@ -115,6 +115,9 @@ Ops profile -> pg_dump + MinIO manifest -> restic encryption -> Cloudflare R2
 - 拒绝客户端提交 `user_id`、`team_id`、ACL、Revision 或 Impersonation Hint；
 - 生成短时、单次、Body-bound 的 Go → RAG Workload Token；
 - 在 Python 返回候选后逐条重新授权 Source Version；
+- 只通过 Go-only SECURITY DEFINER Hydration Function 和受限 Object Gateway
+  按精确 Materialization/Span 取回正文，不获得任意 Projection/Object-Key
+  读权；
 - 生成 Citation Capability，并把 Evidence 交给用户 BYOK Chat Provider；
 - 普通聊天绕过 RAG；Knowledge Attachment 非空时进入 Grounded Flow。
 
@@ -123,6 +126,8 @@ Ops profile -> pg_dump + MinIO manifest -> restic encryption -> Cloudflare R2
 - 校验 Audience、Method、Path、Body Hash、`iat/exp/jti` 和签名 `kid`；
 - 最多接受 3 个并发查询，超出有界队列后返回 `429/503 + Retry-After`；
 - 执行 Dense、BM25、Exact、RRF、Rerank 和 Parent/Window Expansion；
+- 只通过受限 Search/Expansion Function 获取有界、已应用完整 Fence 的
+  Candidate/Expansion Text；仅在精确 Rerank Consent 成立时发往 Jina；
 - 只返回 Source Identity、Span、Score、Profile 和 Degraded State；
 - 不签发 Citation，不缓存授权结论，不调用用户 Chat Provider。
 
@@ -137,16 +142,18 @@ Ops profile -> pg_dump + MinIO manifest -> restic encryption -> Cloudflare R2
 
 所有 DDL 继续由 Go Migration Runner 管理；Python 启动时禁止建表或改表。下一迁移至少需要以下逻辑对象，最终名称在 Contract 阶段冻结：
 
-| 对象                              | 用途与关键约束                                                                        |
-| --------------------------------- | ------------------------------------------------------------------------------------- |
-| `knowledge_index_profiles`        | 不可变 Parser/Chunk/Embedding/BM25/Rerank 配置与 Hash                                 |
-| `knowledge_index_generations`     | `building/verified/active/retired/failed`；一个 Profile 一个 Active Pointer           |
-| `knowledge_projection_state`      | Generation、Projection Revision、Manifest Hash、Readiness                             |
-| `knowledge_outbox_applied_events` | `(consumer_name,event_id,generation_scope_id)` 唯一，Scope 强制非空，记录 Result Hash |
-| `knowledge_parser_artifacts`      | Parser-native、Canonical IR、Quality Report 的 MinIO Key 与 Hash                      |
-| `knowledge_blocks`                | Canonical Block、结构、Locator、Asset Ref、Provenance、Confidence                     |
-| `knowledge_parent_chunks`         | 可返回给模型的完整章节/窗口                                                           |
-| `knowledge_child_chunks`          | 搜索文本、Exact Terms、BM25 字段、Embedding 与全部 ACL Fence                          |
+| 对象                                  | 用途与关键约束                                                                                |
+| ------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `knowledge_index_profiles`            | 不可变 Parser/Chunk/Embedding/Rerank Base Contract 与 Hash                                    |
+| `knowledge_index_generations`         | 全 Corpus Rebuild Boundary；全库最多一个 Active、一个 Building/Verified Candidate             |
+| `knowledge_document_materializations` | 单 Document 在某 Corpus Generation 内的 Parse/Chunk/Embed/Reprocess 结果                      |
+| `knowledge_document_projection_heads` | 每 `(index_generation_id, document_id)` 指向已发布 Materialization                            |
+| `knowledge_projection_state`          | Corpus Generation、Projection Revision、Manifest Hash、Readiness                              |
+| `knowledge_outbox_applied_events`     | `(consumer_name,event_id,generation_scope_id)` 唯一，Scope 强制非空，记录 Result Hash         |
+| `knowledge_parser_artifacts`          | Parser-native、Canonical IR、Quality Report 的 MinIO Key 与 Hash                              |
+| `knowledge_blocks`                    | Canonical Block、结构、Locator、Asset Ref、Provenance、Confidence                             |
+| `knowledge_parent_chunks`             | 可返回给模型的完整章节/窗口                                                                   |
+| `knowledge_child_chunks`              | Extension-independent 搜索文本与 Provenance；Dense/BM25 物理投影由 Winner-specific `011` 承载 |
 
 `knowledge_processing_jobs` 需增加不可复用的 `lease_token` 和目标 `index_generation_id`。所有完成更新必须匹配 `id + status=processing + lease_owner + lease_token`；过期 Worker 即使晚返回也不能覆盖新 Worker。
 
@@ -195,17 +202,17 @@ generation_id + document_version_id + source_span_hash + chunk_profile_hash
 
 ### 6.3 已有事件的处理
 
-| Event                                    | Consumer 行为                                               |
-| ---------------------------------------- | ----------------------------------------------------------- |
-| `knowledge.document.version.requested`   | Claim 已存在 Parse Job，构建目标 Generation                 |
-| `knowledge.document.reprocess.requested` | 同一 Version 生成新 Processing Generation                   |
-| `knowledge.document.tombstoned`          | 立即禁用并执行 Version Purge Job                            |
-| `knowledge.collection.tombstoned`        | 创建/恢复 Durable Fan-out，按 Version/Generation 分页 Purge |
-| `knowledge.processing.cancelled`         | 取消尚未发布的工作，提交前 Fence 必须失败                   |
-| Collection/Query Consent changed         | 停止新 Egress、清授权缓存；按策略清派生产物                 |
-| Governance Head changed                  | 旧 Profile Job 禁止继续调用外部 Processor                   |
-| `team.membership.changed`                | 失效 Authorization Cache，不要求全量 Re-embed               |
-| `file.object.delete.requested`           | 对象删除链；不得代替索引 Tombstone                          |
+| Event                                    | Consumer 行为                                                           |
+| ---------------------------------------- | ----------------------------------------------------------------------- |
+| `knowledge.document.version.requested`   | Claim 已存在 Parse Job，在目标 Corpus Generation 内构建 Materialization |
+| `knowledge.document.reprocess.requested` | 同 Version/Corpus Generation 生成新 Document Materialization            |
+| `knowledge.document.tombstoned`          | 立即禁用并执行 Version Purge Job                                        |
+| `knowledge.collection.tombstoned`        | 创建/恢复 Durable Fan-out，按 Version/Generation 分页 Purge             |
+| `knowledge.processing.cancelled`         | 取消尚未发布的工作，提交前 Fence 必须失败                               |
+| Collection/Query Consent changed         | 停止新 Egress、清授权缓存；按策略清派生产物                             |
+| Governance Head changed                  | 旧 Profile Job 禁止继续调用外部 Processor                               |
+| `team.membership.changed`                | 失效 Authorization Cache，不要求全量 Re-embed                           |
+| `file.object.delete.requested`           | 对象删除链；不得代替索引 Tombstone                                      |
 
 Collection Purge 使用持久 `knowledge_collection_purge_items`（最终名待 Migration
 冻结），唯一键至少为 `(collection_id, collection_visibility_epoch,
@@ -219,15 +226,19 @@ Commit 计时并告警；未完成不影响立即逻辑不可见。
 ```text
 Admit -> Claim -> Reauthorize -> Fetch -> Parse -> Quality Gate
       -> Canonical IR -> Parent/Child Chunk -> Embed
-      -> Stage Projection -> Verify -> Atomic Publish -> Cleanup Old Generation
+      -> Stage Projection -> Verify -> Atomic Publish -> Cleanup Old Materialization
 ```
 
 Atomic Publish 只能调用受限 Stored Procedure。固定锁序为 Collection → Document →
-Old/New Version → Generation → Job；随后校验 Lease Token、旧 `current_version_id`、
+Old/New Version → Corpus Generation → Document Projection Head → Job；随后校验 Lease
+Token、旧 `current_version_id`、
 全部 ACL/Visibility/Processing/Consent/Governance Snapshot、Manifest/Artifact Hash
-和 Verified 状态。在一个 Postgres Transaction 中切换 Version Status、Document
-`current_version_id/status`、Active Generation Pointer、Projection Revision 和
-Job 终态，并写 Outbox。任一 CAS 失败整笔回滚；新 Staging 永远不能部分可见。
+和 Verified 状态。在一个 Postgres Transaction 中切换 Document Materialization
+Pointer、Projection Revision 和 Job 终态，并写 Outbox。只有 Initial/Replace 这类
+权威 Version Activation 才同时 CAS Version Status 与 Document `current_version_id/status`；
+Reprocess 和 Building Corpus Generation Catch-up 必须保持当前 Version Pointer。Active Corpus
+Generation Pointer 仅由全库对账后的独立 Promotion Function 原子切换，不得在单文档
+Publish 中改动。任一 CAS 失败整笔回滚；新 Staging 永远不能部分可见。
 
 ### 7.1 输入与 Parser 路由
 
@@ -456,9 +467,14 @@ ACL、删除、Consent、Prompt Injection 和 Citation 使用独立确定性负�
 
 - [x] 完成 Owner Grill，锁定单服务器产品、检索、文件、Consent、删除与备份边界。
 - [x] 完成 Python RAG Consumer/Indexing 设计和独立调研。
-- [ ] 冻结 Internal Evidence API、Workload Token、Error/Degraded/Citation DTO。
-- [ ] Bake off ParadeDB/pg_search、pgvector Dimension、中文 Tokenizer 和恢复路径。
-- [ ] 冻结 Canonical Block/Chunk/Generation/Projection Schema 与 Migration。
+- [x] 冻结 Internal Evidence API、Workload Token、Error/Degraded/Citation DTO。
+- [x] Bake off ParadeDB/pg_search、pgvector Dimension、中文 Tokenizer 和恢复路径。
+- [x] 冻结 Canonical Block/Chunk/Generation/Projection Schema 与 Migration。
+- [x] 关闭独立 xhigh Phase 15.2A Review，最终 `P0/P1/P2 = 0/0/0`。
+
+Phase 15.2A 的 Synthetic Gate 固定了可重复 Operational Baseline，但没有越权宣称
+Production Promotion：Tokenizer/Dimension Winner、AGPL 审批、真实 Relevance/Tail
+Latency 和 Winner-specific `011` DDL 仍由后续 Promotion Gate 决定。
 
 ### Phase 15.2B — Durable Consumer
 

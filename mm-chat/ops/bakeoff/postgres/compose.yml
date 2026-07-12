@@ -1,0 +1,43 @@
+services:
+  postgres:
+    image: docker.io/paradedb/paradedb@sha256:556edd8c7500d5ab1bc9c9be1ae97a582cbceb261f8d551386715eb755ab3dcf
+    pull_policy: missing
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_HOST_AUTH_METHOD: trust
+      PDB_TUNE: "false"
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=512MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - max_connections=30
+      - -c
+      - max_wal_size=512MB
+    shm_size: 256mb
+    mem_limit: 1g
+    cpus: 2.0
+    restart: "no"
+    labels:
+      com.mm-chat.phase: phase15-rag-postgres-bakeoff
+      com.mm-chat.ephemeral: "true"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+volumes:
+  postgres-data:
+    labels:
+      com.mm-chat.phase: phase15-rag-postgres-bakeoff
+      com.mm-chat.ephemeral: "true"

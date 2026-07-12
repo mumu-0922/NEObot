@@ -4,13 +4,14 @@ This directory is the documentation control plane for the `mm-chat` refactor. Ke
 
 ## Categories
 
-| Category | Path | Purpose |
-|---|---|---|
+| Category     | Path                               | Purpose                                                                                        |
+| ------------ | ---------------------------------- | ---------------------------------------------------------------------------------------------- |
 | Architecture | [`architecture/`](./architecture/) | Target architecture, migration phases, data/storage boundaries, rollout and rollback strategy. |
-| Inventory | [`inventory/`](./inventory/) | Static analysis of the existing Neo Chat app before migration. |
-| Tracking | [`tracking/`](./tracking/) | Progress checklist and chronological process log. |
-| Contracts | [`contracts/`](./contracts/) | Future frontend API, backend API, event, and data contracts. |
-| Deployment | [`deployment/`](./deployment/) | Docker Compose, backup, restore, release, rollback, and operations guides. |
+| Inventory    | [`inventory/`](./inventory/)       | Static analysis of the existing Neo Chat app before migration.                                 |
+| Tracking     | [`tracking/`](./tracking/)         | Progress checklist and chronological process log.                                              |
+| Contracts    | [`contracts/`](./contracts/)       | Future frontend API, backend API, event, and data contracts.                                   |
+| Persistence  | [`persistence/`](./persistence/)   | Postgres schema, migration, projection, and runtime source-of-truth contracts.                 |
+| Deployment   | [`deployment/`](./deployment/)     | Docker Compose, backup, restore, release, rollback, and operations guides.                     |
 
 ## Update Rule
 

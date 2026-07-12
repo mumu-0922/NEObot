@@ -654,10 +654,15 @@ the UI can call in the next wiring slice.
       in `docs/architecture/phase-15-2-single-server-python-rag-consumer-indexing-plan.md`.
 - [x] Close independent xhigh design review after three rounds with final
       `P0/P1/P2 = 0/0/0`.
-- [ ] Freeze the internal Evidence API, workload authentication, Canonical
+- [x] Freeze the internal Evidence API, workload authentication, Canonical
       Block/Chunk, Generation/Projection, and migration contracts.
-- [ ] Bake off and pin PostgreSQL BM25/pgvector, Chinese tokenization,
-      embedding dimensions, logical restore, crash recovery, and rollback.
+- [x] Bake off and pin the digest/version/resource operational baseline for
+      PostgreSQL BM25/pgvector, three Chinese tokenizers, two dense shapes,
+      Exact/RRF, logical restore, crash recovery, and rollback.
+- [x] Close the independent xhigh Phase 15.2A review with final
+      `P0/P1/P2 = 0/0/0` after rerunning every changed executable assertion.
+- [ ] Promote the production tokenizer/dimension/search DDL only after the
+      Relevance Set, SLO, license, upgrade, and rollback gates pass.
 - [ ] Implement the private Python consumer/worker, applied-event ledger,
       lease fencing, parser routing, artifacts, chunking, embedding, publish,
       purge, and reconstruction paths.
@@ -676,9 +681,10 @@ the UI can call in the next wiring slice.
       consent, deletion, and cross-user/cross-team control-plane tests.
 - [ ] Extend those ACL fences through future indexing, query, and citation
       serving paths.
-- [ ] Freeze the canonical block/chunk schema, ACL invariants, index profiles,
-      and golden evaluation corpus.
-- [ ] Define the workload-authenticated Go-to-RAG evidence API, Go-side source
+- [x] Freeze the canonical block/chunk schema, ACL invariants, and two-level
+      corpus-generation/document-materialization profile contract.
+- [ ] Freeze the golden evaluation corpus.
+- [x] Define the workload-authenticated Go-to-RAG evidence API, Go-side source
       reauthorization, citation minting, and strict/optional failure contracts.
 - [ ] Add private Python query and indexing services, Postgres outbox rescan,
       and non-authoritative Redis wake-up/lease/cache handling.
@@ -689,9 +695,9 @@ the UI can call in the next wiring slice.
       reindexing.
 - [ ] Add format/page-aware parsing, quality gates, and parent/child/window
       chunking with exact provenance.
-- [ ] Bake off and pin the single-server Postgres search projection using
-      pgvector plus a true-BM25 extension candidate; do not deploy Qdrant for
-      the locked workload profile.
+- [x] Bake off the single-server Postgres search projection mechanics using
+      pgvector plus true BM25; do not deploy Qdrant for the locked workload.
+- [ ] Pin the production Search Profile after relevance/SLO/license gates.
 - [ ] Add hybrid recall, RRF fusion, measured cross-encoder reranking, dynamic
       context expansion, and source-level citations.
 - [ ] Gate contextual retrieval, ColBERT, query decomposition, RAPTOR, and

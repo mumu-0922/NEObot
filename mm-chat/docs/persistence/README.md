@@ -7,10 +7,11 @@ not as limits on the current runtime.
 
 ## Documents
 
-| Guide                                        | Purpose                                                                                                                                                                                                                              |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [`postgres-schema.md`](./postgres-schema.md) | Current schema and runtime boundary through migration `009`, including chat/file/import persistence, identity and Team state, Knowledge ACL entities, Processing Jobs, Governance, Consent, Outbox, and migration-runner guarantees. |
-| [`runtime-wiring.md`](./runtime-wiring.md)   | DB runtime wiring contract: env vars, pgx connector behavior, readiness matrix, migration CLI flow, and rollback boundaries.                                                                                                         |
+| Guide                                                                      | Purpose                                                                                                                                                                                                                                         |
+| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`postgres-schema.md`](./postgres-schema.md)                               | Current schema and runtime boundary through migration `009`, including chat/file/import persistence, identity and Team state, Knowledge ACL entities, Processing Jobs, Governance, Consent, Outbox, and migration-runner guarantees.            |
+| [`runtime-wiring.md`](./runtime-wiring.md)                                 | DB runtime wiring contract: env vars, pgx connector behavior, readiness matrix, migration CLI flow, and rollback boundaries.                                                                                                                    |
+| [`phase-15-rag-projection-schema.md`](./phase-15-rag-projection-schema.md) | Phase 15.2A future migration `010/011` contract for corpus generations, document materializations, canonical blocks/chunks, projection fencing, search-profile separation, least-privilege roles, and rollback; implementation remains pending. |
 
 ## Current Migration Boundary
 
