@@ -6644,3 +6644,10 @@ per the refactor isolation rule; `.trellis/spec/` remains unchanged because it
 is outside the authorized task write set. Phase 15.1D-7 is complete. The next
 slice may begin Python RAG Outbox consumption/indexing design; Go/Postgres
 control-plane Promotion is no longer the blocker.
+
+Post-commit mode verification found that local Git uses `core.filemode=false`:
+the new scripts were executable on disk but initially recorded as `100644`.
+Commit `f62000a` corrected every `mm-chat/scripts/*.sh` index entry to `100755`
+without amending the Promotion commit `9f5e907`. A clean checkout can therefore
+execute every documented `./scripts/...` command directly. No push was
+performed.
