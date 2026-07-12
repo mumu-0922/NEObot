@@ -14,6 +14,8 @@ go test -race ./...
 govulncheck ./...
 
 cd ..
+MM_CHAT_TEST_DATABASE_URL="$DISPOSABLE_PG16_URL" \
+  ./scripts/verify-phase15d-postgres.sh
 docker compose --env-file .env.single-server \
   -f compose.single-server.yml --profile app --profile ops config
 docker compose --env-file .env.single-server -f compose.single-server.yml build backend
@@ -25,6 +27,10 @@ Confirm the backup files and `.sha256` sidecars exist before touching schema or
 restarting the API. The promotion record must also include the disposable
 PostgreSQL 16 Knowledge/migration race suite and fresh/historical migration
 replay results; a skipped integration suite is not a pass.
+
+`DISPOSABLE_PG16_URL` must target an isolated PostgreSQL 16 database whose
+schemas may be created and dropped. Never point this verification script at the
+live application database.
 
 ## Deploy
 

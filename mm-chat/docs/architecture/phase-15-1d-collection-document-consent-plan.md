@@ -403,7 +403,7 @@ allocation order only; consumers rescan claimable rows, deduplicate by
         applicable revision, and emit Outbox without forging a user revoke.
 - [x] **15.1D-5 HTTP and wiring:** register protected routes, safe DTOs/errors,
       bounded metrics/logging, and later-frontend adapter documentation.
-- [ ] **15.1D-6 Verification:** pass unit/race and real PostgreSQL 16 ACL,
+- [x] **15.1D-6 Verification:** pass unit/race and real PostgreSQL 16 ACL,
       locking, idempotency, Consent, deletion, migration, and Outbox
       producer/source-recovery gates.
 - [ ] **15.1D-7 Promotion:** synchronize tracking/deployment/contracts, pass

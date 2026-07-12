@@ -584,10 +584,10 @@ the UI can call in the next wiring slice.
 - [x] Add credential, invite, recovery, and independent-login services.
 - [x] Add Team/Membership repositories, APIs, revision updates, and last-Admin
       protection.
-- [ ] Add Collection/Document/Consent repositories and APIs with locked File
+- [x] Add Collection/Document/Consent repositories and APIs with locked File
       binding and transactional Outbox writes.
-- [ ] Pass the complete two-user/two-team ACL, Consent, revision, deletion,
-      idempotency, and Outbox replay gate.
+- [x] Pass the complete two-user/two-team ACL, Consent, revision, deletion,
+      idempotency, and Outbox producer/source-recovery gate.
 
 #### Phase 15.1C — Team services
 
@@ -637,7 +637,7 @@ the UI can call in the next wiring slice.
         emit expiry Outbox without forging a user revocation decision.
 - [x] Wire protected Knowledge routes, safe DTOs/errors, bounded metrics, and
       later-frontend adapter contracts.
-- [ ] Pass unit/race/PostgreSQL 16 ACL, migration, deletion, idempotency, and
+- [x] Pass unit/race/PostgreSQL 16 ACL, migration, deletion, idempotency, and
       Outbox producer/source-recovery gates.
 
 - [ ] Replace the single-bootstrap-user ceiling with admin-invited independent

@@ -1096,7 +1096,11 @@ func openKnowledgeTestDB(t *testing.T) *sql.DB {
 	}
 	adminConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
 	adminDB := stdlib.OpenDB(*adminConfig)
-	t.Cleanup(func() { _ = adminDB.Close() })
+	t.Cleanup(func() {
+		if err := adminDB.Close(); err != nil {
+			t.Errorf("close knowledge test admin database: %v", err)
+		}
+	})
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	schema := fmt.Sprintf("knowledge_phase15d_%d", time.Now().UnixNano())
@@ -1106,7 +1110,9 @@ func openKnowledgeTestDB(t *testing.T) *sql.DB {
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cleanupCancel()
-		_, _ = adminDB.ExecContext(cleanupCtx, fmt.Sprintf(`DROP SCHEMA IF EXISTS "%s" CASCADE`, schema))
+		if _, err := adminDB.ExecContext(cleanupCtx, fmt.Sprintf(`DROP SCHEMA IF EXISTS "%s" CASCADE`, schema)); err != nil {
+			t.Errorf("drop knowledge test schema %s: %v", schema, err)
+		}
 	})
 	testConfig, err := pgx.ParseConfig(databaseURL)
 	if err != nil {
@@ -1117,7 +1123,11 @@ func openKnowledgeTestDB(t *testing.T) *sql.DB {
 	testConfig.RuntimeParams["application_name"] = schema
 	db := stdlib.OpenDB(*testConfig)
 	db.SetMaxOpenConns(4)
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("close knowledge test database: %v", err)
+		}
+	})
 	if err := db.PingContext(ctx); err != nil {
 		t.Fatal(err)
 	}

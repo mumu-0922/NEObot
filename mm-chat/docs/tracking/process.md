@@ -6462,3 +6462,93 @@ go test -count=1 -race ./internal/knowledge \
 ```
 
 Next: run the final Document delete versus reprocess lock-order gate.
+
+## 2026-07-12 — Phase 15.1D-6 Document delete/reprocess race verified
+
+Added the final planned Document lock-order race with both legal schedules.
+A pinned Collection-row gate plus the isolated test `application_name`, exact
+single `pg_blocking_pids` relationship, and Collection/User query matching prove
+which operation owns the User lock and which is waiting; the test does not use
+sleep-based ordering.
+
+Delete-first tombstones the Document/Version before reprocess authorization can
+complete, so reprocess returns disclosure-safe `DOCUMENT_NOT_FOUND` and creates
+no Job or request/cancellation event. Reprocess-first creates the fenced Job and
+request event; deletion then cancels that Job, creates one purge Job, advances
+Document/Version visibility epochs, and emits exact cancellation/tombstone
+payloads. Both schedules end in the same authoritative tombstone state.
+
+```text
+delete-first lock schedule                                  passed
+reprocess-first lock schedule                               passed
+Document/Version visibility epochs 1 -> 2                  passed
+reprocess request plus subsequent cancellation transition   passed
+one purge Job and exact tombstone revision payload          passed
+PostgreSQL 16 targeted -race                                passed
+```
+
+Replay command:
+
+```bash
+MM_CHAT_TEST_DATABASE_URL="postgres://neo_chat:test-only-password@127.0.0.1:${PORT}/neo_chat?sslmode=disable" \
+MM_CHAT_REQUIRE_POSTGRES_TESTS=true \
+GOCACHE=/tmp/mm-chat-go-cache \
+go test -count=1 -race ./internal/knowledge \
+  -run 'TestPostgresDocumentDeleteAndReprocessSerialize' -v
+```
+
+Next: reconcile the complete 15.1D-6 matrix, then mark it only if no remaining
+Go/PostgreSQL gate is unverified.
+
+## 2026-07-12 — Phase 15.1D-6 concurrent first-bind gate verified
+
+The final matrix audit found one remaining explicit case: two concurrent first
+Document binds using the same actor-scoped idempotency key. Added a PostgreSQL
+race with different candidate Document, Version, and Job IDs. A pinned
+Collection-row gate proves the first request is waiting on that Collection and
+the second request is waiting on the first request's User lock before release.
+Collection/File locking plus idempotency replay returns the same winning
+Document and Pending Version to both callers and persists exactly one Document,
+Version, initial parse Job, and version-request event with the exact authority
+revision payload. The source File remains available and bound.
+
+Added `scripts/verify-phase15d-postgres.sh` as the fail-closed promotion entry:
+it refuses to run without `MM_CHAT_TEST_DATABASE_URL`, forces
+`MM_CHAT_REQUIRE_POSTGRES_TESTS=true`, and executes the complete Knowledge plus
+migration race suites. The target must be a disposable PostgreSQL 16 database.
+
+```text
+two concurrent first binds -> one replay-safe transition     passed
+one Document / Version / initial Job / exact Outbox event     passed
+source File remains available                                passed
+delete/reprocess expanded Job and revision assertions         passed
+fail-closed Phase 15.1D PostgreSQL verification script        added
+```
+
+Next: run the complete fail-closed script and independent final 15.1D-6 review;
+only then check the verification item.
+
+## 2026-07-12 — Phase 15.1D-6 verification closed
+
+The fail-closed `verify-phase15d-postgres.sh` completed against a disposable
+PostgreSQL 16 instance after the deterministic concurrent first-bind and
+expanded delete/reprocess assertions were added. The script ran the complete
+Knowledge and migration suites under the race detector; the normal full Go
+race suite, `go vet`, diff check, shell syntax check, and Knowledge security
+scan also passed.
+
+The independent final review returned `P0/P1/P2 = 0/0/0` and confirmed that
+the Go/Postgres ACL, Consent, migration replay, deletion, idempotency,
+concurrency, and Outbox producer/source-recovery gates are closed. Real Outbox
+consumer replay/checkpoint/projection reconstruction remains explicitly owned
+by the later Python RAG worker phase and was not counted as a Go gate.
+
+```text
+fail-closed PostgreSQL 16 Knowledge + migration race script  passed
+full Go race suite and go vet                                passed
+shell syntax, diff check, Knowledge security scan            passed
+independent final review                                     P0/P1/P2 = 0/0/0
+```
+
+Phase 15.1D-6 is complete. Next: execute Phase 15.1D-7 Promotion and commit the
+final verification slice with an explicit `mm-chat/` allowlist.

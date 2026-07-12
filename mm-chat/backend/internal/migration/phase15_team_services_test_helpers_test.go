@@ -86,7 +86,9 @@ func openPhase151CMigrationIntegrationDB(t *testing.T) *sql.DB {
 
 	adminDB := stdlib.OpenDB(*adminConfig)
 	t.Cleanup(func() {
-		_ = adminDB.Close()
+		if err := adminDB.Close(); err != nil {
+			t.Errorf("close migration test admin database: %v", err)
+		}
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -109,7 +111,7 @@ func openPhase151CMigrationIntegrationDB(t *testing.T) *sql.DB {
 			dropCtx,
 			fmt.Sprintf(`DROP SCHEMA IF EXISTS "%s" CASCADE`, schemaName),
 		); err != nil {
-			t.Fatalf("drop integration schema %s: %v", schemaName, err)
+			t.Errorf("drop integration schema %s: %v", schemaName, err)
 		}
 	})
 
@@ -123,7 +125,9 @@ func openPhase151CMigrationIntegrationDB(t *testing.T) *sql.DB {
 	db := stdlib.OpenDB(*testConfig)
 	db.SetMaxOpenConns(4)
 	t.Cleanup(func() {
-		_ = db.Close()
+		if err := db.Close(); err != nil {
+			t.Errorf("close migration test database: %v", err)
+		}
 	})
 
 	pingCtx, pingCancel := context.WithTimeout(context.Background(), 10*time.Second)

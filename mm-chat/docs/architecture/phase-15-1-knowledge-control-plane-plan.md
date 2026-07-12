@@ -37,12 +37,12 @@ work is limited to later service-adapter wiring.
       to add Team/Membership repositories and APIs, mailbox Invite delivery,
       versioned Outbox-backed Membership changes, and transactional last-Admin
       protection.
-- [ ] **15.1D — Knowledge services:** follow
+- [x] **15.1D — Knowledge services:** follow
       [`phase-15-1d-collection-document-consent-plan.md`](./phase-15-1d-collection-document-consent-plan.md)
       to add Collection and Document/Version CRUD, owner/Admin authorization,
       locked File binding, Governance/Consent updates, durable Processing Jobs,
       and transactional Outbox writes.
-- [ ] **15.1E — Isolation gate:** pass two-user/two-team Personal/Team tests,
+- [x] **15.1E — Isolation gate:** pass two-user/two-team Personal/Team tests,
       cross-scope `404` behavior, Consent-purpose tests, revision fencing,
       deletion, idempotency, and Outbox producer/source-recovery prerequisites.
       Consumer replay and projection reconstruction remain gated on the real
