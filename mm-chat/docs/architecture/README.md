@@ -10,3 +10,4 @@
 - [`phase-15-1d-collection-document-consent-plan.md`](./phase-15-1d-collection-document-consent-plan.md) — executable Collection, Document/Version, locked File binding, Governance, Consent, Job, and Outbox plan.
 - [`phase-15-2-single-server-python-rag-consumer-indexing-plan.md`](./phase-15-2-single-server-python-rag-consumer-indexing-plan.md) — owner-locked single-server Python Outbox consumer, parsing, Postgres hybrid indexing, query, citation, resource, and R2 recovery design.
 - [`phase-15-2b-durable-consumer-plan.md`](./phase-15-2b-durable-consumer-plan.md) — executable migration `010`, dark-run Python worker, lease/ledger, Redis wake, DLQ/replay, Compose, and verification plan.
+- [`phase-15-2c-generation-bound-indexing-plan.md`](./phase-15-2c-generation-bound-indexing-plan.md) — executable generation-bound parsing, chunking, MinerU/Jina, search-profile selection, migrations `011/012`, staging/publish/purge, rebuild, and activation plan.

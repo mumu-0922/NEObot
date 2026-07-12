@@ -478,15 +478,20 @@ Latency 和 Winner-specific `011` DDL 仍由后续 Promotion Gate 决定。
 
 ### Phase 15.2B — Durable Consumer
 
-- [ ] 实现 Applied Event Ledger、Outbox Rescan、Lease Token/CAS 和 Redis Wake-up。
-- [ ] 实现 Parse/Embedding/Purge Job Claim、Heartbeat、Retry、DLQ 和 Replay CLI。
-- [ ] 通过重复、乱序、Late Commit、Crash、Redis Loss 和 Tombstone Race Gates。
+- [x] 实现 Applied Event Ledger、Outbox Rescan、Lease Token/CAS 和 Redis Wake-up。
+- [x] 实现 Parse/Embedding/Purge Job Claim、Heartbeat、Retry、DLQ 和 Replay CLI。
+- [x] 通过重复、乱序、Late Commit、Crash、Redis Loss 和 Tombstone Race Gates。
 
 ### Phase 15.2C — Parsing 与 Indexing
 
+- [x] 关闭独立 Review 并冻结 Generation-bound Parsing/Indexing 详细计划、迁移顺序、
+      阻断门和回滚面。
+- [ ] 创建并冻结 100 题 Relevance Set，以 80 题 Development/Validation 选型，最后只
+      运行一次 20 题 Frozen Holdout；Phase 15.2E 不重新打开 Holdout 调参。
 - [ ] 实现格式路由、Sandbox、MinerU Adapter、Canonical IR 和 Quality Gates。
 - [ ] 实现 Parent/Child/Overlap、Artifact Lineage、Jina Passage Embedding。
-- [ ] 实现 Staging/Verify/Atomic Publish、Generation Rollback 和全量 Rebuild。
+- [ ] 实现 Staging/Verify/Atomic Publish、Building Generation Fail/Cleanup 和全量
+      Rebuild；Active Pointer Rollback 留给 Phase 15.2E。
 
 ### Phase 15.2D — Query、Chat 与 Citation
 
@@ -499,8 +504,8 @@ Latency 和 Winner-specific `011` DDL 仍由后续 Promotion Gate 决定。
 
 - [ ] 固定 Compose Image Digest、资源上限、Egress Allowlist、Health/Readiness。
 - [ ] 接入 restic + R2、Retention、Backup Manifest 和每月 Restore Drill。
-- [ ] 冻结 100 题 Relevance Set 与独立安全/格式 Corpus，完成 Development/Validation
-      与 Frozen Holdout。
+- [ ] 使用 Phase 15.2C 已冻结的 Relevance Report，完成生产 Promotion Acceptance、独立
+      安全/格式 Corpus、协调 Backup Manifest 与 R2 Restore Drill；不重新调参。
 - [ ] 完成安全、性能、备份恢复、回滚和独立 Review 后 Promotion。
 
 ## 17. 关键风险与回滚

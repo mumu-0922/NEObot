@@ -680,12 +680,37 @@ the UI can call in the next wiring slice.
       operator replay CLI with real handlers disabled.
 - [x] Add isolated Compose/credential/resource wiring and pass all migration,
       replay, crash, Redis-loss, permission, Python, image, and review gates.
+
+##### Phase 15.2C — Generation-bound parsing and indexing
+
+- [x] Complete four parallel xhigh audits of the runtime execution gap,
+      generation dispatch, Provider/Search contract, and security/operations
+      boundary.
+- [x] Close independent review and lock the executable Phase 15.2C plan,
+      immutable `010`, Search-only `011`, Dispatcher `012`, Processing Request,
+      Gateway, staging/finalizer, deletion, rebuild, activation, rollback, and
+      verification contracts.
+- [ ] Freeze redacted MinerU/Jina wire fixtures, immutable Model/API builds,
+      Provider recovery behavior, license, retention, and SLA.
+- [ ] Implement and verify the offline parser, Canonical IR, parent/child
+      chunking, Provider fake servers, and deterministic manifests.
+- [ ] Select the production tokenizer/dimension/search profile using real Jina
+      vectors and the frozen 80/20 relevance/SLO/license gates, then apply
+      `011`; Phase 15.2E must not reopen the holdout for tuning.
+- [ ] Apply `012`, cut Go producers to Processing Request + Outbox, and add
+      generation-bound dispatch, gateways, handlers, staging, atomic publish,
+      purge, and rebuild.
+- [ ] Complete Canary, controlled stage activation, legacy reconciliation,
+      crash/delete/consent/governance races, and independent review while
+      keeping user Query and production Promotion off; final review must reach
+      `P0/P1/P2 = 0/0/0`.
 - [ ] Implement private hybrid query, Go-side source reauthorization,
       strict grounded chat, visible degradation, and clickable citations with
       minimal frontend change.
-- [ ] Add Compose resource limits, restic/R2 backup, a 100-question Relevance
-      Set, independent ACL/Consent/deletion/injection/citation/parser corpora,
-      full security/performance/recovery gates, and promotion review.
+- [ ] Add Compose resource limits, restic/R2 coordinated backup/restore,
+      independent ACL/Consent/deletion/injection/citation/parser corpora, full
+      security/performance/recovery gates, and production promotion review;
+      consume the Phase 15.2C relevance report without reopening its holdout.
 
 - [x] Replace the single-bootstrap-user ceiling with admin-invited independent
       user sessions and versioned Team membership.

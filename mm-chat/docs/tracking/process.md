@@ -6893,3 +6893,97 @@ independent review rounds                                     0/1/2 -> 0/0/1 -> 
 Phase 15.2B is complete only for durable dark-run mechanics. Real Parse,
 Embedding, Purge handlers, Search migration `011`, first Generation promotion,
 and user-visible RAG remain Phase 15.2C or later and stay disabled.
+
+## 2026-07-12 — Phase 15.2C generation-bound indexing plan drafted
+
+Four parallel xhigh read-only audits traced the current Go producer path,
+Postgres projection functions, Python worker state machine, Provider/Search
+contracts, Compose credentials, deletion behavior, and recovery boundary. The
+audits agreed that merely filling the Handler Registry would be unsafe:
+
+- current `dispatch` can Ledger/Ack without creating any generation-bound Job;
+- all new Go Jobs remain `legacy_projection_unbound=true` and are intentionally
+  excluded from Claim;
+- no worker-safe Artifact/Block/Chunk staging surface exists;
+- same-Generation Reprocess conflicts with Chunk uniqueness that omits the
+  Materialization;
+- MinerU submit, physical object deletion, and Stage-specific job completion
+  have no durable crash protocol;
+- current Publish does not close the complete Profile/Consent/Manifest/Version
+  activation contract;
+- the real Jina relevance winner, Cosine index shape, Chinese tokenizer,
+  extension license and rollback gates are not yet frozen.
+
+The draft response is recorded in
+`docs/architecture/phase-15-2c-generation-bound-indexing-plan.md`. Published
+migration `010` remains immutable. Winner-specific Search DDL is reserved for
+`011`; Processing Request, Dispatcher V2, generation fan-out, Provider
+Operation, gateways, staging/finalizer, physical deletion and rebuild enter
+`012`. Evaluation-only 1024/2048 candidates stay outside production Generation
+state until one Search Profile wins.
+
+The activation order is fail closed: external wire contracts and offline
+parser/fake-provider tests first, real relevance bake-off second, migrations
+and private gateways third, Canary/Building Generation fourth, then Dispatcher
+and each Job Stage one at a time. `RAG_WORKER_DISPATCH_ENABLED=false`, the empty
+production Handler Registry, no user Query, and no Corpus Generation Promotion
+remain mandatory until their explicit gates pass.
+
+```text
+Phase 15.2B durable dark-run                 complete
+Phase 15.2C executable plan draft            created
+MinerU/Jina redacted wire contract           pending
+production 011/012 and real handlers         not implemented
+user query / generation promotion            disabled
+```
+
+First independent review returned `P0/P1/P2 = 0/7/3`; implementation remains
+blocked while Request/Replay identity, N-1 rollback, replacement retry, purge
+fan-out, Outbox effects, Generation operator, Gateway crash recovery and C/E
+boundaries are corrected. Next: repair every finding and rerun the independent
+review before marking the plan locked or beginning C0 Provider work.
+
+## 2026-07-12 — Phase 15.2C review rounds two and three
+
+The second independent pass returned `P0/P1/P2 = 0/5/3`. It exposed missing
+multi-Generation allocation preparation, shared-Outbox event ownership, legal
+Profile creation, Canary Job termination, delayed Search grants, persistence
+registration and Parser IPC. The plan now requires:
+
+- DB-generated, nonce-fenced, ordered Dispatch Preparations and Python
+  multi-Generation Plans;
+- complete Event Subscription ownership, Global versus Request-bound Effects,
+  and Generation Rebuild Root/Child events;
+- an Approved Profile Bundle Function with exact non-placeholder Rerank
+  metadata;
+- a Canary Finalizer that ends the Stage Attempt without changing a Head;
+- Search Functions owned and `PUBLIC`-revoked in `011`, with Execute granted
+  only by a Phase 15.2D forward migration;
+- a no-network Parser Sidecar using a bounded Unix-socket Wire Contract.
+
+The third pass reduced the result to `0/2/3`. Its remaining corrections are now
+applied: one Admission Request fans out to many Generation allocations in a
+fixed `(generation_seq, generation_id)` order; `012.down` requires every
+Request/Attempt/Preparation/Operation/Profile/Rebuild/Event table to be empty;
+the Parser IPC uses a tmpfs-backed Docker named volume with fixed numeric IDs;
+and the matrix covers Verified Candidate and no-Active initial-build races.
+
+```text
+review round 1    0/7/3
+review round 2    0/5/3
+review round 3    0/2/3
+review round 4    0/1/0
+review round 5    0/0/0
+```
+
+Round four found one final migration self-consistency issue: a clean `012.up`
+seeds the migration-owned Approved Profile Registry, while the Down rule
+incorrectly required that Registry to be empty. The plan now permits Down to
+remove only an unreferenced Static Seed whose Canonical Bytes, signed Report
+Hash and migration checksum exactly match the embedded values; runtime
+Profiles/Work or any Registry drift still fail closed.
+
+The fifth read-only review returned `P0/P1/P2 = 0/0/0`. Phase 15.2C design is
+locked. Implementation may begin at C0, but real Provider calls and Activation
+remain blocked until the redacted MinerU/Jina Wire Contract, immutable Model/API
+Build, license, retention and SLA gates close.

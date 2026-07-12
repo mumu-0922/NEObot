@@ -7,11 +7,11 @@ not as limits on the current runtime.
 
 ## Documents
 
-| Guide                                                                      | Purpose                                                                                                                                                                                                                                              |
-| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`postgres-schema.md`](./postgres-schema.md)                               | Schema detail for the `001`–`009` foundation, including chat/file/import persistence, identity and Team state, Knowledge ACL entities, Processing Jobs, Governance, Consent, Outbox, and migration-runner guarantees.                                |
-| [`runtime-wiring.md`](./runtime-wiring.md)                                 | Current DB runtime wiring contract: four credential routes, pgx connector behavior, readiness, migration CLI flow, and rollback boundaries.                                                                                                          |
-| [`phase-15-rag-projection-schema.md`](./phase-15-rag-projection-schema.md) | Canonical `010/011` projection contract for corpus generations, document materializations, canonical blocks/chunks, projection fencing, search-profile separation, least-privilege roles, and rollback. `010` is implemented; `011` remains pending. |
+| Guide                                                                      | Purpose                                                                                                                                                                                                                     |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`postgres-schema.md`](./postgres-schema.md)                               | Schema detail for the `001`–`009` foundation, including chat/file/import persistence, identity and Team state, Knowledge ACL entities, Processing Jobs, Governance, Consent, Outbox, and migration-runner guarantees.       |
+| [`runtime-wiring.md`](./runtime-wiring.md)                                 | Current DB runtime wiring contract: four credential routes, pgx connector behavior, readiness, migration CLI flow, and rollback boundaries.                                                                                 |
+| [`phase-15-rag-projection-schema.md`](./phase-15-rag-projection-schema.md) | Canonical implemented `010` and pending `011` projection contract; the linked Phase 15.2C Addendum defines pending `012` Processing Request, Dispatcher, staging/publish/purge, gateway, and generation-rebuild boundaries. |
 
 ## Current Migration Boundary
 
@@ -48,6 +48,10 @@ The ordered schema currently consists of:
 - `011` remains pending. Tokenizer, vector, BM25/search-extension types and
   indexes, search profiles, and restricted search DDL are not in the current
   schema.
+- `012` remains pending after `011`. Its Phase 15.2C Addendum defines Event
+  Ownership, Processing Requests, Dispatch Preparation, generation-bound Stage
+  Attempts, Provider/Object Operations, Gateway Functions, and rebuild/purge
+  finalizers; none are present in the current `010` head.
 
 The historical Phase 4.5 runtime wiring keeps DB startup explicit:
 `DATABASE_URL` enables Postgres for the API, `/ready` checks it, and API startup

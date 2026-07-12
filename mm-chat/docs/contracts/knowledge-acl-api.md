@@ -683,6 +683,35 @@ Endpoint, Generation, Governance Profile, or Job stage. Bake-off Shadow Jobs use
 a private operator path. Reprocess never mutates active artifacts or the Active
 Generation in place.
 
+The direct Job wording above is the migration `006`-`011` compatibility
+contract. After migration `012`, the same public DTO and HTTP response remain,
+but Admission atomically writes one `knowledge_processing_request` plus the
+Outbox event; Dispatcher V2 creates generation-bound Stage Executions and Job
+Attempts. Request idempotency is `UNIQUE(scope,key)` with the canonical hash
+compared separately: same key/hash replays, same key/different hash conflicts.
+A Stage Execution is unique per `(request,generation,stage)` and points to one
+current Job Attempt; audited Successor Replay increments the Attempt rather than
+violating Stage uniqueness.
+
+After `012`, Reprocess of the current Active Version is `active_reprocess` and
+cannot switch `currentVersionId`. Reopening a newer Failed replacement is
+`replacement_retry`; Admission freezes the expected current pointer and permits
+that verified replacement to advance it. Public callers still cannot choose the
+operation or pointer behavior.
+
+Migration `012` is deliberately incompatible with the N-1 Go binary, which
+knows only direct Legacy Jobs. It revokes/rejects new Legacy Job insertion so an
+accidental N-1 process fails closed instead of producing duplicate Job/Outbox
+work. N-1 application rollback therefore requires stopped traffic and a
+successful `012.down`; when Down preconditions do not hold, operators must use
+an N image that understands `012` with Dispatch/Stage kill switches off.
+`012.down` 仅允许严格零流量状态：任何 Processing Request、Stage Attempt、Preparation、
+Provider/Object/Deletion Work、已物化 Base/Search Profile、Rebuild State 或 `012` 专属
+Event 都令 Down 失败。Migration-owned Approved Profile Registry Seed 可由 Down 精确删除，
+但必须与内嵌 Canonical Bytes、签名 Report Hash 和 migration checksum 完全一致且无引用；
+Drift/Extra Row 必须失败。尤其是 Admission 已提交但 Dispatch 尚未开启时，不得删除
+Request 幂等历史后切换 N-1。
+
 ## 6. File Binding and Deletion
 
 Document Version creation binds an already uploaded Phase 13-owned File:

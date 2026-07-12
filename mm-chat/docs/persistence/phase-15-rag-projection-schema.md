@@ -1,12 +1,15 @@
 # Phase 15 RAG Projection Schema 与 Migration Contract
 
-- 状态：Canonical contract；`010` 与 durable dark-run Worker 已实现；`011`
-  pending
+- 状态：Canonical `010/011` contract；`010` 与 durable dark-run Worker 已实现；
+  `011` pending；`012` 由 Phase 15.2C Addendum 定义且 pending
 - 日期：2026-07-12
 - 当前 Schema Head：migration `010_phase15_rag_projection_consistency`
-- 待实现迁移：`011_phase15_rag_search_projection`
+- 待实现迁移：`011_phase15_rag_search_projection` →
+  `012_phase15_generation_dispatcher`
 - 上位设计：
   [`phase-15-2-single-server-python-rag-consumer-indexing-plan.md`](../architecture/phase-15-2-single-server-python-rag-consumer-indexing-plan.md)
+- `012` Addendum：
+  [`phase-15-2c-generation-bound-indexing-plan.md`](../architecture/phase-15-2c-generation-bound-indexing-plan.md)
 
 > Migration `010` 已实现本文定义的 extension-independent schema、受限 Functions、
 > lease/ledger/replay/purge 一致性机制；Phase 15.2B Python Worker 也已实现为默认不
@@ -585,9 +588,10 @@ Function 必须验证：
 
 在同一 Transaction 内，Function 才能：切换 Document Projection Head、推进
 Materialization Status、递增 Corpus/Document Projection Revision、更新 Projection State、
-结束 Job，并写 Outbox/Audit Effect。只有 Initial/Replace 这类权威 Version
-Activation 才同时 CAS Version/Document Current Pointer；Reprocess 和 Building Generation
-Catch-up 必须验证且保持当前 Pointer。单文档 Publish 不得切换 Corpus Head。任一
+结束 Job，并写 Outbox/Audit Effect。Initial/Replace/Replacement Retry 这类冻结了
+`advance_current_version=true` 的权威 Version Activation 才同时 CAS Version/Document
+Current Pointer；Active Version Reprocess 和 Building Generation Catch-up 必须验证且
+保持当前 Pointer。单文档 Publish 不得切换 Corpus Head。任一
 检查失败整笔回滚；Staging Chunk 不得部分可见。
 
 Building Generation 的 Document Publish 只更新其隐藏 Head；只有全部 Live Document
@@ -677,8 +681,9 @@ Document Projection Head/Materialization、Collection/Document/Version Active St
 Current Version、ACL Revision、Collection/Document Visibility Epoch 和请求携带的
 最小 Projection Revision。Exact Lane 不得绕过这些 Join。
 
-`rag_api_reader` 只能 `EXECUTE` 两类参数化 `SECURITY DEFINER` Function；不得
-`SELECT` Base Table：
+`011` 创建以下两类参数化 `SECURITY DEFINER` Function，固定安全 Owner 并撤销
+`PUBLIC EXECUTE`；`rag_api_reader` 在 Phase 15.2D 的 forward migration 前不得 Execute，
+且始终不得 `SELECT` Base Table：
 
 1. `knowledge_search_evidence_candidates(...)` 校验精确
    `actor/session/collection snapshot/profile/generation/projection` Fence，在每条 Lane 的
@@ -706,14 +711,14 @@ Query Consent 和所有涉及 Collection Consent，并在结果纳入前再验�
 `CREATEROLE` 时创建缺失的 NOLOGIN Capability Role，否则 Bootstrap 必须预先创建；
 Migration 始终验证其受限属性后再 GRANT，不能回退到共用 Owner Credential。
 
-| Role                   | 允许                                                                          | 禁止                                                               |
-| ---------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Migration Owner        | DDL、Extension、Owner/GRANT                                                   | 作为 Go/Python Runtime Credential                                  |
-| `rag_projection_owner` | 持有受限 SECURITY DEFINER Function                                            | LOGIN；业务直连                                                    |
-| `rag_worker_executor`  | EXECUTE `010` Claim/CAS/Publish/Purge/Readiness Functions                     | Base Table DML；ACL/Consent/Document/Corpus Head 直写；读取 Secret |
-| `rag_api_reader`       | EXECUTE `010` Worker Readiness；`011` 后再增加 Candidate/Expansion            | Base Table SELECT；任何 DML；Object Store Credential               |
-| `go_evidence_hydrator` | EXECUTE `010` exact-ref Reauthorization/Hydration Function                    | Base Table/Object-Key SELECT；任意 Projection 扫描；任何 DML       |
-| Go API Runtime         | 权威业务 Mutation；显式 EXECUTE `010` Readiness/Hydration，无 Role Membership | Extension DDL；以 Python 身份执行；读取 Raw Object Key             |
+| Role                   | 允许                                                                                     | 禁止                                                               |
+| ---------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Migration Owner        | DDL、Extension、Owner/GRANT                                                              | 作为 Go/Python Runtime Credential                                  |
+| `rag_projection_owner` | 持有受限 SECURITY DEFINER Function                                                       | LOGIN；业务直连                                                    |
+| `rag_worker_executor`  | EXECUTE `010` Claim/CAS/Publish/Purge/Readiness Functions                                | Base Table DML；ACL/Consent/Document/Corpus Head 直写；读取 Secret |
+| `rag_api_reader`       | EXECUTE `010` Worker Readiness；Phase 15.2D forward migration 才增加 Candidate/Expansion | Base Table SELECT；任何 DML；Object Store Credential               |
+| `go_evidence_hydrator` | EXECUTE `010` exact-ref Reauthorization/Hydration Function                               | Base Table/Object-Key SELECT；任意 Projection 扫描；任何 DML       |
+| Go API Runtime         | 权威业务 Mutation；显式 EXECUTE `010` Readiness/Hydration，无 Role Membership            | Extension DDL；以 Python 身份执行；读取 Raw Object Key             |
 
 默认 `REVOKE ALL ... FROM PUBLIC`。Schema `CREATE`、Function Owner Membership、
 `SET ROLE`、Trigger Disable、Sequence Write 和 Migration Table Write 均不得授予 Python
@@ -749,7 +754,9 @@ Role。Artifact/Chunk 在 Published 后由 Trigger/Function 防止 Worker 直接
 4. 运行 Fresh `001→010`、Published `009→010`、Down/Up Replay 和权限负向测试。
 5. Bake-off 晋升后，用固定 Extension/Image Digest 在新 Postgres Volume 做逻辑迁移，
    应用 `011`；不得让不同发行版共用旧 PGDATA。
-6. `011` 成功且 Restore Drill 通过后才创建首个 Profile/Generation 并全量 Build。
+6. `011` 成功且固定镜像新 Volume 的本地逻辑 Restore/Crash Drill 通过后，`012` 才能由
+   受限 Operator Function 创建首个 Profile/Building Generation 并全量 Build；协调
+   Postgres+Object Manifest 的 R2 Restore Drill 仍是 Phase 15.2E 生产 Promotion Gate。
 7. 新 Generation Verified/Ready 前，现有非 RAG 功能继续；不得宣称 RAG Ready。
 
 ### 9.2 Down 与应用回滚
@@ -771,12 +778,12 @@ Role。Artifact/Chunk 在 Published 后由 Trigger/Function 防止 Worker 直接
 ## 10. Required Tests
 
 `010` 和 durable dark-run Worker 的 Migration、权限、lease/ledger/replay、恢复与
-默认不 Claim 行为已有实现测试；以下涉及 `011` Search DDL、真实 Parser/Embedding 或
-Projection Ready 的条目仍是后续 Promotion Acceptance，不得解释为当前已通过。
+默认不 Claim 行为已有实现测试；以下涉及 `011` Search DDL、`012` Dispatcher、真实
+Parser/Embedding 或 Projection Ready 的条目仍是后续 Acceptance，不得解释为当前已通过。
 
 ### 10.1 Schema 与 Migration
 
-- Fresh `001→010→011`、Published `009→010→011`、逐个 Down/Up、No-op Replay、
+- Fresh `001→010→011→012`、Published `009→010→011→012`、逐个 Down/Up、No-op Replay、
   Checksum/Name Drift Fail Closed。
 - Consent 新四个 Unique Key、旧 Index 消失、跨 Endpoint 可共存、同 Endpoint
   的多 Model 可共存、同 Endpoint/Model Current/Revision 冲突失败；Down Conflict
@@ -788,6 +795,9 @@ Projection Ready 的条目仍是后续 Promotion Acceptance，不得解释为当
 - `010` SQL 静态断言不含 Extension、Vector Dimension、pg_search 或 Tokenizer Index。
 - Composite FK、状态/时间戳 Shape、Hash/JSON Shape、Singleton 和 Partial Unique 均由
   PostgreSQL Constraint 实测，不只做文本断言。
+- `012` Event Subscription 覆盖全部 Event Type；Dispatch Preparation/Nonce、多 Generation
+  Allocation、Stage Execution/Attempt Replay、Profile Bundle、Rebuild Root/Child Event、
+  Object Intent/Orphan Sweep 与 N-1 Fail-closed/Down 顺序均通过正负测试。
 
 ### 10.2 Generation 与 Materialization
 
