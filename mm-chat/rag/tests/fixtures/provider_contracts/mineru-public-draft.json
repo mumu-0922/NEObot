@@ -1,0 +1,301 @@
+{
+  "schemaVersion": 1,
+  "fixtureSetId": "mineru-public-draft-20260712",
+  "fixtureKind": "public_documentation",
+  "providerKind": "mineru_async",
+  "observedAt": "2026-07-12T00:00:00Z",
+  "lifecycle": {
+    "state": "draft",
+    "blockedBy": [
+      "IMMUTABLE_BUILD_UNKNOWN",
+      "QUERY_BY_KEY_UNKNOWN",
+      "CANCEL_CONTRACT_UNKNOWN",
+      "TERMS_NOT_VERIFIED",
+      "ACCOUNT_LIMITS_NOT_CAPTURED"
+    ],
+    "reviewers": ["engineering"]
+  },
+  "identity": {
+    "provider": {
+      "state": "observed",
+      "value": "mineru",
+      "evidenceRefs": ["mineru-api-docs"]
+    },
+    "endpointId": {
+      "state": "unknown",
+      "reasonCode": "ACCOUNT_ENDPOINT_NOT_CAPTURED"
+    },
+    "baseUrl": {
+      "state": "observed",
+      "value": "https://mineru.net",
+      "evidenceRefs": ["mineru-api-docs"]
+    },
+    "region": {
+      "state": "unknown",
+      "reasonCode": "PROCESSING_REGION_NOT_PUBLISHED"
+    },
+    "modelId": {
+      "state": "observed",
+      "value": "vlm",
+      "evidenceRefs": ["mineru-api-docs"]
+    },
+    "modelApiVersion": {
+      "state": "unknown",
+      "reasonCode": "IMMUTABLE_API_VERSION_NOT_PUBLISHED"
+    },
+    "immutableBuildId": {
+      "state": "unknown",
+      "reasonCode": "IMMUTABLE_BUILD_NOT_PUBLISHED"
+    },
+    "purpose": {
+      "state": "observed",
+      "value": "parse",
+      "evidenceRefs": ["mineru-api-docs"]
+    },
+    "allowedDataTypes": {
+      "state": "observed",
+      "value": ["application/pdf"],
+      "evidenceRefs": ["mineru-api-docs"]
+    }
+  },
+  "capabilities": {
+    "idempotency": {
+      "state": "unknown",
+      "reasonCode": "IDEMPOTENCY_NOT_PUBLISHED"
+    },
+    "rateLimits": {
+      "state": "observed",
+      "value": {
+        "maximumFileBytes": 209715200,
+        "maximumPages": 200,
+        "maximumBatchItemsFromDetailedSection": 50,
+        "batchLimitConflictPresent": true
+      },
+      "evidenceRefs": ["mineru-api-docs"]
+    },
+    "spatial": {
+      "state": "unknown",
+      "reasonCode": "BBOX_COORDINATE_CONTRACT_NOT_PUBLISHED"
+    },
+    "embedding": {
+      "state": "not_applicable",
+      "reasonCode": "PARSER_PROVIDER"
+    }
+  },
+  "governanceTerms": {
+    "license": { "state": "unknown", "reasonCode": "LICENSE_NOT_REVIEWED" },
+    "retention": {
+      "state": "unknown",
+      "reasonCode": "RETENTION_NOT_PUBLISHED"
+    },
+    "deletion": { "state": "unknown", "reasonCode": "DELETION_NOT_PUBLISHED" },
+    "trainingUse": {
+      "state": "unknown",
+      "reasonCode": "TRAINING_USE_NOT_REVIEWED"
+    },
+    "sla": { "state": "unknown", "reasonCode": "SLA_NOT_REVIEWED" }
+  },
+  "operations": [
+    {
+      "operationId": "submit",
+      "phase": "submit",
+      "support": { "state": "observed", "evidenceRefs": ["mineru-api-docs"] },
+      "method": "POST",
+      "pathTemplate": "/api/v4/extract/task",
+      "request": {
+        "contentType": "application/json",
+        "requiredHeaderNames": ["Authorization", "Content-Type"],
+        "maximumBytes": 65536,
+        "body": {
+          "json": {
+            "url": "https://source.invalid/fixture.pdf",
+            "is_ocr": true,
+            "enable_formula": true,
+            "enable_table": true,
+            "model_version": "vlm"
+          }
+        }
+      },
+      "responseCases": [
+        {
+          "caseId": "submit-success",
+          "source": "public_schema_synthetic",
+          "status": 200,
+          "headers": { "Content-Type": "application/json" },
+          "body": {
+            "json": {
+              "code": 0,
+              "data": { "task_id": "fixture-task-id" },
+              "msg": "ok",
+              "trace_id": "fixture-trace-id"
+            }
+          },
+          "classification": "success"
+        },
+        {
+          "caseId": "submit-rate-limited",
+          "source": "synthetic_test",
+          "status": 429,
+          "headers": {
+            "Content-Type": "application/json",
+            "Retry-After": "30"
+          },
+          "body": { "json": { "code": 429, "msg": "rate limited" } },
+          "classification": "retryable",
+          "stableErrorCode": "PROVIDER_RATE_LIMITED"
+        }
+      ]
+    },
+    {
+      "operationId": "poll",
+      "phase": "poll",
+      "support": { "state": "observed", "evidenceRefs": ["mineru-api-docs"] },
+      "method": "GET",
+      "pathTemplate": "/api/v4/extract/task/{task_id}",
+      "request": {
+        "contentType": "application/json",
+        "requiredHeaderNames": ["Authorization"],
+        "maximumBytes": 1,
+        "body": { "rawBodyUtf8": "" }
+      },
+      "responseCases": [
+        {
+          "caseId": "poll-running",
+          "source": "public_schema_synthetic",
+          "status": 200,
+          "headers": { "Content-Type": "application/json" },
+          "body": {
+            "json": {
+              "code": 0,
+              "data": {
+                "task_id": "fixture-task-id",
+                "state": "running",
+                "err_msg": "",
+                "extract_progress": {
+                  "extracted_pages": 1,
+                  "total_pages": 2,
+                  "start_time": "2025-01-20 11:43:20"
+                }
+              },
+              "msg": "ok",
+              "trace_id": "fixture-trace-id"
+            }
+          },
+          "classification": "success"
+        },
+        {
+          "caseId": "poll-failed",
+          "source": "public_schema_synthetic",
+          "status": 200,
+          "headers": { "Content-Type": "application/json" },
+          "body": {
+            "json": {
+              "code": 0,
+              "data": {
+                "task_id": "fixture-task-id",
+                "state": "failed",
+                "err_msg": "fixture parse failed"
+              },
+              "msg": "ok",
+              "trace_id": "fixture-trace-id"
+            }
+          },
+          "classification": "terminal_failure",
+          "stableErrorCode": "PROVIDER_PARSE_FAILED"
+        }
+      ]
+    },
+    {
+      "operationId": "result",
+      "phase": "result",
+      "support": { "state": "observed", "evidenceRefs": ["mineru-api-docs"] },
+      "method": "GET",
+      "pathTemplate": "/api/v4/extract/task/{task_id}",
+      "request": {
+        "contentType": "application/json",
+        "requiredHeaderNames": ["Authorization"],
+        "maximumBytes": 1,
+        "body": { "rawBodyUtf8": "" }
+      },
+      "responseCases": [
+        {
+          "caseId": "result-done",
+          "source": "public_schema_synthetic",
+          "status": 200,
+          "headers": { "Content-Type": "application/json" },
+          "body": {
+            "json": {
+              "code": 0,
+              "data": {
+                "task_id": "fixture-task-id",
+                "state": "done",
+                "full_zip_url": "https://download.invalid/result.zip",
+                "err_msg": ""
+              },
+              "msg": "ok",
+              "trace_id": "fixture-trace-id"
+            }
+          },
+          "classification": "success"
+        }
+      ]
+    },
+    {
+      "operationId": "cancel",
+      "phase": "cancel",
+      "support": {
+        "state": "unknown",
+        "reasonCode": "CANCEL_API_NOT_PUBLISHED"
+      },
+      "responseCases": []
+    },
+    {
+      "operationId": "query_by_key",
+      "phase": "query_by_key",
+      "support": {
+        "state": "unknown",
+        "reasonCode": "QUERY_BY_KEY_NOT_PUBLISHED"
+      },
+      "responseCases": []
+    }
+  ],
+  "redactionPolicy": {
+    "secretHeaderNames": ["Authorization", "Cookie", "Set-Cookie"],
+    "sensitiveQueryParameterNames": ["token", "signature", "x-amz-signature"],
+    "forbiddenResponseHeaderNames": ["Set-Cookie"],
+    "maximumRecordedBodyBytes": 65536
+  },
+  "evidence": [
+    {
+      "evidenceId": "mineru-api-docs",
+      "sourceUrl": "https://mineru.net/apiManage/docs",
+      "observedAt": "2026-07-12T00:00:00Z",
+      "sourceKind": "official_docs",
+      "sourceVersion": "sitemap-lastmod-2026-06-23"
+    }
+  ],
+  "unresolved": [
+    {
+      "field": "identity.endpointId",
+      "reasonCode": "ACCOUNT_ENDPOINT_NOT_CAPTURED"
+    },
+    {
+      "field": "identity.modelApiVersion",
+      "reasonCode": "IMMUTABLE_API_VERSION_NOT_PUBLISHED"
+    },
+    {
+      "field": "identity.immutableBuildId",
+      "reasonCode": "IMMUTABLE_BUILD_NOT_PUBLISHED"
+    },
+    { "field": "operations.cancel", "reasonCode": "CANCEL_API_NOT_PUBLISHED" },
+    {
+      "field": "operations.query_by_key",
+      "reasonCode": "QUERY_BY_KEY_NOT_PUBLISHED"
+    },
+    {
+      "field": "capabilities.spatial",
+      "reasonCode": "BBOX_COORDINATE_CONTRACT_NOT_PUBLISHED"
+    },
+    { "field": "governanceTerms", "reasonCode": "TERMS_NOT_VERIFIED" }
+  ]
+}

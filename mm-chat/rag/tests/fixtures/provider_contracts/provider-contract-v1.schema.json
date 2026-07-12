@@ -1,0 +1,490 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mm-chat.invalid/schemas/provider-contract-v1.schema.json",
+  "title": "MM Chat redacted provider wire contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "fixtureSetId",
+    "fixtureKind",
+    "providerKind",
+    "observedAt",
+    "lifecycle",
+    "identity",
+    "capabilities",
+    "governanceTerms",
+    "operations",
+    "redactionPolicy",
+    "evidence",
+    "unresolved"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "fixtureSetId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{2,63}$"
+    },
+    "fixtureKind": {
+      "enum": ["public_documentation", "redacted_capture", "synthetic_test"]
+    },
+    "providerKind": {
+      "enum": [
+        "mineru_async",
+        "jina_embedding",
+        "jina_rerank",
+        "synthetic_http"
+      ]
+    },
+    "observedAt": { "type": "string", "format": "date-time" },
+    "lifecycle": { "$ref": "#/$defs/lifecycle" },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "endpointId",
+        "baseUrl",
+        "region",
+        "modelId",
+        "modelApiVersion",
+        "immutableBuildId",
+        "purpose",
+        "allowedDataTypes"
+      ],
+      "properties": {
+        "provider": { "$ref": "#/$defs/fact" },
+        "endpointId": { "$ref": "#/$defs/fact" },
+        "baseUrl": { "$ref": "#/$defs/fact" },
+        "region": { "$ref": "#/$defs/fact" },
+        "modelId": { "$ref": "#/$defs/fact" },
+        "modelApiVersion": { "$ref": "#/$defs/fact" },
+        "immutableBuildId": { "$ref": "#/$defs/fact" },
+        "purpose": { "$ref": "#/$defs/fact" },
+        "allowedDataTypes": { "$ref": "#/$defs/fact" }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["idempotency", "rateLimits", "spatial", "embedding"],
+      "properties": {
+        "idempotency": { "$ref": "#/$defs/fact" },
+        "rateLimits": { "$ref": "#/$defs/fact" },
+        "spatial": { "$ref": "#/$defs/fact" },
+        "embedding": { "$ref": "#/$defs/fact" }
+      }
+    },
+    "governanceTerms": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["license", "retention", "deletion", "trainingUse", "sla"],
+      "properties": {
+        "license": { "$ref": "#/$defs/fact" },
+        "retention": { "$ref": "#/$defs/fact" },
+        "deletion": { "$ref": "#/$defs/fact" },
+        "trainingUse": { "$ref": "#/$defs/fact" },
+        "sla": { "$ref": "#/$defs/fact" }
+      }
+    },
+    "operations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": { "$ref": "#/$defs/operation" }
+    },
+    "redactionPolicy": { "$ref": "#/$defs/redactionPolicy" },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": { "$ref": "#/$defs/evidence" }
+    },
+    "unresolved": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "reasonCode"],
+        "properties": {
+          "field": { "type": "string", "minLength": 1, "maxLength": 160 },
+          "reasonCode": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+          }
+        }
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "wireContractHash",
+        "termsSnapshotHash",
+        "fixtureSetHash",
+        "freezeReportHash"
+      ],
+      "properties": {
+        "wireContractHash": { "$ref": "#/$defs/hash" },
+        "termsSnapshotHash": { "$ref": "#/$defs/hash" },
+        "fixtureSetHash": { "$ref": "#/$defs/hash" },
+        "freezeReportHash": { "$ref": "#/$defs/hash" }
+      }
+    }
+  },
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "blockedBy", "reviewers"],
+      "properties": {
+        "state": { "enum": ["draft", "verified", "frozen", "retired"] },
+        "blockedBy": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,63}$" }
+        },
+        "reviewers": {
+          "type": "array",
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": { "enum": ["engineering", "governance_security", "owner"] }
+        },
+        "frozenAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "fact": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "value", "evidenceRefs"],
+          "properties": {
+            "state": { "const": "observed" },
+            "value": { "$ref": "#/$defs/nonNullJsonValue" },
+            "evidenceRefs": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]{2,63}$" }
+            },
+            "literalOverride": { "const": true }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "value", "evidenceRefs", "reviewedAt"],
+          "properties": {
+            "state": { "const": "terms_verified" },
+            "value": { "$ref": "#/$defs/nonNullJsonValue" },
+            "evidenceRefs": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]{2,63}$" }
+            },
+            "reviewedAt": { "type": "string", "format": "date-time" },
+            "literalOverride": { "const": true }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "reasonCode"],
+          "properties": {
+            "state": { "const": "unknown" },
+            "reasonCode": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "reasonCode"],
+          "properties": {
+            "state": { "const": "not_applicable" },
+            "reasonCode": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+            }
+          }
+        }
+      ]
+    },
+    "nonNullJsonValue": {
+      "oneOf": [
+        { "type": "string", "minLength": 1, "maxLength": 2048 },
+        { "type": "number" },
+        { "type": "boolean" },
+        {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/nonNullJsonValue" }
+        },
+        {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 64,
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "additionalProperties": { "$ref": "#/$defs/nonNullJsonValue" }
+        }
+      ]
+    },
+    "support": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "evidenceRefs"],
+          "properties": {
+            "state": { "const": "observed" },
+            "evidenceRefs": { "$ref": "#/$defs/evidenceRefs" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "evidenceRefs", "reasonCode"],
+          "properties": {
+            "state": { "const": "unsupported" },
+            "evidenceRefs": { "$ref": "#/$defs/evidenceRefs" },
+            "reasonCode": { "$ref": "#/$defs/reasonCode" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "reasonCode"],
+          "properties": {
+            "state": { "const": "unknown" },
+            "evidenceRefs": { "$ref": "#/$defs/evidenceRefs" },
+            "reasonCode": { "$ref": "#/$defs/reasonCode" }
+          }
+        }
+      ]
+    },
+    "evidenceRefs": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]{2,63}$" }
+    },
+    "reasonCode": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+    },
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "json": {},
+        "rawBodyUtf8": { "type": "string", "maxLength": 65536 }
+      },
+      "oneOf": [{ "required": ["json"] }, { "required": ["rawBodyUtf8"] }]
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contentType",
+        "requiredHeaderNames",
+        "maximumBytes",
+        "body"
+      ],
+      "properties": {
+        "contentType": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "requiredHeaderNames": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[A-Za-z0-9-]{1,64}$" }
+        },
+        "maximumBytes": {
+          "description": "Local FakeProvider request replay cap in bytes; not a provider-published request limit.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 52428800
+        },
+        "body": { "$ref": "#/$defs/body" }
+      }
+    },
+    "responseCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "caseId",
+        "source",
+        "status",
+        "headers",
+        "body",
+        "classification"
+      ],
+      "properties": {
+        "caseId": { "type": "string", "pattern": "^[a-z][a-z0-9-]{2,63}$" },
+        "source": {
+          "enum": [
+            "public_schema_synthetic",
+            "redacted_capture",
+            "synthetic_test"
+          ]
+        },
+        "status": { "type": "integer", "minimum": 100, "maximum": 599 },
+        "headers": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[A-Za-z0-9-]{1,64}$" },
+          "additionalProperties": { "type": "string", "maxLength": 512 }
+        },
+        "body": { "$ref": "#/$defs/body" },
+        "classification": {
+          "enum": [
+            "success",
+            "retryable",
+            "permanent",
+            "terminal_failure",
+            "malformed_success"
+          ]
+        },
+        "stableErrorCode": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{2,63}$"
+          }
+        }
+      }
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operationId", "phase", "support", "responseCases"],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{2,63}$"
+        },
+        "phase": {
+          "enum": [
+            "submit",
+            "poll",
+            "result",
+            "cancel",
+            "query_by_key",
+            "embed",
+            "rerank"
+          ]
+        },
+        "support": { "$ref": "#/$defs/support" },
+        "method": { "enum": ["GET", "POST", "PUT", "DELETE"] },
+        "pathTemplate": {
+          "type": "string",
+          "pattern": "^/[^?#]*$",
+          "maxLength": 256
+        },
+        "request": { "$ref": "#/$defs/request" },
+        "responseCases": {
+          "type": "array",
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/responseCase" }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "support": {
+                "type": "object",
+                "properties": { "state": { "const": "observed" } },
+                "required": ["state"]
+              }
+            },
+            "required": ["support"]
+          },
+          "then": {
+            "required": ["method", "pathTemplate", "request"],
+            "properties": { "responseCases": { "minItems": 1 } }
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                { "required": ["method"] },
+                { "required": ["pathTemplate"] },
+                { "required": ["request"] }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "redactionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "secretHeaderNames",
+        "sensitiveQueryParameterNames",
+        "forbiddenResponseHeaderNames",
+        "maximumRecordedBodyBytes"
+      ],
+      "properties": {
+        "secretHeaderNames": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[A-Za-z0-9-]{1,64}$" }
+        },
+        "sensitiveQueryParameterNames": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,64}$" }
+        },
+        "forbiddenResponseHeaderNames": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[A-Za-z0-9-]{1,64}$" }
+        },
+        "maximumRecordedBodyBytes": {
+          "description": "Local checked-in fixture recording/replay cap in bytes; not a provider-published response limit.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidenceId", "sourceUrl", "observedAt", "sourceKind"],
+      "properties": {
+        "evidenceId": { "type": "string", "pattern": "^[a-z][a-z0-9-]{2,63}$" },
+        "sourceUrl": { "type": "string", "format": "uri", "maxLength": 512 },
+        "observedAt": { "type": "string", "format": "date-time" },
+        "sourceKind": {
+          "enum": [
+            "official_docs",
+            "official_openapi",
+            "redacted_capture",
+            "reviewed_terms"
+          ]
+        },
+        "sourceVersion": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "contentHash": { "$ref": "#/$defs/hash" },
+        "validUntil": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

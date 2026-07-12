@@ -22,6 +22,15 @@ import (
 
 const adminCommandTimeout = 45 * time.Second
 
+const (
+	providerWireContractFrozen             = false
+	providerWireContractNotFrozenErrorCode = "PROVIDER_WIRE_CONTRACT_NOT_FROZEN"
+)
+
+var errProviderWireContractNotFrozen = errors.New(
+	providerWireContractNotFrozenErrorCode,
+)
+
 func main() {
 	log.SetFlags(0)
 	if err := run(os.Args[1:], os.Stdin, os.Stdout); err != nil {
@@ -54,6 +63,13 @@ func runGovernanceApply(args []string, stdin io.Reader, stdout io.Writer) error 
 	flags.BoolVar(&manifestStdin, "manifest-stdin", false, "read strict governance manifest JSON from stdin")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 || !manifestStdin {
 		return usageError()
+	}
+	// Governance profiles must not be persisted until the Provider Registry and
+	// its contract hash binding are frozen. Keep this gate ahead of stdin reads,
+	// database setup, and GovernanceService.Apply so no syntactically valid
+	// placeholder manifest can become active in the interim.
+	if !providerWireContractFrozen {
+		return errProviderWireContractNotFrozen
 	}
 	manifest, err := readGovernanceManifest(stdin)
 	if err != nil {

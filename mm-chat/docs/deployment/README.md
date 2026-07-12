@@ -50,6 +50,11 @@ Outbox state.
   allowlist. HTTP metrics use bounded route labels, dependency gauges mirror
   configured `/ready` checks, and the single-server MinIO state is represented
   by the `storage` dependency gauge rather than direct MinIO admin scraping.
+- Phase 15.2C C0 has only test-time blocked MinerU/Jina fixtures. The former
+  executable MinerU Governance example was replaced by
+  `governance-mineru.blocked.json`; it must fail the Governance CLI shape. Do
+  not enable Provider processing until the Provider Wire Contract is `frozen`
+  and a reviewed manifest is derived from its exact hashes.
 - API startup must not auto-run migrations; operators run the `migrate` service
   or `mm-chat-migrate` before starting or restarting a DB-enabled backend
   release. The Phase 15.2B migration head is `010`.

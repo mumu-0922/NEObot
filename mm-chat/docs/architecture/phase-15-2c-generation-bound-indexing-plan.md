@@ -381,7 +381,9 @@ Quarantine，禁止把空文本标记成功。
 
 ### 8.1 C0 外部 Wire Contract Gate
 
-实现真实 Adapter 前必须由脱敏 Fixture 冻结：
+唯一冻结源为
+[`provider-wire-fixture.md`](../contracts/provider-wire-fixture.md)。实现真实 Adapter 前必须
+由 Closed Schema、脱敏 Fixture、Evidence、Reviewer 与 RFC 8785 Hash 冻结：
 
 - MinerU/Jina Base URL、Region、Endpoint ID、Auth Header 名称；
 - 精确 Model ID、不可变 Model/API Build Version；
@@ -396,6 +398,8 @@ Quarantine，禁止把空文本标记成功。
 
 Key 只写 Secret File，绝不进入 Fixture、Git 或日志。若 Provider 不支持 Query-by-key，
 必须在计划中明确 `UNKNOWN_SUBMISSION` 的人工/自动恢复规则，不能用盲目 Resubmit 掩盖。
+当前公开 MinerU、Jina 1024/2048 和 Rerank Fixture 均为 blocked `draft`；它们与内存 Fake
+只能用于 Contract Test，不能派生 Governance 或关闭本 Gate。
 
 ### 8.2 MinerU Durable Operation
 
@@ -628,6 +632,9 @@ Restore/Crash/Down-Up；Phase 15.2E 只消费已冻结 Report 做生产 Promotio
 - [x] 冻结 `010` 不可变、`011` Search-only、`012` Dispatcher 的迁移顺序。
 - [x] 冻结 Processing Request、双 Generation Fan-out、Stage Finalizer、Gateway 和
       Deletion Work 设计。
+- [x] 实现 Closed JSON Schema、Strict Loader、Secret/Placeholder/Hash Gate、完整长度
+      Jina 1024/2048 Draft Fixture 和无网络 Fake Provider 基线。
+- [x] 禁止危险 `default/model-v1/v1` 示例直接执行 Governance Apply；未冻结时 Fail Closed。
 - [ ] 获取并校验 MinerU/Jina 脱敏 Wire Fixture、Model/API Build、License/SLA/Retention。
 - [ ] 关闭 C0 外部 Contract Gate；未关闭前禁止真实 Provider 调用。
 

@@ -29,6 +29,23 @@ Purge Fan-out、原子 Publish/Purge Function 及权限边界。
 受限检索 Function 与恢复校验。`011` 必须引用 Bake-off 报告中已晋升且带精确版本/
 Digest 的唯一 Profile；未晋升时不得编写“临时候选”DDL。
 
+Pending migration `012` 的 Approved Profile Bundle 必须额外绑定：
+
+```text
+wire_contract_hash
+terms_snapshot_hash
+fixture_set_hash
+freeze_report_hash
+bakeoff_report_hash
+```
+
+前三个 Canonical Hash 与 `freeze_report_hash` 只能来自
+`lifecycle.state=frozen` Provider Fixture/实际 Freeze Report；
+`bakeoff_report_hash` 独立来自晋升后的 Search Evaluation。Draft/Verified/Synthetic Fixture、
+Credential Presence 或当前 Governance Row 都不能反向生成这些 Hash，也不能用任一 Report
+Hash 替代另一项。Provider Operation Intent 同时保存精确 Wire Contract Hash，外调前与
+提交前重验当前 Bundle/Consent。
+
 以下内容**禁止进入 `010`**：
 
 - `CREATE EXTENSION`、`pg_search`、`vector(n)`、`halfvec(n)` 或其他
@@ -389,6 +406,11 @@ ooxml_part_xpath
 Locator 的 Discriminator/必填字段由 Contract Version 校验；BBox、Line、Offset、Page、
 Slide、Cell 范围必须非负且有序。质量失败的 Artifact Set 只能 Quarantine，不能产生
 Published Materialization。
+
+Migration `010` 只冻结上述 Locator Shape，不足以证明 Provider 坐标语义。`012` 必须从
+[`provider-wire-fixture.md`](../contracts/provider-wire-fixture.md) 固定
+`page_index_basis/bbox_order/coordinate_unit/origin/axis_direction/bounds/rotation_semantics/
+normalization_version` 与 Conversion Hash；未知或漂移时禁止 Publish/Citation。
 
 ### 4.6 Parent/Child Chunk 与 Provenance
 

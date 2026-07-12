@@ -298,6 +298,23 @@ model binding and, when its contract changes, creates a new
 Profile/`governanceRevision`, then atomically advances `headRevision`; it cannot
 mutate an Approved Profile in place.
 
+Phase 15.2C adds a mandatory upstream gate:
+
+```text
+frozen Provider Wire Fixture -> approved Governance Profile -> Consent
+```
+
+The only fixture contract is
+[`provider-wire-fixture.md`](./provider-wire-fixture.md). A `draft`, `verified`,
+synthetic, blocked, hash-drifted, or expired-terms fixture cannot generate an
+Approved Profile. Credential availability and a successful manual API call are
+not substitutes. The Profile Bundle must pin `wireContractHash`,
+`termsSnapshotHash`, `fixtureSetHash`, `freezeReportHash`, and the exact
+Provider/Endpoint/Model/API/Build identity before Consent can authorize Egress.
+Once a Search Profile is promoted, its Bundle additionally pins the independent
+`bakeoffReportHash`; a bake-off report never substitutes for Provider freeze
+evidence.
+
 ### Processing consent
 
 ```ts

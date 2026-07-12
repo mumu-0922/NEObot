@@ -6987,3 +6987,175 @@ The fifth read-only review returned `P0/P1/P2 = 0/0/0`. Phase 15.2C design is
 locked. Implementation may begin at C0, but real Provider calls and Activation
 remain blocked until the redacted MinerU/Jina Wire Contract, immutable Model/API
 Build, license, retention and SLA gates close.
+
+## 2026-07-12 — Phase 15.2C C0 provider-contract intake implemented
+
+Three parallel xhigh audits inspected the Python test boundary, Provider/
+Governance contracts, and current official MinerU/Jina public documentation.
+They found a fail-open operational path: the previous deployment guide piped a
+syntactically valid `default/model-v1/v1` example directly into
+`governance-apply`, which would create an Approved Profile without a frozen
+Provider Contract.
+
+The C0 intake slice now adds:
+
+- a closed Draft 2020-12 JSON Schema and explicit
+  `draft → verified → frozen → retired` lifecycle;
+- a fixed-root loader that rejects arbitrary paths, duplicate keys, NaN/Inf,
+  NUL, placeholders, secret-like values, credential-bearing URLs, unknown
+  Evidence, invalid operation sets and Freeze/Hash drift;
+- RFC 8785/JCS contract hashing with dev-only exact-pinned dependencies;
+- blocked public MinerU, Jina Passage 1024/2048 and Jina Rerank Draft Fixtures;
+- complete 1024/2048 Synthetic Vector widths rather than shortened examples;
+- a Starlette/HTTPX in-memory Fake that opens no network and retains no Header
+  Value or Body bytes;
+- a non-executable `governance-mineru.blocked.json` and deployment runbook that
+  forbids Governance Apply until a Frozen Contract derives the manifest.
+
+Public documentation verifies candidate paths and shapes but does not close the
+external gate. MinerU immutable API/build, account Endpoint, Query-by-key,
+Cancel, BBox and terms remain unresolved. Jina immutable model build, region,
+account Batch/Quota, normalization, terms and final Rerank selection remain
+unresolved. No `.env`, API Key, Task ID or Signed URL was read or committed.
+
+```text
+C0 schema/loader/fake baseline             implemented
+public MinerU/Jina fixtures                draft / blocked
+production handler registries              empty
+RAG_WORKER_DISPATCH_ENABLED                false
+external Provider Contract Gate            open
+```
+
+Next: independent xhigh review of this C0 slice, then collect authorized
+redacted captures and reviewed terms without exposing credentials.
+
+## 2026-07-12 — Phase 15.2C C0 review round one repaired
+
+The first independent xhigh review returned `P0/P1/P2 = 0/7/3`; the C0
+baseline was therefore moved back to unchecked/in-review instead of being
+treated as complete. The repair closes every reported class:
+
+- strict JSON now rejects non-finite exponent results and integers outside the
+  JCS safe range; path, URL, placeholder, secret-field and UTF-8 body-byte
+  checks cover the complete wire tree;
+- callers cannot override the checked-in Schema, validated Contracts are
+  deeply immutable, and `require_frozen` reruns fixed Schema plus semantic
+  validation;
+- Evidence carries content/expiry metadata at Freeze, Terms only accept
+  `reviewed_terms`, and the Freeze Gate hashes the actual report bytes;
+- MinerU and Jina validators enforce operation/phase uniqueness, success and
+  frozen error-class coverage, provider response shape, dimensions, indexes,
+  finite values and non-negative usage;
+- unverified Jina account limits and Rerank identity were removed; request and
+  recording byte ceilings are explicitly local Fixture caps;
+- Governance Apply is hard-blocked with
+  `PROVIDER_WIRE_CONTRACT_NOT_FROZEN` before stdin/DB access, and the Service
+  rejects placeholder Endpoint/Model/API values;
+- downstream integrity is split into `wireContractHash`,
+  `termsSnapshotHash`, `fixtureSetHash`, plus exact `freezeReportHash`; Fake
+  calls retain only the static path template, never dynamic Provider IDs.
+
+Repair evidence:
+
+```text
+Python Ruff/format/Mypy                         passed
+Python unit suite                              116 passed / 2 deselected
+Python coverage                                90.19%
+pip-audit                                      no known vulnerabilities
+Go full unit suite                             passed
+Go full race suite                             passed
+Go targeted vet                               passed
+production handler registry                    empty
+RAG_WORKER_DISPATCH_ENABLED                    false
+```
+
+Next: independent xhigh review round two. C0 stays unchecked and the external
+Provider Contract Gate stays open until that review reaches `0/0/0`.
+
+## 2026-07-12 — Phase 15.2C C0 review round two returned 0/3/3
+
+The second independent xhigh review returned `P0/P1/P2 = 0/3/3`. It confirmed
+the Go Governance hard gate, immutable/fixed-Schema loader, three canonical
+Hash boundaries, invented-fact removal, full-width vectors, static Fake path,
+empty production registries and disabled dispatch. It then reproduced three
+remaining authority gaps:
+
+- direct-dict unsafe integers/lone surrogates, whitespace/scheme-relative URLs
+  and Policy-declared secret fields bypassed the complete-tree gate;
+- Capability/Term/MIME values were only broadly typed, while Evidence
+  `contentHash` was not recomputed from supplied Snapshot bytes;
+- Jina request semantics, Rerank Identity binding, HTTP classification and
+  non-synthetic frozen behavior coverage were not yet exact.
+
+It also found missing Fake Content-Type value validation, inconsistent
+`freezeReportHash`/`bakeoffReportHash` Bundle wording, and matching negative
+tests. C0 remains unchecked. The repair now validates one JCS-safe Unicode JSON
+tree for every entry point, merges Policy secret names, uses Closed Fact
+Shapes, requires exact Evidence Snapshot bytes at Freeze, binds redacted Case
+Evidence, excludes synthetic-only behavior coverage, fixes Jina/MinerU request
+semantics and HTTP classifications, validates Fake media types, and aligns all
+five Provider/Search Bundle hashes.
+
+Next: rerun the complete Python/Go/format/security gates and submit the repaired
+slice to independent xhigh review round three. External Provider calls remain
+forbidden.
+
+## 2026-07-12 — Phase 15.2C C0 review round three returned 0/3/1
+
+The third independent xhigh review returned `P0/P1/P2 = 0/3/1`. Every round-two
+PoC was rejected, but the reviewer then found three cross-contract gaps:
+
+- URL tokens embedded inside Provider text could bypass start-anchored URL
+  checks;
+- Closed Capability objects were not yet bound to Provider Kind, frozen state
+  requirements or the Jina Request Dimension;
+- the Rerank public response omitted its OpenAPI-required Model, while MinerU
+  Running/Done shapes omitted official `err_msg/start_time` fields and lacked a
+  Failed variant.
+
+The repair scans URL tokens at any string position, binds Capability State and
+Shape per MinerU/Jina/Rerank, checks Capability/Request Dimension equality,
+requires redacted-capture behavior for frozen coverage, restores the official
+Rerank Response Model, and models MinerU Pending/Running/Done/Failed as separate
+closed variants including `terminal_failure` over a 2xx provider envelope.
+Matching negative and positive fixtures cover every reproduced path. C0 remains
+unchecked pending round four; production egress remains disabled.
+
+## 2026-07-12 — Phase 15.2C C0 review round four returned 0/1/1
+
+The fourth independent xhigh review confirmed all prior Provider, Capability,
+Evidence, Hash, Fake and Governance findings closed, then found one Unicode
+edge: scheme-relative `//例子.测试/path` was not recognized because the
+authority detector assumed an ASCII first host character. The detector is now
+Unicode-aware (`//` followed by any non-whitespace, non-delimiter authority
+character). Tests reject direct and embedded IDN scheme-relative forms while
+retaining a positive credential-free `https://例子.测试/path` case. C0 remains
+unchecked until the next independent review reaches `0/0/0`.
+
+## 2026-07-12 — Phase 15.2C C0 independent review closed
+
+The fifth independent xhigh review replayed the Unicode IDN authority cases and
+the complete prior finding set, then returned `P0/P1/P2 = 0/0/0`.
+
+```text
+review round 1                         0/7/3
+review round 2                         0/3/3
+review round 3                         0/3/1
+review round 4                         0/1/1
+review round 5                         0/0/0
+Provider targeted tests                59 passed
+Python non-integration                 144 passed / 2 deselected
+Python coverage                        90.19%
+Ruff / format / Mypy                   passed
+pip-audit                              no known vulnerabilities
+Go full unit / race / vet              passed
+security scanner                       no findings in changed test/Go scopes
+production dispatch/handler registries empty
+RAG_WORKER_DISPATCH_ENABLED            false
+```
+
+The C0 implementation baseline is complete and checked. This does **not** close
+the external Provider Contract Gate: all four public Fixtures remain
+`draft/blocked`; immutable builds, redacted captures, exact account limits and
+reviewed terms still require authorized external intake before any real
+Provider call or Governance Apply can be enabled.

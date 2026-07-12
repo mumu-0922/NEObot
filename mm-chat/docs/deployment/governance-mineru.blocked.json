@@ -1,0 +1,6 @@
+{
+  "doNotApply": true,
+  "reasonCode": "PROVIDER_WIRE_CONTRACT_NOT_FROZEN",
+  "contract": "../contracts/provider-wire-fixture.md",
+  "requiredLifecycleState": "frozen"
+}

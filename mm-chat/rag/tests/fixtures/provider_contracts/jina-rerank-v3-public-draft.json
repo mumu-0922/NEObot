@@ -1,0 +1,193 @@
+{
+  "schemaVersion": 1,
+  "fixtureSetId": "jina-rerank-v3-public-draft-20260712",
+  "fixtureKind": "public_documentation",
+  "providerKind": "jina_rerank",
+  "observedAt": "2026-07-12T00:00:00Z",
+  "lifecycle": {
+    "state": "draft",
+    "blockedBy": [
+      "IMMUTABLE_BUILD_UNKNOWN",
+      "ACCOUNT_LIMITS_NOT_CAPTURED",
+      "TERMS_NOT_VERIFIED",
+      "RERANK_MODEL_NOT_SELECTED"
+    ],
+    "reviewers": ["engineering"]
+  },
+  "identity": {
+    "provider": {
+      "state": "observed",
+      "value": "jina",
+      "evidenceRefs": ["jina-openapi"]
+    },
+    "endpointId": {
+      "state": "unknown",
+      "reasonCode": "GOVERNANCE_ENDPOINT_ID_NOT_CAPTURED"
+    },
+    "baseUrl": {
+      "state": "observed",
+      "value": "https://api.jina.ai",
+      "evidenceRefs": ["jina-openapi"]
+    },
+    "region": {
+      "state": "unknown",
+      "reasonCode": "PROCESSING_REGION_NOT_PUBLISHED"
+    },
+    "modelId": {
+      "state": "unknown",
+      "reasonCode": "RERANK_MODEL_NOT_SELECTED"
+    },
+    "modelApiVersion": {
+      "state": "observed",
+      "value": "2026.06.29.1712",
+      "evidenceRefs": ["jina-openapi"]
+    },
+    "immutableBuildId": {
+      "state": "unknown",
+      "reasonCode": "IMMUTABLE_MODEL_BUILD_NOT_PUBLISHED"
+    },
+    "purpose": {
+      "state": "observed",
+      "value": "rerank",
+      "evidenceRefs": ["jina-openapi"]
+    },
+    "allowedDataTypes": {
+      "state": "observed",
+      "value": ["text/plain"],
+      "evidenceRefs": ["jina-openapi"]
+    }
+  },
+  "capabilities": {
+    "idempotency": {
+      "state": "unknown",
+      "reasonCode": "SYNC_IDEMPOTENCY_NOT_PUBLISHED"
+    },
+    "rateLimits": {
+      "state": "unknown",
+      "reasonCode": "ACCOUNT_LIMITS_NOT_CAPTURED"
+    },
+    "spatial": {
+      "state": "not_applicable",
+      "reasonCode": "TEXT_RERANK_PROVIDER"
+    },
+    "embedding": {
+      "state": "not_applicable",
+      "reasonCode": "RERANK_PROVIDER"
+    }
+  },
+  "governanceTerms": {
+    "license": {
+      "state": "unknown",
+      "reasonCode": "LICENSE_NOT_REVIEWED"
+    },
+    "retention": {
+      "state": "unknown",
+      "reasonCode": "RETENTION_NOT_REVIEWED"
+    },
+    "deletion": {
+      "state": "unknown",
+      "reasonCode": "DELETION_NOT_REVIEWED"
+    },
+    "trainingUse": {
+      "state": "unknown",
+      "reasonCode": "TRAINING_USE_NOT_REVIEWED"
+    },
+    "sla": {
+      "state": "unknown",
+      "reasonCode": "SLA_NOT_REVIEWED"
+    }
+  },
+  "operations": [
+    {
+      "operationId": "rerank",
+      "phase": "rerank",
+      "support": {
+        "state": "observed",
+        "evidenceRefs": ["jina-openapi"]
+      },
+      "method": "POST",
+      "pathTemplate": "/v1/rerank",
+      "request": {
+        "contentType": "application/json",
+        "requiredHeaderNames": ["Authorization", "Content-Type"],
+        "maximumBytes": 1048576,
+        "body": {
+          "json": {
+            "model": "jina-reranker-v3",
+            "query": "fixture query",
+            "documents": ["fixture document"],
+            "top_n": 1,
+            "return_documents": false
+          }
+        }
+      },
+      "responseCases": [
+        {
+          "caseId": "rerank-success",
+          "source": "public_schema_synthetic",
+          "status": 200,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "json": {
+              "model": "jina-reranker-v3",
+              "object": "list",
+              "usage": {
+                "total_tokens": 4
+              },
+              "results": [
+                {
+                  "index": 0,
+                  "relevance_score": 0.75
+                }
+              ]
+            }
+          },
+          "classification": "success"
+        }
+      ]
+    }
+  ],
+  "redactionPolicy": {
+    "secretHeaderNames": ["Authorization", "Cookie", "Set-Cookie"],
+    "sensitiveQueryParameterNames": ["api_key", "token", "signature"],
+    "forbiddenResponseHeaderNames": ["Set-Cookie"],
+    "maximumRecordedBodyBytes": 65536
+  },
+  "evidence": [
+    {
+      "evidenceId": "jina-openapi",
+      "sourceUrl": "https://api.jina.ai/openapi.json",
+      "observedAt": "2026-07-12T00:00:00Z",
+      "sourceKind": "official_openapi",
+      "sourceVersion": "2026.06.29.1712"
+    }
+  ],
+  "unresolved": [
+    {
+      "field": "identity.endpointId",
+      "reasonCode": "GOVERNANCE_ENDPOINT_ID_NOT_CAPTURED"
+    },
+    {
+      "field": "identity.immutableBuildId",
+      "reasonCode": "IMMUTABLE_MODEL_BUILD_NOT_PUBLISHED"
+    },
+    {
+      "field": "identity.region",
+      "reasonCode": "PROCESSING_REGION_NOT_PUBLISHED"
+    },
+    {
+      "field": "identity.modelId",
+      "reasonCode": "RERANK_MODEL_NOT_SELECTED"
+    },
+    {
+      "field": "capabilities.rateLimits",
+      "reasonCode": "ACCOUNT_LIMITS_NOT_CAPTURED"
+    },
+    {
+      "field": "governanceTerms",
+      "reasonCode": "TERMS_NOT_VERIFIED"
+    }
+  ]
+}

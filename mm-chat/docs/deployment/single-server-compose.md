@@ -215,20 +215,22 @@ Sessions, advances affected Membership revisions, and writes Outbox events:
 Do not replace this command with `UPDATE users SET account_status=...` because
 that bypasses last-admin and revision fencing.
 
-Apply Processor Governance from a reviewed, credential-free manifest on stdin.
-Unknown fields—including keys, tokens, URLs, IDs, status, and revisions—are
-rejected. Reapplying the exact active manifest is a no-op:
+Do not apply Processor Governance from the old example manifest. Phase 15.2C
+found that syntactically valid `default/model-v1/v1` placeholders could become
+an `approved` profile. The replacement
+`governance-mineru.blocked.json` deliberately does not match the Governance CLI
+shape and must be rejected.
 
-```bash
-cat docs/deployment/governance-mineru.example.json | \
-  ./scripts/compose-single-server-production.sh .env.single-server \
-  --profile ops run --rm -T admin \
-  governance-apply --manifest-stdin
+Only a credential-free manifest derived from a `lifecycle.state=frozen`
+[`provider-wire-fixture.md`](../contracts/provider-wire-fixture.md) contract may
+be reviewed and supplied on stdin. C0 has not frozen that contract, so the apply
+command is intentionally unavailable. After C0 closes, record the generated
+manifest path and exact Contract/Terms/Fixture hashes in the release evidence;
+never pipe the blocked file. This runbook intentionally contains no executable
+`governance-apply` pipeline until the reviewed manifest generator exists:
 
-./scripts/compose-single-server-production.sh .env.single-server \
-  --profile ops run --rm admin \
-  governance-disable --processor mineru --endpoint-id default \
-  --model-id model-v1
+```text
+governance apply: BLOCKED — PROVIDER_WIRE_CONTRACT_NOT_FROZEN
 ```
 
 The manifest contains only bounded lowercase declaration identifiers for the
@@ -241,7 +243,7 @@ Spaces, URLs, free-form policy text, duplicate/case-variant keys, and unknown
 fields are rejected. Credentials remain in service secret configuration and
 must never enter Governance JSON or SQL.
 
-Always pass `--model-id` to `governance-disable` so only the reviewed model Head
+Always pass the exact frozen `--model-id` to `governance-disable` so only the reviewed model Head
 is disabled, and include `modelId` in every new Governance manifest. A legacy
 apply manifest without `modelId`, or a legacy disable command without
 `--model-id`, resolves only when the given Processor and endpoint already

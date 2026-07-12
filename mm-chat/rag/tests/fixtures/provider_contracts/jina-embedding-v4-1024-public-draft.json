@@ -1,0 +1,311 @@
+{
+  "schemaVersion": 1,
+  "fixtureSetId": "jina-embedding-v4-1024-public-draft-20260712",
+  "fixtureKind": "public_documentation",
+  "providerKind": "jina_embedding",
+  "observedAt": "2026-07-12T00:00:00Z",
+  "lifecycle": {
+    "state": "draft",
+    "blockedBy": [
+      "IMMUTABLE_BUILD_UNKNOWN",
+      "NORMALIZATION_UNVERIFIED",
+      "ACCOUNT_LIMITS_NOT_CAPTURED",
+      "TERMS_NOT_VERIFIED"
+    ],
+    "reviewers": ["engineering"]
+  },
+  "identity": {
+    "provider": {
+      "state": "observed",
+      "value": "jina",
+      "evidenceRefs": ["jina-openapi"]
+    },
+    "endpointId": {
+      "state": "unknown",
+      "reasonCode": "GOVERNANCE_ENDPOINT_ID_NOT_CAPTURED"
+    },
+    "baseUrl": {
+      "state": "observed",
+      "value": "https://api.jina.ai",
+      "evidenceRefs": ["jina-openapi"]
+    },
+    "region": {
+      "state": "unknown",
+      "reasonCode": "PROCESSING_REGION_NOT_PUBLISHED"
+    },
+    "modelId": {
+      "state": "observed",
+      "value": "jina-embeddings-v4",
+      "evidenceRefs": ["jina-openapi"]
+    },
+    "modelApiVersion": {
+      "state": "observed",
+      "value": "2026.06.29.1712",
+      "evidenceRefs": ["jina-openapi"]
+    },
+    "immutableBuildId": {
+      "state": "unknown",
+      "reasonCode": "IMMUTABLE_MODEL_BUILD_NOT_PUBLISHED"
+    },
+    "purpose": {
+      "state": "observed",
+      "value": "passage_embedding",
+      "evidenceRefs": ["jina-openapi"]
+    },
+    "allowedDataTypes": {
+      "state": "observed",
+      "value": ["text/plain"],
+      "evidenceRefs": ["jina-openapi"]
+    }
+  },
+  "capabilities": {
+    "idempotency": {
+      "state": "unknown",
+      "reasonCode": "SYNC_IDEMPOTENCY_NOT_PUBLISHED"
+    },
+    "rateLimits": {
+      "state": "unknown",
+      "reasonCode": "OFFICIAL_RATE_LIMITS_NOT_VERIFIED"
+    },
+    "spatial": {
+      "state": "not_applicable",
+      "reasonCode": "TEXT_EMBEDDING_PROVIDER"
+    },
+    "embedding": {
+      "state": "unknown",
+      "reasonCode": "BATCH_AND_NORMALIZATION_NOT_VERIFIED"
+    }
+  },
+  "governanceTerms": {
+    "license": {
+      "state": "unknown",
+      "reasonCode": "LICENSE_NOT_REVIEWED"
+    },
+    "retention": {
+      "state": "unknown",
+      "reasonCode": "RETENTION_NOT_REVIEWED"
+    },
+    "deletion": {
+      "state": "unknown",
+      "reasonCode": "DELETION_NOT_REVIEWED"
+    },
+    "trainingUse": {
+      "state": "unknown",
+      "reasonCode": "TRAINING_USE_NOT_REVIEWED"
+    },
+    "sla": {
+      "state": "unknown",
+      "reasonCode": "SLA_NOT_REVIEWED"
+    }
+  },
+  "operations": [
+    {
+      "operationId": "embed",
+      "phase": "embed",
+      "support": {
+        "state": "observed",
+        "evidenceRefs": ["jina-openapi"]
+      },
+      "method": "POST",
+      "pathTemplate": "/v1/embeddings",
+      "request": {
+        "contentType": "application/json",
+        "requiredHeaderNames": ["Authorization", "Content-Type"],
+        "maximumBytes": 1048576,
+        "body": {
+          "json": {
+            "model": "jina-embeddings-v4",
+            "input": [
+              {
+                "text": "fixture passage"
+              }
+            ],
+            "task": "retrieval.passage",
+            "dimensions": 1024,
+            "embedding_type": "float",
+            "truncate": false,
+            "late_chunking": false,
+            "return_multivector": false,
+            "return_tokenized_input": false
+          }
+        }
+      },
+      "responseCases": [
+        {
+          "caseId": "embed-success-1024",
+          "source": "public_schema_synthetic",
+          "status": 200,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "json": {
+              "model": "jina-embeddings-v4",
+              "object": "list",
+              "usage": {
+                "total_tokens": 2,
+                "prompt_tokens": 2
+              },
+              "data": [
+                {
+                  "object": "embedding",
+                  "index": 0,
+                  "embedding": [
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0
+                  ]
+                }
+              ]
+            }
+          },
+          "classification": "success"
+        },
+        {
+          "caseId": "embed-rate-limited",
+          "source": "synthetic_test",
+          "status": 429,
+          "headers": {
+            "Content-Type": "application/json",
+            "Retry-After": "15"
+          },
+          "body": {
+            "json": {
+              "detail": "rate limited"
+            }
+          },
+          "classification": "retryable",
+          "stableErrorCode": "PROVIDER_RATE_LIMITED"
+        }
+      ]
+    }
+  ],
+  "redactionPolicy": {
+    "secretHeaderNames": ["Authorization", "Cookie", "Set-Cookie"],
+    "sensitiveQueryParameterNames": ["api_key", "token", "signature"],
+    "forbiddenResponseHeaderNames": ["Set-Cookie"],
+    "maximumRecordedBodyBytes": 65536
+  },
+  "evidence": [
+    {
+      "evidenceId": "jina-openapi",
+      "sourceUrl": "https://api.jina.ai/openapi.json",
+      "observedAt": "2026-07-12T00:00:00Z",
+      "sourceKind": "official_openapi",
+      "sourceVersion": "2026.06.29.1712"
+    }
+  ],
+  "unresolved": [
+    {
+      "field": "identity.endpointId",
+      "reasonCode": "GOVERNANCE_ENDPOINT_ID_NOT_CAPTURED"
+    },
+    {
+      "field": "identity.immutableBuildId",
+      "reasonCode": "IMMUTABLE_MODEL_BUILD_NOT_PUBLISHED"
+    },
+    {
+      "field": "identity.region",
+      "reasonCode": "PROCESSING_REGION_NOT_PUBLISHED"
+    },
+    {
+      "field": "capabilities.embedding.normalization",
+      "reasonCode": "NORMALIZATION_UNVERIFIED"
+    },
+    {
+      "field": "capabilities.embedding.batchLimits",
+      "reasonCode": "BATCH_LIMITS_NOT_MEASURED"
+    },
+    {
+      "field": "capabilities.rateLimits",
+      "reasonCode": "OFFICIAL_RATE_LIMITS_NOT_VERIFIED"
+    },
+    {
+      "field": "governanceTerms",
+      "reasonCode": "TERMS_NOT_VERIFIED"
+    }
+  ]
+}

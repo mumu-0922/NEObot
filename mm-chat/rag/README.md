@@ -9,6 +9,10 @@ Phase B does not parse files, call embedding providers, read object storage,
 build search projections, or purge data. `DISPATCH_REGISTRY` and
 `JOB_HANDLER_REGISTRY` are intentionally empty until Phase 15.2C promotion.
 
+Phase 15.2C C0 adds **test-only** redacted Provider Contract intake under
+`tests/fixtures/provider_contracts/`. The checked-in MinerU/Jina fixtures remain
+blocked drafts; they do not enable provider calls or production handlers.
+
 ## Safety boundaries
 
 - PostgreSQL is authoritative. Runtime SQL calls frozen `SECURITY DEFINER`
@@ -29,7 +33,7 @@ No command loads repository `.env` files.
 uv sync --locked
 uv run ruff check .
 uv run ruff format --check .
-uv run mypy src
+uv run mypy src tests/support
 uv run pytest --cov=mm_chat_rag --cov-report=term-missing
 uv run pip-audit --skip-editable
 ./tests/docker-smoke.sh
@@ -49,6 +53,17 @@ RAG_TEST_REDIS_URL='redis://...' uv run pytest -m integration
 
 The PostgreSQL DSN must target a database migrated through `010` and a role with
 only the Phase 15.2B worker grants.
+
+Provider Contract validation and in-memory replay do not read `.env`, start a
+listener, or make network calls:
+
+```bash
+uv run pytest -p no:cacheprovider tests/unit/test_provider_contracts.py
+```
+
+`jsonschema`, `types-jsonschema`, `rfc8785`, and `httpx` are dev-only. Docker
+uses `uv sync --no-dev`, and `.dockerignore` excludes `tests`, so fixtures and
+Fake Provider support do not enter the runtime image.
 
 ## Runtime
 

@@ -6,6 +6,7 @@ import (
 )
 
 type fakeGovernanceRepository struct {
+	applyCalls int
 	manifest   GovernanceManifest
 	hash       string
 	processor  string
@@ -13,6 +14,7 @@ type fakeGovernanceRepository struct {
 }
 
 func (r *fakeGovernanceRepository) ApplyGovernance(_ context.Context, manifest GovernanceManifest, hash string) (ProcessorGovernanceHead, error) {
+	r.applyCalls++
 	r.manifest, r.hash = manifest, hash
 	return ProcessorGovernanceHead{Processor: manifest.Processor, EndpointID: manifest.EndpointID}, nil
 }
@@ -24,16 +26,20 @@ func (r *fakeGovernanceRepository) DisableGovernance(_ context.Context, processo
 func TestGovernanceServiceNormalizesAndHashesCanonicalManifest(t *testing.T) {
 	repo := &fakeGovernanceRepository{}
 	service := NewGovernanceService(repo)
-	input := GovernanceManifest{Processor: " mineru ", EndpointID: " default ", ModelID: " model-v1 ", ModelAPIVersion: " v1 ",
+	input := GovernanceManifest{Processor: " mineru ", EndpointID: " hosted-main ", ModelID: " model-stable-20260712 ", ModelAPIVersion: " api-20260623 ",
 		AllowedPurposes: []string{"parse", "answer", "parse"}, AllowedDataTypes: []string{"text/plain", "application/pdf"},
 		Region: " global ", RetentionPolicy: " none ", DeletionContract: " delete ", TrainingUse: " disabled "}
 	if _, err := service.Apply(context.Background(), input); err != nil {
 		t.Fatal(err)
 	}
-	if repo.manifest.Processor != "mineru" || repo.manifest.AllowedPurposes[0] != "answer" || len(repo.hash) != 64 {
+	if repo.manifest.Processor != "mineru" ||
+		repo.manifest.EndpointID != "hosted-main" ||
+		repo.manifest.ModelID != "model-stable-20260712" ||
+		repo.manifest.ModelAPIVersion != "api-20260623" ||
+		repo.manifest.AllowedPurposes[0] != "answer" || len(repo.hash) != 64 {
 		t.Fatalf("normalized manifest/hash = %#v %q", repo.manifest, repo.hash)
 	}
-	if repo.hash != "d553e61282f52193f032718ba6664a861729cf7499a4f762229705e2603ad48e" {
+	if repo.hash != "3c0887f8e0577407451e452cca1b1f2a1c51adb0e5d8ecc8d7546dc2cd60f45f" {
 		t.Fatalf("canonical hash golden vector changed: %s", repo.hash)
 	}
 	firstHash := repo.hash
@@ -48,7 +54,7 @@ func TestGovernanceServiceNormalizesAndHashesCanonicalManifest(t *testing.T) {
 }
 
 func TestGovernanceServiceRejectsInvalidAuthorityFields(t *testing.T) {
-	base := GovernanceManifest{Processor: "mineru", EndpointID: "default", ModelID: "model-v1", ModelAPIVersion: "v1",
+	base := GovernanceManifest{Processor: "mineru", EndpointID: "hosted-main", ModelID: "model-stable-20260712", ModelAPIVersion: "api-20260623",
 		AllowedPurposes: []string{"parse"}, AllowedDataTypes: []string{"application/pdf"}, Region: "global",
 		RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled"}
 	for name, mutate := range map[string]func(*GovernanceManifest){
@@ -75,6 +81,38 @@ func TestGovernanceServiceRejectsInvalidAuthorityFields(t *testing.T) {
 				t.Fatal("error = nil")
 			}
 		})
+	}
+}
+
+func TestGovernanceServiceRejectsPlaceholderProviderIdentity(t *testing.T) {
+	base := GovernanceManifest{Processor: "mineru", EndpointID: "hosted-main", ModelID: "model-stable-20260712", ModelAPIVersion: "api-20260623",
+		AllowedPurposes: []string{"parse"}, AllowedDataTypes: []string{"application/pdf"}, Region: "global",
+		RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled"}
+	placeholders := []string{
+		"default", "model-v1", "v1", "TBD", "todo", "unknown",
+		"unverified", "change-me", "64-lowercase-hex",
+	}
+	fields := map[string]func(*GovernanceManifest, string){
+		"endpoint":    func(v *GovernanceManifest, value string) { v.EndpointID = value },
+		"model":       func(v *GovernanceManifest, value string) { v.ModelID = value },
+		"api version": func(v *GovernanceManifest, value string) { v.ModelAPIVersion = value },
+	}
+	for field, mutate := range fields {
+		for _, placeholder := range placeholders {
+			t.Run(field+"/"+placeholder, func(t *testing.T) {
+				value := base
+				mutate(&value, placeholder)
+				repo := &fakeGovernanceRepository{}
+				if _, err := NewGovernanceService(repo).Apply(
+					context.Background(), value,
+				); err == nil {
+					t.Fatal("error = nil")
+				}
+				if repo.applyCalls != 0 {
+					t.Fatalf("repository apply calls = %d, want 0", repo.applyCalls)
+				}
+			})
+		}
 	}
 }
 

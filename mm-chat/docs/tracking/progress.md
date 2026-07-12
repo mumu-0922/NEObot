@@ -690,6 +690,11 @@ the UI can call in the next wiring slice.
       immutable `010`, Search-only `011`, Dispatcher `012`, Processing Request,
       Gateway, staging/finalizer, deletion, rebuild, activation, rollback, and
       verification contracts.
+- [x] Add the C0 closed Provider Fixture Schema, strict loader, RFC 8785 hash,
+      secret/placeholder/freeze gates, full-width Jina 1024/2048 public drafts,
+      MinerU/Rerank drafts, no-network Fake Provider, and governance-example
+      fail-closed guard without enabling runtime handlers; independent review
+      reached `P0/P1/P2 = 0/0/0`.
 - [ ] Freeze redacted MinerU/Jina wire fixtures, immutable Model/API builds,
       Provider recovery behavior, license, retention, and SLA.
 - [ ] Implement and verify the offline parser, Canonical IR, parent/child

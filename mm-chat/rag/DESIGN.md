@@ -33,6 +33,22 @@ invent ACL, consent, governance, generation, or projection state.
   egress policy. Migration permission tests and deployment network policy remain
   mandatory promotion gates.
 
+## Phase 15.2C C0 provider-contract intake
+
+Provider wire evidence is isolated from production code. A closed Draft 2020-12
+JSON Schema, strict duplicate/NaN/secret/placeholder semantic checks and RFC
+8785 hashes live under `tests/`; public MinerU/Jina evidence is explicitly
+`lifecycle.state=draft` with unresolved facts. `require_frozen()` rejects drafts,
+synthetic fixtures, blockers, unknown facts, missing independent reviewers and
+hash drift.
+
+The in-memory Fake Provider uses Starlette with `httpx.ASGITransport`; it opens
+no listener and stores only method/path, header names, body size and body hash.
+It never stores authorization values or request bytes. These tools prove that a
+future adapter can replay a reviewed contract, not that external processing is
+authorized. Production registries remain empty until the independent C-stage
+promotion gates pass.
+
 ## Process topology
 
 One process owns:

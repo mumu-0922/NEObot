@@ -20,9 +20,24 @@ const (
 
 var governanceAliasPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 var governanceModelVersionPattern = regexp.MustCompile(`^v?[0-9][a-z0-9._-]*$`)
+var governanceAPIVersionPattern = regexp.MustCompile(
+	`^(v?[0-9][a-z0-9._-]*|api-[0-9][a-z0-9._-]*)$`,
+)
 var governanceDataTypePattern = regexp.MustCompile(
 	`^(\*|[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*)$`,
 )
+
+var governancePlaceholderValues = map[string]struct{}{
+	"default":          {},
+	"model-v1":         {},
+	"v1":               {},
+	"tbd":              {},
+	"todo":             {},
+	"unknown":          {},
+	"unverified":       {},
+	"change-me":        {},
+	"64-lowercase-hex": {},
+}
 
 var governancePolicyValues = map[string]map[string]struct{}{
 	"region":            {"global": {}},
@@ -90,10 +105,16 @@ func normalizeGovernanceManifest(input GovernanceManifest) (GovernanceManifest, 
 	if err != nil {
 		return input, "", err
 	}
+	if isGovernancePlaceholder(input.EndpointID) {
+		return input, "", fmt.Errorf("invalid endpoint id")
+	}
 	if strings.TrimSpace(input.ModelID) != "" {
 		input.ModelID, err = normalizeGovernanceAlias(input.ModelID, "model id")
 		if err != nil {
 			return input, "", err
+		}
+		if isGovernancePlaceholder(input.ModelID) {
+			return input, "", fmt.Errorf("invalid model id")
 		}
 	}
 	for label, value := range map[string]*string{
@@ -101,7 +122,9 @@ func normalizeGovernanceManifest(input GovernanceManifest) (GovernanceManifest, 
 	} {
 		*value = strings.TrimSpace(*value)
 		if *value == "" || !utf8.ValidString(*value) ||
-			len(*value) > maximumGovernanceValueBytes || !governanceModelVersionPattern.MatchString(*value) {
+			len(*value) > maximumGovernanceValueBytes ||
+			!governanceAPIVersionPattern.MatchString(*value) ||
+			isGovernancePlaceholder(*value) {
 			return input, "", fmt.Errorf("invalid %s", label)
 		}
 	}
@@ -153,6 +176,11 @@ func normalizeGovernanceAlias(value, label string) (string, error) {
 		return "", fmt.Errorf("invalid %s", label)
 	}
 	return value, nil
+}
+
+func isGovernancePlaceholder(value string) bool {
+	_, placeholder := governancePlaceholderValues[strings.ToLower(value)]
+	return placeholder
 }
 
 func normalizeGovernanceList(values []string, purposes bool) ([]string, error) {

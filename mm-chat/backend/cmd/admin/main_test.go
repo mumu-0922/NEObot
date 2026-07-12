@@ -1,7 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -82,15 +86,16 @@ func TestAdminRunRequiresExplicitCommandArguments(t *testing.T) {
 }
 
 func TestReadGovernanceManifestIsStrictAndBounded(t *testing.T) {
-	valid := `{"processor":"mineru","endpointId":"default","modelId":"model-v1","modelApiVersion":"v1",` +
+	valid := `{"processor":"mineru","endpointId":"hosted-main","modelId":"model-stable-20260712","modelApiVersion":"api-20260623",` +
 		`"allowedPurposes":["parse"],"allowedDataTypes":["application/pdf"],` +
 		`"region":"global","retentionPolicy":"none","deletionContract":"delete",` +
 		`"trainingUse":"disabled"}`
 	manifest, err := readGovernanceManifest(strings.NewReader(valid))
-	if err != nil || manifest.Processor != "mineru" || manifest.ModelID != "model-v1" {
+	if err != nil || manifest.Processor != "mineru" ||
+		manifest.ModelID != "model-stable-20260712" {
 		t.Fatalf("manifest = %#v, err=%v", manifest, err)
 	}
-	legacy := strings.Replace(valid, `"modelId":"model-v1",`, "", 1)
+	legacy := strings.Replace(valid, `"modelId":"model-stable-20260712",`, "", 1)
 	legacyManifest, err := readGovernanceManifest(strings.NewReader(legacy))
 	if err != nil || legacyManifest.ModelID != "" {
 		t.Fatalf("legacy manifest = %#v, err=%v", legacyManifest, err)
@@ -108,6 +113,33 @@ func TestReadGovernanceManifestIsStrictAndBounded(t *testing.T) {
 				t.Fatal("readGovernanceManifest() error = nil")
 			}
 		})
+	}
+}
+
+func TestBlockedGovernanceManifestCannotApply(t *testing.T) {
+	payload, err := os.ReadFile(filepath.Join(
+		"..", "..", "..", "docs", "deployment",
+		"governance-mineru.blocked.json",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var output strings.Builder
+	err = run(
+		[]string{"governance-apply", "--manifest-stdin"},
+		bytes.NewReader(payload),
+		&output,
+	)
+	if !errors.Is(err, errProviderWireContractNotFrozen) ||
+		err.Error() != providerWireContractNotFrozenErrorCode {
+		t.Fatalf("governance-apply error = %v", err)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("governance-apply output = %q, want empty", output.String())
+	}
+	if _, err := readGovernanceManifest(bytes.NewReader(payload)); err == nil {
+		t.Fatal("blocked governance manifest passed the strict parser")
 	}
 }
 
