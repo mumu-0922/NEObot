@@ -1,5 +1,12 @@
 # Phase 15 推荐落地方案
 
+> 2026-07-12 更新：本文中的 Qdrant-first Profile 已被后续 Owner 决策收敛。
+> 当前单服务器执行方案以
+> [`phase-15-2-single-server-python-rag-consumer-indexing-plan.md`](./phase-15-2-single-server-python-rag-consumer-indexing-plan.md)
+> 为准；本文仅保留早期候选与评测依据。
+> 本文 §11 的旧问卷不再作为当前 Owner Lock 清单；新方案 §1.1 分开记录已确认
+> 决策与仍开放的 Provider、License、Dimension、费用和 Promotion Gate。
+
 - 状态：Owner Review Draft；RAG Profile 未锁定，运行时已落 004 schema/15.1B identity，15.1C Team services 仅设计锁定
 - 日期：2026-07-10
 

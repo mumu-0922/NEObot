@@ -8,3 +8,4 @@
 - [`phase-15-1b-identity-services-plan.md`](./phase-15-1b-identity-services-plan.md) — executable Email/Password, Invite Acceptance, Recovery, Session revocation, delivery, and abuse-control plan.
 - [`phase-15-1c-team-services-plan.md`](./phase-15-1c-team-services-plan.md) — executable Team, Membership, Invite delivery, last-Admin, revision, Outbox, and API plan.
 - [`phase-15-1d-collection-document-consent-plan.md`](./phase-15-1d-collection-document-consent-plan.md) — executable Collection, Document/Version, locked File binding, Governance, Consent, Job, and Outbox plan.
+- [`phase-15-2-single-server-python-rag-consumer-indexing-plan.md`](./phase-15-2-single-server-python-rag-consumer-indexing-plan.md) — owner-locked single-server Python Outbox consumer, parsing, Postgres hybrid indexing, query, citation, resource, and R2 recovery design.

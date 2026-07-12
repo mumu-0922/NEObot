@@ -1,5 +1,9 @@
 # Phase 15 准确率优先 RAG 设计
 
+> 2026-07-12 单服务器收敛说明：本文保留广义 Accuracy Research。当前实施边界已由
+> [`phase-15-2-single-server-python-rag-consumer-indexing-plan.md`](./phase-15-2-single-server-python-rag-consumer-indexing-plan.md)
+> 锁定为 PostgreSQL pgvector + 真 BM25 候选，不部署 Qdrant，不支持独立图片知识库。
+
 - 状态：拟定的目标架构；RAG 运行时未实施，已落 004 schema/15.1B identity，15.1C Team services 仅设计锁定
 - 日期：2026-07-10
 

@@ -6651,3 +6651,78 @@ Commit `f62000a` corrected every `mm-chat/scripts/*.sh` index entry to `100755`
 without amending the Promotion commit `9f5e907`. A clean checkout can therefore
 execute every documented `./scripts/...` command directly. No push was
 performed.
+
+## 2026-07-12 — Phase 15.2 single-server RAG design locked
+
+The Owner Grill closed the listed product-scope decisions before implementation:
+one Compose server, no Qdrant/Kubernetes, all common document formats plus
+scanned PDF, no standalone image knowledge in the first release, explicit
+Collection processing consent, server-owned MinerU/Jina credentials, user BYOK
+for chat, parent/child chunks with bounded overlap, strict grounded mode only
+when Knowledge Attachments are selected, source citations, immediate logical
+deletion, three query concurrency, one indexing concurrency, and encrypted R2
+backup. Relevance tuning uses 100 human-confirmed questions split into 80
+Development/Validation and 20 Frozen Holdout; ACL, Consent, deletion,
+injection, citation, and parser formats use independent matrices/corpora.
+
+Three independent xhigh research agents inspected the current migration `009`
+runtime, Outbox/Job invariants, single-server resource envelope, and current
+PostgreSQL BM25 candidates. The resulting design is recorded in
+`docs/architecture/phase-15-2-single-server-python-rag-consumer-indexing-plan.md`.
+It keeps Postgres authoritative, uses Redis only as a wake/cache layer, adds a
+private Python API/worker, and selects PostgreSQL 16 + pgvector + ParadeDB
+`pg_search` as the first Bake-off candidate. ParadeDB is not promoted: AGPL,
+logical restore, crash recovery, Chinese tokenization, ACL-in-query, resource,
+upgrade, and rollback gates remain blocking.
+
+Important compatibility findings are explicit in the plan: Outbox BIGSERIAL is
+not commit order; current Jobs lack a stale-worker lease token; no applied-event,
+artifact, chunk, generation, or projection schema exists; Jina 2048 dimensions
+cannot be assumed to fit a pgvector `vector` HNSW profile; and changing the
+Postgres distribution requires a new volume plus logical restore rather than
+reusing the Alpine PGDATA directory.
+
+```text
+Owner decisions                                            locked
+current migration/outbox/runtime evidence                  reconciled
+single-server Python consumer/indexing design              created
+Qdrant-first implementation wording                        superseded
+implementation                                             not started
+```
+
+Next: independent design review, then begin Phase 15.2A by freezing the
+internal Evidence API and running the PostgreSQL BM25/pgvector Bake-off.
+
+## 2026-07-12 — Phase 15.2 design review closed
+
+The independent xhigh reviewer initially found `P0/P1/P2 = 0/9/4`. The design
+was corrected instead of treating those findings as implementation details:
+
+- BYOK answer evidence now requires exact answer-purpose Governance plus
+  Collection/User Consent; Team members cannot exfiltrate Team evidence to an
+  arbitrary Provider endpoint;
+- Python DB/S3 access now uses separate least-privilege roles, Go-issued
+  object capabilities, per-Generation temporary artifact access, and negative
+  permission tests;
+- Outbox claim/reclaim/ack, stale-worker lease tokens, non-null applied-event
+  scope, atomic Version/Generation publish, and durable Collection purge
+  fan-out are explicit;
+- Source File retention remains aligned with the existing separate File-delete
+  contract, while Projection/Artifact purge keeps the 15-minute target;
+- backup uses a short local consistency barrier that never blocks emergency
+  ACL/Consent revocation, then uploads to R2 asynchronously;
+- the container starting envelope was reduced to 2464 MiB, maintenance jobs are
+  mutually exclusive, HNSW low-selectivity ACL recall is a required Bake-off,
+  and MinIO loss fails strict citation verification closed;
+- the 100-question set is explicitly Relevance-only; security, deletion,
+  consent, citation, injection, and parser formats use independent gates.
+
+Second review reduced the result to `0/2/1`; the remaining dynamic S3 Prefix,
+long backup barrier, and tracking-scope issues were corrected. Third-round
+read-only review returned:
+
+```text
+P0/P1/P2 = 0/0/0
+```
+
+Phase 15.2 design review is closed. Implementation remains pending.

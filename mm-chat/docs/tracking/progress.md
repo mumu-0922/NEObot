@@ -644,6 +644,30 @@ the UI can call in the next wiring slice.
       synchronized contracts/deployment/persistence docs, all quality/security
       gates, and independent `P0/P1/P2 = 0/0/0` review.
 
+#### Phase 15.2 — Single-server Python RAG consumer and indexing
+
+- [x] Complete the Owner Grill and lock workload, file, image, retrieval,
+      consent, deletion, chat, citation, latency, evaluation, and R2 backup
+      boundaries.
+- [x] Create the detailed single-server Python Outbox consumer, parsing,
+      Postgres hybrid indexing, query, citation, resource, and recovery design
+      in `docs/architecture/phase-15-2-single-server-python-rag-consumer-indexing-plan.md`.
+- [x] Close independent xhigh design review after three rounds with final
+      `P0/P1/P2 = 0/0/0`.
+- [ ] Freeze the internal Evidence API, workload authentication, Canonical
+      Block/Chunk, Generation/Projection, and migration contracts.
+- [ ] Bake off and pin PostgreSQL BM25/pgvector, Chinese tokenization,
+      embedding dimensions, logical restore, crash recovery, and rollback.
+- [ ] Implement the private Python consumer/worker, applied-event ledger,
+      lease fencing, parser routing, artifacts, chunking, embedding, publish,
+      purge, and reconstruction paths.
+- [ ] Implement private hybrid query, Go-side source reauthorization,
+      strict grounded chat, visible degradation, and clickable citations with
+      minimal frontend change.
+- [ ] Add Compose resource limits, restic/R2 backup, a 100-question Relevance
+      Set, independent ACL/Consent/deletion/injection/citation/parser corpora,
+      full security/performance/recovery gates, and promotion review.
+
 - [x] Replace the single-bootstrap-user ceiling with admin-invited independent
       user sessions and versioned Team membership.
 - [x] Add Team, Membership, Personal/Team Collection, Knowledge Document, and
@@ -665,8 +689,9 @@ the UI can call in the next wiring slice.
       reindexing.
 - [ ] Add format/page-aware parsing, quality gates, and parent/child/window
       chunking with exact provenance.
-- [ ] Bake off and pin the search projection; treat Qdrant as the leading
-      rebuildable ACL-filtered dense/sparse/multi-vector candidate.
+- [ ] Bake off and pin the single-server Postgres search projection using
+      pgvector plus a true-BM25 extension candidate; do not deploy Qdrant for
+      the locked workload profile.
 - [ ] Add hybrid recall, RRF fusion, measured cross-encoder reranking, dynamic
       context expansion, and source-level citations.
 - [ ] Gate contextual retrieval, ColBERT, query decomposition, RAPTOR, and
