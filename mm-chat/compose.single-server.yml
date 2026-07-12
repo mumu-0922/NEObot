@@ -174,7 +174,7 @@ services:
       - private
 
   backend:
-    image: mm-chat/backend:local
+    image: ${BACKEND_IMAGE:-mm-chat/backend:local}
     build: *backend-build
     restart: unless-stopped
     profiles: ["app"]
@@ -198,7 +198,7 @@ services:
       - private
 
   migrate:
-    image: mm-chat/backend:local
+    image: ${BACKEND_IMAGE:-mm-chat/backend:local}
     build: *backend-build
     restart: "no"
     profiles: ["ops"]
@@ -217,7 +217,7 @@ services:
       - private
 
   admin:
-    image: mm-chat/backend:local
+    image: ${BACKEND_IMAGE:-mm-chat/backend:local}
     build: *backend-build
     restart: "no"
     profiles: ["ops"]

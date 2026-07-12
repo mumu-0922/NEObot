@@ -406,8 +406,18 @@ allocation order only; consumers rescan claimable rows, deduplicate by
 - [x] **15.1D-6 Verification:** pass unit/race and real PostgreSQL 16 ACL,
       locking, idempotency, Consent, deletion, migration, and Outbox
       producer/source-recovery gates.
-- [ ] **15.1D-7 Promotion:** synchronize tracking/deployment/contracts, pass
+- [x] **15.1D-7 Promotion:** synchronize tracking/deployment/contracts, pass
       quality/security checks, independent review, and explicit-path commit.
+  - [x] Reject missing, placeholder, inconsistent, or exposed production env
+        values without printing secrets.
+  - [x] Build and retain immutable current/previous backend images; pin builder
+        and runtime base-image digests.
+  - [x] Automate the published `2010d73` migration `001-006` to current `009`
+        baseline/upgrade replay in the fail-closed PostgreSQL gate.
+  - [x] Reconcile Knowledge DTO/status examples, current persistence schema,
+        restore acceptance, worker failure semantics, and stale tracking items.
+  - [x] Re-run all Promotion gates and close independent xhigh review at
+        `P0/P1/P2 = 0/0/0`.
 
 ## Rollback and Operational Safety
 

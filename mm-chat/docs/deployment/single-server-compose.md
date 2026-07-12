@@ -15,6 +15,9 @@ mm-chat/compose.single-server.yml      # backend + data services
 mm-chat/.env.single-server.example     # committed template only
 mm-chat/.env.single-server             # local secrets, gitignored
 mm-chat/backend/Dockerfile             # Go API + migration + admin binaries
+mm-chat/scripts/preflight-single-server.sh # production promotion gate
+mm-chat/scripts/compose-single-server-production.sh # clean-env production entrypoint
+mm-chat/compose.production.yml          # removes all production build paths
 mm-chat/data/                          # runtime volumes, gitignored
 mm-chat/backup/                        # backup output, gitignored
 ```
@@ -59,7 +62,21 @@ The `admin` service shares the backend image and database settings, but its
 entrypoint is `/usr/local/bin/mm-chat-admin`. It is an operator-only, one-shot
 container under the `ops` profile; it is not a long-running administration API.
 
-## First Boot
+`backend`, `migrate`, and `admin` all resolve the same `BACKEND_IMAGE`; this is
+the release fence that keeps API code, migration SQL, and operator commands on
+one build. Production must set a full registry `@sha256:` digest; mutable tags
+are local-development only and cannot pass promotion preflight. Every
+production Compose command goes through
+`scripts/compose-single-server-production.sh`, which clears host-variable
+precedence and applies `compose.production.yml` to remove all three `build:`
+paths. Retain the previous backend image ID and registry digest through the
+rollback window.
+
+The production overlay uses Compose `!reset`; require Docker Compose `2.24.4`
+or newer. An older parser must fail the release rather than falling back to the
+base file with `build:` enabled.
+
+## Local Development First Boot
 
 ```bash
 cd mm-chat
@@ -87,6 +104,11 @@ docker compose --env-file .env.single-server \
   -f compose.single-server.yml --profile app up -d backend
 ```
 
+The `build backend` step is for a local first boot only. For production, publish
+the image elsewhere, set its full registry digest as `BACKEND_IMAGE`, and pull
+that exact artifact through the Production Release Checklist; never use this
+local-development sequence for a production release.
+
 Run `bootstrap-identity` only after migrations on a fresh installation. It
 creates the initial Email/Password Owner, uses
 `AUTH_BOOTSTRAP_USER_ID`/`AUTH_BOOTSTRAP_DISPLAY_NAME` when the optional flags
@@ -101,8 +123,8 @@ Membership Team in UUID order, rejects a last-usable-admin disable, revokes
 Sessions, advances affected Membership revisions, and writes Outbox events:
 
 ```bash
-docker compose --env-file .env.single-server \
-  -f compose.single-server.yml --profile ops run --rm admin \
+./scripts/compose-single-server-production.sh .env.single-server \
+  --profile ops run --rm admin \
   disable-account --user-id '<user-uuid>'
 ```
 
@@ -114,12 +136,13 @@ Unknown fields—including keys, tokens, URLs, IDs, status, and revisions—are
 rejected. Reapplying the exact active manifest is a no-op:
 
 ```bash
-cat docs/deployment/governance-mineru.example.json | docker compose --env-file .env.single-server \
-  -f compose.single-server.yml --profile ops run --rm -T admin \
+cat docs/deployment/governance-mineru.example.json | \
+  ./scripts/compose-single-server-production.sh .env.single-server \
+  --profile ops run --rm -T admin \
   governance-apply --manifest-stdin
 
-docker compose --env-file .env.single-server \
-  -f compose.single-server.yml --profile ops run --rm admin \
+./scripts/compose-single-server-production.sh .env.single-server \
+  --profile ops run --rm admin \
   governance-disable --processor mineru --endpoint-id default
 ```
 
@@ -264,6 +287,22 @@ through the secret-redacting logger, triggers API shutdown, cancels the worker
 context, and is awaited before Postgres closes. Delivery is at-least-once; the
 stable Message-ID limits duplicates after a crash.
 
+## Consent Expiry Worker
+
+The Consent expiry worker is part of the Go API process and starts whenever
+`DATABASE_URL` enables the Postgres-backed runtime. The current Compose path
+always enables Postgres, so every `backend` container runs this worker. It uses
+the runtime defaults of 100 Consent rows per batch and a `1s` idle poll; these
+values are not Compose environment settings.
+
+The worker fails closed. A processing/database error emits the redacted
+`consent_expiry_worker_failed` log event, reports a runtime failure, cancels the
+shared runtime context, gracefully shuts down the API, and exits non-zero.
+Compose then applies `restart: unless-stopped`. Route that exact log event and
+backend restart/unavailability signals to the production alert channel; do not
+treat the restart loop as recovery without investigating the underlying
+Postgres or Consent row failure.
+
 ## Metrics
 
 The Go API exposes Prometheus text metrics at `GET /metrics`. The backend port
@@ -331,20 +370,31 @@ tunnel/VPN to the Docker network or host.
 ## Release Checklist
 
 1. Pull the target Git commit and inspect `git diff --stat HEAD~1..HEAD -- mm-chat`.
-2. Update `MM_CHAT_VERSION` in `.env.single-server` to the release tag/commit.
-3. Build the backend image:
+2. Set `MM_CHAT_VERSION` and the full registry `@sha256:` `BACKEND_IMAGE` for
+   the same release, then retain the currently running backend image ID and
+   registry digest as the rollback artifact.
+3. Run the production promotion gate before any migration or restart:
    ```bash
-   docker compose --env-file .env.single-server -f compose.single-server.yml build backend
+   ./scripts/preflight-single-server.sh .env.single-server
+   ./scripts/compose-single-server-production.sh .env.single-server \
+     --profile app --profile ops config --quiet
    ```
-4. Run migrations explicitly:
+4. Pull the exact production digest without allowing a build:
    ```bash
-   docker compose --env-file .env.single-server -f compose.single-server.yml --profile ops run --rm migrate
+   ./scripts/compose-single-server-production.sh .env.single-server \
+     --profile app pull backend
    ```
-5. Restart the API:
+5. Run migrations explicitly from that same `BACKEND_IMAGE`:
    ```bash
-   docker compose --env-file .env.single-server -f compose.single-server.yml --profile app up -d backend
+   ./scripts/compose-single-server-production.sh .env.single-server \
+     --profile ops run --rm migrate
    ```
-6. Verify `/health`, `/ready` including configured dependency checks,
+6. Restart the API:
+   ```bash
+   ./scripts/compose-single-server-production.sh .env.single-server \
+     --profile app up -d --no-build backend
+   ```
+7. Verify `/health`, `/ready` including configured dependency checks,
    `/v1/version`, protected Team and Knowledge routes, bounded metric labels,
    chat CRUD/streaming, upload, and browser import. With a disposable test
    account/token, require `GET /v1/me/knowledge/query-consents` to return `200`
@@ -361,14 +411,16 @@ curl -fsS http://127.0.0.1:8080/metrics | \
 
 ## Rollback Checklist
 
-- Code rollback: checkout the previous commit, rebuild `backend`, then restart
-  only the `backend` service.
+- Code rollback: use the retained previous image ID or registry digest; never
+  rebuild. Put the prior digest in a secured rollback env file and recreate only
+  `backend` with `--no-build --force-recreate`, as shown in
+  [`release-rollback.md`](./release-rollback.md).
 - Schema rollback: run the migration image only when the release notes say the
-  down migration is safe for current data:
+  down migration is safe for current data. Use a secured env file whose
+  `BACKEND_IMAGE` is the retained schema-matching digest:
   ```bash
-  docker compose --env-file .env.single-server \
-    -f compose.single-server.yml --profile ops \
-    run --rm migrate /usr/local/bin/mm-chat-migrate down
+  ./scripts/compose-single-server-production.sh .env.rollback \
+    --profile ops run --rm migrate /usr/local/bin/mm-chat-migrate down
   ```
 - Data rollback: restore Postgres/MinIO from a verified backup in a disposable
   drill first; production restore is destructive.
@@ -377,7 +429,8 @@ curl -fsS http://127.0.0.1:8080/metrics | \
 
 ## Verification
 
-Static validation:
+Local-development static validation with the committed example (never a
+production env file):
 
 ```bash
 docker compose --env-file .env.single-server.example \

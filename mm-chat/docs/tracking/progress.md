@@ -639,13 +639,19 @@ the UI can call in the next wiring slice.
       later-frontend adapter contracts.
 - [x] Pass unit/race/PostgreSQL 16 ACL, migration, deletion, idempotency, and
       Outbox producer/source-recovery gates.
+- [x] Promote Phase 15.1D with fail-closed production env validation,
+      immutable image rollback, automated published-migration replay,
+      synchronized contracts/deployment/persistence docs, all quality/security
+      gates, and independent `P0/P1/P2 = 0/0/0` review.
 
-- [ ] Replace the single-bootstrap-user ceiling with admin-invited independent
+- [x] Replace the single-bootstrap-user ceiling with admin-invited independent
       user sessions and versioned Team membership.
-- [ ] Add Team, Membership, Personal/Team Collection, Knowledge Document, and
+- [x] Add Team, Membership, Personal/Team Collection, Knowledge Document, and
       per-processor Collection/User Consent schemas and APIs.
-- [ ] Enforce Personal-owner and Team-role ACLs across file binding, indexing,
-      query, citation, consent, deletion, and cross-user/cross-team tests.
+- [x] Enforce Personal-owner and Team-role ACLs across file binding, metadata,
+      consent, deletion, and cross-user/cross-team control-plane tests.
+- [ ] Extend those ACL fences through future indexing, query, and citation
+      serving paths.
 - [ ] Freeze the canonical block/chunk schema, ACL invariants, index profiles,
       and golden evaluation corpus.
 - [ ] Define the workload-authenticated Go-to-RAG evidence API, Go-side source

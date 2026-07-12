@@ -10,8 +10,8 @@ Team/Membership/Invite services; migration `005` adds Team idempotency, durable
 encrypted Invite delivery, and Membership deletion fencing. Phase 15.1D adds
 the protected Knowledge APIs and reversible migration `006` for Collection
 display/replay metadata, independent Document visibility, and durable
-stage-specific Processing Jobs. Team deletion, Python RAG execution, search,
-citation minting, and frontend integration remain later slices.
+stage-specific Processing Jobs. The listed Phase 15.1D Knowledge endpoints are
+implemented; search and downstream Python RAG execution remain future work.
 
 Runtime status: Personal/Team Collection create/list/get/update/delete routes,
 ACLs, authenticated cursors, deletion revisions, and transactional Collection
@@ -40,11 +40,11 @@ revision fence. Search remains unimplemented.
 
 The current auth/session baseline is Phase 15.1B in
 [`auth-session-api.md`](./auth-session-api.md), with Phase 13 ownership
-enforcement over the existing file API in [`file-api.md`](./file-api.md) until
-Knowledge endpoints ship. A Jina credential is available for candidate
-evaluation; exact embedding and reranking endpoint entitlement remains
-unverified. Credential availability does not grant data-processing consent or
-bypass any ACL check.
+enforcement over the existing file API in [`file-api.md`](./file-api.md).
+Knowledge endpoints do not bypass that file-ownership boundary. A Jina
+credential is available for candidate evaluation; exact embedding and reranking
+endpoint entitlement remains unverified. Credential availability does not grant
+data-processing consent or bypass any ACL check.
 
 ## 2. Trust and Identity Boundary
 
@@ -190,7 +190,7 @@ interface KnowledgeDocument {
   id: EntityId;
   collectionId: EntityId;
   currentVersionId?: EntityId;
-  status: "active" | "tombstoned" | "deleted";
+  status: "processing" | "active" | "tombstoned" | "deleted";
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
 }
@@ -202,7 +202,13 @@ interface KnowledgeDocumentVersion {
   sourceVersion: number;
   visibilityEpoch: number;
   status:
-    "uploaded" | "processing" | "active" | "tombstoned" | "purging" | "deleted";
+    | "uploaded"
+    | "processing"
+    | "failed"
+    | "active"
+    | "tombstoned"
+    | "purging"
+    | "deleted";
   contentHash: string;
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
@@ -230,6 +236,12 @@ interface KnowledgeDocumentVersion {
   current Version.
 - Search returns only an `active` logical Document plus its exact Active
   `currentVersionId` in the serving Generation.
+- These interfaces describe authoritative persistence lifecycle states. Public
+  DTOs intentionally expose only the client-actionable subset: Document
+  `processing|active|tombstoned` and Version
+  `uploaded|processing|failed|active|tombstoned`. Internal terminal cleanup
+  states such as Document `deleted` and Version `purging|deleted` are not
+  returned as live resources.
 
 ### Query-consent and processor-governance state
 
@@ -374,8 +386,9 @@ Only Login, Invite Acceptance, Recovery Request, and Recovery Completion are
 unauthenticated. `POST /v1/auth/invites/accept` stays public because it proves
 mailbox possession rather than Team-admin authority. Every `/v1/teams` route
 requires an independent Phase 15.1B Bearer Session. Public self-registration is
-not exposed. Team services are Phase 15.1C; the Knowledge routes below remain
-later Phase 15 surfaces but inherit the same auth boundary.
+not exposed. Team services are Phase 15.1C. The Knowledge routes below are
+implemented and registered Phase 15.1D surfaces and inherit the same auth
+boundary.
 
 ```http
 POST   /v1/teams
@@ -418,7 +431,7 @@ PUT    /v1/me/knowledge/query-consents/{processor}
 DELETE /v1/me/knowledge/query-consents/{processor}
 ```
 
-Future Phase 15 search contract (not registered by Phase 15.1D):
+Future search/RAG contract (not registered by Phase 15.1D):
 
 ```text
 POST /v1/knowledge/search
@@ -613,8 +626,7 @@ only Processor alias, purposes, data types, policy version, decision, expiry,
 and decision time—not endpoint credentials or internal manifests.
 Collection Consent accepts only `parse|passage_embedding|rerank|answer`; User
 Query Consent accepts only `query_embedding|rerank|answer`. An optional
-`expiresAt` must be a future RFC 3339 timestamp within the configured policy
-horizon.
+`expiresAt` must be a future RFC 3339 timestamp.
 
 Collection create and Document bind/version/reprocess require a 1-128 byte body
 `idempotencyKey`. Postgres persists a canonical request hash. Same-key/same-
@@ -625,11 +637,11 @@ actor returns `204` without another revision or Outbox event.
 
 Recovery completion accepts `{ token, newPassword }`; raw invitation/recovery
 Tokens never appear in URL paths, queries, access logs, or metrics. Invite email
-links use a client-side `#token=...` fragment, which the future frontend clears
-before posting the Token in the acceptance JSON body. Phase 15 versions the
-Login DTO from the bootstrap-token-only Phase 13 baseline to `{ email,
-password }`. Recovery Request returns the same response for known and unknown
-email addresses; only the verified mailbox receives the raw Recovery Token.
+links use a client-side `#token=...` fragment, which the client clears before
+posting the Token in the acceptance JSON body. Phase 15 versions the Login DTO
+from the bootstrap-token-only Phase 13 baseline to `{ email, password }`.
+Recovery Request returns the same response for known and unknown email
+addresses; only the verified mailbox receives the raw Recovery Token.
 Completing recovery and `DELETE /v1/me/sessions` revoke all existing Sessions
 before issuing or requiring a new Login.
 
@@ -652,7 +664,8 @@ Document Version creation binds an already uploaded Phase 13-owned File:
 
 ```json
 {
-  "fileId": "3e29355e-5d16-4d7d-a6d9-3a1aa8f81443"
+  "fileId": "3e29355e-5d16-4d7d-a6d9-3a1aa8f81443",
+  "idempotencyKey": "bind-research-paper-2026-07-12"
 }
 ```
 

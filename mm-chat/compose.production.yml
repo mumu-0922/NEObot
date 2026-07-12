@@ -1,0 +1,23 @@
+services:
+  backend:
+    build: !reset null
+  migrate:
+    build: !reset null
+  admin:
+    build: !reset null
+  minio-restore:
+    image: quay.io/minio/mc:RELEASE.2025-07-21T05-28-08Z
+    profiles: ["restore"]
+    environment:
+      HOME: /tmp
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_BUCKET: ${S3_BUCKET:-neo-chat-files}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio-root}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-me-minio-root-secret}
+    entrypoint: ["/bin/sh", "/usr/local/libexec/restore-minio-drill.sh"]
+    volumes:
+      - ./scripts/restore-minio-drill.sh:/usr/local/libexec/restore-minio-drill.sh:ro
+      - ./backup/restore/minio-drill:/restore-source:ro
+      - ./backup/restore/knowledge-object-sample.txt:/knowledge-object-sample.txt:ro
+    networks:
+      - private

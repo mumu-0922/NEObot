@@ -2,7 +2,10 @@ package migration
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"fmt"
+	"io/fs"
 	"strconv"
 	"strings"
 	"sync"
@@ -11,6 +14,21 @@ import (
 
 	migrationfiles "neo-chat/mm-chat/backend/migrations"
 )
+
+var published2010D73MigrationHashes = map[string]string{
+	"001_initial_schema.down.sql":                 "a70acf09ce296812d9fc0bf8f8892c7ca2e819eb880698104784646363529651",
+	"001_initial_schema.up.sql":                   "013b10dd74ead5b847d0aeac1e62ad38f9532a647dbc4cea3ccf99371aaa1a2d",
+	"002_messages_run_id_index.down.sql":          "6f8aa63bd938e9bb6fde01846e5a8f8624b2b8fdb6cba09f89e6b5bce541754e",
+	"002_messages_run_id_index.up.sql":            "4486788cd34b42c5a2465b5f3c1c7168ec52ce7f846dfe1c171b2bbddcb6ddb4",
+	"003_import_batches.down.sql":                 "81c6e947e10a3400a0513d2dbf889db6ddd3b91621211dc7939ce20e109d1065",
+	"003_import_batches.up.sql":                   "ec8acf15254363c5e8f8d5c450157e2f070107f2508833c676ee0baf2184f394",
+	"004_phase15_identity_knowledge_acl.down.sql": "2b2e73a893cadefb7a98071a3732e9514b3fc430d69611f724033f0724c11af9",
+	"004_phase15_identity_knowledge_acl.up.sql":   "4b6448ffb309544a5236998500f42c3abe79335c0e41a3976af6f51df190295e",
+	"005_phase15_team_services.down.sql":          "35446b7b5b8fb30298b4a895b3bc789061838fc7e53160828d3c498cf1246614",
+	"005_phase15_team_services.up.sql":            "1c66e0a03958df882e83c372e0d1d9f62118a3bc76d4892a68f43ce8e95ef1b1",
+	"006_phase15_knowledge_services.down.sql":     "f6c6372ee86b2b25b05ec55fcebaed71cff71f388b66add5bbb487c3c06c598b",
+	"006_phase15_knowledge_services.up.sql":       "39d7466e61708ad379d0d755a5dd28406b75b295e6a47ff7726e5bf3383b6124",
+}
 
 func TestPhase151DKnowledgeTailFreshRollbackAndReplay(t *testing.T) {
 	db := openPhase151CMigrationIntegrationDB(t)
@@ -119,6 +137,92 @@ WHERE schemaname = current_schema()
 	}
 	if baselined != checksum {
 		t.Fatalf("baselined checksum = %q, want %q", baselined, checksum)
+	}
+}
+
+func TestPhase151DPublished2010D73UpgradesToCurrent009(t *testing.T) {
+	db := openPhase151CMigrationIntegrationDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	assertPhase151DPostgres16(t, ctx, db)
+
+	migrations, err := Load(migrationfiles.FS)
+	if err != nil {
+		t.Fatalf("load current migrations: %v", err)
+	}
+	if len(migrations) < 9 {
+		t.Fatalf("current migration count = %d, want at least 9", len(migrations))
+	}
+
+	mustExecPhase151C(t, ctx, db, `
+CREATE TABLE schema_migrations (
+  version BIGINT PRIMARY KEY,
+  name TEXT NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+)`)
+	for _, migration := range migrations[:6] {
+		assertPublished2010D73MigrationFile(t, migration.UpPath)
+		assertPublished2010D73MigrationFile(t, migration.DownPath)
+		up, readErr := fs.ReadFile(migrationfiles.FS, migration.UpPath)
+		if readErr != nil {
+			t.Fatalf("read historical migration %s: %v", migration.ID(), readErr)
+		}
+		tx, beginErr := db.BeginTx(ctx, nil)
+		if beginErr != nil {
+			t.Fatalf("begin historical migration %s: %v", migration.ID(), beginErr)
+		}
+		if _, execErr := tx.ExecContext(ctx, string(up)); execErr != nil {
+			_ = tx.Rollback()
+			t.Fatalf("apply historical migration %s: %v", migration.ID(), execErr)
+		}
+		if _, execErr := tx.ExecContext(
+			ctx,
+			`INSERT INTO schema_migrations(version,name) VALUES ($1,$2)`,
+			migration.Version,
+			migration.Name,
+		); execErr != nil {
+			_ = tx.Rollback()
+			t.Fatalf("record historical migration %s: %v", migration.ID(), execErr)
+		}
+		if commitErr := tx.Commit(); commitErr != nil {
+			t.Fatalf("commit historical migration %s: %v", migration.ID(), commitErr)
+		}
+	}
+
+	runner := NewRunner(db, migrationfiles.FS)
+	if _, err := runner.Up(ctx); err == nil || !strings.Contains(err.Error(), "migrate baseline") {
+		t.Fatalf("historical migration without baseline error = %v", err)
+	}
+	baselined, err := runner.BaselineLegacyChecksums(ctx)
+	if err != nil {
+		t.Fatalf("baseline published 001-006: %v", err)
+	}
+	if len(baselined) != 6 || baselined[len(baselined)-1].ID() != "006_phase15_knowledge_services" {
+		t.Fatalf("published baseline set = %#v, want 001-006", baselined)
+	}
+	applied, err := runner.Up(ctx)
+	if err != nil {
+		t.Fatalf("upgrade published 006 to current 009: %v", err)
+	}
+	if len(applied) != 3 || applied[0].Version != 7 || applied[2].Version != 9 {
+		t.Fatalf("published upgrade set = %#v, want 007-009", applied)
+	}
+	assertPhase151DKnowledgeTailApplied(t, ctx, db)
+}
+
+func assertPublished2010D73MigrationFile(t *testing.T, filePath string) {
+	t.Helper()
+	want, ok := published2010D73MigrationHashes[filePath]
+	if !ok {
+		t.Fatalf("published 2010d73 manifest has no entry for %s", filePath)
+	}
+	contents, err := fs.ReadFile(migrationfiles.FS, filePath)
+	if err != nil {
+		t.Fatalf("read published migration fixture %s: %v", filePath, err)
+	}
+	got := fmt.Sprintf("%x", sha256.Sum256(contents))
+	if got != want {
+		t.Fatalf("published migration fixture %s hash = %s, want %s", filePath, got, want)
 	}
 }
 

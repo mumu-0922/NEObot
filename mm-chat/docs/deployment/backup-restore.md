@@ -1,14 +1,14 @@
 # Backup and Restore Runbook
 
 This runbook covers the Phase 10 single-server Docker Compose deployment for
-`mm-chat`. It assumes the Compose file is `mm-chat/compose.single-server.yml`
-with `postgres`, `minio`, and `minio-client` services, and that secrets are
-injected into containers by Compose from the deployment environment.
+`mm-chat`. Production operations use the clean-environment Compose/backup
+wrappers, `compose.single-server.yml`, and `compose.production.yml`; secrets
+come only from the validated mode-`0600` env file.
 
-The backup scripts do not print secrets or archive env files. When
-`mm-chat/.env.single-server` exists, they pass it to Docker Compose so new
-utility containers receive the same environment as the running stack; otherwise
-they fall back to the committed example for dry-run validation.
+The backup scripts do not print secrets or archive env files. Production must
+call `backup-single-server-production.sh`, which clears host Compose/env
+overrides before invoking both lower-level backup scripts. Their override/fallback
+surface below is for isolated CI and disposable drills only.
 
 ## Backup paths and overrides
 
@@ -17,11 +17,12 @@ Default paths are derived from the script location:
 ```text
 mm-chat/scripts/backup-postgres.sh
 mm-chat/scripts/backup-minio.sh
+mm-chat/scripts/backup-single-server-production.sh
 mm-chat/backup/postgres/
 mm-chat/backup/minio/
 ```
 
-Supported overrides:
+Non-production CI/drill overrides:
 
 ```bash
 PROJECT_NAME=mm-chat \
@@ -46,6 +47,7 @@ are resolved from the caller's current directory.
 bind mounts in `mm-chat/compose.single-server.yml`; those still point at
 `mm-chat/data/*`. For live-stack drills, restore into a temporary database and
 temporary bucket, or run a disposable copy from a separate project directory.
+Never use these override forms for production backup or restore.
 
 ## Create backups
 
@@ -55,8 +57,8 @@ file metadata in Postgres stays aligned with object bytes in MinIO.
 ```bash
 cd /home/mumu/projects/neo-chat
 
-./mm-chat/scripts/backup-postgres.sh
-./mm-chat/scripts/backup-minio.sh
+./mm-chat/scripts/backup-single-server-production.sh \
+  mm-chat/.env.single-server
 ```
 
 Outputs:
@@ -106,9 +108,7 @@ cd /home/mumu/projects/neo-chat
 
 (cd mm-chat/backup/postgres && sha256sum -c <chosen-dump>.dump.sha256)
 
-docker compose --project-directory mm-chat \
-  --env-file mm-chat/.env.single-server \
-  -f mm-chat/compose.single-server.yml \
+mm-chat/scripts/compose-single-server-production.sh mm-chat/.env.single-server \
   exec -T postgres sh -ceu '
 : "${POSTGRES_USER:?POSTGRES_USER is required}"
 if [ -n "${POSTGRES_PASSWORD:-}" ]; then
@@ -123,9 +123,7 @@ createdb --username="$POSTGRES_USER" neo_chat_restore_drill
 '
 
 cat mm-chat/backup/postgres/<chosen-dump>.dump | \
-docker compose --project-directory mm-chat \
-  --env-file mm-chat/.env.single-server \
-  -f mm-chat/compose.single-server.yml \
+mm-chat/scripts/compose-single-server-production.sh mm-chat/.env.single-server \
   exec -T postgres sh -ceu '
 : "${POSTGRES_USER:?POSTGRES_USER is required}"
 if [ -n "${POSTGRES_PASSWORD:-}" ]; then
@@ -144,30 +142,207 @@ pg_restore \
   --dbname=neo_chat_restore_drill
 '
 
-docker compose --project-directory mm-chat \
-  --env-file mm-chat/.env.single-server \
-  -f mm-chat/compose.single-server.yml \
+mm-chat/scripts/compose-single-server-production.sh mm-chat/.env.single-server \
   exec -T postgres sh -ceu '
 : "${POSTGRES_USER:?POSTGRES_USER is required}"
 if [ -n "${POSTGRES_PASSWORD:-}" ]; then
   export PGPASSWORD="$POSTGRES_PASSWORD"
 fi
 
-psql --username="$POSTGRES_USER" --dbname=neo_chat_restore_drill \
-  --command="select 1;"
-psql --username="$POSTGRES_USER" --dbname=neo_chat_restore_drill \
-  --command="select version, name from schema_migrations order by version;"
-psql --username="$POSTGRES_USER" --dbname=neo_chat_restore_drill \
-  --command="select count(*) from conversations;"
-psql --username="$POSTGRES_USER" --dbname=neo_chat_restore_drill \
-  --command="select count(*) from messages;"
-psql --username="$POSTGRES_USER" --dbname=neo_chat_restore_drill \
-  --command="select count(*) from files;"
-'
+exec psql --set=ON_ERROR_STOP=1 \
+  --username="$POSTGRES_USER" --dbname=neo_chat_restore_drill
+' <<'SQL'
+SELECT 1 AS database_readable;
 
-docker compose --project-directory mm-chat \
-  --env-file mm-chat/.env.single-server \
-  -f mm-chat/compose.single-server.yml \
+DO $acceptance$
+DECLARE
+  object_count INTEGER;
+  required_table TEXT;
+BEGIN
+  WITH expected(version, name, checksum) AS (
+    VALUES
+      (1::BIGINT, 'initial_schema',
+       'baedb43eb3c4a3c586e6b4fb2c31232952f5751cd44c04538d1edfec809f2da8'),
+      (2::BIGINT, 'messages_run_id_index',
+       '898797afe75a718c9973ce96fcb1f5813c6bec096a2a1090552d05941fb4028d'),
+      (3::BIGINT, 'import_batches',
+       'e38b8489e1d8622d872616be173fa59550e1c9244104216362af53b618dd9aca'),
+      (4::BIGINT, 'phase15_identity_knowledge_acl',
+       'dca5618aea9955d41bdbe33c448c5f2a526fd01c518f4927c7232b405533fcec'),
+      (5::BIGINT, 'phase15_team_services',
+       'eb11fec51508c28e04c46de5999f1ea669efc78e6aa63716e87de74605a78a3c'),
+      (6::BIGINT, 'phase15_knowledge_services',
+       '18cbd6b05d10b0560093549b56dd4a10fa276c3b93e5737039f3129f0e07a307'),
+      (7::BIGINT, 'phase15_knowledge_deletion',
+       'ae0b251db4b10aaa378a48679044708cb13148162e24f5544c3e10f9b219fd2a'),
+      (8::BIGINT, 'phase15_governance_immutability',
+       '3e5579e3ca2556db9a2fdad7af9553ee972153fc921fbd51a6279e51d64edc36'),
+      (9::BIGINT, 'phase15_consent_expiry_materialization',
+       '288e94681c5ea0efb55a9c1489babc9f9d850b66196a9a15a8741a90c70b2774')
+  ), drift AS (
+    (SELECT version, name, checksum FROM expected
+     EXCEPT
+     SELECT version, name, checksum FROM schema_migrations)
+    UNION ALL
+    (SELECT version, name, checksum FROM schema_migrations
+     EXCEPT
+     SELECT version, name, checksum FROM expected)
+  )
+  SELECT count(*) INTO object_count FROM drift;
+  IF object_count <> 0 THEN
+    RAISE EXCEPTION
+      'restore acceptance: migration manifest differs from release (% rows)',
+      object_count;
+  END IF;
+
+  FOREACH required_table IN ARRAY ARRAY[
+    'knowledge_collections',
+    'knowledge_documents',
+    'knowledge_document_versions',
+    'user_query_consent_state',
+    'processor_governance_profiles',
+    'processor_governance_heads',
+    'processing_consents',
+    'knowledge_processing_jobs',
+    'knowledge_outbox'
+  ] LOOP
+    IF to_regclass(format('%I.%I', current_schema(), required_table)) IS NULL THEN
+      RAISE EXCEPTION 'restore acceptance: missing core table %', required_table;
+    END IF;
+  END LOOP;
+
+  SELECT count(*) INTO object_count
+  FROM information_schema.columns
+  WHERE table_schema = current_schema()
+    AND table_name = 'processing_consents'
+    AND column_name = 'expiry_materialized_at'
+    AND data_type = 'timestamp with time zone';
+  IF object_count <> 1 THEN
+    RAISE EXCEPTION
+      'restore acceptance: processing_consents.expiry_materialized_at missing';
+  END IF;
+
+  SELECT count(*) INTO object_count
+  FROM pg_index index_state
+  JOIN pg_class index_relation ON index_relation.oid = index_state.indexrelid
+  JOIN pg_class table_relation ON table_relation.oid = index_state.indrelid
+  JOIN pg_namespace namespace ON namespace.oid = table_relation.relnamespace
+  WHERE namespace.nspname = current_schema()
+    AND table_relation.relname = 'processing_consents'
+    AND index_relation.relname = 'idx_processing_consents_expiry_due'
+    AND index_state.indisvalid
+    AND pg_get_indexdef(index_state.indexrelid) LIKE '%expires_at, id%'
+    AND pg_get_expr(index_state.indpred, index_state.indrelid)
+      LIKE '%superseded_at IS NULL%'
+    AND pg_get_expr(index_state.indpred, index_state.indrelid) LIKE '%granted%'
+    AND pg_get_expr(index_state.indpred, index_state.indrelid)
+      LIKE '%expires_at IS NOT NULL%'
+    AND pg_get_expr(index_state.indpred, index_state.indrelid)
+      LIKE '%expiry_materialized_at IS NULL%';
+  IF object_count <> 1 THEN
+    RAISE EXCEPTION 'restore acceptance: Consent expiry index invalid';
+  END IF;
+
+  SELECT count(*) INTO object_count
+  FROM pg_trigger trigger_state
+  JOIN pg_class table_relation ON table_relation.oid = trigger_state.tgrelid
+  JOIN pg_namespace namespace ON namespace.oid = table_relation.relnamespace
+  JOIN pg_proc trigger_function ON trigger_function.oid = trigger_state.tgfoid
+  WHERE namespace.nspname = current_schema()
+    AND table_relation.relname = 'processor_governance_profiles'
+    AND trigger_state.tgname = 'processor_governance_profiles_immutable'
+    AND NOT trigger_state.tgisinternal
+    AND trigger_state.tgenabled <> 'D'
+    AND (trigger_state.tgtype::INTEGER & 1) = 1
+    AND (trigger_state.tgtype::INTEGER & 2) = 2
+    AND (trigger_state.tgtype::INTEGER & 8) = 8
+    AND (trigger_state.tgtype::INTEGER & 16) = 16
+    AND trigger_function.proname = 'reject_processor_governance_profile_mutation';
+  IF object_count <> 1 THEN
+    RAISE EXCEPTION 'restore acceptance: Governance immutability trigger invalid';
+  END IF;
+
+  SELECT count(*) INTO object_count
+  FROM pg_index index_state
+  JOIN pg_class index_relation ON index_relation.oid = index_state.indexrelid
+  JOIN pg_class table_relation ON table_relation.oid = index_state.indrelid
+  JOIN pg_namespace namespace ON namespace.oid = table_relation.relnamespace
+  WHERE namespace.nspname = current_schema()
+    AND table_relation.relname = 'knowledge_processing_jobs'
+    AND index_relation.relname = 'idx_knowledge_processing_jobs_purge_fence'
+    AND index_state.indisunique
+    AND index_state.indisvalid
+    AND pg_get_indexdef(index_state.indexrelid)
+      LIKE '%document_id, document_version_id, document_visibility_epoch%'
+    AND pg_get_expr(index_state.indpred, index_state.indrelid) LIKE '%stage%'
+    AND pg_get_expr(index_state.indpred, index_state.indrelid) LIKE '%operation%'
+    AND pg_get_expr(index_state.indpred, index_state.indrelid) LIKE '%purge%';
+  IF object_count <> 1 THEN
+    RAISE EXCEPTION 'restore acceptance: Knowledge purge fence invalid';
+  END IF;
+
+  SELECT count(*) INTO object_count
+  FROM knowledge_document_versions document_version
+  LEFT JOIN files file ON file.id = document_version.file_id
+  WHERE file.id IS NULL
+     OR document_version.content_hash <> file.sha256
+     OR length(trim(file.object_key)) = 0;
+  IF object_count <> 0 THEN
+    RAISE EXCEPTION
+      'restore acceptance: % Document Version/File metadata mismatches',
+      object_count;
+  END IF;
+END
+$acceptance$;
+
+SELECT version, name
+FROM schema_migrations
+ORDER BY version;
+
+SELECT 'knowledge_collections' AS table_name, count(*) AS row_count
+FROM knowledge_collections
+UNION ALL
+SELECT 'knowledge_documents', count(*) FROM knowledge_documents
+UNION ALL
+SELECT 'knowledge_document_versions', count(*) FROM knowledge_document_versions
+UNION ALL
+SELECT 'user_query_consent_state', count(*) FROM user_query_consent_state
+UNION ALL
+SELECT 'processor_governance_profiles', count(*)
+FROM processor_governance_profiles
+UNION ALL
+SELECT 'processor_governance_heads', count(*) FROM processor_governance_heads
+UNION ALL
+SELECT 'processing_consents', count(*) FROM processing_consents
+UNION ALL
+SELECT 'knowledge_processing_jobs', count(*) FROM knowledge_processing_jobs
+UNION ALL
+SELECT 'knowledge_outbox', count(*) FROM knowledge_outbox
+ORDER BY table_name;
+SQL
+
+mkdir -p mm-chat/backup/restore
+mm-chat/scripts/compose-single-server-production.sh mm-chat/.env.single-server \
+  exec -T postgres sh -ceu '
+: "${POSTGRES_USER:?POSTGRES_USER is required}"
+if [ -n "${POSTGRES_PASSWORD:-}" ]; then
+  export PGPASSWORD="$POSTGRES_PASSWORD"
+fi
+
+exec psql --set=ON_ERROR_STOP=1 --tuples-only --no-align \
+  --username="$POSTGRES_USER" --dbname=neo_chat_restore_drill \
+  --command="SELECT file.object_key
+    FROM knowledge_document_versions document_version
+    JOIN files file ON file.id = document_version.file_id
+    WHERE document_version.status NOT IN ('\''tombstoned'\'', '\''deleted'\'')
+      AND file.upload_status = '\''available'\''
+      AND file.deleted_at IS NULL
+      AND file.storage_backend IN ('\''minio'\'', '\''s3'\'')
+    ORDER BY document_version.created_at DESC, document_version.id
+    LIMIT 5;"
+' > mm-chat/backup/restore/knowledge-object-sample.txt
+
+mm-chat/scripts/compose-single-server-production.sh mm-chat/.env.single-server \
   exec -T postgres sh -ceu '
 : "${POSTGRES_USER:?POSTGRES_USER is required}"
 if [ -n "${POSTGRES_PASSWORD:-}" ]; then
@@ -193,10 +368,12 @@ MinIO restores are destructive when mirrored back to the production bucket with
 
 1. Verify the archive checksum.
 2. Extract the archive to a local restore staging directory.
-3. Use the `minio-client` Compose service to create a drill bucket.
+3. Use the controlled `minio-restore` production-profile service to create a
+   drill bucket; do not inject ad hoc env, volumes, or entrypoints.
 4. Mirror the staged backup into the drill bucket.
 5. List objects and, when available, verify restored `files.object_key` values
-   from the Postgres drill with `mc stat`.
+   sampled through Knowledge Document Versions in the Postgres drill with
+   `mc stat`.
 6. Remove the drill bucket and local staging directory.
 
 ```bash
@@ -206,62 +383,37 @@ cd /home/mumu/projects/neo-chat
 
 rm -rf mm-chat/backup/restore/minio-drill
 mkdir -p mm-chat/backup/restore/minio-drill
+test -f mm-chat/backup/restore/knowledge-object-sample.txt
 tar -xzf mm-chat/backup/minio/<chosen-archive>.tar.gz \
   -C mm-chat/backup/restore/minio-drill
 
-docker compose --project-directory mm-chat \
-  --env-file mm-chat/.env.single-server \
-  -f mm-chat/compose.single-server.yml \
-  --profile ops run --rm -T \
-  --user "$(id -u):$(id -g)" \
-  -e HOME=/tmp \
-  --entrypoint /bin/sh \
-  -v "$PWD/mm-chat/backup/restore/minio-drill:/restore-source:ro" \
-  minio-client -euc '
-: "${S3_BUCKET:?S3_BUCKET is required}"
-: "${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}"
-: "${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}"
-
-alias_name="rootdrill"
-endpoint="${S3_ENDPOINT:-${MINIO_ENDPOINT:-http://minio:9000}}"
-drill_bucket="${S3_BUCKET}-restore-drill-$(date +%Y%m%d%H%M%S)"
-
-mc alias set "$alias_name" "$endpoint" "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null
-mc mb --ignore-existing "${alias_name}/${drill_bucket}" >/dev/null
-mc mirror --overwrite --remove "/restore-source/${S3_BUCKET}" "${alias_name}/${drill_bucket}" >/dev/null
-
-mc find "${alias_name}/${drill_bucket}" > /tmp/mm-chat-restore-objects.txt
-object_count=0
-while IFS= read -r object_path; do
-  if [ -n "$object_path" ]; then
-    object_count=$((object_count + 1))
-  fi
-done < /tmp/mm-chat-restore-objects.txt
-echo "restored_object_count=${object_count}"
-
-mc rb --force "${alias_name}/${drill_bucket}" >/dev/null
-echo "cleanup=drill_bucket_removed"
-'
+mm-chat/scripts/compose-single-server-production.sh mm-chat/.env.single-server \
+  --profile restore run --rm -T minio-restore
 
 rm -rf mm-chat/backup/restore/minio-drill
+rm -f mm-chat/backup/restore/knowledge-object-sample.txt
 ```
+
+The Postgres acceptance block fails closed unless every migration `001` through
+`009` exactly matches the release's version, name, and embedded-SQL checksum;
+the Knowledge core tables are readable; migration `009`'s Consent expiry
+column/index exists; migration `008`'s Governance immutability trigger is
+enabled; and the purge fence is a valid unique index. It also rejects Document
+Version/File hash or object-key mismatches and exports up to five live Knowledge
+object keys. The MinIO drill must `mc stat` every exported key; an empty sample
+is valid only when the restored database has no eligible live Knowledge
+Document Version.
 
 Use root/admin MinIO credentials for the temporary-bucket drill. The application
 S3 credentials are intentionally scoped to the production bucket and may not be
 allowed to create or remove drill buckets.
 
-Only after the drill passes should an operator consider restoring into the real
-bucket. The production form replaces the destination bucket contents with the
-backup contents:
-
-```bash
-mc mirror --overwrite --remove \
-  "/restore-source/${S3_BUCKET}" \
-  "${alias_name}/${S3_BUCKET}"
-```
-
-Run that production form only in a maintenance window, after stopping backend
-writes and taking a final fresh Postgres plus MinIO backup pair.
+No committed wrapper performs destructive replacement of the real bucket. A
+production MinIO restore requires a separately reviewed, one-time change that
+pins the backup pair and destination, stops backend writes, takes a final fresh
+Postgres plus MinIO backup, and reuses the same clean-environment boundary. Do
+not repurpose `minio-restore`, which is deliberately limited to a temporary
+bucket and always removes that drill bucket.
 
 ## Frequency and retention
 

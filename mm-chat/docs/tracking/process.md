@@ -6552,3 +6552,95 @@ independent final review                                     P0/P1/P2 = 0/0/0
 
 Phase 15.1D-6 is complete. Next: execute Phase 15.1D-7 Promotion and commit the
 final verification slice with an explicit `mm-chat/` allowlist.
+
+## 2026-07-12 — Phase 15.1D-7 Promotion hardening and pre-review gates
+
+Two independent xhigh audits blocked Promotion on fail-open production
+placeholders, mutable-image rollback, non-executable historical migration
+evidence, and drift across the Knowledge contract, persistence, restore, worker,
+and tracking documents. The findings were fixed before checking the Promotion
+item.
+
+The new `scripts/preflight-single-server.sh` parses the operator env file as
+data rather than sourcing it, requires mode `0600`, rejects missing or example
+values without printing them, checks Postgres/Redis URL credential consistency,
+requires HTTPS external endpoints, and requires a release-specific
+`BACKEND_IMAGE` plus `MM_CHAT_VERSION`. Its shell regression test covers the
+example file, insecure permissions, placeholders, URL mismatch, success, and
+secret-free errors. Compose now gives backend/migrate/admin one shared image
+reference. The runbook retains the previous image ID/digest and rolls back
+without rebuilding; Go and Alpine base images are digest-pinned.
+
+Migration verification now pins SHA-256 for every published `2010d73`
+`001-006` Up/Down file, applies that exact checksum-less historical state,
+requires explicit baseline, upgrades with current `007-009`, and verifies the
+tail catalog. Contracts now match required Document idempotency, Consent time
+validation, authoritative status sets, and registered routes. Persistence and
+deployment docs now describe schema head `009`, Knowledge Jobs/Outbox,
+Governance immutability, Consent expiry materialization, fail-closed worker
+shutdown, and restore checks spanning Postgres metadata plus sampled MinIO
+objects.
+
+Pre-review verification:
+
+```text
+gofmt + go test -count=1 -race ./... + go vet            passed
+govulncheck ./...                                         0 called vulnerabilities
+published 2010d73 -> baseline -> current 009 replay       passed
+fail-closed PostgreSQL 16 Knowledge + migration suite     passed
+Compose app/ops config + digest-pinned backend build      passed
+backend image API/migrate/admin binary presence           passed
+preflight shell regression and syntax checks              passed
+changed-document Prettier + scoped diff check              passed
+quality scanner                                            passed; baseline warnings only
+security scanner                                           3 known test-fixture literals only
+```
+
+The scanner matches are synthetic password/API-key strings in existing auth
+and provider tests; no production credential or new secret was found. Next:
+run the independent final xhigh review, close every P0/P1/P2 finding, then mark
+15.1D-7 and commit only the explicit `mm-chat/` allowlist.
+
+## 2026-07-12 — Phase 15.1D-7 Promotion review closed
+
+Successive independent xhigh reviews found and closed production-only gaps that
+ordinary Compose config/build checks did not expose: shell environment
+precedence over `--env-file`, Compose dotenv interpolation/escape divergence,
+mutable image tags, retained `build:` fallbacks, recovery metadata checksum
+drift, conflicting rebuild-based rollback instructions, direct backup/restore
+Compose paths, and temporary MinIO bucket collision cleanup.
+
+The final boundary is fail-closed:
+
+- production env syntax is direct and unambiguous; quoting, escaping, inline
+  comments, interpolation, duplicates, reserved Compose/Docker names, insecure
+  permissions, placeholders, and inconsistent URL credentials are rejected;
+- production images require a full registry `@sha256:` digest;
+- `compose-single-server-production.sh` starts Compose under `env -i`, disables
+  implicit `.env`, fixes the base/production file pair, rejects file/env/build
+  overrides, and removes backend/migrate/admin `build:` with `!reset`;
+- production backup and restore use dedicated clean-environment wrappers;
+  MinIO restore is limited to a uniquely created temporary bucket, verifies
+  sampled Knowledge objects, and cleans only a bucket it created;
+- restore acceptance compares exact migration `001-009` version/name/checksum
+  tuples and rejects missing, extra, NULL, or drifted rows.
+
+Final evidence:
+
+```text
+Go race/vet + govulncheck                                 passed / 0 called
+PostgreSQL 16 Knowledge/migration + historical replay     passed
+Compose dev build + production app/ops/restore config     passed
+production preflight/wrapper regression suite             passed
+restore manifest acceptance + drift rejection             passed
+shell syntax + changed-doc Prettier + scoped diff          passed
+quality scanner                                            passed
+security scanner                                           3 known test fixtures only
+independent xhigh final review                              P0/P1/P2 = 0/0/0
+```
+
+The executable infra/API contracts and lessons are captured under `mm-chat/`
+per the refactor isolation rule; `.trellis/spec/` remains unchanged because it
+is outside the authorized task write set. Phase 15.1D-7 is complete. The next
+slice may begin Python RAG Outbox consumption/indexing design; Go/Postgres
+control-plane Promotion is no longer the blocker.
