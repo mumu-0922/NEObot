@@ -7329,3 +7329,49 @@ prefix/suffix confirmation is permitted. Both Provider Captures are now present,
 but their Fixtures remain `draft/blocked`: this operator review does not replace
 independent Terms, immutable-build, region, account-limit, recovery and Freeze
 review.
+
+## 2026-07-13 — Evidence-to-Fixture promotion readiness audited
+
+Both Git-external Capture Snapshots were compared field-by-field with the four
+checked-in Public Draft Fixtures before any Lifecycle or Source Label change.
+The audit found one decisive mismatch: the MinerU Fixture models Remote URL
+`/api/v4/extract/task`, while the real Capture proves Local Upload Batch
+`/api/v4/file-urls/batch`. The Capture therefore cannot verify the current
+MinerU `submit/poll/result` cases.
+
+The production candidate is now Local Upload Batch because source files remain
+private behind MinIO/Object Gateway and must not be exposed through public
+Source URLs. Only Allocate is proven; Signed Upload Host, Batch Poll, Result
+Download, cancel/query-by-key and crash recovery remain blocked pending a new
+closed Operation Set and reviewed evidence.
+
+Jina success Shapes map cleanly to the 1024, 2048 and Rerank drafts, but the
+Harness intentionally retained Summary rather than raw Vector/Body bytes. The
+existing synthetic response Cases were not relabeled as `redacted_capture`.
+Summary-derived Capture semantics must first become explicit in the closed
+Schema, or a separately approved safe Wire-body Capture must be performed.
+
+Eight public authorities were snapshotted outside Git under
+`~/.local/share/mm-chat/provider-evidence/public-sources-20260713T015502Z` and
+bound by SHA-256 in
+`docs/contracts/provider-capture-promotion-readiness.md`. Jina's current Legal
+page says Elastic terms govern after the acquisition and warns old Jina terms
+may be stale; model-page licenses do not establish Hosted API license. MinerU
+API Docs prove technical flow only and expose no reviewed retention/deletion/
+training/license/SLA authority. All Governance Terms, Region, immutable Build,
+account limits and stable error coverage remain `unknown`.
+
+```text
+Provider contract + capture tests             120 passed
+Python non-integration suite                   205 passed / 2 deselected
+Python coverage                                90.19% (>= 90%)
+Ruff / format / Mypy                           passed / 23 source files
+pip-audit --skip-editable                      no known vulnerabilities
+security scanner on rag/tools                  0 findings
+Public Draft Fixture diff                      none
+Governance / runtime activation                none
+```
+
+The readiness report is a fail-closed Candidate Mapping, not a Promotion. Next:
+extend the MinerU Local Batch operation contract and define reviewed
+Summary-derived Capture Case semantics before modifying any Fixture lifecycle.

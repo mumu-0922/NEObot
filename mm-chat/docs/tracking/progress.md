@@ -717,6 +717,13 @@ the UI can call in the next wiring slice.
         uploading the Signed URL or polling.
   - [x] Revoke the MinerU Token exposed by an unsafe partial-echo terminal input
         helper, ban partial Key echo, and retain only the redacted Evidence.
+- [x] Complete the Evidence-to-Fixture Promotion Readiness audit, snapshot and
+      hash current Jina/Elastic/MinerU public authorities outside Git, map every
+      proven/unknown field, and keep all Fixtures `draft/blocked`.
+- [x] Select MinerU Local Upload Batch as the production candidate instead of
+      Remote URL submission; record that current Capture proves Allocate only.
+- [ ] Extend the closed MinerU Operation Schema for Allocate/Upload/Batch Poll/
+      Result Download and freeze Signed Host, recovery, error and terms evidence.
 - [x] Add and verify the Owner-approved explicit private-proxy compatibility
       path after the first Jina Capture proved WSL direct egress unavailable;
       generic proxy variables must remain ignored and no retry is allowed.
