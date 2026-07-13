@@ -1,13 +1,16 @@
 # Provider Capture Harness Contract
 
-- 状态：Phase 15.2C C0 Harness implemented；Jina/MinerU operator Captures reviewed
+- 状态：Submit-only v1 与 Lifecycle v2 Harness implemented；Lifecycle real Capture pending
 - 日期：2026-07-13
 - 实现：`rag/tools/provider_capture.py`（编排）、
   `provider_capture_common.py`、`provider_capture_http.py`、
-  `provider_capture_evidence.py`
-- 证据版本：`mm-chat.provider-capture-evidence.v1`
+  `provider_capture_evidence.py`，以及隔离的
+  `provider_capture_mineru_lifecycle*.py`、`provider_capture_mineru_targets.py`、
+  `provider_capture_mineru_shapes.py`、`provider_capture_mineru_archive.py`
+- 证据版本：Submit-only `mm-chat.provider-capture-evidence.v1`；Lifecycle
+  `mm-chat.provider-capture-evidence.v2`
 
-> Harness 只采集可人工审阅的脱敏 Wire Evidence。它不修改四个 Public Draft
+> Harness 只采集可人工审阅的脱敏 Wire Evidence。它不修改五个 Public Draft
 > Fixture，不冻结 External Gate，不生成/Apply Governance，不注册 Dispatch/Handler，也不
 > 授权任何生产 Provider 调用。
 
@@ -84,11 +87,18 @@ POST /api/v4/extract/task
   -> GET /api/v4/extract/task/{task_id}
 ```
 
-当前 Harness **只执行 local-upload Submit Stage**。它不请求 Signed Host、不上传 PDF、
+原 `tools.provider_capture` **只执行 local-upload Submit Stage**。它不请求 Signed Host、不上传 PDF、
 不 Poll Result；Signed URL 与 Batch/Trace ID 只在响应校验期间短暂存在内存，并被转换为
 `batchIdPresent`/`signedUploadUrlCount` 后丢弃。因此本切片不能宣称完整 MinerU Capture。
 公开资料尚无可靠 query-by-key、idempotency 或 cancel Contract；任何 Submit 后响应丢失都
 记为 `unknown_submission`，调用次数保持 `1`，绝不自动重提。
+
+独立 `tools.provider_capture_mineru_lifecycle` 已实现但尚未执行真实请求。它在单一进程内固定
+执行 `1 Allocate + 1 Signed PUT + <=60 Poll + 1 Result Download`，Poll 间隔固定 5 秒；
+不接受调用方传入 Stage、URL、Host、Batch ID、文件、预算、timeout 或 retry。Upload 只允许
+文档记录的 OSS Host/Path，Download 只允许 MinerU CDN ZIP Host/Path；两者均禁止 Redirect、
+Auth/Cookie 继承，Upload 还禁止 `Content-Type`。任一 Target 漂移只形成脱敏失败状态，不会向
+该 Target 发请求。
 
 ## 3. Evidence Snapshot v1
 
@@ -120,6 +130,18 @@ Snapshot 使用 UTF-8、sorted keys、无多余空白、单一尾随换行的 Ca
 响应与固定 `observedAt` 必须产生相同 Bytes 和 SHA-256。这个 Evidence Hash 只是审阅产物
 完整性，不是 Provider Key 或生产 Authority。
 
+### Evidence Snapshot v2
+
+Lifecycle Snapshot 保持同一顶层 Envelope，但只允许 MinerU 和四个固定 Operation：
+`allocate_upload/upload/poll_batch/download_result`。它记录固定/实际调用预算、Poll State
+计数、已验证身份响应数、Result URL 是否存在，以及 ZIP Byte/Entry Count、SHA-256 和四类
+必需 Artifact 的存在性。Signed Query、Host/URL、Batch/Trace ID、文件名、`err_msg`、ZIP
+Entry Name/Content 与原始 Response 永不进入 Evidence。
+
+v2 对 incomplete 状态返回非零并安全写 Evidence：`unknown_submission`、Target rejected、
+Upload/Poll/Download unknown/failed、`poll_exhausted`、`parse_failed`。所有阶段零自动 retry、
+零自动 resubmit；历史 v1 Snapshot 继续由原分支按原 Closed Schema 校验。
+
 ## 4. Safe output
 
 `--output-dir` 只接受当前目录下的单一安全目录名。实现拒绝 absolute/path separator、
@@ -136,6 +158,7 @@ Directory FD 逐级使用 `O_DIRECTORY|O_NOFOLLOW` 打开父目录，再以 pare
 ```bash
 uv run python -B -m tools.provider_capture
 uv run python -B -m tools.provider_capture --provider jina
+uv run python -B -m tools.provider_capture_mineru_lifecycle
 ```
 
 只有获批的独立 Operator Shell 才能临时导出所选 Provider Key 并显式执行：
@@ -148,6 +171,15 @@ uv run python -B -m tools.provider_capture \
   --observed-at 2026-07-13T00:00:00Z \
   --output-dir provider-capture-jina-20260713
 unset JINA_API_KEY PROVIDER_CAPTURE_PROXY_URL
+```
+
+Lifecycle 真实执行只能在独立授权后，由完整 no-echo/受控 Secret Injection 提供新 Token：
+
+```bash
+uv run python -B -m tools.provider_capture_mineru_lifecycle \
+  --execute \
+  --observed-at 2026-07-13T00:00:00Z \
+  --output-dir provider-capture-mineru-lifecycle-20260713
 ```
 
 `.env.capture.example` 只列空值与安全说明；禁止 `source .env`、dotenv、Shell history 中
@@ -172,7 +204,7 @@ Evidence、目录、`__pycache__` 或 `.pyc`。MinerU `unknown_submission` 会�
 
 Jina OpenAPI 研究基线为 `2026.06.29.1712`；公开 Tier 数值存在冲突，immutable build、
 region、account limits、SLA 未冻结。MinerU immutable build、region、terms、BBox、cancel、
-query-by-key 仍未验证。因此四个 Public Fixture 必须继续 `draft/blocked`。
+query-by-key 仍未验证。因此五个 Public Fixture 必须继续 `draft/blocked`。
 
 2026-07-13 的 Jina 固定计划已完成一次真实 Capture：两次 Passage Embedding（1024/2048）
 和一次 Rerank 均通过 Shape Gate，Canonical Evidence SHA-256 为

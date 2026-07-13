@@ -731,6 +731,11 @@ the UI can call in the next wiring slice.
       activation.
 - [x] Extend the closed MinerU Operation Schema for Allocate/Upload/Batch Poll/
       Result Download while preserving the existing Remote URL Draft.
+- [x] Persist the isolated MinerU Lifecycle Capture Harness plan with fixed
+      Allocate/Upload/Poll/Download budgets, Evidence v2, dynamic-target and
+      ZIP gates, redacted failure states, and v1 compatibility boundary.
+- [x] Implement and review the no-network-by-default MinerU Lifecycle Capture
+      CLI without performing a real Provider call or enabling Runtime.
 - [ ] Freeze Signed Host, Upload/Poll/Download, recovery, stable error, immutable
       build, Region, terms, and SLA evidence for the Local Batch Contract.
 - [x] Add and verify the Owner-approved explicit private-proxy compatibility

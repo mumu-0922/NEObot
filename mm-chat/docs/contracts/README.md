@@ -13,6 +13,7 @@ Contract documents define stable boundaries before implementation starts.
 - [`provider-capture-harness.md`](./provider-capture-harness.md) — Phase 15.2C C0 no-network-by-default Jina/MinerU capture harness, fixed call budget, staged MinerU submit, canonical redacted evidence, manual freeze flow, and rollback boundary; both operator Captures are reviewed but Freeze remains blocked.
 - [`provider-capture-promotion-readiness.md`](./provider-capture-promotion-readiness.md) — Evidence-to-Fixture promotion gate, operation-match audit, Terms authority review, MinerU Local Batch versus Remote URL mismatch, and fail-closed Freeze checklist.
 - [`mineru-local-batch-draft-contract-plan.md`](./mineru-local-batch-draft-contract-plan.md) — draft-only MinerU Local Upload Batch operation/schema plan, Remote/Local isolation, unknown-wire rules, verification gates, and rollback boundary.
+- [`mineru-lifecycle-capture-harness-plan.md`](./mineru-lifecycle-capture-harness-plan.md) — operator-only Allocate/Upload/Poll/Result lifecycle Capture plan, Evidence v2, dynamic-target/ZIP gates, bounded failures, and rollback boundary.
 - [`browser-data-import.md`](./browser-data-import.md) — Phase 8 contract for explicit local-first browser data import, preview validation, ZIP package blobs, idempotency, and rollback.
 
 Future contract docs may cover SSE wire examples and database migration contracts.

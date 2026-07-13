@@ -64,7 +64,7 @@ ignored, the validated proxy is never recorded, and Provider TLS verification
 and every target/response gate remain active.
 
 Jina execution is exactly two passage embedding calls (1024 and 2048) plus one
-two-document rerank call. MinerU execution is a deliberately staged v4
+two-document rerank call. The original MinerU execution is a deliberately staged v4
 local-upload Submit only: signed upload and polling budgets are zero. Response
 loss becomes `unknown_submission` and is never retried. Evidence is a closed v1
 canonical JSON snapshot containing only allowlisted metadata, shapes, counts,
@@ -74,6 +74,17 @@ files are private, no-overwrite and atomically written through walked
 no-symlink parent directory FDs and direct-child relative syscalls. A MinerU
 `unknown_submission` evidence write returns nonzero so automation cannot report
 the Capture plan complete.
+
+The separate `provider_capture_mineru_lifecycle` path preserves v1 and adds a
+closed Evidence v2 chain with fixed `1/1/60/1` Allocate/Upload/Poll/Download
+budgets. Provider-derived URLs pass exact documented authority/path gates before
+use; Upload/Download never inherit Auth, Cookie, redirects, or caller targets.
+Poll identity/state shapes are closed, and Result ZIPs are bounded and checked
+without extraction for traversal, symlink, duplicate, encryption, compression,
+CRC, size, entry count, and required artifact presence. Only counts, state,
+hashes, and booleans enter Evidence; dynamic URLs/queries, IDs, errors, entry
+names/content, and response bytes remain memory-only. This CLI has not made a
+real Provider call and does not promote a Fixture or Runtime handler.
 
 The harness cannot edit fixtures, freeze the External Gate, derive/apply
 Governance or enable production registries. Docker copies only `src/`, and no

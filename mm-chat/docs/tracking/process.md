@@ -7423,3 +7423,61 @@ Batch Poll, Result Download, recovery behavior, stable errors, immutable build,
 Region, Terms, or SLA. Next: design a separately authorized staged
 Upload/Poll/Result Capture before any Adapter implementation or lifecycle
 promotion.
+
+## 2026-07-13 — MinerU Lifecycle Capture Harness plan locked
+
+The next Provider intake slice was persisted before implementation at
+`docs/contracts/mineru-lifecycle-capture-harness-plan.md`. It keeps the original
+Submit-only Harness and Evidence v1 stable, and introduces a separate
+no-network-by-default Lifecycle CLI plus Evidence v2 for one in-process
+Allocate, Signed PUT, bounded Poll, and Result ZIP Download chain.
+
+Dynamic URLs remain untrusted Provider data. Upload and Download require exact
+documented HTTPS hosts/path prefixes, default port, no userinfo/fragment/control
+characters, redirects, Auth replay, Cookie replay, or caller-supplied Host.
+Signed Query values, Batch/Trace IDs, Provider errors, ZIP entry names/content,
+and response bytes never enter Evidence. Poll and archive budgets are fixed in
+code, every failure state is redacted, and no stage automatically retries or
+resubmits. This plan does not authorize a real call or any Runtime activation.
+
+## 2026-07-13 — MinerU Lifecycle Capture Harness implemented and reviewed
+
+The isolated `tools.provider_capture_mineru_lifecycle` CLI now defaults to a
+zero-network plan and requires explicit `--execute` plus a process-environment
+`MINERU_API_KEY`. It performs one in-process Allocate, Signed PUT, bounded Poll,
+and Result ZIP Download chain; no caller can supply a Stage, URL, Host, Batch
+ID, file, retry, timeout, or call budget. The original Submit-only CLI and all
+historical Evidence v1 validation remain compatible.
+
+Security-sensitive logic is split into closed modules for orchestration, HTTP,
+response shapes, dynamic targets, ZIP validation, and Evidence v2. Upload and
+Result targets require exact documented HTTPS authorities/path shapes and no
+redirect; Batch IDs are constrained to one safe path segment. Upload/Download
+drop Auth, Cookie, and inherited Content-Type. Poll is capped at 60 calls with
+fixed 5-second spacing and no network retry.
+
+Result ZIPs are consumed only in memory and capped at 32 MiB compressed, 256
+entries, 128 MiB aggregate uncompressed, 64 MiB per entry, and a 200:1 ratio.
+Encrypted, symlink, duplicate, absolute/traversal, CRC-invalid, or incomplete
+archives fail closed. Evidence v2 stores only fixed stage state/count/Hash/
+presence summaries; Signed URL/Query, Batch/Trace ID, Provider Error, file name,
+Entry Name/Content, response bytes, Key, and Proxy remain absent.
+
+```text
+Lifecycle Capture targeted tests                43 passed
+Python non-integration suite                     259 passed / 2 deselected
+Python coverage                                  90.19% (>= 90%)
+Ruff check / format                              passed / 46 files
+Mypy                                             33 source files / no issues
+pip-audit --skip-editable                        no known vulnerabilities
+security scan on tools/new support/tests         no new findings
+quality scan on new modules/tests                0 errors / 0 warnings
+real Provider requests                           0
+Runtime Registry / Governance / Dispatch         unchanged / disabled
+```
+
+This implementation does not promote the Local Batch Fixture: Upload/Poll/
+Download still lack real reviewed Evidence, and immutable build, Region, stable
+errors, Terms, Retention, License, and SLA remain unknown. Next: commit the
+reviewed no-network implementation, then obtain a newly issued MinerU Token and
+separately authorize exactly one Lifecycle Capture.

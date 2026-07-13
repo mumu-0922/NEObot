@@ -29,10 +29,16 @@ from tools.provider_capture_common import (
     parse_observed_at,
     require_exact_keys,
 )
+from tools.provider_capture_mineru_lifecycle_evidence import (
+    validate_lifecycle_evidence_snapshot,
+)
 
 
 def validate_evidence_snapshot(snapshot: JsonObject) -> None:
     """Validate the exact closed v1 shape before any evidence write."""
+    if snapshot.get("schemaVersion") == "mm-chat.provider-capture-evidence.v2":
+        validate_lifecycle_evidence_snapshot(snapshot)
+        return
     require_exact_keys(
         snapshot,
         {

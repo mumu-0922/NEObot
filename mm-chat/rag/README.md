@@ -19,7 +19,10 @@ is not a production console script. Real egress requires explicit `--execute`
 plus process-environment credentials. A WSL operator may explicitly set
 `PROVIDER_CAPTURE_PROXY_URL` to a literal private/loopback HTTP proxy; generic
 proxy variables remain ignored. MinerU capture is intentionally staged at the
-v4 local-upload Submit response: it does not PUT the signed URL or poll.
+v4 local-upload Submit response: it does not PUT the signed URL or poll. A
+separate `tools/provider_capture_mineru_lifecycle.py` CLI implements the full
+bounded synthetic Allocate/Upload/Poll/Download chain with Evidence v2, but no
+real Lifecycle Capture has been executed and it remains outside Runtime.
 
 ## Safety boundaries
 
@@ -74,7 +77,11 @@ no evidence file in dry-run mode:
 
 ```bash
 uv run python -B -m tools.provider_capture
+uv run python -B -m tools.provider_capture_mineru_lifecycle
 uv run pytest -p no:cacheprovider tests/unit/test_provider_capture.py
+uv run pytest -p no:cacheprovider \
+  tests/unit/test_provider_lifecycle_capture.py \
+  tests/unit/test_provider_lifecycle_security.py
 ```
 
 Authorized execution, exact budgets, evidence schema, review/freeze procedure,
