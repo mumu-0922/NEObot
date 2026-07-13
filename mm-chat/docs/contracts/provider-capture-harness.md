@@ -1,6 +1,6 @@
 # Provider Capture Harness Contract
 
-- 状态：Submit-only v1 与 Lifecycle v2 Harness implemented；首次 Lifecycle Capture 在 Download transport 未完成
+- 状态：Submit-only v1 与 Lifecycle v2 Harness implemented；两次 Lifecycle Capture 均在 Download transport 未完成
 - 日期：2026-07-13
 - 实现：`rag/tools/provider_capture.py`（编排）、
   `provider_capture_common.py`、`provider_capture_http.py`、
@@ -235,6 +235,15 @@ Git 外 Store 并保持 `0700/0600`。交互式部分遮罩在长 Token 粘贴�
 `0700/0600`，并已移至 Git 外 Evidence Store。原始异常分类未被采集，现已不可恢复，禁止
 推测或改写该 Evidence；此次结果只证明 `1/1/4/1` 调用与前三阶段行为，不证明 Result ZIP
 Contract，也不提升 Fixture Lifecycle。
+
+第二次独立授权 Capture 未复用旧任务状态，重新按固定计划执行 `1 Allocate + 1 Upload +
+2 Poll + 1 Download`。Poll 观测 `waiting-file/done`，Result URL 通过固定 CDN Target Gate；
+Download Evidence 记录 `transportFailureClass=connect_error`，Outcome 仍为 `unknown_download`
+并返回 terminal exit code `3`。Canonical Evidence SHA-256 为
+`7041a1c09e2f741875ffccb11d97ea806fc63e90e059f390124a1f953f047b55`，按 `0700/0600`
+移至 Git 外 Store。该字段不能区分 Private Proxy、Proxy upstream、TCP、DNS、TLS 或 CDN
+临时故障，因此禁止第三次带 Token Capture；后续只允许在新的人工授权下做无 Token、无
+Submit 的 CDN connect-path 诊断。
 
 ## 7. Rollback
 

@@ -84,12 +84,12 @@ without extraction for traversal, symlink, duplicate, encryption, compression,
 CRC, size, entry count, and required artifact presence. Only fixed counts,
 state, hashes, booleans, and the optional closed `transportFailureClass` enter
 Evidence; dynamic URLs/queries, IDs, errors, entry names/content, and response
-bytes remain memory-only. This CLI has not made a
-successful end-to-end Provider Capture: its first authorized run completed
-Allocate/Upload/Poll but recorded a legacy `unknown_download`. Future HTTPX
-transport losses may record only a closed `transportFailureClass`; exception
-messages, requests, URLs, and identifiers remain forbidden. No result promotes
-a Fixture or Runtime handler automatically.
+bytes remain memory-only. This CLI has not made a successful end-to-end Provider
+Capture: its first authorized run recorded a legacy `unknown_download`, and its
+second independently authorized run recorded `connect_error` after successful
+Allocate/Upload/Poll. The closed class does not identify proxy, TCP, DNS, TLS,
+or CDN root cause. Exception messages, requests, URLs, and identifiers remain
+forbidden, and no result promotes a Fixture or Runtime handler automatically.
 
 The harness cannot edit fixtures, freeze the External Gate, derive/apply
 Governance or enable production registries. Docker copies only `src/`, and no

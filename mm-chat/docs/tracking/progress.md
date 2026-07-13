@@ -723,13 +723,17 @@ the UI can call in the next wiring slice.
   - [x] Add closed HTTPX transport failure classification for future incomplete
         Evidence while preserving legacy v2 validation and fail-closed behavior
         for non-transport programming errors.
-  - [ ] Execute one separately authorized follow-up Lifecycle Capture after the
-        diagnostic patch passes independent review; do not promote on failure.
+  - [x] Execute one separately authorized follow-up Lifecycle Capture after the
+        diagnostic patch passed review; it again stopped at Download and safely
+        recorded closed `connect_error` without promotion or retry.
+  - [ ] Diagnose the CDN/private-proxy connect path without a MinerU Token or a
+        new Submit before considering any third Lifecycle Capture.
 - [x] Complete the Evidence-to-Fixture Promotion Readiness audit, snapshot and
       hash current Jina/Elastic/MinerU public authorities outside Git, map every
       proven/unknown field, and keep all Fixtures `draft/blocked`.
 - [x] Select MinerU Local Upload Batch as the production candidate instead of
-      Remote URL submission; record that current Capture proves Allocate only.
+      Remote URL submission; record that the initial staged Capture proved
+      Allocate only and later Lifecycle summaries remain non-promotable.
 - [x] Persist the draft-only MinerU Local Batch Contract plan with a distinct
       Provider Kind, exact six-operation set, Remote/Local isolation, unknown
       Wire rules, validation gates, and rollback boundary.

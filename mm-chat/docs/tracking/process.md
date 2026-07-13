@@ -7527,3 +7527,34 @@ Runtime Registry / Governance / Dispatch    unchanged / disabled
 The next network action is not automatic recovery. It requires a fresh Owner
 authorization for one new fixed Lifecycle Capture; the legacy Evidence remains
 immutable and non-promotable.
+
+## 2026-07-13 — Second MinerU Lifecycle Capture isolated Download connect error
+
+Before the authorized run, one multiline shell paste was split by the terminal.
+It executed only the CLI dry-run, made zero Provider requests, created no
+Evidence directory, and was replaced by a private temporary no-echo helper. The
+helper was removed immediately after use; the Token existed only in that child
+process environment.
+
+The separately authorized Capture then used the fixed plan once. Allocate and
+Signed PUT succeeded; two Poll calls observed `waiting-file` and `done`; the
+Result URL passed the fixed CDN Target Gate. The sole Download ended as
+`unknown_download` with the new closed `transportFailureClass=connect_error`.
+The CLI wrote Evidence and returned terminal exit code `3`; no retry, resume,
+third Submit, Fixture mutation, Governance apply, or Runtime activation occurred.
+
+```text
+Actual Allocate / Upload / Poll / Download       1 / 1 / 2 / 1
+Evidence SHA-256                                 7041a1c09e2f741875ffccb11d97ea806fc63e90e059f390124a1f953f047b55
+Evidence directory / file mode                   0700 / 0600
+Evidence schema validation                       passed
+Transport failure class                          connect_error
+Dynamic URL / ID / error / Token retained        none
+Evidence storage                                 Git-external
+```
+
+`connect_error` proves only that HTTPX failed in the connection path. It cannot
+distinguish the local Private Proxy, its upstream tunnel, TCP, DNS, TLS, CDN
+reachability, or a transient remote condition. A third full Capture would only
+repeat Allocate/Upload and is therefore forbidden until an independently
+authorized, credential-free CDN/proxy connectivity probe resolves this branch.

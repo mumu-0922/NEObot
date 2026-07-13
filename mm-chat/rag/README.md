@@ -22,8 +22,9 @@ proxy variables remain ignored. MinerU capture is intentionally staged at the
 v4 local-upload Submit response: it does not PUT the signed URL or poll. A
 separate `tools/provider_capture_mineru_lifecycle.py` CLI implements the full
 bounded synthetic Allocate/Upload/Poll/Download chain with Evidence v2. Its
-first real Capture reached `done` but ended as `unknown_download`; it remains
-outside Runtime and no Fixture was promoted.
+first two real Captures reached `done` but ended as `unknown_download`; the
+second safely classified the Download failure as `connect_error`. It remains
+outside Runtime, no automatic retry is allowed, and no Fixture was promoted.
 
 ## Safety boundaries
 

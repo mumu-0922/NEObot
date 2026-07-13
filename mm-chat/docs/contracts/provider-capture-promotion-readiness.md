@@ -14,6 +14,8 @@
 | --- | --- | --- | --- |
 | Jina | `e0c1ccd82b1a3d09ac65ea37dd7e18c36e06d9cf3b57cf235f150b273436d1a8` | `/v1/embeddings` 1024/2048 与 `/v1/rerank` 成功 Shape、Model、Index、Usage、Dimension | Error Case、Rate Limit、Normalization、Build、Region、Terms/SLA |
 | MinerU | `a47a34559fbd262ba29a59181fe7b3ecedc8f1652305b2f4a22afdb342d23b46` | `/api/v4/file-urls/batch` 单次 Batch Submit、Batch ID/Signed URL 存在性 | Upload、Poll、Result、Remote URL Flow、Recovery、BBox、Build、Region、Terms/SLA |
+| MinerU Lifecycle | `06edec92a8cbc3dbf96dd261ccfa88cea34b08de703eaefd8ffb088c1aabc4b1` | Harness Summary 记录 Upload 成功、四次 Poll 到 `done`、Result URL 存在 | 动态 Wire、Result ZIP、Download transport 原因、Recovery、Build、Region、Terms/SLA |
+| MinerU Lifecycle | `7041a1c09e2f741875ffccb11d97ea806fc63e90e059f390124a1f953f047b55` | Harness Summary 记录 Upload 成功、两次 Poll 到 `done`、Download `connect_error` | 动态 Wire、connect 根因、Result ZIP、Recovery、Build、Region、Terms/SLA |
 
 Evidence 保持在 `~/.local/share/mm-chat/provider-evidence/`，不进入 Git。映射产物只能引用
 Hash、Observed Time、Operation 与 allowlisted Summary；不能复制 Token、动态 ID、Signed
@@ -25,17 +27,18 @@ URL、Vector 或原始 Provider Body。
 Jina embedding_1024 -> jina-embedding-v4-1024 public draft / embed
 Jina embedding_2048 -> jina-embedding-v4-2048 public draft / embed
 Jina rerank         -> jina-rerank-v3 public draft / rerank
-MinerU batch submit -> NO CURRENT FIXTURE OPERATION MATCH
+MinerU batch summary -> mineru-local-batch public draft / allocate_upload observed only
 ```
 
 Jina 三个 Success Behavior 可形成 `redacted_capture` Candidate，但当前 Harness 只保留 Closed
 Summary，不保留完整 Vector/Raw Body；在 Freeze Schema 明确允许 Summary-derived Case 前，不得把
 现有 `public_schema_synthetic` Case 改名冒充实测。
 
-MinerU 当前 Draft 描述 Remote URL Flow：`/api/v4/extract/task` 与
-`/api/v4/extract/task/{task_id}`；真实 Capture 是 Local Upload Batch Flow：
-`/api/v4/file-urls/batch`。二者不是同一 Wire，禁止映射。生产 Flow 必须先选定并扩展 Closed
-Operation Set，再单独验证 Upload/Poll/Result/Recovery。
+旧 `mineru_async` Draft 描述 Remote URL Flow：`/api/v4/extract/task` 与
+`/api/v4/extract/task/{task_id}`，不能映射 Local Upload Evidence。后续已新增隔离的
+`mineru_local_batch` Draft；Allocate 可使用公开 Schema 与 Capture Summary，Upload/Poll 只有
+脱敏状态摘要而没有可审阅动态 Wire，Download 两次均未成功。因此这些 Lifecycle Evidence
+不能把任何 Operation 提升为 Frozen Wire，也不能验证 Result/Recovery。
 
 ## 3. Terms authority review
 
@@ -66,7 +69,7 @@ Batch Poll 路径与技术限制；它没有证明结果保留、删除、训练
 
 | Field | Jina | MinerU |
 | --- | --- | --- |
-| Base URL / success path | `proven` | Batch Allocate path `proven`；旧 Remote path only public docs |
+| Base URL / success path | `proven` | Batch Allocate path `proven`；Upload/Poll success summary observed；动态 Wire 未保留；Result blocked |
 | Model ID | Capture Response `proven` | Request `vlm` observed；immutable build unknown |
 | Dimension / Index / Usage | 1024/2048 and Rerank `proven` | not applicable to Batch Allocate |
 | Error behavior / Retry-After | OpenAPI-declared only，Capture unknown | unknown；现有 429 Case 仍 synthetic |
@@ -91,9 +94,11 @@ download_result  GET  provider result URL
 cancel/query_by_key                            # remain unknown until proven
 ```
 
-当前 Capture 只证明 `allocate_upload`。Signed Upload/Result Host 未保留，Host Allowlist、Poll、
-Result Archive、Crash Recovery 与 `UNKNOWN_SUBMISSION` 仍阻断 Adapter。现有 MinerU Draft 的
-Remote `submit/poll/result` 不能静默改名复用。
+初始 staged Capture 只证明 `allocate_upload`。后续两份 Lifecycle Evidence 增加了 Harness
+记录的 Upload success、Poll `done` 与 Result URL presence；第二份还记录 Download
+`connect_error`。由于 Signed Upload/Result URL、原始 Wire Body 与 ZIP 均未保留，这些 Summary
+不能冻结动态 Host/Path、Result Archive、Crash Recovery 或稳定 Error Contract，仍阻断
+Adapter。旧 Remote `submit/poll/result` 不能静默改名复用。
 
 ## 6. Promotion checklist
 

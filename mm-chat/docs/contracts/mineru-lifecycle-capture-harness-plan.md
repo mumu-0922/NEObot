@@ -1,6 +1,6 @@
 # MinerU Lifecycle Capture Harness Plan
 
-- 状态：implemented/reviewed；首次真实 Capture 在 Download 阶段未完成，Runtime Adapter 未启用
+- 状态：implemented/reviewed；两次真实 Capture 均在 Download 阶段未完成，Runtime Adapter 未启用
 - 日期：2026-07-13
 - 前置：`mineru_local_batch` Fixture 已建立，但 Upload/Poll/Download 仍为 `unknown`
 
@@ -98,5 +98,15 @@ ZIP 内容或 Token，也不能提升 Fixture。
       `httpx.TransportError` 类型分类，不保存异常消息、类名、Request 或 URL。
 - [x] 保持 legacy v2 unknown Evidence 无该字段时仍可验证；其他 State 或未知枚举拒绝。
 - [x] 通过定向/全量质量与安全门，并完成独立 Review `P0/P1/P2 = 0/0/0`。
-- [ ] 由 Owner 单独授权一次新 Lifecycle Capture；不得把它表述为旧任务恢复或自动 retry。
+- [x] 由 Owner 单独授权一次新 Lifecycle Capture；未把它表述为旧任务恢复或自动 retry。
+- [ ] 在不使用 MinerU Token、不重新 Submit 的独立授权下诊断 CDN/proxy connect path；完成前
+      禁止第三次 Lifecycle Capture。
 - [ ] 只有完整 ZIP Evidence 与外部 Authority/Terms/SLA Gate 同时通过，才允许 Fixture Freeze。
+
+第二次独立 Capture 的实际调用数为 `1/1/2/1`，Poll 依次为 `waiting-file/done`。Result URL
+再次通过固定 Target Gate，但 Download 记录闭集 `transportFailureClass=connect_error`，Outcome
+仍为 `unknown_download`，exit code `3`。Evidence SHA-256 为
+`7041a1c09e2f741875ffccb11d97ea806fc63e90e059f390124a1f953f047b55`，已按 `0700/0600`
+移至 Git 外 Evidence Store。该分类只证明 HTTPX connect path 失败，不能区分本地 Proxy、
+Proxy upstream、TCP、DNS、TLS 或 CDN 临时故障，也不能证明 Provider ZIP Contract。没有执行
+第三次 Capture；下一步必须把连接诊断与带 Token 的业务 Capture 分离。
