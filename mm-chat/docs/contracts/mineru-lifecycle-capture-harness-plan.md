@@ -103,6 +103,10 @@ ZIP 内容或 Token，也不能提升 Fixture。
 - [x] 经 Owner 明确授权使用一次性 Token，以全直连方式执行第三次固定 Capture；不再复用 Token。
 - [x] 为后续 `download_failed` 增加闭集 `downloadFailureClass`，保持历史 v2 Evidence 兼容，
       且不得记录 HTTP Status、Header Value、Body、ZIP Entry 或异常消息。
+- [x] 使用新 Token 完成一次全直连诊断 Capture，确认 Download Gate 为 `archive_invalid`；
+      Evidence 移至 Git 外 Store，Token 已由 Owner 撤销。
+- [x] 将 `archive_invalid` 拆为闭集 `archiveFailureClass`，不记录 Entry Name/Content，并保持
+      既有 v2 failed Evidence 向后兼容。
 - [ ] 只有完整 ZIP Evidence 与外部 Authority/Terms/SLA Gate 同时通过，才允许 Fixture Freeze。
 
 第二次独立 Capture 的实际调用数为 `1/1/2/1`，Poll 依次为 `waiting-file/done`。Result URL
@@ -128,3 +132,18 @@ Encoding、Size 或 ZIP Shape；一次性 Token 不再使用并应由 Owner 撤�
 `content_length_invalid`、`archive_too_large`、`archive_invalid`。旧 v2 failed Evidence 无该字段
 时继续有效；未知 Error Code、未知枚举或错误 State 携带该字段必须 fail closed。该增强不授权
 新的 Provider Capture，也不提升 Fixture。
+
+应用 `downloadFailureClass` 后的新全直连 Capture 实际调用数仍为 `1/1/2/1`，前三阶段成功，
+Download 精确记录 `archive_invalid`。Evidence SHA-256 为
+`6d227220d52b944a0824a779d00bc595fd3b6f086cdc1753f8e1719c363a4dd6`，已按
+`0700/0600` 移至 Git 外 Store；临时脚本已删除，Owner 已确认撤销 Token。该结果证明 HTTP
+Status/Encoding/Content-Type/Length/32 MiB compressed Gate 均已越过，但不能区分无效 ZIP、
+CRC、危险 Entry、解压上限/压缩比或缺少必需 Artifact。
+
+后续闭集 `archiveFailureClass` 只允许：`empty_archive/invalid_zip/crc_mismatch`、
+`too_many_entries/unsupported_compression/unsafe_entry_name/unsafe_entry_path/duplicate_entry/`
+`encrypted_entry/symlink_entry`、
+`expanded_entry_too_large/expanded_total_too_large/invalid_compression_metadata/`
+`compression_ratio_exceeded`、`missing_full_markdown/missing_content_list/missing_middle_json/`
+`missing_model_json`。实现只携带硬编码 Class；Entry Name、数量之外的 Metadata、正文及异常消息
+继续禁止。未知 ZIP 异常不得映射为开放 fallback，必须 `CAPTURE_FAILED`。

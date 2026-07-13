@@ -23,6 +23,7 @@ from tools.provider_capture_common import (
 from tools.provider_capture_http import send_json
 from tools.provider_capture_mineru_archive import (
     MAX_ARCHIVE_BYTES,
+    ArchiveValidationError,
     validate_result_archive,
 )
 from tools.provider_capture_mineru_shapes import (
@@ -384,7 +385,10 @@ def _download_result(
     try:
         summary = validate_result_archive(archive)
     except CaptureError as error:
-        return "failed", {"downloadFailureClass": _download_failure_class(error)}
+        metadata: JsonObject = {"downloadFailureClass": _download_failure_class(error)}
+        if isinstance(error, ArchiveValidationError):
+            metadata["archiveFailureClass"] = error.failure_class
+        return "failed", metadata
     return "success", {
         "httpStatus": HTTP_OK,
         "responseContentType": content_type,

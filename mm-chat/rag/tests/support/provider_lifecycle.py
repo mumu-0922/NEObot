@@ -58,7 +58,9 @@ def archive_bytes(entries: dict[str, bytes] | None = None) -> bytes:
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as archive:
         for name, content in contents.items():
-            archive.writestr(name, content)
+            entry = zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))
+            entry.compress_type = zipfile.ZIP_STORED
+            archive.writestr(entry, content)
     return output.getvalue()
 
 

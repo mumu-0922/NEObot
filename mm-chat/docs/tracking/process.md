@@ -7613,3 +7613,46 @@ independent final review                    P0/P1/P2 = 0/0/0
 additional Provider calls after direct run  0
 Runtime Registry / Governance / Dispatch    unchanged / disabled
 ```
+
+## 2026-07-13 — Archive failure classification added after Token revocation
+
+The Owner supplied a fresh Token only through the local no-echo direct Capture
+helper. One fixed `1/1/2/1` lifecycle again passed Allocate, Signed PUT, and Poll
+`waiting-file/done`; Download recorded `downloadFailureClass=archive_invalid`.
+Evidence SHA-256 is
+`6d227220d52b944a0824a779d00bc595fd3b6f086cdc1753f8e1719c363a4dd6`, stored
+Git-external with `0700/0600`. The helper was deleted and the Owner confirmed
+Token revocation before implementation continued.
+
+This historical Evidence proves the response crossed status, encoding,
+content-type, content-length, compressed-size, and transport gates before ZIP
+validation failed. It cannot identify invalid ZIP bytes, CRC, unsafe Entry,
+expanded-size/ratio, or a missing required Artifact, and it was not rewritten.
+
+The offline follow-up introduces `ArchiveValidationError` carrying one hard-coded
+`archiveFailureClass`, while its public error remains `MINERU_ARCHIVE_INVALID`.
+Evidence accepts the new field only under `download_failed + archive_invalid`;
+legacy v2 Snapshots without it remain valid. Entry names/content and raw archive
+metadata remain absent. The expanded tests also exposed and fixed a pre-existing
+flaky Mock ZIP SHA caused by current-time ZIP timestamps; fixtures now use one
+fixed timestamp.
+
+Independent review found and closed two additional P1 boundaries before merge:
+directory entries can no longer impersonate required files, and unsupported ZIP
+compression is normalized to the closed `unsupported_compression` class instead
+of escaping as `NotImplementedError`.
+
+```text
+Lifecycle targeted tests                    75 passed
+Python non-integration suite                291 passed / 2 deselected
+Python coverage                             90.19% (>= 90%)
+Ruff check / format                         passed / 46 files
+Mypy                                        passed / 29 source files
+pip-audit --skip-editable                   no known vulnerabilities
+all four Lifecycle Evidence snapshots       valid under current v2 schema
+security scan on rag/tools                  0 findings
+full unit-test security scan                2 existing synthetic fixtures only
+independent final review                    P0/P1/P2 = 0/0/0
+additional Provider calls after revocation  0
+Runtime Registry / Governance / Dispatch    unchanged / disabled
+```

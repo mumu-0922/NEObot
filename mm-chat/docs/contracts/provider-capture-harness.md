@@ -1,6 +1,6 @@
 # Provider Capture Harness Contract
 
-- 状态：Submit-only v1 与 Lifecycle v2 Harness implemented；第三次 Lifecycle Capture 已越过 transport、停在 Download contract gate
+- 状态：Submit-only v1 与 Lifecycle v2 Harness implemented；最新 Lifecycle Capture 定位为 `archive_invalid`
 - 日期：2026-07-13
 - 实现：`rag/tools/provider_capture.py`（编排）、
   `provider_capture_common.py`、`provider_capture_http.py`、
@@ -156,6 +156,13 @@ Provider Error 认定。既有 v2 unknown Snapshot 无该字段时继续有效�
 消息或 URL。既有 v2 failed Snapshot 无该字段时继续有效；未知 Error Code 不得降级为 open
 fallback，而是固定 `CAPTURE_FAILED`。该字段同样不具备 Promotion Authority。
 
+当且仅当 `downloadFailureClass=archive_invalid` 时，新 Producer 还可记录闭集
+`archiveFailureClass`：空/无效 ZIP、CRC、Entry Count/Name/Path/Duplicate/Encryption/Symlink、
+未知压缩算法、单 Entry/总解压上限、压缩 Metadata/Ratio，以及缺少
+`full.md/content_list/middle/model` 四类必需 Artifact。它不保存 Entry Name、顺序、正文、
+CRC 值或异常消息。历史 v2
+`archive_invalid` 无该字段时继续有效；未知 Class 或错误 State/父 Class 组合必须拒绝。
+
 ## 4. Safe output
 
 `--output-dir` 只接受当前目录下的单一安全目录名。实现拒绝 absolute/path separator、
@@ -259,6 +266,12 @@ Evidence SHA-256 为 `ec5ad91cf1c062d713aa70a62381f2d36b86810ec59c6ba92f93419f3d
 按 `0700/0600` 移至 Git 外 Store。旧 producer 未记录具体 Contract Gate，因此不能从该
 Evidence 推测 HTTP Status、Content-Type/Encoding/Length、Archive Size 或 ZIP Shape；一次性
 Token 不再使用并应撤销。
+
+应用 `downloadFailureClass` 后，Owner 又通过本机 no-echo 脚本授权一次全直连 Capture。
+实际调用 `1/1/2/1`，前三阶段成功，Download 精确为 `archive_invalid`。Evidence SHA-256 为
+`6d227220d52b944a0824a779d00bc595fd3b6f086cdc1753f8e1719c363a4dd6`，按
+`0700/0600` 移至 Git 外 Store；脚本已删除，Owner 已确认撤销 Token。该历史 Snapshot 尚无
+`archiveFailureClass`，不能回填具体 ZIP 原因，也不授权 Fixture Promotion。
 
 ## 7. Rollback
 

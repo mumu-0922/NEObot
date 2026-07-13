@@ -8,6 +8,7 @@ import pytest
 from tools.provider_capture import CaptureError
 from tools.provider_capture_mineru_archive import (
     MAX_ARCHIVE_BYTES,
+    ArchiveValidationError,
     validate_result_archive,
 )
 from tools.provider_capture_mineru_targets import (
@@ -73,6 +74,7 @@ def test_result_target_is_exactly_allowlisted(url: str) -> None:
     "entries",
     [
         {"../full.md": b"x"},
+        {"nested/./full.md": b"x"},
         {"full.md": b"x"},
         {
             "full.md": b"x",
@@ -89,8 +91,17 @@ def test_result_archive_rejects_traversal_missing_and_accepts_closed_shape(
     if len(entries) == 4:
         assert validate_result_archive(content)["entryCount"] == 4
     else:
-        with pytest.raises(CaptureError, match="MINERU_ARCHIVE_INVALID"):
+        expected = (
+            "unsafe_entry_path"
+            if next(iter(entries)) != "full.md"
+            else "missing_content_list"
+        )
+        with pytest.raises(
+            ArchiveValidationError,
+            match="MINERU_ARCHIVE_INVALID",
+        ) as captured:
             validate_result_archive(content)
+        assert captured.value.failure_class == expected
 
 
 def test_result_archive_rejects_oversized_bytes_before_zip_parse() -> None:
@@ -108,8 +119,9 @@ def test_result_archive_rejects_symlink_duplicate_and_compression_bomb() -> None
         archive.writestr("fixture_content_list.json", "[]")
         archive.writestr("fixture_middle.json", "{}")
         archive.writestr("fixture_model.json", "{}")
-    with pytest.raises(CaptureError, match="MINERU_ARCHIVE_INVALID"):
+    with pytest.raises(ArchiveValidationError) as symlink_error:
         validate_result_archive(symlink_output.getvalue())
+    assert symlink_error.value.failure_class == "symlink_entry"
 
     duplicate_output = io.BytesIO()
     with zipfile.ZipFile(duplicate_output, "w") as archive:
@@ -119,8 +131,9 @@ def test_result_archive_rejects_symlink_duplicate_and_compression_bomb() -> None
         archive.writestr("fixture_content_list.json", "[]")
         archive.writestr("fixture_middle.json", "{}")
         archive.writestr("fixture_model.json", "{}")
-    with pytest.raises(CaptureError, match="MINERU_ARCHIVE_INVALID"):
+    with pytest.raises(ArchiveValidationError) as duplicate_error:
         validate_result_archive(duplicate_output.getvalue())
+    assert duplicate_error.value.failure_class == "duplicate_entry"
 
     bomb_output = io.BytesIO()
     with zipfile.ZipFile(
@@ -132,5 +145,90 @@ def test_result_archive_rejects_symlink_duplicate_and_compression_bomb() -> None
         archive.writestr("fixture_content_list.json", "[]")
         archive.writestr("fixture_middle.json", "{}")
         archive.writestr("fixture_model.json", "{}")
-    with pytest.raises(CaptureError, match="MINERU_ARCHIVE_INVALID"):
+    with pytest.raises(ArchiveValidationError) as compression_error:
         validate_result_archive(bomb_output.getvalue())
+    assert compression_error.value.failure_class == "compression_ratio_exceeded"
+
+
+@pytest.mark.parametrize(
+    ("missing_name", "expected_class"),
+    [
+        ("full.md", "missing_full_markdown"),
+        ("fixture_content_list.json", "missing_content_list"),
+        ("fixture_middle.json", "missing_middle_json"),
+        ("fixture_model.json", "missing_model_json"),
+    ],
+)
+def test_result_archive_classifies_missing_required_artifact(
+    missing_name: str,
+    expected_class: str,
+) -> None:
+    entries = {
+        "full.md": b"x",
+        "fixture_content_list.json": b"[]",
+        "fixture_middle.json": b"{}",
+        "fixture_model.json": b"{}",
+    }
+    entries.pop(missing_name)
+
+    with pytest.raises(ArchiveValidationError) as captured:
+        validate_result_archive(_archive(entries))
+    assert captured.value.failure_class == expected_class
+
+
+@pytest.mark.parametrize(
+    ("content", "expected_class"),
+    [
+        (b"", "empty_archive"),
+        (b"not a zip", "invalid_zip"),
+    ],
+)
+def test_result_archive_classifies_empty_and_invalid_zip(
+    content: bytes,
+    expected_class: str,
+) -> None:
+    with pytest.raises(ArchiveValidationError) as captured:
+        validate_result_archive(content)
+    assert captured.value.failure_class == expected_class
+
+
+def test_archive_failure_class_rejects_open_fallback() -> None:
+    with pytest.raises(CaptureError, match="CAPTURE_FAILED"):
+        ArchiveValidationError("dynamic_archive_detail")
+
+
+def test_result_archive_directories_cannot_impersonate_required_files() -> None:
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        for name in (
+            "full.md/",
+            "fixture_content_list.json/",
+            "fixture_middle.json/",
+            "fixture_model.json/",
+        ):
+            archive.mkdir(name)
+
+    with pytest.raises(ArchiveValidationError) as captured:
+        validate_result_archive(output.getvalue())
+    assert captured.value.failure_class == "missing_full_markdown"
+
+
+def test_result_archive_classifies_unsupported_compression(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unsupported(_: zipfile.ZipFile) -> str | None:
+        raise NotImplementedError
+
+    monkeypatch.setattr(zipfile.ZipFile, "testzip", unsupported)
+    content = _archive(
+        {
+            "full.md": b"x",
+            "fixture_content_list.json": b"[]",
+            "fixture_middle.json": b"{}",
+            "fixture_model.json": b"{}",
+        }
+    )
+
+    with pytest.raises(ArchiveValidationError) as captured:
+        validate_result_archive(content)
+    assert captured.value.failure_class == "unsupported_compression"

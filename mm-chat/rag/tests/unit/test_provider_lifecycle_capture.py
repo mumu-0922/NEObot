@@ -694,11 +694,17 @@ def test_download_contract_failure_records_only_closed_class(
     assert len(requests) == 4
     assert snapshot["captureOutcome"] == "download_failed"
     assert download["downloadFailureClass"] == expected_class
+    if failure == "archive":
+        assert download["archiveFailureClass"] == "invalid_zip"
+    else:
+        assert "archiveFailureClass" not in download
     assert b"sensitive" not in evidence
     validate_evidence_snapshot(snapshot)
 
     legacy = json.loads(evidence)
-    legacy["providers"][0]["operations"][3].pop("downloadFailureClass")
+    legacy_download = legacy["providers"][0]["operations"][3]
+    legacy_download.pop("downloadFailureClass")
+    legacy_download.pop("archiveFailureClass", None)
     validate_evidence_snapshot(legacy)
 
     invalid = json.loads(evidence)
@@ -707,6 +713,14 @@ def test_download_contract_failure_records_only_closed_class(
     )
     with pytest.raises(CaptureError, match="EVIDENCE_SCHEMA_INVALID"):
         validate_evidence_snapshot(invalid)
+
+    if failure == "archive":
+        invalid_archive = json.loads(evidence)
+        invalid_archive["providers"][0]["operations"][3]["archiveFailureClass"] = (
+            "dynamic_archive_detail"
+        )
+        with pytest.raises(CaptureError, match="EVIDENCE_SCHEMA_INVALID"):
+            validate_evidence_snapshot(invalid_archive)
 
 
 def test_unknown_download_contract_error_fails_without_evidence(
@@ -773,3 +787,10 @@ def test_lifecycle_evidence_schema_rejects_dynamic_or_inconsistent_values() -> N
     )
     with pytest.raises(CaptureError, match="EVIDENCE_SCHEMA_INVALID"):
         validate_evidence_snapshot(misplaced_contract)
+
+    misplaced_archive = json.loads(canonical_json_bytes(snapshot))
+    misplaced_archive["providers"][0]["operations"][3]["archiveFailureClass"] = (
+        "invalid_zip"
+    )
+    with pytest.raises(CaptureError, match="EVIDENCE_SCHEMA_INVALID"):
+        validate_evidence_snapshot(misplaced_archive)

@@ -734,6 +734,11 @@ the UI can call in the next wiring slice.
   - [x] Add a closed, backward-compatible `downloadFailureClass` for future
         failed Evidence without retaining status, headers, body, ZIP names, or
         exception details.
+  - [x] Execute one no-echo all-direct diagnostic Capture, identify
+        `archive_invalid`, move Evidence outside Git, and revoke the Token.
+  - [x] Add a closed, backward-compatible `archiveFailureClass` without Entry
+        names/content and fix deterministic Mock ZIP timestamps exposed by the
+        expanded regression suite.
 - [x] Complete the Evidence-to-Fixture Promotion Readiness audit, snapshot and
       hash current Jina/Elastic/MinerU public authorities outside Git, map every
       proven/unknown field, and keep all Fixtures `draft/blocked`.

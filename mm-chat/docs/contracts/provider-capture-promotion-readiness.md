@@ -17,6 +17,7 @@
 | MinerU Lifecycle | `06edec92a8cbc3dbf96dd261ccfa88cea34b08de703eaefd8ffb088c1aabc4b1` | Harness Summary 记录 Upload 成功、四次 Poll 到 `done`、Result URL 存在 | 动态 Wire、Result ZIP、Download transport 原因、Recovery、Build、Region、Terms/SLA |
 | MinerU Lifecycle | `7041a1c09e2f741875ffccb11d97ea806fc63e90e059f390124a1f953f047b55` | Harness Summary 记录 Upload 成功、两次 Poll 到 `done`、Download `connect_error` | 动态 Wire、connect 根因、Result ZIP、Recovery、Build、Region、Terms/SLA |
 | MinerU Lifecycle | `ec5ad91cf1c062d713aa70a62381f2d36b86810ec59c6ba92f93419f3d62dc96` | 全直连 Harness Summary 记录 Upload 成功、两次 Poll 到 `done`、Download 已越过 transport | 具体 Contract Gate、动态 Wire、Result ZIP、Recovery、Build、Region、Terms/SLA |
+| MinerU Lifecycle | `6d227220d52b944a0824a779d00bc595fd3b6f086cdc1753f8e1719c363a4dd6` | 全直连 Harness Summary 将 Download Gate 定位为 `archive_invalid` | 具体 ZIP 子类、Entry/正文、动态 Wire、Recovery、Build、Region、Terms/SLA |
 
 Evidence 保持在 `~/.local/share/mm-chat/provider-evidence/`，不进入 Git。映射产物只能引用
 Hash、Observed Time、Operation 与 allowlisted Summary；不能复制 Token、动态 ID、Signed
@@ -100,7 +101,8 @@ cancel/query_by_key                            # remain unknown until proven
 `connect_error`。由于 Signed Upload/Result URL、原始 Wire Body 与 ZIP 均未保留，这些 Summary
 不能冻结动态 Host/Path、Result Archive、Crash Recovery 或稳定 Error Contract。第三份全
 直连 Evidence 只把失败边界推进到 `download_failed`，未记录具体 Gate，仍阻断 Adapter。旧
-Remote `submit/poll/result` 不能静默改名复用。
+Remote `submit/poll/result` 不能静默改名复用。最新 Evidence 将 Gate 缩小到
+`archive_invalid`，但未记录 ZIP 子类，仍不能证明 Result Archive Contract。
 
 ## 6. Promotion checklist
 

@@ -92,7 +92,10 @@ TLS path, and an Owner-authorized all-direct run advanced to `download_failed`.
 Future failed Evidence may record only a closed `downloadFailureClass`; actual
 status, header values, body, ZIP names/content, exception messages, requests,
 URLs, and identifiers remain forbidden. No result promotes a Fixture or Runtime
-handler automatically.
+handler automatically. A later diagnostic located the Gate at `archive_invalid`;
+an optional closed `archiveFailureClass` may identify only a structural/security
+category or missing required Artifact, never an Entry name, content, or raw ZIP
+metadata.
 
 The harness cannot edit fixtures, freeze the External Gate, derive/apply
 Governance or enable production registries. Docker copies only `src/`, and no

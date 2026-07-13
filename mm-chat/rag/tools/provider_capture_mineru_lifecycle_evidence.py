@@ -21,6 +21,7 @@ from tools.provider_capture_common import (
     require_exact_keys,
 )
 from tools.provider_capture_mineru_archive import (
+    ARCHIVE_FAILURE_CLASSES,
     MAX_ARCHIVE_BYTES,
     MAX_ARCHIVE_ENTRIES,
 )
@@ -310,6 +311,8 @@ def _validate_download(operation: JsonObject) -> None:
         expected |= {"transportFailureClass"}
     elif operation["state"] == "failed" and "downloadFailureClass" in operation:
         expected |= {"downloadFailureClass"}
+        if "archiveFailureClass" in operation:
+            expected |= {"archiveFailureClass"}
     require_exact_keys(operation, expected)
     if (
         operation["method"] != "GET"
@@ -330,6 +333,7 @@ def _validate_download(operation: JsonObject) -> None:
         _validate_download_success(operation)
     _validate_transport_failure_class(operation)
     _validate_download_failure_class(operation)
+    _validate_archive_failure_class(operation)
 
 
 def _validate_transport_failure_class(operation: JsonObject) -> None:
@@ -352,6 +356,19 @@ def _validate_download_failure_class(operation: JsonObject) -> None:
         operation["state"] != "failed"
         or not isinstance(failure_class, str)
         or failure_class not in DOWNLOAD_FAILURE_CLASSES
+    ):
+        raise CaptureError("EVIDENCE_SCHEMA_INVALID")
+
+
+def _validate_archive_failure_class(operation: JsonObject) -> None:
+    if "archiveFailureClass" not in operation:
+        return
+    failure_class = operation["archiveFailureClass"]
+    if (
+        operation["state"] != "failed"
+        or operation.get("downloadFailureClass") != "archive_invalid"
+        or not isinstance(failure_class, str)
+        or failure_class not in ARCHIVE_FAILURE_CLASSES
     ):
         raise CaptureError("EVIDENCE_SCHEMA_INVALID")
 

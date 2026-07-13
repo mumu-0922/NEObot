@@ -25,7 +25,9 @@ bounded synthetic Allocate/Upload/Poll/Download chain with Evidence v2. Its
 first two real Captures reached `done` but ended as `unknown_download`; the
 second classified the proxy-routed Download failure as `connect_error`. An
 Owner-authorized all-direct Capture then reached `download_failed`, proving only
-that transport was crossed before a redacted response/archive gate failed. It
+that transport was crossed before a redacted response/archive gate failed. A
+follow-up diagnostic narrowed that Gate to `archive_invalid`; future Evidence
+may add only a closed `archiveFailureClass` without Entry names or content. It
 remains outside Runtime, no automatic retry is allowed, and no Fixture was
 promoted.
 
