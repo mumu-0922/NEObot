@@ -25,6 +25,7 @@ from tools.provider_capture_mineru_archive import (
     MAX_ARCHIVE_ENTRIES,
 )
 from tools.provider_capture_mineru_lifecycle_http import (
+    DOWNLOAD_FAILURE_CLASSES,
     LIFECYCLE_SCHEMA_VERSION,
     POLL_CALL_LIMIT,
     TRANSPORT_FAILURE_CLASSES,
@@ -307,6 +308,8 @@ def _validate_download(operation: JsonObject) -> None:
         expected |= {"httpStatus", "response", "responseContentType"}
     elif operation["state"] == "unknown" and "transportFailureClass" in operation:
         expected |= {"transportFailureClass"}
+    elif operation["state"] == "failed" and "downloadFailureClass" in operation:
+        expected |= {"downloadFailureClass"}
     require_exact_keys(operation, expected)
     if (
         operation["method"] != "GET"
@@ -326,6 +329,7 @@ def _validate_download(operation: JsonObject) -> None:
     if operation["state"] == "success":
         _validate_download_success(operation)
     _validate_transport_failure_class(operation)
+    _validate_download_failure_class(operation)
 
 
 def _validate_transport_failure_class(operation: JsonObject) -> None:
@@ -336,6 +340,18 @@ def _validate_transport_failure_class(operation: JsonObject) -> None:
         operation["state"] not in {"unknown", "unknown_poll"}
         or not isinstance(failure_class, str)
         or failure_class not in TRANSPORT_FAILURE_CLASSES
+    ):
+        raise CaptureError("EVIDENCE_SCHEMA_INVALID")
+
+
+def _validate_download_failure_class(operation: JsonObject) -> None:
+    if "downloadFailureClass" not in operation:
+        return
+    failure_class = operation["downloadFailureClass"]
+    if (
+        operation["state"] != "failed"
+        or not isinstance(failure_class, str)
+        or failure_class not in DOWNLOAD_FAILURE_CLASSES
     ):
         raise CaptureError("EVIDENCE_SCHEMA_INVALID")
 

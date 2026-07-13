@@ -99,8 +99,10 @@ ZIP 内容或 Token，也不能提升 Fixture。
 - [x] 保持 legacy v2 unknown Evidence 无该字段时仍可验证；其他 State 或未知枚举拒绝。
 - [x] 通过定向/全量质量与安全门，并完成独立 Review `P0/P1/P2 = 0/0/0`。
 - [x] 由 Owner 单独授权一次新 Lifecycle Capture；未把它表述为旧任务恢复或自动 retry。
-- [ ] 在不使用 MinerU Token、不重新 Submit 的独立授权下诊断 CDN/proxy connect path；完成前
-      禁止第三次 Lifecycle Capture。
+- [x] 在不使用 MinerU Token、不重新 Submit 的独立授权下诊断 CDN/proxy connect path。
+- [x] 经 Owner 明确授权使用一次性 Token，以全直连方式执行第三次固定 Capture；不再复用 Token。
+- [x] 为后续 `download_failed` 增加闭集 `downloadFailureClass`，保持历史 v2 Evidence 兼容，
+      且不得记录 HTTP Status、Header Value、Body、ZIP Entry 或异常消息。
 - [ ] 只有完整 ZIP Evidence 与外部 Authority/Terms/SLA Gate 同时通过，才允许 Fixture Freeze。
 
 第二次独立 Capture 的实际调用数为 `1/1/2/1`，Poll 依次为 `waiting-file/done`。Result URL
@@ -110,3 +112,19 @@ ZIP 内容或 Token，也不能提升 Fixture。
 移至 Git 外 Evidence Store。该分类只证明 HTTPX connect path 失败，不能区分本地 Proxy、
 Proxy upstream、TCP、DNS、TLS 或 CDN 临时故障，也不能证明 Provider ZIP Contract。没有执行
 第三次 Capture；下一步必须把连接诊断与带 Token 的业务 Capture 分离。
+
+无 Token Probe 随后证明：WSL 到 Private Proxy TCP 正常、Proxy 到 `mineru.net` TLS 正常、
+Proxy 到 MinerU CDN TLS 在握手中收到 unexpected EOF，而 CDN 直连 TLS 正常。Owner 随后明确
+授权使用一枚一次性 Token 进行一次全直连 Capture；三个固定 MinerU Host 的预检 TLS 均成功。
+该 Capture 的实际调用数为 `1/1/2/1`，Allocate/Upload/Poll 成功，Download 从 transport
+`connect_error` 推进为 `download_failed`，说明连接已建立但某个 Response/Archive Contract
+Gate 未通过。Evidence SHA-256 为
+`ec5ad91cf1c062d713aa70a62381f2d36b86810ec59c6ba92f93419f3d62dc96`，已按 `0700/0600`
+移至 Git 外 Store。当前 Evidence 不含具体失败 Gate，不能推测为 HTTP Status、Content-Type、
+Encoding、Size 或 ZIP Shape；一次性 Token 不再使用并应由 Owner 撤销。
+
+后续实现只扩展非权威、闭集的 `downloadFailureClass`：`result_target_invalid`、
+`redirect_forbidden`、`status_invalid`、`content_encoding_invalid`、`content_type_invalid`、
+`content_length_invalid`、`archive_too_large`、`archive_invalid`。旧 v2 failed Evidence 无该字段
+时继续有效；未知 Error Code、未知枚举或错误 State 携带该字段必须 fail closed。该增强不授权
+新的 Provider Capture，也不提升 Fixture。

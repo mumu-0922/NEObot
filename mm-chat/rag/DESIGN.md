@@ -87,9 +87,12 @@ Evidence; dynamic URLs/queries, IDs, errors, entry names/content, and response
 bytes remain memory-only. This CLI has not made a successful end-to-end Provider
 Capture: its first authorized run recorded a legacy `unknown_download`, and its
 second independently authorized run recorded `connect_error` after successful
-Allocate/Upload/Poll. The closed class does not identify proxy, TCP, DNS, TLS,
-or CDN root cause. Exception messages, requests, URLs, and identifiers remain
-forbidden, and no result promotes a Fixture or Runtime handler automatically.
+Allocate/Upload/Poll. A credential-free probe isolated the Private Proxy/CDN
+TLS path, and an Owner-authorized all-direct run advanced to `download_failed`.
+Future failed Evidence may record only a closed `downloadFailureClass`; actual
+status, header values, body, ZIP names/content, exception messages, requests,
+URLs, and identifiers remain forbidden. No result promotes a Fixture or Runtime
+handler automatically.
 
 The harness cannot edit fixtures, freeze the External Gate, derive/apply
 Governance or enable production registries. Docker copies only `src/`, and no

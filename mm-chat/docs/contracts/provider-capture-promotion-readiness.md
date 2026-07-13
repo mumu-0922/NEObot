@@ -16,6 +16,7 @@
 | MinerU | `a47a34559fbd262ba29a59181fe7b3ecedc8f1652305b2f4a22afdb342d23b46` | `/api/v4/file-urls/batch` 单次 Batch Submit、Batch ID/Signed URL 存在性 | Upload、Poll、Result、Remote URL Flow、Recovery、BBox、Build、Region、Terms/SLA |
 | MinerU Lifecycle | `06edec92a8cbc3dbf96dd261ccfa88cea34b08de703eaefd8ffb088c1aabc4b1` | Harness Summary 记录 Upload 成功、四次 Poll 到 `done`、Result URL 存在 | 动态 Wire、Result ZIP、Download transport 原因、Recovery、Build、Region、Terms/SLA |
 | MinerU Lifecycle | `7041a1c09e2f741875ffccb11d97ea806fc63e90e059f390124a1f953f047b55` | Harness Summary 记录 Upload 成功、两次 Poll 到 `done`、Download `connect_error` | 动态 Wire、connect 根因、Result ZIP、Recovery、Build、Region、Terms/SLA |
+| MinerU Lifecycle | `ec5ad91cf1c062d713aa70a62381f2d36b86810ec59c6ba92f93419f3d62dc96` | 全直连 Harness Summary 记录 Upload 成功、两次 Poll 到 `done`、Download 已越过 transport | 具体 Contract Gate、动态 Wire、Result ZIP、Recovery、Build、Region、Terms/SLA |
 
 Evidence 保持在 `~/.local/share/mm-chat/provider-evidence/`，不进入 Git。映射产物只能引用
 Hash、Observed Time、Operation 与 allowlisted Summary；不能复制 Token、动态 ID、Signed
@@ -97,8 +98,9 @@ cancel/query_by_key                            # remain unknown until proven
 初始 staged Capture 只证明 `allocate_upload`。后续两份 Lifecycle Evidence 增加了 Harness
 记录的 Upload success、Poll `done` 与 Result URL presence；第二份还记录 Download
 `connect_error`。由于 Signed Upload/Result URL、原始 Wire Body 与 ZIP 均未保留，这些 Summary
-不能冻结动态 Host/Path、Result Archive、Crash Recovery 或稳定 Error Contract，仍阻断
-Adapter。旧 Remote `submit/poll/result` 不能静默改名复用。
+不能冻结动态 Host/Path、Result Archive、Crash Recovery 或稳定 Error Contract。第三份全
+直连 Evidence 只把失败边界推进到 `download_failed`，未记录具体 Gate，仍阻断 Adapter。旧
+Remote `submit/poll/result` 不能静默改名复用。
 
 ## 6. Promotion checklist
 

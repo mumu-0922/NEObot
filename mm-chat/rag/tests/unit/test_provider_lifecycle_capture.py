@@ -10,6 +10,7 @@ import httpx
 import pytest
 from tools.provider_capture import CaptureError, canonical_json_bytes
 from tools.provider_capture_evidence import validate_evidence_snapshot
+from tools.provider_capture_mineru_archive import MAX_ARCHIVE_BYTES
 from tools.provider_capture_mineru_lifecycle import (
     LifecycleRuntime,
     capture_lifecycle,
@@ -640,8 +641,102 @@ def test_result_redirect_is_not_followed_and_is_recorded_as_failed() -> None:
     snapshot = _capture(httpx.MockTransport(handler))
 
     assert snapshot["captureOutcome"] == "download_failed"
+    assert (
+        snapshot["providers"][0]["operations"][3]["downloadFailureClass"]
+        == "redirect_forbidden"
+    )
     assert len(requests) == 4
     assert all(request.url.host != "evil.invalid" for request in requests)
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_class"),
+    [
+        ("status", "status_invalid"),
+        ("content_encoding", "content_encoding_invalid"),
+        ("content_type", "content_type_invalid"),
+        ("content_length", "content_length_invalid"),
+        ("archive_too_large", "archive_too_large"),
+        ("archive", "archive_invalid"),
+    ],
+)
+def test_download_contract_failure_records_only_closed_class(
+    failure: str,
+    expected_class: str,
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.method == "POST":
+            return _json_response(_allocate_payload())
+        if request.method == "PUT":
+            return _response(b"")
+        if request.url.host == "mineru.net":
+            return _json_response(_poll_payload("done"))
+        if failure == "status":
+            return _response(b"sensitive status body", status=403)
+        if failure == "content_type":
+            return _response(b"sensitive wrong type", content_type="text/plain")
+        response = _response(b"not a zip", content_type="application/zip")
+        if failure == "content_encoding":
+            response.headers["Content-Encoding"] = "gzip"
+        elif failure == "content_length":
+            response.headers["Content-Length"] = "invalid"
+        elif failure == "archive_too_large":
+            response.headers["Content-Length"] = str(MAX_ARCHIVE_BYTES + 1)
+        return response
+
+    snapshot = _capture(httpx.MockTransport(handler))
+    evidence = canonical_json_bytes(snapshot)
+    download = snapshot["providers"][0]["operations"][3]
+
+    assert len(requests) == 4
+    assert snapshot["captureOutcome"] == "download_failed"
+    assert download["downloadFailureClass"] == expected_class
+    assert b"sensitive" not in evidence
+    validate_evidence_snapshot(snapshot)
+
+    legacy = json.loads(evidence)
+    legacy["providers"][0]["operations"][3].pop("downloadFailureClass")
+    validate_evidence_snapshot(legacy)
+
+    invalid = json.loads(evidence)
+    invalid["providers"][0]["operations"][3]["downloadFailureClass"] = (
+        "dynamic_failure_detail"
+    )
+    with pytest.raises(CaptureError, match="EVIDENCE_SCHEMA_INVALID"):
+        validate_evidence_snapshot(invalid)
+
+
+def test_unknown_download_contract_error_fails_without_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def unknown_contract_error(_: bytes) -> dict[str, object]:
+        raise CaptureError("CAPTURE_FAILED")
+
+    monkeypatch.setattr(
+        "tools.provider_capture_mineru_lifecycle_http.validate_result_archive",
+        unknown_contract_error,
+    )
+    exit_code = main(
+        ["--execute", "--output-dir", "capture"],
+        runtime=LifecycleRuntime(
+            environ={"MINERU_API_KEY": _KEY},
+            transport=_lifecycle_transport(poll_states=["done"]),
+            output_base=tmp_path,
+            now=_OBSERVED_AT,
+            sleeper=lambda _: None,
+        ),
+    )
+    output = capsys.readouterr()
+
+    assert exit_code == 2
+    assert output.out == ""
+    assert output.err.strip() == "CAPTURE_FAILED"
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_parse_failure_redacts_provider_error_and_stops() -> None:
@@ -671,3 +766,10 @@ def test_lifecycle_evidence_schema_rejects_dynamic_or_inconsistent_values() -> N
     misplaced["providers"][0]["operations"][3]["transportFailureClass"] = "read_error"
     with pytest.raises(CaptureError, match="EVIDENCE_SCHEMA_INVALID"):
         validate_evidence_snapshot(misplaced)
+
+    misplaced_contract = json.loads(canonical_json_bytes(snapshot))
+    misplaced_contract["providers"][0]["operations"][3]["downloadFailureClass"] = (
+        "status_invalid"
+    )
+    with pytest.raises(CaptureError, match="EVIDENCE_SCHEMA_INVALID"):
+        validate_evidence_snapshot(misplaced_contract)

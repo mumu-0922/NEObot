@@ -72,6 +72,17 @@ _TRANSPORT_FAILURE_TYPES: Final = (
 TRANSPORT_FAILURE_CLASSES: Final = frozenset(
     failure_class for _, failure_class in _TRANSPORT_FAILURE_TYPES
 ) | {"other_transport_error"}
+_DOWNLOAD_FAILURE_BY_CODE: Final = {
+    "MINERU_ARCHIVE_INVALID": "archive_invalid",
+    "MINERU_RESULT_TARGET_INVALID": "result_target_invalid",
+    "PROVIDER_ARCHIVE_TOO_LARGE": "archive_too_large",
+    "PROVIDER_CONTENT_ENCODING_INVALID": "content_encoding_invalid",
+    "PROVIDER_CONTENT_LENGTH_INVALID": "content_length_invalid",
+    "PROVIDER_CONTENT_TYPE_INVALID": "content_type_invalid",
+    "PROVIDER_STATUS_INVALID": "status_invalid",
+    "REDIRECT_FORBIDDEN": "redirect_forbidden",
+}
+DOWNLOAD_FAILURE_CLASSES: Final = frozenset(_DOWNLOAD_FAILURE_BY_CODE.values())
 
 
 class _TransportResponseLostError(CaptureError):
@@ -366,14 +377,14 @@ def _download_result(
                 response.headers.get("content-type")
             )
             archive = _read_bounded(response, MAX_ARCHIVE_BYTES)
-    except CaptureError:
-        return "failed", {}
+    except CaptureError as error:
+        return "failed", {"downloadFailureClass": _download_failure_class(error)}
     except httpx.TransportError as error:
         return "unknown", {"transportFailureClass": _transport_failure_class(error)}
     try:
         summary = validate_result_archive(archive)
-    except CaptureError:
-        return "failed", {}
+    except CaptureError as error:
+        return "failed", {"downloadFailureClass": _download_failure_class(error)}
     return "success", {
         "httpStatus": HTTP_OK,
         "responseContentType": content_type,
@@ -442,6 +453,14 @@ def _transport_failure_class(error: httpx.TransportError) -> str:
     return "other_transport_error"
 
 
+def _download_failure_class(error: CaptureError) -> str:
+    """Map one stable contract failure without retaining response details."""
+    try:
+        return _DOWNLOAD_FAILURE_BY_CODE[str(error)]
+    except KeyError:
+        raise CaptureError("CAPTURE_FAILED") from None
+
+
 def _set_state(
     operations: list[JsonValue],
     operation_name: str,
@@ -473,6 +492,7 @@ def _provider(state: str, operations: list[JsonValue], pdf: bytes) -> JsonObject
 
 
 __all__ = [
+    "DOWNLOAD_FAILURE_CLASSES",
     "LIFECYCLE_SCHEMA_VERSION",
     "POLL_CALL_LIMIT",
     "POLL_INTERVAL_SECONDS",

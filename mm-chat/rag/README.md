@@ -23,8 +23,11 @@ v4 local-upload Submit response: it does not PUT the signed URL or poll. A
 separate `tools/provider_capture_mineru_lifecycle.py` CLI implements the full
 bounded synthetic Allocate/Upload/Poll/Download chain with Evidence v2. Its
 first two real Captures reached `done` but ended as `unknown_download`; the
-second safely classified the Download failure as `connect_error`. It remains
-outside Runtime, no automatic retry is allowed, and no Fixture was promoted.
+second classified the proxy-routed Download failure as `connect_error`. An
+Owner-authorized all-direct Capture then reached `download_failed`, proving only
+that transport was crossed before a redacted response/archive gate failed. It
+remains outside Runtime, no automatic retry is allowed, and no Fixture was
+promoted.
 
 ## Safety boundaries
 

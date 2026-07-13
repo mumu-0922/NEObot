@@ -726,8 +726,14 @@ the UI can call in the next wiring slice.
   - [x] Execute one separately authorized follow-up Lifecycle Capture after the
         diagnostic patch passed review; it again stopped at Download and safely
         recorded closed `connect_error` without promotion or retry.
-  - [ ] Diagnose the CDN/private-proxy connect path without a MinerU Token or a
-        new Submit before considering any third Lifecycle Capture.
+  - [x] Diagnose CDN routing without credentials: Private Proxy TLS failed for
+        the CDN while all three fixed MinerU hosts passed direct TLS.
+  - [x] Use the Owner-authorized one-time Token for one all-direct Capture; it
+        passed Allocate/Upload/Poll and stopped at a redacted Download contract
+        failure, with no further Token reuse.
+  - [x] Add a closed, backward-compatible `downloadFailureClass` for future
+        failed Evidence without retaining status, headers, body, ZIP names, or
+        exception details.
 - [x] Complete the Evidence-to-Fixture Promotion Readiness audit, snapshot and
       hash current Jina/Elastic/MinerU public authorities outside Git, map every
       proven/unknown field, and keep all Fixtures `draft/blocked`.

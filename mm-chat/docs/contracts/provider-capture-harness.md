@@ -1,6 +1,6 @@
 # Provider Capture Harness Contract
 
-- 状态：Submit-only v1 与 Lifecycle v2 Harness implemented；两次 Lifecycle Capture 均在 Download transport 未完成
+- 状态：Submit-only v1 与 Lifecycle v2 Harness implemented；第三次 Lifecycle Capture 已越过 transport、停在 Download contract gate
 - 日期：2026-07-13
 - 实现：`rag/tools/provider_capture.py`（编排）、
   `provider_capture_common.py`、`provider_capture_http.py`、
@@ -149,6 +149,13 @@ Upload/Poll/Download unknown/failed、`poll_exhausted`、`parse_failed`。所有
 Provider Error 认定。既有 v2 unknown Snapshot 无该字段时继续有效，其他 State 或未知枚举
 拒绝。历史 v1 Snapshot 继续由原分支按原 Closed Schema 校验。
 
+新生成的 `download_failed` 可额外记录闭集 `downloadFailureClass`：
+`result_target_invalid/redirect_forbidden/status_invalid/content_encoding_invalid/`
+`content_type_invalid/content_length_invalid/archive_too_large/archive_invalid`。它只映射 Harness
+内部稳定 `CaptureError` Code，不记录实际 HTTP Status、Header Value、Body、ZIP Entry、异常
+消息或 URL。既有 v2 failed Snapshot 无该字段时继续有效；未知 Error Code 不得降级为 open
+fallback，而是固定 `CAPTURE_FAILED`。该字段同样不具备 Promotion Authority。
+
 ## 4. Safe output
 
 `--output-dir` 只接受当前目录下的单一安全目录名。实现拒绝 absolute/path separator、
@@ -244,6 +251,14 @@ Download Evidence 记录 `transportFailureClass=connect_error`，Outcome 仍为 
 移至 Git 外 Store。该字段不能区分 Private Proxy、Proxy upstream、TCP、DNS、TLS 或 CDN
 临时故障，因此禁止第三次带 Token Capture；后续只允许在新的人工授权下做无 Token、无
 Submit 的 CDN connect-path 诊断。
+
+无 Token connect-path Probe 证明 Private Proxy 到 CDN 的 TLS handshake 收到 unexpected EOF，
+而三个 MinerU 固定 Host 的 WSL 直连 TLS 均成功。Owner 随后明确授权使用一次性 Token 执行一
+次全直连 Capture；实际调用 `1/1/2/1`，前三阶段成功，Download 变为 `download_failed`。
+Evidence SHA-256 为 `ec5ad91cf1c062d713aa70a62381f2d36b86810ec59c6ba92f93419f3d62dc96`，
+按 `0700/0600` 移至 Git 外 Store。旧 producer 未记录具体 Contract Gate，因此不能从该
+Evidence 推测 HTTP Status、Content-Type/Encoding/Length、Archive Size 或 ZIP Shape；一次性
+Token 不再使用并应撤销。
 
 ## 7. Rollback
 

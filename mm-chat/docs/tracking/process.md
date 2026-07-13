@@ -7558,3 +7558,58 @@ distinguish the local Private Proxy, its upstream tunnel, TCP, DNS, TLS, CDN
 reachability, or a transient remote condition. A third full Capture would only
 repeat Allocate/Upload and is therefore forbidden until an independently
 authorized, credential-free CDN/proxy connectivity probe resolves this branch.
+
+## 2026-07-13 — Direct MinerU Capture crossed transport and hit Download gate
+
+Under the Owner's explicit authorization, a credential-free comparison probe
+ran before any further Submit. WSL reached the Private Proxy TCP listener and
+the Proxy completed TLS to `mineru.net`, but Proxy-to-CDN TLS ended with an
+unexpected EOF. Direct TLS succeeded for `mineru.net`, the fixed OSS Upload
+Host, and the fixed CDN Result Host. No Token, API request, upload, or dynamic
+Result URL was used by this probe.
+
+The Owner then supplied a one-time Token and explicitly requested direct
+execution. It was injected through a no-echo PTY stdin path, never placed in a
+command, file, Evidence, or stdout, and was removed with the child process. The
+Harness ignored generic proxy variables and ran one all-direct fixed Capture.
+Allocate, Signed PUT, and two Poll calls succeeded; Download crossed the prior
+connect boundary but ended as `download_failed`. The Token was not reused and
+must be revoked by the Owner.
+
+```text
+Actual Allocate / Upload / Poll / Download       1 / 1 / 2 / 1
+Evidence SHA-256                                 ec5ad91cf1c062d713aa70a62381f2d36b86810ec59c6ba92f93419f3d62dc96
+Evidence directory / file mode                   0700 / 0600
+Evidence schema validation                       passed
+Outcome / Download state                         download_failed / failed
+Dynamic URL / ID / error / Token retained        none
+Evidence storage                                 Git-external
+```
+
+The historical failed Snapshot cannot identify whether the rejected gate was
+HTTP status, encoding, content type/length, archive size, or ZIP shape. The
+public MinerU docs snapshot still hashes to
+`6b72fd975b37f5d64996bdd97d97f755b7de82602f7e6c1f37cc27b9f51e24fa` and
+documents the expected `full.md`, `*_content_list.json`, `*_middle.json`, and
+`*_model.json` outputs, but it cannot reconstruct the lost response.
+
+The follow-up implementation therefore adds only a closed, non-authoritative
+`downloadFailureClass` derived from stable internal `CaptureError` codes. It
+keeps legacy v2 failed Evidence valid, rejects unknown enums and wrong-state
+placement, records no response detail, and does not authorize another Capture
+or Fixture promotion.
+
+```text
+Lifecycle targeted tests                    65 passed
+Python non-integration suite                281 passed / 2 deselected
+Python coverage                             90.19% (>= 90%)
+Ruff check / format                         passed / 46 files
+Mypy                                        passed / 29 source files
+pip-audit --skip-editable                   no known vulnerabilities
+all three Lifecycle Evidence snapshots      valid under current v2 schema
+security scan on rag/tools                  0 findings
+full unit-test security scan                2 existing synthetic fixtures only
+independent final review                    P0/P1/P2 = 0/0/0
+additional Provider calls after direct run  0
+Runtime Registry / Governance / Dispatch    unchanged / disabled
+```
