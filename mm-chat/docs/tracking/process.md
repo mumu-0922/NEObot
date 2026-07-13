@@ -7159,3 +7159,67 @@ the external Provider Contract Gate: all four public Fixtures remain
 `draft/blocked`; immutable builds, redacted captures, exact account limits and
 reviewed terms still require authorized external intake before any real
 Provider call or Governance Apply can be enabled.
+
+## 2026-07-13 — Phase 15.2C C0 Provider Capture Harness checked
+
+The follow-up C0 slice added the operator Capture Harness without performing a
+real Provider call. The plan and threat model are frozen in
+`docs/contracts/provider-capture-harness.md`; implementation remains outside the
+production package and Docker copy boundary under `rag/tools/provider_capture*`.
+
+Implemented boundaries:
+
+- default CLI is canonical dry-run with zero network, zero Key requirement and
+  zero evidence writes; only explicit `--execute` can enter the fixed plan;
+- credentials come only from the process environment, never dotenv or CLI;
+  exact HTTPS hostname/port/path allowlists, `trust_env=false`, redirects off,
+  no retry, concurrency one, fixed timeouts and bounded streaming are enforced;
+- Jina is capped at 1024 embedding, 2048 embedding and one two-document rerank;
+  request semantics and response model/usage/count/dimension/index/finite-score
+  shapes are checked;
+- MinerU uses the researched v4 local-upload Submit endpoint once. Signed PUT
+  and Result Poll budgets are deliberately zero, so successful evidence says
+  `staged_after_submit`; response loss says `unknown_submission` and is never
+  retried;
+- only synthetic code-owned text/PDF enters requests. Closed v1 canonical
+  evidence excludes text, vectors, Key material, response bytes, unknown Header
+  values, Jina request IDs, MinerU IDs/URLs and Provider error detail;
+- output is a newly created `0700` directory with one atomic `0600` file;
+  parent components are walked as no-symlink directory FDs and all mutation is
+  direct-child FD-relative. A hard-link publish prevents overwrite races and
+  never deletes a foreign race target;
+- HTTP requests force identity encoding, consume bounded raw streams and clear
+  cookies between calls. Invalid argv/custom transport errors are reduced to
+  allowlisted codes, and MinerU `unknown_submission` returns nonzero after its
+  recovery evidence is written;
+- public Fixtures were not changed, Governance was not generated/applied, and
+  production Dispatch/Handler registries and disabled dispatch default remain
+  unchanged.
+
+Executable evidence:
+
+```text
+Ruff check .                                      passed
+Ruff format --check .                             passed / 37 already formatted
+Mypy src tests/support tools + capture tests      23 source files / no issues
+Provider Capture targeted tests                   34 passed
+Python non-integration suite                      178 passed / 2 deselected
+Python coverage                                   90.19% (>= 90%)
+pip-audit --skip-editable                         no known vulnerabilities
+security scanner on rag/tools                     0 findings
+quality checker on rag/tools                      0 errors / 0 warnings
+real Provider requests                            not executed
+.env / repository secrets                        not read
+real Evidence Snapshot files                      not created (tmp tests only)
+```
+
+Independent Capture Harness review closed at `P0/P1/P2 = 0/0/0`. This result
+applies to the Harness slice only; it does not freeze any Provider fixture or
+close the External Gate.
+
+The research boundary remains open. Jina OpenAPI baseline is
+`2026.06.29.1712`, but public Tier values conflict and immutable build, region,
+account limits and SLA are not frozen. MinerU immutable build, region, terms,
+BBox, cancel and query-by-key remain unverified. All four Public Fixtures stay
+`draft/blocked`; the next step is a separately authorized human-operated
+capture and independent review, not production activation.

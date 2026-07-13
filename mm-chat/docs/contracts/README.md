@@ -10,6 +10,7 @@ Contract documents define stable boundaries before implementation starts.
 - [`chat-stream-api.md`](./chat-stream-api.md) — Phase 5.2/5.4 backend SSE contract for provider-neutral assistant streaming, OpenAI-compatible provider wiring, durable run cancellation, mock-provider tests, and assistant-message finalization.
 - [`internal-evidence-api.md`](./internal-evidence-api.md) — Phase 15.2A frozen internal Go→Python Evidence Query contract for private-network mTLS, Ed25519 body/session/profile-bound compact JWS, replay prevention, source-reference-only responses, degradation, Go reauthorization/hydration, answer-purpose BYOK consent, and opaque session-bound citations; implementation remains pending.
 - [`provider-wire-fixture.md`](./provider-wire-fixture.md) — Phase 15.2C C0 closed fixture envelope, draft/verified/frozen lifecycle, redaction/integrity gates, MinerU/Jina wire inputs, and test-only in-memory replay boundary; current public fixtures remain blocked drafts.
+- [`provider-capture-harness.md`](./provider-capture-harness.md) — Phase 15.2C C0 no-network-by-default Jina/MinerU capture harness, fixed call budget, staged MinerU submit, canonical redacted evidence, manual freeze flow, and rollback boundary; no real capture has been executed.
 - [`browser-data-import.md`](./browser-data-import.md) — Phase 8 contract for explicit local-first browser data import, preview validation, ZIP package blobs, idempotency, and rollback.
 
 Future contract docs may cover SSE wire examples and database migration contracts.

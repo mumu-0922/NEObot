@@ -695,6 +695,21 @@ the UI can call in the next wiring slice.
       MinerU/Rerank drafts, no-network Fake Provider, and governance-example
       fail-closed guard without enabling runtime handlers; independent review
       reached `P0/P1/P2 = 0/0/0`.
+- [x] Lock the C0 Provider Capture Harness threat model, exact Jina/MinerU
+      allowlist and call budget, Evidence Snapshot v1, manual review/freeze
+      flow, rollback, and staged MinerU local-upload boundary.
+- [x] Implement the operator-only no-network-by-default Capture CLI with
+      process-environment-only credentials, synthetic inputs, bounded strict
+      responses, canonical redacted evidence, private atomic no-overwrite
+      output, and injectable streaming MockTransport; keep it outside production
+      scripts and the runtime image. Split CLI, HTTP, common validation, and
+      parent-FD evidence writing into reviewable modules.
+- [x] Add targeted regressions for dry-run, missing credentials, target and
+      redirect rejection, Content-Type/size/UTF-8/JSON/shape gates, evidence
+      redaction, MinerU `unknown_submission`, permissions, determinism,
+      symlink/existing-target refusal, and unchanged dark-run registries.
+- [ ] Execute an authorized real Provider Capture and complete independent
+      Evidence review; current work has executed MockTransport tests only.
 - [ ] Freeze redacted MinerU/Jina wire fixtures, immutable Model/API builds,
       Provider recovery behavior, license, retention, and SLA.
 - [ ] Implement and verify the offline parser, Canonical IR, parent/child

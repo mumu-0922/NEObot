@@ -13,6 +13,12 @@ Phase 15.2C C0 adds **test-only** redacted Provider Contract intake under
 `tests/fixtures/provider_contracts/`. The checked-in MinerU/Jina fixtures remain
 blocked drafts; they do not enable provider calls or production handlers.
 
+The operator-only C0 Provider Capture Harness lives in
+`tools/provider_capture.py`. It defaults to a redacted, zero-network dry-run and
+is not a production console script. Real egress requires explicit `--execute`
+plus process-environment credentials. MinerU capture is intentionally staged at
+the v4 local-upload Submit response: it does not PUT the signed URL or poll.
+
 ## Safety boundaries
 
 - PostgreSQL is authoritative. Runtime SQL calls frozen `SECURITY DEFINER`
@@ -61,9 +67,26 @@ listener, or make network calls:
 uv run pytest -p no:cacheprovider tests/unit/test_provider_contracts.py
 ```
 
+The Provider Capture Harness also makes no network call by default and creates
+no evidence file in dry-run mode:
+
+```bash
+uv run python -B -m tools.provider_capture
+uv run pytest -p no:cacheprovider tests/unit/test_provider_capture.py
+```
+
+Authorized execution, exact budgets, evidence schema, review/freeze procedure,
+and rollback are specified in
+[`../docs/contracts/provider-capture-harness.md`](../docs/contracts/provider-capture-harness.md).
+The example credential file contains empty values only. The harness does not
+load it or any other dotenv file. `-B` is required by the CLI contract so a
+dry-run creates neither evidence nor Python bytecode cache files. MinerU
+`unknown_submission` writes its recovery evidence but returns exit code `3`.
+
 `jsonschema`, `types-jsonschema`, `rfc8785`, and `httpx` are dev-only. Docker
 uses `uv sync --no-dev`, and `.dockerignore` excludes `tests`, so fixtures and
-Fake Provider support do not enter the runtime image.
+Fake Provider support do not enter the runtime image. The Dockerfile copies only
+`src/`; `tools/` is neither copied nor registered in `[project.scripts]`.
 
 ## Runtime
 

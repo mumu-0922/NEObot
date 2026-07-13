@@ -49,6 +49,33 @@ future adapter can replay a reviewed contract, not that external processing is
 authorized. Production registries remain empty until the independent C-stage
 promotion gates pass.
 
+### Provider Capture Harness boundary
+
+`tools/provider_capture.py` is an operator development tool, not a runtime
+adapter. Its default path emits a canonical redacted plan and performs zero
+network or filesystem writes. Explicit execution uses only process-environment
+Jina/MinerU keys, an exact HTTPS host/port/path allowlist, disabled environment
+proxy trust and redirects, one connection, no retries, fixed timeouts, bounded
+streaming responses, strict UTF-8/JSON, and synthetic inputs generated in code.
+
+Jina execution is exactly two passage embedding calls (1024 and 2048) plus one
+two-document rerank call. MinerU execution is a deliberately staged v4
+local-upload Submit only: signed upload and polling budgets are zero. Response
+loss becomes `unknown_submission` and is never retried. Evidence is a closed v1
+canonical JSON snapshot containing only allowlisted metadata, shapes, counts,
+finite scores and hashes; it excludes vectors, text, request IDs, MinerU IDs,
+URLs, error detail, response bytes and header values. New output directories and
+files are private, no-overwrite and atomically written through walked
+no-symlink parent directory FDs and direct-child relative syscalls. A MinerU
+`unknown_submission` evidence write returns nonzero so automation cannot report
+the Capture plan complete.
+
+The harness cannot edit fixtures, freeze the External Gate, derive/apply
+Governance or enable production registries. Docker copies only `src/`, and no
+project script exposes the harness. The complete threat model and operator
+review/rollback flow are in
+`../docs/contracts/provider-capture-harness.md`.
+
 ## Process topology
 
 One process owns:
