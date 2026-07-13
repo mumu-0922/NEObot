@@ -7750,3 +7750,41 @@ Runtime Registry / Governance / Dispatch           unchanged / disabled
 Next: define the Offline Parser, Canonical IR, deterministic artifact manifest,
 parent/child chunking, and Citation Locator implementation slice without
 reopening Provider Capture or the production External Gate.
+
+## 2026-07-13 — Offline Parser and Canonical IR C1 plan locked
+
+Four parallel xhigh read-only audits were consolidated into the executable C1
+plan. The locked slice is strictly offline: no Postgres, Redis, MinIO, Provider,
+Runtime Handler, Dispatch, or migration `011/012` activation. Native parsing,
+the test-only MinerU artifact normalizer, Canonical IR/Source Locator v2,
+Normalization Map, deterministic manifests, quality gates, and hierarchical
+chunking now have one ordered implementation contract.
+
+Review remediation closed the unsafe or ambiguous edges before lock: source-
+derived payload classification, safe test-output cleanup, Anchor/Fragment/View
+locators, raw-byte and Unicode-scalar normalization mapping, exact chunk span
+reconstruction, integer geometry, JCS/hash ID DAGs, archive/OOXML ambiguity,
+per-child sandbox cleanup, Online Purge versus Retained-copy semantics, sealed
+Deletion Authority/restore replay, and the future `012`/Evidence/Citation v2
+boundaries. The parent Phase 15.2C plan and persistence contract were updated to
+use the same `52,428,800`-byte limit and deletion terminology.
+
+An initial xhigh review chain drove the design through multiple remediation
+rounds. A fresh independent xhigh reviewer then re-audited the complete result
+and closed at `P0/P1/P2 = 0/0/0`. No source code, Registry, migration, Provider
+fixture, credential, or production configuration changed.
+
+```text
+changed scope                                  mm-chat/docs only
+Markdown Prettier                              passed
+relative-link and document consistency checks  passed
+git diff --check -- mm-chat                    passed
+independent final review                       P0/P1/P2 = 0/0/0
+additional Provider calls / Token use          0 / 0
+Runtime Registry / Dispatch                    unchanged / disabled
+migration head                                 010 (011/012 absent)
+```
+
+Next: implement **C1.1 Contract and Corpus** only—Closed Schemas, Hash/ID
+envelopes, Stable Error Enum, Golden/Adversarial/Recipe Corpus, and cross-runtime
+RFC 8785 vectors—before parallel Native Parser implementation begins.

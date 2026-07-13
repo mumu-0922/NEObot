@@ -136,10 +136,11 @@ knowledge_generation_rebuild_roots
 knowledge_provider_operations
 knowledge_object_operation_intents
 knowledge_object_deletion_work
+knowledge_deletion_authority_ledger/checkpoints
 processing_request_id/source_event_id on materialization and job
 materialization-bound chunk uniqueness
 generation-bound purge fences
-payload/lineage separation required for physical deletion
+payload/lineage separation required for online payload purge
 dispatcher/staging/finalizer/reconcile functions
 gateway/operator capability roles
 ```
@@ -302,7 +303,7 @@ Consumer 领取或耗尽 Attempt。
 | `knowledge.document.reprocess.requested`          | 同上                                                  | 按权威 Version 状态选择 `active_reprocess` 或 `replacement_retry`                                    | 冻结 Expected Current/Advance Flag；异 Hash 隔离                                  |
 | `knowledge.document.generation-rebuild.requested` | 精确 Building Generation                              | 创建 `generation_rebuild` Request/Stage                                                              | Child Event/Document/Generation 唯一后 Ack                                        |
 | `knowledge.generation.rebuild.requested`          | 精确 Building Generation                              | 创建/恢复 Rebuild Root，固定 Snapshot/Watermark                                                      | Root 持久化后 Ack；Child 枚举可重放                                               |
-| `knowledge.document.tombstoned`                   | 该 Document/Version 的全部派生物                      | Cancel 非终态 Stage/Provider Work；枚举所有未 Purged Materialization/Artifact/Object Intent          | Durable Purge Work 已完整创建后 Global Ack；物理删除异步重放                      |
+| `knowledge.document.tombstoned`                   | 该 Document/Version 的全部派生物                      | Cancel 非终态 Stage/Provider Work；枚举所有未 Purged Materialization/Artifact/Object Intent          | Durable Purge Work 已完整创建后 Global Ack；Online Payload Purge 异步重放         |
 | `knowledge.collection.tombstoned`                 | Collection 全部 Version/Generation/Materialization    | 创建/恢复 Purge Root，分页枚举全部派生物                                                             | Root 已持久化后 Ack；枚举和删除可恢复，不能只枚举 Head                            |
 | `knowledge.processing.cancelled`                  | 精确 Request/Job/Materialization                      | Cancel 非终态 Attempt，阻止 Provider/Publish；已有 Payload 转 Deletion Work                          | Cancel/Purge Intent 持久化后 Ack                                                  |
 | `knowledge.collection.consent.changed`            | 受 Processor/Endpoint/Model/Purpose 影响的非终态 Work | 失效旧 Revision Job/Provider Operation；条款要求删除时创建完整 Purge/Rebuild Work，否则只阻断 Egress | 当前 Revision Effect 已落库后 Global Ack；旧 Event 不覆盖新 Revision              |
@@ -325,11 +326,12 @@ Object Intent，不受 Generation `active/retired/failed/staging` 状态或 Proj
 | HTML          | hardened DOM parser                       | 禁脚本、DTD、XXE、外部资源与网络           |
 | DOCX/PPTX     | native OOXML parser                       | 禁宏；复杂布局可按 Policy 转 MinerU        |
 | XLSX/CSV      | openpyxl/pyarrow-compatible reader        | 只读，不执行公式；保留 Sheet/Cell/公式和值 |
-| 普通 PDF      | PyMuPDF-compatible preflight/native text  | 保留 Page/Block/BBox/字体/阅读序           |
+| 普通 PDF      | approved native text/layout parser        | 保留 Page/Block/BBox/字体/阅读序           |
 | 扫描/复杂 PDF | MinerU Hosted                             | 异步恢复、OCR/表格/公式与 Page/BBox 对账   |
 
-限制固定为原文件 `≤50MB`、PDF `≤500` 页；压缩展开比、嵌套深度、Cell、Block、Chunk、
-总文本字节和执行时长必须有硬上限。第一版独立图片 MIME 在 Admission 拒绝。
+限制固定为原文件 `≤50 MiB`（`52,428,800` Bytes）、PDF `≤500` 页；压缩展开比、嵌套
+深度、Cell、Block、Chunk、总文本字节和执行时长必须有硬上限。第一版独立图片 MIME 在
+Admission 拒绝。
 
 ### 7.2 Parser Sandbox
 
@@ -343,12 +345,14 @@ Host Path，也不暴露 Docker Socket。共享实体是 Docker Named Volume
 `uid=10001,gid=10001,mode=0770,size=16m`，双方挂载路径均为
 `/run/mm-chat-rag-ipc`。Worker 保持 `10001:10001`；Sandbox 使用独立 UID `10002`、共同
 GID `10001`。Sandbox 启动时只在取得单实例 IPC Lock 后删除该目录中的 Stale Socket，
-随后创建 Mode `0660` Socket；每个 Job 再启动一次受限 Parser Child。Wire 使用
-Length-prefixed Binary Frame：Request Header 只含 Job/Lease-derived Invocation ID、
-Format、Config Hash、Expected Size/Source Hash，随后流式 Bytes；Response Header 含 Exit
-Code、Schema Version、Result Size/Hash，随后 Canonical Candidate Bytes。双方在读写中
-强制 Frame/总字节上限与 Deadline；取消关闭 Socket 并终止该 Child。非零 Exit、短读、
-Hash/Schema 不符或 Timeout 都返回稳定 Error Code 且不得 Stage。
+随后创建 Mode `0660` Socket；每个 Job 再启动一次受限 Parser Child。唯一 Parser Protocol
+v1 由 Offline Parser/Canonical IR Addendum §6.2 逐 Byte 冻结：Request 只携带
+Invocation、MIME/Extension Hint、Config/Size/Source Hash/Deadline，不携带调用方裁决的
+Format；Response 使用 Closed `success | route_required | failure` Outcome、Schema、Result
+Size/Hash 与 Stable Error，不暴露平台 Exit Code。Router 在 Sandbox 内由 Magic/Container
+推导 Format。双方强制 Frame/总字节上限与 Deadline；Cancel/Sidecar Crash 是 Controller
+本地 Outcome，短读、Hash/Schema 不符或 Timeout 均不得 Stage。禁止实现第二套 Runtime
+Adapter Wire。
 
 ### 7.3 Canonical IR
 
@@ -453,14 +457,15 @@ batch_result_hash = sha256(JCS(request hash + usage + ordered stored vector hash
 
 ## 9. Gateway、Credential 与 Role 边界
 
-| 服务/Role                 | 唯一职责                                             | 明确禁止                                   |
-| ------------------------- | ---------------------------------------------------- | ------------------------------------------ |
-| `rag-worker`              | 编排 Claim、Heartbeat、Gateway、Stage/Finalize       | MinIO/Provider Key、任意公网、Base DML     |
-| `rag-parser-sandbox`      | 处理已绑定 Hash 的单个输入并返回 Canonical Candidate | DB、Secret、网络、Host Mount               |
-| `rag-object-gateway`      | 解析一次性 Object Capability，精确 GET/PUT/Delete    | List Bucket、暴露 Object Key、任意 Prefix  |
-| `rag-processor-gateway`   | 唯一 RAG Egress，Endpoint/Model/Purpose Allowlist    | MinIO Key、任意 URL、聊天 Provider Key     |
-| `rag-generation-operator` | Create/Verify/Fail Building Generation               | Promote Active Pointer、普通 Job、正文读取 |
-| `rag-replay`              | 受限 DLQ Replay                                      | Object/Provider/Promotion Credential       |
+| 服务/Role                 | 唯一职责                                               | 明确禁止                                   |
+| ------------------------- | ------------------------------------------------------ | ------------------------------------------ |
+| `rag-worker`              | 编排 Claim、Heartbeat、Gateway、Stage/Finalize         | MinIO/Provider Key、任意公网、Base DML     |
+| `rag-parser-sandbox`      | 处理已绑定 Hash 的单个输入并返回 Canonical Candidate   | DB、Secret、网络、Host Mount               |
+| `rag-object-gateway`      | 解析一次性 Object Capability，精确 GET/PUT/Delete      | List Bucket、暴露 Object Key、任意 Prefix  |
+| `rag-processor-gateway`   | 唯一 RAG Egress，Endpoint/Model/Purpose Allowlist      | MinIO Key、任意 URL、聊天 Provider Key     |
+| `rag-generation-operator` | Create/Verify/Fail Building Generation                 | Promote Active Pointer、普通 Job、正文读取 |
+| `deletion-sealer`         | Seal Payload-free Deletion Authority 与 Monotonic Head | Source/Object Payload、Parser、任意 DB DML |
+| `rag-replay`              | 受限 DLQ Replay                                        | Object/Provider/Promotion Credential       |
 
 Object Capability 至少绑定：
 
@@ -518,6 +523,10 @@ PUT、DB Stage 或 Publish 任一点都不会遗留不可追踪对象。
 - `rag_processor_gateway_runtime`：Provider Reauthorization/Operation Ledger；
 - `rag_generation_operator`：Create/Verify/Fail Building Generation；生产 Promote/Active
   Pointer Rollback Function 与 Grant 均留到 Phase 15.2E。
+- `rag_deletion_sealer_executor NOLOGIN`：只 Execute Claim/Finish Seal Functions；
+- `rag_deletion_sealer_runtime LOGIN NOINHERIT`：只允许精确 Client-certificate Mapping，
+  仅被 Grant `rag_deletion_sealer_executor`，必须显式 `SET ROLE`；无其他 Membership、
+  Base Table 或 Payload 权限。
 
 `012.down` 只撤销新增 Grant/Function 并删除 `012` 新 Role；不得删除或重建 `010` Role。
 
@@ -568,12 +577,19 @@ Materialization/Projection Head、Projection Revision、结束 Job并写 Audit/O
 推进 Version/Document Pointer；`active_reprocess` 保持当前 Pointer。任一检查失败整笔
 回滚。
 
-### 10.3 Durable Physical Deletion
+### 10.3 Durable Online Payload Purge 与 Retained-copy Expiry
 
 Lineage ID/Hash/审计元数据可保持不可变；用户正文、Parser Artifact 与向量 Payload 必须
 可精确删除。`knowledge_object_deletion_work` 保存 Manifest Hash、Deadline、Attempt、
-Lease、Error、Terminal State。逻辑不可见立即生效，派生物 10 分钟预警、15 分钟告警；
-删除失败保持 `purging` 可重试，永不重新可见。
+Lease、Error、Terminal State。逻辑不可见立即生效，Online Payload Purge 10 分钟预警、
+15 分钟告警；删除失败保持 `purging` 可重试，永不重新可见。该 SLO 不表示 WAL、Backup、
+Snapshot 或当前 Data File 已完成介质擦除。
+
+状态必须区分 `logically_tombstoned -> online_payload_purged -> retained_copy_pending ->
+retained_copy_window_expired`。最后一态只证明受管 Object Version/WAL/Backup/Snapshot 已过
+冻结保留窗；不宣称 Postgres Free Page 或 SSD Block 的 Disk-forensic Erasure。准确的介质
+边界、最长 `8 weeks` Retention、独立 Deletion Authority 与禁用“physically erased”措辞
+由 Offline Parser/Canonical IR Addendum §15.1 冻结。
 
 Purge Claim 优先级高于 Parse/Embedding，且磁盘低水位 Admission 不得阻止 Purge/撤权。
 Document/Collection Purge 必须枚举每个 Version 的所有未 Purged Materialization，包括旧
@@ -677,17 +693,25 @@ Restore/Crash/Down-Up；Phase 15.2E 只消费已冻结 Report 做生产 Promotio
 - [ ] 实现 Approved Profile Bundle Registry/Create Function 与 Generation Rebuild
       Root/Child Event。
 - [ ] 实现 Processing Request、Provider Operation、Deletion Work、Chunk/Purge Fence。
+- [ ] 实现 Payload-free Append-only Deletion Authority、连续 Sequence/Hash Chain、独立
+      Sealed Checkpoint 与 Online/Retained-copy 状态机；Restore 不得只信旧 Database。
+- [ ] 实现独立 `deletion-sealer` Workload/最小 DB Role、Ed25519 Key Rotation、WORM
+      Store、Monotonic Signed Head 与 Inclusion/Consistency Proof；旧签名 Head 不得回滚。
 - [ ] 实现 Stage Execution/Replay Head、Object Intent、Durable Provider Operation Ledger。
 - [ ] 实现 Dispatcher V2、Verify/Publish/Purge/Reconcile、Generation
       Create/Fail Functions 与 Roles。
 - [ ] Go Producer 增加 `010` Legacy fallback 与 `012` Request+Outbox 双路径。
 - [ ] 证明 `012` 路径零直接 Legacy Job，重复 Reprocess 仍被同步 Idempotency Fence 拦截。
 - [ ] 证明 N-1 Binary 在 `012` 上的 Initial/Replace/Reprocess/Delete 全部 Fail Closed，且
-      `012.down→N-1` Maintenance Rollback 不产生重复 Job/Outbox。
+      只有本地/Off-host Deletion Authority 均为 Genesis 时，`012.down→N-1` Maintenance
+      Rollback 才可执行且不产生重复 Job/Outbox。
 - [ ] 回归 `012` Admission 成功、Dispatch 未启用、尝试 Down、N-1 同 Key 重试：Down 必须
       因 Pending Request Fail Closed，并保留 Idempotency History。
 - [ ] 通过 Fresh `010→011→012→012.down→N-1`：未物化 Profile/Generation/Work 时只删除
       完全匹配 migration checksum/report hash 的 Static Registry Seed；Drift/Extra 拒绝。
+- [ ] 证明任一 `authoritySequence > 0` Runtime Entry 都永久阻断 N-1 Down；空 Authority
+      可有 Freshness Checkpoint，但须由独立 Operator Preflight 离线校验 Off-host Genesis
+      Root/最新签名 Head，SQL Down 不得访问网络或自行删除 Authority。
 
 ### C7 — Private Gateway/Sandbox Runtime
 
@@ -709,6 +733,8 @@ Restore/Crash/Down-Up；Phase 15.2E 只消费已冻结 Report 做生产 Promotio
 - [ ] 实现 Jina Passage Batch、Search Projection Stage 与 Dimension/Hash Verify。
 - [ ] 实现 Atomic Publish、旧 Materialization Retire、Operation-aware Version Pointer。
 - [ ] 实现 Document/Collection Purge、Object Deletion Work 与 15 分钟 SLO 告警。
+- [ ] 验证 15 分钟只约束 Online Payload Purge；Object Version/WAL/Backup/Snapshot 按
+      Retention Evidence 推进，禁止报告 Disk-forensic Erasure。
 
 ### C10 — Canary 与 Generation Rebuild
 
@@ -733,6 +759,8 @@ Restore/Crash/Down-Up；Phase 15.2E 只消费已冻结 Report 做生产 Promotio
 - [ ] 通过 Go Race/Vet、Python Ruff/Format/Mypy/Pytest Coverage、Migration、Docker、
       Compose、Security、Dependency Audit。
 - [ ] 通过全部权限、撤权、删除、Provider、Crash、Restore、Resource 负向测试。
+- [ ] 用删除前 Backup + 删除后独立 Sealed Ledger 执行 Restore Drill；Ledger 缺失、Gap、
+      签名错或未重放时 Readiness 必须 Fail Closed。
 - [ ] 独立 xhigh Review 最终 `P0/P1/P2 = 0/0/0`。
 - [ ] 记录 Phase 15.2C 实施证据；保持用户 Query 与生产 Promotion 关闭。
 
@@ -748,13 +776,14 @@ Restore/Crash/Down-Up；Phase 15.2E 只消费已冻结 Report 做生产 Promotio
 | Candidate Race | Building→Verified 与 Prepare/Apply 并发时集合重算一致；同 Hash Replay 幂等、异 Hash 隔离        |
 | Idempotency    | 同 Key/同 Hash Replay、同 Key/异 Hash 冲突；Stage Head 唯一且 Successor Attempt 可递增          |
 | Parser         | TXT/MD/HTML/OOXML/XLSX/CSV/PDF/扫描 PDF、空页、乱码、表格、Locator/Hash Round-trip              |
-| Sandbox        | Zip Bomb、XXE、宏、外链、路径穿越、50MB/500 页及 CPU/RAM/tmpfs/PID 超限                         |
+| Sandbox        | Zip Bomb、XXE、宏、外链、路径穿越、52,428,800 Bytes/500 页及 CPU/RAM/tmpfs/PID 超限             |
 | Provider       | Intent 前后 Kill、Submit 响应丢失、Poll/Download/Commit Kill、429/Retry-After、Schema/Hash 错   |
 | Object         | Worker 直连 MinIO/公网失败；Capability 错 Job/Lease/Hash/Generation/Operation/重放全部失败      |
 | Publish        | Staging 不可见；Manifest/Count/Profile/Consent/Head 任一错即整笔回滚；无双 Head                 |
 | Canary         | Verify+Finalize 终结 Attempt 但不改 Head；Crash 前可恢复，Crash 后不可重新 Claim                |
 | Race           | Delete/Consent/Governance/Reprocess/Replace 与 Dispatch/Provider/Publish 并发不发布陈旧内容     |
 | Purge          | 覆盖所有 Generation/Materialization/Intent；Backlog 下抢占；对象失败可恢复；Source File 不误删  |
+| Deletion seal  | 最小 Role、连续 Hash/签名/Key Rotation、旧 Head/Gaps/Store 回滚拒绝、旧 Backup 强制重放         |
 | Gateway        | mTLS/SAN、双网卡隔离、One-use Consume、Body 上限、PUT Crash/Orphan Sweep 与 Key Rotation        |
 | Generation     | Building 隐藏、Rebuild 可重放、Manifest 确定、旧 Active 在 Crash/Rollback 后继续可用            |
 | Secrets/Roles  | Worker/Replay 无 MinIO/Provider Key；Role 只 Execute 指定 Function；日志无正文/Token/Object Key |
@@ -762,8 +791,10 @@ Restore/Crash/Down-Up；Phase 15.2E 只消费已冻结 Report 做生产 Promotio
 
 ## 14. Compose、可观测性与运维门
 
-新增服务均使用非 Root、`read_only`、`init`、`cap_drop: [ALL]`、
-`no-new-privileges`、`ulimits.core=0`、有界 tmpfs/CPU/RAM/PID。Worker 的
+除 `rag-parser-sandbox` 外，新增服务均使用非 Root、`read_only`、`init: true`、
+`cap_drop: [ALL]`、`no-new-privileges`、`ulimits.core=0`、有界 tmpfs/CPU/RAM/PID。
+Parser Sandbox 明确使用 `init: false`，由受审计 Supervisor 自身作为 PID 1/Subreaper；
+不得再注入 Tini 形成双 Init。Worker 的
 `stop_grace_period` 必须大于内部 Shutdown Grace；全部服务配置 Log Rotation。
 
 Phase 15.2C 至少新增：
@@ -796,14 +827,49 @@ Backup Manifest、R2 上传与跨 Backup-set Restore Drill 在 Phase 15.2E 收�
 6. `012.down` 采用严格零流量策略：除无 Lease/不可逆 Work/Generation 引用外，还必须证明
    Processing Request、Stage Execution/Attempt、Dispatch Preparation、Provider/Object
    Operation、Deletion Work、已物化 Base/Search Profile、Rebuild Root/Child 与全部 `012`
-   专属 Event 均为零；migration-owned Approved Registry Static Seed 不要求预先为空，但只可
-   在 Canonical Bytes/report hash/checksum 完全匹配且无引用时由 Down 精确删除；Drift、
-   Extra Row 或引用均失败；不把运行期数据静默删除或猜测回填为 Legacy Job；
-7. 只有上述 Precondition 全部通过才执行 `012.down`；`011.down` 还必须证明无 Search
+   专属 Event 均为零；本地 Deletion Authority Ledger 必须保持 `authoritySequence=0`
+   Genesis（允许无 Tombstone 的 Freshness Checkpoint），且
+   停流量后的独立 Operator Preflight 已通过 Release-pinned Public Key 验证 Off-host Store
+   也只有同一 Genesis Head。SQL Migration 不访问网络，只消费有短时 Expiry、Store Head
+   Hash 与签名的 Preflight Assertion；
+7. 一旦存在任一 Runtime Deletion Authority Entry 或 `authoritySequence > 0`，
+   `012.down→N-1` 永久 Fail Closed；Off-host Entry 不可为回滚删除。只能回滚到仍理解
+   `012` 的 N Image 并关闭 Kill Switch；
+8. migration-owned Approved Registry Static Seed 不要求预先为空，但只可在 Canonical
+   Bytes/report hash/checksum 完全匹配且无引用时由 Down 精确删除；Drift、Extra Row 或
+   引用均失败；不把运行期数据静默删除或猜测回填为 Legacy Job；
+9. 只有上述 Precondition 全部通过才执行 `012.down`；`011.down` 还必须证明无 Search
    Profile/Generation/Projection 引用；
-8. 回滚到 N-1 必须先停流量/Worker、满足 Precondition 并执行 `012.down→N-1`；若不能
-   Down，只能回滚到仍理解 `012` 的 N Image 并关闭 Kill Switch，不能启动 N-1；
-9. 任何不确定状态都停止 Down，恢复新版本执行 Reconcile，而不是手工改表。
+10. 回滚到 N-1 必须先停流量/Worker、满足 Precondition 并执行 `012.down→N-1`；若不能
+    Down，只能回滚到仍理解 `012` 的 N Image 并关闭 Kill Switch，不能启动 N-1；
+11. 任何不确定状态都停止 Down，恢复新版本执行 Reconcile，而不是手工改表。
+
+Down Preflight Assertion 是 Closed JCS/Ed25519 Envelope，精确绑定：
+
+```text
+schemaVersion, jti, issuedAt, expiresAt (<= issuedAt + 5m)
+postgresSystemIdentifier, databaseOid, deploymentId
+offhostStoreProvider, bucket, prefixHash
+migration012Checksum, releaseId, migrateImageDigest
+maintenanceFenceId, maintenanceFenceRevision
+localAuthoritySequence=0, localGenesisHash
+offhostAuthoritySequence=0, offhostGenesisHash
+latestCheckpointSequence, latestCheckpointHash, latestCheckpointETag
+```
+
+Assertion 由停流量/停 Sealer 后的一次性 `012-down-preflight` 容器签发；其 Offline Operator
+Public Key 随 Release 固定，Private Key 不进入 Runtime。它只使用独立
+`MIGRATION_DATABASE_URL` 调用 `knowledge_register_012_down_assertion`，不得复用 API/RAG
+Role。Maintenance Fence 阻断新 Admission/Seal；注册 Function 重读 Cluster/Database/
+Migration/Local Genesis，并以 `jti UNIQUE` 保存未消费 Assertion。`012.down` 在同一
+Migration Transaction 内锁 Fence、重验全部 Binding/Expiry/Signature，原子设置
+`consumed_at` 后才允许 Drop；Assertion 不能跨 Cluster/Database/Deployment/Store Prefix/
+Release 复用。Fence 变化、Off-host ETag 在 Preflight 前后变化、已消费 JTI、旧但未过期
+Assertion或任一 Hash 不同都 Fail Closed。
+
+Assertion Wire 复用 Deletion Authority Addendum 的 Raw Ed25519 Public Key/Kid/Base64url
+编码和 Closed `{signedPayload,signatures[]}`，但 Domain Tag 固定为
+`mm-chat.012-down-preflight.v1\n`；不得与 Checkpoint Signature 互换。
 
 ## 16. Definition of Done
 

@@ -775,6 +775,10 @@ the UI can call in the next wiring slice.
       generic proxy variables must remain ignored and no retry is allowed.
 - [ ] Freeze redacted MinerU/Jina wire fixtures, immutable Model/API builds,
       Provider recovery behavior, license, retention, and SLA.
+- [x] Lock the C1 no-network Offline Parser and Canonical IR implementation
+      plan, including format/security routing, sandbox protocol, Canonical IR
+      and Source Locator v2, deterministic manifests, hierarchical chunking,
+      future `012` payload/lineage separation, and Evidence/Citation v2 impact.
 - [ ] Implement and verify the offline parser, Canonical IR, parent/child
       chunking, Provider fake servers, and deterministic manifests.
 - [ ] Select the production tokenizer/dimension/search profile using real Jina

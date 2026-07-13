@@ -566,7 +566,10 @@ UNIQUE(collection_id, collection_visibility_epoch,
 Fan-out 分页只按稳定 Composite Cursor 前进；Insert 使用上述 Unique Key 幂等。Root
 只有在 `enumeration_complete=true` 且不存在非 `succeeded` Item 后才能 Complete。
 Worker Crash、Redis Flush 或重复 Collection Tombstone 后必须从 Root/Item 表恢复。
-15 分钟 SLO 从 Tombstone Commit 计时；超时告警不恢复逻辑可见性。
+Online Payload Purge 的 15 分钟 SLO 从 Tombstone Commit 计时；超时告警不恢复逻辑
+可见性。该 SLO 不表示 WAL、Backup、Snapshot、Postgres Free Page 或 SSD Block 已完成
+Retained-copy Expiry/Disk-forensic Erasure；完整状态与术语以 Phase 15.2C Offline Parser/
+Canonical IR Addendum §15.1 为准。
 
 ## 5. SECURITY DEFINER 原子 Function
 
