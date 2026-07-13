@@ -6,7 +6,7 @@ import shutil
 import stat
 import subprocess
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -22,6 +22,7 @@ from tools.provider_capture import (
     dry_run_plan,
     evidence_sha256,
     main,
+    validate_capture_proxy_url,
     validate_evidence_snapshot,
     validate_request_target,
     write_evidence_snapshot,
@@ -32,6 +33,7 @@ _KEYS = {
     "JINA_API_KEY": "unit-test-jina-credential",
     "MINERU_API_KEY": "unit-test-mineru-credential",
 }
+_PRIVATE_PROXY = "http://172.16.0.2:7890"
 
 
 def _embedding_payload(dimensions: int) -> dict[str, Any]:
@@ -166,6 +168,28 @@ def test_default_cli_is_no_network_dry_run_and_creates_no_evidence(
     assert output == dry_run_plan("all")
     assert output["networkEnabled"] is False
     assert output["evidenceFilesCreated"] is False
+    assert output["proxy"] == {
+        "automaticEnvironmentProxyLoaded": False,
+        "explicitEnvironmentName": "PROVIDER_CAPTURE_PROXY_URL",
+        "privateAddressOnly": True,
+    }
+
+
+def test_dry_run_ignores_even_invalid_explicit_proxy(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    exit_code = main(
+        [],
+        runtime=CaptureRuntime(
+            environ={"PROVIDER_CAPTURE_PROXY_URL": "unit-test-invalid"},
+            output_base=tmp_path,
+        ),
+    )
+
+    assert exit_code == 0
+    assert json.loads(capsys.readouterr().out)["networkEnabled"] is False
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_default_cli_does_not_create_bytecode_files(tmp_path: Path) -> None:
@@ -311,6 +335,140 @@ def test_fixed_jina_plan_makes_exactly_three_calls_with_frozen_semantics() -> No
     assert rerank["return_documents"] is False
     assert rerank["return_embeddings"] is False
     assert snapshot["budgets"] == {"jina": {"allowedCalls": 3, "usedCalls": 3}}
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("http://127.0.0.1:7890", "http://127.0.0.1:7890"),
+        ("http://10.0.0.2:7890/", "http://10.0.0.2:7890"),
+        ("http://172.16.0.2:7890", "http://172.16.0.2:7890"),
+        ("http://192.168.1.2:7890", "http://192.168.1.2:7890"),
+        ("http://[::1]:7890", "http://[::1]:7890"),
+        ("http://[fd00::2]:7890", "http://[fd00::2]:7890"),
+        (None, None),
+        ("", None),
+    ],
+)
+def test_explicit_private_proxy_is_strictly_canonicalized(
+    value: str | None,
+    expected: str | None,
+) -> None:
+    assert validate_capture_proxy_url(value) == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        " https://172.16.0.2:7890",
+        "https://172.16.0.2:7890",
+        "socks5://172.16.0.2:7890",
+        "http://proxy.local:7890",
+        "http://8.8.8.8:7890",
+        "http://169.254.1.1:7890",
+        "http://0.0.0.0:7890",
+        "http://172.16.0.2",
+        "http://172.16.0.2:0",
+        "http://user:pass@172.16.0.2:7890",
+        "http://172.16.0.2:7890/path",
+        "http://172.16.0.2:7890/?token=secret",
+        "http://172.16.0.2:7890/#fragment",
+        "http://[fe80::1]:7890",
+        "http://[2001:4860:4860::8888]:7890",
+    ],
+)
+def test_explicit_proxy_rejects_non_private_or_credentialed_values(value: str) -> None:
+    with pytest.raises(CaptureError, match="CAPTURE_PROXY_INVALID"):
+        validate_capture_proxy_url(value)
+
+
+def test_generic_proxy_environment_is_ignored(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_client = httpx.Client
+    seen: dict[str, object] = {}
+
+    client_constructor = cast("Callable[..., httpx.Client]", real_client)
+
+    def client_factory(**kwargs: object) -> httpx.Client:
+        seen["proxy"] = kwargs.pop("proxy")
+        kwargs["transport"] = _success_transport()
+        return client_constructor(**kwargs)
+
+    monkeypatch.setattr("tools.provider_capture.httpx.Client", client_factory)
+    capture(
+        "jina",
+        observed_at=_OBSERVED_AT,
+        runtime=CaptureRuntime(
+            environ=_KEYS
+            | {
+                "ALL_PROXY": "http://10.0.0.3:7890",
+                "HTTPS_PROXY": "http://10.0.0.3:7890",
+                "HTTP_PROXY": "http://10.0.0.3:7890",
+            },
+        ),
+    )
+
+    assert seen["proxy"] is None
+
+
+def test_explicit_private_proxy_is_injected_but_never_recorded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_client = httpx.Client
+    seen: dict[str, object] = {}
+
+    client_constructor = cast("Callable[..., httpx.Client]", real_client)
+
+    def client_factory(**kwargs: object) -> httpx.Client:
+        seen["proxy"] = kwargs.pop("proxy")
+        kwargs["transport"] = _success_transport()
+        return client_constructor(**kwargs)
+
+    monkeypatch.setattr("tools.provider_capture.httpx.Client", client_factory)
+    snapshot = capture(
+        "jina",
+        observed_at=_OBSERVED_AT,
+        runtime=CaptureRuntime(
+            environ=_KEYS | {"PROVIDER_CAPTURE_PROXY_URL": _PRIVATE_PROXY},
+        ),
+    )
+
+    evidence = canonical_json_bytes(snapshot)
+    assert seen["proxy"] == _PRIVATE_PROXY
+    assert _PRIVATE_PROXY.encode() not in evidence
+    assert b"172.16.0.2" not in evidence
+
+
+def test_invalid_explicit_proxy_fails_before_network_and_never_echoes_value(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls = 0
+    forbidden = "http://unit-test-user:unit-test-secret@10.0.0.2:7890"
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("invalid proxy reached network")
+
+    exit_code = main(
+        ["--execute", "--provider", "jina", "--output-dir", "capture"],
+        runtime=CaptureRuntime(
+            environ=_KEYS | {"PROVIDER_CAPTURE_PROXY_URL": forbidden},
+            transport=httpx.MockTransport(handler),
+            output_base=tmp_path,
+            now=_OBSERVED_AT,
+        ),
+    )
+
+    output = capsys.readouterr()
+    assert exit_code == 2
+    assert output.out == ""
+    assert output.err.strip() == "CAPTURE_PROXY_INVALID"
+    assert forbidden not in output.err
+    assert calls == 0
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_http_requests_disable_compression_and_do_not_replay_cookies() -> None:

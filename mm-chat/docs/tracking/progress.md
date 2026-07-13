@@ -710,6 +710,9 @@ the UI can call in the next wiring slice.
       symlink/existing-target refusal, and unchanged dark-run registries.
 - [ ] Execute an authorized real Provider Capture and complete independent
       Evidence review; current work has executed MockTransport tests only.
+- [x] Add and verify the Owner-approved explicit private-proxy compatibility
+      path after the first Jina Capture proved WSL direct egress unavailable;
+      generic proxy variables must remain ignored and no retry is allowed.
 - [ ] Freeze redacted MinerU/Jina wire fixtures, immutable Model/API builds,
       Provider recovery behavior, license, retention, and SLA.
 - [ ] Implement and verify the offline parser, Canonical IR, parent/child

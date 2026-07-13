@@ -57,6 +57,11 @@ network or filesystem writes. Explicit execution uses only process-environment
 Jina/MinerU keys, an exact HTTPS host/port/path allowlist, disabled environment
 proxy trust and redirects, one connection, no retries, fixed timeouts, bounded
 streaming responses, strict UTF-8/JSON, and synthetic inputs generated in code.
+If direct WSL egress is unavailable, the only proxy path is the dedicated
+`PROVIDER_CAPTURE_PROXY_URL`: it must be an uncredentialed literal private or
+loopback HTTP address with an explicit port. Generic proxy variables remain
+ignored, the validated proxy is never recorded, and Provider TLS verification
+and every target/response gate remain active.
 
 Jina execution is exactly two passage embedding calls (1024 and 2048) plus one
 two-document rerank call. MinerU execution is a deliberately staged v4

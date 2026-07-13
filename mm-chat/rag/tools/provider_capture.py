@@ -20,6 +20,7 @@ from typing import Never, cast
 import httpx
 
 from tools.provider_capture_common import (
+    CAPTURE_PROXY_ENV,
     CaptureError,
     JsonObject,
     JsonValue,
@@ -29,6 +30,7 @@ from tools.provider_capture_common import (
     format_observed_at,
     parse_observed_at,
     selected_providers,
+    validate_capture_proxy_url,
     validate_request_target,
 )
 from tools.provider_capture_evidence import (
@@ -84,6 +86,11 @@ def dry_run_plan(provider: str = "all") -> JsonObject:
         "mode": "dry-run",
         "networkEnabled": False,
         "operations": _dry_run_operations(providers),
+        "proxy": {
+            "automaticEnvironmentProxyLoaded": False,
+            "explicitEnvironmentName": CAPTURE_PROXY_ENV,
+            "privateAddressOnly": True,
+        },
         "retries": 0,
         "syntheticInputsOnly": True,
     }
@@ -99,6 +106,7 @@ def capture(
     providers = selected_providers(provider)
     environ = os.environ if runtime.environ is None else runtime.environ
     keys = _load_credentials(providers, environ)
+    proxy_url = validate_capture_proxy_url(environ.get(CAPTURE_PROXY_ENV))
     records: list[JsonValue] = []
     budgets: JsonObject = {}
     artifacts: list[JsonValue] = []
@@ -108,6 +116,7 @@ def capture(
         limits=LIMITS,
         trust_env=False,
         follow_redirects=False,
+        proxy=proxy_url,
     ) as client:
         if "jina" in providers:
             records.append(capture_jina(client, keys["jina"]))
@@ -332,6 +341,7 @@ __all__ = [
     "dry_run_plan",
     "evidence_sha256",
     "main",
+    "validate_capture_proxy_url",
     "validate_evidence_snapshot",
     "validate_request_target",
     "write_evidence_snapshot",

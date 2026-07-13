@@ -34,6 +34,25 @@ Fail-closed 边界：
   安全整数；按 raw wire stream 读取，声明或实际超过 `1,048,576` bytes 立即中止；
 - 原始 Response bytes、未知 Header value、Error detail 和任何动态 ID/URL 永不落盘。
 
+### Explicit private proxy follow-up
+
+WSL 现场验证表明 `api.jina.ai` 直连超时，而 Owner 确认端口 `7890` 是其自控代理。Harness
+仍不得信任通用 `HTTP_PROXY`、`HTTPS_PROXY` 或 `ALL_PROXY`。唯一允许的兼容入口是进程环境
+变量 `PROVIDER_CAPTURE_PROXY_URL`，并且必须同时满足：
+
+- Scheme 固定为 `http`，Host 必须是字面量 IPv4 RFC1918/Loopback 或 IPv6
+  Unique-local/Loopback，必须显式 Port；
+- 禁止 Username、Password、非根 Path、Query、Fragment、Hostname 与 Link-local/
+  Multicast/Unspecified 地址；
+- 通过 `httpx.Client(proxy=<validated>, trust_env=False)` 显式注入；不回退到任何通用代理；
+- Proxy URL、Host、Port 和 Key 都不进入 stdout/stderr、Evidence、Hash 或日志；非法值只返回
+  `CAPTURE_PROXY_INVALID`；
+- `Accept-Encoding: identity`、TLS 证书验证、Provider Host/Path Allowlist、无 Redirect/Retry、
+  固定预算和全部响应 Gate 保持不变。
+
+该兼容只解决 Operator Capture 的 WSL Egress，不授权生产 RAG Runtime 使用代理，也不关闭
+External Provider Gate。回滚方式是删除 `PROVIDER_CAPTURE_PROXY_URL` 并恢复直连。
+
 ## 2. Fixed call budget
 
 CLI 只能选 `all|jina|mineru`，不能改变调用数量、batch、并发、timeout 或 retry：
@@ -120,11 +139,12 @@ uv run python -B -m tools.provider_capture --provider jina
 
 ```bash
 export JINA_API_KEY=
+export PROVIDER_CAPTURE_PROXY_URL="$https_proxy"  # only for the Owner-controlled WSL proxy
 uv run python -B -m tools.provider_capture \
   --execute --provider jina \
   --observed-at 2026-07-13T00:00:00Z \
   --output-dir provider-capture-jina-20260713
-unset JINA_API_KEY
+unset JINA_API_KEY PROVIDER_CAPTURE_PROXY_URL
 ```
 
 `.env.capture.example` 只列空值与安全说明；禁止 `source .env`、dotenv、Shell history 中
@@ -158,5 +178,7 @@ query-by-key 仍未验证。因此四个 Public Fixture 必须继续 `draft/bloc
 - 代码回滚：删除 `rag/tools/provider_capture*.py`、`rag/tools/__init__.py`、测试和本
   Contract；生产 Image 只复制 `src/`，且无 `[project.scripts]` 注册，所以无需 Runtime
   Migration；
+- 代理回滚：不设置或 `unset PROVIDER_CAPTURE_PROXY_URL`；Harness 继续忽略所有通用代理
+  环境变量；
 - 若发现证据泄漏，隔离文件、撤销 Key、按 Incident 流程处理，Public Draft 与 External
   Gate 保持不变。

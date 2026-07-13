@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import math
 import re
@@ -38,6 +39,13 @@ RERANK_DOCUMENT_COUNT: Final = 2
 OUTPUT_FILE: Final = "provider-capture-evidence.json"
 OUTPUT_DIR_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
 SHA256_RE: Final = re.compile(r"^[0-9a-f]{64}$")
+CAPTURE_PROXY_ENV: Final = "PROVIDER_CAPTURE_PROXY_URL"
+_MAX_PROXY_URL_LENGTH: Final = 256
+_PRIVATE_IPV4_NETWORKS: Final = tuple(
+    ipaddress.ip_network(network)
+    for network in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+)
+_UNIQUE_LOCAL_IPV6_NETWORK: Final = ipaddress.ip_network("fc00::/7")
 
 _ALLOWED_TARGETS: Final = frozenset(
     {
@@ -51,6 +59,7 @@ _ERROR_CODES: Final = frozenset(
         "CANONICAL_JSON_INVALID",
         "CAPTURE_CREDENTIALS_MISSING_OR_INVALID",
         "CAPTURE_FAILED",
+        "CAPTURE_PROXY_INVALID",
         "CLI_ARGUMENT_INVALID",
         "EVIDENCE_SCHEMA_INVALID",
         "EVIDENCE_TARGET_EXISTS",
@@ -161,6 +170,50 @@ def validate_request_target(method: str, url: str) -> None:
         or target not in _ALLOWED_TARGETS
     ):
         raise CaptureError("TARGET_NOT_ALLOWLISTED")
+
+
+def validate_capture_proxy_url(value: str | None) -> str | None:
+    """Validate and canonicalize the explicit private HTTP proxy URL."""
+    if value is None or value == "":
+        return None
+    if value != value.strip() or len(value) > _MAX_PROXY_URL_LENGTH:
+        raise CaptureError("CAPTURE_PROXY_INVALID")
+    try:
+        parsed = urlsplit(value)
+        host = parsed.hostname
+        port = parsed.port
+        address = ipaddress.ip_address(host or "")
+    except (ValueError, UnicodeError):
+        raise CaptureError("CAPTURE_PROXY_INVALID") from None
+    if (
+        parsed.scheme != "http"
+        or host is None
+        or port is None
+        or port == 0
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+        or not _is_allowed_proxy_address(address)
+    ):
+        raise CaptureError("CAPTURE_PROXY_INVALID")
+    canonical_host = (
+        f"[{address.compressed}]"
+        if isinstance(address, ipaddress.IPv6Address)
+        else address.compressed
+    )
+    return f"http://{canonical_host}:{port}"
+
+
+def _is_allowed_proxy_address(
+    address: ipaddress.IPv4Address | ipaddress.IPv6Address,
+) -> bool:
+    if address.is_loopback:
+        return True
+    if isinstance(address, ipaddress.IPv4Address):
+        return any(address in network for network in _PRIVATE_IPV4_NETWORKS)
+    return address in _UNIQUE_LOCAL_IPV6_NETWORK
 
 
 def strict_json_object(content: bytes) -> JsonObject:

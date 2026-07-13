@@ -7223,3 +7223,41 @@ account limits and SLA are not frozen. MinerU immutable build, region, terms,
 BBox, cancel and query-by-key remain unverified. All four Public Fixtures stay
 `draft/blocked`; the next step is a separately authorized human-operated
 capture and independent review, not production activation.
+
+## 2026-07-13 — Capture Harness explicit private-proxy compatibility
+
+The first Owner-authorized Jina attempt returned `PROVIDER_RESPONSE_LOST` before
+an Evidence Snapshot was created. A credential-free connectivity probe then
+proved the cause without reading the Key: `api.jina.ai` returned HTTP 200 through
+the Owner-controlled WSL proxy, while direct port 443 timed out. The Owner
+confirmed the private port `7890` belongs to their proxy software.
+
+The Harness now supports one explicit process-environment input,
+`PROVIDER_CAPTURE_PROXY_URL`. It accepts only uncredentialed literal RFC1918/
+loopback IPv4 or unique-local/loopback IPv6 over `http` with an explicit nonzero
+port. Hostnames, public/link-local/unspecified addresses, credentials, non-root
+paths, query and fragment are rejected as `CAPTURE_PROXY_INVALID`. Generic
+`HTTP_PROXY`, `HTTPS_PROXY` and `ALL_PROXY` remain ignored; `trust_env=false`,
+Provider TLS verification, exact target allowlists, identity encoding, fixed
+budget, zero retry and redacted Evidence remain unchanged. Proxy URL/Host/Port
+never enter output, Evidence or logs.
+
+Verification after the compatibility patch:
+
+```text
+Ruff / format                                    passed / 37 files
+Mypy                                             23 source files / no issues
+Provider Capture targeted tests                  61 passed
+Python non-integration suite                     205 passed / 2 deselected
+Python coverage                                  90.19% (>= 90%)
+pip-audit --skip-editable                        no known vulnerabilities
+security scanner on rag/tools                    0 findings
+quality checker on rag/tools                     0 errors / 0 warnings
+real Capture retry                               not executed yet
+Public Fixtures / runtime registries             unchanged / disabled
+```
+
+This compatibility is operator-only and does not authorize a production RAG
+proxy, freeze any Provider Contract, or close the External Gate. Next: commit
+the reviewed patch, then repeat the Jina Capture once with the dedicated proxy
+variable copied from the Owner's existing WSL proxy environment.

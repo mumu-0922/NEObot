@@ -16,8 +16,10 @@ blocked drafts; they do not enable provider calls or production handlers.
 The operator-only C0 Provider Capture Harness lives in
 `tools/provider_capture.py`. It defaults to a redacted, zero-network dry-run and
 is not a production console script. Real egress requires explicit `--execute`
-plus process-environment credentials. MinerU capture is intentionally staged at
-the v4 local-upload Submit response: it does not PUT the signed URL or poll.
+plus process-environment credentials. A WSL operator may explicitly set
+`PROVIDER_CAPTURE_PROXY_URL` to a literal private/loopback HTTP proxy; generic
+proxy variables remain ignored. MinerU capture is intentionally staged at the
+v4 local-upload Submit response: it does not PUT the signed URL or poll.
 
 ## Safety boundaries
 
@@ -82,6 +84,10 @@ The example credential file contains empty values only. The harness does not
 load it or any other dotenv file. `-B` is required by the CLI contract so a
 dry-run creates neither evidence nor Python bytecode cache files. MinerU
 `unknown_submission` writes its recovery evidence but returns exit code `3`.
+When direct WSL egress is unavailable, copy the Owner-controlled proxy into the
+dedicated variable for that one subshell, for example
+`export PROVIDER_CAPTURE_PROXY_URL="$https_proxy"`; the harness validates a
+literal RFC1918/loopback address and still uses `trust_env=false`.
 
 `jsonschema`, `types-jsonschema`, `rfc8785`, and `httpx` are dev-only. Docker
 uses `uv sync --no-dev`, and `.dockerignore` excludes `tests`, so fixtures and
