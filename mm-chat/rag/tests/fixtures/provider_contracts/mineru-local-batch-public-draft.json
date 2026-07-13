@@ -3,15 +3,19 @@
   "fixtureSetId": "mineru-local-batch-public-draft-20260713",
   "fixtureKind": "public_documentation",
   "providerKind": "mineru_local_batch",
-  "observedAt": "2026-07-13T01:55:02Z",
+  "observedAt": "2026-07-13T05:57:45Z",
   "lifecycle": {
     "state": "draft",
     "blockedBy": [
       "CAPTURE_BODY_NOT_RETAINED",
-      "SIGNED_UPLOAD_HOST_UNKNOWN",
-      "BATCH_POLL_NOT_CAPTURED",
-      "RESULT_DOWNLOAD_NOT_CAPTURED",
+      "SIGNED_UPLOAD_WIRE_NOT_RETAINED",
+      "BATCH_POLL_BODY_NOT_RETAINED",
+      "RESULT_DOWNLOAD_WIRE_NOT_RETAINED",
+      "RESULT_ARCHIVE_SCHEMA_UNVERIFIED",
+      "CANONICAL_IR_MAPPING_UNVERIFIED",
+      "CITATION_LOCATOR_UNVERIFIED",
       "RECOVERY_CONTRACT_UNKNOWN",
+      "IMMUTABLE_IDENTITY_UNKNOWN",
       "TERMS_NOT_VERIFIED"
     ],
     "reviewers": ["engineering"]
@@ -146,7 +150,8 @@
       "phase": "upload",
       "support": {
         "state": "unknown",
-        "reasonCode": "SIGNED_UPLOAD_WIRE_NOT_CAPTURED"
+        "reasonCode": "SIGNED_UPLOAD_WIRE_NOT_RETAINED",
+        "evidenceRefs": ["mineru-lifecycle-summary-20260713t055745z"]
       },
       "responseCases": []
     },
@@ -155,7 +160,8 @@
       "phase": "poll_batch",
       "support": {
         "state": "unknown",
-        "reasonCode": "BATCH_POLL_WIRE_NOT_CAPTURED"
+        "reasonCode": "BATCH_POLL_BODY_NOT_RETAINED",
+        "evidenceRefs": ["mineru-lifecycle-summary-20260713t055745z"]
       },
       "responseCases": []
     },
@@ -164,7 +170,8 @@
       "phase": "download_result",
       "support": {
         "state": "unknown",
-        "reasonCode": "RESULT_DOWNLOAD_WIRE_NOT_CAPTURED"
+        "reasonCode": "RESULT_DOWNLOAD_WIRE_NOT_RETAINED",
+        "evidenceRefs": ["mineru-lifecycle-summary-20260713t055745z"]
       },
       "responseCases": []
     },
@@ -201,6 +208,14 @@
       "sourceKind": "official_docs",
       "sourceVersion": "sha256-6b72fd975b37f5d64996bdd97d97f755b7de82602f7e6c1f37cc27b9f51e24fa",
       "contentHash": "6b72fd975b37f5d64996bdd97d97f755b7de82602f7e6c1f37cc27b9f51e24fa"
+    },
+    {
+      "evidenceId": "mineru-lifecycle-summary-20260713t055745z",
+      "sourceUrl": "https://mineru.net/api/v4/file-urls/batch",
+      "observedAt": "2026-07-13T05:57:45Z",
+      "sourceKind": "redacted_capture_summary",
+      "sourceVersion": "mm-chat.provider-capture-evidence.v2",
+      "contentHash": "5b4c3c8289c6c9ce8eec5f6bdc8af8fda60dea325376d55b7be62d72aaaa50e3"
     }
   ],
   "unresolved": [
@@ -213,6 +228,10 @@
       "reasonCode": "IMMUTABLE_API_VERSION_NOT_PUBLISHED"
     },
     {
+      "field": "identity.region",
+      "reasonCode": "PROCESSING_REGION_NOT_PUBLISHED"
+    },
+    {
       "field": "identity.immutableBuildId",
       "reasonCode": "IMMUTABLE_BUILD_NOT_PUBLISHED"
     },
@@ -222,15 +241,27 @@
     },
     {
       "field": "operations.upload",
-      "reasonCode": "SIGNED_UPLOAD_WIRE_NOT_CAPTURED"
+      "reasonCode": "SIGNED_UPLOAD_WIRE_NOT_RETAINED"
     },
     {
       "field": "operations.poll_batch",
-      "reasonCode": "BATCH_POLL_WIRE_NOT_CAPTURED"
+      "reasonCode": "BATCH_POLL_BODY_NOT_RETAINED"
     },
     {
       "field": "operations.download_result",
-      "reasonCode": "RESULT_DOWNLOAD_WIRE_NOT_CAPTURED"
+      "reasonCode": "RESULT_DOWNLOAD_WIRE_NOT_RETAINED"
+    },
+    {
+      "field": "operations.download_result.archiveEntrySchema",
+      "reasonCode": "RESULT_ARCHIVE_SCHEMA_UNVERIFIED"
+    },
+    {
+      "field": "canonicalIR",
+      "reasonCode": "CANONICAL_IR_MAPPING_UNVERIFIED"
+    },
+    {
+      "field": "citationLocator",
+      "reasonCode": "CITATION_LOCATOR_UNVERIFIED"
     },
     { "field": "operations.cancel", "reasonCode": "CANCEL_API_NOT_PUBLISHED" },
     {
@@ -240,6 +271,10 @@
     {
       "field": "capabilities.spatial",
       "reasonCode": "BBOX_COORDINATE_CONTRACT_NOT_PUBLISHED"
+    },
+    {
+      "field": "capabilities.idempotency",
+      "reasonCode": "IDEMPOTENCY_NOT_PUBLISHED"
     },
     { "field": "governanceTerms", "reasonCode": "TERMS_NOT_VERIFIED" }
   ]

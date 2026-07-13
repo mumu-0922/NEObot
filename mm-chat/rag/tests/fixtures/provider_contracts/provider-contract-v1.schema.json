@@ -483,13 +483,47 @@
             "official_docs",
             "official_openapi",
             "redacted_capture",
+            "redacted_capture_summary",
             "reviewed_terms"
           ]
         },
         "sourceVersion": { "type": "string", "minLength": 1, "maxLength": 128 },
         "contentHash": { "$ref": "#/$defs/hash" },
         "validUntil": { "type": "string", "format": "date-time" }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "sourceKind": { "const": "redacted_capture_summary" }
+            },
+            "required": ["sourceKind"]
+          },
+          "then": {
+            "required": ["sourceVersion", "contentHash"],
+            "properties": {
+              "sourceVersion": {
+                "const": "mm-chat.provider-capture-evidence.v2"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "sourceVersion": {
+                "const": "mm-chat.provider-capture-evidence.v2"
+              }
+            },
+            "required": ["sourceVersion"]
+          },
+          "then": {
+            "properties": {
+              "sourceKind": { "const": "redacted_capture_summary" }
+            }
+          }
+        }
+      ]
     }
   }
 }

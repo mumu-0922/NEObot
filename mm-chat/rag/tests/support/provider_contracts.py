@@ -16,6 +16,8 @@ from urllib.parse import unquote, urlsplit
 
 import rfc8785
 from jsonschema import Draft202012Validator, FormatChecker
+from tools.provider_capture_common import CaptureError, canonical_json_bytes
+from tools.provider_capture_evidence import validate_evidence_snapshot
 
 _FIXTURE_ROOT: Final = Path(__file__).parents[1] / "fixtures" / "provider_contracts"
 _SCHEMA_NAME: Final = "provider-contract-v1.schema.json"
@@ -66,6 +68,13 @@ _MINERU_LOCAL_BATCH_PHASES: Final = frozenset(
         "download_result",
         "cancel",
         "query_by_key",
+    }
+)
+_CAPTURE_SUMMARY_SCHEMA_VERSION: Final = "mm-chat.provider-capture-evidence.v2"
+_CAPTURE_SUMMARY_SCHEMA_VERSIONS: Final = frozenset(
+    {
+        "mm-chat.provider-capture-evidence.v1",
+        _CAPTURE_SUMMARY_SCHEMA_VERSION,
     }
 )
 
@@ -402,10 +411,24 @@ def _validate_semantics(raw: dict[str, Any]) -> None:  # noqa: PLR0915
         phases.add(phase)
         if operation_id != phase:
             raise ContractValidationError("operation ID must equal its phase")
+        support_refs: set[str] = set()
+        if "evidenceRefs" in support:
+            support_refs = set(
+                _string_list(support["evidenceRefs"], "support evidence")
+            )
+            if not support_refs or not support_refs <= evidence_ids:
+                raise ContractValidationError("support references unknown evidence")
         if support_state == "observed":
-            refs = set(_string_list(support.get("evidenceRefs"), "support evidence"))
-            if not refs or not refs <= evidence_ids:
+            if not support_refs:
                 raise ContractValidationError("observed operation lacks evidence")
+            if all(
+                _evidence_by_id(raw, evidence_ref)["sourceKind"]
+                == "redacted_capture_summary"
+                for evidence_ref in support_refs
+            ):
+                raise ContractValidationError(
+                    "observed operation cannot rely only on summary evidence"
+                )
             for field in ("method", "pathTemplate", "request"):
                 if field not in operation:
                     raise ContractValidationError("observed operation is incomplete")
@@ -421,6 +444,10 @@ def _validate_semantics(raw: dict[str, Any]) -> None:  # noqa: PLR0915
         elif any(field in operation for field in ("method", "pathTemplate", "request")):
             raise ContractValidationError(
                 "unknown operation contains invented wire fields"
+            )
+        elif operation["responseCases"]:
+            raise ContractValidationError(
+                "unobserved operation contains invented response cases"
             )
         for response in cast("list[dict[str, Any]]", operation["responseCases"]):
             case_id = _text(response["caseId"], "caseId")
@@ -1018,6 +1045,18 @@ def _validate_mineru_local_batch_shape(
                 )
             else:
                 _validate_mineru_error("allocate_upload", response)
+    for phase in (
+        "upload",
+        "poll_batch",
+        "download_result",
+        "cancel",
+        "query_by_key",
+    ):
+        phase_support = _mapping(operations[phase]["support"], "support")
+        if phase_support["state"] == "observed":
+            raise ContractValidationError(
+                f"MinerU local batch {phase} observed wire is not modeled"
+            )
 
 
 def _validate_mineru_local_batch_request(
@@ -1600,6 +1639,7 @@ def _validate_evidence_freshness(
             raise ContractValidationError("evidence snapshot must be exact bytes")
         if hashlib.sha256(snapshot).hexdigest() != content_hash:
             raise ContractValidationError("evidence snapshot content hash mismatch")
+        _validate_capture_snapshot_provenance(evidence, snapshot)
         observed_at = _parse_timestamp(
             _text(evidence["observedAt"], "evidence observedAt")
         )
@@ -1631,6 +1671,43 @@ def _validate_evidence_freshness(
                 raise ContractValidationError(
                     "terms review falls outside the evidence validity window"
                 )
+
+
+def _validate_capture_snapshot_provenance(
+    evidence: Mapping[str, Any], snapshot: bytes
+) -> None:
+    source_kind = _text(evidence["sourceKind"], "evidence sourceKind")
+    try:
+        parsed = _parse_json(snapshot.decode("utf-8"))
+    except (UnicodeError, ContractValidationError):
+        if source_kind == "redacted_capture_summary":
+            raise ContractValidationError(
+                "capture summary evidence is not strict JSON"
+            ) from None
+        return
+
+    schema_version = parsed.get("schemaVersion")
+    if source_kind != "redacted_capture_summary":
+        if schema_version in _CAPTURE_SUMMARY_SCHEMA_VERSIONS:
+            raise ContractValidationError(
+                "capture summary evidence has the wrong source kind"
+            )
+        return
+    if schema_version != _CAPTURE_SUMMARY_SCHEMA_VERSION:
+        raise ContractValidationError("capture summary evidence version mismatch")
+    if evidence.get("sourceVersion") != schema_version:
+        raise ContractValidationError("capture summary metadata version mismatch")
+    if evidence["observedAt"] != parsed.get("observedAt"):
+        raise ContractValidationError("capture summary observedAt mismatch")
+    try:
+        validate_evidence_snapshot(parsed)
+        canonical = canonical_json_bytes(parsed)
+    except CaptureError as error:
+        raise ContractValidationError(
+            "capture summary evidence violates its producer schema"
+        ) from error
+    if snapshot != canonical:
+        raise ContractValidationError("capture summary evidence is not canonical")
 
 
 def _parse_timestamp(value: str) -> datetime:

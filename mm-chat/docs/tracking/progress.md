@@ -708,8 +708,8 @@ the UI can call in the next wiring slice.
       redirect rejection, Content-Type/size/UTF-8/JSON/shape gates, evidence
       redaction, MinerU `unknown_submission`, permissions, determinism,
       symlink/existing-target refusal, and unchanged dark-run registries.
-- [ ] Execute authorized real Captures for all required Providers and complete
-      independent Evidence review.
+- [x] Execute and validate authorized success-path Captures for Jina and MinerU,
+      revoke temporary credentials, and complete independent Evidence review.
   - [x] Execute and validate the fixed Jina 1024/2048 Embedding plus Rerank
         Capture; verify canonical Hash, closed Schema, `3/3` budget,
         `0700/0600` permissions, redaction, and Git-external storage.
@@ -755,6 +755,11 @@ the UI can call in the next wiring slice.
       closed Allocate fixture, no-network Fake replay, Remote/Local isolation,
       unknown-wire rejection, and draft Freeze rejection without Runtime
       activation.
+- [x] Map the final MinerU Lifecycle success into the Local Batch Draft as
+      `redacted_capture_summary` metadata; keep Upload/Poll/Download Unknown,
+      replace stale `*_NOT_CAPTURED` blockers, and reject Summary-only
+      Observed Wire, dangling Support references, and unobserved Response Cases;
+      close independent review at `P0/P1/P2 = 0/0/0`.
 - [x] Extend the closed MinerU Operation Schema for Allocate/Upload/Batch Poll/
       Result Download while preserving the existing Remote URL Draft.
 - [x] Persist the isolated MinerU Lifecycle Capture Harness plan with fixed
@@ -762,8 +767,9 @@ the UI can call in the next wiring slice.
       ZIP gates, redacted failure states, and v1 compatibility boundary.
 - [x] Implement and review the no-network-by-default MinerU Lifecycle Capture
       CLI without performing a real Provider call or enabling Runtime.
-- [ ] Freeze Signed Host, Upload/Poll/Download, recovery, stable error, immutable
-      build, Region, terms, and SLA evidence for the Local Batch Contract.
+- [ ] Freeze fixture-citable dynamic-target metadata, Upload/Poll/Download Wire,
+      Result Entry Schema/Content, Citation Locator, recovery, stable errors,
+      immutable build, Region, terms, and SLA for the Local Batch Contract.
 - [x] Add and verify the Owner-approved explicit private-proxy compatibility
       path after the first Jina Capture proved WSL direct egress unavailable;
       generic proxy variables must remain ignored and no retry is allowed.

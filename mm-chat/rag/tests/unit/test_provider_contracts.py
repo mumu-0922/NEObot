@@ -9,6 +9,7 @@ from typing import Any
 
 import httpx
 import pytest
+from tools.provider_capture_common import canonical_json_bytes
 
 from tests.support.fake_provider import FakeProvider
 from tests.support.provider_contracts import (
@@ -18,6 +19,7 @@ from tests.support.provider_contracts import (
     parse_provider_contract,
     validate_provider_contract,
 )
+from tests.support.provider_lifecycle import capture_snapshot, lifecycle_transport
 
 _FIXTURES = (
     "mineru-public-draft.json",
@@ -145,7 +147,24 @@ def test_mineru_local_batch_surface_is_distinct_and_fail_closed() -> None:
     assert local.raw["operations"][0]["responseCases"][0]["source"] == (
         "public_schema_synthetic"
     )
-    assert "CAPTURE_BODY_NOT_RETAINED" in local.raw["lifecycle"]["blockedBy"]
+    blockers = set(local.raw["lifecycle"]["blockedBy"])
+    assert "CAPTURE_BODY_NOT_RETAINED" in blockers
+    assert "RESULT_ARCHIVE_SCHEMA_UNVERIFIED" in blockers
+    assert not blockers & {
+        "SIGNED_UPLOAD_HOST_UNKNOWN",
+        "BATCH_POLL_NOT_CAPTURED",
+        "RESULT_DOWNLOAD_NOT_CAPTURED",
+    }
+    evidence = {item["evidenceId"]: item for item in local.raw["evidence"]}[
+        "mineru-lifecycle-summary-20260713t055745z"
+    ]
+    assert evidence["sourceKind"] == "redacted_capture_summary"
+    assert evidence["sourceUrl"] == "https://mineru.net/api/v4/file-urls/batch"
+    assert evidence["sourceVersion"] == "mm-chat.provider-capture-evidence.v2"
+    assert evidence["observedAt"] == "2026-07-13T05:57:45Z"
+    assert evidence["contentHash"] == (
+        "5b4c3c8289c6c9ce8eec5f6bdc8af8fda60dea325376d55b7be62d72aaaa50e3"
+    )
     for phase in (
         "upload",
         "poll_batch",
@@ -159,6 +178,83 @@ def test_mineru_local_batch_surface_is_distinct_and_fail_closed() -> None:
         assert operation.path_template is None
         assert operation.request is None
         assert operation.response_cases == ()
+    for phase in ("upload", "poll_batch", "download_result"):
+        support = next(
+            item["support"]
+            for item in local.raw["operations"]
+            if item["phase"] == phase
+        )
+        assert support["evidenceRefs"] == ("mineru-lifecycle-summary-20260713t055745z",)
+    assert {
+        item["phase"]: item["support"]["reasonCode"]
+        for item in local.raw["operations"]
+        if item["phase"] in {"upload", "poll_batch", "download_result"}
+    } == {
+        "upload": "SIGNED_UPLOAD_WIRE_NOT_RETAINED",
+        "poll_batch": "BATCH_POLL_BODY_NOT_RETAINED",
+        "download_result": "RESULT_DOWNLOAD_WIRE_NOT_RETAINED",
+    }
+
+
+def test_summary_evidence_refs_are_closed_and_cannot_promote_wire() -> None:
+    dangling = _raw("mineru-local-batch-public-draft.json")
+    dangling["operations"][1]["support"]["evidenceRefs"] = ["missing-summary"]
+    with pytest.raises(ContractValidationError, match="unknown evidence"):
+        validate_provider_contract(dangling)
+
+    invented_response = _raw("mineru-local-batch-public-draft.json")
+    invented_response["operations"][1]["responseCases"] = [
+        invented_response["operations"][0]["responseCases"][0]
+    ]
+    with pytest.raises(ContractValidationError, match="invented response"):
+        validate_provider_contract(invented_response)
+
+    summary_only = _raw("mineru-local-batch-public-draft.json")
+    summary_only["operations"][0]["support"]["evidenceRefs"] = [
+        "mineru-lifecycle-summary-20260713t055745z"
+    ]
+    with pytest.raises(ContractValidationError, match="summary evidence"):
+        validate_provider_contract(summary_only)
+
+    capture_case = _raw("mineru-local-batch-public-draft.json")
+    response = capture_case["operations"][0]["responseCases"][0]
+    response["source"] = "redacted_capture"
+    response["evidenceRefs"] = ["mineru-lifecycle-summary-20260713t055745z"]
+    with pytest.raises(ContractValidationError, match="wrong source kind"):
+        validate_provider_contract(capture_case)
+
+    for required_field in ("sourceVersion", "contentHash"):
+        incomplete = _raw("mineru-local-batch-public-draft.json")
+        summary = next(
+            item
+            for item in incomplete["evidence"]
+            if item["sourceKind"] == "redacted_capture_summary"
+        )
+        summary.pop(required_field)
+        with pytest.raises(ContractValidationError, match="schema"):
+            validate_provider_contract(incomplete)
+
+    relabeled = _raw("mineru-local-batch-public-draft.json")
+    summary = next(
+        item
+        for item in relabeled["evidence"]
+        if item["sourceKind"] == "redacted_capture_summary"
+    )
+    summary["sourceKind"] = "redacted_capture"
+    with pytest.raises(ContractValidationError, match="schema"):
+        validate_provider_contract(relabeled)
+
+    invented_wire = _raw("mineru-local-batch-public-draft.json")
+    upload = invented_wire["operations"][0].copy()
+    upload["operationId"] = "upload"
+    upload["phase"] = "upload"
+    upload["method"] = "PUT"
+    upload["pathTemplate"] = "/api-upload/fixture"
+    upload["responseCases"] = [upload["responseCases"][0].copy()]
+    upload["responseCases"][0]["caseId"] = "upload-success"
+    invented_wire["operations"][1] = upload
+    with pytest.raises(ContractValidationError, match="observed wire is not modeled"):
+        validate_provider_contract(invented_wire)
 
 
 async def test_mineru_local_batch_fake_replays_allocate_only() -> None:
@@ -762,6 +858,113 @@ def _frozen_contract() -> tuple[ProviderContract, bytes, dict[str, bytes]]:
         "freezeReportHash": hashlib.sha256(freeze_report).hexdigest(),
     }
     return validate_provider_contract(raw), freeze_report, snapshots
+
+
+def _frozen_contract_with_summary(
+    snapshot: bytes,
+    *,
+    observed_at: str,
+    source_kind: str = "redacted_capture_summary",
+    source_version: str = "mm-chat.provider-capture-evidence.v2",
+) -> tuple[ProviderContract, bytes, dict[str, bytes]]:
+    contract, freeze_report, snapshots = _frozen_contract()
+    raw = contract.mutable_copy()
+    evidence_id = "mineru-lifecycle-summary-freeze-test"
+    raw["evidence"].append(
+        {
+            "evidenceId": evidence_id,
+            "sourceUrl": "https://mineru.net/api/v4/file-urls/batch",
+            "observedAt": observed_at,
+            "sourceKind": source_kind,
+            "sourceVersion": source_version,
+            "contentHash": hashlib.sha256(snapshot).hexdigest(),
+            "validUntil": "2027-07-13T06:07:08Z",
+        }
+    )
+    snapshots[evidence_id] = snapshot
+    raw.pop("integrity")
+    candidate = validate_provider_contract(raw)
+    raw["integrity"] = {
+        "wireContractHash": candidate.wire_contract_hash(),
+        "termsSnapshotHash": candidate.terms_snapshot_hash(),
+        "fixtureSetHash": candidate.fixture_set_hash(),
+        "freezeReportHash": hashlib.sha256(freeze_report).hexdigest(),
+    }
+    return validate_provider_contract(raw), freeze_report, snapshots
+
+
+def test_frozen_summary_revalidates_producer_schema_and_source_kind() -> None:
+    summary = capture_snapshot(lifecycle_transport())
+    snapshot = canonical_json_bytes(summary)
+    observed_at = str(summary["observedAt"])
+    contract, freeze_report, snapshots = _frozen_contract_with_summary(
+        snapshot,
+        observed_at=observed_at,
+    )
+    review_time = datetime(2026, 7, 14, tzinfo=UTC)
+    contract.require_frozen(freeze_report, snapshots, now=review_time)
+
+    invalid_snapshot = canonical_json_bytes(
+        {
+            "observedAt": observed_at,
+            "schemaVersion": "mm-chat.provider-capture-evidence.v2",
+        }
+    )
+    invalid, invalid_report, invalid_snapshots = _frozen_contract_with_summary(
+        invalid_snapshot,
+        observed_at=observed_at,
+    )
+    with pytest.raises(ContractValidationError, match="producer schema"):
+        invalid.require_frozen(
+            invalid_report,
+            invalid_snapshots,
+            now=review_time,
+        )
+
+    relabeled, relabeled_report, relabeled_snapshots = _frozen_contract_with_summary(
+        snapshot,
+        observed_at=observed_at,
+        source_kind="redacted_capture",
+        source_version="fixture-grade-capture-v1",
+    )
+    with pytest.raises(ContractValidationError, match="wrong source kind"):
+        relabeled.require_frozen(
+            relabeled_report,
+            relabeled_snapshots,
+            now=review_time,
+        )
+
+    mismatched_time, mismatched_report, mismatched_snapshots = (
+        _frozen_contract_with_summary(
+            snapshot,
+            observed_at="2026-07-13T06:07:09Z",
+        )
+    )
+    with pytest.raises(ContractValidationError, match="observedAt mismatch"):
+        mismatched_time.require_frozen(
+            mismatched_report,
+            mismatched_snapshots,
+            now=review_time,
+        )
+
+    noncanonical_snapshot = json.dumps(
+        summary,
+        ensure_ascii=False,
+        indent=2,
+        sort_keys=True,
+    ).encode("utf-8")
+    noncanonical, noncanonical_report, noncanonical_snapshots = (
+        _frozen_contract_with_summary(
+            noncanonical_snapshot,
+            observed_at=observed_at,
+        )
+    )
+    with pytest.raises(ContractValidationError, match="not canonical"):
+        noncanonical.require_frozen(
+            noncanonical_report,
+            noncanonical_snapshots,
+            now=review_time,
+        )
 
 
 def test_frozen_contract_revalidates_hash_report_evidence_and_terms() -> None:

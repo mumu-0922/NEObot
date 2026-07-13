@@ -1,8 +1,10 @@
 # MinerU Lifecycle Capture Harness Plan
 
-- 状态：implemented/reviewed；Cloud v4 Lifecycle 已完成真实 Capture，Runtime Adapter 仍未启用
+- 状态：implemented/reviewed；Cloud v4 Lifecycle 已完成真实 Capture；Fixture 仍为
+  `draft/blocked`，Runtime Adapter 未启用
 - 日期：2026-07-13
-- 前置：`mineru_local_batch` Fixture 已建立，但 Upload/Poll/Download 仍为 `unknown`
+- 前置：Upload/Poll/Download 已有成功 Summary，但 Fixture-grade Wire/Schema 未保留，因此
+  Fixture Support 仍为 `unknown`
 
 ## 1. Objective
 
@@ -49,7 +51,8 @@ Redirect。Signed Query 只用于该次请求，不记录名称、值、长度�
   uncompressed、64 MiB per entry；拒绝 encrypted、symlink、absolute/traversal、duplicate
   entry 和异常压缩比。
 - Evidence 只保留状态计数、调用计数、Body/Archive SHA-256、Byte/Entry Count，以及
-  `full.md`、`*_content_list.json`、`*_middle.json|middle.json`、
+  `full.md`、`*_content_list.json`、Cloud v4 `layout.json` 或
+  `*_middle.json|middle.json`、
   `*_model.json|model.json` 是否存在；不保存 Entry Name 或内容。
 
 ## 5. Failure and recovery states
@@ -114,7 +117,9 @@ ZIP 内容或 Token，也不能提升 Fixture。
       v2 语义保持不变，Freeze 继续 blocked。
 - [x] 使用 Owner 授权的一小时 Token 完成修复后全直连 Capture，取得
       `lifecycle_complete`、exit `0` 与四 Role Presence 全真 Evidence；禁止进一步 Harness Capture。
-- [ ] 只有完整 ZIP Evidence 与外部 Authority/Terms/SLA Gate 同时通过，才允许 Fixture Freeze。
+- [ ] 只有可审阅的 Result Entry Schema/Content/Citation Evidence、稳定 Error/Recovery Evidence
+      与外部 Authority/Terms/SLA Gate 同时闭合，才允许 Fixture Freeze；`lifecycle_complete`
+      本身不满足该条件。
 
 第二次独立 Capture 的实际调用数为 `1/1/2/1`，Poll 依次为 `waiting-file/done`。Result URL
 再次通过固定 Target Gate，但 Download 记录闭集 `transportFailureClass=connect_error`，Outcome
@@ -171,6 +176,7 @@ Middle、Model 四个 Role 全部 Presence，历史 Snapshot 与 Freeze 边界�
 Model 四个语义 Role 均存在；Evidence SHA-256 为
 `5b4c3c8289c6c9ce8eec5f6bdc8af8fda60dea325376d55b7be62d72aaaa50e3`，Archive SHA-256 为
 `484549392910218a94bc52598563734d23ffdd0c0dee4e5a2624329a469bdaa8`。Evidence 已按
-`0700/0600` 移至 Git 外 Store，临时脚本已删除，后续 Harness Capture 未获授权。该成功只
-冻结当前 Harness Summary，不证明 Entry Schema/Content、immutable Build、Region、Terms、
-Retention、SLA、Recovery 或 Runtime Promotion。
+`0700/0600` 移至 Git 外 Store，临时脚本已删除，后续 Harness Capture 未获授权。该成功仅以
+Hash 绑定当前 Harness Summary，不等于 Fixture `verified/frozen`，也不证明 Entry
+Schema/Content、Citation Locator、immutable Build、Region、Terms、Retention、SLA、Recovery
+或 Runtime Promotion。

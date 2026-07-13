@@ -31,7 +31,7 @@ URL、Vector 或原始 Provider Body。
 Jina embedding_1024 -> jina-embedding-v4-1024 public draft / embed
 Jina embedding_2048 -> jina-embedding-v4-2048 public draft / embed
 Jina rerank         -> jina-rerank-v3 public draft / rerank
-MinerU batch summary -> mineru-local-batch public draft / allocate_upload observed only
+MinerU lifecycle summary -> mineru-local-batch public draft / support metadata only
 ```
 
 Jina 三个 Success Behavior 可形成 `redacted_capture` Candidate，但当前 Harness 只保留 Closed
@@ -40,9 +40,10 @@ Summary，不保留完整 Vector/Raw Body；在 Freeze Schema 明确允许 Summa
 
 旧 `mineru_async` Draft 描述 Remote URL Flow：`/api/v4/extract/task` 与
 `/api/v4/extract/task/{task_id}`，不能映射 Local Upload Evidence。后续已新增隔离的
-`mineru_local_batch` Draft；Allocate 可使用公开 Schema 与 Capture Summary，Upload/Poll 只有
-脱敏状态摘要而没有可审阅动态 Wire，Download 两次均未成功。因此这些 Lifecycle Evidence
-不能把任何 Operation 提升为 Frozen Wire，也不能验证 Result/Recovery。
+`mineru_local_batch` Draft。最终 v2 Evidence 已证明固定 synthetic 输入的 Allocate、Upload、
+Poll 到 `done` 与 Result Download 成功，但只保留脱敏 Summary。当前 Fixture 因而只引用
+`redacted_capture_summary` metadata；Upload/Poll/Download 仍为 `unknown`，且不能被提升为
+Observed/Frozen Wire，也不能据此验证 Result Schema、Citation 或 Recovery。
 
 ## 3. Terms authority review
 
@@ -73,7 +74,7 @@ Batch Poll 路径与技术限制；它没有证明结果保留、删除、训练
 
 | Field | Jina | MinerU |
 | --- | --- | --- |
-| Base URL / success path | `proven` | Batch Allocate path `proven`；Upload/Poll success summary observed；动态 Wire 未保留；Result blocked |
+| Base URL / success path | `proven` | Batch Allocate path `proven`；Upload/Poll/Download success summary observed；动态 Wire 与 Result Entry Schema/Content 未保留 |
 | Model ID | Capture Response `proven` | Request `vlm` observed；immutable build unknown |
 | Dimension / Index / Usage | 1024/2048 and Rerank `proven` | not applicable to Batch Allocate |
 | Error behavior / Retry-After | OpenAPI-declared only，Capture unknown | unknown；现有 429 Case 仍 synthetic |
@@ -106,20 +107,28 @@ cancel/query_by_key                            # remain unknown until proven
 Remote `submit/poll/result` 不能静默改名复用。最新 Evidence 将 Gate 缩小到
 `archive_invalid`，但未记录 ZIP 子类，仍不能证明 Result Archive Contract。
 修复 Cloud v4 `layout.json` Role 后的成功 Evidence 已证明固定 Harness 能完成完整 Acquisition，
-但只保留 Summary；它不证明 JSON Schema/内容、Locator、Recovery 或 Promotion Readiness。
+但只保留 Summary；它不证明 JSON Schema/内容、Citation Locator、Recovery 或 Promotion
+Readiness。Fixture 已通过专用 `redacted_capture_summary` Evidence metadata 绑定该 Hash；该
+类型强制携带 v2 Version/Hash，Freeze 时重验 Producer Schema 与 Canonical Bytes；不能作为
+`redacted_capture` Response Case，也不能独立支撑 Observed Operation。Local Batch 除 Allocate
+外继续由 Provider-specific Validator 禁止进入 Observed，直至 Fixture-grade Schema 落地。
 
 ## 6. Promotion checklist
 
 - [x] Snapshot 并 Hash 当前官方 OpenAPI/Docs/Terms 来源。
 - [x] 形成逐字段 `proven / contradicted / unknown / not_applicable` 映射。
 - [x] 决定 MinerU 生产使用 Local Batch，不使用 Remote URL Flow。
-- [ ] 明确 Summary-derived Capture Case 的 Closed Schema，或执行允许保留安全 Wire Body 的新 Capture。
+- [x] 完成一次 `lifecycle_complete` Capture，并以专用 Summary Evidence metadata 关联 Draft。
+- [x] 禁止 Summary Evidence 冒充完整 `redacted_capture` Response Case 或 Observed Wire。
+- [ ] 形成可审阅的 Fixture-grade Wire/Result Schema Evidence；不得再次执行未授权 Capture。
 - [ ] 补齐成功之外的稳定 Error Coverage。
 - [ ] 两名 Reviewer（含 `governance_security`）复核 Terms、Hash 与未决项。
 - [ ] 仅在全部 Freeze Gate 通过后生成 Governance Manifest。
 
 ## 7. Rollback
 
-本阶段默认不修改四个 Public Draft Fixture。若 Mapping/Terms 结论错误，删除本报告和
-Git-external Public-source Snapshot 即可；Runtime Registry、Governance、`011/012` 与生产
-Egress 均保持关闭。
+本阶段只修改五个 Public Draft Fixture 中的 Local Batch Draft。完整回滚必须按
+[`mineru-lifecycle-evidence-promotion-plan.md`](./mineru-lifecycle-evidence-promotion-plan.md)
+删除 Summary Evidence metadata/Schema、provenance validator/tests/docs，并恢复其中列出的旧
+Lifecycle Blocker 与 Operation Reason Code；Git-external Evidence 不变，Runtime Registry、
+Governance、`011/012` 与生产 Egress 均保持关闭。

@@ -29,6 +29,12 @@ query_by_key
 完整 `redacted_capture` Body。其余五项均为 `unknown`，不得携带 `method`、`pathTemplate`、
 `request` 或 Response Case。
 
+后续成功 Lifecycle Snapshot 只通过 `redacted_capture_summary` metadata 引用 Git-external
+Evidence Hash。Upload/Poll/Download 可在 Unknown Support 上引用该 Summary，但不能据此晋升为
+Observed；Summary Evidence 也不能作为完整 `redacted_capture` Response Case。Summary 必须
+绑定 v2 Version/Hash，并在 Freeze 时重验 Producer Schema、Observed Time 与 Canonical Bytes；
+改标或任意构造非 Allocate Observed Wire 必须 fail closed。
+
 ## 3. Implementation checklist
 
 - [x] 固定独立 Provider Kind、六阶段 Operation Set 与 Remote/Local 隔离规则。
@@ -37,6 +43,8 @@ query_by_key
 - [x] 对 Allocate Request/Response 使用 Closed Shape；拒绝额外字段、动态 Signed URL、
       Secret-like 字段与 Wire 漂移。
 - [x] 验证未知 Operation 不得携带推测 Wire 字段，且 Frozen Gate 必须拒绝该 Draft。
+- [x] 验证所有 Support Evidence Ref 必须存在，Summary-only Evidence 不能支撑 Observed Wire，
+      Unknown/Unsupported Operation 不得携带 Response Case。
 - [x] 运行 Provider Contract 定向测试、非 Integration 全量测试、Coverage、Ruff、Mypy、
       dependency/security scan，并记录结果。
 

@@ -7706,3 +7706,47 @@ parallel diagnosis agents                   3 completed
 independent final review                    P0/P1/P2 = 0/0/0
 Runtime Registry / Governance / Dispatch    unchanged / disabled
 ```
+
+## 2026-07-13 — MinerU Lifecycle Summary mapped to the blocked Draft
+
+Three parallel xhigh read-only audits mapped the final Git-external Evidence,
+Provider Contract Schema, and Governance/Recovery blockers. The Local Batch
+Fixture now references only stable `redacted_capture_summary` metadata: upstream
+HTTPS entrypoint, observed time, Evidence v2 version, and the canonical Evidence
+SHA-256. The private Snapshot, Token, dynamic targets/IDs, raw bodies, and ZIP
+Entry names/content remain outside Git.
+
+Upload, Poll, and Download stay `support.state=unknown`; their stale
+`*_NOT_CAPTURED` reasons were replaced by exact Wire/Body/Archive blockers.
+Result Entry Schema/Content, Canonical IR, Citation Locator, Recovery,
+Idempotency, immutable identity, Region, and Terms remain unresolved. The
+Allocate response remains `public_schema_synthetic`, and the Fixture remains
+`public_documentation + draft/blocked` with Runtime/Governance disabled.
+
+Independent review first found that editable provenance labels could be used to
+misrepresent Summary bytes. The fix requires Summary Version/Hash, validates the
+exact Git-external bytes against the v2 Producer Schema, observed time, content
+hash, and canonical JSON at Freeze, rejects Summary relabeling, and forbids every
+non-Allocate Local Batch phase from entering Observed until a provider-specific
+Fixture-grade Schema exists. It also closes dangling Support refs and Response
+Cases on Unknown/Unsupported operations. Omission, relabel, arbitrary Wire,
+invalid Producer Schema, observed-time drift, and non-canonical bytes now have
+negative regressions.
+
+```text
+Provider Contract focused tests                    72 passed
+Python non-integration suite                       296 passed / 2 skipped
+Python coverage                                    90.19% (>= 90%)
+Ruff check / format                                passed / 46 files
+Mypy                                               passed / 18 source files
+pip-audit --skip-editable                          no known vulnerabilities
+security / quality scanners on changed code        0 findings
+git diff --check                                   passed
+independent final review                           P0/P1/P2 = 0/0/0
+additional Provider calls / Token use              0 / 0
+Runtime Registry / Governance / Dispatch           unchanged / disabled
+```
+
+Next: define the Offline Parser, Canonical IR, deterministic artifact manifest,
+parent/child chunking, and Citation Locator implementation slice without
+reopening Provider Capture or the production External Gate.

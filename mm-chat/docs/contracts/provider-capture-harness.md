@@ -93,8 +93,9 @@ POST /api/v4/extract/task
 公开资料尚无可靠 query-by-key、idempotency 或 cancel Contract；任何 Submit 后响应丢失都
 记为 `unknown_submission`，调用次数保持 `1`，绝不自动重提。
 
-独立 `tools.provider_capture_mineru_lifecycle` 已执行一次未完成的真实 Capture。它在单一进程内固定
-执行 `1 Allocate + 1 Signed PUT + <=60 Poll + 1 Result Download`，Poll 间隔固定 5 秒；
+独立 `tools.provider_capture_mineru_lifecycle` 已取得一次 `lifecycle_complete` 真实 Capture。
+它在单一进程内固定执行 `1 Allocate + 1 Signed PUT + <=60 Poll + 1 Result Download`，Poll
+间隔固定 5 秒；
 不接受调用方传入 Stage、URL、Host、Batch ID、文件、预算、timeout 或 retry。Upload 只允许
 文档记录的 OSS Host/Path，Download 只允许 MinerU CDN ZIP Host/Path；两者均禁止 Redirect、
 Auth/Cookie 继承，Upload 还禁止 `Content-Type`。任一 Target 漂移只形成脱敏失败状态，不会向

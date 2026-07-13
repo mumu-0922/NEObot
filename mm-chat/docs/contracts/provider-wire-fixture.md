@@ -97,6 +97,15 @@ Response Case 标记来源：
 - `redacted_capture`：授权实测后脱敏；
 - `synthetic_test`：故障注入。
 
+Evidence metadata 额外允许 `redacted_capture_summary`，用于引用 Git-external 的成功状态、
+计数、Hash 与 Presence 摘要。该类型不得作为 Response Case Source，也不能单独支撑
+`support.state=observed`；Unknown/Unsupported Support 若携带 `evidenceRefs`，引用必须存在且
+仍不得携带 Method、Path、Request 或 Response Case。Summary metadata 强制携带
+`sourceVersion=mm-chat.provider-capture-evidence.v2` 与 `contentHash`；Freeze 时必须对精确 Bytes
+重新执行 v2 Producer Schema、Observed Time 与 Canonical JSON 校验，改标为完整
+`redacted_capture` 必须失败。Local Batch 在专用 Upload/Poll/Download Fixture Schema 落地前，
+除 Allocate 外的 Operation 一律禁止进入 Observed。
+
 非 Success Case 必须映射稳定 Upper Snake Error Code，不保留原始 Provider Error、Header
 或正文。
 
@@ -214,11 +223,13 @@ jina-rerank-v3-public-draft.json            blocked
 - <https://api.jina.ai/docs>
 
 公开信息只能证明 Draft 字段。Local Batch Draft 仅开放
-`allocate_upload` 的 `public_schema_synthetic` Fake Replay；真实 Summary Capture 没有保留
-完整 Body，不能冒充 `redacted_capture`。MinerU 用户 Endpoint、不可变 Build、Signed Host、
-Upload/Poll/Download、Recovery、Query-by-key/Cancel、BBox、条款；Jina Immutable Build、
-Region、Account Tier/Batch、Normalization 与条款仍需脱敏实测或 Reviewed Terms，因此 C0
-External Contract Gate 仍关闭。
+`allocate_upload` 的 `public_schema_synthetic` Fake Replay；成功 Summary Capture 通过
+`redacted_capture_summary` metadata 绑定 Git-external Evidence Hash，但没有保留完整 Body，
+不能冒充 `redacted_capture`。Upload/Poll/Download 仍为 Unknown；MinerU 用户 Endpoint、
+不可变 Build、Signed Wire、Result Entry Schema/Content、Citation Locator、Recovery、
+Query-by-key/Cancel、BBox、条款，以及 Jina Immutable Build、Region、Account Tier/Batch、
+Normalization 与条款仍需合规 Evidence 或 Reviewed Terms，因此 C0 External Contract Gate
+仍关闭。
 
 ## 10. Local replay
 
