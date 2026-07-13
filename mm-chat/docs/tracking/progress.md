@@ -713,8 +713,10 @@ the UI can call in the next wiring slice.
   - [x] Execute and validate the fixed Jina 1024/2048 Embedding plus Rerank
         Capture; verify canonical Hash, closed Schema, `3/3` budget,
         `0700/0600` permissions, redaction, and Git-external storage.
-  - [ ] Execute the staged MinerU Submit Capture and review its Evidence without
+  - [x] Execute the staged MinerU Submit Capture and review its Evidence without
         uploading the Signed URL or polling.
+  - [x] Revoke the MinerU Token exposed by an unsafe partial-echo terminal input
+        helper, ban partial Key echo, and retain only the redacted Evidence.
 - [x] Add and verify the Owner-approved explicit private-proxy compatibility
       path after the first Jina Capture proved WSL direct egress unavailable;
       generic proxy variables must remain ignored and no retry is allowed.

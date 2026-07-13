@@ -7293,3 +7293,39 @@ Freeze approval. Public Jina Fixtures remain `draft/blocked` because immutable
 build, inference region, account limits, current terms and SLA are unresolved.
 Next: execute the separately authorized staged MinerU Submit Capture; do not
 upload its Signed URL or poll.
+
+## 2026-07-13 — MinerU staged Evidence captured; exposed Token revoked
+
+The Owner executed the MinerU-only staged plan through the reviewed explicit
+private proxy. The Harness made one local-upload Batch Submit and intentionally
+made zero Signed Upload and zero Poll calls. The resulting Evidence passed the
+closed v1 Schema, canonical-byte, budget, redaction and permission checks:
+
+```text
+Provider / state                         mineru / staged_after_submit
+Submit / Signed Upload / Poll            1/1, 0/0, 0/0
+Batch ID present / Signed URL count      true / 1 (presence/count only)
+Evidence SHA-256                         a47a34559fbd262ba29a59181fe7b3ecedc8f1652305b2f4a22afdb342d23b46
+directory / file mode                    0700 / 0600
+forbidden dynamic ID/header/proxy keys   none
+URL values in Evidence                   none
+```
+
+The Snapshot was moved to
+`~/.local/share/mm-chat/provider-evidence/mineru-20260713T014528Z`; no Capture
+directory remains in the repository.
+
+During operator input, a shell helper built from repeated `read -s -n1` calls
+attempted partial display of a long Token. Clipboard buffering and terminal echo
+transitions exposed substantial Token fragments in scrollback/message output.
+The Owner confirmed revocation immediately after detection; clipboard and
+terminal cleanup was instructed but not independently verified. The revoked
+credential was never written to Evidence, Git or Harness logs, so the redacted
+Capture remains usable.
+
+The partial-echo pattern is now forbidden. Future operator Key entry must use a
+single complete no-echo prompt or a controlled Secret injection path; no Key
+prefix/suffix confirmation is permitted. Both Provider Captures are now present,
+but their Fixtures remain `draft/blocked`: this operator review does not replace
+independent Terms, immutable-build, region, account-limit, recovery and Freeze
+review.

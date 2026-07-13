@@ -1,6 +1,6 @@
 # Provider Capture Harness Contract
 
-- 状态：Phase 15.2C C0 Harness implemented；Jina Capture reviewed，MinerU pending
+- 状态：Phase 15.2C C0 Harness implemented；Jina/MinerU operator Captures reviewed
 - 日期：2026-07-13
 - 实现：`rag/tools/provider_capture.py`（编排）、
   `provider_capture_common.py`、`provider_capture_http.py`、
@@ -23,6 +23,9 @@ Fail-closed 边界：
 - CLI 默认 dry-run，`--execute` 是唯一网络开关；dry-run 不检查 Key、不创建目录或文件；
 - 不加载 dotenv，不接受 Key 参数；只读取当前进程环境中的 `JINA_API_KEY` 与
   `MINERU_API_KEY`，输出、异常和证据均不保留 Key 的值、Hash、长度或前后缀；
+- 交互式 Key 输入只能使用完整 No-echo Prompt 或受控 Secret Injection；禁止用循环
+  `read -s -n1` 实现“部分可见”遮罩，因为长 Clipboard Paste/终端回显切换和换行 Scrollback
+  可能暴露 Token；禁止打印 Key 前后缀作为确认；
 - `httpx.Client(trust_env=False, follow_redirects=False)`，并发和连接池上限为 `1`，无
   retry；connect/read/write/pool timeout 分别固定为 `5/15/15/5s`；请求固定
   `Accept-Encoding: identity`、每次调用前清空 Cookie，响应拒绝压缩编码；
@@ -176,6 +179,13 @@ query-by-key 仍未验证。因此四个 Public Fixture 必须继续 `draft/bloc
 `e0c1ccd82b1a3d09ac65ea37dd7e18c36e06d9cf3b57cf235f150b273436d1a8`。该 Snapshot 已
 移至 Git 外 Store 并保持 `0700/0600`；它不证明 immutable build、region、账户限额或条款，
 也不能单独把 Fixture 晋升为 `verified/frozen`。
+
+同日 MinerU staged plan 完成一次真实 Submit Capture：只调用
+`POST /api/v4/file-urls/batch` 一次，Signed Upload 与 Poll 均为 `0/0`。Canonical Evidence
+SHA-256 为 `a47a34559fbd262ba29a59181fe7b3ecedc8f1652305b2f4a22afdb342d23b46`，已移至
+Git 外 Store 并保持 `0700/0600`。交互式部分遮罩在长 Token 粘贴时发生终端回显泄露；Owner
+随后撤销该 Token。Evidence 不含 Token、动态 ID 或 Signed URL，仍可用于后续人工审阅；
+该事件不提升 Fixture Lifecycle。
 
 ## 7. Rollback
 

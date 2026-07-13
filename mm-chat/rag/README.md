@@ -86,6 +86,9 @@ dry-run creates neither evidence nor Python bytecode cache files. MinerU
 `unknown_submission` writes its recovery evidence but returns exit code `3`.
 Generated `provider-capture-*/` directories are ignored as a defense in depth;
 reviewed Evidence must still be moved to a private Git-external store.
+Provider Keys must be injected with a complete no-echo prompt or controlled
+Secret mechanism. Do not implement partial visibility with repeated
+`read -s -n1`: long clipboard pastes can leak into terminal scrollback.
 When direct WSL egress is unavailable, copy the Owner-controlled proxy into the
 dedicated variable for that one subshell, for example
 `export PROVIDER_CAPTURE_PROXY_URL="$https_proxy"`; the harness validates a
