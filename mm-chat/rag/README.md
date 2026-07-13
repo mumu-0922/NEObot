@@ -31,6 +31,12 @@ may add only a closed `archiveFailureClass` without Entry names or content. It
 remains outside Runtime, no automatic retry is allowed, and no Fixture was
 promoted.
 
+The root cause was a Provider-profile naming mismatch: Cloud v4 calls the Middle
+artifact `layout.json`, while local/open-source output uses `middle.json` or
+`*_middle.json`. The Harness maps both to one semantic Role without recording
+the Entry name. A repaired all-direct Capture completed with all four Role
+Presence booleans true; this remains Acquisition Evidence only.
+
 ## Safety boundaries
 
 - PostgreSQL is authoritative. Runtime SQL calls frozen `SECURITY DEFINER`

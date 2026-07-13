@@ -739,6 +739,9 @@ the UI can call in the next wiring slice.
   - [x] Add a closed, backward-compatible `archiveFailureClass` without Entry
         names/content and fix deterministic Mock ZIP timestamps exposed by the
         expanded regression suite.
+  - [x] Identify the live Cloud v4 Middle artifact as `layout.json`, preserve
+        Local/Open-source `middle.json` compatibility, and complete a real
+        `lifecycle_complete` Capture without relaxing the four-role Gate.
 - [x] Complete the Evidence-to-Fixture Promotion Readiness audit, snapshot and
       hash current Jina/Elastic/MinerU public authorities outside Git, map every
       proven/unknown field, and keep all Fixtures `draft/blocked`.

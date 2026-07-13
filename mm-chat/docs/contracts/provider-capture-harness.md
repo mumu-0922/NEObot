@@ -1,6 +1,6 @@
 # Provider Capture Harness Contract
 
-- 状态：Submit-only v1 与 Lifecycle v2 Harness implemented；最新 Lifecycle Capture 定位为 `archive_invalid`
+- 状态：Submit-only v1 与 Lifecycle v2 Harness implemented；Cloud v4 Lifecycle real Capture complete
 - 日期：2026-07-13
 - 实现：`rag/tools/provider_capture.py`（编排）、
   `provider_capture_common.py`、`provider_capture_http.py`、
@@ -163,6 +163,12 @@ fallback，而是固定 `CAPTURE_FAILED`。该字段同样不具备 Promotion Au
 CRC 值或异常消息。历史 v2
 `archive_invalid` 无该字段时继续有效；未知 Class 或错误 State/父 Class 组合必须拒绝。
 
+Cloud v4 的 Middle Role 使用固定 `layout.json`；Local/Open-source compatibility 使用
+`middle.json` 或 `*_middle.json`。两者映射同一 `middleJsonPresent` Boolean，不保存实际 Entry
+Name。Content List 接受 `content_list.json/*_content_list.json`，Model 接受
+`model.json/*_model.json`，Markdown 只接受固定 `full.md`。Evidence v2 Success 仍要求四个
+语义 Role 全部存在；该 Presence 不证明 JSON Schema 或内容正确。
+
 ## 4. Safe output
 
 `--output-dir` 只接受当前目录下的单一安全目录名。实现拒绝 absolute/path separator、
@@ -272,6 +278,15 @@ Token 不再使用并应撤销。
 `6d227220d52b944a0824a779d00bc595fd3b6f086cdc1753f8e1719c363a4dd6`，按
 `0700/0600` 移至 Git 外 Store；脚本已删除，Owner 已确认撤销 Token。该历史 Snapshot 尚无
 `archiveFailureClass`，不能回填具体 ZIP 原因，也不授权 Fixture Promotion。
+
+修复 Cloud v4 `layout.json` Role 后，Owner 授权的一小时 Token 完成一次全直连固定 Capture：
+`1 Allocate + 1 Upload + 2 Poll + 1 Download`，Outcome 为 `lifecycle_complete`、exit code `0`。
+Download 为 `200 application/zip`，Archive 2,344 bytes、6 entries，四 Role Presence 全为 true。
+Canonical Evidence SHA-256 为
+`5b4c3c8289c6c9ce8eec5f6bdc8af8fda60dea325376d55b7be62d72aaaa50e3`，Archive SHA-256 为
+`484549392910218a94bc52598563734d23ffdd0c0dee4e5a2624329a469bdaa8`；Evidence 已按
+`0700/0600` 移至 Git 外 Store。成功 Capture 不自动修改 Fixture、Freeze External Gate、Apply
+Governance 或启用 Runtime。
 
 ## 7. Rollback
 

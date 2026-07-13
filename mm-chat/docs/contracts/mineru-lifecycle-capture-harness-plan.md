@@ -1,6 +1,6 @@
 # MinerU Lifecycle Capture Harness Plan
 
-- 状态：implemented/reviewed；两次真实 Capture 均在 Download 阶段未完成，Runtime Adapter 未启用
+- 状态：implemented/reviewed；Cloud v4 Lifecycle 已完成真实 Capture，Runtime Adapter 仍未启用
 - 日期：2026-07-13
 - 前置：`mineru_local_batch` Fixture 已建立，但 Upload/Poll/Download 仍为 `unknown`
 
@@ -107,6 +107,13 @@ ZIP 内容或 Token，也不能提升 Fixture。
       Evidence 移至 Git 外 Store，Token 已由 Owner 撤销。
 - [x] 将 `archive_invalid` 拆为闭集 `archiveFailureClass`，不记录 Entry Name/Content，并保持
       既有 v2 failed Evidence 向后兼容。
+- [x] 执行新分类后的全直连 Capture，确认真实失败子类为 `missing_middle_json`，保留并隔离
+      Evidence，不改写历史 Snapshot。
+- [x] 依据 Cloud v4 官方命名修复 Middle Role：接受 `layout.json`，并保留
+      `middle.json/*_middle.json` 作为 Local/Open-source compatibility；四个语义 Role 与 Evidence
+      v2 语义保持不变，Freeze 继续 blocked。
+- [x] 使用 Owner 授权的一小时 Token 完成修复后全直连 Capture，取得
+      `lifecycle_complete`、exit `0` 与四 Role Presence 全真 Evidence；禁止进一步 Harness Capture。
 - [ ] 只有完整 ZIP Evidence 与外部 Authority/Terms/SLA Gate 同时通过，才允许 Fixture Freeze。
 
 第二次独立 Capture 的实际调用数为 `1/1/2/1`，Poll 依次为 `waiting-file/done`。Result URL
@@ -147,3 +154,23 @@ CRC、危险 Entry、解压上限/压缩比或缺少必需 Artifact。
 `compression_ratio_exceeded`、`missing_full_markdown/missing_content_list/missing_middle_json/`
 `missing_model_json`。实现只携带硬编码 Class；Entry Name、数量之外的 Metadata、正文及异常消息
 继续禁止。未知 ZIP 异常不得映射为开放 fallback，必须 `CAPTURE_FAILED`。
+
+新分类上线后的全直连 Capture 实际调用数为 `1/1/2/1`，Evidence SHA-256 为
+`e2c891361c4ba8136bc804d7c3b9a23088a96ff932a7ff1f186895899d3cb7cf`，最终定位为
+`downloadFailureClass=archive_invalid + archiveFailureClass=missing_middle_json`。这证明 ZIP 已通过
+格式、CRC、Entry/path、加密、Symlink、重复、解压上限和压缩比 Gate，也已找到 `full.md` 与
+`content_list.json`；失败只因未找到 `middle.json`。根据 live runtime 优先于文档假设的证据
+顺序，官方 Cloud v4 文档进一步解释了冲突：云端 ZIP 使用固定 `layout.json` 承载开源
+`middle.json` 的语义，而 Harness 只匹配 `middle.json/*_middle.json`。修复因此不是放宽 Gate，
+而是按 Provider Profile 识别同一 Middle Role：Cloud v4 接受 `layout.json`，Local/Open-source
+兼容继续接受 `middle.json/*_middle.json`。Evidence v2 Success 仍要求 Markdown、Content List、
+Middle、Model 四个 Role 全部 Presence，历史 Snapshot 与 Freeze 边界不变。
+
+修复后验证实际调用数为 `1/1/2/1`，Poll 为 `waiting-file/done`，Download 返回
+`200 application/zip`。Archive 为 2,344 bytes、6 entries，Markdown、Content List、Middle、
+Model 四个语义 Role 均存在；Evidence SHA-256 为
+`5b4c3c8289c6c9ce8eec5f6bdc8af8fda60dea325376d55b7be62d72aaaa50e3`，Archive SHA-256 为
+`484549392910218a94bc52598563734d23ffdd0c0dee4e5a2624329a469bdaa8`。Evidence 已按
+`0700/0600` 移至 Git 外 Store，临时脚本已删除，后续 Harness Capture 未获授权。该成功只
+冻结当前 Harness Summary，不证明 Entry Schema/Content、immutable Build、Region、Terms、
+Retention、SLA、Recovery 或 Runtime Promotion。

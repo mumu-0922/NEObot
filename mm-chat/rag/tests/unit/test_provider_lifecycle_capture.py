@@ -260,6 +260,73 @@ def test_complete_lifecycle_has_fixed_calls_headers_and_redacted_evidence() -> N
     validate_evidence_snapshot(snapshot)
 
 
+def test_complete_lifecycle_accepts_cloud_v4_layout_as_middle_role() -> None:
+    snapshot = _capture(
+        _lifecycle_transport(
+            poll_states=["done"],
+            result_entries={
+                "full.md": b"synthetic markdown",
+                "fixture_content_list.json": b"[]",
+                "layout.json": b"{}",
+                "fixture_model.json": b"[]",
+            },
+        )
+    )
+    response = snapshot["providers"][0]["operations"][3]["response"]
+
+    assert snapshot["captureOutcome"] == "lifecycle_complete"
+    assert response["fullMarkdownPresent"] is True
+    assert response["contentListPresent"] is True
+    assert response["middleJsonPresent"] is True
+    assert response["modelJsonPresent"] is True
+    validate_evidence_snapshot(snapshot)
+
+    invalid_type = json.loads(canonical_json_bytes(snapshot))
+    invalid_type["providers"][0]["operations"][3]["response"]["middleJsonPresent"] = 0
+    with pytest.raises(CaptureError, match="EVIDENCE_SCHEMA_INVALID"):
+        validate_evidence_snapshot(invalid_type)
+
+    missing_field = json.loads(canonical_json_bytes(snapshot))
+    missing_field["providers"][0]["operations"][3]["response"].pop("middleJsonPresent")
+    with pytest.raises(CaptureError, match="EVIDENCE_SCHEMA_INVALID"):
+        validate_evidence_snapshot(missing_field)
+
+
+def test_cloud_v4_layout_archive_cli_is_complete(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    exit_code = main(
+        ["--execute", "--output-dir", "capture"],
+        runtime=LifecycleRuntime(
+            environ={"MINERU_API_KEY": _KEY},
+            transport=_lifecycle_transport(
+                poll_states=["done"],
+                result_entries={
+                    "full.md": b"synthetic markdown",
+                    "fixture_content_list.json": b"[]",
+                    "layout.json": b"{}",
+                    "fixture_model.json": b"[]",
+                },
+            ),
+            output_base=tmp_path,
+            now=_OBSERVED_AT,
+            sleeper=lambda _: None,
+        ),
+    )
+    result = json.loads(capsys.readouterr().out)
+    evidence = json.loads(
+        (tmp_path / "capture" / result["evidenceFile"]).read_text(encoding="utf-8")
+    )
+    response = evidence["providers"][0]["operations"][3]["response"]
+
+    assert exit_code == 0
+    assert result["captureOutcome"] == "lifecycle_complete"
+    assert evidence["schemaVersion"] == "mm-chat.provider-capture-evidence.v2"
+    assert response["middleJsonPresent"] is True
+    assert response["modelJsonPresent"] is True
+
+
 def test_complete_cli_writes_private_v2_evidence(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -721,6 +788,13 @@ def test_download_contract_failure_records_only_closed_class(
         )
         with pytest.raises(CaptureError, match="EVIDENCE_SCHEMA_INVALID"):
             validate_evidence_snapshot(invalid_archive)
+
+        legacy_archive = json.loads(evidence)
+        legacy_archive["schemaVersion"] = "mm-chat.provider-capture-evidence.v2"
+        legacy_archive["providers"][0]["operations"][3]["archiveFailureClass"] = (
+            "missing_middle_json"
+        )
+        validate_evidence_snapshot(legacy_archive)
 
 
 def test_unknown_download_contract_error_fails_without_evidence(

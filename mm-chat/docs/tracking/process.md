@@ -7524,10 +7524,6 @@ real Provider retries after incident        0
 Runtime Registry / Governance / Dispatch    unchanged / disabled
 ```
 
-The next network action is not automatic recovery. It requires a fresh Owner
-authorization for one new fixed Lifecycle Capture; the legacy Evidence remains
-immutable and non-promotable.
-
 ## 2026-07-13 — Second MinerU Lifecycle Capture isolated Download connect error
 
 Before the authorized run, one multiline shell paste was split by the terminal.
@@ -7654,5 +7650,59 @@ security scan on rag/tools                  0 findings
 full unit-test security scan                2 existing synthetic fixtures only
 independent final review                    P0/P1/P2 = 0/0/0
 additional Provider calls after revocation  0
+Runtime Registry / Governance / Dispatch    unchanged / disabled
+```
+
+## 2026-07-13 — Cloud v4 layout role fixed; Lifecycle Capture completed
+
+The first Capture after archive subclassing returned
+`archiveFailureClass=missing_middle_json`. Three parallel read-only agents
+compared live Evidence, project contracts, official Cloud v4 documentation,
+Open-source output naming, and downstream reconstruction risk. The decisive
+mismatch was semantic naming: Cloud v4 packages the Middle role as fixed
+`layout.json`, while local output uses `middle.json` or `*_middle.json`. The
+Harness had recognized only the local names and rejected a valid Cloud archive.
+
+The fix adds `layout.json` to the Middle role matcher without weakening ZIP
+safety, size, CRC, four-role Presence, Evidence v2, Promotion, Governance, or
+Runtime boundaries. Mock Cloud layout and CLI exit-zero regressions pass; Local
+middle compatibility remains covered.
+
+Using the Owner-authorized one-hour Token through no-echo PTY stdin, one final
+all-direct Capture completed successfully. Offline inspection confirms that the
+target Evidence and the semantic `mm-chat` diff contain no Token, dynamic URL,
+or dynamic identifier; this statement does not claim global terminal or
+external-system provenance.
+
+```text
+Actual Allocate / Upload / Poll / Download       1 / 1 / 2 / 1
+Capture outcome / CLI exit                       lifecycle_complete / 0
+Download                                         200 application/zip
+Archive bytes / entries                          2,344 / 6
+Four semantic Role Presence                      true / true / true / true
+Evidence SHA-256                                 5b4c3c8289c6c9ce8eec5f6bdc8af8fda60dea325376d55b7be62d72aaaa50e3
+Archive SHA-256                                  484549392910218a94bc52598563734d23ffdd0c0dee4e5a2624329a469bdaa8
+Evidence directory / file mode                   0700 / 0600
+Evidence storage                                 Git-external
+Runtime Registry / Governance / Dispatch         unchanged / disabled
+```
+
+The successful Summary proves the fixed synthetic Acquisition chain only. ZIP
+Entry names/content, JSON Schema, Canonical IR equivalence, citation locators,
+immutable build, Region, Terms, Retention, SLA, and Recovery remain blocked and
+must not be inferred from Presence booleans.
+
+```text
+Lifecycle targeted tests                    78 passed
+Python non-integration suite                294 passed / 2 deselected
+Python coverage                             90.19% (>= 90%)
+Ruff check / format                         passed / 46 files
+Mypy                                        passed / 29 source files
+pip-audit --skip-editable                   no known vulnerabilities
+all six Lifecycle Evidence snapshots        valid under current v2 schema
+security scan on rag/tools                  0 findings
+full unit-test security scan                2 existing synthetic fixtures only
+parallel diagnosis agents                   3 completed
+independent final review                    P0/P1/P2 = 0/0/0
 Runtime Registry / Governance / Dispatch    unchanged / disabled
 ```

@@ -110,6 +110,7 @@ def lifecycle_transport(
     requests: list[httpx.Request] | None = None,
     *,
     poll_states: list[str] | None = None,
+    result_entries: dict[str, bytes] | None = None,
     upload_url: str = UPLOAD_URL,
     result_url: str = RESULT_URL,
 ) -> httpx.MockTransport:
@@ -133,7 +134,7 @@ def lifecycle_transport(
             )
         if request.url.host == "cdn-mineru.openxlab.org.cn":
             return response(
-                archive_bytes(),
+                archive_bytes(result_entries),
                 content_type="application/zip",
             )
         raise AssertionError("unexpected lifecycle request")

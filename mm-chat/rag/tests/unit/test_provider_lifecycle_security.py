@@ -176,6 +176,18 @@ def test_result_archive_classifies_missing_required_artifact(
     assert captured.value.failure_class == expected_class
 
 
+def test_result_archive_accepts_cloud_layout_as_middle_role() -> None:
+    entries = {
+        "full.md": b"x",
+        "fixture_content_list.json": b"[]",
+        "layout.json": b"{}",
+        "fixture_model.json": b"{}",
+    }
+
+    summary = validate_result_archive(_archive(entries))
+    assert summary["middleJsonPresent"] is True
+
+
 @pytest.mark.parametrize(
     ("content", "expected_class"),
     [

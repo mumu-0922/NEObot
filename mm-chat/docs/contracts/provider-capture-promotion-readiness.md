@@ -18,6 +18,8 @@
 | MinerU Lifecycle | `7041a1c09e2f741875ffccb11d97ea806fc63e90e059f390124a1f953f047b55` | Harness Summary 记录 Upload 成功、两次 Poll 到 `done`、Download `connect_error` | 动态 Wire、connect 根因、Result ZIP、Recovery、Build、Region、Terms/SLA |
 | MinerU Lifecycle | `ec5ad91cf1c062d713aa70a62381f2d36b86810ec59c6ba92f93419f3d62dc96` | 全直连 Harness Summary 记录 Upload 成功、两次 Poll 到 `done`、Download 已越过 transport | 具体 Contract Gate、动态 Wire、Result ZIP、Recovery、Build、Region、Terms/SLA |
 | MinerU Lifecycle | `6d227220d52b944a0824a779d00bc595fd3b6f086cdc1753f8e1719c363a4dd6` | 全直连 Harness Summary 将 Download Gate 定位为 `archive_invalid` | 具体 ZIP 子类、Entry/正文、动态 Wire、Recovery、Build、Region、Terms/SLA |
+| MinerU Lifecycle | `e2c891361c4ba8136bc804d7c3b9a23088a96ff932a7ff1f186895899d3cb7cf` | 将历史误判定位为 `missing_middle_json` | Cloud `layout.json` 命名映射、Entry Schema/正文、Recovery、Build、Region、Terms/SLA |
+| MinerU Lifecycle | `5b4c3c8289c6c9ce8eec5f6bdc8af8fda60dea325376d55b7be62d72aaaa50e3` | 全直连 `1/1/2/1` 完成；Download `200 application/zip`；2,344 bytes、6 entries、四 Role Presence | Entry Name/Schema/正文、动态 URL、Recovery、Build、Region、Terms/SLA |
 
 Evidence 保持在 `~/.local/share/mm-chat/provider-evidence/`，不进入 Git。映射产物只能引用
 Hash、Observed Time、Operation 与 allowlisted Summary；不能复制 Token、动态 ID、Signed
@@ -103,6 +105,8 @@ cancel/query_by_key                            # remain unknown until proven
 直连 Evidence 只把失败边界推进到 `download_failed`，未记录具体 Gate，仍阻断 Adapter。旧
 Remote `submit/poll/result` 不能静默改名复用。最新 Evidence 将 Gate 缩小到
 `archive_invalid`，但未记录 ZIP 子类，仍不能证明 Result Archive Contract。
+修复 Cloud v4 `layout.json` Role 后的成功 Evidence 已证明固定 Harness 能完成完整 Acquisition，
+但只保留 Summary；它不证明 JSON Schema/内容、Locator、Recovery 或 Promotion Readiness。
 
 ## 6. Promotion checklist
 

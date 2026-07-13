@@ -97,6 +97,12 @@ an optional closed `archiveFailureClass` may identify only a structural/security
 category or missing required Artifact, never an Entry name, content, or raw ZIP
 metadata.
 
+Provider-profile Role mapping keeps Cloud v4 `layout.json` equivalent to the
+local/open-source `middle.json/*_middle.json` role without persisting either
+name. The repaired Capture completes acquisition with all four Role booleans;
+Schema/content validation and Canonical IR promotion remain separate blocked
+gates.
+
 The harness cannot edit fixtures, freeze the External Gate, derive/apply
 Governance or enable production registries. Docker copies only `src/`, and no
 project script exposes the harness. The complete threat model and operator

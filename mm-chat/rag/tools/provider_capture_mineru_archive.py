@@ -145,7 +145,8 @@ def _required_artifacts(entries: list[zipfile.ZipInfo]) -> JsonObject:
         ),
         "fullMarkdownPresent": "full.md" in basenames,
         "middleJsonPresent": any(
-            name == "middle.json" or name.endswith("_middle.json") for name in basenames
+            name in {"layout.json", "middle.json"} or name.endswith("_middle.json")
+            for name in basenames
         ),
         "modelJsonPresent": any(
             name == "model.json" or name.endswith("_model.json") for name in basenames
