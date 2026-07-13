@@ -21,6 +21,7 @@ from tests.support.provider_contracts import (
 
 _FIXTURES = (
     "mineru-public-draft.json",
+    "mineru-local-batch-public-draft.json",
     "jina-embedding-v4-1024-public-draft.json",
     "jina-embedding-v4-2048-public-draft.json",
     "jina-rerank-v3-public-draft.json",
@@ -120,6 +121,137 @@ def test_mineru_recovery_surface_marks_unpublished_operations_unknown() -> None:
     }
     assert contract.operation("cancel").support_state == "unknown"
     assert contract.operation("query_by_key").support_state == "unknown"
+
+
+def test_mineru_local_batch_surface_is_distinct_and_fail_closed() -> None:
+    remote = load_provider_contract("mineru-public-draft.json")
+    local = load_provider_contract("mineru-local-batch-public-draft.json")
+
+    assert remote.provider_kind == "mineru_async"
+    assert local.provider_kind == "mineru_local_batch"
+    assert {operation.phase for operation in local.operations} == {
+        "allocate_upload",
+        "upload",
+        "poll_batch",
+        "download_result",
+        "cancel",
+        "query_by_key",
+    }
+    allocate = local.operation("allocate_upload")
+    assert allocate.support_state == "observed"
+    assert allocate.method == "POST"
+    assert allocate.path_template == "/api/v4/file-urls/batch"
+    assert allocate.response_cases[0].classification == "success"
+    assert local.raw["operations"][0]["responseCases"][0]["source"] == (
+        "public_schema_synthetic"
+    )
+    assert "CAPTURE_BODY_NOT_RETAINED" in local.raw["lifecycle"]["blockedBy"]
+    for phase in (
+        "upload",
+        "poll_batch",
+        "download_result",
+        "cancel",
+        "query_by_key",
+    ):
+        operation = local.operation(phase)
+        assert operation.support_state == "unknown"
+        assert operation.method is None
+        assert operation.path_template is None
+        assert operation.request is None
+        assert operation.response_cases == ()
+
+
+async def test_mineru_local_batch_fake_replays_allocate_only() -> None:
+    contract = load_provider_contract("mineru-local-batch-public-draft.json")
+    fake = FakeProvider(contract, {"allocate_upload": "allocate-upload-success"})
+    request_json = contract.mutable_copy()["operations"][0]["request"]["body"]["json"]
+    transport = httpx.ASGITransport(app=fake.app)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="https://provider.invalid",
+    ) as client:
+        response = await client.post(
+            "/api/v4/file-urls/batch",
+            headers={"Authorization": "test-only"},
+            json=request_json,
+        )
+
+    assert response.status_code == 200
+    assert response.headers["x-mm-chat-fixture-case"] == "allocate-upload-success"
+    assert response.json()["data"]["batch_id"] == "fixture-batch-id"
+    assert fake.calls[0].operation_id == "allocate_upload"
+
+    with pytest.raises(ContractValidationError, match="unknown operation"):
+        FakeProvider(contract, {"upload": "invented-upload-success"})
+
+
+def test_mineru_remote_and_local_operation_sets_cannot_be_cross_labeled() -> None:
+    local = _raw("mineru-local-batch-public-draft.json")
+    local["providerKind"] = "mineru_async"
+    with pytest.raises(ContractValidationError, match="every recovery phase"):
+        validate_provider_contract(local)
+
+    remote = _raw("mineru-public-draft.json")
+    remote["providerKind"] = "mineru_local_batch"
+    with pytest.raises(ContractValidationError, match="every recovery phase"):
+        validate_provider_contract(remote)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("path", "allocate wire shape"),
+        ("request_extra", "allocate"),
+        ("two_files", "one fixture file"),
+        ("unsafe_filename", "file name is unsafe"),
+        ("response_extra", "response"),
+        ("two_urls", "one upload URL"),
+    ],
+)
+def test_mineru_local_batch_allocate_shape_is_closed(
+    mutation: str, message: str
+) -> None:
+    raw = _raw("mineru-local-batch-public-draft.json")
+    operation = raw["operations"][0]
+    if mutation == "path":
+        operation["pathTemplate"] = "/api/v4/extract/task"
+    elif mutation == "request_extra":
+        operation["request"]["body"]["json"]["url"] = (
+            "https://source.invalid/fixture.pdf"
+        )
+    elif mutation == "two_files":
+        operation["request"]["body"]["json"]["files"].append({"name": "second.pdf"})
+    elif mutation == "unsafe_filename":
+        operation["request"]["body"]["json"]["files"][0]["name"] = "../fixture.pdf"
+    elif mutation == "response_extra":
+        operation["responseCases"][0]["body"]["json"]["data"]["state"] = "pending"
+    else:
+        operation["responseCases"][0]["body"]["json"]["data"]["file_urls"].append(
+            "https://upload.invalid/second.pdf"
+        )
+    with pytest.raises(ContractValidationError, match=message):
+        validate_provider_contract(raw)
+
+
+def test_mineru_local_batch_rejects_dynamic_urls_secrets_and_unknown_wire() -> None:
+    signed_url = _raw("mineru-local-batch-public-draft.json")
+    signed_url["operations"][0]["responseCases"][0]["body"]["json"]["data"][
+        "file_urls"
+    ][0] = "https://upload.invalid/fixture.pdf?X-Amz-Signature=fixture"
+    with pytest.raises(ContractValidationError, match="credential-free HTTPS"):
+        validate_provider_contract(signed_url)
+
+    secret = _raw("mineru-local-batch-public-draft.json")
+    secret["operations"][0]["responseCases"][0]["body"]["json"]["data"][
+        "access_token"
+    ] = "fixture-secret"
+    with pytest.raises(ContractValidationError, match="secret-like field"):
+        validate_provider_contract(secret)
+
+    invented_wire = _raw("mineru-local-batch-public-draft.json")
+    invented_wire["operations"][1]["method"] = "PUT"
+    with pytest.raises(ContractValidationError, match="schema|invented wire"):
+        validate_provider_contract(invented_wire)
 
 
 async def test_fake_provider_replays_fixture_without_network_or_secret_capture() -> (

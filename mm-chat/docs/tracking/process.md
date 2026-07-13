@@ -7375,3 +7375,51 @@ Governance / runtime activation                none
 The readiness report is a fail-closed Candidate Mapping, not a Promotion. Next:
 extend the MinerU Local Batch operation contract and define reviewed
 Summary-derived Capture Case semantics before modifying any Fixture lifecycle.
+
+## 2026-07-13 — MinerU Local Batch draft-contract plan locked
+
+Before changing the shared Provider Contract Schema, the next slice was written
+to `docs/contracts/mineru-local-batch-draft-contract-plan.md`. It creates a
+distinct `mineru_local_batch` Provider Kind and exact six-operation surface so
+the existing `mineru_async` Remote URL Draft cannot be silently repurposed.
+
+Only `allocate_upload` may be `observed` in this slice. Its safe Wire example is
+`public_schema_synthetic`; the existing Capture proves only a redacted Summary
+and is not promoted into a fake full-body Capture. Upload, Batch Poll, Result
+Download, Cancel, and Query-by-key stay `unknown` without invented Method, Path,
+Request, Response, or Signed Host fields. Runtime adapters, Governance,
+Dispatch, `011`, and `012` remain out of scope and disabled.
+
+## 2026-07-13 — MinerU Local Batch public Draft implemented and reviewed
+
+The shared closed Schema now recognizes `mineru_local_batch` separately from
+the existing `mineru_async` Remote URL Flow. The new Fixture fixes the six
+operation phases but exposes Wire fields only for `allocate_upload` at
+`POST /api/v4/file-urls/batch`. Its one success body is explicitly
+`public_schema_synthetic`; `CAPTURE_BODY_NOT_RETAINED` remains a lifecycle
+blocker, and no Signed URL from real Evidence was copied into Git.
+
+The semantic validator closes the Allocate request fields, one-file fixture,
+model consistency, response envelope, Batch ID, and one credential-free
+synthetic upload URL. Regressions reject Remote/Local cross-labeling, extra
+request/response fields, unsafe filenames, dynamic query-bearing URLs,
+secret-like fields, guessed Wire metadata on unknown operations, and fake
+replay of an unknown stage. The old Remote Fixture remains byte-unchanged.
+
+```text
+Provider Contract targeted tests                 70 passed
+Python non-integration suite                     216 passed / 2 deselected
+Python coverage                                  90.19% (>= 90%)
+Ruff check / format                              passed / 37 files
+Mypy                                             24 source files / no issues
+pip-audit --skip-editable                        no known vulnerabilities
+security scan on changed support/fixtures        no findings
+full tests scanner                               2 existing synthetic fixture strings
+Runtime Registry / Governance / Dispatch         unchanged / disabled
+```
+
+The Fixture remains `draft/blocked`; this slice does not freeze Upload Host,
+Batch Poll, Result Download, recovery behavior, stable errors, immutable build,
+Region, Terms, or SLA. Next: design a separately authorized staged
+Upload/Poll/Result Capture before any Adapter implementation or lifecycle
+promotion.

@@ -55,8 +55,18 @@ _MIME_RE: Final = re.compile(
 )
 _URL_TOKEN_RE: Final = re.compile(r"(?i)https?://|(?<!:)//(?=[^\s/?#])")
 _MINERU_START_TIME_RE: Final = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
-_MINERU_PHASES: Final = frozenset(
+_MINERU_REMOTE_PHASES: Final = frozenset(
     {"submit", "poll", "result", "cancel", "query_by_key"}
+)
+_MINERU_LOCAL_BATCH_PHASES: Final = frozenset(
+    {
+        "allocate_upload",
+        "upload",
+        "poll_batch",
+        "download_result",
+        "cancel",
+        "query_by_key",
+    }
 )
 
 
@@ -479,8 +489,15 @@ def _validate_semantics(raw: dict[str, Any]) -> None:  # noqa: PLR0915
                     "frozen operation lacks success/retryable/permanent coverage"
                 )
 
-    if raw["providerKind"] == "mineru_async" and phases != _MINERU_PHASES:
+    if raw["providerKind"] == "mineru_async" and phases != _MINERU_REMOTE_PHASES:
         raise ContractValidationError("MinerU fixture must cover every recovery phase")
+    if (
+        raw["providerKind"] == "mineru_local_batch"
+        and phases != _MINERU_LOCAL_BATCH_PHASES
+    ):
+        raise ContractValidationError(
+            "MinerU local batch fixture must cover every recovery phase"
+        )
     if raw["providerKind"] == "jina_embedding" and phases != {"embed"}:
         raise ContractValidationError(
             "Jina embedding fixture has an invalid operation set"
@@ -724,7 +741,9 @@ def _validate_capability_value(provider_kind: str, field: str, value: object) ->
             "scope",
         }
         keys = set(capability)
-        if provider_kind == "mineru_async" and keys == mineru_fields:
+        if provider_kind in {"mineru_async", "mineru_local_batch"} and keys == (
+            mineru_fields
+        ):
             for name in mineru_fields - {"batchLimitConflictPresent"}:
                 _positive_int(capability[name], f"rateLimits.{name}")
             _boolean(
@@ -739,7 +758,7 @@ def _validate_capability_value(provider_kind: str, field: str, value: object) ->
             return
         raise ContractValidationError("capabilities.rateLimits.value is not closed")
     if field == "spatial":
-        if provider_kind != "mineru_async":
+        if provider_kind not in {"mineru_async", "mineru_local_batch"}:
             raise ContractValidationError(
                 f"{provider_kind} cannot declare observed spatial capability"
             )
@@ -782,6 +801,7 @@ def _validate_capability_value(provider_kind: str, field: str, value: object) ->
 def _validate_not_applicable_fact(provider_kind: str, section: str, field: str) -> None:
     allowed = {
         ("mineru_async", "capabilities", "embedding"),
+        ("mineru_local_batch", "capabilities", "embedding"),
         ("jina_embedding", "capabilities", "spatial"),
         ("jina_rerank", "capabilities", "spatial"),
         ("jina_rerank", "capabilities", "embedding"),
@@ -796,6 +816,12 @@ def _validate_frozen_capability_states(raw: Mapping[str, Any]) -> None:
     provider_kind = _text(raw["providerKind"], "providerKind")
     required: dict[str, dict[str, str]] = {
         "mineru_async": {
+            "idempotency": "observed",
+            "rateLimits": "observed",
+            "spatial": "observed",
+            "embedding": "not_applicable",
+        },
+        "mineru_local_batch": {
             "idempotency": "observed",
             "rateLimits": "observed",
             "spatial": "observed",
@@ -930,6 +956,8 @@ def _validate_provider_shape(raw: dict[str, Any]) -> None:
     }
     if provider_kind == "mineru_async":
         _validate_mineru_shape(raw, operations)
+    elif provider_kind == "mineru_local_batch":
+        _validate_mineru_local_batch_shape(raw, operations)
     elif provider_kind == "jina_embedding":
         _validate_jina_embedding_shape(raw, operations["embed"])
     elif provider_kind == "jina_rerank":
@@ -965,6 +993,103 @@ def _validate_mineru_shape(
                 _validate_mineru_terminal_failure(phase, response)
             else:
                 _validate_mineru_error(phase, response)
+
+
+def _validate_mineru_local_batch_shape(
+    raw: dict[str, Any], operations: dict[str, dict[str, Any]]
+) -> None:
+    allocate = operations["allocate_upload"]
+    support = _mapping(allocate["support"], "support")
+    if support["state"] == "observed":
+        if (
+            allocate.get("method") != "POST"
+            or allocate.get("pathTemplate") != "/api/v4/file-urls/batch"
+        ):
+            raise ContractValidationError(
+                "MinerU local batch allocate wire shape is invalid"
+            )
+        _validate_mineru_local_batch_request(raw, allocate)
+        for response in cast("list[dict[str, Any]]", allocate["responseCases"]):
+            if response["classification"] == "success":
+                _validate_mineru_local_batch_allocate_success(response)
+            elif response["classification"] == "terminal_failure":
+                raise ContractValidationError(
+                    "MinerU local batch allocate cannot be terminal failure"
+                )
+            else:
+                _validate_mineru_error("allocate_upload", response)
+
+
+def _validate_mineru_local_batch_request(
+    raw: dict[str, Any], operation: dict[str, Any]
+) -> None:
+    request = _mapping(operation["request"], "MinerU local batch allocate request")
+    request_body = _mapping(request["body"], "MinerU local batch request body")
+    payload = _mapping(request_body.get("json"), "MinerU local batch request JSON")
+    _require_closed_fields(
+        payload,
+        {
+            "enable_formula",
+            "enable_table",
+            "files",
+            "is_ocr",
+            "model_version",
+        },
+        "MinerU local batch allocate",
+    )
+    for name in ("is_ocr", "enable_formula", "enable_table"):
+        _boolean(payload[name], f"MinerU local batch allocate.{name}")
+    model = _text(payload["model_version"], "MinerU local batch model_version")
+    identity_model = _observed_text(_mapping(raw["identity"], "identity")["modelId"])
+    if identity_model is not None and model != identity_model:
+        raise ContractValidationError(
+            "MinerU local batch identity/request model mismatch"
+        )
+    files = payload["files"]
+    if not isinstance(files, list) or len(files) != 1:
+        raise ContractValidationError(
+            "MinerU local batch allocate must contain one fixture file"
+        )
+    file_item = _mapping(files[0], "MinerU local batch file")
+    _require_closed_fields(file_item, {"name"}, "MinerU local batch file")
+    file_name = _bounded_text(file_item["name"], "MinerU local batch file name")
+    if "/" in file_name or "\\" in file_name or file_name in {".", ".."}:
+        raise ContractValidationError("MinerU local batch file name is unsafe")
+
+
+def _validate_mineru_local_batch_allocate_success(
+    response: dict[str, Any],
+) -> None:
+    payload = _json_body(response, "MinerU local batch allocate response")
+    _require_required_allowed_fields(
+        payload,
+        {"code", "data", "msg"},
+        {"code", "data", "msg", "trace_id"},
+        "MinerU local batch allocate response",
+    )
+    if payload["code"] != 0:
+        raise ContractValidationError(
+            "MinerU local batch allocate response code must be zero"
+        )
+    _bounded_text(payload["msg"], "MinerU local batch response msg")
+    if "trace_id" in payload:
+        _bounded_text(payload["trace_id"], "MinerU local batch trace_id")
+    data = _mapping(payload["data"], "MinerU local batch allocate response data")
+    _require_closed_fields(
+        data,
+        {"batch_id", "file_urls"},
+        "MinerU local batch allocate response data",
+    )
+    _bounded_text(data["batch_id"], "MinerU local batch batch_id")
+    file_urls = data["file_urls"]
+    if not isinstance(file_urls, list) or len(file_urls) != 1:
+        raise ContractValidationError(
+            "MinerU local batch response must contain one upload URL"
+        )
+    _validate_https_url(
+        _text(file_urls[0], "MinerU local batch upload URL"),
+        "MinerU local batch upload URL",
+    )
 
 
 def _validate_mineru_request(

@@ -722,8 +722,17 @@ the UI can call in the next wiring slice.
       proven/unknown field, and keep all Fixtures `draft/blocked`.
 - [x] Select MinerU Local Upload Batch as the production candidate instead of
       Remote URL submission; record that current Capture proves Allocate only.
-- [ ] Extend the closed MinerU Operation Schema for Allocate/Upload/Batch Poll/
-      Result Download and freeze Signed Host, recovery, error and terms evidence.
+- [x] Persist the draft-only MinerU Local Batch Contract plan with a distinct
+      Provider Kind, exact six-operation set, Remote/Local isolation, unknown
+      Wire rules, validation gates, and rollback boundary.
+- [x] Implement and review the separate `mineru_local_batch` public Draft,
+      closed Allocate fixture, no-network Fake replay, Remote/Local isolation,
+      unknown-wire rejection, and draft Freeze rejection without Runtime
+      activation.
+- [x] Extend the closed MinerU Operation Schema for Allocate/Upload/Batch Poll/
+      Result Download while preserving the existing Remote URL Draft.
+- [ ] Freeze Signed Host, Upload/Poll/Download, recovery, stable error, immutable
+      build, Region, terms, and SLA evidence for the Local Batch Contract.
 - [x] Add and verify the Owner-approved explicit private-proxy compatibility
       path after the first Jina Capture proved WSL direct egress unavailable;
       generic proxy variables must remain ignored and no retry is allowed.

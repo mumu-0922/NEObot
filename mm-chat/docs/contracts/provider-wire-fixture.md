@@ -1,10 +1,10 @@
 # Provider Wire Fixture Contract
 
-- 状态：C0 intake implemented and reviewed；MinerU/Jina contracts remain `draft`
-- 日期：2026-07-12
+- 状态：C0 intake implemented and reviewed；Remote/Local MinerU and Jina contracts remain `draft`
+- 日期：2026-07-13
 - Schema：
   `rag/tests/fixtures/provider_contracts/provider-contract-v1.schema.json`
-- 适用：MinerU Parse、Jina Passage Embedding、未来 Jina Rerank
+- 适用：MinerU Remote URL/Local Upload Batch Parse、Jina Passage Embedding、Jina Rerank
 
 > 本 Contract 只允许脱敏公开证据或脱敏实测结果进入 Git。Fixture 通过 Schema 不等于
 > Provider 获准调用；只有 `lifecycle.state=frozen` 且 Freeze Gate 全绿，才能派生
@@ -84,9 +84,12 @@ method / pathTemplate / request          # observed 时必填
 responseCases[]
 ```
 
-MinerU 必须逐项声明 `submit/poll/result/cancel/query_by_key`；未公开能力使用
-`support.state=unknown`，不得猜路径。Jina Passage 使用 `embed`，Rerank 使用 `rerank`。
-所有 Path 禁止 Scheme、Query、Fragment 和 `..`。
+MinerU Remote URL 必须逐项声明
+`submit/poll/result/cancel/query_by_key`；Local Upload Batch 必须逐项声明
+`allocate_upload/upload/poll_batch/download_result/cancel/query_by_key`。两种 Flow 使用独立
+Provider Kind，禁止交叉改名或复用 Wire。未公开/未 Capture 能力使用
+`support.state=unknown`，不得携带猜测的 Method、Path、Request 或 Response。Jina Passage
+使用 `embed`，Rerank 使用 `rerank`。所有静态 Path 禁止 Scheme、Query、Fragment 和 `..`。
 
 Response Case 标记来源：
 
@@ -118,6 +121,9 @@ Classification 与 HTTP Status 强绑定：Success/Malformed Success 只能是 2
 
 ### MinerU
 
+- Remote URL 与 Local Upload Batch 必须独立冻结，不能用一方 Capture 证明另一方；
+- Local Batch 的 Allocate、Signed Upload、Batch Poll、Result Download 必须逐段 Capture，
+  动态 Signed Host/TTL/Redirect/Recovery Policy 必须另行进入 allowlist 和 Freeze Review；
 - 精确 Endpoint/Model/API/Build；
 - Submit/Poll/Result 状态与结果 Archive Schema；
 - Poll/Result 按 `pending/running/done/failed` 使用独立 Closed Variant；Running 固定
@@ -195,6 +201,7 @@ forward migration `012`。
 
 ```text
 mineru-public-draft.json                    blocked
+mineru-local-batch-public-draft.json        blocked
 jina-embedding-v4-1024-public-draft.json   blocked
 jina-embedding-v4-2048-public-draft.json   blocked
 jina-rerank-v3-public-draft.json            blocked
@@ -206,9 +213,12 @@ jina-rerank-v3-public-draft.json            blocked
 - <https://api.jina.ai/openapi.json>
 - <https://api.jina.ai/docs>
 
-公开信息只能证明 Draft 字段。MinerU 用户 Endpoint、不可变 Build、Query-by-key/Cancel、
-BBox、条款；Jina Immutable Build、Region、Account Tier/Batch、Normalization 与条款仍需脱敏
-实测或 Reviewed Terms，因此 C0 External Contract Gate 仍关闭。
+公开信息只能证明 Draft 字段。Local Batch Draft 仅开放
+`allocate_upload` 的 `public_schema_synthetic` Fake Replay；真实 Summary Capture 没有保留
+完整 Body，不能冒充 `redacted_capture`。MinerU 用户 Endpoint、不可变 Build、Signed Host、
+Upload/Poll/Download、Recovery、Query-by-key/Cancel、BBox、条款；Jina Immutable Build、
+Region、Account Tier/Batch、Normalization 与条款仍需脱敏实测或 Reviewed Terms，因此 C0
+External Contract Gate 仍关闭。
 
 ## 10. Local replay
 

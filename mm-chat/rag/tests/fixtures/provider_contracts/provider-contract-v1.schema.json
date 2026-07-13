@@ -31,6 +31,7 @@
     "providerKind": {
       "enum": [
         "mineru_async",
+        "mineru_local_batch",
         "jina_embedding",
         "jina_rerank",
         "synthetic_http"
@@ -383,6 +384,10 @@
             "submit",
             "poll",
             "result",
+            "allocate_upload",
+            "upload",
+            "poll_batch",
+            "download_result",
             "cancel",
             "query_by_key",
             "embed",
