@@ -708,8 +708,13 @@ the UI can call in the next wiring slice.
       redirect rejection, Content-Type/size/UTF-8/JSON/shape gates, evidence
       redaction, MinerU `unknown_submission`, permissions, determinism,
       symlink/existing-target refusal, and unchanged dark-run registries.
-- [ ] Execute an authorized real Provider Capture and complete independent
-      Evidence review; current work has executed MockTransport tests only.
+- [ ] Execute authorized real Captures for all required Providers and complete
+      independent Evidence review.
+  - [x] Execute and validate the fixed Jina 1024/2048 Embedding plus Rerank
+        Capture; verify canonical Hash, closed Schema, `3/3` budget,
+        `0700/0600` permissions, redaction, and Git-external storage.
+  - [ ] Execute the staged MinerU Submit Capture and review its Evidence without
+        uploading the Signed URL or polling.
 - [x] Add and verify the Owner-approved explicit private-proxy compatibility
       path after the first Jina Capture proved WSL direct egress unavailable;
       generic proxy variables must remain ignored and no retry is allowed.

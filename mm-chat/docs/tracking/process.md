@@ -7261,3 +7261,35 @@ This compatibility is operator-only and does not authorize a production RAG
 proxy, freeze any Provider Contract, or close the External Gate. Next: commit
 the reviewed patch, then repeat the Jina Capture once with the dedicated proxy
 variable copied from the Owner's existing WSL proxy environment.
+
+## 2026-07-13 — First authorized Jina Evidence captured and reviewed
+
+After the explicit private-proxy patch was committed, the Owner repeated the
+Jina-only fixed plan with a temporary process-environment Key and the dedicated
+proxy variable. The command completed with `captureOutcome=fixed_plan_complete`
+and wrote one canonical Evidence Snapshot. No Key, Proxy URL or Provider raw
+response was retained.
+
+Review evidence:
+
+```text
+Provider / state                         jina / captured
+fixed operation budget                   3 / 3
+operations                               embedding_1024, embedding_2048, rerank
+captured dimensions                      1024, 2048
+Evidence Schema                          valid closed v1
+Evidence bytes                           canonical
+Evidence SHA-256                         e0c1ccd82b1a3d09ac65ea37dd7e18c36e06d9cf3b57cf235f150b273436d1a8
+directory / file mode                    0700 / 0600
+forbidden dynamic ID/header/proxy keys   none
+URL values in Evidence                   none
+```
+
+The Snapshot was moved out of the repository to the operator Evidence Store at
+`~/.local/share/mm-chat/provider-evidence/jina-20260713T013005Z`; the repository
+now ignores `provider-capture-*/` as a second defense against accidental
+Evidence commits. This is an initial operator review, not the two-reviewer
+Freeze approval. Public Jina Fixtures remain `draft/blocked` because immutable
+build, inference region, account limits, current terms and SLA are unresolved.
+Next: execute the separately authorized staged MinerU Submit Capture; do not
+upload its Signed URL or poll.

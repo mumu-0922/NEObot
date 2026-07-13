@@ -8,4 +8,5 @@ __pycache__/
 .coverage.*
 htmlcov/
 coverage.xml
+provider-capture-*/
 !.env.capture.example

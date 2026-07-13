@@ -84,6 +84,8 @@ The example credential file contains empty values only. The harness does not
 load it or any other dotenv file. `-B` is required by the CLI contract so a
 dry-run creates neither evidence nor Python bytecode cache files. MinerU
 `unknown_submission` writes its recovery evidence but returns exit code `3`.
+Generated `provider-capture-*/` directories are ignored as a defense in depth;
+reviewed Evidence must still be moved to a private Git-external store.
 When direct WSL egress is unavailable, copy the Owner-controlled proxy into the
 dedicated variable for that one subshell, for example
 `export PROVIDER_CAPTURE_PROXY_URL="$https_proxy"`; the harness validates a

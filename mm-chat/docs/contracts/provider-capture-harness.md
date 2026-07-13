@@ -1,6 +1,6 @@
 # Provider Capture Harness Contract
 
-- 状态：Phase 15.2C C0 Harness implemented；real capture not executed
+- 状态：Phase 15.2C C0 Harness implemented；Jina Capture reviewed，MinerU pending
 - 日期：2026-07-13
 - 实现：`rag/tools/provider_capture.py`（编排）、
   `provider_capture_common.py`、`provider_capture_http.py`、
@@ -148,7 +148,8 @@ unset JINA_API_KEY PROVIDER_CAPTURE_PROXY_URL
 ```
 
 `.env.capture.example` 只列空值与安全说明；禁止 `source .env`、dotenv、Shell history 中
-内联 Key 或把真实 Evidence 直接提交 Git。当前任务没有执行上述 `--execute` 命令。
+内联 Key 或把真实 Evidence 直接提交 Git。Capture 目录由 `.gitignore` 防误提交，验收后应
+移动到 Mode `0700/0600` 的 Git 外 Evidence Store。
 `-B` 是 CLI Contract 的一部分，用于禁止 Python bytecode cache；dry-run 因而不产生
 Evidence、目录、`__pycache__` 或 `.pyc`。MinerU `unknown_submission` 会先安全落盘证据，
 再返回 exit code `3`，不得由自动化视为完成。
@@ -169,6 +170,12 @@ Evidence、目录、`__pycache__` 或 `.pyc`。MinerU `unknown_submission` 会�
 Jina OpenAPI 研究基线为 `2026.06.29.1712`；公开 Tier 数值存在冲突，immutable build、
 region、account limits、SLA 未冻结。MinerU immutable build、region、terms、BBox、cancel、
 query-by-key 仍未验证。因此四个 Public Fixture 必须继续 `draft/blocked`。
+
+2026-07-13 的 Jina 固定计划已完成一次真实 Capture：两次 Passage Embedding（1024/2048）
+和一次 Rerank 均通过 Shape Gate，Canonical Evidence SHA-256 为
+`e0c1ccd82b1a3d09ac65ea37dd7e18c36e06d9cf3b57cf235f150b273436d1a8`。该 Snapshot 已
+移至 Git 外 Store 并保持 `0700/0600`；它不证明 immutable build、region、账户限额或条款，
+也不能单独把 Fixture 晋升为 `verified/frozen`。
 
 ## 7. Rollback
 
