@@ -1,6 +1,6 @@
 # Provider Capture Harness Contract
 
-- 状态：Submit-only v1 与 Lifecycle v2 Harness implemented；Lifecycle real Capture pending
+- 状态：Submit-only v1 与 Lifecycle v2 Harness implemented；首次 Lifecycle Capture 在 Download transport 未完成
 - 日期：2026-07-13
 - 实现：`rag/tools/provider_capture.py`（编排）、
   `provider_capture_common.py`、`provider_capture_http.py`、
@@ -93,7 +93,7 @@ POST /api/v4/extract/task
 公开资料尚无可靠 query-by-key、idempotency 或 cancel Contract；任何 Submit 后响应丢失都
 记为 `unknown_submission`，调用次数保持 `1`，绝不自动重提。
 
-独立 `tools.provider_capture_mineru_lifecycle` 已实现但尚未执行真实请求。它在单一进程内固定
+独立 `tools.provider_capture_mineru_lifecycle` 已执行一次未完成的真实 Capture。它在单一进程内固定
 执行 `1 Allocate + 1 Signed PUT + <=60 Poll + 1 Result Download`，Poll 间隔固定 5 秒；
 不接受调用方传入 Stage、URL、Host、Batch ID、文件、预算、timeout 或 retry。Upload 只允许
 文档记录的 OSS Host/Path，Download 只允许 MinerU CDN ZIP Host/Path；两者均禁止 Redirect、
@@ -140,7 +140,14 @@ Entry Name/Content 与原始 Response 永不进入 Evidence。
 
 v2 对 incomplete 状态返回非零并安全写 Evidence：`unknown_submission`、Target rejected、
 Upload/Poll/Download unknown/failed、`poll_exhausted`、`parse_failed`。所有阶段零自动 retry、
-零自动 resubmit；历史 v1 Snapshot 继续由原分支按原 Closed Schema 校验。
+零自动 resubmit。新生成的 transport unknown 可额外记录闭集
+`transportFailureClass`：`connect_timeout/read_timeout/write_timeout/pool_timeout`、
+`connect_error/read_error/write_error/close_error`、`local_protocol_error/remote_protocol_error`、
+`proxy_error/unsupported_protocol/other_transport_error`。分类只来自 `isinstance()`，不保存异常
+消息、动态类名、Request 或 URL；非 `httpx.TransportError` 固定报 `CAPTURE_FAILED`，不得伪装
+成 Provider 网络故障。该字段是非权威诊断，不能驱动 retry、恢复、Fixture Promotion 或稳定
+Provider Error 认定。既有 v2 unknown Snapshot 无该字段时继续有效，其他 State 或未知枚举
+拒绝。历史 v1 Snapshot 继续由原分支按原 Closed Schema 校验。
 
 ## 4. Safe output
 
@@ -187,7 +194,9 @@ uv run python -B -m tools.provider_capture_mineru_lifecycle \
 移动到 Mode `0700/0600` 的 Git 外 Evidence Store。
 `-B` 是 CLI Contract 的一部分，用于禁止 Python bytecode cache；dry-run 因而不产生
 Evidence、目录、`__pycache__` 或 `.pyc`。MinerU `unknown_submission` 会先安全落盘证据，
-再返回 exit code `3`，不得由自动化视为完成。
+再返回 exit code `3`，不得由自动化视为完成。Lifecycle 所有 incomplete Outcome 同样在
+Evidence 安全落盘后返回 terminal/non-retryable exit code `3`；自动化不得重跑、续传或重新
+Submit，后续新 Capture 必须获得独立人工授权。
 
 ## 6. Manual review and freeze flow
 
@@ -218,6 +227,14 @@ SHA-256 为 `a47a34559fbd262ba29a59181fe7b3ecedc8f1652305b2f4a22afdb342d23b46`�
 Git 外 Store 并保持 `0700/0600`。交互式部分遮罩在长 Token 粘贴时发生终端回显泄露；Owner
 随后撤销该 Token。Evidence 不含 Token、动态 ID 或 Signed URL，仍可用于后续人工审阅；
 该事件不提升 Fixture Lifecycle。
+
+同日首次 MinerU Lifecycle Capture 完成 Allocate、Signed PUT 与四次 Poll，Poll 最终为
+`done` 且提供通过 Target Gate 的 Result URL；唯一一次 Download 遇到不可恢复的 transport
+异常，写入 legacy v2 `unknown_download` 并返回 exit code `3`。Canonical Evidence SHA-256
+为 `06edec92a8cbc3dbf96dd261ccfa88cea34b08de703eaefd8ffb088c1aabc4b1`，权限为
+`0700/0600`，并已移至 Git 外 Evidence Store。原始异常分类未被采集，现已不可恢复，禁止
+推测或改写该 Evidence；此次结果只证明 `1/1/4/1` 调用与前三阶段行为，不证明 Result ZIP
+Contract，也不提升 Fixture Lifecycle。
 
 ## 7. Rollback
 

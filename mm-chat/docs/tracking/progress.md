@@ -717,6 +717,14 @@ the UI can call in the next wiring slice.
         uploading the Signed URL or polling.
   - [x] Revoke the MinerU Token exposed by an unsafe partial-echo terminal input
         helper, ban partial Key echo, and retain only the redacted Evidence.
+  - [x] Execute the first full MinerU Lifecycle attempt: Allocate, Signed PUT,
+        and four Poll calls passed; the sole Result Download ended as legacy v2
+        `unknown_download` with private redacted Evidence and no retry.
+  - [x] Add closed HTTPX transport failure classification for future incomplete
+        Evidence while preserving legacy v2 validation and fail-closed behavior
+        for non-transport programming errors.
+  - [ ] Execute one separately authorized follow-up Lifecycle Capture after the
+        diagnostic patch passes independent review; do not promote on failure.
 - [x] Complete the Evidence-to-Fixture Promotion Readiness audit, snapshot and
       hash current Jina/Elastic/MinerU public authorities outside Git, map every
       proven/unknown field, and keep all Fixtures `draft/blocked`.

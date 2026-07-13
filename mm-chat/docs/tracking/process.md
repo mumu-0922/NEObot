@@ -7481,3 +7481,49 @@ Download still lack real reviewed Evidence, and immutable build, Region, stable
 errors, Terms, Retention, License, and SLA remain unknown. Next: commit the
 reviewed no-network implementation, then obtain a newly issued MinerU Token and
 separately authorize exactly one Lifecycle Capture.
+
+## 2026-07-13 — First MinerU Lifecycle Capture stopped at Download
+
+The Owner injected a newly issued MinerU Token through a complete no-echo prompt
+and authorized one fixed Lifecycle Capture. Allocate and Signed PUT returned
+success; four Poll calls observed one each of `waiting-file`, `pending`,
+`running`, and `done`. The one allowed Result Download ended in
+`unknown_download`, so the CLI wrote Evidence and returned exit code `3` without
+retry or resubmit.
+
+The Evidence hash is
+`06edec92a8cbc3dbf96dd261ccfa88cea34b08de703eaefd8ffb088c1aabc4b1`; directory
+and file modes are `0700/0600`, and the immutable bytes were moved to the
+Git-external Evidence Store. Offline review confirmed budgets `1/1/4/1`, no
+dynamic target/identifier/error/archive/key fields, and no ZIP success
+metadata. Because the old producer intentionally collapsed all non-contract
+exceptions, the exact transport cause is unrecoverable and must remain unknown.
+
+The follow-up patch preserves this legacy v2 Snapshot and adds an optional,
+closed `transportFailureClass` only for future HTTPX transport-loss states.
+Classification uses hard-coded `isinstance()` branches and never serializes an
+exception message, class name, Request, URL, proxy, or identifier. Non-HTTPX
+programming failures now escape to the CLI's fixed `CAPTURE_FAILED` path instead
+of producing misleading Provider Evidence. No real retry was performed and all
+Fixtures, Governance, Dispatch, and Runtime handlers remain blocked.
+
+The diagnostic follow-up then passed the complete local gate:
+
+```text
+Lifecycle targeted tests                    58 passed
+Python non-integration suite                274 passed / 2 deselected
+Python coverage                             90.19% (>= 90%)
+Ruff check / format                         passed / 46 files
+Mypy                                        passed / 29 source files
+pip-audit --skip-editable                   no known vulnerabilities
+legacy v2 Evidence validation               passed; bytes/hash unchanged
+security scan on rag/tools                  0 findings
+full unit-test security scan                2 existing synthetic fixtures only
+independent final review                    P0/P1/P2 = 0/0/0
+real Provider retries after incident        0
+Runtime Registry / Governance / Dispatch    unchanged / disabled
+```
+
+The next network action is not automatic recovery. It requires a fresh Owner
+authorization for one new fixed Lifecycle Capture; the legacy Evidence remains
+immutable and non-promotable.

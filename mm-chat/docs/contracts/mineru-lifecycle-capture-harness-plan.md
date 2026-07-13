@@ -1,6 +1,6 @@
 # MinerU Lifecycle Capture Harness Plan
 
-- 状态：implemented/reviewed；真实 Capture 尚未执行，Runtime Adapter 未启用
+- 状态：implemented/reviewed；首次真实 Capture 在 Download 阶段未完成，Runtime Adapter 未启用
 - 日期：2026-07-13
 - 前置：`mineru_local_batch` Fixture 已建立，但 Upload/Poll/Download 仍为 `unknown`
 
@@ -78,6 +78,25 @@ atomic no-overwrite、`0700/0600` Writer。
 
 ## 7. Non-goals and rollback
 
-本轮不执行真实 Capture、不读取 `.env`、不修改 Fixture Lifecycle、不生成 Governance、不实现
-生产 Gateway/Adapter/Dispatcher，也不应用 `011/012`。回滚只删除新增 Lifecycle 模块/测试并
-撤销 Evidence v2 分支；Submit-only v1 Harness、历史 Evidence 和 Runtime 暗运行边界保持不变。
+原 Harness 实现切片不执行真实 Capture，也不读取 `.env`、修改 Fixture Lifecycle、生成
+Governance、实现生产 Gateway/Adapter/Dispatcher 或应用 `011/012`。后续真实执行结果单独记录
+在第 8 节，不改变这些 Runtime 边界。代码回滚只删除新增 Lifecycle 模块/测试并撤销 Evidence
+v2 分支；Submit-only v1 Harness、历史 Evidence 和 Runtime 暗运行边界保持不变。
+
+## 8. First real Capture and diagnostic follow-up
+
+2026-07-13 首次授权 Lifecycle Capture 使用新 Token 和 synthetic PDF，实际预算为
+`Allocate=1 / Upload=1 / Poll=4 / Download=1`。Allocate、Signed PUT 与 Poll 均成功，Poll
+依次观测 `waiting-file/pending/running/done`，但 Download transport 未取得可验证结果，最终
+写入 legacy v2 `unknown_download`。Evidence SHA-256 为
+`06edec92a8cbc3dbf96dd261ccfa88cea34b08de703eaefd8ffb088c1aabc4b1`，目录/文件权限为
+`0700/0600`，并已移至 Git 外 Evidence Store；它不包含 URL、Query、ID、Provider Error、
+ZIP 内容或 Token，也不能提升 Fixture。
+
+- [x] 保留原始 Evidence，不补写已经丢失的异常原因，不自动 retry/resubmit。
+- [x] 为后续 unknown transport 增加闭集 `transportFailureClass`，只按
+      `httpx.TransportError` 类型分类，不保存异常消息、类名、Request 或 URL。
+- [x] 保持 legacy v2 unknown Evidence 无该字段时仍可验证；其他 State 或未知枚举拒绝。
+- [x] 通过定向/全量质量与安全门，并完成独立 Review `P0/P1/P2 = 0/0/0`。
+- [ ] 由 Owner 单独授权一次新 Lifecycle Capture；不得把它表述为旧任务恢复或自动 retry。
+- [ ] 只有完整 ZIP Evidence 与外部 Authority/Terms/SLA Gate 同时通过，才允许 Fixture Freeze。

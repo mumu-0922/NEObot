@@ -55,6 +55,31 @@ _ZIP_CONTENT_TYPES: Final = frozenset(
         "binary/octet-stream",
     }
 )
+_TRANSPORT_FAILURE_TYPES: Final = (
+    (httpx.ConnectTimeout, "connect_timeout"),
+    (httpx.ReadTimeout, "read_timeout"),
+    (httpx.WriteTimeout, "write_timeout"),
+    (httpx.PoolTimeout, "pool_timeout"),
+    (httpx.ConnectError, "connect_error"),
+    (httpx.ReadError, "read_error"),
+    (httpx.WriteError, "write_error"),
+    (httpx.CloseError, "close_error"),
+    (httpx.LocalProtocolError, "local_protocol_error"),
+    (httpx.RemoteProtocolError, "remote_protocol_error"),
+    (httpx.ProxyError, "proxy_error"),
+    (httpx.UnsupportedProtocol, "unsupported_protocol"),
+)
+TRANSPORT_FAILURE_CLASSES: Final = frozenset(
+    failure_class for _, failure_class in _TRANSPORT_FAILURE_TYPES
+) | {"other_transport_error"}
+
+
+class _TransportResponseLostError(CaptureError):
+    """A response-loss marker carrying only one closed, non-sensitive class."""
+
+    def __init__(self, failure_class: str) -> None:
+        super().__init__("PROVIDER_RESPONSE_LOST")
+        self.failure_class = failure_class
 
 
 @dataclass(slots=True)
@@ -172,6 +197,10 @@ def _poll_stage(
                 if str(error) == "PROVIDER_RESPONSE_LOST"
                 else "poll_failed"
             )
+            if isinstance(error, _TransportResponseLostError):
+                json_object(flow.operations[2], "CAPTURE_FAILED")[
+                    "transportFailureClass"
+                ] = error.failure_class
             break
         state_counts[poll_state] = cast("int", state_counts[poll_state]) + 1
         if poll_state in CONTINUE_STATES:
@@ -295,8 +324,8 @@ def _upload_pdf(
             body = _read_bounded(response, _MAX_UPLOAD_RESPONSE_BYTES)
     except CaptureError:
         return "failed", {}
-    except Exception:  # noqa: BLE001
-        return "unknown", {}
+    except httpx.TransportError as error:
+        return "unknown", {"transportFailureClass": _transport_failure_class(error)}
     return "success", {"httpStatus": HTTP_OK, "responseBodyByteCount": len(body)}
 
 
@@ -317,8 +346,8 @@ def _get_json(client: httpx.Client, url: str, api_key: str) -> JsonObject:
             raw = _read_bounded(response, 1_048_576)
     except CaptureError:
         raise
-    except Exception:  # noqa: BLE001
-        raise CaptureError("PROVIDER_RESPONSE_LOST") from None
+    except httpx.TransportError as error:
+        raise _TransportResponseLostError(_transport_failure_class(error)) from None
     return strict_json_object(raw)
 
 
@@ -339,8 +368,8 @@ def _download_result(
             archive = _read_bounded(response, MAX_ARCHIVE_BYTES)
     except CaptureError:
         return "failed", {}
-    except Exception:  # noqa: BLE001
-        return "unknown", {}
+    except httpx.TransportError as error:
+        return "unknown", {"transportFailureClass": _transport_failure_class(error)}
     try:
         summary = validate_result_archive(archive)
     except CaptureError:
@@ -405,6 +434,14 @@ def _normalized_archive_content_type(value: str | None) -> str:
     return normalized
 
 
+def _transport_failure_class(error: httpx.TransportError) -> str:
+    """Reduce transport failures to a closed class without retaining details."""
+    for error_type, failure_class in _TRANSPORT_FAILURE_TYPES:
+        if isinstance(error, error_type):
+            return failure_class
+    return "other_transport_error"
+
+
 def _set_state(
     operations: list[JsonValue],
     operation_name: str,
@@ -439,5 +476,6 @@ __all__ = [
     "LIFECYCLE_SCHEMA_VERSION",
     "POLL_CALL_LIMIT",
     "POLL_INTERVAL_SECONDS",
+    "TRANSPORT_FAILURE_CLASSES",
     "capture_mineru_lifecycle",
 ]

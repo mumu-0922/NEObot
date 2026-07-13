@@ -27,6 +27,7 @@ from tools.provider_capture_mineru_archive import (
 from tools.provider_capture_mineru_lifecycle_http import (
     LIFECYCLE_SCHEMA_VERSION,
     POLL_CALL_LIMIT,
+    TRANSPORT_FAILURE_CLASSES,
 )
 
 _OUTCOME_STATES = {
@@ -202,11 +203,11 @@ def _validate_upload(operation: JsonObject) -> None:
         "state",
         "targetKind",
     }
-    expected = (
-        base | {"httpStatus", "responseBodyByteCount"}
-        if operation["state"] == "success"
-        else base
-    )
+    expected = base
+    if operation["state"] == "success":
+        expected |= {"httpStatus", "responseBodyByteCount"}
+    elif operation["state"] == "unknown" and "transportFailureClass" in operation:
+        expected |= {"transportFailureClass"}
     require_exact_keys(operation, expected)
     if (
         operation["method"] != "PUT"
@@ -220,6 +221,7 @@ def _validate_upload(operation: JsonObject) -> None:
         or not is_nonnegative_int(operation["responseBodyByteCount"])
     ):
         raise CaptureError("EVIDENCE_SCHEMA_INVALID")
+    _validate_transport_failure_class(operation)
 
 
 def _validate_poll(operation: JsonObject) -> None:
@@ -233,6 +235,8 @@ def _validate_poll(operation: JsonObject) -> None:
         "usedCalls",
     }
     expected = base if operation["state"] == "not_attempted" else base | {"response"}
+    if operation["state"] == "unknown_poll" and "transportFailureClass" in operation:
+        expected |= {"transportFailureClass"}
     require_exact_keys(operation, expected)
     used = operation["usedCalls"]
     counts = json_object(operation["stateCounts"], "EVIDENCE_SCHEMA_INVALID")
@@ -252,6 +256,7 @@ def _validate_poll(operation: JsonObject) -> None:
             raise CaptureError("EVIDENCE_SCHEMA_INVALID")
         return
     _validate_poll_response(operation, counts, cast("int", used))
+    _validate_transport_failure_class(operation)
 
 
 def _validate_poll_response(
@@ -297,11 +302,11 @@ def _validate_download(operation: JsonObject) -> None:
         "targetKind",
         "usedCalls",
     }
-    expected = (
-        base | {"httpStatus", "response", "responseContentType"}
-        if operation["state"] == "success"
-        else base
-    )
+    expected = base
+    if operation["state"] == "success":
+        expected |= {"httpStatus", "response", "responseContentType"}
+    elif operation["state"] == "unknown" and "transportFailureClass" in operation:
+        expected |= {"transportFailureClass"}
     require_exact_keys(operation, expected)
     if (
         operation["method"] != "GET"
@@ -320,6 +325,19 @@ def _validate_download(operation: JsonObject) -> None:
         raise CaptureError("EVIDENCE_SCHEMA_INVALID")
     if operation["state"] == "success":
         _validate_download_success(operation)
+    _validate_transport_failure_class(operation)
+
+
+def _validate_transport_failure_class(operation: JsonObject) -> None:
+    if "transportFailureClass" not in operation:
+        return
+    failure_class = operation["transportFailureClass"]
+    if (
+        operation["state"] not in {"unknown", "unknown_poll"}
+        or not isinstance(failure_class, str)
+        or failure_class not in TRANSPORT_FAILURE_CLASSES
+    ):
+        raise CaptureError("EVIDENCE_SCHEMA_INVALID")
 
 
 def _validate_download_success(operation: JsonObject) -> None:

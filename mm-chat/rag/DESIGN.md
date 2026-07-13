@@ -81,10 +81,15 @@ budgets. Provider-derived URLs pass exact documented authority/path gates before
 use; Upload/Download never inherit Auth, Cookie, redirects, or caller targets.
 Poll identity/state shapes are closed, and Result ZIPs are bounded and checked
 without extraction for traversal, symlink, duplicate, encryption, compression,
-CRC, size, entry count, and required artifact presence. Only counts, state,
-hashes, and booleans enter Evidence; dynamic URLs/queries, IDs, errors, entry
-names/content, and response bytes remain memory-only. This CLI has not made a
-real Provider call and does not promote a Fixture or Runtime handler.
+CRC, size, entry count, and required artifact presence. Only fixed counts,
+state, hashes, booleans, and the optional closed `transportFailureClass` enter
+Evidence; dynamic URLs/queries, IDs, errors, entry names/content, and response
+bytes remain memory-only. This CLI has not made a
+successful end-to-end Provider Capture: its first authorized run completed
+Allocate/Upload/Poll but recorded a legacy `unknown_download`. Future HTTPX
+transport losses may record only a closed `transportFailureClass`; exception
+messages, requests, URLs, and identifiers remain forbidden. No result promotes
+a Fixture or Runtime handler automatically.
 
 The harness cannot edit fixtures, freeze the External Gate, derive/apply
 Governance or enable production registries. Docker copies only `src/`, and no

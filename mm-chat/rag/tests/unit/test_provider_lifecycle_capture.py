@@ -336,6 +336,10 @@ def test_upload_response_loss_stops_without_poll_or_retry() -> None:
     assert snapshot["captureOutcome"] == "unknown_upload"
     assert snapshot["budgets"]["mineru"]["usedUploadCalls"] == 1
     assert snapshot["budgets"]["mineru"]["usedPollCalls"] == 0
+    assert (
+        snapshot["providers"][0]["operations"][1]["transportFailureClass"]
+        == "read_error"
+    )
     assert b"sensitive upload transport detail" not in evidence
 
 
@@ -375,7 +379,209 @@ def test_poll_response_loss_records_one_unknown_call_without_retry() -> None:
     assert calls == 3
     assert snapshot["captureOutcome"] == "unknown_poll"
     assert snapshot["budgets"]["mineru"]["usedPollCalls"] == 1
+    assert (
+        snapshot["providers"][0]["operations"][2]["transportFailureClass"]
+        == "read_error"
+    )
     assert b"sensitive poll transport detail" not in evidence
+
+
+@pytest.mark.parametrize(
+    ("error_factory", "expected_class"),
+    [
+        (
+            lambda request: httpx.ConnectTimeout(
+                "sensitive connect timeout", request=request
+            ),
+            "connect_timeout",
+        ),
+        (
+            lambda request: httpx.ReadTimeout(
+                "sensitive read timeout", request=request
+            ),
+            "read_timeout",
+        ),
+        (
+            lambda request: httpx.WriteTimeout(
+                "sensitive write timeout", request=request
+            ),
+            "write_timeout",
+        ),
+        (
+            lambda request: httpx.PoolTimeout(
+                "sensitive pool timeout", request=request
+            ),
+            "pool_timeout",
+        ),
+        (
+            lambda request: httpx.ConnectError(
+                "sensitive connect error", request=request
+            ),
+            "connect_error",
+        ),
+        (
+            lambda request: httpx.ReadError("sensitive read error", request=request),
+            "read_error",
+        ),
+        (
+            lambda request: httpx.WriteError("sensitive write error", request=request),
+            "write_error",
+        ),
+        (
+            lambda request: httpx.CloseError("sensitive close error", request=request),
+            "close_error",
+        ),
+        (
+            lambda request: httpx.LocalProtocolError(
+                "sensitive local protocol", request=request
+            ),
+            "local_protocol_error",
+        ),
+        (
+            lambda request: httpx.RemoteProtocolError(
+                "sensitive protocol", request=request
+            ),
+            "remote_protocol_error",
+        ),
+        (
+            lambda request: httpx.ProxyError("sensitive proxy", request=request),
+            "proxy_error",
+        ),
+        (
+            lambda request: httpx.UnsupportedProtocol(
+                "sensitive unsupported protocol", request=request
+            ),
+            "unsupported_protocol",
+        ),
+        (
+            lambda request: httpx.TransportError(
+                "sensitive future transport", request=request
+            ),
+            "other_transport_error",
+        ),
+    ],
+)
+def test_download_response_loss_records_only_closed_transport_class(
+    error_factory: Callable[[httpx.Request], httpx.TransportError],
+    expected_class: str,
+) -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if request.method == "POST":
+            return _json_response(_allocate_payload())
+        if request.method == "PUT":
+            return _response(b"")
+        if request.url.host == "mineru.net":
+            return _json_response(_poll_payload("done"))
+        raise error_factory(request)
+
+    snapshot = _capture(httpx.MockTransport(handler))
+    evidence = canonical_json_bytes(snapshot)
+    download = snapshot["providers"][0]["operations"][3]
+
+    assert calls == 4
+    assert snapshot["captureOutcome"] == "unknown_download"
+    assert snapshot["budgets"]["mineru"]["usedDownloadCalls"] == 1
+    assert download["transportFailureClass"] == expected_class
+    assert b"sensitive" not in evidence
+    validate_evidence_snapshot(snapshot)
+
+    legacy = json.loads(evidence)
+    legacy["providers"][0]["operations"][3].pop("transportFailureClass")
+    validate_evidence_snapshot(legacy)
+
+    for invalid_class in (None, "dynamic_transport_detail"):
+        invalid = json.loads(evidence)
+        invalid["providers"][0]["operations"][3]["transportFailureClass"] = (
+            invalid_class
+        )
+        with pytest.raises(CaptureError, match="EVIDENCE_SCHEMA_INVALID"):
+            validate_evidence_snapshot(invalid)
+
+
+def test_non_transport_download_error_is_not_misclassified_or_evidenced() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if request.method == "POST":
+            return _json_response(_allocate_payload())
+        if request.method == "PUT":
+            return _response(b"")
+        if request.url.host == "mineru.net":
+            return _json_response(_poll_payload("done"))
+        raise RuntimeError("sensitive programming failure")
+
+    with pytest.raises(RuntimeError, match="sensitive programming failure"):
+        _capture(httpx.MockTransport(handler))
+    assert calls == 4
+
+
+def test_unknown_download_cli_is_terminal_and_existing_output_blocks_network(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def lost_download(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.method == "POST":
+            return _json_response(_allocate_payload())
+        if request.method == "PUT":
+            return _response(b"")
+        if request.url.host == "mineru.net":
+            return _json_response(_poll_payload("done"))
+        raise httpx.ReadError("sensitive download detail", request=request)
+
+    exit_code = main(
+        ["--execute", "--output-dir", "capture"],
+        runtime=LifecycleRuntime(
+            environ={"MINERU_API_KEY": _KEY},
+            transport=httpx.MockTransport(lost_download),
+            output_base=tmp_path,
+            now=_OBSERVED_AT,
+            sleeper=lambda _: None,
+        ),
+    )
+    result = json.loads(capsys.readouterr().out)
+    evidence_path = tmp_path / "capture" / result["evidenceFile"]
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+
+    assert exit_code == 3
+    assert len(requests) == 4
+    assert result["captureOutcome"] == "unknown_download"
+    assert (
+        evidence["providers"][0]["operations"][3]["transportFailureClass"]
+        == "read_error"
+    )
+    assert "sensitive download detail" not in evidence_path.read_text(encoding="utf-8")
+
+    blocked_calls = 0
+
+    def forbidden(_: httpx.Request) -> httpx.Response:
+        nonlocal blocked_calls
+        blocked_calls += 1
+        raise AssertionError("existing output reached network")
+
+    second_exit = main(
+        ["--execute", "--output-dir", "capture"],
+        runtime=LifecycleRuntime(
+            environ={"MINERU_API_KEY": _KEY},
+            transport=httpx.MockTransport(forbidden),
+            output_base=tmp_path,
+            now=_OBSERVED_AT,
+        ),
+    )
+    output = capsys.readouterr()
+
+    assert second_exit == 2
+    assert output.out == ""
+    assert output.err.strip() == "EVIDENCE_TARGET_EXISTS"
+    assert blocked_calls == 0
 
 
 @pytest.mark.parametrize(
@@ -460,3 +666,8 @@ def test_lifecycle_evidence_schema_rejects_dynamic_or_inconsistent_values() -> N
     inconsistent["budgets"]["mineru"]["usedPollCalls"] = 59
     with pytest.raises(CaptureError, match="EVIDENCE_SCHEMA_INVALID"):
         validate_evidence_snapshot(inconsistent)
+
+    misplaced = json.loads(canonical_json_bytes(snapshot))
+    misplaced["providers"][0]["operations"][3]["transportFailureClass"] = "read_error"
+    with pytest.raises(CaptureError, match="EVIDENCE_SCHEMA_INVALID"):
+        validate_evidence_snapshot(misplaced)
