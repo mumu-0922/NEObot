@@ -6,47 +6,23 @@
 
 ## Why Thinking Guides?
 
-**Most bugs and tech debt come from "didn't think of that"**, not from lack of skill:
+**Most bugs and tech debt come from "didn't think of that"**, not from lack of
+skill. Agent allocation adds another failure mode: parallel work can silently
+trade delivery speed for shared-state conflicts, review gaps, or context drift.
 
-- Didn't think about what happens at layer boundaries → cross-layer bugs
-- Didn't think about code patterns repeating → duplicated code everywhere
-- Didn't think about edge cases → runtime errors
-- Didn't think about future maintainers → unreadable code
-
-These guides help you **ask the right questions before coding**.
+This guide helps you **ask the right questions before coding**.
 
 ---
 
 ## Available Guides
 
-| Guide                                                         | Purpose                                                           | When to Use                                                  |
-| ------------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------ |
-| [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md)   | Identify patterns and reduce duplication                          | When you notice repeated patterns                            |
-| [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Think through data flow across layers                             | Features spanning multiple layers                            |
-| [Agent Orchestration Guide](./agent-orchestration.md)         | Allocate Sub-agents and Review Agents without sacrificing quality | When work may benefit from parallelism or independent review |
+| Guide                                                 | Purpose                                                           | When to Use                                                  |
+| ----------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------ |
+| [Agent Orchestration Guide](./agent-orchestration.md) | Allocate Sub-agents and Review Agents without sacrificing quality | When work may benefit from parallelism or independent review |
 
 ---
 
 ## Quick Reference: Thinking Triggers
-
-### When to Think About Cross-Layer Issues
-
-- [ ] Feature touches 3+ layers (API, Service, Component, Database)
-- [ ] Data format changes between layers
-- [ ] Multiple consumers need the same data
-- [ ] You're not sure where to put some logic
-
-→ Read [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md)
-
-### When to Think About Code Reuse
-
-- [ ] You're writing similar code to something that exists
-- [ ] You see the same pattern repeated 3+ times
-- [ ] You're adding a new field to multiple places
-- [ ] **You're modifying any constant or config**
-- [ ] **You're creating a new utility/helper function** ← Search first!
-
-→ Read [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md)
 
 ### When to Think About Agent Orchestration
 
@@ -74,8 +50,8 @@ This single habit prevents most "forgot to update X" bugs.
 
 ## How to Use This Directory
 
-1. **Before coding**: Skim the relevant thinking guide
-2. **During coding**: If something feels repetitive or complex, check the guides
+1. **Before coding**: Skim the orchestration guide when parallel work may help
+2. **During coding**: Recheck it when coordination cost or shared state appears
 3. **After bugs**: Add new insights to the relevant guide (learn from mistakes)
 
 ---
