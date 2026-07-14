@@ -1287,17 +1287,25 @@ Synthetic MinerU `layout`/`middle` 是两个不同的单 Role Artifact，Pair Ga
 
 ### C1.2 Router 与 Sandbox Protocol
 
-- [ ] 实现 Magic/Container-first Router、非自描述文本 Hint/歧义规则与无回退 Error Matrix。
-- [ ] 实现逐 Byte 固定的 Framed UDS Protocol、MIME/Extension Hint、
+- [x] 实现 Magic/Container-first Router、非自描述文本 Hint/歧义规则与无回退 Error Matrix。
+- [x] 实现逐 Byte 固定的 Framed UDS Protocol、MIME/Extension Hint、
       Length/Hash/Deadline/Cancel/Outcome Gate。
-- [ ] 构建 UID `10002` 无网络 Sidecar 与每 Job 独立 Child。
-- [ ] 实现 PID 1 Subreaper、`clone3=ENOSYS`/masked `clone` Seccomp、全后代 Reap 与
+- [x] 构建 UID `10002` 无网络 Sidecar 与每 Job 独立 Child。
+- [x] 实现 PID 1 Subreaper、`clone3=ENOSYS`/masked `clone` Seccomp、全后代 Reap 与
       Supervisor-prebuilt Process Group、Residual-process Restart Gate，并把 Seccomp
       Stage/Hash 纳入 Config。
-- [ ] 实现专用限额 Test Output Root、Ownership Marker、Fork FD Close、Dir-FD/no-follow
+- [x] 实现专用限额 Test Output Root、Ownership Marker、Fork FD Close、Dir-FD/no-follow
       Cleanup 与 flock/Heartbeat Scavenger。
-- [ ] 通过 Archive Duplicate/Header Drift/Encryption、XML/Traversal/XXE/Macro、Child/
+- [x] 通过 Archive Duplicate/Header Drift/Encryption、XML/Traversal/XXE/Macro、Child/
       Sidecar OOM/Fork Bomb/Resource 与 Cleanup 负向测试。
+
+C1.2 实现位于 `mm-chat/rag/src/mm_chat_rag/offline_parser/`。Router 对 49 份冻结 Corpus
+Expectation 全量命中；MMCP Request Binding 固定为 Domain + Header-without-binding JCS +
+Raw Source Digest。Sidecar 只在 `parser-c1` Compose Profile 中运行，UID/GID
+`10002:10001`、PID 1、`network_mode:none`，生产 Registry/Dispatch 仍为空。已识别格式在
+C1.3 前仍 Fail Closed 为 `FORMAT_UNSUPPORTED`，不生成占位 Canonical IR。190 项 C1.2
+定向测试、866 项全量测试、91.16% Coverage、Ruff/Format/Mypy、pip-audit、离线 Wheel、
+三运行时 JCS 与 Docker 实镜 Smoke 均通过。
 
 ### C1.3 Native Parsers
 
@@ -1355,5 +1363,6 @@ C1 Offline Parser/Canonical IR
   -> Canary/Rebuild/Controlled Activation
 ```
 
-下一实施刀固定为 **C1.1 Contract 与 Corpus**。在 C1.1 Schema、Hash 和 Fixture Gate 完成
-前，不应并行编写多个格式 Parser，以免把未冻结语义固化进实现。
+下一实施刀固定为 **C1.3 Native Parsers**。保持 Registry/Dispatch、Provider、数据库、
+迁移 `011/012` 与生产 Handler 关闭；Parser 必须复用 C1.2 Router/Sandbox，禁止绕过 MMCP、
+Process-group/Seccomp、资源与 Cleanup Gate。

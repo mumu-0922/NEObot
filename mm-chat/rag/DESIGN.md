@@ -154,6 +154,178 @@ loader, and module documentation while rejecting tests, tools, extra contract
 files, duplicate members, links, and unsafe paths. Building remains an explicit
 operator/CI step so verification never triggers dependency resolution.
 
+## Phase 15.2C C1.2 offline router and sandbox protocol
+
+### 1. Scope / Trigger
+
+C1.2 is the executable security boundary between untrusted Source bytes and a
+future Native Parser. It implements format admission, MMCP v1 transport,
+process isolation, resource termination, and owned test-output cleanup. It does
+not implement Canonical IR generation, database staging, Provider access,
+migration `011/012`, Worker dispatch, or query/runtime promotion.
+
+The critical ordering is:
+
+```text
+Controller source stat/hash + bound request
+  -> private UDS MMCP frame
+  -> Supervisor starts clean interpreter in a prebuilt process group
+  -> Parent opens pidfd and verifies child PID/PGID
+  -> one-byte parent/child handshake
+  -> Child installs RLIMIT + no-new-privileges + child seccomp
+  -> Child reports the compiled-filter hash
+  -> only then may Source bytes enter the child
+  -> route-only outcome; C1.3 parser remains closed
+```
+
+### 2. Signatures
+
+- Console scripts:
+  - `parser-sidecar [--socket PATH]`
+  - `parser-harness-smoke`
+- Controller:
+  - `ParserController.invoke(source, invocation_id, declared_mime=None,
+declared_extension=None, cancelled=None) -> ControllerOutcome`
+- Router:
+  - `route_source(source, declared_mime=None, declared_extension=None) ->
+RouteDecision`
+- Output root:
+  - `OwnedOutputRoot.create(parent=/run/mm-chat-parser-harness) ->
+OwnedOutputRoot`
+  - `write_artifact(relative_path, content)`
+  - `scavenge_stale_roots(parent, stale_after_seconds)`
+- Compose profile:
+  - `docker compose -f mm-chat/compose.single-server.yml --profile parser-c1
+up ... parser-harness-smoke`
+
+### 3. Contracts
+
+MMCP v1 is exactly one request and one response per Unix-socket connection:
+
+```text
+4  bytes  "MMCP"
+1  byte   protocol major = 1
+1  byte   frame type = 1 request | 2 response
+2  bytes  reserved = 0
+4  bytes  unsigned big-endian JCS header length, <= 16384
+8  bytes  unsigned big-endian body length
+N  bytes  exact canonical integer-only JCS header
+M  bytes  exact body
+```
+
+`requestBindingHash` is frozen as:
+
+```text
+SHA256(
+  ASCII("mm-chat.parser-request-binding.v1\n") ||
+  JCS(request header without requestBindingHash) ||
+  raw 32-byte SHA256(source)
+)
+```
+
+The child receives a closed, Supervisor-generated internal header only after
+the process-group/pidfd/filter handshake. It does not inherit arbitrary host
+environment variables. Resource values come from the same hash-bound
+`ParserHarnessConfig`; the only extra inherited value during tests is
+coverage.py's serialized instrumentation config, and coverage.py is absent from
+the runtime image.
+
+Deployment invariants:
+
+- Sidecar UID/GID `10002:10001`; Worker remains `10001:10001`.
+- Sidecar is container PID 1 and installs `PR_SET_CHILD_SUBREAPER`.
+- `network_mode: none`, read-only root, all capabilities dropped,
+  `no-new-privileges`, `768 MiB`, `1 CPU`, `64 PID`.
+- Docker baseline seccomp source and classic-BPF child instructions are hashed
+  into the config. Child `clone3` returns `ENOSYS`; Namespace clone bits,
+  `setsid`, `setpgid`, `unshare`, `setns`, `ptrace`, and network sockets fail.
+- Test output parent is fixed, mode `0700`, and quota-split at
+  `512 MiB / 20000` inodes with one active run and a `256 MiB / 10000` artifact
+  ceiling.
+
+### 4. Validation & Error Matrix
+
+| Condition                                                         | Outcome                                                      |
+| ----------------------------------------------------------------- | ------------------------------------------------------------ |
+| Magic/Container conflicts with MIME/extension                     | `FORMAT_MISMATCH`                                            |
+| TXT/Markdown/CSV lacks one unique registered hint                 | `FORMAT_AMBIGUOUS`                                           |
+| Invalid ZIP/XML/PDF structure, traversal, duplicate, header drift | `INPUT_INVALID`                                              |
+| Archive entry/count/ratio/expanded/path limit                     | `ARCHIVE_LIMIT_EXCEEDED`                                     |
+| Macro/OLE or macro-enabled OOXML                                  | `ACTIVE_CONTENT_UNSUPPORTED`                                 |
+| Scanned/mixed/complex-layout PDF                                  | `MINERU_REQUIRED`, zero body                                 |
+| Frame, JCS, binding, hash, deadline, invocation, or tail mismatch | `PROTOCOL_INVALID`                                           |
+| Child wall deadline / address-space exhaustion                    | `PARSER_TIMEOUT` / `PARSER_MEMORY_LIMIT`                     |
+| Caller cancellation                                               | Controller-local `PARSER_CANCELLED`; never on wire           |
+| EOF/reset/Sidecar death                                           | Controller-local `PARSER_SANDBOX_UNAVAILABLE`; never on wire |
+| Any descendant remains after main child exits                     | kill/reap group and force Sidecar restart                    |
+| Routed format before C1.3                                         | wire `FORMAT_UNSUPPORTED`; no fake Canonical IR              |
+| Marker/lock/device/inode/PID/mode/ledger mismatch                 | refuse cleanup and retain for review                         |
+
+### 5. Good / Base / Bad Cases
+
+- Good: a valid DOCX with matching `.docx` hint routes to `docx` in the child,
+  but C1.2 returns `FORMAT_UNSUPPORTED` because no Native Parser is active.
+- Base: plain UTF-8 bytes without MIME/extension return
+  `FORMAT_AMBIGUOUS`; Compose smoke asserts this exact zero-body response.
+- Bad: a ZIP with duplicate names, encrypted entries, Local/Central Header
+  drift, traversal, macro, or XXE is rejected before any parser fallback.
+- Bad: timeout, OOM, double-fork, and bounded fork-bomb probes are terminated;
+  descendant presence trips the restart fence even after successful reaping.
+- Bad: an unregistered symlink or tampered ownership marker blocks cleanup;
+  the harness never follows or recursively deletes it.
+
+### 6. Tests Required
+
+- Corpus router: all 49 frozen route/error expectations, including Archive,
+  OOXML/XML, PDF, encoding, and limit negatives.
+- Protocol: exact prefix/header/body lengths, canonical JCS, duplicate keys,
+  source/binding/result hashes, deadline, response discriminator, tail bytes,
+  and Controller-only errors.
+- Sandbox: real seccomp install/hash, pidfd/process group, OOM, timeout, cancel,
+  double-fork, bounded fork bomb, full descendant reap, and restart gate.
+- Output root: admission flock, quotas, `O_NOFOLLOW`, marker identity, unexpected
+  child refusal, dead-owner scavenging, and temp-file rollback.
+- Deployment: script/Registry fences, UID/PID1/network/seccomp/tmpfs Compose
+  invariants, image build, and isolated `parser-c1` smoke.
+- Full quality: Ruff, Format, strict Mypy, Pytest with coverage `>=90%`,
+  pip-audit, offline wheel verification, and Python/Go/Node JCS equality.
+
+### 7. Wrong vs Correct
+
+Wrong: accept an extension as authority, parse in the Supervisor, fall back to
+TXT after a binary error, or return a placeholder success before C1.3.
+
+```python
+# Wrong: bytes enter a parser before process isolation and errors are hidden.
+try:
+    return parse_docx(source)
+except Exception:
+    return parse_txt(source)
+```
+
+Correct: independently bind bytes, route by Magic/Container first, send Source
+only after the child handshake/filter hash, and expose one stable no-fallback
+outcome.
+
+```python
+request = build_request_header(source=source, ...)
+request.validate_body(source, expected_config_hash=config.config_hash)
+result = SandboxSupervisor(config).route(source, declared_extension=".docx")
+assert result.parser_format == ParserFormat.DOCX
+# C1.2 still cannot emit Canonical IR success.
+```
+
+### Security limitations
+
+The resource values remain C1 candidates pending worst-case Fresh-container
+Corpus tuning. `RLIMIT_NPROC` is charged against a host UID, so unit probes add
+bounded test-only headroom when `/proc` exposes only a PID namespace; production
+uses the dedicated UID plus the container PID limit. Python/stdlib XML parsing
+is preceded by byte-level DTD/Entity/XInclude rejection and has no external
+fetch path, but full Native Parser accuracy and deterministic Canonical IR are
+C1.3/C1.4 gates. Cgroup-level Sidecar OOM is represented as Controller-local
+Sandbox Unavailable; it never becomes a forged wire response.
+
 ## Process topology
 
 One process owns:

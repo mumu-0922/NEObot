@@ -18,6 +18,15 @@ Phase 15.2C C1.1 adds installable, versioned Offline Parser schemas under
 cross-runtime gates. This freezes artifact shapes and hash inputs only; it does
 not implement a parser, create derived output, or enable a runtime registry.
 
+Phase 15.2C C1.2 adds the runtime-inert `mm_chat_rag.offline_parser` harness:
+Magic/Container-first routing, exact MMCP v1 framing over a private Unix socket,
+an exec-isolated child with pre-source process-group/seccomp handshakes, and a
+marker/lock/dir-FD owned test-output root. The Compose `parser-c1` profile runs
+the sidecar as PID 1 under UID `10002`, with no network, credentials, database,
+Redis, MinIO, Provider access, or production handler registration. A routed
+format still returns `FORMAT_UNSUPPORTED` until C1.3 produces independently
+validated Canonical IR; C1.2 never forges a success candidate.
+
 The operator-only C0 Provider Capture Harness lives in
 `tools/provider_capture.py`. It defaults to a redacted, zero-network dry-run and
 is not a production console script. Real egress requires explicit `--execute`
@@ -107,6 +116,28 @@ uv run pytest -p no:cacheprovider \
   tests/unit/test_jcs_interop.py
 uv run python -B -m tools.verify_jcs_interop --require-all
 ```
+
+C1.2 router/protocol/sandbox/output-root gates and the isolated Compose smoke:
+
+```bash
+uv run pytest -p no:cacheprovider \
+  tests/unit/test_parser_router.py \
+  tests/unit/test_parser_protocol.py \
+  tests/unit/test_parser_sandbox.py \
+  tests/unit/test_parser_output_root.py \
+  tests/unit/test_parser_transport.py \
+  tests/unit/test_parser_deployment_boundary.py
+
+docker compose -f ../compose.single-server.yml --profile parser-c1 build \
+  parser-sidecar
+docker compose -f ../compose.single-server.yml --profile parser-c1 up \
+  --abort-on-container-exit --exit-code-from parser-harness-smoke \
+  parser-harness-smoke
+```
+
+The smoke sends only an ambiguous synthetic text request and expects the closed
+`FORMAT_AMBIGUOUS` response. It does not mount Source files, start a Native
+Parser, connect a production Worker, or leave the Parser Registry enabled.
 
 The second command is the mandatory C1.1 interoperability gate. It fails when
 Go 1.22 or Node 22 is absent or when Python, Go, and JavaScript disagree on any

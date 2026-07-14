@@ -785,6 +785,13 @@ the UI can call in the next wiring slice.
       JSON/JCS, semantic ordering/exact-cover/DAG/count/hash gates, existing-
       wheel packaging checks, and Python/Go/Node equality without enabling
       runtime handlers.
+- [x] Complete C1.2 Router and Sandbox Protocol: match all 49 frozen route/error
+      expectations; add exact MMCP v1 UDS framing/binding/outcome gates;
+      isolate each job behind PID1 Subreaper, pidfd/process-group handshake,
+      RLIMIT and hashed Seccomp; add owned quota/marker/flock/dir-FD cleanup;
+      pass OOM/timeout/cancel/fork-bomb/residual, Docker no-network UID `10002`,
+      866-test/91.16%-coverage, wheel/JCS/security gates without enabling a
+      Native Parser or production Registry.
 - [ ] Implement and verify the offline parser, Canonical IR, parent/child
       chunking, Provider fake servers, and deterministic manifests.
 - [ ] Select the production tokenizer/dimension/search profile using real Jina

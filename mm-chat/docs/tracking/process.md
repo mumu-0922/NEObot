@@ -7834,3 +7834,52 @@ Runtime Registry / Dispatch / migration               unchanged / disabled / 010
 Next: implement **C1.2 Router and Sandbox Protocol** only. Keep Native Parser,
 Provider Adapter, migration `011/012`, and production Handler activation closed
 until their ordered gates are complete.
+
+## 2026-07-14 — C1.2 Router and Sandbox Protocol implemented
+
+C1.2 now provides a runtime-inert `offline_parser` package. Magic/Container
+precedes structured preflight and MIME/Extension reconciliation; all 49 frozen
+Corpus route/error expectations match without Binary-to-TXT, OOXML-to-ZIP-text,
+PDF-to-Provider, Unicode replacement, or best-effort fallback. Exact MMCP v1
+frames bind Invocation, Config, Source length/hash, deadline, caller result
+limit, and a domain-separated request hash; Controller-local Cancel and
+Sandbox-Unavailable outcomes remain forbidden on the wire.
+
+The Sidecar runs only under the isolated `parser-c1` Compose Profile as PID 1,
+UID/GID `10002:10001`, with no network, credentials, database, Redis, MinIO,
+Provider, host mount, or Runtime Registry. A clean interpreter is created in a
+Supervisor-prebuilt Process Group; Parent verifies PID/PGID and opens pidfd,
+Child re-confirms Group, installs RLIMIT and a hashed classic-BPF Seccomp filter,
+then reports the compiled Filter Hash before receiving Source bytes. `clone3`
+returns `ENOSYS`; Namespace clone flags, new sessions/groups, ptrace, namespace
+operations, and sockets are denied. OOM, timeout, cancel, double-fork, and a
+bounded fork bomb prove kill/reap and Residual-process Restart behavior.
+
+The test-output root accepts no cleanup path or ambient temp variable. It binds
+Run ID, Boot ID, device/inode, PID/start time, mode, exclusive flock, heartbeat,
+and quota ledger to retained dir FDs. Files are reserved before
+`O_EXCL|O_NOFOLLOW` creation; cleanup removes only registered children.
+Unexpected symlinks, marker drift, active locks, ambiguous PID identity, or
+unverified objects are retained rather than followed or deleted.
+
+```text
+C1.2 focused tests                              190 passed
+full Python suite                               866 passed / 2 skipped
+Python coverage                                 91.16% (>= 90%)
+Ruff / format / strict Mypy                     passed / passed / passed
+pip-audit --skip-editable                       no known vulnerabilities
+security scanner                               0 findings
+quality scanner                                passed (0 errors; advisory warnings only)
+Python/Go/Node JCS                              89 cases / 3 runtimes passed
+offline wheel / contract verifier              passed / 18 schemas
+Docker parser-c1 image + Compose smoke          passed
+parser config hash                              5d24254518a9f6333812e0906e3c111070a93e2312b62c2e2ef025f2804a971f
+child compiled Seccomp SHA-256                  9bcecc9c30f208fbd2c21192d9f39b352b36110854fc5d6da6c99007cfa8e58e
+Runtime Registry / Dispatch / migration         unchanged / disabled / 010
+Provider calls / credentials                    0 / 0
+```
+
+Next: implement **C1.3 Native Parsers** behind the existing C1.2 route,
+protocol, process, resource, and cleanup gates. Keep Provider, Registry,
+Dispatch, Postgres/Redis/MinIO, migrations `011/012`, and production Handler
+activation closed.
