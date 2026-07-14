@@ -12,7 +12,10 @@ from mm_chat_rag.offline_parser.native.internal_result import (
     InternalResultError,
     NativeResultHeader,
 )
-from mm_chat_rag.offline_parser.native.model import NATIVE_ARTIFACT_SCHEMA_VERSION
+from mm_chat_rag.offline_parser.native.model import (
+    NATIVE_ARTIFACT_SCHEMA_VERSION,
+    NATIVE_SUPPORTED_FORMATS,
+)
 
 
 def _failure_object() -> dict[str, Any]:
@@ -30,6 +33,14 @@ def _decode_object(value: dict[str, Any]) -> NativeResultHeader:
 def test_success_rejects_an_empty_native_artifact() -> None:
     with pytest.raises(InternalResultError, match="non-empty"):
         NativeResultHeader.success(ParserFormat.TXT, b"")
+
+
+@pytest.mark.parametrize("parser_format", sorted(NATIVE_SUPPORTED_FORMATS))
+def test_success_accepts_every_native_format(parser_format: ParserFormat) -> None:
+    header = NativeResultHeader.success(parser_format, b"native-artifact")
+
+    assert header.parser_format is parser_format
+    assert header.native_artifact_version == NATIVE_ARTIFACT_SCHEMA_VERSION
 
 
 def test_failure_constructor_rejects_controller_only_errors() -> None:
@@ -106,7 +117,7 @@ def test_header_rejects_unknown_enums(field: str, value: str) -> None:
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("format", ParserFormat.DOCX.value),
+        ("format", ParserFormat.PDF.value),
         ("nativeArtifactVersion", "parser-native-artifact.v0"),
         ("resultBytes", 0),
         ("resultSha256", None),

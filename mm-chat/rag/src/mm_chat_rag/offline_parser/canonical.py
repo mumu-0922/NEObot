@@ -10,6 +10,7 @@ type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
 type JsonObject = dict[str, JsonValue]
 
 MAX_SAFE_INTEGER: Final = (1 << 53) - 1
+_MAX_SAFE_INTEGER_DIGITS: Final = len(str(MAX_SAFE_INTEGER))
 _SURROGATE_MIN: Final = 0xD800
 _SURROGATE_MAX: Final = 0xDFFF
 _BOMS: Final = (
@@ -125,7 +126,13 @@ def _reject_float(_value: str) -> None:
 
 
 def _parse_safe_integer(value: str) -> int:
-    parsed = int(value, 10)
+    digits = value.removeprefix("-")
+    if len(digits) > _MAX_SAFE_INTEGER_DIGITS:
+        raise CanonicalJsonError("JSON integer exceeds the safe range")
+    try:
+        parsed = int(value, 10)
+    except ValueError as error:
+        raise CanonicalJsonError("JSON integer is invalid") from error
     if abs(parsed) > MAX_SAFE_INTEGER:
         raise CanonicalJsonError("JSON integer exceeds the safe range")
     return parsed

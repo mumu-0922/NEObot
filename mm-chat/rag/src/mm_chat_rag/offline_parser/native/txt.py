@@ -2,21 +2,28 @@
 
 from __future__ import annotations
 
-import hashlib
-
 from mm_chat_rag.offline_parser.errors import ParserFormat
-from mm_chat_rag.offline_parser.native.decoding import DecodedSource
+from mm_chat_rag.offline_parser.native.decoding import (
+    DecodedSource,
+    source_unit_from_decoded,
+)
 from mm_chat_rag.offline_parser.native.model import (
     NativeDocument,
     NativeFragment,
     NativeNode,
     NativeNodeKind,
+    NativeSourceUnitKind,
     NativeTransformKind,
 )
 
 
 def parse_txt(decoded: DecodedSource) -> NativeDocument:
     """Preserve decoded TXT exactly; C1.4 owns LF/NFC canonicalization."""
+    source_unit = source_unit_from_decoded(
+        decoded,
+        kind=NativeSourceUnitKind.RAW_FILE,
+        canonical_uri=None,
+    )
     nodes = [
         NativeNode(
             ordinal=0,
@@ -45,9 +52,8 @@ def parse_txt(decoded: DecodedSource) -> NativeDocument:
         )
     return NativeDocument(
         source_format=ParserFormat.TXT,
-        source_encoding=decoded.encoding,
         source_bytes=len(decoded.source),
-        source_sha256=hashlib.sha256(decoded.source).hexdigest(),
-        decoded_scalars=decoded.decoded_scalars,
+        source_sha256=source_unit.source_sha256,
+        source_units=(source_unit,),
         nodes=tuple(nodes),
     )

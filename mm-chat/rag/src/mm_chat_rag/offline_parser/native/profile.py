@@ -1,4 +1,4 @@
-"""Hash-bound C1.3A implementation and dependency manifest."""
+"""Hash-bound C1.3B implementation, dependency, and safety manifest."""
 
 from __future__ import annotations
 
@@ -8,7 +8,22 @@ from typing import Final
 
 from mm_chat_rag.offline_parser.canonical import JsonObject, JsonValue
 
-_MODULE_DIRECTORY: Final = Path(__file__).parent
+_OFFLINE_PARSER_DIRECTORY: Final = Path(__file__).parent.parent
+_COMMON_SOURCE_FILES: Final = (
+    "canonical.py",
+    "config.py",
+    "errors.py",
+    "router.py",
+    "native/model.py",
+    "native/decoding.py",
+    "native/dispatch.py",
+    "native/internal_result.py",
+    "native/profile.py",
+)
+_OOXML_SOURCE_FILES: Final = (
+    "native/opc.py",
+    "native/xml_source.py",
+)
 _MARKDOWN_IT_WHEEL_SHA256: Final = (
     "9f7ebbcd14fe59494226453aed97c1070d83f8d24b6fc3a3bcf9a38092641c4a"
 )
@@ -20,13 +35,25 @@ _MDURL_WHEEL_SHA256: Final = (
 def native_parser_profile_manifest() -> JsonObject:
     """Return the closed implementation profile included in Config Hash."""
     components: list[JsonValue] = [
-        _component("txt", "txt.py"),
-        _component("markdown", "markdown.py"),
-        _component("html", "html.py"),
+        _component("txt", "native/txt.py"),
+        _component("markdown", "native/markdown.py"),
+        _component("html", "native/html.py"),
+        _component("docx", "native/docx.py", ooxml=True),
+        _component("pptx", "native/pptx.py", ooxml=True),
+        _component("xlsx", "native/xlsx.py", ooxml=True),
+        _component("csv", "native/csv.py"),
     ]
     return {
-        "artifactSchemaVersion": "parser-native-artifact.v1",
+        "artifactSchemaVersion": "parser-native-artifact.v2",
         "components": components,
+        "csvDialect": {
+            "delimiter": ",",
+            "doublequote": True,
+            "headerInference": False,
+            "quotechar": '"',
+            "recordTerminators": ["CRLF", "LF", "CR"],
+            "snifferAllowed": False,
+        },
         "dependencies": [
             {
                 "license": "MIT",
@@ -50,22 +77,56 @@ def native_parser_profile_manifest() -> JsonObject:
             "runtimePluginDiscovery": False,
             "typographer": False,
         },
-        "schemaVersion": "native-parser-profile.internal.v1",
-        "supportedFormats": ["txt", "markdown", "html"],
+        "ooxmlPolicy": {
+            "archiveRecursionAllowed": False,
+            "compressionMethods": ["stored", "deflated"],
+            "externalRelationshipDereferenceAllowed": False,
+            "formulaEvaluationAllowed": False,
+            "singleAdmissionCapability": True,
+            "zip64Allowed": False,
+        },
+        "schemaVersion": "native-parser-profile.internal.v2",
+        "supportedFormats": [
+            "txt",
+            "markdown",
+            "html",
+            "docx",
+            "pptx",
+            "xlsx",
+            "csv",
+        ],
+        "xmlPolicy": {
+            "dtdAllowed": False,
+            "encodingPrecedence": ["utf-8-bom", "strict-utf-8"],
+            "entitiesAllowed": False,
+            "externalEntityResolutionAllowed": False,
+            "processingInstructionsAllowed": False,
+            "xincludeAllowed": False,
+        },
     }
 
 
-def _component(parser_format: str, module_name: str) -> JsonObject:
-    common = ("model.py", "decoding.py", module_name)
+def _component(
+    parser_format: str,
+    module_name: str,
+    *,
+    ooxml: bool = False,
+) -> JsonObject:
+    source_files = (
+        *_COMMON_SOURCE_FILES,
+        *(_OOXML_SOURCE_FILES if ooxml else ()),
+        module_name,
+    )
     digest = hashlib.sha256()
-    digest.update(b"mm-chat.native-parser-component.v1\n")
-    for name in common:
-        content = _MODULE_DIRECTORY.joinpath(name).read_bytes()
-        digest.update(name.encode("ascii") + b"\x00")
+    digest.update(b"mm-chat.native-parser-component.v2\n")
+    for name in source_files:
+        content = _OFFLINE_PARSER_DIRECTORY.joinpath(name).read_bytes()
+        digest.update(name.encode("utf-8") + b"\x00")
         digest.update(len(content).to_bytes(8, "big") + content)
     return {
         "format": parser_format,
         "implementationArtifactSha256": digest.hexdigest(),
         "implementationId": f"parser.{parser_format}",
-        "implementationVersion": "0.1.0",
+        "implementationVersion": "0.2.0",
+        "sourceFiles": list(source_files),
     }

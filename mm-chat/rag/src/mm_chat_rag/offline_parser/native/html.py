@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import re
 from dataclasses import dataclass, field
 from html import unescape
@@ -11,7 +10,10 @@ from typing import Final, Never
 
 from mm_chat_rag.offline_parser.config import NativeParserLimits
 from mm_chat_rag.offline_parser.errors import ParserFormat, StableErrorCode
-from mm_chat_rag.offline_parser.native.decoding import DecodedSource
+from mm_chat_rag.offline_parser.native.decoding import (
+    DecodedSource,
+    source_unit_from_decoded,
+)
 from mm_chat_rag.offline_parser.native.model import (
     NativeAttribute,
     NativeDocument,
@@ -19,6 +21,7 @@ from mm_chat_rag.offline_parser.native.model import (
     NativeNode,
     NativeNodeKind,
     NativeParseFailure,
+    NativeSourceUnitKind,
     NativeTransformKind,
     attributes,
 )
@@ -300,12 +303,16 @@ class _NativeHtmlParser(HTMLParser):
                         attributes=draft.attributes,
                     )
                 )
+            source_unit = source_unit_from_decoded(
+                self._decoded,
+                kind=NativeSourceUnitKind.RAW_FILE,
+                canonical_uri=None,
+            )
             return NativeDocument(
                 source_format=ParserFormat.HTML,
-                source_encoding=self._decoded.encoding,
                 source_bytes=len(self._decoded.source),
-                source_sha256=hashlib.sha256(self._decoded.source).hexdigest(),
-                decoded_scalars=self._decoded.decoded_scalars,
+                source_sha256=source_unit.source_sha256,
+                source_units=(source_unit,),
                 nodes=tuple(nodes),
             )
         except NativeParseFailure:

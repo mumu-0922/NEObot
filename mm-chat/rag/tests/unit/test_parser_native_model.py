@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import replace
+from dataclasses import fields, replace
+from typing import Any, cast
 
 import pytest
 
@@ -13,6 +14,7 @@ from mm_chat_rag.offline_parser.canonical import (
     JsonValue,
     canonical_json_bytes,
 )
+from mm_chat_rag.offline_parser.config import DEFAULT_CONFIG
 from mm_chat_rag.offline_parser.errors import ParserFormat, StableErrorCode
 from mm_chat_rag.offline_parser.native.decoding import decode_source
 from mm_chat_rag.offline_parser.native.internal_result import (
@@ -20,14 +22,19 @@ from mm_chat_rag.offline_parser.native.internal_result import (
     NativeResultHeader,
 )
 from mm_chat_rag.offline_parser.native.model import (
+    NATIVE_ARTIFACT_SCHEMA_VERSION,
     NativeArtifactError,
     NativeAttribute,
+    NativeBytePosition,
     NativeDocument,
     NativeFragment,
+    NativeFragmentRole,
     NativeNode,
     NativeNodeKind,
     NativeParseFailure,
     NativeSourcePosition,
+    NativeSourceUnit,
+    NativeSourceUnitKind,
     NativeTransformKind,
     attributes,
 )
@@ -67,14 +74,23 @@ def test_native_txt_artifact_is_closed_and_byte_deterministic() -> None:
 
     assert first == second
     assert artifact.artifact_sha256 == hashlib.sha256(first).hexdigest()
-    assert value["schemaVersion"] == "parser-native-artifact.v1"
+    assert value["schemaVersion"] == NATIVE_ARTIFACT_SCHEMA_VERSION
     assert value["source"] == {
         "bytes": len(source),
-        "decodedScalars": len("café\r\n中文\n"),
-        "encoding": "utf-8",
         "format": "txt",
         "sha256": hashlib.sha256(source).hexdigest(),
     }
+    assert value["sourceUnits"] == [
+        {
+            "bytes": len(source),
+            "canonicalUri": None,
+            "decodedScalars": len("café\r\n中文\n"),
+            "encoding": "utf-8",
+            "kind": "raw_file",
+            "ordinal": 0,
+            "sha256": hashlib.sha256(source).hexdigest(),
+        },
+    ]
     assert [node["kind"] for node in value["nodes"]] == [
         "document",
         "paragraph",
@@ -144,16 +160,10 @@ def test_native_model_rejects_reversed_unsorted_and_out_of_bounds_shapes() -> No
                 ),
             ),
         )
+    artifact = parse_txt(decode_source(b"x"))
     root = NativeNode(0, NativeNodeKind.DOCUMENT, None, position)
-    with pytest.raises(ValueError, match="complete source|bounds"):
-        NativeDocument(
-            source_format=ParserFormat.TXT,
-            source_encoding="utf-8",
-            source_bytes=0,
-            source_sha256="0" * 64,
-            decoded_scalars=0,
-            nodes=(root,),
-        )
+    with pytest.raises(ValueError, match="bound|complete source|bounds"):
+        replace(artifact, source_bytes=0, source_sha256="0" * 64, nodes=(root,))
 
 
 def test_native_source_positions_reject_invalid_scalar_and_line_ranges() -> None:
@@ -163,6 +173,131 @@ def test_native_source_positions_reject_invalid_scalar_and_line_ranges() -> None
         NativeSourcePosition(0, 0, 2, 1, 0, 0, 0, 0)
     with pytest.raises(ValueError, match="line/column range is reversed"):
         NativeSourcePosition(0, 0, 0, 0, 1, 0, 0, 1)
+
+
+def test_native_v2_ooxml_source_units_and_byte_root_round_trip() -> None:
+    source = b"package"
+    part = b"<x>value</x>"
+    source_sha256 = hashlib.sha256(source).hexdigest()
+    part_sha256 = hashlib.sha256(part).hexdigest()
+    root = NativeNode(
+        0,
+        NativeNodeKind.DOCUMENT,
+        None,
+        NativeBytePosition(0, 0, len(source)),
+    )
+    child_position = NativeSourcePosition(
+        3,
+        8,
+        3,
+        8,
+        0,
+        3,
+        0,
+        8,
+        source_unit_ordinal=1,
+    )
+    child = NativeNode(
+        1,
+        NativeNodeKind.PARAGRAPH,
+        0,
+        child_position,
+        fragments=(
+            NativeFragment(
+                0,
+                "value",
+                NativeTransformKind.IDENTITY,
+                child_position,
+                NativeFragmentRole.TEXT,
+            ),
+        ),
+    )
+    document = NativeDocument(
+        source_format=ParserFormat.DOCX,
+        source_bytes=len(source),
+        source_sha256=source_sha256,
+        source_units=(
+            NativeSourceUnit(
+                0,
+                NativeSourceUnitKind.RAW_FILE,
+                None,
+                len(source),
+                source_sha256,
+                None,
+                None,
+            ),
+            NativeSourceUnit(
+                1,
+                NativeSourceUnitKind.OOXML_PART,
+                "/word/document.xml",
+                len(part),
+                part_sha256,
+                "utf-8",
+                len(part.decode()),
+            ),
+        ),
+        nodes=(root, child),
+    )
+
+    observed = NativeDocument.from_bytes(document.canonical_bytes)
+
+    assert observed == document
+    observed.validate_source_binding(source, expected_format=ParserFormat.DOCX)
+    assert observed.source_encoding == "binary"
+    assert observed.decoded_scalars == 0
+
+
+def test_native_v2_rejects_invalid_source_units_and_cross_unit_identity() -> None:
+    source = b"x"
+    digest = hashlib.sha256(source).hexdigest()
+    with pytest.raises(ValueError, match="ordinal zero"):
+        NativeSourceUnit(
+            1,
+            NativeSourceUnitKind.RAW_FILE,
+            None,
+            1,
+            digest,
+            "utf-8",
+            1,
+        )
+    with pytest.raises(ValueError, match="not canonical"):
+        NativeSourceUnit(
+            1,
+            NativeSourceUnitKind.OOXML_PART,
+            "word/../document.xml",
+            1,
+            digest,
+            "utf-8",
+            1,
+        )
+    with pytest.raises(ValueError, match="decoding metadata"):
+        NativeSourceUnit(
+            0,
+            NativeSourceUnitKind.RAW_FILE,
+            None,
+            1,
+            digest,
+            "utf-16",
+            1,
+        )
+
+    node_position = NativeSourcePosition(0, 1, 0, 1, 0, 0, 0, 1)
+    other_position = replace(node_position, source_unit_ordinal=1)
+    with pytest.raises(ValueError, match="cross-unit"):
+        NativeNode(
+            1,
+            NativeNodeKind.TABLE_CELL,
+            0,
+            node_position,
+            fragments=(
+                NativeFragment(
+                    0,
+                    "x",
+                    NativeTransformKind.IDENTITY,
+                    other_position,
+                ),
+            ),
+        )
 
 
 @pytest.mark.parametrize("ordinal", [-1, True])
@@ -275,12 +410,11 @@ def test_native_node_rejects_overlapping_fragments_and_duplicate_attributes() ->
 @pytest.mark.parametrize(
     ("changes", "message"),
     [
-        ({"schema_version": "parser-native-artifact.v2"}, "schema version"),
+        ({"schema_version": "parser-native-artifact.v1"}, "schema version"),
         ({"source_format": ParserFormat.PDF}, "unsupported format"),
-        ({"source_encoding": "utf-16"}, "source encoding"),
         ({"source_bytes": True}, "source byte count"),
-        ({"decoded_scalars": -1}, "scalar count"),
         ({"source_sha256": "A" * 64}, "source hash"),
+        ({"source_units": ()}, "source-unit ordinals"),
         ({"nodes": ()}, "node ordinals"),
     ],
 )
@@ -291,24 +425,17 @@ def test_native_document_rejects_invalid_metadata(
     artifact = parse_txt(decode_source(b"x"))
 
     with pytest.raises(ValueError, match=message):
-        replace(artifact, **changes)
+        replace(artifact, **cast("dict[str, Any]", changes))
 
 
 def test_native_document_rejects_invalid_root_bounds_and_parent_containment() -> None:
     source = b"abcd"
-    sha256 = hashlib.sha256(source).hexdigest()
+    artifact = parse_txt(decode_source(source))
     root_position = NativeSourcePosition(0, 4, 0, 4, 0, 0, 0, 4)
 
     wrong_root = NativeNode(0, NativeNodeKind.PARAGRAPH, None, root_position)
     with pytest.raises(ValueError, match="document root"):
-        NativeDocument(
-            ParserFormat.TXT,
-            "utf-8",
-            4,
-            sha256,
-            4,
-            (wrong_root,),
-        )
+        replace(artifact, nodes=(wrong_root,))
 
     root = NativeNode(0, NativeNodeKind.DOCUMENT, None, root_position)
     beyond_source = NativeNode(
@@ -317,15 +444,8 @@ def test_native_document_rejects_invalid_root_bounds_and_parent_containment() ->
         0,
         NativeSourcePosition(0, 5, 0, 4, 0, 0, 0, 4),
     )
-    with pytest.raises(ValueError, match="source bounds"):
-        NativeDocument(
-            ParserFormat.TXT,
-            "utf-8",
-            4,
-            sha256,
-            4,
-            (root, beyond_source),
-        )
+    with pytest.raises(ValueError, match="source-unit byte bounds"):
+        replace(artifact, nodes=(root, beyond_source))
 
     narrow_parent = NativeNode(
         1,
@@ -340,14 +460,7 @@ def test_native_document_rejects_invalid_root_bounds_and_parent_containment() ->
         NativeSourcePosition(2, 3, 2, 3, 0, 2, 0, 3),
     )
     with pytest.raises(ValueError, match="outside its parent"):
-        NativeDocument(
-            ParserFormat.TXT,
-            "utf-8",
-            4,
-            sha256,
-            4,
-            (root, narrow_parent, escaped_child),
-        )
+        replace(artifact, nodes=(root, narrow_parent, escaped_child))
 
 
 def test_native_document_rejects_each_source_binding_mismatch() -> None:
@@ -418,7 +531,7 @@ def test_native_from_bytes_rejects_open_nested_shapes() -> None:
 
     value = _artifact_object()
     _object_field(_node_object(value, 0), "sourcePosition").pop("endColumn")
-    with pytest.raises(NativeArtifactError, match="source-position fields"):
+    with pytest.raises(NativeArtifactError, match="text position fields"):
         NativeDocument.from_bytes(canonical_json_bytes(value))
 
 
@@ -470,7 +583,10 @@ def test_native_from_bytes_round_trips_closed_attributes() -> None:
 def test_native_parser_profile_pins_components_dependencies_and_options() -> None:
     profile = native_parser_profile_manifest()
 
-    assert profile["supportedFormats"] == ["txt", "markdown", "html"]
+    formats = ["txt", "markdown", "html", "docx", "pptx", "xlsx", "csv"]
+    assert profile["schemaVersion"] == "native-parser-profile.internal.v2"
+    assert profile["artifactSchemaVersion"] == "parser-native-artifact.v2"
+    assert profile["supportedFormats"] == formats
     assert profile["markdownOptions"] == {
         "breaks": False,
         "html": True,
@@ -482,13 +598,53 @@ def test_native_parser_profile_pins_components_dependencies_and_options() -> Non
     }
     dependencies = profile["dependencies"]
     assert isinstance(dependencies, list)
-    assert [(item["name"], item["license"]) for item in dependencies] == [
+    dependency_pairs: list[tuple[JsonValue, JsonValue]] = []
+    for item in dependencies:
+        assert isinstance(item, dict)
+        dependency_pairs.append((item["name"], item["license"]))
+    assert dependency_pairs == [
         ("markdown-it-py", "MIT"),
         ("mdurl", "MIT"),
     ]
     components = profile["components"]
     assert isinstance(components, list)
-    assert all(
-        len(str(component["implementationArtifactSha256"])) == 64
-        for component in components
-    )
+    component_formats: list[JsonValue] = []
+    for component in components:
+        assert isinstance(component, dict)
+        component_formats.append(component["format"])
+        digest = component["implementationArtifactSha256"]
+        assert isinstance(digest, str)
+        assert len(digest) == 64
+        assert digest == digest.casefold()
+        assert component["implementationVersion"] == "0.2.0"
+        source_files = component["sourceFiles"]
+        assert isinstance(source_files, list)
+        assert "router.py" in source_files
+        assert "canonical.py" in source_files
+        assert "config.py" in source_files
+        assert "errors.py" in source_files
+        assert "native/model.py" in source_files
+        assert "native/decoding.py" in source_files
+        assert "native/dispatch.py" in source_files
+        assert "native/internal_result.py" in source_files
+        assert "native/profile.py" in source_files
+        assert f"native/{component['format']}.py" in source_files
+        if component["format"] in {"docx", "pptx", "xlsx"}:
+            assert "native/opc.py" in source_files
+            assert "native/xml_source.py" in source_files
+    assert component_formats == formats
+    assert DEFAULT_CONFIG.canonical_object()["nativeParserProfile"] == profile
+
+
+def test_every_native_limit_is_bound_into_the_parser_config_hash() -> None:
+    baseline = DEFAULT_CONFIG.config_hash
+
+    for field in fields(DEFAULT_CONFIG.native):
+        current = getattr(DEFAULT_CONFIG.native, field.name)
+        changed_native = replace(
+            DEFAULT_CONFIG.native,
+            **{field.name: current + 1},
+        )
+        changed_config = replace(DEFAULT_CONFIG, native=changed_native)
+
+        assert changed_config.config_hash != baseline, field.name

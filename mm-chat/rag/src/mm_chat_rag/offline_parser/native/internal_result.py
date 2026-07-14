@@ -18,7 +18,10 @@ from mm_chat_rag.offline_parser.errors import (
     ParserFormat,
     StableErrorCode,
 )
-from mm_chat_rag.offline_parser.native.model import NATIVE_ARTIFACT_SCHEMA_VERSION
+from mm_chat_rag.offline_parser.native.model import (
+    NATIVE_ARTIFACT_SCHEMA_VERSION,
+    NATIVE_SUPPORTED_FORMATS,
+)
 
 _SHA256_RE: Final = re.compile(r"^[0-9a-f]{64}$")
 
@@ -154,8 +157,7 @@ class NativeResultHeader:
     def _validate_discriminator(self) -> None:
         if self.outcome == "native_success":
             if (
-                self.parser_format
-                not in {ParserFormat.TXT, ParserFormat.MARKDOWN, ParserFormat.HTML}
+                self.parser_format not in NATIVE_SUPPORTED_FORMATS
                 or self.native_artifact_version != NATIVE_ARTIFACT_SCHEMA_VERSION
                 or self.result_bytes < 1
                 or self.result_sha256 is None

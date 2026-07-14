@@ -38,6 +38,31 @@ from mm_chat_rag.offline_parser.sidecar import ParserSidecar
             ".html",
             ParserFormat.HTML,
         ),
+        (b"name,value\none,1\n", ".csv", ParserFormat.CSV),
+        (
+            (
+                Path(__file__).parents[1]
+                / "fixtures/parser_corpus/golden/docx/minimal.docx"
+            ).read_bytes(),
+            ".docx",
+            ParserFormat.DOCX,
+        ),
+        (
+            (
+                Path(__file__).parents[1]
+                / "fixtures/parser_corpus/golden/pptx/minimal.pptx"
+            ).read_bytes(),
+            ".pptx",
+            ParserFormat.PPTX,
+        ),
+        (
+            (
+                Path(__file__).parents[1]
+                / "fixtures/parser_corpus/golden/xlsx/representative.xlsx"
+            ).read_bytes(),
+            ".xlsx",
+            ParserFormat.XLSX,
+        ),
     ],
 )
 def test_real_seccomp_child_returns_a_verified_native_artifact(
@@ -54,7 +79,7 @@ def test_real_seccomp_child_returns_a_verified_native_artifact(
     assert result.parser_format is expected_format
     assert result.stable_error_code is None
     artifact = json.loads(result.native_artifact)
-    assert artifact["schemaVersion"] == "parser-native-artifact.v1"
+    assert artifact["schemaVersion"] == "parser-native-artifact.v2"
     assert artifact["source"]["format"] == expected_format.value
 
 
@@ -82,11 +107,11 @@ def test_real_sidecar_keeps_native_artifact_off_mmcp_success_wire() -> None:
     assert body == b""
 
 
-def test_unimplemented_native_format_remains_closed() -> None:
+def test_non_native_pdf_format_remains_closed() -> None:
     corpus = Path(__file__).parents[1] / "fixtures" / "parser_corpus"
-    source = (corpus / "golden" / "docx" / "minimal.docx").read_bytes()
+    source = (corpus / "golden" / "pdf_native" / "representative.pdf").read_bytes()
 
-    outcome = parse_native_source(source, declared_extension=".docx")
+    outcome = parse_native_source(source, declared_extension=".pdf")
 
     assert outcome.artifact is None
     assert outcome.stable_error_code is StableErrorCode.FORMAT_UNSUPPORTED
@@ -118,7 +143,13 @@ def test_sidecar_import_does_not_preload_native_parser_implementations() -> None
         "import mm_chat_rag.offline_parser.sidecar; "
         "assert 'markdown_it' not in sys.modules; "
         "assert 'mm_chat_rag.offline_parser.native.markdown' not in sys.modules; "
-        "assert 'mm_chat_rag.offline_parser.native.html' not in sys.modules"
+        "assert 'mm_chat_rag.offline_parser.native.html' not in sys.modules; "
+        "assert 'mm_chat_rag.offline_parser.native.csv' not in sys.modules; "
+        "assert 'mm_chat_rag.offline_parser.native.opc' not in sys.modules; "
+        "assert 'mm_chat_rag.offline_parser.native.xml_source' not in sys.modules; "
+        "assert 'mm_chat_rag.offline_parser.native.docx' not in sys.modules; "
+        "assert 'mm_chat_rag.offline_parser.native.pptx' not in sys.modules; "
+        "assert 'mm_chat_rag.offline_parser.native.xlsx' not in sys.modules"
     )
 
     completed = subprocess.run(  # noqa: S603

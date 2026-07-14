@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 from array import array
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, overload
 
@@ -11,6 +12,8 @@ from mm_chat_rag.offline_parser.errors import StableErrorCode
 from mm_chat_rag.offline_parser.native.model import (
     NativeParseFailure,
     NativeSourcePosition,
+    NativeSourceUnit,
+    NativeSourceUnitKind,
 )
 
 if TYPE_CHECKING:
@@ -61,8 +64,11 @@ class DecodedSource:
     encoding: str
     raw_boundaries: CompactOffsets
     line_starts: CompactOffsets
+    source_unit_ordinal: int = 0
 
     def __post_init__(self) -> None:
+        if type(self.source_unit_ordinal) is not int or self.source_unit_ordinal < 0:
+            raise ValueError("decoded source-unit ordinal must be non-negative")
         if len(self.raw_boundaries) != len(self.text) + 1:
             raise ValueError("decoded source boundary cardinality is invalid")
         if not self.raw_boundaries:
@@ -95,6 +101,7 @@ class DecodedSource:
             start_column=start_column,
             end_line=end_line,
             end_column=end_column,
+            source_unit_ordinal=self.source_unit_ordinal,
         )
 
     def document_position(self) -> NativeSourcePosition:
@@ -109,7 +116,20 @@ class DecodedSource:
             start_column=0,
             end_line=end_line,
             end_column=end_column,
+            source_unit_ordinal=self.source_unit_ordinal,
         )
+
+    def scalar_at_raw_boundary(self, raw_offset: int) -> int:
+        """Resolve an exact raw byte boundary to its decoded scalar offset."""
+        if type(raw_offset) is not int or raw_offset < 0:
+            raise ValueError("raw byte boundary must be a non-negative integer")
+        index = bisect_left(self.raw_boundaries._values, raw_offset)  # noqa: SLF001
+        if (
+            index >= len(self.raw_boundaries)
+            or self.raw_boundaries[index] != raw_offset
+        ):
+            raise ValueError("raw byte offset is not a decoded scalar boundary")
+        return index
 
     def line_column(self, scalar_offset: int) -> tuple[int, int]:
         """Return a zero-based line and Unicode-Scalar column."""
@@ -153,6 +173,7 @@ def decode_source(
     source: bytes,
     *,
     limits: NativeParserLimits | None = None,
+    source_unit_ordinal: int = 0,
 ) -> DecodedSource:
     """Decode and build compact exact Locator indexes."""
     decoded = decode_text(source)
@@ -161,7 +182,53 @@ def decode_source(
     line_starts = _line_starts(decoded.text)
     if limits is not None and len(line_starts) > limits.lines:
         raise NativeParseFailure(StableErrorCode.RESULT_TOO_LARGE)
-    return _index_decoded_source(source, decoded, line_starts)
+    return _index_decoded_source(
+        source,
+        decoded,
+        line_starts,
+        source_unit_ordinal=source_unit_ordinal,
+    )
+
+
+def decode_xml_source(
+    source: bytes,
+    *,
+    source_unit_ordinal: int,
+    limits: NativeParserLimits | None = None,
+) -> DecodedSource:
+    """Decode an OOXML Part using only the frozen UTF-8/BOM profile."""
+    decoded = decode_text(source)
+    if decoded.encoding == "gb18030":
+        raise NativeParseFailure(StableErrorCode.INPUT_INVALID)
+    if limits is not None and len(decoded.text.encode("utf-8")) > limits.xml_text_bytes:
+        raise NativeParseFailure(StableErrorCode.ARCHIVE_LIMIT_EXCEEDED)
+    line_starts = _line_starts(decoded.text)
+    if limits is not None and len(line_starts) > limits.lines:
+        raise NativeParseFailure(StableErrorCode.ARCHIVE_LIMIT_EXCEEDED)
+    return _index_decoded_source(
+        source,
+        decoded,
+        line_starts,
+        source_unit_ordinal=source_unit_ordinal,
+    )
+
+
+def source_unit_from_decoded(
+    decoded: DecodedSource,
+    *,
+    kind: NativeSourceUnitKind,
+    canonical_uri: str | None,
+) -> NativeSourceUnit:
+    """Build source-unit metadata bound to one decoded byte sequence."""
+    return NativeSourceUnit(
+        ordinal=decoded.source_unit_ordinal,
+        kind=kind,
+        canonical_uri=canonical_uri,
+        source_bytes=len(decoded.source),
+        source_sha256=hashlib.sha256(decoded.source).hexdigest(),
+        encoding=decoded.encoding,
+        decoded_scalars=decoded.decoded_scalars,
+    )
 
 
 def decode_text(source: bytes) -> DecodedText:
@@ -205,6 +272,8 @@ def _index_decoded_source(
     source: bytes,
     decoded: DecodedText,
     line_starts: CompactOffsets,
+    *,
+    source_unit_ordinal: int = 0,
 ) -> DecodedSource:
     payload = source[decoded.raw_offset :]
     if payload.isascii():
@@ -227,6 +296,7 @@ def _index_decoded_source(
         encoding=decoded.encoding,
         raw_boundaries=CompactOffsets(boundaries),
         line_starts=line_starts,
+        source_unit_ordinal=source_unit_ordinal,
     )
 
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import re
 from dataclasses import dataclass
 from html.parser import HTMLParser
@@ -14,7 +13,10 @@ from markdown_it.token import Token
 
 from mm_chat_rag.offline_parser.config import NativeParserLimits
 from mm_chat_rag.offline_parser.errors import ParserFormat, StableErrorCode
-from mm_chat_rag.offline_parser.native.decoding import DecodedSource
+from mm_chat_rag.offline_parser.native.decoding import (
+    DecodedSource,
+    source_unit_from_decoded,
+)
 from mm_chat_rag.offline_parser.native.model import (
     NativeAttribute,
     NativeDocument,
@@ -23,6 +25,7 @@ from mm_chat_rag.offline_parser.native.model import (
     NativeNodeKind,
     NativeParseFailure,
     NativeSourcePosition,
+    NativeSourceUnitKind,
     NativeTransformKind,
     attributes,
 )
@@ -175,12 +178,16 @@ class _MarkdownBuilder:
                 self._inline_html(token)
         if self.stack:
             raise NativeParseFailure(StableErrorCode.INPUT_INVALID)
+        source_unit = source_unit_from_decoded(
+            self.decoded,
+            kind=NativeSourceUnitKind.RAW_FILE,
+            canonical_uri=None,
+        )
         document = NativeDocument(
             source_format=ParserFormat.MARKDOWN,
-            source_encoding=self.decoded.encoding,
             source_bytes=len(self.decoded.source),
-            source_sha256=hashlib.sha256(self.decoded.source).hexdigest(),
-            decoded_scalars=self.decoded.decoded_scalars,
+            source_sha256=source_unit.source_sha256,
+            source_units=(source_unit,),
             nodes=tuple(self.nodes),
         )
         if len(document.canonical_bytes) > self.limits.artifact_bytes:

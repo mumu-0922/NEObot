@@ -1,4 +1,4 @@
-"""Frozen C1.2 protocol, sandbox, and output-root configuration."""
+"""Frozen parser protocol, sandbox, output, and native-parser configuration."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ class OutputLimits:
 
 @dataclass(frozen=True, slots=True)
 class NativeParserLimits:
-    """Hash-bound C1.3 internal artifact and structure ceilings."""
+    """Hash-bound C1.3 internal artifact, package, and structure ceilings."""
 
     artifact_bytes: int = 67_108_864
     nodes: int = 100_000
@@ -48,6 +48,30 @@ class NativeParserLimits:
     nesting_depth: int = 128
     attributes: int = 1_000_000
     text_bytes: int = 33_000_000
+    source_units: int = 10_001
+    archive_entries: int = 10_000
+    archive_expanded_bytes: int = 536_870_912
+    archive_entry_bytes: int = 67_108_864
+    archive_compression_ratio: int = 100
+    archive_path_bytes: int = 512
+    xml_depth: int = 128
+    xml_nodes: int = 100_000
+    xml_attributes: int = 1_000_000
+    xml_text_bytes: int = 33_000_000
+    xml_package_nodes: int = 200_000
+    xml_package_attributes: int = 1_000_000
+    xml_package_text_bytes: int = 33_000_000
+    relationships: int = 100_000
+    cells: int = 100_000
+    shared_strings: int = 100_000
+    xlsx_cell_text_bytes: int = 32_767
+    sheets: int = 1_024
+    merged_ranges: int = 100_000
+    slides: int = 10_000
+    shapes: int = 100_000
+    csv_rows: int = 100_000
+    csv_columns: int = 16_384
+    csv_field_bytes: int = 32_767
 
 
 @dataclass(frozen=True, slots=True)

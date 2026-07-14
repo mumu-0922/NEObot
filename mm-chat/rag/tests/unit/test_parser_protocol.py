@@ -13,6 +13,7 @@ import pytest
 from mm_chat_rag.offline_parser.canonical import (
     CanonicalJsonError,
     JsonObject,
+    JsonValue,
     canonical_json_bytes,
     load_canonical_json_object,
 )
@@ -201,6 +202,7 @@ def test_response_invocation_hash_and_body_combinations_fail_closed() -> None:
         b'{"x":1.5}',
         b'{"x":NaN}',
         b'{"x":9007199254740992}',
+        b'{"x":' + b"9" * 5000 + b"}",
         b'{"x":1,"x":2}',
         b'{ "x":1}',
     ],
@@ -256,11 +258,11 @@ def test_protocol_canonical_encoder_walks_nested_lists_and_scalars() -> None:
 )
 def test_request_header_shape_and_scalar_constraints_are_closed(
     field: str,
-    value: object,
+    value: JsonValue,
 ) -> None:
     header, _frame = _request()
     changed = header.to_object()
-    changed[field] = cast("object", value)
+    changed[field] = value
 
     with pytest.raises(ProtocolError):
         RequestHeader.from_object(changed)
