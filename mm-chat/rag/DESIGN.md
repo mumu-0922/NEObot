@@ -109,6 +109,51 @@ project script exposes the harness. The complete threat model and operator
 review/rollback flow are in
 `../docs/contracts/provider-capture-harness.md`.
 
+## Phase 15.2C C1.1 offline parser contracts
+
+The `mm_chat_rag.contracts` package contains Draft 2020-12 Closed Schemas for
+Canonical IR v2, Source Locator v2, normalization, quality, chunk, manifest,
+profiles, protocol headers, corpus provenance, and stable errors. Schema IDs
+use the reserved `.invalid` namespace; the test validator resolves every
+reference from packaged bytes and has no network retriever.
+
+The narrower Contract Profile accepts only null, booleans, Unicode scalar
+strings without NUL, and I-JSON safe integers. Strict parsing rejects duplicate
+keys, all float tokens, non-finite constants, BOM, invalid UTF-8, surrogates,
+unsafe integers, and non-canonical RFC 8785 bytes before schema validation.
+Logical hashes use exact ASCII domain tags plus canonical bytes; time, host,
+runtime paths, database UUIDs, object keys, and Provider identifiers are absent
+from immutable hash shapes.
+
+Corpus, recipe, hash, license, and Python/Go/Node conformance tooling remains
+under `tests/` and `tools/`. It freezes test inputs and contracts but does not
+claim Native Parser output, accuracy, fresh-container determinism, or Provider
+compatibility. Production dispatch and job registries stay empty.
+
+Test-only semantic validators execute the cross-object rules JSON Schema cannot
+express: normalization exact-cover and ordering, Locator projection ordering,
+reference existence, lineage DAG acyclicity, table-grid bounds, chunk
+reconstruction cardinality, manifest counts, and domain-separated aggregate
+hashes. Integrated fixtures exercise every normalization transform and Locator
+view plus Page/Flow/Block/Table/Cell/Formula/Asset/Provenance and non-empty
+Parent/Child overlap paths. They validate frozen contracts; they are not parser
+runtime code and are excluded from the wheel.
+
+A separate integrated A–F Hash DAG fixture uses real, recomputed IDs rather
+than placeholder hashes and binds Canonical IR, Normalization Map, Source Unit
+Resolver, Quality Report, Chunk Manifest, and Canonical Manifest bytes/counts/
+hashes. Projection fixtures prove non-separator text exact-cover, deterministic
+Map-to-Locator views, legal clipping boundaries, and Child-to-Parent ordered
+Fragment/View subsets. Synthetic MinerU fixtures model `layout` and `middle` as
+two distinct single-role artifacts; a test-only pair validator reconciles their
+source/profile/page/geometry contracts without claiming live Provider wire or
+Canonical IR output.
+
+The wheel verifier checks an already-built archive for all 18 schemas, resource
+loader, and module documentation while rejecting tests, tools, extra contract
+files, duplicate members, links, and unsafe paths. Building remains an explicit
+operator/CI step so verification never triggers dependency resolution.
+
 ## Process topology
 
 One process owns:

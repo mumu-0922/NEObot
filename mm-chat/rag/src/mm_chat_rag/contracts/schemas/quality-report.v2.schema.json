@@ -1,0 +1,977 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.mm-chat.invalid/parser/quality-report.v2.schema.json",
+  "title": "Offline parser quality report v2",
+  "description": "Closed, content-free quality decision. Gate records are fixed in Source, Safety, Structure, Text, Spatial, Locator, Chunk, Determinism, Manifest order; only bounded counts, booleans, stable errors, and hashes are admitted.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/acceptedReport"
+    },
+    {
+      "$ref": "#/$defs/routeRequiredReport"
+    },
+    {
+      "$ref": "#/$defs/quarantinedReport"
+    },
+    {
+      "$ref": "#/$defs/unsupportedReport"
+    }
+  ],
+  "$defs": {
+    "acceptedReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "sourceSha256",
+        "normalizationProfileHash",
+        "parserProfileHash",
+        "outcome",
+        "gateResults",
+        "metrics",
+        "artifactHashes",
+        "stableError"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "quality-report.v2"
+        },
+        "sourceSha256": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "normalizationProfileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "parserProfileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "outcome": {
+          "const": "accepted"
+        },
+        "gateResults": {
+          "$ref": "#/$defs/acceptedGateResults"
+        },
+        "metrics": {
+          "$ref": "#/$defs/acceptedMetrics"
+        },
+        "artifactHashes": {
+          "$ref": "#/$defs/completeArtifactHashes"
+        },
+        "stableError": {
+          "type": "null"
+        }
+      }
+    },
+    "routeRequiredReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "sourceSha256",
+        "normalizationProfileHash",
+        "parserProfileHash",
+        "outcome",
+        "gateResults",
+        "metrics",
+        "artifactHashes",
+        "stableError"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "quality-report.v2"
+        },
+        "sourceSha256": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "normalizationProfileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "parserProfileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "outcome": {
+          "const": "route_required"
+        },
+        "gateResults": {
+          "$ref": "#/$defs/gateResults"
+        },
+        "metrics": {
+          "$ref": "#/$defs/metrics"
+        },
+        "artifactHashes": {
+          "$ref": "#/$defs/emptyArtifactHashes"
+        },
+        "stableError": {
+          "$ref": "#/$defs/mineruRequiredError"
+        }
+      }
+    },
+    "quarantinedReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "sourceSha256",
+        "normalizationProfileHash",
+        "parserProfileHash",
+        "outcome",
+        "gateResults",
+        "metrics",
+        "artifactHashes",
+        "stableError"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "quality-report.v2"
+        },
+        "sourceSha256": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "normalizationProfileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "parserProfileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "outcome": {
+          "const": "quarantined"
+        },
+        "gateResults": {
+          "$ref": "#/$defs/gateResults"
+        },
+        "metrics": {
+          "$ref": "#/$defs/metrics"
+        },
+        "artifactHashes": {
+          "$ref": "#/$defs/partialArtifactHashes"
+        },
+        "stableError": {
+          "allOf": [
+            {
+              "$ref": "parser-stable-error.v1.schema.json"
+            },
+            {
+              "properties": {
+                "disposition": {
+                  "const": "quarantine"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "unsupportedReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "sourceSha256",
+        "normalizationProfileHash",
+        "parserProfileHash",
+        "outcome",
+        "gateResults",
+        "metrics",
+        "artifactHashes",
+        "stableError"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "quality-report.v2"
+        },
+        "sourceSha256": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "normalizationProfileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "parserProfileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "outcome": {
+          "const": "unsupported"
+        },
+        "gateResults": {
+          "$ref": "#/$defs/gateResults"
+        },
+        "metrics": {
+          "$ref": "#/$defs/metrics"
+        },
+        "artifactHashes": {
+          "$ref": "#/$defs/partialArtifactHashes"
+        },
+        "stableError": {
+          "allOf": [
+            {
+              "$ref": "parser-stable-error.v1.schema.json"
+            },
+            {
+              "properties": {
+                "disposition": {
+                  "const": "unsupported"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "gateResults": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/sourceGate"
+        },
+        {
+          "$ref": "#/$defs/safetyGate"
+        },
+        {
+          "$ref": "#/$defs/structureGate"
+        },
+        {
+          "$ref": "#/$defs/textGate"
+        },
+        {
+          "$ref": "#/$defs/spatialGate"
+        },
+        {
+          "$ref": "#/$defs/locatorGate"
+        },
+        {
+          "$ref": "#/$defs/chunkGate"
+        },
+        {
+          "$ref": "#/$defs/determinismGate"
+        },
+        {
+          "$ref": "#/$defs/manifestGate"
+        }
+      ],
+      "items": false
+    },
+    "acceptedGateResults": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/acceptedSourceGate"
+        },
+        {
+          "$ref": "#/$defs/acceptedSafetyGate"
+        },
+        {
+          "$ref": "#/$defs/acceptedStructureGate"
+        },
+        {
+          "$ref": "#/$defs/acceptedTextGate"
+        },
+        {
+          "$ref": "#/$defs/acceptedSpatialGate"
+        },
+        {
+          "$ref": "#/$defs/acceptedLocatorGate"
+        },
+        {
+          "$ref": "#/$defs/acceptedChunkGate"
+        },
+        {
+          "$ref": "#/$defs/acceptedDeterminismGate"
+        },
+        {
+          "$ref": "#/$defs/acceptedManifestGate"
+        }
+      ],
+      "items": false
+    },
+    "sourceGate": {
+      "$ref": "#/$defs/sourceGateShape"
+    },
+    "sourceGateShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stageOrdinal",
+        "stage",
+        "status",
+        "checkCount",
+        "failureCount",
+        "evidenceHash"
+      ],
+      "properties": {
+        "stageOrdinal": {
+          "const": 0
+        },
+        "stage": {
+          "const": "source"
+        },
+        "status": {
+          "$ref": "#/$defs/gateStatus"
+        },
+        "checkCount": {
+          "$ref": "#/$defs/count"
+        },
+        "failureCount": {
+          "$ref": "#/$defs/count"
+        },
+        "evidenceHash": {
+          "$ref": "#/$defs/nullableSha256"
+        }
+      }
+    },
+    "safetyGate": {
+      "$ref": "#/$defs/safetyGateShape"
+    },
+    "safetyGateShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stageOrdinal",
+        "stage",
+        "status",
+        "checkCount",
+        "failureCount",
+        "evidenceHash"
+      ],
+      "properties": {
+        "stageOrdinal": {
+          "const": 1
+        },
+        "stage": {
+          "const": "safety"
+        },
+        "status": {
+          "$ref": "#/$defs/gateStatus"
+        },
+        "checkCount": {
+          "$ref": "#/$defs/count"
+        },
+        "failureCount": {
+          "$ref": "#/$defs/count"
+        },
+        "evidenceHash": {
+          "$ref": "#/$defs/nullableSha256"
+        }
+      }
+    },
+    "structureGate": {
+      "$ref": "#/$defs/structureGateShape"
+    },
+    "structureGateShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stageOrdinal",
+        "stage",
+        "status",
+        "checkCount",
+        "failureCount",
+        "evidenceHash"
+      ],
+      "properties": {
+        "stageOrdinal": {
+          "const": 2
+        },
+        "stage": {
+          "const": "structure"
+        },
+        "status": {
+          "$ref": "#/$defs/gateStatus"
+        },
+        "checkCount": {
+          "$ref": "#/$defs/count"
+        },
+        "failureCount": {
+          "$ref": "#/$defs/count"
+        },
+        "evidenceHash": {
+          "$ref": "#/$defs/nullableSha256"
+        }
+      }
+    },
+    "textGate": {
+      "$ref": "#/$defs/textGateShape"
+    },
+    "textGateShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stageOrdinal",
+        "stage",
+        "status",
+        "checkCount",
+        "failureCount",
+        "evidenceHash"
+      ],
+      "properties": {
+        "stageOrdinal": {
+          "const": 3
+        },
+        "stage": {
+          "const": "text"
+        },
+        "status": {
+          "$ref": "#/$defs/gateStatus"
+        },
+        "checkCount": {
+          "$ref": "#/$defs/count"
+        },
+        "failureCount": {
+          "$ref": "#/$defs/count"
+        },
+        "evidenceHash": {
+          "$ref": "#/$defs/nullableSha256"
+        }
+      }
+    },
+    "spatialGate": {
+      "$ref": "#/$defs/spatialGateShape"
+    },
+    "spatialGateShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stageOrdinal",
+        "stage",
+        "status",
+        "checkCount",
+        "failureCount",
+        "evidenceHash"
+      ],
+      "properties": {
+        "stageOrdinal": {
+          "const": 4
+        },
+        "stage": {
+          "const": "spatial"
+        },
+        "status": {
+          "$ref": "#/$defs/gateStatus"
+        },
+        "checkCount": {
+          "$ref": "#/$defs/count"
+        },
+        "failureCount": {
+          "$ref": "#/$defs/count"
+        },
+        "evidenceHash": {
+          "$ref": "#/$defs/nullableSha256"
+        }
+      }
+    },
+    "locatorGate": {
+      "$ref": "#/$defs/locatorGateShape"
+    },
+    "locatorGateShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stageOrdinal",
+        "stage",
+        "status",
+        "checkCount",
+        "failureCount",
+        "evidenceHash"
+      ],
+      "properties": {
+        "stageOrdinal": {
+          "const": 5
+        },
+        "stage": {
+          "const": "locator"
+        },
+        "status": {
+          "$ref": "#/$defs/gateStatus"
+        },
+        "checkCount": {
+          "$ref": "#/$defs/count"
+        },
+        "failureCount": {
+          "$ref": "#/$defs/count"
+        },
+        "evidenceHash": {
+          "$ref": "#/$defs/nullableSha256"
+        }
+      }
+    },
+    "chunkGate": {
+      "$ref": "#/$defs/chunkGateShape"
+    },
+    "chunkGateShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stageOrdinal",
+        "stage",
+        "status",
+        "checkCount",
+        "failureCount",
+        "evidenceHash"
+      ],
+      "properties": {
+        "stageOrdinal": {
+          "const": 6
+        },
+        "stage": {
+          "const": "chunk"
+        },
+        "status": {
+          "$ref": "#/$defs/gateStatus"
+        },
+        "checkCount": {
+          "$ref": "#/$defs/count"
+        },
+        "failureCount": {
+          "$ref": "#/$defs/count"
+        },
+        "evidenceHash": {
+          "$ref": "#/$defs/nullableSha256"
+        }
+      }
+    },
+    "determinismGate": {
+      "$ref": "#/$defs/determinismGateShape"
+    },
+    "determinismGateShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stageOrdinal",
+        "stage",
+        "status",
+        "checkCount",
+        "failureCount",
+        "evidenceHash"
+      ],
+      "properties": {
+        "stageOrdinal": {
+          "const": 7
+        },
+        "stage": {
+          "const": "determinism"
+        },
+        "status": {
+          "$ref": "#/$defs/gateStatus"
+        },
+        "checkCount": {
+          "$ref": "#/$defs/count"
+        },
+        "failureCount": {
+          "$ref": "#/$defs/count"
+        },
+        "evidenceHash": {
+          "$ref": "#/$defs/nullableSha256"
+        }
+      }
+    },
+    "manifestGate": {
+      "$ref": "#/$defs/manifestGateShape"
+    },
+    "manifestGateShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stageOrdinal",
+        "stage",
+        "status",
+        "checkCount",
+        "failureCount",
+        "evidenceHash"
+      ],
+      "properties": {
+        "stageOrdinal": {
+          "const": 8
+        },
+        "stage": {
+          "const": "manifest"
+        },
+        "status": {
+          "$ref": "#/$defs/gateStatus"
+        },
+        "checkCount": {
+          "$ref": "#/$defs/count"
+        },
+        "failureCount": {
+          "$ref": "#/$defs/count"
+        },
+        "evidenceHash": {
+          "$ref": "#/$defs/nullableSha256"
+        }
+      }
+    },
+    "acceptedSourceGate": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/sourceGate"
+        },
+        {
+          "properties": {
+            "status": {
+              "const": "passed"
+            },
+            "failureCount": {
+              "const": 0
+            }
+          }
+        }
+      ]
+    },
+    "acceptedSafetyGate": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/safetyGate"
+        },
+        {
+          "properties": {
+            "status": {
+              "const": "passed"
+            },
+            "failureCount": {
+              "const": 0
+            }
+          }
+        }
+      ]
+    },
+    "acceptedStructureGate": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/structureGate"
+        },
+        {
+          "properties": {
+            "status": {
+              "const": "passed"
+            },
+            "failureCount": {
+              "const": 0
+            }
+          }
+        }
+      ]
+    },
+    "acceptedTextGate": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/textGate"
+        },
+        {
+          "properties": {
+            "status": {
+              "const": "passed"
+            },
+            "failureCount": {
+              "const": 0
+            }
+          }
+        }
+      ]
+    },
+    "acceptedSpatialGate": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/spatialGate"
+        },
+        {
+          "properties": {
+            "status": {
+              "const": "passed"
+            },
+            "failureCount": {
+              "const": 0
+            }
+          }
+        }
+      ]
+    },
+    "acceptedLocatorGate": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/locatorGate"
+        },
+        {
+          "properties": {
+            "status": {
+              "const": "passed"
+            },
+            "failureCount": {
+              "const": 0
+            }
+          }
+        }
+      ]
+    },
+    "acceptedChunkGate": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/chunkGate"
+        },
+        {
+          "properties": {
+            "status": {
+              "const": "passed"
+            },
+            "failureCount": {
+              "const": 0
+            }
+          }
+        }
+      ]
+    },
+    "acceptedDeterminismGate": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/determinismGate"
+        },
+        {
+          "properties": {
+            "status": {
+              "const": "passed"
+            },
+            "failureCount": {
+              "const": 0
+            }
+          }
+        }
+      ]
+    },
+    "acceptedManifestGate": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/manifestGate"
+        },
+        {
+          "properties": {
+            "status": {
+              "const": "passed"
+            },
+            "failureCount": {
+              "const": 0
+            }
+          }
+        }
+      ]
+    },
+    "gateStatus": {
+      "enum": [
+        "passed",
+        "failed",
+        "not_run",
+        "not_applicable"
+      ]
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceBytes",
+        "textBufferBytes",
+        "pageCount",
+        "readingFlowCount",
+        "blockCount",
+        "tableCount",
+        "cellCount",
+        "formulaCount",
+        "assetCount",
+        "textAnchorCount",
+        "structuralAnchorCount",
+        "parentChunkCount",
+        "childChunkCount",
+        "spanCount",
+        "joinerCount",
+        "determinismRunCount",
+        "sourceProvenEmpty",
+        "structuralContentEmpty"
+      ],
+      "properties": {
+        "sourceBytes": {
+          "$ref": "#/$defs/count"
+        },
+        "textBufferBytes": {
+          "$ref": "#/$defs/count"
+        },
+        "pageCount": {
+          "$ref": "#/$defs/count"
+        },
+        "readingFlowCount": {
+          "$ref": "#/$defs/count"
+        },
+        "blockCount": {
+          "$ref": "#/$defs/count"
+        },
+        "tableCount": {
+          "$ref": "#/$defs/count"
+        },
+        "cellCount": {
+          "$ref": "#/$defs/count"
+        },
+        "formulaCount": {
+          "$ref": "#/$defs/count"
+        },
+        "assetCount": {
+          "$ref": "#/$defs/count"
+        },
+        "textAnchorCount": {
+          "$ref": "#/$defs/count"
+        },
+        "structuralAnchorCount": {
+          "$ref": "#/$defs/count"
+        },
+        "parentChunkCount": {
+          "$ref": "#/$defs/count"
+        },
+        "childChunkCount": {
+          "$ref": "#/$defs/count"
+        },
+        "spanCount": {
+          "$ref": "#/$defs/count"
+        },
+        "joinerCount": {
+          "$ref": "#/$defs/count"
+        },
+        "determinismRunCount": {
+          "$ref": "#/$defs/count"
+        },
+        "sourceProvenEmpty": {
+          "type": "boolean"
+        },
+        "structuralContentEmpty": {
+          "type": "boolean"
+        }
+      }
+    },
+    "acceptedMetrics": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/metrics"
+        },
+        {
+          "properties": {
+            "determinismRunCount": {
+              "const": 10
+            }
+          }
+        }
+      ]
+    },
+    "completeArtifactHashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonicalIrSha256",
+        "normalizationMapSha256",
+        "chunkManifestSha256",
+        "determinismAggregateHash"
+      ],
+      "properties": {
+        "canonicalIrSha256": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "normalizationMapSha256": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "chunkManifestSha256": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "determinismAggregateHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        }
+      }
+    },
+    "partialArtifactHashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonicalIrSha256",
+        "normalizationMapSha256",
+        "chunkManifestSha256",
+        "determinismAggregateHash"
+      ],
+      "properties": {
+        "canonicalIrSha256": {
+          "$ref": "#/$defs/nullableSha256"
+        },
+        "normalizationMapSha256": {
+          "$ref": "#/$defs/nullableSha256"
+        },
+        "chunkManifestSha256": {
+          "$ref": "#/$defs/nullableSha256"
+        },
+        "determinismAggregateHash": {
+          "$ref": "#/$defs/nullableSha256"
+        }
+      }
+    },
+    "emptyArtifactHashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonicalIrSha256",
+        "normalizationMapSha256",
+        "chunkManifestSha256",
+        "determinismAggregateHash"
+      ],
+      "properties": {
+        "canonicalIrSha256": {
+          "type": "null"
+        },
+        "normalizationMapSha256": {
+          "type": "null"
+        },
+        "chunkManifestSha256": {
+          "type": "null"
+        },
+        "determinismAggregateHash": {
+          "type": "null"
+        }
+      }
+    },
+    "mineruRequiredError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "code",
+        "outcome",
+        "disposition",
+        "retryable",
+        "stageable"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "parser-stable-error.v1"
+        },
+        "code": {
+          "const": "MINERU_REQUIRED"
+        },
+        "outcome": {
+          "const": "route_required"
+        },
+        "disposition": {
+          "const": "route_required"
+        },
+        "retryable": {
+          "const": false
+        },
+        "stageable": {
+          "const": false
+        }
+      }
+    },
+    "count": {
+      "$ref": "canonical-common.v1.schema.json#/$defs/nonNegativeSafeInteger"
+    },
+    "nullableSha256": {
+      "oneOf": [
+        {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  }
+}

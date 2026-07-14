@@ -1,0 +1,488 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.mm-chat.invalid/parser/chunk-profile.v1.schema.json",
+  "title": "Parent child chunk profile v1",
+  "description": "Closed token, overlap, derived-context, joiner, reading-flow, and split-boundary policy. Arrays are semantic order and all values participate in the profile hash.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "profileRevision",
+    "profileClass",
+    "tokenizer",
+    "parentTokens",
+    "childTokens",
+    "windowOverlapTokens",
+    "derivedContexts",
+    "joiners",
+    "boundaryPolicy",
+    "readingFlowPolicy",
+    "fragmentPolicy",
+    "parentChunkIdDomain",
+    "childChunkIdDomain"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "chunk-profile.v1"
+    },
+    "profileRevision": {
+      "const": 1
+    },
+    "profileClass": {
+      "enum": [
+        "evaluation",
+        "production"
+      ]
+    },
+    "tokenizer": {
+      "$ref": "#/$defs/tokenizer"
+    },
+    "parentTokens": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetMinimum",
+        "targetMaximum",
+        "hardMaximum"
+      ],
+      "properties": {
+        "targetMinimum": {
+          "const": 1400
+        },
+        "targetMaximum": {
+          "const": 1600
+        },
+        "hardMaximum": {
+          "const": 2000
+        }
+      }
+    },
+    "childTokens": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetMinimum",
+        "targetMaximum",
+        "hardMaximum"
+      ],
+      "properties": {
+        "targetMinimum": {
+          "const": 350
+        },
+        "targetMaximum": {
+          "const": 500
+        },
+        "hardMaximum": {
+          "const": 650
+        }
+      }
+    },
+    "windowOverlapTokens": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minimum",
+        "maximum",
+        "adjacentChildrenOnly",
+        "countDerivedContext"
+      ],
+      "properties": {
+        "minimum": {
+          "const": 60
+        },
+        "maximum": {
+          "const": 100
+        },
+        "adjacentChildrenOnly": {
+          "const": true
+        },
+        "countDerivedContext": {
+          "const": false
+        }
+      }
+    },
+    "derivedContexts": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/tableHeaderContext"
+        },
+        {
+          "$ref": "#/$defs/headingContext"
+        },
+        {
+          "$ref": "#/$defs/faqContext"
+        }
+      ],
+      "items": false
+    },
+    "joiners": {
+      "const": [
+        {
+          "kind": "adjacent",
+          "utf8Bytes": ""
+        },
+        {
+          "kind": "block_separator",
+          "utf8Bytes": "\n\n"
+        }
+      ]
+    },
+    "boundaryPolicy": {
+      "$ref": "#/$defs/boundaryPolicy"
+    },
+    "readingFlowPolicy": {
+      "$ref": "#/$defs/readingFlowPolicy"
+    },
+    "fragmentPolicy": {
+      "$ref": "#/$defs/fragmentPolicy"
+    },
+    "parentChunkIdDomain": {
+      "const": "mm-chat.parent-chunk-id.v1\n"
+    },
+    "childChunkIdDomain": {
+      "const": "mm-chat.child-chunk-id.v1\n"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+    },
+    "nonEmptyUnicodeScalarString": {
+      "$ref": "canonical-common.v1.schema.json#/$defs/nonEmptyUnicodeScalarString"
+    },
+    "positiveSafeInteger": {
+      "$ref": "canonical-common.v1.schema.json#/$defs/positiveSafeInteger"
+    },
+    "tokenizer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "revision",
+        "vocabularySha256",
+        "tokenizerFileSha256",
+        "specialTokenPolicy",
+        "normalization"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/nonEmptyUnicodeScalarString"
+        },
+        "revision": {
+          "$ref": "#/$defs/nonEmptyUnicodeScalarString"
+        },
+        "vocabularySha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "tokenizerFileSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "specialTokenPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "addSpecialTokens",
+            "allowedSpecialTokens",
+            "countSpecialTokens"
+          ],
+          "properties": {
+            "addSpecialTokens": {
+              "type": "boolean"
+            },
+            "allowedSpecialTokens": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/nonEmptyUnicodeScalarString"
+              }
+            },
+            "countSpecialTokens": {
+              "type": "boolean"
+            }
+          }
+        },
+        "normalization": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "normalizationId",
+            "normalizationConfigSha256"
+          ],
+          "properties": {
+            "normalizationId": {
+              "$ref": "#/$defs/nonEmptyUnicodeScalarString"
+            },
+            "normalizationConfigSha256": {
+              "$ref": "#/$defs/sha256"
+            }
+          }
+        }
+      }
+    },
+    "derivedContextBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reason",
+        "maxTokensPerOccurrence",
+        "maxRepeatsPerParent",
+        "requiresOriginalSourceMapping",
+        "includedInContentHash",
+        "includedInSourceSpanHash",
+        "includedInSlidingOverlapCount"
+      ],
+      "properties": {
+        "reason": {
+          "enum": [
+            "table_header",
+            "heading_context",
+            "faq_context"
+          ]
+        },
+        "maxTokensPerOccurrence": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxRepeatsPerParent": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "requiresOriginalSourceMapping": {
+          "const": true
+        },
+        "includedInContentHash": {
+          "const": true
+        },
+        "includedInSourceSpanHash": {
+          "const": true
+        },
+        "includedInSlidingOverlapCount": {
+          "const": false
+        }
+      }
+    },
+    "tableHeaderContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reason",
+        "maxTokensPerOccurrence",
+        "maxRepeatsPerParent",
+        "requiresOriginalSourceMapping",
+        "includedInContentHash",
+        "includedInSourceSpanHash",
+        "includedInSlidingOverlapCount"
+      ],
+      "properties": {
+        "reason": {
+          "const": "table_header"
+        },
+        "maxTokensPerOccurrence": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxRepeatsPerParent": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "requiresOriginalSourceMapping": {
+          "const": true
+        },
+        "includedInContentHash": {
+          "const": true
+        },
+        "includedInSourceSpanHash": {
+          "const": true
+        },
+        "includedInSlidingOverlapCount": {
+          "const": false
+        }
+      }
+    },
+    "headingContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reason",
+        "maxTokensPerOccurrence",
+        "maxRepeatsPerParent",
+        "requiresOriginalSourceMapping",
+        "includedInContentHash",
+        "includedInSourceSpanHash",
+        "includedInSlidingOverlapCount"
+      ],
+      "properties": {
+        "reason": {
+          "const": "heading_context"
+        },
+        "maxTokensPerOccurrence": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxRepeatsPerParent": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "requiresOriginalSourceMapping": {
+          "const": true
+        },
+        "includedInContentHash": {
+          "const": true
+        },
+        "includedInSourceSpanHash": {
+          "const": true
+        },
+        "includedInSlidingOverlapCount": {
+          "const": false
+        }
+      }
+    },
+    "faqContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reason",
+        "maxTokensPerOccurrence",
+        "maxRepeatsPerParent",
+        "requiresOriginalSourceMapping",
+        "includedInContentHash",
+        "includedInSourceSpanHash",
+        "includedInSlidingOverlapCount"
+      ],
+      "properties": {
+        "reason": {
+          "const": "faq_context"
+        },
+        "maxTokensPerOccurrence": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxRepeatsPerParent": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "requiresOriginalSourceMapping": {
+          "const": true
+        },
+        "includedInContentHash": {
+          "const": true
+        },
+        "includedInSourceSpanHash": {
+          "const": true
+        },
+        "includedInSlidingOverlapCount": {
+          "const": false
+        }
+      }
+    },
+    "boundaryPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "neverCross",
+        "preserveUtf8CodePoint",
+        "preserveGraphemeSensitiveToken",
+        "preserveMarkdownLink",
+        "preserveCodeToken",
+        "preserveTableCell",
+        "preserveFormula",
+        "oversizeWithoutLegalCut"
+      ],
+      "properties": {
+        "neverCross": {
+          "const": [
+            "heading",
+            "table",
+            "code",
+            "sheet",
+            "slide",
+            "document"
+          ]
+        },
+        "preserveUtf8CodePoint": {
+          "const": true
+        },
+        "preserveGraphemeSensitiveToken": {
+          "const": true
+        },
+        "preserveMarkdownLink": {
+          "const": true
+        },
+        "preserveCodeToken": {
+          "const": true
+        },
+        "preserveTableCell": {
+          "const": true
+        },
+        "preserveFormula": {
+          "const": true
+        },
+        "oversizeWithoutLegalCut": {
+          "const": "QUALITY_CHUNK_BOUNDARY_FAILED"
+        }
+      }
+    },
+    "readingFlowPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "singleFlowSeedPerChunk",
+        "requireFinalLogicalFlowProof",
+        "crossFlowJoinerAllowed",
+        "crossFlowOverlapAllowed",
+        "crossFlowDerivedContextAllowed"
+      ],
+      "properties": {
+        "singleFlowSeedPerChunk": {
+          "const": true
+        },
+        "requireFinalLogicalFlowProof": {
+          "const": true
+        },
+        "crossFlowJoinerAllowed": {
+          "const": false
+        },
+        "crossFlowOverlapAllowed": {
+          "const": false
+        },
+        "crossFlowDerivedContextAllowed": {
+          "const": false
+        }
+      }
+    },
+    "fragmentPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rangeUnit",
+        "rangeConvention",
+        "emptyFragmentsAllowed",
+        "fragmentOrder",
+        "overlapWithinChunkAllowed",
+        "joinerCardinality",
+        "childSourceRelationToParent",
+        "locatorClipping"
+      ],
+      "properties": {
+        "rangeUnit": {
+          "const": "utf8_byte_relative_to_block_text_range"
+        },
+        "rangeConvention": {
+          "const": "zero_based_half_open"
+        },
+        "emptyFragmentsAllowed": {
+          "const": false
+        },
+        "fragmentOrder": {
+          "const": "strict_canonical_reading_order"
+        },
+        "overlapWithinChunkAllowed": {
+          "const": false
+        },
+        "joinerCardinality": {
+          "const": "fragment_count_minus_one"
+        },
+        "childSourceRelationToParent": {
+          "const": "ordered_subset"
+        },
+        "locatorClipping": {
+          "const": "exact_normalization_segment_boundary_projection"
+        }
+      }
+    }
+  }
+}

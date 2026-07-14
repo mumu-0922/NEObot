@@ -1,0 +1,318 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.mm-chat.invalid/parser/normalization-profile.v1.schema.json",
+  "title": "Canonical text normalization profile v1",
+  "description": "Closed policy and allowlists for Canonical Text and normalization-map.v1. Array order is semantic and is part of the profile hash.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "profileRevision",
+    "unicodeNormalization",
+    "newlineNormalization",
+    "invalidUnicodePolicy",
+    "nulPolicy",
+    "decodeErrorPolicy",
+    "replacementCharacterPolicy",
+    "compatibilityNormalization",
+    "traditionalSimplifiedConversion",
+    "caseFolding",
+    "whitespacePolicy",
+    "topLevelBlockSeparator",
+    "offsetUnit",
+    "rangeConvention",
+    "textBufferEncoding",
+    "textBufferHashAlgorithm",
+    "transformKinds",
+    "sourceUnitKinds",
+    "newlineRecipes",
+    "syntaxDecodeRecipes",
+    "rendererRules",
+    "segmentCoveragePolicy",
+    "positionCoalescePolicy",
+    "normalizationMapAggregateDomain"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "normalization-profile.v1"
+    },
+    "profileRevision": {
+      "const": 1
+    },
+    "unicodeNormalization": {
+      "const": "NFC"
+    },
+    "newlineNormalization": {
+      "const": "crlf_and_cr_to_lf"
+    },
+    "invalidUnicodePolicy": {
+      "const": "reject_non_scalar"
+    },
+    "nulPolicy": {
+      "const": "reject"
+    },
+    "decodeErrorPolicy": {
+      "const": "reject"
+    },
+    "replacementCharacterPolicy": {
+      "const": "never_insert"
+    },
+    "compatibilityNormalization": {
+      "const": false
+    },
+    "traditionalSimplifiedConversion": {
+      "const": false
+    },
+    "caseFolding": {
+      "const": false
+    },
+    "whitespacePolicy": {
+      "const": "preserve_inline_space_tab_and_code_whitespace"
+    },
+    "topLevelBlockSeparator": {
+      "const": "\n\n"
+    },
+    "offsetUnit": {
+      "const": "utf8_byte"
+    },
+    "rangeConvention": {
+      "const": "zero_based_half_open"
+    },
+    "textBufferEncoding": {
+      "const": "utf-8"
+    },
+    "textBufferHashAlgorithm": {
+      "const": "sha256"
+    },
+    "transformKinds": {
+      "const": [
+        "identity",
+        "newline_fold",
+        "nfc_compose",
+        "syntax_decode",
+        "renderer_insert"
+      ]
+    },
+    "sourceUnitKinds": {
+      "const": [
+        {
+          "kind": "raw_file",
+          "rank": 0,
+          "canonicalUnitKey": "empty_bytes"
+        },
+        {
+          "kind": "ooxml_part",
+          "rank": 1,
+          "canonicalUnitKey": "canonical_opc_uri_utf8_bytes"
+        },
+        {
+          "kind": "synthetic_mineru_artifact",
+          "rank": 2,
+          "canonicalUnitKey": "synthetic_role_rank",
+          "roleRanks": [
+            {
+              "role": "layout",
+              "rank": 0
+            },
+            {
+              "role": "middle",
+              "rank": 1
+            }
+          ]
+        }
+      ]
+    },
+    "newlineRecipes": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "$ref": "#/$defs/newlineRecipe"
+      }
+    },
+    "syntaxDecodeRecipes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/syntaxDecodeRecipe"
+      }
+    },
+    "rendererRules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/rendererRule"
+      }
+    },
+    "segmentCoveragePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ordinalBase",
+        "ordinalContinuity",
+        "canonicalCoverage",
+        "allowEmptySegmentsOnlyForEmptyBuffer",
+        "mixedPositionKindsPerSegment"
+      ],
+      "properties": {
+        "ordinalBase": {
+          "const": 0
+        },
+        "ordinalContinuity": {
+          "const": "contiguous"
+        },
+        "canonicalCoverage": {
+          "const": "gapless_non_overlapping_exact_cover"
+        },
+        "allowEmptySegmentsOnlyForEmptyBuffer": {
+          "const": true
+        },
+        "mixedPositionKindsPerSegment": {
+          "const": false
+        }
+      }
+    },
+    "positionCoalescePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "textPositions",
+        "geometryPositions",
+        "subsegmentCoverage",
+        "parentEquality"
+      ],
+      "properties": {
+        "textPositions": {
+          "const": "merge_same_unit_kind_adjacent_ranges"
+        },
+        "geometryPositions": {
+          "const": "never_merge"
+        },
+        "subsegmentCoverage": {
+          "const": "gapless_non_overlapping_exact_cover"
+        },
+        "parentEquality": {
+          "const": "byte_identical_after_canonical_coalesce"
+        }
+      }
+    },
+    "normalizationMapAggregateDomain": {
+      "const": "mm-chat.normalization-map.v1\n"
+    }
+  },
+  "$defs": {
+    "asciiIdentifier": {
+      "$ref": "canonical-common.v1.schema.json#/$defs/asciiIdentifier"
+    },
+    "sha256": {
+      "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+    },
+    "unicodeScalarString": {
+      "$ref": "canonical-common.v1.schema.json#/$defs/unicodeScalarString"
+    },
+    "newlineRecipe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "newlineRecipeId",
+        "sourceSequence",
+        "canonicalSequence",
+        "legalSplitPolicy"
+      ],
+      "properties": {
+        "newlineRecipeId": {
+          "$ref": "#/$defs/asciiIdentifier"
+        },
+        "sourceSequence": {
+          "enum": [
+            "\r\n",
+            "\r"
+          ]
+        },
+        "canonicalSequence": {
+          "const": "\n"
+        },
+        "legalSplitPolicy": {
+          "const": "lf_boundaries_only"
+        }
+      }
+    },
+    "syntaxDecodeRecipe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recipeOrdinal",
+        "recipeId",
+        "recipeProfileHash",
+        "format",
+        "legalSplitPolicy"
+      ],
+      "properties": {
+        "recipeOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "recipeId": {
+          "$ref": "#/$defs/asciiIdentifier"
+        },
+        "recipeProfileHash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "format": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/canonicalFormat"
+        },
+        "legalSplitPolicy": {
+          "const": "validated_subsegments_or_atomic"
+        }
+      }
+    },
+    "rendererRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rendererRuleOrdinal",
+        "rendererRuleId",
+        "rendererProfileHash",
+        "structureKind",
+        "insertedUtf8",
+        "legalSplitPolicy"
+      ],
+      "properties": {
+        "rendererRuleOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "rendererRuleId": {
+          "$ref": "#/$defs/asciiIdentifier"
+        },
+        "rendererProfileHash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "structureKind": {
+          "enum": [
+            "document",
+            "heading",
+            "paragraph",
+            "list",
+            "list_item",
+            "quote",
+            "code",
+            "table",
+            "table_row",
+            "table_cell",
+            "formula",
+            "caption",
+            "footnote",
+            "header",
+            "footer",
+            "page_break",
+            "asset_ref"
+          ]
+        },
+        "insertedUtf8": {
+          "$ref": "#/$defs/unicodeScalarString"
+        },
+        "legalSplitPolicy": {
+          "const": "declared_renderer_boundaries_only"
+        }
+      }
+    }
+  }
+}

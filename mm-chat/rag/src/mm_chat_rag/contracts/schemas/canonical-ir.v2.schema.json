@@ -1,0 +1,909 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.mm-chat.invalid/parser/canonical-ir.v2.schema.json",
+  "title": "Canonical document IR v2",
+  "description": "Closed deterministic canonical document IR. Every array has either the frozen comparator from parser-profile.v1 or semantic order. Runtime metadata, open metadata maps, floating-point values, and display-only identity inputs are excluded.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "source",
+    "normalizationProfile",
+    "normalizationMapRef",
+    "parser",
+    "textBuffer",
+    "pages",
+    "readingFlows",
+    "blocks",
+    "tables",
+    "formulas",
+    "assets",
+    "provenance"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "canonical-ir.v2"
+    },
+    "source": {
+      "$ref": "#/$defs/source"
+    },
+    "normalizationProfile": {
+      "$ref": "#/$defs/normalizationProfileBinding"
+    },
+    "normalizationMapRef": {
+      "$ref": "#/$defs/normalizationMapRef"
+    },
+    "parser": {
+      "$ref": "#/$defs/parserBinding"
+    },
+    "textBuffer": {
+      "$ref": "#/$defs/textBuffer"
+    },
+    "pages": {
+      "type": "array",
+      "description": "Canonical order is pageIndex.",
+      "items": {
+        "$ref": "#/$defs/page"
+      }
+    },
+    "readingFlows": {
+      "type": "array",
+      "description": "Canonical order is flowOrdinal then flowSeedId.",
+      "items": {
+        "$ref": "#/$defs/readingFlow"
+      }
+    },
+    "blocks": {
+      "type": "array",
+      "description": "Canonical order is readingFlowOrdinal, ordinal, logicalBlockId.",
+      "items": {
+        "$ref": "#/$defs/block"
+      }
+    },
+    "tables": {
+      "type": "array",
+      "description": "Canonical order is owningBlockOrdinal, tableOrdinal, logicalTableId. Cell order is rowIndex, columnIndex, rowSpan, columnSpan.",
+      "items": {
+        "$ref": "#/$defs/table"
+      }
+    },
+    "formulas": {
+      "type": "array",
+      "description": "Canonical order is owningBlockOrdinal, formulaOrdinal, logicalFormulaId.",
+      "items": {
+        "$ref": "#/$defs/formula"
+      }
+    },
+    "assets": {
+      "type": "array",
+      "description": "Canonical order is owningBlockOrdinal, assetOrdinal, logicalAssetId.",
+      "items": {
+        "$ref": "#/$defs/asset"
+      }
+    },
+    "provenance": {
+      "type": "array",
+      "description": "Canonical order is targetKindRank, targetOwnerSeedId, provenanceOrdinal.",
+      "items": {
+        "$ref": "#/$defs/provenance"
+      }
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bytes",
+        "sha256",
+        "format"
+      ],
+      "properties": {
+        "bytes": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/byteCount"
+        },
+        "sha256": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "format": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/canonicalFormat"
+        }
+      }
+    },
+    "normalizationProfileBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "profileHash"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "normalization-profile.v1"
+        },
+        "profileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        }
+      }
+    },
+    "normalizationMapRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "bytes",
+        "sha256"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "normalization-map.v1"
+        },
+        "bytes": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/positiveByteCount"
+        },
+        "sha256": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        }
+      }
+    },
+    "parserBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "profileHash",
+        "parserBuildHash",
+        "configHash"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "parser-profile.v1"
+        },
+        "profileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "parserBuildHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "configHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        }
+      }
+    },
+    "textBuffer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "encoding",
+        "text",
+        "bytes",
+        "sha256"
+      ],
+      "properties": {
+        "encoding": {
+          "const": "utf-8"
+        },
+        "text": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/unicodeScalarString"
+        },
+        "bytes": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/byteCount"
+        },
+        "sha256": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        }
+      }
+    },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pageIndex",
+        "ownerSeedId",
+        "widthMilliPoint",
+        "heightMilliPoint",
+        "rotationDegrees",
+        "locatorSet"
+      ],
+      "properties": {
+        "pageIndex": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "ownerSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "widthMilliPoint": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/positiveSafeInteger"
+        },
+        "heightMilliPoint": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/positiveSafeInteger"
+        },
+        "rotationDegrees": {
+          "enum": [
+            0,
+            90,
+            180,
+            270
+          ]
+        },
+        "locatorSet": {
+          "$ref": "source-locator.v2.schema.json"
+        }
+      }
+    },
+    "readingFlow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "flowOrdinal",
+        "flowSeedId",
+        "logicalFlowId",
+        "orderedLogicalBlockIds"
+      ],
+      "properties": {
+        "flowOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "flowSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "logicalFlowId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "orderedLogicalBlockIds": {
+          "type": "array",
+          "items": {
+            "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+          }
+        }
+      }
+    },
+    "block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "logicalBlockId",
+        "ordinal",
+        "readingFlowOrdinal",
+        "blockType",
+        "parentBlockId",
+        "headingPath",
+        "flowSeedId",
+        "textRange",
+        "locatorSet",
+        "structureRef",
+        "confidence",
+        "flags",
+        "sourceSpanHash",
+        "contentHash",
+        "provenanceRefs"
+      ],
+      "properties": {
+        "logicalBlockId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "ordinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "readingFlowOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "blockType": {
+          "$ref": "#/$defs/blockType"
+        },
+        "parentBlockId": {
+          "$ref": "#/$defs/nullableOpaqueId"
+        },
+        "headingPath": {
+          "type": "array",
+          "description": "Semantic root-to-leaf order of logical heading block IDs.",
+          "items": {
+            "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+          }
+        },
+        "flowSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "textRange": {
+          "$ref": "#/$defs/nullableTextRange"
+        },
+        "locatorSet": {
+          "$ref": "source-locator.v2.schema.json"
+        },
+        "structureRef": {
+          "$ref": "#/$defs/structureRef"
+        },
+        "confidence": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/basisPointsOrNull"
+        },
+        "flags": {
+          "$ref": "#/$defs/blockFlags"
+        },
+        "sourceSpanHash": {
+          "$ref": "#/$defs/sourceSpanHash"
+        },
+        "contentHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "provenanceRefs": {
+          "$ref": "#/$defs/provenanceRefs"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "blockType": {
+              "enum": [
+                "heading",
+                "paragraph",
+                "list",
+                "list_item",
+                "quote",
+                "code",
+                "table",
+                "formula",
+                "caption",
+                "footnote",
+                "header",
+                "footer"
+              ]
+            },
+            "textRange": {
+              "$ref": "canonical-common.v1.schema.json#/$defs/textRange"
+            },
+            "sourceSpanHash": {
+              "$ref": "#/$defs/textSourceSpanHash"
+            }
+          }
+        },
+        {
+          "properties": {
+            "blockType": {
+              "enum": [
+                "page_break",
+                "asset_ref"
+              ]
+            },
+            "textRange": {
+              "type": "null"
+            },
+            "sourceSpanHash": {
+              "$ref": "#/$defs/structuralSourceSpanHash"
+            }
+          }
+        }
+      ]
+    },
+    "blockType": {
+      "enum": [
+        "heading",
+        "paragraph",
+        "list",
+        "list_item",
+        "quote",
+        "code",
+        "table",
+        "formula",
+        "caption",
+        "footnote",
+        "header",
+        "footer",
+        "page_break",
+        "asset_ref"
+      ]
+    },
+    "blockFlags": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nonIndexable",
+        "derived"
+      ],
+      "properties": {
+        "nonIndexable": {
+          "type": "boolean"
+        },
+        "derived": {
+          "type": "boolean"
+        }
+      }
+    },
+    "table": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "logicalTableId",
+        "owningBlockOrdinal",
+        "tableOrdinal",
+        "ownerSeedId",
+        "rowCount",
+        "columnCount",
+        "cells",
+        "locatorSet",
+        "sourceSpanHash",
+        "contentHash",
+        "provenanceRefs"
+      ],
+      "properties": {
+        "logicalTableId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "owningBlockOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "tableOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "ownerSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "rowCount": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/positiveSafeInteger"
+        },
+        "columnCount": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/positiveSafeInteger"
+        },
+        "cells": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/cell"
+          }
+        },
+        "locatorSet": {
+          "$ref": "source-locator.v2.schema.json"
+        },
+        "sourceSpanHash": {
+          "$ref": "#/$defs/textSourceSpanHash"
+        },
+        "contentHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "provenanceRefs": {
+          "$ref": "#/$defs/provenanceRefs"
+        }
+      }
+    },
+    "cell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "logicalCellId",
+        "ownerSeedId",
+        "rowIndex",
+        "columnIndex",
+        "rowSpan",
+        "columnSpan",
+        "header",
+        "readingOrdinal",
+        "textRange",
+        "locatorSet",
+        "sourceSpanHash",
+        "contentHash",
+        "cellHash",
+        "provenanceRefs"
+      ],
+      "properties": {
+        "logicalCellId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "ownerSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "rowIndex": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "columnIndex": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "rowSpan": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/positiveSafeInteger"
+        },
+        "columnSpan": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/positiveSafeInteger"
+        },
+        "header": {
+          "type": "boolean"
+        },
+        "readingOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "textRange": {
+          "$ref": "#/$defs/nullableTextRange"
+        },
+        "locatorSet": {
+          "$ref": "source-locator.v2.schema.json"
+        },
+        "sourceSpanHash": {
+          "$ref": "#/$defs/sourceSpanHash"
+        },
+        "contentHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "cellHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "provenanceRefs": {
+          "$ref": "#/$defs/provenanceRefs"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "textRange": {
+              "$ref": "canonical-common.v1.schema.json#/$defs/textRange"
+            },
+            "sourceSpanHash": {
+              "$ref": "#/$defs/textSourceSpanHash"
+            }
+          }
+        },
+        {
+          "properties": {
+            "textRange": {
+              "type": "null"
+            },
+            "sourceSpanHash": {
+              "$ref": "#/$defs/structuralSourceSpanHash"
+            }
+          }
+        }
+      ]
+    },
+    "formula": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "logicalFormulaId",
+        "owningBlockOrdinal",
+        "formulaOrdinal",
+        "ownerSeedId",
+        "originalRepresentationPayloadRef",
+        "canonicalLatexPayloadRef",
+        "locatorSet",
+        "confidence",
+        "sourceSpanHash",
+        "contentHash",
+        "provenanceRefs"
+      ],
+      "properties": {
+        "logicalFormulaId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "owningBlockOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "formulaOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "ownerSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "originalRepresentationPayloadRef": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/payloadRef"
+        },
+        "canonicalLatexPayloadRef": {
+          "$ref": "#/$defs/nullablePayloadRef"
+        },
+        "locatorSet": {
+          "$ref": "source-locator.v2.schema.json"
+        },
+        "confidence": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/basisPointsOrNull"
+        },
+        "sourceSpanHash": {
+          "$ref": "#/$defs/textSourceSpanHash"
+        },
+        "contentHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "provenanceRefs": {
+          "$ref": "#/$defs/provenanceRefs"
+        }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "logicalAssetId",
+        "owningBlockOrdinal",
+        "assetOrdinal",
+        "ownerSeedId",
+        "widthPixels",
+        "heightPixels",
+        "mediaType",
+        "contentHash",
+        "locatorSet",
+        "nonIndexable",
+        "sourceSpanHash",
+        "provenanceRefs"
+      ],
+      "properties": {
+        "logicalAssetId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "owningBlockOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "assetOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "ownerSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "widthPixels": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/positiveSafeInteger"
+        },
+        "heightPixels": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/positiveSafeInteger"
+        },
+        "mediaType": {
+          "enum": [
+            "image/png",
+            "image/jpeg",
+            "image/gif",
+            "image/webp",
+            "image/svg+xml",
+            "image/tiff",
+            "image/bmp"
+          ]
+        },
+        "contentHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "locatorSet": {
+          "$ref": "source-locator.v2.schema.json"
+        },
+        "nonIndexable": {
+          "const": true
+        },
+        "sourceSpanHash": {
+          "$ref": "#/$defs/structuralSourceSpanHash"
+        },
+        "provenanceRefs": {
+          "$ref": "#/$defs/provenanceRefs"
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provenanceId",
+        "provenanceOrdinal",
+        "targetKind",
+        "targetKindRank",
+        "targetOwnerSeedId",
+        "provenanceKind",
+        "sourceUnitRef",
+        "payloadRef",
+        "derivationProfileHash",
+        "provenanceHash"
+      ],
+      "properties": {
+        "provenanceId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "provenanceOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "targetKind": {
+          "enum": [
+            "block",
+            "table",
+            "cell",
+            "formula",
+            "asset"
+          ]
+        },
+        "targetKindRank": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "targetOwnerSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "provenanceKind": {
+          "enum": [
+            "source_native",
+            "source_structure",
+            "external_link",
+            "parser_derivation",
+            "synthetic_mineru_derivation"
+          ]
+        },
+        "sourceUnitRef": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "payloadRef": {
+          "$ref": "#/$defs/nullablePayloadRef"
+        },
+        "derivationProfileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "provenanceHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "targetKind": {
+              "const": "block"
+            },
+            "targetKindRank": {
+              "const": 0
+            }
+          }
+        },
+        {
+          "properties": {
+            "targetKind": {
+              "const": "table"
+            },
+            "targetKindRank": {
+              "const": 1
+            }
+          }
+        },
+        {
+          "properties": {
+            "targetKind": {
+              "const": "cell"
+            },
+            "targetKindRank": {
+              "const": 2
+            }
+          }
+        },
+        {
+          "properties": {
+            "targetKind": {
+              "const": "formula"
+            },
+            "targetKindRank": {
+              "const": 3
+            }
+          }
+        },
+        {
+          "properties": {
+            "targetKind": {
+              "const": "asset"
+            },
+            "targetKindRank": {
+              "const": 4
+            }
+          }
+        }
+      ]
+    },
+    "structureRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ownerSeedId",
+        "structureKind",
+        "structureOrdinal"
+      ],
+      "properties": {
+        "ownerSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "structureKind": {
+          "$ref": "#/$defs/structureKind"
+        },
+        "structureOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        }
+      }
+    },
+    "structureKind": {
+      "description": "Rank is the zero-based position in this frozen list.",
+      "enum": [
+        "document",
+        "page",
+        "heading",
+        "paragraph",
+        "list",
+        "list_item",
+        "quote",
+        "code",
+        "table",
+        "table_row",
+        "table_cell",
+        "formula",
+        "caption",
+        "footnote",
+        "header",
+        "footer",
+        "page_break",
+        "asset_ref",
+        "slide",
+        "sheet",
+        "shape"
+      ]
+    },
+    "sourceSpanHash": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/textSourceSpanHash"
+        },
+        {
+          "$ref": "#/$defs/structuralSourceSpanHash"
+        }
+      ]
+    },
+    "textSourceSpanHash": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "textSourceSpanHash"
+      ],
+      "properties": {
+        "kind": {
+          "const": "text"
+        },
+        "textSourceSpanHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        }
+      }
+    },
+    "structuralSourceSpanHash": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "structuralSourceSpanHash"
+      ],
+      "properties": {
+        "kind": {
+          "const": "structural"
+        },
+        "structuralSourceSpanHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        }
+      }
+    },
+    "nullableOpaqueId": {
+      "oneOf": [
+        {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullablePayloadRef": {
+      "oneOf": [
+        {
+          "$ref": "canonical-common.v1.schema.json#/$defs/payloadRef"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullableTextRange": {
+      "oneOf": [
+        {
+          "$ref": "canonical-common.v1.schema.json#/$defs/textRange"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "provenanceRefs": {
+      "type": "array",
+      "description": "Semantic order of completed C4 provenance IDs.",
+      "items": {
+        "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+      }
+    }
+  }
+}

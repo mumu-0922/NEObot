@@ -1,0 +1,863 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.mm-chat.invalid/parser/parser-profile.v1.schema.json",
+  "title": "Offline parser profile v1",
+  "description": "Closed parser build, router, decoder, component, and fail-closed policy whose RFC 8785 bytes are hashed as the parser profile.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "profileRevision",
+    "parserBuild",
+    "resourceProfileHash",
+    "normalizationProfileHash",
+    "supportedFormats",
+    "router",
+    "textDecoding",
+    "components",
+    "safetyPolicy",
+    "geometryPolicy",
+    "arrayComparators",
+    "idDagStages"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "parser-profile.v1"
+    },
+    "profileRevision": {
+      "const": 1
+    },
+    "parserBuild": {
+      "$ref": "#/$defs/parserBuild"
+    },
+    "resourceProfileHash": {
+      "$ref": "#/$defs/sha256"
+    },
+    "normalizationProfileHash": {
+      "$ref": "#/$defs/sha256"
+    },
+    "supportedFormats": {
+      "const": [
+        "txt",
+        "markdown",
+        "html",
+        "docx",
+        "pptx",
+        "xlsx",
+        "csv",
+        "pdf",
+        "synthetic_mineru_artifact"
+      ]
+    },
+    "router": {
+      "$ref": "#/$defs/routerPolicy"
+    },
+    "textDecoding": {
+      "$ref": "#/$defs/textDecodingPolicy"
+    },
+    "components": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/txtComponent"
+        },
+        {
+          "$ref": "#/$defs/markdownComponent"
+        },
+        {
+          "$ref": "#/$defs/htmlComponent"
+        },
+        {
+          "$ref": "#/$defs/docxComponent"
+        },
+        {
+          "$ref": "#/$defs/pptxComponent"
+        },
+        {
+          "$ref": "#/$defs/xlsxComponent"
+        },
+        {
+          "$ref": "#/$defs/csvComponent"
+        },
+        {
+          "$ref": "#/$defs/pdfComponent"
+        },
+        {
+          "$ref": "#/$defs/syntheticMineruComponent"
+        }
+      ],
+      "items": false
+    },
+    "safetyPolicy": {
+      "$ref": "#/$defs/safetyPolicy"
+    },
+    "geometryPolicy": {
+      "$ref": "#/$defs/geometryPolicy"
+    },
+    "arrayComparators": {
+      "const": [
+        {
+          "array": "pages",
+          "keys": [
+            "pageIndex"
+          ]
+        },
+        {
+          "array": "sourceUnits",
+          "keys": [
+            "sourceUnitKindRank",
+            "unsigned_utf8_canonical_unit_key_bytes"
+          ]
+        },
+        {
+          "array": "readingFlows",
+          "keys": [
+            "flowOrdinal",
+            "flowSeedId"
+          ]
+        },
+        {
+          "array": "blocks",
+          "keys": [
+            "readingFlowOrdinal",
+            "ordinal",
+            "logicalBlockId"
+          ]
+        },
+        {
+          "array": "tables",
+          "keys": [
+            "owningBlockOrdinal",
+            "tableOrdinal",
+            "logicalTableId"
+          ]
+        },
+        {
+          "array": "cells",
+          "keys": [
+            "rowIndex",
+            "columnIndex",
+            "rowSpan",
+            "columnSpan"
+          ]
+        },
+        {
+          "array": "formulas",
+          "keys": [
+            "owningBlockOrdinal",
+            "formulaOrdinal",
+            "logicalFormulaId"
+          ]
+        },
+        {
+          "array": "assets",
+          "keys": [
+            "owningBlockOrdinal",
+            "assetOrdinal",
+            "logicalAssetId"
+          ]
+        },
+        {
+          "array": "provenance",
+          "keys": [
+            "targetKindRank",
+            "targetOwnerSeedId",
+            "provenanceOrdinal"
+          ]
+        }
+      ]
+    },
+    "idDagStages": {
+      "const": [
+        {
+          "stage": "A",
+          "entities": [
+            "opaqueSourceUnitId",
+            "sourceUnitPayloadRef"
+          ]
+        },
+        {
+          "stage": "B",
+          "entities": [
+            "flowSeedId",
+            "ownerSeedId"
+          ]
+        },
+        {
+          "stage": "C1",
+          "entities": [
+            "opaqueSheetId",
+            "opaqueShapeId",
+            "opaqueStructureId",
+            "nodePayloadRef"
+          ]
+        },
+        {
+          "stage": "C2",
+          "entities": [
+            "locatorAnchor",
+            "sourceFragment",
+            "locatorView"
+          ]
+        },
+        {
+          "stage": "C3",
+          "entities": [
+            "textSourceSpanHash",
+            "structuralSourceSpanHash"
+          ]
+        },
+        {
+          "stage": "C4",
+          "entities": [
+            "provenanceHash",
+            "provenanceId"
+          ]
+        },
+        {
+          "stage": "D",
+          "entities": [
+            "logicalBlockId",
+            "logicalTableId",
+            "logicalCellId",
+            "logicalFormulaId",
+            "logicalAssetId"
+          ]
+        },
+        {
+          "stage": "E",
+          "entities": [
+            "logicalFlowId"
+          ]
+        },
+        {
+          "stage": "F",
+          "entities": [
+            "logicalParentChunkId",
+            "logicalChildChunkId"
+          ]
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+    },
+    "unicodeScalarString": {
+      "$ref": "canonical-common.v1.schema.json#/$defs/unicodeScalarString"
+    },
+    "nonEmptyUnicodeScalarString": {
+      "$ref": "canonical-common.v1.schema.json#/$defs/nonEmptyUnicodeScalarString"
+    },
+    "asciiIdentifier": {
+      "$ref": "canonical-common.v1.schema.json#/$defs/asciiIdentifier"
+    },
+    "parserBuild": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "implementationName",
+        "implementationVersion",
+        "sourceRevisionSha256",
+        "buildManifestSha256",
+        "imageDigest",
+        "runtimeName",
+        "runtimeVersion"
+      ],
+      "properties": {
+        "implementationName": {
+          "const": "mm-chat-offline-parser"
+        },
+        "implementationVersion": {
+          "$ref": "#/$defs/nonEmptyUnicodeScalarString"
+        },
+        "sourceRevisionSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "buildManifestSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "imageDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "runtimeName": {
+          "const": "cpython"
+        },
+        "runtimeVersion": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/nonEmptyUnicodeScalarString"
+            },
+            {
+              "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+            }
+          ]
+        }
+      }
+    },
+    "routerPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "precedence",
+        "extensionRole",
+        "genericTextPolicy",
+        "contentProbeRole",
+        "mismatchError",
+        "ambiguousError",
+        "unsupportedError",
+        "fallbackPolicy"
+      ],
+      "properties": {
+        "precedence": {
+          "const": [
+            "header_magic",
+            "container_central_directory_content_types_required_parts",
+            "structured_parser_preflight",
+            "declared_mime",
+            "declared_extension_consistency_only"
+          ]
+        },
+        "extensionRole": {
+          "const": "consistency_only"
+        },
+        "genericTextPolicy": {
+          "const": "require_one_unique_registered_hint"
+        },
+        "contentProbeRole": {
+          "const": "validate_selected_format_never_choose_winner"
+        },
+        "mismatchError": {
+          "const": "FORMAT_MISMATCH"
+        },
+        "ambiguousError": {
+          "const": "FORMAT_AMBIGUOUS"
+        },
+        "unsupportedError": {
+          "const": "FORMAT_UNSUPPORTED"
+        },
+        "fallbackPolicy": {
+          "const": "none"
+        }
+      }
+    },
+    "textDecodingPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "precedence",
+        "candidateEncodings",
+        "decodeErrors",
+        "systemLocaleAllowed",
+        "replacementAllowed",
+        "ambiguousError"
+      ],
+      "properties": {
+        "precedence": {
+          "const": [
+            "bom",
+            "strict_utf8",
+            "profile_candidate_encodings"
+          ]
+        },
+        "candidateEncodings": {
+          "const": [
+            "gb18030"
+          ]
+        },
+        "decodeErrors": {
+          "const": "strict"
+        },
+        "systemLocaleAllowed": {
+          "const": false
+        },
+        "replacementAllowed": {
+          "const": false
+        },
+        "ambiguousError": {
+          "const": "ENCODING_AMBIGUOUS"
+        }
+      }
+    },
+    "componentBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "componentOrdinal",
+        "format",
+        "implementationId",
+        "implementationVersion",
+        "implementationArtifactSha256",
+        "optionsHash"
+      ],
+      "properties": {
+        "componentOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "format": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/canonicalFormat"
+        },
+        "implementationId": {
+          "$ref": "#/$defs/asciiIdentifier"
+        },
+        "implementationVersion": {
+          "$ref": "#/$defs/nonEmptyUnicodeScalarString"
+        },
+        "implementationArtifactSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "optionsHash": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "txtComponent": {
+      "$ref": "#/$defs/txtComponentShape"
+    },
+    "txtComponentShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "componentOrdinal",
+        "format",
+        "implementationId",
+        "implementationVersion",
+        "implementationArtifactSha256",
+        "optionsHash"
+      ],
+      "properties": {
+        "componentOrdinal": {
+          "const": 0
+        },
+        "format": {
+          "const": "txt"
+        },
+        "implementationId": {
+          "$ref": "#/$defs/asciiIdentifier"
+        },
+        "implementationVersion": {
+          "$ref": "#/$defs/nonEmptyUnicodeScalarString"
+        },
+        "implementationArtifactSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "optionsHash": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "markdownComponent": {
+      "$ref": "#/$defs/markdownComponentShape"
+    },
+    "markdownComponentShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "componentOrdinal",
+        "format",
+        "implementationId",
+        "implementationVersion",
+        "implementationArtifactSha256",
+        "optionsHash"
+      ],
+      "properties": {
+        "componentOrdinal": {
+          "const": 1
+        },
+        "format": {
+          "const": "markdown"
+        },
+        "implementationId": {
+          "$ref": "#/$defs/asciiIdentifier"
+        },
+        "implementationVersion": {
+          "$ref": "#/$defs/nonEmptyUnicodeScalarString"
+        },
+        "implementationArtifactSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "optionsHash": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "htmlComponent": {
+      "$ref": "#/$defs/htmlComponentShape"
+    },
+    "htmlComponentShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "componentOrdinal",
+        "format",
+        "implementationId",
+        "implementationVersion",
+        "implementationArtifactSha256",
+        "optionsHash"
+      ],
+      "properties": {
+        "componentOrdinal": {
+          "const": 2
+        },
+        "format": {
+          "const": "html"
+        },
+        "implementationId": {
+          "$ref": "#/$defs/asciiIdentifier"
+        },
+        "implementationVersion": {
+          "$ref": "#/$defs/nonEmptyUnicodeScalarString"
+        },
+        "implementationArtifactSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "optionsHash": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "docxComponent": {
+      "$ref": "#/$defs/docxComponentShape"
+    },
+    "docxComponentShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "componentOrdinal",
+        "format",
+        "implementationId",
+        "implementationVersion",
+        "implementationArtifactSha256",
+        "optionsHash"
+      ],
+      "properties": {
+        "componentOrdinal": {
+          "const": 3
+        },
+        "format": {
+          "const": "docx"
+        },
+        "implementationId": {
+          "$ref": "#/$defs/asciiIdentifier"
+        },
+        "implementationVersion": {
+          "$ref": "#/$defs/nonEmptyUnicodeScalarString"
+        },
+        "implementationArtifactSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "optionsHash": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "pptxComponent": {
+      "$ref": "#/$defs/pptxComponentShape"
+    },
+    "pptxComponentShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "componentOrdinal",
+        "format",
+        "implementationId",
+        "implementationVersion",
+        "implementationArtifactSha256",
+        "optionsHash"
+      ],
+      "properties": {
+        "componentOrdinal": {
+          "const": 4
+        },
+        "format": {
+          "const": "pptx"
+        },
+        "implementationId": {
+          "$ref": "#/$defs/asciiIdentifier"
+        },
+        "implementationVersion": {
+          "$ref": "#/$defs/nonEmptyUnicodeScalarString"
+        },
+        "implementationArtifactSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "optionsHash": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "xlsxComponent": {
+      "$ref": "#/$defs/xlsxComponentShape"
+    },
+    "xlsxComponentShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "componentOrdinal",
+        "format",
+        "implementationId",
+        "implementationVersion",
+        "implementationArtifactSha256",
+        "optionsHash"
+      ],
+      "properties": {
+        "componentOrdinal": {
+          "const": 5
+        },
+        "format": {
+          "const": "xlsx"
+        },
+        "implementationId": {
+          "$ref": "#/$defs/asciiIdentifier"
+        },
+        "implementationVersion": {
+          "$ref": "#/$defs/nonEmptyUnicodeScalarString"
+        },
+        "implementationArtifactSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "optionsHash": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "csvComponent": {
+      "$ref": "#/$defs/csvComponentShape"
+    },
+    "csvComponentShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "componentOrdinal",
+        "format",
+        "implementationId",
+        "implementationVersion",
+        "implementationArtifactSha256",
+        "optionsHash"
+      ],
+      "properties": {
+        "componentOrdinal": {
+          "const": 6
+        },
+        "format": {
+          "const": "csv"
+        },
+        "implementationId": {
+          "$ref": "#/$defs/asciiIdentifier"
+        },
+        "implementationVersion": {
+          "$ref": "#/$defs/nonEmptyUnicodeScalarString"
+        },
+        "implementationArtifactSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "optionsHash": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "pdfComponent": {
+      "$ref": "#/$defs/pdfComponentShape"
+    },
+    "pdfComponentShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "componentOrdinal",
+        "format",
+        "implementationId",
+        "implementationVersion",
+        "implementationArtifactSha256",
+        "optionsHash"
+      ],
+      "properties": {
+        "componentOrdinal": {
+          "const": 7
+        },
+        "format": {
+          "const": "pdf"
+        },
+        "implementationId": {
+          "$ref": "#/$defs/asciiIdentifier"
+        },
+        "implementationVersion": {
+          "$ref": "#/$defs/nonEmptyUnicodeScalarString"
+        },
+        "implementationArtifactSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "optionsHash": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "syntheticMineruComponent": {
+      "$ref": "#/$defs/syntheticMineruComponentShape"
+    },
+    "syntheticMineruComponentShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "componentOrdinal",
+        "format",
+        "implementationId",
+        "implementationVersion",
+        "implementationArtifactSha256",
+        "optionsHash"
+      ],
+      "properties": {
+        "componentOrdinal": {
+          "const": 8
+        },
+        "format": {
+          "const": "synthetic_mineru_artifact"
+        },
+        "implementationId": {
+          "$ref": "#/$defs/asciiIdentifier"
+        },
+        "implementationVersion": {
+          "$ref": "#/$defs/nonEmptyUnicodeScalarString"
+        },
+        "implementationArtifactSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "optionsHash": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "safetyPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "networkAllowed",
+        "providerCallsAllowed",
+        "externalFetchAllowed",
+        "dtdAllowed",
+        "generalEntitiesAllowed",
+        "parameterEntitiesAllowed",
+        "xincludeAllowed",
+        "schemaFetchAllowed",
+        "scriptExecutionAllowed",
+        "macroExecutionAllowed",
+        "formulaEvaluationAllowed",
+        "embeddedOleExecutionAllowed",
+        "archiveRecursionAllowed",
+        "invalidUnicodeReplacementAllowed",
+        "bestEffortSchemaRecoveryAllowed",
+        "resourceLimitRelaxationAllowed"
+      ],
+      "properties": {
+        "networkAllowed": {
+          "const": false
+        },
+        "providerCallsAllowed": {
+          "const": false
+        },
+        "externalFetchAllowed": {
+          "const": false
+        },
+        "dtdAllowed": {
+          "const": false
+        },
+        "generalEntitiesAllowed": {
+          "const": false
+        },
+        "parameterEntitiesAllowed": {
+          "const": false
+        },
+        "xincludeAllowed": {
+          "const": false
+        },
+        "schemaFetchAllowed": {
+          "const": false
+        },
+        "scriptExecutionAllowed": {
+          "const": false
+        },
+        "macroExecutionAllowed": {
+          "const": false
+        },
+        "formulaEvaluationAllowed": {
+          "const": false
+        },
+        "embeddedOleExecutionAllowed": {
+          "const": false
+        },
+        "archiveRecursionAllowed": {
+          "const": false
+        },
+        "invalidUnicodeReplacementAllowed": {
+          "const": false
+        },
+        "bestEffortSchemaRecoveryAllowed": {
+          "const": false
+        },
+        "resourceLimitRelaxationAllowed": {
+          "const": false
+        }
+      }
+    },
+    "geometryPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "numericModel",
+        "outputUnit",
+        "rounding",
+        "origin",
+        "bboxConvention",
+        "clampAllowed",
+        "pdfRotationOrder",
+        "pdfVisibleBox",
+        "pptxEmuToMilliPointRatio"
+      ],
+      "properties": {
+        "numericModel": {
+          "const": "exact_rational"
+        },
+        "outputUnit": {
+          "const": "milli_point"
+        },
+        "rounding": {
+          "const": "round_half_to_even_at_final_conversion_only"
+        },
+        "origin": {
+          "const": "top_left"
+        },
+        "bboxConvention": {
+          "const": "half_open_positive_area"
+        },
+        "clampAllowed": {
+          "const": false
+        },
+        "pdfRotationOrder": {
+          "const": "cropbox_userunit_translation_rotation_then_bbox"
+        },
+        "pdfVisibleBox": {
+          "const": "effective_cropbox"
+        },
+        "pptxEmuToMilliPointRatio": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "numerator",
+            "denominator"
+          ],
+          "properties": {
+            "numerator": {
+              "const": 10
+            },
+            "denominator": {
+              "const": 127
+            }
+          }
+        }
+      }
+    }
+  }
+}

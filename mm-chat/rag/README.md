@@ -13,6 +13,11 @@ Phase 15.2C C0 adds **test-only** redacted Provider Contract intake under
 `tests/fixtures/provider_contracts/`. The checked-in MinerU/Jina fixtures remain
 blocked drafts; they do not enable provider calls or production handlers.
 
+Phase 15.2C C1.1 adds installable, versioned Offline Parser schemas under
+`src/mm_chat_rag/contracts/` plus test-only parser corpus and RFC 8785
+cross-runtime gates. This freezes artifact shapes and hash inputs only; it does
+not implement a parser, create derived output, or enable a runtime registry.
+
 The operator-only C0 Provider Capture Harness lives in
 `tools/provider_capture.py`. It defaults to a redacted, zero-network dry-run and
 is not a production console script. Real egress requires explicit `--execute`
@@ -83,6 +88,37 @@ listener, or make network calls:
 
 ```bash
 uv run pytest -p no:cacheprovider tests/unit/test_provider_contracts.py
+```
+
+Offline Parser Contract, corpus, and JCS gates are also network-free:
+
+```bash
+uv run pytest -p no:cacheprovider \
+  tests/unit/test_parser_contracts.py \
+  tests/unit/test_parser_artifact_schemas.py \
+  tests/unit/test_parser_normalization_semantics.py \
+  tests/unit/test_parser_projection_semantics.py \
+  tests/unit/test_parser_lineage_semantics.py \
+  tests/unit/test_parser_hash_dag_semantics.py \
+  tests/unit/test_parser_stable_error_matrix.py \
+  tests/unit/test_parser_corpus.py \
+  tests/unit/test_parser_runtime_boundary.py \
+  tests/unit/test_parser_package_artifacts.py \
+  tests/unit/test_jcs_interop.py
+uv run python -B -m tools.verify_jcs_interop --require-all
+```
+
+The second command is the mandatory C1.1 interoperability gate. It fails when
+Go 1.22 or Node 22 is absent or when Python, Go, and JavaScript disagree on any
+checked-in byte/hash vector; it never downloads a dependency.
+
+Wheel packaging is a separate two-step offline gate. The verifier consumes an
+existing wheel and cannot build, install, or download anything itself:
+
+```bash
+uv build --offline --wheel --out-dir /tmp/mm-chat-rag-wheel
+uv run python -B tools/verify_contract_wheel.py \
+  /tmp/mm-chat-rag-wheel/mm_chat_rag-0.1.0-py3-none-any.whl
 ```
 
 The Provider Capture Harness also makes no network call by default and creates

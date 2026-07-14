@@ -1,0 +1,248 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.mm-chat.invalid/parser/source-unit-resolver.v1.schema.json",
+  "title": "Deletable source unit resolver v1",
+  "description": "Closed resolver from immutable source-unit payload refs to deletable display payloads. Entries are semantic order by sourceUnitOrdinal, payloadKindRank, and payloadOrdinal. Immutable manifests retain only bytes/hash/count for this artifact.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "sourceSha256",
+    "entries",
+    "entryCount",
+    "aggregateHash"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "source-unit-resolver.v1"
+    },
+    "sourceSha256": {
+      "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
+    },
+    "entryCount": {
+      "$ref": "canonical-common.v1.schema.json#/$defs/positiveSafeInteger"
+    },
+    "aggregateHash": {
+      "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "entry": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/rawFileDisplayEntry"
+        },
+        {
+          "$ref": "#/$defs/ooxmlPartUriEntry"
+        },
+        {
+          "$ref": "#/$defs/syntheticArtifactDisplayEntry"
+        }
+      ]
+    },
+    "rawFileDisplayEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceUnitOrdinal",
+        "opaqueSourceUnitId",
+        "sourceUnitKind",
+        "payloadKind",
+        "payloadKindRank",
+        "payloadOrdinal",
+        "sourceUnitPayloadRef",
+        "payloadHash",
+        "payload"
+      ],
+      "properties": {
+        "sourceUnitOrdinal": {
+          "const": 0
+        },
+        "opaqueSourceUnitId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "sourceUnitKind": {
+          "const": "raw_file"
+        },
+        "payloadKind": {
+          "const": "raw_file_display_name"
+        },
+        "payloadKindRank": {
+          "const": 0
+        },
+        "payloadOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "sourceUnitPayloadRef": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/payloadRef"
+        },
+        "payloadHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "payload": {
+          "$ref": "#/$defs/rawFileDisplayPayload"
+        }
+      }
+    },
+    "rawFileDisplayPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "displayName"
+      ],
+      "properties": {
+        "displayName": {
+          "allOf": [
+            {
+              "$ref": "canonical-common.v1.schema.json#/$defs/nonEmptyUnicodeScalarString"
+            },
+            {
+              "maxLength": 1024
+            }
+          ]
+        }
+      }
+    },
+    "ooxmlPartUriEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceUnitOrdinal",
+        "opaqueSourceUnitId",
+        "sourceUnitKind",
+        "payloadKind",
+        "payloadKindRank",
+        "payloadOrdinal",
+        "sourceUnitPayloadRef",
+        "payloadHash",
+        "payload"
+      ],
+      "properties": {
+        "sourceUnitOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/positiveSafeInteger"
+        },
+        "opaqueSourceUnitId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "sourceUnitKind": {
+          "const": "ooxml_part"
+        },
+        "payloadKind": {
+          "const": "canonical_opc_part_uri"
+        },
+        "payloadKindRank": {
+          "const": 1
+        },
+        "payloadOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "sourceUnitPayloadRef": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/payloadRef"
+        },
+        "payloadHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "payload": {
+          "$ref": "#/$defs/ooxmlPartUriPayload"
+        }
+      }
+    },
+    "ooxmlPartUriPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonicalPartUri"
+      ],
+      "properties": {
+        "canonicalPartUri": {
+          "allOf": [
+            {
+              "$ref": "canonical-common.v1.schema.json#/$defs/nonEmptyUnicodeScalarString"
+            },
+            {
+              "maxLength": 512,
+              "pattern": "^/[A-Za-z0-9._~!$&'()+,;=@%/-]+$"
+            }
+          ]
+        }
+      }
+    },
+    "syntheticArtifactDisplayEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceUnitOrdinal",
+        "opaqueSourceUnitId",
+        "sourceUnitKind",
+        "payloadKind",
+        "payloadKindRank",
+        "payloadOrdinal",
+        "sourceUnitPayloadRef",
+        "payloadHash",
+        "payload"
+      ],
+      "properties": {
+        "sourceUnitOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/positiveSafeInteger"
+        },
+        "opaqueSourceUnitId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "sourceUnitKind": {
+          "const": "synthetic_mineru_artifact"
+        },
+        "payloadKind": {
+          "const": "synthetic_artifact_display_name"
+        },
+        "payloadKindRank": {
+          "const": 2
+        },
+        "payloadOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "sourceUnitPayloadRef": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/payloadRef"
+        },
+        "payloadHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "payload": {
+          "$ref": "#/$defs/syntheticArtifactDisplayPayload"
+        }
+      }
+    },
+    "syntheticArtifactDisplayPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "displayName"
+      ],
+      "properties": {
+        "role": {
+          "enum": [
+            "layout",
+            "middle"
+          ]
+        },
+        "displayName": {
+          "allOf": [
+            {
+              "$ref": "canonical-common.v1.schema.json#/$defs/nonEmptyUnicodeScalarString"
+            },
+            {
+              "maxLength": 512
+            }
+          ]
+        }
+      }
+    }
+  }
+}

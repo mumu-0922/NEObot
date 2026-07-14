@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.mm-chat.invalid/parser/canonical-common.v1.schema.json",
+  "title": "MM Chat canonical contract common definitions v1",
+  "description": "Shared scalar and closed value-object definitions. Byte-level validators must additionally reject BOMs, duplicate keys, and JSON that is not its RFC 8785 canonical representation.",
+  "$defs": {
+    "unicodeScalarString": {
+      "type": "string",
+      "pattern": "^[^\\u0000\\uD800-\\uDFFF]*$"
+    },
+    "nonEmptyUnicodeScalarString": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^\\u0000\\uD800-\\uDFFF]+$"
+    },
+    "asciiIdentifier": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/nonEmptyUnicodeScalarString"
+        },
+        {
+          "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+        }
+      ]
+    },
+    "schemaVersion": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/nonEmptyUnicodeScalarString"
+        },
+        {
+          "pattern": "^[a-z][a-z0-9-]*(?:\\.[a-z0-9-]+)*\\.v[1-9][0-9]*$"
+        }
+      ]
+    },
+    "safeInteger": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "nonNegativeSafeInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "positiveSafeInteger": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "ordinal": {
+      "$ref": "#/$defs/nonNegativeSafeInteger"
+    },
+    "byteCount": {
+      "$ref": "#/$defs/nonNegativeSafeInteger"
+    },
+    "positiveByteCount": {
+      "$ref": "#/$defs/positiveSafeInteger"
+    },
+    "utf8ByteOffset": {
+      "$ref": "#/$defs/nonNegativeSafeInteger"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "opaqueId": {
+      "$ref": "#/$defs/sha256"
+    },
+    "payloadRef": {
+      "$ref": "#/$defs/sha256"
+    },
+    "basisPointsOrNull": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "closedRatio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "numerator",
+        "denominator"
+      ],
+      "properties": {
+        "numerator": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "denominator": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        }
+      }
+    },
+    "textRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "startByte",
+        "endByte"
+      ],
+      "properties": {
+        "startByte": {
+          "$ref": "#/$defs/utf8ByteOffset"
+        },
+        "endByte": {
+          "$ref": "#/$defs/utf8ByteOffset"
+        }
+      }
+    },
+    "bboxMilliPoint": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/nonNegativeSafeInteger"
+        },
+        {
+          "$ref": "#/$defs/nonNegativeSafeInteger"
+        },
+        {
+          "$ref": "#/$defs/nonNegativeSafeInteger"
+        },
+        {
+          "$ref": "#/$defs/nonNegativeSafeInteger"
+        }
+      ],
+      "items": false
+    },
+    "artifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "bytes",
+        "sha256"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "$ref": "#/$defs/schemaVersion"
+        },
+        "bytes": {
+          "$ref": "#/$defs/byteCount"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "sourceUnitKind": {
+      "enum": [
+        "raw_file",
+        "ooxml_part",
+        "synthetic_mineru_artifact"
+      ]
+    },
+    "sourceUnitKindRank": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2
+    },
+    "canonicalFormat": {
+      "enum": [
+        "txt",
+        "markdown",
+        "html",
+        "docx",
+        "pptx",
+        "xlsx",
+        "csv",
+        "pdf",
+        "synthetic_mineru_artifact"
+      ]
+    },
+    "hashAlgorithm": {
+      "const": "sha256"
+    },
+    "canonicalizationAlgorithm": {
+      "const": "rfc8785"
+    },
+    "utf8BytesString": {
+      "$ref": "#/$defs/unicodeScalarString"
+    }
+  }
+}

@@ -1,0 +1,2185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.mm-chat.invalid/parser/logical-hash-envelope.v1.schema.json",
+  "title": "Logical hash envelope v1",
+  "description": "Closed domain-separated RFC 8785/SHA-256 preimage envelope. Hashers prefix the ASCII domain value to RFC 8785 canonical bytes of the entire envelope with the domain member omitted. Semantic validators additionally prove DAG stage ordering, references, ordinals, ranges, fragment/joiner cardinality, and payload-kind rank equality.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "envelopeKind",
+    "domain",
+    "canonicalization",
+    "hashAlgorithm",
+    "normalizationProfileHash",
+    "parserBuildHash",
+    "configHash",
+    "payload"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "logical-hash-envelope.v1"
+    },
+    "envelopeKind": {
+      "enum": [
+        "opaque_source_unit_id",
+        "source_unit_payload_ref",
+        "flow_seed_id",
+        "owner_seed_id",
+        "opaque_sheet_id",
+        "opaque_shape_id",
+        "opaque_structure_id",
+        "node_payload_ref",
+        "text_source_span_hash",
+        "structural_source_span_hash",
+        "provenance_hash",
+        "provenance_id",
+        "logical_block_id",
+        "logical_table_id",
+        "logical_cell_id",
+        "logical_formula_id",
+        "logical_asset_id",
+        "logical_flow_id",
+        "parent_chunk_seed_id",
+        "overlap_group_id",
+        "source_reuse_group_id",
+        "logical_parent_chunk_id",
+        "logical_child_chunk_id",
+        "chunk_source_span_hash"
+      ]
+    },
+    "domain": {
+      "enum": [
+        "mm-chat.opaque-source-unit-id.v1\n",
+        "mm-chat.source-unit-payload-ref.v1\n",
+        "mm-chat.flow-seed-id.v1\n",
+        "mm-chat.owner-seed-id.v1\n",
+        "mm-chat.opaque-sheet-id.v1\n",
+        "mm-chat.opaque-shape-id.v1\n",
+        "mm-chat.opaque-structure-id.v1\n",
+        "mm-chat.node-payload-ref.v1\n",
+        "mm-chat.text-source-span.v1\n",
+        "mm-chat.structural-source-span.v1\n",
+        "mm-chat.provenance.v1\n",
+        "mm-chat.provenance-id.v1\n",
+        "mm-chat.logical-block-id.v1\n",
+        "mm-chat.logical-table-id.v1\n",
+        "mm-chat.logical-cell-id.v1\n",
+        "mm-chat.logical-formula-id.v1\n",
+        "mm-chat.logical-asset-id.v1\n",
+        "mm-chat.logical-flow-id.v1\n",
+        "mm-chat.parent-chunk-seed-id.v1\n",
+        "mm-chat.overlap-group-id.v1\n",
+        "mm-chat.source-reuse-group-id.v1\n",
+        "mm-chat.parent-chunk-id.v1\n",
+        "mm-chat.child-chunk-id.v1\n",
+        "mm-chat.chunk-source-span.v1\n"
+      ]
+    },
+    "canonicalization": {
+      "const": "rfc8785"
+    },
+    "hashAlgorithm": {
+      "const": "sha256"
+    },
+    "normalizationProfileHash": {
+      "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+    },
+    "parserBuildHash": {
+      "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+    },
+    "configHash": {
+      "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+    },
+    "payload": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/opaqueSourceUnitIdPayload"
+        },
+        {
+          "$ref": "#/$defs/sourceUnitPayloadRefPayload"
+        },
+        {
+          "$ref": "#/$defs/flowSeedIdPayload"
+        },
+        {
+          "$ref": "#/$defs/ownerSeedIdPayload"
+        },
+        {
+          "$ref": "#/$defs/opaqueSheetIdPayload"
+        },
+        {
+          "$ref": "#/$defs/opaqueShapeIdPayload"
+        },
+        {
+          "$ref": "#/$defs/opaqueStructureIdPayload"
+        },
+        {
+          "$ref": "#/$defs/nodePayloadRefPayload"
+        },
+        {
+          "$ref": "#/$defs/textSourceSpanHashPayload"
+        },
+        {
+          "$ref": "#/$defs/structuralSourceSpanHashPayload"
+        },
+        {
+          "$ref": "#/$defs/provenanceHashPayload"
+        },
+        {
+          "$ref": "#/$defs/provenanceIdPayload"
+        },
+        {
+          "$ref": "#/$defs/logicalBlockIdPayload"
+        },
+        {
+          "$ref": "#/$defs/logicalTableIdPayload"
+        },
+        {
+          "$ref": "#/$defs/logicalCellIdPayload"
+        },
+        {
+          "$ref": "#/$defs/logicalFormulaIdPayload"
+        },
+        {
+          "$ref": "#/$defs/logicalAssetIdPayload"
+        },
+        {
+          "$ref": "#/$defs/logicalFlowIdPayload"
+        },
+        {
+          "$ref": "#/$defs/parentChunkSeedIdPayload"
+        },
+        {
+          "$ref": "#/$defs/overlapGroupIdPayload"
+        },
+        {
+          "$ref": "#/$defs/sourceReuseGroupIdPayload"
+        },
+        {
+          "$ref": "#/$defs/parentChunkIdPayload"
+        },
+        {
+          "$ref": "#/$defs/childChunkIdPayload"
+        },
+        {
+          "$ref": "#/$defs/chunkSourceSpanHashPayload"
+        }
+      ]
+    }
+  },
+  "oneOf": [
+    {
+      "title": "opaque_source_unit_id",
+      "properties": {
+        "envelopeKind": {
+          "const": "opaque_source_unit_id"
+        },
+        "domain": {
+          "const": "mm-chat.opaque-source-unit-id.v1\n"
+        },
+        "payload": {
+          "$ref": "#/$defs/opaqueSourceUnitIdPayload"
+        }
+      }
+    },
+    {
+      "title": "source_unit_payload_ref",
+      "properties": {
+        "envelopeKind": {
+          "const": "source_unit_payload_ref"
+        },
+        "domain": {
+          "const": "mm-chat.source-unit-payload-ref.v1\n"
+        },
+        "payload": {
+          "$ref": "#/$defs/sourceUnitPayloadRefPayload"
+        }
+      }
+    },
+    {
+      "title": "flow_seed_id",
+      "properties": {
+        "envelopeKind": {
+          "const": "flow_seed_id"
+        },
+        "domain": {
+          "const": "mm-chat.flow-seed-id.v1\n"
+        },
+        "payload": {
+          "$ref": "#/$defs/flowSeedIdPayload"
+        }
+      }
+    },
+    {
+      "title": "owner_seed_id",
+      "properties": {
+        "envelopeKind": {
+          "const": "owner_seed_id"
+        },
+        "domain": {
+          "const": "mm-chat.owner-seed-id.v1\n"
+        },
+        "payload": {
+          "$ref": "#/$defs/ownerSeedIdPayload"
+        }
+      }
+    },
+    {
+      "title": "opaque_sheet_id",
+      "properties": {
+        "envelopeKind": {
+          "const": "opaque_sheet_id"
+        },
+        "domain": {
+          "const": "mm-chat.opaque-sheet-id.v1\n"
+        },
+        "payload": {
+          "$ref": "#/$defs/opaqueSheetIdPayload"
+        }
+      }
+    },
+    {
+      "title": "opaque_shape_id",
+      "properties": {
+        "envelopeKind": {
+          "const": "opaque_shape_id"
+        },
+        "domain": {
+          "const": "mm-chat.opaque-shape-id.v1\n"
+        },
+        "payload": {
+          "$ref": "#/$defs/opaqueShapeIdPayload"
+        }
+      }
+    },
+    {
+      "title": "opaque_structure_id",
+      "properties": {
+        "envelopeKind": {
+          "const": "opaque_structure_id"
+        },
+        "domain": {
+          "const": "mm-chat.opaque-structure-id.v1\n"
+        },
+        "payload": {
+          "$ref": "#/$defs/opaqueStructureIdPayload"
+        }
+      }
+    },
+    {
+      "title": "node_payload_ref",
+      "properties": {
+        "envelopeKind": {
+          "const": "node_payload_ref"
+        },
+        "domain": {
+          "const": "mm-chat.node-payload-ref.v1\n"
+        },
+        "payload": {
+          "$ref": "#/$defs/nodePayloadRefPayload"
+        }
+      }
+    },
+    {
+      "title": "text_source_span_hash",
+      "properties": {
+        "envelopeKind": {
+          "const": "text_source_span_hash"
+        },
+        "domain": {
+          "const": "mm-chat.text-source-span.v1\n"
+        },
+        "payload": {
+          "$ref": "#/$defs/textSourceSpanHashPayload"
+        }
+      }
+    },
+    {
+      "title": "structural_source_span_hash",
+      "properties": {
+        "envelopeKind": {
+          "const": "structural_source_span_hash"
+        },
+        "domain": {
+          "const": "mm-chat.structural-source-span.v1\n"
+        },
+        "payload": {
+          "$ref": "#/$defs/structuralSourceSpanHashPayload"
+        }
+      }
+    },
+    {
+      "title": "provenance_hash",
+      "properties": {
+        "envelopeKind": {
+          "const": "provenance_hash"
+        },
+        "domain": {
+          "const": "mm-chat.provenance.v1\n"
+        },
+        "payload": {
+          "$ref": "#/$defs/provenanceHashPayload"
+        }
+      }
+    },
+    {
+      "title": "provenance_id",
+      "properties": {
+        "envelopeKind": {
+          "const": "provenance_id"
+        },
+        "domain": {
+          "const": "mm-chat.provenance-id.v1\n"
+        },
+        "payload": {
+          "$ref": "#/$defs/provenanceIdPayload"
+        }
+      }
+    },
+    {
+      "title": "logical_block_id",
+      "properties": {
+        "envelopeKind": {
+          "const": "logical_block_id"
+        },
+        "domain": {
+          "const": "mm-chat.logical-block-id.v1\n"
+        },
+        "payload": {
+          "$ref": "#/$defs/logicalBlockIdPayload"
+        }
+      }
+    },
+    {
+      "title": "logical_table_id",
+      "properties": {
+        "envelopeKind": {
+          "const": "logical_table_id"
+        },
+        "domain": {
+          "const": "mm-chat.logical-table-id.v1\n"
+        },
+        "payload": {
+          "$ref": "#/$defs/logicalTableIdPayload"
+        }
+      }
+    },
+    {
+      "title": "logical_cell_id",
+      "properties": {
+        "envelopeKind": {
+          "const": "logical_cell_id"
+        },
+        "domain": {
+          "const": "mm-chat.logical-cell-id.v1\n"
+        },
+        "payload": {
+          "$ref": "#/$defs/logicalCellIdPayload"
+        }
+      }
+    },
+    {
+      "title": "logical_formula_id",
+      "properties": {
+        "envelopeKind": {
+          "const": "logical_formula_id"
+        },
+        "domain": {
+          "const": "mm-chat.logical-formula-id.v1\n"
+        },
+        "payload": {
+          "$ref": "#/$defs/logicalFormulaIdPayload"
+        }
+      }
+    },
+    {
+      "title": "logical_asset_id",
+      "properties": {
+        "envelopeKind": {
+          "const": "logical_asset_id"
+        },
+        "domain": {
+          "const": "mm-chat.logical-asset-id.v1\n"
+        },
+        "payload": {
+          "$ref": "#/$defs/logicalAssetIdPayload"
+        }
+      }
+    },
+    {
+      "title": "logical_flow_id",
+      "properties": {
+        "envelopeKind": {
+          "const": "logical_flow_id"
+        },
+        "domain": {
+          "const": "mm-chat.logical-flow-id.v1\n"
+        },
+        "payload": {
+          "$ref": "#/$defs/logicalFlowIdPayload"
+        }
+      }
+    },
+    {
+      "title": "parent_chunk_seed_id",
+      "properties": {
+        "envelopeKind": {
+          "const": "parent_chunk_seed_id"
+        },
+        "domain": {
+          "const": "mm-chat.parent-chunk-seed-id.v1\n"
+        },
+        "payload": {
+          "$ref": "#/$defs/parentChunkSeedIdPayload"
+        }
+      }
+    },
+    {
+      "title": "overlap_group_id",
+      "properties": {
+        "envelopeKind": {
+          "const": "overlap_group_id"
+        },
+        "domain": {
+          "const": "mm-chat.overlap-group-id.v1\n"
+        },
+        "payload": {
+          "$ref": "#/$defs/overlapGroupIdPayload"
+        }
+      }
+    },
+    {
+      "title": "source_reuse_group_id",
+      "properties": {
+        "envelopeKind": {
+          "const": "source_reuse_group_id"
+        },
+        "domain": {
+          "const": "mm-chat.source-reuse-group-id.v1\n"
+        },
+        "payload": {
+          "$ref": "#/$defs/sourceReuseGroupIdPayload"
+        }
+      }
+    },
+    {
+      "title": "logical_parent_chunk_id",
+      "properties": {
+        "envelopeKind": {
+          "const": "logical_parent_chunk_id"
+        },
+        "domain": {
+          "const": "mm-chat.parent-chunk-id.v1\n"
+        },
+        "payload": {
+          "$ref": "#/$defs/parentChunkIdPayload"
+        }
+      }
+    },
+    {
+      "title": "logical_child_chunk_id",
+      "properties": {
+        "envelopeKind": {
+          "const": "logical_child_chunk_id"
+        },
+        "domain": {
+          "const": "mm-chat.child-chunk-id.v1\n"
+        },
+        "payload": {
+          "$ref": "#/$defs/childChunkIdPayload"
+        }
+      }
+    },
+    {
+      "title": "chunk_source_span_hash",
+      "properties": {
+        "envelopeKind": {
+          "const": "chunk_source_span_hash"
+        },
+        "domain": {
+          "const": "mm-chat.chunk-source-span.v1\n"
+        },
+        "payload": {
+          "$ref": "#/$defs/chunkSourceSpanHashPayload"
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "pathStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pathOrdinal",
+        "nodeKind",
+        "nodeOrdinal"
+      ],
+      "properties": {
+        "pathOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "nodeKind": {
+          "enum": [
+            "document",
+            "page",
+            "heading",
+            "paragraph",
+            "list",
+            "list_item",
+            "quote",
+            "code",
+            "table",
+            "table_row",
+            "table_cell",
+            "formula",
+            "caption",
+            "footnote",
+            "header",
+            "footer",
+            "page_break",
+            "asset_ref",
+            "slide",
+            "sheet",
+            "shape"
+          ]
+        },
+        "nodeOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        }
+      }
+    },
+    "joiner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "utf8Bytes"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "adjacent",
+            "block_separator"
+          ]
+        },
+        "utf8Bytes": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/unicodeScalarString"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "adjacent"
+            },
+            "utf8Bytes": {
+              "const": ""
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "block_separator"
+            },
+            "utf8Bytes": {
+              "const": "\n\n"
+            }
+          }
+        }
+      ]
+    },
+    "primarySpanFragment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fragmentKind",
+        "blockLogicalId",
+        "blockStartByte",
+        "blockEndByte",
+        "clippedLocatorSetHash",
+        "fragmentSourceSpanHash"
+      ],
+      "properties": {
+        "fragmentKind": {
+          "const": "primary"
+        },
+        "blockLogicalId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "blockStartByte": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/nonNegativeSafeInteger"
+        },
+        "blockEndByte": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/positiveSafeInteger"
+        },
+        "clippedLocatorSetHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "fragmentSourceSpanHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        }
+      }
+    },
+    "windowOverlapSpanFragment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fragmentKind",
+        "blockLogicalId",
+        "blockStartByte",
+        "blockEndByte",
+        "clippedLocatorSetHash",
+        "fragmentSourceSpanHash",
+        "previousChildOrdinal",
+        "overlapGroupId",
+        "overlapTokenCount"
+      ],
+      "properties": {
+        "fragmentKind": {
+          "const": "window_overlap"
+        },
+        "blockLogicalId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "blockStartByte": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/nonNegativeSafeInteger"
+        },
+        "blockEndByte": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/positiveSafeInteger"
+        },
+        "clippedLocatorSetHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "fragmentSourceSpanHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "previousChildOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "overlapGroupId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "overlapTokenCount": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/positiveSafeInteger"
+        }
+      }
+    },
+    "derivedContextSpanFragment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fragmentKind",
+        "blockLogicalId",
+        "blockStartByte",
+        "blockEndByte",
+        "clippedLocatorSetHash",
+        "fragmentSourceSpanHash",
+        "derived",
+        "derivedReason",
+        "sourceReuseGroupId",
+        "originalFragmentSourceSpanHash"
+      ],
+      "properties": {
+        "fragmentKind": {
+          "const": "derived_context"
+        },
+        "blockLogicalId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "blockStartByte": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/nonNegativeSafeInteger"
+        },
+        "blockEndByte": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/positiveSafeInteger"
+        },
+        "clippedLocatorSetHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "fragmentSourceSpanHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "derived": {
+          "const": true
+        },
+        "derivedReason": {
+          "enum": [
+            "table_header",
+            "heading_context",
+            "faq_context"
+          ]
+        },
+        "sourceReuseGroupId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "originalFragmentSourceSpanHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        }
+      }
+    },
+    "spanFragment": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "fragmentKind",
+            "blockLogicalId",
+            "blockStartByte",
+            "blockEndByte",
+            "clippedLocatorSetHash",
+            "fragmentSourceSpanHash"
+          ],
+          "properties": {
+            "fragmentKind": {
+              "const": "primary"
+            },
+            "blockLogicalId": {
+              "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+            },
+            "blockStartByte": {
+              "$ref": "canonical-common.v1.schema.json#/$defs/nonNegativeSafeInteger"
+            },
+            "blockEndByte": {
+              "$ref": "canonical-common.v1.schema.json#/$defs/positiveSafeInteger"
+            },
+            "clippedLocatorSetHash": {
+              "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+            },
+            "fragmentSourceSpanHash": {
+              "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "fragmentKind",
+            "blockLogicalId",
+            "blockStartByte",
+            "blockEndByte",
+            "clippedLocatorSetHash",
+            "fragmentSourceSpanHash",
+            "previousChildOrdinal",
+            "overlapGroupId",
+            "overlapTokenCount"
+          ],
+          "properties": {
+            "fragmentKind": {
+              "const": "window_overlap"
+            },
+            "blockLogicalId": {
+              "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+            },
+            "blockStartByte": {
+              "$ref": "canonical-common.v1.schema.json#/$defs/nonNegativeSafeInteger"
+            },
+            "blockEndByte": {
+              "$ref": "canonical-common.v1.schema.json#/$defs/positiveSafeInteger"
+            },
+            "clippedLocatorSetHash": {
+              "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+            },
+            "fragmentSourceSpanHash": {
+              "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+            },
+            "previousChildOrdinal": {
+              "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+            },
+            "overlapGroupId": {
+              "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+            },
+            "overlapTokenCount": {
+              "$ref": "canonical-common.v1.schema.json#/$defs/positiveSafeInteger"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "fragmentKind",
+            "blockLogicalId",
+            "blockStartByte",
+            "blockEndByte",
+            "clippedLocatorSetHash",
+            "fragmentSourceSpanHash",
+            "derived",
+            "derivedReason",
+            "sourceReuseGroupId",
+            "originalFragmentSourceSpanHash"
+          ],
+          "properties": {
+            "fragmentKind": {
+              "const": "derived_context"
+            },
+            "blockLogicalId": {
+              "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+            },
+            "blockStartByte": {
+              "$ref": "canonical-common.v1.schema.json#/$defs/nonNegativeSafeInteger"
+            },
+            "blockEndByte": {
+              "$ref": "canonical-common.v1.schema.json#/$defs/positiveSafeInteger"
+            },
+            "clippedLocatorSetHash": {
+              "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+            },
+            "fragmentSourceSpanHash": {
+              "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+            },
+            "derived": {
+              "const": true
+            },
+            "derivedReason": {
+              "enum": [
+                "table_header",
+                "heading_context",
+                "faq_context"
+              ]
+            },
+            "sourceReuseGroupId": {
+              "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+            },
+            "originalFragmentSourceSpanHash": {
+              "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+            }
+          }
+        }
+      ]
+    },
+    "opaqueSourceUnitIdPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceHash",
+        "sourceUnitKind",
+        "sourceUnitKindRank",
+        "sourceUnitOrdinal",
+        "sourceUnitBytesHash"
+      ],
+      "properties": {
+        "sourceHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "sourceUnitKind": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sourceUnitKind"
+        },
+        "sourceUnitKindRank": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sourceUnitKindRank"
+        },
+        "sourceUnitOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "sourceUnitBytesHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "sourceUnitKind": {
+              "const": "raw_file"
+            },
+            "sourceUnitKindRank": {
+              "const": 0
+            }
+          }
+        },
+        {
+          "properties": {
+            "sourceUnitKind": {
+              "const": "ooxml_part"
+            },
+            "sourceUnitKindRank": {
+              "const": 1
+            }
+          }
+        },
+        {
+          "properties": {
+            "sourceUnitKind": {
+              "const": "synthetic_mineru_artifact"
+            },
+            "sourceUnitKindRank": {
+              "const": 2
+            }
+          }
+        }
+      ]
+    },
+    "sourceUnitPayloadRefPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "opaqueSourceUnitId",
+        "payloadKind",
+        "payloadKindRank",
+        "payloadOrdinal",
+        "payloadHash"
+      ],
+      "properties": {
+        "opaqueSourceUnitId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "payloadKind": {
+          "enum": [
+            "raw_file_display_name",
+            "canonical_opc_part_uri",
+            "synthetic_artifact_display_name"
+          ]
+        },
+        "payloadKindRank": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "payloadOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "payloadHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "payloadKind": {
+              "const": "raw_file_display_name"
+            },
+            "payloadKindRank": {
+              "const": 0
+            }
+          }
+        },
+        {
+          "properties": {
+            "payloadKind": {
+              "const": "canonical_opc_part_uri"
+            },
+            "payloadKindRank": {
+              "const": 1
+            }
+          }
+        },
+        {
+          "properties": {
+            "payloadKind": {
+              "const": "synthetic_artifact_display_name"
+            },
+            "payloadKindRank": {
+              "const": 2
+            }
+          }
+        }
+      ]
+    },
+    "flowSeedIdPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceHash",
+        "parserProfileHash",
+        "flowOrdinal",
+        "geometryHash"
+      ],
+      "properties": {
+        "sourceHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "parserProfileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "flowOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "geometryHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        }
+      }
+    },
+    "ownerSeedIdPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceHash",
+        "parserProfileHash",
+        "nodeKind",
+        "structuralPath",
+        "nodeOrdinal"
+      ],
+      "properties": {
+        "sourceHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "parserProfileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "nodeKind": {
+          "enum": [
+            "document",
+            "page",
+            "heading",
+            "paragraph",
+            "list",
+            "list_item",
+            "quote",
+            "code",
+            "table",
+            "table_row",
+            "table_cell",
+            "formula",
+            "caption",
+            "footnote",
+            "header",
+            "footer",
+            "page_break",
+            "asset_ref",
+            "slide",
+            "sheet",
+            "shape"
+          ]
+        },
+        "structuralPath": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "pathOrdinal",
+              "nodeKind",
+              "nodeOrdinal"
+            ],
+            "properties": {
+              "pathOrdinal": {
+                "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+              },
+              "nodeKind": {
+                "enum": [
+                  "document",
+                  "page",
+                  "heading",
+                  "paragraph",
+                  "list",
+                  "list_item",
+                  "quote",
+                  "code",
+                  "table",
+                  "table_row",
+                  "table_cell",
+                  "formula",
+                  "caption",
+                  "footnote",
+                  "header",
+                  "footer",
+                  "page_break",
+                  "asset_ref",
+                  "slide",
+                  "sheet",
+                  "shape"
+                ]
+              },
+              "nodeOrdinal": {
+                "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+              }
+            }
+          }
+        },
+        "nodeOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        }
+      }
+    },
+    "opaqueSheetIdPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceHash",
+        "workbookSourceUnitId",
+        "sheetOrdinal"
+      ],
+      "properties": {
+        "sourceHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "workbookSourceUnitId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "sheetOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        }
+      }
+    },
+    "opaqueShapeIdPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceHash",
+        "slideIndex",
+        "shapeTreeOrdinalPath"
+      ],
+      "properties": {
+        "sourceHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "slideIndex": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "shapeTreeOrdinalPath": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+          }
+        }
+      }
+    },
+    "opaqueStructureIdPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceHash",
+        "structureKind",
+        "structureKindRank",
+        "ownerSeedId",
+        "structureOrdinal"
+      ],
+      "properties": {
+        "sourceHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "structureKindRank": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20
+        },
+        "ownerSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "structureOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "structureKind": {
+          "enum": [
+            "document",
+            "page",
+            "heading",
+            "paragraph",
+            "list",
+            "list_item",
+            "quote",
+            "code",
+            "table",
+            "table_row",
+            "table_cell",
+            "formula",
+            "caption",
+            "footnote",
+            "header",
+            "footer",
+            "page_break",
+            "asset_ref",
+            "slide",
+            "sheet",
+            "shape"
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "structureKind": {
+              "const": "document"
+            },
+            "structureKindRank": {
+              "const": 0
+            }
+          }
+        },
+        {
+          "properties": {
+            "structureKind": {
+              "const": "page"
+            },
+            "structureKindRank": {
+              "const": 1
+            }
+          }
+        },
+        {
+          "properties": {
+            "structureKind": {
+              "const": "heading"
+            },
+            "structureKindRank": {
+              "const": 2
+            }
+          }
+        },
+        {
+          "properties": {
+            "structureKind": {
+              "const": "paragraph"
+            },
+            "structureKindRank": {
+              "const": 3
+            }
+          }
+        },
+        {
+          "properties": {
+            "structureKind": {
+              "const": "list"
+            },
+            "structureKindRank": {
+              "const": 4
+            }
+          }
+        },
+        {
+          "properties": {
+            "structureKind": {
+              "const": "list_item"
+            },
+            "structureKindRank": {
+              "const": 5
+            }
+          }
+        },
+        {
+          "properties": {
+            "structureKind": {
+              "const": "quote"
+            },
+            "structureKindRank": {
+              "const": 6
+            }
+          }
+        },
+        {
+          "properties": {
+            "structureKind": {
+              "const": "code"
+            },
+            "structureKindRank": {
+              "const": 7
+            }
+          }
+        },
+        {
+          "properties": {
+            "structureKind": {
+              "const": "table"
+            },
+            "structureKindRank": {
+              "const": 8
+            }
+          }
+        },
+        {
+          "properties": {
+            "structureKind": {
+              "const": "table_row"
+            },
+            "structureKindRank": {
+              "const": 9
+            }
+          }
+        },
+        {
+          "properties": {
+            "structureKind": {
+              "const": "table_cell"
+            },
+            "structureKindRank": {
+              "const": 10
+            }
+          }
+        },
+        {
+          "properties": {
+            "structureKind": {
+              "const": "formula"
+            },
+            "structureKindRank": {
+              "const": 11
+            }
+          }
+        },
+        {
+          "properties": {
+            "structureKind": {
+              "const": "caption"
+            },
+            "structureKindRank": {
+              "const": 12
+            }
+          }
+        },
+        {
+          "properties": {
+            "structureKind": {
+              "const": "footnote"
+            },
+            "structureKindRank": {
+              "const": 13
+            }
+          }
+        },
+        {
+          "properties": {
+            "structureKind": {
+              "const": "header"
+            },
+            "structureKindRank": {
+              "const": 14
+            }
+          }
+        },
+        {
+          "properties": {
+            "structureKind": {
+              "const": "footer"
+            },
+            "structureKindRank": {
+              "const": 15
+            }
+          }
+        },
+        {
+          "properties": {
+            "structureKind": {
+              "const": "page_break"
+            },
+            "structureKindRank": {
+              "const": 16
+            }
+          }
+        },
+        {
+          "properties": {
+            "structureKind": {
+              "const": "asset_ref"
+            },
+            "structureKindRank": {
+              "const": 17
+            }
+          }
+        },
+        {
+          "properties": {
+            "structureKind": {
+              "const": "slide"
+            },
+            "structureKindRank": {
+              "const": 18
+            }
+          }
+        },
+        {
+          "properties": {
+            "structureKind": {
+              "const": "sheet"
+            },
+            "structureKindRank": {
+              "const": 19
+            }
+          }
+        },
+        {
+          "properties": {
+            "structureKind": {
+              "const": "shape"
+            },
+            "structureKindRank": {
+              "const": 20
+            }
+          }
+        }
+      ]
+    },
+    "nodePayloadRefPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceHash",
+        "payloadKind",
+        "payloadKindRank",
+        "ownerSeedId",
+        "payloadOrdinal",
+        "payloadHash"
+      ],
+      "properties": {
+        "sourceHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "payloadKind": {
+          "enum": [
+            "canonical_xpath",
+            "external_target",
+            "formula_source",
+            "canonical_latex",
+            "asset_media_type",
+            "display_label"
+          ]
+        },
+        "payloadKindRank": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "ownerSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "payloadOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "payloadHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "payloadKind": {
+              "const": "canonical_xpath"
+            },
+            "payloadKindRank": {
+              "const": 0
+            }
+          }
+        },
+        {
+          "properties": {
+            "payloadKind": {
+              "const": "external_target"
+            },
+            "payloadKindRank": {
+              "const": 1
+            }
+          }
+        },
+        {
+          "properties": {
+            "payloadKind": {
+              "const": "formula_source"
+            },
+            "payloadKindRank": {
+              "const": 2
+            }
+          }
+        },
+        {
+          "properties": {
+            "payloadKind": {
+              "const": "canonical_latex"
+            },
+            "payloadKindRank": {
+              "const": 3
+            }
+          }
+        },
+        {
+          "properties": {
+            "payloadKind": {
+              "const": "asset_media_type"
+            },
+            "payloadKindRank": {
+              "const": 4
+            }
+          }
+        },
+        {
+          "properties": {
+            "payloadKind": {
+              "const": "display_label"
+            },
+            "payloadKindRank": {
+              "const": 5
+            }
+          }
+        }
+      ]
+    },
+    "textSourceSpanHashPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceHash",
+        "canonicalStartByte",
+        "canonicalEndByte",
+        "canonicalTextHash",
+        "locatorSetHash",
+        "orderedSourceFragmentHashes"
+      ],
+      "properties": {
+        "sourceHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "canonicalStartByte": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/nonNegativeSafeInteger"
+        },
+        "canonicalEndByte": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/positiveSafeInteger"
+        },
+        "canonicalTextHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "locatorSetHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "orderedSourceFragmentHashes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+          }
+        }
+      }
+    },
+    "structuralSourceSpanHashPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceHash",
+        "nodeKind",
+        "ownerSeedId",
+        "structureOrdinal",
+        "locatorSetHash",
+        "orderedSourceFragmentHashes"
+      ],
+      "properties": {
+        "sourceHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "nodeKind": {
+          "enum": [
+            "document",
+            "page",
+            "heading",
+            "paragraph",
+            "list",
+            "list_item",
+            "quote",
+            "code",
+            "table",
+            "table_row",
+            "table_cell",
+            "formula",
+            "caption",
+            "footnote",
+            "header",
+            "footer",
+            "page_break",
+            "asset_ref",
+            "slide",
+            "sheet",
+            "shape"
+          ]
+        },
+        "ownerSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "structureOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "locatorSetHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "orderedSourceFragmentHashes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+          }
+        }
+      }
+    },
+    "provenanceHashPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provenanceOrdinal",
+        "targetKind",
+        "targetKindRank",
+        "targetOwnerSeedId",
+        "provenanceKind",
+        "sourceUnitRef",
+        "payloadRef",
+        "derivationProfileHash"
+      ],
+      "properties": {
+        "provenanceOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "targetKind": {
+          "enum": [
+            "block",
+            "table",
+            "cell",
+            "formula",
+            "asset"
+          ]
+        },
+        "targetOwnerSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "provenanceKind": {
+          "enum": [
+            "source_native",
+            "source_structure",
+            "external_link",
+            "parser_derivation",
+            "synthetic_mineru_derivation"
+          ]
+        },
+        "sourceUnitRef": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "payloadRef": {
+          "oneOf": [
+            {
+              "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "derivationProfileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "targetKindRank": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "targetKind": {
+              "const": "block"
+            },
+            "targetKindRank": {
+              "const": 0
+            }
+          }
+        },
+        {
+          "properties": {
+            "targetKind": {
+              "const": "table"
+            },
+            "targetKindRank": {
+              "const": 1
+            }
+          }
+        },
+        {
+          "properties": {
+            "targetKind": {
+              "const": "cell"
+            },
+            "targetKindRank": {
+              "const": 2
+            }
+          }
+        },
+        {
+          "properties": {
+            "targetKind": {
+              "const": "formula"
+            },
+            "targetKindRank": {
+              "const": 3
+            }
+          }
+        },
+        {
+          "properties": {
+            "targetKind": {
+              "const": "asset"
+            },
+            "targetKindRank": {
+              "const": 4
+            }
+          }
+        }
+      ]
+    },
+    "provenanceIdPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provenanceHash",
+        "targetOwnerSeedId",
+        "provenanceOrdinal"
+      ],
+      "properties": {
+        "provenanceHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "targetOwnerSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "provenanceOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        }
+      }
+    },
+    "logicalBlockIdPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceHash",
+        "parserProfileHash",
+        "blockOrdinal",
+        "blockEnvelopeHash"
+      ],
+      "properties": {
+        "sourceHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "parserProfileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "blockOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "blockEnvelopeHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        }
+      }
+    },
+    "logicalFlowIdPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "flowSeedId",
+        "orderedLogicalBlockIds"
+      ],
+      "properties": {
+        "flowSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "orderedLogicalBlockIds": {
+          "type": "array",
+          "items": {
+            "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+          }
+        }
+      }
+    },
+    "parentChunkSeedIdPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceHash",
+        "chunkProfileHash",
+        "sectionOwnerSeedId",
+        "parentOrdinal"
+      ],
+      "properties": {
+        "sourceHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "chunkProfileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "sectionOwnerSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "parentOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        }
+      }
+    },
+    "overlapGroupIdPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parentChunkSeedId",
+        "previousChildOrdinal",
+        "currentChildOrdinal",
+        "originalFragmentSourceSpanHash"
+      ],
+      "properties": {
+        "parentChunkSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "previousChildOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "currentChildOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "originalFragmentSourceSpanHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        }
+      }
+    },
+    "sourceReuseGroupIdPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parentChunkSeedId",
+        "derivedReason",
+        "originalFragmentSourceSpanHash"
+      ],
+      "properties": {
+        "parentChunkSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "derivedReason": {
+          "enum": [
+            "table_header",
+            "heading_context",
+            "faq_context"
+          ]
+        },
+        "originalFragmentSourceSpanHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        }
+      }
+    },
+    "parentChunkIdPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chunkKind",
+        "logicalFlowId",
+        "parentChunkSeedId",
+        "parentOrdinal",
+        "chunkProfileHash",
+        "spanFragments",
+        "joiners",
+        "contentHash"
+      ],
+      "properties": {
+        "chunkKind": {
+          "const": "parent"
+        },
+        "logicalFlowId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "parentChunkSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "parentOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "chunkProfileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "spanFragments": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/parentSpanFragment"
+          }
+        },
+        "joiners": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "utf8Bytes"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "adjacent",
+                  "block_separator"
+                ]
+              },
+              "utf8Bytes": {
+                "$ref": "canonical-common.v1.schema.json#/$defs/unicodeScalarString"
+              }
+            }
+          }
+        },
+        "contentHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        }
+      }
+    },
+    "childChunkIdPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chunkKind",
+        "logicalFlowId",
+        "parentChunkSeedId",
+        "childOrdinal",
+        "chunkProfileHash",
+        "spanFragments",
+        "joiners",
+        "contentHash"
+      ],
+      "properties": {
+        "chunkKind": {
+          "const": "child"
+        },
+        "logicalFlowId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "parentChunkSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "childOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "chunkProfileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "spanFragments": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/childSpanFragment"
+          }
+        },
+        "joiners": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "utf8Bytes"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "adjacent",
+                  "block_separator"
+                ]
+              },
+              "utf8Bytes": {
+                "$ref": "canonical-common.v1.schema.json#/$defs/unicodeScalarString"
+              }
+            }
+          }
+        },
+        "contentHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        }
+      }
+    },
+    "chunkSourceSpanHashPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chunkProfileHash",
+        "fragmentSourceSpanHashes",
+        "joiners"
+      ],
+      "properties": {
+        "chunkProfileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "fragmentSourceSpanHashes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+          }
+        },
+        "joiners": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "utf8Bytes"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "adjacent",
+                  "block_separator"
+                ]
+              },
+              "utf8Bytes": {
+                "$ref": "canonical-common.v1.schema.json#/$defs/unicodeScalarString"
+              }
+            }
+          }
+        }
+      }
+    },
+    "parentSpanFragment": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/primarySpanFragment"
+        },
+        {
+          "$ref": "#/$defs/derivedContextSpanFragment"
+        }
+      ]
+    },
+    "childSpanFragment": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/primarySpanFragment"
+        },
+        {
+          "$ref": "#/$defs/windowOverlapSpanFragment"
+        },
+        {
+          "$ref": "#/$defs/derivedContextSpanFragment"
+        }
+      ]
+    },
+    "logicalTableIdPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceHash",
+        "parserProfileHash",
+        "nodeKind",
+        "ownerSeedId",
+        "nodeOrdinal",
+        "parentLogicalId",
+        "nodeEnvelopeHash"
+      ],
+      "properties": {
+        "sourceHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "parserProfileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "nodeKind": {
+          "const": "table"
+        },
+        "ownerSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "nodeOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "parentLogicalId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "nodeEnvelopeHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        }
+      }
+    },
+    "logicalCellIdPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceHash",
+        "parserProfileHash",
+        "nodeKind",
+        "ownerSeedId",
+        "nodeOrdinal",
+        "parentLogicalId",
+        "nodeEnvelopeHash"
+      ],
+      "properties": {
+        "sourceHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "parserProfileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "nodeKind": {
+          "const": "cell"
+        },
+        "ownerSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "nodeOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "parentLogicalId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "nodeEnvelopeHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        }
+      }
+    },
+    "logicalFormulaIdPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceHash",
+        "parserProfileHash",
+        "nodeKind",
+        "ownerSeedId",
+        "nodeOrdinal",
+        "parentLogicalId",
+        "nodeEnvelopeHash"
+      ],
+      "properties": {
+        "sourceHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "parserProfileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "nodeKind": {
+          "const": "formula"
+        },
+        "ownerSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "nodeOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "parentLogicalId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "nodeEnvelopeHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        }
+      }
+    },
+    "logicalAssetIdPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceHash",
+        "parserProfileHash",
+        "nodeKind",
+        "ownerSeedId",
+        "nodeOrdinal",
+        "parentLogicalId",
+        "nodeEnvelopeHash"
+      ],
+      "properties": {
+        "sourceHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "parserProfileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "nodeKind": {
+          "const": "asset"
+        },
+        "ownerSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "nodeOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "parentLogicalId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "nodeEnvelopeHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        }
+      }
+    }
+  }
+}

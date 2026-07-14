@@ -1,0 +1,509 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.mm-chat.invalid/parser/parser-stable-error.v1.schema.json",
+  "title": "Offline parser stable error v1",
+  "description": "A closed stable-error decision record. The oneOf table freezes each code's wire outcome, C1 disposition, retryability, and stageability. Error messages are intentionally excluded from the contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "code",
+    "outcome",
+    "disposition",
+    "retryable",
+    "stageable"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "parser-stable-error.v1"
+    },
+    "code": {
+      "enum": [
+        "FORMAT_MISMATCH",
+        "FORMAT_AMBIGUOUS",
+        "FORMAT_UNSUPPORTED",
+        "INPUT_INVALID",
+        "INPUT_TOO_LARGE",
+        "PAGE_LIMIT_EXCEEDED",
+        "ARCHIVE_LIMIT_EXCEEDED",
+        "ENCODING_AMBIGUOUS",
+        "ACTIVE_CONTENT_UNSUPPORTED",
+        "PDF_ENCRYPTED_UNSUPPORTED",
+        "MINERU_REQUIRED",
+        "PROTOCOL_INVALID",
+        "RESULT_TOO_LARGE",
+        "PARSER_BUSY",
+        "PARSER_CANCELLED",
+        "PARSER_TIMEOUT",
+        "PARSER_MEMORY_LIMIT",
+        "PARSER_SANDBOX_UNAVAILABLE",
+        "PARSER_SCHEMA_MISMATCH",
+        "PARSER_NONDETERMINISTIC",
+        "QUALITY_LOCATOR_FAILED",
+        "QUALITY_CHUNK_BOUNDARY_FAILED"
+      ]
+    },
+    "outcome": {
+      "enum": [
+        "route_required",
+        "failure"
+      ]
+    },
+    "disposition": {
+      "enum": [
+        "quarantine",
+        "unsupported",
+        "route_required",
+        "failure"
+      ]
+    },
+    "retryable": {
+      "type": "boolean"
+    },
+    "stageable": {
+      "type": "boolean"
+    }
+  },
+  "oneOf": [
+    {
+      "title": "FORMAT_MISMATCH",
+      "properties": {
+        "code": {
+          "const": "FORMAT_MISMATCH"
+        },
+        "outcome": {
+          "const": "failure"
+        },
+        "disposition": {
+          "const": "quarantine"
+        },
+        "retryable": {
+          "const": false
+        },
+        "stageable": {
+          "const": false
+        }
+      }
+    },
+    {
+      "title": "FORMAT_AMBIGUOUS",
+      "properties": {
+        "code": {
+          "const": "FORMAT_AMBIGUOUS"
+        },
+        "outcome": {
+          "const": "failure"
+        },
+        "disposition": {
+          "const": "unsupported"
+        },
+        "retryable": {
+          "const": true
+        },
+        "stageable": {
+          "const": false
+        }
+      }
+    },
+    {
+      "title": "FORMAT_UNSUPPORTED",
+      "properties": {
+        "code": {
+          "const": "FORMAT_UNSUPPORTED"
+        },
+        "outcome": {
+          "const": "failure"
+        },
+        "disposition": {
+          "const": "unsupported"
+        },
+        "retryable": {
+          "const": false
+        },
+        "stageable": {
+          "const": false
+        }
+      }
+    },
+    {
+      "title": "INPUT_INVALID",
+      "properties": {
+        "code": {
+          "const": "INPUT_INVALID"
+        },
+        "outcome": {
+          "const": "failure"
+        },
+        "disposition": {
+          "const": "quarantine"
+        },
+        "retryable": {
+          "const": false
+        },
+        "stageable": {
+          "const": false
+        }
+      }
+    },
+    {
+      "title": "INPUT_TOO_LARGE",
+      "properties": {
+        "code": {
+          "const": "INPUT_TOO_LARGE"
+        },
+        "outcome": {
+          "const": "failure"
+        },
+        "disposition": {
+          "const": "unsupported"
+        },
+        "retryable": {
+          "const": false
+        },
+        "stageable": {
+          "const": false
+        }
+      }
+    },
+    {
+      "title": "PAGE_LIMIT_EXCEEDED",
+      "properties": {
+        "code": {
+          "const": "PAGE_LIMIT_EXCEEDED"
+        },
+        "outcome": {
+          "const": "failure"
+        },
+        "disposition": {
+          "const": "unsupported"
+        },
+        "retryable": {
+          "const": false
+        },
+        "stageable": {
+          "const": false
+        }
+      }
+    },
+    {
+      "title": "ARCHIVE_LIMIT_EXCEEDED",
+      "properties": {
+        "code": {
+          "const": "ARCHIVE_LIMIT_EXCEEDED"
+        },
+        "outcome": {
+          "const": "failure"
+        },
+        "disposition": {
+          "const": "quarantine"
+        },
+        "retryable": {
+          "const": false
+        },
+        "stageable": {
+          "const": false
+        }
+      }
+    },
+    {
+      "title": "ENCODING_AMBIGUOUS",
+      "properties": {
+        "code": {
+          "const": "ENCODING_AMBIGUOUS"
+        },
+        "outcome": {
+          "const": "failure"
+        },
+        "disposition": {
+          "const": "quarantine"
+        },
+        "retryable": {
+          "const": false
+        },
+        "stageable": {
+          "const": false
+        }
+      }
+    },
+    {
+      "title": "ACTIVE_CONTENT_UNSUPPORTED",
+      "properties": {
+        "code": {
+          "const": "ACTIVE_CONTENT_UNSUPPORTED"
+        },
+        "outcome": {
+          "const": "failure"
+        },
+        "disposition": {
+          "const": "unsupported"
+        },
+        "retryable": {
+          "const": false
+        },
+        "stageable": {
+          "const": false
+        }
+      }
+    },
+    {
+      "title": "PDF_ENCRYPTED_UNSUPPORTED",
+      "properties": {
+        "code": {
+          "const": "PDF_ENCRYPTED_UNSUPPORTED"
+        },
+        "outcome": {
+          "const": "failure"
+        },
+        "disposition": {
+          "const": "unsupported"
+        },
+        "retryable": {
+          "const": false
+        },
+        "stageable": {
+          "const": false
+        }
+      }
+    },
+    {
+      "title": "MINERU_REQUIRED",
+      "properties": {
+        "code": {
+          "const": "MINERU_REQUIRED"
+        },
+        "outcome": {
+          "const": "route_required"
+        },
+        "disposition": {
+          "const": "route_required"
+        },
+        "retryable": {
+          "const": false
+        },
+        "stageable": {
+          "const": false
+        }
+      }
+    },
+    {
+      "title": "PROTOCOL_INVALID",
+      "properties": {
+        "code": {
+          "const": "PROTOCOL_INVALID"
+        },
+        "outcome": {
+          "const": "failure"
+        },
+        "disposition": {
+          "const": "quarantine"
+        },
+        "retryable": {
+          "const": false
+        },
+        "stageable": {
+          "const": false
+        }
+      }
+    },
+    {
+      "title": "RESULT_TOO_LARGE",
+      "properties": {
+        "code": {
+          "const": "RESULT_TOO_LARGE"
+        },
+        "outcome": {
+          "const": "failure"
+        },
+        "disposition": {
+          "const": "quarantine"
+        },
+        "retryable": {
+          "const": false
+        },
+        "stageable": {
+          "const": false
+        }
+      }
+    },
+    {
+      "title": "PARSER_BUSY",
+      "properties": {
+        "code": {
+          "const": "PARSER_BUSY"
+        },
+        "outcome": {
+          "const": "failure"
+        },
+        "disposition": {
+          "const": "failure"
+        },
+        "retryable": {
+          "const": true
+        },
+        "stageable": {
+          "const": false
+        }
+      }
+    },
+    {
+      "title": "PARSER_CANCELLED",
+      "properties": {
+        "code": {
+          "const": "PARSER_CANCELLED"
+        },
+        "outcome": {
+          "const": "failure"
+        },
+        "disposition": {
+          "const": "failure"
+        },
+        "retryable": {
+          "const": false
+        },
+        "stageable": {
+          "const": false
+        }
+      }
+    },
+    {
+      "title": "PARSER_TIMEOUT",
+      "properties": {
+        "code": {
+          "const": "PARSER_TIMEOUT"
+        },
+        "outcome": {
+          "const": "failure"
+        },
+        "disposition": {
+          "const": "quarantine"
+        },
+        "retryable": {
+          "const": false
+        },
+        "stageable": {
+          "const": false
+        }
+      }
+    },
+    {
+      "title": "PARSER_MEMORY_LIMIT",
+      "properties": {
+        "code": {
+          "const": "PARSER_MEMORY_LIMIT"
+        },
+        "outcome": {
+          "const": "failure"
+        },
+        "disposition": {
+          "const": "quarantine"
+        },
+        "retryable": {
+          "const": false
+        },
+        "stageable": {
+          "const": false
+        }
+      }
+    },
+    {
+      "title": "PARSER_SANDBOX_UNAVAILABLE",
+      "properties": {
+        "code": {
+          "const": "PARSER_SANDBOX_UNAVAILABLE"
+        },
+        "outcome": {
+          "const": "failure"
+        },
+        "disposition": {
+          "const": "failure"
+        },
+        "retryable": {
+          "const": true
+        },
+        "stageable": {
+          "const": false
+        }
+      }
+    },
+    {
+      "title": "PARSER_SCHEMA_MISMATCH",
+      "properties": {
+        "code": {
+          "const": "PARSER_SCHEMA_MISMATCH"
+        },
+        "outcome": {
+          "const": "failure"
+        },
+        "disposition": {
+          "const": "quarantine"
+        },
+        "retryable": {
+          "const": false
+        },
+        "stageable": {
+          "const": false
+        }
+      }
+    },
+    {
+      "title": "PARSER_NONDETERMINISTIC",
+      "properties": {
+        "code": {
+          "const": "PARSER_NONDETERMINISTIC"
+        },
+        "outcome": {
+          "const": "failure"
+        },
+        "disposition": {
+          "const": "quarantine"
+        },
+        "retryable": {
+          "const": false
+        },
+        "stageable": {
+          "const": false
+        }
+      }
+    },
+    {
+      "title": "QUALITY_LOCATOR_FAILED",
+      "properties": {
+        "code": {
+          "const": "QUALITY_LOCATOR_FAILED"
+        },
+        "outcome": {
+          "const": "failure"
+        },
+        "disposition": {
+          "const": "quarantine"
+        },
+        "retryable": {
+          "const": false
+        },
+        "stageable": {
+          "const": false
+        }
+      }
+    },
+    {
+      "title": "QUALITY_CHUNK_BOUNDARY_FAILED",
+      "properties": {
+        "code": {
+          "const": "QUALITY_CHUNK_BOUNDARY_FAILED"
+        },
+        "outcome": {
+          "const": "failure"
+        },
+        "disposition": {
+          "const": "quarantine"
+        },
+        "retryable": {
+          "const": false
+        },
+        "stageable": {
+          "const": false
+        }
+      }
+    }
+  ]
+}

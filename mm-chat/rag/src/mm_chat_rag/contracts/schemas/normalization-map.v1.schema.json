@@ -1,0 +1,486 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.mm-chat.invalid/parser/normalization-map.v1.schema.json",
+  "title": "Canonical text normalization map v1",
+  "description": "Closed, exact-cover mapping from canonical UTF-8 byte ranges to source-unit positions. Arrays use the frozen semantic comparators from parser-profile.v1; byte-level loading additionally requires strict UTF-8 RFC 8785 bytes with no BOM or duplicate keys.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "normalizationProfileHash",
+    "textBufferBytes",
+    "textBufferSha256",
+    "sourceUnits",
+    "segments",
+    "aggregateHash"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "normalization-map.v1"
+    },
+    "normalizationProfileHash": {
+      "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+    },
+    "textBufferBytes": {
+      "$ref": "canonical-common.v1.schema.json#/$defs/byteCount"
+    },
+    "textBufferSha256": {
+      "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+    },
+    "sourceUnits": {
+      "type": "array",
+      "description": "Canonical order is the frozen kind rank followed by resolver-provided unsigned UTF-8 canonical-unit-key bytes; ordinals are contiguous from zero. Display names and canonical part URIs remain in the deletable resolver.",
+      "items": {
+        "$ref": "#/$defs/sourceUnit"
+      }
+    },
+    "segments": {
+      "type": "array",
+      "description": "Canonical ranges and segment ordinals are strictly increasing, contiguous from zero, gapless, non-overlapping, and exactly cover textBufferBytes. An empty array is valid only for an empty text buffer.",
+      "items": {
+        "$ref": "#/$defs/segment"
+      }
+    },
+    "aggregateHash": {
+      "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "sourceUnit": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/rawFileSourceUnit"
+        },
+        {
+          "$ref": "#/$defs/ooxmlPartSourceUnit"
+        },
+        {
+          "$ref": "#/$defs/syntheticSourceUnit"
+        }
+      ]
+    },
+    "rawFileSourceUnit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceUnitOrdinal",
+        "opaqueSourceUnitId",
+        "kind",
+        "sourceBytes",
+        "sourceSha256",
+        "displayMetadataPayloadRef"
+      ],
+      "properties": {
+        "sourceUnitOrdinal": {
+          "const": 0
+        },
+        "opaqueSourceUnitId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "kind": {
+          "const": "raw_file"
+        },
+        "sourceBytes": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/byteCount"
+        },
+        "sourceSha256": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "displayMetadataPayloadRef": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/payloadRef"
+        }
+      }
+    },
+    "ooxmlPartSourceUnit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceUnitOrdinal",
+        "opaqueSourceUnitId",
+        "kind",
+        "sourceBytes",
+        "sourceSha256",
+        "displayMetadataPayloadRef"
+      ],
+      "properties": {
+        "sourceUnitOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/positiveSafeInteger"
+        },
+        "opaqueSourceUnitId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "kind": {
+          "const": "ooxml_part"
+        },
+        "sourceBytes": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/byteCount"
+        },
+        "sourceSha256": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "displayMetadataPayloadRef": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/payloadRef"
+        }
+      }
+    },
+    "syntheticSourceUnit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceUnitOrdinal",
+        "opaqueSourceUnitId",
+        "kind",
+        "sourceBytes",
+        "sourceSha256",
+        "displayMetadataPayloadRef"
+      ],
+      "properties": {
+        "sourceUnitOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/positiveSafeInteger"
+        },
+        "opaqueSourceUnitId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "kind": {
+          "const": "synthetic_mineru_artifact"
+        },
+        "sourceBytes": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/byteCount"
+        },
+        "sourceSha256": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "displayMetadataPayloadRef": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/payloadRef"
+        }
+      }
+    },
+    "segment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "segmentOrdinal",
+        "canonicalStartByte",
+        "canonicalEndByte",
+        "transform"
+      ],
+      "properties": {
+        "segmentOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "canonicalStartByte": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/utf8ByteOffset"
+        },
+        "canonicalEndByte": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/utf8ByteOffset"
+        },
+        "transform": {
+          "$ref": "#/$defs/transform"
+        }
+      }
+    },
+    "transform": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/identityTransform"
+        },
+        {
+          "$ref": "#/$defs/newlineFoldTransform"
+        },
+        {
+          "$ref": "#/$defs/nfcComposeTransform"
+        },
+        {
+          "$ref": "#/$defs/syntaxDecodeTransform"
+        },
+        {
+          "$ref": "#/$defs/rendererInsertTransform"
+        }
+      ]
+    },
+    "identityTransform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "sourcePositions"
+      ],
+      "properties": {
+        "kind": {
+          "const": "identity"
+        },
+        "sourcePositions": {
+          "$ref": "#/$defs/sourcePositionList"
+        }
+      }
+    },
+    "newlineFoldTransform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "sourcePositions",
+        "newlineRecipeId"
+      ],
+      "properties": {
+        "kind": {
+          "const": "newline_fold"
+        },
+        "sourcePositions": {
+          "$ref": "#/$defs/sourcePositionList"
+        },
+        "newlineRecipeId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/asciiIdentifier"
+        }
+      }
+    },
+    "nfcComposeTransform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "sourcePositions",
+        "normalizationForm",
+        "normalizationClusterId"
+      ],
+      "properties": {
+        "kind": {
+          "const": "nfc_compose"
+        },
+        "sourcePositions": {
+          "$ref": "#/$defs/sourcePositionList"
+        },
+        "normalizationForm": {
+          "const": "NFC"
+        },
+        "normalizationClusterId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        }
+      }
+    },
+    "syntaxDecodeTransform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "sourcePositions",
+        "recipeId",
+        "recipeProfileHash"
+      ],
+      "properties": {
+        "kind": {
+          "const": "syntax_decode"
+        },
+        "sourcePositions": {
+          "$ref": "#/$defs/sourcePositionList"
+        },
+        "recipeId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/asciiIdentifier"
+        },
+        "recipeProfileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "subsegments": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/syntaxDecodeSubsegment"
+          }
+        }
+      }
+    },
+    "rendererInsertTransform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "structureRef",
+        "rendererRuleId",
+        "rendererProfileHash"
+      ],
+      "properties": {
+        "kind": {
+          "const": "renderer_insert"
+        },
+        "structureRef": {
+          "$ref": "#/$defs/structureRef"
+        },
+        "rendererRuleId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/asciiIdentifier"
+        },
+        "rendererProfileHash": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        }
+      }
+    },
+    "structureRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ownerSeedId",
+        "structureKind",
+        "structureOrdinal"
+      ],
+      "properties": {
+        "ownerSeedId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "structureKind": {
+          "$ref": "#/$defs/rendererStructureKind"
+        },
+        "structureOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        }
+      }
+    },
+    "rendererStructureKind": {
+      "enum": [
+        "document",
+        "heading",
+        "paragraph",
+        "list",
+        "list_item",
+        "quote",
+        "code",
+        "table",
+        "table_row",
+        "table_cell",
+        "formula",
+        "caption",
+        "footnote",
+        "header",
+        "footer",
+        "page_break",
+        "asset_ref"
+      ]
+    },
+    "sourcePositionList": {
+      "oneOf": [
+        {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/textPosition"
+          }
+        },
+        {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/pageGeometryPosition"
+          }
+        }
+      ]
+    },
+    "textPosition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "positionOrdinal",
+        "opaqueSourceUnitId",
+        "rawByteStart",
+        "rawByteEnd",
+        "decodedScalarStart",
+        "decodedScalarEnd",
+        "startLine",
+        "startColumn",
+        "endLine",
+        "endColumn"
+      ],
+      "properties": {
+        "kind": {
+          "const": "text_position"
+        },
+        "positionOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "opaqueSourceUnitId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "rawByteStart": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/utf8ByteOffset"
+        },
+        "rawByteEnd": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/utf8ByteOffset"
+        },
+        "decodedScalarStart": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/nonNegativeSafeInteger"
+        },
+        "decodedScalarEnd": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/nonNegativeSafeInteger"
+        },
+        "startLine": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/nonNegativeSafeInteger"
+        },
+        "startColumn": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/nonNegativeSafeInteger"
+        },
+        "endLine": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/nonNegativeSafeInteger"
+        },
+        "endColumn": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/nonNegativeSafeInteger"
+        }
+      }
+    },
+    "pageGeometryPosition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "positionOrdinal",
+        "opaqueSourceUnitId",
+        "pageIndex",
+        "fragmentReadingOrdinal",
+        "bboxMilliPoint"
+      ],
+      "properties": {
+        "kind": {
+          "const": "page_geometry_position"
+        },
+        "positionOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "opaqueSourceUnitId": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/opaqueId"
+        },
+        "pageIndex": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "fragmentReadingOrdinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "bboxMilliPoint": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/bboxMilliPoint"
+        }
+      }
+    },
+    "syntaxDecodeSubsegment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ordinal",
+        "relativeCanonicalStart",
+        "relativeCanonicalEnd",
+        "sourcePositions"
+      ],
+      "properties": {
+        "ordinal": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/ordinal"
+        },
+        "relativeCanonicalStart": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/utf8ByteOffset"
+        },
+        "relativeCanonicalEnd": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/utf8ByteOffset"
+        },
+        "sourcePositions": {
+          "$ref": "#/$defs/sourcePositionList"
+        }
+      }
+    }
+  }
+}

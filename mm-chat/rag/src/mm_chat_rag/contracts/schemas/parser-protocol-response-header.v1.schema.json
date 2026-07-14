@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.mm-chat.invalid/parser/parser-protocol-response-header.v1.schema.json",
+  "title": "MM Chat parser protocol response header v1",
+  "description": "Exact outcome-discriminated JCS response header. PARSER_CANCELLED and PARSER_SANDBOX_UNAVAILABLE are Controller-synthesized outcomes and are forbidden on the wire.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/success"
+    },
+    {
+      "$ref": "#/$defs/routeRequired"
+    },
+    {
+      "$ref": "#/$defs/failure"
+    }
+  ],
+  "$defs": {
+    "invocationId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "wireFailureCode": {
+      "enum": [
+        "FORMAT_MISMATCH",
+        "FORMAT_AMBIGUOUS",
+        "FORMAT_UNSUPPORTED",
+        "INPUT_INVALID",
+        "INPUT_TOO_LARGE",
+        "PAGE_LIMIT_EXCEEDED",
+        "ARCHIVE_LIMIT_EXCEEDED",
+        "ENCODING_AMBIGUOUS",
+        "ACTIVE_CONTENT_UNSUPPORTED",
+        "PDF_ENCRYPTED_UNSUPPORTED",
+        "PROTOCOL_INVALID",
+        "RESULT_TOO_LARGE",
+        "PARSER_BUSY",
+        "PARSER_TIMEOUT",
+        "PARSER_MEMORY_LIMIT",
+        "PARSER_SCHEMA_MISMATCH",
+        "PARSER_NONDETERMINISTIC",
+        "QUALITY_LOCATOR_FAILED",
+        "QUALITY_CHUNK_BOUNDARY_FAILED"
+      ]
+    },
+    "success": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invocationId",
+        "outcome",
+        "canonicalSchemaVersion",
+        "resultBytes",
+        "resultSha256",
+        "stableErrorCode"
+      ],
+      "properties": {
+        "invocationId": {
+          "$ref": "#/$defs/invocationId"
+        },
+        "outcome": {
+          "const": "success"
+        },
+        "canonicalSchemaVersion": {
+          "const": "canonical-ir.v2"
+        },
+        "resultBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 67108864
+        },
+        "resultSha256": {
+          "$ref": "canonical-common.v1.schema.json#/$defs/sha256"
+        },
+        "stableErrorCode": {
+          "type": "null"
+        }
+      }
+    },
+    "routeRequired": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invocationId",
+        "outcome",
+        "canonicalSchemaVersion",
+        "resultBytes",
+        "resultSha256",
+        "stableErrorCode"
+      ],
+      "properties": {
+        "invocationId": {
+          "$ref": "#/$defs/invocationId"
+        },
+        "outcome": {
+          "const": "route_required"
+        },
+        "canonicalSchemaVersion": {
+          "type": "null"
+        },
+        "resultBytes": {
+          "const": 0
+        },
+        "resultSha256": {
+          "type": "null"
+        },
+        "stableErrorCode": {
+          "const": "MINERU_REQUIRED"
+        }
+      }
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invocationId",
+        "outcome",
+        "canonicalSchemaVersion",
+        "resultBytes",
+        "resultSha256",
+        "stableErrorCode"
+      ],
+      "properties": {
+        "invocationId": {
+          "$ref": "#/$defs/invocationId"
+        },
+        "outcome": {
+          "const": "failure"
+        },
+        "canonicalSchemaVersion": {
+          "type": "null"
+        },
+        "resultBytes": {
+          "const": 0
+        },
+        "resultSha256": {
+          "type": "null"
+        },
+        "stableErrorCode": {
+          "$ref": "#/$defs/wireFailureCode"
+        }
+      }
+    }
+  }
+}

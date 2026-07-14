@@ -1,0 +1,406 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.mm-chat.invalid/parser/parser-resource-profile.v1.schema.json",
+  "title": "Offline parser resource profile v1",
+  "description": "Closed, hash-bound admission, expansion, entity, protocol, sandbox, and harness-output limits. Documented C1 hard limits are constants; corpus-tuned limits remain explicit positive safe integers and cannot drift through environment variables.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "profileRevision",
+    "source",
+    "archive",
+    "xml",
+    "entities",
+    "canonical",
+    "protocol",
+    "sandbox",
+    "harnessOutput"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "parser-resource-profile.v1"
+    },
+    "profileRevision": {
+      "const": 1
+    },
+    "source": {
+      "$ref": "#/$defs/sourceLimits"
+    },
+    "archive": {
+      "$ref": "#/$defs/archiveLimits"
+    },
+    "xml": {
+      "$ref": "#/$defs/xmlLimits"
+    },
+    "entities": {
+      "$ref": "#/$defs/entityLimits"
+    },
+    "canonical": {
+      "$ref": "#/$defs/canonicalLimits"
+    },
+    "protocol": {
+      "$ref": "#/$defs/protocolLimits"
+    },
+    "sandbox": {
+      "$ref": "#/$defs/sandboxLimits"
+    },
+    "harnessOutput": {
+      "$ref": "#/$defs/harnessOutputLimits"
+    }
+  },
+  "$defs": {
+    "positiveSafeInteger": {
+      "$ref": "canonical-common.v1.schema.json#/$defs/positiveSafeInteger"
+    },
+    "sourceLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxSourceBytes",
+        "maxPdfPages"
+      ],
+      "properties": {
+        "maxSourceBytes": {
+          "const": 52428800
+        },
+        "maxPdfPages": {
+          "const": 500
+        }
+      }
+    },
+    "archiveLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxEntries",
+        "maxExpandedBytes",
+        "maxEntryBytes",
+        "maxCompressionRatio",
+        "maxNestingDepth",
+        "maxEntryPathUtf8Bytes",
+        "rejectAbsolutePaths",
+        "rejectDrivePrefixes",
+        "rejectParentSegments",
+        "rejectBackslashes",
+        "rejectEmptyOrDotSegments",
+        "rejectNul",
+        "rejectSymlinks",
+        "requireUtf8Names",
+        "requireNfcNames",
+        "rejectEncryptedEntries",
+        "rejectDuplicateEntries",
+        "rejectCanonicalPartCollisions",
+        "rejectAsciiCaseFoldCollisions",
+        "verifyLocalHeaderAndDataDescriptor"
+      ],
+      "properties": {
+        "maxEntries": {
+          "const": 10000
+        },
+        "maxExpandedBytes": {
+          "const": 536870912
+        },
+        "maxEntryBytes": {
+          "const": 67108864
+        },
+        "maxCompressionRatio": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "numerator",
+            "denominator"
+          ],
+          "properties": {
+            "numerator": {
+              "const": 100
+            },
+            "denominator": {
+              "const": 1
+            }
+          }
+        },
+        "maxNestingDepth": {
+          "const": 0
+        },
+        "maxEntryPathUtf8Bytes": {
+          "const": 512
+        },
+        "rejectAbsolutePaths": {
+          "const": true
+        },
+        "rejectDrivePrefixes": {
+          "const": true
+        },
+        "rejectParentSegments": {
+          "const": true
+        },
+        "rejectBackslashes": {
+          "const": true
+        },
+        "rejectEmptyOrDotSegments": {
+          "const": true
+        },
+        "rejectNul": {
+          "const": true
+        },
+        "rejectSymlinks": {
+          "const": true
+        },
+        "requireUtf8Names": {
+          "const": true
+        },
+        "requireNfcNames": {
+          "const": true
+        },
+        "rejectEncryptedEntries": {
+          "const": true
+        },
+        "rejectDuplicateEntries": {
+          "const": true
+        },
+        "rejectCanonicalPartCollisions": {
+          "const": true
+        },
+        "rejectAsciiCaseFoldCollisions": {
+          "const": true
+        },
+        "verifyLocalHeaderAndDataDescriptor": {
+          "const": true
+        }
+      }
+    },
+    "xmlLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxTotalBytes",
+        "maxNodes",
+        "maxDepth",
+        "maxAttributes",
+        "maxTextBytes"
+      ],
+      "properties": {
+        "maxTotalBytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxNodes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxDepth": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxAttributes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxTextBytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        }
+      }
+    },
+    "entityLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxPdfObjects",
+        "maxCells",
+        "maxSharedStrings",
+        "maxShapes",
+        "maxBlocks",
+        "maxTables",
+        "maxAssets",
+        "maxChunks",
+        "maxCsvRows",
+        "maxCsvColumns",
+        "maxCsvFieldBytes"
+      ],
+      "properties": {
+        "maxPdfObjects": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxCells": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxSharedStrings": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxShapes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxBlocks": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxTables": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxAssets": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxChunks": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxCsvRows": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxCsvColumns": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxCsvFieldBytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        }
+      }
+    },
+    "canonicalLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxCanonicalBytes",
+        "maxTextBufferBytes",
+        "maxNormalizationSegments",
+        "maxSourcePositionsPerSegment",
+        "maxLocatorAnchors",
+        "maxSourceFragmentsPerAnchor",
+        "maxViewsPerFragment"
+      ],
+      "properties": {
+        "maxCanonicalBytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxTextBufferBytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxNormalizationSegments": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxSourcePositionsPerSegment": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxLocatorAnchors": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxSourceFragmentsPerAnchor": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxViewsPerFragment": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        }
+      }
+    },
+    "protocolLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxHeaderBytes",
+        "maxRequestBodyBytes",
+        "maxResultBytes"
+      ],
+      "properties": {
+        "maxHeaderBytes": {
+          "const": 16384
+        },
+        "maxRequestBodyBytes": {
+          "const": 52428800
+        },
+        "maxResultBytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        }
+      }
+    },
+    "sandboxLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sidecarMemoryBytes",
+        "sidecarPids",
+        "sidecarTmpfsBytes",
+        "childAddressSpaceBytes",
+        "childCpuSeconds",
+        "childProcesses",
+        "childOpenFiles",
+        "childFileBytes",
+        "childCoreBytes",
+        "wallTimeoutMillis",
+        "maxConcurrentInvocations",
+        "maxWaitingInvocations"
+      ],
+      "properties": {
+        "sidecarMemoryBytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "sidecarPids": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "sidecarTmpfsBytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "childAddressSpaceBytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "childCpuSeconds": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "childProcesses": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "childOpenFiles": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "childFileBytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "childCoreBytes": {
+          "const": 0
+        },
+        "wallTimeoutMillis": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "maxConcurrentInvocations": {
+          "const": 1
+        },
+        "maxWaitingInvocations": {
+          "const": 1
+        }
+      }
+    },
+    "harnessOutputLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parentTmpfsBytes",
+        "parentTmpfsInodes",
+        "maxActiveRuns",
+        "maxAggregateBytes",
+        "maxFiles",
+        "maxArtifactBytes",
+        "reservedBytes",
+        "reservedInodes"
+      ],
+      "properties": {
+        "parentTmpfsBytes": {
+          "const": 536870912
+        },
+        "parentTmpfsInodes": {
+          "const": 20000
+        },
+        "maxActiveRuns": {
+          "const": 1
+        },
+        "maxAggregateBytes": {
+          "const": 268435456
+        },
+        "maxFiles": {
+          "const": 10000
+        },
+        "maxArtifactBytes": {
+          "const": 67108864
+        },
+        "reservedBytes": {
+          "const": 268435456
+        },
+        "reservedInodes": {
+          "const": 10000
+        }
+      }
+    }
+  }
+}
