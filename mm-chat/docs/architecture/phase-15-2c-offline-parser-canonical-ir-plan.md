@@ -1309,11 +1309,23 @@ C1.3 前仍 Fail Closed 为 `FORMAT_UNSUPPORTED`，不生成占位 Canonical IR�
 
 ### C1.3 Native Parsers
 
-- [ ] 实现 TXT/Markdown/HTML Parser 与精确 Byte/Line Locator。
+- [x] 实现 TXT/Markdown/HTML Parser 与精确 Byte/Line Locator。
 - [ ] 实现 DOCX/PPTX/XLSX/CSV Parser 与 OOXML/Sheet/Shape Locator。
 - [ ] 实现 Native PDF 安全子集与 `MINERU_REQUIRED` 分类器。
 - [ ] 实现 Synthetic/Public MinerU Artifact Offline Normalizer；不实现 Wire 或网络。
 - [ ] 保留 Table/Formula/Asset/Reading Flow/Provenance，不做图片索引。
+
+C1.3A 实现位于
+`mm-chat/rag/src/mm_chat_rag/offline_parser/native/`。TXT、固定 CommonMark + Table
+Markdown 与 hardened HTML 只在 C1.2 Child 安全边界内执行，并生成 Closed
+`parser-native-artifact.v1` 内部 Artifact；Supervisor 校验 JCS、Length、Hash、Limit、
+Format 与 Source Binding，但不解码或重解析 Source。该 Artifact 不是
+`canonical-ir.v2`，Sidecar 仍返回 zero-body `FORMAT_UNSUPPORTED`，不可 Stage；Registry、
+Dispatch、Provider、Postgres/Redis/MinIO、迁移 `011/012` 与生产 Handler 均保持关闭。
+全量 `1069 passed / 2 skipped`、Coverage `91.19%`，Ruff/Format/Mypy、pip-audit、
+89 Case x 3 Runtime JCS、21 Artifact/18 Schema Offline Wheel、Security Scanner 与隔离
+Docker Compose Smoke 均通过；独立 Review 为 `P0/P1/P2 = 0/0/0`。当前 Config Hash 为
+`8a72668218932f6af95d3b6276646304451d7f9ea59ff658ca7887d925e83ea7`。
 
 ### C1.4 Canonicalize 与 Quality
 

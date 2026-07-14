@@ -7883,3 +7883,56 @@ Next: implement **C1.3 Native Parsers** behind the existing C1.2 route,
 protocol, process, resource, and cleanup gates. Keep Provider, Registry,
 Dispatch, Postgres/Redis/MinIO, migrations `011/012`, and production Handler
 activation closed.
+
+## 2026-07-14 — C1.3A TXT / Markdown / HTML Native Parsers implemented
+
+C1.3A adds deterministic TXT, Markdown, and HTML parsing only inside the
+existing exec-isolated Child, after RLIMIT, `no-new-privileges`, and the hashed
+Seccomp filter are active. Decoding is frozen as BOM -> UTF-8 -> GB18030 with
+compact Raw-byte/Scalar/Line indexes. Markdown uses the pinned
+`markdown-it-py==4.2.0` CommonMark + Table profile; HTML uses a hardened
+`HTMLParser(convert_charrefs=False)` policy that rejects active content and
+external-fetch constructs. The new direct dependency
+`markdown-it-py==4.2.0` and its exact-locked `mdurl==0.1.2` dependency are
+MIT-licensed.
+
+The Child emits a closed, canonical `parser-native-artifact.v1` internal frame.
+The Supervisor validates its Closed Shape, JCS bytes, lengths, hashes, limits,
+format, and exact Source binding without decoding or reparsing Source bytes.
+This is deliberately not `canonical-ir.v2`: MMCP success remains frozen to that
+future contract, so the Sidecar still returns zero-body `FORMAT_UNSUPPORTED`
+and `stageable == false`. Runtime Registry/Dispatch, Provider access, database,
+Redis, MinIO, migrations `011/012`, and production handlers remain closed.
+
+Independent implementation streams owned Markdown and HTML separately; a
+security reviewer then found and drove fixes for inline Raw HTML Locator drift,
+forged Controller-only Child errors, missing Parent-side Artifact/Source
+validation, Raw HTML policy inconsistency, unmatched-backtick quadratic work,
+Locator-index memory amplification, duplicate Router decoding, and the 10 MiB
+ASCII Sandbox memory limit. A final independent review closed at
+`P0/P1/P2 = 0/0/0`. The reusable allocation rule was recorded in
+`.trellis/spec/guides/agent-orchestration.md`: parallelize only bounded,
+disjoint work with net quality benefit, and allocate an independent reviewer
+only for a stable, risk-bearing diff.
+
+```text
+full Python suite                               1069 passed / 2 skipped
+Python coverage                                 91.19% (>= 90%)
+Ruff / format / strict Mypy                     passed / passed / passed
+pip-audit --skip-editable                       no known vulnerabilities
+security scanner                               0 findings
+module / quality scanners                       passed (advisory warnings only)
+Python/Go/Node JCS                              89 cases / 3 runtimes passed
+offline wheel / contract verifier              passed / 21 artifacts / 18 schemas
+Docker parser-c1 image + Compose smoke          passed; isolated resources removed
+parser config hash                              8a72668218932f6af95d3b6276646304451d7f9ea59ff658ca7887d925e83ea7
+independent final review                        P0/P1/P2 = 0/0/0
+Runtime Registry / Dispatch / migration         unchanged / disabled / 010
+Provider calls / credentials                    0 / 0
+```
+
+No complete reproduction transcript is required; the decisive boundaries,
+review remediations, and verification evidence above are retained for the next
+slice. Next: implement **C1.3B DOCX / PPTX / XLSX / CSV Native Parsers** behind
+the same Child and internal-artifact gate. Do not advance to C1.3D MinerU,
+Canonical IR, or runtime activation before the intervening slices pass.

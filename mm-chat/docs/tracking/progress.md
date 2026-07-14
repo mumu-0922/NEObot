@@ -792,6 +792,15 @@ the UI can call in the next wiring slice.
       pass OOM/timeout/cancel/fork-bomb/residual, Docker no-network UID `10002`,
       866-test/91.16%-coverage, wheel/JCS/security gates without enabling a
       Native Parser or production Registry.
+- [x] Complete C1.3A TXT/Markdown/HTML Native Parsers behind the same Child and
+      Seccomp boundary: freeze BOM -> UTF-8 -> GB18030 decoding, CommonMark +
+      Table and hardened HTML profiles, exact Raw-byte/Scalar/Line locators,
+      closed child-internal Native Artifact framing, Parent JCS/length/hash/
+      limit/Source-binding validation, and 1069-test/91.19%-coverage plus
+      dependency/JCS/wheel/security/Docker gates. Keep MMCP at zero-body
+      `FORMAT_UNSUPPORTED`, Canonical IR unstaged, and Registry/Dispatch/
+      Provider/Postgres/Redis/MinIO/migrations `011/012` closed; independent
+      review closed at `P0/P1/P2 = 0/0/0`.
 - [ ] Implement and verify the offline parser, Canonical IR, parent/child
       chunking, Provider fake servers, and deterministic manifests.
 - [ ] Select the production tokenizer/dimension/search profile using real Jina

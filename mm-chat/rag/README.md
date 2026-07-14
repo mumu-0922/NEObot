@@ -24,8 +24,19 @@ an exec-isolated child with pre-source process-group/seccomp handshakes, and a
 marker/lock/dir-FD owned test-output root. The Compose `parser-c1` profile runs
 the sidecar as PID 1 under UID `10002`, with no network, credentials, database,
 Redis, MinIO, Provider access, or production handler registration. A routed
-format still returns `FORMAT_UNSUPPORTED` until C1.3 produces independently
-validated Canonical IR; C1.2 never forges a success candidate.
+format still returns `FORMAT_UNSUPPORTED`; C1.2 never forges a success
+candidate.
+
+Phase 15.2C C1.3A adds deterministic TXT, Markdown, and HTML Native Parsers
+behind that same Child/Seccomp boundary. Their closed
+`parser-native-artifact.v1` output is Child-internal only: the Supervisor
+validates JCS, length, hash, limits, format, and exact Source binding, but MMCP
+success remains frozen to future `canonical-ir.v2`. The Sidecar therefore still
+returns a zero-body, non-stageable `FORMAT_UNSUPPORTED`; production Registry,
+Dispatch, Provider, Postgres, Redis, MinIO, and migrations `011/012` remain
+closed. Text decoding is frozen as BOM -> UTF-8 -> GB18030; Markdown uses fixed
+CommonMark + Table semantics, and HTML uses a hardened policy that blocks
+active content and external fetches.
 
 The operator-only C0 Provider Capture Harness lives in
 `tools/provider_capture.py`. It defaults to a redacted, zero-network dry-run and
@@ -117,7 +128,8 @@ uv run pytest -p no:cacheprovider \
 uv run python -B -m tools.verify_jcs_interop --require-all
 ```
 
-C1.2 router/protocol/sandbox/output-root gates and the isolated Compose smoke:
+C1.2 router/protocol/sandbox/output-root plus C1.3A Native Parser gates and the
+isolated Compose smoke:
 
 ```bash
 uv run pytest -p no:cacheprovider \
@@ -126,7 +138,15 @@ uv run pytest -p no:cacheprovider \
   tests/unit/test_parser_sandbox.py \
   tests/unit/test_parser_output_root.py \
   tests/unit/test_parser_transport.py \
-  tests/unit/test_parser_deployment_boundary.py
+  tests/unit/test_parser_deployment_boundary.py \
+  tests/unit/test_parser_native_model.py \
+  tests/unit/test_parser_native_decoding.py \
+  tests/unit/test_parser_native_text.py \
+  tests/unit/test_parser_native_markdown.py \
+  tests/unit/test_parser_native_html.py \
+  tests/unit/test_parser_native_dispatch.py \
+  tests/unit/test_parser_native_internal_result.py \
+  tests/unit/test_parser_native_sandbox.py
 
 docker compose -f ../compose.single-server.yml --profile parser-c1 build \
   parser-sidecar
@@ -136,8 +156,8 @@ docker compose -f ../compose.single-server.yml --profile parser-c1 up \
 ```
 
 The smoke sends only an ambiguous synthetic text request and expects the closed
-`FORMAT_AMBIGUOUS` response. It does not mount Source files, start a Native
-Parser, connect a production Worker, or leave the Parser Registry enabled.
+`FORMAT_AMBIGUOUS` response. It does not mount Source files, produce a Native
+Artifact, connect a production Worker, or leave the Parser Registry enabled.
 
 The second command is the mandatory C1.1 interoperability gate. It fails when
 Go 1.22 or Node 22 is absent or when Python, Go, and JavaScript disagree on any
@@ -185,6 +205,8 @@ literal RFC1918/loopback address and still uses `trust_env=false`.
 uses `uv sync --no-dev`, and `.dockerignore` excludes `tests`, so fixtures and
 Fake Provider support do not enter the runtime image. The Dockerfile copies only
 `src/`; `tools/` is neither copied nor registered in `[project.scripts]`.
+`markdown-it-py==4.2.0` is the sole C1.3A direct runtime dependency; its
+`mdurl==0.1.2` dependency is exact-locked, and both are MIT-licensed.
 
 ## Runtime
 

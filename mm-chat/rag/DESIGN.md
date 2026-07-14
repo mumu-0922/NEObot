@@ -159,7 +159,7 @@ operator/CI step so verification never triggers dependency resolution.
 ### 1. Scope / Trigger
 
 C1.2 is the executable security boundary between untrusted Source bytes and a
-future Native Parser. It implements format admission, MMCP v1 transport,
+Native Parser. It implements format admission, MMCP v1 transport,
 process isolation, resource termination, and owned test-output cleanup. It does
 not implement Canonical IR generation, database staging, Provider access,
 migration `011/012`, Worker dispatch, or query/runtime promotion.
@@ -175,7 +175,7 @@ Controller source stat/hash + bound request
   -> Child installs RLIMIT + no-new-privileges + child seccomp
   -> Child reports the compiled-filter hash
   -> only then may Source bytes enter the child
-  -> route-only outcome; C1.3 parser remains closed
+  -> C1.2 route-only outcome; C1.3A plugs in selected Native Parsers here
 ```
 
 ### 2. Signatures
@@ -258,13 +258,14 @@ Deployment invariants:
 | Caller cancellation                                               | Controller-local `PARSER_CANCELLED`; never on wire           |
 | EOF/reset/Sidecar death                                           | Controller-local `PARSER_SANDBOX_UNAVAILABLE`; never on wire |
 | Any descendant remains after main child exits                     | kill/reap group and force Sidecar restart                    |
-| Routed format before C1.3                                         | wire `FORMAT_UNSUPPORTED`; no fake Canonical IR              |
+| No C1.3 parser or no C1.4 Canonical IR                            | wire `FORMAT_UNSUPPORTED`; no fake success                   |
 | Marker/lock/device/inode/PID/mode/ledger mismatch                 | refuse cleanup and retain for review                         |
 
 ### 5. Good / Base / Bad Cases
 
 - Good: a valid DOCX with matching `.docx` hint routes to `docx` in the child,
-  but C1.2 returns `FORMAT_UNSUPPORTED` because no Native Parser is active.
+  but the current harness returns `FORMAT_UNSUPPORTED` because the DOCX Native
+  Parser is not yet active.
 - Base: plain UTF-8 bytes without MIME/extension return
   `FORMAT_AMBIGUOUS`; Compose smoke asserts this exact zero-body response.
 - Bad: a ZIP with duplicate names, encrypted entries, Local/Central Header
@@ -312,7 +313,7 @@ request = build_request_header(source=source, ...)
 request.validate_body(source, expected_config_hash=config.config_hash)
 result = SandboxSupervisor(config).route(source, declared_extension=".docx")
 assert result.parser_format == ParserFormat.DOCX
-# C1.2 still cannot emit Canonical IR success.
+# A C1.3 Native Artifact still cannot emit Canonical IR success.
 ```
 
 ### Security limitations
@@ -325,6 +326,41 @@ is preceded by byte-level DTD/Entity/XInclude rejection and has no external
 fetch path, but full Native Parser accuracy and deterministic Canonical IR are
 C1.3/C1.4 gates. Cgroup-level Sidecar OOM is represented as Controller-local
 Sandbox Unavailable; it never becomes a forged wire response.
+
+## Phase 15.2C C1.3A TXT / Markdown / HTML Native Parsers
+
+C1.3A activates only TXT, Markdown, and HTML parsing inside the isolated Child.
+It does not activate DOCX/PPTX/XLSX/CSV/PDF/MinerU parsing, Canonical IR,
+production Dispatch, database staging, Provider access, or migrations
+`011/012`.
+
+```text
+Raw Source enters only after C1.2 handshake + Seccomp
+  -> BOM / UTF-8 / GB18030 strict decode and compact locator index
+  -> fixed TXT | CommonMark+Table | hardened HTML parser
+  -> closed parser-native-artifact.v1 internal body
+  -> Supervisor checks JCS/length/hash/limit/format/source binding
+  -> Sidecar returns zero-body FORMAT_UNSUPPORTED until canonical-ir.v2 exists
+```
+
+`parser-native-artifact.v1` preserves Source encoding, exact Raw-byte/Scalar/
+Line positions, ordered structure, Attributes, and identity or syntax-decode
+Fragments. The Child writes a distinct internal frame: a four-byte canonical
+JCS header length, the closed header, an eight-byte body length, the exact
+artifact bytes, and EOF. The Parent never decodes or reparses the original
+Source when validating that result.
+
+Markdown uses exact-pinned `markdown-it-py==4.2.0` with the CommonMark + Table
+profile and no runtime plugin discovery. Raw HTML passes the same active-content
+policy as HTML. HTML uses `HTMLParser(convert_charrefs=False)` with explicit
+DTD/Entity, external-fetch, active-content, depth, attribute, node, and text
+limits. No parser falls back to another format after admission.
+
+The Native Artifact is not an MMCP success payload. MMCP v1 remains frozen to
+`canonical-ir.v2`, so a verified internal artifact is non-stageable and stays
+off the external wire. The config hash binds all Native limits and the fixed
+parser profile; the C1.3A value is
+`8a72668218932f6af95d3b6276646304451d7f9ea59ff658ca7887d925e83ea7`.
 
 ## Process topology
 
