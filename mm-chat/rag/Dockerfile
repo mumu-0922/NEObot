@@ -19,7 +19,8 @@ ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1
 
 RUN groupadd --system --gid 10001 rag \
-    && useradd --system --uid 10001 --gid rag --home-dir /nonexistent rag
+    && useradd --system --uid 10001 --gid rag --home-dir /nonexistent rag \
+    && useradd --system --uid 10002 --gid rag --home-dir /nonexistent parser
 WORKDIR /app
 COPY --from=builder --chown=rag:rag /app/.venv /app/.venv
 USER 10001:10001

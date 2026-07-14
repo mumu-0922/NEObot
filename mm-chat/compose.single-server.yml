@@ -268,6 +268,88 @@ services:
     networks:
       - rag-private
 
+  parser-ipc-init:
+    image: ${RAG_IMAGE:-mm-chat/rag:local}
+    build: *rag-build
+    restart: "no"
+    profiles: ["parser-c1"]
+    user: "0:0"
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - FOWNER
+    security_opt:
+      - no-new-privileges:true
+    network_mode: none
+    volumes:
+      - parser-ipc:/run/mm-chat-parser-ipc
+    entrypoint: ["/bin/sh", "-euc"]
+    command:
+      - |
+        chown 10002:10001 /run/mm-chat-parser-ipc
+        chmod 0770 /run/mm-chat-parser-ipc
+
+  parser-sidecar:
+    image: ${RAG_IMAGE:-mm-chat/rag:local}
+    build: *rag-build
+    restart: "no"
+    profiles: ["parser-c1"]
+    user: "10002:10001"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=./rag/src/mm_chat_rag/offline_parser/profiles/parser-sidecar.json
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 64
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m,mode=0700,uid=10002,gid=10001
+    volumes:
+      - parser-ipc:/run/mm-chat-parser-ipc
+    depends_on:
+      parser-ipc-init:
+        condition: service_completed_successfully
+    entrypoint: ["parser-sidecar"]
+    network_mode: none
+
+  parser-harness-smoke:
+    image: ${RAG_IMAGE:-mm-chat/rag:local}
+    build: *rag-build
+    restart: "no"
+    profiles: ["parser-c1"]
+    user: "10001:10001"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 16
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid=10001,gid=10001
+      - /run/mm-chat-parser-harness:rw,noexec,nosuid,nodev,size=512m,nr_inodes=20000,mode=0700,uid=10001,gid=10001
+    volumes:
+      - parser-ipc:/run/mm-chat-parser-ipc
+    depends_on:
+      parser-sidecar:
+        condition: service_started
+    entrypoint: ["/bin/sh", "-euc"]
+    command:
+      - |
+        count=0
+        until [ -S /run/mm-chat-parser-ipc/parser.sock ]; do
+          count=$$((count + 1))
+          [ "$$count" -le 100 ] || exit 1
+          sleep 0.1
+        done
+        exec parser-harness-smoke
+    network_mode: none
+
   migrate:
     image: ${BACKEND_IMAGE:-mm-chat/backend:local}
     build: *backend-build
@@ -323,3 +405,6 @@ networks:
   rag-private:
     driver: bridge
     internal: true
+
+volumes:
+  parser-ipc:
