@@ -279,6 +279,7 @@ name = "mm-chat-rag"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "markdown-it-py" },
     { name = "prometheus-client" },
     { name = "psycopg", extra = ["binary", "pool"] },
     { name = "redis" },
@@ -302,6 +303,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "markdown-it-py", specifier = "==4.2.0" },
     { name = "prometheus-client", specifier = "==0.22.1" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = "==3.2.9" },
     { name = "redis", specifier = "==6.2.0" },

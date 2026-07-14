@@ -38,8 +38,21 @@ class OutputLimits:
 
 
 @dataclass(frozen=True, slots=True)
+class NativeParserLimits:
+    """Hash-bound C1.3 internal artifact and structure ceilings."""
+
+    artifact_bytes: int = 67_108_864
+    nodes: int = 100_000
+    fragments: int = 1_000_000
+    lines: int = 1_000_000
+    nesting_depth: int = 128
+    attributes: int = 1_000_000
+    text_bytes: int = 33_000_000
+
+
+@dataclass(frozen=True, slots=True)
 class ParserHarnessConfig:
-    """Hash-bound C1.2 config; environment variables cannot override limits."""
+    """Hash-bound parser config; environment variables cannot override limits."""
 
     schema_version: str = "parser-harness-config.v1"
     protocol_major: int = 1
@@ -56,10 +69,16 @@ class ParserHarnessConfig:
     )
     sandbox: SandboxLimits = SandboxLimits()
     output: OutputLimits = OutputLimits()
+    native: NativeParserLimits = NativeParserLimits()
 
     def canonical_object(self) -> dict[str, JsonValue]:
         """Return the complete closed config including seccomp source hashes."""
+        from mm_chat_rag.offline_parser.native.profile import (  # noqa: PLC0415
+            native_parser_profile_manifest,
+        )
+
         value = asdict(self)
+        value["nativeParserProfile"] = native_parser_profile_manifest()
         value["seccomp"] = seccomp_manifest()
         return cast("dict[str, JsonValue]", value)
 

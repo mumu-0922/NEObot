@@ -15,10 +15,11 @@ from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
     from mm_chat_rag.offline_parser.config import SandboxLimits
+    from mm_chat_rag.offline_parser.native.internal_result import NativeResultHeader
 
 _MAX_INTERNAL_HEADER: Final = 4096
 _MAX_SOURCE: Final = 52_428_800
-_MAX_RESULT: Final = 4096
+_MAX_RESULT_HEADER: Final = 4096
 _MIN_INTERNAL_HEADER: Final = 2
 _TEST_PROBE_ENV: Final = "MM_CHAT_PARSER_TEST_PROBE"
 _LIMITS_ENV: Final = "MM_CHAT_PARSER_SANDBOX_LIMITS"
@@ -63,17 +64,18 @@ def main() -> int:  # noqa: PLR0911
         source = _read_exact(sys.stdin.buffer, source_length)
         if sys.stdin.buffer.read(1):
             return 73
-        result = _route(header, source)
-        encoded = json.dumps(
-            result,
-            ensure_ascii=True,
-            allow_nan=False,
-            separators=(",", ":"),
-            sort_keys=True,
-        ).encode("ascii")
-        if len(encoded) > _MAX_RESULT:
+        result_header, result_body = _route(header, source)
+        encoded = result_header.canonical_bytes
+        if len(encoded) > _MAX_RESULT_HEADER:
             return 73
-        sys.stdout.buffer.write(struct.pack(">I", len(encoded)) + encoded)
+        if len(result_body) > DEFAULT_CONFIG.native.artifact_bytes:
+            return 73
+        sys.stdout.buffer.write(
+            struct.pack(">I", len(encoded))
+            + encoded
+            + struct.pack(">Q", len(result_body))
+            + result_body
+        )
         sys.stdout.buffer.flush()
         return 0  # noqa: TRY300
     except MemoryError:
@@ -82,7 +84,7 @@ def main() -> int:  # noqa: PLR0911
         return 73
 
 
-def _route(header: object, source: bytes) -> dict[str, object]:
+def _route(header: object, source: bytes) -> tuple[NativeResultHeader, bytes]:
     if not isinstance(header, dict) or set(header) != {
         "declaredExtension",
         "declaredMime",
@@ -97,20 +99,26 @@ def _route(header: object, source: bytes) -> dict[str, object]:
     probe = os.environ.get(_TEST_PROBE_ENV)
     if probe is not None:
         _run_test_probe(probe)
-        return {"format": "txt", "stableErrorCode": None}
-    from mm_chat_rag.offline_parser.router import route_source  # noqa: PLC0415
+        mime = "text/plain"
+        extension = ".txt"
+    from mm_chat_rag.offline_parser.native.dispatch import (  # noqa: PLC0415
+        parse_native_source,
+    )
+    from mm_chat_rag.offline_parser.native.internal_result import (  # noqa: PLC0415
+        NativeResultHeader,
+    )
 
-    decision = route_source(
+    outcome = parse_native_source(
         source,
         declared_mime=mime,
         declared_extension=extension,
     )
-    return {
-        "format": decision.parser_format.value if decision.parser_format else None,
-        "stableErrorCode": (
-            decision.stable_error_code.value if decision.stable_error_code else None
-        ),
-    }
+    body = outcome.artifact_bytes
+    if outcome.artifact is not None and outcome.parser_format is not None:
+        return NativeResultHeader.success(outcome.parser_format, body), body
+    if outcome.stable_error_code is None:
+        raise ValueError("native parser returned no internal outcome")
+    return NativeResultHeader.failure(outcome.stable_error_code), b""
 
 
 def _run_test_probe(probe: str) -> None:

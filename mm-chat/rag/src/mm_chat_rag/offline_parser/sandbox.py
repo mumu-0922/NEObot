@@ -19,12 +19,21 @@ from typing import Final
 
 from mm_chat_rag.offline_parser.config import DEFAULT_CONFIG, ParserHarnessConfig
 from mm_chat_rag.offline_parser.errors import ParserFormat, StableErrorCode
+from mm_chat_rag.offline_parser.native.internal_result import (
+    InternalResultError,
+    NativeResultHeader,
+)
+from mm_chat_rag.offline_parser.native.model import (
+    NativeArtifactError,
+    NativeDocument,
+)
 from mm_chat_rag.offline_parser.seccomp import child_filter_hash
 
 _PR_SET_CHILD_SUBREAPER: Final = 36
 _READY_LIMIT: Final = 128
-_RESULT_LIMIT: Final = 4096
+_RESULT_HEADER_LIMIT: Final = 4096
 _MIN_RESULT_BYTES: Final = 2
+_BODY_LENGTH: Final = struct.Struct(">Q")
 _MEMORY_EXIT_CODE: Final = 75
 _TEST_PROBES: Final = frozenset(
     {"seccomp", "double_fork", "fork_bomb", "oom", "timeout"}
@@ -33,11 +42,22 @@ _TEST_PROBES: Final = frozenset(
 
 @dataclass(frozen=True, slots=True)
 class SandboxRouteResult:
-    """One isolated route outcome plus restart fencing state."""
+    """One isolated Native Parse outcome plus restart fencing state."""
 
     parser_format: ParserFormat | None
     stable_error_code: StableErrorCode | None
+    native_artifact: bytes = b""
     requires_restart: bool = False
+
+    @property
+    def native_ready(self) -> bool:
+        """Return whether a bounded child-internal artifact was verified."""
+        return (
+            self.parser_format is not None
+            and self.stable_error_code is None
+            and bool(self.native_artifact)
+            and not self.requires_restart
+        )
 
 
 class SandboxSupervisor:
@@ -161,22 +181,68 @@ class SandboxSupervisor:
             if prefix == b"":
                 return self._classify_exit(process)
             result_length = struct.unpack(">I", prefix)[0]
-            if result_length < _MIN_RESULT_BYTES or result_length > _RESULT_LIMIT:
+            if (
+                result_length < _MIN_RESULT_BYTES
+                or result_length > _RESULT_HEADER_LIMIT
+            ):
                 return self._abort(process, StableErrorCode.PARSER_SANDBOX_UNAVAILABLE)
-            result_bytes = _read_with_cancel(
+            result_header_bytes = _read_with_cancel(
                 process.stdout.fileno(),
                 length=result_length,
                 deadline=deadline,
                 cancelled=cancelled,
             )
-            if result_bytes is None:
+            if result_header_bytes is None:
                 return self._abort(process, StableErrorCode.PARSER_CANCELLED)
-            if len(result_bytes) != result_length:
+            if len(result_header_bytes) != result_length:
                 return self._classify_exit(process)
+            result_header = NativeResultHeader.from_bytes(result_header_bytes)
+            body_prefix = _read_with_cancel(
+                process.stdout.fileno(),
+                length=_BODY_LENGTH.size,
+                deadline=deadline,
+                cancelled=cancelled,
+            )
+            if body_prefix is None:
+                return self._abort(process, StableErrorCode.PARSER_CANCELLED)
+            if len(body_prefix) != _BODY_LENGTH.size:
+                return self._classify_exit(process)
+            body_length = _BODY_LENGTH.unpack(body_prefix)[0]
+            if (
+                body_length != result_header.result_bytes
+                or body_length > self._config.native.artifact_bytes
+                or body_length > self._config.max_result_bytes
+            ):
+                return self._abort(process, StableErrorCode.PARSER_SANDBOX_UNAVAILABLE)
+            result_body = _read_with_cancel(
+                process.stdout.fileno(),
+                length=body_length,
+                deadline=deadline,
+                cancelled=cancelled,
+            )
+            if result_body is None:
+                return self._abort(process, StableErrorCode.PARSER_CANCELLED)
+            if len(result_body) != body_length:
+                return self._classify_exit(process)
+            trailing = _read_with_cancel(
+                process.stdout.fileno(),
+                length=1,
+                deadline=deadline,
+                cancelled=cancelled,
+            )
+            if trailing is None:
+                return self._abort(process, StableErrorCode.PARSER_CANCELLED)
+            if trailing:
+                return self._abort(process, StableErrorCode.PARSER_SANDBOX_UNAVAILABLE)
             process.wait(timeout=max(0.1, deadline - time.monotonic()))
             if process.returncode != 0:
                 return self._classify_exit(process)
-            result = _decode_route_result(result_bytes)
+            result = _decode_native_result(
+                result_header,
+                result_body,
+                source=source,
+                config=self._config,
+            )
             had_residual = bool(_group_members(process.pid))
             uncleared_residual = (
                 self._terminate_group(process.pid) if had_residual else False
@@ -185,10 +251,17 @@ class SandboxSupervisor:
                 return SandboxRouteResult(
                     result.parser_format,
                     result.stable_error_code,
+                    native_artifact=b"",
                     requires_restart=True,
                 )
             return result  # noqa: TRY300
-        except (OSError, ProcessLookupError, subprocess.TimeoutExpired, ValueError):
+        except (
+            InternalResultError,
+            OSError,
+            ProcessLookupError,
+            subprocess.TimeoutExpired,
+            ValueError,
+        ):
             code = (
                 StableErrorCode.PARSER_TIMEOUT
                 if time.monotonic() >= deadline
@@ -229,14 +302,20 @@ class SandboxSupervisor:
             code = StableErrorCode.PARSER_MEMORY_LIMIT
         else:
             code = StableErrorCode.PARSER_SANDBOX_UNAVAILABLE
+        had_descendants = bool(_group_members(process.pid) - {process.pid})
         residual = self._terminate_group(process.pid)
-        return SandboxRouteResult(None, code, requires_restart=residual)
+        return SandboxRouteResult(
+            None,
+            code,
+            requires_restart=had_descendants or residual,
+        )
 
     def _abort(
         self,
         process: subprocess.Popen[bytes],
         code: StableErrorCode,
     ) -> SandboxRouteResult:
+        had_descendants = bool(_group_members(process.pid) - {process.pid})
         residual = self._terminate_group(process.pid)
         try:
             process.wait(timeout=2)
@@ -244,7 +323,11 @@ class SandboxSupervisor:
             residual = True
         _reap_group(process.pid)
         residual = _group_members(process.pid) != set() or residual
-        return SandboxRouteResult(None, code, requires_restart=residual)
+        return SandboxRouteResult(
+            None,
+            code,
+            requires_restart=had_descendants or residual,
+        )
 
     @staticmethod
     def _terminate_group(process_group: int) -> bool:
@@ -259,17 +342,36 @@ class SandboxSupervisor:
         return bool(_group_members(process_group))
 
 
-def _decode_route_result(content: bytes) -> SandboxRouteResult:
-    value = json.loads(content)
-    if not isinstance(value, dict) or set(value) != {"format", "stableErrorCode"}:
-        raise ValueError("invalid child route result")
-    raw_format = value["format"]
-    raw_code = value["stableErrorCode"]
-    parser_format = ParserFormat(raw_format) if isinstance(raw_format, str) else None
-    stable_error = StableErrorCode(raw_code) if isinstance(raw_code, str) else None
-    if (parser_format is None) == (stable_error is None):
-        raise ValueError("child result must contain exactly one outcome")
-    return SandboxRouteResult(parser_format, stable_error)
+def _decode_native_result(
+    header: NativeResultHeader,
+    body: bytes,
+    *,
+    source: bytes,
+    config: ParserHarnessConfig = DEFAULT_CONFIG,
+) -> SandboxRouteResult:
+    header.validate_body(
+        body,
+        body_limit=min(config.native.artifact_bytes, config.max_result_bytes),
+    )
+    if header.outcome == "native_success":
+        if header.parser_format is None:
+            raise InternalResultError("native success is missing its format")
+        try:
+            artifact = NativeDocument.from_bytes(body)
+            artifact.validate_source_binding(
+                source,
+                expected_format=header.parser_format,
+            )
+        except NativeArtifactError:
+            return SandboxRouteResult(
+                parser_format=None,
+                stable_error_code=StableErrorCode.PARSER_SCHEMA_MISMATCH,
+            )
+    return SandboxRouteResult(
+        parser_format=header.parser_format,
+        stable_error_code=header.stable_error_code,
+        native_artifact=body,
+    )
 
 
 def _enable_subreaper() -> bool:

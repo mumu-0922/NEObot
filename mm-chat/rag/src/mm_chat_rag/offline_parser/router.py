@@ -282,22 +282,17 @@ def _assert_selected_hints(
 
 
 def _decode_text(source: bytes) -> str:
-    if b"\x00" in source:
-        raise RouteFailure(StableErrorCode.INPUT_INVALID)
-    encodings: tuple[str, ...]
-    if source.startswith(b"\xef\xbb\xbf"):
-        encodings = ("utf-8-sig",)
-    else:
-        encodings = ("utf-8", "gb18030")
-    for encoding in encodings:
-        try:
-            text = source.decode(encoding, errors="strict")
-        except UnicodeDecodeError:
-            continue
-        if "\ufffd" in text:
-            raise RouteFailure(StableErrorCode.INPUT_INVALID)
-        return text
-    raise RouteFailure(StableErrorCode.ENCODING_AMBIGUOUS)
+    from mm_chat_rag.offline_parser.native.decoding import (  # noqa: PLC0415
+        decode_text,
+    )
+    from mm_chat_rag.offline_parser.native.model import (  # noqa: PLC0415
+        NativeParseFailure,
+    )
+
+    try:
+        return decode_text(source).text
+    except NativeParseFailure as error:
+        raise RouteFailure(error.code) from error
 
 
 def _looks_binary(source: bytes) -> bool:

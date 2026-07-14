@@ -65,7 +65,7 @@ class _AdmissionGate:
 
 
 class ParserSidecar:
-    """Serve MMCP requests without enabling a Native Parser or RAG handler."""
+    """Serve MMCP while keeping C1.3 Native Artifacts off the external wire."""
 
     def __init__(self, socket_path: Path = DEFAULT_SOCKET_PATH) -> None:
         self._socket_path = socket_path
@@ -150,8 +150,9 @@ class ParserSidecar:
             if result.stable_error_code is not None:
                 self._send_failure(connection, request, result.stable_error_code)
                 return
-            # C1.2 proves the router and sandbox only. Returning a candidate before
-            # C1.3 would forge Canonical IR, so accepted routes fail closed here.
+            # C1.3 Native Artifacts are child-internal inputs to the future C1.4
+            # canonicalizer. MMCP success is frozen to canonical-ir.v2, so even a
+            # verified Native Artifact must remain zero-body and non-stageable.
             self._send_failure(connection, request, StableErrorCode.FORMAT_UNSUPPORTED)
         except (OSError, ProtocolError, ValueError):
             if invocation_id is not None:

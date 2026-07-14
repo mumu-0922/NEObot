@@ -15,6 +15,10 @@ import pytest
 from mm_chat_rag.offline_parser import child, sandbox
 from mm_chat_rag.offline_parser.config import ParserHarnessConfig, SandboxLimits
 from mm_chat_rag.offline_parser.errors import ParserFormat, StableErrorCode
+from mm_chat_rag.offline_parser.native.internal_result import (
+    InternalResultError,
+    NativeResultHeader,
+)
 from mm_chat_rag.offline_parser.sandbox import SandboxSupervisor
 from mm_chat_rag.offline_parser.seccomp import (
     CHILD_POLICY,
@@ -134,17 +138,20 @@ def test_child_internal_route_returns_format_and_stable_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("MM_CHAT_PARSER_TEST_PROBE", raising=False)
-    accepted = child._route(
+    accepted, accepted_body = child._route(
         {"declaredExtension": ".txt", "declaredMime": None},
         b"x",
     )
-    rejected = child._route(
+    rejected, rejected_body = child._route(
         {"declaredExtension": None, "declaredMime": None},
         b"x",
     )
 
-    assert accepted == {"format": "txt", "stableErrorCode": None}
-    assert rejected == {"format": None, "stableErrorCode": "FORMAT_AMBIGUOUS"}
+    assert accepted.outcome == "native_success"
+    assert accepted.parser_format is ParserFormat.TXT
+    accepted.validate_body(accepted_body, body_limit=len(accepted_body))
+    assert rejected.stable_error_code is StableErrorCode.FORMAT_AMBIGUOUS
+    assert rejected_body == b""
 
 
 @pytest.mark.parametrize(
@@ -236,13 +243,15 @@ def test_supervisor_rejects_source_over_configured_request_limit() -> None:
     ],
 )
 def test_supervisor_rejects_invalid_child_result_shapes(content: bytes) -> None:
-    with pytest.raises((ValueError, json.JSONDecodeError)):
-        sandbox._decode_route_result(content)
+    with pytest.raises(InternalResultError):
+        NativeResultHeader.from_bytes(content)
 
 
 def test_supervisor_decodes_closed_child_error_result() -> None:
-    observed = sandbox._decode_route_result(
-        b'{"format":null,"stableErrorCode":"INPUT_INVALID"}'
+    observed = sandbox._decode_native_result(
+        NativeResultHeader.failure(StableErrorCode.INPUT_INVALID),
+        b"",
+        source=b"",
     )
     assert observed.stable_error_code is StableErrorCode.INPUT_INVALID
 
