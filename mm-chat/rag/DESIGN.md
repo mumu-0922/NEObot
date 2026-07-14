@@ -263,9 +263,9 @@ Deployment invariants:
 
 ### 5. Good / Base / Bad Cases
 
-- Good: a valid DOCX with matching `.docx` hint routes to `docx` in the child,
-  but the current harness returns `FORMAT_UNSUPPORTED` because the DOCX Native
-  Parser is not yet active.
+- Good: a valid DOCX with matching `.docx` hint routes to the fixed DOCX Native
+  Parser and yields a verified internal Artifact, while MMCP still returns
+  `FORMAT_UNSUPPORTED` because C1.4 Canonical IR is not active.
 - Base: plain UTF-8 bytes without MIME/extension return
   `FORMAT_AMBIGUOUS`; Compose smoke asserts this exact zero-body response.
 - Bad: a ZIP with duplicate names, encrypted entries, Local/Central Header
@@ -322,9 +322,9 @@ The resource values remain C1 candidates pending worst-case Fresh-container
 Corpus tuning. `RLIMIT_NPROC` is charged against a host UID, so unit probes add
 bounded test-only headroom when `/proc` exposes only a PID namespace; production
 uses the dedicated UID plus the container PID limit. Python/stdlib XML parsing
-is preceded by byte-level DTD/Entity/XInclude rejection and has no external
-fetch path, but full Native Parser accuracy and deterministic Canonical IR are
-C1.3/C1.4 gates. Cgroup-level Sidecar OOM is represented as Controller-local
+uses hardened source-aware Expat with DTD/Entity/PI/XInclude rejection and no
+external fetch path; PDF/MinerU Native processing and deterministic Canonical IR
+remain C1.3C+/C1.4 gates. Cgroup-level Sidecar OOM is represented as Controller-local
 Sandbox Unavailable; it never becomes a forged wire response.
 
 ## Phase 15.2C C1.3A TXT / Markdown / HTML Native Parsers
@@ -361,6 +361,33 @@ The Native Artifact is not an MMCP success payload. MMCP v1 remains frozen to
 off the external wire. The config hash binds all Native limits and the fixed
 parser profile; the C1.3A value is
 `8a72668218932f6af95d3b6276646304451d7f9ea59ff658ca7887d925e83ea7`.
+
+## Phase 15.2C C1.3B DOCX / PPTX / XLSX / CSV Native Parsers
+
+C1.3B upgrades the internal DTO to `parser-native-artifact.v2` and activates
+CSV plus three OOXML formats without changing the MMCP success contract. Text
+formats retain one decoded Raw File Source Unit. OOXML uses a binary Source Unit
+`0`, then positive Part Units ordered by canonical URI unsigned UTF-8 bytes;
+all Part-local Locators carry their Source Unit ordinal.
+
+Router and Parsers share exactly one `ValidatedOpcPackage`. Admission reconciles
+EOCD, Local/Central Header, optional Data Descriptor, CRC and sizes; rejects
+ZIP64, nested archives, path/case/percent collisions, Macro/OLE, invalid Content
+Types, open Relationship graphs, DTD/Entity/PI/XInclude, and package-wide
+resource overflow. Internal Relationships must resolve to admitted Parts;
+External targets remain non-dereferenced metadata and are never fetched.
+
+CSV uses a fixed comma/double-quote FSM with CRLF/LF/CR and no Sniffer or Header
+inference. DOCX preserves paragraph/list/table/note structure. PPTX preserves
+slide order, shapes, tables, notes and exact-rational geometry. XLSX preserves
+sheet/row/cell/shared-string/formula/cached/merge/hidden structure without
+executing formulas. These parsers add no third-party runtime dependency.
+
+Artifact v2 remains Child-internal and non-stageable. The Sidecar discards it
+and returns zero-body `FORMAT_UNSUPPORTED` until C1.4 emits verified
+`canonical-ir.v2`. The C1.3B Config Hash is recorded only after final review and
+all gates freeze the implementation bytes:
+`6251a7a71ec35d7d55e030b8ca1ef49da8995257734a76e8cd6864c25d88d8c3`.
 
 ## Process topology
 

@@ -7936,3 +7936,55 @@ review remediations, and verification evidence above are retained for the next
 slice. Next: implement **C1.3B DOCX / PPTX / XLSX / CSV Native Parsers** behind
 the same Child and internal-artifact gate. Do not advance to C1.3D MinerU,
 Canonical IR, or runtime activation before the intervening slices pass.
+
+## 2026-07-14 — C1.3B DOCX / PPTX / XLSX / CSV Native Parsers implemented
+
+C1.3B upgrades the closed Child-internal DTO to `parser-native-artifact.v2`.
+Text Formats retain one decoded Raw File Source Unit; OOXML uses binary Raw Unit
+`0` plus canonical URI-ordered Part Units. Node and Fragment Locators bind the
+exact Source Unit, and Dispatch recomputes every used Part-local Byte/Scalar/
+Line position before the Artifact crosses the Child/Supervisor frame.
+
+CSV now uses a fixed comma/double-quote FSM with no Sniffer or Header inference.
+DOCX preserves paragraph/list/table/footnote/endnote structure; unsupported
+Header/Footer references fail closed rather than dropping text. PPTX preserves
+slide order, shapes, tables, notes, and exact-rational geometry. XLSX preserves
+sheet/row/cell/shared-string/formula/cached/merge/hidden structure without
+formula execution.
+
+Router and the three OOXML Parsers consume one `ValidatedOpcPackage`; there is
+no second ZIP/XML admission. The capability reconciles EOCD, Local/Central
+Header, optional Descriptor, CRC/Size, disk start, compression and expanded
+budgets; rejects ZIP64, recursive Archive, path aliases, Macro/OLE, invalid
+Content Types and open Relationship graphs; and parses XML through strict
+source-aware Expat without DTD/custom Entity/PI/XInclude or external fetch.
+
+Independent review initially found `P1=3/P2=3`: unbounded integer conversion,
+Presentation-root active content, Header/Footer text loss, Central disk-start,
+Relationship exact-type, and Profile self-binding gaps. All were fixed and two
+read-only remediation reviews closed at `P0/P1/P2 = 0/0/0`. The same integer
+guard was applied to canonical JSON, and `canonical.py`, `errors.py`,
+`config.py`, and `profile.py` were added to component source inventories.
+
+```text
+full Python suite                               1408 passed / 2 skipped
+Python coverage                                 92.32% (>= 90%)
+Ruff / format / strict Mypy                     passed / passed / passed
+pip-audit --skip-editable                       no known vulnerabilities
+security / quality / module scanners            passed; 0 security findings
+Python/Go/Node JCS                              89 cases / 3 runtimes passed
+offline wheel / contract verifier              passed / 21 artifacts / 18 schemas
+wheel Native runtime modules                    6 required modules present
+Docker parser-c1 image + Compose smoke          passed; isolated containers removed
+parser config hash                              6251a7a71ec35d7d55e030b8ca1ef49da8995257734a76e8cd6864c25d88d8c3
+independent final review                        P0/P1/P2 = 0/0/0
+Runtime Registry / Dispatch / migration         unchanged / disabled / 010
+Provider calls / credentials                    0 / 0
+```
+
+No complete reproduction transcript is required; the decisive flow, review
+remediations, and final gates above are sufficient process evidence. Next:
+implement **C1.3C Native PDF safe subset and `MINERU_REQUIRED` classifier**.
+Keep C1.3D MinerU, C1.4 Canonical IR, Provider/network access, production
+Registry/Dispatch, Postgres/Redis/MinIO, migrations `011/012`, and staging
+closed.

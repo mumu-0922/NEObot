@@ -1310,7 +1310,7 @@ C1.3 前仍 Fail Closed 为 `FORMAT_UNSUPPORTED`，不生成占位 Canonical IR�
 ### C1.3 Native Parsers
 
 - [x] 实现 TXT/Markdown/HTML Parser 与精确 Byte/Line Locator。
-- [ ] 实现 DOCX/PPTX/XLSX/CSV Parser 与 OOXML/Sheet/Shape Locator。
+- [x] 实现 DOCX/PPTX/XLSX/CSV Parser 与 OOXML/Sheet/Shape Locator。
 - [ ] 实现 Native PDF 安全子集与 `MINERU_REQUIRED` 分类器。
 - [ ] 实现 Synthetic/Public MinerU Artifact Offline Normalizer；不实现 Wire 或网络。
 - [ ] 保留 Table/Formula/Asset/Reading Flow/Provenance，不做图片索引。
@@ -1326,6 +1326,26 @@ Dispatch、Provider、Postgres/Redis/MinIO、迁移 `011/012` 与生产 Handler 
 89 Case x 3 Runtime JCS、21 Artifact/18 Schema Offline Wheel、Security Scanner 与隔离
 Docker Compose Smoke 均通过；独立 Review 为 `P0/P1/P2 = 0/0/0`。当前 Config Hash 为
 `8a72668218932f6af95d3b6276646304451d7f9ea59ff658ca7887d925e83ea7`。
+
+C1.3B 将 Child-internal Contract 升为 `parser-native-artifact.v2`，增加固定 CSV FSM 与
+DOCX/PPTX/XLSX Parser。OOXML Router 与 Parser 只共享一个
+`ValidatedOpcPackage`：统一校验 EOCD、Local/Central/Data Descriptor、CRC/Size、ZIP64、
+Part URI、Content Types、closed Relationships 与 hardened Expat；Parser 不重开 Raw ZIP、
+不猜 Part、不 fetch External Target、不执行公式。Raw File 固定 Source Unit `0`，Part Unit
+按 canonical URI unsigned UTF-8 bytes 排序，Part-local Locator 显式绑定 Source Unit。
+
+独立安全审查发现并关闭超长整数 Runtime Escape、PPTX Presentation Active Child、DOCX
+Header/Footer 静默丢失、Central Directory disk-start、Relationship exact type/content-type
+与 Profile/Config self-binding 缺口，最终 `P0/P1/P2 = 0/0/0`。Artifact v2 仍不是
+`canonical-ir.v2`；Sidecar 继续返回 zero-body `FORMAT_UNSUPPORTED`，Registry/Dispatch、
+Provider、Postgres/Redis/MinIO、迁移 `011/012` 与生产 Handler 全部保持关闭。最终测试数、
+Coverage 与 Config Hash 在所有 Gate 冻结后记录于 Tracking 文档。
+
+C1.3B 最终全量为 `1408 passed / 2 skipped`、Coverage `92.32%`；Ruff/Format/Mypy、
+pip-audit、89 Case x 3 Runtime JCS、21 Artifact/18 Schema Offline Wheel、Native Module
+Wheel Presence、Security/Quality/Module Scanner 与隔离 Docker Compose Smoke 全部通过。
+最终 Config Hash 为
+`6251a7a71ec35d7d55e030b8ca1ef49da8995257734a76e8cd6864c25d88d8c3`。
 
 ### C1.4 Canonicalize 与 Quality
 
@@ -1375,6 +1395,7 @@ C1 Offline Parser/Canonical IR
   -> Canary/Rebuild/Controlled Activation
 ```
 
-下一实施刀固定为 **C1.3 Native Parsers**。保持 Registry/Dispatch、Provider、数据库、
+下一实施刀固定为 **C1.3C Native PDF 安全子集与 `MINERU_REQUIRED` 分类器**。保持
+Registry/Dispatch、Provider、数据库、
 迁移 `011/012` 与生产 Handler 关闭；Parser 必须复用 C1.2 Router/Sandbox，禁止绕过 MMCP、
 Process-group/Seccomp、资源与 Cleanup Gate。

@@ -38,6 +38,16 @@ closed. Text decoding is frozen as BOM -> UTF-8 -> GB18030; Markdown uses fixed
 CommonMark + Table semantics, and HTML uses a hardened policy that blocks
 active content and external fetches.
 
+Phase 15.2C C1.3B upgrades the Child-internal contract to
+`parser-native-artifact.v2` and activates fixed CSV, DOCX, PPTX, and XLSX
+Native Parsers. Router and OOXML Parsers share one hardened
+`ValidatedOpcPackage`: ZIP/OPC/XML admission is not duplicated, External
+Relationships are metadata-only, formulas are never evaluated, and no Part or
+URL is fetched. C1.3B adds no third-party dependency. MMCP still accepts only
+future `canonical-ir.v2`, so Sidecar output remains zero-body
+`FORMAT_UNSUPPORTED`; production Dispatch, Provider, Postgres, Redis, MinIO,
+and migrations `011/012` stay closed.
+
 The operator-only C0 Provider Capture Harness lives in
 `tools/provider_capture.py`. It defaults to a redacted, zero-network dry-run and
 is not a production console script. Real egress requires explicit `--execute`
@@ -128,7 +138,7 @@ uv run pytest -p no:cacheprovider \
 uv run python -B -m tools.verify_jcs_interop --require-all
 ```
 
-C1.2 router/protocol/sandbox/output-root plus C1.3A Native Parser gates and the
+C1.2 router/protocol/sandbox/output-root plus C1.3B Native Parser gates and the
 isolated Compose smoke:
 
 ```bash
@@ -144,6 +154,12 @@ uv run pytest -p no:cacheprovider \
   tests/unit/test_parser_native_text.py \
   tests/unit/test_parser_native_markdown.py \
   tests/unit/test_parser_native_html.py \
+  tests/unit/test_parser_native_csv.py \
+  tests/unit/test_parser_native_xml.py \
+  tests/unit/test_parser_native_opc.py \
+  tests/unit/test_parser_native_docx.py \
+  tests/unit/test_parser_native_pptx.py \
+  tests/unit/test_parser_native_xlsx.py \
   tests/unit/test_parser_native_dispatch.py \
   tests/unit/test_parser_native_internal_result.py \
   tests/unit/test_parser_native_sandbox.py
@@ -205,8 +221,9 @@ literal RFC1918/loopback address and still uses `trust_env=false`.
 uses `uv sync --no-dev`, and `.dockerignore` excludes `tests`, so fixtures and
 Fake Provider support do not enter the runtime image. The Dockerfile copies only
 `src/`; `tools/` is neither copied nor registered in `[project.scripts]`.
-`markdown-it-py==4.2.0` is the sole C1.3A direct runtime dependency; its
-`mdurl==0.1.2` dependency is exact-locked, and both are MIT-licensed.
+`markdown-it-py==4.2.0` remains the sole Native Parser third-party direct
+runtime dependency; C1.3B OOXML/CSV support is stdlib-only. Its `mdurl==0.1.2`
+dependency is exact-locked, and both are MIT-licensed.
 
 ## Runtime
 

@@ -1,12 +1,13 @@
-# C1.3A Native Parsers Design
+# C1.3B Native Parsers Design
 
 ## 目标与非目标
 
-目标是在 C1.2 隔离边界内解析 TXT、Markdown、HTML，保留结构及精确 Raw Byte / Unicode
-Scalar / Line-Column Span，并生成确定性的内部 Native Artifact。
+目标是在 C1.2 隔离边界内解析 TXT、Markdown、HTML、CSV、DOCX、PPTX、XLSX，保留
+结构与精确 Raw Byte / Unicode Scalar / Line-Column Span，并生成确定性的内部 Native
+Artifact。
 
 本模块不负责 NFC/LF Canonicalization、Normalization Map、Source Locator v2 Projection、
-Canonical IR、Quality Report、Chunking、Provider、数据库、Registry 或生产 Dispatch。这些分别
+Canonical IR、Quality Report、Chunking、Provider、数据库、Registry 或生产 Dispatch。这些
 属于 C1.4+ 或后续切片。
 
 ## 信任边界与数据流
@@ -17,30 +18,61 @@ MMCP bound Source
   -> READY + PID/PGID + Seccomp Filter Hash
   -> Child 读取 Source
   -> Router Admission
-  -> Fixed Native Dispatch
-  -> Parser + Child-local Locator Validation
-  -> closed internal Native Artifact
+       text -> one DecodedSource
+       OOXML -> one ValidatedOpcPackage
+  -> Fixed Native Dispatch（无 fallback）
+  -> Parser + Child-local Locator 重算
+  -> closed parser-native-artifact.v2
   -> Supervisor 校验 JCS/Length/Hash/Limit/Source len+hash+format
   -> Sidecar 丢弃 Artifact，并返回 MMCP FORMAT_UNSUPPORTED + zero body
 ```
 
-Parent 不解码或 DOM/Markdown-parse 原始 Source。Raw/Scalar/Line 语义验证使用 Child 内同一
-`DecodedSource` 权威索引完成；Parent 只验证不执行内容语义的 Closed Artifact 与请求绑定。
-在 C1.4 独立 Canonical/Quality Gate 完成前，任何 Native Artifact 均不可 Stage。
+Parent 不解码或解析原始 Source。C1.4 独立 Canonical/Quality Gate 完成前，任何 Native
+Artifact 均不可 Stage。
 
 ## 核心契约
 
-### Native Artifact
+### Native Artifact v2
 
-`parser-native-artifact.v1` 是 Child-internal Closed DTO，包含：
+- Source Unit `0` 永远是完整 Raw File；Text Format 必须只有这一个 decoded unit。
+- OOXML Raw Unit 是 binary；每个 ZIP Part 是正 ordinal `ooxml_part`，按 canonical `/URI`
+  unsigned UTF-8 bytes 排序，URI 唯一且禁止 case-fold/percent alias。
+- Binary Document Root 使用完整 Raw File `NativeBytePosition`；XML/Text 使用
+  `NativeSourcePosition`，包含 Source Unit、Raw Byte、Scalar、Line/Column。
+- Parent containment 只在同 Source Unit 生效；Root 可挂不同 Part 的结构。
+- 跨 Unit Fragment 只允许 `syntax_decode`；`identity` 必须逐 Scalar 等于对应 decoded slice。
+- Fragment Role 固定为 `text | cell_value | cached_value | formula | external_target`。
 
-- Source Format、Encoding、Bytes、SHA-256、Decoded Scalar Count；
-- 连续 Node Ordinal、先于 Child 的 Parent Ordinal；
-- Node/Fragment 的 Raw Byte、Decoded Scalar、Line/Column 半开区间；
-- `identity | syntax_decode` Fragment Transform；
-- 名称排序且唯一的 Closed Scalar Attributes。
+Artifact v2 是 Child-internal Closed DTO，不是 Packaged Public Schema，也不是
+`canonical-ir.v2`。
 
-它不是 Packaged Public Schema，也不是 `canonical-ir.v2`。
+### 单一 OPC / XML Capability
+
+`admit_ooxml_package(source, limits) -> ValidatedOpcPackage` 是 Router 与 Parser 唯一共享
+能力：
+
+- EOCD 单盘、Local/Central/Data Descriptor、CRC、Size、Range 全量对账；拒绝 ZIP64、
+  encryption、special file、nested archive 与非 STORED/DEFLATED method。
+- Entry count/size/ratio/expanded/path、Source Units 与 package-wide XML budgets 有界。
+- Part Name 做 NFC、case-fold、percent 与 traversal canonicalization。
+- `[Content_Types].xml` 通过 hardened XML 做 semantic selection；comment/string marker 无权。
+- `.rels` 形成 closed graph；Internal target 必须 canonical 且存在；External 仅允许冻结类型，
+  只返回 metadata，永不解引用。
+- Expat 仅收 strict UTF-8/BOM；拒绝 DTD、自定义 Entity、External Entity、PI、XInclude；
+  Entity/CRLF 转换标为 `syntax_decode`。
+
+Parser 只能消费该 Capability；不得重新打开 Raw ZIP 或建立第二套 admission。
+
+### Format Profiles
+
+- **CSV**：comma delimiter、double quote、doublequote、CRLF/LF/CR；无 Sniffer/Header 推断、
+  不补 ragged row。
+- **DOCX**：Document/Heading/Paragraph/List/Table/Row/Cell/Footnote/Endnote；Active embed
+  与未冻结修订结构 fail closed。
+- **PPTX**：按 Relationship 冻结 Slide 顺序，Shape preorder，DrawingML Table/Notes；EMU
+  通过 exact rational 转 milli-point，最终才 half-even；不 clamp。
+- **XLSX**：Workbook 顺序、Sheet/Row/Cell、Shared String、Formula/Cached、Merge/Hidden；
+  公式只保留文本，绝不执行。
 
 ### Internal Result Frame
 
@@ -52,52 +84,45 @@ M-byte Native Artifact body
 EOF; trailing bytes forbidden
 ```
 
-Header discriminator 只允许 `native_success | failure`。Success 绑定 Format、Artifact
-Version、Length 与 SHA-256；Failure 必须零 Body。Child 禁止伪造 Controller-only
-`PARSER_CANCELLED` 与 `PARSER_SANDBOX_UNAVAILABLE`。
+Success 绑定 Format、Artifact Version、Length 与 SHA-256；Failure 必须零 Body。Child 禁止
+伪造 Controller-only `PARSER_CANCELLED` 与 `PARSER_SANDBOX_UNAVAILABLE`。
 
-### Stable Errors
+## Stable Errors
 
 | 条件                                             | Error                                  |
 | ------------------------------------------------ | -------------------------------------- |
-| 非唯一编码、非法 Unicode                         | `ENCODING_AMBIGUOUS` / `INPUT_INVALID` |
-| 未实现的 Native Format                           | `FORMAT_UNSUPPORTED`                   |
-| Node/Fragment/Depth/Text/Artifact 超限           | `RESULT_TOO_LARGE`                     |
-| Child-local Raw/Scalar/Line 不一致               | `QUALITY_LOCATOR_FAILED`               |
+| 非唯一编码、非法 Unicode/ZIP/XML/OOXML 结构      | `ENCODING_AMBIGUOUS` / `INPUT_INVALID` |
+| Archive/Package/XML admission 资源超限           | `ARCHIVE_LIMIT_EXCEEDED`               |
+| Macro/OLE/Active Embed                           | `ACTIVE_CONTENT_UNSUPPORTED`           |
+| 合法但未冻结的结构或非 Native Format             | `FORMAT_UNSUPPORTED`                   |
+| Native Node/Fragment/Depth/Artifact 超限         | `RESULT_TOO_LARGE`                     |
+| Child-local Byte/Scalar/Line/Geometry 不一致     | `QUALITY_LOCATOR_FAILED`               |
 | Parent Closed Artifact 或 Request Binding 不一致 | `PARSER_SCHEMA_MISMATCH`               |
 | Timeout/OOM/Cancel/Residual Process              | 复用 C1.2 Sandbox Stable Error         |
 
-## 设计决策
-
-| 决策                                  | 理由                                                               |
-| ------------------------------------- | ------------------------------------------------------------------ |
-| Native Artifact 不复用 MMCP success   | MMCP v1 success 冻结为 `canonical-ir.v2`，复用会伪造 C1.4          |
-| Parser 只在 Seccomp Child lazy import | 保持 Source-before-parse 安全时序，Supervisor 不承载内容 Parser    |
-| Markdown 固定 CommonMark + Table      | 禁止运行时插件发现和行为漂移                                       |
-| HTML 关闭自动 CharRef 转换            | 显式保存 Entity 的 Raw Byte Span 与 decoded text                   |
-| uint32 compact offset index           | 50 MiB Source 上限内 Offset 足够，避免 Python int tuple 的内存放大 |
-| Parent 不复算 Locator                 | 避免可信编排进程解析不可信 Source；C1.4 再做独立 Quality Gate      |
-
 ## 威胁模型与措施
 
-- **Active Content**：拒绝 Script、Event Handler、`javascript:`/`vbscript:`、`srcdoc`、
-  DTD/Entity/XInclude、危险嵌入标签；公式或代码均不执行。
-- **SSRF / Local File Read**：URL 只作为 non-dereferenced Native Attribute；无 fetch API。
-- **Parser Bomb**：Source、Text、Line、Node、Fragment、Depth、Attribute、Artifact Bytes、
-  CPU、Memory、PID 与 Wall Clock 全部有界。
-- **Protocol Confusion**：Internal Result 与 MMCP 使用不同 Discriminator；JCS、Length、Hash、
-  Body Limit、EOF、Format 与 Source Digest 均独立校验。
-- **Locator 欺骗**：Child 内用 compact Decode Index 对每个 Node/Fragment 重算位置；Parent
-  拒绝非 Closed 或不绑定 Request 的 Artifact。
+- **Active Content / Formula Execution**：Macro、OLE、Control 与危险 Embed 拒绝；Formula
+  永远作为 source-derived text。
+- **SSRF / Local File Read**：无 fetch API；External target 不进入 Part resolution。
+- **ZIP/XML Bomb**：压缩比、expanded bytes、Part/Node/Attribute/Text 与 package-wide totals
+  均在解压/解析时计数。
+- **Path / Relationship Confusion**：NFC/case/percent collision、absolute/traversal、missing
+  Part、duplicate ID/source 全部 fail closed。
+- **Protocol / Locator 欺骗**：Child 对所有 used Source Unit 重算位置；Parent 再做 Closed
+  Artifact、Length、Hash、Format 与 Source binding。
 - **Residual Process**：沿用 C1.2 Process-group kill/reap 与 restart fence。
 
 ## 已知限制
 
-- C1.3A 只实现 TXT、Markdown、HTML；OOXML、CSV、PDF、MinerU 仍 Fail Closed。
-- Native Attribute 尚未投影为最终 Provenance/Source Locator；C1.4 负责 Canonical Map。
-- Native Artifact 本身不可持久化或供 Query 使用。
-- Fresh-container 十次 Byte-identical Gate 属于 C1.4，当前只做重复解析与真实 Child 回归。
+- PDF Native Parser、MinerU Offline Normalizer 与 C1.4 Canonical IR 尚未实现。
+- Native Attribute 尚未投影为最终 Provenance/Source Locator。
+- Native Artifact 不可持久化或供 Query 使用。
+- Fresh-container 十次 Byte-identical Gate 属于 C1.4；当前覆盖重复解析与真实 Child 回归。
 
 ## 变更历史
 
-- **2026-07-14**：建立 C1.3A Text Native Parsers、内部 Artifact Frame 与安全/资源 Gate。
+- **2026-07-14 / C1.3A**：建立 TXT/Markdown/HTML Parser、Artifact v1 与内部 Frame。
+- **2026-07-14 / C1.3B**：Artifact 升 v2；加入 CSV、共享 OPC/XML Capability、DOCX、
+  PPTX、XLSX；仍保持 MMCP zero-body fail-closed。最终 Config Hash：
+  `6251a7a71ec35d7d55e030b8ca1ef49da8995257734a76e8cd6864c25d88d8c3`。

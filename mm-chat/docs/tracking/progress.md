@@ -801,6 +801,13 @@ the UI can call in the next wiring slice.
       `FORMAT_UNSUPPORTED`, Canonical IR unstaged, and Registry/Dispatch/
       Provider/Postgres/Redis/MinIO/migrations `011/012` closed; independent
       review closed at `P0/P1/P2 = 0/0/0`.
+- [x] Complete C1.3B DOCX/PPTX/XLSX/CSV Native Parsers: upgrade the internal
+      Artifact to v2 multi-Source-Unit Locators; share one hardened OPC/XML
+      admission capability; preserve document/slide/sheet/table/formula
+      structure without fetch or formula execution; pass 1408-test/92.32%-
+      coverage, dependency/JCS/wheel/scanner/Docker gates, and close independent
+      review at `P0/P1/P2 = 0/0/0`. Keep MMCP zero-body/non-stageable and all
+      Provider/Registry/Dispatch/Postgres/Redis/MinIO/`011/012` paths closed.
 - [ ] Implement and verify the offline parser, Canonical IR, parent/child
       chunking, Provider fake servers, and deterministic manifests.
 - [ ] Select the production tokenizer/dimension/search profile using real Jina
