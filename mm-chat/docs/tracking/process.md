@@ -7788,3 +7788,49 @@ migration head                                 010 (011/012 absent)
 Next: implement **C1.1 Contract and Corpus** only—Closed Schemas, Hash/ID
 envelopes, Stable Error Enum, Golden/Adversarial/Recipe Corpus, and cross-runtime
 RFC 8785 vectors—before parallel Native Parser implementation begins.
+
+## 2026-07-14 — C1.1 Contract and Corpus implemented
+
+C1.1 now provides an installable, runtime-inert parser contract package with 18
+Draft 2020-12 Closed Schemas. Strict test tooling rejects duplicate keys,
+floats, unsafe integers, BOM, NUL, surrogates, invalid UTF-8, non-canonical JCS,
+unknown fields, invalid unions, and mismatched hashes before later Parser code
+may depend on the contract. All 22 Stable Error branches and all 24 Logical Hash
+Envelope kinds are frozen and checked against Python, Go 1.22, and Node 22.
+
+The checked-in corpus contains 49 source fixtures plus 27 deterministic binary
+recipes across text, Markdown, HTML, CSV, OOXML, native/adversarial PDF, archive,
+encoding, limit, and synthetic MinerU cases. `layout` and `middle` are distinct
+single-role synthetic artifacts; their pair validator proves source/profile/
+page/geometry agreement without claiming live Provider compatibility or
+Canonical IR output. Corpus coverage, license basis, raw bytes, SHA-256,
+recipes, expectations, and aggregate hash are closed and reproducible.
+
+Two review/remediation rounds converted descriptive rules into executable
+test-only contracts: normalization exact-cover and legal split boundaries,
+Map-to-Locator projection, Child-to-Parent Fragment/View subset, references and
+DAGs, table grids, chunk reconstruction cardinality, full Canonical Manifest
+artifact binding, and real A–F Logical ID/Hash recomputation. The production
+registries remain empty; no DB, Redis, MinIO, Provider, migration, Docker, or
+runtime dependency changed.
+
+```text
+packaged schemas / logical envelopes                 18 / 24
+source fixtures / deterministic binary recipes       49 / 27
+cross-runtime JCS + logical-ID cases                  89 / 3 runtimes
+focused C1.1 tests                                    380 passed
+full Python suite                                     676 passed / 2 skipped
+Python coverage                                       90.33% (>= 90%)
+Ruff check / format / strict Mypy                     passed / passed / passed
+pip-audit --skip-editable                             no known vulnerabilities
+offline wheel build / verifier                        passed / 18 schemas
+security scanner                                     0 findings
+independent initial review                            P0/P1/P2 = 0/4/0
+independent final review                              P0/P1/P2 = 0/0/0
+additional Provider calls / Token use                 0 / 0
+Runtime Registry / Dispatch / migration               unchanged / disabled / 010
+```
+
+Next: implement **C1.2 Router and Sandbox Protocol** only. Keep Native Parser,
+Provider Adapter, migration `011/012`, and production Handler activation closed
+until their ordered gates are complete.

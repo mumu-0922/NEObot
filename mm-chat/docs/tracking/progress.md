@@ -779,6 +779,12 @@ the UI can call in the next wiring slice.
       plan, including format/security routing, sandbox protocol, Canonical IR
       and Source Locator v2, deterministic manifests, hierarchical chunking,
       future `012` payload/lineage separation, and Evidence/Citation v2 impact.
+- [x] Complete C1.1 Contract and Corpus: package 18 Closed Schemas; freeze all
+      24 Logical Hash envelopes and the 22-code Stable Error matrix; add 49
+      source fixtures plus 27 deterministic binary recipes; enforce strict
+      JSON/JCS, semantic ordering/exact-cover/DAG/count/hash gates, existing-
+      wheel packaging checks, and Python/Go/Node equality without enabling
+      runtime handlers.
 - [ ] Implement and verify the offline parser, Canonical IR, parent/child
       chunking, Provider fake servers, and deterministic manifests.
 - [ ] Select the production tokenizer/dimension/search profile using real Jina

@@ -1257,20 +1257,33 @@ Phase 15.2D 前新增版本化 DTO：
 
 ### C1.1 Contract 与 Corpus
 
-- [ ] 新建 Closed JSON Schema：Canonical IR v2、Locator v2、Quality/Chunk/Manifest v2。
-- [ ] 冻结 Source Unit/Normalization Map、Anchor/Source Fragment/View、Geometry、数组比较器、JCS、
+- [x] 新建 Closed JSON Schema：Canonical IR v2、Locator v2、Quality/Chunk/Manifest v2。
+- [x] 冻结 Source Unit/Normalization Map、Anchor/Source Fragment/View、Geometry、数组比较器、JCS、
       Hash Envelope、Logical ID 与完整 Stable Error Enum。
-- [ ] 冻结 Normalization Map 独立 Artifact/Manifest Ref、Source Unit Resolver、Exact-cover
+- [x] 冻结 Normalization Map 独立 Artifact/Manifest Ref、Source Unit Resolver、Exact-cover
       与 Closed Transform/SourcePosition Union、Parent/Subsegment Coalesce、
       Identity/Syntax-decode/非线性 Segment Split Contract。
-- [ ] 冻结 Source Unit/Sheet/Shape/Structure/Payload Opaque ID Envelope、UTF-8 Byte
+- [x] 冻结 Source Unit/Sheet/Shape/Structure/Payload Opaque ID Envelope、UTF-8 Byte
       Comparator、ownerSeed 分层 DAG、Text/Structural Span Hash、Kind Rank 与 Golden
       Vector。
-- [ ] 冻结 Normalization Aggregate、Provenance C4、Flow Seed/Final ID 与 Parent/Child
+- [x] 冻结 Normalization Aggregate、Provenance C4、Flow Seed/Final ID 与 Parent/Child
       Domain-separated Chunk ID Golden Vector，证明 Hash DAG 无环。
-- [ ] 建立 Golden/Adversarial/Recipe Corpus、License Manifest 与 Fixture Hash。
-- [ ] 增加 Schema Negative Test：Unknown/Duplicate Key、Float/Safe-integer、非 Canonical、
+- [x] 建立 Golden/Adversarial/Recipe Corpus、License Manifest 与 Fixture Hash。
+- [x] 增加 Schema Negative Test：Unknown/Duplicate Key、Float/Safe-integer、非 Canonical、
       错 Hash，并通过 RFC 8785 官方向量与 Python/Go/JS Cross-runtime Equality。
+
+C1.1 实现证据位于 `mm-chat/rag/src/mm_chat_rag/contracts/`、
+`tests/fixtures/parser_contracts/`、`tests/fixtures/parser_corpus/` 与
+`tests/fixtures/jcs/`。18 份 Packaged Schema、24 类 Logical Hash Envelope、49 个 Source
+Fixture、27 个 Deterministic Binary Recipe 和 89 个三运行时 JCS/Logical-ID Case 已通过
+离线 Gate。Test-only Semantic Validator 额外证明 Normalization/Locator Ordering 与
+Exact-cover、引用/DAG、Table Grid、Chunk Cardinality/Overlap、Manifest Count/Hash；它不等同于
+Native Parser、Fresh-container Determinism 或生产 Runtime Promotion。
+Integrated A–F Fixture 使用真实重算的 Logical ID/Hash，并把 IR、Normalization Map、Source
+Unit Resolver、Quality、Chunk 与 Canonical Manifest 的 Bytes/Count/Aggregate 全量绑定；
+Projection Fixture 证明 Map→Locator 唯一投影和 Child→Parent Fragment/View 有序子集。
+Synthetic MinerU `layout`/`middle` 是两个不同的单 Role Artifact，Pair Gate 只做离线结构合流，
+不冒充 live Wire 或 Parser Output。
 
 ### C1.2 Router 与 Sandbox Protocol
 
