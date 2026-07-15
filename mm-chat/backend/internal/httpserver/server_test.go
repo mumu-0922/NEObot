@@ -746,6 +746,52 @@ func TestNewHandlerRegistersChatRoutesWithDatabaseRequired(t *testing.T) {
 	}
 }
 
+func TestNewHandlerRegistersPluginRoutesFailClosed(t *testing.T) {
+	handler := NewHandler(config.Config{Addr: ":0", Version: "route-test"})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/plugins", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("plugin list status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var listBody struct {
+		Plugins     []any `json:"plugins"`
+		Unavailable bool  `json:"unavailable"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&listBody); err != nil {
+		t.Fatalf("decode plugin list: %v", err)
+	}
+	if !listBody.Unavailable || len(listBody.Plugins) != 0 {
+		t.Fatalf("plugin list = %#v, unavailable=%v; want empty unavailable", listBody.Plugins, listBody.Unavailable)
+	}
+
+	for _, tc := range []struct {
+		path string
+		code string
+	}{
+		{path: "/v1/plugins/install", code: "PLUGIN_INSTALL_UNAVAILABLE"},
+		{path: "/v1/plugins/execute", code: "PLUGIN_EXECUTION_UNAVAILABLE"},
+	} {
+		rec = httptest.NewRecorder()
+		req = httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(`{"secret":"sk_live_secret"}`))
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotImplemented {
+			t.Fatalf("%s status = %d, want %d; body=%s", tc.path, rec.Code, http.StatusNotImplemented, rec.Body.String())
+		}
+		if strings.Contains(rec.Body.String(), "sk_live_secret") {
+			t.Fatalf("%s response leaked request secret: %s", tc.path, rec.Body.String())
+		}
+		var body ErrorResponse
+		if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+			t.Fatalf("decode %s error response: %v", tc.path, err)
+		}
+		if body.Error.Code != tc.code {
+			t.Fatalf("%s code = %q, want %q", tc.path, body.Error.Code, tc.code)
+		}
+	}
+}
+
 func TestRateLimitMiddlewareLimitsNonExemptRoutes(t *testing.T) {
 	store := newFakeRateLimitStore()
 	handler := NewHandler(

@@ -641,38 +641,55 @@ describe("G4.2 server plugin registry API adapter", () => {
     });
   });
 
-  it("executes plugin payloads through the bounded transitional adapter", async () => {
-    const fetchMock = vi.fn(async () =>
-      Response.json({ result: { temperature: 31 } }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+  it("routes plugin execution to the Go fail-closed endpoint", async () => {
+    const requests: Array<{ url: string; method?: string; body?: unknown }> =
+      [];
     const plugins = createServerPluginApiShell(
-      createHttpClient({ baseUrl: "/mm-api" }),
+      createHttpClient({
+        baseUrl: "/mm-api",
+        fetchImpl: async (input, init) => {
+          requests.push({
+            url: String(input),
+            method: init?.method,
+            body: init?.body ? JSON.parse(String(init.body)) : undefined,
+          });
+          return Response.json(
+            {
+              error: {
+                code: "PLUGIN_EXECUTION_UNAVAILABLE",
+                message: "plugin execution is not available",
+              },
+            },
+            { status: 501 },
+          );
+        },
+      }),
     );
 
-    const response = await plugins.execute({
-      payload: {
-        pluginId: "weather",
-        functionName: "lookup_weather",
-        args: { city: "Shanghai" },
-      },
-    });
-
-    await expect(response.json()).resolves.toEqual({
-      result: { temperature: 31 },
-    });
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/plugins/execute",
-      expect.objectContaining({
-        method: "POST",
-        cache: "no-store",
-        body: JSON.stringify({
+    await expect(
+      plugins.execute({
+        payload: {
           pluginId: "weather",
           functionName: "lookup_weather",
           args: { city: "Shanghai" },
-        }),
+        },
       }),
-    );
+    ).rejects.toMatchObject({
+      code: "PLUGIN_EXECUTION_UNAVAILABLE",
+      status: 501,
+    });
+
+    expect(requests).toEqual([
+      {
+        url: "/mm-api/v1/plugins/execute",
+        method: "POST",
+        body: {
+          pluginId: "weather",
+          functionName: "lookup_weather",
+          args: { city: "Shanghai" },
+        },
+      },
+    ]);
   });
 
   it("treats missing plugin registry routes as explicitly unavailable", async () => {

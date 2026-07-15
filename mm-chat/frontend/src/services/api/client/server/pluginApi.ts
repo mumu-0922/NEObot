@@ -7,11 +7,11 @@ import type {
   PluginInstallResponse,
   PluginListAvailableResponse,
 } from "../types";
-import { postTransitionalPluginExecution } from "../pluginExecutionHttp";
 import type { HttpClient } from "./httpClient";
 
 const pluginListPath = "/v1/plugins";
 const pluginInstallPath = "/v1/plugins/install";
+const pluginExecutePath = "/v1/plugins/execute";
 
 interface ServerPluginListResponse {
   plugins?: unknown;
@@ -58,7 +58,15 @@ export function createServerPluginApiShell(httpClient: HttpClient): PluginApi {
       }
     },
     async execute(input: PluginExecuteInput): Promise<Response> {
-      return postTransitionalPluginExecution(input);
+      const response = await httpClient.requestJson<unknown>(
+        pluginExecutePath,
+        {
+          method: "POST",
+          body: input.payload,
+          signal: input.signal,
+        },
+      );
+      return Response.json(response);
     },
   };
 }

@@ -951,7 +951,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
   - [x] G4.2 Plugin registry/list adapter.
   - [x] G4.3 Plugin install/custom-manifest adapter.
   - [x] G4.4 Plugin execute API-client boundary.
-  - [ ] G4.5 Plugin execute final ownership and transitional route retirement.
+  - [x] G4.5a Go plugin execution fail-closed admission and server-mode
+        transitional route retirement.
+  - [ ] G4.5b Plugin execute sandbox implementation.
   - [ ] G4.6 Live browser smoke with one installed plugin producing bounded
         context and final Go-stream answer.
 - [ ] G5 Search and Web-Enrichment Toggle: keep paused until owner reopens, then

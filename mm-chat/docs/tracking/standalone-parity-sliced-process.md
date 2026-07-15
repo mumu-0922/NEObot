@@ -1349,3 +1349,67 @@ G4.6 live browser smoke
 ```
 
 Next slice: G4.5 Plugin execute final ownership and transitional route retirement.
+
+## 2026-07-15 — G4.5a Go Plugin Execution Fail-Closed Admission Completed
+
+Objective: remove production server-mode fallback to the transitional Next plugin
+execution route without pretending the full Go plugin sandbox exists yet.
+
+Completed scope:
+
+- added Go `internal/plugins` handler with explicit routes:
+  - `GET /v1/plugins` returns an empty unavailable registry response;
+  - `POST /v1/plugins/install` fails closed with `PLUGIN_INSTALL_UNAVAILABLE`;
+  - `POST /v1/plugins/execute` fails closed with
+    `PLUGIN_EXECUTION_UNAVAILABLE`;
+- registered `/v1/plugins` and `/v1/plugins/*` in the Go HTTP server and metrics
+  path normalizer;
+- kept `GET /v1/plugins` public for marketplace visibility, while install and
+  execute stay behind normal auth middleware in required mode;
+- changed the frontend server plugin adapter so server-mode execution posts to
+  Go `/v1/plugins/execute` and no longer falls back to `/api/plugins/execute`;
+- kept `/api/plugins/execute` only in the local adapter rollback path;
+- updated the API-client contract and inventory to reflect the Go fail-closed
+  execution boundary.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/backend/internal/plugins/handler.go
+mm-chat/backend/internal/plugins/handler_test.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/httpserver/server_test.go
+mm-chat/backend/internal/httpserver/metrics.go
+mm-chat/backend/internal/httpserver/metrics_test.go
+mm-chat/frontend/src/services/api/client/server/pluginApi.ts
+mm-chat/frontend/src/__tests__/apiClientScaffold.test.ts
+mm-chat/frontend/src/__tests__/pluginUtils.test.ts
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/inventory/frontend-call-sites.md
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test \
+  ./internal/plugins ./internal/httpserver                         # passed
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/apiClientScaffold.test.ts \
+  src/__tests__/pluginUtils.test.ts \
+  src/__tests__/serverPluginOrchestration.test.ts                  # passed, 3 files / 62 tests
+cd mm-chat/frontend && corepack pnpm typecheck                     # passed
+cd mm-chat/frontend && corepack pnpm format:check                  # passed
+cd mm-chat/frontend && corepack pnpm lint                          # passed
+```
+
+Residual G4 blockers:
+
+```text
+G4.5b plugin execute sandbox implementation
+G4.6 live browser smoke with a real plugin result
+```
+
+Next slice: G4.5b Plugin execute sandbox implementation.

@@ -1983,15 +1983,18 @@ Operational rollback smoke:
 
 This contract applies when `NEXT_PUBLIC_API_MODE=server` and one or more
 installed plugins are active. The provider credential remains owned by Go;
-plugin auth remains browser-encrypted and is resolved only by the hardened
-Next plugin execution route. Copying `PROVIDER_API_KEY` into the frontend is
-forbidden.
+plugin auth must remain browser-encrypted when it crosses the API boundary.
+Copying `PROVIDER_API_KEY` into the frontend is forbidden. As of G4.5a,
+server-mode plugin execution routes to Go `/v1/plugins/execute` and fails
+closed with `PLUGIN_EXECUTION_UNAVAILABLE` until the Go sandbox/registry/auth
+executor is implemented. The transitional Next `/api/plugins/execute` path is
+local-adapter rollback only.
 
 ```text
 browser selection
   -> Go tool planning
   -> browser validates offered call
-  -> Next plugin execution
+  -> Go plugin execution (currently fail-closed until sandbox implementation)
   -> bounded untrusted result context
   -> Go final stream and persistence
 ```
@@ -2002,6 +2005,13 @@ Backend route:
 
 ```http
 POST /v1/chat/tools/plan
+Content-Type: application/json
+```
+
+Plugin execution route:
+
+```http
+POST /v1/plugins/execute
 Content-Type: application/json
 ```
 
@@ -2058,7 +2068,10 @@ Browser execution rules:
 - Only installed, active, enabled functions are offered and executable.
 - Duplicate function names across active plugins fail before planning.
 - Auth configuration and plaintext secrets are never serialized into the Go
-  request.
+  planning request.
+- Server-mode execution requests must go to `/v1/plugins/execute`; the
+  transitional `/api/plugins/execute` route is only reachable from the local
+  adapter until the route is removed.
 - Planned function names must exactly match an offered name.
 - Result records execute sequentially and retain `success|error` status.
 - Result context is at most 64 KiB UTF-8, is explicitly labeled untrusted, and
@@ -2079,6 +2092,7 @@ Browser execution rules:
 | Configured provider has no planner                                             | `501 TOOLS_UNSUPPORTED`                                      |
 | Provider request/decode failure                                                | `502 PROVIDER_ERROR` without provider body/key               |
 | Provider returns an unoffered function, non-object args, or more than 32 calls | `502 PROVIDER_ERROR`; browser also fails closed              |
+| Go plugin executor not yet configured                                          | `501 PLUGIN_EXECUTION_UNAVAILABLE`; no Next fallback         |
 | Plugin execution returns `{ "error": ... }`                                    | Record `status: "error"`; final model must not claim success |
 | Abort before/during plan or execution                                          | Stop the orchestration and do not start the final stream     |
 | Browser `Origin` differs from external `Host`                                  | `403 CSRF_ORIGIN_BLOCKED`                                    |
@@ -2086,12 +2100,16 @@ Browser execution rules:
 
 ### 21.5 Good / Base / Bad Cases
 
-- Good: Weather is active; Go plans `getCurrentWeather`; browser executes it;
-  the final persisted assistant message uses the returned temperature.
+- Good after executor implementation: Weather is active; Go plans
+  `getCurrentWeather`; Go executes it; the final persisted assistant message
+  uses the returned temperature.
 - Base: Plugins are active but the model returns `calls: []`; no plugin route is
   called and normal Go chat continues.
-- Bad: Provider returns `delete_all` when it was not offered; neither the Next
-  execution route nor the final stream is called.
+- G4.5a base: Plugins are active and planned, but the Go executor returns
+  `PLUGIN_EXECUTION_UNAVAILABLE`; the final model receives bounded error
+  context and must not claim tool success.
+- Bad: Provider returns `delete_all` when it was not offered; neither plugin
+  execution nor the final stream is called.
 
 ### 21.6 Tests Required
 
@@ -2104,6 +2122,9 @@ Browser execution rules:
 - Frontend orchestration: no-active-plugin no-op, secret exclusion, active-call
   execution, unoffered-call failure, execution error status, abort, and 64 KiB
   result bound.
+- G4.5a adapter: server-mode `pluginApi.execute` posts to
+  `/v1/plugins/execute`, maps fail-closed Go errors, and never falls back to
+  `/api/plugins/execute`.
 - Composition: server mode opens both skill and plugin menus; search/reasoning
   remain on the unsupported-action gate.
 - Live smoke: real plan, real plugin response, final Go SSE completion, message
@@ -2118,16 +2139,14 @@ Wrong: expose the Go provider key to restore the legacy browser tool loop.
 const provider = { apiKey: process.env.PROVIDER_API_KEY };
 ```
 
-Correct: provider planning remains in Go, while browser plugin auth is sent
-only as the existing encrypted envelope to `/api/plugins/execute`.
+Correct: provider planning remains in Go, and server-mode plugin execution is
+also admitted by Go. Until the Go executor is configured, execution must fail
+closed instead of falling back to a production Next route.
 
 ```ts
 const calls = await api.chat.planTools({ prompt, modelRef, tools, signal });
-const result = await executePluginFunction(
-  calls[0].name,
-  calls[0].args,
-  undefined,
-  activePluginIds,
+const result = await api.plugins.execute({
+  payload: { pluginId, functionName: calls[0].name, args: calls[0].args },
   signal,
-);
+});
 ```

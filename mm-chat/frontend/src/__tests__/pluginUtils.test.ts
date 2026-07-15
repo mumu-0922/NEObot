@@ -145,4 +145,44 @@ describe("plugin execution utility", () => {
       args: { prompt: "A quiet neon control room" },
     });
   });
+
+  it("routes server-mode plugin execution to Go without falling back to the Next route", async () => {
+    const previousMode = process.env.NEXT_PUBLIC_API_MODE;
+    const previousBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+    process.env.NEXT_PUBLIC_API_MODE = "server";
+    process.env.NEXT_PUBLIC_API_BASE_URL = "/mm-api";
+    const fetchMock = vi.fn(async () =>
+      Response.json(
+        {
+          error: {
+            code: "PLUGIN_EXECUTION_UNAVAILABLE",
+            message: "plugin execution is not available",
+          },
+        },
+        { status: 501 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      await expect(executePluginFunction("lookup", {})).resolves.toMatchObject({
+        error: expect.stringContaining("plugin execution is not available"),
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const firstCall = fetchMock.mock.calls[0] as unknown[];
+      expect(String(firstCall[0])).toBe("/mm-api/v1/plugins/execute");
+    } finally {
+      if (previousMode === undefined) {
+        delete process.env.NEXT_PUBLIC_API_MODE;
+      } else {
+        process.env.NEXT_PUBLIC_API_MODE = previousMode;
+      }
+      if (previousBaseUrl === undefined) {
+        delete process.env.NEXT_PUBLIC_API_BASE_URL;
+      } else {
+        process.env.NEXT_PUBLIC_API_BASE_URL = previousBaseUrl;
+      }
+    }
+  });
 });
