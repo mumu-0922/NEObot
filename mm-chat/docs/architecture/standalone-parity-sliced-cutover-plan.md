@@ -385,11 +385,14 @@ Slice checklist:
               `/audio/transcriptions`.
         - [ ] G6.5c.2b.2 Authorized configured-provider voice smoke.
         - [ ] G6.5c.2b.3 Free/simple TTS provider selection and smoke: keep
-              the Go voice executor interface open; prefer a no-quota local
-              Piper-style internal service first, then official free-tier APIs
-              such as Google Cloud/Azure/ElevenLabs only if an API key/account
-              is acceptable. Browser `speechSynthesis` may remain a local UI
-              fallback but does not satisfy server-owned stored-audio parity.
+              the Go voice executor interface and `/v1/voice/*` routes as the
+              future free hosted TTS API seam. Do not prioritize a local
+              Piper-style VPS executor because owner constraints reject extra
+              VPS storage/CPU for voice. Browser `speechSynthesis` may remain
+              an immediate local fallback and test guard, but closing this item
+              requires selecting a free/low-cost hosted API or compatible relay,
+              wiring it through the Go executor, storing sanitized artifacts
+              when needed, and running an authorized smoke.
     - [x] G6.5c.3 Real image executor integration with stored image artifacts
           and configured-provider smoke.
       - [x] G6.5c.3a Image executor opt-in seam: add a Go executor interface,
@@ -519,19 +522,19 @@ Targeted tests:
 
 ## Completion Ledger
 
-| Group                                    | Status   | Completion Rule                                                              |
-| ---------------------------------------- | -------- | ---------------------------------------------------------------------------- |
-| G0 Plan Freeze and Guardrails            | Complete | Docs, indexes, progress, and process log updated                             |
-| G1 Conversation and Message Operations   | Complete | G1.1-G1.6 complete; only paused cross-group search toggle remains outside G1 |
-| G2 Related Questions and Agent Catalogs  | Complete | Related-question/catalog Next routes replaced                                |
-| G3 Auth, Config, Provider Settings, BYOK | Complete | Server-auth/config/provider lifecycle verified                               |
-| G4 Plugin Final Ownership                | Complete | G4.5c and G4.6b complete; route deletion remains deferred to G9                |
-| G5 Search/Web Enrichment                 | Paused   | Owner reopens, then server-owned search passes gates                         |
+| Group                                    | Status      | Completion Rule                                                              |
+| ---------------------------------------- | ----------- | ---------------------------------------------------------------------------- |
+| G0 Plan Freeze and Guardrails            | Complete    | Docs, indexes, progress, and process log updated                             |
+| G1 Conversation and Message Operations   | Complete    | G1.1-G1.6 complete; only paused cross-group search toggle remains outside G1 |
+| G2 Related Questions and Agent Catalogs  | Complete    | Related-question/catalog Next routes replaced                                |
+| G3 Auth, Config, Provider Settings, BYOK | Complete    | Server-auth/config/provider lifecycle verified                               |
+| G4 Plugin Final Ownership                | Complete    | G4.5c and G4.6b complete; route deletion remains deferred to G9              |
+| G5 Search/Web Enrichment                 | Paused      | Owner reopens, then server-owned search passes gates                         |
 | G6 Voice/Image/Code Jobs                 | In progress | Image generation is reopened through Go artifacts; voice executor remains    |
-| G7 Knowledge/RAG/Citations               | Pending  | Phase 15 runtime gates pass                                                  |
-| G8 Teams/Knowledge UI                    | Pending  | Go control plane wired to UI with isolation smoke                            |
-| G9 Data Authority/Route Removal          | Pending  | local production authority and replaced routes gone                          |
-| G10 Final Closure/Delete Plan            | Pending  | Clean-copy and delete-plan gates pass                                        |
+| G7 Knowledge/RAG/Citations               | Pending     | Phase 15 runtime gates pass                                                  |
+| G8 Teams/Knowledge UI                    | Pending     | Go control plane wired to UI with isolation smoke                            |
+| G9 Data Authority/Route Removal          | Pending     | local production authority and replaced routes gone                          |
+| G10 Final Closure/Delete Plan            | Pending     | Clean-copy and delete-plan gates pass                                        |
 
 ## Update Discipline
 

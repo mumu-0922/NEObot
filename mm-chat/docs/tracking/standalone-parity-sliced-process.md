@@ -2857,3 +2857,35 @@ Residual blocker remains:
 G6.5c.2b.2 Authorized configured-provider voice smoke
 G6.5c.2b.3 Free/simple TTS provider selection and smoke
 ```
+
+## 2026-07-15 — Voice VPS Constraint Captured: Keep API Seam, Defer Free Hosted TTS
+
+Owner refinement: storing or synthesizing voice on the VPS is not acceptable for
+this deployment because storage is awkward and VPS performance is insufficient.
+The backend voice seam should still stay in place because a free hosted API can
+be connected later.
+
+Decision update:
+
+- do not prioritize a local/internal Piper-style TTS executor for the current
+  VPS deployment;
+- keep the existing Go `voicejobs.Executor` seam and `/v1/voice/*` routes as
+  the intended future integration point for a free hosted TTS API;
+- browser `speechSynthesis` remains a temporary local fallback/test guard
+  because it is free, local to the browser, needs no API key, and consumes no
+  backend storage or VPS CPU;
+- server-owned stored-audio parity remains open/deferred until the free hosted
+  API adapter is selected, wired, and smoked.
+
+Code/test guard added:
+
+```text
+mm-chat/frontend/src/services/api/voiceService.ts
+mm-chat/frontend/src/__tests__/byokServices.test.ts
+```
+
+Validation target:
+
+```text
+cd mm-chat/frontend && corepack pnpm vitest run src/__tests__/byokServices.test.ts
+```

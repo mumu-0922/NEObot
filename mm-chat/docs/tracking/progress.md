@@ -995,8 +995,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
                 `/audio/transcriptions`.
           - [ ] G6.5c.2b.2 Authorized configured-provider voice smoke.
           - [ ] G6.5c.2b.3 Free/simple TTS provider selection and smoke,
-                preferably local Piper-style TTS or an official free-tier API;
-                browser speech synthesis remains local fallback only.
+                keeping the Go `/v1/voice/*` seam for a future free hosted API;
+                local Piper-style TTS is not preferred on this VPS. Browser
+                speech synthesis remains local fallback/test guard only.
       - [x] G6.5c.3 Real image executor with stored image artifacts and
             configured-provider smoke.
         - [x] G6.5c.3a Image executor opt-in seam: Go can call a configured

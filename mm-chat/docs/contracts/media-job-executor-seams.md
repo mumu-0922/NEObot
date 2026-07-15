@@ -81,15 +81,17 @@ jobartifacts.StoreInput{
   to `POST {baseURL}/audio/speech` with JSON `model`, `input`, and `voice`.
   Provider request text/audio and provider response bodies must not be logged or
   returned inline.
-- Owner preference captured 2026-07-15: future TTS enablement should prioritize
-  "free or effectively free, just needs to speak". The implementation order is:
-  (1) local/internal Piper-style executor with bundled or mounted ONNX voice
-  files and no external quota; (2) official cloud free-tier adapters only when
-  an account/key is acceptable; (3) OpenAI-compatible `/audio/*` only when the
-  configured relay actually supports those endpoints. Browser `speechSynthesis`
-  is allowed as a local UI fallback for immediate playback, but it does not
-  produce server-owned stored audio artifacts and therefore cannot close
-  G6.5c.2b by itself.
+- Owner preference captured 2026-07-15 and refined after the VPS constraint:
+  keep the Go `voicejobs.Executor` seam and `/v1/voice/*` routes for a later
+  free hosted TTS API integration. The current deployment should not default to
+  a local/internal Piper-style VPS executor because bundled/mounted voice files
+  and synthesis CPU are a poor VPS fit. Browser `speechSynthesis` is allowed as
+  an immediate local fallback because it does not call backend voice routes, but
+  it does not close server-owned stored-audio parity. Closing the voice parity
+  gap requires a free/low-cost hosted adapter or compatible relay, sanitized
+  artifact storage when needed, and an authorized smoke. OpenAI-compatible
+  `/audio/*` remains usable only when the configured relay actually supports
+  those endpoints.
 - Responses expose only compact artifact metadata:
   `fileId`, `purpose`, `contentType`, `size`.
 - Responses and audit events must not expose prompt text, synthesis text, audio
@@ -98,16 +100,16 @@ jobartifacts.StoreInput{
 
 ## 4. Validation & Error Matrix
 
-| Condition | Result |
-| --- | --- |
-| No executor configured | `501 VOICE_JOBS_UNAVAILABLE` or `501 IMAGE_JOBS_UNAVAILABLE` |
+| Condition                                                         | Result                                                                           |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| No executor configured                                            | `501 VOICE_JOBS_UNAVAILABLE` or `501 IMAGE_JOBS_UNAVAILABLE`                     |
 | Executor configured but artifact store absent for synthesis/image | `503 VOICE_ARTIFACT_STORE_UNAVAILABLE` or `503 IMAGE_ARTIFACT_STORE_UNAVAILABLE` |
-| Admitted audit recorder absent or failing | `503 JOB_AUDIT_UNAVAILABLE`; executor is not called |
-| Artifact kind/content-type/size/body invalid | artifact storage returns an error; no inline payload fallback |
-| Configured voice provider returns a non-2xx or request failure | `502 VOICE_PROVIDER_ERROR`; response body remains sanitized |
-| Configured image provider returns a non-2xx or request failure | `502 IMAGE_PROVIDER_ERROR`; response body remains sanitized |
-| Request validation fails before admission | `400` with endpoint-specific validation code |
-| Context cancelled before admission/execution | `408 REQUEST_CANCELLED` at handler boundary |
+| Admitted audit recorder absent or failing                         | `503 JOB_AUDIT_UNAVAILABLE`; executor is not called                              |
+| Artifact kind/content-type/size/body invalid                      | artifact storage returns an error; no inline payload fallback                    |
+| Configured voice provider returns a non-2xx or request failure    | `502 VOICE_PROVIDER_ERROR`; response body remains sanitized                      |
+| Configured image provider returns a non-2xx or request failure    | `502 IMAGE_PROVIDER_ERROR`; response body remains sanitized                      |
+| Request validation fails before admission                         | `400` with endpoint-specific validation code                                     |
+| Context cancelled before admission/execution                      | `408 REQUEST_CANCELLED` at handler boundary                                      |
 
 ## 5. Good/Base/Bad Cases
 

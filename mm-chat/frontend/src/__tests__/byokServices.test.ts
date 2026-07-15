@@ -360,6 +360,55 @@ describe("BYOK service requests", () => {
     }
   });
 
+  it("keeps browser TTS local in server mode without calling legacy routes", async () => {
+    const restoreServerMode = setServerModeEnv();
+    const speakMock = vi.fn();
+    const getVoicesMock = vi.fn(() => [
+      { lang: "zh-CN", name: "Local Chinese" },
+    ]);
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("legacy route must not be called"));
+
+    class FakeSpeechSynthesisUtterance {
+      lang = "";
+      voice?: SpeechSynthesisVoice;
+
+      constructor(public readonly text: string) {}
+    }
+
+    vi.stubGlobal("SpeechSynthesisUtterance", FakeSpeechSynthesisUtterance);
+    vi.stubGlobal("navigator", { language: "zh-CN" });
+    vi.stubGlobal("window", {
+      speechSynthesis: {
+        getVoices: getVoicesMock,
+        speak: speakMock,
+      },
+    });
+
+    const { synthesizeSpeech } = await import("../services/api/voiceService");
+
+    try {
+      await expect(
+        synthesizeSpeech("你好，魔尊", {
+          ttsProvider: "browser",
+          ttsLanguage: "zh",
+        } as any),
+      ).resolves.toBeUndefined();
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(getVoicesMock).toHaveBeenCalledTimes(1);
+      expect(speakMock).toHaveBeenCalledTimes(1);
+      expect(speakMock.mock.calls[0]?.[0]).toMatchObject({
+        text: "你好，魔尊",
+        lang: "zh-CN",
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      restoreServerMode();
+    }
+  });
+
   it("allows voice model STT to use server env fallback without sending apiKey", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")

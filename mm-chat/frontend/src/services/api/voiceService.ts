@@ -386,7 +386,7 @@ export const synthesizeSpeech = async (
     return createDisposableAudioFromBlob(await response.blob());
   } else {
     return new Promise((resolve, reject) => {
-      if (!("speechSynthesis" in window)) {
+      if (typeof window === "undefined" || !("speechSynthesis" in window)) {
         reject(new Error("Browser does not support Speech Synthesis"));
         return;
       }
