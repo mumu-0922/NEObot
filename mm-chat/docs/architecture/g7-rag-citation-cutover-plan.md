@@ -280,10 +280,29 @@ G7.5.4 completed on 2026-07-15:
 - If no active Generation exists, delete keeps the previous legacy purge job
   fallback.
 
+G7.5.5 completed on 2026-07-15:
+
+- Added side-effect-free Python handler skeletons for `parse`,
+  `passage_embedding`, and `purge` that accept only an admitted
+  `ProcessingJobContext`, plus claim-level constructors that can only enter
+  through `with_job_context_admission(...)`.
+- Provider-backed skeletons re-check exact stage, Generation binding,
+  Materialization binding, provider authority, and the locked
+  `mineru_jina_postgres_v1` runtime profile before stopping with a stable
+  unpromoted error.
+- Purge skeletons re-check exact stage and Generation binding, allow a null
+  `materialization_id`, and reject any provider authority so delete/tombstone
+  work cannot inherit MinerU/Jina credentials.
+- Production `JOB_HANDLER_REGISTRY` remains empty. These skeletons cannot be
+  claimed by the worker unless a future slice explicitly promotes a registry,
+  and even then they fail closed before provider, object-storage, or projection
+  side effects.
+
 Remaining G7.5 work:
 
-- Connect admitted Python parse / passage-embedding / purge handlers to the
-  Generation-bound Go jobs and outbox payloads.
+- Replace the skeleton stops with real admitted Python parse /
+  passage-embedding / purge implementations connected to Generation-bound Go
+  jobs and outbox payloads.
 - Implement index, reprocess, tombstone purge, rebuild, retry, and DLQ behavior.
 - Enforce immediate query invisibility for deleted/tombstoned versions.
 

@@ -638,3 +638,67 @@ Go backend full package tests passed.
 Next G7.5 slice: attach admitted Python handler skeletons to the
 Generation-bound parse and purge contexts, still without enabling real
 MinerU/Jina provider calls.
+
+## 2026-07-15 — G7.5.5 Admitted Python Handler Skeletons
+
+Objective: attach the first Python handler-shaped boundary to the
+Generation-bound parse, passage-embedding, and purge contexts without enabling
+real provider calls, object-storage reads, projection writes, or production job
+dispatch.
+
+Implemented behavior:
+
+- Added `job_handlers.py` with async skeletons for:
+  - `parse_handler_skeleton(...)`;
+  - `passage_embedding_handler_skeleton(...)`;
+  - `purge_handler_skeleton(...)`.
+- Added claim-level constructor helpers for those skeletons; they all route
+  through `with_job_context_admission(...)` instead of accepting raw claim rows.
+- Skeletons accept only typed `ProcessingJobContext` values. A raw `JobClaim`
+  or any non-context object is rejected with a stable redacted error code before
+  stage-specific checks.
+- Provider-backed skeletons re-check stage, non-zero Generation binding,
+  non-null Materialization binding, provider authority, and the runtime
+  `mineru_jina_postgres_v1` profile selected by the admission wrapper.
+- Purge skeletons re-check stage and Generation binding, permit a null
+  `materialization_id`, and reject provider authority.
+- All skeleton paths end in `JOB_HANDLER_SKELETON_UNPROMOTED`, so an accidental
+  manual wiring cannot silently mark parse/index/purge work as completed.
+- Production `JOB_HANDLER_REGISTRY` remains empty, preserving the current
+  no-claim/no-quota safety boundary.
+
+Touched files:
+
+```text
+rag/src/mm_chat_rag/job_handlers.py
+rag/tests/unit/test_job_handlers.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification run during the slice:
+
+```text
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_job_context.py tests/unit/test_job_handlers.py \
+  tests/unit/test_jobs.py
+cd mm-chat/rag && uv run ruff check \
+  src/mm_chat_rag/job_context.py src/mm_chat_rag/handlers.py \
+  src/mm_chat_rag/job_handlers.py tests/unit/test_job_handlers.py
+cd mm-chat/rag && uv run mypy \
+  src/mm_chat_rag/job_context.py src/mm_chat_rag/handlers.py \
+  src/mm_chat_rag/job_handlers.py
+```
+
+Result:
+
+```text
+36 targeted Python tests passed.
+Ruff passed on the admission/skeleton files.
+Mypy passed on the admission/skeleton source files.
+```
+
+Next G7.5 slice: add the first real admitted handler dependency seam for
+storage/provider/projection execution, still default-off, then promote only one
+stage under explicit registry and readiness gates.
