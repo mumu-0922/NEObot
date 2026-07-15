@@ -2,6 +2,7 @@ package plugins
 
 import (
 	"bytes"
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -11,12 +12,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/runtimeconfig"
 )
@@ -278,6 +281,138 @@ func TestHandlerInstallsPluginAndExecutesRegisteredIdOnlyPayload(t *testing.T) {
 	result, ok := executeResponse.Result.(map[string]any)
 	if !ok || result["registered"] != true {
 		t.Fatalf("result = %#v", executeResponse.Result)
+	}
+}
+
+func TestHandlerRecordsSanitizedPluginAuditForInstallAndExecute(t *testing.T) {
+	var events []AuditEvent
+	recorder := AuditRecorderFunc(func(ctx context.Context, event AuditEvent) error {
+		events = append(events, NormalizeAuditEvent(ctx, event))
+		return nil
+	})
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return jsonResponse(http.StatusOK, `{"ok":true}`), nil
+	})}
+	handler := NewHandler(NewService(
+		config.Config{},
+		WithAllowPrivateNetwork(true),
+		WithHTTPClient(client),
+		WithAuditRecorder(recorder),
+	))
+	ctx := auth.WithUser(context.Background(), auth.User{
+		ID:          "11111111-1111-4111-8111-111111111111",
+		DisplayName: "Plugin Auditor",
+	})
+
+	installRec := httptest.NewRecorder()
+	installReq := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/plugins/install",
+		bytes.NewReader(mustJSON(t, map[string]any{"plugin": executePayload("https://plugins.example").Plugin})),
+	).WithContext(ctx)
+	installReq.Header.Set("X-Request-Id", "plugin-audit-req-1")
+	handler.ServeHTTP(installRec, installReq)
+
+	if installRec.Code != http.StatusOK {
+		t.Fatalf("install status = %d, want %d; body=%s", installRec.Code, http.StatusOK, installRec.Body.String())
+	}
+
+	executeRec := httptest.NewRecorder()
+	executeReq := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/plugins/execute",
+		strings.NewReader(`{"pluginId":"test-plugin","functionName":"lookup","callId":"call-1","args":{"id":"42","city":"audit-secret-value"}}`),
+	).WithContext(ctx)
+	executeReq.Header.Set("User-Agent", "audit-test-agent")
+	executeReq.RemoteAddr = "203.0.113.9:4567"
+	handler.ServeHTTP(executeRec, executeReq)
+
+	if executeRec.Code != http.StatusOK {
+		t.Fatalf("execute status = %d, want %d; body=%s", executeRec.Code, http.StatusOK, executeRec.Body.String())
+	}
+	if len(events) != 2 {
+		t.Fatalf("audit events = %#v, want 2 events", events)
+	}
+	installEvent := events[0]
+	if installEvent.Action != AuditActionInstall ||
+		installEvent.Status != AuditStatusAdmitted ||
+		installEvent.PluginID != "test-plugin" ||
+		installEvent.Source != auditSourcePluginPayload ||
+		installEvent.FunctionCount != 1 ||
+		installEvent.UserID != "11111111-1111-4111-8111-111111111111" ||
+		installEvent.RequestID != "plugin-audit-req-1" ||
+		installEvent.BaseHost != "plugins.example" {
+		t.Fatalf("install audit event = %#v", installEvent)
+	}
+	executeEvent := events[1]
+	if executeEvent.Action != AuditActionExecute ||
+		executeEvent.Status != AuditStatusAdmitted ||
+		executeEvent.PluginID != "test-plugin" ||
+		executeEvent.FunctionName != "lookup" ||
+		executeEvent.Source != auditSourceRegistryID ||
+		executeEvent.CallID != "call-1" ||
+		executeEvent.ArgumentCount != 2 ||
+		executeEvent.UserAgent != "audit-test-agent" ||
+		executeEvent.IPAddress != "203.0.113.9" {
+		t.Fatalf("execute audit event = %#v", executeEvent)
+	}
+	for _, event := range events {
+		encoded, err := json.Marshal(event)
+		if err != nil {
+			t.Fatalf("marshal event: %v", err)
+		}
+		if strings.Contains(string(encoded), "audit-secret-value") {
+			t.Fatalf("audit event leaked secret value: %s", encoded)
+		}
+	}
+}
+
+func TestHandlerFailsClosedWhenPluginAuditRecorderFails(t *testing.T) {
+	called := false
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		called = true
+		return jsonResponse(http.StatusOK, `{"ok":true}`), nil
+	})}
+	service := NewService(
+		config.Config{},
+		WithAllowPrivateNetwork(true),
+		WithHTTPClient(client),
+		WithAuditRecorder(AuditRecorderFunc(func(context.Context, AuditEvent) error {
+			return errors.New("audit sink down")
+		})),
+	)
+	handler := NewHandler(service)
+
+	installRec := httptest.NewRecorder()
+	installReq := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/plugins/install",
+		bytes.NewReader(mustJSON(t, map[string]any{"plugin": executePayload("https://plugins.example").Plugin})),
+	)
+	handler.ServeHTTP(installRec, installReq)
+
+	if installRec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("install status = %d, want %d; body=%s", installRec.Code, http.StatusServiceUnavailable, installRec.Body.String())
+	}
+	assertErrorCode(t, installRec, "PLUGIN_AUDIT_UNAVAILABLE")
+	if _, ok, err := service.registry.Get(context.Background(), "test-plugin"); err != nil || ok {
+		t.Fatalf("registry Get after failed install ok=%v err=%v; want not installed", ok, err)
+	}
+
+	executeRec := httptest.NewRecorder()
+	executeReq := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/plugins/execute",
+		bytes.NewReader(mustJSON(t, executePayload("https://plugins.example"))),
+	)
+	handler.ServeHTTP(executeRec, executeReq)
+
+	if executeRec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("execute status = %d, want %d; body=%s", executeRec.Code, http.StatusServiceUnavailable, executeRec.Body.String())
+	}
+	assertErrorCode(t, executeRec, "PLUGIN_AUDIT_UNAVAILABLE")
+	if called {
+		t.Fatal("plugin HTTP executor was called after audit failure")
 	}
 }
 

@@ -119,6 +119,7 @@ func main() {
 	var fileRepo files.Repository
 	var importRepo browserimport.Repository
 	var pluginRegistry plugins.Registry
+	var pluginAuditRecorder plugins.AuditRecorder
 	var sessionResolver httpserver.SessionResolver
 	var authService *auth.Service
 	sqlDB := db.SQL()
@@ -127,6 +128,7 @@ func main() {
 		chatRepo = chat.NewPostgresRepository(sqlDB)
 		fileRepo = files.NewPostgresRepository(sqlDB)
 		pluginRegistry = plugins.NewPostgresRegistry(sqlDB, plugins.BuiltInPlugins()...)
+		pluginAuditRecorder = plugins.NewPostgresAuditRecorder(sqlDB)
 		sessionResolver = auth.NewSessionResolver(
 			authRepo,
 			auth.WithSessionCache(sessionCache),
@@ -206,6 +208,7 @@ func main() {
 		httpserver.WithTeamService(teamRuntime.service),
 		httpserver.WithKnowledgeService(knowledgeService),
 		httpserver.WithPluginRegistry(pluginRegistry),
+		httpserver.WithPluginAuditRecorder(pluginAuditRecorder),
 		httpserver.WithLogger(logger),
 	}
 	if db.SQL() != nil {

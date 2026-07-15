@@ -283,9 +283,10 @@ Slice checklist:
 - [x] G4.5b Minimal Go plugin execution sandbox: full manifest payload
       execution, encrypted auth decryption, outbound URL policy, timeout,
       response-size bound, and generic result normalization in Go.
-- [ ] G4.5c Registry-backed plugin execution finalization: persistent plugin
-      registry, id-only execution, audit metadata, built-in normalizers, and
-      removal of local-only transitional executor after clean-copy gates.
+- [x] G4.5c Registry-backed plugin execution finalization: persistent plugin
+      registry, id-only execution, audit metadata, and built-in normalizers.
+      Local-only transitional executor removal remains deferred to the G9
+      clean-copy route-removal gate.
   - [x] G4.5c.1 Go registry id-only bridge: seed built-ins in a Go registry,
         register installed plugin payloads through `/v1/plugins/install`, and
         make server-mode execution send `pluginId/functionName`.
@@ -300,7 +301,7 @@ Slice checklist:
   - [x] G4.5c.2c Built-in result normalizers in Go: normalize Jina
         markdown extraction, Agnes image/video result envelopes, and Unsplash
         search result arrays before returning `/v1/plugins/execute`.
-  - [ ] G4.5c.2d Plugin audit metadata beyond installing-user persistence.
+  - [x] G4.5c.2d Plugin audit metadata beyond installing-user persistence.
 - [ ] G4.6 Plugin smoke: one installed plugin produces bounded context and a
       persisted final answer through the Go stream.
   - [x] G4.6a Zero-cost in-process smoke harness: real Go chat/plugin HTTP
@@ -519,7 +520,7 @@ Targeted tests:
 | G1 Conversation and Message Operations   | Complete | G1.1-G1.6 complete; only paused cross-group search toggle remains outside G1 |
 | G2 Related Questions and Agent Catalogs  | Complete | Related-question/catalog Next routes replaced                                |
 | G3 Auth, Config, Provider Settings, BYOK | Complete | Server-auth/config/provider lifecycle verified                               |
-| G4 Plugin Final Ownership                | In progress | G4.1-G4.6a complete; audit metadata and browser/provider smoke remain         |
+| G4 Plugin Final Ownership                | In progress | G4.5c complete; live browser/provider smoke remains                           |
 | G5 Search/Web Enrichment                 | Paused   | Owner reopens, then server-owned search passes gates                         |
 | G6 Voice/Image/Code Jobs                 | In progress | Image generation is reopened through Go artifacts; voice executor remains    |
 | G7 Knowledge/RAG/Citations               | Pending  | Phase 15 runtime gates pass                                                  |

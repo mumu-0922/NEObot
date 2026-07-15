@@ -2700,3 +2700,60 @@ Residual blockers:
 G6.5c.2b.2 Authorized configured-provider voice smoke remains open.
 Frontend voice capability/adapter reopen remains separate; `voice` stays disabled in server mode.
 ```
+
+## 2026-07-15 — G4.5c.2d Plugin Audit Metadata Beyond Installing-User Persistence
+
+Owner direction before this slice: skip the voice real-provider smoke/key path
+for now. `G6.5c.2b.2` remains open/deferred; work resumed on the smallest
+remaining plugin finalization item.
+
+Objective: add server-side plugin install/execute audit metadata without
+recording secrets, argument values, plugin responses, or full outbound URLs.
+
+Completed scope:
+
+- added a Go plugin audit seam with sanitized `plugin.install` and
+  `plugin.execute` admission events;
+- recorded only bounded metadata: action/status, actor user id, plugin id,
+  function name/count, call id, install/execute source, built-in/auth presence,
+  argument count, request id/user-agent/IP when available, and host-only URL
+  metadata;
+- wired plugin install audit before registry mutation and plugin execute audit
+  before outbound plugin HTTP execution;
+- mapped configured audit sink failures to `503 PLUGIN_AUDIT_UNAVAILABLE`,
+  fail-closing before registry writes or outbound plugin calls;
+- added a Postgres audit recorder that writes configured-server events to
+  `audit_logs` without a new migration; local/dev without `DATABASE_URL` keeps
+  the existing memory registry behavior without a mandatory audit sink;
+- wired `cmd/api` and `httpserver` so configured Postgres deployments use the
+  new plugin audit recorder.
+
+Changed surfaces:
+
+```text
+mm-chat/backend/cmd/api/main.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/plugins/audit.go
+mm-chat/backend/internal/plugins/audit_postgres.go
+mm-chat/backend/internal/plugins/handler.go
+mm-chat/backend/internal/plugins/handler_test.go
+mm-chat/backend/internal/plugins/repository_postgres_test.go
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./internal/plugins ./internal/httpserver ./cmd/api # passed
+```
+
+Residual blockers:
+
+```text
+G4.6b Live browser/provider smoke remains open.
+G6.5c.2b.2 Authorized configured-provider voice smoke remains deferred/skipped for now.
+G9 still owns final removal of local-only transitional Next plugin routes.
+```

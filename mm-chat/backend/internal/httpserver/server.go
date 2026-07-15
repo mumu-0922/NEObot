@@ -65,6 +65,7 @@ type options struct {
 	knowledgeService     *knowledge.Service
 	agentService         *agents.Service
 	pluginRegistry       plugins.Registry
+	pluginAuditRecorder  plugins.AuditRecorder
 	imageJobService      *imagejobs.Service
 	voiceJobService      *voicejobs.Service
 }
@@ -189,6 +190,12 @@ func WithPluginRegistry(registry plugins.Registry) Option {
 	}
 }
 
+func WithPluginAuditRecorder(recorder plugins.AuditRecorder) Option {
+	return func(opts *options) {
+		opts.pluginAuditRecorder = recorder
+	}
+}
+
 func WithImageJobService(service *imagejobs.Service) Option {
 	return func(opts *options) {
 		opts.imageJobService = service
@@ -260,6 +267,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		cfg,
 		plugins.WithSecretDecrypter(runtimeConfigService.DecryptOptionalSecret),
 		plugins.WithRegistry(resolvedOptions.pluginRegistry),
+		plugins.WithAuditRecorder(resolvedOptions.pluginAuditRecorder),
 	))
 	runtimeConfigHandler := runtimeconfig.NewHandler(runtimeConfigService)
 

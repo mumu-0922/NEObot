@@ -3,6 +3,7 @@ package plugins
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"os"
 	"testing"
 	"time"
@@ -61,6 +62,71 @@ func TestPostgresRegistryPersistsInstalledPluginsAndKeepsBuiltInsAuthoritative(t
 	}
 	if gotBuiltin.Title != builtin.Title || gotBuiltin.BaseURL != builtin.BaseURL || !gotBuiltin.BuiltIn {
 		t.Fatalf("builtin was shadowed: %#v", gotBuiltin)
+	}
+}
+
+func TestPostgresAuditRecorderPersistsSanitizedPluginMetadata(t *testing.T) {
+	db := openPostgresIntegrationDB(t)
+	recorder := NewPostgresAuditRecorder(db)
+	userID := "22222222-2222-4222-8222-222222222222"
+	ctx, cancel := context.WithTimeout(
+		auth.WithUser(
+			withRequestMetadata(context.Background(), requestMetadata{
+				RequestID: "audit-postgres-request",
+				UserAgent: "postgres-audit-test",
+				IPAddress: "203.0.113.10",
+			}),
+			auth.User{ID: userID, DisplayName: "Audit Owner"},
+		),
+		5*time.Second,
+	)
+	defer cancel()
+
+	err := RecordPluginAudit(ctx, recorder, AuditEvent{
+		Action:        AuditActionExecute,
+		Status:        AuditStatusAdmitted,
+		PluginID:      "audit-plugin",
+		FunctionName:  "lookup",
+		Source:        auditSourceRegistryID,
+		CallID:        "call-postgres",
+		ArgumentCount: 2,
+		BaseHost:      "plugins.example",
+	})
+	if err != nil {
+		t.Fatalf("RecordPluginAudit() error = %v", err)
+	}
+
+	var row struct {
+		ActorUserID string
+		Action      string
+		RequestID   string
+		UserAgent   string
+		Metadata    []byte
+	}
+	if err := db.QueryRowContext(ctx, `
+SELECT actor_user_id::text, action, request_id, user_agent, metadata
+FROM audit_logs
+WHERE action = 'plugin.execute' AND metadata->>'pluginId' = 'audit-plugin'
+ORDER BY created_at DESC
+LIMIT 1
+`).Scan(&row.ActorUserID, &row.Action, &row.RequestID, &row.UserAgent, &row.Metadata); err != nil {
+		t.Fatalf("query plugin audit log: %v", err)
+	}
+	if row.ActorUserID != userID ||
+		row.Action != AuditActionExecute ||
+		row.RequestID != "audit-postgres-request" ||
+		row.UserAgent != "postgres-audit-test" {
+		t.Fatalf("audit row = %#v", row)
+	}
+	var metadata map[string]any
+	if err := json.Unmarshal(row.Metadata, &metadata); err != nil {
+		t.Fatalf("decode audit metadata: %v", err)
+	}
+	if metadata["pluginId"] != "audit-plugin" ||
+		metadata["functionName"] != "lookup" ||
+		metadata["callId"] != "call-postgres" ||
+		metadata["baseHost"] != "plugins.example" {
+		t.Fatalf("metadata = %#v", metadata)
 	}
 }
 

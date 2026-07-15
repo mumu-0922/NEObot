@@ -56,6 +56,7 @@ type Service struct {
 	httpClient          *http.Client
 	secretDecrypter     SecretDecrypter
 	registry            Registry
+	auditRecorder       AuditRecorder
 	allowPrivateNetwork bool
 	maxResponseBytes    int64
 }
@@ -192,6 +193,12 @@ func WithRegistry(registry Registry) ServiceOption {
 	}
 }
 
+func WithAuditRecorder(recorder AuditRecorder) ServiceOption {
+	return func(service *Service) {
+		service.auditRecorder = recorder
+	}
+}
+
 func WithAllowPrivateNetwork(allow bool) ServiceOption {
 	return func(service *Service) {
 		service.allowPrivateNetwork = allow
@@ -286,7 +293,8 @@ func (h *Handler) installPlugin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_PLUGIN_INSTALL_REQUEST", "plugin install request body is invalid")
 		return
 	}
-	plugin, err := h.service.InstallPlugin(r.Context(), request)
+	ctx := withRequestMetadata(r.Context(), requestMetadataFromHTTP(r))
+	plugin, err := h.service.InstallPlugin(ctx, request)
 	if err != nil {
 		writeInstallError(w, err)
 		return
@@ -300,7 +308,8 @@ func (h *Handler) executePlugin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_PLUGIN_EXECUTION_REQUEST", "plugin execution request body is invalid")
 		return
 	}
-	result, err := h.service.Execute(r.Context(), request)
+	ctx := withRequestMetadata(r.Context(), requestMetadataFromHTTP(r))
+	result, err := h.service.Execute(ctx, request)
 	if err != nil {
 		writeExecutionError(w, err)
 		return
@@ -311,6 +320,7 @@ func (h *Handler) executePlugin(w http.ResponseWriter, r *http.Request) {
 func (s *Service) Execute(ctx context.Context, request ExecuteRequest) (any, error) {
 	plugin := request.Plugin
 	functionDef := request.FunctionDef
+	auditSource := executionAuditSource(request)
 	if plugin == nil || functionDef == nil {
 		registeredPlugin, registeredFunction, err := s.resolveRegisteredPlugin(ctx, request)
 		if err != nil {
@@ -416,6 +426,9 @@ func (s *Service) Execute(ctx context.Context, request ExecuteRequest) (any, err
 		}
 		applyAuth(pluginURL, headers, outboundArgs, plugin, request.AuthConfig, authValue, method)
 	}
+	if err := s.recordAudit(ctx, auditExecuteEvent(plugin, functionDef, request, auditSource)); err != nil {
+		return nil, err
+	}
 
 	var body io.Reader
 	if method != http.MethodGet {
@@ -461,6 +474,10 @@ func (s *Service) Execute(ctx context.Context, request ExecuteRequest) (any, err
 }
 
 func (s *Service) RegisterPlugin(ctx context.Context, plugin *Plugin) (Plugin, error) {
+	return s.registerPlugin(ctx, plugin, auditSourcePluginPayload)
+}
+
+func (s *Service) registerPlugin(ctx context.Context, plugin *Plugin, auditSource string) (Plugin, error) {
 	if plugin == nil {
 		return Plugin{}, ErrPluginExecutionPayload
 	}
@@ -472,6 +489,9 @@ func (s *Service) RegisterPlugin(ctx context.Context, plugin *Plugin) (Plugin, e
 		return Plugin{}, err
 	} else if ok && registered.BuiltIn {
 		return Plugin{}, ErrPluginReservedID
+	}
+	if err := s.recordAudit(ctx, auditInstallEvent(candidate, auditSource)); err != nil {
+		return Plugin{}, err
 	}
 	if err := s.registry.Save(ctx, candidate); err != nil {
 		return Plugin{}, err
@@ -486,7 +506,7 @@ func (s *Service) InstallPlugin(ctx context.Context, request InstallRequest) (Pl
 		if err != nil {
 			return Plugin{}, err
 		}
-		return s.RegisterPlugin(ctx, &plugin)
+		return s.registerPlugin(ctx, &plugin, installAuditSourceFromCustomInput(customInput))
 	}
 	if request.Plugin == nil {
 		return Plugin{}, ErrPluginExecutionPayload
@@ -497,9 +517,17 @@ func (s *Service) InstallPlugin(ctx context.Context, request InstallRequest) (Pl
 		if err != nil {
 			return Plugin{}, err
 		}
-		return s.RegisterPlugin(ctx, &plugin)
+		return s.registerPlugin(ctx, &plugin, auditSourceManifestURL)
 	}
-	return s.RegisterPlugin(ctx, &candidate)
+	return s.registerPlugin(ctx, &candidate, auditSourcePluginPayload)
+}
+
+func (s *Service) recordAudit(ctx context.Context, event AuditEvent) error {
+	var recorder AuditRecorder
+	if s != nil {
+		recorder = s.auditRecorder
+	}
+	return RecordPluginAudit(ctx, recorder, event)
 }
 
 func (s *Service) pluginFromCustomInput(ctx context.Context, input string) (Plugin, error) {
@@ -875,6 +903,8 @@ func writeExecutionError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "PLUGIN_NOT_REGISTERED", "plugin is not registered")
 	case errors.Is(err, ErrPluginRegistryUnavailable):
 		writeError(w, http.StatusServiceUnavailable, "PLUGIN_REGISTRY_UNAVAILABLE", "plugin registry is unavailable")
+	case errors.Is(err, ErrPluginAuditUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "PLUGIN_AUDIT_UNAVAILABLE", "plugin audit is unavailable")
 	case errors.Is(err, ErrPluginBaseURLMissing),
 		errors.Is(err, ErrPluginFunctionMissing),
 		errors.Is(err, ErrPluginFunctionMismatch),
@@ -914,6 +944,8 @@ func writeInstallError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, "PLUGIN_ID_RESERVED", "plugin id is reserved")
 	case errors.Is(err, ErrPluginRegistryUnavailable):
 		writeError(w, http.StatusServiceUnavailable, "PLUGIN_REGISTRY_UNAVAILABLE", "plugin registry is unavailable")
+	case errors.Is(err, ErrPluginAuditUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "PLUGIN_AUDIT_UNAVAILABLE", "plugin audit is unavailable")
 	case errors.Is(err, ErrPluginURLBlocked):
 		writeError(w, http.StatusForbidden, "PLUGIN_URL_BLOCKED", "plugin URL is blocked by policy")
 	case errors.Is(err, ErrPluginResponseTooLarge):

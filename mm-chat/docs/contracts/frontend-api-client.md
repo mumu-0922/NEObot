@@ -2193,8 +2193,14 @@ Browser execution rules:
   plugin payloads register directly; custom raw OpenAPI JSON and marketplace
   plugins with `manifestUrl` plus empty `functions` are fetched/converted in Go
   before registration.
-- Plugin audit metadata beyond installing-user persistence remains after
-  G4.5c.2c.
+- Plugin install and execute admission emit sanitized Go-side audit metadata
+  beyond installing-user persistence. Events contain action/status/user id,
+  plugin id, function name/count, call id, source, host-only URL metadata, auth
+  presence, argument count, request id/user-agent/IP when available, and never
+  raw args, plugin responses, auth values, bearer tokens, API keys, or full
+  URLs. When `DATABASE_URL` is configured the recorder writes `audit_logs`; an
+  audit sink failure maps to `503 PLUGIN_AUDIT_UNAVAILABLE` before registry
+  mutation or outbound plugin execution.
 - `authConfig.value` plaintext is rejected with
   `PLAINTEXT_PLUGIN_AUTH_REJECTED`; only BYOK `valueSecret` is accepted.
 - Go outbound policy allows only `http|https`, blocks
@@ -2211,6 +2217,36 @@ Browser execution rules:
   `X-Forwarded-Host`/`X-Forwarded-Proto` only when
   `TRUST_PROXY_HEADERS=true`; an untrusted forwarded header must never widen
   the allowed origin.
+
+#### Plugin audit metadata contract (G4.5c.2d)
+
+1. Scope / Trigger: server-mode plugin install and execute requests must leave a
+   Go-side audit trail once the request is admitted to mutate the registry or
+   call an outbound plugin. This extends the earlier `installed_by_user_id`
+   registry column with per-operation metadata.
+2. Signatures: `POST /v1/plugins/install` emits `plugin.install`;
+   `POST /v1/plugins/execute` emits `plugin.execute`; configured deployments
+   insert rows into Postgres `audit_logs(action, resource_type='plugin',
+   actor_user_id, request_id, outcome, ip_address, user_agent, metadata)`.
+3. Contracts: audit metadata may include `status`, `pluginId`, `functionName`,
+   `functionCount`, `source`, `builtIn`, `hasAuth`, `callId`, `argumentCount`,
+   `baseHost`, and `manifestHost`. `baseHost`/`manifestHost` are hostname-only,
+   never full URLs. `argumentCount` is allowed; argument names/values are not.
+4. Validation & Error Matrix: missing audit recorder in local/dev is allowed; a
+   configured recorder failure returns `503 PLUGIN_AUDIT_UNAVAILABLE`; install
+   audit failure happens before `plugin_registry` mutation; execute audit failure
+   happens before plugin HTTP egress.
+5. Good/Base/Bad Cases: Good = configured Postgres writes a sanitized row before
+   mutation/egress. Base = local memory registry runs with no recorder. Bad =
+   audit metadata includes raw `args`, auth material, provider/plugin response
+   bodies, bearer tokens, API keys, or full outbound URLs.
+6. Tests Required: handler tests must assert sanitized install/execute events,
+   fail-closed recorder errors, no outbound call after execute-audit failure,
+   no registry write after install-audit failure, and optional Postgres
+   integration persistence into `audit_logs`.
+7. Wrong vs Correct: Wrong = log `{ args, authConfig, responseBody, baseUrl }`
+   after the plugin call. Correct = record bounded metadata before side effects
+   and persist only host/count/status identifiers.
 
 ### 21.4 Validation & Error Matrix
 
@@ -2232,6 +2268,7 @@ Browser execution rules:
 | Blocked outbound plugin URL                                                     | `403 PLUGIN_URL_BLOCKED`                                     |
 | Oversized plugin response                                                       | `502 PLUGIN_RESPONSE_TOO_LARGE`                              |
 | Non-2xx or failed plugin request                                                | `502 PLUGIN_REQUEST_FAILED`                                  |
+| Configured plugin audit recorder fails                                          | `503 PLUGIN_AUDIT_UNAVAILABLE`; no mutation/egress           |
 | Plugin execution returns `{ "error": ... }`                                    | Record `status: "error"`; final model must not claim success |
 | Abort before/during plan or execution                                          | Stop the orchestration and do not start the final stream     |
 | Browser `Origin` differs from external `Host`                                  | `403 CSRF_ORIGIN_BLOCKED`                                    |
