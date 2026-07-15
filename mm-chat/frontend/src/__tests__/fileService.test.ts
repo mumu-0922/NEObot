@@ -38,6 +38,9 @@ const capabilities = {
   plugins: false,
   providerSettings: false,
   agents: false,
+  voice: false,
+  imageGeneration: false,
+  codeExecution: false,
 } satisfies ApiCapabilities;
 
 const resolvedConfig = {

@@ -11,6 +11,10 @@ import {
   isElevenLabsTTSModel,
 } from "@/lib/utils/voiceModels";
 import {
+  createNeoChatApiClient,
+  unsupportedFeature,
+} from "@/services/api/client";
+import {
   getResponseErrorMessage,
   readJsonResponseOrThrow,
 } from "../../lib/api/client";
@@ -27,6 +31,12 @@ import {
   resolveMimoApiKey,
 } from "../../lib/security/localSecretResolvers";
 import { getBrowserVoiceLanguage } from "../../lib/voice/language";
+
+function getServerModeUnsupportedVoiceJobError(): Error | null {
+  const client = createNeoChatApiClient();
+  if (client.mode !== "server" || client.capabilities.voice) return null;
+  return unsupportedFeature("server voice jobs");
+}
 
 const getProviderForModel = async (modelString: string) => {
   const { providers } = useCoreSettingsStore.getState();
@@ -50,6 +60,9 @@ export const transcribeAudio = async (
   audioBlob: Blob,
   settings: VoiceSettings,
 ): Promise<string> => {
+  const unsupported = getServerModeUnsupportedVoiceJobError();
+  if (unsupported) throw unsupported;
+
   if (settings.sttProvider === "default") {
     const response = await fetch("/api/voice/transcribe", {
       method: "POST",
@@ -250,6 +263,11 @@ export const synthesizeSpeech = async (
   text: string,
   settings: VoiceSettings,
 ): Promise<DisposableAudioElement | void> => {
+  if (settings.ttsProvider !== "browser") {
+    const unsupported = getServerModeUnsupportedVoiceJobError();
+    if (unsupported) throw unsupported;
+  }
+
   if (settings.ttsProvider === "default") {
     if (!text.trim()) return;
 

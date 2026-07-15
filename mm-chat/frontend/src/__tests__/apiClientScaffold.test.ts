@@ -77,6 +77,9 @@ describe("Phase 11.1B API mode resolver", () => {
       chatStream: true,
       files: true,
       auth: true,
+      voice: false,
+      imageGeneration: false,
+      codeExecution: false,
     });
   });
 
@@ -133,6 +136,9 @@ describe("Phase 11.1B API mode resolver", () => {
       plugins: false,
       providerSettings: false,
       agents: false,
+      voice: false,
+      imageGeneration: false,
+      codeExecution: false,
     });
   });
 
@@ -150,6 +156,9 @@ describe("Phase 11.1B API mode resolver", () => {
       chatStream: true,
       files: true,
       auth: true,
+      voice: false,
+      imageGeneration: false,
+      codeExecution: false,
     });
   });
 

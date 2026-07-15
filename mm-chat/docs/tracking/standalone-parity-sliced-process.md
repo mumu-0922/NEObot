@@ -1785,3 +1785,69 @@ G4.6b live browser/provider smoke with a real plugin result
 
 Next slice: either define the remaining plugin audit metadata contract, or run
 G4.6b once approved credentials/runtime are available.
+
+## 2026-07-15 — G6.1 Server-mode Media Job Fail-closed Gates Completed
+
+Objective: start G6 with a narrow frontend/server boundary slice. Do not enable
+real voice, image-generation, or code-execution jobs yet; only prevent
+server-mode fallthrough to transitional Next routes.
+
+Completed scope:
+
+- added disabled `voice`, `imageGeneration`, and `codeExecution` capability
+  flags to the frontend API-client capability map;
+- gated `chatService.executeCode()` in server mode so it returns an explicit
+  unsupported error string instead of calling `/api/chat/execute-code`;
+- gated `chatService.generateImage()` in server mode so it throws an explicit
+  unsupported feature error instead of calling `/api/chat/generate-image`;
+- gated `voiceService.transcribeAudio()` and non-browser
+  `voiceService.synthesizeSpeech()` in server mode so they throw explicit
+  unsupported feature errors instead of calling `/api/voice/*`;
+- left browser-native speech recognition/synthesis behavior local-only and
+  unchanged.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/frontend/src/services/api/client/types.ts
+mm-chat/frontend/src/services/api/client/mode.ts
+mm-chat/frontend/src/services/api/chatService.ts
+mm-chat/frontend/src/services/api/voiceService.ts
+mm-chat/frontend/src/__tests__/apiClientScaffold.test.ts
+mm-chat/frontend/src/__tests__/byokServices.test.ts
+mm-chat/frontend/src/__tests__/chatCrudService.test.ts
+mm-chat/frontend/src/__tests__/chatStreamService.test.ts
+mm-chat/frontend/src/__tests__/fileService.test.ts
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/inventory/frontend-call-sites.md
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/apiClientScaffold.test.ts \
+  src/__tests__/byokServices.test.ts \
+  src/__tests__/chatCrudService.test.ts \
+  src/__tests__/chatStreamService.test.ts \
+  src/__tests__/fileService.test.ts                                       # passed, 5 files / 71 tests
+cd mm-chat/frontend && corepack pnpm typecheck                            # passed
+cd mm-chat/frontend && corepack pnpm format:check                         # passed
+cd mm-chat/frontend && corepack pnpm lint                                 # passed
+git diff --check -- mm-chat                                               # passed
+```
+
+Residual G6 blockers:
+
+```text
+G6.2 Voice synthesis/transcription Go job admission
+G6.3 Image generation Go job admission
+G6.4 Code execution Go job admission
+G6.5 Job audit/rate-limit/cancel metadata and provider smoke
+```
+
+Next slice: G6.2 voice job admission contract, unless the owner chooses image
+or code admission first.

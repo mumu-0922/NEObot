@@ -91,6 +91,26 @@ function getJsonRequestBody(fetchMock: ReturnType<typeof vi.fn>, index = 0) {
   return JSON.parse(String(fetchMock.mock.calls[index]?.[1]?.body));
 }
 
+function setServerModeEnv(): () => void {
+  const previousMode = process.env.NEXT_PUBLIC_API_MODE;
+  const previousBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  process.env.NEXT_PUBLIC_API_MODE = "server";
+  process.env.NEXT_PUBLIC_API_BASE_URL = "/mm-api";
+
+  return () => {
+    if (previousMode === undefined) {
+      delete process.env.NEXT_PUBLIC_API_MODE;
+    } else {
+      process.env.NEXT_PUBLIC_API_MODE = previousMode;
+    }
+    if (previousBaseUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_BASE_URL = previousBaseUrl;
+    }
+  };
+}
+
 describe("BYOK service requests", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -252,6 +272,50 @@ describe("BYOK service requests", () => {
       } else {
         process.env.NEXT_PUBLIC_API_BASE_URL = previousBaseUrl;
       }
+    }
+  });
+
+  it("fails closed for server-mode code and image jobs without calling legacy routes", async () => {
+    const restoreServerMode = setServerModeEnv();
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("legacy route must not be called"));
+    const { executeCode, generateImage } =
+      await import("../services/api/chatService");
+
+    try {
+      await expect(
+        executeCode("env-provider:gemini-title", "print('hi')"),
+      ).resolves.toContain("server code execution jobs");
+      await expect(
+        generateImage("env-provider:gemini-title", "paint a quiet UI"),
+      ).rejects.toMatchObject({ code: "FEATURE_NOT_IMPLEMENTED" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      restoreServerMode();
+    }
+  });
+
+  it("fails closed for server-mode voice jobs without calling legacy routes", async () => {
+    const restoreServerMode = setServerModeEnv();
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("legacy route must not be called"));
+    const { synthesizeSpeech, transcribeAudio } =
+      await import("../services/api/voiceService");
+
+    try {
+      await expect(
+        transcribeAudio(new Blob(["audio"], { type: "audio/webm" }), {
+          sttProvider: "default",
+        } as any),
+      ).rejects.toMatchObject({ code: "FEATURE_NOT_IMPLEMENTED" });
+      await expect(
+        synthesizeSpeech("hello", { ttsProvider: "default" } as any),
+      ).rejects.toMatchObject({ code: "FEATURE_NOT_IMPLEMENTED" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      restoreServerMode();
     }
   });
 

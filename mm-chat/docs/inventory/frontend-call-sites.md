@@ -41,13 +41,13 @@ These are already closer to the desired boundary. Phase 2 should wrap these into
 
 | Priority | Service | Current Routes | Future Client |
 |---:|---|---|---|
-| P0 | `src/services/api/chatService.ts` | `/api/chat`, `/api/chat/generate`, `/api/chat/generate-title`, `/api/chat/related-questions`, `/api/chat/rag-queries`, `/api/chat/generate-image`, `/api/chat/execute-code` | `chatApi` first; defer image/code/tool helpers behind capabilities. |
+| P0 | `src/services/api/chatService.ts` | `/api/chat`, `/api/chat/generate`, `/api/chat/generate-title`, `/api/chat/related-questions`, `/api/chat/rag-queries`, `/api/chat/generate-image`, `/api/chat/execute-code` | `chatApi` first; G6.1 blocks server-mode image/code calls behind disabled capabilities until Go job adapters exist. |
 | P1 | `src/services/api/ragService.ts` | `/api/rag/query`, `/api/rag/upsert`, `/api/rag/delete` | `ragApi` later; not first chat MVP. |
 | P2 | `src/services/api/docParseService.ts` | `/api/doc-parse`, `/api/doc-parse/jobs/:id` | `documentApi` / RAG sidecar later. |
 | P2 | `src/services/api/pluginService.ts` | via `pluginApi.listAvailable/install`; local adapter retains `/api/plugins/list` and `/api/plugins/install` | Server adapter targets `/v1/plugins*`; G4.5c.2b persists supplied plugin payloads in Go/Postgres when `DATABASE_URL` is configured and converts custom/OpenAPI manifest installs in Go. |
 | P2 | `src/utils/pluginUtils.ts` | via `pluginApi.execute`; local adapter retains `/api/plugins/execute` | Server adapter targets `/v1/plugins/execute`; G4.5c.2c sends id-only payloads, Go resolves built-ins/registered/custom OpenAPI plugins from memory/Postgres, and Go normalizes built-in plugin result envelopes. |
 | P2 | `src/services/api/searchService.ts` | `/api/search` | `searchApi` or chat-side capability later. |
-| P2 | `src/services/api/voiceService.ts` | `/api/voice/transcribe`, `/api/voice/synthesize` | `voiceApi` later. |
+| P2 | `src/services/api/voiceService.ts` | `/api/voice/transcribe`, `/api/voice/synthesize` | `voiceApi` later; G6.1 blocks server-mode service calls behind the disabled `voice` capability. |
 | P3 | `src/services/api/agentService.ts` | `/api/agents`, `/api/agents/:identifier` | static/catalog API; can remain static initially. |
 | P3 | `src/services/api/skillService.ts` | `/data/skills/*` | static asset loader; no Go dependency for MVP. |
 
@@ -126,7 +126,7 @@ Recommended implementation order after this inventory:
 4. Wrap OPFS helpers as `local.fileApi` and replace direct display resolvers gradually.
 5. Add `server` mode HTTP adapter for `/v1/config`, `/health`, and provider model listing smoke tests.
 6. Add server chat CRUD/SSE only after the local adapter passes parity tests.
-7. Defer plugin, RAG, doc parse, voice, image generation, and code execution behind disabled capabilities.
+7. Defer plugin, RAG, doc parse, voice, image generation, and code execution behind disabled capabilities; G6.1 now enforces this for server-mode voice/image/code service calls.
 
 ## Risks and Guardrails
 

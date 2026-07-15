@@ -19,6 +19,9 @@ export const phase11Capabilities: ApiCapabilities = {
   plugins: false,
   providerSettings: false,
   agents: false,
+  voice: false,
+  imageGeneration: false,
+  codeExecution: false,
 };
 
 export function normalizeApiMode(value: string | undefined): ApiMode {

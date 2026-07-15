@@ -967,6 +967,13 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
       make Search server-owned or explicitly unavailable.
 - [ ] G6 Voice, Image Generation, and Code Execution Jobs: move job routes behind
       server admission, storage, and audit controls.
+  - [x] G6.1 Server-mode fail-closed capability gates: disabled
+        `voice`, `imageGeneration`, and `codeExecution` capabilities prevent
+        service-layer fallthrough to transitional Next routes.
+  - [ ] G6.2 Voice synthesis/transcription Go job admission.
+  - [ ] G6.3 Image generation Go job admission.
+  - [ ] G6.4 Code execution Go job admission.
+  - [ ] G6.5 Job audit/rate-limit/cancel metadata and provider smoke.
 - [ ] G7 Knowledge, Document Parsing, RAG, and Citations: pass Phase 15 runtime
       parser/index/query/citation gates.
 - [ ] G8 Teams and Knowledge UI Wiring: connect existing Go control-plane APIs

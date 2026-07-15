@@ -45,6 +45,9 @@ export interface ApiCapabilities {
   plugins: boolean;
   providerSettings: boolean;
   agents: boolean;
+  voice: boolean;
+  imageGeneration: boolean;
+  codeExecution: boolean;
 }
 
 export interface ApiErrorEnvelope {

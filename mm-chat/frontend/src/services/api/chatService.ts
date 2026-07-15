@@ -18,7 +18,12 @@ import { createSearchProvider } from "./searchService";
 import { getEnabledPluginFunctions } from "@/lib/plugin/resolve";
 import { parseModelString } from "@/lib/utils/model";
 import { normalizeSessionTitle } from "@/lib/chat/entities";
-import { createNeoChatApiClient, type ModelRef } from "@/services/api/client";
+import {
+  createNeoChatApiClient,
+  unsupportedFeature,
+  type ApiCapabilities,
+  type ModelRef,
+} from "@/services/api/client";
 import { appendContextToChatInput } from "@/lib/utils/chatInput";
 import { appendDiagramRequestInstructions } from "../../lib/chat/diagramPrompt";
 import { appendHtmlVisualRequestInstructions } from "../../lib/chat/htmlVisualPrompt";
@@ -98,6 +103,15 @@ function isMemorySearchEnabled(): boolean {
     settings.enabled &&
     settings.searchEnabled,
   );
+}
+
+function getServerModeUnsupportedJobError(
+  feature: string,
+  capability: keyof Pick<ApiCapabilities, "codeExecution" | "imageGeneration">,
+): Error | null {
+  const client = createNeoChatApiClient();
+  if (client.mode !== "server" || client.capabilities[capability]) return null;
+  return unsupportedFeature(`server ${feature}`);
 }
 
 function addInternalMemoryTools(
@@ -211,6 +225,12 @@ export const executeCode = async (
   modelString: string,
   code: string,
 ): Promise<string> => {
+  const unsupported = getServerModeUnsupportedJobError(
+    "code execution jobs",
+    "codeExecution",
+  );
+  if (unsupported) return `Error: ${unsupported.message}`;
+
   const { providerId, modelName } = parseModelString(modelString);
 
   const { providers } = useCoreSettingsStore.getState();
@@ -462,6 +482,12 @@ export const generateImage = async (
   modelString: string,
   prompt: string,
 ): Promise<{ images: Attachment[]; message: string }> => {
+  const unsupported = getServerModeUnsupportedJobError(
+    "image generation jobs",
+    "imageGeneration",
+  );
+  if (unsupported) throw unsupported;
+
   const { providerId, modelName } = parseModelString(modelString);
 
   const { providers } = useCoreSettingsStore.getState();

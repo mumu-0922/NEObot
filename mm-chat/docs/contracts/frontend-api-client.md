@@ -1301,6 +1301,8 @@ export interface CapabilityMap {
   rag: boolean;
   plugins: boolean;
   voice: boolean;
+  imageGeneration: boolean;
+  codeExecution: boolean;
   importLocalData: boolean;
 }
 
@@ -1392,6 +1394,9 @@ Rules:
 - Server mode sends provider IDs/model IDs, not plaintext API keys.
 - Local mode can keep existing BYOK behavior.
 - `RuntimeConfig.capabilities` gates UI visibility for features not yet migrated.
+- G6.1 keeps `voice`, `imageGeneration`, and `codeExecution` capabilities
+  disabled in server mode until Go job admission contracts exist; service-layer
+  calls must fail closed instead of falling through to transitional Next routes.
 - `plugins` capability remains `false` for the first server MVP; `pluginApi` exists to avoid later component-level route coupling.
 
 ## 14. HTTP Client Rules
