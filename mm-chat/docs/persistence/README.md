@@ -62,9 +62,11 @@ DB-enabled release. The migration CLI never falls back to `DATABASE_URL`.
 The historical Phase 5.1/5.2 boundary first activated chat CRUD and assistant
 stream persistence. It has since expanded: auth/session, Team, Knowledge
 Collection/Document, Governance, and Consent repositories now use the schema.
-Migration `010` also provides the durable, extension-independent projection and
-its worker/replay database functions. The `011` tokenizer/vector/search DDL is
-still absent.
+Migration `010` also provides the durable projection consistency layer and its
+worker/replay database functions. Migration `011` is the plugin registry.
+Migration `012` adds the first G7.4 extension-independent search projection
+metadata/lane tables for Jina 1024, lexical, and exact search seeds. pgvector and
+true BM25 accelerator DDL are still deferred to a later reversible migration.
 
 ## Source-of-Truth Rules
 
@@ -73,9 +75,10 @@ still absent.
   browser import state, audit logs, Knowledge ACL entities, Governance,
   Consent, Processing Jobs, and transactional Outbox events.
 - File bytes are not stored in Postgres. Migration `010` stores durable
-  extension-independent projection state and derived parser/block/chunk
-  records; extension-specific tokenizer, vector, and search projections remain
-  deferred to `011`.
+  projection state and derived parser/block/chunk records. Migration `012`
+  stores extension-independent child search projection rows (`REAL[]` dense
+  vectors, built-in `TSVECTOR`, exact `TEXT[]`, locator summaries, and hash
+  fences). pgvector/true BM25 physical accelerators remain deferred.
 - Redis remains non-authoritative temporary state.
 - Migration-runner metadata in `schema_migrations` is not an application table.
   Each applied row records migration name and a SHA-256 checksum over migration

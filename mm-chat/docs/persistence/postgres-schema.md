@@ -46,9 +46,9 @@ In scope:
 
 Out of scope:
 
-- MinIO/S3 file-byte storage, Redis data structures, migration `011`
-  tokenizer/vector/BM25/search-extension DDL, real Parser/Embedding/Search
-  execution, automatic migrations during API startup, and deployment topology.
+- MinIO/S3 file-byte storage, Redis data structures, pgvector/true BM25
+  accelerator DDL, real Parser/Embedding/Search execution, automatic migrations
+  during API startup, and deployment topology.
 
 ## 2. Baseline Conventions
 
@@ -466,8 +466,17 @@ The migration seeds no Index Profile or Generation. The durable Python Worker
 is implemented but defaults to dark-run: it verifies its function capability
 and singleton lock, then exposes health/metrics without claiming Outbox rows or
 Jobs. No real Parser, Embedding, Search Projection, or active Corpus Projection
-is implied. Tokenizer/vector/BM25/search-extension DDL remains pending in
-migration `011`.
+is implied by `010` alone.
+
+Migration `012` adds the G7.4 search projection staging surface:
+`knowledge_search_profiles` locks the owner-selected MinerU + Jina + Postgres
+profile (`jina-embeddings-v4`, 1024 dimensions, `jina-reranker-v3`), and
+`knowledge_child_search_projections` binds each immutable child chunk to dense
+`REAL[]`, built-in lexical `TSVECTOR`, exact `TEXT[]`, source-span/hash fences,
+and locator summaries. `knowledge_assert_materialization_search_complete(...)`
+lets the future G7.5 worker fail closed unless every child has a ready
+1024-dimensional embedding row. pgvector/true BM25 accelerator DDL remains
+pending in a later reversible migration.
 
 ## 5. Historical Repository Activation Boundary
 

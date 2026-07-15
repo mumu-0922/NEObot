@@ -21,8 +21,8 @@ Out of scope:
 - Automatic migrations during API startup.
 - Compose implementation files.
 - MinIO, Redis, browser import, or multi-server deployment details.
-- Tokenizer, vector, BM25/search-extension, and restricted search DDL planned
-  for migration `011`.
+- pgvector/true BM25 accelerator DDL and restricted retrieval Functions planned
+  for a later reversible search-profile migration.
 
 ## 2. Environment Variables
 
@@ -152,8 +152,8 @@ labels.
 
 Migrations are run by an operator or deployment step before the API release is
 started/restarted. API startup must not auto-migrate. The current embedded chain
-ends at `010_phase15_rag_projection_consistency`; migration `011` does not yet
-exist.
+includes `012_rag_search_projection`; later pgvector/true BM25 accelerator DDL
+will be added only through another reversible migration.
 
 Expected source-run command shape:
 
@@ -186,9 +186,10 @@ Runner contract:
 - Operators should verify both app tables and runner metadata after `up`.
 - The runner owns each migration transaction; SQL migration files must not
   include `BEGIN`, `COMMIT`, or `ROLLBACK`.
-- `010` implements the extension-independent durable projection and contains no
-  extension-specific tokenizer/vector/search DDL. That DDL remains reserved for
-  pending migration `011`.
+- `010` implements the durable projection consistency layer. `012` adds the
+  extension-independent child search projection staging tables and completeness
+  function. Extension-specific pgvector/true BM25 accelerator DDL remains
+  reserved for a later reversible search-profile migration.
 
 Inspect app tables and runner state through an approved migrator session without
 placing a password in SQL or command output:

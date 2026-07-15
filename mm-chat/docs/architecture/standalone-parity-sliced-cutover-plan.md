@@ -446,7 +446,7 @@ Scope:
 Locked standalone profile:
 
 - provider loop: MinerU parser, Jina 1024-dimensional embeddings, Jina rerank,
-  and Postgres pgvector/lexical/exact projection;
+  and Postgres dense/lexical/exact projection (G7.4 stores the first dense lane extension-independently; pgvector/true BM25 accelerators remain a later reversible search-profile migration);
 - PDF scope: all PDF classes in the first round, including scanned and complex
   formula/table PDFs;
 - credentials: administrator-owned backend env/Docker secrets first; admin web
@@ -474,7 +474,7 @@ Slice checklist:
 - [x] G7.1 Decision lock, runtime inventory plan, and dedicated process log.
 - [x] G7.2 Admin provider config and fail-closed readiness.
 - [x] G7.3 Provider-backed parser/index profile gate.
-- [ ] G7.4 Canonical IR to chunks and Postgres projection.
+- [x] G7.4 Canonical IR to chunks and Postgres projection.
 - [ ] G7.5 Worker dispatch, rebuild, delete, and retry loop.
 - [ ] G7.6 Private query and Go reauthorization.
 - [ ] G7.7 Strict/optional chat answer and basic citations.

@@ -265,3 +265,105 @@ cd mm-chat && git diff --check -- .
 ```
 
 Result: clean.
+
+## 2026-07-15 — G7.4 Canonical IR to Chunks and Postgres Projection
+
+Objective: create the deterministic projection seam between parser artifacts,
+chunk manifests, and Postgres search state without yet enabling worker dispatch
+or provider quota consumption.
+
+Implemented behavior:
+
+- Added `rag/src/mm_chat_rag/projection.py`, a pure projection builder for
+  already-validated Canonical IR v2 plus Chunk Manifest v2 artifacts.
+- The builder emits deterministic row DTOs for:
+  - `knowledge_blocks`;
+  - `knowledge_parent_chunks`;
+  - `knowledge_child_chunks`;
+  - `knowledge_chunk_block_spans`;
+  - `knowledge_child_search_projections` seeds.
+- Projection IDs are stable UUIDv5 values scoped by immutable artifact set or
+  materialization IDs. A materialization replacement changes chunk IDs while the
+  same parser artifact keeps block IDs stable.
+- The builder fails closed on source hash mismatch, stale content byte/hash
+  bindings, missing parent chunks, non-text block references, invalid locators,
+  and stale manifest counts.
+- Added migration `012_rag_search_projection`:
+  - `knowledge_search_profiles` locks `mineru_jina_postgres_v1`, Jina embedding
+    model `jina-embeddings-v4`, dimensions `1024`, and reranker
+    `jina-reranker-v3`;
+  - `knowledge_child_search_projections` stores extension-independent dense
+    `REAL[]` vectors, generated built-in lexical `TSVECTOR`, exact `TEXT[]`,
+    source-span/hash fences, locator summaries, and staging/ready/purge state;
+  - `knowledge_assert_materialization_search_complete(...)` proves every child
+    chunk has a ready 1024-dimensional embedding projection before G7.5 publish
+    code may promote it.
+- G7.4 intentionally does not add `CREATE EXTENSION`, provider HTTP clients, job
+  handlers, or dispatch registry entries. pgvector/true BM25 accelerator DDL is
+  left to a later reversible search-profile migration after deployment image and
+  license gates are closed.
+
+Touched files:
+
+```text
+rag/src/mm_chat_rag/projection.py
+rag/tests/unit/test_projection.py
+backend/migrations/012_rag_search_projection.up.sql
+backend/migrations/012_rag_search_projection.down.sql
+backend/internal/migration/phase15_rag_search_projection_schema_test.go
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/architecture/standalone-parity-sliced-cutover-plan.md
+docs/persistence/README.md
+docs/persistence/postgres-schema.md
+docs/persistence/runtime-wiring.md
+docs/tracking/progress.md
+```
+
+Verification run during the slice:
+
+```text
+cd mm-chat/rag && uv run pytest -p no:cacheprovider tests/unit/test_projection.py
+cd mm-chat/rag && uv run ruff check src/mm_chat_rag/projection.py tests/unit/test_projection.py
+cd mm-chat/rag && uv run mypy src/mm_chat_rag/projection.py
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./internal/migration \
+  -run 'TestPhase15RAGSearchProjectionSchemaContract|TestLoadOrders|TestEmbeddedMigrations'
+```
+
+Result:
+
+```text
+Python projection tests passed: 7 passed.
+Python ruff and mypy passed for the new projection module.
+Go migration static contract tests passed.
+```
+
+Next slice: G7.5 worker dispatch, rebuild, delete, and retry loop. G7.5 must
+call the G7.4 projection builder plus `knowledge_assert_materialization_search_complete(...)`
+before any materialization publish path is promoted.
+
+Final G7.4 verification before commit:
+
+```text
+cd mm-chat/rag && uv run pytest -p no:cacheprovider tests/unit
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./...
+cd mm-chat/frontend && corepack pnpm prettier --check \
+  ../docs/architecture/g7-rag-citation-cutover-plan.md \
+  ../docs/architecture/standalone-parity-sliced-cutover-plan.md \
+  ../docs/architecture/phase-15-2c-generation-bound-indexing-plan.md \
+  ../docs/persistence/README.md \
+  ../docs/persistence/postgres-schema.md \
+  ../docs/persistence/runtime-wiring.md \
+  ../docs/persistence/phase-15-rag-projection-schema.md \
+  ../docs/tracking/g7-rag-citation-process.md \
+  ../docs/tracking/progress.md
+cd mm-chat && git diff --check -- .
+```
+
+Final result:
+
+```text
+RAG unit tests passed: 1443 passed.
+Go backend full package tests passed.
+Prettier check passed for changed docs.
+git diff --check passed for mm-chat scoped diff.
+```

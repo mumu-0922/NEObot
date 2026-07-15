@@ -1,11 +1,12 @@
 # Phase 15 RAG Projection Schema 与 Migration Contract
 
-- 状态：Canonical `010/011` contract；`010` 与 durable dark-run Worker 已实现；
-  `011` pending；`012` 由 Phase 15.2C Addendum 定义且 pending
-- 日期：2026-07-12
-- 当前 Schema Head：migration `010_phase15_rag_projection_consistency`
-- 待实现迁移：`011_phase15_rag_search_projection` →
-  `012_phase15_generation_dispatcher`
+- 状态：Canonical `010/012` contract；`010` 与 durable dark-run Worker 已实现；
+  `012_rag_search_projection` 已实现 G7.4 extension-independent search staging；
+  pgvector/true BM25 accelerator migration pending
+- 日期：2026-07-12；G7.4 更新：2026-07-15
+- 当前 Schema Head：migration `012_rag_search_projection`
+- 待实现迁移：G7.5 generation dispatcher / worker dispatch；后续 search accelerator
+  migration 另行编号
 - 上位设计：
   [`phase-15-2-single-server-python-rag-consumer-indexing-plan.md`](../architecture/phase-15-2-single-server-python-rag-consumer-indexing-plan.md)
 - `012` Addendum：
@@ -13,9 +14,11 @@
 
 > Migration `010` 已实现本文定义的 extension-independent schema、受限 Functions、
 > lease/ledger/replay/purge 一致性机制；Phase 15.2B Python Worker 也已实现为默认不
-> claim 事件或 Job 的 durable dark-run Worker。Migration `011` 的 tokenizer、vector、
-> BM25/search-extension、Search Projection 和检索 DDL 仍 pending。当前状态不表示真实
-> Parser、Embedding、Projection Build/Search、Evidence API 或聊天 RAG 已 Ready。
+> claim 事件或 Job 的 durable dark-run Worker。Migration `012` 已加入
+> extension-independent Search Projection staging（Jina 1024 `REAL[]`、built-in
+> `TSVECTOR`、Exact `TEXT[]`、locator/hash fences）。pgvector/true BM25
+> accelerator、检索 Function、真实 Parser/Embedding Dispatch、Evidence API 或聊天
+> RAG 仍未 Ready。
 
 ## 1. 范围与不可越界项
 
@@ -24,12 +27,12 @@ Generation、Document Materialization、Projection Head/State、Parser Artifact�
 Canonical Block、Parent/Child Chunk、Applied-event Ledger、Lease/CAS、Collection
 Purge Fan-out、原子 Publish/Purge Function 及权限边界。
 
-待实现的 `011` 只承载 Bake-off 晋升后的 Search 物理细节：选定的 BM25 Extension、Dense
-存储类型和维度、Tokenizer/Analyzer、Extension-specific Search Projection、索引、
-受限检索 Function 与恢复校验。`011` 必须引用 Bake-off 报告中已晋升且带精确版本/
-Digest 的唯一 Profile；未晋升时不得编写“临时候选”DDL。
+后续 Search accelerator migration 只承载 Bake-off 晋升后的 Search 物理细节：选定的
+BM25 Extension、Dense 存储类型和维度、Tokenizer/Analyzer、Extension-specific
+Search Projection、索引、受限检索 Function 与恢复校验。该迁移必须引用 Bake-off
+报告中已晋升且带精确版本/Digest 的唯一 Profile；未晋升时不得编写“临时候选”DDL。
 
-Pending migration `012` 的 Approved Profile Bundle 必须额外绑定：
+后续 generation dispatcher 的 Approved Profile Bundle 必须额外绑定：
 
 ```text
 wire_contract_hash

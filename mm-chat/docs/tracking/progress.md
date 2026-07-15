@@ -1035,7 +1035,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         invisibility, retry budget, and G9 legacy-route handoff.
   - [x] G7.2 Admin provider config and fail-closed readiness.
   - [x] G7.3 Provider-backed parser/index profile gate.
-  - [ ] G7.4 Canonical IR to chunks and Postgres projection.
+  - [x] G7.4 Canonical IR to chunks and Postgres projection.
   - [ ] G7.5 Worker dispatch, rebuild, delete, and retry loop.
   - [ ] G7.6 Private query and Go reauthorization.
   - [ ] G7.7 Strict/optional chat answer and basic citations.

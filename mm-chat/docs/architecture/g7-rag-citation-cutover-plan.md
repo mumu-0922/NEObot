@@ -196,16 +196,35 @@ Validation:
 
 ### G7.4 Canonical IR to chunks and Postgres projection
 
-- Stage parser outputs into canonical IR and deterministic parent/child chunks.
-- Apply/create the Postgres projection needed for Jina 1024 vectors,
-  lexical/exact lanes, source spans, version fences, tombstones, and generations.
-- Publish only complete generations.
+Status: Completed on 2026-07-15.
+
+- Added a pure Python projection builder that stages already-validated Canonical
+  IR v2 plus Chunk Manifest v2 into deterministic Postgres row DTOs for:
+  canonical Blocks, Parent Chunks, Child Chunks, chunk-to-block spans, and the
+  extension-independent child search projection seed.
+- Projection UUIDs are deterministic within immutable artifact/materialization
+  scopes; content bytes, content hashes, source hashes, parent/child references,
+  locator summaries, and manifest counts fail closed before any future DB write.
+- Added migration `012_rag_search_projection` with:
+  - `knowledge_search_profiles` locked to `mineru_jina_postgres_v1`,
+    `jina-embeddings-v4`, dimensions `1024`, and `jina-reranker-v3`;
+  - `knowledge_child_search_projections` carrying dense-vector storage as
+    extension-independent `REAL[]`, built-in lexical `TSVECTOR`, exact `TEXT[]`,
+    source-span/hash fences, locator summaries, and staging/ready/purge states;
+  - `knowledge_assert_materialization_search_complete(...)` for G7.5 workers to
+    prove all children have ready 1024-dimensional embeddings before publish.
+- The migration intentionally does not `CREATE EXTENSION`; pgvector/true BM25
+  accelerator promotion remains a later reversible search-profile migration once
+  the deployment image/license gates are closed. G7.4 itself still consumes no
+  provider quota and does not attach worker dispatch.
 
 Validation:
 
-- Parser fixture tests for PDF and supported native formats.
-- Chunk exact-cover/hash/source-locator tests.
-- Migration replay/down-safety where applicable.
+- Parser hash-DAG fixture projection tests for exact content/hash/source-locator
+  projection.
+- Migration static contract tests for 1024-dimensional search projection,
+  lexical/exact lanes, completeness function, grants, and down-safety.
+- Python ruff/mypy and targeted pytest.
 
 ### G7.5 Worker dispatch, rebuild, delete, and retry loop
 

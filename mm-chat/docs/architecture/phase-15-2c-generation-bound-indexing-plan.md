@@ -18,7 +18,7 @@
 - Native Parser、MinerU Adapter、Canonical IR、Quality Gate；
 - Parent/Child/Overlap Chunking 与精确 Source Provenance；
 - Jina Passage Embedding、1024/2048 隔离评测和 Search Profile 选型；
-- migration `011` Search Projection 与 migration `012` Generation Dispatcher；
+- migration `012_rag_search_projection` Search Projection staging、后续 Generation Dispatcher；
 - Processing Request、Provider Operation、Object Deletion Work；
 - Object/Processor Gateway、Parser Sandbox 与最小权限 Postgres Roles；
 - Generation-bound Dispatch、Staging、Verify、Atomic Document Publish；
@@ -258,7 +258,7 @@ Registry，`knowledge_create_profile_bundle` 只接受 Registry 中逐字段完�
 `knowledge_create_building_generation` 才可引用该 Bundle。
 
 Approved Registry Row 是 migration-owned Static Seed：其完整 Canonical Bytes、签名 Report
-Hash 与 migration checksum 固定在 `012`，不是运行期审批数据。`012.down` 只可在没有
+Hash 与 migration checksum 固定在对应 forward migration，不是运行期审批数据。Down 只可在没有
 物化 Base/Search Profile、Generation 或 Work 引用时删除与内嵌值逐字一致的 Seed；发现
 Drift、Extra Row 或引用必须整笔失败。
 
