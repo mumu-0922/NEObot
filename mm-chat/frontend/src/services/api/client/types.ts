@@ -396,10 +396,21 @@ export interface PluginListAvailableResponse {
   unavailable?: boolean;
 }
 
+export interface PluginInstallInput {
+  plugin?: Plugin;
+  customInput?: string;
+  signal?: AbortSignal;
+}
+
+export interface PluginInstallResponse {
+  plugin: Plugin;
+}
+
 export interface PluginApi {
   listAvailable(
     input?: PluginListAvailableInput,
   ): Promise<PluginListAvailableResponse>;
+  install(input: PluginInstallInput): Promise<PluginInstallResponse>;
 }
 
 export interface FileApi {

@@ -1,9 +1,15 @@
 import type { Plugin } from "@/types";
 import { ApiClientError } from "../errors";
-import type { PluginApi, PluginListAvailableResponse } from "../types";
+import type {
+  PluginApi,
+  PluginInstallInput,
+  PluginInstallResponse,
+  PluginListAvailableResponse,
+} from "../types";
 import type { HttpClient } from "./httpClient";
 
 const pluginListPath = "/v1/plugins";
+const pluginInstallPath = "/v1/plugins/install";
 
 interface ServerPluginListResponse {
   plugins?: unknown;
@@ -26,6 +32,29 @@ export function createServerPluginApiShell(httpClient: HttpClient): PluginApi {
         throw error;
       }
     },
+    async install(input: PluginInstallInput): Promise<PluginInstallResponse> {
+      try {
+        const response =
+          await httpClient.requestJson<ServerPluginInstallResponse>(
+            pluginInstallPath,
+            {
+              method: "POST",
+              body: toPluginInstallBody(input),
+              signal: input.signal,
+            },
+          );
+        return normalizePluginInstallResponse(response);
+      } catch (error) {
+        if (isUnavailablePluginRegistryError(error)) {
+          throw new ApiClientError(
+            "PLUGIN_INSTALL_UNAVAILABLE",
+            "Plugin install is not available in server mode yet.",
+            { recoverable: true },
+          );
+        }
+        throw error;
+      }
+    },
   };
 }
 
@@ -43,6 +72,36 @@ function normalizePluginListResponse(
     plugins: response.plugins as Plugin[],
     unavailable: response.unavailable === true || undefined,
   };
+}
+
+interface ServerPluginInstallResponse {
+  plugin?: unknown;
+}
+
+function normalizePluginInstallResponse(
+  response: ServerPluginInstallResponse,
+): PluginInstallResponse {
+  if (!response || !isRecord(response.plugin)) {
+    throw new ApiClientError(
+      "INVALID_SERVER_RESPONSE",
+      "Server returned an invalid plugin install response.",
+    );
+  }
+
+  return { plugin: response.plugin as unknown as Plugin };
+}
+
+function toPluginInstallBody(
+  input: PluginInstallInput,
+): Record<string, unknown> {
+  if (input.customInput !== undefined) {
+    return { customInput: input.customInput };
+  }
+  return { plugin: input.plugin };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 function isUnavailablePluginRegistryError(error: unknown): boolean {

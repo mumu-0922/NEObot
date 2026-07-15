@@ -202,4 +202,76 @@ describe("plugin market service cache", () => {
     expect(plugins).toEqual([]);
     expect(storeMock.state.setMarketPlugins).toHaveBeenCalledWith([]);
   });
+
+  it("installs marketplace and custom plugins through the local API adapter", async () => {
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      return jsonResponse({
+        plugin: body.plugin ?? {
+          ...pluginB,
+          manifestUrl: body.customInput,
+        },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { installPlugin, installCustomPlugin } =
+      await import("../services/api/pluginService");
+
+    await expect(installPlugin(pluginA)).resolves.toMatchObject(pluginA);
+    await expect(
+      installCustomPlugin("https://example.com/custom.json"),
+    ).resolves.toMatchObject({
+      manifestUrl: "https://example.com/custom.json",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/plugins/install",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ plugin: pluginA }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/plugins/install",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          customInput: "https://example.com/custom.json",
+        }),
+      }),
+    );
+  });
+
+  it("does not fall back to the Next install route when server-mode install is unavailable", async () => {
+    process.env.NEXT_PUBLIC_API_MODE = "server";
+    process.env.NEXT_PUBLIC_API_BASE_URL = "/mm-api";
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(
+        { error: { code: "NOT_FOUND", message: "route not found" } },
+        { status: 404 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { installCustomPlugin } =
+      await import("../services/api/pluginService");
+
+    await expect(
+      installCustomPlugin("https://example.com/custom.json"),
+    ).rejects.toMatchObject({ code: "PLUGIN_INSTALL_UNAVAILABLE" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/mm-api/v1/plugins/install",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          customInput: "https://example.com/custom.json",
+        }),
+      }),
+    );
+    const calledUrls = fetchMock.mock.calls.map((call) =>
+      String((call as unknown[])[0]),
+    );
+    expect(calledUrls).not.toContain("/api/plugins/install");
+  });
 });

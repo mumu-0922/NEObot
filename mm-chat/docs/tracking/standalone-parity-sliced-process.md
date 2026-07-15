@@ -1240,3 +1240,55 @@ G4.5 live browser smoke
 ```
 
 Next slice: G4.3 Plugin install/custom-manifest adapter.
+
+## 2026-07-15 — G4.3 Plugin Install Adapter Completed
+
+Objective: migrate plugin install and custom manifest install calls as a separate
+slice, without claiming final plugin execution ownership.
+
+Completed scope:
+
+- extended `PluginApi` with `install({ plugin | customInput })`;
+- kept the legacy `/api/plugins/install` route reachable only through the local
+  API-client adapter for rollback/local mode;
+- added a server adapter that targets Go `/v1/plugins/install` and converts a
+  missing/unavailable route into recoverable `PLUGIN_INSTALL_UNAVAILABLE`;
+- routed `installPlugin()` and `installCustomPlugin()` through the API client;
+- verified server mode does not fall back to the Next install route when Go has
+  no plugin install endpoint yet.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/frontend/src/services/api/client/types.ts
+mm-chat/frontend/src/services/api/client/local/pluginApi.ts
+mm-chat/frontend/src/services/api/client/server/pluginApi.ts
+mm-chat/frontend/src/services/api/pluginService.ts
+mm-chat/frontend/src/__tests__/apiClientScaffold.test.ts
+mm-chat/frontend/src/__tests__/pluginService.test.ts
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/pluginService.test.ts \
+  src/__tests__/apiClientScaffold.test.ts  # passed, 2 files / 56 tests
+cd mm-chat/frontend && corepack pnpm typecheck # passed
+cd mm-chat/frontend && corepack pnpm format:check # passed
+cd mm-chat/frontend && corepack pnpm lint # passed
+rg '"/api/plugins/install"|/api/plugins/install' mm-chat/frontend/src -n
+# remaining direct route references: local adapter, static route constant, tests
+```
+
+Residual G4 blockers:
+
+```text
+G4.4 plugin execute final ownership
+G4.5 live browser smoke
+```
+
+Next slice: G4.4 Plugin execute final ownership.

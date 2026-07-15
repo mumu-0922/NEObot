@@ -1,10 +1,6 @@
 import { Plugin } from "@/types";
 import { useSettingsStore } from "@/store/core/settingsStore";
 import { createNeoChatApiClient } from "@/services/api/client";
-import {
-  getResponseErrorMessage,
-  readJsonResponseOrThrow,
-} from "../../lib/api/client";
 import { normalizeMarketPlugins } from "../../lib/market/plugins";
 import { logDevError, logDevInfo, logDevWarn } from "../../lib/utils/devLogger";
 import { CACHE_CONFIG } from "../../config/api";
@@ -103,20 +99,7 @@ export const clearPluginsCache = (): void => {
 
 export const installPlugin = async (plugin: Plugin): Promise<Plugin> => {
   try {
-    const response = await fetch("/api/plugins/install", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ plugin }),
-    });
-
-    if (!response.ok) throw new Error("Failed to install plugin");
-
-    const data = await readJsonResponseOrThrow<{ plugin: Plugin }>(
-      response,
-      "Failed to install plugin",
-    );
+    const data = await createNeoChatApiClient().plugins.install({ plugin });
     return data.plugin;
   } catch (error) {
     logDevError(`Failed to install plugin ${plugin.id}:`, error);
@@ -126,27 +109,9 @@ export const installPlugin = async (plugin: Plugin): Promise<Plugin> => {
 
 export const installCustomPlugin = async (input: string): Promise<Plugin> => {
   try {
-    const response = await fetch("/api/plugins/install", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ customInput: input }),
+    const data = await createNeoChatApiClient().plugins.install({
+      customInput: input,
     });
-
-    if (!response.ok) {
-      throw new Error(
-        await getResponseErrorMessage(
-          response,
-          "Failed to install custom plugin",
-        ),
-      );
-    }
-
-    const data = await readJsonResponseOrThrow<{ plugin: Plugin }>(
-      response,
-      "Failed to install custom plugin",
-    );
     return data.plugin;
   } catch (error) {
     logDevError("Failed to install custom plugin:", error);
