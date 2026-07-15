@@ -21,6 +21,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/jobcontrol"
 	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/plugins"
+	"neo-chat/mm-chat/backend/internal/ragproviders"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
 	"neo-chat/mm-chat/backend/internal/runtimeconfig"
 	"neo-chat/mm-chat/backend/internal/storage"
@@ -262,6 +263,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	imageJobHandler := imagejobs.NewHandler(resolvedOptions.imageJobService)
 	jobControlHandler := jobcontrol.NewHandler(nil)
 	voiceJobHandler := voicejobs.NewHandler(resolvedOptions.voiceJobService)
+	ragProviderHandler := ragproviders.NewHandler(cfg.RAG)
 	runtimeConfigService := runtimeconfig.NewService(cfg)
 	pluginHandler := plugins.NewHandler(plugins.NewService(
 		cfg,
@@ -298,6 +300,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/jobs/", jobControlHandler)
 	mux.Handle("/v1/voice/transcribe", voiceJobHandler)
 	mux.Handle("/v1/voice/synthesize", voiceJobHandler)
+	mux.Handle("/v1/rag/provider-status", ragProviderHandler)
 	mux.Handle("/v1/files", fileHandler)
 	mux.Handle("/v1/files/", fileHandler)
 	mux.Handle("/v1/import/browser", importHandler)
@@ -402,6 +405,7 @@ func isIndependentIdentityAPIRequest(r *http.Request) bool {
 		return false
 	}
 	return r.URL.Path == "/v1/teams" || strings.HasPrefix(r.URL.Path, "/v1/teams/") ||
+		r.URL.Path == "/v1/rag/provider-status" ||
 		r.URL.Path == "/v1/knowledge/collections" ||
 		strings.HasPrefix(r.URL.Path, "/v1/knowledge/collections/") ||
 		strings.HasPrefix(r.URL.Path, "/v1/knowledge/documents/") ||

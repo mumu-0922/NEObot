@@ -472,7 +472,7 @@ Supporting detailed plans remain authoritative for internals:
 Slice checklist:
 
 - [x] G7.1 Decision lock, runtime inventory plan, and dedicated process log.
-- [ ] G7.2 Admin provider config and fail-closed readiness.
+- [x] G7.2 Admin provider config and fail-closed readiness.
 - [ ] G7.3 Provider-backed parser/index profile gate.
 - [ ] G7.4 Canonical IR to chunks and Postgres projection.
 - [ ] G7.5 Worker dispatch, rebuild, delete, and retry loop.

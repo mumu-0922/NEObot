@@ -48,7 +48,7 @@ secret file.
 | `minio-init`   | default      | Creates bucket and least-privilege app user/policy.                              | None            |
 | `migrate`      | `ops`        | One-shot `mm-chat-migrate up`; never auto-runs on API boot.                      | None            |
 | `admin`        | `ops`        | One-shot local identity administration; no HTTP listener.                        | None            |
-| `frontend`     | `app`        | Next.js UI and same-origin `/mm-api` edge on `127.0.0.1:3000`.                    | Localhost only  |
+| `frontend`     | `app`        | Next.js UI and same-origin `/mm-api` edge on `127.0.0.1:3000`.                   | Localhost only  |
 | `backend`      | `app`        | Go API on `127.0.0.1:8080` for reverse proxy or local smoke tests.               | Localhost only  |
 | `minio-client` | `ops`        | Utility container for backup/restore scripts.                                    | None            |
 | `rag-worker`   | `rag-worker` | Phase 15.2B durable-consumer mechanics; dispatch defaults off.                   | None            |
@@ -69,17 +69,20 @@ block startup or replace the Postgres poll and forced rescan.
 The container is fenced to one CPU, 448 MiB RAM, 64 PIDs, a read-only root
 filesystem, a 64 MiB `/tmp` tmpfs, `cap_drop: ALL`, and
 `no-new-privileges`. Its environment contains only the Worker Postgres URL,
-Redis wake settings, and bounded Worker controls. It receives no MinIO, S3,
-Provider, or Replay credential. The healthcheck calls container-local
-`GET /health` on port `8081`; no port is published or proxied.
+Redis wake settings, bounded Worker controls, and the G7 RAG provider secrets
+when those are configured. It receives no MinIO, S3, chat Provider, or Replay
+credential. The healthcheck calls container-local `GET /health` on port `8081`;
+no port is published or proxied.
 
-| Variable                  | Boundary                                                             |
-| ------------------------- | -------------------------------------------------------------------- |
-| `RAG_IMAGE`               | Python image; production requires a full registry `@sha256:` digest. |
-| `MIGRATION_DATABASE_URL`  | Required bootstrap/migrator URL; never falls back to the API URL.    |
-| `DATABASE_URL`            | Non-superuser API login; shared only by `backend` and `admin`.       |
-| `RAG_WORKER_DATABASE_URL` | Worker login inheriting only `rag_worker_executor`.                  |
-| `RAG_REPLAY_DATABASE_URL` | Replay login inheriting only `rag_replay_operator`.                  |
+| Variable                  | Boundary                                                                  |
+| ------------------------- | ------------------------------------------------------------------------- |
+| `RAG_IMAGE`               | Python image; production requires a full registry `@sha256:` digest.      |
+| `MIGRATION_DATABASE_URL`  | Required bootstrap/migrator URL; never falls back to the API URL.         |
+| `DATABASE_URL`            | Non-superuser API login; shared only by `backend` and `admin`.            |
+| `RAG_WORKER_DATABASE_URL` | Worker login inheriting only `rag_worker_executor`.                       |
+| `RAG_REPLAY_DATABASE_URL` | Replay login inheriting only `rag_replay_operator`.                       |
+| `RAG_MINERU_API_TOKEN`    | Admin-owned MinerU secret for G7 automatic parsing; redacted status only. |
+| `RAG_JINA_API_KEY`        | Admin-owned Jina secret for G7 embedding/rerank; redacted status only.    |
 
 `POSTGRES_USER` is the empty-volume bootstrap and migrator login referenced by
 `MIGRATION_DATABASE_URL`. The API login inherits only `go_api_runtime` and must
@@ -94,12 +97,22 @@ Phase 15.2B remains a dark-run boundary:
 ```text
 RAG_WORKER_DISPATCH_ENABLED=false
 RAG_WORKER_JOB_STAGES=
+RAG_MINERU_API_TOKEN=
+RAG_JINA_API_KEY=
 ```
 
 At this gate the Worker may validate DB functions, its singleton lock, health,
 and metrics mechanics, but it must not claim real Parse, Embedding, Purge, or
 projection work. Healthy `/health` proves process/event-loop liveness only; it
 does not prove projection readiness or that Search/RAG is available.
+
+G7.2 adds the protected Go diagnostic `GET /v1/rag/provider-status`. It reports
+only whether the server-owned MinerU/Jina credentials are configured and the
+locked Jina embedding dimension (`1024`); it never returns key material. Python
+worker dispatch fails closed when `parse` is enabled without
+`RAG_MINERU_API_TOKEN` or `passage_embedding` is enabled without
+`RAG_JINA_API_KEY`. Legacy `DEFAULT_MINERU_API_TOKEN` and
+`DEFAULT_JINA_API_KEY` aliases remain accepted only as migration fallback names.
 
 Replay runs as a separate one-shot service so its DSN never enters the
 long-running Worker. Dry-run validates an exact intent without touching the DB:
@@ -336,17 +349,17 @@ closed with `503 INVITE_DELIVERY_UNAVAILABLE`; a partially configured delivery
 stack fails startup instead. If Postgres itself is disabled, the routes stay
 registered but database-backed Team operations return `503 DATABASE_REQUIRED`.
 
-| Variable                          | Default                 | Contract                                                                                        |
-| --------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------- |
-| `TEAM_CURSOR_ACTIVE_KEY_ID`       | `local-dev`             | Active HMAC signing key ID; replace before production.                                          |
-| `TEAM_CURSOR_KEYRING`             | local-dev sample        | Comma-separated `key-id=base64`; each decoded key is at least 32 bytes; replace before production. |
-| `TEAM_MAIL_ACTIVE_KEY_ID`         | none                    | Active AES-256-GCM encryption key ID.                                                           |
-| `TEAM_MAIL_KEYRING`               | no usable default       | Comma-separated `key-id=base64`; every decoded key is exactly 32 bytes.                         |
-| `TEAM_INVITE_ACCEPT_URL_BASE`     | none                    | HTTPS UI URL in required mode; loopback HTTP only in development. The worker adds `#token=...`. |
-| `TEAM_MAIL_WORKER_LEASE_DURATION` | `30s`                   | Positive durable claim lease.                                                                   |
-| `TEAM_MAIL_WORKER_POLL_INTERVAL`  | `500ms`                 | Positive idle/error poll interval.                                                              |
-| `TEAM_MAIL_WORKER_BACKOFF_BASE`   | `5s`                    | Positive retry-backoff floor.                                                                   |
-| `TEAM_MAIL_WORKER_BACKOFF_MAX`    | `15m`                   | Retry cap, not less than the base.                                                              |
+| Variable                          | Default           | Contract                                                                                           |
+| --------------------------------- | ----------------- | -------------------------------------------------------------------------------------------------- |
+| `TEAM_CURSOR_ACTIVE_KEY_ID`       | `local-dev`       | Active HMAC signing key ID; replace before production.                                             |
+| `TEAM_CURSOR_KEYRING`             | local-dev sample  | Comma-separated `key-id=base64`; each decoded key is at least 32 bytes; replace before production. |
+| `TEAM_MAIL_ACTIVE_KEY_ID`         | none              | Active AES-256-GCM encryption key ID.                                                              |
+| `TEAM_MAIL_KEYRING`               | no usable default | Comma-separated `key-id=base64`; every decoded key is exactly 32 bytes.                            |
+| `TEAM_INVITE_ACCEPT_URL_BASE`     | none              | HTTPS UI URL in required mode; loopback HTTP only in development. The worker adds `#token=...`.    |
+| `TEAM_MAIL_WORKER_LEASE_DURATION` | `30s`             | Positive durable claim lease.                                                                      |
+| `TEAM_MAIL_WORKER_POLL_INTERVAL`  | `500ms`           | Positive idle/error poll interval.                                                                 |
+| `TEAM_MAIL_WORKER_BACKOFF_BASE`   | `5s`              | Positive retry-backoff floor.                                                                      |
+| `TEAM_MAIL_WORKER_BACKOFF_MAX`    | `15m`             | Retry cap, not less than the base.                                                                 |
 
 Generate independent production keys locally and place only the base64 output
 in the uncommitted `.env.single-server` file:

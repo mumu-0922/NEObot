@@ -27,6 +27,7 @@ const (
 	DefaultLocalStorageDir        = "./data/files"
 	DefaultS3Region               = "us-east-1"
 	DefaultMaxUploadBytes         = int64(25 << 20)
+	DefaultRAGJinaDimensions      = 1024
 	AuthModeDevelopment           = "development"
 	AuthModeRequired              = "required"
 	DefaultAuthMode               = AuthModeDevelopment
@@ -75,6 +76,10 @@ const (
 	EnvS3ForcePathStyle       = "S3_FORCE_PATH_STYLE"
 	EnvS3BucketAutoCreate     = "S3_BUCKET_AUTO_CREATE"
 	EnvMaxUploadBytes         = "MAX_UPLOAD_BYTES"
+	EnvRAGMinerUAPIKey        = "RAG_MINERU_API_TOKEN"
+	EnvDefaultMinerUAPIKey    = "DEFAULT_MINERU_API_TOKEN"
+	EnvRAGJinaAPIKey          = "RAG_JINA_API_KEY"
+	EnvDefaultJinaAPIKey      = "DEFAULT_JINA_API_KEY"
 	EnvAuthMode               = "AUTH_MODE"
 	EnvAuthBootstrapUserID    = "AUTH_BOOTSTRAP_USER_ID"
 	EnvAuthBootstrapUserName  = "AUTH_BOOTSTRAP_DISPLAY_NAME"
@@ -112,6 +117,7 @@ type Config struct {
 	Provider ProviderConfig
 	BYOK     BYOKConfig
 	Storage  StorageConfig
+	RAG      RAGConfig
 	Auth     AuthConfig
 	Team     TeamConfig
 }
@@ -154,6 +160,27 @@ type StorageConfig struct {
 	LocalDir       string
 	S3             S3Config
 	MaxUploadBytes int64
+}
+
+// RAGConfig contains administrator-owned provider credentials for background
+// Knowledge indexing and retrieval. Secrets must never be logged or serialized
+// into API responses.
+type RAGConfig struct {
+	MinerUAPIKey            string
+	JinaAPIKey              string
+	JinaEmbeddingDimensions int
+}
+
+func (cfg RAGConfig) MinerUConfigured() bool {
+	return strings.TrimSpace(cfg.MinerUAPIKey) != ""
+}
+
+func (cfg RAGConfig) JinaConfigured() bool {
+	return strings.TrimSpace(cfg.JinaAPIKey) != ""
+}
+
+func (cfg RAGConfig) Ready() bool {
+	return cfg.MinerUConfigured() && cfg.JinaConfigured()
 }
 
 // S3Config contains MinIO/S3-compatible object storage settings.
@@ -352,6 +379,20 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 				BucketAutoCreate: boolEnvOrDefault(lookup, EnvS3BucketAutoCreate, false),
 			},
 			MaxUploadBytes: int64EnvOrDefault(lookup, EnvMaxUploadBytes, DefaultMaxUploadBytes),
+		},
+
+		RAG: RAGConfig{
+			MinerUAPIKey: optionalEnvAliases(
+				lookup,
+				EnvRAGMinerUAPIKey,
+				EnvDefaultMinerUAPIKey,
+			),
+			JinaAPIKey: optionalEnvAliases(
+				lookup,
+				EnvRAGJinaAPIKey,
+				EnvDefaultJinaAPIKey,
+			),
+			JinaEmbeddingDimensions: DefaultRAGJinaDimensions,
 		},
 
 		Auth: AuthConfig{
@@ -560,6 +601,15 @@ func optionalEnv(lookup func(string) (string, bool), key string) string {
 	}
 
 	return value
+}
+
+func optionalEnvAliases(lookup func(string) (string, bool), keys ...string) string {
+	for _, key := range keys {
+		if value := optionalEnv(lookup, key); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func intEnvOrDefault(lookup func(string) (string, bool), key string, fallback int) int {

@@ -54,3 +54,89 @@ cd mm-chat/frontend && corepack pnpm prettier --check \
 ```
 
 Next slice: G7.2 admin provider config and fail-closed readiness.
+
+## 2026-07-15 — G7.2 Admin Provider Config and Fail-Closed Readiness
+
+Objective: make the G7 MinerU + Jina provider prerequisites visible and
+fail-closed before promoting real parser/index dispatch.
+
+Implemented behavior:
+
+- Go backend config now loads administrator-owned RAG provider secrets:
+  - `RAG_MINERU_API_TOKEN` with `DEFAULT_MINERU_API_TOKEN` fallback;
+  - `RAG_JINA_API_KEY` with `DEFAULT_JINA_API_KEY` fallback;
+  - Jina embedding dimensions fixed at `1024`.
+- Go exposes protected `GET /v1/rag/provider-status` through the normal session
+  identity middleware. The response includes only configured/missing status and
+  embedding dimensions; it never serializes secret values.
+- Python `rag-worker` settings now accept the same provider secret names and
+  fail closed if dispatch enables `parse` without MinerU or
+  `passage_embedding` without Jina. `purge` remains credential-free.
+- Compose and env templates now pass the provider secret names to `backend` and
+  `rag-worker`. Blank values keep G7 provider readiness false and dispatch-safe.
+
+Touched files:
+
+```text
+backend/internal/config/config.go
+backend/internal/config/config_test.go
+backend/internal/ragproviders/handler.go
+backend/internal/ragproviders/handler_test.go
+backend/internal/ragproviders/status.go
+backend/internal/httpserver/server.go
+backend/internal/httpserver/server_test.go
+backend/internal/httpserver/metrics.go
+backend/internal/httpserver/metrics_test.go
+rag/src/mm_chat_rag/settings.py
+rag/tests/unit/test_settings.py
+compose.single-server.yml
+backend/.env.example
+.env.single-server.example
+docs/deployment/single-server-compose.md
+```
+
+Verification run during the slice:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build \
+  go test ./internal/config ./internal/ragproviders ./internal/httpserver
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider tests/unit/test_settings.py
+```
+
+Result:
+
+```text
+Go targeted packages passed.
+Python settings tests passed: 25 passed.
+```
+
+Next slice: G7.3 provider-backed parser/index profile gate with retry/rate-limit
+profile defaults and no provider body/secret logging.
+
+Final G7.2 verification before commit:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./...
+cd mm-chat/rag && uv run mypy src/mm_chat_rag/settings.py
+cd mm-chat/rag && uv run pytest -p no:cacheprovider tests/unit/test_settings.py
+cd mm-chat/rag && uv run ruff check src/mm_chat_rag/settings.py tests/unit/test_settings.py
+cd mm-chat/frontend && corepack pnpm prettier --check \
+  ../docs/architecture/g7-rag-citation-cutover-plan.md \
+  ../docs/tracking/g7-rag-citation-process.md \
+  ../docs/tracking/progress.md \
+  ../docs/architecture/standalone-parity-sliced-cutover-plan.md \
+  ../docs/deployment/single-server-compose.md \
+  ../compose.single-server.yml \
+  ../.env.single-server.example
+cd mm-chat && git diff --check -- .
+```
+
+Final result:
+
+```text
+Go backend full package test passed.
+Python settings mypy/pytest/ruff passed.
+Prettier check passed for changed docs/Compose template.
+git diff --check passed for mm-chat scoped diff.
+```

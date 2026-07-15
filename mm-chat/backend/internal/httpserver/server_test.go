@@ -430,6 +430,7 @@ func TestAuthRequiredModeRejectsMissingCredentialsAndKeepsPublicRoutes(t *testin
 		{method: http.MethodPost, path: "/v1/code/executions"},
 		{method: http.MethodPost, path: "/v1/voice/synthesize"},
 		{method: http.MethodPost, path: "/v1/jobs/job-1/cancel"},
+		{method: http.MethodGet, path: "/v1/rag/provider-status"},
 		{method: http.MethodGet, path: "/v1/teams"},
 		{method: http.MethodGet, path: "/v1/teams/33333333-3333-4333-8333-333333333333/members"},
 		{method: http.MethodGet, path: "/v1/knowledge/collections"},
@@ -467,6 +468,44 @@ func TestAuthRequiredModeRejectsMissingCredentialsAndKeepsPublicRoutes(t *testin
 		if body.Error.Code != "UNAUTHENTICATED" {
 			t.Fatalf("%s %s error code = %q, want UNAUTHENTICATED", route.method, route.path, body.Error.Code)
 		}
+	}
+}
+
+func TestNewHandlerRegistersRAGProviderStatusRoute(t *testing.T) {
+	resolver := &fakeSessionResolver{session: auth.Session{
+		ID:          "session-1",
+		UserID:      "77777777-7777-4777-8777-777777777777",
+		DisplayName: "RAG Admin",
+		Role:        "owner",
+		ExpiresAt:   time.Now().Add(time.Hour),
+	}}
+	handler := NewHandler(
+		config.Config{
+			Addr:    ":0",
+			Version: "route-test",
+			RAG: config.RAGConfig{
+				MinerUAPIKey:            "fake-mineru-secret",
+				JinaAPIKey:              "fake-jina-secret",
+				JinaEmbeddingDimensions: config.DefaultRAGJinaDimensions,
+			},
+		},
+		WithSessionResolver(resolver),
+	)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/rag/provider-status", nil)
+	req.Header.Set("Authorization", "Bearer rag-provider-status-session")
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if resolver.tokenHash != auth.HashSessionToken("rag-provider-status-session") {
+		t.Fatalf("bearer hash = %q", resolver.tokenHash)
+	}
+	if strings.Contains(rec.Body.String(), "fake-mineru-secret") ||
+		strings.Contains(rec.Body.String(), "fake-jina-secret") {
+		t.Fatalf("provider status leaked secret: %s", rec.Body.String())
 	}
 }
 

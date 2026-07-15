@@ -142,11 +142,20 @@ Validation:
 
 ### G7.2 Admin provider config and fail-closed readiness
 
-- Add backend/RAG config for admin-owned MinerU and Jina secrets using env or
-  Docker secrets.
-- Expose redacted provider readiness to frontend/admin diagnostics.
-- Fail closed when required provider secret or projection dependency is absent.
-- Do not log secret values or read deployment `.env` contents in tests.
+Status: Completed on 2026-07-15.
+
+- Added backend/RAG config for admin-owned MinerU and Jina secrets through
+  server environment/secret injection:
+  - `RAG_MINERU_API_TOKEN`, fallback alias `DEFAULT_MINERU_API_TOKEN`;
+  - `RAG_JINA_API_KEY`, fallback alias `DEFAULT_JINA_API_KEY`;
+  - Jina embedding dimension is locked to `1024`.
+- Exposed protected Go diagnostic `GET /v1/rag/provider-status` with only
+  redacted configured/missing status and embedding dimensions.
+- Python worker settings fail closed when dispatch enables `parse` without
+  MinerU credentials or `passage_embedding` without Jina credentials. `purge`
+  remains credential-free.
+- Tests and docs do not read deployment `.env` contents and do not print real
+  secret values.
 
 Validation:
 

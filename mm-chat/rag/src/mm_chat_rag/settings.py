@@ -19,6 +19,7 @@ _PREFIX_RE: Final = re.compile(r"^[A-Za-z0-9:_-]{1,64}$")
 ALLOWED_JOB_STAGES: Final[frozenset[str]] = frozenset(
     {"parse", "passage_embedding", "purge"}
 )
+DEFAULT_JINA_EMBEDDING_DIMENSIONS: Final = 1024
 _KNOWN_ENV: Final = {
     "RAG_WORKER_DATABASE_URL",
     "RAG_WORKER_REDIS_URL",
@@ -39,6 +40,10 @@ _KNOWN_ENV: Final = {
     "RAG_WORKER_HEALTH_PORT",
     "RAG_WORKER_LOG_LEVEL",
     "RAG_WORKER_MAX_RESCAN_CLAIMS",
+    "RAG_MINERU_API_TOKEN",
+    "DEFAULT_MINERU_API_TOKEN",
+    "RAG_JINA_API_KEY",
+    "DEFAULT_JINA_API_KEY",
 }
 
 
@@ -51,6 +56,14 @@ def _required(env: Mapping[str, str], name: str) -> str:
     if not value:
         raise SettingsError(f"{name} is required")
     return value
+
+
+def _optional_alias(env: Mapping[str, str], *names: str) -> str | None:
+    for name in names:
+        value = env.get(name, "").strip()
+        if value:
+            return value
+    return None
 
 
 def _boolean(env: Mapping[str, str], name: str, default: bool) -> bool:
@@ -131,10 +144,31 @@ class Settings:
     log_level: str = "INFO"
     advisory_lock_key: int = 5_567_946_413_527_621_955
     max_rescan_claims: int = 100
+    mineru_api_key: str | None = None
+    jina_api_key: str | None = None
+    jina_embedding_dimensions: int = DEFAULT_JINA_EMBEDDING_DIMENSIONS
 
     def __post_init__(self) -> None:
         """Reject stages outside the SQL claim-function contract."""
         _validate_job_stages(self.job_stages)
+        if self.jina_embedding_dimensions != DEFAULT_JINA_EMBEDDING_DIMENSIONS:
+            raise SettingsError("Jina embedding dimensions must be 1024")
+        if (
+            self.dispatch_enabled
+            and "parse" in self.job_stages
+            and self.mineru_api_key is None
+        ):
+            raise SettingsError(
+                "RAG_MINERU_API_TOKEN is required when parse dispatch is enabled"
+            )
+        if (
+            self.dispatch_enabled
+            and "passage_embedding" in self.job_stages
+            and self.jina_api_key is None
+        ):
+            raise SettingsError(
+                "RAG_JINA_API_KEY is required when embedding dispatch is enabled"
+            )
 
     @property
     def redis_channel(self) -> str:
@@ -179,6 +213,22 @@ class Settings:
         if not dispatch_enabled and job_stages:
             raise SettingsError(
                 "RAG_WORKER_JOB_STAGES must be empty while dispatch is disabled"
+            )
+        mineru_api_key = _optional_alias(
+            env, "RAG_MINERU_API_TOKEN", "DEFAULT_MINERU_API_TOKEN"
+        )
+        jina_api_key = _optional_alias(env, "RAG_JINA_API_KEY", "DEFAULT_JINA_API_KEY")
+        if dispatch_enabled and "parse" in job_stages and mineru_api_key is None:
+            raise SettingsError(
+                "RAG_MINERU_API_TOKEN is required when parse dispatch is enabled"
+            )
+        if (
+            dispatch_enabled
+            and "passage_embedding" in job_stages
+            and jina_api_key is None
+        ):
+            raise SettingsError(
+                "RAG_JINA_API_KEY is required when embedding dispatch is enabled"
             )
 
         log_level = env.get("RAG_WORKER_LOG_LEVEL", "INFO").strip().upper()
@@ -231,6 +281,9 @@ class Settings:
             max_rescan_claims=_integer(
                 env, "RAG_WORKER_MAX_RESCAN_CLAIMS", 100, 1, 10_000
             ),
+            mineru_api_key=mineru_api_key,
+            jina_api_key=jina_api_key,
+            jina_embedding_dimensions=DEFAULT_JINA_EMBEDDING_DIMENSIONS,
         )
         if settings.heartbeat_seconds * 2 > settings.job_lease_seconds:
             raise SettingsError(

@@ -1033,7 +1033,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         real MinerU + Jina + Postgres profile, admin env/secret credentials,
         selected-collection queries, strict refusal, auto-indexing, deletion
         invisibility, retry budget, and G9 legacy-route handoff.
-  - [ ] G7.2 Admin provider config and fail-closed readiness.
+  - [x] G7.2 Admin provider config and fail-closed readiness.
   - [ ] G7.3 Provider-backed parser/index profile gate.
   - [ ] G7.4 Canonical IR to chunks and Postgres projection.
   - [ ] G7.5 Worker dispatch, rebuild, delete, and retry loop.
