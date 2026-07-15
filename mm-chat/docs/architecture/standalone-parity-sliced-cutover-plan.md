@@ -301,8 +301,15 @@ Slice checklist:
         markdown extraction, Agnes image/video result envelopes, and Unsplash
         search result arrays before returning `/v1/plugins/execute`.
   - [ ] G4.5c.2d Plugin audit metadata beyond installing-user persistence.
-- [ ] G4.6 Live browser smoke: one installed plugin produces bounded context and
-      a persisted final answer through the Go stream.
+- [ ] G4.6 Plugin smoke: one installed plugin produces bounded context and a
+      persisted final answer through the Go stream.
+  - [x] G4.6a Zero-cost in-process smoke harness: real Go chat/plugin HTTP
+        handlers install a custom OpenAPI plugin, plan and execute it with a
+        fake provider/transport, pass bounded untrusted plugin context into the
+        Go stream, and verify persisted assistant completion.
+  - [ ] G4.6b Live browser/provider smoke: run the same visible flow through
+        the browser UI or deployed frontend with approved provider/plugin
+        credentials.
 
 Targeted tests:
 
@@ -456,7 +463,7 @@ Targeted tests:
 | G1 Conversation and Message Operations   | Complete | G1.1-G1.6 complete; only paused cross-group search toggle remains outside G1 |
 | G2 Related Questions and Agent Catalogs  | Complete | Related-question/catalog Next routes replaced                                |
 | G3 Auth, Config, Provider Settings, BYOK | Complete | Server-auth/config/provider lifecycle verified                               |
-| G4 Plugin Final Ownership                | In progress | G4.1-G4.5c.2c complete; audit metadata/live smoke remain                     |
+| G4 Plugin Final Ownership                | In progress | G4.1-G4.6a complete; audit metadata and browser/provider smoke remain         |
 | G5 Search/Web Enrichment                 | Paused   | Owner reopens, then server-owned search passes gates                         |
 | G6 Voice/Image/Code Jobs                 | Pending  | Enabled jobs server-admitted and fail closed otherwise                       |
 | G7 Knowledge/RAG/Citations               | Pending  | Phase 15 runtime gates pass                                                  |

@@ -1739,3 +1739,49 @@ G4.6 live browser smoke with a real plugin result
 
 Next slice: decide whether to add the remaining audit metadata or run G4.6 live
 smoke first.
+
+## 2026-07-15 — G4.6a Zero-cost Plugin Orchestration Smoke Harness Completed
+
+Objective: add a reproducible smoke harness for the plugin final-ownership path
+without spending external provider quota or relying on public plugin services.
+This is intentionally not marked as the final browser/provider live smoke.
+
+Completed scope:
+
+- added an in-process backend smoke test that mounts real Go chat and plugin HTTP
+  handlers on one mux;
+- installs a custom OpenAPI weather plugin through `POST /v1/plugins/install`;
+- plans a plugin call through `POST /v1/chat/tools/plan` using a fake provider;
+- executes the installed plugin through id-only `POST /v1/plugins/execute` using
+  a fake plugin HTTP transport;
+- builds bounded untrusted plugin context and sends it through
+  `POST /v1/chat/conversations/{id}/stream`;
+- verifies the Go SSE stream completes and the assistant message is persisted
+  with the plugin-derived answer.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/backend/internal/chat/plugin_orchestration_smoke_test.go
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./internal/chat
+# passed with escalated httptest loopback permission
+```
+
+Residual G4 blockers:
+
+```text
+G4.5c.2d Plugin audit metadata beyond installing-user persistence
+G4.6b live browser/provider smoke with a real plugin result
+```
+
+Next slice: either define the remaining plugin audit metadata contract, or run
+G4.6b once approved credentials/runtime are available.

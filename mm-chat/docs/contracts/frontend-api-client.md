@@ -2189,8 +2189,13 @@ Browser execution rules:
   back to `/api/plugins/execute`.
 - Composition: server mode opens both skill and plugin menus; search/reasoning
   remain on the unsupported-action gate.
-- Live smoke: real plan, real plugin response, final Go SSE completion, message
-  reload, and cleanup of the smoke conversation.
+- G4.6a zero-cost smoke: in-process real Go chat/plugin HTTP handlers, custom
+  OpenAPI install, provider planning, id-only plugin execution, bounded
+  untrusted plugin context, final Go SSE completion, and persisted assistant
+  message.
+- G4.6b live smoke: browser UI or deployed frontend, real plan, real plugin
+  response, final Go SSE completion, message reload, and cleanup of the smoke
+  conversation.
 
 ### 21.7 Wrong vs Correct
 
