@@ -944,8 +944,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
   - [x] G3.3 Provider Settings/BYOK UI adapters stop direct server-mode
         transitional `/api/*` calls.
   - [x] G3.4 Hosted/dev auth behavior and same-origin smoke.
-- [ ] G4 Plugin Registry, Install, and Execution Final Ownership: remove
-      transitional plugin ownership.
+- [x] G4 Plugin Registry, Install, and Execution Final Ownership: server
+      plugin registry/install/execute ownership and live smoke complete; final
+      Next route deletion remains in G9.
   - [x] G4.1 Server plugin tool planning and bounded untrusted result context
         wired through Go `/v1/chat/tools/plan` and frontend orchestration.
   - [x] G4.2 Plugin registry/list adapter.
@@ -961,8 +962,8 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
   - [x] G4.5c Registry-backed plugin execute finalization.
   - [x] G4.6a Zero-cost in-process plugin smoke harness producing bounded
         context and a persisted final Go-stream answer.
-  - [ ] G4.6b Live browser smoke with one installed plugin producing bounded
-        context and final Go-stream answer.
+  - [x] G4.6b Live deployed-frontend smoke with one installed plugin producing
+        bounded context and final Go-stream answer.
 - [ ] G5 Search and Web-Enrichment Toggle: keep paused until owner reopens, then
       make Search server-owned or explicitly unavailable.
 - [ ] G6 Voice, Image Generation, and Code Execution Jobs: move job routes behind

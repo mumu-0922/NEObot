@@ -2757,3 +2757,74 @@ G4.6b Live browser/provider smoke remains open.
 G6.5c.2b.2 Authorized configured-provider voice smoke remains deferred/skipped for now.
 G9 still owns final removal of local-only transitional Next plugin routes.
 ```
+
+## 2026-07-15 — G4.6b Live Deployed-Frontend Weather Plugin Smoke Completed
+
+Objective: close the remaining plugin final-ownership smoke by proving one real
+installed plugin can be planned by the configured provider, executed through Go,
+passed as bounded untrusted context, streamed through Go, persisted, reloaded,
+and cleaned up.
+
+Runtime repair before smoke:
+
+- the running backend image was stale and returned `404 NOT_FOUND` for
+  `/v1/plugins`;
+- rebuilt and restarted only `backend` and `frontend` with the existing
+  `.env.single-server` file without reading or printing secrets;
+- the rebuilt backend exposed `/v1/plugins`, but `plugin_registry` was missing
+  until migration `011_plugin_registry` was applied;
+- ran the migration by mapping the container's existing `DATABASE_URL` to the
+  migrator-required `MIGRATION_DATABASE_URL`, without printing the connection
+  string.
+
+Smoke path:
+
+```text
+GET    http://127.0.0.1:18080/mm-api/v1/plugins
+POST   http://127.0.0.1:18080/mm-api/v1/chat/conversations
+POST   http://127.0.0.1:18080/mm-api/v1/chat/conversations/{id}/messages
+POST   http://127.0.0.1:18080/mm-api/v1/chat/tools/plan
+POST   http://127.0.0.1:18080/mm-api/v1/plugins/execute
+POST   http://127.0.0.1:18080/mm-api/v1/chat/conversations/{id}/stream
+GET    http://127.0.0.1:18080/mm-api/v1/chat/conversations/{id}/messages
+DELETE http://127.0.0.1:18080/mm-api/v1/chat/conversations/{id}
+```
+
+Evidence:
+
+```text
+Docker Compose backend/frontend rebuild                        passed
+backend/frontend health                                        healthy / healthy
+migrate up                                                     up 011_plugin_registry
+GET /mm-api/v1/plugins                                         200, built-ins include weather-gpt
+Direct weather plugin service                                  200, Shanghai weather returned
+Go tool plan via deployed frontend                             getCurrentWeather({location: Shanghai})
+Go plugin execute via deployed frontend                        weather-gpt/getCurrentWeather, Shanghai result
+Go final SSE via deployed frontend                             message.completed
+Persisted message reload                                       completed assistant message present
+Smoke conversation cleanup                                     DELETE success
+Postgres plugin audit probe                                    plugin.execute|weather-gpt|getCurrentWeather|weathergpt.vercel.app
+Artifact                                                       /tmp/mm-chat-g46b-live-smoke-20260715-190934-11ed9e5d.json
+```
+
+Final answer preview:
+
+```text
+上海当前天气为多云，气温 35.4°C，体感温度约 48.8°C，湿度 56%，降雨概率较低。
+```
+
+Playwright note:
+
+```text
+MCP browser runtime could not launch Chrome: /opt/google/chrome/chrome missing.
+This slice therefore uses the accepted "deployed frontend" path through the
+same-origin `/mm-api` proxy rather than a fresh visible screenshot. No claim is
+made for visual-regression coverage.
+```
+
+Residual blockers:
+
+```text
+G4 is complete for server-owned plugin registry/install/execute and live smoke.
+G9 still owns removal of replaced transitional Next `/api/plugins/*` routes.
+```
