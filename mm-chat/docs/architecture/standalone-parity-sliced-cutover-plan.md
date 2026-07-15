@@ -374,6 +374,12 @@ Slice checklist:
           boundary, without calling real providers.
     - [ ] G6.5c.2 Real voice executor integration with stored audio artifacts
           and configured-provider smoke.
+      - [x] G6.5c.2a Voice executor opt-in seam: add a Go executor interface,
+            pass multipart audio into the service, require an explicitly
+            configured sanitized admission audit recorder before executor calls,
+            and require artifact storage before synthesis executors can run.
+      - [ ] G6.5c.2b Real provider-backed voice executor and authorized
+            configured-provider smoke.
     - [ ] G6.5c.3 Real image executor integration with stored image artifacts
           and configured-provider smoke.
   - [x] G6.5d Code execution sandbox contract before any real executor is enabled: see `../contracts/code-execution-sandbox-contract.md`; runtime remains disabled.

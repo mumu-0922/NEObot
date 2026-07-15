@@ -20,6 +20,7 @@ const (
 	KindCodeExecute     JobKind = "code.execute"
 
 	StatusUnavailable Status = "unavailable"
+	StatusAdmitted    Status = "admitted"
 )
 
 var ErrAuditUnavailable = errors.New("job audit recorder unavailable")

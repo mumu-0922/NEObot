@@ -80,7 +80,7 @@ func (h *Handler) transcribe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "AUDIO_REQUIRED", "audio file is required")
 		return
 	}
-	_ = file.Close()
+	defer func() { _ = file.Close() }()
 	if fileHeader == nil || fileHeader.Size <= 0 {
 		writeError(w, http.StatusBadRequest, "AUDIO_REQUIRED", "audio file is required")
 		return
@@ -93,9 +93,13 @@ func (h *Handler) transcribe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response, err := h.service.Transcribe(r.Context(), TranscribeRequest{
-		Provider: provider,
-		ModelID:  strings.TrimSpace(r.FormValue("modelId")),
-		Language: strings.TrimSpace(r.FormValue("language")),
+		Provider:         provider,
+		ModelID:          strings.TrimSpace(r.FormValue("modelId")),
+		Language:         strings.TrimSpace(r.FormValue("language")),
+		AudioFilename:    fileHeader.Filename,
+		AudioContentType: strings.TrimSpace(fileHeader.Header.Get("Content-Type")),
+		AudioSize:        fileHeader.Size,
+		Audio:            file,
 	})
 	if err != nil {
 		writeServiceError(w, err)
@@ -112,6 +116,7 @@ func (h *Handler) synthesize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	request.Text = strings.TrimSpace(request.Text)
+	request.JobID = strings.TrimSpace(request.JobID)
 	request.VoiceID = strings.TrimSpace(request.VoiceID)
 	request.ModelID = strings.TrimSpace(request.ModelID)
 	provider, err := parseProvider(string(request.Provider))
@@ -168,6 +173,8 @@ func writeServiceError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, jobaudit.ErrAuditUnavailable):
 		writeError(w, http.StatusServiceUnavailable, "JOB_AUDIT_UNAVAILABLE", "job audit is unavailable")
+	case errors.Is(err, ErrVoiceArtifactStoreUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "VOICE_ARTIFACT_STORE_UNAVAILABLE", "voice artifact storage is not configured")
 	case errors.Is(err, ErrVoiceJobsUnavailable):
 		writeError(w, http.StatusNotImplemented, "VOICE_JOBS_UNAVAILABLE", "voice jobs are not configured")
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):

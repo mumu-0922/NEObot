@@ -1425,6 +1425,13 @@ Rules:
   return large inline base64 payloads, object-store keys, or direct storage
   URLs to the frontend. This boundary does not enable real provider calls by
   itself.
+- G6.5c.2a adds only the Go voice executor seam. `POST /v1/voice/transcribe`
+  may pass validated multipart audio to an explicitly configured executor, and
+  `POST /v1/voice/synthesize` may call an executor only when artifact storage
+  is also configured. Executor calls must first record sanitized `admitted`
+  audit metadata through an explicitly configured audit recorder and must fail
+  closed if that recorder is absent or unavailable. The default server remains
+  fail-closed, and this seam does not authorize live provider quota usage.
 - G6.5d defines the hard gate for real code execution in
   `docs/contracts/code-execution-sandbox-contract.md`; `codeExecution` remains
   disabled until that sandbox/storage/audit/cancel test plan is implemented.

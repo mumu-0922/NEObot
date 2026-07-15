@@ -2243,3 +2243,61 @@ G6.5c.3 Real image executor with stored image artifacts and configured-provider 
 
 Next slice: wire one real executor at a time behind this artifact boundary only
 after an explicit live-provider smoke target and quota/credential approval.
+
+## 2026-07-15 — G6.5c.2a Voice Executor Opt-in Seam Completed
+
+Objective: add the Go service seam needed by future voice transcription and
+speech-synthesis executors while keeping the default runtime fail-closed and
+avoiding any real provider call, credential use, or quota-consuming smoke.
+
+Completed scope:
+
+- added a `voicejobs.Executor` interface with `Transcribe` and `Synthesize`
+  methods;
+- passed validated multipart audio metadata and stream handles from
+  `/v1/voice/transcribe` into the service only after admission validation;
+- added `WithExecutor` as the explicit opt-in gate, so the default service still
+  returns `VOICE_JOBS_UNAVAILABLE`;
+- added a sanitized `admitted` audit status and fail-closed audit gate requiring
+  an explicit audit recorder before any configured voice executor can run;
+- required an artifact store before any synthesis executor can run, returning
+  `VOICE_ARTIFACT_STORE_UNAVAILABLE` before executor invocation when storage is
+  absent;
+- stored synthesized audio executor output through the G6.5c.1 artifact
+  boundary and returned only compact artifact metadata;
+- covered the seam with fake in-process executors/stores only. No live STT/TTS
+  provider was called.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/backend/internal/voicejobs/types.go
+mm-chat/backend/internal/jobaudit/jobaudit.go
+mm-chat/backend/internal/voicejobs/service.go
+mm-chat/backend/internal/voicejobs/service_test.go
+mm-chat/backend/internal/voicejobs/handler.go
+mm-chat/backend/internal/voicejobs/handler_test.go
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/inventory/frontend-call-sites.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./internal/jobaudit ./internal/voicejobs # passed
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./...                # passed
+git diff --check -- mm-chat                                                       # passed
+```
+
+Residual G6 blockers:
+
+```text
+G6.5c.2b Real provider-backed voice executor and authorized configured-provider smoke
+G6.5c.3 Real image executor with stored image artifacts and configured-provider smoke
+```
+
+Next slice: either implement the image executor opt-in seam or add the real
+voice provider behind an explicit quota/credential approval gate.

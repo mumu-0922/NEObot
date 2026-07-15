@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"neo-chat/mm-chat/backend/internal/jobartifacts"
 	"neo-chat/mm-chat/backend/internal/jobaudit"
 )
 
@@ -26,6 +27,45 @@ func TestHandlerSynthesizeFailsClosedAfterAdmission(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	assertError(t, rec, http.StatusNotImplemented, "VOICE_JOBS_UNAVAILABLE")
+}
+
+func TestHandlerSynthesizeReturnsStoredArtifactWhenExecutorConfigured(t *testing.T) {
+	executor := &fakeVoiceExecutor{synthesizeResult: SynthesizeResult{
+		JobID:       "job-1",
+		Filename:    "speech.webm",
+		ContentType: "audio/webm",
+		Size:        5,
+		Body:        strings.NewReader("audio"),
+	}}
+	store := &fakeArtifactStore{artifact: jobartifacts.Artifact{
+		FileID:      "file-1",
+		Purpose:     "audio",
+		ContentType: "audio/webm",
+		Size:        5,
+	}}
+	handler := NewHandler(NewService(WithExecutor(executor), WithArtifactStore(store), WithAuditRecorder(noopAuditRecorder())))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		synthesizePath,
+		strings.NewReader(`{"text":"hello","provider":"default","jobId":"job-1","voiceId":"voice-1"}`),
+	)
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var response SynthesizeResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response != (SynthesizeResponse{FileID: "file-1", Purpose: "audio", ContentType: "audio/webm", Size: 5}) {
+		t.Fatalf("response = %#v", response)
+	}
+	if !executor.synthesizeCalled {
+		t.Fatal("executor was not called")
+	}
 }
 
 func TestHandlerSynthesizeValidatesRequestBeforeAdmission(t *testing.T) {
@@ -71,6 +111,41 @@ func TestHandlerTranscribeFailsClosedAfterAdmission(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	assertError(t, rec, http.StatusNotImplemented, "VOICE_JOBS_UNAVAILABLE")
+}
+
+func TestHandlerTranscribePassesAudioToOptInExecutor(t *testing.T) {
+	executor := &fakeVoiceExecutor{transcribeResponse: TranscribeResponse{Text: "hello"}}
+	handler := NewHandler(NewService(WithExecutor(executor), WithAuditRecorder(noopAuditRecorder())))
+	body, contentType := multipartAudioBody(t, map[string]string{
+		"provider": "model",
+		"modelId":  "audio-model",
+		"language": "en",
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, transcribePath, body)
+	req.Header.Set("Content-Type", contentType)
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var response TranscribeResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Text != "hello" {
+		t.Fatalf("text = %q, want hello", response.Text)
+	}
+	if !executor.transcribeCalled {
+		t.Fatal("executor was not called")
+	}
+	if executor.transcribeRequest.AudioFilename != "audio.webm" ||
+		executor.transcribeRequest.AudioContentType != "application/octet-stream" ||
+		executor.transcribeRequest.AudioSize <= 0 ||
+		executor.transcribeBody != "audio-bytes" {
+		t.Fatalf("transcribe request = %#v body=%q", executor.transcribeRequest, executor.transcribeBody)
+	}
 }
 
 func TestHandlerTranscribeValidatesRequestBeforeAdmission(t *testing.T) {

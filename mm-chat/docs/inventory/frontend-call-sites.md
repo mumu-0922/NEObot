@@ -47,7 +47,7 @@ These are already closer to the desired boundary. Phase 2 should wrap these into
 | P2 | `src/services/api/pluginService.ts` | via `pluginApi.listAvailable/install`; local adapter retains `/api/plugins/list` and `/api/plugins/install` | Server adapter targets `/v1/plugins*`; G4.5c.2b persists supplied plugin payloads in Go/Postgres when `DATABASE_URL` is configured and converts custom/OpenAPI manifest installs in Go. |
 | P2 | `src/utils/pluginUtils.ts` | via `pluginApi.execute`; local adapter retains `/api/plugins/execute` | Server adapter targets `/v1/plugins/execute`; G4.5c.2c sends id-only payloads, Go resolves built-ins/registered/custom OpenAPI plugins from memory/Postgres, and Go normalizes built-in plugin result envelopes. |
 | P2 | `src/services/api/searchService.ts` | `/api/search` | `searchApi` or chat-side capability later. |
-| P2 | `src/services/api/voiceService.ts` | `/api/voice/transcribe`, `/api/voice/synthesize` | `voiceApi` later; G6.1 blocks server-mode service calls, G6.2 registers fail-closed Go `/v1/voice/*` admission routes, and G6.5c.1 defines stored audio result artifacts. |
+| P2 | `src/services/api/voiceService.ts` | `/api/voice/transcribe`, `/api/voice/synthesize` | `voiceApi` later; G6.1 blocks server-mode service calls, G6.2 registers fail-closed Go `/v1/voice/*` admission routes, G6.5c.1 defines stored audio result artifacts, and G6.5c.2a adds the opt-in executor seam without enabling live providers. |
 | P3 | `src/services/api/agentService.ts` | `/api/agents`, `/api/agents/:identifier` | static/catalog API; can remain static initially. |
 | P3 | `src/services/api/skillService.ts` | `/data/skills/*` | static asset loader; no Go dependency for MVP. |
 
@@ -126,7 +126,7 @@ Recommended implementation order after this inventory:
 4. Wrap OPFS helpers as `local.fileApi` and replace direct display resolvers gradually.
 5. Add `server` mode HTTP adapter for `/v1/config`, `/health`, and provider model listing smoke tests.
 6. Add server chat CRUD/SSE only after the local adapter passes parity tests.
-7. Defer plugin, RAG, doc parse, voice, image generation, and code execution behind disabled capabilities; G6.1 now enforces this for server-mode voice/image/code service calls, G6.5a audits only sanitized server admission metadata, G6.5b adds fail-closed job cancellation admission, and G6.5c.1 stores future voice/image outputs only through backend file artifacts.
+7. Defer plugin, RAG, doc parse, voice, image generation, and code execution behind disabled capabilities; G6.1 now enforces this for server-mode voice/image/code service calls, G6.5a audits only sanitized server admission metadata, G6.5b adds fail-closed job cancellation admission, G6.5c.1 stores future voice/image outputs only through backend file artifacts, and G6.5c.2a keeps voice execution opt-in only.
 
 ## Risks and Guardrails
 

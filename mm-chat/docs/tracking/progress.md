@@ -982,6 +982,13 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
             through backend file/object storage without provider calls.
       - [ ] G6.5c.2 Real voice executor with stored audio artifacts and
             configured-provider smoke.
+        - [x] G6.5c.2a Voice executor opt-in seam: Go can call a configured
+              executor only after an explicitly configured sanitized admission
+              audit recorder accepts the event, passes multipart audio to
+              transcription, and blocks synthesis execution until artifact
+              storage is configured.
+        - [ ] G6.5c.2b Real provider-backed voice executor and authorized
+              configured-provider smoke.
       - [ ] G6.5c.3 Real image executor with stored image artifacts and
             configured-provider smoke.
     - [x] G6.5d Code execution sandbox contract before any real executor is enabled: documented in `docs/contracts/code-execution-sandbox-contract.md`; runtime remains disabled.
