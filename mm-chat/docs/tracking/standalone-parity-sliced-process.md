@@ -1613,12 +1613,11 @@ git diff --check -- mm-chat                                             # passed
 Residual G4.5c blockers:
 
 ```text
-G4.5c.2c Plugin audit metadata beyond installing-user persistence
-G4.5c.2c Built-in result normalizers
+G4.5c.2d Plugin audit metadata beyond installing-user persistence
 G4.6 live browser smoke with a real plugin result
 ```
 
-Next slice: G4.5c.2c audit/normalizer cleanup or, if the owner wants runtime
+Next slice: G4.5c.2c built-in result normalizers or, if the owner wants runtime
 confidence first, G4.6 smoke against a converted plugin.
 
 ## 2026-07-15 — G4.5c.2b Go OpenAPI Plugin Install Conversion Completed
@@ -1680,10 +1679,63 @@ git diff --check -- mm-chat                                             # passed
 Residual G4.5c blockers:
 
 ```text
-G4.5c.2c Plugin audit metadata beyond installing-user persistence
-G4.5c.2c Built-in result normalizers
+G4.5c.2d Plugin audit metadata beyond installing-user persistence
 G4.6 live browser smoke with a real plugin result
 ```
 
-Next slice: G4.5c.2c audit/normalizer cleanup or G4.6 live smoke against a
+Next slice: G4.5c.2c built-in result normalizers or G4.6 live smoke against a
 converted plugin.
+
+## 2026-07-15 — G4.5c.2c Go Built-in Plugin Result Normalizers Completed
+
+Objective: move built-in plugin result normalization into Go as a narrow slice,
+without touching audit metadata or live-smoke wiring.
+
+Completed scope:
+
+- normalized Jina Web Reader `{code:200,data.content}` payloads into readable
+  markdown strings inside Go `/v1/plugins/execute`;
+- normalized Agnes image responses into `{imageUrl,imageBase64,revisedPrompt,raw}`
+  envelopes;
+- normalized Agnes video status/result payloads into stable task/video/status,
+  generation status, progress, media URL, error, and raw fields;
+- normalized Unsplash `results[]` payloads into the compact image result array
+  shape already expected by the frontend fallback path;
+- kept local Next plugin execution normalizers unchanged for rollback/local mode.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/backend/internal/plugins/handler.go
+mm-chat/backend/internal/plugins/normalizers.go
+mm-chat/backend/internal/plugins/normalizers_test.go
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/inventory/frontend-call-sites.md
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./internal/plugins # passed
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./...              # passed
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/pluginResponseNormalizers.test.ts \
+  src/__tests__/pluginUtils.test.ts \
+  src/__tests__/serverPluginOrchestration.test.ts                              # passed, 3 files / 17 tests
+cd mm-chat/frontend && corepack pnpm typecheck                                  # passed
+cd mm-chat/frontend && corepack pnpm format:check                               # passed
+cd mm-chat/frontend && corepack pnpm lint                                       # passed
+```
+
+Residual G4.5c blockers:
+
+```text
+G4.5c.2d Plugin audit metadata beyond installing-user persistence
+G4.6 live browser smoke with a real plugin result
+```
+
+Next slice: decide whether to add the remaining audit metadata or run G4.6 live
+smoke first.

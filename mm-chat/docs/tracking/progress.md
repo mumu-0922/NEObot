@@ -957,6 +957,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
   - [x] G4.5c.1 Go registry-backed id-only execution bridge.
   - [x] G4.5c.2a Postgres-backed plugin registry persistence.
   - [x] G4.5c.2b Go custom OpenAPI manifest conversion.
+  - [x] G4.5c.2c Go built-in plugin result normalizers.
   - [ ] G4.5c Registry-backed plugin execute finalization.
   - [ ] G4.6 Live browser smoke with one installed plugin producing bounded
         context and final Go-stream answer.

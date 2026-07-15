@@ -1984,14 +1984,15 @@ Operational rollback smoke:
 This contract applies when `NEXT_PUBLIC_API_MODE=server` and one or more
 installed plugins are active. The provider credential remains owned by Go;
 plugin auth must remain browser-encrypted when it crosses the API boundary.
-Copying `PROVIDER_API_KEY` into the frontend is forbidden. As of G4.5c.2b,
+Copying `PROVIDER_API_KEY` into the frontend is forbidden. As of G4.5c.2c,
 server-mode plugin execution routes to Go `/v1/plugins/execute` with
 `pluginId/functionName`; Go resolves built-ins, supplied plugin payloads, and
 custom/OpenAPI manifest installs registered through `/v1/plugins/install`; when
 `DATABASE_URL` is configured the registry is Postgres-backed and prevents
 installed plugins from shadowing built-in ids. Go decrypts `valueSecret`,
 applies outbound URL policy including redirects, enforces timeout/response
-bounds, and returns generic normalized results. Full manifest execution payloads
+bounds, and normalizes built-in plugin results before returning generic plugin
+outputs. Full manifest execution payloads
 remain accepted only as a bounded compatibility path until final registry
 cleanup. The transitional Next `/api/plugins/execute` path is local-adapter
 rollback only.
@@ -2104,8 +2105,8 @@ Browser execution rules:
   plugin payloads register directly; custom raw OpenAPI JSON and marketplace
   plugins with `manifestUrl` plus empty `functions` are fetched/converted in Go
   before registration.
-- Plugin audit metadata beyond installing-user persistence and built-in result
-  normalizers remain after G4.5c.2b.
+- Plugin audit metadata beyond installing-user persistence remains after
+  G4.5c.2c.
 - `authConfig.value` plaintext is rejected with
   `PLAINTEXT_PLUGIN_AUTH_REJECTED`; only BYOK `valueSecret` is accepted.
 - Go outbound policy allows only `http|https`, blocks
@@ -2181,6 +2182,8 @@ Browser execution rules:
 - G4.5c.2b OpenAPI install: raw custom JSON conversion, manifest URL fetch
   conversion, invalid manifest errors, private manifest URL blocking, and
   id-only execution after converted install.
+- G4.5c.2c built-in normalizers: Jina readable markdown extraction, Agnes
+  image/video result envelopes, and Unsplash result arrays from Go execution.
 - G4.5c.1 adapter: server-mode `pluginApi.execute` posts id-only payloads to
   `/v1/plugins/execute`, maps Go errors as plugin error results, and never falls
   back to `/api/plugins/execute`.

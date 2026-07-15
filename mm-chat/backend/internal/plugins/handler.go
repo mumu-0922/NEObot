@@ -457,7 +457,7 @@ func (s *Service) Execute(ctx context.Context, request ExecuteRequest) (any, err
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		return string(data), nil
 	}
-	return parsed, nil
+	return normalizePluginResponse(plugin, parsed), nil
 }
 
 func (s *Service) RegisterPlugin(ctx context.Context, plugin *Plugin) (Plugin, error) {
