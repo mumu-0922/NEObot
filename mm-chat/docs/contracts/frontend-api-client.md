@@ -1984,13 +1984,15 @@ Operational rollback smoke:
 This contract applies when `NEXT_PUBLIC_API_MODE=server` and one or more
 installed plugins are active. The provider credential remains owned by Go;
 plugin auth must remain browser-encrypted when it crosses the API boundary.
-Copying `PROVIDER_API_KEY` into the frontend is forbidden. As of G4.5c.1,
+Copying `PROVIDER_API_KEY` into the frontend is forbidden. As of G4.5c.2a,
 server-mode plugin execution routes to Go `/v1/plugins/execute` with
 `pluginId/functionName`; Go resolves built-ins and plugins registered through
-`/v1/plugins/install`, decrypts `valueSecret`, applies outbound URL policy
-including redirects, enforces timeout/response bounds, and returns generic
-normalized results. Full manifest payloads remain accepted only as a bounded
-compatibility path until durable registry completion. The transitional Next
+`/v1/plugins/install`; when `DATABASE_URL` is configured the registry is
+Postgres-backed and prevents installed plugins from shadowing built-in ids. Go
+decrypts `valueSecret`, applies outbound URL policy including redirects,
+enforces timeout/response bounds, and returns generic normalized results. Full
+manifest payloads remain accepted only as a bounded compatibility path until
+final registry cleanup. The transitional Next
 `/api/plugins/execute` path is local-adapter rollback only.
 
 ```text
@@ -2095,9 +2097,11 @@ Browser execution rules:
   the Go registry resolves the full plugin/function definition. Full manifest
   execution remains accepted as compatibility only, not as the production
   adapter path.
-- G4.5c.1 registry scope is process memory seeded with built-ins plus plugins
-  registered via `/v1/plugins/install`; durable Postgres persistence and custom
-  OpenAPI manifest conversion are G4.5c.2.
+- G4.5c.2a registry scope is built-ins plus plugins registered via
+  `/v1/plugins/install`; local/dev without `DATABASE_URL` uses process memory,
+  while configured server deployments use Postgres `plugin_registry`.
+- Custom OpenAPI manifest conversion, plugin audit metadata, and built-in result
+  normalizers remain G4.5c.2b.
 - `authConfig.value` plaintext is rejected with
   `PLAINTEXT_PLUGIN_AUTH_REJECTED`; only BYOK `valueSecret` is accepted.
 - Go outbound policy allows only `http|https`, blocks
@@ -2164,6 +2168,8 @@ Browser execution rules:
   no secret leakage in errors.
 - G4.5c.1 Go registry: built-in seed lookup, install registration, id-only
   execution, unknown-plugin failure, and custom manifest fail-closed behavior.
+- G4.5c.2a durable registry: migration contract, Postgres save/get/list,
+  startup wiring, built-in shadow rejection, and runtime shared-store health.
 - G4.5c.1 adapter: server-mode `pluginApi.execute` posts id-only payloads to
   `/v1/plugins/execute`, maps Go errors as plugin error results, and never falls
   back to `/api/plugins/execute`.

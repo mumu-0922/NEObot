@@ -83,7 +83,7 @@ func (s *Service) PublicConfig() PublicConfig {
 			BYOKEphemeralAllowed:    s.cfg.BYOK.AllowEphemeralKey,
 			RateLimitStore:          publicStoreState(s.cfg.Redis.RateLimitEnabled),
 			DocumentParseJobStore:   "memory",
-			PluginRegistryStore:     "memory",
+			PluginRegistryStore:     pluginRegistryStoreState(s.cfg.DatabaseURL),
 		},
 	}
 }
@@ -296,6 +296,13 @@ func authModeToDeploymentMode(mode string) string {
 
 func publicStoreState(enabled bool) string {
 	if enabled {
+		return "shared"
+	}
+	return "memory"
+}
+
+func pluginRegistryStoreState(databaseURL string) string {
+	if strings.TrimSpace(databaseURL) != "" {
 		return "shared"
 	}
 	return "memory"

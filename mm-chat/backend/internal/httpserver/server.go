@@ -60,6 +60,7 @@ type options struct {
 	teamService          *teams.Service
 	knowledgeService     *knowledge.Service
 	agentService         *agents.Service
+	pluginRegistry       plugins.Registry
 }
 
 func WithReadyChecker(checker health.ReadinessChecker) Option {
@@ -176,6 +177,12 @@ func WithAgentService(service *agents.Service) Option {
 	}
 }
 
+func WithPluginRegistry(registry plugins.Registry) Option {
+	return func(opts *options) {
+		opts.pluginRegistry = registry
+	}
+}
+
 func New(cfg config.Config, opts ...Option) *http.Server {
 	return &http.Server{
 		Addr:              cfg.Addr,
@@ -230,6 +237,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	pluginHandler := plugins.NewHandler(plugins.NewService(
 		cfg,
 		plugins.WithSecretDecrypter(runtimeConfigService.DecryptOptionalSecret),
+		plugins.WithRegistry(resolvedOptions.pluginRegistry),
 	))
 	runtimeConfigHandler := runtimeconfig.NewHandler(runtimeConfigService)
 

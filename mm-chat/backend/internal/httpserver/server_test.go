@@ -762,8 +762,8 @@ func TestNewHandlerRegistersPluginRoutesWithFailClosedRegistryFallbacks(t *testi
 	if err := json.NewDecoder(rec.Body).Decode(&listBody); err != nil {
 		t.Fatalf("decode plugin list: %v", err)
 	}
-	if !listBody.Unavailable || len(listBody.Plugins) != 0 {
-		t.Fatalf("plugin list = %#v, unavailable=%v; want empty unavailable", listBody.Plugins, listBody.Unavailable)
+	if listBody.Unavailable || len(listBody.Plugins) == 0 {
+		t.Fatalf("plugin list = %#v, unavailable=%v; want available built-ins", listBody.Plugins, listBody.Unavailable)
 	}
 
 	for _, tc := range []struct {

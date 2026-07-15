@@ -289,9 +289,12 @@ Slice checklist:
   - [x] G4.5c.1 Go registry id-only bridge: seed built-ins in a Go registry,
         register installed plugin payloads through `/v1/plugins/install`, and
         make server-mode execution send `pluginId/functionName`.
-  - [ ] G4.5c.2 Durable registry completion: Postgres-backed persistence,
-        custom OpenAPI manifest conversion, audit metadata, and built-in result
-        normalizers.
+  - [x] G4.5c.2a Durable registry persistence: add Postgres schema/repository,
+        wire API startup to use it when `DATABASE_URL` is configured, list
+        built-ins/installed plugins from Go, and prevent installed plugins from
+        shadowing built-in ids.
+  - [ ] G4.5c.2b Custom OpenAPI manifest conversion, audit metadata, and
+        built-in result normalizers.
 - [ ] G4.6 Live browser smoke: one installed plugin produces bounded context and
       a persisted final answer through the Go stream.
 

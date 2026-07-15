@@ -21,7 +21,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/runtimeconfig"
 )
 
-func TestHandlerListsUnavailableRegistry(t *testing.T) {
+func TestHandlerListsBuiltInRegistry(t *testing.T) {
 	handler := NewHandler(nil)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/plugins", nil)
@@ -35,11 +35,11 @@ func TestHandlerListsUnavailableRegistry(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if !response.Unavailable {
-		t.Fatal("Unavailable = false, want true")
+	if response.Unavailable {
+		t.Fatal("Unavailable = true, want false")
 	}
-	if len(response.Plugins) != 0 {
-		t.Fatalf("plugins = %#v, want empty", response.Plugins)
+	if !containsPlugin(response.Plugins, "jina-web-reader") || !containsPlugin(response.Plugins, "weather-gpt") {
+		t.Fatalf("plugins = %#v, want built-in plugins", response.Plugins)
 	}
 }
 

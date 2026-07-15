@@ -39,8 +39,21 @@ func TestPublicConfigPublishesServerDefaultProviderWithoutSecret(t *testing.T) {
 	if cfg.Deployment.RateLimitStore != "shared" {
 		t.Fatalf("rate limit store = %q", cfg.Deployment.RateLimitStore)
 	}
+	if cfg.Deployment.PluginRegistryStore != "memory" {
+		t.Fatalf("plugin registry store = %q", cfg.Deployment.PluginRegistryStore)
+	}
 	if !cfg.Deployment.BYOKEphemeralAllowed {
 		t.Fatalf("expected BYOK ephemeral flag")
+	}
+}
+
+func TestPublicConfigPublishesSharedPluginRegistryWhenDatabaseConfigured(t *testing.T) {
+	service := NewService(config.Config{DatabaseURL: "postgres://mm-chat"})
+
+	cfg := service.PublicConfig()
+
+	if cfg.Deployment.PluginRegistryStore != "shared" {
+		t.Fatalf("plugin registry store = %q, want shared", cfg.Deployment.PluginRegistryStore)
 	}
 }
 

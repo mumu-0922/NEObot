@@ -25,6 +25,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/files"
 	"neo-chat/mm-chat/backend/internal/httpserver"
 	"neo-chat/mm-chat/backend/internal/knowledge"
+	"neo-chat/mm-chat/backend/internal/plugins"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
 	"neo-chat/mm-chat/backend/internal/redisstate"
 	"neo-chat/mm-chat/backend/internal/sessioncache"
@@ -113,6 +114,7 @@ func main() {
 	var chatRepo chat.Repository
 	var fileRepo files.Repository
 	var importRepo browserimport.Repository
+	var pluginRegistry plugins.Registry
 	var sessionResolver httpserver.SessionResolver
 	var authService *auth.Service
 	sqlDB := db.SQL()
@@ -120,6 +122,7 @@ func main() {
 		authRepo := auth.NewPostgresSessionRepository(sqlDB)
 		chatRepo = chat.NewPostgresRepository(sqlDB)
 		fileRepo = files.NewPostgresRepository(sqlDB)
+		pluginRegistry = plugins.NewPostgresRegistry(sqlDB, plugins.BuiltInPlugins()...)
 		sessionResolver = auth.NewSessionResolver(
 			authRepo,
 			auth.WithSessionCache(sessionCache),
@@ -198,6 +201,7 @@ func main() {
 		httpserver.WithMaxImportBytes(cfg.Storage.MaxUploadBytes),
 		httpserver.WithTeamService(teamRuntime.service),
 		httpserver.WithKnowledgeService(knowledgeService),
+		httpserver.WithPluginRegistry(pluginRegistry),
 		httpserver.WithLogger(logger),
 	}
 	if db.SQL() != nil {

@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -26,21 +27,23 @@ const (
 )
 
 var (
-	ErrPluginBaseURLMissing    = errors.New("plugin base URL is missing")
-	ErrPluginFunctionMissing   = errors.New("plugin function is missing")
-	ErrPluginFunctionMismatch  = errors.New("plugin function is not declared by this plugin")
-	ErrPluginPathInvalid       = errors.New("plugin path is invalid")
-	ErrPluginMethodUnsupported = errors.New("plugin method is not supported")
-	ErrPluginPathArgsMissing   = errors.New("plugin path parameters are missing")
-	ErrPluginURLBlocked        = errors.New("plugin URL is blocked by policy")
-	ErrPluginAuthRequired      = errors.New("plugin authentication is required")
-	ErrPluginAuthUnsupported   = errors.New("plugin authentication type is not supported")
-	ErrPluginNotRegistered     = errors.New("plugin is not registered")
-	ErrPlaintextPluginAuth     = errors.New("plaintext plugin auth is not accepted")
-	ErrPluginCustomInstall     = errors.New("custom plugin manifest install is not available in the Go backend yet")
-	ErrPluginRequestFailed     = errors.New("plugin request failed")
-	ErrPluginResponseTooLarge  = errors.New("plugin response is too large")
-	ErrPluginExecutionPayload  = errors.New("plugin execution payload is invalid")
+	ErrPluginBaseURLMissing      = errors.New("plugin base URL is missing")
+	ErrPluginFunctionMissing     = errors.New("plugin function is missing")
+	ErrPluginFunctionMismatch    = errors.New("plugin function is not declared by this plugin")
+	ErrPluginPathInvalid         = errors.New("plugin path is invalid")
+	ErrPluginMethodUnsupported   = errors.New("plugin method is not supported")
+	ErrPluginPathArgsMissing     = errors.New("plugin path parameters are missing")
+	ErrPluginURLBlocked          = errors.New("plugin URL is blocked by policy")
+	ErrPluginAuthRequired        = errors.New("plugin authentication is required")
+	ErrPluginAuthUnsupported     = errors.New("plugin authentication type is not supported")
+	ErrPluginNotRegistered       = errors.New("plugin is not registered")
+	ErrPluginReservedID          = errors.New("plugin id is reserved")
+	ErrPluginRegistryUnavailable = errors.New("plugin registry is unavailable")
+	ErrPlaintextPluginAuth       = errors.New("plaintext plugin auth is not accepted")
+	ErrPluginCustomInstall       = errors.New("custom plugin manifest install is not available in the Go backend yet")
+	ErrPluginRequestFailed       = errors.New("plugin request failed")
+	ErrPluginResponseTooLarge    = errors.New("plugin response is too large")
+	ErrPluginExecutionPayload    = errors.New("plugin execution payload is invalid")
 )
 
 type SecretDecrypter func(*runtimeconfig.EncryptedSecretEnvelope, string) (string, error)
@@ -69,8 +72,8 @@ type ErrorBody struct {
 }
 
 type ListResponse struct {
-	Plugins     []PluginSummary `json:"plugins"`
-	Unavailable bool            `json:"unavailable,omitempty"`
+	Plugins     []Plugin `json:"plugins"`
+	Unavailable bool     `json:"unavailable,omitempty"`
 }
 
 type InstallRequest struct {
@@ -80,14 +83,6 @@ type InstallRequest struct {
 
 type InstallResponse struct {
 	Plugin Plugin `json:"plugin"`
-}
-
-type PluginSummary struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Description string `json:"description,omitempty"`
-	LogoURL     string `json:"logoUrl,omitempty"`
-	ManifestURL string `json:"manifestUrl,omitempty"`
 }
 
 type ExecuteResponse struct {
@@ -275,10 +270,12 @@ func (h *Handler) handlePlugins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, ListResponse{
-		Plugins:     []PluginSummary{},
-		Unavailable: true,
-	})
+	plugins, err := h.service.ListPlugins(r.Context())
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "PLUGIN_REGISTRY_UNAVAILABLE", "plugin registry is unavailable")
+		return
+	}
+	writeJSON(w, http.StatusOK, ListResponse{Plugins: plugins})
 }
 
 func (h *Handler) installPlugin(w http.ResponseWriter, r *http.Request) {
@@ -473,10 +470,29 @@ func (s *Service) RegisterPlugin(ctx context.Context, plugin *Plugin) (Plugin, e
 	if err := validatePlugin(candidate); err != nil {
 		return Plugin{}, err
 	}
+	if registered, ok, err := s.registry.Get(ctx, candidate.ID); err != nil {
+		return Plugin{}, err
+	} else if ok && registered.BuiltIn {
+		return Plugin{}, ErrPluginReservedID
+	}
 	if err := s.registry.Save(ctx, candidate); err != nil {
 		return Plugin{}, err
 	}
 	return candidate, nil
+}
+
+func (s *Service) ListPlugins(ctx context.Context) ([]Plugin, error) {
+	plugins, err := s.registry.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sort.SliceStable(plugins, func(i, j int) bool {
+		if plugins[i].BuiltIn != plugins[j].BuiltIn {
+			return plugins[i].BuiltIn
+		}
+		return strings.ToLower(plugins[i].ID) < strings.ToLower(plugins[j].ID)
+	})
+	return plugins, nil
 }
 
 func (s *Service) resolveRegisteredPlugin(ctx context.Context, request ExecuteRequest) (Plugin, PluginFunction, error) {
@@ -746,6 +762,8 @@ func writeExecutionError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrPluginNotRegistered):
 		writeError(w, http.StatusNotFound, "PLUGIN_NOT_REGISTERED", "plugin is not registered")
+	case errors.Is(err, ErrPluginRegistryUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "PLUGIN_REGISTRY_UNAVAILABLE", "plugin registry is unavailable")
 	case errors.Is(err, ErrPluginBaseURLMissing),
 		errors.Is(err, ErrPluginFunctionMissing),
 		errors.Is(err, ErrPluginFunctionMismatch),
@@ -779,6 +797,10 @@ func writeInstallError(w http.ResponseWriter, err error) {
 		errors.Is(err, ErrPluginMethodUnsupported),
 		errors.Is(err, ErrPluginExecutionPayload):
 		writeError(w, http.StatusBadRequest, "INVALID_PLUGIN_INSTALL_REQUEST", err.Error())
+	case errors.Is(err, ErrPluginReservedID):
+		writeError(w, http.StatusConflict, "PLUGIN_ID_RESERVED", "plugin id is reserved")
+	case errors.Is(err, ErrPluginRegistryUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "PLUGIN_REGISTRY_UNAVAILABLE", "plugin registry is unavailable")
 	default:
 		writeError(w, http.StatusInternalServerError, "PLUGIN_INSTALL_FAILED", "plugin install failed")
 	}

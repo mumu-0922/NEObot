@@ -44,8 +44,8 @@ These are already closer to the desired boundary. Phase 2 should wrap these into
 | P0 | `src/services/api/chatService.ts` | `/api/chat`, `/api/chat/generate`, `/api/chat/generate-title`, `/api/chat/related-questions`, `/api/chat/rag-queries`, `/api/chat/generate-image`, `/api/chat/execute-code` | `chatApi` first; defer image/code/tool helpers behind capabilities. |
 | P1 | `src/services/api/ragService.ts` | `/api/rag/query`, `/api/rag/upsert`, `/api/rag/delete` | `ragApi` later; not first chat MVP. |
 | P2 | `src/services/api/docParseService.ts` | `/api/doc-parse`, `/api/doc-parse/jobs/:id` | `documentApi` / RAG sidecar later. |
-| P2 | `src/services/api/pluginService.ts` | via `pluginApi.listAvailable/install`; local adapter retains `/api/plugins/list` and `/api/plugins/install` | Server adapter targets `/v1/plugins*`; G4.5c.1 registers supplied plugin payloads in Go memory, while custom manifest conversion remains pending. |
-| P2 | `src/utils/pluginUtils.ts` | via `pluginApi.execute`; local adapter retains `/api/plugins/execute` | Server adapter targets `/v1/plugins/execute`; G4.5c.1 sends id-only payloads and Go resolves built-ins/registered plugins. |
+| P2 | `src/services/api/pluginService.ts` | via `pluginApi.listAvailable/install`; local adapter retains `/api/plugins/list` and `/api/plugins/install` | Server adapter targets `/v1/plugins*`; G4.5c.2a persists supplied plugin payloads in Go/Postgres when `DATABASE_URL` is configured, while custom manifest conversion remains pending. |
+| P2 | `src/utils/pluginUtils.ts` | via `pluginApi.execute`; local adapter retains `/api/plugins/execute` | Server adapter targets `/v1/plugins/execute`; G4.5c.2a sends id-only payloads and Go resolves built-ins/registered plugins from memory/Postgres. |
 | P2 | `src/services/api/searchService.ts` | `/api/search` | `searchApi` or chat-side capability later. |
 | P2 | `src/services/api/voiceService.ts` | `/api/voice/transcribe`, `/api/voice/synthesize` | `voiceApi` later. |
 | P3 | `src/services/api/agentService.ts` | `/api/agents`, `/api/agents/:identifier` | static/catalog API; can remain static initially. |
