@@ -380,17 +380,17 @@ Slice checklist:
             and require artifact storage before synthesis executors can run.
       - [ ] G6.5c.2b Real provider-backed voice executor and authorized
             configured-provider smoke.
-    - [ ] G6.5c.3 Real image executor integration with stored image artifacts
+    - [x] G6.5c.3 Real image executor integration with stored image artifacts
           and configured-provider smoke.
       - [x] G6.5c.3a Image executor opt-in seam: add a Go executor interface,
             require an explicitly configured sanitized admission audit recorder
             before executor calls, and store generated images through the
             artifact boundary. See `../contracts/media-job-executor-seams.md`.
-      - [ ] G6.5c.3b Real provider-backed image executor and authorized
+      - [x] G6.5c.3b Real provider-backed image executor and authorized
             configured-provider smoke.
         - [x] G6.5c.3b.1 OpenAI-compatible image executor plus gated live
               smoke harness.
-        - [ ] G6.5c.3b.2 Authorized configured-provider image smoke passes
+        - [x] G6.5c.3b.2 Authorized configured-provider image smoke passes
               against an image-capable key/endpoint.
   - [x] G6.5d Code execution sandbox contract before any real executor is enabled: see `../contracts/code-execution-sandbox-contract.md`; runtime remains disabled.
   - [x] G6.5e Live provider smoke authorization gate: add a default-deny

@@ -1446,8 +1446,12 @@ Rules:
   capability flags remain disabled until the authorized smoke and follow-up
   gates pass.
 - G6.5c.3b.1 adds an OpenAI-compatible image executor and gated live smoke
-  harness, but `imageGeneration` remains disabled until an image-capable
-  configured provider smoke passes.
+  harness.
+- G6.5c.3b.2 passes the authorized configured-provider smoke against an
+  image-capable OpenAI-compatible `gpt-image-2` endpoint. `imageGeneration`
+  remains disabled until the later route-wiring/capability-reopen slice proves
+  the Go HTTP route is configured with the executor, artifact store, admission
+  audit recorder, and frontend adapter behavior.
 - G6.5d defines the hard gate for real code execution in
   `docs/contracts/code-execution-sandbox-contract.md`; `codeExecution` remains
   disabled until that sandbox/storage/audit/cancel test plan is implemented.

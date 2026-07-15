@@ -2487,3 +2487,50 @@ G6.5c.2b Real provider-backed voice executor and authorized configured-provider 
 Next slice: provide or configure an image-capable endpoint/key, or add a
 provider-specific executor such as Agnes/Gemini if that is the intended image
 supplier.
+
+## 2026-07-15 — G6.5c.3b.2 Authorized OpenAI-Compatible Image Smoke Passed
+
+Objective: verify the real OpenAI-compatible image executor against an
+owner-approved image-capable provider without persisting or printing provider
+credentials.
+
+Official API contract checked:
+
+- direct image generation uses `POST /v1/images/generations`;
+- the request body is the OpenAI Images API shape: `model`, `prompt`, optional
+  `n`, and optional `size`;
+- `gpt-image-2` is an OpenAI image model target;
+- GPT image generation responses provide generated image bytes via
+  `data[].b64_json` by default.
+
+Live smoke evidence:
+
+```text
+Configured endpoint class: OpenAI-compatible relay
+Target: image.generate:openai:gpt-image-2
+Result: passed
+Stored artifact: /tmp/mm-chat-provider-smoke/1-generated-1.png
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./internal/imagejobs -run TestLiveOpenAICompatibleImageGenerationSmoke -count=1 -v # passed
+```
+
+No provider key, `.env.single-server` content, prompt body beyond the existing
+smoke-test prompt, provider response body, or generated image bytes were added
+to the repository. The generated image artifact remains in `/tmp` only.
+
+Completed G6 image-executor blockers:
+
+```text
+G6.5c.3b.2 Authorized configured-provider image smoke passes against an image-capable key/endpoint
+```
+
+Residual G6 blockers:
+
+```text
+G6.5c.2b Real provider-backed voice executor and authorized configured-provider smoke
+Route-wiring/capability-reopen slice for imageGeneration remains separate from this smoke.
+```
