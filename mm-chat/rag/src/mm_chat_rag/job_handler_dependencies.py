@@ -1,9 +1,9 @@
 """Dependency-injected handler seams for G7.5 worker promotion.
 
-This module wires the first real parse execution path without registering it in
+This module wires real handler-shaped seams without registering them in
 production. Gateways are explicit Protocols so storage, provider, and Postgres
 projection implementations can be promoted one at a time behind tests. The
-default dependency bundle is inert and fails closed before any external I/O.
+default dependency bundles are inert and fail closed before any external I/O.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from mm_chat_rag.job_context import ProcessingJobContext
 from mm_chat_rag.job_handlers import (
     require_parse_context,
     require_passage_embedding_context,
+    require_purge_context,
 )
 from mm_chat_rag.models import stable_error_code
 from mm_chat_rag.offline_parser.canonical import JsonObject
@@ -57,6 +58,11 @@ JOB_HANDLER_EMBEDDING_CHILD_MISMATCH: Final = (
 JOB_HANDLER_EMBEDDING_COMPLETENESS_FAILED: Final = (
     "JOB_HANDLER_EMBEDDING_COMPLETENESS_FAILED"
 )
+JOB_HANDLER_PURGE_VISIBILITY_INVALID: Final = "JOB_HANDLER_PURGE_VISIBILITY_INVALID"
+JOB_HANDLER_PURGE_PROJECTION_INVALID: Final = "JOB_HANDLER_PURGE_PROJECTION_INVALID"
+JOB_HANDLER_PURGE_COMPLETENESS_FAILED: Final = (
+    "JOB_HANDLER_PURGE_COMPLETENESS_FAILED"
+)
 JOB_HANDLER_DEPENDENCY_ERROR_CODES: Final[frozenset[str]] = frozenset(
     {
         JOB_HANDLER_DEPENDENCY_UNCONFIGURED,
@@ -68,6 +74,9 @@ JOB_HANDLER_DEPENDENCY_ERROR_CODES: Final[frozenset[str]] = frozenset(
         JOB_HANDLER_EMBEDDING_COUNT_MISMATCH,
         JOB_HANDLER_EMBEDDING_CHILD_MISMATCH,
         JOB_HANDLER_EMBEDDING_COMPLETENESS_FAILED,
+        JOB_HANDLER_PURGE_VISIBILITY_INVALID,
+        JOB_HANDLER_PURGE_PROJECTION_INVALID,
+        JOB_HANDLER_PURGE_COMPLETENESS_FAILED,
     }
 )
 
@@ -171,6 +180,70 @@ class StagedPassageEmbedding:
             _reject(JOB_HANDLER_EMBEDDING_VECTOR_INVALID)
 
 
+@dataclass(frozen=True, slots=True)
+class PurgeInvisibilityResult:
+    """Proof that a tombstoned version is no longer query-visible."""
+
+    collection_id: uuid.UUID
+    document_id: uuid.UUID
+    document_version_id: uuid.UUID
+    collection_visibility_epoch: int
+    document_visibility_epoch: int
+    query_visible: bool
+
+    def __post_init__(self) -> None:
+        if _ZERO_UUID in {
+            self.collection_id,
+            self.document_id,
+            self.document_version_id,
+        }:
+            _reject(JOB_HANDLER_PURGE_VISIBILITY_INVALID)
+        if (
+            isinstance(self.collection_visibility_epoch, bool)
+            or not isinstance(self.collection_visibility_epoch, int)
+            or self.collection_visibility_epoch < 1
+            or isinstance(self.document_visibility_epoch, bool)
+            or not isinstance(self.document_visibility_epoch, int)
+            or self.document_visibility_epoch < 1
+        ):
+            _reject(JOB_HANDLER_PURGE_VISIBILITY_INVALID)
+        if not isinstance(self.query_visible, bool):
+            _reject(JOB_HANDLER_PURGE_VISIBILITY_INVALID)
+
+
+@dataclass(frozen=True, slots=True)
+class PurgeProjectionResult:
+    """Projection cleanup proof for one admitted purge job."""
+
+    collection_id: uuid.UUID
+    document_id: uuid.UUID
+    document_version_id: uuid.UUID
+    index_generation_id: uuid.UUID
+    materialization_id: uuid.UUID | None
+    purged_child_search_rows: int
+    remaining_ready_child_search_rows: int
+
+    def __post_init__(self) -> None:
+        if _ZERO_UUID in {
+            self.collection_id,
+            self.document_id,
+            self.document_version_id,
+            self.index_generation_id,
+        }:
+            _reject(JOB_HANDLER_PURGE_PROJECTION_INVALID)
+        if self.materialization_id == _ZERO_UUID:
+            _reject(JOB_HANDLER_PURGE_PROJECTION_INVALID)
+        if (
+            isinstance(self.purged_child_search_rows, bool)
+            or not isinstance(self.purged_child_search_rows, int)
+            or self.purged_child_search_rows < 0
+            or isinstance(self.remaining_ready_child_search_rows, bool)
+            or not isinstance(self.remaining_ready_child_search_rows, int)
+            or self.remaining_ready_child_search_rows < 0
+        ):
+            _reject(JOB_HANDLER_PURGE_PROJECTION_INVALID)
+
+
 class DocumentSourceGateway(Protocol):
     """Storage gateway that returns document bytes for one admitted parse job."""
 
@@ -226,6 +299,24 @@ class PassageEmbeddingProjectionGateway(Protocol):
     ) -> Coroutine[Any, Any, bool]: ...
 
 
+class PurgeProjectionGateway(Protocol):
+    """Postgres gateway for immediate invisibility and projection cleanup."""
+
+    def mark_purge_invisible(
+        self, context: ProcessingJobContext
+    ) -> Coroutine[Any, Any, PurgeInvisibilityResult]: ...
+
+    def purge_search_projection(
+        self, context: ProcessingJobContext
+    ) -> Coroutine[Any, Any, PurgeProjectionResult]: ...
+
+    def assert_purge_complete(
+        self,
+        context: ProcessingJobContext,
+        result: PurgeProjectionResult,
+    ) -> Coroutine[Any, Any, bool]: ...
+
+
 @dataclass(frozen=True, slots=True)
 class ParseHandlerDependencies:
     """Explicit parse-side dependencies; absent dependencies fail closed."""
@@ -261,6 +352,19 @@ class PassageEmbeddingHandlerDependencies:
         if self.embedding is None or self.projection is None:
             _reject(JOB_HANDLER_DEPENDENCY_UNCONFIGURED)
         return self.embedding, self.projection
+
+
+@dataclass(frozen=True, slots=True)
+class PurgeHandlerDependencies:
+    """Explicit purge dependencies; absent values fail closed."""
+
+    projection: PurgeProjectionGateway | None = None
+
+    def require_ready(self) -> PurgeProjectionGateway:
+        """Return the projection gateway or fail before any external side effect."""
+        if self.projection is None:
+            _reject(JOB_HANDLER_DEPENDENCY_UNCONFIGURED)
+        return self.projection
 
 
 async def parse_handler_with_dependencies(
@@ -350,6 +454,35 @@ def admitted_passage_embedding_handler_with_dependencies(
     )
 
 
+async def purge_handler_with_dependencies(
+    context: ProcessingJobContext,
+    dependencies: PurgeHandlerDependencies,
+) -> JobResult:
+    """Execute the admitted purge seam with immediate invisibility first."""
+    admitted = require_purge_context(context)
+    projection_gateway = dependencies.require_ready()
+
+    invisibility = await projection_gateway.mark_purge_invisible(admitted)
+    _validate_purge_invisibility(admitted, invisibility)
+    projection = await projection_gateway.purge_search_projection(admitted)
+    _validate_purge_projection(admitted, projection)
+    complete = await projection_gateway.assert_purge_complete(admitted, projection)
+    if not complete:
+        _reject(JOB_HANDLER_PURGE_COMPLETENESS_FAILED)
+    return JobResult()
+
+
+def admitted_purge_handler_with_dependencies(
+    dependencies: PurgeHandlerDependencies,
+) -> JobHandler:
+    """Build a claim-level purge handler through admission."""
+
+    async def contextual(context: ProcessingJobContext) -> JobResult:
+        return await purge_handler_with_dependencies(context, dependencies)
+
+    return with_job_context_admission(contextual)
+
+
 def embedding_vector_sha256(embedding: tuple[float, ...]) -> str:
     """Hash the exact float32 lane bytes that will be stored in REAL[]."""
     digest = hashlib.sha256()
@@ -406,6 +539,38 @@ def _validate_embedding_vector(embedding: tuple[float, ...]) -> tuple[float, ...
             _reject(JOB_HANDLER_EMBEDDING_VECTOR_INVALID)
         values.append(number)
     return tuple(values)
+
+
+def _validate_purge_invisibility(
+    context: ProcessingJobContext, result: PurgeInvisibilityResult
+) -> None:
+    if not isinstance(result, PurgeInvisibilityResult):
+        _reject(JOB_HANDLER_PURGE_VISIBILITY_INVALID)
+    if (
+        result.collection_id != context.collection_id
+        or result.document_id != context.document_id
+        or result.document_version_id != context.document_version_id
+        or result.collection_visibility_epoch != context.collection_visibility_epoch
+        or result.document_visibility_epoch != context.document_visibility_epoch
+        or result.query_visible
+    ):
+        _reject(JOB_HANDLER_PURGE_VISIBILITY_INVALID)
+
+
+def _validate_purge_projection(
+    context: ProcessingJobContext, result: PurgeProjectionResult
+) -> None:
+    if not isinstance(result, PurgeProjectionResult):
+        _reject(JOB_HANDLER_PURGE_PROJECTION_INVALID)
+    if (
+        result.collection_id != context.collection_id
+        or result.document_id != context.document_id
+        or result.document_version_id != context.document_version_id
+        or result.index_generation_id != context.index_generation_id
+        or result.materialization_id != context.materialization_id
+        or result.remaining_ready_child_search_rows != 0
+    ):
+        _reject(JOB_HANDLER_PURGE_PROJECTION_INVALID)
 
 
 def _reject(error_code: str) -> NoReturn:

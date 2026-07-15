@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from mm_chat_rag.job_context import ProcessingJobContext
 from mm_chat_rag.job_handler_dependencies import (
     JOB_HANDLER_DEPENDENCY_ERROR_CODES,
     JOB_HANDLER_DEPENDENCY_UNCONFIGURED,
@@ -16,6 +17,9 @@ from mm_chat_rag.job_handler_dependencies import (
     JOB_HANDLER_EMBEDDING_COUNT_MISMATCH,
     JOB_HANDLER_EMBEDDING_VECTOR_INVALID,
     JOB_HANDLER_PARSE_ARTIFACT_INVALID,
+    JOB_HANDLER_PURGE_COMPLETENESS_FAILED,
+    JOB_HANDLER_PURGE_PROJECTION_INVALID,
+    JOB_HANDLER_PURGE_VISIBILITY_INVALID,
     JOB_HANDLER_SOURCE_HASH_MISMATCH,
     DocumentSource,
     ParsedDocumentArtifacts,
@@ -23,9 +27,13 @@ from mm_chat_rag.job_handler_dependencies import (
     PassageEmbeddingCandidate,
     PassageEmbeddingHandlerDependencies,
     PassageEmbeddingVector,
+    PurgeHandlerDependencies,
+    PurgeInvisibilityResult,
+    PurgeProjectionResult,
     StagedPassageEmbedding,
     admitted_parse_handler_with_dependencies,
     admitted_passage_embedding_handler_with_dependencies,
+    admitted_purge_handler_with_dependencies,
     embedding_vector_sha256,
     parse_handler_with_dependencies,
 )
@@ -282,6 +290,71 @@ class FakePassageEmbeddingProjectionGateway:
         return self._complete
 
 
+class FakePurgeProjectionGateway:
+    def __init__(
+        self,
+        calls: list[str],
+        *,
+        query_visible: bool = False,
+        remaining_ready: int = 0,
+        complete: bool = True,
+        mismatch_document: bool = False,
+        mismatch_materialization: bool = False,
+    ) -> None:
+        self._calls = calls
+        self._query_visible = query_visible
+        self._remaining_ready = remaining_ready
+        self._complete = complete
+        self._mismatch_document = mismatch_document
+        self._mismatch_materialization = mismatch_materialization
+        self.projection: PurgeProjectionResult | None = None
+
+    async def mark_purge_invisible(
+        self, context: ProcessingJobContext
+    ) -> PurgeInvisibilityResult:
+        self._calls.append("mark_invisible")
+        document_id = uuid.uuid4() if self._mismatch_document else context.document_id
+        return PurgeInvisibilityResult(
+            collection_id=context.collection_id,
+            document_id=document_id,
+            document_version_id=context.document_version_id,
+            collection_visibility_epoch=context.collection_visibility_epoch,
+            document_visibility_epoch=context.document_visibility_epoch,
+            query_visible=self._query_visible,
+        )
+
+    async def purge_search_projection(
+        self, context: ProcessingJobContext
+    ) -> PurgeProjectionResult:
+        self._calls.append("purge_projection")
+        materialization_id = (
+            uuid.uuid4()
+            if self._mismatch_materialization
+            else context.materialization_id
+        )
+        result = PurgeProjectionResult(
+            collection_id=context.collection_id,
+            document_id=context.document_id,
+            document_version_id=context.document_version_id,
+            index_generation_id=context.index_generation_id,
+            materialization_id=materialization_id,
+            purged_child_search_rows=2,
+            remaining_ready_child_search_rows=self._remaining_ready,
+        )
+        self.projection = result
+        return result
+
+    async def assert_purge_complete(
+        self,
+        context: ProcessingJobContext,
+        result: PurgeProjectionResult,
+    ) -> bool:
+        self._calls.append("assert_purge_complete")
+        assert context is not None
+        assert result is self.projection
+        return self._complete
+
+
 def dependencies(
     calls: list[str],
     *,
@@ -323,6 +396,26 @@ def embedding_dependencies(
         ),
         projection,
     )
+
+
+def purge_dependencies(
+    calls: list[str],
+    *,
+    query_visible: bool = False,
+    remaining_ready: int = 0,
+    complete: bool = True,
+    mismatch_document: bool = False,
+    mismatch_materialization: bool = False,
+) -> tuple[PurgeHandlerDependencies, FakePurgeProjectionGateway]:
+    projection = FakePurgeProjectionGateway(
+        calls,
+        query_visible=query_visible,
+        remaining_ready=remaining_ready,
+        complete=complete,
+        mismatch_document=mismatch_document,
+        mismatch_materialization=mismatch_materialization,
+    )
+    return PurgeHandlerDependencies(projection=projection), projection
 
 
 def test_parse_dependency_error_codes_are_stable() -> None:
@@ -543,3 +636,116 @@ async def test_passage_embedding_requires_projection_completeness() -> None:
         "assert_complete",
     ]
     assert len(projection.staged) == 1
+
+
+async def test_admitted_purge_dependency_handler_marks_invisible_then_cleans() -> None:
+    calls: list[str] = []
+    deps, projection = purge_dependencies(calls)
+    handler = admitted_purge_handler_with_dependencies(deps)
+
+    result = await handler(claim(purge_row()))
+
+    assert result.outcome == "succeeded"
+    assert result.error_code is None
+    assert calls == [
+        "mark_invisible",
+        "purge_projection",
+        "assert_purge_complete",
+    ]
+    assert projection.projection is not None
+    assert projection.projection.materialization_id is None
+    assert projection.projection.remaining_ready_child_search_rows == 0
+
+
+async def test_purge_dependency_handler_accepts_bound_materialization() -> None:
+    calls: list[str] = []
+    deps, projection = purge_dependencies(calls)
+    handler = admitted_purge_handler_with_dependencies(deps)
+    materialization_id = uuid.uuid4()
+
+    result = await handler(claim(purge_row(materialization_id=materialization_id)))
+
+    assert result.outcome == "succeeded"
+    assert projection.projection is not None
+    assert projection.projection.materialization_id == materialization_id
+
+
+async def test_purge_dependency_handler_default_off_before_projection_calls() -> None:
+    handler = admitted_purge_handler_with_dependencies(PurgeHandlerDependencies())
+
+    with pytest.raises(PermanentJobError) as raised:
+        await handler(claim(purge_row()))
+
+    assert raised.value.error_code == JOB_HANDLER_DEPENDENCY_UNCONFIGURED
+
+
+async def test_purge_dependency_handler_rejects_wrong_stage_before_projection() -> None:
+    calls: list[str] = []
+    deps, _ = purge_dependencies(calls)
+    handler = admitted_purge_handler_with_dependencies(deps)
+
+    with pytest.raises(PermanentJobError) as raised:
+        await handler(claim(provider_row()))
+
+    assert raised.value.error_code == JOB_HANDLER_STAGE_MISMATCH
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    ("updates", "error_code"),
+    [
+        ({"query_visible": True}, JOB_HANDLER_PURGE_VISIBILITY_INVALID),
+        ({"mismatch_document": True}, JOB_HANDLER_PURGE_VISIBILITY_INVALID),
+    ],
+)
+async def test_purge_dependency_handler_requires_immediate_invisibility(
+    updates: dict[str, object], error_code: str
+) -> None:
+    calls: list[str] = []
+    deps, projection = purge_dependencies(calls, **updates)
+    handler = admitted_purge_handler_with_dependencies(deps)
+
+    with pytest.raises(PermanentJobError) as raised:
+        await handler(claim(purge_row()))
+
+    assert raised.value.error_code == error_code
+    assert calls == ["mark_invisible"]
+    assert projection.projection is None
+
+
+@pytest.mark.parametrize(
+    ("updates", "error_code"),
+    [
+        ({"remaining_ready": 1}, JOB_HANDLER_PURGE_PROJECTION_INVALID),
+        ({"mismatch_materialization": True}, JOB_HANDLER_PURGE_PROJECTION_INVALID),
+    ],
+)
+async def test_purge_dependency_handler_rejects_incomplete_cleanup_before_assert(
+    updates: dict[str, object], error_code: str
+) -> None:
+    calls: list[str] = []
+    deps, _ = purge_dependencies(calls, **updates)
+    handler = admitted_purge_handler_with_dependencies(deps)
+
+    with pytest.raises(PermanentJobError) as raised:
+        await handler(claim(purge_row()))
+
+    assert raised.value.error_code == error_code
+    assert calls == ["mark_invisible", "purge_projection"]
+
+
+async def test_purge_dependency_handler_requires_completion_gate() -> None:
+    calls: list[str] = []
+    deps, projection = purge_dependencies(calls, complete=False)
+    handler = admitted_purge_handler_with_dependencies(deps)
+
+    with pytest.raises(PermanentJobError) as raised:
+        await handler(claim(purge_row()))
+
+    assert raised.value.error_code == JOB_HANDLER_PURGE_COMPLETENESS_FAILED
+    assert calls == [
+        "mark_invisible",
+        "purge_projection",
+        "assert_purge_complete",
+    ]
+    assert projection.projection is not None

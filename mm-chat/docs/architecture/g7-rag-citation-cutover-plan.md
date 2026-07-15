@@ -335,15 +335,32 @@ G7.5.7 completed on 2026-07-15:
 - Production `JOB_HANDLER_REGISTRY` remains empty; G7.5.7 adds a promotion seam,
   not a promoted live Jina handler.
 
+G7.5.8 completed on 2026-07-16:
+
+- Added the dependency-injected `purge` handler seam without production
+  registration or provider credentials.
+- The seam can only enter through `with_job_context_admission(...)`, then reuses
+  the purge authority fence that forbids MinerU/Jina provider authority.
+- The default dependency bundle fails closed before any projection call.
+- Fake-gateway tests prove the required order: first prove the tombstoned
+  document version is no longer query-visible, then purge search projections,
+  then assert purge completion.
+- Visibility mismatches, remaining ready rows, materialization mismatches, and
+  failed completion checks stop with stable error codes before the handler can
+  report success.
+- Production `JOB_HANDLER_REGISTRY` remains empty; G7.5.8 adds a promotion seam,
+  not a promoted live purge handler.
+
 Remaining G7.5 work:
 
 - Implement real object-store, MinerU, Jina, and Postgres projection gateway
   adapters behind the new parse seam.
 - Implement the real Jina and Postgres projection gateway adapters behind the
   new passage-embedding seam.
-- Add the purge dependency seam with the same default-off promotion model.
+- Implement the real Postgres projection gateway adapter behind the new purge
+  seam.
 - Implement index, reprocess, tombstone purge, rebuild, retry, and DLQ behavior.
-- Enforce immediate query invisibility for deleted/tombstoned versions.
+- Promote handlers one stage at a time behind readiness and registry gates.
 
 Validation:
 

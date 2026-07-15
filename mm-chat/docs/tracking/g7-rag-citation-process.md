@@ -855,3 +855,78 @@ Mypy passed on the admission, skeleton, and dependency source files.
 
 Next G7.5 slice: add the purge dependency seam for immediate invisibility and
 projection cleanup, still default-off and without provider credentials.
+
+## 2026-07-16 — G7.5.8 Purge Dependency Seam
+
+Objective: add the purge execution seam for immediate query invisibility and
+projection cleanup while keeping production dispatch empty and avoiding any
+provider credentials.
+
+Implemented behavior:
+
+- Extended `job_handler_dependencies.py` with a purge-only
+  `PurgeProjectionGateway`.
+- Added `PurgeHandlerDependencies`; an empty bundle fails closed with
+  `JOB_HANDLER_DEPENDENCY_UNCONFIGURED` before any projection call.
+- Added `purge_handler_with_dependencies(...)` and
+  `admitted_purge_handler_with_dependencies(...)`:
+  - claim-level entry remains wrapped by `with_job_context_admission(...)`;
+  - the contextual handler reuses the purge authority fence from
+    `job_handlers.py`, so purge remains credential-free and provider authority
+    is forbidden.
+- Added typed DTOs for purge invisibility and projection cleanup proof.
+- The fake execution path now proves the required sequence:
+  1. `mark_purge_invisible(...)` must prove the tombstoned document version is
+     no longer query-visible using the admitted collection/document visibility
+     epochs;
+  2. `purge_search_projection(...)` must remove or mark ready search rows for
+     the admitted Generation/Materialization scope;
+  3. `assert_purge_complete(...)` must confirm the cleanup before success.
+- Query-visible results, document/epoch mismatches, remaining ready child search
+  rows, materialization mismatches, and failed completion checks are redacted
+  into stable error codes.
+- Production `JOB_HANDLER_REGISTRY` remains empty. This slice cannot claim
+  worker jobs unless a later slice explicitly wires the real Postgres gateway
+  and promotes a registry.
+
+Touched files:
+
+```text
+rag/src/mm_chat_rag/job_handler_dependencies.py
+rag/tests/unit/test_job_handler_dependencies.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification run during the slice:
+
+```text
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_job_context.py tests/unit/test_job_handlers.py \
+  tests/unit/test_job_handler_dependencies.py tests/unit/test_jobs.py
+cd mm-chat/rag && uv run ruff check \
+  src/mm_chat_rag/job_context.py src/mm_chat_rag/handlers.py \
+  src/mm_chat_rag/job_handlers.py src/mm_chat_rag/job_handler_dependencies.py \
+  tests/unit/test_job_handlers.py tests/unit/test_job_handler_dependencies.py
+cd mm-chat/rag && uv run mypy \
+  src/mm_chat_rag/job_context.py src/mm_chat_rag/handlers.py \
+  src/mm_chat_rag/job_handlers.py src/mm_chat_rag/job_handler_dependencies.py
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_parser_runtime_boundary.py \
+  tests/unit/test_parser_deployment_boundary.py \
+  tests/unit/test_provider_capture.py::test_production_dispatch_remains_disabled_and_registries_empty
+```
+
+Result:
+
+```text
+60 targeted Python tests passed.
+Ruff passed on the admission, skeleton, and dependency files.
+Mypy passed on the admission, skeleton, and dependency source files.
+7 production-registry boundary tests passed; registries remain empty.
+```
+
+Next G7.5 slice: add the first real Postgres projection gateway adapter behind
+one seam, still default-off, then promote only a single stage behind explicit
+readiness and registry gates.
