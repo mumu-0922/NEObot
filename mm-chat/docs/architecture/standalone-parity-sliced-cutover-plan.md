@@ -280,9 +280,12 @@ Slice checklist:
       `/v1/plugins`, `/v1/plugins/install`, and `/v1/plugins/execute`; route
       server-mode execution to Go and remove production server-mode fallback to
       `/api/plugins/execute`.
-- [ ] G4.5b Plugin execute sandbox implementation: registry-backed plugin
-      resolution, encrypted auth decryption, outbound URL policy, timeout,
-      audit, result normalization, and safe remote execution in Go.
+- [x] G4.5b Minimal Go plugin execution sandbox: full manifest payload
+      execution, encrypted auth decryption, outbound URL policy, timeout,
+      response-size bound, and generic result normalization in Go.
+- [ ] G4.5c Registry-backed plugin execution finalization: persistent plugin
+      registry, id-only execution, audit metadata, built-in normalizers, and
+      removal of local-only transitional executor after clean-copy gates.
 - [ ] G4.6 Live browser smoke: one installed plugin produces bounded context and
       a persisted final answer through the Go stream.
 
@@ -438,7 +441,7 @@ Targeted tests:
 | G1 Conversation and Message Operations   | Complete | G1.1-G1.6 complete; only paused cross-group search toggle remains outside G1 |
 | G2 Related Questions and Agent Catalogs  | Complete | Related-question/catalog Next routes replaced                                |
 | G3 Auth, Config, Provider Settings, BYOK | Complete | Server-auth/config/provider lifecycle verified                               |
-| G4 Plugin Final Ownership                | In progress | G4.1-G4.5a complete; Go execution sandbox/live smoke remain                  |
+| G4 Plugin Final Ownership                | In progress | G4.1-G4.5b complete; registry finalization/live smoke remain                 |
 | G5 Search/Web Enrichment                 | Paused   | Owner reopens, then server-owned search passes gates                         |
 | G6 Voice/Image/Code Jobs                 | Pending  | Enabled jobs server-admitted and fail closed otherwise                       |
 | G7 Knowledge/RAG/Citations               | Pending  | Phase 15 runtime gates pass                                                  |

@@ -452,7 +452,7 @@ describe("G3.1 server runtime/auth API adapters", () => {
         }
         return Response.json({
           kid: "kid",
-          alg: "RSA-OAEP-256",
+          alg: "RSA-OAEP-256+A256GCM",
           publicKeyJwk: { kty: "RSA", n: "abc", e: "AQAB" },
         });
       },
@@ -641,7 +641,7 @@ describe("G4.2 server plugin registry API adapter", () => {
     });
   });
 
-  it("routes plugin execution to the Go fail-closed endpoint", async () => {
+  it("routes full plugin execution payloads to Go and maps execution errors", async () => {
     const requests: Array<{ url: string; method?: string; body?: unknown }> =
       [];
     const plugins = createServerPluginApiShell(
@@ -656,27 +656,51 @@ describe("G4.2 server plugin registry API adapter", () => {
           return Response.json(
             {
               error: {
-                code: "PLUGIN_EXECUTION_UNAVAILABLE",
-                message: "plugin execution is not available",
+                code: "PLUGIN_URL_BLOCKED",
+                message: "plugin URL is blocked by policy",
               },
             },
-            { status: 501 },
+            { status: 403 },
           );
         },
       }),
     );
 
-    await expect(
-      plugins.execute({
-        payload: {
-          pluginId: "weather",
-          functionName: "lookup_weather",
-          args: { city: "Shanghai" },
+    const response = await plugins.execute({
+      payload: {
+        plugin: {
+          id: "example.com:weather",
+          title: "Weather",
+          description: "Weather plugin",
+          logoUrl: "",
+          manifestUrl: "https://example.com/weather.json",
+          baseUrl: "https://api.example.com",
+          functions: [
+            {
+              name: "lookup_weather",
+              description: "Lookup weather",
+              path: "/weather",
+              method: "GET",
+              parameters: { type: "object" },
+            },
+          ],
+          auth: { type: "none" },
         },
-      }),
-    ).rejects.toMatchObject({
-      code: "PLUGIN_EXECUTION_UNAVAILABLE",
-      status: 501,
+        functionDef: {
+          name: "lookup_weather",
+          description: "Lookup weather",
+          path: "/weather",
+          method: "GET",
+          parameters: { type: "object" },
+        },
+        args: { city: "Shanghai" },
+      },
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "PLUGIN_URL_BLOCKED",
+      error: "plugin URL is blocked by policy",
     });
 
     expect(requests).toEqual([
@@ -684,8 +708,8 @@ describe("G4.2 server plugin registry API adapter", () => {
         url: "/mm-api/v1/plugins/execute",
         method: "POST",
         body: {
-          pluginId: "weather",
-          functionName: "lookup_weather",
+          plugin: expect.objectContaining({ id: "example.com:weather" }),
+          functionDef: expect.objectContaining({ name: "lookup_weather" }),
           args: { city: "Shanghai" },
         },
       },

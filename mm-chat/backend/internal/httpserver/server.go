@@ -226,8 +226,12 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	teamHandler := teams.NewHandler(resolvedOptions.teamService)
 	knowledgeHandler := knowledge.NewHandler(resolvedOptions.knowledgeService)
 	agentHandler := agents.NewHandler(resolvedOptions.agentService)
-	pluginHandler := plugins.NewHandler()
-	runtimeConfigHandler := runtimeconfig.NewHandler(runtimeconfig.NewService(cfg))
+	runtimeConfigService := runtimeconfig.NewService(cfg)
+	pluginHandler := plugins.NewHandler(plugins.NewService(
+		cfg,
+		plugins.WithSecretDecrypter(runtimeConfigService.DecryptOptionalSecret),
+	))
+	runtimeConfigHandler := runtimeconfig.NewHandler(runtimeConfigService)
 
 	mux.HandleFunc("/health", healthHandler.Health)
 	mux.HandleFunc("/ready", healthHandler.Ready)

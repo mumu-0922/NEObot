@@ -746,7 +746,7 @@ func TestNewHandlerRegistersChatRoutesWithDatabaseRequired(t *testing.T) {
 	}
 }
 
-func TestNewHandlerRegistersPluginRoutesFailClosed(t *testing.T) {
+func TestNewHandlerRegistersPluginRoutesWithFailClosedRegistryFallbacks(t *testing.T) {
 	handler := NewHandler(config.Config{Addr: ":0", Version: "route-test"})
 
 	rec := httptest.NewRecorder()
@@ -768,13 +768,14 @@ func TestNewHandlerRegistersPluginRoutesFailClosed(t *testing.T) {
 
 	for _, tc := range []struct {
 		path string
+		body string
 		code string
 	}{
-		{path: "/v1/plugins/install", code: "PLUGIN_INSTALL_UNAVAILABLE"},
-		{path: "/v1/plugins/execute", code: "PLUGIN_EXECUTION_UNAVAILABLE"},
+		{path: "/v1/plugins/install", body: `{"secret":"sk_live_secret"}`, code: "PLUGIN_INSTALL_UNAVAILABLE"},
+		{path: "/v1/plugins/execute", body: `{"pluginId":"weather","functionName":"lookup","args":{"secret":"sk_live_secret"}}`, code: "PLUGIN_REGISTRY_REQUIRED"},
 	} {
 		rec = httptest.NewRecorder()
-		req = httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(`{"secret":"sk_live_secret"}`))
+		req = httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
 		handler.ServeHTTP(rec, req)
 		if rec.Code != http.StatusNotImplemented {
 			t.Fatalf("%s status = %d, want %d; body=%s", tc.path, rec.Code, http.StatusNotImplemented, rec.Body.String())

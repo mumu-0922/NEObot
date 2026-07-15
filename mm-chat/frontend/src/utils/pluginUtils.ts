@@ -5,7 +5,10 @@ import {
   resolvePluginFunction,
 } from "../lib/plugin/resolve";
 import { readJsonResponseOrThrow } from "../lib/api/client";
-import { createNeoChatApiClient } from "../services/api/client";
+import {
+  createNeoChatApiClient,
+  type NeoChatApiClient,
+} from "../services/api/client";
 import {
   getPluginExecutionArgsError,
   getPluginExecutionFunctionNameError,
@@ -31,8 +34,8 @@ async function postPluginExecution(
     PluginExecutionPayload | PluginExecutionRequestPayload
   >,
   signal?: AbortSignal,
+  client: NeoChatApiClient = createNeoChatApiClient(),
 ) {
-  const client = createNeoChatApiClient();
   return fetchWithByokRetry(async () => {
     const payload = await buildPayload();
     return client.plugins.execute({ payload, signal });
@@ -44,9 +47,18 @@ async function postPluginExecutionWithLegacyFallback(
   buildLegacyPayload: () => Promise<PluginExecutionPayload>,
   signal?: AbortSignal,
 ) {
-  const response = await postPluginExecution(buildPrimaryPayload, signal);
+  const client = createNeoChatApiClient();
+  if (client.mode === "server") {
+    return postPluginExecution(buildLegacyPayload, signal, client);
+  }
+
+  const response = await postPluginExecution(
+    buildPrimaryPayload,
+    signal,
+    client,
+  );
   if (response.status !== 404) return response;
-  return postPluginExecution(buildLegacyPayload, signal);
+  return postPluginExecution(buildLegacyPayload, signal, client);
 }
 
 async function buildPluginAuthConfig(

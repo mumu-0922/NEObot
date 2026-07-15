@@ -1413,3 +1413,75 @@ G4.6 live browser smoke with a real plugin result
 ```
 
 Next slice: G4.5b Plugin execute sandbox implementation.
+
+## 2026-07-15 — G4.5b Minimal Go Plugin Execution Sandbox Completed
+
+Objective: turn the Go plugin execution gate from pure fail-closed admission into
+a minimal safe executor while preserving one-slice-at-a-time migration. This
+slice intentionally does not claim persistent registry ownership yet.
+
+Completed scope:
+
+- changed Go BYOK public-key algorithm metadata to the frontend envelope contract
+  `RSA-OAEP-256+A256GCM`;
+- added Go BYOK `DecryptOptionalSecret` / `DecryptSecretEnvelope` support and
+  wired plugin execution to the same runtime config service instance so
+  ephemeral development keys do not drift;
+- implemented Go `/v1/plugins/execute` for full manifest payloads:
+  - validates the selected function is declared by the supplied plugin;
+  - substitutes path parameters and appends GET query args;
+  - rejects plaintext plugin auth;
+  - decrypts BYOK `valueSecret` using `plugin:{pluginId}:auth` context;
+  - applies bearer/oauth2/apiKey auth to header/query/body according to config;
+  - blocks localhost/private/link-local outbound URLs and redirects by default;
+  - enforces HTTP method allowlist, timeout, 2 MiB response cap, and generic JSON/text result normalization;
+- kept id-only plugin execution fail-closed with `PLUGIN_REGISTRY_REQUIRED` until
+  the registry-backed finalization slice;
+- changed server-mode frontend plugin execution to send the full plugin manifest
+  payload to Go; local mode still keeps `/api/plugins/execute` as rollback only.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/backend/internal/runtimeconfig/service.go
+mm-chat/backend/internal/plugins/handler.go
+mm-chat/backend/internal/plugins/handler_test.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/httpserver/server_test.go
+mm-chat/frontend/src/services/api/client/server/pluginApi.ts
+mm-chat/frontend/src/utils/pluginUtils.ts
+mm-chat/frontend/src/__tests__/apiClientScaffold.test.ts
+mm-chat/frontend/src/__tests__/pluginUtils.test.ts
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/inventory/frontend-call-sites.md
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./...          # passed
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test \
+  ./internal/runtimeconfig ./internal/plugins ./internal/httpserver       # passed
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/apiClientScaffold.test.ts \
+  src/__tests__/pluginUtils.test.ts \
+  src/__tests__/serverPluginOrchestration.test.ts                         # passed, 3 files / 62 tests
+cd mm-chat/frontend && corepack pnpm typecheck                            # passed
+cd mm-chat/frontend && corepack pnpm format:check                         # passed
+cd mm-chat/frontend && corepack pnpm lint                                 # passed
+git diff --check -- mm-chat                                               # passed
+```
+
+Residual G4 blockers:
+
+```text
+G4.5c registry-backed plugin execute finalization
+G4.6 live browser smoke with a real plugin result
+```
+
+Next slice: G4.5c Registry-backed plugin execute finalization, or G4.6 live smoke
+if the owner accepts full-manifest execution as the smoke baseline before
+registry persistence.

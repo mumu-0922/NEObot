@@ -1984,17 +1984,20 @@ Operational rollback smoke:
 This contract applies when `NEXT_PUBLIC_API_MODE=server` and one or more
 installed plugins are active. The provider credential remains owned by Go;
 plugin auth must remain browser-encrypted when it crosses the API boundary.
-Copying `PROVIDER_API_KEY` into the frontend is forbidden. As of G4.5a,
-server-mode plugin execution routes to Go `/v1/plugins/execute` and fails
-closed with `PLUGIN_EXECUTION_UNAVAILABLE` until the Go sandbox/registry/auth
-executor is implemented. The transitional Next `/api/plugins/execute` path is
-local-adapter rollback only.
+Copying `PROVIDER_API_KEY` into the frontend is forbidden. As of G4.5b,
+server-mode plugin execution routes to Go `/v1/plugins/execute`; the Go
+executor accepts the full installed-plugin manifest payload, decrypts
+`valueSecret`, applies outbound URL policy including redirects, enforces
+timeout/response bounds, and returns generic normalized results. Id-only
+registry execution remains `PLUGIN_REGISTRY_REQUIRED` until G4.5c. The
+transitional Next
+`/api/plugins/execute` path is local-adapter rollback only.
 
 ```text
 browser selection
   -> Go tool planning
   -> browser validates offered call
-  -> Go plugin execution (currently fail-closed until sandbox implementation)
+  -> Go plugin execution sandbox
   -> bounded untrusted result context
   -> Go final stream and persistence
 ```
@@ -2013,6 +2016,22 @@ Plugin execution route:
 ```http
 POST /v1/plugins/execute
 Content-Type: application/json
+```
+
+G4.5b execution payload:
+
+```ts
+{
+  plugin: Plugin;
+  functionDef: PluginFunction;
+  args: Record<string, unknown>;
+  authConfig?: {
+    type?: "bearer" | "apiKey" | "none" | "oauth2";
+    valueSecret?: EncryptedSecretEnvelope;
+    key?: string;
+    addTo?: "header" | "query";
+  };
+}
 ```
 
 Frontend API-client signature:
@@ -2072,6 +2091,15 @@ Browser execution rules:
 - Server-mode execution requests must go to `/v1/plugins/execute`; the
   transitional `/api/plugins/execute` route is only reachable from the local
   adapter until the route is removed.
+- Until the persistent plugin registry lands, server-mode execution must send
+  the full installed plugin manifest and selected function definition; id-only
+  payloads fail closed with `PLUGIN_REGISTRY_REQUIRED`.
+- `authConfig.value` plaintext is rejected with
+  `PLAINTEXT_PLUGIN_AUTH_REJECTED`; only BYOK `valueSecret` is accepted.
+- Go outbound policy allows only `http|https`, blocks
+  localhost/private/link-local networks on initial URLs and redirects by
+  default, enforces a 30s timeout and 2 MiB response cap, and never echoes plugin
+  auth material in errors.
 - Planned function names must exactly match an offered name.
 - Result records execute sequentially and retain `success|error` status.
 - Result context is at most 64 KiB UTF-8, is explicitly labeled untrusted, and
@@ -2092,7 +2120,13 @@ Browser execution rules:
 | Configured provider has no planner                                             | `501 TOOLS_UNSUPPORTED`                                      |
 | Provider request/decode failure                                                | `502 PROVIDER_ERROR` without provider body/key               |
 | Provider returns an unoffered function, non-object args, or more than 32 calls | `502 PROVIDER_ERROR`; browser also fails closed              |
-| Go plugin executor not yet configured                                          | `501 PLUGIN_EXECUTION_UNAVAILABLE`; no Next fallback         |
+| Id-only execution before registry is implemented                               | `501 PLUGIN_REGISTRY_REQUIRED`; no Next fallback             |
+| Plaintext plugin auth                                                          | `400 PLAINTEXT_PLUGIN_AUTH_REJECTED`                         |
+| Missing required plugin auth or BYOK decrypt failure                            | `400 PLUGIN_AUTH_REQUIRED`                                   |
+| Unsupported plugin auth type                                                   | `400 PLUGIN_AUTH_UNSUPPORTED`                                |
+| Blocked outbound plugin URL                                                     | `403 PLUGIN_URL_BLOCKED`                                     |
+| Oversized plugin response                                                       | `502 PLUGIN_RESPONSE_TOO_LARGE`                              |
+| Non-2xx or failed plugin request                                                | `502 PLUGIN_REQUEST_FAILED`                                  |
 | Plugin execution returns `{ "error": ... }`                                    | Record `status: "error"`; final model must not claim success |
 | Abort before/during plan or execution                                          | Stop the orchestration and do not start the final stream     |
 | Browser `Origin` differs from external `Host`                                  | `403 CSRF_ORIGIN_BLOCKED`                                    |
@@ -2100,14 +2134,14 @@ Browser execution rules:
 
 ### 21.5 Good / Base / Bad Cases
 
-- Good after executor implementation: Weather is active; Go plans
-  `getCurrentWeather`; Go executes it; the final persisted assistant message
-  uses the returned temperature.
+- Good: Weather is active; Go plans `getCurrentWeather`; Go executes the
+  supplied manifest/function payload; the final persisted assistant message uses
+  the returned temperature.
 - Base: Plugins are active but the model returns `calls: []`; no plugin route is
   called and normal Go chat continues.
-- G4.5a base: Plugins are active and planned, but the Go executor returns
-  `PLUGIN_EXECUTION_UNAVAILABLE`; the final model receives bounded error
-  context and must not claim tool success.
+- G4.5b base: A server receives an id-only payload before persistent registry
+  execution exists; it returns `PLUGIN_REGISTRY_REQUIRED` and does not fall back
+  to Next.
 - Bad: Provider returns `delete_all` when it was not offered; neither plugin
   execution nor the final stream is called.
 
@@ -2122,9 +2156,12 @@ Browser execution rules:
 - Frontend orchestration: no-active-plugin no-op, secret exclusion, active-call
   execution, unoffered-call failure, execution error status, abort, and 64 KiB
   result bound.
-- G4.5a adapter: server-mode `pluginApi.execute` posts to
-  `/v1/plugins/execute`, maps fail-closed Go errors, and never falls back to
-  `/api/plugins/execute`.
+- G4.5b Go executor: full manifest payload success, plaintext auth rejection,
+  BYOK header/query auth, blocked private URL/redirect, response-size cap, and
+  no secret leakage in errors.
+- G4.5b adapter: server-mode `pluginApi.execute` posts full payloads to
+  `/v1/plugins/execute`, maps Go errors as plugin error results, and never falls
+  back to `/api/plugins/execute`.
 - Composition: server mode opens both skill and plugin menus; search/reasoning
   remain on the unsupported-action gate.
 - Live smoke: real plan, real plugin response, final Go SSE completion, message
@@ -2140,13 +2177,14 @@ const provider = { apiKey: process.env.PROVIDER_API_KEY };
 ```
 
 Correct: provider planning remains in Go, and server-mode plugin execution is
-also admitted by Go. Until the Go executor is configured, execution must fail
-closed instead of falling back to a production Next route.
+also admitted by Go. Until persistent registry execution lands, pass the
+validated installed plugin manifest/function payload; never fall back to a
+production Next route.
 
 ```ts
 const calls = await api.chat.planTools({ prompt, modelRef, tools, signal });
 const result = await api.plugins.execute({
-  payload: { pluginId, functionName: calls[0].name, args: calls[0].args },
+  payload: { plugin, functionDef, args: calls[0].args, authConfig },
   signal,
 });
 ```

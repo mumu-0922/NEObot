@@ -58,15 +58,25 @@ export function createServerPluginApiShell(httpClient: HttpClient): PluginApi {
       }
     },
     async execute(input: PluginExecuteInput): Promise<Response> {
-      const response = await httpClient.requestJson<unknown>(
-        pluginExecutePath,
-        {
-          method: "POST",
-          body: input.payload,
-          signal: input.signal,
-        },
-      );
-      return Response.json(response);
+      try {
+        const response = await httpClient.requestJson<unknown>(
+          pluginExecutePath,
+          {
+            method: "POST",
+            body: input.payload,
+            signal: input.signal,
+          },
+        );
+        return Response.json(response);
+      } catch (error) {
+        if (error instanceof ApiClientError) {
+          return Response.json(
+            { error: error.message, code: error.code },
+            { status: error.status ?? 500 },
+          );
+        }
+        throw error;
+      }
     },
   };
 }

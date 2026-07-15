@@ -1,6 +1,8 @@
 package runtimeconfig
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -17,7 +19,7 @@ import (
 
 const (
 	serverDefaultProviderID = "SERVER_DEFAULT"
-	byokAlgorithm           = "RSA-OAEP-256"
+	byokAlgorithm           = "RSA-OAEP-256+A256GCM"
 )
 
 var (
@@ -31,6 +33,16 @@ type Service struct {
 
 	byokMu        sync.Mutex
 	ephemeralBYOK *rsa.PrivateKey
+}
+
+type EncryptedSecretEnvelope struct {
+	V          int    `json:"v"`
+	KID        string `json:"kid"`
+	Alg        string `json:"alg"`
+	IV         string `json:"iv"`
+	WrappedKey string `json:"wrappedKey"`
+	Ciphertext string `json:"ciphertext"`
+	Context    string `json:"context"`
 }
 
 func NewService(cfg config.Config) *Service {
@@ -120,6 +132,74 @@ func (s *Service) BYOKPublicKey() (BYOKPublicKeyResponse, error) {
 			"key_ops": []string{"wrapKey"},
 		},
 	}, nil
+}
+
+func (s *Service) DecryptOptionalSecret(
+	envelope *EncryptedSecretEnvelope,
+	expectedContext string,
+) (string, error) {
+	if envelope == nil {
+		return "", nil
+	}
+	return s.DecryptSecretEnvelope(*envelope, expectedContext)
+}
+
+func (s *Service) DecryptSecretEnvelope(
+	envelope EncryptedSecretEnvelope,
+	expectedContext string,
+) (string, error) {
+	if envelope.V != 1 || envelope.Alg != byokAlgorithm {
+		return "", ErrBYOKNotConfigured
+	}
+	if envelope.Context != expectedContext {
+		return "", ErrBYOKNotConfigured
+	}
+
+	key, err := s.byokPrivateKey()
+	if err != nil {
+		return "", err
+	}
+	kid := strings.TrimSpace(s.cfg.BYOK.KeyID)
+	if kid == "" {
+		kid, err = deriveKeyID(&key.PublicKey)
+		if err != nil {
+			return "", err
+		}
+	}
+	if envelope.KID != kid {
+		return "", ErrBYOKNotConfigured
+	}
+
+	wrappedKey, err := base64.RawURLEncoding.DecodeString(envelope.WrappedKey)
+	if err != nil {
+		return "", ErrBYOKNotConfigured
+	}
+	iv, err := base64.RawURLEncoding.DecodeString(envelope.IV)
+	if err != nil {
+		return "", ErrBYOKNotConfigured
+	}
+	ciphertext, err := base64.RawURLEncoding.DecodeString(envelope.Ciphertext)
+	if err != nil {
+		return "", ErrBYOKNotConfigured
+	}
+
+	aesKey, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, key, wrappedKey, nil)
+	if err != nil {
+		return "", ErrBYOKNotConfigured
+	}
+	block, err := aes.NewCipher(aesKey)
+	if err != nil {
+		return "", ErrBYOKNotConfigured
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", ErrBYOKNotConfigured
+	}
+	plaintext, err := gcm.Open(nil, iv, ciphertext, []byte(envelope.Context))
+	if err != nil {
+		return "", ErrBYOKNotConfigured
+	}
+	return string(plaintext), nil
 }
 
 func (s *Service) byokPrivateKey() (*rsa.PrivateKey, error) {
