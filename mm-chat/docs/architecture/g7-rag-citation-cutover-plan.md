@@ -316,12 +316,32 @@ G7.5.6 completed on 2026-07-15:
 - Production `JOB_HANDLER_REGISTRY` remains empty; G7.5.6 adds a promotion seam,
   not a promoted live handler.
 
+G7.5.7 completed on 2026-07-15:
+
+- Added the dependency-injected `passage_embedding` handler seam without
+  production registration.
+- The seam can only enter through `with_job_context_admission(...)`, then
+  requires a Jina-compatible embedding gateway and a Postgres projection gateway
+  before any work proceeds.
+- The default dependency bundle fails closed before candidate fetch, provider
+  embedding, or projection writes.
+- Fake-gateway tests prove the intended flow: fetch child search candidates,
+  request passage embeddings, enforce `jina-embeddings-v4` with exactly `1024`
+  finite vector lanes, compute a redacted vector hash for `REAL[]` storage,
+  stage embeddings, and call the materialization completeness gate.
+- Count mismatches, child-id mismatches, invalid vector dimensions, and failed
+  completeness checks stop with stable error codes and do not leak raw
+  embeddings or provider bodies.
+- Production `JOB_HANDLER_REGISTRY` remains empty; G7.5.7 adds a promotion seam,
+  not a promoted live Jina handler.
+
 Remaining G7.5 work:
 
 - Implement real object-store, MinerU, Jina, and Postgres projection gateway
   adapters behind the new parse seam.
-- Add passage-embedding and purge dependency seams with the same default-off
-  promotion model.
+- Implement the real Jina and Postgres projection gateway adapters behind the
+  new passage-embedding seam.
+- Add the purge dependency seam with the same default-off promotion model.
 - Implement index, reprocess, tombstone purge, rebuild, retry, and DLQ behavior.
 - Enforce immediate query invisibility for deleted/tombstoned versions.
 

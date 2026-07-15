@@ -11,12 +11,22 @@ import pytest
 from mm_chat_rag.job_handler_dependencies import (
     JOB_HANDLER_DEPENDENCY_ERROR_CODES,
     JOB_HANDLER_DEPENDENCY_UNCONFIGURED,
+    JOB_HANDLER_EMBEDDING_CHILD_MISMATCH,
+    JOB_HANDLER_EMBEDDING_COMPLETENESS_FAILED,
+    JOB_HANDLER_EMBEDDING_COUNT_MISMATCH,
+    JOB_HANDLER_EMBEDDING_VECTOR_INVALID,
     JOB_HANDLER_PARSE_ARTIFACT_INVALID,
     JOB_HANDLER_SOURCE_HASH_MISMATCH,
     DocumentSource,
     ParsedDocumentArtifacts,
     ParseHandlerDependencies,
+    PassageEmbeddingCandidate,
+    PassageEmbeddingHandlerDependencies,
+    PassageEmbeddingVector,
+    StagedPassageEmbedding,
     admitted_parse_handler_with_dependencies,
+    admitted_passage_embedding_handler_with_dependencies,
+    embedding_vector_sha256,
     parse_handler_with_dependencies,
 )
 from mm_chat_rag.job_handlers import JOB_HANDLER_STAGE_MISMATCH
@@ -31,6 +41,8 @@ from tests.support.parser_contracts import JsonObject, load_strict_json_bytes
 
 HASH = "c" * 64
 SOURCE_SHA256 = "3a413cf18e813c868e5859350b4a6e02fe271e2bf4224b92eb14cf3829cb9a9e"
+CONTENT_HASH_A = "d" * 64
+CONTENT_HASH_B = "e" * 64
 _FIXTURE_ROOT = (
     Path(__file__).parents[1]
     / "fixtures"
@@ -92,6 +104,16 @@ def purge_row(**updates: object) -> dict[str, object]:
         governance_head_revision=None,
         collection_consent_id=None,
         collection_consent_revision=None,
+    )
+    row.update(updates)
+    return row
+
+
+def embedding_row(**updates: object) -> dict[str, object]:
+    row = provider_row(
+        stage="passage_embedding",
+        processor="jina",
+        model_id="jina-embeddings-v4",
     )
     row.update(updates)
     return row
@@ -163,6 +185,103 @@ class FakeParseProjectionGateway:
         self.batches.append(batch)
 
 
+def embedding_vector(seed: float = 0.001) -> tuple[float, ...]:
+    return tuple(seed + float(index % 11) / 1000 for index in range(1024))
+
+
+def embedding_candidates() -> tuple[PassageEmbeddingCandidate, ...]:
+    return (
+        PassageEmbeddingCandidate(
+            child_chunk_id=uuid.uuid4(),
+            content="Hash DAG",
+            content_hash=CONTENT_HASH_A,
+        ),
+        PassageEmbeddingCandidate(
+            child_chunk_id=uuid.uuid4(),
+            content="Semantics",
+            content_hash=CONTENT_HASH_B,
+        ),
+    )
+
+
+class FakePassageEmbeddingGateway:
+    def __init__(
+        self,
+        calls: list[str],
+        *,
+        dimensions: int = 1024,
+        mismatch_child: bool = False,
+        missing_last: bool = False,
+    ) -> None:
+        self._calls = calls
+        self._dimensions = dimensions
+        self._mismatch_child = mismatch_child
+        self._missing_last = missing_last
+
+    async def embed_passages(
+        self,
+        context: object,
+        candidates: tuple[PassageEmbeddingCandidate, ...],
+    ) -> tuple[PassageEmbeddingVector, ...]:
+        self._calls.append("embed")
+        assert context is not None
+        selected = candidates[:-1] if self._missing_last else candidates
+        vectors: list[PassageEmbeddingVector] = []
+        for index, candidate in enumerate(selected):
+            child_id = uuid.uuid4() if self._mismatch_child and index == 0 else (
+                candidate.child_chunk_id
+            )
+            vectors.append(
+                PassageEmbeddingVector(
+                    child_chunk_id=child_id,
+                    embedding=tuple(0.1 for _ in range(self._dimensions)),
+                )
+            )
+        return tuple(vectors)
+
+
+class FakePassageEmbeddingProjectionGateway:
+    def __init__(
+        self,
+        calls: list[str],
+        *,
+        candidates: tuple[PassageEmbeddingCandidate, ...] | None = None,
+        complete: bool = True,
+    ) -> None:
+        self._calls = calls
+        self._candidates = candidates or embedding_candidates()
+        self._complete = complete
+        self.staged: list[tuple[StagedPassageEmbedding, ...]] = []
+        self.expected_child_count: int | None = None
+
+    async def fetch_passage_embedding_candidates(
+        self, context: object
+    ) -> tuple[PassageEmbeddingCandidate, ...]:
+        self._calls.append("fetch_candidates")
+        assert context is not None
+        return self._candidates
+
+    async def stage_passage_embeddings(
+        self,
+        context: object,
+        embeddings: tuple[StagedPassageEmbedding, ...],
+    ) -> None:
+        self._calls.append("stage_embeddings")
+        assert context is not None
+        self.staged.append(embeddings)
+
+    async def assert_materialization_search_complete(
+        self,
+        context: object,
+        *,
+        expected_child_count: int,
+    ) -> bool:
+        self._calls.append("assert_complete")
+        assert context is not None
+        self.expected_child_count = expected_child_count
+        return self._complete
+
+
 def dependencies(
     calls: list[str],
     *,
@@ -176,6 +295,29 @@ def dependencies(
             parser=FakeParserGateway(
                 calls,
                 chunk_source_sha256=chunk_source_sha256,
+            ),
+            projection=projection,
+        ),
+        projection,
+    )
+
+
+def embedding_dependencies(
+    calls: list[str],
+    *,
+    dimensions: int = 1024,
+    mismatch_child: bool = False,
+    missing_last: bool = False,
+    complete: bool = True,
+) -> tuple[PassageEmbeddingHandlerDependencies, FakePassageEmbeddingProjectionGateway]:
+    projection = FakePassageEmbeddingProjectionGateway(calls, complete=complete)
+    return (
+        PassageEmbeddingHandlerDependencies(
+            embedding=FakePassageEmbeddingGateway(
+                calls,
+                dimensions=dimensions,
+                mismatch_child=mismatch_child,
+                missing_last=missing_last,
             ),
             projection=projection,
         ),
@@ -273,3 +415,131 @@ async def test_parse_dependency_contextual_handler_after_admission() -> None:
             deps,
         )
     assert raised.value.error_code == "JOB_HANDLER_CONTEXT_INVALID"
+
+
+def test_embedding_vector_hash_is_stable_for_jina_1024_lane() -> None:
+    vector = embedding_vector()
+    assert embedding_vector_sha256(vector) == embedding_vector_sha256(vector)
+    assert len(embedding_vector_sha256(vector)) == 64
+
+
+async def test_admitted_passage_embedding_handler_stages_1024_vectors() -> None:
+    calls: list[str] = []
+    deps, projection = embedding_dependencies(calls)
+    handler = admitted_passage_embedding_handler_with_dependencies(
+        deps,
+        valid_profile(),
+    )
+
+    result = await handler(claim(embedding_row()))
+
+    assert result.outcome == "succeeded"
+    assert result.error_code is None
+    assert calls == [
+        "fetch_candidates",
+        "embed",
+        "stage_embeddings",
+        "assert_complete",
+    ]
+    assert projection.expected_child_count == 2
+    assert len(projection.staged) == 1
+    staged = projection.staged[0]
+    assert [item.embedding_dimensions for item in staged] == [1024, 1024]
+    assert {len(item.embedding_vector) for item in staged} == {1024}
+    assert all(len(item.embedding_vector_sha256) == 64 for item in staged)
+
+
+async def test_passage_embedding_dependency_handler_default_off() -> None:
+    handler = admitted_passage_embedding_handler_with_dependencies(
+        PassageEmbeddingHandlerDependencies(),
+        valid_profile(),
+    )
+
+    with pytest.raises(PermanentJobError) as raised:
+        await handler(claim(embedding_row()))
+
+    assert raised.value.error_code == JOB_HANDLER_DEPENDENCY_UNCONFIGURED
+
+
+async def test_passage_embedding_rejects_wrong_stage_before_dependencies() -> None:
+    calls: list[str] = []
+    deps, _ = embedding_dependencies(calls)
+    handler = admitted_passage_embedding_handler_with_dependencies(
+        deps,
+        valid_profile(),
+    )
+
+    with pytest.raises(PermanentJobError) as raised:
+        await handler(claim(provider_row()))
+
+    assert raised.value.error_code == JOB_HANDLER_STAGE_MISMATCH
+    assert calls == []
+
+
+async def test_passage_embedding_rejects_non_1024_vector_before_stage() -> None:
+    calls: list[str] = []
+    deps, projection = embedding_dependencies(calls, dimensions=2)
+    handler = admitted_passage_embedding_handler_with_dependencies(
+        deps,
+        valid_profile(),
+    )
+
+    with pytest.raises(PermanentJobError) as raised:
+        await handler(claim(embedding_row()))
+
+    assert raised.value.error_code == JOB_HANDLER_EMBEDDING_VECTOR_INVALID
+    assert calls == ["fetch_candidates", "embed"]
+    assert projection.staged == []
+
+
+async def test_passage_embedding_rejects_missing_provider_result_before_stage() -> None:
+    calls: list[str] = []
+    deps, projection = embedding_dependencies(calls, missing_last=True)
+    handler = admitted_passage_embedding_handler_with_dependencies(
+        deps,
+        valid_profile(),
+    )
+
+    with pytest.raises(PermanentJobError) as raised:
+        await handler(claim(embedding_row()))
+
+    assert raised.value.error_code == JOB_HANDLER_EMBEDDING_COUNT_MISMATCH
+    assert calls == ["fetch_candidates", "embed"]
+    assert projection.staged == []
+
+
+async def test_passage_embedding_rejects_child_mismatch_before_stage() -> None:
+    calls: list[str] = []
+    deps, projection = embedding_dependencies(calls, mismatch_child=True)
+    handler = admitted_passage_embedding_handler_with_dependencies(
+        deps,
+        valid_profile(),
+    )
+
+    with pytest.raises(PermanentJobError) as raised:
+        await handler(claim(embedding_row()))
+
+    assert raised.value.error_code == JOB_HANDLER_EMBEDDING_CHILD_MISMATCH
+    assert calls == ["fetch_candidates", "embed"]
+    assert projection.staged == []
+
+
+async def test_passage_embedding_requires_projection_completeness() -> None:
+    calls: list[str] = []
+    deps, projection = embedding_dependencies(calls, complete=False)
+    handler = admitted_passage_embedding_handler_with_dependencies(
+        deps,
+        valid_profile(),
+    )
+
+    with pytest.raises(PermanentJobError) as raised:
+        await handler(claim(embedding_row()))
+
+    assert raised.value.error_code == JOB_HANDLER_EMBEDDING_COMPLETENESS_FAILED
+    assert calls == [
+        "fetch_candidates",
+        "embed",
+        "stage_embeddings",
+        "assert_complete",
+    ]
+    assert len(projection.staged) == 1
