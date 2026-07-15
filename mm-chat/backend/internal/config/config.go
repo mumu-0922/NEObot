@@ -22,6 +22,7 @@ const (
 	DefaultRedisRateLimitRequests = 120
 	DefaultRedisRateLimitWindow   = time.Minute
 	DefaultProviderTimeout        = 2 * time.Minute
+	DefaultProviderName           = "Server Default"
 	DefaultStorageBackend         = "local"
 	DefaultLocalStorageDir        = "./data/files"
 	DefaultS3Region               = "us-east-1"
@@ -55,10 +56,14 @@ const (
 	EnvRedisRateLimitRequests = "REDIS_RATE_LIMIT_REQUESTS"
 	EnvRedisRateLimitWindow   = "REDIS_RATE_LIMIT_WINDOW"
 	EnvProviderType           = "PROVIDER_TYPE"
+	EnvProviderName           = "DEFAULT_PROVIDER_NAME"
 	EnvProviderBaseURL        = "PROVIDER_BASE_URL"
 	EnvProviderModel          = "PROVIDER_MODEL"
 	EnvProviderAPIKey         = "PROVIDER_API_KEY"
 	EnvProviderTimeout        = "PROVIDER_TIMEOUT"
+	EnvBYOKPrivateKeyPEM      = "BYOK_PRIVATE_KEY_PEM"
+	EnvBYOKKeyID              = "BYOK_KEY_ID"
+	EnvBYOKAllowEphemeralKey  = "BYOK_ALLOW_EPHEMERAL_KEY"
 	EnvStorageBackend         = "STORAGE_BACKEND"
 	EnvLocalStorageDir        = "LOCAL_STORAGE_DIR"
 	EnvS3Endpoint             = "S3_ENDPOINT"
@@ -105,6 +110,7 @@ type Config struct {
 	Redis RedisConfig
 
 	Provider ProviderConfig
+	BYOK     BYOKConfig
 	Storage  StorageConfig
 	Auth     AuthConfig
 	Team     TeamConfig
@@ -126,10 +132,19 @@ type RedisConfig struct {
 // be logged or serialized into API responses.
 type ProviderConfig struct {
 	Type    string
+	Name    string
 	BaseURL string
 	Model   string
 	APIKey  string
 	Timeout time.Duration
+}
+
+// BYOKConfig contains browser-encryption key settings. Private key material
+// must never be logged or serialized into API responses.
+type BYOKConfig struct {
+	PrivateKeyPEM     string
+	KeyID             string
+	AllowEphemeralKey bool
 }
 
 // StorageConfig contains file-byte storage settings. Object-store secrets must
@@ -310,10 +325,17 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 
 		Provider: ProviderConfig{
 			Type:    optionalEnv(lookup, EnvProviderType),
+			Name:    envOrDefault(lookup, EnvProviderName, DefaultProviderName),
 			BaseURL: optionalEnv(lookup, EnvProviderBaseURL),
 			Model:   optionalEnv(lookup, EnvProviderModel),
 			APIKey:  optionalEnv(lookup, EnvProviderAPIKey),
 			Timeout: durationEnvOrDefault(lookup, EnvProviderTimeout, DefaultProviderTimeout),
+		},
+
+		BYOK: BYOKConfig{
+			PrivateKeyPEM:     optionalEnv(lookup, EnvBYOKPrivateKeyPEM),
+			KeyID:             optionalEnv(lookup, EnvBYOKKeyID),
+			AllowEphemeralKey: boolEnvOrDefault(lookup, EnvBYOKAllowEphemeralKey, false),
 		},
 
 		Storage: StorageConfig{

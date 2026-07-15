@@ -1,3 +1,6 @@
+import type { ByokPublicKeyResponse } from "../../../lib/byok/shared";
+import type { PublicServerConfig } from "../../../lib/defaultConfig/shared";
+
 export type ApiMode = "local" | "server";
 
 export type NetworkEdge = "same-origin-proxy" | "direct-cors";
@@ -302,6 +305,87 @@ export interface AgentApi {
   getAgentDetail(input: AgentDetailInput): Promise<unknown>;
 }
 
+export type GlobalUserRole = "owner" | "user" | "viewer";
+
+export interface AuthUserDTO {
+  id: string;
+  displayName: string;
+  role: GlobalUserRole;
+}
+
+export interface LoginInput {
+  email?: string;
+  password: string;
+}
+
+export interface AcceptInviteInput {
+  token: string;
+  password: string;
+}
+
+export interface RecoveryRequestInput {
+  email: string;
+}
+
+export interface CompleteRecoveryInput {
+  token: string;
+  newPassword: string;
+}
+
+export interface AuthenticatedRequestInput {
+  token?: string;
+}
+
+export interface LoginResult {
+  user: AuthUserDTO;
+  token?: string;
+  expiresAt?: string;
+}
+
+export interface AuthApi {
+  getCurrentUser(
+    input?: AuthenticatedRequestInput,
+  ): Promise<AuthUserDTO | null>;
+  login(input: LoginInput): Promise<LoginResult>;
+  acceptInvite(input: AcceptInviteInput): Promise<LoginResult>;
+  requestRecovery(input: RecoveryRequestInput): Promise<void>;
+  completeRecovery(input: CompleteRecoveryInput): Promise<void>;
+  logout(input?: AuthenticatedRequestInput): Promise<void>;
+  revokeAllSessions(input?: AuthenticatedRequestInput): Promise<void>;
+}
+
+export interface SettingsApi {
+  getRuntimeConfig(): Promise<PublicServerConfig>;
+}
+
+export interface ProviderRuntimeConfigDTO {
+  type?: string;
+  baseUrl?: string;
+  name?: string;
+  source?: "server-default";
+  apiKeySecret?: unknown;
+  useDefault?: boolean;
+}
+
+export interface ProviderModelsInput {
+  provider: ProviderRuntimeConfigDTO;
+  signal?: AbortSignal;
+}
+
+export interface ProviderModelsResponse {
+  models: string[];
+}
+
+export interface ProviderApi {
+  listModels(input: ProviderModelsInput): Promise<ProviderModelsResponse>;
+}
+
+export type BYOKPublicKeyResponse = ByokPublicKeyResponse;
+
+export interface ByokApi {
+  getPublicKey(): Promise<BYOKPublicKeyResponse>;
+}
+
 export interface FileApi {
   uploadFile(input: UploadFileInput): Promise<FileRecordDTO>;
   getFile(
@@ -384,6 +468,10 @@ export interface NeoChatApiClient {
   mode: ApiMode;
   config: ResolvedApiClientConfig;
   capabilities: ApiCapabilities;
+  auth: AuthApi;
+  settings: SettingsApi;
+  providers: ProviderApi;
+  byok: ByokApi;
   chat: ChatApi;
   files: FileApi;
   imports?: BrowserImportApi;

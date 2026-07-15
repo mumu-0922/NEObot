@@ -1363,10 +1363,13 @@ Endpoint mapping:
 | `plugins.install`             | `POST /v1/plugins/install`  | Later phase; validate manifest before install.                                |
 | `plugins.execute`             | `POST /v1/plugins/execute`  | Deferred until sandbox design exists.                                         |
 
-The table above is the long-term server contract. Phase 11 must not call these
-routes unless they are implemented by the Go router and explicitly reopened in
-§20. The current Go backend does not register `/v1/config`, `/v1/settings`,
-`/v1/providers*`, `/v1/plugins*`, or `/v1/teams*`. It does register the
+The table above is the long-term server contract. Server mode must not call a
+route until it is implemented by the Go router and explicitly reopened here.
+G3.1 reopens `GET /v1/config`, `POST /v1/providers/models` for
+`source:"server-default"` model lists only, and `GET /v1/byok/public-key`.
+Custom provider BYOK decryption remains fail-closed until the later G3 BYOK UI
+adapter slice. `/v1/settings`, `/v1/providers`, `/v1/plugins*`, and full custom
+provider model refresh remain unopened. The Go backend also registers the
 Phase 15.1B auth/session routes `/v1/auth/login`, `/v1/auth/logout`,
 `/v1/auth/invites/accept`, `/v1/auth/recovery/*`, `/v1/me`, and
 `/v1/me/sessions`.

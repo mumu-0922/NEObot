@@ -368,6 +368,8 @@ func TestAuthRequiredModeRejectsMissingCredentialsAndKeepsPublicRoutes(t *testin
 		{method: http.MethodGet, path: "/ready", want: http.StatusOK},
 		{method: http.MethodGet, path: "/metrics", want: http.StatusOK},
 		{method: http.MethodGet, path: "/v1/version", want: http.StatusOK},
+		{method: http.MethodGet, path: "/v1/config", want: http.StatusOK},
+		{method: http.MethodGet, path: "/v1/byok/public-key", want: http.StatusServiceUnavailable},
 		{
 			method: http.MethodPost,
 			path:   "/v1/auth/login",
@@ -415,6 +417,7 @@ func TestAuthRequiredModeRejectsMissingCredentialsAndKeepsPublicRoutes(t *testin
 		{method: http.MethodGet, path: "/v1/me"},
 		{method: http.MethodDelete, path: "/v1/me/sessions"},
 		{method: http.MethodPost, path: "/v1/auth/logout"},
+		{method: http.MethodPost, path: "/v1/providers/models"},
 		{method: http.MethodGet, path: "/v1/chat/conversations"},
 		{method: http.MethodGet, path: "/v1/files/33333333-3333-4333-8333-333333333333"},
 		{method: http.MethodGet, path: "/v1/import/browser/33333333-3333-4333-8333-333333333333"},

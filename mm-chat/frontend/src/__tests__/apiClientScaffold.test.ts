@@ -11,6 +11,10 @@ import {
 } from "../services/api/client";
 import { createServerChatApiShell } from "../services/api/client/server/chatApi";
 import { createServerAgentApiShell } from "../services/api/client/server/agentApi";
+import { createServerAuthApiShell } from "../services/api/client/server/authApi";
+import { createServerByokApiShell } from "../services/api/client/server/byokApi";
+import { createServerProviderApiShell } from "../services/api/client/server/providerApi";
+import { createServerSettingsApiShell } from "../services/api/client/server/settingsApi";
 import { createServerFileApiShell } from "../services/api/client/server/fileApi";
 
 describe("Phase 11.1B API mode resolver", () => {
@@ -63,6 +67,7 @@ describe("Phase 11.1B API mode resolver", () => {
       chatCrud: true,
       chatStream: true,
       files: true,
+      auth: true,
     });
   });
 
@@ -135,6 +140,7 @@ describe("Phase 11.1B API mode resolver", () => {
       chatCrud: true,
       chatStream: true,
       files: true,
+      auth: true,
     });
   });
 
@@ -202,6 +208,153 @@ describe("Phase 11.1B server HTTP scaffold", () => {
       code: "NETWORK_ERROR",
       recoverable: true,
     });
+  });
+});
+
+describe("G3.1 server runtime/auth API adapters", () => {
+  it("routes auth lifecycle calls through Go auth endpoints", async () => {
+    const requests: Array<{
+      url: string;
+      method?: string;
+      auth?: string | null;
+      body?: unknown;
+    }> = [];
+    const auth = createServerAuthApiShell(
+      createHttpClient({
+        baseUrl: "/mm-api",
+        fetchImpl: async (input, init) => {
+          requests.push({
+            url: String(input),
+            method: init?.method,
+            auth: init?.headers
+              ? new Headers(init.headers).get("authorization")
+              : null,
+            body: init?.body ? JSON.parse(String(init.body)) : undefined,
+          });
+          if (String(input).endsWith("/v1/auth/login")) {
+            return Response.json({
+              user: { id: "user-1", displayName: "Owner", role: "user" },
+              token: "session-token",
+              expiresAt: "2026-07-15T00:00:00Z",
+            });
+          }
+          if (String(input).endsWith("/v1/me")) {
+            return Response.json({
+              id: "user-1",
+              displayName: "Owner",
+              role: "user",
+            });
+          }
+          return new Response(null, { status: 204 });
+        },
+      }),
+    );
+
+    await expect(
+      auth.login({ email: "owner@example.test", password: "secret" }),
+    ).resolves.toMatchObject({ token: "session-token" });
+    await expect(
+      auth.getCurrentUser({ token: "session-token" }),
+    ).resolves.toMatchObject({
+      id: "user-1",
+    });
+    await expect(
+      auth.logout({ token: "session-token" }),
+    ).resolves.toBeUndefined();
+
+    expect(requests).toEqual([
+      {
+        url: "/mm-api/v1/auth/login",
+        method: "POST",
+        auth: null,
+        body: { email: "owner@example.test", password: "secret" },
+      },
+      {
+        url: "/mm-api/v1/me",
+        method: "GET",
+        auth: "Bearer session-token",
+        body: undefined,
+      },
+      {
+        url: "/mm-api/v1/auth/logout",
+        method: "POST",
+        auth: "Bearer session-token",
+        body: undefined,
+      },
+    ]);
+  });
+
+  it("routes runtime config, provider models, and BYOK public-key calls through Go endpoints", async () => {
+    const requests: Array<{ url: string; method?: string; body?: unknown }> =
+      [];
+    const http = createHttpClient({
+      baseUrl: "/mm-api",
+      fetchImpl: async (input, init) => {
+        requests.push({
+          url: String(input),
+          method: init?.method,
+          body: init?.body ? JSON.parse(String(init.body)) : undefined,
+        });
+        if (String(input).endsWith("/v1/config")) {
+          return Response.json({
+            modelProvider: {
+              available: true,
+              id: "SERVER_DEFAULT",
+              name: "Server Default",
+              type: "OpenAI Compatible",
+              models: ["gpt-5.5"],
+              modelMetadata: {},
+              defaultModels: {},
+            },
+            search: { available: false },
+            rag: {
+              vectorStoreAvailable: false,
+              documentProcessingAvailable: false,
+            },
+            voice: {
+              elevenLabsAvailable: false,
+              mimoAvailable: false,
+              defaultSttAvailable: false,
+              defaultTtsAvailable: false,
+            },
+          });
+        }
+        if (String(input).endsWith("/v1/providers/models")) {
+          return Response.json({ models: ["gpt-5.5"] });
+        }
+        return Response.json({
+          kid: "kid",
+          alg: "RSA-OAEP-256",
+          publicKeyJwk: { kty: "RSA", n: "abc", e: "AQAB" },
+        });
+      },
+    });
+
+    await expect(
+      createServerSettingsApiShell(http).getRuntimeConfig(),
+    ).resolves.toMatchObject({
+      modelProvider: { models: ["gpt-5.5"] },
+    });
+    await expect(
+      createServerProviderApiShell(http).listModels({
+        provider: { source: "server-default" },
+      }),
+    ).resolves.toEqual({ models: ["gpt-5.5"] });
+    await expect(
+      createServerByokApiShell(http).getPublicKey(),
+    ).resolves.toMatchObject({
+      kid: "kid",
+    });
+
+    expect(requests).toEqual([
+      { url: "/mm-api/v1/config", method: "GET", body: undefined },
+      {
+        url: "/mm-api/v1/providers/models",
+        method: "POST",
+        body: { provider: { source: "server-default" } },
+      },
+      { url: "/mm-api/v1/byok/public-key", method: "GET", body: undefined },
+    ]);
   });
 });
 

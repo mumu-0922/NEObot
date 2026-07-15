@@ -938,6 +938,12 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         transitional Next `/api/*` routes.
 - [ ] G3 Auth, Runtime Config, Provider Settings, and BYOK: make session, model,
       config, and provider state server authoritative.
+  - [x] G3.1 Go runtime config, server-default provider models, BYOK public-key
+        route, and frontend API-client boundary shells.
+  - [ ] G3.2 Frontend Auth lifecycle wired to Go login/logout/me.
+  - [ ] G3.3 Provider Settings/BYOK UI adapters stop direct server-mode
+        transitional `/api/*` calls.
+  - [ ] G3.4 Hosted/dev auth behavior and same-origin smoke.
 - [ ] G4 Plugin Registry, Install, and Execution Final Ownership: remove
       transitional plugin ownership.
 - [ ] G5 Search and Web-Enrichment Toggle: keep paused until owner reopens, then

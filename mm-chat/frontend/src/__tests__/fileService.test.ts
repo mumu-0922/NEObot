@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createNeoChatApiClient } from "../services/api/client";
 import {
   createFileService,
   mapFileRecordToServerAttachment,
@@ -223,10 +224,16 @@ function createMockClient(
   filesOverrides: Partial<FileApi>,
   options: Partial<NeoChatApiClient> = {},
 ): NeoChatApiClient {
+  const defaultClient = createNeoChatApiClient();
+
   return {
     mode: options.mode ?? "server",
     config: options.config ?? resolvedConfig,
     capabilities: options.capabilities ?? capabilities,
+    auth: options.auth ?? defaultClient.auth,
+    settings: options.settings ?? defaultClient.settings,
+    providers: options.providers ?? defaultClient.providers,
+    byok: options.byok ?? defaultClient.byok,
     chat: createMockChatApi(),
     files: {
       async uploadFile() {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createNeoChatApiClient } from "../services/api/client";
 import {
   createChatCrudService,
   mapChatMessageDtoToMessage,
@@ -344,6 +345,7 @@ function createMockClient(
   chatOverrides: Partial<ChatApi>,
   options: Partial<NeoChatApiClient> = {},
 ): NeoChatApiClient {
+  const defaultClient = createNeoChatApiClient();
   const chat: ChatApi = {
     async createConversation() {
       throw new Error("createConversation not mocked");
@@ -394,6 +396,10 @@ function createMockClient(
     mode: options.mode ?? "server",
     config: options.config ?? resolvedConfig,
     capabilities: options.capabilities ?? capabilities,
+    auth: options.auth ?? defaultClient.auth,
+    settings: options.settings ?? defaultClient.settings,
+    providers: options.providers ?? defaultClient.providers,
+    byok: options.byok ?? defaultClient.byok,
     chat,
     files: options.files ?? createMockFileApi(),
     agents: options.agents ?? createMockAgentApi(),

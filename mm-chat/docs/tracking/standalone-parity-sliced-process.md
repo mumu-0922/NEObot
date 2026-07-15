@@ -826,3 +826,98 @@ search toggle
 ```
 
 Next slice: G3 Auth, Runtime Config, Provider Settings, and BYOK.
+
+## 2026-07-15 — G3.1 Runtime Config, Provider Model, BYOK Route Boundary Completed
+
+Objective: open the first G3 server-owned runtime boundary before wiring UI:
+Go owns public runtime config, server-default provider model listing, BYOK
+public-key publication, and the frontend API client exposes the corresponding
+local/server adapters.
+
+Completed scope:
+
+- added Go `runtimeconfig` service and handler;
+- registered public `GET /v1/config` and `GET /v1/byok/public-key` routes;
+- registered protected `POST /v1/providers/models` route;
+- `GET /v1/config` publishes browser-safe provider/default deployment facts
+  without serializing provider API keys;
+- `POST /v1/providers/models` supports only `source:"server-default"` model
+  lists from server config in this slice;
+- plaintext provider secrets are rejected and custom BYOK provider model refresh
+  remains fail-closed for a later G3 slice;
+- frontend API client now has `auth`, `settings`, `providers`, and `byok`
+  subclients with local rollback and server `/v1/*` shells;
+- server Auth shell routes login/logout/me/invite/recovery/session-revoke to Go
+  auth endpoints and sends Bearer only through explicit token input.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/backend/internal/config/config.go
+mm-chat/backend/internal/runtimeconfig/types.go
+mm-chat/backend/internal/runtimeconfig/service.go
+mm-chat/backend/internal/runtimeconfig/handler.go
+mm-chat/backend/internal/runtimeconfig/service_test.go
+mm-chat/backend/internal/runtimeconfig/handler_test.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/httpserver/server_test.go
+mm-chat/backend/internal/httpserver/metrics.go
+
+mm-chat/frontend/src/services/api/client/types.ts
+mm-chat/frontend/src/services/api/client/index.ts
+mm-chat/frontend/src/services/api/client/local/http.ts
+mm-chat/frontend/src/services/api/client/local/authApi.ts
+mm-chat/frontend/src/services/api/client/local/settingsApi.ts
+mm-chat/frontend/src/services/api/client/local/providerApi.ts
+mm-chat/frontend/src/services/api/client/local/byokApi.ts
+mm-chat/frontend/src/services/api/client/server/authApi.ts
+mm-chat/frontend/src/services/api/client/server/settingsApi.ts
+mm-chat/frontend/src/services/api/client/server/providerApi.ts
+mm-chat/frontend/src/services/api/client/server/byokApi.ts
+mm-chat/frontend/src/__tests__/apiClientScaffold.test.ts
+
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Runtime contracts opened in this slice:
+
+```text
+GET  /v1/config
+POST /v1/providers/models          # server-default source only
+GET  /v1/byok/public-key
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build \
+  go test ./internal/runtimeconfig ./internal/config ./internal/httpserver  # passed
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./...          # passed
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go vet ./...           # passed
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/apiClientScaffold.test.ts \
+  src/__tests__/chatCrudService.test.ts \
+  src/__tests__/chatStreamService.test.ts \
+  src/__tests__/fileService.test.ts \
+  src/__tests__/envExample.test.ts \
+  src/__tests__/serverDefaults.test.ts                                     # 6 files / 80 tests passed
+cd mm-chat/frontend && corepack pnpm typecheck                             # passed
+cd mm-chat/frontend && corepack pnpm format:check                          # passed
+cd mm-chat/frontend && corepack pnpm lint                                  # passed
+```
+
+Residual G3 blockers:
+
+```text
+G3.2 frontend Auth lifecycle UI still calls the legacy local access-password route.
+G3.3 ChatApp and ProviderSettings still call transitional /api/config,
+     /api/providers/models, and /api/byok/public-key directly outside the new
+     API client boundary.
+G3 custom provider BYOK decrypt/model refresh is fail-closed in Go until the UI
+   adapter and secret-envelope handling slice.
+```
+
+Next slice: G3.2 Frontend Auth lifecycle wired to Go login/logout/me.

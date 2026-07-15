@@ -18,6 +18,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/health"
 	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
+	"neo-chat/mm-chat/backend/internal/runtimeconfig"
 	"neo-chat/mm-chat/backend/internal/storage"
 	"neo-chat/mm-chat/backend/internal/teams"
 )
@@ -224,6 +225,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	teamHandler := teams.NewHandler(resolvedOptions.teamService)
 	knowledgeHandler := knowledge.NewHandler(resolvedOptions.knowledgeService)
 	agentHandler := agents.NewHandler(resolvedOptions.agentService)
+	runtimeConfigHandler := runtimeconfig.NewHandler(runtimeconfig.NewService(cfg))
 
 	mux.HandleFunc("/health", healthHandler.Health)
 	mux.HandleFunc("/ready", healthHandler.Ready)
@@ -236,6 +238,9 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/auth/invites/accept", authHandler)
 	mux.Handle("/v1/auth/recovery/request", authHandler)
 	mux.Handle("/v1/auth/recovery/complete", authHandler)
+	mux.Handle("/v1/config", runtimeConfigHandler)
+	mux.Handle("/v1/providers/models", runtimeConfigHandler)
+	mux.Handle("/v1/byok/public-key", runtimeConfigHandler)
 	mux.Handle("/v1/chat/conversations", chatHandler)
 	mux.Handle("/v1/chat/conversations/", chatHandler)
 	mux.Handle("/v1/chat/runs/", chatHandler)
@@ -359,7 +364,7 @@ func isPublicWithoutAuthRequest(r *http.Request) bool {
 	}
 
 	switch r.URL.Path {
-	case "/health", "/ready", "/metrics", "/v1/version":
+	case "/health", "/ready", "/metrics", "/v1/version", "/v1/config", "/v1/byok/public-key":
 		return r.Method == http.MethodGet
 	case "/v1/agents":
 		return r.Method == http.MethodGet

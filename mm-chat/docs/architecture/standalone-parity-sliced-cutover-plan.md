@@ -236,6 +236,16 @@ Targeted tests:
 - model list and provider capability tests;
 - same-origin CSRF/cookie smoke in Compose.
 
+#### G3 Slice Ledger
+
+- [x] G3.1 Go-owned runtime config, server-default provider model list, BYOK
+      public-key route, and frontend API-client boundary shells.
+- [ ] G3.2 Frontend Auth lifecycle wired to Go login/logout/me without
+      regressing the local access-password rollback path.
+- [ ] G3.3 Provider Settings/BYOK UI adapters call the API client instead of
+      direct transitional Next routes.
+- [ ] G3.4 Hosted/dev auth behavior and same-origin smoke verified.
+
 ### G4 — Plugin Registry, Install, and Execution Final Ownership
 
 Objective: remove transitional Next plugin ownership and make plugin state
