@@ -795,6 +795,29 @@ func TestNewHandlerRegistersPluginRoutesWithFailClosedRegistryFallbacks(t *testi
 	}
 }
 
+func TestNewHandlerRegistersCodeJobRouteAsFailClosedAdmission(t *testing.T) {
+	handler := NewHandler(config.Config{Addr: ":0", Version: "route-test"})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/code/executions",
+		strings.NewReader(`{"modelRef":{"providerId":"gemini","modelId":"gemini-code"},"code":"print('hi')"}`),
+	)
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("code job status = %d, want %d; body=%s", rec.Code, http.StatusNotImplemented, rec.Body.String())
+	}
+	var body ErrorResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode code job error response: %v", err)
+	}
+	if body.Error.Code != "CODE_EXECUTION_UNAVAILABLE" {
+		t.Fatalf("code job code = %q, want CODE_EXECUTION_UNAVAILABLE", body.Error.Code)
+	}
+}
+
 func TestNewHandlerRegistersImageJobRouteAsFailClosedAdmission(t *testing.T) {
 	handler := NewHandler(config.Config{Addr: ":0", Version: "route-test"})
 	rec := httptest.NewRecorder()

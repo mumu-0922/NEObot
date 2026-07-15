@@ -13,6 +13,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/browserimport"
 	"neo-chat/mm-chat/backend/internal/chat"
+	"neo-chat/mm-chat/backend/internal/codejobs"
 	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/files"
 	"neo-chat/mm-chat/backend/internal/health"
@@ -235,6 +236,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	teamHandler := teams.NewHandler(resolvedOptions.teamService)
 	knowledgeHandler := knowledge.NewHandler(resolvedOptions.knowledgeService)
 	agentHandler := agents.NewHandler(resolvedOptions.agentService)
+	codeJobHandler := codejobs.NewHandler(nil)
 	imageJobHandler := imagejobs.NewHandler(nil)
 	voiceJobHandler := voicejobs.NewHandler(nil)
 	runtimeConfigService := runtimeconfig.NewService(cfg)
@@ -267,6 +269,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/agents/", agentHandler)
 	mux.Handle("/v1/plugins", pluginHandler)
 	mux.Handle("/v1/plugins/", pluginHandler)
+	mux.Handle("/v1/code/executions", codeJobHandler)
 	mux.Handle("/v1/images/generations", imageJobHandler)
 	mux.Handle("/v1/voice/transcribe", voiceJobHandler)
 	mux.Handle("/v1/voice/synthesize", voiceJobHandler)

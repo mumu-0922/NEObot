@@ -183,6 +183,7 @@ func TestNormalizeMetricPathBoundsKnownDynamicRoutes(t *testing.T) {
 		"/v1/plugins":                                                                               "/v1/plugins",
 		"/v1/plugins/install":                                                                       "/v1/plugins/install",
 		"/v1/plugins/execute":                                                                       "/v1/plugins/execute",
+		"/v1/code/executions":                                                                       "/v1/code/executions",
 		"/v1/images/generations":                                                                    "/v1/images/generations",
 		"/v1/voice/transcribe":                                                                      "/v1/voice/transcribe",
 		"/v1/voice/synthesize":                                                                      "/v1/voice/synthesize",

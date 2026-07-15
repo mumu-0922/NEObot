@@ -1967,3 +1967,62 @@ metadata, and provider smoke
 ```
 
 Next slice: G6.4 code-execution admission, still fail-closed and sandbox-first.
+
+## 2026-07-15 — G6.4 Code Execution Admission Route Completed
+
+Objective: add a Go-owned code-execution admission endpoint without enabling
+model-simulated execution, local sandbox execution, filesystem access, network
+access, or billing/audit side effects.
+
+Completed scope:
+
+- added `internal/codejobs` with server-only `modelRef + language + code`
+  request DTOs, response DTOs, a fail-closed service, and a handler for
+  `POST /v1/code/executions`;
+- rejected legacy-style plaintext provider objects via strict JSON decoding;
+- validated required `modelRef.providerId`, `modelRef.modelId`, non-empty code,
+  maximum code length, and supported language before returning
+  `CODE_EXECUTION_UNAVAILABLE`;
+- preserved original code text after validation so a future sandbox receives the
+  exact submitted program rather than a trimmed copy;
+- registered `/v1/code/executions` in the Go HTTP server and metric-path
+  normalizer;
+- kept frontend `codeExecution` capability disabled until a real sandbox,
+  storage/audit, rate-limit, cancellation, and smoke path exist.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/backend/internal/codejobs/types.go
+mm-chat/backend/internal/codejobs/service.go
+mm-chat/backend/internal/codejobs/handler.go
+mm-chat/backend/internal/codejobs/handler_test.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/httpserver/server_test.go
+mm-chat/backend/internal/httpserver/metrics.go
+mm-chat/backend/internal/httpserver/metrics_test.go
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/inventory/frontend-call-sites.md
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test \
+  ./internal/codejobs ./internal/httpserver                          # passed
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./...    # passed
+git diff --check -- mm-chat                                          # passed
+```
+
+Residual G6 blockers:
+
+```text
+G6.5 Real voice/image/code executors, output storage, audit/rate-limit/cancel
+metadata, sandbox policy, and provider smoke
+```
+
+Next slice: G6.5 executor/storage/audit design split; do not enable real code
+execution without an explicit sandbox contract.

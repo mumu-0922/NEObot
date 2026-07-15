@@ -41,7 +41,7 @@ These are already closer to the desired boundary. Phase 2 should wrap these into
 
 | Priority | Service | Current Routes | Future Client |
 |---:|---|---|---|
-| P0 | `src/services/api/chatService.ts` | `/api/chat`, `/api/chat/generate`, `/api/chat/generate-title`, `/api/chat/related-questions`, `/api/chat/rag-queries`, `/api/chat/generate-image`, `/api/chat/execute-code` | `chatApi` first; G6.1 blocks server-mode image/code calls, and G6.3 registers fail-closed Go `/v1/images/generations` admission. |
+| P0 | `src/services/api/chatService.ts` | `/api/chat`, `/api/chat/generate`, `/api/chat/generate-title`, `/api/chat/related-questions`, `/api/chat/rag-queries`, `/api/chat/generate-image`, `/api/chat/execute-code` | `chatApi` first; G6.1 blocks server-mode image/code calls, while G6.3/G6.4 register fail-closed Go image/code admission routes. |
 | P1 | `src/services/api/ragService.ts` | `/api/rag/query`, `/api/rag/upsert`, `/api/rag/delete` | `ragApi` later; not first chat MVP. |
 | P2 | `src/services/api/docParseService.ts` | `/api/doc-parse`, `/api/doc-parse/jobs/:id` | `documentApi` / RAG sidecar later. |
 | P2 | `src/services/api/pluginService.ts` | via `pluginApi.listAvailable/install`; local adapter retains `/api/plugins/list` and `/api/plugins/install` | Server adapter targets `/v1/plugins*`; G4.5c.2b persists supplied plugin payloads in Go/Postgres when `DATABASE_URL` is configured and converts custom/OpenAPI manifest installs in Go. |

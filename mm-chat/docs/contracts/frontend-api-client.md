@@ -1377,6 +1377,7 @@ Endpoint mapping:
 | `plugins.listInstalled`       | `GET /v1/plugins/installed` | Later phase; capability-gated.                                                |
 | `plugins.install`             | `POST /v1/plugins/install`  | Later phase; validate manifest before install.                                |
 | `plugins.execute`             | `POST /v1/plugins/execute`  | Deferred until sandbox design exists.                                         |
+| `code.execute`                | `POST /v1/code/executions` | G6.4 fail-closed admission; validates `modelRef + language + code`, then unavailable. |
 | `image.generate`              | `POST /v1/images/generations` | G6.3 fail-closed admission; validates `modelRef + prompt`, then unavailable. |
 | `voice.transcribe`            | `POST /v1/voice/transcribe` | G6.2 fail-closed admission; validates multipart shape, then unavailable.      |
 | `voice.synthesize`            | `POST /v1/voice/synthesize` | G6.2 fail-closed admission; validates JSON shape, then unavailable.           |
@@ -1406,6 +1407,9 @@ Rules:
 - G6.3 registers Go `/v1/images/generations` admission with `modelRef + prompt`
   only; `imageGeneration` stays disabled until execution/storage/audit controls
   exist.
+- G6.4 registers Go `/v1/code/executions` admission with `modelRef + language +
+  code` only; `codeExecution` stays disabled until a real sandbox/executor and
+  audit controls exist.
 - `plugins` capability remains `false` for the first server MVP; `pluginApi` exists to avoid later component-level route coupling.
 
 ## 14. HTTP Client Rules
