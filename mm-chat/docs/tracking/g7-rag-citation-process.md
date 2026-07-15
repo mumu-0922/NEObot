@@ -702,3 +702,77 @@ Mypy passed on the admission/skeleton source files.
 Next G7.5 slice: add the first real admitted handler dependency seam for
 storage/provider/projection execution, still default-off, then promote only one
 stage under explicit registry and readiness gates.
+
+## 2026-07-15 — G7.5.6 Parse Handler Dependency Seam
+
+Objective: add the first real parse handler execution seam while keeping
+production dispatch empty and avoiding any live MinerU/Jina/provider quota.
+
+Implemented behavior:
+
+- Added `job_handler_dependencies.py` with explicit parse-stage Protocols for:
+  - `DocumentSourceGateway`;
+  - `ParserGateway`;
+  - `ParseProjectionGateway`.
+- Added `ParseHandlerDependencies`; an empty bundle fails closed with
+  `JOB_HANDLER_DEPENDENCY_UNCONFIGURED` before object-storage, provider, or
+  projection calls.
+- Added `parse_handler_with_dependencies(...)` and
+  `admitted_parse_handler_with_dependencies(...)`:
+  - claim-level entry is still wrapped by `with_job_context_admission(...)`;
+  - the contextual handler reuses the parse authority fence from
+    `job_handlers.py`;
+  - fake storage/parser/projection gateways can now prove the intended flow
+    without real network clients.
+- The fake execution path fetches a document source, accepts MinerU-compatible
+  Canonical IR v2 + Chunk Manifest v2 artifacts, builds the G7.4
+  `PostgresProjectionBatch`, verifies the parser source hash against stored
+  source metadata, and stages the batch through the projection gateway.
+- Projection/artifact failures and source-hash mismatches are redacted into
+  stable error codes and stop before projection staging.
+- Production `JOB_HANDLER_REGISTRY` remains empty. This slice cannot claim
+  worker jobs or consume provider quota unless a later slice explicitly wires
+  real gateways and promotes a registry.
+
+Touched files:
+
+```text
+rag/src/mm_chat_rag/job_handler_dependencies.py
+rag/src/mm_chat_rag/job_handlers.py
+rag/tests/unit/test_job_handler_dependencies.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification run during the slice:
+
+```text
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_job_context.py tests/unit/test_job_handlers.py \
+  tests/unit/test_job_handler_dependencies.py tests/unit/test_jobs.py
+cd mm-chat/rag && uv run ruff check \
+  src/mm_chat_rag/job_context.py src/mm_chat_rag/handlers.py \
+  src/mm_chat_rag/job_handlers.py src/mm_chat_rag/job_handler_dependencies.py \
+  tests/unit/test_job_handlers.py tests/unit/test_job_handler_dependencies.py
+cd mm-chat/rag && uv run mypy \
+  src/mm_chat_rag/job_context.py src/mm_chat_rag/handlers.py \
+  src/mm_chat_rag/job_handlers.py src/mm_chat_rag/job_handler_dependencies.py
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_parser_runtime_boundary.py \
+  tests/unit/test_parser_deployment_boundary.py \
+  tests/unit/test_provider_capture.py::test_production_dispatch_remains_disabled_and_registries_empty
+```
+
+Result:
+
+```text
+43 targeted Python tests passed.
+Ruff passed on the admission, skeleton, and parse dependency files.
+Mypy passed on the admission, skeleton, and parse dependency source files.
+7 production-registry boundary tests passed; registries remain empty.
+```
+
+Next G7.5 slice: add the passage-embedding dependency seam for Jina embedding
+inputs/vectors and the 1024-dimensional projection completeness path, still
+default-off and still without live provider calls.

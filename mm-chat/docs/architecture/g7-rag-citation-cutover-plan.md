@@ -298,11 +298,30 @@ G7.5.5 completed on 2026-07-15:
   and even then they fail closed before provider, object-storage, or projection
   side effects.
 
+G7.5.6 completed on 2026-07-15:
+
+- Added the first real dependency-injected parse handler seam without production
+  registration.
+- The seam can only enter through `with_job_context_admission(...)`, then
+  requires object-storage source, MinerU-compatible parser, and Postgres
+  projection gateways before any work proceeds.
+- The default dependency bundle fails closed with a stable redacted error before
+  storage, provider, or projection calls, preserving the no-quota boundary.
+- A fake-gateway unit path now proves the parse flow can fetch a document
+  source, receive Canonical IR v2 + Chunk Manifest v2 artifacts, build the G7.4
+  Postgres projection batch, compare parser source hash to stored source
+  metadata, and stage projection rows.
+- Parser/projection validation errors and source-hash mismatches stop before
+  projection writes and expose only stable job error codes.
+- Production `JOB_HANDLER_REGISTRY` remains empty; G7.5.6 adds a promotion seam,
+  not a promoted live handler.
+
 Remaining G7.5 work:
 
-- Replace the skeleton stops with real admitted Python parse /
-  passage-embedding / purge implementations connected to Generation-bound Go
-  jobs and outbox payloads.
+- Implement real object-store, MinerU, Jina, and Postgres projection gateway
+  adapters behind the new parse seam.
+- Add passage-embedding and purge dependency seams with the same default-off
+  promotion model.
 - Implement index, reprocess, tombstone purge, rebuild, retry, and DLQ behavior.
 - Enforce immediate query invisibility for deleted/tombstoned versions.
 

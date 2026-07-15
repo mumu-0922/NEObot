@@ -56,7 +56,7 @@ _ZERO_UUID: Final = uuid.UUID(int=0)
 
 async def parse_handler_skeleton(context: ProcessingJobContext) -> JobResult:
     """Validate parse authority and stop before provider or storage work."""
-    _require_provider_job_context(context, stage="parse")
+    require_parse_context(context)
     _reject(JOB_HANDLER_SKELETON_UNPROMOTED)
 
 
@@ -64,18 +64,36 @@ async def passage_embedding_handler_skeleton(
     context: ProcessingJobContext,
 ) -> JobResult:
     """Validate embedding authority and stop before Jina/Postgres writes."""
-    _require_provider_job_context(context, stage="passage_embedding")
+    require_passage_embedding_context(context)
     _reject(JOB_HANDLER_SKELETON_UNPROMOTED)
 
 
 async def purge_handler_skeleton(context: ProcessingJobContext) -> JobResult:
     """Validate purge authority and stop before projection mutation."""
+    require_purge_context(context)
+    _reject(JOB_HANDLER_SKELETON_UNPROMOTED)
+
+
+def require_parse_context(context: ProcessingJobContext) -> ProcessingJobContext:
+    """Validate parse handler authority and return the admitted context."""
+    return _require_provider_job_context(context, stage="parse")
+
+
+def require_passage_embedding_context(
+    context: ProcessingJobContext,
+) -> ProcessingJobContext:
+    """Validate passage-embedding handler authority and return the context."""
+    return _require_provider_job_context(context, stage="passage_embedding")
+
+
+def require_purge_context(context: ProcessingJobContext) -> ProcessingJobContext:
+    """Validate purge handler authority and return the admitted context."""
     admitted = _require_context(context)
     _require_stage(admitted, "purge")
     _require_generation(admitted)
     if admitted.authority is not None:
         _reject(JOB_HANDLER_PROVIDER_AUTHORITY_FORBIDDEN)
-    _reject(JOB_HANDLER_SKELETON_UNPROMOTED)
+    return admitted
 
 
 def admitted_parse_handler_skeleton(

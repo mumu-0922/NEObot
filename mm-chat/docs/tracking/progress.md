@@ -1039,8 +1039,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
   - [ ] G7.5 Worker dispatch, rebuild, delete, and retry loop
         (`G7.5.1` readiness gate, `G7.5.2` job-context admission seam, and
         `G7.5.3` Go parse job materialization binding, `G7.5.4` Go purge job
-        Generation binding, `G7.5.5` admitted Python handler skeletons done;
-        real handler dispatch still gated).
+        Generation binding, `G7.5.5` admitted Python handler skeletons, and
+        `G7.5.6` parse handler dependency seam done; real handler dispatch
+        still gated).
   - [ ] G7.6 Private query and Go reauthorization.
   - [ ] G7.7 Strict/optional chat answer and basic citations.
   - [ ] G7.8 Live MinerU + Jina + Postgres smoke and operational proof.
