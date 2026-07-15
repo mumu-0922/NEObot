@@ -789,6 +789,12 @@ the frontend renders the client-side Server Auth Gate before mounting
 `Authorization: Bearer <token>` to server-mode `/v1/*` requests. Local mode
 continues to use `/api/access/verify` and the existing httpOnly access cookie.
 
+G3.3 wiring rule: ChatApp runtime config bootstrap, default-provider model
+bootstrap, Provider Settings model refresh, and BYOK public-key loading must go
+through `createNeoChatApiClient()`. Transitional `/api/config`,
+`/api/providers/models`, and `/api/byok/public-key` calls are allowed only
+inside the local adapter implementations.
+
 `AcceptInviteInput.password` is a single field with branch-specific semantics:
 for a new invited mailbox it becomes the initial password, while for an
 existing active account it is proof of the current password and must not

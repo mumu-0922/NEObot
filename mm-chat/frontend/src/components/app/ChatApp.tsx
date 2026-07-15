@@ -23,10 +23,7 @@ import { createNeoChatApiClient } from "@/services/api/client";
 import { uploadMessageAttachmentsForServer } from "@/services/api/fileService";
 import { resolveSkillsForMessage } from "@/services/api/skillService";
 import { orchestrateServerPlugins } from "@/services/api/serverPluginOrchestration";
-import {
-  buildProviderRuntimeConfig,
-  fetchWithByokRetry,
-} from "@/lib/byok/client";
+import { buildProviderRuntimeConfig } from "@/lib/byok/client";
 import { getAgentDetail } from "@/services/api/agentService";
 import { Message, Attachment, LobeAgent, SessionMessageTree } from "@/types";
 import { useChatStore } from "@/store/core/chatStore";
@@ -64,14 +61,7 @@ import {
 import { normalizeActivePluginIds } from "@/lib/plugin/config";
 import { parseModelString } from "@/lib/utils/model";
 import { logDevError } from "@/lib/utils/devLogger";
-import {
-  PublicServerConfig,
-  SERVER_DEFAULT_PROVIDER_ID,
-} from "@/lib/defaultConfig/shared";
-import {
-  getResponseErrorMessage,
-  readJsonResponseOrThrow,
-} from "@/lib/api/client";
+import { SERVER_DEFAULT_PROVIDER_ID } from "@/lib/defaultConfig/shared";
 import {
   getSessionPluginPresetSyncKey,
   shouldApplySessionPluginPreset,
@@ -579,20 +569,7 @@ const ChatApp = () => {
 
     const loadServerConfig = async () => {
       try {
-        const response = await fetch("/api/config", {
-          method: "GET",
-          cache: "no-store",
-        });
-        if (!response.ok) {
-          throw new Error(
-            await getResponseErrorMessage(response, "Failed to load config"),
-          );
-        }
-
-        const config = await readJsonResponseOrThrow<PublicServerConfig>(
-          response,
-          "Failed to load config",
-        );
+        const config = await apiClientSnapshot.settings.getRuntimeConfig();
         if (!active) return;
 
         applyCoreServerConfig(config);
@@ -620,6 +597,7 @@ const ChatApp = () => {
   }, [
     _hasHydrated,
     applyCoreServerConfig,
+    apiClientSnapshot,
     applySettingsServerConfig,
     coreHasHydrated,
   ]);
@@ -654,28 +632,12 @@ const ChatApp = () => {
     defaultProviderFetchRef.current = true;
     const providerSnapshot = defaultProvider;
 
-    fetchWithByokRetry(async () =>
-      fetch("/api/providers/models", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+    Promise.resolve()
+      .then(async () =>
+        apiClientSnapshot.providers.listModels({
           provider: await buildProviderRuntimeConfig(providerSnapshot),
         }),
-      }),
-    )
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error(
-            await getResponseErrorMessage(response, "Failed to fetch models"),
-          );
-        }
-        return readJsonResponseOrThrow<{ models?: string[] }>(
-          response,
-          "Failed to fetch models",
-        );
-      })
+      )
       .then((data) => {
         const models = data.models || [];
         updateProvider(providerSnapshot.id, {
@@ -697,6 +659,7 @@ const ChatApp = () => {
       active = false;
     };
   }, [
+    apiClientSnapshot,
     coreHasHydrated,
     providers,
     serverConfigResolved,

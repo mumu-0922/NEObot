@@ -4,6 +4,7 @@ import {
   ByokPublicKeyResponse,
   EncryptedSecretEnvelope,
 } from "./shared";
+import { ApiClientError, createNeoChatApiClient } from "@/services/api/client";
 import { arrayBufferToBytes, bytesToBase64Url } from "./encoding";
 import type { ModelProvider, SearchServiceConfig } from "../../types";
 import { SERVER_DEFAULT_PROVIDER_ID } from "../defaultConfig/shared";
@@ -45,18 +46,14 @@ function parsePublicKeyResponse(value: unknown): ByokPublicKeyResponse {
 
 async function getPublicKey(): Promise<ByokPublicKeyResponse> {
   if (!publicKeyPromise) {
-    publicKeyPromise = fetch("/api/byok/public-key", {
-      method: "GET",
-      cache: "no-store",
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error("Failed to load BYOK public key");
-        }
-        return parsePublicKeyResponse(await response.json());
-      })
+    publicKeyPromise = createNeoChatApiClient()
+      .byok.getPublicKey()
+      .then((response) => parsePublicKeyResponse(response))
       .catch((error) => {
         publicKeyPromise = null;
+        if (error instanceof ApiClientError) {
+          throw new Error("Failed to load BYOK public key");
+        }
         throw error;
       });
   }

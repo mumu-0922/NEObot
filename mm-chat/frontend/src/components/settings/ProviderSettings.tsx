@@ -26,14 +26,8 @@ import Tooltip from "../ui/Tooltip";
 import ModelEditor from "./ModelEditor";
 import { SecretInput } from "./SettingsUI";
 import { PROVIDER_CONFIG_LIMITS } from "@/config/limits";
-import {
-  getResponseErrorMessage,
-  readJsonResponseOrThrow,
-} from "@/lib/api/client";
-import {
-  buildProviderRuntimeConfig,
-  fetchWithByokRetry,
-} from "@/lib/byok/client";
+import { buildProviderRuntimeConfig } from "@/lib/byok/client";
+import { createNeoChatApiClient } from "@/services/api/client";
 import {
   encryptLocalSecret,
   LOCAL_SECRET_CONTEXTS,
@@ -163,18 +157,10 @@ const ProviderSettings = () => {
     setFetchingProviderId(providerSnapshot.id);
     setFetchError(null);
     try {
-      const response = await fetchWithByokRetry(async () =>
-        fetch("/api/providers/models", {
-          method: "POST",
-          signal: controller.signal,
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            provider: await buildProviderRuntimeConfig(providerSnapshot),
-          }),
-        }),
-      );
+      const data = await createNeoChatApiClient().providers.listModels({
+        provider: await buildProviderRuntimeConfig(providerSnapshot),
+        signal: controller.signal,
+      });
 
       if (
         requestId !== fetchRequestIdRef.current ||
@@ -183,16 +169,6 @@ const ProviderSettings = () => {
         return;
       }
 
-      if (!response.ok) {
-        throw new Error(
-          await getResponseErrorMessage(response, t("failedToFetchModels")),
-        );
-      }
-
-      const data = await readJsonResponseOrThrow<{ models?: string[] }>(
-        response,
-        t("failedToFetchModels"),
-      );
       const models = data.models || [];
 
       if (models.length > 0) {

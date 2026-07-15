@@ -1000,3 +1000,58 @@ G3.4 hosted/dev auth behavior and same-origin Compose smoke still pending.
 ```
 
 Next slice: G3.3 Provider Settings/BYOK UI adapters through the API client.
+
+## 2026-07-15 — G3.3 Provider Settings and BYOK API-Client Wiring Completed
+
+Objective: remove direct server-mode UI calls to transitional Next runtime
+config/provider/BYOK routes and route those flows through the API client
+boundary.
+
+Completed scope:
+
+- `ChatApp` runtime config bootstrap now calls
+  `createNeoChatApiClient().settings.getRuntimeConfig()`;
+- `ChatApp` default server-provider model bootstrap now calls
+  `createNeoChatApiClient().providers.listModels()`;
+- `ProviderSettings` model refresh now calls the provider API client instead of
+  posting directly to `/api/providers/models`;
+- BYOK public-key loading now calls `createNeoChatApiClient().byok.getPublicKey()`;
+- local adapter implementations remain the only code paths that call
+  `/api/config`, `/api/providers/models`, or `/api/byok/public-key` for local
+  rollback.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/frontend/src/components/app/ChatApp.tsx
+mm-chat/frontend/src/components/settings/ProviderSettings.tsx
+mm-chat/frontend/src/lib/byok/client.ts
+
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/apiClientScaffold.test.ts \
+  src/__tests__/byokServices.test.ts \
+  src/__tests__/byok.test.ts \
+  src/__tests__/serverDefaults.test.ts \
+  src/__tests__/envExample.test.ts                                  # passed, 5 files / 84 tests
+cd mm-chat/frontend && corepack pnpm typecheck                      # passed
+cd mm-chat/frontend && corepack pnpm format:check                   # passed
+cd mm-chat/frontend && corepack pnpm lint                           # passed
+rg direct transitional config/provider/BYOK calls                   # only local adapters remain
+```
+
+Residual G3 blockers:
+
+```text
+G3.4 hosted/dev auth behavior and same-origin Compose smoke still pending.
+```
+
+Next slice: G3.4 Hosted/dev auth behavior and same-origin smoke.

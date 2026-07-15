@@ -242,7 +242,7 @@ Targeted tests:
       public-key route, and frontend API-client boundary shells.
 - [x] G3.2 Frontend Auth lifecycle wired to Go login/logout/me without
       regressing the local access-password rollback path.
-- [ ] G3.3 Provider Settings/BYOK UI adapters call the API client instead of
+- [x] G3.3 Provider Settings/BYOK UI adapters call the API client instead of
       direct transitional Next routes.
 - [ ] G3.4 Hosted/dev auth behavior and same-origin smoke verified.
 
