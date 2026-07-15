@@ -8,6 +8,15 @@ x-rag-build: &rag-build
   context: ./rag
   dockerfile: Dockerfile
 
+x-frontend-build: &frontend-build
+  context: ./frontend
+  dockerfile: Dockerfile
+  args:
+    NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+    NEXT_PUBLIC_API_MODE: server
+    NEXT_PUBLIC_API_BASE_URL: /mm-api
+    MM_CHAT_BACKEND_INTERNAL_URL: http://backend:8080
+
 x-postgres-env: &postgres-env
   POSTGRES_DB: ${POSTGRES_DB:-neo_chat}
   POSTGRES_USER: ${POSTGRES_USER:-neo_chat_migrator}
@@ -24,6 +33,24 @@ x-minio-app-env: &minio-app-env
   S3_BUCKET: ${S3_BUCKET:-neo-chat-files}
   S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-mm-chat-files}
   S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-change-me-minio-user-secret}
+
+x-frontend-env: &frontend-env
+  NODE_ENV: production
+  NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+  NEXT_PUBLIC_API_MODE: server
+  NEXT_PUBLIC_API_BASE_URL: /mm-api
+  MM_CHAT_BACKEND_INTERNAL_URL: http://backend:8080
+  BYOK_PRIVATE_KEY_PEM: ${BYOK_PRIVATE_KEY_PEM:-}
+  BYOK_KEY_ID: ${BYOK_KEY_ID:-}
+  BYOK_ALLOW_EPHEMERAL_KEY: ${BYOK_ALLOW_EPHEMERAL_KEY:-true}
+  DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-local}
+  ALLOW_LOCAL_NETWORK_PROXY: ${ALLOW_LOCAL_NETWORK_PROXY:-}
+  TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
+  RATE_LIMIT_STORE: ${RATE_LIMIT_STORE:-memory}
+  DOCUMENT_PARSE_JOB_STORE: ${DOCUMENT_PARSE_JOB_STORE:-memory}
+  PLUGIN_REGISTRY_STORE: ${PLUGIN_REGISTRY_STORE:-memory}
+  UPSTASH_REDIS_REST_URL: ${UPSTASH_REDIS_REST_URL:-}
+  UPSTASH_REDIS_REST_TOKEN: ${UPSTASH_REDIS_REST_TOKEN:-}
 
 x-backend-env: &backend-env
   MM_CHAT_ADDR: ${MM_CHAT_ADDR:-:8080}
@@ -200,6 +227,42 @@ services:
       timeout: 5s
       retries: 6
       start_period: 20s
+    networks:
+      - private
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-mm-chat/frontend:local}
+    build: *frontend-build
+    restart: unless-stopped
+    profiles: ["app"]
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment: *frontend-env
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777
+      - /app/.next/cache:rw,noexec,nosuid,nodev,size=128m,mode=0755,uid=1001,gid=1001
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:3000/').then((response) => {
+            if (!response.ok) process.exit(1)
+          }).catch(() => process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
     networks:
       - private
 

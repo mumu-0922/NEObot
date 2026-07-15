@@ -120,6 +120,7 @@ for key, value in values.items():
         fail(f"{key} uses forbidden env interpolation syntax")
 
 required = (
+    "FRONTEND_IMAGE",
     "BACKEND_IMAGE",
     "RAG_IMAGE",
     "MM_CHAT_VERSION",
@@ -167,6 +168,8 @@ if values.get("RAG_WORKER_JOB_STAGES", ""):
 image = values["BACKEND_IMAGE"]
 if not valid_image_digest(image):
     fail("BACKEND_IMAGE must use a full immutable sha256 registry digest")
+if not valid_image_digest(values["FRONTEND_IMAGE"]):
+    fail("FRONTEND_IMAGE must use a full immutable sha256 registry digest")
 if not valid_image_digest(values["RAG_IMAGE"]):
     fail("RAG_IMAGE must use a full immutable sha256 registry digest")
 

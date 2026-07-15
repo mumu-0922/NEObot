@@ -1,38 +1,108 @@
-# mm-chat Refactor Workspace
+# mm-chat
 
-`mm-chat/` is the isolated workspace for rebuilding Neo Chat into a server-backed deployment. Do not modify the existing app directly while planning or prototyping the refactor; put new design notes, scaffolds, experiments, and future backend code here unless a later task explicitly migrates a piece into the main app.
+`mm-chat/` is the self-contained project root for the server-backed Neo Chat
+runtime. It contains the complete Next.js frontend, Go API, private Python RAG
+worker, migrations, Compose topology, deployment scripts, and operational
+documentation. Commands below are run from this directory; nothing requires
+the former repository-root application.
 
-## Document Map
-
-All refactor documentation lives under [`docs/`](./docs/):
-
-- [`docs/architecture/server-refactor-design.md`](./docs/architecture/server-refactor-design.md) — target architecture, phases, APIs, data model, storage, deployment, and rollback plan.
-- [`docs/inventory/`](./docs/inventory/) — current Neo Chat API, storage, chat stream, and provider-flow inventories.
-- [`docs/tracking/progress.md`](./docs/tracking/progress.md) — living checklist. Mark completed work with `[x]` and link evidence.
-- [`docs/tracking/process.md`](./docs/tracking/process.md) — chronological work log for decisions, commands, findings, and next steps.
-- [`docs/contracts/`](./docs/contracts/) — future API/client contracts.
-- [`docs/deployment/`](./docs/deployment/) — single-server Compose deployment, backup, restore, release, and rollback notes.
-- [`backend/`](./backend/) — Go 1.25 API, migration, and operator-only admin
-  commands for the server-backed path.
-- [`frontend/`](./frontend/) — isolated Phase 11 frontend API-client scaffold
-  kept outside the existing app until `src/` wiring is explicitly approved.
-
-## Refactor Rules
-
-1. Keep the current Next.js/React frontend working during every phase.
-2. Build by strangler migration: add a new backend path, switch one capability at a time, keep rollback flags.
-3. Start single-server first: Go backend + Postgres + Redis + private MinIO through Docker Compose under this workspace.
-4. Store real files in object storage or local storage abstraction; store only metadata in Postgres.
-5. Do not silently upload existing browser-local data. Any migration from IndexedDB/OPFS must be user-initiated.
-6. Every completed phase must update both `docs/tracking/progress.md` and `docs/tracking/process.md`.
-
-## First MVP
-
-The first shippable target is not the full platform. It is:
+## Project Layout
 
 ```text
-Next.js frontend -> Go API -> Postgres
-                         -> model provider stream
+frontend/                  Next.js 16 / React 19 application
+backend/                   Go API, migrations, and operator commands
+rag/                       Private Python RAG worker and parser sidecar
+compose.yml                Canonical local Compose entrypoint
+compose.single-server.yml  Complete single-server topology
+compose.production.yml     Digest-only production override
+scripts/                   Verification, migration, backup, and restore tools
+docs/                      Architecture, contracts, deployment, and progress
 ```
 
-MVP proves conversations, messages, and streaming model responses can survive refresh and server restart. Files, Redis hardening, MinIO, and RAG follow after the chat spine is stable.
+The frontend preserves the existing Neo Chat interface. Chat, files, browser
+import, Auth, Teams, and Knowledge server contracts are being cut over to Go;
+legacy Next.js `/api/*` handlers remain only where parity work is unfinished.
+
+## Prerequisites
+
+- Docker Engine with Compose v2
+- Node.js 22 and Corepack for direct frontend development
+- Go 1.25 for direct backend development
+- Python 3.13 for direct RAG development
+
+## Start the Complete Local Stack
+
+Create a local environment file and replace every `change-me` value before
+using real data or provider traffic:
+
+```bash
+cp .env.single-server.example .env.single-server
+chmod 600 .env.single-server
+```
+
+Initialize the database, then start the frontend and backend together:
+
+```bash
+docker compose --env-file .env.single-server \
+  --profile ops run --rm migrate
+docker compose --env-file .env.single-server \
+  --profile app up -d --build
+```
+
+Open <http://127.0.0.1:3000>. Browser API calls stay same-origin under
+`/mm-api`; the Next.js server forwards them to the private `backend:8080`
+Compose service. Postgres, Redis, MinIO, and RAG are never exposed to the
+browser.
+
+Stop the stack without deleting data:
+
+```bash
+docker compose --env-file .env.single-server --profile app down
+```
+
+## Direct Development
+
+Frontend:
+
+```bash
+cd frontend
+corepack pnpm install --frozen-lockfile
+NEXT_PUBLIC_API_MODE=server \
+NEXT_PUBLIC_API_BASE_URL=/mm-api \
+MM_CHAT_BACKEND_INTERNAL_URL=http://127.0.0.1:8080 \
+corepack pnpm dev
+```
+
+Backend:
+
+```bash
+cd backend
+go test ./...
+go run ./cmd/api
+```
+
+RAG:
+
+```bash
+cd rag
+python3.13 -m venv .venv
+.venv/bin/pip install -e . --group dev
+.venv/bin/pytest
+```
+
+## Verification
+
+Run the structural clean-copy gate from this project root:
+
+```bash
+./scripts/verify-standalone.sh
+```
+
+Use `./scripts/verify-standalone.sh --full` to install and verify the frontend
+and run the Go test suite inside the isolated copy. The final deletion of the
+former root application remains a separate owner-confirmed destructive gate.
+
+Detailed deployment, backup, and rollback instructions live in
+[`docs/deployment/`](./docs/deployment/). Migration state is tracked in
+[`docs/tracking/progress.md`](./docs/tracking/progress.md) and
+[`docs/tracking/process.md`](./docs/tracking/process.md).

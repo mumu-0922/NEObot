@@ -1,36 +1,56 @@
-# mm-chat Frontend Adapter Scaffold
+# mm-chat Frontend
 
-This directory holds the Phase 11.1 TypeScript scaffold for the future
-`local|server` frontend API boundary. It is intentionally isolated under
-`mm-chat/` until the owner approves wiring it into the existing Next.js app
-under `src/`.
+This directory is the standalone Next.js/React frontend for `mm-chat`. It
+preserves the existing Neo Chat interface and currently carries the complete UI,
+assets, tests, and build configuration that previously ran only from the
+repository root.
 
-See [`DESIGN.md`](./DESIGN.md) for design decisions, tradeoffs, and security boundaries.
+## Current Migration State
 
-Current scope:
+- The complete frontend source and static assets now live here.
+- Chat CRUD/SSE, Files, and Browser Import already have Go server adapters.
+- Legacy Next.js `/api/*` handlers remain temporarily for feature-parity work.
+- `local|server` remains a transition mechanism only. The frozen final runtime
+  is server-only with explicit browser-data import.
+- Do not redesign the interface during backend cutover. New features must reuse
+  the existing theme, layout, components, responsive rules, and accessibility
+  behavior.
 
-- resolve `NEXT_PUBLIC_API_MODE=local|server` with `local` as safe fallback;
-- resolve `NEXT_PUBLIC_API_BASE_URL` without performing network calls;
-- classify the browser network edge as same-origin proxy or direct-CORS;
-- centralize server HTTP URL building and JSON error normalization;
-- parse Go SSE frames for later Phase 11.3 streaming work;
-- expose compile-safe local/server adapter shells with unsupported operations.
+## Commands
 
-Out of scope for this slice:
-
-- wiring existing React components or Zustand stores;
-- persisting conversations/messages through Go;
-- streaming assistant responses from the UI;
-- file upload/download UI integration;
-- auth, import/export, RAG, plugins, voice, documents, image generation.
-
-Run targeted checks from the repository root. If project dependencies are not
-installed locally, these `corepack pnpm dlx` commands reproduce the verification
-used for Phase 11.1A:
+Use Node.js 22 and pnpm 10.30.3:
 
 ```bash
-corepack pnpm dlx vitest@4.1.9 run mm-chat/frontend/__tests__/api-client.test.ts
-corepack pnpm --package=typescript@5.9.3 dlx tsc --noEmit --target ES2020 --module ESNext --moduleResolution Bundler --lib DOM,ESNext --strict --skipLibCheck mm-chat/frontend/src/api-client/index.ts
-corepack pnpm dlx prettier@3.9.4 --check 'mm-chat/frontend/**/*.ts' mm-chat/frontend/README.md mm-chat/frontend/DESIGN.md
-git diff --check -- mm-chat
+corepack pnpm install --frozen-lockfile
+corepack pnpm dev
+corepack pnpm typecheck
+corepack pnpm lint
+corepack pnpm test
+corepack pnpm build
 ```
+
+Server-mode development uses the Go backend:
+
+```bash
+NEXT_PUBLIC_API_MODE=server \
+NEXT_PUBLIC_API_BASE_URL=/mm-api \
+MM_CHAT_BACKEND_INTERNAL_URL=http://127.0.0.1:8080 \
+corepack pnpm dev
+```
+
+The root `compose.single-server.yml` builds this frontend in server mode and
+provides the persistent `/mm-api` same-origin edge to the private Go service.
+Run the complete stack from `mm-chat/` with the `app` profile.
+
+## Final Standalone Gate
+
+The frontend is not considered fully migrated until:
+
+1. every legacy `/api/*` capability has a Go/RAG replacement;
+2. production local-mode and browser-local authority are removed;
+3. `mm-chat/` builds and runs from a clean copy without the original root app;
+4. visual and interaction regression checks preserve the existing interface;
+5. the owner approves the separate original-project deletion plan.
+
+See [`DESIGN.md`](./DESIGN.md) and
+[`../docs/inventory/standalone-cutover-gap.md`](../docs/inventory/standalone-cutover-gap.md).

@@ -140,6 +140,24 @@ Phase 15 as the active RAG implementation gate.
 - [x] Add reverse proxy and private network notes.
 - [x] Add release/rollback checklist.
 
+### Phase 10.1 — Standalone project-root cutover
+
+- [x] Relocate the complete Next.js application, assets, tests, manifest,
+      lockfile, and Docker build under `mm-chat/frontend/`.
+- [x] Add the frontend service and persistent same-origin `/mm-api` edge to the
+      single-server Compose topology.
+- [x] Fence local and production frontend images through the same project-root
+      Compose and immutable-digest promotion paths.
+- [x] Add a clean-copy structural gate that rejects outer-root paths, symlinks,
+      and build contexts escaping `mm-chat/`.
+- [x] Build and run the relocated frontend from `mm-chat/`, verify its Docker
+      healthcheck, and prove the same-origin `/mm-api/ready` path reaches the
+      healthy Go/Postgres/Redis/MinIO stack from the Windows host.
+- [x] Pass the full isolated-copy install/test/build gate for the frontend, Go
+      backend, and Python 3.13 RAG package without access to the original root.
+- [ ] Pass the complete clean-copy frontend, Go, RAG, Compose, backup/restore,
+      and visual-regression gate before deleting the former root application.
+
 ## Phase 11 — Frontend Server-Mode Integration
 
 Phase 11 starts as documentation-first planning. Do not mark any implementation

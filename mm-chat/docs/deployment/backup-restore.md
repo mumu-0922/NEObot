@@ -55,10 +55,9 @@ Run Postgres and MinIO backups in the same maintenance window when possible so
 file metadata in Postgres stays aligned with object bytes in MinIO.
 
 ```bash
-cd /home/mumu/projects/neo-chat
+cd /path/to/mm-chat
 
-./mm-chat/scripts/backup-single-server-production.sh \
-  mm-chat/.env.single-server
+./scripts/backup-single-server-production.sh .env.single-server
 ```
 
 Outputs:
@@ -104,11 +103,11 @@ container or on a disposable server.
 5. Drop the temporary database when the drill is complete.
 
 ```bash
-cd /home/mumu/projects/neo-chat
+cd /path/to/mm-chat
 
 (cd mm-chat/backup/postgres && sha256sum -c <chosen-dump>.dump.sha256)
 
-mm-chat/scripts/compose-single-server-production.sh mm-chat/.env.single-server \
+scripts/compose-single-server-production.sh .env.single-server \
   exec -T postgres sh -ceu '
 : "${POSTGRES_USER:?POSTGRES_USER is required}"
 if [ -n "${POSTGRES_PASSWORD:-}" ]; then
@@ -417,7 +416,7 @@ MinIO restores are destructive when mirrored back to the production bucket with
 6. Remove the drill bucket and local staging directory.
 
 ```bash
-cd /home/mumu/projects/neo-chat
+cd /path/to/mm-chat
 
 (cd mm-chat/backup/minio && sha256sum -c <chosen-archive>.tar.gz.sha256)
 

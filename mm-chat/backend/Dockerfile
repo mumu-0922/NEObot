@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-
 FROM golang:1.25@sha256:d7912cedddfa15b2900a8dfb7187df0af5ec2cb424a371139b5b352fd3e6b740 AS build
 WORKDIR /src
 

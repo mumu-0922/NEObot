@@ -1,0 +1,247 @@
+import { describe, expect, it } from "vitest";
+import { resolveEffectiveChatContext } from "../lib/chat/effectiveChatContext";
+
+describe("effective chat context", () => {
+  it("normalizes session plugins and skills and reports unavailable capabilities", () => {
+    const context = resolveEffectiveChatContext({
+      session: {
+        id: "session-1",
+        title: "New Chat",
+        updatedAt: 1,
+        model: "openai:gpt-test",
+        messageCount: 0,
+        systemInstruction: "Answer in project voice.",
+        config: {
+          activePlugins: ["needs-auth", "free-plugin"],
+          activeSkills: ["session-skill", "session-skill", ""],
+        },
+      },
+      workspace: {
+        id: "workspace-1",
+        name: "Workspace",
+        color: "blue",
+        systemPrompt: "Workspace context.",
+        knowledgeCollectionIds: ["kb-1"],
+        createdAt: 1,
+        files: [
+          { id: "file-1", fileName: "brief.txt", mimeType: "text/plain" },
+        ],
+        activeSkills: ["workspace-skill"],
+      },
+      systemPrompt: "Global system prompt.",
+      now: new Date("2026-07-01T02:03:04.000Z"),
+      selectedModel: "openai:gpt-test",
+      provider: { type: "OpenAI Compatible" },
+      modelMetadata: {},
+      customModelMetadata: {},
+      chatConfig: {
+        useSearch: true,
+        useReasoning: true,
+        temperature: 0.7,
+        useRAG: true,
+      },
+      search: {
+        provider: "google",
+        configs: {},
+      },
+      rag: {
+        enabled: true,
+        url: "",
+        token: "",
+        topK: 10,
+        chunkSize: 512,
+        documentParseProvider: "mineru",
+        mineruApiToken: "",
+        llamaParseApiKey: "",
+      },
+      installedPlugins: [
+        {
+          id: "needs-auth",
+          title: "Needs Auth",
+          description: "",
+          logoUrl: "",
+          manifestUrl: "",
+          functions: [],
+          auth: { type: "apiKey" },
+        },
+        {
+          id: "free-plugin",
+          title: "Free Plugin",
+          description: "",
+          logoUrl: "",
+          manifestUrl: "",
+          functions: [],
+          auth: { type: "none" },
+        },
+      ],
+      pluginConfigs: {},
+      activePlugins: [],
+    });
+
+    expect(context.workspaceFiles).toHaveLength(1);
+    expect(context.workspaceKnowledgeCollectionIds).toEqual(["kb-1"]);
+    expect(context.systemInstruction).toContain("Global system prompt.");
+    expect(context.systemInstruction).toContain("Answer in project voice.");
+    expect(context.systemInstruction).toContain("Workspace context.");
+    expect(context.systemInstruction).toContain("<diagram-rendering>");
+    expect(context.systemInstruction).toContain("Current date and time");
+    expect(context.systemInstruction).toContain("2026-07-01T02:03:04.000Z");
+    expect(context.activePluginIds).toEqual(["free-plugin"]);
+    expect(context.activeSkillIds).toEqual(["session-skill"]);
+    expect(context.capabilityStatuses.map((status) => status.code)).toEqual(
+      expect.arrayContaining([
+        "search_unavailable",
+        "rag_unavailable",
+        "plugin_auth_missing",
+      ]),
+    );
+  });
+
+  it("uses workspace skills when the session does not override them", () => {
+    const context = resolveEffectiveChatContext({
+      session: {
+        id: "session-1",
+        title: "New Chat",
+        updatedAt: 1,
+        model: "openai:gpt-test",
+        messageCount: 0,
+      },
+      workspace: {
+        id: "workspace-1",
+        name: "Workspace",
+        color: "blue",
+        knowledgeCollectionIds: [],
+        createdAt: 1,
+        files: [],
+        activeSkills: ["workspace-skill", "workspace-skill"],
+      },
+      selectedModel: "openai:gpt-test",
+      provider: { type: "OpenAI" },
+      modelMetadata: {},
+      customModelMetadata: {},
+      chatConfig: {
+        useSearch: false,
+        useReasoning: false,
+        temperature: 0.7,
+        useRAG: false,
+      },
+      search: {
+        provider: "google",
+        configs: {},
+      },
+      rag: {
+        enabled: false,
+        url: "",
+        token: "",
+        topK: 10,
+        chunkSize: 512,
+        documentParseProvider: "mineru",
+        mineruApiToken: "",
+        llamaParseApiKey: "",
+      },
+      installedPlugins: [],
+      pluginConfigs: {},
+      activePlugins: [],
+    });
+
+    expect(context.activeSkillIds).toEqual(["workspace-skill"]);
+  });
+
+  it("appends safe inline HTML guidance when the visual prompt setting is enabled", () => {
+    const context = resolveEffectiveChatContext({
+      systemPrompt: "Global system prompt.",
+      enableHtmlVisualPrompt: true,
+      selectedModel: "openai:gpt-test",
+      provider: { type: "OpenAI" },
+      modelMetadata: {},
+      customModelMetadata: {},
+      chatConfig: {
+        useSearch: false,
+        useReasoning: false,
+        temperature: 0.7,
+        useRAG: false,
+      },
+      search: {
+        provider: "google",
+        configs: {},
+      },
+      rag: {
+        enabled: false,
+        url: "",
+        token: "",
+        topK: 10,
+        chunkSize: 512,
+        documentParseProvider: "mineru",
+        mineruApiToken: "",
+        llamaParseApiKey: "",
+      },
+      installedPlugins: [],
+      pluginConfigs: {},
+      activePlugins: [],
+    });
+
+    expect(context.systemInstruction).toContain("Global system prompt.");
+    expect(context.systemInstruction).toContain("<format");
+    expect(context.systemInstruction).toContain("<html-visual>");
+    expect(context.systemInstruction).toContain(
+      "actively use safe inline HTML",
+    );
+    expect(context.systemInstruction).toContain("raw HTML");
+    expect(context.systemInstruction).toContain("<diagram-visual-polish>");
+    expect(context.systemInstruction).toContain(
+      "Do not wrap HTML visual fragments in code fences",
+    );
+    expect(context.systemInstruction).toContain("Do not use class attributes");
+    expect(context.systemInstruction).toContain(
+      "Do not output full HTML documents",
+    );
+    expect(context.systemInstruction).toContain(
+      "Use light or pale backgrounds with dark, readable foreground text",
+    );
+    expect(context.systemInstruction).toContain(
+      "Aim for at least a 4.5:1 foreground/background contrast ratio",
+    );
+    expect(context.systemInstruction).toContain(
+      "Never use surface, border, pastel, or translucent color variables as text color",
+    );
+  });
+
+  it("does not inject HTML visual guidance when the setting is disabled", () => {
+    const context = resolveEffectiveChatContext({
+      systemPrompt: "Global system prompt.",
+      enableHtmlVisualPrompt: false,
+      selectedModel: "openai:gpt-test",
+      provider: { type: "OpenAI" },
+      modelMetadata: {},
+      customModelMetadata: {},
+      chatConfig: {
+        useSearch: false,
+        useReasoning: false,
+        temperature: 0.7,
+        useRAG: false,
+      },
+      search: {
+        provider: "google",
+        configs: {},
+      },
+      rag: {
+        enabled: false,
+        url: "",
+        token: "",
+        topK: 10,
+        chunkSize: 512,
+        documentParseProvider: "mineru",
+        mineruApiToken: "",
+        llamaParseApiKey: "",
+      },
+      installedPlugins: [],
+      pluginConfigs: {},
+      activePlugins: [],
+    });
+
+    expect(context.systemInstruction).not.toContain("<html-visual>");
+    expect(context.systemInstruction).toContain("<diagram-rendering>");
+    expect(context.systemInstruction).not.toContain("<diagram-visual-polish>");
+    expect(context.systemInstruction).not.toContain("<format_instructions");
+  });
+});

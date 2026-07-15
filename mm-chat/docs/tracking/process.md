@@ -7988,3 +7988,47 @@ implement **C1.3C Native PDF safe subset and `MINERU_REQUIRED` classifier**.
 Keep C1.3D MinerU, C1.4 Canonical IR, Provider/network access, production
 Registry/Dispatch, Postgres/Redis/MinIO, migrations `011/012`, and staging
 closed.
+
+## 2026-07-14 — Standalone frontend live cutover smoke completed
+
+Docker Desktop registry access was restored through its explicit HTTP/HTTPS
+proxy. The standalone frontend image then built from `mm-chat/frontend/` with
+the server-only build contract (`/mm-api` and the private `backend:8080`
+upstream). Both Node build stages are pinned to the exact base-image digest
+observed during the successful build.
+
+The first host publications on ports `3000` and `3100` failed before container
+startup. Windows reported `WSAEACCES`; `netsh` proved that the machine excludes
+the full TCP range `2893-3692`. The ignored local environment was moved to
+`FRONTEND_PORT=18080` with a matching `NEXT_PUBLIC_SITE_URL`. This is a host
+port reservation issue, not WSL memory pressure or an application failure.
+
+Live Windows-host evidence:
+
+```text
+GET  http://127.0.0.1:18080/               200 OK
+GET  http://127.0.0.1:18080/mm-api/ready  ready
+frontend container health                 healthy / failing streak 0
+backend database / redis / storage        ready / ready / ready
+```
+
+The first `verify-standalone.sh --full` run then exposed a gate defect: it used
+the host's generic Python 3.10 and treated the PEP 735 `dev` dependency group as
+an optional extra. The verifier and direct-development instructions now require
+Python 3.13 and install with `pip install -e . --group dev`.
+
+The repaired verifier passed from a fresh isolated copy with no original-root
+access:
+
+```text
+frontend format / lint / typecheck           passed (6 legacy warnings)
+frontend tests / production build            795 passed / passed
+Go format / vet / full tests                 passed / passed / passed
+RAG Ruff / format / strict Mypy              passed / passed / passed
+RAG full tests                               1408 passed / 2 skipped
+standalone verification                      passed (full)
+```
+
+The live smoke and isolated-copy gate close install, test, build, and local
+runtime independence. Backup/restore, browser visual-regression, and final
+rollback verification remain required before any original-root deletion plan.

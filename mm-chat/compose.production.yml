@@ -1,4 +1,6 @@
 services:
+  frontend:
+    build: !reset null
   backend:
     build: !reset null
   migrate:

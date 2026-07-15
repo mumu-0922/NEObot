@@ -1,0 +1,16 @@
+.DS_Store
+.git
+.github
+.next
+.open-next
+.vercel
+coverage
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.env*
+*.pem
+*.tsbuildinfo
+cloudflare-env.d.ts

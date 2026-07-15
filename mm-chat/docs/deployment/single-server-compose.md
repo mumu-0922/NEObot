@@ -5,16 +5,18 @@ Identity Services, Phase 15.1C Team Services, Phase 15.1D Personal/Team
 Collections, and the Phase 15.2B default-dark-run RAG worker wiring.
 It keeps deployment files inside `mm-chat/` and does not modify the repository-root
 `docker-compose.yml`. The stack runs the Go API, Postgres, Redis, and MinIO on
-one server; the existing Next.js frontend remains outside this workspace until
-a later frontend cutover.
+one server. The complete Next.js frontend is built from `mm-chat/frontend/`
+and exposes the only browser-facing application port.
 
 ## Files
 
 ```text
-mm-chat/compose.single-server.yml      # backend + data services
+mm-chat/compose.yml                    # canonical local Compose entrypoint
+mm-chat/compose.single-server.yml      # frontend + backend + data services
 mm-chat/.env.single-server.example     # committed template only
 mm-chat/.env.single-server             # local secrets, gitignored
 mm-chat/backend/Dockerfile             # Go API + migration + admin binaries
+mm-chat/frontend/Dockerfile            # standalone Next.js server image
 mm-chat/rag/Dockerfile                 # Python dark-run worker image
 mm-chat/scripts/preflight-single-server.sh # production promotion gate
 mm-chat/scripts/compose-single-server-production.sh # clean-env production entrypoint
@@ -46,6 +48,7 @@ secret file.
 | `minio-init`   | default      | Creates bucket and least-privilege app user/policy.                              | None            |
 | `migrate`      | `ops`        | One-shot `mm-chat-migrate up`; never auto-runs on API boot.                      | None            |
 | `admin`        | `ops`        | One-shot local identity administration; no HTTP listener.                        | None            |
+| `frontend`     | `app`        | Next.js UI and same-origin `/mm-api` edge on `127.0.0.1:3000`.                    | Localhost only  |
 | `backend`      | `app`        | Go API on `127.0.0.1:8080` for reverse proxy or local smoke tests.               | Localhost only  |
 | `minio-client` | `ops`        | Utility container for backup/restore scripts.                                    | None            |
 | `rag-worker`   | `rag-worker` | Phase 15.2B durable-consumer mechanics; dispatch defaults off.                   | None            |

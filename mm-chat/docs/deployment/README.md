@@ -1,9 +1,10 @@
 # Deployment Docs
 
 Deployment docs define the single-server path for the `mm-chat` server-backed
-refactor. The current runtime path is Docker Compose under `mm-chat/`: Go API,
-Postgres, Redis, private MinIO, and an optional Phase 15.2B dark-run Python
-Worker on one server, with migrations and backups run explicitly by operators.
+refactor. The current runtime path is Docker Compose under `mm-chat/`: the
+complete Next.js frontend, Go API, Postgres, Redis, private MinIO, and an
+optional Phase 15.2B dark-run Python Worker on one server, with migrations and
+backups run explicitly by operators.
 The Go/Postgres runtime now includes Identity,
 Teams, Knowledge Collections/Documents, Governance, Consent, Jobs, and durable
 Outbox state.
@@ -58,9 +59,10 @@ Outbox state.
 - API startup must not auto-run migrations; operators run the `migrate` service
   or `mm-chat-migrate` before starting or restarting a DB-enabled backend
   release. The Phase 15.2B migration head is `010`.
-- Compose resolves `backend`, `migrate`, and `admin` from one `BACKEND_IMAGE`;
-  the Worker independently resolves `RAG_IMAGE`. Production uses full registry
-  `@sha256:` digests for both and runs
+- Compose resolves the UI from `FRONTEND_IMAGE`, resolves `backend`, `migrate`,
+  and `admin` from one `BACKEND_IMAGE`, and independently resolves the Worker
+  from `RAG_IMAGE`. Production uses full registry `@sha256:` digests for all
+  three and runs
   `scripts/compose-single-server-production.sh` so host variables cannot
   override the validated env file and the production override removes every
   `build:` path. Retain both previous image digests through rollback.

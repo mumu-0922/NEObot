@@ -38,6 +38,7 @@ fi
 
 valid="${temp_dir}/valid.env"
 sed \
+  -e 's|ghcr.io/mumu-0922/neobot-mm-chat-frontend@sha256:replace-with-64-lowercase-hex|ghcr.io/mumu-0922/neobot-mm-chat-frontend@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc|' \
   -e 's|ghcr.io/mumu-0922/neobot-mm-chat@sha256:replace-with-64-lowercase-hex|ghcr.io/mumu-0922/neobot-mm-chat@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|' \
   -e 's|ghcr.io/mumu-0922/neobot-mm-chat-rag@sha256:replace-with-64-lowercase-hex|ghcr.io/mumu-0922/neobot-mm-chat-rag@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|' \
   -e 's|replace-with-release-id|git-deadbeef|' \
@@ -179,6 +180,16 @@ for invalid_rag_image in \
   assert_rejected "${image_env}" "RAG_IMAGE must use a full immutable sha256 registry digest"
 done
 
+for invalid_frontend_image in \
+  'mm-chat/frontend:release-1' \
+  'frontend@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc' \
+  'ghcr.io/mumu-0922/neobot-mm-chat-frontend@sha256:abc'; do
+  image_env="${temp_dir}/frontend-image-$RANDOM.env"
+  sed "s|^FRONTEND_IMAGE=.*|FRONTEND_IMAGE=${invalid_frontend_image}|" "${valid}" >"${image_env}"
+  chmod 600 "${image_env}"
+  assert_rejected "${image_env}" "FRONTEND_IMAGE must use a full immutable sha256 registry digest"
+done
+
 same_worker_principal="${temp_dir}/same-worker-principal.env"
 sed 's|postgres://rag_worker:test-rag-worker-password@|postgres://neo_chat_api:test-rag-worker-password@|' \
   "${valid}" >"${same_worker_principal}"
@@ -284,6 +295,7 @@ chmod 600 "${reserved}"
 assert_rejected "${reserved}" "reserved env name"
 
 rendered="$({
+  FRONTEND_IMAGE=mm-chat/frontend:host-override \
   BACKEND_IMAGE=mm-chat/backend:host-override \
   RAG_IMAGE=mm-chat/rag:host-override \
   POSTGRES_PASSWORD=host-override-password \
@@ -299,6 +311,28 @@ import sys
 
 config = json.loads(sys.argv[1])
 services = config["services"]
+want_frontend_image = (
+    "ghcr.io/mumu-0922/neobot-mm-chat-frontend@sha256:"
+    + "c" * 64
+)
+frontend = services["frontend"]
+assert frontend["image"] == want_frontend_image
+assert "build" not in frontend
+assert frontend["profiles"] == ["app"]
+assert frontend["read_only"] is True
+assert frontend["init"] is True
+assert frontend["cap_drop"] == ["ALL"]
+assert "no-new-privileges:true" in frontend["security_opt"]
+assert frontend["depends_on"] == {
+    "backend": {
+        "condition": "service_healthy",
+        "required": True,
+    }
+}
+assert frontend["environment"]["NEXT_PUBLIC_API_MODE"] == "server"
+assert frontend["environment"]["NEXT_PUBLIC_API_BASE_URL"] == "/mm-api"
+assert frontend["environment"]["MM_CHAT_BACKEND_INTERNAL_URL"] == "http://backend:8080"
+assert list(frontend["networks"]) == ["private"]
 want_image = (
     "ghcr.io/mumu-0922/neobot-mm-chat@sha256:"
     + "a" * 64
@@ -394,12 +428,18 @@ import sys
 
 config = json.loads(sys.argv[1])
 services = config["services"]
-for name in ("backend", "migrate", "admin", "rag-worker", "rag-replay"):
+for name in ("frontend", "backend", "migrate", "admin", "rag-worker", "rag-replay"):
     assert "build" in services[name], name
 assert "MIGRATION_DATABASE_URL" not in services["backend"]["environment"]
 assert "DATABASE_URL" not in services["migrate"]["environment"]
 assert "MIGRATION_DATABASE_URL" in services["migrate"]["environment"]
 assert "MIGRATION_DATABASE_URL" not in services["admin"]["environment"]
+frontend = services["frontend"]
+assert frontend["image"] == "ghcr.io/mumu-0922/neobot-mm-chat-frontend@sha256:replace-with-64-lowercase-hex"
+assert frontend["build"]["context"].endswith("/mm-chat/frontend")
+assert frontend["build"]["args"]["NEXT_PUBLIC_API_MODE"] == "server"
+assert frontend["build"]["args"]["NEXT_PUBLIC_API_BASE_URL"] == "/mm-api"
+assert frontend["profiles"] == ["app"]
 rag = services["rag-worker"]
 assert rag["image"] == "ghcr.io/mumu-0922/neobot-mm-chat-rag@sha256:replace-with-64-lowercase-hex"
 assert rag["build"]["context"].endswith("/mm-chat/rag")

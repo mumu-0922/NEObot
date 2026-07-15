@@ -358,10 +358,9 @@ bootstrap/migrator login or `rag_projection_owner`.
 Use the committed scripts rather than ad hoc `docker exec pg_dump` commands:
 
 ```bash
-cd /home/mumu/projects/neo-chat
+cd /path/to/mm-chat
 
-./mm-chat/scripts/backup-single-server-production.sh \
-  mm-chat/.env.single-server
+./scripts/backup-single-server-production.sh .env.single-server
 ```
 
 Postgres dumps and MinIO archives should come from the same maintenance window.
