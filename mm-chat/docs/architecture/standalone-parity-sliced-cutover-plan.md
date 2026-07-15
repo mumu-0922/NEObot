@@ -244,7 +244,7 @@ Targeted tests:
       regressing the local access-password rollback path.
 - [x] G3.3 Provider Settings/BYOK UI adapters call the API client instead of
       direct transitional Next routes.
-- [ ] G3.4 Hosted/dev auth behavior and same-origin smoke verified.
+- [x] G3.4 Hosted/dev auth behavior and same-origin smoke verified.
 
 ### G4 — Plugin Registry, Install, and Execution Final Ownership
 
@@ -411,7 +411,7 @@ Targeted tests:
 | G0 Plan Freeze and Guardrails            | Complete | Docs, indexes, progress, and process log updated                             |
 | G1 Conversation and Message Operations   | Complete | G1.1-G1.6 complete; only paused cross-group search toggle remains outside G1 |
 | G2 Related Questions and Agent Catalogs  | Complete | Related-question/catalog Next routes replaced                                |
-| G3 Auth, Config, Provider Settings, BYOK | Pending  | Server-auth/config/provider lifecycle verified                               |
+| G3 Auth, Config, Provider Settings, BYOK | Complete | Server-auth/config/provider lifecycle verified                               |
 | G4 Plugin Final Ownership                | Pending  | Transitional plugin routes removed or retired                                |
 | G5 Search/Web Enrichment                 | Paused   | Owner reopens, then server-owned search passes gates                         |
 | G6 Voice/Image/Code Jobs                 | Pending  | Enabled jobs server-admitted and fail closed otherwise                       |

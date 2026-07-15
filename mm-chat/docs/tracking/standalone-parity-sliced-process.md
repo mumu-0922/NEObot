@@ -1055,3 +1055,72 @@ G3.4 hosted/dev auth behavior and same-origin Compose smoke still pending.
 ```
 
 Next slice: G3.4 Hosted/dev auth behavior and same-origin smoke.
+
+## 2026-07-15 — G3.4 Hosted/Dev Auth Smoke Completed
+
+Objective: verify hosted/dev auth behavior and same-origin `/mm-api` runtime
+routing after the G3 auth/config/provider/BYOK wiring.
+
+Completed scope:
+
+- ran Compose build/start for backend and frontend with `.env.single-server`;
+- verified current dev auth mode from `.env.single-server` exposes runtime config
+  and allows unauthenticated chat reads as expected for development mode;
+- attempted `AUTH_MODE=required` smoke and found backend startup failed because
+  required auth also requires Team cursor keyring settings;
+- added explicit `local-dev` Team cursor keyring defaults to the single-server
+  Compose/backend env examples so required-mode local smoke can start;
+- reran `AUTH_MODE=required` Compose smoke and verified same-origin `/mm-api`
+  config stays public while chat routes return `401 UNAUTHENTICATED` without a
+  Bearer token;
+- verified the frontend home page renders the client AuthGate shell in required
+  mode before `ChatApp` mounts;
+- restored the original `.env.single-server` stack after the required-mode smoke.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/compose.single-server.yml
+mm-chat/backend/.env.example
+mm-chat/docs/deployment/single-server-compose.md
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat && docker compose --env-file .env.single-server \
+  -f compose.single-server.yml up -d --build backend frontend             # passed
+GET http://127.0.0.1:8080/ready                                          # 200
+GET http://127.0.0.1:18080/                                              # 200, bytes=96504
+GET http://127.0.0.1:18080/mm-api/v1/config                              # 200, deployment.mode=local
+GET http://127.0.0.1:18080/mm-api/v1/chat/conversations                  # 200 in dev mode
+
+AUTH_MODE=required docker compose --env-file .env.single-server \
+  -f compose.single-server.yml up -d --force-recreate backend frontend    # passed after local-dev cursor keyring default
+GET http://127.0.0.1:18080/                                              # 200, contains "Checking session"
+GET http://127.0.0.1:18080/mm-api/v1/config                              # 200, deployment.mode=hosted
+GET http://127.0.0.1:18080/mm-api/v1/chat/conversations                  # 401 UNAUTHENTICATED
+
+docker compose --env-file .env.single-server \
+  -f compose.single-server.yml up -d backend frontend                     # restored original stack
+GET http://127.0.0.1:18080/mm-api/v1/config                              # 200, deployment.mode=local
+GET http://127.0.0.1:18080/mm-api/v1/chat/conversations                  # 200 after restore
+
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/envExample.test.ts \
+  src/__tests__/apiClientScaffold.test.ts                                # passed, 2 files / 46 tests
+cd mm-chat/frontend && corepack pnpm typecheck                            # passed
+cd mm-chat/frontend && corepack pnpm format:check                         # passed
+cd mm-chat/frontend && corepack pnpm lint                                 # passed
+```
+
+Residual G3 blockers:
+
+```text
+<none>
+```
+
+Next slice: G4 Plugin Registry, Install, and Execution Final Ownership.

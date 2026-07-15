@@ -338,8 +338,8 @@ registered but database-backed Team operations return `503 DATABASE_REQUIRED`.
 
 | Variable                          | Default                 | Contract                                                                                        |
 | --------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------- |
-| `TEAM_CURSOR_ACTIVE_KEY_ID`       | required in hosted mode | Active HMAC signing key ID.                                                                     |
-| `TEAM_CURSOR_KEYRING`             | no usable default       | Comma-separated `key-id=base64`; each decoded key is at least 32 bytes.                         |
+| `TEAM_CURSOR_ACTIVE_KEY_ID`       | `local-dev`             | Active HMAC signing key ID; replace before production.                                          |
+| `TEAM_CURSOR_KEYRING`             | local-dev sample        | Comma-separated `key-id=base64`; each decoded key is at least 32 bytes; replace before production. |
 | `TEAM_MAIL_ACTIVE_KEY_ID`         | none                    | Active AES-256-GCM encryption key ID.                                                           |
 | `TEAM_MAIL_KEYRING`               | no usable default       | Comma-separated `key-id=base64`; every decoded key is exactly 32 bytes.                         |
 | `TEAM_INVITE_ACCEPT_URL_BASE`     | none                    | HTTPS UI URL in required mode; loopback HTTP only in development. The worker adds `#token=...`. |
