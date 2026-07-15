@@ -2091,3 +2091,60 @@ G6.5d Code execution sandbox contract before any real executor is enabled
 
 Next slice: G6.5b shared job rate-limit/cancel gate, still without enabling
 real executors.
+
+## 2026-07-15 — G6.5b Job Cancellation and Rate-limit Gate Completed
+
+Objective: add the shared job-control boundary needed by future async
+voice/image/code executors without enabling any real executor or cancellation
+state mutation yet.
+
+Completed scope:
+
+- added `internal/jobcontrol` with `POST /v1/jobs/{jobId}/cancel` route parsing,
+  job-id validation, and fail-closed service behavior;
+- invalid job ids and unknown job-control subroutes return `404 NOT_FOUND`
+  without echoing the raw identifier;
+- valid cancellation requests return `501 JOB_CANCELLATION_UNAVAILABLE` until
+  a durable job registry/cancellation store exists;
+- registered `/v1/jobs/{jobId}/cancel` in the Go HTTP server and metric-path
+  normalizer;
+- added an HTTP-server regression proving job-control routes are covered by the
+  existing global rate-limit middleware and return `429 RATE_LIMITED` when over
+  limit.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/backend/internal/jobcontrol/service.go
+mm-chat/backend/internal/jobcontrol/handler.go
+mm-chat/backend/internal/jobcontrol/handler_test.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/httpserver/server_test.go
+mm-chat/backend/internal/httpserver/metrics.go
+mm-chat/backend/internal/httpserver/metrics_test.go
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/inventory/frontend-call-sites.md
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test \
+  ./internal/jobcontrol ./internal/httpserver                         # passed
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./...    # passed
+git diff --check -- mm-chat                                          # passed
+```
+
+Residual G6 blockers:
+
+```text
+G6.5c Real voice/image executors with output storage and provider smoke
+G6.5d Code execution sandbox contract before any real executor is enabled
+```
+
+Next slice: G6.5c should start with real voice/image executor design or a
+storage-only result artifact contract; code execution remains blocked until the
+sandbox contract is explicit.

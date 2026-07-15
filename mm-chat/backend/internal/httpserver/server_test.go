@@ -795,6 +795,25 @@ func TestNewHandlerRegistersPluginRoutesWithFailClosedRegistryFallbacks(t *testi
 	}
 }
 
+func TestNewHandlerRegistersJobCancelRouteAsFailClosedAdmission(t *testing.T) {
+	handler := NewHandler(config.Config{Addr: ":0", Version: "route-test"})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/jobs/job-1/cancel", nil)
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("job cancel status = %d, want %d; body=%s", rec.Code, http.StatusNotImplemented, rec.Body.String())
+	}
+	var body ErrorResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode job cancel error response: %v", err)
+	}
+	if body.Error.Code != "JOB_CANCELLATION_UNAVAILABLE" {
+		t.Fatalf("job cancel code = %q, want JOB_CANCELLATION_UNAVAILABLE", body.Error.Code)
+	}
+}
+
 func TestNewHandlerRegistersCodeJobRouteAsFailClosedAdmission(t *testing.T) {
 	handler := NewHandler(config.Config{Addr: ":0", Version: "route-test"})
 	rec := httptest.NewRecorder()
@@ -936,6 +955,48 @@ func TestRateLimitMiddlewareLimitsNonExemptRoutes(t *testing.T) {
 	}
 	if body.Error.Code != "RATE_LIMITED" {
 		t.Fatalf("error code = %q, want RATE_LIMITED", body.Error.Code)
+	}
+}
+
+func TestRateLimitMiddlewareLimitsJobControlRoutes(t *testing.T) {
+	store := newFakeRateLimitStore()
+	handler := NewHandler(
+		config.Config{
+			Addr:    ":0",
+			Version: "route-test",
+			Redis: config.RedisConfig{
+				RateLimitEnabled:  true,
+				RateLimitRequests: 1,
+				RateLimitWindow:   time.Minute,
+			},
+		},
+		WithRateLimitStore(store),
+	)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/jobs/job-1/cancel", nil)
+	req.RemoteAddr = "203.0.113.20:4444"
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("first job cancel status = %d, want 501; body=%s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("X-RateLimit-Limit"); got != "1" {
+		t.Fatalf("first X-RateLimit-Limit = %q, want 1", got)
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/v1/jobs/job-1/cancel", nil)
+	req.RemoteAddr = "203.0.113.20:4444"
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("second job cancel status = %d, want 429; body=%s", rec.Code, rec.Body.String())
+	}
+	var body ErrorResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode job rate limit response: %v", err)
+	}
+	if body.Error.Code != "RATE_LIMITED" {
+		t.Fatalf("job rate limit code = %q, want RATE_LIMITED", body.Error.Code)
 	}
 }
 

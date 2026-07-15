@@ -1377,6 +1377,7 @@ Endpoint mapping:
 | `plugins.listInstalled`       | `GET /v1/plugins/installed` | Later phase; capability-gated.                                                |
 | `plugins.install`             | `POST /v1/plugins/install`  | Later phase; validate manifest before install.                                |
 | `plugins.execute`             | `POST /v1/plugins/execute`  | Deferred until sandbox design exists.                                         |
+| `job.cancel`                  | `POST /v1/jobs/{jobId}/cancel` | G6.5b fail-closed cancellation admission; validates job id, then unavailable. |
 | `code.execute`                | `POST /v1/code/executions` | G6.4 fail-closed admission; validates `modelRef + language + code`, then unavailable. |
 | `image.generate`              | `POST /v1/images/generations` | G6.3 fail-closed admission; validates `modelRef + prompt`, then unavailable. |
 | `voice.transcribe`            | `POST /v1/voice/transcribe` | G6.2 fail-closed admission; validates multipart shape, then unavailable.      |
@@ -1414,6 +1415,9 @@ Rules:
   voice/image/code services: kind, status, userId, providerId, modelId,
   language, and reason. Prompt text, source code, synthesis text, and audio
   bytes must not enter audit events.
+- G6.5b registers fail-closed `POST /v1/jobs/{jobId}/cancel` and keeps job
+  control routes behind the same global rate-limit middleware as other
+  non-exempt APIs.
 - `plugins` capability remains `false` for the first server MVP; `pluginApi` exists to avoid later component-level route coupling.
 
 ## 14. HTTP Client Rules

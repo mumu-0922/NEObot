@@ -18,6 +18,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/files"
 	"neo-chat/mm-chat/backend/internal/health"
 	"neo-chat/mm-chat/backend/internal/imagejobs"
+	"neo-chat/mm-chat/backend/internal/jobcontrol"
 	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/plugins"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
@@ -238,6 +239,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	agentHandler := agents.NewHandler(resolvedOptions.agentService)
 	codeJobHandler := codejobs.NewHandler(nil)
 	imageJobHandler := imagejobs.NewHandler(nil)
+	jobControlHandler := jobcontrol.NewHandler(nil)
 	voiceJobHandler := voicejobs.NewHandler(nil)
 	runtimeConfigService := runtimeconfig.NewService(cfg)
 	pluginHandler := plugins.NewHandler(plugins.NewService(
@@ -271,6 +273,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/plugins/", pluginHandler)
 	mux.Handle("/v1/code/executions", codeJobHandler)
 	mux.Handle("/v1/images/generations", imageJobHandler)
+	mux.Handle("/v1/jobs/", jobControlHandler)
 	mux.Handle("/v1/voice/transcribe", voiceJobHandler)
 	mux.Handle("/v1/voice/synthesize", voiceJobHandler)
 	mux.Handle("/v1/files", fileHandler)

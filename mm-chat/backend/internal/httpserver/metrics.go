@@ -491,6 +491,9 @@ func knownMetricPath(path string) (string, bool) {
 	if len(parts) == 4 && parts[1] == "v1" && parts[2] == "agents" {
 		return "/v1/agents/{identifier}", true
 	}
+	if len(parts) == 5 && parts[1] == "v1" && parts[2] == "jobs" && parts[4] == "cancel" {
+		return "/v1/jobs/{id}/cancel", true
+	}
 	if len(parts) == 6 && parts[1] == "v1" && parts[2] == "chat" && parts[3] == "runs" && parts[5] == "cancel" {
 		return "/v1/chat/runs/{id}/cancel", true
 	}

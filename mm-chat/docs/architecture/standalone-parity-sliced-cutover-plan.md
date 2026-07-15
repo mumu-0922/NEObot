@@ -366,7 +366,7 @@ Slice checklist:
 - [ ] G6.5 Audit/rate-limit/cancel metadata and enabled-provider smoke.
   - [x] G6.5a Admission audit metadata: voice/image/code fail-closed services
         record sanitized job events with kind/status/user/provider/model/language/reason and no prompt/code/text/audio payloads.
-  - [ ] G6.5b Shared job rate-limit and cancellation gates.
+  - [x] G6.5b Shared job rate-limit and cancellation gates: register fail-closed `/v1/jobs/{jobId}/cancel` and verify job control routes remain under the global rate-limit middleware.
   - [ ] G6.5c Real voice/image executors with output storage and provider smoke.
   - [ ] G6.5d Code execution sandbox contract before any real executor is enabled.
 
@@ -481,7 +481,7 @@ Targeted tests:
 | G3 Auth, Config, Provider Settings, BYOK | Complete | Server-auth/config/provider lifecycle verified                               |
 | G4 Plugin Final Ownership                | In progress | G4.1-G4.6a complete; audit metadata and browser/provider smoke remain         |
 | G5 Search/Web Enrichment                 | Paused   | Owner reopens, then server-owned search passes gates                         |
-| G6 Voice/Image/Code Jobs                 | In progress | G6.1-G6.5a complete; rate-limit/cancel/executors remain                       |
+| G6 Voice/Image/Code Jobs                 | In progress | G6.1-G6.5b complete; real executors/storage/smoke remain                      |
 | G7 Knowledge/RAG/Citations               | Pending  | Phase 15 runtime gates pass                                                  |
 | G8 Teams/Knowledge UI                    | Pending  | Go control plane wired to UI with isolation smoke                            |
 | G9 Data Authority/Route Removal          | Pending  | local production authority and replaced routes gone                          |
