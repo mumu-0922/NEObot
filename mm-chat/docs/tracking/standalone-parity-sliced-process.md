@@ -1485,3 +1485,68 @@ G4.6 live browser smoke with a real plugin result
 Next slice: G4.5c Registry-backed plugin execute finalization, or G4.6 live smoke
 if the owner accepts full-manifest execution as the smoke baseline before
 registry persistence.
+
+## 2026-07-15 — G4.5c.1 Go Registry Id-only Bridge Completed
+
+Objective: move server-mode plugin execution off full-manifest production
+payloads without swallowing the full durable-registry scope in one slice.
+
+Completed scope:
+
+- added a Go plugin registry interface with an in-memory implementation seeded
+  by the current built-in plugin definitions;
+- changed `POST /v1/plugins/install` from pure fail-closed to register supplied
+  plugin payloads in the Go registry and return the installed plugin;
+- kept custom OpenAPI manifest install fail-closed with
+  `PLUGIN_CUSTOM_INSTALL_UNAVAILABLE` until the durable conversion slice;
+- changed id-only `POST /v1/plugins/execute` to resolve
+  `pluginId/functionName` from the Go registry, while preserving full-manifest
+  execution as compatibility;
+- changed server-mode frontend plugin execution to send id-only payloads to Go
+  and never fall back to `/api/plugins/execute`;
+- preserved G4.5b sandbox controls: BYOK encrypted auth, private URL/redirect
+  blocking, timeout, response cap, and generic result normalization.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/backend/internal/plugins/builtins.go
+mm-chat/backend/internal/plugins/handler.go
+mm-chat/backend/internal/plugins/handler_test.go
+mm-chat/backend/internal/httpserver/server_test.go
+mm-chat/frontend/src/utils/pluginUtils.ts
+mm-chat/frontend/src/__tests__/pluginUtils.test.ts
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/inventory/frontend-call-sites.md
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./...       # passed
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test \
+  ./internal/plugins ./internal/httpserver                              # passed
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/apiClientScaffold.test.ts \
+  src/__tests__/pluginUtils.test.ts \
+  src/__tests__/serverPluginOrchestration.test.ts                       # passed, 3 files / 62 tests
+cd mm-chat/frontend && corepack pnpm typecheck                          # passed
+cd mm-chat/frontend && corepack pnpm format:check                       # passed
+cd mm-chat/frontend && corepack pnpm lint                               # passed
+git diff --check -- mm-chat                                             # passed
+```
+
+Residual G4.5c blockers:
+
+```text
+G4.5c.2 Postgres-backed plugin registry persistence
+G4.5c.2 Custom OpenAPI manifest conversion in Go
+G4.5c.2 Plugin audit metadata and built-in result normalizers
+G4.6 live browser smoke with a real plugin result
+```
+
+Next slice: G4.5c.2 durable registry completion, kept separate so the migration
+continues one tested group at a time.

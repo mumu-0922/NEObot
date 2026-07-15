@@ -49,7 +49,7 @@ async function postPluginExecutionWithLegacyFallback(
 ) {
   const client = createNeoChatApiClient();
   if (client.mode === "server") {
-    return postPluginExecution(buildLegacyPayload, signal, client);
+    return postPluginExecution(buildPrimaryPayload, signal, client);
   }
 
   const response = await postPluginExecution(

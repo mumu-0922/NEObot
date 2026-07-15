@@ -767,18 +767,19 @@ func TestNewHandlerRegistersPluginRoutesWithFailClosedRegistryFallbacks(t *testi
 	}
 
 	for _, tc := range []struct {
-		path string
-		body string
-		code string
+		path   string
+		body   string
+		status int
+		code   string
 	}{
-		{path: "/v1/plugins/install", body: `{"secret":"sk_live_secret"}`, code: "PLUGIN_INSTALL_UNAVAILABLE"},
-		{path: "/v1/plugins/execute", body: `{"pluginId":"weather","functionName":"lookup","args":{"secret":"sk_live_secret"}}`, code: "PLUGIN_REGISTRY_REQUIRED"},
+		{path: "/v1/plugins/install", body: `{"customInput":"https://plugins.example/openapi.json"}`, status: http.StatusNotImplemented, code: "PLUGIN_CUSTOM_INSTALL_UNAVAILABLE"},
+		{path: "/v1/plugins/execute", body: `{"pluginId":"missing","functionName":"lookup","args":{"secret":"sk_live_secret"}}`, status: http.StatusNotFound, code: "PLUGIN_NOT_REGISTERED"},
 	} {
 		rec = httptest.NewRecorder()
 		req = httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
 		handler.ServeHTTP(rec, req)
-		if rec.Code != http.StatusNotImplemented {
-			t.Fatalf("%s status = %d, want %d; body=%s", tc.path, rec.Code, http.StatusNotImplemented, rec.Body.String())
+		if rec.Code != tc.status {
+			t.Fatalf("%s status = %d, want %d; body=%s", tc.path, rec.Code, tc.status, rec.Body.String())
 		}
 		if strings.Contains(rec.Body.String(), "sk_live_secret") {
 			t.Fatalf("%s response leaked request secret: %s", tc.path, rec.Body.String())

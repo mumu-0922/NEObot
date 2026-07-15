@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"neo-chat/mm-chat/backend/internal/config"
@@ -25,20 +26,21 @@ const (
 )
 
 var (
-	ErrPluginBaseURLMissing       = errors.New("plugin base URL is missing")
-	ErrPluginFunctionMissing      = errors.New("plugin function is missing")
-	ErrPluginFunctionMismatch     = errors.New("plugin function is not declared by this plugin")
-	ErrPluginPathInvalid          = errors.New("plugin path is invalid")
-	ErrPluginMethodUnsupported    = errors.New("plugin method is not supported")
-	ErrPluginPathArgsMissing      = errors.New("plugin path parameters are missing")
-	ErrPluginURLBlocked           = errors.New("plugin URL is blocked by policy")
-	ErrPluginAuthRequired         = errors.New("plugin authentication is required")
-	ErrPluginAuthUnsupported      = errors.New("plugin authentication type is not supported")
-	ErrPlaintextPluginAuth        = errors.New("plaintext plugin auth is not accepted")
-	ErrPluginRequestFailed        = errors.New("plugin request failed")
-	ErrPluginResponseTooLarge     = errors.New("plugin response is too large")
-	ErrPluginExecutionPayload     = errors.New("plugin execution payload is invalid")
-	ErrPluginExecutionUnsupported = errors.New("plugin execution requires a plugin manifest payload until the registry is implemented")
+	ErrPluginBaseURLMissing    = errors.New("plugin base URL is missing")
+	ErrPluginFunctionMissing   = errors.New("plugin function is missing")
+	ErrPluginFunctionMismatch  = errors.New("plugin function is not declared by this plugin")
+	ErrPluginPathInvalid       = errors.New("plugin path is invalid")
+	ErrPluginMethodUnsupported = errors.New("plugin method is not supported")
+	ErrPluginPathArgsMissing   = errors.New("plugin path parameters are missing")
+	ErrPluginURLBlocked        = errors.New("plugin URL is blocked by policy")
+	ErrPluginAuthRequired      = errors.New("plugin authentication is required")
+	ErrPluginAuthUnsupported   = errors.New("plugin authentication type is not supported")
+	ErrPluginNotRegistered     = errors.New("plugin is not registered")
+	ErrPlaintextPluginAuth     = errors.New("plaintext plugin auth is not accepted")
+	ErrPluginCustomInstall     = errors.New("custom plugin manifest install is not available in the Go backend yet")
+	ErrPluginRequestFailed     = errors.New("plugin request failed")
+	ErrPluginResponseTooLarge  = errors.New("plugin response is too large")
+	ErrPluginExecutionPayload  = errors.New("plugin execution payload is invalid")
 )
 
 type SecretDecrypter func(*runtimeconfig.EncryptedSecretEnvelope, string) (string, error)
@@ -48,6 +50,7 @@ type ServiceOption func(*Service)
 type Service struct {
 	httpClient          *http.Client
 	secretDecrypter     SecretDecrypter
+	registry            Registry
 	allowPrivateNetwork bool
 	maxResponseBytes    int64
 }
@@ -68,6 +71,15 @@ type ErrorBody struct {
 type ListResponse struct {
 	Plugins     []PluginSummary `json:"plugins"`
 	Unavailable bool            `json:"unavailable,omitempty"`
+}
+
+type InstallRequest struct {
+	Plugin      *Plugin `json:"plugin,omitempty"`
+	CustomInput string  `json:"customInput,omitempty"`
+}
+
+type InstallResponse struct {
+	Plugin Plugin `json:"plugin"`
 }
 
 type PluginSummary struct {
@@ -132,11 +144,23 @@ type PluginAuthConfig struct {
 	AddTo       string                                 `json:"addTo,omitempty"`
 }
 
+type Registry interface {
+	Save(context.Context, Plugin) error
+	Get(context.Context, string) (Plugin, bool, error)
+	List(context.Context) ([]Plugin, error)
+}
+
+type memoryRegistry struct {
+	mu      sync.RWMutex
+	plugins map[string]Plugin
+}
+
 func NewService(cfg config.Config, opts ...ServiceOption) *Service {
 	runtimeConfigService := runtimeconfig.NewService(cfg)
 	service := &Service{
 		httpClient:       &http.Client{Timeout: defaultTimeout},
 		secretDecrypter:  runtimeConfigService.DecryptOptionalSecret,
+		registry:         NewMemoryRegistry(BuiltInPlugins()...),
 		maxResponseBytes: maxPluginResponseBytes,
 	}
 	for _, opt := range opts {
@@ -163,6 +187,14 @@ func WithSecretDecrypter(decrypter SecretDecrypter) ServiceOption {
 	}
 }
 
+func WithRegistry(registry Registry) ServiceOption {
+	return func(service *Service) {
+		if registry != nil {
+			service.registry = registry
+		}
+	}
+}
+
 func WithAllowPrivateNetwork(allow bool) ServiceOption {
 	return func(service *Service) {
 		service.allowPrivateNetwork = allow
@@ -175,6 +207,45 @@ func WithMaxResponseBytes(maxBytes int64) ServiceOption {
 			service.maxResponseBytes = maxBytes
 		}
 	}
+}
+
+func NewMemoryRegistry(initial ...Plugin) Registry {
+	registry := &memoryRegistry{plugins: map[string]Plugin{}}
+	for _, plugin := range initial {
+		_ = registry.Save(context.Background(), plugin)
+	}
+	return registry
+}
+
+func (r *memoryRegistry) Save(_ context.Context, plugin Plugin) error {
+	id := strings.TrimSpace(plugin.ID)
+	if id == "" {
+		return ErrPluginExecutionPayload
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.plugins[id] = clonePlugin(plugin)
+	return nil
+}
+
+func (r *memoryRegistry) Get(_ context.Context, pluginID string) (Plugin, bool, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	plugin, ok := r.plugins[strings.TrimSpace(pluginID)]
+	if !ok {
+		return Plugin{}, false, nil
+	}
+	return clonePlugin(plugin), true, nil
+}
+
+func (r *memoryRegistry) List(_ context.Context) ([]Plugin, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	plugins := make([]Plugin, 0, len(r.plugins))
+	for _, plugin := range r.plugins {
+		plugins = append(plugins, clonePlugin(plugin))
+	}
+	return plugins, nil
 }
 
 func NewHandler(service *Service) *Handler {
@@ -210,13 +281,22 @@ func (h *Handler) handlePlugins(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handler) installPlugin(w http.ResponseWriter, _ *http.Request) {
-	writeError(
-		w,
-		http.StatusNotImplemented,
-		"PLUGIN_INSTALL_UNAVAILABLE",
-		"plugin install is not available in the Go backend yet",
-	)
+func (h *Handler) installPlugin(w http.ResponseWriter, r *http.Request) {
+	var request InstallRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_PLUGIN_INSTALL_REQUEST", "plugin install request body is invalid")
+		return
+	}
+	if strings.TrimSpace(request.CustomInput) != "" {
+		writeError(w, http.StatusNotImplemented, "PLUGIN_CUSTOM_INSTALL_UNAVAILABLE", ErrPluginCustomInstall.Error())
+		return
+	}
+	plugin, err := h.service.RegisterPlugin(r.Context(), request.Plugin)
+	if err != nil {
+		writeInstallError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, InstallResponse{Plugin: plugin})
 }
 
 func (h *Handler) executePlugin(w http.ResponseWriter, r *http.Request) {
@@ -237,7 +317,12 @@ func (s *Service) Execute(ctx context.Context, request ExecuteRequest) (any, err
 	plugin := request.Plugin
 	functionDef := request.FunctionDef
 	if plugin == nil || functionDef == nil {
-		return nil, ErrPluginExecutionUnsupported
+		registeredPlugin, registeredFunction, err := s.resolveRegisteredPlugin(ctx, request)
+		if err != nil {
+			return nil, err
+		}
+		plugin = &registeredPlugin
+		functionDef = &registeredFunction
 	}
 	if request.Args == nil {
 		return nil, ErrPluginExecutionPayload
@@ -305,6 +390,28 @@ func (s *Service) Execute(ctx context.Context, request ExecuteRequest) (any, err
 	if err != nil {
 		return nil, err
 	}
+	if plugin.ID == "unsplash" && authValue == "" {
+		pluginCopy := *plugin
+		pluginCopy.BaseURL = "https://unsplash.com/napi"
+		plugin = &pluginCopy
+		pluginURL, err = url.Parse(strings.TrimRight(plugin.BaseURL, "/") + path)
+		if err != nil || pluginURL == nil {
+			return nil, ErrPluginPathInvalid
+		}
+		if method == http.MethodGet {
+			query := pluginURL.Query()
+			for key, value := range outboundArgs {
+				if _, ok := consumed[key]; ok {
+					continue
+				}
+				query.Add(key, fmt.Sprint(value))
+			}
+			pluginURL.RawQuery = query.Encode()
+		}
+		if err := s.validateOutboundURL(ctx, pluginURL); err != nil {
+			return nil, err
+		}
+	}
 	if requiresAuth(plugin) && plugin.ID != "unsplash" && authValue == "" {
 		return nil, ErrPluginAuthRequired
 	}
@@ -356,6 +463,41 @@ func (s *Service) Execute(ctx context.Context, request ExecuteRequest) (any, err
 		return string(data), nil
 	}
 	return parsed, nil
+}
+
+func (s *Service) RegisterPlugin(ctx context.Context, plugin *Plugin) (Plugin, error) {
+	if plugin == nil {
+		return Plugin{}, ErrPluginExecutionPayload
+	}
+	candidate := clonePlugin(*plugin)
+	if err := validatePlugin(candidate); err != nil {
+		return Plugin{}, err
+	}
+	if err := s.registry.Save(ctx, candidate); err != nil {
+		return Plugin{}, err
+	}
+	return candidate, nil
+}
+
+func (s *Service) resolveRegisteredPlugin(ctx context.Context, request ExecuteRequest) (Plugin, PluginFunction, error) {
+	pluginID := strings.TrimSpace(request.PluginID)
+	functionName := strings.TrimSpace(request.FunctionName)
+	if pluginID == "" || functionName == "" {
+		return Plugin{}, PluginFunction{}, ErrPluginExecutionPayload
+	}
+	plugin, ok, err := s.registry.Get(ctx, pluginID)
+	if err != nil {
+		return Plugin{}, PluginFunction{}, err
+	}
+	if !ok {
+		return Plugin{}, PluginFunction{}, ErrPluginNotRegistered
+	}
+	for _, functionDef := range plugin.Functions {
+		if functionDef.Name == functionName {
+			return plugin, functionDef, nil
+		}
+	}
+	return Plugin{}, PluginFunction{}, ErrPluginFunctionMismatch
 }
 
 func (s *Service) do(request *http.Request) (*http.Response, error) {
@@ -534,6 +676,42 @@ func pluginAuthContext(pluginID string) string {
 	return "plugin:" + pluginID + ":auth"
 }
 
+func validatePlugin(plugin Plugin) error {
+	if strings.TrimSpace(plugin.ID) == "" {
+		return ErrPluginExecutionPayload
+	}
+	if strings.TrimSpace(plugin.BaseURL) == "" {
+		return ErrPluginBaseURLMissing
+	}
+	if len(plugin.Functions) == 0 {
+		return ErrPluginFunctionMissing
+	}
+	for _, functionDef := range plugin.Functions {
+		if strings.TrimSpace(functionDef.Name) == "" {
+			return ErrPluginFunctionMissing
+		}
+		if strings.TrimSpace(functionDef.Path) == "" || strings.ContainsAny(functionDef.Path, "\r\n") {
+			return ErrPluginPathInvalid
+		}
+		if !isSupportedMethod(strings.ToUpper(strings.TrimSpace(functionDef.Method))) {
+			return ErrPluginMethodUnsupported
+		}
+	}
+	return nil
+}
+
+func clonePlugin(plugin Plugin) Plugin {
+	data, err := json.Marshal(plugin)
+	if err != nil {
+		return plugin
+	}
+	var clone Plugin
+	if err := json.Unmarshal(data, &clone); err != nil {
+		return plugin
+	}
+	return clone
+}
+
 func decodeJSON(w http.ResponseWriter, r *http.Request, destination any) error {
 	r.Body = http.MaxBytesReader(w, r.Body, maxExecutionBodyBytes)
 	decoder := json.NewDecoder(r.Body)
@@ -566,8 +744,8 @@ func (h *Handler) requireMethod(
 
 func writeExecutionError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, ErrPluginExecutionUnsupported):
-		writeError(w, http.StatusNotImplemented, "PLUGIN_REGISTRY_REQUIRED", "plugin registry-backed execution is not available for id-only payloads yet")
+	case errors.Is(err, ErrPluginNotRegistered):
+		writeError(w, http.StatusNotFound, "PLUGIN_NOT_REGISTERED", "plugin is not registered")
 	case errors.Is(err, ErrPluginBaseURLMissing),
 		errors.Is(err, ErrPluginFunctionMissing),
 		errors.Is(err, ErrPluginFunctionMismatch),
@@ -590,6 +768,19 @@ func writeExecutionError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadGateway, "PLUGIN_REQUEST_FAILED", "plugin request failed")
 	default:
 		writeError(w, http.StatusInternalServerError, "PLUGIN_EXECUTION_FAILED", "plugin execution failed")
+	}
+}
+
+func writeInstallError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, ErrPluginBaseURLMissing),
+		errors.Is(err, ErrPluginFunctionMissing),
+		errors.Is(err, ErrPluginPathInvalid),
+		errors.Is(err, ErrPluginMethodUnsupported),
+		errors.Is(err, ErrPluginExecutionPayload):
+		writeError(w, http.StatusBadRequest, "INVALID_PLUGIN_INSTALL_REQUEST", err.Error())
+	default:
+		writeError(w, http.StatusInternalServerError, "PLUGIN_INSTALL_FAILED", "plugin install failed")
 	}
 }
 

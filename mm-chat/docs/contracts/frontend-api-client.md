@@ -1984,13 +1984,13 @@ Operational rollback smoke:
 This contract applies when `NEXT_PUBLIC_API_MODE=server` and one or more
 installed plugins are active. The provider credential remains owned by Go;
 plugin auth must remain browser-encrypted when it crosses the API boundary.
-Copying `PROVIDER_API_KEY` into the frontend is forbidden. As of G4.5b,
-server-mode plugin execution routes to Go `/v1/plugins/execute`; the Go
-executor accepts the full installed-plugin manifest payload, decrypts
-`valueSecret`, applies outbound URL policy including redirects, enforces
-timeout/response bounds, and returns generic normalized results. Id-only
-registry execution remains `PLUGIN_REGISTRY_REQUIRED` until G4.5c. The
-transitional Next
+Copying `PROVIDER_API_KEY` into the frontend is forbidden. As of G4.5c.1,
+server-mode plugin execution routes to Go `/v1/plugins/execute` with
+`pluginId/functionName`; Go resolves built-ins and plugins registered through
+`/v1/plugins/install`, decrypts `valueSecret`, applies outbound URL policy
+including redirects, enforces timeout/response bounds, and returns generic
+normalized results. Full manifest payloads remain accepted only as a bounded
+compatibility path until durable registry completion. The transitional Next
 `/api/plugins/execute` path is local-adapter rollback only.
 
 ```text
@@ -2091,9 +2091,13 @@ Browser execution rules:
 - Server-mode execution requests must go to `/v1/plugins/execute`; the
   transitional `/api/plugins/execute` route is only reachable from the local
   adapter until the route is removed.
-- Until the persistent plugin registry lands, server-mode execution must send
-  the full installed plugin manifest and selected function definition; id-only
-  payloads fail closed with `PLUGIN_REGISTRY_REQUIRED`.
+- Server-mode execution must send `pluginId`, `functionName`, and JSON `args`;
+  the Go registry resolves the full plugin/function definition. Full manifest
+  execution remains accepted as compatibility only, not as the production
+  adapter path.
+- G4.5c.1 registry scope is process memory seeded with built-ins plus plugins
+  registered via `/v1/plugins/install`; durable Postgres persistence and custom
+  OpenAPI manifest conversion are G4.5c.2.
 - `authConfig.value` plaintext is rejected with
   `PLAINTEXT_PLUGIN_AUTH_REJECTED`; only BYOK `valueSecret` is accepted.
 - Go outbound policy allows only `http|https`, blocks
@@ -2134,14 +2138,13 @@ Browser execution rules:
 
 ### 21.5 Good / Base / Bad Cases
 
-- Good: Weather is active; Go plans `getCurrentWeather`; Go executes the
-  supplied manifest/function payload; the final persisted assistant message uses
-  the returned temperature.
+- Good: Weather is active; Go plans `getCurrentWeather`; frontend sends
+  `pluginId/functionName`; Go resolves and executes the registered function; the
+  final persisted assistant message uses the returned temperature.
 - Base: Plugins are active but the model returns `calls: []`; no plugin route is
   called and normal Go chat continues.
-- G4.5b base: A server receives an id-only payload before persistent registry
-  execution exists; it returns `PLUGIN_REGISTRY_REQUIRED` and does not fall back
-  to Next.
+- G4.5c.1 base: A server receives an unknown `pluginId`; it returns
+  `PLUGIN_NOT_REGISTERED` and does not fall back to Next.
 - Bad: Provider returns `delete_all` when it was not offered; neither plugin
   execution nor the final stream is called.
 
@@ -2159,7 +2162,9 @@ Browser execution rules:
 - G4.5b Go executor: full manifest payload success, plaintext auth rejection,
   BYOK header/query auth, blocked private URL/redirect, response-size cap, and
   no secret leakage in errors.
-- G4.5b adapter: server-mode `pluginApi.execute` posts full payloads to
+- G4.5c.1 Go registry: built-in seed lookup, install registration, id-only
+  execution, unknown-plugin failure, and custom manifest fail-closed behavior.
+- G4.5c.1 adapter: server-mode `pluginApi.execute` posts id-only payloads to
   `/v1/plugins/execute`, maps Go errors as plugin error results, and never falls
   back to `/api/plugins/execute`.
 - Composition: server mode opens both skill and plugin menus; search/reasoning

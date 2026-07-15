@@ -954,6 +954,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
   - [x] G4.5a Go plugin execution fail-closed admission and server-mode
         transitional route retirement.
   - [x] G4.5b Minimal Go plugin execute sandbox.
+  - [x] G4.5c.1 Go registry-backed id-only execution bridge.
   - [ ] G4.5c Registry-backed plugin execute finalization.
   - [ ] G4.6 Live browser smoke with one installed plugin producing bounded
         context and final Go-stream answer.

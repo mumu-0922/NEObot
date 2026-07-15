@@ -174,8 +174,8 @@ describe("plugin execution utility", () => {
       expect(String(firstCall[0])).toBe("/mm-api/v1/plugins/execute");
       const request = firstCall[1] as RequestInit;
       expect(JSON.parse(String(request.body))).toMatchObject({
-        plugin: expect.objectContaining({ id: plugin.id }),
-        functionDef: expect.objectContaining({ name: "lookup" }),
+        pluginId: plugin.id,
+        functionName: "lookup",
         args: {},
       });
     } finally {

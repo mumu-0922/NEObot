@@ -43,7 +43,7 @@ func TestHandlerListsUnavailableRegistry(t *testing.T) {
 	}
 }
 
-func TestHandlerFailsClosedForInstallAndIdOnlyExecute(t *testing.T) {
+func TestHandlerFailsClosedForCustomInstallAndUnknownIdOnlyExecute(t *testing.T) {
 	handler := NewHandler(nil)
 	cases := []struct {
 		name   string
@@ -52,8 +52,8 @@ func TestHandlerFailsClosedForInstallAndIdOnlyExecute(t *testing.T) {
 		status int
 		code   string
 	}{
-		{name: "install", path: "/v1/plugins/install", body: `{"authConfig":{"value":"sk_live_secret"},"args":{"token":"private"}}`, status: http.StatusNotImplemented, code: "PLUGIN_INSTALL_UNAVAILABLE"},
-		{name: "execute id-only", path: "/v1/plugins/execute", body: `{"pluginId":"weather","functionName":"lookup","authConfig":{"value":"sk_live_secret"},"args":{"token":"private"}}`, status: http.StatusNotImplemented, code: "PLUGIN_REGISTRY_REQUIRED"},
+		{name: "custom install", path: "/v1/plugins/install", body: `{"customInput":"https://plugins.example/openapi.json"}`, status: http.StatusNotImplemented, code: "PLUGIN_CUSTOM_INSTALL_UNAVAILABLE"},
+		{name: "unknown execute id-only", path: "/v1/plugins/execute", body: `{"pluginId":"missing","functionName":"lookup","authConfig":{"value":"sk_live_secret"},"args":{"token":"private"}}`, status: http.StatusNotFound, code: "PLUGIN_NOT_REGISTERED"},
 	}
 
 	for _, tc := range cases {
@@ -71,6 +71,55 @@ func TestHandlerFailsClosedForInstallAndIdOnlyExecute(t *testing.T) {
 			}
 			assertErrorCode(t, rec, tc.code)
 		})
+	}
+}
+
+func TestHandlerInstallsPluginAndExecutesRegisteredIdOnlyPayload(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/lookup/42" {
+			t.Fatalf("path = %q, want /lookup/42", r.URL.Path)
+		}
+		if r.URL.Query().Get("city") != "Shanghai" {
+			t.Fatalf("city query = %q", r.URL.Query().Get("city"))
+		}
+		return jsonResponse(http.StatusOK, `{"ok":true,"registered":true}`), nil
+	})}
+	handler := NewHandler(NewService(config.Config{}, WithAllowPrivateNetwork(true), WithHTTPClient(client)))
+
+	installRec := httptest.NewRecorder()
+	installBody := map[string]any{"plugin": executePayload("https://plugins.example").Plugin}
+	installReq := httptest.NewRequest(http.MethodPost, "/v1/plugins/install", bytes.NewReader(mustJSON(t, installBody)))
+	handler.ServeHTTP(installRec, installReq)
+
+	if installRec.Code != http.StatusOK {
+		t.Fatalf("install status = %d, want %d; body=%s", installRec.Code, http.StatusOK, installRec.Body.String())
+	}
+	var installResponse InstallResponse
+	if err := json.NewDecoder(installRec.Body).Decode(&installResponse); err != nil {
+		t.Fatalf("decode install response: %v", err)
+	}
+	if installResponse.Plugin.ID != "test-plugin" {
+		t.Fatalf("installed plugin id = %q, want test-plugin", installResponse.Plugin.ID)
+	}
+
+	executeRec := httptest.NewRecorder()
+	executeReq := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/plugins/execute",
+		strings.NewReader(`{"pluginId":"test-plugin","functionName":"lookup","args":{"id":"42","city":"Shanghai"}}`),
+	)
+	handler.ServeHTTP(executeRec, executeReq)
+
+	if executeRec.Code != http.StatusOK {
+		t.Fatalf("execute status = %d, want %d; body=%s", executeRec.Code, http.StatusOK, executeRec.Body.String())
+	}
+	var executeResponse ExecuteResponse
+	if err := json.NewDecoder(executeRec.Body).Decode(&executeResponse); err != nil {
+		t.Fatalf("decode execute response: %v", err)
+	}
+	result, ok := executeResponse.Result.(map[string]any)
+	if !ok || result["registered"] != true {
+		t.Fatalf("result = %#v", executeResponse.Result)
 	}
 }
 
