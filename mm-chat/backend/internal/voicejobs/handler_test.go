@@ -68,6 +68,30 @@ func TestHandlerSynthesizeReturnsStoredArtifactWhenExecutorConfigured(t *testing
 	}
 }
 
+func TestHandlerSynthesizeMapsProviderErrorsWithoutLeakingText(t *testing.T) {
+	executor := &fakeVoiceExecutor{err: ErrVoiceProviderFailed}
+	store := &fakeArtifactStore{artifact: jobartifacts.Artifact{
+		FileID:      "file-1",
+		Purpose:     "audio",
+		ContentType: "audio/mpeg",
+		Size:        5,
+	}}
+	handler := NewHandler(NewService(WithExecutor(executor), WithArtifactStore(store), WithAuditRecorder(noopAuditRecorder())))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		synthesizePath,
+		strings.NewReader(`{"text":"private speech","provider":"model","modelId":"tts-1"}`),
+	)
+
+	handler.ServeHTTP(rec, req)
+
+	assertError(t, rec, http.StatusBadGateway, "VOICE_PROVIDER_ERROR")
+	if strings.Contains(rec.Body.String(), "private speech") {
+		t.Fatalf("response leaked synthesis text: %s", rec.Body.String())
+	}
+}
+
 func TestHandlerSynthesizeValidatesRequestBeforeAdmission(t *testing.T) {
 	handler := NewHandler(nil)
 	tests := []struct {

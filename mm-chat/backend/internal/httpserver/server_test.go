@@ -19,6 +19,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/jobartifacts"
 	"neo-chat/mm-chat/backend/internal/jobaudit"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
+	"neo-chat/mm-chat/backend/internal/voicejobs"
 )
 
 func TestNewHandlerRoutesHealthReadyAndVersion(t *testing.T) {
@@ -975,6 +976,73 @@ func TestNewHandlerRegistersVoiceJobRoutesAsFailClosedAdmission(t *testing.T) {
 	}
 }
 
+func TestNewHandlerRoutesConfiguredVoiceJobService(t *testing.T) {
+	executor := &fakeHTTPVoiceExecutor{synthesizeResult: voicejobs.SynthesizeResult{
+		JobID:       "job-1",
+		Filename:    "voice.mp3",
+		ContentType: "audio/mpeg",
+		Size:        5,
+		Body:        strings.NewReader("audio"),
+	}}
+	store := &fakeHTTPArtifactStore{artifact: jobartifacts.Artifact{
+		FileID:      "44444444-4444-4444-8444-444444444444",
+		Purpose:     "audio",
+		ContentType: "audio/mpeg",
+		Size:        5,
+	}}
+	var auditEvent jobaudit.Event
+	service := voicejobs.NewService(
+		voicejobs.WithExecutor(executor),
+		voicejobs.WithArtifactStore(store),
+		voicejobs.WithAuditRecorder(jobaudit.RecorderFunc(func(_ context.Context, event jobaudit.Event) error {
+			auditEvent = event
+			return nil
+		})),
+	)
+	handler := NewHandler(
+		config.Config{Addr: ":0", Version: "route-test"},
+		WithVoiceJobService(service),
+	)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/voice/synthesize",
+		strings.NewReader(`{"text":"private speech","provider":"model","modelId":"tts-1","jobId":"job-1"}`),
+	)
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("voice job status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var response voicejobs.SynthesizeResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode voice response: %v", err)
+	}
+	if response.FileID != "44444444-4444-4444-8444-444444444444" ||
+		response.Purpose != "audio" ||
+		response.ContentType != "audio/mpeg" ||
+		response.Size != 5 {
+		t.Fatalf("voice response = %#v", response)
+	}
+	if !executor.synthesizeCalled ||
+		executor.synthesizeRequest.Text != "private speech" ||
+		executor.synthesizeRequest.ModelID != "tts-1" {
+		t.Fatalf("executor state = called:%v request:%#v", executor.synthesizeCalled, executor.synthesizeRequest)
+	}
+	if len(store.inputs) != 1 || store.inputs[0].Kind != jobartifacts.KindAudio {
+		t.Fatalf("artifact inputs = %#v", store.inputs)
+	}
+	if auditEvent.Kind != jobaudit.KindVoiceSynthesize ||
+		auditEvent.Status != jobaudit.StatusAdmitted ||
+		auditEvent.ModelID != "tts-1" {
+		t.Fatalf("audit event = %#v", auditEvent)
+	}
+	if strings.Contains(rec.Body.String(), "private speech") {
+		t.Fatalf("voice response leaked synthesis text: %s", rec.Body.String())
+	}
+}
+
 func TestRateLimitMiddlewareLimitsNonExemptRoutes(t *testing.T) {
 	store := newFakeRateLimitStore()
 	handler := NewHandler(
@@ -1167,6 +1235,40 @@ func (e *fakeHTTPImageExecutor) Generate(
 		return imagejobs.GenerateResult{}, e.err
 	}
 	return e.result, nil
+}
+
+type fakeHTTPVoiceExecutor struct {
+	transcribeCalled   bool
+	synthesizeCalled   bool
+	transcribeRequest  voicejobs.TranscribeRequest
+	synthesizeRequest  voicejobs.SynthesizeRequest
+	transcribeResponse voicejobs.TranscribeResponse
+	synthesizeResult   voicejobs.SynthesizeResult
+	err                error
+}
+
+func (e *fakeHTTPVoiceExecutor) Transcribe(
+	_ context.Context,
+	request voicejobs.TranscribeRequest,
+) (voicejobs.TranscribeResponse, error) {
+	e.transcribeCalled = true
+	e.transcribeRequest = request
+	if e.err != nil {
+		return voicejobs.TranscribeResponse{}, e.err
+	}
+	return e.transcribeResponse, nil
+}
+
+func (e *fakeHTTPVoiceExecutor) Synthesize(
+	_ context.Context,
+	request voicejobs.SynthesizeRequest,
+) (voicejobs.SynthesizeResult, error) {
+	e.synthesizeCalled = true
+	e.synthesizeRequest = request
+	if e.err != nil {
+		return voicejobs.SynthesizeResult{}, e.err
+	}
+	return e.synthesizeResult, nil
 }
 
 type fakeHTTPArtifactStore struct {

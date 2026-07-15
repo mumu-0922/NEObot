@@ -2641,3 +2641,62 @@ Residual blockers:
 G6.5c.2b Real provider-backed voice executor and authorized configured-provider smoke remains open.
 Search/RAG, code execution, final local-mode removal, and clean-copy deletion gates remain separate slices.
 ```
+
+## 2026-07-15 — G6.5c.2b.1 OpenAI-Compatible Voice Executor, Route Wiring, and Smoke Harness
+
+Objective: add a real voice-provider executor behind the existing Go voice job
+admission/storage/audit seam without reopening frontend voice controls or
+requiring live provider quota during normal tests.
+
+Completed scope:
+
+- added `voicejobs.OpenAICompatibleExecutor` for OpenAI-compatible voice APIs:
+  - STT: multipart `POST /audio/transcriptions` with `file`, `model`, and
+    optional provider language;
+  - TTS: JSON `POST /audio/speech` with `model`, `input`, and `voice`;
+- mapped provider non-2xx responses to sanitized `502 VOICE_PROVIDER_ERROR`
+  without echoing provider bodies, synthesis text, audio bytes, or credentials;
+- wired `cmd/api` to construct a voice job service from server-only
+  `PROVIDER_BASE_URL` and `PROVIDER_API_KEY` when configured;
+- required backend artifact storage before TTS executor calls, preserving the
+  existing no-storage fail-closed behavior before quota consumption;
+- added `httpserver.WithVoiceJobService` and route-level coverage for configured
+  voice synthesis artifacts;
+- added a gated live voice smoke harness under the existing
+  `providersmoke` authorization contract. Normal test runs skip it unless the
+  exact quota approval, run id, and voice target are configured.
+
+Changed surfaces:
+
+```text
+mm-chat/backend/cmd/api/main.go
+mm-chat/backend/cmd/api/main_test.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/httpserver/server_test.go
+mm-chat/backend/internal/voicejobs/handler.go
+mm-chat/backend/internal/voicejobs/handler_test.go
+mm-chat/backend/internal/voicejobs/openai_compatible_executor.go
+mm-chat/backend/internal/voicejobs/openai_compatible_executor_test.go
+mm-chat/backend/internal/voicejobs/openai_compatible_live_test.go
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/contracts/media-job-executor-seams.md
+mm-chat/docs/contracts/provider-live-smoke-authorization.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./internal/voicejobs ./internal/httpserver ./cmd/api # passed
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./... # passed
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./internal/voicejobs -run TestLiveOpenAICompatibleVoiceSmoke -count=1 -v # skipped: provider live smoke disabled
+```
+
+Residual blockers:
+
+```text
+G6.5c.2b.2 Authorized configured-provider voice smoke remains open.
+Frontend voice capability/adapter reopen remains separate; `voice` stays disabled in server mode.
+```

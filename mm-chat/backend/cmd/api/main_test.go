@@ -89,6 +89,49 @@ func TestNewRedisStateRejectsEnabledRateLimitWithoutRedisURL(t *testing.T) {
 	}
 }
 
+func TestNewVoiceJobExecutorUsesProviderConfigOptIn(t *testing.T) {
+	executor, err := newVoiceJobExecutor(config.Config{})
+	if err != nil || executor != nil {
+		t.Fatalf("newVoiceJobExecutor(default) = %T/%v, want nil/nil", executor, err)
+	}
+
+	executor, err = newVoiceJobExecutor(config.Config{Provider: config.ProviderConfig{
+		Type:    "openai_compatible",
+		BaseURL: "https://provider.example.test/v1",
+	}})
+	if err != nil || executor != nil {
+		t.Fatalf("newVoiceJobExecutor(no key) = %T/%v, want nil/nil", executor, err)
+	}
+
+	executor, err = newVoiceJobExecutor(config.Config{Provider: config.ProviderConfig{
+		Type:    "openai_compatible",
+		BaseURL: "https://provider.example.test/v1",
+		APIKey:  "secret-key",
+		Timeout: time.Second,
+	}})
+	if err != nil {
+		t.Fatalf("newVoiceJobExecutor(configured) error = %v", err)
+	}
+	if executor == nil {
+		t.Fatal("newVoiceJobExecutor(configured) = nil, want executor")
+	}
+}
+
+func TestNewVoiceJobExecutorRejectsInvalidConfigWithoutSecretLeak(t *testing.T) {
+	secret := "secret-key"
+	_, err := newVoiceJobExecutor(config.Config{Provider: config.ProviderConfig{
+		Type:    "openai_compatible",
+		BaseURL: "://bad-url",
+		APIKey:  secret,
+	}})
+	if err == nil {
+		t.Fatal("newVoiceJobExecutor(invalid URL) error = nil")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("newVoiceJobExecutor() leaked api key: %v", err)
+	}
+}
+
 func TestRedactSensitiveLogText(t *testing.T) {
 	input := strings.Join([]string{
 		"postgres://neo_chat:super-secret@postgres:5432/neo_chat?sslmode=disable",

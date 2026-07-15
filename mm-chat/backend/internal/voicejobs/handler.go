@@ -177,6 +177,8 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusServiceUnavailable, "VOICE_ARTIFACT_STORE_UNAVAILABLE", "voice artifact storage is not configured")
 	case errors.Is(err, ErrVoiceJobsUnavailable):
 		writeError(w, http.StatusNotImplemented, "VOICE_JOBS_UNAVAILABLE", "voice jobs are not configured")
+	case errors.Is(err, ErrVoiceProviderFailed):
+		writeError(w, http.StatusBadGateway, "VOICE_PROVIDER_ERROR", "voice provider request failed")
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		writeError(w, http.StatusRequestTimeout, "REQUEST_CANCELLED", "request was cancelled")
 	default:

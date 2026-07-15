@@ -989,6 +989,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
               storage is configured.
         - [ ] G6.5c.2b Real provider-backed voice executor and authorized
               configured-provider smoke.
+          - [x] G6.5c.2b.1 OpenAI-compatible voice executor, Go route wiring,
+                and gated live smoke harness for `/audio/speech` and
+                `/audio/transcriptions`.
+          - [ ] G6.5c.2b.2 Authorized configured-provider voice smoke.
       - [x] G6.5c.3 Real image executor with stored image artifacts and
             configured-provider smoke.
         - [x] G6.5c.3a Image executor opt-in seam: Go can call a configured

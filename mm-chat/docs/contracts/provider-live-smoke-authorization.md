@@ -78,6 +78,9 @@ All codes wrap `providersmoke.ErrNotAuthorized`.
   `image.generate:openai:gpt-image-1` and records the run ID in the process log.
 - Good: a live image smoke stores its generated artifact under a local operator
   output directory and records only the path, status, and non-secret target.
+- Good: a live voice synthesize smoke stores its generated audio artifact under
+  the same local operator output directory; a live voice transcribe smoke logs
+  only transcript length, not transcript content or audio bytes.
 - Base: normal local/dev/test environment leaves the env values blank; live
   smoke is denied.
 - Bad: a test calls a real provider when the enabled flag alone is true.

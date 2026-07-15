@@ -34,6 +34,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/sessioncache"
 	"neo-chat/mm-chat/backend/internal/storage"
 	"neo-chat/mm-chat/backend/internal/teams"
+	"neo-chat/mm-chat/backend/internal/voicejobs"
 )
 
 const (
@@ -241,6 +242,19 @@ func main() {
 		os.Exit(1)
 	}
 	serverOptions = append(serverOptions, httpserver.WithImageJobService(imageJobService))
+	voiceJobService, err := newVoiceJobService(
+		cfg,
+		fileRepo,
+		objectStore,
+		newJobAuditRecorder(logger),
+	)
+	if err != nil {
+		_ = redisClient.Close()
+		_ = db.Close()
+		logger.Error("voice_job_config_failed", slog.String("error", redactSensitiveLogText(err.Error())))
+		os.Exit(1)
+	}
+	serverOptions = append(serverOptions, httpserver.WithVoiceJobService(voiceJobService))
 
 	server := httpserver.New(cfg, serverOptions...)
 
@@ -467,6 +481,56 @@ func newImageJobExecutor(cfg config.Config) (imagejobs.Executor, error) {
 			return nil, nil
 		}
 		return imagejobs.NewOpenAICompatibleExecutor(imagejobs.OpenAICompatibleExecutorConfig{
+			BaseURL: cfg.Provider.BaseURL,
+			APIKey:  cfg.Provider.APIKey,
+			Timeout: cfg.Provider.Timeout,
+		})
+	default:
+		return nil, nil
+	}
+}
+
+func newVoiceJobService(
+	cfg config.Config,
+	fileRepo files.Repository,
+	objectStore storage.ObjectStore,
+	auditRecorder jobaudit.Recorder,
+) (*voicejobs.Service, error) {
+	options := []voicejobs.ServiceOption{
+		voicejobs.WithAuditRecorder(auditRecorder),
+	}
+	if fileRepo != nil && objectStore != nil {
+		options = append(options, voicejobs.WithArtifactStore(jobartifacts.NewService(
+			files.NewService(
+				fileRepo,
+				objectStore,
+				files.WithStorageBackend(cfg.Storage.Backend),
+			),
+		)))
+	}
+
+	executor, err := newVoiceJobExecutor(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if executor != nil {
+		options = append(options, voicejobs.WithExecutor(executor))
+	}
+
+	return voicejobs.NewService(options...), nil
+}
+
+func newVoiceJobExecutor(cfg config.Config) (voicejobs.Executor, error) {
+	providerType := strings.ToLower(strings.TrimSpace(cfg.Provider.Type))
+	switch providerType {
+	case "", "none":
+		return nil, nil
+	case "openai", "openai_compatible", "openai-compatible":
+		if strings.TrimSpace(cfg.Provider.BaseURL) == "" ||
+			strings.TrimSpace(cfg.Provider.APIKey) == "" {
+			return nil, nil
+		}
+		return voicejobs.NewOpenAICompatibleExecutor(voicejobs.OpenAICompatibleExecutorConfig{
 			BaseURL: cfg.Provider.BaseURL,
 			APIKey:  cfg.Provider.APIKey,
 			Timeout: cfg.Provider.Timeout,

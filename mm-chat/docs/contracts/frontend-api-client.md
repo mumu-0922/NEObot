@@ -1435,6 +1435,13 @@ Rules:
   audit metadata through an explicitly configured audit recorder and must fail
   closed if that recorder is absent or unavailable. The default server remains
   fail-closed, and this seam does not authorize live provider quota usage.
+- G6.5c.2b.1 wires an OpenAI-compatible voice executor behind Go
+  `/v1/voice/transcribe` and `/v1/voice/synthesize` when server-only
+  `PROVIDER_BASE_URL` and `PROVIDER_API_KEY` are present. STT uses
+  `/audio/transcriptions`; TTS uses `/audio/speech` and stores returned audio
+  through backend file/object-storage artifacts. The frontend `voice`
+  capability remains disabled until a later frontend adapter/reopen slice and
+  an authorized configured-provider voice smoke pass.
 - G6.5c.3a adds only the Go image executor seam. `POST /v1/images/generations`
   may call an explicitly configured executor only when image artifact storage
   and an admitted-job audit recorder are configured. Stored image responses
