@@ -448,3 +448,71 @@ Python Postgres adapter tests passed: 18 passed.
 Prettier check passed for changed docs.
 git diff --check passed for mm-chat scoped diff.
 ```
+
+## 2026-07-15 — G7.5.2 Job Context Admission Seam
+
+Objective: add the first handler-adjacent seam for G7.5 without enabling real
+provider execution. Future parse / passage-embedding / purge handlers must
+start from a typed context, not a raw `JobClaim.values` map.
+
+Implemented behavior:
+
+- Added `rag/src/mm_chat_rag/job_context.py` with `ProcessingJobContext` and
+  `ProviderAuthority` dataclasses.
+- Added `admit_processing_job_context(...)`, which converts the DB claim row
+  into typed IDs, revisions, request hash, projection binding, provider
+  authority, and optional runtime profile proof.
+- Fail-closed stable error codes cover:
+  - unsupported stage or operation;
+  - legacy projection-unbound jobs;
+  - missing `index_generation_id` / provider-stage `materialization_id`;
+  - malformed provider authority;
+  - forbidden provider/governance fields on purge;
+  - malformed request hash / counters / UUIDs;
+  - disabled or mismatched runtime provider profile.
+- Added `with_job_context_admission(...)` in `handlers.py` so future promoted
+  handlers can be wrapped without reading raw claim rows.
+- Production `JOB_HANDLER_REGISTRY` remains empty. This slice cannot claim real
+  work and does not touch MinerU/Jina quota.
+
+Touched files:
+
+```text
+rag/src/mm_chat_rag/job_context.py
+rag/src/mm_chat_rag/handlers.py
+rag/tests/unit/test_job_context.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification run during the slice:
+
+```text
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_job_context.py tests/unit/test_jobs.py
+cd mm-chat/rag && uv run ruff check \
+  src/mm_chat_rag/job_context.py src/mm_chat_rag/handlers.py \
+  tests/unit/test_job_context.py
+cd mm-chat/rag && uv run mypy src/mm_chat_rag/job_context.py \
+  src/mm_chat_rag/handlers.py
+cd mm-chat/frontend && corepack pnpm prettier --check \
+  ../docs/architecture/g7-rag-citation-cutover-plan.md \
+  ../docs/tracking/g7-rag-citation-process.md \
+  ../docs/tracking/progress.md
+cd mm-chat && git diff --check -- .
+```
+
+Result:
+
+```text
+Targeted Python job-context and runner tests passed: 25 passed.
+Python RAG unit suite passed: 1461 passed.
+Ruff and mypy passed for changed Python files.
+Prettier check passed for changed docs.
+git diff --check passed for mm-chat scoped diff.
+```
+
+Next G7.5 slice: bind Go-created jobs to Generation/Materialization authority
+instead of legacy projection-unbound rows, then connect the admitted context to
+bounded parse / passage-embedding / purge handler skeletons.

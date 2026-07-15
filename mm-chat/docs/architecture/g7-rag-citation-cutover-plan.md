@@ -240,9 +240,22 @@ G7.5.1 completed on 2026-07-15:
 - No production job handler registry entries were promoted in G7.5.1; quota and
   provider calls remain untouched.
 
+G7.5.2 completed on 2026-07-15:
+
+- Added a Python `ProcessingJobContext` admission seam so future worker handlers
+  consume typed job authority instead of raw DB claim rows.
+- Fail-closed validation now rejects unsupported stage/operation, legacy
+  projection-unbound jobs, missing Generation/Materialization binding, malformed
+  provider authority, forbidden purge authority, invalid request hashes, and
+  runtime provider-profile mismatch with stable redacted error codes.
+- Added a handler wrapper for future promoted handlers; production
+  `JOB_HANDLER_REGISTRY` remains empty, so this slice still cannot claim work or
+  consume MinerU/Jina quota.
+
 Remaining G7.5 work:
 
-- Connect Go processing jobs/outbox to Python handler execution.
+- Bind Go-created processing jobs to Generation/Materialization authority and
+  connect Go processing jobs/outbox to Python handler execution.
 - Implement index, reprocess, tombstone purge, rebuild, retry, and DLQ behavior.
 - Enforce immediate query invisibility for deleted/tombstoned versions.
 

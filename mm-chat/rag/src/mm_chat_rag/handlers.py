@@ -14,7 +14,9 @@ from collections.abc import Callable, Coroutine, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Final, Protocol
 
+from mm_chat_rag.job_context import ProcessingJobContext, admit_processing_job_context
 from mm_chat_rag.models import JobClaim, OutboxClaim
+from mm_chat_rag.provider_profile import ProviderRuntimeProfile
 
 _HASH_RE: Final = re.compile(r"^[0-9a-f]{64}$")
 ALLOWED_DISPATCH_ACTIONS: Final[frozenset[str]] = frozenset(
@@ -101,6 +103,28 @@ class JobHandler(Protocol):
     def __call__(self, job: JobClaim) -> Coroutine[Any, Any, JobResult]:
         """Execute one leased job outside any database transaction."""
         ...
+
+
+class JobContextHandler(Protocol):
+    """A handler admitted through the typed processing-job context seam."""
+
+    def __call__(self, context: ProcessingJobContext) -> Coroutine[Any, Any, JobResult]:
+        """Execute one admitted job without reading raw claim values."""
+        ...
+
+
+def with_job_context_admission(
+    handler: JobContextHandler,
+    *,
+    provider_profile: ProviderRuntimeProfile | None = None,
+) -> JobHandler:
+    """Wrap a context handler with fail-closed claim-row admission."""
+
+    async def admitted(job: JobClaim) -> JobResult:
+        context = admit_processing_job_context(job, provider_profile=provider_profile)
+        return await handler(context)
+
+    return admitted
 
 
 # Frozen Phase B safety boundary: production cannot claim any real work.
