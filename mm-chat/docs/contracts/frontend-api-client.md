@@ -1377,6 +1377,8 @@ Endpoint mapping:
 | `plugins.listInstalled`       | `GET /v1/plugins/installed` | Later phase; capability-gated.                                                |
 | `plugins.install`             | `POST /v1/plugins/install`  | Later phase; validate manifest before install.                                |
 | `plugins.execute`             | `POST /v1/plugins/execute`  | Deferred until sandbox design exists.                                         |
+| `voice.transcribe`            | `POST /v1/voice/transcribe` | G6.2 fail-closed admission; validates multipart shape, then unavailable.      |
+| `voice.synthesize`            | `POST /v1/voice/synthesize` | G6.2 fail-closed admission; validates JSON shape, then unavailable.           |
 
 The table above is the long-term server contract. Server mode must not call a
 route until it is implemented by the Go router and explicitly reopened here.
@@ -1395,8 +1397,11 @@ Rules:
 - Local mode can keep existing BYOK behavior.
 - `RuntimeConfig.capabilities` gates UI visibility for features not yet migrated.
 - G6.1 keeps `voice`, `imageGeneration`, and `codeExecution` capabilities
-  disabled in server mode until Go job admission contracts exist; service-layer
+  disabled in server mode until Go job execution contracts exist; service-layer
   calls must fail closed instead of falling through to transitional Next routes.
+- G6.2 registers Go `/v1/voice/*` admission routes, but `voice` capability stays
+  disabled until real provider execution, output storage, and audit controls are
+  implemented and tested.
 - `plugins` capability remains `false` for the first server MVP; `pluginApi` exists to avoid later component-level route coupling.
 
 ## 14. HTTP Client Rules

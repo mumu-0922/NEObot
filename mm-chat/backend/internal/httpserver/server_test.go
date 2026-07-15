@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -794,6 +795,44 @@ func TestNewHandlerRegistersPluginRoutesWithFailClosedRegistryFallbacks(t *testi
 	}
 }
 
+func TestNewHandlerRegistersVoiceJobRoutesAsFailClosedAdmission(t *testing.T) {
+	handler := NewHandler(config.Config{Addr: ":0", Version: "route-test"})
+
+	for _, tc := range []struct {
+		name string
+		path string
+		body string
+	}{
+		{name: "synthesize", path: "/v1/voice/synthesize", body: `{"text":"hello","provider":"default"}`},
+		{name: "transcribe", path: "/v1/voice/transcribe", body: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			var req *http.Request
+			if tc.path == "/v1/voice/transcribe" {
+				body, contentType := multipartAudioBody(t, map[string]string{"provider": "default"})
+				req = httptest.NewRequest(http.MethodPost, tc.path, body)
+				req.Header.Set("Content-Type", contentType)
+			} else {
+				req = httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
+			}
+
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusNotImplemented {
+				t.Fatalf("%s status = %d, want %d; body=%s", tc.path, rec.Code, http.StatusNotImplemented, rec.Body.String())
+			}
+			var body ErrorResponse
+			if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+				t.Fatalf("decode %s error response: %v", tc.path, err)
+			}
+			if body.Error.Code != "VOICE_JOBS_UNAVAILABLE" {
+				t.Fatalf("%s code = %q, want VOICE_JOBS_UNAVAILABLE", tc.path, body.Error.Code)
+			}
+		})
+	}
+}
+
 func TestRateLimitMiddlewareLimitsNonExemptRoutes(t *testing.T) {
 	store := newFakeRateLimitStore()
 	handler := NewHandler(
@@ -971,6 +1010,28 @@ func (s *fakeRateLimitStore) Allow(
 		RetryAfter: window,
 		ResetAt:    now.Add(window),
 	}, nil
+}
+
+func multipartAudioBody(t *testing.T, fields map[string]string) (*bytes.Buffer, string) {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("audio", "audio.webm")
+	if err != nil {
+		t.Fatalf("create audio part: %v", err)
+	}
+	if _, err := part.Write([]byte("audio-bytes")); err != nil {
+		t.Fatalf("write audio: %v", err)
+	}
+	for key, value := range fields {
+		if err := writer.WriteField(key, value); err != nil {
+			t.Fatalf("write field %s: %v", key, err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart: %v", err)
+	}
+	return &body, writer.FormDataContentType()
 }
 
 type fakeSessionResolver struct {

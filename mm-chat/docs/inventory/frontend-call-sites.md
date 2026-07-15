@@ -47,7 +47,7 @@ These are already closer to the desired boundary. Phase 2 should wrap these into
 | P2 | `src/services/api/pluginService.ts` | via `pluginApi.listAvailable/install`; local adapter retains `/api/plugins/list` and `/api/plugins/install` | Server adapter targets `/v1/plugins*`; G4.5c.2b persists supplied plugin payloads in Go/Postgres when `DATABASE_URL` is configured and converts custom/OpenAPI manifest installs in Go. |
 | P2 | `src/utils/pluginUtils.ts` | via `pluginApi.execute`; local adapter retains `/api/plugins/execute` | Server adapter targets `/v1/plugins/execute`; G4.5c.2c sends id-only payloads, Go resolves built-ins/registered/custom OpenAPI plugins from memory/Postgres, and Go normalizes built-in plugin result envelopes. |
 | P2 | `src/services/api/searchService.ts` | `/api/search` | `searchApi` or chat-side capability later. |
-| P2 | `src/services/api/voiceService.ts` | `/api/voice/transcribe`, `/api/voice/synthesize` | `voiceApi` later; G6.1 blocks server-mode service calls behind the disabled `voice` capability. |
+| P2 | `src/services/api/voiceService.ts` | `/api/voice/transcribe`, `/api/voice/synthesize` | `voiceApi` later; G6.1 blocks server-mode service calls and G6.2 registers fail-closed Go `/v1/voice/*` admission routes. |
 | P3 | `src/services/api/agentService.ts` | `/api/agents`, `/api/agents/:identifier` | static/catalog API; can remain static initially. |
 | P3 | `src/services/api/skillService.ts` | `/data/skills/*` | static asset loader; no Go dependency for MVP. |
 

@@ -22,6 +22,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/runtimeconfig"
 	"neo-chat/mm-chat/backend/internal/storage"
 	"neo-chat/mm-chat/backend/internal/teams"
+	"neo-chat/mm-chat/backend/internal/voicejobs"
 )
 
 const contentTypeJSON = "application/json; charset=utf-8"
@@ -233,6 +234,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	teamHandler := teams.NewHandler(resolvedOptions.teamService)
 	knowledgeHandler := knowledge.NewHandler(resolvedOptions.knowledgeService)
 	agentHandler := agents.NewHandler(resolvedOptions.agentService)
+	voiceJobHandler := voicejobs.NewHandler(nil)
 	runtimeConfigService := runtimeconfig.NewService(cfg)
 	pluginHandler := plugins.NewHandler(plugins.NewService(
 		cfg,
@@ -263,6 +265,8 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/agents/", agentHandler)
 	mux.Handle("/v1/plugins", pluginHandler)
 	mux.Handle("/v1/plugins/", pluginHandler)
+	mux.Handle("/v1/voice/transcribe", voiceJobHandler)
+	mux.Handle("/v1/voice/synthesize", voiceJobHandler)
 	mux.Handle("/v1/files", fileHandler)
 	mux.Handle("/v1/files/", fileHandler)
 	mux.Handle("/v1/import/browser", importHandler)

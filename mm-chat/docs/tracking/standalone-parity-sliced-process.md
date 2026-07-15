@@ -1851,3 +1851,63 @@ G6.5 Job audit/rate-limit/cancel metadata and provider smoke
 
 Next slice: G6.2 voice job admission contract, unless the owner chooses image
 or code admission first.
+
+## 2026-07-15 — G6.2 Voice Job Admission Routes Completed
+
+Objective: add Go-owned voice job admission endpoints without enabling real
+speech-to-text or text-to-speech execution yet. The goal is a typed,
+fail-closed server boundary that can later receive executors, storage, audit,
+rate-limit, and cancellation logic.
+
+Completed scope:
+
+- added `internal/voicejobs` with request/response DTOs, a fail-closed service,
+  and a handler for `POST /v1/voice/transcribe` and
+  `POST /v1/voice/synthesize`;
+- `transcribe` validates multipart admission shape, required audio part, and
+  supported provider identifiers before returning `VOICE_JOBS_UNAVAILABLE`;
+- `synthesize` validates strict JSON, required text, and supported provider
+  identifiers before returning `VOICE_JOBS_UNAVAILABLE`;
+- registered both routes in the Go HTTP server and added metric-path
+  normalization so the endpoints do not collapse into `__unknown__`;
+- kept frontend `voice` capability disabled, so server-mode UI still fails
+  closed from G6.1 until real execution is implemented.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/backend/internal/voicejobs/types.go
+mm-chat/backend/internal/voicejobs/service.go
+mm-chat/backend/internal/voicejobs/handler.go
+mm-chat/backend/internal/voicejobs/handler_test.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/httpserver/server_test.go
+mm-chat/backend/internal/httpserver/metrics.go
+mm-chat/backend/internal/httpserver/metrics_test.go
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/inventory/frontend-call-sites.md
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test \
+  ./internal/voicejobs ./internal/httpserver                         # passed
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./...    # passed
+git diff --check -- mm-chat                                          # passed
+```
+
+Residual G6 blockers:
+
+```text
+G6.3 Image generation Go job admission
+G6.4 Code execution Go job admission
+G6.5 Real voice executors, output storage, audit/rate-limit/cancel metadata,
+and provider smoke
+```
+
+Next slice: G6.3 image-generation Go job admission, keeping the same
+fail-closed pattern.
