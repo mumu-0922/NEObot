@@ -1440,6 +1440,11 @@ Rules:
   events. This seam does not authorize live image-provider quota usage. The
   executable media-job seam contract is
   `docs/contracts/media-job-executor-seams.md`.
+- G6.5e adds the separate live-provider smoke authorization gate. Any
+  quota-consuming voice/image provider smoke must also satisfy
+  `docs/contracts/provider-live-smoke-authorization.md`; normal frontend
+  capability flags remain disabled until the authorized smoke and follow-up
+  gates pass.
 - G6.5d defines the hard gate for real code execution in
   `docs/contracts/code-execution-sandbox-contract.md`; `codeExecution` remains
   disabled until that sandbox/storage/audit/cancel test plan is implemented.

@@ -999,6 +999,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         - [ ] G6.5c.3b Real provider-backed image executor and authorized
               configured-provider smoke.
     - [x] G6.5d Code execution sandbox contract before any real executor is enabled: documented in `docs/contracts/code-execution-sandbox-contract.md`; runtime remains disabled.
+    - [x] G6.5e Live provider smoke authorization gate: default-deny
+          `providersmoke` requires explicit enablement, exact quota approval
+          text, exact target, and run id before any live voice/image smoke.
 - [ ] G7 Knowledge, Document Parsing, RAG, and Citations: pass Phase 15 runtime
       parser/index/query/citation gates.
 - [ ] G8 Teams and Knowledge UI Wiring: connect existing Go control-plane APIs

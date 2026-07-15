@@ -389,6 +389,10 @@ Slice checklist:
       - [ ] G6.5c.3b Real provider-backed image executor and authorized
             configured-provider smoke.
   - [x] G6.5d Code execution sandbox contract before any real executor is enabled: see `../contracts/code-execution-sandbox-contract.md`; runtime remains disabled.
+  - [x] G6.5e Live provider smoke authorization gate: add a default-deny
+        `providersmoke` gate requiring an explicit enabled flag, exact approval
+        phrase, exact target, and run id before any quota-consuming provider
+        smoke can run. See `../contracts/provider-live-smoke-authorization.md`.
 
 Targeted tests:
 

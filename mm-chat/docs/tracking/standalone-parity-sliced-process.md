@@ -2358,3 +2358,58 @@ G6.5c.3b Real provider-backed image executor and authorized configured-provider 
 
 Next slice: either add real provider code behind explicit quota/credential
 approval or move to the next non-provider G6 hardening slice.
+
+## 2026-07-15 — G6.5e Live Provider Smoke Authorization Gate Completed
+
+Objective: add a reusable default-deny authorization gate for any future live
+voice/image provider smoke, so executor seams cannot accidentally consume
+supplier quota just because provider credentials exist.
+
+Completed scope:
+
+- added `internal/providersmoke`, a provider-free Go package that authorizes
+  live provider smoke only when all required env values are present;
+- required `MM_CHAT_PROVIDER_LIVE_SMOKE_ENABLED=true`, the exact approval text
+  `I_UNDERSTAND_THIS_USES_REAL_PROVIDER_QUOTA`, a sanitized run id, and an exact
+  `kind:providerId:modelId` target match;
+- limited live-smoke target kinds to `voice.transcribe`, `voice.synthesize`, and
+  `image.generate`;
+- made authorization errors wrap a stable `ErrNotAuthorized` and expose only
+  codes, not provider/model/prompt/credential values;
+- documented the env keys in backend and single-server example env files only;
+- added `docs/contracts/provider-live-smoke-authorization.md` as the
+  seven-section executable contract for quota-consuming smoke gates.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/backend/.env.example
+mm-chat/.env.single-server.example
+mm-chat/backend/internal/providersmoke/gate.go
+mm-chat/backend/internal/providersmoke/gate_test.go
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/contracts/README.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/contracts/media-job-executor-seams.md
+mm-chat/docs/contracts/provider-live-smoke-authorization.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./internal/providersmoke # passed
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./...                  # passed
+git diff --check -- mm-chat                                                         # passed
+```
+
+Residual G6 blockers:
+
+```text
+G6.5c.2b Real provider-backed voice executor and authorized configured-provider smoke
+G6.5c.3b Real provider-backed image executor and authorized configured-provider smoke
+```
+
+Next slice: wire a real provider only after the owner chooses a provider target
+and explicitly authorizes quota-consuming live smoke.

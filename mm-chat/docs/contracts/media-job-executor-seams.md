@@ -50,6 +50,8 @@ jobartifacts.StoreInput{
 - Executors are opt-in only via `WithExecutor`.
 - Real executor calls require an explicitly configured admitted-job audit
   recorder.
+- Quota-consuming real provider smoke also requires the separate
+  `provider-live-smoke-authorization.md` gate.
 - Synthesis and image-generation executor outputs require an artifact store
   before executor invocation.
 - `voice.synthesize` outputs are stored with artifact kind `audio`.

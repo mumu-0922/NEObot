@@ -1,0 +1,111 @@
+# Provider Live Smoke Authorization Contract
+
+## 1. Scope / Trigger
+
+This contract covers any test, command, executor, or handler path that can call
+a real third-party provider for G6 media jobs.
+
+The gate exists because live STT/TTS/image smoke tests can consume provider
+quota, use credentials, depend on network availability, and produce
+non-deterministic outputs. Unit tests and normal development must remain
+provider-free by default.
+
+## 2. Signatures
+
+Environment keys:
+
+```text
+MM_CHAT_PROVIDER_LIVE_SMOKE_ENABLED=false
+MM_CHAT_PROVIDER_LIVE_SMOKE_APPROVAL=
+MM_CHAT_PROVIDER_LIVE_SMOKE_TARGETS=
+MM_CHAT_PROVIDER_LIVE_SMOKE_RUN_ID=
+```
+
+Go authorization seam:
+
+```go
+cfg := providersmoke.LoadFromEnv(getenv)
+err := cfg.Authorize(providersmoke.Target{
+    Kind:       providersmoke.KindImageGenerate,
+    ProviderID: "openai",
+    ModelID:    "gpt-image-1",
+})
+```
+
+`MM_CHAT_PROVIDER_LIVE_SMOKE_TARGETS` is a comma-separated list of exact
+`kind:providerId:modelId` targets. Supported kinds are:
+
+- `voice.transcribe`;
+- `voice.synthesize`;
+- `image.generate`.
+
+## 3. Contracts
+
+- Live provider smoke is denied by default.
+- Authorization requires all of:
+  - `MM_CHAT_PROVIDER_LIVE_SMOKE_ENABLED=true`;
+  - exact approval text:
+    `I_UNDERSTAND_THIS_USES_REAL_PROVIDER_QUOTA`;
+  - non-empty sanitized `MM_CHAT_PROVIDER_LIVE_SMOKE_RUN_ID`;
+  - exact target match in `MM_CHAT_PROVIDER_LIVE_SMOKE_TARGETS`.
+- Wildcards, prefix matches, missing model IDs, and unknown job kinds are not
+  authorized.
+- Authorization errors expose only stable error codes, not provider secrets,
+  prompt text, model-private labels, or credentials.
+- This gate authorizes only the smoke attempt; executor-specific audit,
+  artifact storage, rate-limit, cancellation, and capability gates still apply.
+
+## 4. Validation & Error Matrix
+
+| Condition | Code |
+| --- | --- |
+| Enabled flag absent/false | `PROVIDER_LIVE_SMOKE_DISABLED` |
+| Approval text absent or not exact | `PROVIDER_LIVE_SMOKE_APPROVAL_REQUIRED` |
+| Run ID absent after sanitization | `PROVIDER_LIVE_SMOKE_RUN_ID_REQUIRED` |
+| Requested target is malformed | `PROVIDER_LIVE_SMOKE_TARGET_REQUIRED` |
+| Requested target not exactly listed | `PROVIDER_LIVE_SMOKE_TARGET_NOT_AUTHORIZED` |
+
+All codes wrap `providersmoke.ErrNotAuthorized`.
+
+## 5. Good/Base/Bad Cases
+
+- Good: a one-off operator smoke sets the four env values for
+  `image.generate:openai:gpt-image-1` and records the run ID in the process log.
+- Base: normal local/dev/test environment leaves the env values blank; live
+  smoke is denied.
+- Bad: a test calls a real provider when the enabled flag alone is true.
+- Bad: a target uses `image.generate:openai:*`.
+- Bad: an error message echoes a provider key, prompt, or private model label.
+
+## 6. Tests Required
+
+Any live-provider smoke integration must prove:
+
+- default env denies authorization;
+- exact approval text is required;
+- sanitized run ID is required;
+- targets must match exactly;
+- unknown/malformed target entries are ignored;
+- authorization errors do not leak target/provider secret values;
+- no network/provider call is made in unit tests.
+
+## 7. Wrong vs Correct
+
+### Wrong
+
+```go
+if os.Getenv("MM_CHAT_PROVIDER_LIVE_SMOKE_ENABLED") == "true" {
+    return provider.Generate(ctx, prompt)
+}
+```
+
+### Correct
+
+```go
+cfg := providersmoke.LoadFromEnv(os.LookupEnv)
+if err := cfg.Authorize(target); err != nil {
+    return err
+}
+// Then still pass admitted audit, artifact storage, and executor gates.
+return provider.Generate(ctx, request)
+```
