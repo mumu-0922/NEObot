@@ -921,3 +921,82 @@ G3 custom provider BYOK decrypt/model refresh is fail-closed in Go until the UI
 ```
 
 Next slice: G3.2 Frontend Auth lifecycle wired to Go login/logout/me.
+
+## 2026-07-15 — G3.2 Frontend Auth Lifecycle Gate Completed
+
+Objective: wire frontend server-mode Auth lifecycle to Go login/logout/me while
+preserving the local access-password rollback path.
+
+Completed scope:
+
+- added a browser `sessionStorage`-backed server auth session helper for the Go
+  Bearer token returned by `POST /v1/auth/login`;
+- server-mode HTTP client now injects `Authorization: Bearer <token>` from that
+  runtime session into `/v1/*` requests;
+- added `ServerAuthGate`, which verifies an existing token with `GET /v1/me`
+  before mounting `ChatApp` and clears stale sessions on auth failure;
+- `app/page.tsx` routes to `ServerAuthGate` only when
+  `NEXT_PUBLIC_API_MODE=server` and `AUTH_MODE=required`;
+- `AccessPasswordPage` retains the existing local `/api/access/verify` flow and
+  adds a server-auth mode that sends `{ email, password }` to Go login;
+- frontend Compose/env examples now expose `AUTH_MODE` to the frontend runtime
+  so the SSR page can select the correct gate.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/compose.single-server.yml
+mm-chat/frontend/.env.example
+mm-chat/frontend/src/app/page.tsx
+mm-chat/frontend/src/components/app/AccessPasswordPage.tsx
+mm-chat/frontend/src/components/app/ServerAuthGate.tsx
+mm-chat/frontend/src/i18n/locales/en/AccessPassword.json
+mm-chat/frontend/src/i18n/locales/ja/AccessPassword.json
+mm-chat/frontend/src/i18n/locales/zh/AccessPassword.json
+mm-chat/frontend/src/lib/security/serverAuthMode.ts
+mm-chat/frontend/src/services/api/client/authSession.ts
+mm-chat/frontend/src/services/api/client/server/httpClient.ts
+mm-chat/frontend/src/__tests__/apiClientScaffold.test.ts
+mm-chat/frontend/src/__tests__/envExample.test.ts
+
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Runtime flow:
+
+```text
+server mode + AUTH_MODE=required -> ServerAuthGate
+ServerAuthGate existing token -> GET /v1/me -> ChatApp or clear session
+ServerAuthGate login form -> POST /v1/auth/login -> sessionStorage token -> ChatApp
+server API calls -> Authorization: Bearer <token>
+local mode/access-password -> unchanged /api/access/verify + httpOnly cookie
+```
+
+Verification:
+
+```text
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/apiClientScaffold.test.ts \
+  src/__tests__/envExample.test.ts \
+  src/__tests__/accessControl.test.ts \
+  src/__tests__/chatCrudService.test.ts \
+  src/__tests__/chatStreamService.test.ts \
+  src/__tests__/fileService.test.ts                                    # passed, 6 files / 85 tests
+cd mm-chat/frontend && corepack pnpm typecheck                         # passed
+cd mm-chat/frontend && corepack pnpm format:check                      # passed
+cd mm-chat/frontend && corepack pnpm lint                              # passed
+```
+
+Residual G3 blockers:
+
+```text
+G3.3 ChatApp and ProviderSettings still call transitional /api/config,
+     /api/providers/models, and /api/byok/public-key directly outside the new
+     API client boundary.
+G3.4 hosted/dev auth behavior and same-origin Compose smoke still pending.
+```
+
+Next slice: G3.3 Provider Settings/BYOK UI adapters through the API client.

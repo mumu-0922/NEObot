@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ApiClientError,
   createSseStreamParser,
@@ -10,6 +10,14 @@ import {
   resolveApiClientConfig,
 } from "../services/api/client";
 import { createServerChatApiShell } from "../services/api/client/server/chatApi";
+import {
+  clearServerAuthSession,
+  getServerAuthSession,
+  getServerAuthToken,
+  serverAuthSessionStorageKey,
+  setServerAuthSession,
+} from "../services/api/client/authSession";
+import { isServerAuthGateEnabled } from "../lib/security/serverAuthMode";
 import { createServerAgentApiShell } from "../services/api/client/server/agentApi";
 import { createServerAuthApiShell } from "../services/api/client/server/authApi";
 import { createServerByokApiShell } from "../services/api/client/server/byokApi";
@@ -210,6 +218,125 @@ describe("Phase 11.1B server HTTP scaffold", () => {
     });
   });
 });
+
+describe("G3.2 server auth session lifecycle", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("stores the Go bearer token in browser sessionStorage only", () => {
+    const storage = new MemoryStorage();
+    vi.stubGlobal("window", { sessionStorage: storage });
+
+    setServerAuthSession({
+      user: { id: "user-1", displayName: "Owner", role: "user" },
+      token: "session-token",
+      expiresAt: "2999-01-01T00:00:00Z",
+    });
+
+    expect(storage.getItem(serverAuthSessionStorageKey)).toContain(
+      "session-token",
+    );
+    expect(getServerAuthToken()).toBe("session-token");
+    expect(getServerAuthSession()).toMatchObject({
+      user: { id: "user-1", displayName: "Owner", role: "user" },
+    });
+
+    clearServerAuthSession();
+    expect(getServerAuthToken()).toBeNull();
+  });
+
+  it("drops expired or malformed stored sessions", () => {
+    const storage = new MemoryStorage();
+    vi.stubGlobal("window", { sessionStorage: storage });
+    storage.setItem(
+      serverAuthSessionStorageKey,
+      JSON.stringify({
+        token: "expired-token",
+        user: { id: "user-1", displayName: "Owner", role: "user" },
+        expiresAt: "2000-01-01T00:00:00Z",
+      }),
+    );
+
+    expect(getServerAuthToken()).toBeNull();
+    expect(storage.getItem(serverAuthSessionStorageKey)).toBeNull();
+
+    storage.setItem(serverAuthSessionStorageKey, "not-json");
+    expect(getServerAuthSession()).toBeNull();
+  });
+
+  it("injects the stored bearer token into server API requests", async () => {
+    const requests: Array<{ url: string; auth: string | null }> = [];
+    const client = createHttpClient({
+      baseUrl: "/mm-api",
+      getAuthToken: () => "session-token",
+      fetchImpl: async (input, init) => {
+        requests.push({
+          url: String(input),
+          auth: init?.headers
+            ? new Headers(init.headers).get("authorization")
+            : null,
+        });
+        return Response.json({ ok: true });
+      },
+    });
+
+    await client.requestJson("/v1/me");
+
+    expect(requests).toEqual([
+      { url: "/mm-api/v1/me", auth: "Bearer session-token" },
+    ]);
+  });
+
+  it("enables the client AuthGate only for server mode with required backend auth", () => {
+    expect(
+      isServerAuthGateEnabled({
+        NEXT_PUBLIC_API_MODE: "server",
+        AUTH_MODE: "required",
+      }),
+    ).toBe(true);
+    expect(
+      isServerAuthGateEnabled({
+        NEXT_PUBLIC_API_MODE: "server",
+        AUTH_MODE: "development",
+      }),
+    ).toBe(false);
+    expect(
+      isServerAuthGateEnabled({
+        NEXT_PUBLIC_API_MODE: "local",
+        AUTH_MODE: "required",
+      }),
+    ).toBe(false);
+  });
+});
+
+class MemoryStorage implements Storage {
+  private readonly data = new Map<string, string>();
+
+  get length() {
+    return this.data.size;
+  }
+
+  clear(): void {
+    this.data.clear();
+  }
+
+  getItem(key: string): string | null {
+    return this.data.get(key) ?? null;
+  }
+
+  key(index: number): string | null {
+    return Array.from(this.data.keys())[index] ?? null;
+  }
+
+  removeItem(key: string): void {
+    this.data.delete(key);
+  }
+
+  setItem(key: string, value: string): void {
+    this.data.set(key, value);
+  }
+}
 
 describe("G3.1 server runtime/auth API adapters", () => {
   it("routes auth lifecycle calls through Go auth endpoints", async () => {

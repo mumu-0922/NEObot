@@ -940,7 +940,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
       config, and provider state server authoritative.
   - [x] G3.1 Go runtime config, server-default provider models, BYOK public-key
         route, and frontend API-client boundary shells.
-  - [ ] G3.2 Frontend Auth lifecycle wired to Go login/logout/me.
+  - [x] G3.2 Frontend Auth lifecycle wired to Go login/logout/me.
   - [ ] G3.3 Provider Settings/BYOK UI adapters stop direct server-mode
         transitional `/api/*` calls.
   - [ ] G3.4 Hosted/dev auth behavior and same-origin smoke.

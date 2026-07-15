@@ -4,6 +4,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ArrowRight, LockKeyhole } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { ApiClientError, createNeoChatApiClient } from "@/services/api/client";
+import { setServerAuthSession } from "@/services/api/client/authSession";
 
 const ACCESS_ERROR_CODES = {
   invalid: "ACCESS_PASSWORD_INVALID",
@@ -31,11 +33,16 @@ function formatLockTime(totalSeconds: number): string {
 
 export default function AccessPasswordPage({
   initialLockedUntil,
+  mode = "access-password",
+  onServerAuthSuccess,
 }: {
   initialLockedUntil?: number;
+  mode?: "access-password" | "server-auth";
+  onServerAuthSuccess?: () => void;
 }) {
   const t = useTranslations("AccessPassword");
   const router = useRouter();
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorKey, setErrorKey] = useState<string | null>(null);
@@ -58,16 +65,31 @@ export default function AccessPasswordPage({
   }, [lockedUntil, now]);
 
   const isLocked = remainingLockSeconds > 0;
+  const isServerAuth = mode === "server-auth";
+  const trimmedEmail = email.trim();
   const trimmedPassword = password.trim();
+  const canSubmit = isServerAuth
+    ? Boolean(trimmedEmail && trimmedPassword)
+    : Boolean(trimmedPassword);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!trimmedPassword || isSubmitting || isLocked) return;
+    if (!canSubmit || isSubmitting || isLocked) return;
 
     setIsSubmitting(true);
     setErrorKey(null);
 
     try {
+      if (isServerAuth) {
+        const result = await createNeoChatApiClient().auth.login({
+          email: trimmedEmail,
+          password: trimmedPassword,
+        });
+        setServerAuthSession(result);
+        onServerAuthSuccess?.();
+        return;
+      }
+
       const response = await fetch("/api/access/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -92,8 +114,16 @@ export default function AccessPasswordPage({
       } else {
         setErrorKey("genericError");
       }
-    } catch {
-      setErrorKey("genericError");
+    } catch (error) {
+      if (
+        isServerAuth &&
+        error instanceof ApiClientError &&
+        error.status === 401
+      ) {
+        setErrorKey("invalid");
+      } else {
+        setErrorKey("genericError");
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -120,6 +150,29 @@ export default function AccessPasswordPage({
           onSubmit={handleSubmit}
           className="glass-surface rounded-lg border p-4 shadow-sm"
         >
+          {isServerAuth ? (
+            <div className="mb-3">
+              <label
+                htmlFor="server-auth-email"
+                className="mb-2 block text-sm font-medium text-foreground"
+              >
+                {t("emailLabel")}
+              </label>
+              <input
+                id="server-auth-email"
+                name="email"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                autoComplete="username"
+                spellCheck={false}
+                disabled={isSubmitting || isLocked}
+                placeholder={t("emailPlaceholder")}
+                className="w-full rounded-lg border border-input bg-muted px-3 py-2 text-sm text-foreground transition-[background-color,border-color,box-shadow,color] placeholder:text-muted-foreground focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:focus:border-blue-400"
+              />
+            </div>
+          ) : null}
+
           <label
             htmlFor="access-password"
             className="mb-2 block text-sm font-medium text-foreground"
@@ -141,7 +194,7 @@ export default function AccessPasswordPage({
             />
             <button
               type="submit"
-              disabled={!trimmedPassword || isSubmitting || isLocked}
+              disabled={!canSubmit || isSubmitting || isLocked}
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-500 text-white transition-colors hover:bg-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 disabled:cursor-not-allowed disabled:opacity-50"
               aria-label={isSubmitting ? t("verifying") : t("submit")}
             >

@@ -1,11 +1,13 @@
+import { getServerAuthToken } from "../authSession";
 import { ApiClientError } from "../errors";
-import { createSseStreamParser, type ParsedSseFrame } from "./sse";
 import type { ApiErrorEnvelope } from "../types";
+import { createSseStreamParser, type ParsedSseFrame } from "./sse";
 
 export interface HttpClientOptions {
   baseUrl: string;
   fetchImpl?: typeof fetch;
   defaultHeaders?: Record<string, string>;
+  getAuthToken?: () => string | null | undefined;
 }
 
 export interface JsonRequestOptions {
@@ -55,6 +57,7 @@ export interface HttpClient {
 export function createHttpClient(options: HttpClientOptions): HttpClient {
   const baseUrl = options.baseUrl.replace(/\/+$/, "");
   const fetchImpl = options.fetchImpl ?? fetch;
+  const getAuthToken = options.getAuthToken ?? getServerAuthToken;
 
   return {
     buildUrl(path: string): string {
@@ -75,6 +78,7 @@ export function createHttpClient(options: HttpClientOptions): HttpClient {
             ...(request.body === undefined
               ? {}
               : { "Content-Type": "application/json" }),
+            ...authHeaders(getAuthToken()),
             ...options.defaultHeaders,
             ...request.headers,
           },
@@ -116,6 +120,7 @@ export function createHttpClient(options: HttpClientOptions): HttpClient {
           method: request.method ?? "POST",
           headers: {
             Accept: "application/json",
+            ...authHeaders(getAuthToken()),
             ...options.defaultHeaders,
             ...request.headers,
           },
@@ -152,6 +157,7 @@ export function createHttpClient(options: HttpClientOptions): HttpClient {
           method: request.method ?? "GET",
           headers: {
             Accept: "application/octet-stream, */*",
+            ...authHeaders(getAuthToken()),
             ...options.defaultHeaders,
             ...request.headers,
           },
@@ -187,6 +193,7 @@ export function createHttpClient(options: HttpClientOptions): HttpClient {
             ...(request.body === undefined
               ? {}
               : { "Content-Type": "application/json" }),
+            ...authHeaders(getAuthToken()),
             ...options.defaultHeaders,
             ...request.headers,
           },
@@ -259,6 +266,10 @@ export function joinUrl(baseUrl: string, path: string): string {
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
   if (!baseUrl) return cleanPath;
   return `${baseUrl}${cleanPath}`;
+}
+
+function authHeaders(token: string | null | undefined): Record<string, string> {
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 function networkErrorFrom(error: unknown): ApiClientError {

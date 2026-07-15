@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import AccessPasswordPage from "@/components/app/AccessPasswordPage";
 import ChatApp from "@/components/app/ChatApp";
+import ServerAuthGate from "@/components/app/ServerAuthGate";
 import {
   ACCESS_ATTEMPTS_COOKIE,
   ACCESS_SESSION_COOKIE,
@@ -9,8 +10,13 @@ import {
   isAccessPasswordEnabled,
   isValidAccessSessionCookie,
 } from "@/lib/security/accessControl";
+import { isServerAuthGateEnabled } from "@/lib/security/serverAuthMode";
 
 export default async function Page() {
+  if (isServerAuthGateEnabled()) {
+    return <ServerAuthGate />;
+  }
+
   if (!isAccessPasswordEnabled()) {
     return <ChatApp />;
   }

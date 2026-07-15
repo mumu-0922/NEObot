@@ -240,7 +240,7 @@ Targeted tests:
 
 - [x] G3.1 Go-owned runtime config, server-default provider model list, BYOK
       public-key route, and frontend API-client boundary shells.
-- [ ] G3.2 Frontend Auth lifecycle wired to Go login/logout/me without
+- [x] G3.2 Frontend Auth lifecycle wired to Go login/logout/me without
       regressing the local access-password rollback path.
 - [ ] G3.3 Provider Settings/BYOK UI adapters call the API client instead of
       direct transitional Next routes.

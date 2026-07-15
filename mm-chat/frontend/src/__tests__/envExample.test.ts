@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const REQUIRED_ENV_KEYS = [
   "ACCESS_PASSWORD",
+  "AUTH_MODE",
   "BYOK_PRIVATE_KEY_PEM",
   "BYOK_KEY_ID",
   "BYOK_ALLOW_EPHEMERAL_KEY",
@@ -77,6 +78,7 @@ function scanDirectProcessEnvKeys(): Set<string> {
     "src/lib/byok/server.ts",
     "src/lib/defaultConfig/server.ts",
     "src/lib/security/accessControl.ts",
+    "src/lib/security/serverAuthMode.ts",
     "src/lib/security/deployment.ts",
     "src/lib/security/requestGuards.ts",
     "src/lib/security/rateLimitStore.ts",
@@ -138,6 +140,7 @@ describe(".env.example", () => {
 
     for (const key of [
       "ALLOW_LOCAL_NETWORK_PROXY",
+      "AUTH_MODE",
       "TRUST_PROXY_HEADERS",
       "RATE_LIMIT_STORE",
       "DOCUMENT_PARSE_JOB_STORE",
@@ -150,6 +153,7 @@ describe(".env.example", () => {
     ]) {
       expect(compose).toContain(`${key}:`);
     }
+    expect(compose).toContain("AUTH_MODE: ${AUTH_MODE:-required}");
     expect(compose).toContain(
       "DEFAULT_PROVIDER_TYPE: ${PROVIDER_TYPE:-openai_compatible}",
     );

@@ -782,6 +782,13 @@ or `"viewer"`. None grants Team authority or substitutes for a Team Membership
 lookup. Team authority is expressed only through `teamApi` responses such as
 `TeamDto.myMembership.teamRole` and `TeamMemberDto.teamRole`.
 
+G3.2 wiring rule: when `NEXT_PUBLIC_API_MODE=server` and `AUTH_MODE=required`,
+the frontend renders the client-side Server Auth Gate before mounting
+`ChatApp`. Successful Go login stores the returned Bearer token in browser
+`sessionStorage` only; the server API client reads that runtime token and adds
+`Authorization: Bearer <token>` to server-mode `/v1/*` requests. Local mode
+continues to use `/api/access/verify` and the existing httpOnly access cookie.
+
 `AcceptInviteInput.password` is a single field with branch-specific semantics:
 for a new invited mailbox it becomes the initial password, while for an
 existing active account it is proof of the current password and must not
