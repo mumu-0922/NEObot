@@ -31,6 +31,9 @@ _SQL: Final[Mapping[str, str]] = {
         "SELECT * FROM knowledge_finish_processing_job(%s, %s, %s, %s, %s, %s)"
     ),
     "readiness": "SELECT * FROM knowledge_rag_worker_readiness()",
+    "assert_search_complete": (
+        "SELECT * FROM knowledge_assert_materialization_search_complete(%s, %s, %s, %s)"
+    ),
     "replay_outbox": ("SELECT * FROM knowledge_replay_outbox(%s, %s, %s, %s)"),
     "replay_job": ("SELECT * FROM knowledge_replay_processing_job(%s, %s, %s, %s, %s)"),
 }
@@ -274,6 +277,24 @@ class PostgresAdapter:
             if _has_database_code(error, "RAG_STALE_JOB_LEASE"):
                 return False
             raise
+        return _function_succeeded(row)
+
+    async def assert_materialization_search_complete(
+        self,
+        materialization_id: uuid.UUID,
+        *,
+        expected_child_count: int,
+    ) -> bool:
+        """Call the G7.4 search projection completeness gate."""
+        row = await self._call(
+            "assert_search_complete",
+            (
+                materialization_id,
+                expected_child_count,
+                "jina-embeddings-v4",
+                1024,
+            ),
+        )
         return _function_succeeded(row)
 
 

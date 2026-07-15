@@ -475,8 +475,10 @@ profile (`jina-embeddings-v4`, 1024 dimensions, `jina-reranker-v3`), and
 `REAL[]`, built-in lexical `TSVECTOR`, exact `TEXT[]`, source-span/hash fences,
 and locator summaries. `knowledge_assert_materialization_search_complete(...)`
 lets the future G7.5 worker fail closed unless every child has a ready
-1024-dimensional embedding row. pgvector/true BM25 accelerator DDL remains
-pending in a later reversible migration.
+1024-dimensional embedding row. Migration `013` adds that function to worker
+readiness, so dispatch-capable workers fail closed if the G7.4 completion gate
+is absent or unexecutable. pgvector/true BM25 accelerator DDL remains pending in
+a later reversible migration.
 
 ## 5. Historical Repository Activation Boundary
 

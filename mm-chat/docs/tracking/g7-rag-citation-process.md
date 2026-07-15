@@ -367,3 +367,84 @@ Go backend full package tests passed.
 Prettier check passed for changed docs.
 git diff --check passed for mm-chat scoped diff.
 ```
+
+## 2026-07-15 — G7.5.1 Worker Projection Completeness Gate
+
+Objective: start G7.5 with a narrow readiness/adapter slice that lets future
+worker handlers prove G7.4 search projection completeness before publishing,
+without enabling provider calls or handler dispatch.
+
+Implemented behavior:
+
+- Added migration `013_rag_worker_projection_gate` to replace
+  `knowledge_rag_worker_readiness()` with a stricter required-function set that
+  includes `knowledge_assert_materialization_search_complete(uuid,bigint,text,integer)`.
+- Readiness detail now exposes a bounded `searchCompletenessGate` value of
+  `ready|not_ready`; it does not include document IDs, SQL errors, provider
+  bodies, or secrets.
+- Added `PostgresAdapter.assert_materialization_search_complete(...)`, pinned to
+  `jina-embeddings-v4` and `1024` dimensions at the Python boundary.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
+  slice cannot claim work or consume MinerU/Jina quota by itself.
+
+Touched files:
+
+```text
+backend/migrations/013_rag_worker_projection_gate.up.sql
+backend/migrations/013_rag_worker_projection_gate.down.sql
+backend/internal/migration/phase15_rag_worker_projection_gate_schema_test.go
+rag/src/mm_chat_rag/postgres.py
+rag/tests/unit/test_postgres.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/persistence/README.md
+docs/persistence/postgres-schema.md
+docs/persistence/runtime-wiring.md
+docs/persistence/phase-15-rag-projection-schema.md
+docs/tracking/g7-rag-citation-process.md
+```
+
+Verification run during the slice:
+
+```text
+cd mm-chat/rag && uv run pytest -p no:cacheprovider tests/unit/test_postgres.py
+cd mm-chat/rag && uv run ruff check src/mm_chat_rag/postgres.py tests/unit/test_postgres.py
+cd mm-chat/rag && uv run mypy src/mm_chat_rag/postgres.py
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./internal/migration \
+  -run 'TestPhase15RAGWorkerProjectionGateReadinessContract|TestEmbeddedMigrations'
+```
+
+Result:
+
+```text
+Python Postgres adapter tests passed: 18 passed.
+Ruff and mypy passed for the changed Python adapter.
+Go migration readiness-gate tests passed.
+```
+
+Next G7.5 slice: add the first promoted-but-still-bounded handler seam for
+index/reprocess/delete work, with production dispatch still gated by explicit
+profile, registry, and retry limits.
+
+Final G7.5.1 verification before commit:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./...
+cd mm-chat/rag && uv run pytest -p no:cacheprovider tests/unit/test_postgres.py
+cd mm-chat/frontend && corepack pnpm prettier --check \
+  ../docs/architecture/g7-rag-citation-cutover-plan.md \
+  ../docs/persistence/README.md \
+  ../docs/persistence/postgres-schema.md \
+  ../docs/persistence/runtime-wiring.md \
+  ../docs/persistence/phase-15-rag-projection-schema.md \
+  ../docs/tracking/g7-rag-citation-process.md
+cd mm-chat && git diff --check -- .
+```
+
+Final result:
+
+```text
+Go backend full package tests passed.
+Python Postgres adapter tests passed: 18 passed.
+Prettier check passed for changed docs.
+git diff --check passed for mm-chat scoped diff.
+```

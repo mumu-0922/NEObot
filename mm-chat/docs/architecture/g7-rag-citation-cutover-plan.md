@@ -228,6 +228,20 @@ Validation:
 
 ### G7.5 Worker dispatch, rebuild, delete, and retry loop
 
+Status: In progress.
+
+G7.5.1 completed on 2026-07-15:
+
+- Extended worker readiness so dispatch-capable workers require the G7.4 search
+  projection completeness function before reporting DB function readiness.
+- Added the Python Postgres adapter method for
+  `knowledge_assert_materialization_search_complete(...)`, with the Jina model
+  and `1024` dimensions pinned at the call boundary.
+- No production job handler registry entries were promoted in G7.5.1; quota and
+  provider calls remain untouched.
+
+Remaining G7.5 work:
+
 - Connect Go processing jobs/outbox to Python handler execution.
 - Implement index, reprocess, tombstone purge, rebuild, retry, and DLQ behavior.
 - Enforce immediate query invisibility for deleted/tombstoned versions.

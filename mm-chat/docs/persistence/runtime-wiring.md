@@ -152,8 +152,8 @@ labels.
 
 Migrations are run by an operator or deployment step before the API release is
 started/restarted. API startup must not auto-migrate. The current embedded chain
-includes `012_rag_search_projection`; later pgvector/true BM25 accelerator DDL
-will be added only through another reversible migration.
+includes `013_rag_worker_projection_gate`; later pgvector/true BM25 accelerator
+DDL will be added only through another reversible migration.
 
 Expected source-run command shape:
 

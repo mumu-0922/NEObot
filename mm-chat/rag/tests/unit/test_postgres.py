@@ -90,6 +90,7 @@ def test_sql_surface_is_select_only_and_function_allowlisted() -> None:
         "heartbeat_job",
         "finish_job",
         "readiness",
+        "assert_search_complete",
         "replay_outbox",
         "replay_job",
     }
@@ -107,6 +108,7 @@ def test_sql_surface_is_select_only_and_function_allowlisted() -> None:
         ({"applied": True}, True),
         ({"result": True}, True),
         ({"result": False}, False),
+        ({"knowledge_assert_materialization_search_complete": True}, True),
         (None, False),
     ],
 )
@@ -138,6 +140,7 @@ async def test_adapter_calls_only_frozen_functions() -> None:
         {"job_id": job_id, "stage": "parse"},
         {"succeeded": True},
         {"succeeded": True},
+        {"result": True},
     ]
     adapter, connection = adapter_with_rows(rows, settings)
     assert (await adapter.readiness()).functions
@@ -165,6 +168,9 @@ async def test_adapter_calls_only_frozen_functions() -> None:
         error_code=None,
         retry_after_seconds=0,
     )
+    assert await adapter.assert_materialization_search_complete(
+        uuid.uuid4(), expected_child_count=1
+    )
     assert [call[0] for call in connection.calls] == [
         _SQL["readiness"],
         _SQL["claim_outbox"],
@@ -174,6 +180,7 @@ async def test_adapter_calls_only_frozen_functions() -> None:
         _SQL["claim_job"],
         _SQL["heartbeat_job"],
         _SQL["finish_job"],
+        _SQL["assert_search_complete"],
     ]
 
 

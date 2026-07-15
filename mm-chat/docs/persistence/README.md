@@ -65,8 +65,10 @@ Collection/Document, Governance, and Consent repositories now use the schema.
 Migration `010` also provides the durable projection consistency layer and its
 worker/replay database functions. Migration `011` is the plugin registry.
 Migration `012` adds the first G7.4 extension-independent search projection
-metadata/lane tables for Jina 1024, lexical, and exact search seeds. pgvector and
-true BM25 accelerator DDL are still deferred to a later reversible migration.
+metadata/lane tables for Jina 1024, lexical, and exact search seeds. Migration
+`013` extends worker readiness so promoted dispatch requires the search
+projection completeness function. pgvector and true BM25 accelerator DDL are
+still deferred to a later reversible migration.
 
 ## Source-of-Truth Rules
 

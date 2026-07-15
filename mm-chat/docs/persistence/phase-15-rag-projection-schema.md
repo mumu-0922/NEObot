@@ -1,10 +1,11 @@
 # Phase 15 RAG Projection Schema 与 Migration Contract
 
-- 状态：Canonical `010/012` contract；`010` 与 durable dark-run Worker 已实现；
+- 状态：Canonical `010/012/013` contract；`010` 与 durable dark-run Worker 已实现；
   `012_rag_search_projection` 已实现 G7.4 extension-independent search staging；
-  pgvector/true BM25 accelerator migration pending
-- 日期：2026-07-12；G7.4 更新：2026-07-15
-- 当前 Schema Head：migration `012_rag_search_projection`
+  `013_rag_worker_projection_gate` 已把 search completion gate 纳入 Worker
+  readiness；pgvector/true BM25 accelerator migration pending
+- 日期：2026-07-12；G7.4/G7.5.1 更新：2026-07-15
+- 当前 Schema Head：migration `013_rag_worker_projection_gate`
 - 待实现迁移：G7.5 generation dispatcher / worker dispatch；后续 search accelerator
   migration 另行编号
 - 上位设计：
@@ -18,7 +19,8 @@
 > extension-independent Search Projection staging（Jina 1024 `REAL[]`、built-in
 > `TSVECTOR`、Exact `TEXT[]`、locator/hash fences）。pgvector/true BM25
 > accelerator、检索 Function、真实 Parser/Embedding Dispatch、Evidence API 或聊天
-> RAG 仍未 Ready。
+> RAG 仍未 Ready。Migration `013` 只提升 readiness fail-closed 边界，不启用真实
+> Handler Registry。
 
 ## 1. 范围与不可越界项
 
