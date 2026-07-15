@@ -14,12 +14,26 @@ from dataclasses import dataclass, field
 from typing import Final, Self
 from urllib.parse import urlsplit
 
+from mm_chat_rag.provider_profile import (
+    DEFAULT_JINA_EMBEDDING_DIMENSIONS,
+    DEFAULT_JINA_EMBEDDING_MODEL,
+    DEFAULT_JINA_REQUESTS_PER_MINUTE,
+    DEFAULT_JINA_RERANK_MODEL,
+    DEFAULT_MINERU_REQUESTS_PER_MINUTE,
+    DEFAULT_PROVIDER_CONCURRENCY,
+    DEFAULT_PROVIDER_INITIAL_RETRY_SECONDS,
+    DEFAULT_PROVIDER_MAX_RETRY_SECONDS,
+    DISABLED_PROVIDER_PROFILE,
+    PROVIDER_RETRY_MAX_ATTEMPTS,
+    ProviderProfileError,
+    ProviderRuntimeProfile,
+)
+
 _NAME_RE: Final = re.compile(r"^[a-z][a-z0-9_.-]{0,62}$")
 _PREFIX_RE: Final = re.compile(r"^[A-Za-z0-9:_-]{1,64}$")
 ALLOWED_JOB_STAGES: Final[frozenset[str]] = frozenset(
     {"parse", "passage_embedding", "purge"}
 )
-DEFAULT_JINA_EMBEDDING_DIMENSIONS: Final = 1024
 _KNOWN_ENV: Final = {
     "RAG_WORKER_DATABASE_URL",
     "RAG_WORKER_REDIS_URL",
@@ -44,6 +58,16 @@ _KNOWN_ENV: Final = {
     "DEFAULT_MINERU_API_TOKEN",
     "RAG_JINA_API_KEY",
     "DEFAULT_JINA_API_KEY",
+    "RAG_PROVIDER_PROFILE",
+    "RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED",
+    "RAG_PROVIDER_RETRY_MAX_ATTEMPTS",
+    "RAG_PROVIDER_INITIAL_RETRY_SECONDS",
+    "RAG_PROVIDER_MAX_RETRY_SECONDS",
+    "RAG_PROVIDER_CONCURRENCY",
+    "RAG_MINERU_REQUESTS_PER_MINUTE",
+    "RAG_JINA_REQUESTS_PER_MINUTE",
+    "RAG_JINA_EMBEDDING_MODEL",
+    "RAG_JINA_RERANK_MODEL",
 }
 
 
@@ -147,12 +171,19 @@ class Settings:
     mineru_api_key: str | None = None
     jina_api_key: str | None = None
     jina_embedding_dimensions: int = DEFAULT_JINA_EMBEDDING_DIMENSIONS
+    provider_profile: ProviderRuntimeProfile = field(
+        default_factory=ProviderRuntimeProfile
+    )
 
     def __post_init__(self) -> None:
         """Reject stages outside the SQL claim-function contract."""
         _validate_job_stages(self.job_stages)
         if self.jina_embedding_dimensions != DEFAULT_JINA_EMBEDDING_DIMENSIONS:
             raise SettingsError("Jina embedding dimensions must be 1024")
+        try:
+            self.provider_profile.validate_static_contract()
+        except ProviderProfileError as error:
+            raise SettingsError(str(error)) from error
         if (
             self.dispatch_enabled
             and "parse" in self.job_stages
@@ -169,6 +200,14 @@ class Settings:
             raise SettingsError(
                 "RAG_JINA_API_KEY is required when embedding dispatch is enabled"
             )
+        try:
+            self.provider_profile.validate_for_job_stages(
+                self.job_stages,
+                mineru_configured=self.mineru_api_key is not None,
+                jina_configured=self.jina_api_key is not None,
+            )
+        except ProviderProfileError as error:
+            raise SettingsError(str(error)) from error
 
     @property
     def redis_channel(self) -> str:
@@ -218,6 +257,62 @@ class Settings:
             env, "RAG_MINERU_API_TOKEN", "DEFAULT_MINERU_API_TOKEN"
         )
         jina_api_key = _optional_alias(env, "RAG_JINA_API_KEY", "DEFAULT_JINA_API_KEY")
+        provider_profile = ProviderRuntimeProfile(
+            profile_id=env.get(
+                "RAG_PROVIDER_PROFILE", DISABLED_PROVIDER_PROFILE
+            ).strip()
+            or DISABLED_PROVIDER_PROFILE,
+            accepted_draft_wire_contracts=_boolean(
+                env, "RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED", default=False
+            ),
+            retry_max_attempts=_integer(
+                env,
+                "RAG_PROVIDER_RETRY_MAX_ATTEMPTS",
+                PROVIDER_RETRY_MAX_ATTEMPTS,
+                PROVIDER_RETRY_MAX_ATTEMPTS,
+                PROVIDER_RETRY_MAX_ATTEMPTS,
+            ),
+            initial_retry_seconds=_integer(
+                env,
+                "RAG_PROVIDER_INITIAL_RETRY_SECONDS",
+                DEFAULT_PROVIDER_INITIAL_RETRY_SECONDS,
+                1,
+                3600,
+            ),
+            max_retry_seconds=_integer(
+                env,
+                "RAG_PROVIDER_MAX_RETRY_SECONDS",
+                DEFAULT_PROVIDER_MAX_RETRY_SECONDS,
+                1,
+                3600,
+            ),
+            provider_concurrency=_integer(
+                env, "RAG_PROVIDER_CONCURRENCY", DEFAULT_PROVIDER_CONCURRENCY, 1, 16
+            ),
+            mineru_requests_per_minute=_integer(
+                env,
+                "RAG_MINERU_REQUESTS_PER_MINUTE",
+                DEFAULT_MINERU_REQUESTS_PER_MINUTE,
+                1,
+                60_000,
+            ),
+            jina_requests_per_minute=_integer(
+                env,
+                "RAG_JINA_REQUESTS_PER_MINUTE",
+                DEFAULT_JINA_REQUESTS_PER_MINUTE,
+                1,
+                60_000,
+            ),
+            jina_embedding_model=env.get(
+                "RAG_JINA_EMBEDDING_MODEL", DEFAULT_JINA_EMBEDDING_MODEL
+            ).strip()
+            or DEFAULT_JINA_EMBEDDING_MODEL,
+            jina_rerank_model=env.get(
+                "RAG_JINA_RERANK_MODEL", DEFAULT_JINA_RERANK_MODEL
+            ).strip()
+            or DEFAULT_JINA_RERANK_MODEL,
+            jina_embedding_dimensions=DEFAULT_JINA_EMBEDDING_DIMENSIONS,
+        )
         if dispatch_enabled and "parse" in job_stages and mineru_api_key is None:
             raise SettingsError(
                 "RAG_MINERU_API_TOKEN is required when parse dispatch is enabled"
@@ -284,6 +379,7 @@ class Settings:
             mineru_api_key=mineru_api_key,
             jina_api_key=jina_api_key,
             jina_embedding_dimensions=DEFAULT_JINA_EMBEDDING_DIMENSIONS,
+            provider_profile=provider_profile,
         )
         if settings.heartbeat_seconds * 2 > settings.job_lease_seconds:
             raise SettingsError(

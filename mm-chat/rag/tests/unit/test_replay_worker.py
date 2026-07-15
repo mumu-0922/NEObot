@@ -9,6 +9,10 @@ import pytest
 import mm_chat_rag.replay as replay_module
 from mm_chat_rag.handlers import DispatchPlan, JobResult
 from mm_chat_rag.models import FunctionReadiness, JobClaim, OutboxClaim
+from mm_chat_rag.provider_profile import (
+    MINERU_JINA_POSTGRES_PROFILE,
+    ProviderRuntimeProfile,
+)
 from mm_chat_rag.replay import run
 from mm_chat_rag.settings import Settings
 from mm_chat_rag.worker import Worker, WorkerStartupError
@@ -136,6 +140,13 @@ async def job_handler(_: JobClaim) -> JobResult:
     return JobResult()
 
 
+def provider_profile() -> ProviderRuntimeProfile:
+    return ProviderRuntimeProfile(
+        profile_id=MINERU_JINA_POSTGRES_PROFILE,
+        accepted_draft_wire_contracts=True,
+    )
+
+
 def test_worker_default_is_dark_and_enabled_empty_registry_is_rejected() -> None:
     dark = Worker(Settings(database_url="postgresql://test"))
     dark.validate_promotion_gate()
@@ -149,6 +160,8 @@ def test_worker_rejects_missing_stage_handler_and_accepts_synthetic_gate() -> No
         database_url="postgresql://test",
         dispatch_enabled=True,
         job_stages=("parse",),
+        mineru_api_key="fake-mineru-token",
+        provider_profile=provider_profile(),
     )
     with pytest.raises(WorkerStartupError, match="no promoted handler"):
         Worker(

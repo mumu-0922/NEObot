@@ -165,12 +165,28 @@ Validation:
 
 ### G7.3 Provider-backed parser/index profile gate
 
-- Promote the locked MinerU Local Batch plus Jina 1024 embedding/rerank profile
-  from draft/dark-run into an explicit runtime profile only after required
-  fixture/wire blockers for this deployment are either closed or recorded as
-  accepted owner risk.
-- Add rate-limit/concurrency defaults and retry budget of three attempts.
-- Keep provider request/response bodies out of logs.
+Status: Completed on 2026-07-15.
+
+- Added a config-only Python provider profile gate for
+  `mineru_jina_postgres_v1`; the default remains `disabled`.
+- Provider-backed `parse` and `passage_embedding` stages fail closed unless the
+  operator selects the profile, explicitly accepts the still-draft wire fixture
+  risk for this owner-operated deployment, and provides the required
+  server-owned provider keys.
+- Locked profile contract:
+  - MinerU parser profile for full PDF scope from the owner decision;
+  - Jina embedding model `jina-embeddings-v4`, dimensions `1024`;
+  - Jina rerank model `jina-reranker-v3`;
+  - provider retry max attempts fixed at `3`;
+  - default retry backoff `30s..300s`;
+  - provider concurrency default `2`;
+  - MinerU rate default `60` requests/minute;
+  - Jina rate default `240` requests/minute.
+- Production dispatch registries remain empty in this slice. G7.3 does not add
+  network/provider handlers and cannot consume provider quota by itself.
+- The profile module is intentionally config-only and has no HTTP/client SDK
+  imports; errors carry stable config field names only, not secret values or
+  provider request/response bodies.
 
 Validation:
 

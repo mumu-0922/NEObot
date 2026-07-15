@@ -4,6 +4,7 @@ import uuid
 
 import pytest
 
+from mm_chat_rag.provider_profile import MINERU_JINA_POSTGRES_PROFILE
 from mm_chat_rag.settings import (
     ALLOWED_JOB_STAGES,
     DEFAULT_JINA_EMBEDDING_DIMENSIONS,
@@ -29,6 +30,7 @@ def test_safe_dark_run_defaults() -> None:
     assert settings.mineru_api_key is None
     assert settings.jina_api_key is None
     assert settings.jina_embedding_dimensions == DEFAULT_JINA_EMBEDDING_DIMENSIONS
+    assert settings.provider_profile.enabled is False
 
 
 def test_explicit_enabled_configuration() -> None:
@@ -43,6 +45,8 @@ def test_explicit_enabled_configuration() -> None:
         "RAG_WORKER_LOG_LEVEL": "warning",
         "RAG_MINERU_API_TOKEN": " fake-mineru-token ",
         "RAG_JINA_API_KEY": " fake-jina-key ",
+        "RAG_PROVIDER_PROFILE": MINERU_JINA_POSTGRES_PROFILE,
+        "RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED": "true",
     }
     settings = Settings.from_env(env)
     assert settings.worker_id == worker_id
@@ -52,6 +56,8 @@ def test_explicit_enabled_configuration() -> None:
     assert settings.mineru_api_key == "fake-mineru-token"
     assert settings.jina_api_key == "fake-jina-key"
     assert settings.jina_embedding_dimensions == DEFAULT_JINA_EMBEDDING_DIMENSIONS
+    assert settings.provider_profile.profile_id == MINERU_JINA_POSTGRES_PROFILE
+    assert settings.provider_profile.accepted_draft_wire_contracts is True
 
 
 def test_dispatch_parse_requires_mineru_secret() -> None:
@@ -95,6 +101,8 @@ def test_legacy_default_provider_aliases_are_accepted() -> None:
             "RAG_WORKER_JOB_STAGES": "parse,passage_embedding",
             "DEFAULT_MINERU_API_TOKEN": " legacy-mineru-token ",
             "DEFAULT_JINA_API_KEY": " legacy-jina-key ",
+            "RAG_PROVIDER_PROFILE": MINERU_JINA_POSTGRES_PROFILE,
+            "RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED": "true",
         }
     )
     assert settings.mineru_api_key == "legacy-mineru-token"

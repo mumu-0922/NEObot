@@ -140,3 +140,128 @@ Python settings mypy/pytest/ruff passed.
 Prettier check passed for changed docs/Compose template.
 git diff --check passed for mm-chat scoped diff.
 ```
+
+## 2026-07-15 — G7.3 Provider-backed Parser/Index Profile Gate
+
+Objective: promote the owner-locked MinerU + Jina + Postgres shape into an
+explicit runtime profile gate without yet attaching quota-consuming provider
+handlers.
+
+Implemented behavior:
+
+- Added Python config-only provider profile module:
+  - profile id: `mineru_jina_postgres_v1`;
+  - default profile remains `disabled`;
+  - Jina embedding model locked to `jina-embeddings-v4`;
+  - Jina embedding dimensions locked to `1024`;
+  - Jina rerank model locked to `jina-reranker-v3`;
+  - provider retry max attempts fixed at `3`;
+  - default retry window `30s..300s`;
+  - default provider concurrency `2`;
+  - default MinerU/Jina request ceilings `60` and `240` requests per minute.
+- Provider-backed `parse` and `passage_embedding` dispatch now require:
+  - selected profile `RAG_PROVIDER_PROFILE=mineru_jina_postgres_v1`;
+  - `RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED=true` to record accepted owner risk
+    for draft public MinerU/Jina wire fixtures;
+  - required server-owned provider secrets from G7.2.
+- `purge` still requires no provider profile or provider key.
+- Production dispatch/job registries remain empty. G7.3 cannot consume provider
+  quota and does not introduce HTTP clients, provider SDKs, or network handlers.
+- Legacy worker/job tests were updated to construct explicit fake provider
+  profile settings instead of relying on implicit `parse` without credentials.
+
+Touched files:
+
+```text
+rag/src/mm_chat_rag/provider_profile.py
+rag/src/mm_chat_rag/settings.py
+rag/tests/unit/test_provider_profile.py
+rag/tests/unit/test_settings.py
+rag/tests/unit/test_jobs.py
+rag/tests/unit/test_replay_worker.py
+compose.single-server.yml
+.env.single-server.example
+docs/deployment/single-server-compose.md
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/architecture/standalone-parity-sliced-cutover-plan.md
+docs/tracking/progress.md
+```
+
+Verification run during the slice:
+
+```text
+cd mm-chat/rag && uv run ruff check \
+  src/mm_chat_rag/settings.py \
+  src/mm_chat_rag/provider_profile.py \
+  tests/unit/test_settings.py \
+  tests/unit/test_provider_profile.py \
+  tests/unit/test_jobs.py \
+  tests/unit/test_replay_worker.py
+
+cd mm-chat/rag && uv run mypy \
+  src/mm_chat_rag/settings.py \
+  src/mm_chat_rag/provider_profile.py
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_settings.py \
+  tests/unit/test_provider_profile.py \
+  tests/unit/test_replay_worker.py \
+  tests/unit/test_jobs.py \
+  tests/unit/test_consumer.py \
+  tests/unit/test_models_handlers_retry.py \
+  tests/unit/test_provider_capture.py::test_production_dispatch_remains_disabled_and_registries_empty \
+  tests/unit/test_parser_runtime_boundary.py \
+  tests/unit/test_parser_deployment_boundary.py
+```
+
+Result:
+
+```text
+Python profile/settings/job gate tests passed: 97 passed.
+Ruff and mypy passed for changed Python files.
+```
+
+Next slice: G7.4 canonical IR to chunks and Postgres projection. G7.5 will attach
+actual dispatch/handler execution; G7.3 deliberately stops before quota-consuming
+network calls.
+
+Final G7.3 verification before commit:
+
+```text
+cd mm-chat/rag && uv run pytest -p no:cacheprovider tests/unit
+cd mm-chat/rag && uv run ruff check \
+  src/mm_chat_rag/settings.py \
+  src/mm_chat_rag/provider_profile.py \
+  tests/unit/test_settings.py \
+  tests/unit/test_provider_profile.py \
+  tests/unit/test_jobs.py \
+  tests/unit/test_replay_worker.py \
+  tests/unit/test_postgres.py
+cd mm-chat/rag && uv run mypy \
+  src/mm_chat_rag/settings.py \
+  src/mm_chat_rag/provider_profile.py
+cd mm-chat/frontend && corepack pnpm prettier --check \
+  ../docs/architecture/g7-rag-citation-cutover-plan.md \
+  ../docs/tracking/g7-rag-citation-process.md \
+  ../docs/tracking/progress.md \
+  ../docs/architecture/standalone-parity-sliced-cutover-plan.md \
+  ../docs/deployment/single-server-compose.md \
+  ../compose.single-server.yml \
+  ../.env.single-server.example
+```
+
+Final result:
+
+```text
+RAG unit tests passed: 1436 passed.
+Ruff and mypy passed for changed Python files.
+Prettier check passed for changed docs/Compose template.
+```
+
+Additional final gate:
+
+```text
+cd mm-chat && git diff --check -- .
+```
+
+Result: clean.

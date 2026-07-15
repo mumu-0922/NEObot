@@ -9,6 +9,10 @@ from mm_chat_rag.handlers import JobResult
 from mm_chat_rag.jobs import JobRunner
 from mm_chat_rag.metrics import Metrics
 from mm_chat_rag.models import JobClaim
+from mm_chat_rag.provider_profile import (
+    MINERU_JINA_POSTGRES_PROFILE,
+    ProviderRuntimeProfile,
+)
 from mm_chat_rag.retry import PermanentJobError, RetryableJobError
 from mm_chat_rag.settings import Settings
 
@@ -51,11 +55,20 @@ def job(attempt: int = 1, maximum: int = 3) -> JobClaim:
     return JobClaim(uuid.uuid4(), "parse", attempt, maximum, {})
 
 
+def provider_profile() -> ProviderRuntimeProfile:
+    return ProviderRuntimeProfile(
+        profile_id=MINERU_JINA_POSTGRES_PROFILE,
+        accepted_draft_wire_contracts=True,
+    )
+
+
 def settings() -> Settings:
     return Settings(
         database_url="postgresql://test",
         dispatch_enabled=True,
         job_stages=("parse",),
+        mineru_api_key="fake-mineru-token",
+        provider_profile=provider_profile(),
     )
 
 
@@ -136,6 +149,8 @@ async def test_lease_loss_cancels_handler_without_finish() -> None:
         dispatch_enabled=True,
         job_stages=("parse",),
         heartbeat_seconds=0,
+        mineru_api_key="fake-mineru-token",
+        provider_profile=provider_profile(),
     )
     await JobRunner(
         database, fast, Metrics.create(), {"parse": slow_handler}
@@ -160,6 +175,8 @@ async def test_heartbeat_exception_cancels_handler_without_finish() -> None:
         dispatch_enabled=True,
         job_stages=("parse",),
         heartbeat_seconds=0,
+        mineru_api_key="fake-mineru-token",
+        provider_profile=provider_profile(),
     )
     await JobRunner(
         database, fast, Metrics.create(), {"parse": slow_handler}
@@ -197,6 +214,8 @@ async def test_process_cancellation_awaits_children_without_finish() -> None:
         dispatch_enabled=True,
         job_stages=("parse",),
         heartbeat_seconds=0,
+        mineru_api_key="fake-mineru-token",
+        provider_profile=provider_profile(),
     )
     process = asyncio.create_task(
         JobRunner(

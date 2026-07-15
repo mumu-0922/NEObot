@@ -473,7 +473,7 @@ Slice checklist:
 
 - [x] G7.1 Decision lock, runtime inventory plan, and dedicated process log.
 - [x] G7.2 Admin provider config and fail-closed readiness.
-- [ ] G7.3 Provider-backed parser/index profile gate.
+- [x] G7.3 Provider-backed parser/index profile gate.
 - [ ] G7.4 Canonical IR to chunks and Postgres projection.
 - [ ] G7.5 Worker dispatch, rebuild, delete, and retry loop.
 - [ ] G7.6 Private query and Go reauthorization.

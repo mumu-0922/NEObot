@@ -15,6 +15,10 @@ from mm_chat_rag.postgres import (
     replay_job,
     replay_outbox,
 )
+from mm_chat_rag.provider_profile import (
+    MINERU_JINA_POSTGRES_PROFILE,
+    ProviderRuntimeProfile,
+)
 from mm_chat_rag.settings import Settings
 
 
@@ -119,6 +123,11 @@ async def test_adapter_calls_only_frozen_functions() -> None:
         database_url="postgresql://worker:secret@db/rag",
         dispatch_enabled=True,
         job_stages=("parse",),
+        mineru_api_key="fake-mineru-token",
+        provider_profile=ProviderRuntimeProfile(
+            profile_id=MINERU_JINA_POSTGRES_PROFILE,
+            accepted_draft_wire_contracts=True,
+        ),
     )
     rows: list[dict[str, object] | None] = [
         {"functions_ready": True, "consumer_status": "ready"},

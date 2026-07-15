@@ -99,6 +99,16 @@ RAG_WORKER_DISPATCH_ENABLED=false
 RAG_WORKER_JOB_STAGES=
 RAG_MINERU_API_TOKEN=
 RAG_JINA_API_KEY=
+RAG_PROVIDER_PROFILE=disabled
+RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED=false
+RAG_PROVIDER_RETRY_MAX_ATTEMPTS=3
+RAG_PROVIDER_INITIAL_RETRY_SECONDS=30
+RAG_PROVIDER_MAX_RETRY_SECONDS=300
+RAG_PROVIDER_CONCURRENCY=2
+RAG_MINERU_REQUESTS_PER_MINUTE=60
+RAG_JINA_REQUESTS_PER_MINUTE=240
+RAG_JINA_EMBEDDING_MODEL=jina-embeddings-v4
+RAG_JINA_RERANK_MODEL=jina-reranker-v3
 ```
 
 At this gate the Worker may validate DB functions, its singleton lock, health,
@@ -113,6 +123,16 @@ worker dispatch fails closed when `parse` is enabled without
 `RAG_MINERU_API_TOKEN` or `passage_embedding` is enabled without
 `RAG_JINA_API_KEY`. Legacy `DEFAULT_MINERU_API_TOKEN` and
 `DEFAULT_JINA_API_KEY` aliases remain accepted only as migration fallback names.
+
+G7.3 adds an explicit provider-backed runtime profile gate. Keep
+`RAG_PROVIDER_PROFILE=disabled` until the operator intentionally enables
+`mineru_jina_postgres_v1`. Provider-backed `parse` or `passage_embedding`
+dispatch requires `RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED=true`, recording
+that the owner accepts the still-draft MinerU/Jina public wire fixture risk for
+this sandbox deployment. The profile is config-only in G7.3: it fixes retry
+max attempts at `3`, defaults provider concurrency to `2`, keeps MinerU/Jina
+rate ceilings broad (`60`/`240` requests per minute), and does not add any
+network provider handler by itself.
 
 Replay runs as a separate one-shot service so its DSN never enters the
 long-running Worker. Dry-run validates an exact intent without touching the DB:
