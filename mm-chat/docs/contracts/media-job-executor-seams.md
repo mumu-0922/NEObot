@@ -81,6 +81,15 @@ jobartifacts.StoreInput{
   to `POST {baseURL}/audio/speech` with JSON `model`, `input`, and `voice`.
   Provider request text/audio and provider response bodies must not be logged or
   returned inline.
+- Owner preference captured 2026-07-15: future TTS enablement should prioritize
+  "free or effectively free, just needs to speak". The implementation order is:
+  (1) local/internal Piper-style executor with bundled or mounted ONNX voice
+  files and no external quota; (2) official cloud free-tier adapters only when
+  an account/key is acceptable; (3) OpenAI-compatible `/audio/*` only when the
+  configured relay actually supports those endpoints. Browser `speechSynthesis`
+  is allowed as a local UI fallback for immediate playback, but it does not
+  produce server-owned stored audio artifacts and therefore cannot close
+  G6.5c.2b by itself.
 - Responses expose only compact artifact metadata:
   `fileId`, `purpose`, `contentType`, `size`.
 - Responses and audit events must not expose prompt text, synthesis text, audio

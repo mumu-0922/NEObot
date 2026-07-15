@@ -2828,3 +2828,32 @@ Residual blockers:
 G4 is complete for server-owned plugin registry/install/execute and live smoke.
 G9 still owns removal of replaced transitional Next `/api/plugins/*` routes.
 ```
+
+## 2026-07-15 — Voice Provider Preference Captured: Free/Simple TTS First
+
+Owner directive: keep the Voice real-provider gap remembered for later, but
+prefer a free or effectively-free TTS path where "it just speaks" over a
+premium voice provider.
+
+Decision recorded:
+
+- keep the existing Go `voicejobs.Executor` seam and `/v1/voice/*` routes;
+- do not remove the OpenAI-compatible voice executor, but do not block on the
+  current relay because its `/audio/speech` and `/audio/transcriptions` probes
+  returned `404 page not found` earlier;
+- future TTS enablement priority:
+  1. local/internal Piper-style TTS service or executor, no external quota;
+  2. official cloud free-tier API adapter if the owner accepts account/API key
+     setup;
+  3. OpenAI-compatible `/audio/*` only if the configured relay later supports
+     voice endpoints;
+- browser `speechSynthesis` may be used as a local playback fallback, but it is
+  not enough to close server-owned stored-audio parity because it does not
+  produce backend artifacts.
+
+Residual blocker remains:
+
+```text
+G6.5c.2b.2 Authorized configured-provider voice smoke
+G6.5c.2b.3 Free/simple TTS provider selection and smoke
+```

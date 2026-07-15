@@ -384,6 +384,12 @@ Slice checklist:
               and gated live smoke harness for `/audio/speech` and
               `/audio/transcriptions`.
         - [ ] G6.5c.2b.2 Authorized configured-provider voice smoke.
+        - [ ] G6.5c.2b.3 Free/simple TTS provider selection and smoke: keep
+              the Go voice executor interface open; prefer a no-quota local
+              Piper-style internal service first, then official free-tier APIs
+              such as Google Cloud/Azure/ElevenLabs only if an API key/account
+              is acceptable. Browser `speechSynthesis` may remain a local UI
+              fallback but does not satisfy server-owned stored-audio parity.
     - [x] G6.5c.3 Real image executor integration with stored image artifacts
           and configured-provider smoke.
       - [x] G6.5c.3a Image executor opt-in seam: add a Go executor interface,
