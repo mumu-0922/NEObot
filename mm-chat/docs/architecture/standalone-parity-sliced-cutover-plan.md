@@ -392,6 +392,10 @@ Slice checklist:
               smoke harness.
         - [x] G6.5c.3b.2 Authorized configured-provider image smoke passes
               against an image-capable key/endpoint.
+      - [x] G6.5c.3c Go HTTP route wiring: `cmd/api` now constructs the
+            image job service with sanitized audit logging, OpenAI-compatible
+            executor opt-in, and backend file/object-storage artifact storage
+            when the required runtime dependencies are configured.
   - [x] G6.5d Code execution sandbox contract before any real executor is enabled: see `../contracts/code-execution-sandbox-contract.md`; runtime remains disabled.
   - [x] G6.5e Live provider smoke authorization gate: add a default-deny
         `providersmoke` gate requiring an explicit enabled flag, exact approval

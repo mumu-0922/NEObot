@@ -119,6 +119,27 @@ func TestHandlerReturns503WhenAuditUnavailable(t *testing.T) {
 	assertError(t, rec, http.StatusServiceUnavailable, "JOB_AUDIT_UNAVAILABLE")
 }
 
+func TestHandlerMapsProviderFailureToBadGatewayWithoutLeakingPrompt(t *testing.T) {
+	handler := NewHandler(NewService(
+		WithExecutor(&fakeImageExecutor{err: ErrImageProviderFailed}),
+		WithArtifactStore(&fakeArtifactStore{}),
+		WithAuditRecorder(noopAuditRecorder()),
+	))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		generationsPath,
+		strings.NewReader(`{"modelRef":{"providerId":"openai","modelId":"gpt-image-2"},"prompt":"private prompt"}`),
+	)
+
+	handler.ServeHTTP(rec, req)
+
+	assertError(t, rec, http.StatusBadGateway, "IMAGE_PROVIDER_ERROR")
+	if strings.Contains(rec.Body.String(), "private prompt") {
+		t.Fatalf("response leaked prompt: %s", rec.Body.String())
+	}
+}
+
 func TestHandlerRequiresPost(t *testing.T) {
 	handler := NewHandler(nil)
 	rec := httptest.NewRecorder()

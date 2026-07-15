@@ -2534,3 +2534,54 @@ Residual G6 blockers:
 G6.5c.2b Real provider-backed voice executor and authorized configured-provider smoke
 Route-wiring/capability-reopen slice for imageGeneration remains separate from this smoke.
 ```
+
+## 2026-07-15 — G6.5c.3c Go Image Route Wired to Executor/Storage/Audit
+
+Objective: connect the already verified OpenAI-compatible image executor to the
+real Go HTTP route without enabling any browser-side fallback or exposing
+provider secrets.
+
+Completed scope:
+
+- added `httpserver.WithImageJobService` so `/v1/images/generations` can be
+  wired to a configured service instead of the default fail-closed handler;
+- updated `cmd/api` to build an image job service with:
+  - sanitized structured `job_audit` events;
+  - OpenAI-compatible executor opt-in when `PROVIDER_TYPE` is OpenAI-compatible
+    and server-only `PROVIDER_BASE_URL` plus `PROVIDER_API_KEY` are present;
+  - `jobartifacts` storage through the existing backend `files.Service` when
+    file repository and object store dependencies are both present;
+- preserved fail-closed behavior when provider credentials, file metadata DB,
+  or object storage are absent;
+- mapped provider-side image failures to `502 IMAGE_PROVIDER_ERROR` without
+  leaking prompts, provider bodies, or credentials.
+
+Changed surfaces:
+
+```text
+mm-chat/backend/cmd/api/main.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/httpserver/server_test.go
+mm-chat/backend/internal/imagejobs/handler.go
+mm-chat/backend/internal/imagejobs/handler_test.go
+mm-chat/backend/internal/imagejobs/openai_compatible_executor.go
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/contracts/media-job-executor-seams.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./internal/imagejobs ./internal/httpserver ./cmd/api # passed
+git diff --check -- mm-chat                                                                                         # passed
+```
+
+Residual blockers:
+
+```text
+Frontend imageGeneration adapter/capability reopen remains separate.
+G6.5c.2b Real provider-backed voice executor and authorized configured-provider smoke remains open.
+```

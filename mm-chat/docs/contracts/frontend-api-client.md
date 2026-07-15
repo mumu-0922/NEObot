@@ -1452,6 +1452,13 @@ Rules:
   remains disabled until the later route-wiring/capability-reopen slice proves
   the Go HTTP route is configured with the executor, artifact store, admission
   audit recorder, and frontend adapter behavior.
+- G6.5c.3c wires the Go HTTP route in `cmd/api`: when server-only
+  `PROVIDER_BASE_URL` and `PROVIDER_API_KEY` are present for an
+  OpenAI-compatible provider, `/v1/images/generations` may call the image
+  executor and stores results through the backend file/object-storage artifact
+  boundary. Missing provider or storage dependencies still fail closed. The
+  frontend `imageGeneration` capability is still not reopened until the client
+  adapter maps returned artifact metadata to server-backed image attachments.
 - G6.5d defines the hard gate for real code execution in
   `docs/contracts/code-execution-sandbox-contract.md`; `codeExecution` remains
   disabled until that sandbox/storage/audit/cancel test plan is implemented.

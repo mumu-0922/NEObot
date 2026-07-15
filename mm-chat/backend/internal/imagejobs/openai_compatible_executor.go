@@ -25,7 +25,8 @@ const (
 )
 
 var (
-	errOpenAICompatibleImageProvider = errors.New("openai-compatible image provider failed")
+	ErrImageProviderFailed           = errors.New("image provider failed")
+	errOpenAICompatibleImageProvider = ErrImageProviderFailed
 )
 
 type OpenAICompatibleExecutorConfig struct {

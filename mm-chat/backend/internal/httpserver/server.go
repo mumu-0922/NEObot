@@ -65,6 +65,7 @@ type options struct {
 	knowledgeService     *knowledge.Service
 	agentService         *agents.Service
 	pluginRegistry       plugins.Registry
+	imageJobService      *imagejobs.Service
 }
 
 func WithReadyChecker(checker health.ReadinessChecker) Option {
@@ -187,6 +188,12 @@ func WithPluginRegistry(registry plugins.Registry) Option {
 	}
 }
 
+func WithImageJobService(service *imagejobs.Service) Option {
+	return func(opts *options) {
+		opts.imageJobService = service
+	}
+}
+
 func New(cfg config.Config, opts ...Option) *http.Server {
 	return &http.Server{
 		Addr:              cfg.Addr,
@@ -238,7 +245,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	knowledgeHandler := knowledge.NewHandler(resolvedOptions.knowledgeService)
 	agentHandler := agents.NewHandler(resolvedOptions.agentService)
 	codeJobHandler := codejobs.NewHandler(nil)
-	imageJobHandler := imagejobs.NewHandler(nil)
+	imageJobHandler := imagejobs.NewHandler(resolvedOptions.imageJobService)
 	jobControlHandler := jobcontrol.NewHandler(nil)
 	voiceJobHandler := voicejobs.NewHandler(nil)
 	runtimeConfigService := runtimeconfig.NewService(cfg)

@@ -15,6 +15,9 @@ import (
 
 	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/config"
+	"neo-chat/mm-chat/backend/internal/imagejobs"
+	"neo-chat/mm-chat/backend/internal/jobartifacts"
+	"neo-chat/mm-chat/backend/internal/jobaudit"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
 )
 
@@ -422,6 +425,10 @@ func TestAuthRequiredModeRejectsMissingCredentialsAndKeepsPublicRoutes(t *testin
 		{method: http.MethodGet, path: "/v1/chat/conversations"},
 		{method: http.MethodGet, path: "/v1/files/33333333-3333-4333-8333-333333333333"},
 		{method: http.MethodGet, path: "/v1/import/browser/33333333-3333-4333-8333-333333333333"},
+		{method: http.MethodPost, path: "/v1/images/generations"},
+		{method: http.MethodPost, path: "/v1/code/executions"},
+		{method: http.MethodPost, path: "/v1/voice/synthesize"},
+		{method: http.MethodPost, path: "/v1/jobs/job-1/cancel"},
 		{method: http.MethodGet, path: "/v1/teams"},
 		{method: http.MethodGet, path: "/v1/teams/33333333-3333-4333-8333-333333333333/members"},
 		{method: http.MethodGet, path: "/v1/knowledge/collections"},
@@ -860,6 +867,76 @@ func TestNewHandlerRegistersImageJobRouteAsFailClosedAdmission(t *testing.T) {
 	}
 }
 
+func TestNewHandlerRoutesConfiguredImageJobService(t *testing.T) {
+	executor := &fakeHTTPImageExecutor{result: imagejobs.GenerateResult{
+		Images: []imagejobs.GeneratedImageResult{{
+			JobID:       "job-1",
+			Filename:    "generated.png",
+			ContentType: "image/png",
+			Size:        5,
+			Body:        strings.NewReader("image"),
+		}},
+		Message: "stored",
+	}}
+	store := &fakeHTTPArtifactStore{artifact: jobartifacts.Artifact{
+		FileID:      "33333333-3333-4333-8333-333333333333",
+		Purpose:     "image",
+		ContentType: "image/png",
+		Size:        5,
+	}}
+	var auditEvent jobaudit.Event
+	service := imagejobs.NewService(
+		imagejobs.WithExecutor(executor),
+		imagejobs.WithArtifactStore(store),
+		imagejobs.WithAuditRecorder(jobaudit.RecorderFunc(func(_ context.Context, event jobaudit.Event) error {
+			auditEvent = event
+			return nil
+		})),
+	)
+	handler := NewHandler(
+		config.Config{Addr: ":0", Version: "route-test"},
+		WithImageJobService(service),
+	)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/images/generations",
+		strings.NewReader(`{"modelRef":{"providerId":"openai","modelId":"gpt-image-2"},"prompt":"private prompt","count":1}`),
+	)
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("image job status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var response imagejobs.GenerateResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode image response: %v", err)
+	}
+	if response.Message != "stored" ||
+		len(response.Images) != 1 ||
+		response.Images[0].FileID != "33333333-3333-4333-8333-333333333333" ||
+		response.Images[0].Purpose != "image" ||
+		response.Images[0].ContentType != "image/png" ||
+		response.Images[0].Size != 5 {
+		t.Fatalf("image response = %#v", response)
+	}
+	if !executor.called || executor.request.Prompt != "private prompt" || executor.request.ModelRef.ModelID != "gpt-image-2" {
+		t.Fatalf("executor state = called:%v request:%#v", executor.called, executor.request)
+	}
+	if len(store.inputs) != 1 || store.inputs[0].Kind != jobartifacts.KindImage {
+		t.Fatalf("artifact inputs = %#v", store.inputs)
+	}
+	if auditEvent.Kind != jobaudit.KindImageGenerate ||
+		auditEvent.Status != jobaudit.StatusAdmitted ||
+		auditEvent.ModelID != "gpt-image-2" {
+		t.Fatalf("audit event = %#v", auditEvent)
+	}
+	if strings.Contains(rec.Body.String(), "private prompt") {
+		t.Fatalf("image response leaked prompt: %s", rec.Body.String())
+	}
+}
+
 func TestNewHandlerRegistersVoiceJobRoutesAsFailClosedAdmission(t *testing.T) {
 	handler := NewHandler(config.Config{Addr: ":0", Version: "route-test"})
 
@@ -1071,6 +1148,42 @@ type fakeRateLimitStore struct {
 	calls  int
 	counts map[string]int
 	err    error
+}
+
+type fakeHTTPImageExecutor struct {
+	called  bool
+	request imagejobs.GenerateRequest
+	result  imagejobs.GenerateResult
+	err     error
+}
+
+func (e *fakeHTTPImageExecutor) Generate(
+	_ context.Context,
+	request imagejobs.GenerateRequest,
+) (imagejobs.GenerateResult, error) {
+	e.called = true
+	e.request = request
+	if e.err != nil {
+		return imagejobs.GenerateResult{}, e.err
+	}
+	return e.result, nil
+}
+
+type fakeHTTPArtifactStore struct {
+	inputs   []jobartifacts.StoreInput
+	artifact jobartifacts.Artifact
+	err      error
+}
+
+func (s *fakeHTTPArtifactStore) Store(
+	_ context.Context,
+	input jobartifacts.StoreInput,
+) (jobartifacts.Artifact, error) {
+	s.inputs = append(s.inputs, input)
+	if s.err != nil {
+		return jobartifacts.Artifact{}, s.err
+	}
+	return s.artifact, nil
 }
 
 func newFakeRateLimitStore() *fakeRateLimitStore {

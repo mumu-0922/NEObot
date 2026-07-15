@@ -151,6 +151,8 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusServiceUnavailable, "IMAGE_ARTIFACT_STORE_UNAVAILABLE", "image artifact storage is not configured")
 	case errors.Is(err, ErrImageJobsUnavailable):
 		writeError(w, http.StatusNotImplemented, "IMAGE_JOBS_UNAVAILABLE", "image generation jobs are not configured")
+	case errors.Is(err, ErrImageProviderFailed):
+		writeError(w, http.StatusBadGateway, "IMAGE_PROVIDER_ERROR", "image provider request failed")
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		writeError(w, http.StatusRequestTimeout, "REQUEST_CANCELLED", "request was cancelled")
 	default:

@@ -50,6 +50,11 @@ jobartifacts.StoreInput{
 - Executors are opt-in only via `WithExecutor`.
 - Real executor calls require an explicitly configured admitted-job audit
   recorder.
+- `cmd/api` may construct the image job service from server-only
+  `PROVIDER_*`, file repository, and object-store dependencies. Missing
+  provider base URL/API key keeps the executor absent; missing file repository
+  or object store keeps artifact storage absent. These states must fail closed
+  before consuming provider quota.
 - Quota-consuming real provider smoke also requires the separate
   `provider-live-smoke-authorization.md` gate.
 - Synthesis and image-generation executor outputs require an artifact store
@@ -79,6 +84,7 @@ jobartifacts.StoreInput{
 | Executor configured but artifact store absent for synthesis/image | `503 VOICE_ARTIFACT_STORE_UNAVAILABLE` or `503 IMAGE_ARTIFACT_STORE_UNAVAILABLE` |
 | Admitted audit recorder absent or failing | `503 JOB_AUDIT_UNAVAILABLE`; executor is not called |
 | Artifact kind/content-type/size/body invalid | artifact storage returns an error; no inline payload fallback |
+| Configured image provider returns a non-2xx or request failure | `502 IMAGE_PROVIDER_ERROR`; response body remains sanitized |
 | Request validation fails before admission | `400` with endpoint-specific validation code |
 | Context cancelled before admission/execution | `408 REQUEST_CANCELLED` at handler boundary |
 

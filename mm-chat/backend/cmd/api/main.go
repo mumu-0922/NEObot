@@ -24,6 +24,9 @@ import (
 	"neo-chat/mm-chat/backend/internal/database"
 	"neo-chat/mm-chat/backend/internal/files"
 	"neo-chat/mm-chat/backend/internal/httpserver"
+	"neo-chat/mm-chat/backend/internal/imagejobs"
+	"neo-chat/mm-chat/backend/internal/jobartifacts"
+	"neo-chat/mm-chat/backend/internal/jobaudit"
 	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/plugins"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
@@ -225,6 +228,19 @@ func main() {
 	}); ok {
 		serverOptions = append(serverOptions, httpserver.WithReadyCheck("storage", checker))
 	}
+	imageJobService, err := newImageJobService(
+		cfg,
+		fileRepo,
+		objectStore,
+		newJobAuditRecorder(logger),
+	)
+	if err != nil {
+		_ = redisClient.Close()
+		_ = db.Close()
+		logger.Error("image_job_config_failed", slog.String("error", redactSensitiveLogText(err.Error())))
+		os.Exit(1)
+	}
+	serverOptions = append(serverOptions, httpserver.WithImageJobService(imageJobService))
 
 	server := httpserver.New(cfg, serverOptions...)
 
@@ -386,6 +402,77 @@ func newObjectStore(cfg config.Config) (storage.ObjectStore, error) {
 		return store, nil
 	default:
 		return nil, fmt.Errorf("unsupported STORAGE_BACKEND %q", cfg.Storage.Backend)
+	}
+}
+
+func newJobAuditRecorder(logger *slog.Logger) jobaudit.Recorder {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return jobaudit.RecorderFunc(func(ctx context.Context, event jobaudit.Event) error {
+		event = jobaudit.NormalizeEvent(ctx, event)
+		logger.InfoContext(
+			ctx,
+			"job_audit",
+			slog.String("kind", string(event.Kind)),
+			slog.String("status", string(event.Status)),
+			slog.String("user_id", event.UserID),
+			slog.String("provider_id", event.ProviderID),
+			slog.String("model_id", event.ModelID),
+			slog.String("language", event.Language),
+			slog.String("reason", event.Reason),
+		)
+		return nil
+	})
+}
+
+func newImageJobService(
+	cfg config.Config,
+	fileRepo files.Repository,
+	objectStore storage.ObjectStore,
+	auditRecorder jobaudit.Recorder,
+) (*imagejobs.Service, error) {
+	options := []imagejobs.ServiceOption{
+		imagejobs.WithAuditRecorder(auditRecorder),
+	}
+	if fileRepo != nil && objectStore != nil {
+		options = append(options, imagejobs.WithArtifactStore(jobartifacts.NewService(
+			files.NewService(
+				fileRepo,
+				objectStore,
+				files.WithStorageBackend(cfg.Storage.Backend),
+			),
+		)))
+	}
+
+	executor, err := newImageJobExecutor(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if executor != nil {
+		options = append(options, imagejobs.WithExecutor(executor))
+	}
+
+	return imagejobs.NewService(options...), nil
+}
+
+func newImageJobExecutor(cfg config.Config) (imagejobs.Executor, error) {
+	providerType := strings.ToLower(strings.TrimSpace(cfg.Provider.Type))
+	switch providerType {
+	case "", "none":
+		return nil, nil
+	case "openai", "openai_compatible", "openai-compatible":
+		if strings.TrimSpace(cfg.Provider.BaseURL) == "" ||
+			strings.TrimSpace(cfg.Provider.APIKey) == "" {
+			return nil, nil
+		}
+		return imagejobs.NewOpenAICompatibleExecutor(imagejobs.OpenAICompatibleExecutorConfig{
+			BaseURL: cfg.Provider.BaseURL,
+			APIKey:  cfg.Provider.APIKey,
+			Timeout: cfg.Provider.Timeout,
+		})
+	default:
+		return nil, nil
 	}
 }
 
