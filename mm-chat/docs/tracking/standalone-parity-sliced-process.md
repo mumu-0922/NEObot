@@ -1124,3 +1124,56 @@ Residual G3 blockers:
 ```
 
 Next slice: G4 Plugin Registry, Install, and Execution Final Ownership.
+
+## 2026-07-15 — G4.1 Server Plugin Tool Planning Boundary Completed
+
+Objective: land the first plugin slice without taking all plugin ownership in
+one bite: provider-side tool planning goes through Go, while browser plugin
+execution remains bounded and explicitly transitional.
+
+Completed scope:
+
+- added `orchestrateServerPlugins` as the frontend server-mode bridge from
+  active plugin selections to Go `/v1/chat/tools/plan`;
+- offered only installed, active, enabled plugin functions to Go and failed
+  closed on duplicate function names or unoffered planned calls;
+- kept plugin auth values out of the Go planning request;
+- executed planned calls sequentially through the existing hardened plugin
+  execution helper and retained `success|error` status per call;
+- appended plugin results as explicitly untrusted context capped at 64 KiB before
+  the final Go chat stream;
+- covered URL/body mapping and malformed successful response handling for the
+  API-client `/v1/chat/tools/plan` adapter;
+- split G4 into smaller remaining slices so registry, install, execute final
+  ownership, and live smoke can each be migrated and tested separately.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/frontend/src/services/api/serverPluginOrchestration.ts
+mm-chat/frontend/src/__tests__/serverPluginOrchestration.test.ts
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/serverPluginOrchestration.test.ts  # passed, 1 file / 9 tests
+cd mm-chat/frontend && corepack pnpm typecheck     # passed
+cd mm-chat/frontend && corepack pnpm format:check  # passed
+cd mm-chat/frontend && corepack pnpm lint          # passed
+```
+
+Residual G4 blockers:
+
+```text
+G4.2 plugin registry/list adapter
+G4.3 plugin install/custom-manifest adapter
+G4.4 plugin execute final ownership
+G4.5 live browser smoke
+```
+
+Next slice: G4.2 Plugin registry/list adapter.
