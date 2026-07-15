@@ -1,5 +1,6 @@
 import { Plugin } from "@/types";
 import { useSettingsStore } from "@/store/core/settingsStore";
+import { createNeoChatApiClient } from "@/services/api/client";
 import {
   getResponseErrorMessage,
   readJsonResponseOrThrow,
@@ -70,13 +71,10 @@ export const fetchApiGuruList = async (
 
   const request = (async () => {
     logDevInfo("Fetching plugins from API...");
-    const response = await fetch("/api/plugins/list");
-    if (!response.ok) throw new Error("Failed to fetch plugins");
-
-    const data = await readJsonResponseOrThrow<{ plugins?: Plugin[] }>(
-      response,
-      "Failed to fetch plugins",
-    );
+    const data = await createNeoChatApiClient().plugins.listAvailable();
+    if (data.unavailable) {
+      logDevWarn("Plugin registry unavailable in current API mode");
+    }
     const plugins: Plugin[] = normalizeMarketPlugins(data.plugins);
 
     setMarketPlugins(plugins);

@@ -1177,3 +1177,66 @@ G4.5 live browser smoke
 ```
 
 Next slice: G4.2 Plugin registry/list adapter.
+
+## 2026-07-15 — G4.2 Plugin Registry/List Adapter Completed
+
+Objective: migrate the plugin marketplace list read as its own bounded slice,
+without mixing install or execution final ownership into the same change.
+
+Completed scope:
+
+- added `PluginApi.listAvailable()` to the frontend API-client contract;
+- added a local adapter that preserves the existing `/api/plugins/list` rollback
+  path only inside `client/local/pluginApi.ts`;
+- added a server adapter that targets Go `/v1/plugins` and treats a missing or
+  unavailable registry route as explicit `{ plugins: [], unavailable: true }`;
+- routed `fetchApiGuruList()` through `createNeoChatApiClient().plugins` instead
+  of direct component/service fetches;
+- covered default local cache behavior, server-mode URL routing, unavailable
+  registry degradation, and malformed successful server responses;
+- confirmed direct `/api/plugins/list` usage is now limited to the local adapter,
+  route tests, and static route constants.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/frontend/src/services/api/client/types.ts
+mm-chat/frontend/src/services/api/client/index.ts
+mm-chat/frontend/src/services/api/client/local/pluginApi.ts
+mm-chat/frontend/src/services/api/client/server/pluginApi.ts
+mm-chat/frontend/src/services/api/pluginService.ts
+mm-chat/frontend/src/__tests__/apiClientScaffold.test.ts
+mm-chat/frontend/src/__tests__/pluginService.test.ts
+mm-chat/frontend/src/__tests__/chatCrudService.test.ts
+mm-chat/frontend/src/__tests__/chatStreamService.test.ts
+mm-chat/frontend/src/__tests__/fileService.test.ts
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/pluginService.test.ts \
+  src/__tests__/apiClientScaffold.test.ts \
+  src/__tests__/chatCrudService.test.ts \
+  src/__tests__/chatStreamService.test.ts \
+  src/__tests__/fileService.test.ts          # passed, 5 files / 67 tests
+cd mm-chat/frontend && corepack pnpm typecheck # passed
+cd mm-chat/frontend && corepack pnpm format:check # passed
+cd mm-chat/frontend && corepack pnpm lint # passed
+rg '"/api/plugins/list"|/api/plugins/list' mm-chat/frontend/src -n
+# remaining direct route references: local adapter, static route constant, tests
+```
+
+Residual G4 blockers:
+
+```text
+G4.3 plugin install/custom-manifest adapter
+G4.4 plugin execute final ownership
+G4.5 live browser smoke
+```
+
+Next slice: G4.3 Plugin install/custom-manifest adapter.

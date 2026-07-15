@@ -4,6 +4,7 @@ import { createLocalByokApiShell } from "./local/byokApi";
 import { createLocalChatApiShell } from "./local/chatApi";
 import { createLocalFileApiShell } from "./local/fileApi";
 import { createLocalImportApiShell } from "./local/importApi";
+import { createLocalPluginApiShell } from "./local/pluginApi";
 import { createLocalProviderApiShell } from "./local/providerApi";
 import { createLocalSettingsApiShell } from "./local/settingsApi";
 import { phase11Capabilities, resolveApiClientConfig } from "./mode";
@@ -13,6 +14,7 @@ import { createServerByokApiShell } from "./server/byokApi";
 import { createServerChatApiShell } from "./server/chatApi";
 import { createServerFileApiShell } from "./server/fileApi";
 import { createServerImportApiShell } from "./server/importApi";
+import { createServerPluginApiShell } from "./server/pluginApi";
 import { createServerProviderApiShell } from "./server/providerApi";
 import { createServerSettingsApiShell } from "./server/settingsApi";
 import { createHttpClient } from "./server/httpClient";
@@ -50,6 +52,9 @@ export function createNeoChatApiClient(
   const byok = serverHttpClient
     ? createServerByokApiShell(serverHttpClient)
     : createLocalByokApiShell();
+  const plugins = serverHttpClient
+    ? createServerPluginApiShell(serverHttpClient)
+    : createLocalPluginApiShell();
 
   return {
     mode: resolved.mode,
@@ -69,6 +74,7 @@ export function createNeoChatApiClient(
     byok,
     chat,
     files,
+    plugins,
     imports,
     agents,
   };

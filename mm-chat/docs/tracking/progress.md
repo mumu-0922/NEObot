@@ -948,7 +948,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
       transitional plugin ownership.
   - [x] G4.1 Server plugin tool planning and bounded untrusted result context
         wired through Go `/v1/chat/tools/plan` and frontend orchestration.
-  - [ ] G4.2 Plugin registry/list adapter.
+  - [x] G4.2 Plugin registry/list adapter.
   - [ ] G4.3 Plugin install/custom-manifest adapter.
   - [ ] G4.4 Plugin execute final ownership.
   - [ ] G4.5 Live browser smoke with one installed plugin producing bounded

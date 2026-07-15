@@ -47,8 +47,15 @@ const jsonResponse = (body: unknown, init?: ResponseInit) =>
   });
 
 describe("plugin market service cache", () => {
+  let previousApiMode: string | undefined;
+  let previousApiBaseUrl: string | undefined;
+
   beforeEach(() => {
     vi.resetModules();
+    previousApiMode = process.env.NEXT_PUBLIC_API_MODE;
+    previousApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+    delete process.env.NEXT_PUBLIC_API_MODE;
+    delete process.env.NEXT_PUBLIC_API_BASE_URL;
     storeMock.state = {
       marketPlugins: [],
       marketPluginsTimestamp: 0,
@@ -61,6 +68,16 @@ describe("plugin market service cache", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    if (previousApiMode === undefined) {
+      delete process.env.NEXT_PUBLIC_API_MODE;
+    } else {
+      process.env.NEXT_PUBLIC_API_MODE = previousApiMode;
+    }
+    if (previousApiBaseUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_BASE_URL = previousApiBaseUrl;
+    }
   });
 
   it("returns valid cached plugins without fetching", async () => {
@@ -100,7 +117,10 @@ describe("plugin market service cache", () => {
     const { fetchApiGuruList } = await import("../services/api/pluginService");
     const plugins = await fetchApiGuruList();
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/plugins/list");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/plugins/list",
+      expect.objectContaining({ method: "GET", cache: "no-store" }),
+    );
     expect(plugins).toHaveLength(1);
     expect(plugins[0]).toMatchObject(pluginB);
   });
@@ -114,7 +134,10 @@ describe("plugin market service cache", () => {
     const { fetchApiGuruList } = await import("../services/api/pluginService");
     const plugins = await fetchApiGuruList(true);
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/plugins/list");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/plugins/list",
+      expect.objectContaining({ method: "GET", cache: "no-store" }),
+    );
     expect(plugins).toHaveLength(1);
     expect(plugins[0]).toMatchObject(pluginB);
     expect(storeMock.state.setMarketPlugins).toHaveBeenCalledWith([
@@ -156,5 +179,27 @@ describe("plugin market service cache", () => {
 
     await expect(first).resolves.toEqual([expect.objectContaining(pluginA)]);
     await expect(second).resolves.toEqual([expect.objectContaining(pluginA)]);
+  });
+
+  it("routes server-mode plugin lists through the Go adapter and degrades when registry is unavailable", async () => {
+    process.env.NEXT_PUBLIC_API_MODE = "server";
+    process.env.NEXT_PUBLIC_API_BASE_URL = "/mm-api";
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(
+        { error: { code: "NOT_FOUND", message: "route not found" } },
+        { status: 404 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { fetchApiGuruList } = await import("../services/api/pluginService");
+    const plugins = await fetchApiGuruList(true);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/mm-api/v1/plugins",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(plugins).toEqual([]);
+    expect(storeMock.state.setMarketPlugins).toHaveBeenCalledWith([]);
   });
 });

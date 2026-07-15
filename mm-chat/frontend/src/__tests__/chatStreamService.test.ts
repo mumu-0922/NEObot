@@ -283,6 +283,7 @@ function createMockClient(
     byok: options.byok ?? defaultClient.byok,
     chat,
     files: options.files ?? createMockFileApi(),
+    plugins: options.plugins ?? defaultClient.plugins,
     agents: options.agents ?? createMockAgentApi(),
   };
 }

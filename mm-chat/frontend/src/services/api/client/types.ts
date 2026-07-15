@@ -1,5 +1,6 @@
 import type { ByokPublicKeyResponse } from "../../../lib/byok/shared";
 import type { PublicServerConfig } from "../../../lib/defaultConfig/shared";
+import type { Plugin } from "../../../types";
 
 export type ApiMode = "local" | "server";
 
@@ -386,6 +387,21 @@ export interface ByokApi {
   getPublicKey(): Promise<BYOKPublicKeyResponse>;
 }
 
+export interface PluginListAvailableInput {
+  signal?: AbortSignal;
+}
+
+export interface PluginListAvailableResponse {
+  plugins: Plugin[];
+  unavailable?: boolean;
+}
+
+export interface PluginApi {
+  listAvailable(
+    input?: PluginListAvailableInput,
+  ): Promise<PluginListAvailableResponse>;
+}
+
 export interface FileApi {
   uploadFile(input: UploadFileInput): Promise<FileRecordDTO>;
   getFile(
@@ -474,6 +490,7 @@ export interface NeoChatApiClient {
   byok: ByokApi;
   chat: ChatApi;
   files: FileApi;
+  plugins: PluginApi;
   imports?: BrowserImportApi;
   agents: AgentApi;
 }

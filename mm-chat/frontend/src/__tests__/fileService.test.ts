@@ -250,6 +250,7 @@ function createMockClient(
       },
       ...filesOverrides,
     },
+    plugins: options.plugins ?? defaultClient.plugins,
     agents: options.agents ?? createMockAgentApi(),
   };
 }

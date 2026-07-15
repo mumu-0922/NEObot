@@ -24,6 +24,7 @@ import { createServerByokApiShell } from "../services/api/client/server/byokApi"
 import { createServerProviderApiShell } from "../services/api/client/server/providerApi";
 import { createServerSettingsApiShell } from "../services/api/client/server/settingsApi";
 import { createServerFileApiShell } from "../services/api/client/server/fileApi";
+import { createServerPluginApiShell } from "../services/api/client/server/pluginApi";
 
 describe("Phase 11.1B API mode resolver", () => {
   it("defaults invalid or missing modes to local", () => {
@@ -522,6 +523,67 @@ describe("G2 server agent API adapter", () => {
       { url: "/mm-api/v1/agents?locale=zh", method: "GET" },
       { url: "/mm-api/v1/agents/agent%2F1?locale=ja", method: "GET" },
     ]);
+  });
+});
+
+describe("G4.2 server plugin registry API adapter", () => {
+  it("routes plugin list requests through the Go API", async () => {
+    const requests: Array<{ url: string; method?: string }> = [];
+    const plugins = createServerPluginApiShell(
+      createHttpClient({
+        baseUrl: "/mm-api",
+        fetchImpl: async (input, init) => {
+          requests.push({ url: String(input), method: init?.method });
+          return Response.json({
+            plugins: [
+              {
+                id: "example.com:weather",
+                title: "Weather",
+                description: "Weather plugin",
+                manifestUrl: "https://example.com/weather.json",
+                functions: [],
+              },
+            ],
+          });
+        },
+      }),
+    );
+
+    await expect(plugins.listAvailable()).resolves.toMatchObject({
+      plugins: [expect.objectContaining({ id: "example.com:weather" })],
+    });
+    expect(requests).toEqual([{ url: "/mm-api/v1/plugins", method: "GET" }]);
+  });
+
+  it("treats missing plugin registry routes as explicitly unavailable", async () => {
+    const plugins = createServerPluginApiShell(
+      createHttpClient({
+        baseUrl: "/mm-api",
+        fetchImpl: async () =>
+          Response.json(
+            { error: { code: "NOT_FOUND", message: "route not found" } },
+            { status: 404 },
+          ),
+      }),
+    );
+
+    await expect(plugins.listAvailable()).resolves.toEqual({
+      plugins: [],
+      unavailable: true,
+    });
+  });
+
+  it("rejects malformed successful plugin registry responses", async () => {
+    const plugins = createServerPluginApiShell(
+      createHttpClient({
+        baseUrl: "/mm-api",
+        fetchImpl: async () => Response.json({ plugins: "bad" }),
+      }),
+    );
+
+    await expect(plugins.listAvailable()).rejects.toMatchObject({
+      code: "INVALID_SERVER_RESPONSE",
+    });
   });
 });
 
