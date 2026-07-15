@@ -1038,8 +1038,8 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
   - [x] G7.4 Canonical IR to chunks and Postgres projection.
   - [ ] G7.5 Worker dispatch, rebuild, delete, and retry loop
         (`G7.5.1` readiness gate, `G7.5.2` job-context admission seam, and
-        `G7.5.3` Go parse job materialization binding done; purge binding and
-        real handler dispatch still gated).
+        `G7.5.3` Go parse job materialization binding, `G7.5.4` Go purge job
+        Generation binding done; real handler dispatch still gated).
   - [ ] G7.6 Private query and Go reauthorization.
   - [ ] G7.7 Strict/optional chat answer and basic citations.
   - [ ] G7.8 Live MinerU + Jina + Postgres smoke and operational proof.

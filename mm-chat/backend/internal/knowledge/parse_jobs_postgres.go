@@ -7,7 +7,7 @@ import (
 	"fmt"
 )
 
-const providerParseMaxAttempts = 3
+const ragProcessingMaxAttempts = 3
 
 type parseJobInsert struct {
 	JobID, CollectionID, DocumentID, VersionID, FileID string
@@ -145,7 +145,7 @@ INSERT INTO knowledge_document_materializations (
 		IndexGenerationID: generationID,
 		MaterializationID: input.MaterializationID,
 		LegacyUnbound:     false,
-		MaxAttempts:       providerParseMaxAttempts,
+		MaxAttempts:       ragProcessingMaxAttempts,
 	}, nil
 }
 

@@ -911,7 +911,7 @@ FROM knowledge_processing_jobs WHERE id=$1
 		t.Fatal(err)
 	}
 	if legacyUnbound || jobGenerationID != indexGenerationID ||
-		jobMaterializationID != materializationID || maxAttempts != providerParseMaxAttempts {
+		jobMaterializationID != materializationID || maxAttempts != ragProcessingMaxAttempts {
 		t.Fatalf("job binding = legacy:%v generation:%s materialization:%s attempts:%d",
 			legacyUnbound, jobGenerationID, jobMaterializationID, maxAttempts)
 	}
@@ -956,6 +956,51 @@ SELECT id FROM knowledge_claim_processing_job($1, $2, 30, ARRAY['parse']::text[]
 	}
 	if claimedJobID != jobID {
 		t.Fatalf("claimed job = %s, want %s", claimedJobID, jobID)
+	}
+	if err := service.DeleteDocument(ownerCtx, documentID); err != nil {
+		t.Fatalf("delete generation-bound document: %v", err)
+	}
+	var purgeLegacyUnbound bool
+	var purgeGenerationID string
+	var purgeMaterializationID sql.NullString
+	var purgeMaxAttempts int
+	if err := db.QueryRowContext(ctx, `
+SELECT legacy_projection_unbound,index_generation_id,materialization_id,max_attempts
+FROM knowledge_processing_jobs
+WHERE document_id=$1 AND operation='purge'
+`, documentID).Scan(
+		&purgeLegacyUnbound, &purgeGenerationID,
+		&purgeMaterializationID, &purgeMaxAttempts,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if purgeLegacyUnbound || purgeGenerationID != indexGenerationID ||
+		purgeMaterializationID.Valid || purgeMaxAttempts != ragProcessingMaxAttempts {
+		t.Fatalf("purge binding = legacy:%v generation:%s materialization:%v attempts:%d",
+			purgeLegacyUnbound, purgeGenerationID, purgeMaterializationID, purgeMaxAttempts)
+	}
+	var purgeEventGenerationID string
+	var purgeEventLegacyUnbound bool
+	if err := db.QueryRowContext(ctx, `
+SELECT payload->>'indexGenerationId',
+  (payload->>'legacyProjectionUnbound')::boolean
+FROM knowledge_outbox
+WHERE aggregate_key=$1 AND event_type='knowledge.document.tombstoned'
+`, documentID).Scan(&purgeEventGenerationID, &purgeEventLegacyUnbound); err != nil {
+		t.Fatal(err)
+	}
+	if purgeEventLegacyUnbound || purgeEventGenerationID != indexGenerationID {
+		t.Fatalf("purge event binding = legacy:%v generation:%s",
+			purgeEventLegacyUnbound, purgeEventGenerationID)
+	}
+	var claimedPurgeID string
+	if err := db.QueryRowContext(ctx, `
+SELECT id FROM knowledge_claim_processing_job($1, $2, 30, ARRAY['purge']::text[])
+`, ownerID, "53000000-0000-4000-8000-000000000011").Scan(&claimedPurgeID); err != nil {
+		t.Fatal(err)
+	}
+	if claimedPurgeID == "" {
+		t.Fatal("claimed purge job is empty")
 	}
 }
 

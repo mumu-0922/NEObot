@@ -583,3 +583,58 @@ Go backend full package tests passed.
 Next G7.5 slice: bind delete/tombstone purge jobs to Generation/Purge authority
 and then attach admitted Python handler skeletons to the now Generation-bound
 parse job context.
+
+## 2026-07-15 — G7.5.4 Go Purge Job Generation Binding
+
+Objective: make document tombstone/delete purge work claimable by the Python
+worker when a real active Corpus Index Generation exists, while preserving the
+legacy fallback before first Generation promotion.
+
+Implemented behavior:
+
+- `DeleteDocument` now resolves purge projection authority per tombstoned
+  version:
+  - no active Generation → keep `legacy_projection_unbound=true`;
+  - active Generation → insert purge job with `legacy_projection_unbound=false`,
+    `index_generation_id`, optional `materialization_id`, and `max_attempts=3`.
+- If the active document projection head points at a materialization for the
+  deleted version, the purge job and tombstone event carry that
+  `materialization_id`; otherwise the purge job is Generation-bound with a null
+  materialization, matching the existing DB shape for document-scope purge.
+- Tombstone outbox payloads now include `legacyProjectionUnbound` and, when
+  bound, `indexGenerationId` / `materializationId`.
+- The active-Generation repository regression now also deletes the document and
+  asserts the resulting purge job is Generation-bound and claimable via
+  `knowledge_claim_processing_job(..., ARRAY['purge'])`.
+
+Touched files:
+
+```text
+backend/internal/knowledge/deletion_postgres.go
+backend/internal/knowledge/parse_jobs_postgres.go
+backend/internal/knowledge/repository_postgres_test.go
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification run during the slice:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build \
+  go test -count=1 ./internal/knowledge
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./...
+```
+
+Result:
+
+```text
+Go knowledge package compile/unit pass. Postgres integration rows are present
+but skipped unless MM_CHAT_TEST_DATABASE_URL is configured, matching existing
+repository test behavior.
+Go backend full package tests passed.
+```
+
+Next G7.5 slice: attach admitted Python handler skeletons to the
+Generation-bound parse and purge contexts, still without enabling real
+MinerU/Jina provider calls.

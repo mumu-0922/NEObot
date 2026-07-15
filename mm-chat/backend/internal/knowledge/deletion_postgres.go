@@ -16,6 +16,9 @@ type tombstoneVersion struct {
 	SourceVersion                   int64
 	VisibilityEpoch                 int64
 	PurgeJobID                      string
+	IndexGenerationID               string
+	MaterializationID               string
+	LegacyProjectionUnbound         bool
 }
 
 type cancelledJob struct {
@@ -130,19 +133,30 @@ WHERE id=$1
 		requestHash := sha256.Sum256([]byte(
 			input.DocumentID + "\n" + versions[index].ID + "\n" + fmt.Sprint(newVisibilityEpoch),
 		))
+		binding, err := resolvePurgeProjectionBinding(
+			ctx, tx, capabilities, input.DocumentID, versions[index].ID,
+		)
+		if err != nil {
+			return err
+		}
+		versions[index].IndexGenerationID = binding.IndexGenerationID
+		versions[index].MaterializationID = binding.MaterializationID
+		versions[index].LegacyProjectionUnbound = binding.LegacyUnbound
 		if capabilities.legacyProjectionUnbound {
 			_, err = tx.ExecContext(ctx, `
 INSERT INTO knowledge_processing_jobs (
  id,collection_id,document_id,document_version_id,file_id,stage,operation,
  collection_acl_revision,collection_visibility_epoch,collection_processing_revision,
  document_visibility_epoch,requested_by_user_id,idempotency_scope,idempotency_key,request_hash,
- legacy_projection_unbound
-) VALUES ($1,$2,$3,$4,$5,'purge','purge',$6,$7,$8,$9,$10,$11,$12,$13,true)
+ max_attempts,index_generation_id,materialization_id,legacy_projection_unbound
+) VALUES ($1,$2,$3,$4,$5,'purge','purge',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
 `, versions[index].PurgeJobID, collectionID, input.DocumentID, versions[index].ID,
 				versions[index].FileID, collection.ACLRevision, collection.VisibilityEpoch,
 				collection.ProcessingRevision, newVisibilityEpoch, input.ActorUserID,
 				"document:"+input.DocumentID+":version:"+versions[index].ID+":purge",
-				fmt.Sprintf("visibility:%d", newVisibilityEpoch), hex.EncodeToString(requestHash[:]))
+				fmt.Sprintf("visibility:%d", newVisibilityEpoch), hex.EncodeToString(requestHash[:]),
+				binding.MaxAttempts, nullableString(binding.IndexGenerationID),
+				nullableString(binding.MaterializationID), binding.LegacyUnbound)
 		} else {
 			_, err = tx.ExecContext(ctx, `
 INSERT INTO knowledge_processing_jobs (
@@ -220,6 +234,51 @@ WHERE document_id=$1 AND status IN ('pending','processing') ORDER BY id FOR UPDA
 	return jobs, nil
 }
 
+type purgeProjectionBinding struct {
+	IndexGenerationID string
+	MaterializationID string
+	LegacyUnbound     bool
+	MaxAttempts       int
+}
+
+func resolvePurgeProjectionBinding(
+	ctx context.Context,
+	tx *sql.Tx,
+	capabilities runtimeSchemaCapabilities,
+	documentID string,
+	versionID string,
+) (purgeProjectionBinding, error) {
+	if !capabilities.legacyProjectionUnbound {
+		return purgeProjectionBinding{LegacyUnbound: false, MaxAttempts: 8}, nil
+	}
+	var generationID string
+	var materializationID sql.NullString
+	err := tx.QueryRowContext(ctx, `
+SELECT corpus.active_index_generation_id, materialization.id
+FROM knowledge_corpus_projection_head corpus
+LEFT JOIN knowledge_document_projection_heads head
+  ON head.index_generation_id = corpus.active_index_generation_id
+  AND head.document_id = $1
+LEFT JOIN knowledge_document_materializations materialization
+  ON materialization.id = head.active_materialization_id
+  AND materialization.document_version_id = $2
+WHERE corpus.singleton_id = 1 AND corpus.active_index_generation_id IS NOT NULL
+FOR UPDATE OF corpus
+`, documentID, versionID).Scan(&generationID, &materializationID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return purgeProjectionBinding{LegacyUnbound: true, MaxAttempts: 8}, nil
+	}
+	if err != nil {
+		return purgeProjectionBinding{}, fmt.Errorf("resolve purge projection binding: %w", err)
+	}
+	return purgeProjectionBinding{
+		IndexGenerationID: generationID,
+		MaterializationID: materializationID.String,
+		LegacyUnbound:     false,
+		MaxAttempts:       ragProcessingMaxAttempts,
+	}, nil
+}
+
 func (r *PostgresRepository) insertDocumentDeletionOutbox(
 	ctx context.Context,
 	tx *sql.Tx,
@@ -242,17 +301,25 @@ func (r *PostgresRepository) insertDocumentDeletionOutbox(
 		}
 	}
 	for _, version := range versions {
-		if err := r.insertKnowledgeEvent(ctx, tx, documentID, "knowledge.document.tombstoned", map[string]any{
+		payload := map[string]any{
 			"schemaVersion": 1, "collectionId": collectionID, "documentId": documentID,
 			"documentVersionId": version.ID, "sourceVersion": version.SourceVersion,
 			"fileId": version.FileID, "contentHash": version.ContentHash,
 			"purgeJobId":                   version.PurgeJobID,
+			"legacyProjectionUnbound":      version.LegacyProjectionUnbound,
 			"documentVisibilityEpoch":      documentVisibilityEpoch,
 			"versionVisibilityEpoch":       version.VisibilityEpoch,
 			"collectionAclRevision":        collection.ACLRevision,
 			"collectionVisibilityEpoch":    collection.VisibilityEpoch,
 			"collectionProcessingRevision": collection.ProcessingRevision,
-		}); err != nil {
+		}
+		if version.IndexGenerationID != "" {
+			payload["indexGenerationId"] = version.IndexGenerationID
+		}
+		if version.MaterializationID != "" {
+			payload["materializationId"] = version.MaterializationID
+		}
+		if err := r.insertKnowledgeEvent(ctx, tx, documentID, "knowledge.document.tombstoned", payload); err != nil {
 			return err
 		}
 	}

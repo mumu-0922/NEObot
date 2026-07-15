@@ -268,9 +268,20 @@ G7.5.3 completed on 2026-07-15:
   fallback so non-RAG document management remains usable until the first
   Generation is promoted.
 
+G7.5.4 completed on 2026-07-15:
+
+- Go document tombstone/delete now binds purge jobs to the active Corpus Index
+  Generation when one exists.
+- Bound purge jobs are written with `legacy_projection_unbound=false`, pinned
+  `index_generation_id`, optional `materialization_id` when the active document
+  projection head points at the deleted version, and the retry budget of `3`.
+- Tombstone outbox payloads now include `legacyProjectionUnbound` and, when
+  bound, `indexGenerationId` / `materializationId`.
+- If no active Generation exists, delete keeps the previous legacy purge job
+  fallback.
+
 Remaining G7.5 work:
 
-- Bind delete/tombstone purge jobs to Generation/Purge authority.
 - Connect admitted Python parse / passage-embedding / purge handlers to the
   Generation-bound Go jobs and outbox payloads.
 - Implement index, reprocess, tombstone purge, rebuild, retry, and DLQ behavior.
