@@ -977,7 +977,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
     - [x] G6.5a Admission audit metadata: voice/image/code fail-closed services record sanitized job events without prompt/code/text/audio payloads.
     - [x] G6.5b Shared job rate-limit and cancellation gates: fail-closed `/v1/jobs/{jobId}/cancel` is registered and covered by global rate-limit middleware.
     - [ ] G6.5c Real voice/image executors with output storage and provider smoke.
-    - [ ] G6.5d Code execution sandbox contract before any real executor is enabled.
+    - [x] G6.5d Code execution sandbox contract before any real executor is enabled: documented in `docs/contracts/code-execution-sandbox-contract.md`; runtime remains disabled.
 - [ ] G7 Knowledge, Document Parsing, RAG, and Citations: pass Phase 15 runtime
       parser/index/query/citation gates.
 - [ ] G8 Teams and Knowledge UI Wiring: connect existing Go control-plane APIs

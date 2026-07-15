@@ -2148,3 +2148,46 @@ G6.5d Code execution sandbox contract before any real executor is enabled
 Next slice: G6.5c should start with real voice/image executor design or a
 storage-only result artifact contract; code execution remains blocked until the
 sandbox contract is explicit.
+
+## 2026-07-15 — G6.5d Code Execution Sandbox Contract Completed
+
+Objective: define the hard gate for real code execution before any runtime
+executor is enabled. This is a contract-only slice; the server route remains
+fail-closed and `codeExecution` capability remains disabled.
+
+Completed scope:
+
+- added `docs/contracts/code-execution-sandbox-contract.md` with the required
+  seven-section code-spec structure;
+- defined request/response signatures, sandbox boundaries, allowed audit fields,
+  validation/error matrix, good/base/bad cases, required tests, and wrong vs
+  correct execution flow;
+- documented that model-simulated execution is not equivalent to sandboxed code
+  execution;
+- updated contract index and G6 progress ledgers.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/docs/contracts/code-execution-sandbox-contract.md
+mm-chat/docs/contracts/README.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+git diff --check -- mm-chat                                          # passed
+```
+
+Residual G6 blockers:
+
+```text
+G6.5c Real voice/image executors with output storage and provider smoke
+```
+
+Next slice: either implement storage-first voice/image result artifacts or defer
+real provider execution until credentials and smoke target are available.

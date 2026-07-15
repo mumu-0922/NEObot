@@ -1418,6 +1418,9 @@ Rules:
 - G6.5b registers fail-closed `POST /v1/jobs/{jobId}/cancel` and keeps job
   control routes behind the same global rate-limit middleware as other
   non-exempt APIs.
+- G6.5d defines the hard gate for real code execution in
+  `docs/contracts/code-execution-sandbox-contract.md`; `codeExecution` remains
+  disabled until that sandbox/storage/audit/cancel test plan is implemented.
 - `plugins` capability remains `false` for the first server MVP; `pluginApi` exists to avoid later component-level route coupling.
 
 ## 14. HTTP Client Rules
