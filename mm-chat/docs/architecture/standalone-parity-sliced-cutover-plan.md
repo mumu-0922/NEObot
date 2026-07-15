@@ -364,6 +364,11 @@ Slice checklist:
 - [x] G6.3 Go job admission contracts for image generation: register `/v1/images/generations` as a strict `modelRef + prompt` validating fail-closed admission route returning `IMAGE_JOBS_UNAVAILABLE`.
 - [x] G6.4 Go job admission contracts for code execution: register `/v1/code/executions` as a strict `modelRef + language + code` validating fail-closed admission route returning `CODE_EXECUTION_UNAVAILABLE`.
 - [ ] G6.5 Audit/rate-limit/cancel metadata and enabled-provider smoke.
+  - [x] G6.5a Admission audit metadata: voice/image/code fail-closed services
+        record sanitized job events with kind/status/user/provider/model/language/reason and no prompt/code/text/audio payloads.
+  - [ ] G6.5b Shared job rate-limit and cancellation gates.
+  - [ ] G6.5c Real voice/image executors with output storage and provider smoke.
+  - [ ] G6.5d Code execution sandbox contract before any real executor is enabled.
 
 Targeted tests:
 
@@ -476,7 +481,7 @@ Targeted tests:
 | G3 Auth, Config, Provider Settings, BYOK | Complete | Server-auth/config/provider lifecycle verified                               |
 | G4 Plugin Final Ownership                | In progress | G4.1-G4.6a complete; audit metadata and browser/provider smoke remain         |
 | G5 Search/Web Enrichment                 | Paused   | Owner reopens, then server-owned search passes gates                         |
-| G6 Voice/Image/Code Jobs                 | In progress | G6.1-G6.4 admission complete; real executors/storage/audit remain             |
+| G6 Voice/Image/Code Jobs                 | In progress | G6.1-G6.5a complete; rate-limit/cancel/executors remain                       |
 | G7 Knowledge/RAG/Citations               | Pending  | Phase 15 runtime gates pass                                                  |
 | G8 Teams/Knowledge UI                    | Pending  | Go control plane wired to UI with isolation smoke                            |
 | G9 Data Authority/Route Removal          | Pending  | local production authority and replaced routes gone                          |

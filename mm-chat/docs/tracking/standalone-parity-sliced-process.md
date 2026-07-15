@@ -2026,3 +2026,68 @@ metadata, sandbox policy, and provider smoke
 
 Next slice: G6.5 executor/storage/audit design split; do not enable real code
 execution without an explicit sandbox contract.
+
+## 2026-07-15 — G6.5a Sanitized Job Admission Audit Completed
+
+Objective: add a shared audit metadata seam for voice, image-generation, and
+code-execution job admission without enabling real execution, storage writes,
+rate limits, cancellation, or provider smoke.
+
+Completed scope:
+
+- added `internal/jobaudit` with job kind/status constants, sanitized event DTOs,
+  recorder interface, recorder function adapter, user-id attachment from auth
+  context, and recorder-failure wrapping;
+- wired voice, image, and code fail-closed services to emit unavailable audit
+  events before returning their existing unavailable errors;
+- audit events include only `kind`, `status`, `userId`, `providerId`, `modelId`,
+  `language`, and `reason`;
+- audit events intentionally do not contain prompt text, submitted source code,
+  synthesis text, or audio bytes;
+- audit sink failure maps to `503 JOB_AUDIT_UNAVAILABLE`, preserving fail-closed
+  behavior for future enabled executors.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/backend/internal/jobaudit/jobaudit.go
+mm-chat/backend/internal/jobaudit/jobaudit_test.go
+mm-chat/backend/internal/voicejobs/service.go
+mm-chat/backend/internal/voicejobs/service_test.go
+mm-chat/backend/internal/voicejobs/handler.go
+mm-chat/backend/internal/voicejobs/handler_test.go
+mm-chat/backend/internal/imagejobs/service.go
+mm-chat/backend/internal/imagejobs/service_test.go
+mm-chat/backend/internal/imagejobs/handler.go
+mm-chat/backend/internal/imagejobs/handler_test.go
+mm-chat/backend/internal/codejobs/service.go
+mm-chat/backend/internal/codejobs/service_test.go
+mm-chat/backend/internal/codejobs/handler.go
+mm-chat/backend/internal/codejobs/handler_test.go
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/inventory/frontend-call-sites.md
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test \
+  ./internal/jobaudit ./internal/codejobs ./internal/imagejobs \
+  ./internal/voicejobs ./internal/httpserver                         # passed
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./...    # passed
+git diff --check -- mm-chat                                          # passed
+```
+
+Residual G6 blockers:
+
+```text
+G6.5b Shared job rate-limit and cancellation gates
+G6.5c Real voice/image executors with output storage and provider smoke
+G6.5d Code execution sandbox contract before any real executor is enabled
+```
+
+Next slice: G6.5b shared job rate-limit/cancel gate, still without enabling
+real executors.

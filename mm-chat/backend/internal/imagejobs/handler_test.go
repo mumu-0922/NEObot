@@ -1,11 +1,15 @@
 package imagejobs
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"neo-chat/mm-chat/backend/internal/jobaudit"
 )
 
 func TestHandlerGenerateFailsClosedAfterAdmission(t *testing.T) {
@@ -52,6 +56,18 @@ func TestHandlerGenerateValidatesRequestBeforeAdmission(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHandlerReturns503WhenAuditUnavailable(t *testing.T) {
+	handler := NewHandler(NewService(WithAuditRecorder(jobaudit.RecorderFunc(func(context.Context, jobaudit.Event) error {
+		return errors.New("audit sink down")
+	}))))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, generationsPath, strings.NewReader(`{"modelRef":{"providerId":"openai","modelId":"gpt-image-1"},"prompt":"paint"}`))
+
+	handler.ServeHTTP(rec, req)
+
+	assertError(t, rec, http.StatusServiceUnavailable, "JOB_AUDIT_UNAVAILABLE")
 }
 
 func TestHandlerRequiresPost(t *testing.T) {

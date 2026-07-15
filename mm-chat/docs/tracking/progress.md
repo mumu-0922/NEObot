@@ -974,6 +974,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
   - [x] G6.3 Image generation Go job admission: Go registers a strict `modelRef + prompt` fail-closed `/v1/images/generations` route.
   - [x] G6.4 Code execution Go job admission: Go registers a strict `modelRef + language + code` fail-closed `/v1/code/executions` route.
   - [ ] G6.5 Job audit/rate-limit/cancel metadata and provider smoke.
+    - [x] G6.5a Admission audit metadata: voice/image/code fail-closed services record sanitized job events without prompt/code/text/audio payloads.
+    - [ ] G6.5b Shared job rate-limit and cancellation gates.
+    - [ ] G6.5c Real voice/image executors with output storage and provider smoke.
+    - [ ] G6.5d Code execution sandbox contract before any real executor is enabled.
 - [ ] G7 Knowledge, Document Parsing, RAG, and Citations: pass Phase 15 runtime
       parser/index/query/citation gates.
 - [ ] G8 Teams and Knowledge UI Wiring: connect existing Go control-plane APIs

@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"neo-chat/mm-chat/backend/internal/jobaudit"
 )
 
 const (
@@ -143,6 +145,8 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, destination any) error {
 
 func writeServiceError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, jobaudit.ErrAuditUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "JOB_AUDIT_UNAVAILABLE", "job audit is unavailable")
 	case errors.Is(err, ErrImageJobsUnavailable):
 		writeError(w, http.StatusNotImplemented, "IMAGE_JOBS_UNAVAILABLE", "image generation jobs are not configured")
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):

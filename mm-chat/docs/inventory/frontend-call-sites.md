@@ -126,7 +126,7 @@ Recommended implementation order after this inventory:
 4. Wrap OPFS helpers as `local.fileApi` and replace direct display resolvers gradually.
 5. Add `server` mode HTTP adapter for `/v1/config`, `/health`, and provider model listing smoke tests.
 6. Add server chat CRUD/SSE only after the local adapter passes parity tests.
-7. Defer plugin, RAG, doc parse, voice, image generation, and code execution behind disabled capabilities; G6.1 now enforces this for server-mode voice/image/code service calls.
+7. Defer plugin, RAG, doc parse, voice, image generation, and code execution behind disabled capabilities; G6.1 now enforces this for server-mode voice/image/code service calls, and G6.5a audits only sanitized server admission metadata.
 
 ## Risks and Guardrails
 

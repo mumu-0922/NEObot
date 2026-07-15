@@ -1,11 +1,15 @@
 package codejobs
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"neo-chat/mm-chat/backend/internal/jobaudit"
 )
 
 func TestHandlerExecuteFailsClosedAfterAdmission(t *testing.T) {
@@ -66,6 +70,18 @@ func TestHandlerExecuteValidatesRequestBeforeAdmission(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHandlerReturns503WhenAuditUnavailable(t *testing.T) {
+	handler := NewHandler(NewService(WithAuditRecorder(jobaudit.RecorderFunc(func(context.Context, jobaudit.Event) error {
+		return errors.New("audit sink down")
+	}))))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, executionsPath, strings.NewReader(`{"modelRef":{"providerId":"gemini","modelId":"gemini-code"},"code":"print(1)"}`))
+
+	handler.ServeHTTP(rec, req)
+
+	assertError(t, rec, http.StatusServiceUnavailable, "JOB_AUDIT_UNAVAILABLE")
 }
 
 func TestHandlerRequiresPost(t *testing.T) {

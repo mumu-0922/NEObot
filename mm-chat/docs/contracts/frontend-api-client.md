@@ -1410,6 +1410,10 @@ Rules:
 - G6.4 registers Go `/v1/code/executions` admission with `modelRef + language +
   code` only; `codeExecution` stays disabled until a real sandbox/executor and
   audit controls exist.
+- G6.5a records only sanitized admission audit fields for fail-closed
+  voice/image/code services: kind, status, userId, providerId, modelId,
+  language, and reason. Prompt text, source code, synthesis text, and audio
+  bytes must not enter audit events.
 - `plugins` capability remains `false` for the first server MVP; `pluginApi` exists to avoid later component-level route coupling.
 
 ## 14. HTTP Client Rules

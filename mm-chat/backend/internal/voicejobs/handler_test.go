@@ -2,12 +2,16 @@ package voicejobs
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"neo-chat/mm-chat/backend/internal/jobaudit"
 )
 
 func TestHandlerSynthesizeFailsClosedAfterAdmission(t *testing.T) {
@@ -101,6 +105,22 @@ func TestHandlerTranscribeValidatesRequestBeforeAdmission(t *testing.T) {
 
 		assertError(t, rec, http.StatusBadRequest, "UNSUPPORTED_VOICE_PROVIDER")
 	})
+}
+
+func TestHandlerReturns503WhenAuditUnavailable(t *testing.T) {
+	handler := NewHandler(NewService(WithAuditRecorder(jobaudit.RecorderFunc(func(context.Context, jobaudit.Event) error {
+		return errors.New("audit sink down")
+	}))))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		synthesizePath,
+		strings.NewReader(`{"text":"hello","provider":"default"}`),
+	)
+
+	handler.ServeHTTP(rec, req)
+
+	assertError(t, rec, http.StatusServiceUnavailable, "JOB_AUDIT_UNAVAILABLE")
 }
 
 func TestHandlerRequiresPost(t *testing.T) {
