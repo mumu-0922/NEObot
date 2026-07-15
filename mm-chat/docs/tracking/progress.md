@@ -1027,6 +1027,20 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           text, exact target, and run id before any live voice/image smoke.
 - [ ] G7 Knowledge, Document Parsing, RAG, and Citations: pass Phase 15 runtime
       parser/index/query/citation gates.
+  - [x] G7.1 Decision lock and runtime inventory plan: created
+        `docs/architecture/g7-rag-citation-cutover-plan.md` and
+        `docs/tracking/g7-rag-citation-process.md` after owner grill; locked
+        real MinerU + Jina + Postgres profile, admin env/secret credentials,
+        selected-collection queries, strict refusal, auto-indexing, deletion
+        invisibility, retry budget, and G9 legacy-route handoff.
+  - [ ] G7.2 Admin provider config and fail-closed readiness.
+  - [ ] G7.3 Provider-backed parser/index profile gate.
+  - [ ] G7.4 Canonical IR to chunks and Postgres projection.
+  - [ ] G7.5 Worker dispatch, rebuild, delete, and retry loop.
+  - [ ] G7.6 Private query and Go reauthorization.
+  - [ ] G7.7 Strict/optional chat answer and basic citations.
+  - [ ] G7.8 Live MinerU + Jina + Postgres smoke and operational proof.
+  - [ ] G7.9 G8/G9 handoff and G7 closure checklist.
 - [ ] G8 Teams and Knowledge UI Wiring: connect existing Go control-plane APIs
       to the current frontend theme.
 - [ ] G9 Data Authority and Legacy Route Removal: remove production local-mode

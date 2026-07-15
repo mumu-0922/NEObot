@@ -2889,3 +2889,20 @@ Validation target:
 ```text
 cd mm-chat/frontend && corepack pnpm vitest run src/__tests__/byokServices.test.ts
 ```
+
+## 2026-07-15 — G7 Dedicated Plan and Process Started
+
+G7 now uses a dedicated plan and process log so the RAG/citation cutover can be
+executed slice-by-slice without mixing with prior G1-G6 migration history.
+
+New authoritative G7 files:
+
+```text
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+```
+
+Owner-locked headline: real MinerU + Jina + Postgres provider loop, Jina 1024,
+all PDF classes, admin env/Docker-secret provider keys for automatic indexing,
+selected-chat Knowledge query scope, strict refusal for unknowns, basic citation
+cards first, and G9-owned legacy Next route deletion.

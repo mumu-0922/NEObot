@@ -428,23 +428,39 @@ Targeted tests:
 
 ### G7 — Knowledge, Document Parsing, RAG, and Citations
 
-Objective: make server RAG production-visible only after Phase 15 gates pass.
+Objective: make server RAG production-visible with the owner-locked real
+provider profile in
+[`g7-rag-citation-cutover-plan.md`](./g7-rag-citation-cutover-plan.md).
 
 Scope:
 
-- `/api/doc-parse`;
-- `/api/doc-parse/jobs/{id}`;
-- `/api/rag/upsert`;
-- `/api/rag/query`;
-- `/api/rag/delete`;
-- `/api/chat/rag-queries`;
+- Go-owned replacement surfaces for current `mm-chat` legacy Next
+  `/api/doc-parse`, `/api/rag/*`, and `/api/chat/rag-queries` routes;
 - Knowledge selection DTOs in chat;
-- private Python indexing/query services;
-- source reauthorization and citation minting;
-- parser artifacts and reproducible reindexing.
+- private Python indexing/query services promoted from dark-run to real
+  MinerU + Jina + Postgres work;
+- Go source reauthorization and citation minting;
+- parser artifacts, Postgres projections, tombstones, rebuilds, and
+  reproducible reindexing.
+
+Locked standalone profile:
+
+- provider loop: MinerU parser, Jina 1024-dimensional embeddings, Jina rerank,
+  and Postgres pgvector/lexical/exact projection;
+- PDF scope: all PDF classes in the first round, including scanned and complex
+  formula/table PDFs;
+- credentials: administrator-owned backend env/Docker secrets first; admin web
+  key configuration is deferred;
+- indexing trigger: upload/bind auto-enqueues background indexing;
+- query scope: only Knowledge collections selected/enabled in the current chat;
+- answer policy: Strict Knowledge refuses unknowns; normal chat may degrade only
+  with explicit no-Knowledge-evidence metadata;
+- citation UI: basic marker/card first; rich PDF highlight remains deferred;
+- legacy route strategy: keep `mm-chat` Next RAG/doc-parse routes until G9.
 
 Supporting detailed plans remain authoritative for internals:
 
+- `g7-rag-citation-cutover-plan.md`;
 - `phase-15-1-knowledge-control-plane-plan.md`;
 - `phase-15-1c-team-services-plan.md`;
 - `phase-15-1d-collection-document-consent-plan.md`;
@@ -452,6 +468,18 @@ Supporting detailed plans remain authoritative for internals:
 - `phase-15-2b-durable-consumer-plan.md`;
 - `phase-15-2c-generation-bound-indexing-plan.md`;
 - `phase-15-2c-offline-parser-canonical-ir-plan.md`.
+
+Slice checklist:
+
+- [x] G7.1 Decision lock, runtime inventory plan, and dedicated process log.
+- [ ] G7.2 Admin provider config and fail-closed readiness.
+- [ ] G7.3 Provider-backed parser/index profile gate.
+- [ ] G7.4 Canonical IR to chunks and Postgres projection.
+- [ ] G7.5 Worker dispatch, rebuild, delete, and retry loop.
+- [ ] G7.6 Private query and Go reauthorization.
+- [ ] G7.7 Strict/optional chat answer and basic citations.
+- [ ] G7.8 Live MinerU + Jina + Postgres smoke and operational proof.
+- [ ] G7.9 G8/G9 handoff and G7 closure checklist.
 
 Targeted tests:
 
