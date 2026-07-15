@@ -237,6 +237,7 @@ function createMockClient(
     settings: options.settings ?? defaultClient.settings,
     providers: options.providers ?? defaultClient.providers,
     byok: options.byok ?? defaultClient.byok,
+    images: options.images ?? defaultClient.images,
     chat: createMockChatApi(),
     files: {
       async uploadFile() {

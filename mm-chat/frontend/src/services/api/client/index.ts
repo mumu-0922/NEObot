@@ -3,6 +3,7 @@ import { createLocalAuthApiShell } from "./local/authApi";
 import { createLocalByokApiShell } from "./local/byokApi";
 import { createLocalChatApiShell } from "./local/chatApi";
 import { createLocalFileApiShell } from "./local/fileApi";
+import { createLocalImageGenerationApiShell } from "./local/imageApi";
 import { createLocalImportApiShell } from "./local/importApi";
 import { createLocalPluginApiShell } from "./local/pluginApi";
 import { createLocalProviderApiShell } from "./local/providerApi";
@@ -13,6 +14,7 @@ import { createServerAuthApiShell } from "./server/authApi";
 import { createServerByokApiShell } from "./server/byokApi";
 import { createServerChatApiShell } from "./server/chatApi";
 import { createServerFileApiShell } from "./server/fileApi";
+import { createServerImageGenerationApiShell } from "./server/imageApi";
 import { createServerImportApiShell } from "./server/importApi";
 import { createServerPluginApiShell } from "./server/pluginApi";
 import { createServerProviderApiShell } from "./server/providerApi";
@@ -34,6 +36,9 @@ export function createNeoChatApiClient(
   const files = serverHttpClient
     ? createServerFileApiShell(serverHttpClient)
     : createLocalFileApiShell();
+  const images = serverHttpClient
+    ? createServerImageGenerationApiShell(serverHttpClient)
+    : createLocalImageGenerationApiShell();
   const imports = serverHttpClient
     ? createServerImportApiShell(serverHttpClient)
     : createLocalImportApiShell();
@@ -67,11 +72,13 @@ export function createNeoChatApiClient(
       auth: serverEnabled,
       imports: serverEnabled,
       plugins: serverEnabled,
+      imageGeneration: serverEnabled,
     },
     auth,
     settings,
     providers,
     byok,
+    images,
     chat,
     files,
     plugins,

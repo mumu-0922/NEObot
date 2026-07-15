@@ -2585,3 +2585,59 @@ Residual blockers:
 Frontend imageGeneration adapter/capability reopen remains separate.
 G6.5c.2b Real provider-backed voice executor and authorized configured-provider smoke remains open.
 ```
+
+## 2026-07-15 — G6.5c.3d Frontend Server-Mode Image Adapter and Capability Reopen
+
+Objective: reopen the server-mode image generation UI path only after the Go
+route, real executor, artifact storage, and live smoke gates were proven.
+
+Completed scope:
+
+- added local/server `ImageGenerationApi` adapters under the frontend API-client
+  boundary;
+- enabled `imageGeneration` only when `createNeoChatApiClient()` is configured
+  for server mode, while keeping `voice` and `codeExecution` disabled;
+- changed `generateImage()` so server mode posts to Go
+  `/v1/images/generations` instead of falling through to
+  `/api/chat/generate-image`;
+- mapped returned image artifact metadata to server-backed image attachments
+  with bytes fetched through `/v1/files/{fileId}/content`;
+- kept local mode on the transitional Next `/api/chat/generate-image` route.
+
+Changed surfaces:
+
+```text
+mm-chat/frontend/src/services/api/client/types.ts
+mm-chat/frontend/src/services/api/client/index.ts
+mm-chat/frontend/src/services/api/client/local/imageApi.ts
+mm-chat/frontend/src/services/api/client/server/imageApi.ts
+mm-chat/frontend/src/services/api/chatService.ts
+mm-chat/frontend/src/__tests__/apiClientScaffold.test.ts
+mm-chat/frontend/src/__tests__/byokServices.test.ts
+mm-chat/frontend/src/__tests__/chatCrudService.test.ts
+mm-chat/frontend/src/__tests__/chatStreamService.test.ts
+mm-chat/frontend/src/__tests__/fileService.test.ts
+mm-chat/frontend/src/__tests__/skillInvocationWiring.test.ts
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/frontend && corepack pnpm vitest run src/__tests__/apiClientScaffold.test.ts src/__tests__/byokServices.test.ts # passed
+cd mm-chat/frontend && corepack pnpm format:check # passed
+cd mm-chat/frontend && corepack pnpm lint # passed
+cd mm-chat/frontend && corepack pnpm typecheck # passed
+cd mm-chat/frontend && corepack pnpm vitest run src/__tests__/apiClientScaffold.test.ts src/__tests__/byokServices.test.ts src/__tests__/chatCrudService.test.ts src/__tests__/chatStreamService.test.ts src/__tests__/fileService.test.ts src/__tests__/skillInvocationWiring.test.ts # passed
+cd mm-chat/frontend && corepack pnpm test # passed with sandbox escalation; ordinary sandbox blocks byok script child process with EPERM
+```
+
+Residual blockers:
+
+```text
+G6.5c.2b Real provider-backed voice executor and authorized configured-provider smoke remains open.
+Search/RAG, code execution, final local-mode removal, and clean-copy deletion gates remain separate slices.
+```

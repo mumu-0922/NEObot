@@ -20,10 +20,13 @@ import { parseModelString } from "@/lib/utils/model";
 import { normalizeSessionTitle } from "@/lib/chat/entities";
 import {
   createNeoChatApiClient,
+  joinUrl,
   unsupportedFeature,
   type ApiCapabilities,
+  type GenerateImageResponse,
   type ModelRef,
 } from "@/services/api/client";
+import type { ServerBackedAttachment } from "@/lib/utils/serverAttachments";
 import { appendContextToChatInput } from "@/lib/utils/chatInput";
 import { appendDiagramRequestInstructions } from "../../lib/chat/diagramPrompt";
 import { appendHtmlVisualRequestInstructions } from "../../lib/chat/htmlVisualPrompt";
@@ -424,6 +427,21 @@ function modelRefFromTaskModel(
   };
 }
 
+function resolveServerJobModelRef(modelString: string): ModelRef {
+  const { providerId, modelName } = parseModelString(modelString);
+  const { providers } = useCoreSettingsStore.getState();
+  const provider = providerId
+    ? providers.find((candidate) => candidate.id === providerId)
+    : providers.find((candidate) => candidate.enabled);
+  const modelRef = modelRefFromTaskModel(provider?.id ?? providerId, modelName);
+
+  if (!modelRef) {
+    throw new Error("No provider found");
+  }
+
+  return modelRef;
+}
+
 export const generateRAGSearchQueries = async (
   userPrompt: string,
 ): Promise<string[]> => {
@@ -482,11 +500,25 @@ export const generateImage = async (
   modelString: string,
   prompt: string,
 ): Promise<{ images: Attachment[]; message: string }> => {
-  const unsupported = getServerModeUnsupportedJobError(
-    "image generation jobs",
-    "imageGeneration",
-  );
-  if (unsupported) throw unsupported;
+  const client = createNeoChatApiClient();
+  if (client.mode === "server") {
+    if (!client.capabilities.imageGeneration) {
+      throw unsupportedFeature("server image generation jobs");
+    }
+
+    const response = await client.images.generateImage({
+      modelRef: resolveServerJobModelRef(modelString),
+      prompt,
+      count: 1,
+    });
+    return {
+      images: mapGeneratedImageArtifactsToAttachments(
+        response,
+        client.config.baseUrl,
+      ),
+      message: response.message || "No images generated.",
+    };
+  }
 
   const { providerId, modelName } = parseModelString(modelString);
 
@@ -531,6 +563,45 @@ export const generateImage = async (
     throw error;
   }
 };
+
+function mapGeneratedImageArtifactsToAttachments(
+  response: GenerateImageResponse,
+  baseUrl: string,
+): Attachment[] {
+  return response.images.map((image, index): ServerBackedAttachment => {
+    const fileId = image.fileId.trim();
+    return {
+      id: fileId,
+      source: "server",
+      fileId,
+      fileName: generatedImageFileName(index, image.contentType),
+      mimeType: image.contentType,
+      size: image.size,
+      purpose: "image",
+      url: joinUrl(baseUrl, `/v1/files/${encodeURIComponent(fileId)}/content`),
+    };
+  });
+}
+
+function generatedImageFileName(index: number, contentType: string): string {
+  return `generated-${index + 1}.${imageExtensionFromContentType(contentType)}`;
+}
+
+function imageExtensionFromContentType(contentType: string): string {
+  const mime = contentType.toLowerCase().split(";")[0]?.trim();
+  switch (mime) {
+    case "image/jpeg":
+      return "jpg";
+    case "image/png":
+      return "png";
+    case "image/webp":
+      return "webp";
+    case "image/gif":
+      return "gif";
+    default:
+      return "bin";
+  }
+}
 
 // Export types
 export interface ModelInfo {

@@ -24,6 +24,7 @@ import { createServerByokApiShell } from "../services/api/client/server/byokApi"
 import { createServerProviderApiShell } from "../services/api/client/server/providerApi";
 import { createServerSettingsApiShell } from "../services/api/client/server/settingsApi";
 import { createServerFileApiShell } from "../services/api/client/server/fileApi";
+import { createServerImageGenerationApiShell } from "../services/api/client/server/imageApi";
 import { createServerPluginApiShell } from "../services/api/client/server/pluginApi";
 
 describe("Phase 11.1B API mode resolver", () => {
@@ -78,7 +79,7 @@ describe("Phase 11.1B API mode resolver", () => {
       files: true,
       auth: true,
       voice: false,
-      imageGeneration: false,
+      imageGeneration: true,
       codeExecution: false,
     });
   });
@@ -157,7 +158,7 @@ describe("Phase 11.1B API mode resolver", () => {
       files: true,
       auth: true,
       voice: false,
-      imageGeneration: false,
+      imageGeneration: true,
       codeExecution: false,
     });
   });
@@ -982,6 +983,108 @@ describe("Phase 11.4A server file API adapter", () => {
         method: "DELETE",
       },
     ]);
+  });
+});
+
+describe("G6.5c.3d server image generation API adapter", () => {
+  it("keeps local image generation adapter calls fail-closed", async () => {
+    const client = createNeoChatApiClient();
+
+    await expect(
+      client.images.generateImage({
+        modelRef: { providerId: "openai_compatible", modelId: "gpt-image-2" },
+        prompt: "paint a quiet UI",
+      }),
+    ).rejects.toMatchObject({ code: "FEATURE_NOT_IMPLEMENTED" });
+    expect(client.capabilities.imageGeneration).toBe(false);
+  });
+
+  it("routes server image generation requests through Go", async () => {
+    const requests: Array<{ url: string; method?: string; body?: unknown }> =
+      [];
+    const images = createServerImageGenerationApiShell(
+      createHttpClient({
+        baseUrl: "/mm-api",
+        fetchImpl: async (input, init) => {
+          requests.push({
+            url: String(input),
+            method: init?.method,
+            body: init?.body ? JSON.parse(String(init.body)) : undefined,
+          });
+          return Response.json({
+            images: [
+              {
+                fileId: "33333333-3333-4333-8333-333333333333",
+                purpose: "image",
+                contentType: "image/png",
+                size: 5,
+              },
+            ],
+            message: "stored",
+          });
+        },
+      }),
+    );
+
+    await expect(
+      images.generateImage({
+        modelRef: { providerId: "openai_compatible", modelId: "gpt-image-2" },
+        prompt: "paint a quiet UI",
+        size: "1024x1024",
+        count: 1,
+      }),
+    ).resolves.toEqual({
+      images: [
+        {
+          fileId: "33333333-3333-4333-8333-333333333333",
+          purpose: "image",
+          contentType: "image/png",
+          size: 5,
+        },
+      ],
+      message: "stored",
+    });
+    expect(requests).toEqual([
+      {
+        url: "/mm-api/v1/images/generations",
+        method: "POST",
+        body: {
+          modelRef: {
+            providerId: "openai_compatible",
+            modelId: "gpt-image-2",
+          },
+          prompt: "paint a quiet UI",
+          size: "1024x1024",
+          count: 1,
+        },
+      },
+    ]);
+  });
+
+  it("rejects malformed server image metadata", async () => {
+    const images = createServerImageGenerationApiShell(
+      createHttpClient({
+        baseUrl: "/mm-api",
+        fetchImpl: async () =>
+          Response.json({
+            images: [
+              {
+                fileId: "33333333-3333-4333-8333-333333333333",
+                purpose: "text",
+                contentType: "text/plain",
+                size: 5,
+              },
+            ],
+          }),
+      }),
+    );
+
+    await expect(
+      images.generateImage({
+        modelRef: { providerId: "openai_compatible", modelId: "gpt-image-2" },
+        prompt: "paint a quiet UI",
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_SERVER_RESPONSE" });
   });
 });
 

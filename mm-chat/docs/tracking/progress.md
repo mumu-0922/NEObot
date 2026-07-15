@@ -1007,6 +1007,11 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
               sanitized audit logging, OpenAI-compatible executor opt-in, and
               backend file/object-storage artifact storage when dependencies
               are present.
+        - [x] G6.5c.3d Frontend server-mode image adapter and capability
+              reopen: `generateImage()` calls Go `/v1/images/generations`,
+              maps artifact metadata to server-backed image attachments, and
+              keeps local mode on the transitional `/api/chat/generate-image`
+              route.
     - [x] G6.5d Code execution sandbox contract before any real executor is enabled: documented in `docs/contracts/code-execution-sandbox-contract.md`; runtime remains disabled.
     - [x] G6.5e Live provider smoke authorization gate: default-deny
           `providersmoke` requires explicit enablement, exact quota approval

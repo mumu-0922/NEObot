@@ -396,6 +396,10 @@ Slice checklist:
             image job service with sanitized audit logging, OpenAI-compatible
             executor opt-in, and backend file/object-storage artifact storage
             when the required runtime dependencies are configured.
+      - [x] G6.5c.3d Frontend server-mode image adapter and capability
+            reopen: `generateImage()` now calls Go `/v1/images/generations`,
+            maps returned artifact metadata to server-backed image attachments,
+            and downloads bytes only through `/v1/files/{fileId}/content`.
   - [x] G6.5d Code execution sandbox contract before any real executor is enabled: see `../contracts/code-execution-sandbox-contract.md`; runtime remains disabled.
   - [x] G6.5e Live provider smoke authorization gate: add a default-deny
         `providersmoke` gate requiring an explicit enabled flag, exact approval
@@ -513,7 +517,7 @@ Targeted tests:
 | G3 Auth, Config, Provider Settings, BYOK | Complete | Server-auth/config/provider lifecycle verified                               |
 | G4 Plugin Final Ownership                | In progress | G4.1-G4.6a complete; audit metadata and browser/provider smoke remain         |
 | G5 Search/Web Enrichment                 | Paused   | Owner reopens, then server-owned search passes gates                         |
-| G6 Voice/Image/Code Jobs                 | In progress | G6 admission/audit/cancel, storage artifact boundary, and code sandbox contract complete; real voice/image executors remain |
+| G6 Voice/Image/Code Jobs                 | In progress | Image generation is reopened through Go artifacts; voice executor remains    |
 | G7 Knowledge/RAG/Citations               | Pending  | Phase 15 runtime gates pass                                                  |
 | G8 Teams/Knowledge UI                    | Pending  | Go control plane wired to UI with isolation smoke                            |
 | G9 Data Authority/Route Removal          | Pending  | local production authority and replaced routes gone                          |

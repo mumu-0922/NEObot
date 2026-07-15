@@ -112,6 +112,7 @@ src/services/api/client/
   local/
     chatApi.ts
     fileApi.ts
+    imageApi.ts
     authApi.ts
     teamApi.ts
     settingsApi.ts
@@ -120,6 +121,7 @@ src/services/api/client/
     httpClient.ts
     chatApi.ts
     fileApi.ts
+    imageApi.ts
     authApi.ts
     teamApi.ts
     settingsApi.ts
@@ -141,6 +143,7 @@ export interface NeoChatApiClient {
   mode: ApiMode;
   chat: ChatApi;
   files: FileApi;
+  images: ImageGenerationApi;
   auth: AuthApi;
   teams: TeamApi;
   settings: SettingsApi;
@@ -1459,6 +1462,14 @@ Rules:
   boundary. Missing provider or storage dependencies still fail closed. The
   frontend `imageGeneration` capability is still not reopened until the client
   adapter maps returned artifact metadata to server-backed image attachments.
+- G6.5c.3d reopens only `imageGeneration` in configured server mode. The
+  frontend image adapter posts `modelRef`, `prompt`, optional `size`, and
+  optional `count` to Go `/v1/images/generations`; it consumes only compact
+  artifact metadata (`fileId`, `purpose`, `contentType`, `size`) and maps
+  successful image artifacts to server-backed attachments whose bytes are read
+  through `/v1/files/{fileId}/content`. Local mode keeps the transitional
+  `/api/chat/generate-image` path, while `voice` and `codeExecution` remain
+  disabled in server mode.
 - G6.5d defines the hard gate for real code execution in
   `docs/contracts/code-execution-sandbox-contract.md`; `codeExecution` remains
   disabled until that sandbox/storage/audit/cancel test plan is implemented.

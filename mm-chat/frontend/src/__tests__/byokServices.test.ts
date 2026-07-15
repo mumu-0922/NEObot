@@ -275,11 +275,21 @@ describe("BYOK service requests", () => {
     }
   });
 
-  it("fails closed for server-mode code and image jobs without calling legacy routes", async () => {
+  it("fails closed for server-mode code but routes image jobs through Go", async () => {
     const restoreServerMode = setServerModeEnv();
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockRejectedValue(new Error("legacy route must not be called"));
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({
+        images: [
+          {
+            fileId: "33333333-3333-4333-8333-333333333333",
+            purpose: "image",
+            contentType: "image/png",
+            size: 5,
+          },
+        ],
+        message: "stored",
+      }),
+    );
     const { executeCode, generateImage } =
       await import("../services/api/chatService");
 
@@ -289,8 +299,39 @@ describe("BYOK service requests", () => {
       ).resolves.toContain("server code execution jobs");
       await expect(
         generateImage("env-provider:gemini-title", "paint a quiet UI"),
-      ).rejects.toMatchObject({ code: "FEATURE_NOT_IMPLEMENTED" });
-      expect(fetchMock).not.toHaveBeenCalled();
+      ).resolves.toEqual({
+        images: [
+          expect.objectContaining({
+            id: "33333333-3333-4333-8333-333333333333",
+            source: "server",
+            fileId: "33333333-3333-4333-8333-333333333333",
+            fileName: "generated-1.png",
+            mimeType: "image/png",
+            size: 5,
+            purpose: "image",
+            url: "/mm-api/v1/files/33333333-3333-4333-8333-333333333333/content",
+          }),
+        ],
+        message: "stored",
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/mm-api/v1/images/generations",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            modelRef: {
+              providerId: "openai_compatible",
+              modelId: "gemini-title",
+            },
+            prompt: "paint a quiet UI",
+            count: 1,
+          }),
+        }),
+      );
+      const body = getJsonRequestBody(fetchMock);
+      expect(JSON.stringify(body)).not.toContain("apiKey");
+      expect(fetchMock.mock.calls[0]?.[0]).not.toBe("/api/chat/generate-image");
     } finally {
       restoreServerMode();
     }

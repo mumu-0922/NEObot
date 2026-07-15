@@ -18,10 +18,16 @@ describe("skill invocation wiring", () => {
       chatApp,
       "sendServerMessageAndStream({",
     );
-    const generationCallCount = streamCallCount + serverStreamCallCount;
+    const serverRegenerateCallCount = countOccurrences(
+      chatApp,
+      "regenerateServerAssistantMessage({",
+    );
+    const generationCallCount =
+      streamCallCount + serverStreamCallCount + serverRegenerateCallCount;
 
     expect(streamCallCount).toBeGreaterThan(0);
     expect(serverStreamCallCount).toBeGreaterThan(0);
+    expect(serverRegenerateCallCount).toBeGreaterThan(0);
     expect(countOccurrences(chatApp, "resolveSkillsForMessage({")).toBe(
       generationCallCount,
     );

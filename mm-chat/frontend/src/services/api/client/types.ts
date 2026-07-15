@@ -388,6 +388,30 @@ export interface ProviderApi {
   listModels(input: ProviderModelsInput): Promise<ProviderModelsResponse>;
 }
 
+export interface GenerateImageInput {
+  modelRef: ModelRef;
+  prompt: string;
+  size?: string;
+  count?: number;
+  signal?: AbortSignal;
+}
+
+export interface GeneratedImageArtifactDTO {
+  fileId: string;
+  purpose: "image";
+  contentType: string;
+  size: number;
+}
+
+export interface GenerateImageResponse {
+  images: GeneratedImageArtifactDTO[];
+  message: string;
+}
+
+export interface ImageGenerationApi {
+  generateImage(input: GenerateImageInput): Promise<GenerateImageResponse>;
+}
+
 export type BYOKPublicKeyResponse = ByokPublicKeyResponse;
 
 export interface ByokApi {
@@ -512,6 +536,7 @@ export interface NeoChatApiClient {
   settings: SettingsApi;
   providers: ProviderApi;
   byok: ByokApi;
+  images: ImageGenerationApi;
   chat: ChatApi;
   files: FileApi;
   plugins: PluginApi;
