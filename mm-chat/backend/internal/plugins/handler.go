@@ -22,6 +22,8 @@ import (
 const (
 	contentTypeJSON        = "application/json; charset=utf-8"
 	maxExecutionBodyBytes  = 128 << 10
+	maxManifestBodyBytes   = 3 << 20
+	maxInstallBodyBytes    = maxManifestBodyBytes + (64 << 10)
 	maxPluginResponseBytes = 2 << 20
 	defaultTimeout         = 30 * time.Second
 )
@@ -40,7 +42,7 @@ var (
 	ErrPluginReservedID          = errors.New("plugin id is reserved")
 	ErrPluginRegistryUnavailable = errors.New("plugin registry is unavailable")
 	ErrPlaintextPluginAuth       = errors.New("plaintext plugin auth is not accepted")
-	ErrPluginCustomInstall       = errors.New("custom plugin manifest install is not available in the Go backend yet")
+	ErrPluginManifestInvalid     = errors.New("plugin manifest is invalid")
 	ErrPluginRequestFailed       = errors.New("plugin request failed")
 	ErrPluginResponseTooLarge    = errors.New("plugin response is too large")
 	ErrPluginExecutionPayload    = errors.New("plugin execution payload is invalid")
@@ -280,15 +282,11 @@ func (h *Handler) handlePlugins(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) installPlugin(w http.ResponseWriter, r *http.Request) {
 	var request InstallRequest
-	if err := decodeJSON(w, r, &request); err != nil {
+	if err := decodeJSONWithLimit(w, r, &request, maxInstallBodyBytes); err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_PLUGIN_INSTALL_REQUEST", "plugin install request body is invalid")
 		return
 	}
-	if strings.TrimSpace(request.CustomInput) != "" {
-		writeError(w, http.StatusNotImplemented, "PLUGIN_CUSTOM_INSTALL_UNAVAILABLE", ErrPluginCustomInstall.Error())
-		return
-	}
-	plugin, err := h.service.RegisterPlugin(r.Context(), request.Plugin)
+	plugin, err := h.service.InstallPlugin(r.Context(), request)
 	if err != nil {
 		writeInstallError(w, err)
 		return
@@ -479,6 +477,110 @@ func (s *Service) RegisterPlugin(ctx context.Context, plugin *Plugin) (Plugin, e
 		return Plugin{}, err
 	}
 	return candidate, nil
+}
+
+func (s *Service) InstallPlugin(ctx context.Context, request InstallRequest) (Plugin, error) {
+	customInput := strings.TrimSpace(request.CustomInput)
+	if customInput != "" {
+		plugin, err := s.pluginFromCustomInput(ctx, customInput)
+		if err != nil {
+			return Plugin{}, err
+		}
+		return s.RegisterPlugin(ctx, &plugin)
+	}
+	if request.Plugin == nil {
+		return Plugin{}, ErrPluginExecutionPayload
+	}
+	candidate := clonePlugin(*request.Plugin)
+	if len(candidate.Functions) == 0 && strings.TrimSpace(candidate.ManifestURL) != "" {
+		plugin, err := s.pluginFromManifestURL(ctx, candidate, candidate.ManifestURL)
+		if err != nil {
+			return Plugin{}, err
+		}
+		return s.RegisterPlugin(ctx, &plugin)
+	}
+	return s.RegisterPlugin(ctx, &candidate)
+}
+
+func (s *Service) pluginFromCustomInput(ctx context.Context, input string) (Plugin, error) {
+	now := time.Now().UTC()
+	base := Plugin{
+		ID:          fmt.Sprintf("%s-%d", defaultCustomPluginIDPrefix, now.UnixMilli()),
+		Description: "User added plugin",
+		Category:    "Custom",
+		Added:       now.Format(time.RFC3339Nano),
+	}
+	if isManifestURL(input) {
+		base.ManifestURL = input
+		return s.pluginFromManifestURL(ctx, base, input)
+	}
+
+	var spec map[string]any
+	if err := json.Unmarshal([]byte(input), &spec); err != nil {
+		return Plugin{}, ErrPluginManifestInvalid
+	}
+	info, _ := asRecord(spec["info"])
+	return convertOpenAPISpecToPlugin(spec, pluginBaseMetadata{
+		ID:          base.ID,
+		Title:       firstNonEmpty(stringValue(info["title"]), "Custom Plugin"),
+		Description: firstNonEmpty(stringValue(info["description"]), base.Description),
+		Category:    base.Category,
+		Added:       base.Added,
+	}, "")
+}
+
+func (s *Service) pluginFromManifestURL(ctx context.Context, plugin Plugin, manifestURL string) (Plugin, error) {
+	manifestURL = strings.TrimSpace(manifestURL)
+	parsed, err := url.Parse(manifestURL)
+	if err != nil || parsed == nil || parsed.Hostname() == "" {
+		return Plugin{}, ErrPluginManifestInvalid
+	}
+	if err := s.validateOutboundURL(ctx, parsed); err != nil {
+		return Plugin{}, err
+	}
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
+	if err != nil {
+		return Plugin{}, ErrPluginManifestInvalid
+	}
+	request.Header.Set("Accept", "application/json")
+
+	response, err := s.do(request)
+	if err != nil {
+		if errors.Is(err, ErrPluginURLBlocked) {
+			return Plugin{}, ErrPluginURLBlocked
+		}
+		return Plugin{}, fmt.Errorf("%w: %v", ErrPluginRequestFailed, err)
+	}
+	defer response.Body.Close()
+
+	limited := io.LimitReader(response.Body, maxManifestBodyBytes+1)
+	data, err := io.ReadAll(limited)
+	if err != nil {
+		return Plugin{}, fmt.Errorf("%w: %v", ErrPluginRequestFailed, err)
+	}
+	if int64(len(data)) > maxManifestBodyBytes {
+		return Plugin{}, ErrPluginResponseTooLarge
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return Plugin{}, fmt.Errorf("%w: status %d", ErrPluginRequestFailed, response.StatusCode)
+	}
+
+	var spec map[string]any
+	if err := json.Unmarshal(data, &spec); err != nil {
+		return Plugin{}, ErrPluginManifestInvalid
+	}
+	return convertOpenAPISpecToPlugin(spec, pluginBaseMetadata{
+		ID:              plugin.ID,
+		Title:           plugin.Title,
+		Description:     plugin.Description,
+		LogoURL:         plugin.LogoURL,
+		ManifestURL:     manifestURL,
+		ExternalDocsURL: plugin.ExternalDocsURL,
+		Category:        plugin.Category,
+		Categories:      plugin.Categories,
+		Added:           plugin.Added,
+	}, manifestURL)
 }
 
 func (s *Service) ListPlugins(ctx context.Context) ([]Plugin, error) {
@@ -692,6 +794,11 @@ func pluginAuthContext(pluginID string) string {
 	return "plugin:" + pluginID + ":auth"
 }
 
+func isManifestURL(value string) bool {
+	lower := strings.ToLower(strings.TrimSpace(value))
+	return strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://")
+}
+
 func validatePlugin(plugin Plugin) error {
 	if strings.TrimSpace(plugin.ID) == "" {
 		return ErrPluginExecutionPayload
@@ -729,7 +836,11 @@ func clonePlugin(plugin Plugin) Plugin {
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, destination any) error {
-	r.Body = http.MaxBytesReader(w, r.Body, maxExecutionBodyBytes)
+	return decodeJSONWithLimit(w, r, destination, maxExecutionBodyBytes)
+}
+
+func decodeJSONWithLimit(w http.ResponseWriter, r *http.Request, destination any, maxBodyBytes int64) error {
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(destination); err != nil {
@@ -791,6 +902,8 @@ func writeExecutionError(w http.ResponseWriter, err error) {
 
 func writeInstallError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, ErrPluginManifestInvalid):
+		writeError(w, http.StatusBadRequest, "PLUGIN_MANIFEST_INVALID", "plugin manifest is invalid")
 	case errors.Is(err, ErrPluginBaseURLMissing),
 		errors.Is(err, ErrPluginFunctionMissing),
 		errors.Is(err, ErrPluginPathInvalid),
@@ -801,6 +914,12 @@ func writeInstallError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, "PLUGIN_ID_RESERVED", "plugin id is reserved")
 	case errors.Is(err, ErrPluginRegistryUnavailable):
 		writeError(w, http.StatusServiceUnavailable, "PLUGIN_REGISTRY_UNAVAILABLE", "plugin registry is unavailable")
+	case errors.Is(err, ErrPluginURLBlocked):
+		writeError(w, http.StatusForbidden, "PLUGIN_URL_BLOCKED", "plugin URL is blocked by policy")
+	case errors.Is(err, ErrPluginResponseTooLarge):
+		writeError(w, http.StatusBadGateway, "PLUGIN_RESPONSE_TOO_LARGE", "plugin response is too large")
+	case errors.Is(err, ErrPluginRequestFailed):
+		writeError(w, http.StatusBadGateway, "PLUGIN_REQUEST_FAILED", "plugin request failed")
 	default:
 		writeError(w, http.StatusInternalServerError, "PLUGIN_INSTALL_FAILED", "plugin install failed")
 	}

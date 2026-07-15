@@ -43,7 +43,7 @@ func TestHandlerListsBuiltInRegistry(t *testing.T) {
 	}
 }
 
-func TestHandlerFailsClosedForCustomInstallAndUnknownIdOnlyExecute(t *testing.T) {
+func TestHandlerRejectsInvalidCustomInstallAndUnknownIdOnlyExecute(t *testing.T) {
 	handler := NewHandler(nil)
 	cases := []struct {
 		name   string
@@ -52,7 +52,7 @@ func TestHandlerFailsClosedForCustomInstallAndUnknownIdOnlyExecute(t *testing.T)
 		status int
 		code   string
 	}{
-		{name: "custom install", path: "/v1/plugins/install", body: `{"customInput":"https://plugins.example/openapi.json"}`, status: http.StatusNotImplemented, code: "PLUGIN_CUSTOM_INSTALL_UNAVAILABLE"},
+		{name: "invalid custom install", path: "/v1/plugins/install", body: `{"customInput":"not-json"}`, status: http.StatusBadRequest, code: "PLUGIN_MANIFEST_INVALID"},
 		{name: "unknown execute id-only", path: "/v1/plugins/execute", body: `{"pluginId":"missing","functionName":"lookup","authConfig":{"value":"sk_live_secret"},"args":{"token":"private"}}`, status: http.StatusNotFound, code: "PLUGIN_NOT_REGISTERED"},
 	}
 
@@ -72,6 +72,164 @@ func TestHandlerFailsClosedForCustomInstallAndUnknownIdOnlyExecute(t *testing.T)
 			assertErrorCode(t, rec, tc.code)
 		})
 	}
+}
+
+func TestHandlerInstallsCustomOpenAPIJSONAndExecutesRegisteredPlugin(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/api/weather/Shanghai" {
+			t.Fatalf("path = %q, want /api/weather/Shanghai", r.URL.Path)
+		}
+		if r.URL.Query().Get("unit") != "metric" {
+			t.Fatalf("unit query = %q, want metric", r.URL.Query().Get("unit"))
+		}
+		return jsonResponse(http.StatusOK, `{"ok":true,"source":"custom-openapi"}`), nil
+	})}
+	handler := NewHandler(NewService(config.Config{}, WithAllowPrivateNetwork(true), WithHTTPClient(client)))
+
+	installRec := httptest.NewRecorder()
+	installReq := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/plugins/install",
+		bytes.NewReader(mustJSON(t, map[string]any{"customInput": openAPIWeatherSpec("https://plugins.example/api")})),
+	)
+	handler.ServeHTTP(installRec, installReq)
+
+	if installRec.Code != http.StatusOK {
+		t.Fatalf("install status = %d, want %d; body=%s", installRec.Code, http.StatusOK, installRec.Body.String())
+	}
+	var installResponse InstallResponse
+	if err := json.NewDecoder(installRec.Body).Decode(&installResponse); err != nil {
+		t.Fatalf("decode install response: %v", err)
+	}
+	if !strings.HasPrefix(installResponse.Plugin.ID, "custom-") {
+		t.Fatalf("installed plugin id = %q, want custom-*", installResponse.Plugin.ID)
+	}
+	if installResponse.Plugin.Title != "Weather API" {
+		t.Fatalf("installed plugin title = %q, want Weather API", installResponse.Plugin.Title)
+	}
+	if installResponse.Plugin.BaseURL != "https://plugins.example/api" {
+		t.Fatalf("installed plugin baseUrl = %q, want https://plugins.example/api", installResponse.Plugin.BaseURL)
+	}
+	if len(installResponse.Plugin.Functions) != 1 || installResponse.Plugin.Functions[0].Name != "lookupWeather" {
+		t.Fatalf("installed functions = %#v, want lookupWeather", installResponse.Plugin.Functions)
+	}
+
+	executeRec := httptest.NewRecorder()
+	executeReq := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/plugins/execute",
+		bytes.NewReader(mustJSON(t, map[string]any{
+			"pluginId":     installResponse.Plugin.ID,
+			"functionName": "lookupWeather",
+			"args": map[string]any{
+				"city": "Shanghai",
+				"unit": "metric",
+			},
+		})),
+	)
+	handler.ServeHTTP(executeRec, executeReq)
+
+	if executeRec.Code != http.StatusOK {
+		t.Fatalf("execute status = %d, want %d; body=%s", executeRec.Code, http.StatusOK, executeRec.Body.String())
+	}
+	var executeResponse ExecuteResponse
+	if err := json.NewDecoder(executeRec.Body).Decode(&executeResponse); err != nil {
+		t.Fatalf("decode execute response: %v", err)
+	}
+	result, ok := executeResponse.Result.(map[string]any)
+	if !ok || result["source"] != "custom-openapi" {
+		t.Fatalf("result = %#v", executeResponse.Result)
+	}
+}
+
+func TestHandlerInstallsMarketplaceManifestURLAndExecutesRegisteredPlugin(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		switch r.URL.Path {
+		case "/openapi.json":
+			if r.Header.Get("Accept") != "application/json" {
+				t.Fatalf("Accept = %q, want application/json", r.Header.Get("Accept"))
+			}
+			return jsonResponse(http.StatusOK, openAPIWeatherSpec("/api")), nil
+		case "/api/weather/Paris":
+			return jsonResponse(http.StatusOK, `{"ok":true,"source":"marketplace"}`), nil
+		default:
+			t.Fatalf("unexpected plugin request path: %s", r.URL.Path)
+			return nil, nil
+		}
+	})}
+	handler := NewHandler(NewService(config.Config{}, WithAllowPrivateNetwork(true), WithHTTPClient(client)))
+
+	installRec := httptest.NewRecorder()
+	installReq := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/plugins/install",
+		bytes.NewReader(mustJSON(t, map[string]any{
+			"plugin": map[string]any{
+				"id":          "market-weather",
+				"title":       "Market Weather",
+				"description": "Marketplace weather",
+				"manifestUrl": "https://plugins.example/openapi.json",
+				"baseUrl":     "",
+				"functions":   []any{},
+			},
+		})),
+	)
+	handler.ServeHTTP(installRec, installReq)
+
+	if installRec.Code != http.StatusOK {
+		t.Fatalf("install status = %d, want %d; body=%s", installRec.Code, http.StatusOK, installRec.Body.String())
+	}
+	var installResponse InstallResponse
+	if err := json.NewDecoder(installRec.Body).Decode(&installResponse); err != nil {
+		t.Fatalf("decode install response: %v", err)
+	}
+	if installResponse.Plugin.ID != "market-weather" {
+		t.Fatalf("installed plugin id = %q, want market-weather", installResponse.Plugin.ID)
+	}
+	if installResponse.Plugin.BaseURL != "https://plugins.example/api" {
+		t.Fatalf("installed plugin baseUrl = %q, want https://plugins.example/api", installResponse.Plugin.BaseURL)
+	}
+
+	executeRec := httptest.NewRecorder()
+	executeReq := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/plugins/execute",
+		bytes.NewReader(mustJSON(t, map[string]any{
+			"pluginId":     "market-weather",
+			"functionName": "lookupWeather",
+			"args":         map[string]any{"city": "Paris"},
+		})),
+	)
+	handler.ServeHTTP(executeRec, executeReq)
+
+	if executeRec.Code != http.StatusOK {
+		t.Fatalf("execute status = %d, want %d; body=%s", executeRec.Code, http.StatusOK, executeRec.Body.String())
+	}
+	var executeResponse ExecuteResponse
+	if err := json.NewDecoder(executeRec.Body).Decode(&executeResponse); err != nil {
+		t.Fatalf("decode execute response: %v", err)
+	}
+	result, ok := executeResponse.Result.(map[string]any)
+	if !ok || result["source"] != "marketplace" {
+		t.Fatalf("result = %#v", executeResponse.Result)
+	}
+}
+
+func TestHandlerBlocksPrivateManifestURLByDefault(t *testing.T) {
+	handler := NewHandler(nil)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/plugins/install",
+		strings.NewReader(`{"customInput":"http://127.0.0.1/openapi.json"}`),
+	)
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+	assertErrorCode(t, rec, "PLUGIN_URL_BLOCKED")
 }
 
 func TestHandlerInstallsPluginAndExecutesRegisteredIdOnlyPayload(t *testing.T) {
@@ -339,6 +497,29 @@ func executePayload(baseURL string) ExecuteRequest {
 			"city": "Shanghai",
 		},
 	}
+}
+
+func openAPIWeatherSpec(serverURL string) string {
+	return `{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Weather API",
+    "description": "Weather lookup"
+  },
+  "servers": [{"url": "` + serverURL + `"}],
+  "paths": {
+    "/weather/{city}": {
+      "get": {
+        "operationId": "lookupWeather",
+        "summary": "Lookup weather by city",
+        "parameters": [
+          {"name": "city", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "unit", "in": "query", "schema": {"type": "string"}}
+        ]
+      }
+    }
+  }
+}`
 }
 
 func mustJSON(t *testing.T, value any) []byte {

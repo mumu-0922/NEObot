@@ -772,7 +772,7 @@ func TestNewHandlerRegistersPluginRoutesWithFailClosedRegistryFallbacks(t *testi
 		status int
 		code   string
 	}{
-		{path: "/v1/plugins/install", body: `{"customInput":"https://plugins.example/openapi.json"}`, status: http.StatusNotImplemented, code: "PLUGIN_CUSTOM_INSTALL_UNAVAILABLE"},
+		{path: "/v1/plugins/install", body: `{"customInput":"not-json"}`, status: http.StatusBadRequest, code: "PLUGIN_MANIFEST_INVALID"},
 		{path: "/v1/plugins/execute", body: `{"pluginId":"missing","functionName":"lookup","args":{"secret":"sk_live_secret"}}`, status: http.StatusNotFound, code: "PLUGIN_NOT_REGISTERED"},
 	} {
 		rec = httptest.NewRecorder()

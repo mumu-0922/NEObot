@@ -293,7 +293,11 @@ Slice checklist:
         wire API startup to use it when `DATABASE_URL` is configured, list
         built-ins/installed plugins from Go, and prevent installed plugins from
         shadowing built-in ids.
-  - [ ] G4.5c.2b Custom OpenAPI manifest conversion, audit metadata, and
+  - [x] G4.5c.2b Custom OpenAPI manifest conversion in Go: install
+        raw custom OpenAPI JSON, fetch bounded manifest URLs through the Go
+        outbound policy, convert supported operations into registry plugins,
+        and keep id-only execution working after install.
+  - [ ] G4.5c.2c Plugin audit metadata beyond installing-user persistence and
         built-in result normalizers.
 - [ ] G4.6 Live browser smoke: one installed plugin produces bounded context and
       a persisted final answer through the Go stream.
@@ -450,7 +454,7 @@ Targeted tests:
 | G1 Conversation and Message Operations   | Complete | G1.1-G1.6 complete; only paused cross-group search toggle remains outside G1 |
 | G2 Related Questions and Agent Catalogs  | Complete | Related-question/catalog Next routes replaced                                |
 | G3 Auth, Config, Provider Settings, BYOK | Complete | Server-auth/config/provider lifecycle verified                               |
-| G4 Plugin Final Ownership                | In progress | G4.1-G4.5b complete; registry finalization/live smoke remain                 |
+| G4 Plugin Final Ownership                | In progress | G4.1-G4.5c.2b complete; audit/normalizers/live smoke remain                  |
 | G5 Search/Web Enrichment                 | Paused   | Owner reopens, then server-owned search passes gates                         |
 | G6 Voice/Image/Code Jobs                 | Pending  | Enabled jobs server-admitted and fail closed otherwise                       |
 | G7 Knowledge/RAG/Citations               | Pending  | Phase 15 runtime gates pass                                                  |

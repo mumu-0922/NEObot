@@ -1613,11 +1613,77 @@ git diff --check -- mm-chat                                             # passed
 Residual G4.5c blockers:
 
 ```text
-G4.5c.2b Custom OpenAPI manifest conversion in Go
-G4.5c.2b Plugin audit metadata beyond installing-user persistence
-G4.5c.2b Built-in result normalizers
+G4.5c.2c Plugin audit metadata beyond installing-user persistence
+G4.5c.2c Built-in result normalizers
 G4.6 live browser smoke with a real plugin result
 ```
 
-Next slice: G4.5c.2b custom manifest conversion or, if the owner wants runtime
-confidence first, G4.6 smoke against a built-in plugin.
+Next slice: G4.5c.2c audit/normalizer cleanup or, if the owner wants runtime
+confidence first, G4.6 smoke against a converted plugin.
+
+## 2026-07-15 — G4.5c.2b Go OpenAPI Plugin Install Conversion Completed
+
+Objective: move custom OpenAPI manifest conversion into the Go backend as its
+own tested slice, without mixing in audit metadata cleanup or built-in result
+normalizers.
+
+Completed scope:
+
+- added a Go OpenAPI/Swagger converter that reads `servers` or
+  `host/schemes/basePath`, maps supported HTTP operations into plugin
+  functions, carries path/query parameter schemas, and preserves apiKey/bearer
+  auth declarations;
+- changed `POST /v1/plugins/install` to accept raw custom OpenAPI JSON,
+  bounded manifest URL fetches, and marketplace payloads with `manifestUrl` plus
+  empty `functions`;
+- routed manifest URL fetches through the Go outbound URL policy and redirect
+  checks, with a 3 MiB manifest response cap and explicit install error codes;
+- kept supplied full plugin payload registration intact, then registered
+  converted plugins into the same memory/Postgres registry so server-mode
+  execution can continue with `pluginId/functionName` only;
+- updated route tests so custom manifest install is no longer fail-closed.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/backend/internal/plugins/openapi.go
+mm-chat/backend/internal/plugins/handler.go
+mm-chat/backend/internal/plugins/handler_test.go
+mm-chat/backend/internal/httpserver/server_test.go
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/inventory/frontend-call-sites.md
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test \
+  ./internal/plugins ./internal/httpserver                              # passed
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test \
+  ./internal/plugins ./internal/httpserver ./internal/runtimeconfig \
+  ./internal/migration ./cmd/api                                        # passed
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./...       # passed
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/apiClientScaffold.test.ts \
+  src/__tests__/pluginUtils.test.ts \
+  src/__tests__/serverPluginOrchestration.test.ts \
+  src/__tests__/serverDefaults.test.ts                                  # passed, 4 files / 85 tests
+cd mm-chat/frontend && corepack pnpm typecheck                          # passed
+cd mm-chat/frontend && corepack pnpm format:check                       # passed
+cd mm-chat/frontend && corepack pnpm lint                               # passed
+git diff --check -- mm-chat                                             # passed
+```
+
+Residual G4.5c blockers:
+
+```text
+G4.5c.2c Plugin audit metadata beyond installing-user persistence
+G4.5c.2c Built-in result normalizers
+G4.6 live browser smoke with a real plugin result
+```
+
+Next slice: G4.5c.2c audit/normalizer cleanup or G4.6 live smoke against a
+converted plugin.

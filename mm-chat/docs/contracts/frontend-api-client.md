@@ -1984,16 +1984,17 @@ Operational rollback smoke:
 This contract applies when `NEXT_PUBLIC_API_MODE=server` and one or more
 installed plugins are active. The provider credential remains owned by Go;
 plugin auth must remain browser-encrypted when it crosses the API boundary.
-Copying `PROVIDER_API_KEY` into the frontend is forbidden. As of G4.5c.2a,
+Copying `PROVIDER_API_KEY` into the frontend is forbidden. As of G4.5c.2b,
 server-mode plugin execution routes to Go `/v1/plugins/execute` with
-`pluginId/functionName`; Go resolves built-ins and plugins registered through
-`/v1/plugins/install`; when `DATABASE_URL` is configured the registry is
-Postgres-backed and prevents installed plugins from shadowing built-in ids. Go
-decrypts `valueSecret`, applies outbound URL policy including redirects,
-enforces timeout/response bounds, and returns generic normalized results. Full
-manifest payloads remain accepted only as a bounded compatibility path until
-final registry cleanup. The transitional Next
-`/api/plugins/execute` path is local-adapter rollback only.
+`pluginId/functionName`; Go resolves built-ins, supplied plugin payloads, and
+custom/OpenAPI manifest installs registered through `/v1/plugins/install`; when
+`DATABASE_URL` is configured the registry is Postgres-backed and prevents
+installed plugins from shadowing built-in ids. Go decrypts `valueSecret`,
+applies outbound URL policy including redirects, enforces timeout/response
+bounds, and returns generic normalized results. Full manifest execution payloads
+remain accepted only as a bounded compatibility path until final registry
+cleanup. The transitional Next `/api/plugins/execute` path is local-adapter
+rollback only.
 
 ```text
 browser selection
@@ -2097,11 +2098,14 @@ Browser execution rules:
   the Go registry resolves the full plugin/function definition. Full manifest
   execution remains accepted as compatibility only, not as the production
   adapter path.
-- G4.5c.2a registry scope is built-ins plus plugins registered via
+- G4.5c.2b registry scope is built-ins plus plugins registered via
   `/v1/plugins/install`; local/dev without `DATABASE_URL` uses process memory,
-  while configured server deployments use Postgres `plugin_registry`.
-- Custom OpenAPI manifest conversion, plugin audit metadata, and built-in result
-  normalizers remain G4.5c.2b.
+  while configured server deployments use Postgres `plugin_registry`. Supplied
+  plugin payloads register directly; custom raw OpenAPI JSON and marketplace
+  plugins with `manifestUrl` plus empty `functions` are fetched/converted in Go
+  before registration.
+- Plugin audit metadata beyond installing-user persistence and built-in result
+  normalizers remain after G4.5c.2b.
 - `authConfig.value` plaintext is rejected with
   `PLAINTEXT_PLUGIN_AUTH_REJECTED`; only BYOK `valueSecret` is accepted.
 - Go outbound policy allows only `http|https`, blocks
@@ -2129,6 +2133,10 @@ Browser execution rules:
 | Provider request/decode failure                                                | `502 PROVIDER_ERROR` without provider body/key               |
 | Provider returns an unoffered function, non-object args, or more than 32 calls | `502 PROVIDER_ERROR`; browser also fails closed              |
 | Id-only execution before registry is implemented                               | `501 PLUGIN_REGISTRY_REQUIRED`; no Next fallback             |
+| Invalid custom/OpenAPI plugin manifest                                         | `400 PLUGIN_MANIFEST_INVALID`                                |
+| Blocked plugin manifest or converted base URL                                  | `403 PLUGIN_URL_BLOCKED`                                     |
+| Oversized fetched plugin manifest                                              | `502 PLUGIN_RESPONSE_TOO_LARGE`                              |
+| Non-2xx or failed plugin manifest fetch                                        | `502 PLUGIN_REQUEST_FAILED`                                  |
 | Plaintext plugin auth                                                          | `400 PLAINTEXT_PLUGIN_AUTH_REJECTED`                         |
 | Missing required plugin auth or BYOK decrypt failure                            | `400 PLUGIN_AUTH_REQUIRED`                                   |
 | Unsupported plugin auth type                                                   | `400 PLUGIN_AUTH_UNSUPPORTED`                                |
@@ -2167,9 +2175,12 @@ Browser execution rules:
   BYOK header/query auth, blocked private URL/redirect, response-size cap, and
   no secret leakage in errors.
 - G4.5c.1 Go registry: built-in seed lookup, install registration, id-only
-  execution, unknown-plugin failure, and custom manifest fail-closed behavior.
+  execution, and unknown-plugin failure.
 - G4.5c.2a durable registry: migration contract, Postgres save/get/list,
   startup wiring, built-in shadow rejection, and runtime shared-store health.
+- G4.5c.2b OpenAPI install: raw custom JSON conversion, manifest URL fetch
+  conversion, invalid manifest errors, private manifest URL blocking, and
+  id-only execution after converted install.
 - G4.5c.1 adapter: server-mode `pluginApi.execute` posts id-only payloads to
   `/v1/plugins/execute`, maps Go errors as plugin error results, and never falls
   back to `/api/plugins/execute`.
