@@ -370,21 +370,41 @@ G7.5.9 completed on 2026-07-16:
   calls. It only makes one real gateway available for later explicit registry
   promotion.
 
+G7.5.10 completed on 2026-07-16:
+
+- Added a live Postgres integration gate for the migration `001-014` purge
+  projection gateway path. The test is guarded by `MM_CHAT_TEST_DATABASE_URL`
+  and otherwise skips without reading any env file.
+- The gate seeds the smallest active Generation, Materialization, Parent/Child
+  Chunk, Search Projection, and token-fenced purge Job needed to exercise the
+  stored-function surface end to end.
+- It proves `rag_worker_executor` can execute the purge gateway functions but
+  cannot mutate search projection base tables directly.
+- It proves stale lease tokens fail closed with `RAG_STALE_JOB_LEASE`, active
+  documents are visible before tombstone, tombstoned documents become
+  query-invisible before projection purge, ready search rows are marked
+  `purged`, no ready rows remain, and completion assertion succeeds.
+- The first live run caught a PL/pgSQL ambiguity in
+  `knowledge_mark_purge_invisible(...)`; migration `014` now qualifies the
+  `knowledge_processing_jobs` row as `processing_job` so output column names
+  cannot shadow table columns.
+
 Remaining G7.5 work:
 
 - Implement real object-store, MinerU, Jina, and Postgres projection gateway
   adapters behind the new parse seam.
 - Implement the real Jina and Postgres projection gateway adapters behind the
   new passage-embedding seam.
-- Implement the real Postgres projection gateway adapter behind the new purge
-  seam.
+- Promote purge dispatch behind an explicit readiness/registry gate now that
+  the purge Postgres gateway has unit, static, and live integration coverage.
 - Implement index, reprocess, tombstone purge, rebuild, retry, and DLQ behavior.
 - Promote handlers one stage at a time behind readiness and registry gates.
 
 Validation:
 
 - Outbox duplicate/out-of-order/replay tests.
-- Delete/tombstone/rebuild tests.
+- Delete/tombstone/rebuild tests, including the G7.5.10 live purge projection
+  integration gate when `MM_CHAT_TEST_DATABASE_URL` is available.
 - Retry-three-times and terminal-failure tests.
 
 ### G7.6 Private query and Go reauthorization

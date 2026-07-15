@@ -1029,3 +1029,73 @@ Residual risk:
 Next G7.5 slice: add one real parse-side gateway adapter or finish the purge
 promotion gate, but only after a dedicated readiness/registry plan keeps the
 single-stage blast radius narrow.
+
+## 2026-07-16 — G7.5.10 Live Postgres Purge Projection Gateway Gate
+
+Objective: prove the default-off purge Postgres gateway against a real
+PostgreSQL 16 migration chain before any purge handler promotion. The gate must
+be safe on machines without a test database, so it uses
+`MM_CHAT_TEST_DATABASE_URL` and skips when that variable is absent.
+
+Implemented behavior:
+
+- Added
+  `backend/internal/migration/phase15_rag_purge_projection_gateway_integration_test.go`.
+- The integration test applies embedded migrations `001-014`, then seeds the
+  smallest valid active corpus Generation, published Materialization,
+  Parent/Child Chunk, Jina 1024 Search Projection row, and token-fenced purge
+  `knowledge_processing_jobs` row.
+- The test verifies the complete purge gateway order:
+  1. `rag_worker_executor` can execute the worker-only purge gateway functions;
+  2. `rag_worker_executor` cannot mutate `knowledge_child_search_projections`
+     base rows directly;
+  3. a stale lease token fails closed with `RAG_STALE_JOB_LEASE`;
+  4. an active document is query-visible before tombstone;
+  5. the same document becomes query-invisible after tombstone;
+  6. purge completion rejects while a ready search row remains;
+  7. `knowledge_purge_search_projection(...)` marks the ready row `purged`;
+  8. `knowledge_assert_purge_complete(...)` succeeds after no ready rows
+     remain.
+- The first live run exposed a PL/pgSQL ambiguity in
+  `knowledge_mark_purge_invisible(...)`: output table columns such as
+  `collection_id` shadowed unqualified base-table columns. Migration `014` now
+  aliases `knowledge_processing_jobs` as `processing_job` and qualifies the
+  lease/admission predicate.
+- Production `JOB_HANDLER_REGISTRY` and `DISPATCH_REGISTRY` remain empty. This
+  slice is proof only, not dispatch promotion.
+
+Touched files:
+
+```text
+backend/migrations/014_rag_purge_projection_gateway.up.sql
+backend/internal/migration/phase15_rag_purge_projection_gateway_schema_test.go
+backend/internal/migration/phase15_rag_purge_projection_gateway_integration_test.go
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./internal/migration \
+  -run TestPhase15RAGPurgeProjectionGatewayLivePostgres -count=1 -v
+# skipped when MM_CHAT_TEST_DATABASE_URL is absent
+
+docker run --rm -d --name mm-chat-pg-g7510 \
+  -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=mm_chat \
+  -p 127.0.0.1:15432:5432 postgres:16-alpine
+cd mm-chat/backend && MM_CHAT_TEST_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable' \
+  GOCACHE=/tmp/neo-chat-go-build \
+  go test ./internal/migration \
+    -run 'TestPhase15RAG(PurgeProjectionGateway|SearchProjection|WorkerProjectionGate)' \
+    -count=1 -v
+# PASS
+docker rm -f mm-chat-pg-g7510
+```
+
+Residual risk:
+
+- This proves the purge gateway surface only. Parse object-store/MinerU
+  adapters, passage Jina embedding adapters, dispatch registry promotion,
+  retry/DLQ behavior, and query/citation surfaces remain gated future slices.

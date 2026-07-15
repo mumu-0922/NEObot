@@ -14,7 +14,8 @@ func TestPhase15RAGPurgeProjectionGatewayContract(t *testing.T) {
 		"lease_owner = p_worker_id",
 		"lease_token = p_lease_token",
 		"lease_expires_at > clock_timestamp ( )",
-		"not legacy_projection_unbound",
+		"not processing_job.legacy_projection_unbound",
+		"not job.legacy_projection_unbound",
 		"rag_stale_job_lease")
 	assertPhase15Fragments(t, up,
 		"purge gateway must mark search rows purged and prove no ready rows remain",

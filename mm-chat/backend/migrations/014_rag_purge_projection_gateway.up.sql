@@ -45,22 +45,22 @@ BEGIN
       MESSAGE = 'RAG_PURGE_INVISIBILITY_ARGUMENT_INVALID';
   END IF;
 
-  SELECT * INTO job
-  FROM knowledge_processing_jobs
-  WHERE id = p_job_id
-    AND status = 'processing'
-    AND stage = 'purge'
-    AND operation = 'purge'
-    AND NOT legacy_projection_unbound
-    AND lease_owner = p_worker_id
-    AND lease_token = p_lease_token
-    AND lease_expires_at > clock_timestamp()
-    AND collection_id = p_collection_id
-    AND document_id = p_document_id
-    AND document_version_id = p_document_version_id
-    AND collection_visibility_epoch = p_collection_visibility_epoch
-    AND document_visibility_epoch = p_document_visibility_epoch
-    AND index_generation_id IS NOT NULL
+  SELECT processing_job.* INTO job
+  FROM knowledge_processing_jobs processing_job
+  WHERE processing_job.id = p_job_id
+    AND processing_job.status = 'processing'
+    AND processing_job.stage = 'purge'
+    AND processing_job.operation = 'purge'
+    AND NOT processing_job.legacy_projection_unbound
+    AND processing_job.lease_owner = p_worker_id
+    AND processing_job.lease_token = p_lease_token
+    AND processing_job.lease_expires_at > clock_timestamp()
+    AND processing_job.collection_id = p_collection_id
+    AND processing_job.document_id = p_document_id
+    AND processing_job.document_version_id = p_document_version_id
+    AND processing_job.collection_visibility_epoch = p_collection_visibility_epoch
+    AND processing_job.document_visibility_epoch = p_document_visibility_epoch
+    AND processing_job.index_generation_id IS NOT NULL
   FOR SHARE;
   IF NOT FOUND THEN
     RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'RAG_STALE_JOB_LEASE';
