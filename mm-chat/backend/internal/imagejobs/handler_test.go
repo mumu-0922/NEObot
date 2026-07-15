@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"neo-chat/mm-chat/backend/internal/jobartifacts"
 	"neo-chat/mm-chat/backend/internal/jobaudit"
 )
 
@@ -24,6 +25,54 @@ func TestHandlerGenerateFailsClosedAfterAdmission(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	assertError(t, rec, http.StatusNotImplemented, "IMAGE_JOBS_UNAVAILABLE")
+}
+
+func TestHandlerGenerateReturnsStoredArtifactsWhenExecutorConfigured(t *testing.T) {
+	executor := &fakeImageExecutor{result: GenerateResult{
+		Images: []GeneratedImageResult{{
+			JobID:       "job-1",
+			Filename:    "image.png",
+			ContentType: "image/png",
+			Size:        5,
+			Body:        strings.NewReader("image"),
+		}},
+		Message: "stored",
+	}}
+	store := &fakeArtifactStore{artifacts: []jobartifacts.Artifact{{
+		FileID:      "file-1",
+		Purpose:     "image",
+		ContentType: "image/png",
+		Size:        5,
+	}}}
+	handler := NewHandler(NewService(
+		WithExecutor(executor),
+		WithArtifactStore(store),
+		WithAuditRecorder(noopAuditRecorder()),
+	))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		generationsPath,
+		strings.NewReader(`{"modelRef":{"providerId":"openai","modelId":"gpt-image-1"},"prompt":"paint","count":1}`),
+	)
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var response GenerateResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Message != "stored" ||
+		len(response.Images) != 1 ||
+		response.Images[0] != (GeneratedImage{FileID: "file-1", Purpose: "image", ContentType: "image/png", Size: 5}) {
+		t.Fatalf("response = %#v", response)
+	}
+	if !executor.called {
+		t.Fatal("executor was not called")
+	}
 }
 
 func TestHandlerGenerateValidatesRequestBeforeAdmission(t *testing.T) {

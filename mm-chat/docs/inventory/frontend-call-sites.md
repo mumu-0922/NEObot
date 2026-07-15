@@ -41,7 +41,7 @@ These are already closer to the desired boundary. Phase 2 should wrap these into
 
 | Priority | Service | Current Routes | Future Client |
 |---:|---|---|---|
-| P0 | `src/services/api/chatService.ts` | `/api/chat`, `/api/chat/generate`, `/api/chat/generate-title`, `/api/chat/related-questions`, `/api/chat/rag-queries`, `/api/chat/generate-image`, `/api/chat/execute-code` | `chatApi` first; G6.1 blocks server-mode image/code calls, G6.3/G6.4 register fail-closed Go image/code admission routes, and G6.5c.1 defines stored image result artifacts. |
+| P0 | `src/services/api/chatService.ts` | `/api/chat`, `/api/chat/generate`, `/api/chat/generate-title`, `/api/chat/related-questions`, `/api/chat/rag-queries`, `/api/chat/generate-image`, `/api/chat/execute-code` | `chatApi` first; G6.1 blocks server-mode image/code calls, G6.3/G6.4 register fail-closed Go image/code admission routes, G6.5c.1 defines stored image result artifacts, and G6.5c.3a adds the opt-in image executor seam without enabling live providers. |
 | P1 | `src/services/api/ragService.ts` | `/api/rag/query`, `/api/rag/upsert`, `/api/rag/delete` | `ragApi` later; not first chat MVP. |
 | P2 | `src/services/api/docParseService.ts` | `/api/doc-parse`, `/api/doc-parse/jobs/:id` | `documentApi` / RAG sidecar later. |
 | P2 | `src/services/api/pluginService.ts` | via `pluginApi.listAvailable/install`; local adapter retains `/api/plugins/list` and `/api/plugins/install` | Server adapter targets `/v1/plugins*`; G4.5c.2b persists supplied plugin payloads in Go/Postgres when `DATABASE_URL` is configured and converts custom/OpenAPI manifest installs in Go. |
@@ -126,7 +126,7 @@ Recommended implementation order after this inventory:
 4. Wrap OPFS helpers as `local.fileApi` and replace direct display resolvers gradually.
 5. Add `server` mode HTTP adapter for `/v1/config`, `/health`, and provider model listing smoke tests.
 6. Add server chat CRUD/SSE only after the local adapter passes parity tests.
-7. Defer plugin, RAG, doc parse, voice, image generation, and code execution behind disabled capabilities; G6.1 now enforces this for server-mode voice/image/code service calls, G6.5a audits only sanitized server admission metadata, G6.5b adds fail-closed job cancellation admission, G6.5c.1 stores future voice/image outputs only through backend file artifacts, and G6.5c.2a keeps voice execution opt-in only.
+7. Defer plugin, RAG, doc parse, voice, image generation, and code execution behind disabled capabilities; G6.1 now enforces this for server-mode voice/image/code service calls, G6.5a audits only sanitized server admission metadata, G6.5b adds fail-closed job cancellation admission, G6.5c.1 stores future voice/image outputs only through backend file artifacts, and G6.5c.2a/G6.5c.3a keep voice/image execution opt-in only.
 
 ## Risks and Guardrails
 

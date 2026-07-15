@@ -2301,3 +2301,60 @@ G6.5c.3 Real image executor with stored image artifacts and configured-provider 
 
 Next slice: either implement the image executor opt-in seam or add the real
 voice provider behind an explicit quota/credential approval gate.
+
+## 2026-07-15 — G6.5c.3a Image Executor Opt-in Seam Completed
+
+Objective: add the Go service seam needed by future image-generation executors
+while keeping the default runtime fail-closed and avoiding any real image
+provider call, credential use, or quota-consuming smoke.
+
+Completed scope:
+
+- added an `imagejobs.Executor` interface and explicit `WithExecutor` opt-in
+  gate;
+- required a configured image artifact store before any image executor can run,
+  returning `IMAGE_ARTIFACT_STORE_UNAVAILABLE` before executor invocation when
+  storage is absent;
+- required an explicitly configured sanitized `admitted` audit recorder before
+  executor invocation, so audit absence/failure prevents provider calls;
+- stored generated image executor streams through the G6.5c.1 artifact boundary
+  as `image` purpose files and returned only compact artifact metadata;
+- added `docs/contracts/media-job-executor-seams.md` as the seven-section
+  executable contract for voice/image executor gates;
+- covered the seam with fake in-process executors/stores only. No live image
+  provider was called.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/backend/internal/imagejobs/types.go
+mm-chat/backend/internal/imagejobs/service.go
+mm-chat/backend/internal/imagejobs/service_test.go
+mm-chat/backend/internal/imagejobs/handler.go
+mm-chat/backend/internal/imagejobs/handler_test.go
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/contracts/README.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/contracts/media-job-executor-seams.md
+mm-chat/docs/inventory/frontend-call-sites.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./internal/imagejobs # passed
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./...                # passed
+git diff --check -- mm-chat                                                       # passed
+```
+
+Residual G6 blockers:
+
+```text
+G6.5c.2b Real provider-backed voice executor and authorized configured-provider smoke
+G6.5c.3b Real provider-backed image executor and authorized configured-provider smoke
+```
+
+Next slice: either add real provider code behind explicit quota/credential
+approval or move to the next non-provider G6 hardening slice.
