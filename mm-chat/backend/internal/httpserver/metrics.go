@@ -401,7 +401,7 @@ func knownMetricPath(path string) (string, bool) {
 	case "/v1/chat/tools/plan":
 		return path, true
 	case "/v1/agents", "/v1/plugins", "/v1/plugins/install", "/v1/plugins/execute",
-		"/v1/voice/transcribe", "/v1/voice/synthesize":
+		"/v1/images/generations", "/v1/voice/transcribe", "/v1/voice/synthesize":
 		return path, true
 	}
 	parts := strings.Split(path, "/")

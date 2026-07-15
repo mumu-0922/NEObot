@@ -361,7 +361,7 @@ Slice checklist:
       server-mode service calls from falling through to transitional Next
       routes. Browser-native speech APIs remain local-only UI behavior.
 - [x] G6.2 Go job admission contracts for voice synthesis/transcription: register `/v1/voice/transcribe` and `/v1/voice/synthesize` as validating fail-closed admission routes returning `VOICE_JOBS_UNAVAILABLE` until executors exist.
-- [ ] G6.3 Go job admission contracts for image generation.
+- [x] G6.3 Go job admission contracts for image generation: register `/v1/images/generations` as a strict `modelRef + prompt` validating fail-closed admission route returning `IMAGE_JOBS_UNAVAILABLE`.
 - [ ] G6.4 Go job admission contracts for code execution.
 - [ ] G6.5 Audit/rate-limit/cancel metadata and enabled-provider smoke.
 
@@ -476,7 +476,7 @@ Targeted tests:
 | G3 Auth, Config, Provider Settings, BYOK | Complete | Server-auth/config/provider lifecycle verified                               |
 | G4 Plugin Final Ownership                | In progress | G4.1-G4.6a complete; audit metadata and browser/provider smoke remain         |
 | G5 Search/Web Enrichment                 | Paused   | Owner reopens, then server-owned search passes gates                         |
-| G6 Voice/Image/Code Jobs                 | In progress | G6.1-G6.2 complete; image/code routes and real voice executors remain         |
+| G6 Voice/Image/Code Jobs                 | In progress | G6.1-G6.3 complete; code route and real media executors remain                |
 | G7 Knowledge/RAG/Citations               | Pending  | Phase 15 runtime gates pass                                                  |
 | G8 Teams/Knowledge UI                    | Pending  | Go control plane wired to UI with isolation smoke                            |
 | G9 Data Authority/Route Removal          | Pending  | local production authority and replaced routes gone                          |

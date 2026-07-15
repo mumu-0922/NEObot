@@ -1911,3 +1911,59 @@ and provider smoke
 
 Next slice: G6.3 image-generation Go job admission, keeping the same
 fail-closed pattern.
+
+## 2026-07-15 — G6.3 Image Generation Admission Route Completed
+
+Objective: add a Go-owned image-generation admission endpoint without enabling
+real image generation, provider calls, object storage writes, or billing/audit
+side effects.
+
+Completed scope:
+
+- added `internal/imagejobs` with server-only `modelRef + prompt` request DTOs,
+  response DTOs, a fail-closed service, and a handler for
+  `POST /v1/images/generations`;
+- rejected legacy-style plaintext provider objects via strict JSON decoding;
+- validated required `modelRef.providerId`, `modelRef.modelId`, prompt, prompt
+  length, and image count before returning `IMAGE_JOBS_UNAVAILABLE`;
+- registered `/v1/images/generations` in the Go HTTP server and metric-path
+  normalizer;
+- kept frontend `imageGeneration` capability disabled until real execution,
+  storage, and audit controls are added.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/backend/internal/imagejobs/types.go
+mm-chat/backend/internal/imagejobs/service.go
+mm-chat/backend/internal/imagejobs/handler.go
+mm-chat/backend/internal/imagejobs/handler_test.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/httpserver/server_test.go
+mm-chat/backend/internal/httpserver/metrics.go
+mm-chat/backend/internal/httpserver/metrics_test.go
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/inventory/frontend-call-sites.md
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test \
+  ./internal/imagejobs ./internal/httpserver                         # passed
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./...    # passed
+git diff --check -- mm-chat                                          # passed
+```
+
+Residual G6 blockers:
+
+```text
+G6.4 Code execution Go job admission
+G6.5 Real voice/image executors, output storage, audit/rate-limit/cancel
+metadata, and provider smoke
+```
+
+Next slice: G6.4 code-execution admission, still fail-closed and sandbox-first.

@@ -795,6 +795,29 @@ func TestNewHandlerRegistersPluginRoutesWithFailClosedRegistryFallbacks(t *testi
 	}
 }
 
+func TestNewHandlerRegistersImageJobRouteAsFailClosedAdmission(t *testing.T) {
+	handler := NewHandler(config.Config{Addr: ":0", Version: "route-test"})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/images/generations",
+		strings.NewReader(`{"modelRef":{"providerId":"openai","modelId":"gpt-image-1"},"prompt":"paint"}`),
+	)
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("image job status = %d, want %d; body=%s", rec.Code, http.StatusNotImplemented, rec.Body.String())
+	}
+	var body ErrorResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode image job error response: %v", err)
+	}
+	if body.Error.Code != "IMAGE_JOBS_UNAVAILABLE" {
+		t.Fatalf("image job code = %q, want IMAGE_JOBS_UNAVAILABLE", body.Error.Code)
+	}
+}
+
 func TestNewHandlerRegistersVoiceJobRoutesAsFailClosedAdmission(t *testing.T) {
 	handler := NewHandler(config.Config{Addr: ":0", Version: "route-test"})
 

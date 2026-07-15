@@ -971,7 +971,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         `voice`, `imageGeneration`, and `codeExecution` capabilities prevent
         service-layer fallthrough to transitional Next routes.
   - [x] G6.2 Voice synthesis/transcription Go job admission: Go registers validating fail-closed `/v1/voice/transcribe` and `/v1/voice/synthesize` routes.
-  - [ ] G6.3 Image generation Go job admission.
+  - [x] G6.3 Image generation Go job admission: Go registers a strict `modelRef + prompt` fail-closed `/v1/images/generations` route.
   - [ ] G6.4 Code execution Go job admission.
   - [ ] G6.5 Job audit/rate-limit/cancel metadata and provider smoke.
 - [ ] G7 Knowledge, Document Parsing, RAG, and Citations: pass Phase 15 runtime
