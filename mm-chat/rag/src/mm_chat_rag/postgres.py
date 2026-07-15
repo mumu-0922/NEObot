@@ -12,8 +12,24 @@ from psycopg.conninfo import make_conninfo
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
+from mm_chat_rag.job_context import (
+    JOB_CONTEXT_LEASE_FENCE_MISSING,
+    ProcessingJobContext,
+)
+from mm_chat_rag.job_handler_dependencies import (
+    JOB_HANDLER_PURGE_PROJECTION_INVALID,
+    JOB_HANDLER_PURGE_VISIBILITY_INVALID,
+    PurgeInvisibilityResult,
+    PurgeProjectionResult,
+)
 from mm_chat_rag.metrics import Metrics
-from mm_chat_rag.models import FunctionReadiness, JobClaim, OutboxClaim
+from mm_chat_rag.models import (
+    FunctionReadiness,
+    JobClaim,
+    OutboxClaim,
+    stable_error_code,
+)
+from mm_chat_rag.retry import PermanentJobError
 from mm_chat_rag.settings import Settings
 
 _SQL: Final[Mapping[str, str]] = {
@@ -33,6 +49,17 @@ _SQL: Final[Mapping[str, str]] = {
     "readiness": "SELECT * FROM knowledge_rag_worker_readiness()",
     "assert_search_complete": (
         "SELECT * FROM knowledge_assert_materialization_search_complete(%s, %s, %s, %s)"
+    ),
+    "mark_purge_invisible": (
+        "SELECT * FROM knowledge_mark_purge_invisible(%s, %s, %s, %s, %s, %s, %s, %s)"
+    ),
+    "purge_search_projection": (
+        "SELECT * FROM knowledge_purge_search_projection"
+        "(%s, %s, %s, %s, %s, %s, %s, %s)"
+    ),
+    "assert_purge_complete": (
+        "SELECT * FROM knowledge_assert_purge_complete"
+        "(%s, %s, %s, %s, %s, %s, %s, %s, %s)"
     ),
     "replay_outbox": ("SELECT * FROM knowledge_replay_outbox(%s, %s, %s, %s)"),
     "replay_job": ("SELECT * FROM knowledge_replay_processing_job(%s, %s, %s, %s, %s)"),
@@ -297,6 +324,69 @@ class PostgresAdapter:
         )
         return _function_succeeded(row)
 
+    async def mark_purge_invisible(
+        self, context: ProcessingJobContext
+    ) -> PurgeInvisibilityResult:
+        """Verify a purge job is already query-invisible through a fenced function."""
+        lease_token = _require_context_lease_token(context)
+        row = await self._call(
+            "mark_purge_invisible",
+            (
+                context.job_id,
+                self._settings.worker_id,
+                lease_token,
+                context.collection_id,
+                context.document_id,
+                context.document_version_id,
+                context.collection_visibility_epoch,
+                context.document_visibility_epoch,
+            ),
+        )
+        return _purge_invisibility_from_row(row)
+
+    async def purge_search_projection(
+        self, context: ProcessingJobContext
+    ) -> PurgeProjectionResult:
+        """Purge the admitted search projection scope through Postgres."""
+        lease_token = _require_context_lease_token(context)
+        row = await self._call(
+            "purge_search_projection",
+            (
+                context.job_id,
+                self._settings.worker_id,
+                lease_token,
+                context.collection_id,
+                context.document_id,
+                context.document_version_id,
+                context.index_generation_id,
+                context.materialization_id,
+            ),
+        )
+        return _purge_projection_from_row(row)
+
+    async def assert_purge_complete(
+        self,
+        context: ProcessingJobContext,
+        result: PurgeProjectionResult,
+    ) -> bool:
+        """Call the final purge projection completion gate."""
+        lease_token = _require_context_lease_token(context)
+        row = await self._call(
+            "assert_purge_complete",
+            (
+                context.job_id,
+                self._settings.worker_id,
+                lease_token,
+                context.collection_id,
+                context.document_id,
+                context.document_version_id,
+                context.index_generation_id,
+                result.materialization_id,
+                result.purged_child_search_rows,
+            ),
+        )
+        return _function_succeeded(row)
+
 
 def _function_succeeded(row: Mapping[str, Any] | None) -> bool:
     if row is None:
@@ -309,6 +399,104 @@ def _function_succeeded(row: Mapping[str, Any] | None) -> bool:
 def _has_database_code(error: psycopg.Error, code: str) -> bool:
     """Match only stable server messages; never expose arbitrary DB text."""
     return error.diag.message_primary == code or str(error) == code
+
+
+def _require_context_lease_token(context: ProcessingJobContext) -> uuid.UUID:
+    if context.lease_token is None:
+        raise PermanentJobError(stable_error_code(JOB_CONTEXT_LEASE_FENCE_MISSING))
+    return context.lease_token
+
+
+def _purge_invisibility_from_row(
+    row: Mapping[str, Any] | None,
+) -> PurgeInvisibilityResult:
+    if row is None:
+        raise PermanentJobError(stable_error_code(JOB_HANDLER_PURGE_VISIBILITY_INVALID))
+    return PurgeInvisibilityResult(
+        collection_id=_row_uuid(
+            row, "collection_id", JOB_HANDLER_PURGE_VISIBILITY_INVALID
+        ),
+        document_id=_row_uuid(row, "document_id", JOB_HANDLER_PURGE_VISIBILITY_INVALID),
+        document_version_id=_row_uuid(
+            row, "document_version_id", JOB_HANDLER_PURGE_VISIBILITY_INVALID
+        ),
+        collection_visibility_epoch=_row_positive_int(
+            row,
+            "collection_visibility_epoch",
+            JOB_HANDLER_PURGE_VISIBILITY_INVALID,
+        ),
+        document_visibility_epoch=_row_positive_int(
+            row,
+            "document_visibility_epoch",
+            JOB_HANDLER_PURGE_VISIBILITY_INVALID,
+        ),
+        query_visible=_row_bool(row, "query_visible"),
+    )
+
+
+def _purge_projection_from_row(
+    row: Mapping[str, Any] | None,
+) -> PurgeProjectionResult:
+    if row is None:
+        raise PermanentJobError(stable_error_code(JOB_HANDLER_PURGE_PROJECTION_INVALID))
+    return PurgeProjectionResult(
+        collection_id=_row_uuid(
+            row, "collection_id", JOB_HANDLER_PURGE_PROJECTION_INVALID
+        ),
+        document_id=_row_uuid(
+            row, "document_id", JOB_HANDLER_PURGE_PROJECTION_INVALID
+        ),
+        document_version_id=_row_uuid(
+            row, "document_version_id", JOB_HANDLER_PURGE_PROJECTION_INVALID
+        ),
+        index_generation_id=_row_uuid(
+            row, "index_generation_id", JOB_HANDLER_PURGE_PROJECTION_INVALID
+        ),
+        materialization_id=_row_optional_uuid(row, "materialization_id"),
+        purged_child_search_rows=_row_non_negative_int(
+            row, "purged_child_search_rows"
+        ),
+        remaining_ready_child_search_rows=_row_non_negative_int(
+            row, "remaining_ready_child_search_rows"
+        ),
+    )
+
+
+def _row_uuid(row: Mapping[str, Any], key: str, error_code: str) -> uuid.UUID:
+    value = row.get(key)
+    if isinstance(value, uuid.UUID):
+        return value
+    try:
+        return uuid.UUID(str(value))
+    except (TypeError, ValueError) as error:
+        raise PermanentJobError(stable_error_code(error_code)) from error
+
+
+def _row_optional_uuid(row: Mapping[str, Any], key: str) -> uuid.UUID | None:
+    if row.get(key) is None:
+        return None
+    return _row_uuid(row, key, JOB_HANDLER_PURGE_PROJECTION_INVALID)
+
+
+def _row_positive_int(row: Mapping[str, Any], key: str, error_code: str) -> int:
+    value = row.get(key)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise PermanentJobError(stable_error_code(error_code))
+    return value
+
+
+def _row_non_negative_int(row: Mapping[str, Any], key: str) -> int:
+    value = row.get(key)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise PermanentJobError(stable_error_code(JOB_HANDLER_PURGE_PROJECTION_INVALID))
+    return value
+
+
+def _row_bool(row: Mapping[str, Any], key: str) -> bool:
+    value = row.get(key)
+    if not isinstance(value, bool):
+        raise PermanentJobError(stable_error_code(JOB_HANDLER_PURGE_VISIBILITY_INVALID))
+    return value
 
 
 async def replay_outbox(

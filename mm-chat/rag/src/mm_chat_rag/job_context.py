@@ -36,6 +36,7 @@ JOB_CONTEXT_PURGE_AUTHORITY_FORBIDDEN: Final = (
 JOB_CONTEXT_PROJECTION_BINDING_MISSING: Final = (
     "JOB_CONTEXT_PROJECTION_BINDING_MISSING"
 )
+JOB_CONTEXT_LEASE_FENCE_MISSING: Final = "JOB_CONTEXT_LEASE_FENCE_MISSING"
 JOB_CONTEXT_PROVIDER_PROFILE_MISMATCH: Final = (
     "JOB_CONTEXT_PROVIDER_PROFILE_MISMATCH"
 )
@@ -48,6 +49,7 @@ JOB_CONTEXT_ERROR_CODES: Final[frozenset[str]] = frozenset(
         JOB_CONTEXT_PROVIDER_AUTHORITY_MISSING,
         JOB_CONTEXT_PURGE_AUTHORITY_FORBIDDEN,
         JOB_CONTEXT_PROJECTION_BINDING_MISSING,
+        JOB_CONTEXT_LEASE_FENCE_MISSING,
         JOB_CONTEXT_PROVIDER_PROFILE_MISMATCH,
     }
 )
@@ -112,6 +114,7 @@ class ProcessingJobContext:
     max_attempts: int
     request_hash: str
     authority: ProviderAuthority | None
+    lease_token: uuid.UUID | None = None
     runtime_provider_profile_id: str | None = None
 
     @property
@@ -181,6 +184,7 @@ def admit_processing_job_context(
         max_attempts=job.max_attempts,
         request_hash=_hash(row, "request_hash"),
         authority=authority,
+        lease_token=_optional_uuid(row, "lease_token"),
         runtime_provider_profile_id=profile_id,
     )
 

@@ -106,7 +106,8 @@ def test_job_context_error_codes_are_stable() -> None:
 
 
 def test_provider_job_claim_is_admitted_to_typed_context() -> None:
-    row = provider_row()
+    lease_token = uuid.uuid4()
+    row = provider_row(lease_token=lease_token)
     context = admit_processing_job_context(claim(row), provider_profile=valid_profile())
 
     assert context.job_id == row["id"]
@@ -118,6 +119,7 @@ def test_provider_job_claim_is_admitted_to_typed_context() -> None:
     assert context.attempt_count == 1
     assert context.max_attempts == 3
     assert context.request_hash == HASH
+    assert context.lease_token == lease_token
     assert context.runtime_provider_profile_id == MINERU_JINA_POSTGRES_PROFILE
     assert context.authority is not None
     assert context.authority.processor == "mineru"
@@ -125,13 +127,15 @@ def test_provider_job_claim_is_admitted_to_typed_context() -> None:
 
 
 def test_purge_job_claim_is_admitted_without_provider_authority() -> None:
-    row = purge_row()
+    lease_token = uuid.uuid4()
+    row = purge_row(lease_token=lease_token)
     context = admit_processing_job_context(claim(row))
 
     assert context.stage == "purge"
     assert context.operation == "purge"
     assert context.index_generation_id == row["index_generation_id"]
     assert context.materialization_id is None
+    assert context.lease_token == lease_token
     assert context.authority is None
     assert context.provider_backed is False
 

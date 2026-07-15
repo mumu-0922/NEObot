@@ -351,6 +351,25 @@ G7.5.8 completed on 2026-07-16:
 - Production `JOB_HANDLER_REGISTRY` remains empty; G7.5.8 adds a promotion seam,
   not a promoted live purge handler.
 
+G7.5.9 completed on 2026-07-16:
+
+- Added the first real Postgres projection gateway adapter behind the purge
+  dependency seam while keeping production handler registries empty.
+- Added token-fenced Postgres functions for the purge sequence:
+  `knowledge_mark_purge_invisible(...)`,
+  `knowledge_purge_search_projection(...)`, and
+  `knowledge_assert_purge_complete(...)`.
+- The Python `PostgresAdapter` now implements the purge gateway contract by
+  passing the admitted job id, worker id, lease token, Generation, optional
+  Materialization, and document/visibility fences through stored-function calls
+  only.
+- The adapter fails closed before database I/O if the admitted claim row lacks
+  a lease token. This preserves the existing JobRunner lease/heartbeat/final
+  CAS model and avoids un-fenced projection mutation.
+- This slice does not promote a live purge handler or add MinerU/Jina provider
+  calls. It only makes one real gateway available for later explicit registry
+  promotion.
+
 Remaining G7.5 work:
 
 - Implement real object-store, MinerU, Jina, and Postgres projection gateway

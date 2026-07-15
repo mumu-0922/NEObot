@@ -2,10 +2,16 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from dataclasses import replace
 
 import pytest
 
 import mm_chat_rag.postgres as postgres_module
+from mm_chat_rag.job_context import (
+    JOB_CONTEXT_LEASE_FENCE_MISSING,
+    ProcessingJobContext,
+)
+from mm_chat_rag.job_handler_dependencies import PurgeProjectionResult
 from mm_chat_rag.metrics import Metrics
 from mm_chat_rag.models import JobClaim, OutboxClaim
 from mm_chat_rag.postgres import (
@@ -19,6 +25,7 @@ from mm_chat_rag.provider_profile import (
     MINERU_JINA_POSTGRES_PROFILE,
     ProviderRuntimeProfile,
 )
+from mm_chat_rag.retry import PermanentJobError
 from mm_chat_rag.settings import Settings
 
 
@@ -80,6 +87,30 @@ def adapter_with_rows(
     return adapter, connection
 
 
+def purge_context(**updates: object) -> ProcessingJobContext:
+    context = ProcessingJobContext(
+        job_id=uuid.uuid4(),
+        stage="purge",
+        operation="purge",
+        collection_id=uuid.uuid4(),
+        document_id=uuid.uuid4(),
+        document_version_id=uuid.uuid4(),
+        file_id=uuid.uuid4(),
+        index_generation_id=uuid.uuid4(),
+        materialization_id=None,
+        collection_acl_revision=1,
+        collection_visibility_epoch=2,
+        collection_processing_revision=1,
+        document_visibility_epoch=3,
+        attempt_count=1,
+        max_attempts=3,
+        request_hash="a" * 64,
+        authority=None,
+        lease_token=uuid.uuid4(),
+    )
+    return replace(context, **updates)
+
+
 def test_sql_surface_is_select_only_and_function_allowlisted() -> None:
     assert set(_SQL) == {
         "claim_outbox",
@@ -91,6 +122,9 @@ def test_sql_surface_is_select_only_and_function_allowlisted() -> None:
         "finish_job",
         "readiness",
         "assert_search_complete",
+        "mark_purge_invisible",
+        "purge_search_projection",
+        "assert_purge_complete",
         "replay_outbox",
         "replay_job",
     }
@@ -182,6 +216,99 @@ async def test_adapter_calls_only_frozen_functions() -> None:
         _SQL["finish_job"],
         _SQL["assert_search_complete"],
     ]
+
+
+async def test_purge_projection_gateway_calls_token_fenced_functions() -> None:
+    worker_id = uuid.uuid4()
+    settings = Settings(
+        database_url="postgresql://worker:secret@db/rag",
+        worker_id=worker_id,
+    )
+    context = purge_context()
+    materialization_id = uuid.uuid4()
+    projected = {
+        "collection_id": context.collection_id,
+        "document_id": context.document_id,
+        "document_version_id": context.document_version_id,
+        "index_generation_id": context.index_generation_id,
+        "materialization_id": materialization_id,
+        "purged_child_search_rows": 2,
+        "remaining_ready_child_search_rows": 0,
+    }
+    adapter, connection = adapter_with_rows(
+        [
+            {
+                "collection_id": context.collection_id,
+                "document_id": context.document_id,
+                "document_version_id": context.document_version_id,
+                "collection_visibility_epoch": context.collection_visibility_epoch,
+                "document_visibility_epoch": context.document_visibility_epoch,
+                "query_visible": False,
+            },
+            projected,
+            {"result": True},
+        ],
+        settings,
+    )
+
+    invisible = await adapter.mark_purge_invisible(context)
+    projection = await adapter.purge_search_projection(context)
+    assert await adapter.assert_purge_complete(context, projection)
+
+    assert not invisible.query_visible
+    assert projection == PurgeProjectionResult(**projected)
+    assert connection.calls == [
+        (
+            _SQL["mark_purge_invisible"],
+            (
+                context.job_id,
+                worker_id,
+                context.lease_token,
+                context.collection_id,
+                context.document_id,
+                context.document_version_id,
+                context.collection_visibility_epoch,
+                context.document_visibility_epoch,
+            ),
+        ),
+        (
+            _SQL["purge_search_projection"],
+            (
+                context.job_id,
+                worker_id,
+                context.lease_token,
+                context.collection_id,
+                context.document_id,
+                context.document_version_id,
+                context.index_generation_id,
+                context.materialization_id,
+            ),
+        ),
+        (
+            _SQL["assert_purge_complete"],
+            (
+                context.job_id,
+                worker_id,
+                context.lease_token,
+                context.collection_id,
+                context.document_id,
+                context.document_version_id,
+                context.index_generation_id,
+                materialization_id,
+                projection.purged_child_search_rows,
+            ),
+        ),
+    ]
+
+
+async def test_purge_projection_gateway_requires_claim_lease_token() -> None:
+    adapter, connection = adapter_with_rows([])
+
+    with pytest.raises(PermanentJobError) as raised:
+        await adapter.mark_purge_invisible(purge_context(lease_token=None))
+
+    assert raised.value.error_code == JOB_CONTEXT_LEASE_FENCE_MISSING
+    assert connection.calls == []
 
 
 async def test_empty_function_claims_remain_empty() -> None:

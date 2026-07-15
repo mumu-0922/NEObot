@@ -930,3 +930,102 @@ Mypy passed on the admission, skeleton, and dependency source files.
 Next G7.5 slice: add the first real Postgres projection gateway adapter behind
 one seam, still default-off, then promote only a single stage behind explicit
 readiness and registry gates.
+
+## 2026-07-16 — G7.5.9 Default-off Postgres Purge Projection Gateway Adapter
+
+Objective: attach the first real Postgres projection gateway behind one admitted
+handler seam without promoting production dispatch or touching provider quota.
+The selected stage is `purge` because it is credential-free and exercises the
+immediate-invisibility/delete contract before MinerU/Jina adapters are enabled.
+
+Implemented behavior:
+
+- Added a typed `lease_token` fence to `ProcessingJobContext` when the database
+  claim row provides it. Legacy/fake contexts can still omit it, but the real
+  Postgres purge adapter fails closed before database I/O with
+  `JOB_CONTEXT_LEASE_FENCE_MISSING`.
+- Added migration `014_rag_purge_projection_gateway` with worker-execute-only
+  stored-function contracts:
+  - `knowledge_mark_purge_invisible(...)` verifies the admitted purge job is
+    token-fenced and returns whether the target document version is still
+    query-visible;
+  - `knowledge_purge_search_projection(...)` marks matching
+    `knowledge_child_search_projections` rows as `purged` for the admitted
+    Generation and optional Materialization scope;
+  - `knowledge_assert_purge_complete(...)` rejects if any matching `ready`
+    child search projection row remains.
+- Added `PostgresAdapter` methods implementing the existing
+  `PurgeProjectionGateway` protocol by calling only the new frozen
+  stored-function surface. No base-table DML was added to Python.
+- Added unit/static coverage for the Python gateway call parameters, missing
+  lease fence behavior, SQL allowlist, and migration privilege/rollback
+  contract.
+- Production `JOB_HANDLER_REGISTRY` and `DISPATCH_REGISTRY` remain empty. This
+  slice provides a default-off adapter only; it cannot claim purge work until a
+  later explicit readiness/registry promotion slice.
+
+Touched files:
+
+```text
+backend/migrations/014_rag_purge_projection_gateway.up.sql
+backend/migrations/014_rag_purge_projection_gateway.down.sql
+backend/internal/migration/phase15_rag_purge_projection_gateway_schema_test.go
+rag/src/mm_chat_rag/job_context.py
+rag/src/mm_chat_rag/postgres.py
+rag/tests/unit/test_job_context.py
+rag/tests/unit/test_postgres.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_job_context.py tests/unit/test_job_handlers.py \
+  tests/unit/test_job_handler_dependencies.py tests/unit/test_postgres.py \
+  tests/unit/test_jobs.py
+# 80 passed
+
+cd mm-chat/rag && uv run ruff check \
+  src/mm_chat_rag/job_context.py src/mm_chat_rag/handlers.py \
+  src/mm_chat_rag/job_handlers.py src/mm_chat_rag/job_handler_dependencies.py \
+  src/mm_chat_rag/postgres.py tests/unit/test_job_context.py \
+  tests/unit/test_job_handlers.py tests/unit/test_job_handler_dependencies.py \
+  tests/unit/test_postgres.py
+# passed
+
+cd mm-chat/rag && uv run mypy \
+  src/mm_chat_rag/job_context.py src/mm_chat_rag/handlers.py \
+  src/mm_chat_rag/job_handlers.py src/mm_chat_rag/job_handler_dependencies.py \
+  src/mm_chat_rag/postgres.py
+# passed
+
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./internal/migration \
+  -run 'TestPhase15RAG(PurgeProjectionGateway|SearchProjection|WorkerProjectionGate)'
+# passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_parser_runtime_boundary.py \
+  tests/unit/test_parser_deployment_boundary.py \
+  tests/unit/test_provider_capture.py::test_production_dispatch_remains_disabled_and_registries_empty
+# 7 passed; production registries remain empty
+
+cd mm-chat/frontend && corepack pnpm prettier --check \
+  ../docs/architecture/g7-rag-citation-cutover-plan.md \
+  ../docs/tracking/g7-rag-citation-process.md \
+  ../docs/tracking/progress.md
+# passed
+```
+
+Residual risk:
+
+- The new purge stored functions are static/unit covered in this slice; a live
+  Postgres migration/integration run remains for the later promotion gate.
+- Readiness is intentionally not expanded to require these functions yet,
+  because the real purge handler registry is still default-off.
+
+Next G7.5 slice: add one real parse-side gateway adapter or finish the purge
+promotion gate, but only after a dedicated readiness/registry plan keeps the
+single-stage blast radius narrow.
