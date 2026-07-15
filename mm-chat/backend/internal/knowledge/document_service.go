@@ -27,7 +27,7 @@ func (s *Service) CreateDocumentVersion(ctx context.Context, documentID string, 
 	if err != nil {
 		return Document{}, asDocumentValidation(err)
 	}
-	ids := make([]string, 2)
+	ids := make([]string, 3)
 	for index := range ids {
 		ids[index], err = s.newID()
 		if err != nil {
@@ -36,7 +36,7 @@ func (s *Service) CreateDocumentVersion(ctx context.Context, documentID string, 
 	}
 	sum := sha256.Sum256([]byte(documentID + "\n" + input.FileID))
 	return s.repo.CreateDocumentVersion(ctx, CreateDocumentVersionRepositoryInput{
-		VersionID: ids[0], JobID: ids[1], DocumentID: documentID,
+		VersionID: ids[0], JobID: ids[1], MaterializationID: ids[2], DocumentID: documentID,
 		ActorUserID: actor.ID, FileID: input.FileID, IdempotencyKey: input.IdempotencyKey,
 		RequestHash: hex.EncodeToString(sum[:]), ParseProcessor: "mineru",
 	})
@@ -58,13 +58,16 @@ func (s *Service) ReprocessDocument(ctx context.Context, documentID string, inpu
 	if err != nil {
 		return Document{}, asDocumentValidation(err)
 	}
-	jobID, err := s.newID()
-	if err != nil {
-		return Document{}, fmt.Errorf("generate reprocess job identity: %w", err)
+	ids := make([]string, 2)
+	for index := range ids {
+		ids[index], err = s.newID()
+		if err != nil {
+			return Document{}, fmt.Errorf("generate reprocess identity: %w", err)
+		}
 	}
 	sum := sha256.Sum256([]byte(documentID))
 	return s.repo.ReprocessDocument(ctx, ReprocessDocumentRepositoryInput{
-		JobID: jobID, DocumentID: documentID, ActorUserID: actor.ID,
+		JobID: ids[0], MaterializationID: ids[1], DocumentID: documentID, ActorUserID: actor.ID,
 		IdempotencyKey: input.IdempotencyKey, RequestHash: hex.EncodeToString(sum[:]),
 		ParseProcessor: "mineru",
 	})

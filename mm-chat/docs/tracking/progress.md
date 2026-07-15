@@ -1037,7 +1037,8 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
   - [x] G7.3 Provider-backed parser/index profile gate.
   - [x] G7.4 Canonical IR to chunks and Postgres projection.
   - [ ] G7.5 Worker dispatch, rebuild, delete, and retry loop
-        (`G7.5.1` readiness gate and `G7.5.2` job-context admission seam done;
+        (`G7.5.1` readiness gate, `G7.5.2` job-context admission seam, and
+        `G7.5.3` Go parse job materialization binding done; purge binding and
         real handler dispatch still gated).
   - [ ] G7.6 Private query and Go reauthorization.
   - [ ] G7.7 Strict/optional chat answer and basic citations.

@@ -156,17 +156,17 @@ type Document struct {
 }
 
 type CreateDocumentRepositoryInput struct {
-	DocumentID, VersionID, JobID string
-	CollectionID, ActorUserID    string
-	FileID, IdempotencyKey       string
-	RequestHash, ParseProcessor  string
+	DocumentID, VersionID, JobID, MaterializationID string
+	CollectionID, ActorUserID                       string
+	FileID, IdempotencyKey                          string
+	RequestHash, ParseProcessor                     string
 }
 
 type CreateDocumentVersionRepositoryInput struct {
-	VersionID, JobID            string
-	DocumentID, ActorUserID     string
-	FileID, IdempotencyKey      string
-	RequestHash, ParseProcessor string
+	VersionID, JobID, MaterializationID string
+	DocumentID, ActorUserID             string
+	FileID, IdempotencyKey              string
+	RequestHash, ParseProcessor         string
 }
 
 type ReprocessDocumentInput struct {
@@ -174,9 +174,9 @@ type ReprocessDocumentInput struct {
 }
 
 type ReprocessDocumentRepositoryInput struct {
-	JobID, DocumentID, ActorUserID string
-	IdempotencyKey, RequestHash    string
-	ParseProcessor                 string
+	JobID, MaterializationID, DocumentID, ActorUserID string
+	IdempotencyKey, RequestHash                       string
+	ParseProcessor                                    string
 }
 
 type DeleteDocumentRepositoryInput struct {

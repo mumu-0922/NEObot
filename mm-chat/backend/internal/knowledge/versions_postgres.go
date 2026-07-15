@@ -129,54 +129,25 @@ UPDATE knowledge_documents SET updated_at = now() WHERE id = $1 RETURNING update
 	}
 	document.PendingVersion = &version
 
-	if authority.LegacyProjectionUnbound {
-		_, err = tx.ExecContext(ctx, `
-INSERT INTO knowledge_processing_jobs (
-  id, collection_id, document_id, document_version_id, file_id, stage, operation,
-  processor, endpoint_id, model_id, governance_profile_id, governance_revision,
-  governance_head_revision, collection_consent_id, collection_consent_revision,
-  collection_acl_revision, collection_visibility_epoch,
-  collection_processing_revision, document_visibility_epoch,
-  requested_by_user_id, idempotency_scope, idempotency_key, request_hash,
-  legacy_projection_unbound
-) VALUES (
-  $1,$2,$3,$4,$5,'parse','replace',$6,$7,$8,$9,$10,$11,$12,$13,
-  $14,$15,$16,$17,$18,$19,$20,$21,true
-)
-`, input.JobID, collectionID, input.DocumentID, input.VersionID, input.FileID,
-			input.ParseProcessor, authority.EndpointID, authority.ModelID, authority.ProfileID,
-			authority.GovernanceRevision, authority.HeadRevision, authority.ConsentID,
-			authority.ConsentRevision, collection.ACLRevision, collection.VisibilityEpoch,
-			collection.ProcessingRevision, visibilityEpoch, input.ActorUserID,
-			documentOperationIdempotencyScope(input.DocumentID, "replace", input.ActorUserID),
-			input.IdempotencyKey, input.RequestHash)
-	} else {
-		_, err = tx.ExecContext(ctx, `
-INSERT INTO knowledge_processing_jobs (
-  id, collection_id, document_id, document_version_id, file_id, stage, operation,
-  processor, endpoint_id, governance_profile_id, governance_revision,
-  governance_head_revision, collection_consent_id, collection_consent_revision,
-  collection_acl_revision, collection_visibility_epoch,
-  collection_processing_revision, document_visibility_epoch,
-  requested_by_user_id, idempotency_scope, idempotency_key, request_hash
-) VALUES (
-  $1,$2,$3,$4,$5,'parse','replace',$6,$7,$8,$9,$10,$11,$12,
-  $13,$14,$15,$16,$17,$18,$19,$20
-)
-`, input.JobID, collectionID, input.DocumentID, input.VersionID, input.FileID,
-			input.ParseProcessor, authority.EndpointID, authority.ProfileID,
-			authority.GovernanceRevision, authority.HeadRevision, authority.ConsentID,
-			authority.ConsentRevision, collection.ACLRevision, collection.VisibilityEpoch,
-			collection.ProcessingRevision, visibilityEpoch, input.ActorUserID,
-			documentOperationIdempotencyScope(input.DocumentID, "replace", input.ActorUserID),
-			input.IdempotencyKey, input.RequestHash)
-	}
+	binding, err := insertParseProcessingJob(ctx, tx, parseJobInsert{
+		JobID: input.JobID, CollectionID: collectionID,
+		DocumentID: input.DocumentID, VersionID: input.VersionID,
+		FileID: input.FileID, Operation: "replace",
+		RequestedByUserID: input.ActorUserID,
+		IdempotencyScope: documentOperationIdempotencyScope(
+			input.DocumentID, "replace", input.ActorUserID,
+		),
+		IdempotencyKey: input.IdempotencyKey, RequestHash: input.RequestHash,
+		SourceContentHash: hash, DocumentVisibilityEpoch: visibilityEpoch,
+		MaterializationID: input.MaterializationID, Authority: authority,
+		Collection: collection,
+	})
 	if err != nil {
 		return Document{}, fmt.Errorf("insert replacement parse job: %w", err)
 	}
 	if err := r.insertDocumentOutbox(
 		ctx, tx, document, version, input.JobID, hash, "replace",
-		authority, collection, visibilityEpoch,
+		authority, collection, visibilityEpoch, binding,
 	); err != nil {
 		return Document{}, err
 	}

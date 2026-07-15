@@ -234,7 +234,7 @@ func (s *Service) CreateDocument(ctx context.Context, collectionID string, input
 	if err != nil {
 		return Document{}, asDocumentValidation(err)
 	}
-	ids := make([]string, 3)
+	ids := make([]string, 4)
 	for index := range ids {
 		ids[index], err = s.newID()
 		if err != nil {
@@ -243,7 +243,7 @@ func (s *Service) CreateDocument(ctx context.Context, collectionID string, input
 	}
 	sum := sha256.Sum256([]byte(collectionID + "\n" + input.FileID))
 	return s.repo.CreateDocument(ctx, CreateDocumentRepositoryInput{
-		DocumentID: ids[0], VersionID: ids[1], JobID: ids[2], CollectionID: collectionID,
+		DocumentID: ids[0], VersionID: ids[1], JobID: ids[2], MaterializationID: ids[3], CollectionID: collectionID,
 		ActorUserID: actor.ID, FileID: input.FileID, IdempotencyKey: input.IdempotencyKey,
 		RequestHash: hex.EncodeToString(sum[:]), ParseProcessor: "mineru",
 	})

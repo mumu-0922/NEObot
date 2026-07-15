@@ -516,3 +516,70 @@ git diff --check passed for mm-chat scoped diff.
 Next G7.5 slice: bind Go-created jobs to Generation/Materialization authority
 instead of legacy projection-unbound rows, then connect the admitted context to
 bounded parse / passage-embedding / purge handler skeletons.
+
+## 2026-07-15 — G7.5.3 Go Parse Job Materialization Binding
+
+Objective: let Go-created parse jobs become claimable by the G7.5 Python worker
+when a real active Corpus Index Generation exists, without enabling real
+provider handler execution.
+
+Implemented behavior:
+
+- Service-layer document upload, replacement, and reprocess now allocate a
+  distinct `materialization_id` in addition to the existing job/document/version
+  IDs.
+- Added `insertParseProcessingJob(...)` and `allocateParseMaterialization(...)`
+  in Go:
+  - finds the active Corpus Index Generation from `knowledge_corpus_projection_head`;
+  - creates a staging `knowledge_document_materializations` row with the active
+    Generation's `base_profile_hash`;
+  - inserts the parse processing job with `legacy_projection_unbound=false`,
+    `index_generation_id`, `materialization_id`, exact model/governance/consent
+    authority, and `max_attempts=3`;
+  - preserves the old `legacy_projection_unbound=true` fallback when no active
+    Generation exists yet.
+- Document version and reprocess outbox payloads now include
+  `legacyProjectionUnbound`; when bound, they also include
+  `indexGenerationId` and `materializationId`.
+- Added a Postgres integration regression covering active-Generation document
+  upload, materialization creation, outbox projection IDs, and claimability via
+  `knowledge_claim_processing_job(...)`. The regression is gated by
+  `MM_CHAT_TEST_DATABASE_URL` like the existing Postgres tests.
+
+Touched files:
+
+```text
+backend/internal/knowledge/parse_jobs_postgres.go
+backend/internal/knowledge/types.go
+backend/internal/knowledge/service.go
+backend/internal/knowledge/document_service.go
+backend/internal/knowledge/documents_postgres.go
+backend/internal/knowledge/versions_postgres.go
+backend/internal/knowledge/reprocess_postgres.go
+backend/internal/knowledge/service_test.go
+backend/internal/knowledge/repository_postgres_test.go
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification run during the slice:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build \
+  go test -count=1 ./internal/knowledge
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./...
+```
+
+Result:
+
+```text
+Go knowledge package compile/unit pass. Postgres integration rows are present
+but skipped unless MM_CHAT_TEST_DATABASE_URL is configured, matching existing
+repository test behavior.
+Go backend full package tests passed.
+```
+
+Next G7.5 slice: bind delete/tombstone purge jobs to Generation/Purge authority
+and then attach admitted Python handler skeletons to the now Generation-bound
+parse job context.

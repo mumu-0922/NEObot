@@ -91,47 +91,19 @@ ORDER BY created_at DESC,id DESC LIMIT 1
 `, input.DocumentID, target.ID).Scan(&causedByJobID); err != nil {
 		return Document{}, fmt.Errorf("resolve reprocess cause: %w", err)
 	}
-	if authority.LegacyProjectionUnbound {
-		_, err = tx.ExecContext(ctx, `
-INSERT INTO knowledge_processing_jobs (
- id,collection_id,document_id,document_version_id,file_id,stage,operation,
- processor,endpoint_id,model_id,governance_profile_id,governance_revision,
- governance_head_revision,collection_consent_id,collection_consent_revision,
- collection_acl_revision,collection_visibility_epoch,collection_processing_revision,
- document_visibility_epoch,requested_by_user_id,caused_by_job_id,
- idempotency_scope,idempotency_key,request_hash,legacy_projection_unbound
-) VALUES (
- $1,$2,$3,$4,$5,'parse','reprocess',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
- $17,$18,$19,$20,$21,$22,true
-)
-`, input.JobID, collectionID, input.DocumentID, target.ID, target.File.ID,
-			input.ParseProcessor, authority.EndpointID, authority.ModelID, authority.ProfileID,
-			authority.GovernanceRevision, authority.HeadRevision, authority.ConsentID,
-			authority.ConsentRevision, collection.ACLRevision, collection.VisibilityEpoch,
-			collection.ProcessingRevision, visibilityEpoch, input.ActorUserID, causedByJobID,
-			documentOperationIdempotencyScope(input.DocumentID, "reprocess", input.ActorUserID),
-			input.IdempotencyKey, input.RequestHash)
-	} else {
-		_, err = tx.ExecContext(ctx, `
-INSERT INTO knowledge_processing_jobs (
- id,collection_id,document_id,document_version_id,file_id,stage,operation,
- processor,endpoint_id,governance_profile_id,governance_revision,
- governance_head_revision,collection_consent_id,collection_consent_revision,
- collection_acl_revision,collection_visibility_epoch,collection_processing_revision,
- document_visibility_epoch,requested_by_user_id,caused_by_job_id,
- idempotency_scope,idempotency_key,request_hash
-) VALUES (
- $1,$2,$3,$4,$5,'parse','reprocess',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
- $16,$17,$18,$19,$20,$21
-)
-`, input.JobID, collectionID, input.DocumentID, target.ID, target.File.ID,
-			input.ParseProcessor, authority.EndpointID, authority.ProfileID,
-			authority.GovernanceRevision, authority.HeadRevision, authority.ConsentID,
-			authority.ConsentRevision, collection.ACLRevision, collection.VisibilityEpoch,
-			collection.ProcessingRevision, visibilityEpoch, input.ActorUserID, causedByJobID,
-			documentOperationIdempotencyScope(input.DocumentID, "reprocess", input.ActorUserID),
-			input.IdempotencyKey, input.RequestHash)
-	}
+	binding, err := insertParseProcessingJob(ctx, tx, parseJobInsert{
+		JobID: input.JobID, CollectionID: collectionID,
+		DocumentID: input.DocumentID, VersionID: target.ID,
+		FileID: target.File.ID, Operation: "reprocess",
+		RequestedByUserID: input.ActorUserID, CausedByJobID: causedByJobID,
+		IdempotencyScope: documentOperationIdempotencyScope(
+			input.DocumentID, "reprocess", input.ActorUserID,
+		),
+		IdempotencyKey: input.IdempotencyKey, RequestHash: input.RequestHash,
+		SourceContentHash: contentHash, DocumentVisibilityEpoch: visibilityEpoch,
+		MaterializationID: input.MaterializationID, Authority: authority,
+		Collection: collection,
+	})
 	if err != nil {
 		if isConstraint(err, "knowledge_processing_jobs_idempotency_unique") {
 			return Document{}, ErrIdempotencyConflict
@@ -165,7 +137,7 @@ UPDATE knowledge_documents SET updated_at=now() WHERE id=$1 RETURNING updated_at
 	}
 	if err := r.insertReprocessOutbox(
 		ctx, tx, document, *target, contentHash, input.JobID, causedByJobID,
-		authority, collection, visibilityEpoch,
+		authority, collection, visibilityEpoch, binding,
 	); err != nil {
 		return Document{}, err
 	}
@@ -283,12 +255,13 @@ func (r *PostgresRepository) insertReprocessOutbox(
 	authority parseAuthority,
 	collection collectionRow,
 	documentVisibilityEpoch int64,
+	binding parseMaterializationBinding,
 ) error {
 	eventID, err := r.newEventID()
 	if err != nil {
 		return fmt.Errorf("generate reprocess outbox event id: %w", err)
 	}
-	payload, _ := json.Marshal(map[string]any{
+	payloadMap := map[string]any{
 		"schemaVersion": 1, "collectionId": document.CollectionID,
 		"documentId": document.ID, "documentVersionId": version.ID,
 		"sourceVersion": version.SourceVersion, "fileId": version.File.ID,
@@ -305,7 +278,13 @@ func (r *PostgresRepository) insertReprocessOutbox(
 		"collectionVisibilityEpoch":    collection.VisibilityEpoch,
 		"collectionProcessingRevision": collection.ProcessingRevision,
 		"documentVisibilityEpoch":      documentVisibilityEpoch,
-	})
+		"legacyProjectionUnbound":      binding.LegacyUnbound,
+	}
+	if binding.IndexGenerationID != "" {
+		payloadMap["indexGenerationId"] = binding.IndexGenerationID
+		payloadMap["materializationId"] = binding.MaterializationID
+	}
+	payload, _ := json.Marshal(payloadMap)
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO knowledge_outbox(event_id,aggregate_type,aggregate_key,event_type,payload)
 VALUES ($1,'knowledge_document',$2,'knowledge.document.reprocess.requested',$3::jsonb)

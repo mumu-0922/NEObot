@@ -252,10 +252,27 @@ G7.5.2 completed on 2026-07-15:
   `JOB_HANDLER_REGISTRY` remains empty, so this slice still cannot claim work or
   consume MinerU/Jina quota.
 
+G7.5.3 completed on 2026-07-15:
+
+- Go document upload, replacement, and reprocess paths now allocate an explicit
+  `materialization_id` alongside the processing `job_id`.
+- When a real active Corpus Index Generation exists, Go creates a staging
+  `knowledge_document_materializations` row and writes the parse job with
+  `legacy_projection_unbound=false`, pinned `index_generation_id`,
+  `materialization_id`, exact model authority, and the provider retry budget of
+  `3`.
+- The matching document/reprocess outbox payload carries the same
+  `indexGenerationId` and `materializationId` so later dispatch cannot infer or
+  guess projection authority from stale state.
+- If no active Generation exists yet, Go preserves the previous legacy-unbound
+  fallback so non-RAG document management remains usable until the first
+  Generation is promoted.
+
 Remaining G7.5 work:
 
-- Bind Go-created processing jobs to Generation/Materialization authority and
-  connect Go processing jobs/outbox to Python handler execution.
+- Bind delete/tombstone purge jobs to Generation/Purge authority.
+- Connect admitted Python parse / passage-embedding / purge handlers to the
+  Generation-bound Go jobs and outbox payloads.
 - Implement index, reprocess, tombstone purge, rebuild, retry, and DLQ behavior.
 - Enforce immediate query invisibility for deleted/tombstoned versions.
 

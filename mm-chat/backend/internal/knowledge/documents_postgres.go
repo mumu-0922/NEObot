@@ -243,54 +243,25 @@ RETURNING id, source_version, status, created_at, updated_at
 		return Document{}, fmt.Errorf("insert document version: %w", err)
 	}
 	document.PendingVersion = &version
-	if authority.LegacyProjectionUnbound {
-		_, err = tx.ExecContext(ctx, `
-INSERT INTO knowledge_processing_jobs (
-  id, collection_id, document_id, document_version_id, file_id, stage, operation,
-  processor, endpoint_id, model_id, governance_profile_id, governance_revision,
-  governance_head_revision, collection_consent_id, collection_consent_revision,
-  collection_acl_revision, collection_visibility_epoch,
-  collection_processing_revision, document_visibility_epoch,
-  requested_by_user_id, idempotency_scope, idempotency_key, request_hash,
-  legacy_projection_unbound
-) VALUES (
-  $1,$2,$3,$4,$5,'parse','initial',$6,$7,$8,$9,$10,$11,$12,$13,
-  $14,$15,$16,1,$17,$18,$19,$20,true
-)
-`, input.JobID, input.CollectionID, input.DocumentID, input.VersionID, input.FileID,
-			input.ParseProcessor, authority.EndpointID, authority.ModelID, authority.ProfileID,
-			authority.GovernanceRevision, authority.HeadRevision, authority.ConsentID,
-			authority.ConsentRevision, collection.ACLRevision, collection.VisibilityEpoch,
-			collection.ProcessingRevision, input.ActorUserID,
-			documentOperationIdempotencyScope(input.DocumentID, "initial", input.ActorUserID),
-			input.IdempotencyKey, input.RequestHash)
-	} else {
-		_, err = tx.ExecContext(ctx, `
-INSERT INTO knowledge_processing_jobs (
-  id, collection_id, document_id, document_version_id, file_id, stage, operation,
-  processor, endpoint_id, governance_profile_id, governance_revision,
-  governance_head_revision, collection_consent_id, collection_consent_revision,
-  collection_acl_revision, collection_visibility_epoch,
-  collection_processing_revision, document_visibility_epoch,
-  requested_by_user_id, idempotency_scope, idempotency_key, request_hash
-) VALUES (
-  $1,$2,$3,$4,$5,'parse','initial',$6,$7,$8,$9,$10,$11,$12,
-  $13,$14,$15,1,$16,$17,$18,$19
-)
-`, input.JobID, input.CollectionID, input.DocumentID, input.VersionID, input.FileID,
-			input.ParseProcessor, authority.EndpointID, authority.ProfileID,
-			authority.GovernanceRevision, authority.HeadRevision,
-			authority.ConsentID, authority.ConsentRevision, collection.ACLRevision, collection.VisibilityEpoch,
-			collection.ProcessingRevision, input.ActorUserID,
-			documentOperationIdempotencyScope(input.DocumentID, "initial", input.ActorUserID),
-			input.IdempotencyKey, input.RequestHash)
-	}
+	binding, err := insertParseProcessingJob(ctx, tx, parseJobInsert{
+		JobID: input.JobID, CollectionID: input.CollectionID,
+		DocumentID: input.DocumentID, VersionID: input.VersionID,
+		FileID: input.FileID, Operation: "initial",
+		RequestedByUserID: input.ActorUserID,
+		IdempotencyScope: documentOperationIdempotencyScope(
+			input.DocumentID, "initial", input.ActorUserID,
+		),
+		IdempotencyKey: input.IdempotencyKey, RequestHash: input.RequestHash,
+		SourceContentHash: hash, DocumentVisibilityEpoch: 1,
+		MaterializationID: input.MaterializationID, Authority: authority,
+		Collection: collection,
+	})
 	if err != nil {
 		return Document{}, fmt.Errorf("insert parse job: %w", err)
 	}
 	if err := r.insertDocumentOutbox(
 		ctx, tx, document, version, input.JobID, hash, "initial",
-		authority, collection, 1,
+		authority, collection, 1, binding,
 	); err != nil {
 		return Document{}, err
 	}
@@ -370,12 +341,13 @@ func (r *PostgresRepository) insertDocumentOutbox(
 	authority parseAuthority,
 	collection collectionRow,
 	documentVisibilityEpoch int64,
+	binding parseMaterializationBinding,
 ) error {
 	eventID, err := r.newEventID()
 	if err != nil {
 		return err
 	}
-	payload, _ := json.Marshal(map[string]any{
+	payloadMap := map[string]any{
 		"schemaVersion": 1, "collectionId": document.CollectionID,
 		"documentId": document.ID, "documentVersionId": version.ID,
 		"sourceVersion": version.SourceVersion, "fileId": version.File.ID,
@@ -391,7 +363,13 @@ func (r *PostgresRepository) insertDocumentOutbox(
 		"collectionVisibilityEpoch":    collection.VisibilityEpoch,
 		"collectionProcessingRevision": collection.ProcessingRevision,
 		"documentVisibilityEpoch":      documentVisibilityEpoch,
-	})
+		"legacyProjectionUnbound":      binding.LegacyUnbound,
+	}
+	if binding.IndexGenerationID != "" {
+		payloadMap["indexGenerationId"] = binding.IndexGenerationID
+		payloadMap["materializationId"] = binding.MaterializationID
+	}
+	payload, _ := json.Marshal(payloadMap)
 	_, err = tx.ExecContext(ctx, `INSERT INTO knowledge_outbox
 (event_id,aggregate_type,aggregate_key,event_type,payload)
 VALUES ($1,'knowledge_document',$2,'knowledge.document.version.requested',$3::jsonb)`, eventID, document.ID, string(payload))

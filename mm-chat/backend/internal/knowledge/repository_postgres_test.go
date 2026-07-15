@@ -811,6 +811,154 @@ UPDATE knowledge_document_versions SET status='tombstoned',updated_at=now() WHER
 	}
 }
 
+func TestPostgresCreateDocumentBindsActiveRAGGeneration(t *testing.T) {
+	db := openKnowledgeTestDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if _, err := migration.NewRunner(db, migrationfiles.FS).Up(ctx); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+	const (
+		ownerID           = "13000000-0000-4000-8000-000000000001"
+		collectionID      = "33000000-0000-4000-8000-000000000001"
+		fileID            = "53000000-0000-4000-8000-000000000001"
+		profileID         = "53000000-0000-4000-8000-000000000002"
+		consentID         = "53000000-0000-4000-8000-000000000003"
+		indexProfileID    = "53000000-0000-4000-8000-000000000004"
+		indexGenerationID = "53000000-0000-4000-8000-000000000005"
+		documentID        = "53000000-0000-4000-8000-000000000006"
+		versionID         = "53000000-0000-4000-8000-000000000007"
+		jobID             = "53000000-0000-4000-8000-000000000008"
+		materializationID = "53000000-0000-4000-8000-000000000009"
+	)
+	hash := strings.Repeat("a", 64)
+	baseHash := strings.Repeat("b", 64)
+	mustKnowledgeExec(t, ctx, db, `
+INSERT INTO users(id,email,display_name)
+  VALUES ($1,'rag-owner@example.test','Owner');
+INSERT INTO knowledge_collections(id,name,scope,owner_user_id)
+  VALUES ($2,'RAG','personal',$1);
+INSERT INTO files(id,user_id,original_filename,mime_type,byte_size,sha256,
+  storage_backend,object_key,metadata)
+VALUES ($3,$1,'source.pdf','application/pdf',10,$8,'local','rag/source',
+  '{"purpose":"knowledge"}');
+INSERT INTO processor_governance_profiles (
+  id,processor,endpoint_id,model_id,model_api_version,allowed_purposes,
+  allowed_data_types,region,retention_policy,deletion_contract,training_use,
+  status,governance_revision,manifest_hash,profile_contract_hash
+) VALUES (
+  $4,'mineru','default','model-v1','v1',ARRAY['parse'],
+  ARRAY['application/pdf'],'global','none','delete','disabled','approved',
+  1,$8,$8
+);
+INSERT INTO processor_governance_heads (
+  processor,endpoint_id,model_id,status,active_profile_id,
+  active_governance_revision,head_revision
+) VALUES ('mineru','default','model-v1','active',$4,1,1);
+INSERT INTO processing_consents (
+  id,scope,collection_id,processor,endpoint_id,model_id,governance_profile_id,
+  governance_revision,governance_head_revision,purposes,data_types,
+  policy_version,decision,consent_revision,granted_by_user_id
+) VALUES (
+  $5,'collection',$2,'mineru','default','model-v1',$4,1,1,
+  ARRAY['parse'],ARRAY['application/pdf'],'v1','granted',1,$1
+);
+INSERT INTO knowledge_index_profiles(
+  id,contract_version,canonical_schema_version,parser_manifest,
+  parser_manifest_hash,chunk_manifest,chunk_profile_hash,embedding_processor,
+  embedding_endpoint_id,embedding_model_id,embedding_api_version,embedding_role,
+  rerank_processor,rerank_endpoint_id,rerank_model_id,rerank_api_version,
+  base_profile_hash
+) VALUES (
+  $6,1,'canonical-ir.v2','{}',$8,'{}',$8,'jina','hosted',
+  'jina-embeddings-v4','v1','passage','jina','hosted','jina-reranker-v3',
+  'v1',$9
+);
+INSERT INTO knowledge_index_generations(
+  id,index_profile_id,generation_seq,status,build_snapshot,build_snapshot_hash,
+  artifact_manifest_hash,verified_at,activated_at
+) VALUES ($7,$6,1,'active','{}',$8,$8,clock_timestamp(),clock_timestamp());
+INSERT INTO knowledge_projection_state(
+  index_generation_id,readiness,projection_revision,required_outbox_floor,
+  contiguous_applied_outbox_id,manifest_hash,verified_at
+) VALUES ($7,'ready',1,0,0,$8,clock_timestamp());
+UPDATE knowledge_corpus_projection_head
+SET active_index_generation_id=$7, updated_at=clock_timestamp()
+WHERE singleton_id=1
+`, ownerID, collectionID, fileID, profileID, consentID, indexProfileID,
+		indexGenerationID, hash, baseHash)
+
+	ids := []string{documentID, versionID, jobID, materializationID}
+	service := NewService(NewPostgresRepository(db), WithIDGenerator(func() (string, error) {
+		id := ids[0]
+		ids = ids[1:]
+		return id, nil
+	}))
+	ownerCtx := auth.WithUser(ctx, auth.User{ID: ownerID})
+	if _, err := service.CreateDocument(ownerCtx, collectionID, BindDocumentInput{
+		FileID: fileID, IdempotencyKey: "rag-doc-1",
+	}); err != nil {
+		t.Fatalf("create generation-bound document: %v", err)
+	}
+
+	var legacyUnbound bool
+	var jobGenerationID, jobMaterializationID string
+	var maxAttempts int
+	if err := db.QueryRowContext(ctx, `
+SELECT legacy_projection_unbound,index_generation_id,materialization_id,max_attempts
+FROM knowledge_processing_jobs WHERE id=$1
+`, jobID).Scan(&legacyUnbound, &jobGenerationID, &jobMaterializationID, &maxAttempts); err != nil {
+		t.Fatal(err)
+	}
+	if legacyUnbound || jobGenerationID != indexGenerationID ||
+		jobMaterializationID != materializationID || maxAttempts != providerParseMaxAttempts {
+		t.Fatalf("job binding = legacy:%v generation:%s materialization:%s attempts:%d",
+			legacyUnbound, jobGenerationID, jobMaterializationID, maxAttempts)
+	}
+	var materializationStatus, materializationHash, materializationBaseHash string
+	var materializationSeq int64
+	if err := db.QueryRowContext(ctx, `
+SELECT status,materialization_seq,source_content_hash,base_profile_hash
+FROM knowledge_document_materializations WHERE id=$1
+`, materializationID).Scan(
+		&materializationStatus, &materializationSeq,
+		&materializationHash, &materializationBaseHash,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if materializationStatus != "staging" || materializationSeq != 1 ||
+		materializationHash != hash || materializationBaseHash != baseHash {
+		t.Fatalf("materialization = %s/%d/%s/%s", materializationStatus,
+			materializationSeq, materializationHash, materializationBaseHash)
+	}
+	var eventGenerationID, eventMaterializationID string
+	var eventLegacyUnbound bool
+	if err := db.QueryRowContext(ctx, `
+SELECT payload->>'indexGenerationId', payload->>'materializationId',
+  (payload->>'legacyProjectionUnbound')::boolean
+FROM knowledge_outbox
+WHERE aggregate_key=$1 AND payload->>'jobId'=$2
+`, documentID, jobID).Scan(
+		&eventGenerationID, &eventMaterializationID, &eventLegacyUnbound,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if eventLegacyUnbound || eventGenerationID != indexGenerationID ||
+		eventMaterializationID != materializationID {
+		t.Fatalf("outbox binding = legacy:%v generation:%s materialization:%s",
+			eventLegacyUnbound, eventGenerationID, eventMaterializationID)
+	}
+	var claimedJobID string
+	if err := db.QueryRowContext(ctx, `
+SELECT id FROM knowledge_claim_processing_job($1, $2, 30, ARRAY['parse']::text[])
+`, ownerID, "53000000-0000-4000-8000-000000000010").Scan(&claimedJobID); err != nil {
+		t.Fatal(err)
+	}
+	if claimedJobID != jobID {
+		t.Fatalf("claimed job = %s, want %s", claimedJobID, jobID)
+	}
+}
+
 func TestPostgresDocumentDeletionTombstonesAndQueuesPurge(t *testing.T) {
 	db := openKnowledgeTestDB(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)

@@ -138,7 +138,11 @@ func TestServiceDocumentCursorAndContentAuthorizationOrder(t *testing.T) {
 
 func TestServiceCreatesServerSelectedReplacementVersion(t *testing.T) {
 	repo := &fakeRepository{documentResult: Document{ID: "22222222-2222-4222-8222-222222222222"}}
-	ids := []string{"33333333-3333-4333-8333-333333333333", "44444444-4444-4444-8444-444444444444"}
+	ids := []string{
+		"33333333-3333-4333-8333-333333333333",
+		"44444444-4444-4444-8444-444444444444",
+		"66666666-6666-4666-8666-666666666666",
+	}
 	service := NewService(repo, WithIDGenerator(func() (string, error) {
 		id := ids[0]
 		ids = ids[1:]
@@ -155,6 +159,7 @@ func TestServiceCreatesServerSelectedReplacementVersion(t *testing.T) {
 	expectedHash := sha256.Sum256([]byte(repo.documentResult.ID + "\n55555555-5555-4555-8555-555555555555"))
 	if input.ActorUserID != testActorID || input.VersionID != "33333333-3333-4333-8333-333333333333" ||
 		input.JobID != "44444444-4444-4444-8444-444444444444" || input.ParseProcessor != "mineru" ||
+		input.MaterializationID != "66666666-6666-4666-8666-666666666666" ||
 		input.IdempotencyKey != "replace-1" || input.RequestHash != hex.EncodeToString(expectedHash[:]) {
 		t.Fatalf("replacement repository input = %#v", input)
 	}
@@ -162,8 +167,14 @@ func TestServiceCreatesServerSelectedReplacementVersion(t *testing.T) {
 
 func TestServiceCreatesServerSelectedReprocessJob(t *testing.T) {
 	repo := &fakeRepository{documentResult: Document{ID: "22222222-2222-4222-8222-222222222222"}}
+	ids := []string{
+		"33333333-3333-4333-8333-333333333333",
+		"44444444-4444-4444-8444-444444444444",
+	}
 	service := NewService(repo, WithIDGenerator(func() (string, error) {
-		return "33333333-3333-4333-8333-333333333333", nil
+		id := ids[0]
+		ids = ids[1:]
+		return id, nil
 	}))
 	ctx := auth.WithUser(context.Background(), auth.User{ID: testActorID})
 	_, err := service.ReprocessDocument(ctx, repo.documentResult.ID, ReprocessDocumentInput{
@@ -175,6 +186,7 @@ func TestServiceCreatesServerSelectedReprocessJob(t *testing.T) {
 	expectedHash := sha256.Sum256([]byte(repo.documentResult.ID))
 	input := repo.reprocessCreated
 	if input.JobID != "33333333-3333-4333-8333-333333333333" ||
+		input.MaterializationID != "44444444-4444-4444-8444-444444444444" ||
 		input.ActorUserID != testActorID || input.IdempotencyKey != "reprocess-1" ||
 		input.ParseProcessor != "mineru" || input.RequestHash != hex.EncodeToString(expectedHash[:]) {
 		t.Fatalf("reprocess repository input = %#v", input)
