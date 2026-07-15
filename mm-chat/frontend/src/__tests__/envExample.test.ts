@@ -144,9 +144,21 @@ describe(".env.example", () => {
       "PLUGIN_REGISTRY_STORE",
       "UPSTASH_REDIS_REST_URL",
       "UPSTASH_REDIS_REST_TOKEN",
+      "DEFAULT_PROVIDER_TYPE",
+      "DEFAULT_PROVIDER_NAME",
+      "DEFAULT_PROVIDER_MODELS",
     ]) {
       expect(compose).toContain(`${key}:`);
     }
+    expect(compose).toContain(
+      "DEFAULT_PROVIDER_TYPE: ${PROVIDER_TYPE:-openai_compatible}",
+    );
+    expect(compose).toContain(
+      "DEFAULT_PROVIDER_MODELS: ${PROVIDER_MODEL:-gpt-5.5}",
+    );
+    expect(compose).not.toContain(
+      "DEFAULT_PROVIDER_API_KEY: ${PROVIDER_API_KEY",
+    );
   });
 
   it("keeps Cloudflare dashboard variables during Worker deploys", () => {

@@ -107,6 +107,11 @@ function getRequestOrigin(request: NextRequest): string {
     return `${forwardedProto || request.nextUrl.protocol.replace(":", "")}://${forwardedHost}`;
   }
 
+  const host = request.headers.get("host")?.trim();
+  if (host) {
+    return `${request.nextUrl.protocol}//${host}`;
+  }
+
   return request.nextUrl.origin;
 }
 

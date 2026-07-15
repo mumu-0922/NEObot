@@ -442,6 +442,25 @@ describe("server default configuration", () => {
     ]);
   });
 
+  it("publishes a backend-managed model without copying its API key into the frontend", async () => {
+    setEnv({
+      DEFAULT_PROVIDER_TYPE: "openai_compatible",
+      DEFAULT_PROVIDER_NAME: "Server Default",
+      DEFAULT_PROVIDER_MODELS: "gpt-server",
+    });
+
+    const { getDefaultProviderRuntimeConfig, getPublicServerConfig } =
+      await import("../lib/defaultConfig/server");
+
+    expect(getDefaultProviderRuntimeConfig()).toBeNull();
+    expect(getPublicServerConfig().modelProvider).toMatchObject({
+      available: true,
+      name: "Server Default",
+      type: "OpenAI Compatible",
+      models: ["gpt-server"],
+    });
+  });
+
   it("ignores legacy provider key fallbacks for server defaults", async () => {
     setEnv({
       DEFAULT_PROVIDER_TYPE: "Gemini",

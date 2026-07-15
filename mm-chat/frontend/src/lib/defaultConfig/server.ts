@@ -209,6 +209,10 @@ function clampInteger(
 function getDefaultProviderType(): ProviderType {
   const configured = env("DEFAULT_PROVIDER_TYPE");
   if (isProviderType(configured)) return configured;
+  const normalized = configured.toLowerCase().replace(/[-_]+/g, " ").trim();
+  if (normalized === "openai compatible") return "OpenAI Compatible";
+  if (normalized === "openai") return "OpenAI";
+  if (normalized === "gemini") return "Gemini";
   return "Gemini";
 }
 
@@ -492,6 +496,9 @@ function getPublicStoreState(
 export function getPublicServerConfig(): PublicServerConfig {
   const defaultProvider = getDefaultProviderRuntimeConfig();
   const defaultProviderModels = getDefaultProviderModels();
+  const defaultProviderAvailable = Boolean(
+    defaultProvider || defaultProviderModels.models.length > 0,
+  );
   const rag = getDefaultRagRuntimeConfig();
   const documentProcessingProvider = getDefaultDocumentParseProvider();
   const documentProcessingAvailable = isDefaultDocumentProcessingAvailable(
@@ -525,16 +532,18 @@ export function getPublicServerConfig(): PublicServerConfig {
 
   return {
     modelProvider: {
-      available: Boolean(defaultProvider),
+      available: defaultProviderAvailable,
       id: SERVER_DEFAULT_PROVIDER_ID,
       name:
         defaultProvider?.name ||
         env("DEFAULT_PROVIDER_NAME") ||
         DEFAULT_PROVIDER_NAME,
       type: defaultProvider?.type || getDefaultProviderType(),
-      models: defaultProvider ? defaultProviderModels.models : [],
-      modelMetadata: defaultProvider ? defaultProviderModels.modelMetadata : {},
-      defaultModels: defaultProvider
+      models: defaultProviderAvailable ? defaultProviderModels.models : [],
+      modelMetadata: defaultProviderAvailable
+        ? defaultProviderModels.modelMetadata
+        : {},
+      defaultModels: defaultProviderAvailable
         ? normalizeDefaultModels(getDefaultModelEnv())
         : {},
     },

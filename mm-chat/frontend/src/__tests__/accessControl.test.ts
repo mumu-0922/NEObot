@@ -21,6 +21,7 @@ import {
   clearRequestRateLimitBuckets,
   getRateLimitClientIp,
   REQUEST_GUARD_ERROR_CODES,
+  validateSameOriginRequest,
 } from "../lib/security/requestGuards";
 import { config as proxyConfig, middleware as proxy } from "../middleware";
 
@@ -317,6 +318,45 @@ describe("access proxy", () => {
     expect(response.status).toBe(403);
     expect(data.code).toBe(REQUEST_GUARD_ERROR_CODES.csrf);
     expect(data.statusCode).toBe(403);
+  });
+
+  it("uses the external Host header for same-origin checks behind a container port mapping", () => {
+    vi.stubEnv("TRUST_PROXY_HEADERS", "");
+
+    const response = validateSameOriginRequest(
+      new NextRequest("http://frontend:3000/api/plugins/execute", {
+        method: "POST",
+        headers: {
+          host: "127.0.0.1:18080",
+          origin: "http://127.0.0.1:18080",
+          "sec-fetch-site": "same-origin",
+        },
+      }),
+    );
+
+    expect(response).toBeNull();
+  });
+
+  it("does not let untrusted forwarded host headers widen the allowed origin", async () => {
+    vi.stubEnv("TRUST_PROXY_HEADERS", "");
+
+    const response = validateSameOriginRequest(
+      new NextRequest("http://frontend:3000/api/plugins/execute", {
+        method: "POST",
+        headers: {
+          host: "127.0.0.1:18080",
+          origin: "https://evil.test",
+          "sec-fetch-site": "same-origin",
+          "x-forwarded-host": "evil.test",
+          "x-forwarded-proto": "https",
+        },
+      }),
+    );
+
+    expect(response?.status).toBe(403);
+    await expect(response?.json()).resolves.toMatchObject({
+      code: REQUEST_GUARD_ERROR_CODES.csrf,
+    });
   });
 
   it("rejects browser same-site mutating API requests without an Origin header", async () => {
