@@ -56,6 +56,9 @@ jobartifacts.StoreInput{
   before executor invocation.
 - `voice.synthesize` outputs are stored with artifact kind `audio`.
 - `image.generate` outputs are stored with artifact kind `image`.
+- The OpenAI-compatible image executor accepts `openai`, `openai_compatible`,
+  and `openai-compatible` provider IDs, posts to `/images/generations`, and
+  accepts either `b64_json` or generated image URLs from provider responses.
 - Responses expose only compact artifact metadata:
   `fileId`, `purpose`, `contentType`, `size`.
 - Responses and audit events must not expose prompt text, synthesis text, audio

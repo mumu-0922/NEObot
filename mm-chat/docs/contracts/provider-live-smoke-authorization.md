@@ -19,6 +19,8 @@ MM_CHAT_PROVIDER_LIVE_SMOKE_ENABLED=false
 MM_CHAT_PROVIDER_LIVE_SMOKE_APPROVAL=
 MM_CHAT_PROVIDER_LIVE_SMOKE_TARGETS=
 MM_CHAT_PROVIDER_LIVE_SMOKE_RUN_ID=
+MM_CHAT_PROVIDER_LIVE_SMOKE_OUTPUT_DIR=
+MM_CHAT_PROVIDER_LIVE_SMOKE_IMAGE_SIZE=
 ```
 
 Go authorization seam:
@@ -54,6 +56,9 @@ err := cfg.Authorize(providersmoke.Target{
   prompt text, model-private labels, or credentials.
 - This gate authorizes only the smoke attempt; executor-specific audit,
   artifact storage, rate-limit, cancellation, and capability gates still apply.
+- `MM_CHAT_PROVIDER_LIVE_SMOKE_OUTPUT_DIR` and
+  `MM_CHAT_PROVIDER_LIVE_SMOKE_IMAGE_SIZE` are optional smoke-harness settings;
+  they do not authorize live calls by themselves.
 
 ## 4. Validation & Error Matrix
 
@@ -71,6 +76,8 @@ All codes wrap `providersmoke.ErrNotAuthorized`.
 
 - Good: a one-off operator smoke sets the four env values for
   `image.generate:openai:gpt-image-1` and records the run ID in the process log.
+- Good: a live image smoke stores its generated artifact under a local operator
+  output directory and records only the path, status, and non-secret target.
 - Base: normal local/dev/test environment leaves the env values blank; live
   smoke is denied.
 - Bad: a test calls a real provider when the enabled flag alone is true.

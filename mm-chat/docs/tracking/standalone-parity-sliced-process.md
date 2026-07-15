@@ -2413,3 +2413,77 @@ G6.5c.3b Real provider-backed image executor and authorized configured-provider 
 
 Next slice: wire a real provider only after the owner chooses a provider target
 and explicitly authorizes quota-consuming live smoke.
+
+## 2026-07-15 — G6.5c.3b.1 OpenAI-compatible Image Executor Added, Live Smoke Blocked by Current Provider
+
+Objective: after owner approval to use provider quota, add the real
+OpenAI-compatible image executor and run an authorized live image smoke without
+exposing provider secrets.
+
+Completed scope:
+
+- added `imagejobs.OpenAICompatibleExecutor`, posting to
+  `/images/generations` with `model`, `prompt`, `n`, and optional `size`;
+- accepted both `b64_json` provider responses and provider-hosted image URLs;
+- converted provider image responses into `GeneratedImageResult` streams for
+  the existing image artifact boundary;
+- added fake-transport tests for request shape, Authorization header use,
+  base64 decoding, URL image fetch, unsupported provider IDs, and non-leaky
+  provider-status errors;
+- added `TestLiveOpenAICompatibleImageGenerationSmoke`, which is skipped by
+  default and only runs after the G6.5e live-smoke authorization gate passes;
+- attempted live smoke with the owner-approved quota path.
+
+Live smoke evidence:
+
+```text
+Normal sandbox smoke:
+  result: blocked before provider by local proxy/socket sandbox
+
+Escalated configured relay smoke:
+  endpoint class: configured OpenAI-compatible relay
+  result: provider reached, /v1/images/generations returned HTTP 404
+
+Escalated direct OpenAI smoke with the same configured key:
+  endpoint class: https://api.openai.com/v1
+  result: provider reached, returned HTTP 401
+```
+
+No provider key, prompt body, response body, or `.env.single-server` content was
+printed. No image artifact was produced because no image-capable endpoint/key
+completed successfully.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/.env.single-server.example
+mm-chat/backend/.env.example
+mm-chat/backend/internal/imagejobs/openai_compatible_executor.go
+mm-chat/backend/internal/imagejobs/openai_compatible_executor_test.go
+mm-chat/backend/internal/imagejobs/openai_compatible_live_test.go
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/contracts/media-job-executor-seams.md
+mm-chat/docs/contracts/provider-live-smoke-authorization.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./internal/imagejobs # passed
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./...                # passed
+git diff --check -- mm-chat                                                       # passed
+```
+
+Residual G6 blockers:
+
+```text
+G6.5c.3b.2 Authorized configured-provider image smoke passes against an image-capable key/endpoint
+G6.5c.2b Real provider-backed voice executor and authorized configured-provider smoke
+```
+
+Next slice: provide or configure an image-capable endpoint/key, or add a
+provider-specific executor such as Agnes/Gemini if that is the intended image
+supplier.

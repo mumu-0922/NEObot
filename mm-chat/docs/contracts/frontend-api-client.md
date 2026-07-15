@@ -1445,6 +1445,9 @@ Rules:
   `docs/contracts/provider-live-smoke-authorization.md`; normal frontend
   capability flags remain disabled until the authorized smoke and follow-up
   gates pass.
+- G6.5c.3b.1 adds an OpenAI-compatible image executor and gated live smoke
+  harness, but `imageGeneration` remains disabled until an image-capable
+  configured provider smoke passes.
 - G6.5d defines the hard gate for real code execution in
   `docs/contracts/code-execution-sandbox-contract.md`; `codeExecution` remains
   disabled until that sandbox/storage/audit/cancel test plan is implemented.

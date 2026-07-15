@@ -998,6 +998,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
               `docs/contracts/media-job-executor-seams.md`.
         - [ ] G6.5c.3b Real provider-backed image executor and authorized
               configured-provider smoke.
+          - [x] G6.5c.3b.1 OpenAI-compatible image executor plus gated live
+                smoke harness.
+          - [ ] G6.5c.3b.2 Authorized configured-provider image smoke passes
+                against an image-capable key/endpoint.
     - [x] G6.5d Code execution sandbox contract before any real executor is enabled: documented in `docs/contracts/code-execution-sandbox-contract.md`; runtime remains disabled.
     - [x] G6.5e Live provider smoke authorization gate: default-deny
           `providersmoke` requires explicit enablement, exact quota approval
