@@ -527,6 +527,10 @@ describe("G2 server agent API adapter", () => {
 });
 
 describe("G4.2 server plugin registry API adapter", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("routes plugin list requests through the Go API", async () => {
     const requests: Array<{ url: string; method?: string }> = [];
     const plugins = createServerPluginApiShell(
@@ -635,6 +639,40 @@ describe("G4.2 server plugin registry API adapter", () => {
       code: "PLUGIN_INSTALL_UNAVAILABLE",
       recoverable: true,
     });
+  });
+
+  it("executes plugin payloads through the bounded transitional adapter", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({ result: { temperature: 31 } }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const plugins = createServerPluginApiShell(
+      createHttpClient({ baseUrl: "/mm-api" }),
+    );
+
+    const response = await plugins.execute({
+      payload: {
+        pluginId: "weather",
+        functionName: "lookup_weather",
+        args: { city: "Shanghai" },
+      },
+    });
+
+    await expect(response.json()).resolves.toEqual({
+      result: { temperature: 31 },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/plugins/execute",
+      expect.objectContaining({
+        method: "POST",
+        cache: "no-store",
+        body: JSON.stringify({
+          pluginId: "weather",
+          functionName: "lookup_weather",
+          args: { city: "Shanghai" },
+        }),
+      }),
+    );
   });
 
   it("treats missing plugin registry routes as explicitly unavailable", async () => {

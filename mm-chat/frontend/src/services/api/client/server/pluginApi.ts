@@ -2,10 +2,12 @@ import type { Plugin } from "@/types";
 import { ApiClientError } from "../errors";
 import type {
   PluginApi,
+  PluginExecuteInput,
   PluginInstallInput,
   PluginInstallResponse,
   PluginListAvailableResponse,
 } from "../types";
+import { postTransitionalPluginExecution } from "../pluginExecutionHttp";
 import type { HttpClient } from "./httpClient";
 
 const pluginListPath = "/v1/plugins";
@@ -54,6 +56,9 @@ export function createServerPluginApiShell(httpClient: HttpClient): PluginApi {
         }
         throw error;
       }
+    },
+    async execute(input: PluginExecuteInput): Promise<Response> {
+      return postTransitionalPluginExecution(input);
     },
   };
 }

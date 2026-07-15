@@ -1,9 +1,11 @@
 import type {
   PluginApi,
+  PluginExecuteInput,
   PluginInstallInput,
   PluginInstallResponse,
   PluginListAvailableResponse,
 } from "../types";
+import { postTransitionalPluginExecution } from "../pluginExecutionHttp";
 import { requestLocalJson } from "./http";
 
 export function createLocalPluginApiShell(): PluginApi {
@@ -23,6 +25,9 @@ export function createLocalPluginApiShell(): PluginApi {
         body: toPluginInstallBody(input),
         signal: input.signal,
       });
+    },
+    async execute(input: PluginExecuteInput): Promise<Response> {
+      return postTransitionalPluginExecution(input);
     },
   };
 }

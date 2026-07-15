@@ -1292,3 +1292,60 @@ G4.5 live browser smoke
 ```
 
 Next slice: G4.4 Plugin execute final ownership.
+
+## 2026-07-15 — G4.4 Plugin Execute API-Client Boundary Completed
+
+Objective: centralize plugin execution behind the API client without breaking the
+G4.1 server planning flow that still depends on the hardened transitional Next
+execution route.
+
+Completed scope:
+
+- extended `PluginApi` with `execute({ payload })`;
+- moved direct `/api/plugins/execute` fetch construction into
+  `client/pluginExecutionHttp.ts`;
+- routed `executePluginFunction()` through `createNeoChatApiClient().plugins`
+  while preserving BYOK retry semantics by rebuilding the encrypted payload for
+  each retry;
+- kept both local and server adapters on the same bounded transitional execution
+  route for this slice, matching the current Server Plugin Orchestration
+  contract;
+- added API-client coverage proving server-mode plugin execution uses the
+  isolated transitional adapter rather than the Go `/mm-api` prefix;
+- reclassified the remaining work so final route retirement is a separate G4.5
+  slice instead of being hidden inside this adapter-boundary slice.
+
+Changed surfaces for this slice:
+
+```text
+mm-chat/frontend/src/services/api/client/types.ts
+mm-chat/frontend/src/services/api/client/local/pluginApi.ts
+mm-chat/frontend/src/services/api/client/server/pluginApi.ts
+mm-chat/frontend/src/services/api/client/pluginExecutionHttp.ts
+mm-chat/frontend/src/utils/pluginUtils.ts
+mm-chat/frontend/src/__tests__/apiClientScaffold.test.ts
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/pluginUtils.test.ts \
+  src/__tests__/apiClientScaffold.test.ts \
+  src/__tests__/serverPluginOrchestration.test.ts # passed, 3 files / 61 tests
+cd mm-chat/frontend && corepack pnpm typecheck # passed
+cd mm-chat/frontend && corepack pnpm format:check # passed
+cd mm-chat/frontend && corepack pnpm lint # passed
+```
+
+Residual G4 blockers:
+
+```text
+G4.5 plugin execute final ownership and transitional route retirement
+G4.6 live browser smoke
+```
+
+Next slice: G4.5 Plugin execute final ownership and transitional route retirement.

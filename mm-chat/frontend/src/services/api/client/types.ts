@@ -1,5 +1,9 @@
 import type { ByokPublicKeyResponse } from "../../../lib/byok/shared";
 import type { PublicServerConfig } from "../../../lib/defaultConfig/shared";
+import type {
+  PluginExecutionPayload,
+  PluginExecutionRequestPayload,
+} from "../../../lib/plugin/execution";
 import type { Plugin } from "../../../types";
 
 export type ApiMode = "local" | "server";
@@ -406,11 +410,17 @@ export interface PluginInstallResponse {
   plugin: Plugin;
 }
 
+export interface PluginExecuteInput {
+  payload: PluginExecutionPayload | PluginExecutionRequestPayload;
+  signal?: AbortSignal;
+}
+
 export interface PluginApi {
   listAvailable(
     input?: PluginListAvailableInput,
   ): Promise<PluginListAvailableResponse>;
   install(input: PluginInstallInput): Promise<PluginInstallResponse>;
+  execute(input: PluginExecuteInput): Promise<Response>;
 }
 
 export interface FileApi {

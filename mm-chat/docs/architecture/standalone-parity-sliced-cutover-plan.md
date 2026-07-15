@@ -273,10 +273,13 @@ Slice checklist:
 - [x] G4.3 Plugin install/custom-manifest adapter: move install validation
       behind the server contract or explicitly keep the transitional route as a
       bounded rollback-only path.
-- [ ] G4.4 Plugin execute final ownership: remove or retire the production
+- [x] G4.4 Plugin execute API-client boundary: route execution through the
+      plugin API client and isolate the transitional `/api/plugins/execute`
+      path behind the contract adapter.
+- [ ] G4.5 Plugin execute final ownership: remove or retire the production
       transitional `/api/plugins/execute` authority after auth/config and
       sandbox semantics are server-owned.
-- [ ] G4.5 Live browser smoke: one installed plugin produces bounded context and
+- [ ] G4.6 Live browser smoke: one installed plugin produces bounded context and
       a persisted final answer through the Go stream.
 
 Targeted tests:
@@ -431,7 +434,7 @@ Targeted tests:
 | G1 Conversation and Message Operations   | Complete | G1.1-G1.6 complete; only paused cross-group search toggle remains outside G1 |
 | G2 Related Questions and Agent Catalogs  | Complete | Related-question/catalog Next routes replaced                                |
 | G3 Auth, Config, Provider Settings, BYOK | Complete | Server-auth/config/provider lifecycle verified                               |
-| G4 Plugin Final Ownership                | In progress | G4.1-G4.3 complete; execute/live smoke remain                                |
+| G4 Plugin Final Ownership                | In progress | G4.1-G4.4 boundary complete; final execute/live smoke remain                 |
 | G5 Search/Web Enrichment                 | Paused   | Owner reopens, then server-owned search passes gates                         |
 | G6 Voice/Image/Code Jobs                 | Pending  | Enabled jobs server-admitted and fail closed otherwise                       |
 | G7 Knowledge/RAG/Citations               | Pending  | Phase 15 runtime gates pass                                                  |

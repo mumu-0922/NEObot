@@ -5,10 +5,10 @@ import {
   resolvePluginFunction,
 } from "../lib/plugin/resolve";
 import { readJsonResponseOrThrow } from "../lib/api/client";
+import { createNeoChatApiClient } from "../services/api/client";
 import {
   getPluginExecutionArgsError,
   getPluginExecutionFunctionNameError,
-  serializePluginExecutionPayload,
   type PluginExecutionPayload,
   type PluginExecutionRequestPayload,
   type PluginExecutionAuthConfig,
@@ -32,16 +32,10 @@ async function postPluginExecution(
   >,
   signal?: AbortSignal,
 ) {
+  const client = createNeoChatApiClient();
   return fetchWithByokRetry(async () => {
     const payload = await buildPayload();
-    return fetch("/api/plugins/execute", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: serializePluginExecutionPayload(payload),
-      signal,
-    });
+    return client.plugins.execute({ payload, signal });
   });
 }
 

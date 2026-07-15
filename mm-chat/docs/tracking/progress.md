@@ -950,8 +950,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         wired through Go `/v1/chat/tools/plan` and frontend orchestration.
   - [x] G4.2 Plugin registry/list adapter.
   - [x] G4.3 Plugin install/custom-manifest adapter.
-  - [ ] G4.4 Plugin execute final ownership.
-  - [ ] G4.5 Live browser smoke with one installed plugin producing bounded
+  - [x] G4.4 Plugin execute API-client boundary.
+  - [ ] G4.5 Plugin execute final ownership and transitional route retirement.
+  - [ ] G4.6 Live browser smoke with one installed plugin producing bounded
         context and final Go-stream answer.
 - [ ] G5 Search and Web-Enrichment Toggle: keep paused until owner reopens, then
       make Search server-owned or explicitly unavailable.
