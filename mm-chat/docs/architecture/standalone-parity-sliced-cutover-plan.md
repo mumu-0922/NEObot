@@ -368,6 +368,14 @@ Slice checklist:
         record sanitized job events with kind/status/user/provider/model/language/reason and no prompt/code/text/audio payloads.
   - [x] G6.5b Shared job rate-limit and cancellation gates: register fail-closed `/v1/jobs/{jobId}/cancel` and verify job control routes remain under the global rate-limit middleware.
   - [ ] G6.5c Real voice/image executors with output storage and provider smoke.
+    - [x] G6.5c.1 Storage-only result artifact boundary: add a Go
+          `jobartifacts` service that validates image/audio result metadata and
+          persists executor outputs only through the backend file/object-storage
+          boundary, without calling real providers.
+    - [ ] G6.5c.2 Real voice executor integration with stored audio artifacts
+          and configured-provider smoke.
+    - [ ] G6.5c.3 Real image executor integration with stored image artifacts
+          and configured-provider smoke.
   - [x] G6.5d Code execution sandbox contract before any real executor is enabled: see `../contracts/code-execution-sandbox-contract.md`; runtime remains disabled.
 
 Targeted tests:
@@ -481,7 +489,7 @@ Targeted tests:
 | G3 Auth, Config, Provider Settings, BYOK | Complete | Server-auth/config/provider lifecycle verified                               |
 | G4 Plugin Final Ownership                | In progress | G4.1-G4.6a complete; audit metadata and browser/provider smoke remain         |
 | G5 Search/Web Enrichment                 | Paused   | Owner reopens, then server-owned search passes gates                         |
-| G6 Voice/Image/Code Jobs                 | In progress | G6 admission/audit/cancel plus code sandbox contract complete; real voice/image executors remain |
+| G6 Voice/Image/Code Jobs                 | In progress | G6 admission/audit/cancel, storage artifact boundary, and code sandbox contract complete; real voice/image executors remain |
 | G7 Knowledge/RAG/Citations               | Pending  | Phase 15 runtime gates pass                                                  |
 | G8 Teams/Knowledge UI                    | Pending  | Go control plane wired to UI with isolation smoke                            |
 | G9 Data Authority/Route Removal          | Pending  | local production authority and replaced routes gone                          |

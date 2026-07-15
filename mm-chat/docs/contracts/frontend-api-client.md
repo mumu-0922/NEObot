@@ -1418,6 +1418,13 @@ Rules:
 - G6.5b registers fail-closed `POST /v1/jobs/{jobId}/cancel` and keeps job
   control routes behind the same global rate-limit middleware as other
   non-exempt APIs.
+- G6.5c.1 establishes the storage-only artifact boundary for future voice and
+  image executor results. Enabled executors must write generated audio/image
+  bytes through the backend file/object-storage service and return artifact
+  metadata such as `fileId`, `purpose`, `contentType`, and `size`; they must not
+  return large inline base64 payloads, object-store keys, or direct storage
+  URLs to the frontend. This boundary does not enable real provider calls by
+  itself.
 - G6.5d defines the hard gate for real code execution in
   `docs/contracts/code-execution-sandbox-contract.md`; `codeExecution` remains
   disabled until that sandbox/storage/audit/cancel test plan is implemented.
