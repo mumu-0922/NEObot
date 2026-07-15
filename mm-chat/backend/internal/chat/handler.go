@@ -17,6 +17,12 @@ const (
 	conversationsPath    = "/v1/chat/conversations"
 	conversationPathBase = conversationsPath + "/"
 	runsPathBase         = "/v1/chat/runs/"
+	toolPlanPath         = "/v1/chat/tools/plan"
+	maxToolPlanPrompt    = 16 * 1024
+	maxToolPlanTools     = 32
+	maxToolNameBytes     = 128
+	maxToolDescBytes     = 2048
+	maxToolParamsBytes   = 32 * 1024
 )
 
 type Handler struct {
@@ -43,14 +49,16 @@ type Page[T any] struct {
 }
 
 type ConversationDTO struct {
-	ID           string         `json:"id"`
-	Title        string         `json:"title"`
-	Status       string         `json:"status"`
-	ModelRef     *ModelRef      `json:"modelRef,omitempty"`
-	MessageCount int            `json:"messageCount"`
-	Config       map[string]any `json:"config"`
-	CreatedAt    string         `json:"createdAt"`
-	UpdatedAt    string         `json:"updatedAt"`
+	ID                string         `json:"id"`
+	Title             string         `json:"title"`
+	Status            string         `json:"status"`
+	ModelRef          *ModelRef      `json:"modelRef,omitempty"`
+	MessageCount      int            `json:"messageCount"`
+	SystemInstruction string         `json:"systemInstruction,omitempty"`
+	Pinned            bool           `json:"pinned"`
+	Config            map[string]any `json:"config"`
+	CreatedAt         string         `json:"createdAt"`
+	UpdatedAt         string         `json:"updatedAt"`
 }
 
 type ChatMessageDTO struct {
@@ -91,6 +99,37 @@ type createConversationRequest struct {
 	IdempotencyKey    string         `json:"idempotencyKey"`
 }
 
+type updateConversationRequest struct {
+	Title             *string        `json:"title"`
+	ModelRef          *ModelRef      `json:"modelRef"`
+	SystemInstruction *string        `json:"systemInstruction"`
+	SystemPrompt      *string        `json:"systemPrompt"`
+	Config            map[string]any `json:"config"`
+	Metadata          map[string]any `json:"metadata"`
+	Pinned            *bool          `json:"pinned"`
+}
+
+type duplicateConversationRequest struct {
+	Title          string `json:"title"`
+	IdempotencyKey string `json:"idempotencyKey"`
+}
+
+type generateConversationTitleRequest struct {
+	ModelRef *ModelRef `json:"modelRef"`
+}
+
+type generateConversationTitleResponse struct {
+	Title string `json:"title"`
+}
+
+type generateRelatedQuestionsRequest struct {
+	ModelRef *ModelRef `json:"modelRef"`
+}
+
+type generateRelatedQuestionsResponse struct {
+	Questions []string `json:"questions"`
+}
+
 type createMessageRequest struct {
 	Role            string          `json:"role"`
 	Content         string          `json:"content"`
@@ -98,6 +137,10 @@ type createMessageRequest struct {
 	Metadata        map[string]any  `json:"metadata"`
 	IdempotencyKey  string          `json:"idempotencyKey"`
 	Attachments     []AttachmentDTO `json:"attachments"`
+}
+
+type updateMessageRequest struct {
+	Content *string `json:"content"`
 }
 
 type fieldViolation struct {
@@ -113,6 +156,16 @@ type streamMessageRequest struct {
 	Config            map[string]any `json:"config"`
 	Metadata          map[string]any `json:"metadata"`
 	IdempotencyKey    string         `json:"idempotencyKey"`
+}
+
+type toolPlanRequest struct {
+	Prompt   string           `json:"prompt"`
+	ModelRef *ModelRef        `json:"modelRef"`
+	Tools    []ToolDefinition `json:"tools"`
+}
+
+type toolPlanResponse struct {
+	Calls []ToolCall `json:"calls"`
 }
 
 type streamEvent struct {
@@ -173,12 +226,130 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == conversationsPath:
 		h.handleConversations(w, r)
 	case strings.HasPrefix(r.URL.Path, conversationPathBase):
+		if conversationID, ok := parseConversationResourcePath(r.URL.Path); ok {
+			h.handleConversationResource(w, r, conversationID)
+			return
+		}
 		h.handleConversationChild(w, r)
 	case strings.HasPrefix(r.URL.Path, runsPathBase):
 		h.handleRunChild(w, r)
+	case r.URL.Path == toolPlanPath:
+		h.handleToolPlan(w, r)
 	default:
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
 	}
+}
+
+func (h *Handler) handleToolPlan(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, http.MethodPost)
+		return
+	}
+	if h.provider == nil {
+		writeServiceError(w, ErrProviderRequired)
+		return
+	}
+	planner, ok := h.provider.(ToolPlanner)
+	if !ok {
+		writeError(w, http.StatusNotImplemented, "TOOLS_UNSUPPORTED", "configured provider does not support tool planning")
+		return
+	}
+
+	var request toolPlanRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeRequestDecodeError(w, err)
+		return
+	}
+	prompt := strings.TrimSpace(request.Prompt)
+	if prompt == "" || len(prompt) > maxToolPlanPrompt {
+		writeError(w, http.StatusBadRequest, "INVALID_TOOL_PLAN", "tool plan prompt is required and must be within limits")
+		return
+	}
+	if request.ModelRef == nil {
+		writeError(w, http.StatusBadRequest, "MODEL_REF_REQUIRED", "modelRef is required")
+		return
+	}
+	if len(request.Tools) == 0 || len(request.Tools) > maxToolPlanTools {
+		writeError(w, http.StatusBadRequest, "INVALID_TOOL_PLAN", "tool plan requires between 1 and 32 tools")
+		return
+	}
+	for _, tool := range request.Tools {
+		if err := validateToolDefinition(tool); err != nil {
+			writeError(w, http.StatusBadRequest, "INVALID_TOOL_PLAN", err.Error())
+			return
+		}
+	}
+
+	calls, err := planner.PlanTools(r.Context(), ToolPlanRequest{
+		Prompt:   prompt,
+		ModelRef: *request.ModelRef,
+		Tools:    request.Tools,
+	})
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "PROVIDER_ERROR", "provider tool planning failed")
+		return
+	}
+	if err := validatePlannedToolCalls(calls, request.Tools); err != nil {
+		writeError(w, http.StatusBadGateway, "PROVIDER_ERROR", "provider returned an invalid tool plan")
+		return
+	}
+	if calls == nil {
+		calls = []ToolCall{}
+	}
+	writeJSON(w, http.StatusOK, toolPlanResponse{Calls: calls})
+}
+
+func validatePlannedToolCalls(calls []ToolCall, tools []ToolDefinition) error {
+	if len(calls) > maxToolPlanTools {
+		return errors.New("tool plan contains too many calls")
+	}
+
+	allowedNames := make(map[string]struct{}, len(tools))
+	for _, tool := range tools {
+		allowedNames[strings.TrimSpace(tool.Function.Name)] = struct{}{}
+	}
+	for _, call := range calls {
+		name := strings.TrimSpace(call.Name)
+		if _, ok := allowedNames[name]; !ok {
+			return errors.New("tool plan contains an unavailable function")
+		}
+		if call.Args == nil {
+			return errors.New("tool plan arguments must be an object")
+		}
+		encoded, err := json.Marshal(call.Args)
+		if err != nil || len(encoded) > maxToolParamsBytes {
+			return errors.New("tool plan arguments are invalid or too large")
+		}
+	}
+	return nil
+}
+
+func validateToolDefinition(tool ToolDefinition) error {
+	if tool.Type != "function" {
+		return errors.New("tool type must be function")
+	}
+	name := strings.TrimSpace(tool.Function.Name)
+	if name == "" || len(name) > maxToolNameBytes {
+		return errors.New("tool function name is required and must be within limits")
+	}
+	for index, value := range name {
+		if (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') ||
+			(value >= '0' && value <= '9' && index > 0) || value == '_' || value == '-' {
+			continue
+		}
+		return errors.New("tool function name contains unsupported characters")
+	}
+	if len(tool.Function.Description) > maxToolDescBytes {
+		return errors.New("tool function description is too long")
+	}
+	if tool.Function.Parameters == nil {
+		return errors.New("tool function parameters are required")
+	}
+	encoded, err := json.Marshal(tool.Function.Parameters)
+	if err != nil || len(encoded) > maxToolParamsBytes {
+		return errors.New("tool function parameters are invalid or too large")
+	}
+	return nil
 }
 
 func (h *Handler) handleConversations(w http.ResponseWriter, r *http.Request) {
@@ -210,6 +381,220 @@ func (h *Handler) handleRunChild(w http.ResponseWriter, r *http.Request) {
 	h.cancelRun(w, r, runID)
 }
 
+func (h *Handler) handleConversationResource(w http.ResponseWriter, r *http.Request, conversationID string) {
+	switch r.Method {
+	case http.MethodPatch:
+		h.updateConversation(w, r, conversationID)
+	case http.MethodDelete:
+		h.deleteConversation(w, r, conversationID)
+	default:
+		methodNotAllowed(w, http.MethodPatch+", "+http.MethodDelete)
+	}
+}
+
+func (h *Handler) updateConversation(w http.ResponseWriter, r *http.Request, conversationID string) {
+	if err := h.service.requireRepository(); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	var request updateConversationRequest
+	if err := decodeJSONWithForbiddenFields(w, r, &request, forbiddenConversationUpdateFields()); err != nil {
+		writeRequestDecodeError(w, err)
+		return
+	}
+
+	metadataMerge := request.Metadata
+	if metadataMerge == nil {
+		metadataMerge = request.Config
+	}
+	if metadataMerge == nil {
+		metadataMerge = map[string]any{}
+	}
+	if request.Pinned != nil {
+		metadataMerge["pinned"] = *request.Pinned
+	}
+
+	input := UpdateConversationInput{
+		Title:         request.Title,
+		SystemPrompt:  request.SystemInstruction,
+		MetadataMerge: metadataMerge,
+	}
+	if input.SystemPrompt == nil {
+		input.SystemPrompt = request.SystemPrompt
+	}
+	if request.ModelRef != nil {
+		input.ModelProvider = &request.ModelRef.ProviderID
+		input.ModelID = &request.ModelRef.ModelID
+	}
+
+	conversation, err := h.service.UpdateConversation(r.Context(), conversationID, input)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, newConversationDTO(conversation))
+}
+
+func (h *Handler) deleteConversation(w http.ResponseWriter, r *http.Request, conversationID string) {
+	if err := h.service.DeleteConversation(r.Context(), conversationID); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) duplicateConversation(w http.ResponseWriter, r *http.Request, conversationID string) {
+	if err := h.service.requireRepository(); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	request := duplicateConversationRequest{}
+	if r.Body != nil && r.Body != http.NoBody {
+		if err := decodeJSONWithForbiddenFields(w, r, &request, forbiddenConversationFields()); err != nil {
+			writeRequestDecodeError(w, err)
+			return
+		}
+	}
+
+	conversation, err := h.service.DuplicateConversation(r.Context(), conversationID, DuplicateConversationInput{
+		Title:          request.Title,
+		IdempotencyKey: request.IdempotencyKey,
+	})
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, newConversationDTO(conversation))
+}
+
+func (h *Handler) generateConversationTitle(w http.ResponseWriter, r *http.Request, conversationID string) {
+	if err := h.service.requireRepository(); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	var request generateConversationTitleRequest
+	if err := decodeJSONWithForbiddenFields(w, r, &request, forbiddenConversationTitleFields()); err != nil {
+		writeRequestDecodeError(w, err)
+		return
+	}
+
+	messages, err := h.service.ListMessages(r.Context(), conversationID)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	fallbackTitle := fallbackTitleFromMessages(messages)
+	if h.provider == nil {
+		writeJSON(w, http.StatusOK, generateConversationTitleResponse{Title: fallbackTitle})
+		return
+	}
+	if request.ModelRef == nil {
+		writeJSON(w, http.StatusOK, generateConversationTitleResponse{Title: fallbackTitle})
+		return
+	}
+
+	title, err := generateTitleWithProvider(r.Context(), h.provider, *request.ModelRef, messages, fallbackTitle)
+	if err != nil {
+		title = fallbackTitle
+	}
+	writeJSON(w, http.StatusOK, generateConversationTitleResponse{Title: title})
+}
+
+func (h *Handler) generateRelatedQuestions(w http.ResponseWriter, r *http.Request, conversationID string) {
+	if err := h.service.requireRepository(); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	var request generateRelatedQuestionsRequest
+	if err := decodeJSONWithForbiddenFields(w, r, &request, forbiddenRelatedQuestionsFields()); err != nil {
+		writeRequestDecodeError(w, err)
+		return
+	}
+
+	messages, err := h.service.ListMessages(r.Context(), conversationID)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	if h.provider == nil || request.ModelRef == nil {
+		writeJSON(w, http.StatusOK, generateRelatedQuestionsResponse{Questions: []string{}})
+		return
+	}
+
+	questions, err := generateRelatedQuestionsWithProvider(r.Context(), h.provider, *request.ModelRef, messages)
+	if err != nil {
+		questions = []string{}
+	}
+	writeJSON(w, http.StatusOK, generateRelatedQuestionsResponse{Questions: questions})
+}
+
+func (h *Handler) handleMessageResource(
+	w http.ResponseWriter,
+	r *http.Request,
+	conversationID string,
+	messageID string,
+) {
+	switch r.Method {
+	case http.MethodPatch:
+		h.updateMessage(w, r, conversationID, messageID)
+	case http.MethodDelete:
+		h.deleteMessage(w, r, conversationID, messageID)
+	default:
+		methodNotAllowed(w, http.MethodPatch+", "+http.MethodDelete)
+	}
+}
+
+func (h *Handler) updateMessage(w http.ResponseWriter, r *http.Request, conversationID string, messageID string) {
+	if err := h.service.requireRepository(); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	var request updateMessageRequest
+	if err := decodeJSONWithForbiddenFields(w, r, &request, forbiddenMessageUpdateFields()); err != nil {
+		writeRequestDecodeError(w, err)
+		return
+	}
+
+	message, err := h.service.UpdateMessage(r.Context(), conversationID, messageID, UpdateMessageInput{
+		Content: request.Content,
+	})
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, newMessageDTO(message))
+}
+
+func (h *Handler) deleteMessage(w http.ResponseWriter, r *http.Request, conversationID string, messageID string) {
+	scope := strings.TrimSpace(r.URL.Query().Get("scope"))
+	input := DeleteMessageInput{}
+	switch scope {
+	case "", "message":
+	case "subsequent":
+		input.DeleteSubsequent = true
+	default:
+		writeError(w, http.StatusBadRequest, "INVALID_DELETE_SCOPE", "delete scope must be message or subsequent")
+		return
+	}
+
+	if err := h.service.DeleteMessage(r.Context(), conversationID, messageID, input); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) cancelRun(w http.ResponseWriter, r *http.Request, runID string) {
 	message, err := h.service.CancelRun(r.Context(), runID, CancelRunInput{
 		Metadata: map[string]any{
@@ -232,6 +617,11 @@ func (h *Handler) cancelRun(w http.ResponseWriter, r *http.Request, runID string
 }
 
 func (h *Handler) handleConversationChild(w http.ResponseWriter, r *http.Request) {
+	if conversationID, messageID, ok := parseConversationMessageResourcePath(r.URL.Path); ok {
+		h.handleMessageResource(w, r, conversationID, messageID)
+		return
+	}
+
 	conversationID, child, ok := parseConversationChildPath(r.URL.Path)
 	if !ok {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
@@ -244,6 +634,30 @@ func (h *Handler) handleConversationChild(w http.ResponseWriter, r *http.Request
 			return
 		}
 		h.streamAssistantMessage(w, r, conversationID)
+		return
+	}
+	if child == "duplicate" {
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w, http.MethodPost)
+			return
+		}
+		h.duplicateConversation(w, r, conversationID)
+		return
+	}
+	if child == "title" {
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w, http.MethodPost)
+			return
+		}
+		h.generateConversationTitle(w, r, conversationID)
+		return
+	}
+	if child == "related-questions" {
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w, http.MethodPost)
+			return
+		}
+		h.generateRelatedQuestions(w, r, conversationID)
 		return
 	}
 	if child != "messages" {
@@ -469,6 +883,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		AssistantMessageID: assistantMessage.ID,
 		Prompt:             userMessage.Content,
 		SystemPrompt:       systemPrompt,
+		UseReasoning:       configBool(request.Config, "useReasoning"),
 		ModelRef:           *modelRef,
 		Metadata:           request.Metadata,
 	})
@@ -650,6 +1065,284 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	flusher.Flush()
 }
 
+func configBool(config map[string]any, key string) bool {
+	value, ok := config[key].(bool)
+	return ok && value
+}
+
+func generateTitleWithProvider(
+	ctx context.Context,
+	provider Provider,
+	modelRef ModelRef,
+	messages []Message,
+	fallbackTitle string,
+) (string, error) {
+	events, err := provider.StreamChat(ctx, ProviderRequest{
+		Prompt:       buildTitlePrompt(messages),
+		SystemPrompt: "You generate short, useful chat titles.",
+		ModelRef:     modelRef,
+	})
+	if err != nil {
+		return fallbackTitle, err
+	}
+
+	var builder strings.Builder
+	for event := range events {
+		if event.Error != nil {
+			return fallbackTitle, event.Error
+		}
+		if event.Type == ProviderEventDelta {
+			builder.WriteString(event.Delta)
+			if builder.Len() > 1024 {
+				break
+			}
+		}
+	}
+
+	return normalizeGeneratedTitle(builder.String(), fallbackTitle), nil
+}
+
+func generateRelatedQuestionsWithProvider(
+	ctx context.Context,
+	provider Provider,
+	modelRef ModelRef,
+	messages []Message,
+) ([]string, error) {
+	prompt, ok := buildRelatedQuestionsPrompt(messages)
+	if !ok {
+		return []string{}, nil
+	}
+
+	events, err := provider.StreamChat(ctx, ProviderRequest{
+		Prompt:       prompt,
+		SystemPrompt: "You generate short related follow-up questions.",
+		ModelRef:     modelRef,
+	})
+	if err != nil {
+		return []string{}, err
+	}
+
+	var builder strings.Builder
+	for event := range events {
+		if event.Error != nil {
+			return []string{}, event.Error
+		}
+		if event.Type == ProviderEventDelta {
+			builder.WriteString(event.Delta)
+			if builder.Len() > 4096 {
+				break
+			}
+		}
+	}
+
+	return parseAuxiliaryStringList(builder.String(), 5, 240), nil
+}
+
+func buildRelatedQuestionsPrompt(messages []Message) (string, bool) {
+	userMessage, assistantMessage := latestRelatedQuestionMessages(messages)
+	if userMessage == "" || assistantMessage == "" {
+		return "", false
+	}
+
+	return fmt.Sprintf(
+		"Based on the following conversation, suggest 3 to 5 related follow-up questions the user might want to ask.\nEach question must be short (less than 24 words).\nReturn the result as a JSON array of strings.\n\nUser: %q\nModel: %q",
+		clipAuxiliaryPromptContent(userMessage),
+		clipAuxiliaryPromptContent(assistantMessage),
+	), true
+}
+
+func latestRelatedQuestionMessages(messages []Message) (string, string) {
+	var assistantMessage string
+	var assistantIndex = -1
+	for index := len(messages) - 1; index >= 0; index-- {
+		message := messages[index]
+		if message.Role == "assistant" && strings.TrimSpace(message.Content) != "" {
+			assistantMessage = message.Content
+			assistantIndex = index
+			break
+		}
+	}
+	if assistantIndex < 0 {
+		return "", ""
+	}
+
+	for index := assistantIndex - 1; index >= 0; index-- {
+		message := messages[index]
+		if message.Role == "user" && strings.TrimSpace(message.Content) != "" {
+			return message.Content, assistantMessage
+		}
+	}
+
+	return "", ""
+}
+
+func buildTitlePrompt(messages []Message) string {
+	userMessage, assistantMessage := firstTitleMessages(messages)
+	userContent := clipTitlePromptContent(userMessage)
+	assistantContent := clipTitlePromptContent(assistantMessage)
+
+	return fmt.Sprintf(
+		"Summarize the following conversation into a short, concise title (3-6 words).\nDo not use quotes.\nUse the same language as the user's question.\n\nUser: %q\nAI: %q\n\nTitle:",
+		userContent,
+		assistantContent,
+	)
+}
+
+func firstTitleMessages(messages []Message) (string, string) {
+	var firstUser string
+	var firstAssistant string
+	for _, message := range messages {
+		if firstUser == "" && message.Role == "user" {
+			firstUser = message.Content
+		}
+		if firstAssistant == "" && message.Role == "assistant" {
+			firstAssistant = message.Content
+		}
+		if firstUser != "" && firstAssistant != "" {
+			break
+		}
+	}
+
+	return firstUser, firstAssistant
+}
+
+func fallbackTitleFromMessages(messages []Message) string {
+	userMessage, _ := firstTitleMessages(messages)
+	return normalizeGeneratedTitle(userMessage, "New Chat")
+}
+
+func clipTitlePromptContent(value string) string {
+	value = strings.TrimSpace(value)
+	const maxRunes = 1200
+	runes := []rune(value)
+	if len(runes) <= maxRunes {
+		return value
+	}
+	return string(runes[:maxRunes]) + "..."
+}
+
+func clipAuxiliaryPromptContent(value string) string {
+	value = strings.TrimSpace(value)
+	const maxRunes = 4000
+	runes := []rune(value)
+	if len(runes) <= maxRunes {
+		return value
+	}
+	return string(runes[:maxRunes])
+}
+
+func normalizeGeneratedTitle(value string, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		value = strings.TrimSpace(fallback)
+	}
+	value = strings.Trim(value, "\"'`“”‘’")
+	value = strings.TrimSpace(strings.Split(value, "\n")[0])
+	value = strings.Trim(value, "\"'`“”‘’")
+	value = strings.TrimSpace(value)
+	if value == "" {
+		value = "New Chat"
+	}
+
+	const maxRunes = 80
+	runes := []rune(value)
+	if len(runes) > maxRunes {
+		value = string(runes[:maxRunes])
+	}
+	return value
+}
+
+func parseAuxiliaryStringList(value string, maxItems int, maxChars int) []string {
+	cleaned := strings.TrimSpace(value)
+	cleaned = strings.TrimPrefix(cleaned, "```json")
+	cleaned = strings.TrimPrefix(cleaned, "```JSON")
+	cleaned = strings.TrimPrefix(cleaned, "```")
+	cleaned = strings.TrimSuffix(cleaned, "```")
+	cleaned = strings.TrimSpace(cleaned)
+
+	var parsed []string
+	if err := json.Unmarshal([]byte(cleaned), &parsed); err == nil {
+		return normalizeAuxiliaryStringList(parsed, maxItems, maxChars)
+	}
+
+	return normalizeAuxiliaryStringList(strings.Split(cleaned, "\n"), maxItems, maxChars)
+}
+
+func normalizeAuxiliaryStringList(values []string, maxItems int, maxChars int) []string {
+	if maxItems <= 0 || maxChars <= 0 {
+		return []string{}
+	}
+
+	items := make([]string, 0, maxItems)
+	seen := map[string]struct{}{}
+	for _, raw := range values {
+		item := stripAuxiliaryListMarker(raw)
+		runes := []rune(item)
+		if len(runes) > maxChars {
+			item = string(runes[:maxChars])
+		}
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		key := strings.ToLower(item)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+
+		items = append(items, item)
+		seen[key] = struct{}{}
+		if len(items) >= maxItems {
+			break
+		}
+	}
+
+	if items == nil {
+		return []string{}
+	}
+	return items
+}
+
+func stripAuxiliaryListMarker(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.TrimLeft(value, "-*• \t")
+	value = strings.TrimSpace(value)
+	if dotIndex := strings.IndexAny(value, ".)"); dotIndex > 0 && dotIndex <= 3 {
+		prefix := value[:dotIndex]
+		allDigits := true
+		for _, r := range prefix {
+			if r < '0' || r > '9' {
+				allDigits = false
+				break
+			}
+		}
+		if allDigits {
+			value = strings.TrimSpace(value[dotIndex+1:])
+		}
+	}
+	value = strings.Trim(value, "\"'")
+	return strings.TrimSpace(value)
+}
+
+func parseConversationMessageResourcePath(path string) (string, string, bool) {
+	remainder := strings.TrimPrefix(path, conversationPathBase)
+	parts := strings.Split(remainder, "/")
+	if len(parts) != 3 || parts[0] == "" || parts[1] != "messages" || parts[2] == "" {
+		return "", "", false
+	}
+
+	return parts[0], parts[2], true
+}
+
+func parseConversationResourcePath(path string) (string, bool) {
+	remainder := strings.TrimPrefix(path, conversationPathBase)
+	if remainder == "" || strings.Contains(remainder, "/") {
+		return "", false
+	}
+
+	return remainder, true
+}
+
 func parseConversationChildPath(path string) (string, string, bool) {
 	remainder := strings.TrimPrefix(path, conversationPathBase)
 	parts := strings.Split(remainder, "/")
@@ -748,6 +1441,9 @@ func serviceErrorFor(err error) (int, ErrorBody) {
 	if errors.Is(err, ErrConversationNotFound) {
 		return http.StatusNotFound, ErrorBody{Code: "CONVERSATION_NOT_FOUND", Message: "conversation not found"}
 	}
+	if errors.Is(err, ErrMessageNotFound) {
+		return http.StatusNotFound, ErrorBody{Code: "MESSAGE_NOT_FOUND", Message: "message not found"}
+	}
 	if errors.Is(err, ErrIdempotencyConflict) {
 		return http.StatusConflict, ErrorBody{Code: "IDEMPOTENCY_CONFLICT", Message: "idempotency key already exists"}
 	}
@@ -819,6 +1515,28 @@ func forbiddenConversationFields() map[string]fieldViolation {
 	}
 }
 
+func forbiddenConversationUpdateFields() map[string]fieldViolation {
+	return forbiddenConversationFields()
+}
+
+func forbiddenConversationTitleFields() map[string]fieldViolation {
+	fields := forbiddenConversationFields()
+	fields["history"] = validationField("conversation title history is server-managed")
+	fields["messages"] = validationField("conversation title history is server-managed")
+	fields["provider"] = validationField("provider configuration is server-managed")
+	fields["modelName"] = validationField("use modelRef instead of modelName")
+	return fields
+}
+
+func forbiddenRelatedQuestionsFields() map[string]fieldViolation {
+	fields := forbiddenConversationFields()
+	fields["history"] = validationField("related-question history is server-managed")
+	fields["messages"] = validationField("related-question history is server-managed")
+	fields["provider"] = validationField("provider configuration is server-managed")
+	fields["modelName"] = validationField("use modelRef instead of modelName")
+	return fields
+}
+
 func forbiddenMessageFields() map[string]fieldViolation {
 	violation := fieldViolation{
 		Code:    "FORBIDDEN_MESSAGE_FIELD",
@@ -854,6 +1572,28 @@ func forbiddenMessageFields() map[string]fieldViolation {
 		"completedAt":       violation,
 		"deletedAt":         violation,
 	}
+}
+
+func forbiddenMessageUpdateFields() map[string]fieldViolation {
+	fields := cloneFieldViolations(forbiddenMessageFields())
+	violation := fieldViolation{
+		Code:    "FORBIDDEN_MESSAGE_FIELD",
+		Message: "message field is server-managed",
+	}
+	fields["role"] = violation
+	fields["parentMessageId"] = violation
+	fields["metadata"] = violation
+	fields["idempotencyKey"] = violation
+	fields["attachments"] = violation
+	return fields
+}
+
+func cloneFieldViolations(fields map[string]fieldViolation) map[string]fieldViolation {
+	cloned := make(map[string]fieldViolation, len(fields))
+	for key, value := range fields {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func forbiddenStreamFields() map[string]fieldViolation {
@@ -925,15 +1665,18 @@ func (h *Handler) isRunCancelled(ctx context.Context, runID string) bool {
 }
 
 func newConversationDTO(conversation Conversation) ConversationDTO {
+	config := ensureObject(conversation.Metadata)
 	return ConversationDTO{
-		ID:           conversation.ID,
-		Title:        conversation.Title,
-		Status:       conversation.Status,
-		ModelRef:     newModelRef(conversation.ModelProvider, conversation.ModelID),
-		MessageCount: conversation.MessageCount,
-		Config:       ensureObject(conversation.Metadata),
-		CreatedAt:    formatTime(conversation.CreatedAt),
-		UpdatedAt:    formatTime(conversation.UpdatedAt),
+		ID:                conversation.ID,
+		Title:             conversation.Title,
+		Status:            conversation.Status,
+		ModelRef:          newModelRef(conversation.ModelProvider, conversation.ModelID),
+		MessageCount:      conversation.MessageCount,
+		SystemInstruction: conversation.SystemPrompt,
+		Pinned:            configBool(config, "pinned"),
+		Config:            config,
+		CreatedAt:         formatTime(conversation.CreatedAt),
+		UpdatedAt:         formatTime(conversation.UpdatedAt),
 	}
 }
 

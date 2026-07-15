@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -92,6 +93,230 @@ func TestPostgresCreateMessagePersistsAttachments(t *testing.T) {
 	}
 	if len(got.Attachments) != 1 || got.Attachments[0].SHA256 != testSHA256 {
 		t.Fatalf("GetMessage() attachments = %#v", got.Attachments)
+	}
+}
+
+func TestPostgresUpdateAndDeleteConversation(t *testing.T) {
+	db := openPostgresIntegrationDB(t)
+	repo := NewPostgresRepository(db)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	conversation, err := repo.CreateConversation(ctx, CreateConversationInput{
+		Title:        "original",
+		SystemPrompt: "old prompt",
+		Metadata:     map[string]any{"useSearch": true},
+	})
+	if err != nil {
+		t.Fatalf("CreateConversation() error = %v", err)
+	}
+
+	title := "renamed"
+	systemPrompt := "new prompt"
+	updated, err := repo.UpdateConversation(ctx, conversation.ID, UpdateConversationInput{
+		Title:         &title,
+		SystemPrompt:  &systemPrompt,
+		MetadataMerge: map[string]any{"pinned": true, "useReasoning": true},
+	})
+	if err != nil {
+		t.Fatalf("UpdateConversation() error = %v", err)
+	}
+	if updated.Title != "renamed" || updated.SystemPrompt != "new prompt" {
+		t.Fatalf("updated conversation = %#v", updated)
+	}
+	if updated.Metadata["useSearch"] != true || updated.Metadata["useReasoning"] != true || updated.Metadata["pinned"] != true {
+		t.Fatalf("updated metadata = %#v", updated.Metadata)
+	}
+
+	if err := repo.DeleteConversation(ctx, conversation.ID); err != nil {
+		t.Fatalf("DeleteConversation() error = %v", err)
+	}
+	listed, err := repo.ListConversations(ctx)
+	if err != nil {
+		t.Fatalf("ListConversations() error = %v", err)
+	}
+	if len(listed) != 0 {
+		t.Fatalf("listed conversations after delete = %d, want 0", len(listed))
+	}
+	if _, err := repo.UpdateConversation(ctx, conversation.ID, UpdateConversationInput{Title: &title}); !errors.Is(err, ErrConversationNotFound) {
+		t.Fatalf("UpdateConversation(deleted) error = %v, want ErrConversationNotFound", err)
+	}
+}
+
+func TestPostgresDuplicateConversationCopiesMessagesAndAttachments(t *testing.T) {
+	db := openPostgresIntegrationDB(t)
+	repo := NewPostgresRepository(db)
+	fileRepo := filemeta.NewPostgresRepository(db)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	conversation, err := repo.CreateConversation(ctx, CreateConversationInput{
+		Title:         "source",
+		ModelProvider: "openai",
+		ModelID:       "gpt-test",
+		SystemPrompt:  "be precise",
+		Metadata:      map[string]any{"pinned": true, "useReasoning": true},
+	})
+	if err != nil {
+		t.Fatalf("CreateConversation() error = %v", err)
+	}
+	fileID := mustTestUUID(t)
+	fileRecord, err := fileRepo.CreateFile(ctx, filemeta.CreateFileInput{
+		ID:               fileID,
+		OriginalFilename: "duplicate.txt",
+		MimeType:         "text/plain",
+		ByteSize:         9,
+		SHA256:           testSHA256,
+		StorageBackend:   "local",
+		ObjectKey:        "users/" + filemeta.DevUserID + "/files/" + fileID,
+		Metadata:         map[string]any{"purpose": "chat"},
+	})
+	if err != nil {
+		t.Fatalf("CreateFile() error = %v", err)
+	}
+	userMessage, err := repo.CreateMessage(ctx, conversation.ID, CreateMessageInput{
+		Role:    "user",
+		Content: "prompt",
+		Metadata: map[string]any{
+			"treeParentMessageId": nil,
+		},
+		Attachments: []AttachmentInput{
+			{FileID: fileRecord.ID, Purpose: "input"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateMessage() error = %v", err)
+	}
+	assistant, err := repo.CreateAssistantMessage(ctx, conversation.ID, CreateAssistantMessageInput{
+		ID:              mustTestUUID(t),
+		ParentMessageID: userMessage.ID,
+		ModelProvider:   "openai",
+		ModelID:         "gpt-test",
+		IdempotencyKey:  "duplicate-assistant-" + mustTestUUID(t),
+	})
+	if err != nil {
+		t.Fatalf("CreateAssistantMessage() error = %v", err)
+	}
+	if _, err := repo.FinalizeAssistantMessage(ctx, conversation.ID, assistant.ID, FinalizeAssistantMessageInput{
+		Status:       "completed",
+		Content:      "answer",
+		OutputBlocks: []any{map[string]any{"type": "markdown", "content": "answer"}},
+		Metadata:     map[string]any{"runId": mustTestUUID(t)},
+	}); err != nil {
+		t.Fatalf("FinalizeAssistantMessage() error = %v", err)
+	}
+
+	duplicated, err := repo.DuplicateConversation(ctx, conversation.ID, DuplicateConversationInput{
+		IdempotencyKey: "duplicate-" + mustTestUUID(t),
+	})
+	if err != nil {
+		t.Fatalf("DuplicateConversation() error = %v", err)
+	}
+	if duplicated.ID == conversation.ID || duplicated.Title != "source (Copy)" {
+		t.Fatalf("duplicated conversation = %#v", duplicated)
+	}
+	if duplicated.SystemPrompt != "be precise" || duplicated.ModelProvider != "openai" || duplicated.ModelID != "gpt-test" {
+		t.Fatalf("duplicated model/prompt = %#v", duplicated)
+	}
+	if duplicated.Metadata["useReasoning"] != true || duplicated.Metadata["pinned"] != false {
+		t.Fatalf("duplicated metadata = %#v", duplicated.Metadata)
+	}
+	if duplicated.MessageCount != 2 {
+		t.Fatalf("duplicated messageCount = %d, want 2", duplicated.MessageCount)
+	}
+
+	messages, err := repo.ListMessages(ctx, duplicated.ID)
+	if err != nil {
+		t.Fatalf("ListMessages(duplicated) error = %v", err)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("duplicated messages = %d, want 2", len(messages))
+	}
+	if messages[0].ID == userMessage.ID || messages[0].ConversationID != duplicated.ID || messages[0].SequenceNo != 0 {
+		t.Fatalf("duplicated user message = %#v", messages[0])
+	}
+	if len(messages[0].Attachments) != 1 || messages[0].Attachments[0].FileID != fileRecord.ID {
+		t.Fatalf("duplicated attachments = %#v", messages[0].Attachments)
+	}
+	if messages[1].ParentMessageID != messages[0].ID || messages[1].Content != "answer" || len(messages[1].OutputBlocks) != 1 {
+		t.Fatalf("duplicated assistant message = %#v", messages[1])
+	}
+}
+
+func TestPostgresUpdateMessageContent(t *testing.T) {
+	db := openPostgresIntegrationDB(t)
+	repo := NewPostgresRepository(db)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	conversation, err := repo.CreateConversation(ctx, CreateConversationInput{
+		Title: "message edit",
+	})
+	if err != nil {
+		t.Fatalf("CreateConversation() error = %v", err)
+	}
+	userMessage, err := repo.CreateMessage(ctx, conversation.ID, CreateMessageInput{
+		Role:    "user",
+		Content: "prompt",
+	})
+	if err != nil {
+		t.Fatalf("CreateMessage() error = %v", err)
+	}
+	assistant, err := repo.CreateAssistantMessage(ctx, conversation.ID, CreateAssistantMessageInput{
+		ID:              mustTestUUID(t),
+		ParentMessageID: userMessage.ID,
+		IdempotencyKey:  "assistant-edit-" + mustTestUUID(t),
+		Metadata:        map[string]any{"runId": mustTestUUID(t)},
+	})
+	if err != nil {
+		t.Fatalf("CreateAssistantMessage() error = %v", err)
+	}
+	assistant, err = repo.FinalizeAssistantMessage(ctx, conversation.ID, assistant.ID, FinalizeAssistantMessageInput{
+		Status:  "completed",
+		Content: "old answer",
+		OutputBlocks: []any{
+			map[string]any{"id": "old-block", "type": "text", "content": "old answer"},
+		},
+		Metadata: assistant.Metadata,
+	})
+	if err != nil {
+		t.Fatalf("FinalizeAssistantMessage() error = %v", err)
+	}
+
+	content := " edited answer "
+	updated, err := repo.UpdateMessage(ctx, conversation.ID, assistant.ID, UpdateMessageInput{
+		Content: &content,
+	})
+	if err != nil {
+		t.Fatalf("UpdateMessage() error = %v", err)
+	}
+	if updated.Content != "edited answer" {
+		t.Fatalf("updated content = %q, want edited answer", updated.Content)
+	}
+	if len(updated.OutputBlocks) != 0 {
+		t.Fatalf("updated output blocks = %#v, want cleared", updated.OutputBlocks)
+	}
+	if updated.ParentMessageID != userMessage.ID {
+		t.Fatalf("updated parent = %q, want %q", updated.ParentMessageID, userMessage.ID)
+	}
+
+	listed, err := repo.ListConversations(ctx)
+	if err != nil {
+		t.Fatalf("ListConversations() error = %v", err)
+	}
+	if len(listed) != 1 || listed[0].MessageCount != 2 {
+		t.Fatalf("conversation message count after edit = %#v, want 2", listed)
+	}
+
+	if err := repo.DeleteMessage(ctx, conversation.ID, assistant.ID, DeleteMessageInput{}); err != nil {
+		t.Fatalf("DeleteMessage() error = %v", err)
+	}
+	content = "cannot update"
+	if _, err := repo.UpdateMessage(ctx, conversation.ID, assistant.ID, UpdateMessageInput{Content: &content}); !errors.Is(err, ErrMessageNotFound) {
+		t.Fatalf("UpdateMessage(deleted) error = %v, want ErrMessageNotFound", err)
 	}
 }
 
@@ -226,6 +451,56 @@ func TestPostgresRepositoryEnforcesTwoUserIsolation(t *testing.T) {
 	}
 	if len(messagesA) != 2 || len(messagesA[0].Attachments) != 1 || messagesA[1].Status != "streaming" {
 		t.Fatalf("user A messages after cross-user attempts = %#v", messagesA)
+	}
+}
+
+func TestPostgresDeleteMessageAndSubsequentMessages(t *testing.T) {
+	db := openPostgresIntegrationDB(t)
+	repo := NewPostgresRepository(db)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	conversation, err := repo.CreateConversation(ctx, CreateConversationInput{Title: "delete messages"})
+	if err != nil {
+		t.Fatalf("CreateConversation() error = %v", err)
+	}
+	first, err := repo.CreateMessage(ctx, conversation.ID, CreateMessageInput{Role: "user", Content: "one"})
+	if err != nil {
+		t.Fatalf("CreateMessage(first) error = %v", err)
+	}
+	second, err := repo.CreateMessage(ctx, conversation.ID, CreateMessageInput{Role: "user", Content: "two"})
+	if err != nil {
+		t.Fatalf("CreateMessage(second) error = %v", err)
+	}
+	third, err := repo.CreateMessage(ctx, conversation.ID, CreateMessageInput{Role: "user", Content: "three"})
+	if err != nil {
+		t.Fatalf("CreateMessage(third) error = %v", err)
+	}
+
+	if err := repo.DeleteMessage(ctx, conversation.ID, second.ID, DeleteMessageInput{}); err != nil {
+		t.Fatalf("DeleteMessage(single) error = %v", err)
+	}
+	listed, err := repo.ListMessages(ctx, conversation.ID)
+	if err != nil {
+		t.Fatalf("ListMessages() error = %v", err)
+	}
+	if gotIDs := messageIDs(listed); strings.Join(gotIDs, ",") != first.ID+","+third.ID {
+		t.Fatalf("messages after single delete = %v", gotIDs)
+	}
+
+	if err := repo.DeleteMessage(ctx, conversation.ID, first.ID, DeleteMessageInput{DeleteSubsequent: true}); err != nil {
+		t.Fatalf("DeleteMessage(subsequent) error = %v", err)
+	}
+	listed, err = repo.ListMessages(ctx, conversation.ID)
+	if err != nil {
+		t.Fatalf("ListMessages(after retract) error = %v", err)
+	}
+	if len(listed) != 0 {
+		t.Fatalf("messages after retract = %d, want 0", len(listed))
+	}
+	if err := repo.DeleteMessage(ctx, conversation.ID, first.ID, DeleteMessageInput{}); !errors.Is(err, ErrMessageNotFound) {
+		t.Fatalf("DeleteMessage(deleted) error = %v, want ErrMessageNotFound", err)
 	}
 }
 
@@ -531,6 +806,14 @@ func openPostgresIntegrationDB(t *testing.T) *sql.DB {
 	}
 
 	return db
+}
+
+func messageIDs(messages []Message) []string {
+	ids := make([]string, 0, len(messages))
+	for _, message := range messages {
+		ids = append(ids, message.ID)
+	}
+	return ids
 }
 
 func mustTestUUID(t *testing.T) string {

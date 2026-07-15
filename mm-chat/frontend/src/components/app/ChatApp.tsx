@@ -22,6 +22,7 @@ import type { ModelInfo } from "@/services/api/chatService";
 import { createNeoChatApiClient } from "@/services/api/client";
 import { uploadMessageAttachmentsForServer } from "@/services/api/fileService";
 import { resolveSkillsForMessage } from "@/services/api/skillService";
+import { orchestrateServerPlugins } from "@/services/api/serverPluginOrchestration";
 import {
   buildProviderRuntimeConfig,
   fetchWithByokRetry,
@@ -137,6 +138,17 @@ const ChatApp = () => {
       selectServerSession,
       createServerSession,
       sendServerMessageAndStream,
+      regenerateServerAssistantMessage,
+      switchServerMessageVersion,
+      updateServerSessionTitle,
+      updateServerSessionInstruction,
+      toggleServerSessionPin,
+      deleteServerSession,
+      duplicateServerSession,
+      generateServerConversationTitle,
+      updateServerMessageContent,
+      deleteServerMessage,
+      retractServerMessage,
       deleteSession,
       updateSessionTitle,
       updateSessionInstruction,
@@ -171,7 +183,9 @@ const ChatApp = () => {
       installedPlugins,
       pluginConfigs,
       installedSkills,
+      activeSkillIds,
       skillAutoSelect,
+      setActiveSkillIds,
       setActivePlugins,
       applyServerConfig: applySettingsServerConfig,
     },
@@ -286,7 +300,9 @@ const ChatApp = () => {
   const currentSessionWorkspaceId = currentSession?.workspaceId;
   const serverSessionChatConfig = {
     useSearch: currentSessionConfig?.useSearch ?? false,
-    useReasoning: currentSessionConfig?.useReasoning ?? false,
+    useReasoning: chatConfig.useReasoning,
+    activePlugins,
+    activeSkills: activeSkillIds,
   };
   const composerChatConfig = serverModeEnabled
     ? {
@@ -888,9 +904,13 @@ const ChatApp = () => {
         configs: search.configs,
       },
       rag,
-      installedPlugins: serverModeEnabled ? [] : installedPlugins,
+      installedPlugins,
       pluginConfigs,
-      activePlugins: serverModeEnabled ? [] : activePlugins,
+      activePlugins,
+      activePluginIdsOverride: serverModeEnabled ? activePlugins : undefined,
+      installedSkills,
+      activeSkillIds: serverModeEnabled ? activeSkillIds : [],
+      activeSkillIdsOverride: serverModeEnabled ? activeSkillIds : undefined,
     });
   };
 
@@ -984,6 +1004,19 @@ const ChatApp = () => {
         throw new Error("Server conversation could not be created.");
       }
 
+      const serverSessionForTitle =
+        useChatStore
+          .getState()
+          .serverReadState.sessions.find((s) => s.id === targetSessionId) ||
+        currentSession;
+      const shouldAutoRename =
+        system.enableAutoTitle &&
+        serverSessionForTitle?.messageCount === 0 &&
+        serverSessionForTitle.title === "New Chat";
+      const titleSnapshot = createSessionPostGenerationSnapshot(
+        serverSessionForTitle,
+      );
+
       const uploadedAttachments =
         attachments.length > 0
           ? await uploadMessageAttachmentsForServer({
@@ -1001,6 +1034,32 @@ const ChatApp = () => {
         currentSession;
       const effectiveContext =
         getEffectiveContextForSession(sessionForProcessing);
+      const skillResolution = await resolveSkillsForMessage({
+        message: text,
+        selectedModel,
+        locale,
+        installedSkills,
+        activeSkillIds: effectiveContext.activeSkillIds,
+        autoSelect: false,
+        signal: generation.controller.signal,
+      });
+      if (!isGenerationRunActive(generation)) return;
+      const pluginResolution = await orchestrateServerPlugins({
+        message: text,
+        selectedModel,
+        installedPlugins,
+        pluginConfigs,
+        activePluginIds: effectiveContext.activePluginIds,
+        signal: generation.controller.signal,
+      });
+      if (!isGenerationRunActive(generation)) return;
+      const systemInstruction = [
+        effectiveContext.systemInstruction,
+        skillResolution.context,
+        pluginResolution.context,
+      ]
+        .filter((section): section is string => Boolean(section?.trim()))
+        .join("\n\n");
 
       await sendServerMessageAndStream({
         sessionId: targetSessionId,
@@ -1008,9 +1067,33 @@ const ChatApp = () => {
         attachments: toServerMessageAttachments(uploadedAttachments),
         model: selectedModel,
         config: serverSessionChatConfig,
-        systemInstruction: effectiveContext.systemInstruction,
+        systemInstruction,
         signal: generation.controller.signal,
       });
+
+      if (shouldAutoRename) {
+        generateServerConversationTitle(targetSessionId, selectedModel)
+          .then((newTitle) => {
+            const session = useChatStore
+              .getState()
+              .serverReadState.sessions.find(
+                (item) => item.id === targetSessionId,
+              );
+            if (
+              newTitle &&
+              session &&
+              titleSnapshot &&
+              session.id === titleSnapshot.id &&
+              titleSnapshot.title === "New Chat" &&
+              session.title === "New Chat"
+            ) {
+              void updateServerSessionTitle(targetSessionId!, newTitle);
+            }
+          })
+          .catch((error) => {
+            logChatAppError("Server chat title generation failed:", error);
+          });
+      }
     } catch (error: any) {
       if (error.name === "AbortError" || generation.controller.signal.aborted) {
         return;
@@ -1279,7 +1362,9 @@ const ChatApp = () => {
       if (system.enableRelatedQuestions && updatedHistory.length > 0) {
         loadChatService()
           .then(({ generateRelatedQuestions }) =>
-            generateRelatedQuestions(updatedHistory),
+            generateRelatedQuestions(updatedHistory, {
+              conversationId: targetSessionId,
+            }),
           )
           .then((questions) => {
             const state = useChatStore.getState();
@@ -1641,7 +1726,78 @@ const ChatApp = () => {
 
   const handleRegenerate = async (messageId: string) => {
     if (serverModeEnabled) {
-      showServerUnsupportedAction("regeneration");
+      const sessionId = visibleCurrentSessionId;
+      if (!sessionId || isGenerating) return;
+      const targetNode = visibleActiveMessageTree.nodesById[messageId];
+      const userMessageId = targetNode?.parentMessageId;
+      const userMessage = userMessageId
+        ? visibleActiveMessageTree.nodesById[userMessageId]?.message
+        : undefined;
+      if (!userMessage || userMessage.role !== "user") {
+        showActionError(t("errRegenerate"));
+        return;
+      }
+
+      const generation = beginActiveGeneration();
+      try {
+        const sessionForProcessing =
+          useChatStore
+            .getState()
+            .serverReadState.sessions.find((s) => s.id === sessionId) ||
+          currentSession;
+        const effectiveContext =
+          getEffectiveContextForSession(sessionForProcessing);
+        const skillResolution = await resolveSkillsForMessage({
+          message: userMessage.content,
+          selectedModel,
+          locale,
+          installedSkills,
+          activeSkillIds: effectiveContext.activeSkillIds,
+          autoSelect: false,
+          signal: generation.controller.signal,
+        });
+        if (!isGenerationRunActive(generation)) return;
+
+        const pluginResolution = await orchestrateServerPlugins({
+          message: userMessage.content,
+          selectedModel,
+          installedPlugins,
+          pluginConfigs,
+          activePluginIds: effectiveContext.activePluginIds,
+          signal: generation.controller.signal,
+        });
+        if (!isGenerationRunActive(generation)) return;
+
+        const systemInstruction = [
+          effectiveContext.systemInstruction,
+          skillResolution.context,
+          pluginResolution.context,
+        ]
+          .filter((section): section is string => Boolean(section?.trim()))
+          .join("\n\n");
+
+        await regenerateServerAssistantMessage({
+          sessionId,
+          assistantMessageId: messageId,
+          model: selectedModel,
+          config: serverSessionChatConfig,
+          systemInstruction,
+          signal: generation.controller.signal,
+        });
+      } catch (error: any) {
+        if (
+          error.name === "AbortError" ||
+          generation.controller.signal.aborted
+        ) {
+          return;
+        }
+        logChatAppError("Server regeneration failed:", error);
+        showActionError(
+          error instanceof Error ? error.message : t("errRegenerate"),
+        );
+      } finally {
+        finishActiveGeneration(generation);
+      }
       return;
     }
     await generateModelResponseBranch(messageId, {
@@ -1652,7 +1808,9 @@ const ChatApp = () => {
 
   const handleVersionChange = (msgId: string, direction: "prev" | "next") => {
     if (serverModeEnabled) {
-      showServerUnsupportedAction("message version switching");
+      if (visibleCurrentSessionId) {
+        switchServerMessageVersion(visibleCurrentSessionId, msgId, direction);
+      }
       return;
     }
     if (currentSessionId) {
@@ -1661,17 +1819,15 @@ const ChatApp = () => {
   };
 
   const handleAssistantSelect = async (agent: LobeAgent) => {
-    if (serverModeEnabled) {
-      showServerUnsupportedAction("assistant presets");
-      navigateToPanel("chat");
-      return;
-    }
-
     const requestId = assistantSelectRequestRef.current + 1;
     assistantSelectRequestRef.current = requestId;
 
     if (isGenerating) {
-      void stopActiveGenerationWithFeedback();
+      if (serverModeEnabled) {
+        abortActiveGeneration();
+      } else {
+        void stopActiveGenerationWithFeedback();
+      }
     }
 
     if (viewMode === "assistants") {
@@ -1697,6 +1853,36 @@ const ChatApp = () => {
       instruction = `You are ${agent.meta.title}. ${agent.meta.description}`;
     }
 
+    if (serverModeEnabled) {
+      try {
+        if (
+          visibleCurrentSessionId &&
+          currentSession &&
+          currentSession.messageCount === 0 &&
+          currentSession.title === "New Chat"
+        ) {
+          await updateServerSessionInstruction(
+            visibleCurrentSessionId,
+            instruction,
+          );
+          await updateServerSessionTitle(
+            visibleCurrentSessionId,
+            agent.meta.title,
+          );
+          return;
+        }
+
+        await createServerSession({
+          systemInstruction: instruction,
+          title: agent.meta.title,
+        });
+      } catch (error) {
+        logChatAppError("Failed to apply server assistant preset", error);
+        showActionError(t("errSaveChanges"));
+      }
+      return;
+    }
+
     if (currentSessionId) {
       const session = getCurrentSession();
       if (
@@ -1713,9 +1899,16 @@ const ChatApp = () => {
     createSession(instruction, agent.meta.title);
   };
 
-  const handleEditMessage = (msgId: string, newContent: string) => {
+  const handleEditMessage = async (msgId: string, newContent: string) => {
     if (serverModeEnabled) {
-      showServerUnsupportedAction("message editing");
+      const sessionId = visibleCurrentSessionId;
+      if (!sessionId) return;
+      try {
+        await updateServerMessageContent(sessionId, msgId, newContent);
+      } catch (error) {
+        logChatAppError("Failed to edit server message", error);
+        showActionError(t("errSaveChanges"));
+      }
       return;
     }
     if (currentSessionId) {
@@ -1732,7 +1925,103 @@ const ChatApp = () => {
     newContent: string,
   ) => {
     if (serverModeEnabled) {
-      showServerUnsupportedAction("message edit branches");
+      const sessionId = visibleCurrentSessionId;
+      if (!sessionId || isGenerating || !newContent.trim()) return;
+
+      const sessionMessages = visibleActiveMessages;
+      const sourceMessage = sessionMessages.find(
+        (message) => message.id === msgId,
+      );
+      if (!sourceMessage || sourceMessage.role !== "user") {
+        showActionError(t("errEditUserMessage"));
+        return;
+      }
+      if (newContent === sourceMessage.content) return;
+      if ((sourceMessage.attachments?.length ?? 0) > 0 && !serverFilesEnabled) {
+        showActionError("Server file uploads are not enabled.");
+        return;
+      }
+
+      const generation = beginActiveGeneration();
+      try {
+        const uploadedAttachments =
+          sourceMessage.attachments && sourceMessage.attachments.length > 0
+            ? await uploadMessageAttachmentsForServer({
+                attachments: sourceMessage.attachments,
+                conversationId: sessionId,
+                signal: generation.controller.signal,
+              })
+            : [];
+        if (!isGenerationRunActive(generation)) return;
+
+        const sessionForProcessing =
+          useChatStore
+            .getState()
+            .serverReadState.sessions.find((s) => s.id === sessionId) ||
+          currentSession;
+        const effectiveContext =
+          getEffectiveContextForSession(sessionForProcessing);
+        const skillResolution = await resolveSkillsForMessage({
+          message: newContent,
+          selectedModel,
+          locale,
+          installedSkills,
+          activeSkillIds: effectiveContext.activeSkillIds,
+          autoSelect: false,
+          signal: generation.controller.signal,
+        });
+        if (!isGenerationRunActive(generation)) return;
+
+        const pluginResolution = await orchestrateServerPlugins({
+          message: newContent,
+          selectedModel,
+          installedPlugins,
+          pluginConfigs,
+          activePluginIds: effectiveContext.activePluginIds,
+          signal: generation.controller.signal,
+        });
+        if (!isGenerationRunActive(generation)) return;
+
+        const sourceParentId =
+          visibleActiveMessageTree.nodesById[msgId]?.parentMessageId ??
+          sourceMessage.parentMessageId ??
+          null;
+        const systemInstruction = [
+          effectiveContext.systemInstruction,
+          skillResolution.context,
+          pluginResolution.context,
+        ]
+          .filter((section): section is string => Boolean(section?.trim()))
+          .join("\n\n");
+
+        await sendServerMessageAndStream({
+          sessionId,
+          content: newContent,
+          parentMessageId: sourceParentId ?? undefined,
+          attachments: toServerMessageAttachments(uploadedAttachments),
+          model: selectedModel,
+          config: serverSessionChatConfig,
+          systemInstruction,
+          metadata: {
+            branchSourceMessageId: msgId,
+            treeParentMessageId: sourceParentId,
+          },
+          signal: generation.controller.signal,
+        });
+      } catch (error: any) {
+        if (
+          error.name === "AbortError" ||
+          generation.controller.signal.aborted
+        ) {
+          return;
+        }
+        logChatAppError("Server user message edit branch failed:", error);
+        showActionError(
+          error instanceof Error ? error.message : t("errEditUserMessage"),
+        );
+      } finally {
+        finishActiveGeneration(generation);
+      }
       return;
     }
 
@@ -1966,7 +2255,14 @@ const ChatApp = () => {
 
   const handleDeleteMessage = async (msgId: string) => {
     if (serverModeEnabled) {
-      showServerUnsupportedAction("message deletion");
+      const sessionId = visibleCurrentSessionId;
+      if (!sessionId) return;
+      try {
+        await deleteServerMessage(sessionId, msgId);
+      } catch (error) {
+        logChatAppError("Failed to delete server message", error);
+        showActionError(t("errDeleteMessage"));
+      }
       return;
     }
 
@@ -1983,7 +2279,21 @@ const ChatApp = () => {
 
   const handleDeleteSession = async (sessionId: string) => {
     if (serverModeEnabled) {
-      showServerUnsupportedAction("chat deletion");
+      try {
+        if (
+          shouldAbortActiveGenerationForSessionDelete({
+            currentSessionId: visibleCurrentSessionId,
+            deletingSessionId: sessionId,
+            isGenerating,
+          })
+        ) {
+          abortActiveGeneration();
+        }
+        await deleteServerSession(sessionId);
+      } catch (error) {
+        logChatAppError("Failed to delete server session", error);
+        showActionError(t("errDeleteChat"));
+      }
       return;
     }
 
@@ -2007,7 +2317,12 @@ const ChatApp = () => {
 
   const handleDuplicateSession = async (sessionId: string) => {
     if (serverModeEnabled) {
-      showServerUnsupportedAction("chat duplication");
+      try {
+        await duplicateServerSession(sessionId);
+      } catch (error) {
+        logChatAppError("Failed to duplicate server session", error);
+        showActionError(t("errDuplicateChat"));
+      }
       return;
     }
 
@@ -2021,7 +2336,18 @@ const ChatApp = () => {
 
   const handleRetractMessage = async (msg: Message) => {
     if (serverModeEnabled) {
-      showServerUnsupportedAction("message retraction");
+      const sessionId = visibleCurrentSessionId;
+      if (!sessionId) return;
+      try {
+        await retractServerMessage(sessionId, msg.id);
+        if (messageInputRef.current) {
+          messageInputRef.current.setValue(msg.content);
+          messageInputRef.current.focus();
+        }
+      } catch (error) {
+        logChatAppError("Failed to retract server message", error);
+        showActionError(t("errRetractMessage"));
+      }
       return;
     }
 
@@ -2043,7 +2369,27 @@ const ChatApp = () => {
 
   const handleSmartRename = async (sessionId: string) => {
     if (serverModeEnabled) {
-      showServerUnsupportedAction("smart rename");
+      const snapshot = createSessionPostGenerationSnapshot(
+        useChatStore
+          .getState()
+          .serverReadState.sessions.find((session) => session.id === sessionId),
+      );
+      if (!snapshot) return;
+      try {
+        const newTitle = await generateServerConversationTitle(
+          sessionId,
+          selectedModel,
+        );
+        const currentSession = useChatStore
+          .getState()
+          .serverReadState.sessions.find((session) => session.id === sessionId);
+        if (newTitle && shouldApplyRequestedTitle(currentSession, snapshot)) {
+          await updateServerSessionTitle(sessionId, newTitle);
+        }
+      } catch (error) {
+        logChatAppError("Server smart rename failed:", error);
+        showActionError(t("errRenameChat"));
+      }
       return;
     }
 
@@ -2150,16 +2496,26 @@ const ChatApp = () => {
         }}
         onNewChat={handleNewChat}
         onDeleteSession={handleDeleteSession}
-        onRenameSession={
-          serverModeEnabled
-            ? () => showServerUnsupportedAction("chat renaming")
-            : updateSessionTitle
-        }
-        onTogglePin={
-          serverModeEnabled
-            ? () => showServerUnsupportedAction("pinning")
-            : toggleSessionPin
-        }
+        onRenameSession={(id, title) => {
+          if (serverModeEnabled) {
+            void updateServerSessionTitle(id, title).catch((error) => {
+              logChatAppError("Failed to rename server session", error);
+              showActionError(t("errRenameChat"));
+            });
+            return;
+          }
+          updateSessionTitle(id, title);
+        }}
+        onTogglePin={(id) => {
+          if (serverModeEnabled) {
+            void toggleServerSessionPin(id).catch((error) => {
+              logChatAppError("Failed to pin server session", error);
+              showActionError(t("errSaveChanges"));
+            });
+            return;
+          }
+          toggleSessionPin(id);
+        }}
         onDuplicate={handleDuplicateSession}
         onSmartRename={handleSmartRename}
         isOpen={isSidebarOpen}
@@ -2277,24 +2633,40 @@ const ChatApp = () => {
                     !!currentSession.systemInstruction) && (
                     <AssistantHeader
                       instruction={currentSession.systemInstruction || ""}
-                      onUpdate={(newInst) =>
-                        serverModeEnabled
-                          ? showServerUnsupportedAction(
-                              "system instruction editing",
-                            )
-                          : updateSessionInstruction(currentSession.id, newInst)
-                      }
+                      onUpdate={(newInst) => {
+                        if (serverModeEnabled) {
+                          void updateServerSessionInstruction(
+                            currentSession.id,
+                            newInst,
+                          ).catch((error) => {
+                            logChatAppError(
+                              "Failed to update server system instruction",
+                              error,
+                            );
+                            showActionError(t("errSaveChanges"));
+                          });
+                          return;
+                        }
+                        updateSessionInstruction(currentSession.id, newInst);
+                      }}
                       onDelete={
                         currentSession.systemInstruction
-                          ? () =>
-                              serverModeEnabled
-                                ? showServerUnsupportedAction(
-                                    "system instruction editing",
-                                  )
-                                : updateSessionInstruction(
-                                    currentSession.id,
-                                    "",
-                                  )
+                          ? () => {
+                              if (serverModeEnabled) {
+                                void updateServerSessionInstruction(
+                                  currentSession.id,
+                                  "",
+                                ).catch((error) => {
+                                  logChatAppError(
+                                    "Failed to clear server system instruction",
+                                    error,
+                                  );
+                                  showActionError(t("errSaveChanges"));
+                                });
+                                return;
+                              }
+                              updateSessionInstruction(currentSession.id, "");
+                            }
                           : undefined
                       }
                     />
@@ -2418,13 +2790,20 @@ const ChatApp = () => {
                   }
                   isReasoningEnabled={composerChatConfig.useReasoning}
                   onToggleReasoning={() =>
-                    serverModeEnabled
-                      ? showServerUnsupportedAction("reasoning toggle")
-                      : setChatConfig({
-                          useReasoning: !chatConfig.useReasoning,
-                        })
+                    setChatConfig({
+                      useReasoning: !chatConfig.useReasoning,
+                    })
                   }
                   localSessionToolsDisabled={serverModeEnabled}
+                  allowReasoningWhenSessionToolsDisabled={serverModeEnabled}
+                  allowSkillsWhenSessionToolsDisabled={serverModeEnabled}
+                  allowPluginsWhenSessionToolsDisabled={serverModeEnabled}
+                  activeSkillIdsOverride={
+                    serverModeEnabled ? activeSkillIds : undefined
+                  }
+                  onActiveSkillIdsChange={
+                    serverModeEnabled ? setActiveSkillIds : undefined
+                  }
                   onLocalSessionToolUnavailable={showServerUnsupportedAction}
                 />
               </div>

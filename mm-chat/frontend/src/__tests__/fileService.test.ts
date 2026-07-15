@@ -36,6 +36,7 @@ const capabilities = {
   rag: false,
   plugins: false,
   providerSettings: false,
+  agents: false,
 } satisfies ApiCapabilities;
 
 const resolvedConfig = {
@@ -242,6 +243,7 @@ function createMockClient(
       },
       ...filesOverrides,
     },
+    agents: options.agents ?? createMockAgentApi(),
   };
 }
 
@@ -253,6 +255,27 @@ function createMockChatApi(): ChatApi {
     async listConversations() {
       throw new Error("listConversations not mocked");
     },
+    async updateConversation() {
+      throw new Error("updateConversation not mocked");
+    },
+    async deleteConversation() {
+      throw new Error("deleteConversation not mocked");
+    },
+    async duplicateConversation() {
+      throw new Error("duplicateConversation not mocked");
+    },
+    async generateConversationTitle() {
+      throw new Error("generateConversationTitle not mocked");
+    },
+    async generateRelatedQuestions() {
+      throw new Error("generateRelatedQuestions not mocked");
+    },
+    async updateMessage() {
+      throw new Error("updateMessage not mocked");
+    },
+    async deleteMessage() {
+      throw new Error("deleteMessage not mocked");
+    },
     async appendUserMessage() {
       throw new Error("appendUserMessage not mocked");
     },
@@ -262,8 +285,22 @@ function createMockChatApi(): ChatApi {
     async streamAssistantMessage() {
       return { status: "unsupported" };
     },
+    async planTools() {
+      return [];
+    },
     async cancelRun() {
       return { status: "unsupported" };
+    },
+  };
+}
+
+function createMockAgentApi() {
+  return {
+    async listAgents() {
+      throw new Error("listAgents not mocked");
+    },
+    async getAgentDetail() {
+      throw new Error("getAgentDetail not mocked");
     },
   };
 }

@@ -30,6 +30,7 @@ import { deleteFromOPFS } from "@/utils/opfs";
 import { logDevError } from "../../lib/utils/devLogger";
 import {
   appendMessageToActivePath,
+  appendMessageToParent,
   cloneMessageTreeWithNewIds,
   createModelResponseBranch,
   createUserMessageBranch,
@@ -122,6 +123,18 @@ interface SendServerMessageAndStreamOptions {
   signal?: AbortSignal;
 }
 
+interface RegenerateServerAssistantMessageOptions {
+  sessionId: string;
+  assistantMessageId: string;
+  model?: string;
+  config?: SessionConfig;
+  systemInstruction?: string;
+  systemPrompt?: string;
+  streamMetadata?: Record<string, unknown>;
+  streamIdempotencyKey?: string;
+  signal?: AbortSignal;
+}
+
 const createEmptyServerGenerationState = (): ServerGenerationState => ({
   status: "idle",
   sessionId: null,
@@ -159,6 +172,7 @@ const toStoreSessionFromServer = (session: ChatCrudSession): Session =>
     updatedAt: session.updatedAt,
     model: session.model,
     pinned: session.pinned,
+    systemInstruction: session.systemInstruction,
     config: session.config,
   });
 
@@ -167,6 +181,12 @@ const toStoreMessageFromServer = (message: ChatCrudMessage): Message => ({
   role: message.role,
   content: message.content,
   timestamp: message.timestamp,
+  ...(message.parentMessageId
+    ? { parentMessageId: message.parentMessageId }
+    : {}),
+  ...("treeParentMessageId" in message
+    ? { treeParentMessageId: message.treeParentMessageId }
+    : {}),
   ...(message.attachments ? { attachments: message.attachments } : {}),
   ...(message.model ? { model: message.model } : {}),
   ...(message.outputBlocks
@@ -225,7 +245,7 @@ const applyServerMessageToReadState = (
           message.id,
           () => message,
         )
-      : appendMessageToActivePath(serverReadState.activeMessageTree, message)
+      : appendServerMessageToTree(serverReadState.activeMessageTree, message)
     : serverReadState.activeMessageTree;
   const activeMessages = isCurrentServerSession
     ? getActiveMessagePath(activeMessageTree)
@@ -248,6 +268,65 @@ const applyServerMessageToReadState = (
         updatedAt: message.timestamp,
       };
     }),
+  };
+};
+
+const appendServerMessageToTree = (
+  tree: SessionMessageTree,
+  message: Message,
+): SessionMessageTree => {
+  if (Object.prototype.hasOwnProperty.call(message, "treeParentMessageId")) {
+    return appendMessageToParent(
+      tree,
+      message,
+      message.treeParentMessageId ?? null,
+    );
+  }
+  if (message.parentMessageId) {
+    return appendMessageToParent(tree, message, message.parentMessageId);
+  }
+
+  return appendMessageToActivePath(tree, message);
+};
+
+const normalizeServerMessageTree = (messages: Message[]): SessionMessageTree =>
+  messages.reduce(
+    (tree, message) => appendServerMessageToTree(tree, message),
+    createEmptyMessageTree(),
+  );
+
+const applyServerMessageRemovalToReadState = (
+  serverReadState: ServerReadState,
+  sessionId: string,
+  messageId: string,
+  mode: "message" | "subsequent",
+): ServerReadState => {
+  if (serverReadState.currentSessionId !== sessionId) {
+    return serverReadState;
+  }
+
+  const result =
+    mode === "subsequent"
+      ? removeMessageSubtree(serverReadState.activeMessageTree, messageId)
+      : removeMessageFromTree(serverReadState.activeMessageTree, messageId);
+  if (result.removedMessages.length === 0) {
+    return serverReadState;
+  }
+
+  const activeMessages = getActiveMessagePath(result.tree);
+  return {
+    ...serverReadState,
+    activeMessageTree: result.tree,
+    activeMessages,
+    sessions: serverReadState.sessions.map((session) =>
+      session.id === sessionId
+        ? {
+            ...session,
+            messageCount: activeMessages.length,
+            updatedAt: Date.now(),
+          }
+        : session,
+    ),
   };
 };
 
@@ -450,6 +529,39 @@ interface ChatState {
   sendServerMessageAndStream: (
     options: SendServerMessageAndStreamOptions,
   ) => Promise<ChatStreamRunResult | null>;
+  regenerateServerAssistantMessage: (
+    options: RegenerateServerAssistantMessageOptions,
+  ) => Promise<ChatStreamRunResult | null>;
+  switchServerMessageVersion: (
+    sessionId: string,
+    messageId: string,
+    direction: "prev" | "next",
+  ) => boolean;
+  updateServerSessionTitle: (id: string, title: string) => Promise<boolean>;
+  updateServerSessionInstruction: (
+    id: string,
+    instruction: string,
+  ) => Promise<boolean>;
+  toggleServerSessionPin: (id: string) => Promise<boolean>;
+  deleteServerSession: (id: string) => Promise<boolean>;
+  duplicateServerSession: (id: string) => Promise<string | null>;
+  generateServerConversationTitle: (
+    id: string,
+    model?: string,
+  ) => Promise<string | null>;
+  updateServerMessageContent: (
+    sessionId: string,
+    messageId: string,
+    content: string,
+  ) => Promise<boolean>;
+  deleteServerMessage: (
+    sessionId: string,
+    messageId: string,
+  ) => Promise<boolean>;
+  retractServerMessage: (
+    sessionId: string,
+    messageId: string,
+  ) => Promise<boolean>;
   deleteSession: (id: string) => Promise<void>;
   updateSessionTitle: (id: string, newTitle: string) => void;
   updateSessionInstruction: (id: string, instruction: string) => void;
@@ -817,8 +929,9 @@ export const useChatStore = create<ChatState>()(
           );
           if (requestId !== serverReadRequestId) return false;
 
-          const messageTree = normalizeSessionMessageTree(messages);
+          const messageTree = normalizeServerMessageTree(messages);
           const activeMessages = getActiveMessagePath(messageTree);
+          const allMessageCount = getAllMessagesFromTree(messageTree).length;
 
           set((state) => ({
             serverReadState: {
@@ -830,7 +943,7 @@ export const useChatStore = create<ChatState>()(
               error: null,
               sessions: state.serverReadState.sessions.map((session) =>
                 session.id === id
-                  ? { ...session, messageCount: activeMessages.length }
+                  ? { ...session, messageCount: allMessageCount }
                   : session,
               ),
             },
@@ -1216,6 +1329,525 @@ export const useChatStore = create<ChatState>()(
           }
           throw error;
         }
+      },
+
+      regenerateServerAssistantMessage: async (options) => {
+        const streamService = createChatStreamService();
+        if (!streamService.streamEnabled) {
+          return null;
+        }
+
+        const state = get();
+        if (state.serverReadState.currentSessionId !== options.sessionId) {
+          return null;
+        }
+        const targetNode =
+          state.serverReadState.activeMessageTree.nodesById[
+            options.assistantMessageId
+          ];
+        if (!targetNode || targetNode.message.role !== "model") {
+          return null;
+        }
+        const userMessageId = targetNode.parentMessageId;
+        const userNode = userMessageId
+          ? state.serverReadState.activeMessageTree.nodesById[userMessageId]
+          : undefined;
+        if (!userMessageId || userNode?.message.role !== "user") {
+          return null;
+        }
+
+        const model = options.model ?? get().selectedModel;
+        const modelRef = modelStringToModelRef(model);
+        if (!modelRef) {
+          throw new Error("Server stream model is required.");
+        }
+
+        const requestId = serverReadRequestId + 1;
+        serverReadRequestId = requestId;
+        set((current) => ({
+          serverReadState: {
+            ...current.serverReadState,
+            generation: {
+              ...createEmptyServerGenerationState(),
+              status: "pending",
+              sessionId: options.sessionId,
+              userMessageId,
+            },
+            isLoading: true,
+            error: null,
+          },
+        }));
+
+        try {
+          let assistantMessageId: string | null = null;
+          let assistantContent = "";
+          const setServerGeneration = (
+            update: (
+              generation: ServerGenerationState,
+            ) => ServerGenerationState,
+          ) => {
+            if (requestId !== serverReadRequestId) return;
+            set((current) => ({
+              serverReadState: {
+                ...current.serverReadState,
+                generation: update(current.serverReadState.generation),
+              },
+            }));
+          };
+          const updateAssistantDraft = (
+            eventMessageId: string | undefined,
+            update: (message: Message) => Message,
+          ) => {
+            if (requestId !== serverReadRequestId) return;
+            const messageId = eventMessageId ?? assistantMessageId;
+            if (!messageId) return;
+            assistantMessageId = messageId;
+
+            set((current) => {
+              if (
+                current.serverReadState.currentSessionId !== options.sessionId
+              ) {
+                return {};
+              }
+
+              const existing =
+                current.serverReadState.activeMessageTree.nodesById[messageId]
+                  ?.message;
+              const message = update(
+                existing ?? {
+                  id: messageId,
+                  role: "model",
+                  content: "",
+                  timestamp: Date.now(),
+                  parentMessageId: userMessageId,
+                  ...(model ? { model } : {}),
+                },
+              );
+
+              return {
+                serverReadState: {
+                  ...applyServerMessageToReadState(
+                    current.serverReadState,
+                    options.sessionId,
+                    message,
+                  ),
+                  isLoading: true,
+                  error: null,
+                },
+              };
+            });
+          };
+
+          const result = await streamService.streamAssistantMessage(
+            {
+              conversationId: options.sessionId,
+              userMessageId,
+              modelRef,
+              config: options.config
+                ? { ...normalizeSessionConfig(options.config) }
+                : undefined,
+              systemInstruction: options.systemInstruction,
+              systemPrompt: options.systemPrompt,
+              metadata: options.streamMetadata,
+              idempotencyKey: options.streamIdempotencyKey ?? uuidv7(),
+              signal: options.signal,
+            },
+            {
+              onStarted: (event) => {
+                assistantContent = "";
+                setServerGeneration((generation) => ({
+                  ...generation,
+                  status: "streaming",
+                  sessionId: options.sessionId,
+                  userMessageId,
+                  assistantMessageId:
+                    event.messageId ?? generation.assistantMessageId,
+                  activeServerRunId:
+                    event.runId ?? generation.activeServerRunId,
+                  error: null,
+                }));
+                updateAssistantDraft(event.messageId, (message) => ({
+                  ...message,
+                  role: "model",
+                  content: "",
+                  timestamp: event.createdAt
+                    ? Date.parse(event.createdAt)
+                    : message.timestamp,
+                  parentMessageId: userMessageId,
+                  ...(model ? { model } : {}),
+                }));
+              },
+              onDelta: (event) => {
+                assistantContent +=
+                  typeof event.delta === "string" ? event.delta : "";
+                if (event.runId || event.messageId) {
+                  setServerGeneration((generation) => ({
+                    ...generation,
+                    sessionId: options.sessionId,
+                    userMessageId,
+                    assistantMessageId:
+                      event.messageId ?? generation.assistantMessageId,
+                    activeServerRunId:
+                      event.runId ?? generation.activeServerRunId,
+                  }));
+                }
+                updateAssistantDraft(event.messageId, (message) => ({
+                  ...message,
+                  content: assistantContent,
+                  parentMessageId: userMessageId,
+                }));
+              },
+            },
+          );
+
+          if (requestId === serverReadRequestId) {
+            set((current) => {
+              const terminalMessage = result.message
+                ? toStoreMessageFromServer(result.message)
+                : null;
+              const nextServerReadState = terminalMessage
+                ? applyServerMessageToReadState(
+                    current.serverReadState,
+                    options.sessionId,
+                    terminalMessage,
+                  )
+                : current.serverReadState;
+              const terminalStatus = getTerminalServerGenerationStatus(result);
+              const terminalError =
+                terminalStatus === "failed"
+                  ? (result.error ?? { message: "Server stream failed." })
+                  : null;
+
+              return {
+                serverReadState: {
+                  ...nextServerReadState,
+                  generation: {
+                    ...nextServerReadState.generation,
+                    status: terminalStatus,
+                    sessionId: options.sessionId,
+                    userMessageId,
+                    assistantMessageId:
+                      terminalMessage?.id ?? assistantMessageId,
+                    activeServerRunId: null,
+                    error: terminalError,
+                  },
+                  isLoading: false,
+                  error: terminalError?.message ?? null,
+                },
+              };
+            });
+          }
+
+          return result;
+        } catch (error) {
+          if (requestId === serverReadRequestId) {
+            const generationError = getServerGenerationError(error);
+            set((current) => ({
+              serverReadState: {
+                ...current.serverReadState,
+                generation: {
+                  ...current.serverReadState.generation,
+                  status: "failed",
+                  activeServerRunId: null,
+                  error: generationError,
+                },
+                isLoading: false,
+                error: generationError.message,
+              },
+            }));
+          }
+          throw error;
+        }
+      },
+
+      switchServerMessageVersion: (sessionId, messageId, direction) => {
+        let switched = false;
+        set((state) => {
+          if (state.serverReadState.currentSessionId !== sessionId) {
+            return {};
+          }
+          const newMessageTree = switchMessageBranch(
+            state.serverReadState.activeMessageTree,
+            messageId,
+            direction,
+          );
+          if (newMessageTree === state.serverReadState.activeMessageTree) {
+            return {};
+          }
+          const activeMessages = getActiveMessagePath(newMessageTree);
+          switched = true;
+          return {
+            serverReadState: {
+              ...state.serverReadState,
+              activeMessageTree: newMessageTree,
+              activeMessages,
+              sessions: state.serverReadState.sessions.map((session) =>
+                session.id === sessionId
+                  ? {
+                      ...session,
+                      messageCount:
+                        getAllMessagesFromTree(newMessageTree).length,
+                    }
+                  : session,
+              ),
+            },
+          };
+        });
+        return switched;
+      },
+
+      updateServerSessionTitle: async (id, title) => {
+        const service = createChatCrudService();
+        if (!service.serverEnabled) return false;
+
+        const session = toStoreSessionFromServer(
+          await service.updateConversation({
+            conversationId: id,
+            title: normalizeSessionTitle(title),
+          }),
+        );
+        set((state) => ({
+          serverReadState: {
+            ...state.serverReadState,
+            sessions: state.serverReadState.sessions.map((item) =>
+              item.id === id ? session : item,
+            ),
+            error: null,
+          },
+        }));
+        return true;
+      },
+
+      updateServerSessionInstruction: async (id, instruction) => {
+        const service = createChatCrudService();
+        if (!service.serverEnabled) return false;
+
+        const session = toStoreSessionFromServer(
+          await service.updateConversation({
+            conversationId: id,
+            systemInstruction: instruction,
+          }),
+        );
+        set((state) => ({
+          serverReadState: {
+            ...state.serverReadState,
+            sessions: state.serverReadState.sessions.map((item) =>
+              item.id === id ? session : item,
+            ),
+            error: null,
+          },
+        }));
+        return true;
+      },
+
+      toggleServerSessionPin: async (id) => {
+        const service = createChatCrudService();
+        if (!service.serverEnabled) return false;
+
+        const current = get().serverReadState.sessions.find(
+          (session) => session.id === id,
+        );
+        if (!current) return false;
+
+        const session = toStoreSessionFromServer(
+          await service.updateConversation({
+            conversationId: id,
+            pinned: !current.pinned,
+          }),
+        );
+        set((state) => ({
+          serverReadState: {
+            ...state.serverReadState,
+            sessions: state.serverReadState.sessions.map((item) =>
+              item.id === id ? session : item,
+            ),
+            error: null,
+          },
+        }));
+        return true;
+      },
+
+      deleteServerSession: async (id) => {
+        const service = createChatCrudService();
+        if (!service.serverEnabled) return false;
+
+        await service.deleteConversation(id);
+
+        let nextSessionId: string | null = null;
+        let shouldSelectNextSession = false;
+        set((state) => {
+          const sessions = state.serverReadState.sessions.filter(
+            (session) => session.id !== id,
+          );
+          const deletingCurrent = state.serverReadState.currentSessionId === id;
+          shouldSelectNextSession = deletingCurrent;
+          nextSessionId = deletingCurrent
+            ? (sessions[0]?.id ?? null)
+            : state.serverReadState.currentSessionId;
+
+          return {
+            serverReadState: {
+              ...state.serverReadState,
+              sessions,
+              currentSessionId: nextSessionId,
+              activeMessages: deletingCurrent
+                ? []
+                : state.serverReadState.activeMessages,
+              activeMessageTree: deletingCurrent
+                ? createEmptyMessageTree()
+                : state.serverReadState.activeMessageTree,
+              generation: deletingCurrent
+                ? createEmptyServerGenerationState()
+                : state.serverReadState.generation,
+              isLoading: false,
+              error: null,
+            },
+          };
+        });
+
+        if (
+          shouldSelectNextSession &&
+          nextSessionId &&
+          get().serverReadState.currentSessionId === nextSessionId
+        ) {
+          await get().selectServerSession(nextSessionId);
+        }
+        return true;
+      },
+
+      duplicateServerSession: async (id) => {
+        const service = createChatCrudService();
+        if (!service.serverEnabled) return null;
+
+        const requestId = serverReadRequestId + 1;
+        serverReadRequestId = requestId;
+        set((state) => ({
+          serverReadState: {
+            ...state.serverReadState,
+            isLoading: true,
+            error: null,
+          },
+        }));
+
+        try {
+          const session = toStoreSessionFromServer(
+            await service.duplicateConversation({
+              conversationId: id,
+              idempotencyKey: uuidv7(),
+            }),
+          );
+          const messages = (await service.listMessages(session.id)).map(
+            toStoreMessageFromServer,
+          );
+          const messageTree = normalizeSessionMessageTree(messages);
+          if (requestId === serverReadRequestId) {
+            set((state) => ({
+              serverReadState: {
+                ...state.serverReadState,
+                sessions: upsertServerReadSession(
+                  state.serverReadState.sessions,
+                  {
+                    ...session,
+                    messageCount: getAllMessagesFromTree(messageTree).length,
+                  },
+                ),
+                currentSessionId: session.id,
+                activeMessages: getActiveMessagePath(messageTree),
+                activeMessageTree: messageTree,
+                generation: createEmptyServerGenerationState(),
+                isLoading: false,
+                error: null,
+              },
+            }));
+          }
+
+          return session.id;
+        } catch (error) {
+          if (requestId === serverReadRequestId) {
+            const message = getServerReadErrorMessage(error);
+            set((state) => ({
+              serverReadState: {
+                ...state.serverReadState,
+                isLoading: false,
+                error: message,
+              },
+            }));
+          }
+          throw error;
+        }
+      },
+
+      generateServerConversationTitle: async (id, model) => {
+        const service = createChatCrudService();
+        if (!service.serverEnabled) return null;
+
+        const modelRef = modelStringToModelRef(model ?? get().selectedModel);
+        const title = await service.generateConversationTitle({
+          conversationId: id,
+          modelRef,
+        });
+        return normalizeSessionTitle(title);
+      },
+
+      updateServerMessageContent: async (sessionId, messageId, content) => {
+        const service = createChatCrudService();
+        if (!service.serverEnabled) return false;
+
+        const message = toStoreMessageFromServer(
+          await service.updateMessage({
+            conversationId: sessionId,
+            messageId,
+            content,
+          }),
+        );
+        set((state) => ({
+          serverReadState: applyServerMessageToReadState(
+            state.serverReadState,
+            sessionId,
+            message,
+          ),
+        }));
+        return true;
+      },
+
+      deleteServerMessage: async (sessionId, messageId) => {
+        const service = createChatCrudService();
+        if (!service.serverEnabled) return false;
+
+        await service.deleteMessage({
+          conversationId: sessionId,
+          messageId,
+          scope: "message",
+        });
+        set((state) => ({
+          serverReadState: applyServerMessageRemovalToReadState(
+            state.serverReadState,
+            sessionId,
+            messageId,
+            "message",
+          ),
+        }));
+        return true;
+      },
+
+      retractServerMessage: async (sessionId, messageId) => {
+        const service = createChatCrudService();
+        if (!service.serverEnabled) return false;
+
+        await service.deleteMessage({
+          conversationId: sessionId,
+          messageId,
+          scope: "subsequent",
+        });
+        set((state) => ({
+          serverReadState: applyServerMessageRemovalToReadState(
+            state.serverReadState,
+            sessionId,
+            messageId,
+            "subsequent",
+          ),
+        }));
+        return true;
       },
 
       deleteSession: async (id) => {

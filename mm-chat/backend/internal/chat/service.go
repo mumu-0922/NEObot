@@ -43,6 +43,76 @@ func (s *Service) ListConversations(ctx context.Context) ([]Conversation, error)
 	return s.repo.ListConversations(ctx)
 }
 
+func (s *Service) UpdateConversation(
+	ctx context.Context,
+	conversationID string,
+	input UpdateConversationInput,
+) (Conversation, error) {
+	if err := s.requireRepository(); err != nil {
+		return Conversation{}, err
+	}
+	conversationID = strings.TrimSpace(conversationID)
+	if !isUUID(conversationID) {
+		return Conversation{}, newValidationError("INVALID_CONVERSATION_ID", "conversation id must be a UUID")
+	}
+
+	if input.Title != nil {
+		value := strings.TrimSpace(*input.Title)
+		input.Title = &value
+	}
+	if input.SystemPrompt != nil {
+		value := strings.TrimSpace(*input.SystemPrompt)
+		input.SystemPrompt = &value
+	}
+	if input.ModelProvider != nil {
+		value := strings.TrimSpace(*input.ModelProvider)
+		input.ModelProvider = &value
+	}
+	if input.ModelID != nil {
+		value := strings.TrimSpace(*input.ModelID)
+		input.ModelID = &value
+	}
+	if input.MetadataMerge == nil {
+		input.MetadataMerge = map[string]any{}
+	}
+	if input.ReplaceMetadata != nil && *input.ReplaceMetadata == nil {
+		empty := map[string]any{}
+		input.ReplaceMetadata = &empty
+	}
+
+	return s.repo.UpdateConversation(ctx, conversationID, input)
+}
+
+func (s *Service) DeleteConversation(ctx context.Context, conversationID string) error {
+	if err := s.requireRepository(); err != nil {
+		return err
+	}
+	conversationID = strings.TrimSpace(conversationID)
+	if !isUUID(conversationID) {
+		return newValidationError("INVALID_CONVERSATION_ID", "conversation id must be a UUID")
+	}
+
+	return s.repo.DeleteConversation(ctx, conversationID)
+}
+
+func (s *Service) DuplicateConversation(
+	ctx context.Context,
+	conversationID string,
+	input DuplicateConversationInput,
+) (Conversation, error) {
+	if err := s.requireRepository(); err != nil {
+		return Conversation{}, err
+	}
+	conversationID = strings.TrimSpace(conversationID)
+	if !isUUID(conversationID) {
+		return Conversation{}, newValidationError("INVALID_CONVERSATION_ID", "conversation id must be a UUID")
+	}
+	input.Title = strings.TrimSpace(input.Title)
+	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
+
+	return s.repo.DuplicateConversation(ctx, conversationID, input)
+}
+
 func (s *Service) ListMessages(ctx context.Context, conversationID string) ([]Message, error) {
 	if err := s.requireRepository(); err != nil {
 		return nil, err
@@ -53,6 +123,56 @@ func (s *Service) ListMessages(ctx context.Context, conversationID string) ([]Me
 	}
 
 	return s.repo.ListMessages(ctx, conversationID)
+}
+
+func (s *Service) UpdateMessage(
+	ctx context.Context,
+	conversationID string,
+	messageID string,
+	input UpdateMessageInput,
+) (Message, error) {
+	if err := s.requireRepository(); err != nil {
+		return Message{}, err
+	}
+	conversationID = strings.TrimSpace(conversationID)
+	if !isUUID(conversationID) {
+		return Message{}, newValidationError("INVALID_CONVERSATION_ID", "conversation id must be a UUID")
+	}
+	messageID = strings.TrimSpace(messageID)
+	if !isUUID(messageID) {
+		return Message{}, newValidationError("INVALID_MESSAGE_ID", "message id must be a UUID")
+	}
+	if input.Content == nil {
+		return Message{}, newValidationError("NO_MESSAGE_UPDATES", "message update requires at least one editable field")
+	}
+	content := strings.TrimSpace(*input.Content)
+	if content == "" {
+		return Message{}, newValidationError("EMPTY_CONTENT", "message content is required")
+	}
+	input.Content = &content
+
+	return s.repo.UpdateMessage(ctx, conversationID, messageID, input)
+}
+
+func (s *Service) DeleteMessage(
+	ctx context.Context,
+	conversationID string,
+	messageID string,
+	input DeleteMessageInput,
+) error {
+	if err := s.requireRepository(); err != nil {
+		return err
+	}
+	conversationID = strings.TrimSpace(conversationID)
+	if !isUUID(conversationID) {
+		return newValidationError("INVALID_CONVERSATION_ID", "conversation id must be a UUID")
+	}
+	messageID = strings.TrimSpace(messageID)
+	if !isUUID(messageID) {
+		return newValidationError("INVALID_MESSAGE_ID", "message id must be a UUID")
+	}
+
+	return s.repo.DeleteMessage(ctx, conversationID, messageID, input)
 }
 
 func (s *Service) GetMessage(

@@ -147,6 +147,99 @@ describe("effective chat context", () => {
     expect(context.activeSkillIds).toEqual(["workspace-skill"]);
   });
 
+  it("uses browser-persisted plugin and skill selections for server sessions", () => {
+    const context = resolveEffectiveChatContext({
+      session: {
+        id: "server-session",
+        title: "Server session",
+        updatedAt: 1,
+        model: "SERVER_DEFAULT:gpt-server",
+        messageCount: 0,
+        config: {
+          activePlugins: ["stale-plugin"],
+          activeSkills: ["stale-skill"],
+        },
+      },
+      selectedModel: "SERVER_DEFAULT:gpt-server",
+      provider: { type: "OpenAI Compatible" },
+      modelMetadata: {},
+      customModelMetadata: {},
+      chatConfig: {
+        useSearch: false,
+        useReasoning: false,
+        temperature: 0.7,
+        useRAG: false,
+      },
+      search: { provider: "google", configs: {} },
+      rag: {
+        enabled: false,
+        url: "",
+        token: "",
+        topK: 10,
+        chunkSize: 512,
+        documentParseProvider: "mineru",
+        mineruApiToken: "",
+        llamaParseApiKey: "",
+      },
+      installedPlugins: [
+        {
+          id: "stale-plugin",
+          title: "Stale Plugin",
+          description: "",
+          logoUrl: "",
+          manifestUrl: "",
+          functions: [],
+          auth: { type: "none" },
+        },
+        {
+          id: "server-plugin",
+          title: "Server Plugin",
+          description: "",
+          logoUrl: "",
+          manifestUrl: "",
+          functions: [],
+          auth: { type: "none" },
+        },
+      ],
+      pluginConfigs: {},
+      activePlugins: [],
+      activePluginIdsOverride: ["server-plugin"],
+      installedSkills: [
+        {
+          id: "server-skill",
+          name: "server-skill",
+          title: "Server Skill",
+          description: "Applied to server chat.",
+          category: "writing",
+          tags: ["server"],
+          audience: "general",
+          language: "en",
+          outputFormat: "text",
+          risk: {
+            level: "low",
+            textOnly: true,
+            scriptRequired: false,
+            externalToolRequired: false,
+            networkRequired: false,
+            reviewRequiredForHighStakes: false,
+          },
+          activation: {
+            embeddingText: "server skill",
+            useWhen: ["selected"],
+            avoidWhen: [],
+            exampleQueries: [],
+          },
+          content: "Follow the server skill.",
+        },
+      ],
+      activeSkillIds: ["missing-skill"],
+      activeSkillIdsOverride: ["server-skill"],
+    });
+
+    expect(context.activePluginIds).toEqual(["server-plugin"]);
+    expect(context.activeSkillIds).toEqual(["server-skill"]);
+  });
+
   it("appends safe inline HTML guidance when the visual prompt setting is enabled", () => {
     const context = resolveEffectiveChatContext({
       systemPrompt: "Global system prompt.",

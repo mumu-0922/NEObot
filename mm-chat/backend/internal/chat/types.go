@@ -12,6 +12,11 @@ const DevUserID = auth.DevelopmentUserID
 type Repository interface {
 	CreateConversation(ctx context.Context, input CreateConversationInput) (Conversation, error)
 	ListConversations(ctx context.Context) ([]Conversation, error)
+	UpdateConversation(ctx context.Context, conversationID string, input UpdateConversationInput) (Conversation, error)
+	DeleteConversation(ctx context.Context, conversationID string) error
+	DuplicateConversation(ctx context.Context, conversationID string, input DuplicateConversationInput) (Conversation, error)
+	UpdateMessage(ctx context.Context, conversationID string, messageID string, input UpdateMessageInput) (Message, error)
+	DeleteMessage(ctx context.Context, conversationID string, messageID string, input DeleteMessageInput) error
 	GetMessage(ctx context.Context, conversationID string, messageID string) (Message, error)
 	ListMessages(ctx context.Context, conversationID string) ([]Message, error)
 	CreateMessage(ctx context.Context, conversationID string, input CreateMessageInput) (Message, error)
@@ -33,6 +38,29 @@ type CreateConversationInput struct {
 	SystemPrompt   string
 	Metadata       map[string]any
 	IdempotencyKey string
+}
+
+type DeleteMessageInput struct {
+	DeleteSubsequent bool
+}
+
+type DuplicateConversationInput struct {
+	Title          string
+	IdempotencyKey string
+}
+
+type UpdateMessageInput struct {
+	Content *string
+}
+
+type UpdateConversationInput struct {
+	Title              *string
+	SystemPrompt       *string
+	ModelProvider      *string
+	ModelID            *string
+	MetadataMerge      map[string]any
+	MetadataDeleteKeys []string
+	ReplaceMetadata    *map[string]any
 }
 
 type Conversation struct {

@@ -6,6 +6,7 @@ var (
 	ErrDatabaseRequired     = errors.New("database is required")
 	ErrProviderRequired     = errors.New("provider is required")
 	ErrConversationNotFound = errors.New("conversation not found")
+	ErrMessageNotFound      = errors.New("message not found")
 	ErrIdempotencyConflict  = errors.New("idempotency key conflict")
 	ErrFileNotFound         = errors.New("file not found")
 	ErrRunNotFound          = errors.New("run not found")

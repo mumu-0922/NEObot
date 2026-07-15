@@ -7,13 +7,24 @@ import type {
   ChatRunResult,
   ChatStreamHandlers,
   ConversationDTO,
+  DeleteMessageInput,
   CreateConversationInput,
+  DuplicateConversationInput,
+  GenerateConversationTitleInput,
+  GenerateConversationTitleResponse,
+  GenerateRelatedQuestionsInput,
+  GenerateRelatedQuestionsResponse,
+  PlanServerToolsInput,
+  ServerPlannedToolCall,
   StreamAssistantMessageInput,
   ServerStreamEvent,
+  UpdateConversationInput,
+  UpdateMessageInput,
 } from "../types";
 import type { HttpClient } from "./httpClient";
 
 const conversationsPath = "/v1/chat/conversations";
+const toolPlanPath = "/v1/chat/tools/plan";
 
 type CreateConversationRequestBody = {
   title?: string;
@@ -21,6 +32,31 @@ type CreateConversationRequestBody = {
   systemInstruction?: string;
   config?: Record<string, unknown>;
   idempotencyKey?: string;
+};
+
+type UpdateConversationRequestBody = {
+  title?: string;
+  modelRef?: UpdateConversationInput["modelRef"];
+  systemInstruction?: string;
+  config?: Record<string, unknown>;
+  pinned?: boolean;
+};
+
+type DuplicateConversationRequestBody = {
+  title?: string;
+  idempotencyKey?: string;
+};
+
+type GenerateConversationTitleRequestBody = {
+  modelRef?: GenerateConversationTitleInput["modelRef"];
+};
+
+type GenerateRelatedQuestionsRequestBody = {
+  modelRef?: GenerateRelatedQuestionsInput["modelRef"];
+};
+
+type UpdateMessageRequestBody = {
+  content: string;
 };
 
 type AppendUserMessageRequestBody = {
@@ -47,6 +83,10 @@ type CancelRunResponse = {
   message?: ChatMessageDTO;
 };
 
+type ToolPlanResponse = {
+  calls: ServerPlannedToolCall[];
+};
+
 type StreamDispatchState = {
   startedRunId?: string;
   lastSequenceByRunId: Map<string, number>;
@@ -68,6 +108,73 @@ export function createServerChatApiShell(httpClient: HttpClient): ChatApi {
           conversationsPath,
         );
       return getPageItems(page, "conversation list");
+    },
+    async updateConversation(
+      input: UpdateConversationInput,
+    ): Promise<ConversationDTO> {
+      return httpClient.requestJson<ConversationDTO>(
+        conversationPath(input.conversationId),
+        {
+          method: "PATCH",
+          body: updateConversationBody(input),
+        },
+      );
+    },
+    async deleteConversation(conversationId: string): Promise<void> {
+      await httpClient.requestJson<void>(conversationPath(conversationId), {
+        method: "DELETE",
+      });
+    },
+    async duplicateConversation(
+      input: DuplicateConversationInput,
+    ): Promise<ConversationDTO> {
+      return httpClient.requestJson<ConversationDTO>(
+        `${conversationPath(input.conversationId)}/duplicate`,
+        {
+          method: "POST",
+          body: duplicateConversationBody(input),
+        },
+      );
+    },
+    async generateConversationTitle(
+      input: GenerateConversationTitleInput,
+    ): Promise<GenerateConversationTitleResponse> {
+      return httpClient.requestJson<GenerateConversationTitleResponse>(
+        `${conversationPath(input.conversationId)}/title`,
+        {
+          method: "POST",
+          body: generateConversationTitleBody(input),
+        },
+      );
+    },
+    async generateRelatedQuestions(
+      input: GenerateRelatedQuestionsInput,
+    ): Promise<GenerateRelatedQuestionsResponse> {
+      const response =
+        await httpClient.requestJson<GenerateRelatedQuestionsResponse>(
+          `${conversationPath(input.conversationId)}/related-questions`,
+          {
+            method: "POST",
+            body: generateRelatedQuestionsBody(input),
+          },
+        );
+      return normalizeRelatedQuestionsResponse(response);
+    },
+    async updateMessage(input: UpdateMessageInput): Promise<ChatMessageDTO> {
+      return httpClient.requestJson<ChatMessageDTO>(
+        `${conversationPath(input.conversationId)}/messages/${encodeURIComponent(input.messageId)}`,
+        {
+          method: "PATCH",
+          body: updateMessageBody(input),
+        },
+      );
+    },
+    async deleteMessage(input: DeleteMessageInput): Promise<void> {
+      const scope = input.scope === "subsequent" ? "?scope=subsequent" : "";
+      await httpClient.requestJson<void>(
+        `${conversationPath(input.conversationId)}/messages/${encodeURIComponent(input.messageId)}${scope}`,
+        { method: "DELETE" },
+      );
     },
     async appendUserMessage(
       input: AppendUserMessageInput,
@@ -149,10 +256,62 @@ export function createServerChatApiShell(httpClient: HttpClient): ChatApi {
         }
       );
     },
+    async planTools(
+      input: PlanServerToolsInput,
+    ): Promise<ServerPlannedToolCall[]> {
+      const response = await httpClient.requestJson<ToolPlanResponse>(
+        toolPlanPath,
+        {
+          method: "POST",
+          body: {
+            prompt: input.prompt,
+            modelRef: input.modelRef,
+            tools: input.tools,
+          },
+          signal: input.signal,
+        },
+      );
+      return normalizeToolPlanResponse(response);
+    },
     async cancelRun(runId: string): Promise<ChatRunResult> {
       return cancelRunById(httpClient, runId);
     },
   };
+}
+
+function normalizeToolPlanResponse(
+  response: ToolPlanResponse,
+): ServerPlannedToolCall[] {
+  if (!response || !Array.isArray(response.calls)) {
+    throw new ApiClientError(
+      "INVALID_SERVER_RESPONSE",
+      "Server returned an invalid tool plan.",
+    );
+  }
+
+  return response.calls.map((call) => {
+    if (
+      !call ||
+      typeof call.id !== "string" ||
+      typeof call.name !== "string" ||
+      !call.name.trim() ||
+      !isRecord(call.args)
+    ) {
+      throw new ApiClientError(
+        "INVALID_SERVER_RESPONSE",
+        "Server returned an invalid planned tool call.",
+      );
+    }
+    return {
+      id: call.id,
+      name: call.name.trim(),
+      args: call.args,
+    };
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 function createConversationBody(
@@ -165,6 +324,71 @@ function createConversationBody(
     config: input.config,
     idempotencyKey: input.idempotencyKey,
   });
+}
+
+function updateConversationBody(
+  input: UpdateConversationInput,
+): UpdateConversationRequestBody {
+  return removeUndefined({
+    title: input.title,
+    modelRef: input.modelRef,
+    systemInstruction: input.systemInstruction,
+    config: input.config,
+    pinned: input.pinned,
+  });
+}
+
+function duplicateConversationBody(
+  input: DuplicateConversationInput,
+): DuplicateConversationRequestBody {
+  return removeUndefined({
+    title: input.title?.trim() || undefined,
+    idempotencyKey: input.idempotencyKey?.trim() || undefined,
+  });
+}
+
+function generateConversationTitleBody(
+  input: GenerateConversationTitleInput,
+): GenerateConversationTitleRequestBody {
+  return removeUndefined({
+    modelRef: input.modelRef,
+  });
+}
+
+function generateRelatedQuestionsBody(
+  input: GenerateRelatedQuestionsInput,
+): GenerateRelatedQuestionsRequestBody {
+  return removeUndefined({
+    modelRef: input.modelRef,
+  });
+}
+
+function normalizeRelatedQuestionsResponse(
+  response: GenerateRelatedQuestionsResponse,
+): GenerateRelatedQuestionsResponse {
+  if (!response || !Array.isArray(response.questions)) {
+    throw new ApiClientError(
+      "INVALID_SERVER_RESPONSE",
+      "Server returned invalid related questions response.",
+    );
+  }
+  return {
+    questions: response.questions.filter(
+      (question): question is string => typeof question === "string",
+    ),
+  };
+}
+
+function updateMessageBody(
+  input: UpdateMessageInput,
+): UpdateMessageRequestBody {
+  if (!input.content.trim()) {
+    throw new ApiClientError("EMPTY_CONTENT", "message content is required");
+  }
+
+  return {
+    content: input.content,
+  };
 }
 
 function appendUserMessageBody(

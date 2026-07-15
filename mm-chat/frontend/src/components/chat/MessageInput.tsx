@@ -104,6 +104,11 @@ interface MessageInputProps {
   isReasoningEnabled?: boolean;
   onToggleReasoning?: () => void;
   localSessionToolsDisabled?: boolean;
+  allowReasoningWhenSessionToolsDisabled?: boolean;
+  allowSkillsWhenSessionToolsDisabled?: boolean;
+  allowPluginsWhenSessionToolsDisabled?: boolean;
+  activeSkillIdsOverride?: readonly string[];
+  onActiveSkillIdsChange?: (skillIds: string[]) => void;
   onLocalSessionToolUnavailable?: (action: string) => void;
   variant?: MessageInputVariant;
 }
@@ -138,6 +143,11 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       isReasoningEnabled,
       onToggleReasoning,
       localSessionToolsDisabled = false,
+      allowReasoningWhenSessionToolsDisabled = false,
+      allowSkillsWhenSessionToolsDisabled = false,
+      allowPluginsWhenSessionToolsDisabled = false,
+      activeSkillIdsOverride,
+      onActiveSkillIdsChange,
       onLocalSessionToolUnavailable,
       variant = "default",
     },
@@ -436,18 +446,23 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       () => sessions.find((session) => session.id === currentSessionId),
       [currentSessionId, sessions],
     );
+    const skillSelectionDisabled =
+      localSessionToolsDisabled && !allowSkillsWhenSessionToolsDisabled;
+    const pluginSelectionDisabled =
+      localSessionToolsDisabled && !allowPluginsWhenSessionToolsDisabled;
     const activeSkillIds = useMemo(
       () =>
-        localSessionToolsDisabled
+        skillSelectionDisabled
           ? []
           : normalizeSkillIdRefs(
-              currentSession?.config?.activeSkills,
+              activeSkillIdsOverride ?? currentSession?.config?.activeSkills,
               installedSkills,
             ),
       [
+        activeSkillIdsOverride,
         currentSession?.config?.activeSkills,
         installedSkills,
-        localSessionToolsDisabled,
+        skillSelectionDisabled,
       ],
     );
     const activeSkillSet = useMemo(
@@ -456,31 +471,37 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     );
     const skillsForMenu = useMemo(
       () =>
-        localSessionToolsDisabled
+        skillSelectionDisabled
           ? []
           : [...installedSkills].sort((a, b) =>
               a.title.localeCompare(b.title, undefined, {
                 sensitivity: "base",
               }),
             ),
-      [installedSkills, localSessionToolsDisabled],
+      [installedSkills, skillSelectionDisabled],
     );
     const setSessionActiveSkillIds = useCallback(
       (skillIds: string[]) => {
-        if (localSessionToolsDisabled) {
+        if (skillSelectionDisabled) {
           notifyLocalSessionToolUnavailable("skills");
+          return;
+        }
+        const normalized = normalizeSkillIdRefs(skillIds, installedSkills);
+        if (onActiveSkillIdsChange) {
+          onActiveSkillIdsChange(normalized);
           return;
         }
         if (!currentSessionId) return;
         updateSessionConfig(currentSessionId, {
-          activeSkills: normalizeSkillIdRefs(skillIds, installedSkills),
+          activeSkills: normalized,
         });
       },
       [
         currentSessionId,
         installedSkills,
-        localSessionToolsDisabled,
         notifyLocalSessionToolUnavailable,
+        onActiveSkillIdsChange,
+        skillSelectionDisabled,
         updateSessionConfig,
       ],
     );
@@ -541,6 +562,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       return (
         lower.includes("thinking") ||
         lower.includes("reasoner") ||
+        lower.includes("gpt-5") ||
         lower.includes("o1") ||
         lower.includes("r1")
       );
@@ -548,7 +570,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
     // Filter plugins to show only those ready for use
     const validPlugins = useMemo(() => {
-      if (localSessionToolsDisabled) return [];
+      if (pluginSelectionDisabled) return [];
       return installedPlugins
         .filter((p) => {
           // If auth is required, check if we have a config value
@@ -559,10 +581,8 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           return true;
         })
         .map((p) => localizePluginMeta(p, tConfig));
-    }, [installedPlugins, localSessionToolsDisabled, pluginConfigs, tConfig]);
-    const activePluginIdsForMenu = localSessionToolsDisabled
-      ? []
-      : activePlugins;
+    }, [installedPlugins, pluginConfigs, pluginSelectionDisabled, tConfig]);
+    const activePluginIdsForMenu = pluginSelectionDisabled ? [] : activePlugins;
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
       if (
@@ -1368,7 +1388,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               <DropdownMenu
                 open={showSkillSelect}
                 onOpenChange={(open) => {
-                  if (localSessionToolsDisabled) {
+                  if (skillSelectionDisabled) {
                     setShowSkillSelect(false);
                     if (open) notifyLocalSessionToolUnavailable("skills");
                     return;
@@ -1456,7 +1476,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               <DropdownMenu
                 open={showPluginSelect}
                 onOpenChange={(open) => {
-                  if (localSessionToolsDisabled) {
+                  if (pluginSelectionDisabled) {
                     setShowPluginSelect(false);
                     if (open) notifyLocalSessionToolUnavailable("plugins");
                     return;
@@ -1526,7 +1546,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                             key={plugin.id}
                             onSelect={(event) => event.preventDefault()}
                             onCheckedChange={() => {
-                              if (localSessionToolsDisabled) {
+                              if (pluginSelectionDisabled) {
                                 notifyLocalSessionToolUnavailable("plugins");
                                 return;
                               }
@@ -1553,7 +1573,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                       className="px-3 py-4 text-center text-xs text-muted-foreground"
                       role="status"
                     >
-                      {!localSessionToolsDisabled && installedPlugins.length > 0
+                      {!pluginSelectionDisabled && installedPlugins.length > 0
                         ? t("pluginsMissingAuth")
                         : t("noPluginsInstalled")}{" "}
                       <br /> {t("visitPluginMarket")}
@@ -1584,7 +1604,10 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                     aria-pressed={effectiveUseReasoning}
                     className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${effectiveUseReasoning ? "text-violet-500 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20" : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"}`}
                     onClick={() => {
-                      if (localSessionToolsDisabled) {
+                      if (
+                        localSessionToolsDisabled &&
+                        !allowReasoningWhenSessionToolsDisabled
+                      ) {
                         notifyLocalSessionToolUnavailable("reasoning toggle");
                         return;
                       }

@@ -11,7 +11,7 @@ import (
 )
 
 func TestOpenAICompatibleProviderStreamsDeltasAndUsage(t *testing.T) {
-	const apiKey = "test-secret-token-1234567890"
+	const apiKey = "example-fixture-provider-credential"
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/chat/completions" {
@@ -30,6 +30,9 @@ func TestOpenAICompatibleProviderStreamsDeltasAndUsage(t *testing.T) {
 		}
 		if !payload.Stream {
 			t.Fatalf("stream = false, want true")
+		}
+		if payload.ReasoningEffort != "high" {
+			t.Fatalf("reasoning_effort = %q, want high", payload.ReasoningEffort)
 		}
 		if len(payload.Messages) != 2 {
 			t.Fatalf("messages len = %d, want 2", len(payload.Messages))
@@ -61,6 +64,7 @@ func TestOpenAICompatibleProviderStreamsDeltasAndUsage(t *testing.T) {
 	events, err := provider.StreamChat(context.Background(), ProviderRequest{
 		Prompt:       "hello",
 		SystemPrompt: "be terse",
+		UseReasoning: true,
 		ModelRef:     ModelRef{ProviderID: "openai_compatible", ModelID: "gpt-5.5"},
 	})
 	if err != nil {
@@ -98,6 +102,9 @@ func TestOpenAICompatibleProviderUsesDefaultModel(t *testing.T) {
 		if payload.Model != "gpt-default" {
 			t.Fatalf("model = %q, want gpt-default", payload.Model)
 		}
+		if payload.ReasoningEffort != "" {
+			t.Fatalf("reasoning_effort = %q, want omitted", payload.ReasoningEffort)
+		}
 
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte("data: [DONE]\n\n"))
@@ -127,8 +134,117 @@ func TestOpenAICompatibleProviderUsesDefaultModel(t *testing.T) {
 	}
 }
 
+func TestOpenAICompatibleProviderPlansFunctionCalls(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload openAICompatibleChatCompletionRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode provider payload: %v", err)
+		}
+		if payload.Stream || payload.ToolChoice != "auto" || len(payload.Tools) != 1 {
+			t.Fatalf("tool plan payload = %#v", payload)
+		}
+		if payload.Tools[0].Function.Name != "lookup_weather" {
+			t.Fatalf("tool name = %q", payload.Tools[0].Function.Name)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"id":"call-1","type":"function","function":{"name":"lookup_weather","arguments":"{\"city\":\"Shanghai\"}"}}]}}]}`))
+	}))
+	defer server.Close()
+
+	provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+		BaseURL:      server.URL,
+		APIKey:       "test-secret-token",
+		DefaultModel: "gpt-default",
+	})
+	if err != nil {
+		t.Fatalf("NewOpenAICompatibleProvider() error = %v", err)
+	}
+	calls, err := provider.PlanTools(context.Background(), ToolPlanRequest{
+		Prompt:   "weather in Shanghai",
+		ModelRef: ModelRef{ProviderID: "openai_compatible"},
+		Tools: []ToolDefinition{{
+			Type: "function",
+			Function: ToolFunctionDefinition{
+				Name:       "lookup_weather",
+				Parameters: map[string]any{"type": "object"},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("PlanTools() error = %v", err)
+	}
+	if len(calls) != 1 || calls[0].Name != "lookup_weather" || calls[0].Args["city"] != "Shanghai" {
+		t.Fatalf("calls = %#v", calls)
+	}
+}
+
+func TestOpenAICompatibleProviderRejectsInvalidToolArguments(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"id":"call-1","type":"function","function":{"name":"lookup_weather","arguments":"[]"}}]}}]}`))
+	}))
+	defer server.Close()
+
+	provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+		BaseURL:      server.URL,
+		APIKey:       "test-secret-token",
+		DefaultModel: "gpt-default",
+	})
+	if err != nil {
+		t.Fatalf("NewOpenAICompatibleProvider() error = %v", err)
+	}
+	_, err = provider.PlanTools(context.Background(), ToolPlanRequest{
+		Prompt:   "weather",
+		ModelRef: ModelRef{ProviderID: "openai_compatible"},
+		Tools: []ToolDefinition{{
+			Type: "function",
+			Function: ToolFunctionDefinition{
+				Name:       "lookup_weather",
+				Parameters: map[string]any{"type": "object"},
+			},
+		}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "invalid arguments") {
+		t.Fatalf("PlanTools() error = %v, want invalid arguments", err)
+	}
+}
+
+func TestOpenAICompatibleToolPlanNon200DoesNotLeakKey(t *testing.T) {
+	const apiKey = "example-tool-plan-provider-credential"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "bad key: "+apiKey, http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+		BaseURL:      server.URL,
+		APIKey:       apiKey,
+		DefaultModel: "gpt-default",
+	})
+	if err != nil {
+		t.Fatalf("NewOpenAICompatibleProvider() error = %v", err)
+	}
+	_, err = provider.PlanTools(context.Background(), ToolPlanRequest{
+		Prompt:   "weather",
+		ModelRef: ModelRef{ProviderID: "openai_compatible"},
+		Tools: []ToolDefinition{{
+			Type: "function",
+			Function: ToolFunctionDefinition{
+				Name:       "lookup_weather",
+				Parameters: map[string]any{"type": "object"},
+			},
+		}},
+	})
+	if err == nil {
+		t.Fatal("PlanTools() error = nil, want error")
+	}
+	if strings.Contains(err.Error(), apiKey) {
+		t.Fatalf("tool plan error leaked api key: %v", err)
+	}
+}
+
 func TestOpenAICompatibleProviderNon200DoesNotLeakKey(t *testing.T) {
-	const apiKey = "test-secret-token-should-not-leak"
+	const apiKey = "example-stream-provider-credential"
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad key: "+apiKey, http.StatusUnauthorized)

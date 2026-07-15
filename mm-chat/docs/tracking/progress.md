@@ -485,13 +485,40 @@ the UI can call in the next wiring slice.
       send only server `fileId` references to Go messages.
 - [x] Keep `MessageInput` UI, OPFS utilities, and local-mode send path
       unchanged.
-- [x] Disable local plugin, skill, search, and reasoning writes while the
-      composer is showing server conversations.
+- [x] Keep search writes fail-closed while the composer is showing server
+      conversations; route reasoning, skills, and plugins through their
+      explicit server-mode paths instead of mutating local conversation state.
 - [x] Use abort-only stop/new-chat/session-switch handling in server mode so
       local IndexedDB sync is not invoked.
 - [x] Fail closed for local-only actions that do not yet have server endpoints.
 - [x] Browser-smoke server-mode file upload, attachment rendering, refresh, and
       local rollback in Phase 11.5.
+
+### Phase 11.4D — Server model, skill, and plugin parity
+
+- [x] Publish the Go-managed provider type/model list through `/api/config`
+      without copying `PROVIDER_API_KEY` into the frontend container.
+- [x] Resolve and inject explicitly selected text skills before every
+      server-mode send while leaving search gated.
+- [x] Forward the server-mode reasoning toggle as `useReasoning`, translate it
+      to OpenAI-compatible `reasoning_effort: high`, and keep it omitted when
+      disabled.
+- [x] Add bounded `POST /v1/chat/tools/plan` provider planning through Go and
+      reject invalid, oversized, or unoffered provider tool calls.
+- [x] Execute only active installed plugin functions through the existing
+      hardened Next plugin route; keep plaintext plugin auth out of the Go
+      planning request.
+- [x] Bound plugin-result context to 64 KiB, mark it as untrusted data, and
+      preserve execution errors so the final model cannot silently report
+      success.
+- [x] Re-enable the existing skill/plugin composer menus in server mode and
+      persist their browser-side selection without changing the UI shell.
+- [x] Make the CSRF same-origin guard compare browser `Origin` with the external
+      HTTP `Host` by default, so Docker host-port mappings do not look
+      cross-origin; trust forwarded host/proto only when
+      `TRUST_PROXY_HEADERS=true`.
+- [x] Verify a real Weather plan/execution/final Go SSE response and persisted
+      refresh result, then remove the isolated smoke conversation.
 
 ### Phase 11.5 — Browser smoke and local rollback
 
@@ -883,6 +910,48 @@ the UI can call in the next wiring slice.
 - [ ] Pass parser, retrieval, citation, abstention, deletion, tenant-isolation,
       injection, backup/restore/tombstone-replay, and strict/optional failure
       gates on a frozen holdout.
+
+## Active Cutover — Standalone Parity Sliced Migration
+
+Active plan: [`../architecture/standalone-parity-sliced-cutover-plan.md`](../architecture/standalone-parity-sliced-cutover-plan.md).
+Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-sliced-process.md).
+
+- [x] Create the active sliced cutover plan and dedicated process log.
+- [x] Record the owner directive: migrate one bounded group at a time and test
+      that group immediately.
+- [x] G1 Conversation and Message Operations: remove core chat-management
+      server-mode blockers with persisted smoke.
+  - [x] G1.1 Conversation metadata operations: server-backed chat deletion,
+        chat renaming, pinning, and system instruction editing.
+  - [x] G1.2 Message deletion and retraction.
+  - [x] G1.3 Message editing and edit branches.
+  - [x] G1.4 Regeneration and message version switching.
+  - [x] G1.5 Chat duplication and assistant presets.
+  - [x] G1.6 Smart rename / title generation through server-owned route.
+- [x] G2 Related Questions and Agent/Assistant Catalogs: replace
+      helper-generation and catalog reads with server-owned contracts.
+  - [x] G2.1 Related questions through
+        `POST /v1/chat/conversations/{id}/related-questions`.
+  - [x] G2.2 Agent/Assistant catalog list/detail through `GET /v1/agents` and
+        `GET /v1/agents/{identifier}`.
+  - [x] G2.3 Frontend server-mode services call Go `/v1/*` routes instead of
+        transitional Next `/api/*` routes.
+- [ ] G3 Auth, Runtime Config, Provider Settings, and BYOK: make session, model,
+      config, and provider state server authoritative.
+- [ ] G4 Plugin Registry, Install, and Execution Final Ownership: remove
+      transitional plugin ownership.
+- [ ] G5 Search and Web-Enrichment Toggle: keep paused until owner reopens, then
+      make Search server-owned or explicitly unavailable.
+- [ ] G6 Voice, Image Generation, and Code Execution Jobs: move job routes behind
+      server admission, storage, and audit controls.
+- [ ] G7 Knowledge, Document Parsing, RAG, and Citations: pass Phase 15 runtime
+      parser/index/query/citation gates.
+- [ ] G8 Teams and Knowledge UI Wiring: connect existing Go control-plane APIs
+      to the current frontend theme.
+- [ ] G9 Data Authority and Legacy Route Removal: remove production local-mode
+      authority and replaced Next API handlers.
+- [ ] G10 Operations, Visual Regression, Clean Copy, and Delete Plan: complete
+      final closure gates before any former-root deletion.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

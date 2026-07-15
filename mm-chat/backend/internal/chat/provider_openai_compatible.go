@@ -19,6 +19,7 @@ const (
 	openAICompatibleChatCompletionsPath     = "/chat/completions"
 	openAICompatibleProviderIDOpenAI        = "openai"
 	openAICompatibleProviderIDHyphenVariant = "openai-compatible"
+	maxOpenAICompatibleToolPlanBytes        = 2 << 20
 )
 
 var (
@@ -84,9 +85,10 @@ func (p *OpenAICompatibleProvider) StreamChat(
 	}
 
 	payload, err := json.Marshal(openAICompatibleChatCompletionRequest{
-		Model:    model,
-		Stream:   true,
-		Messages: openAICompatibleMessages(input.SystemPrompt, input.Prompt),
+		Model:           model,
+		Stream:          true,
+		Messages:        openAICompatibleMessages(input.SystemPrompt, input.Prompt),
+		ReasoningEffort: openAICompatibleReasoningEffort(input.UseReasoning),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("openai-compatible provider request encode failed: %w", err)
@@ -171,9 +173,12 @@ func (p *OpenAICompatibleProvider) ResolveModelRef(modelRef ModelRef) (ModelRef,
 }
 
 type openAICompatibleChatCompletionRequest struct {
-	Model    string                    `json:"model"`
-	Stream   bool                      `json:"stream"`
-	Messages []openAICompatibleMessage `json:"messages"`
+	Model           string                    `json:"model"`
+	Stream          bool                      `json:"stream"`
+	Messages        []openAICompatibleMessage `json:"messages"`
+	ReasoningEffort string                    `json:"reasoning_effort,omitempty"`
+	Tools           []ToolDefinition          `json:"tools,omitempty"`
+	ToolChoice      string                    `json:"tool_choice,omitempty"`
 }
 
 type openAICompatibleMessage struct {
@@ -192,6 +197,115 @@ type openAICompatibleStreamChunk struct {
 		CompletionTokens int `json:"completion_tokens"`
 		TotalTokens      int `json:"total_tokens"`
 	} `json:"usage"`
+}
+
+type openAICompatibleToolPlanResponse struct {
+	Choices []struct {
+		Message struct {
+			ToolCalls []struct {
+				ID       string `json:"id"`
+				Type     string `json:"type"`
+				Function struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				} `json:"function"`
+			} `json:"tool_calls"`
+		} `json:"message"`
+	} `json:"choices"`
+}
+
+func (p *OpenAICompatibleProvider) PlanTools(
+	ctx context.Context,
+	input ToolPlanRequest,
+) ([]ToolCall, error) {
+	modelRef, err := p.ResolveModelRef(input.ModelRef)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(modelRef.ModelID) == "" {
+		return nil, errors.New("openai-compatible provider model is required")
+	}
+	if len(input.Tools) == 0 {
+		return []ToolCall{}, nil
+	}
+
+	payload, err := json.Marshal(openAICompatibleChatCompletionRequest{
+		Model:      modelRef.ModelID,
+		Stream:     false,
+		Messages:   openAICompatibleMessages("", input.Prompt),
+		Tools:      input.Tools,
+		ToolChoice: "auto",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("openai-compatible tool plan encode failed: %w", err)
+	}
+
+	requestCtx := ctx
+	var cancel context.CancelFunc
+	if p.timeout > 0 {
+		requestCtx, cancel = context.WithTimeout(ctx, p.timeout)
+		defer cancel()
+	}
+	req, err := http.NewRequestWithContext(
+		requestCtx,
+		http.MethodPost,
+		p.endpoint,
+		bytes.NewReader(payload),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("openai-compatible tool plan request build failed: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+p.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("openai-compatible tool plan request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("openai-compatible provider returned status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxOpenAICompatibleToolPlanBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("openai-compatible tool plan read failed: %w", err)
+	}
+	if len(body) > maxOpenAICompatibleToolPlanBytes {
+		return nil, errors.New("openai-compatible tool plan response is too large")
+	}
+
+	var planned openAICompatibleToolPlanResponse
+	if err := json.Unmarshal(body, &planned); err != nil {
+		return nil, fmt.Errorf("openai-compatible tool plan decode failed: %w", err)
+	}
+
+	calls := make([]ToolCall, 0)
+	for _, choice := range planned.Choices {
+		for _, rawCall := range choice.Message.ToolCalls {
+			if rawCall.Type != "" && rawCall.Type != "function" {
+				return nil, errors.New("openai-compatible tool plan returned unsupported call type")
+			}
+			name := strings.TrimSpace(rawCall.Function.Name)
+			if name == "" {
+				return nil, errors.New("openai-compatible tool plan returned an empty function name")
+			}
+			args := map[string]any{}
+			if strings.TrimSpace(rawCall.Function.Arguments) != "" {
+				if err := json.Unmarshal([]byte(rawCall.Function.Arguments), &args); err != nil {
+					return nil, errors.New("openai-compatible tool plan returned invalid arguments")
+				}
+			}
+			calls = append(calls, ToolCall{
+				ID:   strings.TrimSpace(rawCall.ID),
+				Name: name,
+				Args: args,
+			})
+		}
+	}
+	return calls, nil
 }
 
 func normalizeOpenAICompatibleBaseURL(raw string) (string, error) {
@@ -226,6 +340,13 @@ func openAICompatibleMessages(systemPrompt string, prompt string) []openAICompat
 	})
 
 	return messages
+}
+
+func openAICompatibleReasoningEffort(enabled bool) string {
+	if enabled {
+		return "high"
+	}
+	return ""
 }
 
 func streamOpenAICompatibleEvents(

@@ -18,6 +18,7 @@ import { createSearchProvider } from "./searchService";
 import { getEnabledPluginFunctions } from "@/lib/plugin/resolve";
 import { parseModelString } from "@/lib/utils/model";
 import { normalizeSessionTitle } from "@/lib/chat/entities";
+import { createNeoChatApiClient, type ModelRef } from "@/services/api/client";
 import { appendContextToChatInput } from "@/lib/utils/chatInput";
 import { appendDiagramRequestInstructions } from "../../lib/chat/diagramPrompt";
 import { appendHtmlVisualRequestInstructions } from "../../lib/chat/htmlVisualPrompt";
@@ -69,6 +70,7 @@ import {
 } from "../../lib/memory/tools";
 import { logDevError, logDevWarn } from "../../lib/utils/devLogger";
 import { MEMORY_LIMITS, PLUGIN_EXECUTION_LIMITS } from "../../config/limits";
+import { SERVER_DEFAULT_PROVIDER_ID } from "../../lib/defaultConfig/shared";
 
 type SearchStatusResults = { sources: Source[]; images: ImageSource[] };
 type ChatUsagePayload = { usage?: unknown; usageMetadata?: unknown };
@@ -305,6 +307,7 @@ export const generateChatTitle = async (
 
 export const generateRelatedQuestions = async (
   history: Message[],
+  options: { conversationId?: string } = {},
 ): Promise<string[]> => {
   const { providers } = useCoreSettingsStore.getState();
   const provider = providers.find((p) => p.enabled);
@@ -321,6 +324,12 @@ export const generateRelatedQuestions = async (
     : provider;
 
   if (!targetProvider) return [];
+
+  const serverQuestions = await generateServerRelatedQuestionsIfEnabled(
+    options.conversationId,
+    modelRefFromTaskModel(targetProvider.id, modelName),
+  );
+  if (serverQuestions) return serverQuestions;
 
   try {
     const response = await fetchWithByokRetry(async () =>
@@ -356,6 +365,44 @@ export const generateRelatedQuestions = async (
     return [];
   }
 };
+
+async function generateServerRelatedQuestionsIfEnabled(
+  conversationId: string | undefined,
+  modelRef: ModelRef | undefined,
+): Promise<string[] | null> {
+  const client = createNeoChatApiClient();
+  if (client.mode !== "server" || !client.capabilities.chatCrud) return null;
+  if (!conversationId) return [];
+
+  try {
+    const response = await client.chat.generateRelatedQuestions({
+      conversationId,
+      modelRef,
+    });
+    return response.questions;
+  } catch (error) {
+    logDevError("Server related questions error:", error);
+    return [];
+  }
+}
+
+function modelRefFromTaskModel(
+  providerId: string | undefined,
+  modelName: string,
+): ModelRef | undefined {
+  const modelId = modelName.trim();
+  if (!modelId) return undefined;
+  let resolvedProviderId = providerId?.trim();
+  if (resolvedProviderId === SERVER_DEFAULT_PROVIDER_ID || resolvedProviderId) {
+    resolvedProviderId = "openai_compatible";
+  }
+  if (!resolvedProviderId) return undefined;
+
+  return {
+    providerId: resolvedProviderId,
+    modelId,
+  };
+}
 
 export const generateRAGSearchQueries = async (
   userPrompt: string,

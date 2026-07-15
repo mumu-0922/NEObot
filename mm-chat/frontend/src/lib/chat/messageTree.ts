@@ -268,6 +268,24 @@ export function appendMessageToActivePath(
   return nextTree;
 }
 
+export function appendMessageToParent(
+  tree: SessionMessageTree,
+  message: Message,
+  parentMessageId: string | null,
+): SessionMessageTree {
+  const nextTree = cloneTree(tree);
+  const resolvedParentId =
+    parentMessageId && nextTree.nodesById[parentMessageId]
+      ? parentMessageId
+      : undefined;
+  const node = createNode(message, resolvedParentId);
+
+  nextTree.nodesById[node.id] = node;
+  addChild(nextTree, resolvedParentId, node.id);
+
+  return nextTree;
+}
+
 export function updateMessageInTree(
   tree: SessionMessageTree,
   messageId: string,

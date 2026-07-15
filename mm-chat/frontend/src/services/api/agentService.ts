@@ -1,6 +1,6 @@
 import { LobeAgent } from "@/types";
 import { useSettingsStore } from "@/store/core/settingsStore";
-import { readJsonResponseOrThrow } from "../../lib/api/client";
+import { createNeoChatApiClient } from "./client";
 import {
   normalizeAgentDetail,
   normalizeMarketAgents,
@@ -13,11 +13,6 @@ import { logDevError, logDevInfo, logDevWarn } from "../../lib/utils/devLogger";
 import { CACHE_CONFIG } from "../../config/api";
 
 const CACHE_DURATION = CACHE_CONFIG.agents;
-
-type AgentListResponse = {
-  agents?: LobeAgent[];
-  unavailable?: boolean;
-};
 
 const agentListRequests = new Map<AgentMarketLocale, Promise<LobeAgent[]>>();
 
@@ -98,13 +93,7 @@ export const getAgents = async (
 
   const request = (async () => {
     logDevInfo("Fetching agents from API...");
-    const response = await fetch(`/api/agents?locale=${locale}`);
-    if (!response.ok) throw new Error("Failed to fetch agents");
-
-    const data = await readJsonResponseOrThrow<AgentListResponse>(
-      response,
-      "Failed to fetch agents",
-    );
+    const data = await createNeoChatApiClient().agents.listAgents({ locale });
     if (data.unavailable) {
       const staleAgents = getStaleAgents();
       if (staleAgents.length > 0) {
@@ -151,14 +140,10 @@ export const getAgentDetail = async (
 ): Promise<any> => {
   const locale = normalizeAgentMarketLocale(requestedLocale);
   try {
-    const response = await fetch(
-      `/api/agents/${encodeURIComponent(identifier)}?locale=${locale}`,
-    );
-    if (!response.ok) throw new Error("Failed to fetch agent details");
-    const data = await readJsonResponseOrThrow(
-      response,
-      "Failed to fetch agent details",
-    );
+    const data = await createNeoChatApiClient().agents.getAgentDetail({
+      identifier,
+      locale,
+    });
     const agent = normalizeAgentDetail(data, identifier);
     if (!agent) throw new Error("Invalid agent detail response");
     return agent;

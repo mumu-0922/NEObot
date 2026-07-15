@@ -14,12 +14,19 @@ HTTP client -> /v1/chat/conversations* -> Go service -> Postgres
 
 ## 2. Endpoints
 
-| Method | Path | Success | Purpose |
-| --- | --- | --- | --- |
-| `POST` | `/v1/chat/conversations` | `201 Created` | Create one conversation. |
-| `GET` | `/v1/chat/conversations` | `200 OK` | List active conversations. |
-| `POST` | `/v1/chat/conversations/{id}/messages` | `201 Created` | Append one completed user message. |
-| `GET` | `/v1/chat/conversations/{id}/messages` | `200 OK` | List messages in sequence order. |
+| Method   | Path                                               | Success          | Purpose                                                                      |
+| -------- | -------------------------------------------------- | ---------------- | ---------------------------------------------------------------------------- |
+| `POST`   | `/v1/chat/conversations`                           | `201 Created`    | Create one conversation.                                                     |
+| `GET`    | `/v1/chat/conversations`                           | `200 OK`         | List active conversations.                                                   |
+| `PATCH`  | `/v1/chat/conversations/{id}`                      | `200 OK`         | Update title, model ref, system instruction, and config/pinned metadata.     |
+| `DELETE` | `/v1/chat/conversations/{id}`                      | `204 No Content` | Soft-delete one conversation.                                                |
+| `POST`   | `/v1/chat/conversations/{id}/duplicate`            | `201 Created`    | Duplicate one conversation and its visible message tree.                     |
+| `POST`   | `/v1/chat/conversations/{id}/title`                | `200 OK`         | Generate a smart title from server-owned conversation history.               |
+| `POST`   | `/v1/chat/conversations/{id}/related-questions`    | `200 OK`         | Generate related follow-up questions from server-owned conversation history. |
+| `POST`   | `/v1/chat/conversations/{id}/messages`             | `201 Created`    | Append one completed user message.                                           |
+| `GET`    | `/v1/chat/conversations/{id}/messages`             | `200 OK`         | List messages in sequence order.                                             |
+| `PATCH`  | `/v1/chat/conversations/{id}/messages/{messageId}` | `200 OK`         | Edit message content and clear stale output blocks.                          |
+| `DELETE` | `/v1/chat/conversations/{id}/messages/{messageId}` | `204 No Content` | Soft-delete one message, or current-and-subsequent with `scope=subsequent`.  |
 
 All responses are JSON with `Content-Type: application/json; charset=utf-8` and
 `X-Content-Type-Options: nosniff`.
@@ -85,6 +92,19 @@ export interface CreateConversationRequest {
   metadata?: JsonObject; // compatibility alias when config is absent
   idempotencyKey?: string;
 }
+
+export interface DuplicateConversationRequest {
+  title?: string; // optional full title override
+  idempotencyKey?: string;
+}
+
+export interface GenerateConversationTitleRequest {
+  modelRef?: ModelRef; // omitted means return deterministic first-user fallback
+}
+
+export interface GenerateRelatedQuestionsRequest {
+  modelRef?: ModelRef; // omitted means return { questions: [] } without model cost
+}
 ```
 
 Rules:
@@ -104,6 +124,24 @@ Rules:
   `modelRef`.
 - Duplicate non-empty `idempotencyKey` values return `409 IDEMPOTENCY_CONFLICT`.
   Phase 5.1 does not replay the original response.
+- `POST /v1/chat/conversations/{id}/duplicate` copies the source
+  conversation for the same user, defaults the title to `<source> (Copy)`, sets
+  `pinned` metadata to `false`, remaps message IDs and parent links, reuses
+  server file attachment references, strips operational assistant `runId`
+  metadata, and converts non-terminal source messages to `cancelled` static
+  copies.
+- `POST /v1/chat/conversations/{id}/title` reads messages from Postgres, builds
+  the title prompt server-side, and returns `{ "title": string }`. If no
+  `modelRef` or provider is available, it returns a normalized first-user
+  message fallback without calling an external model.
+- `POST /v1/chat/conversations/{id}/related-questions` reads messages from
+  Postgres, uses the latest user/assistant pair, and returns
+  `{ "questions": string[] }`. If no `modelRef`, no provider, no pair, or a
+  provider failure occurs, it returns an empty array instead of falling back to
+  browser-supplied history.
+- Related-question requests reject client-owned `history`, `messages`,
+  `provider`, and legacy `modelName` fields; history and provider config are
+  server-managed.
 
 ## 6. Messages
 
@@ -192,26 +230,26 @@ Rules:
 }
 ```
 
-| HTTP | Code | When |
-| --- | --- | --- |
-| `400` | `INVALID_JSON` | Body is malformed JSON or contains multiple JSON values. |
-| `400` | `INVALID_CONVERSATION_ID` | Path conversation ID is not a UUID. |
-| `400` | `INVALID_PARENT_MESSAGE_ID` | `parentMessageId` is not a UUID. |
-| `400` | `INVALID_ATTACHMENT_FILE_ID` | Attachment `fileId` is missing or not a UUID. |
-| `400` | `INVALID_ATTACHMENT_PURPOSE` | Attachment purpose is unsupported. |
-| `400` | `UNSUPPORTED_ATTACHMENT_SOURCE` | Attachment source is not `server`. |
-| `400` | `DUPLICATE_ATTACHMENT` | The same file is attached more than once to one message. |
-| `400` | `TOO_MANY_ATTACHMENTS` | More than 20 attachments are supplied for one message. |
-| `400` | `VALIDATION_ERROR` | Conversation request tries to write server-managed fields. |
-| `400` | `EMPTY_CONTENT` | Message content is blank. |
-| `400` | `FORBIDDEN_MESSAGE_FIELD` | Client tries to create a non-user message. |
-| `404` | `CONVERSATION_NOT_FOUND` | Conversation is missing, deleted, or not owned by the fixed user. |
-| `404` | `FILE_NOT_FOUND` | Attachment file is absent, deleted, unavailable, or not owned by the fixed user. |
-| `405` | `METHOD_NOT_ALLOWED` | Method is not allowed; response includes `Allow`. |
-| `409` | `IDEMPOTENCY_CONFLICT` | Non-empty idempotency key already exists in scope. |
-| `429` | `RATE_LIMITED` | Redis rate-limit middleware blocked the request before handler execution. |
-| `503` | `DATABASE_REQUIRED` | `DATABASE_URL` is empty and chat persistence is disabled. |
-| `500` | `INTERNAL_ERROR` | Unexpected server error after sensitive details are scrubbed. |
+| HTTP  | Code                            | When                                                                             |
+| ----- | ------------------------------- | -------------------------------------------------------------------------------- |
+| `400` | `INVALID_JSON`                  | Body is malformed JSON or contains multiple JSON values.                         |
+| `400` | `INVALID_CONVERSATION_ID`       | Path conversation ID is not a UUID.                                              |
+| `400` | `INVALID_PARENT_MESSAGE_ID`     | `parentMessageId` is not a UUID.                                                 |
+| `400` | `INVALID_ATTACHMENT_FILE_ID`    | Attachment `fileId` is missing or not a UUID.                                    |
+| `400` | `INVALID_ATTACHMENT_PURPOSE`    | Attachment purpose is unsupported.                                               |
+| `400` | `UNSUPPORTED_ATTACHMENT_SOURCE` | Attachment source is not `server`.                                               |
+| `400` | `DUPLICATE_ATTACHMENT`          | The same file is attached more than once to one message.                         |
+| `400` | `TOO_MANY_ATTACHMENTS`          | More than 20 attachments are supplied for one message.                           |
+| `400` | `VALIDATION_ERROR`              | Conversation request tries to write server-managed fields.                       |
+| `400` | `EMPTY_CONTENT`                 | Message content is blank.                                                        |
+| `400` | `FORBIDDEN_MESSAGE_FIELD`       | Client tries to create a non-user message.                                       |
+| `404` | `CONVERSATION_NOT_FOUND`        | Conversation is missing, deleted, or not owned by the fixed user.                |
+| `404` | `FILE_NOT_FOUND`                | Attachment file is absent, deleted, unavailable, or not owned by the fixed user. |
+| `405` | `METHOD_NOT_ALLOWED`            | Method is not allowed; response includes `Allow`.                                |
+| `409` | `IDEMPOTENCY_CONFLICT`          | Non-empty idempotency key already exists in scope.                               |
+| `429` | `RATE_LIMITED`                  | Redis rate-limit middleware blocked the request before handler execution.        |
+| `503` | `DATABASE_REQUIRED`             | `DATABASE_URL` is empty and chat persistence is disabled.                        |
+| `500` | `INTERNAL_ERROR`                | Unexpected server error after sensitive details are scrubbed.                    |
 
 `/ready` still reports `DATABASE_NOT_READY` when a configured database later
 fails ping; chat request handlers do not expose raw SQL or connection details.

@@ -661,6 +661,23 @@ func TestNewHandlerRegistersChatRoutesWithDatabaseRequired(t *testing.T) {
 
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(
+		http.MethodPost,
+		"/v1/chat/tools/plan",
+		strings.NewReader(`{}`),
+	)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("tool plan status = %d, want %d; body=%s", rec.Code, http.StatusServiceUnavailable, rec.Body.String())
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode tool plan error response: %v", err)
+	}
+	if body.Error.Code != "PROVIDER_REQUIRED" {
+		t.Fatalf("tool plan error code = %q, want %q", body.Error.Code, "PROVIDER_REQUIRED")
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(
 		http.MethodGet,
 		"/v1/files/33333333-3333-4333-8333-333333333333",
 		nil,

@@ -14,6 +14,10 @@ type Provider interface {
 	StreamChat(ctx context.Context, input ProviderRequest) (<-chan ProviderEvent, error)
 }
 
+type ToolPlanner interface {
+	PlanTools(ctx context.Context, input ToolPlanRequest) ([]ToolCall, error)
+}
+
 type ModelRefValidator interface {
 	ValidateModelRef(modelRef ModelRef) error
 }
@@ -29,8 +33,32 @@ type ProviderRequest struct {
 	AssistantMessageID string
 	Prompt             string
 	SystemPrompt       string
+	UseReasoning       bool
 	ModelRef           ModelRef
 	Metadata           map[string]any
+}
+
+type ToolPlanRequest struct {
+	Prompt   string
+	ModelRef ModelRef
+	Tools    []ToolDefinition
+}
+
+type ToolDefinition struct {
+	Type     string                 `json:"type"`
+	Function ToolFunctionDefinition `json:"function"`
+}
+
+type ToolFunctionDefinition struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description,omitempty"`
+	Parameters  map[string]any `json:"parameters"`
+}
+
+type ToolCall struct {
+	ID   string         `json:"id"`
+	Name string         `json:"name"`
+	Args map[string]any `json:"args"`
 }
 
 type ProviderEvent struct {

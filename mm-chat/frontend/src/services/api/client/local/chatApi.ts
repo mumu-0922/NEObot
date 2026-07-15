@@ -1,44 +1,58 @@
 import { unsupportedFeature } from "../errors";
 import type {
-  AppendUserMessageInput,
   ChatApi,
   ChatMessageDTO,
   ChatRunResult,
-  ChatStreamHandlers,
   ConversationDTO,
-  CreateConversationInput,
-  StreamAssistantMessageInput,
+  ServerPlannedToolCall,
 } from "../types";
 
 export function createLocalChatApiShell(): ChatApi {
   return {
-    async createConversation(
-      _input: CreateConversationInput,
-    ): Promise<ConversationDTO> {
+    async createConversation(): Promise<ConversationDTO> {
       throw unsupportedFeature("local chat adapter wiring");
     },
     async listConversations(): Promise<ConversationDTO[]> {
       throw unsupportedFeature("local chat adapter wiring");
     },
-    async appendUserMessage(
-      _input: AppendUserMessageInput,
-    ): Promise<ChatMessageDTO> {
+    async updateConversation(): Promise<ConversationDTO> {
       throw unsupportedFeature("local chat adapter wiring");
     },
-    async listMessages(_conversationId: string): Promise<ChatMessageDTO[]> {
+    async deleteConversation(): Promise<void> {
       throw unsupportedFeature("local chat adapter wiring");
     },
-    async streamAssistantMessage(
-      _input: StreamAssistantMessageInput,
-      _handlers?: ChatStreamHandlers,
-    ): Promise<ChatRunResult> {
+    async duplicateConversation(): Promise<ConversationDTO> {
+      throw unsupportedFeature("local chat adapter wiring");
+    },
+    async generateConversationTitle() {
+      throw unsupportedFeature("local title generation adapter wiring");
+    },
+    async generateRelatedQuestions() {
+      throw unsupportedFeature("local related questions adapter wiring");
+    },
+    async updateMessage(): Promise<ChatMessageDTO> {
+      throw unsupportedFeature("local chat adapter wiring");
+    },
+    async deleteMessage(): Promise<void> {
+      throw unsupportedFeature("local chat adapter wiring");
+    },
+    async appendUserMessage(): Promise<ChatMessageDTO> {
+      throw unsupportedFeature("local chat adapter wiring");
+    },
+    async listMessages(): Promise<ChatMessageDTO[]> {
+      throw unsupportedFeature("local chat adapter wiring");
+    },
+    async streamAssistantMessage(): Promise<ChatRunResult> {
       return {
         status: "unsupported",
         error: unsupportedFeature("local stream adapter wiring").toEnvelope()
           .error,
       };
     },
-    async cancelRun(_runId: string): Promise<ChatRunResult> {
+    async planTools(): Promise<ServerPlannedToolCall[]> {
+      throw unsupportedFeature("local tool planning adapter wiring");
+    },
+    async cancelRun(): Promise<ChatRunResult> {
       return {
         status: "unsupported",
         error: unsupportedFeature("local cancel adapter wiring").toEnvelope()

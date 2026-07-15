@@ -15,11 +15,12 @@ import (
 )
 
 const (
-	testConversationID = "11111111-1111-4111-8111-111111111111"
-	testMessageID      = "22222222-2222-4222-8222-222222222222"
-	testRunID          = "33333333-3333-4333-8333-333333333333"
-	testFileID         = "55555555-5555-4555-8555-555555555555"
-	testAttachmentID   = "66666666-6666-4666-8666-666666666666"
+	testConversationID          = "11111111-1111-4111-8111-111111111111"
+	testMessageID               = "22222222-2222-4222-8222-222222222222"
+	testRunID                   = "33333333-3333-4333-8333-333333333333"
+	testFileID                  = "55555555-5555-4555-8555-555555555555"
+	testAttachmentID            = "66666666-6666-4666-8666-666666666666"
+	testDuplicateConversationID = "99999999-9999-4999-8999-999999999999"
 )
 
 func TestHandlerCreatesAndListsConversations(t *testing.T) {
@@ -63,6 +64,412 @@ func TestHandlerCreatesAndListsConversations(t *testing.T) {
 	if listed.Items[0].ID != testConversationID {
 		t.Fatalf("listed id = %q, want %q", listed.Items[0].ID, testConversationID)
 	}
+}
+
+func TestHandlerUpdatesAndDeletesConversation(t *testing.T) {
+	repo := newFakeRepository()
+	handler := NewHandler(NewService(repo))
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath,
+		`{"title":"First","systemInstruction":"old","config":{"useSearch":true}}`,
+	)
+	assertStatus(t, rec, http.StatusCreated)
+
+	rec = performRequest(
+		handler,
+		http.MethodPatch,
+		conversationsPath+"/"+testConversationID,
+		`{"title":" Renamed ","systemInstruction":"new instruction","pinned":true,"config":{"useReasoning":true}}`,
+	)
+	assertStatus(t, rec, http.StatusOK)
+
+	var updated ConversationDTO
+	decodeBody(t, rec, &updated)
+	if updated.Title != "Renamed" || updated.SystemInstruction != "new instruction" || !updated.Pinned {
+		t.Fatalf("updated conversation = %#v", updated)
+	}
+	if updated.Config["useSearch"] != true || updated.Config["useReasoning"] != true || updated.Config["pinned"] != true {
+		t.Fatalf("updated config = %#v, want merged config with pinned", updated.Config)
+	}
+
+	rec = performRequest(
+		handler,
+		http.MethodPatch,
+		conversationsPath+"/"+testConversationID,
+		`{"status":"deleted"}`,
+	)
+	assertStatus(t, rec, http.StatusBadRequest)
+	assertErrorCode(t, rec, "VALIDATION_ERROR")
+
+	rec = performRequest(handler, http.MethodDelete, conversationsPath+"/"+testConversationID, "")
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("delete status = %d, want 204; body=%s", rec.Code, rec.Body.String())
+	}
+
+	rec = performRequest(handler, http.MethodGet, conversationsPath, "")
+	assertStatus(t, rec, http.StatusOK)
+	var listed Page[ConversationDTO]
+	decodeBody(t, rec, &listed)
+	if len(listed.Items) != 0 {
+		t.Fatalf("listed deleted items = %d, want 0", len(listed.Items))
+	}
+}
+
+func TestHandlerDuplicatesConversation(t *testing.T) {
+	repo := newFakeRepository()
+	handler := NewHandler(NewService(repo))
+
+	source := fakeConversation(testConversationID, "Original", 2)
+	source.SystemPrompt = "be precise"
+	source.ModelProvider = "openai"
+	source.ModelID = "gpt-test"
+	source.Metadata = map[string]any{"pinned": true, "useReasoning": true}
+	repo.conversations = append(repo.conversations, source)
+	assistantID := "77777777-7777-4777-8777-777777777777"
+	assistant := fakeMessage(assistantID, testConversationID, 1, "assistant", "answer")
+	assistant.ParentMessageID = testMessageID
+	repo.messages[testConversationID] = []Message{
+		fakeMessage(testMessageID, testConversationID, 0, "user", "hello"),
+		assistant,
+	}
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/duplicate",
+		`{"idempotencyKey":"duplicate-key"}`,
+	)
+	assertStatus(t, rec, http.StatusCreated)
+
+	var duplicated ConversationDTO
+	decodeBody(t, rec, &duplicated)
+	if duplicated.ID != testDuplicateConversationID || duplicated.Title != "Original (Copy)" {
+		t.Fatalf("duplicated conversation = %#v", duplicated)
+	}
+	if duplicated.MessageCount != 2 || duplicated.SystemInstruction != "be precise" || duplicated.Pinned {
+		t.Fatalf("duplicated metadata = %#v", duplicated)
+	}
+	if duplicated.Config["useReasoning"] != true || duplicated.Config["pinned"] != false {
+		t.Fatalf("duplicated config = %#v", duplicated.Config)
+	}
+
+	rec = performRequest(handler, http.MethodGet, conversationsPath+"/"+testDuplicateConversationID+"/messages", "")
+	assertStatus(t, rec, http.StatusOK)
+	var listed Page[ChatMessageDTO]
+	decodeBody(t, rec, &listed)
+	if len(listed.Items) != 2 {
+		t.Fatalf("duplicated messages = %d, want 2", len(listed.Items))
+	}
+	if listed.Items[1].ParentMessageID != listed.Items[0].ID {
+		t.Fatalf("duplicated parent = %q, want %q", listed.Items[1].ParentMessageID, listed.Items[0].ID)
+	}
+}
+
+func TestHandlerGeneratesConversationTitleThroughProvider(t *testing.T) {
+	repo := newFakeRepository()
+	provider := &titleProvider{chunks: []string{"Concise ", "Title"}}
+	handler := NewHandler(NewService(repo), WithProvider(provider))
+
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "New Chat", 2))
+	repo.messages[testConversationID] = []Message{
+		fakeMessage(testMessageID, testConversationID, 0, "user", "Explain WSL Docker errors"),
+		fakeMessage("77777777-7777-4777-8777-777777777777", testConversationID, 1, "assistant", "Here is the fix."),
+	}
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/title",
+		`{"modelRef":{"providerId":"mock","modelId":"title-model"}}`,
+	)
+	assertStatus(t, rec, http.StatusOK)
+
+	var response generateConversationTitleResponse
+	decodeBody(t, rec, &response)
+	if response.Title != "Concise Title" {
+		t.Fatalf("generated title = %q, want Concise Title", response.Title)
+	}
+	if provider.input.ModelRef.ProviderID != "mock" || !strings.Contains(provider.input.Prompt, "WSL Docker") {
+		t.Fatalf("provider input = %#v", provider.input)
+	}
+}
+
+func TestHandlerGeneratesConversationTitleFallbackWithoutProvider(t *testing.T) {
+	repo := newFakeRepository()
+	handler := NewHandler(NewService(repo))
+
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "New Chat", 1))
+	repo.messages[testConversationID] = []Message{
+		fakeMessage(testMessageID, testConversationID, 0, "user", "Use first message as fallback title"),
+	}
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/title",
+		`{}`,
+	)
+	assertStatus(t, rec, http.StatusOK)
+
+	var response generateConversationTitleResponse
+	decodeBody(t, rec, &response)
+	if response.Title != "Use first message as fallback title" {
+		t.Fatalf("fallback title = %q", response.Title)
+	}
+}
+
+func TestHandlerGeneratesRelatedQuestionsThroughProvider(t *testing.T) {
+	repo := newFakeRepository()
+	provider := &titleProvider{chunks: []string{`["Next step?","Any caveats?","Next step?"]`}}
+	handler := NewHandler(NewService(repo), WithProvider(provider))
+
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "Related", 3))
+	repo.messages[testConversationID] = []Message{
+		fakeMessage(testMessageID, testConversationID, 0, "user", "Old question"),
+		fakeMessage("77777777-7777-4777-8777-777777777777", testConversationID, 1, "assistant", "Old answer"),
+		fakeMessage("88888888-8888-4888-8888-888888888888", testConversationID, 2, "user", "Explain Docker WSL startup"),
+		fakeMessage("99999999-9999-4999-8999-999999999999", testConversationID, 3, "assistant", "Restart WSL and Docker Desktop."),
+	}
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/related-questions",
+		`{"modelRef":{"providerId":"mock","modelId":"related-model"}}`,
+	)
+	assertStatus(t, rec, http.StatusOK)
+
+	var response generateRelatedQuestionsResponse
+	decodeBody(t, rec, &response)
+	if len(response.Questions) != 2 || response.Questions[0] != "Next step?" || response.Questions[1] != "Any caveats?" {
+		t.Fatalf("related questions = %#v", response.Questions)
+	}
+	if provider.input.ModelRef.ModelID != "related-model" ||
+		!strings.Contains(provider.input.Prompt, "Docker WSL") ||
+		strings.Contains(provider.input.Prompt, "Old question") {
+		t.Fatalf("provider input = %#v", provider.input)
+	}
+}
+
+func TestHandlerRelatedQuestionsFallbackWithoutProviderOrModel(t *testing.T) {
+	repo := newFakeRepository()
+	handler := NewHandler(NewService(repo))
+
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "Related", 2))
+	repo.messages[testConversationID] = []Message{
+		fakeMessage(testMessageID, testConversationID, 0, "user", "Explain WSL"),
+		fakeMessage("77777777-7777-4777-8777-777777777777", testConversationID, 1, "assistant", "Use wsl --shutdown."),
+	}
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/related-questions",
+		`{}`,
+	)
+	assertStatus(t, rec, http.StatusOK)
+
+	var response generateRelatedQuestionsResponse
+	decodeBody(t, rec, &response)
+	if len(response.Questions) != 0 {
+		t.Fatalf("related fallback = %#v, want empty", response.Questions)
+	}
+}
+
+func TestHandlerRelatedQuestionsRejectsClientOwnedHistory(t *testing.T) {
+	repo := newFakeRepository()
+	handler := NewHandler(NewService(repo), WithProvider(&titleProvider{}))
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "Related", 0))
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/related-questions",
+		`{"history":[],"modelRef":{"providerId":"mock","modelId":"related-model"}}`,
+	)
+	assertStatus(t, rec, http.StatusBadRequest)
+
+	var body ErrorResponse
+	decodeBody(t, rec, &body)
+	if body.Error.Code != "VALIDATION_ERROR" {
+		t.Fatalf("error code = %q, want VALIDATION_ERROR", body.Error.Code)
+	}
+}
+
+func TestHandlerPlansToolsThroughConfiguredProvider(t *testing.T) {
+	planner := &fakeToolPlanningProvider{
+		calls: []ToolCall{{ID: "call-1", Name: "lookup_weather", Args: map[string]any{"city": "Shanghai"}}},
+	}
+	handler := NewHandler(NewService(nil), WithProvider(planner))
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		toolPlanPath,
+		`{"prompt":"weather in Shanghai","modelRef":{"providerId":"openai_compatible","modelId":"gpt-test"},"tools":[{"type":"function","function":{"name":"lookup_weather","description":"Get weather","parameters":{"type":"object"}}}]}`,
+	)
+	assertStatus(t, rec, http.StatusOK)
+
+	var response toolPlanResponse
+	decodeBody(t, rec, &response)
+	if len(response.Calls) != 1 || response.Calls[0].Name != "lookup_weather" {
+		t.Fatalf("tool plan response = %#v", response)
+	}
+	if planner.input.Prompt != "weather in Shanghai" || len(planner.input.Tools) != 1 {
+		t.Fatalf("planner input = %#v", planner.input)
+	}
+}
+
+func TestHandlerRejectsInvalidToolPlans(t *testing.T) {
+	handler := NewHandler(NewService(nil), WithProvider(&fakeToolPlanningProvider{}))
+	tests := []struct {
+		name string
+		body string
+		code string
+	}{
+		{name: "missing model", body: `{"prompt":"hello","tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}]}`, code: "MODEL_REF_REQUIRED"},
+		{name: "invalid name", body: `{"prompt":"hello","modelRef":{"providerId":"openai_compatible","modelId":"gpt-test"},"tools":[{"type":"function","function":{"name":"bad name","parameters":{"type":"object"}}}]}`, code: "INVALID_TOOL_PLAN"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			rec := performRequest(handler, http.MethodPost, toolPlanPath, test.body)
+			assertStatus(t, rec, http.StatusBadRequest)
+			assertErrorCode(t, rec, test.code)
+		})
+	}
+}
+
+func TestHandlerRejectsProviderToolCallsThatWereNotOffered(t *testing.T) {
+	handler := NewHandler(NewService(nil), WithProvider(&fakeToolPlanningProvider{
+		calls: []ToolCall{{ID: "call-1", Name: "delete_all", Args: map[string]any{}}},
+	}))
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		toolPlanPath,
+		`{"prompt":"weather","modelRef":{"providerId":"openai_compatible","modelId":"gpt-test"},"tools":[{"type":"function","function":{"name":"lookup_weather","parameters":{"type":"object"}}}]}`,
+	)
+	assertStatus(t, rec, http.StatusBadGateway)
+	assertErrorCode(t, rec, "PROVIDER_ERROR")
+	if strings.Contains(rec.Body.String(), "delete_all") {
+		t.Fatalf("provider-controlled function name leaked in response: %s", rec.Body.String())
+	}
+}
+
+type fakeToolPlanningProvider struct {
+	input ToolPlanRequest
+	calls []ToolCall
+	err   error
+}
+
+func (p *fakeToolPlanningProvider) StreamChat(context.Context, ProviderRequest) (<-chan ProviderEvent, error) {
+	events := make(chan ProviderEvent)
+	close(events)
+	return events, nil
+}
+
+func (p *fakeToolPlanningProvider) PlanTools(_ context.Context, input ToolPlanRequest) ([]ToolCall, error) {
+	p.input = input
+	return p.calls, p.err
+}
+
+func TestHandlerDeletesMessagesAndSubsequentMessages(t *testing.T) {
+	repo := newFakeRepository()
+	handler := NewHandler(NewService(repo))
+
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "chat", 3))
+	secondMessageID := "77777777-7777-4777-8777-777777777777"
+	thirdMessageID := "88888888-8888-4888-8888-888888888888"
+	repo.messages[testConversationID] = []Message{
+		fakeMessage(testMessageID, testConversationID, 0, "user", "one"),
+		fakeMessage(secondMessageID, testConversationID, 1, "assistant", "two"),
+		fakeMessage(thirdMessageID, testConversationID, 2, "user", "three"),
+	}
+
+	rec := performRequest(
+		handler,
+		http.MethodDelete,
+		conversationsPath+"/"+testConversationID+"/messages/"+secondMessageID,
+		"",
+	)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("delete status = %d, want 204; body=%s", rec.Code, rec.Body.String())
+	}
+
+	rec = performRequest(handler, http.MethodGet, conversationsPath+"/"+testConversationID+"/messages", "")
+	assertStatus(t, rec, http.StatusOK)
+	var listed Page[ChatMessageDTO]
+	decodeBody(t, rec, &listed)
+	if gotIDs := messageDTOIDs(listed.Items); strings.Join(gotIDs, ",") != testMessageID+","+thirdMessageID {
+		t.Fatalf("messages after single delete = %v", gotIDs)
+	}
+
+	rec = performRequest(
+		handler,
+		http.MethodDelete,
+		conversationsPath+"/"+testConversationID+"/messages/"+testMessageID+"?scope=subsequent",
+		"",
+	)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("retract status = %d, want 204; body=%s", rec.Code, rec.Body.String())
+	}
+
+	rec = performRequest(handler, http.MethodGet, conversationsPath+"/"+testConversationID+"/messages", "")
+	assertStatus(t, rec, http.StatusOK)
+	decodeBody(t, rec, &listed)
+	if len(listed.Items) != 0 {
+		t.Fatalf("messages after retraction = %d, want 0", len(listed.Items))
+	}
+
+	rec = performRequest(
+		handler,
+		http.MethodDelete,
+		conversationsPath+"/"+testConversationID+"/messages/"+testMessageID+"?scope=everything",
+		"",
+	)
+	assertStatus(t, rec, http.StatusBadRequest)
+	assertErrorCode(t, rec, "INVALID_DELETE_SCOPE")
+}
+
+func TestHandlerUpdatesMessageContent(t *testing.T) {
+	repo := newFakeRepository()
+	handler := NewHandler(NewService(repo))
+
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "chat", 1))
+	repo.messages[testConversationID] = []Message{
+		fakeMessage(testMessageID, testConversationID, 0, "assistant", "old"),
+	}
+	repo.messages[testConversationID][0].OutputBlocks = []any{
+		map[string]any{"id": "old-text", "type": "text", "content": "old"},
+	}
+
+	rec := performRequest(
+		handler,
+		http.MethodPatch,
+		conversationsPath+"/"+testConversationID+"/messages/"+testMessageID,
+		`{"content":" edited "}`,
+	)
+	assertStatus(t, rec, http.StatusOK)
+
+	var updated ChatMessageDTO
+	decodeBody(t, rec, &updated)
+	if updated.Content != "edited" {
+		t.Fatalf("updated content = %q, want edited", updated.Content)
+	}
+	if len(updated.OutputBlocks) != 0 {
+		t.Fatalf("updated outputBlocks = %#v, want cleared", updated.OutputBlocks)
+	}
+
+	rec = performRequest(
+		handler,
+		http.MethodPatch,
+		conversationsPath+"/"+testConversationID+"/messages/"+testMessageID,
+		`{"parentMessageId":"`+testMessageID+`","content":"bad"}`,
+	)
+	assertStatus(t, rec, http.StatusBadRequest)
+	assertErrorCode(t, rec, "FORBIDDEN_MESSAGE_FIELD")
 }
 
 func TestHandlerCreatesAndListsMessages(t *testing.T) {
@@ -197,6 +604,62 @@ func TestHandlerStreamsMockAssistantAndPersistsMessages(t *testing.T) {
 	}
 	if assistant.ModelProvider != "mock" || assistant.ModelID != "mock-chat" {
 		t.Fatalf("assistant model = %s/%s, want mock/mock-chat", assistant.ModelProvider, assistant.ModelID)
+	}
+}
+
+func TestHandlerStreamsRepeatedAssistantBranchesForSameUserMessage(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "hello"),
+	)
+	handler := NewHandler(NewService(repo), WithProvider(NewMockProvider()))
+
+	for _, key := range []string{"stream-branch-1", "stream-branch-2"} {
+		rec := performRequest(
+			handler,
+			http.MethodPost,
+			conversationsPath+"/"+testConversationID+"/stream",
+			`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"idempotencyKey":"`+key+`"}`,
+		)
+		assertStreamStatus(t, rec, http.StatusOK)
+		if body := rec.Body.String(); !strings.Contains(body, "event: message.completed") {
+			t.Fatalf("stream body for %s missing completion; body=%s", key, body)
+		}
+	}
+
+	messages := repo.messages[testConversationID]
+	if len(messages) != 3 {
+		t.Fatalf("persisted messages = %d, want user + two assistants; messages=%#v", len(messages), messages)
+	}
+	for _, assistant := range messages[1:] {
+		if assistant.Role != "assistant" || assistant.ParentMessageID != testMessageID {
+			t.Fatalf("assistant branch = %#v, want assistant parent %q", assistant, testMessageID)
+		}
+	}
+}
+
+func TestHandlerForwardsReasoningToggleToProvider(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "solve carefully"),
+	)
+	provider := &capturingProvider{}
+	handler := NewHandler(NewService(repo), WithProvider(provider))
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"reasoning"},"config":{"useReasoning":true},"idempotencyKey":"stream-key-reasoning"}`,
+	)
+
+	assertStreamStatus(t, rec, http.StatusOK)
+	if !provider.input.UseReasoning {
+		t.Fatalf("provider UseReasoning = false, want true; input=%#v", provider.input)
 	}
 }
 
@@ -914,6 +1377,14 @@ func TestHandlerRejectsInvalidConversationID(t *testing.T) {
 	assertErrorCode(t, rec, "INVALID_CONVERSATION_ID")
 }
 
+func messageDTOIDs(messages []ChatMessageDTO) []string {
+	ids := make([]string, 0, len(messages))
+	for _, message := range messages {
+		ids = append(ids, message.ID)
+	}
+	return ids
+}
+
 func performRequest(handler http.Handler, method string, path string, body string) *httptest.ResponseRecorder {
 	var reader *bytes.Reader
 	if body == "" {
@@ -1005,18 +1476,205 @@ func (f *fakeRepository) CreateConversation(
 }
 
 func (f *fakeRepository) ListConversations(context.Context) ([]Conversation, error) {
-	items := make([]Conversation, len(f.conversations))
-	copy(items, f.conversations)
+	items := make([]Conversation, 0, len(f.conversations))
+	for _, conversation := range f.conversations {
+		if conversation.DeletedAt == nil {
+			items = append(items, conversation)
+		}
+	}
 	return items, nil
+}
+
+func (f *fakeRepository) UpdateConversation(
+	_ context.Context,
+	conversationID string,
+	input UpdateConversationInput,
+) (Conversation, error) {
+	for i := range f.conversations {
+		conversation := &f.conversations[i]
+		if conversation.ID != conversationID || conversation.DeletedAt != nil {
+			continue
+		}
+		if input.Title != nil {
+			conversation.Title = *input.Title
+		}
+		if input.SystemPrompt != nil {
+			conversation.SystemPrompt = *input.SystemPrompt
+		}
+		if input.ModelProvider != nil {
+			conversation.ModelProvider = *input.ModelProvider
+		}
+		if input.ModelID != nil {
+			conversation.ModelID = *input.ModelID
+		}
+		conversation.Metadata = mergeConversationMetadata(conversation.Metadata, input)
+		conversation.UpdatedAt = testNow()
+		return *conversation, nil
+	}
+
+	return Conversation{}, ErrConversationNotFound
+}
+
+func (f *fakeRepository) DeleteConversation(_ context.Context, conversationID string) error {
+	for i := range f.conversations {
+		conversation := &f.conversations[i]
+		if conversation.ID != conversationID || conversation.DeletedAt != nil {
+			continue
+		}
+		deletedAt := testNow()
+		conversation.Status = "deleted"
+		conversation.DeletedAt = &deletedAt
+		conversation.UpdatedAt = deletedAt
+		return nil
+	}
+
+	return ErrConversationNotFound
+}
+
+func (f *fakeRepository) DuplicateConversation(
+	_ context.Context,
+	conversationID string,
+	input DuplicateConversationInput,
+) (Conversation, error) {
+	if input.IdempotencyKey == "conflict" {
+		return Conversation{}, ErrIdempotencyConflict
+	}
+	for _, conversation := range f.conversations {
+		if conversation.ID != conversationID || conversation.DeletedAt != nil {
+			continue
+		}
+		duplicate := conversation
+		duplicate.ID = testDuplicateConversationID
+		duplicate.Title = strings.TrimSpace(input.Title)
+		if duplicate.Title == "" {
+			duplicate.Title = duplicateConversationTitle(conversation.Title)
+		}
+		duplicate.Metadata = cloneJSONObject(conversation.Metadata)
+		duplicate.Metadata["pinned"] = false
+		duplicate.CreatedAt = testNow()
+		duplicate.UpdatedAt = testNow()
+		duplicate.IdempotencyKey = input.IdempotencyKey
+		sourceMessages := f.messages[conversationID]
+		newIDs := map[string]string{}
+		for index, message := range sourceMessages {
+			newIDs[message.ID] = fmt.Sprintf("aaaaaaaa-aaaa-4aaa-8aaa-%012d", index+1)
+		}
+		duplicatedMessages := make([]Message, 0, len(sourceMessages))
+		for index, message := range sourceMessages {
+			if message.DeletedAt != nil {
+				continue
+			}
+			duplicated := message
+			duplicated.ID = newIDs[message.ID]
+			duplicated.ConversationID = duplicate.ID
+			duplicated.SequenceNo = index
+			duplicated.ParentMessageID = newIDs[message.ParentMessageID]
+			duplicated.IdempotencyKey = ""
+			duplicated.Metadata = cloneJSONObject(message.Metadata)
+			delete(duplicated.Metadata, "runId")
+			duplicated.CreatedAt = testNow()
+			duplicated.UpdatedAt = testNow()
+			if duplicated.Status == "pending" || duplicated.Status == "streaming" {
+				duplicated.Status = "cancelled"
+			}
+			completedAt := testNow()
+			duplicated.CompletedAt = &completedAt
+			duplicatedMessages = append(duplicatedMessages, duplicated)
+		}
+		duplicate.MessageCount = len(duplicatedMessages)
+		f.conversations = append(f.conversations, duplicate)
+		f.messages[duplicate.ID] = duplicatedMessages
+		return duplicate, nil
+	}
+
+	return Conversation{}, ErrConversationNotFound
 }
 
 func (f *fakeRepository) ListMessages(_ context.Context, conversationID string) ([]Message, error) {
 	if !f.hasConversation(conversationID) {
 		return nil, ErrConversationNotFound
 	}
-	items := make([]Message, len(f.messages[conversationID]))
-	copy(items, f.messages[conversationID])
+	items := make([]Message, 0, len(f.messages[conversationID]))
+	for _, message := range f.messages[conversationID] {
+		if message.DeletedAt == nil {
+			items = append(items, message)
+		}
+	}
 	return items, nil
+}
+
+func (f *fakeRepository) UpdateMessage(
+	_ context.Context,
+	conversationID string,
+	messageID string,
+	input UpdateMessageInput,
+) (Message, error) {
+	if !f.hasConversation(conversationID) {
+		return Message{}, ErrConversationNotFound
+	}
+	if input.Content == nil {
+		return Message{}, newValidationError("NO_MESSAGE_UPDATES", "message update requires at least one editable field")
+	}
+	content := strings.TrimSpace(*input.Content)
+	if content == "" {
+		return Message{}, newValidationError("EMPTY_CONTENT", "message content is required")
+	}
+	for index := range f.messages[conversationID] {
+		message := &f.messages[conversationID][index]
+		if message.ID != messageID || message.DeletedAt != nil {
+			continue
+		}
+		message.Content = content
+		message.OutputBlocks = []any{}
+		message.UpdatedAt = testNow()
+		return *message, nil
+	}
+
+	return Message{}, ErrMessageNotFound
+}
+
+func (f *fakeRepository) DeleteMessage(
+	_ context.Context,
+	conversationID string,
+	messageID string,
+	input DeleteMessageInput,
+) error {
+	if !f.hasConversation(conversationID) {
+		return ErrConversationNotFound
+	}
+	messages := f.messages[conversationID]
+	targetIndex := -1
+	for index := range messages {
+		if messages[index].ID == messageID && messages[index].DeletedAt == nil {
+			targetIndex = index
+			break
+		}
+	}
+	if targetIndex == -1 {
+		return ErrMessageNotFound
+	}
+
+	deletedAt := testNow()
+	for index := range messages {
+		if index == targetIndex || (input.DeleteSubsequent && messages[index].SequenceNo >= messages[targetIndex].SequenceNo) {
+			messages[index].DeletedAt = &deletedAt
+			messages[index].UpdatedAt = deletedAt
+		}
+	}
+	f.messages[conversationID] = messages
+	for i := range f.conversations {
+		if f.conversations[i].ID == conversationID {
+			remaining := 0
+			for _, message := range messages {
+				if message.DeletedAt == nil {
+					remaining++
+				}
+			}
+			f.conversations[i].MessageCount = remaining
+		}
+	}
+
+	return nil
 }
 
 func (f *fakeRepository) GetMessage(
@@ -1271,6 +1929,38 @@ type emptyProvider struct{}
 func (p emptyProvider) StreamChat(context.Context, ProviderRequest) (<-chan ProviderEvent, error) {
 	ch := make(chan ProviderEvent)
 	close(ch)
+	return ch, nil
+}
+
+type capturingProvider struct {
+	input ProviderRequest
+}
+
+func (p *capturingProvider) StreamChat(_ context.Context, input ProviderRequest) (<-chan ProviderEvent, error) {
+	p.input = input
+	ch := make(chan ProviderEvent)
+	close(ch)
+	return ch, nil
+}
+
+type titleProvider struct {
+	input  ProviderRequest
+	chunks []string
+}
+
+func (p *titleProvider) StreamChat(ctx context.Context, input ProviderRequest) (<-chan ProviderEvent, error) {
+	p.input = input
+	ch := make(chan ProviderEvent)
+	go func() {
+		defer close(ch)
+		for _, chunk := range p.chunks {
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- ProviderEvent{Type: ProviderEventDelta, Delta: chunk}:
+			}
+		}
+	}()
 	return ch, nil
 }
 

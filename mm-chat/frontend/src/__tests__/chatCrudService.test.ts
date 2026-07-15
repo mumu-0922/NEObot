@@ -26,6 +26,7 @@ const capabilities = {
   rag: false,
   plugins: false,
   providerSettings: false,
+  agents: false,
 } satisfies ApiCapabilities;
 
 const resolvedConfig = {
@@ -43,6 +44,8 @@ const conversationDto: ConversationDTO = {
   status: "active",
   modelRef: { providerId: "openai", modelId: "gpt-5.5" },
   messageCount: 2,
+  systemInstruction: "server instruction",
+  pinned: true,
   config: {
     useSearch: true,
     useReasoning: "bad",
@@ -106,7 +109,8 @@ describe("chat CRUD DTO mappers", () => {
       title: "Server Chat",
       messageCount: 2,
       model: "openai:gpt-5.5",
-      pinned: false,
+      pinned: true,
+      systemInstruction: "server instruction",
       config: { useSearch: true, activePlugins: ["writer"] },
     });
     expect(session.config).not.toHaveProperty("internalTrace");
@@ -145,6 +149,7 @@ describe("chat CRUD DTO mappers", () => {
         },
       ],
       outputBlocks: [{ id: "block-1", type: "text", content: "hi" }],
+      parentMessageId: "m1",
     });
     expect(JSON.stringify(assistant.attachments)).not.toContain(
       "object-store.example",
@@ -188,6 +193,44 @@ describe("chat CRUD service gateway", () => {
         calls.push("list-conversations");
         return [conversationDto];
       },
+      async updateConversation(input) {
+        calls.push(`update:${input.conversationId}:${input.title}`);
+        return {
+          ...conversationDto,
+          title: input.title ?? conversationDto.title,
+        };
+      },
+      async deleteConversation(conversationId) {
+        calls.push(`delete:${conversationId}`);
+      },
+      async duplicateConversation(input) {
+        calls.push(`duplicate:${input.conversationId}:${input.idempotencyKey}`);
+        return {
+          ...conversationDto,
+          id: "c2",
+          title: "Server Chat (Copy)",
+          messageCount: 2,
+        };
+      },
+      async generateConversationTitle(input) {
+        calls.push(`title:${input.conversationId}:${input.modelRef?.modelId}`);
+        return { title: "Generated Title" };
+      },
+      async updateMessage(input) {
+        calls.push(
+          `update-message:${input.conversationId}:${input.messageId}:${input.content}`,
+        );
+        return {
+          ...assistantMessageDto,
+          content: input.content,
+          outputBlocks: [],
+        };
+      },
+      async deleteMessage(input) {
+        calls.push(
+          `delete-message:${input.conversationId}:${input.messageId}:${input.scope}`,
+        );
+      },
       async appendUserMessage(input) {
         calls.push(`append:${input.conversationId}:${input.idempotencyKey}`);
         return userMessageDto;
@@ -205,6 +248,43 @@ describe("chat CRUD service gateway", () => {
     ).resolves.toMatchObject({ id: "c1", model: "openai:gpt-5.5" });
     await expect(service.listConversations()).resolves.toHaveLength(1);
     await expect(
+      service.updateConversation({
+        conversationId: "c1",
+        title: "Renamed",
+      }),
+    ).resolves.toMatchObject({ id: "c1", title: "Renamed" });
+    await expect(service.deleteConversation("c1")).resolves.toBeUndefined();
+    await expect(
+      service.duplicateConversation({
+        conversationId: "c1",
+        idempotencyKey: "duplicate-key",
+      }),
+    ).resolves.toMatchObject({ id: "c2", title: "Server Chat (Copy)" });
+    await expect(
+      service.generateConversationTitle({
+        conversationId: "c1",
+        modelRef: { providerId: "openai", modelId: "gpt-title" },
+      }),
+    ).resolves.toBe("Generated Title");
+    await expect(
+      service.updateMessage({
+        conversationId: "c1",
+        messageId: "m2",
+        content: "edited",
+      }),
+    ).resolves.toMatchObject({
+      id: "m2",
+      content: "edited",
+      parentMessageId: "m1",
+    });
+    await expect(
+      service.deleteMessage({
+        conversationId: "c1",
+        messageId: "m1",
+        scope: "subsequent",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
       service.appendUserMessage({
         conversationId: "c1",
         content: "hello",
@@ -218,6 +298,12 @@ describe("chat CRUD service gateway", () => {
     expect(calls).toEqual([
       "create:conversation-key",
       "list-conversations",
+      "update:c1:Renamed",
+      "delete:c1",
+      "duplicate:c1:duplicate-key",
+      "title:c1:gpt-title",
+      "update-message:c1:m2:edited",
+      "delete-message:c1:m1:subsequent",
       "append:c1:message-key",
       "list-messages:c1",
     ]);
@@ -265,6 +351,27 @@ function createMockClient(
     async listConversations() {
       throw new Error("listConversations not mocked");
     },
+    async updateConversation() {
+      throw new Error("updateConversation not mocked");
+    },
+    async deleteConversation() {
+      throw new Error("deleteConversation not mocked");
+    },
+    async duplicateConversation() {
+      throw new Error("duplicateConversation not mocked");
+    },
+    async generateConversationTitle() {
+      throw new Error("generateConversationTitle not mocked");
+    },
+    async generateRelatedQuestions() {
+      throw new Error("generateRelatedQuestions not mocked");
+    },
+    async updateMessage() {
+      throw new Error("updateMessage not mocked");
+    },
+    async deleteMessage() {
+      throw new Error("deleteMessage not mocked");
+    },
     async appendUserMessage() {
       throw new Error("appendUserMessage not mocked");
     },
@@ -273,6 +380,9 @@ function createMockClient(
     },
     async streamAssistantMessage() {
       return { status: "unsupported" };
+    },
+    async planTools() {
+      return [];
     },
     async cancelRun() {
       return { status: "unsupported" };
@@ -286,6 +396,7 @@ function createMockClient(
     capabilities: options.capabilities ?? capabilities,
     chat,
     files: options.files ?? createMockFileApi(),
+    agents: options.agents ?? createMockAgentApi(),
   };
 }
 
@@ -302,6 +413,17 @@ function createMockFileApi(): FileApi {
     },
     async deleteFile() {
       throw new Error("deleteFile not mocked");
+    },
+  };
+}
+
+function createMockAgentApi() {
+  return {
+    async listAgents() {
+      throw new Error("listAgents not mocked");
+    },
+    async getAgentDetail() {
+      throw new Error("getAgentDetail not mocked");
     },
   };
 }

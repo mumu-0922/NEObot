@@ -36,6 +36,7 @@ export interface ApiCapabilities {
   rag: boolean;
   plugins: boolean;
   providerSettings: boolean;
+  agents: boolean;
 }
 
 export interface ApiErrorEnvelope {
@@ -64,6 +65,8 @@ export interface ConversationDTO {
   status: "active" | "archived" | "deleted";
   modelRef?: ModelRef;
   messageCount: number;
+  systemInstruction?: string;
+  pinned?: boolean;
   config: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
@@ -143,6 +146,51 @@ export interface CreateConversationInput {
   idempotencyKey?: string;
 }
 
+export interface UpdateConversationInput {
+  conversationId: string;
+  title?: string;
+  modelRef?: ModelRef;
+  systemInstruction?: string;
+  config?: Record<string, unknown>;
+  pinned?: boolean;
+}
+
+export interface DuplicateConversationInput {
+  conversationId: string;
+  title?: string;
+  idempotencyKey?: string;
+}
+
+export interface GenerateConversationTitleInput {
+  conversationId: string;
+  modelRef?: ModelRef;
+}
+
+export interface GenerateConversationTitleResponse {
+  title: string;
+}
+
+export interface GenerateRelatedQuestionsInput {
+  conversationId: string;
+  modelRef?: ModelRef;
+}
+
+export interface GenerateRelatedQuestionsResponse {
+  questions: string[];
+}
+
+export interface DeleteMessageInput {
+  conversationId: string;
+  messageId: string;
+  scope?: "message" | "subsequent";
+}
+
+export interface UpdateMessageInput {
+  conversationId: string;
+  messageId: string;
+  content: string;
+}
+
 export interface AppendUserMessageInput {
   conversationId: string;
   content: string;
@@ -168,6 +216,30 @@ export interface StreamAssistantMessageInput {
   signal?: AbortSignal;
 }
 
+export interface ServerToolFunctionDefinition {
+  name: string;
+  description?: string;
+  parameters: Record<string, unknown>;
+}
+
+export interface ServerToolDefinition {
+  type: "function";
+  function: ServerToolFunctionDefinition;
+}
+
+export interface PlanServerToolsInput {
+  prompt: string;
+  modelRef: ModelRef;
+  tools: ServerToolDefinition[];
+  signal?: AbortSignal;
+}
+
+export interface ServerPlannedToolCall {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+}
+
 export interface ChatStreamHandlers {
   onStarted?: (event: ServerStreamEvent) => void;
   onDelta?: (event: ServerStreamEvent) => void;
@@ -186,13 +258,48 @@ export interface ChatRunResult {
 export interface ChatApi {
   createConversation(input: CreateConversationInput): Promise<ConversationDTO>;
   listConversations(): Promise<ConversationDTO[]>;
+  updateConversation(input: UpdateConversationInput): Promise<ConversationDTO>;
+  deleteConversation(conversationId: string): Promise<void>;
+  duplicateConversation(
+    input: DuplicateConversationInput,
+  ): Promise<ConversationDTO>;
+  generateConversationTitle(
+    input: GenerateConversationTitleInput,
+  ): Promise<GenerateConversationTitleResponse>;
+  generateRelatedQuestions(
+    input: GenerateRelatedQuestionsInput,
+  ): Promise<GenerateRelatedQuestionsResponse>;
+  updateMessage(input: UpdateMessageInput): Promise<ChatMessageDTO>;
+  deleteMessage(input: DeleteMessageInput): Promise<void>;
   appendUserMessage(input: AppendUserMessageInput): Promise<ChatMessageDTO>;
   listMessages(conversationId: string): Promise<ChatMessageDTO[]>;
   streamAssistantMessage(
     input: StreamAssistantMessageInput,
     handlers?: ChatStreamHandlers,
   ): Promise<ChatRunResult>;
+  planTools(input: PlanServerToolsInput): Promise<ServerPlannedToolCall[]>;
   cancelRun(runId: string): Promise<ChatRunResult>;
+}
+
+export type AgentMarketLocale = "en" | "zh" | "ja";
+
+export interface AgentListInput {
+  locale?: AgentMarketLocale;
+}
+
+export interface AgentDetailInput {
+  identifier: string;
+  locale?: AgentMarketLocale;
+}
+
+export interface AgentListResponse {
+  agents?: unknown[];
+  unavailable?: boolean;
+}
+
+export interface AgentApi {
+  listAgents(input?: AgentListInput): Promise<AgentListResponse>;
+  getAgentDetail(input: AgentDetailInput): Promise<unknown>;
 }
 
 export interface FileApi {
@@ -280,6 +387,7 @@ export interface NeoChatApiClient {
   chat: ChatApi;
   files: FileApi;
   imports?: BrowserImportApi;
+  agents: AgentApi;
 }
 
 export type ServerStreamEventType =

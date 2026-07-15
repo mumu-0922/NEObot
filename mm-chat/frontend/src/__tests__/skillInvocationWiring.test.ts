@@ -14,13 +14,19 @@ describe("skill invocation wiring", () => {
     );
 
     const streamCallCount = countOccurrences(chatApp, "streamChatResponse(");
+    const serverStreamCallCount = countOccurrences(
+      chatApp,
+      "sendServerMessageAndStream({",
+    );
+    const generationCallCount = streamCallCount + serverStreamCallCount;
 
     expect(streamCallCount).toBeGreaterThan(0);
+    expect(serverStreamCallCount).toBeGreaterThan(0);
     expect(countOccurrences(chatApp, "resolveSkillsForMessage({")).toBe(
-      streamCallCount,
+      generationCallCount,
     );
     expect(countOccurrences(chatApp, "skillResolution.context")).toBe(
-      streamCallCount,
+      generationCallCount,
     );
   });
 });

@@ -1,5 +1,6 @@
 # Architecture Docs
 
+- [`standalone-parity-sliced-cutover-plan.md`](./standalone-parity-sliced-cutover-plan.md) — active remaining-work authority for one-group-at-a-time standalone parity migration, targeted verification, clean-copy closure, and deletion gating.
 - [`server-refactor-design.md`](./server-refactor-design.md) — full server-backed refactor design and phased migration plan.
 - [`phase-11-plus-roadmap.md`](./phase-11-plus-roadmap.md) — post-Phase-10 roadmap, planning rule, and frontend/RAG/K8s sequencing.
 - [`phase-15-accuracy-first-rag-design.md`](./phase-15-accuracy-first-rag-design.md) — proposed accuracy-first parsing, hierarchical hybrid retrieval, reranking, evaluation, and RAG safety architecture.

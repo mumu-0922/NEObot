@@ -1,7 +1,9 @@
+import { createLocalAgentApiShell } from "./local/agentApi";
 import { createLocalChatApiShell } from "./local/chatApi";
 import { createLocalFileApiShell } from "./local/fileApi";
 import { createLocalImportApiShell } from "./local/importApi";
 import { phase11Capabilities, resolveApiClientConfig } from "./mode";
+import { createServerAgentApiShell } from "./server/agentApi";
 import { createServerChatApiShell } from "./server/chatApi";
 import { createServerFileApiShell } from "./server/fileApi";
 import { createServerImportApiShell } from "./server/importApi";
@@ -25,6 +27,9 @@ export function createNeoChatApiClient(
   const imports = serverHttpClient
     ? createServerImportApiShell(serverHttpClient)
     : createLocalImportApiShell();
+  const agents = serverHttpClient
+    ? createServerAgentApiShell(serverHttpClient)
+    : createLocalAgentApiShell();
 
   return {
     mode: resolved.mode,
@@ -35,10 +40,12 @@ export function createNeoChatApiClient(
       chatStream: serverEnabled,
       files: serverEnabled,
       imports: serverEnabled,
+      plugins: serverEnabled,
     },
     chat,
     files,
     imports,
+    agents,
   };
 }
 

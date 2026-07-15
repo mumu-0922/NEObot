@@ -8032,3 +8032,131 @@ standalone verification                      passed (full)
 The live smoke and isolated-copy gate close install, test, build, and local
 runtime independence. Backup/restore, browser visual-regression, and final
 rollback verification remain required before any original-root deletion plan.
+
+## 2026-07-15 — Server model, skill, and plugin send path restored
+
+The server-mode composer showed no selectable model and rejected both skill and
+plugin menus. The model failure came from a split configuration boundary: Go
+owned `PROVIDER_*`, while `/api/config` had no browser-safe provider/model
+metadata. Compose now passes only provider type/name/model metadata into the
+frontend. `PROVIDER_API_KEY` remains exclusive to the Go backend.
+
+Selected text skills now resolve deterministically before the server send and
+join the effective system instruction. Plugins use a split trust path: Go calls
+the configured model for a bounded non-streaming tool plan, the browser rejects
+any call not present in the active installed set, the existing hardened Next
+route executes the plugin with encrypted browser auth, and a bounded 64 KiB
+untrusted-data context feeds the normal Go final stream. Search and reasoning
+remain explicitly gated because their server contracts are not part of this
+slice.
+
+Security and failure boundaries:
+
+- planning accepts at most 32 tools/calls, a 16 KiB prompt, 128-byte names,
+  2,048-byte descriptions, and 32 KiB parameter/argument JSON;
+- provider errors never include response bodies or provider credentials;
+- duplicate or unoffered function names fail closed before execution;
+- plugin auth/config is absent from the Go planning payload;
+- plugin execution errors remain `status: error`; final answers are instructed
+  not to claim success;
+- plugin results are explicitly untrusted and truncated without breaking UTF-8
+  or exceeding 64 KiB.
+
+Verification evidence:
+
+```text
+Go targeted tests / vet                         passed / passed
+frontend format / ESLint / typecheck            passed / passed / passed
+frontend full tests                             805 passed (174 files)
+frontend local + Docker production builds       passed / passed
+standalone structure / full clean-copy gates    passed / passed
+RAG clean-copy tests                            1408 passed / 2 skipped
+live /api/config model list                     SERVER_DEFAULT:gpt-5.5
+live Go tool plan                               getCurrentWeather(Shanghai)
+live Next plugin execution                      Weather response returned
+live final Go SSE                               completed, 187 tokens
+persisted final answer reload                   passed
+isolated Plugin smoke conversation cleanup      DELETE 1
+frontend/backend container health               healthy / healthy
+```
+
+Chromium was not installed in the available Playwright runtime, so this slice
+does not claim a new visual-regression screenshot. Component composition tests,
+production rendering build, live HTTP routes, persistence reload, and container
+health passed. The owner should hard-refresh `http://127.0.0.1:18080` and use
+the existing model, skill, and plugin buttons; no Docker restart is required.
+
+### Browser plugin CSRF false positive and remediation
+
+The first owner browser retry proved that model selection, message send, and Go
+tool planning worked, but `/api/plugins/execute` returned
+`CSRF_ORIGIN_BLOCKED`. The guard compared the browser `Origin` on external port
+`18080` with Next's container-internal `nextUrl.origin` on port `3000`, so a
+legitimate relative same-origin fetch looked cross-origin only after Docker
+port publication.
+
+The guard now uses the HTTP `Host` as the default external origin authority and
+uses forwarded host/proto only when `TRUST_PROXY_HEADERS=true`. The original
+cross-site rejection tests remain green, and a new regression models
+`Origin/Host=http://127.0.0.1:18080` with an internal
+`http://frontend:3000` request URL.
+
+```text
+browser-shaped CSRF probe (Origin + Sec-Fetch-Site)  200 OK
+browser-shaped Weather plugin execution              real result returned
+cross-origin rejection regression                    passed
+frontend format / lint / typecheck                    passed
+frontend tests                                        805 passed (174 files)
+Docker production build                               passed
+frontend / backend health                             healthy / healthy
+```
+
+## 2026-07-15 — Server reasoning path restored
+
+The reasoning button remained behind the broad server-session tool gate, and
+the server composer reused stale conversation config instead of the current
+browser toggle. Even if `useReasoning` reached Go, the handler discarded it
+before the provider boundary. The server-mode button now updates the current
+chat config, the stream request forwards the boolean, and the OpenAI-compatible
+provider emits `reasoning_effort: high` only when enabled. GPT-5 model names
+also use the existing capability fallback when explicit model metadata is not
+published.
+
+Verification evidence:
+
+```text
+frontend format / lint / typecheck                    passed
+frontend tests                                        805 passed (174 files)
+Go tests / vet                                        passed / passed
+Docker frontend / backend build                       passed / passed
+frontend / backend container health                   healthy / healthy
+live gpt-5.5 reasoning stream                         REASONING_OK
+live persisted completion                             completed, 43 tokens
+```
+
+This toggle changes provider reasoning effort; it does not claim that hidden
+chain-of-thought text is exposed by the provider.
+
+## 2026-07-15 — Standalone parity sliced cutover plan created
+
+Owner changed the remaining-migration operating mode: collect every unfinished
+standalone/parity item into one new active plan, migrate one bounded group at a
+time, and test each group immediately instead of repeatedly treating all
+remaining work as a single giant full-suite migration.
+
+New active authority:
+
+```text
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+The new plan groups remaining work into G0-G10: plan guardrails,
+conversation/message operations, helper/catalog routes, Auth/config/provider
+settings/BYOK, plugins, Search, Voice/Image/Code jobs, Knowledge/RAG/citations,
+Teams/Knowledge UI wiring, data-authority/route removal, and final
+ops/visual/clean-copy/delete gates.
+
+Future cutover implementation evidence should be recorded primarily in the new
+process log, with this legacy process file reserved for major cross-reference
+milestones.

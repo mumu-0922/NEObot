@@ -89,6 +89,21 @@ describe("MessageInput composition", () => {
     expect(messageInput).toContain("textFallbackInputRef.current?.click()");
     expect(messageInput).not.toContain("const AttachmentPreviewCard");
     expect(messageInput).toContain("localSessionToolsDisabled?: boolean");
+    expect(messageInput).toContain(
+      "allowReasoningWhenSessionToolsDisabled?: boolean",
+    );
+    expect(messageInput).toContain(
+      "allowSkillsWhenSessionToolsDisabled?: boolean",
+    );
+    expect(messageInput).toContain(
+      "allowPluginsWhenSessionToolsDisabled?: boolean",
+    );
+    expect(messageInput).toContain(
+      "activeSkillIdsOverride?: readonly string[]",
+    );
+    expect(messageInput).toContain("onActiveSkillIdsChange?:");
+    expect(messageInput).toContain("const skillSelectionDisabled =");
+    expect(messageInput).toContain("const pluginSelectionDisabled =");
     expect(messageInput).toContain("onLocalSessionToolUnavailable?:");
     expect(messageInput).toContain("isReasoningEnabled?: boolean");
     expect(messageInput).toContain("onToggleReasoning?: () => void");
@@ -106,6 +121,8 @@ describe("MessageInput composition", () => {
     );
     expect(messageInput).toContain("activePluginIdsForMenu");
     expect(messageInput).toContain("effectiveUseReasoning");
+    expect(messageInput).toContain("!allowReasoningWhenSessionToolsDisabled");
+    expect(messageInput).toContain('lower.includes("gpt-5")');
     expect(messageInput.indexOf("{/* Reasoning Button")).toBeLessThan(
       messageInput.indexOf("{/* Search Button */}"),
     );

@@ -172,6 +172,89 @@ describe("BYOK service requests", () => {
     }
   });
 
+  it("routes server-mode related questions through Go without sending client history", async () => {
+    const previousMode = process.env.NEXT_PUBLIC_API_MODE;
+    const previousBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+    process.env.NEXT_PUBLIC_API_MODE = "server";
+    process.env.NEXT_PUBLIC_API_BASE_URL = "/mm-api";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(Response.json({ questions: ["server next?"] }));
+    const { generateRelatedQuestions } =
+      await import("../services/api/chatService");
+
+    try {
+      await expect(
+        generateRelatedQuestions(
+          [
+            {
+              id: "msg-1",
+              role: "user",
+              content: "client history must stay out",
+              timestamp: 0,
+            },
+          ],
+          { conversationId: "conversation-1" },
+        ),
+      ).resolves.toEqual(["server next?"]);
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/mm-api/v1/chat/conversations/conversation-1/related-questions",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            modelRef: {
+              providerId: "openai_compatible",
+              modelId: "gemini-title",
+            },
+          }),
+        }),
+      );
+      expect(String(fetchMock.mock.calls[0]?.[1]?.body)).not.toContain(
+        "client history must stay out",
+      );
+    } finally {
+      if (previousMode === undefined) {
+        delete process.env.NEXT_PUBLIC_API_MODE;
+      } else {
+        process.env.NEXT_PUBLIC_API_MODE = previousMode;
+      }
+      if (previousBaseUrl === undefined) {
+        delete process.env.NEXT_PUBLIC_API_BASE_URL;
+      } else {
+        process.env.NEXT_PUBLIC_API_BASE_URL = previousBaseUrl;
+      }
+    }
+  });
+
+  it("does not fall back to the legacy related-questions route in server mode", async () => {
+    const previousMode = process.env.NEXT_PUBLIC_API_MODE;
+    const previousBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+    process.env.NEXT_PUBLIC_API_MODE = "server";
+    process.env.NEXT_PUBLIC_API_BASE_URL = "/mm-api";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("legacy route must not be called"));
+    const { generateRelatedQuestions } =
+      await import("../services/api/chatService");
+
+    try {
+      await expect(generateRelatedQuestions([])).resolves.toEqual([]);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      if (previousMode === undefined) {
+        delete process.env.NEXT_PUBLIC_API_MODE;
+      } else {
+        process.env.NEXT_PUBLIC_API_MODE = previousMode;
+      }
+      if (previousBaseUrl === undefined) {
+        delete process.env.NEXT_PUBLIC_API_BASE_URL;
+      } else {
+        process.env.NEXT_PUBLIC_API_BASE_URL = previousBaseUrl;
+      }
+    }
+  });
+
   it("allows voice model STT to use server env fallback without sending apiKey", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")

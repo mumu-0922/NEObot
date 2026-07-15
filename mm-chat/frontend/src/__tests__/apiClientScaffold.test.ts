@@ -10,6 +10,7 @@ import {
   resolveApiClientConfig,
 } from "../services/api/client";
 import { createServerChatApiShell } from "../services/api/client/server/chatApi";
+import { createServerAgentApiShell } from "../services/api/client/server/agentApi";
 import { createServerFileApiShell } from "../services/api/client/server/fileApi";
 
 describe("Phase 11.1B API mode resolver", () => {
@@ -117,6 +118,7 @@ describe("Phase 11.1B API mode resolver", () => {
       rag: false,
       plugins: false,
       providerSettings: false,
+      agents: false,
     });
   });
 
@@ -200,6 +202,46 @@ describe("Phase 11.1B server HTTP scaffold", () => {
       code: "NETWORK_ERROR",
       recoverable: true,
     });
+  });
+});
+
+describe("G2 server agent API adapter", () => {
+  it("routes agent catalog requests through the Go API", async () => {
+    const requests: Array<{ url: string; method?: string }> = [];
+    const agents = createServerAgentApiShell(
+      createHttpClient({
+        baseUrl: "/mm-api",
+        fetchImpl: async (input, init) => {
+          requests.push({ url: String(input), method: init?.method });
+          if (String(input).includes("/v1/agents/")) {
+            return Response.json({
+              identifier: "agent-1",
+              meta: { title: "Agent One" },
+            });
+          }
+          return Response.json({
+            agents: [
+              {
+                identifier: "agent-1",
+                meta: { title: "Agent One" },
+              },
+            ],
+          });
+        },
+      }),
+    );
+
+    await expect(agents.listAgents({ locale: "zh" })).resolves.toMatchObject({
+      agents: [expect.objectContaining({ identifier: "agent-1" })],
+    });
+    await expect(
+      agents.getAgentDetail({ identifier: "agent/1", locale: "ja" }),
+    ).resolves.toMatchObject({ identifier: "agent-1" });
+
+    expect(requests).toEqual([
+      { url: "/mm-api/v1/agents?locale=zh", method: "GET" },
+      { url: "/mm-api/v1/agents/agent%2F1?locale=ja", method: "GET" },
+    ]);
   });
 });
 
@@ -482,6 +524,134 @@ describe("Phase 11.2A server chat CRUD adapter", () => {
     ]);
   });
 
+  it("updates, deletes, duplicates, titles, and related questions conversations through Go endpoints", async () => {
+    const requests: Array<{ url: string; body?: unknown; method?: string }> =
+      [];
+    const chat = createServerChatApiShell(
+      createHttpClient({
+        baseUrl: "http://backend.test",
+        fetchImpl: async (input, init) => {
+          requests.push({
+            url: String(input),
+            method: init?.method,
+            body: init?.body ? JSON.parse(String(init.body)) : undefined,
+          });
+          if (init?.method === "DELETE") {
+            return new Response(null, { status: 204 });
+          }
+          if (String(input).endsWith("/duplicate")) {
+            return Response.json(
+              {
+                id: "copy-1",
+                title: "Renamed (Copy)",
+                status: "active",
+                messageCount: 1,
+                pinned: false,
+                config: { pinned: false },
+                createdAt: "2026-07-08T00:02:00Z",
+                updatedAt: "2026-07-08T00:02:00Z",
+              },
+              { status: 201 },
+            );
+          }
+          if (String(input).endsWith("/title")) {
+            return Response.json({ title: "Generated Server Title" });
+          }
+          if (String(input).endsWith("/related-questions")) {
+            return Response.json({ questions: ["Next?", 7, "Caveats?"] });
+          }
+          return Response.json({
+            id: "conversation/with slash",
+            title: "Renamed",
+            status: "active",
+            messageCount: 1,
+            systemInstruction: "be precise",
+            pinned: true,
+            config: { pinned: true },
+            createdAt: "2026-07-08T00:00:00Z",
+            updatedAt: "2026-07-08T00:01:00Z",
+          });
+        },
+      }),
+    );
+
+    await expect(
+      chat.updateConversation({
+        conversationId: "conversation/with slash",
+        title: "Renamed",
+        systemInstruction: "be precise",
+        pinned: true,
+      }),
+    ).resolves.toMatchObject({
+      id: "conversation/with slash",
+      title: "Renamed",
+      pinned: true,
+    });
+    await expect(
+      chat.deleteConversation("conversation/with slash"),
+    ).resolves.toBeUndefined();
+    await expect(
+      chat.duplicateConversation({
+        conversationId: "conversation/with slash",
+        idempotencyKey: "duplicate-key",
+      }),
+    ).resolves.toMatchObject({
+      id: "copy-1",
+      title: "Renamed (Copy)",
+      pinned: false,
+    });
+    await expect(
+      chat.generateConversationTitle({
+        conversationId: "conversation/with slash",
+        modelRef: { providerId: "openai", modelId: "gpt-title" },
+      }),
+    ).resolves.toEqual({ title: "Generated Server Title" });
+    await expect(
+      chat.generateRelatedQuestions({
+        conversationId: "conversation/with slash",
+        modelRef: { providerId: "openai", modelId: "gpt-related" },
+      }),
+    ).resolves.toEqual({ questions: ["Next?", "Caveats?"] });
+
+    expect(requests).toEqual([
+      {
+        url: "http://backend.test/v1/chat/conversations/conversation%2Fwith%20slash",
+        method: "PATCH",
+        body: {
+          title: "Renamed",
+          systemInstruction: "be precise",
+          pinned: true,
+        },
+      },
+      {
+        url: "http://backend.test/v1/chat/conversations/conversation%2Fwith%20slash",
+        method: "DELETE",
+        body: undefined,
+      },
+      {
+        url: "http://backend.test/v1/chat/conversations/conversation%2Fwith%20slash/duplicate",
+        method: "POST",
+        body: {
+          idempotencyKey: "duplicate-key",
+        },
+      },
+      {
+        url: "http://backend.test/v1/chat/conversations/conversation%2Fwith%20slash/title",
+        method: "POST",
+        body: {
+          modelRef: { providerId: "openai", modelId: "gpt-title" },
+        },
+      },
+      {
+        url: "http://backend.test/v1/chat/conversations/conversation%2Fwith%20slash/related-questions",
+        method: "POST",
+        body: {
+          modelRef: { providerId: "openai", modelId: "gpt-related" },
+        },
+      },
+    ]);
+  });
+
   it("lists conversations from the Go page envelope", async () => {
     const chat = createServerChatApiShell(
       createHttpClient({
@@ -509,6 +679,94 @@ describe("Phase 11.2A server chat CRUD adapter", () => {
     );
 
     await expect(chat.listConversations()).resolves.toHaveLength(1);
+  });
+
+  it("deletes single and subsequent messages through the Go message endpoint", async () => {
+    const requests: Array<{ url: string; method?: string }> = [];
+    const chat = createServerChatApiShell(
+      createHttpClient({
+        baseUrl: "http://backend.test",
+        fetchImpl: async (input, init) => {
+          requests.push({ url: String(input), method: init?.method });
+          return new Response(null, { status: 204 });
+        },
+      }),
+    );
+
+    await expect(
+      chat.deleteMessage({
+        conversationId: "conversation/with slash",
+        messageId: "message/with slash",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      chat.deleteMessage({
+        conversationId: "conversation/with slash",
+        messageId: "message/with slash",
+        scope: "subsequent",
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(requests).toEqual([
+      {
+        url: "http://backend.test/v1/chat/conversations/conversation%2Fwith%20slash/messages/message%2Fwith%20slash",
+        method: "DELETE",
+      },
+      {
+        url: "http://backend.test/v1/chat/conversations/conversation%2Fwith%20slash/messages/message%2Fwith%20slash?scope=subsequent",
+        method: "DELETE",
+      },
+    ]);
+  });
+
+  it("updates message content through the Go message endpoint", async () => {
+    const requests: Array<{ url: string; method?: string; body: unknown }> = [];
+    const chat = createServerChatApiShell(
+      createHttpClient({
+        baseUrl: "http://backend.test",
+        fetchImpl: async (input, init) => {
+          requests.push({
+            url: String(input),
+            method: init?.method,
+            body: JSON.parse(String(init?.body)),
+          });
+          return Response.json({
+            id: "message/with slash",
+            conversationId: "conversation/with slash",
+            role: "assistant",
+            status: "completed",
+            content: "edited",
+            sequenceNo: 2,
+            attachments: [],
+            outputBlocks: [],
+            metadata: {},
+            parentMessageId: "m1",
+            createdAt: "2026-07-08T00:00:00Z",
+            updatedAt: "2026-07-08T00:00:01Z",
+          });
+        },
+      }),
+    );
+
+    await expect(
+      chat.updateMessage({
+        conversationId: "conversation/with slash",
+        messageId: "message/with slash",
+        content: "edited",
+      }),
+    ).resolves.toMatchObject({
+      id: "message/with slash",
+      content: "edited",
+      parentMessageId: "m1",
+    });
+
+    expect(requests).toEqual([
+      {
+        url: "http://backend.test/v1/chat/conversations/conversation%2Fwith%20slash/messages/message%2Fwith%20slash",
+        method: "PATCH",
+        body: { content: "edited" },
+      },
+    ]);
   });
 
   it("appends completed user messages without server-managed fields", async () => {

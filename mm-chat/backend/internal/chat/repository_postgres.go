@@ -149,6 +149,358 @@ ORDER BY c.updated_at DESC, c.created_at DESC, c.id DESC
 	return conversations, nil
 }
 
+func (r *PostgresRepository) UpdateConversation(
+	ctx context.Context,
+	conversationID string,
+	input UpdateConversationInput,
+) (Conversation, error) {
+	if err := r.requireDB(); err != nil {
+		return Conversation{}, err
+	}
+	if !isUUID(conversationID) {
+		return Conversation{}, newValidationError("INVALID_CONVERSATION_ID", "conversation id must be a UUID")
+	}
+
+	userID := auth.UserOrDevelopment(ctx).ID
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Conversation{}, fmt.Errorf("begin update conversation: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	existing, err := scanConversation(tx.QueryRowContext(ctx, `
+SELECT
+  id,
+  user_id,
+  title,
+  status,
+  model_provider,
+  model_id,
+  system_prompt,
+  idempotency_key,
+  metadata,
+  created_at,
+  updated_at,
+  deleted_at,
+  0::bigint AS message_count
+FROM conversations
+WHERE id = $1
+  AND user_id = $2
+  AND deleted_at IS NULL
+FOR UPDATE
+`, conversationID, userID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Conversation{}, ErrConversationNotFound
+	}
+	if err != nil {
+		return Conversation{}, fmt.Errorf("lock conversation for update: %w", err)
+	}
+
+	metadata := mergeConversationMetadata(existing.Metadata, input)
+	encodedMetadata, err := marshalJSONObject(metadata)
+	if err != nil {
+		return Conversation{}, err
+	}
+
+	row := tx.QueryRowContext(ctx, `
+UPDATE conversations
+SET
+  title = CASE WHEN $3 THEN $4 ELSE title END,
+  model_provider = CASE WHEN $5 THEN NULLIF($6, '') ELSE model_provider END,
+  model_id = CASE WHEN $7 THEN NULLIF($8, '') ELSE model_id END,
+  system_prompt = CASE WHEN $9 THEN NULLIF($10, '') ELSE system_prompt END,
+  metadata = $11::jsonb,
+  updated_at = now()
+WHERE id = $1
+  AND user_id = $2
+  AND deleted_at IS NULL
+RETURNING
+  id,
+  user_id,
+  title,
+  status,
+  model_provider,
+  model_id,
+  system_prompt,
+  idempotency_key,
+  metadata,
+  created_at,
+  updated_at,
+  deleted_at,
+  (
+    SELECT COUNT(*)::bigint
+    FROM messages
+    WHERE conversation_id = conversations.id
+      AND deleted_at IS NULL
+  ) AS message_count
+`,
+		conversationID,
+		userID,
+		input.Title != nil,
+		valueOrEmpty(input.Title),
+		input.ModelProvider != nil,
+		valueOrEmpty(input.ModelProvider),
+		input.ModelID != nil,
+		valueOrEmpty(input.ModelID),
+		input.SystemPrompt != nil,
+		valueOrEmpty(input.SystemPrompt),
+		string(encodedMetadata),
+	)
+	conversation, err := scanConversation(row)
+	if err != nil {
+		return Conversation{}, fmt.Errorf("update conversation: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return Conversation{}, fmt.Errorf("commit update conversation: %w", err)
+	}
+
+	return conversation, nil
+}
+
+func (r *PostgresRepository) DeleteConversation(ctx context.Context, conversationID string) error {
+	if err := r.requireDB(); err != nil {
+		return err
+	}
+	if !isUUID(conversationID) {
+		return newValidationError("INVALID_CONVERSATION_ID", "conversation id must be a UUID")
+	}
+	userID := auth.UserOrDevelopment(ctx).ID
+
+	result, err := r.db.ExecContext(ctx, `
+UPDATE conversations
+SET status = 'deleted', deleted_at = COALESCE(deleted_at, now()), updated_at = now()
+WHERE id = $1
+  AND user_id = $2
+  AND deleted_at IS NULL
+`, conversationID, userID)
+	if err != nil {
+		return fmt.Errorf("delete conversation: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read delete conversation row count: %w", err)
+	}
+	if rowsAffected == 0 {
+		return ErrConversationNotFound
+	}
+
+	return nil
+}
+
+func (r *PostgresRepository) DuplicateConversation(
+	ctx context.Context,
+	conversationID string,
+	input DuplicateConversationInput,
+) (Conversation, error) {
+	if err := r.requireDB(); err != nil {
+		return Conversation{}, err
+	}
+	if !isUUID(conversationID) {
+		return Conversation{}, newValidationError("INVALID_CONVERSATION_ID", "conversation id must be a UUID")
+	}
+
+	newConversationID, err := r.generateID()
+	if err != nil {
+		return Conversation{}, err
+	}
+	input.Title = strings.TrimSpace(input.Title)
+	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
+
+	user := auth.UserOrDevelopment(ctx)
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Conversation{}, fmt.Errorf("begin duplicate conversation: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	if err := r.ensureUser(ctx, tx, user); err != nil {
+		return Conversation{}, err
+	}
+
+	source, err := scanConversation(tx.QueryRowContext(ctx, `
+SELECT
+  id,
+  user_id,
+  title,
+  status,
+  model_provider,
+  model_id,
+  system_prompt,
+  idempotency_key,
+  metadata,
+  created_at,
+  updated_at,
+  deleted_at,
+  0::bigint AS message_count
+FROM conversations
+WHERE id = $1
+  AND user_id = $2
+  AND deleted_at IS NULL
+FOR UPDATE
+`, conversationID, user.ID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Conversation{}, ErrConversationNotFound
+	}
+	if err != nil {
+		return Conversation{}, fmt.Errorf("lock source conversation for duplicate: %w", err)
+	}
+
+	title := input.Title
+	if title == "" {
+		title = duplicateConversationTitle(source.Title)
+	}
+	metadata := cloneJSONObject(source.Metadata)
+	metadata["pinned"] = false
+	encodedMetadata, err := marshalJSONObject(metadata)
+	if err != nil {
+		return Conversation{}, err
+	}
+
+	conversation, err := scanConversation(tx.QueryRowContext(ctx, `
+INSERT INTO conversations (
+  id,
+  user_id,
+  title,
+  model_provider,
+  model_id,
+  system_prompt,
+  idempotency_key,
+  metadata
+) VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), NULLIF($6, ''), NULLIF($7, ''), $8::jsonb)
+RETURNING
+  id,
+  user_id,
+  title,
+  status,
+  model_provider,
+  model_id,
+  system_prompt,
+  idempotency_key,
+  metadata,
+  created_at,
+  updated_at,
+  deleted_at,
+  0::bigint AS message_count
+`, newConversationID, user.ID, title, source.ModelProvider, source.ModelID, source.SystemPrompt, input.IdempotencyKey, string(encodedMetadata)))
+	if err != nil {
+		if isIdempotencyConflict(err, input.IdempotencyKey, "idx_conversations_user_idempotency") {
+			return Conversation{}, ErrIdempotencyConflict
+		}
+		return Conversation{}, fmt.Errorf("insert duplicate conversation: %w", err)
+	}
+
+	sourceMessages, err := queryConversationMessagesForDuplicate(ctx, tx, conversationID)
+	if err != nil {
+		return Conversation{}, err
+	}
+	oldToNewMessageID := make(map[string]string, len(sourceMessages))
+	for _, message := range sourceMessages {
+		newMessageID, err := r.generateID()
+		if err != nil {
+			return Conversation{}, err
+		}
+		oldToNewMessageID[message.ID] = newMessageID
+	}
+
+	for index, message := range sourceMessages {
+		newParentMessageID := ""
+		if message.ParentMessageID != "" {
+			newParentMessageID = oldToNewMessageID[message.ParentMessageID]
+		}
+		outputBlocks, err := marshalJSONArray(message.OutputBlocks)
+		if err != nil {
+			return Conversation{}, err
+		}
+		messageMetadata := cloneJSONObject(message.Metadata)
+		delete(messageMetadata, "runId")
+		encodedMessageMetadata, err := marshalJSONObject(messageMetadata)
+		if err != nil {
+			return Conversation{}, err
+		}
+		status, completedAtExpression := duplicateMessageStatus(message.Status)
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO messages (
+  id,
+  conversation_id,
+  user_id,
+  parent_message_id,
+  sequence_no,
+  role,
+  status,
+  content,
+  model_provider,
+  model_id,
+  provider_message_id,
+  output_blocks,
+  metadata,
+  completed_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, ''), NULLIF($10, ''), NULLIF($11, ''), $12::jsonb, $13::jsonb, `+completedAtExpression+`)
+`, oldToNewMessageID[message.ID], newConversationID, user.ID, nullIfEmpty(newParentMessageID), index, message.Role, status, message.Content, message.ModelProvider, message.ModelID, message.ProviderMessageID, string(outputBlocks), string(encodedMessageMetadata)); err != nil {
+			return Conversation{}, fmt.Errorf("insert duplicate message: %w", err)
+		}
+
+		for attachmentIndex, attachment := range message.Attachments {
+			linkID, err := r.generateID()
+			if err != nil {
+				return Conversation{}, err
+			}
+			if _, err := tx.ExecContext(
+				ctx,
+				messageAttachmentInsertSQL,
+				linkID,
+				oldToNewMessageID[message.ID],
+				attachment.FileID,
+				user.ID,
+				attachmentIndex,
+				attachment.Purpose,
+			); err != nil {
+				return Conversation{}, fmt.Errorf("insert duplicate message attachment: %w", err)
+			}
+		}
+	}
+
+	conversation.MessageCount = len(sourceMessages)
+	if _, err := tx.ExecContext(ctx, `UPDATE conversations SET updated_at = now() WHERE id = $1 AND user_id = $2`, newConversationID, user.ID); err != nil {
+		return Conversation{}, fmt.Errorf("touch duplicate conversation: %w", err)
+	}
+	conversation, err = scanConversation(tx.QueryRowContext(ctx, `
+SELECT
+  c.id,
+  c.user_id,
+  c.title,
+  c.status,
+  c.model_provider,
+  c.model_id,
+  c.system_prompt,
+  c.idempotency_key,
+  c.metadata,
+  c.created_at,
+  c.updated_at,
+  c.deleted_at,
+  COUNT(m.id)::bigint AS message_count
+FROM conversations c
+LEFT JOIN messages m ON m.conversation_id = c.id AND m.deleted_at IS NULL
+WHERE c.id = $1
+  AND c.user_id = $2
+  AND c.deleted_at IS NULL
+GROUP BY c.id
+`, newConversationID, user.ID))
+	if err != nil {
+		return Conversation{}, fmt.Errorf("query duplicate conversation: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return Conversation{}, fmt.Errorf("commit duplicate conversation: %w", err)
+	}
+
+	return conversation, nil
+}
+
 func (r *PostgresRepository) ListMessages(
 	ctx context.Context,
 	conversationID string,
@@ -190,6 +542,198 @@ ORDER BY sequence_no ASC, created_at ASC, id ASC
 	}
 
 	return messages, nil
+}
+
+func (r *PostgresRepository) UpdateMessage(
+	ctx context.Context,
+	conversationID string,
+	messageID string,
+	input UpdateMessageInput,
+) (Message, error) {
+	if err := r.requireDB(); err != nil {
+		return Message{}, err
+	}
+	if !isUUID(conversationID) {
+		return Message{}, newValidationError("INVALID_CONVERSATION_ID", "conversation id must be a UUID")
+	}
+	if !isUUID(messageID) {
+		return Message{}, newValidationError("INVALID_MESSAGE_ID", "message id must be a UUID")
+	}
+	if input.Content == nil {
+		return Message{}, newValidationError("NO_MESSAGE_UPDATES", "message update requires at least one editable field")
+	}
+	content := strings.TrimSpace(*input.Content)
+	if content == "" {
+		return Message{}, newValidationError("EMPTY_CONTENT", "message content is required")
+	}
+
+	userID := auth.UserOrDevelopment(ctx).ID
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Message{}, fmt.Errorf("begin update message: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	if err := lockConversationForUser(ctx, tx, conversationID, userID); err != nil {
+		return Message{}, err
+	}
+
+	var existingID string
+	if err := tx.QueryRowContext(ctx, `
+SELECT id
+FROM messages
+WHERE id = $1
+  AND conversation_id = $2
+  AND deleted_at IS NULL
+FOR UPDATE
+`, messageID, conversationID).Scan(&existingID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Message{}, ErrMessageNotFound
+		}
+		return Message{}, fmt.Errorf("lock message for update: %w", err)
+	}
+
+	row := tx.QueryRowContext(ctx, `
+UPDATE messages
+SET content = $3,
+    output_blocks = '[]'::jsonb,
+    updated_at = now()
+WHERE id = $1
+  AND conversation_id = $2
+  AND deleted_at IS NULL
+RETURNING
+  id,
+  conversation_id,
+  user_id,
+  parent_message_id,
+  sequence_no,
+  role,
+  status,
+  content,
+  model_provider,
+  model_id,
+  provider_message_id,
+  idempotency_key,
+  output_blocks,
+  metadata,
+  created_at,
+  updated_at,
+  completed_at,
+  deleted_at
+`, messageID, conversationID, content)
+	message, err := scanMessage(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Message{}, ErrMessageNotFound
+		}
+		return Message{}, fmt.Errorf("update message: %w", err)
+	}
+
+	if _, err := tx.ExecContext(
+		ctx,
+		`UPDATE conversations SET updated_at = now() WHERE id = $1 AND user_id = $2`,
+		conversationID,
+		userID,
+	); err != nil {
+		return Message{}, fmt.Errorf("touch conversation after message update: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return Message{}, fmt.Errorf("commit update message: %w", err)
+	}
+
+	return message, nil
+}
+
+func (r *PostgresRepository) DeleteMessage(
+	ctx context.Context,
+	conversationID string,
+	messageID string,
+	input DeleteMessageInput,
+) error {
+	if err := r.requireDB(); err != nil {
+		return err
+	}
+	if !isUUID(conversationID) {
+		return newValidationError("INVALID_CONVERSATION_ID", "conversation id must be a UUID")
+	}
+	if !isUUID(messageID) {
+		return newValidationError("INVALID_MESSAGE_ID", "message id must be a UUID")
+	}
+
+	userID := auth.UserOrDevelopment(ctx).ID
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin delete message: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	if err := lockConversationForUser(ctx, tx, conversationID, userID); err != nil {
+		return err
+	}
+
+	var sequenceNo int
+	if err := tx.QueryRowContext(ctx, `
+SELECT sequence_no
+FROM messages
+WHERE id = $1
+  AND conversation_id = $2
+  AND deleted_at IS NULL
+FOR UPDATE
+`, messageID, conversationID).Scan(&sequenceNo); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrMessageNotFound
+		}
+		return fmt.Errorf("lock message for delete: %w", err)
+	}
+
+	var result sql.Result
+	if input.DeleteSubsequent {
+		result, err = tx.ExecContext(ctx, `
+UPDATE messages
+SET deleted_at = COALESCE(deleted_at, now()), updated_at = now()
+WHERE conversation_id = $1
+  AND sequence_no >= $2
+  AND deleted_at IS NULL
+`, conversationID, sequenceNo)
+	} else {
+		result, err = tx.ExecContext(ctx, `
+UPDATE messages
+SET deleted_at = COALESCE(deleted_at, now()), updated_at = now()
+WHERE id = $1
+  AND conversation_id = $2
+  AND deleted_at IS NULL
+`, messageID, conversationID)
+	}
+	if err != nil {
+		return fmt.Errorf("delete message: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read delete message row count: %w", err)
+	}
+	if rowsAffected == 0 {
+		return ErrMessageNotFound
+	}
+
+	if _, err := tx.ExecContext(
+		ctx,
+		`UPDATE conversations SET updated_at = now() WHERE id = $1 AND user_id = $2`,
+		conversationID,
+		userID,
+	); err != nil {
+		return fmt.Errorf("touch conversation after message delete: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete message: %w", err)
+	}
+
+	return nil
 }
 
 func (r *PostgresRepository) GetMessage(
@@ -793,6 +1337,49 @@ func loadMessageAttachments(
 	return attachmentsByMessageID, nil
 }
 
+func queryConversationMessagesForDuplicate(
+	ctx context.Context,
+	tx *sql.Tx,
+	conversationID string,
+) ([]Message, error) {
+	rows, err := tx.QueryContext(ctx, messageSelectSQL+`
+WHERE conversation_id = $1
+  AND deleted_at IS NULL
+ORDER BY sequence_no ASC, created_at ASC, id ASC
+FOR UPDATE
+`, conversationID)
+	if err != nil {
+		return nil, fmt.Errorf("query source messages for duplicate: %w", err)
+	}
+	defer rows.Close()
+
+	messages := []Message{}
+	for rows.Next() {
+		message, err := scanMessage(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan source message for duplicate: %w", err)
+		}
+		messages = append(messages, message)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate source messages for duplicate: %w", err)
+	}
+
+	messageIDs := make([]string, 0, len(messages))
+	for _, message := range messages {
+		messageIDs = append(messageIDs, message.ID)
+	}
+	attachmentsByMessageID, err := loadMessageAttachments(ctx, tx, auth.UserOrDevelopment(ctx).ID, messageIDs)
+	if err != nil {
+		return nil, err
+	}
+	for index := range messages {
+		messages[index].Attachments = attachmentsByMessageID[messages[index].ID]
+	}
+
+	return messages, nil
+}
+
 func lockConversationForUser(
 	ctx context.Context,
 	tx *sql.Tx,
@@ -1271,6 +1858,56 @@ func scanMessage(scanner rowScanner) (Message, error) {
 	message.Metadata = decodedMetadata
 
 	return message, nil
+}
+
+func mergeConversationMetadata(existing map[string]any, input UpdateConversationInput) map[string]any {
+	if input.ReplaceMetadata != nil {
+		return cloneJSONObject(*input.ReplaceMetadata)
+	}
+
+	merged := cloneJSONObject(existing)
+	for _, key := range input.MetadataDeleteKeys {
+		delete(merged, key)
+	}
+	for key, value := range input.MetadataMerge {
+		merged[key] = value
+	}
+
+	return merged
+}
+
+func cloneJSONObject(value map[string]any) map[string]any {
+	cloned := make(map[string]any, len(value))
+	for key, item := range value {
+		cloned[key] = item
+	}
+	return cloned
+}
+
+func duplicateConversationTitle(title string) string {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		title = "New Chat"
+	}
+	return title + " (Copy)"
+}
+
+func duplicateMessageStatus(status string) (string, string) {
+	switch status {
+	case "pending", "streaming":
+		return "cancelled", "now()"
+	case "completed", "failed", "cancelled":
+		return status, "now()"
+	default:
+		return "completed", "now()"
+	}
+}
+
+func valueOrEmpty(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func marshalJSONObject(value map[string]any) ([]byte, error) {

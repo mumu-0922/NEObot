@@ -8,6 +8,7 @@ import type {
   SearchProviderID,
   SearchServiceConfig,
   Session,
+  TextSkill,
   Workspace,
 } from "../../types";
 import {
@@ -80,6 +81,10 @@ export interface ResolveEffectiveChatContextOptions {
   installedPlugins: Plugin[];
   pluginConfigs: Record<string, PluginConfig>;
   activePlugins: string[];
+  activePluginIdsOverride?: string[];
+  installedSkills?: TextSkill[];
+  activeSkillIds?: string[];
+  activeSkillIdsOverride?: string[];
 }
 
 function formatCurrentDateTime(now: Date | number | undefined): string {
@@ -176,6 +181,10 @@ export function resolveEffectiveChatContext(
     installedPlugins,
     pluginConfigs,
     activePlugins,
+    activePluginIdsOverride,
+    installedSkills = [],
+    activeSkillIds: fallbackActiveSkillIds = [],
+    activeSkillIdsOverride,
   } = options;
 
   const searchConfig =
@@ -190,16 +199,26 @@ export function resolveEffectiveChatContext(
     modelMetadata,
     customModelMetadata,
   });
-  const requestedPluginIds = session?.config?.activePlugins || activePlugins;
+  const requestedPluginIds =
+    activePluginIdsOverride ?? session?.config?.activePlugins ?? activePlugins;
   const activePluginIds = normalizeActivePluginIds(
     requestedPluginIds,
     installedPlugins,
     pluginConfigs,
     { unauthenticatedAllowedPluginIds: ["unsplash"] },
   );
+  const sessionSkillIds = session?.config?.activeSkills || [];
+  const workspaceSkillIds = workspace?.activeSkills || [];
+  const requestedSkillIds =
+    activeSkillIdsOverride ??
+    (sessionSkillIds.length
+      ? sessionSkillIds
+      : workspaceSkillIds.length
+        ? workspaceSkillIds
+        : fallbackActiveSkillIds);
   const activeSkillIds = normalizeSkillIdRefs(
-    session?.config?.activeSkills || workspace?.activeSkills || [],
-    [],
+    requestedSkillIds,
+    installedSkills,
   );
   const statuses: CapabilityStatus[] = [];
 

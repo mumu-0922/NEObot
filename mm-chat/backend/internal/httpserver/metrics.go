@@ -397,6 +397,10 @@ func knownMetricPath(path string) (string, bool) {
 	case "/v1/auth/login", "/v1/auth/logout", "/v1/auth/invites/accept",
 		"/v1/auth/recovery/request", "/v1/auth/recovery/complete":
 		return path, true
+	case "/v1/chat/tools/plan":
+		return path, true
+	case "/v1/agents":
+		return path, true
 	}
 	parts := strings.Split(path, "/")
 	if len(parts) == 6 && parts[1] == "v1" && parts[2] == "me" && parts[3] == "knowledge" && parts[4] == "query-consents" {
@@ -472,8 +476,17 @@ func knownMetricPath(path string) (string, bool) {
 				return "/v1/chat/conversations/{id}/messages", true
 			case "stream":
 				return "/v1/chat/conversations/{id}/stream", true
+			case "duplicate":
+				return "/v1/chat/conversations/{id}/duplicate", true
+			case "title":
+				return "/v1/chat/conversations/{id}/title", true
+			case "related-questions":
+				return "/v1/chat/conversations/{id}/related-questions", true
 			}
 		}
+	}
+	if len(parts) == 4 && parts[1] == "v1" && parts[2] == "agents" {
+		return "/v1/agents/{identifier}", true
 	}
 	if len(parts) == 6 && parts[1] == "v1" && parts[2] == "chat" && parts[3] == "runs" && parts[5] == "cancel" {
 		return "/v1/chat/runs/{id}/cancel", true

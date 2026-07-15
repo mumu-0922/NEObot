@@ -193,6 +193,61 @@ describe("agent service", () => {
     expect(setMarketAgents).toHaveBeenCalledWith([jaAgent], "ja");
   });
 
+  it("routes server-mode agent list requests through the Go API base URL", async () => {
+    const previousMode = process.env.NEXT_PUBLIC_API_MODE;
+    const previousBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+    process.env.NEXT_PUBLIC_API_MODE = "server";
+    process.env.NEXT_PUBLIC_API_BASE_URL = "/mm-api";
+    const setMarketAgents = vi.fn();
+    storeState.value = {
+      marketAgents: [],
+      marketAgentsTimestamp: 0,
+      marketAgentsLocale: "",
+      setMarketAgents,
+    };
+    const serverAgent = {
+      identifier: "server-agent",
+      meta: {
+        avatar: "bot",
+        title: "Server Agent",
+        description: "Served by Go",
+        tags: [],
+        category: "General",
+      },
+      createdAt: "",
+      homepage: "",
+      author: "",
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ agents: [serverAgent] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const { getAgents } = await import("../services/api/agentService");
+
+    try {
+      await expect(getAgents(false, "zh-CN")).resolves.toEqual([serverAgent]);
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/mm-api/v1/agents?locale=zh",
+        expect.objectContaining({ method: "GET" }),
+      );
+      expect(setMarketAgents).toHaveBeenCalledWith([serverAgent], "zh");
+    } finally {
+      if (previousMode === undefined) {
+        delete process.env.NEXT_PUBLIC_API_MODE;
+      } else {
+        process.env.NEXT_PUBLIC_API_MODE = previousMode;
+      }
+      if (previousBaseUrl === undefined) {
+        delete process.env.NEXT_PUBLIC_API_BASE_URL;
+      } else {
+        process.env.NEXT_PUBLIC_API_BASE_URL = previousBaseUrl;
+      }
+    }
+  });
+
   it("uses stale cache without overwriting it when the agent registry is unavailable", async () => {
     const now = Date.UTC(2026, 0, 1);
     vi.spyOn(Date, "now").mockReturnValue(now);

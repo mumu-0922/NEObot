@@ -22,4 +22,4 @@ When a new plan or scope change appears:
 3. Add dated evidence to [`tracking/process.md`](./tracking/process.md) when work completes.
 4. Put new docs in the matching category instead of the workspace root.
 
-Current post-Phase-10 planning lives in [`architecture/phase-11-plus-roadmap.md`](./architecture/phase-11-plus-roadmap.md).
+Current remaining-work authority lives in [`architecture/standalone-parity-sliced-cutover-plan.md`](./architecture/standalone-parity-sliced-cutover-plan.md), with the dedicated process log at [`tracking/standalone-parity-sliced-process.md`](./tracking/standalone-parity-sliced-process.md). Older phase plans remain supporting references for domain details.

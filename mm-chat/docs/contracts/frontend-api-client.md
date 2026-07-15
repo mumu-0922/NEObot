@@ -1590,14 +1590,16 @@ Earlier future mappings in §8.2 remain roadmap items.
 
 #### Conversations
 
-| Client method        | Go endpoint                   | Phase 11 behavior                                                                   |
-| -------------------- | ----------------------------- | ----------------------------------------------------------------------------------- |
-| `createConversation` | `POST /v1/chat/conversations` | Send `title`, `modelRef`, optional `systemInstruction`, `config`, `idempotencyKey`. |
-| `listConversations`  | `GET /v1/chat/conversations`  | Parse `{ items }`; no cursor support yet.                                           |
-| `getConversation`    | none                          | Derive from `listConversations` only if needed; otherwise report unsupported.       |
-| `updateConversation` | none                          | Not implemented in server mode slice 1.                                             |
-| `deleteConversation` | none                          | Not implemented in server mode slice 1.                                             |
-| `generateTitle`      | none                          | Keep out of server mode slice 1.                                                    |
+| Client method           | Go endpoint                                          | Current server-mode behavior                                                         |
+| ----------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `createConversation`    | `POST /v1/chat/conversations`                        | Send `title`, `modelRef`, optional `systemInstruction`, `config`, `idempotencyKey`.  |
+| `listConversations`     | `GET /v1/chat/conversations`                         | Parse `{ items }`; no cursor support yet.                                            |
+| `getConversation`       | none                                                 | Derive from `listConversations` only if needed; otherwise report unsupported.        |
+| `updateConversation`    | `PATCH /v1/chat/conversations/{id}`                  | Update title, system instruction, model ref, config, and pinned metadata.            |
+| `deleteConversation`    | `DELETE /v1/chat/conversations/{id}`                 | Soft-delete the server conversation, then select the next server snapshot.           |
+| `duplicateConversation` | `POST /v1/chat/conversations/{id}/duplicate`         | Duplicate conversation metadata and visible messages, then load the copied snapshot. |
+| `generateTitle`         | `POST /v1/chat/conversations/{id}/title`             | Generate from server-owned history, then update via `PATCH` if the UI guard passes.  |
+| `relatedQuestions`      | `POST /v1/chat/conversations/{id}/related-questions` | Generate follow-up questions from server-owned history; no browser history payload.  |
 
 Server response shape is `ConversationDTO`:
 
@@ -1616,11 +1618,13 @@ Server response shape is `ConversationDTO`:
 
 #### Messages
 
-| Client method                  | Go endpoint                                 | Phase 11 behavior                          |
-| ------------------------------ | ------------------------------------------- | ------------------------------------------ |
-| `appendUserMessage`            | `POST /v1/chat/conversations/{id}/messages` | Creates one completed `role=user` message. |
-| `listMessages`                 | `GET /v1/chat/conversations/{id}/messages`  | Parse `{ items }` in sequence order.       |
-| message edit/delete/regenerate | none                                        | Not implemented in server mode slice 1.    |
+| Client method       | Go endpoint                                               | Current server-mode behavior                                                  |
+| ------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `appendUserMessage` | `POST /v1/chat/conversations/{id}/messages`               | Creates one completed `role=user` message.                                    |
+| `listMessages`      | `GET /v1/chat/conversations/{id}/messages`                | Parse `{ items }` in sequence order.                                          |
+| `updateMessage`     | `PATCH /v1/chat/conversations/{id}/messages/{messageId}`  | Edit content and clear stale output blocks.                                   |
+| `deleteMessage`     | `DELETE /v1/chat/conversations/{id}/messages/{messageId}` | Soft-delete one message; `scope=subsequent` retracts current and later items. |
+| regeneration        | `POST /v1/chat/conversations/{id}/stream`                 | Reuse the parent user message and create a sibling assistant branch.          |
 
 `appendUserMessage` must send only fields accepted by the Go handler:
 
@@ -1643,6 +1647,25 @@ Rules:
   `sequenceNo`, timestamps, output blocks, identity hints) must not be sent.
 - Attachments are server file references only. `opfs`, `inline`, `remote`,
   base64 data, object keys, and bucket names are forbidden here.
+
+#### Agent Catalog
+
+G2 adds a catalog adapter under the same API client factory:
+
+| Client method           | Go endpoint                                     | Current server-mode behavior                                                                                                         |
+| ----------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `agents.listAgents`     | `GET /v1/agents?locale=en\|zh\|ja`              | Fetches and normalizes the upstream LobeHub catalog through Go; on registry failure returns `{ "agents": [], "unavailable": true }`. |
+| `agents.getAgentDetail` | `GET /v1/agents/{identifier}?locale=en\|zh\|ja` | Fetches localized details through Go and returns normalized assistant metadata plus optional `config.systemRole`.                    |
+
+Rules:
+
+- Server mode must not call `/api/agents` or `/api/agents/{identifier}` from
+  browser code; those Next routes remain only as G9 transitional removal
+  targets.
+- Agent identifiers are bounded to `[A-Za-z0-9._-]+`; invalid identifiers fail
+  before any upstream registry request.
+- Catalog responses are public, normalized, and contain no provider secrets,
+  user data, or browser-local assistant state.
 
 #### Stream Runs
 
@@ -1937,3 +1960,158 @@ Operational rollback smoke:
   document parsing.
 - Confirm no server-mode adapter code is imported in a way that performs
   network calls during local bootstrap.
+
+## 21. Server Plugin Orchestration Contract
+
+### 21.1 Scope / Trigger
+
+This contract applies when `NEXT_PUBLIC_API_MODE=server` and one or more
+installed plugins are active. The provider credential remains owned by Go;
+plugin auth remains browser-encrypted and is resolved only by the hardened
+Next plugin execution route. Copying `PROVIDER_API_KEY` into the frontend is
+forbidden.
+
+```text
+browser selection
+  -> Go tool planning
+  -> browser validates offered call
+  -> Next plugin execution
+  -> bounded untrusted result context
+  -> Go final stream and persistence
+```
+
+### 21.2 Signatures
+
+Backend route:
+
+```http
+POST /v1/chat/tools/plan
+Content-Type: application/json
+```
+
+Frontend API-client signature:
+
+```ts
+planTools(input: {
+  prompt: string;
+  modelRef: ModelRef;
+  tools: Array<{
+    type: "function";
+    function: {
+      name: string;
+      description?: string;
+      parameters: Record<string, unknown>;
+    };
+  }>;
+  signal?: AbortSignal;
+}): Promise<Array<{
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+}>>;
+```
+
+### 21.3 Contracts
+
+Request limits:
+
+- `prompt`: required, trimmed, at most 16 KiB UTF-8;
+- `modelRef`: required; `SERVER_DEFAULT:*` maps to the configured Go provider;
+- `tools`: 1-32 function definitions;
+- function name: 1-128 bytes, starts with a letter/underscore/hyphen, then
+  contains only letters, digits, underscores, or hyphens;
+- description: at most 2,048 bytes;
+- parameters: required JSON object, at most 32 KiB encoded.
+
+Response:
+
+```json
+{
+  "calls": [
+    {
+      "id": "call-1",
+      "name": "getCurrentWeather",
+      "args": { "location": "Shanghai" }
+    }
+  ]
+}
+```
+
+Browser execution rules:
+
+- Only installed, active, enabled functions are offered and executable.
+- Duplicate function names across active plugins fail before planning.
+- Auth configuration and plaintext secrets are never serialized into the Go
+  request.
+- Planned function names must exactly match an offered name.
+- Result records execute sequentially and retain `success|error` status.
+- Result context is at most 64 KiB UTF-8, is explicitly labeled untrusted, and
+  is appended to the final Go stream instruction; oversized results carry a
+  bounded `resultPreview` and `resultTruncated: true`.
+- For browser mutating `/api/*` calls, compare `Origin` against the external
+  HTTP `Host`, not the container-internal `nextUrl.origin`. Use
+  `X-Forwarded-Host`/`X-Forwarded-Proto` only when
+  `TRUST_PROXY_HEADERS=true`; an untrusted forwarded header must never widen
+  the allowed origin.
+
+### 21.4 Validation & Error Matrix
+
+| Condition                                                                      | Result                                                       |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| Empty prompt, model, or tool list                                              | `400 INVALID_TOOL_PLAN` or `MODEL_REF_REQUIRED`              |
+| Invalid/oversized tool schema                                                  | `400 INVALID_TOOL_PLAN`                                      |
+| Configured provider has no planner                                             | `501 TOOLS_UNSUPPORTED`                                      |
+| Provider request/decode failure                                                | `502 PROVIDER_ERROR` without provider body/key               |
+| Provider returns an unoffered function, non-object args, or more than 32 calls | `502 PROVIDER_ERROR`; browser also fails closed              |
+| Plugin execution returns `{ "error": ... }`                                    | Record `status: "error"`; final model must not claim success |
+| Abort before/during plan or execution                                          | Stop the orchestration and do not start the final stream     |
+| Browser `Origin` differs from external `Host`                                  | `403 CSRF_ORIGIN_BLOCKED`                                    |
+| External `18080` maps to internal `3000`, with matching browser Origin/Host    | Same-origin request is allowed                               |
+
+### 21.5 Good / Base / Bad Cases
+
+- Good: Weather is active; Go plans `getCurrentWeather`; browser executes it;
+  the final persisted assistant message uses the returned temperature.
+- Base: Plugins are active but the model returns `calls: []`; no plugin route is
+  called and normal Go chat continues.
+- Bad: Provider returns `delete_all` when it was not offered; neither the Next
+  execution route nor the final stream is called.
+
+### 21.6 Tests Required
+
+- Go provider: request shape, valid tool call, invalid JSON-object arguments,
+  response-size bound, and non-2xx credential redaction.
+- Go handler: route registration, request limits, planner success, unsupported
+  planner, and unoffered-call rejection.
+- Frontend API client: `/v1/chat/tools/plan` URL/body mapping and malformed
+  successful-response rejection.
+- Frontend orchestration: no-active-plugin no-op, secret exclusion, active-call
+  execution, unoffered-call failure, execution error status, abort, and 64 KiB
+  result bound.
+- Composition: server mode opens both skill and plugin menus; search/reasoning
+  remain on the unsupported-action gate.
+- Live smoke: real plan, real plugin response, final Go SSE completion, message
+  reload, and cleanup of the smoke conversation.
+
+### 21.7 Wrong vs Correct
+
+Wrong: expose the Go provider key to restore the legacy browser tool loop.
+
+```ts
+// Forbidden: browser-visible provider credential.
+const provider = { apiKey: process.env.PROVIDER_API_KEY };
+```
+
+Correct: provider planning remains in Go, while browser plugin auth is sent
+only as the existing encrypted envelope to `/api/plugins/execute`.
+
+```ts
+const calls = await api.chat.planTools({ prompt, modelRef, tools, signal });
+const result = await executePluginFunction(
+  calls[0].name,
+  calls[0].args,
+  undefined,
+  activePluginIds,
+  signal,
+);
+```

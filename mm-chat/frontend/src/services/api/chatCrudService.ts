@@ -7,10 +7,16 @@ import {
   type ChatMessageDTO,
   type ConversationDTO,
   type CreateConversationInput,
+  type DeleteMessageInput,
+  type DuplicateConversationInput,
+  type GenerateConversationTitleInput,
   type ModelRef,
+  type UpdateConversationInput,
+  type UpdateMessageInput,
   type NeoChatApiClient,
   type ServerAttachmentDTO,
 } from "./client";
+import { normalizeSessionTitle } from "../../lib/chat/entities";
 import { SERVER_DEFAULT_PROVIDER_ID } from "../../lib/defaultConfig/shared";
 
 const SERVER_DEFAULT_BACKEND_PROVIDER_ID = "openai_compatible";
@@ -29,6 +35,7 @@ export interface ChatCrudSession {
   updatedAt: number;
   model: string;
   pinned: boolean;
+  systemInstruction?: string;
   config?: ChatCrudSessionConfig;
 }
 
@@ -52,6 +59,8 @@ export interface ChatCrudMessage {
   attachments?: ChatCrudAttachment[];
   model?: string;
   outputBlocks?: unknown[];
+  parentMessageId?: string;
+  treeParentMessageId?: string | null;
 }
 
 export interface ChatCrudServiceOptions {
@@ -64,6 +73,16 @@ export interface ChatCrudService {
   serverEnabled: boolean;
   createConversation(input: CreateConversationInput): Promise<ChatCrudSession>;
   listConversations(): Promise<ChatCrudSession[]>;
+  updateConversation(input: UpdateConversationInput): Promise<ChatCrudSession>;
+  deleteConversation(conversationId: string): Promise<void>;
+  duplicateConversation(
+    input: DuplicateConversationInput,
+  ): Promise<ChatCrudSession>;
+  generateConversationTitle(
+    input: GenerateConversationTitleInput,
+  ): Promise<string>;
+  updateMessage(input: UpdateMessageInput): Promise<ChatCrudMessage>;
+  deleteMessage(input: DeleteMessageInput): Promise<void>;
   appendUserMessage(input: AppendUserMessageInput): Promise<ChatCrudMessage>;
   listMessages(conversationId: string): Promise<ChatCrudMessage[]>;
 }
@@ -103,6 +122,46 @@ export function createChatCrudService(
       return conversations.map(mapConversationDtoToSession);
     },
 
+    async updateConversation(input) {
+      requireServerCrud();
+      return mapConversationDtoToSession(
+        await client.chat.updateConversation(input),
+      );
+    },
+
+    async deleteConversation(conversationId) {
+      requireServerCrud();
+      await client.chat.deleteConversation(conversationId);
+    },
+
+    async duplicateConversation(input) {
+      requireServerCrud();
+      return mapConversationDtoToSession(
+        await client.chat.duplicateConversation(input),
+      );
+    },
+
+    async generateConversationTitle(input) {
+      requireServerCrud();
+      const response = await client.chat.generateConversationTitle(input);
+      return normalizeSessionTitle(response.title);
+    },
+
+    async updateMessage(input) {
+      requireServerCrud();
+      return mapChatMessageDtoToMessage(
+        await client.chat.updateMessage(input),
+        {
+          baseUrl,
+        },
+      );
+    },
+
+    async deleteMessage(input) {
+      requireServerCrud();
+      await client.chat.deleteMessage(input);
+    },
+
     async appendUserMessage(input) {
       requireServerCrud();
       return mapChatMessageDtoToMessage(
@@ -136,7 +195,11 @@ export function mapConversationDtoToSession(
       "conversation.updatedAt",
     ),
     model: modelRefToModelString(conversation.modelRef),
-    pinned: false,
+    pinned: conversation.pinned === true || conversation.config.pinned === true,
+    systemInstruction:
+      typeof conversation.systemInstruction === "string"
+        ? conversation.systemInstruction
+        : undefined,
     config: normalizeConversationConfig(conversation.config),
   };
 }
@@ -168,7 +231,27 @@ export function mapChatMessageDtoToMessage(
     ...(message.outputBlocks.length > 0
       ? { outputBlocks: message.outputBlocks }
       : {}),
+    ...(message.parentMessageId
+      ? { parentMessageId: message.parentMessageId }
+      : {}),
+    ...treeParentFromMetadata(message.metadata),
   };
+}
+
+function treeParentFromMetadata(
+  metadata: Record<string, unknown>,
+): Pick<ChatCrudMessage, "treeParentMessageId"> {
+  if (!Object.prototype.hasOwnProperty.call(metadata, "treeParentMessageId")) {
+    return {};
+  }
+  const value = metadata.treeParentMessageId;
+  if (typeof value === "string" && value.trim()) {
+    return { treeParentMessageId: value.trim() };
+  }
+  if (value === null) {
+    return { treeParentMessageId: null };
+  }
+  return {};
 }
 
 export function modelRefToModelString(modelRef?: ModelRef): string {

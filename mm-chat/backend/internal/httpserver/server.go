@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"neo-chat/mm-chat/backend/internal/agents"
 	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/browserimport"
 	"neo-chat/mm-chat/backend/internal/chat"
@@ -56,6 +57,7 @@ type options struct {
 	maxImportBytes       int64
 	teamService          *teams.Service
 	knowledgeService     *knowledge.Service
+	agentService         *agents.Service
 }
 
 func WithReadyChecker(checker health.ReadinessChecker) Option {
@@ -166,6 +168,12 @@ func WithKnowledgeService(service *knowledge.Service) Option {
 	}
 }
 
+func WithAgentService(service *agents.Service) Option {
+	return func(opts *options) {
+		opts.agentService = service
+	}
+}
+
 func New(cfg config.Config, opts ...Option) *http.Server {
 	return &http.Server{
 		Addr:              cfg.Addr,
@@ -215,6 +223,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	)
 	teamHandler := teams.NewHandler(resolvedOptions.teamService)
 	knowledgeHandler := knowledge.NewHandler(resolvedOptions.knowledgeService)
+	agentHandler := agents.NewHandler(resolvedOptions.agentService)
 
 	mux.HandleFunc("/health", healthHandler.Health)
 	mux.HandleFunc("/ready", healthHandler.Ready)
@@ -230,6 +239,9 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/chat/conversations", chatHandler)
 	mux.Handle("/v1/chat/conversations/", chatHandler)
 	mux.Handle("/v1/chat/runs/", chatHandler)
+	mux.Handle("/v1/chat/tools/plan", chatHandler)
+	mux.Handle("/v1/agents", agentHandler)
+	mux.Handle("/v1/agents/", agentHandler)
 	mux.Handle("/v1/files", fileHandler)
 	mux.Handle("/v1/files/", fileHandler)
 	mux.Handle("/v1/import/browser", importHandler)
@@ -349,11 +361,13 @@ func isPublicWithoutAuthRequest(r *http.Request) bool {
 	switch r.URL.Path {
 	case "/health", "/ready", "/metrics", "/v1/version":
 		return r.Method == http.MethodGet
+	case "/v1/agents":
+		return r.Method == http.MethodGet
 	case "/v1/auth/login", "/v1/auth/invites/accept",
 		"/v1/auth/recovery/request", "/v1/auth/recovery/complete":
 		return r.Method == http.MethodPost
 	default:
-		return false
+		return r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/agents/")
 	}
 }
 
