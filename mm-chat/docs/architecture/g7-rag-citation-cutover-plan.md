@@ -743,14 +743,34 @@ G7.5.29 completed on 2026-07-16:
 - Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
   slice does not spend provider quota in tests.
 
+G7.5.30 completed on 2026-07-16:
+
+- Added `MinerUTextBaselineArchiveParserGateway`, a default-off ParserGateway
+  shaped adapter over the G7.5.29 archive-to-text-baseline composition seam.
+- Added a narrow `MinerUResultArchiveProvider` protocol so the parser adapter
+  can receive already downloaded MinerU ZIP bytes from an injected dependency
+  instead of allocating/uploading/polling/downloading by itself.
+- The adapter admits only a `ProcessingJobContext` in `parse` stage with a
+  non-zero `materialization_id`, validates PDF content type and source SHA-256,
+  then derives a deterministic text-baseline `artifact_set_id` from
+  materialization id, source hash, and the frozen chunk profile hash.
+- Missing archive provider fails closed with
+  `MINERU_GATEWAY_DEPENDENCY_UNCONFIGURED` before any archive fetch. Invalid
+  context fails with `MINERU_GATEWAY_CONTEXT_INVALID` before provider access.
+- The parser adapter reuses ZIP validation, semantic role extraction, strict
+  decode gates, source hash binding, and projection-ready full-Markdown baseline
+  mapping from previous slices.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
+  slice does not spend provider quota in tests.
+
 Remaining G7.5 work:
 
-- Complete the rest of the MinerU local-batch execution chain: Canonical IR and
-  chunk manifest mapping, then parser-handler composition. Add a live or
-  integration proof for the `017` parse projection staging function when
-  `MM_CHAT_TEST_DATABASE_URL` is available. Production MinIO/S3 object access
-  should prefer the Go private source-object gateway rather than giving Python
-  static object-store credentials.
+- Complete the remaining MinerU parser chain: citation-grade
+  `content_list`/layout/model mapping, parse-handler dependency composition, and
+  a live or integration proof for the `017` parse projection staging function
+  when `MM_CHAT_TEST_DATABASE_URL` is available. Production MinIO/S3 object
+  access should prefer the Go private source-object gateway rather than giving
+  Python static object-store credentials.
 - Promote the composed default-off Jina + Postgres embedding dependencies only
   behind an explicit readiness/registry gate.
 - Promote purge dispatch behind an explicit readiness/registry gate now that
@@ -814,6 +834,9 @@ Validation:
 - MinerU archive-to-text-baseline composition tests, including validated
   archive extraction, source hash binding, projection-ready output, invalid ZIP
   rejection, and source mismatch rejection.
+- MinerU text-baseline parser adapter tests, including default-off dependency
+  failure before archive fetch, parse-context admission, deterministic
+  artifact-set derivation, projection-ready output, and archive validation reuse.
 - Retry-three-times and terminal-failure tests.
 
 ### G7.6 Private query and Go reauthorization

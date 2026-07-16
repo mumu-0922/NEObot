@@ -1,12 +1,12 @@
 """Default-off MinerU local-batch gateway seams for G7.5.
 
-This module deliberately implements only the evidence-backed local-batch
-``allocate_upload`` step plus derived signed-upload and poll/result transport
-seams plus a bounded result ZIP download transport seam. Result archive
-validation/extraction is structural only; the canonical-mapping input seam binds
-raw role hashes to decoded payloads but still does not normalize Provider fields
-or emit Canonical IR. Importing this module does not register production parse
-handlers or spend provider quota.
+This module deliberately keeps MinerU behind default-off seams: local-batch
+allocate/upload/poll/download, ZIP validation/extraction/decode, hash-bound
+mapping input, and a full-Markdown text-baseline parser adapter. The baseline
+emits projection-ready artifacts from ``full.md`` only; it does not interpret
+MinerU ``content_list``/layout/model fields for citation-grade locators.
+Importing this module does not register production parse handlers or spend
+provider quota.
 """
 
 from __future__ import annotations
@@ -19,14 +19,15 @@ import re
 import stat
 import uuid
 import zipfile
-from collections.abc import Sequence
+from collections.abc import Coroutine, Sequence
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import Any, Final, NoReturn, cast
+from typing import Any, Final, NoReturn, Protocol, cast
 from urllib.parse import SplitResult, urlsplit
 
 import httpx
 
+from mm_chat_rag.job_context import ProcessingJobContext
 from mm_chat_rag.job_handler_dependencies import DocumentSource, ParsedDocumentArtifacts
 from mm_chat_rag.models import stable_error_code
 from mm_chat_rag.retry import PermanentJobError, RetryableJobError
@@ -35,6 +36,10 @@ type JsonValue = None | bool | int | float | str | list[JsonValue] | JsonObject
 type JsonObject = dict[str, JsonValue]
 
 MINERU_GATEWAY_CREDENTIALS_MISSING: Final = "MINERU_GATEWAY_CREDENTIALS_MISSING"
+MINERU_GATEWAY_DEPENDENCY_UNCONFIGURED: Final = (
+    "MINERU_GATEWAY_DEPENDENCY_UNCONFIGURED"
+)
+MINERU_GATEWAY_CONTEXT_INVALID: Final = "MINERU_GATEWAY_CONTEXT_INVALID"
 MINERU_GATEWAY_SOURCE_UNSUPPORTED: Final = "MINERU_GATEWAY_SOURCE_UNSUPPORTED"
 MINERU_GATEWAY_SOURCE_HASH_MISMATCH: Final = (
     "MINERU_GATEWAY_SOURCE_HASH_MISMATCH"
@@ -72,6 +77,9 @@ MAX_MINERU_ARCHIVE_TOTAL_BYTES: Final = 128 * 1024 * 1024
 MAX_MINERU_ARCHIVE_COMPRESSION_RATIO: Final = 200
 MINERU_TEXT_BASELINE_CHUNK_PROFILE_HASH: Final = (
     "48ac1810a92dcdd61db73646f3c8780e8ebc76b1525145452df7e3c0a819bb03"
+)
+MINERU_TEXT_BASELINE_ARTIFACT_SET_NAMESPACE: Final = uuid.UUID(
+    "7e3ad35b-7ef5-5ab9-b490-38a43bdfad4a"
 )
 MINERU_UPLOAD_TARGET_HOST: Final = "mineru.oss-cn-shanghai.aliyuncs.com"
 MINERU_UPLOAD_PATH_PREFIX: Final = "/api-upload/"
@@ -112,6 +120,7 @@ _ZIP_CONTENT_TYPES: Final[frozenset[str]] = frozenset(
 )
 _ZIP_ENCRYPTED_FLAG: Final = 0x1
 _ZIP_MODE_SHIFT: Final = 16
+_ZERO_UUID: Final = uuid.UUID(int=0)
 _TEXT_BASELINE_CHUNK_MAX_BYTES: Final = 2400
 _TEXT_BASELINE_TOKEN_BYTES: Final = 4
 _TEXT_BASELINE_CHILD_MAX_TOKENS: Final = 650
@@ -292,6 +301,47 @@ class MinerULocalBatchCanonicalMappingInput:
             != _MINERU_CANONICAL_ROLE_ORDER
         ):
             _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
+
+
+class MinerUResultArchiveProvider(Protocol):
+    """Default-off provider that supplies already downloaded MinerU ZIP bytes."""
+
+    def fetch_result_archive(
+        self,
+        context: ProcessingJobContext,
+        source: DocumentSource,
+    ) -> Coroutine[Any, Any, bytes]: ...
+
+
+class MinerUTextBaselineArchiveParserGateway:
+    """ParserGateway-shaped adapter for the MinerU full.md baseline mapper."""
+
+    def __init__(
+        self,
+        archive_provider: MinerUResultArchiveProvider | None = None,
+    ) -> None:
+        self._archive_provider = archive_provider
+
+    async def parse_document(
+        self,
+        context: ProcessingJobContext,
+        source: DocumentSource,
+    ) -> ParsedDocumentArtifacts:
+        """Parse one source via an injected archive provider, disabled by default."""
+        admitted = _validate_parser_context(context)
+        if self._archive_provider is None:
+            _reject_permanent(MINERU_GATEWAY_DEPENDENCY_UNCONFIGURED)
+        _validate_pdf_source(source)
+        _validate_source_hash(source)
+        archive_body = await self._archive_provider.fetch_result_archive(
+            admitted,
+            source,
+        )
+        return _build_text_baseline_parse_artifacts_from_archive(
+            source,
+            archive_body,
+            artifact_set_id=_text_baseline_artifact_set_id(admitted, source),
+        )
 
 
 class MinerULocalBatchGateway:
@@ -1120,6 +1170,34 @@ def _build_text_baseline_parse_artifacts_from_archive(
     return _build_text_baseline_parse_artifacts(
         mapping_input,
         artifact_set_id=artifact_set_id,
+    )
+
+
+def _validate_parser_context(context: object) -> ProcessingJobContext:
+    if not isinstance(context, ProcessingJobContext):
+        _reject_permanent(MINERU_GATEWAY_CONTEXT_INVALID)
+    if context.stage != "parse" or context.materialization_id in {None, _ZERO_UUID}:
+        _reject_permanent(MINERU_GATEWAY_CONTEXT_INVALID)
+    return context
+
+
+def _text_baseline_artifact_set_id(
+    context: ProcessingJobContext,
+    source: DocumentSource,
+) -> uuid.UUID:
+    materialization_id = context.materialization_id
+    if materialization_id is None or materialization_id == _ZERO_UUID:
+        _reject_permanent(MINERU_GATEWAY_CONTEXT_INVALID)
+    _validate_source_hash(source)
+    return uuid.uuid5(
+        MINERU_TEXT_BASELINE_ARTIFACT_SET_NAMESPACE,
+        ":".join(
+            (
+                str(materialization_id),
+                source.source_sha256,
+                MINERU_TEXT_BASELINE_CHUNK_PROFILE_HASH,
+            )
+        ),
     )
 
 

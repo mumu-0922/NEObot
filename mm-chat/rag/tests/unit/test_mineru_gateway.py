@@ -12,12 +12,15 @@ import httpx
 import pytest
 
 import mm_chat_rag.mineru_gateway as mineru_module
+from mm_chat_rag.job_context import ProcessingJobContext
 from mm_chat_rag.job_handler_dependencies import DocumentSource
 from mm_chat_rag.mineru_gateway import (
     MINERU_ALLOCATE_UPLOAD_URL,
     MINERU_GATEWAY_ARCHIVE_INVALID,
     MINERU_GATEWAY_ARTIFACT_INVALID,
+    MINERU_GATEWAY_CONTEXT_INVALID,
     MINERU_GATEWAY_CREDENTIALS_MISSING,
+    MINERU_GATEWAY_DEPENDENCY_UNCONFIGURED,
     MINERU_GATEWAY_DOWNLOAD_STATUS_INVALID,
     MINERU_GATEWAY_REQUEST_FAILED,
     MINERU_GATEWAY_RESPONSE_INVALID,
@@ -29,10 +32,12 @@ from mm_chat_rag.mineru_gateway import (
     MINERU_GATEWAY_UPLOAD_STATUS_INVALID,
     MINERU_GATEWAY_UPLOAD_URL_INVALID,
     MINERU_POLL_URL_PREFIX,
+    MINERU_TEXT_BASELINE_ARTIFACT_SET_NAMESPACE,
     MINERU_TEXT_BASELINE_CHUNK_PROFILE_HASH,
     MinerULocalBatchAllocation,
     MinerULocalBatchGateway,
     MinerULocalBatchPollResult,
+    MinerUTextBaselineArchiveParserGateway,
 )
 from mm_chat_rag.projection import ProjectionContext, build_postgres_projection_batch
 from mm_chat_rag.retry import PermanentJobError, RetryableJobError
@@ -61,6 +66,7 @@ PROJECTION_CONTEXT = ProjectionContext(
     materialization_id=uuid.UUID("60000000-0000-0000-0000-000000000001"),
     index_generation_id=uuid.UUID("70000000-0000-0000-0000-000000000001"),
 )
+REQUEST_HASH = "8" * 64
 
 
 def _source(
@@ -191,6 +197,48 @@ def _mapping_input(
     )
     artifacts = gateway.extract_result_archive_artifacts(object(), archive_body)
     return gateway.prepare_canonical_mapping_input(object(), _source(), artifacts)
+
+
+def _parse_context(*, stage: str = "parse") -> ProcessingJobContext:
+    return ProcessingJobContext(
+        job_id=uuid.UUID("80000000-0000-0000-0000-000000000001"),
+        stage=stage,
+        operation="initial",
+        collection_id=PROJECTION_CONTEXT.collection_id,
+        document_id=PROJECTION_CONTEXT.document_id,
+        document_version_id=PROJECTION_CONTEXT.document_version_id,
+        file_id=PROJECTION_CONTEXT.file_id,
+        index_generation_id=PROJECTION_CONTEXT.index_generation_id,
+        materialization_id=PROJECTION_CONTEXT.materialization_id,
+        collection_acl_revision=1,
+        collection_visibility_epoch=1,
+        collection_processing_revision=1,
+        document_visibility_epoch=1,
+        attempt_count=1,
+        max_attempts=3,
+        request_hash=REQUEST_HASH,
+        authority=None,
+    )
+
+
+class FakeMinerUResultArchiveProvider:
+    def __init__(
+        self,
+        calls: list[str],
+        archive_body: bytes,
+    ) -> None:
+        self._calls = calls
+        self._archive_body = archive_body
+
+    async def fetch_result_archive(
+        self,
+        context: ProcessingJobContext,
+        source: DocumentSource,
+    ) -> bytes:
+        self._calls.append("fetch_archive")
+        assert context.stage == "parse"
+        assert source.content_type == "application/pdf"
+        return self._archive_body
 
 
 async def test_mineru_gateway_missing_token_fails_before_http() -> None:
@@ -1224,6 +1272,97 @@ def test_mineru_gateway_archive_to_text_baseline_rejects_source_mismatch() -> No
         )
 
     assert raised.value.error_code == MINERU_GATEWAY_SOURCE_HASH_MISMATCH
+
+
+async def test_mineru_parser_gateway_default_off_before_archive_fetch() -> None:
+    calls: list[str] = []
+    provider = FakeMinerUResultArchiveProvider(calls, _archive())
+    parser = MinerUTextBaselineArchiveParserGateway()
+
+    with pytest.raises(PermanentJobError) as raised:
+        await parser.parse_document(_parse_context(), _source())
+
+    assert raised.value.error_code == MINERU_GATEWAY_DEPENDENCY_UNCONFIGURED
+    assert calls == []
+    assert isinstance(provider, FakeMinerUResultArchiveProvider)
+
+
+async def test_mineru_parser_gateway_parses_archive_baseline() -> None:
+    calls: list[str] = []
+    archive_body = _archive(
+        (
+            ("full.md", b"Parser 789\n\nGateway"),
+            ("fixture_content_list.json", b'[{"type":"text","text":"ok"}]'),
+            ("layout.json", b'{"pages":[{"page":0}]}'),
+            ("fixture_model.json", b'{"model":"vlm"}'),
+        )
+    )
+    parser = MinerUTextBaselineArchiveParserGateway(
+        FakeMinerUResultArchiveProvider(calls, archive_body)
+    )
+    context = _parse_context()
+
+    first = await parser.parse_document(context, _source())
+    second = await parser.parse_document(context, _source())
+    batch = build_postgres_projection_batch(
+        first.canonical_ir,
+        first.chunk_manifest,
+        ProjectionContext(
+            collection_id=PROJECTION_CONTEXT.collection_id,
+            document_id=PROJECTION_CONTEXT.document_id,
+            document_version_id=PROJECTION_CONTEXT.document_version_id,
+            file_id=PROJECTION_CONTEXT.file_id,
+            artifact_set_id=first.artifact_set_id,
+            materialization_id=PROJECTION_CONTEXT.materialization_id,
+            index_generation_id=PROJECTION_CONTEXT.index_generation_id,
+        ),
+    )
+
+    expected_artifact_set_id = uuid.uuid5(
+        MINERU_TEXT_BASELINE_ARTIFACT_SET_NAMESPACE,
+        ":".join(
+            (
+                str(PROJECTION_CONTEXT.materialization_id),
+                hashlib.sha256(PDF_BODY).hexdigest(),
+                MINERU_TEXT_BASELINE_CHUNK_PROFILE_HASH,
+            )
+        ),
+    )
+    assert calls == ["fetch_archive", "fetch_archive"]
+    assert first.artifact_set_id == expected_artifact_set_id
+    assert second.artifact_set_id == first.artifact_set_id
+    assert batch.parent_chunks[0].content == "Parser 789\n\nGateway"
+    assert batch.child_search_projections[0].exact_terms == (
+        "789",
+        "gateway",
+        "parser",
+    )
+
+
+async def test_mineru_parser_gateway_rejects_bad_context_before_fetch() -> None:
+    calls: list[str] = []
+    parser = MinerUTextBaselineArchiveParserGateway(
+        FakeMinerUResultArchiveProvider(calls, _archive())
+    )
+
+    with pytest.raises(PermanentJobError) as raised:
+        await parser.parse_document(_parse_context(stage="purge"), _source())
+
+    assert raised.value.error_code == MINERU_GATEWAY_CONTEXT_INVALID
+    assert calls == []
+
+
+async def test_mineru_parser_gateway_reuses_archive_validation() -> None:
+    calls: list[str] = []
+    parser = MinerUTextBaselineArchiveParserGateway(
+        FakeMinerUResultArchiveProvider(calls, b"not-a-zip")
+    )
+
+    with pytest.raises(PermanentJobError) as raised:
+        await parser.parse_document(_parse_context(), _source())
+
+    assert raised.value.error_code == MINERU_GATEWAY_ARCHIVE_INVALID
+    assert calls == ["fetch_archive"]
 
 
 @pytest.mark.parametrize(
