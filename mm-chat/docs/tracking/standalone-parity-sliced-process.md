@@ -29,6 +29,61 @@ implemented, tested, and recorded, create a focused Git commit for that
 completed group before starting the next group. Do not batch unrelated future
 groups into the same commit.
 
+## 2026-07-16 — G9.5a Zustand Persistence Authority Fence
+
+Objective: start local production-authority removal by preventing persisted
+Zustand stores from hydrating from or writing to browser-local IndexedDB and
+`localStorage` when the frontend is built/run in server mode.
+
+Completed scope:
+
+- added `BrowserLocalPersistenceAuthority` in `storageConfig.ts`;
+- made `NEXT_PUBLIC_API_MODE=server` resolve browser-local persistence authority
+  to `import-only`;
+- made `getAppDbStorage()` and `getBrowserLocalStorage()` return `noopStorage`
+  in server mode, so Zustand persist adapters do not trigger legacy migrations,
+  `appDb.getItem/setItem/removeItem`, or `window.localStorage` reads/writes;
+- kept explicit browser-import direct reads available through `appDb` and OPFS
+  for the one-time import flow;
+- documented G9.5 as partially complete: direct `appDb` calls and OPFS
+  write/delete helpers remain G9.5b scope.
+
+Changed surfaces:
+
+```text
+mm-chat/frontend/src/store/storage/storageConfig.ts
+mm-chat/frontend/src/__tests__/browserLocalAuthority.test.ts
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/inventory/frontend-call-sites.md
+mm-chat/docs/inventory/standalone-cutover-gap.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/browserLocalAuthority.test.ts \
+  src/__tests__/appExport.test.ts \
+  src/__tests__/browserImportPackage.test.ts \
+  src/__tests__/chatStoreServerRead.test.ts                   # passed, 35 tests
+cd mm-chat/frontend && corepack pnpm typecheck                 # passed
+cd mm-chat/frontend && corepack pnpm lint                      # passed
+cd mm-chat/frontend && corepack pnpm format:check              # passed
+cd mm-chat/frontend && corepack pnpm build                     # passed; build route table still shows 11 `/api/*` handlers
+git diff --check -- mm-chat                                    # passed
+```
+
+Residual blockers:
+
+```text
+G9.5b must sweep direct `appDb` and OPFS write/delete call sites that bypass
+Zustand persistence storage. This slice does not claim full production
+local-authority removal.
+```
+
 ## 2026-07-16 — G9.4 Plugin/Agent Legacy Route Removal
 
 Objective: delete the transitional Next plugin/agent route handlers after the

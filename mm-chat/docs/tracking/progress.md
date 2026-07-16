@@ -1168,6 +1168,12 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         plugin/agent adapters fail closed.
   - [ ] G9.5 Local production authority removal: hard-fence browser-local
         IndexedDB/localforage/OPFS authority to dev/import-only paths.
+    - [x] G9.5a Zustand persistence authority fence: `getAppDbStorage` and
+          `getBrowserLocalStorage` return no-op storage in server mode, while
+          explicit browser-import direct `appDb`/OPFS reads remain available.
+    - [ ] G9.5b Direct local authority sweep: remove or hard-fence direct
+          `appDb` and OPFS write paths that can still run outside explicit
+          import/dev flows.
   - [ ] G9.6 Clean-copy preflight: prove `mm-chat/` runs without former-root
         imports/build context.
 - [ ] G10 Operations, Visual Regression, Clean Copy, and Delete Plan: complete

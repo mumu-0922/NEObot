@@ -75,11 +75,11 @@ These define the local adapter and import boundary.
 
 | Priority | File                                         | Current Storage                                           | Future Boundary                                          |
 | -------: | -------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------- |
-|       P0 | `src/store/storage/storageConfig.ts`         | `localforage` app DB + `window.localStorage`              | Local adapter source of truth; import/export source.     |
-|       P0 | `src/store/core/chatStore.ts`                | `getAppDbStorage`, `deleteFromOPFS`                       | `chatApi` local adapter + `fileApi` local adapter.       |
-|       P1 | `src/store/core/coreSettingsStore.ts`        | `getBrowserLocalStorage`                                  | `settingsApi` local adapter.                             |
-|       P1 | `src/store/core/settingsStore.ts`            | `getAppDbStorage`                                         | `settingsApi` local adapter.                             |
-|       P1 | `src/store/core/knowledgeStore.ts`           | `getAppDbStorage`, OPFS helpers                           | `fileApi` local adapter + later RAG import.              |
+|       P0 | `src/store/storage/storageConfig.ts`         | `localforage` app DB + `window.localStorage`              | G9.5a makes Zustand storage no-op in server mode; explicit import may still direct-read. |
+|       P0 | `src/store/core/chatStore.ts`                | `getAppDbStorage`, `deleteFromOPFS`                       | Persist adapter is fenced in server mode; direct `appDb`/OPFS writes remain G9.5b scope. |
+|       P1 | `src/store/core/coreSettingsStore.ts`        | `getBrowserLocalStorage`                                  | Persist adapter is fenced in server mode; server settings must come from Go.             |
+|       P1 | `src/store/core/settingsStore.ts`            | `getAppDbStorage`                                         | Persist adapter is fenced in server mode; direct store behavior remains audited in G9.5b. |
+|       P1 | `src/store/core/knowledgeStore.ts`           | `getAppDbStorage`, OPFS helpers                           | Persist adapter is fenced; direct OPFS write/delete paths remain G9.5b scope.            |
 |       P2 | `src/store/core/memoryStore.ts`              | `getAppDbStorage`                                         | local-only until memory/server strategy is designed.     |
 |       P2 | `src/store/storage/legacyGeminiMigration.ts` | legacy localStorage/localforage migration                 | Must be preserved for local import/export compatibility. |
 |       P2 | `src/app/layout.tsx`                         | reads `neo-chat-core-settings` from `window.localStorage` | theme/bootstrap compatibility                            | Keep minimal inline bootstrap; do not expand server coupling here. |

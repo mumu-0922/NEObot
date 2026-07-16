@@ -27,8 +27,26 @@ export const noopStorage: StateStorage = {
   removeItem: () => undefined,
 };
 
+export type BrowserLocalPersistenceAuthority = "runtime" | "import-only";
+
+export function getBrowserLocalPersistenceAuthority(
+  apiMode = process.env.NEXT_PUBLIC_API_MODE,
+): BrowserLocalPersistenceAuthority {
+  return apiMode?.trim() === "server" ? "import-only" : "runtime";
+}
+
+export function canUseBrowserLocalRuntimePersistence(): boolean {
+  return getBrowserLocalPersistenceAuthority() === "runtime";
+}
+
 export const getAppDbStorage = (): StateStorage => {
-  if (typeof window === "undefined") return noopStorage;
+  if (
+    typeof window === "undefined" ||
+    !canUseBrowserLocalRuntimePersistence()
+  ) {
+    return noopStorage;
+  }
+
   return {
     getItem: async (name) => {
       try {
@@ -48,7 +66,13 @@ export const getAppDbStorage = (): StateStorage => {
 };
 
 export const getBrowserLocalStorage = (): StateStorage => {
-  if (typeof window === "undefined") return noopStorage;
+  if (
+    typeof window === "undefined" ||
+    !canUseBrowserLocalRuntimePersistence()
+  ) {
+    return noopStorage;
+  }
+
   return {
     getItem: (name) => {
       try {

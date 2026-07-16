@@ -1654,6 +1654,11 @@ Boundary rules:
 - `local` adapter remains the compatibility owner for current browser state:
   Zustand, localforage/IndexedDB, `window.localStorage`, OPFS, and existing
   Next.js API routes.
+- G9.5a narrows that compatibility owner to local runtime/import use only:
+  when `NEXT_PUBLIC_API_MODE=server`, `getAppDbStorage` and
+  `getBrowserLocalStorage` return no-op storage so persisted Zustand stores do
+  not hydrate from or write to browser-local state. Explicit browser import may
+  still direct-read `appDb` and OPFS bytes.
 - `server` adapter owns all Go calls under `NEXT_PUBLIC_API_BASE_URL`; it must
   not read or mutate browser-local chat persistence as source of truth.
 - DTO-to-legacy mapping belongs inside the adapter/integration layer, not in
@@ -1677,10 +1682,10 @@ Adapter ownership matrix:
 
 | Concern                         | Local Adapter                            | Server Adapter                                   |
 | ------------------------------- | ---------------------------------------- | ------------------------------------------------ |
-| Conversation source of truth    | Current chat store/localforage           | Go `conversations` endpoints                     |
-| Message source of truth         | Current `session_messages_*` trees       | Go `messages` endpoints                          |
+| Conversation source of truth    | Current chat store/localforage in local runtime; no-op persistence in server mode | Go `conversations` endpoints                     |
+| Message source of truth         | Current `session_messages_*` trees in local runtime; direct writes audited in G9.5b | Go `messages` endpoints                          |
 | Generation                      | Existing `streamChatResponse` path       | `POST /v1/chat/.../stream` SSE                   |
-| Files                           | OPFS/object URLs                         | Go `/v1/files`, backend-stream downloads         |
+| Files                           | OPFS/object URLs for local runtime/import; production writes audited in G9.5b | Go `/v1/files`, backend-stream downloads         |
 | Runtime mode                    | `NEXT_PUBLIC_API_MODE=local` or fallback | `NEXT_PUBLIC_API_MODE=server` plus base URL      |
 | Unsupported features in slice 1 | Existing local behavior                  | Capability-gated off, no implicit local fallback |
 

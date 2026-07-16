@@ -541,6 +541,14 @@ Slice sequence:
       replacement as server-owned.
 - [ ] G9.5 Local production authority removal: hard-fence browser-local
       IndexedDB/localforage/OPFS write authority to dev/import-only paths.
+  - [x] G9.5a Zustand persistence authority fence: in server mode,
+        `getAppDbStorage` and `getBrowserLocalStorage` return no-op storage so
+        persisted stores cannot hydrate from or write to IndexedDB/localStorage
+        as production state. Explicit browser-import direct `appDb`/OPFS reads
+        remain allowed.
+  - [ ] G9.5b Direct local authority sweep: remove or hard-fence direct
+        `appDb` and OPFS writes still reachable outside explicit import/dev
+        flows.
 - [ ] G9.6 Clean-copy preflight: prove `mm-chat/` build/test/runtime no longer
       imports former-root artifacts.
 
