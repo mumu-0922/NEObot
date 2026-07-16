@@ -339,6 +339,34 @@ func (s *Service) GetDocumentContent(ctx context.Context, documentID string) (Do
 	return metadata, reader, nil
 }
 
+func (s *Service) FetchQueryEvidenceCandidates(
+	ctx context.Context,
+	input QueryEvidenceCandidatesInput,
+) ([]EvidenceCandidateReference, error) {
+	if err := s.requireRepository(); err != nil {
+		return nil, err
+	}
+	repo, ok := s.repo.(EvidenceRepository)
+	if !ok {
+		return nil, ErrDatabaseRequired
+	}
+	return repo.FetchQueryEvidenceCandidates(ctx, input)
+}
+
+func (s *Service) ReauthorizeAndHydrateEvidence(
+	ctx context.Context,
+	input ReauthorizeEvidenceInput,
+) ([]HydratedEvidence, error) {
+	if err := s.requireRepository(); err != nil {
+		return nil, err
+	}
+	repo, ok := s.repo.(EvidenceRepository)
+	if !ok {
+		return nil, ErrDatabaseRequired
+	}
+	return repo.ReauthorizeAndHydrateEvidence(ctx, input)
+}
+
 func (s *Service) requireRepository() error {
 	if s == nil || s.repo == nil {
 		return ErrDatabaseRequired

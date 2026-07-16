@@ -11,6 +11,7 @@ provider quota.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import io
 import json
@@ -56,6 +57,9 @@ MINERU_GATEWAY_DOWNLOAD_STATUS_INVALID: Final = (
     "MINERU_GATEWAY_DOWNLOAD_STATUS_INVALID"
 )
 MINERU_GATEWAY_RESULT_URL_INVALID: Final = "MINERU_GATEWAY_RESULT_URL_INVALID"
+MINERU_GATEWAY_RESULT_PROXY_INVALID: Final = (
+    "MINERU_GATEWAY_RESULT_PROXY_INVALID"
+)
 MINERU_GATEWAY_RESULT_NOT_READY: Final = "MINERU_GATEWAY_RESULT_NOT_READY"
 MINERU_GATEWAY_RESULT_FAILED: Final = "MINERU_GATEWAY_RESULT_FAILED"
 MINERU_GATEWAY_ARCHIVE_INVALID: Final = "MINERU_GATEWAY_ARCHIVE_INVALID"
@@ -68,6 +72,10 @@ MINERU_PDF_CONTENT_TYPE: Final = "application/pdf"
 MINERU_TIMEOUT: Final = httpx.Timeout(connect=5.0, read=30.0, write=15.0, pool=5.0)
 MINERU_LIMITS: Final = httpx.Limits(max_connections=1, max_keepalive_connections=1)
 MINERU_RETRY_AFTER_SECONDS: Final = 30
+MINERU_RESULT_POLL_INTERVAL_SECONDS: Final = 5.0
+MINERU_RESULT_POLL_MAX_ATTEMPTS: Final = 24
+MINERU_RESULT_POLL_MAX_ATTEMPTS_CEILING: Final = 120
+MINERU_RESULT_POLL_INTERVAL_SECONDS_CEILING: Final = 60.0
 MAX_MINERU_API_TOKEN_BYTES: Final = 4096
 MAX_MINERU_SOURCE_BYTES: Final = 200 * 1024 * 1024
 MAX_MINERU_RESPONSE_BYTES: Final = 1024 * 1024
@@ -234,7 +242,7 @@ class MinerULocalBatchDecodedArtifacts:
     full_markdown: str
     content_list_json: list[JsonValue]
     middle_json: JsonObject
-    model_json: JsonObject
+    model_json: JsonObject | list[JsonValue]
 
     def __post_init__(self) -> None:
         if not isinstance(self.summary, MinerULocalBatchArchiveSummary):
@@ -244,8 +252,7 @@ class MinerULocalBatchDecodedArtifacts:
         if not isinstance(self.content_list_json, list):
             _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
         if not isinstance(self.middle_json, dict) or not isinstance(
-            self.model_json,
-            dict,
+            self.model_json, (dict, list)
         ):
             _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
 
@@ -377,9 +384,11 @@ class MinerULocalBatchGateway:
         api_token: str | None,
         *,
         client: httpx.AsyncClient | None = None,
+        result_proxy_url: str | None = None,
     ) -> None:
         self._api_token = _validate_api_token(api_token)
         self._client = client
+        self._result_proxy_url = _validate_result_proxy_url(result_proxy_url)
 
     async def allocate_upload(
         self,
@@ -455,6 +464,12 @@ class MinerULocalBatchGateway:
         _ = context
         result_url = _done_result_url(poll_result)
         if self._client is not None:
+            if self._result_proxy_url is not None:
+                return await _post_result_proxy_archive(
+                    self._client,
+                    self._result_proxy_url,
+                    result_url,
+                )
             return await _get_result_archive(self._client, result_url)
         async with httpx.AsyncClient(
             timeout=MINERU_TIMEOUT,
@@ -462,6 +477,12 @@ class MinerULocalBatchGateway:
             follow_redirects=False,
             trust_env=False,
         ) as client:
+            if self._result_proxy_url is not None:
+                return await _post_result_proxy_archive(
+                    client,
+                    self._result_proxy_url,
+                    result_url,
+                )
             return await _get_result_archive(client, result_url)
 
     def validate_result_archive(
@@ -536,15 +557,39 @@ class MinerULocalBatchResultArchiveProvider:
     """Compose MinerU local-batch calls into parser archive bytes.
 
     The provider is default-off and retains no signed upload/result URLs. It
-    performs one allocate -> upload -> poll -> download sequence for an admitted
-    parse job; non-terminal poll states become retryable job failures so the
-    durable job runner owns backoff.
+    performs one allocate -> upload -> poll-until-terminal -> download sequence
+    for an admitted parse job. Non-terminal poll states are kept inside the same
+    provider batch so durable job retries do not allocate duplicate uploads
+    before the original batch has had a bounded chance to finish.
     """
 
-    def __init__(self, gateway: MinerULocalBatchGateway | None = None) -> None:
+    def __init__(
+        self,
+        gateway: MinerULocalBatchGateway | None = None,
+        *,
+        poll_interval_seconds: float = MINERU_RESULT_POLL_INTERVAL_SECONDS,
+        poll_max_attempts: int = MINERU_RESULT_POLL_MAX_ATTEMPTS,
+    ) -> None:
         if gateway is None:
             _reject_permanent(MINERU_GATEWAY_DEPENDENCY_UNCONFIGURED)
+        if (
+            isinstance(poll_max_attempts, bool)
+            or not isinstance(poll_max_attempts, int)
+            or not 1 <= poll_max_attempts <= MINERU_RESULT_POLL_MAX_ATTEMPTS_CEILING
+        ):
+            _reject_permanent(MINERU_GATEWAY_DEPENDENCY_UNCONFIGURED)
+        if (
+            isinstance(poll_interval_seconds, bool)
+            or not isinstance(poll_interval_seconds, (int, float))
+            or not math.isfinite(float(poll_interval_seconds))
+            or not 0
+            <= float(poll_interval_seconds)
+            <= MINERU_RESULT_POLL_INTERVAL_SECONDS_CEILING
+        ):
+            _reject_permanent(MINERU_GATEWAY_DEPENDENCY_UNCONFIGURED)
         self._gateway = gateway
+        self._poll_interval_seconds = float(poll_interval_seconds)
+        self._poll_max_attempts = poll_max_attempts
 
     async def fetch_result_archive(
         self,
@@ -557,12 +602,19 @@ class MinerULocalBatchResultArchiveProvider:
         _validate_source_hash(source)
         allocation = await self._gateway.allocate_upload(admitted, source)
         await self._gateway.upload_document(admitted, source, allocation)
-        poll_result = await self._gateway.poll_batch_result(admitted, allocation)
-        if poll_result.state == "failed":
-            _reject_permanent(MINERU_GATEWAY_RESULT_FAILED)
-        if poll_result.state != "done":
-            _reject_retryable(MINERU_GATEWAY_RESULT_NOT_READY)
-        return await self._gateway.download_result_archive(admitted, poll_result)
+        for attempt in range(self._poll_max_attempts):
+            poll_result = await self._gateway.poll_batch_result(admitted, allocation)
+            if poll_result.state == "failed":
+                _reject_permanent(MINERU_GATEWAY_RESULT_FAILED)
+            if poll_result.state == "done":
+                return await self._gateway.download_result_archive(
+                    admitted,
+                    poll_result,
+                )
+            if attempt + 1 < self._poll_max_attempts and self._poll_interval_seconds:
+                await asyncio.sleep(self._poll_interval_seconds)
+        _reject_retryable(MINERU_GATEWAY_RESULT_NOT_READY)
+        raise AssertionError("unreachable")
 
 
 def _allocate_request_body(filename: str) -> JsonObject:
@@ -610,6 +662,39 @@ async def _get_result_archive(
             headers=headers,
         ) as response:
             _validate_result_target_url(str(response.request.url))
+            if response.status_code != HTTP_OK:
+                _reject_retryable(MINERU_GATEWAY_DOWNLOAD_STATUS_INVALID)
+            _validate_identity_encoding(response)
+            _validate_archive_content_type(response.headers.get("content-type"))
+            return await _read_bounded_archive_response(response)
+    except PermanentJobError:
+        raise
+    except RetryableJobError:
+        raise
+    except (httpx.StreamError, httpx.TransportError):
+        _reject_retryable(MINERU_GATEWAY_REQUEST_FAILED)
+
+
+async def _post_result_proxy_archive(
+    client: httpx.AsyncClient,
+    proxy_url: str,
+    result_url: str,
+) -> bytes:
+    _validate_result_proxy_url(proxy_url)
+    _validate_result_target_url(result_url)
+    headers = {
+        "Accept": "application/zip",
+        "Accept-Encoding": "identity",
+        "Content-Type": "application/json",
+    }
+    try:
+        _clear_client_cookies(client)
+        async with client.stream(
+            "POST",
+            proxy_url,
+            headers=headers,
+            json={"resultUrl": result_url},
+        ) as response:
             if response.status_code != HTTP_OK:
                 _reject_retryable(MINERU_GATEWAY_DOWNLOAD_STATUS_INVALID)
             _validate_identity_encoding(response)
@@ -911,6 +996,26 @@ def _validate_result_target_url(value: str) -> None:
         _reject_permanent(MINERU_GATEWAY_RESULT_URL_INVALID)
 
 
+def _validate_result_proxy_url(value: str | None) -> str | None:
+    if value is None:
+        return None
+    value = value.strip()
+    parsed = _parse_url(value, error_code=MINERU_GATEWAY_RESULT_PROXY_INVALID)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or len(value.encode("utf-8")) > MAX_MINERU_UPLOAD_URL_BYTES
+        or not _is_visible_url(value)
+        or not _safe_dynamic_path(parsed.path)
+    ):
+        _reject_permanent(MINERU_GATEWAY_RESULT_PROXY_INVALID)
+    return value
+
+
 def _parse_url(
     value: str,
     *,
@@ -1023,10 +1128,9 @@ def _decode_result_archive_artifacts(
         _decode_json_artifact(artifacts.middle_json),
         MINERU_GATEWAY_ARTIFACT_INVALID,
     )
-    model = _json_object(
-        _decode_json_artifact(artifacts.model_json),
-        MINERU_GATEWAY_ARTIFACT_INVALID,
-    )
+    model = _decode_json_artifact(artifacts.model_json)
+    if not isinstance(model, (dict, list)):
+        _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
     return MinerULocalBatchDecodedArtifacts(
         summary=artifacts.summary,
         full_markdown=full_markdown,

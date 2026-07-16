@@ -341,6 +341,7 @@ for name in ("backend", "migrate", "admin"):
     service = services[name]
     assert service["image"] == want_image, (name, service["image"])
     assert "build" not in service, name
+assert list(services["backend"]["networks"]) == ["private", "rag-private"]
 assert services["postgres"]["environment"] == {
     "POSTGRES_DB": "neo_chat",
     "POSTGRES_PASSWORD": "test-migrator-password",
@@ -396,7 +397,7 @@ for forbidden in (
 ):
     assert forbidden not in environment
 assert "/health" in " ".join(rag["healthcheck"]["test"])
-assert list(rag["networks"]) == ["rag-private"]
+assert list(rag["networks"]) == ["private", "rag-private"]
 assert config["networks"]["rag-private"]["internal"] is True
 
 replay = services["rag-replay"]

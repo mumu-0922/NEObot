@@ -143,6 +143,31 @@ func TestBlockedGovernanceManifestCannotApply(t *testing.T) {
 	}
 }
 
+func TestProviderWireContractApplyAllowedRequiresExplicitDraftProfile(t *testing.T) {
+	t.Setenv(ragProviderProfileEnv, "")
+	t.Setenv(ragProviderProfileDraftAcceptedEnv, "")
+	if providerWireContractApplyAllowed() {
+		t.Fatal("providerWireContractApplyAllowed() = true without explicit draft acceptance")
+	}
+
+	t.Setenv(ragProviderProfileEnv, ragDraftAcceptedProviderProfile)
+	if providerWireContractApplyAllowed() {
+		t.Fatal("providerWireContractApplyAllowed() = true without draft acceptance")
+	}
+
+	t.Setenv(ragProviderProfileEnv, "disabled")
+	t.Setenv(ragProviderProfileDraftAcceptedEnv, "true")
+	if providerWireContractApplyAllowed() {
+		t.Fatal("providerWireContractApplyAllowed() = true for disabled profile")
+	}
+
+	t.Setenv(ragProviderProfileEnv, ragDraftAcceptedProviderProfile)
+	t.Setenv(ragProviderProfileDraftAcceptedEnv, "true")
+	if !providerWireContractApplyAllowed() {
+		t.Fatal("providerWireContractApplyAllowed() = false for accepted G7 provider profile")
+	}
+}
+
 func TestDisableGovernanceUsesExactModelWhenProvided(t *testing.T) {
 	service := &fakeGovernanceDisableService{}
 	head, err := disableGovernance(

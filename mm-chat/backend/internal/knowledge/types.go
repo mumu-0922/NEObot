@@ -25,6 +25,11 @@ type Repository interface {
 	GetActiveDocumentContentMetadata(context.Context, DocumentLookupInput) (DocumentContentMetadata, error)
 }
 
+type EvidenceRepository interface {
+	FetchQueryEvidenceCandidates(context.Context, QueryEvidenceCandidatesInput) ([]EvidenceCandidateReference, error)
+	ReauthorizeAndHydrateEvidence(context.Context, ReauthorizeEvidenceInput) ([]HydratedEvidence, error)
+}
+
 type Permissions struct {
 	Read          bool `json:"read"`
 	Manage        bool `json:"manage"`

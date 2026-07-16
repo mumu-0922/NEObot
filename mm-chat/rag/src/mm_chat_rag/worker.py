@@ -142,7 +142,10 @@ class Worker:
                 parse_source_metadata = self.database
                 parse_projection = self.database
                 parse_archive_provider = MinerULocalBatchResultArchiveProvider(
-                    MinerULocalBatchGateway(settings.mineru_api_key)
+                    MinerULocalBatchGateway(
+                        settings.mineru_api_key,
+                        result_proxy_url=settings.mineru_result_proxy_url,
+                    )
                 )
             self.job_handlers = build_promoted_job_handler_registry(
                 settings,

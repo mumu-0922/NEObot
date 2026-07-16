@@ -4836,3 +4836,157 @@ RAG_SOURCE_GATEWAY_TOKEN=<source gateway shared token, if the current Python/Go 
 cd mm-chat && docker compose --env-file .env.single-server \
   -f compose.single-server.yml up -d --force-recreate backend rag
 ```
+
+## 2026-07-16 — G7.8B Live MinerU + Jina + Postgres Indexing Proof
+
+Objective: consume approved real provider quota and prove upload → MinerU parse →
+Jina 1024 passage embedding → Postgres publish against the local single-server
+stack.
+
+Runtime inputs:
+
+```text
+RAG_MINERU_API_TOKEN=configured in local runtime secret source
+RAG_JINA_API_KEY=configured in local runtime secret source
+RAG_SOURCE_GATEWAY_TOKEN=configured in local runtime secret source
+RAG_MINERU_RESULT_PROXY_URL=http://host.docker.internal:18081/mineru-result
+```
+
+Secrets were checked only for presence and were not printed. `.env.single-server`
+remains a local secret file and must not be committed.
+
+Implementation notes from the live run:
+
+- `MinerULocalBatchResultArchiveProvider` now reuses one MinerU batch across
+  bounded polls instead of re-uploading on every retry.
+- MinerU result model JSON accepts both object and array roots, matching the
+  observed live archive shape.
+- The result ZIP download proxy is opt-in and local-only for Docker
+  Desktop/WSL TLS EOF failures; it validates MinerU CDN result URLs and does not
+  forward API tokens, cookies, or auth headers.
+- `rag-worker` is attached to both `private` and `rag-private` networks so it
+  can reach provider egress and the Go source-object gateway without exposing
+  private RAG internals publicly.
+
+Live evidence:
+
+```text
+artifact dir: /tmp/mm-chat-g78-live-g78-20260716T111950Z-20137
+document_id: 9c61feda-b9fb-4454-a702-e94fcc427c12
+file_id:     83c4859b-a550-493b-805b-a18c9b0e753c
+parse:              succeeded
+passage_embedding:  succeeded
+document status:    active
+current version:    active
+index_generation:   46a1c7bb-44ed-4868-9d61-edd557f9d3f0
+search_profile:     d667ee09-a6c0-4854-a1c6-12f6cfb7e84c
+embedding role:     passage
+```
+
+Important corrections during indexing:
+
+- An earlier active profile hash mismatch caused
+  `RAG_PARSE_PROJECTION_PROFILE_MISMATCH`; the active generation/profile was
+  reseeded to the current MinerU/Jina/Postgres contract.
+- A later reseed accidentally used `embedding_role=passage_embedding`; the live
+  contract requires `embedding_role=passage` for the index profile while the job
+  stage remains `passage_embedding`.
+
+Result: true provider indexing is proven. G7.8C remains responsible for proving
+that Go strict chat can retrieve those rows, reauthorize/hydrate citations, and
+answer only from selected Knowledge.
+
+## 2026-07-16 — G7.8C Live Strict RAG Citation Answer Proof
+
+Objective: close the failed strict-chat smoke where indexing succeeded but the
+Go answer path returned `dependency_unavailable` because the chat handler had no
+live RAG assembler wired.
+
+Root cause:
+
+- `httpserver.NewHandler` only wired the answer-governance gate into
+  `chat.NewHandler`.
+- `chat.WithRAGAnswerAssembler(...)` was absent, so strict mode stopped at
+  `ErrRAGDependencyUnavailable` before candidate fetch or hydration.
+
+Fix:
+
+- Added a Go candidate source adapter from chat `RAGCandidateQuery` to
+  `knowledge.FetchQueryEvidenceCandidates`.
+- Added knowledge service delegation for:
+  - `FetchQueryEvidenceCandidates`
+  - `ReauthorizeAndHydrateEvidence`
+- Added Postgres repository support for
+  `knowledge_fetch_query_evidence_candidates(UUID[], TEXT, INTEGER)`.
+- Added migration `024_rag_query_evidence_go_api_grant` so `go_api_runtime` may
+  execute the reference-only candidate function; hydration remains separately
+  reauthorized by `knowledge_reauthorize_and_hydrate_evidence`.
+- Wired `chat.NewRAGAnswerAssembler(candidateSource, knowledgeService)` when the
+  knowledge service is available.
+
+Live deploy and migration:
+
+```text
+cd mm-chat
+docker compose --env-file .env.single-server -f compose.single-server.yml \
+  --profile ops run --rm --build migrate
+# up 024_rag_query_evidence_go_api_grant
+
+docker compose --env-file .env.single-server -f compose.single-server.yml \
+  up -d --build backend
+# backend=healthy
+```
+
+Pre-answer candidate proof:
+
+```text
+knowledge_fetch_query_evidence_candidates(
+  ARRAY['49a3d3f5-226e-42b4-8460-0b73e9b6a566']::uuid[],
+  'What is the phoenix code? Answer only from selected knowledge.',
+  8
+) -> document_id=9c61feda-b9fb-4454-a702-e94fcc427c12, rank_score=1.2311037
+```
+
+Strict answer smoke:
+
+```text
+POST /v1/chat/conversations                         -> 201
+POST /v1/chat/conversations/{id}/messages           -> 201
+POST /v1/chat/conversations/{id}/stream             -> 200 text/event-stream
+selected collection: 49a3d3f5-226e-42b4-8460-0b73e9b6a566
+question: What is the phoenix code? Answer only from selected knowledge.
+```
+
+Observed final message:
+
+```text
+metadata.knowledge.mode = strict
+metadata.knowledge.outcome = answered
+metadata.knowledge.citationCount = 1
+answerGovernance present = true
+answer = The phoenix code is PHOENIX-G78-LIVE-042. [1]
+artifact SSE = /tmp/mm-chat-g78-live-g78-20260716T111950Z-20137/g78-strict-live-20260716T122259Z-63818-stream.sse
+```
+
+This consumed a bounded real answer-provider call after the selected Knowledge
+candidate, hydration, citation, and governance gates passed.
+
+Verification:
+
+```text
+cd mm-chat/backend
+GOCACHE=/tmp/neo-chat-go-build go test \
+  ./internal/knowledge ./internal/httpserver ./internal/chat ./internal/migration \
+  -count=1
+# PASS
+```
+
+Residual risk:
+
+- Query candidate selection is currently lexical/exact over Jina-ready 1024-d
+  search projections. Jina is proven on passage embeddings and readiness; query
+  embedding/vector similarity and rerank remain future quality upgrades, not a
+  blocker for strict no-evidence refusal or citation-grounded answering.
+- The local MinerU result proxy is an operator workaround for Docker
+  Desktop/WSL result-download TLS instability; production should prefer direct
+  provider egress or a managed egress proxy with equivalent no-token forwarding.

@@ -240,6 +240,7 @@ services:
       start_period: 20s
     networks:
       - private
+      - rag-private
 
   frontend:
     image: ${FRONTEND_IMAGE:-mm-chat/frontend:local}
@@ -299,6 +300,7 @@ services:
       RAG_WORKER_JOB_STAGES: ${RAG_WORKER_JOB_STAGES:-}
       RAG_WORKER_REDIS_URL: ${REDIS_URL:-redis://:change-me-redis@redis:6379/0}
       RAG_MINERU_API_TOKEN: ${RAG_MINERU_API_TOKEN:-}
+      RAG_MINERU_RESULT_PROXY_URL: ${RAG_MINERU_RESULT_PROXY_URL:-}
       RAG_JINA_API_KEY: ${RAG_JINA_API_KEY:-}
       RAG_SOURCE_GATEWAY_URL: ${RAG_SOURCE_GATEWAY_URL:-http://backend:8080}
       RAG_SOURCE_GATEWAY_TOKEN: ${RAG_SOURCE_GATEWAY_TOKEN:-}
@@ -329,6 +331,7 @@ services:
       retries: 6
       start_period: 20s
     networks:
+      - private
       - rag-private
 
   rag-replay:
@@ -470,6 +473,8 @@ services:
       DB_CONN_MAX_LIFETIME: ${DB_CONN_MAX_LIFETIME:-30m}
       AUTH_BOOTSTRAP_USER_ID: ${AUTH_BOOTSTRAP_USER_ID:-00000000-0000-0000-0000-000000000001}
       AUTH_BOOTSTRAP_DISPLAY_NAME: ${AUTH_BOOTSTRAP_DISPLAY_NAME:-Owner}
+      RAG_PROVIDER_PROFILE: ${RAG_PROVIDER_PROFILE:-disabled}
+      RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED: ${RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED:-false}
     depends_on:
       postgres:
         condition: service_healthy

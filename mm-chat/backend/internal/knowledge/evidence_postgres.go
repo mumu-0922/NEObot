@@ -16,6 +16,9 @@ import (
 const (
 	maxEvidenceHydrationReferences = 16
 	maxEvidenceSelectedCollections = 32
+	defaultEvidenceCandidateLimit  = 8
+	maxEvidenceCandidateLimit      = 50
+	maxEvidenceQueryBytes          = 2048
 )
 
 var (
@@ -34,6 +37,12 @@ type EvidenceCandidateReference struct {
 	SourceSpanHash    string  `json:"source_span_hash"`
 	ContentHash       string  `json:"content_hash"`
 	RankScore         float64 `json:"-"`
+}
+
+type QueryEvidenceCandidatesInput struct {
+	CollectionIDs []string
+	QueryText     string
+	Limit         int
 }
 
 type ReauthorizeEvidenceInput struct {
@@ -57,6 +66,54 @@ type HydratedEvidence struct {
 	SourceText        string          `json:"sourceText"`
 	Locator           json.RawMessage `json:"locator"`
 	RankScore         float64         `json:"rankScore"`
+}
+
+func (r *PostgresRepository) FetchQueryEvidenceCandidates(
+	ctx context.Context,
+	input QueryEvidenceCandidatesInput,
+) ([]EvidenceCandidateReference, error) {
+	if err := r.requireDB(); err != nil {
+		return nil, err
+	}
+	input, err := normalizeQueryEvidenceCandidatesInput(input)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := r.db.QueryContext(ctx, `
+SELECT collection_id, document_id, document_version_id, index_generation_id,
+  materialization_id, parent_chunk_id, child_chunk_id, source_span_hash,
+  content_hash, rank_score
+FROM knowledge_fetch_query_evidence_candidates($1::uuid[], $2, $3)
+`, evidenceUUIDArrayLiteral(input.CollectionIDs), input.QueryText, input.Limit)
+	if err != nil {
+		return nil, fmt.Errorf("fetch query evidence candidates: %w", err)
+	}
+	defer rows.Close()
+
+	candidates := make([]EvidenceCandidateReference, 0, input.Limit)
+	for rows.Next() {
+		var candidate EvidenceCandidateReference
+		if err := rows.Scan(
+			&candidate.CollectionID,
+			&candidate.DocumentID,
+			&candidate.DocumentVersionID,
+			&candidate.IndexGenerationID,
+			&candidate.MaterializationID,
+			&candidate.ParentChunkID,
+			&candidate.ChildChunkID,
+			&candidate.SourceSpanHash,
+			&candidate.ContentHash,
+			&candidate.RankScore,
+		); err != nil {
+			return nil, fmt.Errorf("scan query evidence candidate: %w", err)
+		}
+		candidates = append(candidates, candidate)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate query evidence candidates: %w", err)
+	}
+	return candidates, nil
 }
 
 func (r *PostgresRepository) ReauthorizeAndHydrateEvidence(
@@ -131,6 +188,49 @@ FROM knowledge_reauthorize_and_hydrate_evidence($1, $2, $3, $4::jsonb)
 		hydrated = append(hydrated, evidence)
 	}
 	return hydrated, nil
+}
+
+func normalizeQueryEvidenceCandidatesInput(
+	input QueryEvidenceCandidatesInput,
+) (QueryEvidenceCandidatesInput, error) {
+	if len(input.CollectionIDs) < 1 || len(input.CollectionIDs) > maxEvidenceSelectedCollections {
+		return input, ErrEvidenceHydrationRejected
+	}
+	seen := make(map[string]struct{}, len(input.CollectionIDs))
+	normalizedCollectionIDs := make([]string, 0, len(input.CollectionIDs))
+	for _, collectionID := range input.CollectionIDs {
+		normalized, err := normalizeEvidenceUUID(collectionID)
+		if err != nil {
+			return input, err
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		normalizedCollectionIDs = append(normalizedCollectionIDs, normalized)
+	}
+	if len(normalizedCollectionIDs) == 0 {
+		return input, ErrEvidenceHydrationRejected
+	}
+	input.CollectionIDs = normalizedCollectionIDs
+	input.QueryText = strings.TrimSpace(input.QueryText)
+	if input.QueryText == "" || len(input.QueryText) > maxEvidenceQueryBytes {
+		return input, ErrEvidenceHydrationRejected
+	}
+	if input.Limit == 0 {
+		input.Limit = defaultEvidenceCandidateLimit
+	}
+	if input.Limit < 1 || input.Limit > maxEvidenceCandidateLimit {
+		return input, ErrEvidenceHydrationRejected
+	}
+	return input, nil
+}
+
+func evidenceUUIDArrayLiteral(ids []string) string {
+	if len(ids) == 0 {
+		return "{}"
+	}
+	return "{" + strings.Join(ids, ",") + "}"
 }
 
 func normalizeReauthorizeEvidenceInput(input ReauthorizeEvidenceInput) (ReauthorizeEvidenceInput, error) {

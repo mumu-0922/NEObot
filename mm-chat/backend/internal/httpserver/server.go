@@ -73,6 +73,24 @@ type options struct {
 	ragSourceService     *ragsource.Service
 }
 
+type knowledgeRAGCandidateSource struct {
+	service *knowledge.Service
+}
+
+func (source knowledgeRAGCandidateSource) FetchEvidenceCandidates(
+	ctx context.Context,
+	query chat.RAGCandidateQuery,
+) ([]knowledge.EvidenceCandidateReference, error) {
+	if source.service == nil {
+		return nil, knowledge.ErrDatabaseRequired
+	}
+	return source.service.FetchQueryEvidenceCandidates(ctx, knowledge.QueryEvidenceCandidatesInput{
+		CollectionIDs: query.CollectionIDs,
+		QueryText:     query.QueryText,
+		Limit:         query.Limit,
+	})
+}
+
 func WithReadyChecker(checker health.ReadinessChecker) Option {
 	return func(opts *options) {
 		opts.readyChecks = append(opts.readyChecks, health.Check{Name: "database", Checker: checker})
@@ -251,6 +269,12 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	if resolvedOptions.knowledgeService != nil {
 		chatOptions = append(
 			chatOptions,
+			chat.WithRAGAnswerAssembler(
+				chat.NewRAGAnswerAssembler(
+					knowledgeRAGCandidateSource{service: resolvedOptions.knowledgeService},
+					resolvedOptions.knowledgeService,
+				),
+			),
 			chat.WithRAGAnswerGovernanceGate(
 				chat.NewKnowledgeConsentRAGAnswerGovernanceGate(resolvedOptions.knowledgeService),
 			),

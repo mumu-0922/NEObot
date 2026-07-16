@@ -115,6 +115,53 @@ func TestPostgresReauthorizeAndHydrateEvidenceFencesReferences(t *testing.T) {
 	}
 }
 
+func TestPostgresFetchQueryEvidenceCandidatesReturnsBoundedReferences(t *testing.T) {
+	db := openKnowledgeTestDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if _, err := migration.NewRunner(db, migrationfiles.FS).Up(ctx); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+	fixture := seedEvidenceHydrationFixture(t, ctx, db)
+	seedEvidenceSearchProjection(t, ctx, db, fixture)
+	repo := NewPostgresRepository(db)
+
+	candidates, err := repo.FetchQueryEvidenceCandidates(ctx, QueryEvidenceCandidatesInput{
+		CollectionIDs: []string{fixture.CollectionID, fixture.CollectionID},
+		QueryText:     "alpha evidence",
+		Limit:         4,
+	})
+	if err != nil {
+		t.Fatalf("fetch candidates error = %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("candidate count = %d, want 1: %#v", len(candidates), candidates)
+	}
+	got := candidates[0]
+	want := fixture.Reference
+	if got.CollectionID != want.CollectionID ||
+		got.DocumentID != want.DocumentID ||
+		got.DocumentVersionID != want.DocumentVersionID ||
+		got.IndexGenerationID != want.IndexGenerationID ||
+		got.MaterializationID != want.MaterializationID ||
+		got.ParentChunkID != want.ParentChunkID ||
+		got.ChildChunkID != want.ChildChunkID ||
+		got.SourceSpanHash != want.SourceSpanHash ||
+		got.ContentHash != want.ContentHash ||
+		got.RankScore <= 0 {
+		t.Fatalf("candidate = %#v, want reference %#v with positive rank", got, want)
+	}
+
+	_, err = repo.FetchQueryEvidenceCandidates(ctx, QueryEvidenceCandidatesInput{
+		CollectionIDs: []string{fixture.CollectionID},
+		QueryText:     " ",
+		Limit:         4,
+	})
+	if !errors.Is(err, ErrEvidenceHydrationRejected) {
+		t.Fatalf("blank query error = %v, want ErrEvidenceHydrationRejected", err)
+	}
+}
+
 func TestNormalizeReauthorizeEvidenceRejectsUnsafeCandidateShapes(t *testing.T) {
 	base := ReauthorizeEvidenceInput{
 		ActorUserID:           "74000000-0000-4000-8000-000000000001",
@@ -163,6 +210,47 @@ func TestNormalizeReauthorizeEvidenceRejectsUnsafeCandidateShapes(t *testing.T) 
 				t.Fatalf("error = %v, want ErrEvidenceHydrationRejected", err)
 			}
 		})
+	}
+}
+
+func TestNormalizeQueryEvidenceCandidatesInputRejectsUnsafeShapes(t *testing.T) {
+	base := QueryEvidenceCandidatesInput{
+		CollectionIDs: []string{"74000000-0000-4000-8000-000000000004"},
+		QueryText:     "alpha evidence",
+		Limit:         8,
+	}
+	cases := []struct {
+		name  string
+		input QueryEvidenceCandidatesInput
+	}{
+		{name: "missing collection", input: QueryEvidenceCandidatesInput{QueryText: base.QueryText, Limit: base.Limit}},
+		{name: "zero collection uuid", input: QueryEvidenceCandidatesInput{
+			CollectionIDs: []string{"00000000-0000-0000-0000-000000000000"},
+			QueryText:     base.QueryText,
+			Limit:         base.Limit,
+		}},
+		{name: "blank query", input: QueryEvidenceCandidatesInput{CollectionIDs: base.CollectionIDs, QueryText: " ", Limit: base.Limit}},
+		{name: "bad limit", input: QueryEvidenceCandidatesInput{CollectionIDs: base.CollectionIDs, QueryText: base.QueryText, Limit: 51}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := normalizeQueryEvidenceCandidatesInput(tc.input); !errors.Is(err, ErrEvidenceHydrationRejected) {
+				t.Fatalf("error = %v, want ErrEvidenceHydrationRejected", err)
+			}
+		})
+	}
+
+	normalized, err := normalizeQueryEvidenceCandidatesInput(QueryEvidenceCandidatesInput{
+		CollectionIDs: []string{base.CollectionIDs[0], base.CollectionIDs[0]},
+		QueryText:     " alpha evidence ",
+	})
+	if err != nil {
+		t.Fatalf("normalize valid input error = %v", err)
+	}
+	if normalized.Limit != defaultEvidenceCandidateLimit ||
+		normalized.QueryText != base.QueryText ||
+		len(normalized.CollectionIDs) != 1 {
+		t.Fatalf("normalized input = %#v", normalized)
 	}
 }
 
@@ -306,4 +394,49 @@ INSERT INTO knowledge_child_chunks(
 			RankScore:         0.75,
 		},
 	}
+}
+
+func seedEvidenceSearchProjection(
+	t *testing.T,
+	ctx context.Context,
+	db *sql.DB,
+	fixture evidenceHydrationFixture,
+) {
+	t.Helper()
+	const (
+		searchProfileID = "74000000-0000-4000-8000-000000000017"
+		profileHash     = "7777777777777777777777777777777777777777777777777777777777777777"
+		vectorHash      = "8888888888888888888888888888888888888888888888888888888888888888"
+	)
+	mustKnowledgeExec(t, ctx, db, `
+INSERT INTO knowledge_search_profiles(
+  id,index_profile_id,provider_profile_id,embedding_processor,
+  embedding_model_id,embedding_dimensions,rerank_processor,rerank_model_id,
+  lexical_config,exact_config,profile_hash
+) SELECT
+  $1,generation.index_profile_id,'mineru_jina_postgres_v1','jina',
+  'jina-embeddings-v4',1024,'jina','jina-reranker-v3',
+  '{}'::jsonb,'{}'::jsonb,$2
+FROM knowledge_index_generations generation
+WHERE generation.id=$3;
+INSERT INTO knowledge_child_search_projections(
+  child_chunk_id,parent_chunk_id,materialization_id,index_generation_id,
+  collection_id,document_id,document_version_id,search_profile_id,
+  embedding_model_id,embedding_dimensions,embedding_vector,
+  embedding_vector_sha256,lexical_text,exact_terms,source_span_hash,
+  chunk_profile_hash,content_hash,locator_summary,status,ready_at
+) SELECT
+  child.id,child.parent_chunk_id,child.materialization_id,child.index_generation_id,
+  materialization.collection_id,child.document_id,child.document_version_id,$1,
+  'jina-embeddings-v4',1024,
+  ARRAY(SELECT 0.001::real FROM generate_series(1,1024)),
+  $4,child.content,ARRAY['alpha','evidence']::text[],child.source_span_hash,
+  child.chunk_profile_hash,child.content_hash,'{"page": 1}'::jsonb,'ready',
+  clock_timestamp()
+FROM knowledge_child_chunks child
+JOIN knowledge_document_materializations materialization
+  ON materialization.id=child.materialization_id
+WHERE child.id=$5;
+`, searchProfileID, profileHash, fixture.Reference.IndexGenerationID,
+		vectorHash, fixture.Reference.ChildChunkID)
 }

@@ -56,6 +56,7 @@ _KNOWN_ENV: Final = {
     "RAG_WORKER_MAX_RESCAN_CLAIMS",
     "RAG_MINERU_API_TOKEN",
     "DEFAULT_MINERU_API_TOKEN",
+    "RAG_MINERU_RESULT_PROXY_URL",
     "RAG_JINA_API_KEY",
     "DEFAULT_JINA_API_KEY",
     "RAG_SOURCE_GATEWAY_URL",
@@ -199,6 +200,7 @@ class Settings:
     advisory_lock_key: int = 5_567_946_413_527_621_955
     max_rescan_claims: int = 100
     mineru_api_key: str | None = None
+    mineru_result_proxy_url: str | None = None
     jina_api_key: str | None = None
     source_gateway_url: str | None = None
     source_gateway_token: str | None = None
@@ -297,6 +299,9 @@ class Settings:
             )
         mineru_api_key = _optional_alias(
             env, "RAG_MINERU_API_TOKEN", "DEFAULT_MINERU_API_TOKEN"
+        )
+        mineru_result_proxy_url = _optional_service_url(
+            env, "RAG_MINERU_RESULT_PROXY_URL", {"http", "https"}
         )
         jina_api_key = _optional_alias(env, "RAG_JINA_API_KEY", "DEFAULT_JINA_API_KEY")
         source_gateway_url = _optional_service_url(
@@ -433,6 +438,7 @@ class Settings:
                 env, "RAG_WORKER_MAX_RESCAN_CLAIMS", 100, 1, 10_000
             ),
             mineru_api_key=mineru_api_key,
+            mineru_result_proxy_url=mineru_result_proxy_url,
             jina_api_key=jina_api_key,
             source_gateway_url=source_gateway_url,
             source_gateway_token=source_gateway_token,

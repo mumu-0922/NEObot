@@ -25,6 +25,9 @@ const adminCommandTimeout = 45 * time.Second
 const (
 	providerWireContractFrozen             = false
 	providerWireContractNotFrozenErrorCode = "PROVIDER_WIRE_CONTRACT_NOT_FROZEN"
+	ragProviderProfileEnv                  = "RAG_PROVIDER_PROFILE"
+	ragProviderProfileDraftAcceptedEnv     = "RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED"
+	ragDraftAcceptedProviderProfile        = "mineru_jina_postgres_v1"
 )
 
 var errProviderWireContractNotFrozen = errors.New(
@@ -65,10 +68,12 @@ func runGovernanceApply(args []string, stdin io.Reader, stdout io.Writer) error 
 		return usageError()
 	}
 	// Governance profiles must not be persisted until the Provider Registry and
-	// its contract hash binding are frozen. Keep this gate ahead of stdin reads,
-	// database setup, and GovernanceService.Apply so no syntactically valid
-	// placeholder manifest can become active in the interim.
-	if !providerWireContractFrozen {
+	// its contract hash binding are frozen, except for the explicit G7 live-smoke
+	// profile where the operator has accepted the still-draft MinerU/Jina wire
+	// risk via environment. Keep this gate ahead of stdin reads, database setup,
+	// and GovernanceService.Apply so no syntactically valid placeholder manifest
+	// can become active in the interim.
+	if !providerWireContractApplyAllowed() {
 		return errProviderWireContractNotFrozen
 	}
 	manifest, err := readGovernanceManifest(stdin)
@@ -87,6 +92,14 @@ func runGovernanceApply(args []string, stdin io.Reader, stdout io.Writer) error 
 		return err
 	}
 	return writeGovernanceApplyResult(stdout, head)
+}
+
+func providerWireContractApplyAllowed() bool {
+	if providerWireContractFrozen {
+		return true
+	}
+	return strings.TrimSpace(os.Getenv(ragProviderProfileEnv)) == ragDraftAcceptedProviderProfile &&
+		strings.EqualFold(strings.TrimSpace(os.Getenv(ragProviderProfileDraftAcceptedEnv)), "true")
 }
 
 func runGovernanceDisable(args []string, stdout io.Writer) error {

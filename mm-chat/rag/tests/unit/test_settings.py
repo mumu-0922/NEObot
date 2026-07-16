@@ -48,6 +48,9 @@ def test_explicit_enabled_configuration() -> None:
         "REDIS_KEY_PREFIX": "test:v2",
         "RAG_WORKER_LOG_LEVEL": "warning",
         "RAG_MINERU_API_TOKEN": " fake-mineru-token ",
+        "RAG_MINERU_RESULT_PROXY_URL": (
+            " http://host.docker.internal:18081/mineru-result "
+        ),
         "RAG_JINA_API_KEY": " fake-jina-key ",
         "RAG_SOURCE_GATEWAY_URL": " http://backend:8080 ",
         "RAG_SOURCE_GATEWAY_TOKEN": " fake-source-token ",
@@ -60,6 +63,10 @@ def test_explicit_enabled_configuration() -> None:
     assert settings.redis_channel == "test:v2:rag:outbox:v1"
     assert settings.log_level == "WARNING"
     assert settings.mineru_api_key == "fake-mineru-token"
+    assert (
+        settings.mineru_result_proxy_url
+        == "http://host.docker.internal:18081/mineru-result"
+    )
     assert settings.jina_api_key == "fake-jina-key"
     assert settings.source_gateway_url == "http://backend:8080"
     assert settings.source_gateway_token == "fake-source-token"
@@ -169,6 +176,7 @@ def test_legacy_default_provider_aliases_are_accepted() -> None:
         ({"RAG_WORKER_DATABASE_URL": "https://db/rag"}, "service URL"),
         ({"RAG_WORKER_REDIS_URL": "http://redis"}, "service URL"),
         ({"RAG_SOURCE_GATEWAY_URL": "ftp://backend"}, "service URL"),
+        ({"RAG_MINERU_RESULT_PROXY_URL": "ftp://host/proxy"}, "service URL"),
         ({"RAG_SOURCE_GATEWAY_TOKEN": "bad token"}, "invalid"),
         ({"RAG_WORKER_HEALTH_HOST": ""}, "HEALTH_HOST"),
         ({"RAG_WORKER_TYPO": "true"}, "unknown worker setting"),

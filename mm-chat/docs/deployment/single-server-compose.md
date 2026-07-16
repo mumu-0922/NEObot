@@ -60,10 +60,13 @@ without opening data services.
 
 ### Phase 15.2B dark-run worker
 
-`rag-worker` has no host port and is attached only to the internal
-`rag-private` network. Postgres and Redis also join that network, but only a
-healthy Postgres service is a hard `depends_on` condition. Redis remains a
-non-authoritative wake hint: an outage may degrade wake latency but must not
+`rag-worker` has no host port and joins `private` for provider egress plus the
+internal `rag-private` network for database/Redis/backend traffic. Postgres,
+Redis, and the backend also join `rag-private` so the worker can reach the
+token-gated Go source-object gateway at
+`RAG_SOURCE_GATEWAY_URL=http://backend:8080` without exposing it on the host.
+Only a healthy Postgres service is a hard `depends_on` condition. Redis remains
+a non-authoritative wake hint: an outage may degrade wake latency but must not
 block startup or replace the Postgres poll and forced rescan.
 
 The container is fenced to one CPU, 448 MiB RAM, 64 PIDs, a read-only root
@@ -82,6 +85,7 @@ no port is published or proxied.
 | `RAG_WORKER_DATABASE_URL` | Worker login inheriting only `rag_worker_executor`.                       |
 | `RAG_REPLAY_DATABASE_URL` | Replay login inheriting only `rag_replay_operator`.                       |
 | `RAG_MINERU_API_TOKEN`    | Admin-owned MinerU secret for G7 automatic parsing; redacted status only. |
+| `RAG_MINERU_RESULT_PROXY_URL` | Optional internal ZIP download proxy for Docker Desktop/WSL CDN TLS workarounds; default empty. |
 | `RAG_JINA_API_KEY`        | Admin-owned Jina secret for G7 embedding/rerank; redacted status only.    |
 
 `POSTGRES_USER` is the empty-volume bootstrap and migrator login referenced by
@@ -98,6 +102,7 @@ Phase 15.2B remains a dark-run boundary:
 RAG_WORKER_DISPATCH_ENABLED=false
 RAG_WORKER_JOB_STAGES=
 RAG_MINERU_API_TOKEN=
+RAG_MINERU_RESULT_PROXY_URL=
 RAG_JINA_API_KEY=
 RAG_PROVIDER_PROFILE=disabled
 RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED=false
@@ -123,6 +128,13 @@ worker dispatch fails closed when `parse` is enabled without
 `RAG_MINERU_API_TOKEN` or `passage_embedding` is enabled without
 `RAG_JINA_API_KEY`. Legacy `DEFAULT_MINERU_API_TOKEN` and
 `DEFAULT_JINA_API_KEY` aliases remain accepted only as migration fallback names.
+`RAG_MINERU_RESULT_PROXY_URL` is optional and normally empty. It exists only for
+bounded local smoke environments where Docker Desktop/WSL container egress can
+reach MinerU API/upload endpoints but fails TLS handshakes to the MinerU result
+CDN. When set, the worker still validates the provider `full_zip_url` as
+`https://cdn-mineru.openxlab.org.cn/pdf/*.zip` before sending it to the trusted
+internal proxy; no MinerU token, Authorization header, cookie, or provider
+secret is forwarded to that proxy.
 
 G7.3 adds an explicit provider-backed runtime profile gate. Keep
 `RAG_PROVIDER_PROFILE=disabled` until the operator intentionally enables
@@ -259,14 +271,19 @@ shape and must be rejected.
 
 Only a credential-free manifest derived from a `lifecycle.state=frozen`
 [`provider-wire-fixture.md`](../contracts/provider-wire-fixture.md) contract may
-be reviewed and supplied on stdin. C0 has not frozen that contract, so the apply
-command is intentionally unavailable. After C0 closes, record the generated
-manifest path and exact Contract/Terms/Fixture hashes in the release evidence;
-never pipe the blocked file. This runbook intentionally contains no executable
-`governance-apply` pipeline until the reviewed manifest generator exists:
+be reviewed and supplied on stdin for normal production. For the bounded G7 live
+smoke only, `governance-apply` may proceed when the operator explicitly sets
+`RAG_PROVIDER_PROFILE=mineru_jina_postgres_v1` and
+`RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED=true`; this records acceptance of the
+still-draft MinerU/Jina wire risk without exposing provider secrets to the admin
+container. Without that exact pair, the apply command is intentionally
+unavailable. After C0 closes, record the generated manifest path and exact
+Contract/Terms/Fixture hashes in the release evidence; never pipe the blocked
+file:
 
 ```text
-governance apply: BLOCKED — PROVIDER_WIRE_CONTRACT_NOT_FROZEN
+governance apply: BLOCKED — PROVIDER_WIRE_CONTRACT_NOT_FROZEN unless the G7
+draft profile acceptance gate is set
 ```
 
 The manifest contains only bounded lowercase declaration identifiers for the

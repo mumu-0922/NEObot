@@ -1121,11 +1121,13 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         persisted Knowledge metadata on the rebuilt local stack; `G7.7H`
         records message metadata as sufficient for first-version citation cards
         and defers a dedicated citation table).
-  - [ ] G7.8 Live MinerU + Jina + Postgres smoke and operational proof
-        (`G7.8A` preflight found rebuilt local backend missing
-        `RAG_MINERU_API_TOKEN`, `RAG_JINA_API_KEY`, and
-        `RAG_SOURCE_GATEWAY_TOKEN`; no provider quota consumed; live smoke
-        waits on local admin secret injection and backend/rag restart).
+  - [x] G7.8 Live MinerU + Jina + Postgres smoke and operational proof
+        (`G7.8A` preflight found rebuilt local backend missing admin provider
+        secrets without consuming quota; after local secret injection, `G7.8B`
+        proved real MinerU parse + Jina 1024 passage embedding + Postgres
+        publish on doc11; `G7.8C` wired the Go strict-RAG assembler, applied
+        migration `024`, and live-proved `outcome=answered`, `citationCount=1`,
+        and answer `PHOENIX-G78-LIVE-042 [1]` from the selected knowledge base).
   - [ ] G7.9 G8/G9 handoff and G7 closure checklist.
 - [ ] G8 Teams and Knowledge UI Wiring: connect existing Go control-plane APIs
       to the current frontend theme.
