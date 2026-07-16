@@ -12,6 +12,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"neo-chat/mm-chat/backend/internal/auth"
+	"neo-chat/mm-chat/backend/internal/knowledge"
 )
 
 const (
@@ -661,6 +664,99 @@ func TestHandlerForwardsReasoningToggleToProvider(t *testing.T) {
 	if !provider.input.UseReasoning {
 		t.Fatalf("provider UseReasoning = false, want true; input=%#v", provider.input)
 	}
+}
+
+func TestHandlerStrictRAGRefusesWithoutEvidenceBeforeProvider(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "What does the selected doc say?"),
+	)
+	provider := &strictRAGProviderProbe{}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithRAGAnswerAssembler(NewRAGAnswerAssembler(&fakeRAGCandidateSource{}, &fakeRAGHydrator{})),
+	)
+
+	rec := performAuthenticatedRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"config":{"knowledgeStrict":true,"knowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-rag-refusal"}`,
+	)
+
+	assertStreamStatus(t, rec, http.StatusOK)
+	body := rec.Body.String()
+	for _, want := range []string{
+		"event: message.started",
+		"event: message.delta",
+		"event: message.completed",
+		ragRefusalText(),
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("strict RAG stream missing %q; body=%s", want, body)
+		}
+	}
+	if provider.called {
+		t.Fatal("provider StreamChat was called before strict RAG evidence gate")
+	}
+	assertStrictRAGRefusalMessage(t, repo, "insufficient_evidence")
+}
+
+func TestHandlerStrictRAGRejectsInvalidSelection(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "hello"),
+	)
+	handler := NewHandler(NewService(repo), WithProvider(NewMockProvider()))
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"config":{"knowledgeStrict":true,"knowledgeCollectionIds":["not-a-uuid"]},"idempotencyKey":"stream-key-invalid-rag"}`,
+	)
+
+	assertStatus(t, rec, http.StatusBadRequest)
+	assertErrorCode(t, rec, "INVALID_RAG_SELECTION")
+	if got := len(repo.messages[testConversationID]); got != 1 {
+		t.Fatalf("persisted messages = %d, want only user message", got)
+	}
+}
+
+func TestHandlerStrictRAGFailsClosedWhenAnswerGatePending(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "Summarize the indexed source"),
+	)
+	provider := &strictRAGProviderProbe{}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithRAGAnswerAssembler(NewRAGAnswerAssembler(
+			&fakeRAGCandidateSource{refs: []knowledge.EvidenceCandidateReference{validRAGCandidate()}},
+			&fakeRAGHydrator{evidence: []knowledge.HydratedEvidence{validHydratedEvidence()}},
+		)),
+	)
+
+	rec := performAuthenticatedRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"metadata":{"ragStrict":true,"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-rag-gate-pending"}`,
+	)
+
+	assertStreamStatus(t, rec, http.StatusOK)
+	if provider.called {
+		t.Fatal("provider StreamChat was called before strict RAG answer gate")
+	}
+	assertStrictRAGRefusalMessage(t, repo, "answer_gate_pending")
 }
 
 func TestHandlerStreamsEmptyAssistantContent(t *testing.T) {
@@ -1401,6 +1497,29 @@ func performRequest(handler http.Handler, method string, path string, body strin
 	return rec
 }
 
+func performAuthenticatedRequest(handler http.Handler, method string, path string, body string) *httptest.ResponseRecorder {
+	var reader *bytes.Reader
+	if body == "" {
+		reader = bytes.NewReader(nil)
+	} else {
+		reader = bytes.NewReader([]byte(body))
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(method, path, reader)
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req = req.WithContext(auth.WithAuthenticatedSession(req.Context(), auth.Session{
+		ID:          "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+		UserID:      DevUserID,
+		DisplayName: "Development User",
+		Role:        "owner",
+		ExpiresAt:   time.Now().Add(time.Hour),
+	}))
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
 func assertStatus(t *testing.T, rec *httptest.ResponseRecorder, want int) {
 	t.Helper()
 	if rec.Code != want {
@@ -1418,6 +1537,32 @@ func assertStreamStatus(t *testing.T, rec *httptest.ResponseRecorder, want int) 
 	}
 	if contentType := rec.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "text/event-stream") {
 		t.Fatalf("Content-Type = %q, want text/event-stream", contentType)
+	}
+}
+
+func assertStrictRAGRefusalMessage(t *testing.T, repo *fakeRepository, wantOutcome string) {
+	t.Helper()
+	messages := repo.messages[testConversationID]
+	if len(messages) != 2 {
+		t.Fatalf("persisted messages = %d, want user + assistant; messages=%#v", len(messages), messages)
+	}
+	assistant := messages[1]
+	if assistant.Role != "assistant" || assistant.Status != "completed" {
+		t.Fatalf("assistant role/status = %s/%s, want assistant/completed", assistant.Role, assistant.Status)
+	}
+	if assistant.Content != ragRefusalText() {
+		t.Fatalf("assistant content = %q, want strict RAG refusal", assistant.Content)
+	}
+	knowledgeMetadata, ok := assistant.Metadata["knowledge"].(map[string]any)
+	if !ok {
+		t.Fatalf("assistant knowledge metadata = %#v", assistant.Metadata["knowledge"])
+	}
+	if knowledgeMetadata["mode"] != "strict" || knowledgeMetadata["outcome"] != wantOutcome {
+		t.Fatalf("assistant knowledge metadata = %#v, want outcome %q", knowledgeMetadata, wantOutcome)
+	}
+	selected, ok := knowledgeMetadata["selectedCollectionIds"].([]string)
+	if !ok || len(selected) != 1 || selected[0] != "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" {
+		t.Fatalf("selectedCollectionIds = %#v", knowledgeMetadata["selectedCollectionIds"])
 	}
 }
 
@@ -1938,6 +2083,17 @@ type capturingProvider struct {
 
 func (p *capturingProvider) StreamChat(_ context.Context, input ProviderRequest) (<-chan ProviderEvent, error) {
 	p.input = input
+	ch := make(chan ProviderEvent)
+	close(ch)
+	return ch, nil
+}
+
+type strictRAGProviderProbe struct {
+	called bool
+}
+
+func (p *strictRAGProviderProbe) StreamChat(context.Context, ProviderRequest) (<-chan ProviderEvent, error) {
+	p.called = true
 	ch := make(chan ProviderEvent)
 	close(ch)
 	return ch, nil

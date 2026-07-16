@@ -4368,3 +4368,69 @@ Residual risk:
   message persistence, or frontend citation cards; those remain G7.7.
 - The Go HTTP/chat entrypoint still needs to carry the resolved session ID into
   RAG answer assembly instead of relying only on `auth.User` context.
+
+## 2026-07-16 — G7.7A Go Strict RAG Chat Refusal Skeleton
+
+Objective: connect the Go chat stream path to the selected-collection RAG
+assembly seam without sending hydrated source text to an answer provider before
+citation minting and answer-purpose governance exist.
+
+Implemented behavior:
+
+- Added authenticated session context propagation so Go middleware stores the
+  canonical session alongside the request user. Chat RAG assembly now reads the
+  server-resolved session from context instead of trusting any client-supplied
+  session identifier.
+- Added strict RAG selection parsing for `config` and `metadata` aliases:
+  `knowledgeCollectionIds`, `selectedKnowledgeCollectionIds`,
+  `selectedCollectionIds`, `ragCollectionIds`, and `knowledgeCollectionId`, plus
+  strict toggles `knowledgeStrict`, `strictKnowledge`, `ragStrict`, and
+  `strictRag`.
+- Added `RAGAnswerAssembler` as the Go chat seam that fetches reference-only
+  candidates for the current chat-selected collections and hydrates them through
+  the G7.6B reauthorization contract.
+- Wired strict Knowledge mode into `/v1/chat/conversations/{conversationId}/stream`.
+  When strict mode and selected collections are present, the handler fails
+  closed before `Provider.StreamChat`: insufficient evidence, dependency
+  failure, rejected hydration, and the intentionally pending answer gate all
+  produce a completed assistant refusal.
+- Persisted refusal metadata under `metadata.knowledge` with strict mode,
+  outcome, and selected collection IDs. The stream still emits
+  `message.started`, `message.delta`, and `message.completed` for frontend SSE
+  compatibility.
+
+Touched files:
+
+```text
+backend/internal/auth/types.go
+backend/internal/auth/context_test.go
+backend/internal/httpserver/server.go
+backend/internal/httpserver/server_test.go
+backend/internal/chat/handler.go
+backend/internal/chat/handler_test.go
+backend/internal/chat/rag_assembly.go
+backend/internal/chat/rag_assembly_test.go
+backend/internal/chat/rag_selection.go
+backend/internal/chat/rag_selection_test.go
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && \
+  GOCACHE=/tmp/neo-chat-go-build go test ./internal/auth ./internal/httpserver ./internal/chat ./internal/knowledge ./internal/migration \
+    -run 'Session|StrictRAG|RAG|Evidence|Chat|Stream' -count=1
+# passed
+```
+
+Residual risk:
+
+- G7.7A deliberately does not send hydrated source text to answer providers.
+  Answer-purpose governance, citation minting, answer context injection,
+  optional-mode degradation metadata, and frontend citation cards remain the
+  next G7.7 slices.
+- The current refusal text is a stable strict-mode placeholder and may need i18n
+  or product-copy adjustment when the frontend citation UX is wired.

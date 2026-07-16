@@ -1312,7 +1312,31 @@ Validation:
 
 ### G7.7 Strict/optional chat answer and citations
 
+G7.7A completed on 2026-07-16:
+
+- Added the Go chat strict-RAG answer assembly skeleton behind the existing
+  stream endpoint. The request may carry selected Knowledge collections through
+  `config` or `metadata`; collection IDs are UUID-validated, deduplicated,
+  bounded to 32, and never taken from a broad/default collection search.
+- The stream path now carries the authenticated session ID from Go middleware
+  into RAG assembly. Client-provided session identifiers remain forbidden and
+  are not trusted for evidence hydration.
+- In strict Knowledge mode with selected collections, Go fetches
+  reference-only evidence candidates, reauthorizes/hydrates them through the
+  G7.6B evidence seam, and still fails closed before the answer provider. This
+  intentional gate prevents hydrated source text from being sent to any model
+  until answer-purpose governance and citation minting are implemented.
+- Missing evidence, missing/dead RAG dependencies, rejected hydration, or the
+  pending answer gate produce a completed assistant refusal message plus
+  `metadata.knowledge = { mode: "strict", outcome, selectedCollectionIds }`.
+  SSE compatibility is preserved with `message.started`, `message.delta`, and
+  `message.completed`.
+
+Remaining G7.7 slices:
+
 - Wire RAG answer generation into Go chat flow or a Go-owned RAG answer route.
+- Add answer-purpose provider consent/governance and citation minting before any
+  hydrated source text reaches an answer provider.
 - Strict mode refuses unknowns; normal chat may degrade with explicit metadata.
 - Persist message/citation metadata atomically where applicable.
 - Frontend renders basic citation markers/cards for selected Knowledge answers.

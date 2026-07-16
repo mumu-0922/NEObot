@@ -405,7 +405,7 @@ func withSessionIdentity(resolver SessionResolver, requireAuth bool) Middleware 
 				return
 			}
 
-			next.ServeHTTP(w, r.WithContext(auth.WithUser(r.Context(), auth.UserFromSession(session))))
+			next.ServeHTTP(w, r.WithContext(auth.WithAuthenticatedSession(r.Context(), session)))
 		})
 	}
 }

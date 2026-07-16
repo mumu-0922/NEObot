@@ -90,7 +90,10 @@ type User struct {
 
 type contextKey string
 
-const userContextKey contextKey = "auth.user"
+const (
+	userContextKey    contextKey = "auth.user"
+	sessionContextKey contextKey = "auth.session"
+)
 
 func DevelopmentUser() User {
 	return User{
@@ -110,6 +113,35 @@ func WithUser(ctx context.Context, user User) context.Context {
 	}
 
 	return context.WithValue(ctx, userContextKey, user)
+}
+
+func WithSession(ctx context.Context, session Session) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	session.UserID = strings.TrimSpace(session.UserID)
+	session.ID = strings.TrimSpace(session.ID)
+	return context.WithValue(ctx, sessionContextKey, session)
+}
+
+func WithAuthenticatedSession(ctx context.Context, session Session) context.Context {
+	return WithSession(WithUser(ctx, UserFromSession(session)), session)
+}
+
+func SessionFromContext(ctx context.Context) (Session, bool) {
+	if ctx == nil {
+		return Session{}, false
+	}
+	session, ok := ctx.Value(sessionContextKey).(Session)
+	if !ok {
+		return Session{}, false
+	}
+	session.ID = strings.TrimSpace(session.ID)
+	session.UserID = strings.TrimSpace(session.UserID)
+	if session.ID == "" || session.UserID == "" {
+		return Session{}, false
+	}
+	return session, true
 }
 
 func UserFromContext(ctx context.Context) (User, bool) {

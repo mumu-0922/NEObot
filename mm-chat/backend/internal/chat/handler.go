@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"neo-chat/mm-chat/backend/internal/auth"
 )
 
 const (
@@ -30,6 +32,7 @@ type Handler struct {
 	provider         Provider
 	activeRuns       *activeRunRegistry
 	cancellationRuns RunCancellationStore
+	ragAssembler     *RAGAnswerAssembler
 }
 
 type HandlerOption func(*Handler)
@@ -194,6 +197,12 @@ func WithProvider(provider Provider) HandlerOption {
 		if provider != nil {
 			h.provider = provider
 		}
+	}
+}
+
+func WithRAGAnswerAssembler(assembler *RAGAnswerAssembler) HandlerOption {
+	return func(h *Handler) {
+		h.ragAssembler = assembler
 	}
 }
 
@@ -792,6 +801,11 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		writeRequestDecodeError(w, err)
 		return
 	}
+	ragSelection, err := extractRAGSelection(request.Config, request.Metadata)
+	if err != nil {
+		writeRequestDecodeError(w, err)
+		return
+	}
 
 	modelRef := request.ModelRef
 	if modelRef == nil {
@@ -865,6 +879,21 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	)
 	if err != nil {
 		writeServiceError(w, err)
+		return
+	}
+
+	if ragSelection.Strict && ragSelection.Enabled {
+		h.streamStrictRAGRefusal(
+			w,
+			r,
+			flusher,
+			conversationID,
+			userMessage,
+			assistantMessage,
+			modelRef,
+			runID,
+			ragSelection,
+		)
 		return
 	}
 
@@ -1063,6 +1092,148 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	flusher.Flush()
+}
+
+func (h *Handler) streamStrictRAGRefusal(
+	w http.ResponseWriter,
+	r *http.Request,
+	flusher http.Flusher,
+	conversationID string,
+	userMessage Message,
+	assistantMessage Message,
+	modelRef *ModelRef,
+	runID string,
+	selection ragSelection,
+) {
+	outcome := h.strictRAGOutcome(r.Context(), conversationID, userMessage, selection)
+	content := ragRefusalText()
+	metadata := strictRAGRefusalMetadata(runID, selection, outcome)
+
+	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+
+	sequence := 1
+	if err := writeSSEEvent(w, "message.started", streamEvent{
+		Type:           "message.started",
+		RunID:          runID,
+		ConversationID: conversationID,
+		MessageID:      assistantMessage.ID,
+		Sequence:       sequence,
+		CreatedAt:      formatTime(time.Now()),
+		Role:           "assistant",
+		ModelRef:       modelRef,
+	}); err != nil {
+		h.cancelAssistantAfterWriteError(conversationID, assistantMessage.ID, runID, "")
+		return
+	}
+	flusher.Flush()
+
+	sequence++
+	if err := writeSSEEvent(w, "message.delta", streamEvent{
+		Type:           "message.delta",
+		RunID:          runID,
+		ConversationID: conversationID,
+		MessageID:      assistantMessage.ID,
+		Sequence:       sequence,
+		CreatedAt:      formatTime(time.Now()),
+		Delta:          content,
+	}); err != nil {
+		h.cancelAssistantAfterWriteError(conversationID, assistantMessage.ID, runID, content)
+		return
+	}
+	flusher.Flush()
+
+	finalizedMessage, err := h.finalizeAssistantMessage(
+		context.Background(),
+		conversationID,
+		assistantMessage.ID,
+		FinalizeAssistantMessageInput{
+			Status:   "completed",
+			Content:  content,
+			Metadata: metadata,
+		},
+	)
+	if err != nil {
+		sequence++
+		_, errorBody := serviceErrorFor(err)
+		_ = writeSSEEvent(w, "message.error", streamEvent{
+			Type:           "message.error",
+			RunID:          runID,
+			ConversationID: conversationID,
+			MessageID:      assistantMessage.ID,
+			Sequence:       sequence,
+			CreatedAt:      formatTime(time.Now()),
+			Error:          &errorBody,
+		})
+		flusher.Flush()
+		return
+	}
+
+	sequence++
+	assistantDTO := newMessageDTO(finalizedMessage)
+	if err := writeSSEEvent(w, "message.completed", streamEvent{
+		Type:           "message.completed",
+		RunID:          runID,
+		ConversationID: conversationID,
+		MessageID:      finalizedMessage.ID,
+		Sequence:       sequence,
+		CreatedAt:      formatTime(time.Now()),
+		Message:        &assistantDTO,
+	}); err != nil {
+		return
+	}
+	flusher.Flush()
+}
+
+func (h *Handler) strictRAGOutcome(
+	ctx context.Context,
+	conversationID string,
+	userMessage Message,
+	selection ragSelection,
+) string {
+	session, ok := auth.SessionFromContext(ctx)
+	if !ok {
+		return "insufficient_evidence"
+	}
+	result, err := h.ragAssembler.AssembleStrict(ctx, RAGAssemblyInput{
+		ActorUserID:           session.UserID,
+		SessionID:             session.ID,
+		ConversationID:        conversationID,
+		QueryText:             userMessage.Content,
+		SelectedCollectionIDs: selection.CollectionIDs,
+	})
+	if err == nil {
+		if len(result.Evidence) == 0 {
+			return "insufficient_evidence"
+		}
+		return "answer_gate_pending"
+	}
+	if errors.Is(err, ErrRAGAnswerGatePending) {
+		return "answer_gate_pending"
+	}
+	if errors.Is(err, ErrRAGDependencyUnavailable) {
+		return "dependency_unavailable"
+	}
+	if errors.Is(err, ErrRAGInsufficientEvidence) {
+		return "insufficient_evidence"
+	}
+
+	return "dependency_unavailable"
+}
+
+func strictRAGRefusalMetadata(runID string, selection ragSelection, outcome string) map[string]any {
+	return map[string]any{
+		"runId": runID,
+		"knowledge": map[string]any{
+			"mode":                  "strict",
+			"outcome":               outcome,
+			"selectedCollectionIds": append([]string(nil), selection.CollectionIDs...),
+		},
+	}
 }
 
 func configBool(config map[string]any, key string) bool {

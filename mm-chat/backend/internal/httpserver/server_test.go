@@ -260,8 +260,11 @@ func TestSessionIdentityMiddlewareSetsRequestUser(t *testing.T) {
 		},
 	}
 	var gotUser auth.User
+	var gotSession auth.Session
+	var gotSessionOK bool
 	handler := chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotUser = auth.UserOrDevelopment(r.Context())
+		gotSession, gotSessionOK = auth.SessionFromContext(r.Context())
 		w.WriteHeader(http.StatusNoContent)
 	}), withSessionIdentity(resolver, false))
 	rec := httptest.NewRecorder()
@@ -278,6 +281,9 @@ func TestSessionIdentityMiddlewareSetsRequestUser(t *testing.T) {
 	}
 	if gotUser.ID != resolver.session.UserID || gotUser.DisplayName != "User Seven" || gotUser.Role != "owner" {
 		t.Fatalf("context user = %#v", gotUser)
+	}
+	if !gotSessionOK || gotSession.ID != resolver.session.ID || gotSession.UserID != resolver.session.UserID {
+		t.Fatalf("context session = %#v, ok=%v", gotSession, gotSessionOK)
 	}
 }
 

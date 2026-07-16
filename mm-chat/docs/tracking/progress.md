@@ -1102,7 +1102,13 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         Postgres, binds `source_span_hash` + `content_hash`, rejects stale or
         unselected refs, and returns no body on failure; chat answer/citation
         assembly remains G7.7).
-  - [ ] G7.7 Strict/optional chat answer and basic citations.
+  - [ ] G7.7 Strict/optional chat answer and basic citations
+        (`G7.7A` Go strict-RAG chat skeleton done: selected collection metadata
+        is parsed and validated, authenticated session ID is available to RAG
+        assembly, and strict mode fails closed with a persisted refusal before
+        any answer provider receives hydrated source text; citation minting,
+        answer-provider context injection, optional-mode metadata, and citation
+        UI remain).
   - [ ] G7.8 Live MinerU + Jina + Postgres smoke and operational proof.
   - [ ] G7.9 G8/G9 handoff and G7 closure checklist.
 - [ ] G8 Teams and Knowledge UI Wiring: connect existing Go control-plane APIs

@@ -36,3 +36,28 @@ func TestUserFromSession(t *testing.T) {
 		t.Fatalf("UserFromSession() = %#v", user)
 	}
 }
+
+func TestAuthenticatedSessionContextRoundTrip(t *testing.T) {
+	ctx := WithAuthenticatedSession(context.Background(), Session{
+		ID:          " session-1 ",
+		UserID:      " 22222222-2222-4222-8222-222222222222 ",
+		DisplayName: "Session User",
+		Role:        "owner",
+	})
+
+	session, ok := SessionFromContext(ctx)
+	if !ok {
+		t.Fatal("SessionFromContext() ok = false, want true")
+	}
+	if session.ID != "session-1" || session.UserID != "22222222-2222-4222-8222-222222222222" {
+		t.Fatalf("SessionFromContext() = %#v", session)
+	}
+
+	user, ok := UserFromContext(ctx)
+	if !ok {
+		t.Fatal("UserFromContext() ok = false, want true")
+	}
+	if user.ID != session.UserID || user.DisplayName != "Session User" || user.Role != "owner" {
+		t.Fatalf("UserFromContext() = %#v", user)
+	}
+}
