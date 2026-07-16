@@ -878,6 +878,20 @@ G7.5D completed on 2026-07-16:
 - Default production exports remain unchanged: `DISPATCH_REGISTRY` and
   `JOB_HANDLER_REGISTRY` are still empty, so no handler is silently promoted.
 
+G7.5E completed on 2026-07-16:
+
+- Added an explicit promoted job-handler registry factory for the `purge` stage
+  only.
+- When `RAG_WORKER_DISPATCH_ENABLED=true` and `RAG_WORKER_JOB_STAGES=purge`,
+  the worker can build a purge handler from the existing Postgres projection
+  gateway and start as a job-only worker.
+- Parse and passage-embedding stages are intentionally not auto-promoted by
+  this factory; they still fail the startup gate until their provider
+  dependency factories and smoke gates are wired.
+- Frozen module-level `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain
+  empty. This is env/setting-gated worker construction, not an import-time
+  registry mutation.
+
 Remaining G7.5 work:
 
 - G7.5T disposable PostgreSQL integration gate has been restored and proven
@@ -900,10 +914,13 @@ Remaining G7.5 work:
   unrelated empty outbox registry. Real parse, embedding, and purge handlers
   still need a separate dependency factory and registry wiring gate before
   production dispatch can claim jobs.
+- G7.5E is complete: purge can now be promoted explicitly from worker settings
+  without outbox planner promotion or provider quota. Parse and passage
+  embedding remain gated pending provider dependency factory wiring.
 - Promote the composed default-off Jina + Postgres embedding dependencies only
   behind an explicit readiness/registry gate.
-- Promote purge dispatch behind an explicit readiness/registry gate now that
-  the purge Postgres gateway has unit, static, and live integration coverage.
+- Add a live job-runner smoke for promoted purge against disposable PostgreSQL
+  before treating purge dispatch as operationally closed.
 - Implement index, reprocess, tombstone purge, rebuild, retry, and DLQ behavior.
 - Promote handlers one stage at a time behind readiness and registry gates.
 

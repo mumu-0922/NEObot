@@ -19,6 +19,11 @@ from mm_chat_rag.handlers import (
     JobHandler,
 )
 from mm_chat_rag.health import ReadinessState, create_health_app
+from mm_chat_rag.job_handler_dependencies import (
+    PurgeHandlerDependencies,
+    PurgeProjectionGateway,
+    admitted_purge_handler_with_dependencies,
+)
 from mm_chat_rag.jobs import JobRunner
 from mm_chat_rag.logging import configure_logging
 from mm_chat_rag.metrics import Metrics
@@ -31,6 +36,20 @@ logger = logging.getLogger(__name__)
 
 class WorkerStartupError(RuntimeError):
     """Raised before claims when a safety gate or singleton lock fails."""
+
+
+def build_promoted_job_handler_registry(
+    settings: Settings,
+    *,
+    purge_projection: PurgeProjectionGateway,
+) -> Mapping[str, JobHandler]:
+    """Build explicitly enabled job handlers without mutating frozen registries."""
+    handlers: dict[str, JobHandler] = {}
+    if "purge" in settings.job_stages:
+        handlers["purge"] = admitted_purge_handler_with_dependencies(
+            PurgeHandlerDependencies(projection=purge_projection)
+        )
+    return handlers
 
 
 class _NoSignalServer(uvicorn.Server):
@@ -61,7 +80,13 @@ class Worker:
         )
         self.database = PostgresAdapter(settings, self.metrics)
         self.dispatch_registry = dispatch_registry
-        self.job_handlers = job_handlers
+        if job_handlers is JOB_HANDLER_REGISTRY and settings.job_stages:
+            self.job_handlers = build_promoted_job_handler_registry(
+                settings,
+                purge_projection=self.database,
+            )
+        else:
+            self.job_handlers = job_handlers
         self.stop = asyncio.Event()
         self.wake = asyncio.Event()
 

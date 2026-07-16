@@ -3187,3 +3187,67 @@ Residual risk:
 - The next promotion slice still needs explicit dependency factory wiring for
   purge, passage embedding, and parse before `async_main()` can safely promote
   real handlers from env/secret settings.
+
+## 2026-07-16 — G7.5E Explicit Purge Handler Promotion Factory
+
+Objective: promote exactly one real job handler path behind worker settings
+without mutating the frozen module-level registries. This follows G7.5D: once
+job-only workers no longer require an outbox planner, the safe first promoted
+stage is `purge` because it uses only token-fenced Postgres gateways and does
+not consume provider quota.
+
+Implemented behavior:
+
+- Added `build_promoted_job_handler_registry(...)` in `rag/src/mm_chat_rag/worker.py`.
+- The factory promotes only `purge` by composing:
+  - `PurgeHandlerDependencies(projection=PostgresAdapter(...))`;
+  - `admitted_purge_handler_with_dependencies(...)`.
+- `Worker(...)` now uses the factory only when the caller leaves the default
+  frozen `JOB_HANDLER_REGISTRY` in place and `settings.job_stages` is non-empty.
+- `parse` and `passage_embedding` are intentionally not auto-promoted; if they
+  appear in `RAG_WORKER_JOB_STAGES`, the startup gate still fails until their
+  provider dependency factories are wired.
+- `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty at module import.
+
+Touched files:
+
+```text
+rag/src/mm_chat_rag/worker.py
+rag/tests/unit/test_replay_worker.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && \
+  uv run ruff check src/mm_chat_rag/worker.py tests/unit/test_replay_worker.py
+# passed
+
+cd mm-chat/rag && \
+  uv run mypy src/mm_chat_rag/worker.py tests/unit/test_replay_worker.py
+# passed
+
+cd mm-chat/rag && \
+  uv run pytest -p no:cacheprovider \
+  tests/unit/test_replay_worker.py tests/unit/test_jobs.py \
+  tests/unit/test_job_handler_dependencies.py tests/unit/test_settings.py -v
+# 75 passed
+
+cd mm-chat/rag && \
+  uv run pytest -p no:cacheprovider \
+  tests/unit/test_parser_runtime_boundary.py \
+  tests/unit/test_parser_deployment_boundary.py \
+  tests/unit/test_provider_capture.py -v
+# 67 passed
+```
+
+Residual risk:
+
+- This is a settings-gated purge promotion factory, not yet a live promoted
+  purge job-runner smoke against disposable PostgreSQL.
+- Parse and passage-embedding promotion remain blocked until their provider
+  dependency factories, rate/concurrency gates, and live smoke tests are added.
+- No MinerU/Jina provider calls were made; no provider quota was consumed.

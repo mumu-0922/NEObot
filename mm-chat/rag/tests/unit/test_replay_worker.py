@@ -199,6 +199,38 @@ def test_worker_accepts_outbox_only_promotion_without_job_stages() -> None:
     assert worker.state.consumer == "ready"
 
 
+def test_worker_auto_promotes_only_purge_stage_from_settings() -> None:
+    settings = Settings(
+        database_url="postgresql://test",
+        dispatch_enabled=True,
+        job_stages=("purge",),
+    )
+    worker = Worker(settings)
+
+    worker.validate_promotion_gate()
+
+    assert set(worker.job_handlers) == {"purge"}
+    assert worker.dispatch_registry == {}
+    assert worker.state.consumer == "disabled"
+
+
+def test_worker_does_not_auto_promote_provider_stages() -> None:
+    settings = Settings(
+        database_url="postgresql://test",
+        dispatch_enabled=True,
+        job_stages=("parse", "passage_embedding", "purge"),
+        mineru_api_key="fake-mineru-token",
+        jina_api_key="fake-jina-key",
+        provider_profile=provider_profile(),
+    )
+    worker = Worker(settings)
+
+    with pytest.raises(WorkerStartupError, match="no promoted handler"):
+        worker.validate_promotion_gate()
+
+    assert set(worker.job_handlers) == {"purge"}
+
+
 async def test_worker_readiness_refresh_preserves_dark_run_consumer() -> None:
     worker = Worker(Settings(database_url="postgresql://test"))
 
