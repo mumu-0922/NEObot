@@ -596,7 +596,9 @@ Slice sequence:
     - [x] G10.2b.1 Release image script: add an independent `mm-chat` script
           that builds backend, frontend, and RAG images, supports local
           `--load` smoke builds, supports explicit `--push`, and emits
-          production `@sha256:` env lines after registry publish.
+          production `@sha256:` env lines after registry publish; local
+          `--load` builds for all three images passed, while GHCR `--push`
+          awaits authenticated package write access.
     - [ ] G10.2b.2 Production digest env proof: run the script with `--push`,
           copy emitted image refs into `.env.single-server`, pass production
           preflight, then repeat backup/restore evidence.

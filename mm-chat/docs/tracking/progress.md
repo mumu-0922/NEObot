@@ -1202,7 +1202,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
       - [x] G10.2b.1 Release image script: `scripts/release-images.sh` builds
             backend, frontend, and RAG images, supports local `--load` smoke
             builds, supports explicit `--push`, and emits production
-            `@sha256:` env lines after registry publish.
+            `@sha256:` env lines after registry publish; local `--load` builds
+            for all three images passed, while GHCR `--push` awaits
+            authenticated package write access.
       - [ ] G10.2b.2 Production digest env proof: run the script with `--push`,
             copy emitted refs into `.env.single-server`, pass production
             preflight, then repeat backup/restore evidence.

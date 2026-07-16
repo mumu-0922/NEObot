@@ -53,7 +53,12 @@ Completed scope:
   normalizing returned UNC build-context paths back to the clean-copy root;
 - documented the workflow in `docs/deployment/release-rollback.md`;
 - recorded G10.2b as split between the completed script and the still-pending
-  production digest env proof.
+  production digest env proof;
+- after Docker Desktop WSL integration was restored, ran a real local `--load`
+  smoke build for backend, frontend, and RAG images;
+- attempted the production GHCR `--push` path and stopped at registry
+  authentication/authorization, proving the next blocker is package write access
+  rather than the local build chain.
 
 Verification:
 
@@ -63,7 +68,15 @@ mm-chat/scripts/release-images.sh --dry-run --tag smoke-test  # printed backend/
 mm-chat/scripts/release-images.sh --dry-run --push --tag smoke-test
   # printed backend/frontend/rag buildx push commands
 cd mm-chat && ./scripts/release-images.sh --load --tag g10-release-smoke
-  # blocked in current shell: Docker daemon is not reachable / WSL integration is disabled
+  # initially blocked: Docker daemon was not reachable / WSL integration disabled
+cd mm-chat && ./scripts/release-images.sh --load --tag smoke-local
+  # passed; images loaded:
+  # ghcr.io/mumu-0922/neobot-mm-chat:smoke-local
+  # ghcr.io/mumu-0922/neobot-mm-chat-frontend:smoke-local
+  # ghcr.io/mumu-0922/neobot-mm-chat-rag:smoke-local
+cd mm-chat && ./scripts/release-images.sh \
+  --push --image-namespace ghcr.io/mumu-0922 --tag g10-standalone-f24d95a
+  # blocked at GHCR: 403 Forbidden fetching anonymous token for push
 bash mm-chat/scripts/verify-standalone.sh                    # passed (structure)
 ```
 
@@ -72,8 +85,9 @@ Residual blockers:
 ```text
 G10.2b.2 still needs a real registry push and production digest env proof. This
 script does not push by default and does not modify `.env.single-server`.
-Current WSL shell also needs Docker Desktop daemon access restored before local
-`--load` smoke or production `--push` can run.
+Docker Desktop WSL integration is now restored; the remaining blocker is
+`docker login ghcr.io` with an account/token that can write packages under
+`ghcr.io/mumu-0922`.
 ```
 
 ## 2026-07-16 — G10.3b Browser Screenshot/Interaction Smoke
