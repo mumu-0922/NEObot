@@ -1,0 +1,233 @@
+from __future__ import annotations
+
+import hashlib
+import json
+from typing import Any
+
+import httpx
+import pytest
+
+import mm_chat_rag.mineru_gateway as mineru_module
+from mm_chat_rag.job_handler_dependencies import DocumentSource
+from mm_chat_rag.mineru_gateway import (
+    MINERU_ALLOCATE_UPLOAD_URL,
+    MINERU_GATEWAY_CREDENTIALS_MISSING,
+    MINERU_GATEWAY_REQUEST_FAILED,
+    MINERU_GATEWAY_RESPONSE_INVALID,
+    MINERU_GATEWAY_SOURCE_UNSUPPORTED,
+    MINERU_GATEWAY_STATUS_INVALID,
+    MINERU_GATEWAY_UPLOAD_URL_INVALID,
+    MinerULocalBatchGateway,
+)
+from mm_chat_rag.retry import PermanentJobError, RetryableJobError
+
+SECRET = "unit-test-mineru-token"
+PDF_BODY = b"%PDF-1.7\nfixture\n%%EOF\n"
+
+
+def _source(
+    *, body: bytes = PDF_BODY, content_type: str = "application/pdf"
+) -> DocumentSource:
+    return DocumentSource(
+        body=body,
+        source_sha256=hashlib.sha256(body).hexdigest(),
+        content_type=content_type,
+    )
+
+
+def _allocation_payload(
+    *,
+    batch_id: object = "fixture-batch-id",
+    file_urls: object = ("https://upload.invalid/api-upload/fixture.pdf",),
+    code: object = 0,
+) -> dict[str, object]:
+    return {
+        "code": code,
+        "data": {
+            "batch_id": batch_id,
+            "file_urls": list(file_urls) if isinstance(file_urls, tuple) else file_urls,
+        },
+        "msg": "ok",
+        "trace_id": "sensitive-trace-id",
+    }
+
+
+def _json_response(payload: object, *, status: int = 200) -> httpx.Response:
+    content = json.dumps(payload, separators=(",", ":")).encode()
+    return httpx.Response(
+        status,
+        headers={"Content-Type": "application/json; charset=utf-8"},
+        content=content,
+    )
+
+
+async def test_mineru_gateway_missing_token_fails_before_http() -> None:
+    calls = 0
+
+    def forbidden(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("missing token reached provider")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(forbidden)) as client:
+        with pytest.raises(PermanentJobError) as raised:
+            MinerULocalBatchGateway(None, client=client)
+
+    assert raised.value.error_code == MINERU_GATEWAY_CREDENTIALS_MISSING
+    assert calls == 0
+
+
+async def test_mineru_gateway_sends_locked_local_batch_allocate_request() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return _json_response(_allocation_payload())
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        allocation = await gateway.allocate_upload(
+            object(),
+            _source(),
+            filename="fixture.pdf",
+        )
+
+    assert allocation.batch_id == "fixture-batch-id"
+    assert allocation.upload_urls == ("https://upload.invalid/api-upload/fixture.pdf",)
+    assert len(requests) == 1
+    request = requests[0]
+    assert request.method == "POST"
+    assert request.url == httpx.URL(MINERU_ALLOCATE_UPLOAD_URL)
+    assert request.headers["authorization"] == f"Bearer {SECRET}"
+    assert json.loads(request.content) == {
+        "enable_formula": True,
+        "enable_table": True,
+        "files": [{"name": "fixture.pdf"}],
+        "is_ocr": True,
+        "model_version": "vlm",
+    }
+    assert SECRET.encode() not in request.content
+
+
+@pytest.mark.parametrize(
+    ("source", "filename"),
+    [
+        (_source(content_type="text/plain"), "fixture.pdf"),
+        (_source(), "../fixture.pdf"),
+    ],
+)
+async def test_mineru_gateway_rejects_unsupported_source_before_http(
+    source: DocumentSource,
+    filename: str,
+) -> None:
+    calls = 0
+
+    def forbidden(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("invalid source reached provider")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(forbidden)) as client:
+        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        with pytest.raises(PermanentJobError) as raised:
+            await gateway.allocate_upload(object(), source, filename=filename)
+
+    assert raised.value.error_code == MINERU_GATEWAY_SOURCE_UNSUPPORTED
+    assert calls == 0
+
+
+async def test_mineru_gateway_rejects_oversized_pdf_before_http(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mineru_module, "MAX_MINERU_SOURCE_BYTES", 16)
+    source = _source(body=b"%PDF-1.7\n0123456789")
+    calls = 0
+
+    def forbidden(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("oversized source reached provider")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(forbidden)) as client:
+        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        with pytest.raises(PermanentJobError) as raised:
+            await gateway.allocate_upload(object(), source)
+
+    assert raised.value.error_code == MINERU_GATEWAY_SOURCE_UNSUPPORTED
+    assert calls == 0
+
+
+async def test_mineru_gateway_retries_redacted_provider_status() -> None:
+    transport = httpx.MockTransport(
+        lambda _: _json_response({"error": SECRET}, status=503)
+    )
+    async with httpx.AsyncClient(transport=transport) as client:
+        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        with pytest.raises(RetryableJobError) as raised:
+            await gateway.allocate_upload(object(), _source())
+
+    assert raised.value.error_code == MINERU_GATEWAY_STATUS_INVALID
+    assert raised.value.retry_after_seconds == 30
+    assert SECRET not in str(raised.value)
+
+
+async def test_mineru_gateway_retries_provider_code_failure_redacted() -> None:
+    transport = httpx.MockTransport(
+        lambda _: _json_response({"code": 429, "msg": SECRET})
+    )
+    async with httpx.AsyncClient(transport=transport) as client:
+        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        with pytest.raises(RetryableJobError) as raised:
+            await gateway.allocate_upload(object(), _source())
+
+    assert raised.value.error_code == MINERU_GATEWAY_STATUS_INVALID
+    assert SECRET not in str(raised.value)
+
+
+async def test_mineru_gateway_retries_transport_failure_redacted() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError(
+            f"sensitive transport detail {SECRET}",
+            request=request,
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        with pytest.raises(RetryableJobError) as raised:
+            await gateway.allocate_upload(object(), _source())
+
+    assert raised.value.error_code == MINERU_GATEWAY_REQUEST_FAILED
+    assert SECRET not in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    ("payload", "error_code"),
+    [
+        ({"code": 0, "data": None}, MINERU_GATEWAY_RESPONSE_INVALID),
+        (_allocation_payload(batch_id=""), MINERU_GATEWAY_RESPONSE_INVALID),
+        (_allocation_payload(file_urls=()), MINERU_GATEWAY_RESPONSE_INVALID),
+        (
+            _allocation_payload(file_urls=("http://upload.invalid/fixture.pdf",)),
+            MINERU_GATEWAY_UPLOAD_URL_INVALID,
+        ),
+        (
+            _allocation_payload(
+                file_urls=("https://user@upload.invalid/fixture.pdf",)
+            ),
+            MINERU_GATEWAY_UPLOAD_URL_INVALID,
+        ),
+    ],
+)
+async def test_mineru_gateway_rejects_invalid_allocate_payload(
+    payload: dict[str, Any],
+    error_code: str,
+) -> None:
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: _json_response(payload))
+    ) as client:
+        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        with pytest.raises(PermanentJobError) as raised:
+            await gateway.allocate_upload(object(), _source())
+
+    assert raised.value.error_code == error_code
+    assert "sensitive-trace-id" not in str(raised.value)

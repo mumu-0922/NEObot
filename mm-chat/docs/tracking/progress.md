@@ -1051,8 +1051,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         source metadata gateway, and `G7.5.16` default-off local object-byte
         gateway, `G7.5.17` Go private source-object gateway + Python HTTP
         adapter seam, `G7.5.18` default-off Postgres parse projection
-        adapter seam, and `G7.5.19` default-off Postgres parse projection
-        gateway function done; real handler dispatch still gated).
+        adapter seam, `G7.5.19` default-off Postgres parse projection
+        gateway function, and `G7.5.20` default-off MinerU local-batch
+        allocate gateway done; real handler dispatch still gated).
   - [ ] G7.6 Private query and Go reauthorization.
   - [ ] G7.7 Strict/optional chat answer and basic citations.
   - [ ] G7.8 Live MinerU + Jina + Postgres smoke and operational proof.

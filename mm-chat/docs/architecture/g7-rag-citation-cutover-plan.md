@@ -544,11 +544,33 @@ G7.5.19 completed on 2026-07-16:
   slice does not call MinerU/Jina or spend provider quota; live DB staging still
   needs an owner-provided `MM_CHAT_TEST_DATABASE_URL` proof.
 
+G7.5.20 completed on 2026-07-16:
+
+- Added `MinerULocalBatchGateway`, a default-off Python gateway for the
+  evidence-backed MinerU local-batch `allocate_upload` step only.
+- The gateway requires an explicitly injected administrator token, accepts only
+  `application/pdf` sources, enforces the 200 MiB public contract limit, and
+  sends the fixed full-PDF options selected for G7: OCR on, formula on, table on,
+  `model_version=vlm`.
+- HTTP calls are locked to `POST https://mineru.net/api/v4/file-urls/batch` with
+  no redirects and `trust_env=False`; provider statuses, provider `code`
+  failures, and transport failures map to stable redacted retryable errors.
+- Allocation responses are parsed into transient batch id plus one HTTPS signed
+  upload URL; unsafe URLs, malformed JSON, wrong file-url counts, and oversized
+  responses fail closed without logging provider ids, URLs, or secrets.
+- This slice intentionally does not implement signed upload, polling, result ZIP
+  download, Canonical IR mapping, or parser-handler promotion because those
+  MinerU local-batch wire/contracts remain separate gated cuts.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
+  slice does not spend provider quota in tests.
+
 Remaining G7.5 work:
 
-- Add a live or integration proof for the `017` parse projection staging
-  function when `MM_CHAT_TEST_DATABASE_URL` is available, then add MinerU parser
-  execution. Production MinIO/S3 object access should prefer the Go private
+- Complete the rest of the MinerU local-batch execution chain: signed upload,
+  poll/result download, result ZIP validation, Canonical IR/chunk manifest
+  mapping, then parser-handler composition. Add a live or integration proof for
+  the `017` parse projection staging function when `MM_CHAT_TEST_DATABASE_URL`
+  is available. Production MinIO/S3 object access should prefer the Go private
   source-object gateway rather than giving Python static object-store
   credentials.
 - Promote the composed default-off Jina + Postgres embedding dependencies only
@@ -578,6 +600,9 @@ Validation:
 - Parse projection migration tests, including token fences, materialization/profile
   gates, JSONB recordset lanes, artifact-set binding, worker-only execute
   grants, and rollback.
+- MinerU local-batch allocate tests, including missing-token no-HTTP behavior,
+  PDF/size/filename gates, locked request body, retryable status/transport
+  mapping, response validation, signed-upload URL validation, and redaction.
 - Retry-three-times and terminal-failure tests.
 
 ### G7.6 Private query and Go reauthorization
