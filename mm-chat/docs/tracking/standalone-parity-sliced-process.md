@@ -3092,3 +3092,65 @@ Legacy Next /api/rag/* and /api/doc-parse/* route deletion remains deferred to
 G9.
 No live browser screenshot is claimed in this environment.
 ```
+
+## 2026-07-16 — G8.4 Knowledge Consent UX
+
+Objective: expose collection and query processing-consent controls through the
+current server-mode Knowledge UI without collecting provider keys in the
+frontend.
+
+Completed scope:
+
+- added collection consent listing, grant, and revoke controls under the
+  selected server Knowledge collection;
+- gated collection consent writes on `permissions.manageConsent`; read-only
+  users see fail-closed copy instead of spoofable authority controls;
+- added current-user query consent listing, grant, and revoke controls in the
+  server Knowledge surface;
+- added MinerU/Jina presets for the locked admin-env-backed profile while
+  keeping processor/endpoint/model/purpose/data-type fields editable for exact
+  governance identities;
+- kept provider credentials server-owned: the UI grants/revokes consent only
+  and does not capture API keys, BYOK keys, or backend secret values;
+- added fail-closed copy explaining that missing governance profile, provider
+  config, or consent stops Go before any processor call;
+- extended composition tests to require API-client-only consent wiring, no
+  direct transitional route calls, no caller identity/ACL spoof fields, and no
+  key/token inputs in the consent UI.
+
+Changed surfaces:
+
+```text
+mm-chat/frontend/src/components/knowledge/ServerKnowledgeBase.tsx
+mm-chat/frontend/src/i18n/locales/en/Knowledge.json
+mm-chat/frontend/src/i18n/locales/zh/Knowledge.json
+mm-chat/frontend/src/i18n/locales/ja/Knowledge.json
+mm-chat/frontend/src/__tests__/serverKnowledgeBaseComposition.test.ts
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/serverKnowledgeBaseComposition.test.ts \
+  src/__tests__/apiClientScaffold.test.ts \
+  src/__tests__/messagesParity.test.ts                              # passed, 66 tests
+cd mm-chat/frontend && corepack pnpm typecheck                    # passed
+cd mm-chat/frontend && corepack pnpm lint                         # passed
+cd mm-chat/frontend && corepack pnpm format:check                 # passed
+cd mm-chat/frontend && corepack pnpm build                        # passed
+git diff --check -- mm-chat                                      # passed
+```
+
+Residual blockers:
+
+```text
+G8.5 browser/server-mode isolation smoke remains open: personal vs team
+visibility and selected-chat Knowledge scope through the visible frontend.
+Legacy Next /api/rag/* and /api/doc-parse/* route deletion remains deferred to
+G9.
+No live browser screenshot is claimed in this environment.
+```

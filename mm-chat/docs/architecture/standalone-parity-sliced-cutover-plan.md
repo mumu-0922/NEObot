@@ -520,7 +520,7 @@ Slice sequence:
 - [x] G8.3 Knowledge collection/document UI shell: collection CRUD, document
       status/list, file upload-to-bind flow, and immediate deletion
       invisibility.
-- [ ] G8.4 Consent UX: collection and query consent controls for
+- [x] G8.4 Consent UX: collection and query consent controls for
       administrator env-backed MinerU/Jina processing, with strict fail-closed
       copy.
 - [ ] G8.5 Frontend isolation smoke: personal vs team visibility and
@@ -577,7 +577,7 @@ Targeted tests:
 | G5 Search/Web Enrichment                 | Paused      | Owner reopens, then server-owned search passes gates                         |
 | G6 Voice/Image/Code Jobs                 | In progress | Image generation is reopened through Go artifacts; voice executor remains    |
 | G7 Knowledge/RAG/Citations               | Complete    | Live MinerU + Jina + Postgres strict citation loop passed                    |
-| G8 Teams/Knowledge UI                    | In progress | G8.1 adapters, G8.2 Teams settings UI, and G8.3 Knowledge shell done         |
+| G8 Teams/Knowledge UI                    | In progress | G8.1-G8.4 UI/control slices done; frontend isolation smoke remains           |
 | G9 Data Authority/Route Removal          | Pending     | local production authority and replaced routes gone                          |
 | G10 Final Closure/Delete Plan            | Pending     | Clean-copy and delete-plan gates pass                                        |
 

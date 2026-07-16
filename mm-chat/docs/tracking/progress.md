@@ -1146,8 +1146,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
   - [x] G8.3 Knowledge collection/document shell: server-mode Knowledge Base
         branch with collection CRUD, document list/status, upload/bind, and
         optimistic deletion invisibility through the typed API client.
-  - [ ] G8.4 Consent UX: collection/query consent screens for administrator
-        env-backed MinerU/Jina processing with fail-closed affordances.
+  - [x] G8.4 Consent UX: collection/query consent screens for administrator
+        env-backed MinerU/Jina processing with fail-closed copy, no key capture,
+        and API-client-only grant/revoke calls.
   - [ ] G8.5 Cross-user/team UX smoke: prove personal vs team visibility and
         selected-chat Knowledge scope through the frontend.
 - [ ] G9 Data Authority and Legacy Route Removal: remove production local-mode
