@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import io
 import uuid
+import zipfile
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -38,6 +41,7 @@ from mm_chat_rag.job_handler_dependencies import (
     parse_handler_with_dependencies,
 )
 from mm_chat_rag.job_handlers import JOB_HANDLER_STAGE_MISMATCH
+from mm_chat_rag.mineru_gateway import MinerUTextBaselineArchiveParserGateway
 from mm_chat_rag.models import JobClaim, stable_error_code
 from mm_chat_rag.projection import PostgresProjectionBatch
 from mm_chat_rag.provider_profile import (
@@ -51,6 +55,7 @@ HASH = "c" * 64
 SOURCE_SHA256 = "3a413cf18e813c868e5859350b4a6e02fe271e2bf4224b92eb14cf3829cb9a9e"
 CONTENT_HASH_A = "d" * 64
 CONTENT_HASH_B = "e" * 64
+MINERU_PDF_BODY = b"%PDF-1.7\nhandler fixture\n%%EOF\n"
 _FIXTURE_ROOT = (
     Path(__file__).parents[1]
     / "fixtures"
@@ -152,6 +157,17 @@ class FakeDocumentSourceGateway:
         )
 
 
+class StaticDocumentSourceGateway:
+    def __init__(self, calls: list[str], source: DocumentSource) -> None:
+        self._calls = calls
+        self._source = source
+
+    async def fetch_document_source(self, context: object) -> DocumentSource:
+        self._calls.append("fetch")
+        assert context is not None
+        return self._source
+
+
 class FakeParserGateway:
     def __init__(
         self,
@@ -191,6 +207,40 @@ class FakeParseProjectionGateway:
         self._calls.append("stage")
         assert context is not None
         self.batches.append(batch)
+
+
+class FakeMinerUResultArchiveProvider:
+    def __init__(self, calls: list[str], archive_body: bytes) -> None:
+        self._calls = calls
+        self._archive_body = archive_body
+
+    async def fetch_result_archive(
+        self,
+        context: ProcessingJobContext,
+        source: DocumentSource,
+    ) -> bytes:
+        self._calls.append("fetch_archive")
+        assert context.stage == "parse"
+        assert source.content_type == "application/pdf"
+        return self._archive_body
+
+
+def mineru_source(body: bytes = MINERU_PDF_BODY) -> DocumentSource:
+    return DocumentSource(
+        body=body,
+        source_sha256=hashlib.sha256(body).hexdigest(),
+        content_type="application/pdf",
+    )
+
+
+def mineru_archive(text: str = "Handler 456\n\nMinerU adapter") -> bytes:
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as archive:
+        archive.writestr("full.md", text.encode())
+        archive.writestr("fixture_content_list.json", b'[{"type":"text"}]')
+        archive.writestr("layout.json", b'{"pages":[{"page":0}]}')
+        archive.writestr("fixture_model.json", b'{"model":"vlm"}')
+    return output.getvalue()
 
 
 def embedding_vector(seed: float = 0.001) -> tuple[float, ...]:
@@ -439,6 +489,36 @@ async def test_admitted_parse_dependency_handler_stages_projection_with_fakes() 
     assert len(batch.parent_chunks) == 1
     assert len(batch.child_chunks) == 1
     assert batch.source_sha256 == SOURCE_SHA256
+
+
+async def test_admitted_parse_handler_stages_mineru_text_baseline_adapter() -> None:
+    calls: list[str] = []
+    source = mineru_source()
+    projection = FakeParseProjectionGateway(calls)
+    deps = ParseHandlerDependencies(
+        document_source=StaticDocumentSourceGateway(calls, source),
+        parser=MinerUTextBaselineArchiveParserGateway(
+            FakeMinerUResultArchiveProvider(calls, mineru_archive())
+        ),
+        projection=projection,
+    )
+    handler = admitted_parse_handler_with_dependencies(deps, valid_profile())
+
+    result = await handler(claim(provider_row()))
+
+    assert result.outcome == "succeeded"
+    assert result.error_code is None
+    assert calls == ["fetch", "fetch_archive", "stage"]
+    assert len(projection.batches) == 1
+    batch = projection.batches[0]
+    assert batch.source_sha256 == source.source_sha256
+    assert batch.parent_chunks[0].content == "Handler 456\n\nMinerU adapter"
+    assert batch.child_search_projections[0].exact_terms == (
+        "456",
+        "adapter",
+        "handler",
+        "mineru",
+    )
 
 
 async def test_parse_dependency_handler_default_off_before_external_calls() -> None:

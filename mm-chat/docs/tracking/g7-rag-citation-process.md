@@ -2130,6 +2130,65 @@ Residual risk:
 - No live MinerU quota is consumed by this slice; the first real provider smoke
   remains in G7.8 or an explicitly owner-authorized bounded smoke cut.
 
+## 2026-07-16 — G7.5.31 MinerU Parser Adapter Dependency Composition Proof
+
+Objective: prove the real default-off MinerU text-baseline parser adapter fits
+the existing parse-handler dependency seam without registering production
+handlers or performing provider I/O.
+
+Implemented behavior:
+
+- Added a focused unit test in `test_job_handler_dependencies.py` that injects
+  `MinerUTextBaselineArchiveParserGateway` into `ParseHandlerDependencies`.
+- The test uses fake document-source and archive-provider gateways, so the flow
+  is fully deterministic and performs no external network request.
+- The admitted parse handler now has a regression proof for the concrete MinerU
+  adapter path: source fetch -> archive fetch -> parser adapter -> G7.4
+  projection build -> projection stage.
+- Assertions cover successful `JobResult`, source SHA-256 propagation,
+  text-baseline parent chunk content, exact-term projection, and side-effect
+  order.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. No
+  provider quota is consumed by tests.
+
+Touched files:
+
+```text
+rag/tests/unit/test_job_handler_dependencies.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && uv run ruff check tests/unit/test_job_handler_dependencies.py
+# passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_job_handler_dependencies.py
+# 25 passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_provider_capture.py::test_production_dispatch_remains_disabled_and_registries_empty \
+  tests/unit/test_job_handler_dependencies.py
+# 26 passed
+
+cd mm-chat/frontend && corepack pnpm prettier --check \
+  ../docs/architecture/g7-rag-citation-cutover-plan.md \
+  ../docs/tracking/g7-rag-citation-process.md \
+  ../docs/tracking/progress.md
+# passed
+```
+
+Residual risk:
+
+- This is a composition proof only; production parse-handler registration and
+  real archive retrieval orchestration remain gated.
+- Citation-grade page/table/formula/image mapping still requires MinerU
+  `content_list`, `layout/middle`, and `model` interpretation in later cuts.
+
 ## 2026-07-16 — G7.5.30 Default-off MinerU Text-Baseline Parser Adapter
 
 Objective: expose the existing MinerU archive-to-text-baseline chain through a

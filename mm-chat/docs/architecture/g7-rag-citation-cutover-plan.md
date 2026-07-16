@@ -763,6 +763,19 @@ G7.5.30 completed on 2026-07-16:
 - Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
   slice does not spend provider quota in tests.
 
+G7.5.31 completed on 2026-07-16:
+
+- Added a parse-handler dependency composition proof that uses the real
+  `MinerUTextBaselineArchiveParserGateway` inside `ParseHandlerDependencies`.
+- The test keeps document bytes and MinerU result archive bytes injected by fake
+  gateways, then runs `admitted_parse_handler_with_dependencies(...)` through
+  source fetch, parser adapter, G7.4 projection build, and projection staging.
+- The proof verifies deterministic source-hash propagation, text-baseline parent
+  chunk content, exact-term projection, and the expected side-effect order:
+  source fetch -> archive fetch -> projection stage.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
+  slice does not spend provider quota in tests.
+
 Remaining G7.5 work:
 
 - Complete the remaining MinerU parser chain: citation-grade
@@ -837,6 +850,9 @@ Validation:
 - MinerU text-baseline parser adapter tests, including default-off dependency
   failure before archive fetch, parse-context admission, deterministic
   artifact-set derivation, projection-ready output, and archive validation reuse.
+- Parse-handler dependency composition tests with the MinerU text-baseline parser
+  adapter, including source fetch, archive fetch, projection build, projection
+  stage, source-hash propagation, and exact-term projection.
 - Retry-three-times and terminal-failure tests.
 
 ### G7.6 Private query and Go reauthorization
