@@ -4752,3 +4752,41 @@ Residual risk:
 - This proves same-origin routing plus strict empty-evidence behavior, not a
   citation-producing happy path. G7.8 remains responsible for live MinerU + Jina
   - Postgres citation-producing smoke.
+
+## 2026-07-16 — G7.7H Citation Persistence Decision
+
+Objective: decide whether G7.7 needs a dedicated citation table before closing
+the strict/optional chat answer slice.
+
+Decision:
+
+- Use `messages.metadata.knowledge` for the first production-visible basic
+  citation/status card UI.
+- Do not add a dedicated citation table in G7.7.
+
+Rationale:
+
+- The current first-card contract is message-scoped: mode, outcome, selected
+  collection IDs, citation count, bounded citation snippets, locators, hashes,
+  and answer-governance authority travel with the assistant message that renders
+  them.
+- The frontend now consumes the message metadata directly; adding a table before
+  richer citation UX would duplicate persistence without unlocking a required
+  user-visible behavior.
+- Message deletion/export/branching semantics remain simpler when first-version
+  citations are attached to message metadata.
+
+Deferred table triggers:
+
+- cross-message/global citation search or analytics;
+- per-citation user feedback or audit workflow;
+- file-title/page-preview enrichment that must be refreshed independently of
+  message records;
+- retention/legal/audit policy that keeps citation rows beyond message lifetime;
+- large citation payloads that exceed practical message metadata size.
+
+Residual risk:
+
+- Message metadata is not optimized for global citation queries. If G8/G9 adds
+  citation dashboards or rich preview navigation, promote citations into a
+  dedicated table with a backfill migration from `messages.metadata.knowledge`.

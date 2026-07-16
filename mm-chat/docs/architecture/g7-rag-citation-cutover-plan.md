@@ -1405,10 +1405,18 @@ G7.7G completed on 2026-07-16:
   strict Knowledge stream refusal with selected collection IDs, persisted
   `metadata.knowledge`, and cleanup deletion of the smoke conversation.
 
+G7.7H completed on 2026-07-16:
+
+- Decided that message metadata is sufficient for the first basic citation card
+  UI. Strict answers/refusals and optional degradation already persist the
+  complete first-version card contract under `messages.metadata.knowledge`.
+- A dedicated citation table is deferred until the product needs cross-message
+  citation analytics, global citation search, per-citation feedback, richer file
+  preview/highlight anchors, or retention policies independent of messages.
+
 Remaining G7.7 slices:
 
-- Decide whether richer citation persistence needs a dedicated table or message
-  metadata remains sufficient for the first basic-card UI.
+- None. Proceed to G7.8 live MinerU + Jina + Postgres operational proof.
 
 Validation:
 
