@@ -19,7 +19,6 @@ export const API_ROUTES = {
     executeCode: "/api/chat/execute-code",
     generateTitle: "/api/chat/generate-title",
     relatedQuestions: "/api/chat/related-questions",
-    ragQueries: "/api/chat/rag-queries",
     generateImage: "/api/chat/generate-image",
   },
 
@@ -35,12 +34,6 @@ export const API_ROUTES = {
     install: "/api/plugins/install",
   },
 
-  // RAG 相关
-  rag: {
-    query: "/api/rag/query",
-    upsert: "/api/rag/upsert",
-  },
-
   // 搜索相关
   search: {
     query: "/api/search",
@@ -50,11 +43,6 @@ export const API_ROUTES = {
   voice: {
     transcribe: "/api/voice/transcribe",
     synthesize: "/api/voice/synthesize",
-  },
-
-  // 文档解析
-  docParse: {
-    parse: "/api/doc-parse",
   },
 } as const;
 

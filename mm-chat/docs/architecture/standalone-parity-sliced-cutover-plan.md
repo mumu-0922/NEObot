@@ -56,7 +56,7 @@ Owner directive captured on 2026-07-15:
 search toggle
 ```
 
-The relocated frontend still registers these transitional Next.js routes:
+The relocated frontend still registers these 19 transitional Next.js routes:
 
 ```text
 /api/access/verify
@@ -68,19 +68,13 @@ The relocated frontend still registers these transitional Next.js routes:
 /api/chat/generate
 /api/chat/generate-image
 /api/chat/generate-title
-/api/chat/rag-queries
 /api/chat/related-questions
 /api/config
-/api/doc-parse
-/api/doc-parse/jobs/{id}
 /api/health
 /api/plugins/execute
 /api/plugins/install
 /api/plugins/list
 /api/providers/models
-/api/rag/delete
-/api/rag/query
-/api/rag/upsert
 /api/search
 /api/voice/synthesize
 /api/voice/transcribe
@@ -544,7 +538,7 @@ Slice sequence:
 - [x] G9.1 Route inventory freeze: lock the current transitional Next
       `src/app/api/**/route.ts` surface with a static test before deleting any
       handlers.
-- [ ] G9.2 RAG/doc-parse route removal: remove replaced `/api/rag/*`,
+- [x] G9.2 RAG/doc-parse route removal: remove replaced `/api/rag/*`,
       `/api/doc-parse*`, and `/api/chat/rag-queries` handlers after Go/RAG
       server-mode callers stay green.
 - [ ] G9.3 Config/provider/BYOK route removal: retire `/api/config`,
@@ -597,7 +591,7 @@ Targeted tests:
 | G6 Voice/Image/Code Jobs                 | In progress | Image generation is reopened through Go artifacts; voice executor remains    |
 | G7 Knowledge/RAG/Citations               | Complete    | Live MinerU + Jina + Postgres strict citation loop passed                    |
 | G8 Teams/Knowledge UI                    | Complete    | G8.1-G8.5 frontend control-plane wiring and isolation smoke passed           |
-| G9 Data Authority/Route Removal          | In progress | G9.1 route inventory freeze passed; deletion slices remain                    |
+| G9 Data Authority/Route Removal          | In progress | G9.1-G9.2 route freeze/RAG-doc deletion passed; remaining route slices remain |
 | G10 Final Closure/Delete Plan            | Pending     | Clean-copy and delete-plan gates pass                                        |
 
 ## Update Discipline

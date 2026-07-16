@@ -11,6 +11,7 @@ Knowledge components manage local knowledge collections, document status, RAG so
 ## Guidelines
 
 - Keep file and vector helpers in `src/lib/utils` or `src/lib/knowledge`.
-- Keep remote RAG calls in `src/services/api/ragService.ts`.
+- Keep server Knowledge/RAG calls behind the typed Go API client; the legacy
+  local `ragService.ts` path is fail-closed.
 - Preserve status labels and error states for long-running document workflows.
 - Avoid loading large file contents directly in presentational components.

@@ -12,22 +12,25 @@ const expectedTransitionalRoutes = [
   "/api/chat/generate",
   "/api/chat/generate-image",
   "/api/chat/generate-title",
-  "/api/chat/rag-queries",
   "/api/chat/related-questions",
   "/api/config",
-  "/api/doc-parse",
-  "/api/doc-parse/jobs/[id]",
   "/api/health",
   "/api/plugins/execute",
   "/api/plugins/install",
   "/api/plugins/list",
   "/api/providers/models",
-  "/api/rag/delete",
-  "/api/rag/query",
-  "/api/rag/upsert",
   "/api/search",
   "/api/voice/synthesize",
   "/api/voice/transcribe",
+] as const;
+
+const removedG92Routes = [
+  "/api/chat/rag-queries",
+  "/api/doc-parse",
+  "/api/doc-parse/jobs/[id]",
+  "/api/rag/delete",
+  "/api/rag/query",
+  "/api/rag/upsert",
 ] as const;
 
 function collectRouteFiles(directory: string): string[] {
@@ -64,5 +67,15 @@ describe("G9.1 transitional Next API route inventory", () => {
       .sort();
 
     expect(actualRoutes).toEqual([...expectedTransitionalRoutes].sort());
+  });
+
+  it("keeps G9.2 RAG and document parsing handlers deleted", () => {
+    const actualRoutes = new Set(
+      collectRouteFiles(join(process.cwd(), "src/app/api")).map(toApiRoute),
+    );
+
+    for (const removedRoute of removedG92Routes) {
+      expect(actualRoutes.has(removedRoute)).toBe(false);
+    }
   });
 });

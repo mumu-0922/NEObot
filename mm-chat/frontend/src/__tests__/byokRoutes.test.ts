@@ -84,11 +84,6 @@ const apiKeySecret = {
   context: "search:tavily",
 } as const;
 
-const mineruTokenSecret = {
-  ...apiKeySecret,
-  context: "docs:mineru",
-};
-
 describe("BYOK route integration", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -190,63 +185,6 @@ describe("BYOK route integration", () => {
         process.env.OPENAI_API_KEY = originalOpenAiKey;
       }
     }
-  });
-
-  it("rejects plaintext document parse API keys in multipart requests", async () => {
-    const { POST } = await import("../app/api/doc-parse/route");
-    const formData = new FormData();
-    formData.set(
-      "file",
-      new File(["hello"], "doc.txt", { type: "text/plain" }),
-    );
-    formData.set(
-      "apiKeySecret",
-      JSON.stringify({ ...apiKeySecret, context: "docs:llama-parse" }),
-    );
-    formData.set("apiKey", "llama-plaintext");
-    formData.set("provider", "llamaParse");
-
-    const response = await POST(
-      new Request("https://neo.test/api/doc-parse", {
-        method: "POST",
-        headers: { "content-length": "2048" },
-        body: formData,
-      }) as any,
-    );
-
-    expect(response.status).toBe(400);
-    expect(mocks.decryptSecretEnvelope).not.toHaveBeenCalled();
-    expect(mocks.safeFetchJson).not.toHaveBeenCalled();
-    expect(JSON.stringify(await response.json())).not.toContain(
-      "llama-plaintext",
-    );
-  });
-
-  it("rejects plaintext Mineru document parse tokens in multipart requests", async () => {
-    const { POST } = await import("../app/api/doc-parse/route");
-    const formData = new FormData();
-    formData.set(
-      "file",
-      new File(["hello"], "doc.pdf", { type: "application/pdf" }),
-    );
-    formData.set("provider", "mineru");
-    formData.set("apiKeySecret", JSON.stringify(mineruTokenSecret));
-    formData.set("apiToken", "mineru-plaintext");
-
-    const response = await POST(
-      new Request("https://neo.test/api/doc-parse", {
-        method: "POST",
-        headers: { "content-length": "2048" },
-        body: formData,
-      }) as any,
-    );
-
-    expect(response.status).toBe(400);
-    expect(mocks.decryptSecretEnvelope).not.toHaveBeenCalled();
-    expect(mocks.safeFetchJson).not.toHaveBeenCalled();
-    expect(JSON.stringify(await response.json())).not.toContain(
-      "mineru-plaintext",
-    );
   });
 
   it("rejects plaintext voice API keys in transcription multipart requests", async () => {

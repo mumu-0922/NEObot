@@ -445,55 +445,7 @@ function resolveServerJobModelRef(modelString: string): ModelRef {
 export const generateRAGSearchQueries = async (
   userPrompt: string,
 ): Promise<string[]> => {
-  const { providers } = useCoreSettingsStore.getState();
-  const provider = providers.find((p) => p.enabled);
-
-  if (!provider) return [userPrompt];
-
-  // Get task model from settings using helper function
-  const modelString = getTaskModel("ragQuery");
-
-  const { providerId, modelName } = parseModelString(modelString);
-
-  const targetProvider = providerId
-    ? providers.find((p) => p.id === providerId)
-    : provider;
-
-  if (!targetProvider) return [userPrompt];
-
-  try {
-    const response = await fetchWithByokRetry(async () =>
-      fetch("/api/chat/rag-queries", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          provider: await buildProviderRuntimeConfig(targetProvider),
-          modelName,
-          userMessage: userPrompt,
-        }),
-      }),
-    );
-
-    if (!response.ok) {
-      throw new Error(
-        await getResponseErrorMessage(
-          response,
-          "RAG queries generation failed",
-        ),
-      );
-    }
-
-    const data = await readJsonResponseOrThrow<{ queries?: string[] }>(
-      response,
-      "RAG queries generation failed",
-    );
-    return data.queries || [userPrompt];
-  } catch (error) {
-    logDevError("RAG queries error:", error);
-    return [userPrompt];
-  }
+  return [userPrompt];
 };
 
 export const generateImage = async (

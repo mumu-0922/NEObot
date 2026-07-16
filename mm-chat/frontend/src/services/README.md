@@ -43,7 +43,8 @@ Creates search-provider requests for supported external providers. Search safety
 
 ### `ragService.ts`
 
-Calls the configured RAG service for vector queries and upserts.
+Fail-closed compatibility shim for the retired local Next RAG routes. Server
+Knowledge/RAG calls go through the typed Go API client instead.
 
 ### `voiceService.ts`
 
@@ -59,7 +60,9 @@ Loads localized text-only skill catalogs, fetches full skill definitions on dema
 
 ### `docParseService.ts`
 
-Starts document parsing jobs and polls document job status through app API routes. Async job polling includes the job secret returned by the start route.
+Fail-closed compatibility shim for the retired local Next document parsing
+routes. Server document upload/indexing goes through the typed Go API client
+instead.
 
 ## Client-Only Services
 
@@ -83,7 +86,6 @@ import {
   prepareHistoryForLLM,
   streamChatResponse,
 } from "@/services/api/chatService";
-import { queryRAG } from "@/services/api/ragService";
 
 await streamChatResponse(
   sessionId,
@@ -102,7 +104,6 @@ const preparedHistory = await prepareHistoryForLLM(
   compression,
   model,
 );
-const ragResults = await queryRAG(query, topK);
 ```
 
 ## Testing Guidance

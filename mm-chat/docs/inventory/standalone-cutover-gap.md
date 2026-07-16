@@ -20,7 +20,7 @@ Live source and deployment configuration currently prove:
   lockfile, configuration, assets, tests, and standalone Docker image;
 - `mm-chat/compose.single-server.yml` builds the frontend in server mode and
   exposes the same-origin `/mm-api` edge to the private Go service;
-- the relocated frontend still registers 25 transitional Next.js `/api/*`
+- the relocated frontend still registers 19 transitional Next.js `/api/*`
   route handlers;
 - the Go backend already registers Auth, Chat, Files, Browser Import, Teams,
   Knowledge Collection/Document/Consent, Health, Readiness, and Metrics routes;
@@ -53,7 +53,19 @@ from the final frontend after parity verification:
 /api/health           -> /health + /ready + /v1/version
 ```
 
-The remaining 21 root handlers still require a Go/RAG replacement or an
+The following RAG/doc-parse routes were retired in G9.2 after the Go/RAG
+server-mode path passed:
+
+```text
+/api/chat/rag-queries
+/api/doc-parse
+/api/doc-parse/jobs/{id}
+/api/rag/delete
+/api/rag/query
+/api/rag/upsert
+```
+
+The remaining 15 root handlers still require a Go/RAG replacement or an
 equivalent server-owned static/catalog implementation:
 
 ```text
@@ -63,18 +75,12 @@ equivalent server-owned static/catalog implementation:
 /api/chat/execute-code
 /api/chat/generate-image
 /api/chat/generate-title
-/api/chat/rag-queries
 /api/chat/related-questions
 /api/config
-/api/doc-parse
-/api/doc-parse/jobs/{id}
 /api/plugins/execute
 /api/plugins/install
 /api/plugins/list
 /api/providers/models
-/api/rag/delete
-/api/rag/query
-/api/rag/upsert
 /api/search
 /api/voice/synthesize
 /api/voice/transcribe

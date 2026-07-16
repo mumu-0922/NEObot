@@ -1157,8 +1157,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
       authority and replaced Next API handlers.
   - [x] G9.1 Route inventory freeze: added a static guard for the current 25
         transitional `src/app/api/**/route.ts` handlers before deletion slices.
-  - [ ] G9.2 RAG/doc-parse route removal: remove replaced `/api/rag/*`,
-        `/api/doc-parse*`, and `/api/chat/rag-queries` handlers.
+  - [x] G9.2 RAG/doc-parse route removal: removed replaced `/api/rag/*`,
+        `/api/doc-parse*`, and `/api/chat/rag-queries` handlers, updated the
+        route inventory to 19 handlers, and fail-closed old local services.
   - [ ] G9.3 Config/provider/BYOK route removal: retire production
         `/api/config`, `/api/providers/models`, and `/api/byok/public-key`
         reliance.

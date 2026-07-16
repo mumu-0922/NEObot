@@ -4,7 +4,9 @@ This inventory maps current Next.js API routes to future `mm-chat` Go backend ow
 
 ## Summary
 
-Current server routes are mostly proxy/adaptor endpoints around chat generation, plugins, RAG, document parsing, search, voice, provider models, config, and marketplace data.
+Current server routes are mostly proxy/adaptor endpoints around chat
+generation, plugins, search, voice, provider models, config, and marketplace
+data.
 
 ## Route Table
 
@@ -18,16 +20,10 @@ Current server routes are mostly proxy/adaptor endpoints around chat generation,
 | `/api/chat/generate` | POST | Simple generate stream | Go provider generate endpoint |
 | `/api/chat/generate-title` | POST | Title generation | Go chat helper or async job |
 | `/api/chat/related-questions` | POST | Follow-up generation | Go chat helper |
-| `/api/chat/rag-queries` | POST | RAG query rewrite | Go + optional Python RAG |
 | `/api/chat/generate-image` | POST | Image generation | Go provider adapter or later worker |
 | `/api/chat/execute-code` | POST | Code execution helper | Separate sandbox service; do not put in core initially |
 | `/api/providers/models` | POST | Provider model listing | Go provider metadata proxy |
 | `/api/search` | POST | Search provider proxy | Go search proxy with safe outbound policy |
-| `/api/rag/query` | POST | RAG query | Python RAG via Go gateway |
-| `/api/rag/upsert` | POST | RAG upsert/index | Python RAG via Go gateway |
-| `/api/rag/delete` | POST | RAG delete | Python RAG via Go gateway |
-| `/api/doc-parse` | POST | Start document parsing | Python RAG/parser via Go job API |
-| `/api/doc-parse/jobs/[id]` | GET/DELETE | Poll/cancel parse jobs | Go job state + Python parser |
 | `/api/plugins/list` | GET | Plugin marketplace list | Go plugin registry or static asset initially |
 | `/api/plugins/install` | POST | Install plugin manifest | Go plugin registry/validation later |
 | `/api/plugins/execute` | POST | Execute plugin | Later sandboxed plugin executor |
@@ -36,13 +32,24 @@ Current server routes are mostly proxy/adaptor endpoints around chat generation,
 | `/api/voice/transcribe` | POST | Speech-to-text | Go proxy or Python/media service later |
 | `/api/voice/synthesize` | POST | Text-to-speech | Go proxy or media service later |
 
+## Retired During G9
+
+| Retired Route | Former Method | Replacement |
+|---|---:|---|
+| `/api/chat/rag-queries` | POST | Server strict Knowledge/RAG query planning through Go/RAG |
+| `/api/doc-parse` | POST | Go Knowledge document upload/index pipeline |
+| `/api/doc-parse/jobs/[id]` | GET/DELETE | Go Knowledge document status/deletion APIs |
+| `/api/rag/delete` | POST | Go Knowledge document/collection deletion events |
+| `/api/rag/query` | POST | Go strict RAG query path |
+| `/api/rag/upsert` | POST | Go Knowledge auto-index pipeline |
+
 ## Migration Priority
 
 1. `health`, `config` — low risk smoke test for Go backend.
 2. `chat`, `chat/generate` — core streaming path.
 3. `providers/models` — provider metadata and server-side secret isolation.
 4. `files` — new Go endpoints; current app has OPFS rather than server file API.
-5. `rag`, `doc-parse`, `voice`, `plugins` — later services after chat spine is stable.
+5. `voice`, `plugins` — later services after chat spine is stable.
 
 ## Replacement API Sketch
 

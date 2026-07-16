@@ -41,9 +41,9 @@ These are already closer to the desired boundary. Phase 2 should wrap these into
 
 | Priority | Service | Current Routes | Future Client |
 |---:|---|---|---|
-| P0 | `src/services/api/chatService.ts` | `/api/chat`, `/api/chat/generate`, `/api/chat/generate-title`, `/api/chat/related-questions`, `/api/chat/rag-queries`, `/api/chat/generate-image`, `/api/chat/execute-code` | `chatApi` first; G6.1 blocks server-mode image/code calls, G6.3/G6.4 register fail-closed Go image/code admission routes, G6.5c.1 defines stored image result artifacts, G6.5c.3a adds the opt-in image executor seam, and G6.5c.3b.1 adds OpenAI-compatible image execution while keeping frontend capability disabled until configured-provider smoke passes. |
-| P1 | `src/services/api/ragService.ts` | `/api/rag/query`, `/api/rag/upsert`, `/api/rag/delete` | `ragApi` later; not first chat MVP. |
-| P2 | `src/services/api/docParseService.ts` | `/api/doc-parse`, `/api/doc-parse/jobs/:id` | `documentApi` / RAG sidecar later. |
+| P0 | `src/services/api/chatService.ts` | `/api/chat`, `/api/chat/generate`, `/api/chat/generate-title`, `/api/chat/related-questions`, `/api/chat/generate-image`, `/api/chat/execute-code` | `chatApi` first; G6.1 blocks server-mode image/code calls, G6.3/G6.4 register fail-closed Go image/code admission routes, G6.5c.1 defines stored image result artifacts, G6.5c.3a adds the opt-in image executor seam, and G6.5c.3b.1 adds OpenAI-compatible image execution while keeping frontend capability disabled until configured-provider smoke passes. G9.2 removed `/api/chat/rag-queries` and query rewrite now falls back to the original prompt. |
+| P1 | `src/services/api/ragService.ts` | G9.2 retired `/api/rag/query`, `/api/rag/upsert`, `/api/rag/delete` | Fail-closed local shim; server Knowledge/RAG uses Go API client. |
+| P2 | `src/services/api/docParseService.ts` | G9.2 retired `/api/doc-parse`, `/api/doc-parse/jobs/:id` | Fail-closed local shim; server document upload/indexing uses Go API client. |
 | P2 | `src/services/api/pluginService.ts` | via `pluginApi.listAvailable/install`; local adapter retains `/api/plugins/list` and `/api/plugins/install` | Server adapter targets `/v1/plugins*`; G4.5c.2b persists supplied plugin payloads in Go/Postgres when `DATABASE_URL` is configured and converts custom/OpenAPI manifest installs in Go. |
 | P2 | `src/utils/pluginUtils.ts` | via `pluginApi.execute`; local adapter retains `/api/plugins/execute` | Server adapter targets `/v1/plugins/execute`; G4.5c.2c sends id-only payloads, Go resolves built-ins/registered/custom OpenAPI plugins from memory/Postgres, and Go normalizes built-in plugin result envelopes. |
 | P2 | `src/services/api/searchService.ts` | `/api/search` | `searchApi` or chat-side capability later. |
@@ -59,9 +59,9 @@ These bypass the service layer or belong to infra helpers. They must be classifi
 |---:|---|---|---|---|
 | P0 | `src/lib/byok/client.ts` | `GET /api/byok/public-key` | `providerApi` / `authApi` secret bootstrap | Server mode should not expose plaintext provider secrets. |
 | P1 | `src/store/core/settingsStore.ts` | provider model fetch | `providerApi.listModels` | Store should not know provider-model route shape. |
-| P1 | `src/lib/data/clearAppData.ts` | `POST /api/rag/delete` | `ragApi.delete` or import/reset API later | Server mode must distinguish local reset from server data deletion. |
+| P1 | `src/lib/data/clearAppData.ts` | G9.2 retired `POST /api/rag/delete` | Local reset only; server Knowledge deletion uses Go APIs | Server mode must distinguish local reset from server data deletion. |
 | P2 | `src/lib/plugin/serverRegistry.ts` | server registry endpoint fetches | `pluginApi` / backend registry later | Keep out of first MVP. |
-| P2 | `src/lib/api/docParseJobs.ts` | document job endpoint fetches | `documentApi` later | Defer with RAG/doc parse. |
+| P2 | `src/lib/api/docParseJobs.ts` | no active route caller after G9.2 | delete with remaining local authority cleanup | Former Next document job helper is now dead code. |
 | P2 | `src/lib/security/rateLimitStore.ts` | rate-limit endpoint fetches | backend Redis/rate-limit integration | Server-side rate limits should be authoritative. |
 | P3 | `src/lib/security/safeFetch.ts` | outbound safe fetch | backend-only helper | Not a frontend API client target. |
 | P3 | `src/lib/utils/attachments.ts`, `src/lib/utils/rag.ts` | `fetch(blobUrl)` | local file resolver | Blob/object URL fetches stay local; do not route to Go. |
@@ -110,7 +110,7 @@ These imports show where component behavior will feel the API boundary change.
 | P0 | `src/components/app/ChatApp.tsx`, chat hooks/stores indirectly | `chatService`, skill/agent services | Main chat spine must wrap or replace `chatService` first. |
 | P0 | `src/components/chat/MessageInput.tsx`, `MessageItem.tsx` | `chatService`, `voiceService`, artifact service | Keep UI stable; move backend route awareness into clients. |
 | P1 | `src/components/settings/MemorySettings.tsx` | memory dream chat helper | Defer server memory; keep local capability gated. |
-| P1 | `src/store/core/knowledgeStore.ts` | `docParseService`, `ragService` | Knowledge/RAG stays later phase. |
+| P1 | `src/store/core/knowledgeStore.ts` | fail-closed `docParseService`, `ragService` | Server Knowledge/RAG uses Go UI/client; local authority cleanup continues in G9.5. |
 | P2 | `src/components/plugin/PluginMarket.tsx` | `pluginService` | `pluginApi` placeholder now; implementation deferred. |
 | P2 | `src/components/assistant/*` | `agentService`, `chatService`, artifact service | Agent catalog can remain static/local until server catalog exists. |
 | P2 | `src/components/content/*` | `chatService`, artifact service | Artifact/code execution helpers are not MVP chat spine. |

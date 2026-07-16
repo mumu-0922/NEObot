@@ -29,6 +29,88 @@ implemented, tested, and recorded, create a focused Git commit for that
 completed group before starting the next group. Do not batch unrelated future
 groups into the same commit.
 
+## 2026-07-16 — G9.2 RAG/Doc-Parse Legacy Route Removal
+
+Objective: delete the replaced transitional Next RAG/doc-parse handlers and
+make old local service entrypoints fail closed instead of calling missing
+routes.
+
+Completed scope:
+
+- deleted `/api/rag/query`, `/api/rag/upsert`, `/api/rag/delete`,
+  `/api/doc-parse`, `/api/doc-parse/jobs/[id]`, and
+  `/api/chat/rag-queries` route handlers from `src/app/api`;
+- updated the route inventory guard from 25 to 19 active transitional Next
+  handlers and added explicit negative assertions for the six G9.2-retired
+  paths;
+- changed `ragService.ts` and `docParseService.ts` into fail-closed
+  compatibility shims so local-mode leftovers do not silently hit 404 routes;
+- changed RAG query rewrite to use the original prompt instead of the retired
+  `/api/chat/rag-queries` helper;
+- stopped `clearBrowserAppData` from calling the retired `/api/rag/delete`
+  endpoint; local reset now only clears local OPFS/localforage/app DB state;
+- updated service/inventory docs so future work does not resurrect the retired
+  handlers.
+
+Changed surfaces:
+
+```text
+mm-chat/frontend/src/app/api/rag/**/route.ts
+mm-chat/frontend/src/app/api/doc-parse/**/route.ts
+mm-chat/frontend/src/app/api/chat/rag-queries/route.ts
+mm-chat/frontend/src/services/api/ragService.ts
+mm-chat/frontend/src/services/api/docParseService.ts
+mm-chat/frontend/src/services/api/chatService.ts
+mm-chat/frontend/src/lib/data/clearAppData.ts
+mm-chat/frontend/src/lib/security/requestGuards.ts
+mm-chat/frontend/src/config/api.ts
+mm-chat/frontend/src/__tests__/legacyRouteInventory.test.ts
+mm-chat/frontend/src/__tests__/legacyRagDocRouteRemoval.test.ts
+mm-chat/frontend/src/__tests__/ragService.test.ts
+mm-chat/frontend/src/__tests__/clearAppData.test.ts
+mm-chat/frontend/src/__tests__/byokServices.test.ts
+mm-chat/frontend/src/__tests__/byokRoutes.test.ts
+mm-chat/frontend/src/__tests__/serverDefaults.test.ts
+mm-chat/frontend/src/__tests__/docParseJobs.test.ts
+mm-chat/frontend/src/services/README.md
+mm-chat/frontend/src/components/knowledge/README.md
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/inventory/api-routes.md
+mm-chat/docs/inventory/frontend-call-sites.md
+mm-chat/docs/inventory/standalone-cutover-gap.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+rm -rf mm-chat/frontend/.next                                  # cleared stale Next route type cache
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/legacyRouteInventory.test.ts \
+  src/__tests__/legacyRagDocRouteRemoval.test.ts \
+  src/__tests__/ragService.test.ts \
+  src/__tests__/clearAppData.test.ts \
+  src/__tests__/byokServices.test.ts \
+  src/__tests__/byokRoutes.test.ts \
+  src/__tests__/serverDefaults.test.ts                         # passed, 42 tests
+cd mm-chat/frontend && corepack pnpm typecheck                 # passed
+cd mm-chat/frontend && corepack pnpm lint                      # passed
+cd mm-chat/frontend && corepack pnpm format:check              # passed
+cd mm-chat/frontend && corepack pnpm build                     # passed; build route table shows 19 `/api/*` handlers
+git diff --check -- mm-chat                                    # passed
+```
+
+Residual blockers:
+
+```text
+`src/lib/api/docParseJobs.ts` is now dead compatibility code and remains for
+later local-authority cleanup. Server-mode Knowledge/RAG continues through the
+Go API client and Python RAG path proven in G7/G8.
+G9.3 owns config/provider/BYOK route retirement next.
+No live browser screenshot is claimed for this static/service deletion slice.
+```
+
 ## 2026-07-16 — G9.1 Route Inventory Freeze
 
 Objective: freeze the current transitional Next API handler surface before G9

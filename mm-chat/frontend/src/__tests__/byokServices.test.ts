@@ -164,7 +164,6 @@ describe("BYOK service requests", () => {
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(Response.json({ output: "ok" }))
       .mockResolvedValueOnce(Response.json({ questions: ["next?"] }))
-      .mockResolvedValueOnce(Response.json({ queries: ["rag query"] }))
       .mockResolvedValueOnce(Response.json({ images: [], message: "done" }));
     const {
       executeCode,
@@ -177,19 +176,21 @@ describe("BYOK service requests", () => {
       executeCode("env-provider:gemini-title", "print('hi')"),
     ).resolves.toBe("ok");
     await expect(generateRelatedQuestions([])).resolves.toEqual(["next?"]);
-    await expect(generateRAGSearchQueries("hello")).resolves.toEqual([
-      "rag query",
-    ]);
+    await expect(generateRAGSearchQueries("hello")).resolves.toEqual(["hello"]);
     await expect(
       generateImage("env-provider:gemini-title", "paint a quiet UI"),
     ).resolves.toMatchObject({ message: "done" });
 
-    expect(fetchMock).toHaveBeenCalledTimes(4);
-    for (let index = 0; index < 4; index += 1) {
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    for (let index = 0; index < 3; index += 1) {
       expect(
         JSON.stringify(getJsonRequestBody(fetchMock, index)),
       ).not.toContain("apiKey");
     }
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "/api/chat/rag-queries",
+      expect.anything(),
+    );
   });
 
   it("routes server-mode related questions through Go without sending client history", async () => {
