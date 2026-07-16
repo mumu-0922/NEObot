@@ -114,6 +114,37 @@ describe("BYOK secret envelopes", () => {
     ).rejects.toThrow(/Invalid BYOK RSA public key/);
   });
 
+  it("normalizes legacy combined BYOK JWK alg before Web Crypto import", async () => {
+    vi.resetModules();
+    resetByokKeyMaterial();
+    const { encryptSecret: freshEncryptSecret } =
+      await import("../lib/byok/client");
+    const {
+      decryptSecretEnvelope: freshDecryptSecretEnvelope,
+      getByokPublicKey: freshGetByokPublicKey,
+    } = await import("../lib/byok/server");
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      const response = await freshGetByokPublicKey();
+      return Response.json({
+        ...response,
+        publicKeyJwk: {
+          ...response.publicKeyJwk,
+          alg: "RSA-OAEP-256+A256GCM",
+        },
+      });
+    });
+
+    const envelope = await freshEncryptSecret(
+      "legacy-jwk-alg-secret",
+      "provider:Gemini",
+    );
+
+    await expect(
+      freshDecryptSecretEnvelope(envelope!, "provider:Gemini"),
+    ).resolves.toBe("legacy-jwk-alg-secret");
+  });
+
   it("refreshes the public key and retries BYOK auth failures once", async () => {
     vi.resetModules();
     resetByokKeyMaterial();

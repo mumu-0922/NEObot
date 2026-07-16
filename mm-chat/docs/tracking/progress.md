@@ -1237,6 +1237,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         browser provider runtime config for model listing and chat streaming;
         Provider Settings auto-enables fetched models for newly configured
         providers.
+    - [x] G11.3a BYOK public JWK WebCrypto compatibility: backend now publishes
+          `publicKeyJwk.alg=RSA-OAEP-256` while keeping the envelope-level
+          `alg=RSA-OAEP-256+A256GCM`, and the frontend normalizes legacy cached
+          public-key responses before `crypto.subtle.importKey`.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

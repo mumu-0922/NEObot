@@ -144,6 +144,9 @@ func TestBYOKPublicKeyFromConfiguredPEM(t *testing.T) {
 	if response.KID != "kid-test" || response.Alg != byokAlgorithm {
 		t.Fatalf("metadata = %#v", response)
 	}
+	if response.PublicKeyJWK["alg"] != "RSA-OAEP-256" {
+		t.Fatalf("public JWK alg = %#v, want RSA-OAEP-256", response.PublicKeyJWK["alg"])
+	}
 	if response.PublicKeyJWK["kty"] != "RSA" || response.PublicKeyJWK["n"] == "" || response.PublicKeyJWK["e"] == "" {
 		t.Fatalf("invalid jwk = %#v", response.PublicKeyJWK)
 	}

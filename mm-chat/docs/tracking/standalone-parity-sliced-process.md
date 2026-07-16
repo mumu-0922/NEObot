@@ -4277,3 +4277,51 @@ provider streaming supports OpenAI/OpenAI-compatible endpoints, matching the
 owner-provided `/v1` supplier path. Former-root deletion should wait for owner
 browser smoke on image input, single-user settings, and provider model fetch/chat.
 ```
+
+## 2026-07-17 — G11.3a BYOK public JWK WebCrypto compatibility
+
+Objective: fix the owner-visible provider model-fetch failure where the browser
+rejected the Go BYOK public key with `The JWK "alg" member was inconsistent
+with that specified by the Web Crypto call`.
+
+Completed scope:
+
+- kept the application envelope response algorithm as
+  `RSA-OAEP-256+A256GCM`;
+- changed the embedded RSA public JWK `alg` to the WebCrypto-compatible
+  `RSA-OAEP-256`;
+- normalized legacy/cached BYOK public-key responses in the frontend before
+  `crypto.subtle.importKey`;
+- added backend and frontend regression coverage so old combined JWK alg values
+  no longer break browser provider encryption.
+
+Changed surfaces:
+
+```text
+mm-chat/backend/internal/runtimeconfig/service.go
+mm-chat/backend/internal/runtimeconfig/service_test.go
+mm-chat/frontend/src/lib/byok/client.ts
+mm-chat/frontend/src/__tests__/byok.test.ts
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./internal/runtimeconfig  # passed
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./...                     # passed
+cd mm-chat/frontend && corepack pnpm vitest run src/__tests__/byok.test.ts             # passed, 10 tests
+cd mm-chat/frontend && corepack pnpm typecheck                                         # passed
+cd mm-chat/frontend && corepack pnpm lint                                              # passed
+cd mm-chat/frontend && corepack pnpm format:check                                      # passed
+git diff --check -- mm-chat                                                            # passed
+```
+
+Residual blockers:
+
+```text
+Requires rebuilding/restarting the local standalone stack so the browser loads
+the fixed frontend bundle and backend BYOK public-key response. If a tab keeps
+the old in-memory public-key promise, hard-refresh or reopen the tab.
+```

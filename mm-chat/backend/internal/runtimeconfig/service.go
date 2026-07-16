@@ -167,7 +167,7 @@ func (s *Service) BYOKPublicKey() (BYOKPublicKeyResponse, error) {
 			"kty":     "RSA",
 			"n":       base64.RawURLEncoding.EncodeToString(key.N.Bytes()),
 			"e":       base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes()),
-			"alg":     byokAlgorithm,
+			"alg":     "RSA-OAEP-256",
 			"key_ops": []string{"wrapKey"},
 		},
 	}, nil

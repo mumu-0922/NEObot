@@ -40,7 +40,15 @@ function parsePublicKeyResponse(value: unknown): ByokPublicKeyResponse {
   return {
     kid,
     alg: BYOK_ALG,
-    publicKeyJwk: publicKeyJwk as JsonWebKey,
+    publicKeyJwk: normalizeRsaOaepPublicJwk(publicKeyJwk as JsonWebKey),
+  };
+}
+
+function normalizeRsaOaepPublicJwk(publicKeyJwk: JsonWebKey): JsonWebKey {
+  return {
+    ...publicKeyJwk,
+    alg: "RSA-OAEP-256",
+    key_ops: ["wrapKey"],
   };
 }
 
