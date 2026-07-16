@@ -4790,3 +4790,49 @@ Residual risk:
 - Message metadata is not optimized for global citation queries. If G8/G9 adds
   citation dashboards or rich preview navigation, promote citations into a
   dedicated table with a backfill migration from `messages.metadata.knowledge`.
+
+## 2026-07-16 — G7.8A Live Provider Secret Preflight
+
+Objective: before consuming real MinerU/Jina quota, verify whether the rebuilt
+local single-server backend has the administrator-owned provider secrets needed
+for a true G7.8 live smoke.
+
+Observed state:
+
+```text
+docker exec mm-chat-backend-1 sh -lc 'check RAG_* env presence without printing values'
+RAG_MINERU_API_TOKEN=missing
+RAG_JINA_API_KEY=missing
+RAG_SOURCE_GATEWAY_TOKEN=missing
+```
+
+Additional route observation:
+
+```text
+GET http://127.0.0.1:18080/mm-api/v1/rag/provider-status -> 401 UNAUTHENTICATED
+```
+
+This route is session-protected by design, so the 401 without a Bearer token is
+not the blocker. The decisive blocker is that the live backend container has no
+admin MinerU/Jina/source-gateway secrets configured.
+
+Result:
+
+- No real MinerU/Jina provider call was made.
+- No provider quota was consumed.
+- G7.8 citation-producing live smoke is blocked until the local deployment
+  receives non-empty admin secrets via `.env.single-server`, Docker secret, or
+  equivalent runtime secret injection, followed by backend/rag restart.
+
+Next exact action:
+
+```text
+# Do not commit real values.
+# Set in mm-chat/.env.single-server or an equivalent local secret source:
+RAG_MINERU_API_TOKEN=<admin MinerU token>
+RAG_JINA_API_KEY=<admin Jina key>
+RAG_SOURCE_GATEWAY_TOKEN=<source gateway shared token, if the current Python/Go bridge requires it>
+
+cd mm-chat && docker compose --env-file .env.single-server \
+  -f compose.single-server.yml up -d --force-recreate backend rag
+```
