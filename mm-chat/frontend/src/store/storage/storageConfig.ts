@@ -94,11 +94,8 @@ export const getAppDbStorage = (): StateStorage => {
   };
 };
 
-export const getBrowserLocalStorage = (): StateStorage => {
-  if (
-    typeof window === "undefined" ||
-    !canUseBrowserLocalRuntimePersistence()
-  ) {
+function getWindowPreferenceStorage(): StateStorage {
+  if (typeof window === "undefined") {
     return noopStorage;
   }
 
@@ -117,6 +114,21 @@ export const getBrowserLocalStorage = (): StateStorage => {
     setItem: (name, value) => window.localStorage.setItem(name, value),
     removeItem: (name) => window.localStorage.removeItem(name),
   };
+}
+
+export const getBrowserLocalStorage = (): StateStorage => {
+  if (!canUseBrowserLocalRuntimePersistence()) {
+    return noopStorage;
+  }
+
+  return getWindowPreferenceStorage();
+};
+
+// Server mode keeps chat/files/knowledge authority on Go/Postgres/MinIO, but
+// browser-owned preferences such as theme, language, and BYOK provider shells
+// still need localStorage so a page refresh does not erase the user's UI config.
+export const getBrowserPreferenceStorage = (): StateStorage => {
+  return getWindowPreferenceStorage();
 };
 
 // Storage keys

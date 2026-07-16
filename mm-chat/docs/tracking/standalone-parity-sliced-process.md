@@ -4325,3 +4325,61 @@ Requires rebuilding/restarting the local standalone stack so the browser loads
 the fixed frontend bundle and backend BYOK public-key response. If a tab keeps
 the old in-memory public-key promise, hard-refresh or reopen the tab.
 ```
+
+## 2026-07-17 — G11.3b Browser provider preference persistence
+
+Objective: fix the owner-visible regression where a custom browser-configured
+provider and its fetched model list disappeared after refreshing the standalone
+server-mode page.
+
+Root cause:
+
+- G9.5 correctly made browser-local IndexedDB/OPFS non-authoritative in server
+  mode for chats, files, memory, and Knowledge state;
+- the same fence accidentally made the core settings `localStorage` adapter a
+  no-op in server mode;
+- Provider Settings stores custom provider shells, selected/fetched models,
+  theme, and language in `neo-chat-core-settings`, so those values survived
+  only in memory until refresh.
+
+Completed scope:
+
+- added a dedicated browser preference storage adapter that remains available
+  in server mode;
+- switched `coreSettingsStore` to use that preference storage for
+  `neo-chat-core-settings`;
+- kept `getAppDbStorage()` and the generic browser-local runtime storage fence
+  unchanged, so server-mode chat/Knowledge/local data authority remains blocked;
+- added regression coverage proving server mode blocks app DB writes while
+  still persisting `neo-chat-core-settings` through localStorage.
+
+Changed surfaces:
+
+```text
+mm-chat/frontend/src/store/storage/storageConfig.ts
+mm-chat/frontend/src/store/core/coreSettingsStore.ts
+mm-chat/frontend/src/__tests__/browserLocalAuthority.test.ts
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/browserLocalAuthority.test.ts \
+  src/__tests__/serverDefaultStores.test.ts \
+  src/__tests__/byok.test.ts                                    # passed, 19 tests
+cd mm-chat/frontend && corepack pnpm typecheck                  # passed
+cd mm-chat/frontend && corepack pnpm lint                       # passed
+cd mm-chat/frontend && corepack pnpm format:check               # passed
+git diff --check -- mm-chat                                     # passed
+```
+
+Residual blockers:
+
+```text
+Requires rebuilding/restarting the frontend container. Existing custom provider
+entries already lost by a prior refresh must be re-added once; after this fix
+new entries persist across refreshes.
+```

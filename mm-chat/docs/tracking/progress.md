@@ -1241,6 +1241,11 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           `publicKeyJwk.alg=RSA-OAEP-256` while keeping the envelope-level
           `alg=RSA-OAEP-256+A256GCM`, and the frontend normalizes legacy cached
           public-key responses before `crypto.subtle.importKey`.
+    - [x] G11.3b Browser provider preference persistence: server mode still
+          blocks browser-local chat/knowledge data authority, but allows the
+          core settings preference store to persist theme/language and BYOK
+          provider shells so custom providers and fetched model lists survive
+          refresh.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

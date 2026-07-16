@@ -58,6 +58,7 @@ describe("browser local persistence authority", () => {
       getAppDbStorage,
       getBrowserLocalPersistenceAuthority,
       getBrowserLocalStorage,
+      getBrowserPreferenceStorage,
       removeRuntimeAppDbItem,
       setRuntimeAppDbItem,
     } = await import("../store/storage/storageConfig");
@@ -87,6 +88,22 @@ describe("browser local persistence authority", () => {
     expect(localStorage.setItem).not.toHaveBeenCalled();
     expect(localStorage.removeItem).not.toHaveBeenCalled();
     expect(localStorage.getItem).not.toHaveBeenCalled();
+
+    getBrowserPreferenceStorage().setItem("neo-chat-core-settings", "{}");
+    expect(
+      getBrowserPreferenceStorage().getItem("neo-chat-core-settings"),
+    ).toBe("{}");
+    getBrowserPreferenceStorage().removeItem("neo-chat-core-settings");
+    expect(
+      getBrowserPreferenceStorage().getItem("neo-chat-core-settings"),
+    ).toBe(null);
+    expect(localStorage.setItem).toHaveBeenCalledWith(
+      "neo-chat-core-settings",
+      "{}",
+    );
+    expect(localStorage.removeItem).toHaveBeenCalledWith(
+      "neo-chat-core-settings",
+    );
   });
 
   it("keeps explicit local mode runtime persistence writable", async () => {

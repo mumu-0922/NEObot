@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import {
-  getBrowserLocalStorage,
+  getBrowserPreferenceStorage,
   STORAGE_KEYS,
   STORAGE_VERSION,
 } from "../storage/storageConfig";
@@ -274,7 +274,7 @@ export const useCoreSettingsStore = create<CoreSettingsState>()(
     }),
     {
       name: STORAGE_KEYS.CORE_SETTINGS,
-      storage: createJSONStorage(getBrowserLocalStorage),
+      storage: createJSONStorage(getBrowserPreferenceStorage),
       version: STORAGE_VERSION,
       migrate: async (persistedState) => {
         const state = migrateCoreSettingsState(
