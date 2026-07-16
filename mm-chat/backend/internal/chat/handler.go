@@ -29,15 +29,20 @@ const (
 )
 
 type Handler struct {
-	service          *Service
-	provider         Provider
-	activeRuns       *activeRunRegistry
-	cancellationRuns RunCancellationStore
-	ragAssembler     *RAGAnswerAssembler
-	ragAnswerGate    RAGAnswerGovernanceGate
+	service            *Service
+	provider           Provider
+	attachmentResolver ProviderAttachmentResolver
+	activeRuns         *activeRunRegistry
+	cancellationRuns   RunCancellationStore
+	ragAssembler       *RAGAnswerAssembler
+	ragAnswerGate      RAGAnswerGovernanceGate
 }
 
 type HandlerOption func(*Handler)
+
+type ProviderAttachmentResolver interface {
+	ResolveProviderAttachment(ctx context.Context, attachment Attachment) (ProviderAttachment, error)
+}
 
 type ErrorResponse struct {
 	Error ErrorBody `json:"error"`
@@ -199,6 +204,12 @@ func WithProvider(provider Provider) HandlerOption {
 		if provider != nil {
 			h.provider = provider
 		}
+	}
+}
+
+func WithAttachmentResolver(resolver ProviderAttachmentResolver) HandlerOption {
+	return func(h *Handler) {
+		h.attachmentResolver = resolver
 	}
 }
 
@@ -858,6 +869,11 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		writeRequestDecodeError(w, newValidationError("INVALID_USER_MESSAGE_ID", "userMessageId must reference a user message"))
 		return
 	}
+	providerAttachments, err := h.resolveProviderAttachments(r.Context(), userMessage)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
 
 	runID, err := NewUUID()
 	if err != nil {
@@ -902,6 +918,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			runID,
 			systemPrompt,
 			ragSelection,
+			providerAttachments,
 		)
 		return
 	}
@@ -921,6 +938,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		AssistantMessageID: assistantMessage.ID,
 		Prompt:             userMessage.Content,
 		SystemPrompt:       systemPrompt,
+		Attachments:        providerAttachments,
 		UseReasoning:       configBool(request.Config, "useReasoning"),
 		ModelRef:           *modelRef,
 		Metadata:           request.Metadata,
@@ -1112,10 +1130,11 @@ func (h *Handler) streamStrictRAG(
 	runID string,
 	systemPrompt string,
 	selection ragSelection,
+	providerAttachments []ProviderAttachment,
 ) {
 	decision := h.strictRAGDecision(r.Context(), conversationID, userMessage, modelRef, selection)
 	if decision.ReadyForAnswer() {
-		h.streamStrictRAGAnswer(w, r, flusher, conversationID, userMessage, assistantMessage, modelRef, runID, systemPrompt, selection, decision)
+		h.streamStrictRAGAnswer(w, r, flusher, conversationID, userMessage, assistantMessage, modelRef, runID, systemPrompt, selection, decision, providerAttachments)
 		return
 	}
 	h.streamStrictRAGRefusal(w, flusher, conversationID, assistantMessage, modelRef, runID, selection, decision)
@@ -1226,6 +1245,7 @@ func (h *Handler) streamStrictRAGAnswer(
 	systemPrompt string,
 	selection ragSelection,
 	decision strictRAGDecision,
+	providerAttachments []ProviderAttachment,
 ) {
 	prompt, strictSystemPrompt, err := buildStrictRAGProviderRequest(
 		userMessage.Content,
@@ -1257,6 +1277,7 @@ func (h *Handler) streamStrictRAGAnswer(
 		AssistantMessageID: assistantMessage.ID,
 		Prompt:             prompt,
 		SystemPrompt:       strictSystemPrompt,
+		Attachments:        providerAttachments,
 		UseReasoning:       false,
 		ModelRef:           *modelRef,
 		Metadata: map[string]any{
@@ -1540,6 +1561,59 @@ func optionalRAGKnowledgeMetadata(selection ragSelection, outcome string) map[st
 		"evidenceUsed":          false,
 		"degradationReason":     "no_verified_knowledge_evidence",
 	}
+}
+
+func (h *Handler) resolveProviderAttachments(ctx context.Context, message Message) ([]ProviderAttachment, error) {
+	if len(message.Attachments) == 0 {
+		return nil, nil
+	}
+
+	providerAttachments := make([]ProviderAttachment, 0, len(message.Attachments))
+	for _, attachment := range message.Attachments {
+		if !isProviderImageAttachment(attachment) {
+			continue
+		}
+		if h.attachmentResolver == nil {
+			return nil, newValidationError(
+				"ATTACHMENT_CONTENT_UNAVAILABLE",
+				"image attachment content is not available for provider streaming",
+			)
+		}
+		providerAttachment, err := h.attachmentResolver.ResolveProviderAttachment(ctx, attachment)
+		if err != nil {
+			return nil, err
+		}
+		if len(providerAttachment.Data) == 0 {
+			return nil, newValidationError(
+				"ATTACHMENT_CONTENT_EMPTY",
+				"image attachment content is empty",
+			)
+		}
+		if strings.TrimSpace(providerAttachment.FileID) == "" {
+			providerAttachment.FileID = attachment.FileID
+		}
+		if strings.TrimSpace(providerAttachment.FileName) == "" {
+			providerAttachment.FileName = attachment.FileName
+		}
+		if strings.TrimSpace(providerAttachment.MimeType) == "" {
+			providerAttachment.MimeType = attachment.MimeType
+		}
+		if providerAttachment.Size == 0 {
+			providerAttachment.Size = attachment.Size
+		}
+		if strings.TrimSpace(providerAttachment.SHA256) == "" {
+			providerAttachment.SHA256 = attachment.SHA256
+		}
+		if strings.TrimSpace(providerAttachment.Purpose) == "" {
+			providerAttachment.Purpose = attachment.Purpose
+		}
+		providerAttachments = append(providerAttachments, providerAttachment)
+	}
+	return providerAttachments, nil
+}
+
+func isProviderImageAttachment(attachment Attachment) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(attachment.MimeType)), "image/")
 }
 
 func configBool(config map[string]any, key string) bool {

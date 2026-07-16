@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -75,6 +76,74 @@ type options struct {
 
 type knowledgeRAGCandidateSource struct {
 	service *knowledge.Service
+}
+
+type fileProviderAttachmentResolver struct {
+	service  *files.Service
+	maxBytes int64
+}
+
+func (r fileProviderAttachmentResolver) ResolveProviderAttachment(
+	ctx context.Context,
+	attachment chat.Attachment,
+) (chat.ProviderAttachment, error) {
+	if r.service == nil {
+		return chat.ProviderAttachment{}, chat.ValidationError{
+			Code:    "ATTACHMENT_CONTENT_UNAVAILABLE",
+			Message: "image attachment content is not available for provider streaming",
+		}
+	}
+
+	record, reader, err := r.service.GetContent(ctx, attachment.FileID)
+	if err != nil {
+		if errors.Is(err, files.ErrFileNotFound) {
+			return chat.ProviderAttachment{}, chat.ErrFileNotFound
+		}
+		return chat.ProviderAttachment{}, err
+	}
+	defer reader.Close()
+
+	maxBytes := r.maxBytes
+	if maxBytes <= 0 {
+		maxBytes = config.DefaultMaxUploadBytes
+	}
+	data, err := io.ReadAll(io.LimitReader(reader, maxBytes+1))
+	if err != nil {
+		return chat.ProviderAttachment{}, err
+	}
+	if int64(len(data)) > maxBytes {
+		return chat.ProviderAttachment{}, chat.ValidationError{
+			Code:    "ATTACHMENT_TOO_LARGE",
+			Message: "image attachment is too large for provider streaming",
+		}
+	}
+
+	mimeType := strings.TrimSpace(record.MimeType)
+	if mimeType == "" {
+		mimeType = attachment.MimeType
+	}
+	fileName := strings.TrimSpace(record.OriginalFilename)
+	if fileName == "" {
+		fileName = attachment.FileName
+	}
+	size := record.ByteSize
+	if size == 0 {
+		size = attachment.Size
+	}
+	sha256 := strings.TrimSpace(record.SHA256)
+	if sha256 == "" {
+		sha256 = attachment.SHA256
+	}
+
+	return chat.ProviderAttachment{
+		FileID:   attachment.FileID,
+		FileName: fileName,
+		MimeType: mimeType,
+		Size:     size,
+		SHA256:   sha256,
+		Purpose:  attachment.Purpose,
+		Data:     data,
+	}, nil
 }
 
 func (source knowledgeRAGCandidateSource) FetchEvidenceCandidates(
@@ -262,9 +331,18 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		resolvedOptions.authService,
 		auth.WithAuthRateLimitStore(resolvedOptions.rateLimitStore),
 	)
+	fileService := files.NewService(
+		resolvedOptions.fileRepository,
+		resolvedOptions.objectStore,
+		files.WithStorageBackend(cfg.Storage.Backend),
+	)
 	chatOptions := []chat.HandlerOption{
 		chat.WithProvider(resolvedOptions.chatProvider),
 		chat.WithRunCancellationStore(resolvedOptions.runCancellationStore),
+		chat.WithAttachmentResolver(fileProviderAttachmentResolver{
+			service:  fileService,
+			maxBytes: cfg.Storage.MaxUploadBytes,
+		}),
 	}
 	if resolvedOptions.knowledgeService != nil {
 		chatOptions = append(
@@ -285,11 +363,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		chatOptions...,
 	)
 	fileHandler := files.NewHandler(
-		files.NewService(
-			resolvedOptions.fileRepository,
-			resolvedOptions.objectStore,
-			files.WithStorageBackend(cfg.Storage.Backend),
-		),
+		fileService,
 		files.WithMaxUploadBytes(resolvedOptions.maxUploadBytes),
 	)
 	importHandler := browserimport.NewHandler(

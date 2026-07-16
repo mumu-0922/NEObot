@@ -630,6 +630,38 @@ Targeted tests:
   visual-regression, and clean-copy gates;
 - deletion dry-run before any destructive action.
 
+## G11 — Owner Parity Regression Closure
+
+Owner live testing reopened three parity gaps after the standalone source-build
+proof: image understanding, accidental Team UX, and browser-configured provider
+settings. This group supersedes the prior multi-user UI assumption for the
+current local standalone target: `mm-chat/` returns to the original single-user
+experience while keeping Go backend, Python RAG worker, and Postgres as runtime
+services.
+
+Slice sequence:
+
+- [x] G11.1 Chat image understanding: server-mode uploaded `image/*` message
+      attachments are read back from private file storage, forwarded to the
+      configured OpenAI-compatible provider as multimodal `image_url` data URL
+      parts, and covered by handler/provider tests.
+- [ ] G11.2 Single-user Team removal: delete the frontend Team settings path,
+      state, API calls, and tests from the standalone UI instead of hiding a
+      broken Team entry. Backend Team code remains only as unreachable legacy
+      surface until a later schema/API cleanup slice can safely drop migrations
+      and packages.
+- [ ] G11.3 Browser provider settings parity: restore original-style web
+      provider add/edit/model-fetch flow for local single-user deployments and
+      make Go chat/model calls consume the selected browser-configured provider
+      without logging or documenting secrets.
+
+Targeted tests:
+
+- `cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./...`;
+- focused frontend composition/type/lint tests for Team removal and provider
+  settings;
+- live local chat smoke with image input and selected provider once G11.3 lands.
+
 ## Completion Ledger
 
 | Group                                    | Status      | Completion Rule                                                                      |
@@ -644,7 +676,8 @@ Targeted tests:
 | G7 Knowledge/RAG/Citations               | Complete    | Live MinerU + Jina + Postgres strict citation loop passed                            |
 | G8 Teams/Knowledge UI                    | Complete    | G8.1-G8.5 frontend control-plane wiring and isolation smoke passed                   |
 | G9 Data Authority/Route Removal          | Complete    | G9.1-G9.6 route freeze, route deletion, local write-authority, and clean-copy preflight passed |
-| G10 Final Closure/Delete Plan            | In progress | G10.1-G10.3 and build-based G10.2 complete; only owner-confirmed destructive cleanup remains |
+| G10 Final Closure/Delete Plan            | In progress | G10.1-G10.3 and build-based G10.2 complete; owner cleanup blocked by G11 parity regressions |
+| G11 Owner Parity Regression Closure      | In progress | G11.1 image understanding complete; Team removal and browser provider settings remain |
 
 ## Update Discipline
 

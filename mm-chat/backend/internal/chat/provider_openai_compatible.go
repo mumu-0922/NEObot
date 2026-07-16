@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -87,7 +88,7 @@ func (p *OpenAICompatibleProvider) StreamChat(
 	payload, err := json.Marshal(openAICompatibleChatCompletionRequest{
 		Model:           model,
 		Stream:          true,
-		Messages:        openAICompatibleMessages(input.SystemPrompt, input.Prompt),
+		Messages:        openAICompatibleMessages(input.SystemPrompt, input.Prompt, input.Attachments),
 		ReasoningEffort: openAICompatibleReasoningEffort(input.UseReasoning),
 	})
 	if err != nil {
@@ -183,7 +184,7 @@ type openAICompatibleChatCompletionRequest struct {
 
 type openAICompatibleMessage struct {
 	Role    string `json:"role"`
-	Content string `json:"content"`
+	Content any    `json:"content"`
 }
 
 type openAICompatibleStreamChunk struct {
@@ -232,7 +233,7 @@ func (p *OpenAICompatibleProvider) PlanTools(
 	payload, err := json.Marshal(openAICompatibleChatCompletionRequest{
 		Model:      modelRef.ModelID,
 		Stream:     false,
-		Messages:   openAICompatibleMessages("", input.Prompt),
+		Messages:   openAICompatibleMessages("", input.Prompt, nil),
 		Tools:      input.Tools,
 		ToolChoice: "auto",
 	})
@@ -325,7 +326,17 @@ func normalizeOpenAICompatibleBaseURL(raw string) (string, error) {
 	return value, nil
 }
 
-func openAICompatibleMessages(systemPrompt string, prompt string) []openAICompatibleMessage {
+type openAICompatibleContentPart struct {
+	Type     string                        `json:"type"`
+	Text     string                        `json:"text,omitempty"`
+	ImageURL *openAICompatibleImageURLPart `json:"image_url,omitempty"`
+}
+
+type openAICompatibleImageURLPart struct {
+	URL string `json:"url"`
+}
+
+func openAICompatibleMessages(systemPrompt string, prompt string, attachments []ProviderAttachment) []openAICompatibleMessage {
 	messages := make([]openAICompatibleMessage, 0, 2)
 	if systemPrompt = strings.TrimSpace(systemPrompt); systemPrompt != "" {
 		messages = append(messages, openAICompatibleMessage{
@@ -336,10 +347,37 @@ func openAICompatibleMessages(systemPrompt string, prompt string) []openAICompat
 
 	messages = append(messages, openAICompatibleMessage{
 		Role:    "user",
-		Content: prompt,
+		Content: openAICompatibleUserContent(prompt, attachments),
 	})
 
 	return messages
+}
+
+func openAICompatibleUserContent(prompt string, attachments []ProviderAttachment) any {
+	if len(attachments) == 0 {
+		return prompt
+	}
+
+	parts := make([]openAICompatibleContentPart, 0, len(attachments)+1)
+	if strings.TrimSpace(prompt) != "" {
+		parts = append(parts, openAICompatibleContentPart{
+			Type: "text",
+			Text: prompt,
+		})
+	}
+	for _, attachment := range attachments {
+		mimeType := strings.TrimSpace(attachment.MimeType)
+		if mimeType == "" {
+			mimeType = "application/octet-stream"
+		}
+		parts = append(parts, openAICompatibleContentPart{
+			Type: "image_url",
+			ImageURL: &openAICompatibleImageURLPart{
+				URL: "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(attachment.Data),
+			},
+		})
+	}
+	return parts
 }
 
 func openAICompatibleReasoningEffort(enabled bool) string {

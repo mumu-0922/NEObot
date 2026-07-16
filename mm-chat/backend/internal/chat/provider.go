@@ -33,9 +33,20 @@ type ProviderRequest struct {
 	AssistantMessageID string
 	Prompt             string
 	SystemPrompt       string
+	Attachments        []ProviderAttachment
 	UseReasoning       bool
 	ModelRef           ModelRef
 	Metadata           map[string]any
+}
+
+type ProviderAttachment struct {
+	FileID   string
+	FileName string
+	MimeType string
+	Size     int64
+	SHA256   string
+	Purpose  string
+	Data     []byte
 }
 
 type ToolPlanRequest struct {

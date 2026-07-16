@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -90,6 +91,73 @@ func TestOpenAICompatibleProviderStreamsDeltasAndUsage(t *testing.T) {
 	}
 	if usage == nil || usage.PromptTokens != 2 || usage.CompletionTokens != 3 || usage.TotalTokens != 5 {
 		t.Fatalf("usage = %#v", usage)
+	}
+}
+
+func TestOpenAICompatibleProviderSendsImageAttachments(t *testing.T) {
+	const imageBytes = "\x89PNG\r\n"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload openAICompatibleChatCompletionRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode provider payload: %v", err)
+		}
+		if len(payload.Messages) != 1 {
+			t.Fatalf("messages len = %d, want 1", len(payload.Messages))
+		}
+		parts, ok := payload.Messages[0].Content.([]any)
+		if !ok {
+			t.Fatalf("user content = %#v, want multimodal parts", payload.Messages[0].Content)
+		}
+		if len(parts) != 2 {
+			t.Fatalf("content parts len = %d, want 2", len(parts))
+		}
+		textPart, ok := parts[0].(map[string]any)
+		if !ok || textPart["type"] != "text" || textPart["text"] != "who is this?" {
+			t.Fatalf("text part = %#v", parts[0])
+		}
+		imagePart, ok := parts[1].(map[string]any)
+		if !ok || imagePart["type"] != "image_url" {
+			t.Fatalf("image part = %#v", parts[1])
+		}
+		imageURL, ok := imagePart["image_url"].(map[string]any)
+		if !ok {
+			t.Fatalf("image_url part = %#v", imagePart["image_url"])
+		}
+		wantURL := "data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte(imageBytes))
+		if imageURL["url"] != wantURL {
+			t.Fatalf("image url = %#v, want %q", imageURL["url"], wantURL)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer server.Close()
+
+	provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+		BaseURL:      server.URL,
+		APIKey:       "test-secret-token",
+		DefaultModel: "gpt-default",
+	})
+	if err != nil {
+		t.Fatalf("NewOpenAICompatibleProvider() error = %v", err)
+	}
+
+	events, err := provider.StreamChat(context.Background(), ProviderRequest{
+		Prompt: "who is this?",
+		Attachments: []ProviderAttachment{{
+			FileID:   testFileID,
+			FileName: "fixture.png",
+			MimeType: "image/png",
+			Data:     []byte(imageBytes),
+		}},
+		ModelRef: ModelRef{ProviderID: "openai_compatible"},
+	})
+	if err != nil {
+		t.Fatalf("StreamChat() error = %v", err)
+	}
+	for event := range events {
+		if event.Error != nil {
+			t.Fatalf("provider event error = %v", event.Error)
+		}
 	}
 }
 

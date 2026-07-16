@@ -1222,6 +1222,20 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
   - [ ] G10.4 Owner-confirmed former-root cleanup: require the exact owner
         approval phrase before running any generated destructive command.
 
+## Phase 11 Owner Parity Regression Closure
+
+- [ ] G11 Owner parity regression closure: fix live owner-test gaps before any
+      former-root deletion.
+  - [x] G11.1 Chat image understanding: Go chat streaming now resolves
+        server-backed `image/*` message attachments from file storage and sends
+        them to OpenAI-compatible providers as multimodal `image_url` data URL
+        parts; backend chat/httpserver tests pass.
+  - [ ] G11.2 Single-user Team removal: delete Team UI/state/API usage from
+        the standalone frontend rather than hiding it.
+  - [ ] G11.3 Browser provider settings parity: restore original-style web
+        provider add/edit/model-fetch flow and make Go chat use the selected
+        browser-configured provider in local single-user mode.
+
 ## Phase 16 — Multi-Server or Kubernetes Migration
 
 - [ ] Define target deployment platform and managed service boundaries.

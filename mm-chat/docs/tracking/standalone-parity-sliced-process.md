@@ -4107,3 +4107,50 @@ Legacy Next /api/rag/* and /api/doc-parse/* route deletion remains deferred to
 G9.
 No live browser screenshot is claimed in this environment.
 ```
+
+## 2026-07-17 — G11.1 Owner parity: chat image understanding
+
+Objective: restore the original project behavior where uploaded chat images are
+visible to the selected model during server-mode streaming.
+
+Completed scope:
+
+- added a Go chat provider attachment contract and a resolver seam for
+  server-backed message attachments;
+- wired the HTTP server to resolve `image/*` message attachments from the
+  existing file service/object store before provider streaming;
+- forwarded resolved image bytes through normal and strict-RAG provider request
+  paths without accepting attachments in the stream request body;
+- encoded OpenAI-compatible chat-completions requests as multimodal user content
+  with text plus `image_url` data URL parts when image attachments exist;
+- added handler coverage proving the provider receives the image attachment and
+  provider coverage proving the outbound OpenAI-compatible payload shape.
+
+Changed surfaces:
+
+```text
+mm-chat/backend/internal/chat/provider.go
+mm-chat/backend/internal/chat/handler.go
+mm-chat/backend/internal/chat/provider_openai_compatible.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/chat/handler_test.go
+mm-chat/backend/internal/chat/provider_openai_compatible_test.go
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./internal/chat ./internal/httpserver  # passed
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./...                                  # passed
+```
+
+Residual blockers:
+
+```text
+G11.2 must delete the Team frontend path for true original single-user parity.
+G11.3 must restore browser-configured provider/model-fetch parity before final
+owner cleanup can resume.
+```

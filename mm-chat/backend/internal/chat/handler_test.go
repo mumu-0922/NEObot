@@ -666,6 +666,59 @@ func TestHandlerForwardsReasoningToggleToProvider(t *testing.T) {
 	}
 }
 
+func TestHandlerStreamsImageAttachmentsToProvider(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	userMessage := fakeMessage(testMessageID, testConversationID, 0, "user", "who is this?")
+	userMessage.Attachments = []Attachment{{
+		ID:       testAttachmentID,
+		FileID:   testFileID,
+		FileName: "portrait.png",
+		MimeType: "image/png",
+		Size:     7,
+		SHA256:   testSHA256,
+		Purpose:  "image",
+	}}
+	repo.messages[testConversationID] = append(repo.messages[testConversationID], userMessage)
+	provider := &capturingProvider{}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithAttachmentResolver(fakeProviderAttachmentResolver{
+			attachments: map[string]ProviderAttachment{
+				testFileID: {
+					FileID:   testFileID,
+					FileName: "portrait.png",
+					MimeType: "image/png",
+					Size:     7,
+					SHA256:   testSHA256,
+					Purpose:  "image",
+					Data:     []byte("pngdata"),
+				},
+			},
+		}),
+	)
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"vision"},"idempotencyKey":"stream-key-image"}`,
+	)
+
+	assertStreamStatus(t, rec, http.StatusOK)
+	if provider.input.Prompt != "who is this?" {
+		t.Fatalf("provider prompt = %q, want image prompt", provider.input.Prompt)
+	}
+	if len(provider.input.Attachments) != 1 {
+		t.Fatalf("provider attachments = %#v, want one", provider.input.Attachments)
+	}
+	got := provider.input.Attachments[0]
+	if got.FileID != testFileID || got.MimeType != "image/png" || string(got.Data) != "pngdata" {
+		t.Fatalf("provider attachment = %#v", got)
+	}
+}
+
 func TestHandlerOptionalRAGPersistsDegradedNoEvidenceMetadata(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
@@ -2300,6 +2353,25 @@ func (p *capturingProvider) StreamChat(_ context.Context, input ProviderRequest)
 	ch := make(chan ProviderEvent)
 	close(ch)
 	return ch, nil
+}
+
+type fakeProviderAttachmentResolver struct {
+	attachments map[string]ProviderAttachment
+	err         error
+}
+
+func (r fakeProviderAttachmentResolver) ResolveProviderAttachment(
+	_ context.Context,
+	attachment Attachment,
+) (ProviderAttachment, error) {
+	if r.err != nil {
+		return ProviderAttachment{}, r.err
+	}
+	resolved, ok := r.attachments[attachment.FileID]
+	if !ok {
+		return ProviderAttachment{}, ErrFileNotFound
+	}
+	return resolved, nil
 }
 
 type strictRAGProviderProbe struct {
