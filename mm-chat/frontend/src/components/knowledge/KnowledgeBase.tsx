@@ -54,6 +54,8 @@ import {
 } from "@/lib/utils/timedStatus";
 import { withResolvedObjectUrl } from "@/lib/utils/objectUrlLifecycle";
 import { logDevError } from "@/lib/utils/devLogger";
+import { createNeoChatApiClient } from "@/services/api/client";
+import ServerKnowledgeBase from "./ServerKnowledgeBase";
 
 const formatBytes = (bytes: number, decimals = 2) => {
   if (!+bytes) return "0 Bytes";
@@ -841,7 +843,7 @@ interface KnowledgeBaseProps {
 }
 
 // --- Main Component ---
-const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({ onClose }) => {
+const LocalKnowledgeBase: React.FC<KnowledgeBaseProps> = ({ onClose }) => {
   const t = useTranslations("Knowledge");
   const {
     _hasHydrated,
@@ -1524,6 +1526,20 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({ onClose }) => {
       </div>
     </div>
   );
+};
+
+const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({ onClose }) => {
+  const apiClientSnapshot = useMemo(() => createNeoChatApiClient(), []);
+  const serverKnowledgeEnabled =
+    apiClientSnapshot.mode === "server" &&
+    apiClientSnapshot.capabilities.knowledge &&
+    apiClientSnapshot.capabilities.files;
+
+  if (serverKnowledgeEnabled) {
+    return <ServerKnowledgeBase onClose={onClose} />;
+  }
+
+  return <LocalKnowledgeBase onClose={onClose} />;
 };
 
 export default KnowledgeBase;

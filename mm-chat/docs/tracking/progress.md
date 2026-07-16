@@ -1143,9 +1143,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         with server-mode Team list/detail, create/rename, member role changes,
         invites, revoke, leave, fail-closed local mode, and identity-boundary
         composition tests.
-  - [ ] G8.3 Knowledge collection/document shell: collection CRUD, selected
-        collection attachment to chat, document list/status, upload/bind, and
-        deletion invisibility smoke.
+  - [x] G8.3 Knowledge collection/document shell: server-mode Knowledge Base
+        branch with collection CRUD, document list/status, upload/bind, and
+        optimistic deletion invisibility through the typed API client.
   - [ ] G8.4 Consent UX: collection/query consent screens for administrator
         env-backed MinerU/Jina processing with fail-closed affordances.
   - [ ] G8.5 Cross-user/team UX smoke: prove personal vs team visibility and

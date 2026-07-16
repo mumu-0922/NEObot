@@ -3028,3 +3028,67 @@ G8.4 Consent UX and G8.5 browser isolation smoke remain open.
 A live browser screenshot is still not claimed because this environment has no
 working Chromium runtime.
 ```
+
+## 2026-07-16 — G8.3 Knowledge Collection/Document UI Shell
+
+Objective: expose the existing Go Knowledge collection/document control plane
+through the current Knowledge Base surface while preserving the local-mode
+rollback UI.
+
+Completed scope:
+
+- added a server-mode branch in `KnowledgeBase` that renders the Go-backed
+  `ServerKnowledgeBase` only when both `knowledge` and `files` API
+  capabilities are enabled;
+- kept the existing local OPFS/IndexedDB Knowledge UI as the local-mode
+  fallback path;
+- added server collection list/create/update/delete controls with personal/team
+  scope selection;
+- added document upload -> server file upload -> Knowledge document bind flow;
+- added document list/status, reprocess, and delete controls;
+- made document delete immediately invisible in the UI with rollback on API
+  failure;
+- added fail-closed unsupported copy for missing server/files/knowledge
+  capability and localized English, Simplified Chinese, and Japanese copy;
+- added composition tests that prevent direct `/v1/knowledge`, `/api/rag`, or
+  `/api/doc-parse` calls from the visible UI and prevent browser identity/ACL
+  spoofing fields.
+
+Changed surfaces:
+
+```text
+mm-chat/frontend/src/components/knowledge/KnowledgeBase.tsx
+mm-chat/frontend/src/components/knowledge/ServerKnowledgeBase.tsx
+mm-chat/frontend/src/i18n/locales/en/Knowledge.json
+mm-chat/frontend/src/i18n/locales/zh/Knowledge.json
+mm-chat/frontend/src/i18n/locales/ja/Knowledge.json
+mm-chat/frontend/src/__tests__/serverKnowledgeBaseComposition.test.ts
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/serverKnowledgeBaseComposition.test.ts \
+  src/__tests__/knowledgeCitations.test.ts \
+  src/__tests__/apiClientScaffold.test.ts                         # passed, 63 tests
+cd mm-chat/frontend && corepack pnpm typecheck                    # passed
+cd mm-chat/frontend && corepack pnpm lint                         # passed
+cd mm-chat/frontend && corepack pnpm format:check                 # passed
+cd mm-chat/frontend && corepack pnpm build                        # passed
+git diff --check -- mm-chat                                      # passed
+```
+
+Residual blockers:
+
+```text
+G8.4 Consent UX remains open.
+G8.5 personal/team visibility and selected-chat Knowledge browser smoke remains
+open.
+Legacy Next /api/rag/* and /api/doc-parse/* route deletion remains deferred to
+G9.
+No live browser screenshot is claimed in this environment.
+```
