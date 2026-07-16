@@ -666,6 +666,62 @@ func TestHandlerForwardsReasoningToggleToProvider(t *testing.T) {
 	}
 }
 
+func TestHandlerOptionalRAGPersistsDegradedNoEvidenceMetadata(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "hello with selected knowledge"),
+	)
+	provider := &titleProvider{chunks: []string{"Plain provider answer"}}
+	handler := NewHandler(NewService(repo), WithProvider(provider))
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"config":{"knowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-rag-optional-degraded"}`,
+	)
+
+	assertStreamStatus(t, rec, http.StatusOK)
+	if provider.input.Prompt != "hello with selected knowledge" || strings.Contains(provider.input.Prompt, "Verified Knowledge evidence") {
+		t.Fatalf("provider prompt = %q", provider.input.Prompt)
+	}
+	messages := repo.messages[testConversationID]
+	if len(messages) != 2 || messages[1].Status != "completed" || messages[1].Content != "Plain provider answer" {
+		t.Fatalf("messages = %#v", messages)
+	}
+	assertOptionalRAGMetadata(t, messages[1], "degraded")
+}
+
+func TestHandlerOptionalRAGProviderFailurePersistsNoEvidenceMetadata(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "hello with selected knowledge"),
+	)
+	handler := NewHandler(NewService(repo), WithProvider(errorProvider{}))
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"metadata":{"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-rag-optional-provider-failed"}`,
+	)
+
+	assertStatus(t, rec, http.StatusBadGateway)
+	assertErrorCode(t, rec, "PROVIDER_ERROR")
+	messages := repo.messages[testConversationID]
+	if len(messages) != 2 || messages[1].Status != "failed" {
+		t.Fatalf("messages = %#v", messages)
+	}
+	assertOptionalRAGMetadata(t, messages[1], "provider_failed")
+	if messages[1].Metadata["errorCode"] != "PROVIDER_ERROR" {
+		t.Fatalf("errorCode metadata = %#v", messages[1].Metadata)
+	}
+}
+
 func TestHandlerStrictRAGRefusesWithoutEvidenceBeforeProvider(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
@@ -1696,6 +1752,27 @@ func assertStrictRAGRefusalMessage(t *testing.T, repo *fakeRepository, wantOutco
 	}
 	if count, ok := knowledgeMetadata["citationCount"].(int); !ok || count < 0 {
 		t.Fatalf("citationCount = %#v", knowledgeMetadata["citationCount"])
+	}
+	selected, ok := knowledgeMetadata["selectedCollectionIds"].([]string)
+	if !ok || len(selected) != 1 || selected[0] != "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" {
+		t.Fatalf("selectedCollectionIds = %#v", knowledgeMetadata["selectedCollectionIds"])
+	}
+}
+
+func assertOptionalRAGMetadata(t *testing.T, assistant Message, wantOutcome string) {
+	t.Helper()
+	knowledgeMetadata, ok := assistant.Metadata["knowledge"].(map[string]any)
+	if !ok {
+		t.Fatalf("assistant knowledge metadata = %#v", assistant.Metadata["knowledge"])
+	}
+	if knowledgeMetadata["mode"] != "optional" || knowledgeMetadata["outcome"] != wantOutcome {
+		t.Fatalf("assistant knowledge metadata = %#v, want outcome %q", knowledgeMetadata, wantOutcome)
+	}
+	if knowledgeMetadata["evidenceUsed"] != false || knowledgeMetadata["degradationReason"] != "no_verified_knowledge_evidence" {
+		t.Fatalf("optional degradation metadata = %#v", knowledgeMetadata)
+	}
+	if count, ok := knowledgeMetadata["citationCount"].(int); !ok || count != 0 {
+		t.Fatalf("citationCount = %#v, want 0", knowledgeMetadata["citationCount"])
 	}
 	selected, ok := knowledgeMetadata["selectedCollectionIds"].([]string)
 	if !ok || len(selected) != 1 || selected[0] != "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" {

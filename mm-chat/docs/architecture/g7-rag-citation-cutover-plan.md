@@ -1377,9 +1377,20 @@ G7.7D completed on 2026-07-16:
   or citation-verification paths persist refusal outcomes without leaking
   citations.
 
+G7.7E completed on 2026-07-16:
+
+- Added explicit optional/non-strict Knowledge degradation metadata on the normal
+  chat stream path when the request selects Knowledge collections but does not
+  enable strict mode. The answer provider still receives the ordinary user
+  prompt; no unverified Knowledge snippets are injected.
+- Successful optional answers persist `metadata.knowledge.mode = "optional"`,
+  `outcome = "degraded"`, `evidenceUsed = false`, `citationCount = 0`, the
+  selected collection IDs, and `degradationReason =
+  "no_verified_knowledge_evidence"`. Provider failure/cancel paths preserve the
+  same no-evidence marker with their own outcome.
+
 Remaining G7.7 slices:
 
-- Add optional/non-strict degradation metadata.
 - Add frontend server-mode Knowledge selection and basic citation card rendering.
 - Run deployed same-origin smoke through `/mm-api` once frontend wiring exists.
 - Decide whether richer citation persistence needs a dedicated table or message

@@ -4591,3 +4591,51 @@ Residual risk:
   state if needed.
 - Optional/non-strict degradation metadata and frontend citation cards remain
   the next G7.7 slices.
+
+## 2026-07-16 — G7.7E Optional Knowledge Degradation Metadata
+
+Objective: when a user selects Knowledge collections without strict mode, keep
+normal chat usable but make it explicit that no verified Knowledge evidence was
+used.
+
+Implemented behavior:
+
+- Added normal stream metadata assembly for optional Knowledge selections.
+  Requests with selected collections and `ragStrict/knowledgeStrict` disabled
+  still call the answer provider with the ordinary prompt and do not inject
+  unverified snippets.
+- Completed optional answers persist `metadata.knowledge.mode = "optional"`,
+  `outcome = "degraded"`, selected collection IDs, `citationCount = 0`,
+  `evidenceUsed = false`, and `degradationReason =
+  "no_verified_knowledge_evidence"`.
+- Provider startup/stream failure and cancellation paths preserve the same
+  no-evidence metadata with failure/cancel outcomes, while retaining existing
+  `runId` and provider error metadata.
+
+Touched files:
+
+```text
+backend/internal/chat/handler.go
+backend/internal/chat/handler_test.go
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && \
+  GOCACHE=/tmp/neo-chat-go-build go test ./internal/chat -run 'OptionalRAG|StrictRAG|ForwardsReasoning' -count=1
+# passed
+
+cd mm-chat/backend && \
+  GOCACHE=/tmp/neo-chat-go-build go test ./internal/chat -count=1
+# passed
+```
+
+Residual risk:
+
+- Optional Knowledge mode still degrades to normal chat rather than doing a
+  best-effort grounded answer. Frontend wiring must render the metadata clearly
+  so users know no Knowledge citation/evidence backed the answer.

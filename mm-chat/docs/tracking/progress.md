@@ -1113,8 +1113,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         citations/evidence can advance to answer assembly; `G7.7D` strict
         grounded answer context now calls the selected answer provider only
         after governance, buffers provider output, verifies citation markers,
-        and persists answered/refusal outcomes fail-closed; optional-mode
-        metadata and citation UI remain).
+        and persists answered/refusal outcomes fail-closed; `G7.7E` optional
+        mode now records explicit no-Knowledge-evidence degradation metadata;
+        citation UI remains).
   - [ ] G7.8 Live MinerU + Jina + Postgres smoke and operational proof.
   - [ ] G7.9 G8/G9 handoff and G7 closure checklist.
 - [ ] G8 Teams and Knowledge UI Wiring: connect existing Go control-plane APIs

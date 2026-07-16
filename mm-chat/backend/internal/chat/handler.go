@@ -929,13 +929,13 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		if streamCtx.Err() != nil || r.Context().Err() != nil || errors.Is(err, context.Canceled) {
 			h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 				Status:   "cancelled",
-				Metadata: map[string]any{"runId": runID},
+				Metadata: streamRunMetadata(runID, ragSelection, "cancelled", nil),
 			})
 			return
 		}
 		h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 			Status:   "failed",
-			Metadata: map[string]any{"runId": runID, "errorCode": "PROVIDER_ERROR"},
+			Metadata: streamRunMetadata(runID, ragSelection, "provider_failed", map[string]any{"errorCode": "PROVIDER_ERROR"}),
 		})
 		writeError(w, http.StatusBadGateway, "PROVIDER_ERROR", "provider stream failed")
 		return
@@ -980,7 +980,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 					Status:   "cancelled",
 					Content:  content.String(),
-					Metadata: map[string]any{"runId": runID},
+					Metadata: streamRunMetadata(runID, ragSelection, "cancelled", nil),
 				})
 				flusher.Flush()
 				return
@@ -998,7 +998,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 				Status:   "failed",
 				Content:  content.String(),
-				Metadata: map[string]any{"runId": runID, "errorCode": "PROVIDER_ERROR"},
+				Metadata: streamRunMetadata(runID, ragSelection, "provider_failed", map[string]any{"errorCode": "PROVIDER_ERROR"}),
 			})
 			flusher.Flush()
 			return
@@ -1053,7 +1053,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 			Status:   "cancelled",
 			Content:  content.String(),
-			Metadata: map[string]any{"runId": runID},
+			Metadata: streamRunMetadata(runID, ragSelection, "cancelled", nil),
 		})
 		flusher.Flush()
 		return
@@ -1064,11 +1064,9 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		conversationID,
 		assistantMessage.ID,
 		FinalizeAssistantMessageInput{
-			Status:  "completed",
-			Content: content.String(),
-			Metadata: map[string]any{
-				"runId": runID,
-			},
+			Status:   "completed",
+			Content:  content.String(),
+			Metadata: streamRunMetadata(runID, ragSelection, "degraded", nil),
 		},
 	)
 	if err != nil {
@@ -1516,6 +1514,31 @@ func strictRAGMessageMetadata(runID string, selection ragSelection, decision str
 	return map[string]any{
 		"runId":     runID,
 		"knowledge": knowledgeMetadata,
+	}
+}
+
+func streamRunMetadata(runID string, selection ragSelection, knowledgeOutcome string, extra map[string]any) map[string]any {
+	metadata := map[string]any{"runId": runID}
+	for key, value := range extra {
+		metadata[key] = value
+	}
+	if knowledgeMetadata := optionalRAGKnowledgeMetadata(selection, knowledgeOutcome); knowledgeMetadata != nil {
+		metadata["knowledge"] = knowledgeMetadata
+	}
+	return metadata
+}
+
+func optionalRAGKnowledgeMetadata(selection ragSelection, outcome string) map[string]any {
+	if selection.Strict || !selection.Enabled {
+		return nil
+	}
+	return map[string]any{
+		"mode":                  "optional",
+		"outcome":               outcome,
+		"selectedCollectionIds": append([]string(nil), selection.CollectionIDs...),
+		"citationCount":         0,
+		"evidenceUsed":          false,
+		"degradationReason":     "no_verified_knowledge_evidence",
 	}
 }
 
