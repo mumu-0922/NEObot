@@ -29,6 +29,90 @@ implemented, tested, and recorded, create a focused Git commit for that
 completed group before starting the next group. Do not batch unrelated future
 groups into the same commit.
 
+## 2026-07-16 — G9.4 Plugin/Agent Legacy Route Removal
+
+Objective: delete the transitional Next plugin/agent route handlers after the
+server-mode services already route list/install/execute/catalog calls through Go
+`/v1/*`.
+
+Completed scope:
+
+- deleted `/api/agents`, `/api/agents/[identifier]`,
+  `/api/plugins/list`, `/api/plugins/install`, and `/api/plugins/execute`
+  route handlers from `src/app/api`;
+- removed the legacy `pluginExecutionHttp` helper and the old route-handler
+  tests that targeted the deleted Next implementations;
+- changed local plugin and agent API adapters to fail closed with typed
+  unsupported-feature errors instead of calling deleted Next routes;
+- preserved server adapters for `/v1/agents*`, `/v1/plugins`,
+  `/v1/plugins/install`, and `/v1/plugins/execute`;
+- updated route inventory guard from 16 to 11 active transitional Next
+  handlers and added explicit negative assertions for the G9.4-retired paths;
+- refreshed frontend call-site, frontend API client, route inventory, gap,
+  plan, and progress docs so plugin/agent compatibility is not documented as an
+  active local Next route path.
+
+Changed surfaces:
+
+```text
+mm-chat/frontend/src/app/api/agents/route.ts
+mm-chat/frontend/src/app/api/agents/[identifier]/route.ts
+mm-chat/frontend/src/app/api/plugins/list/route.ts
+mm-chat/frontend/src/app/api/plugins/install/route.ts
+mm-chat/frontend/src/app/api/plugins/execute/route.ts
+mm-chat/frontend/src/services/api/client/local/agentApi.ts
+mm-chat/frontend/src/services/api/client/local/pluginApi.ts
+mm-chat/frontend/src/services/api/client/pluginExecutionHttp.ts
+mm-chat/frontend/src/config/api.ts
+mm-chat/frontend/src/lib/security/requestGuards.ts
+mm-chat/frontend/src/__tests__/legacyRouteInventory.test.ts
+mm-chat/frontend/src/__tests__/legacyPluginAgentRouteRemoval.test.ts
+mm-chat/frontend/src/__tests__/agentService.test.ts
+mm-chat/frontend/src/__tests__/pluginService.test.ts
+mm-chat/frontend/src/__tests__/pluginUtils.test.ts
+mm-chat/frontend/src/__tests__/accessControl.test.ts
+mm-chat/frontend/src/__tests__/agentListRoute.test.ts
+mm-chat/frontend/src/__tests__/pluginListRoute.test.ts
+mm-chat/frontend/src/__tests__/pluginExecuteRoute.test.ts
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/inventory/api-routes.md
+mm-chat/docs/inventory/frontend-call-sites.md
+mm-chat/docs/inventory/standalone-cutover-gap.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/legacyRouteInventory.test.ts \
+  src/__tests__/legacyPluginAgentRouteRemoval.test.ts \
+  src/__tests__/agentService.test.ts \
+  src/__tests__/pluginService.test.ts \
+  src/__tests__/apiClientScaffold.test.ts \
+  src/__tests__/accessControl.test.ts \
+  src/__tests__/pluginUtils.test.ts \
+  src/__tests__/serverPluginOrchestration.test.ts              # passed, 119 tests
+cd mm-chat/frontend && corepack pnpm typecheck                 # passed
+cd mm-chat/frontend && corepack pnpm lint                      # passed
+cd mm-chat/frontend && corepack pnpm format:check              # passed
+cd mm-chat/frontend && corepack pnpm build                     # passed; build route table shows 11 `/api/*` handlers
+git diff --check -- mm-chat                                    # passed
+rg '(/api/agents|/api/plugins)' mm-chat/frontend/src \
+  -g '!**/__tests__/**' -g '!node_modules'                     # no production references
+```
+
+Residual blockers:
+
+```text
+G9.5 owns browser-local production authority removal next:
+IndexedDB/localforage/OPFS must become dev/import-only rather than a production
+write authority.
+No live browser screenshot is claimed for this static/API-client deletion slice.
+```
+
 ## 2026-07-16 — G9.3 Config/Provider/BYOK Legacy Route Removal
 
 Objective: delete the transitional Next config/provider/BYOK bootstrap routes

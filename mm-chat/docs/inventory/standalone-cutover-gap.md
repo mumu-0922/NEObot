@@ -20,7 +20,7 @@ Live source and deployment configuration currently prove:
   lockfile, configuration, assets, tests, and standalone Docker image;
 - `mm-chat/compose.single-server.yml` builds the frontend in server mode and
   exposes the same-origin `/mm-api` edge to the private Go service;
-- the relocated frontend still registers 16 transitional Next.js `/api/*`
+- the relocated frontend still registers 11 transitional Next.js `/api/*`
   route handlers;
 - the Go backend already registers Auth, Chat, Files, Browser Import, Teams,
   Knowledge Collection/Document/Consent, Health, Readiness, and Metrics routes;
@@ -74,19 +74,25 @@ API-client adapters passed:
 /api/providers/models
 ```
 
-The remaining 12 root handlers still require a Go/RAG replacement or an
-equivalent server-owned static/catalog implementation:
+The following plugin/agent routes were retired in G9.4 after the Go API-client
+adapters passed:
 
 ```text
 /api/agents
 /api/agents/{identifier}
+/api/plugins/execute
+/api/plugins/install
+/api/plugins/list
+```
+
+The remaining 7 root handlers still require a Go/RAG replacement or an
+equivalent server-owned static/catalog implementation:
+
+```text
 /api/chat/execute-code
 /api/chat/generate-image
 /api/chat/generate-title
 /api/chat/related-questions
-/api/plugins/execute
-/api/plugins/install
-/api/plugins/list
 /api/search
 /api/voice/synthesize
 /api/voice/transcribe

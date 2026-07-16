@@ -4,8 +4,6 @@ import { describe, expect, it } from "vitest";
 
 const expectedTransitionalRoutes = [
   "/api/access/verify",
-  "/api/agents",
-  "/api/agents/[identifier]",
   "/api/chat",
   "/api/chat/execute-code",
   "/api/chat/generate",
@@ -13,9 +11,6 @@ const expectedTransitionalRoutes = [
   "/api/chat/generate-title",
   "/api/chat/related-questions",
   "/api/health",
-  "/api/plugins/execute",
-  "/api/plugins/install",
-  "/api/plugins/list",
   "/api/search",
   "/api/voice/synthesize",
   "/api/voice/transcribe",
@@ -34,6 +29,14 @@ const removedG93Routes = [
   "/api/byok/public-key",
   "/api/config",
   "/api/providers/models",
+] as const;
+
+const removedG94Routes = [
+  "/api/agents",
+  "/api/agents/[identifier]",
+  "/api/plugins/execute",
+  "/api/plugins/install",
+  "/api/plugins/list",
 ] as const;
 
 function collectRouteFiles(directory: string): string[] {
@@ -88,6 +91,16 @@ describe("G9.1 transitional Next API route inventory", () => {
     );
 
     for (const removedRoute of removedG93Routes) {
+      expect(actualRoutes.has(removedRoute)).toBe(false);
+    }
+  });
+
+  it("keeps G9.4 plugin and agent handlers deleted", () => {
+    const actualRoutes = new Set(
+      collectRouteFiles(join(process.cwd(), "src/app/api")).map(toApiRoute),
+    );
+
+    for (const removedRoute of removedG94Routes) {
       expect(actualRoutes.has(removedRoute)).toBe(false);
     }
   });

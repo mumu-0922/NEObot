@@ -5,7 +5,7 @@ This inventory maps current Next.js API routes to future `mm-chat` Go backend ow
 ## Summary
 
 Current server routes are mostly proxy/adaptor endpoints around chat
-generation, plugins, search, voice, and marketplace data.
+generation, search, and voice.
 
 ## Route Table
 
@@ -20,11 +20,6 @@ generation, plugins, search, voice, and marketplace data.
 | `/api/chat/generate-image`    |   POST | Image generation        | Go provider adapter or later worker                          |
 | `/api/chat/execute-code`      |   POST | Code execution helper   | Separate sandbox service; do not put in core initially       |
 | `/api/search`                 |   POST | Search provider proxy   | Go search proxy with safe outbound policy                    |
-| `/api/plugins/list`           |    GET | Plugin marketplace list | Go plugin registry or static asset initially                 |
-| `/api/plugins/install`        |   POST | Install plugin manifest | Go plugin registry/validation later                          |
-| `/api/plugins/execute`        |   POST | Execute plugin          | Later sandboxed plugin executor                              |
-| `/api/agents`                 |    GET | Agent marketplace list  | Static/catalog service; can remain frontend/static initially |
-| `/api/agents/[identifier]`    |    GET | Agent detail            | Static/catalog service                                       |
 | `/api/voice/transcribe`       |   POST | Speech-to-text          | Go proxy or Python/media service later                       |
 | `/api/voice/synthesize`       |   POST | Text-to-speech          | Go proxy or media service later                              |
 
@@ -41,6 +36,11 @@ generation, plugins, search, voice, and marketplace data.
 | `/api/config`              |           GET | Go `/v1/config` through API client                        |
 | `/api/providers/models`    |          POST | Go `/v1/providers/models` through API client              |
 | `/api/byok/public-key`     |           GET | Go `/v1/byok/public-key` through API client               |
+| `/api/agents`              |           GET | Go `/v1/agents` through API client                        |
+| `/api/agents/[identifier]` |           GET | Go `/v1/agents/{identifier}` through API client           |
+| `/api/plugins/list`        |           GET | Go `/v1/plugins` through API client                       |
+| `/api/plugins/install`     |          POST | Go `/v1/plugins/install` through API client               |
+| `/api/plugins/execute`     |          POST | Go `/v1/plugins/execute` through API client               |
 
 ## Migration Priority
 
@@ -48,7 +48,7 @@ generation, plugins, search, voice, and marketplace data.
 2. `chat`, `chat/generate` — core streaming path.
 3. `providers/models` — provider metadata and server-side secret isolation.
 4. `files` — new Go endpoints; current app has OPFS rather than server file API.
-5. `voice`, `plugins` — later services after chat spine is stable.
+5. `voice` — later services after chat spine is stable.
 
 ## Replacement API Sketch
 

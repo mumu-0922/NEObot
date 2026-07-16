@@ -324,7 +324,7 @@ describe("access proxy", () => {
     vi.stubEnv("TRUST_PROXY_HEADERS", "");
 
     const response = validateSameOriginRequest(
-      new NextRequest("http://frontend:3000/api/plugins/execute", {
+      new NextRequest("http://frontend:3000/api/voice/synthesize", {
         method: "POST",
         headers: {
           host: "127.0.0.1:18080",
@@ -341,7 +341,7 @@ describe("access proxy", () => {
     vi.stubEnv("TRUST_PROXY_HEADERS", "");
 
     const response = validateSameOriginRequest(
-      new NextRequest("http://frontend:3000/api/plugins/execute", {
+      new NextRequest("http://frontend:3000/api/voice/synthesize", {
         method: "POST",
         headers: {
           host: "127.0.0.1:18080",
@@ -437,14 +437,14 @@ describe("access proxy", () => {
     expect(getRateLimitClientIp(request)).toBe("203.0.113.88");
   });
 
-  it("rate limits high-cost GET API routes before route handling", async () => {
+  it("rate limits high-cost mutating API routes before route handling", async () => {
     vi.stubEnv("ACCESS_PASSWORD", "");
 
     let response: Response | null = null;
-    for (let i = 0; i < 16; i += 1) {
+    for (let i = 0; i < 31; i += 1) {
       response = await applyRequestGuards(
-        new NextRequest("https://neo.test/api/plugins/list", {
-          method: "GET",
+        new NextRequest("https://neo.test/api/search", {
+          method: "POST",
           headers: {
             "x-forwarded-for": "203.0.113.55",
           },

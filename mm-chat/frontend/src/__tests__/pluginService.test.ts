@@ -54,8 +54,8 @@ describe("plugin market service cache", () => {
     vi.resetModules();
     previousApiMode = process.env.NEXT_PUBLIC_API_MODE;
     previousApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-    delete process.env.NEXT_PUBLIC_API_MODE;
-    delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    process.env.NEXT_PUBLIC_API_MODE = "server";
+    process.env.NEXT_PUBLIC_API_BASE_URL = "/mm-api";
     storeMock.state = {
       marketPlugins: [],
       marketPluginsTimestamp: 0,
@@ -118,8 +118,8 @@ describe("plugin market service cache", () => {
     const plugins = await fetchApiGuruList();
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/plugins/list",
-      expect.objectContaining({ method: "GET", cache: "no-store" }),
+      "/mm-api/v1/plugins",
+      expect.objectContaining({ method: "GET" }),
     );
     expect(plugins).toHaveLength(1);
     expect(plugins[0]).toMatchObject(pluginB);
@@ -135,8 +135,8 @@ describe("plugin market service cache", () => {
     const plugins = await fetchApiGuruList(true);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/plugins/list",
-      expect.objectContaining({ method: "GET", cache: "no-store" }),
+      "/mm-api/v1/plugins",
+      expect.objectContaining({ method: "GET" }),
     );
     expect(plugins).toHaveLength(1);
     expect(plugins[0]).toMatchObject(pluginB);
@@ -203,7 +203,7 @@ describe("plugin market service cache", () => {
     expect(storeMock.state.setMarketPlugins).toHaveBeenCalledWith([]);
   });
 
-  it("installs marketplace and custom plugins through the local API adapter", async () => {
+  it("installs marketplace and custom plugins through the server API adapter", async () => {
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body));
       return jsonResponse({
@@ -226,14 +226,14 @@ describe("plugin market service cache", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/plugins/install",
+      "/mm-api/v1/plugins/install",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ plugin: pluginA }),
       }),
     );
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/plugins/install",
+      "/mm-api/v1/plugins/install",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({

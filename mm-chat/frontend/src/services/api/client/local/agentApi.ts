@@ -1,3 +1,4 @@
+import { unsupportedFeature } from "../errors";
 import type {
   AgentApi,
   AgentDetailInput,
@@ -5,26 +6,16 @@ import type {
   AgentListResponse,
 } from "../types";
 
-function localeQuery(locale: AgentListInput["locale"]): string {
-  return locale ? `?locale=${encodeURIComponent(locale)}` : "";
-}
-
 export function createLocalAgentApiShell(): AgentApi {
   return {
     async listAgents(input: AgentListInput = {}): Promise<AgentListResponse> {
-      const response = await fetch(`/api/agents${localeQuery(input.locale)}`);
-      if (!response.ok) throw new Error("Failed to fetch agents");
-      return (await response.json()) as AgentListResponse;
+      void input;
+      throw unsupportedFeature("local agent catalog after G9.4 route removal");
     },
 
     async getAgentDetail(input: AgentDetailInput): Promise<unknown> {
-      const response = await fetch(
-        `/api/agents/${encodeURIComponent(input.identifier)}${localeQuery(
-          input.locale,
-        )}`,
-      );
-      if (!response.ok) throw new Error("Failed to fetch agent details");
-      return response.json();
+      void input;
+      throw unsupportedFeature("local agent detail after G9.4 route removal");
     },
   };
 }

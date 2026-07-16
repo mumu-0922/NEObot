@@ -22,18 +22,6 @@ export const API_ROUTES = {
     generateImage: "/api/chat/generate-image",
   },
 
-  // Agent 相关
-  agents: {
-    list: "/api/agents",
-    detail: (identifier: string) => `/api/agents/${identifier}`,
-  },
-
-  // 插件相关
-  plugins: {
-    list: "/api/plugins/list",
-    install: "/api/plugins/install",
-  },
-
   // 搜索相关
   search: {
     query: "/api/search",

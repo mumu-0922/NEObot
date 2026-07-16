@@ -18,7 +18,7 @@ frontend API client contract
   ↓
 local adapter OR server adapter
   ↓
-IndexedDB/OPFS/Next.js routes OR Go/Postgres/MinIO/Redis/provider adapters
+IndexedDB/OPFS/remaining Next.js routes OR Go/Postgres/MinIO/Redis/provider adapters
 ```
 
 ## 2. Source Inputs
@@ -30,7 +30,8 @@ This contract is derived from:
 - `mm-chat/docs/inventory/chat-flow.md` chat streaming spine.
 - `mm-chat/docs/inventory/storage.md` localStorage/IndexedDB/OPFS inventory.
 - `mm-chat/docs/inventory/provider-flow.md` server-side provider boundary.
-- Existing plugin route inventory for deferred `pluginApi` shape.
+- G9.4-retired plugin/agent route inventory and the Go `/v1/*` replacement
+  adapters.
 - Existing service boundary in `src/services/README.md`.
 - Existing chat types in `src/lib/chat/types.ts`.
 - Implemented Go chat CRUD contract in
@@ -60,7 +61,9 @@ This contract is derived from:
 - Rewriting React components in this phase.
 - Implementing Go endpoints in this phase.
 - Migrating browser data automatically.
-- Moving plugin execution, code execution, voice, or full RAG into the first MVP. A minimal `pluginApi` contract is defined only to keep Phase 2 boundaries complete.
+- Moving code execution, voice, or full RAG into the first MVP. Plugin
+  registry/install/execute now has Go ownership; the browser-local plugin and
+  agent Next routes were retired in G9.4 and local adapters fail closed.
 - Exposing database schemas directly to frontend code.
 
 ## 5. Runtime Modes
@@ -71,10 +74,10 @@ The client boundary must support two modes.
 export type ApiMode = "local" | "server";
 ```
 
-| Mode     | Meaning                       | Backing Systems                                                                 | Default              |
-| -------- | ----------------------------- | ------------------------------------------------------------------------------- | -------------------- |
-| `local`  | Preserve current app behavior | Zustand, localStorage, IndexedDB/localforage, OPFS, existing Next.js API routes | Yes during migration |
-| `server` | Use new backend path          | Go API, Postgres, Redis, MinIO, provider adapters                               | Opt-in per rollout   |
+| Mode     | Meaning                                    | Backing Systems                                                                                  | Default              |
+| -------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------ | -------------------- |
+| `local`  | Preserve bounded rollback/import behavior | Zustand, localStorage, IndexedDB/localforage, OPFS, remaining Next.js routes; retired paths fail closed | Yes during migration |
+| `server` | Use new backend path                       | Go API, Postgres, Redis, MinIO, provider adapters                                                | Opt-in per rollout   |
 
 Bootstrap configuration:
 
@@ -89,6 +92,10 @@ Runtime configuration source:
 local mode   -> fail-closed after G9.3 for config/provider/BYOK bootstrap
 server mode  -> GET /v1/config through the Go API client
 ```
+
+G9.4 applies the same rule to plugin and agent compatibility: server mode calls
+Go `/v1/plugins*` and `/v1/agents*`, while local plugin/agent adapters throw a
+typed unsupported-feature error instead of falling back to deleted Next routes.
 
 Rules:
 
@@ -140,15 +147,19 @@ export interface ApiClientConfig {
 
 export interface NeoChatApiClient {
   mode: ApiMode;
-  chat: ChatApi;
-  files: FileApi;
-  images: ImageGenerationApi;
+  config: ResolvedApiClientConfig;
+  capabilities: ApiCapabilities;
   auth: AuthApi;
-  teams: TeamApi;
   settings: SettingsApi;
   providers: ProviderApi;
+  byok: ByokApi;
+  images: ImageGenerationApi;
+  chat: ChatApi;
+  files: FileApi;
   plugins: PluginApi;
   imports: ImportApi;
+  agents: AgentApi;
+  teams: TeamApi;
   knowledge: KnowledgeApi;
 }
 
@@ -1375,10 +1386,10 @@ Endpoint mapping:
 | `settings.updateUserSettings` | `PATCH /v1/settings`           | Partial update with server validation.                                                |
 | `providers.listProviders`     | `GET /v1/providers`            | Returns provider metadata and `serverManaged` flags.                                  |
 | `providers.listModels`        | `POST /v1/providers/models`    | Allows refresh and provider-specific lookup.                                          |
-| `plugins.listAvailable`       | `GET /v1/plugins`              | Later phase; capability-gated.                                                        |
-| `plugins.listInstalled`       | `GET /v1/plugins/installed`    | Later phase; capability-gated.                                                        |
-| `plugins.install`             | `POST /v1/plugins/install`     | Later phase; validate manifest before install.                                        |
-| `plugins.execute`             | `POST /v1/plugins/execute`     | Deferred until sandbox design exists.                                                 |
+| `plugins.listAvailable`       | `GET /v1/plugins`              | Go-owned registry list; unavailable registries degrade to an empty unavailable list.   |
+| `plugins.listInstalled`       | `GET /v1/plugins/installed`    | Reserved; installed items currently flow through the registry-backed list.             |
+| `plugins.install`             | `POST /v1/plugins/install`     | Go validates catalog/custom OpenAPI manifests and persists when Postgres is enabled.   |
+| `plugins.execute`             | `POST /v1/plugins/execute`     | Go executes id-only registry functions and normalizes bounded result envelopes.        |
 | `job.cancel`                  | `POST /v1/jobs/{jobId}/cancel` | G6.5b fail-closed cancellation admission; validates job id, then unavailable.         |
 | `code.execute`                | `POST /v1/code/executions`     | G6.4 fail-closed admission; validates `modelRef + language + code`, then unavailable. |
 | `image.generate`              | `POST /v1/images/generations`  | G6.3 fail-closed admission; validates `modelRef + prompt`, then unavailable.          |
@@ -1390,8 +1401,10 @@ route until it is implemented by the Go router and explicitly reopened here.
 G3.1 reopens `GET /v1/config`, `POST /v1/providers/models` for
 `source:"server-default"` model lists only, and `GET /v1/byok/public-key`.
 Custom provider BYOK decryption remains fail-closed until the later G3 BYOK UI
-adapter slice. `/v1/settings`, `/v1/providers`, `/v1/plugins*`, and full custom
-provider model refresh remain unopened. The Go backend also registers the
+adapter slice. `/v1/settings`, `/v1/providers`, and full custom provider model
+refresh remain unopened. G4/G9.4 open `/v1/plugins*` for server-mode
+plugin registry/install/execute and remove the deleted Next fallbacks. The Go
+backend also registers the
 Phase 15.1B auth/session routes `/v1/auth/login`, `/v1/auth/logout`,
 `/v1/auth/invites/accept`, `/v1/auth/recovery/*`, `/v1/me`, and
 `/v1/me/sessions`.
@@ -1399,7 +1412,8 @@ Phase 15.1B auth/session routes `/v1/auth/login`, `/v1/auth/logout`,
 Rules:
 
 - Server mode sends provider IDs/model IDs, not plaintext API keys.
-- Local mode can keep existing BYOK behavior.
+- Local mode must not resurrect G9.3-retired BYOK/config/provider routes; those
+  adapters fail closed unless a deliberate import/dev-only path is added later.
 - `RuntimeConfig.capabilities` gates UI visibility for features not yet migrated.
 - G6.1 keeps `voice`, `imageGeneration`, and `codeExecution` capabilities
   disabled in server mode until Go job execution contracts exist; service-layer
@@ -1479,7 +1493,9 @@ code` only; `codeExecution` stays disabled until a real sandbox/executor and
 - G6.5d defines the hard gate for real code execution in
   `docs/contracts/code-execution-sandbox-contract.md`; `codeExecution` remains
   disabled until that sandbox/storage/audit/cancel test plan is implemented.
-- `plugins` capability remains `false` for the first server MVP; `pluginApi` exists to avoid later component-level route coupling.
+- `plugins` capability is server-owned through Go `/v1/plugins*`; UI visibility
+  remains runtime capability-gated, and local mode must fail closed instead of
+  calling removed `/api/plugins/*` routes.
 
 ## 14. HTTP Client Rules
 
@@ -1763,8 +1779,8 @@ G2 adds a catalog adapter under the same API client factory:
 Rules:
 
 - Server mode must not call `/api/agents` or `/api/agents/{identifier}` from
-  browser code; those Next routes remain only as G9 transitional removal
-  targets.
+  browser code; G9.4 deleted those Next routes and local agent adapters now fail
+  closed.
 - Agent identifiers are bounded to `[A-Za-z0-9._-]+`; invalid identifiers fail
   before any upstream registry request.
 - Catalog responses are public, normalized, and contain no provider secrets,
@@ -2331,14 +2347,14 @@ const provider = { apiKey: process.env.PROVIDER_API_KEY };
 ```
 
 Correct: provider planning remains in Go, and server-mode plugin execution is
-also admitted by Go. Until persistent registry execution lands, pass the
-validated installed plugin manifest/function payload; never fall back to a
-production Next route.
+also admitted by Go. G4.5c persistent registry execution is the production path:
+send an id-only plugin/function request and never fall back to a production Next
+route.
 
 ```ts
 const calls = await api.chat.planTools({ prompt, modelRef, tools, signal });
 const result = await api.plugins.execute({
-  payload: { plugin, functionDef, args: calls[0].args, authConfig },
+  payload: { pluginId, functionName, args: calls[0].args },
   signal,
 });
 ```

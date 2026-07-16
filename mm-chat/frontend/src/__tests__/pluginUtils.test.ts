@@ -37,6 +37,8 @@ const plugin: Plugin = {
 
 describe("plugin execution utility", () => {
   beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_API_MODE", "server");
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "/mm-api");
     mockStore.state = {
       installedPlugins: [plugin],
       pluginConfigs: {},
@@ -45,6 +47,7 @@ describe("plugin execution utility", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
     vi.useRealTimers();
   });
 
@@ -55,7 +58,7 @@ describe("plugin execution utility", () => {
     );
 
     await expect(executePluginFunction("lookup", {})).resolves.toEqual({
-      error: "Error: Plugin execution failed",
+      error: "Server returned invalid JSON.",
     });
   });
 

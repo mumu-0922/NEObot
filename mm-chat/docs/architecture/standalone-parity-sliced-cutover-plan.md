@@ -56,12 +56,10 @@ Owner directive captured on 2026-07-15:
 search toggle
 ```
 
-The relocated frontend still registers these 16 transitional Next.js routes:
+The relocated frontend still registers these 11 transitional Next.js routes:
 
 ```text
 /api/access/verify
-/api/agents
-/api/agents/{identifier}
 /api/chat
 /api/chat/execute-code
 /api/chat/generate
@@ -69,9 +67,6 @@ The relocated frontend still registers these 16 transitional Next.js routes:
 /api/chat/generate-title
 /api/chat/related-questions
 /api/health
-/api/plugins/execute
-/api/plugins/install
-/api/plugins/list
 /api/search
 /api/voice/synthesize
 /api/voice/transcribe
@@ -541,7 +536,7 @@ Slice sequence:
 - [x] G9.3 Config/provider/BYOK route removal: retire `/api/config`,
       `/api/providers/models`, and `/api/byok/public-key` from production
       server-mode flow.
-- [ ] G9.4 Plugin/agent route removal: retire transitional
+- [x] G9.4 Plugin/agent route removal: retire transitional
       `/api/plugins/*` and `/api/agents*` handlers or fence any static catalog
       replacement as server-owned.
 - [ ] G9.5 Local production authority removal: hard-fence browser-local
@@ -583,12 +578,12 @@ Targeted tests:
 | G1 Conversation and Message Operations   | Complete    | G1.1-G1.6 complete; only paused cross-group search toggle remains outside G1         |
 | G2 Related Questions and Agent Catalogs  | Complete    | Related-question/catalog Next routes replaced                                        |
 | G3 Auth, Config, Provider Settings, BYOK | Complete    | Server-auth/config/provider lifecycle verified                                       |
-| G4 Plugin Final Ownership                | Complete    | G4.5c and G4.6b complete; route deletion remains deferred to G9                      |
+| G4 Plugin Final Ownership                | Complete    | G4.5c/G4.6b Go ownership and G9.4 Next route deletion complete                       |
 | G5 Search/Web Enrichment                 | Paused      | Owner reopens, then server-owned search passes gates                                 |
 | G6 Voice/Image/Code Jobs                 | In progress | Image generation is reopened through Go artifacts; voice executor remains            |
 | G7 Knowledge/RAG/Citations               | Complete    | Live MinerU + Jina + Postgres strict citation loop passed                            |
 | G8 Teams/Knowledge UI                    | Complete    | G8.1-G8.5 frontend control-plane wiring and isolation smoke passed                   |
-| G9 Data Authority/Route Removal          | In progress | G9.1-G9.3 route freeze and two deletion slices passed; remaining route slices remain |
+| G9 Data Authority/Route Removal          | In progress | G9.1-G9.4 route freeze and three deletion slices passed; remaining route/local-authority slices remain |
 | G10 Final Closure/Delete Plan            | Pending     | Clean-copy and delete-plan gates pass                                                |
 
 ## Update Discipline

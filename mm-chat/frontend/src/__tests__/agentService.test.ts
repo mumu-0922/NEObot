@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const storeState = vi.hoisted(() => ({
   value: {
@@ -16,6 +16,11 @@ vi.mock("@/store/core/settingsStore", () => ({
 }));
 
 describe("agent service", () => {
+  beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_API_MODE", "server");
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "/mm-api");
+  });
+
   afterEach(() => {
     storeState.value = {
       marketAgents: [],
@@ -24,6 +29,7 @@ describe("agent service", () => {
       setMarketAgents: vi.fn(),
     };
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
     vi.resetModules();
   });
@@ -153,7 +159,10 @@ describe("agent service", () => {
     const { getAgents } = await import("../services/api/agentService");
 
     await expect(getAgents(false, "zh")).resolves.toEqual([zhAgent]);
-    expect(fetchMock).toHaveBeenCalledWith("/api/agents?locale=zh");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/mm-api/v1/agents?locale=zh",
+      expect.objectContaining({ method: "GET" }),
+    );
     expect(setMarketAgents).toHaveBeenCalledWith([zhAgent], "zh");
   });
 
@@ -189,7 +198,10 @@ describe("agent service", () => {
     const { getAgents } = await import("../services/api/agentService");
 
     await expect(getAgents(false, "ja-JP")).resolves.toEqual([jaAgent]);
-    expect(fetchMock).toHaveBeenCalledWith("/api/agents?locale=ja");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/mm-api/v1/agents?locale=ja",
+      expect.objectContaining({ method: "GET" }),
+    );
     expect(setMarketAgents).toHaveBeenCalledWith([jaAgent], "ja");
   });
 
@@ -374,12 +386,21 @@ describe("agent service", () => {
       [expect.objectContaining({ identifier: "ja" })],
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(fetchMock).toHaveBeenCalledWith("/api/agents?locale=en");
-    expect(fetchMock).toHaveBeenCalledWith("/api/agents?locale=zh");
-    expect(fetchMock).toHaveBeenCalledWith("/api/agents?locale=ja");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/mm-api/v1/agents?locale=en",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/mm-api/v1/agents?locale=zh",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/mm-api/v1/agents?locale=ja",
+      expect.objectContaining({ method: "GET" }),
+    );
   });
 
-  it("encodes agent detail identifiers before building the local API path", async () => {
+  it("encodes agent detail identifiers before building the server API path", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ identifier: "team/agent?x=1" }), {
         status: 200,
@@ -393,7 +414,8 @@ describe("agent service", () => {
     );
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/agents/team%2Fagent%3Fx%3D1?locale=en",
+      "/mm-api/v1/agents/team%2Fagent%3Fx%3D1?locale=en",
+      expect.objectContaining({ method: "GET" }),
     );
   });
 
@@ -408,7 +430,10 @@ describe("agent service", () => {
 
     await getAgentDetail("agent-1", "ja-JP");
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/agents/agent-1?locale=ja");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/mm-api/v1/agents/agent-1?locale=ja",
+      expect.objectContaining({ method: "GET" }),
+    );
   });
 
   it("normalizes agent detail responses at the client boundary", async () => {

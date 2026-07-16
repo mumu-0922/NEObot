@@ -1,3 +1,4 @@
+import { unsupportedFeature } from "../errors";
 import type {
   PluginApi,
   PluginExecuteInput,
@@ -5,38 +6,24 @@ import type {
   PluginInstallResponse,
   PluginListAvailableResponse,
 } from "../types";
-import { postTransitionalPluginExecution } from "../pluginExecutionHttp";
-import { requestLocalJson } from "./http";
 
 export function createLocalPluginApiShell(): PluginApi {
   return {
     async listAvailable(input = {}): Promise<PluginListAvailableResponse> {
-      return requestLocalJson<PluginListAvailableResponse>(
-        "/api/plugins/list",
-        {
-          method: "GET",
-          signal: input.signal,
-        },
+      void input;
+      throw unsupportedFeature(
+        "local plugin registry after G9.4 route removal",
       );
     },
     async install(input: PluginInstallInput): Promise<PluginInstallResponse> {
-      return requestLocalJson<PluginInstallResponse>("/api/plugins/install", {
-        method: "POST",
-        body: toPluginInstallBody(input),
-        signal: input.signal,
-      });
+      void input;
+      throw unsupportedFeature("local plugin install after G9.4 route removal");
     },
     async execute(input: PluginExecuteInput): Promise<Response> {
-      return postTransitionalPluginExecution(input);
+      void input;
+      throw unsupportedFeature(
+        "local plugin execution after G9.4 route removal",
+      );
     },
   };
-}
-
-function toPluginInstallBody(
-  input: PluginInstallInput,
-): Record<string, unknown> {
-  if (input.customInput !== undefined) {
-    return { customInput: input.customInput };
-  }
-  return { plugin: input.plugin };
 }
