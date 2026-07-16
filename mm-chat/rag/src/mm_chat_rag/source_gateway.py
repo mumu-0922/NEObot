@@ -12,6 +12,8 @@ import re
 import uuid
 from collections.abc import Coroutine
 from dataclasses import dataclass
+from pathlib import Path
+from stat import S_ISREG
 from typing import Any, Final, NoReturn, Protocol
 
 from mm_chat_rag.job_context import ProcessingJobContext
@@ -120,6 +122,50 @@ class ObjectStoreDocumentSourceGateway:
         )
 
 
+class LocalObjectBytesGateway:
+    """Default-off local filesystem object reader for `storage_backend=local`."""
+
+    def __init__(
+        self,
+        *,
+        root: str | Path,
+        max_bytes: int = _MAX_SOURCE_BYTES,
+    ) -> None:
+        if (
+            isinstance(max_bytes, bool)
+            or not isinstance(max_bytes, int)
+            or not 1 <= max_bytes <= _MAX_SOURCE_BYTES
+        ):
+            _reject(JOB_HANDLER_DEPENDENCY_UNCONFIGURED)
+        self._root = _resolve_local_root(root)
+        self._max_bytes = max_bytes
+
+    async def fetch_object_bytes(self, metadata: FileSourceMetadata) -> bytes:
+        """Read bounded local object bytes for already-fenced metadata."""
+        if not isinstance(metadata, FileSourceMetadata):
+            _reject(JOB_HANDLER_SOURCE_INVALID)
+        if metadata.storage_backend != "local":
+            _reject(JOB_HANDLER_DEPENDENCY_UNCONFIGURED)
+        if metadata.byte_size > self._max_bytes:
+            _reject(JOB_HANDLER_SOURCE_INVALID)
+        object_path = _resolve_local_object_path(self._root, metadata.object_key)
+        try:
+            file_stat = object_path.lstat()
+        except OSError as error:
+            _reject_from(JOB_HANDLER_SOURCE_INVALID, error)
+        if object_path.is_symlink() or not S_ISREG(file_stat.st_mode):
+            _reject(JOB_HANDLER_SOURCE_INVALID)
+        if file_stat.st_size != metadata.byte_size:
+            _reject(JOB_HANDLER_SOURCE_INVALID)
+        try:
+            body = object_path.read_bytes()
+        except OSError as error:
+            _reject_from(JOB_HANDLER_SOURCE_INVALID, error)
+        if len(body) != metadata.byte_size:
+            _reject(JOB_HANDLER_SOURCE_INVALID)
+        return body
+
+
 def _validate_object_key(value: str) -> None:
     if (
         not isinstance(value, str)
@@ -137,5 +183,35 @@ def _validate_object_key(value: str) -> None:
         _reject(JOB_HANDLER_SOURCE_INVALID)
 
 
+def _resolve_local_root(root: str | Path) -> Path:
+    raw_root = str(root)
+    if not raw_root or raw_root != raw_root.strip():
+        _reject(JOB_HANDLER_DEPENDENCY_UNCONFIGURED)
+    try:
+        resolved = Path(root).resolve(strict=True)
+    except OSError as error:
+        _reject_from(JOB_HANDLER_DEPENDENCY_UNCONFIGURED, error)
+    if not resolved.is_dir():
+        _reject(JOB_HANDLER_DEPENDENCY_UNCONFIGURED)
+    return resolved
+
+
+def _resolve_local_object_path(root: Path, object_key: str) -> Path:
+    _validate_object_key(object_key)
+    candidate = root.joinpath(*object_key.split("/"))
+    try:
+        candidate.resolve(strict=False).relative_to(root)
+    except (OSError, ValueError) as error:
+        _reject_from(JOB_HANDLER_SOURCE_INVALID, error)
+    return candidate
+
+
 def _reject(error_code: str) -> NoReturn:
     raise PermanentJobError(stable_error_code(error_code))
+
+
+def _reject_from(error_code: str, cause: Exception) -> NoReturn:
+    try:
+        _reject(error_code)
+    except PermanentJobError as error:
+        raise error from cause

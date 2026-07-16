@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import uuid
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -21,6 +22,7 @@ from mm_chat_rag.provider_profile import (
 from mm_chat_rag.retry import PermanentJobError
 from mm_chat_rag.source_gateway import (
     FileSourceMetadata,
+    LocalObjectBytesGateway,
     ObjectStoreDocumentSourceGateway,
 )
 
@@ -245,3 +247,81 @@ async def test_object_store_document_source_gateway_rejects_hash_mismatch() -> N
 
     assert raised.value.error_code == JOB_HANDLER_SOURCE_HASH_MISMATCH
     assert "users/user-1/files/file-1" not in str(raised.value)
+
+
+async def test_local_object_bytes_gateway_reads_verified_local_object(
+    tmp_path: Path,
+) -> None:
+    context = _context()
+    object_path = tmp_path / "users" / "user-1" / "files" / "file-1"
+    object_path.parent.mkdir(parents=True)
+    object_path.write_bytes(BODY)
+    metadata_gateway = FakeMetadataGateway(
+        _metadata(
+            context,
+            storage_backend="local",
+        )
+    )
+    object_gateway = LocalObjectBytesGateway(root=tmp_path)
+    gateway = ObjectStoreDocumentSourceGateway(
+        metadata=metadata_gateway,
+        objects=object_gateway,
+    )
+
+    source = await gateway.fetch_document_source(context)
+
+    assert source.body == BODY
+    assert source.source_sha256 == SHA256
+
+
+def test_local_object_bytes_gateway_rejects_missing_root(tmp_path: Path) -> None:
+    missing = tmp_path / "missing"
+
+    with pytest.raises(PermanentJobError) as raised:
+        LocalObjectBytesGateway(root=missing)
+
+    assert raised.value.error_code == JOB_HANDLER_DEPENDENCY_UNCONFIGURED
+
+
+async def test_local_object_bytes_gateway_rejects_nonlocal_backend(
+    tmp_path: Path,
+) -> None:
+    context = _context()
+    gateway = LocalObjectBytesGateway(root=tmp_path)
+
+    with pytest.raises(PermanentJobError) as raised:
+        await gateway.fetch_object_bytes(_metadata(context, storage_backend="minio"))
+
+    assert raised.value.error_code == JOB_HANDLER_DEPENDENCY_UNCONFIGURED
+
+
+async def test_local_object_bytes_gateway_rejects_size_mismatch(
+    tmp_path: Path,
+) -> None:
+    context = _context()
+    object_path = tmp_path / "users" / "user-1" / "files" / "file-1"
+    object_path.parent.mkdir(parents=True)
+    object_path.write_bytes(BODY + b"x")
+    gateway = LocalObjectBytesGateway(root=tmp_path)
+
+    with pytest.raises(PermanentJobError) as raised:
+        await gateway.fetch_object_bytes(_metadata(context, storage_backend="local"))
+
+    assert raised.value.error_code == JOB_HANDLER_SOURCE_INVALID
+
+
+async def test_local_object_bytes_gateway_rejects_symlink_escape(
+    tmp_path: Path,
+) -> None:
+    context = _context()
+    outside = tmp_path / "outside.pdf"
+    outside.write_bytes(BODY)
+    object_path = tmp_path / "users" / "user-1" / "files" / "file-1"
+    object_path.parent.mkdir(parents=True)
+    object_path.symlink_to(outside)
+    gateway = LocalObjectBytesGateway(root=tmp_path)
+
+    with pytest.raises(PermanentJobError) as raised:
+        await gateway.fetch_object_bytes(_metadata(context, storage_backend="local"))
+
+    assert raised.value.error_code == JOB_HANDLER_SOURCE_INVALID

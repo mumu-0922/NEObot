@@ -1048,7 +1048,8 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         default-off Jina passage embedding provider gateway, `G7.5.13`
         Jina + projection handler dependency bundle, `G7.5.14` parse source
         gateway composition seam, and `G7.5.15` default-off Postgres parse
-        source metadata gateway done; real handler dispatch still gated).
+        source metadata gateway, and `G7.5.16` default-off local object-byte
+        gateway done; real handler dispatch still gated).
   - [ ] G7.6 Private query and Go reauthorization.
   - [ ] G7.7 Strict/optional chat answer and basic citations.
   - [ ] G7.8 Live MinerU + Jina + Postgres smoke and operational proof.

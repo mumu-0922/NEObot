@@ -472,10 +472,23 @@ G7.5.15 completed on 2026-07-16:
   slice still does not read object bytes, call MinIO/S3, call MinerU, or consume
   provider quota.
 
+G7.5.16 completed on 2026-07-16:
+
+- Added `LocalObjectBytesGateway`, a default-off local filesystem byte reader
+  for metadata whose `storage_backend` is exactly `local`.
+- The gateway requires an explicit configured root path, reuses the safe
+  internal object-key contract, rejects backend mismatches before file reads,
+  rejects symlink objects and path escapes, checks the on-disk byte size before
+  materializing bytes, and lets the existing composition gateway perform the
+  final SHA-256 check.
+- No deployment `.env` read, MinIO/S3 SDK, MinerU call, production registry
+  entry, or provider quota use is introduced. MinIO/S3 object-byte adapters
+  remain a future gated slice.
+
 Remaining G7.5 work:
 
-- Implement real object-byte adapters behind the new source gateway seam, then
-  implement MinerU and parse-side Postgres projection adapters.
+- Implement MinIO/S3 object-byte adapters behind the new source gateway seam as
+  needed, then implement MinerU and parse-side Postgres projection adapters.
 - Promote the composed default-off Jina + Postgres embedding dependencies only
   behind an explicit readiness/registry gate.
 - Promote purge dispatch behind an explicit readiness/registry gate now that
@@ -492,6 +505,8 @@ Validation:
   compile gate and Python adapter parameter fence.
 - Parse source metadata fetch tests, including the G7.5.15 `016` migration
   static gate and Python adapter lease/materialization fence.
+- Local object-byte gateway tests, including explicit root, backend mismatch,
+  size mismatch, symlink, and composition hash verification.
 - Retry-three-times and terminal-failure tests.
 
 ### G7.6 Private query and Go reauthorization

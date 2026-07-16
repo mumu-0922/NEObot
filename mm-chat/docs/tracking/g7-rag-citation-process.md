@@ -1502,3 +1502,64 @@ Residual risk:
   future gated slices.
 - The new migration compiles in a fresh live PostgreSQL chain, but this slice
   does not seed a full parse job fixture or fetch real object bytes.
+
+## 2026-07-16 — G7.5.16 Default-off Local Object Bytes Gateway
+
+Objective: attach the first real object-byte reader behind the parse source
+composition seam without reading deployment `.env`, adding MinIO/S3 credentials,
+calling MinerU, or promoting production dispatch. This slice covers the local
+filesystem storage backend only; MinIO/S3 remain later gated adapters.
+
+Implemented behavior:
+
+- Added `LocalObjectBytesGateway` in `rag/src/mm_chat_rag/source_gateway.py`.
+- The gateway is explicit and default-off:
+  - it requires a caller-supplied existing root directory;
+  - it only accepts `FileSourceMetadata.storage_backend == "local"`;
+  - it reuses the internal object-key safety rules and resolves paths under the
+    configured root;
+  - it rejects missing objects, directories, symlink objects, path escapes, and
+    size mismatches with stable redacted errors;
+  - it checks object size before materializing bytes and leaves final SHA-256
+    verification to `ObjectStoreDocumentSourceGateway`.
+- Extended `rag/tests/unit/test_source_gateway.py` with local read success
+  through the full source composition gateway, missing-root, non-local backend,
+  size mismatch, and symlink rejection coverage.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. No
+  provider quota can be spent by this slice.
+
+Touched files:
+
+```text
+rag/src/mm_chat_rag/source_gateway.py
+rag/tests/unit/test_source_gateway.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && uv run ruff check \
+  src/mm_chat_rag/source_gateway.py tests/unit/test_source_gateway.py
+# passed
+
+cd mm-chat/rag && uv run mypy src/mm_chat_rag/source_gateway.py
+# passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_source_gateway.py \
+  tests/unit/test_postgres.py \
+  tests/unit/test_job_handler_dependencies.py \
+  tests/unit/test_provider_capture.py::test_production_dispatch_remains_disabled_and_registries_empty
+# 75 passed
+```
+
+Residual risk:
+
+- This enables only local filesystem object reads. Production single-server
+  deployments using MinIO/S3 still need a separate credentialed object-byte
+  adapter slice and smoke test.
+- Parse execution remains blocked until the MinerU parser gateway, parse
+  projection gateway, and explicit registry promotion gates are implemented.
