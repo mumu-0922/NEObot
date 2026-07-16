@@ -1,0 +1,3 @@
+DROP FUNCTION IF EXISTS knowledge_stage_parse_projection(
+  UUID, UUID, UUID, UUID, UUID, TEXT, TEXT, JSONB, JSONB, JSONB, JSONB, JSONB
+);

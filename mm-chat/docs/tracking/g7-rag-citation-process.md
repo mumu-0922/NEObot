@@ -1723,3 +1723,72 @@ Residual risk:
 - Real parse dispatch remains blocked until MinerU execution, parse projection
   staging, handler composition, retry behavior, and explicit registry promotion
   gates are implemented.
+
+## 2026-07-16 — G7.5.19 Default-off Postgres Parse Projection Gateway Function
+
+Objective: add the Postgres `knowledge_stage_parse_projection(...)` function
+that the Python adapter from G7.5.18 calls, while keeping production handler
+registries empty and avoiding MinerU/Jina provider calls.
+
+Implemented behavior:
+
+- Added migration `017_rag_parse_projection_gateway` with an up/down pair.
+- The function is a token-fenced `SECURITY DEFINER` worker gateway requiring a
+  live parse job lease, non-legacy projection binding, staging materialization,
+  source hash match, chunk-profile match, and Jina 1024 search profile.
+- It links `parse_artifact_set_id` onto the staging materialization, inserts or
+  reuses the parser artifact set, and stages five projection lanes from JSONB
+  recordsets: blocks, parent chunks, child chunks, chunk-block spans, and child
+  search projections.
+- Each lane has a count/mismatch gate so partial or context-mismatched payloads
+  fail closed instead of being treated as success.
+- Added a static migration contract test covering token fences, materialization
+  and profile gates, JSONB recordset lanes, artifact/search-profile binding,
+  worker-only execute grants, and rollback.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. No
+  parser, embedding, or provider quota path is enabled by this slice.
+
+Touched files:
+
+```text
+backend/migrations/017_rag_parse_projection_gateway.up.sql
+backend/migrations/017_rag_parse_projection_gateway.down.sql
+backend/internal/migration/phase15_rag_parse_projection_gateway_schema_test.go
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test \
+  ./internal/migration -count=1
+# passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_provider_capture.py::test_production_dispatch_remains_disabled_and_registries_empty \
+  tests/unit/test_job_handler_dependencies.py
+# 25 passed
+
+cd mm-chat/frontend && corepack pnpm prettier --check \
+  ../docs/architecture/g7-rag-citation-cutover-plan.md \
+  ../docs/tracking/g7-rag-citation-process.md \
+  ../docs/tracking/progress.md
+# passed
+
+# secret scan for owner-provided provider endpoint/key; patterns redacted
+# no matches
+
+git diff --check -- mm-chat
+# passed
+```
+
+Residual risk:
+
+- `MM_CHAT_TEST_DATABASE_URL` is not configured in this shell, so this slice has
+  static migration contract coverage but not a live Postgres compile/staging
+  proof yet.
+- Real parse dispatch remains blocked until MinerU execution, handler
+  composition, retry behavior, and explicit registry promotion gates are
+  implemented.

@@ -525,11 +525,30 @@ G7.5.18 completed on 2026-07-16:
 - Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
   slice does not call MinerU/Jina or spend provider quota.
 
+G7.5.19 completed on 2026-07-16:
+
+- Added migration `017_rag_parse_projection_gateway` with
+  `knowledge_stage_parse_projection(...)`, the default-off database counterpart
+  to the Python parse projection adapter.
+- The function revalidates the leased parse job, staging materialization, source
+  SHA-256, collection/document/version visibility fences, index profile chunk
+  profile hash, and Jina 1024 search profile before any projection rows are
+  accepted.
+- It links the parser artifact set to the materialization, then stages blocks,
+  parent chunks, child chunks, chunk-block spans, and child-search projection
+  rows from JSONB recordsets with count/mismatch gates for each lane.
+- It grants only `rag_worker_executor` function execute rights and gives
+  `rag_projection_owner` the minimal new insert/select privileges needed by the
+  SECURITY DEFINER function.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
+  slice does not call MinerU/Jina or spend provider quota; live DB staging still
+  needs an owner-provided `MM_CHAT_TEST_DATABASE_URL` proof.
+
 Remaining G7.5 work:
 
-- Implement the parse-side Postgres projection migration/function behind the
-  new default-off adapter seam, then add MinerU parser execution and a live
-  staging proof. Production MinIO/S3 object access should prefer the Go private
+- Add a live or integration proof for the `017` parse projection staging
+  function when `MM_CHAT_TEST_DATABASE_URL` is available, then add MinerU parser
+  execution. Production MinIO/S3 object access should prefer the Go private
   source-object gateway rather than giving Python static object-store
   credentials.
 - Promote the composed default-off Jina + Postgres embedding dependencies only
@@ -556,6 +575,9 @@ Validation:
 - Parse projection adapter tests, including lease/materialization requirements,
   context/batch mismatch rejection, JSONB payload conversion, and token-fenced
   function parameters.
+- Parse projection migration tests, including token fences, materialization/profile
+  gates, JSONB recordset lanes, artifact-set binding, worker-only execute
+  grants, and rollback.
 - Retry-three-times and terminal-failure tests.
 
 ### G7.6 Private query and Go reauthorization
