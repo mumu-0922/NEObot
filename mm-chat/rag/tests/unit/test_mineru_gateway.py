@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
+import stat
+import zipfile
 from typing import Any
 
 import httpx
@@ -11,6 +14,7 @@ import mm_chat_rag.mineru_gateway as mineru_module
 from mm_chat_rag.job_handler_dependencies import DocumentSource
 from mm_chat_rag.mineru_gateway import (
     MINERU_ALLOCATE_UPLOAD_URL,
+    MINERU_GATEWAY_ARCHIVE_INVALID,
     MINERU_GATEWAY_CREDENTIALS_MISSING,
     MINERU_GATEWAY_DOWNLOAD_STATUS_INVALID,
     MINERU_GATEWAY_REQUEST_FAILED,
@@ -36,6 +40,12 @@ SIGNED_UPLOAD_URL = (
     "?Expires=1&Signature=redacted"
 )
 RESULT_URL = "https://cdn-mineru.openxlab.org.cn/pdf/fixture-result.zip"
+ARCHIVE_ENTRIES = (
+    ("full.md", b"# full\n"),
+    ("fixture_content_list.json", b"[]"),
+    ("layout.json", b"{}"),
+    ("fixture_model.json", b"{}"),
+)
 
 
 def _source(
@@ -72,6 +82,34 @@ def _json_response(payload: object, *, status: int = 200) -> httpx.Response:
         headers={"Content-Type": "application/json; charset=utf-8"},
         content=content,
     )
+
+
+def _archive(
+    entries: tuple[tuple[str, bytes], ...] = ARCHIVE_ENTRIES,
+    *,
+    compression: int = zipfile.ZIP_STORED,
+) -> bytes:
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=compression) as archive:
+        for name, content in entries:
+            archive.writestr(name, content)
+    return output.getvalue()
+
+
+def _archive_with_extra_info(info: zipfile.ZipInfo, content: bytes) -> bytes:
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as archive:
+        for name, entry_content in ARCHIVE_ENTRIES:
+            archive.writestr(name, entry_content)
+        archive.writestr(info, content)
+    return output.getvalue()
+
+
+def _corrupt_archive_content(content: bytes, needle: bytes = b"# full") -> bytes:
+    raw = bytearray(content)
+    index = raw.index(needle)
+    raw[index] ^= 0xFF
+    return bytes(raw)
 
 
 def _allocation(
@@ -709,3 +747,121 @@ async def test_mineru_gateway_download_retries_transport_failure_redacted() -> N
 
     assert raised.value.error_code == MINERU_GATEWAY_REQUEST_FAILED
     assert SECRET not in str(raised.value)
+
+
+def test_mineru_gateway_validates_result_archive_summary() -> None:
+    archive_body = _archive()
+    gateway = MinerULocalBatchGateway(SECRET)
+
+    summary = gateway.validate_result_archive(object(), archive_body)
+
+    assert summary.archive_byte_count == len(archive_body)
+    assert summary.archive_sha256 == hashlib.sha256(archive_body).hexdigest()
+    assert summary.entry_count == len(ARCHIVE_ENTRIES)
+    assert summary.full_markdown_present is True
+    assert summary.content_list_present is True
+    assert summary.middle_json_present is True
+    assert summary.model_json_present is True
+
+
+@pytest.mark.parametrize(
+    "archive_body",
+    [
+        b"",
+        b"not-a-zip",
+        _archive((("full.md", b"# full\n"),)),
+        _archive((("../full.md", b"x"), *ARCHIVE_ENTRIES[1:])),
+        _archive((("nested\\full.md", b"x"), *ARCHIVE_ENTRIES[1:])),
+    ],
+)
+def test_mineru_gateway_rejects_invalid_result_archive(
+    archive_body: bytes,
+) -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+
+    with pytest.raises(PermanentJobError) as raised:
+        gateway.validate_result_archive(object(), archive_body)
+
+    assert raised.value.error_code == MINERU_GATEWAY_ARCHIVE_INVALID
+
+
+def test_mineru_gateway_rejects_duplicate_archive_entries() -> None:
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as archive:
+        archive.writestr("full.md", b"# full\n")
+        with pytest.warns(UserWarning, match="Duplicate name"):
+            archive.writestr("full.md", b"# duplicate\n")
+        for name, content in ARCHIVE_ENTRIES[1:]:
+            archive.writestr(name, content)
+
+    gateway = MinerULocalBatchGateway(SECRET)
+
+    with pytest.raises(PermanentJobError) as raised:
+        gateway.validate_result_archive(object(), output.getvalue())
+
+    assert raised.value.error_code == MINERU_GATEWAY_ARCHIVE_INVALID
+
+
+def test_mineru_gateway_rejects_symlink_archive_entry() -> None:
+    info = zipfile.ZipInfo("link")
+    info.external_attr = (stat.S_IFLNK | 0o777) << 16
+    gateway = MinerULocalBatchGateway(SECRET)
+
+    with pytest.raises(PermanentJobError) as raised:
+        gateway.validate_result_archive(object(), _archive_with_extra_info(info, b"x"))
+
+    assert raised.value.error_code == MINERU_GATEWAY_ARCHIVE_INVALID
+
+
+def test_mineru_gateway_rejects_crc_mismatch_archive() -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+
+    with pytest.raises(PermanentJobError) as raised:
+        gateway.validate_result_archive(object(), _corrupt_archive_content(_archive()))
+
+    assert raised.value.error_code == MINERU_GATEWAY_ARCHIVE_INVALID
+
+
+def test_mineru_gateway_rejects_archive_entry_limits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mineru_module, "MAX_MINERU_ARCHIVE_ENTRY_BYTES", 1)
+    gateway = MinerULocalBatchGateway(SECRET)
+
+    with pytest.raises(PermanentJobError) as raised:
+        gateway.validate_result_archive(object(), _archive())
+
+    assert raised.value.error_code == MINERU_GATEWAY_ARCHIVE_INVALID
+
+
+def test_mineru_gateway_rejects_archive_total_limits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mineru_module, "MAX_MINERU_ARCHIVE_TOTAL_BYTES", 1)
+    gateway = MinerULocalBatchGateway(SECRET)
+
+    with pytest.raises(PermanentJobError) as raised:
+        gateway.validate_result_archive(object(), _archive())
+
+    assert raised.value.error_code == MINERU_GATEWAY_ARCHIVE_INVALID
+
+
+def test_mineru_gateway_rejects_archive_compression_ratio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mineru_module, "MAX_MINERU_ARCHIVE_COMPRESSION_RATIO", 1)
+    gateway = MinerULocalBatchGateway(SECRET)
+
+    with pytest.raises(PermanentJobError) as raised:
+        gateway.validate_result_archive(
+            object(),
+            _archive(
+                (
+                    ("full.md", b"a" * 1024),
+                    *ARCHIVE_ENTRIES[1:],
+                ),
+                compression=zipfile.ZIP_DEFLATED,
+            ),
+        )
+
+    assert raised.value.error_code == MINERU_GATEWAY_ARCHIVE_INVALID

@@ -10,9 +10,14 @@ not register production parse handlers or spend provider quota.
 
 from __future__ import annotations
 
+import hashlib
+import io
 import json
 import re
+import stat
+import zipfile
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import Final, NoReturn, cast
 from urllib.parse import SplitResult, urlsplit
 
@@ -39,6 +44,7 @@ MINERU_GATEWAY_DOWNLOAD_STATUS_INVALID: Final = (
     "MINERU_GATEWAY_DOWNLOAD_STATUS_INVALID"
 )
 MINERU_GATEWAY_RESULT_URL_INVALID: Final = "MINERU_GATEWAY_RESULT_URL_INVALID"
+MINERU_GATEWAY_ARCHIVE_INVALID: Final = "MINERU_GATEWAY_ARCHIVE_INVALID"
 MINERU_ALLOCATE_UPLOAD_URL: Final = "https://mineru.net/api/v4/file-urls/batch"
 MINERU_POLL_PATH_PREFIX: Final = "/api/v4/extract-results/batch/"
 MINERU_POLL_URL_PREFIX: Final = f"https://mineru.net{MINERU_POLL_PATH_PREFIX}"
@@ -52,6 +58,10 @@ MAX_MINERU_SOURCE_BYTES: Final = 200 * 1024 * 1024
 MAX_MINERU_RESPONSE_BYTES: Final = 1024 * 1024
 MAX_MINERU_UPLOAD_URL_BYTES: Final = 4096
 MAX_MINERU_RESULT_ARCHIVE_BYTES: Final = 32 * 1024 * 1024
+MAX_MINERU_ARCHIVE_ENTRIES: Final = 256
+MAX_MINERU_ARCHIVE_ENTRY_BYTES: Final = 64 * 1024 * 1024
+MAX_MINERU_ARCHIVE_TOTAL_BYTES: Final = 128 * 1024 * 1024
+MAX_MINERU_ARCHIVE_COMPRESSION_RATIO: Final = 200
 MINERU_UPLOAD_TARGET_HOST: Final = "mineru.oss-cn-shanghai.aliyuncs.com"
 MINERU_UPLOAD_PATH_PREFIX: Final = "/api-upload/"
 MINERU_RESULT_TARGET_HOST: Final = "cdn-mineru.openxlab.org.cn"
@@ -68,6 +78,7 @@ _SAFE_FILENAME_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$")
 _ID_RE: Final = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 _DATA_ID_RE: Final = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 _START_TIME_RE: Final = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
+_SHA256_RE: Final = re.compile(r"^[0-9a-f]{64}$")
 _POLL_STATES: Final[frozenset[str]] = frozenset(
     {"waiting-file", "pending", "running", "converting", "done", "failed"}
 )
@@ -79,6 +90,8 @@ _ZIP_CONTENT_TYPES: Final[frozenset[str]] = frozenset(
         "binary/octet-stream",
     }
 )
+_ZIP_ENCRYPTED_FLAG: Final = 0x1
+_ZIP_MODE_SHIFT: Final = 16
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +133,36 @@ class MinerULocalBatchPollResult:
             _validate_result_target_url(self.result_url)
         elif self.result_url is not None:
             _reject_permanent(MINERU_GATEWAY_RESPONSE_INVALID)
+
+
+@dataclass(frozen=True, slots=True)
+class MinerULocalBatchArchiveSummary:
+    """Redacted validated ZIP summary; entry names and content are not retained."""
+
+    archive_byte_count: int
+    archive_sha256: str
+    entry_count: int
+    full_markdown_present: bool
+    content_list_present: bool
+    middle_json_present: bool
+    model_json_present: bool
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.archive_byte_count, bool)
+            or not isinstance(self.archive_byte_count, int)
+            or self.archive_byte_count < 1
+            or self.archive_byte_count > MAX_MINERU_RESULT_ARCHIVE_BYTES
+            or not _SHA256_RE.fullmatch(self.archive_sha256)
+            or isinstance(self.entry_count, bool)
+            or not isinstance(self.entry_count, int)
+            or not 1 <= self.entry_count <= MAX_MINERU_ARCHIVE_ENTRIES
+            or self.full_markdown_present is not True
+            or self.content_list_present is not True
+            or self.middle_json_present is not True
+            or self.model_json_present is not True
+        ):
+            _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
 
 
 class MinerULocalBatchGateway:
@@ -216,6 +259,15 @@ class MinerULocalBatchGateway:
             trust_env=False,
         ) as client:
             return await _get_result_archive(client, result_url)
+
+    def validate_result_archive(
+        self,
+        context: object,
+        archive_body: bytes,
+    ) -> MinerULocalBatchArchiveSummary:
+        """Validate one MinerU result ZIP without retaining entry names/content."""
+        _ = context
+        return _validate_result_archive_body(archive_body)
 
 
 def _allocate_request_body(filename: str) -> JsonObject:
@@ -614,6 +666,120 @@ def _validate_progress(value: object) -> None:
 
 def _is_nonnegative_int(value: object) -> bool:
     return not isinstance(value, bool) and isinstance(value, int) and value >= 0
+
+
+def _validate_result_archive_body(content: bytes) -> MinerULocalBatchArchiveSummary:
+    if not isinstance(content, bytes) or not content:
+        _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
+    if len(content) > MAX_MINERU_RESULT_ARCHIVE_BYTES:
+        _reject_permanent(MINERU_GATEWAY_RESPONSE_TOO_LARGE)
+    entries = _read_valid_archive_entries(content)
+    required = _required_archive_artifacts(entries)
+    _validate_required_archive_artifacts(required)
+    return MinerULocalBatchArchiveSummary(
+        archive_byte_count=len(content),
+        archive_sha256=hashlib.sha256(content).hexdigest(),
+        entry_count=len(entries),
+        full_markdown_present=required["full_markdown_present"],
+        content_list_present=required["content_list_present"],
+        middle_json_present=required["middle_json_present"],
+        model_json_present=required["model_json_present"],
+    )
+
+
+def _read_valid_archive_entries(content: bytes) -> list[zipfile.ZipInfo]:
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as archive:
+            entries = archive.infolist()
+            _validate_archive_entries(entries)
+            _validate_archive_crc(archive)
+            return entries
+    except PermanentJobError:
+        raise
+    except NotImplementedError:
+        _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
+    except (OSError, RuntimeError, zipfile.BadZipFile, zipfile.LargeZipFile):
+        _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
+
+
+def _validate_archive_crc(archive: zipfile.ZipFile) -> None:
+    if archive.testzip() is not None:
+        _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
+
+
+def _validate_archive_entries(entries: list[zipfile.ZipInfo]) -> None:
+    if not entries:
+        _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
+    if len(entries) > MAX_MINERU_ARCHIVE_ENTRIES:
+        _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
+    total = 0
+    seen: set[str] = set()
+    for entry in entries:
+        _validate_archive_entry(entry, seen)
+        seen.add(entry.filename)
+        total += entry.file_size
+        if total > MAX_MINERU_ARCHIVE_TOTAL_BYTES:
+            _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
+
+
+def _validate_archive_entry(entry: zipfile.ZipInfo, seen: set[str]) -> None:
+    name = entry.filename
+    path = PurePosixPath(name)
+    path_text = name.removesuffix("/")
+    raw_parts = path_text.split("/")
+    mode = entry.external_attr >> _ZIP_MODE_SHIFT
+    if not name:
+        _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
+    if (
+        "\\" in name
+        or path.is_absolute()
+        or not path_text
+        or any(part in {"", ".", ".."} for part in raw_parts)
+    ):
+        _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
+    if name in seen:
+        _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
+    if entry.flag_bits & _ZIP_ENCRYPTED_FLAG:
+        _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
+    if stat.S_ISLNK(mode):
+        _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
+    if entry.file_size > MAX_MINERU_ARCHIVE_ENTRY_BYTES:
+        _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
+    if entry.file_size and entry.compress_size == 0:
+        _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
+    if (
+        entry.compress_size
+        and entry.file_size > entry.compress_size * MAX_MINERU_ARCHIVE_COMPRESSION_RATIO
+    ):
+        _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
+
+
+def _required_archive_artifacts(
+    entries: list[zipfile.ZipInfo],
+) -> dict[str, bool]:
+    basenames = [
+        PurePosixPath(entry.filename).name for entry in entries if not entry.is_dir()
+    ]
+    return {
+        "content_list_present": any(
+            name == "content_list.json" or name.endswith("_content_list.json")
+            for name in basenames
+        ),
+        "full_markdown_present": "full.md" in basenames,
+        "middle_json_present": any(
+            name in {"layout.json", "middle.json"} or name.endswith("_middle.json")
+            for name in basenames
+        ),
+        "model_json_present": any(
+            name == "model.json" or name.endswith("_model.json") for name in basenames
+        ),
+    }
+
+
+def _validate_required_archive_artifacts(required: dict[str, bool]) -> None:
+    for present in required.values():
+        if present is not True:
+            _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
 
 
 async def _read_bounded_archive_response(response: httpx.Response) -> bytes:

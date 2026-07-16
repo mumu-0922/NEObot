@@ -627,14 +627,34 @@ identity`; they intentionally send no `Authorization`, `Cookie`, or
 - Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
   slice does not spend provider quota in tests.
 
+G7.5.24 completed on 2026-07-16:
+
+- Added the default-off MinerU result ZIP archive-validation seam to
+  `MinerULocalBatchGateway`.
+- The seam validates an already downloaded ZIP body without retaining entry
+  names or content. It returns only a redacted summary: compressed byte count,
+  archive SHA-256, entry count, and presence booleans for full Markdown,
+  content-list JSON, middle/layout JSON, and model JSON.
+- Archive gates enforce non-empty ZIP bytes, 32 MiB compressed limit, at most
+  256 entries, 64 MiB per expanded entry, 128 MiB total expanded bytes, bounded
+  compression ratio, valid CRC, no encrypted entries, no symlink entries, no
+  duplicate names, and no absolute/traversal/empty/backslash paths.
+- Required MinerU artifacts are semantic roles only: `full.md`,
+  `content_list.json` or `*_content_list.json`, Cloud v4 `layout.json` or
+  `middle.json`/`*_middle.json`, and `model.json` or `*_model.json`.
+- This slice still does not read artifact content, map Canonical IR/chunk
+  manifests, compose the parser handler, or promote any production registry.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
+  slice does not spend provider quota in tests.
+
 Remaining G7.5 work:
 
-- Complete the rest of the MinerU local-batch execution chain: archive
-  validation, Canonical IR/chunk manifest mapping, then parser-handler
-  composition. Add a live or integration proof for the `017` parse projection
-  staging function when `MM_CHAT_TEST_DATABASE_URL` is available. Production
-  MinIO/S3 object access should prefer the Go private source-object gateway
-  rather than giving Python static object-store credentials.
+- Complete the rest of the MinerU local-batch execution chain: Canonical
+  IR/chunk manifest mapping, then parser-handler composition. Add a live or
+  integration proof for the `017` parse projection staging function when
+  `MM_CHAT_TEST_DATABASE_URL` is available. Production MinIO/S3 object access
+  should prefer the Go private source-object gateway rather than giving Python
+  static object-store credentials.
 - Promote the composed default-off Jina + Postgres embedding dependencies only
   behind an explicit readiness/registry gate.
 - Promote purge dispatch behind an explicit readiness/registry gate now that
@@ -676,6 +696,10 @@ Validation:
   reuse, no auth/cookie/content-type headers, identity encoding, ZIP content
   types, content-length/body size bounds, retryable status/transport mapping,
   and redaction.
+- MinerU archive-validation tests, including redacted summary output, required
+  role presence, invalid ZIPs, unsafe paths, duplicate entries, symlinks, CRC
+  mismatch, entry/total expanded-size limits, compression-ratio limits, and
+  no entry-name/content retention.
 - Retry-three-times and terminal-failure tests.
 
 ### G7.6 Private query and Go reauthorization
