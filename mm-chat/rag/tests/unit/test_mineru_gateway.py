@@ -451,9 +451,7 @@ async def test_mineru_gateway_retries_transport_failure_redacted() -> None:
             MINERU_GATEWAY_UPLOAD_URL_INVALID,
         ),
         (
-            _allocation_payload(
-                file_urls=("https://user@upload.invalid/fixture.pdf",)
-            ),
+            _allocation_payload(file_urls=("https://user@upload.invalid/fixture.pdf",)),
             MINERU_GATEWAY_UPLOAD_URL_INVALID,
         ),
     ],
@@ -2170,9 +2168,9 @@ def test_mineru_gateway_composes_archive_to_text_baseline_parse_artifacts() -> N
     assert isinstance(text_buffer, dict)
     assert artifacts.artifact_set_id == ARTIFACT_SET_ID
     assert text_buffer["text"] == "Composed 456\n\nArtifact"
-    assert artifacts.chunk_manifest["sourceSha256"] == hashlib.sha256(
-        PDF_BODY
-    ).hexdigest()
+    assert (
+        artifacts.chunk_manifest["sourceSha256"] == hashlib.sha256(PDF_BODY).hexdigest()
+    )
     assert batch.parent_chunks[0].content == "Composed 456\n\nArtifact"
     assert batch.child_search_projections[0].exact_terms == (
         "456",

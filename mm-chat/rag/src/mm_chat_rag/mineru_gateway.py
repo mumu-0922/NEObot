@@ -37,29 +37,19 @@ type JsonValue = None | bool | int | float | str | list[JsonValue] | JsonObject
 type JsonObject = dict[str, JsonValue]
 
 MINERU_GATEWAY_CREDENTIALS_MISSING: Final = "MINERU_GATEWAY_CREDENTIALS_MISSING"
-MINERU_GATEWAY_DEPENDENCY_UNCONFIGURED: Final = (
-    "MINERU_GATEWAY_DEPENDENCY_UNCONFIGURED"
-)
+MINERU_GATEWAY_DEPENDENCY_UNCONFIGURED: Final = "MINERU_GATEWAY_DEPENDENCY_UNCONFIGURED"
 MINERU_GATEWAY_CONTEXT_INVALID: Final = "MINERU_GATEWAY_CONTEXT_INVALID"
 MINERU_GATEWAY_SOURCE_UNSUPPORTED: Final = "MINERU_GATEWAY_SOURCE_UNSUPPORTED"
-MINERU_GATEWAY_SOURCE_HASH_MISMATCH: Final = (
-    "MINERU_GATEWAY_SOURCE_HASH_MISMATCH"
-)
+MINERU_GATEWAY_SOURCE_HASH_MISMATCH: Final = "MINERU_GATEWAY_SOURCE_HASH_MISMATCH"
 MINERU_GATEWAY_REQUEST_FAILED: Final = "MINERU_GATEWAY_REQUEST_FAILED"
 MINERU_GATEWAY_STATUS_INVALID: Final = "MINERU_GATEWAY_STATUS_INVALID"
 MINERU_GATEWAY_RESPONSE_INVALID: Final = "MINERU_GATEWAY_RESPONSE_INVALID"
 MINERU_GATEWAY_RESPONSE_TOO_LARGE: Final = "MINERU_GATEWAY_RESPONSE_TOO_LARGE"
 MINERU_GATEWAY_UPLOAD_URL_INVALID: Final = "MINERU_GATEWAY_UPLOAD_URL_INVALID"
-MINERU_GATEWAY_UPLOAD_STATUS_INVALID: Final = (
-    "MINERU_GATEWAY_UPLOAD_STATUS_INVALID"
-)
-MINERU_GATEWAY_DOWNLOAD_STATUS_INVALID: Final = (
-    "MINERU_GATEWAY_DOWNLOAD_STATUS_INVALID"
-)
+MINERU_GATEWAY_UPLOAD_STATUS_INVALID: Final = "MINERU_GATEWAY_UPLOAD_STATUS_INVALID"
+MINERU_GATEWAY_DOWNLOAD_STATUS_INVALID: Final = "MINERU_GATEWAY_DOWNLOAD_STATUS_INVALID"
 MINERU_GATEWAY_RESULT_URL_INVALID: Final = "MINERU_GATEWAY_RESULT_URL_INVALID"
-MINERU_GATEWAY_RESULT_PROXY_INVALID: Final = (
-    "MINERU_GATEWAY_RESULT_PROXY_INVALID"
-)
+MINERU_GATEWAY_RESULT_PROXY_INVALID: Final = "MINERU_GATEWAY_RESULT_PROXY_INVALID"
 MINERU_GATEWAY_RESULT_NOT_READY: Final = "MINERU_GATEWAY_RESULT_NOT_READY"
 MINERU_GATEWAY_RESULT_FAILED: Final = "MINERU_GATEWAY_RESULT_FAILED"
 MINERU_GATEWAY_ARCHIVE_INVALID: Final = "MINERU_GATEWAY_ARCHIVE_INVALID"
@@ -114,9 +104,7 @@ _MINERU_CANONICAL_ROLE_ORDER: Final = (
     "middle_json",
     "model_json",
 )
-_MINERU_ARTIFACT_ROLES: Final[frozenset[str]] = frozenset(
-    _MINERU_CANONICAL_ROLE_ORDER
-)
+_MINERU_ARTIFACT_ROLES: Final[frozenset[str]] = frozenset(_MINERU_CANONICAL_ROLE_ORDER)
 _POLL_STATES: Final[frozenset[str]] = frozenset(
     {"waiting-file", "pending", "running", "converting", "done", "failed"}
 )
@@ -135,9 +123,7 @@ _TEXT_BASELINE_CHUNK_MAX_BYTES: Final = 2400
 _TEXT_BASELINE_TOKEN_BYTES: Final = 4
 _TEXT_BASELINE_CHILD_MAX_TOKENS: Final = 650
 _BBOX_COORDINATES: Final = 4
-_ELEMENT_KIND_ONLY_LOCATOR_TYPES: Final[frozenset[str]] = frozenset(
-    {"image", "table"}
-)
+_ELEMENT_KIND_ONLY_LOCATOR_TYPES: Final[frozenset[str]] = frozenset({"image", "table"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -1540,9 +1526,7 @@ def _text_baseline_chunk_manifest(
     parents: list[JsonObject] = []
     children: list[JsonObject] = []
     span_hashes: list[str] = []
-    for ordinal, (start_byte, end_byte, content) in enumerate(
-        _text_chunk_ranges(text)
-    ):
+    for ordinal, (start_byte, end_byte, content) in enumerate(_text_chunk_ranges(text)):
         content_bytes = content.encode("utf-8")
         content_hash = hashlib.sha256(content_bytes).hexdigest()
         span_hash = _hash_seed(
@@ -2076,8 +2060,7 @@ def _validate_api_token(value: str | None) -> str:
         or value != value.strip()
         or len(value.encode("utf-8")) > MAX_MINERU_API_TOKEN_BYTES
         or any(
-            ord(character) < _VISIBLE_ASCII_MIN
-            or ord(character) > _VISIBLE_ASCII_MAX
+            ord(character) < _VISIBLE_ASCII_MIN or ord(character) > _VISIBLE_ASCII_MAX
             for character in value
         )
     ):

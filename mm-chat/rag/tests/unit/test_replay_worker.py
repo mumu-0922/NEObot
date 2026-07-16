@@ -256,7 +256,13 @@ def test_worker_auto_promotes_parse_stage_from_settings(
     mineru_tokens: list[str | None] = []
 
     class FakeMinerULocalBatchGateway:
-        def __init__(self, api_token: str | None) -> None:
+        def __init__(
+            self,
+            api_token: str | None,
+            *,
+            result_proxy_url: str | None = None,
+        ) -> None:
+            assert result_proxy_url is None
             mineru_tokens.append(api_token)
 
     monkeypatch.setattr(
@@ -421,6 +427,7 @@ async def test_worker_factory_promotes_parse_when_dependencies_are_supplied(
 ) -> None:
     calls: list[str] = []
     projection = FakeParseProjectionGateway(calls)
+
     def fake_source_object_gateway(
         *,
         base_url: str,
@@ -467,9 +474,10 @@ async def test_worker_factory_promotes_parse_when_dependencies_are_supplied(
     assert projection.batches[0].parent_chunks[0].content == (
         "Worker factory parse\n\nMinerU baseline"
     )
-    assert projection.batches[0].source_sha256 == hashlib.sha256(
-        MINERU_PDF_BODY
-    ).hexdigest()
+    assert (
+        projection.batches[0].source_sha256
+        == hashlib.sha256(MINERU_PDF_BODY).hexdigest()
+    )
 
 
 async def test_worker_readiness_refresh_preserves_dark_run_consumer() -> None:

@@ -29,6 +29,75 @@ implemented, tested, and recorded, create a focused Git commit for that
 completed group before starting the next group. Do not batch unrelated future
 groups into the same commit.
 
+## 2026-07-16 — G9.6 Clean-copy Preflight
+
+Objective: prove `mm-chat/` is independently verifiable from an isolated copy
+and no longer needs former-root files, symlinks, absolute paths, or escaped
+Compose build contexts.
+
+Completed scope:
+
+- ran the structure-only standalone gate from an isolated temp copy;
+- ran the full standalone gate from an isolated temp copy;
+- verified required manifests, Dockerfiles, frontend assets, backend module, and
+  RAG package metadata exist inside `mm-chat/`;
+- verified the clean copy contains no symlinks, no former-root absolute path
+  references, and no Compose build contexts outside the copied project root;
+- verified Compose renders the required `frontend`, `backend`, `postgres`,
+  `redis`, `minio`, `minio-init`, `migrate`, `admin`, `rag-worker`, and
+  `rag-replay` services with the frontend in server mode behind `/mm-api`;
+- fixed clean-copy test drift only: refreshed the `clearAppData` storage mock
+  and RAG fake gateways so they match the current server-mode/RAG contracts;
+- normalized RAG Python formatting with `ruff format`.
+
+Changed surfaces:
+
+```text
+mm-chat/frontend/src/__tests__/clearAppData.test.ts
+mm-chat/rag/src/mm_chat_rag/*.py
+mm-chat/rag/tests/integration/*.py
+mm-chat/rag/tests/unit/*.py
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/inventory/standalone-cutover-gap.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+bash mm-chat/scripts/verify-standalone.sh                 # passed (structure)
+bash mm-chat/scripts/verify-standalone.sh --full          # passed (full)
+
+full gate details:
+- frontend: pnpm install --frozen-lockfile, format:check, lint, typecheck,
+  test, and server-mode build passed; Vitest reported 840 tests across
+  180 files; build route table still shows 11 `/api/*` handlers.
+- backend: gofmt -l ., go vet ./..., and go test ./... passed.
+- rag: ruff check ., ruff format --check ., mypy src, and pytest passed;
+  pytest reported 1699 passed and 7 skipped.
+
+cd mm-chat/backend && go test ./...                       # passed
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/clearAppData.test.ts \
+  src/__tests__/opfsAuthority.test.ts                     # passed
+cd mm-chat/rag && uv run ruff format --check .            # passed
+cd mm-chat/rag && uv run ruff check .                     # passed
+cd mm-chat/rag && uv run mypy src                         # passed
+cd mm-chat/rag && uv run pytest \
+  tests/unit/test_jina_gateway.py::test_jina_dependency_bundle_runs_admitted_embedding_handler \
+  tests/unit/test_replay_worker.py::test_worker_auto_promotes_parse_stage_from_settings
+                                                             # passed
+```
+
+Residual blockers:
+
+```text
+G9 is complete. G10 now owns the final operations/backup/restore/visual smoke
+and exact former-root delete plan. No former-root deletion is authorized or
+performed by G9.6.
+```
+
 ## 2026-07-16 — G9.5c Direct IndexedDB Write Authority Fence
 
 Objective: finish the G9.5 local write-authority slice by removing direct

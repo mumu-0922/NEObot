@@ -260,6 +260,11 @@ class FakePassageEmbeddingProjectionGateway:
         self.expected_child_count = expected_child_count
         return True
 
+    async def complete_embedding_and_publish(self, context: object) -> bool:
+        self.calls.append("complete_publish")
+        assert context is not None
+        return True
+
 
 def _valid_profile() -> ProviderRuntimeProfile:
     return ProviderRuntimeProfile(
@@ -326,6 +331,7 @@ async def test_jina_dependency_bundle_runs_admitted_embedding_handler() -> None:
         "fetch_candidates",
         "stage_embeddings",
         "assert_complete",
+        "complete_publish",
     ]
     assert projection.expected_child_count == 2
     assert len(projection.staged) == 1

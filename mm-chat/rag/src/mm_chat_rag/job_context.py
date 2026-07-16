@@ -27,19 +27,11 @@ JOB_CONTEXT_INVALID: Final = "JOB_CONTEXT_INVALID"
 JOB_CONTEXT_STAGE_UNSUPPORTED: Final = "JOB_CONTEXT_STAGE_UNSUPPORTED"
 JOB_CONTEXT_OPERATION_UNSUPPORTED: Final = "JOB_CONTEXT_OPERATION_UNSUPPORTED"
 JOB_CONTEXT_LEGACY_UNBOUND: Final = "JOB_CONTEXT_LEGACY_UNBOUND"
-JOB_CONTEXT_PROVIDER_AUTHORITY_MISSING: Final = (
-    "JOB_CONTEXT_PROVIDER_AUTHORITY_MISSING"
-)
-JOB_CONTEXT_PURGE_AUTHORITY_FORBIDDEN: Final = (
-    "JOB_CONTEXT_PURGE_AUTHORITY_FORBIDDEN"
-)
-JOB_CONTEXT_PROJECTION_BINDING_MISSING: Final = (
-    "JOB_CONTEXT_PROJECTION_BINDING_MISSING"
-)
+JOB_CONTEXT_PROVIDER_AUTHORITY_MISSING: Final = "JOB_CONTEXT_PROVIDER_AUTHORITY_MISSING"
+JOB_CONTEXT_PURGE_AUTHORITY_FORBIDDEN: Final = "JOB_CONTEXT_PURGE_AUTHORITY_FORBIDDEN"
+JOB_CONTEXT_PROJECTION_BINDING_MISSING: Final = "JOB_CONTEXT_PROJECTION_BINDING_MISSING"
 JOB_CONTEXT_LEASE_FENCE_MISSING: Final = "JOB_CONTEXT_LEASE_FENCE_MISSING"
-JOB_CONTEXT_PROVIDER_PROFILE_MISMATCH: Final = (
-    "JOB_CONTEXT_PROVIDER_PROFILE_MISMATCH"
-)
+JOB_CONTEXT_PROVIDER_PROFILE_MISMATCH: Final = "JOB_CONTEXT_PROVIDER_PROFILE_MISMATCH"
 JOB_CONTEXT_ERROR_CODES: Final[frozenset[str]] = frozenset(
     {
         JOB_CONTEXT_INVALID,
@@ -63,9 +55,7 @@ _STAGE_OPERATIONS: Final[Mapping[str, frozenset[str]]] = {
     "purge": frozenset({"purge"}),
 }
 _ALL_OPERATIONS: Final[frozenset[str]] = frozenset(
-    operation
-    for operations in _STAGE_OPERATIONS.values()
-    for operation in operations
+    operation for operations in _STAGE_OPERATIONS.values() for operation in operations
 )
 _PROVIDER_AUTHORITY_FIELDS: Final[tuple[str, ...]] = (
     "processor",
@@ -189,9 +179,7 @@ def admit_processing_job_context(
     )
 
 
-def _provider_authority(
-    row: Mapping[str, Any], stage: str
-) -> ProviderAuthority | None:
+def _provider_authority(row: Mapping[str, Any], stage: str) -> ProviderAuthority | None:
     if stage not in PROVIDER_JOB_STAGES:
         if any(row.get(key) is not None for key in _PROVIDER_AUTHORITY_FIELDS):
             _reject(JOB_CONTEXT_PURGE_AUTHORITY_FORBIDDEN)
@@ -247,9 +235,7 @@ def _reject_from(error_code: str, cause: Exception) -> NoReturn:
 
 def _uuid_alias(row: Mapping[str, Any], keys: tuple[str, ...]) -> uuid.UUID:
     values = [
-        _uuid_value(row[key])
-        for key in keys
-        if key in row and row[key] is not None
+        _uuid_value(row[key]) for key in keys if key in row and row[key] is not None
     ]
     if not values:
         _reject(JOB_CONTEXT_INVALID)

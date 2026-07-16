@@ -126,12 +126,15 @@ def _batch(fixture: ParseProjectionFixture) -> PostgresProjectionBatch:
     source_span_hash = _hash_hex("source-span", fixture.block_id)
     content_hash = _hash_hex("content", fixture.block_id)
     locator = cast("JsonObject", {"kind": "text_offset", "start": 0, "end": 13})
-    locator_summary = cast("JsonObject", {
-        "schemaVersion": "g7.4-locator-summary.v1",
-        "primary": {"kind": "text_offset", "locator": locator},
-        "fragments": [],
-        "locatorAggregateHashes": [],
-    })
+    locator_summary = cast(
+        "JsonObject",
+        {
+            "schemaVersion": "g7.4-locator-summary.v1",
+            "primary": {"kind": "text_offset", "locator": locator},
+            "fragments": [],
+            "locatorAggregateHashes": [],
+        },
+    )
     return PostgresProjectionBatch(
         blocks=(
             BlockProjectionRow(

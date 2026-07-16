@@ -112,8 +112,10 @@ equivalent server-owned static/catalog implementation:
    in server mode; explicit browser import/export reads remain available.
 4. Centralize migrated design tokens/components as the mandatory UI extension
    surface for later features.
-5. Run one final full gate in a clean copy containing only `mm-chat/`, then
-   prepare a separate exact original-root deletion plan for owner confirmation.
+5. G9.6 passed the isolated clean-copy structure and full frontend/Go/RAG gate
+   using only `mm-chat/`. G10 must still complete operations, backup/restore,
+   visual smoke, and a separate exact original-root deletion plan for owner
+   confirmation before any destructive cleanup.
 
 ## Verification Policy
 

@@ -241,8 +241,7 @@ def _validate_api_key(value: str | None) -> str:
         or value != value.strip()
         or len(value.encode("utf-8")) > MAX_JINA_API_KEY_BYTES
         or any(
-            ord(character) < _VISIBLE_ASCII_MIN
-            or ord(character) > _VISIBLE_ASCII_MAX
+            ord(character) < _VISIBLE_ASCII_MIN or ord(character) > _VISIBLE_ASCII_MAX
             for character in value
         )
     ):

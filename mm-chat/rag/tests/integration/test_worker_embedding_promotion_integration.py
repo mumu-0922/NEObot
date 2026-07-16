@@ -138,9 +138,7 @@ async def test_promoted_embedding_job_runner_finishes_live_postgres_job(
             }
         )
 
-    async with httpx.AsyncClient(
-        transport=httpx.MockTransport(jina_handler)
-    ) as client:
+    async with httpx.AsyncClient(transport=httpx.MockTransport(jina_handler)) as client:
         original_builder = build_jina_passage_embedding_handler_dependencies
 
         def build_with_mocked_jina(

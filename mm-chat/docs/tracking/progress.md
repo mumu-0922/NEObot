@@ -1153,7 +1153,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         lists Go-visible Personal/Team collections, avoids local OPFS file
         selection, and carries selected collection IDs into strict Go RAG
         config/metadata.
-- [ ] G9 Data Authority and Legacy Route Removal: remove production local-mode
+- [x] G9 Data Authority and Legacy Route Removal: remove production local-mode
       authority and replaced Next API handlers.
   - [x] G9.1 Route inventory freeze: added a static guard for the current 25
         transitional `src/app/api/**/route.ts` handlers before deletion slices.
@@ -1177,8 +1177,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
     - [x] G9.5c Direct `appDb` authority sweep: replaced direct chat message
           `appDb.setItem/removeItem` calls with runtime helpers that throw in
           server mode; explicit import reads remain available.
-  - [ ] G9.6 Clean-copy preflight: prove `mm-chat/` runs without former-root
-        imports/build context.
+  - [x] G9.6 Clean-copy preflight: `verify-standalone.sh` and
+        `verify-standalone.sh --full` passed from an isolated `mm-chat/` copy;
+        frontend format/lint/typecheck/test/build, Go vet/test, and RAG
+        ruff/mypy/pytest all passed without former-root imports/build context.
 - [ ] G10 Operations, Visual Regression, Clean Copy, and Delete Plan: complete
       final closure gates before any former-root deletion.
 

@@ -178,8 +178,6 @@ def test_file_source_metadata_rejects_unsafe_object_keys(object_key: str) -> Non
     assert raised.value.error_code == JOB_HANDLER_SOURCE_INVALID
 
 
-
-
 @pytest.mark.parametrize(
     "updates",
     [

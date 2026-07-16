@@ -843,9 +843,7 @@ def _purge_projection_from_row(
         collection_id=_row_uuid(
             row, "collection_id", JOB_HANDLER_PURGE_PROJECTION_INVALID
         ),
-        document_id=_row_uuid(
-            row, "document_id", JOB_HANDLER_PURGE_PROJECTION_INVALID
-        ),
+        document_id=_row_uuid(row, "document_id", JOB_HANDLER_PURGE_PROJECTION_INVALID),
         document_version_id=_row_uuid(
             row, "document_version_id", JOB_HANDLER_PURGE_PROJECTION_INVALID
         ),
@@ -853,9 +851,7 @@ def _purge_projection_from_row(
             row, "index_generation_id", JOB_HANDLER_PURGE_PROJECTION_INVALID
         ),
         materialization_id=_row_optional_uuid(row, "materialization_id"),
-        purged_child_search_rows=_row_non_negative_int(
-            row, "purged_child_search_rows"
-        ),
+        purged_child_search_rows=_row_non_negative_int(row, "purged_child_search_rows"),
         remaining_ready_child_search_rows=_row_non_negative_int(
             row, "remaining_ready_child_search_rows"
         ),

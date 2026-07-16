@@ -187,11 +187,7 @@ def _json_response(payload: object, *, status: int = 200) -> httpx.Response:
 
 def _fixture() -> ParsePromotionFixture:
     seed = uuid.uuid4()
-    source_body = (
-        b"%PDF-1.7\n"
-        b"G7.5L promoted parse job runner fixture\n"
-        b"%%EOF\n"
-    )
+    source_body = b"%PDF-1.7\nG7.5L promoted parse job runner fixture\n%%EOF\n"
     return ParsePromotionFixture(
         user_id=uuid.uuid4(),
         file_id=uuid.uuid4(),

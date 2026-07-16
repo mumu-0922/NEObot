@@ -410,8 +410,7 @@ def _validate_internal_token(value: str) -> str:
         or value != value.strip()
         or len(value.encode("utf-8")) > _MAX_INTERNAL_TOKEN_BYTES
         or any(
-            ord(character) < _VISIBLE_ASCII_MIN
-            or ord(character) > _VISIBLE_ASCII_MAX
+            ord(character) < _VISIBLE_ASCII_MIN or ord(character) > _VISIBLE_ASCII_MAX
             for character in value
         )
     ):

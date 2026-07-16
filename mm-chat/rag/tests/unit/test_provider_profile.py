@@ -23,6 +23,7 @@ from mm_chat_rag.settings import Settings, SettingsError
 
 SOURCE_GATEWAY_TOKEN = "unit-test-source-gateway-token"
 
+
 def valid_profile() -> ProviderRuntimeProfile:
     return ProviderRuntimeProfile(
         profile_id=MINERU_JINA_POSTGRES_PROFILE,

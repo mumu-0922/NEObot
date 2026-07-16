@@ -18,6 +18,7 @@ from mm_chat_rag.settings import Settings
 
 SOURCE_GATEWAY_TOKEN = "unit-test-source-gateway-token"
 
+
 class FakeJobDatabase:
     def __init__(
         self,

@@ -299,8 +299,10 @@ class FakePassageEmbeddingGateway:
         selected = candidates[:-1] if self._missing_last else candidates
         vectors: list[PassageEmbeddingVector] = []
         for index, candidate in enumerate(selected):
-            child_id = uuid.uuid4() if self._mismatch_child and index == 0 else (
-                candidate.child_chunk_id
+            child_id = (
+                uuid.uuid4()
+                if self._mismatch_child and index == 0
+                else (candidate.child_chunk_id)
             )
             vectors.append(
                 PassageEmbeddingVector(

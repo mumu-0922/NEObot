@@ -553,7 +553,7 @@ Slice sequence:
   - [x] G9.5c Direct `appDb` authority sweep: replace direct chat message
         `appDb.setItem/removeItem` calls with runtime helpers that throw in
         server mode; explicit browser-import reads remain available.
-- [ ] G9.6 Clean-copy preflight: prove `mm-chat/` build/test/runtime no longer
+- [x] G9.6 Clean-copy preflight: prove `mm-chat/` build/test/runtime no longer
       imports former-root artifacts.
 
 Targeted tests:
@@ -595,8 +595,8 @@ Targeted tests:
 | G6 Voice/Image/Code Jobs                 | In progress | Image generation is reopened through Go artifacts; voice executor remains            |
 | G7 Knowledge/RAG/Citations               | Complete    | Live MinerU + Jina + Postgres strict citation loop passed                            |
 | G8 Teams/Knowledge UI                    | Complete    | G8.1-G8.5 frontend control-plane wiring and isolation smoke passed                   |
-| G9 Data Authority/Route Removal          | In progress | G9.1-G9.5 route freeze, route deletion, and local write-authority slices passed; clean-copy preflight remains |
-| G10 Final Closure/Delete Plan            | Pending     | Clean-copy and delete-plan gates pass                                                |
+| G9 Data Authority/Route Removal          | Complete    | G9.1-G9.6 route freeze, route deletion, local write-authority, and clean-copy preflight passed |
+| G10 Final Closure/Delete Plan            | Pending     | Operations, backup/restore, visual smoke, and owner-confirmed delete-plan gates pass |
 
 ## Update Discipline
 

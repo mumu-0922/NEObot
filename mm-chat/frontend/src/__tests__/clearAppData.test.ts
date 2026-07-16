@@ -32,6 +32,7 @@ vi.mock("opfs-tools", () => ({
 
 vi.mock("../store/storage/storageConfig", () => ({
   appDb: appDbMock,
+  canUseBrowserLocalRuntimePersistence: () => true,
   STORAGE_KEYS: {
     CORE_SETTINGS: "neo-chat-core-settings",
     SETTINGS: "neo-chat-settings",

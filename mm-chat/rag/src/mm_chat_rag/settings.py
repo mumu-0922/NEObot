@@ -162,13 +162,9 @@ def _internal_token(env: Mapping[str, str], name: str) -> str | None:
     value = env.get(name, "").strip()
     if not value:
         return None
-    if (
-        len(value.encode("utf-8")) > _MAX_SOURCE_GATEWAY_TOKEN_BYTES
-        or any(
-            ord(character) < _VISIBLE_ASCII_MIN
-            or ord(character) > _VISIBLE_ASCII_MAX
-            for character in value
-        )
+    if len(value.encode("utf-8")) > _MAX_SOURCE_GATEWAY_TOKEN_BYTES or any(
+        ord(character) < _VISIBLE_ASCII_MIN or ord(character) > _VISIBLE_ASCII_MAX
+        for character in value
     ):
         raise SettingsError(f"{name} is invalid")
     return value
