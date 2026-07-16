@@ -1017,6 +1017,13 @@ cd mm-chat/frontend && corepack pnpm prettier --check \
   ../docs/tracking/g7-rag-citation-process.md \
   ../docs/tracking/progress.md
 # passed
+
+rg -n "sk-5c70df|5c70df8c5e888ff0438c589d995b3f3bdee27a96e95b4dfeba4f0393fabdda79|sub\\.mumubuku" \
+  mm-chat || true
+# no matches
+
+git diff --check -- mm-chat
+# passed
 ```
 
 Residual risk:
@@ -1563,3 +1570,100 @@ Residual risk:
   adapter slice and smoke test.
 - Parse execution remains blocked until the MinerU parser gateway, parse
   projection gateway, and explicit registry promotion gates are implemented.
+
+## 2026-07-16 — G7.5.17 Go Private Source Object Gateway + Python HTTP Adapter Seam
+
+Objective: replace the planned direct Python MinIO/S3 byte access path with a
+Go-owned private source-object gateway. Go remains the authority for Postgres
+lease validation, object-store access, size checks, and SHA-256 verification;
+Python remains a default-off worker client that can only request bytes for its
+currently leased parse job.
+
+Implemented behavior:
+
+- Added `backend/internal/ragsource` with a token-gated internal route contract:
+  `POST /internal/rag/source-object` and header
+  `X-MM-Chat-Internal-Token`.
+- The Go service calls `knowledge_fetch_parse_source_metadata(...)`, validates
+  the returned metadata, reads the object through the existing
+  `storage.ObjectStore`, checks `Content-Length`/object size and SHA-256, and
+  returns only raw bytes plus redacted source headers.
+- Wired the route into `httpserver` so auth-required deployments bypass normal
+  bearer-session middleware only for this exact internal POST path; the handler
+  still rejects missing/wrong internal tokens before parsing job JSON.
+- Added `RAG_SOURCE_GATEWAY_TOKEN` to backend config and single-server Compose.
+  Blank token keeps the gateway default-off.
+- Added `GoSourceObjectBytesGateway` in `rag/src/mm_chat_rag/source_gateway.py`.
+  It sends job id, worker id, lease token, file id, and materialization id to
+  Go, rejects missing lease/materialization before HTTP, maps 5xx/transport
+  failures to retryable stable errors, and revalidates file id, source SHA-256,
+  response length, body length, and body hash.
+- Updated the source gateway protocol so object-byte readers receive both the
+  admitted `ProcessingJobContext` and `FileSourceMetadata`. The local reader
+  remains default-off and keeps the same local-only checks.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. No
+  MinerU/Jina call or provider quota is consumed by this slice.
+
+Touched files:
+
+```text
+backend/internal/ragsource/types.go
+backend/internal/ragsource/repository.go
+backend/internal/ragsource/service.go
+backend/internal/ragsource/handler.go
+backend/internal/ragsource/service_handler_test.go
+backend/internal/httpserver/server.go
+backend/internal/httpserver/server_test.go
+backend/internal/config/config.go
+backend/internal/config/config_test.go
+backend/cmd/api/main.go
+backend/.env.example
+compose.single-server.yml
+.env.single-server.example
+rag/src/mm_chat_rag/source_gateway.py
+rag/tests/unit/test_source_gateway.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test \
+  ./internal/ragsource ./internal/httpserver ./internal/config ./cmd/api -count=1
+# passed
+
+cd mm-chat/rag && uv run ruff check \
+  src/mm_chat_rag/source_gateway.py tests/unit/test_source_gateway.py
+# passed
+
+cd mm-chat/rag && uv run mypy src/mm_chat_rag/source_gateway.py
+# passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider tests/unit/test_source_gateway.py
+# 37 passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_source_gateway.py \
+  tests/unit/test_job_handler_dependencies.py \
+  tests/unit/test_provider_capture.py::test_production_dispatch_remains_disabled_and_registries_empty
+# 62 passed
+
+cd mm-chat/frontend && corepack pnpm prettier --check \
+  ../docs/architecture/g7-rag-citation-cutover-plan.md \
+  ../docs/tracking/g7-rag-citation-process.md \
+  ../docs/tracking/progress.md
+# passed
+```
+
+Residual risk:
+
+- This is still a default-off source-byte seam. Real parse dispatch remains
+  blocked until MinerU parsing, parse artifact projection, handler composition,
+  and explicit registry promotion are implemented.
+- The Go gateway currently materializes source bytes in memory after enforcing a
+  512 MiB cap. Large-document streaming can be optimized later without changing
+  the authority boundary.
+- `RAG_SOURCE_GATEWAY_TOKEN` must be provided to both backend and worker in a
+  real deployment; it must never be logged or committed with a real value.

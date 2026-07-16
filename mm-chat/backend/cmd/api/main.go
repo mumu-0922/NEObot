@@ -29,6 +29,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/jobaudit"
 	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/plugins"
+	"neo-chat/mm-chat/backend/internal/ragsource"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
 	"neo-chat/mm-chat/backend/internal/redisstate"
 	"neo-chat/mm-chat/backend/internal/sessioncache"
@@ -185,6 +186,14 @@ func main() {
 		knowledge.WithCursorCodec(teamRuntime.cursor),
 		knowledge.WithObjectStore(objectStore),
 	)
+	var ragSourceService *ragsource.Service
+	if sqlDB != nil {
+		ragSourceService = ragsource.NewService(
+			ragsource.NewPostgresRepository(sqlDB),
+			objectStore,
+			ragsource.WithInternalToken(cfg.RAG.SourceGatewayToken),
+		)
+	}
 	if sqlDB := db.SQL(); sqlDB != nil {
 		importRepo = browserimport.NewPostgresRepository(
 			sqlDB,
@@ -207,6 +216,7 @@ func main() {
 		httpserver.WithMaxImportBytes(cfg.Storage.MaxUploadBytes),
 		httpserver.WithTeamService(teamRuntime.service),
 		httpserver.WithKnowledgeService(knowledgeService),
+		httpserver.WithRAGSourceService(ragSourceService),
 		httpserver.WithPluginRegistry(pluginRegistry),
 		httpserver.WithPluginAuditRecorder(pluginAuditRecorder),
 		httpserver.WithLogger(logger),

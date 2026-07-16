@@ -18,6 +18,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/imagejobs"
 	"neo-chat/mm-chat/backend/internal/jobartifacts"
 	"neo-chat/mm-chat/backend/internal/jobaudit"
+	"neo-chat/mm-chat/backend/internal/ragsource"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
 	"neo-chat/mm-chat/backend/internal/voicejobs"
 )
@@ -468,6 +469,40 @@ func TestAuthRequiredModeRejectsMissingCredentialsAndKeepsPublicRoutes(t *testin
 		if body.Error.Code != "UNAUTHENTICATED" {
 			t.Fatalf("%s %s error code = %q, want UNAUTHENTICATED", route.method, route.path, body.Error.Code)
 		}
+	}
+}
+
+func TestAuthRequiredModeLetsInternalRAGSourceRouteUseItsOwnTokenGate(t *testing.T) {
+	handler := NewHandler(
+		config.Config{
+			Addr:    ":0",
+			Version: "route-test",
+			Auth:    config.AuthConfig{Mode: config.AuthModeRequired},
+		},
+		WithRAGSourceService(ragsource.NewService(
+			nil,
+			nil,
+			ragsource.WithInternalToken("unit-test-rag-source-token"),
+		)),
+	)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		ragsource.InternalSourceObjectPath,
+		strings.NewReader(`{}`),
+	)
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 from ragsource token gate; body=%s", rec.Code, rec.Body.String())
+	}
+	var body ragsource.ErrorResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode ragsource error response: %v", err)
+	}
+	if body.Error.Code != "RAG_SOURCE_OBJECT_UNAUTHORIZED" {
+		t.Fatalf("error code = %q, want RAG_SOURCE_OBJECT_UNAUTHORIZED", body.Error.Code)
 	}
 }
 

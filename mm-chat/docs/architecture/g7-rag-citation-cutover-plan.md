@@ -485,10 +485,33 @@ G7.5.16 completed on 2026-07-16:
   entry, or provider quota use is introduced. MinIO/S3 object-byte adapters
   remain a future gated slice.
 
+G7.5.17 completed on 2026-07-16:
+
+- Added a Go private source-object gateway at
+  `POST /internal/rag/source-object`. The route is auth-middleware public only
+  for this exact POST path and then fail-closed by
+  `X-MM-Chat-Internal-Token`; browsers still cannot use object keys or MinIO/S3
+  credentials directly.
+- The Go gateway reuses `knowledge_fetch_parse_source_metadata(...)`, validates
+  the leased parse-job fence, reads bytes through the existing backend
+  `storage.ObjectStore`, enforces size and SHA-256, and returns raw bytes with
+  redacted headers only.
+- Added `RAG_SOURCE_GATEWAY_TOKEN` as an administrator server secret and wired
+  the backend service default-off when the token, Postgres repository, or object
+  store is absent.
+- Added `GoSourceObjectBytesGateway` in Python. It calls the Go internal route
+  with job id, worker id, lease token, file id, and materialization id; it
+  revalidates response headers, byte size, and SHA-256 before the composition
+  gateway performs its final check.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
+  slice does not call MinerU/Jina or spend provider quota.
+
 Remaining G7.5 work:
 
-- Implement MinIO/S3 object-byte adapters behind the new source gateway seam as
-  needed, then implement MinerU and parse-side Postgres projection adapters.
+- Implement MinerU and parse-side Postgres projection adapters behind the
+  existing default-off handler seams. Production MinIO/S3 object access should
+  prefer the Go private source-object gateway rather than giving Python static
+  object-store credentials.
 - Promote the composed default-off Jina + Postgres embedding dependencies only
   behind an explicit readiness/registry gate.
 - Promote purge dispatch behind an explicit readiness/registry gate now that
@@ -507,6 +530,9 @@ Validation:
   static gate and Python adapter lease/materialization fence.
 - Local object-byte gateway tests, including explicit root, backend mismatch,
   size mismatch, symlink, and composition hash verification.
+- Go private source-object gateway tests, including token gate, auth-required
+  middleware bypass, metadata/object mismatch redaction, and Python HTTP adapter
+  lease/header/hash validation.
 - Retry-three-times and terminal-failure tests.
 
 ### G7.6 Private query and Go reauthorization

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import uuid
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 from mm_chat_rag.job_context import ProcessingJobContext, admit_processing_job_context
@@ -19,9 +21,12 @@ from mm_chat_rag.provider_profile import (
     MINERU_JINA_POSTGRES_PROFILE,
     ProviderRuntimeProfile,
 )
-from mm_chat_rag.retry import PermanentJobError
+from mm_chat_rag.retry import PermanentJobError, RetryableJobError
 from mm_chat_rag.source_gateway import (
+    GO_SOURCE_OBJECT_GATEWAY_REQUEST_FAILED,
+    GO_SOURCE_OBJECT_PATH,
     FileSourceMetadata,
+    GoSourceObjectBytesGateway,
     LocalObjectBytesGateway,
     ObjectStoreDocumentSourceGateway,
 )
@@ -29,6 +34,7 @@ from mm_chat_rag.source_gateway import (
 BODY = b"%PDF-1.7 mm-chat source fixture"
 SHA256 = hashlib.sha256(BODY).hexdigest()
 HASH = "c" * 64
+INTERNAL_TOKEN = "unit-test-source-gateway-token"
 
 
 def _profile() -> ProviderRuntimeProfile:
@@ -111,8 +117,11 @@ class FakeObjectGateway:
         self.calls: list[str] = []
         self.keys: list[str] = []
 
-    async def fetch_object_bytes(self, metadata: FileSourceMetadata) -> object:
+    async def fetch_object_bytes(
+        self, context: ProcessingJobContext, metadata: FileSourceMetadata
+    ) -> object:
         self.calls.append("object")
+        assert context is not None
         self.keys.append(metadata.object_key)
         return self._body
 
@@ -290,7 +299,9 @@ async def test_local_object_bytes_gateway_rejects_nonlocal_backend(
     gateway = LocalObjectBytesGateway(root=tmp_path)
 
     with pytest.raises(PermanentJobError) as raised:
-        await gateway.fetch_object_bytes(_metadata(context, storage_backend="minio"))
+        await gateway.fetch_object_bytes(
+            context, _metadata(context, storage_backend="minio")
+        )
 
     assert raised.value.error_code == JOB_HANDLER_DEPENDENCY_UNCONFIGURED
 
@@ -305,7 +316,9 @@ async def test_local_object_bytes_gateway_rejects_size_mismatch(
     gateway = LocalObjectBytesGateway(root=tmp_path)
 
     with pytest.raises(PermanentJobError) as raised:
-        await gateway.fetch_object_bytes(_metadata(context, storage_backend="local"))
+        await gateway.fetch_object_bytes(
+            context, _metadata(context, storage_backend="local")
+        )
 
     assert raised.value.error_code == JOB_HANDLER_SOURCE_INVALID
 
@@ -322,6 +335,201 @@ async def test_local_object_bytes_gateway_rejects_symlink_escape(
     gateway = LocalObjectBytesGateway(root=tmp_path)
 
     with pytest.raises(PermanentJobError) as raised:
-        await gateway.fetch_object_bytes(_metadata(context, storage_backend="local"))
+        await gateway.fetch_object_bytes(
+            context, _metadata(context, storage_backend="local")
+        )
 
     assert raised.value.error_code == JOB_HANDLER_SOURCE_INVALID
+
+
+async def test_go_source_object_gateway_sends_leased_fence_and_returns_bytes() -> None:
+    context = _context(_row(lease_token=uuid.uuid4()))
+    metadata = _metadata(context)
+    worker_id = uuid.uuid4()
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return _source_response(metadata, BODY)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        gateway = GoSourceObjectBytesGateway(
+            base_url="http://backend:8080",
+            internal_token=INTERNAL_TOKEN,
+            worker_id=worker_id,
+            client=client,
+        )
+        body = await gateway.fetch_object_bytes(context, metadata)
+
+    assert body == BODY
+    assert len(requests) == 1
+    request = requests[0]
+    assert request.method == "POST"
+    assert request.url == httpx.URL(f"http://backend:8080{GO_SOURCE_OBJECT_PATH}")
+    assert request.headers["x-mm-chat-internal-token"] == INTERNAL_TOKEN
+    assert request.headers["accept"] == "application/octet-stream"
+    assert INTERNAL_TOKEN.encode() not in request.content
+    assert json.loads(request.content) == {
+        "jobId": str(context.job_id),
+        "workerId": str(worker_id),
+        "leaseToken": str(context.lease_token),
+        "fileId": str(context.file_id),
+        "materializationId": str(context.materialization_id),
+    }
+
+
+@pytest.mark.parametrize(
+    ("base_url", "token", "worker_id"),
+    [
+        ("", INTERNAL_TOKEN, uuid.uuid4()),
+        ("ftp://backend:8080", INTERNAL_TOKEN, uuid.uuid4()),
+        ("http://backend:8080?token=bad", INTERNAL_TOKEN, uuid.uuid4()),
+        ("http://backend:8080", "", uuid.uuid4()),
+        ("http://backend:8080", " spaced ", uuid.uuid4()),
+        ("http://backend:8080", INTERNAL_TOKEN, uuid.UUID(int=0)),
+    ],
+)
+def test_go_source_object_gateway_rejects_unsafe_config(
+    base_url: str, token: str, worker_id: uuid.UUID
+) -> None:
+    with pytest.raises(PermanentJobError) as raised:
+        GoSourceObjectBytesGateway(
+            base_url=base_url,
+            internal_token=token,
+            worker_id=worker_id,
+        )
+
+    assert raised.value.error_code == JOB_HANDLER_DEPENDENCY_UNCONFIGURED
+
+
+async def test_go_source_object_gateway_requires_lease_token() -> None:
+    context = _context()
+    metadata = _metadata(context)
+    calls = 0
+
+    def forbidden(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("missing lease reached Go source gateway")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(forbidden)) as client:
+        gateway = GoSourceObjectBytesGateway(
+            base_url="http://backend:8080",
+            internal_token=INTERNAL_TOKEN,
+            worker_id=uuid.uuid4(),
+            client=client,
+        )
+        with pytest.raises(PermanentJobError) as raised:
+            await gateway.fetch_object_bytes(context, metadata)
+
+    assert raised.value.error_code == JOB_HANDLER_SOURCE_INVALID
+    assert calls == 0
+
+
+async def test_go_source_object_gateway_maps_unauthorized_to_dependency_error() -> None:
+    context = _context(_row(lease_token=uuid.uuid4()))
+    metadata = _metadata(context)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: httpx.Response(401, json={"error": {}}))
+    ) as client:
+        gateway = GoSourceObjectBytesGateway(
+            base_url="http://backend:8080",
+            internal_token=INTERNAL_TOKEN,
+            worker_id=uuid.uuid4(),
+            client=client,
+        )
+        with pytest.raises(PermanentJobError) as raised:
+            await gateway.fetch_object_bytes(context, metadata)
+
+    assert raised.value.error_code == JOB_HANDLER_DEPENDENCY_UNCONFIGURED
+    assert INTERNAL_TOKEN not in str(raised.value)
+
+
+async def test_go_source_object_gateway_retries_redacted_transport_failure() -> None:
+    context = _context(_row(lease_token=uuid.uuid4()))
+    metadata = _metadata(context)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadError(f"sensitive detail {INTERNAL_TOKEN}", request=request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        gateway = GoSourceObjectBytesGateway(
+            base_url="http://backend:8080",
+            internal_token=INTERNAL_TOKEN,
+            worker_id=uuid.uuid4(),
+            client=client,
+        )
+        with pytest.raises(RetryableJobError) as raised:
+            await gateway.fetch_object_bytes(context, metadata)
+
+    assert raised.value.error_code == GO_SOURCE_OBJECT_GATEWAY_REQUEST_FAILED
+    assert raised.value.retry_after_seconds == 30
+    assert INTERNAL_TOKEN not in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"X-MM-Chat-File-ID": str(uuid.uuid4()), "X-MM-Chat-Source-SHA256": SHA256},
+        {"X-MM-Chat-File-ID": "", "X-MM-Chat-Source-SHA256": SHA256},
+    ],
+)
+async def test_go_source_object_gateway_rejects_file_header_mismatch(
+    headers: dict[str, str],
+) -> None:
+    context = _context(_row(lease_token=uuid.uuid4()))
+    metadata = _metadata(context)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, headers=headers))
+    ) as client:
+        gateway = GoSourceObjectBytesGateway(
+            base_url="http://backend:8080",
+            internal_token=INTERNAL_TOKEN,
+            worker_id=uuid.uuid4(),
+            client=client,
+        )
+        with pytest.raises(PermanentJobError) as raised:
+            await gateway.fetch_object_bytes(context, metadata)
+
+    assert raised.value.error_code == JOB_HANDLER_SOURCE_INVALID
+
+
+async def test_go_source_object_gateway_rejects_body_hash_mismatch() -> None:
+    context = _context(_row(lease_token=uuid.uuid4()))
+    metadata = _metadata(context)
+    tampered = b"x" * len(BODY)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: _source_response(metadata, tampered))
+    ) as client:
+        gateway = GoSourceObjectBytesGateway(
+            base_url="http://backend:8080",
+            internal_token=INTERNAL_TOKEN,
+            worker_id=uuid.uuid4(),
+            client=client,
+        )
+        with pytest.raises(PermanentJobError) as raised:
+            await gateway.fetch_object_bytes(context, metadata)
+
+    assert raised.value.error_code == JOB_HANDLER_SOURCE_HASH_MISMATCH
+    assert metadata.object_key not in str(raised.value)
+
+
+def _source_response(
+    metadata: FileSourceMetadata,
+    body: bytes,
+    *,
+    status: int = 200,
+) -> httpx.Response:
+    return httpx.Response(
+        status,
+        headers={
+            "Content-Type": metadata.content_type,
+            "Content-Length": str(metadata.byte_size),
+            "X-MM-Chat-File-ID": str(metadata.file_id),
+            "X-MM-Chat-Source-SHA256": metadata.sha256,
+        },
+        content=body,
+    )

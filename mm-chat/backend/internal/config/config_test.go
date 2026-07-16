@@ -92,7 +92,9 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 	if cfg.Storage.MaxUploadBytes != DefaultMaxUploadBytes {
 		t.Fatalf("Storage.MaxUploadBytes = %d, want %d", cfg.Storage.MaxUploadBytes, DefaultMaxUploadBytes)
 	}
-	if cfg.RAG.MinerUAPIKey != "" || cfg.RAG.JinaAPIKey != "" {
+	if cfg.RAG.MinerUAPIKey != "" ||
+		cfg.RAG.JinaAPIKey != "" ||
+		cfg.RAG.SourceGatewayToken != "" {
 		t.Fatalf("RAG secrets = %#v, want blank", cfg.RAG)
 	}
 	if cfg.RAG.JinaEmbeddingDimensions != DefaultRAGJinaDimensions {
@@ -178,6 +180,7 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 		EnvMaxUploadBytes:         "1048576",
 		EnvRAGMinerUAPIKey:        " fake-mineru-token ",
 		EnvRAGJinaAPIKey:          " fake-jina-key ",
+		EnvRAGSourceGatewayToken:  " fake-source-gateway-token ",
 		EnvAuthMode:               " required ",
 		EnvAuthBootstrapUserID:    " 77777777-7777-4777-8777-777777777777 ",
 		EnvAuthBootstrapUserName:  " Server Owner ",
@@ -283,6 +286,9 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	if cfg.RAG.JinaAPIKey != "fake-jina-key" {
 		t.Fatalf("RAG.JinaAPIKey = %q, want trimmed fake key", cfg.RAG.JinaAPIKey)
 	}
+	if cfg.RAG.SourceGatewayToken != "fake-source-gateway-token" {
+		t.Fatalf("RAG.SourceGatewayToken = %q, want trimmed fake token", cfg.RAG.SourceGatewayToken)
+	}
 	if cfg.RAG.JinaEmbeddingDimensions != DefaultRAGJinaDimensions {
 		t.Fatalf(
 			"RAG.JinaEmbeddingDimensions = %d, want %d",
@@ -353,6 +359,7 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 		EnvDefaultMinerUAPIKey:   "\t",
 		EnvRAGJinaAPIKey:         "\n",
 		EnvDefaultJinaAPIKey:     " ",
+		EnvRAGSourceGatewayToken: " ",
 		EnvAuthMode:              "\t",
 		EnvAuthBootstrapUserID:   "\t",
 		EnvAuthBootstrapUserName: "\n",
@@ -422,6 +429,7 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 	}
 	if cfg.RAG.MinerUAPIKey != "" ||
 		cfg.RAG.JinaAPIKey != "" ||
+		cfg.RAG.SourceGatewayToken != "" ||
 		cfg.RAG.JinaEmbeddingDimensions != DefaultRAGJinaDimensions ||
 		cfg.RAG.Ready() {
 		t.Fatalf("RAG = %#v, want blank secrets and default dimensions", cfg.RAG)

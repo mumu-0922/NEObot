@@ -22,6 +22,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/plugins"
 	"neo-chat/mm-chat/backend/internal/ragproviders"
+	"neo-chat/mm-chat/backend/internal/ragsource"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
 	"neo-chat/mm-chat/backend/internal/runtimeconfig"
 	"neo-chat/mm-chat/backend/internal/storage"
@@ -69,6 +70,7 @@ type options struct {
 	pluginAuditRecorder  plugins.AuditRecorder
 	imageJobService      *imagejobs.Service
 	voiceJobService      *voicejobs.Service
+	ragSourceService     *ragsource.Service
 }
 
 func WithReadyChecker(checker health.ReadinessChecker) Option {
@@ -209,6 +211,12 @@ func WithVoiceJobService(service *voicejobs.Service) Option {
 	}
 }
 
+func WithRAGSourceService(service *ragsource.Service) Option {
+	return func(opts *options) {
+		opts.ragSourceService = service
+	}
+}
+
 func New(cfg config.Config, opts ...Option) *http.Server {
 	return &http.Server{
 		Addr:              cfg.Addr,
@@ -264,6 +272,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	jobControlHandler := jobcontrol.NewHandler(nil)
 	voiceJobHandler := voicejobs.NewHandler(resolvedOptions.voiceJobService)
 	ragProviderHandler := ragproviders.NewHandler(cfg.RAG)
+	ragSourceHandler := ragsource.NewHandler(resolvedOptions.ragSourceService)
 	runtimeConfigService := runtimeconfig.NewService(cfg)
 	pluginHandler := plugins.NewHandler(plugins.NewService(
 		cfg,
@@ -301,6 +310,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/voice/transcribe", voiceJobHandler)
 	mux.Handle("/v1/voice/synthesize", voiceJobHandler)
 	mux.Handle("/v1/rag/provider-status", ragProviderHandler)
+	mux.Handle(ragsource.InternalSourceObjectPath, ragSourceHandler)
 	mux.Handle("/v1/files", fileHandler)
 	mux.Handle("/v1/files/", fileHandler)
 	mux.Handle("/v1/import/browser", importHandler)
@@ -427,6 +437,8 @@ func isPublicWithoutAuthRequest(r *http.Request) bool {
 		return r.Method == http.MethodGet
 	case "/v1/auth/login", "/v1/auth/invites/accept",
 		"/v1/auth/recovery/request", "/v1/auth/recovery/complete":
+		return r.Method == http.MethodPost
+	case ragsource.InternalSourceObjectPath:
 		return r.Method == http.MethodPost
 	default:
 		return r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/agents/")
