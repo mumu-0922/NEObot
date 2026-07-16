@@ -29,6 +29,59 @@ implemented, tested, and recorded, create a focused Git commit for that
 completed group before starting the next group. Do not batch unrelated future
 groups into the same commit.
 
+## 2026-07-16 — G9.5b OPFS Write/Delete Authority Fence
+
+Objective: continue local production-authority removal by preventing OPFS
+write/delete helpers from mutating browser-local file state when the frontend is
+in server mode.
+
+Completed scope:
+
+- added `BrowserLocalOPFSAuthorityError` with code
+  `BROWSER_LOCAL_OPFS_IMPORT_ONLY`;
+- made `saveToOPFS`, `writeToOPFS`, `deleteFromOPFS`, and
+  `deleteOPFSDirectory` throw the authority error when
+  `NEXT_PUBLIC_API_MODE=server`;
+- kept OPFS `listOPFSDirectory` and `readBlobFromOPFSUrl` available so explicit
+  browser import can still enumerate and package local files;
+- preserved explicit local mode OPFS write/delete behavior and covered it with
+  regression tests;
+- updated G9.5 planning docs to keep direct `appDb` write authority as G9.5c
+  rather than claiming full local-authority removal.
+
+Changed surfaces:
+
+```text
+mm-chat/frontend/src/utils/opfs.ts
+mm-chat/frontend/src/__tests__/opfsAuthority.test.ts
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/inventory/frontend-call-sites.md
+mm-chat/docs/inventory/standalone-cutover-gap.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/opfsAuthority.test.ts \
+  src/__tests__/opfs.test.ts                              # passed, 6 tests
+cd mm-chat/frontend && corepack pnpm typecheck             # passed
+cd mm-chat/frontend && corepack pnpm lint                  # passed
+cd mm-chat/frontend && corepack pnpm format:check          # passed
+cd mm-chat/frontend && corepack pnpm build                 # passed; build route table still shows 11 `/api/*` handlers
+git diff --check -- mm-chat                                # passed
+```
+
+Residual blockers:
+
+```text
+G9.5c must sweep direct `appDb` IndexedDB writes that bypass Zustand persistence
+storage. This slice does not claim full production local-authority removal.
+```
+
 ## 2026-07-16 — G9.5a Zustand Persistence Authority Fence
 
 Objective: start local production-authority removal by preventing persisted

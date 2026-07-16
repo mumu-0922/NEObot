@@ -1171,9 +1171,11 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
     - [x] G9.5a Zustand persistence authority fence: `getAppDbStorage` and
           `getBrowserLocalStorage` return no-op storage in server mode, while
           explicit browser-import direct `appDb`/OPFS reads remain available.
-    - [ ] G9.5b Direct local authority sweep: remove or hard-fence direct
-          `appDb` and OPFS write paths that can still run outside explicit
-          import/dev flows.
+    - [x] G9.5b OPFS write/delete authority fence: `saveToOPFS`,
+          `writeToOPFS`, `deleteFromOPFS`, and `deleteOPFSDirectory` throw in
+          server mode; OPFS list/read remain import-capable.
+    - [ ] G9.5c Direct `appDb` authority sweep: remove or hard-fence direct
+          IndexedDB writes that can still run outside explicit import/dev flows.
   - [ ] G9.6 Clean-copy preflight: prove `mm-chat/` runs without former-root
         imports/build context.
 - [ ] G10 Operations, Visual Regression, Clean Copy, and Delete Plan: complete

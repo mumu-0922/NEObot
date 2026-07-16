@@ -546,9 +546,12 @@ Slice sequence:
         persisted stores cannot hydrate from or write to IndexedDB/localStorage
         as production state. Explicit browser-import direct `appDb`/OPFS reads
         remain allowed.
-  - [ ] G9.5b Direct local authority sweep: remove or hard-fence direct
-        `appDb` and OPFS writes still reachable outside explicit import/dev
-        flows.
+  - [x] G9.5b OPFS write/delete authority fence: in server mode,
+        `saveToOPFS`, `writeToOPFS`, `deleteFromOPFS`, and
+        `deleteOPFSDirectory` throw a typed authority error; OPFS list/read
+        remain available for explicit import.
+  - [ ] G9.5c Direct `appDb` authority sweep: remove or hard-fence direct
+        IndexedDB writes still reachable outside explicit import/dev flows.
 - [ ] G9.6 Clean-copy preflight: prove `mm-chat/` build/test/runtime no longer
       imports former-root artifacts.
 

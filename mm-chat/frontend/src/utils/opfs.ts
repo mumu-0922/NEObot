@@ -1,6 +1,7 @@
 import { dir, file as read, write } from "opfs-tools";
 import { v7 as uuidv7 } from "uuid";
 import { logDevError, logDevWarn } from "../lib/utils/devLogger";
+import { canUseBrowserLocalRuntimePersistence } from "../store/storage/storageConfig";
 
 /**
  * Utility for interacting with the Origin Private File System (OPFS).
@@ -9,6 +10,22 @@ import { logDevError, logDevWarn } from "../lib/utils/devLogger";
 
 const OPFS_PROTOCOL = "opfs://";
 const MAX_OPFS_PATH_LENGTH = 1024;
+
+export class BrowserLocalOPFSAuthorityError extends Error {
+  readonly code = "BROWSER_LOCAL_OPFS_IMPORT_ONLY";
+
+  constructor(operation: string) {
+    super(
+      `${operation} is not available in server mode; browser-local OPFS is import-only.`,
+    );
+    this.name = "BrowserLocalOPFSAuthorityError";
+  }
+}
+
+function assertOPFSWriteAuthority(operation: string): void {
+  if (canUseBrowserLocalRuntimePersistence()) return;
+  throw new BrowserLocalOPFSAuthorityError(operation);
+}
 
 function getSafeRelativeOPFSPath(filePath: string): string | null {
   if (
@@ -50,6 +67,8 @@ export async function saveToOPFS(
   file: File,
   prefix: string = "",
 ): Promise<string> {
+  assertOPFSWriteAuthority("Saving to OPFS");
+
   // Generate filename: uuidv7 + extension
   const nameParts = file.name.split(".");
   const rawExt = nameParts.length > 1 ? nameParts.pop() : "";
@@ -83,6 +102,7 @@ export async function saveToOPFS(
 export async function writeToOPFS(url: string, content: string): Promise<void> {
   const filePath = getSafeOPFSPath(url);
   if (!filePath) throw new Error("Invalid OPFS URL");
+  assertOPFSWriteAuthority("Writing to OPFS");
   await write(filePath, content);
 }
 
@@ -93,6 +113,7 @@ export async function deleteFromOPFS(url?: string): Promise<void> {
   if (!url) return;
   const filePath = getSafeOPFSPath(url);
   if (!filePath) return;
+  assertOPFSWriteAuthority("Deleting from OPFS");
   const target = read(filePath);
   if (await target.exists()) {
     await target.remove({ force: true });
@@ -105,6 +126,7 @@ export async function deleteFromOPFS(url?: string): Promise<void> {
 export async function deleteOPFSDirectory(path: string): Promise<void> {
   const safePath = getSafeRelativeOPFSPath(path);
   if (!safePath) return;
+  assertOPFSWriteAuthority("Deleting an OPFS directory");
 
   const target = dir(safePath);
   if (await target.exists()) {

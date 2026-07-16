@@ -34,7 +34,7 @@ Live source and deployment configuration currently prove:
 | Capability                    | Backend             | Frontend                   | Remaining boundary                            |
 | ----------------------------- | ------------------- | -------------------------- | --------------------------------------------- |
 | Chat CRUD and SSE             | Go                  | Relocated UI wired         | Remove local production path                  |
-| Files and attachments         | Go + object storage | Relocated UI wired         | G9.5a fenced persist adapters; finish OPFS direct-write sweep |
+| Files and attachments         | Go + object storage | Relocated UI wired         | G9.5a fenced persist adapters; G9.5b fenced OPFS writes/deletes |
 | Browser data import           | Go                  | Relocated UI wired         | Keep explicit one-time import                 |
 | Auth and sessions             | Go                  | Partial/legacy UI          | Wire server-only auth lifecycle               |
 | Teams and membership          | Go                  | Not fully wired            | Add UI adapters and screens in existing theme |
@@ -106,8 +106,9 @@ equivalent server-owned static/catalog implementation:
    at a time, using change-based tests instead of repeated full-suite runs.
 3. Remove production `local|server` branching, IndexedDB/OPFS authority, and
    legacy Next API routes only after their Go-backed parity tests pass. G9.5a
-   has made Zustand local persistence no-op in server mode; direct `appDb`/OPFS
-   write paths remain explicit G9.5b scope.
+   has made Zustand local persistence no-op in server mode, and G9.5b has made
+   OPFS write/delete helpers throw in server mode; direct `appDb` write paths
+   remain explicit G9.5c scope.
 4. Centralize migrated design tokens/components as the mandatory UI extension
    surface for later features.
 5. Run one final full gate in a clean copy containing only `mm-chat/`, then
