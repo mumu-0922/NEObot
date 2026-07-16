@@ -91,5 +91,10 @@
   "fileNotFound": "本地存储中未找到该文件。",
   "previewNotAvailableLocal": "此文件无法在本地预览内容。",
   "errorReadingFile": "读取文件内容出错。",
-  "deleteFileFailed": "删除文件失败，请重试。"
+  "deleteFileFailed": "删除文件失败，请重试。",
+  "citationsHeading": "知识引用（{count} 条）",
+  "knowledgeStatusHeading": "知识库状态",
+  "verifiedEvidenceUsed": "回答已使用经过验证的知识库证据。",
+  "noKnowledgeEvidenceUsed": "本次回答未使用经过验证的知识库证据，内容按普通聊天生成。",
+  "strictKnowledgeRefused": "严格知识库模式已拒答：{outcome}。"
 }

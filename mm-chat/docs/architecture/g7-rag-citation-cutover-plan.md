@@ -928,7 +928,6 @@ G7.5H completed on 2026-07-16:
 - This slice only admits configuration; it does not promote parse handlers,
   call MinerU, or read deployment secret files.
 
-
 G7.5I completed on 2026-07-16:
 
 - Added a disposable PostgreSQL live smoke for the promoted
@@ -949,7 +948,6 @@ G7.5I completed on 2026-07-16:
 - The module-level registries remain empty; the promoted path is still settings
   gated and test-scoped unless `passage_embedding` is explicitly enabled.
 
-
 G7.5J completed on 2026-07-16:
 
 - Added an explicit parse dependency injection path to the Python worker handler
@@ -965,7 +963,6 @@ G7.5J completed on 2026-07-16:
   injects a fake MinerU archive provider, executes the factory-built parse
   handler, and verifies the metadata → object → archive → projection sequence.
 - No MinerU API call is made and no provider quota is consumed.
-
 
 G7.5K completed on 2026-07-16:
 
@@ -1017,7 +1014,6 @@ G7.5M completed on 2026-07-16:
   `Worker(settings)` parse promotion, with the Go source-object HTTP and MinerU
   local-batch transport mocked. No real MinerU quota is consumed in this slice.
 
-
 G7.5N completed on 2026-07-16:
 
 - Added a stage-finalizer contract for parse handlers: `JobResult` can now mark
@@ -1040,7 +1036,6 @@ G7.5N completed on 2026-07-16:
   security-definer owner has only `SELECT`; migration `020` uses plain reads plus
   minimal `SELECT` grants for Jina governance/consent tables.
 - Module-level `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty.
-
 
 G7.5O completed on 2026-07-16:
 
@@ -1082,8 +1077,8 @@ G7.5P completed on 2026-07-16:
 - The standalone embedding smoke and the parse-to-embedding chain smoke now
   assert the full mocked-provider lifecycle:
   `parse -> pending passage_embedding -> ready search row -> published
-  materialization -> active document/current version -> succeeded embedding
-  job`. No real MinerU/Jina quota is consumed.
+materialization -> active document/current version -> succeeded embedding
+job`. No real MinerU/Jina quota is consumed.
 - The live proof caught a least-privilege gap for activating
   `knowledge_documents` / `knowledge_document_versions`; migration `021` grants
   only the needed update columns to `rag_projection_owner` and revokes them on
@@ -1144,7 +1139,7 @@ Remaining G7.5 work:
   PostgreSQL with mocked providers.
 - G7.5O is complete: one disposable PostgreSQL smoke now proves the promoted
   two-stage chain `parse -> pending passage_embedding -> ready search row ->
-  succeeded embedding job` with mocked Go source-object, MinerU, and Jina.
+succeeded embedding job` with mocked Go source-object, MinerU, and Jina.
 - G7.5P is complete: embedding success now terminally publishes the
   materialization and activates the query-visible document/current-version head
   through migration `021`, proven against disposable PostgreSQL with mocked
@@ -1373,7 +1368,7 @@ G7.7D completed on 2026-07-16:
   persisted. Provider startup/stream errors, empty answers, or answers missing
   citation markers fail closed to the standard strict refusal.
 - Successful strict RAG answers persist `metadata.knowledge.outcome =
-  "answered"` with citations and answer-governance authority. Failed provider
+"answered"` with citations and answer-governance authority. Failed provider
   or citation-verification paths persist refusal outcomes without leaking
   citations.
 
@@ -1386,12 +1381,24 @@ G7.7E completed on 2026-07-16:
 - Successful optional answers persist `metadata.knowledge.mode = "optional"`,
   `outcome = "degraded"`, `evidenceUsed = false`, `citationCount = 0`, the
   selected collection IDs, and `degradationReason =
-  "no_verified_knowledge_evidence"`. Provider failure/cancel paths preserve the
+"no_verified_knowledge_evidence"`. Provider failure/cancel paths preserve the
   same no-evidence marker with their own outcome.
+
+G7.7F completed on 2026-07-16:
+
+- Wired server-mode frontend Knowledge selection into the Go chat stream
+  contract. Knowledge collection/file selections are no longer uploaded as
+  ordinary attachments; they are converted to selected collection IDs and sent
+  through stream config/user metadata.
+- Selected Knowledge in server mode currently opts into strict mode by default
+  (`ragStrict`/`knowledgeStrict`) so missing evidence, governance failure, or
+  citation verification failure refuses instead of silently answering.
+- Frontend message mapping now preserves `metadata.knowledge`, normalizes basic
+  citation/degradation metadata, and renders a compact Knowledge citation/status
+  card for strict answers, strict refusals, and optional degradation.
 
 Remaining G7.7 slices:
 
-- Add frontend server-mode Knowledge selection and basic citation card rendering.
 - Run deployed same-origin smoke through `/mm-api` once frontend wiring exists.
 - Decide whether richer citation persistence needs a dedicated table or message
   metadata remains sufficient for the first basic-card UI.

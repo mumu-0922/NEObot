@@ -3463,7 +3463,6 @@ Residual risk:
 - No provider API calls were made and no deployment `.env` or secret file was
   read.
 
-
 ## 2026-07-16 — G7.5I Promoted Passage Embedding Job Runner Smoke
 
 Objective: close the promoted `passage_embedding` job-runner proof without
@@ -3498,7 +3497,7 @@ Implemented behavior:
   stage function. The new body no longer updates `embedding_model_id` or
   `embedding_dimensions`; it filters those immutable constants instead, keeping
   the existing least-privilege `UPDATE(status, embedding_vector,
-  embedding_vector_sha256, ready_at, purged_at)` grant sufficient.
+embedding_vector_sha256, ready_at, purged_at)` grant sufficient.
 - Added a Go schema contract test for migration `018`.
 
 Touched files:
@@ -3555,7 +3554,6 @@ Residual risk:
   once the owner explicitly wants quota-consuming proof.
 - Parse promotion remains blocked until source-object, MinerU archive/result
   provider, and parse dependency factory promotion are wired.
-
 
 ## 2026-07-16 — G7.5J Explicit Parse Dependency Factory
 
@@ -3623,7 +3621,6 @@ Residual risk:
   that provider/polling lifecycle is promoted and tested.
 - No real MinerU call was made.
 
-
 ## 2026-07-16 — G7.5K MinerU Local-Batch Archive Provider
 
 Objective: provide a default-off `MinerUResultArchiveProvider` implementation so
@@ -3678,7 +3675,6 @@ Residual risk:
   remains a later operational decision.
 - The provider is not wired into `Worker(settings)` yet, so parse dispatch is
   still not promoted by default and no live MinerU smoke has been run.
-
 
 ## 2026-07-16 — G7.5L Promoted Parse Job-Runner Live Smoke
 
@@ -3757,7 +3753,6 @@ Residual risk:
 - Parse is not auto-promoted by normal `Worker(settings)` construction; a caller
   must still inject source metadata, projection, and archive-provider
   dependencies explicitly.
-
 
 ## 2026-07-16 — G7.5M Default Worker Parse Promotion Wiring
 
@@ -4278,7 +4273,6 @@ Residual risk:
 - Go reauthorization and hydration of returned references is intentionally the
   next G7.6 slice before any answer/citation UI work.
 
-
 ## 2026-07-16 — G7.6B Go Reauthorization and Hydration
 
 Objective: convert Python reference-only query candidates into citation-ready
@@ -4607,7 +4601,7 @@ Implemented behavior:
 - Completed optional answers persist `metadata.knowledge.mode = "optional"`,
   `outcome = "degraded"`, selected collection IDs, `citationCount = 0`,
   `evidenceUsed = false`, and `degradationReason =
-  "no_verified_knowledge_evidence"`.
+"no_verified_knowledge_evidence"`.
 - Provider startup/stream failure and cancellation paths preserve the same
   no-evidence metadata with failure/cancel outcomes, while retaining existing
   `runId` and provider error metadata.
@@ -4639,3 +4633,68 @@ Residual risk:
 - Optional Knowledge mode still degrades to normal chat rather than doing a
   best-effort grounded answer. Frontend wiring must render the metadata clearly
   so users know no Knowledge citation/evidence backed the answer.
+
+## 2026-07-16 — G7.7F Frontend Knowledge Selection and Citation Cards
+
+Objective: connect the migrated frontend to the Go strict RAG chat contract and
+show the resulting citation/degradation metadata in chat messages.
+
+Implemented behavior:
+
+- Server-mode composer now separates Knowledge selection attachments from normal
+  file attachments. Knowledge collection/file selections are converted to
+  selected collection IDs and sent in stream config/user metadata rather than
+  uploaded as fake files.
+- Server-mode selected Knowledge currently sends `ragStrict` and
+  `knowledgeStrict` by default, matching the owner decision that selected
+  Knowledge should refuse instead of hallucinating when evidence is unavailable.
+- Server message mapping preserves raw metadata and normalizes
+  `metadata.knowledge` into typed frontend message state. Message rendering now
+  shows a compact Knowledge citation/status card for citations, strict refusal
+  outcomes, and optional no-evidence degradation.
+
+Touched files:
+
+```text
+frontend/src/components/app/ChatApp.tsx
+frontend/src/components/chat/MessageItem.tsx
+frontend/src/components/knowledge/KnowledgeEvidenceBlock.tsx
+frontend/src/lib/knowledge/citations.ts
+frontend/src/lib/knowledge/types.ts
+frontend/src/lib/chat/types.ts
+frontend/src/lib/utils/knowledgeAttachments.ts
+frontend/src/services/api/chatCrudService.ts
+frontend/src/store/core/chatStore.ts
+frontend/src/types.ts
+frontend/src/i18n/locales/*/Knowledge.json
+frontend/src/__tests__/knowledgeCitations.test.ts
+frontend/src/__tests__/chatAppServerModeComposition.test.ts
+```
+
+Verification:
+
+```text
+cd mm-chat/frontend && \
+  corepack pnpm vitest run \
+    src/__tests__/knowledgeCitations.test.ts \
+    src/__tests__/chatAppServerModeComposition.test.ts \
+    src/__tests__/chatStoreServerRead.test.ts \
+    src/__tests__/chatStreamService.test.ts
+# passed: 4 files / 35 tests
+
+cd mm-chat/frontend && corepack pnpm typecheck
+# passed
+
+cd mm-chat/frontend && corepack pnpm lint
+# passed
+
+cd mm-chat/frontend && corepack pnpm format:check
+# passed
+```
+
+Residual risk:
+
+- Citation cards currently display backend citation identifiers and best-effort
+  locator/snippet metadata because G7.7 does not yet enrich citations with a
+  human file title. Rich file title/page-preview rendering remains deferred.
+- Same-origin `/mm-api` browser smoke still needs a live frontend/backend run.

@@ -1,6 +1,7 @@
 import type { PluginFunctionRisk } from "../plugin/types";
 import type { ImageSource, Source } from "../search/types";
 import type { AppliedSkillInvocation } from "../skills/types";
+import type { MessageKnowledgeMetadata } from "../knowledge/types";
 
 export interface Attachment {
   id: string;
@@ -121,6 +122,8 @@ export interface Message {
     total_tokens: number;
   };
   suggestedQuestions?: string[];
+  metadata?: Record<string, unknown>;
+  knowledge?: MessageKnowledgeMetadata;
 }
 
 export interface MessageTreeNode {
@@ -234,6 +237,10 @@ export interface SessionConfig {
   useReasoning?: boolean;
   activePlugins?: string[];
   activeSkills?: string[];
+  selectedKnowledgeCollectionIds?: string[];
+  knowledgeCollectionIds?: string[];
+  knowledgeStrict?: boolean;
+  ragStrict?: boolean;
 }
 
 export interface Session {

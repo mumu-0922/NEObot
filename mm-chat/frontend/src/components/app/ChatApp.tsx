@@ -25,7 +25,13 @@ import { resolveSkillsForMessage } from "@/services/api/skillService";
 import { orchestrateServerPlugins } from "@/services/api/serverPluginOrchestration";
 import { buildProviderRuntimeConfig } from "@/lib/byok/client";
 import { getAgentDetail } from "@/services/api/agentService";
-import { Message, Attachment, LobeAgent, SessionMessageTree } from "@/types";
+import {
+  Message,
+  Attachment,
+  LobeAgent,
+  SessionConfig,
+  SessionMessageTree,
+} from "@/types";
 import { useChatStore } from "@/store/core/chatStore";
 import { useMemoryStore } from "@/store/core/memoryStore";
 import { appDb } from "@/store/storage/storageConfig";
@@ -76,6 +82,11 @@ import {
 } from "@/lib/chat/panelUrlState";
 import { buildSearchUpdate } from "@/lib/chat/searchUpdate";
 import { toServerMessageAttachments } from "@/lib/utils/serverAttachments";
+import {
+  getKnowledgeAttachmentCollectionIds,
+  isKnowledgeAttachment,
+  normalizeKnowledgeCollectionIds,
+} from "@/lib/utils/knowledgeAttachments";
 
 const ImagePreview = dynamic(() => import("@/components/media/ImagePreview"), {
   ssr: false,
@@ -104,6 +115,58 @@ const SettingsPage = dynamic(
     ssr: false,
   },
 );
+
+function getServerKnowledgeSelectionIds({
+  attachments,
+  workspaceKnowledgeCollectionIds = [],
+}: {
+  attachments?: Attachment[];
+  workspaceKnowledgeCollectionIds?: string[];
+}): string[] {
+  return normalizeKnowledgeCollectionIds([
+    ...getKnowledgeAttachmentCollectionIds(attachments ?? []),
+    ...workspaceKnowledgeCollectionIds,
+  ]);
+}
+
+function getServerKnowledgeSelectionIdsFromMessage(message: Message): string[] {
+  const metadata = message.metadata ?? {};
+  const metadataIds = Array.isArray(metadata.selectedKnowledgeCollectionIds)
+    ? metadata.selectedKnowledgeCollectionIds.filter(
+        (id): id is string => typeof id === "string",
+      )
+    : [];
+  return normalizeKnowledgeCollectionIds([
+    ...metadataIds,
+    ...getKnowledgeAttachmentCollectionIds(message.attachments ?? []),
+  ]);
+}
+
+function buildServerKnowledgeStreamConfig(
+  config: SessionConfig,
+  selectedKnowledgeCollectionIds: string[],
+): SessionConfig {
+  if (selectedKnowledgeCollectionIds.length === 0) return config;
+  return {
+    ...config,
+    selectedKnowledgeCollectionIds,
+    ragStrict: true,
+    knowledgeStrict: true,
+  };
+}
+
+function buildServerKnowledgeMessageMetadata(
+  selectedKnowledgeCollectionIds: string[],
+  extra?: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  const metadata = { ...(extra ?? {}) };
+  if (selectedKnowledgeCollectionIds.length > 0) {
+    metadata.selectedKnowledgeCollectionIds = selectedKnowledgeCollectionIds;
+    metadata.ragStrict = true;
+    metadata.knowledgeStrict = true;
+  }
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
 
 const logChatAppError = logDevError;
 const EMPTY_MESSAGES: Message[] = [];
@@ -951,7 +1014,10 @@ const ChatApp = () => {
       showActionError("Server mode requires message text with attachments.");
       return;
     }
-    if (attachments.length > 0 && !serverFilesEnabled) {
+    if (
+      attachments.some((attachment) => !isKnowledgeAttachment(attachment)) &&
+      !serverFilesEnabled
+    ) {
       showActionError("Server file uploads are not enabled.");
       return;
     }
@@ -980,16 +1046,6 @@ const ChatApp = () => {
         serverSessionForTitle,
       );
 
-      const uploadedAttachments =
-        attachments.length > 0
-          ? await uploadMessageAttachmentsForServer({
-              attachments,
-              conversationId: targetSessionId,
-              signal: generation.controller.signal,
-            })
-          : [];
-      if (!isGenerationRunActive(generation)) return;
-
       const sessionForProcessing =
         useChatStore
           .getState()
@@ -997,6 +1053,23 @@ const ChatApp = () => {
         currentSession;
       const effectiveContext =
         getEffectiveContextForSession(sessionForProcessing);
+      const selectedKnowledgeCollectionIds = getServerKnowledgeSelectionIds({
+        attachments,
+        workspaceKnowledgeCollectionIds:
+          effectiveContext.workspaceKnowledgeCollectionIds,
+      });
+      const uploadableAttachments = attachments.filter(
+        (attachment) => !isKnowledgeAttachment(attachment),
+      );
+      const uploadedAttachments =
+        uploadableAttachments.length > 0
+          ? await uploadMessageAttachmentsForServer({
+              attachments: uploadableAttachments,
+              conversationId: targetSessionId,
+              signal: generation.controller.signal,
+            })
+          : [];
+      if (!isGenerationRunActive(generation)) return;
       const skillResolution = await resolveSkillsForMessage({
         message: text,
         selectedModel,
@@ -1029,8 +1102,14 @@ const ChatApp = () => {
         content: text,
         attachments: toServerMessageAttachments(uploadedAttachments),
         model: selectedModel,
-        config: serverSessionChatConfig,
+        config: buildServerKnowledgeStreamConfig(
+          serverSessionChatConfig,
+          selectedKnowledgeCollectionIds,
+        ),
         systemInstruction,
+        metadata: buildServerKnowledgeMessageMetadata(
+          selectedKnowledgeCollectionIds,
+        ),
         signal: generation.controller.signal,
       });
 
@@ -1710,6 +1789,8 @@ const ChatApp = () => {
           currentSession;
         const effectiveContext =
           getEffectiveContextForSession(sessionForProcessing);
+        const selectedKnowledgeCollectionIds =
+          getServerKnowledgeSelectionIdsFromMessage(userMessage);
         const skillResolution = await resolveSkillsForMessage({
           message: userMessage.content,
           selectedModel,
@@ -1743,7 +1824,10 @@ const ChatApp = () => {
           sessionId,
           assistantMessageId: messageId,
           model: selectedModel,
-          config: serverSessionChatConfig,
+          config: buildServerKnowledgeStreamConfig(
+            serverSessionChatConfig,
+            selectedKnowledgeCollectionIds,
+          ),
           systemInstruction,
           signal: generation.controller.signal,
         });
@@ -1900,23 +1984,18 @@ const ChatApp = () => {
         return;
       }
       if (newContent === sourceMessage.content) return;
-      if ((sourceMessage.attachments?.length ?? 0) > 0 && !serverFilesEnabled) {
+      if (
+        (sourceMessage.attachments ?? []).some(
+          (attachment) => !isKnowledgeAttachment(attachment),
+        ) &&
+        !serverFilesEnabled
+      ) {
         showActionError("Server file uploads are not enabled.");
         return;
       }
 
       const generation = beginActiveGeneration();
       try {
-        const uploadedAttachments =
-          sourceMessage.attachments && sourceMessage.attachments.length > 0
-            ? await uploadMessageAttachmentsForServer({
-                attachments: sourceMessage.attachments,
-                conversationId: sessionId,
-                signal: generation.controller.signal,
-              })
-            : [];
-        if (!isGenerationRunActive(generation)) return;
-
         const sessionForProcessing =
           useChatStore
             .getState()
@@ -1924,6 +2003,24 @@ const ChatApp = () => {
           currentSession;
         const effectiveContext =
           getEffectiveContextForSession(sessionForProcessing);
+        const selectedKnowledgeCollectionIds = getServerKnowledgeSelectionIds({
+          attachments: sourceMessage.attachments,
+          workspaceKnowledgeCollectionIds:
+            effectiveContext.workspaceKnowledgeCollectionIds,
+        });
+        const uploadableAttachments = (sourceMessage.attachments ?? []).filter(
+          (attachment) => !isKnowledgeAttachment(attachment),
+        );
+        const uploadedAttachments =
+          uploadableAttachments.length > 0
+            ? await uploadMessageAttachmentsForServer({
+                attachments: uploadableAttachments,
+                conversationId: sessionId,
+                signal: generation.controller.signal,
+              })
+            : [];
+        if (!isGenerationRunActive(generation)) return;
+
         const skillResolution = await resolveSkillsForMessage({
           message: newContent,
           selectedModel,
@@ -1963,12 +2060,18 @@ const ChatApp = () => {
           parentMessageId: sourceParentId ?? undefined,
           attachments: toServerMessageAttachments(uploadedAttachments),
           model: selectedModel,
-          config: serverSessionChatConfig,
+          config: buildServerKnowledgeStreamConfig(
+            serverSessionChatConfig,
+            selectedKnowledgeCollectionIds,
+          ),
           systemInstruction,
-          metadata: {
-            branchSourceMessageId: msgId,
-            treeParentMessageId: sourceParentId,
-          },
+          metadata: buildServerKnowledgeMessageMetadata(
+            selectedKnowledgeCollectionIds,
+            {
+              branchSourceMessageId: msgId,
+              treeParentMessageId: sourceParentId,
+            },
+          ),
           signal: generation.controller.signal,
         });
       } catch (error: any) {

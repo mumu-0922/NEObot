@@ -17,6 +17,7 @@ import Artifact from "../content/Artifact";
 import MessageOutputRenderer from "../content/MessageOutputRenderer";
 import MessageAttachmentView from "./MessageAttachmentView";
 import RAGBlock from "../knowledge/RAGBlock";
+import KnowledgeEvidenceBlock from "../knowledge/KnowledgeEvidenceBlock";
 import AddToKnowledgeModal from "../knowledge/AddToKnowledgeModal";
 import {
   DropdownMenu,
@@ -1437,6 +1438,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
           ) : (
             <>
               {/* RAG Block Component */}
+              <KnowledgeEvidenceBlock knowledge={message.knowledge} />
               <RAGBlock sources={ragSources} />
 
               {skillInvocations.length > 0 && (

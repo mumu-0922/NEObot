@@ -23,8 +23,10 @@ export type {
 } from "./lib/chat/types";
 export type {
   Collection,
+  KnowledgeCitation,
   KnowledgeFile,
   KnowledgeFileStatus,
+  MessageKnowledgeMetadata,
 } from "./lib/knowledge/types";
 export type {
   Plugin,

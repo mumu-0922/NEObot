@@ -91,5 +91,10 @@
   "fileNotFound": "File not found in local storage.",
   "previewNotAvailableLocal": "Content preview is not available locally for this file.",
   "errorReadingFile": "Error reading file content.",
-  "deleteFileFailed": "Failed to delete the file. Please try again."
+  "deleteFileFailed": "Failed to delete the file. Please try again.",
+  "citationsHeading": "Knowledge citations ({count})",
+  "knowledgeStatusHeading": "Knowledge status",
+  "verifiedEvidenceUsed": "This answer used verified Knowledge evidence.",
+  "noKnowledgeEvidenceUsed": "No verified Knowledge evidence was used; this answer was generated as normal chat.",
+  "strictKnowledgeRefused": "Strict Knowledge mode refused the answer: {outcome}."
 }

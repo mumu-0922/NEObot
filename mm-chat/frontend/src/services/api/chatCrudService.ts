@@ -18,6 +18,8 @@ import {
 } from "./client";
 import { normalizeSessionTitle } from "../../lib/chat/entities";
 import { SERVER_DEFAULT_PROVIDER_ID } from "../../lib/defaultConfig/shared";
+import { normalizeMessageKnowledgeMetadata } from "../../lib/knowledge/citations";
+import type { MessageKnowledgeMetadata } from "../../lib/knowledge/types";
 
 const SERVER_DEFAULT_BACKEND_PROVIDER_ID = "openai_compatible";
 
@@ -56,9 +58,11 @@ export interface ChatCrudMessage {
   role: "user" | "model";
   content: string;
   timestamp: number;
+  metadata?: Record<string, unknown>;
   attachments?: ChatCrudAttachment[];
   model?: string;
   outputBlocks?: unknown[];
+  knowledge?: MessageKnowledgeMetadata;
   parentMessageId?: string;
   treeParentMessageId?: string | null;
 }
@@ -214,12 +218,15 @@ export function mapChatMessageDtoToMessage(
   );
   const role = mapServerRoleToLegacyRole(message.role);
   const model = modelRefToModelString(message.modelRef);
+  const knowledge = normalizeMessageKnowledgeMetadata(message.metadata);
 
   return {
     id: message.id,
     role,
     content: message.content,
     timestamp,
+    ...(message.metadata ? { metadata: message.metadata } : {}),
+    ...(knowledge ? { knowledge } : {}),
     ...(role === "model" && model ? { model } : {}),
     ...(message.attachments.length > 0
       ? {

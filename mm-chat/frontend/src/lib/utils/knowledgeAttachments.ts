@@ -56,6 +56,38 @@ export function isKnowledgeAttachment(attachment: Attachment) {
   );
 }
 
+export function normalizeKnowledgeCollectionIds(ids: string[]): string[] {
+  const seen = new Set<string>();
+  const normalizedIds: string[] = [];
+  for (const id of ids) {
+    const trimmed = id.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalizedIds.push(trimmed);
+  }
+  return normalizedIds;
+}
+
+export function getKnowledgeAttachmentCollectionIds(
+  attachments: Attachment[],
+): string[] {
+  const ids: string[] = [];
+  for (const attachment of attachments) {
+    if (isKnowledgeCollectionAttachment(attachment) && attachment.data) {
+      ids.push(attachment.data);
+      continue;
+    }
+
+    const fileData = parseKnowledgeFileAttachmentData(attachment);
+    if (fileData) {
+      ids.push(fileData.collectionId);
+    }
+  }
+  return normalizeKnowledgeCollectionIds(ids);
+}
+
 export function parseKnowledgeFileAttachmentData(
   attachment: Attachment,
 ): KnowledgeFileAttachmentData | null {

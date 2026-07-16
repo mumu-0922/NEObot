@@ -189,6 +189,8 @@ const toStoreMessageFromServer = (message: ChatCrudMessage): Message => ({
     : {}),
   ...(message.attachments ? { attachments: message.attachments } : {}),
   ...(message.model ? { model: message.model } : {}),
+  ...(message.metadata ? { metadata: message.metadata } : {}),
+  ...(message.knowledge ? { knowledge: message.knowledge } : {}),
   ...(message.outputBlocks
     ? { outputBlocks: message.outputBlocks as MessageOutputBlock[] }
     : {}),
