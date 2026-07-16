@@ -3,11 +3,12 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+from typing import cast
 
 import pytest
 
 import mm_chat_rag.replay as replay_module
-from mm_chat_rag.handlers import DispatchPlan, JobResult
+from mm_chat_rag.handlers import DispatchPlan, JobHandler, JobResult
 from mm_chat_rag.models import FunctionReadiness, JobClaim, OutboxClaim
 from mm_chat_rag.provider_profile import (
     MINERU_JINA_POSTGRES_PROFILE,
@@ -170,8 +171,32 @@ def test_worker_rejects_missing_stage_handler_and_accepts_synthetic_gate() -> No
     Worker(
         settings,
         dispatch_registry={"synthetic": event_planner},
-        job_handlers={"parse": job_handler},
+        job_handlers={"parse": cast("JobHandler", job_handler)},
     ).validate_promotion_gate()
+
+
+def test_worker_accepts_job_only_promotion_without_outbox_registry() -> None:
+    settings = Settings(
+        database_url="postgresql://test",
+        dispatch_enabled=True,
+        job_stages=("purge",),
+    )
+    worker = Worker(settings, job_handlers={"purge": cast("JobHandler", job_handler)})
+
+    worker.validate_promotion_gate()
+
+    assert worker.dispatch_registry == {}
+    assert worker.state.consumer == "disabled"
+
+
+def test_worker_accepts_outbox_only_promotion_without_job_stages() -> None:
+    settings = Settings(database_url="postgresql://test", dispatch_enabled=True)
+    worker = Worker(settings, dispatch_registry={"synthetic": event_planner})
+
+    worker.validate_promotion_gate()
+
+    assert worker.job_handlers == {}
+    assert worker.state.consumer == "ready"
 
 
 async def test_worker_readiness_refresh_preserves_dark_run_consumer() -> None:

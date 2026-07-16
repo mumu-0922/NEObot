@@ -52,8 +52,11 @@ class Worker:
     ) -> None:
         self.settings = settings
         self.metrics = Metrics.create()
+        consumer_status = (
+            "ready" if settings.dispatch_enabled and dispatch_registry else "disabled"
+        )
         self.state = ReadinessState(
-            consumer="ready" if settings.dispatch_enabled else "disabled",
+            consumer=consumer_status,
             redis="degraded" if settings.redis_url else "disabled",
         )
         self.database = PostgresAdapter(settings, self.metrics)
@@ -66,7 +69,7 @@ class Worker:
         """Refuse all claims unless explicitly enabled registries are complete."""
         if not self.settings.dispatch_enabled:
             return
-        if not self.dispatch_registry:
+        if not self.dispatch_registry and not self.settings.job_stages:
             raise WorkerStartupError("dispatch enabled with empty event registry")
         missing = set(self.settings.job_stages) - self.job_handlers.keys()
         if missing:
@@ -113,17 +116,18 @@ class Worker:
 
         durable_tasks: list[asyncio.Task[None]] = []
         if self.settings.dispatch_enabled:
-            durable_tasks = [
-                asyncio.create_task(
-                    DurableConsumer(
-                        self.database,
-                        self.settings,
-                        self.metrics,
-                        self.dispatch_registry,
-                    ).run(self.wake, self.stop),
-                    name="outbox-consumer",
+            if self.dispatch_registry:
+                durable_tasks.append(
+                    asyncio.create_task(
+                        DurableConsumer(
+                            self.database,
+                            self.settings,
+                            self.metrics,
+                            self.dispatch_registry,
+                        ).run(self.wake, self.stop),
+                        name="outbox-consumer",
+                    )
                 )
-            ]
             if self.settings.job_stages:
                 durable_tasks.append(
                     asyncio.create_task(

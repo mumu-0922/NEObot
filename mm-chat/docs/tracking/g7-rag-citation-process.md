@@ -3124,3 +3124,66 @@ Residual risk:
   later G7.5/G7.8 work.
 - No provider quota was consumed. No compose-managed or application database
   was modified.
+
+## 2026-07-16 — G7.5D Job-only Worker Promotion Gate
+
+Objective: unblock the next registry-promotion slices by separating Python
+worker outbox promotion from processing-job promotion. Before this slice, any
+`RAG_WORKER_DISPATCH_ENABLED=true` worker required a non-empty outbox event
+registry even when the intended work was job-only. That incorrectly coupled
+future parse/embedding/purge job runners to unrelated outbox planner promotion.
+
+Implemented behavior:
+
+- Updated `Worker.validate_promotion_gate()` so:
+  - dark-run defaults still pass without claiming work;
+  - enabled workers with neither outbox registry nor job stages still fail
+    closed;
+  - enabled workers with job stages still require a promoted handler for every
+    configured stage;
+  - enabled job-only workers can pass with explicitly injected job handlers and
+    no outbox registry;
+  - enabled outbox-only workers can pass with an explicit outbox planner and no
+    job stages.
+- Updated `Worker.run()` to start:
+  - `DurableConsumer` only when an outbox registry is present;
+  - `JobRunner` only when job stages are configured.
+- Set job-only readiness to keep `consumer=disabled` rather than pretending an
+  outbox consumer is ready.
+- Added unit coverage for job-only and outbox-only promotion gates.
+
+Touched files:
+
+```text
+rag/src/mm_chat_rag/worker.py
+rag/tests/unit/test_replay_worker.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && \
+  uv run ruff check src/mm_chat_rag/worker.py tests/unit/test_replay_worker.py
+# passed
+
+cd mm-chat/rag && \
+  uv run mypy src/mm_chat_rag/worker.py tests/unit/test_replay_worker.py
+# passed
+
+cd mm-chat/rag && \
+  uv run pytest -p no:cacheprovider \
+  tests/unit/test_replay_worker.py tests/unit/test_jobs.py tests/unit/test_settings.py -v
+# 48 passed
+```
+
+Residual risk:
+
+- This is a startup/promotion gate only. It does not build a production handler
+  registry, does not call provider APIs, and does not claim real jobs by
+  default.
+- The next promotion slice still needs explicit dependency factory wiring for
+  purge, passage embedding, and parse before `async_main()` can safely promote
+  real handlers from env/secret settings.

@@ -866,6 +866,18 @@ G7.5C completed on 2026-07-16:
 - Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
   slice does not call MinerU/Jina providers and does not spend provider quota.
 
+G7.5D completed on 2026-07-16:
+
+- Split the Python worker promotion gate so outbox planners and processing-job
+  handlers are validated independently.
+- A job-only worker with explicitly injected stage handlers can now pass the
+  startup gate without a promoted outbox event registry; an outbox-only worker
+  with a promoted planner still passes without job stages.
+- The worker starts the outbox consumer only when an outbox registry is present,
+  and starts the job runner only when job stages are configured.
+- Default production exports remain unchanged: `DISPATCH_REGISTRY` and
+  `JOB_HANDLER_REGISTRY` are still empty, so no handler is silently promoted.
+
 Remaining G7.5 work:
 
 - G7.5T disposable PostgreSQL integration gate has been restored and proven
@@ -884,6 +896,10 @@ Remaining G7.5 work:
   path is live-proven against disposable PostgreSQL with migrations `001`
   through `017` applied. This closes the adapter-to-function serialization
   proof, but not handler promotion or live provider smoke.
+- G7.5D is complete: explicit job-only promotion is no longer blocked by an
+  unrelated empty outbox registry. Real parse, embedding, and purge handlers
+  still need a separate dependency factory and registry wiring gate before
+  production dispatch can claim jobs.
 - Promote the composed default-off Jina + Postgres embedding dependencies only
   behind an explicit readiness/registry gate.
 - Promote purge dispatch behind an explicit readiness/registry gate now that
@@ -912,6 +928,8 @@ Validation:
 - Parse projection migration tests, including token fences, materialization/profile
   gates, JSONB recordset lanes, artifact-set binding, worker-only execute
   grants, and rollback.
+- Worker promotion-gate tests, including dark default, outbox-only promotion,
+  job-only promotion, and missing-stage-handler rejection.
 - MinerU local-batch allocate tests, including missing-token no-HTTP behavior,
   PDF/size/filename gates, locked request body, retryable status/transport
   mapping, response validation, signed-upload URL validation, and redaction.
