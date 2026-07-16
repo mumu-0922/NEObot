@@ -1040,12 +1040,17 @@ def _text_baseline_page_region_locator(
     mapping_input: MinerULocalBatchCanonicalMappingInput,
     text: str,
 ) -> MinerUPageRegionLocator | None:
-    if not _content_list_has_single_full_text_match(
+    content_match_kind = _content_list_single_full_text_match_kind(
         mapping_input.decoded.content_list_json,
         text,
-    ):
+    )
+    if content_match_kind is None:
         return None
-    candidates = _middle_page_region_candidates(mapping_input.decoded.middle_json, text)
+    candidates = _middle_page_region_candidates(
+        mapping_input.decoded.middle_json,
+        text,
+        content_match_kind=content_match_kind,
+    )
     if len(candidates) > 1:
         _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
     if not candidates:
@@ -1053,24 +1058,28 @@ def _text_baseline_page_region_locator(
     return candidates[0]
 
 
-def _content_list_has_single_full_text_match(
+def _content_list_single_full_text_match_kind(
     content_list: list[JsonValue],
     text: str,
-) -> bool:
-    matches = 0
+) -> str | None:
+    matches: list[str] = []
     for item in content_list:
         if not isinstance(item, dict):
             continue
         if _mineru_text_field_matches(item, text):
-            matches += 1
-    if matches > 1:
+            matches.append(_mineru_semantic_kind(item))
+    if len(matches) > 1:
         _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
-    return matches == 1
+    if not matches:
+        return None
+    return matches[0]
 
 
 def _middle_page_region_candidates(
     middle_json: JsonObject,
     text: str,
+    *,
+    content_match_kind: str,
 ) -> tuple[MinerUPageRegionLocator, ...]:
     pages = middle_json.get("pages")
     if not isinstance(pages, list):
@@ -1086,6 +1095,7 @@ def _middle_page_region_candidates(
             if not isinstance(element, dict) or not _mineru_element_matches_text(
                 element,
                 text,
+                content_match_kind=content_match_kind,
             ):
                 continue
             candidates.append(
@@ -1097,12 +1107,28 @@ def _middle_page_region_candidates(
     return tuple(candidates)
 
 
-def _mineru_element_matches_text(element: JsonObject, text: str) -> bool:
-    return _mineru_text_field_matches(element, text)
+def _mineru_element_matches_text(
+    element: JsonObject,
+    text: str,
+    *,
+    content_match_kind: str,
+) -> bool:
+    if _mineru_text_field_matches(element, text):
+        return True
+    return content_match_kind == "table" and _mineru_semantic_kind(element) == "table"
 
 
 def _mineru_text_field_matches(value: JsonObject, text: str) -> bool:
     return value.get("text") == text or value.get("sourceText") == text
+
+
+def _mineru_semantic_kind(value: JsonObject) -> str:
+    raw = value.get("type")
+    if raw is None:
+        raw = value.get("kind")
+    if isinstance(raw, str) and raw:
+        return raw.casefold()
+    return "text"
 
 
 def _mineru_page_index(page: JsonObject) -> int:

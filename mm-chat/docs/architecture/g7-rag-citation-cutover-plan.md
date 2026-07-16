@@ -807,11 +807,25 @@ G7.5.33 completed on 2026-07-16:
 - Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
   slice does not spend provider quota in tests.
 
+G7.5.34 completed on 2026-07-16:
+
+- Extended the conservative page-bbox admission to single table elements without
+  parsing table cells or emitting Table IR.
+- The mapper now accepts `content_list` entries whose `type`/`kind` is `table`
+  and whose `text` equals the full-Markdown baseline, then locates exactly one
+  `layout/middle` element whose `kind`/`type` is `table` with page index and
+  bbox.
+- Rows/cells inside the table element remain opaque; only the element-level
+  `page_bbox` is projected for basic citation cards. Multiple table candidates
+  fail closed as ambiguous.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
+  slice does not spend provider quota in tests.
+
 Remaining G7.5 work:
 
-- Complete the remaining MinerU parser chain: richer citation-grade
-  table/formula/image mapping and a live or integration proof for the `017` parse
-  projection staging function when `MM_CHAT_TEST_DATABASE_URL` is available.
+- Complete the remaining MinerU parser chain: richer citation-grade formula/image
+  mapping, optional table-cell semantics, and a live or integration proof for the
+  `017` parse projection staging function when `MM_CHAT_TEST_DATABASE_URL` is available.
   Production MinIO/S3 object access should prefer the Go private source-object
   gateway rather than giving Python static object-store credentials.
 - Promote the composed default-off Jina + Postgres embedding dependencies only
@@ -889,6 +903,9 @@ Validation:
 - MinerU `sourceText` page-locator tests for formula-like text baselines,
   including content-list and layout/middle agreement plus projected `page_bbox`
   output without Formula IR promotion.
+- MinerU table element page-locator tests, including `content_list.type=table`
+  agreement, opaque row/cell payloads, projected element-level `page_bbox`, and
+  ambiguous table candidate rejection.
 - Retry-three-times and terminal-failure tests.
 
 ### G7.6 Private query and Go reauthorization

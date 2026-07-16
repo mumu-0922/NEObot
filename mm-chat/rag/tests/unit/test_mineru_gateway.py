@@ -1313,6 +1313,81 @@ def test_mineru_gateway_text_baseline_projects_source_text_page_locator() -> Non
     assert batch.parent_chunks[0].content == text
 
 
+def test_mineru_gateway_text_baseline_projects_table_page_locator() -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+    text = "| key | value |\n| --- | --- |\n| café | 中文 |"
+    archive_body = _archive(
+        (
+            ("full.md", text.encode()),
+            (
+                "fixture_content_list.json",
+                json.dumps(
+                    [{"text": text, "type": "table"}],
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ).encode(),
+            ),
+            (
+                "layout.json",
+                json.dumps(
+                    {
+                        "pages": [
+                            {
+                                "pageIndex": 2,
+                                "elements": [
+                                    {
+                                        "bboxMilliPoint": [
+                                            72000,
+                                            200000,
+                                            540000,
+                                            340000,
+                                        ],
+                                        "kind": "table",
+                                        "rows": [
+                                            {"cells": [{"text": "not parsed"}]},
+                                        ],
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ).encode(),
+            ),
+            ("fixture_model.json", b'{"model":"vlm"}'),
+        )
+    )
+    artifacts = gateway.extract_result_archive_artifacts(object(), archive_body)
+    mapping_input = gateway.prepare_canonical_mapping_input(
+        object(),
+        _source(),
+        artifacts,
+    )
+
+    parsed = gateway.build_text_baseline_parse_artifacts(
+        object(),
+        mapping_input,
+        artifact_set_id=ARTIFACT_SET_ID,
+    )
+    batch = build_postgres_projection_batch(
+        parsed.canonical_ir,
+        parsed.chunk_manifest,
+        PROJECTION_CONTEXT,
+    )
+
+    assert batch.blocks[0].locator_kind == "page_bbox"
+    assert batch.blocks[0].locator == {
+        "kind": "page_bbox",
+        "page": 2,
+        "x1": 72000,
+        "y1": 200000,
+        "x2": 540000,
+        "y2": 340000,
+    }
+    assert batch.parent_chunks[0].content == text
+
+
 def test_mineru_gateway_text_baseline_rejects_ambiguous_page_locator() -> None:
     gateway = MinerULocalBatchGateway(SECRET)
     text = "Duplicate locator text"
@@ -1338,6 +1413,62 @@ def test_mineru_gateway_text_baseline_rejects_ambiguous_page_locator() -> None:
                                     {
                                         "bboxMilliPoint": [100, 100, 200, 200],
                                         "text": text,
+                                    },
+                                ],
+                            }
+                        ]
+                    },
+                    separators=(",", ":"),
+                ).encode(),
+            ),
+            ("fixture_model.json", b'{"model":"vlm"}'),
+        )
+    )
+    artifacts = gateway.extract_result_archive_artifacts(object(), archive_body)
+    mapping_input = gateway.prepare_canonical_mapping_input(
+        object(),
+        _source(),
+        artifacts,
+    )
+
+    with pytest.raises(PermanentJobError) as raised:
+        gateway.build_text_baseline_parse_artifacts(
+            object(),
+            mapping_input,
+            artifact_set_id=ARTIFACT_SET_ID,
+        )
+
+    assert raised.value.error_code == MINERU_GATEWAY_ARTIFACT_INVALID
+
+
+def test_mineru_gateway_text_baseline_rejects_ambiguous_table_locator() -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+    text = "| a |\n| - |\n| b |"
+    archive_body = _archive(
+        (
+            ("full.md", text.encode()),
+            (
+                "fixture_content_list.json",
+                json.dumps(
+                    [{"text": text, "type": "table"}],
+                    separators=(",", ":"),
+                ).encode(),
+            ),
+            (
+                "layout.json",
+                json.dumps(
+                    {
+                        "pages": [
+                            {
+                                "pageIndex": 0,
+                                "elements": [
+                                    {
+                                        "bboxMilliPoint": [0, 0, 100, 100],
+                                        "kind": "table",
+                                    },
+                                    {
+                                        "bboxMilliPoint": [100, 100, 200, 200],
+                                        "kind": "table",
                                     },
                                 ],
                             }

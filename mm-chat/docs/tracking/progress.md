@@ -1066,7 +1066,8 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         `G7.5.31` parse-handler dependency composition proof with the MinerU
         parser adapter done; `G7.5.32` conservative MinerU basic page-locator
         mapper done; `G7.5.33` MinerU `sourceText` page-locator admission done;
-        real handler dispatch still gated).
+        `G7.5.34` MinerU opaque table element page-locator admission done; real
+        handler dispatch still gated).
   - [ ] G7.6 Private query and Go reauthorization.
   - [ ] G7.7 Strict/optional chat answer and basic citations.
   - [ ] G7.8 Live MinerU + Jina + Postgres smoke and operational proof.
