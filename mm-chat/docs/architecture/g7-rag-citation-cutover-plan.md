@@ -506,12 +506,32 @@ G7.5.17 completed on 2026-07-16:
 - Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
   slice does not call MinerU/Jina or spend provider quota.
 
+G7.5.18 completed on 2026-07-16:
+
+- Added the default-off Python Postgres parse projection adapter seam:
+  `PostgresAdapter.stage_parse_projection(...)` now serializes parser block,
+  parent chunk, child chunk, span, and child-search projection batches into one
+  token-fenced `knowledge_stage_parse_projection(...)` call.
+- The adapter requires the admitted processing-job lease token and
+  materialization id, checks that batch collection/document/version/generation
+  identities match the claimed context, and rejects mismatches before any DB
+  call with the stable parse-artifact error code.
+- Projection payloads are wrapped as JSONB only after converting UUID/Decimal
+  values into JSON-safe forms, so the future DB function receives one bounded
+  immutable batch instead of ad hoc row writes.
+- This slice intentionally adds only the Python adapter seam and unit tests. The
+  `knowledge_stage_parse_projection(...)` migration/function and live staging
+  proof remain the next gated cut before any handler promotion.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
+  slice does not call MinerU/Jina or spend provider quota.
+
 Remaining G7.5 work:
 
-- Implement MinerU and parse-side Postgres projection adapters behind the
-  existing default-off handler seams. Production MinIO/S3 object access should
-  prefer the Go private source-object gateway rather than giving Python static
-  object-store credentials.
+- Implement the parse-side Postgres projection migration/function behind the
+  new default-off adapter seam, then add MinerU parser execution and a live
+  staging proof. Production MinIO/S3 object access should prefer the Go private
+  source-object gateway rather than giving Python static object-store
+  credentials.
 - Promote the composed default-off Jina + Postgres embedding dependencies only
   behind an explicit readiness/registry gate.
 - Promote purge dispatch behind an explicit readiness/registry gate now that
@@ -533,6 +553,9 @@ Validation:
 - Go private source-object gateway tests, including token gate, auth-required
   middleware bypass, metadata/object mismatch redaction, and Python HTTP adapter
   lease/header/hash validation.
+- Parse projection adapter tests, including lease/materialization requirements,
+  context/batch mismatch rejection, JSONB payload conversion, and token-fenced
+  function parameters.
 - Retry-three-times and terminal-failure tests.
 
 ### G7.6 Private query and Go reauthorization

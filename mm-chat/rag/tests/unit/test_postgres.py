@@ -3,8 +3,11 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from dataclasses import replace
+from decimal import Decimal
+from typing import cast
 
 import pytest
+from psycopg.types.json import Jsonb
 
 import mm_chat_rag.postgres as postgres_module
 from mm_chat_rag.job_context import (
@@ -12,6 +15,7 @@ from mm_chat_rag.job_context import (
     ProcessingJobContext,
 )
 from mm_chat_rag.job_handler_dependencies import (
+    JOB_HANDLER_PARSE_ARTIFACT_INVALID,
     JOB_HANDLER_SOURCE_INVALID,
     PassageEmbeddingCandidate,
     PassageEmbeddingVector,
@@ -27,6 +31,14 @@ from mm_chat_rag.postgres import (
     _function_succeeded,
     replay_job,
     replay_outbox,
+)
+from mm_chat_rag.projection import (
+    BlockProjectionRow,
+    ChildChunkProjectionRow,
+    ChildSearchProjectionRow,
+    ChunkBlockSpanProjectionRow,
+    ParentChunkProjectionRow,
+    PostgresProjectionBatch,
 )
 from mm_chat_rag.provider_profile import (
     MINERU_JINA_POSTGRES_PROFILE,
@@ -178,6 +190,127 @@ def parse_context(**updates: object) -> ProcessingJobContext:
     return replace(context, **updates)
 
 
+def projection_batch(context: ProcessingJobContext) -> PostgresProjectionBatch:
+    if context.materialization_id is None:
+        raise AssertionError("parse projection fixture requires materialization")
+    artifact_set_id = uuid.uuid4()
+    block_id = uuid.uuid4()
+    parent_chunk_id = uuid.uuid4()
+    child_chunk_id = uuid.uuid4()
+    source_sha256 = "e" * 64
+    chunk_profile_hash = "f" * 64
+    source_span_hash = "1" * 64
+    content_hash = "2" * 64
+    locator = {"kind": "text_offset", "start": 0, "end": 13}
+    locator_summary = {
+        "schemaVersion": "g7.4-locator-summary.v1",
+        "primary": {"kind": "text_offset", "locator": locator},
+        "fragments": [],
+        "locatorAggregateHashes": [],
+    }
+    return PostgresProjectionBatch(
+        blocks=(
+            BlockProjectionRow(
+                id=block_id,
+                artifact_set_id=artifact_set_id,
+                document_id=context.document_id,
+                document_version_id=context.document_version_id,
+                parent_block_id=None,
+                ordinal=0,
+                block_type="paragraph",
+                heading_path=("heading",),
+                text_content="hello fixture",
+                locator_kind="text_offset",
+                locator=locator,
+                reading_order=0,
+                provenance={"sourceSpanHash": source_span_hash},
+                confidence=Decimal("0.9"),
+                content_hash=content_hash,
+                source_span_hash=source_span_hash,
+                derived=False,
+                non_indexable=False,
+                needs_review=False,
+                logical_block_id="3" * 64,
+            ),
+        ),
+        parent_chunks=(
+            ParentChunkProjectionRow(
+                id=parent_chunk_id,
+                materialization_id=context.materialization_id,
+                index_generation_id=context.index_generation_id,
+                document_id=context.document_id,
+                document_version_id=context.document_version_id,
+                ordinal=0,
+                chunk_profile_hash=chunk_profile_hash,
+                source_span_hash=source_span_hash,
+                content_hash=content_hash,
+                content="hello fixture",
+                token_count=2,
+                heading_path=("heading",),
+                locator_summary=locator_summary,
+                logical_chunk_id="4" * 64,
+            ),
+        ),
+        child_chunks=(
+            ChildChunkProjectionRow(
+                id=child_chunk_id,
+                parent_chunk_id=parent_chunk_id,
+                materialization_id=context.materialization_id,
+                index_generation_id=context.index_generation_id,
+                document_id=context.document_id,
+                document_version_id=context.document_version_id,
+                ordinal=0,
+                chunk_profile_hash=chunk_profile_hash,
+                source_span_hash=source_span_hash,
+                content_hash=content_hash,
+                content="hello fixture",
+                token_count=2,
+                overlap_before_tokens=0,
+                overlap_after_tokens=0,
+                logical_chunk_id="5" * 64,
+            ),
+        ),
+        chunk_block_spans=(
+            ChunkBlockSpanProjectionRow(
+                chunk_kind="child",
+                chunk_id=child_chunk_id,
+                block_id=block_id,
+                span_ordinal=0,
+                start_offset=0,
+                end_offset=13,
+                fragment_source_span_hash=source_span_hash,
+            ),
+        ),
+        child_search_projections=(
+            ChildSearchProjectionRow(
+                child_chunk_id=child_chunk_id,
+                parent_chunk_id=parent_chunk_id,
+                materialization_id=context.materialization_id,
+                index_generation_id=context.index_generation_id,
+                collection_id=context.collection_id,
+                document_id=context.document_id,
+                document_version_id=context.document_version_id,
+                embedding_model_id="jina-embeddings-v4",
+                embedding_dimensions=1024,
+                lexical_text="hello fixture",
+                exact_terms=("fixture", "hello"),
+                source_span_hash=source_span_hash,
+                chunk_profile_hash=chunk_profile_hash,
+                content_hash=content_hash,
+                locator_summary=locator_summary,
+            ),
+        ),
+        source_sha256=source_sha256,
+        chunk_profile_hash=chunk_profile_hash,
+    )
+
+
+def jsonb_payload(value: object) -> list[dict[str, object]]:
+    assert isinstance(value, Jsonb)
+    assert isinstance(value.obj, list)
+    return cast("list[dict[str, object]]", value.obj)
+
+
 def test_sql_surface_is_select_only_and_function_allowlisted() -> None:
     assert set(_SQL) == {
         "claim_outbox",
@@ -192,6 +325,7 @@ def test_sql_surface_is_select_only_and_function_allowlisted() -> None:
         "fetch_passage_embedding_candidates",
         "stage_passage_embedding",
         "fetch_parse_source_metadata",
+        "stage_parse_projection",
         "mark_purge_invisible",
         "purge_search_projection",
         "assert_purge_complete",
@@ -512,6 +646,88 @@ async def test_parse_source_metadata_gateway_rejects_invalid_row() -> None:
             ),
         )
     ]
+
+
+async def test_parse_projection_gateway_calls_token_fenced_function() -> None:
+    worker_id = uuid.uuid4()
+    settings = Settings(
+        database_url="postgresql://worker:secret@db/rag",
+        worker_id=worker_id,
+    )
+    context = parse_context()
+    batch = projection_batch(context)
+    adapter, connection = adapter_with_rows([{"result": True}], settings)
+
+    await adapter.stage_parse_projection(context, batch)
+
+    assert len(connection.calls) == 1
+    sql, parameters = connection.calls[0]
+    assert sql == _SQL["stage_parse_projection"]
+    assert parameters[:7] == (
+        context.job_id,
+        worker_id,
+        context.lease_token,
+        context.materialization_id,
+        batch.blocks[0].artifact_set_id,
+        batch.source_sha256,
+        batch.chunk_profile_hash,
+    )
+    payloads = parameters[7:]
+    assert all(isinstance(payload, Jsonb) for payload in payloads)
+    blocks = jsonb_payload(payloads[0])
+    parent_chunks = jsonb_payload(payloads[1])
+    child_chunks = jsonb_payload(payloads[2])
+    spans = jsonb_payload(payloads[3])
+    search_rows = jsonb_payload(payloads[4])
+    assert blocks[0]["id"] == str(batch.blocks[0].id)
+    assert blocks[0]["confidence"] == 0.9
+    assert parent_chunks[0]["materialization_id"] == str(context.materialization_id)
+    assert child_chunks[0]["parent_chunk_id"] == str(batch.parent_chunks[0].id)
+    assert (
+        spans[0]["fragment_source_span_hash"]
+        == batch.chunk_block_spans[0].fragment_source_span_hash
+    )
+    assert search_rows[0]["exact_terms"] == ["fixture", "hello"]
+
+
+async def test_parse_projection_gateway_requires_claim_lease_token() -> None:
+    adapter, connection = adapter_with_rows([])
+    context = parse_context(lease_token=None)
+
+    with pytest.raises(PermanentJobError) as raised:
+        await adapter.stage_parse_projection(context, projection_batch(context))
+
+    assert raised.value.error_code == JOB_CONTEXT_LEASE_FENCE_MISSING
+    assert connection.calls == []
+
+
+async def test_parse_projection_gateway_rejects_unbound_materialization() -> None:
+    adapter, connection = adapter_with_rows([])
+    context = parse_context(materialization_id=None)
+
+    with pytest.raises(PermanentJobError) as raised:
+        await adapter.stage_parse_projection(context, object())  # type: ignore[arg-type]
+
+    assert raised.value.error_code == JOB_HANDLER_PARSE_ARTIFACT_INVALID
+    assert connection.calls == []
+
+
+async def test_parse_projection_gateway_rejects_mismatched_batch_before_db() -> None:
+    context = parse_context()
+    batch = projection_batch(context)
+    mismatched = replace(
+        batch,
+        parent_chunks=(
+            replace(batch.parent_chunks[0], materialization_id=uuid.uuid4()),
+        ),
+    )
+    adapter, connection = adapter_with_rows([])
+
+    with pytest.raises(PermanentJobError) as raised:
+        await adapter.stage_parse_projection(context, mismatched)
+
+    assert raised.value.error_code == JOB_HANDLER_PARSE_ARTIFACT_INVALID
+    assert connection.calls == []
 
 
 async def test_purge_projection_gateway_calls_token_fenced_functions() -> None:

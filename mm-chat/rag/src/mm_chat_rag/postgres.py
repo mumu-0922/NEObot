@@ -5,11 +5,13 @@ from __future__ import annotations
 import time
 import uuid
 from collections.abc import Mapping, Sequence
+from decimal import Decimal
 from typing import Any, Final, cast
 
 import psycopg
 from psycopg.conninfo import make_conninfo
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 
 from mm_chat_rag.job_context import (
@@ -19,6 +21,7 @@ from mm_chat_rag.job_context import (
 from mm_chat_rag.job_handler_dependencies import (
     JOB_HANDLER_EMBEDDING_CANDIDATE_INVALID,
     JOB_HANDLER_EMBEDDING_VECTOR_INVALID,
+    JOB_HANDLER_PARSE_ARTIFACT_INVALID,
     JOB_HANDLER_PURGE_PROJECTION_INVALID,
     JOB_HANDLER_PURGE_VISIBILITY_INVALID,
     JOB_HANDLER_SOURCE_INVALID,
@@ -34,6 +37,7 @@ from mm_chat_rag.models import (
     OutboxClaim,
     stable_error_code,
 )
+from mm_chat_rag.projection import PostgresProjectionBatch
 from mm_chat_rag.retry import PermanentJobError
 from mm_chat_rag.settings import Settings
 from mm_chat_rag.source_gateway import FileSourceMetadata
@@ -65,6 +69,10 @@ _SQL: Final[Mapping[str, str]] = {
     ),
     "fetch_parse_source_metadata": (
         "SELECT * FROM knowledge_fetch_parse_source_metadata(%s, %s, %s, %s, %s)"
+    ),
+    "stage_parse_projection": (
+        "SELECT * FROM knowledge_stage_parse_projection"
+        "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
     ),
     "mark_purge_invisible": (
         "SELECT * FROM knowledge_mark_purge_invisible(%s, %s, %s, %s, %s, %s, %s, %s)"
@@ -427,6 +435,41 @@ class PostgresAdapter:
         )
         return _file_source_metadata_from_row(row)
 
+    async def stage_parse_projection(
+        self,
+        context: ProcessingJobContext,
+        batch: PostgresProjectionBatch,
+    ) -> None:
+        """Stage parser projection rows through one token-fenced DB function."""
+        lease_token = _require_context_lease_token(context)
+        materialization_id = context.materialization_id
+        if materialization_id is None:
+            raise PermanentJobError(
+                stable_error_code(JOB_HANDLER_PARSE_ARTIFACT_INVALID)
+            )
+        payload = _parse_projection_payload(context, batch)
+        row = await self._call(
+            "stage_parse_projection",
+            (
+                context.job_id,
+                self._settings.worker_id,
+                lease_token,
+                materialization_id,
+                payload["artifact_set_id"],
+                payload["source_sha256"],
+                payload["chunk_profile_hash"],
+                Jsonb(payload["blocks"]),
+                Jsonb(payload["parent_chunks"]),
+                Jsonb(payload["child_chunks"]),
+                Jsonb(payload["chunk_block_spans"]),
+                Jsonb(payload["child_search_projections"]),
+            ),
+        )
+        if not _function_succeeded(row):
+            raise PermanentJobError(
+                stable_error_code(JOB_HANDLER_PARSE_ARTIFACT_INVALID)
+            )
+
     async def mark_purge_invisible(
         self, context: ProcessingJobContext
     ) -> PurgeInvisibilityResult:
@@ -497,6 +540,164 @@ def _function_succeeded(row: Mapping[str, Any] | None) -> bool:
     if len(row) == 1:
         return next(iter(row.values())) is True
     return row.get("succeeded") is True or row.get("applied") is True
+
+
+def _parse_projection_payload(
+    context: ProcessingJobContext,
+    batch: PostgresProjectionBatch,
+) -> dict[str, object]:
+    if not isinstance(batch, PostgresProjectionBatch):
+        raise PermanentJobError(stable_error_code(JOB_HANDLER_PARSE_ARTIFACT_INVALID))
+    if (
+        not batch.blocks
+        or not batch.parent_chunks
+        or not batch.child_chunks
+        or not batch.child_search_projections
+    ):
+        raise PermanentJobError(stable_error_code(JOB_HANDLER_PARSE_ARTIFACT_INVALID))
+    materialization_id = context.materialization_id
+    if materialization_id is None:
+        raise PermanentJobError(stable_error_code(JOB_HANDLER_PARSE_ARTIFACT_INVALID))
+
+    artifact_set_id = batch.blocks[0].artifact_set_id
+    for block in batch.blocks:
+        _require_match(block.artifact_set_id, artifact_set_id)
+        _require_match(block.document_id, context.document_id)
+        _require_match(block.document_version_id, context.document_version_id)
+    for parent in batch.parent_chunks:
+        _require_match(parent.materialization_id, materialization_id)
+        _require_match(parent.index_generation_id, context.index_generation_id)
+        _require_match(parent.document_id, context.document_id)
+        _require_match(parent.document_version_id, context.document_version_id)
+    for child in batch.child_chunks:
+        _require_match(child.materialization_id, materialization_id)
+        _require_match(child.index_generation_id, context.index_generation_id)
+        _require_match(child.document_id, context.document_id)
+        _require_match(child.document_version_id, context.document_version_id)
+    for search in batch.child_search_projections:
+        _require_match(search.materialization_id, materialization_id)
+        _require_match(search.index_generation_id, context.index_generation_id)
+        _require_match(search.collection_id, context.collection_id)
+        _require_match(search.document_id, context.document_id)
+        _require_match(search.document_version_id, context.document_version_id)
+
+    return {
+        "artifact_set_id": artifact_set_id,
+        "source_sha256": batch.source_sha256,
+        "chunk_profile_hash": batch.chunk_profile_hash,
+        "blocks": [
+            {
+                "id": _jsonable(block.id),
+                "artifact_set_id": _jsonable(block.artifact_set_id),
+                "document_id": _jsonable(block.document_id),
+                "document_version_id": _jsonable(block.document_version_id),
+                "parent_block_id": _jsonable(block.parent_block_id),
+                "ordinal": block.ordinal,
+                "block_type": block.block_type,
+                "heading_path": list(block.heading_path),
+                "text_content": block.text_content,
+                "locator_kind": block.locator_kind,
+                "locator": _jsonable(block.locator),
+                "reading_order": block.reading_order,
+                "provenance": _jsonable(block.provenance),
+                "confidence": _jsonable(block.confidence),
+                "content_hash": block.content_hash,
+                "source_span_hash": block.source_span_hash,
+                "derived": block.derived,
+                "non_indexable": block.non_indexable,
+                "needs_review": block.needs_review,
+            }
+            for block in batch.blocks
+        ],
+        "parent_chunks": [
+            {
+                "id": _jsonable(parent.id),
+                "materialization_id": _jsonable(parent.materialization_id),
+                "index_generation_id": _jsonable(parent.index_generation_id),
+                "document_id": _jsonable(parent.document_id),
+                "document_version_id": _jsonable(parent.document_version_id),
+                "ordinal": parent.ordinal,
+                "chunk_profile_hash": parent.chunk_profile_hash,
+                "source_span_hash": parent.source_span_hash,
+                "content_hash": parent.content_hash,
+                "content": parent.content,
+                "token_count": parent.token_count,
+                "heading_path": list(parent.heading_path),
+                "locator_summary": _jsonable(parent.locator_summary),
+            }
+            for parent in batch.parent_chunks
+        ],
+        "child_chunks": [
+            {
+                "id": _jsonable(child.id),
+                "parent_chunk_id": _jsonable(child.parent_chunk_id),
+                "materialization_id": _jsonable(child.materialization_id),
+                "index_generation_id": _jsonable(child.index_generation_id),
+                "document_id": _jsonable(child.document_id),
+                "document_version_id": _jsonable(child.document_version_id),
+                "ordinal": child.ordinal,
+                "chunk_profile_hash": child.chunk_profile_hash,
+                "source_span_hash": child.source_span_hash,
+                "content_hash": child.content_hash,
+                "content": child.content,
+                "token_count": child.token_count,
+                "overlap_before_tokens": child.overlap_before_tokens,
+                "overlap_after_tokens": child.overlap_after_tokens,
+            }
+            for child in batch.child_chunks
+        ],
+        "chunk_block_spans": [
+            {
+                "chunk_kind": span.chunk_kind,
+                "chunk_id": _jsonable(span.chunk_id),
+                "block_id": _jsonable(span.block_id),
+                "span_ordinal": span.span_ordinal,
+                "start_offset": span.start_offset,
+                "end_offset": span.end_offset,
+                "fragment_source_span_hash": span.fragment_source_span_hash,
+            }
+            for span in batch.chunk_block_spans
+        ],
+        "child_search_projections": [
+            {
+                "child_chunk_id": _jsonable(search.child_chunk_id),
+                "parent_chunk_id": _jsonable(search.parent_chunk_id),
+                "materialization_id": _jsonable(search.materialization_id),
+                "index_generation_id": _jsonable(search.index_generation_id),
+                "collection_id": _jsonable(search.collection_id),
+                "document_id": _jsonable(search.document_id),
+                "document_version_id": _jsonable(search.document_version_id),
+                "embedding_model_id": search.embedding_model_id,
+                "embedding_dimensions": search.embedding_dimensions,
+                "lexical_text": search.lexical_text,
+                "exact_terms": list(search.exact_terms),
+                "source_span_hash": search.source_span_hash,
+                "chunk_profile_hash": search.chunk_profile_hash,
+                "content_hash": search.content_hash,
+                "locator_summary": _jsonable(search.locator_summary),
+            }
+            for search in batch.child_search_projections
+        ],
+    }
+
+
+def _require_match(value: uuid.UUID, expected: uuid.UUID) -> None:
+    if value != expected:
+        raise PermanentJobError(stable_error_code(JOB_HANDLER_PARSE_ARTIFACT_INVALID))
+
+
+def _jsonable(value: object) -> object:
+    if isinstance(value, uuid.UUID):
+        return str(value)
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, tuple | list):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if value is None or isinstance(value, bool | int | float | str):
+        return value
+    raise PermanentJobError(stable_error_code(JOB_HANDLER_PARSE_ARTIFACT_INVALID))
 
 
 def _has_database_code(error: psycopg.Error, code: str) -> bool:

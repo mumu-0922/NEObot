@@ -1018,8 +1018,7 @@ cd mm-chat/frontend && corepack pnpm prettier --check \
   ../docs/tracking/progress.md
 # passed
 
-rg -n "sk-5c70df|5c70df8c5e888ff0438c589d995b3f3bdee27a96e95b4dfeba4f0393fabdda79|sub\\.mumubuku" \
-  mm-chat || true
+# secret scan for owner-provided provider endpoint/key; patterns redacted
 # no matches
 
 git diff --check -- mm-chat
@@ -1667,3 +1666,60 @@ Residual risk:
   the authority boundary.
 - `RAG_SOURCE_GATEWAY_TOKEN` must be provided to both backend and worker in a
   real deployment; it must never be logged or committed with a real value.
+
+## 2026-07-16 — G7.5.18 Default-off Postgres Parse Projection Adapter Seam
+
+Objective: add the Python-side Postgres adapter seam for parse projection
+staging without creating the DB function yet, promoting handlers, calling MinerU
+or Jina, or consuming provider quota. This slice makes the future staging
+function call shape explicit and testable while keeping production registries
+empty.
+
+Implemented behavior:
+
+- Added `PostgresAdapter.stage_parse_projection(...)` in
+  `rag/src/mm_chat_rag/postgres.py`.
+- The adapter requires the claimed job lease token and materialization id before
+  any DB call.
+- It serializes one `PostgresProjectionBatch` into five JSONB lanes: blocks,
+  parent chunks, child chunks, chunk-block spans, and child search projections.
+- It checks that batch rows match the admitted processing context for
+  materialization, index generation, collection, document, and document version
+  where applicable. Mismatches fail closed before touching Postgres.
+- UUID and Decimal values are converted to JSON-safe primitives before wrapping
+  payloads in `psycopg.types.json.Jsonb`.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. No
+  parser, embedding, or provider quota path is enabled by this slice.
+
+Touched files:
+
+```text
+rag/src/mm_chat_rag/postgres.py
+rag/tests/unit/test_postgres.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && uv run ruff check \
+  src/mm_chat_rag/postgres.py tests/unit/test_postgres.py
+# passed
+
+cd mm-chat/rag && uv run mypy src/mm_chat_rag/postgres.py
+# passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider tests/unit/test_postgres.py
+# 30 passed
+```
+
+Residual risk:
+
+- `knowledge_stage_parse_projection(...)` is not created by this slice. Live DB
+  parse staging must wait for the next migration/function cut and its compile or
+  integration proof.
+- Real parse dispatch remains blocked until MinerU execution, parse projection
+  staging, handler composition, retry behavior, and explicit registry promotion
+  gates are implemented.
