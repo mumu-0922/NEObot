@@ -1,24 +1,37 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import io
 import json
 import uuid
+import zipfile
 from typing import cast
 
 import pytest
 
 import mm_chat_rag.replay as replay_module
+import mm_chat_rag.worker as worker_module
 from mm_chat_rag.handlers import DispatchPlan, JobHandler, JobResult
+from mm_chat_rag.job_context import ProcessingJobContext
+from mm_chat_rag.job_handler_dependencies import DocumentSource
 from mm_chat_rag.models import FunctionReadiness, JobClaim, OutboxClaim
+from mm_chat_rag.projection import PostgresProjectionBatch
 from mm_chat_rag.provider_profile import (
     MINERU_JINA_POSTGRES_PROFILE,
     ProviderRuntimeProfile,
 )
 from mm_chat_rag.replay import run
 from mm_chat_rag.settings import Settings
-from mm_chat_rag.worker import Worker, WorkerStartupError
+from mm_chat_rag.source_gateway import FileSourceMetadata
+from mm_chat_rag.worker import (
+    Worker,
+    WorkerStartupError,
+    build_promoted_job_handler_registry,
+)
 
 SOURCE_GATEWAY_TOKEN = "unit-test-source-gateway-token"
+MINERU_PDF_BODY = b"%PDF-1.7\nworker factory fixture\n%%EOF\n"
 
 EVENT_ID = uuid.UUID("10000000-0000-0000-0000-000000000001")
 JOB_ID = uuid.UUID("20000000-0000-0000-0000-000000000002")
@@ -252,6 +265,181 @@ def test_worker_does_not_auto_promote_parse_stage() -> None:
         worker.validate_promotion_gate()
 
     assert set(worker.job_handlers) == {"passage_embedding", "purge"}
+
+
+class FakeParseSourceMetadataGateway:
+    def __init__(self, calls: list[str]) -> None:
+        self._calls = calls
+
+    async def fetch_source_metadata(
+        self,
+        context: ProcessingJobContext,
+    ) -> FileSourceMetadata:
+        self._calls.append("metadata")
+        return FileSourceMetadata(
+            file_id=context.file_id,
+            storage_backend="minio",
+            object_key=f"knowledge/{context.file_id}.pdf",
+            sha256=hashlib.sha256(MINERU_PDF_BODY).hexdigest(),
+            byte_size=len(MINERU_PDF_BODY),
+            content_type="application/pdf",
+        )
+
+
+class FakeSourceObjectGateway:
+    def __init__(
+        self,
+        *,
+        calls: list[str],
+        base_url: str,
+        internal_token: str,
+        worker_id: uuid.UUID,
+    ) -> None:
+        self._calls = calls
+        assert base_url == "http://backend:8080"
+        assert internal_token == SOURCE_GATEWAY_TOKEN
+        assert worker_id != uuid.UUID(int=0)
+
+    async def fetch_object_bytes(
+        self,
+        context: ProcessingJobContext,
+        metadata: FileSourceMetadata,
+    ) -> bytes:
+        self._calls.append("object")
+        assert metadata.file_id == context.file_id
+        return MINERU_PDF_BODY
+
+
+class FakeMinerUArchiveProvider:
+    def __init__(self, calls: list[str]) -> None:
+        self._calls = calls
+
+    async def fetch_result_archive(
+        self,
+        context: ProcessingJobContext,
+        source: DocumentSource,
+    ) -> bytes:
+        self._calls.append("archive")
+        assert context.stage == "parse"
+        assert source.content_type == "application/pdf"
+        return mineru_archive("Worker factory parse\n\nMinerU baseline")
+
+
+class FakeParseProjectionGateway:
+    def __init__(self, calls: list[str]) -> None:
+        self._calls = calls
+        self.batches: list[PostgresProjectionBatch] = []
+
+    async def stage_parse_projection(
+        self,
+        context: ProcessingJobContext,
+        batch: PostgresProjectionBatch,
+    ) -> None:
+        self._calls.append("stage")
+        assert context.stage == "parse"
+        self.batches.append(batch)
+
+
+def mineru_archive(text: str) -> bytes:
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as archive:
+        archive.writestr("full.md", text.encode())
+        archive.writestr("fixture_content_list.json", b'[{"type":"text"}]')
+        archive.writestr("layout.json", b'{"pages":[{"page":0}]}')
+        archive.writestr("fixture_model.json", b'{"model":"vlm"}')
+    return output.getvalue()
+
+
+def parse_claim() -> JobClaim:
+    job_id = uuid.uuid4()
+    return JobClaim(
+        job_id=job_id,
+        stage="parse",
+        attempt_count=1,
+        max_attempts=3,
+        values={
+            "id": job_id,
+            "collection_id": uuid.uuid4(),
+            "document_id": uuid.uuid4(),
+            "document_version_id": uuid.uuid4(),
+            "file_id": uuid.uuid4(),
+            "stage": "parse",
+            "operation": "initial",
+            "processor": "mineru",
+            "endpoint_id": "admin-env",
+            "model_id": "mineru-parser-v20260716",
+            "governance_profile_id": uuid.uuid4(),
+            "governance_revision": 1,
+            "governance_head_revision": 1,
+            "collection_consent_id": uuid.uuid4(),
+            "collection_consent_revision": 1,
+            "collection_acl_revision": 1,
+            "collection_visibility_epoch": 1,
+            "collection_processing_revision": 1,
+            "document_visibility_epoch": 1,
+            "request_hash": hashlib.sha256(str(job_id).encode()).hexdigest(),
+            "attempt_count": 1,
+            "max_attempts": 3,
+            "lease_token": uuid.uuid4(),
+            "index_generation_id": uuid.uuid4(),
+            "materialization_id": uuid.uuid4(),
+            "legacy_projection_unbound": False,
+        },
+    )
+
+
+async def test_worker_factory_promotes_parse_when_dependencies_are_supplied(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    projection = FakeParseProjectionGateway(calls)
+    def fake_source_object_gateway(
+        *,
+        base_url: str,
+        internal_token: str,
+        worker_id: uuid.UUID,
+    ) -> FakeSourceObjectGateway:
+        return FakeSourceObjectGateway(
+            calls=calls,
+            base_url=base_url,
+            internal_token=internal_token,
+            worker_id=worker_id,
+        )
+
+    monkeypatch.setattr(
+        worker_module,
+        "GoSourceObjectBytesGateway",
+        fake_source_object_gateway,
+    )
+    settings = Settings(
+        database_url="postgresql://test",
+        dispatch_enabled=True,
+        job_stages=("parse",),
+        mineru_api_key="fake-mineru-token",
+        source_gateway_url="http://backend:8080",
+        source_gateway_token=SOURCE_GATEWAY_TOKEN,
+        provider_profile=provider_profile(),
+    )
+
+    registry = build_promoted_job_handler_registry(
+        settings,
+        parse_source_metadata=FakeParseSourceMetadataGateway(calls),
+        parse_projection=projection,
+        parse_archive_provider=FakeMinerUArchiveProvider(calls),
+        passage_embedding_projection=cast("object", object()),
+        purge_projection=cast("object", object()),
+    )
+    result = await registry["parse"](parse_claim())
+
+    assert result.outcome == "succeeded"
+    assert calls == ["metadata", "object", "archive", "stage"]
+    assert len(projection.batches) == 1
+    assert projection.batches[0].parent_chunks[0].content == (
+        "Worker factory parse\n\nMinerU baseline"
+    )
+    assert projection.batches[0].source_sha256 == hashlib.sha256(
+        MINERU_PDF_BODY
+    ).hexdigest()
 
 
 async def test_worker_readiness_refresh_preserves_dark_run_consumer() -> None:

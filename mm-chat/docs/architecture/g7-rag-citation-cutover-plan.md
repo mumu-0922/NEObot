@@ -949,6 +949,23 @@ G7.5I completed on 2026-07-16:
 - The module-level registries remain empty; the promoted path is still settings
   gated and test-scoped unless `passage_embedding` is explicitly enabled.
 
+
+G7.5J completed on 2026-07-16:
+
+- Added an explicit parse dependency injection path to the Python worker handler
+  registry factory without changing the frozen module-level registries.
+- `parse` is still not auto-promoted by `Worker(settings)` because no
+  `MinerUResultArchiveProvider` is supplied by default; the startup gate still
+  rejects parse-only settings unless a caller explicitly provides the missing
+  parse dependencies.
+- When all parse dependencies are supplied, the factory composes the Go private
+  source-object gateway, Postgres source metadata/projection gateways, the
+  MinerU text-baseline archive parser adapter, and the admitted parse handler.
+- Added a unit proof that monkeypatches only the source-object byte gateway,
+  injects a fake MinerU archive provider, executes the factory-built parse
+  handler, and verifies the metadata → object → archive → projection sequence.
+- No MinerU API call is made and no provider quota is consumed.
+
 Remaining G7.5 work:
 
 - G7.5T disposable PostgreSQL integration gate has been restored and proven
@@ -985,6 +1002,9 @@ Remaining G7.5 work:
 - G7.5I is complete: promoted passage embedding has a live job-runner smoke
   against disposable PostgreSQL with mocked Jina, including the `018` function
   fix and Python `real[]` cast.
+- G7.5J is complete: parse dependency injection can explicitly compose Go
+  source-object, MinerU archive parser, and Postgres projection dependencies,
+  while default Worker construction still keeps parse unpromoted.
 - Implement index, reprocess, tombstone purge, rebuild, retry, and DLQ behavior.
 - Promote handlers one stage at a time behind readiness and registry gates.
 
@@ -1062,6 +1082,8 @@ Validation:
 - Parse-handler dependency composition tests with the MinerU text-baseline parser
   adapter, including source fetch, archive fetch, projection build, projection
   stage, source-hash propagation, and exact-term projection.
+- Worker parse dependency factory tests, including explicit dependency-supplied
+  promotion and default Worker parse non-promotion.
 - MinerU basic page-locator mapper tests, including single full-text content-list
   match, layout/middle page bbox admission, projected `page_bbox` block/chunk
   locators, and ambiguous locator rejection.

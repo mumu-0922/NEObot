@@ -3555,3 +3555,70 @@ Residual risk:
   once the owner explicitly wants quota-consuming proof.
 - Parse promotion remains blocked until source-object, MinerU archive/result
   provider, and parse dependency factory promotion are wired.
+
+
+## 2026-07-16 — G7.5J Explicit Parse Dependency Factory
+
+Objective: connect the parse dependency composition seam to the Worker registry
+factory without opening production parse dispatch by default. The factory can now
+build parse handlers when a caller supplies all parse dependencies, but normal
+`Worker(settings)` construction still keeps parse unpromoted because no MinerU
+archive provider is installed by default.
+
+Implemented behavior:
+
+- Extended `build_promoted_job_handler_registry(...)` with optional parse
+  dependency parameters:
+  - `parse_source_metadata`;
+  - `parse_projection`;
+  - `parse_archive_provider`.
+- When `parse` is enabled and all three parse dependencies are supplied, the
+  factory builds:
+  - `ObjectStoreDocumentSourceGateway` using the supplied metadata gateway plus
+    `GoSourceObjectBytesGateway` from `RAG_SOURCE_GATEWAY_URL`,
+    `RAG_SOURCE_GATEWAY_TOKEN`, and `worker_id`;
+  - `MinerUTextBaselineArchiveParserGateway` using the supplied
+    `MinerUResultArchiveProvider`;
+  - `ParseHandlerDependencies` with supplied Postgres parse projection gateway;
+  - `admitted_parse_handler_with_dependencies(...)` with the validated provider
+    profile.
+- If parse dependencies are absent, no parse handler is registered. This
+  preserves the existing fail-closed startup behavior for parse-only settings.
+- Added a Worker unit proof that executes a factory-built parse handler using a
+  fake source metadata gateway, a monkeypatched source-object byte gateway, a
+  fake MinerU archive provider, and a fake parse projection gateway.
+- The unit proof verifies the sequence `metadata -> object -> archive -> stage`,
+  the projected text baseline content, and source SHA-256 propagation.
+
+Touched files:
+
+```text
+rag/src/mm_chat_rag/worker.py
+rag/tests/unit/test_replay_worker.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && \
+  uv run ruff check src/mm_chat_rag/worker.py tests/unit/test_replay_worker.py
+# passed
+
+cd mm-chat/rag && \
+  uv run mypy src/mm_chat_rag/worker.py
+# passed
+
+cd mm-chat/rag && \
+  uv run pytest -p no:cacheprovider tests/unit/test_replay_worker.py -q
+# 19 passed
+```
+
+Residual risk:
+
+- This does not implement a production MinerU local-batch archive provider or
+  live parse smoke. Parse remains blocked for normal Worker construction until
+  that provider/polling lifecycle is promoted and tested.
+- No real MinerU call was made.

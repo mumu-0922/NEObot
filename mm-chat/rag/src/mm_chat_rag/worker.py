@@ -21,18 +21,30 @@ from mm_chat_rag.handlers import (
 from mm_chat_rag.health import ReadinessState, create_health_app
 from mm_chat_rag.jina_gateway import build_jina_passage_embedding_handler_dependencies
 from mm_chat_rag.job_handler_dependencies import (
+    ParseHandlerDependencies,
+    ParseProjectionGateway,
     PassageEmbeddingProjectionGateway,
     PurgeHandlerDependencies,
     PurgeProjectionGateway,
+    admitted_parse_handler_with_dependencies,
     admitted_passage_embedding_handler_with_dependencies,
     admitted_purge_handler_with_dependencies,
 )
 from mm_chat_rag.jobs import JobRunner
 from mm_chat_rag.logging import configure_logging
 from mm_chat_rag.metrics import Metrics
+from mm_chat_rag.mineru_gateway import (
+    MinerUResultArchiveProvider,
+    MinerUTextBaselineArchiveParserGateway,
+)
 from mm_chat_rag.postgres import PostgresAdapter
 from mm_chat_rag.redis_wakeup import RedisWakeSubscriber
 from mm_chat_rag.settings import Settings, SettingsError
+from mm_chat_rag.source_gateway import (
+    GoSourceObjectBytesGateway,
+    ObjectStoreDocumentSourceGateway,
+    SourceMetadataGateway,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +56,36 @@ class WorkerStartupError(RuntimeError):
 def build_promoted_job_handler_registry(
     settings: Settings,
     *,
+    parse_source_metadata: SourceMetadataGateway | None = None,
+    parse_projection: ParseProjectionGateway | None = None,
+    parse_archive_provider: MinerUResultArchiveProvider | None = None,
     passage_embedding_projection: PassageEmbeddingProjectionGateway,
     purge_projection: PurgeProjectionGateway,
 ) -> Mapping[str, JobHandler]:
     """Build explicitly enabled job handlers without mutating frozen registries."""
     handlers: dict[str, JobHandler] = {}
+    if (
+        "parse" in settings.job_stages
+        and parse_source_metadata is not None
+        and parse_projection is not None
+        and parse_archive_provider is not None
+    ):
+        parse_dependencies = ParseHandlerDependencies(
+            document_source=ObjectStoreDocumentSourceGateway(
+                metadata=parse_source_metadata,
+                objects=GoSourceObjectBytesGateway(
+                    base_url=settings.source_gateway_url or "",
+                    internal_token=settings.source_gateway_token or "",
+                    worker_id=settings.worker_id,
+                ),
+            ),
+            parser=MinerUTextBaselineArchiveParserGateway(parse_archive_provider),
+            projection=parse_projection,
+        )
+        handlers["parse"] = admitted_parse_handler_with_dependencies(
+            parse_dependencies,
+            settings.provider_profile,
+        )
     if "passage_embedding" in settings.job_stages:
         embedding_dependencies = build_jina_passage_embedding_handler_dependencies(
             api_key=settings.jina_api_key,
