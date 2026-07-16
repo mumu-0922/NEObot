@@ -3,9 +3,10 @@
 This module deliberately implements only the evidence-backed local-batch
 ``allocate_upload`` step plus derived signed-upload and poll/result transport
 seams plus a bounded result ZIP download transport seam. Result archive
-validation and Canonical IR normalization remain separate gated slices because
-their public wire contracts are still draft/blocked. Importing this module does
-not register production parse handlers or spend provider quota.
+validation/extraction is structural only; Canonical IR normalization remains a
+separate gated slice because its public wire contract is still draft/blocked.
+Importing this module does not register production parse handlers or spend
+provider quota.
 """
 
 from __future__ import annotations
@@ -165,6 +166,29 @@ class MinerULocalBatchArchiveSummary:
             _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
 
 
+@dataclass(frozen=True, slots=True)
+class MinerULocalBatchArchiveArtifacts:
+    """Validated MinerU role bytes without retained ZIP entry names."""
+
+    summary: MinerULocalBatchArchiveSummary
+    full_markdown: bytes
+    content_list_json: bytes
+    middle_json: bytes
+    model_json: bytes
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.summary, MinerULocalBatchArchiveSummary):
+            _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
+        for content in (
+            self.full_markdown,
+            self.content_list_json,
+            self.middle_json,
+            self.model_json,
+        ):
+            if not isinstance(content, bytes) or not content:
+                _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
+
+
 class MinerULocalBatchGateway:
     """MinerU local-batch allocate gateway for PDF parse jobs."""
 
@@ -268,6 +292,15 @@ class MinerULocalBatchGateway:
         """Validate one MinerU result ZIP without retaining entry names/content."""
         _ = context
         return _validate_result_archive_body(archive_body)
+
+    def extract_result_archive_artifacts(
+        self,
+        context: object,
+        archive_body: bytes,
+    ) -> MinerULocalBatchArchiveArtifacts:
+        """Extract validated MinerU role bytes without normalizing content."""
+        _ = context
+        return _extract_result_archive_artifacts(archive_body)
 
 
 def _allocate_request_body(filename: str) -> JsonObject:
@@ -687,6 +720,28 @@ def _validate_result_archive_body(content: bytes) -> MinerULocalBatchArchiveSumm
     )
 
 
+def _extract_result_archive_artifacts(
+    content: bytes,
+) -> MinerULocalBatchArchiveArtifacts:
+    summary = _validate_result_archive_body(content)
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as archive:
+            role_entries = _required_archive_role_entries(archive.infolist())
+            return MinerULocalBatchArchiveArtifacts(
+                summary=summary,
+                full_markdown=archive.read(role_entries["full_markdown"]),
+                content_list_json=archive.read(role_entries["content_list_json"]),
+                middle_json=archive.read(role_entries["middle_json"]),
+                model_json=archive.read(role_entries["model_json"]),
+            )
+    except PermanentJobError:
+        raise
+    except NotImplementedError:
+        _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
+    except (OSError, RuntimeError, zipfile.BadZipFile, zipfile.LargeZipFile):
+        _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
+
+
 def _read_valid_archive_entries(content: bytes) -> list[zipfile.ZipInfo]:
     try:
         with zipfile.ZipFile(io.BytesIO(content)) as archive:
@@ -774,6 +829,42 @@ def _required_archive_artifacts(
             name == "model.json" or name.endswith("_model.json") for name in basenames
         ),
     }
+
+
+def _required_archive_role_entries(
+    entries: list[zipfile.ZipInfo],
+) -> dict[str, zipfile.ZipInfo]:
+    role_entries: dict[str, zipfile.ZipInfo] = {}
+    for entry in entries:
+        if entry.is_dir():
+            continue
+        role = _archive_entry_role(entry.filename)
+        if role is None:
+            continue
+        if role in role_entries:
+            _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
+        role_entries[role] = entry
+    if set(role_entries) != {
+        "content_list_json",
+        "full_markdown",
+        "middle_json",
+        "model_json",
+    }:
+        _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
+    return role_entries
+
+
+def _archive_entry_role(filename: str) -> str | None:
+    name = PurePosixPath(filename).name
+    if name == "full.md":
+        return "full_markdown"
+    if name == "content_list.json" or name.endswith("_content_list.json"):
+        return "content_list_json"
+    if name in {"layout.json", "middle.json"} or name.endswith("_middle.json"):
+        return "middle_json"
+    if name == "model.json" or name.endswith("_model.json"):
+        return "model_json"
+    return None
 
 
 def _validate_required_archive_artifacts(required: dict[str, bool]) -> None:

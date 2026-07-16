@@ -2129,3 +2129,63 @@ Residual risk:
   dispatch can be promoted.
 - No live MinerU quota is consumed by this slice; the first real provider smoke
   remains in G7.8 or an explicitly owner-authorized bounded smoke cut.
+
+## 2026-07-16 — G7.5.25 Default-off MinerU Archive Artifact Extraction
+
+Objective: extract the four required MinerU semantic role payloads from an
+already validated ZIP without parsing provider content, retaining entry names,
+or promoting parse dispatch. This creates the narrow input surface for the next
+Canonical IR mapping cut.
+
+Implemented behavior:
+
+- Extended `MinerULocalBatchGateway` with `extract_result_archive_artifacts(...)`.
+- The extraction seam revalidates the archive through the G7.5.24 gates before
+  opening any role payload.
+- It extracts only full Markdown, content-list JSON, middle/layout JSON, and
+  model JSON bytes, then returns them with the redacted archive summary.
+- It rejects ambiguous archives with multiple candidates for the same semantic
+  role, preventing later Canonical IR mapping from silently choosing by path
+  ordering.
+- It does not retain ZIP entry names/paths in the returned object and does not
+  parse Markdown or JSON content.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. No
+  provider quota is consumed by tests.
+
+Touched files:
+
+```text
+rag/src/mm_chat_rag/mineru_gateway.py
+rag/tests/unit/test_mineru_gateway.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && uv run ruff check \
+  src/mm_chat_rag/mineru_gateway.py tests/unit/test_mineru_gateway.py
+# passed
+
+cd mm-chat/rag && uv run mypy \
+  src/mm_chat_rag/mineru_gateway.py tests/unit/test_mineru_gateway.py
+# passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider tests/unit/test_mineru_gateway.py
+# 68 passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_provider_capture.py::test_production_dispatch_remains_disabled_and_registries_empty \
+  tests/unit/test_job_handler_dependencies.py
+# 25 passed
+```
+
+Residual risk:
+
+- This is still not a complete MinerU parser gateway. Canonical IR/chunk
+  manifest mapping and parse-handler composition are still required before parse
+  dispatch can be promoted.
+- No live MinerU quota is consumed by this slice; the first real provider smoke
+  remains in G7.8 or an explicitly owner-authorized bounded smoke cut.

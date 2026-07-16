@@ -647,6 +647,23 @@ G7.5.24 completed on 2026-07-16:
 - Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
   slice does not spend provider quota in tests.
 
+G7.5.25 completed on 2026-07-16:
+
+- Added the default-off MinerU archive artifact-extraction seam to
+  `MinerULocalBatchGateway`.
+- The seam reuses the archive validation gates, then extracts only the four
+  required semantic role byte payloads: full Markdown, content-list JSON,
+  middle/layout JSON, and model JSON.
+- Extraction rejects ambiguous archives with multiple candidates for the same
+  semantic role so later Canonical IR mapping cannot silently choose the wrong
+  artifact.
+- Returned artifacts intentionally do not retain ZIP entry names or paths; they
+  carry validated role bytes plus the redacted archive summary from G7.5.24.
+- This slice still does not parse Markdown/JSON content, map Canonical IR/chunk
+  manifests, compose the parser handler, or promote any production registry.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
+  slice does not spend provider quota in tests.
+
 Remaining G7.5 work:
 
 - Complete the rest of the MinerU local-batch execution chain: Canonical
@@ -700,6 +717,9 @@ Validation:
   role presence, invalid ZIPs, unsafe paths, duplicate entries, symlinks, CRC
   mismatch, entry/total expanded-size limits, compression-ratio limits, and
   no entry-name/content retention.
+- MinerU archive artifact-extraction tests, including role byte extraction,
+  nested role paths without name retention, duplicate semantic-role rejection,
+  and validation reuse.
 - Retry-three-times and terminal-failure tests.
 
 ### G7.6 Private query and Go reauthorization

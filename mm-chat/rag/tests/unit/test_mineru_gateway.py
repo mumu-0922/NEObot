@@ -865,3 +865,62 @@ def test_mineru_gateway_rejects_archive_compression_ratio(
         )
 
     assert raised.value.error_code == MINERU_GATEWAY_ARCHIVE_INVALID
+
+
+def test_mineru_gateway_extracts_result_archive_artifacts() -> None:
+    archive_body = _archive()
+    gateway = MinerULocalBatchGateway(SECRET)
+
+    artifacts = gateway.extract_result_archive_artifacts(object(), archive_body)
+
+    assert artifacts.summary.archive_sha256 == hashlib.sha256(archive_body).hexdigest()
+    assert artifacts.full_markdown == b"# full\n"
+    assert artifacts.content_list_json == b"[]"
+    assert artifacts.middle_json == b"{}"
+    assert artifacts.model_json == b"{}"
+    assert not hasattr(artifacts, "entry_names")
+
+
+def test_mineru_gateway_extracts_nested_role_artifacts_without_names() -> None:
+    archive_body = _archive(
+        (
+            ("nested/full.md", b"# nested\n"),
+            ("nested/content_list.json", b"[]"),
+            ("nested/middle.json", b'{"middle":true}'),
+            ("nested/model.json", b'{"model":true}'),
+            ("nested/extra.txt", b"ignored"),
+        )
+    )
+    gateway = MinerULocalBatchGateway(SECRET)
+
+    artifacts = gateway.extract_result_archive_artifacts(object(), archive_body)
+
+    assert artifacts.summary.entry_count == 5
+    assert artifacts.full_markdown == b"# nested\n"
+    assert artifacts.middle_json == b'{"middle":true}'
+    assert artifacts.model_json == b'{"model":true}'
+    assert not hasattr(artifacts, "full_markdown_name")
+
+
+def test_mineru_gateway_rejects_duplicate_archive_roles() -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+    archive_body = _archive(
+        (
+            *ARCHIVE_ENTRIES,
+            ("middle.json", b'{"duplicate":true}'),
+        )
+    )
+
+    with pytest.raises(PermanentJobError) as raised:
+        gateway.extract_result_archive_artifacts(object(), archive_body)
+
+    assert raised.value.error_code == MINERU_GATEWAY_ARCHIVE_INVALID
+
+
+def test_mineru_gateway_extract_revalidates_archive() -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+
+    with pytest.raises(PermanentJobError) as raised:
+        gateway.extract_result_archive_artifacts(object(), b"not-a-zip")
+
+    assert raised.value.error_code == MINERU_GATEWAY_ARCHIVE_INVALID
