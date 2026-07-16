@@ -33,6 +33,7 @@ type Handler struct {
 	activeRuns       *activeRunRegistry
 	cancellationRuns RunCancellationStore
 	ragAssembler     *RAGAnswerAssembler
+	ragAnswerGate    RAGAnswerGovernanceGate
 }
 
 type HandlerOption func(*Handler)
@@ -203,6 +204,12 @@ func WithProvider(provider Provider) HandlerOption {
 func WithRAGAnswerAssembler(assembler *RAGAnswerAssembler) HandlerOption {
 	return func(h *Handler) {
 		h.ragAssembler = assembler
+	}
+}
+
+func WithRAGAnswerGovernanceGate(gate RAGAnswerGovernanceGate) HandlerOption {
+	return func(h *Handler) {
+		h.ragAnswerGate = gate
 	}
 }
 
@@ -1105,7 +1112,7 @@ func (h *Handler) streamStrictRAGRefusal(
 	runID string,
 	selection ragSelection,
 ) {
-	decision := h.strictRAGDecision(r.Context(), conversationID, userMessage, selection)
+	decision := h.strictRAGDecision(r.Context(), conversationID, userMessage, modelRef, selection)
 	content := ragRefusalText()
 	metadata := strictRAGRefusalMetadata(runID, selection, decision)
 
@@ -1192,12 +1199,14 @@ func (h *Handler) streamStrictRAGRefusal(
 type strictRAGDecision struct {
 	Outcome   string
 	Citations []RAGCitation
+	Authority *RAGAnswerAuthority
 }
 
 func (h *Handler) strictRAGDecision(
 	ctx context.Context,
 	conversationID string,
 	userMessage Message,
+	modelRef *ModelRef,
 	selection ragSelection,
 ) strictRAGDecision {
 	session, ok := auth.SessionFromContext(ctx)
@@ -1211,14 +1220,25 @@ func (h *Handler) strictRAGDecision(
 		QueryText:             userMessage.Content,
 		SelectedCollectionIDs: selection.CollectionIDs,
 	})
-	if err == nil {
-		if len(result.Evidence) == 0 {
+	if err == nil || errors.Is(err, ErrRAGAnswerGatePending) {
+		if len(result.Evidence) == 0 || len(result.Citations) == 0 {
 			return strictRAGDecision{Outcome: "insufficient_evidence"}
 		}
-		return strictRAGDecision{Outcome: "answer_gate_pending", Citations: result.Citations}
-	}
-	if errors.Is(err, ErrRAGAnswerGatePending) {
-		return strictRAGDecision{Outcome: "answer_gate_pending", Citations: result.Citations}
+		authority, gateErr := h.authorizeStrictRAGAnswer(ctx, selection, modelRef, result.Citations)
+		if gateErr != nil {
+			if errors.Is(gateErr, ErrRAGAnswerGovernanceRequired) {
+				return strictRAGDecision{Outcome: "answer_governance_required"}
+			}
+			if errors.Is(gateErr, ErrRAGDependencyUnavailable) {
+				return strictRAGDecision{Outcome: "answer_governance_unavailable"}
+			}
+			return strictRAGDecision{Outcome: "dependency_unavailable"}
+		}
+		return strictRAGDecision{
+			Outcome:   "answer_gate_pending",
+			Citations: result.Citations,
+			Authority: &authority,
+		}
 	}
 	if errors.Is(err, ErrRAGDependencyUnavailable) {
 		return strictRAGDecision{Outcome: "dependency_unavailable"}
@@ -1230,6 +1250,22 @@ func (h *Handler) strictRAGDecision(
 	return strictRAGDecision{Outcome: "dependency_unavailable"}
 }
 
+func (h *Handler) authorizeStrictRAGAnswer(
+	ctx context.Context,
+	selection ragSelection,
+	modelRef *ModelRef,
+	citations []RAGCitation,
+) (RAGAnswerAuthority, error) {
+	if h == nil || h.ragAnswerGate == nil || modelRef == nil {
+		return RAGAnswerAuthority{}, ErrRAGDependencyUnavailable
+	}
+	return h.ragAnswerGate.AuthorizeRAGAnswer(ctx, RAGAnswerGovernanceInput{
+		ModelRef:              *modelRef,
+		SelectedCollectionIDs: append([]string(nil), selection.CollectionIDs...),
+		Citations:             append([]RAGCitation(nil), citations...),
+	})
+}
+
 func strictRAGRefusalMetadata(runID string, selection ragSelection, decision strictRAGDecision) map[string]any {
 	knowledgeMetadata := map[string]any{
 		"mode":                  "strict",
@@ -1239,6 +1275,9 @@ func strictRAGRefusalMetadata(runID string, selection ragSelection, decision str
 	}
 	if len(decision.Citations) > 0 {
 		knowledgeMetadata["citations"] = append([]RAGCitation(nil), decision.Citations...)
+	}
+	if decision.Authority != nil {
+		knowledgeMetadata["answerGovernance"] = *decision.Authority
 	}
 	return map[string]any{
 		"runId":     runID,

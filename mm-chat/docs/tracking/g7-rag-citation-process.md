@@ -4484,3 +4484,59 @@ Residual risk:
   metadata, and frontend citation rendering remain subsequent G7.7 slices.
 - Citation cards currently use document IDs and locator JSON from hydrated
   evidence; richer file-name/title enrichment remains a frontend/API follow-up.
+
+## 2026-07-16 — G7.7C Answer-Purpose Governance Gate
+
+Objective: require explicit answer-purpose governance before any hydrated
+Knowledge evidence or citation context can be forwarded to an answer provider.
+
+Implemented behavior:
+
+- Added `RAGAnswerGovernanceGate` and a Knowledge consent-backed implementation.
+  The gate checks current user query consents and each selected collection's
+  consents for the selected answer `modelRef` provider/model, `answer` purpose,
+  and `text/plain` data type.
+- Wired strict chat RAG so answer governance runs after evidence hydration and
+  citation minting but before the still-pending answer provider path. Missing
+  consent returns `answer_governance_required`; missing gate wiring returns
+  `answer_governance_unavailable`; unexpected consent-store failures fail closed
+  as dependency failures.
+- Citations are now withheld from persisted strict refusal metadata until the
+  answer-purpose gate authorizes the evidence. Once authorized, strict mode still
+  stops at `answer_gate_pending` and includes safe answer-governance authority
+  metadata for future answer assembly.
+- HTTP server wiring installs the Knowledge consent-backed gate when the
+  Knowledge service is configured.
+
+Touched files:
+
+```text
+backend/internal/chat/rag_answer_governance.go
+backend/internal/chat/rag_answer_governance_test.go
+backend/internal/chat/handler.go
+backend/internal/chat/handler_test.go
+backend/internal/httpserver/server.go
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && \
+  GOCACHE=/tmp/neo-chat-go-build go test ./internal/chat -count=1
+# passed
+
+cd mm-chat/backend && \
+  GOCACHE=/tmp/neo-chat-go-build go test ./internal/httpserver -count=1
+# passed
+```
+
+Residual risk:
+
+- This slice still does not build answer-provider prompts or call the selected
+  answer provider with RAG context. That is the next G7.7 slice.
+- Consent matching currently keys off `modelRef.providerId` and `modelRef.modelId`;
+  richer endpoint/provider mapping can be added when the provider settings UI is
+  promoted.

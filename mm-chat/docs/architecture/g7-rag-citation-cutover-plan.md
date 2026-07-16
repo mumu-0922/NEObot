@@ -1346,11 +1346,27 @@ G7.7B completed on 2026-07-16:
   reached the pending answer gate, `citations`. This gives the frontend a basic
   card contract without sending hydrated source text to the answer provider.
 
+G7.7C completed on 2026-07-16:
+
+- Added an answer-purpose governance gate before any future answer-provider
+  context injection. The concrete gate reuses existing Knowledge consent
+  surfaces and requires both a current user query consent and a current consent
+  on every selected collection for the answer model/provider and `answer` +
+  `text/plain` purpose/data type.
+- Strict Knowledge now fails closed with `answer_governance_required` when the
+  user or selected collection lacks answer consent, and with
+  `answer_governance_unavailable` when the governance gate is not wired.
+  Citations are withheld until the answer-purpose gate authorizes the evidence.
+- The server wiring attaches the Knowledge consent-backed gate when the
+  Knowledge service is present. This still does not call the answer provider; an
+  authorized path continues to stop at `answer_gate_pending` until answer
+  context assembly is implemented.
+
 Remaining G7.7 slices:
 
 - Wire RAG answer generation into Go chat flow or a Go-owned RAG answer route.
-- Add answer-purpose provider consent/governance before any hydrated source text
-  reaches an answer provider.
+- Build the grounded answer context from authorized evidence/citations and send
+  it to the already-selected answer provider.
 - Strict mode refuses unknowns; normal chat may degrade with explicit metadata.
 - Persist successful answer/citation metadata atomically where applicable.
 - Frontend renders basic citation markers/cards for selected Knowledge answers.

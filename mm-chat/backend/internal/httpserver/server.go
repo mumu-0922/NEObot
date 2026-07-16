@@ -244,10 +244,21 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		resolvedOptions.authService,
 		auth.WithAuthRateLimitStore(resolvedOptions.rateLimitStore),
 	)
-	chatHandler := chat.NewHandler(
-		chat.NewService(resolvedOptions.chatRepository),
+	chatOptions := []chat.HandlerOption{
 		chat.WithProvider(resolvedOptions.chatProvider),
 		chat.WithRunCancellationStore(resolvedOptions.runCancellationStore),
+	}
+	if resolvedOptions.knowledgeService != nil {
+		chatOptions = append(
+			chatOptions,
+			chat.WithRAGAnswerGovernanceGate(
+				chat.NewKnowledgeConsentRAGAnswerGovernanceGate(resolvedOptions.knowledgeService),
+			),
+		)
+	}
+	chatHandler := chat.NewHandler(
+		chat.NewService(resolvedOptions.chatRepository),
+		chatOptions...,
 	)
 	fileHandler := files.NewHandler(
 		files.NewService(

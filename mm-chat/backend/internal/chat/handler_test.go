@@ -743,6 +743,15 @@ func TestHandlerStrictRAGFailsClosedWhenAnswerGatePending(t *testing.T) {
 			&fakeRAGCandidateSource{refs: []knowledge.EvidenceCandidateReference{validRAGCandidate()}},
 			&fakeRAGHydrator{evidence: []knowledge.HydratedEvidence{validHydratedEvidence()}},
 		)),
+		WithRAGAnswerGovernanceGate(&fakeRAGAnswerGovernanceGate{
+			authority: RAGAnswerAuthority{
+				Processor:           "mock",
+				ModelID:             "mock-chat",
+				ProfileContractHash: strings.Repeat("a", 64),
+				PolicyVersion:       "v1",
+				CollectionCount:     1,
+			},
+		}),
 	)
 
 	rec := performAuthenticatedRequest(
@@ -767,6 +776,49 @@ func TestHandlerStrictRAGFailsClosedWhenAnswerGatePending(t *testing.T) {
 	}
 	if citations[0].Marker != "[1]" || citations[0].Snippet != "alpha evidence source" {
 		t.Fatalf("citation = %#v", citations[0])
+	}
+	authority, ok := knowledgeMetadata["answerGovernance"].(RAGAnswerAuthority)
+	if !ok || authority.Processor != "mock" || authority.CollectionCount != 1 {
+		t.Fatalf("answerGovernance = %#v", knowledgeMetadata["answerGovernance"])
+	}
+}
+
+func TestHandlerStrictRAGRequiresAnswerGovernanceBeforeProvider(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "Summarize the indexed source"),
+	)
+	provider := &strictRAGProviderProbe{}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithRAGAnswerAssembler(NewRAGAnswerAssembler(
+			&fakeRAGCandidateSource{refs: []knowledge.EvidenceCandidateReference{validRAGCandidate()}},
+			&fakeRAGHydrator{evidence: []knowledge.HydratedEvidence{validHydratedEvidence()}},
+		)),
+		WithRAGAnswerGovernanceGate(&fakeRAGAnswerGovernanceGate{err: ErrRAGAnswerGovernanceRequired}),
+	)
+
+	rec := performAuthenticatedRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"metadata":{"ragStrict":true,"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-rag-governance-required"}`,
+	)
+
+	assertStreamStatus(t, rec, http.StatusOK)
+	if provider.called {
+		t.Fatal("provider StreamChat was called before strict RAG answer governance gate")
+	}
+	assertStrictRAGRefusalMessage(t, repo, "answer_governance_required")
+	knowledgeMetadata := repo.messages[testConversationID][1].Metadata["knowledge"].(map[string]any)
+	if knowledgeMetadata["citationCount"] != 0 {
+		t.Fatalf("citationCount = %#v, want 0 when answer governance is missing", knowledgeMetadata["citationCount"])
+	}
+	if _, ok := knowledgeMetadata["citations"]; ok {
+		t.Fatalf("citations leaked before answer governance: %#v", knowledgeMetadata["citations"])
 	}
 }
 
@@ -2111,6 +2163,23 @@ func (p *strictRAGProviderProbe) StreamChat(context.Context, ProviderRequest) (<
 	ch := make(chan ProviderEvent)
 	close(ch)
 	return ch, nil
+}
+
+type fakeRAGAnswerGovernanceGate struct {
+	authority RAGAnswerAuthority
+	err       error
+	input     RAGAnswerGovernanceInput
+}
+
+func (g *fakeRAGAnswerGovernanceGate) AuthorizeRAGAnswer(
+	_ context.Context,
+	input RAGAnswerGovernanceInput,
+) (RAGAnswerAuthority, error) {
+	g.input = input
+	if g.err != nil {
+		return RAGAnswerAuthority{}, g.err
+	}
+	return g.authority, nil
 }
 
 type titleProvider struct {
