@@ -33,6 +33,29 @@ temp_dir="$(mktemp -d)"
 copy_dir="${temp_dir}/mm-chat"
 trap 'rm -rf "${temp_dir}"' EXIT
 
+docker_bin="${DOCKER_BIN:-docker}"
+docker_uses_windows_paths=false
+if ! "${docker_bin}" compose version >/dev/null 2>&1; then
+  windows_docker="/mnt/c/Program Files/Docker/Docker/resources/bin/docker.exe"
+  if [[ -x "${windows_docker}" ]] && "${windows_docker}" compose version >/dev/null 2>&1; then
+    docker_bin="${windows_docker}"
+    docker_uses_windows_paths=true
+  else
+    echo "standalone verification: docker compose is required for Compose topology rendering" >&2
+    echo "standalone verification: start Docker Desktop and enable WSL integration, or set DOCKER_BIN" >&2
+    exit 1
+  fi
+fi
+
+docker_path() {
+  local path="$1"
+  if [[ "${docker_uses_windows_paths}" == true ]]; then
+    wslpath -w "${path}"
+  else
+    printf '%s\n' "${path}"
+  fi
+}
+
 mkdir -p "${copy_dir}"
 tar \
   --exclude='./.env.single-server' \
@@ -86,9 +109,9 @@ if rg -n --hidden \
 fi
 
 compose_json="${temp_dir}/compose.json"
-docker compose \
-  --project-directory "${copy_dir}" \
-  -f "${copy_dir}/compose.yml" \
+"${docker_bin}" compose \
+  --project-directory "$(docker_path "${copy_dir}")" \
+  -f "$(docker_path "${copy_dir}/compose.yml")" \
   --profile app --profile ops --profile rag-worker --profile rag-ops \
   config --format json >"${compose_json}"
 
@@ -99,6 +122,20 @@ from pathlib import Path
 
 config = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 root = Path(sys.argv[2]).resolve()
+
+
+def normalize_path(value: str) -> Path:
+    # Windows docker.exe may render WSL paths as UNC paths such as
+    # \\wsl.localhost\Ubuntu\tmp\...; convert those back before comparing
+    # against the Linux-side clean-copy root.
+    normalized = value.replace("\\", "/")
+    for prefix in ("//wsl.localhost/Ubuntu", "//wsl$/Ubuntu"):
+        if normalized.startswith(prefix + "/"):
+            normalized = normalized[len(prefix) :]
+            break
+    return Path(normalized).resolve()
+
+
 services = config["services"]
 required = {
     "frontend",
@@ -120,7 +157,7 @@ for name, service in services.items():
     build = service.get("build")
     if not build:
         continue
-    context = Path(build["context"]).resolve()
+    context = normalize_path(str(build["context"]))
     if context != root and root not in context.parents:
         raise SystemExit(
             f"standalone verification: {name} build context escapes project: {context}"

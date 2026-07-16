@@ -593,6 +593,13 @@ Slice sequence:
         production `.env.single-server` that passes immutable image preflight,
         then rerun backup, checksum, restore drills, and rollback evidence for
         the final deletion gate.
+    - [x] G10.2b.1 Release image script: add an independent `mm-chat` script
+          that builds backend, frontend, and RAG images, supports local
+          `--load` smoke builds, supports explicit `--push`, and emits
+          production `@sha256:` env lines after registry publish.
+    - [ ] G10.2b.2 Production digest env proof: run the script with `--push`,
+          copy emitted image refs into `.env.single-server`, pass production
+          preflight, then repeat backup/restore evidence.
 - [x] G10.3 Visual/interaction closure: record desktop and mobile smoke for
       app shell, chat streaming, model/provider visibility, Knowledge citation
       cards, Files/upload when configured, and navigation.

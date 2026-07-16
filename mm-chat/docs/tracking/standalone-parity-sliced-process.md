@@ -29,6 +29,53 @@ implemented, tested, and recorded, create a focused Git commit for that
 completed group before starting the next group. Do not batch unrelated future
 groups into the same commit.
 
+## 2026-07-16 — G10.2b.1 Release Image Script
+
+Objective: unblock the production immutable-env gate by adding a standalone
+`mm-chat` image release script that can build all three runtime images and emit
+the digest env lines required by production preflight after a registry push.
+
+Completed scope:
+
+- added `scripts/release-images.sh`;
+- builds the Go backend/admin/migrate image from `backend/Dockerfile`;
+- builds the server-mode Next.js frontend image from `frontend/Dockerfile` with
+  `/mm-api` and `http://backend:8080` build defaults;
+- builds the Python RAG worker image from `rag/Dockerfile`;
+- defaults to safe local `--load` mode for smoke builds;
+- requires explicit `--push` before publishing registry images;
+- writes local metadata under `.release/images/<tag>/`, now gitignored;
+- in `--push` mode, reads Docker Buildx metadata and emits
+  `MM_CHAT_VERSION`, `BACKEND_IMAGE`, `FRONTEND_IMAGE`, and `RAG_IMAGE` lines
+  with immutable `@sha256:` references;
+- made `verify-standalone.sh` fall back to Windows Docker CLI for Compose
+  topology rendering when WSL Docker integration is unavailable, while
+  normalizing returned UNC build-context paths back to the clean-copy root;
+- documented the workflow in `docs/deployment/release-rollback.md`;
+- recorded G10.2b as split between the completed script and the still-pending
+  production digest env proof.
+
+Verification:
+
+```text
+bash -n mm-chat/scripts/release-images.sh                    # passed
+mm-chat/scripts/release-images.sh --dry-run --tag smoke-test  # printed backend/frontend/rag buildx commands
+mm-chat/scripts/release-images.sh --dry-run --push --tag smoke-test
+  # printed backend/frontend/rag buildx push commands
+cd mm-chat && ./scripts/release-images.sh --load --tag g10-release-smoke
+  # blocked in current shell: Docker daemon is not reachable / WSL integration is disabled
+bash mm-chat/scripts/verify-standalone.sh                    # passed (structure)
+```
+
+Residual blockers:
+
+```text
+G10.2b.2 still needs a real registry push and production digest env proof. This
+script does not push by default and does not modify `.env.single-server`.
+Current WSL shell also needs Docker Desktop daemon access restored before local
+`--load` smoke or production `--push` can run.
+```
+
 ## 2026-07-16 — G10.3b Browser Screenshot/Interaction Smoke
 
 Objective: complete the remaining browser-backed desktop/mobile visual smoke

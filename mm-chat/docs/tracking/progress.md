@@ -1199,6 +1199,13 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           `.env.single-server` is not a production immutable-image env
           (`FRONTEND_IMAGE` preflight missing), so the final deletion gate still
           needs production backup/restore evidence.
+      - [x] G10.2b.1 Release image script: `scripts/release-images.sh` builds
+            backend, frontend, and RAG images, supports local `--load` smoke
+            builds, supports explicit `--push`, and emits production
+            `@sha256:` env lines after registry publish.
+      - [ ] G10.2b.2 Production digest env proof: run the script with `--push`,
+            copy emitted refs into `.env.single-server`, pass production
+            preflight, then repeat backup/restore evidence.
   - [x] G10.3 Visual/interaction closure: record desktop/mobile smoke for app
         shell, chat streaming, model/provider visibility, Knowledge citation
         cards, Files/upload when configured, and navigation.

@@ -4,11 +4,12 @@ This runbook applies to the single-server `mm-chat` Compose stack. It assumes
 real secrets live in `mm-chat/.env.single-server` and runtime data lives in
 `mm-chat/data/`.
 
-Each production release must set `BACKEND_IMAGE` to a full immutable registry
-digest (`registry/repository@sha256:<64 lowercase hex>`). Mutable tags are for
-local development only and cannot pass promotion preflight. Keep the previous
-container image ID and registry digest until post-release verification and the
-rollback window are complete.
+Each production release must set `BACKEND_IMAGE`, `FRONTEND_IMAGE`, and
+`RAG_IMAGE` to full immutable registry digests
+(`registry/repository@sha256:<64 lowercase hex>`). Mutable tags are for local
+development only and cannot pass promotion preflight. Keep the previous
+container image IDs and registry digests until post-release verification and
+the rollback window are complete.
 
 Production env files contain direct values only. Preflight rejects every `$`
 to prevent Compose interpolation from changing a value after validation; use
@@ -16,6 +17,54 @@ URL-safe/base64 secrets and percent-encode URL credentials where required. The
 production Compose wrapper clears host environment precedence and applies an
 override that removes all backend/migrate/admin `build:` definitions. It also
 rejects alternate Compose/env files and every explicit build request.
+
+## Build Standalone Images
+
+Use the standalone image release script from the `mm-chat/` project root. It
+builds the Go backend/admin/migrate image, the server-mode Next.js frontend
+image, and the Python RAG worker image from their isolated subdirectories.
+Run it from a shell that can reach the Docker daemon. On Windows/WSL this means
+Docker Desktop is running and WSL integration is enabled for the active distro.
+
+Local smoke build:
+
+```bash
+cd mm-chat
+./scripts/release-images.sh --load --tag smoke-local
+```
+
+The local `--load` mode writes `.release/images/<tag>/local-images.env`. Local
+tags are useful for smoke tests, but they are not immutable registry digests and
+cannot pass production preflight.
+
+Production publish:
+
+```bash
+cd mm-chat
+docker login ghcr.io
+./scripts/release-images.sh \
+  --push \
+  --image-namespace ghcr.io/mumu-0922 \
+  --tag <release-id>
+```
+
+After a successful push, the script writes:
+
+```text
+.release/images/<release-id>/production-images.env
+```
+
+Copy the four lines from that file into `.env.single-server`:
+
+```env
+MM_CHAT_VERSION=<release-id>
+BACKEND_IMAGE=ghcr.io/.../neobot-mm-chat@sha256:<digest>
+FRONTEND_IMAGE=ghcr.io/.../neobot-mm-chat-frontend@sha256:<digest>
+RAG_IMAGE=ghcr.io/.../neobot-mm-chat-rag@sha256:<digest>
+```
+
+Do not hand-edit digest strings from mutable tags. The production gate accepts
+only the `@sha256:` references emitted after a registry push.
 
 ## Pre-Release Gate
 
