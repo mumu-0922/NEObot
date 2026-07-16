@@ -1098,7 +1098,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         (`G7.6A` selected-collection evidence candidate fetch is live-proven:
         active published materializations in explicitly selected collections can
         return reference-only candidates, while unselected collections return
-        none; Go reauthorization/hydration remains next).
+        none; `G7.6B` Go hydration now reauthorizes selected references through
+        Postgres, binds `source_span_hash` + `content_hash`, rejects stale or
+        unselected refs, and returns no body on failure; chat answer/citation
+        assembly remains G7.7).
   - [ ] G7.7 Strict/optional chat answer and basic citations.
   - [ ] G7.8 Live MinerU + Jina + Postgres smoke and operational proof.
   - [ ] G7.9 G8/G9 handoff and G7 closure checklist.

@@ -1272,11 +1272,35 @@ G7.6A completed on 2026-07-16:
   UUIDs, malformed hashes, negative/bool ranks, and still carries no content.
 - The promoted embedding live smoke now proves one selected collection returns
   its published evidence reference while an unselected collection returns zero
-  candidates. Go reauthorization/hydration remains the next G7.6 slice.
+  candidates.
+
+G7.6B completed on 2026-07-16:
+
+- Added migration `023_rag_evidence_hydration_reauthorization` to replace
+  `knowledge_reauthorize_and_hydrate_evidence(...)` with a content-hash-bound
+  Go-only hydration contract. The function still requires an active
+  actor/session/conversation tuple before returning any text, and now accepts
+  `content_hash` in every reference and returns it with the hydrated row.
+- Tightened hydration fences against current Postgres authority: active corpus
+  generation, active document projection head, published materialization,
+  active current document version, collection ACL/visibility/processing
+  revisions, document/version visibility epoch, version source hash, child
+  `source_span_hash`, and child `content_hash`.
+- Added Go `PostgresRepository.ReauthorizeAndHydrateEvidence(...)` as the
+  future Go-side bridge from Python reference-only candidates to citation-ready
+  source text. It rejects malformed/duplicate references, rejects references
+  outside the current chat-selected collection set before SQL, preserves rank
+  ordering, and fails closed if any submitted reference does not hydrate.
+- Live PostgreSQL proof covers valid team-member hydration plus rejection of a
+  wrong team actor, unselected collection, stale materialization, stale document
+  version, and content-hash mismatch. Rejected paths return no source body.
 
 - Query only the current chat-selected collection IDs.
-- Python returns evidence candidates; Go rechecks ACL, collection membership,
-  document version, visibility epoch, source hash, and consent/governance state.
+- Python returns evidence candidates; Go rechecks ACL, selected collection
+  membership, document version/current pointer, visibility epochs, projection
+  head, source span hash, and content hash before any source text reaches answer
+  generation. Answer-purpose BYOK/governance consent remains part of G7.7 chat
+  answer assembly.
 - Strict query fails closed if required lanes/providers are unavailable.
 
 Validation:

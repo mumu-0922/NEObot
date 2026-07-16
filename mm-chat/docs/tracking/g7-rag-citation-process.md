@@ -4277,3 +4277,94 @@ Residual risk:
   existing lexical/exact Postgres lane.
 - Go reauthorization and hydration of returned references is intentionally the
   next G7.6 slice before any answer/citation UI work.
+
+
+## 2026-07-16 — G7.6B Go Reauthorization and Hydration
+
+Objective: convert Python reference-only query candidates into citation-ready
+source text only after Go rechecks the current Postgres authority for the
+selected chat collections.
+
+Implemented behavior:
+
+- Added migration `023_rag_evidence_hydration_reauthorization`.
+- Replaced `knowledge_reauthorize_and_hydrate_evidence(...)` so every reference
+  now carries `content_hash` and the hydrated result echoes `content_hash`.
+- The security-definer function still requires a live actor/session/conversation
+  tuple, then rechecks active corpus generation, active document projection
+  head, published materialization, active/current document version, collection
+  ACL/visibility/processing revisions, document/version visibility epoch,
+  version source hash, child `source_span_hash`, and child `content_hash` before
+  returning bounded source text.
+- Added Go `PostgresRepository.ReauthorizeAndHydrateEvidence(...)` with
+  selected-collection allowlist validation, UUID/hash/rank validation,
+  duplicate-reference rejection, deterministic output ordering by candidate
+  order, and fail-closed behavior when any submitted reference fails to hydrate.
+- Added tests proving that malformed candidates are rejected before hydration
+  and a live PostgreSQL team fixture hydrates only the authorized member path.
+  Wrong team actor, unselected collection, stale materialization, stale document
+  version, and content-hash mismatch all return `ErrEvidenceHydrationRejected`
+  with no source body.
+
+Touched files:
+
+```text
+backend/migrations/023_rag_evidence_hydration_reauthorization.up.sql
+backend/migrations/023_rag_evidence_hydration_reauthorization.down.sql
+backend/internal/migration/phase15_rag_evidence_hydration_schema_test.go
+backend/internal/knowledge/evidence_postgres.go
+backend/internal/knowledge/evidence_postgres_test.go
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && \
+  GOCACHE=/tmp/neo-chat-go-build go test ./internal/migration \
+    -run 'RAGEvidenceHydration|RAGQueryEvidenceCandidates|RAGEmbeddingCompletionPublish|RAGParseCompletionEnqueueEmbedding|RAGPassageEmbeddingProjectionGateway|RAGWorkerProjectionGate' \
+    -count=1
+# passed
+
+cd mm-chat/backend && \
+  GOCACHE=/tmp/neo-chat-go-build go test ./internal/knowledge \
+    -run 'TestNormalizeReauthorizeEvidenceRejectsUnsafeCandidateShapes' \
+    -count=1
+# passed
+
+# disposable live proof
+# - postgres:16-alpine container: mm-chat-test-postgres
+# - applied migrations 001 through 023
+cd mm-chat/backend && \
+  MM_CHAT_TEST_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable' \
+  MM_CHAT_REQUIRE_POSTGRES_TESTS=true \
+  GOCACHE=/tmp/neo-chat-go-build go test ./internal/knowledge \
+    -run 'TestPostgresReauthorizeAndHydrateEvidenceFencesReferences' \
+    -count=1
+# passed
+
+# rollback compile proof for this slice
+cd mm-chat/backend && \
+  MIGRATION_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable' \
+  GOCACHE=/tmp/neo-chat-go-build go run ./cmd/migrate down
+# down 023_rag_evidence_hydration_reauthorization
+
+cd mm-chat/backend && \
+  MIGRATION_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable' \
+  GOCACHE=/tmp/neo-chat-go-build go run ./cmd/migrate up
+# up 023_rag_evidence_hydration_reauthorization
+
+# cleanup verified
+# docker ps -a --format '{{.Names}}' | grep -Fx mm-chat-test-postgres
+# no output
+```
+
+Residual risk:
+
+- This still does not call Jina query embedding/rerank providers.
+- This does not yet assemble prompt context, answer-purpose consent, assistant
+  message persistence, or frontend citation cards; those remain G7.7.
+- The Go HTTP/chat entrypoint still needs to carry the resolved session ID into
+  RAG answer assembly instead of relying only on `auth.User` context.
