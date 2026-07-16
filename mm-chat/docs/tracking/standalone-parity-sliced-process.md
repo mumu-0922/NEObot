@@ -29,6 +29,49 @@ implemented, tested, and recorded, create a focused Git commit for that
 completed group before starting the next group. Do not batch unrelated future
 groups into the same commit.
 
+## 2026-07-16 — G9.1 Route Inventory Freeze
+
+Objective: freeze the current transitional Next API handler surface before G9
+starts deleting handlers one domain at a time.
+
+Completed scope:
+
+- added a static inventory smoke test for all current
+  `mm-chat/frontend/src/app/api/**/route.ts` handlers;
+- locked the current 25 transitional route paths so accidental route drift
+  fails before route-deletion slices silently change the standalone boundary;
+- expanded the G9 sub-plan into deletion groups for RAG/doc-parse,
+  config/provider/BYOK, plugin/agent, local authority removal, and clean-copy
+  preflight.
+
+Changed surfaces:
+
+```text
+mm-chat/frontend/src/__tests__/legacyRouteInventory.test.ts
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/legacyRouteInventory.test.ts                    # passed, 1 test
+cd mm-chat/frontend && corepack pnpm typecheck                  # passed
+cd mm-chat/frontend && corepack pnpm lint                       # passed
+cd mm-chat/frontend && corepack pnpm format:check               # passed
+git diff --check -- mm-chat                                     # passed
+```
+
+Residual blockers:
+
+```text
+No route was deleted in G9.1. G9.2 owns deletion of replaced RAG/doc-parse
+Next handlers and the nearby local-mode/service references.
+No live browser screenshot is claimed for this static guard slice.
+```
+
 ## 2026-07-15 — G0 Plan Freeze and Guardrails Completed
 
 Objective: collect all remaining unfinished migration work into a new active

@@ -539,6 +539,25 @@ Scope:
 - remove replaced Next `/api/*` handlers;
 - ensure no build/runtime path escapes from `mm-chat/` to former root.
 
+Slice sequence:
+
+- [x] G9.1 Route inventory freeze: lock the current transitional Next
+      `src/app/api/**/route.ts` surface with a static test before deleting any
+      handlers.
+- [ ] G9.2 RAG/doc-parse route removal: remove replaced `/api/rag/*`,
+      `/api/doc-parse*`, and `/api/chat/rag-queries` handlers after Go/RAG
+      server-mode callers stay green.
+- [ ] G9.3 Config/provider/BYOK route removal: retire `/api/config`,
+      `/api/providers/models`, and `/api/byok/public-key` from production
+      server-mode flow.
+- [ ] G9.4 Plugin/agent route removal: retire transitional
+      `/api/plugins/*` and `/api/agents*` handlers or fence any static catalog
+      replacement as server-owned.
+- [ ] G9.5 Local production authority removal: hard-fence browser-local
+      IndexedDB/localforage/OPFS write authority to dev/import-only paths.
+- [ ] G9.6 Clean-copy preflight: prove `mm-chat/` build/test/runtime no longer
+      imports former-root artifacts.
+
 Targeted tests:
 
 - static path/import/build-context gate;
@@ -578,7 +597,7 @@ Targeted tests:
 | G6 Voice/Image/Code Jobs                 | In progress | Image generation is reopened through Go artifacts; voice executor remains    |
 | G7 Knowledge/RAG/Citations               | Complete    | Live MinerU + Jina + Postgres strict citation loop passed                    |
 | G8 Teams/Knowledge UI                    | Complete    | G8.1-G8.5 frontend control-plane wiring and isolation smoke passed           |
-| G9 Data Authority/Route Removal          | Pending     | local production authority and replaced routes gone                          |
+| G9 Data Authority/Route Removal          | In progress | G9.1 route inventory freeze passed; deletion slices remain                    |
 | G10 Final Closure/Delete Plan            | Pending     | Clean-copy and delete-plan gates pass                                        |
 
 ## Update Discipline

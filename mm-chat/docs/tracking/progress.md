@@ -1155,6 +1155,19 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         config/metadata.
 - [ ] G9 Data Authority and Legacy Route Removal: remove production local-mode
       authority and replaced Next API handlers.
+  - [x] G9.1 Route inventory freeze: added a static guard for the current 25
+        transitional `src/app/api/**/route.ts` handlers before deletion slices.
+  - [ ] G9.2 RAG/doc-parse route removal: remove replaced `/api/rag/*`,
+        `/api/doc-parse*`, and `/api/chat/rag-queries` handlers.
+  - [ ] G9.3 Config/provider/BYOK route removal: retire production
+        `/api/config`, `/api/providers/models`, and `/api/byok/public-key`
+        reliance.
+  - [ ] G9.4 Plugin/agent route removal: retire or hard-fence
+        `/api/plugins/*` and `/api/agents*`.
+  - [ ] G9.5 Local production authority removal: hard-fence browser-local
+        IndexedDB/localforage/OPFS authority to dev/import-only paths.
+  - [ ] G9.6 Clean-copy preflight: prove `mm-chat/` runs without former-root
+        imports/build context.
 - [ ] G10 Operations, Visual Regression, Clean Copy, and Delete Plan: complete
       final closure gates before any former-root deletion.
 
