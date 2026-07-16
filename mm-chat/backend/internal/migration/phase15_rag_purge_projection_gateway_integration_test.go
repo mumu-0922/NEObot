@@ -44,8 +44,8 @@ func TestPhase15RAGPurgeProjectionGatewayLivePostgres(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fresh up through purge projection gateway: %v", err)
 	}
-	if len(applied) != 14 || applied[len(applied)-1].Version != 14 {
-		t.Fatalf("fresh applied = %#v, want 001-014", applied)
+	if len(applied) < 14 || applied[13].Version != 14 {
+		t.Fatalf("fresh applied = %#v, want migration 014 present", applied)
 	}
 
 	fixture := seedPhase15RAGPurgeProjectionFixture(t, ctx, db)

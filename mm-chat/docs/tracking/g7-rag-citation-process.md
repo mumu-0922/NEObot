@@ -1099,3 +1099,86 @@ Residual risk:
 - This proves the purge gateway surface only. Parse object-store/MinerU
   adapters, passage Jina embedding adapters, dispatch registry promotion,
   retry/DLQ behavior, and query/citation surfaces remain gated future slices.
+
+## 2026-07-16 — G7.5.11 Default-off Postgres Passage Embedding Projection Gateway
+
+Objective: attach the Postgres fetch/stage half of the
+`passage_embedding` handler seam without calling Jina or promoting production
+dispatch. This keeps the blast radius to one stage-specific database gateway.
+
+Implemented behavior:
+
+- Added migration `015_rag_passage_embedding_projection_gateway` with two
+  worker-execute-only functions:
+  - `knowledge_fetch_passage_embedding_candidates(...)` validates the admitted
+    `passage_embedding` Job lease, Generation, and Materialization, then
+    returns deterministic child text candidates from the search projection.
+  - `knowledge_stage_passage_embedding(...)` validates the same lease fence,
+    enforces `jina-embeddings-v4`, exactly `1024` REAL lanes, and a redacted
+    vector hash, then marks the matching child search projection row `ready`.
+- Fetch includes both `staging` and `ready` search rows. That makes a replay
+  after a partial stage idempotent: the handler re-embeds the full
+  Materialization set and the existing completeness gate still receives the
+  full expected child count.
+- Extended `PostgresAdapter` with
+  `fetch_passage_embedding_candidates(...)` and
+  `stage_passage_embeddings(...)`, while preserving the existing
+  `knowledge_assert_materialization_search_complete(...)` call for final
+  completeness.
+- Kept production `JOB_HANDLER_REGISTRY` and `DISPATCH_REGISTRY` empty. This
+  slice enables only a default-off projection gateway; it does not spend Jina
+  quota and does not claim live work.
+
+Touched files:
+
+```text
+backend/migrations/015_rag_passage_embedding_projection_gateway.up.sql
+backend/migrations/015_rag_passage_embedding_projection_gateway.down.sql
+backend/internal/migration/phase15_rag_passage_embedding_projection_gateway_schema_test.go
+backend/internal/migration/phase15_rag_purge_projection_gateway_integration_test.go
+rag/src/mm_chat_rag/postgres.py
+rag/tests/unit/test_postgres.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./internal/migration \
+  -run 'TestPhase15RAG(PassageEmbeddingProjectionGateway|PurgeProjectionGateway|SearchProjection|WorkerProjectionGate)' \
+  -count=1 -v
+# PASS, with live Postgres test skipped when MM_CHAT_TEST_DATABASE_URL is absent
+
+docker run --rm -d --name mm-chat-pg-g7511 \
+  -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=mm_chat \
+  -p 127.0.0.1:15433:5432 postgres:16-alpine
+cd mm-chat/backend && MM_CHAT_TEST_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15433/mm_chat?sslmode=disable' \
+  GOCACHE=/tmp/neo-chat-go-build \
+  go test ./internal/migration \
+  -run 'TestPhase15RAG(PassageEmbeddingProjectionGateway|PurgeProjectionGateway)' \
+  -count=1 -v
+# PASS; migration 015 compiles in the live 001-latest chain
+docker rm -f mm-chat-pg-g7511
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_postgres.py tests/unit/test_job_handler_dependencies.py
+# 46 passed
+
+cd mm-chat/rag && uv run ruff check \
+  src/mm_chat_rag/postgres.py tests/unit/test_postgres.py
+# passed
+
+cd mm-chat/rag && uv run mypy \
+  src/mm_chat_rag/postgres.py src/mm_chat_rag/job_handler_dependencies.py
+# passed
+```
+
+Residual risk:
+
+- The real Jina passage embedding provider gateway is still absent, so this
+  cannot embed without fake/unit gateways.
+- Parse object-store/MinerU/Postgres staging, purge/embedding registry
+  promotion, retry/DLQ behavior, and query/citation surfaces remain future
+  gated slices.

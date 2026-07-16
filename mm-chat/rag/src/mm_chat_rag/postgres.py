@@ -17,10 +17,14 @@ from mm_chat_rag.job_context import (
     ProcessingJobContext,
 )
 from mm_chat_rag.job_handler_dependencies import (
+    JOB_HANDLER_EMBEDDING_CANDIDATE_INVALID,
+    JOB_HANDLER_EMBEDDING_VECTOR_INVALID,
     JOB_HANDLER_PURGE_PROJECTION_INVALID,
     JOB_HANDLER_PURGE_VISIBILITY_INVALID,
+    PassageEmbeddingCandidate,
     PurgeInvisibilityResult,
     PurgeProjectionResult,
+    StagedPassageEmbedding,
 )
 from mm_chat_rag.metrics import Metrics
 from mm_chat_rag.models import (
@@ -49,6 +53,13 @@ _SQL: Final[Mapping[str, str]] = {
     "readiness": "SELECT * FROM knowledge_rag_worker_readiness()",
     "assert_search_complete": (
         "SELECT * FROM knowledge_assert_materialization_search_complete(%s, %s, %s, %s)"
+    ),
+    "fetch_passage_embedding_candidates": (
+        "SELECT * FROM knowledge_fetch_passage_embedding_candidates(%s, %s, %s, %s)"
+    ),
+    "stage_passage_embedding": (
+        "SELECT * FROM knowledge_stage_passage_embedding"
+        "(%s, %s, %s, %s, %s, %s, %s)"
     ),
     "mark_purge_invisible": (
         "SELECT * FROM knowledge_mark_purge_invisible(%s, %s, %s, %s, %s, %s, %s, %s)"
@@ -151,6 +162,23 @@ class PostgresAdapter:
             ):
                 cursor = await connection.execute(_SQL[function], parameters)
                 return cast("Mapping[str, Any] | None", await cursor.fetchone())
+        finally:
+            self._metrics.function_seconds.labels(function=function).observe(
+                time.monotonic() - started
+            )
+
+    async def _call_all(
+        self, function: str, parameters: Sequence[object] = ()
+    ) -> tuple[Mapping[str, Any], ...]:
+        started = time.monotonic()
+        try:
+            async with (
+                self._pool.connection() as connection,
+                connection.transaction(),
+            ):
+                cursor = await connection.execute(_SQL[function], parameters)
+                rows = await cursor.fetchall()
+                return tuple(cast("Sequence[Mapping[str, Any]]", rows))
         finally:
             self._metrics.function_seconds.labels(function=function).observe(
                 time.monotonic() - started
@@ -306,13 +334,63 @@ class PostgresAdapter:
             raise
         return _function_succeeded(row)
 
+    async def fetch_passage_embedding_candidates(
+        self, context: ProcessingJobContext
+    ) -> tuple[PassageEmbeddingCandidate, ...]:
+        """Fetch child search rows that require or can safely replay embeddings."""
+        lease_token = _require_context_lease_token(context)
+        rows = await self._call_all(
+            "fetch_passage_embedding_candidates",
+            (
+                context.job_id,
+                self._settings.worker_id,
+                lease_token,
+                context.materialization_id,
+            ),
+        )
+        return tuple(_passage_embedding_candidate_from_row(row) for row in rows)
+
+    async def stage_passage_embeddings(
+        self,
+        context: ProcessingJobContext,
+        embeddings: tuple[StagedPassageEmbedding, ...],
+    ) -> None:
+        """Stage Jina passage embeddings through one token-fenced function per row."""
+        lease_token = _require_context_lease_token(context)
+        for embedding in embeddings:
+            row = await self._call(
+                "stage_passage_embedding",
+                (
+                    context.job_id,
+                    self._settings.worker_id,
+                    lease_token,
+                    context.materialization_id,
+                    embedding.child_chunk_id,
+                    list(embedding.embedding_vector),
+                    embedding.embedding_vector_sha256,
+                ),
+            )
+            if not _function_succeeded(row):
+                raise PermanentJobError(
+                    stable_error_code(JOB_HANDLER_EMBEDDING_VECTOR_INVALID)
+                )
+
     async def assert_materialization_search_complete(
         self,
-        materialization_id: uuid.UUID,
+        materialization_or_context: uuid.UUID | ProcessingJobContext,
         *,
         expected_child_count: int,
     ) -> bool:
         """Call the G7.4 search projection completeness gate."""
+        materialization_id = (
+            materialization_or_context.materialization_id
+            if isinstance(materialization_or_context, ProcessingJobContext)
+            else materialization_or_context
+        )
+        if materialization_id is None:
+            raise PermanentJobError(
+                stable_error_code(JOB_HANDLER_EMBEDDING_CANDIDATE_INVALID)
+            )
         row = await self._call(
             "assert_search_complete",
             (
@@ -434,6 +512,20 @@ def _purge_invisibility_from_row(
     )
 
 
+def _passage_embedding_candidate_from_row(
+    row: Mapping[str, Any],
+) -> PassageEmbeddingCandidate:
+    return PassageEmbeddingCandidate(
+        child_chunk_id=_row_uuid(
+            row, "child_chunk_id", JOB_HANDLER_EMBEDDING_CANDIDATE_INVALID
+        ),
+        content=_row_text(row, "content", JOB_HANDLER_EMBEDDING_CANDIDATE_INVALID),
+        content_hash=_row_text(
+            row, "content_hash", JOB_HANDLER_EMBEDDING_CANDIDATE_INVALID
+        ),
+    )
+
+
 def _purge_projection_from_row(
     row: Mapping[str, Any] | None,
 ) -> PurgeProjectionResult:
@@ -476,6 +568,13 @@ def _row_optional_uuid(row: Mapping[str, Any], key: str) -> uuid.UUID | None:
     if row.get(key) is None:
         return None
     return _row_uuid(row, key, JOB_HANDLER_PURGE_PROJECTION_INVALID)
+
+
+def _row_text(row: Mapping[str, Any], key: str, error_code: str) -> str:
+    value = row.get(key)
+    if not isinstance(value, str):
+        raise PermanentJobError(stable_error_code(error_code))
+    return value
 
 
 def _row_positive_int(row: Mapping[str, Any], key: str, error_code: str) -> int:

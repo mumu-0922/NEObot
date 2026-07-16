@@ -1043,8 +1043,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         `G7.5.6` parse handler dependency seam, `G7.5.7` passage-embedding
         dependency seam, `G7.5.8` purge dependency seam, and `G7.5.9` default-off
         Postgres purge projection gateway adapter, and `G7.5.10` live
-        Postgres purge gateway integration proof done; real handler dispatch
-        still gated).
+        Postgres purge gateway integration proof, and `G7.5.11` default-off
+        Postgres passage-embedding projection gateway done; real handler
+        dispatch still gated).
   - [ ] G7.6 Private query and Go reauthorization.
   - [ ] G7.7 Strict/optional chat answer and basic citations.
   - [ ] G7.8 Live MinerU + Jina + Postgres smoke and operational proof.

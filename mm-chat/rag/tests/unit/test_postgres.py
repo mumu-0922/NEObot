@@ -11,7 +11,13 @@ from mm_chat_rag.job_context import (
     JOB_CONTEXT_LEASE_FENCE_MISSING,
     ProcessingJobContext,
 )
-from mm_chat_rag.job_handler_dependencies import PurgeProjectionResult
+from mm_chat_rag.job_handler_dependencies import (
+    PassageEmbeddingCandidate,
+    PassageEmbeddingVector,
+    PurgeProjectionResult,
+    StagedPassageEmbedding,
+    embedding_vector_sha256,
+)
 from mm_chat_rag.metrics import Metrics
 from mm_chat_rag.models import JobClaim, OutboxClaim
 from mm_chat_rag.postgres import (
@@ -28,13 +34,24 @@ from mm_chat_rag.provider_profile import (
 from mm_chat_rag.retry import PermanentJobError
 from mm_chat_rag.settings import Settings
 
+FakeRow = dict[str, object]
+
 
 class FakeCursor:
-    def __init__(self, row: dict[str, object] | None) -> None:
+    def __init__(self, row: FakeRow | list[FakeRow] | None) -> None:
         self.row = row
 
-    async def fetchone(self) -> dict[str, object] | None:
+    async def fetchone(self) -> FakeRow | None:
+        if isinstance(self.row, list):
+            return self.row[0] if self.row else None
         return self.row
+
+    async def fetchall(self) -> list[FakeRow]:
+        if self.row is None:
+            return []
+        if isinstance(self.row, list):
+            return self.row
+        return [self.row]
 
 
 class AsyncContext:
@@ -49,7 +66,7 @@ class AsyncContext:
 
 
 class FakeConnection:
-    def __init__(self, rows: list[dict[str, object] | None]) -> None:
+    def __init__(self, rows: list[FakeRow | list[FakeRow] | None]) -> None:
         self.rows = rows
         self.calls: list[tuple[str, Sequence[object]]] = []
 
@@ -76,7 +93,7 @@ class FakePool:
 
 
 def adapter_with_rows(
-    rows: list[dict[str, object] | None], settings: Settings | None = None
+    rows: list[FakeRow | list[FakeRow] | None], settings: Settings | None = None
 ) -> tuple[PostgresAdapter, FakeConnection]:
     adapter = PostgresAdapter(
         settings or Settings(database_url="postgresql://worker:secret@db/rag"),
@@ -111,6 +128,30 @@ def purge_context(**updates: object) -> ProcessingJobContext:
     return replace(context, **updates)
 
 
+def passage_embedding_context(**updates: object) -> ProcessingJobContext:
+    context = ProcessingJobContext(
+        job_id=uuid.uuid4(),
+        stage="passage_embedding",
+        operation="initial",
+        collection_id=uuid.uuid4(),
+        document_id=uuid.uuid4(),
+        document_version_id=uuid.uuid4(),
+        file_id=uuid.uuid4(),
+        index_generation_id=uuid.uuid4(),
+        materialization_id=uuid.uuid4(),
+        collection_acl_revision=1,
+        collection_visibility_epoch=2,
+        collection_processing_revision=1,
+        document_visibility_epoch=3,
+        attempt_count=1,
+        max_attempts=3,
+        request_hash="b" * 64,
+        authority=None,
+        lease_token=uuid.uuid4(),
+    )
+    return replace(context, **updates)
+
+
 def test_sql_surface_is_select_only_and_function_allowlisted() -> None:
     assert set(_SQL) == {
         "claim_outbox",
@@ -122,6 +163,8 @@ def test_sql_surface_is_select_only_and_function_allowlisted() -> None:
         "finish_job",
         "readiness",
         "assert_search_complete",
+        "fetch_passage_embedding_candidates",
+        "stage_passage_embedding",
         "mark_purge_invisible",
         "purge_search_projection",
         "assert_purge_complete",
@@ -216,6 +259,138 @@ async def test_adapter_calls_only_frozen_functions() -> None:
         _SQL["finish_job"],
         _SQL["assert_search_complete"],
     ]
+
+
+async def test_passage_embedding_projection_gateway_calls_functions() -> None:
+    worker_id = uuid.uuid4()
+    settings = Settings(
+        database_url="postgresql://worker:secret@db/rag",
+        worker_id=worker_id,
+    )
+    context = passage_embedding_context()
+    child_a = uuid.uuid4()
+    child_b = uuid.uuid4()
+    candidate_rows: list[FakeRow] = [
+        {
+            "child_chunk_id": child_a,
+            "content": "first passage candidate",
+            "content_hash": "a" * 64,
+        },
+        {
+            "child_chunk_id": child_b,
+            "content": "second passage candidate",
+            "content_hash": "b" * 64,
+        },
+    ]
+    adapter, connection = adapter_with_rows(
+        [
+            candidate_rows,
+            {"result": True},
+            {"result": True},
+            {"result": True},
+        ],
+        settings,
+    )
+
+    candidates = await adapter.fetch_passage_embedding_candidates(context)
+    vector_a = PassageEmbeddingVector(
+        child_chunk_id=child_a,
+        embedding=tuple([0.125] * 1024),
+    )
+    vector_b = PassageEmbeddingVector(
+        child_chunk_id=child_b,
+        embedding=tuple([0.25] * 1024),
+    )
+    embeddings = (
+        StagedPassageEmbedding(
+            child_chunk_id=vector_a.child_chunk_id,
+            embedding_model_id=vector_a.model_id,
+            embedding_dimensions=vector_a.dimensions,
+            embedding_vector=vector_a.embedding,
+            embedding_vector_sha256=embedding_vector_sha256(vector_a.embedding),
+        ),
+        StagedPassageEmbedding(
+            child_chunk_id=vector_b.child_chunk_id,
+            embedding_model_id=vector_b.model_id,
+            embedding_dimensions=vector_b.dimensions,
+            embedding_vector=vector_b.embedding,
+            embedding_vector_sha256=embedding_vector_sha256(vector_b.embedding),
+        ),
+    )
+    await adapter.stage_passage_embeddings(context, embeddings)
+    assert await adapter.assert_materialization_search_complete(
+        context,
+        expected_child_count=len(candidates),
+    )
+
+    assert candidates == (
+        PassageEmbeddingCandidate(
+            child_chunk_id=child_a,
+            content="first passage candidate",
+            content_hash="a" * 64,
+        ),
+        PassageEmbeddingCandidate(
+            child_chunk_id=child_b,
+            content="second passage candidate",
+            content_hash="b" * 64,
+        ),
+    )
+    assert connection.calls == [
+        (
+            _SQL["fetch_passage_embedding_candidates"],
+            (
+                context.job_id,
+                worker_id,
+                context.lease_token,
+                context.materialization_id,
+            ),
+        ),
+        (
+            _SQL["stage_passage_embedding"],
+            (
+                context.job_id,
+                worker_id,
+                context.lease_token,
+                context.materialization_id,
+                child_a,
+                list(embeddings[0].embedding_vector),
+                embeddings[0].embedding_vector_sha256,
+            ),
+        ),
+        (
+            _SQL["stage_passage_embedding"],
+            (
+                context.job_id,
+                worker_id,
+                context.lease_token,
+                context.materialization_id,
+                child_b,
+                list(embeddings[1].embedding_vector),
+                embeddings[1].embedding_vector_sha256,
+            ),
+        ),
+        (
+            _SQL["assert_search_complete"],
+            (
+                context.materialization_id,
+                len(candidates),
+                "jina-embeddings-v4",
+                1024,
+            ),
+        ),
+    ]
+
+
+async def test_passage_embedding_gateway_requires_claim_lease_token() -> None:
+    adapter, connection = adapter_with_rows([])
+
+    with pytest.raises(PermanentJobError) as raised:
+        await adapter.fetch_passage_embedding_candidates(
+            passage_embedding_context(lease_token=None)
+        )
+
+    assert raised.value.error_code == JOB_CONTEXT_LEASE_FENCE_MISSING
+    assert connection.calls == []
 
 
 async def test_purge_projection_gateway_calls_token_fenced_functions() -> None:

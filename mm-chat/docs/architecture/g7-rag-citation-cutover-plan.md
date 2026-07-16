@@ -389,12 +389,32 @@ G7.5.10 completed on 2026-07-16:
   `knowledge_processing_jobs` row as `processing_job` so output column names
   cannot shadow table columns.
 
+G7.5.11 completed on 2026-07-16:
+
+- Added default-off Postgres passage-embedding projection gateway functions:
+  `knowledge_fetch_passage_embedding_candidates(...)` and
+  `knowledge_stage_passage_embedding(...)`.
+- Both functions are token-fenced to a live `passage_embedding` Job,
+  non-legacy Generation binding, Worker owner, lease token, lease expiry, and
+  Materialization scope. Only `rag_worker_executor` receives Execute.
+- The fetch function returns the deterministic child text candidates from
+  `knowledge_child_search_projections` for both `staging` and `ready` rows so
+  replay after a partial stage remains idempotent and still checks the full
+  child count.
+- The stage function pins `jina-embeddings-v4`, exactly `1024` REAL lanes, a
+  redacted vector hash, and transitions only matching child search rows to
+  `ready`.
+- The Python `PostgresAdapter` now implements the
+  `PassageEmbeddingProjectionGateway` fetch/stage side while keeping the
+  existing materialization completeness gate. No real Jina provider call or
+  handler registry promotion is included in this slice.
+
 Remaining G7.5 work:
 
 - Implement real object-store, MinerU, Jina, and Postgres projection gateway
   adapters behind the new parse seam.
-- Implement the real Jina and Postgres projection gateway adapters behind the
-  new passage-embedding seam.
+- Implement the real Jina provider gateway behind the new passage-embedding
+  seam; the Postgres fetch/stage adapter is now present but default-off.
 - Promote purge dispatch behind an explicit readiness/registry gate now that
   the purge Postgres gateway has unit, static, and live integration coverage.
 - Implement index, reprocess, tombstone purge, rebuild, retry, and DLQ behavior.
@@ -405,6 +425,8 @@ Validation:
 - Outbox duplicate/out-of-order/replay tests.
 - Delete/tombstone/rebuild tests, including the G7.5.10 live purge projection
   integration gate when `MM_CHAT_TEST_DATABASE_URL` is available.
+- Passage-embedding fetch/stage tests, including the G7.5.11 `015` migration
+  compile gate and Python adapter parameter fence.
 - Retry-three-times and terminal-failure tests.
 
 ### G7.6 Private query and Go reauthorization
