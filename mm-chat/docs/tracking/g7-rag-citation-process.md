@@ -3462,3 +3462,96 @@ Residual risk:
   projection staging, and live provider smoke gates.
 - No provider API calls were made and no deployment `.env` or secret file was
   read.
+
+
+## 2026-07-16 — G7.5I Promoted Passage Embedding Job Runner Smoke
+
+Objective: close the promoted `passage_embedding` job-runner proof without
+spending real Jina quota. This slice uses a disposable PostgreSQL 16 database and
+a mocked Jina HTTP transport while preserving the actual Worker, JobRunner,
+Postgres adapter, provider admission, and SQL staging path.
+
+Implemented behavior:
+
+- Added `rag/tests/integration/test_worker_embedding_promotion_integration.py`.
+- The integration test seeds:
+  - Jina governance profile/head and collection processing consent;
+  - Knowledge collection, file, document version, index profile, search profile,
+    materialization, parent chunk, child chunk, and one staged child-search row;
+  - one pending `passage_embedding` processing job with projection binding.
+- The test monkeypatches only the Jina dependency factory client so the
+  Worker-built promoted handler still runs, but provider traffic is captured by
+  `httpx.MockTransport` instead of the real Jina endpoint.
+- The proof verifies:
+  - the Worker factory promotes exactly `passage_embedding`;
+  - `JobRunner.process_one()` claims and finishes the job;
+  - the Jina request uses the locked embeddings URL, bearer header, and the
+    staged child text only;
+  - provider key bytes are not present in the JSON body;
+  - the staged search row becomes `ready`, has a 1024-lane vector, and stores the
+    expected vector SHA-256;
+  - a second `process_one()` finds no pending work.
+- Fixed `rag/src/mm_chat_rag/postgres.py` so
+  `knowledge_stage_passage_embedding(...)` receives `%s::real[]` and `%s::text`,
+  not psycopg-inferred `double precision[]` / unknown parameters.
+- Added migration `018_rag_passage_embedding_stage_function_fix` to replace the
+  stage function. The new body no longer updates `embedding_model_id` or
+  `embedding_dimensions`; it filters those immutable constants instead, keeping
+  the existing least-privilege `UPDATE(status, embedding_vector,
+  embedding_vector_sha256, ready_at, purged_at)` grant sufficient.
+- Added a Go schema contract test for migration `018`.
+
+Touched files:
+
+```text
+backend/migrations/018_rag_passage_embedding_stage_function_fix.up.sql
+backend/migrations/018_rag_passage_embedding_stage_function_fix.down.sql
+backend/internal/migration/phase15_rag_passage_embedding_stage_function_fix_schema_test.go
+rag/src/mm_chat_rag/postgres.py
+rag/tests/integration/test_worker_embedding_promotion_integration.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && \
+  uv run ruff check src/mm_chat_rag/postgres.py \
+  tests/integration/test_worker_embedding_promotion_integration.py \
+  tests/unit/test_postgres.py
+# passed
+
+cd mm-chat/rag && \
+  uv run pytest -p no:cacheprovider \
+  tests/unit/test_postgres.py tests/unit/test_replay_worker.py \
+  tests/unit/test_jina_gateway.py tests/unit/test_job_handler_dependencies.py \
+  tests/integration/test_worker_embedding_promotion_integration.py -q
+# 83 passed, 1 skipped
+
+cd mm-chat/backend && \
+  GOCACHE=/tmp/neo-chat-go-build go test ./internal/migration \
+  -run TestPhase15RAGPassageEmbeddingStageFunctionFixContract -count=1 -v
+# passed
+
+# disposable live proof
+# - postgres:16-alpine container: mm-chat-test-postgres
+# - applied migrations 001 through 018
+cd mm-chat/rag && \
+  RAG_TEST_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable' \
+  uv run pytest -p no:cacheprovider \
+  tests/integration/test_worker_embedding_promotion_integration.py -v
+# 1 passed
+
+# cleanup verified
+# docker ps -a --format '{{.Names}}' | grep -Fx mm-chat-test-postgres
+# no output
+```
+
+Residual risk:
+
+- This does not call real Jina. Real provider smoke remains a later G7.8 gate
+  once the owner explicitly wants quota-consuming proof.
+- Parse promotion remains blocked until source-object, MinerU archive/result
+  provider, and parse dependency factory promotion are wired.

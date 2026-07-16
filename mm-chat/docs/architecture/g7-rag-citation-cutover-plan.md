@@ -928,6 +928,27 @@ G7.5H completed on 2026-07-16:
 - This slice only admits configuration; it does not promote parse handlers,
   call MinerU, or read deployment secret files.
 
+
+G7.5I completed on 2026-07-16:
+
+- Added a disposable PostgreSQL live smoke for the promoted
+  `passage_embedding` job-runner path with a mocked Jina transport, so no real
+  provider quota is consumed.
+- The smoke migrates PostgreSQL through
+  `018_rag_passage_embedding_stage_function_fix`, seeds one staged search row
+  and one pending embedding job, then proves `JobRunner.process_one()` claims
+  the job, calls the promoted worker-built handler, posts the locked Jina
+  request shape, stages a 1024-lane vector, verifies search completeness, and
+  finishes the job as `succeeded`.
+- Fixed the Python Postgres adapter to cast staged embedding vectors to
+  `real[]`, matching the frozen SQL function signature instead of relying on
+  psycopg's default `double precision[]` inference.
+- Added migration `018` to replace the stage function so it updates only
+  vector/hash/status/ready fields and leaves already constrained embedding model
+  metadata untouched, preserving least-privilege table grants.
+- The module-level registries remain empty; the promoted path is still settings
+  gated and test-scoped unless `passage_embedding` is explicitly enabled.
+
 Remaining G7.5 work:
 
 - G7.5T disposable PostgreSQL integration gate has been restored and proven
@@ -958,10 +979,12 @@ Remaining G7.5 work:
   worker lifecycle/health coverage and deployment env wiring, but the claim →
   handler → projection → finish loop is proven.
 - G7.5G is complete: passage embedding can now be promoted explicitly from
-  worker settings through the Jina + Postgres dependency bundle. A live
-  job-runner smoke for embedding remains pending before operational closure.
+  worker settings through the Jina + Postgres dependency bundle.
 - G7.5H is complete: parse worker settings now require the Go source-object
   gateway URL/token before parse can be promoted.
+- G7.5I is complete: promoted passage embedding has a live job-runner smoke
+  against disposable PostgreSQL with mocked Jina, including the `018` function
+  fix and Python `real[]` cast.
 - Implement index, reprocess, tombstone purge, rebuild, retry, and DLQ behavior.
 - Promote handlers one stage at a time behind readiness and registry gates.
 
@@ -992,6 +1015,9 @@ Validation:
   pending-job claim, succeeded finish, lease cleanup, and child-search purge.
 - Worker passage-embedding promotion tests, including Jina settings/profile
   admission and parse-stage non-promotion.
+- Promoted passage-embedding job-runner smoke against disposable PostgreSQL,
+  including mocked Jina request shape, vector staging, completeness assertion,
+  succeeded finish, and the `018` least-privilege function replacement.
 - Parse source-gateway settings tests, including required URL/token gates,
   invalid URL/token rejection, and no secret echo in provider-profile failures.
 - MinerU local-batch allocate tests, including missing-token no-HTTP behavior,

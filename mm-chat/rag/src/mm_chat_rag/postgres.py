@@ -65,7 +65,7 @@ _SQL: Final[Mapping[str, str]] = {
     ),
     "stage_passage_embedding": (
         "SELECT * FROM knowledge_stage_passage_embedding"
-        "(%s, %s, %s, %s, %s, %s, %s)"
+        "(%s, %s, %s, %s, %s, %s::real[], %s::text)"
     ),
     "fetch_parse_source_metadata": (
         "SELECT * FROM knowledge_fetch_parse_source_metadata(%s, %s, %s, %s, %s)"
