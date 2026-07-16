@@ -1053,7 +1053,8 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         adapter seam, `G7.5.18` default-off Postgres parse projection
         adapter seam, `G7.5.19` default-off Postgres parse projection
         gateway function, and `G7.5.20` default-off MinerU local-batch
-        allocate gateway done; real handler dispatch still gated).
+        allocate gateway, and `G7.5.21` default-off MinerU signed-upload
+        transport seam done; real handler dispatch still gated).
   - [ ] G7.6 Private query and Go reauthorization.
   - [ ] G7.7 Strict/optional chat answer and basic citations.
   - [ ] G7.8 Live MinerU + Jina + Postgres smoke and operational proof.

@@ -564,13 +564,30 @@ G7.5.20 completed on 2026-07-16:
 - Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
   slice does not spend provider quota in tests.
 
+G7.5.21 completed on 2026-07-16:
+
+- Added the default-off MinerU signed-upload transport seam to
+  `MinerULocalBatchGateway`.
+- The seam uploads one admitted PDF body to the single provider-derived signed
+  URL with `PUT`, and intentionally sends no `Authorization`, `Cookie`, or
+  `Content-Type` headers.
+- Upload targets are locked before HTTP to `https`, default port `443`, exact
+  host `mineru.oss-cn-shanghai.aliyuncs.com`, `/api-upload/` path prefix, no
+  userinfo, no fragment, no control characters, and at most 4096 URL bytes.
+- Upload `200` and `204` statuses are accepted; provider status failures and
+  transport failures map to stable redacted retryable errors.
+- This slice still does not implement polling, result ZIP download, Canonical IR
+  mapping, parser-handler composition, or production registry promotion.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
+  slice does not spend provider quota in tests.
+
 Remaining G7.5 work:
 
-- Complete the rest of the MinerU local-batch execution chain: signed upload,
-  poll/result download, result ZIP validation, Canonical IR/chunk manifest
-  mapping, then parser-handler composition. Add a live or integration proof for
-  the `017` parse projection staging function when `MM_CHAT_TEST_DATABASE_URL`
-  is available. Production MinIO/S3 object access should prefer the Go private
+- Complete the rest of the MinerU local-batch execution chain: poll/result
+  download, result ZIP validation, Canonical IR/chunk manifest mapping, then
+  parser-handler composition. Add a live or integration proof for the `017`
+  parse projection staging function when `MM_CHAT_TEST_DATABASE_URL` is
+  available. Production MinIO/S3 object access should prefer the Go private
   source-object gateway rather than giving Python static object-store
   credentials.
 - Promote the composed default-off Jina + Postgres embedding dependencies only
@@ -603,6 +620,9 @@ Validation:
 - MinerU local-batch allocate tests, including missing-token no-HTTP behavior,
   PDF/size/filename gates, locked request body, retryable status/transport
   mapping, response validation, signed-upload URL validation, and redaction.
+- MinerU signed-upload transport tests, including locked target URL validation,
+  raw PDF PUT body, no auth/cookie/content-type headers, retryable
+  status/transport mapping, non-PDF no-HTTP rejection, and redaction.
 - Retry-three-times and terminal-failure tests.
 
 ### G7.6 Private query and Go reauthorization

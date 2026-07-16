@@ -1869,3 +1869,65 @@ Residual risk:
   composition are still required before parse dispatch can be promoted.
 - No live MinerU quota is consumed by this slice; the first real provider smoke
   remains in G7.8 or an explicitly owner-authorized bounded smoke cut.
+
+## 2026-07-16 — G7.5.21 Default-off MinerU Signed-upload Transport Seam
+
+Objective: add the next narrow MinerU local-batch seam without promoting parse
+dispatch or claiming the full provider lifecycle is complete. This slice covers
+only the provider-derived signed-upload `PUT` transport after allocation; polling,
+result download, ZIP validation, Canonical IR normalization, and handler
+composition remain later gated cuts.
+
+Implemented behavior:
+
+- Extended `MinerULocalBatchGateway` with `upload_document(...)`.
+- The upload path revalidates the source as `application/pdf` before network I/O
+  and sends the exact admitted bytes as the raw `PUT` body.
+- The signed upload request intentionally omits `Authorization`, `Cookie`, and
+  `Content-Type` headers so provider credentials cannot leak to the object
+  upload target.
+- The upload target is validated before HTTP: `https`, exact host
+  `mineru.oss-cn-shanghai.aliyuncs.com`, default/443 port only,
+  `/api-upload/` path prefix, no userinfo, no fragment, no control characters,
+  and URL length at most 4096 bytes.
+- Upload `200` and `204` responses are accepted; non-accepted statuses and
+  transport failures become stable redacted retryable errors.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. No
+  provider quota is consumed by tests.
+
+Touched files:
+
+```text
+rag/src/mm_chat_rag/mineru_gateway.py
+rag/tests/unit/test_mineru_gateway.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && uv run ruff check \
+  src/mm_chat_rag/mineru_gateway.py tests/unit/test_mineru_gateway.py
+# passed
+
+cd mm-chat/rag && uv run mypy src/mm_chat_rag/mineru_gateway.py
+# passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider tests/unit/test_mineru_gateway.py
+# 25 passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_provider_capture.py::test_production_dispatch_remains_disabled_and_registries_empty \
+  tests/unit/test_job_handler_dependencies.py
+# 25 passed
+```
+
+Residual risk:
+
+- This is still not a complete MinerU parser gateway. Poll/result, result ZIP
+  validation, Canonical IR/chunk manifest mapping, and parse-handler composition
+  are still required before parse dispatch can be promoted.
+- No live MinerU quota is consumed by this slice; the first real provider smoke
+  remains in G7.8 or an explicitly owner-authorized bounded smoke cut.

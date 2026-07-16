@@ -16,13 +16,19 @@ from mm_chat_rag.mineru_gateway import (
     MINERU_GATEWAY_RESPONSE_INVALID,
     MINERU_GATEWAY_SOURCE_UNSUPPORTED,
     MINERU_GATEWAY_STATUS_INVALID,
+    MINERU_GATEWAY_UPLOAD_STATUS_INVALID,
     MINERU_GATEWAY_UPLOAD_URL_INVALID,
+    MinerULocalBatchAllocation,
     MinerULocalBatchGateway,
 )
 from mm_chat_rag.retry import PermanentJobError, RetryableJobError
 
 SECRET = "unit-test-mineru-token"
 PDF_BODY = b"%PDF-1.7\nfixture\n%%EOF\n"
+SIGNED_UPLOAD_URL = (
+    "https://mineru.oss-cn-shanghai.aliyuncs.com/api-upload/fixture.pdf"
+    "?Expires=1&Signature=redacted"
+)
 
 
 def _source(
@@ -58,6 +64,13 @@ def _json_response(payload: object, *, status: int = 200) -> httpx.Response:
         status,
         headers={"Content-Type": "application/json; charset=utf-8"},
         content=content,
+    )
+
+
+def _allocation(upload_url: str = SIGNED_UPLOAD_URL) -> MinerULocalBatchAllocation:
+    return MinerULocalBatchAllocation(
+        batch_id="fixture-batch-id",
+        upload_urls=(upload_url,),
     )
 
 
@@ -231,3 +244,108 @@ async def test_mineru_gateway_rejects_invalid_allocate_payload(
 
     assert raised.value.error_code == error_code
     assert "sensitive-trace-id" not in str(raised.value)
+
+
+async def test_mineru_gateway_uploads_pdf_to_locked_signed_url() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(204, content=b"")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        await gateway.upload_document(object(), _source(), _allocation())
+
+    assert len(requests) == 1
+    request = requests[0]
+    assert request.method == "PUT"
+    assert request.url == httpx.URL(SIGNED_UPLOAD_URL)
+    assert request.content == PDF_BODY
+    assert "authorization" not in request.headers
+    assert "cookie" not in request.headers
+    assert "content-type" not in request.headers
+
+
+@pytest.mark.parametrize(
+    "upload_url",
+    [
+        "https://evil.example/api-upload/fixture.pdf?Expires=1",
+        "https://mineru.oss-cn-shanghai.aliyuncs.com/not-api-upload/fixture.pdf",
+        "https://mineru.oss-cn-shanghai.aliyuncs.com:444/api-upload/fixture.pdf",
+        "https://mineru.oss-cn-shanghai.aliyuncs.com:99999/api-upload/fixture.pdf",
+        "https://user@mineru.oss-cn-shanghai.aliyuncs.com/api-upload/fixture.pdf",
+        "https://mineru.oss-cn-shanghai.aliyuncs.com/api-upload/fixture.pdf#frag",
+        "https://mineru.oss-cn-shanghai.aliyuncs.com/api-upload/fixture.pdf\n",
+        "https://mineru.oss-cn-shanghai.aliyuncs.com/api-upload/fixture.pdf?"
+        + "x" * 4096,
+    ],
+)
+async def test_mineru_gateway_rejects_upload_target_before_http(
+    upload_url: str,
+) -> None:
+    calls = 0
+
+    def forbidden(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("invalid signed upload target reached provider")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(forbidden)) as client:
+        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        with pytest.raises(PermanentJobError) as raised:
+            await gateway.upload_document(object(), _source(), _allocation(upload_url))
+
+    assert raised.value.error_code == MINERU_GATEWAY_UPLOAD_URL_INVALID
+    assert calls == 0
+
+
+async def test_mineru_gateway_upload_retries_status_redacted() -> None:
+    transport = httpx.MockTransport(
+        lambda _: httpx.Response(503, content=SECRET.encode())
+    )
+    async with httpx.AsyncClient(transport=transport) as client:
+        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        with pytest.raises(RetryableJobError) as raised:
+            await gateway.upload_document(object(), _source(), _allocation())
+
+    assert raised.value.error_code == MINERU_GATEWAY_UPLOAD_STATUS_INVALID
+    assert raised.value.retry_after_seconds == 30
+    assert SECRET not in str(raised.value)
+
+
+async def test_mineru_gateway_upload_retries_transport_failure_redacted() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError(
+            f"sensitive upload transport detail {SECRET}",
+            request=request,
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        with pytest.raises(RetryableJobError) as raised:
+            await gateway.upload_document(object(), _source(), _allocation())
+
+    assert raised.value.error_code == MINERU_GATEWAY_REQUEST_FAILED
+    assert SECRET not in str(raised.value)
+
+
+async def test_mineru_gateway_upload_rejects_non_pdf_before_http() -> None:
+    calls = 0
+
+    def forbidden(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("non-PDF source reached upload target")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(forbidden)) as client:
+        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        with pytest.raises(PermanentJobError) as raised:
+            await gateway.upload_document(
+                object(),
+                _source(content_type="text/plain"),
+                _allocation(),
+            )
+
+    assert raised.value.error_code == MINERU_GATEWAY_SOURCE_UNSUPPORTED
+    assert calls == 0

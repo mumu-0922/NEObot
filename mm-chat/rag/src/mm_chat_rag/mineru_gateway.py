@@ -1,10 +1,10 @@
 """Default-off MinerU local-batch submit gateway for G7.5.
 
 This module deliberately implements only the evidence-backed local-batch
-``allocate_upload`` step.  Signed upload, batch polling, result download, and
-Canonical IR normalization remain separate gated slices because their public
-wire contracts are still draft/blocked.  Importing this module does not register
-production parse handlers or spend provider quota.
+``allocate_upload`` step plus the derived signed-upload transport seam. Batch
+polling, result download, and Canonical IR normalization remain separate gated
+slices because their public wire contracts are still draft/blocked. Importing
+this module does not register production parse handlers or spend provider quota.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import json
 import re
 from dataclasses import dataclass
 from typing import Final, NoReturn, cast
-from urllib.parse import urlsplit
+from urllib.parse import SplitResult, urlsplit
 
 import httpx
 
@@ -31,6 +31,9 @@ MINERU_GATEWAY_STATUS_INVALID: Final = "MINERU_GATEWAY_STATUS_INVALID"
 MINERU_GATEWAY_RESPONSE_INVALID: Final = "MINERU_GATEWAY_RESPONSE_INVALID"
 MINERU_GATEWAY_RESPONSE_TOO_LARGE: Final = "MINERU_GATEWAY_RESPONSE_TOO_LARGE"
 MINERU_GATEWAY_UPLOAD_URL_INVALID: Final = "MINERU_GATEWAY_UPLOAD_URL_INVALID"
+MINERU_GATEWAY_UPLOAD_STATUS_INVALID: Final = (
+    "MINERU_GATEWAY_UPLOAD_STATUS_INVALID"
+)
 MINERU_ALLOCATE_UPLOAD_URL: Final = "https://mineru.net/api/v4/file-urls/batch"
 MINERU_MODEL_VERSION: Final = "vlm"
 MINERU_PDF_CONTENT_TYPE: Final = "application/pdf"
@@ -40,8 +43,13 @@ MINERU_RETRY_AFTER_SECONDS: Final = 30
 MAX_MINERU_API_TOKEN_BYTES: Final = 4096
 MAX_MINERU_SOURCE_BYTES: Final = 200 * 1024 * 1024
 MAX_MINERU_RESPONSE_BYTES: Final = 1024 * 1024
+MAX_MINERU_UPLOAD_URL_BYTES: Final = 4096
+MINERU_UPLOAD_TARGET_HOST: Final = "mineru.oss-cn-shanghai.aliyuncs.com"
+MINERU_UPLOAD_PATH_PREFIX: Final = "/api-upload/"
 _MAX_FILENAME_BYTES: Final = 255
 HTTP_OK: Final = 200
+HTTP_NO_CONTENT: Final = 204
+_ASCII_CONTROL_CEILING: Final = 32
 _VISIBLE_ASCII_MIN: Final = 33
 _VISIBLE_ASCII_MAX: Final = 126
 _SAFE_FILENAME_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$")
@@ -100,6 +108,27 @@ class MinerULocalBatchGateway:
             payload = await _post_allocate(client, self._api_token, body)
             return _allocation_from_payload(payload)
 
+    async def upload_document(
+        self,
+        context: object,
+        source: DocumentSource,
+        allocation: MinerULocalBatchAllocation,
+    ) -> None:
+        """Upload one admitted PDF body to the provider-signed URL."""
+        _ = context
+        _validate_pdf_source(source)
+        upload_url = _single_upload_url(allocation)
+        if self._client is not None:
+            await _put_signed_upload(self._client, upload_url, source.body)
+            return
+        async with httpx.AsyncClient(
+            timeout=MINERU_TIMEOUT,
+            limits=MINERU_LIMITS,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
+            await _put_signed_upload(client, upload_url, source.body)
+
 
 def _allocate_request_body(filename: str) -> JsonObject:
     return {
@@ -109,6 +138,24 @@ def _allocate_request_body(filename: str) -> JsonObject:
         "is_ocr": True,
         "model_version": MINERU_MODEL_VERSION,
     }
+
+
+async def _put_signed_upload(
+    client: httpx.AsyncClient,
+    upload_url: str,
+    body: bytes,
+) -> None:
+    try:
+        async with client.stream("PUT", upload_url, content=body) as response:
+            if response.status_code not in {HTTP_OK, HTTP_NO_CONTENT}:
+                _reject_retryable(MINERU_GATEWAY_UPLOAD_STATUS_INVALID)
+            await _read_bounded_response(response)
+    except PermanentJobError:
+        raise
+    except RetryableJobError:
+        raise
+    except (httpx.StreamError, httpx.TransportError):
+        _reject_retryable(MINERU_GATEWAY_REQUEST_FAILED)
 
 
 async def _post_allocate(
@@ -213,14 +260,54 @@ def _validate_filename(value: str) -> str:
     return value
 
 
-def _validate_signed_upload_url(value: str) -> None:
-    try:
-        parsed = urlsplit(value)
-    except ValueError:
+def _single_upload_url(allocation: MinerULocalBatchAllocation) -> str:
+    if not isinstance(allocation, MinerULocalBatchAllocation):
         _reject_permanent(MINERU_GATEWAY_UPLOAD_URL_INVALID)
+    if len(allocation.upload_urls) != 1:
+        _reject_permanent(MINERU_GATEWAY_UPLOAD_URL_INVALID)
+    upload_url = allocation.upload_urls[0]
+    _validate_signed_upload_url(upload_url)
+    _validate_upload_target_url(upload_url)
+    return upload_url
+
+
+def _validate_signed_upload_url(value: str) -> None:
+    parsed = _parse_url(value)
     if parsed.scheme != "https" or not parsed.hostname or parsed.username:
         _reject_permanent(MINERU_GATEWAY_UPLOAD_URL_INVALID)
     if parsed.password or parsed.fragment:
+        _reject_permanent(MINERU_GATEWAY_UPLOAD_URL_INVALID)
+
+
+def _validate_upload_target_url(value: str) -> None:
+    parsed = _parse_url(value)
+    if len(value.encode("utf-8")) > MAX_MINERU_UPLOAD_URL_BYTES:
+        _reject_permanent(MINERU_GATEWAY_UPLOAD_URL_INVALID)
+    if parsed.hostname != MINERU_UPLOAD_TARGET_HOST:
+        _reject_permanent(MINERU_GATEWAY_UPLOAD_URL_INVALID)
+    if _url_port(parsed) not in {None, 443}:
+        _reject_permanent(MINERU_GATEWAY_UPLOAD_URL_INVALID)
+    if not parsed.path.startswith(MINERU_UPLOAD_PATH_PREFIX):
+        _reject_permanent(MINERU_GATEWAY_UPLOAD_URL_INVALID)
+    if any(ord(character) < _ASCII_CONTROL_CEILING for character in value):
+        _reject_permanent(MINERU_GATEWAY_UPLOAD_URL_INVALID)
+
+
+def _parse_url(value: str) -> SplitResult:
+    if not isinstance(value, str) or not value:
+        _reject_permanent(MINERU_GATEWAY_UPLOAD_URL_INVALID)
+    if any(ord(character) < _ASCII_CONTROL_CEILING for character in value):
+        _reject_permanent(MINERU_GATEWAY_UPLOAD_URL_INVALID)
+    try:
+        return urlsplit(value)
+    except ValueError:
+        _reject_permanent(MINERU_GATEWAY_UPLOAD_URL_INVALID)
+
+
+def _url_port(parsed: SplitResult) -> int | None:
+    try:
+        return parsed.port
+    except ValueError:
         _reject_permanent(MINERU_GATEWAY_UPLOAD_URL_INVALID)
 
 
