@@ -858,13 +858,14 @@ Remaining G7.5 work:
   against a throwaway `postgres:16-alpine` database; the test DB is deleted
   after each run, and this does not promote handlers or complete the `017`
   parse projection staging proof.
-- Move to G7.5B: prove the `017` parse projection staging function through a
-  live/integration gate when `MM_CHAT_TEST_DATABASE_URL` is available; otherwise
-  record the skip and keep static coverage explicit. Richer formula semantics,
-  optional table-cell/image-asset semantics, and live provider smoke remain later
-  gated work.
-  Production MinIO/S3 object access should prefer the Go private source-object
-  gateway rather than giving Python static object-store credentials.
+- G7.5B is complete: `knowledge_stage_parse_projection(...)` is live-proven
+  against a disposable PostgreSQL 16 database, including worker-execute,
+  stale-lease rejection, profile-fence rejection, and staged row assertions for
+  artifact sets, blocks, parent chunks, child chunks, spans, and child search
+  projections. Richer formula semantics, optional table-cell/image-asset
+  semantics, and live provider smoke remain later gated work. Production
+  MinIO/S3 object access should prefer the Go private source-object gateway
+  rather than giving Python static object-store credentials.
 - Promote the composed default-off Jina + Postgres embedding dependencies only
   behind an explicit readiness/registry gate.
 - Promote purge dispatch behind an explicit readiness/registry gate now that

@@ -123,8 +123,7 @@ BEGIN
   FROM knowledge_index_profiles
   WHERE id = generation.index_profile_id
     AND chunk_profile_hash = p_chunk_profile_hash
-    AND embedding_model_id = 'jina-embeddings-v4'
-  FOR SHARE;
+    AND embedding_model_id = 'jina-embeddings-v4';
   IF NOT FOUND THEN
     RAISE EXCEPTION USING
       ERRCODE = 'P0001',
@@ -136,8 +135,7 @@ BEGIN
   WHERE profile.index_profile_id = index_profile.id
     AND profile.provider_profile_id = 'mineru_jina_postgres_v1'
     AND profile.embedding_model_id = 'jina-embeddings-v4'
-    AND profile.embedding_dimensions = 1024
-  FOR SHARE;
+    AND profile.embedding_dimensions = 1024;
   IF NOT FOUND THEN
     RAISE EXCEPTION USING
       ERRCODE = 'P0001',

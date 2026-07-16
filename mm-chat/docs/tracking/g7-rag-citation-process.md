@@ -2962,3 +2962,83 @@ Residual risk:
   with live `017` staging rows; that remains the next G7.5B slice.
 - No provider quota was consumed. No application database or compose-managed
   `mm-chat-postgres-1` database was modified.
+
+## 2026-07-16 — G7.5B Live Parse Projection Staging Proof
+
+Objective: prove migration `017_rag_parse_projection_gateway` with a real
+PostgreSQL 16 database by calling `knowledge_stage_parse_projection(...)` through
+its worker-execute path and verifying every staged projection lane. This closes
+the previously static-only `017` proof; it does not promote parse dispatch or
+call MinerU/Jina providers.
+
+Implemented behavior:
+
+- Added `backend/internal/migration/phase15_rag_parse_projection_gateway_integration_test.go`.
+- The live test seeds a minimal but fully constrained parse job authority:
+  - user, file, collection, document, and document version;
+  - MinerU governance profile/head and collection processing consent;
+  - Jina/Postgres index profile, search profile, index generation;
+  - staging materialization bound to the non-legacy parse processing job;
+  - active worker lease and stale lease token.
+- The test calls `knowledge_stage_parse_projection(...)` with JSONB recordsets
+  for all five staging lanes:
+  - `knowledge_parser_artifact_sets`;
+  - `knowledge_blocks`;
+  - `knowledge_parent_chunks`;
+  - `knowledge_child_chunks` plus `knowledge_chunk_block_spans`;
+  - `knowledge_child_search_projections`.
+- The test proves the worker boundary by executing the function as
+  `rag_worker_executor`, then verifies the same role cannot mutate the base
+  search projection table directly.
+- The test proves fail-closed fences for stale lease token and chunk-profile
+  mismatch.
+- Fixed migration `017` by removing unnecessary `FOR SHARE` locks from immutable
+  profile lookups (`knowledge_index_profiles`, `knowledge_search_profiles`).
+  Those tables are already immutable by trigger; row-locking would require
+  broader privileges than the function needs and broke the worker-execute path.
+
+Touched files:
+
+```text
+backend/migrations/017_rag_parse_projection_gateway.up.sql
+backend/internal/migration/phase15_rag_parse_projection_gateway_integration_test.go
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && go test ./internal/migration
+# passed
+
+MM_CHAT_TEST_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable' \
+  go test -count=1 ./internal/migration \
+  -run TestPhase15RAGParseProjectionGatewayLivePostgres -v
+# PASS against disposable PostgreSQL 16
+
+MM_CHAT_TEST_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable' \
+  bash mm-chat/scripts/verify-phase15d-postgres.sh
+# backend/internal/knowledge passed
+# backend/internal/migration passed, including the new 017 live proof
+
+MIGRATION_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable' \
+  go run ./cmd/migrate up
+# applied 001 through 017 on the disposable DB public schema for the RAG adapter
+
+cd mm-chat/rag && \
+  RAG_TEST_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable' \
+  uv run pytest -p no:cacheprovider -m integration tests/integration/test_postgres_integration.py
+# 1 passed
+
+docker ps -a --format '{{.Names}}' | grep -Fx mm-chat-test-postgres
+# no match; disposable test database deleted
+```
+
+Residual risk:
+
+- Parse projection staging is now live-proven at the DB function boundary, but
+  real parse dispatch remains gated until handler registry promotion, retry/DLQ,
+  and end-to-end provider smoke gates are explicitly opened.
+- This slice does not call MinerU or Jina and consumes no provider quota.
