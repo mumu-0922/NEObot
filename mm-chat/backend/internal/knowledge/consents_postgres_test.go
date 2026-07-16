@@ -37,7 +37,7 @@ INSERT INTO knowledge_collections(id,name,scope,owner_user_id) VALUES
 ($5,'Personal','personal',$1),($7,'Rollback','personal',$1);
 INSERT INTO knowledge_collections(id,name,scope,team_id) VALUES ($6,'Team','team',$4)`,
 		ownerID, memberID, outsiderID, teamID, personalID, teamCollectionID, rollbackCollectionID)
-	manifest := GovernanceManifest{Processor: "mineru", EndpointID: "default", ModelID: "model-v1", ModelAPIVersion: "v1",
+	manifest := GovernanceManifest{Processor: "mineru", EndpointID: "hosted-main", ModelID: "model-stable-20260712", ModelAPIVersion: "api-20260623",
 		AllowedPurposes: []string{"parse", "rerank"}, AllowedDataTypes: []string{"application/pdf", "text/plain"},
 		Region: "global", RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled"}
 	if _, err := NewGovernanceService(NewPostgresRepository(db)).Apply(ctx, manifest); err != nil {
@@ -73,7 +73,7 @@ WHERE aggregate_key=$1 AND event_type='knowledge.collection.consent.changed'`, p
 		Scan(&endpointID, &modelID, &contractHash); err != nil {
 		t.Fatal(err)
 	}
-	if endpointID != "default" || modelID != "model-v1" || len(contractHash) != 64 {
+	if endpointID != "hosted-main" || modelID != "model-stable-20260712" || len(contractHash) != 64 {
 		t.Fatalf("consent event identity = %q/%q/%q", endpointID, modelID, contractHash)
 	}
 	if _, err := service.PutCollectionConsent(ownerCtx, personalID, "mineru", PutConsentInput{Purposes: []string{"parse"}, DataTypes: []string{"application/pdf"}, PolicyVersion: "v1", ExpiresAt: time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)}); err == nil {
@@ -179,7 +179,7 @@ func TestPostgresConcurrentCollectionConsentGrantIsOneTransition(t *testing.T) {
 	const userID = "14000000-0000-4000-8000-000000000001"
 	const collectionID = "34000000-0000-4000-8000-000000000001"
 	mustKnowledgeExec(t, ctx, db, `INSERT INTO users(id,email,display_name) VALUES ($1,'race-consent@example.test','Owner'); INSERT INTO knowledge_collections(id,name,scope,owner_user_id) VALUES ($2,'Race','personal',$1)`, userID, collectionID)
-	manifest := GovernanceManifest{Processor: "mineru", EndpointID: "default", ModelID: "model-v1", ModelAPIVersion: "v1", AllowedPurposes: []string{"parse", "rerank"}, AllowedDataTypes: []string{"application/pdf"}, Region: "global", RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled"}
+	manifest := GovernanceManifest{Processor: "mineru", EndpointID: "hosted-main", ModelID: "model-stable-20260712", ModelAPIVersion: "api-20260623", AllowedPurposes: []string{"parse", "rerank"}, AllowedDataTypes: []string{"application/pdf"}, Region: "global", RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled"}
 	if _, err := NewGovernanceService(NewPostgresRepository(db)).Apply(ctx, manifest); err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +272,7 @@ func TestPostgresConsentGrantSeesConcurrentSecondGovernanceEndpoint(t *testing.T
 	const userID = "15000000-0000-4000-8000-000000000001"
 	const collectionID = "35000000-0000-4000-8000-000000000001"
 	mustKnowledgeExec(t, ctx, db, `INSERT INTO users(id,email,display_name) VALUES ($1,'phantom-consent@example.test','Owner'); INSERT INTO knowledge_collections(id,name,scope,owner_user_id) VALUES ($2,'Phantom','personal',$1)`, userID, collectionID)
-	manifest := GovernanceManifest{Processor: "mineru", EndpointID: "default", ModelID: "model-v1", ModelAPIVersion: "v1", AllowedPurposes: []string{"parse"}, AllowedDataTypes: []string{"application/pdf"}, Region: "global", RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled"}
+	manifest := GovernanceManifest{Processor: "mineru", EndpointID: "hosted-main", ModelID: "model-stable-20260712", ModelAPIVersion: "api-20260623", AllowedPurposes: []string{"parse"}, AllowedDataTypes: []string{"application/pdf"}, Region: "global", RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled"}
 	governance := NewGovernanceService(NewPostgresRepository(db))
 	if _, err := governance.Apply(ctx, manifest); err != nil {
 		t.Fatal(err)

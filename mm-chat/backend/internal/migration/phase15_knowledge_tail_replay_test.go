@@ -367,7 +367,7 @@ func newPhase152BLegacyRegressionRunner(t *testing.T, db *sql.DB) *Runner {
 	t.Helper()
 	// These legacy fixtures contain no Governance rows. Leaving the mapping
 	// unset exercises Runner's canonical {"profiles":[],"heads":[]} fallback.
-	return NewRunner(db, migrationfiles.FS)
+	return NewRunner(db, phase15MigrationFSThrough(t, 10))
 }
 
 func assertPhase151DPostgres16(t *testing.T, ctx context.Context, db *sql.DB) {

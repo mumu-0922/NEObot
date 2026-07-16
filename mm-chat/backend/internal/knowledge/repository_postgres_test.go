@@ -105,16 +105,16 @@ INSERT INTO processor_governance_profiles (
  id,processor,endpoint_id,model_id,model_api_version,allowed_purposes,allowed_data_types,
  region,retention_policy,deletion_contract,training_use,status,governance_revision,manifest_hash,
  profile_contract_hash
-) VALUES ($1,'mineru','default','model-v1','v1',ARRAY['parse'],ARRAY['application/pdf'],
+) VALUES ($1,'mineru','hosted-main','model-stable-20260712','v1',ARRAY['parse'],ARRAY['application/pdf'],
  'global','none','delete','disabled','approved',1,$2,$2);
 INSERT INTO processor_governance_heads (
  processor,endpoint_id,model_id,status,active_profile_id,active_governance_revision,head_revision
-) VALUES ('mineru','default','model-v1','active',$1,1,1);
+) VALUES ('mineru','hosted-main','model-stable-20260712','active',$1,1,1);
 INSERT INTO processing_consents (
  id,scope,collection_id,processor,endpoint_id,model_id,governance_profile_id,
  governance_revision,governance_head_revision,purposes,data_types,policy_version,
  decision,consent_revision,granted_by_user_id
-) VALUES ($3,'collection',$4,'mineru','default','model-v1',$1,1,1,ARRAY['parse'],
+) VALUES ($3,'collection',$4,'mineru','hosted-main','model-stable-20260712',$1,1,1,ARRAY['parse'],
  ARRAY['application/pdf'],'v1','granted',1,$5)
 `, profileID, strings.Repeat("b", 64), consentID, personalID, adminID)
 	for _, authorityTest := range []struct {
@@ -142,8 +142,17 @@ INSERT INTO processing_consents (
 	documentIDs := []string{documentID, versionID, jobID,
 		"50000000-0000-4000-8000-000000000007",
 		"50000000-0000-4000-8000-000000000008",
-		"50000000-0000-4000-8000-000000000009"}
+		"50000000-0000-4000-8000-000000000009",
+		"50000000-0000-4000-8000-00000000001a",
+		"50000000-0000-4000-8000-00000000001b",
+		"50000000-0000-4000-8000-00000000001c",
+		"50000000-0000-4000-8000-00000000001d",
+		"50000000-0000-4000-8000-00000000001e",
+		"50000000-0000-4000-8000-00000000001f"}
 	documentService := NewService(NewPostgresRepository(db), WithIDGenerator(func() (string, error) {
+		if len(documentIDs) == 0 {
+			return "", fmt.Errorf("document test id generator exhausted")
+		}
 		id := documentIDs[0]
 		documentIDs = documentIDs[1:]
 		return id, nil
@@ -176,7 +185,7 @@ INSERT INTO processing_consents (
 FROM knowledge_processing_jobs WHERE id=$1`, jobID).Scan(&legacyUnbound, &jobModelID); err != nil {
 		t.Fatal(err)
 	}
-	if !legacyUnbound || jobModelID != "model-v1" {
+	if !legacyUnbound || jobModelID != "model-stable-20260712" {
 		t.Fatalf("compatibility job identity = legacy:%v model:%q", legacyUnbound, jobModelID)
 	}
 
@@ -287,8 +296,13 @@ WHERE id=$1
 	replacementIDs := []string{replacementVersionID, replacementJobID,
 		"50000000-0000-4000-8000-000000000013", "50000000-0000-4000-8000-000000000014",
 		"50000000-0000-4000-8000-000000000015", "50000000-0000-4000-8000-000000000016",
-		"50000000-0000-4000-8000-000000000017", "50000000-0000-4000-8000-000000000018"}
+		"50000000-0000-4000-8000-000000000017", "50000000-0000-4000-8000-000000000018",
+		"50000000-0000-4000-8000-000000000019", "50000000-0000-4000-8000-000000000020",
+		"50000000-0000-4000-8000-000000000021", "50000000-0000-4000-8000-000000000022"}
 	replacementService := NewService(NewPostgresRepository(db), WithIDGenerator(func() (string, error) {
+		if len(replacementIDs) == 0 {
+			return "", fmt.Errorf("replacement test id generator exhausted")
+		}
 		id := replacementIDs[0]
 		replacementIDs = replacementIDs[1:]
 		return id, nil
@@ -847,20 +861,20 @@ INSERT INTO processor_governance_profiles (
   allowed_data_types,region,retention_policy,deletion_contract,training_use,
   status,governance_revision,manifest_hash,profile_contract_hash
 ) VALUES (
-  $4,'mineru','default','model-v1','v1',ARRAY['parse'],
+  $4,'mineru','hosted-main','model-stable-20260712','v1',ARRAY['parse'],
   ARRAY['application/pdf'],'global','none','delete','disabled','approved',
   1,$8,$8
 );
 INSERT INTO processor_governance_heads (
   processor,endpoint_id,model_id,status,active_profile_id,
   active_governance_revision,head_revision
-) VALUES ('mineru','default','model-v1','active',$4,1,1);
+) VALUES ('mineru','hosted-main','model-stable-20260712','active',$4,1,1);
 INSERT INTO processing_consents (
   id,scope,collection_id,processor,endpoint_id,model_id,governance_profile_id,
   governance_revision,governance_head_revision,purposes,data_types,
   policy_version,decision,consent_revision,granted_by_user_id
 ) VALUES (
-  $5,'collection',$2,'mineru','default','model-v1',$4,1,1,
+  $5,'collection',$2,'mineru','hosted-main','model-stable-20260712',$4,1,1,
   ARRAY['parse'],ARRAY['application/pdf'],'v1','granted',1,$1
 );
 INSERT INTO knowledge_index_profiles(

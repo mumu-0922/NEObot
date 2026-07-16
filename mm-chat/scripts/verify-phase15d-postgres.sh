@@ -13,4 +13,4 @@ export MM_CHAT_REQUIRE_POSTGRES_TESTS=true
 export GOCACHE="${GOCACHE:-/tmp/mm-chat-go-cache}"
 
 cd "${backend_dir}"
-go test -count=1 -race ./internal/knowledge ./internal/migration
+go test -count=1 -race -p=1 ./internal/knowledge ./internal/migration

@@ -1068,8 +1068,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         mapper done; `G7.5.33` MinerU `sourceText` page-locator admission done;
         `G7.5.34` MinerU opaque table element page-locator admission done;
         `G7.5.35` MinerU opaque image element page-locator admission done;
-        `G7.5A` MinerU text-baseline locator hardening closure done; real handler
-        dispatch still gated).
+        `G7.5A` MinerU text-baseline locator hardening closure done; `G7.5T`
+        disposable PostgreSQL integration gate restored and proven with cleanup;
+        real handler dispatch still gated).
   - [ ] G7.6 Private query and Go reauthorization.
   - [ ] G7.7 Strict/optional chat answer and basic citations.
   - [ ] G7.8 Live MinerU + Jina + Postgres smoke and operational proof.

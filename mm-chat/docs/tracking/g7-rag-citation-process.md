@@ -2882,3 +2882,83 @@ Residual risk:
   dispatch can be promoted.
 - No live MinerU quota is consumed by this slice; the first real provider smoke
   remains in G7.8 or an explicitly owner-authorized bounded smoke cut.
+
+## 2026-07-16 — G7.5T Disposable Postgres Integration Gate Recovery
+
+Objective: run the owner-requested real PostgreSQL integration proof against a
+throwaway database, delete that database after the run, and repair only the test
+harness/fixtures needed for the gate to remain replayable. This is a test-gate
+slice, not the G7.5B `017` parse projection staging proof.
+
+Implemented behavior:
+
+- Restored `scripts/verify-phase15d-postgres.sh` by forcing package execution
+  through `go test -p=1`. The knowledge and migration packages both touch
+  cluster-global RAG capability roles, so parallel package execution can make
+  unrelated migrations fail closed with role-safety errors.
+- Updated Postgres knowledge integration fixtures to stop using governance
+  placeholder identities rejected by runtime validation:
+  - endpoint `default` -> `hosted-main`;
+  - model `model-v1` -> `model-stable-20260712`;
+  - model API version `v1` -> `api-20260623` or `api-20260624` where the test
+    needs two revisions.
+- Scoped legacy migration replay tests that assert migration `010` behavior to
+  a test filesystem containing migrations through `010`, so later G7 migration
+  files do not invalidate the historical regression contract.
+- Added a knowledge-package migration test helper for the same through-version
+  fixture pattern, used by the migration-009 compatibility test.
+- Hardened repository integration ID fixtures so exhausted deterministic IDs
+  return readable test errors instead of panicking.
+- Ran the final proof against a fresh `postgres:16-alpine` container named
+  `mm-chat-test-postgres` on `127.0.0.1:15432`, then removed the container.
+
+Touched files:
+
+```text
+backend/internal/knowledge/consent_expiry_worker_postgres_test.go
+backend/internal/knowledge/consents_postgres_test.go
+backend/internal/knowledge/delete_reprocess_concurrency_postgres_test.go
+backend/internal/knowledge/first_bind_concurrency_postgres_test.go
+backend/internal/knowledge/governance_postgres_test.go
+backend/internal/knowledge/membership_concurrency_postgres_test.go
+backend/internal/knowledge/migration_test_helpers_test.go
+backend/internal/knowledge/query_consents_postgres_test.go
+backend/internal/knowledge/repository_postgres_test.go
+backend/internal/migration/phase15_knowledge_tail_replay_test.go
+backend/internal/migration/phase15_rag_projection_migration_test.go
+scripts/verify-phase15d-postgres.sh
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && go test ./internal/knowledge ./internal/migration
+# passed
+
+MM_CHAT_TEST_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable' \
+  bash mm-chat/scripts/verify-phase15d-postgres.sh
+# passed against disposable PostgreSQL 16
+
+MIGRATION_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable' \
+  go run ./cmd/migrate up
+# applied 001 through 017 on the disposable DB public schema for the RAG adapter
+
+cd mm-chat/rag && \
+  RAG_TEST_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable' \
+  uv run pytest -p no:cacheprovider -m integration tests/integration/test_postgres_integration.py
+# 1 passed
+
+docker ps -a --format '{{.Names}}' | grep -Fx mm-chat-test-postgres
+# no match; disposable test database deleted
+```
+
+Residual risk:
+
+- This validates the disposable Postgres integration gate and existing RAG
+  adapter readiness test. It does not yet prove `knowledge_stage_parse_projection(...)`
+  with live `017` staging rows; that remains the next G7.5B slice.
+- No provider quota was consumed. No application database or compose-managed
+  `mm-chat-postgres-1` database was modified.

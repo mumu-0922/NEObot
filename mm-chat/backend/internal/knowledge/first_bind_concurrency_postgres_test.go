@@ -36,7 +36,7 @@ INSERT INTO files(
 `, ownerID, collectionID, fileID, strings.Repeat("a", 64), "users/"+ownerID+"/files/"+fileID)
 	repo := NewPostgresRepository(db)
 	manifest := GovernanceManifest{
-		Processor: "mineru", EndpointID: "default", ModelID: "model-v1", ModelAPIVersion: "v1",
+		Processor: "mineru", EndpointID: "hosted-main", ModelID: "model-stable-20260712", ModelAPIVersion: "api-20260623",
 		AllowedPurposes: []string{"parse"}, AllowedDataTypes: []string{"application/pdf"},
 		Region: "global", RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled",
 	}

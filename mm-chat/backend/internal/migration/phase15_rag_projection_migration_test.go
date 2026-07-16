@@ -111,7 +111,7 @@ ALTER ROLE rag_api_reader
 ALTER ROLE rag_api_reader
   NOLOGIN SUPERUSER CREATEDB CREATEROLE REPLICATION BYPASSRLS`)
 
-	runner := NewRunner(db, migrationfiles.FS)
+	runner := NewRunner(db, phase15MigrationFSThrough(t, 10))
 	if _, err := runner.Up(ctx); err == nil ||
 		!strings.Contains(err.Error(), "RAG_REQUIRED_ROLE_MUST_BE_RESTRICTED") {
 		t.Fatalf("unsafe role attributes error = %v", err)
@@ -179,7 +179,7 @@ func TestPhase15RAGProjectionGoAPIRuntimePermissionsSurviveRollback(t *testing.T
 	defer cancel()
 	assertPhase15Postgres16(t, ctx, db)
 
-	runner := NewRunner(db, migrationfiles.FS)
+	runner := NewRunner(db, phase15MigrationFSThrough(t, 10))
 	if _, err := runner.WithPhase15GovernanceMapping(Phase15GovernanceMapping{}); err != nil {
 		t.Fatalf("configure zero-value mapping: %v", err)
 	}
@@ -222,7 +222,7 @@ func TestPhase15RAGProjectionFreshLeaseLedgerReplayAndRollback(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 
-	runner := NewRunner(db, migrationfiles.FS)
+	runner := NewRunner(db, phase15MigrationFSThrough(t, 10))
 	if _, err := runner.WithPhase15GovernanceMapping(Phase15GovernanceMapping{}); err != nil {
 		t.Fatalf("configure zero-value mapping: %v", err)
 	}
@@ -516,7 +516,7 @@ func TestPhase15RAGProjectionJobLeaseRejectsStaleToken(t *testing.T) {
 	db := openPhase151CMigrationIntegrationDB(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	runner := NewRunner(db, migrationfiles.FS)
+	runner := NewRunner(db, phase15MigrationFSThrough(t, 10))
 	if _, err := runner.Up(ctx); err != nil {
 		t.Fatalf("fresh up: %v", err)
 	}
@@ -719,7 +719,7 @@ INSERT INTO processor_governance_heads(
   active_governance_revision, head_revision
 ) VALUES ('jina', 'hosted-default', 'active', $1, 1, 1)`, profileID)
 
-	fullRunner := NewRunner(db, migrationfiles.FS)
+	fullRunner := NewRunner(db, phase15MigrationFSThrough(t, 10))
 	if _, err := fullRunner.Up(ctx); err == nil ||
 		!strings.Contains(err.Error(), "RAG_GOVERNANCE_PROFILE_MAPPING_COVERAGE_MISMATCH") {
 		t.Fatalf("missing mapping error = %v", err)
@@ -1082,6 +1082,10 @@ func phase15UndefinedFunction(err error) bool {
 }
 
 func phase15RAGBaseMigrationFS(t *testing.T) fstest.MapFS {
+	return phase15MigrationFSThrough(t, 9)
+}
+
+func phase15MigrationFSThrough(t *testing.T, maxVersion int) fstest.MapFS {
 	t.Helper()
 	loaded, err := Load(migrationfiles.FS)
 	if err != nil {
@@ -1089,7 +1093,7 @@ func phase15RAGBaseMigrationFS(t *testing.T) fstest.MapFS {
 	}
 	result := fstest.MapFS{}
 	for _, migration := range loaded {
-		if migration.Version > 9 {
+		if migration.Version > int64(maxVersion) {
 			continue
 		}
 		for _, path := range []string{migration.UpPath, migration.DownPath} {

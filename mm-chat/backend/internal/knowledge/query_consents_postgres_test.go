@@ -25,7 +25,7 @@ func TestPostgresQueryConsentIsolationRevisionGovernanceAndRollback(t *testing.T
 	const userB = "16000000-0000-4000-8000-000000000002"
 	mustKnowledgeExec(t, ctx, db, `INSERT INTO users(id,email,display_name) VALUES
 ($1,'query-a@example.test','A'),($2,'query-b@example.test','B')`, userA, userB)
-	manifest := GovernanceManifest{Processor: "jina", EndpointID: "default", ModelID: "model-v1", ModelAPIVersion: "v1",
+	manifest := GovernanceManifest{Processor: "jina", EndpointID: "hosted-main", ModelID: "model-stable-20260712", ModelAPIVersion: "api-20260623",
 		AllowedPurposes: []string{"query_embedding", "rerank"}, AllowedDataTypes: []string{"text/plain"},
 		Region: "global", RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled"}
 	governance := NewGovernanceService(NewPostgresRepository(db))
@@ -57,8 +57,8 @@ func TestPostgresQueryConsentIsolationRevisionGovernanceAndRollback(t *testing.T
 		t.Fatalf("initial/no-op revision/events = %d/%d", stateRevision, events)
 	}
 	var tupleOK bool
-	if err := db.QueryRowContext(ctx, `SELECT payload->>'endpointId'='default'
-AND payload->>'modelId'='model-v1' AND length(payload->>'profileContractHash')=64
+	if err := db.QueryRowContext(ctx, `SELECT payload->>'endpointId'='hosted-main'
+AND payload->>'modelId'='model-stable-20260712' AND length(payload->>'profileContractHash')=64
 AND (payload->>'governanceRevision')::bigint=1 AND (payload->>'governanceHeadRevision')::bigint=1
 AND (payload->>'consentRevision')::bigint=1 AND (payload->>'queryConsentRevision')::bigint=2
 AND length(payload->>'governanceProfileId')=36 FROM knowledge_outbox
@@ -162,7 +162,7 @@ WHERE aggregate_key=$1 AND event_type='knowledge.user.query-consent.changed' ORD
 	if err := db.QueryRowContext(ctx, `SELECT payload->>'endpointId' FROM knowledge_outbox WHERE aggregate_key=$1 AND event_type='knowledge.user.query-consent.changed' LIMIT 1`, userA).Scan(&endpoint); err != nil {
 		t.Fatal(err)
 	}
-	if endpoint != "default" {
+	if endpoint != "hosted-main" {
 		t.Fatalf("query consent event endpoint = %q", endpoint)
 	}
 }
@@ -176,7 +176,7 @@ func TestPostgresConcurrentQueryConsentGrantIsOneTransition(t *testing.T) {
 	}
 	const userID = "17000000-0000-4000-8000-000000000001"
 	mustKnowledgeExec(t, ctx, db, `INSERT INTO users(id,email,display_name) VALUES ($1,'query-race@example.test','Race')`, userID)
-	manifest := GovernanceManifest{Processor: "jina", EndpointID: "default", ModelID: "model-v1", ModelAPIVersion: "v1", AllowedPurposes: []string{"query_embedding", "rerank"}, AllowedDataTypes: []string{"text/plain"}, Region: "global", RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled"}
+	manifest := GovernanceManifest{Processor: "jina", EndpointID: "hosted-main", ModelID: "model-stable-20260712", ModelAPIVersion: "api-20260623", AllowedPurposes: []string{"query_embedding", "rerank"}, AllowedDataTypes: []string{"text/plain"}, Region: "global", RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled"}
 	if _, err := NewGovernanceService(NewPostgresRepository(db)).Apply(ctx, manifest); err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +268,7 @@ func TestPostgresAccountDisableWinsQueuedQueryConsentGrant(t *testing.T) {
 	}
 	const userID = "18000000-0000-4000-8000-000000000001"
 	mustKnowledgeExec(t, ctx, db, `INSERT INTO users(id,email,display_name) VALUES ($1,'query-disable@example.test','Disable')`, userID)
-	manifest := GovernanceManifest{Processor: "jina", EndpointID: "default", ModelID: "model-v1", ModelAPIVersion: "v1", AllowedPurposes: []string{"query_embedding"}, AllowedDataTypes: []string{"text/plain"}, Region: "global", RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled"}
+	manifest := GovernanceManifest{Processor: "jina", EndpointID: "hosted-main", ModelID: "model-stable-20260712", ModelAPIVersion: "api-20260623", AllowedPurposes: []string{"query_embedding"}, AllowedDataTypes: []string{"text/plain"}, Region: "global", RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled"}
 	if _, err := NewGovernanceService(NewPostgresRepository(db)).Apply(ctx, manifest); err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +322,7 @@ func TestPostgresQueryConsentSelectsExactEndpointModel(t *testing.T) {
 	mustKnowledgeExec(t, ctx, db, `INSERT INTO users(id,email,display_name)
 VALUES ($1,'query-models@example.test','Models')`, userID)
 	governance := NewGovernanceService(NewPostgresRepository(db))
-	base := GovernanceManifest{Processor: "jina", EndpointID: "hosted", ModelAPIVersion: "v1",
+	base := GovernanceManifest{Processor: "jina", EndpointID: "hosted", ModelAPIVersion: "api-20260623",
 		AllowedPurposes: []string{"query_embedding"}, AllowedDataTypes: []string{"text/plain"},
 		Region: "global", RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled"}
 	for _, modelID := range []string{"embed-a", "embed-b"} {

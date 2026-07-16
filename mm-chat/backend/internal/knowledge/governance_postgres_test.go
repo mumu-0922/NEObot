@@ -20,13 +20,13 @@ func TestPostgresGovernanceApplyDisableIsAtomicAndIdempotent(t *testing.T) {
 	if _, err := migration.NewRunner(db, migrationfiles.FS).Up(ctx); err != nil {
 		t.Fatal(err)
 	}
-	manifest := GovernanceManifest{Processor: "mineru", EndpointID: "default", ModelID: "model-v1", ModelAPIVersion: "v1",
+	manifest := GovernanceManifest{Processor: "mineru", EndpointID: "hosted-main", ModelID: "model-stable-20260712", ModelAPIVersion: "api-20260623",
 		AllowedPurposes: []string{"parse"}, AllowedDataTypes: []string{"application/pdf"}, Region: "global",
 		RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled"}
 	service := NewGovernanceService(NewPostgresRepository(db))
 	head, err := service.Apply(ctx, manifest)
 	if err != nil || head.HeadRevision != 1 || head.ActiveGovernanceRevision != 1 || head.Status != "active" ||
-		head.ModelID != "model-v1" || len(head.ProfileContractHash) != 64 {
+		head.ModelID != "model-stable-20260712" || len(head.ProfileContractHash) != 64 {
 		t.Fatalf("first apply = %#v, err=%v", head, err)
 	}
 	replayed, err := service.Apply(ctx, manifest)
@@ -36,7 +36,7 @@ func TestPostgresGovernanceApplyDisableIsAtomicAndIdempotent(t *testing.T) {
 	legacyManifest := manifest
 	legacyManifest.ModelID = ""
 	legacyReplay, err := service.Apply(ctx, legacyManifest)
-	if err != nil || legacyReplay.ActiveProfileID != head.ActiveProfileID || legacyReplay.ModelID != "model-v1" {
+	if err != nil || legacyReplay.ActiveProfileID != head.ActiveProfileID || legacyReplay.ModelID != "model-stable-20260712" {
 		t.Fatalf("unambiguous legacy replay = %#v, err=%v", legacyReplay, err)
 	}
 	manifest.ModelAPIVersion = "v2"
@@ -44,19 +44,19 @@ func TestPostgresGovernanceApplyDisableIsAtomicAndIdempotent(t *testing.T) {
 	if err != nil || head.HeadRevision != 2 || head.ActiveGovernanceRevision != 2 {
 		t.Fatalf("changed apply = %#v, err=%v", head, err)
 	}
-	head, err = service.Disable(ctx, "mineru", "default")
+	head, err = service.Disable(ctx, "mineru", "hosted-main")
 	if err != nil || head.Status != "disabled" || head.HeadRevision != 3 || head.ActiveProfileID != "" {
 		t.Fatalf("disable = %#v, err=%v", head, err)
 	}
-	replayed, err = service.Disable(ctx, "mineru", "default")
+	replayed, err = service.Disable(ctx, "mineru", "hosted-main")
 	if err != nil || replayed.HeadRevision != 3 {
 		t.Fatalf("disable replay = %#v, err=%v", replayed, err)
 	}
 	var profiles, events int
-	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM processor_governance_profiles WHERE processor='mineru' AND endpoint_id='default'`).Scan(&profiles); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM processor_governance_profiles WHERE processor='mineru' AND endpoint_id='hosted-main'`).Scan(&profiles); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM knowledge_outbox WHERE aggregate_type='processor_governance_head' AND aggregate_key='mineru/default/model-v1'`).Scan(&events); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM knowledge_outbox WHERE aggregate_type='processor_governance_head' AND aggregate_key='mineru/hosted-main/model-stable-20260712'`).Scan(&events); err != nil {
 		t.Fatal(err)
 	}
 	if profiles != 2 || events != 3 {
@@ -64,7 +64,7 @@ func TestPostgresGovernanceApplyDisableIsAtomicAndIdempotent(t *testing.T) {
 	}
 	var exactPayloads int
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM knowledge_outbox
-WHERE aggregate_key='mineru/default/model-v1' AND payload->>'modelId'='model-v1'
+WHERE aggregate_key='mineru/hosted-main/model-stable-20260712' AND payload->>'modelId'='model-stable-20260712'
 AND ((payload->>'status'='active' AND length(payload->>'profileContractHash')=64)
   OR (payload->>'status'='disabled' AND NOT payload ? 'profileContractHash'))`).Scan(&exactPayloads); err != nil {
 		t.Fatal(err)
@@ -79,7 +79,7 @@ AND ((payload->>'status'='active' AND length(payload->>'profileContractHash')=64
 		t.Fatal("governance profile delete unexpectedly succeeded")
 	}
 	var leaked int
-	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM knowledge_outbox WHERE aggregate_key='mineru/default/model-v1' AND (payload ? 'retentionPolicy' OR payload ? 'deletionContract' OR payload ? 'trainingUse')`).Scan(&leaked); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM knowledge_outbox WHERE aggregate_key='mineru/hosted-main/model-stable-20260712' AND (payload ? 'retentionPolicy' OR payload ? 'deletionContract' OR payload ? 'trainingUse')`).Scan(&leaked); err != nil {
 		t.Fatal(err)
 	}
 	if leaked != 0 {
@@ -87,7 +87,7 @@ AND ((payload->>'status'='active' AND length(payload->>'profileContractHash')=64
 	}
 
 	var existingEventID string
-	if err := db.QueryRowContext(ctx, `SELECT event_id FROM knowledge_outbox WHERE aggregate_key='mineru/default/model-v1' LIMIT 1`).Scan(&existingEventID); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT event_id FROM knowledge_outbox WHERE aggregate_key='mineru/hosted-main/model-stable-20260712' LIMIT 1`).Scan(&existingEventID); err != nil {
 		t.Fatal(err)
 	}
 	failing := NewPostgresRepository(db)
@@ -105,13 +105,13 @@ AND ((payload->>'status'='active' AND length(payload->>'profileContractHash')=64
 	}
 	var status string
 	var revision int64
-	if err := db.QueryRowContext(ctx, `SELECT status,head_revision FROM processor_governance_heads WHERE processor='mineru' AND endpoint_id='default'`).Scan(&status, &revision); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT status,head_revision FROM processor_governance_heads WHERE processor='mineru' AND endpoint_id='hosted-main'`).Scan(&status, &revision); err != nil {
 		t.Fatal(err)
 	}
 	if status != "disabled" || revision != 3 {
 		t.Fatalf("failed apply committed head = %s/%d", status, revision)
 	}
-	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM processor_governance_profiles WHERE processor='mineru' AND endpoint_id='default'`).Scan(&profiles); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM processor_governance_profiles WHERE processor='mineru' AND endpoint_id='hosted-main'`).Scan(&profiles); err != nil {
 		t.Fatal(err)
 	}
 	if profiles != 2 {
@@ -126,12 +126,12 @@ func TestPostgresGovernanceConcurrentFirstApplySerializes(t *testing.T) {
 	if _, err := migration.NewRunner(db, migrationfiles.FS).Up(ctx); err != nil {
 		t.Fatal(err)
 	}
-	base := GovernanceManifest{Processor: "jina", EndpointID: "default", ModelID: "model-v1", ModelAPIVersion: "v1",
+	base := GovernanceManifest{Processor: "jina", EndpointID: "hosted-main", ModelID: "model-stable-20260712", ModelAPIVersion: "api-20260623",
 		AllowedPurposes: []string{"passage_embedding"}, AllowedDataTypes: []string{"text/plain"}, Region: "global",
 		RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled"}
 	errorsOut := make(chan error, 2)
 	var wait sync.WaitGroup
-	for _, version := range []string{"v1", "v2"} {
+	for _, version := range []string{"api-20260623", "api-20260624"} {
 		wait.Add(1)
 		go func(version string) {
 			defer wait.Done()
@@ -172,7 +172,7 @@ func TestPostgresRuntimeRemainsCompatibleWithMigration009(t *testing.T) {
 	db := openKnowledgeTestDB(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	runner := migration.NewRunner(db, migrationfiles.FS)
+	runner := migration.NewRunner(db, knowledgeMigrationFSThrough(t, 10))
 	if _, err := runner.Up(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -192,12 +192,12 @@ INSERT INTO knowledge_collections(id,name,scope,owner_user_id) VALUES ($2,'Runti
 INSERT INTO files(id,user_id,original_filename,mime_type,byte_size,sha256,storage_backend,object_key,metadata)
 VALUES ($3,$1,'runtime.txt','text/plain',1,$4,'local','runtime/009','{"purpose":"knowledge"}')`,
 		userID, collectionID, fileID, strings.Repeat("a", 64))
-	manifest := GovernanceManifest{Processor: "jina", EndpointID: "default", ModelID: "model-v1",
-		ModelAPIVersion: "v1", AllowedPurposes: []string{"parse", "query_embedding"},
+	manifest := GovernanceManifest{Processor: "jina", EndpointID: "hosted-main", ModelID: "model-stable-20260712",
+		ModelAPIVersion: "api-20260623", AllowedPurposes: []string{"parse", "query_embedding"},
 		AllowedDataTypes: []string{"text/plain"}, Region: "global", RetentionPolicy: "none",
 		DeletionContract: "delete", TrainingUse: "disabled"}
 	head, err := NewGovernanceService(NewPostgresRepository(db)).Apply(ctx, manifest)
-	if err != nil || head.ModelID != "model-v1" {
+	if err != nil || head.ModelID != "model-stable-20260712" {
 		t.Fatalf("009 governance apply = %#v, %v", head, err)
 	}
 	service := NewService(NewPostgresRepository(db))
@@ -205,7 +205,7 @@ VALUES ($3,$1,'runtime.txt','text/plain',1,$4,'local','runtime/009','{"purpose":
 	consent, err := service.PutQueryConsent(actorCtx, "jina", PutConsentInput{
 		Purposes: []string{"query_embedding"}, DataTypes: []string{"text/plain"}, PolicyVersion: "v1",
 	})
-	if err != nil || consent.EndpointID != "default" {
+	if err != nil || consent.EndpointID != "hosted-main" {
 		t.Fatalf("009 query consent = %#v, %v", consent, err)
 	}
 	if _, err := service.PutCollectionConsent(actorCtx, collectionID, "jina", PutConsentInput{
@@ -250,7 +250,7 @@ func TestPostgresGovernanceSameEndpointModelsRemainIndependent(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := NewGovernanceService(NewPostgresRepository(db))
-	manifest := GovernanceManifest{Processor: "jina", EndpointID: "hosted", ModelAPIVersion: "v1",
+	manifest := GovernanceManifest{Processor: "jina", EndpointID: "hosted", ModelAPIVersion: "api-20260623",
 		AllowedPurposes: []string{"query_embedding"}, AllowedDataTypes: []string{"text/plain"},
 		Region: "global", RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled"}
 	for _, modelID := range []string{"embed-a", "embed-b"} {

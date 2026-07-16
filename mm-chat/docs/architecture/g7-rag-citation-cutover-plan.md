@@ -854,6 +854,10 @@ G7.5A completed on 2026-07-16:
 
 Remaining G7.5 work:
 
+- G7.5T disposable PostgreSQL integration gate has been restored and proven
+  against a throwaway `postgres:16-alpine` database; the test DB is deleted
+  after each run, and this does not promote handlers or complete the `017`
+  parse projection staging proof.
 - Move to G7.5B: prove the `017` parse projection staging function through a
   live/integration gate when `MM_CHAT_TEST_DATABASE_URL` is available; otherwise
   record the skip and keep static coverage explicit. Richer formula semantics,
