@@ -1116,7 +1116,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         and persists answered/refusal outcomes fail-closed; `G7.7E` optional
         mode now records explicit no-Knowledge-evidence degradation metadata;
         `G7.7F` frontend server mode now sends selected Knowledge collection
-        IDs to Go strict RAG and renders basic citation/status cards).
+        IDs to Go strict RAG and renders basic citation/status cards; `G7.7G`
+        same-origin `/mm-api` smoke verified strict empty-evidence refusal and
+        persisted Knowledge metadata on the rebuilt local stack).
   - [ ] G7.8 Live MinerU + Jina + Postgres smoke and operational proof.
   - [ ] G7.9 G8/G9 handoff and G7 closure checklist.
 - [ ] G8 Teams and Knowledge UI Wiring: connect existing Go control-plane APIs

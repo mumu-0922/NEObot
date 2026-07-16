@@ -4698,3 +4698,57 @@ Residual risk:
   locator/snippet metadata because G7.7 does not yet enrich citations with a
   human file title. Rich file title/page-preview rendering remains deferred.
 - Same-origin `/mm-api` browser smoke still needs a live frontend/backend run.
+
+## 2026-07-16 — G7.7G Same-Origin `/mm-api` Strict Knowledge Smoke
+
+Objective: prove the newly wired frontend/backend path can reach Go through the
+same-origin `/mm-api` edge and carry selected Knowledge IDs into strict RAG
+metadata without requiring a real provider call.
+
+Runtime used:
+
+```text
+cd mm-chat && docker compose --env-file .env.single-server \
+  -f compose.single-server.yml up -d --build backend frontend
+# rebuilt backend/frontend and restarted them on the existing local stack
+```
+
+Smoke evidence:
+
+```text
+GET  http://127.0.0.1:8080/ready                         -> 200 ready
+GET  http://127.0.0.1:18080/                             -> 200, bytes=96881
+GET  http://127.0.0.1:18080/mm-api/v1/config             -> 200, deployment.mode=local
+POST http://127.0.0.1:18080/mm-api/v1/chat/conversations -> 201
+POST http://127.0.0.1:18080/mm-api/v1/chat/conversations/{id}/messages -> 201
+POST http://127.0.0.1:18080/mm-api/v1/chat/conversations/{id}/stream   -> 200 text/event-stream
+DELETE http://127.0.0.1:18080/mm-api/v1/chat/conversations/{id}        -> 204/empty
+GET  http://127.0.0.1:18080/mm-api/v1/chat/conversations -> smoke id no longer listed
+```
+
+Strict stream assertion:
+
+```text
+event: message.started
+event: message.delta
+I don't have enough verified knowledge-base evidence to answer that.
+event: message.completed
+metadata.knowledge.mode = strict
+metadata.knowledge.outcome = insufficient_evidence
+metadata.knowledge.selectedCollectionIds = [aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa]
+```
+
+Important correction during smoke:
+
+- First stream attempt used the old test-only `mock` provider and correctly
+  returned `400 UNSUPPORTED_PROVIDER` in the live stack.
+- Retried with the configured live model reference
+  `openai_compatible:gpt-5.5`. Because selected Knowledge had no evidence, the
+  strict RAG path refused before answer-provider invocation, so no real provider
+  quota was consumed.
+
+Residual risk:
+
+- This proves same-origin routing plus strict empty-evidence behavior, not a
+  citation-producing happy path. G7.8 remains responsible for live MinerU + Jina
+  - Postgres citation-producing smoke.

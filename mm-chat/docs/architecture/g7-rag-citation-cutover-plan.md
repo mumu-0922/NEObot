@@ -1397,9 +1397,16 @@ G7.7F completed on 2026-07-16:
   citation/degradation metadata, and renders a compact Knowledge citation/status
   card for strict answers, strict refusals, and optional degradation.
 
+G7.7G completed on 2026-07-16:
+
+- Rebuilt the local single-server `backend` and `frontend` containers and ran a
+  same-origin `/mm-api` smoke against the live stack on `127.0.0.1:18080`.
+- Verified `/mm-api/v1/config`, conversation creation, user message append,
+  strict Knowledge stream refusal with selected collection IDs, persisted
+  `metadata.knowledge`, and cleanup deletion of the smoke conversation.
+
 Remaining G7.7 slices:
 
-- Run deployed same-origin smoke through `/mm-api` once frontend wiring exists.
 - Decide whether richer citation persistence needs a dedicated table or message
   metadata remains sufficient for the first basic-card UI.
 
