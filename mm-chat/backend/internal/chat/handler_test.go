@@ -728,14 +728,14 @@ func TestHandlerStrictRAGRejectsInvalidSelection(t *testing.T) {
 	}
 }
 
-func TestHandlerStrictRAGFailsClosedWhenAnswerGatePending(t *testing.T) {
+func TestHandlerStrictRAGStreamsGroundedAnswerAfterGovernance(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
 	repo.messages[testConversationID] = append(
 		repo.messages[testConversationID],
 		fakeMessage(testMessageID, testConversationID, 0, "user", "Summarize the indexed source"),
 	)
-	provider := &strictRAGProviderProbe{}
+	provider := &titleProvider{chunks: []string{"Grounded answer [1]"}}
 	handler := NewHandler(
 		NewService(repo),
 		WithProvider(provider),
@@ -758,24 +758,35 @@ func TestHandlerStrictRAGFailsClosedWhenAnswerGatePending(t *testing.T) {
 		handler,
 		http.MethodPost,
 		conversationsPath+"/"+testConversationID+"/stream",
-		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"metadata":{"ragStrict":true,"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-rag-gate-pending"}`,
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"systemInstruction":"Prefer concise answers.","metadata":{"ragStrict":true,"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-rag-grounded-answer"}`,
 	)
 
 	assertStreamStatus(t, rec, http.StatusOK)
-	if provider.called {
-		t.Fatal("provider StreamChat was called before strict RAG answer gate")
+	body := rec.Body.String()
+	if !strings.Contains(body, "Grounded answer [1]") || !strings.Contains(body, "event: message.completed") {
+		t.Fatalf("strict RAG answer stream body = %s", body)
 	}
-	assertStrictRAGRefusalMessage(t, repo, "answer_gate_pending")
-	knowledgeMetadata := repo.messages[testConversationID][1].Metadata["knowledge"].(map[string]any)
-	if knowledgeMetadata["citationCount"] != 1 {
-		t.Fatalf("citationCount = %#v, want 1", knowledgeMetadata["citationCount"])
+	if !strings.Contains(provider.input.Prompt, "Verified Knowledge evidence") ||
+		!strings.Contains(provider.input.Prompt, "[1] alpha evidence source") ||
+		!strings.Contains(provider.input.Prompt, "Summarize the indexed source") {
+		t.Fatalf("provider prompt = %q", provider.input.Prompt)
+	}
+	if !strings.Contains(provider.input.SystemPrompt, "Strict Knowledge mode") ||
+		!strings.Contains(provider.input.SystemPrompt, "Prefer concise answers.") {
+		t.Fatalf("provider system prompt = %q", provider.input.SystemPrompt)
+	}
+
+	messages := repo.messages[testConversationID]
+	if len(messages) != 2 || messages[1].Content != "Grounded answer [1]" || messages[1].Status != "completed" {
+		t.Fatalf("messages = %#v", messages)
+	}
+	knowledgeMetadata := messages[1].Metadata["knowledge"].(map[string]any)
+	if knowledgeMetadata["outcome"] != "answered" || knowledgeMetadata["citationCount"] != 1 {
+		t.Fatalf("knowledge metadata = %#v", knowledgeMetadata)
 	}
 	citations, ok := knowledgeMetadata["citations"].([]RAGCitation)
-	if !ok || len(citations) != 1 {
+	if !ok || len(citations) != 1 || citations[0].Marker != "[1]" || citations[0].Snippet != "alpha evidence source" {
 		t.Fatalf("citations = %#v", knowledgeMetadata["citations"])
-	}
-	if citations[0].Marker != "[1]" || citations[0].Snippet != "alpha evidence source" {
-		t.Fatalf("citation = %#v", citations[0])
 	}
 	authority, ok := knowledgeMetadata["answerGovernance"].(RAGAnswerAuthority)
 	if !ok || authority.Processor != "mock" || authority.CollectionCount != 1 {
@@ -820,6 +831,66 @@ func TestHandlerStrictRAGRequiresAnswerGovernanceBeforeProvider(t *testing.T) {
 	if _, ok := knowledgeMetadata["citations"]; ok {
 		t.Fatalf("citations leaked before answer governance: %#v", knowledgeMetadata["citations"])
 	}
+}
+
+func TestHandlerStrictRAGRefusesWhenAnswerProviderFails(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "Summarize the indexed source"),
+	)
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(errorProvider{}),
+		WithRAGAnswerAssembler(NewRAGAnswerAssembler(
+			&fakeRAGCandidateSource{refs: []knowledge.EvidenceCandidateReference{validRAGCandidate()}},
+			&fakeRAGHydrator{evidence: []knowledge.HydratedEvidence{validHydratedEvidence()}},
+		)),
+		WithRAGAnswerGovernanceGate(&fakeRAGAnswerGovernanceGate{authority: RAGAnswerAuthority{Processor: "mock", ModelID: "mock-chat", CollectionCount: 1}}),
+	)
+
+	rec := performAuthenticatedRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"metadata":{"ragStrict":true,"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-rag-provider-failed"}`,
+	)
+
+	assertStreamStatus(t, rec, http.StatusOK)
+	assertStrictRAGRefusalMessage(t, repo, "answer_provider_failed")
+	knowledgeMetadata := repo.messages[testConversationID][1].Metadata["knowledge"].(map[string]any)
+	if knowledgeMetadata["citationCount"] != 0 {
+		t.Fatalf("citationCount = %#v, want 0 on provider failure", knowledgeMetadata["citationCount"])
+	}
+}
+
+func TestHandlerStrictRAGRefusesWhenAnswerMissesCitationMarker(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "Summarize the indexed source"),
+	)
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(&titleProvider{chunks: []string{"Grounded answer without marker"}}),
+		WithRAGAnswerAssembler(NewRAGAnswerAssembler(
+			&fakeRAGCandidateSource{refs: []knowledge.EvidenceCandidateReference{validRAGCandidate()}},
+			&fakeRAGHydrator{evidence: []knowledge.HydratedEvidence{validHydratedEvidence()}},
+		)),
+		WithRAGAnswerGovernanceGate(&fakeRAGAnswerGovernanceGate{authority: RAGAnswerAuthority{Processor: "mock", ModelID: "mock-chat", CollectionCount: 1}}),
+	)
+
+	rec := performAuthenticatedRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"metadata":{"ragStrict":true,"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-rag-missing-marker"}`,
+	)
+
+	assertStreamStatus(t, rec, http.StatusOK)
+	assertStrictRAGRefusalMessage(t, repo, "answer_citation_missing")
 }
 
 func TestHandlerStreamsEmptyAssistantContent(t *testing.T) {

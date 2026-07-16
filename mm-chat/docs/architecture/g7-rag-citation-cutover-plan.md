@@ -1362,14 +1362,28 @@ G7.7C completed on 2026-07-16:
   authorized path continues to stop at `answer_gate_pending` until answer
   context assembly is implemented.
 
+G7.7D completed on 2026-07-16:
+
+- Added grounded answer context construction after evidence hydration, citation
+  minting, and answer-purpose governance all pass. The answer provider receives
+  a strict system instruction plus bounded citation snippets, markers, locators,
+  and source/content hashes; raw unbounded source text is not forwarded.
+- The strict answer path buffers the provider stream first. Only a fully
+  successful answer that cites at least one minted marker is emitted and
+  persisted. Provider startup/stream errors, empty answers, or answers missing
+  citation markers fail closed to the standard strict refusal.
+- Successful strict RAG answers persist `metadata.knowledge.outcome =
+  "answered"` with citations and answer-governance authority. Failed provider
+  or citation-verification paths persist refusal outcomes without leaking
+  citations.
+
 Remaining G7.7 slices:
 
-- Wire RAG answer generation into Go chat flow or a Go-owned RAG answer route.
-- Build the grounded answer context from authorized evidence/citations and send
-  it to the already-selected answer provider.
-- Strict mode refuses unknowns; normal chat may degrade with explicit metadata.
-- Persist successful answer/citation metadata atomically where applicable.
-- Frontend renders basic citation markers/cards for selected Knowledge answers.
+- Add optional/non-strict degradation metadata.
+- Add frontend server-mode Knowledge selection and basic citation card rendering.
+- Run deployed same-origin smoke through `/mm-api` once frontend wiring exists.
+- Decide whether richer citation persistence needs a dedicated table or message
+  metadata remains sufficient for the first basic-card UI.
 
 Validation:
 

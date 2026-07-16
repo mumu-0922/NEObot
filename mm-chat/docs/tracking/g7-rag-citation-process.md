@@ -4540,3 +4540,54 @@ Residual risk:
 - Consent matching currently keys off `modelRef.providerId` and `modelRef.modelId`;
   richer endpoint/provider mapping can be added when the provider settings UI is
   promoted.
+
+## 2026-07-16 — G7.7D Strict Grounded Answer Context
+
+Objective: after selected evidence is reauthorized, citations are minted, and
+answer-purpose governance passes, send only bounded grounded citation context to
+the selected answer provider and persist the result fail-closed.
+
+Implemented behavior:
+
+- Added strict RAG answer context construction. The provider prompt contains the
+  user question plus verified citation markers, bounded snippets, compact
+  locator JSON, and source/content hashes. The system prompt explicitly enforces
+  Strict Knowledge mode, citation markers, and exact refusal behavior for
+  insufficient evidence.
+- The strict RAG answer path now calls the selected provider only after the
+  evidence, citation, and governance gates pass. It buffers provider stream
+  output before writing SSE, so provider startup errors, stream errors, empty
+  answers, or answers missing a minted citation marker do not leak partial
+  unverified answers to the browser.
+- Successful strict answers persist the provider answer and
+  `metadata.knowledge.outcome = "answered"` with citation cards and governance
+  authority. Failed provider/citation-verification paths persist the standard
+  strict refusal and withhold citations.
+
+Touched files:
+
+```text
+backend/internal/chat/rag_answer_context.go
+backend/internal/chat/rag_answer_context_test.go
+backend/internal/chat/handler.go
+backend/internal/chat/handler_test.go
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && \
+  GOCACHE=/tmp/neo-chat-go-build go test ./internal/chat -count=1
+# passed
+```
+
+Residual risk:
+
+- Strict provider output is buffered rather than token-streamed so fail-closed
+  behavior can be preserved. Later UX work may add a verified-buffer progress
+  state if needed.
+- Optional/non-strict degradation metadata and frontend citation cards remain
+  the next G7.7 slices.
