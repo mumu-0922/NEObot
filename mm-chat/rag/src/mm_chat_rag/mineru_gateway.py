@@ -56,6 +56,8 @@ MINERU_GATEWAY_DOWNLOAD_STATUS_INVALID: Final = (
     "MINERU_GATEWAY_DOWNLOAD_STATUS_INVALID"
 )
 MINERU_GATEWAY_RESULT_URL_INVALID: Final = "MINERU_GATEWAY_RESULT_URL_INVALID"
+MINERU_GATEWAY_RESULT_NOT_READY: Final = "MINERU_GATEWAY_RESULT_NOT_READY"
+MINERU_GATEWAY_RESULT_FAILED: Final = "MINERU_GATEWAY_RESULT_FAILED"
 MINERU_GATEWAY_ARCHIVE_INVALID: Final = "MINERU_GATEWAY_ARCHIVE_INVALID"
 MINERU_GATEWAY_ARTIFACT_INVALID: Final = "MINERU_GATEWAY_ARTIFACT_INVALID"
 MINERU_ALLOCATE_UPLOAD_URL: Final = "https://mineru.net/api/v4/file-urls/batch"
@@ -528,6 +530,39 @@ class MinerULocalBatchGateway:
             archive_body,
             artifact_set_id=artifact_set_id,
         )
+
+
+class MinerULocalBatchResultArchiveProvider:
+    """Compose MinerU local-batch calls into parser archive bytes.
+
+    The provider is default-off and retains no signed upload/result URLs. It
+    performs one allocate -> upload -> poll -> download sequence for an admitted
+    parse job; non-terminal poll states become retryable job failures so the
+    durable job runner owns backoff.
+    """
+
+    def __init__(self, gateway: MinerULocalBatchGateway | None = None) -> None:
+        if gateway is None:
+            _reject_permanent(MINERU_GATEWAY_DEPENDENCY_UNCONFIGURED)
+        self._gateway = gateway
+
+    async def fetch_result_archive(
+        self,
+        context: ProcessingJobContext,
+        source: DocumentSource,
+    ) -> bytes:
+        """Upload one source PDF and return a completed MinerU result ZIP."""
+        admitted = _validate_parser_context(context)
+        _validate_pdf_source(source)
+        _validate_source_hash(source)
+        allocation = await self._gateway.allocate_upload(admitted, source)
+        await self._gateway.upload_document(admitted, source, allocation)
+        poll_result = await self._gateway.poll_batch_result(admitted, allocation)
+        if poll_result.state == "failed":
+            _reject_permanent(MINERU_GATEWAY_RESULT_FAILED)
+        if poll_result.state != "done":
+            _reject_retryable(MINERU_GATEWAY_RESULT_NOT_READY)
+        return await self._gateway.download_result_archive(admitted, poll_result)
 
 
 def _allocate_request_body(filename: str) -> JsonObject:

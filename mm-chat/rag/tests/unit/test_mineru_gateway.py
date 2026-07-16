@@ -25,6 +25,8 @@ from mm_chat_rag.mineru_gateway import (
     MINERU_GATEWAY_REQUEST_FAILED,
     MINERU_GATEWAY_RESPONSE_INVALID,
     MINERU_GATEWAY_RESPONSE_TOO_LARGE,
+    MINERU_GATEWAY_RESULT_FAILED,
+    MINERU_GATEWAY_RESULT_NOT_READY,
     MINERU_GATEWAY_RESULT_URL_INVALID,
     MINERU_GATEWAY_SOURCE_HASH_MISMATCH,
     MINERU_GATEWAY_SOURCE_UNSUPPORTED,
@@ -37,6 +39,7 @@ from mm_chat_rag.mineru_gateway import (
     MinerULocalBatchAllocation,
     MinerULocalBatchGateway,
     MinerULocalBatchPollResult,
+    MinerULocalBatchResultArchiveProvider,
     MinerUTextBaselineArchiveParserGateway,
 )
 from mm_chat_rag.projection import ProjectionContext, build_postgres_projection_batch
@@ -881,6 +884,113 @@ async def test_mineru_gateway_download_retries_transport_failure_redacted() -> N
 
     assert raised.value.error_code == MINERU_GATEWAY_REQUEST_FAILED
     assert SECRET not in str(raised.value)
+
+
+async def test_mineru_result_archive_provider_runs_single_batch_sequence() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.method == "POST" and request.url == httpx.URL(
+            MINERU_ALLOCATE_UPLOAD_URL
+        ):
+            return _json_response(_allocation_payload(file_urls=(SIGNED_UPLOAD_URL,)))
+        if request.method == "PUT" and request.url == httpx.URL(SIGNED_UPLOAD_URL):
+            return httpx.Response(204)
+        if request.method == "GET" and request.url == httpx.URL(
+            f"{MINERU_POLL_URL_PREFIX}fixture-batch-id"
+        ):
+            return _json_response(_poll_payload(state="done"))
+        if request.method == "GET" and request.url == httpx.URL(RESULT_URL):
+            return httpx.Response(
+                200,
+                headers={
+                    "Content-Length": str(len(ZIP_BODY)),
+                    "Content-Type": "application/zip",
+                },
+                content=ZIP_BODY,
+            )
+        raise AssertionError(
+            f"unexpected MinerU request {request.method} {request.url}"
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = MinerULocalBatchResultArchiveProvider(
+            MinerULocalBatchGateway(SECRET, client=client)
+        )
+        archive_body = await provider.fetch_result_archive(_parse_context(), _source())
+
+    observed = [
+        (request.method, str(request.url).split("?")[0]) for request in requests
+    ]
+    assert archive_body == ZIP_BODY
+    assert observed == [
+        ("POST", MINERU_ALLOCATE_UPLOAD_URL),
+        ("PUT", SIGNED_UPLOAD_URL.split("?")[0]),
+        ("GET", f"{MINERU_POLL_URL_PREFIX}fixture-batch-id"),
+        ("GET", RESULT_URL),
+    ]
+    assert requests[0].headers["authorization"] == f"Bearer {SECRET}"
+    assert "authorization" not in requests[1].headers
+    assert "authorization" not in requests[3].headers
+
+
+async def test_mineru_result_archive_provider_retries_non_terminal_poll() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.method == "POST":
+            return _json_response(_allocation_payload(file_urls=(SIGNED_UPLOAD_URL,)))
+        if request.method == "PUT":
+            return httpx.Response(204)
+        if request.method == "GET":
+            payload = _poll_payload(state="running")
+            poll_result = payload["data"]["extract_result"][0]  # type: ignore[index]
+            poll_result["extract_progress"] = {
+                "extracted_pages": 1,
+                "start_time": "2026-07-16 12:00:00",
+                "total_pages": 2,
+            }
+            return _json_response(payload)
+        raise AssertionError(f"unexpected MinerU request {request.method}")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = MinerULocalBatchResultArchiveProvider(
+            MinerULocalBatchGateway(SECRET, client=client)
+        )
+        with pytest.raises(RetryableJobError) as raised:
+            await provider.fetch_result_archive(_parse_context(), _source())
+
+    assert raised.value.error_code == MINERU_GATEWAY_RESULT_NOT_READY
+    assert raised.value.retry_after_seconds == 30
+    assert [request.method for request in requests] == ["POST", "PUT", "GET"]
+
+
+async def test_mineru_result_archive_provider_rejects_failed_poll_redacted() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            return _json_response(_allocation_payload(file_urls=(SIGNED_UPLOAD_URL,)))
+        if request.method == "PUT":
+            return httpx.Response(204)
+        return _json_response(_poll_payload(state="failed", err_msg=SECRET))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = MinerULocalBatchResultArchiveProvider(
+            MinerULocalBatchGateway(SECRET, client=client)
+        )
+        with pytest.raises(PermanentJobError) as raised:
+            await provider.fetch_result_archive(_parse_context(), _source())
+
+    assert raised.value.error_code == MINERU_GATEWAY_RESULT_FAILED
+    assert SECRET not in str(raised.value)
+
+
+def test_mineru_result_archive_provider_default_off() -> None:
+    with pytest.raises(PermanentJobError) as raised:
+        MinerULocalBatchResultArchiveProvider(None)
+
+    assert raised.value.error_code == MINERU_GATEWAY_DEPENDENCY_UNCONFIGURED
 
 
 def test_mineru_gateway_validates_result_archive_summary() -> None:

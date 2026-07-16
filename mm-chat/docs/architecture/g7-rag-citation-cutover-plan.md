@@ -966,6 +966,22 @@ G7.5J completed on 2026-07-16:
   handler, and verifies the metadata → object → archive → projection sequence.
 - No MinerU API call is made and no provider quota is consumed.
 
+
+G7.5K completed on 2026-07-16:
+
+- Added `MinerULocalBatchResultArchiveProvider`, a default-off implementation of
+  the parser archive-provider seam.
+- The provider composes the existing MinerU local-batch gateway through one
+  allocate → signed upload → poll → archive download sequence for an admitted
+  parse job.
+- Non-terminal poll states now map to retryable `MINERU_GATEWAY_RESULT_NOT_READY`;
+  provider `failed` states map to permanent `MINERU_GATEWAY_RESULT_FAILED` with
+  redacted output.
+- The provider stores no signed upload/result URLs and is not wired into Worker
+  construction yet, so normal parse dispatch remains unpromoted.
+- Added unit coverage for successful request sequencing, retryable running
+  polls, redacted failed polls, and default-off dependency failure.
+
 Remaining G7.5 work:
 
 - G7.5T disposable PostgreSQL integration gate has been restored and proven
@@ -1005,6 +1021,9 @@ Remaining G7.5 work:
 - G7.5J is complete: parse dependency injection can explicitly compose Go
   source-object, MinerU archive parser, and Postgres projection dependencies,
   while default Worker construction still keeps parse unpromoted.
+- G7.5K is complete: MinerU local-batch archive provider composition exists
+  behind a default-off seam and maps nonterminal/failed poll states to stable
+  redacted job errors.
 - Implement index, reprocess, tombstone purge, rebuild, retry, and DLQ behavior.
 - Promote handlers one stage at a time behind readiness and registry gates.
 
@@ -1079,6 +1098,9 @@ Validation:
 - MinerU text-baseline parser adapter tests, including default-off dependency
   failure before archive fetch, parse-context admission, deterministic
   artifact-set derivation, projection-ready output, and archive validation reuse.
+- MinerU local-batch archive-provider composition tests, including allocate,
+  signed upload, poll, result download, retryable nonterminal states, redacted
+  failed states, and default-off dependency failure.
 - Parse-handler dependency composition tests with the MinerU text-baseline parser
   adapter, including source fetch, archive fetch, projection build, projection
   stage, source-hash propagation, and exact-term projection.

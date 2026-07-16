@@ -3622,3 +3622,59 @@ Residual risk:
   live parse smoke. Parse remains blocked for normal Worker construction until
   that provider/polling lifecycle is promoted and tested.
 - No real MinerU call was made.
+
+
+## 2026-07-16 — G7.5K MinerU Local-Batch Archive Provider
+
+Objective: provide a default-off `MinerUResultArchiveProvider` implementation so
+the parse dependency factory has a real archive-provider seam to promote later,
+without wiring it into normal Worker construction or calling MinerU in tests.
+
+Implemented behavior:
+
+- Added `MinerULocalBatchResultArchiveProvider` in
+  `rag/src/mm_chat_rag/mineru_gateway.py`.
+- The provider validates parse context, PDF source type, and source SHA-256,
+  then composes the existing `MinerULocalBatchGateway` calls:
+  - allocate signed upload URL;
+  - upload the PDF body;
+  - poll the batch result once;
+  - download the result ZIP only when the poll state is `done`.
+- The provider retains no signed upload URL, result URL, ZIP entry names, or
+  provider error details.
+- Non-terminal poll states produce retryable `MINERU_GATEWAY_RESULT_NOT_READY`.
+- Provider `failed` poll states produce permanent `MINERU_GATEWAY_RESULT_FAILED`
+  without leaking provider `err_msg`.
+- Constructor remains default-off: missing gateway raises
+  `MINERU_GATEWAY_DEPENDENCY_UNCONFIGURED` before external I/O.
+
+Touched files:
+
+```text
+rag/src/mm_chat_rag/mineru_gateway.py
+rag/tests/unit/test_mineru_gateway.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag &&   uv run ruff check src/mm_chat_rag/mineru_gateway.py tests/unit/test_mineru_gateway.py
+# passed
+
+cd mm-chat/rag &&   uv run mypy src/mm_chat_rag/mineru_gateway.py
+# passed
+
+cd mm-chat/rag &&   uv run pytest -p no:cacheprovider tests/unit/test_mineru_gateway.py -q
+# 111 passed
+```
+
+Residual risk:
+
+- The provider polls once and relies on durable job retry/backoff for
+  non-terminal states. A richer long-poll loop or provider-specific delay policy
+  remains a later operational decision.
+- The provider is not wired into `Worker(settings)` yet, so parse dispatch is
+  still not promoted by default and no live MinerU smoke has been run.
