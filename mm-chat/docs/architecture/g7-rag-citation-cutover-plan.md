@@ -852,6 +852,20 @@ G7.5A completed on 2026-07-16:
 - Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
   slice does not spend provider quota in tests.
 
+G7.5C completed on 2026-07-16:
+
+- Added a Python live integration proof for
+  `PostgresAdapter.stage_parse_projection(...)` against a disposable
+  PostgreSQL 16 database migrated through `017_rag_parse_projection_gateway`.
+- The test seeds the constrained parse-job authority used by the Go-side live
+  proof, then verifies the Python DTO-to-JSONB serialization path writes all
+  parse projection lanes: artifact set, block, parent chunk, child chunk, chunk
+  span, and child search projection.
+- The proof runs only when `RAG_TEST_DATABASE_URL` points at an explicit test
+  database. The disposable container is removed after the run.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
+  slice does not call MinerU/Jina providers and does not spend provider quota.
+
 Remaining G7.5 work:
 
 - G7.5T disposable PostgreSQL integration gate has been restored and proven
@@ -866,6 +880,10 @@ Remaining G7.5 work:
   semantics, and live provider smoke remain later gated work. Production
   MinIO/S3 object access should prefer the Go private source-object gateway
   rather than giving Python static object-store credentials.
+- G7.5C is complete: the Python `PostgresAdapter.stage_parse_projection(...)`
+  path is live-proven against disposable PostgreSQL with migrations `001`
+  through `017` applied. This closes the adapter-to-function serialization
+  proof, but not handler promotion or live provider smoke.
 - Promote the composed default-off Jina + Postgres embedding dependencies only
   behind an explicit readiness/registry gate.
 - Promote purge dispatch behind an explicit readiness/registry gate now that
@@ -889,7 +907,8 @@ Validation:
   lease/header/hash validation.
 - Parse projection adapter tests, including lease/materialization requirements,
   context/batch mismatch rejection, JSONB payload conversion, and token-fenced
-  function parameters.
+  function parameters; include the G7.5C live Python adapter proof when
+  `RAG_TEST_DATABASE_URL` points at a disposable PostgreSQL database.
 - Parse projection migration tests, including token fences, materialization/profile
   gates, JSONB recordset lanes, artifact-set binding, worker-only execute
   grants, and rollback.

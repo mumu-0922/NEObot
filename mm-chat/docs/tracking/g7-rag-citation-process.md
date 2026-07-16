@@ -3042,3 +3042,85 @@ Residual risk:
   real parse dispatch remains gated until handler registry promotion, retry/DLQ,
   and end-to-end provider smoke gates are explicitly opened.
 - This slice does not call MinerU or Jina and consumes no provider quota.
+
+## 2026-07-16 — G7.5C Python PostgresAdapter Parse Projection Live Proof
+
+Objective: prove the Python-side adapter introduced in G7.5.18 can serialize
+its DTOs into the JSONB payload expected by the live `017` database function.
+This closes the adapter-to-function proof after the Go-side function proof in
+G7.5B. It still does not promote parse dispatch or call MinerU/Jina providers.
+
+Implemented behavior:
+
+- Added
+  `rag/tests/integration/test_postgres_parse_projection_integration.py`.
+- The test is gated on `RAG_TEST_DATABASE_URL` and skips unless an explicit
+  disposable PostgreSQL URL is provided.
+- The fixture seeds the minimal authority needed to stage parse projections:
+  user, file, collection, document, document version, MinerU governance
+  profile/head, collection consent, Jina/Postgres index profile, search
+  profile, index generation, staging materialization, processing job, worker
+  lease token, and request hash.
+- The test calls `PostgresAdapter.stage_parse_projection(...)` with one block,
+  parent chunk, child chunk, chunk-block span, and child search projection.
+- The assertion reads the database after the call and verifies all six live
+  staged rows exist: artifact set, block, parent chunk, child chunk,
+  chunk-block span, and child search projection.
+
+Touched files:
+
+```text
+rag/tests/integration/test_postgres_parse_projection_integration.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+docker run --rm -d \
+  --name mm-chat-test-postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=mm_chat \
+  -p 127.0.0.1:15432:5432 \
+  postgres:16-alpine
+# disposable PostgreSQL 16 ready
+
+cd mm-chat/backend && \
+  MIGRATION_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable' \
+  go run ./cmd/migrate up
+# applied migrations 001 through 017
+
+cd mm-chat/rag && \
+  RAG_TEST_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable' \
+  uv run pytest -p no:cacheprovider -m integration \
+  tests/integration/test_postgres_parse_projection_integration.py -v
+# 1 passed
+
+cd mm-chat/rag && \
+  uv run ruff check tests/integration/test_postgres_parse_projection_integration.py
+# passed
+
+cd mm-chat/rag && \
+  uv run mypy src/mm_chat_rag/postgres.py \
+  tests/integration/test_postgres_parse_projection_integration.py
+# passed
+
+cd mm-chat/rag && \
+  uv run pytest -p no:cacheprovider tests/unit/test_postgres.py -v
+# 30 passed
+
+docker ps -a --format '{{.Names}}' | grep -Fx mm-chat-test-postgres
+# no match; disposable test database deleted
+```
+
+Residual risk:
+
+- The Python adapter-to-`017` staging path is live-proven, but the production
+  parse handler registry remains gated.
+- This slice uses synthetic rows and local fixture content; live MinerU parsing,
+  live Jina embedding, retry/DLQ, and end-to-end publish/query proof remain
+  later G7.5/G7.8 work.
+- No provider quota was consumed. No compose-managed or application database
+  was modified.
