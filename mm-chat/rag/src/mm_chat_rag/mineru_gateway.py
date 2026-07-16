@@ -124,6 +124,7 @@ _ZERO_UUID: Final = uuid.UUID(int=0)
 _TEXT_BASELINE_CHUNK_MAX_BYTES: Final = 2400
 _TEXT_BASELINE_TOKEN_BYTES: Final = 4
 _TEXT_BASELINE_CHILD_MAX_TOKENS: Final = 650
+_BBOX_COORDINATES: Final = 4
 
 
 @dataclass(frozen=True, slots=True)
@@ -299,6 +300,25 @@ class MinerULocalBatchCanonicalMappingInput:
             )
             or tuple(item.role for item in self.role_digests)
             != _MINERU_CANONICAL_ROLE_ORDER
+        ):
+            _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
+
+
+@dataclass(frozen=True, slots=True)
+class MinerUPageRegionLocator:
+    """One admitted MinerU page+bbox locator for the full.md baseline."""
+
+    page_index: int
+    bbox_milli_point: tuple[int, int, int, int]
+
+    def __post_init__(self) -> None:
+        if (
+            not _is_nonnegative_int(self.page_index)
+            or not isinstance(self.bbox_milli_point, tuple)
+            or len(self.bbox_milli_point) != _BBOX_COORDINATES
+            or not all(_is_nonnegative_int(value) for value in self.bbox_milli_point)
+            or self.bbox_milli_point[0] >= self.bbox_milli_point[2]
+            or self.bbox_milli_point[1] >= self.bbox_milli_point[3]
         ):
             _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
 
@@ -1016,6 +1036,93 @@ def _artifact_digest(
     )
 
 
+def _text_baseline_page_region_locator(
+    mapping_input: MinerULocalBatchCanonicalMappingInput,
+    text: str,
+) -> MinerUPageRegionLocator | None:
+    if not _content_list_has_single_full_text_match(
+        mapping_input.decoded.content_list_json,
+        text,
+    ):
+        return None
+    candidates = _middle_page_region_candidates(mapping_input.decoded.middle_json, text)
+    if len(candidates) > 1:
+        _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
+    if not candidates:
+        return None
+    return candidates[0]
+
+
+def _content_list_has_single_full_text_match(
+    content_list: list[JsonValue],
+    text: str,
+) -> bool:
+    matches = 0
+    for item in content_list:
+        if not isinstance(item, dict):
+            continue
+        item_text = item.get("text")
+        if item_text == text:
+            matches += 1
+    if matches > 1:
+        _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
+    return matches == 1
+
+
+def _middle_page_region_candidates(
+    middle_json: JsonObject,
+    text: str,
+) -> tuple[MinerUPageRegionLocator, ...]:
+    pages = middle_json.get("pages")
+    if not isinstance(pages, list):
+        return ()
+    candidates: list[MinerUPageRegionLocator] = []
+    for page in pages:
+        if not isinstance(page, dict):
+            continue
+        elements = page.get("elements")
+        if not isinstance(elements, list):
+            continue
+        for element in elements:
+            if not isinstance(element, dict) or not _mineru_element_matches_text(
+                element,
+                text,
+            ):
+                continue
+            candidates.append(
+                MinerUPageRegionLocator(
+                    page_index=_mineru_page_index(page),
+                    bbox_milli_point=_mineru_bbox_milli_point(element),
+                )
+            )
+    return tuple(candidates)
+
+
+def _mineru_element_matches_text(element: JsonObject, text: str) -> bool:
+    return element.get("text") == text or element.get("sourceText") == text
+
+
+def _mineru_page_index(page: JsonObject) -> int:
+    value = page.get("pageIndex")
+    if value is None:
+        value = page.get("page_idx")
+    if not _is_nonnegative_int(value):
+        _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
+    return cast("int", value)
+
+
+def _mineru_bbox_milli_point(element: JsonObject) -> tuple[int, int, int, int]:
+    value = element.get("bboxMilliPoint")
+    if value is None:
+        value = element.get("bbox")
+    if not isinstance(value, list) or len(value) != _BBOX_COORDINATES:
+        _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
+    bbox = tuple(value)
+    if not all(_is_nonnegative_int(coordinate) for coordinate in bbox):
+        _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
+    return cast("tuple[int, int, int, int]", bbox)
+
+
 def _build_text_baseline_parse_artifacts(
     mapping_input: MinerULocalBatchCanonicalMappingInput,
     *,
@@ -1028,6 +1135,7 @@ def _build_text_baseline_parse_artifacts(
     if not text_bytes:
         _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
 
+    page_region = _text_baseline_page_region_locator(mapping_input, text)
     full_markdown_digest = _role_digest(mapping_input, "full_markdown")
     source_unit_id = _hash_seed(
         "mineru_text_baseline.source_unit.v1",
@@ -1057,6 +1165,7 @@ def _build_text_baseline_parse_artifacts(
         text,
         start_byte=0,
         end_byte=len(text_bytes),
+        page_region=page_region,
         source_unit_id=source_unit_id,
         structure_id=structure_id,
     )
@@ -1148,6 +1257,7 @@ def _build_text_baseline_parse_artifacts(
         text,
         block_id=block_id,
         logical_flow_id=logical_flow_id,
+        page_region=page_region,
         source_unit_id=source_unit_id,
         structure_id=structure_id,
         source_sha256=mapping_input.source_sha256,
@@ -1248,6 +1358,7 @@ def _text_baseline_chunk_manifest(
     *,
     block_id: str,
     logical_flow_id: str,
+    page_region: MinerUPageRegionLocator | None,
     source_unit_id: str,
     structure_id: str,
     source_sha256: str,
@@ -1286,6 +1397,7 @@ def _text_baseline_chunk_manifest(
             block_id=block_id,
             start_byte=start_byte,
             end_byte=end_byte,
+            page_region=page_region,
             source_unit_id=source_unit_id,
             structure_id=structure_id,
             fragment_source_span_hash=span_hash,
@@ -1358,6 +1470,7 @@ def _text_baseline_chunk_fragment(
     block_id: str,
     start_byte: int,
     end_byte: int,
+    page_region: MinerUPageRegionLocator | None,
     source_unit_id: str,
     structure_id: str,
     fragment_source_span_hash: str,
@@ -1370,6 +1483,7 @@ def _text_baseline_chunk_fragment(
             text,
             start_byte=start_byte,
             end_byte=end_byte,
+            page_region=page_region,
             source_unit_id=source_unit_id,
             structure_id=structure_id,
         ),
@@ -1383,6 +1497,7 @@ def _text_baseline_locator_set(
     *,
     start_byte: int,
     end_byte: int,
+    page_region: MinerUPageRegionLocator | None,
     source_unit_id: str,
     structure_id: str,
 ) -> JsonObject:
@@ -1391,6 +1506,30 @@ def _text_baseline_locator_set(
         start_byte,
     )
     end_line, end_column, end_scalar = _line_column_for_byte_offset(text, end_byte)
+    views: list[JsonObject] = []
+    if page_region is not None:
+        views.append(_page_region_view(page_region))
+    views.extend(
+        [
+            {
+                "decodedScalarEnd": end_scalar,
+                "decodedScalarStart": start_scalar,
+                "endColumn": end_column,
+                "endLine": end_line,
+                "kind": "source_text_position",
+                "opaqueSourceUnitId": source_unit_id,
+                "rawByteEnd": end_byte,
+                "rawByteStart": start_byte,
+                "startColumn": start_column,
+                "startLine": start_line,
+            },
+            {
+                "kind": "derived_structure",
+                "opaqueStructureId": structure_id,
+                "structureKind": "paragraph",
+            },
+        ]
+    )
     text_anchor: JsonObject = {
         "anchorOrdinal": 0,
         "canonicalEndByte": end_byte,
@@ -1398,25 +1537,7 @@ def _text_baseline_locator_set(
         "sourceFragments": [
             {
                 "fragmentOrdinal": 0,
-                "views": [
-                    {
-                        "decodedScalarEnd": end_scalar,
-                        "decodedScalarStart": start_scalar,
-                        "endColumn": end_column,
-                        "endLine": end_line,
-                        "kind": "source_text_position",
-                        "opaqueSourceUnitId": source_unit_id,
-                        "rawByteEnd": end_byte,
-                        "rawByteStart": start_byte,
-                        "startColumn": start_column,
-                        "startLine": start_line,
-                    },
-                    {
-                        "kind": "derived_structure",
-                        "opaqueStructureId": structure_id,
-                        "structureKind": "paragraph",
-                    },
-                ],
+                "views": cast("list[JsonValue]", views),
             }
         ],
     }
@@ -1428,6 +1549,14 @@ def _text_baseline_locator_set(
     return {
         **base,
         "aggregateHash": _hash_json(base),
+    }
+
+
+def _page_region_view(page_region: MinerUPageRegionLocator) -> JsonObject:
+    return {
+        "bboxMilliPoint": list(page_region.bbox_milli_point),
+        "kind": "page_region",
+        "pageIndex": page_region.page_index,
     }
 
 

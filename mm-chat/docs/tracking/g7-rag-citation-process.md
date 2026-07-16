@@ -2130,6 +2130,74 @@ Residual risk:
 - No live MinerU quota is consumed by this slice; the first real provider smoke
   remains in G7.8 or an explicitly owner-authorized bounded smoke cut.
 
+## 2026-07-16 — G7.5.32 Conservative MinerU Basic Page Locator Mapper
+
+Objective: add the first citation-grade locator improvement to the MinerU
+full-Markdown baseline without claiming table/formula/image semantics or
+promoting production dispatch.
+
+Implemented behavior:
+
+- Added `MinerUPageRegionLocator` admission for one page-index plus bbox tuple.
+- The full-Markdown baseline mapper now tries to derive a page region only when
+  `content_list` has exactly one entry whose `text` equals `full.md`, and the
+  `layout/middle` artifact has exactly one element with the same text plus
+  `pageIndex` and `bboxMilliPoint`.
+- The admitted page region is prepended to block and chunk locator-set views, so
+  the existing G7.4 projection chooses `page_bbox` for basic citation cards.
+- If no recognized locator evidence exists, the mapper preserves the previous
+  safe line-range text locator. If matching locator evidence is ambiguous or
+  malformed, the mapper fails closed with `MINERU_GATEWAY_ARTIFACT_INVALID`.
+- This slice intentionally does not map tables, formulas, images, multi-element
+  Markdown, or real live Provider variants beyond the locked conservative
+  shape.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. No
+  provider quota is consumed by tests.
+
+Touched files:
+
+```text
+rag/src/mm_chat_rag/mineru_gateway.py
+rag/tests/unit/test_mineru_gateway.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && uv run ruff check \
+  src/mm_chat_rag/mineru_gateway.py tests/unit/test_mineru_gateway.py
+# passed
+
+cd mm-chat/rag && uv run mypy \
+  src/mm_chat_rag/mineru_gateway.py tests/unit/test_mineru_gateway.py
+# passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider tests/unit/test_mineru_gateway.py
+# 92 passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_provider_capture.py::test_production_dispatch_remains_disabled_and_registries_empty \
+  tests/unit/test_job_handler_dependencies.py
+# 26 passed
+
+cd mm-chat/frontend && corepack pnpm prettier --check \
+  ../docs/architecture/g7-rag-citation-cutover-plan.md \
+  ../docs/tracking/g7-rag-citation-process.md \
+  ../docs/tracking/progress.md
+# passed
+```
+
+Residual risk:
+
+- This mapper only promotes one conservative page-bbox shape for the text
+  baseline. Rich table/formula/image locators and multi-block content-list
+  mapping remain later gated cuts.
+- No live MinerU quota is consumed by this slice; live Provider smoke remains in
+  G7.8 or an explicitly owner-authorized bounded smoke cut.
+
 ## 2026-07-16 — G7.5.31 MinerU Parser Adapter Dependency Composition Proof
 
 Objective: prove the real default-off MinerU text-baseline parser adapter fits

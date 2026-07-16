@@ -776,14 +776,31 @@ G7.5.31 completed on 2026-07-16:
 - Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
   slice does not spend provider quota in tests.
 
+G7.5.32 completed on 2026-07-16:
+
+- Added a conservative MinerU basic page locator admission for the
+  full-Markdown text-baseline mapper.
+- The mapper now admits a page bbox only when `content_list` has exactly one
+  full-text match and the `layout/middle` artifact has exactly one matching
+  element with non-negative `pageIndex` and positive half-open
+  `bboxMilliPoint`.
+- Admitted page regions are inserted before text-position views in the block and
+  chunk locator sets, so the G7.4 projection emits `page_bbox` locators for
+  basic citation cards.
+- Ambiguous or malformed matched page locators fail closed with
+  `MINERU_GATEWAY_ARTIFACT_INVALID`. Missing/unrecognized locator evidence still
+  falls back to the previous text-baseline line-range locator instead of
+  inventing page evidence.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
+  slice does not spend provider quota in tests.
+
 Remaining G7.5 work:
 
-- Complete the remaining MinerU parser chain: citation-grade
-  `content_list`/layout/model mapping, parse-handler dependency composition, and
-  a live or integration proof for the `017` parse projection staging function
-  when `MM_CHAT_TEST_DATABASE_URL` is available. Production MinIO/S3 object
-  access should prefer the Go private source-object gateway rather than giving
-  Python static object-store credentials.
+- Complete the remaining MinerU parser chain: richer citation-grade
+  table/formula/image mapping and a live or integration proof for the `017` parse
+  projection staging function when `MM_CHAT_TEST_DATABASE_URL` is available.
+  Production MinIO/S3 object access should prefer the Go private source-object
+  gateway rather than giving Python static object-store credentials.
 - Promote the composed default-off Jina + Postgres embedding dependencies only
   behind an explicit readiness/registry gate.
 - Promote purge dispatch behind an explicit readiness/registry gate now that
@@ -853,6 +870,9 @@ Validation:
 - Parse-handler dependency composition tests with the MinerU text-baseline parser
   adapter, including source fetch, archive fetch, projection build, projection
   stage, source-hash propagation, and exact-term projection.
+- MinerU basic page-locator mapper tests, including single full-text content-list
+  match, layout/middle page bbox admission, projected `page_bbox` block/chunk
+  locators, and ambiguous locator rejection.
 - Retry-three-times and terminal-failure tests.
 
 ### G7.6 Private query and Go reauthorization

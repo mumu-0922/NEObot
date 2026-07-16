@@ -1168,6 +1168,131 @@ def test_mineru_gateway_builds_text_baseline_parse_artifacts() -> None:
     assert batch.chunk_profile_hash == MINERU_TEXT_BASELINE_CHUNK_PROFILE_HASH
 
 
+def test_mineru_gateway_text_baseline_projects_basic_page_locator() -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+    text = "Synthetic MinerU 文本"
+    archive_body = _archive(
+        (
+            ("full.md", text.encode()),
+            (
+                "fixture_content_list.json",
+                b'[{"type":"text","text":"Synthetic MinerU \\u6587\\u672c"}]',
+            ),
+            (
+                "layout.json",
+                json.dumps(
+                    {
+                        "pages": [
+                            {
+                                "pageIndex": 0,
+                                "elements": [
+                                    {
+                                        "bboxMilliPoint": [
+                                            72000,
+                                            120000,
+                                            540000,
+                                            180000,
+                                        ],
+                                        "kind": "text",
+                                        "text": text,
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                    separators=(",", ":"),
+                ).encode(),
+            ),
+            ("fixture_model.json", b'{"model":"vlm"}'),
+        )
+    )
+    artifacts = gateway.extract_result_archive_artifacts(object(), archive_body)
+    mapping_input = gateway.prepare_canonical_mapping_input(
+        object(),
+        _source(),
+        artifacts,
+    )
+
+    parsed = gateway.build_text_baseline_parse_artifacts(
+        object(),
+        mapping_input,
+        artifact_set_id=ARTIFACT_SET_ID,
+    )
+    batch = build_postgres_projection_batch(
+        parsed.canonical_ir,
+        parsed.chunk_manifest,
+        PROJECTION_CONTEXT,
+    )
+
+    assert batch.blocks[0].locator_kind == "page_bbox"
+    assert batch.blocks[0].locator == {
+        "kind": "page_bbox",
+        "page": 0,
+        "x1": 72000,
+        "y1": 120000,
+        "x2": 540000,
+        "y2": 180000,
+    }
+    fragments = batch.parent_chunks[0].locator_summary["fragments"]
+    assert isinstance(fragments, list)
+    first_fragment = fragments[0]
+    assert isinstance(first_fragment, dict)
+    assert first_fragment["locator"] == batch.blocks[0].locator
+
+
+def test_mineru_gateway_text_baseline_rejects_ambiguous_page_locator() -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+    text = "Duplicate locator text"
+    archive_body = _archive(
+        (
+            ("full.md", text.encode()),
+            (
+                "fixture_content_list.json",
+                b'[{"type":"text","text":"Duplicate locator text"}]',
+            ),
+            (
+                "layout.json",
+                json.dumps(
+                    {
+                        "pages": [
+                            {
+                                "pageIndex": 0,
+                                "elements": [
+                                    {
+                                        "bboxMilliPoint": [0, 0, 100, 100],
+                                        "text": text,
+                                    },
+                                    {
+                                        "bboxMilliPoint": [100, 100, 200, 200],
+                                        "text": text,
+                                    },
+                                ],
+                            }
+                        ]
+                    },
+                    separators=(",", ":"),
+                ).encode(),
+            ),
+            ("fixture_model.json", b'{"model":"vlm"}'),
+        )
+    )
+    artifacts = gateway.extract_result_archive_artifacts(object(), archive_body)
+    mapping_input = gateway.prepare_canonical_mapping_input(
+        object(),
+        _source(),
+        artifacts,
+    )
+
+    with pytest.raises(PermanentJobError) as raised:
+        gateway.build_text_baseline_parse_artifacts(
+            object(),
+            mapping_input,
+            artifact_set_id=ARTIFACT_SET_ID,
+        )
+
+    assert raised.value.error_code == MINERU_GATEWAY_ARTIFACT_INVALID
+
+
 def test_mineru_gateway_text_baseline_chunks_long_markdown() -> None:
     gateway = MinerULocalBatchGateway(SECRET)
     mapping_input = _mapping_input(text="甲" * 900)
