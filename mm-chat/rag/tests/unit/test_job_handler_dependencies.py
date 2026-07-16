@@ -17,6 +17,7 @@ from mm_chat_rag.job_handler_dependencies import (
     JOB_HANDLER_DEPENDENCY_UNCONFIGURED,
     JOB_HANDLER_EMBEDDING_CHILD_MISMATCH,
     JOB_HANDLER_EMBEDDING_COMPLETENESS_FAILED,
+    JOB_HANDLER_EMBEDDING_COMPLETION_FAILED,
     JOB_HANDLER_EMBEDDING_COUNT_MISMATCH,
     JOB_HANDLER_EMBEDDING_VECTOR_INVALID,
     JOB_HANDLER_PARSE_ARTIFACT_INVALID,
@@ -317,10 +318,12 @@ class FakePassageEmbeddingProjectionGateway:
         *,
         candidates: tuple[PassageEmbeddingCandidate, ...] | None = None,
         complete: bool = True,
+        committed: bool = True,
     ) -> None:
         self._calls = calls
         self._candidates = candidates or embedding_candidates()
         self._complete = complete
+        self._committed = committed
         self.staged: list[tuple[StagedPassageEmbedding, ...]] = []
         self.expected_child_count: int | None = None
 
@@ -350,6 +353,11 @@ class FakePassageEmbeddingProjectionGateway:
         assert context is not None
         self.expected_child_count = expected_child_count
         return self._complete
+
+    async def complete_embedding_and_publish(self, context: object) -> bool:
+        self._calls.append("complete_embedding")
+        assert context is not None
+        return self._committed
 
 
 class FakePurgeProjectionGateway:
@@ -448,8 +456,13 @@ def embedding_dependencies(
     mismatch_child: bool = False,
     missing_last: bool = False,
     complete: bool = True,
+    committed: bool = True,
 ) -> tuple[PassageEmbeddingHandlerDependencies, FakePassageEmbeddingProjectionGateway]:
-    projection = FakePassageEmbeddingProjectionGateway(calls, complete=complete)
+    projection = FakePassageEmbeddingProjectionGateway(
+        calls,
+        complete=complete,
+        committed=committed,
+    )
     return (
         PassageEmbeddingHandlerDependencies(
             embedding=FakePassageEmbeddingGateway(
@@ -642,11 +655,13 @@ async def test_admitted_passage_embedding_handler_stages_1024_vectors() -> None:
 
     assert result.outcome == "succeeded"
     assert result.error_code is None
+    assert result.terminal_committed is True
     assert calls == [
         "fetch_candidates",
         "embed",
         "stage_embeddings",
         "assert_complete",
+        "complete_embedding",
     ]
     assert projection.expected_child_count == 2
     assert len(projection.staged) == 1
@@ -748,6 +763,28 @@ async def test_passage_embedding_requires_projection_completeness() -> None:
         "embed",
         "stage_embeddings",
         "assert_complete",
+    ]
+    assert len(projection.staged) == 1
+
+
+async def test_passage_embedding_requires_terminal_publish_commit() -> None:
+    calls: list[str] = []
+    deps, projection = embedding_dependencies(calls, committed=False)
+    handler = admitted_passage_embedding_handler_with_dependencies(
+        deps,
+        valid_profile(),
+    )
+
+    with pytest.raises(PermanentJobError) as raised:
+        await handler(claim(embedding_row()))
+
+    assert raised.value.error_code == JOB_HANDLER_EMBEDDING_COMPLETION_FAILED
+    assert calls == [
+        "fetch_candidates",
+        "embed",
+        "stage_embeddings",
+        "assert_complete",
+        "complete_embedding",
     ]
     assert len(projection.staged) == 1
 

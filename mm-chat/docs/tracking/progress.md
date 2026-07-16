@@ -1091,7 +1091,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         pending `passage_embedding` after parse success; `G7.5O` promoted
         parse-to-embedding two-stage worker smoke proves the pending embedding
         job is claimed, mocked Jina vector staging completes, and the search row
-        becomes ready).
+        becomes ready; `G7.5P` embedding completion publish finalizer publishes
+        the materialization, activates the document/current version, advances the
+        projection head, and terminally commits the embedding job).
   - [ ] G7.6 Private query and Go reauthorization.
   - [ ] G7.7 Strict/optional chat answer and basic citations.
   - [ ] G7.8 Live MinerU + Jina + Postgres smoke and operational proof.

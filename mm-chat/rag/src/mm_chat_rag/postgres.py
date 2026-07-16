@@ -79,6 +79,9 @@ _SQL: Final[Mapping[str, str]] = {
         "SELECT * FROM knowledge_complete_parse_and_enqueue_embedding"
         "(%s, %s, %s, %s, %s)"
     ),
+    "complete_embedding_and_publish": (
+        "SELECT * FROM knowledge_complete_embedding_and_publish(%s, %s, %s, %s)"
+    ),
     "mark_purge_invisible": (
         "SELECT * FROM knowledge_mark_purge_invisible(%s, %s, %s, %s, %s, %s, %s, %s)"
     ),
@@ -418,6 +421,32 @@ class PostgresAdapter:
                 1024,
             ),
         )
+        return _function_succeeded(row)
+
+    async def complete_embedding_and_publish(
+        self, context: ProcessingJobContext
+    ) -> bool:
+        """Atomically finish embedding and publish the query-visible materialization."""
+        lease_token = _require_context_lease_token(context)
+        materialization_id = context.materialization_id
+        if materialization_id is None:
+            raise PermanentJobError(
+                stable_error_code(JOB_HANDLER_EMBEDDING_CANDIDATE_INVALID)
+            )
+        try:
+            row = await self._call(
+                "complete_embedding_and_publish",
+                (
+                    context.job_id,
+                    self._settings.worker_id,
+                    lease_token,
+                    materialization_id,
+                ),
+            )
+        except psycopg.Error as error:
+            if _has_database_code(error, "RAG_STALE_JOB_LEASE"):
+                return False
+            raise
         return _function_succeeded(row)
 
     async def fetch_source_metadata(

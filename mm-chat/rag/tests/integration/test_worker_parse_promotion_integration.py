@@ -527,6 +527,13 @@ async def test_promoted_parse_then_embedding_runner_finishes_live_postgres_chain
         DEFAULT_JINA_EMBEDDING_DIMENSIONS,
         expected_vector_hash,
     )
+    assert await _published_materialization_state(url, fixture) == (
+        "published",
+        True,
+        "active",
+        fixture.document_version_id,
+        fixture.materialization_id,
+    )
 
 
 def _mineru_archive(text: str) -> bytes:
@@ -1005,4 +1012,40 @@ async def _search_embedding_state(
         bool(row[1]),
         int(row[2]),
         None if row[3] is None else str(row[3]),
+    )
+
+
+async def _published_materialization_state(
+    url: str,
+    fixture: ParsePromotionFixture,
+) -> tuple[str, bool, str, uuid.UUID | None, uuid.UUID | None]:
+    async with await psycopg.AsyncConnection.connect(url) as connection:
+        cursor = await connection.execute(
+            """
+            SELECT
+              materialization.status::TEXT,
+              materialization.published_at IS NOT NULL,
+              document.status::TEXT,
+              document.current_version_id,
+              projection_head.active_materialization_id
+            FROM knowledge_document_materializations materialization
+            JOIN knowledge_documents document
+              ON document.id = materialization.document_id
+            LEFT JOIN knowledge_document_projection_heads projection_head
+              ON projection_head.index_generation_id =
+                materialization.index_generation_id
+             AND projection_head.document_id = materialization.document_id
+            WHERE materialization.id = %s
+            """,
+            (fixture.materialization_id,),
+        )
+        row = await cursor.fetchone()
+    if row is None:
+        raise AssertionError("published materialization state query returned no row")
+    return (
+        str(row[0]),
+        bool(row[1]),
+        str(row[2]),
+        None if row[3] is None else uuid.UUID(str(row[3])),
+        None if row[4] is None else uuid.UUID(str(row[4])),
     )

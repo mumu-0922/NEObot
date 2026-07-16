@@ -329,6 +329,7 @@ def test_sql_surface_is_select_only_and_function_allowlisted() -> None:
         "fetch_parse_source_metadata",
         "stage_parse_projection",
         "complete_parse_and_enqueue_embedding",
+        "complete_embedding_and_publish",
         "mark_purge_invisible",
         "purge_search_projection",
         "assert_purge_complete",
@@ -384,6 +385,7 @@ async def test_adapter_calls_only_frozen_functions() -> None:
         {"succeeded": True},
         {"succeeded": True},
         {"result": True},
+        {"result": True},
     ]
     adapter, connection = adapter_with_rows(rows, settings)
     assert (await adapter.readiness()).functions
@@ -414,6 +416,7 @@ async def test_adapter_calls_only_frozen_functions() -> None:
     assert await adapter.assert_materialization_search_complete(
         uuid.uuid4(), expected_child_count=1
     )
+    assert await adapter.complete_embedding_and_publish(passage_embedding_context())
     assert [call[0] for call in connection.calls] == [
         _SQL["readiness"],
         _SQL["claim_outbox"],
@@ -424,6 +427,7 @@ async def test_adapter_calls_only_frozen_functions() -> None:
         _SQL["heartbeat_job"],
         _SQL["finish_job"],
         _SQL["assert_search_complete"],
+        _SQL["complete_embedding_and_publish"],
     ]
 
 
@@ -451,6 +455,7 @@ async def test_passage_embedding_projection_gateway_calls_functions() -> None:
     adapter, connection = adapter_with_rows(
         [
             candidate_rows,
+            {"result": True},
             {"result": True},
             {"result": True},
             {"result": True},
@@ -488,6 +493,7 @@ async def test_passage_embedding_projection_gateway_calls_functions() -> None:
         context,
         expected_child_count=len(candidates),
     )
+    assert await adapter.complete_embedding_and_publish(context)
 
     assert candidates == (
         PassageEmbeddingCandidate(
@@ -542,6 +548,15 @@ async def test_passage_embedding_projection_gateway_calls_functions() -> None:
                 len(candidates),
                 "jina-embeddings-v4",
                 1024,
+            ),
+        ),
+        (
+            _SQL["complete_embedding_and_publish"],
+            (
+                context.job_id,
+                worker_id,
+                context.lease_token,
+                context.materialization_id,
             ),
         ),
     ]
@@ -986,6 +1001,7 @@ async def test_replay_adapters_call_only_operator_functions(
         ("heartbeat_job", "RAG_STALE_JOB_LEASE"),
         ("finish_job", "RAG_STALE_JOB_LEASE"),
         ("complete_parse_and_enqueue_embedding", "RAG_STALE_JOB_LEASE"),
+        ("complete_embedding_and_publish", "RAG_STALE_JOB_LEASE"),
     ],
 )
 async def test_stale_lease_database_codes_become_false(
@@ -1025,9 +1041,13 @@ async def test_stale_lease_database_codes_become_false(
             error_code=None,
             retry_after_seconds=0,
         )
-    else:
+    elif method == "complete_parse_and_enqueue_embedding":
         result = await adapter.complete_parse_and_enqueue_embedding(
             parse_context(),
             embedding_job_id=uuid.uuid4(),
+        )
+    else:
+        result = await adapter.complete_embedding_and_publish(
+            passage_embedding_context()
         )
     assert result is False

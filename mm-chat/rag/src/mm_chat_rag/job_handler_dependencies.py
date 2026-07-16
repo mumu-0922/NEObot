@@ -59,6 +59,9 @@ JOB_HANDLER_EMBEDDING_CHILD_MISMATCH: Final = (
 JOB_HANDLER_EMBEDDING_COMPLETENESS_FAILED: Final = (
     "JOB_HANDLER_EMBEDDING_COMPLETENESS_FAILED"
 )
+JOB_HANDLER_EMBEDDING_COMPLETION_FAILED: Final = (
+    "JOB_HANDLER_EMBEDDING_COMPLETION_FAILED"
+)
 JOB_HANDLER_PURGE_VISIBILITY_INVALID: Final = "JOB_HANDLER_PURGE_VISIBILITY_INVALID"
 JOB_HANDLER_PURGE_PROJECTION_INVALID: Final = "JOB_HANDLER_PURGE_PROJECTION_INVALID"
 JOB_HANDLER_PURGE_COMPLETENESS_FAILED: Final = (
@@ -76,6 +79,7 @@ JOB_HANDLER_DEPENDENCY_ERROR_CODES: Final[frozenset[str]] = frozenset(
         JOB_HANDLER_EMBEDDING_COUNT_MISMATCH,
         JOB_HANDLER_EMBEDDING_CHILD_MISMATCH,
         JOB_HANDLER_EMBEDDING_COMPLETENESS_FAILED,
+        JOB_HANDLER_EMBEDDING_COMPLETION_FAILED,
         JOB_HANDLER_PURGE_VISIBILITY_INVALID,
         JOB_HANDLER_PURGE_PROJECTION_INVALID,
         JOB_HANDLER_PURGE_COMPLETENESS_FAILED,
@@ -304,6 +308,10 @@ class PassageEmbeddingProjectionGateway(Protocol):
         expected_child_count: int,
     ) -> Coroutine[Any, Any, bool]: ...
 
+    def complete_embedding_and_publish(
+        self, context: ProcessingJobContext
+    ) -> Coroutine[Any, Any, bool]: ...
+
 
 class PurgeProjectionGateway(Protocol):
     """Postgres gateway for immediate invisibility and projection cleanup."""
@@ -448,7 +456,10 @@ async def passage_embedding_handler_with_dependencies(
     )
     if not complete:
         _reject(JOB_HANDLER_EMBEDDING_COMPLETENESS_FAILED)
-    return JobResult()
+    committed = await projection_gateway.complete_embedding_and_publish(admitted)
+    if not committed:
+        _reject(JOB_HANDLER_EMBEDDING_COMPLETION_FAILED)
+    return JobResult(terminal_committed=True)
 
 
 def admitted_passage_embedding_handler_with_dependencies(

@@ -1063,6 +1063,32 @@ G7.5O completed on 2026-07-16:
   regression suite and promoted integration smoke enforce the same parse
   contract.
 
+G7.5P completed on 2026-07-16:
+
+- Added migration `021_rag_embedding_completion_publish` with the worker-only
+  `knowledge_complete_embedding_and_publish(...)` finalizer. After Jina
+  embeddings are staged, the function rechecks the token lease, verifies all
+  child search rows are ready with `jina-embeddings-v4` and `1024` dimensions,
+  derives deterministic materialization `manifest_hash`/`result_hash` from
+  stored parse/search hashes, publishes the materialization, advances
+  `knowledge_document_projection_heads`, increments the corpus projection
+  revision, activates the document/current version, tombstones a replaced active
+  version when needed, and terminally commits the embedding job as `succeeded`.
+- The Python passage-embedding handler now calls the publish finalizer and
+  returns `JobResult(terminal_committed=True)`, so the generic `finish_job`
+  path cannot split job success from materialization publish. The
+  `PostgresAdapter` exposes only the frozen function call and treats stale
+  leases as a false terminal-commit result.
+- The standalone embedding smoke and the parse-to-embedding chain smoke now
+  assert the full mocked-provider lifecycle:
+  `parse -> pending passage_embedding -> ready search row -> published
+  materialization -> active document/current version -> succeeded embedding
+  job`. No real MinerU/Jina quota is consumed.
+- The live proof caught a least-privilege gap for activating
+  `knowledge_documents` / `knowledge_document_versions`; migration `021` grants
+  only the needed update columns to `rag_projection_owner` and revokes them on
+  rollback.
+
 Remaining G7.5 work:
 
 - G7.5T disposable PostgreSQL integration gate has been restored and proven
@@ -1119,6 +1145,10 @@ Remaining G7.5 work:
 - G7.5O is complete: one disposable PostgreSQL smoke now proves the promoted
   two-stage chain `parse -> pending passage_embedding -> ready search row ->
   succeeded embedding job` with mocked Go source-object, MinerU, and Jina.
+- G7.5P is complete: embedding success now terminally publishes the
+  materialization and activates the query-visible document/current-version head
+  through migration `021`, proven against disposable PostgreSQL with mocked
+  providers.
 - Implement index, reprocess, tombstone purge, rebuild, retry, and DLQ behavior.
 - Promote handlers one stage at a time behind readiness and registry gates.
 

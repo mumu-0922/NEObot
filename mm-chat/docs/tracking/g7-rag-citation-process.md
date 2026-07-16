@@ -4034,3 +4034,127 @@ Residual risk:
   intentionally untouched until the live-provider smoke gate.
 - Publishing the materialization and serving selected-collection RAG query/citation
   results remain later G7 slices.
+
+## 2026-07-16 — G7.5P Embedding Completion Publishes Materialization
+
+Objective: close the mocked-provider worker lifecycle after G7.5O by making a
+successful `passage_embedding` job atomically publish the query-visible
+materialization instead of leaving it in `staging` with only ready search rows.
+
+Implemented behavior:
+
+- Added migration `021_rag_embedding_completion_publish` with
+  `knowledge_complete_embedding_and_publish(...)`.
+- The finalizer is worker-only and token-fenced. It requires a live
+  `passage_embedding` job lease, Jina authority, a staging materialization with
+  a parse artifact set, and complete ready 1024-dimensional Jina search rows.
+- The finalizer derives deterministic `manifest_hash` and `result_hash` from
+  stored materialization, parse, child chunk, and embedding hashes; no provider
+  body or secret enters the hash surface.
+- On success it:
+  - publishes `knowledge_document_materializations`;
+  - activates `knowledge_documents.current_version_id` and the target document
+    version;
+  - tombstones a replaced active version when the embedding job operation is a
+    replacement for a different current version;
+  - advances `knowledge_document_projection_heads` and the corpus projection
+    revision;
+  - terminally commits the embedding job as `succeeded`.
+- Wired `PostgresAdapter.complete_embedding_and_publish(...)` and made the
+  passage-embedding handler return `JobResult(terminal_committed=True)` after
+  the publish finalizer succeeds.
+- Added `JOB_HANDLER_EMBEDDING_COMPLETION_FAILED` for a failed terminal publish
+  commit, keeping stale lease false-results fail-closed before generic finish.
+- Hardened integration smokes:
+  - standalone promoted embedding now seeds a verified parser artifact set and
+    asserts published materialization, active document, and projection head;
+  - parse-to-embedding chain now asserts the same published/active state after
+    the second `JobRunner.process_one()`.
+- The disposable live proof caught a least-privilege gap: the security-definer
+  owner needed only column-scoped updates on `knowledge_documents` and
+  `knowledge_document_versions` to activate the version/head. Migration `021`
+  grants those columns and revokes them on rollback.
+
+Touched files:
+
+```text
+backend/migrations/021_rag_embedding_completion_publish.up.sql
+backend/migrations/021_rag_embedding_completion_publish.down.sql
+backend/internal/migration/phase15_rag_embedding_completion_publish_schema_test.go
+rag/src/mm_chat_rag/job_handler_dependencies.py
+rag/src/mm_chat_rag/postgres.py
+rag/tests/unit/test_job_handler_dependencies.py
+rag/tests/unit/test_postgres.py
+rag/tests/integration/test_worker_embedding_promotion_integration.py
+rag/tests/integration/test_worker_parse_promotion_integration.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && \
+  uv run ruff check \
+    src/mm_chat_rag/job_handler_dependencies.py \
+    src/mm_chat_rag/postgres.py \
+    tests/unit/test_job_handler_dependencies.py \
+    tests/unit/test_postgres.py \
+    tests/integration/test_worker_embedding_promotion_integration.py \
+    tests/integration/test_worker_parse_promotion_integration.py
+# passed
+
+cd mm-chat/rag && \
+  uv run mypy \
+    src/mm_chat_rag/jobs.py \
+    src/mm_chat_rag/handlers.py \
+    src/mm_chat_rag/job_handler_dependencies.py \
+    src/mm_chat_rag/postgres.py \
+    src/mm_chat_rag/worker.py
+# passed
+
+cd mm-chat/rag && \
+  uv run pytest -p no:cacheprovider \
+    tests/unit/test_job_handler_dependencies.py \
+    tests/unit/test_postgres.py \
+    tests/unit/test_jobs.py \
+    tests/unit/test_replay_worker.py -q
+# 88 passed
+
+cd mm-chat/backend && \
+  GOCACHE=/tmp/neo-chat-go-build go test ./internal/migration \
+  -run 'RAGEmbeddingCompletionPublish|RAGParseCompletionEnqueueEmbedding|RAGPassageEmbeddingProjectionGateway|RAGWorkerProjectionGate' \
+  -count=1
+# passed
+
+# disposable live proof
+# - postgres:16-alpine container: mm-chat-test-postgres
+# - applied migrations 001 through 021
+cd mm-chat/rag && \
+  RAG_TEST_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable' \
+  uv run pytest -p no:cacheprovider \
+    tests/integration/test_worker_embedding_promotion_integration.py \
+    tests/integration/test_worker_parse_promotion_integration.py -q
+# 3 passed
+
+# rollback compile proof for this slice
+cd mm-chat/backend && \
+  MIGRATION_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable' \
+  GOCACHE=/tmp/neo-chat-go-build go run ./cmd/migrate down
+# down 021_rag_embedding_completion_publish
+
+# cleanup verified
+# docker ps -a --format '{{.Names}}' | grep -Fx mm-chat-test-postgres
+# no output
+```
+
+Residual risk:
+
+- This remains a mocked-provider worker proof; real MinerU/Jina quota is still
+  reserved for the G7.8 live-provider smoke unless pulled forward as a dedicated
+  narrow gate.
+- G7.6 still needs selected-collection private query, Go reauthorization, and
+  citation hydration against the newly published materialization boundary.
+- Broader rebuild/reprocess/backfill orchestration and long-running worker
+  health remain later G7.5 slices.

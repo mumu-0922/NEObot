@@ -56,6 +56,7 @@ class EmbeddingPromotionFixture:
     consent_id: uuid.UUID
     index_profile_id: uuid.UUID
     index_generation_id: uuid.UUID
+    artifact_set_id: uuid.UUID
     materialization_id: uuid.UUID
     search_profile_id: uuid.UUID
     parent_chunk_id: uuid.UUID
@@ -99,6 +100,7 @@ def _fixture() -> EmbeddingPromotionFixture:
         consent_id=uuid.uuid4(),
         index_profile_id=uuid.uuid4(),
         index_generation_id=uuid.uuid4(),
+        artifact_set_id=uuid.uuid4(),
         materialization_id=uuid.uuid4(),
         search_profile_id=uuid.uuid4(),
         parent_chunk_id=uuid.uuid4(),
@@ -202,6 +204,10 @@ async def test_promoted_embedding_job_runner_finishes_live_postgres_job(
         True,
         DEFAULT_JINA_EMBEDDING_DIMENSIONS,
         fixture.expected_vector_hash,
+        "published",
+        True,
+        "active",
+        fixture.materialization_id,
     )
 
 
@@ -362,14 +368,36 @@ async def _seed_fixture(url: str, fixture: EmbeddingPromotionFixture) -> None:
         )
         await connection.execute(
             """
+            INSERT INTO knowledge_parser_artifact_sets (
+              id, document_id, document_version_id, file_id, index_profile_id,
+              parser_kind, parser_version, source_content_hash, config_hash,
+              manifest_hash, status, quality_report, verified_at
+            ) VALUES (
+              %s, %s, %s, %s, %s, 'mineru', 'unit-test', %s, %s, %s,
+              'verified', '{}'::jsonb, clock_timestamp()
+            )
+            """,
+            (
+                fixture.artifact_set_id,
+                fixture.document_id,
+                fixture.document_version_id,
+                fixture.file_id,
+                fixture.index_profile_id,
+                _HASH_B,
+                _HASH_C,
+                _HASH_D,
+            ),
+        )
+        await connection.execute(
+            """
             INSERT INTO knowledge_document_materializations (
               id, index_generation_id, collection_id, document_id,
               document_version_id, file_id, materialization_seq,
-              source_content_hash, base_profile_hash, collection_acl_revision,
-              collection_visibility_epoch, collection_processing_revision,
-              document_visibility_epoch, status
+              parse_artifact_set_id, source_content_hash, base_profile_hash,
+              collection_acl_revision, collection_visibility_epoch,
+              collection_processing_revision, document_visibility_epoch, status
             ) VALUES (
-              %s, %s, %s, %s, %s, %s, 1, %s, %s, 1, 1, 1, 1,
+              %s, %s, %s, %s, %s, %s, 1, %s, %s, %s, 1, 1, 1, 1,
               'staging'
             )
             """,
@@ -380,6 +408,7 @@ async def _seed_fixture(url: str, fixture: EmbeddingPromotionFixture) -> None:
                 fixture.document_id,
                 fixture.document_version_id,
                 fixture.file_id,
+                fixture.artifact_set_id,
                 _HASH_B,
                 _HASH_E,
             ),
@@ -501,7 +530,21 @@ async def _seed_fixture(url: str, fixture: EmbeddingPromotionFixture) -> None:
 async def _job_projection_state(
     url: str,
     fixture: EmbeddingPromotionFixture,
-) -> tuple[str, str | None, int, bool, bool, str, bool, int, str | None]:
+) -> tuple[
+    str,
+    str | None,
+    int,
+    bool,
+    bool,
+    str,
+    bool,
+    int,
+    str | None,
+    str,
+    bool,
+    str,
+    uuid.UUID | None,
+]:
     async with await psycopg.AsyncConnection.connect(url) as connection:
         cursor = await connection.execute(
             """
@@ -540,6 +583,23 @@ async def _job_projection_state(
                 SELECT embedding_vector_sha256
                 FROM knowledge_child_search_projections
                 WHERE child_chunk_id = %s
+              )::TEXT,
+              (
+                SELECT status FROM knowledge_document_materializations
+                WHERE id = %s
+              )::TEXT,
+              (
+                SELECT published_at IS NOT NULL
+                FROM knowledge_document_materializations
+                WHERE id = %s
+              )::BOOLEAN,
+              (
+                SELECT status FROM knowledge_documents WHERE id = %s
+              )::TEXT,
+              (
+                SELECT active_materialization_id
+                FROM knowledge_document_projection_heads
+                WHERE index_generation_id = %s AND document_id = %s
               )::TEXT
             """,
             (
@@ -552,6 +612,11 @@ async def _job_projection_state(
                 fixture.child_chunk_id,
                 fixture.child_chunk_id,
                 fixture.child_chunk_id,
+                fixture.materialization_id,
+                fixture.materialization_id,
+                fixture.document_id,
+                fixture.index_generation_id,
+                fixture.document_id,
             ),
         )
         row = await cursor.fetchone()
@@ -567,4 +632,8 @@ async def _job_projection_state(
         bool(row[6]),
         int(row[7]),
         None if row[8] is None else str(row[8]),
+        str(row[9]),
+        bool(row[10]),
+        str(row[11]),
+        None if row[12] is None else uuid.UUID(str(row[12])),
     )
