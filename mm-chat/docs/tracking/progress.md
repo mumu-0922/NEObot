@@ -1149,8 +1149,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
   - [x] G8.4 Consent UX: collection/query consent screens for administrator
         env-backed MinerU/Jina processing with fail-closed copy, no key capture,
         and API-client-only grant/revoke calls.
-  - [ ] G8.5 Cross-user/team UX smoke: prove personal vs team visibility and
-        selected-chat Knowledge scope through the frontend.
+  - [x] G8.5 Cross-user/team UX smoke: server-mode Knowledge selection now
+        lists Go-visible Personal/Team collections, avoids local OPFS file
+        selection, and carries selected collection IDs into strict Go RAG
+        config/metadata.
 - [ ] G9 Data Authority and Legacy Route Removal: remove production local-mode
       authority and replaced Next API handlers.
 - [ ] G10 Operations, Visual Regression, Clean Copy, and Delete Plan: complete

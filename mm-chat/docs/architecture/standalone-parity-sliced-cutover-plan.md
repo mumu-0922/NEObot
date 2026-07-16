@@ -523,7 +523,7 @@ Slice sequence:
 - [x] G8.4 Consent UX: collection and query consent controls for
       administrator env-backed MinerU/Jina processing, with strict fail-closed
       copy.
-- [ ] G8.5 Frontend isolation smoke: personal vs team visibility and
+- [x] G8.5 Frontend isolation smoke: personal vs team visibility and
       selected-chat Knowledge scope through the browser/server-mode path.
 
 ### G9 — Data Authority and Legacy Route Removal
@@ -577,7 +577,7 @@ Targeted tests:
 | G5 Search/Web Enrichment                 | Paused      | Owner reopens, then server-owned search passes gates                         |
 | G6 Voice/Image/Code Jobs                 | In progress | Image generation is reopened through Go artifacts; voice executor remains    |
 | G7 Knowledge/RAG/Citations               | Complete    | Live MinerU + Jina + Postgres strict citation loop passed                    |
-| G8 Teams/Knowledge UI                    | In progress | G8.1-G8.4 UI/control slices done; frontend isolation smoke remains           |
+| G8 Teams/Knowledge UI                    | Complete    | G8.1-G8.5 frontend control-plane wiring and isolation smoke passed           |
 | G9 Data Authority/Route Removal          | Pending     | local production authority and replaced routes gone                          |
 | G10 Final Closure/Delete Plan            | Pending     | Clean-copy and delete-plan gates pass                                        |
 

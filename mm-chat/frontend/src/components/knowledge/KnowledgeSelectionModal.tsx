@@ -1,5 +1,12 @@
 "use client";
-import React, { useEffect, useId, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { useTranslations } from "next-intl";
 import {
@@ -17,6 +24,9 @@ import {
   createKnowledgeCollectionAttachment,
   createKnowledgeFileAttachment,
 } from "@/lib/utils/knowledgeAttachments";
+import { createNeoChatApiClient } from "@/services/api/client";
+import type { KnowledgeCollectionDTO } from "@/services/api/client";
+import { logDevError } from "@/lib/utils/devLogger";
 
 interface KnowledgeSelectionModalProps {
   onClose: () => void;
@@ -30,16 +40,27 @@ const collectionKey = (collectionId: string) => `collection:${collectionId}`;
 const fileKey = (collectionId: string, fileId: string) =>
   `file:${collectionId}:${fileId}`;
 
+const collectionScopeLabelKey = (scope: KnowledgeCollectionDTO["scope"]) =>
+  `serverScope.${scope}` as const;
+
 const KnowledgeSelectionModal: React.FC<KnowledgeSelectionModalProps> = ({
   onClose,
   onSelect,
 }) => {
   const t = useTranslations("Knowledge");
   const { collections } = useKnowledgeStore();
+  const apiClient = useMemo(() => createNeoChatApiClient(), []);
+  const serverKnowledgeEnabled =
+    apiClient.mode === "server" && apiClient.capabilities.knowledge;
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [activeCollectionId, setActiveCollectionId] = useState<string | null>(
     null,
   );
+  const [serverCollections, setServerCollections] = useState<
+    KnowledgeCollectionDTO[]
+  >([]);
+  const [serverLoading, setServerLoading] = useState(false);
+  const [serverError, setServerError] = useState("");
   const dialogRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const listId = useId();
@@ -49,6 +70,26 @@ const KnowledgeSelectionModal: React.FC<KnowledgeSelectionModalProps> = ({
       collections.find((collection) => collection.id === activeCollectionId),
     [activeCollectionId, collections],
   );
+
+  const refreshServerCollections = useCallback(async () => {
+    if (!serverKnowledgeEnabled) return;
+
+    setServerLoading(true);
+    setServerError("");
+    try {
+      const page = await apiClient.knowledge.listCollections({ limit: 100 });
+      setServerCollections(page.items);
+    } catch (error) {
+      logDevError("Failed to load server knowledge collections", error);
+      setServerError(t("serverLoadCollectionsFailed"));
+    } finally {
+      setServerLoading(false);
+    }
+  }, [apiClient, serverKnowledgeEnabled, t]);
+
+  useEffect(() => {
+    void refreshServerCollections();
+  }, [refreshServerCollections]);
 
   const toggleSelection = (key: string) => {
     setSelectedKeys((currentKeys) => {
@@ -64,6 +105,27 @@ const KnowledgeSelectionModal: React.FC<KnowledgeSelectionModalProps> = ({
 
   const handleConfirm = () => {
     const selectedAttachments: Attachment[] = [];
+
+    if (serverKnowledgeEnabled) {
+      for (const key of selectedKeys) {
+        if (!key.startsWith("collection:")) continue;
+        const collectionId = key.slice("collection:".length);
+        const collection = serverCollections.find(
+          (item) => item.id === collectionId,
+        );
+        if (!collection) continue;
+        selectedAttachments.push(
+          createKnowledgeCollectionAttachment({
+            collectionId: collection.id,
+            collectionName: collection.name,
+          }),
+        );
+      }
+
+      onSelect(selectedAttachments);
+      onClose();
+      return;
+    }
 
     for (const key of selectedKeys) {
       if (key.startsWith("collection:")) {
@@ -175,6 +237,53 @@ const KnowledgeSelectionModal: React.FC<KnowledgeSelectionModalProps> = ({
           />
         </button>
       </div>
+    );
+  };
+
+  const renderServerCollectionRow = (collection: KnowledgeCollectionDTO) => {
+    const key = collectionKey(collection.id);
+    const isSelected = selectedKeys.has(key);
+
+    return (
+      <button
+        key={collection.id}
+        type="button"
+        aria-label={
+          isSelected
+            ? t("unselectCollectionAria", { name: collection.name })
+            : t("selectCollectionAria", { name: collection.name })
+        }
+        aria-pressed={isSelected}
+        onClick={() => toggleSelection(key)}
+        className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors ${menuItemFocusClass} ${
+          isSelected
+            ? "border-purple-500/50 bg-purple-50 dark:bg-purple-900/20"
+            : "border-gray-200 bg-white hover:border-purple-300 dark:border-border dark:bg-muted"
+        }`}
+      >
+        {renderSelectionDot(isSelected)}
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300">
+          <Folder size={20} aria-hidden="true" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-gray-800 dark:text-foreground">
+            {collection.name}
+          </span>
+          <span className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-muted-foreground">
+            <span className="rounded-full border border-border bg-muted px-2 py-0.5">
+              {t(collectionScopeLabelKey(collection.scope))}
+            </span>
+            {collection.permissions.manageConsent && (
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
+                {t("serverCanManage")}
+              </span>
+            )}
+            <span className="truncate">
+              {collection.description || t("noDescription")}
+            </span>
+          </span>
+        </span>
+      </button>
     );
   };
 
@@ -322,7 +431,7 @@ const KnowledgeSelectionModal: React.FC<KnowledgeSelectionModalProps> = ({
               />
               {t("selectKnowledgeBase")}
             </h3>
-            {activeCollection ? (
+            {!serverKnowledgeEnabled && activeCollection ? (
               <button
                 type="button"
                 onClick={() => setActiveCollectionId(null)}
@@ -348,7 +457,27 @@ const KnowledgeSelectionModal: React.FC<KnowledgeSelectionModalProps> = ({
           className="p-4 overflow-y-auto custom-scrollbar flex-1 space-y-2"
           aria-label={t("collectionsLabel")}
         >
-          {collections.length === 0 ? (
+          {serverKnowledgeEnabled ? (
+            serverLoading ? (
+              <div className="py-10 text-center text-gray-400">
+                <p>{t("serverLoadingCollections")}</p>
+              </div>
+            ) : serverError ? (
+              <div
+                role="status"
+                className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200"
+              >
+                {serverError}
+              </div>
+            ) : serverCollections.length === 0 ? (
+              <div className="py-10 text-center text-gray-400">
+                <p>{t("serverNoCollections")}</p>
+                <p className="mt-1 text-xs">{t("createCollectionFirst")}</p>
+              </div>
+            ) : (
+              serverCollections.map(renderServerCollectionRow)
+            )
+          ) : collections.length === 0 ? (
             <div className="text-center py-10 text-gray-400">
               <p>{t("noCollectionsFound")}</p>
               <p className="text-xs mt-1">{t("createCollectionFirst")}</p>

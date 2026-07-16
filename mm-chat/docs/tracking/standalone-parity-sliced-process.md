@@ -3093,6 +3093,59 @@ G9.
 No live browser screenshot is claimed in this environment.
 ```
 
+## 2026-07-16 — G8.5 Frontend Knowledge Isolation Smoke
+
+Objective: prove the visible frontend no longer uses browser-local Knowledge
+selection to decide server-mode RAG scope.
+
+Completed scope:
+
+- changed `KnowledgeSelectionModal` to detect server mode through
+  `createNeoChatApiClient`;
+- in server mode, the modal lists Go-visible Knowledge collections via
+  `apiClient.knowledge.listCollections({ limit: 100 })`, so Personal vs Team
+  visibility is derived from backend auth/ACL state instead of local OPFS or
+  IndexedDB state;
+- server-mode selection emits collection-level Knowledge attachments only; file
+  drilldown remains local-mode-only because Go strict RAG consumes selected
+  collection IDs;
+- preserved the existing local Knowledge selection UX for rollback/local mode;
+- added a composition smoke proving selected Knowledge attachments flow into
+  `selectedKnowledgeCollectionIds`, `ragStrict`, and `knowledgeStrict` config
+  /metadata on the ChatApp server send/regeneration paths;
+- asserted the visible selection UI does not hard-code `/v1/knowledge`,
+  transitional `/api/rag`, or browser-supplied actor/owner/ACL fields.
+
+Changed surfaces:
+
+```text
+mm-chat/frontend/src/components/knowledge/KnowledgeSelectionModal.tsx
+mm-chat/frontend/src/__tests__/serverKnowledgeSelectionComposition.test.ts
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/serverKnowledgeSelectionComposition.test.ts \
+  src/__tests__/serverKnowledgeBaseComposition.test.ts \
+  src/__tests__/knowledgeCitations.test.ts                         # passed, 12 tests
+cd mm-chat/frontend && corepack pnpm typecheck                    # passed
+cd mm-chat/frontend && corepack pnpm lint                         # passed
+cd mm-chat/frontend && corepack pnpm format:check                 # passed
+```
+
+Residual blockers:
+
+```text
+G8 UI/control-plane wiring is complete. G9 owns production local-mode authority
+removal and transitional Next /api route deletion.
+No live browser screenshot is claimed in this environment.
+```
+
 ## 2026-07-16 — G8.4 Knowledge Consent UX
 
 Objective: expose collection and query processing-consent controls through the
