@@ -664,10 +664,27 @@ G7.5.25 completed on 2026-07-16:
 - Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
   slice does not spend provider quota in tests.
 
+G7.5.26 completed on 2026-07-16:
+
+- Added the default-off MinerU artifact payload decode-admission seam to
+  `MinerULocalBatchGateway`.
+- The seam accepts only the extracted role bytes from G7.5.25 and decodes full
+  Markdown with strict UTF-8.
+- It decodes content-list, middle/layout, and model payloads as strict UTF-8
+  JSON with duplicate-key rejection and non-finite number rejection.
+- Top-level role gates are intentionally narrow: content-list must be a JSON
+  array, while middle/layout and model must be JSON objects.
+- The decoded payloads are admitted as untrusted data for the later Canonical IR
+  mapper; this slice still does not interpret MinerU schema fields, build
+  Canonical IR/chunk manifests, compose the parser handler, or promote any
+  production registry.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
+  slice does not spend provider quota in tests.
+
 Remaining G7.5 work:
 
-- Complete the rest of the MinerU local-batch execution chain: Canonical
-  IR/chunk manifest mapping, then parser-handler composition. Add a live or
+- Complete the rest of the MinerU local-batch execution chain: Canonical IR and
+  chunk manifest mapping, then parser-handler composition. Add a live or
   integration proof for the `017` parse projection staging function when
   `MM_CHAT_TEST_DATABASE_URL` is available. Production MinIO/S3 object access
   should prefer the Go private source-object gateway rather than giving Python
@@ -720,6 +737,10 @@ Validation:
 - MinerU archive artifact-extraction tests, including role byte extraction,
   nested role paths without name retention, duplicate semantic-role rejection,
   and validation reuse.
+- MinerU artifact decode-admission tests, including strict UTF-8 Markdown,
+  content-list array admission, middle/model object admission, invalid UTF-8,
+  malformed JSON, duplicate JSON keys, non-finite JSON numbers, and top-level
+  role type rejection.
 - Retry-three-times and terminal-failure tests.
 
 ### G7.6 Private query and Go reauthorization

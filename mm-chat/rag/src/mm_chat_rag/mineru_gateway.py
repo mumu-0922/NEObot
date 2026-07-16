@@ -14,9 +14,11 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import math
 import re
 import stat
 import zipfile
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Final, NoReturn, cast
@@ -46,6 +48,7 @@ MINERU_GATEWAY_DOWNLOAD_STATUS_INVALID: Final = (
 )
 MINERU_GATEWAY_RESULT_URL_INVALID: Final = "MINERU_GATEWAY_RESULT_URL_INVALID"
 MINERU_GATEWAY_ARCHIVE_INVALID: Final = "MINERU_GATEWAY_ARCHIVE_INVALID"
+MINERU_GATEWAY_ARTIFACT_INVALID: Final = "MINERU_GATEWAY_ARTIFACT_INVALID"
 MINERU_ALLOCATE_UPLOAD_URL: Final = "https://mineru.net/api/v4/file-urls/batch"
 MINERU_POLL_PATH_PREFIX: Final = "/api/v4/extract-results/batch/"
 MINERU_POLL_URL_PREFIX: Final = f"https://mineru.net{MINERU_POLL_PATH_PREFIX}"
@@ -189,6 +192,30 @@ class MinerULocalBatchArchiveArtifacts:
                 _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
 
 
+@dataclass(frozen=True, slots=True)
+class MinerULocalBatchDecodedArtifacts:
+    """Decoded MinerU payloads admitted for a later Canonical IR mapper."""
+
+    summary: MinerULocalBatchArchiveSummary
+    full_markdown: str
+    content_list_json: list[JsonValue]
+    middle_json: JsonObject
+    model_json: JsonObject
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.summary, MinerULocalBatchArchiveSummary):
+            _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
+        if not isinstance(self.full_markdown, str) or not self.full_markdown:
+            _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
+        if not isinstance(self.content_list_json, list):
+            _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
+        if not isinstance(self.middle_json, dict) or not isinstance(
+            self.model_json,
+            dict,
+        ):
+            _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
+
+
 class MinerULocalBatchGateway:
     """MinerU local-batch allocate gateway for PDF parse jobs."""
 
@@ -301,6 +328,15 @@ class MinerULocalBatchGateway:
         """Extract validated MinerU role bytes without normalizing content."""
         _ = context
         return _extract_result_archive_artifacts(archive_body)
+
+    def decode_result_archive_artifacts(
+        self,
+        context: object,
+        artifacts: MinerULocalBatchArchiveArtifacts,
+    ) -> MinerULocalBatchDecodedArtifacts:
+        """Decode MinerU role payloads without Canonical IR normalization."""
+        _ = context
+        return _decode_result_archive_artifacts(artifacts)
 
 
 def _allocate_request_body(filename: str) -> JsonObject:
@@ -740,6 +776,90 @@ def _extract_result_archive_artifacts(
         _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
     except (OSError, RuntimeError, zipfile.BadZipFile, zipfile.LargeZipFile):
         _reject_permanent(MINERU_GATEWAY_ARCHIVE_INVALID)
+
+
+def _decode_result_archive_artifacts(
+    artifacts: MinerULocalBatchArchiveArtifacts,
+) -> MinerULocalBatchDecodedArtifacts:
+    if not isinstance(artifacts, MinerULocalBatchArchiveArtifacts):
+        _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
+    full_markdown = _decode_text_artifact(artifacts.full_markdown)
+    content_list = _json_list(
+        _decode_json_artifact(artifacts.content_list_json),
+        MINERU_GATEWAY_ARTIFACT_INVALID,
+    )
+    middle = _json_object(
+        _decode_json_artifact(artifacts.middle_json),
+        MINERU_GATEWAY_ARTIFACT_INVALID,
+    )
+    model = _json_object(
+        _decode_json_artifact(artifacts.model_json),
+        MINERU_GATEWAY_ARTIFACT_INVALID,
+    )
+    return MinerULocalBatchDecodedArtifacts(
+        summary=artifacts.summary,
+        full_markdown=full_markdown,
+        content_list_json=content_list,
+        middle_json=middle,
+        model_json=model,
+    )
+
+
+def _decode_text_artifact(value: bytes) -> str:
+    try:
+        decoded = value.decode("utf-8", errors="strict")
+    except UnicodeError:
+        _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
+    if not decoded:
+        _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
+    return decoded
+
+
+def _decode_json_artifact(value: bytes) -> JsonValue:
+    try:
+        parsed = json.loads(
+            value.decode("utf-8", errors="strict"),
+            object_pairs_hook=_json_object_no_duplicate_keys,
+            parse_constant=_reject_json_constant,
+        )
+    except (json.JSONDecodeError, UnicodeError):
+        _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
+    return _validate_json_artifact_value(parsed)
+
+
+def _json_object_no_duplicate_keys(
+    pairs: Sequence[tuple[str, object]],
+) -> dict[str, object]:
+    observed: dict[str, object] = {}
+    for key, value in pairs:
+        if key in observed:
+            _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
+        observed[key] = value
+    return observed
+
+
+def _reject_json_constant(_: str) -> NoReturn:
+    _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
+
+
+def _validate_json_artifact_value(value: object) -> JsonValue:
+    if value is None or isinstance(value, bool | str | int):
+        return cast("JsonValue", value)
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
+        return value
+    if isinstance(value, list):
+        return [_validate_json_artifact_value(item) for item in value]
+    if isinstance(value, dict):
+        result: JsonObject = {}
+        for key, child in value.items():
+            if not isinstance(key, str):
+                _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
+            result[key] = _validate_json_artifact_value(child)
+        return result
+    _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
+    raise AssertionError("unreachable")
 
 
 def _read_valid_archive_entries(content: bytes) -> list[zipfile.ZipInfo]:

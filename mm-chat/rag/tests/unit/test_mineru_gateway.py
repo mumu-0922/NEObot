@@ -15,6 +15,7 @@ from mm_chat_rag.job_handler_dependencies import DocumentSource
 from mm_chat_rag.mineru_gateway import (
     MINERU_ALLOCATE_UPLOAD_URL,
     MINERU_GATEWAY_ARCHIVE_INVALID,
+    MINERU_GATEWAY_ARTIFACT_INVALID,
     MINERU_GATEWAY_CREDENTIALS_MISSING,
     MINERU_GATEWAY_DOWNLOAD_STATUS_INVALID,
     MINERU_GATEWAY_REQUEST_FAILED,
@@ -924,3 +925,92 @@ def test_mineru_gateway_extract_revalidates_archive() -> None:
         gateway.extract_result_archive_artifacts(object(), b"not-a-zip")
 
     assert raised.value.error_code == MINERU_GATEWAY_ARCHIVE_INVALID
+
+
+def test_mineru_gateway_decodes_result_archive_artifacts() -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+    archive_body = _archive(
+        (
+            ("full.md", "正文\n".encode()),
+            ("fixture_content_list.json", b'[{"type":"text","text":"ok"}]'),
+            ("layout.json", b'{"pages":[{"page":0}]}'),
+            ("fixture_model.json", b'{"model":"vlm"}'),
+        )
+    )
+    artifacts = gateway.extract_result_archive_artifacts(object(), archive_body)
+
+    decoded = gateway.decode_result_archive_artifacts(object(), artifacts)
+
+    assert decoded.summary == artifacts.summary
+    assert decoded.full_markdown == "正文\n"
+    assert decoded.content_list_json == [{"type": "text", "text": "ok"}]
+    assert decoded.middle_json == {"pages": [{"page": 0}]}
+    assert decoded.model_json == {"model": "vlm"}
+
+
+@pytest.mark.parametrize(
+    "entries",
+    [
+        (
+            ("full.md", b"\xff"),
+            ("fixture_content_list.json", b"[]"),
+            ("layout.json", b"{}"),
+            ("fixture_model.json", b"{}"),
+        ),
+        (
+            ("full.md", b"# full\n"),
+            ("fixture_content_list.json", b"{]"),
+            ("layout.json", b"{}"),
+            ("fixture_model.json", b"{}"),
+        ),
+        (
+            ("full.md", b"# full\n"),
+            ("fixture_content_list.json", b"[NaN]"),
+            ("layout.json", b"{}"),
+            ("fixture_model.json", b"{}"),
+        ),
+        (
+            ("full.md", b"# full\n"),
+            ("fixture_content_list.json", b"[]"),
+            ("layout.json", b'{"x":1,"x":2}'),
+            ("fixture_model.json", b"{}"),
+        ),
+        (
+            ("full.md", b"# full\n"),
+            ("fixture_content_list.json", b'{"not":"list"}'),
+            ("layout.json", b"{}"),
+            ("fixture_model.json", b"{}"),
+        ),
+        (
+            ("full.md", b"# full\n"),
+            ("fixture_content_list.json", b"[]"),
+            ("layout.json", b"[]"),
+            ("fixture_model.json", b"{}"),
+        ),
+        (
+            ("full.md", b"# full\n"),
+            ("fixture_content_list.json", b"[]"),
+            ("layout.json", b"{}"),
+            ("fixture_model.json", b"[]"),
+        ),
+    ],
+)
+def test_mineru_gateway_rejects_invalid_decoded_artifacts(
+    entries: tuple[tuple[str, bytes], ...],
+) -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+    artifacts = gateway.extract_result_archive_artifacts(object(), _archive(entries))
+
+    with pytest.raises(PermanentJobError) as raised:
+        gateway.decode_result_archive_artifacts(object(), artifacts)
+
+    assert raised.value.error_code == MINERU_GATEWAY_ARTIFACT_INVALID
+
+
+def test_mineru_gateway_decode_rejects_wrong_artifact_object() -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+
+    with pytest.raises(PermanentJobError) as raised:
+        gateway.decode_result_archive_artifacts(object(), object())  # type: ignore[arg-type]
+
+    assert raised.value.error_code == MINERU_GATEWAY_ARTIFACT_INVALID
