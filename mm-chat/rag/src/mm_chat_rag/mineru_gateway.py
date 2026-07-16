@@ -2,9 +2,10 @@
 
 This module deliberately implements only the evidence-backed local-batch
 ``allocate_upload`` step plus derived signed-upload and poll/result transport
-seams. Result ZIP download and Canonical IR normalization remain separate gated
-slices because their public wire contracts are still draft/blocked. Importing
-this module does not register production parse handlers or spend provider quota.
+seams plus a bounded result ZIP download transport seam. Result archive
+validation and Canonical IR normalization remain separate gated slices because
+their public wire contracts are still draft/blocked. Importing this module does
+not register production parse handlers or spend provider quota.
 """
 
 from __future__ import annotations
@@ -34,6 +35,9 @@ MINERU_GATEWAY_UPLOAD_URL_INVALID: Final = "MINERU_GATEWAY_UPLOAD_URL_INVALID"
 MINERU_GATEWAY_UPLOAD_STATUS_INVALID: Final = (
     "MINERU_GATEWAY_UPLOAD_STATUS_INVALID"
 )
+MINERU_GATEWAY_DOWNLOAD_STATUS_INVALID: Final = (
+    "MINERU_GATEWAY_DOWNLOAD_STATUS_INVALID"
+)
 MINERU_GATEWAY_RESULT_URL_INVALID: Final = "MINERU_GATEWAY_RESULT_URL_INVALID"
 MINERU_ALLOCATE_UPLOAD_URL: Final = "https://mineru.net/api/v4/file-urls/batch"
 MINERU_POLL_PATH_PREFIX: Final = "/api/v4/extract-results/batch/"
@@ -47,6 +51,7 @@ MAX_MINERU_API_TOKEN_BYTES: Final = 4096
 MAX_MINERU_SOURCE_BYTES: Final = 200 * 1024 * 1024
 MAX_MINERU_RESPONSE_BYTES: Final = 1024 * 1024
 MAX_MINERU_UPLOAD_URL_BYTES: Final = 4096
+MAX_MINERU_RESULT_ARCHIVE_BYTES: Final = 32 * 1024 * 1024
 MINERU_UPLOAD_TARGET_HOST: Final = "mineru.oss-cn-shanghai.aliyuncs.com"
 MINERU_UPLOAD_PATH_PREFIX: Final = "/api-upload/"
 MINERU_RESULT_TARGET_HOST: Final = "cdn-mineru.openxlab.org.cn"
@@ -65,6 +70,14 @@ _DATA_ID_RE: Final = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 _START_TIME_RE: Final = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
 _POLL_STATES: Final[frozenset[str]] = frozenset(
     {"waiting-file", "pending", "running", "converting", "done", "failed"}
+)
+_ZIP_CONTENT_TYPES: Final[frozenset[str]] = frozenset(
+    {
+        "application/octet-stream",
+        "application/x-zip-compressed",
+        "application/zip",
+        "binary/octet-stream",
+    }
 )
 
 
@@ -186,6 +199,24 @@ class MinerULocalBatchGateway:
             payload = await _get_poll_result(client, self._api_token, poll_url)
             return _poll_result_from_payload(payload, allocation=allocation)
 
+    async def download_result_archive(
+        self,
+        context: object,
+        poll_result: MinerULocalBatchPollResult,
+    ) -> bytes:
+        """Download one bounded result ZIP body without parsing archive entries."""
+        _ = context
+        result_url = _done_result_url(poll_result)
+        if self._client is not None:
+            return await _get_result_archive(self._client, result_url)
+        async with httpx.AsyncClient(
+            timeout=MINERU_TIMEOUT,
+            limits=MINERU_LIMITS,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
+            return await _get_result_archive(client, result_url)
+
 
 def _allocate_request_body(filename: str) -> JsonObject:
     return {
@@ -203,10 +234,40 @@ async def _put_signed_upload(
     body: bytes,
 ) -> None:
     try:
+        _clear_client_cookies(client)
         async with client.stream("PUT", upload_url, content=body) as response:
             if response.status_code not in {HTTP_OK, HTTP_NO_CONTENT}:
                 _reject_retryable(MINERU_GATEWAY_UPLOAD_STATUS_INVALID)
             await _read_bounded_response(response)
+    except PermanentJobError:
+        raise
+    except RetryableJobError:
+        raise
+    except (httpx.StreamError, httpx.TransportError):
+        _reject_retryable(MINERU_GATEWAY_REQUEST_FAILED)
+
+
+async def _get_result_archive(
+    client: httpx.AsyncClient,
+    result_url: str,
+) -> bytes:
+    headers = {
+        "Accept": "application/zip",
+        "Accept-Encoding": "identity",
+    }
+    try:
+        _clear_client_cookies(client)
+        async with client.stream(
+            "GET",
+            result_url,
+            headers=headers,
+        ) as response:
+            _validate_result_target_url(str(response.request.url))
+            if response.status_code != HTTP_OK:
+                _reject_retryable(MINERU_GATEWAY_DOWNLOAD_STATUS_INVALID)
+            _validate_identity_encoding(response)
+            _validate_archive_content_type(response.headers.get("content-type"))
+            return await _read_bounded_archive_response(response)
     except PermanentJobError:
         raise
     except RetryableJobError:
@@ -431,6 +492,15 @@ def _single_upload_url(allocation: MinerULocalBatchAllocation) -> str:
     return upload_url
 
 
+def _done_result_url(poll_result: MinerULocalBatchPollResult) -> str:
+    if not isinstance(poll_result, MinerULocalBatchPollResult):
+        _reject_permanent(MINERU_GATEWAY_RESULT_URL_INVALID)
+    if poll_result.state != "done" or poll_result.result_url is None:
+        _reject_permanent(MINERU_GATEWAY_RESULT_URL_INVALID)
+    _validate_result_target_url(poll_result.result_url)
+    return poll_result.result_url
+
+
 def _poll_url(allocation: MinerULocalBatchAllocation) -> str:
     if not isinstance(allocation, MinerULocalBatchAllocation):
         _reject_permanent(MINERU_GATEWAY_RESPONSE_INVALID)
@@ -544,6 +614,48 @@ def _validate_progress(value: object) -> None:
 
 def _is_nonnegative_int(value: object) -> bool:
     return not isinstance(value, bool) and isinstance(value, int) and value >= 0
+
+
+async def _read_bounded_archive_response(response: httpx.Response) -> bytes:
+    _validate_content_length(response.headers.get("content-length"))
+    if response.is_stream_consumed:
+        raw_content = response.content
+        if len(raw_content) > MAX_MINERU_RESULT_ARCHIVE_BYTES:
+            _reject_permanent(MINERU_GATEWAY_RESPONSE_TOO_LARGE)
+        return raw_content
+    raw = bytearray()
+    async for chunk in response.aiter_raw():
+        if len(raw) + len(chunk) > MAX_MINERU_RESULT_ARCHIVE_BYTES:
+            _reject_permanent(MINERU_GATEWAY_RESPONSE_TOO_LARGE)
+        raw.extend(chunk)
+    return bytes(raw)
+
+
+def _validate_content_length(value: str | None) -> None:
+    if value is None:
+        return
+    if not value.isascii() or not value.isdecimal():
+        _reject_permanent(MINERU_GATEWAY_RESPONSE_INVALID)
+    if int(value) > MAX_MINERU_RESULT_ARCHIVE_BYTES:
+        _reject_permanent(MINERU_GATEWAY_RESPONSE_TOO_LARGE)
+
+
+def _validate_identity_encoding(response: httpx.Response) -> None:
+    encoding = response.headers.get("content-encoding")
+    if encoding is not None and encoding.strip().lower() != "identity":
+        _reject_permanent(MINERU_GATEWAY_RESPONSE_INVALID)
+
+
+def _validate_archive_content_type(value: str | None) -> None:
+    if value is None:
+        _reject_permanent(MINERU_GATEWAY_RESPONSE_INVALID)
+    normalized = value.split(";", 1)[0].strip().lower()
+    if normalized not in _ZIP_CONTENT_TYPES:
+        _reject_permanent(MINERU_GATEWAY_RESPONSE_INVALID)
+
+
+def _clear_client_cookies(client: httpx.AsyncClient) -> None:
+    client.cookies.clear()
 
 
 def _is_visible_url(value: str) -> bool:

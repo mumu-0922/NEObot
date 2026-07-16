@@ -12,8 +12,10 @@ from mm_chat_rag.job_handler_dependencies import DocumentSource
 from mm_chat_rag.mineru_gateway import (
     MINERU_ALLOCATE_UPLOAD_URL,
     MINERU_GATEWAY_CREDENTIALS_MISSING,
+    MINERU_GATEWAY_DOWNLOAD_STATUS_INVALID,
     MINERU_GATEWAY_REQUEST_FAILED,
     MINERU_GATEWAY_RESPONSE_INVALID,
+    MINERU_GATEWAY_RESPONSE_TOO_LARGE,
     MINERU_GATEWAY_RESULT_URL_INVALID,
     MINERU_GATEWAY_SOURCE_UNSUPPORTED,
     MINERU_GATEWAY_STATUS_INVALID,
@@ -22,11 +24,13 @@ from mm_chat_rag.mineru_gateway import (
     MINERU_POLL_URL_PREFIX,
     MinerULocalBatchAllocation,
     MinerULocalBatchGateway,
+    MinerULocalBatchPollResult,
 )
 from mm_chat_rag.retry import PermanentJobError, RetryableJobError
 
 SECRET = "unit-test-mineru-token"
 PDF_BODY = b"%PDF-1.7\nfixture\n%%EOF\n"
+ZIP_BODY = b"PK\x03\x04fixture-zip-bytes"
 SIGNED_UPLOAD_URL = (
     "https://mineru.oss-cn-shanghai.aliyuncs.com/api-upload/fixture.pdf"
     "?Expires=1&Signature=redacted"
@@ -108,6 +112,15 @@ def _poll_payload(
         "msg": "ok",
         "trace_id": "sensitive-trace-id",
     }
+
+
+def _done_poll_result(result_url: str = RESULT_URL) -> MinerULocalBatchPollResult:
+    return MinerULocalBatchPollResult(
+        batch_id="fixture-batch-id",
+        filename="document.pdf",
+        state="done",
+        result_url=result_url,
+    )
 
 
 async def test_mineru_gateway_missing_token_fails_before_http() -> None:
@@ -542,6 +555,157 @@ async def test_mineru_gateway_poll_retries_transport_failure_redacted() -> None:
         gateway = MinerULocalBatchGateway(SECRET, client=client)
         with pytest.raises(RetryableJobError) as raised:
             await gateway.poll_batch_result(object(), _allocation())
+
+    assert raised.value.error_code == MINERU_GATEWAY_REQUEST_FAILED
+    assert SECRET not in str(raised.value)
+
+
+async def test_mineru_gateway_downloads_locked_result_archive() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            headers={
+                "Content-Length": str(len(ZIP_BODY)),
+                "Content-Type": "application/zip",
+            },
+            content=ZIP_BODY,
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        client.cookies.set(
+            "session",
+            "leak",
+            domain="cdn-mineru.openxlab.org.cn",
+            path="/",
+        )
+        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        body = await gateway.download_result_archive(object(), _done_poll_result())
+
+    assert body == ZIP_BODY
+    assert len(requests) == 1
+    request = requests[0]
+    assert request.method == "GET"
+    assert request.url == httpx.URL(RESULT_URL)
+    assert request.headers["accept"] == "application/zip"
+    assert request.headers["accept-encoding"] == "identity"
+    assert "authorization" not in request.headers
+    assert "cookie" not in request.headers
+    assert "content-type" not in request.headers
+
+
+async def test_mineru_gateway_download_rejects_non_done_before_http() -> None:
+    calls = 0
+
+    def forbidden(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("non-done poll result reached download target")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(forbidden)) as client:
+        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        with pytest.raises(PermanentJobError) as raised:
+            await gateway.download_result_archive(
+                object(),
+                MinerULocalBatchPollResult(
+                    batch_id="fixture-batch-id",
+                    filename="document.pdf",
+                    state="running",
+                ),
+            )
+
+    assert raised.value.error_code == MINERU_GATEWAY_RESULT_URL_INVALID
+    assert calls == 0
+
+
+async def test_mineru_gateway_download_retries_status_redacted() -> None:
+    transport = httpx.MockTransport(
+        lambda _: httpx.Response(503, content=SECRET.encode())
+    )
+    async with httpx.AsyncClient(transport=transport) as client:
+        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        with pytest.raises(RetryableJobError) as raised:
+            await gateway.download_result_archive(object(), _done_poll_result())
+
+    assert raised.value.error_code == MINERU_GATEWAY_DOWNLOAD_STATUS_INVALID
+    assert raised.value.retry_after_seconds == 30
+    assert SECRET not in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    ("headers", "error_code"),
+    [
+        ({"Content-Type": "text/plain"}, MINERU_GATEWAY_RESPONSE_INVALID),
+        (
+            {"Content-Encoding": "gzip", "Content-Type": "application/zip"},
+            MINERU_GATEWAY_RESPONSE_INVALID,
+        ),
+        (
+            {"Content-Length": "not-a-number", "Content-Type": "application/zip"},
+            MINERU_GATEWAY_RESPONSE_INVALID,
+        ),
+        (
+            {
+                "Content-Length": str(32 * 1024 * 1024 + 1),
+                "Content-Type": "application/zip",
+            },
+            MINERU_GATEWAY_RESPONSE_TOO_LARGE,
+        ),
+    ],
+)
+async def test_mineru_gateway_download_rejects_invalid_response_headers(
+    headers: dict[str, str],
+    error_code: str,
+) -> None:
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(
+                200,
+                headers=headers,
+                stream=httpx.ByteStream(ZIP_BODY),
+            )
+        )
+    ) as client:
+        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        with pytest.raises(PermanentJobError) as raised:
+            await gateway.download_result_archive(object(), _done_poll_result())
+
+    assert raised.value.error_code == error_code
+
+
+async def test_mineru_gateway_download_rejects_oversized_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mineru_module, "MAX_MINERU_RESULT_ARCHIVE_BYTES", 4)
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(
+                200,
+                headers={"Content-Type": "application/zip"},
+                content=ZIP_BODY,
+            )
+        )
+    ) as client:
+        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        with pytest.raises(PermanentJobError) as raised:
+            await gateway.download_result_archive(object(), _done_poll_result())
+
+    assert raised.value.error_code == MINERU_GATEWAY_RESPONSE_TOO_LARGE
+
+
+async def test_mineru_gateway_download_retries_transport_failure_redacted() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadError(
+            f"sensitive download transport detail {SECRET}",
+            request=request,
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        with pytest.raises(RetryableJobError) as raised:
+            await gateway.download_result_archive(object(), _done_poll_result())
 
     assert raised.value.error_code == MINERU_GATEWAY_REQUEST_FAILED
     assert SECRET not in str(raised.value)

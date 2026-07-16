@@ -608,15 +608,33 @@ application/json` and `Accept-Encoding: identity`, with no request body or
 - Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
   slice does not spend provider quota in tests.
 
+G7.5.23 completed on 2026-07-16:
+
+- Added the default-off MinerU result ZIP download transport seam to
+  `MinerULocalBatchGateway`.
+- The seam only accepts a `done` poll result whose result URL already passed the
+  locked MinerU CDN target gate, then performs one bounded `GET` for archive
+  bytes.
+- Download requests send `Accept: application/zip` and `Accept-Encoding:
+identity`; they intentionally send no `Authorization`, `Cookie`, or
+  `Content-Type`. Injected client cookies are cleared before dynamic download
+  requests.
+- Download responses require status `200`, identity/no content encoding, an
+  allowlisted ZIP content type, valid decimal `Content-Length` when present, and
+  a compressed body at most 32 MiB.
+- This slice still does not validate ZIP entries, map Canonical IR/chunk
+  manifests, compose the parser handler, or promote any production registry.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
+  slice does not spend provider quota in tests.
+
 Remaining G7.5 work:
 
-- Complete the rest of the MinerU local-batch execution chain: result ZIP
-  download, archive validation, Canonical IR/chunk manifest mapping, then
-  parser-handler composition. Add a live or integration proof for the `017`
-  parse projection staging function when `MM_CHAT_TEST_DATABASE_URL` is
-  available. Production MinIO/S3 object access should prefer the Go private
-  source-object gateway rather than giving Python static object-store
-  credentials.
+- Complete the rest of the MinerU local-batch execution chain: archive
+  validation, Canonical IR/chunk manifest mapping, then parser-handler
+  composition. Add a live or integration proof for the `017` parse projection
+  staging function when `MM_CHAT_TEST_DATABASE_URL` is available. Production
+  MinIO/S3 object access should prefer the Go private source-object gateway
+  rather than giving Python static object-store credentials.
 - Promote the composed default-off Jina + Postgres embedding dependencies only
   behind an explicit readiness/registry gate.
 - Promote purge dispatch behind an explicit readiness/registry gate now that
@@ -653,6 +671,10 @@ Validation:
 - MinerU poll/result tests, including locked poll target construction, bearer
   request shape, closed state/result JSON parsing, running progress validation,
   done-result URL target validation, retryable status/code/transport mapping,
+  and redaction.
+- MinerU result ZIP download tests, including done-state admission, CDN target
+  reuse, no auth/cookie/content-type headers, identity encoding, ZIP content
+  types, content-length/body size bounds, retryable status/transport mapping,
   and redaction.
 - Retry-three-times and terminal-failure tests.
 
