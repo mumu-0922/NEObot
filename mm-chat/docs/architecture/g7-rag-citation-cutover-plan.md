@@ -409,12 +409,31 @@ G7.5.11 completed on 2026-07-16:
   existing materialization completeness gate. No real Jina provider call or
   handler registry promotion is included in this slice.
 
+G7.5.12 completed on 2026-07-16:
+
+- Added a default-off `JinaPassageEmbeddingGateway` that implements the
+  passage-embedding provider half without registering a production handler.
+- The gateway accepts only an explicitly injected administrator Jina API key; it
+  does not read `.env`, process environment, browser BYOK keys, or root project
+  secrets. Missing or malformed keys fail before HTTP.
+- Requests are pinned to `https://api.jina.ai/v1/embeddings`, model
+  `jina-embeddings-v4`, task `retrieval.passage`, and exactly `1024` float
+  dimensions.
+- Responses are converted into `PassageEmbeddingVector` values only after count,
+  index, model, finite-number, and dimension validation. Provider request IDs,
+  raw bodies, credentials, and embeddings are not surfaced in errors.
+- Transport/status failures raise stable retryable job errors for the existing
+  three-attempt durable retry path; invalid credentials/shape/vector data fail
+  closed with stable permanent job errors.
+- `httpx==0.28.1` is now a runtime dependency because the installed RAG package
+  contains the provider gateway implementation.
+
 Remaining G7.5 work:
 
-- Implement real object-store, MinerU, Jina, and Postgres projection gateway
+- Implement real object-store, MinerU, and parse-side Postgres projection
   adapters behind the new parse seam.
-- Implement the real Jina provider gateway behind the new passage-embedding
-  seam; the Postgres fetch/stage adapter is now present but default-off.
+- Wire the default-off Jina provider and Postgres embedding projection gateways
+  into a promoted handler only behind an explicit readiness/registry gate.
 - Promote purge dispatch behind an explicit readiness/registry gate now that
   the purge Postgres gateway has unit, static, and live integration coverage.
 - Implement index, reprocess, tombstone purge, rebuild, retry, and DLQ behavior.

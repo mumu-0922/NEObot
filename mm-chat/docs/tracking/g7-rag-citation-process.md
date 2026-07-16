@@ -1182,3 +1182,84 @@ Residual risk:
 - Parse object-store/MinerU/Postgres staging, purge/embedding registry
   promotion, retry/DLQ behavior, and query/citation surfaces remain future
   gated slices.
+
+## 2026-07-16 — G7.5.12 Default-off Jina Passage Embedding Provider Gateway
+
+Objective: attach the real Jina passage-embedding provider half behind the
+existing dependency-injected seam without promoting production dispatch or
+spending live provider quota during tests.
+
+Implemented behavior:
+
+- Added `rag/src/mm_chat_rag/jina_gateway.py` with
+  `JinaPassageEmbeddingGateway`. The gateway matches the existing
+  `PassageEmbeddingGateway` protocol and remains default-off because no
+  production `JOB_HANDLER_REGISTRY` entry references it.
+- The gateway requires an explicit constructor-injected API key. It does not
+  read `.env`, `os.environ`, browser BYOK state, or the legacy root project;
+  missing, whitespace-padded, non-visible-ASCII, or oversized credentials fail
+  before HTTP with `JINA_GATEWAY_CREDENTIALS_MISSING`.
+- The Jina request is locked to:
+  - `POST https://api.jina.ai/v1/embeddings`;
+  - model `jina-embeddings-v4`;
+  - dimensions `1024`;
+  - task `retrieval.passage`;
+  - `embedding_type=float`, no multivector, no tokenized input, no truncation.
+- The response path validates model, item count, unique indexes, vector length,
+  and finite numeric lanes before returning `PassageEmbeddingVector` values
+  bound to the original child chunk IDs.
+- Redaction/failure policy:
+  - provider status and transport failures become stable retryable job errors
+    (`JINA_GATEWAY_STATUS_INVALID` / `JINA_GATEWAY_REQUEST_FAILED`) so the
+    durable worker can apply the configured three-attempt retry budget once the
+    handler is promoted;
+  - malformed provider shape, count mismatch, invalid vector dimensions, and
+    non-finite vectors become stable permanent errors without raw provider
+    bodies, request IDs, credentials, or embeddings.
+- Promoted `httpx==0.28.1` from dev-only usage to a runtime dependency and
+  refreshed `uv.lock`, because `mm_chat_rag.jina_gateway` is installed package
+  code rather than an operator-only tool.
+
+Touched files:
+
+```text
+rag/pyproject.toml
+rag/uv.lock
+rag/src/mm_chat_rag/jina_gateway.py
+rag/tests/unit/test_jina_gateway.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && uv run ruff check \
+  src/mm_chat_rag/jina_gateway.py tests/unit/test_jina_gateway.py
+# passed
+
+cd mm-chat/rag && uv run mypy src/mm_chat_rag/jina_gateway.py
+# passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_jina_gateway.py \
+  tests/unit/test_job_handler_dependencies.py \
+  tests/unit/test_provider_capture.py::test_production_dispatch_remains_disabled_and_registries_empty
+# 33 passed
+
+cd mm-chat/frontend && corepack pnpm prettier --check \
+  ../docs/architecture/g7-rag-citation-cutover-plan.md \
+  ../docs/tracking/g7-rag-citation-process.md \
+  ../docs/tracking/progress.md
+# passed
+```
+
+Residual risk:
+
+- The gateway is real but still not connected to worker settings or a promoted
+  handler registry, so no live job can call it yet.
+- Parse-side object storage, MinerU parsing, parse projection staging, handler
+  promotion, and live provider smoke remain future gated slices.
+- The first real quota-consuming Jina call is deferred to a later explicit live
+  smoke/promote gate with redacted evidence.
