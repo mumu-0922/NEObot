@@ -26,6 +26,8 @@ import { createServerSettingsApiShell } from "../services/api/client/server/sett
 import { createServerFileApiShell } from "../services/api/client/server/fileApi";
 import { createServerImageGenerationApiShell } from "../services/api/client/server/imageApi";
 import { createServerPluginApiShell } from "../services/api/client/server/pluginApi";
+import { createServerKnowledgeApiShell } from "../services/api/client/server/knowledgeApi";
+import { createServerTeamApiShell } from "../services/api/client/server/teamApi";
 
 describe("Phase 11.1B API mode resolver", () => {
   it("defaults invalid or missing modes to local", () => {
@@ -78,6 +80,8 @@ describe("Phase 11.1B API mode resolver", () => {
       chatStream: true,
       files: true,
       auth: true,
+      teams: true,
+      knowledge: true,
       voice: false,
       imageGeneration: true,
       codeExecution: false,
@@ -137,6 +141,8 @@ describe("Phase 11.1B API mode resolver", () => {
       plugins: false,
       providerSettings: false,
       agents: false,
+      teams: false,
+      knowledge: false,
       voice: false,
       imageGeneration: false,
       codeExecution: false,
@@ -157,6 +163,8 @@ describe("Phase 11.1B API mode resolver", () => {
       chatStream: true,
       files: true,
       auth: true,
+      teams: true,
+      knowledge: true,
       voice: false,
       imageGeneration: true,
       codeExecution: false,
@@ -2030,5 +2038,318 @@ describe("Phase 11.1B Go SSE scaffold", () => {
         'event: message.delta\ndata: {"type":"message.started"}\n\n',
       ),
     ).toThrow(ApiClientError);
+  });
+});
+
+describe("G8.1 teams and knowledge API adapters", () => {
+  it("keeps local teams and knowledge adapters fail-closed", async () => {
+    const client = createNeoChatApiClient();
+
+    await expect(client.teams.listTeams()).rejects.toMatchObject({
+      code: "FEATURE_NOT_IMPLEMENTED",
+    });
+    await expect(client.knowledge.listCollections()).rejects.toMatchObject({
+      code: "FEATURE_NOT_IMPLEMENTED",
+    });
+  });
+
+  it("routes team control-plane calls through Go endpoints", async () => {
+    const requests: Array<{ url: string; method?: string; body?: unknown }> =
+      [];
+    const teams = createServerTeamApiShell(
+      createHttpClient({
+        baseUrl: "/mm-api",
+        fetchImpl: async (input, init) => {
+          requests.push({
+            url: String(input),
+            method: init?.method,
+            body: init?.body ? JSON.parse(String(init.body)) : undefined,
+          });
+          if (String(input).endsWith("/members/user-2")) {
+            return Response.json({
+              userId: "user-2",
+              displayName: "Member",
+              teamRole: "admin",
+              status: "active",
+              joinedAt: "2026-07-16T00:00:00Z",
+              updatedAt: "2026-07-16T00:00:00Z",
+            });
+          }
+          if (String(input).endsWith("/invites")) {
+            return Response.json({
+              id: "invite-1",
+              teamId: "team-1",
+              maskedEmail: "m***@example.test",
+              teamRole: "member",
+              status: "pending",
+              deliveryStatus: "pending",
+              expiresAt: "2026-07-17T00:00:00Z",
+              createdAt: "2026-07-16T00:00:00Z",
+              updatedAt: "2026-07-16T00:00:00Z",
+            });
+          }
+          if (String(input).includes("/v1/teams?")) {
+            return Response.json({ items: [], nextCursor: "next" });
+          }
+          return Response.json({
+            id: "team-1",
+            name: "Arcane Team",
+            membershipRevision: 1,
+            myMembership: {
+              teamRole: "admin",
+              status: "active",
+              joinedAt: "2026-07-16T00:00:00Z",
+              updatedAt: "2026-07-16T00:00:00Z",
+            },
+            createdAt: "2026-07-16T00:00:00Z",
+            updatedAt: "2026-07-16T00:00:00Z",
+          });
+        },
+      }),
+    );
+
+    await expect(
+      teams.createTeam({ name: "Arcane Team", idempotencyKey: "idem-1" }),
+    ).resolves.toMatchObject({ id: "team-1" });
+    await expect(
+      teams.listTeams({ cursor: "cur/1", limit: 25 }),
+    ).resolves.toMatchObject({ nextCursor: "next" });
+    await expect(
+      teams.updateMember({
+        teamId: "team-1",
+        userId: "user-2",
+        teamRole: "admin",
+      }),
+    ).resolves.toMatchObject({ userId: "user-2" });
+    await expect(
+      teams.createInvite({
+        teamId: "team-1",
+        email: "member@example.test",
+        teamRole: "member",
+        idempotencyKey: "invite-1",
+      }),
+    ).resolves.toMatchObject({ id: "invite-1" });
+    await expect(
+      teams.revokeInvite({ teamId: "team-1", inviteId: "invite-1" }),
+    ).resolves.toBeUndefined();
+
+    expect(requests).toEqual([
+      {
+        url: "/mm-api/v1/teams",
+        method: "POST",
+        body: { name: "Arcane Team", idempotencyKey: "idem-1" },
+      },
+      {
+        url: "/mm-api/v1/teams?cursor=cur%2F1&limit=25",
+        method: "GET",
+        body: undefined,
+      },
+      {
+        url: "/mm-api/v1/teams/team-1/members/user-2",
+        method: "PATCH",
+        body: { teamRole: "admin" },
+      },
+      {
+        url: "/mm-api/v1/teams/team-1/invites",
+        method: "POST",
+        body: {
+          email: "member@example.test",
+          teamRole: "member",
+          idempotencyKey: "invite-1",
+        },
+      },
+      {
+        url: "/mm-api/v1/teams/team-1/invites/invite-1",
+        method: "DELETE",
+        body: undefined,
+      },
+    ]);
+  });
+
+  it("routes knowledge collection, document, content, and consent calls through Go endpoints", async () => {
+    const requests: Array<{ url: string; method?: string; body?: unknown }> =
+      [];
+    const knowledge = createServerKnowledgeApiShell(
+      createHttpClient({
+        baseUrl: "/mm-api",
+        fetchImpl: async (input, init) => {
+          requests.push({
+            url: String(input),
+            method: init?.method,
+            body: init?.body ? JSON.parse(String(init.body)) : undefined,
+          });
+          if (String(input).endsWith("/content")) {
+            return new Response("phoenix", {
+              headers: {
+                "content-type": "text/plain",
+                "content-length": "7",
+              },
+            });
+          }
+          if (String(input).includes("processing-consents")) {
+            return Response.json({
+              processor: "mineru",
+              endpointId: "ep-1",
+              modelId: "model-1",
+              profileContractHash: "hash",
+              purposes: ["parse"],
+              dataTypes: ["application/pdf"],
+              policyVersion: "v1",
+              decision: "granted",
+              effectiveStatus: "active",
+              decidedAt: "2026-07-16T00:00:00Z",
+            });
+          }
+          if (String(input).includes("query-consents")) {
+            return Response.json({
+              processor: "jina",
+              endpointId: "ep-2",
+              modelId: "jina-embeddings-v4",
+              profileContractHash: "hash",
+              purposes: ["query_embedding"],
+              dataTypes: ["text/plain"],
+              policyVersion: "v1",
+              decision: "granted",
+              effectiveStatus: "active",
+              decidedAt: "2026-07-16T00:00:00Z",
+            });
+          }
+          if (String(input).includes("/documents")) {
+            return Response.json({
+              id: "doc-1",
+              collectionId: "col-1",
+              status: "processing",
+              createdAt: "2026-07-16T00:00:00Z",
+              updatedAt: "2026-07-16T00:00:00Z",
+            });
+          }
+          if (String(input).includes("/v1/knowledge/collections?")) {
+            return Response.json({ items: [], nextCursor: "next" });
+          }
+          return Response.json({
+            id: "col-1",
+            name: "Live Docs",
+            description: "",
+            icon: "",
+            color: "",
+            scope: "team",
+            teamId: "team-1",
+            permissions: { read: true, manage: true, manageConsent: true },
+            aclRevision: 1,
+            visibilityEpoch: 1,
+            collectionProcessingRevision: 1,
+            createdAt: "2026-07-16T00:00:00Z",
+            updatedAt: "2026-07-16T00:00:00Z",
+          });
+        },
+      }),
+    );
+
+    await expect(
+      knowledge.createCollection({
+        name: "Live Docs",
+        scope: "team",
+        teamId: "team-1",
+        idempotencyKey: "col-idem-1",
+      }),
+    ).resolves.toMatchObject({ id: "col-1" });
+    await expect(
+      knowledge.listCollections({ scope: "team", teamId: "team-1", limit: 50 }),
+    ).resolves.toMatchObject({ nextCursor: "next" });
+    await expect(
+      knowledge.bindDocument({
+        collectionId: "col-1",
+        fileId: "file-1",
+        idempotencyKey: "doc-idem-1",
+      }),
+    ).resolves.toMatchObject({ id: "doc-1" });
+    await expect(
+      knowledge.downloadDocumentContent({ documentId: "doc-1" }),
+    ).resolves.toMatchObject({ contentType: "text/plain", size: 7 });
+    await expect(
+      knowledge.putCollectionConsent({
+        collectionId: "col-1",
+        processor: "mineru",
+        endpointId: "ep-1",
+        modelId: "model-1",
+        purposes: ["parse"],
+        dataTypes: ["application/pdf"],
+        policyVersion: "v1",
+      }),
+    ).resolves.toMatchObject({ processor: "mineru" });
+    await expect(
+      knowledge.putQueryConsent({
+        processor: "jina",
+        endpointId: "ep-2",
+        modelId: "jina-embeddings-v4",
+        purposes: ["query_embedding"],
+        dataTypes: ["text/plain"],
+        policyVersion: "v1",
+      }),
+    ).resolves.toMatchObject({ processor: "jina" });
+
+    expect(requests).toEqual([
+      {
+        url: "/mm-api/v1/knowledge/collections",
+        method: "POST",
+        body: {
+          name: "Live Docs",
+          scope: "team",
+          teamId: "team-1",
+          idempotencyKey: "col-idem-1",
+        },
+      },
+      {
+        url: "/mm-api/v1/knowledge/collections?scope=team&teamId=team-1&limit=50",
+        method: "GET",
+        body: undefined,
+      },
+      {
+        url: "/mm-api/v1/knowledge/collections/col-1/documents",
+        method: "POST",
+        body: { fileId: "file-1", idempotencyKey: "doc-idem-1" },
+      },
+      {
+        url: "/mm-api/v1/knowledge/documents/doc-1/content",
+        method: "GET",
+        body: undefined,
+      },
+      {
+        url: "/mm-api/v1/knowledge/collections/col-1/processing-consents/mineru?endpointId=ep-1&modelId=model-1",
+        method: "PUT",
+        body: {
+          purposes: ["parse"],
+          dataTypes: ["application/pdf"],
+          policyVersion: "v1",
+        },
+      },
+      {
+        url: "/mm-api/v1/me/knowledge/query-consents/jina?endpointId=ep-2&modelId=jina-embeddings-v4",
+        method: "PUT",
+        body: {
+          purposes: ["query_embedding"],
+          dataTypes: ["text/plain"],
+          policyVersion: "v1",
+        },
+      },
+    ]);
+  });
+
+  it("rejects ambiguous consent identity before issuing a request", async () => {
+    const requests: string[] = [];
+    const knowledge = createServerKnowledgeApiShell(
+      createHttpClient({
+        baseUrl: "/mm-api",
+        fetchImpl: async (input) => {
+          requests.push(String(input));
+          return Response.json({});
+        },
+      }),
+    );
+
+    await expect(
+      knowledge.revokeQueryConsent({ processor: "jina", endpointId: "ep-1" }),
+    ).rejects.toMatchObject({ code: "INVALID_CONSENT_IDENTITY" });
+    expect(requests).toEqual([]);
   });
 });

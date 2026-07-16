@@ -5,9 +5,11 @@ import { createLocalChatApiShell } from "./local/chatApi";
 import { createLocalFileApiShell } from "./local/fileApi";
 import { createLocalImageGenerationApiShell } from "./local/imageApi";
 import { createLocalImportApiShell } from "./local/importApi";
+import { createLocalKnowledgeApiShell } from "./local/knowledgeApi";
 import { createLocalPluginApiShell } from "./local/pluginApi";
 import { createLocalProviderApiShell } from "./local/providerApi";
 import { createLocalSettingsApiShell } from "./local/settingsApi";
+import { createLocalTeamApiShell } from "./local/teamApi";
 import { phase11Capabilities, resolveApiClientConfig } from "./mode";
 import { createServerAgentApiShell } from "./server/agentApi";
 import { createServerAuthApiShell } from "./server/authApi";
@@ -16,9 +18,11 @@ import { createServerChatApiShell } from "./server/chatApi";
 import { createServerFileApiShell } from "./server/fileApi";
 import { createServerImageGenerationApiShell } from "./server/imageApi";
 import { createServerImportApiShell } from "./server/importApi";
+import { createServerKnowledgeApiShell } from "./server/knowledgeApi";
 import { createServerPluginApiShell } from "./server/pluginApi";
 import { createServerProviderApiShell } from "./server/providerApi";
 import { createServerSettingsApiShell } from "./server/settingsApi";
+import { createServerTeamApiShell } from "./server/teamApi";
 import { createHttpClient } from "./server/httpClient";
 import type { ApiClientConfig, NeoChatApiClient } from "./types";
 
@@ -60,6 +64,12 @@ export function createNeoChatApiClient(
   const plugins = serverHttpClient
     ? createServerPluginApiShell(serverHttpClient)
     : createLocalPluginApiShell();
+  const teams = serverHttpClient
+    ? createServerTeamApiShell(serverHttpClient)
+    : createLocalTeamApiShell();
+  const knowledge = serverHttpClient
+    ? createServerKnowledgeApiShell(serverHttpClient)
+    : createLocalKnowledgeApiShell();
 
   return {
     mode: resolved.mode,
@@ -72,6 +82,8 @@ export function createNeoChatApiClient(
       auth: serverEnabled,
       imports: serverEnabled,
       plugins: serverEnabled,
+      teams: serverEnabled,
+      knowledge: serverEnabled,
       imageGeneration: serverEnabled,
     },
     auth,
@@ -84,6 +96,8 @@ export function createNeoChatApiClient(
     plugins,
     imports,
     agents,
+    teams,
+    knowledge,
   };
 }
 

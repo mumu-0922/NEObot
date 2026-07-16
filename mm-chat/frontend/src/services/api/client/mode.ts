@@ -19,6 +19,8 @@ export const phase11Capabilities: ApiCapabilities = {
   plugins: false,
   providerSettings: false,
   agents: false,
+  teams: false,
+  knowledge: false,
   voice: false,
   imageGeneration: false,
   codeExecution: false,

@@ -45,6 +45,8 @@ export interface ApiCapabilities {
   plugins: boolean;
   providerSettings: boolean;
   agents: boolean;
+  teams: boolean;
+  knowledge: boolean;
   voice: boolean;
   imageGeneration: boolean;
   codeExecution: boolean;
@@ -62,6 +64,12 @@ export interface ApiErrorEnvelope {
 export interface ApiPage<T> {
   items: T[];
   nextCursor?: string;
+}
+
+export interface CursorPageInput {
+  cursor?: string;
+  limit?: number;
+  signal?: AbortSignal;
 }
 
 export interface ModelRef {
@@ -528,6 +536,323 @@ export interface BrowserImportApi {
   ): Promise<void>;
 }
 
+export type TeamRole = "admin" | "member";
+export type TeamMembershipStatus = "active" | "removed";
+export type TeamInviteStatus = "pending" | "accepted" | "revoked" | "expired";
+export type TeamInviteDeliveryStatus =
+  "pending" | "processing" | "sent" | "failed" | "cancelled";
+
+export interface TeamMembershipDTO {
+  teamRole: TeamRole;
+  status: TeamMembershipStatus;
+  joinedAt: string;
+  updatedAt: string;
+}
+
+export interface TeamDTO {
+  id: string;
+  name: string;
+  membershipRevision: number;
+  myMembership: TeamMembershipDTO;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TeamMemberDTO {
+  userId: string;
+  displayName: string;
+  teamRole: TeamRole;
+  status: TeamMembershipStatus;
+  joinedAt: string;
+  updatedAt: string;
+}
+
+export interface TeamInviteDTO {
+  id: string;
+  teamId: string;
+  maskedEmail: string;
+  teamRole: TeamRole;
+  status: TeamInviteStatus;
+  deliveryStatus: TeamInviteDeliveryStatus;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateTeamInput {
+  name: string;
+  idempotencyKey: string;
+  signal?: AbortSignal;
+}
+
+export type ListTeamsInput = CursorPageInput;
+
+export interface TeamLookupInput {
+  teamId: string;
+  signal?: AbortSignal;
+}
+
+export interface UpdateTeamInput extends TeamLookupInput {
+  name: string;
+}
+
+export interface ListTeamMembersInput extends CursorPageInput {
+  teamId: string;
+}
+
+export interface UpdateTeamMemberInput {
+  teamId: string;
+  userId: string;
+  teamRole: TeamRole;
+  signal?: AbortSignal;
+}
+
+export interface RemoveTeamMemberInput {
+  teamId: string;
+  userId: string;
+  signal?: AbortSignal;
+}
+
+export type LeaveTeamInput = TeamLookupInput;
+
+export interface CreateTeamInviteInput {
+  teamId: string;
+  email: string;
+  teamRole: TeamRole;
+  idempotencyKey: string;
+  signal?: AbortSignal;
+}
+
+export interface ListTeamInvitesInput extends CursorPageInput {
+  teamId: string;
+}
+
+export interface RevokeTeamInviteInput {
+  teamId: string;
+  inviteId: string;
+  signal?: AbortSignal;
+}
+
+export interface TeamApi {
+  createTeam(input: CreateTeamInput): Promise<TeamDTO>;
+  listTeams(input?: ListTeamsInput): Promise<ApiPage<TeamDTO>>;
+  getTeam(input: TeamLookupInput): Promise<TeamDTO>;
+  updateTeam(input: UpdateTeamInput): Promise<TeamDTO>;
+  listMembers(input: ListTeamMembersInput): Promise<ApiPage<TeamMemberDTO>>;
+  leaveTeam(input: LeaveTeamInput): Promise<void>;
+  updateMember(input: UpdateTeamMemberInput): Promise<TeamMemberDTO>;
+  removeMember(input: RemoveTeamMemberInput): Promise<void>;
+  createInvite(input: CreateTeamInviteInput): Promise<TeamInviteDTO>;
+  listInvites(input: ListTeamInvitesInput): Promise<ApiPage<TeamInviteDTO>>;
+  revokeInvite(input: RevokeTeamInviteInput): Promise<void>;
+}
+
+export type KnowledgeCollectionScope = "personal" | "team";
+export type KnowledgeDocumentStatus = "processing" | "active" | "tombstoned";
+export type KnowledgeDocumentVersionStatus =
+  "uploaded" | "processing" | "failed" | "active" | "tombstoned";
+
+export interface KnowledgePermissionsDTO {
+  read: boolean;
+  manage: boolean;
+  manageConsent: boolean;
+}
+
+export interface KnowledgeCollectionDTO {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
+  scope: KnowledgeCollectionScope;
+  teamId?: string;
+  permissions: KnowledgePermissionsDTO;
+  aclRevision: number;
+  visibilityEpoch: number;
+  collectionProcessingRevision: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface KnowledgeDocumentFileDTO {
+  id: string;
+  name: string;
+  mimeType: string;
+  byteSize: number;
+}
+
+export interface KnowledgeDocumentVersionDTO {
+  id: string;
+  sourceVersion: number;
+  file: KnowledgeDocumentFileDTO;
+  status: KnowledgeDocumentVersionStatus;
+  createdAt: string;
+  updatedAt: string;
+  errorCode?: string;
+}
+
+export interface KnowledgeDocumentDTO {
+  id: string;
+  collectionId: string;
+  status: KnowledgeDocumentStatus;
+  currentVersion?: KnowledgeDocumentVersionDTO;
+  pendingVersion?: KnowledgeDocumentVersionDTO;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProcessingConsentDTO {
+  processor: string;
+  endpointId: string;
+  modelId: string;
+  profileContractHash: string;
+  purposes: string[];
+  dataTypes: string[];
+  policyVersion: string;
+  decision: string;
+  effectiveStatus: string;
+  expiresAt?: string;
+  decidedAt: string;
+}
+
+export interface CreateKnowledgeCollectionInput {
+  name: string;
+  description?: string;
+  icon?: string;
+  color?: string;
+  scope: KnowledgeCollectionScope;
+  teamId?: string;
+  idempotencyKey: string;
+  signal?: AbortSignal;
+}
+
+export interface ListKnowledgeCollectionsInput extends CursorPageInput {
+  scope?: KnowledgeCollectionScope;
+  teamId?: string;
+}
+
+export interface KnowledgeCollectionLookupInput {
+  collectionId: string;
+  signal?: AbortSignal;
+}
+
+export interface UpdateKnowledgeCollectionInput extends KnowledgeCollectionLookupInput {
+  name?: string;
+  description?: string;
+  icon?: string;
+  color?: string;
+}
+
+export interface BindKnowledgeDocumentInput {
+  collectionId: string;
+  fileId: string;
+  idempotencyKey: string;
+  signal?: AbortSignal;
+}
+
+export interface ListKnowledgeDocumentsInput extends CursorPageInput {
+  collectionId: string;
+}
+
+export interface KnowledgeDocumentLookupInput {
+  documentId: string;
+  signal?: AbortSignal;
+}
+
+export type DownloadKnowledgeDocumentContentInput =
+  KnowledgeDocumentLookupInput;
+
+export interface CreateKnowledgeDocumentVersionInput extends KnowledgeDocumentLookupInput {
+  fileId: string;
+  idempotencyKey: string;
+}
+
+export interface ReprocessKnowledgeDocumentInput extends KnowledgeDocumentLookupInput {
+  idempotencyKey: string;
+}
+
+export type DeleteKnowledgeDocumentInput = KnowledgeDocumentLookupInput;
+
+export interface ProcessingConsentIdentityInput {
+  processor: string;
+  endpointId?: string;
+  modelId?: string;
+}
+
+export interface PutProcessingConsentInput extends ProcessingConsentIdentityInput {
+  purposes: string[];
+  dataTypes: string[];
+  policyVersion: string;
+  expiresAt?: string;
+  signal?: AbortSignal;
+}
+
+export interface CollectionProcessingConsentInput extends ProcessingConsentIdentityInput {
+  collectionId: string;
+  signal?: AbortSignal;
+}
+
+export interface PutCollectionProcessingConsentInput extends PutProcessingConsentInput {
+  collectionId: string;
+}
+
+export type PutQueryProcessingConsentInput = PutProcessingConsentInput;
+
+export interface QueryProcessingConsentInput extends ProcessingConsentIdentityInput {
+  signal?: AbortSignal;
+}
+
+export interface KnowledgeApi {
+  createCollection(
+    input: CreateKnowledgeCollectionInput,
+  ): Promise<KnowledgeCollectionDTO>;
+  listCollections(
+    input?: ListKnowledgeCollectionsInput,
+  ): Promise<ApiPage<KnowledgeCollectionDTO>>;
+  getCollection(
+    input: KnowledgeCollectionLookupInput,
+  ): Promise<KnowledgeCollectionDTO>;
+  updateCollection(
+    input: UpdateKnowledgeCollectionInput,
+  ): Promise<KnowledgeCollectionDTO>;
+  deleteCollection(input: KnowledgeCollectionLookupInput): Promise<void>;
+  bindDocument(
+    input: BindKnowledgeDocumentInput,
+  ): Promise<KnowledgeDocumentDTO>;
+  listDocuments(
+    input: ListKnowledgeDocumentsInput,
+  ): Promise<ApiPage<KnowledgeDocumentDTO>>;
+  getDocument(
+    input: KnowledgeDocumentLookupInput,
+  ): Promise<KnowledgeDocumentDTO>;
+  downloadDocumentContent(
+    input: DownloadKnowledgeDocumentContentInput,
+  ): Promise<DownloadedFileContent>;
+  createDocumentVersion(
+    input: CreateKnowledgeDocumentVersionInput,
+  ): Promise<KnowledgeDocumentDTO>;
+  reprocessDocument(
+    input: ReprocessKnowledgeDocumentInput,
+  ): Promise<KnowledgeDocumentDTO>;
+  deleteDocument(input: DeleteKnowledgeDocumentInput): Promise<void>;
+  listCollectionConsents(
+    input: KnowledgeCollectionLookupInput,
+  ): Promise<ProcessingConsentDTO[]>;
+  putCollectionConsent(
+    input: PutCollectionProcessingConsentInput,
+  ): Promise<ProcessingConsentDTO>;
+  revokeCollectionConsent(
+    input: CollectionProcessingConsentInput,
+  ): Promise<void>;
+  listQueryConsents(input?: {
+    signal?: AbortSignal;
+  }): Promise<ProcessingConsentDTO[]>;
+  putQueryConsent(
+    input: PutQueryProcessingConsentInput,
+  ): Promise<ProcessingConsentDTO>;
+  revokeQueryConsent(input: QueryProcessingConsentInput): Promise<void>;
+}
+
 export interface NeoChatApiClient {
   mode: ApiMode;
   config: ResolvedApiClientConfig;
@@ -542,6 +867,8 @@ export interface NeoChatApiClient {
   plugins: PluginApi;
   imports?: BrowserImportApi;
   agents: AgentApi;
+  teams: TeamApi;
+  knowledge: KnowledgeApi;
 }
 
 export type ServerStreamEventType =

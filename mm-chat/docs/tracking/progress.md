@@ -1135,6 +1135,19 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         gates.
 - [ ] G8 Teams and Knowledge UI Wiring: connect existing Go control-plane APIs
       to the current frontend theme.
+  - [x] G8.1 API client adapter seam: `TeamApi` and `KnowledgeApi` are now
+        typed on `NeoChatApiClient`, fail closed in local mode, call Go
+        `/v1/teams/*` and `/v1/knowledge/*` in server mode, and expose
+        server capability flags with targeted adapter tests.
+  - [ ] G8.2 Teams shell/actions: render current-theme Team list/detail,
+        member role changes, invites, leave/revoke flows, and isolation smoke.
+  - [ ] G8.3 Knowledge collection/document shell: collection CRUD, selected
+        collection attachment to chat, document list/status, upload/bind, and
+        deletion invisibility smoke.
+  - [ ] G8.4 Consent UX: collection/query consent screens for administrator
+        env-backed MinerU/Jina processing with fail-closed affordances.
+  - [ ] G8.5 Cross-user/team UX smoke: prove personal vs team visibility and
+        selected-chat Knowledge scope through the frontend.
 - [ ] G9 Data Authority and Legacy Route Removal: remove production local-mode
       authority and replaced Next API handlers.
 - [ ] G10 Operations, Visual Regression, Clean Copy, and Delete Plan: complete

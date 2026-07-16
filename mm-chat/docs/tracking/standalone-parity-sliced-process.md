@@ -2906,3 +2906,64 @@ Owner-locked headline: real MinerU + Jina + Postgres provider loop, Jina 1024,
 all PDF classes, admin env/Docker-secret provider keys for automatic indexing,
 selected-chat Knowledge query scope, strict refusal for unknowns, basic citation
 cards first, and G9-owned legacy Next route deletion.
+
+## 2026-07-16 — G8.1 Teams/Knowledge API Client Adapter Seam
+
+Objective: start G8 with a narrow, non-visual adapter slice before touching the
+current frontend screens.
+
+Completed scope:
+
+- extended `NeoChatApiClient` and `ApiCapabilities` with `teams` and
+  `knowledge`;
+- added typed Team DTOs and methods for create/list/get/update, members,
+  membership leave, invites, and revoke;
+- added typed Knowledge DTOs and methods for collection CRUD, document bind/list
+  /get/content/version/reprocess/delete, collection consents, and query
+  consents;
+- kept local mode fail-closed for these two domains, avoiding accidental
+  fallback to legacy root routes;
+- wired server mode to Go `/v1/teams/*`, `/v1/knowledge/*`, and
+  `/v1/me/knowledge/query-consents/*`;
+- added route-shape and capability tests, plus updated existing service tests
+  to include the expanded capability/client surface.
+
+Changed surfaces:
+
+```text
+mm-chat/frontend/src/services/api/client/types.ts
+mm-chat/frontend/src/services/api/client/index.ts
+mm-chat/frontend/src/services/api/client/mode.ts
+mm-chat/frontend/src/services/api/client/local/teamApi.ts
+mm-chat/frontend/src/services/api/client/local/knowledgeApi.ts
+mm-chat/frontend/src/services/api/client/server/teamApi.ts
+mm-chat/frontend/src/services/api/client/server/knowledgeApi.ts
+mm-chat/frontend/src/__tests__/apiClientScaffold.test.ts
+mm-chat/frontend/src/__tests__/chatCrudService.test.ts
+mm-chat/frontend/src/__tests__/chatStreamService.test.ts
+mm-chat/frontend/src/__tests__/fileService.test.ts
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/frontend && corepack pnpm vitest run src/__tests__/apiClientScaffold.test.ts # passed, 55 tests
+cd mm-chat/frontend && corepack pnpm vitest run src/__tests__/apiClientScaffold.test.ts src/__tests__/chatCrudService.test.ts src/__tests__/chatStreamService.test.ts src/__tests__/fileService.test.ts # passed, 70 tests
+cd mm-chat/frontend && corepack pnpm lint # passed
+cd mm-chat/frontend && corepack pnpm typecheck # passed
+cd mm-chat/frontend && corepack pnpm format:check # passed
+git diff --check -- mm-chat # passed
+changed-file secret scan # passed
+```
+
+Residual blockers:
+
+```text
+G8.2 visible Teams UI shell/actions remains next.
+G8.3-G8.5 Knowledge UI, consent UX, and browser isolation smoke remain open.
+G9 still owns legacy local authority and replaced route deletion after visible
+G8 flows pass.
+```
