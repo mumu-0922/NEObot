@@ -15,9 +15,12 @@ from typing import Final, NoReturn, cast
 import httpx
 
 from mm_chat_rag.job_handler_dependencies import (
+    JOB_HANDLER_DEPENDENCY_UNCONFIGURED,
     JOB_HANDLER_EMBEDDING_COUNT_MISMATCH,
     JOB_HANDLER_EMBEDDING_VECTOR_INVALID,
     PassageEmbeddingCandidate,
+    PassageEmbeddingHandlerDependencies,
+    PassageEmbeddingProjectionGateway,
     PassageEmbeddingVector,
 )
 from mm_chat_rag.models import stable_error_code
@@ -45,6 +48,26 @@ MAX_JINA_RESPONSE_BYTES: Final = 16 * 1024 * 1024
 HTTP_OK: Final = 200
 _VISIBLE_ASCII_MIN: Final = 33
 _VISIBLE_ASCII_MAX: Final = 126
+
+
+def build_jina_passage_embedding_handler_dependencies(
+    *,
+    api_key: str | None,
+    projection: PassageEmbeddingProjectionGateway | None,
+    client: httpx.AsyncClient | None = None,
+) -> PassageEmbeddingHandlerDependencies:
+    """Build the default-off Jina + projection dependency bundle.
+
+    This is only a composition seam. Importing or calling it does not register a
+    production handler; callers must still pass the returned bundle to an
+    explicitly promoted handler in a later gate.
+    """
+    if projection is None:
+        _reject_permanent(JOB_HANDLER_DEPENDENCY_UNCONFIGURED)
+    return PassageEmbeddingHandlerDependencies(
+        embedding=JinaPassageEmbeddingGateway(api_key, client=client),
+        projection=projection,
+    )
 
 
 class JinaPassageEmbeddingGateway:

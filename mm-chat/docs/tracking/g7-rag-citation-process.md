@@ -1263,3 +1263,78 @@ Residual risk:
   promotion, and live provider smoke remain future gated slices.
 - The first real quota-consuming Jina call is deferred to a later explicit live
   smoke/promote gate with redacted evidence.
+
+## 2026-07-16 — G7.5.13 Jina + Projection Handler Dependency Bundle
+
+Objective: compose the real Jina passage-embedding provider gateway with the
+existing passage-embedding projection gateway seam under an explicit default-off
+dependency bundle, without promoting production job handlers or touching live
+provider quota.
+
+Implemented behavior:
+
+- Added `build_jina_passage_embedding_handler_dependencies(...)` in
+  `rag/src/mm_chat_rag/jina_gateway.py`. The function builds a
+  `PassageEmbeddingHandlerDependencies` bundle from:
+  - an explicitly supplied Jina API key;
+  - an explicitly supplied `PassageEmbeddingProjectionGateway`;
+  - an optional injected `httpx.AsyncClient` for tests or later controlled
+    runtime ownership.
+- The bundle is fail-closed and default-off:
+  - no production `JOB_HANDLER_REGISTRY` or `DISPATCH_REGISTRY` entry references
+    it;
+  - missing projection dependency raises `JOB_HANDLER_DEPENDENCY_UNCONFIGURED`
+    before constructing a provider request or making HTTP;
+  - credentials remain explicit input and are never read from `.env`, process
+    environment, browser BYOK state, or old root-project files.
+- Extended `rag/tests/unit/test_jina_gateway.py` with a full admitted handler
+  proof using the real Jina gateway over `httpx.MockTransport` and a fake
+  projection gateway. The test verifies:
+  1. admission accepts a valid `passage_embedding` job under the locked provider
+     profile;
+  2. projection candidates are fetched first;
+  3. one locked Jina embedding request is made;
+  4. staged vectors retain the candidate child IDs, model
+     `jina-embeddings-v4`, dimensions `1024`, and redacted vector hashes;
+  5. materialization completeness is asserted with the expected child count.
+
+Touched files:
+
+```text
+rag/src/mm_chat_rag/jina_gateway.py
+rag/tests/unit/test_jina_gateway.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && uv run ruff check \
+  src/mm_chat_rag/jina_gateway.py tests/unit/test_jina_gateway.py
+# passed
+
+cd mm-chat/rag && uv run mypy src/mm_chat_rag/jina_gateway.py
+# passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_jina_gateway.py \
+  tests/unit/test_job_handler_dependencies.py \
+  tests/unit/test_provider_capture.py::test_production_dispatch_remains_disabled_and_registries_empty
+# 35 passed
+
+cd mm-chat/frontend && corepack pnpm prettier --check \
+  ../docs/architecture/g7-rag-citation-cutover-plan.md \
+  ../docs/tracking/g7-rag-citation-process.md \
+  ../docs/tracking/progress.md
+# passed
+```
+
+Residual risk:
+
+- This composes the dependency bundle only; worker settings and production
+  handler registry promotion remain gated future work.
+- The test uses `httpx.MockTransport`, so no live provider quota is consumed.
+- Parse-side object storage, MinerU parsing, parse projection staging, purge
+  promotion, and live smoke remain future slices.

@@ -428,12 +428,26 @@ G7.5.12 completed on 2026-07-16:
 - `httpx==0.28.1` is now a runtime dependency because the installed RAG package
   contains the provider gateway implementation.
 
+G7.5.13 completed on 2026-07-16:
+
+- Added `build_jina_passage_embedding_handler_dependencies(...)` as the
+  explicit composition seam for Jina provider + passage-embedding projection
+  dependencies. It returns a `PassageEmbeddingHandlerDependencies` bundle only;
+  production registries remain empty.
+- The bundle fails closed when the projection gateway is absent, before any Jina
+  HTTP call can be made. The API key is still explicit constructor input and is
+  not read from env, BYOK state, or deployment files.
+- Added a full admitted-handler unit path using the real Jina gateway against an
+  `httpx.MockTransport` plus a fake projection gateway. The test proves the
+  order: fetch candidates, call Jina once, stage `1024`-lane vectors with stable
+  hashes, then assert materialization completeness.
+
 Remaining G7.5 work:
 
 - Implement real object-store, MinerU, and parse-side Postgres projection
   adapters behind the new parse seam.
-- Wire the default-off Jina provider and Postgres embedding projection gateways
-  into a promoted handler only behind an explicit readiness/registry gate.
+- Promote the composed default-off Jina + Postgres embedding dependencies only
+  behind an explicit readiness/registry gate.
 - Promote purge dispatch behind an explicit readiness/registry gate now that
   the purge Postgres gateway has unit, static, and live integration coverage.
 - Implement index, reprocess, tombstone purge, rebuild, retry, and DLQ behavior.

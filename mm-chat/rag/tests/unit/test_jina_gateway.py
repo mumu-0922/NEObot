@@ -13,11 +13,20 @@ from mm_chat_rag.jina_gateway import (
     JINA_GATEWAY_REQUEST_FAILED,
     JINA_GATEWAY_STATUS_INVALID,
     JinaPassageEmbeddingGateway,
+    build_jina_passage_embedding_handler_dependencies,
 )
 from mm_chat_rag.job_handler_dependencies import (
+    JOB_HANDLER_DEPENDENCY_UNCONFIGURED,
     JOB_HANDLER_EMBEDDING_COUNT_MISMATCH,
     JOB_HANDLER_EMBEDDING_VECTOR_INVALID,
     PassageEmbeddingCandidate,
+    StagedPassageEmbedding,
+    admitted_passage_embedding_handler_with_dependencies,
+)
+from mm_chat_rag.models import JobClaim
+from mm_chat_rag.provider_profile import (
+    MINERU_JINA_POSTGRES_PROFILE,
+    ProviderRuntimeProfile,
 )
 from mm_chat_rag.retry import PermanentJobError, RetryableJobError
 
@@ -215,3 +224,137 @@ async def test_jina_gateway_retries_redacted_transport_failure() -> None:
 
     assert raised.value.error_code == JINA_GATEWAY_REQUEST_FAILED
     assert SECRET not in str(raised.value)
+
+
+class FakePassageEmbeddingProjectionGateway:
+    def __init__(self, candidates: tuple[PassageEmbeddingCandidate, ...]) -> None:
+        self._candidates = candidates
+        self.calls: list[str] = []
+        self.staged: list[tuple[StagedPassageEmbedding, ...]] = []
+        self.expected_child_count: int | None = None
+
+    async def fetch_passage_embedding_candidates(
+        self, context: object
+    ) -> tuple[PassageEmbeddingCandidate, ...]:
+        self.calls.append("fetch_candidates")
+        assert context is not None
+        return self._candidates
+
+    async def stage_passage_embeddings(
+        self,
+        context: object,
+        embeddings: tuple[StagedPassageEmbedding, ...],
+    ) -> None:
+        self.calls.append("stage_embeddings")
+        assert context is not None
+        self.staged.append(embeddings)
+
+    async def assert_materialization_search_complete(
+        self,
+        context: object,
+        *,
+        expected_child_count: int,
+    ) -> bool:
+        self.calls.append("assert_complete")
+        assert context is not None
+        self.expected_child_count = expected_child_count
+        return True
+
+
+def _valid_profile() -> ProviderRuntimeProfile:
+    return ProviderRuntimeProfile(
+        profile_id=MINERU_JINA_POSTGRES_PROFILE,
+        accepted_draft_wire_contracts=True,
+    )
+
+
+def _embedding_claim() -> JobClaim:
+    return JobClaim.from_row(
+        {
+            "id": uuid.uuid4(),
+            "stage": "passage_embedding",
+            "operation": "initial",
+            "collection_id": uuid.uuid4(),
+            "document_id": uuid.uuid4(),
+            "document_version_id": uuid.uuid4(),
+            "file_id": uuid.uuid4(),
+            "index_generation_id": uuid.uuid4(),
+            "materialization_id": uuid.uuid4(),
+            "processor": "jina",
+            "endpoint_id": "hosted",
+            "model_id": "jina-embeddings-v4",
+            "governance_profile_id": uuid.uuid4(),
+            "governance_revision": 1,
+            "governance_head_revision": 1,
+            "collection_consent_id": uuid.uuid4(),
+            "collection_consent_revision": 1,
+            "collection_acl_revision": 1,
+            "collection_visibility_epoch": 1,
+            "collection_processing_revision": 1,
+            "document_visibility_epoch": 1,
+            "attempt_count": 1,
+            "max_attempts": 3,
+            "request_hash": "c" * 64,
+            "legacy_projection_unbound": False,
+        }
+    )
+
+
+async def test_jina_dependency_bundle_runs_admitted_embedding_handler() -> None:
+    requests: list[httpx.Request] = []
+    candidates = _candidates()
+    projection = FakePassageEmbeddingProjectionGateway(candidates)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return _json_response(_embedding_payload(len(candidates)))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        dependencies = build_jina_passage_embedding_handler_dependencies(
+            api_key=SECRET,
+            projection=projection,
+            client=client,
+        )
+        admitted_handler = admitted_passage_embedding_handler_with_dependencies(
+            dependencies,
+            _valid_profile(),
+        )
+        result = await admitted_handler(_embedding_claim())
+
+    assert result.outcome == "succeeded"
+    assert projection.calls == [
+        "fetch_candidates",
+        "stage_embeddings",
+        "assert_complete",
+    ]
+    assert projection.expected_child_count == 2
+    assert len(projection.staged) == 1
+    staged = projection.staged[0]
+    assert [item.child_chunk_id for item in staged] == [
+        candidate.child_chunk_id for candidate in candidates
+    ]
+    assert {item.embedding_dimensions for item in staged} == {1024}
+    assert {item.embedding_model_id for item in staged} == {"jina-embeddings-v4"}
+    assert all(len(item.embedding_vector_sha256) == 64 for item in staged)
+    assert len(requests) == 1
+    assert requests[0].url == httpx.URL(JINA_EMBEDDINGS_URL)
+
+
+async def test_jina_dependency_bundle_requires_projection_before_http() -> None:
+    calls = 0
+
+    def forbidden(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("unconfigured projection reached provider")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(forbidden)) as client:
+        with pytest.raises(PermanentJobError) as raised:
+            build_jina_passage_embedding_handler_dependencies(
+                api_key=SECRET,
+                projection=None,
+                client=client,
+            )
+
+    assert raised.value.error_code == JOB_HANDLER_DEPENDENCY_UNCONFIGURED
+    assert calls == 0
