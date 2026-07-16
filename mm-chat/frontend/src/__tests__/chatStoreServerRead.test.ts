@@ -100,6 +100,8 @@ vi.mock("../store/storage/storageConfig", () => ({
     setItem: () => undefined,
     removeItem: () => undefined,
   }),
+  removeRuntimeAppDbItem: mocks.appDbMock.removeItem,
+  setRuntimeAppDbItem: mocks.appDbMock.setItem,
   STORAGE_KEYS: {
     CHAT: "neo-chat-storage",
   },

@@ -29,6 +29,64 @@ implemented, tested, and recorded, create a focused Git commit for that
 completed group before starting the next group. Do not batch unrelated future
 groups into the same commit.
 
+## 2026-07-16 — G9.5c Direct IndexedDB Write Authority Fence
+
+Objective: finish the G9.5 local write-authority slice by removing direct
+non-import `appDb.setItem/removeItem` writes from chat runtime paths.
+
+Completed scope:
+
+- added `BrowserLocalIndexedDBAuthorityError` with code
+  `BROWSER_LOCAL_INDEXEDDB_IMPORT_ONLY`;
+- added `setRuntimeAppDbItem` and `removeRuntimeAppDbItem` as the only
+  non-import IndexedDB write/delete helpers;
+- made those helpers throw in `NEXT_PUBLIC_API_MODE=server`;
+- replaced direct chat message `appDb.setItem/removeItem` calls in
+  `chatStore.ts` with the runtime helpers;
+- kept direct `appDb.getItem/keys` reads available for explicit local
+  export/import compatibility;
+- verified production source no longer has direct `appDb.setItem/removeItem`
+  outside `storageConfig.ts`.
+
+Changed surfaces:
+
+```text
+mm-chat/frontend/src/store/storage/storageConfig.ts
+mm-chat/frontend/src/store/core/chatStore.ts
+mm-chat/frontend/src/__tests__/browserLocalAuthority.test.ts
+mm-chat/frontend/src/__tests__/chatStore.test.ts
+mm-chat/frontend/src/__tests__/chatStoreServerRead.test.ts
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/inventory/frontend-call-sites.md
+mm-chat/docs/inventory/standalone-cutover-gap.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/browserLocalAuthority.test.ts \
+  src/__tests__/chatStore.test.ts \
+  src/__tests__/chatStoreServerRead.test.ts              # passed, 62 tests
+cd mm-chat/frontend && corepack pnpm typecheck            # passed
+cd mm-chat/frontend && corepack pnpm lint                 # passed
+cd mm-chat/frontend && corepack pnpm format:check         # passed
+cd mm-chat/frontend && corepack pnpm build                # passed; build route table still shows 11 `/api/*` handlers
+rg 'appDb\\.(setItem|removeItem)' mm-chat/frontend/src \
+  -g '!**/__tests__/**'                                   # only storageConfig authority helpers/adapters remain
+git diff --check -- mm-chat                               # passed
+```
+
+Residual blockers:
+
+```text
+G9.6 clean-copy preflight remains. Browser-local direct reads for explicit
+export/import are still allowed by design and are not write authority.
+```
+
 ## 2026-07-16 — G9.5b OPFS Write/Delete Authority Fence
 
 Objective: continue local production-authority removal by preventing OPFS

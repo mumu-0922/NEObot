@@ -54,9 +54,12 @@ describe("browser local persistence authority", () => {
     vi.stubEnv("NEXT_PUBLIC_API_MODE", "server");
     const localStorage = installWindowStorage();
     const {
+      BrowserLocalIndexedDBAuthorityError,
       getAppDbStorage,
       getBrowserLocalPersistenceAuthority,
       getBrowserLocalStorage,
+      removeRuntimeAppDbItem,
+      setRuntimeAppDbItem,
     } = await import("../store/storage/storageConfig");
 
     expect(getBrowserLocalPersistenceAuthority()).toBe("import-only");
@@ -67,6 +70,14 @@ describe("browser local persistence authority", () => {
     expect(appDbMock.setItem).not.toHaveBeenCalled();
     expect(appDbMock.removeItem).not.toHaveBeenCalled();
     expect(appDbMock.getItem).not.toHaveBeenCalled();
+    await expect(
+      setRuntimeAppDbItem("session_messages_1", {}),
+    ).rejects.toBeInstanceOf(BrowserLocalIndexedDBAuthorityError);
+    await expect(
+      removeRuntimeAppDbItem("session_messages_1"),
+    ).rejects.toBeInstanceOf(BrowserLocalIndexedDBAuthorityError);
+    expect(appDbMock.setItem).not.toHaveBeenCalled();
+    expect(appDbMock.removeItem).not.toHaveBeenCalled();
 
     getBrowserLocalStorage().setItem("neo-chat-core-settings", "{}");
     getBrowserLocalStorage().removeItem("neo-chat-core-settings");
@@ -87,14 +98,20 @@ describe("browser local persistence authority", () => {
       getAppDbStorage,
       getBrowserLocalPersistenceAuthority,
       getBrowserLocalStorage,
+      removeRuntimeAppDbItem,
+      setRuntimeAppDbItem,
     } = await import("../store/storage/storageConfig");
 
     expect(getBrowserLocalPersistenceAuthority()).toBe("runtime");
 
     await getAppDbStorage().setItem("neo-chat-storage", "{}");
     await getAppDbStorage().removeItem("neo-chat-storage");
+    await setRuntimeAppDbItem("session_messages_1", {});
+    await removeRuntimeAppDbItem("session_messages_1");
     expect(appDbMock.setItem).toHaveBeenCalledWith("neo-chat-storage", "{}");
+    expect(appDbMock.setItem).toHaveBeenCalledWith("session_messages_1", {});
     expect(appDbMock.removeItem).toHaveBeenCalledWith("neo-chat-storage");
+    expect(appDbMock.removeItem).toHaveBeenCalledWith("session_messages_1");
 
     getBrowserLocalStorage().setItem("neo-chat-core-settings", "{}");
     getBrowserLocalStorage().removeItem("neo-chat-core-settings");

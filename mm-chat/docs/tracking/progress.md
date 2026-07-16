@@ -1166,7 +1166,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
   - [x] G9.4 Plugin/agent route removal: removed `/api/plugins/*` and
         `/api/agents*`, kept server-mode `/v1/*` adapters, and made local
         plugin/agent adapters fail closed.
-  - [ ] G9.5 Local production authority removal: hard-fence browser-local
+  - [x] G9.5 Local production authority removal: hard-fence browser-local
         IndexedDB/localforage/OPFS authority to dev/import-only paths.
     - [x] G9.5a Zustand persistence authority fence: `getAppDbStorage` and
           `getBrowserLocalStorage` return no-op storage in server mode, while
@@ -1174,8 +1174,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
     - [x] G9.5b OPFS write/delete authority fence: `saveToOPFS`,
           `writeToOPFS`, `deleteFromOPFS`, and `deleteOPFSDirectory` throw in
           server mode; OPFS list/read remain import-capable.
-    - [ ] G9.5c Direct `appDb` authority sweep: remove or hard-fence direct
-          IndexedDB writes that can still run outside explicit import/dev flows.
+    - [x] G9.5c Direct `appDb` authority sweep: replaced direct chat message
+          `appDb.setItem/removeItem` calls with runtime helpers that throw in
+          server mode; explicit import reads remain available.
   - [ ] G9.6 Clean-copy preflight: prove `mm-chat/` runs without former-root
         imports/build context.
 - [ ] G10 Operations, Visual Regression, Clean Copy, and Delete Plan: complete

@@ -14,6 +14,8 @@ import {
 import {
   appDb,
   getAppDbStorage,
+  removeRuntimeAppDbItem,
+  setRuntimeAppDbItem,
   STORAGE_KEYS,
   STORAGE_VERSION,
 } from "../storage/storageConfig";
@@ -1901,7 +1903,7 @@ export const useChatStore = create<ChatState>()(
         });
 
         // Remove from storage
-        const removeMessagesPromise = appDb.removeItem(
+        const removeMessagesPromise = removeRuntimeAppDbItem(
           `session_messages_${id}`,
         );
 
@@ -2108,7 +2110,7 @@ export const useChatStore = create<ChatState>()(
         });
 
         // Save new messages
-        await appDb.setItem(`session_messages_${newId}`, newMessageTree);
+        await setRuntimeAppDbItem(`session_messages_${newId}`, newMessageTree);
 
         const shouldActivateDuplicate = requestId === selectSessionRequestId;
 
@@ -2175,7 +2177,7 @@ export const useChatStore = create<ChatState>()(
         // We need to fetch current messages if not active, or use the mutation snapshot if active.
         if (activeTreeToPersist) {
           await enqueueSessionMessageWrite(sessionId, async () => {
-            await appDb.setItem(
+            await setRuntimeAppDbItem(
               `session_messages_${sessionId}`,
               activeTreeToPersist,
             );
@@ -2196,7 +2198,7 @@ export const useChatStore = create<ChatState>()(
             existing,
             normalizedMessage,
           );
-          await appDb.setItem(
+          await setRuntimeAppDbItem(
             `session_messages_${sessionId}`,
             messageTreeToSave,
           );
@@ -2307,7 +2309,7 @@ export const useChatStore = create<ChatState>()(
         if (!treeToSave) return;
 
         await enqueueSessionMessageWrite(targetSessionId, async () => {
-          await appDb.setItem(
+          await setRuntimeAppDbItem(
             `session_messages_${targetSessionId}`,
             treeToSave,
           );

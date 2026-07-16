@@ -1663,6 +1663,11 @@ Boundary rules:
   `writeToOPFS`, `deleteFromOPFS`, and `deleteOPFSDirectory` throw
   `BrowserLocalOPFSAuthorityError` with code `BROWSER_LOCAL_OPFS_IMPORT_ONLY`.
   OPFS list/read helpers remain available for explicit browser import.
+- G9.5c adds the direct IndexedDB write fence: non-import chat message writes
+  must call `setRuntimeAppDbItem` or `removeRuntimeAppDbItem`, which throw
+  `BrowserLocalIndexedDBAuthorityError` with code
+  `BROWSER_LOCAL_INDEXEDDB_IMPORT_ONLY` in server mode. Direct `appDb` reads
+  remain allowed only for explicit export/import compatibility paths.
 - `server` adapter owns all Go calls under `NEXT_PUBLIC_API_BASE_URL`; it must
   not read or mutate browser-local chat persistence as source of truth.
 - DTO-to-legacy mapping belongs inside the adapter/integration layer, not in
@@ -1687,7 +1692,7 @@ Adapter ownership matrix:
 | Concern                         | Local Adapter                            | Server Adapter                                   |
 | ------------------------------- | ---------------------------------------- | ------------------------------------------------ |
 | Conversation source of truth    | Current chat store/localforage in local runtime; no-op persistence in server mode | Go `conversations` endpoints                     |
-| Message source of truth         | Current `session_messages_*` trees in local runtime; direct writes audited in G9.5b | Go `messages` endpoints                          |
+| Message source of truth         | Current `session_messages_*` trees in local runtime; writes throw in server mode | Go `messages` endpoints                          |
 | Generation                      | Existing `streamChatResponse` path       | `POST /v1/chat/.../stream` SSE                   |
 | Files                           | OPFS object URLs for local runtime/import; writes/deletes throw in server mode | Go `/v1/files`, backend-stream downloads         |
 | Runtime mode                    | `NEXT_PUBLIC_API_MODE=local` or fallback | `NEXT_PUBLIC_API_MODE=server` plus base URL      |

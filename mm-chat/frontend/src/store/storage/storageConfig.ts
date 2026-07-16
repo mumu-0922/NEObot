@@ -39,6 +39,35 @@ export function canUseBrowserLocalRuntimePersistence(): boolean {
   return getBrowserLocalPersistenceAuthority() === "runtime";
 }
 
+export class BrowserLocalIndexedDBAuthorityError extends Error {
+  readonly code = "BROWSER_LOCAL_INDEXEDDB_IMPORT_ONLY";
+
+  constructor(operation: string) {
+    super(
+      `${operation} is not available in server mode; browser-local IndexedDB is import-only.`,
+    );
+    this.name = "BrowserLocalIndexedDBAuthorityError";
+  }
+}
+
+function assertIndexedDBWriteAuthority(operation: string): void {
+  if (canUseBrowserLocalRuntimePersistence()) return;
+  throw new BrowserLocalIndexedDBAuthorityError(operation);
+}
+
+export async function setRuntimeAppDbItem<T>(
+  key: string,
+  value: T,
+): Promise<T> {
+  assertIndexedDBWriteAuthority("Writing to IndexedDB");
+  return appDb.setItem<T>(key, value);
+}
+
+export async function removeRuntimeAppDbItem(key: string): Promise<void> {
+  assertIndexedDBWriteAuthority("Removing from IndexedDB");
+  await appDb.removeItem(key);
+}
+
 export const getAppDbStorage = (): StateStorage => {
   if (
     typeof window === "undefined" ||
