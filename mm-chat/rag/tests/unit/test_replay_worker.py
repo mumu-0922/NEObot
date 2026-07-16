@@ -183,7 +183,9 @@ def test_worker_rejects_missing_stage_handler_and_accepts_synthetic_gate() -> No
     )
     with pytest.raises(WorkerStartupError, match="no promoted handler"):
         Worker(
-            settings, dispatch_registry={"synthetic": event_planner}
+            settings,
+            dispatch_registry={"synthetic": event_planner},
+            job_handlers={},
         ).validate_promotion_gate()
     Worker(
         settings,
@@ -248,7 +250,20 @@ def test_worker_auto_promotes_passage_embedding_stage_from_settings() -> None:
     assert worker.state.consumer == "disabled"
 
 
-def test_worker_does_not_auto_promote_parse_stage() -> None:
+def test_worker_auto_promotes_parse_stage_from_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mineru_tokens: list[str | None] = []
+
+    class FakeMinerULocalBatchGateway:
+        def __init__(self, api_token: str | None) -> None:
+            mineru_tokens.append(api_token)
+
+    monkeypatch.setattr(
+        worker_module,
+        "MinerULocalBatchGateway",
+        FakeMinerULocalBatchGateway,
+    )
     settings = Settings(
         database_url="postgresql://test",
         dispatch_enabled=True,
@@ -261,10 +276,10 @@ def test_worker_does_not_auto_promote_parse_stage() -> None:
     )
     worker = Worker(settings)
 
-    with pytest.raises(WorkerStartupError, match="no promoted handler"):
-        worker.validate_promotion_gate()
+    worker.validate_promotion_gate()
 
-    assert set(worker.job_handlers) == {"passage_embedding", "purge"}
+    assert set(worker.job_handlers) == {"parse", "passage_embedding", "purge"}
+    assert mineru_tokens == ["fake-mineru-token"]
 
 
 class FakeParseSourceMetadataGateway:

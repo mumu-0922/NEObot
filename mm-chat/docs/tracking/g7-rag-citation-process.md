@@ -3757,3 +3757,88 @@ Residual risk:
 - Parse is not auto-promoted by normal `Worker(settings)` construction; a caller
   must still inject source metadata, projection, and archive-provider
   dependencies explicitly.
+
+
+## 2026-07-16 — G7.5M Default Worker Parse Promotion Wiring
+
+Objective: move parse from explicit test-only registry injection to normal
+`Worker(settings)` construction, while keeping the frozen module-level
+registries empty and preserving existing settings/profile gates.
+
+Implemented behavior:
+
+- `Worker(settings)` now auto-builds a `parse` handler when all of these are
+  true:
+  - `RAG_WORKER_DISPATCH_ENABLED=true`;
+  - `RAG_WORKER_JOB_STAGES` includes `parse`;
+  - the locked provider profile is enabled and draft wire contracts are accepted;
+  - administrator MinerU key and Go source-gateway URL/token are configured.
+- The default parse composition uses:
+  - `PostgresAdapter.fetch_source_metadata(...)`;
+  - `GoSourceObjectBytesGateway` built from source-gateway settings;
+  - `MinerULocalBatchGateway(settings.mineru_api_key)`;
+  - `MinerULocalBatchResultArchiveProvider`;
+  - `MinerUTextBaselineArchiveParserGateway`;
+  - `PostgresAdapter.stage_parse_projection(...)`.
+- Production module-level `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain
+  empty. Promotion is still runtime-settings gated and does not happen at import
+  time.
+- Updated the unit worker promotion tests so mixed
+  `parse,passage_embedding,purge` settings now validate with all three handlers,
+  and a monkeypatched MinerU gateway proves the server-owned key is passed only
+  into the default-off provider gateway constructor.
+- Updated the disposable PostgreSQL parse integration smoke to use default
+  `Worker(settings)` parse promotion instead of manually assigning a registry.
+
+Touched files:
+
+```text
+rag/src/mm_chat_rag/worker.py
+rag/tests/unit/test_replay_worker.py
+rag/tests/integration/test_worker_parse_promotion_integration.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && \
+  uv run ruff check src/mm_chat_rag/worker.py \
+  tests/unit/test_replay_worker.py \
+  tests/integration/test_worker_parse_promotion_integration.py
+# passed
+
+cd mm-chat/rag && \
+  uv run mypy src/mm_chat_rag/worker.py
+# passed
+
+cd mm-chat/rag && \
+  uv run pytest -p no:cacheprovider \
+  tests/unit/test_replay_worker.py \
+  tests/integration/test_worker_parse_promotion_integration.py -q
+# 19 passed, 1 skipped when RAG_TEST_DATABASE_URL is unset
+
+# disposable live proof re-run with default Worker parse promotion
+# - postgres:16-alpine container: mm-chat-test-postgres
+# - applied migrations 001 through 019
+cd mm-chat/rag && \
+  RAG_TEST_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable' \
+  uv run pytest -p no:cacheprovider \
+  tests/integration/test_worker_parse_promotion_integration.py -v
+# 1 passed
+
+# cleanup verified
+# docker ps -a --format '{{.Names}}' | grep -Fx mm-chat-test-postgres
+# no output
+```
+
+Residual risk:
+
+- Real MinerU quota has still not been consumed in this slice; provider transport
+  remains mocked in tests. The real MinerU + Jina + Postgres operational smoke
+  remains G7.8.
+- Parse completion currently stages parse/search projection rows and finishes the
+  parse job; enqueueing passage embedding and publish/finalization remain later
+  worker-dispatch slices.

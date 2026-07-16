@@ -1001,6 +1001,22 @@ G7.5L completed on 2026-07-16:
   and test-scoped unless a caller explicitly supplies the parse source,
   projection, and archive-provider dependencies.
 
+G7.5M completed on 2026-07-16:
+
+- Normal `Worker(settings)` construction now auto-promotes `parse` when the
+  operator explicitly enables `RAG_WORKER_JOB_STAGES=parse` and satisfies the
+  existing provider profile, MinerU key, and Go source-gateway URL/token gates.
+- The worker composes Postgres source metadata/projection, Go source-object
+  bytes, `MinerULocalBatchGateway`, `MinerULocalBatchResultArchiveProvider`,
+  and the MinerU text-baseline parser adapter without mutating the frozen
+  module-level registries.
+- Unit coverage now proves parse, passage-embedding, and purge are all built
+  from settings, and that the MinerU archive gateway receives only the
+  administrator-provided server key.
+- The disposable PostgreSQL parse job-runner smoke now uses default
+  `Worker(settings)` parse promotion, with the Go source-object HTTP and MinerU
+  local-batch transport mocked. No real MinerU quota is consumed in this slice.
+
 Remaining G7.5 work:
 
 - G7.5T disposable PostgreSQL integration gate has been restored and proven
@@ -1047,6 +1063,9 @@ Remaining G7.5 work:
   disposable PostgreSQL with mocked Go source-object bytes and mocked MinerU
   local-batch archive transport; migration `019` fixes the least-privilege file
   metadata read needed by the parse source metadata function.
+- G7.5M is complete: parse auto-promotion is wired into normal
+  `Worker(settings)` behind the existing parse settings/profile gates, while
+  module-level registries remain empty.
 - Implement index, reprocess, tombstone purge, rebuild, retry, and DLQ behavior.
 - Promote handlers one stage at a time behind readiness and registry gates.
 
@@ -1076,7 +1095,7 @@ Validation:
 - Promoted purge job-runner smoke against disposable PostgreSQL, including
   pending-job claim, succeeded finish, lease cleanup, and child-search purge.
 - Worker passage-embedding promotion tests, including Jina settings/profile
-  admission and parse-stage non-promotion.
+  admission and parse-stage isolation/auto-promotion coverage.
 - Promoted passage-embedding job-runner smoke against disposable PostgreSQL,
   including mocked Jina request shape, vector staging, completeness assertion,
   succeeded finish, and the `018` least-privilege function replacement.
@@ -1128,7 +1147,7 @@ Validation:
   adapter, including source fetch, archive fetch, projection build, projection
   stage, source-hash propagation, and exact-term projection.
 - Worker parse dependency factory tests, including explicit dependency-supplied
-  promotion and default Worker parse non-promotion.
+  promotion and default Worker parse auto-promotion from settings.
 - Promoted parse job-runner smoke against disposable PostgreSQL, including
   mocked Go source-object HTTP, mocked MinerU local-batch archive transport,
   parse projection staging, succeeded finish, lease cleanup, and the `019`

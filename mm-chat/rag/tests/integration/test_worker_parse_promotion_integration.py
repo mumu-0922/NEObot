@@ -21,14 +21,13 @@ from mm_chat_rag.mineru_gateway import (
     MinerULocalBatchAllocation,
     MinerULocalBatchGateway,
     MinerULocalBatchPollResult,
-    MinerULocalBatchResultArchiveProvider,
 )
 from mm_chat_rag.provider_profile import (
     MINERU_JINA_POSTGRES_PROFILE,
     ProviderRuntimeProfile,
 )
 from mm_chat_rag.settings import Settings
-from mm_chat_rag.worker import Worker, build_promoted_job_handler_registry
+from mm_chat_rag.worker import Worker
 
 pytestmark = pytest.mark.integration
 
@@ -208,13 +207,7 @@ async def test_promoted_parse_job_runner_finishes_live_postgres_job(
             content=fixture.source_body,
         )
 
-    archive_provider = MinerULocalBatchResultArchiveProvider(
-        FakeMinerULocalBatchGateway(
-            fixture,
-            calls,
-            _mineru_archive("G7.5L promoted parse\n\nMinerU baseline smoke"),
-        )
-    )
+    archive_body = _mineru_archive("G7.5L promoted parse\n\nMinerU baseline smoke")
 
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(source_handler)
@@ -234,10 +227,20 @@ async def test_promoted_parse_job_runner_finishes_live_postgres_job(
                 client=source_client,
             )
 
+        class WorkerFakeMinerULocalBatchGateway(FakeMinerULocalBatchGateway):
+            def __init__(self, api_token: str | None) -> None:
+                assert api_token == _MINERU_API_KEY
+                super().__init__(fixture, calls, archive_body)
+
         monkeypatch.setattr(
             worker_module,
             "GoSourceObjectBytesGateway",
             source_gateway_with_mocked_http,
+        )
+        monkeypatch.setattr(
+            worker_module,
+            "MinerULocalBatchGateway",
+            WorkerFakeMinerULocalBatchGateway,
         )
         settings = Settings(
             database_url=url,
@@ -253,14 +256,6 @@ async def test_promoted_parse_job_runner_finishes_live_postgres_job(
             ),
         )
         worker = Worker(settings)
-        worker.job_handlers = build_promoted_job_handler_registry(
-            settings,
-            parse_source_metadata=worker.database,
-            parse_projection=worker.database,
-            parse_archive_provider=archive_provider,
-            passage_embedding_projection=worker.database,
-            purge_projection=worker.database,
-        )
         worker.validate_promotion_gate()
         assert set(worker.job_handlers) == {"parse"}
 

@@ -34,6 +34,8 @@ from mm_chat_rag.jobs import JobRunner
 from mm_chat_rag.logging import configure_logging
 from mm_chat_rag.metrics import Metrics
 from mm_chat_rag.mineru_gateway import (
+    MinerULocalBatchGateway,
+    MinerULocalBatchResultArchiveProvider,
     MinerUResultArchiveProvider,
     MinerUTextBaselineArchiveParserGateway,
 )
@@ -133,8 +135,20 @@ class Worker:
         self.database = PostgresAdapter(settings, self.metrics)
         self.dispatch_registry = dispatch_registry
         if job_handlers is JOB_HANDLER_REGISTRY and settings.job_stages:
+            parse_source_metadata: SourceMetadataGateway | None = None
+            parse_projection: ParseProjectionGateway | None = None
+            parse_archive_provider: MinerUResultArchiveProvider | None = None
+            if "parse" in settings.job_stages:
+                parse_source_metadata = self.database
+                parse_projection = self.database
+                parse_archive_provider = MinerULocalBatchResultArchiveProvider(
+                    MinerULocalBatchGateway(settings.mineru_api_key)
+                )
             self.job_handlers = build_promoted_job_handler_registry(
                 settings,
+                parse_source_metadata=parse_source_metadata,
+                parse_projection=parse_projection,
+                parse_archive_provider=parse_archive_provider,
                 passage_embedding_projection=self.database,
                 purge_projection=self.database,
             )
