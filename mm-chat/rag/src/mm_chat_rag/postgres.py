@@ -21,6 +21,7 @@ from mm_chat_rag.job_handler_dependencies import (
     JOB_HANDLER_EMBEDDING_VECTOR_INVALID,
     JOB_HANDLER_PURGE_PROJECTION_INVALID,
     JOB_HANDLER_PURGE_VISIBILITY_INVALID,
+    JOB_HANDLER_SOURCE_INVALID,
     PassageEmbeddingCandidate,
     PurgeInvisibilityResult,
     PurgeProjectionResult,
@@ -35,6 +36,7 @@ from mm_chat_rag.models import (
 )
 from mm_chat_rag.retry import PermanentJobError
 from mm_chat_rag.settings import Settings
+from mm_chat_rag.source_gateway import FileSourceMetadata
 
 _SQL: Final[Mapping[str, str]] = {
     "claim_outbox": ("SELECT * FROM knowledge_claim_outbox(%s, %s, %s, %s)"),
@@ -60,6 +62,9 @@ _SQL: Final[Mapping[str, str]] = {
     "stage_passage_embedding": (
         "SELECT * FROM knowledge_stage_passage_embedding"
         "(%s, %s, %s, %s, %s, %s, %s)"
+    ),
+    "fetch_parse_source_metadata": (
+        "SELECT * FROM knowledge_fetch_parse_source_metadata(%s, %s, %s, %s, %s)"
     ),
     "mark_purge_invisible": (
         "SELECT * FROM knowledge_mark_purge_invisible(%s, %s, %s, %s, %s, %s, %s, %s)"
@@ -402,6 +407,26 @@ class PostgresAdapter:
         )
         return _function_succeeded(row)
 
+    async def fetch_source_metadata(
+        self, context: ProcessingJobContext
+    ) -> FileSourceMetadata:
+        """Fetch parse source metadata through the token-fenced DB gateway."""
+        lease_token = _require_context_lease_token(context)
+        materialization_id = context.materialization_id
+        if materialization_id is None:
+            raise PermanentJobError(stable_error_code(JOB_HANDLER_SOURCE_INVALID))
+        row = await self._call(
+            "fetch_parse_source_metadata",
+            (
+                context.job_id,
+                self._settings.worker_id,
+                lease_token,
+                context.file_id,
+                materialization_id,
+            ),
+        )
+        return _file_source_metadata_from_row(row)
+
     async def mark_purge_invisible(
         self, context: ProcessingJobContext
     ) -> PurgeInvisibilityResult:
@@ -551,6 +576,21 @@ def _purge_projection_from_row(
         remaining_ready_child_search_rows=_row_non_negative_int(
             row, "remaining_ready_child_search_rows"
         ),
+    )
+
+
+def _file_source_metadata_from_row(
+    row: Mapping[str, Any] | None,
+) -> FileSourceMetadata:
+    if row is None:
+        raise PermanentJobError(stable_error_code(JOB_HANDLER_SOURCE_INVALID))
+    return FileSourceMetadata(
+        file_id=_row_uuid(row, "file_id", JOB_HANDLER_SOURCE_INVALID),
+        storage_backend=_row_text(row, "storage_backend", JOB_HANDLER_SOURCE_INVALID),
+        object_key=_row_text(row, "object_key", JOB_HANDLER_SOURCE_INVALID),
+        sha256=_row_text(row, "sha256", JOB_HANDLER_SOURCE_INVALID),
+        byte_size=_row_positive_int(row, "byte_size", JOB_HANDLER_SOURCE_INVALID),
+        content_type=_row_text(row, "content_type", JOB_HANDLER_SOURCE_INVALID),
     )
 
 

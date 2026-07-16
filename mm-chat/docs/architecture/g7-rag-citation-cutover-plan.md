@@ -456,11 +456,26 @@ G7.5.14 completed on 2026-07-16:
 - No MinIO/S3 SDK, backend env secret, production registry entry, or live object
   store call is introduced in this slice.
 
+G7.5.15 completed on 2026-07-16:
+
+- Added migration `016_rag_parse_source_metadata_gateway` with
+  `knowledge_fetch_parse_source_metadata(...)`, a worker-execute-only
+  token-fenced function for parse jobs.
+- The function validates the live job lease, parse stage, operation,
+  materialization binding, file id, non-legacy projection binding, collection
+  revision/visibility fences, document visibility, version content hash, and
+  staging materialization source hash before returning object metadata.
+- Extended the Python `PostgresAdapter` with `fetch_source_metadata(...)` so it
+  implements the metadata half of the new source gateway seam and returns
+  validated `FileSourceMetadata` values.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
+  slice still does not read object bytes, call MinIO/S3, call MinerU, or consume
+  provider quota.
+
 Remaining G7.5 work:
 
-- Implement real Postgres source metadata and object-byte adapters behind the
-  new source gateway seam, then implement MinerU and parse-side Postgres
-  projection adapters.
+- Implement real object-byte adapters behind the new source gateway seam, then
+  implement MinerU and parse-side Postgres projection adapters.
 - Promote the composed default-off Jina + Postgres embedding dependencies only
   behind an explicit readiness/registry gate.
 - Promote purge dispatch behind an explicit readiness/registry gate now that
@@ -475,6 +490,8 @@ Validation:
   integration gate when `MM_CHAT_TEST_DATABASE_URL` is available.
 - Passage-embedding fetch/stage tests, including the G7.5.11 `015` migration
   compile gate and Python adapter parameter fence.
+- Parse source metadata fetch tests, including the G7.5.15 `016` migration
+  static gate and Python adapter lease/materialization fence.
 - Retry-three-times and terminal-failure tests.
 
 ### G7.6 Private query and Go reauthorization

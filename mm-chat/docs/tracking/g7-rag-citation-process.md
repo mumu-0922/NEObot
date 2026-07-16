@@ -1413,3 +1413,92 @@ Residual risk:
 - The gateway currently materializes source bytes in memory; a later object-byte
   adapter may stream internally but must still return bounded verified bytes to
   the current parser contract.
+
+## 2026-07-16 — G7.5.15 Default-off Postgres Parse Source Metadata Gateway
+
+Objective: attach the Postgres metadata half of the parse source gateway without
+reading object bytes, calling MinIO/S3, calling MinerU, or promoting production
+dispatch. This keeps the slice limited to one token-fenced database function and
+one Python adapter method.
+
+Implemented behavior:
+
+- Added migration `016_rag_parse_source_metadata_gateway` with
+  `knowledge_fetch_parse_source_metadata(...)`, a `rag_worker_executor`-only
+  SECURITY DEFINER function.
+- The function validates the live parse job fence before returning metadata:
+  - `status = processing`, `stage = parse`, operation in
+    `initial|replace|reprocess`;
+  - non-legacy projection binding, matching `file_id`, matching
+    `materialization_id`, non-null Generation, matching worker id, lease token,
+    and unexpired lease;
+  - available, non-deleted, non-empty file metadata;
+  - file SHA-256 equals the document-version content hash and the staging
+    materialization source hash;
+  - collection ACL/visibility/processing revision and document visibility fences
+    still match the admitted job.
+- Extended `rag/src/mm_chat_rag/postgres.py` with
+  `fetch_source_metadata(...)`. It uses the same `_call(...)` function allowlist,
+  requires the admitted lease token and materialization id before DB I/O, and
+  converts the returned row into validated `FileSourceMetadata`.
+- Extended `rag/tests/unit/test_postgres.py` with success, lease-token missing,
+  materialization missing, invalid-row, SQL allowlist, and parameter-fence
+  coverage.
+- Added static migration contract coverage in
+  `backend/internal/migration/phase15_rag_parse_source_metadata_gateway_schema_test.go`.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty; this
+  slice cannot spend provider quota and does not touch deployment `.env` values.
+
+Touched files:
+
+```text
+backend/migrations/016_rag_parse_source_metadata_gateway.up.sql
+backend/migrations/016_rag_parse_source_metadata_gateway.down.sql
+backend/internal/migration/phase15_rag_parse_source_metadata_gateway_schema_test.go
+rag/src/mm_chat_rag/postgres.py
+rag/tests/unit/test_postgres.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./internal/migration \
+  -run 'TestPhase15RAG(ParseSourceMetadataGateway|PassageEmbeddingProjectionGateway|PurgeProjectionGateway|SearchProjection|WorkerProjectionGate)' \
+  -count=1
+# PASS
+
+docker run --rm -d --name mm-chat-pg-g7515 \
+  -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=mm_chat \
+  -p 127.0.0.1:15436:5432 postgres:16-alpine
+cd mm-chat/backend && MIGRATION_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15436/mm_chat?sslmode=disable' \
+  GOCACHE=/tmp/neo-chat-go-build \
+  go run ./cmd/migrate up
+# PASS; applied through 016_rag_parse_source_metadata_gateway
+docker rm -f mm-chat-pg-g7515
+
+cd mm-chat/rag && uv run ruff check \
+  src/mm_chat_rag/postgres.py tests/unit/test_postgres.py
+# passed
+
+cd mm-chat/rag && uv run mypy \
+  src/mm_chat_rag/postgres.py src/mm_chat_rag/source_gateway.py
+# passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_postgres.py \
+  tests/unit/test_source_gateway.py \
+  tests/unit/test_job_handler_dependencies.py \
+  tests/unit/test_provider_capture.py::test_production_dispatch_remains_disabled_and_registries_empty
+# 70 passed
+```
+
+Residual risk:
+
+- This proves metadata retrieval only. Real object-byte adapters, MinerU parser
+  gateway, parse projection staging, and parse handler registry promotion remain
+  future gated slices.
+- The new migration compiles in a fresh live PostgreSQL chain, but this slice
+  does not seed a full parse job fixture or fetch real object bytes.

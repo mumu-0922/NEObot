@@ -12,6 +12,7 @@ from mm_chat_rag.job_context import (
     ProcessingJobContext,
 )
 from mm_chat_rag.job_handler_dependencies import (
+    JOB_HANDLER_SOURCE_INVALID,
     PassageEmbeddingCandidate,
     PassageEmbeddingVector,
     PurgeProjectionResult,
@@ -33,6 +34,7 @@ from mm_chat_rag.provider_profile import (
 )
 from mm_chat_rag.retry import PermanentJobError
 from mm_chat_rag.settings import Settings
+from mm_chat_rag.source_gateway import FileSourceMetadata
 
 FakeRow = dict[str, object]
 
@@ -152,6 +154,30 @@ def passage_embedding_context(**updates: object) -> ProcessingJobContext:
     return replace(context, **updates)
 
 
+def parse_context(**updates: object) -> ProcessingJobContext:
+    context = ProcessingJobContext(
+        job_id=uuid.uuid4(),
+        stage="parse",
+        operation="initial",
+        collection_id=uuid.uuid4(),
+        document_id=uuid.uuid4(),
+        document_version_id=uuid.uuid4(),
+        file_id=uuid.uuid4(),
+        index_generation_id=uuid.uuid4(),
+        materialization_id=uuid.uuid4(),
+        collection_acl_revision=1,
+        collection_visibility_epoch=2,
+        collection_processing_revision=1,
+        document_visibility_epoch=3,
+        attempt_count=1,
+        max_attempts=3,
+        request_hash="d" * 64,
+        authority=None,
+        lease_token=uuid.uuid4(),
+    )
+    return replace(context, **updates)
+
+
 def test_sql_surface_is_select_only_and_function_allowlisted() -> None:
     assert set(_SQL) == {
         "claim_outbox",
@@ -165,6 +191,7 @@ def test_sql_surface_is_select_only_and_function_allowlisted() -> None:
         "assert_search_complete",
         "fetch_passage_embedding_candidates",
         "stage_passage_embedding",
+        "fetch_parse_source_metadata",
         "mark_purge_invisible",
         "purge_search_projection",
         "assert_purge_complete",
@@ -391,6 +418,100 @@ async def test_passage_embedding_gateway_requires_claim_lease_token() -> None:
 
     assert raised.value.error_code == JOB_CONTEXT_LEASE_FENCE_MISSING
     assert connection.calls == []
+
+
+async def test_parse_source_metadata_gateway_calls_token_fenced_function() -> None:
+    worker_id = uuid.uuid4()
+    settings = Settings(
+        database_url="postgresql://worker:secret@db/rag",
+        worker_id=worker_id,
+    )
+    context = parse_context()
+    row = {
+        "file_id": context.file_id,
+        "storage_backend": "minio",
+        "object_key": "users/user-1/files/file-1",
+        "sha256": "e" * 64,
+        "byte_size": 4096,
+        "content_type": "application/pdf",
+    }
+    adapter, connection = adapter_with_rows([row], settings)
+
+    metadata = await adapter.fetch_source_metadata(context)
+
+    assert metadata == FileSourceMetadata(
+        file_id=context.file_id,
+        storage_backend="minio",
+        object_key="users/user-1/files/file-1",
+        sha256="e" * 64,
+        byte_size=4096,
+        content_type="application/pdf",
+    )
+    assert connection.calls == [
+        (
+            _SQL["fetch_parse_source_metadata"],
+            (
+                context.job_id,
+                worker_id,
+                context.lease_token,
+                context.file_id,
+                context.materialization_id,
+            ),
+        )
+    ]
+
+
+async def test_parse_source_metadata_gateway_requires_claim_lease_token() -> None:
+    adapter, connection = adapter_with_rows([])
+
+    with pytest.raises(PermanentJobError) as raised:
+        await adapter.fetch_source_metadata(parse_context(lease_token=None))
+
+    assert raised.value.error_code == JOB_CONTEXT_LEASE_FENCE_MISSING
+    assert connection.calls == []
+
+
+async def test_parse_source_metadata_gateway_rejects_unbound_materialization() -> None:
+    adapter, connection = adapter_with_rows([])
+
+    with pytest.raises(PermanentJobError) as raised:
+        await adapter.fetch_source_metadata(parse_context(materialization_id=None))
+
+    assert raised.value.error_code == JOB_HANDLER_SOURCE_INVALID
+    assert connection.calls == []
+
+
+async def test_parse_source_metadata_gateway_rejects_invalid_row() -> None:
+    context = parse_context()
+    adapter, connection = adapter_with_rows(
+        [
+            {
+                "file_id": context.file_id,
+                "storage_backend": "minio",
+                "object_key": "users/user-1/files/file-1",
+                "sha256": "not-a-sha",
+                "byte_size": 4096,
+                "content_type": "application/pdf",
+            }
+        ]
+    )
+
+    with pytest.raises(PermanentJobError) as raised:
+        await adapter.fetch_source_metadata(context)
+
+    assert raised.value.error_code == JOB_HANDLER_SOURCE_INVALID
+    assert connection.calls == [
+        (
+            _SQL["fetch_parse_source_metadata"],
+            (
+                context.job_id,
+                adapter._settings.worker_id,
+                context.lease_token,
+                context.file_id,
+                context.materialization_id,
+            ),
+        )
+    ]
 
 
 async def test_purge_projection_gateway_calls_token_fenced_functions() -> None:
