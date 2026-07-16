@@ -5,47 +5,46 @@ This inventory maps current Next.js API routes to future `mm-chat` Go backend ow
 ## Summary
 
 Current server routes are mostly proxy/adaptor endpoints around chat
-generation, plugins, search, voice, provider models, config, and marketplace
-data.
+generation, plugins, search, voice, and marketplace data.
 
 ## Route Table
 
-| Current Route | Method | Current Responsibility | Future Owner |
-|---|---:|---|---|
-| `/api/health` | GET | Health check | Go `/health`, `/ready` |
-| `/api/config` | GET | Public/server config | Go `/v1/config` |
-| `/api/access/verify` | POST | Access/password gate | Go auth/access middleware |
-| `/api/byok/public-key` | GET | BYOK encryption public key | Go secret/BYOK service |
-| `/api/chat` | POST | Main chat stream | Go chat streaming spine |
-| `/api/chat/generate` | POST | Simple generate stream | Go provider generate endpoint |
-| `/api/chat/generate-title` | POST | Title generation | Go chat helper or async job |
-| `/api/chat/related-questions` | POST | Follow-up generation | Go chat helper |
-| `/api/chat/generate-image` | POST | Image generation | Go provider adapter or later worker |
-| `/api/chat/execute-code` | POST | Code execution helper | Separate sandbox service; do not put in core initially |
-| `/api/providers/models` | POST | Provider model listing | Go provider metadata proxy |
-| `/api/search` | POST | Search provider proxy | Go search proxy with safe outbound policy |
-| `/api/plugins/list` | GET | Plugin marketplace list | Go plugin registry or static asset initially |
-| `/api/plugins/install` | POST | Install plugin manifest | Go plugin registry/validation later |
-| `/api/plugins/execute` | POST | Execute plugin | Later sandboxed plugin executor |
-| `/api/agents` | GET | Agent marketplace list | Static/catalog service; can remain frontend/static initially |
-| `/api/agents/[identifier]` | GET | Agent detail | Static/catalog service |
-| `/api/voice/transcribe` | POST | Speech-to-text | Go proxy or Python/media service later |
-| `/api/voice/synthesize` | POST | Text-to-speech | Go proxy or media service later |
+| Current Route                 | Method | Current Responsibility  | Future Owner                                                 |
+| ----------------------------- | -----: | ----------------------- | ------------------------------------------------------------ |
+| `/api/health`                 |    GET | Health check            | Go `/health`, `/ready`                                       |
+| `/api/access/verify`          |   POST | Access/password gate    | Go auth/access middleware                                    |
+| `/api/chat`                   |   POST | Main chat stream        | Go chat streaming spine                                      |
+| `/api/chat/generate`          |   POST | Simple generate stream  | Go provider generate endpoint                                |
+| `/api/chat/generate-title`    |   POST | Title generation        | Go chat helper or async job                                  |
+| `/api/chat/related-questions` |   POST | Follow-up generation    | Go chat helper                                               |
+| `/api/chat/generate-image`    |   POST | Image generation        | Go provider adapter or later worker                          |
+| `/api/chat/execute-code`      |   POST | Code execution helper   | Separate sandbox service; do not put in core initially       |
+| `/api/search`                 |   POST | Search provider proxy   | Go search proxy with safe outbound policy                    |
+| `/api/plugins/list`           |    GET | Plugin marketplace list | Go plugin registry or static asset initially                 |
+| `/api/plugins/install`        |   POST | Install plugin manifest | Go plugin registry/validation later                          |
+| `/api/plugins/execute`        |   POST | Execute plugin          | Later sandboxed plugin executor                              |
+| `/api/agents`                 |    GET | Agent marketplace list  | Static/catalog service; can remain frontend/static initially |
+| `/api/agents/[identifier]`    |    GET | Agent detail            | Static/catalog service                                       |
+| `/api/voice/transcribe`       |   POST | Speech-to-text          | Go proxy or Python/media service later                       |
+| `/api/voice/synthesize`       |   POST | Text-to-speech          | Go proxy or media service later                              |
 
 ## Retired During G9
 
-| Retired Route | Former Method | Replacement |
-|---|---:|---|
-| `/api/chat/rag-queries` | POST | Server strict Knowledge/RAG query planning through Go/RAG |
-| `/api/doc-parse` | POST | Go Knowledge document upload/index pipeline |
-| `/api/doc-parse/jobs/[id]` | GET/DELETE | Go Knowledge document status/deletion APIs |
-| `/api/rag/delete` | POST | Go Knowledge document/collection deletion events |
-| `/api/rag/query` | POST | Go strict RAG query path |
-| `/api/rag/upsert` | POST | Go Knowledge auto-index pipeline |
+| Retired Route              | Former Method | Replacement                                               |
+| -------------------------- | ------------: | --------------------------------------------------------- |
+| `/api/chat/rag-queries`    |          POST | Server strict Knowledge/RAG query planning through Go/RAG |
+| `/api/doc-parse`           |          POST | Go Knowledge document upload/index pipeline               |
+| `/api/doc-parse/jobs/[id]` |    GET/DELETE | Go Knowledge document status/deletion APIs                |
+| `/api/rag/delete`          |          POST | Go Knowledge document/collection deletion events          |
+| `/api/rag/query`           |          POST | Go strict RAG query path                                  |
+| `/api/rag/upsert`          |          POST | Go Knowledge auto-index pipeline                          |
+| `/api/config`              |           GET | Go `/v1/config` through API client                        |
+| `/api/providers/models`    |          POST | Go `/v1/providers/models` through API client              |
+| `/api/byok/public-key`     |           GET | Go `/v1/byok/public-key` through API client               |
 
 ## Migration Priority
 
-1. `health`, `config` — low risk smoke test for Go backend.
+1. `health` — low risk smoke test for Go backend.
 2. `chat`, `chat/generate` — core streaming path.
 3. `providers/models` — provider metadata and server-side secret isolation.
 4. `files` — new Go endpoints; current app has OPFS rather than server file API.

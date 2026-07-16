@@ -142,51 +142,6 @@ describe("BYOK route integration", () => {
     expect(JSON.stringify(await response.json())).not.toContain("tvly-secret");
   });
 
-  it("rejects provider model requests that only have legacy environment keys", async () => {
-    const originalGeminiKey = process.env.GEMINI_API_KEY;
-    const originalApiKey = process.env.API_KEY;
-    const originalOpenAiKey = process.env.OPENAI_API_KEY;
-    process.env.GEMINI_API_KEY = "gemini-env-secret";
-    process.env.API_KEY = "api-env-secret";
-    process.env.OPENAI_API_KEY = "openai-env-secret";
-    mocks.resolveProviderRuntimeConfig.mockResolvedValue({ type: "Gemini" });
-
-    try {
-      const { POST } = await import("../app/api/providers/models/route");
-      const response = await POST(
-        new Request("https://neo.test/api/providers/models", {
-          method: "POST",
-          body: JSON.stringify({
-            provider: { type: "Gemini" },
-          }),
-        }) as any,
-      );
-
-      expect(response.status).toBe(401);
-      expect(mocks.safeFetchJson).not.toHaveBeenCalled();
-      const text = JSON.stringify(await response.json());
-      expect(text).not.toContain("gemini-env-secret");
-      expect(text).not.toContain("api-env-secret");
-      expect(text).not.toContain("openai-env-secret");
-    } finally {
-      if (originalGeminiKey === undefined) {
-        delete process.env.GEMINI_API_KEY;
-      } else {
-        process.env.GEMINI_API_KEY = originalGeminiKey;
-      }
-      if (originalApiKey === undefined) {
-        delete process.env.API_KEY;
-      } else {
-        process.env.API_KEY = originalApiKey;
-      }
-      if (originalOpenAiKey === undefined) {
-        delete process.env.OPENAI_API_KEY;
-      } else {
-        process.env.OPENAI_API_KEY = originalOpenAiKey;
-      }
-    }
-  });
-
   it("rejects plaintext voice API keys in transcription multipart requests", async () => {
     const { POST } = await import("../app/api/voice/transcribe/route");
     const formData = new FormData();

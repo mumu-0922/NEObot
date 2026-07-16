@@ -39,7 +39,9 @@ OpenAI-compatible
 Gemini
 ```
 
-Additional provider metadata/model listing is handled through provider config and `/api/providers/models`.
+Additional provider metadata/model listing is handled through provider config
+and the typed API client. G9.3 retired `/api/providers/models`; server mode now
+uses Go `/v1/providers/models`, and the local adapter fails closed.
 
 ## Server-Backed Target
 

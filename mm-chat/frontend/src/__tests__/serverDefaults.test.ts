@@ -472,59 +472,14 @@ describe("server default configuration", () => {
     const { getDefaultProviderRuntimeConfig, getPublicServerConfig } =
       await import("../lib/defaultConfig/server");
     const runtimeConfig = getDefaultProviderRuntimeConfig();
+    const publicConfig = getPublicServerConfig();
+    const text = JSON.stringify(publicConfig);
 
     expect(runtimeConfig).toBeNull();
-
-    const { GET } = await import("../app/api/config/route");
-    const response = await GET();
-    const publicConfig = getPublicServerConfig();
-    const body = await response.json();
-    const text = JSON.stringify(body);
-
-    expect(response.status).toBe(200);
     expect(publicConfig.modelProvider.available).toBe(false);
-    expect(body.modelProvider.available).toBe(false);
     expect(text).not.toContain("gemini-fallback-secret");
     expect(text).not.toContain("api-fallback-secret");
     expect(text).not.toContain("openai-fallback-secret");
-  });
-
-  it("uses server default provider credentials when fetching model lists", async () => {
-    setEnv({
-      DEFAULT_PROVIDER_TYPE: "OpenAI",
-      DEFAULT_PROVIDER_API_KEY: "provider-secret",
-      DEFAULT_PROVIDER_BASE_URL: "https://llm.internal/custom",
-    });
-    mocks.safeFetchJson.mockResolvedValue({
-      response: new Response(null, { status: 200 }),
-      data: {
-        data: [{ id: "gpt-4o" }, { id: "gpt-4o-mini" }],
-      },
-    });
-
-    const { POST } = await import("../app/api/providers/models/route");
-    const response = await POST(
-      new Request("https://neo.test/api/providers/models", {
-        method: "POST",
-        body: JSON.stringify({
-          provider: { type: "OpenAI", source: "server-default" },
-        }),
-      }) as any,
-    );
-
-    expect(response.status).toBe(200);
-    expect(mocks.safeFetchJson).toHaveBeenCalledWith(
-      "https://llm.internal/custom/v1/models",
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: "Bearer provider-secret",
-        }),
-      }),
-      expect.any(Object),
-    );
-    expect(JSON.stringify(await response.json())).not.toContain(
-      "provider-secret",
-    );
   });
 
   it("uses server default search credentials for provider default requests", async () => {

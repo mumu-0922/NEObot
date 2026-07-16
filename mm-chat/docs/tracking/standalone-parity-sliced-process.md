@@ -29,6 +29,82 @@ implemented, tested, and recorded, create a focused Git commit for that
 completed group before starting the next group. Do not batch unrelated future
 groups into the same commit.
 
+## 2026-07-16 — G9.3 Config/Provider/BYOK Legacy Route Removal
+
+Objective: delete the transitional Next config/provider/BYOK bootstrap routes
+after the typed API client already routes server mode to Go `/v1/*`.
+
+Completed scope:
+
+- deleted `/api/config`, `/api/providers/models`, and
+  `/api/byok/public-key` route handlers from `src/app/api`;
+- updated local `settings`, `providers`, and `byok` API adapters to fail closed
+  without calling deleted Next routes;
+- preserved server adapters for `/v1/config`, `/v1/providers/models`, and
+  `/v1/byok/public-key`;
+- updated BYOK client tests to load public keys through the server-mode
+  `/mm-api/v1/byok/public-key` path;
+- updated route inventory guard from 19 to 16 active transitional Next
+  handlers and added explicit negative assertions for the G9.3-retired paths;
+- refreshed plan, inventory, provider-flow, and frontend API client contracts
+  so local config/provider/BYOK compatibility is no longer documented as an
+  active route path.
+
+Changed surfaces:
+
+```text
+mm-chat/frontend/src/app/api/config/route.ts
+mm-chat/frontend/src/app/api/providers/models/route.ts
+mm-chat/frontend/src/app/api/byok/public-key/route.ts
+mm-chat/frontend/src/services/api/client/local/settingsApi.ts
+mm-chat/frontend/src/services/api/client/local/providerApi.ts
+mm-chat/frontend/src/services/api/client/local/byokApi.ts
+mm-chat/frontend/src/lib/security/requestGuards.ts
+mm-chat/frontend/src/__tests__/legacyRouteInventory.test.ts
+mm-chat/frontend/src/__tests__/legacyConfigProviderByokRouteRemoval.test.ts
+mm-chat/frontend/src/__tests__/apiClientScaffold.test.ts
+mm-chat/frontend/src/__tests__/byok.test.ts
+mm-chat/frontend/src/__tests__/byokRoutes.test.ts
+mm-chat/frontend/src/__tests__/byokServices.test.ts
+mm-chat/frontend/src/__tests__/serverDefaults.test.ts
+mm-chat/frontend/src/__tests__/accessControl.test.ts
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/contracts/frontend-api-client.md
+mm-chat/docs/inventory/api-routes.md
+mm-chat/docs/inventory/frontend-call-sites.md
+mm-chat/docs/inventory/provider-flow.md
+mm-chat/docs/inventory/standalone-cutover-gap.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/legacyRouteInventory.test.ts \
+  src/__tests__/legacyConfigProviderByokRouteRemoval.test.ts \
+  src/__tests__/apiClientScaffold.test.ts \
+  src/__tests__/byok.test.ts \
+  src/__tests__/byokRoutes.test.ts \
+  src/__tests__/byokServices.test.ts \
+  src/__tests__/serverDefaults.test.ts \
+  src/__tests__/accessControl.test.ts                         # passed, 125 tests
+cd mm-chat/frontend && corepack pnpm typecheck                 # passed
+cd mm-chat/frontend && corepack pnpm lint                      # passed
+cd mm-chat/frontend && corepack pnpm format:check              # passed
+cd mm-chat/frontend && corepack pnpm build                     # passed; build route table shows 16 `/api/*` handlers
+git diff --check -- mm-chat                                    # passed
+```
+
+Residual blockers:
+
+```text
+G9.4 owns plugin/agent route retirement next. Remaining transitional Next API
+handler count is 16.
+No live browser screenshot is claimed for this static/API-client deletion slice.
+```
+
 ## 2026-07-16 — G9.2 RAG/Doc-Parse Legacy Route Removal
 
 Objective: delete the replaced transitional Next RAG/doc-parse handlers and

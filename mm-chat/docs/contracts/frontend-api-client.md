@@ -86,16 +86,15 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8080
 Runtime configuration source:
 
 ```text
-local mode   -> existing /api/config or local defaults
-server mode  -> Phase 11: build-time env/static capabilities;
-                future: GET /v1/config after a Go route exists
+local mode   -> fail-closed after G9.3 for config/provider/BYOK bootstrap
+server mode  -> GET /v1/config through the Go API client
 ```
 
 Rules:
 
 - `NEXT_PUBLIC_API_MODE` and `NEXT_PUBLIC_API_BASE_URL` are build-time defaults only.
-- Runtime rollback must be driven by `/api/config` or a future `/v1/config`
-  where possible; otherwise a Next.js rebuild/redeploy is required.
+- Runtime rollback must be driven by `/v1/config` where possible; otherwise a
+  Next.js rebuild/redeploy is required.
 - Missing or invalid mode resolves to `local`.
 - `server` mode requires a runtime or build-time API base URL.
 - Mode selection happens in one factory, not per component.
@@ -794,9 +793,9 @@ continues to use `/api/access/verify` and the existing httpOnly access cookie.
 
 G3.3 wiring rule: ChatApp runtime config bootstrap, default-provider model
 bootstrap, Provider Settings model refresh, and BYOK public-key loading must go
-through `createNeoChatApiClient()`. Transitional `/api/config`,
-`/api/providers/models`, and `/api/byok/public-key` calls are allowed only
-inside the local adapter implementations.
+through `createNeoChatApiClient()`. G9.3 removed transitional `/api/config`,
+`/api/providers/models`, and `/api/byok/public-key`; local adapters now fail
+closed while server adapters call `/v1/*`.
 
 `AcceptInviteInput.password` is a single field with branch-specific semantics:
 for a new invited mailbox it becomes the initial password, while for an
@@ -1369,22 +1368,22 @@ export interface ModelInfo {
 
 Endpoint mapping:
 
-| Client Method                 | Server Endpoint             | Notes                                                                         |
-| ----------------------------- | --------------------------- | ----------------------------------------------------------------------------- |
-| `settings.getRuntimeConfig`   | `GET /v1/config`            | Runtime mode/capability bootstrap; `/api/config` remains local compatibility. |
-| `settings.getUserSettings`    | `GET /v1/settings`          | User-visible settings only; no plaintext provider secrets.                    |
-| `settings.updateUserSettings` | `PATCH /v1/settings`        | Partial update with server validation.                                        |
-| `providers.listProviders`     | `GET /v1/providers`         | Returns provider metadata and `serverManaged` flags.                          |
-| `providers.listModels`        | `POST /v1/providers/models` | Allows refresh and provider-specific lookup.                                  |
-| `plugins.listAvailable`       | `GET /v1/plugins`           | Later phase; capability-gated.                                                |
-| `plugins.listInstalled`       | `GET /v1/plugins/installed` | Later phase; capability-gated.                                                |
-| `plugins.install`             | `POST /v1/plugins/install`  | Later phase; validate manifest before install.                                |
-| `plugins.execute`             | `POST /v1/plugins/execute`  | Deferred until sandbox design exists.                                         |
-| `job.cancel`                  | `POST /v1/jobs/{jobId}/cancel` | G6.5b fail-closed cancellation admission; validates job id, then unavailable. |
-| `code.execute`                | `POST /v1/code/executions` | G6.4 fail-closed admission; validates `modelRef + language + code`, then unavailable. |
-| `image.generate`              | `POST /v1/images/generations` | G6.3 fail-closed admission; validates `modelRef + prompt`, then unavailable. |
-| `voice.transcribe`            | `POST /v1/voice/transcribe` | G6.2 fail-closed admission; validates multipart shape, then unavailable.      |
-| `voice.synthesize`            | `POST /v1/voice/synthesize` | G6.2 fail-closed admission; validates JSON shape, then unavailable.           |
+| Client Method                 | Server Endpoint                | Notes                                                                                 |
+| ----------------------------- | ------------------------------ | ------------------------------------------------------------------------------------- |
+| `settings.getRuntimeConfig`   | `GET /v1/config`               | Runtime mode/capability bootstrap; G9.3 removed local `/api/config`.                  |
+| `settings.getUserSettings`    | `GET /v1/settings`             | User-visible settings only; no plaintext provider secrets.                            |
+| `settings.updateUserSettings` | `PATCH /v1/settings`           | Partial update with server validation.                                                |
+| `providers.listProviders`     | `GET /v1/providers`            | Returns provider metadata and `serverManaged` flags.                                  |
+| `providers.listModels`        | `POST /v1/providers/models`    | Allows refresh and provider-specific lookup.                                          |
+| `plugins.listAvailable`       | `GET /v1/plugins`              | Later phase; capability-gated.                                                        |
+| `plugins.listInstalled`       | `GET /v1/plugins/installed`    | Later phase; capability-gated.                                                        |
+| `plugins.install`             | `POST /v1/plugins/install`     | Later phase; validate manifest before install.                                        |
+| `plugins.execute`             | `POST /v1/plugins/execute`     | Deferred until sandbox design exists.                                                 |
+| `job.cancel`                  | `POST /v1/jobs/{jobId}/cancel` | G6.5b fail-closed cancellation admission; validates job id, then unavailable.         |
+| `code.execute`                | `POST /v1/code/executions`     | G6.4 fail-closed admission; validates `modelRef + language + code`, then unavailable. |
+| `image.generate`              | `POST /v1/images/generations`  | G6.3 fail-closed admission; validates `modelRef + prompt`, then unavailable.          |
+| `voice.transcribe`            | `POST /v1/voice/transcribe`    | G6.2 fail-closed admission; validates multipart shape, then unavailable.              |
+| `voice.synthesize`            | `POST /v1/voice/synthesize`    | G6.2 fail-closed admission; validates JSON shape, then unavailable.                   |
 
 The table above is the long-term server contract. Server mode must not call a
 route until it is implemented by the Go router and explicitly reopened here.
@@ -1412,7 +1411,7 @@ Rules:
   only; `imageGeneration` stays disabled until execution/storage/audit controls
   exist.
 - G6.4 registers Go `/v1/code/executions` admission with `modelRef + language +
-  code` only; `codeExecution` stays disabled until a real sandbox/executor and
+code` only; `codeExecution` stays disabled until a real sandbox/executor and
   audit controls exist.
 - G6.5a records only sanitized admission audit fields for fail-closed
   voice/image/code services: kind, status, userId, providerId, modelId,
@@ -2227,7 +2226,7 @@ Browser execution rules:
 2. Signatures: `POST /v1/plugins/install` emits `plugin.install`;
    `POST /v1/plugins/execute` emits `plugin.execute`; configured deployments
    insert rows into Postgres `audit_logs(action, resource_type='plugin',
-   actor_user_id, request_id, outcome, ip_address, user_agent, metadata)`.
+actor_user_id, request_id, outcome, ip_address, user_agent, metadata)`.
 3. Contracts: audit metadata may include `status`, `pluginId`, `functionName`,
    `functionCount`, `source`, `builtIn`, `hasAuth`, `callId`, `argumentCount`,
    `baseHost`, and `manifestHost`. `baseHost`/`manifestHost` are hostname-only,
@@ -2263,12 +2262,12 @@ Browser execution rules:
 | Oversized fetched plugin manifest                                              | `502 PLUGIN_RESPONSE_TOO_LARGE`                              |
 | Non-2xx or failed plugin manifest fetch                                        | `502 PLUGIN_REQUEST_FAILED`                                  |
 | Plaintext plugin auth                                                          | `400 PLAINTEXT_PLUGIN_AUTH_REJECTED`                         |
-| Missing required plugin auth or BYOK decrypt failure                            | `400 PLUGIN_AUTH_REQUIRED`                                   |
+| Missing required plugin auth or BYOK decrypt failure                           | `400 PLUGIN_AUTH_REQUIRED`                                   |
 | Unsupported plugin auth type                                                   | `400 PLUGIN_AUTH_UNSUPPORTED`                                |
-| Blocked outbound plugin URL                                                     | `403 PLUGIN_URL_BLOCKED`                                     |
-| Oversized plugin response                                                       | `502 PLUGIN_RESPONSE_TOO_LARGE`                              |
-| Non-2xx or failed plugin request                                                | `502 PLUGIN_REQUEST_FAILED`                                  |
-| Configured plugin audit recorder fails                                          | `503 PLUGIN_AUDIT_UNAVAILABLE`; no mutation/egress           |
+| Blocked outbound plugin URL                                                    | `403 PLUGIN_URL_BLOCKED`                                     |
+| Oversized plugin response                                                      | `502 PLUGIN_RESPONSE_TOO_LARGE`                              |
+| Non-2xx or failed plugin request                                               | `502 PLUGIN_REQUEST_FAILED`                                  |
+| Configured plugin audit recorder fails                                         | `503 PLUGIN_AUDIT_UNAVAILABLE`; no mutation/egress           |
 | Plugin execution returns `{ "error": ... }`                                    | Record `status: "error"`; final model must not claim success |
 | Abort before/during plan or execution                                          | Stop the orchestration and do not start the final stream     |
 | Browser `Origin` differs from external `Host`                                  | `403 CSRF_ORIGIN_BLOCKED`                                    |

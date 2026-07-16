@@ -1,5 +1,5 @@
 import { generateKeyPairSync } from "node:crypto";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
@@ -16,6 +16,8 @@ const originalEnv = {
   BYOK_KEY_ID: process.env.BYOK_KEY_ID,
   BYOK_PRIVATE_KEY_PEM: process.env.BYOK_PRIVATE_KEY_PEM,
   NODE_ENV: process.env.NODE_ENV,
+  NEXT_PUBLIC_API_MODE: process.env.NEXT_PUBLIC_API_MODE,
+  NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
 };
 
 function restoreEnv() {
@@ -37,6 +39,11 @@ function resetByokKeyMaterial() {
 }
 
 describe("BYOK secret envelopes", () => {
+  beforeEach(() => {
+    setEnv("NEXT_PUBLIC_API_MODE", "server");
+    setEnv("NEXT_PUBLIC_API_BASE_URL", "/mm-api");
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
     restoreEnv();
@@ -119,7 +126,7 @@ describe("BYOK secret envelopes", () => {
     let publicKeyCalls = 0;
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-      if (String(input) === "/api/byok/public-key") {
+      if (String(input) === "/mm-api/v1/byok/public-key") {
         publicKeyCalls += 1;
         return Response.json(await freshGetByokPublicKey());
       }

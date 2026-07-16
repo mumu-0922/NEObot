@@ -1160,9 +1160,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
   - [x] G9.2 RAG/doc-parse route removal: removed replaced `/api/rag/*`,
         `/api/doc-parse*`, and `/api/chat/rag-queries` handlers, updated the
         route inventory to 19 handlers, and fail-closed old local services.
-  - [ ] G9.3 Config/provider/BYOK route removal: retire production
-        `/api/config`, `/api/providers/models`, and `/api/byok/public-key`
-        reliance.
+  - [x] G9.3 Config/provider/BYOK route removal: removed `/api/config`,
+        `/api/providers/models`, and `/api/byok/public-key`, kept server-mode
+        `/v1/*` adapters, and made local adapters fail closed.
   - [ ] G9.4 Plugin/agent route removal: retire or hard-fence
         `/api/plugins/*` and `/api/agents*`.
   - [ ] G9.5 Local production authority removal: hard-fence browser-local

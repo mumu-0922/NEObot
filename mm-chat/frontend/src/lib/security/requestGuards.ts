@@ -36,10 +36,6 @@ const RATE_LIMIT_RULES: Array<[RegExp, RateLimitRule]> = [
     /^\/api\/plugins\/list$/,
     { windowMs: 60_000, maxRequests: 15, methods: ["GET"] },
   ],
-  [
-    /^\/api\/providers\/models$/,
-    { windowMs: 60_000, maxRequests: 30, methods: ["GET"] },
-  ],
 ];
 
 const mutatingMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);

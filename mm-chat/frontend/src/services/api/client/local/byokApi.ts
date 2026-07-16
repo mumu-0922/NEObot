@@ -1,12 +1,12 @@
+import { unsupportedFeature } from "../errors";
 import type { BYOKPublicKeyResponse, ByokApi } from "../types";
-import { requestLocalJson } from "./http";
 
 export function createLocalByokApiShell(): ByokApi {
   return {
     async getPublicKey(): Promise<BYOKPublicKeyResponse> {
-      return requestLocalJson<BYOKPublicKeyResponse>("/api/byok/public-key", {
-        method: "GET",
-      });
+      throw unsupportedFeature(
+        "local BYOK public-key loading after G9.3 route removal",
+      );
     },
   };
 }

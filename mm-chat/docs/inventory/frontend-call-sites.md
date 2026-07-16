@@ -15,57 +15,57 @@ Phase 2 migration should keep components stable while moving these calls behind 
 
 ## Priority Legend
 
-| Priority | Meaning |
-|---|---|
-| P0 | Must be handled before server chat MVP can work safely. |
-| P1 | Needed for first usable server-backed app. |
-| P2 | Defer until related capability migrates. |
-| P3 | Keep local/static or revisit later. |
+| Priority | Meaning                                                 |
+| -------- | ------------------------------------------------------- |
+| P0       | Must be handled before server chat MVP can work safely. |
+| P1       | Needed for first usable server-backed app.              |
+| P2       | Defer until related capability migrates.                |
+| P3       | Keep local/static or revisit later.                     |
 
 ## Direct Component Fetch Calls
 
 These are the highest-risk bypasses because UI components know route details directly.
 
-| Priority | File | Current Call | Future Boundary | Notes |
-|---:|---|---|---|---|
-| P1 | `src/components/app/AccessPasswordPage.tsx` | `POST /api/access/verify` | `authApi.login` | Local adapter can call current route; server adapter maps to `/v1/auth/login`. |
-| P0 | `src/components/app/ChatApp.tsx` | `GET /api/config` | `settingsApi.getRuntimeConfig` | Runtime rollback depends on this becoming the mode/capability bootstrap. |
-| P0 | `src/components/app/ChatApp.tsx` | `POST /api/providers/models` | `providerApi.listModels` | Provider/model identity must return `providerId + modelId`. |
-| P1 | `src/components/settings/ProviderSettings.tsx` | `POST /api/providers/models` | `providerApi.listModels` | Same model-list contract as ChatApp; avoid duplicate parsing. |
-| P2 | `src/components/settings/DeploymentHealth.tsx` | `GET /api/health` | `settingsApi.getRuntimeConfig` or `healthApi` later | Can remain a local/server health widget, not part of chat MVP. |
-| P2 | `src/components/knowledge/KnowledgeBase.tsx` | `fetch(blobUrl)` | `fileApi.getContent` / local OPFS resolver | This fetches local blob/object URLs, not backend API, but must be separated from server files. |
+| Priority | File                                           | Current Call                              | Future Boundary                                     | Notes                                                                                          |
+| -------: | ---------------------------------------------- | ----------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+|       P1 | `src/components/app/AccessPasswordPage.tsx`    | `POST /api/access/verify`                 | `authApi.login`                                     | Local adapter can call current route; server adapter maps to `/v1/auth/login`.                 |
+|       P0 | `src/components/app/ChatApp.tsx`               | G9.3 retired `GET /api/config`            | `settingsApi.getRuntimeConfig`                      | Server mode now uses Go `/v1/config`; local adapter fails closed.                              |
+|       P0 | `src/components/app/ChatApp.tsx`               | G9.3 retired `POST /api/providers/models` | `providerApi.listModels`                            | Server mode now uses Go `/v1/providers/models`; local adapter fails closed.                    |
+|       P1 | `src/components/settings/ProviderSettings.tsx` | G9.3 retired `POST /api/providers/models` | `providerApi.listModels`                            | Same model-list contract as ChatApp; local adapter fails closed.                               |
+|       P2 | `src/components/settings/DeploymentHealth.tsx` | `GET /api/health`                         | `settingsApi.getRuntimeConfig` or `healthApi` later | Can remain a local/server health widget, not part of chat MVP.                                 |
+|       P2 | `src/components/knowledge/KnowledgeBase.tsx`   | `fetch(blobUrl)`                          | `fileApi.getContent` / local OPFS resolver          | This fetches local blob/object URLs, not backend API, but must be separated from server files. |
 
 ## Existing Service-Layer Fetch Calls
 
 These are already closer to the desired boundary. Phase 2 should wrap these into local adapters before any component rewrite.
 
-| Priority | Service | Current Routes | Future Client |
-|---:|---|---|---|
-| P0 | `src/services/api/chatService.ts` | `/api/chat`, `/api/chat/generate`, `/api/chat/generate-title`, `/api/chat/related-questions`, `/api/chat/generate-image`, `/api/chat/execute-code` | `chatApi` first; G6.1 blocks server-mode image/code calls, G6.3/G6.4 register fail-closed Go image/code admission routes, G6.5c.1 defines stored image result artifacts, G6.5c.3a adds the opt-in image executor seam, and G6.5c.3b.1 adds OpenAI-compatible image execution while keeping frontend capability disabled until configured-provider smoke passes. G9.2 removed `/api/chat/rag-queries` and query rewrite now falls back to the original prompt. |
-| P1 | `src/services/api/ragService.ts` | G9.2 retired `/api/rag/query`, `/api/rag/upsert`, `/api/rag/delete` | Fail-closed local shim; server Knowledge/RAG uses Go API client. |
-| P2 | `src/services/api/docParseService.ts` | G9.2 retired `/api/doc-parse`, `/api/doc-parse/jobs/:id` | Fail-closed local shim; server document upload/indexing uses Go API client. |
-| P2 | `src/services/api/pluginService.ts` | via `pluginApi.listAvailable/install`; local adapter retains `/api/plugins/list` and `/api/plugins/install` | Server adapter targets `/v1/plugins*`; G4.5c.2b persists supplied plugin payloads in Go/Postgres when `DATABASE_URL` is configured and converts custom/OpenAPI manifest installs in Go. |
-| P2 | `src/utils/pluginUtils.ts` | via `pluginApi.execute`; local adapter retains `/api/plugins/execute` | Server adapter targets `/v1/plugins/execute`; G4.5c.2c sends id-only payloads, Go resolves built-ins/registered/custom OpenAPI plugins from memory/Postgres, and Go normalizes built-in plugin result envelopes. |
-| P2 | `src/services/api/searchService.ts` | `/api/search` | `searchApi` or chat-side capability later. |
-| P2 | `src/services/api/voiceService.ts` | `/api/voice/transcribe`, `/api/voice/synthesize` | `voiceApi` later; G6.1 blocks server-mode service calls, G6.2 registers fail-closed Go `/v1/voice/*` admission routes, G6.5c.1 defines stored audio result artifacts, and G6.5c.2a adds the opt-in executor seam without enabling live providers. |
-| P3 | `src/services/api/agentService.ts` | `/api/agents`, `/api/agents/:identifier` | static/catalog API; can remain static initially. |
-| P3 | `src/services/api/skillService.ts` | `/data/skills/*` | static asset loader; no Go dependency for MVP. |
+| Priority | Service                               | Current Routes                                                                                                                                     | Future Client                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| -------: | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|       P0 | `src/services/api/chatService.ts`     | `/api/chat`, `/api/chat/generate`, `/api/chat/generate-title`, `/api/chat/related-questions`, `/api/chat/generate-image`, `/api/chat/execute-code` | `chatApi` first; G6.1 blocks server-mode image/code calls, G6.3/G6.4 register fail-closed Go image/code admission routes, G6.5c.1 defines stored image result artifacts, G6.5c.3a adds the opt-in image executor seam, and G6.5c.3b.1 adds OpenAI-compatible image execution while keeping frontend capability disabled until configured-provider smoke passes. G9.2 removed `/api/chat/rag-queries` and query rewrite now falls back to the original prompt. |
+|       P1 | `src/services/api/ragService.ts`      | G9.2 retired `/api/rag/query`, `/api/rag/upsert`, `/api/rag/delete`                                                                                | Fail-closed local shim; server Knowledge/RAG uses Go API client.                                                                                                                                                                                                                                                                                                                                                                                              |
+|       P2 | `src/services/api/docParseService.ts` | G9.2 retired `/api/doc-parse`, `/api/doc-parse/jobs/:id`                                                                                           | Fail-closed local shim; server document upload/indexing uses Go API client.                                                                                                                                                                                                                                                                                                                                                                                   |
+|       P2 | `src/services/api/pluginService.ts`   | via `pluginApi.listAvailable/install`; local adapter retains `/api/plugins/list` and `/api/plugins/install`                                        | Server adapter targets `/v1/plugins*`; G4.5c.2b persists supplied plugin payloads in Go/Postgres when `DATABASE_URL` is configured and converts custom/OpenAPI manifest installs in Go.                                                                                                                                                                                                                                                                       |
+|       P2 | `src/utils/pluginUtils.ts`            | via `pluginApi.execute`; local adapter retains `/api/plugins/execute`                                                                              | Server adapter targets `/v1/plugins/execute`; G4.5c.2c sends id-only payloads, Go resolves built-ins/registered/custom OpenAPI plugins from memory/Postgres, and Go normalizes built-in plugin result envelopes.                                                                                                                                                                                                                                              |
+|       P2 | `src/services/api/searchService.ts`   | `/api/search`                                                                                                                                      | `searchApi` or chat-side capability later.                                                                                                                                                                                                                                                                                                                                                                                                                    |
+|       P2 | `src/services/api/voiceService.ts`    | `/api/voice/transcribe`, `/api/voice/synthesize`                                                                                                   | `voiceApi` later; G6.1 blocks server-mode service calls, G6.2 registers fail-closed Go `/v1/voice/*` admission routes, G6.5c.1 defines stored audio result artifacts, and G6.5c.2a adds the opt-in executor seam without enabling live providers.                                                                                                                                                                                                             |
+|       P3 | `src/services/api/agentService.ts`    | `/api/agents`, `/api/agents/:identifier`                                                                                                           | static/catalog API; can remain static initially.                                                                                                                                                                                                                                                                                                                                                                                                              |
+|       P3 | `src/services/api/skillService.ts`    | `/data/skills/*`                                                                                                                                   | static asset loader; no Go dependency for MVP.                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 ## Store and Utility Fetch Calls
 
 These bypass the service layer or belong to infra helpers. They must be classified before server mode.
 
-| Priority | File | Current Call | Future Boundary | Notes |
-|---:|---|---|---|---|
-| P0 | `src/lib/byok/client.ts` | `GET /api/byok/public-key` | `providerApi` / `authApi` secret bootstrap | Server mode should not expose plaintext provider secrets. |
-| P1 | `src/store/core/settingsStore.ts` | provider model fetch | `providerApi.listModels` | Store should not know provider-model route shape. |
-| P1 | `src/lib/data/clearAppData.ts` | G9.2 retired `POST /api/rag/delete` | Local reset only; server Knowledge deletion uses Go APIs | Server mode must distinguish local reset from server data deletion. |
-| P2 | `src/lib/plugin/serverRegistry.ts` | server registry endpoint fetches | `pluginApi` / backend registry later | Keep out of first MVP. |
-| P2 | `src/lib/api/docParseJobs.ts` | no active route caller after G9.2 | delete with remaining local authority cleanup | Former Next document job helper is now dead code. |
-| P2 | `src/lib/security/rateLimitStore.ts` | rate-limit endpoint fetches | backend Redis/rate-limit integration | Server-side rate limits should be authoritative. |
-| P3 | `src/lib/security/safeFetch.ts` | outbound safe fetch | backend-only helper | Not a frontend API client target. |
-| P3 | `src/lib/utils/attachments.ts`, `src/lib/utils/rag.ts` | `fetch(blobUrl)` | local file resolver | Blob/object URL fetches stay local; do not route to Go. |
-| P3 | `src/store/core/knowledgeStore.ts` | `fetch(objectUrl)` | local file resolver | OPFS/blob content conversion, not backend route. |
+| Priority | File                                                   | Current Call                            | Future Boundary                                          | Notes                                                                      |
+| -------: | ------------------------------------------------------ | --------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------------------------- |
+|       P0 | `src/lib/byok/client.ts`                               | G9.3 retired `GET /api/byok/public-key` | `byokApi.getPublicKey`                                   | Server mode now uses Go `/v1/byok/public-key`; local adapter fails closed. |
+|       P1 | `src/store/core/settingsStore.ts`                      | provider model fetch                    | `providerApi.listModels`                                 | Store should not know provider-model route shape.                          |
+|       P1 | `src/lib/data/clearAppData.ts`                         | G9.2 retired `POST /api/rag/delete`     | Local reset only; server Knowledge deletion uses Go APIs | Server mode must distinguish local reset from server data deletion.        |
+|       P2 | `src/lib/plugin/serverRegistry.ts`                     | server registry endpoint fetches        | `pluginApi` / backend registry later                     | Keep out of first MVP.                                                     |
+|       P2 | `src/lib/api/docParseJobs.ts`                          | no active route caller after G9.2       | delete with remaining local authority cleanup            | Former Next document job helper is now dead code.                          |
+|       P2 | `src/lib/security/rateLimitStore.ts`                   | rate-limit endpoint fetches             | backend Redis/rate-limit integration                     | Server-side rate limits should be authoritative.                           |
+|       P3 | `src/lib/security/safeFetch.ts`                        | outbound safe fetch                     | backend-only helper                                      | Not a frontend API client target.                                          |
+|       P3 | `src/lib/utils/attachments.ts`, `src/lib/utils/rag.ts` | `fetch(blobUrl)`                        | local file resolver                                      | Blob/object URL fetches stay local; do not route to Go.                    |
+|       P3 | `src/store/core/knowledgeStore.ts`                     | `fetch(objectUrl)`                      | local file resolver                                      | OPFS/blob content conversion, not backend route.                           |
 
 ## Browser Storage and OPFS Call Sites
 
@@ -73,48 +73,48 @@ These define the local adapter and import boundary.
 
 ### Persistent Store Roots
 
-| Priority | File | Current Storage | Future Boundary |
-|---:|---|---|---|
-| P0 | `src/store/storage/storageConfig.ts` | `localforage` app DB + `window.localStorage` | Local adapter source of truth; import/export source. |
-| P0 | `src/store/core/chatStore.ts` | `getAppDbStorage`, `deleteFromOPFS` | `chatApi` local adapter + `fileApi` local adapter. |
-| P1 | `src/store/core/coreSettingsStore.ts` | `getBrowserLocalStorage` | `settingsApi` local adapter. |
-| P1 | `src/store/core/settingsStore.ts` | `getAppDbStorage` | `settingsApi` local adapter. |
-| P1 | `src/store/core/knowledgeStore.ts` | `getAppDbStorage`, OPFS helpers | `fileApi` local adapter + later RAG import. |
-| P2 | `src/store/core/memoryStore.ts` | `getAppDbStorage` | local-only until memory/server strategy is designed. |
-| P2 | `src/store/storage/legacyGeminiMigration.ts` | legacy localStorage/localforage migration | Must be preserved for local import/export compatibility. |
-| P2 | `src/app/layout.tsx` | reads `neo-chat-core-settings` from `window.localStorage` | theme/bootstrap compatibility | Keep minimal inline bootstrap; do not expand server coupling here. |
+| Priority | File                                         | Current Storage                                           | Future Boundary                                          |
+| -------: | -------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------- |
+|       P0 | `src/store/storage/storageConfig.ts`         | `localforage` app DB + `window.localStorage`              | Local adapter source of truth; import/export source.     |
+|       P0 | `src/store/core/chatStore.ts`                | `getAppDbStorage`, `deleteFromOPFS`                       | `chatApi` local adapter + `fileApi` local adapter.       |
+|       P1 | `src/store/core/coreSettingsStore.ts`        | `getBrowserLocalStorage`                                  | `settingsApi` local adapter.                             |
+|       P1 | `src/store/core/settingsStore.ts`            | `getAppDbStorage`                                         | `settingsApi` local adapter.                             |
+|       P1 | `src/store/core/knowledgeStore.ts`           | `getAppDbStorage`, OPFS helpers                           | `fileApi` local adapter + later RAG import.              |
+|       P2 | `src/store/core/memoryStore.ts`              | `getAppDbStorage`                                         | local-only until memory/server strategy is designed.     |
+|       P2 | `src/store/storage/legacyGeminiMigration.ts` | legacy localStorage/localforage migration                 | Must be preserved for local import/export compatibility. |
+|       P2 | `src/app/layout.tsx`                         | reads `neo-chat-core-settings` from `window.localStorage` | theme/bootstrap compatibility                            | Keep minimal inline bootstrap; do not expand server coupling here. |
 
 ### OPFS Consumers
 
-| Priority | File | Current OPFS Use | Future Boundary |
-|---:|---|---|---|
-| P0 | `src/utils/opfs.ts` | source helper for `opfs://` save/resolve/delete/list | Local `fileApi` implementation. |
-| P0 | `src/components/chat/MessageAttachmentView.tsx` | resolves OPFS URLs for display | `fileApi.getObjectUrl` later. |
-| P0 | `src/components/chat/MessageInputAttachmentTray.tsx` | resolves OPFS URLs for attachment tray | `fileApi.getObjectUrl` later. |
-| P1 | `src/components/media/ImagePreview.tsx` | resolves OPFS images | `fileApi.getObjectUrl` later. |
-| P1 | `src/components/content/MarkdownRendererClient.tsx` | resolves OPFS assets in rendered content | local file resolver / `fileApi`. |
-| P1 | `src/components/layout/WorkspaceSettingsModal.tsx` | `saveToOPFS`, `deleteFromOPFS` workspace files | `fileApi.upload/delete` local adapter first. |
-| P1 | `src/components/knowledge/KnowledgeBase.tsx` | resolves OPFS knowledge files | `fileApi.getObjectUrl`; server mode later uses `fileId`. |
-| P1 | `src/lib/data/appExport.ts` | collects `opfs://` references | Import/export contract later. |
-| P1 | `src/lib/data/clearAppData.ts` | deletes OPFS directories | local reset API; server reset must be explicit. |
-| P2 | `src/lib/chat/messageProcessor.ts` | resolves OPFS attachments for model input | `fileApi` + attachment normalization. |
-| P2 | `src/lib/utils/rag.ts` | resolves OPFS files for RAG | RAG sidecar import path later. |
-| P2 | `src/lib/utils/documentAttachments.ts` | parses uploaded files | document API later. |
+| Priority | File                                                 | Current OPFS Use                                     | Future Boundary                                          |
+| -------: | ---------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------- |
+|       P0 | `src/utils/opfs.ts`                                  | source helper for `opfs://` save/resolve/delete/list | Local `fileApi` implementation.                          |
+|       P0 | `src/components/chat/MessageAttachmentView.tsx`      | resolves OPFS URLs for display                       | `fileApi.getObjectUrl` later.                            |
+|       P0 | `src/components/chat/MessageInputAttachmentTray.tsx` | resolves OPFS URLs for attachment tray               | `fileApi.getObjectUrl` later.                            |
+|       P1 | `src/components/media/ImagePreview.tsx`              | resolves OPFS images                                 | `fileApi.getObjectUrl` later.                            |
+|       P1 | `src/components/content/MarkdownRendererClient.tsx`  | resolves OPFS assets in rendered content             | local file resolver / `fileApi`.                         |
+|       P1 | `src/components/layout/WorkspaceSettingsModal.tsx`   | `saveToOPFS`, `deleteFromOPFS` workspace files       | `fileApi.upload/delete` local adapter first.             |
+|       P1 | `src/components/knowledge/KnowledgeBase.tsx`         | resolves OPFS knowledge files                        | `fileApi.getObjectUrl`; server mode later uses `fileId`. |
+|       P1 | `src/lib/data/appExport.ts`                          | collects `opfs://` references                        | Import/export contract later.                            |
+|       P1 | `src/lib/data/clearAppData.ts`                       | deletes OPFS directories                             | local reset API; server reset must be explicit.          |
+|       P2 | `src/lib/chat/messageProcessor.ts`                   | resolves OPFS attachments for model input            | `fileApi` + attachment normalization.                    |
+|       P2 | `src/lib/utils/rag.ts`                               | resolves OPFS files for RAG                          | RAG sidecar import path later.                           |
+|       P2 | `src/lib/utils/documentAttachments.ts`               | parses uploaded files                                | document API later.                                      |
 
 ## Service Imports in UI/Domain Code
 
 These imports show where component behavior will feel the API boundary change.
 
-| Priority | Import Consumers | Imported Service | Migration Note |
-|---:|---|---|---|
-| P0 | `src/components/app/ChatApp.tsx`, chat hooks/stores indirectly | `chatService`, skill/agent services | Main chat spine must wrap or replace `chatService` first. |
-| P0 | `src/components/chat/MessageInput.tsx`, `MessageItem.tsx` | `chatService`, `voiceService`, artifact service | Keep UI stable; move backend route awareness into clients. |
-| P1 | `src/components/settings/MemorySettings.tsx` | memory dream chat helper | Defer server memory; keep local capability gated. |
-| P1 | `src/store/core/knowledgeStore.ts` | fail-closed `docParseService`, `ragService` | Server Knowledge/RAG uses Go UI/client; local authority cleanup continues in G9.5. |
-| P2 | `src/components/plugin/PluginMarket.tsx` | `pluginService` | `pluginApi` placeholder now; implementation deferred. |
-| P2 | `src/components/assistant/*` | `agentService`, `chatService`, artifact service | Agent catalog can remain static/local until server catalog exists. |
-| P2 | `src/components/content/*` | `chatService`, artifact service | Artifact/code execution helpers are not MVP chat spine. |
-| P3 | `src/components/skill/SkillMarket.tsx` | `skillService` | Static assets; not server MVP. |
+| Priority | Import Consumers                                               | Imported Service                                | Migration Note                                                                     |
+| -------: | -------------------------------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------- |
+|       P0 | `src/components/app/ChatApp.tsx`, chat hooks/stores indirectly | `chatService`, skill/agent services             | Main chat spine must wrap or replace `chatService` first.                          |
+|       P0 | `src/components/chat/MessageInput.tsx`, `MessageItem.tsx`      | `chatService`, `voiceService`, artifact service | Keep UI stable; move backend route awareness into clients.                         |
+|       P1 | `src/components/settings/MemorySettings.tsx`                   | memory dream chat helper                        | Defer server memory; keep local capability gated.                                  |
+|       P1 | `src/store/core/knowledgeStore.ts`                             | fail-closed `docParseService`, `ragService`     | Server Knowledge/RAG uses Go UI/client; local authority cleanup continues in G9.5. |
+|       P2 | `src/components/plugin/PluginMarket.tsx`                       | `pluginService`                                 | `pluginApi` placeholder now; implementation deferred.                              |
+|       P2 | `src/components/assistant/*`                                   | `agentService`, `chatService`, artifact service | Agent catalog can remain static/local until server catalog exists.                 |
+|       P2 | `src/components/content/*`                                     | `chatService`, artifact service                 | Artifact/code execution helpers are not MVP chat spine.                            |
+|       P3 | `src/components/skill/SkillMarket.tsx`                         | `skillService`                                  | Static assets; not server MVP.                                                     |
 
 ## Phase 2 Migration Order
 

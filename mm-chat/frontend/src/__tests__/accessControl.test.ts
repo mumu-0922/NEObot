@@ -288,7 +288,7 @@ describe("access proxy", () => {
     vi.stubEnv("ACCESS_PASSWORD", "");
 
     const response = await proxy(
-      new NextRequest("https://neo.test/api/config"),
+      new NextRequest("https://neo.test/api/health"),
     );
     expect(response.status).toBe(200);
   });
@@ -464,7 +464,7 @@ describe("access proxy", () => {
     vi.stubEnv("ACCESS_PASSWORD", "secret");
 
     const response = await proxy(
-      new NextRequest("https://neo.test/api/config"),
+      new NextRequest("https://neo.test/api/health"),
     );
     const data = await response.json();
 
@@ -477,7 +477,7 @@ describe("access proxy", () => {
     const sessionValue = await createAccessSessionCookieValue();
 
     const response = await proxy(
-      new NextRequest("https://neo.test/api/config", {
+      new NextRequest("https://neo.test/api/health", {
         headers: { cookie: `${ACCESS_SESSION_COOKIE}=${sessionValue}` },
       }),
     );
@@ -493,7 +493,7 @@ describe("access proxy", () => {
     });
 
     const response = await proxy(
-      new NextRequest("https://neo.test/api/config", {
+      new NextRequest("https://neo.test/api/health", {
         headers: { cookie: `${ACCESS_ATTEMPTS_COOKIE}=${attemptsValue}` },
       }),
     );
