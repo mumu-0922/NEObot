@@ -17,9 +17,10 @@ does not mount, import, build from, or execute any original-root artifact.
 Live source and deployment configuration currently prove:
 
 - `mm-chat/frontend/` contains the complete Next.js application, manifest,
-  lockfile, configuration, assets, tests, and standalone Docker image;
-- `mm-chat/compose.single-server.yml` builds the frontend in server mode and
-  exposes the same-origin `/mm-api` edge to the private Go service;
+  lockfile, configuration, assets, tests, and standalone Docker build context;
+- `mm-chat/compose.single-server.yml` builds backend, frontend, and RAG worker
+  from the standalone project tree and exposes the same-origin `/mm-api` edge
+  to the private Go service;
 - the relocated frontend still registers 11 transitional Next.js `/api/*`
   route handlers;
 - the Go backend already registers Auth, Chat, Files, Browser Import, Teams,
@@ -114,8 +115,9 @@ equivalent server-owned static/catalog implementation:
    surface for later features.
 5. G9.6 passed the isolated clean-copy structure and full frontend/Go/RAG gate
    using only `mm-chat/`. G10.1 added the separate former-root deletion dry-run
-   plan; G10 must still complete operations, backup/restore, visual smoke, and
-   explicit owner confirmation before any destructive cleanup.
+   plan; G10.2 completed backup/restore plus build-based Compose closure; G10.3
+   completed visual smoke. Only explicit owner confirmation remains before any
+   destructive cleanup.
 
 ## Verification Policy
 
@@ -123,4 +125,5 @@ equivalent server-owned static/catalog implementation:
   edge and its nearest callers only.
 - At a domain cutover: run that domain's integration and browser smoke.
 - At standalone-project closure: run the complete frontend, Go, RAG, migration,
-  Docker, security, backup/restore, visual-regression, and clean-copy gates once.
+  Compose source-build, security, backup/restore, visual-regression, and
+  clean-copy gates once.

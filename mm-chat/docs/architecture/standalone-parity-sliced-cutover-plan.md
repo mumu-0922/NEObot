@@ -36,7 +36,7 @@ Owner directive captured on 2026-07-15:
 ### Already Migrated Spine
 
 - Relocated Next.js frontend lives under `mm-chat/frontend/` with its own
-  manifest, lockfile, tests, assets, and Docker image.
+  manifest, lockfile, tests, assets, and Docker build context.
 - Single-server Compose exposes the frontend on port `18080` and proxies
   `/mm-api` to the private Go backend.
 - Go owns health/readiness/version, chat CRUD/SSE, file upload/download,
@@ -570,38 +570,44 @@ Objective: prove standalone closure and prepare the destructive deletion gate.
 Scope:
 
 - backup/restore drill for Postgres, object storage, and search/RAG artifacts;
-- Compose rebuild/restart/rollback evidence;
+- Compose source-build/restart/rollback evidence from only `mm-chat/`;
 - desktop/mobile visual regression and interaction smoke;
 - clean-copy install/test/build/run with only `mm-chat/` present;
 - exact former-root delete plan with paths, backups, rollback, and owner
   confirmation prompt.
+
+Deployment closure decision recorded on 2026-07-16: the active gate is
+source-build Compose deployment (`docker compose build` / `up --build`) from the
+standalone `mm-chat/` tree. Registry-published immutable image digests remain an
+optional hardening/promotion path through `scripts/release-images.sh`, but GHCR
+push or digest-env proof is no longer required to prove `mm-chat/` is an
+independent project.
 
 Slice sequence:
 
 - [x] G10.1 Former-root delete-plan dry run: add a non-destructive candidate
       manifest script, protected-path boundary, approval phrase, rollback
       steps, and deployment-doc index link.
-- [ ] G10.2 Operations and backup/restore closure: record production backup
-      checksums, Postgres temporary restore drill, MinIO restore drill, Compose
-      config/restart/rollback evidence, and runtime smoke.
+- [x] G10.2 Operations and backup/restore closure: record backup checksums,
+      Postgres temporary restore drill, MinIO restore drill, Compose
+      source-build/restart/rollback evidence, and runtime smoke.
   - [x] G10.2a Local live-stack backup/restore smoke: using a temporary
         `BACKUP_DIR`, Postgres and MinIO backups, checksum verification,
         disposable Postgres restore, temporary MinIO bucket restore, Compose
         config, restart, and readiness smoke passed; temp backup artifacts and
         restore DB were removed after verification.
-  - [ ] G10.2b Production immutable-env backup/restore closure: provide a
-        production `.env.single-server` that passes immutable image preflight,
-        then rerun backup, checksum, restore drills, and rollback evidence for
-        the final deletion gate.
-    - [x] G10.2b.1 Release image script: add an independent `mm-chat` script
-          that builds backend, frontend, and RAG images, supports local
-          `--load` smoke builds, supports explicit `--push`, and emits
-          production `@sha256:` env lines after registry publish; local
-          `--load` builds for all three images passed, while GHCR `--push`
-          awaits authenticated package write access.
-    - [ ] G10.2b.2 Production digest env proof: run the script with `--push`,
-          copy emitted image refs into `.env.single-server`, pass production
-          preflight, then repeat backup/restore evidence.
+  - [x] G10.2b Build-based Compose closure: from `mm-chat/`, Compose built
+        backend, frontend, and RAG worker images from local source, ran
+        migrations, recreated backend/frontend/rag-worker, and passed frontend,
+        `/mm-api/ready`, backend `/ready`, and RAG worker health smokes.
+    - [x] G10.2b.1 Optional release image script: `scripts/release-images.sh`
+          still builds backend, frontend, and RAG images, supports local
+          `--load`, explicit `--push`, and immutable `@sha256:` env emission
+          for future registry promotion, but it is not a required standalone
+          deletion gate.
+    - [x] G10.2b.2 Compose source-build proof: `docker compose ... build
+          backend frontend rag-worker` and `docker compose ... up -d backend
+          frontend rag-worker` passed using only the standalone project tree.
 - [x] G10.3 Visual/interaction closure: record desktop and mobile smoke for
       app shell, chat streaming, model/provider visibility, Knowledge citation
       cards, Files/upload when configured, and navigation.
@@ -638,7 +644,7 @@ Targeted tests:
 | G7 Knowledge/RAG/Citations               | Complete    | Live MinerU + Jina + Postgres strict citation loop passed                            |
 | G8 Teams/Knowledge UI                    | Complete    | G8.1-G8.5 frontend control-plane wiring and isolation smoke passed                   |
 | G9 Data Authority/Route Removal          | Complete    | G9.1-G9.6 route freeze, route deletion, local write-authority, and clean-copy preflight passed |
-| G10 Final Closure/Delete Plan            | In progress | G10.1, G10.2a, and G10.3 complete; production immutable backup/restore and owner-confirmed cleanup remain |
+| G10 Final Closure/Delete Plan            | In progress | G10.1-G10.3 and build-based G10.2 complete; only owner-confirmed destructive cleanup remains |
 
 ## Update Discipline
 

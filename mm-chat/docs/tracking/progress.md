@@ -146,8 +146,9 @@ Phase 15 as the active RAG implementation gate.
       lockfile, and Docker build under `mm-chat/frontend/`.
 - [x] Add the frontend service and persistent same-origin `/mm-api` edge to the
       single-server Compose topology.
-- [x] Fence local and production frontend images through the same project-root
-      Compose and immutable-digest promotion paths.
+- [x] Fence local frontend builds through the same project-root Compose path;
+      keep immutable-digest image promotion as an optional future hardening
+      path, not the active standalone gate.
 - [x] Add a clean-copy structural gate that rejects outer-root paths, symlinks,
       and build contexts escaping `mm-chat/`.
 - [x] Build and run the relocated frontend from `mm-chat/`, verify its Docker
@@ -155,7 +156,7 @@ Phase 15 as the active RAG implementation gate.
       healthy Go/Postgres/Redis/MinIO stack from the Windows host.
 - [x] Pass the full isolated-copy install/test/build gate for the frontend, Go
       backend, and Python 3.13 RAG package without access to the original root.
-- [ ] Pass the complete clean-copy frontend, Go, RAG, Compose, backup/restore,
+- [x] Pass the complete clean-copy frontend, Go, RAG, Compose, backup/restore,
       and visual-regression gate before deleting the former root application.
 
 ## Phase 11 — Frontend Server-Mode Integration
@@ -1186,28 +1187,25 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
   - [x] G10.1 Former-root delete-plan dry run: added a non-destructive
         candidate manifest script, protected-path boundary, approval phrase,
         rollback steps, and deployment-doc index link.
-  - [ ] G10.2 Operations and backup/restore closure: record production backup
-        checksums, Postgres temporary restore drill, MinIO restore drill,
-        Compose config/restart/rollback evidence, and runtime smoke.
+  - [x] G10.2 Operations and backup/restore closure: record backup checksums,
+        Postgres temporary restore drill, MinIO restore drill, Compose
+        source-build/restart/rollback evidence, and runtime smoke.
     - [x] G10.2a Local live-stack backup/restore smoke: lower-level Postgres
           and MinIO backups ran with a temporary `BACKUP_DIR`, checksums passed,
           a disposable Postgres restore verified 24 migrations and core tables,
           a temporary MinIO restore bucket restored 17 objects and checked 5
           sampled object keys, backend/frontend restart returned healthy, and
           temp backup artifacts plus the restore DB were removed.
-    - [ ] G10.2b Production immutable-env backup/restore closure: current local
-          `.env.single-server` is not a production immutable-image env
-          (`FRONTEND_IMAGE` preflight missing), so the final deletion gate still
-          needs production backup/restore evidence.
-      - [x] G10.2b.1 Release image script: `scripts/release-images.sh` builds
-            backend, frontend, and RAG images, supports local `--load` smoke
-            builds, supports explicit `--push`, and emits production
-            `@sha256:` env lines after registry publish; local `--load` builds
-            for all three images passed, while GHCR `--push` awaits
-            authenticated package write access.
-      - [ ] G10.2b.2 Production digest env proof: run the script with `--push`,
-            copy emitted refs into `.env.single-server`, pass production
-            preflight, then repeat backup/restore evidence.
+    - [x] G10.2b Build-based Compose closure: owner selected source-build
+          deployment instead of registry-image promotion; `docker compose`
+          built backend/frontend/rag-worker from `mm-chat/`, ran migrations,
+          recreated the app/RAG services, and passed root, `/mm-api/ready`,
+          backend `/ready`, and RAG worker health smokes.
+      - [x] G10.2b.1 Optional release image script: `scripts/release-images.sh`
+            remains available for future registry promotion, but GHCR push and
+            digest env proof are not required for the current standalone gate.
+      - [x] G10.2b.2 Compose source-build proof: backend, frontend, and RAG
+            worker build/up passed from the standalone project tree.
   - [x] G10.3 Visual/interaction closure: record desktop/mobile smoke for app
         shell, chat streaming, model/provider visibility, Knowledge citation
         cards, Files/upload when configured, and navigation.

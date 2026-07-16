@@ -42,20 +42,33 @@ bash mm-chat/scripts/verify-standalone.sh --full
 bash mm-chat/scripts/plan-former-root-deletion.sh
 ```
 
-Production/runtime gates, when a live stack is in scope:
+Build-based runtime gates, when a live stack is in scope:
 
 ```bash
 cd <former-root>/mm-chat
-./scripts/backup-single-server-production.sh .env.single-server
-# Verify the produced .sha256 files under backup/postgres and backup/minio.
-# Run the Postgres temporary restore drill and MinIO restore drill from
+docker compose --env-file .env.single-server -f compose.single-server.yml \
+  --profile app --profile rag-worker build backend frontend rag-worker
+docker compose --env-file .env.single-server -f compose.single-server.yml \
+  --profile ops run --rm migrate
+docker compose --env-file .env.single-server -f compose.single-server.yml \
+  --profile app --profile rag-worker up -d backend frontend rag-worker
+curl -fsS http://127.0.0.1:<frontend-port>/
+curl -fsS http://127.0.0.1:<frontend-port>/mm-api/ready
+curl -fsS http://127.0.0.1:8080/ready
+
+COMPOSE_FILE=compose.single-server.yml ENV_FILE=.env.single-server \
+  bash scripts/backup-postgres.sh
+COMPOSE_FILE=compose.single-server.yml ENV_FILE=.env.single-server \
+  bash scripts/backup-minio.sh
+# Verify the produced .sha256 files under backup/postgres and backup/minio,
+# then run the Postgres temporary restore drill and MinIO restore drill from
 # docs/deployment/backup-restore.md before deleting former-root artifacts.
 ```
 
-If the production wrapper rejects the env file for missing immutable image
-variables such as `FRONTEND_IMAGE`, the env is local/dev only. Local backup and
-restore smoke may still be recorded, but it does not approve destructive
-former-root cleanup.
+Registry digest deployment is optional. Missing `BACKEND_IMAGE`,
+`FRONTEND_IMAGE`, or `RAG_IMAGE` values do not block the current source-build
+standalone gate as long as the Compose build/up, backup, restore, and visual
+smokes pass from `mm-chat/` only.
 
 Visual/interaction smoke must cover at least:
 
@@ -147,7 +160,8 @@ information:
 I approve destructive former-root cleanup for <former-root>.
 Preserve <former-root>/mm-chat and the protected metadata paths.
 Gates passed: verify-standalone structure/full, backup checksums, restore drills,
-visual smoke. Backup location: <path>. Commit: <sha>. Proceed.
+Compose source-build/up smoke, visual smoke. Backup location: <path>.
+Commit: <sha>. Proceed.
 ```
 
 Without that exact owner intent, do not run the generated `rm` commands.

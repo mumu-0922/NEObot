@@ -29,6 +29,82 @@ implemented, tested, and recorded, create a focused Git commit for that
 completed group before starting the next group. Do not batch unrelated future
 groups into the same commit.
 
+## 2026-07-16 — G10.2b Build-based Compose Closure
+
+Objective: switch the final operations proof back to the owner's preferred
+source-build deployment flow and prove `mm-chat/` can build and run without
+registry image publication.
+
+Completed scope:
+
+- recorded the owner decision: use `docker compose build` / `up --build` from
+  `mm-chat/`; GHCR push and immutable digest env proof are optional hardening,
+  not a required standalone/deletion gate;
+- removed the Dockerfile frontend pin from the RAG image because the file does
+  not require Dockerfile 1.7 features and the extra remote syntax fetch made
+  local Compose builds less reliable;
+- built backend, frontend, and RAG worker images from the standalone project
+  tree through `compose.single-server.yml`;
+- ran the migration container against the current local single-server stack;
+- recreated backend, frontend, and RAG worker from the build outputs;
+- verified frontend root, same-origin `/mm-api/ready`, backend `/ready`, and
+  RAG worker health;
+- kept `scripts/release-images.sh` as an optional future registry-promotion
+  helper only.
+
+Changed surfaces:
+
+```text
+mm-chat/rag/Dockerfile
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+mm-chat/docs/deployment/release-rollback.md
+mm-chat/docs/deployment/former-root-delete-plan.md
+mm-chat/docs/inventory/standalone-cutover-gap.md
+```
+
+Verification:
+
+```text
+cd mm-chat
+C:\Program Files\Docker\Docker\resources\bin\docker.exe compose \
+  --project-directory <mm-chat-win-path> \
+  --env-file <mm-chat-win-path>\.env.single-server \
+  -f <mm-chat-win-path>\compose.single-server.yml \
+  --profile app --profile rag-worker \
+  build backend frontend rag-worker
+  # passed; built mm-chat/backend:local, mm-chat/frontend:local, mm-chat/rag:local
+
+C:\Program Files\Docker\Docker\resources\bin\docker.exe compose \
+  --project-directory <mm-chat-win-path> \
+  --env-file <mm-chat-win-path>\.env.single-server \
+  -f <mm-chat-win-path>\compose.single-server.yml \
+  --profile ops run --rm migrate
+  # passed; no migrations changed
+
+C:\Program Files\Docker\Docker\resources\bin\docker.exe compose \
+  --project-directory <mm-chat-win-path> \
+  --env-file <mm-chat-win-path>\.env.single-server \
+  -f <mm-chat-win-path>\compose.single-server.yml \
+  --profile app --profile rag-worker \
+  up -d backend frontend rag-worker
+  # passed; backend and rag-worker healthy, frontend started on 127.0.0.1:18080
+
+curl -fsS http://127.0.0.1:18080/                       # passed
+curl -fsS http://127.0.0.1:18080/mm-api/ready           # status=ready; checks=database,redis,storage
+curl -fsS http://127.0.0.1:8080/ready                   # status=ready; checks=database,redis,storage
+rag-worker internal health                              # {"status":"alive"}
+```
+
+Residual blockers:
+
+```text
+G10.4 still requires the separate exact owner approval phrase before any
+former-root deletion. Registry push/digest deployment remains optional and is
+not blocking the current build-based standalone closure.
+```
+
 ## 2026-07-16 — G10.2b.1 Release Image Script
 
 Objective: unblock the production immutable-env gate by adding a standalone
@@ -80,14 +156,12 @@ cd mm-chat && ./scripts/release-images.sh \
 bash mm-chat/scripts/verify-standalone.sh                    # passed (structure)
 ```
 
-Residual blockers:
+Historical residual blockers before the 2026-07-16 build-based decision:
 
 ```text
-G10.2b.2 still needs a real registry push and production digest env proof. This
-script does not push by default and does not modify `.env.single-server`.
-Docker Desktop WSL integration is now restored; the remaining blocker is
-`docker login ghcr.io` with an account/token that can write packages under
-`ghcr.io/mumu-0922`.
+Registry push/digest env proof was considered the next hardening step at this
+point. It was superseded later the same day when the owner selected source-build
+Compose deployment as the active standalone gate.
 ```
 
 ## 2026-07-16 — G10.3b Browser Screenshot/Interaction Smoke
@@ -147,11 +221,12 @@ C:\Users\Administrator\AppData\Local\Temp\mm-chat-g10-browser-smoke\cdp-win\mobi
 C:\Users\Administrator\AppData\Local\Temp\mm-chat-g10-browser-smoke\cdp-win\mobile-after-interaction.png
 ```
 
-Residual blockers:
+Historical residual blockers before the 2026-07-16 build-based decision:
 
 ```text
-G10.3 is complete. G10.2b production immutable-env backup/restore closure and
-G10.4 separate owner-confirmed former-root cleanup remain.
+G10.3 was complete. The old production immutable-env closure note was
+superseded later the same day by build-based Compose closure. G10.4 separate
+owner-confirmed former-root cleanup remains.
 ```
 
 ## 2026-07-16 — G10.3a Automated UI/Visual Contract Smoke
@@ -326,12 +401,12 @@ Cleanup:
 neo_chat_restore_drill_g10 absent after drill
 ```
 
-Residual blockers:
+Historical residual blockers before the 2026-07-16 build-based decision:
 
 ```text
-G10.2b still needs a production immutable-image `.env.single-server` that passes
-preflight before the final delete gate can claim production backup/restore
-closure. G10.3 visual smoke and G10.4 owner-confirmed cleanup remain.
+The old production immutable-image requirement was superseded later the same
+day by source-build Compose closure. G10.3 visual smoke and G10.4
+owner-confirmed cleanup remained open at this point.
 ```
 
 ## 2026-07-16 — G9.6 Clean-copy Preflight
