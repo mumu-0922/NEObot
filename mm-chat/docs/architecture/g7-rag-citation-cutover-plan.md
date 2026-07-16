@@ -982,6 +982,25 @@ G7.5K completed on 2026-07-16:
 - Added unit coverage for successful request sequencing, retryable running
   polls, redacted failed polls, and default-off dependency failure.
 
+G7.5L completed on 2026-07-16:
+
+- Added a disposable PostgreSQL live smoke for the promoted `parse` job-runner
+  path with mocked Go source-object HTTP and mocked MinerU local-batch archive
+  transport, so no real provider quota is consumed.
+- The smoke migrates PostgreSQL through `019`, seeds a pending parse job, claims
+  it through `JobRunner.process_one()`, fetches source metadata through the
+  token-fenced Postgres function, fetches source bytes through the Go
+  source-object gateway seam, runs the MinerU full-Markdown text-baseline parser
+  adapter, stages projection rows through `knowledge_stage_parse_projection(...)`,
+  and finishes the job as `succeeded`.
+- The first live run caught a least-privilege gap: the
+  `knowledge_fetch_parse_source_metadata(...)` security-definer owner could read
+  Knowledge projection tables but not `files`. Migration `019` grants only
+  `SELECT ON files` to `rag_projection_owner`.
+- The module-level registries remain empty; parse is still dependency-injected
+  and test-scoped unless a caller explicitly supplies the parse source,
+  projection, and archive-provider dependencies.
+
 Remaining G7.5 work:
 
 - G7.5T disposable PostgreSQL integration gate has been restored and proven
@@ -1024,6 +1043,10 @@ Remaining G7.5 work:
 - G7.5K is complete: MinerU local-batch archive provider composition exists
   behind a default-off seam and maps nonterminal/failed poll states to stable
   redacted job errors.
+- G7.5L is complete: promoted parse has a live job-runner smoke against
+  disposable PostgreSQL with mocked Go source-object bytes and mocked MinerU
+  local-batch archive transport; migration `019` fixes the least-privilege file
+  metadata read needed by the parse source metadata function.
 - Implement index, reprocess, tombstone purge, rebuild, retry, and DLQ behavior.
 - Promote handlers one stage at a time behind readiness and registry gates.
 
@@ -1106,6 +1129,10 @@ Validation:
   stage, source-hash propagation, and exact-term projection.
 - Worker parse dependency factory tests, including explicit dependency-supplied
   promotion and default Worker parse non-promotion.
+- Promoted parse job-runner smoke against disposable PostgreSQL, including
+  mocked Go source-object HTTP, mocked MinerU local-batch archive transport,
+  parse projection staging, succeeded finish, lease cleanup, and the `019`
+  source-metadata grant fix.
 - MinerU basic page-locator mapper tests, including single full-text content-list
   match, layout/middle page bbox admission, projected `page_bbox` block/chunk
   locators, and ambiguous locator rejection.

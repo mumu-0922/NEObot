@@ -3678,3 +3678,82 @@ Residual risk:
   remains a later operational decision.
 - The provider is not wired into `Worker(settings)` yet, so parse dispatch is
   still not promoted by default and no live MinerU smoke has been run.
+
+
+## 2026-07-16 — G7.5L Promoted Parse Job-Runner Live Smoke
+
+Objective: prove the parse job can run through the promoted dependency factory
+against live PostgreSQL while keeping Go source-object bytes and MinerU provider
+transport mocked, so no real provider quota is consumed.
+
+Implemented behavior:
+
+- Added `tests/integration/test_worker_parse_promotion_integration.py`.
+- The integration test seeds a pending `parse` job, a staging materialization,
+  file metadata, provider authority, a building generation, and a search profile
+  in disposable PostgreSQL.
+- The test builds the parse handler through `build_promoted_job_handler_registry(...)`
+  with explicit dependencies:
+  - Postgres source metadata gateway;
+  - mocked Go source-object HTTP transport;
+  - `MinerULocalBatchResultArchiveProvider` over a mocked local-batch gateway;
+  - Postgres parse projection gateway.
+- `JobRunner.process_one()` now proves the chain:
+  claim → source metadata → source bytes → MinerU archive provider → text-baseline
+  parser → `knowledge_stage_parse_projection(...)` → `knowledge_finish_processing_job(...)`.
+- The first live run caught a least-privilege gap in migration `016`: the
+  security-definer owner `rag_projection_owner` lacked `SELECT` on `files`.
+  Added migration `019_rag_parse_source_metadata_grant_fix` to grant only that
+  missing read capability.
+
+Touched files:
+
+```text
+backend/migrations/019_rag_parse_source_metadata_grant_fix.up.sql
+backend/migrations/019_rag_parse_source_metadata_grant_fix.down.sql
+backend/internal/migration/phase15_rag_parse_source_metadata_grant_fix_schema_test.go
+rag/tests/integration/test_worker_parse_promotion_integration.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && \
+  uv run ruff check tests/integration/test_worker_parse_promotion_integration.py
+# passed
+
+cd mm-chat/rag && \
+  uv run pytest -p no:cacheprovider \
+  tests/integration/test_worker_parse_promotion_integration.py -q
+# 1 skipped when RAG_TEST_DATABASE_URL is unset
+
+cd mm-chat/backend && \
+  GOCACHE=/tmp/neo-chat-go-build go test ./internal/migration \
+  -run 'TestPhase15RAGParseSourceMetadataGrantFixContract|TestPhase15RAGParseSourceMetadataGatewayContract' \
+  -count=1 -v
+# passed
+
+# disposable live proof
+# - postgres:16-alpine container: mm-chat-test-postgres
+# - applied migrations 001 through 019
+cd mm-chat/rag && \
+  RAG_TEST_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable' \
+  uv run pytest -p no:cacheprovider \
+  tests/integration/test_worker_parse_promotion_integration.py -v
+# 1 passed
+
+# cleanup verified
+# docker ps -a --format '{{.Names}}' | grep -Fx mm-chat-test-postgres
+# no output
+```
+
+Residual risk:
+
+- This still does not call real MinerU; the local-batch transport is mocked.
+  Owner-authorized real MinerU + Jina quota smoke remains G7.8.
+- Parse is not auto-promoted by normal `Worker(settings)` construction; a caller
+  must still inject source metadata, projection, and archive-provider
+  dependencies explicitly.

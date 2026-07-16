@@ -1082,7 +1082,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         job-runner live smoke with mocked Jina and migration `018` fix done;
         `G7.5J` explicit parse dependency factory added while parse remains
         default-unpromoted; `G7.5K` MinerU local-batch archive provider
-        composition added behind a default-off seam).
+        composition added behind a default-off seam; `G7.5L` promoted parse
+        job-runner live smoke done against disposable PostgreSQL with mocked Go
+        source-object bytes, mocked MinerU archive transport, and migration
+        `019` source-metadata grant fix).
   - [ ] G7.6 Private query and Go reauthorization.
   - [ ] G7.7 Strict/optional chat answer and basic citations.
   - [ ] G7.8 Live MinerU + Jina + Postgres smoke and operational proof.
