@@ -1155,6 +1155,77 @@ def test_mineru_gateway_text_baseline_rejects_wrong_mapping_input() -> None:
     assert raised.value.error_code == MINERU_GATEWAY_ARTIFACT_INVALID
 
 
+def test_mineru_gateway_composes_archive_to_text_baseline_parse_artifacts() -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+    archive_body = _archive(
+        (
+            ("full.md", b"Composed 456\n\nArtifact"),
+            ("fixture_content_list.json", b'[{"type":"text","text":"ok"}]'),
+            ("layout.json", b'{"pages":[{"page":0}]}'),
+            ("fixture_model.json", b'{"model":"vlm"}'),
+        )
+    )
+
+    artifacts = gateway.build_text_baseline_parse_artifacts_from_archive(
+        object(),
+        _source(),
+        archive_body,
+        artifact_set_id=ARTIFACT_SET_ID,
+    )
+    batch = build_postgres_projection_batch(
+        artifacts.canonical_ir,
+        artifacts.chunk_manifest,
+        PROJECTION_CONTEXT,
+    )
+
+    text_buffer = artifacts.canonical_ir["textBuffer"]
+    assert isinstance(text_buffer, dict)
+    assert artifacts.artifact_set_id == ARTIFACT_SET_ID
+    assert text_buffer["text"] == "Composed 456\n\nArtifact"
+    assert artifacts.chunk_manifest["sourceSha256"] == hashlib.sha256(
+        PDF_BODY
+    ).hexdigest()
+    assert batch.parent_chunks[0].content == "Composed 456\n\nArtifact"
+    assert batch.child_search_projections[0].exact_terms == (
+        "456",
+        "artifact",
+        "composed",
+    )
+
+
+def test_mineru_gateway_archive_to_text_baseline_rejects_invalid_archive() -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+
+    with pytest.raises(PermanentJobError) as raised:
+        gateway.build_text_baseline_parse_artifacts_from_archive(
+            object(),
+            _source(),
+            b"not-a-zip",
+            artifact_set_id=ARTIFACT_SET_ID,
+        )
+
+    assert raised.value.error_code == MINERU_GATEWAY_ARCHIVE_INVALID
+
+
+def test_mineru_gateway_archive_to_text_baseline_rejects_source_mismatch() -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+    mismatched_source = DocumentSource(
+        body=PDF_BODY,
+        source_sha256="0" * 64,
+        content_type="application/pdf",
+    )
+
+    with pytest.raises(PermanentJobError) as raised:
+        gateway.build_text_baseline_parse_artifacts_from_archive(
+            object(),
+            mismatched_source,
+            _archive(),
+            artifact_set_id=ARTIFACT_SET_ID,
+        )
+
+    assert raised.value.error_code == MINERU_GATEWAY_SOURCE_HASH_MISMATCH
+
+
 @pytest.mark.parametrize(
     "entries",
     [

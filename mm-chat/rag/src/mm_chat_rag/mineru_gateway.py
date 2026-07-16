@@ -440,6 +440,22 @@ class MinerULocalBatchGateway:
             artifact_set_id=artifact_set_id,
         )
 
+    def build_text_baseline_parse_artifacts_from_archive(
+        self,
+        context: object,
+        source: DocumentSource,
+        archive_body: bytes,
+        *,
+        artifact_set_id: uuid.UUID,
+    ) -> ParsedDocumentArtifacts:
+        """Compose archive extraction through the full.md baseline mapper."""
+        _ = context
+        return _build_text_baseline_parse_artifacts_from_archive(
+            source,
+            archive_body,
+            artifact_set_id=artifact_set_id,
+        )
+
 
 def _allocate_request_body(filename: str) -> JsonObject:
     return {
@@ -1090,6 +1106,20 @@ def _build_text_baseline_parse_artifacts(
         artifact_set_id=artifact_set_id,
         canonical_ir=cast("Any", canonical_ir),
         chunk_manifest=cast("Any", chunk_manifest),
+    )
+
+
+def _build_text_baseline_parse_artifacts_from_archive(
+    source: DocumentSource,
+    archive_body: bytes,
+    *,
+    artifact_set_id: uuid.UUID,
+) -> ParsedDocumentArtifacts:
+    artifacts = _extract_result_archive_artifacts(archive_body)
+    mapping_input = _prepare_canonical_mapping_input(source, artifacts)
+    return _build_text_baseline_parse_artifacts(
+        mapping_input,
+        artifact_set_id=artifact_set_id,
     )
 
 

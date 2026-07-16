@@ -723,6 +723,26 @@ G7.5.28 completed on 2026-07-16:
 - Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
   slice does not spend provider quota in tests.
 
+G7.5.29 completed on 2026-07-16:
+
+- Added a default-off archive-to-text-baseline composition seam on
+  `MinerULocalBatchGateway`.
+- The seam accepts a PDF `DocumentSource`, already downloaded MinerU result ZIP
+  bytes, and an explicit worker-owned `artifact_set_id`, then runs the validated
+  chain in memory:
+  `extract_result_archive_artifacts -> prepare_canonical_mapping_input -> build_text_baseline_parse_artifacts`.
+- The composition reuses archive validation, role extraction, source hash
+  binding, strict artifact decode gates, and the G7.5.28 full-Markdown baseline
+  mapper without performing any HTTP request.
+- Unit tests prove successful projection through G7.4
+  `build_postgres_projection_batch(...)`, invalid archive rejection, and source
+  hash mismatch rejection.
+- This slice still does not perform Allocate/Upload/Poll/Download orchestration,
+  parse-handler dependency wiring, content-list/layout/model schema mapping, or
+  production registry promotion.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
+  slice does not spend provider quota in tests.
+
 Remaining G7.5 work:
 
 - Complete the rest of the MinerU local-batch execution chain: Canonical IR and
@@ -791,6 +811,9 @@ Validation:
   `ParsedDocumentArtifacts`, deterministic `canonical-ir.v2` and
   `chunk-manifest.v2` output, G7.4 projection row compatibility, long Markdown
   chunk splitting, and wrong-input rejection.
+- MinerU archive-to-text-baseline composition tests, including validated
+  archive extraction, source hash binding, projection-ready output, invalid ZIP
+  rejection, and source mismatch rejection.
 - Retry-three-times and terminal-failure tests.
 
 ### G7.6 Private query and Go reauthorization
