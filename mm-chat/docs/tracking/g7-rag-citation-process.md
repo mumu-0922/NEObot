@@ -3251,3 +3251,84 @@ Residual risk:
 - Parse and passage-embedding promotion remain blocked until their provider
   dependency factories, rate/concurrency gates, and live smoke tests are added.
 - No MinerU/Jina provider calls were made; no provider quota was consumed.
+
+## 2026-07-16 — G7.5F Promoted Purge Job-runner Live Smoke
+
+Objective: prove the settings-promoted purge handler from G7.5E works through
+the real Python `JobRunner` and live PostgreSQL functions, not just unit fakes.
+This closes the narrow claim → handler → projection → finish loop for purge.
+
+Implemented behavior:
+
+- Added
+  `rag/tests/integration/test_worker_purge_promotion_integration.py`.
+- The test is gated on `RAG_TEST_DATABASE_URL` and skips unless an explicit
+  disposable PostgreSQL URL is provided.
+- The fixture seeds a complete tombstoned document/materialization/search
+  projection state:
+  - active collection, file, document version, projection head, index
+    generation, materialization, parent chunk, child chunk, and one ready child
+    search projection;
+  - document tombstoned before the purge handler runs, so
+    `mark_purge_invisible(...)` must return `query_visible=false`;
+  - one pending `knowledge_processing_jobs` row for `stage='purge'`.
+- The test constructs `Worker(Settings(... job_stages=("purge",)))`, verifies
+  the auto-built purge handler registry, opens the Postgres adapter, and runs
+  `JobRunner.process_one()`.
+- The assertion verifies:
+  - the purge job is `succeeded`;
+  - `attempt_count=1`;
+  - job lease owner/token are cleared and `completed_at` is set;
+  - the child search projection moved from `ready` to `purged`;
+  - `purged_at` is set.
+
+Touched files:
+
+```text
+rag/tests/integration/test_worker_purge_promotion_integration.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && \
+  uv run ruff check tests/integration/test_worker_purge_promotion_integration.py
+# passed
+
+cd mm-chat/rag && \
+  uv run mypy src/mm_chat_rag/worker.py \
+  tests/integration/test_worker_purge_promotion_integration.py
+# passed
+
+docker run --rm -d \
+  --name mm-chat-test-postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=mm_chat \
+  -p 127.0.0.1:15432:5432 \
+  postgres:16-alpine
+# disposable PostgreSQL 16 ready
+
+cd mm-chat/backend && \
+  MIGRATION_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable' \
+  go run ./cmd/migrate up
+# applied migrations 001 through 017
+
+cd mm-chat/rag && \
+  RAG_TEST_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable' \
+  uv run pytest -p no:cacheprovider -m integration \
+  tests/integration/test_worker_purge_promotion_integration.py -v
+# 1 passed
+
+docker ps -a --format '{{.Names}}' | grep -Fx mm-chat-test-postgres
+# no match; disposable test database deleted
+```
+
+Residual risk:
+
+- This proves one promoted purge job through `process_one()`, not a long-running
+  worker lifecycle with health server, Redis wakeups, or deployment env files.
+- Parse and passage-embedding promotions remain gated; no MinerU/Jina provider
+  calls were made and no provider quota was consumed.

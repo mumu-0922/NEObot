@@ -892,6 +892,18 @@ G7.5E completed on 2026-07-16:
   empty. This is env/setting-gated worker construction, not an import-time
   registry mutation.
 
+G7.5F completed on 2026-07-16:
+
+- Added a disposable PostgreSQL live smoke for the promoted purge path.
+- The smoke migrates PostgreSQL through `017`, seeds a tombstoned published
+  materialization with one ready child-search row and a pending purge job, then
+  runs `JobRunner.process_one()` through the worker-built purge handler.
+- The proof verifies the job is claimed and finished as `succeeded`, its lease
+  is cleared, and the child search projection becomes `purged` with `purged_at`
+  set.
+- The test database is disposable and removed after the run. No provider API is
+  called.
+
 Remaining G7.5 work:
 
 - G7.5T disposable PostgreSQL integration gate has been restored and proven
@@ -917,10 +929,12 @@ Remaining G7.5 work:
 - G7.5E is complete: purge can now be promoted explicitly from worker settings
   without outbox planner promotion or provider quota. Parse and passage
   embedding remain gated pending provider dependency factory wiring.
+- G7.5F is complete: promoted purge has a live job-runner smoke against
+  disposable PostgreSQL. Operational purge closure still needs long-running
+  worker lifecycle/health coverage and deployment env wiring, but the claim →
+  handler → projection → finish loop is proven.
 - Promote the composed default-off Jina + Postgres embedding dependencies only
   behind an explicit readiness/registry gate.
-- Add a live job-runner smoke for promoted purge against disposable PostgreSQL
-  before treating purge dispatch as operationally closed.
 - Implement index, reprocess, tombstone purge, rebuild, retry, and DLQ behavior.
 - Promote handlers one stage at a time behind readiness and registry gates.
 
@@ -947,6 +961,8 @@ Validation:
   grants, and rollback.
 - Worker promotion-gate tests, including dark default, outbox-only promotion,
   job-only promotion, and missing-stage-handler rejection.
+- Promoted purge job-runner smoke against disposable PostgreSQL, including
+  pending-job claim, succeeded finish, lease cleanup, and child-search purge.
 - MinerU local-batch allocate tests, including missing-token no-HTTP behavior,
   PDF/size/filename gates, locked request body, retryable status/transport
   mapping, response validation, signed-upload URL validation, and redaction.
