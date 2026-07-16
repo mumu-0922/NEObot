@@ -573,7 +573,8 @@ G7.5.21 completed on 2026-07-16:
   `Content-Type` headers.
 - Upload targets are locked before HTTP to `https`, default port `443`, exact
   host `mineru.oss-cn-shanghai.aliyuncs.com`, `/api-upload/` path prefix, no
-  userinfo, no fragment, no control characters, and at most 4096 URL bytes.
+  userinfo, no fragment, required signed query, visible ASCII only, no
+  encoded/traversal path, and at most 4096 URL bytes.
 - Upload `200` and `204` statuses are accepted; provider status failures and
   transport failures map to stable redacted retryable errors.
 - This slice still does not implement polling, result ZIP download, Canonical IR
@@ -581,10 +582,36 @@ G7.5.21 completed on 2026-07-16:
 - Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
   slice does not spend provider quota in tests.
 
+G7.5.22 completed on 2026-07-16:
+
+- Added the default-off MinerU batch poll/result seam to
+  `MinerULocalBatchGateway`.
+- The seam constructs the only allowed poll target from the validated batch id:
+  `GET https://mineru.net/api/v4/extract-results/batch/{batch_id}`.
+- Poll requests use the admin MinerU bearer token plus `Accept:
+application/json` and `Accept-Encoding: identity`, with no request body or
+  `Content-Type`.
+- Poll JSON is parsed as a closed single-file shape: matching batch id, matching
+  allocated filename, exactly one result, state in
+  `waiting-file|pending|running|converting|done|failed`, optional bounded
+  `data_id`, and running-progress validation.
+- The slice also tightens the existing signed-upload target gate to require a
+  signed query and reject encoded/traversal path drift before HTTP.
+- `done` requires a result ZIP URL and validates it before returning:
+  `https`, default/443 port, exact host `cdn-mineru.openxlab.org.cn`,
+  `/pdf/` path prefix, `.zip` suffix, no query, no userinfo, no fragment, no
+  control/non-visible ASCII, no encoded/traversal path, and at most 4096 URL
+  bytes.
+- This slice still does not download the result ZIP, validate archive entries,
+  map Canonical IR/chunk manifests, compose the parser handler, or promote any
+  production registry.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
+  slice does not spend provider quota in tests.
+
 Remaining G7.5 work:
 
-- Complete the rest of the MinerU local-batch execution chain: poll/result
-  download, result ZIP validation, Canonical IR/chunk manifest mapping, then
+- Complete the rest of the MinerU local-batch execution chain: result ZIP
+  download, archive validation, Canonical IR/chunk manifest mapping, then
   parser-handler composition. Add a live or integration proof for the `017`
   parse projection staging function when `MM_CHAT_TEST_DATABASE_URL` is
   available. Production MinIO/S3 object access should prefer the Go private
@@ -623,6 +650,10 @@ Validation:
 - MinerU signed-upload transport tests, including locked target URL validation,
   raw PDF PUT body, no auth/cookie/content-type headers, retryable
   status/transport mapping, non-PDF no-HTTP rejection, and redaction.
+- MinerU poll/result tests, including locked poll target construction, bearer
+  request shape, closed state/result JSON parsing, running progress validation,
+  done-result URL target validation, retryable status/code/transport mapping,
+  and redaction.
 - Retry-three-times and terminal-failure tests.
 
 ### G7.6 Private query and Go reauthorization
