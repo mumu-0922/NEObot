@@ -344,6 +344,7 @@ class FakeParseProjectionGateway:
     def __init__(self, calls: list[str]) -> None:
         self._calls = calls
         self.batches: list[PostgresProjectionBatch] = []
+        self.embedding_job_ids: list[uuid.UUID] = []
 
     async def stage_parse_projection(
         self,
@@ -353,6 +354,18 @@ class FakeParseProjectionGateway:
         self._calls.append("stage")
         assert context.stage == "parse"
         self.batches.append(batch)
+
+    async def complete_parse_and_enqueue_embedding(
+        self,
+        context: ProcessingJobContext,
+        *,
+        embedding_job_id: uuid.UUID,
+    ) -> bool:
+        self._calls.append("complete_parse")
+        assert context.stage == "parse"
+        assert embedding_job_id != uuid.UUID(int=0)
+        self.embedding_job_ids.append(embedding_job_id)
+        return True
 
 
 def mineru_archive(text: str) -> bytes:
@@ -447,8 +460,10 @@ async def test_worker_factory_promotes_parse_when_dependencies_are_supplied(
     result = await registry["parse"](parse_claim())
 
     assert result.outcome == "succeeded"
-    assert calls == ["metadata", "object", "archive", "stage"]
+    assert result.terminal_committed is True
+    assert calls == ["metadata", "object", "archive", "stage", "complete_parse"]
     assert len(projection.batches) == 1
+    assert len(projection.embedding_job_ids) == 1
     assert projection.batches[0].parent_chunks[0].content == (
         "Worker factory parse\n\nMinerU baseline"
     )

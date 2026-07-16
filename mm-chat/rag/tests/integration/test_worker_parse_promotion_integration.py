@@ -14,7 +14,16 @@ import psycopg
 import pytest
 
 import mm_chat_rag.worker as worker_module
-from mm_chat_rag.job_handler_dependencies import DocumentSource
+from mm_chat_rag.jina_gateway import (
+    JINA_EMBEDDINGS_URL,
+    build_jina_passage_embedding_handler_dependencies,
+)
+from mm_chat_rag.job_handler_dependencies import (
+    DocumentSource,
+    PassageEmbeddingHandlerDependencies,
+    PassageEmbeddingProjectionGateway,
+    embedding_vector_sha256,
+)
 from mm_chat_rag.jobs import JobRunner
 from mm_chat_rag.mineru_gateway import (
     MINERU_TEXT_BASELINE_CHUNK_PROFILE_HASH,
@@ -23,6 +32,8 @@ from mm_chat_rag.mineru_gateway import (
     MinerULocalBatchPollResult,
 )
 from mm_chat_rag.provider_profile import (
+    DEFAULT_JINA_EMBEDDING_DIMENSIONS,
+    DEFAULT_JINA_EMBEDDING_MODEL,
     MINERU_JINA_POSTGRES_PROFILE,
     ProviderRuntimeProfile,
 )
@@ -38,7 +49,8 @@ _HASH_0: Final = "0" * 64
 _MODEL_ID: Final = "mineru-parser-v20260716"
 _ENDPOINT_ID: Final = "hosted-main"
 _JINA_ENDPOINT_ID: Final = "admin-env"
-_JINA_MODEL_ID: Final = "jina-embeddings-v4"
+_JINA_MODEL_ID: Final = DEFAULT_JINA_EMBEDDING_MODEL
+_JINA_API_KEY: Final = "unit-test-jina-key"
 _MINERU_API_KEY: Final = "unit-test-mineru-key"
 _SOURCE_GATEWAY_TOKEN: Final = "unit-test-source-gateway-token"
 _SOURCE_GATEWAY_URL: Final = "http://backend.internal"
@@ -149,6 +161,30 @@ def _hash_hex(label: str, seed: uuid.UUID) -> str:
     return hashlib.sha256(f"{label}:{seed}".encode()).hexdigest()
 
 
+def _mineru_endpoint_id(fixture: ParsePromotionFixture) -> str:
+    return f"{_ENDPOINT_ID}-{fixture.job_id.hex[:8]}"
+
+
+def _jina_endpoint_id(fixture: ParsePromotionFixture) -> str:
+    return f"{_JINA_ENDPOINT_ID}-{fixture.job_id.hex[:8]}"
+
+
+def _embedding_vector() -> tuple[float, ...]:
+    return tuple(
+        0.125 + float(index % 17) / 1000
+        for index in range(DEFAULT_JINA_EMBEDDING_DIMENSIONS)
+    )
+
+
+def _json_response(payload: object, *, status: int = 200) -> httpx.Response:
+    content = json.dumps(payload, separators=(",", ":")).encode()
+    return httpx.Response(
+        status,
+        headers={"Content-Type": "application/json; charset=utf-8"},
+        content=content,
+    )
+
+
 def _fixture() -> ParsePromotionFixture:
     seed = uuid.uuid4()
     source_body = (
@@ -180,16 +216,12 @@ def _fixture() -> ParsePromotionFixture:
     )
 
 
-async def test_promoted_parse_job_runner_finishes_live_postgres_job(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    url = database_url()
-    fixture = _fixture()
-    await _seed_fixture(url, fixture)
-    calls: list[str] = []
-    source_requests: list[httpx.Request] = []
-
-    def source_handler(request: httpx.Request) -> httpx.Response:
+def _source_handler(
+    fixture: ParsePromotionFixture,
+    calls: list[str],
+    source_requests: list[httpx.Request],
+) -> httpx.MockTransport:
+    def handle(request: httpx.Request) -> httpx.Response:
         calls.append("go_source_object")
         source_requests.append(request)
         payload = json.loads(request.content)
@@ -213,55 +245,117 @@ async def test_promoted_parse_job_runner_finishes_live_postgres_job(
             content=fixture.source_body,
         )
 
+    return httpx.MockTransport(handle)
+
+
+def _patch_parse_gateways(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    fixture: ParsePromotionFixture,
+    calls: list[str],
+    archive_body: bytes,
+    source_client: httpx.AsyncClient,
+) -> None:
+    original_source_gateway = worker_module.GoSourceObjectBytesGateway
+
+    def source_gateway_with_mocked_http(
+        *,
+        base_url: str,
+        internal_token: str,
+        worker_id: uuid.UUID,
+    ) -> object:
+        return original_source_gateway(
+            base_url=base_url,
+            internal_token=internal_token,
+            worker_id=worker_id,
+            client=source_client,
+        )
+
+    class WorkerFakeMinerULocalBatchGateway(FakeMinerULocalBatchGateway):
+        def __init__(self, api_token: str | None) -> None:
+            assert api_token == _MINERU_API_KEY
+            super().__init__(fixture, calls, archive_body)
+
+    monkeypatch.setattr(
+        worker_module,
+        "GoSourceObjectBytesGateway",
+        source_gateway_with_mocked_http,
+    )
+    monkeypatch.setattr(
+        worker_module,
+        "MinerULocalBatchGateway",
+        WorkerFakeMinerULocalBatchGateway,
+    )
+
+
+def _patch_jina_gateway(
+    monkeypatch: pytest.MonkeyPatch,
+    jina_client: httpx.AsyncClient,
+) -> None:
+    original_jina_builder = build_jina_passage_embedding_handler_dependencies
+
+    def build_with_mocked_jina(
+        *,
+        api_key: str | None,
+        projection: PassageEmbeddingProjectionGateway | None,
+    ) -> PassageEmbeddingHandlerDependencies:
+        assert api_key == _JINA_API_KEY
+        return original_jina_builder(
+            api_key=api_key,
+            projection=projection,
+            client=jina_client,
+        )
+
+    monkeypatch.setattr(
+        worker_module,
+        "build_jina_passage_embedding_handler_dependencies",
+        build_with_mocked_jina,
+    )
+
+
+def _settings(
+    fixture: ParsePromotionFixture,
+    *,
+    job_stages: tuple[str, ...],
+) -> Settings:
+    return Settings(
+        database_url=database_url(),
+        dispatch_enabled=True,
+        job_stages=job_stages,
+        worker_id=fixture.worker_id,
+        mineru_api_key=_MINERU_API_KEY,
+        jina_api_key=_JINA_API_KEY if "passage_embedding" in job_stages else None,
+        source_gateway_url=_SOURCE_GATEWAY_URL,
+        source_gateway_token=_SOURCE_GATEWAY_TOKEN,
+        provider_profile=ProviderRuntimeProfile(
+            profile_id=MINERU_JINA_POSTGRES_PROFILE,
+            accepted_draft_wire_contracts=True,
+        ),
+    )
+
+
+async def test_promoted_parse_job_runner_finishes_live_postgres_job(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    url = database_url()
+    fixture = _fixture()
+    await _seed_fixture(url, fixture)
+    calls: list[str] = []
+    source_requests: list[httpx.Request] = []
+
     archive_body = _mineru_archive("G7.5L promoted parse\n\nMinerU baseline smoke")
 
     async with httpx.AsyncClient(
-        transport=httpx.MockTransport(source_handler)
+        transport=_source_handler(fixture, calls, source_requests)
     ) as source_client:
-        original_source_gateway = worker_module.GoSourceObjectBytesGateway
-
-        def source_gateway_with_mocked_http(
-            *,
-            base_url: str,
-            internal_token: str,
-            worker_id: uuid.UUID,
-        ) -> object:
-            return original_source_gateway(
-                base_url=base_url,
-                internal_token=internal_token,
-                worker_id=worker_id,
-                client=source_client,
-            )
-
-        class WorkerFakeMinerULocalBatchGateway(FakeMinerULocalBatchGateway):
-            def __init__(self, api_token: str | None) -> None:
-                assert api_token == _MINERU_API_KEY
-                super().__init__(fixture, calls, archive_body)
-
-        monkeypatch.setattr(
-            worker_module,
-            "GoSourceObjectBytesGateway",
-            source_gateway_with_mocked_http,
+        _patch_parse_gateways(
+            monkeypatch,
+            fixture=fixture,
+            calls=calls,
+            archive_body=archive_body,
+            source_client=source_client,
         )
-        monkeypatch.setattr(
-            worker_module,
-            "MinerULocalBatchGateway",
-            WorkerFakeMinerULocalBatchGateway,
-        )
-        settings = Settings(
-            database_url=url,
-            dispatch_enabled=True,
-            job_stages=("parse",),
-            worker_id=fixture.worker_id,
-            mineru_api_key=_MINERU_API_KEY,
-            source_gateway_url=_SOURCE_GATEWAY_URL,
-            source_gateway_token=_SOURCE_GATEWAY_TOKEN,
-            provider_profile=ProviderRuntimeProfile(
-                profile_id=MINERU_JINA_POSTGRES_PROFILE,
-                accepted_draft_wire_contracts=True,
-            ),
-        )
-        worker = Worker(settings)
+        worker = Worker(_settings(fixture, job_stages=("parse",)))
         worker.validate_promotion_gate()
         assert set(worker.job_handlers) == {"parse"}
 
@@ -304,11 +398,134 @@ async def test_promoted_parse_job_runner_finishes_live_postgres_job(
         "passage_embedding",
         "initial",
         "jina",
-        _JINA_ENDPOINT_ID,
+        _jina_endpoint_id(fixture),
         _JINA_MODEL_ID,
         3,
         fixture.job_id,
         fixture.materialization_id,
+    )
+
+
+async def test_promoted_parse_then_embedding_runner_finishes_live_postgres_chain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    url = database_url()
+    fixture = _fixture()
+    await _seed_fixture(url, fixture)
+    calls: list[str] = []
+    source_requests: list[httpx.Request] = []
+    jina_requests: list[httpx.Request] = []
+    chain_text = "G7.5O promoted parse\n\nMinerU to Jina chain smoke"
+    expected_vector_hash = embedding_vector_sha256(_embedding_vector())
+
+    def jina_handler(request: httpx.Request) -> httpx.Response:
+        calls.append("jina_embeddings")
+        jina_requests.append(request)
+        payload = json.loads(request.content)
+        assert payload["model"] == _JINA_MODEL_ID
+        assert payload["dimensions"] == DEFAULT_JINA_EMBEDDING_DIMENSIONS
+        assert payload["input"] == [{"text": chain_text}]
+        return _json_response(
+            {
+                "data": [
+                    {
+                        "embedding": list(_embedding_vector()),
+                        "index": 0,
+                        "object": "embedding",
+                    }
+                ],
+                "model": _JINA_MODEL_ID,
+                "object": "list",
+            }
+        )
+
+    archive_body = _mineru_archive(chain_text)
+
+    async with (
+        httpx.AsyncClient(
+            transport=_source_handler(fixture, calls, source_requests)
+        ) as source_client,
+        httpx.AsyncClient(transport=httpx.MockTransport(jina_handler)) as jina_client,
+    ):
+        _patch_parse_gateways(
+            monkeypatch,
+            fixture=fixture,
+            calls=calls,
+            archive_body=archive_body,
+            source_client=source_client,
+        )
+        _patch_jina_gateway(monkeypatch, jina_client)
+        worker = Worker(_settings(fixture, job_stages=("parse", "passage_embedding")))
+        worker.validate_promotion_gate()
+        assert set(worker.job_handlers) == {"parse", "passage_embedding"}
+
+        await worker.database.open()
+        try:
+            runner = JobRunner(
+                worker.database,
+                worker.settings,
+                worker.metrics,
+                worker.job_handlers,
+            )
+            assert await runner.process_one()
+            assert await _embedding_job_state(url, fixture) == (
+                "pending",
+                None,
+                0,
+                True,
+                "passage_embedding",
+                "initial",
+                "jina",
+                _jina_endpoint_id(fixture),
+                _JINA_MODEL_ID,
+                3,
+                fixture.job_id,
+                fixture.materialization_id,
+            )
+            assert await runner.process_one()
+            assert not await runner.process_one()
+        finally:
+            await worker.database.close()
+
+    assert calls == [
+        "go_source_object",
+        "mineru_allocate",
+        "mineru_upload",
+        "mineru_poll",
+        "mineru_download",
+        "jina_embeddings",
+    ]
+    assert len(source_requests) == 1
+    assert len(jina_requests) == 1
+    jina_request = jina_requests[0]
+    assert jina_request.method == "POST"
+    assert jina_request.url == httpx.URL(JINA_EMBEDDINGS_URL)
+    assert jina_request.headers["authorization"] == f"Bearer {_JINA_API_KEY}"
+    assert _JINA_API_KEY.encode() not in jina_request.content
+    state = await _job_projection_state(url, fixture)
+    assert state[:5] == ("succeeded", None, 1, True, True)
+    assert all(count > 0 for count in state[5:10])
+    assert state[10] == "ready"
+    assert "MinerU to Jina chain smoke" in state[11]
+    assert await _embedding_job_state(url, fixture) == (
+        "succeeded",
+        None,
+        1,
+        True,
+        "passage_embedding",
+        "initial",
+        "jina",
+        _jina_endpoint_id(fixture),
+        _JINA_MODEL_ID,
+        3,
+        fixture.job_id,
+        fixture.materialization_id,
+    )
+    assert await _search_embedding_state(url, fixture) == (
+        "ready",
+        True,
+        DEFAULT_JINA_EMBEDDING_DIMENSIONS,
+        expected_vector_hash,
     )
 
 
@@ -324,6 +541,18 @@ def _mineru_archive(text: str) -> bytes:
 
 async def _seed_fixture(url: str, fixture: ParsePromotionFixture) -> None:
     async with await psycopg.AsyncConnection.connect(url) as connection:
+        await connection.execute(
+            """
+            UPDATE knowledge_processing_jobs
+            SET status = 'cancelled',
+                lease_owner = NULL,
+                lease_token = NULL,
+                lease_expires_at = NULL,
+                completed_at = COALESCE(completed_at, clock_timestamp()),
+                updated_at = clock_timestamp()
+            WHERE status IN ('pending', 'processing')
+            """
+        )
         await connection.execute(
             "INSERT INTO users (id, email, display_name) VALUES (%s, %s, %s)",
             (fixture.user_id, f"{fixture.user_id}@example.test", "G7.5L Parse"),
@@ -389,7 +618,7 @@ async def _seed_fixture(url: str, fixture: ParsePromotionFixture) -> None:
             """,
             (
                 fixture.governance_profile_id,
-                _ENDPOINT_ID,
+                _mineru_endpoint_id(fixture),
                 _MODEL_ID,
                 _hash_hex("profile-contract", fixture.governance_profile_id),
                 _hash_hex("manifest", fixture.governance_profile_id),
@@ -402,7 +631,7 @@ async def _seed_fixture(url: str, fixture: ParsePromotionFixture) -> None:
               active_governance_revision, head_revision
             ) VALUES ('mineru', %s, %s, 'active', %s, 1, 1)
             """,
-            (_ENDPOINT_ID, _MODEL_ID, fixture.governance_profile_id),
+            (_mineru_endpoint_id(fixture), _MODEL_ID, fixture.governance_profile_id),
         )
         await connection.execute(
             """
@@ -420,7 +649,7 @@ async def _seed_fixture(url: str, fixture: ParsePromotionFixture) -> None:
             (
                 fixture.consent_id,
                 fixture.collection_id,
-                _ENDPOINT_ID,
+                _mineru_endpoint_id(fixture),
                 _MODEL_ID,
                 fixture.governance_profile_id,
                 fixture.user_id,
@@ -441,7 +670,7 @@ async def _seed_fixture(url: str, fixture: ParsePromotionFixture) -> None:
             """,
             (
                 fixture.embedding_governance_profile_id,
-                _JINA_ENDPOINT_ID,
+                _jina_endpoint_id(fixture),
                 _JINA_MODEL_ID,
                 _hash_hex("jina-profile-contract", fixture.governance_profile_id),
                 _hash_hex("jina-manifest", fixture.governance_profile_id),
@@ -455,7 +684,7 @@ async def _seed_fixture(url: str, fixture: ParsePromotionFixture) -> None:
             ) VALUES ('jina', %s, %s, 'active', %s, 1, 1)
             """,
             (
-                _JINA_ENDPOINT_ID,
+                _jina_endpoint_id(fixture),
                 _JINA_MODEL_ID,
                 fixture.embedding_governance_profile_id,
             ),
@@ -476,7 +705,7 @@ async def _seed_fixture(url: str, fixture: ParsePromotionFixture) -> None:
             (
                 fixture.embedding_consent_id,
                 fixture.collection_id,
-                _JINA_ENDPOINT_ID,
+                _jina_endpoint_id(fixture),
                 _JINA_MODEL_ID,
                 fixture.embedding_governance_profile_id,
                 fixture.user_id,
@@ -493,8 +722,8 @@ async def _seed_fixture(url: str, fixture: ParsePromotionFixture) -> None:
               base_profile_hash
             ) VALUES (
               %s, 1, 'canonical-ir-v2', '{}'::jsonb, %s, '{}'::jsonb, %s,
-              'jina', 'admin-env', 'jina-embeddings-v4', 'api-20260623',
-              'passage', 'jina', 'admin-env', 'jina-reranker-v3',
+              'jina', %s, 'jina-embeddings-v4', 'api-20260623',
+              'passage', 'jina', %s, 'jina-reranker-v3',
               'api-20260623', %s
             )
             """,
@@ -502,6 +731,8 @@ async def _seed_fixture(url: str, fixture: ParsePromotionFixture) -> None:
                 fixture.index_profile_id,
                 _hash_hex("parser-manifest", fixture.index_profile_id),
                 MINERU_TEXT_BASELINE_CHUNK_PROFILE_HASH,
+                _jina_endpoint_id(fixture),
+                _jina_endpoint_id(fixture),
                 fixture.base_profile_hash,
             ),
         )
@@ -509,8 +740,11 @@ async def _seed_fixture(url: str, fixture: ParsePromotionFixture) -> None:
             """
             INSERT INTO knowledge_index_generations (
               id, index_profile_id, generation_seq, status, build_snapshot,
-              build_snapshot_hash
-            ) VALUES (%s, %s, %s, 'building', '{}'::jsonb, %s)
+              build_snapshot_hash, failure_code, failed_at
+            ) VALUES (
+              %s, %s, %s, 'failed', '{}'::jsonb, %s,
+              'TEST_GENERATION', clock_timestamp()
+            )
             """,
             (
                 fixture.index_generation_id,
@@ -530,7 +764,11 @@ async def _seed_fixture(url: str, fixture: ParsePromotionFixture) -> None:
               1024, 'jina', 'jina-reranker-v3', '{}'::jsonb, '{}'::jsonb, %s
             )
             """,
-            (fixture.search_profile_id, fixture.index_profile_id, _HASH_0),
+            (
+                fixture.search_profile_id,
+                fixture.index_profile_id,
+                _hash_hex("search-profile", fixture.search_profile_id),
+            ),
         )
         await connection.execute(
             """
@@ -568,7 +806,7 @@ async def _seed_fixture(url: str, fixture: ParsePromotionFixture) -> None:
             ) VALUES (
               %s, %s, %s, %s, %s, 'parse', 'initial', 'mineru', %s, %s,
               %s, 1, 1, %s, 1, 1, 1, 1, 1, %s, 'g7.5l-parse-promotion',
-              'job-runner-smoke', %s, 'pending', 0, 3, clock_timestamp(),
+              %s, %s, 'pending', 0, 3, clock_timestamp(),
               %s, %s, false
             )
             """,
@@ -578,11 +816,12 @@ async def _seed_fixture(url: str, fixture: ParsePromotionFixture) -> None:
                 fixture.document_id,
                 fixture.document_version_id,
                 fixture.file_id,
-                _ENDPOINT_ID,
+                _mineru_endpoint_id(fixture),
                 _MODEL_ID,
                 fixture.governance_profile_id,
                 fixture.consent_id,
                 fixture.user_id,
+                str(fixture.job_id),
                 fixture.request_hash,
                 fixture.index_generation_id,
                 fixture.materialization_id,
@@ -736,4 +975,34 @@ async def _embedding_job_state(
         int(row[9]),
         row[10],
         row[11],
+    )
+
+
+async def _search_embedding_state(
+    url: str,
+    fixture: ParsePromotionFixture,
+) -> tuple[str, bool, int, str | None]:
+    async with await psycopg.AsyncConnection.connect(url) as connection:
+        cursor = await connection.execute(
+            """
+            SELECT
+              status::TEXT,
+              ready_at IS NOT NULL,
+              cardinality(embedding_vector)::INTEGER,
+              embedding_vector_sha256::TEXT
+            FROM knowledge_child_search_projections
+            WHERE materialization_id = %s
+            ORDER BY child_chunk_id
+            LIMIT 1
+            """,
+            (fixture.materialization_id,),
+        )
+        row = await cursor.fetchone()
+    if row is None:
+        raise AssertionError("search embedding state query returned no row")
+    return (
+        str(row[0]),
+        bool(row[1]),
+        int(row[2]),
+        None if row[3] is None else str(row[3]),
     )

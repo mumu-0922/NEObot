@@ -1041,6 +1041,28 @@ G7.5N completed on 2026-07-16:
   minimal `SELECT` grants for Jina governance/consent tables.
 - Module-level `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty.
 
+
+G7.5O completed on 2026-07-16:
+
+- Added a disposable PostgreSQL integration proof for the two-stage promoted
+  worker chain: `parse` is claimed first, stages projection rows, terminally
+  commits through migration `020`, and creates a pending `passage_embedding`
+  job; the same `JobRunner` then claims that embedding job, calls mocked Jina,
+  stages the 1024-dimensional vector, asserts search completeness, and finishes
+  the embedding job as `succeeded`.
+- The proof enables normal `Worker(settings)` promotion for both
+  `parse,passage_embedding` while keeping module-level registries empty. Go
+  source-object HTTP, MinerU local-batch transport, and Jina HTTP are all mocked,
+  so no real provider quota is consumed.
+- The integration fixture now isolates repeated runs by cancelling old
+  pending/processing jobs and by using a non-candidate test Index Generation;
+  this avoids global candidate-generation and leftover pending-embedding
+  interference when the parse-only and chain smokes run in the same test DB.
+- The replay-worker factory unit fake now implements the same
+  `complete_parse_and_enqueue_embedding(...)` terminal-commit seam, so the unit
+  regression suite and promoted integration smoke enforce the same parse
+  contract.
+
 Remaining G7.5 work:
 
 - G7.5T disposable PostgreSQL integration gate has been restored and proven
@@ -1094,6 +1116,9 @@ Remaining G7.5 work:
   `passage_embedding` job through migration `020` and the Python stage-finalizer
   path; the default Worker parse smoke proves the handoff against disposable
   PostgreSQL with mocked providers.
+- G7.5O is complete: one disposable PostgreSQL smoke now proves the promoted
+  two-stage chain `parse -> pending passage_embedding -> ready search row ->
+  succeeded embedding job` with mocked Go source-object, MinerU, and Jina.
 - Implement index, reprocess, tombstone purge, rebuild, retry, and DLQ behavior.
 - Promote handlers one stage at a time behind readiness and registry gates.
 

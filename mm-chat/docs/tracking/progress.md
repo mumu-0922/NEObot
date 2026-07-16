@@ -1088,7 +1088,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         `019` source-metadata grant fix; `G7.5M` normal `Worker(settings)`
         parse auto-promotion wired behind existing parse settings/profile gates;
         `G7.5N` parse terminal finalizer and migration `020` atomically enqueue
-        pending `passage_embedding` after parse success).
+        pending `passage_embedding` after parse success; `G7.5O` promoted
+        parse-to-embedding two-stage worker smoke proves the pending embedding
+        job is claimed, mocked Jina vector staging completes, and the search row
+        becomes ready).
   - [ ] G7.6 Private query and Go reauthorization.
   - [ ] G7.7 Strict/optional chat answer and basic citations.
   - [ ] G7.8 Live MinerU + Jina + Postgres smoke and operational proof.

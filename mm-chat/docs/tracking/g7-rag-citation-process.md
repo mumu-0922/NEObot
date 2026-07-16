@@ -3943,3 +3943,94 @@ Residual risk:
   a narrow operator-approved smoke.
 - The pending embedding job is created, but full `parse -> embedding -> publish`
   lifecycle closure remains a later G7.5/G7.6 slice.
+
+## 2026-07-16 — G7.5O Promoted Parse-to-Embedding Chain Smoke
+
+Objective: prove the worker can advance one uploaded document from promoted
+`parse` through the automatically-created `passage_embedding` job to a ready
+search projection row, without using real provider quota yet.
+
+Implemented behavior:
+
+- Added an integration smoke in
+  `rag/tests/integration/test_worker_parse_promotion_integration.py` that runs a
+  normal `Worker(settings)` with `job_stages=("parse", "passage_embedding")`.
+- The first `JobRunner.process_one()` claims the parse job, calls mocked Go
+  source-object HTTP, mocked MinerU local-batch archive transport, stages parse
+  projection rows, and creates a pending embedding job through the G7.5N
+  finalizer.
+- The second `JobRunner.process_one()` claims that pending `passage_embedding`
+  job, calls mocked Jina `/v1/embeddings`, stages a 1024-dimensional vector,
+  passes `knowledge_assert_materialization_search_complete(...)`, and finishes
+  the embedding job as `succeeded`.
+- The smoke asserts:
+  - parse job is `succeeded` with lease cleared;
+  - embedding job transitions `pending -> succeeded` with Jina authority;
+  - child search projection transitions `staging -> ready`;
+  - vector dimensions are `1024` and vector hash matches the staged lanes;
+  - provider keys are not present in request bodies.
+- Test isolation was hardened: each seed cancels leftover pending/processing jobs
+  and uses a non-candidate test Index Generation so the parse-only smoke and the
+  two-stage chain smoke can run in the same disposable database without global
+  candidate-generation or leftover-job interference.
+- The related worker factory unit fake was brought up to the promoted parse
+  contract by implementing `complete_parse_and_enqueue_embedding(...)` and
+  asserting the terminal-commit result, keeping the replay-worker regression
+  suite aligned with migration `020`.
+
+Touched files:
+
+```text
+rag/tests/integration/test_worker_parse_promotion_integration.py
+rag/tests/unit/test_replay_worker.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && \
+  uv run ruff check \
+    tests/integration/test_worker_parse_promotion_integration.py \
+    tests/unit/test_replay_worker.py
+# passed
+
+cd mm-chat/rag && \
+  uv run mypy \
+    src/mm_chat_rag/jobs.py \
+    src/mm_chat_rag/handlers.py \
+    src/mm_chat_rag/job_handler_dependencies.py \
+    src/mm_chat_rag/postgres.py \
+    src/mm_chat_rag/worker.py
+# passed
+
+cd mm-chat/rag && \
+  uv run pytest -p no:cacheprovider \
+    tests/unit/test_replay_worker.py \
+    tests/unit/test_jobs.py \
+    tests/unit/test_job_handler_dependencies.py \
+    tests/unit/test_postgres.py -q
+# 86 passed
+
+# disposable live proof
+# - postgres:16-alpine container: mm-chat-test-postgres
+# - applied migrations 001 through 020
+cd mm-chat/rag && \
+  RAG_TEST_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable' \
+  uv run pytest -p no:cacheprovider \
+  tests/integration/test_worker_parse_promotion_integration.py -q
+# 2 passed
+
+# cleanup verified
+# docker ps -a --format '{{.Names}}' | grep -Fx mm-chat-test-postgres
+# no output
+```
+
+Residual risk:
+
+- This is still a mocked-provider operational proof. Real MinerU/Jina quota is
+  intentionally untouched until the live-provider smoke gate.
+- Publishing the materialization and serving selected-collection RAG query/citation
+  results remain later G7 slices.
