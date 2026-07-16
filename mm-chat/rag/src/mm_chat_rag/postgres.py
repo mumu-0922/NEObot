@@ -22,6 +22,7 @@ from mm_chat_rag.job_handler_dependencies import (
     JOB_HANDLER_EMBEDDING_CANDIDATE_INVALID,
     JOB_HANDLER_EMBEDDING_VECTOR_INVALID,
     JOB_HANDLER_PARSE_ARTIFACT_INVALID,
+    JOB_HANDLER_PARSE_COMPLETION_FAILED,
     JOB_HANDLER_PURGE_PROJECTION_INVALID,
     JOB_HANDLER_PURGE_VISIBILITY_INVALID,
     JOB_HANDLER_SOURCE_INVALID,
@@ -73,6 +74,10 @@ _SQL: Final[Mapping[str, str]] = {
     "stage_parse_projection": (
         "SELECT * FROM knowledge_stage_parse_projection"
         "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+    ),
+    "complete_parse_and_enqueue_embedding": (
+        "SELECT * FROM knowledge_complete_parse_and_enqueue_embedding"
+        "(%s, %s, %s, %s, %s)"
     ),
     "mark_purge_invisible": (
         "SELECT * FROM knowledge_mark_purge_invisible(%s, %s, %s, %s, %s, %s, %s, %s)"
@@ -469,6 +474,36 @@ class PostgresAdapter:
             raise PermanentJobError(
                 stable_error_code(JOB_HANDLER_PARSE_ARTIFACT_INVALID)
             )
+
+    async def complete_parse_and_enqueue_embedding(
+        self,
+        context: ProcessingJobContext,
+        *,
+        embedding_job_id: uuid.UUID,
+    ) -> bool:
+        """Atomically finish parse and enqueue the next passage-embedding job."""
+        lease_token = _require_context_lease_token(context)
+        materialization_id = context.materialization_id
+        if materialization_id is None:
+            raise PermanentJobError(
+                stable_error_code(JOB_HANDLER_PARSE_COMPLETION_FAILED)
+            )
+        try:
+            row = await self._call(
+                "complete_parse_and_enqueue_embedding",
+                (
+                    context.job_id,
+                    self._settings.worker_id,
+                    lease_token,
+                    materialization_id,
+                    embedding_job_id,
+                ),
+            )
+        except psycopg.Error as error:
+            if _has_database_code(error, "RAG_STALE_JOB_LEASE"):
+                return False
+            raise
+        return _function_succeeded(row)
 
     async def mark_purge_invisible(
         self, context: ProcessingJobContext

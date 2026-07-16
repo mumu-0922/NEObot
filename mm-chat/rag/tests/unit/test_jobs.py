@@ -79,6 +79,10 @@ async def success_handler(_: JobClaim) -> JobResult:
     return JobResult()
 
 
+async def terminal_committed_handler(_: JobClaim) -> JobResult:
+    return JobResult(terminal_committed=True)
+
+
 async def retry_handler(_: JobClaim) -> JobResult:
     raise RetryableJobError("PROVIDER_TIMEOUT", 17)
 
@@ -98,6 +102,18 @@ async def test_successful_job_is_finished() -> None:
     )
     assert await runner.process_one()
     assert database.finishes == [("succeeded", None, 0)]
+
+
+async def test_terminal_committed_job_skips_generic_finish() -> None:
+    database = FakeJobDatabase([job()])
+    runner = JobRunner(
+        database,
+        settings(),
+        Metrics.create(),
+        {"parse": terminal_committed_handler},
+    )
+    assert await runner.process_one()
+    assert database.finishes == []
 
 
 async def test_retryable_failure_retries_then_dlqs_at_limit() -> None:

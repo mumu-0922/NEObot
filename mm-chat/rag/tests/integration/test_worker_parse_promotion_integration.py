@@ -37,6 +37,8 @@ _HASH_C: Final = "c" * 64
 _HASH_0: Final = "0" * 64
 _MODEL_ID: Final = "mineru-parser-v20260716"
 _ENDPOINT_ID: Final = "hosted-main"
+_JINA_ENDPOINT_ID: Final = "admin-env"
+_JINA_MODEL_ID: Final = "jina-embeddings-v4"
 _MINERU_API_KEY: Final = "unit-test-mineru-key"
 _SOURCE_GATEWAY_TOKEN: Final = "unit-test-source-gateway-token"
 _SOURCE_GATEWAY_URL: Final = "http://backend.internal"
@@ -56,6 +58,8 @@ class ParsePromotionFixture:
     document_version_id: uuid.UUID
     governance_profile_id: uuid.UUID
     consent_id: uuid.UUID
+    embedding_governance_profile_id: uuid.UUID
+    embedding_consent_id: uuid.UUID
     index_profile_id: uuid.UUID
     index_generation_id: uuid.UUID
     materialization_id: uuid.UUID
@@ -160,6 +164,8 @@ def _fixture() -> ParsePromotionFixture:
         document_version_id=uuid.uuid4(),
         governance_profile_id=uuid.uuid4(),
         consent_id=uuid.uuid4(),
+        embedding_governance_profile_id=uuid.uuid4(),
+        embedding_consent_id=uuid.uuid4(),
         index_profile_id=uuid.uuid4(),
         index_generation_id=uuid.uuid4(),
         materialization_id=uuid.uuid4(),
@@ -290,6 +296,20 @@ async def test_promoted_parse_job_runner_finishes_live_postgres_job(
     assert all(count > 0 for count in state[5:10])
     assert state[10] == "staging"
     assert "MinerU baseline smoke" in state[11]
+    assert await _embedding_job_state(url, fixture) == (
+        "pending",
+        None,
+        0,
+        True,
+        "passage_embedding",
+        "initial",
+        "jina",
+        _JINA_ENDPOINT_ID,
+        _JINA_MODEL_ID,
+        3,
+        fixture.job_id,
+        fixture.materialization_id,
+    )
 
 
 def _mineru_archive(text: str) -> bytes:
@@ -403,6 +423,62 @@ async def _seed_fixture(url: str, fixture: ParsePromotionFixture) -> None:
                 _ENDPOINT_ID,
                 _MODEL_ID,
                 fixture.governance_profile_id,
+                fixture.user_id,
+            ),
+        )
+        await connection.execute(
+            """
+            INSERT INTO processor_governance_profiles (
+              id, processor, endpoint_id, model_id, model_api_version,
+              profile_contract_hash, allowed_purposes, allowed_data_types, region,
+              retention_policy, deletion_contract, training_use, status,
+              governance_revision, manifest_hash
+            ) VALUES (
+              %s, 'jina', %s, %s, 'api-20260623', %s,
+              ARRAY['passage_embedding'], ARRAY['text/plain'], 'global', 'none',
+              'delete', 'disabled', 'approved', 1, %s
+            )
+            """,
+            (
+                fixture.embedding_governance_profile_id,
+                _JINA_ENDPOINT_ID,
+                _JINA_MODEL_ID,
+                _hash_hex("jina-profile-contract", fixture.governance_profile_id),
+                _hash_hex("jina-manifest", fixture.governance_profile_id),
+            ),
+        )
+        await connection.execute(
+            """
+            INSERT INTO processor_governance_heads (
+              processor, endpoint_id, model_id, status, active_profile_id,
+              active_governance_revision, head_revision
+            ) VALUES ('jina', %s, %s, 'active', %s, 1, 1)
+            """,
+            (
+                _JINA_ENDPOINT_ID,
+                _JINA_MODEL_ID,
+                fixture.embedding_governance_profile_id,
+            ),
+        )
+        await connection.execute(
+            """
+            INSERT INTO processing_consents (
+              id, scope, collection_id, processor, endpoint_id, model_id,
+              governance_profile_id, governance_revision, governance_head_revision,
+              purposes, data_types, policy_version, decision, consent_revision,
+              granted_by_user_id
+            ) VALUES (
+              %s, 'collection', %s, 'jina', %s, %s, %s, 1, 1,
+              ARRAY['passage_embedding'], ARRAY['text/plain'], 'g7.5n-python',
+              'granted', 1, %s
+            )
+            """,
+            (
+                fixture.embedding_consent_id,
+                fixture.collection_id,
+                _JINA_ENDPOINT_ID,
+                _JINA_MODEL_ID,
+                fixture.embedding_governance_profile_id,
                 fixture.user_id,
             ),
         )
@@ -602,4 +678,62 @@ async def _job_projection_state(
         int(row[9]),
         str(row[10]),
         str(row[11]),
+    )
+
+
+async def _embedding_job_state(
+    url: str,
+    fixture: ParsePromotionFixture,
+) -> tuple[
+    str,
+    str | None,
+    int,
+    bool,
+    str,
+    str,
+    str,
+    str,
+    str,
+    int,
+    uuid.UUID,
+    uuid.UUID,
+]:
+    async with await psycopg.AsyncConnection.connect(url) as connection:
+        cursor = await connection.execute(
+            """
+            SELECT
+              status::TEXT,
+              error_code::TEXT,
+              attempt_count::INTEGER,
+              lease_owner IS NULL,
+              stage::TEXT,
+              operation::TEXT,
+              processor::TEXT,
+              endpoint_id::TEXT,
+              model_id::TEXT,
+              max_attempts::INTEGER,
+              caused_by_job_id,
+              materialization_id
+            FROM knowledge_processing_jobs
+            WHERE caused_by_job_id = %s
+              AND stage = 'passage_embedding'
+            """,
+            (fixture.job_id,),
+        )
+        row = await cursor.fetchone()
+    if row is None:
+        raise AssertionError("embedding job query returned no row")
+    return (
+        str(row[0]),
+        None if row[1] is None else str(row[1]),
+        int(row[2]),
+        bool(row[3]),
+        str(row[4]),
+        str(row[5]),
+        str(row[6]),
+        str(row[7]),
+        str(row[8]),
+        int(row[9]),
+        row[10],
+        row[11],
     )

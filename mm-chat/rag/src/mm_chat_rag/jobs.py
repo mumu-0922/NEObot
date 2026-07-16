@@ -104,14 +104,17 @@ class JobRunner:
                 return True
             try:
                 result = execution.result()
-                changed = await self._database.finish_job(
-                    job,
-                    lease_token,
-                    outcome=result.outcome,
-                    error_code=result.error_code,
-                    retry_after_seconds=0,
-                )
-                outcome = result.outcome if changed else "stale_lease"
+                if result.terminal_committed:
+                    outcome = result.outcome
+                else:
+                    changed = await self._database.finish_job(
+                        job,
+                        lease_token,
+                        outcome=result.outcome,
+                        error_code=result.error_code,
+                        retry_after_seconds=0,
+                    )
+                    outcome = result.outcome if changed else "stale_lease"
                 self._metrics.job_results.labels(outcome=outcome).inc()
                 logger.info("job_resolved", extra={"fields": {"outcome": outcome}})
             except RetryableJobError as error:

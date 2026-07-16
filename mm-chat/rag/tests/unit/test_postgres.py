@@ -328,6 +328,7 @@ def test_sql_surface_is_select_only_and_function_allowlisted() -> None:
         "stage_passage_embedding",
         "fetch_parse_source_metadata",
         "stage_parse_projection",
+        "complete_parse_and_enqueue_embedding",
         "mark_purge_invisible",
         "purge_search_projection",
         "assert_purge_complete",
@@ -694,6 +695,35 @@ async def test_parse_projection_gateway_calls_token_fenced_function() -> None:
     assert search_rows[0]["exact_terms"] == ["fixture", "hello"]
 
 
+async def test_parse_completion_gateway_calls_terminal_finalizer() -> None:
+    worker_id = uuid.uuid4()
+    settings = Settings(
+        database_url="postgresql://worker:secret@db/rag",
+        worker_id=worker_id,
+    )
+    context = parse_context()
+    embedding_job_id = uuid.uuid4()
+    adapter, connection = adapter_with_rows([{"result": True}], settings)
+
+    assert await adapter.complete_parse_and_enqueue_embedding(
+        context,
+        embedding_job_id=embedding_job_id,
+    )
+
+    assert connection.calls == [
+        (
+            _SQL["complete_parse_and_enqueue_embedding"],
+            (
+                context.job_id,
+                worker_id,
+                context.lease_token,
+                context.materialization_id,
+                embedding_job_id,
+            ),
+        )
+    ]
+
+
 async def test_parse_projection_gateway_requires_claim_lease_token() -> None:
     adapter, connection = adapter_with_rows([])
     context = parse_context(lease_token=None)
@@ -955,6 +985,7 @@ async def test_replay_adapters_call_only_operator_functions(
         ("fail_outbox", "RAG_STALE_OUTBOX_LEASE"),
         ("heartbeat_job", "RAG_STALE_JOB_LEASE"),
         ("finish_job", "RAG_STALE_JOB_LEASE"),
+        ("complete_parse_and_enqueue_embedding", "RAG_STALE_JOB_LEASE"),
     ],
 )
 async def test_stale_lease_database_codes_become_false(
@@ -986,12 +1017,17 @@ async def test_stale_lease_database_codes_become_false(
         result = await adapter.fail_outbox(outbox, token, "FAILED_EVENT")
     elif method == "heartbeat_job":
         result = await adapter.heartbeat_job(job, token)
-    else:
+    elif method == "finish_job":
         result = await adapter.finish_job(
             job,
             token,
             outcome="succeeded",
             error_code=None,
             retry_after_seconds=0,
+        )
+    else:
+        result = await adapter.complete_parse_and_enqueue_embedding(
+            parse_context(),
+            embedding_job_id=uuid.uuid4(),
         )
     assert result is False

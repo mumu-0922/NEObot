@@ -1017,6 +1017,30 @@ G7.5M completed on 2026-07-16:
   `Worker(settings)` parse promotion, with the Go source-object HTTP and MinerU
   local-batch transport mocked. No real MinerU quota is consumed in this slice.
 
+
+G7.5N completed on 2026-07-16:
+
+- Added a stage-finalizer contract for parse handlers: `JobResult` can now mark
+  `terminal_committed=true`, and `JobRunner` then skips the generic
+  `knowledge_finish_processing_job(...)` call because the handler already
+  committed the terminal state atomically. Normal success/failure paths are
+  unchanged.
+- Added migration `020_rag_parse_completion_enqueue_embedding` with
+  `knowledge_complete_parse_and_enqueue_embedding(...)`, which token-fences the
+  active parse lease, verifies the staged materialization/search projection,
+  binds active Jina passage-embedding governance/collection consent, inserts one
+  pending `passage_embedding` job, and finishes the parse job as `succeeded` in
+  the same transaction.
+- Wired the Python parse dependency handler and `PostgresAdapter` to call the
+  finalizer after `knowledge_stage_parse_projection(...)`; the promoted parse
+  live smoke now proves `parse -> pending passage_embedding` without consuming
+  real MinerU/Jina quota.
+- The disposable live proof caught and closed a privilege nuance: immutable
+  profile/consent authority reads must not use `SELECT ... FOR SHARE` when the
+  security-definer owner has only `SELECT`; migration `020` uses plain reads plus
+  minimal `SELECT` grants for Jina governance/consent tables.
+- Module-level `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty.
+
 Remaining G7.5 work:
 
 - G7.5T disposable PostgreSQL integration gate has been restored and proven
@@ -1066,6 +1090,10 @@ Remaining G7.5 work:
 - G7.5M is complete: parse auto-promotion is wired into normal
   `Worker(settings)` behind the existing parse settings/profile gates, while
   module-level registries remain empty.
+- G7.5N is complete: parse success now atomically enqueues one pending
+  `passage_embedding` job through migration `020` and the Python stage-finalizer
+  path; the default Worker parse smoke proves the handoff against disposable
+  PostgreSQL with mocked providers.
 - Implement index, reprocess, tombstone purge, rebuild, retry, and DLQ behavior.
 - Promote handlers one stage at a time behind readiness and registry gates.
 

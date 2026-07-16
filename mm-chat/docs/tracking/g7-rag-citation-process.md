@@ -3842,3 +3842,104 @@ Residual risk:
 - Parse completion currently stages parse/search projection rows and finishes the
   parse job; enqueueing passage embedding and publish/finalization remain later
   worker-dispatch slices.
+
+## 2026-07-16 — G7.5N Parse Completion Enqueues Embedding
+
+Objective: close the parse-to-embedding handoff so a successful promoted parse
+job does not merely stage rows and finish, but atomically creates the next
+`passage_embedding` job before releasing its lease.
+
+Implemented behavior:
+
+- Added `JobResult(terminal_committed=True)` and updated `JobRunner` to skip the
+  generic finish call when a handler has already committed the terminal job
+  state through a DB finalizer.
+- Added migration `020_rag_parse_completion_enqueue_embedding` with
+  `knowledge_complete_parse_and_enqueue_embedding(...)`:
+  - validates the parse job lease/token/stage/materialization fences;
+  - requires staged materialization plus staged child-search rows;
+  - rejects any existing non-cancelled embedding job for the materialization or
+    parse job;
+  - resolves active Jina passage-embedding governance/head/collection consent;
+  - inserts a pending `passage_embedding` job with `max_attempts=3` inherited
+    from the parse job;
+  - finishes the parse job as `succeeded` and clears lease fields in the same
+    transaction.
+- Wired `PostgresAdapter.complete_parse_and_enqueue_embedding(...)` into the
+  parse dependency handler immediately after parse projection staging.
+- Updated the promoted parse integration smoke to assert the pending embedding
+  job is created with Jina authority and `caused_by_job_id` pointing to the parse
+  job.
+- Live proof found a least-privilege edge: `SELECT ... FOR SHARE` on immutable
+  Jina authority tables requires stronger privileges than the finalizer needs.
+  The migration now uses plain `SELECT` there and grants only `SELECT` on the
+  governance/consent tables to `rag_projection_owner`.
+
+Touched files:
+
+```text
+backend/migrations/020_rag_parse_completion_enqueue_embedding.up.sql
+backend/migrations/020_rag_parse_completion_enqueue_embedding.down.sql
+backend/internal/migration/phase15_rag_parse_completion_enqueue_embedding_schema_test.go
+rag/src/mm_chat_rag/handlers.py
+rag/src/mm_chat_rag/jobs.py
+rag/src/mm_chat_rag/job_handler_dependencies.py
+rag/src/mm_chat_rag/postgres.py
+rag/tests/unit/test_jobs.py
+rag/tests/unit/test_models_handlers_retry.py
+rag/tests/unit/test_job_handler_dependencies.py
+rag/tests/unit/test_postgres.py
+rag/tests/integration/test_worker_parse_promotion_integration.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && \
+  uv run ruff check src/mm_chat_rag/jobs.py src/mm_chat_rag/handlers.py \
+  src/mm_chat_rag/job_handler_dependencies.py src/mm_chat_rag/postgres.py \
+  tests/unit/test_jobs.py tests/unit/test_models_handlers_retry.py \
+  tests/unit/test_job_handler_dependencies.py tests/unit/test_postgres.py \
+  tests/integration/test_worker_parse_promotion_integration.py
+# passed
+
+cd mm-chat/rag && \
+  uv run mypy src/mm_chat_rag/jobs.py src/mm_chat_rag/handlers.py \
+  src/mm_chat_rag/job_handler_dependencies.py src/mm_chat_rag/postgres.py
+# passed
+
+cd mm-chat/rag && \
+  uv run pytest -p no:cacheprovider tests/unit/test_jobs.py \
+  tests/unit/test_models_handlers_retry.py \
+  tests/unit/test_job_handler_dependencies.py tests/unit/test_postgres.py -q
+# 82 passed
+
+cd mm-chat/backend && \
+  GOCACHE=/tmp/neo-chat-go-build go test ./internal/migration \
+  -run 'ParseCompletionEnqueueEmbeddingContract' -count=1 -v
+# passed
+
+# disposable live proof
+# - postgres:16-alpine container: mm-chat-test-postgres
+# - applied migrations 001 through 020
+cd mm-chat/rag && \
+  RAG_TEST_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable' \
+  uv run pytest -p no:cacheprovider \
+  tests/integration/test_worker_parse_promotion_integration.py -q
+# 1 passed
+
+# cleanup verified
+# docker ps -a --format '{{.Names}}' | grep -Fx mm-chat-test-postgres
+# no output
+```
+
+Residual risk:
+
+- This still uses mocked Go source-object HTTP and mocked MinerU local-batch
+  transport; real MinerU/Jina quota smoke remains G7.8 unless pulled forward as
+  a narrow operator-approved smoke.
+- The pending embedding job is created, but full `parse -> embedding -> publish`
+  lifecycle closure remains a later G7.5/G7.6 slice.

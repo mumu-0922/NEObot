@@ -44,6 +44,7 @@ JOB_HANDLER_DEPENDENCY_UNCONFIGURED: Final = (
 )
 JOB_HANDLER_SOURCE_INVALID: Final = "JOB_HANDLER_SOURCE_INVALID"
 JOB_HANDLER_PARSE_ARTIFACT_INVALID: Final = "JOB_HANDLER_PARSE_ARTIFACT_INVALID"
+JOB_HANDLER_PARSE_COMPLETION_FAILED: Final = "JOB_HANDLER_PARSE_COMPLETION_FAILED"
 JOB_HANDLER_SOURCE_HASH_MISMATCH: Final = "JOB_HANDLER_SOURCE_HASH_MISMATCH"
 JOB_HANDLER_EMBEDDING_CANDIDATE_INVALID: Final = (
     "JOB_HANDLER_EMBEDDING_CANDIDATE_INVALID"
@@ -68,6 +69,7 @@ JOB_HANDLER_DEPENDENCY_ERROR_CODES: Final[frozenset[str]] = frozenset(
         JOB_HANDLER_DEPENDENCY_UNCONFIGURED,
         JOB_HANDLER_SOURCE_INVALID,
         JOB_HANDLER_PARSE_ARTIFACT_INVALID,
+        JOB_HANDLER_PARSE_COMPLETION_FAILED,
         JOB_HANDLER_SOURCE_HASH_MISMATCH,
         JOB_HANDLER_EMBEDDING_CANDIDATE_INVALID,
         JOB_HANDLER_EMBEDDING_VECTOR_INVALID,
@@ -261,11 +263,15 @@ class ParserGateway(Protocol):
 
 
 class ParseProjectionGateway(Protocol):
-    """Postgres projection writer used after parser artifacts validate."""
+    """Postgres parse projection and stage-finalizer gateway."""
 
     def stage_parse_projection(
         self, context: ProcessingJobContext, batch: PostgresProjectionBatch
     ) -> Coroutine[Any, Any, None]: ...
+
+    def complete_parse_and_enqueue_embedding(
+        self, context: ProcessingJobContext, *, embedding_job_id: uuid.UUID
+    ) -> Coroutine[Any, Any, bool]: ...
 
 
 class PassageEmbeddingGateway(Protocol):
@@ -399,7 +405,13 @@ async def parse_handler_with_dependencies(
     if batch.source_sha256 != source.source_sha256:
         _reject(JOB_HANDLER_SOURCE_HASH_MISMATCH)
     await projection_gateway.stage_parse_projection(admitted, batch)
-    return JobResult()
+    committed = await projection_gateway.complete_parse_and_enqueue_embedding(
+        admitted,
+        embedding_job_id=uuid.uuid4(),
+    )
+    if not committed:
+        _reject(JOB_HANDLER_PARSE_COMPLETION_FAILED)
+    return JobResult(terminal_committed=True)
 
 
 def admitted_parse_handler_with_dependencies(

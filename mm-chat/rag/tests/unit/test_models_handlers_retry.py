@@ -164,8 +164,11 @@ def test_retry_and_dlq_decisions_use_stable_codes() -> None:
     assert RetryableJobError("PROVIDER_TIMEOUT", 12).retry_after_seconds == 12
     assert PermanentJobError("MALWARE_DETECTED").error_code == "MALWARE_DETECTED"
     assert JobResult().outcome == "succeeded"
+    assert JobResult(terminal_committed=True).terminal_committed is True
     with pytest.raises(ValueError, match="successful"):
         JobResult(outcome="retry", error_code="FAILED_JOB")
+    with pytest.raises(TypeError, match="terminal_committed"):
+        JobResult(terminal_committed=1)  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="uppercase"):
         stable_error_code("raw provider response")
     with pytest.raises(ValueError, match="between"):

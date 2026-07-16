@@ -90,11 +90,14 @@ class JobResult:
 
     outcome: str = "succeeded"
     error_code: str | None = None
+    terminal_committed: bool = False
 
     def __post_init__(self) -> None:
         """Keep normal returns success-only; failures use typed exceptions."""
         if self.outcome != "succeeded" or self.error_code is not None:
             raise ValueError("job handler results must be successful")
+        if not isinstance(self.terminal_committed, bool):
+            raise TypeError("terminal_committed must be a boolean")
 
 
 class JobHandler(Protocol):

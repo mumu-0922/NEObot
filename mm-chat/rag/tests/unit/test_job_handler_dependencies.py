@@ -20,6 +20,7 @@ from mm_chat_rag.job_handler_dependencies import (
     JOB_HANDLER_EMBEDDING_COUNT_MISMATCH,
     JOB_HANDLER_EMBEDDING_VECTOR_INVALID,
     JOB_HANDLER_PARSE_ARTIFACT_INVALID,
+    JOB_HANDLER_PARSE_COMPLETION_FAILED,
     JOB_HANDLER_PURGE_COMPLETENESS_FAILED,
     JOB_HANDLER_PURGE_PROJECTION_INVALID,
     JOB_HANDLER_PURGE_VISIBILITY_INVALID,
@@ -197,9 +198,11 @@ class FakeParserGateway:
 
 
 class FakeParseProjectionGateway:
-    def __init__(self, calls: list[str]) -> None:
+    def __init__(self, calls: list[str], *, completion_committed: bool = True) -> None:
         self._calls = calls
+        self._completion_committed = completion_committed
         self.batches: list[PostgresProjectionBatch] = []
+        self.embedding_job_ids: list[uuid.UUID] = []
 
     async def stage_parse_projection(
         self, context: object, batch: PostgresProjectionBatch
@@ -207,6 +210,15 @@ class FakeParseProjectionGateway:
         self._calls.append("stage")
         assert context is not None
         self.batches.append(batch)
+
+    async def complete_parse_and_enqueue_embedding(
+        self, context: object, *, embedding_job_id: uuid.UUID
+    ) -> bool:
+        self._calls.append("complete_parse")
+        assert context is not None
+        assert embedding_job_id != uuid.UUID(int=0)
+        self.embedding_job_ids.append(embedding_job_id)
+        return self._completion_committed
 
 
 class FakeMinerUResultArchiveProvider:
@@ -410,8 +422,12 @@ def dependencies(
     *,
     source_sha256: str = SOURCE_SHA256,
     chunk_source_sha256: str | None = None,
+    completion_committed: bool = True,
 ) -> tuple[ParseHandlerDependencies, FakeParseProjectionGateway]:
-    projection = FakeParseProjectionGateway(calls)
+    projection = FakeParseProjectionGateway(
+        calls,
+        completion_committed=completion_committed,
+    )
     return (
         ParseHandlerDependencies(
             document_source=FakeDocumentSourceGateway(calls, source_sha256),
@@ -482,8 +498,10 @@ async def test_admitted_parse_dependency_handler_stages_projection_with_fakes() 
 
     assert result.outcome == "succeeded"
     assert result.error_code is None
-    assert calls == ["fetch", "parse", "stage"]
+    assert result.terminal_committed is True
+    assert calls == ["fetch", "parse", "stage", "complete_parse"]
     assert len(projection.batches) == 1
+    assert len(projection.embedding_job_ids) == 1
     batch = projection.batches[0]
     assert len(batch.blocks) == 2
     assert len(batch.parent_chunks) == 1
@@ -508,7 +526,8 @@ async def test_admitted_parse_handler_stages_mineru_text_baseline_adapter() -> N
 
     assert result.outcome == "succeeded"
     assert result.error_code is None
-    assert calls == ["fetch", "fetch_archive", "stage"]
+    assert result.terminal_committed is True
+    assert calls == ["fetch", "fetch_archive", "stage", "complete_parse"]
     assert len(projection.batches) == 1
     batch = projection.batches[0]
     assert batch.source_sha256 == source.source_sha256
@@ -572,6 +591,20 @@ async def test_parse_dependency_handler_redacts_projection_errors() -> None:
     assert projection.batches == []
 
 
+async def test_parse_dependency_handler_requires_terminal_finalizer() -> None:
+    calls: list[str] = []
+    deps, projection = dependencies(calls, completion_committed=False)
+    handler = admitted_parse_handler_with_dependencies(deps, valid_profile())
+
+    with pytest.raises(PermanentJobError) as raised:
+        await handler(claim(provider_row()))
+
+    assert raised.value.error_code == JOB_HANDLER_PARSE_COMPLETION_FAILED
+    assert calls == ["fetch", "parse", "stage", "complete_parse"]
+    assert len(projection.batches) == 1
+    assert len(projection.embedding_job_ids) == 1
+
+
 async def test_parse_dependency_contextual_handler_after_admission() -> None:
     calls: list[str] = []
     deps, projection = dependencies(calls)
@@ -579,6 +612,7 @@ async def test_parse_dependency_contextual_handler_after_admission() -> None:
     admitted = await handler(claim(provider_row()))
 
     assert admitted.outcome == "succeeded"
+    assert admitted.terminal_committed is True
     search = projection.batches[0].child_search_projections[0]
     assert search.embedding_dimensions == 1024
 
