@@ -576,6 +576,21 @@ Scope:
 - exact former-root delete plan with paths, backups, rollback, and owner
   confirmation prompt.
 
+Slice sequence:
+
+- [x] G10.1 Former-root delete-plan dry run: add a non-destructive candidate
+      manifest script, protected-path boundary, approval phrase, rollback
+      steps, and deployment-doc index link.
+- [ ] G10.2 Operations and backup/restore closure: record production backup
+      checksums, Postgres temporary restore drill, MinIO restore drill, Compose
+      config/restart/rollback evidence, and runtime smoke.
+- [ ] G10.3 Visual/interaction closure: record desktop and mobile smoke for
+      app shell, chat streaming, model/provider visibility, Knowledge citation
+      cards, Files/upload when configured, and navigation.
+- [ ] G10.4 Owner-confirmed former-root cleanup: after all gates pass, require
+      the exact owner approval phrase before running any generated destructive
+      command.
+
 Targeted tests:
 
 - final full frontend, Go, RAG, Compose, security, backup/restore,
@@ -596,7 +611,7 @@ Targeted tests:
 | G7 Knowledge/RAG/Citations               | Complete    | Live MinerU + Jina + Postgres strict citation loop passed                            |
 | G8 Teams/Knowledge UI                    | Complete    | G8.1-G8.5 frontend control-plane wiring and isolation smoke passed                   |
 | G9 Data Authority/Route Removal          | Complete    | G9.1-G9.6 route freeze, route deletion, local write-authority, and clean-copy preflight passed |
-| G10 Final Closure/Delete Plan            | Pending     | Operations, backup/restore, visual smoke, and owner-confirmed delete-plan gates pass |
+| G10 Final Closure/Delete Plan            | In progress | G10.1 delete-plan dry run complete; operations, backup/restore, visual smoke, and owner-confirmed cleanup remain |
 
 ## Update Discipline
 

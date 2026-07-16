@@ -29,6 +29,51 @@ implemented, tested, and recorded, create a focused Git commit for that
 completed group before starting the next group. Do not batch unrelated future
 groups into the same commit.
 
+## 2026-07-16 — G10.1 Former-root Delete-plan Dry Run
+
+Objective: prepare the destructive cleanup gate without deleting anything.
+
+Completed scope:
+
+- added `scripts/plan-former-root-deletion.sh` as a non-destructive dry-run
+  script;
+- limited generated deletion candidates to known legacy former-root application
+  artifacts;
+- protected `mm-chat/`, `.git`, `.trellis`, `.agents`, `.codex`, and `.vscode`
+  from the generated delete block;
+- made env/secret-like and unclassified top-level paths stop in manual-review
+  sections instead of entering the delete block;
+- added `docs/deployment/former-root-delete-plan.md` with required gates,
+  approval phrase, execution steps, post-delete verification, and rollback;
+- linked the plan from `docs/deployment/README.md`;
+- expanded G10 into explicit G10.1-G10.4 slices.
+
+Changed surfaces:
+
+```text
+mm-chat/scripts/plan-former-root-deletion.sh
+mm-chat/docs/deployment/former-root-delete-plan.md
+mm-chat/docs/deployment/README.md
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+bash -n mm-chat/scripts/plan-former-root-deletion.sh               # passed
+bash mm-chat/scripts/plan-former-root-deletion.sh                  # dry-run only; no deletion performed
+```
+
+Residual blockers:
+
+```text
+G10.2 operations/backup/restore closure, G10.3 visual smoke, and G10.4
+separate owner-confirmed destructive cleanup remain. The current script prints
+the rm command block but never runs it.
+```
+
 ## 2026-07-16 — G9.6 Clean-copy Preflight
 
 Objective: prove `mm-chat/` is independently verifiable from an isolated copy

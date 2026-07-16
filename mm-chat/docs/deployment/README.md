@@ -20,6 +20,7 @@ Outbox state.
 | [`reverse-proxy-tls.md`](./reverse-proxy-tls.md)                       | Phase 14 reverse proxy and TLS edge runbook, including same-origin `/mm-api`, SSE buffering, upload limits, metrics exposure, and rollback. |
 | [`secret-rotation.md`](./secret-rotation.md)                           | Identity/recovery/SMTP/session rotation procedures plus provider keys, Postgres, Redis, MinIO app/root credentials, and TLS certificates.   |
 | [`release-rollback.md`](./release-rollback.md)                         | Compact release and rollback runbook for image deploys, migrations, and failed releases.                                                    |
+| [`former-root-delete-plan.md`](./former-root-delete-plan.md)           | G10 owner-confirmed destructive-cleanup plan and dry-run boundary for deleting former-root application artifacts after standalone gates.     |
 | [`../persistence/runtime-wiring.md`](../persistence/runtime-wiring.md) | Phase 4.5 backend DB env, pgx connector behavior, readiness matrix, migration CLI flow, and rollback boundaries.                            |
 
 ## Current Boundary

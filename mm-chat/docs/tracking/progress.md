@@ -1183,6 +1183,17 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         ruff/mypy/pytest all passed without former-root imports/build context.
 - [ ] G10 Operations, Visual Regression, Clean Copy, and Delete Plan: complete
       final closure gates before any former-root deletion.
+  - [x] G10.1 Former-root delete-plan dry run: added a non-destructive
+        candidate manifest script, protected-path boundary, approval phrase,
+        rollback steps, and deployment-doc index link.
+  - [ ] G10.2 Operations and backup/restore closure: record production backup
+        checksums, Postgres temporary restore drill, MinIO restore drill,
+        Compose config/restart/rollback evidence, and runtime smoke.
+  - [ ] G10.3 Visual/interaction closure: record desktop/mobile smoke for app
+        shell, chat streaming, model/provider visibility, Knowledge citation
+        cards, Files/upload when configured, and navigation.
+  - [ ] G10.4 Owner-confirmed former-root cleanup: require the exact owner
+        approval phrase before running any generated destructive command.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 
