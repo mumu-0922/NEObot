@@ -22,6 +22,7 @@ from mm_chat_rag.mineru_gateway import (
     MINERU_GATEWAY_RESPONSE_INVALID,
     MINERU_GATEWAY_RESPONSE_TOO_LARGE,
     MINERU_GATEWAY_RESULT_URL_INVALID,
+    MINERU_GATEWAY_SOURCE_HASH_MISMATCH,
     MINERU_GATEWAY_SOURCE_UNSUPPORTED,
     MINERU_GATEWAY_STATUS_INVALID,
     MINERU_GATEWAY_UPLOAD_STATUS_INVALID,
@@ -946,6 +947,99 @@ def test_mineru_gateway_decodes_result_archive_artifacts() -> None:
     assert decoded.content_list_json == [{"type": "text", "text": "ok"}]
     assert decoded.middle_json == {"pages": [{"page": 0}]}
     assert decoded.model_json == {"model": "vlm"}
+
+
+def test_mineru_gateway_prepares_hash_bound_canonical_mapping_input() -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+    archive_body = _archive(
+        (
+            ("full.md", "正文\n".encode()),
+            ("fixture_content_list.json", b'[{"type":"text","text":"ok"}]'),
+            ("layout.json", b'{"pages":[{"page":0}]}'),
+            ("fixture_model.json", b'{"model":"vlm"}'),
+        )
+    )
+    artifacts = gateway.extract_result_archive_artifacts(object(), archive_body)
+
+    mapping_input = gateway.prepare_canonical_mapping_input(
+        object(),
+        _source(),
+        artifacts,
+    )
+
+    assert mapping_input.source_sha256 == hashlib.sha256(PDF_BODY).hexdigest()
+    assert mapping_input.source_byte_count == len(PDF_BODY)
+    assert mapping_input.source_content_type == "application/pdf"
+    assert mapping_input.archive_sha256 == hashlib.sha256(archive_body).hexdigest()
+    assert mapping_input.archive_byte_count == len(archive_body)
+    assert [item.role for item in mapping_input.role_digests] == [
+        "full_markdown",
+        "content_list_json",
+        "middle_json",
+        "model_json",
+    ]
+    assert [item.byte_count for item in mapping_input.role_digests] == [
+        len("正文\n".encode()),
+        len(b'[{"type":"text","text":"ok"}]'),
+        len(b'{"pages":[{"page":0}]}'),
+        len(b'{"model":"vlm"}'),
+    ]
+    assert [item.sha256 for item in mapping_input.role_digests] == [
+        hashlib.sha256(artifacts.full_markdown).hexdigest(),
+        hashlib.sha256(artifacts.content_list_json).hexdigest(),
+        hashlib.sha256(artifacts.middle_json).hexdigest(),
+        hashlib.sha256(artifacts.model_json).hexdigest(),
+    ]
+    assert mapping_input.decoded.full_markdown == "正文\n"
+    assert mapping_input.decoded.content_list_json == [{"type": "text", "text": "ok"}]
+    assert mapping_input.decoded.middle_json == {"pages": [{"page": 0}]}
+    assert mapping_input.decoded.model_json == {"model": "vlm"}
+    assert not hasattr(mapping_input, "entry_names")
+    assert not hasattr(mapping_input, "canonical_ir")
+    assert not hasattr(mapping_input, "chunk_manifest")
+
+
+def test_mineru_gateway_prepare_mapping_input_rejects_source_hash_mismatch() -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+    artifacts = gateway.extract_result_archive_artifacts(object(), _archive())
+    mismatched_source = DocumentSource(
+        body=PDF_BODY,
+        source_sha256="0" * 64,
+        content_type="application/pdf",
+    )
+
+    with pytest.raises(PermanentJobError) as raised:
+        gateway.prepare_canonical_mapping_input(
+            object(),
+            mismatched_source,
+            artifacts,
+        )
+
+    assert raised.value.error_code == MINERU_GATEWAY_SOURCE_HASH_MISMATCH
+
+
+def test_mineru_gateway_prepare_mapping_input_reuses_decode_gates() -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+    artifacts = gateway.extract_result_archive_artifacts(
+        object(),
+        _archive(
+            (
+                ("full.md", b"# full\n"),
+                ("fixture_content_list.json", b"{]"),
+                ("layout.json", b"{}"),
+                ("fixture_model.json", b"{}"),
+            )
+        ),
+    )
+
+    with pytest.raises(PermanentJobError) as raised:
+        gateway.prepare_canonical_mapping_input(
+            object(),
+            _source(),
+            artifacts,
+        )
+
+    assert raised.value.error_code == MINERU_GATEWAY_ARTIFACT_INVALID
 
 
 @pytest.mark.parametrize(

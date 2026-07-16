@@ -3,10 +3,10 @@
 This module deliberately implements only the evidence-backed local-batch
 ``allocate_upload`` step plus derived signed-upload and poll/result transport
 seams plus a bounded result ZIP download transport seam. Result archive
-validation/extraction is structural only; Canonical IR normalization remains a
-separate gated slice because its public wire contract is still draft/blocked.
-Importing this module does not register production parse handlers or spend
-provider quota.
+validation/extraction is structural only; the canonical-mapping input seam binds
+raw role hashes to decoded payloads but still does not normalize Provider fields
+or emit Canonical IR. Importing this module does not register production parse
+handlers or spend provider quota.
 """
 
 from __future__ import annotations
@@ -35,6 +35,9 @@ type JsonObject = dict[str, JsonValue]
 
 MINERU_GATEWAY_CREDENTIALS_MISSING: Final = "MINERU_GATEWAY_CREDENTIALS_MISSING"
 MINERU_GATEWAY_SOURCE_UNSUPPORTED: Final = "MINERU_GATEWAY_SOURCE_UNSUPPORTED"
+MINERU_GATEWAY_SOURCE_HASH_MISMATCH: Final = (
+    "MINERU_GATEWAY_SOURCE_HASH_MISMATCH"
+)
 MINERU_GATEWAY_REQUEST_FAILED: Final = "MINERU_GATEWAY_REQUEST_FAILED"
 MINERU_GATEWAY_STATUS_INVALID: Final = "MINERU_GATEWAY_STATUS_INVALID"
 MINERU_GATEWAY_RESPONSE_INVALID: Final = "MINERU_GATEWAY_RESPONSE_INVALID"
@@ -83,6 +86,15 @@ _ID_RE: Final = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 _DATA_ID_RE: Final = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 _START_TIME_RE: Final = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
 _SHA256_RE: Final = re.compile(r"^[0-9a-f]{64}$")
+_MINERU_CANONICAL_ROLE_ORDER: Final = (
+    "full_markdown",
+    "content_list_json",
+    "middle_json",
+    "model_json",
+)
+_MINERU_ARTIFACT_ROLES: Final[frozenset[str]] = frozenset(
+    _MINERU_CANONICAL_ROLE_ORDER
+)
 _POLL_STATES: Final[frozenset[str]] = frozenset(
     {"waiting-file", "pending", "running", "converting", "done", "failed"}
 )
@@ -216,6 +228,65 @@ class MinerULocalBatchDecodedArtifacts:
             _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
 
 
+@dataclass(frozen=True, slots=True)
+class MinerULocalBatchArtifactDigest:
+    """Hash-bound metadata for one required MinerU semantic role payload."""
+
+    role: str
+    byte_count: int
+    sha256: str
+
+    def __post_init__(self) -> None:
+        if (
+            self.role not in _MINERU_ARTIFACT_ROLES
+            or isinstance(self.byte_count, bool)
+            or not isinstance(self.byte_count, int)
+            or self.byte_count < 1
+            or self.byte_count > MAX_MINERU_ARCHIVE_ENTRY_BYTES
+            or not _SHA256_RE.fullmatch(self.sha256)
+        ):
+            _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
+
+
+@dataclass(frozen=True, slots=True)
+class MinerULocalBatchCanonicalMappingInput:
+    """Hash-bound MinerU decoded payload bundle for a future IR mapper."""
+
+    source_sha256: str
+    source_byte_count: int
+    source_content_type: str
+    archive_sha256: str
+    archive_byte_count: int
+    role_digests: tuple[MinerULocalBatchArtifactDigest, ...]
+    decoded: MinerULocalBatchDecodedArtifacts
+
+    def __post_init__(self) -> None:
+        if (
+            not _SHA256_RE.fullmatch(self.source_sha256)
+            or isinstance(self.source_byte_count, bool)
+            or not isinstance(self.source_byte_count, int)
+            or self.source_byte_count < 1
+            or self.source_byte_count > MAX_MINERU_SOURCE_BYTES
+            or self.source_content_type != MINERU_PDF_CONTENT_TYPE
+            or not _SHA256_RE.fullmatch(self.archive_sha256)
+            or isinstance(self.archive_byte_count, bool)
+            or not isinstance(self.archive_byte_count, int)
+            or self.archive_byte_count < 1
+            or self.archive_byte_count > MAX_MINERU_RESULT_ARCHIVE_BYTES
+            or not isinstance(self.decoded, MinerULocalBatchDecodedArtifacts)
+            or self.archive_sha256 != self.decoded.summary.archive_sha256
+            or self.archive_byte_count != self.decoded.summary.archive_byte_count
+            or not isinstance(self.role_digests, tuple)
+            or not all(
+                isinstance(item, MinerULocalBatchArtifactDigest)
+                for item in self.role_digests
+            )
+            or tuple(item.role for item in self.role_digests)
+            != _MINERU_CANONICAL_ROLE_ORDER
+        ):
+            _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
+
+
 class MinerULocalBatchGateway:
     """MinerU local-batch allocate gateway for PDF parse jobs."""
 
@@ -337,6 +408,16 @@ class MinerULocalBatchGateway:
         """Decode MinerU role payloads without Canonical IR normalization."""
         _ = context
         return _decode_result_archive_artifacts(artifacts)
+
+    def prepare_canonical_mapping_input(
+        self,
+        context: object,
+        source: DocumentSource,
+        artifacts: MinerULocalBatchArchiveArtifacts,
+    ) -> MinerULocalBatchCanonicalMappingInput:
+        """Bind source and role digests to decoded payloads for later mapping."""
+        _ = context
+        return _prepare_canonical_mapping_input(source, artifacts)
 
 
 def _allocate_request_body(filename: str) -> JsonObject:
@@ -592,6 +673,11 @@ def _validate_pdf_source(source: DocumentSource) -> None:
         _reject_permanent(MINERU_GATEWAY_SOURCE_UNSUPPORTED)
 
 
+def _validate_source_hash(source: DocumentSource) -> None:
+    if hashlib.sha256(source.body).hexdigest() != source.source_sha256:
+        _reject_permanent(MINERU_GATEWAY_SOURCE_HASH_MISMATCH)
+
+
 def _validate_filename(value: str) -> str:
     if (
         not isinstance(value, str)
@@ -802,6 +888,44 @@ def _decode_result_archive_artifacts(
         content_list_json=content_list,
         middle_json=middle,
         model_json=model,
+    )
+
+
+def _prepare_canonical_mapping_input(
+    source: DocumentSource,
+    artifacts: MinerULocalBatchArchiveArtifacts,
+) -> MinerULocalBatchCanonicalMappingInput:
+    _validate_pdf_source(source)
+    _validate_source_hash(source)
+    if not isinstance(artifacts, MinerULocalBatchArchiveArtifacts):
+        _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
+    decoded = _decode_result_archive_artifacts(artifacts)
+    return MinerULocalBatchCanonicalMappingInput(
+        source_sha256=source.source_sha256,
+        source_byte_count=len(source.body),
+        source_content_type=source.content_type,
+        archive_sha256=artifacts.summary.archive_sha256,
+        archive_byte_count=artifacts.summary.archive_byte_count,
+        role_digests=(
+            _artifact_digest("full_markdown", artifacts.full_markdown),
+            _artifact_digest("content_list_json", artifacts.content_list_json),
+            _artifact_digest("middle_json", artifacts.middle_json),
+            _artifact_digest("model_json", artifacts.model_json),
+        ),
+        decoded=decoded,
+    )
+
+
+def _artifact_digest(
+    role: str,
+    content: bytes,
+) -> MinerULocalBatchArtifactDigest:
+    if not isinstance(content, bytes) or not content:
+        _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
+    return MinerULocalBatchArtifactDigest(
+        role=role,
+        byte_count=len(content),
+        sha256=hashlib.sha256(content).hexdigest(),
     )
 
 

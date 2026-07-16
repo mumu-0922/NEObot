@@ -681,6 +681,26 @@ G7.5.26 completed on 2026-07-16:
 - Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
   slice does not spend provider quota in tests.
 
+G7.5.27 completed on 2026-07-16:
+
+- Added the default-off MinerU canonical-mapping input seam to
+  `MinerULocalBatchGateway`.
+- The seam accepts an admitted PDF `DocumentSource` plus the validated MinerU
+  role byte artifacts, verifies the source body hash against the expected
+  source SHA-256, and then reuses the G7.5.26 decode gates.
+- It returns a hash-bound in-memory mapper input containing source byte/hash
+  metadata, archive byte/hash metadata, deterministic role digest order
+  (`full_markdown`, `content_list_json`, `middle_json`, `model_json`), and the
+  decoded role payloads.
+- The returned object intentionally carries no ZIP entry names, URLs, provider
+  ids, Canonical IR, or chunk manifest. It is only the stable pre-mapper bundle
+  for the next cut.
+- This slice still does not interpret MinerU schema fields, map layout/content
+  objects, build Canonical IR/chunk manifests, compose the parser handler, or
+  promote any production registry.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
+  slice does not spend provider quota in tests.
+
 Remaining G7.5 work:
 
 - Complete the rest of the MinerU local-batch execution chain: Canonical IR and
@@ -741,6 +761,10 @@ Validation:
   content-list array admission, middle/model object admission, invalid UTF-8,
   malformed JSON, duplicate JSON keys, non-finite JSON numbers, and top-level
   role type rejection.
+- MinerU canonical-mapping input tests, including source hash binding, archive
+  hash binding, deterministic role digest ordering, decoded payload reuse, no
+  entry-name/IR/manifest exposure, source mismatch rejection, and decode-gate
+  reuse.
 - Retry-three-times and terminal-failure tests.
 
 ### G7.6 Private query and Go reauthorization
