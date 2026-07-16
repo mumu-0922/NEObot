@@ -199,6 +199,60 @@ def _mapping_input(
     return gateway.prepare_canonical_mapping_input(object(), _source(), artifacts)
 
 
+def _locator_mapping_input(
+    *,
+    text: str,
+    content_items: list[dict[str, Any]],
+    elements: list[dict[str, Any]],
+    page: dict[str, Any] | None = None,
+) -> mineru_module.MinerULocalBatchCanonicalMappingInput:
+    gateway = MinerULocalBatchGateway(SECRET)
+    page_body = {"elements": elements, "pageIndex": 0}
+    if page is not None:
+        page_body = {"elements": elements, **page}
+    archive_body = _archive(
+        (
+            ("full.md", text.encode()),
+            (
+                "fixture_content_list.json",
+                json.dumps(
+                    content_items,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ).encode(),
+            ),
+            (
+                "layout.json",
+                json.dumps(
+                    {"pages": [page_body]},
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ).encode(),
+            ),
+            ("fixture_model.json", b'{"model":"vlm"}'),
+        )
+    )
+    artifacts = gateway.extract_result_archive_artifacts(object(), archive_body)
+    return gateway.prepare_canonical_mapping_input(object(), _source(), artifacts)
+
+
+def _project_locator(
+    mapping_input: mineru_module.MinerULocalBatchCanonicalMappingInput,
+) -> tuple[str, dict[str, Any]]:
+    gateway = MinerULocalBatchGateway(SECRET)
+    parsed = gateway.build_text_baseline_parse_artifacts(
+        object(),
+        mapping_input,
+        artifact_set_id=ARTIFACT_SET_ID,
+    )
+    batch = build_postgres_projection_batch(
+        parsed.canonical_ir,
+        parsed.chunk_manifest,
+        PROJECTION_CONTEXT,
+    )
+    return batch.blocks[0].locator_kind, batch.blocks[0].locator
+
+
 def _parse_context(*, stage: str = "parse") -> ProcessingJobContext:
     return ProcessingJobContext(
         job_id=uuid.UUID("80000000-0000-0000-0000-000000000001"),
@@ -1612,6 +1666,142 @@ def test_mineru_gateway_text_baseline_rejects_ambiguous_image_locator() -> None:
         object(),
         _source(),
         artifacts,
+    )
+
+    with pytest.raises(PermanentJobError) as raised:
+        gateway.build_text_baseline_parse_artifacts(
+            object(),
+            mapping_input,
+            artifact_set_id=ARTIFACT_SET_ID,
+        )
+
+    assert raised.value.error_code == MINERU_GATEWAY_ARTIFACT_INVALID
+
+
+def test_mineru_gateway_text_baseline_falls_back_without_content_match() -> None:
+    text = "Visible text"
+    locator_kind, locator = _project_locator(
+        _locator_mapping_input(
+            text=text,
+            content_items=[{"text": "other text", "type": "text"}],
+            elements=[
+                {
+                    "bboxMilliPoint": [0, 0, 100, 100],
+                    "text": text,
+                }
+            ],
+        )
+    )
+
+    assert locator_kind == "line_range"
+    assert locator == {"endLine": 0, "kind": "line_range", "startLine": 0}
+
+
+def test_mineru_gateway_text_baseline_rejects_duplicate_content_matches() -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+    text = "Duplicate content-list text"
+    mapping_input = _locator_mapping_input(
+        text=text,
+        content_items=[
+            {"text": text, "type": "text"},
+            {"text": text, "type": "text"},
+        ],
+        elements=[{"bboxMilliPoint": [0, 0, 100, 100], "text": text}],
+    )
+
+    with pytest.raises(PermanentJobError) as raised:
+        gateway.build_text_baseline_parse_artifacts(
+            object(),
+            mapping_input,
+            artifact_set_id=ARTIFACT_SET_ID,
+        )
+
+    assert raised.value.error_code == MINERU_GATEWAY_ARTIFACT_INVALID
+
+
+@pytest.mark.parametrize(
+    ("page", "element"),
+    [
+        ({}, {"bboxMilliPoint": [0, 0, 100, 100], "text": "Bad locator"}),
+        (
+            {"pageIndex": -1},
+            {"bboxMilliPoint": [0, 0, 100, 100], "text": "Bad locator"},
+        ),
+        ({"pageIndex": 0}, {"text": "Bad locator"}),
+        (
+            {"pageIndex": 0},
+            {"bboxMilliPoint": [0, -1, 100, 100], "text": "Bad locator"},
+        ),
+        (
+            {"pageIndex": 0},
+            {"bboxMilliPoint": [0, 0, 0, 100], "text": "Bad locator"},
+        ),
+        (
+            {"pageIndex": 0},
+            {"bboxMilliPoint": [0, 0, 100, "100"], "text": "Bad locator"},
+        ),
+    ],
+)
+def test_mineru_gateway_text_baseline_rejects_malformed_locator(
+    page: dict[str, Any],
+    element: dict[str, Any],
+) -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+    text = "Bad locator"
+    mapping_input = _locator_mapping_input(
+        text=text,
+        content_items=[{"text": text, "type": "text"}],
+        elements=[element],
+        page=page,
+    )
+
+    with pytest.raises(PermanentJobError) as raised:
+        gateway.build_text_baseline_parse_artifacts(
+            object(),
+            mapping_input,
+            artifact_set_id=ARTIFACT_SET_ID,
+        )
+
+    assert raised.value.error_code == MINERU_GATEWAY_ARTIFACT_INVALID
+
+
+def test_mineru_gateway_text_baseline_does_not_infer_formula_by_kind_only() -> None:
+    text = "E = mc²"
+    locator_kind, locator = _project_locator(
+        _locator_mapping_input(
+            text=text,
+            content_items=[{"sourceText": text, "type": "formula"}],
+            elements=[
+                {
+                    "bboxMilliPoint": [0, 0, 100, 100],
+                    "kind": "formula",
+                }
+            ],
+        )
+    )
+
+    assert locator_kind == "line_range"
+    assert locator == {"endLine": 0, "kind": "line_range", "startLine": 0}
+
+
+def test_mineru_gateway_text_baseline_rejects_ambiguous_formula_locator() -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+    text = "E = mc²"
+    mapping_input = _locator_mapping_input(
+        text=text,
+        content_items=[{"sourceText": text, "type": "formula"}],
+        elements=[
+            {
+                "bboxMilliPoint": [0, 0, 100, 100],
+                "kind": "formula",
+                "sourceText": text,
+            },
+            {
+                "bboxMilliPoint": [100, 100, 200, 200],
+                "kind": "formula",
+                "sourceText": text,
+            },
+        ],
     )
 
     with pytest.raises(PermanentJobError) as raised:

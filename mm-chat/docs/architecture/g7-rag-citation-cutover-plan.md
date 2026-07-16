@@ -836,12 +836,29 @@ G7.5.35 completed on 2026-07-16:
 - Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
   slice does not spend provider quota in tests.
 
+G7.5A completed on 2026-07-16:
+
+- Consolidated the MinerU text-baseline locator hardening work into a medium
+  slice after the owner approved moving away from tiny locator-only cuts.
+- Added fail-closed tests for duplicate `content_list` full-text matches,
+  missing page index, malformed/negative/zero-area/non-integer bbox values, and
+  ambiguous formula `sourceText` layout candidates.
+- Locked the formula boundary: formula-like `sourceText` may project a basic
+  `page_bbox` only when the layout element repeats the same `sourceText`;
+  formula kind-only layout elements are not inferred as evidence.
+- Added a no-match fallback proof: if `content_list` does not agree with the
+  full-Markdown baseline, matching layout geometry is ignored and the mapper
+  preserves the safe line-range locator.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
+  slice does not spend provider quota in tests.
+
 Remaining G7.5 work:
 
-- Complete the remaining MinerU parser chain: richer citation-grade formula
-  mapping, optional table-cell/image-asset semantics, and a live or integration
-  proof for the `017` parse projection staging function when
-  `MM_CHAT_TEST_DATABASE_URL` is available.
+- Move to G7.5B: prove the `017` parse projection staging function through a
+  live/integration gate when `MM_CHAT_TEST_DATABASE_URL` is available; otherwise
+  record the skip and keep static coverage explicit. Richer formula semantics,
+  optional table-cell/image-asset semantics, and live provider smoke remain later
+  gated work.
   Production MinIO/S3 object access should prefer the Go private source-object
   gateway rather than giving Python static object-store credentials.
 - Promote the composed default-off Jina + Postgres embedding dependencies only
@@ -925,6 +942,10 @@ Validation:
 - MinerU image element page-locator tests, including `content_list.type=image`
   agreement, opaque image path/asset payloads, projected element-level
   `page_bbox`, and ambiguous image candidate rejection.
+- MinerU locator hardening tests, including duplicate content-list matches,
+  missing page index, malformed/negative/zero-area/non-integer bbox rejection,
+  formula kind-only fallback, ambiguous formula `sourceText` rejection, and
+  no-content-match line-range fallback.
 - Retry-three-times and terminal-failure tests.
 
 ### G7.6 Private query and Go reauthorization

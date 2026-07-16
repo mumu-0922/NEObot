@@ -2130,6 +2130,73 @@ Residual risk:
 - No live MinerU quota is consumed by this slice; the first real provider smoke
   remains in G7.8 or an explicitly owner-authorized bounded smoke cut.
 
+## 2026-07-16 — G7.5A MinerU Text-Baseline Locator Hardening Closure
+
+Objective: consolidate the remaining MinerU text-baseline locator boundary work
+into one medium slice after the owner approved moving faster than one tiny
+locator cut at a time, while still avoiding DB/live/provider/handler promotion.
+
+Implemented behavior:
+
+- Added reusable test helpers for constructing locator-focused MinerU archives
+  without touching provider quota.
+- Added fail-closed coverage for duplicate `content_list` matches.
+- Added fail-closed coverage for malformed locator geometry: missing page index,
+  negative page index, missing bbox, negative bbox coordinate, zero-area bbox,
+  and non-integer bbox coordinate.
+- Added formula boundary coverage: formula `sourceText` with matching layout
+  `sourceText` may project `page_bbox`, but formula kind-only layout elements
+  are not inferred as evidence and fall back to line-range.
+- Added ambiguous formula `sourceText` rejection to avoid assigning evidence to
+  the wrong formula.
+- Added no-content-match fallback coverage: if `content_list` does not agree
+  with `full.md`, matching layout geometry is ignored and the text-baseline
+  line-range locator is preserved.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. No
+  provider quota is consumed by tests.
+
+Touched files:
+
+```text
+rag/tests/unit/test_mineru_gateway.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && uv run ruff check \
+  src/mm_chat_rag/mineru_gateway.py tests/unit/test_mineru_gateway.py
+# passed
+
+cd mm-chat/rag && uv run mypy \
+  src/mm_chat_rag/mineru_gateway.py tests/unit/test_mineru_gateway.py
+# passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider tests/unit/test_mineru_gateway.py
+# 107 passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_provider_capture.py::test_production_dispatch_remains_disabled_and_registries_empty \
+  tests/unit/test_job_handler_dependencies.py
+# 26 passed
+
+cd mm-chat/frontend && corepack pnpm prettier --check \
+  ../docs/architecture/g7-rag-citation-cutover-plan.md \
+  ../docs/tracking/g7-rag-citation-process.md \
+  ../docs/tracking/progress.md
+# passed
+```
+
+Residual risk:
+
+- G7.5A deliberately stops before DB integration, handler registry gates,
+  dispatch/retry/DLQ, and live MinerU/Jina/Postgres smoke.
+- Rich formula semantics, table-cell addressing, and image asset materialization
+  remain separate future cuts.
+
 ## 2026-07-16 — G7.5.35 MinerU Opaque Image Element Page Locator Admission
 
 Objective: extend the conservative page-bbox locator seam to single image
