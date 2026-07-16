@@ -4383,3 +4383,76 @@ Requires rebuilding/restarting the frontend container. Existing custom provider
 entries already lost by a prior refresh must be re-added once; after this fix
 new entries persist across refreshes.
 ```
+
+## 2026-07-17 — G11.3c Server Default admin provider persistence
+
+Objective: correct the owner-selected provider-configuration authority: the
+production provider is the backend Server Default, seeded by env/secret, editable
+from the web settings page, and persisted in backend storage rather than treated
+as browser-local authoritative state.
+
+Owner correction:
+
+```text
+Use backend env/secret Server Default plus administrator web configuration.
+Provider Settings may edit it, but the saved authority must be backend-owned.
+```
+
+Completed scope:
+
+- added Go admin runtime-config endpoints for `GET/PUT /v1/admin/provider-config`;
+- added a Postgres-backed `provider_configs` repository for `SERVER_DEFAULT`;
+- kept env/secret values as the fallback Server Default when no DB override
+  exists;
+- persisted provider name, type, base URL, enabled model list, and encrypted
+  secret envelope in backend storage;
+- refused plaintext provider secrets and verified BYOK envelopes before storing
+  them;
+- made `/v1/config`, `/v1/providers/models`, and chat streaming resolve the
+  current backend Server Default config instead of only the process env snapshot;
+- wired frontend Provider Settings so Server Default edits load/save via the Go
+  admin endpoint, API key save uses BYOK `encryptSecret`, and API key presence is
+  shown without returning the secret to the browser;
+- hid new browser-local provider creation in server mode while leaving the prior
+  browser BYOK path as a fallback/tested compatibility surface.
+
+Changed surfaces:
+
+```text
+mm-chat/backend/cmd/api/main.go
+mm-chat/backend/internal/chat/handler.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/runtimeconfig/{types.go,service.go,handler.go,repository_postgres.go}
+mm-chat/backend/internal/runtimeconfig/{service_test.go,handler_test.go}
+mm-chat/frontend/src/components/settings/ProviderSettings.tsx
+mm-chat/frontend/src/services/api/client/{types.ts,server/providerApi.ts,local/providerApi.ts}
+mm-chat/frontend/src/__tests__/{apiClientScaffold.test.ts,settingsUiComposition.test.ts}
+mm-chat/frontend/src/i18n/locales/{zh,en,ja}/Providers.json
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/settingsUiComposition.test.ts \
+  src/__tests__/apiClientScaffold.test.ts \
+  src/__tests__/browserLocalAuthority.test.ts \
+  src/__tests__/byok.test.ts                                      # passed, 71 tests
+cd mm-chat/frontend && corepack pnpm typecheck                    # passed
+cd mm-chat/frontend && corepack pnpm lint                         # passed
+cd mm-chat/frontend && corepack pnpm format:check                 # passed
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./... # passed
+```
+
+Residual risks:
+
+```text
+Requires rebuilding/restarting backend and frontend containers before browser
+manual smoke. The server stores encrypted BYOK envelopes, so stable BYOK private
+key configuration remains required for durable restart-safe secret decryption;
+without it, env/secret fallback still works but DB-stored envelopes encrypted by
+an ephemeral key cannot survive backend key rotation.
+```

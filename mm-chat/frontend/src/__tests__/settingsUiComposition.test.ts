@@ -40,4 +40,17 @@ describe("settings UI primitives", () => {
     expect(settingsPage).not.toContain("tabTeams");
     expect(panelUrlState).not.toContain('"teams"');
   });
+  it("wires Server Default provider settings to backend admin config", () => {
+    const providerSettings = readFileSync(
+      resolve(process.cwd(), "src/components/settings/ProviderSettings.tsx"),
+      "utf8",
+    );
+
+    expect(providerSettings).toContain("getServerDefaultConfig");
+    expect(providerSettings).toContain("updateServerDefaultConfig");
+    expect(providerSettings).toContain("encryptSecret");
+    expect(providerSettings).toContain("BYOK_CONTEXTS");
+    expect(providerSettings).toContain("provider(");
+    expect(providerSettings).toContain("keyStoredOnServer");
+  });
 });

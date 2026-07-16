@@ -17,7 +17,7 @@
   "getKey": "Get Key",
   "apiKeyPlaceholder": "sk-…",
   "keyStoredLocally": "Your key is encrypted locally in this browser.",
-  "serverDefaultProviderDesc": "This provider is supplied by server environment variables. Its key and base URL are not sent to the browser.",
+  "serverDefaultProviderDesc": "This provider is the backend Server Default admin config. Name, base URL, models, and key are saved on the backend; the key is never returned to the browser.",
   "enableProvider": "Enable Provider",
   "confirmDeleteAria": "Confirm delete provider {name}",
   "deleteAria": "Delete provider {name}",
@@ -36,5 +36,8 @@
   "capAudio": "Audio",
   "capReasoning": "Reasoning",
   "capFunctionCalling": "Function Calling",
-  "modelCapabilitiesAria": "Model capabilities"
+  "modelCapabilitiesAria": "Model capabilities",
+  "keyStoredOnServer": "The key is BYOK-encrypted and stored on the backend; plaintext is not stored in the browser.",
+  "saveServerDefault": "Save to backend",
+  "savingServerDefault": "Saving…"
 }

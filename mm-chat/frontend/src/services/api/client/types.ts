@@ -394,8 +394,34 @@ export interface ProviderModelsResponse {
   models: string[];
 }
 
+export interface AdminProviderConfigDTO {
+  id: string;
+  name: string;
+  type: string;
+  baseUrl: string;
+  models: string[];
+  enabled: boolean;
+  hasApiKey: boolean;
+  source: "server-default";
+}
+
+export interface UpdateAdminProviderConfigInput {
+  name: string;
+  type: string;
+  baseUrl: string;
+  models: string[];
+  enabled?: boolean;
+  apiKeySecret?: unknown;
+  clearApiKey?: boolean;
+  signal?: AbortSignal;
+}
+
 export interface ProviderApi {
   listModels(input: ProviderModelsInput): Promise<ProviderModelsResponse>;
+  getServerDefaultConfig(): Promise<AdminProviderConfigDTO>;
+  updateServerDefaultConfig(
+    input: UpdateAdminProviderConfigInput,
+  ): Promise<AdminProviderConfigDTO>;
 }
 
 export interface GenerateImageInput {

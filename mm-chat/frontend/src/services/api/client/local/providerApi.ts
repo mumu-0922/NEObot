@@ -15,5 +15,12 @@ export function createLocalProviderApiShell(): ProviderApi {
         "local provider model listing after G9.3 route removal",
       );
     },
+    async getServerDefaultConfig() {
+      throw unsupportedFeature("local server-default provider config");
+    },
+    async updateServerDefaultConfig(input) {
+      void input;
+      throw unsupportedFeature("local server-default provider config update");
+    },
   };
 }

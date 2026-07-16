@@ -40,6 +40,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.requireMethod(w, r, http.MethodGet, h.getConfig)
 	case "/v1/providers/models":
 		h.requireMethod(w, r, http.MethodPost, h.listProviderModels)
+	case "/v1/admin/provider-config":
+		switch r.Method {
+		case http.MethodGet:
+			h.getAdminProviderConfig(w, r)
+		case http.MethodPut:
+			h.updateAdminProviderConfig(w, r)
+		default:
+			w.Header().Set("Allow", http.MethodGet+", "+http.MethodPut)
+			writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
+		}
 	case "/v1/byok/public-key":
 		h.requireMethod(w, r, http.MethodGet, h.getBYOKPublicKey)
 	default:
@@ -61,8 +71,8 @@ func (h *Handler) requireMethod(
 	next(w, r)
 }
 
-func (h *Handler) getConfig(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, h.service.PublicConfig())
+func (h *Handler) getConfig(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, h.service.PublicConfigForContext(r.Context()))
 }
 
 func (h *Handler) listProviderModels(w http.ResponseWriter, r *http.Request) {
@@ -71,7 +81,30 @@ func (h *Handler) listProviderModels(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "request body is invalid")
 		return
 	}
-	response, err := h.service.ProviderModels(request)
+	response, err := h.service.ProviderModelsForContext(r.Context(), request)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (h *Handler) getAdminProviderConfig(w http.ResponseWriter, r *http.Request) {
+	response, err := h.service.AdminProviderConfig(r.Context())
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (h *Handler) updateAdminProviderConfig(w http.ResponseWriter, r *http.Request) {
+	var request UpdateAdminProviderConfigRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "request body is invalid")
+		return
+	}
+	response, err := h.service.UpdateAdminProviderConfig(r.Context(), request)
 	if err != nil {
 		writeServiceError(w, err)
 		return
@@ -117,6 +150,8 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, "PROVIDER_SECRET_REQUIRED", "provider API key is required")
 	case errors.Is(err, ErrProviderConfigUnsupported):
 		writeError(w, http.StatusBadRequest, "PROVIDER_CONFIG_UNSUPPORTED", "provider configuration is unsupported")
+	case errors.Is(err, ErrDatabaseRequired):
+		writeError(w, http.StatusServiceUnavailable, "DATABASE_REQUIRED", "database is required for provider configuration")
 	default:
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "runtime config request failed")
 	}

@@ -84,3 +84,72 @@ func TestHandlerRoutesBYOKPublicKey(t *testing.T) {
 		t.Fatalf("response = %#v", response)
 	}
 }
+
+func TestHandlerRoutesAdminProviderConfig(t *testing.T) {
+	repo := &fakeProviderConfigRepository{
+		ok: true,
+		stored: StoredProviderConfig{
+			UserID:     "00000000-0000-0000-0000-000000000001",
+			ProviderID: serverDefaultProviderID,
+			Label:      "Admin Default",
+			Config: StoredProviderConfigPayload{
+				Type:    ProviderTypeOpenAICompatible,
+				BaseURL: "https://admin.example/v1",
+				Models:  []string{"gpt-admin"},
+				Enabled: true,
+			},
+		},
+	}
+	handler := NewHandler(NewService(config.Config{}, WithProviderConfigRepository(repo)))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/admin/provider-config", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var response AdminProviderConfigResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Name != "Admin Default" || response.BaseURL != "https://admin.example/v1" {
+		t.Fatalf("response = %#v", response)
+	}
+}
+
+func TestHandlerUpdatesAdminProviderConfig(t *testing.T) {
+	handler := NewHandler(NewService(config.Config{}, WithProviderConfigRepository(&fakeProviderConfigRepository{})))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(
+		http.MethodPut,
+		"/v1/admin/provider-config",
+		strings.NewReader(`{"name":"Saved Default","type":"OpenAI Compatible","baseUrl":"https://saved.example/v1","models":["gpt-saved","gpt-saved"],"enabled":true}`),
+	))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var response AdminProviderConfigResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Name != "Saved Default" || len(response.Models) != 1 || response.Models[0] != "gpt-saved" {
+		t.Fatalf("response = %#v", response)
+	}
+}
+
+func TestHandlerAdminProviderConfigRequiresDatabaseForUpdate(t *testing.T) {
+	handler := NewHandler(NewService(config.Config{}))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(
+		http.MethodPut,
+		"/v1/admin/provider-config",
+		strings.NewReader(`{"name":"No DB","type":"OpenAI Compatible","models":["gpt"]}`),
+	))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "DATABASE_REQUIRED") {
+		t.Fatalf("body = %s", rec.Body.String())
+	}
+}

@@ -1584,7 +1584,16 @@ func (h *Handler) resolveStreamProvider(
 	ctx context.Context,
 	providerConfig *runtimeconfig.ProviderRuntimeConfig,
 ) (Provider, error) {
-	if providerConfig == nil || strings.TrimSpace(providerConfig.Source) == "server-default" {
+	if providerConfig == nil {
+		if h.provider == nil {
+			return nil, ErrProviderRequired
+		}
+		return h.provider, nil
+	}
+	if strings.TrimSpace(providerConfig.Source) == "server-default" {
+		if h.providerResolver != nil {
+			return h.providerResolver.ResolveRuntimeProvider(ctx, *providerConfig)
+		}
 		if h.provider == nil {
 			return nil, ErrProviderRequired
 		}

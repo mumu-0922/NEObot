@@ -1,6 +1,7 @@
 package runtimeconfig
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -8,9 +9,11 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/json"
 	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -219,5 +222,160 @@ func encryptedSecretEnvelope(
 		"wrappedKey": base64.RawURLEncoding.EncodeToString(wrappedKey),
 		"ciphertext": base64.RawURLEncoding.EncodeToString(ciphertext),
 		"context":    context,
+	}
+}
+
+type fakeProviderConfigRepository struct {
+	stored StoredProviderConfig
+	ok     bool
+	input  UpsertProviderConfigInput
+}
+
+func (r *fakeProviderConfigRepository) GetProviderConfig(_ context.Context, userID string, providerID string) (StoredProviderConfig, bool, error) {
+	if !r.ok || r.stored.UserID != userID || r.stored.ProviderID != providerID {
+		return StoredProviderConfig{}, false, nil
+	}
+	return r.stored, true, nil
+}
+
+func (r *fakeProviderConfigRepository) UpsertProviderConfig(_ context.Context, input UpsertProviderConfigInput) (StoredProviderConfig, error) {
+	r.input = input
+	r.stored = StoredProviderConfig{
+		ID:                 "provider-config-1",
+		UserID:             input.UserID,
+		ProviderID:         input.ProviderID,
+		Label:              input.Label,
+		EncryptedSecretRef: input.EncryptedSecretRef,
+		Config:             input.Config,
+	}
+	r.ok = true
+	return r.stored, nil
+}
+
+func TestAdminProviderConfigOverridesPublicServerDefault(t *testing.T) {
+	repo := &fakeProviderConfigRepository{
+		ok: true,
+		stored: StoredProviderConfig{
+			UserID:     "00000000-0000-0000-0000-000000000001",
+			ProviderID: serverDefaultProviderID,
+			Label:      "Admin Configured",
+			Config: StoredProviderConfigPayload{
+				Type:    ProviderTypeOpenAICompatible,
+				BaseURL: "https://provider.example/v1",
+				Models:  []string{"gpt-admin", "gpt-admin"},
+				Enabled: true,
+			},
+		},
+	}
+	service := NewService(
+		config.Config{Provider: config.ProviderConfig{Name: "Env", Model: "gpt-env"}},
+		WithProviderConfigRepository(repo),
+	)
+
+	public := service.PublicConfigForContext(context.Background())
+	if public.ModelProvider.Name != "Admin Configured" {
+		t.Fatalf("provider name = %q", public.ModelProvider.Name)
+	}
+	if got, want := public.ModelProvider.Models, []string{"gpt-admin"}; len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("models = %#v, want %#v", got, want)
+	}
+
+	admin, err := service.AdminProviderConfig(context.Background())
+	if err != nil {
+		t.Fatalf("AdminProviderConfig returned error: %v", err)
+	}
+	if admin.BaseURL != "https://provider.example/v1" || admin.HasAPIKey {
+		t.Fatalf("admin config = %#v", admin)
+	}
+}
+
+func TestUpdateAdminProviderConfigStoresEncryptedSecretEnvelope(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pemValue := string(pem.EncodeToMemory(&pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
+	}))
+	repo := &fakeProviderConfigRepository{}
+	service := NewService(
+		config.Config{BYOK: config.BYOKConfig{PrivateKeyPEM: pemValue}},
+		WithProviderConfigRepository(repo),
+	)
+
+	response, err := service.UpdateAdminProviderConfig(context.Background(), UpdateAdminProviderConfigRequest{
+		Name:         "mumuapi",
+		Type:         "OpenAI Compatible",
+		BaseURL:      "https://sub.example/v1",
+		Models:       []string{"gpt-5.5", "gpt-5.5"},
+		APIKeySecret: encryptedSecretEnvelope(t, privateKey, "admin-provider-key", "provider:OpenAI Compatible"),
+	})
+	if err != nil {
+		t.Fatalf("UpdateAdminProviderConfig returned error: %v", err)
+	}
+	if !response.HasAPIKey || response.Name != "mumuapi" {
+		t.Fatalf("response = %#v", response)
+	}
+	if repo.input.EncryptedSecretRef == "" || strings.Contains(repo.input.EncryptedSecretRef, "admin-provider-key") {
+		t.Fatalf("encrypted secret ref was not persisted safely: %q", repo.input.EncryptedSecretRef)
+	}
+	if got := repo.input.Config.Models; len(got) != 1 || got[0] != "gpt-5.5" {
+		t.Fatalf("stored models = %#v", got)
+	}
+}
+
+func TestProviderModelsUsesStoredServerDefaultSecret(t *testing.T) {
+	const apiKey = "stored-admin-key"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			t.Fatalf("path = %q, want /v1/models", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer "+apiKey {
+			t.Fatalf("Authorization = %q, want stored key", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"gpt-live"}]}`))
+	}))
+	defer upstream.Close()
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pemValue := string(pem.EncodeToMemory(&pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
+	}))
+	secret, err := json.Marshal(encryptedSecretEnvelope(t, privateKey, apiKey, "provider:OpenAI Compatible"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := &fakeProviderConfigRepository{
+		ok: true,
+		stored: StoredProviderConfig{
+			UserID:             "00000000-0000-0000-0000-000000000001",
+			ProviderID:         serverDefaultProviderID,
+			Label:              "Stored Default",
+			EncryptedSecretRef: string(secret),
+			Config: StoredProviderConfigPayload{
+				Type:    ProviderTypeOpenAICompatible,
+				BaseURL: upstream.URL,
+				Models:  []string{},
+				Enabled: true,
+			},
+		},
+	}
+	service := NewService(
+		config.Config{Provider: config.ProviderConfig{Timeout: 2 * time.Second}, BYOK: config.BYOKConfig{PrivateKeyPEM: pemValue}},
+		WithProviderConfigRepository(repo),
+	)
+
+	response, err := service.ProviderModelsForContext(context.Background(), ProviderModelsRequest{Provider: ProviderRuntimeConfig{Source: "server-default"}})
+	if err != nil {
+		t.Fatalf("ProviderModelsForContext returned error: %v", err)
+	}
+	if got := response.Models; len(got) != 1 || got[0] != "gpt-live" {
+		t.Fatalf("models = %#v", got)
 	}
 }

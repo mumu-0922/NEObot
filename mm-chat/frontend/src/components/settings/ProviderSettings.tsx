@@ -26,7 +26,9 @@ import Tooltip from "../ui/Tooltip";
 import ModelEditor from "./ModelEditor";
 import { SecretInput } from "./SettingsUI";
 import { PROVIDER_CONFIG_LIMITS } from "@/config/limits";
-import { buildProviderRuntimeConfig } from "@/lib/byok/client";
+import { buildProviderRuntimeConfig, encryptSecret } from "@/lib/byok/client";
+import { BYOK_CONTEXTS } from "@/lib/byok/shared";
+import { SERVER_DEFAULT_PROVIDER_ID } from "@/lib/defaultConfig/shared";
 import { createNeoChatApiClient } from "@/services/api/client";
 import {
   encryptLocalSecret,
@@ -35,6 +37,7 @@ import {
 
 const ProviderSettings = () => {
   const t = useTranslations("Providers");
+  const serverModeEnabled = createNeoChatApiClient().mode === "server";
   const { modelMetadata, customModelMetadata } = useSettingsStore();
 
   const {
@@ -53,12 +56,15 @@ const ProviderSettings = () => {
   );
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [serverDefaultHasApiKey, setServerDefaultHasApiKey] = useState(false);
+  const [savingServerDefault, setSavingServerDefault] = useState(false);
   const [deleteConfirmProviderId, setDeleteConfirmProviderId] = useState<
     string | null
   >(null);
   const fetchAbortRef = useRef<AbortController | null>(null);
   const fetchRequestIdRef = useRef(0);
   const selectedProviderIdRef = useRef<string | null>(null);
+  const serverDefaultLoadedRef = useRef(false);
   const deleteConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -94,6 +100,77 @@ const ProviderSettings = () => {
       : currentProvider?.type === "OpenAI"
         ? "https://platform.openai.com/api-keys"
         : undefined;
+
+  useEffect(() => {
+    if (!_hasHydrated || !currentProvider?.isServerDefault) return;
+    if (serverDefaultLoadedRef.current) return;
+
+    let active = true;
+    serverDefaultLoadedRef.current = true;
+    createNeoChatApiClient()
+      .providers.getServerDefaultConfig()
+      .then((config) => {
+        if (!active) return;
+        setServerDefaultHasApiKey(config.hasApiKey);
+        updateProvider(SERVER_DEFAULT_PROVIDER_ID, {
+          name: config.name,
+          type: config.type as any,
+          baseUrl: config.baseUrl,
+          enabled: config.enabled,
+          models: config.models,
+          modelsList: config.models,
+        });
+      })
+      .catch(() => {
+        if (active) setServerDefaultHasApiKey(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    _hasHydrated,
+    currentProvider?.id,
+    currentProvider?.isServerDefault,
+    updateProvider,
+  ]);
+
+  const persistServerDefaultProvider = async (
+    providerSnapshot: NonNullable<typeof currentProvider>,
+    overrides: {
+      models?: string[];
+      apiKeySecret?: unknown;
+      clearApiKey?: boolean;
+    } = {},
+  ) => {
+    setSavingServerDefault(true);
+    try {
+      const response =
+        await createNeoChatApiClient().providers.updateServerDefaultConfig({
+          name: providerSnapshot.name,
+          type: providerSnapshot.type,
+          baseUrl: providerSnapshot.baseUrl || "",
+          models: overrides.models ?? providerSnapshot.models ?? [],
+          enabled: true,
+          ...(overrides.apiKeySecret
+            ? { apiKeySecret: overrides.apiKeySecret }
+            : {}),
+          ...(overrides.clearApiKey ? { clearApiKey: true } : {}),
+        });
+      setServerDefaultHasApiKey(response.hasApiKey);
+      updateProvider(SERVER_DEFAULT_PROVIDER_ID, {
+        name: response.name,
+        type: response.type as any,
+        baseUrl: response.baseUrl,
+        enabled: response.enabled,
+        models: response.models,
+        modelsList: response.models,
+      });
+      return response;
+    } finally {
+      setSavingServerDefault(false);
+    }
+  };
 
   const clearDeleteConfirmation = () => {
     if (deleteConfirmTimerRef.current) {
@@ -157,6 +234,9 @@ const ProviderSettings = () => {
     setFetchingProviderId(providerSnapshot.id);
     setFetchError(null);
     try {
+      if (providerSnapshot.isServerDefault) {
+        await persistServerDefaultProvider(providerSnapshot);
+      }
       const data = await createNeoChatApiClient().providers.listModels({
         provider: await buildProviderRuntimeConfig(providerSnapshot),
         signal: controller.signal,
@@ -175,10 +255,17 @@ const ProviderSettings = () => {
         const selectedModels = (providerSnapshot.models || []).filter((model) =>
           models.includes(model),
         );
+        const nextModels = selectedModels.length > 0 ? selectedModels : models;
         updateProvider(providerSnapshot.id, {
           modelsList: models,
-          models: selectedModels.length > 0 ? selectedModels : models,
+          models: nextModels,
         });
+        if (providerSnapshot.isServerDefault) {
+          await persistServerDefaultProvider(
+            { ...providerSnapshot, models: nextModels, modelsList: models },
+            { models: nextModels },
+          );
+        }
       } else {
         updateProvider(providerSnapshot.id, { modelsList: [] });
         if (selectedProviderIdRef.current === providerSnapshot.id) {
@@ -319,13 +406,15 @@ const ProviderSettings = () => {
             <div className="text-sm font-medium text-gray-500 dark:text-muted-foreground uppercase tracking-wider">
               {t("configureProviders")}
             </div>
-            <button
-              type="button"
-              onClick={handleAddProvider}
-              className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 px-3 py-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
-            >
-              <Plus size={16} aria-hidden="true" /> {t("add")}
-            </button>
+            {!serverModeEnabled && (
+              <button
+                type="button"
+                onClick={handleAddProvider}
+                className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 px-3 py-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+              >
+                <Plus size={16} aria-hidden="true" /> {t("add")}
+              </button>
+            )}
           </div>
           <div
             role="group"
@@ -356,7 +445,7 @@ const ProviderSettings = () => {
           {currentProvider && (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {!isServerDefaultProvider && (
+                {
                   <div className="space-y-2">
                     <label
                       htmlFor={providerNameInputId}
@@ -380,8 +469,8 @@ const ProviderSettings = () => {
                       className="w-full px-3 py-2 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-400 transition-[border-color,box-shadow] text-gray-800 dark:text-foreground"
                     />
                   </div>
-                )}
-                {!isServerDefaultProvider && (
+                }
+                {
                   <div className="space-y-2">
                     <label
                       htmlFor={providerTypeInputId}
@@ -416,8 +505,8 @@ const ProviderSettings = () => {
                       </div>
                     </div>
                   </div>
-                )}
-                {!isServerDefaultProvider && (
+                }
+                {
                   <div className="col-span-1 md:col-span-2 space-y-2">
                     <label
                       htmlFor={providerBaseUrlInputId}
@@ -458,8 +547,8 @@ const ProviderSettings = () => {
                       </div>
                     ) : null}
                   </div>
-                )}
-                {!isServerDefaultProvider && (
+                }
+                {
                   <div className="col-span-1 md:col-span-2 space-y-2">
                     <label
                       htmlFor={providerApiKeyInputId}
@@ -485,10 +574,24 @@ const ProviderSettings = () => {
                         maxLength={PROVIDER_CONFIG_LIMITS.maxApiKeyChars}
                         placeholder={t("apiKeyPlaceholder")}
                         hasSecret={Boolean(
-                          currentProvider.apiKey ||
-                          currentProvider.apiKeySecret,
+                          isServerDefaultProvider
+                            ? serverDefaultHasApiKey
+                            : currentProvider.apiKey ||
+                                currentProvider.apiKeySecret,
                         )}
-                        onSave={async (value) =>
+                        onSave={async (value) => {
+                          if (isServerDefaultProvider) {
+                            await persistServerDefaultProvider(
+                              currentProvider,
+                              {
+                                apiKeySecret: await encryptSecret(
+                                  value,
+                                  BYOK_CONTEXTS.provider(currentProvider.type),
+                                ),
+                              },
+                            );
+                            return;
+                          }
                           updateProvider(currentProvider.id, {
                             apiKey: "",
                             apiKeySecret: await encryptLocalSecret(
@@ -497,22 +600,31 @@ const ProviderSettings = () => {
                                 currentProvider.id,
                               ),
                             ),
-                          })
-                        }
-                        onClear={() =>
+                          });
+                        }}
+                        onClear={async () => {
+                          if (isServerDefaultProvider) {
+                            await persistServerDefaultProvider(
+                              currentProvider,
+                              { clearApiKey: true },
+                            );
+                            return;
+                          }
                           updateProvider(currentProvider.id, {
                             apiKey: "",
                             apiKeySecret: undefined,
-                          })
-                        }
+                          });
+                        }}
                         inputClassName="min-w-0 flex-1 px-3 py-2 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-400 transition-[border-color,box-shadow] font-mono text-gray-800 dark:text-foreground"
                       />
                     </div>
                     <p className="text-xs text-gray-400">
-                      {t("keyStoredLocally")}
+                      {isServerDefaultProvider
+                        ? t("keyStoredOnServer")
+                        : t("keyStoredLocally")}
                     </p>
                   </div>
-                )}
+                }
                 {isServerDefaultProvider && (
                   <div className="col-span-1 md:col-span-2 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3 text-xs text-blue-700 dark:border-blue-900/40 dark:bg-blue-900/10 dark:text-blue-200">
                     {t("serverDefaultProviderDesc")}
@@ -539,6 +651,25 @@ const ProviderSettings = () => {
                       {t("enableProvider")}
                     </span>
                   </label>
+                  {isServerDefaultProvider && (
+                    <button
+                      type="button"
+                      disabled={savingServerDefault}
+                      onClick={() =>
+                        persistServerDefaultProvider(currentProvider)
+                      }
+                      className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-[color,background-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 ${
+                        savingServerDefault
+                          ? "cursor-not-allowed opacity-70 bg-blue-50 text-blue-500 dark:bg-blue-900/20 dark:text-blue-300"
+                          : "bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-200 dark:hover:bg-blue-900/30"
+                      }`}
+                    >
+                      <Check size={16} aria-hidden="true" />
+                      {savingServerDefault
+                        ? t("savingServerDefault")
+                        : t("saveServerDefault")}
+                    </button>
+                  )}
                   {!isServerDefaultProvider && providers.length > 1 && (
                     <button
                       type="button"

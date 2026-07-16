@@ -1,6 +1,7 @@
 package runtimeconfig
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -20,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/config"
 )
 
@@ -34,15 +36,54 @@ var (
 	ErrPlaintextProviderSecret   = errors.New("plaintext provider secrets are not accepted")
 	ErrProviderSecretRequired    = errors.New("provider api key is required")
 	ErrProviderConfigUnsupported = errors.New("provider configuration is unsupported")
+	ErrDatabaseRequired          = errors.New("database is required")
 )
 
 const maxProviderModelsResponseBytes = 2 << 20
 
 type Service struct {
-	cfg config.Config
+	cfg  config.Config
+	repo ProviderConfigRepository
 
 	byokMu        sync.Mutex
 	ephemeralBYOK *rsa.PrivateKey
+}
+
+type ServiceOption func(*Service)
+
+func WithProviderConfigRepository(repo ProviderConfigRepository) ServiceOption {
+	return func(s *Service) {
+		s.repo = repo
+	}
+}
+
+type ProviderConfigRepository interface {
+	GetProviderConfig(ctx context.Context, userID string, providerID string) (StoredProviderConfig, bool, error)
+	UpsertProviderConfig(ctx context.Context, input UpsertProviderConfigInput) (StoredProviderConfig, error)
+}
+
+type StoredProviderConfig struct {
+	ID                 string
+	UserID             string
+	ProviderID         string
+	Label              string
+	EncryptedSecretRef string
+	Config             StoredProviderConfigPayload
+}
+
+type StoredProviderConfigPayload struct {
+	Type    ProviderType `json:"type"`
+	BaseURL string       `json:"baseUrl"`
+	Models  []string     `json:"models"`
+	Enabled bool         `json:"enabled"`
+}
+
+type UpsertProviderConfigInput struct {
+	UserID             string
+	ProviderID         string
+	Label              string
+	EncryptedSecretRef string
+	Config             StoredProviderConfigPayload
 }
 
 type EncryptedSecretEnvelope struct {
@@ -55,22 +96,30 @@ type EncryptedSecretEnvelope struct {
 	Context    string `json:"context"`
 }
 
-func NewService(cfg config.Config) *Service {
-	return &Service{cfg: cfg}
+func NewService(cfg config.Config, opts ...ServiceOption) *Service {
+	service := &Service{cfg: cfg}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(service)
+		}
+	}
+	return service
 }
 
 func (s *Service) PublicConfig() PublicConfig {
-	models := splitModels(s.cfg.Provider.Model)
-	providerType := normalizeProviderType(s.cfg.Provider.Type)
-	available := len(models) > 0 || strings.TrimSpace(s.cfg.Provider.APIKey) != ""
+	return s.PublicConfigForContext(context.Background())
+}
+
+func (s *Service) PublicConfigForContext(ctx context.Context) PublicConfig {
+	provider := s.serverDefaultProviderForContext(ctx)
 
 	return PublicConfig{
 		ModelProvider: ModelProviderConfig{
-			Available:     available,
+			Available:     provider.Available,
 			ID:            serverDefaultProviderID,
-			Name:          nonEmpty(s.cfg.Provider.Name, config.DefaultProviderName),
-			Type:          providerType,
-			Models:        models,
+			Name:          provider.Name,
+			Type:          provider.Type,
+			Models:        append([]string(nil), provider.Models...),
 			ModelMetadata: map[string]any{},
 			DefaultModels: map[string]string{},
 		},
@@ -99,6 +148,10 @@ func (s *Service) PublicConfig() PublicConfig {
 }
 
 func (s *Service) ProviderModels(request ProviderModelsRequest) (ProviderModelsResponse, error) {
+	return s.ProviderModelsForContext(context.Background(), request)
+}
+
+func (s *Service) ProviderModelsForContext(ctx context.Context, request ProviderModelsRequest) (ProviderModelsResponse, error) {
 	provider := request.Provider
 	if strings.TrimSpace(provider.APIKey) != "" {
 		return ProviderModelsResponse{}, ErrPlaintextProviderSecret
@@ -109,7 +162,18 @@ func (s *Service) ProviderModels(request ProviderModelsRequest) (ProviderModelsR
 	}
 	if provider.Source == "server-default" ||
 		(provider.Source == "" && strings.TrimSpace(provider.Type) == "") {
-		return ProviderModelsResponse{Models: splitModels(s.cfg.Provider.Model)}, nil
+		resolved := s.serverDefaultProviderForContext(ctx)
+		if strings.TrimSpace(resolved.APIKey) == "" {
+			return ProviderModelsResponse{Models: append([]string(nil), resolved.Models...)}, nil
+		}
+		if resolved.Type != ProviderTypeOpenAI && resolved.Type != ProviderTypeOpenAICompatible {
+			return ProviderModelsResponse{}, ErrProviderModelsUnsupported
+		}
+		models, err := fetchOpenAICompatibleModels(providerModelsURL(resolved.BaseURL, resolved.Type), resolved.APIKey, s.cfg.Provider.Timeout)
+		if err != nil {
+			return ProviderModelsResponse{}, err
+		}
+		return ProviderModelsResponse{Models: models}, nil
 	}
 
 	apiKey, err := s.ProviderAPIKey(provider)
@@ -126,6 +190,206 @@ func (s *Service) ProviderModels(request ProviderModelsRequest) (ProviderModelsR
 		return ProviderModelsResponse{}, err
 	}
 	return ProviderModelsResponse{Models: models}, nil
+}
+
+type resolvedServerDefaultProvider struct {
+	Name      string
+	Type      ProviderType
+	BaseURL   string
+	Models    []string
+	Enabled   bool
+	Available bool
+	APIKey    string
+	SecretRef string
+}
+
+func (s *Service) AdminProviderConfig(ctx context.Context) (AdminProviderConfigResponse, error) {
+	provider := s.serverDefaultProviderForContext(ctx)
+	return AdminProviderConfigResponse{
+		ID:        serverDefaultProviderID,
+		Name:      provider.Name,
+		Type:      provider.Type,
+		BaseURL:   provider.BaseURL,
+		Models:    append([]string(nil), provider.Models...),
+		Enabled:   provider.Enabled,
+		HasAPIKey: strings.TrimSpace(provider.APIKey) != "" || strings.TrimSpace(provider.SecretRef) != "",
+		Source:    "server-default",
+	}, nil
+}
+
+func (s *Service) UpdateAdminProviderConfig(ctx context.Context, request UpdateAdminProviderConfigRequest) (AdminProviderConfigResponse, error) {
+	if s.repo == nil {
+		return AdminProviderConfigResponse{}, ErrDatabaseRequired
+	}
+
+	current := s.serverDefaultProviderForContext(ctx)
+	providerType := normalizeProviderType(nonEmpty(request.Type, string(current.Type)))
+	name := nonEmpty(request.Name, config.DefaultProviderName)
+	baseURL := strings.TrimSpace(request.BaseURL)
+	models := normalizeModelList(request.Models)
+	secretRef := strings.TrimSpace(current.SecretRef)
+
+	if request.ClearAPIKey {
+		secretRef = ""
+	}
+	if len(request.APIKeySecret) > 0 {
+		envelope, err := parseEncryptedSecretEnvelope(request.APIKeySecret)
+		if err != nil {
+			return AdminProviderConfigResponse{}, err
+		}
+		if _, err := s.DecryptOptionalSecret(envelope, "provider:"+string(providerType)); err != nil {
+			return AdminProviderConfigResponse{}, err
+		}
+		encoded, err := json.Marshal(envelope)
+		if err != nil {
+			return AdminProviderConfigResponse{}, ErrProviderConfigUnsupported
+		}
+		secretRef = string(encoded)
+	}
+
+	user := auth.UserOrDevelopment(ctx)
+	stored, err := s.repo.UpsertProviderConfig(ctx, UpsertProviderConfigInput{
+		UserID:             user.ID,
+		ProviderID:         serverDefaultProviderID,
+		Label:              name,
+		EncryptedSecretRef: secretRef,
+		Config: StoredProviderConfigPayload{
+			Type:    providerType,
+			BaseURL: baseURL,
+			Models:  models,
+			Enabled: true,
+		},
+	})
+	if err != nil {
+		return AdminProviderConfigResponse{}, err
+	}
+
+	resolved := s.resolveStoredServerDefault(stored)
+	return AdminProviderConfigResponse{
+		ID:        serverDefaultProviderID,
+		Name:      resolved.Name,
+		Type:      resolved.Type,
+		BaseURL:   resolved.BaseURL,
+		Models:    append([]string(nil), resolved.Models...),
+		Enabled:   resolved.Enabled,
+		HasAPIKey: strings.TrimSpace(resolved.APIKey) != "" || strings.TrimSpace(resolved.SecretRef) != "",
+		Source:    "server-default",
+	}, nil
+}
+
+func (s *Service) serverDefaultProviderForContext(ctx context.Context) resolvedServerDefaultProvider {
+	base := s.envServerDefaultProvider()
+	if s.repo == nil {
+		return base
+	}
+	stored, ok, err := s.repo.GetProviderConfig(ctx, auth.UserOrDevelopment(ctx).ID, serverDefaultProviderID)
+	if err != nil || !ok {
+		return base
+	}
+	return s.resolveStoredServerDefault(stored)
+}
+
+func (s *Service) envServerDefaultProvider() resolvedServerDefaultProvider {
+	models := splitModels(s.cfg.Provider.Model)
+	apiKey := strings.TrimSpace(s.cfg.Provider.APIKey)
+	available := len(models) > 0 || apiKey != ""
+	return resolvedServerDefaultProvider{
+		Name:      nonEmpty(s.cfg.Provider.Name, config.DefaultProviderName),
+		Type:      normalizeProviderType(s.cfg.Provider.Type),
+		BaseURL:   strings.TrimSpace(s.cfg.Provider.BaseURL),
+		Models:    models,
+		Enabled:   true,
+		Available: available,
+		APIKey:    apiKey,
+	}
+}
+
+func (s *Service) resolveStoredServerDefault(stored StoredProviderConfig) resolvedServerDefaultProvider {
+	base := s.envServerDefaultProvider()
+	name := nonEmpty(stored.Label, base.Name)
+	providerType := stored.Config.Type
+	if providerType == "" {
+		providerType = base.Type
+	}
+	baseURL := strings.TrimSpace(stored.Config.BaseURL)
+	if baseURL == "" {
+		baseURL = base.BaseURL
+	}
+	models := normalizeModelList(stored.Config.Models)
+	if len(models) == 0 {
+		models = append([]string(nil), base.Models...)
+	}
+	secretRef := strings.TrimSpace(stored.EncryptedSecretRef)
+	apiKey := base.APIKey
+	if secretRef != "" {
+		if envelope, err := parseStoredSecretRef(secretRef); err == nil {
+			if plaintext, err := s.DecryptOptionalSecret(envelope, "provider:"+string(providerType)); err == nil {
+				apiKey = strings.TrimSpace(plaintext)
+			}
+		}
+	}
+	available := len(models) > 0 || apiKey != "" || secretRef != ""
+	return resolvedServerDefaultProvider{
+		Name:      name,
+		Type:      providerType,
+		BaseURL:   baseURL,
+		Models:    models,
+		Enabled:   stored.Config.Enabled,
+		Available: available,
+		APIKey:    apiKey,
+		SecretRef: secretRef,
+	}
+}
+
+func parseStoredSecretRef(value string) (*EncryptedSecretEnvelope, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+	var envelope EncryptedSecretEnvelope
+	if err := json.Unmarshal([]byte(value), &envelope); err != nil {
+		return nil, ErrBYOKNotConfigured
+	}
+	return &envelope, nil
+}
+
+func normalizeModelList(models []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(models))
+	for _, model := range models {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			continue
+		}
+		if _, exists := seen[model]; exists {
+			continue
+		}
+		seen[model] = struct{}{}
+		out = append(out, model)
+	}
+	return out
+}
+
+type ResolvedProvider struct {
+	ID      string
+	Name    string
+	Type    ProviderType
+	BaseURL string
+	APIKey  string
+}
+
+func (s *Service) ResolveServerDefaultProvider(ctx context.Context) (ResolvedProvider, error) {
+	provider := s.serverDefaultProviderForContext(ctx)
+	if strings.TrimSpace(provider.APIKey) == "" {
+		return ResolvedProvider{}, ErrProviderSecretRequired
+	}
+	return ResolvedProvider{
+		ID:      serverDefaultProviderID,
+		Name:    provider.Name,
+		Type:    provider.Type,
+		BaseURL: provider.BaseURL,
+		APIKey:  provider.APIKey,
+	}, nil
 }
 
 func (s *Service) ProviderAPIKey(provider ProviderRuntimeConfig) (string, error) {

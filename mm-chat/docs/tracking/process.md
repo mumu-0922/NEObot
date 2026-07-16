@@ -8160,3 +8160,17 @@ ops/visual/clean-copy/delete gates.
 Future cutover implementation evidence should be recorded primarily in the new
 process log, with this legacy process file reserved for major cross-reference
 milestones.
+
+## 2026-07-17 — G11.3c Server Default admin provider persistence cross-reference
+
+Provider configuration authority was corrected per owner direction: the
+production Server Default remains backend-owned, seeded by env/secret, editable
+from Provider Settings, and persisted through the Go backend/Postgres path.
+
+Detailed changed surfaces, verification commands, and residual risks are logged
+in the active sliced process entry:
+
+```text
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+# 2026-07-17 — G11.3c Server Default admin provider persistence
+```

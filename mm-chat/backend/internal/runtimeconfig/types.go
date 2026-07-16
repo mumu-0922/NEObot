@@ -57,6 +57,27 @@ type ProviderModelsRequest struct {
 	Provider ProviderRuntimeConfig `json:"provider"`
 }
 
+type AdminProviderConfigResponse struct {
+	ID        string       `json:"id"`
+	Name      string       `json:"name"`
+	Type      ProviderType `json:"type"`
+	BaseURL   string       `json:"baseUrl"`
+	Models    []string     `json:"models"`
+	Enabled   bool         `json:"enabled"`
+	HasAPIKey bool         `json:"hasApiKey"`
+	Source    string       `json:"source"`
+}
+
+type UpdateAdminProviderConfigRequest struct {
+	Name         string         `json:"name"`
+	Type         string         `json:"type"`
+	BaseURL      string         `json:"baseUrl"`
+	Models       []string       `json:"models"`
+	Enabled      bool           `json:"enabled"`
+	APIKeySecret map[string]any `json:"apiKeySecret"`
+	ClearAPIKey  bool           `json:"clearApiKey"`
+}
+
 type ProviderRuntimeConfig struct {
 	ID           string         `json:"id"`
 	Type         string         `json:"type"`

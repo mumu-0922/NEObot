@@ -17,7 +17,7 @@
   "getKey": "キーを取得",
   "apiKeyPlaceholder": "sk-…",
   "keyStoredLocally": "キーはこのブラウザのローカルに暗号化されて保存されます。",
-  "serverDefaultProviderDesc": "このプロバイダーはサーバーの環境変数によって提供されています。キーとベース URL はブラウザに送信されません。",
+  "serverDefaultProviderDesc": "このプロバイダーはバックエンドの Server Default 管理者設定です。名前、ベース URL、モデル、キーはバックエンドに保存され、キーはブラウザへ返されません。",
   "enableProvider": "プロバイダーを有効化",
   "confirmDeleteAria": "プロバイダー {name} の削除を確認",
   "deleteAria": "プロバイダー {name} を削除",
@@ -36,5 +36,8 @@
   "capAudio": "音声認識 (Audio)",
   "capReasoning": "推論 (Reasoning)",
   "capFunctionCalling": "ツール呼び出し (Function Calling)",
-  "modelCapabilitiesAria": "モデル機能"
+  "modelCapabilitiesAria": "モデル機能",
+  "keyStoredOnServer": "キーは BYOK で暗号化されてバックエンドに保存され、平文はブラウザに保存されません。",
+  "saveServerDefault": "バックエンドに保存",
+  "savingServerDefault": "保存中…"
 }

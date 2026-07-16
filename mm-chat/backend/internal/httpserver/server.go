@@ -72,6 +72,7 @@ type options struct {
 	imageJobService      *imagejobs.Service
 	voiceJobService      *voicejobs.Service
 	ragSourceService     *ragsource.Service
+	runtimeConfigRepo    runtimeconfig.ProviderConfigRepository
 }
 
 type knowledgeRAGCandidateSource struct {
@@ -89,7 +90,7 @@ type runtimeChatProviderResolver struct {
 }
 
 func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
-	_ context.Context,
+	ctx context.Context,
 	provider runtimeconfig.ProviderRuntimeConfig,
 ) (chat.Provider, error) {
 	if r.service == nil {
@@ -98,22 +99,23 @@ func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 			Message: "runtime provider configuration is not supported",
 		}
 	}
-	apiKey, err := r.service.ProviderAPIKey(provider)
-	if err != nil {
-		if errors.Is(err, runtimeconfig.ErrPlaintextProviderSecret) {
-			return nil, chat.ValidationError{
-				Code:    "PLAINTEXT_PROVIDER_SECRET_REJECTED",
-				Message: "plaintext provider secrets are not accepted",
-			}
+	apiKey := ""
+	if strings.TrimSpace(provider.Source) == "server-default" {
+		resolved, err := r.service.ResolveServerDefaultProvider(ctx)
+		if err != nil {
+			return nil, mapRuntimeProviderError(err)
 		}
-		if errors.Is(err, runtimeconfig.ErrProviderSecretRequired) ||
-			errors.Is(err, runtimeconfig.ErrBYOKNotConfigured) {
-			return nil, chat.ValidationError{
-				Code:    "PROVIDER_SECRET_REQUIRED",
-				Message: "provider API key is required",
-			}
+		apiKey = resolved.APIKey
+		provider.ID = resolved.ID
+		provider.Name = resolved.Name
+		provider.Type = string(resolved.Type)
+		provider.BaseURL = resolved.BaseURL
+	} else {
+		var err error
+		apiKey, err = r.service.ProviderAPIKey(provider)
+		if err != nil {
+			return nil, mapRuntimeProviderError(err)
 		}
-		return nil, err
 	}
 	providerType := strings.ToLower(strings.TrimSpace(provider.Type))
 	switch providerType {
@@ -137,6 +139,23 @@ func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 			Message: "runtime provider type is not supported",
 		}
 	}
+}
+
+func mapRuntimeProviderError(err error) error {
+	if errors.Is(err, runtimeconfig.ErrPlaintextProviderSecret) {
+		return chat.ValidationError{
+			Code:    "PLAINTEXT_PROVIDER_SECRET_REJECTED",
+			Message: "plaintext provider secrets are not accepted",
+		}
+	}
+	if errors.Is(err, runtimeconfig.ErrProviderSecretRequired) ||
+		errors.Is(err, runtimeconfig.ErrBYOKNotConfigured) {
+		return chat.ValidationError{
+			Code:    "PROVIDER_SECRET_REQUIRED",
+			Message: "provider API key is required",
+		}
+	}
+	return err
 }
 
 func runtimeProviderBaseURL(provider runtimeconfig.ProviderRuntimeConfig) string {
@@ -227,6 +246,12 @@ func (source knowledgeRAGCandidateSource) FetchEvidenceCandidates(
 		QueryText:     query.QueryText,
 		Limit:         query.Limit,
 	})
+}
+
+func WithRuntimeConfigRepository(repo runtimeconfig.ProviderConfigRepository) Option {
+	return func(opts *options) {
+		opts.runtimeConfigRepo = repo
+	}
 }
 
 func WithReadyChecker(checker health.ReadinessChecker) Option {
@@ -405,7 +430,10 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		resolvedOptions.objectStore,
 		files.WithStorageBackend(cfg.Storage.Backend),
 	)
-	runtimeConfigService := runtimeconfig.NewService(cfg)
+	runtimeConfigService := runtimeconfig.NewService(
+		cfg,
+		runtimeconfig.WithProviderConfigRepository(resolvedOptions.runtimeConfigRepo),
+	)
 	chatOptions := []chat.HandlerOption{
 		chat.WithProvider(resolvedOptions.chatProvider),
 		chat.WithRunCancellationStore(resolvedOptions.runCancellationStore),
@@ -477,6 +505,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/auth/recovery/complete", authHandler)
 	mux.Handle("/v1/config", runtimeConfigHandler)
 	mux.Handle("/v1/providers/models", runtimeConfigHandler)
+	mux.Handle("/v1/admin/provider-config", runtimeConfigHandler)
 	mux.Handle("/v1/byok/public-key", runtimeConfigHandler)
 	mux.Handle("/v1/chat/conversations", chatHandler)
 	mux.Handle("/v1/chat/conversations/", chatHandler)

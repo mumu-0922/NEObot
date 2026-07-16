@@ -468,6 +468,18 @@ describe("G3.1 server runtime/auth API adapters", () => {
         if (String(input).endsWith("/v1/providers/models")) {
           return Response.json({ models: ["gpt-5.5"] });
         }
+        if (String(input).endsWith("/v1/admin/provider-config")) {
+          return Response.json({
+            id: "SERVER_DEFAULT",
+            name: "Admin Default",
+            type: "OpenAI Compatible",
+            baseUrl: "https://sub.example/v1",
+            models: ["gpt-5.5"],
+            enabled: true,
+            hasApiKey: true,
+            source: "server-default",
+          });
+        }
         return Response.json({
           kid: "kid",
           alg: "RSA-OAEP-256+A256GCM",
@@ -487,6 +499,23 @@ describe("G3.1 server runtime/auth API adapters", () => {
       }),
     ).resolves.toEqual({ models: ["gpt-5.5"] });
     await expect(
+      createServerProviderApiShell(http).getServerDefaultConfig(),
+    ).resolves.toMatchObject({
+      name: "Admin Default",
+      hasApiKey: true,
+    });
+    await expect(
+      createServerProviderApiShell(http).updateServerDefaultConfig({
+        name: "Admin Default",
+        type: "OpenAI Compatible",
+        baseUrl: "https://sub.example/v1",
+        models: ["gpt-5.5"],
+        apiKeySecret: { v: 1 },
+      }),
+    ).resolves.toMatchObject({
+      source: "server-default",
+    });
+    await expect(
       createServerByokApiShell(http).getPublicKey(),
     ).resolves.toMatchObject({
       kid: "kid",
@@ -498,6 +527,22 @@ describe("G3.1 server runtime/auth API adapters", () => {
         url: "/mm-api/v1/providers/models",
         method: "POST",
         body: { provider: { source: "server-default" } },
+      },
+      {
+        url: "/mm-api/v1/admin/provider-config",
+        method: "GET",
+        body: undefined,
+      },
+      {
+        url: "/mm-api/v1/admin/provider-config",
+        method: "PUT",
+        body: {
+          name: "Admin Default",
+          type: "OpenAI Compatible",
+          baseUrl: "https://sub.example/v1",
+          models: ["gpt-5.5"],
+          apiKeySecret: { v: 1 },
+        },
       },
       { url: "/mm-api/v1/byok/public-key", method: "GET", body: undefined },
     ]);

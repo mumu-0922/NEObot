@@ -1246,6 +1246,11 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           core settings preference store to persist theme/language and BYOK
           provider shells so custom providers and fetched model lists survive
           refresh.
+    - [x] G11.3c Server Default admin persistence: Provider Settings now edits
+          the backend Server Default provider, persists name/type/base URL/model
+          list and encrypted secret envelope to Postgres `provider_configs`,
+          and makes runtime config, model listing, and chat streaming resolve
+          the current server-owned provider config.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

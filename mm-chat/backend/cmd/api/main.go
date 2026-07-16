@@ -32,6 +32,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/ragsource"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
 	"neo-chat/mm-chat/backend/internal/redisstate"
+	"neo-chat/mm-chat/backend/internal/runtimeconfig"
 	"neo-chat/mm-chat/backend/internal/sessioncache"
 	"neo-chat/mm-chat/backend/internal/storage"
 	"neo-chat/mm-chat/backend/internal/teams"
@@ -121,6 +122,7 @@ func main() {
 	var importRepo browserimport.Repository
 	var pluginRegistry plugins.Registry
 	var pluginAuditRecorder plugins.AuditRecorder
+	var runtimeConfigRepo runtimeconfig.ProviderConfigRepository
 	var sessionResolver httpserver.SessionResolver
 	var authService *auth.Service
 	sqlDB := db.SQL()
@@ -130,6 +132,7 @@ func main() {
 		fileRepo = files.NewPostgresRepository(sqlDB)
 		pluginRegistry = plugins.NewPostgresRegistry(sqlDB, plugins.BuiltInPlugins()...)
 		pluginAuditRecorder = plugins.NewPostgresAuditRecorder(sqlDB)
+		runtimeConfigRepo = runtimeconfig.NewPostgresProviderConfigRepository(sqlDB)
 		sessionResolver = auth.NewSessionResolver(
 			authRepo,
 			auth.WithSessionCache(sessionCache),
@@ -217,6 +220,7 @@ func main() {
 		httpserver.WithTeamService(teamRuntime.service),
 		httpserver.WithKnowledgeService(knowledgeService),
 		httpserver.WithRAGSourceService(ragSourceService),
+		httpserver.WithRuntimeConfigRepository(runtimeConfigRepo),
 		httpserver.WithPluginRegistry(pluginRegistry),
 		httpserver.WithPluginAuditRecorder(pluginAuditRecorder),
 		httpserver.WithLogger(logger),

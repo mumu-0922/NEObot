@@ -651,10 +651,17 @@ Slice sequence:
       remains only as unreachable legacy surface until a later schema/API
       cleanup slice can safely drop migrations and packages.
 - [x] G11.3 Browser provider settings parity: restored local single-user
-      browser provider runtime flow. Provider settings can fetch OpenAI-compatible
-      models through Go with BYOK-encrypted secrets, fetched models are enabled
-      when no prior model selection exists, and Go chat streams consume the
-      selected browser-configured provider without storing secrets in `.env`.
+      browser provider runtime flow as a transitional fallback. Provider
+      settings can fetch OpenAI-compatible models through Go with
+      BYOK-encrypted secrets, fetched models are enabled when no prior model
+      selection exists, and Go chat streams consume the selected
+      browser-configured provider without storing secrets in `.env`.
+  - [x] G11.3c Server Default admin persistence: corrected the owner-selected
+        production path so Provider Settings edits the backend Server Default,
+        stores the config in Postgres `provider_configs`, stores secrets only as
+        BYOK envelopes under backend control, and makes `/v1/config`,
+        `/v1/providers/models`, and chat streaming resolve the current
+        server-owned provider config.
 
 Targeted tests:
 
