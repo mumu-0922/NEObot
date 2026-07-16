@@ -593,15 +593,18 @@ Slice sequence:
         production `.env.single-server` that passes immutable image preflight,
         then rerun backup, checksum, restore drills, and rollback evidence for
         the final deletion gate.
-- [ ] G10.3 Visual/interaction closure: record desktop and mobile smoke for
+- [x] G10.3 Visual/interaction closure: record desktop and mobile smoke for
       app shell, chat streaming, model/provider visibility, Knowledge citation
       cards, Files/upload when configured, and navigation.
   - [x] G10.3a Automated UI/visual contract smoke: frontend tests for app
         shell/mobile accessibility, citation styling/cards, markdown rendering,
         server Knowledge wiring, model resolution, and server defaults passed;
         HTTP app shell returned valid Next HTML.
-  - [ ] G10.3b Browser screenshot/interaction smoke: run desktop and mobile
-        browser automation once a Chromium/Chrome binary is available.
+  - [x] G10.3b Browser screenshot/interaction smoke: Windows Chrome CDP smoke
+        captured desktop and mobile screenshots, verified the app shell,
+        composer placeholder, model/provider control visibility, Knowledge
+        citation card, Knowledge page/drawer, and search-toggle fail-closed
+        toast.
 - [ ] G10.4 Owner-confirmed former-root cleanup: after all gates pass, require
       the exact owner approval phrase before running any generated destructive
       command.
@@ -626,7 +629,7 @@ Targeted tests:
 | G7 Knowledge/RAG/Citations               | Complete    | Live MinerU + Jina + Postgres strict citation loop passed                            |
 | G8 Teams/Knowledge UI                    | Complete    | G8.1-G8.5 frontend control-plane wiring and isolation smoke passed                   |
 | G9 Data Authority/Route Removal          | Complete    | G9.1-G9.6 route freeze, route deletion, local write-authority, and clean-copy preflight passed |
-| G10 Final Closure/Delete Plan            | In progress | G10.1, G10.2a, and G10.3a complete; production immutable backup/restore, browser visual smoke, and owner-confirmed cleanup remain |
+| G10 Final Closure/Delete Plan            | In progress | G10.1, G10.2a, and G10.3 complete; production immutable backup/restore and owner-confirmed cleanup remain |
 
 ## Update Discipline
 

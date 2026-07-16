@@ -29,6 +29,70 @@ implemented, tested, and recorded, create a focused Git commit for that
 completed group before starting the next group. Do not batch unrelated future
 groups into the same commit.
 
+## 2026-07-16 — G10.3b Browser Screenshot/Interaction Smoke
+
+Objective: complete the remaining browser-backed desktop/mobile visual smoke
+using the Windows Chrome binary available from WSL.
+
+Completed scope:
+
+- used Windows Chrome at
+  `C:\Program Files\Google\Chrome\Application\chrome.exe`;
+- avoided WSL UNC profile paths after Chrome rejected them; used Windows Temp
+  for the Chrome profile and screenshot output;
+- drove Chrome through a short CDP script run by Windows Python because WSL
+  could not connect to Chrome's Windows loopback CDP port;
+- captured desktop `1365x768` and mobile `390x844` screenshots before and
+  after interaction;
+- verified the app shell title, `新建对话`/existing chat context, composer
+  placeholder `随便问点什么…`, model/provider control visibility, and controls
+  count;
+- clicked model, Knowledge, and search controls in both desktop and mobile
+  contexts;
+- visually confirmed the desktop citation card (`知识引用（1 条）`, `STRICT`,
+  model `GPT-5.5`), desktop Knowledge management page, mobile navigation drawer,
+  and server-mode search fail-closed toast;
+- removed the temporary Chrome profile after capture while keeping PNG/summary
+  evidence in Windows Temp.
+
+Verification:
+
+```text
+C:\Program Files\Google\Chrome\Application\chrome.exe --headless=new
+  # probe screenshot passed after moving profile/output to Windows Temp
+
+Windows Python CDP smoke:
+- desktop viewport: 1365x768
+- mobile viewport: 390x844 (deviceScaleFactor=2, output 780x1688)
+- desktop base: title `Neo Chat - 本地优先的 AI 对话工作台`, bodyLength=885,
+  hasNewChat=True, hasSendPlaceholder=True, controlCount=63,
+  composerTag=TEXTAREA, composerPlaceholder=`随便问点什么…`
+- desktop interaction: typed=True, clickedModel=True, clickedKnowledge=True,
+  clickedSearch=True
+- mobile base: title `Neo Chat - 本地优先的 AI 对话工作台`, bodyLength=415,
+  hasNewChat=True, hasSendPlaceholder=True, controlCount=39,
+  composerTag=TEXTAREA, composerPlaceholder=`随便问点什么…`
+- mobile interaction: typed=True, clickedModel=True, clickedKnowledge=True,
+  clickedSearch=True, dialogLikeCount=1
+```
+
+Evidence files:
+
+```text
+C:\Users\Administrator\AppData\Local\Temp\mm-chat-g10-browser-smoke\cdp-win\summary.json
+C:\Users\Administrator\AppData\Local\Temp\mm-chat-g10-browser-smoke\cdp-win\desktop-initial.png
+C:\Users\Administrator\AppData\Local\Temp\mm-chat-g10-browser-smoke\cdp-win\desktop-after-interaction.png
+C:\Users\Administrator\AppData\Local\Temp\mm-chat-g10-browser-smoke\cdp-win\mobile-initial.png
+C:\Users\Administrator\AppData\Local\Temp\mm-chat-g10-browser-smoke\cdp-win\mobile-after-interaction.png
+```
+
+Residual blockers:
+
+```text
+G10.3 is complete. G10.2b production immutable-env backup/restore closure and
+G10.4 separate owner-confirmed former-root cleanup remain.
+```
+
 ## 2026-07-16 — G10.3a Automated UI/Visual Contract Smoke
 
 Objective: cover the visual/interaction contract with available automated

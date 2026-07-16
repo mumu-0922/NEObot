@@ -1199,17 +1199,19 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           `.env.single-server` is not a production immutable-image env
           (`FRONTEND_IMAGE` preflight missing), so the final deletion gate still
           needs production backup/restore evidence.
-  - [ ] G10.3 Visual/interaction closure: record desktop/mobile smoke for app
+  - [x] G10.3 Visual/interaction closure: record desktop/mobile smoke for app
         shell, chat streaming, model/provider visibility, Knowledge citation
         cards, Files/upload when configured, and navigation.
     - [x] G10.3a Automated UI/visual contract smoke: 70 frontend tests passed
           for app shell/mobile accessibility, citation styling/cards, markdown
           rendering, server Knowledge wiring, model resolution, and server
           defaults; HTTP app shell returned valid Next HTML.
-    - [ ] G10.3b Browser screenshot/interaction smoke: Playwright MCP could not
-          start because Chrome is not installed at `/opt/google/chrome/chrome`;
-          rerun desktop/mobile browser automation after a browser binary is
-          available.
+    - [x] G10.3b Browser screenshot/interaction smoke: Windows Chrome at
+          `C:\Program Files\Google\Chrome\Application\chrome.exe` ran CDP smoke
+          for desktop `1365x768` and mobile `390x844`, captured four PNGs,
+          verified app shell/composer/model controls, clicked model/Knowledge/
+          search controls, showed the Knowledge citation card and mobile drawer,
+          and preserved the server-mode search fail-closed toast.
   - [ ] G10.4 Owner-confirmed former-root cleanup: require the exact owner
         approval phrase before running any generated destructive command.
 
