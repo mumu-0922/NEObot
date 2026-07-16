@@ -2130,6 +2130,72 @@ Residual risk:
 - No live MinerU quota is consumed by this slice; the first real provider smoke
   remains in G7.8 or an explicitly owner-authorized bounded smoke cut.
 
+## 2026-07-16 — G7.5.28 Default-off MinerU Full Markdown Text Baseline Mapper
+
+Objective: turn the hash-bound MinerU mapper input into projection-ready parser
+artifacts using only `full.md` text, without claiming page/table/formula/image
+schema interpretation.
+
+Implemented behavior:
+
+- Extended `MinerULocalBatchGateway` with
+  `build_text_baseline_parse_artifacts(...)`.
+- The mapper accepts only `MinerULocalBatchCanonicalMappingInput` plus an
+  explicit worker-owned `artifact_set_id`.
+- It emits `ParsedDocumentArtifacts` with deterministic `canonical-ir.v2` and
+  `chunk-manifest.v2` objects:
+  - PDF source byte/hash metadata is preserved from the object source.
+  - `full.md` becomes one paragraph block in the Canonical IR text buffer.
+  - Parent/child chunks are deterministic and use the frozen
+    `MINERU_TEXT_BASELINE_CHUNK_PROFILE_HASH`.
+  - Locators use text-range anchors over the `full.md` text baseline and avoid
+    inventing page bbox evidence.
+  - Provenance binds the block to the full-Markdown role digest.
+- Long Markdown is split on UTF-8 code point boundaries into bounded child
+  chunks, avoiding multibyte split corruption.
+- Unit tests feed the emitted artifacts through G7.4
+  `build_postgres_projection_batch(...)`, proving the baseline mapper can stage
+  rows through the current pure projection model.
+- This slice still does not interpret MinerU `content_list`, `layout/middle`, or
+  `model` schemas; page/table/formula/image citations remain separate mapper
+  cuts.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. No
+  provider quota is consumed by tests.
+
+Touched files:
+
+```text
+rag/src/mm_chat_rag/mineru_gateway.py
+rag/tests/unit/test_mineru_gateway.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && uv run ruff check \
+  src/mm_chat_rag/mineru_gateway.py tests/unit/test_mineru_gateway.py
+# passed
+
+cd mm-chat/rag && uv run mypy \
+  src/mm_chat_rag/mineru_gateway.py tests/unit/test_mineru_gateway.py
+# passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider tests/unit/test_mineru_gateway.py
+# 83 passed
+```
+
+Residual risk:
+
+- This is a text-baseline mapper only. Page/table/formula/image-level citations
+  still require Provider artifact schema mapping from `content_list`,
+  `layout/middle`, and `model`.
+- Parser-handler composition and production registry promotion remain gated.
+- No live MinerU quota is consumed by this slice; the first real provider smoke
+  remains in G7.8 or an explicitly owner-authorized bounded smoke cut.
+
 ## 2026-07-16 — G7.5.27 Default-off MinerU Canonical Mapping Input
 
 Objective: bind decoded MinerU role payloads back to the exact source/archive

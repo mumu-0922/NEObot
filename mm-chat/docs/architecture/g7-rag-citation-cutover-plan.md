@@ -701,6 +701,28 @@ G7.5.27 completed on 2026-07-16:
 - Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
   slice does not spend provider quota in tests.
 
+G7.5.28 completed on 2026-07-16:
+
+- Added a default-off MinerU `full.md` text-baseline mapper on
+  `MinerULocalBatchGateway`.
+- The mapper accepts only the G7.5.27 hash-bound canonical mapping input plus an
+  explicit worker-owned `artifact_set_id`, then returns `ParsedDocumentArtifacts`
+  containing projection-ready `canonical-ir.v2` and `chunk-manifest.v2` objects.
+- The baseline intentionally uses only `full.md` text for one paragraph block and
+  deterministic parent/child chunks. It preserves PDF source hash/byte metadata,
+  deterministic locator summaries, text range anchors, provenance references,
+  and a frozen text-baseline chunk profile hash.
+- Long Markdown is split on UTF-8 code point boundaries into bounded child
+  chunks so the projection lane can stage multiple chunks without splitting a
+  multibyte character.
+- This slice proves compatibility with the G7.4
+  `build_postgres_projection_batch(...)` row model in unit tests.
+- This slice still does not interpret MinerU `content_list`, `layout/middle`, or
+  `model` schemas for page/table/formula/image citations; those remain separate
+  mapper cuts before parser-handler composition or registry promotion.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
+  slice does not spend provider quota in tests.
+
 Remaining G7.5 work:
 
 - Complete the rest of the MinerU local-batch execution chain: Canonical IR and
@@ -765,6 +787,10 @@ Validation:
   hash binding, deterministic role digest ordering, decoded payload reuse, no
   entry-name/IR/manifest exposure, source mismatch rejection, and decode-gate
   reuse.
+- MinerU full-Markdown text-baseline mapper tests, including projection-ready
+  `ParsedDocumentArtifacts`, deterministic `canonical-ir.v2` and
+  `chunk-manifest.v2` output, G7.4 projection row compatibility, long Markdown
+  chunk splitting, and wrong-input rejection.
 - Retry-three-times and terminal-failure tests.
 
 ### G7.6 Private query and Go reauthorization

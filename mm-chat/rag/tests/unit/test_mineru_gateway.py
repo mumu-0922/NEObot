@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 import stat
+import uuid
 import zipfile
 from typing import Any
 
@@ -28,10 +29,12 @@ from mm_chat_rag.mineru_gateway import (
     MINERU_GATEWAY_UPLOAD_STATUS_INVALID,
     MINERU_GATEWAY_UPLOAD_URL_INVALID,
     MINERU_POLL_URL_PREFIX,
+    MINERU_TEXT_BASELINE_CHUNK_PROFILE_HASH,
     MinerULocalBatchAllocation,
     MinerULocalBatchGateway,
     MinerULocalBatchPollResult,
 )
+from mm_chat_rag.projection import ProjectionContext, build_postgres_projection_batch
 from mm_chat_rag.retry import PermanentJobError, RetryableJobError
 
 SECRET = "unit-test-mineru-token"
@@ -47,6 +50,16 @@ ARCHIVE_ENTRIES = (
     ("fixture_content_list.json", b"[]"),
     ("layout.json", b"{}"),
     ("fixture_model.json", b"{}"),
+)
+ARTIFACT_SET_ID = uuid.UUID("50000000-0000-0000-0000-000000000001")
+PROJECTION_CONTEXT = ProjectionContext(
+    collection_id=uuid.UUID("10000000-0000-0000-0000-000000000001"),
+    document_id=uuid.UUID("20000000-0000-0000-0000-000000000001"),
+    document_version_id=uuid.UUID("30000000-0000-0000-0000-000000000001"),
+    file_id=uuid.UUID("40000000-0000-0000-0000-000000000001"),
+    artifact_set_id=ARTIFACT_SET_ID,
+    materialization_id=uuid.UUID("60000000-0000-0000-0000-000000000001"),
+    index_generation_id=uuid.UUID("70000000-0000-0000-0000-000000000001"),
 )
 
 
@@ -161,6 +174,23 @@ def _done_poll_result(result_url: str = RESULT_URL) -> MinerULocalBatchPollResul
         state="done",
         result_url=result_url,
     )
+
+
+def _mapping_input(
+    *,
+    text: str = "Alpha 123\n\nBeta",
+) -> mineru_module.MinerULocalBatchCanonicalMappingInput:
+    gateway = MinerULocalBatchGateway(SECRET)
+    archive_body = _archive(
+        (
+            ("full.md", text.encode()),
+            ("fixture_content_list.json", b'[{"type":"text","text":"ok"}]'),
+            ("layout.json", b'{"pages":[{"page":0}]}'),
+            ("fixture_model.json", b'{"model":"vlm"}'),
+        )
+    )
+    artifacts = gateway.extract_result_archive_artifacts(object(), archive_body)
+    return gateway.prepare_canonical_mapping_input(object(), _source(), artifacts)
 
 
 async def test_mineru_gateway_missing_token_fails_before_http() -> None:
@@ -1037,6 +1067,89 @@ def test_mineru_gateway_prepare_mapping_input_reuses_decode_gates() -> None:
             object(),
             _source(),
             artifacts,
+        )
+
+    assert raised.value.error_code == MINERU_GATEWAY_ARTIFACT_INVALID
+
+
+def test_mineru_gateway_builds_text_baseline_parse_artifacts() -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+    text_body = b"Alpha 123\n\nBeta"
+    mapping_input = _mapping_input(text="Alpha 123\n\nBeta")
+
+    artifacts = gateway.build_text_baseline_parse_artifacts(
+        object(),
+        mapping_input,
+        artifact_set_id=ARTIFACT_SET_ID,
+    )
+    batch = build_postgres_projection_batch(
+        artifacts.canonical_ir,
+        artifacts.chunk_manifest,
+        PROJECTION_CONTEXT,
+    )
+
+    assert artifacts.artifact_set_id == ARTIFACT_SET_ID
+    assert artifacts.canonical_ir["schemaVersion"] == "canonical-ir.v2"
+    assert artifacts.canonical_ir["source"] == {
+        "bytes": len(PDF_BODY),
+        "format": "pdf",
+        "sha256": hashlib.sha256(PDF_BODY).hexdigest(),
+    }
+    assert artifacts.canonical_ir["textBuffer"] == {
+        "bytes": len(text_body),
+        "encoding": "utf-8",
+        "sha256": hashlib.sha256(text_body).hexdigest(),
+        "text": "Alpha 123\n\nBeta",
+    }
+    assert artifacts.chunk_manifest["schemaVersion"] == "chunk-manifest.v2"
+    assert artifacts.chunk_manifest["chunkProfileHash"] == (
+        MINERU_TEXT_BASELINE_CHUNK_PROFILE_HASH
+    )
+    assert artifacts.chunk_manifest["parentCount"] == 1
+    assert artifacts.chunk_manifest["childCount"] == 1
+    assert artifacts.chunk_manifest["spanCount"] == 2
+    assert len(batch.blocks) == 1
+    assert len(batch.parent_chunks) == 1
+    assert len(batch.child_chunks) == 1
+    assert len(batch.chunk_block_spans) == 2
+    assert batch.blocks[0].block_type == "paragraph"
+    assert batch.blocks[0].text_content == "Alpha 123\n\nBeta"
+    assert batch.parent_chunks[0].content == "Alpha 123\n\nBeta"
+    assert batch.child_chunks[0].content == "Alpha 123\n\nBeta"
+    assert batch.child_search_projections[0].exact_terms == ("123", "alpha", "beta")
+    assert batch.chunk_profile_hash == MINERU_TEXT_BASELINE_CHUNK_PROFILE_HASH
+
+
+def test_mineru_gateway_text_baseline_chunks_long_markdown() -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+    mapping_input = _mapping_input(text="甲" * 900)
+
+    artifacts = gateway.build_text_baseline_parse_artifacts(
+        object(),
+        mapping_input,
+        artifact_set_id=ARTIFACT_SET_ID,
+    )
+    batch = build_postgres_projection_batch(
+        artifacts.canonical_ir,
+        artifacts.chunk_manifest,
+        PROJECTION_CONTEXT,
+    )
+
+    assert artifacts.chunk_manifest["parentCount"] == 2
+    assert artifacts.chunk_manifest["childCount"] == 2
+    assert artifacts.chunk_manifest["spanCount"] == 4
+    assert [chunk.token_count for chunk in batch.child_chunks] == [600, 75]
+    assert "".join(chunk.content for chunk in batch.child_chunks) == "甲" * 900
+
+
+def test_mineru_gateway_text_baseline_rejects_wrong_mapping_input() -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+
+    with pytest.raises(PermanentJobError) as raised:
+        gateway.build_text_baseline_parse_artifacts(
+            object(),
+            object(),  # type: ignore[arg-type]
+            artifact_set_id=ARTIFACT_SET_ID,
         )
 
     assert raised.value.error_code == MINERU_GATEWAY_ARTIFACT_INVALID

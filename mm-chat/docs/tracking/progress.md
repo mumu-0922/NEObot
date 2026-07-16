@@ -1059,8 +1059,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         and `G7.5.24` default-off MinerU result ZIP archive validation done;
         `G7.5.25` default-off MinerU archive artifact extraction done, and
         `G7.5.26` default-off MinerU artifact decode admission done, and
-        `G7.5.27` default-off MinerU canonical mapping input done; real handler
-        dispatch still gated).
+        `G7.5.27` default-off MinerU canonical mapping input done, and
+        `G7.5.28` default-off MinerU full-Markdown text-baseline mapper done;
+        real handler dispatch still gated).
   - [ ] G7.6 Private query and Go reauthorization.
   - [ ] G7.7 Strict/optional chat answer and basic citations.
   - [ ] G7.8 Live MinerU + Jina + Postgres smoke and operational proof.
