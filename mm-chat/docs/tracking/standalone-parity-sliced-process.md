@@ -29,6 +29,56 @@ implemented, tested, and recorded, create a focused Git commit for that
 completed group before starting the next group. Do not batch unrelated future
 groups into the same commit.
 
+## 2026-07-16 — G10.3a Automated UI/Visual Contract Smoke
+
+Objective: cover the visual/interaction contract with available automated
+frontend tests and HTTP app-shell smoke while browser screenshot automation is
+blocked by the missing Chrome binary.
+
+Completed scope:
+
+- attempted Playwright MCP browser smoke; it could not start because Chrome is
+  missing at `/opt/google/chrome/chrome`;
+- ran targeted frontend tests covering mobile app shell accessibility, mobile
+  metadata tooltip behavior, citation styles/cards, markdown HTML rendering,
+  server Knowledge Base composition, selected Knowledge collection composition,
+  model resolution, and server defaults/model visibility;
+- fetched the running frontend root over HTTP and verified it returns a valid
+  Next HTML shell with body and static asset references.
+
+Verification:
+
+```text
+Playwright MCP navigate http://127.0.0.1:18080/
+  # blocked: Chromium distribution 'chrome' is not found at /opt/google/chrome/chrome
+
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/chatShellA11y.test.ts \
+  src/__tests__/messageMetaTooltip.test.ts \
+  src/__tests__/darkThemeTokens.test.ts \
+  src/__tests__/citations.test.ts \
+  src/__tests__/markdownHtmlRendering.test.tsx \
+  src/__tests__/serverKnowledgeBaseComposition.test.ts \
+  src/__tests__/serverKnowledgeSelectionComposition.test.ts \
+  src/__tests__/modelUtils.test.ts \
+  src/__tests__/serverDefaults.test.ts
+  # 9 files passed, 70 tests passed
+
+curl -fsS http://127.0.0.1:18080/
+  # has_next_root=True
+  # has_static_next=True
+  # has_body=True
+  # bytes=96881
+```
+
+Residual blockers:
+
+```text
+G10.3b still needs real browser desktop/mobile screenshot and interaction smoke
+after Chrome/Chromium is available. This slice does not claim screenshot
+coverage.
+```
+
 ## 2026-07-16 — G10.1 Former-root Delete-plan Dry Run
 
 Objective: prepare the destructive cleanup gate without deleting anything.

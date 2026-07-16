@@ -1202,6 +1202,14 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
   - [ ] G10.3 Visual/interaction closure: record desktop/mobile smoke for app
         shell, chat streaming, model/provider visibility, Knowledge citation
         cards, Files/upload when configured, and navigation.
+    - [x] G10.3a Automated UI/visual contract smoke: 70 frontend tests passed
+          for app shell/mobile accessibility, citation styling/cards, markdown
+          rendering, server Knowledge wiring, model resolution, and server
+          defaults; HTTP app shell returned valid Next HTML.
+    - [ ] G10.3b Browser screenshot/interaction smoke: Playwright MCP could not
+          start because Chrome is not installed at `/opt/google/chrome/chrome`;
+          rerun desktop/mobile browser automation after a browser binary is
+          available.
   - [ ] G10.4 Owner-confirmed former-root cleanup: require the exact owner
         approval phrase before running any generated destructive command.
 
