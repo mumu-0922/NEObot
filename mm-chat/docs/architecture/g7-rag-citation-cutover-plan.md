@@ -904,6 +904,19 @@ G7.5F completed on 2026-07-16:
 - The test database is disposable and removed after the run. No provider API is
   called.
 
+G7.5G completed on 2026-07-16:
+
+- Extended the explicit worker promotion factory to the `passage_embedding`
+  stage by composing the existing Jina gateway dependency bundle with the
+  Postgres projection gateway.
+- `RAG_WORKER_JOB_STAGES=passage_embedding` now builds a promoted handler only
+  when validated Jina settings and the provider profile are present.
+- Parse remains intentionally unpromoted; mixed
+  `parse,passage_embedding,purge` settings still fail the startup gate until the
+  parse source/MinerU/projection dependency factory is wired.
+- Frozen module-level `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain
+  empty. This slice does not call Jina in tests and consumes no provider quota.
+
 Remaining G7.5 work:
 
 - G7.5T disposable PostgreSQL integration gate has been restored and proven
@@ -933,8 +946,9 @@ Remaining G7.5 work:
   disposable PostgreSQL. Operational purge closure still needs long-running
   worker lifecycle/health coverage and deployment env wiring, but the claim →
   handler → projection → finish loop is proven.
-- Promote the composed default-off Jina + Postgres embedding dependencies only
-  behind an explicit readiness/registry gate.
+- G7.5G is complete: passage embedding can now be promoted explicitly from
+  worker settings through the Jina + Postgres dependency bundle. A live
+  job-runner smoke for embedding remains pending before operational closure.
 - Implement index, reprocess, tombstone purge, rebuild, retry, and DLQ behavior.
 - Promote handlers one stage at a time behind readiness and registry gates.
 
@@ -963,6 +977,8 @@ Validation:
   job-only promotion, and missing-stage-handler rejection.
 - Promoted purge job-runner smoke against disposable PostgreSQL, including
   pending-job claim, succeeded finish, lease cleanup, and child-search purge.
+- Worker passage-embedding promotion tests, including Jina settings/profile
+  admission and parse-stage non-promotion.
 - MinerU local-batch allocate tests, including missing-token no-HTTP behavior,
   PDF/size/filename gates, locked request body, retryable status/transport
   mapping, response validation, signed-upload URL validation, and redaction.

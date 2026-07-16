@@ -1076,7 +1076,8 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         promotion gate split from outbox registry gate; `G7.5E` explicit purge
         handler promotion factory added without provider quota; `G7.5F`
         promoted purge job-runner live smoke done against disposable
-        PostgreSQL).
+        PostgreSQL; `G7.5G` explicit passage-embedding promotion factory added
+        without live provider calls).
   - [ ] G7.6 Private query and Go reauthorization.
   - [ ] G7.7 Strict/optional chat answer and basic citations.
   - [ ] G7.8 Live MinerU + Jina + Postgres smoke and operational proof.

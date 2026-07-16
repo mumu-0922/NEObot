@@ -19,9 +19,12 @@ from mm_chat_rag.handlers import (
     JobHandler,
 )
 from mm_chat_rag.health import ReadinessState, create_health_app
+from mm_chat_rag.jina_gateway import build_jina_passage_embedding_handler_dependencies
 from mm_chat_rag.job_handler_dependencies import (
+    PassageEmbeddingProjectionGateway,
     PurgeHandlerDependencies,
     PurgeProjectionGateway,
+    admitted_passage_embedding_handler_with_dependencies,
     admitted_purge_handler_with_dependencies,
 )
 from mm_chat_rag.jobs import JobRunner
@@ -41,10 +44,22 @@ class WorkerStartupError(RuntimeError):
 def build_promoted_job_handler_registry(
     settings: Settings,
     *,
+    passage_embedding_projection: PassageEmbeddingProjectionGateway,
     purge_projection: PurgeProjectionGateway,
 ) -> Mapping[str, JobHandler]:
     """Build explicitly enabled job handlers without mutating frozen registries."""
     handlers: dict[str, JobHandler] = {}
+    if "passage_embedding" in settings.job_stages:
+        embedding_dependencies = build_jina_passage_embedding_handler_dependencies(
+            api_key=settings.jina_api_key,
+            projection=passage_embedding_projection,
+        )
+        handlers["passage_embedding"] = (
+            admitted_passage_embedding_handler_with_dependencies(
+                embedding_dependencies,
+                settings.provider_profile,
+            )
+        )
     if "purge" in settings.job_stages:
         handlers["purge"] = admitted_purge_handler_with_dependencies(
             PurgeHandlerDependencies(projection=purge_projection)
@@ -83,6 +98,7 @@ class Worker:
         if job_handlers is JOB_HANDLER_REGISTRY and settings.job_stages:
             self.job_handlers = build_promoted_job_handler_registry(
                 settings,
+                passage_embedding_projection=self.database,
                 purge_projection=self.database,
             )
         else:

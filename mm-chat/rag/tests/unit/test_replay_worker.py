@@ -214,7 +214,24 @@ def test_worker_auto_promotes_only_purge_stage_from_settings() -> None:
     assert worker.state.consumer == "disabled"
 
 
-def test_worker_does_not_auto_promote_provider_stages() -> None:
+def test_worker_auto_promotes_passage_embedding_stage_from_settings() -> None:
+    settings = Settings(
+        database_url="postgresql://test",
+        dispatch_enabled=True,
+        job_stages=("passage_embedding",),
+        jina_api_key="fake-jina-key",
+        provider_profile=provider_profile(),
+    )
+    worker = Worker(settings)
+
+    worker.validate_promotion_gate()
+
+    assert set(worker.job_handlers) == {"passage_embedding"}
+    assert worker.dispatch_registry == {}
+    assert worker.state.consumer == "disabled"
+
+
+def test_worker_does_not_auto_promote_parse_stage() -> None:
     settings = Settings(
         database_url="postgresql://test",
         dispatch_enabled=True,
@@ -228,7 +245,7 @@ def test_worker_does_not_auto_promote_provider_stages() -> None:
     with pytest.raises(WorkerStartupError, match="no promoted handler"):
         worker.validate_promotion_gate()
 
-    assert set(worker.job_handlers) == {"purge"}
+    assert set(worker.job_handlers) == {"passage_embedding", "purge"}
 
 
 async def test_worker_readiness_refresh_preserves_dark_run_consumer() -> None:

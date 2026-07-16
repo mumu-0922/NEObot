@@ -3332,3 +3332,67 @@ Residual risk:
   worker lifecycle with health server, Redis wakeups, or deployment env files.
 - Parse and passage-embedding promotions remain gated; no MinerU/Jina provider
   calls were made and no provider quota was consumed.
+
+## 2026-07-16 — G7.5G Explicit Passage-embedding Promotion Factory
+
+Objective: promote the already tested Jina + Postgres passage-embedding
+dependency bundle through the worker factory, while keeping parse unpromoted and
+avoiding any live provider call in this slice.
+
+Implemented behavior:
+
+- Extended `build_promoted_job_handler_registry(...)` so
+  `RAG_WORKER_JOB_STAGES=passage_embedding` builds a handler with:
+  - `build_jina_passage_embedding_handler_dependencies(...)`;
+  - the worker `PostgresAdapter` as projection gateway;
+  - `admitted_passage_embedding_handler_with_dependencies(...)`;
+  - the validated `ProviderRuntimeProfile`.
+- `purge` promotion remains unchanged.
+- `parse` remains intentionally absent from the factory, so mixed
+  `parse,passage_embedding,purge` settings still fail closed on missing parse
+  handler promotion.
+- Module-level `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty.
+
+Touched files:
+
+```text
+rag/src/mm_chat_rag/worker.py
+rag/tests/unit/test_replay_worker.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && \
+  uv run ruff check src/mm_chat_rag/worker.py tests/unit/test_replay_worker.py
+# passed
+
+cd mm-chat/rag && \
+  uv run mypy src/mm_chat_rag/worker.py tests/unit/test_replay_worker.py
+# passed
+
+cd mm-chat/rag && \
+  uv run pytest -p no:cacheprovider \
+  tests/unit/test_replay_worker.py tests/unit/test_jina_gateway.py \
+  tests/unit/test_job_handler_dependencies.py tests/unit/test_settings.py -v
+# 78 passed
+
+cd mm-chat/rag && \
+  uv run pytest -p no:cacheprovider \
+  tests/unit/test_parser_runtime_boundary.py \
+  tests/unit/test_parser_deployment_boundary.py \
+  tests/unit/test_provider_capture.py -v
+# 67 passed
+```
+
+Residual risk:
+
+- This is a settings-gated handler factory proof only; it does not claim a live
+  embedding job and does not call Jina.
+- A disposable PostgreSQL job-runner smoke with mocked or real Jina remains
+  pending before embedding dispatch can be called operationally closed.
+- Parse promotion remains blocked until source-object, MinerU archive provider,
+  parse projection, and provider-smoke gates are connected.
