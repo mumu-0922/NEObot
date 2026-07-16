@@ -1332,13 +1332,27 @@ G7.7A completed on 2026-07-16:
   SSE compatibility is preserved with `message.started`, `message.delta`, and
   `message.completed`.
 
+G7.7B completed on 2026-07-16:
+
+- Added Go-owned citation minting for hydrated evidence before any answer-model
+  context injection. Each citation receives a deterministic hash-bound
+  `cit_*` ID, `[n]` marker, selected collection/document/version/generation and
+  chunk identifiers, source-span hash, content hash, locator JSON, rank score,
+  and a bounded whitespace-normalized snippet.
+- Citation minting fails closed if hydrated evidence lacks source text, valid
+  locator JSON, or required hash/chunk bindings. Strict Knowledge still refuses
+  rather than persisting forged or unverifiable citation metadata.
+- The strict refusal metadata now includes `citationCount` and, when evidence
+  reached the pending answer gate, `citations`. This gives the frontend a basic
+  card contract without sending hydrated source text to the answer provider.
+
 Remaining G7.7 slices:
 
 - Wire RAG answer generation into Go chat flow or a Go-owned RAG answer route.
-- Add answer-purpose provider consent/governance and citation minting before any
-  hydrated source text reaches an answer provider.
+- Add answer-purpose provider consent/governance before any hydrated source text
+  reaches an answer provider.
 - Strict mode refuses unknowns; normal chat may degrade with explicit metadata.
-- Persist message/citation metadata atomically where applicable.
+- Persist successful answer/citation metadata atomically where applicable.
 - Frontend renders basic citation markers/cards for selected Knowledge answers.
 
 Validation:

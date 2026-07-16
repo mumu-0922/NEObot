@@ -60,6 +60,9 @@ func TestRAGAnswerAssemblerStopsAtAnswerGateWhenEvidenceHydrates(t *testing.T) {
 	if len(result.Evidence) != 1 || result.Evidence[0].SourceText != "alpha evidence source" {
 		t.Fatalf("evidence = %#v", result.Evidence)
 	}
+	if len(result.Citations) != 1 || result.Citations[0].Marker != "[1]" || result.Citations[0].Snippet != "alpha evidence source" {
+		t.Fatalf("citations = %#v", result.Citations)
+	}
 	if source.query.QueryText != "What does alpha say?" || source.query.Limit != defaultRAGCandidateLimit {
 		t.Fatalf("candidate query = %#v", source.query)
 	}

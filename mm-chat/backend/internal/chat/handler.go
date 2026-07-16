@@ -1105,9 +1105,9 @@ func (h *Handler) streamStrictRAGRefusal(
 	runID string,
 	selection ragSelection,
 ) {
-	outcome := h.strictRAGOutcome(r.Context(), conversationID, userMessage, selection)
+	decision := h.strictRAGDecision(r.Context(), conversationID, userMessage, selection)
 	content := ragRefusalText()
-	metadata := strictRAGRefusalMetadata(runID, selection, outcome)
+	metadata := strictRAGRefusalMetadata(runID, selection, decision)
 
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -1189,15 +1189,20 @@ func (h *Handler) streamStrictRAGRefusal(
 	flusher.Flush()
 }
 
-func (h *Handler) strictRAGOutcome(
+type strictRAGDecision struct {
+	Outcome   string
+	Citations []RAGCitation
+}
+
+func (h *Handler) strictRAGDecision(
 	ctx context.Context,
 	conversationID string,
 	userMessage Message,
 	selection ragSelection,
-) string {
+) strictRAGDecision {
 	session, ok := auth.SessionFromContext(ctx)
 	if !ok {
-		return "insufficient_evidence"
+		return strictRAGDecision{Outcome: "insufficient_evidence"}
 	}
 	result, err := h.ragAssembler.AssembleStrict(ctx, RAGAssemblyInput{
 		ActorUserID:           session.UserID,
@@ -1208,31 +1213,36 @@ func (h *Handler) strictRAGOutcome(
 	})
 	if err == nil {
 		if len(result.Evidence) == 0 {
-			return "insufficient_evidence"
+			return strictRAGDecision{Outcome: "insufficient_evidence"}
 		}
-		return "answer_gate_pending"
+		return strictRAGDecision{Outcome: "answer_gate_pending", Citations: result.Citations}
 	}
 	if errors.Is(err, ErrRAGAnswerGatePending) {
-		return "answer_gate_pending"
+		return strictRAGDecision{Outcome: "answer_gate_pending", Citations: result.Citations}
 	}
 	if errors.Is(err, ErrRAGDependencyUnavailable) {
-		return "dependency_unavailable"
+		return strictRAGDecision{Outcome: "dependency_unavailable"}
 	}
 	if errors.Is(err, ErrRAGInsufficientEvidence) {
-		return "insufficient_evidence"
+		return strictRAGDecision{Outcome: "insufficient_evidence"}
 	}
 
-	return "dependency_unavailable"
+	return strictRAGDecision{Outcome: "dependency_unavailable"}
 }
 
-func strictRAGRefusalMetadata(runID string, selection ragSelection, outcome string) map[string]any {
+func strictRAGRefusalMetadata(runID string, selection ragSelection, decision strictRAGDecision) map[string]any {
+	knowledgeMetadata := map[string]any{
+		"mode":                  "strict",
+		"outcome":               decision.Outcome,
+		"selectedCollectionIds": append([]string(nil), selection.CollectionIDs...),
+		"citationCount":         len(decision.Citations),
+	}
+	if len(decision.Citations) > 0 {
+		knowledgeMetadata["citations"] = append([]RAGCitation(nil), decision.Citations...)
+	}
 	return map[string]any{
-		"runId": runID,
-		"knowledge": map[string]any{
-			"mode":                  "strict",
-			"outcome":               outcome,
-			"selectedCollectionIds": append([]string(nil), selection.CollectionIDs...),
-		},
+		"runId":     runID,
+		"knowledge": knowledgeMetadata,
 	}
 }
 

@@ -757,6 +757,17 @@ func TestHandlerStrictRAGFailsClosedWhenAnswerGatePending(t *testing.T) {
 		t.Fatal("provider StreamChat was called before strict RAG answer gate")
 	}
 	assertStrictRAGRefusalMessage(t, repo, "answer_gate_pending")
+	knowledgeMetadata := repo.messages[testConversationID][1].Metadata["knowledge"].(map[string]any)
+	if knowledgeMetadata["citationCount"] != 1 {
+		t.Fatalf("citationCount = %#v, want 1", knowledgeMetadata["citationCount"])
+	}
+	citations, ok := knowledgeMetadata["citations"].([]RAGCitation)
+	if !ok || len(citations) != 1 {
+		t.Fatalf("citations = %#v", knowledgeMetadata["citations"])
+	}
+	if citations[0].Marker != "[1]" || citations[0].Snippet != "alpha evidence source" {
+		t.Fatalf("citation = %#v", citations[0])
+	}
 }
 
 func TestHandlerStreamsEmptyAssistantContent(t *testing.T) {
@@ -1559,6 +1570,9 @@ func assertStrictRAGRefusalMessage(t *testing.T, repo *fakeRepository, wantOutco
 	}
 	if knowledgeMetadata["mode"] != "strict" || knowledgeMetadata["outcome"] != wantOutcome {
 		t.Fatalf("assistant knowledge metadata = %#v, want outcome %q", knowledgeMetadata, wantOutcome)
+	}
+	if count, ok := knowledgeMetadata["citationCount"].(int); !ok || count < 0 {
+		t.Fatalf("citationCount = %#v", knowledgeMetadata["citationCount"])
 	}
 	selected, ok := knowledgeMetadata["selectedCollectionIds"].([]string)
 	if !ok || len(selected) != 1 || selected[0] != "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" {

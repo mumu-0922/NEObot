@@ -4434,3 +4434,53 @@ Residual risk:
   next G7.7 slices.
 - The current refusal text is a stable strict-mode placeholder and may need i18n
   or product-copy adjustment when the frontend citation UX is wired.
+
+## 2026-07-16 — G7.7B Go Citation Minting Skeleton
+
+Objective: mint Go-owned citation metadata from already reauthorized hydrated
+RAG evidence before any hydrated source text is allowed into answer-provider
+context.
+
+Implemented behavior:
+
+- Added `RAGCitation` metadata with deterministic `cit_*` IDs, `[n]` markers,
+  selected collection/document/version/generation/materialization identifiers,
+  parent/child chunk IDs, source-span hash, content hash, locator JSON, rank
+  score, and a bounded whitespace-normalized snippet.
+- `RAGAnswerAssembler` now mints citations after G7.6B reauthorization and
+  before the still-pending answer-provider gate. Citation minting fails closed
+  if the hydrated evidence lacks source text, valid locator JSON, or required
+  hash/chunk bindings.
+- Strict Knowledge refusal metadata now records `citationCount` and includes
+  `citations` when evidence reached the pending answer gate. The answer provider
+  is still not called in this slice.
+
+Touched files:
+
+```text
+backend/internal/chat/rag_citation.go
+backend/internal/chat/rag_citation_test.go
+backend/internal/chat/rag_assembly.go
+backend/internal/chat/rag_assembly_test.go
+backend/internal/chat/handler.go
+backend/internal/chat/handler_test.go
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && \
+  GOCACHE=/tmp/neo-chat-go-build go test ./internal/chat -count=1
+# passed
+```
+
+Residual risk:
+
+- G7.7B still deliberately refuses before answer-provider context injection.
+  Answer-purpose governance, grounded answer assembly, optional-mode degradation
+  metadata, and frontend citation rendering remain subsequent G7.7 slices.
+- Citation cards currently use document IDs and locator JSON from hydrated
+  evidence; richer file-name/title enrichment remains a frontend/API follow-up.

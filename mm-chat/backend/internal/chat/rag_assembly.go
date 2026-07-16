@@ -49,7 +49,8 @@ type RAGAssemblyInput struct {
 }
 
 type RAGAssemblyResult struct {
-	Evidence []knowledge.HydratedEvidence
+	Evidence  []knowledge.HydratedEvidence
+	Citations []RAGCitation
 }
 
 func NewRAGAnswerAssembler(candidates RAGCandidateSource, hydrator RAGEvidenceHydrator) *RAGAnswerAssembler {
@@ -99,10 +100,15 @@ func (a *RAGAnswerAssembler) AssembleStrict(ctx context.Context, input RAGAssemb
 		return RAGAssemblyResult{}, ErrRAGInsufficientEvidence
 	}
 
-	// G7.7A deliberately stops before answer-provider context injection.  The
-	// next slice must add answer-purpose BYOK/governance consent and citation
-	// minting before any hydrated source text is sent to a model provider.
-	return RAGAssemblyResult{Evidence: evidence}, ErrRAGAnswerGatePending
+	citations, err := mintRAGCitations(evidence)
+	if err != nil {
+		return RAGAssemblyResult{}, err
+	}
+
+	// G7.7B deliberately stops before answer-provider context injection.  The
+	// next slice must add answer-purpose BYOK/governance consent before hydrated
+	// source text is sent to a model provider.
+	return RAGAssemblyResult{Evidence: evidence, Citations: citations}, ErrRAGAnswerGatePending
 }
 
 func ragRefusalText() string {
