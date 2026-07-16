@@ -24,4 +24,20 @@ describe("settings UI primitives", () => {
     expect(settingsPage).toContain('id: "memory"');
     expect(settingsPage).toContain("tabMemory");
   });
+
+  it("keeps the standalone settings UI single-user without Team controls", () => {
+    const settingsPage = readFileSync(
+      resolve(process.cwd(), "src/components/settings/SettingsPage.tsx"),
+      "utf8",
+    );
+    const panelUrlState = readFileSync(
+      resolve(process.cwd(), "src/lib/chat/panelUrlState.ts"),
+      "utf8",
+    );
+
+    expect(settingsPage).not.toContain("TeamSettings");
+    expect(settingsPage).not.toContain('id: "teams"');
+    expect(settingsPage).not.toContain("tabTeams");
+    expect(panelUrlState).not.toContain('"teams"');
+  });
 });

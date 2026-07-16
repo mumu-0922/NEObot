@@ -102,7 +102,6 @@
   "serverManageCollectionsSubtitle": "管理服务端知识库合集",
   "serverLoadCollectionsFailed": "加载服务端知识库合集失败。",
   "serverLoadDocumentsFailed": "加载该合集文档失败。",
-  "serverTeamIdRequired": "团队合集需要填写 Team ID。",
   "serverCollectionCreated": "知识库合集已创建。",
   "serverCreateCollectionFailed": "创建知识库合集失败。",
   "serverCollectionUpdated": "知识库合集已更新。",
@@ -122,8 +121,6 @@
   "serverCollectionNamePlaceholder": "合集名称",
   "serverCollectionDescriptionPlaceholder": "合集描述",
   "serverScopePersonal": "个人",
-  "serverScopeTeam": "团队",
-  "serverTeamIdPlaceholder": "Team ID",
   "serverCreateCollection": "创建合集",
   "serverLoadingCollections": "正在加载合集…",
   "serverNoCollections": "暂无服务端合集",
@@ -194,5 +191,6 @@
     "granted": "已授予",
     "revoked": "已撤回",
     "expired": "已过期"
-  }
+  },
+  "serverSingleUserScope": "当前独立单用户版本仅创建个人知识库。"
 }

@@ -17,7 +17,6 @@ export const SETTINGS_TAB_VALUES = [
   "voice",
   "memory",
   "health",
-  "teams",
   "system",
 ] as const;
 

@@ -25,7 +25,6 @@ import Content from "./en/Content.json";
 import ChatApp from "./en/ChatApp.json";
 import Config from "./en/Config.json";
 import Skill from "./en/Skill.json";
-import Team from "./en/Team.json";
 
 const messages = {
   Common,
@@ -55,7 +54,6 @@ const messages = {
   ChatApp,
   Config,
   Skill,
-  Team,
 };
 
 export default messages;

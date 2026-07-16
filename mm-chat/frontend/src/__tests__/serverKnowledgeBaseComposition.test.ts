@@ -88,7 +88,8 @@ describe("G8 server knowledge base UI composition", () => {
 
   it("keeps caller identity and ACL fields out of server Knowledge UI payloads", () => {
     expect(serverKnowledgeBase).toContain("idempotencyKey");
-    expect(serverKnowledgeBase).toContain("teamId");
+    expect(serverKnowledgeBase).toContain('scope: "personal"');
+    expect(serverKnowledgeBase).not.toContain("teamId");
     expect(serverKnowledgeBase).not.toContain("actorUserId");
     expect(serverKnowledgeBase).not.toContain("ownerUserId");
     expect(serverKnowledgeBase).not.toContain("impersonateUserId");
@@ -119,5 +120,8 @@ describe("G8 server knowledge base UI composition", () => {
     expect(en.Knowledge.serverConsentEnvBackedNote).toBeTruthy();
     expect(zh.Knowledge.serverConsentFailClosedNote).toBeTruthy();
     expect(ja.Knowledge.serverConsentStatus.granted).toBeTruthy();
+    expect(en.Knowledge.serverSingleUserScope).toBeTruthy();
+    expect(zh.Knowledge.serverSingleUserScope).toBeTruthy();
+    expect(ja.Knowledge.serverSingleUserScope).toBeTruthy();
   });
 });

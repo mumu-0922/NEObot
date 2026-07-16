@@ -4154,3 +4154,63 @@ G11.2 must delete the Team frontend path for true original single-user parity.
 G11.3 must restore browser-configured provider/model-fetch parity before final
 owner cleanup can resume.
 ```
+
+## 2026-07-17 — G11.2 Owner parity: single-user Team removal
+
+Objective: restore the original single-user product surface instead of leaving a
+nonfunctional Team management page in the standalone frontend.
+
+Completed scope:
+
+- removed the Settings Team tab, `settingsTab=teams` URL value, and Team
+  settings component from the visible frontend;
+- deleted the Team locale bundle and Team-settings composition test that kept
+  the multi-user UI alive;
+- updated settings URL-state coverage so old Team deep links normalize away as
+  invalid settings tabs;
+- made server Knowledge collection creation Personal-only in the standalone UI
+  so users are not asked for Team IDs;
+- kept lower-level backend/API-client Team code untouched for this slice to
+  avoid unsafe migration/schema deletion during an owner-facing UI fix.
+
+Changed surfaces:
+
+```text
+mm-chat/frontend/src/components/settings/SettingsPage.tsx
+mm-chat/frontend/src/components/settings/TeamSettings.tsx
+mm-chat/frontend/src/components/knowledge/ServerKnowledgeBase.tsx
+mm-chat/frontend/src/lib/chat/panelUrlState.ts
+mm-chat/frontend/src/i18n/locales/{en,zh,ja}.ts
+mm-chat/frontend/src/i18n/locales/{en,zh,ja}/SettingsPage.json
+mm-chat/frontend/src/i18n/locales/{en,zh,ja}/Knowledge.json
+mm-chat/frontend/src/i18n/locales/{en,zh,ja}/Team.json
+mm-chat/frontend/src/__tests__/settingsUiComposition.test.ts
+mm-chat/frontend/src/__tests__/chatPanelUrlState.test.ts
+mm-chat/frontend/src/__tests__/serverKnowledgeBaseComposition.test.ts
+mm-chat/frontend/src/__tests__/serverKnowledgeSelectionComposition.test.ts
+mm-chat/frontend/src/__tests__/teamSettingsComposition.test.ts
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/frontend && corepack pnpm vitest run \
+  src/__tests__/settingsUiComposition.test.ts \
+  src/__tests__/chatPanelUrlState.test.ts \
+  src/__tests__/serverKnowledgeBaseComposition.test.ts \
+  src/__tests__/serverKnowledgeSelectionComposition.test.ts             # passed, 17 tests
+cd mm-chat/frontend && corepack pnpm typecheck                        # passed
+cd mm-chat/frontend && corepack pnpm lint                             # passed
+cd mm-chat/frontend && corepack pnpm format:check                     # passed
+```
+
+Residual blockers:
+
+```text
+G11.3 must restore original-style browser provider settings/model-fetch parity.
+Backend Team schema/routes are intentionally deferred; they are no longer visible
+through the standalone frontend after this slice.
+```

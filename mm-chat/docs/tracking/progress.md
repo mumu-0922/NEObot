@@ -1230,8 +1230,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         server-backed `image/*` message attachments from file storage and sends
         them to OpenAI-compatible providers as multimodal `image_url` data URL
         parts; backend chat/httpserver tests pass.
-  - [ ] G11.2 Single-user Team removal: delete Team UI/state/API usage from
-        the standalone frontend rather than hiding it.
+  - [x] G11.2 Single-user Team removal: deleted Team settings UI/deep-link
+        state/locales/composition test and made Knowledge collection creation
+        Personal-only in the standalone frontend.
   - [ ] G11.3 Browser provider settings parity: restore original-style web
         provider add/edit/model-fetch flow and make Go chat use the selected
         browser-configured provider in local single-user mode.

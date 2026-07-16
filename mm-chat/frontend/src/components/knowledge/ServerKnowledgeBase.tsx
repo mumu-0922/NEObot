@@ -26,7 +26,6 @@ import {
 import { createNeoChatApiClient } from "@/services/api/client";
 import type {
   KnowledgeCollectionDTO,
-  KnowledgeCollectionScope,
   KnowledgeDocumentDTO,
   ProcessingConsentDTO,
 } from "@/services/api/client";
@@ -244,9 +243,6 @@ export default function ServerKnowledgeBase({
   >(null);
   const [collectionName, setCollectionName] = useState("");
   const [collectionDescription, setCollectionDescription] = useState("");
-  const [collectionScope, setCollectionScope] =
-    useState<KnowledgeCollectionScope>("personal");
-  const [collectionTeamId, setCollectionTeamId] = useState("");
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [loadingCollections, setLoadingCollections] = useState(false);
@@ -277,7 +273,6 @@ export default function ServerKnowledgeBase({
     selectedCollection?.permissions.manageConsent === true;
   const trimmedCollectionName = collectionName.trim();
   const trimmedCollectionDescription = collectionDescription.trim();
-  const trimmedTeamId = collectionTeamId.trim();
   const trimmedEditName = editName.trim();
   const trimmedEditDescription = editDescription.trim();
   const collectionConsentReady = canSubmitConsent(collectionConsentForm);
@@ -399,23 +394,16 @@ export default function ServerKnowledgeBase({
 
   const handleCreateCollection = () => {
     if (!trimmedCollectionName) return;
-    if (collectionScope === "team" && !trimmedTeamId) {
-      setError(t("serverTeamIdRequired"));
-      return;
-    }
     void runAction("create-collection", async () => {
       try {
         const collection = await apiClient.knowledge.createCollection({
           name: trimmedCollectionName,
           description: trimmedCollectionDescription,
-          scope: collectionScope,
-          teamId: collectionScope === "team" ? trimmedTeamId : undefined,
+          scope: "personal",
           idempotencyKey: newIdempotencyKey("knowledge-collection"),
         });
         setCollectionName("");
         setCollectionDescription("");
-        setCollectionTeamId("");
-        setCollectionScope("personal");
         setCollections((current) => [collection, ...current]);
         setSelectedCollectionId(collection.id);
         setNotice(t("serverCollectionCreated"));
@@ -750,26 +738,8 @@ export default function ServerKnowledgeBase({
                 placeholder={t("serverCollectionDescriptionPlaceholder")}
                 className="h-20 w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
               />
-              <div className="grid gap-2 sm:grid-cols-2">
-                <select
-                  value={collectionScope}
-                  onChange={(event) =>
-                    setCollectionScope(
-                      event.target.value as KnowledgeCollectionScope,
-                    )
-                  }
-                  className="rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <option value="personal">{t("serverScopePersonal")}</option>
-                  <option value="team">{t("serverScopeTeam")}</option>
-                </select>
-                <input
-                  value={collectionTeamId}
-                  onChange={(event) => setCollectionTeamId(event.target.value)}
-                  disabled={collectionScope !== "team"}
-                  placeholder={t("serverTeamIdPlaceholder")}
-                  className="rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                />
+              <div className="rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+                {t("serverSingleUserScope")}
               </div>
               <button
                 type="button"

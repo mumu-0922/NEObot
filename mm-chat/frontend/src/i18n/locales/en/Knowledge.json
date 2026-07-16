@@ -102,7 +102,6 @@
   "serverManageCollectionsSubtitle": "Manage server-side knowledge collections",
   "serverLoadCollectionsFailed": "Failed to load server knowledge collections.",
   "serverLoadDocumentsFailed": "Failed to load documents for this collection.",
-  "serverTeamIdRequired": "Team collections require a team ID.",
   "serverCollectionCreated": "Knowledge collection created.",
   "serverCreateCollectionFailed": "Failed to create the knowledge collection.",
   "serverCollectionUpdated": "Knowledge collection updated.",
@@ -122,8 +121,6 @@
   "serverCollectionNamePlaceholder": "Collection name",
   "serverCollectionDescriptionPlaceholder": "Collection description",
   "serverScopePersonal": "Personal",
-  "serverScopeTeam": "Team",
-  "serverTeamIdPlaceholder": "Team ID",
   "serverCreateCollection": "Create collection",
   "serverLoadingCollections": "Loading collections…",
   "serverNoCollections": "No server collections yet",
@@ -194,5 +191,6 @@
     "granted": "Granted",
     "revoked": "Revoked",
     "expired": "Expired"
-  }
+  },
+  "serverSingleUserScope": "Collections are personal in this standalone single-user build."
 }

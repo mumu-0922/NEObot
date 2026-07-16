@@ -102,7 +102,6 @@
   "serverManageCollectionsSubtitle": "サーバー側ナレッジコレクションを管理",
   "serverLoadCollectionsFailed": "サーバーナレッジコレクションの読み込みに失敗しました。",
   "serverLoadDocumentsFailed": "このコレクションのドキュメント読み込みに失敗しました。",
-  "serverTeamIdRequired": "チームコレクションには Team ID が必要です。",
   "serverCollectionCreated": "ナレッジコレクションを作成しました。",
   "serverCreateCollectionFailed": "ナレッジコレクションの作成に失敗しました。",
   "serverCollectionUpdated": "ナレッジコレクションを更新しました。",
@@ -122,8 +121,6 @@
   "serverCollectionNamePlaceholder": "コレクション名",
   "serverCollectionDescriptionPlaceholder": "コレクションの説明",
   "serverScopePersonal": "個人",
-  "serverScopeTeam": "チーム",
-  "serverTeamIdPlaceholder": "Team ID",
   "serverCreateCollection": "コレクションを作成",
   "serverLoadingCollections": "コレクションを読み込み中…",
   "serverNoCollections": "サーバーコレクションはまだありません",
@@ -194,5 +191,6 @@
     "granted": "付与済み",
     "revoked": "取り消し済み",
     "expired": "期限切れ"
-  }
+  },
+  "serverSingleUserScope": "このスタンドアロン単一ユーザー版では個人ナレッジのみ作成します。"
 }

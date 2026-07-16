@@ -645,11 +645,11 @@ Slice sequence:
       attachments are read back from private file storage, forwarded to the
       configured OpenAI-compatible provider as multimodal `image_url` data URL
       parts, and covered by handler/provider tests.
-- [ ] G11.2 Single-user Team removal: delete the frontend Team settings path,
-      state, API calls, and tests from the standalone UI instead of hiding a
-      broken Team entry. Backend Team code remains only as unreachable legacy
-      surface until a later schema/API cleanup slice can safely drop migrations
-      and packages.
+- [x] G11.2 Single-user Team removal: deleted the frontend Team settings path,
+      deep-link tab, locale bundle, and composition test; Knowledge collection
+      creation now stays Personal-only in the standalone UI. Backend Team code
+      remains only as unreachable legacy surface until a later schema/API
+      cleanup slice can safely drop migrations and packages.
 - [ ] G11.3 Browser provider settings parity: restore original-style web
       provider add/edit/model-fetch flow for local single-user deployments and
       make Go chat/model calls consume the selected browser-configured provider
@@ -677,7 +677,7 @@ Targeted tests:
 | G8 Teams/Knowledge UI                    | Complete    | G8.1-G8.5 frontend control-plane wiring and isolation smoke passed                   |
 | G9 Data Authority/Route Removal          | Complete    | G9.1-G9.6 route freeze, route deletion, local write-authority, and clean-copy preflight passed |
 | G10 Final Closure/Delete Plan            | In progress | G10.1-G10.3 and build-based G10.2 complete; owner cleanup blocked by G11 parity regressions |
-| G11 Owner Parity Regression Closure      | In progress | G11.1 image understanding complete; Team removal and browser provider settings remain |
+| G11 Owner Parity Regression Closure      | In progress | G11.1 image understanding and G11.2 Team UI removal complete; browser provider settings remain |
 
 ## Update Discipline
 

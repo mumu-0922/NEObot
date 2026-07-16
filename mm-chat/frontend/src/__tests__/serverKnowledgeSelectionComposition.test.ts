@@ -19,7 +19,7 @@ describe("G8.5 server knowledge selection isolation", () => {
     "utf8",
   );
 
-  it("loads visible personal/team server collections through the API client", () => {
+  it("loads visible personal server collections through the API client", () => {
     expect(selectionModal).toContain("createNeoChatApiClient");
     expect(selectionModal).toContain('apiClient.mode === "server"');
     expect(selectionModal).toContain("apiClient.capabilities.knowledge");
