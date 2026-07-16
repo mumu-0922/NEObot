@@ -335,6 +335,7 @@ def test_sql_surface_is_select_only_and_function_allowlisted() -> None:
         "assert_purge_complete",
         "replay_outbox",
         "replay_job",
+        "fetch_query_evidence_candidates",
     }
     for sql in _SQL.values():
         assert sql.startswith("SELECT * FROM knowledge_")
@@ -870,6 +871,39 @@ async def test_purge_projection_gateway_requires_claim_lease_token() -> None:
 
     assert raised.value.error_code == JOB_CONTEXT_LEASE_FENCE_MISSING
     assert connection.calls == []
+
+
+async def test_query_evidence_gateway_calls_selected_function() -> None:
+    collection_id = uuid.uuid4()
+    row = {
+        "collection_id": collection_id,
+        "document_id": uuid.uuid4(),
+        "document_version_id": uuid.uuid4(),
+        "index_generation_id": uuid.uuid4(),
+        "materialization_id": uuid.uuid4(),
+        "parent_chunk_id": uuid.uuid4(),
+        "child_chunk_id": uuid.uuid4(),
+        "source_span_hash": "a" * 64,
+        "content_hash": "b" * 64,
+        "rank_score": 0.75,
+    }
+    adapter, connection = adapter_with_rows([[row]])
+
+    candidates = await adapter.fetch_query_evidence_candidates(
+        collection_ids=(collection_id,),
+        query_text="selected collection query",
+        limit=5,
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].collection_id == collection_id
+    assert candidates[0].rank_score == 0.75
+    assert connection.calls == [
+        (
+            _SQL["fetch_query_evidence_candidates"],
+            ([collection_id], "selected collection query", 5),
+        )
+    ]
 
 
 async def test_empty_function_claims_remain_empty() -> None:

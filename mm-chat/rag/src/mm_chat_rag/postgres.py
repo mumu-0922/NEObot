@@ -39,6 +39,7 @@ from mm_chat_rag.models import (
     stable_error_code,
 )
 from mm_chat_rag.projection import PostgresProjectionBatch
+from mm_chat_rag.query import EvidenceCandidate
 from mm_chat_rag.retry import PermanentJobError
 from mm_chat_rag.settings import Settings
 from mm_chat_rag.source_gateway import FileSourceMetadata
@@ -95,6 +96,9 @@ _SQL: Final[Mapping[str, str]] = {
     ),
     "replay_outbox": ("SELECT * FROM knowledge_replay_outbox(%s, %s, %s, %s)"),
     "replay_job": ("SELECT * FROM knowledge_replay_processing_job(%s, %s, %s, %s, %s)"),
+    "fetch_query_evidence_candidates": (
+        "SELECT * FROM knowledge_fetch_query_evidence_candidates(%s, %s, %s)"
+    ),
 }
 
 
@@ -596,6 +600,20 @@ class PostgresAdapter:
             ),
         )
         return _function_succeeded(row)
+
+    async def fetch_query_evidence_candidates(
+        self,
+        *,
+        collection_ids: Sequence[uuid.UUID],
+        query_text: str,
+        limit: int,
+    ) -> tuple[EvidenceCandidate, ...]:
+        """Fetch untrusted selected-collection references for Go reauthorization."""
+        rows = await self._call_all(
+            "fetch_query_evidence_candidates",
+            (list(collection_ids), query_text, limit),
+        )
+        return tuple(EvidenceCandidate.from_row(row) for row in rows)
 
 
 def _function_succeeded(row: Mapping[str, Any] | None) -> bool:

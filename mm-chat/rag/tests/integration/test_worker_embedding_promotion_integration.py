@@ -209,6 +209,18 @@ async def test_promoted_embedding_job_runner_finishes_live_postgres_job(
         "active",
         fixture.materialization_id,
     )
+    assert await _query_candidate_state(url, fixture) == (
+        fixture.collection_id,
+        fixture.document_id,
+        fixture.document_version_id,
+        fixture.index_generation_id,
+        fixture.materialization_id,
+        fixture.parent_chunk_id,
+        fixture.child_chunk_id,
+        _HASH_F,
+        fixture.content_hash,
+    )
+    assert await _unselected_query_candidate_count(url) == 0
 
 
 def _json_response(payload: object, *, status: int = 200) -> httpx.Response:
@@ -347,10 +359,40 @@ async def _seed_fixture(url: str, fixture: EmbeddingPromotionFixture) -> None:
             """
             INSERT INTO knowledge_index_generations (
               id, index_profile_id, generation_seq, status, build_snapshot,
-              build_snapshot_hash
-            ) VALUES (%s, %s, 1, 'building', '{}'::jsonb, %s)
+              build_snapshot_hash, artifact_manifest_hash, verified_at,
+              activated_at
+            ) VALUES (
+              %s, %s, 1, 'active', '{}'::jsonb, %s, %s,
+              clock_timestamp(), clock_timestamp()
+            )
             """,
-            (fixture.index_generation_id, fixture.index_profile_id, _HASH_A),
+            (
+                fixture.index_generation_id,
+                fixture.index_profile_id,
+                _HASH_A,
+                _HASH_C,
+            ),
+        )
+        await connection.execute(
+            """
+            INSERT INTO knowledge_projection_state (
+              index_generation_id, readiness, projection_revision,
+              required_outbox_floor, contiguous_applied_outbox_id, manifest_hash,
+              document_count, parent_count, child_count, verified_at
+            ) VALUES (
+              %s, 'ready', 1, 0, 0, %s, 1, 1, 1, clock_timestamp()
+            )
+            """,
+            (fixture.index_generation_id, _HASH_C),
+        )
+        await connection.execute(
+            """
+            UPDATE knowledge_corpus_projection_head
+            SET active_index_generation_id = %s,
+                updated_at = clock_timestamp()
+            WHERE singleton_id = 1
+            """,
+            (fixture.index_generation_id,),
         )
         await connection.execute(
             """
@@ -637,3 +679,65 @@ async def _job_projection_state(
         str(row[11]),
         None if row[12] is None else uuid.UUID(str(row[12])),
     )
+
+
+async def _query_candidate_state(
+    url: str,
+    fixture: EmbeddingPromotionFixture,
+) -> tuple[
+    uuid.UUID,
+    uuid.UUID,
+    uuid.UUID,
+    uuid.UUID,
+    uuid.UUID,
+    uuid.UUID,
+    uuid.UUID,
+    str,
+    str,
+]:
+    async with await psycopg.AsyncConnection.connect(url) as connection:
+        cursor = await connection.execute(
+            """
+            SELECT
+              collection_id,
+              document_id,
+              document_version_id,
+              index_generation_id,
+              materialization_id,
+              parent_chunk_id,
+              child_chunk_id,
+              source_span_hash,
+              content_hash
+            FROM knowledge_fetch_query_evidence_candidates(%s, %s, %s)
+            """,
+            ([fixture.collection_id], "promoted embedding", 5),
+        )
+        row = await cursor.fetchone()
+    if row is None:
+        raise AssertionError("query evidence candidate function returned no row")
+    return (
+        uuid.UUID(str(row[0])),
+        uuid.UUID(str(row[1])),
+        uuid.UUID(str(row[2])),
+        uuid.UUID(str(row[3])),
+        uuid.UUID(str(row[4])),
+        uuid.UUID(str(row[5])),
+        uuid.UUID(str(row[6])),
+        str(row[7]),
+        str(row[8]),
+    )
+
+
+async def _unselected_query_candidate_count(url: str) -> int:
+    async with await psycopg.AsyncConnection.connect(url) as connection:
+        cursor = await connection.execute(
+            """
+            SELECT count(*)::INTEGER
+            FROM knowledge_fetch_query_evidence_candidates(%s, %s, %s)
+            """,
+            ([uuid.uuid4()], "promoted embedding", 5),
+        )
+        row = await cursor.fetchone()
+    if row is None:
+        raise AssertionError("query evidence candidate count returned no row")
+    return int(row[0])

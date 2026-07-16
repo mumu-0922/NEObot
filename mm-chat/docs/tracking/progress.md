@@ -1094,7 +1094,11 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         becomes ready; `G7.5P` embedding completion publish finalizer publishes
         the materialization, activates the document/current version, advances the
         projection head, and terminally commits the embedding job).
-  - [ ] G7.6 Private query and Go reauthorization.
+  - [ ] G7.6 Private query and Go reauthorization
+        (`G7.6A` selected-collection evidence candidate fetch is live-proven:
+        active published materializations in explicitly selected collections can
+        return reference-only candidates, while unselected collections return
+        none; Go reauthorization/hydration remains next).
   - [ ] G7.7 Strict/optional chat answer and basic citations.
   - [ ] G7.8 Live MinerU + Jina + Postgres smoke and operational proof.
   - [ ] G7.9 G8/G9 handoff and G7 closure checklist.

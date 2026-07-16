@@ -4158,3 +4158,122 @@ Residual risk:
   citation hydration against the newly published materialization boundary.
 - Broader rebuild/reprocess/backfill orchestration and long-running worker
   health remain later G7.5 slices.
+
+## 2026-07-16 — G7.6A Selected-Collection Evidence Candidate Fetch
+
+Objective: start G7.6 with the smallest private-query seam: Python may fetch
+ranked evidence references only for Knowledge collections that Go explicitly
+selected for the current chat, while Go reauthorization/hydration remains the
+next gate.
+
+Implemented behavior:
+
+- Added migration `022_rag_query_evidence_candidates` with
+  `knowledge_fetch_query_evidence_candidates(UUID[], TEXT, INTEGER)`.
+- The function fails closed on malformed or broad inputs:
+  - selected collection count must be `1..32` with no nulls;
+  - query text must be non-empty and at most `2048` bytes;
+  - limit must be `1..50`.
+- The function returns reference-only candidates, not document body text:
+  `collection_id`, `document_id`, `document_version_id`, `index_generation_id`,
+  `materialization_id`, `parent_chunk_id`, `child_chunk_id`, `source_span_hash`,
+  `content_hash`, and `rank_score`.
+- Candidate rows are constrained to:
+  - selected collection IDs only;
+  - the active corpus generation;
+  - active `knowledge_document_projection_heads`;
+  - `published` materializations;
+  - active document/current version;
+  - ready Jina `1024` search rows with stored vector/hash.
+- Ranking uses existing Postgres lexical/exact lanes only; this slice does not
+  call Jina query embeddings or any provider.
+- Added Python `EvidenceCandidate` plus
+  `PostgresAdapter.fetch_query_evidence_candidates(...)` for the read-only SQL
+  surface. The DTO rejects zero UUIDs, malformed hashes, bool/negative rank, and
+  carries no body text.
+- Extended the promoted embedding live smoke to prove that the selected
+  collection returns one published reference, while an unselected collection
+  returns zero candidates.
+
+Touched files:
+
+```text
+backend/migrations/022_rag_query_evidence_candidates.up.sql
+backend/migrations/022_rag_query_evidence_candidates.down.sql
+backend/internal/migration/phase15_rag_query_evidence_candidates_schema_test.go
+rag/src/mm_chat_rag/query.py
+rag/src/mm_chat_rag/postgres.py
+rag/tests/unit/test_query.py
+rag/tests/unit/test_postgres.py
+rag/tests/integration/test_worker_embedding_promotion_integration.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && \
+  uv run ruff check \
+    src/mm_chat_rag/query.py \
+    src/mm_chat_rag/postgres.py \
+    tests/unit/test_query.py \
+    tests/unit/test_postgres.py \
+    tests/integration/test_worker_embedding_promotion_integration.py \
+    tests/integration/test_worker_parse_promotion_integration.py
+# passed
+
+cd mm-chat/rag && \
+  uv run mypy \
+    src/mm_chat_rag/query.py \
+    src/mm_chat_rag/jobs.py \
+    src/mm_chat_rag/handlers.py \
+    src/mm_chat_rag/job_handler_dependencies.py \
+    src/mm_chat_rag/postgres.py \
+    src/mm_chat_rag/worker.py
+# passed
+
+cd mm-chat/rag && \
+  uv run pytest -p no:cacheprovider \
+    tests/unit/test_query.py \
+    tests/unit/test_postgres.py \
+    tests/unit/test_job_handler_dependencies.py \
+    tests/unit/test_jobs.py \
+    tests/unit/test_replay_worker.py -q
+# 95 passed
+
+cd mm-chat/backend && \
+  GOCACHE=/tmp/neo-chat-go-build go test ./internal/migration \
+  -run 'RAGQueryEvidenceCandidates|RAGEmbeddingCompletionPublish|RAGParseCompletionEnqueueEmbedding|RAGPassageEmbeddingProjectionGateway|RAGWorkerProjectionGate' \
+  -count=1
+# passed
+
+# disposable live proof
+# - postgres:16-alpine container: mm-chat-test-postgres
+# - applied migrations 001 through 022
+cd mm-chat/rag && \
+  RAG_TEST_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable' \
+  uv run pytest -p no:cacheprovider \
+    tests/integration/test_worker_embedding_promotion_integration.py \
+    tests/integration/test_worker_parse_promotion_integration.py -q
+# 3 passed
+
+# rollback compile proof for this slice
+cd mm-chat/backend && \
+  MIGRATION_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:15432/mm_chat?sslmode=disable' \
+  GOCACHE=/tmp/neo-chat-go-build go run ./cmd/migrate down
+# down 022_rag_query_evidence_candidates
+
+# cleanup verified
+# docker ps -a --format '{{.Names}}' | grep -Fx mm-chat-test-postgres
+# no output
+```
+
+Residual risk:
+
+- This does not yet expose a Go API route or chat integration.
+- This does not yet call Jina for query embeddings or pgvector; ranking is the
+  existing lexical/exact Postgres lane.
+- Go reauthorization and hydration of returned references is intentionally the
+  next G7.6 slice before any answer/citation UI work.

@@ -1255,6 +1255,25 @@ Validation:
 
 ### G7.6 Private query and Go reauthorization
 
+G7.6A completed on 2026-07-16:
+
+- Added migration `022_rag_query_evidence_candidates` with
+  `knowledge_fetch_query_evidence_candidates(collection_ids, query_text, limit)`.
+  It is a read-only, worker-execute candidate fetch for collections explicitly
+  selected by Go for the current chat. It returns only citation references
+  (`collection_id`, document/version, generation/materialization, parent/child
+  chunk IDs, source/content hashes, rank score), not document body text.
+- The function filters to the active corpus generation, active
+  `knowledge_document_projection_heads`, `published` materializations, active
+  document/current version, and ready Jina 1024 search rows. It rejects empty or
+  broad collection/query/limit inputs and ranks by lexical/exact Postgres lanes.
+- Added Python `EvidenceCandidate` DTO and
+  `PostgresAdapter.fetch_query_evidence_candidates(...)`. The DTO rejects zero
+  UUIDs, malformed hashes, negative/bool ranks, and still carries no content.
+- The promoted embedding live smoke now proves one selected collection returns
+  its published evidence reference while an unselected collection returns zero
+  candidates. Go reauthorization/hydration remains the next G7.6 slice.
+
 - Query only the current chat-selected collection IDs.
 - Python returns evidence candidates; Go rechecks ACL, collection membership,
   document version, visibility epoch, source hash, and consent/governance state.
