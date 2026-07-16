@@ -16,6 +16,7 @@ from mm_chat_rag.provider_profile import (
 from mm_chat_rag.retry import PermanentJobError, RetryableJobError
 from mm_chat_rag.settings import Settings
 
+SOURCE_GATEWAY_TOKEN = "unit-test-source-gateway-token"
 
 class FakeJobDatabase:
     def __init__(
@@ -68,6 +69,8 @@ def settings() -> Settings:
         dispatch_enabled=True,
         job_stages=("parse",),
         mineru_api_key="fake-mineru-token",
+        source_gateway_url="http://backend:8080",
+        source_gateway_token=SOURCE_GATEWAY_TOKEN,
         provider_profile=provider_profile(),
     )
 
@@ -150,6 +153,8 @@ async def test_lease_loss_cancels_handler_without_finish() -> None:
         job_stages=("parse",),
         heartbeat_seconds=0,
         mineru_api_key="fake-mineru-token",
+        source_gateway_url="http://backend:8080",
+        source_gateway_token=SOURCE_GATEWAY_TOKEN,
         provider_profile=provider_profile(),
     )
     await JobRunner(
@@ -176,6 +181,8 @@ async def test_heartbeat_exception_cancels_handler_without_finish() -> None:
         job_stages=("parse",),
         heartbeat_seconds=0,
         mineru_api_key="fake-mineru-token",
+        source_gateway_url="http://backend:8080",
+        source_gateway_token=SOURCE_GATEWAY_TOKEN,
         provider_profile=provider_profile(),
     )
     await JobRunner(
@@ -215,6 +222,8 @@ async def test_process_cancellation_awaits_children_without_finish() -> None:
         job_stages=("parse",),
         heartbeat_seconds=0,
         mineru_api_key="fake-mineru-token",
+        source_gateway_url="http://backend:8080",
+        source_gateway_token=SOURCE_GATEWAY_TOKEN,
         provider_profile=provider_profile(),
     )
     process = asyncio.create_task(

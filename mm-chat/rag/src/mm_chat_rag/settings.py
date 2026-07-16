@@ -58,6 +58,8 @@ _KNOWN_ENV: Final = {
     "DEFAULT_MINERU_API_TOKEN",
     "RAG_JINA_API_KEY",
     "DEFAULT_JINA_API_KEY",
+    "RAG_SOURCE_GATEWAY_URL",
+    "RAG_SOURCE_GATEWAY_TOKEN",
     "RAG_PROVIDER_PROFILE",
     "RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED",
     "RAG_PROVIDER_RETRY_MAX_ATTEMPTS",
@@ -69,6 +71,9 @@ _KNOWN_ENV: Final = {
     "RAG_JINA_EMBEDDING_MODEL",
     "RAG_JINA_RERANK_MODEL",
 }
+_MAX_SOURCE_GATEWAY_TOKEN_BYTES: Final = 4096
+_VISIBLE_ASCII_MIN: Final = 33
+_VISIBLE_ASCII_MAX: Final = 126
 
 
 class SettingsError(ValueError):
@@ -143,6 +148,31 @@ def _service_url(value: str, name: str, schemes: set[str]) -> str:
     return value
 
 
+def _optional_service_url(
+    env: Mapping[str, str], name: str, schemes: set[str]
+) -> str | None:
+    value = env.get(name, "").strip()
+    if not value:
+        return None
+    return _service_url(value, name, schemes)
+
+
+def _internal_token(env: Mapping[str, str], name: str) -> str | None:
+    value = env.get(name, "").strip()
+    if not value:
+        return None
+    if (
+        len(value.encode("utf-8")) > _MAX_SOURCE_GATEWAY_TOKEN_BYTES
+        or any(
+            ord(character) < _VISIBLE_ASCII_MIN
+            or ord(character) > _VISIBLE_ASCII_MAX
+            for character in value
+        )
+    ):
+        raise SettingsError(f"{name} is invalid")
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     """Validated worker settings with production-safe defaults."""
@@ -170,6 +200,8 @@ class Settings:
     max_rescan_claims: int = 100
     mineru_api_key: str | None = None
     jina_api_key: str | None = None
+    source_gateway_url: str | None = None
+    source_gateway_token: str | None = None
     jina_embedding_dimensions: int = DEFAULT_JINA_EMBEDDING_DIMENSIONS
     provider_profile: ProviderRuntimeProfile = field(
         default_factory=ProviderRuntimeProfile
@@ -192,6 +224,16 @@ class Settings:
             raise SettingsError(
                 "RAG_MINERU_API_TOKEN is required when parse dispatch is enabled"
             )
+        if self.dispatch_enabled and "parse" in self.job_stages:
+            if self.source_gateway_url is None:
+                raise SettingsError(
+                    "RAG_SOURCE_GATEWAY_URL is required when parse dispatch is enabled"
+                )
+            if self.source_gateway_token is None:
+                raise SettingsError(
+                    "RAG_SOURCE_GATEWAY_TOKEN is required when parse dispatch is "
+                    "enabled"
+                )
         if (
             self.dispatch_enabled
             and "passage_embedding" in self.job_stages
@@ -257,6 +299,10 @@ class Settings:
             env, "RAG_MINERU_API_TOKEN", "DEFAULT_MINERU_API_TOKEN"
         )
         jina_api_key = _optional_alias(env, "RAG_JINA_API_KEY", "DEFAULT_JINA_API_KEY")
+        source_gateway_url = _optional_service_url(
+            env, "RAG_SOURCE_GATEWAY_URL", {"http", "https"}
+        )
+        source_gateway_token = _internal_token(env, "RAG_SOURCE_GATEWAY_TOKEN")
         provider_profile = ProviderRuntimeProfile(
             profile_id=env.get(
                 "RAG_PROVIDER_PROFILE", DISABLED_PROVIDER_PROFILE
@@ -317,6 +363,16 @@ class Settings:
             raise SettingsError(
                 "RAG_MINERU_API_TOKEN is required when parse dispatch is enabled"
             )
+        if dispatch_enabled and "parse" in job_stages:
+            if source_gateway_url is None:
+                raise SettingsError(
+                    "RAG_SOURCE_GATEWAY_URL is required when parse dispatch is enabled"
+                )
+            if source_gateway_token is None:
+                raise SettingsError(
+                    "RAG_SOURCE_GATEWAY_TOKEN is required when parse dispatch is "
+                    "enabled"
+                )
         if (
             dispatch_enabled
             and "passage_embedding" in job_stages
@@ -378,6 +434,8 @@ class Settings:
             ),
             mineru_api_key=mineru_api_key,
             jina_api_key=jina_api_key,
+            source_gateway_url=source_gateway_url,
+            source_gateway_token=source_gateway_token,
             jina_embedding_dimensions=DEFAULT_JINA_EMBEDDING_DIMENSIONS,
             provider_profile=provider_profile,
         )

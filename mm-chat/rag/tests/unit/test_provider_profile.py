@@ -21,6 +21,7 @@ from mm_chat_rag.provider_profile import (
 )
 from mm_chat_rag.settings import Settings, SettingsError
 
+SOURCE_GATEWAY_TOKEN = "unit-test-source-gateway-token"
 
 def valid_profile() -> ProviderRuntimeProfile:
     return ProviderRuntimeProfile(
@@ -151,6 +152,8 @@ def test_provider_stage_gate_redacts_secret_values() -> None:
             job_stages=("parse", "passage_embedding"),
             mineru_api_key=fake_mineru_secret,
             jina_api_key=fake_jina_secret,
+            source_gateway_url="http://backend:8080",
+            source_gateway_token=SOURCE_GATEWAY_TOKEN,
         )
     rendered = str(missing_profile.value)
     assert fake_mineru_secret not in rendered
@@ -174,6 +177,8 @@ def test_provider_profile_env_loader_accepts_locked_defaults() -> None:
             "RAG_WORKER_JOB_STAGES": "parse,passage_embedding",
             "RAG_MINERU_API_TOKEN": " fake-mineru-token ",
             "RAG_JINA_API_KEY": " fake-jina-key ",
+            "RAG_SOURCE_GATEWAY_URL": "http://backend:8080",
+            "RAG_SOURCE_GATEWAY_TOKEN": "fake-source-token",
             "RAG_PROVIDER_PROFILE": MINERU_JINA_POSTGRES_PROFILE,
             "RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED": "true",
             "RAG_PROVIDER_RETRY_MAX_ATTEMPTS": "3",

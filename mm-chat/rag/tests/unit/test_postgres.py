@@ -48,6 +48,8 @@ from mm_chat_rag.retry import PermanentJobError
 from mm_chat_rag.settings import Settings
 from mm_chat_rag.source_gateway import FileSourceMetadata
 
+SOURCE_GATEWAY_TOKEN = "unit-test-source-gateway-token"
+
 FakeRow = dict[str, object]
 
 
@@ -364,6 +366,8 @@ async def test_adapter_calls_only_frozen_functions() -> None:
         dispatch_enabled=True,
         job_stages=("parse",),
         mineru_api_key="fake-mineru-token",
+        source_gateway_url="http://backend:8080",
+        source_gateway_token=SOURCE_GATEWAY_TOKEN,
         provider_profile=ProviderRuntimeProfile(
             profile_id=MINERU_JINA_POSTGRES_PROFILE,
             accepted_draft_wire_contracts=True,

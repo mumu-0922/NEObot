@@ -4,10 +4,12 @@ import uuid
 
 import pytest
 
-from mm_chat_rag.provider_profile import MINERU_JINA_POSTGRES_PROFILE
+from mm_chat_rag.provider_profile import (
+    DEFAULT_JINA_EMBEDDING_DIMENSIONS,
+    MINERU_JINA_POSTGRES_PROFILE,
+)
 from mm_chat_rag.settings import (
     ALLOWED_JOB_STAGES,
-    DEFAULT_JINA_EMBEDDING_DIMENSIONS,
     Settings,
     SettingsError,
 )
@@ -29,6 +31,8 @@ def test_safe_dark_run_defaults() -> None:
     assert settings.redis_channel == "mm-chat:rag:outbox:v1"
     assert settings.mineru_api_key is None
     assert settings.jina_api_key is None
+    assert settings.source_gateway_url is None
+    assert settings.source_gateway_token is None
     assert settings.jina_embedding_dimensions == DEFAULT_JINA_EMBEDDING_DIMENSIONS
     assert settings.provider_profile.enabled is False
 
@@ -45,6 +49,8 @@ def test_explicit_enabled_configuration() -> None:
         "RAG_WORKER_LOG_LEVEL": "warning",
         "RAG_MINERU_API_TOKEN": " fake-mineru-token ",
         "RAG_JINA_API_KEY": " fake-jina-key ",
+        "RAG_SOURCE_GATEWAY_URL": " http://backend:8080 ",
+        "RAG_SOURCE_GATEWAY_TOKEN": " fake-source-token ",
         "RAG_PROVIDER_PROFILE": MINERU_JINA_POSTGRES_PROFILE,
         "RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED": "true",
     }
@@ -55,6 +61,8 @@ def test_explicit_enabled_configuration() -> None:
     assert settings.log_level == "WARNING"
     assert settings.mineru_api_key == "fake-mineru-token"
     assert settings.jina_api_key == "fake-jina-key"
+    assert settings.source_gateway_url == "http://backend:8080"
+    assert settings.source_gateway_token == "fake-source-token"
     assert settings.jina_embedding_dimensions == DEFAULT_JINA_EMBEDDING_DIMENSIONS
     assert settings.provider_profile.profile_id == MINERU_JINA_POSTGRES_PROFILE
     assert settings.provider_profile.accepted_draft_wire_contracts is True
@@ -68,6 +76,20 @@ def test_dispatch_parse_requires_mineru_secret() -> None:
     }
     with pytest.raises(SettingsError, match="RAG_MINERU_API_TOKEN"):
         Settings.from_env(env)
+
+
+def test_dispatch_parse_requires_source_gateway_url_and_token() -> None:
+    env = {
+        **base_env(),
+        "RAG_WORKER_DISPATCH_ENABLED": "true",
+        "RAG_WORKER_JOB_STAGES": "parse",
+        "RAG_MINERU_API_TOKEN": "fake-mineru-token",
+    }
+    with pytest.raises(SettingsError, match="RAG_SOURCE_GATEWAY_URL"):
+        Settings.from_env(env)
+
+    with pytest.raises(SettingsError, match="RAG_SOURCE_GATEWAY_TOKEN"):
+        Settings.from_env({**env, "RAG_SOURCE_GATEWAY_URL": "http://backend:8080"})
 
 
 def test_dispatch_embedding_requires_jina_secret() -> None:
@@ -101,12 +123,16 @@ def test_legacy_default_provider_aliases_are_accepted() -> None:
             "RAG_WORKER_JOB_STAGES": "parse,passage_embedding",
             "DEFAULT_MINERU_API_TOKEN": " legacy-mineru-token ",
             "DEFAULT_JINA_API_KEY": " legacy-jina-key ",
+            "RAG_SOURCE_GATEWAY_URL": "http://backend:8080",
+            "RAG_SOURCE_GATEWAY_TOKEN": "legacy-source-token",
             "RAG_PROVIDER_PROFILE": MINERU_JINA_POSTGRES_PROFILE,
             "RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED": "true",
         }
     )
     assert settings.mineru_api_key == "legacy-mineru-token"
     assert settings.jina_api_key == "legacy-jina-key"
+    assert settings.source_gateway_url == "http://backend:8080"
+    assert settings.source_gateway_token == "legacy-source-token"
 
 
 @pytest.mark.parametrize(
@@ -142,6 +168,8 @@ def test_legacy_default_provider_aliases_are_accepted() -> None:
         ({"RAG_WORKER_LOG_LEVEL": "TRACE"}, "LOG_LEVEL"),
         ({"RAG_WORKER_DATABASE_URL": "https://db/rag"}, "service URL"),
         ({"RAG_WORKER_REDIS_URL": "http://redis"}, "service URL"),
+        ({"RAG_SOURCE_GATEWAY_URL": "ftp://backend"}, "service URL"),
+        ({"RAG_SOURCE_GATEWAY_TOKEN": "bad token"}, "invalid"),
         ({"RAG_WORKER_HEALTH_HOST": ""}, "HEALTH_HOST"),
         ({"RAG_WORKER_TYPO": "true"}, "unknown worker setting"),
         ({"RAG_WORKER_POLL_SECONDS": "0"}, "between"),

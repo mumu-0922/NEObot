@@ -917,6 +917,17 @@ G7.5G completed on 2026-07-16:
 - Frozen module-level `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain
   empty. This slice does not call Jina in tests and consumes no provider quota.
 
+G7.5H completed on 2026-07-16:
+
+- Added Python worker settings admission for the Go source-object gateway:
+  `RAG_SOURCE_GATEWAY_URL` and `RAG_SOURCE_GATEWAY_TOKEN`.
+- Parse dispatch now fails closed unless MinerU credentials, source gateway
+  URL, and source gateway token are all present.
+- The URL is restricted to `http`/`https` service URLs and the token is bounded
+  to visible ASCII, matching the existing `GoSourceObjectBytesGateway` boundary.
+- This slice only admits configuration; it does not promote parse handlers,
+  call MinerU, or read deployment secret files.
+
 Remaining G7.5 work:
 
 - G7.5T disposable PostgreSQL integration gate has been restored and proven
@@ -949,6 +960,8 @@ Remaining G7.5 work:
 - G7.5G is complete: passage embedding can now be promoted explicitly from
   worker settings through the Jina + Postgres dependency bundle. A live
   job-runner smoke for embedding remains pending before operational closure.
+- G7.5H is complete: parse worker settings now require the Go source-object
+  gateway URL/token before parse can be promoted.
 - Implement index, reprocess, tombstone purge, rebuild, retry, and DLQ behavior.
 - Promote handlers one stage at a time behind readiness and registry gates.
 
@@ -979,6 +992,8 @@ Validation:
   pending-job claim, succeeded finish, lease cleanup, and child-search purge.
 - Worker passage-embedding promotion tests, including Jina settings/profile
   admission and parse-stage non-promotion.
+- Parse source-gateway settings tests, including required URL/token gates,
+  invalid URL/token rejection, and no secret echo in provider-profile failures.
 - MinerU local-batch allocate tests, including missing-token no-HTTP behavior,
   PDF/size/filename gates, locked request body, retryable status/transport
   mapping, response validation, signed-upload URL validation, and redaction.

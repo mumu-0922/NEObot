@@ -18,6 +18,8 @@ from mm_chat_rag.replay import run
 from mm_chat_rag.settings import Settings
 from mm_chat_rag.worker import Worker, WorkerStartupError
 
+SOURCE_GATEWAY_TOKEN = "unit-test-source-gateway-token"
+
 EVENT_ID = uuid.UUID("10000000-0000-0000-0000-000000000001")
 JOB_ID = uuid.UUID("20000000-0000-0000-0000-000000000002")
 SUCCESSOR_ID = uuid.UUID("30000000-0000-0000-0000-000000000003")
@@ -162,6 +164,8 @@ def test_worker_rejects_missing_stage_handler_and_accepts_synthetic_gate() -> No
         dispatch_enabled=True,
         job_stages=("parse",),
         mineru_api_key="fake-mineru-token",
+        source_gateway_url="http://backend:8080",
+        source_gateway_token=SOURCE_GATEWAY_TOKEN,
         provider_profile=provider_profile(),
     )
     with pytest.raises(WorkerStartupError, match="no promoted handler"):
@@ -238,6 +242,8 @@ def test_worker_does_not_auto_promote_parse_stage() -> None:
         job_stages=("parse", "passage_embedding", "purge"),
         mineru_api_key="fake-mineru-token",
         jina_api_key="fake-jina-key",
+        source_gateway_url="http://backend:8080",
+        source_gateway_token=SOURCE_GATEWAY_TOKEN,
         provider_profile=provider_profile(),
     )
     worker = Worker(settings)

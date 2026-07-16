@@ -3396,3 +3396,69 @@ Residual risk:
   pending before embedding dispatch can be called operationally closed.
 - Parse promotion remains blocked until source-object, MinerU archive provider,
   parse projection, and provider-smoke gates are connected.
+
+## 2026-07-16 — G7.5H Parse Source Gateway Settings Admission
+
+Objective: close the settings gap before parse promotion. Compose already passes
+`RAG_SOURCE_GATEWAY_URL` and `RAG_SOURCE_GATEWAY_TOKEN` to the RAG worker, and
+the Python `GoSourceObjectBytesGateway` already enforces the runtime HTTP/token
+boundary. The worker settings now admit and require those values when parse
+dispatch is enabled.
+
+Implemented behavior:
+
+- Added `source_gateway_url` and `source_gateway_token` to
+  `rag/src/mm_chat_rag/settings.py`.
+- Added `RAG_SOURCE_GATEWAY_URL` and `RAG_SOURCE_GATEWAY_TOKEN` parsing.
+- Parse dispatch now requires, in order:
+  - MinerU API token;
+  - source gateway URL;
+  - source gateway token.
+- Source gateway URL must be an `http`/`https` service URL.
+- Source gateway token must be non-empty visible ASCII and at most 4096 bytes.
+- Updated parse-related unit fixtures so direct `Settings(...)` construction
+  satisfies the new parse source authority gate.
+
+Touched files:
+
+```text
+rag/src/mm_chat_rag/settings.py
+rag/tests/unit/test_settings.py
+rag/tests/unit/test_provider_profile.py
+rag/tests/unit/test_replay_worker.py
+rag/tests/unit/test_jobs.py
+rag/tests/unit/test_postgres.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && \
+  uv run ruff check src/mm_chat_rag/settings.py \
+  tests/unit/test_settings.py tests/unit/test_provider_profile.py \
+  tests/unit/test_replay_worker.py tests/unit/test_jobs.py \
+  tests/unit/test_postgres.py
+# passed
+
+cd mm-chat/rag && \
+  uv run mypy src/mm_chat_rag/settings.py tests/unit/test_settings.py
+# passed
+
+cd mm-chat/rag && \
+  uv run pytest -p no:cacheprovider \
+  tests/unit/test_settings.py tests/unit/test_provider_profile.py \
+  tests/unit/test_replay_worker.py tests/unit/test_jobs.py \
+  tests/unit/test_postgres.py -v
+# 108 passed
+```
+
+Residual risk:
+
+- This is configuration admission only. Parse handler promotion still needs
+  source gateway composition, MinerU archive/result provider composition, parse
+  projection staging, and live provider smoke gates.
+- No provider API calls were made and no deployment `.env` or secret file was
+  read.
