@@ -83,6 +83,75 @@ type fileProviderAttachmentResolver struct {
 	maxBytes int64
 }
 
+type runtimeChatProviderResolver struct {
+	service *runtimeconfig.Service
+	timeout time.Duration
+}
+
+func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
+	_ context.Context,
+	provider runtimeconfig.ProviderRuntimeConfig,
+) (chat.Provider, error) {
+	if r.service == nil {
+		return nil, chat.ValidationError{
+			Code:    "PROVIDER_CONFIG_UNSUPPORTED",
+			Message: "runtime provider configuration is not supported",
+		}
+	}
+	apiKey, err := r.service.ProviderAPIKey(provider)
+	if err != nil {
+		if errors.Is(err, runtimeconfig.ErrPlaintextProviderSecret) {
+			return nil, chat.ValidationError{
+				Code:    "PLAINTEXT_PROVIDER_SECRET_REJECTED",
+				Message: "plaintext provider secrets are not accepted",
+			}
+		}
+		if errors.Is(err, runtimeconfig.ErrProviderSecretRequired) ||
+			errors.Is(err, runtimeconfig.ErrBYOKNotConfigured) {
+			return nil, chat.ValidationError{
+				Code:    "PROVIDER_SECRET_REQUIRED",
+				Message: "provider API key is required",
+			}
+		}
+		return nil, err
+	}
+	providerType := strings.ToLower(strings.TrimSpace(provider.Type))
+	switch providerType {
+	case "openai", "openai compatible", "openai_compatible", "openai-compatible", "":
+		resolved, err := chat.NewOpenAICompatibleProvider(chat.OpenAICompatibleProviderConfig{
+			BaseURL:    runtimeProviderBaseURL(provider),
+			APIKey:     apiKey,
+			ProviderID: strings.TrimSpace(provider.ID),
+			Timeout:    r.timeout,
+		})
+		if err != nil {
+			return nil, chat.ValidationError{
+				Code:    "PROVIDER_CONFIG_UNSUPPORTED",
+				Message: "runtime provider configuration is unsupported",
+			}
+		}
+		return resolved, nil
+	default:
+		return nil, chat.ValidationError{
+			Code:    "PROVIDER_CONFIG_UNSUPPORTED",
+			Message: "runtime provider type is not supported",
+		}
+	}
+}
+
+func runtimeProviderBaseURL(provider runtimeconfig.ProviderRuntimeConfig) string {
+	baseURL := strings.TrimSpace(provider.BaseURL)
+	if baseURL == "" || baseURL == "default" {
+		return "https://api.openai.com/v1"
+	}
+	baseURL = strings.TrimSuffix(baseURL, "#")
+	baseURL = strings.TrimRight(baseURL, "/")
+	if strings.HasSuffix(baseURL, "/v1") {
+		return baseURL
+	}
+	return baseURL + "/v1"
+}
+
 func (r fileProviderAttachmentResolver) ResolveProviderAttachment(
 	ctx context.Context,
 	attachment chat.Attachment,
@@ -336,12 +405,17 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		resolvedOptions.objectStore,
 		files.WithStorageBackend(cfg.Storage.Backend),
 	)
+	runtimeConfigService := runtimeconfig.NewService(cfg)
 	chatOptions := []chat.HandlerOption{
 		chat.WithProvider(resolvedOptions.chatProvider),
 		chat.WithRunCancellationStore(resolvedOptions.runCancellationStore),
 		chat.WithAttachmentResolver(fileProviderAttachmentResolver{
 			service:  fileService,
 			maxBytes: cfg.Storage.MaxUploadBytes,
+		}),
+		chat.WithRuntimeProviderResolver(runtimeChatProviderResolver{
+			service: runtimeConfigService,
+			timeout: cfg.Provider.Timeout,
 		}),
 	}
 	if resolvedOptions.knowledgeService != nil {
@@ -382,7 +456,6 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	voiceJobHandler := voicejobs.NewHandler(resolvedOptions.voiceJobService)
 	ragProviderHandler := ragproviders.NewHandler(cfg.RAG)
 	ragSourceHandler := ragsource.NewHandler(resolvedOptions.ragSourceService)
-	runtimeConfigService := runtimeconfig.NewService(cfg)
 	pluginHandler := plugins.NewHandler(plugins.NewService(
 		cfg,
 		plugins.WithSecretDecrypter(runtimeConfigService.DecryptOptionalSecret),

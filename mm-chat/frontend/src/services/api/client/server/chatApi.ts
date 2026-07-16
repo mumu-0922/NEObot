@@ -70,6 +70,7 @@ type AppendUserMessageRequestBody = {
 type StreamAssistantMessageRequestBody = {
   userMessageId: string;
   modelRef: StreamAssistantMessageInput["modelRef"];
+  provider?: StreamAssistantMessageInput["provider"];
   config?: Record<string, unknown>;
   systemInstruction?: string;
   systemPrompt?: string;
@@ -420,6 +421,7 @@ function streamAssistantMessageBody(
   return removeUndefined({
     userMessageId: input.userMessageId,
     modelRef: input.modelRef,
+    provider: input.provider,
     config: input.config,
     systemInstruction: input.systemInstruction,
     systemPrompt: input.systemPrompt,

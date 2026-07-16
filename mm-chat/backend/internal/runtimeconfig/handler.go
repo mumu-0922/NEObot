@@ -113,6 +113,10 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, "PLAINTEXT_PROVIDER_SECRET_REJECTED", "plaintext provider secrets are not accepted")
 	case errors.Is(err, ErrProviderModelsUnsupported):
 		writeError(w, http.StatusNotImplemented, "PROVIDER_MODEL_LIST_UNSUPPORTED", "provider model listing is not available for this provider")
+	case errors.Is(err, ErrProviderSecretRequired):
+		writeError(w, http.StatusBadRequest, "PROVIDER_SECRET_REQUIRED", "provider API key is required")
+	case errors.Is(err, ErrProviderConfigUnsupported):
+		writeError(w, http.StatusBadRequest, "PROVIDER_CONFIG_UNSUPPORTED", "provider configuration is unsupported")
 	default:
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "runtime config request failed")
 	}

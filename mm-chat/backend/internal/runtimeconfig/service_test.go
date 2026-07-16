@@ -1,11 +1,18 @@
 package runtimeconfig
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"neo-chat/mm-chat/backend/internal/config"
 )
@@ -71,8 +78,51 @@ func TestProviderModelsSupportsOnlyServerDefault(t *testing.T) {
 	if _, err := service.ProviderModels(ProviderModelsRequest{Provider: ProviderRuntimeConfig{APIKey: "secret"}}); err != ErrPlaintextProviderSecret {
 		t.Fatalf("plaintext err = %v, want ErrPlaintextProviderSecret", err)
 	}
-	if _, err := service.ProviderModels(ProviderModelsRequest{Provider: ProviderRuntimeConfig{APIKeySecret: map[string]any{"v": 1}}}); err != ErrProviderModelsUnsupported {
-		t.Fatalf("BYOK err = %v, want ErrProviderModelsUnsupported", err)
+	if _, err := service.ProviderModels(ProviderModelsRequest{Provider: ProviderRuntimeConfig{Source: "browser"}}); err != ErrProviderModelsUnsupported {
+		t.Fatalf("source err = %v, want ErrProviderModelsUnsupported", err)
+	}
+}
+
+func TestProviderModelsFetchesOpenAICompatibleModelsWithBYOK(t *testing.T) {
+	const apiKey = "test-runtime-provider-key"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			t.Fatalf("path = %q, want /v1/models", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer "+apiKey {
+			t.Fatalf("Authorization = %q, want bearer key", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"gpt-a"},{"id":"gpt-b"},{"id":"gpt-a"}]}`))
+	}))
+	defer upstream.Close()
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pemValue := string(pem.EncodeToMemory(&pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
+	}))
+	service := NewService(config.Config{
+		Provider: config.ProviderConfig{Timeout: 2 * time.Second},
+		BYOK:     config.BYOKConfig{PrivateKeyPEM: pemValue},
+	})
+
+	response, err := service.ProviderModels(ProviderModelsRequest{
+		Provider: ProviderRuntimeConfig{
+			ID:           "CUSTOM",
+			Type:         "OpenAI Compatible",
+			BaseURL:      upstream.URL,
+			APIKeySecret: encryptedSecretEnvelope(t, privateKey, apiKey, "provider:OpenAI Compatible"),
+		},
+	})
+	if err != nil {
+		t.Fatalf("ProviderModels returned error: %v", err)
+	}
+	if got, want := response.Models, []string{"gpt-a", "gpt-b"}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("models = %#v, want %#v", got, want)
 	}
 }
 
@@ -116,5 +166,55 @@ func TestBYOKPublicKeyRequiresConfiguredOrEphemeralKey(t *testing.T) {
 	}
 	if first.KID != second.KID {
 		t.Fatalf("ephemeral key was not reused: %q != %q", first.KID, second.KID)
+	}
+}
+
+func encryptedSecretEnvelope(
+	t *testing.T,
+	privateKey *rsa.PrivateKey,
+	plaintext string,
+	context string,
+) map[string]any {
+	t.Helper()
+
+	aesKey := make([]byte, 32)
+	if _, err := rand.Read(aesKey); err != nil {
+		t.Fatal(err)
+	}
+	block, err := aes.NewCipher(aesKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	iv := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(iv); err != nil {
+		t.Fatal(err)
+	}
+	ciphertext := gcm.Seal(nil, iv, []byte(plaintext), []byte(context))
+	wrappedKey, err := rsa.EncryptOAEP(
+		sha256.New(),
+		rand.Reader,
+		&privateKey.PublicKey,
+		aesKey,
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kid, err := deriveKeyID(&privateKey.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return map[string]any{
+		"v":          float64(1),
+		"kid":        kid,
+		"alg":        byokAlgorithm,
+		"iv":         base64.RawURLEncoding.EncodeToString(iv),
+		"wrappedKey": base64.RawURLEncoding.EncodeToString(wrappedKey),
+		"ciphertext": base64.RawURLEncoding.EncodeToString(ciphertext),
+		"context":    context,
 	}
 }

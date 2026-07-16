@@ -940,6 +940,16 @@ const ChatApp = () => {
     });
   };
 
+  const buildRuntimeProviderConfigForModel = async (model: string) => {
+    const { providerId } = parseModelString(model);
+    const provider = providerId
+      ? providers.find((item) => item.id === providerId)
+      : providers.find((item) => item.enabled);
+
+    if (!provider) return undefined;
+    return buildProviderRuntimeConfig(provider);
+  };
+
   const processPromptForModel = async (
     session: typeof currentSession | null | undefined,
     text: string,
@@ -1096,6 +1106,8 @@ const ChatApp = () => {
       ]
         .filter((section): section is string => Boolean(section?.trim()))
         .join("\n\n");
+      const runtimeProvider =
+        await buildRuntimeProviderConfigForModel(selectedModel);
 
       await sendServerMessageAndStream({
         sessionId: targetSessionId,
@@ -1106,6 +1118,7 @@ const ChatApp = () => {
           serverSessionChatConfig,
           selectedKnowledgeCollectionIds,
         ),
+        provider: runtimeProvider,
         systemInstruction,
         metadata: buildServerKnowledgeMessageMetadata(
           selectedKnowledgeCollectionIds,
@@ -1819,11 +1832,15 @@ const ChatApp = () => {
         ]
           .filter((section): section is string => Boolean(section?.trim()))
           .join("\n\n");
+        const runtimeProvider =
+          await buildRuntimeProviderConfigForModel(selectedModel);
+        if (!isGenerationRunActive(generation)) return;
 
         await regenerateServerAssistantMessage({
           sessionId,
           assistantMessageId: messageId,
           model: selectedModel,
+          provider: runtimeProvider,
           config: buildServerKnowledgeStreamConfig(
             serverSessionChatConfig,
             selectedKnowledgeCollectionIds,
@@ -2053,6 +2070,9 @@ const ChatApp = () => {
         ]
           .filter((section): section is string => Boolean(section?.trim()))
           .join("\n\n");
+        const runtimeProvider =
+          await buildRuntimeProviderConfigForModel(selectedModel);
+        if (!isGenerationRunActive(generation)) return;
 
         await sendServerMessageAndStream({
           sessionId,
@@ -2064,6 +2084,7 @@ const ChatApp = () => {
             serverSessionChatConfig,
             selectedKnowledgeCollectionIds,
           ),
+          provider: runtimeProvider,
           systemInstruction,
           metadata: buildServerKnowledgeMessageMetadata(
             selectedKnowledgeCollectionIds,

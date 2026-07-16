@@ -12,6 +12,7 @@ import (
 
 	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/knowledge"
+	"neo-chat/mm-chat/backend/internal/runtimeconfig"
 )
 
 const (
@@ -32,6 +33,7 @@ type Handler struct {
 	service            *Service
 	provider           Provider
 	attachmentResolver ProviderAttachmentResolver
+	providerResolver   RuntimeProviderResolver
 	activeRuns         *activeRunRegistry
 	cancellationRuns   RunCancellationStore
 	ragAssembler       *RAGAnswerAssembler
@@ -42,6 +44,10 @@ type HandlerOption func(*Handler)
 
 type ProviderAttachmentResolver interface {
 	ResolveProviderAttachment(ctx context.Context, attachment Attachment) (ProviderAttachment, error)
+}
+
+type RuntimeProviderResolver interface {
+	ResolveRuntimeProvider(ctx context.Context, provider runtimeconfig.ProviderRuntimeConfig) (Provider, error)
 }
 
 type ErrorResponse struct {
@@ -159,13 +165,14 @@ type fieldViolation struct {
 }
 
 type streamMessageRequest struct {
-	UserMessageID     string         `json:"userMessageId"`
-	ModelRef          *ModelRef      `json:"modelRef"`
-	SystemInstruction string         `json:"systemInstruction"`
-	SystemPrompt      string         `json:"systemPrompt"`
-	Config            map[string]any `json:"config"`
-	Metadata          map[string]any `json:"metadata"`
-	IdempotencyKey    string         `json:"idempotencyKey"`
+	UserMessageID     string                               `json:"userMessageId"`
+	ModelRef          *ModelRef                            `json:"modelRef"`
+	Provider          *runtimeconfig.ProviderRuntimeConfig `json:"provider"`
+	SystemInstruction string                               `json:"systemInstruction"`
+	SystemPrompt      string                               `json:"systemPrompt"`
+	Config            map[string]any                       `json:"config"`
+	Metadata          map[string]any                       `json:"metadata"`
+	IdempotencyKey    string                               `json:"idempotencyKey"`
 }
 
 type toolPlanRequest struct {
@@ -210,6 +217,12 @@ func WithProvider(provider Provider) HandlerOption {
 func WithAttachmentResolver(resolver ProviderAttachmentResolver) HandlerOption {
 	return func(h *Handler) {
 		h.attachmentResolver = resolver
+	}
+}
+
+func WithRuntimeProviderResolver(resolver RuntimeProviderResolver) HandlerOption {
+	return func(h *Handler) {
+		h.providerResolver = resolver
 	}
 }
 
@@ -810,10 +823,6 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		writeServiceError(w, err)
 		return
 	}
-	if h.provider == nil {
-		writeServiceError(w, ErrProviderRequired)
-		return
-	}
 
 	var request streamMessageRequest
 	if err := decodeJSONWithForbiddenFields(w, r, &request, forbiddenStreamFields()); err != nil {
@@ -831,14 +840,19 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusBadRequest, "MODEL_REF_REQUIRED", "modelRef is required")
 		return
 	}
-	if resolver, ok := h.provider.(ModelRefResolver); ok {
+	streamProvider, err := h.resolveStreamProvider(r.Context(), request.Provider)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	if resolver, ok := streamProvider.(ModelRefResolver); ok {
 		resolvedModelRef, err := resolver.ResolveModelRef(*modelRef)
 		if err != nil {
 			writeServiceError(w, err)
 			return
 		}
 		modelRef = &resolvedModelRef
-	} else if validator, ok := h.provider.(ModelRefValidator); ok {
+	} else if validator, ok := streamProvider.(ModelRefValidator); ok {
 		if err := validator.ValidateModelRef(*modelRef); err != nil {
 			writeServiceError(w, err)
 			return
@@ -919,6 +933,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			systemPrompt,
 			ragSelection,
 			providerAttachments,
+			streamProvider,
 		)
 		return
 	}
@@ -931,7 +946,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	defer stopCancellationWatch()
 	defer streamCancel()
 
-	events, err := h.provider.StreamChat(streamCtx, ProviderRequest{
+	events, err := streamProvider.StreamChat(streamCtx, ProviderRequest{
 		RunID:              runID,
 		ConversationID:     conversationID,
 		UserMessageID:      userMessage.ID,
@@ -1131,10 +1146,11 @@ func (h *Handler) streamStrictRAG(
 	systemPrompt string,
 	selection ragSelection,
 	providerAttachments []ProviderAttachment,
+	streamProvider Provider,
 ) {
 	decision := h.strictRAGDecision(r.Context(), conversationID, userMessage, modelRef, selection)
 	if decision.ReadyForAnswer() {
-		h.streamStrictRAGAnswer(w, r, flusher, conversationID, userMessage, assistantMessage, modelRef, runID, systemPrompt, selection, decision, providerAttachments)
+		h.streamStrictRAGAnswer(w, r, flusher, conversationID, userMessage, assistantMessage, modelRef, runID, systemPrompt, selection, decision, providerAttachments, streamProvider)
 		return
 	}
 	h.streamStrictRAGRefusal(w, flusher, conversationID, assistantMessage, modelRef, runID, selection, decision)
@@ -1246,6 +1262,7 @@ func (h *Handler) streamStrictRAGAnswer(
 	selection ragSelection,
 	decision strictRAGDecision,
 	providerAttachments []ProviderAttachment,
+	streamProvider Provider,
 ) {
 	prompt, strictSystemPrompt, err := buildStrictRAGProviderRequest(
 		userMessage.Content,
@@ -1270,7 +1287,7 @@ func (h *Handler) streamStrictRAGAnswer(
 	defer stopCancellationWatch()
 	defer streamCancel()
 
-	events, err := h.provider.StreamChat(streamCtx, ProviderRequest{
+	events, err := streamProvider.StreamChat(streamCtx, ProviderRequest{
 		RunID:              runID,
 		ConversationID:     conversationID,
 		UserMessageID:      userMessage.ID,
@@ -1561,6 +1578,35 @@ func optionalRAGKnowledgeMetadata(selection ragSelection, outcome string) map[st
 		"evidenceUsed":          false,
 		"degradationReason":     "no_verified_knowledge_evidence",
 	}
+}
+
+func (h *Handler) resolveStreamProvider(
+	ctx context.Context,
+	providerConfig *runtimeconfig.ProviderRuntimeConfig,
+) (Provider, error) {
+	if providerConfig == nil || strings.TrimSpace(providerConfig.Source) == "server-default" {
+		if h.provider == nil {
+			return nil, ErrProviderRequired
+		}
+		return h.provider, nil
+	}
+	if strings.TrimSpace(providerConfig.Source) == "" &&
+		strings.TrimSpace(providerConfig.ID) == "" &&
+		strings.TrimSpace(providerConfig.Type) == "" &&
+		strings.TrimSpace(providerConfig.BaseURL) == "" &&
+		len(providerConfig.APIKeySecret) == 0 {
+		if h.provider == nil {
+			return nil, ErrProviderRequired
+		}
+		return h.provider, nil
+	}
+	if h.providerResolver == nil {
+		return nil, newValidationError(
+			"PROVIDER_CONFIG_UNSUPPORTED",
+			"runtime provider configuration is not supported",
+		)
+	}
+	return h.providerResolver.ResolveRuntimeProvider(ctx, *providerConfig)
 }
 
 func (h *Handler) resolveProviderAttachments(ctx context.Context, message Message) ([]ProviderAttachment, error) {

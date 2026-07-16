@@ -172,7 +172,13 @@ const ProviderSettings = () => {
       const models = data.models || [];
 
       if (models.length > 0) {
-        updateProvider(providerSnapshot.id, { modelsList: models });
+        const selectedModels = (providerSnapshot.models || []).filter((model) =>
+          models.includes(model),
+        );
+        updateProvider(providerSnapshot.id, {
+          modelsList: models,
+          models: selectedModels.length > 0 ? selectedModels : models,
+        });
       } else {
         updateProvider(providerSnapshot.id, { modelsList: [] });
         if (selectedProviderIdRef.current === providerSnapshot.id) {

@@ -242,6 +242,7 @@ describe("BYOK secret envelopes", () => {
     });
 
     expect(JSON.stringify(runtime)).not.toContain("local-provider-secret");
+    expect(runtime.id).toBe("LOCAL1");
     await expect(
       freshDecryptSecretEnvelope(runtime.apiKeySecret!, "provider:Gemini"),
     ).resolves.toBe("local-provider-secret");

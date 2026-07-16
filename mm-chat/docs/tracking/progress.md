@@ -1224,7 +1224,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
 
 ## Phase 11 Owner Parity Regression Closure
 
-- [ ] G11 Owner parity regression closure: fix live owner-test gaps before any
+- [x] G11 Owner parity regression closure: fix live owner-test gaps before any
       former-root deletion.
   - [x] G11.1 Chat image understanding: Go chat streaming now resolves
         server-backed `image/*` message attachments from file storage and sends
@@ -1233,9 +1233,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
   - [x] G11.2 Single-user Team removal: deleted Team settings UI/deep-link
         state/locales/composition test and made Knowledge collection creation
         Personal-only in the standalone frontend.
-  - [ ] G11.3 Browser provider settings parity: restore original-style web
-        provider add/edit/model-fetch flow and make Go chat use the selected
-        browser-configured provider in local single-user mode.
+  - [x] G11.3 Browser provider settings parity: Go now accepts BYOK-encrypted
+        browser provider runtime config for model listing and chat streaming;
+        Provider Settings auto-enables fetched models for newly configured
+        providers.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

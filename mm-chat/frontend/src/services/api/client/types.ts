@@ -227,6 +227,7 @@ export interface StreamAssistantMessageInput {
   conversationId: string;
   userMessageId: string;
   modelRef: ModelRef;
+  provider?: ProviderRuntimeConfigDTO;
   config?: Record<string, unknown>;
   systemInstruction?: string;
   systemPrompt?: string;
@@ -375,6 +376,7 @@ export interface SettingsApi {
 }
 
 export interface ProviderRuntimeConfigDTO {
+  id?: string;
   type?: string;
   baseUrl?: string;
   name?: string;

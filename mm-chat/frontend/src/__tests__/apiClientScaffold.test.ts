@@ -1554,6 +1554,13 @@ describe("Phase 11.2A server chat CRUD adapter", () => {
         conversationId: "c1",
         userMessageId: "m1",
         modelRef: { providerId: "openai", modelId: "gpt-5.5" },
+        provider: {
+          id: "LOCAL1",
+          type: "OpenAI Compatible",
+          baseUrl: "https://provider.test/v1",
+          name: "Local Provider",
+          apiKeySecret: { v: 1 },
+        },
         config: { useSearch: true },
         metadata: { source: "test" },
         idempotencyKey: "stream-key",
@@ -1585,6 +1592,13 @@ describe("Phase 11.2A server chat CRUD adapter", () => {
         body: {
           userMessageId: "m1",
           modelRef: { providerId: "openai", modelId: "gpt-5.5" },
+          provider: {
+            id: "LOCAL1",
+            type: "OpenAI Compatible",
+            baseUrl: "https://provider.test/v1",
+            name: "Local Provider",
+            apiKeySecret: { v: 1 },
+          },
           config: { useSearch: true },
           metadata: { source: "test" },
           idempotencyKey: "stream-key",

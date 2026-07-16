@@ -32,6 +32,7 @@ type OpenAICompatibleProviderConfig struct {
 	BaseURL      string
 	APIKey       string
 	DefaultModel string
+	ProviderID   string
 	Timeout      time.Duration
 	HTTPClient   *http.Client
 }
@@ -40,6 +41,7 @@ type OpenAICompatibleProvider struct {
 	endpoint     string
 	apiKey       string
 	defaultModel string
+	providerID   string
 	timeout      time.Duration
 	client       *http.Client
 }
@@ -66,6 +68,7 @@ func NewOpenAICompatibleProvider(
 		endpoint:     baseURL + openAICompatibleChatCompletionsPath,
 		apiKey:       apiKey,
 		defaultModel: strings.TrimSpace(cfg.DefaultModel),
+		providerID:   strings.TrimSpace(cfg.ProviderID),
 		timeout:      cfg.Timeout,
 		client:       client,
 	}, nil
@@ -155,6 +158,17 @@ func (p *OpenAICompatibleProvider) ValidateModelRef(modelRef ModelRef) error {
 
 func (p *OpenAICompatibleProvider) ResolveModelRef(modelRef ModelRef) (ModelRef, error) {
 	providerID := strings.ToLower(strings.TrimSpace(modelRef.ProviderID))
+	if allowedProviderID := strings.TrimSpace(p.providerID); allowedProviderID != "" &&
+		providerID == strings.ToLower(allowedProviderID) {
+		modelID := strings.TrimSpace(modelRef.ModelID)
+		if modelID == "" {
+			modelID = p.defaultModel
+		}
+		return ModelRef{
+			ProviderID: allowedProviderID,
+			ModelID:    modelID,
+		}, nil
+	}
 	switch providerID {
 	case OpenAICompatibleProviderID, openAICompatibleProviderIDOpenAI, openAICompatibleProviderIDHyphenVariant:
 		modelID := strings.TrimSpace(modelRef.ModelID)

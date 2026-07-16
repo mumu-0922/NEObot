@@ -160,6 +160,7 @@ export async function buildProviderRuntimeConfig(provider: ModelProvider) {
 
   const apiKey = await resolveProviderApiKey(provider);
   return {
+    id: provider.id,
     type: provider.type,
     baseUrl: provider.baseUrl,
     name: provider.name,

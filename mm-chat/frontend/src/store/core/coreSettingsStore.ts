@@ -147,8 +147,8 @@ export const useCoreSettingsStore = create<CoreSettingsState>()(
         const newProvider: ModelProvider = {
           id: id,
           name: "New Provider",
-          type: "OpenAI",
-          baseUrl: "https://api.openai.com",
+          type: "OpenAI Compatible",
+          baseUrl: "https://api.openai.com/v1",
           apiKey: "",
           enabled: true,
           models: [],

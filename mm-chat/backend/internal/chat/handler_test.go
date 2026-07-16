@@ -15,6 +15,7 @@ import (
 
 	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/knowledge"
+	"neo-chat/mm-chat/backend/internal/runtimeconfig"
 )
 
 const (
@@ -716,6 +717,39 @@ func TestHandlerStreamsImageAttachmentsToProvider(t *testing.T) {
 	got := provider.input.Attachments[0]
 	if got.FileID != testFileID || got.MimeType != "image/png" || string(got.Data) != "pngdata" {
 		t.Fatalf("provider attachment = %#v", got)
+	}
+}
+
+func TestHandlerStreamsWithRuntimeProviderConfig(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "hello runtime provider"),
+	)
+	provider := &capturingProvider{}
+	resolver := &fakeRuntimeProviderResolver{provider: provider}
+	handler := NewHandler(
+		NewService(repo),
+		WithRuntimeProviderResolver(resolver),
+	)
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"CUSTOM","modelId":"gpt-test"},"provider":{"id":"CUSTOM","type":"OpenAI Compatible","baseUrl":"https://provider.test/v1","apiKeySecret":{"v":1}},"idempotencyKey":"stream-key-runtime-provider"}`,
+	)
+
+	assertStreamStatus(t, rec, http.StatusOK)
+	if resolver.input.ID != "CUSTOM" || resolver.input.Type != "OpenAI Compatible" {
+		t.Fatalf("runtime provider input = %#v", resolver.input)
+	}
+	if provider.input.Prompt != "hello runtime provider" {
+		t.Fatalf("provider prompt = %q, want runtime prompt", provider.input.Prompt)
+	}
+	if provider.input.ModelRef.ProviderID != "CUSTOM" || provider.input.ModelRef.ModelID != "gpt-test" {
+		t.Fatalf("provider modelRef = %#v", provider.input.ModelRef)
 	}
 }
 
@@ -2372,6 +2406,23 @@ func (r fakeProviderAttachmentResolver) ResolveProviderAttachment(
 		return ProviderAttachment{}, ErrFileNotFound
 	}
 	return resolved, nil
+}
+
+type fakeRuntimeProviderResolver struct {
+	provider Provider
+	input    runtimeconfig.ProviderRuntimeConfig
+	err      error
+}
+
+func (r *fakeRuntimeProviderResolver) ResolveRuntimeProvider(
+	_ context.Context,
+	provider runtimeconfig.ProviderRuntimeConfig,
+) (Provider, error) {
+	r.input = provider
+	if r.err != nil {
+		return nil, r.err
+	}
+	return r.provider, nil
 }
 
 type strictRAGProviderProbe struct {

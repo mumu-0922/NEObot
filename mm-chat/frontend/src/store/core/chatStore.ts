@@ -56,7 +56,10 @@ import {
   createChatStreamService,
   type ChatStreamRunResult,
 } from "../../services/api/chatStreamService";
-import type { AppendUserMessageInput } from "../../services/api/client";
+import type {
+  AppendUserMessageInput,
+  ProviderRuntimeConfigDTO,
+} from "../../services/api/client";
 
 let selectSessionRequestId = 0;
 let serverReadRequestId = 0;
@@ -117,6 +120,7 @@ interface SendServerMessageAndStreamOptions {
   metadata?: Record<string, unknown>;
   streamMetadata?: Record<string, unknown>;
   model?: string;
+  provider?: ProviderRuntimeConfigDTO;
   config?: SessionConfig;
   systemInstruction?: string;
   systemPrompt?: string;
@@ -129,6 +133,7 @@ interface RegenerateServerAssistantMessageOptions {
   sessionId: string;
   assistantMessageId: string;
   model?: string;
+  provider?: ProviderRuntimeConfigDTO;
   config?: SessionConfig;
   systemInstruction?: string;
   systemPrompt?: string;
@@ -1220,6 +1225,7 @@ export const useChatStore = create<ChatState>()(
               conversationId: options.sessionId,
               userMessageId: userMessage.id,
               modelRef,
+              provider: options.provider,
               config: options.config
                 ? { ...normalizeSessionConfig(options.config) }
                 : undefined,
@@ -1447,6 +1453,7 @@ export const useChatStore = create<ChatState>()(
               conversationId: options.sessionId,
               userMessageId,
               modelRef,
+              provider: options.provider,
               config: options.config
                 ? { ...normalizeSessionConfig(options.config) }
                 : undefined,

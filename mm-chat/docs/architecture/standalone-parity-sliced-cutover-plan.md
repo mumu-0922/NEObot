@@ -650,10 +650,11 @@ Slice sequence:
       creation now stays Personal-only in the standalone UI. Backend Team code
       remains only as unreachable legacy surface until a later schema/API
       cleanup slice can safely drop migrations and packages.
-- [ ] G11.3 Browser provider settings parity: restore original-style web
-      provider add/edit/model-fetch flow for local single-user deployments and
-      make Go chat/model calls consume the selected browser-configured provider
-      without logging or documenting secrets.
+- [x] G11.3 Browser provider settings parity: restored local single-user
+      browser provider runtime flow. Provider settings can fetch OpenAI-compatible
+      models through Go with BYOK-encrypted secrets, fetched models are enabled
+      when no prior model selection exists, and Go chat streams consume the
+      selected browser-configured provider without storing secrets in `.env`.
 
 Targeted tests:
 
@@ -677,7 +678,7 @@ Targeted tests:
 | G8 Teams/Knowledge UI                    | Complete    | G8.1-G8.5 frontend control-plane wiring and isolation smoke passed                   |
 | G9 Data Authority/Route Removal          | Complete    | G9.1-G9.6 route freeze, route deletion, local write-authority, and clean-copy preflight passed |
 | G10 Final Closure/Delete Plan            | In progress | G10.1-G10.3 and build-based G10.2 complete; owner cleanup blocked by G11 parity regressions |
-| G11 Owner Parity Regression Closure      | In progress | G11.1 image understanding and G11.2 Team UI removal complete; browser provider settings remain |
+| G11 Owner Parity Regression Closure      | Complete    | G11.1 image understanding, G11.2 Team UI removal, and G11.3 browser provider runtime flow complete |
 
 ## Update Discipline
 

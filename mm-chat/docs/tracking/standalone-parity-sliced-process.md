@@ -4214,3 +4214,66 @@ G11.3 must restore original-style browser provider settings/model-fetch parity.
 Backend Team schema/routes are intentionally deferred; they are no longer visible
 through the standalone frontend after this slice.
 ```
+
+## 2026-07-17 — G11.3 Owner parity: browser provider runtime flow
+
+Objective: restore the original local single-user behavior where providers are
+configured in the web UI and the selected provider is actually used for model
+listing and chat streaming.
+
+Completed scope:
+
+- extended provider runtime DTOs with the browser provider ID so Go can validate
+  selected custom provider model refs without collapsing them into the env
+  default provider;
+- added a chat runtime-provider resolver path: stream requests may include a
+  BYOK-encrypted provider config, Go decrypts the API key in memory, constructs a
+  temporary OpenAI-compatible provider, and streams with that provider;
+- kept plaintext provider secrets rejected by Go; browser keys remain in local
+  secret storage and are sent to Go only as BYOK envelopes for the request;
+- changed `/v1/providers/models` from env-only to real OpenAI-compatible
+  `/models` fetching for BYOK browser providers;
+- made new web providers default to `OpenAI Compatible` with `/v1` base URL and
+  auto-enabled fetched models when the provider had no selected model list yet;
+- wired new message, edited-user-message resend, and assistant regeneration
+  paths to pass the selected provider runtime config into the Go stream.
+
+Changed surfaces:
+
+```text
+mm-chat/backend/internal/chat/handler.go
+mm-chat/backend/internal/chat/provider_openai_compatible.go
+mm-chat/backend/internal/httpserver/server.go
+mm-chat/backend/internal/runtimeconfig/{types.go,service.go,handler.go}
+mm-chat/backend/internal/chat/handler_test.go
+mm-chat/backend/internal/runtimeconfig/service_test.go
+mm-chat/frontend/src/components/app/ChatApp.tsx
+mm-chat/frontend/src/components/settings/ProviderSettings.tsx
+mm-chat/frontend/src/lib/byok/client.ts
+mm-chat/frontend/src/services/api/client/{types.ts,server/chatApi.ts}
+mm-chat/frontend/src/store/core/{chatStore.ts,coreSettingsStore.ts}
+mm-chat/frontend/src/__tests__/{apiClientScaffold.test.ts,byok.test.ts}
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./internal/chat ./internal/runtimeconfig ./internal/httpserver  # passed
+cd mm-chat/backend && GOCACHE=/tmp/neo-chat-go-build go test ./...                                                # passed
+cd mm-chat/frontend && corepack pnpm typecheck                                                                  # passed
+cd mm-chat/frontend && corepack pnpm vitest run src/__tests__/apiClientScaffold.test.ts src/__tests__/byok.test.ts # passed, 64 tests
+cd mm-chat/frontend && corepack pnpm lint                                                                       # passed
+cd mm-chat/frontend && corepack pnpm format:check                                                               # passed
+```
+
+Residual blockers:
+
+```text
+Gemini browser-provider chat is still not reimplemented in Go; current runtime
+provider streaming supports OpenAI/OpenAI-compatible endpoints, matching the
+owner-provided `/v1` supplier path. Former-root deletion should wait for owner
+browser smoke on image input, single-user settings, and provider model fetch/chat.
+```
