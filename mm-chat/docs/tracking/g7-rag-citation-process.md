@@ -1338,3 +1338,78 @@ Residual risk:
 - The test uses `httpx.MockTransport`, so no live provider quota is consumed.
 - Parse-side object storage, MinerU parsing, parse projection staging, purge
   promotion, and live smoke remain future slices.
+
+## 2026-07-16 — G7.5.14 Parse Source Gateway Composition Seam
+
+Objective: give the parse handler a real, testable source-fetch composition
+boundary before attaching Postgres file metadata or MinIO/S3 credentials. This
+keeps the slice default-off and avoids expanding blast radius into object-store
+networking.
+
+Implemented behavior:
+
+- Added `rag/src/mm_chat_rag/source_gateway.py` with:
+  - `FileSourceMetadata`, the validated file/object metadata contract for one
+    admitted parse job;
+  - `SourceMetadataGateway`, a future Postgres/token-fenced metadata seam;
+  - `ObjectBytesGateway`, a future local/MinIO/S3 byte-reader seam;
+  - `ObjectStoreDocumentSourceGateway`, the composition gateway that implements
+    the existing `DocumentSourceGateway` behavior expected by parse handler
+    dependencies.
+- Validation and authority checks are fail closed:
+  - file id must be a nonzero UUID and must match `ProcessingJobContext.file_id`;
+  - storage backend is limited to `local|minio|s3`;
+  - object keys must be internal object-store keys, not paths, URLs, traversal
+    segments, Windows paths, or colon-bearing drive/URL strings;
+  - source bytes must match metadata byte size and SHA-256 before returning a
+    `DocumentSource`;
+  - dependency absence fails with `JOB_HANDLER_DEPENDENCY_UNCONFIGURED` before
+    metadata or object reads.
+- Added `rag/tests/unit/test_source_gateway.py` covering success, default-off
+  behavior, unsafe object keys, invalid metadata fields, file-id mismatch before
+  object read, size mismatch, hash mismatch, and redacted stable errors.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
+  slice adds no MinIO/S3 SDK, no `.env` reads, and no live object-store calls.
+
+Touched files:
+
+```text
+rag/src/mm_chat_rag/source_gateway.py
+rag/tests/unit/test_source_gateway.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && uv run ruff check \
+  src/mm_chat_rag/source_gateway.py tests/unit/test_source_gateway.py
+# passed
+
+cd mm-chat/rag && uv run mypy src/mm_chat_rag/source_gateway.py
+# passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_source_gateway.py \
+  tests/unit/test_job_handler_dependencies.py \
+  tests/unit/test_provider_capture.py::test_production_dispatch_remains_disabled_and_registries_empty
+# 44 passed
+
+cd mm-chat/frontend && corepack pnpm prettier --check \
+  ../docs/architecture/g7-rag-citation-cutover-plan.md \
+  ../docs/tracking/g7-rag-citation-process.md \
+  ../docs/tracking/progress.md
+# passed
+```
+
+Residual risk:
+
+- This is a composition seam only. Postgres metadata retrieval and real
+  local/MinIO/S3 byte adapters are still future gated slices.
+- Parse provider execution remains blocked until MinerU and parse projection
+  gateways are implemented and explicitly promoted.
+- The gateway currently materializes source bytes in memory; a later object-byte
+  adapter may stream internally but must still return bounded verified bytes to
+  the current parser contract.

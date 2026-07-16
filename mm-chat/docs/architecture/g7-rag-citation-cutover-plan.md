@@ -442,10 +442,25 @@ G7.5.13 completed on 2026-07-16:
   order: fetch candidates, call Jina once, stage `1024`-lane vectors with stable
   hashes, then assert materialization completeness.
 
+G7.5.14 completed on 2026-07-16:
+
+- Added `ObjectStoreDocumentSourceGateway`, a default-off parse source gateway
+  that composes parse-job-scoped file metadata with an object-byte reader and
+  returns the existing `DocumentSource` DTO.
+- Added `FileSourceMetadata` validation for nonzero `file_id`,
+  `local|minio|s3` storage backend, safe internal object keys, lowercase SHA-256,
+  bounded nonzero byte size, and normalized content type.
+- The gateway verifies the metadata `file_id` matches the admitted parse job,
+  object byte length equals metadata, and the downloaded bytes hash to the
+  expected source SHA-256 before any parser receives the body.
+- No MinIO/S3 SDK, backend env secret, production registry entry, or live object
+  store call is introduced in this slice.
+
 Remaining G7.5 work:
 
-- Implement real object-store, MinerU, and parse-side Postgres projection
-  adapters behind the new parse seam.
+- Implement real Postgres source metadata and object-byte adapters behind the
+  new source gateway seam, then implement MinerU and parse-side Postgres
+  projection adapters.
 - Promote the composed default-off Jina + Postgres embedding dependencies only
   behind an explicit readiness/registry gate.
 - Promote purge dispatch behind an explicit readiness/registry gate now that
