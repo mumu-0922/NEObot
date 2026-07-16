@@ -52,6 +52,11 @@ cd <former-root>/mm-chat
 # docs/deployment/backup-restore.md before deleting former-root artifacts.
 ```
 
+If the production wrapper rejects the env file for missing immutable image
+variables such as `FRONTEND_IMAGE`, the env is local/dev only. Local backup and
+restore smoke may still be recorded, but it does not approve destructive
+former-root cleanup.
+
 Visual/interaction smoke must cover at least:
 
 - app shell loads from `mm-chat` frontend;

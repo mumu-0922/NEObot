@@ -1189,6 +1189,16 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
   - [ ] G10.2 Operations and backup/restore closure: record production backup
         checksums, Postgres temporary restore drill, MinIO restore drill,
         Compose config/restart/rollback evidence, and runtime smoke.
+    - [x] G10.2a Local live-stack backup/restore smoke: lower-level Postgres
+          and MinIO backups ran with a temporary `BACKUP_DIR`, checksums passed,
+          a disposable Postgres restore verified 24 migrations and core tables,
+          a temporary MinIO restore bucket restored 17 objects and checked 5
+          sampled object keys, backend/frontend restart returned healthy, and
+          temp backup artifacts plus the restore DB were removed.
+    - [ ] G10.2b Production immutable-env backup/restore closure: current local
+          `.env.single-server` is not a production immutable-image env
+          (`FRONTEND_IMAGE` preflight missing), so the final deletion gate still
+          needs production backup/restore evidence.
   - [ ] G10.3 Visual/interaction closure: record desktop/mobile smoke for app
         shell, chat streaming, model/provider visibility, Knowledge citation
         cards, Files/upload when configured, and navigation.

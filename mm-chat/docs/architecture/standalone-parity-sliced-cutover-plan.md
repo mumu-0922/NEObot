@@ -584,6 +584,15 @@ Slice sequence:
 - [ ] G10.2 Operations and backup/restore closure: record production backup
       checksums, Postgres temporary restore drill, MinIO restore drill, Compose
       config/restart/rollback evidence, and runtime smoke.
+  - [x] G10.2a Local live-stack backup/restore smoke: using a temporary
+        `BACKUP_DIR`, Postgres and MinIO backups, checksum verification,
+        disposable Postgres restore, temporary MinIO bucket restore, Compose
+        config, restart, and readiness smoke passed; temp backup artifacts and
+        restore DB were removed after verification.
+  - [ ] G10.2b Production immutable-env backup/restore closure: provide a
+        production `.env.single-server` that passes immutable image preflight,
+        then rerun backup, checksum, restore drills, and rollback evidence for
+        the final deletion gate.
 - [ ] G10.3 Visual/interaction closure: record desktop and mobile smoke for
       app shell, chat streaming, model/provider visibility, Knowledge citation
       cards, Files/upload when configured, and navigation.
@@ -611,7 +620,7 @@ Targeted tests:
 | G7 Knowledge/RAG/Citations               | Complete    | Live MinerU + Jina + Postgres strict citation loop passed                            |
 | G8 Teams/Knowledge UI                    | Complete    | G8.1-G8.5 frontend control-plane wiring and isolation smoke passed                   |
 | G9 Data Authority/Route Removal          | Complete    | G9.1-G9.6 route freeze, route deletion, local write-authority, and clean-copy preflight passed |
-| G10 Final Closure/Delete Plan            | In progress | G10.1 delete-plan dry run complete; operations, backup/restore, visual smoke, and owner-confirmed cleanup remain |
+| G10 Final Closure/Delete Plan            | In progress | G10.1 and G10.2a complete; production immutable backup/restore, visual smoke, and owner-confirmed cleanup remain |
 
 ## Update Discipline
 

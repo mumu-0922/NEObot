@@ -74,6 +74,91 @@ separate owner-confirmed destructive cleanup remain. The current script prints
 the rm command block but never runs it.
 ```
 
+## 2026-07-16 — G10.2a Local Live-stack Backup/Restore Smoke
+
+Objective: prove the current local single-server stack can be backed up,
+restored into disposable targets, restarted, and health-checked without touching
+production data destructively.
+
+Completed scope:
+
+- attempted the production wrapper first; it correctly rejected the current
+  local env because `FRONTEND_IMAGE` is missing, so this slice is local-stack
+  smoke and not final production deletion approval;
+- ran lower-level Postgres and MinIO backups with a temporary `BACKUP_DIR`;
+- verified both generated checksums;
+- restored the Postgres dump into disposable database
+  `neo_chat_restore_drill_g10`;
+- verified the restored database is readable, has 24 migration rows, and
+  contains core chat, file, and Knowledge tables;
+- exported five restored file object keys, then dropped the disposable restore
+  database and verified no restore DB remains;
+- restored the MinIO archive into a temporary bucket, counted 17 restored
+  objects, checked five sampled object keys with `mc stat`, and removed the
+  temporary bucket;
+- rendered Compose config with app/ops/RAG profiles, confirmed required
+  services, `NEXT_PUBLIC_API_MODE=server`, and `/mm-api`;
+- smoke-tested frontend root, `/mm-api/ready`, and `/mm-api/v1/version`;
+- restarted `backend` and `frontend`, then verified HTTP readiness and Docker
+  health returned.
+
+Verification:
+
+```text
+cd mm-chat && ./scripts/backup-single-server-production.sh .env.single-server
+  # blocked as expected for local env: FRONTEND_IMAGE is required
+
+BACKUP_DIR=/tmp/mm-chat-g10-backup-20260716T144525Z \
+  ./scripts/backup-postgres.sh                         # created dump
+BACKUP_DIR=/tmp/mm-chat-g10-backup-20260716T144525Z \
+  ./scripts/backup-minio.sh                            # 17 objects / 317.50 KiB
+sha256sum -c postgres-20260716T144525Z.dump.sha256     # OK
+sha256sum -c minio-20260716T144525Z.tar.gz.sha256      # OK
+
+Postgres restore drill:
+- restore database: neo_chat_restore_drill_g10
+- database_readable: 1
+- schema_migrations: 24
+- core table acceptance block: passed
+- sampled object keys: 5
+- restore DB dropped and verified absent
+
+MinIO restore drill:
+- restored_object_count=17
+- knowledge_document_version_objects_checked=5
+- cleanup=drill_bucket_removed
+
+Compose/runtime smoke:
+- rendered services: admin, backend, frontend, migrate, minio, minio-client,
+  minio-init, postgres, rag-replay, rag-worker, redis
+- missing required services: none
+- frontend_api_mode=server
+- frontend_api_base=/mm-api
+- GET /mm-api/ready: ready with database/redis/storage ready
+- GET /mm-api/v1/version: single-server-dev
+- frontend root bytes: 96881
+- docker compose restart backend frontend: completed
+- post-restart readiness: passed
+- backend/frontend Docker health: healthy
+```
+
+Cleanup:
+
+```text
+/tmp/mm-chat-g10-backup-20260716T144525Z removed
+/tmp/mm-chat-g10-restore removed
+/tmp/mm-chat-g10-ops removed
+neo_chat_restore_drill_g10 absent after drill
+```
+
+Residual blockers:
+
+```text
+G10.2b still needs a production immutable-image `.env.single-server` that passes
+preflight before the final delete gate can claim production backup/restore
+closure. G10.3 visual smoke and G10.4 owner-confirmed cleanup remain.
+```
+
 ## 2026-07-16 — G9.6 Clean-copy Preflight
 
 Objective: prove `mm-chat/` is independently verifiable from an isolated copy
