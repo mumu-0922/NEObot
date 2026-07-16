@@ -2130,6 +2130,68 @@ Residual risk:
 - No live MinerU quota is consumed by this slice; the first real provider smoke
   remains in G7.8 or an explicitly owner-authorized bounded smoke cut.
 
+## 2026-07-16 — G7.5.35 MinerU Opaque Image Element Page Locator Admission
+
+Objective: extend the conservative page-bbox locator seam to single image
+elements while keeping image bytes, paths, and Asset IR out of this slice.
+
+Implemented behavior:
+
+- Reused the element-kind-only locator path for `type=image`/`kind=image` after a
+  unique `content_list` full-text match.
+- For image baselines, the mapper may match a single `layout/middle` image
+  element by semantic kind even when that element has no duplicate full text
+  field.
+- The admitted output is still only the element-level `page_bbox`; image paths,
+  object bytes, captions, OCR regions, and Asset IR are not parsed or persisted.
+- Multiple candidate image elements fail closed with
+  `MINERU_GATEWAY_ARTIFACT_INVALID` to avoid assigning evidence to the wrong
+  image.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. No
+  provider quota is consumed by tests.
+
+Touched files:
+
+```text
+rag/src/mm_chat_rag/mineru_gateway.py
+rag/tests/unit/test_mineru_gateway.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && uv run ruff check \
+  src/mm_chat_rag/mineru_gateway.py tests/unit/test_mineru_gateway.py
+# passed
+
+cd mm-chat/rag && uv run mypy \
+  src/mm_chat_rag/mineru_gateway.py tests/unit/test_mineru_gateway.py
+# passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider tests/unit/test_mineru_gateway.py
+# 97 passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_provider_capture.py::test_production_dispatch_remains_disabled_and_registries_empty \
+  tests/unit/test_job_handler_dependencies.py
+# 26 passed
+
+cd mm-chat/frontend && corepack pnpm prettier --check \
+  ../docs/architecture/g7-rag-citation-cutover-plan.md \
+  ../docs/tracking/g7-rag-citation-process.md \
+  ../docs/tracking/progress.md
+# passed
+```
+
+Residual risk:
+
+- This is only image element-level citation location. Image asset storage,
+  caption/OCR subregions, table-cell addressing, Formula IR, and live Provider
+  smoke remain gated later cuts.
+
 ## 2026-07-16 — G7.5.34 MinerU Opaque Table Element Page Locator Admission
 
 Objective: extend the conservative page-bbox locator seam to single table

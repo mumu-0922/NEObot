@@ -125,6 +125,9 @@ _TEXT_BASELINE_CHUNK_MAX_BYTES: Final = 2400
 _TEXT_BASELINE_TOKEN_BYTES: Final = 4
 _TEXT_BASELINE_CHILD_MAX_TOKENS: Final = 650
 _BBOX_COORDINATES: Final = 4
+_ELEMENT_KIND_ONLY_LOCATOR_TYPES: Final[frozenset[str]] = frozenset(
+    {"image", "table"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1115,7 +1118,10 @@ def _mineru_element_matches_text(
 ) -> bool:
     if _mineru_text_field_matches(element, text):
         return True
-    return content_match_kind == "table" and _mineru_semantic_kind(element) == "table"
+    return (
+        content_match_kind in _ELEMENT_KIND_ONLY_LOCATOR_TYPES
+        and _mineru_semantic_kind(element) == content_match_kind
+    )
 
 
 def _mineru_text_field_matches(value: JsonObject, text: str) -> bool:

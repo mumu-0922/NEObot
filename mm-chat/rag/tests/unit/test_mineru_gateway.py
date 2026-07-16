@@ -1388,6 +1388,77 @@ def test_mineru_gateway_text_baseline_projects_table_page_locator() -> None:
     assert batch.parent_chunks[0].content == text
 
 
+def test_mineru_gateway_text_baseline_projects_image_page_locator() -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+    text = "![diagram](images/diagram.png)"
+    archive_body = _archive(
+        (
+            ("full.md", text.encode()),
+            (
+                "fixture_content_list.json",
+                json.dumps(
+                    [{"img_path": "images/diagram.png", "text": text, "type": "image"}],
+                    separators=(",", ":"),
+                ).encode(),
+            ),
+            (
+                "layout.json",
+                json.dumps(
+                    {
+                        "pages": [
+                            {
+                                "pageIndex": 3,
+                                "elements": [
+                                    {
+                                        "bboxMilliPoint": [
+                                            144000,
+                                            180000,
+                                            468000,
+                                            396000,
+                                        ],
+                                        "kind": "image",
+                                        "path": "images/diagram.png",
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                    separators=(",", ":"),
+                ).encode(),
+            ),
+            ("fixture_model.json", b'{"model":"vlm"}'),
+        )
+    )
+    artifacts = gateway.extract_result_archive_artifacts(object(), archive_body)
+    mapping_input = gateway.prepare_canonical_mapping_input(
+        object(),
+        _source(),
+        artifacts,
+    )
+
+    parsed = gateway.build_text_baseline_parse_artifacts(
+        object(),
+        mapping_input,
+        artifact_set_id=ARTIFACT_SET_ID,
+    )
+    batch = build_postgres_projection_batch(
+        parsed.canonical_ir,
+        parsed.chunk_manifest,
+        PROJECTION_CONTEXT,
+    )
+
+    assert batch.blocks[0].locator_kind == "page_bbox"
+    assert batch.blocks[0].locator == {
+        "kind": "page_bbox",
+        "page": 3,
+        "x1": 144000,
+        "y1": 180000,
+        "x2": 468000,
+        "y2": 396000,
+    }
+    assert batch.parent_chunks[0].content == text
+
+
 def test_mineru_gateway_text_baseline_rejects_ambiguous_page_locator() -> None:
     gateway = MinerULocalBatchGateway(SECRET)
     text = "Duplicate locator text"
@@ -1469,6 +1540,62 @@ def test_mineru_gateway_text_baseline_rejects_ambiguous_table_locator() -> None:
                                     {
                                         "bboxMilliPoint": [100, 100, 200, 200],
                                         "kind": "table",
+                                    },
+                                ],
+                            }
+                        ]
+                    },
+                    separators=(",", ":"),
+                ).encode(),
+            ),
+            ("fixture_model.json", b'{"model":"vlm"}'),
+        )
+    )
+    artifacts = gateway.extract_result_archive_artifacts(object(), archive_body)
+    mapping_input = gateway.prepare_canonical_mapping_input(
+        object(),
+        _source(),
+        artifacts,
+    )
+
+    with pytest.raises(PermanentJobError) as raised:
+        gateway.build_text_baseline_parse_artifacts(
+            object(),
+            mapping_input,
+            artifact_set_id=ARTIFACT_SET_ID,
+        )
+
+    assert raised.value.error_code == MINERU_GATEWAY_ARTIFACT_INVALID
+
+
+def test_mineru_gateway_text_baseline_rejects_ambiguous_image_locator() -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+    text = "![diagram](images/diagram.png)"
+    archive_body = _archive(
+        (
+            ("full.md", text.encode()),
+            (
+                "fixture_content_list.json",
+                json.dumps(
+                    [{"img_path": "images/diagram.png", "text": text, "type": "image"}],
+                    separators=(",", ":"),
+                ).encode(),
+            ),
+            (
+                "layout.json",
+                json.dumps(
+                    {
+                        "pages": [
+                            {
+                                "pageIndex": 0,
+                                "elements": [
+                                    {
+                                        "bboxMilliPoint": [0, 0, 100, 100],
+                                        "kind": "image",
+                                    },
+                                    {
+                                        "bboxMilliPoint": [100, 100, 200, 200],
+                                        "kind": "image",
                                     },
                                 ],
                             }
