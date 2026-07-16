@@ -4990,3 +4990,83 @@ Residual risk:
 - The local MinerU result proxy is an operator workaround for Docker
   Desktop/WSL result-download TLS instability; production should prefer direct
   provider egress or a managed egress proxy with equivalent no-token forwarding.
+
+
+## 2026-07-16 — G7.9 Closure Checklist and G8/G9 Handoff
+
+Objective: close G7 without silently expanding scope into G8/G9, and preserve a
+clear replay boundary for the Knowledge/RAG/citation MVP.
+
+G7 completion checklist:
+
+```text
+[x] Upload/bind selected Knowledge file through Go APIs.
+[x] Automatic admin-secret indexing uses MinerU + Jina + Postgres.
+[x] Python worker runs parse and passage_embedding stages with bounded retries.
+[x] Published document/current version becomes query-visible only after
+    successful parse + embedding publish.
+[x] Selected-collection query returns reference-only candidates.
+[x] Go reauthorizes/hydrates evidence against actor/session/conversation,
+    selected collection IDs, active document/version, projection head,
+    visibility epochs, source span hash, and content hash.
+[x] Strict mode refuses before provider invocation when evidence/governance is
+    insufficient.
+[x] Strict mode answers only after evidence, citation, and answer-governance
+    gates pass.
+[x] Basic citation/status cards are persisted under messages.metadata.knowledge.
+[x] Same-origin /mm-api smoke proved frontend-to-Go strict metadata plumbing.
+[x] Live provider smoke proved citation-producing answer:
+    outcome=answered, citationCount=1, PHOENIX-G78-LIVE-042 [1].
+[x] Secrets were redacted; .env.single-server remains uncommitted local state.
+```
+
+Representative evidence map:
+
+```text
+G7.1 plan: docs/architecture/g7-rag-citation-cutover-plan.md
+G7 process: docs/tracking/g7-rag-citation-process.md
+Progress ledger: docs/tracking/progress.md
+Live artifact root: /tmp/mm-chat-g78-live-g78-20260716T111950Z-20137
+Live strict SSE: /tmp/mm-chat-g78-live-g78-20260716T111950Z-20137/g78-strict-live-20260716T122259Z-63818-stream.sse
+Live answer: The phoenix code is PHOENIX-G78-LIVE-042. [1]
+```
+
+G8 carryovers:
+
+- Build the richer Knowledge UI on the existing frontend theme: collection
+  picker polish, document state visibility, citation/source cards, file titles,
+  preview anchors, and user-facing indexing/no-evidence explanations.
+- Add admin UI or encrypted operational settings for provider secrets if the
+  operator wants runtime configuration beyond env/secret injection.
+- Improve retrieval quality with query embedding/vector similarity/rerank after
+  the current lexical/exact strict MVP is stable.
+- Decide whether citations stay in message metadata or graduate to a dedicated
+  table once cross-message search, feedback, or independent retention is needed.
+
+G9 carryovers:
+
+- Remove production dependence on legacy Next `/api/rag/*`, `/api/doc-parse/*`,
+  and `/api/chat/rag-queries` only after equivalent Go/server-mode behavior is
+  wired and smoke-tested.
+- Remove production local-mode data authority and keep browser data only behind
+  explicit import/rollback flows.
+- Audit frontend service adapters so server mode cannot silently fall back to
+  legacy Next routes for RAG, document parsing, or Knowledge authority.
+
+G10 carryovers:
+
+- Run the clean-copy deployment gate using only `mm-chat/`.
+- Finish visual regression, backup/restore, release rollback, and exact former
+  root deletion plan. No destructive deletion belongs to G7.
+
+Decision:
+
+- Mark G7 closed for the agreed Knowledge/RAG/citation MVP.
+- Do not expand G7 into rich UI, legacy route deletion, or former-root cleanup.
+
+Verification for this closure slice:
+
+```text
+Documentation-only closure. No runtime code changed in G7.9.
+Required checks: git diff --check on touched docs and progress files.
+```

@@ -1427,28 +1427,70 @@ Validation:
 
 ### G7.8 Live provider smoke and operational proof
 
-- Run owner-authorized MinerU + Jina + Postgres smoke with small bounded files,
-  including at least one PDF path and one citation-producing query.
-- Capture only redacted evidence: no keys, no document bodies beyond test
-  snippets intentionally used for citation display, no provider IDs unless
-  allowed by the provider contract.
+G7.8 completed on 2026-07-16:
 
-Validation:
+- Consumed owner-authorized real provider quota with administrator-owned runtime
+  secrets that were checked only for presence and never printed or committed.
+- Proved the automatic indexing path on the local single-server stack:
+  uploaded PDF bytes -> Go source-object gateway -> MinerU local-batch parse ->
+  canonical text-baseline artifacts -> Jina 1024-dimensional passage embeddings
+  -> Postgres search projection -> published active document/current version.
+- Proved the selected strict chat path against the same live document:
+  selected-collection candidate fetch -> Go reauthorization/hydration ->
+  hash-bound citation minting -> answer-purpose governance -> answer-provider
+  stream -> persisted `metadata.knowledge.outcome=answered` with
+  `citationCount=1`.
+- Added migration `024_rag_query_evidence_go_api_grant` and Go service wiring so
+  the API can fetch reference-only query candidates before immediately applying
+  the existing Go hydration/authorization fence.
 
-- Live smoke artifact path recorded in process log.
-- Provider quota target and run ID recorded without secrets.
-- Cleanup/retry/rebuild evidence recorded.
+Validation evidence is recorded in
+`docs/tracking/g7-rag-citation-process.md` under G7.8B/G7.8C. The canonical live
+smoke artifact directory is
+`/tmp/mm-chat-g78-live-g78-20260716T111950Z-20137`; it is operator-local and not
+part of the repository.
 
 ### G7.9 Legacy handoff to G8/G9
 
-- Mark G7 complete only after Go/Python/frontend server-mode path passes.
-- Defer rich Knowledge UI to G8 and Next route deletion/local-authority cleanup
-  to G9.
+G7.9 completed on 2026-07-16:
+
+- G7 is closed for the agreed MVP: backend Go routes, private Python RAG worker,
+  Postgres projections, live MinerU/Jina provider indexing, selected strict
+  chat answer, and first-version citation cards all have reproducible evidence.
+- Richer Knowledge product UI is deliberately deferred to G8 rather than folded
+  into G7. G7 only guarantees the basic citation/status card contract under
+  `messages.metadata.knowledge`.
+- Legacy Next route deletion, local-authority removal, and former-root cleanup
+  are deliberately deferred to G9/G10. G7 does not delete compatibility routes.
+
+G8 carryovers:
+
+- Admin/owner UX for provider secret governance beyond env/secret bootstrap.
+- Rich Knowledge collection/document UI wiring on top of the Go APIs.
+- Better citation previews/highlights, file titles, source navigation, and user
+  feedback flows.
+- Optional query quality upgrades: query embedding, vector similarity, rerank,
+  and richer no-evidence/indexing status explanations.
+
+G9 carryovers:
+
+- Delete or hard-disable replaced legacy Next `/api/rag/*`, `/api/doc-parse/*`,
+  and `/api/chat/rag-queries` routes after parity gates pass.
+- Remove production local-mode data authority while keeping only explicit
+  one-time browser-data import/rollback paths.
+- Audit frontend service fallthrough so server mode cannot silently call legacy
+  Next APIs for Knowledge/RAG/doc parsing.
+
+G10 carryovers:
+
+- Clean-copy gate using only `mm-chat/` without the former repo root.
+- Full visual regression, backup/restore, release/rollback, and exact destructive
+  delete plan before former-root removal.
 
 Validation:
 
-- G7 completion checklist.
-- Explicit list of G8/G9 carryovers.
+- G7 completion checklist recorded in the process log.
+- Explicit G8/G9/G10 carryovers recorded here and in progress tracking.
 
 ## 6. Failure Matrix
 

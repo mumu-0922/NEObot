@@ -1025,7 +1025,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
     - [x] G6.5e Live provider smoke authorization gate: default-deny
           `providersmoke` requires explicit enablement, exact quota approval
           text, exact target, and run id before any live voice/image smoke.
-- [ ] G7 Knowledge, Document Parsing, RAG, and Citations: pass Phase 15 runtime
+- [x] G7 Knowledge, Document Parsing, RAG, and Citations: pass Phase 15 runtime
       parser/index/query/citation gates.
   - [x] G7.1 Decision lock and runtime inventory plan: created
         `docs/architecture/g7-rag-citation-cutover-plan.md` and
@@ -1036,7 +1036,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
   - [x] G7.2 Admin provider config and fail-closed readiness.
   - [x] G7.3 Provider-backed parser/index profile gate.
   - [x] G7.4 Canonical IR to chunks and Postgres projection.
-  - [ ] G7.5 Worker dispatch, rebuild, delete, and retry loop
+  - [x] G7.5 Worker dispatch, rebuild, delete, and retry loop
         (`G7.5.1` readiness gate, `G7.5.2` job-context admission seam, and
         `G7.5.3` Go parse job materialization binding, `G7.5.4` Go purge job
         Generation binding, `G7.5.5` admitted Python handler skeletons, and
@@ -1094,7 +1094,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         becomes ready; `G7.5P` embedding completion publish finalizer publishes
         the materialization, activates the document/current version, advances the
         projection head, and terminally commits the embedding job).
-  - [ ] G7.6 Private query and Go reauthorization
+  - [x] G7.6 Private query and Go reauthorization
         (`G7.6A` selected-collection evidence candidate fetch is live-proven:
         active published materializations in explicitly selected collections can
         return reference-only candidates, while unselected collections return
@@ -1102,7 +1102,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         Postgres, binds `source_span_hash` + `content_hash`, rejects stale or
         unselected refs, and returns no body on failure; chat answer/citation
         assembly remains G7.7).
-  - [ ] G7.7 Strict/optional chat answer and basic citations
+  - [x] G7.7 Strict/optional chat answer and basic citations
         (`G7.7A` Go strict-RAG chat skeleton done: selected collection metadata
         is parsed and validated, authenticated session ID is available to RAG
         assembly, and strict mode fails closed with a persisted refusal before
@@ -1128,7 +1128,11 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         publish on doc11; `G7.8C` wired the Go strict-RAG assembler, applied
         migration `024`, and live-proved `outcome=answered`, `citationCount=1`,
         and answer `PHOENIX-G78-LIVE-042 [1]` from the selected knowledge base).
-  - [ ] G7.9 G8/G9 handoff and G7 closure checklist.
+  - [x] G7.9 G8/G9 handoff and G7 closure checklist: closure recorded in
+        `docs/tracking/g7-rag-citation-process.md`; G8 owns richer Knowledge UI
+        and retrieval-quality upgrades, G9 owns legacy Next RAG/doc-parse route
+        removal plus local-authority cleanup, and G10 owns clean-copy/delete
+        gates.
 - [ ] G8 Teams and Knowledge UI Wiring: connect existing Go control-plane APIs
       to the current frontend theme.
 - [ ] G9 Data Authority and Legacy Route Removal: remove production local-mode
