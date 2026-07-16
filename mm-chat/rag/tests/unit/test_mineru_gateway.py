@@ -1240,6 +1240,79 @@ def test_mineru_gateway_text_baseline_projects_basic_page_locator() -> None:
     assert first_fragment["locator"] == batch.blocks[0].locator
 
 
+def test_mineru_gateway_text_baseline_projects_source_text_page_locator() -> None:
+    gateway = MinerULocalBatchGateway(SECRET)
+    text = "E = mc²"
+    archive_body = _archive(
+        (
+            ("full.md", text.encode()),
+            (
+                "fixture_content_list.json",
+                json.dumps(
+                    [{"sourceText": text, "type": "formula"}],
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ).encode(),
+            ),
+            (
+                "layout.json",
+                json.dumps(
+                    {
+                        "pages": [
+                            {
+                                "pageIndex": 1,
+                                "elements": [
+                                    {
+                                        "bboxMilliPoint": [
+                                            72000,
+                                            360000,
+                                            300000,
+                                            400000,
+                                        ],
+                                        "kind": "formula",
+                                        "sourceText": text,
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ).encode(),
+            ),
+            ("fixture_model.json", b'{"model":"vlm"}'),
+        )
+    )
+    artifacts = gateway.extract_result_archive_artifacts(object(), archive_body)
+    mapping_input = gateway.prepare_canonical_mapping_input(
+        object(),
+        _source(),
+        artifacts,
+    )
+
+    parsed = gateway.build_text_baseline_parse_artifacts(
+        object(),
+        mapping_input,
+        artifact_set_id=ARTIFACT_SET_ID,
+    )
+    batch = build_postgres_projection_batch(
+        parsed.canonical_ir,
+        parsed.chunk_manifest,
+        PROJECTION_CONTEXT,
+    )
+
+    assert batch.blocks[0].locator_kind == "page_bbox"
+    assert batch.blocks[0].locator == {
+        "kind": "page_bbox",
+        "page": 1,
+        "x1": 72000,
+        "y1": 360000,
+        "x2": 300000,
+        "y2": 400000,
+    }
+    assert batch.parent_chunks[0].content == text
+
+
 def test_mineru_gateway_text_baseline_rejects_ambiguous_page_locator() -> None:
     gateway = MinerULocalBatchGateway(SECRET)
     text = "Duplicate locator text"

@@ -794,6 +794,19 @@ G7.5.32 completed on 2026-07-16:
 - Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
   slice does not spend provider quota in tests.
 
+G7.5.33 completed on 2026-07-16:
+
+- Extended the same conservative page-bbox admission from G7.5.32 to MinerU
+  `sourceText` fields.
+- This allows formula-like full-Markdown baselines to project a basic
+  `page_bbox` locator when both `content_list` and `layout/middle` agree on the
+  same `sourceText`, page index, and bbox.
+- The output remains a text-baseline paragraph/chunk projection; this does not
+  claim Formula IR semantics, LaTeX normalization, table structure, image
+  assets, or production dispatch.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. This
+  slice does not spend provider quota in tests.
+
 Remaining G7.5 work:
 
 - Complete the remaining MinerU parser chain: richer citation-grade
@@ -873,6 +886,9 @@ Validation:
 - MinerU basic page-locator mapper tests, including single full-text content-list
   match, layout/middle page bbox admission, projected `page_bbox` block/chunk
   locators, and ambiguous locator rejection.
+- MinerU `sourceText` page-locator tests for formula-like text baselines,
+  including content-list and layout/middle agreement plus projected `page_bbox`
+  output without Formula IR promotion.
 - Retry-three-times and terminal-failure tests.
 
 ### G7.6 Private query and Go reauthorization

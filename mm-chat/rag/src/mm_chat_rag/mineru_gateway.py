@@ -1061,8 +1061,7 @@ def _content_list_has_single_full_text_match(
     for item in content_list:
         if not isinstance(item, dict):
             continue
-        item_text = item.get("text")
-        if item_text == text:
+        if _mineru_text_field_matches(item, text):
             matches += 1
     if matches > 1:
         _reject_permanent(MINERU_GATEWAY_ARTIFACT_INVALID)
@@ -1099,7 +1098,11 @@ def _middle_page_region_candidates(
 
 
 def _mineru_element_matches_text(element: JsonObject, text: str) -> bool:
-    return element.get("text") == text or element.get("sourceText") == text
+    return _mineru_text_field_matches(element, text)
+
+
+def _mineru_text_field_matches(value: JsonObject, text: str) -> bool:
+    return value.get("text") == text or value.get("sourceText") == text
 
 
 def _mineru_page_index(page: JsonObject) -> int:

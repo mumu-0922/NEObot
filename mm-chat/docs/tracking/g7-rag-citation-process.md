@@ -2130,6 +2130,66 @@ Residual risk:
 - No live MinerU quota is consumed by this slice; the first real provider smoke
   remains in G7.8 or an explicitly owner-authorized bounded smoke cut.
 
+## 2026-07-16 — G7.5.33 MinerU SourceText Page Locator Admission
+
+Objective: extend the conservative G7.5.32 page-bbox locator seam to
+formula-like MinerU `sourceText` without promoting Formula IR or live dispatch.
+
+Implemented behavior:
+
+- Reused the same full-text agreement gate for both `text` and `sourceText`
+  fields in `content_list` and `layout/middle` elements.
+- Added a regression test where a formula-like `sourceText` in `content_list`
+  agrees with a `layout/middle` element carrying `pageIndex` and
+  `bboxMilliPoint`, producing a projected `page_bbox` locator.
+- The mapper still emits the existing text-baseline paragraph/chunk artifacts;
+  it does not emit Formula IR, parse LaTeX, map tables/images, or register
+  production handlers.
+- Production `DISPATCH_REGISTRY` and `JOB_HANDLER_REGISTRY` remain empty. No
+  provider quota is consumed by tests.
+
+Touched files:
+
+```text
+rag/src/mm_chat_rag/mineru_gateway.py
+rag/tests/unit/test_mineru_gateway.py
+docs/architecture/g7-rag-citation-cutover-plan.md
+docs/tracking/g7-rag-citation-process.md
+docs/tracking/progress.md
+```
+
+Verification:
+
+```text
+cd mm-chat/rag && uv run ruff check \
+  src/mm_chat_rag/mineru_gateway.py tests/unit/test_mineru_gateway.py
+# passed
+
+cd mm-chat/rag && uv run mypy \
+  src/mm_chat_rag/mineru_gateway.py tests/unit/test_mineru_gateway.py
+# passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider tests/unit/test_mineru_gateway.py
+# 93 passed
+
+cd mm-chat/rag && uv run pytest -p no:cacheprovider \
+  tests/unit/test_provider_capture.py::test_production_dispatch_remains_disabled_and_registries_empty \
+  tests/unit/test_job_handler_dependencies.py
+# 26 passed
+
+cd mm-chat/frontend && corepack pnpm prettier --check \
+  ../docs/architecture/g7-rag-citation-cutover-plan.md \
+  ../docs/tracking/g7-rag-citation-process.md \
+  ../docs/tracking/progress.md
+# passed
+```
+
+Residual risk:
+
+- This is still a text-baseline locator improvement only. Formula semantics,
+  table cells, image assets, and multi-element Markdown mapping remain gated
+  later cuts.
+
 ## 2026-07-16 — G7.5.32 Conservative MinerU Basic Page Locator Mapper
 
 Objective: add the first citation-grade locator improvement to the MinerU
