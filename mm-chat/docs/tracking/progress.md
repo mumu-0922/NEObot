@@ -1139,8 +1139,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         typed on `NeoChatApiClient`, fail closed in local mode, call Go
         `/v1/teams/*` and `/v1/knowledge/*` in server mode, and expose
         server capability flags with targeted adapter tests.
-  - [ ] G8.2 Teams shell/actions: render current-theme Team list/detail,
-        member role changes, invites, leave/revoke flows, and isolation smoke.
+  - [x] G8.2 Teams shell/actions: added current-theme Settings/Teams tab
+        with server-mode Team list/detail, create/rename, member role changes,
+        invites, revoke, leave, fail-closed local mode, and identity-boundary
+        composition tests.
   - [ ] G8.3 Knowledge collection/document shell: collection CRUD, selected
         collection attachment to chat, document list/status, upload/bind, and
         deletion invisibility smoke.

@@ -2967,3 +2967,64 @@ G8.3-G8.5 Knowledge UI, consent UX, and browser isolation smoke remain open.
 G9 still owns legacy local authority and replaced route deletion after visible
 G8 flows pass.
 ```
+
+## 2026-07-16 — G8.2 Teams Settings UI Shell and Actions
+
+Objective: expose the existing Go Team control plane through the current
+frontend theme without introducing a new route shell or redesign.
+
+Completed scope:
+
+- added a deep-linkable `settingsTab=teams` Settings tab;
+- added `TeamSettings` with server-mode capability gating and local-mode
+  fail-closed copy;
+- wired visible actions through the frontend API client only: Team list, create,
+  select/detail, rename, member list, member role update, invite list, create
+  invite, revoke invite, and leave team;
+- kept caller identity and authorization out of browser payloads; UI copy
+  explicitly records that Go resolves authority from the authenticated session;
+- added English, Simplified Chinese, and Japanese Team copy;
+- added composition tests for the tab, i18n, API-client-only action wiring, and
+  absence of caller identity fields.
+
+Changed surfaces:
+
+```text
+mm-chat/frontend/src/components/settings/TeamSettings.tsx
+mm-chat/frontend/src/components/settings/SettingsPage.tsx
+mm-chat/frontend/src/lib/chat/panelUrlState.ts
+mm-chat/frontend/src/i18n/locales/en.ts
+mm-chat/frontend/src/i18n/locales/zh.ts
+mm-chat/frontend/src/i18n/locales/ja.ts
+mm-chat/frontend/src/i18n/locales/en/SettingsPage.json
+mm-chat/frontend/src/i18n/locales/zh/SettingsPage.json
+mm-chat/frontend/src/i18n/locales/ja/SettingsPage.json
+mm-chat/frontend/src/i18n/locales/en/Team.json
+mm-chat/frontend/src/i18n/locales/zh/Team.json
+mm-chat/frontend/src/i18n/locales/ja/Team.json
+mm-chat/frontend/src/__tests__/teamSettingsComposition.test.ts
+mm-chat/frontend/src/__tests__/chatPanelUrlState.test.ts
+mm-chat/docs/architecture/standalone-parity-sliced-cutover-plan.md
+mm-chat/docs/tracking/progress.md
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+```
+
+Verification:
+
+```text
+cd mm-chat/frontend && corepack pnpm vitest run src/__tests__/teamSettingsComposition.test.ts src/__tests__/chatPanelUrlState.test.ts src/__tests__/settingsUiComposition.test.ts src/__tests__/settingsHealthPanel.test.ts # passed, 13 tests
+cd mm-chat/frontend && corepack pnpm typecheck # passed
+cd mm-chat/frontend && corepack pnpm lint # passed
+cd mm-chat/frontend && corepack pnpm format:check # passed
+cd mm-chat/frontend && corepack pnpm build # passed
+git diff --check -- mm-chat # passed
+```
+
+Residual blockers:
+
+```text
+G8.3 Knowledge collection/document UI shell remains next.
+G8.4 Consent UX and G8.5 browser isolation smoke remain open.
+A live browser screenshot is still not claimed because this environment has no
+working Chromium runtime.
+```

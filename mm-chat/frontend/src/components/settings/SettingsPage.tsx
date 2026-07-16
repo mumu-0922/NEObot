@@ -10,6 +10,7 @@ import {
   FolderSearch,
   ShieldCheck,
   Brain,
+  UsersRound,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -21,6 +22,7 @@ import SystemSettings from "./SystemSettings";
 import DefaultModelSettings from "./DefaultModelSettings";
 import DeploymentHealth from "./DeploymentHealth";
 import MemorySettings from "./MemorySettings";
+import TeamSettings from "./TeamSettings";
 import type { SettingsTabId } from "@/lib/chat/panelUrlState";
 
 const SETTINGS_TABS: Array<{
@@ -35,6 +37,7 @@ const SETTINGS_TABS: Array<{
   { id: "voice", labelKey: "tabVoice", Icon: Mic },
   { id: "memory", labelKey: "tabMemory", Icon: Brain },
   { id: "health", labelKey: "tabHealth", Icon: ShieldCheck },
+  { id: "teams", labelKey: "tabTeams", Icon: UsersRound },
   { id: "system", labelKey: "tabSystem", Icon: Settings },
 ];
 
@@ -54,6 +57,8 @@ const renderTabContent = (activeTab: SettingsTabId) => {
       return <MemorySettings />;
     case "health":
       return <DeploymentHealth />;
+    case "teams":
+      return <TeamSettings />;
     case "system":
       return <SystemSettings />;
   }

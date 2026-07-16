@@ -515,7 +515,7 @@ Slice sequence:
       `TeamApi` and `KnowledgeApi`, keep local mode fail-closed, route server
       mode through Go `/v1/teams/*` and `/v1/knowledge/*`, and verify route
       shape/capability flags without changing visible UI.
-- [ ] G8.2 Teams UI shell/actions: Team list/detail, members, invites, leave,
+- [x] G8.2 Teams UI shell/actions: Team list/detail, members, invites, leave,
       role update, and revoke flows using the existing theme.
 - [ ] G8.3 Knowledge collection/document UI shell: collection CRUD, document
       status/list, file upload-to-bind flow, and immediate deletion
@@ -577,7 +577,7 @@ Targeted tests:
 | G5 Search/Web Enrichment                 | Paused      | Owner reopens, then server-owned search passes gates                         |
 | G6 Voice/Image/Code Jobs                 | In progress | Image generation is reopened through Go artifacts; voice executor remains    |
 | G7 Knowledge/RAG/Citations               | Complete    | Live MinerU + Jina + Postgres strict citation loop passed                    |
-| G8 Teams/Knowledge UI                    | In progress | G8.1 adapters done; visible Teams/Knowledge UI wiring remains                |
+| G8 Teams/Knowledge UI                    | In progress | G8.1 adapters and G8.2 Teams settings UI done; Knowledge UI remains          |
 | G9 Data Authority/Route Removal          | Pending     | local production authority and replaced routes gone                          |
 | G10 Final Closure/Delete Plan            | Pending     | Clean-copy and delete-plan gates pass                                        |
 

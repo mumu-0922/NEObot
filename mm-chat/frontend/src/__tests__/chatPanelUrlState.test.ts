@@ -31,12 +31,12 @@ describe("chat panel URL state", () => {
   it("serializes panel state while preserving unrelated query params", () => {
     const params = setChatPanelUrlState(new URLSearchParams("keep=1"), {
       panel: "settings",
-      settingsTab: "rag",
+      settingsTab: "teams",
     });
 
     expect(params.get("keep")).toBe("1");
     expect(params.get("panel")).toBe("settings");
-    expect(params.get("settingsTab")).toBe("rag");
+    expect(params.get("settingsTab")).toBe("teams");
   });
 
   it("round-trips the skills panel without settings params", () => {
