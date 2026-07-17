@@ -59,7 +59,6 @@ export function normalizeMessageKnowledgeMetadata(
 ): MessageKnowledgeMetadata | undefined {
   if (!metadata || !isRecord(metadata.knowledge)) return undefined;
   const knowledge = metadata.knowledge;
-  const mode = knowledge.mode === "strict" ? "strict" : "optional";
   const rawCitations = Array.isArray(knowledge.citations)
     ? knowledge.citations
     : [];
@@ -73,7 +72,7 @@ export function normalizeMessageKnowledgeMetadata(
       : citations.length;
 
   return {
-    mode,
+    mode: "auto",
     outcome: stringValue(knowledge.outcome),
     selectedCollectionIds: stringArrayValue(knowledge.selectedCollectionIds),
     citationCount,

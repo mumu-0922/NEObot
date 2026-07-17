@@ -246,9 +246,11 @@ func (r *PostgresRepository) materializeLockedCollectionExpiry(
 	if _, err := tx.ExecContext(ctx, `UPDATE processing_consents SET expiry_materialized_at=$2,updated_at=$2 WHERE id=$1 AND expiry_materialized_at IS NULL`, current.ID, now); err != nil {
 		return processingRevision, fmt.Errorf("materialize current collection expiry: %w", err)
 	}
-	processingRevision++
-	if _, err := tx.ExecContext(ctx, `UPDATE knowledge_collections SET collection_processing_revision=$2,updated_at=$3 WHERE id=$1`, collectionID, processingRevision, now); err != nil {
-		return processingRevision, fmt.Errorf("advance current collection expiry revision: %w", err)
+	if collectionConsentAffectsProjection(current.Purposes) {
+		processingRevision++
+		if _, err := tx.ExecContext(ctx, `UPDATE knowledge_collections SET collection_processing_revision=$2,updated_at=$3 WHERE id=$1`, collectionID, processingRevision, now); err != nil {
+			return processingRevision, fmt.Errorf("advance current collection expiry revision: %w", err)
+		}
 	}
 	value, authority := expiredConsentEventValues(processor, current, now)
 	if err := r.insertCollectionConsentEvent(ctx, tx, collectionID, value, current.ConsentRevision, processingRevision, authority); err != nil {

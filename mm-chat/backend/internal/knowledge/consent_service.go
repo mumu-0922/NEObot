@@ -15,6 +15,15 @@ var queryConsentPurposes = map[string]bool{
 	"query_embedding": true, "rerank": true, "answer": true,
 }
 
+func collectionConsentAffectsProjection(purposes []string) bool {
+	for _, purpose := range purposes {
+		if strings.TrimSpace(purpose) != "answer" {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Service) ListQueryConsents(ctx context.Context) ([]ProcessingConsent, error) {
 	repo, err := s.queryConsentRepository()
 	if err != nil {

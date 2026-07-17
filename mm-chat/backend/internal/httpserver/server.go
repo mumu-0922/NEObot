@@ -56,6 +56,7 @@ type options struct {
 	runCancellationStore chat.RunCancellationStore
 	rateLimitStore       ratelimit.Store
 	sessionResolver      SessionResolver
+	developmentSession   *auth.Session
 	authService          *auth.Service
 	fileRepository       files.Repository
 	objectStore          storage.ObjectStore
@@ -347,6 +348,13 @@ func WithSessionResolver(resolver SessionResolver) Option {
 	}
 }
 
+func WithDevelopmentSession(session auth.Session) Option {
+	return func(opts *options) {
+		copy := session
+		opts.developmentSession = &copy
+	}
+}
+
 func WithAuthService(service *auth.Service) Option {
 	return func(opts *options) {
 		opts.authService = service
@@ -595,7 +603,11 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	authRequired := cfg.Auth.RequireAuth()
 	middlewares = append(
 		middlewares,
-		withSessionIdentity(resolvedOptions.sessionResolver, authRequired),
+		withSessionIdentity(
+			resolvedOptions.sessionResolver,
+			resolvedOptions.developmentSession,
+			authRequired,
+		),
 	)
 	if cfg.Redis.RateLimitEnabled && resolvedOptions.rateLimitStore != nil {
 		middlewares = append(middlewares, withRateLimit(resolvedOptions.rateLimitStore, cfg.Redis, nil))
@@ -634,7 +646,11 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	}
 }
 
-func withSessionIdentity(resolver SessionResolver, requireAuth bool) Middleware {
+func withSessionIdentity(
+	resolver SessionResolver,
+	developmentSession *auth.Session,
+	requireAuth bool,
+) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if isPublicWithoutAuthRequest(r) {
@@ -646,10 +662,13 @@ func withSessionIdentity(resolver SessionResolver, requireAuth bool) Middleware 
 			// inject the owner explicitly for services that reject implicit
 			// repository fallbacks.
 			if !requireAuth {
-				developmentContext := auth.WithUser(
-					r.Context(),
-					auth.UserOrDevelopment(r.Context()),
-				)
+				developmentContext := auth.WithUser(r.Context(), auth.DevelopmentUser())
+				if developmentSession != nil {
+					developmentContext = auth.WithAuthenticatedSession(
+						r.Context(),
+						*developmentSession,
+					)
+				}
 				next.ServeHTTP(w, r.WithContext(developmentContext))
 				return
 			}

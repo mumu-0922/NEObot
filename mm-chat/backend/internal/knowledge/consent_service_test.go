@@ -8,6 +8,17 @@ import (
 	"neo-chat/mm-chat/backend/internal/auth"
 )
 
+func TestCollectionAnswerConsentDoesNotInvalidateSearchProjection(t *testing.T) {
+	if collectionConsentAffectsProjection([]string{"answer"}) {
+		t.Fatal("answer-only consent unexpectedly affects the search projection")
+	}
+	for _, purposes := range [][]string{{"parse"}, {"passage_embedding"}, {"answer", "rerank"}} {
+		if !collectionConsentAffectsProjection(purposes) {
+			t.Fatalf("purposes %v must affect the search projection", purposes)
+		}
+	}
+}
+
 func TestCollectionConsentServiceNormalizesAndBindsActor(t *testing.T) {
 	now := time.Now().UTC()
 	repo := &fakeRepository{consents: []ProcessingConsent{{Processor: "mineru", Decision: "granted", DecidedAt: now}}}

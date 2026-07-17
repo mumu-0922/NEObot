@@ -2,12 +2,16 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 )
+
+const developmentSessionUserAgent = "mm-chat-development-internal"
 
 type PostgresSessionRepository struct {
 	db *sql.DB
@@ -15,6 +19,59 @@ type PostgresSessionRepository struct {
 
 func NewPostgresSessionRepository(db *sql.DB) *PostgresSessionRepository {
 	return &PostgresSessionRepository{db: db}
+}
+
+// EnsureDevelopmentSession creates the database identity used by the fixed
+// single-user development owner. The random token hash has no corresponding
+// browser token and is rotated on every process start, so it cannot be used as
+// an authentication credential.
+func (r *PostgresSessionRepository) EnsureDevelopmentSession(
+	ctx context.Context,
+	expiresAt time.Time,
+) (Session, error) {
+	if r == nil || r.db == nil {
+		return Session{}, ErrDatabaseRequired
+	}
+	if !expiresAt.After(timeNow()) {
+		return Session{}, errors.New("development session expiry must be in the future")
+	}
+	randomHash := make([]byte, 32)
+	if _, err := rand.Read(randomHash); err != nil {
+		return Session{}, fmt.Errorf("generate development session token hash: %w", err)
+	}
+
+	session, err := scanSession(r.db.QueryRowContext(ctx, `
+INSERT INTO sessions (id, user_id, token_hash, user_agent, expires_at)
+SELECT $1, u.id, $2, $3, $4
+FROM users u
+WHERE u.id = $5
+  AND u.account_status = 'active'
+  AND u.deleted_at IS NULL
+ON CONFLICT (id) DO UPDATE SET
+  user_id = EXCLUDED.user_id,
+  token_hash = EXCLUDED.token_hash,
+  user_agent = EXCLUDED.user_agent,
+  expires_at = EXCLUDED.expires_at,
+  revoked_at = NULL,
+  updated_at = now()
+RETURNING
+  id,
+  user_id,
+  $6::text AS display_name,
+  $7::text AS role,
+  expires_at,
+  revoked_at,
+  created_at,
+  updated_at
+`, DevelopmentSessionID, hex.EncodeToString(randomHash), developmentSessionUserAgent,
+		expiresAt.UTC(), DevelopmentUserID, DevelopmentDisplayName, defaultUserRole))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Session{}, ErrInvalidCredential
+	}
+	if err != nil {
+		return Session{}, fmt.Errorf("ensure development session: %w", err)
+	}
+	return session, nil
 }
 
 func (r *PostgresSessionRepository) LookupSessionByTokenHash(ctx context.Context, tokenHash string) (Session, error) {

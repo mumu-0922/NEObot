@@ -28,15 +28,16 @@ func TestPostgresCollectionConsentACLRevisionIdempotencyAndRollback(t *testing.T
 		personalID           = "33000000-0000-4000-8000-000000000001"
 		teamCollectionID     = "33000000-0000-4000-8000-000000000002"
 		rollbackCollectionID = "33000000-0000-4000-8000-000000000003"
+		answerCollectionID   = "33000000-0000-4000-8000-000000000004"
 	)
 	mustKnowledgeExec(t, ctx, db, `INSERT INTO users(id,email,display_name) VALUES
 ($1,'consent-owner@example.test','Owner'),($2,'consent-member@example.test','Member'),($3,'consent-outsider@example.test','Outsider');
 INSERT INTO teams(id,name,created_by_user_id) VALUES ($4,'Consent Team',$1);
 INSERT INTO team_memberships(team_id,user_id,role) VALUES ($4,$1,'admin'),($4,$2,'member');
 INSERT INTO knowledge_collections(id,name,scope,owner_user_id) VALUES
-($5,'Personal','personal',$1),($7,'Rollback','personal',$1);
+($5,'Personal','personal',$1),($7,'Rollback','personal',$1),($8,'Answer','personal',$1);
 INSERT INTO knowledge_collections(id,name,scope,team_id) VALUES ($6,'Team','team',$4)`,
-		ownerID, memberID, outsiderID, teamID, personalID, teamCollectionID, rollbackCollectionID)
+		ownerID, memberID, outsiderID, teamID, personalID, teamCollectionID, rollbackCollectionID, answerCollectionID)
 	manifest := GovernanceManifest{Processor: "mineru", EndpointID: "hosted-main", ModelID: "model-stable-20260712", ModelAPIVersion: "api-20260623",
 		AllowedPurposes: []string{"parse", "rerank"}, AllowedDataTypes: []string{"application/pdf", "text/plain"},
 		Region: "global", RetentionPolicy: "none", DeletionContract: "delete", TrainingUse: "disabled"}
@@ -65,6 +66,30 @@ INSERT INTO knowledge_collections(id,name,scope,team_id) VALUES ($6,'Team','team
 	}
 	if processingRevision != 2 || events != 1 {
 		t.Fatalf("no-op revision/events = %d/%d", processingRevision, events)
+	}
+	answerManifest := GovernanceManifest{
+		Processor: "openai_compatible", EndpointID: "server-default", ModelID: "gpt-5.5",
+		ModelAPIVersion: "api-20260716", AllowedPurposes: []string{"answer"},
+		AllowedDataTypes: []string{"text/plain"}, Region: "global", RetentionPolicy: "none",
+		DeletionContract: "delete", TrainingUse: "disabled",
+	}
+	if _, err := NewGovernanceService(NewPostgresRepository(db)).Apply(ctx, answerManifest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.PutCollectionConsentForModel(
+		ownerCtx,
+		answerCollectionID,
+		ProcessorModelIdentity{Processor: "openai_compatible", EndpointID: "server-default", ModelID: "gpt-5.5"},
+		PutConsentInput{Purposes: []string{"answer"}, DataTypes: []string{"text/plain"}, PolicyVersion: "v1"},
+	); err != nil {
+		t.Fatalf("grant answer consent: %v", err)
+	}
+	var answerCollectionRevision int
+	if err := db.QueryRowContext(ctx, `SELECT collection_processing_revision FROM knowledge_collections WHERE id=$1`, answerCollectionID).Scan(&answerCollectionRevision); err != nil {
+		t.Fatal(err)
+	}
+	if answerCollectionRevision != 1 {
+		t.Fatalf("answer-only consent invalidated projection revision: %d", answerCollectionRevision)
 	}
 	var endpointID, modelID, contractHash string
 	if err := db.QueryRowContext(ctx, `SELECT payload->>'endpointId',payload->>'modelId',

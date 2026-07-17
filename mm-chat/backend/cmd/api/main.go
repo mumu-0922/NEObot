@@ -124,10 +124,29 @@ func main() {
 	var pluginAuditRecorder plugins.AuditRecorder
 	var runtimeConfigRepo runtimeconfig.ProviderConfigRepository
 	var sessionResolver httpserver.SessionResolver
+	var developmentSession *auth.Session
 	var authService *auth.Service
 	sqlDB := db.SQL()
 	if sqlDB != nil {
 		authRepo := auth.NewPostgresSessionRepository(sqlDB)
+		if cfg.Auth.Mode == config.AuthModeDevelopment {
+			developmentSessionCtx, developmentSessionCancel := context.WithTimeout(
+				context.Background(),
+				databaseOpenTimeout,
+			)
+			session, sessionErr := authRepo.EnsureDevelopmentSession(
+				developmentSessionCtx,
+				time.Now().UTC().Add(cfg.Auth.SessionTTL),
+			)
+			developmentSessionCancel()
+			if sessionErr != nil {
+				_ = redisClient.Close()
+				_ = db.Close()
+				logger.Error("development_session_bootstrap_failed", slog.String("error", redactSensitiveLogText(sessionErr.Error())))
+				os.Exit(1)
+			}
+			developmentSession = &session
+		}
 		chatRepo = chat.NewPostgresRepository(sqlDB)
 		fileRepo = files.NewPostgresRepository(sqlDB)
 		pluginRegistry = plugins.NewPostgresRegistry(sqlDB, plugins.BuiltInPlugins()...)
@@ -184,20 +203,37 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	knowledgeService := knowledge.NewService(
-		knowledgeRepo,
+	knowledgeOptions := []knowledge.ServiceOption{
 		knowledge.WithCursorCodec(teamRuntime.cursor),
 		knowledge.WithObjectStore(objectStore),
 		knowledge.WithSingleUserCollectionConsents(),
-	)
+	}
+	answerIdentity, hasAnswerIdentity := singleUserAnswerIdentity(cfg)
+	if cfg.Auth.Mode == config.AuthModeDevelopment && hasAnswerIdentity {
+		knowledgeOptions = append(
+			knowledgeOptions,
+			knowledge.WithSingleUserAnswerConsent(answerIdentity),
+		)
+	}
+	knowledgeService := knowledge.NewService(knowledgeRepo, knowledgeOptions...)
 	if sqlDB != nil {
 		bootstrapCtx, bootstrapCancel := context.WithTimeout(context.Background(), databaseOpenTimeout)
+		governanceService := knowledge.NewGovernanceService(knowledge.NewPostgresRepository(sqlDB))
 		err = knowledge.BootstrapSingleUserNativeProcessing(
 			bootstrapCtx,
 			knowledgeService,
-			knowledge.NewGovernanceService(knowledge.NewPostgresRepository(sqlDB)),
+			governanceService,
 			auth.User{ID: cfg.Auth.BootstrapUserID, DisplayName: cfg.Auth.BootstrapDisplayName},
 		)
+		if err == nil && cfg.Auth.Mode == config.AuthModeDevelopment && hasAnswerIdentity {
+			err = knowledge.BootstrapSingleUserAnswerProcessing(
+				bootstrapCtx,
+				knowledgeService,
+				governanceService,
+				auth.User{ID: cfg.Auth.BootstrapUserID, DisplayName: cfg.Auth.BootstrapDisplayName},
+				answerIdentity,
+			)
+		}
 		bootstrapCancel()
 		if err != nil {
 			_ = redisClient.Close()
@@ -241,6 +277,9 @@ func main() {
 		httpserver.WithPluginRegistry(pluginRegistry),
 		httpserver.WithPluginAuditRecorder(pluginAuditRecorder),
 		httpserver.WithLogger(logger),
+	}
+	if developmentSession != nil {
+		serverOptions = append(serverOptions, httpserver.WithDevelopmentSession(*developmentSession))
 	}
 	if db.SQL() != nil {
 		serverOptions = append(serverOptions, httpserver.WithReadyCheck("database", db))
@@ -387,6 +426,21 @@ func main() {
 	if runtimeErr != nil {
 		os.Exit(1)
 	}
+}
+
+func singleUserAnswerIdentity(cfg config.Config) (knowledge.ProcessorModelIdentity, bool) {
+	processor := strings.ToLower(strings.TrimSpace(cfg.Provider.Type))
+	switch processor {
+	case "openai", "openai-compatible":
+		processor = "openai_compatible"
+	}
+	modelID := strings.TrimSpace(cfg.Provider.Model)
+	if processor == "" || processor == "none" || modelID == "" || strings.Contains(modelID, ",") {
+		return knowledge.ProcessorModelIdentity{}, false
+	}
+	return knowledge.ProcessorModelIdentity{
+		Processor: processor, EndpointID: "server-default", ModelID: modelID,
+	}, true
 }
 
 func redactSensitiveLogText(value string) string {

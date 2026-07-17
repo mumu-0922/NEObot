@@ -7,17 +7,17 @@ import {
 } from "@/lib/utils/knowledgeAttachments";
 
 describe("Knowledge citation metadata", () => {
-  it("normalizes strict citation metadata from server messages", () => {
+  it("normalizes Auto citation metadata from server messages", () => {
     const knowledge = normalizeMessageKnowledgeMetadata({
       knowledge: {
-        mode: "strict",
+        mode: "auto",
         outcome: "answered",
         selectedCollectionIds: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"],
         citationCount: 1,
         citations: [
           {
             id: "cit_1",
-            marker: "[1]",
+            marker: "[K1]",
             documentId: "doc_1",
             locator: { page: 1 },
             snippet: "alpha evidence source",
@@ -28,7 +28,7 @@ describe("Knowledge citation metadata", () => {
     });
 
     expect(knowledge).toMatchObject({
-      mode: "strict",
+      mode: "auto",
       outcome: "answered",
       citationCount: 1,
       evidenceUsed: true,
@@ -36,7 +36,7 @@ describe("Knowledge citation metadata", () => {
       citations: [
         {
           id: "cit_1",
-          marker: "[1]",
+          marker: "[K1]",
           snippet: "alpha evidence source",
           locator: { page: 1 },
         },
@@ -44,24 +44,24 @@ describe("Knowledge citation metadata", () => {
     });
   });
 
-  it("preserves optional degradation metadata without citations", () => {
+  it("preserves Auto dependency degradation metadata without citations", () => {
     const knowledge = normalizeMessageKnowledgeMetadata({
       knowledge: {
-        mode: "optional",
-        outcome: "degraded",
+        mode: "auto",
+        outcome: "dependency_unavailable",
         selectedCollectionIds: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"],
         citationCount: 0,
         evidenceUsed: false,
-        degradationReason: "no_verified_knowledge_evidence",
+        degradationReason: "dependency_unavailable",
       },
     });
 
     expect(knowledge).toMatchObject({
-      mode: "optional",
-      outcome: "degraded",
+      mode: "auto",
+      outcome: "dependency_unavailable",
       citationCount: 0,
       evidenceUsed: false,
-      degradationReason: "no_verified_knowledge_evidence",
+      degradationReason: "dependency_unavailable",
       citations: [],
     });
   });

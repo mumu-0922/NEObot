@@ -122,6 +122,23 @@ func WithSingleUserCollectionConsents() ServiceOption {
 	}
 }
 
+// WithSingleUserAnswerConsent makes the selected server answer provider an
+// automatic collection authority for newly created personal Knowledge bases.
+// Existing collections are backfilled by BootstrapSingleUserAnswerProcessing.
+func WithSingleUserAnswerConsent(identity ProcessorModelIdentity) ServiceOption {
+	return func(service *Service) {
+		service.automaticCollectionConsents = append(
+			service.automaticCollectionConsents,
+			automaticCollectionConsent{
+				Identity: identity,
+				Input: PutConsentInput{
+					Purposes: []string{"answer"}, DataTypes: []string{"text/plain"}, PolicyVersion: "v1",
+				},
+			},
+		)
+	}
+}
+
 func NewService(repo Repository, options ...ServiceOption) *Service {
 	service := &Service{repo: repo, newID: newUUID}
 	for _, option := range options {

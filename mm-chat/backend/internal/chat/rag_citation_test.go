@@ -23,8 +23,8 @@ func TestMintRAGCitationsBindsHashesLocatorAndSnippet(t *testing.T) {
 	if !strings.HasPrefix(citation.ID, "cit_") || len(citation.ID) != len("cit_")+32 {
 		t.Fatalf("citation id = %q", citation.ID)
 	}
-	if citation.Marker != "[1]" {
-		t.Fatalf("marker = %q, want [1]", citation.Marker)
+	if citation.Marker != "[K1]" {
+		t.Fatalf("marker = %q, want [K1]", citation.Marker)
 	}
 	if citation.SourceSpanHash != evidence.SourceSpanHash || citation.ContentHash != evidence.ContentHash {
 		t.Fatalf("citation hashes = %s/%s", citation.SourceSpanHash, citation.ContentHash)

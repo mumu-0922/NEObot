@@ -8221,3 +8221,14 @@ bounded phrase/bigram recall without weakening selected-collection, active
 projection, reference-only, or Go hydration authorization fences. Live SQL
 proved Chinese evidence queries changed from 0 to 1 candidate while unrelated
 weather and unsupported Lindo-procedure questions remained at 0.
+
+## 2026-07-17 — G11.9A Auto Knowledge closure cross-reference
+
+Development mode now supplies the database-valid internal Session required by
+Go evidence hydration. The strict refusal branch and frontend strict flags were
+removed; relevant selected Knowledge augments the normal provider stream with
+`[K]` citations, while a normal miss silently falls back to the model. The
+active DOCX answered `研究方向是什么？` with “推荐系统” and `[K1]`, and an unrelated
+weather query completed without a refusal/status card. Full runtime evidence
+and the answer-consent projection-revision correction are recorded in
+`docs/tracking/g11-knowledge-auto-rag-process.md`.

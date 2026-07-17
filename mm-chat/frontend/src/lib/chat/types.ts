@@ -239,8 +239,6 @@ export interface SessionConfig {
   activeSkills?: string[];
   selectedKnowledgeCollectionIds?: string[];
   knowledgeCollectionIds?: string[];
-  knowledgeStrict?: boolean;
-  ragStrict?: boolean;
 }
 
 export interface Session {

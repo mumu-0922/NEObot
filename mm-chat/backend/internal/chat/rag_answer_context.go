@@ -7,12 +7,12 @@ import (
 	"neo-chat/mm-chat/backend/internal/knowledge"
 )
 
-const strictRAGSystemInstruction = `Strict Knowledge mode is enabled.
-Use only the verified Knowledge evidence in the user message.
-Every factual claim grounded in Knowledge must cite the matching marker like [1].
-If the evidence is insufficient, answer exactly: `
+const autoRAGSystemInstruction = `Relevant Knowledge evidence is included with the user question.
+Use it as additional context when it helps answer the question; you may also use general model knowledge.
+Every claim supported by Knowledge should cite the matching marker like [K1].
+Do not claim or cite a source that you did not use.`
 
-func buildStrictRAGProviderRequest(
+func buildAutoRAGProviderRequest(
 	userQuestion string,
 	baseSystemPrompt string,
 	evidence []knowledge.HydratedEvidence,
@@ -26,13 +26,12 @@ func buildStrictRAGProviderRequest(
 		system.WriteString(trimmed)
 		system.WriteString("\n\n")
 	}
-	system.WriteString(strictRAGSystemInstruction)
-	system.WriteString(ragRefusalText())
+	system.WriteString(autoRAGSystemInstruction)
 
 	var prompt strings.Builder
 	prompt.WriteString("User question:\n")
 	prompt.WriteString(strings.TrimSpace(userQuestion))
-	prompt.WriteString("\n\nVerified Knowledge evidence:\n")
+	prompt.WriteString("\n\nRelevant Knowledge evidence:\n")
 	for index, citation := range citations {
 		if index >= len(evidence) || strings.TrimSpace(citation.Snippet) == "" || strings.TrimSpace(citation.Marker) == "" {
 			return "", "", ErrRAGInsufficientEvidence
@@ -51,7 +50,7 @@ func buildStrictRAGProviderRequest(
 		prompt.WriteString(citation.ContentHash)
 		prompt.WriteString("\n\n")
 	}
-	prompt.WriteString("Answer using only the verified evidence above. Include citation markers in the answer.")
+	prompt.WriteString("Answer naturally. Cite Knowledge markers for claims that use the evidence above.")
 	return prompt.String(), system.String(), nil
 }
 
@@ -70,24 +69,11 @@ func compactCitationLocator(locator json.RawMessage) string {
 	return string(encoded)
 }
 
-func strictRAGAnswerCitesEvidence(answer string, citations []RAGCitation) bool {
-	answer = strings.TrimSpace(answer)
-	if answer == "" || len(citations) == 0 {
-		return false
-	}
-	for _, citation := range citations {
-		marker := strings.TrimSpace(citation.Marker)
-		if marker != "" && strings.Contains(answer, marker) {
-			return true
-		}
-	}
-	return false
-}
-
-func strictRAGAnswerProviderMetadata(decision strictRAGDecision) map[string]any {
+func autoRAGAnswerProviderMetadata(decision autoRAGDecision) map[string]any {
 	metadata := map[string]any{
-		"mode":          "strict",
+		"mode":          "auto",
 		"citationCount": len(decision.Citations),
+		"citations":     append([]RAGCitation(nil), decision.Citations...),
 	}
 	if decision.Authority != nil {
 		metadata["answerGovernance"] = *decision.Authority

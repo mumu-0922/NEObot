@@ -12,9 +12,30 @@ import (
 	"time"
 
 	"neo-chat/mm-chat/backend/internal/config"
+	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/storage"
 	"neo-chat/mm-chat/backend/internal/teams"
 )
+
+func TestSingleUserAnswerIdentityCanonicalizesConfiguredProvider(t *testing.T) {
+	identity, ok := singleUserAnswerIdentity(config.Config{Provider: config.ProviderConfig{
+		Type: "openai-compatible", Model: "gpt-5.5",
+	}})
+	if !ok || identity != (knowledge.ProcessorModelIdentity{
+		Processor: "openai_compatible", EndpointID: "server-default", ModelID: "gpt-5.5",
+	}) {
+		t.Fatalf("singleUserAnswerIdentity() = %#v/%v", identity, ok)
+	}
+
+	if _, ok := singleUserAnswerIdentity(config.Config{}); ok {
+		t.Fatal("blank provider unexpectedly produced answer identity")
+	}
+	if _, ok := singleUserAnswerIdentity(config.Config{Provider: config.ProviderConfig{
+		Type: "openai_compatible", Model: "model-a,model-b",
+	}}); ok {
+		t.Fatal("ambiguous provider model list unexpectedly produced answer identity")
+	}
+}
 
 func TestNewRecoveryDeliveryDisabledWhenSMTPBlank(t *testing.T) {
 	delivery, err := newRecoveryDelivery(config.Config{})

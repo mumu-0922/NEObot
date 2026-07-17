@@ -4815,3 +4815,20 @@ The final `lindo咋申请` refusal is correct for the uploaded document: its
 extracted source is a personal introduction/application essay and contains no
 Lindo application procedure, requirements, or steps. Strict mode must not turn
 filename/topic resemblance into an unsupported answer.
+
+## 2026-07-17 — G11.9A Auto Knowledge answer closure
+
+The development-only RAG break was closed without weakening hydration ACLs.
+Startup now supplies a database-valid fixed-owner internal Session, provisions
+server-owned answer governance, and keeps answer-only consent changes from
+invalidating parse/embedding projections. Chat selected-Knowledge handling is
+now Auto augmentation rather than strict refusal; `[K]` citations persist only
+when evidence was injected, a normal miss silently uses the model, and only a
+real dependency failure surfaces a lightweight frontend notice.
+
+Migration `026` normalizes punctuation before locale-independent CJK bigram
+recall. Source-built live proof against `linux do作文.docx` answered
+`研究方向是什么？` with “推荐系统” and `[K1]`; `今天天气如何` completed as ordinary
+chat with `outcome=no_evidence` and no refusal card. Detailed identifiers,
+projection repair evidence, checks, and rollback are in
+`docs/tracking/g11-knowledge-auto-rag-process.md`.

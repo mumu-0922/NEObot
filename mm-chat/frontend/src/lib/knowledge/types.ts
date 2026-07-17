@@ -42,7 +42,7 @@ export interface KnowledgeCitation {
 }
 
 export interface MessageKnowledgeMetadata {
-  mode: "strict" | "optional";
+  mode: "auto";
   outcome?: string;
   selectedCollectionIds: string[];
   citationCount: number;

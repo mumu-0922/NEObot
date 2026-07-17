@@ -266,7 +266,7 @@ func TestSessionIdentityMiddlewareSetsRequestUser(t *testing.T) {
 		gotUser = auth.UserOrDevelopment(r.Context())
 		gotSession, gotSessionOK = auth.SessionFromContext(r.Context())
 		w.WriteHeader(http.StatusNoContent)
-	}), withSessionIdentity(resolver, true))
+	}), withSessionIdentity(resolver, nil, true))
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/private", nil)
 	req.Header.Set("Authorization", "Bearer raw-token")
@@ -290,7 +290,7 @@ func TestSessionIdentityMiddlewareSetsRequestUser(t *testing.T) {
 func TestSessionIdentityMiddlewareRejectsInvalidSession(t *testing.T) {
 	handler := chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("next handler should not run for invalid bearer token")
-	}), withSessionIdentity(&fakeSessionResolver{err: auth.ErrSessionExpired}, true))
+	}), withSessionIdentity(&fakeSessionResolver{err: auth.ErrSessionExpired}, nil, true))
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/private", nil)
 	req.Header.Set("Authorization", "Bearer expired-token")
@@ -319,7 +319,7 @@ func TestSessionIdentityMiddlewareKeepsDevelopmentFallbackWhenMissingBearer(t *t
 			t.Fatalf("user = %#v, want development fallback", user)
 		}
 		w.WriteHeader(http.StatusNoContent)
-	}), withSessionIdentity(resolver, false))
+	}), withSessionIdentity(resolver, nil, false))
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/private", nil)
 
@@ -338,6 +338,13 @@ func TestSessionIdentityMiddlewareKeepsDevelopmentFallbackWhenMissingBearer(t *t
 
 func TestSessionIdentityMiddlewareKeepsDevelopmentOwnerWhenBearerIsStale(t *testing.T) {
 	resolver := &fakeSessionResolver{err: auth.ErrSessionExpired}
+	developmentSession := auth.Session{
+		ID:          auth.DevelopmentSessionID,
+		UserID:      auth.DevelopmentUserID,
+		DisplayName: auth.DevelopmentDisplayName,
+		Role:        "user",
+		ExpiresAt:   time.Now().Add(time.Hour),
+	}
 	handler := chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserOrDevelopment(r.Context())
 		if user.ID != auth.DevelopmentUserID {
@@ -347,11 +354,12 @@ func TestSessionIdentityMiddlewareKeepsDevelopmentOwnerWhenBearerIsStale(t *test
 		if !ok || contextUser.ID != auth.DevelopmentUserID {
 			t.Fatalf("context user = %#v, ok=%v; want explicit development owner", contextUser, ok)
 		}
-		if _, ok := auth.SessionFromContext(r.Context()); ok {
-			t.Fatal("development request unexpectedly received a session identity")
+		session, ok := auth.SessionFromContext(r.Context())
+		if !ok || session.ID != auth.DevelopmentSessionID || session.UserID != auth.DevelopmentUserID {
+			t.Fatalf("development session = %#v, ok=%v", session, ok)
 		}
 		w.WriteHeader(http.StatusNoContent)
-	}), withSessionIdentity(resolver, false))
+	}), withSessionIdentity(resolver, &developmentSession, false))
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/v1/knowledge/collections", nil)
 	request.Header.Set("Authorization", "Bearer stale-browser-session")

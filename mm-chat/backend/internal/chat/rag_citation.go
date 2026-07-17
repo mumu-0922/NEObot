@@ -50,7 +50,7 @@ func mintRAGCitations(evidence []knowledge.HydratedEvidence) ([]RAGCitation, err
 		}
 		citation := RAGCitation{
 			ID:                ragCitationID(item),
-			Marker:            "[" + strconv.Itoa(index+1) + "]",
+			Marker:            "[K" + strconv.Itoa(index+1) + "]",
 			CollectionID:      item.CollectionID,
 			DocumentID:        item.DocumentID,
 			DocumentVersionID: item.DocumentVersionID,

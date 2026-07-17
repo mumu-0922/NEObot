@@ -95,6 +95,37 @@ func TestServiceAutoProvisionsSingleUserCollectionConsents(t *testing.T) {
 	}
 }
 
+func TestServiceAutoProvisionsSingleUserAnswerConsent(t *testing.T) {
+	repo := &fakeRepository{
+		createResult: testCollection("22222222-2222-4222-8222-222222222222"),
+	}
+	identity := ProcessorModelIdentity{
+		Processor: "openai_compatible", EndpointID: "server-default", ModelID: "gpt-5.5",
+	}
+	service := NewService(
+		repo,
+		WithIDGenerator(func() (string, error) { return repo.createResult.ID, nil }),
+		WithSingleUserCollectionConsents(),
+		WithSingleUserAnswerConsent(identity),
+	)
+	ctx := auth.WithUser(context.Background(), auth.User{ID: testActorID})
+
+	if _, err := service.CreateCollection(ctx, CreateCollectionInput{
+		Name: "Research", Scope: ScopePersonal, IdempotencyKey: "create-with-answer",
+	}); err != nil {
+		t.Fatalf("CreateCollection() error = %v", err)
+	}
+	if len(repo.putConsents) != 4 {
+		t.Fatalf("automatic consents = %#v, want four", repo.putConsents)
+	}
+	answer := repo.putConsents[3]
+	if answer.Processor != identity.Processor || answer.EndpointID != identity.EndpointID ||
+		answer.ModelID != identity.ModelID || !slices.Equal(answer.Purposes, []string{"answer"}) ||
+		!slices.Equal(answer.DataTypes, []string{"text/plain"}) {
+		t.Fatalf("answer automatic consent = %#v", answer)
+	}
+}
+
 func TestServiceRollsBackCollectionWhenSingleUserConsentProvisioningFails(t *testing.T) {
 	provisionErr := errors.New("governance unavailable")
 	repo := &fakeRepository{
@@ -150,6 +181,47 @@ func TestBootstrapSingleUserNativeProcessingBackfillsExistingCollections(t *test
 		repo.putConsents[0].Processor != nativeParseProcessor ||
 		!slices.Equal(repo.putConsents[0].DataTypes, nativeParseDataTypes) {
 		t.Fatalf("native backfill consent = %#v", repo.putConsents)
+	}
+}
+
+func TestBootstrapSingleUserAnswerProcessingBackfillsOwnerAndCollections(t *testing.T) {
+	codec, err := teams.NewCursorCodec(teams.CursorKeyring{
+		ActiveKeyID: "test", Keys: map[string][]byte{"test": []byte("01234567890123456789012345678901")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	collection := testCollection("22222222-2222-4222-8222-222222222222")
+	repo := &fakeRepository{listResult: CollectionPageResult{Items: []Collection{collection}}}
+	service := NewService(repo, WithCursorCodec(codec))
+	identity := ProcessorModelIdentity{
+		Processor: "openai_compatible", EndpointID: "server-default", ModelID: "gpt-5.5",
+	}
+
+	err = BootstrapSingleUserAnswerProcessing(
+		context.Background(),
+		service,
+		NewGovernanceService(repo),
+		auth.User{ID: testActorID},
+		identity,
+	)
+	if err != nil {
+		t.Fatalf("BootstrapSingleUserAnswerProcessing() error = %v", err)
+	}
+	if repo.governanceManifest.Processor != identity.Processor ||
+		repo.governanceManifest.ModelID != identity.ModelID ||
+		!slices.Equal(repo.governanceManifest.AllowedPurposes, []string{"answer"}) {
+		t.Fatalf("answer governance manifest = %#v", repo.governanceManifest)
+	}
+	if repo.putQueryConsent.ActorUserID != testActorID ||
+		repo.putQueryConsent.Processor != identity.Processor ||
+		!slices.Equal(repo.putQueryConsent.Purposes, []string{"answer"}) {
+		t.Fatalf("answer query consent = %#v", repo.putQueryConsent)
+	}
+	if len(repo.putConsents) != 1 || repo.putConsents[0].CollectionID != collection.ID ||
+		repo.putConsents[0].Processor != identity.Processor ||
+		!slices.Equal(repo.putConsents[0].Purposes, []string{"answer"}) {
+		t.Fatalf("answer collection consents = %#v", repo.putConsents)
 	}
 }
 

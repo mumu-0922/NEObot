@@ -961,22 +961,36 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	if ragSelection.Strict && ragSelection.Enabled {
-		h.streamStrictRAG(
-			w,
-			r,
-			flusher,
+	providerPrompt := userMessage.Content
+	providerSystemPrompt := systemPrompt
+	providerMetadata := request.Metadata
+	autoDecision := autoRAGDecision{}
+	if ragSelection.Enabled {
+		autoDecision = h.decideAutoRAG(
+			r.Context(),
 			conversationID,
 			userMessage,
-			assistantMessage,
 			modelRef,
-			runID,
-			systemPrompt,
 			ragSelection,
-			providerAttachments,
-			streamProvider,
 		)
-		return
+		if autoDecision.ReadyForAnswer() {
+			providerPrompt, providerSystemPrompt, err = buildAutoRAGProviderRequest(
+				userMessage.Content,
+				systemPrompt,
+				autoDecision.Evidence,
+				autoDecision.Citations,
+			)
+			if err != nil {
+				autoDecision = autoRAGDecision{Outcome: "dependency_unavailable"}
+				providerPrompt = userMessage.Content
+				providerSystemPrompt = systemPrompt
+			} else {
+				providerMetadata = mergeAutoRAGProviderMetadata(
+					request.Metadata,
+					autoDecision,
+				)
+			}
+		}
 	}
 
 	streamCtx, streamCancel := context.WithCancel(r.Context())
@@ -992,24 +1006,24 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		ConversationID:     conversationID,
 		UserMessageID:      userMessage.ID,
 		AssistantMessageID: assistantMessage.ID,
-		Prompt:             userMessage.Content,
-		SystemPrompt:       systemPrompt,
+		Prompt:             providerPrompt,
+		SystemPrompt:       providerSystemPrompt,
 		Attachments:        providerAttachments,
 		UseReasoning:       configBool(request.Config, "useReasoning"),
 		ModelRef:           *modelRef,
-		Metadata:           request.Metadata,
+		Metadata:           providerMetadata,
 	})
 	if err != nil {
 		if streamCtx.Err() != nil || r.Context().Err() != nil || errors.Is(err, context.Canceled) {
 			h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 				Status:   "cancelled",
-				Metadata: streamRunMetadata(runID, ragSelection, "cancelled", nil),
+				Metadata: autoRAGMessageMetadata(runID, ragSelection, autoDecision, nil),
 			})
 			return
 		}
 		h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 			Status:   "failed",
-			Metadata: streamRunMetadata(runID, ragSelection, "provider_failed", map[string]any{"errorCode": "PROVIDER_ERROR"}),
+			Metadata: autoRAGMessageMetadata(runID, ragSelection, autoDecision, map[string]any{"errorCode": "PROVIDER_ERROR"}),
 		})
 		writeError(w, http.StatusBadGateway, "PROVIDER_ERROR", "provider stream failed")
 		return
@@ -1054,7 +1068,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 					Status:   "cancelled",
 					Content:  content.String(),
-					Metadata: streamRunMetadata(runID, ragSelection, "cancelled", nil),
+					Metadata: autoRAGMessageMetadata(runID, ragSelection, autoDecision, nil),
 				})
 				flusher.Flush()
 				return
@@ -1072,7 +1086,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 				Status:   "failed",
 				Content:  content.String(),
-				Metadata: streamRunMetadata(runID, ragSelection, "provider_failed", map[string]any{"errorCode": "PROVIDER_ERROR"}),
+				Metadata: autoRAGMessageMetadata(runID, ragSelection, autoDecision, map[string]any{"errorCode": "PROVIDER_ERROR"}),
 			})
 			flusher.Flush()
 			return
@@ -1127,7 +1141,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 			Status:   "cancelled",
 			Content:  content.String(),
-			Metadata: streamRunMetadata(runID, ragSelection, "cancelled", nil),
+			Metadata: autoRAGMessageMetadata(runID, ragSelection, autoDecision, nil),
 		})
 		flusher.Flush()
 		return
@@ -1140,7 +1154,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		FinalizeAssistantMessageInput{
 			Status:   "completed",
 			Content:  content.String(),
-			Metadata: streamRunMetadata(runID, ragSelection, "degraded", nil),
+			Metadata: autoRAGMessageMetadata(runID, ragSelection, autoDecision.completed(), nil),
 		},
 	)
 	if err != nil {
@@ -1372,393 +1386,68 @@ func nonEmptyImagePurpose(value string) string {
 	return "image"
 }
 
-func (h *Handler) streamStrictRAG(
-	w http.ResponseWriter,
-	r *http.Request,
-	flusher http.Flusher,
-	conversationID string,
-	userMessage Message,
-	assistantMessage Message,
-	modelRef *ModelRef,
-	runID string,
-	systemPrompt string,
-	selection ragSelection,
-	providerAttachments []ProviderAttachment,
-	streamProvider Provider,
-) {
-	decision := h.strictRAGDecision(r.Context(), conversationID, userMessage, modelRef, selection)
-	if decision.ReadyForAnswer() {
-		h.streamStrictRAGAnswer(w, r, flusher, conversationID, userMessage, assistantMessage, modelRef, runID, systemPrompt, selection, decision, providerAttachments, streamProvider)
-		return
-	}
-	h.streamStrictRAGRefusal(w, flusher, conversationID, assistantMessage, modelRef, runID, selection, decision)
-}
-
-func (h *Handler) streamStrictRAGRefusal(
-	w http.ResponseWriter,
-	flusher http.Flusher,
-	conversationID string,
-	assistantMessage Message,
-	modelRef *ModelRef,
-	runID string,
-	selection ragSelection,
-	decision strictRAGDecision,
-) {
-	content := ragRefusalText()
-	metadata := strictRAGMessageMetadata(runID, selection, decision)
-
-	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.WriteHeader(http.StatusOK)
-
-	sequence := 1
-	if err := writeSSEEvent(w, "message.started", streamEvent{
-		Type:           "message.started",
-		RunID:          runID,
-		ConversationID: conversationID,
-		MessageID:      assistantMessage.ID,
-		Sequence:       sequence,
-		CreatedAt:      formatTime(time.Now()),
-		Role:           "assistant",
-		ModelRef:       modelRef,
-	}); err != nil {
-		h.cancelAssistantAfterWriteError(conversationID, assistantMessage.ID, runID, "")
-		return
-	}
-	flusher.Flush()
-
-	sequence++
-	if err := writeSSEEvent(w, "message.delta", streamEvent{
-		Type:           "message.delta",
-		RunID:          runID,
-		ConversationID: conversationID,
-		MessageID:      assistantMessage.ID,
-		Sequence:       sequence,
-		CreatedAt:      formatTime(time.Now()),
-		Delta:          content,
-	}); err != nil {
-		h.cancelAssistantAfterWriteError(conversationID, assistantMessage.ID, runID, content)
-		return
-	}
-	flusher.Flush()
-
-	finalizedMessage, err := h.finalizeAssistantMessage(
-		context.Background(),
-		conversationID,
-		assistantMessage.ID,
-		FinalizeAssistantMessageInput{
-			Status:   "completed",
-			Content:  content,
-			Metadata: metadata,
-		},
-	)
-	if err != nil {
-		sequence++
-		_, errorBody := serviceErrorFor(err)
-		_ = writeSSEEvent(w, "message.error", streamEvent{
-			Type:           "message.error",
-			RunID:          runID,
-			ConversationID: conversationID,
-			MessageID:      assistantMessage.ID,
-			Sequence:       sequence,
-			CreatedAt:      formatTime(time.Now()),
-			Error:          &errorBody,
-		})
-		flusher.Flush()
-		return
-	}
-
-	sequence++
-	assistantDTO := newMessageDTO(finalizedMessage)
-	if err := writeSSEEvent(w, "message.completed", streamEvent{
-		Type:           "message.completed",
-		RunID:          runID,
-		ConversationID: conversationID,
-		MessageID:      finalizedMessage.ID,
-		Sequence:       sequence,
-		CreatedAt:      formatTime(time.Now()),
-		Message:        &assistantDTO,
-	}); err != nil {
-		return
-	}
-	flusher.Flush()
-}
-
-func (h *Handler) streamStrictRAGAnswer(
-	w http.ResponseWriter,
-	r *http.Request,
-	flusher http.Flusher,
-	conversationID string,
-	userMessage Message,
-	assistantMessage Message,
-	modelRef *ModelRef,
-	runID string,
-	systemPrompt string,
-	selection ragSelection,
-	decision strictRAGDecision,
-	providerAttachments []ProviderAttachment,
-	streamProvider Provider,
-) {
-	prompt, strictSystemPrompt, err := buildStrictRAGProviderRequest(
-		userMessage.Content,
-		systemPrompt,
-		decision.Evidence,
-		decision.Citations,
-	)
-	if err != nil {
-		decision.Outcome = "insufficient_evidence"
-		decision.Evidence = nil
-		decision.Citations = nil
-		decision.Authority = nil
-		h.streamStrictRAGRefusal(w, flusher, conversationID, assistantMessage, modelRef, runID, selection, decision)
-		return
-	}
-
-	streamCtx, streamCancel := context.WithCancel(r.Context())
-	unregisterRun := h.activeRuns.register(runID, streamCancel)
-	stopCancellationWatch := watchRunCancellation(streamCtx, h.cancellationRuns, runID, streamCancel)
-	defer unregisterRun()
-	defer h.clearRunCancelled(context.Background(), runID)
-	defer stopCancellationWatch()
-	defer streamCancel()
-
-	events, err := streamProvider.StreamChat(streamCtx, ProviderRequest{
-		RunID:              runID,
-		ConversationID:     conversationID,
-		UserMessageID:      userMessage.ID,
-		AssistantMessageID: assistantMessage.ID,
-		Prompt:             prompt,
-		SystemPrompt:       strictSystemPrompt,
-		Attachments:        providerAttachments,
-		UseReasoning:       false,
-		ModelRef:           *modelRef,
-		Metadata: map[string]any{
-			"knowledge": strictRAGAnswerProviderMetadata(decision),
-		},
-	})
-	if err != nil {
-		if streamCtx.Err() != nil || r.Context().Err() != nil || errors.Is(err, context.Canceled) {
-			h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
-				Status:   "cancelled",
-				Metadata: map[string]any{"runId": runID},
-			})
-			return
-		}
-		decision.Outcome = "answer_provider_failed"
-		decision.Evidence = nil
-		decision.Citations = nil
-		decision.Authority = nil
-		h.streamStrictRAGRefusal(w, flusher, conversationID, assistantMessage, modelRef, runID, selection, decision)
-		return
-	}
-
-	var content strings.Builder
-	var usage *TokenUsage
-	for providerEvent := range events {
-		if providerEvent.Error != nil {
-			if streamCtx.Err() != nil {
-				h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
-					Status:   "cancelled",
-					Content:  content.String(),
-					Metadata: map[string]any{"runId": runID},
-				})
-				return
-			}
-			decision.Outcome = "answer_provider_failed"
-			decision.Evidence = nil
-			decision.Citations = nil
-			decision.Authority = nil
-			h.streamStrictRAGRefusal(w, flusher, conversationID, assistantMessage, modelRef, runID, selection, decision)
-			return
-		}
-		switch providerEvent.Type {
-		case ProviderEventDelta:
-			content.WriteString(providerEvent.Delta)
-		case ProviderEventUsage:
-			usage = providerEvent.Usage
-		}
-	}
-	if streamCtx.Err() != nil || h.isRunCancelled(context.Background(), runID) {
-		h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
-			Status:   "cancelled",
-			Content:  content.String(),
-			Metadata: map[string]any{"runId": runID},
-		})
-		return
-	}
-	answer := strings.TrimSpace(content.String())
-	if answer == "" || !strictRAGAnswerCitesEvidence(answer, decision.Citations) {
-		decision.Outcome = "answer_citation_missing"
-		decision.Evidence = nil
-		decision.Citations = nil
-		decision.Authority = nil
-		h.streamStrictRAGRefusal(w, flusher, conversationID, assistantMessage, modelRef, runID, selection, decision)
-		return
-	}
-
-	completedDecision := decision
-	completedDecision.Outcome = "answered"
-	metadata := strictRAGMessageMetadata(runID, selection, completedDecision)
-	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.WriteHeader(http.StatusOK)
-
-	sequence := 1
-	if err := writeSSEEvent(w, "message.started", streamEvent{
-		Type:           "message.started",
-		RunID:          runID,
-		ConversationID: conversationID,
-		MessageID:      assistantMessage.ID,
-		Sequence:       sequence,
-		CreatedAt:      formatTime(time.Now()),
-		Role:           "assistant",
-		ModelRef:       modelRef,
-	}); err != nil {
-		h.cancelAssistantAfterWriteError(conversationID, assistantMessage.ID, runID, "")
-		return
-	}
-	flusher.Flush()
-
-	sequence++
-	if err := writeSSEEvent(w, "message.delta", streamEvent{
-		Type:           "message.delta",
-		RunID:          runID,
-		ConversationID: conversationID,
-		MessageID:      assistantMessage.ID,
-		Sequence:       sequence,
-		CreatedAt:      formatTime(time.Now()),
-		Delta:          answer,
-	}); err != nil {
-		h.cancelAssistantAfterWriteError(conversationID, assistantMessage.ID, runID, answer)
-		return
-	}
-	flusher.Flush()
-
-	if usage != nil {
-		sequence++
-		if err := writeSSEEvent(w, "usage.updated", streamEvent{
-			Type:           "usage.updated",
-			RunID:          runID,
-			ConversationID: conversationID,
-			MessageID:      assistantMessage.ID,
-			Sequence:       sequence,
-			CreatedAt:      formatTime(time.Now()),
-			Usage:          usage,
-		}); err != nil {
-			h.cancelAssistantAfterWriteError(conversationID, assistantMessage.ID, runID, answer)
-			return
-		}
-		flusher.Flush()
-	}
-
-	finalizedMessage, err := h.finalizeAssistantMessage(
-		context.Background(),
-		conversationID,
-		assistantMessage.ID,
-		FinalizeAssistantMessageInput{
-			Status:   "completed",
-			Content:  answer,
-			Metadata: metadata,
-		},
-	)
-	if err != nil {
-		sequence++
-		_, errorBody := serviceErrorFor(err)
-		_ = writeSSEEvent(w, "message.error", streamEvent{
-			Type:           "message.error",
-			RunID:          runID,
-			ConversationID: conversationID,
-			MessageID:      assistantMessage.ID,
-			Sequence:       sequence,
-			CreatedAt:      formatTime(time.Now()),
-			Error:          &errorBody,
-		})
-		flusher.Flush()
-		return
-	}
-	sequence++
-	assistantDTO := newMessageDTO(finalizedMessage)
-	if err := writeSSEEvent(w, "message.completed", streamEvent{
-		Type:           "message.completed",
-		RunID:          runID,
-		ConversationID: conversationID,
-		MessageID:      finalizedMessage.ID,
-		Sequence:       sequence,
-		CreatedAt:      formatTime(time.Now()),
-		Message:        &assistantDTO,
-	}); err != nil {
-		return
-	}
-	flusher.Flush()
-}
-
-type strictRAGDecision struct {
+type autoRAGDecision struct {
 	Outcome   string
 	Evidence  []knowledge.HydratedEvidence
 	Citations []RAGCitation
 	Authority *RAGAnswerAuthority
 }
 
-func (d strictRAGDecision) ReadyForAnswer() bool {
-	return d.Outcome == "answer_gate_pending" && len(d.Evidence) > 0 && len(d.Citations) > 0 && d.Authority != nil
+func (d autoRAGDecision) ReadyForAnswer() bool {
+	return d.Outcome == "evidence_ready" && len(d.Evidence) > 0 &&
+		len(d.Citations) > 0 && d.Authority != nil
 }
 
-func (h *Handler) strictRAGDecision(
+func (d autoRAGDecision) completed() autoRAGDecision {
+	if d.ReadyForAnswer() {
+		d.Outcome = "answered"
+	}
+	return d
+}
+
+func (h *Handler) decideAutoRAG(
 	ctx context.Context,
 	conversationID string,
 	userMessage Message,
 	modelRef *ModelRef,
 	selection ragSelection,
-) strictRAGDecision {
+) autoRAGDecision {
 	session, ok := auth.SessionFromContext(ctx)
 	if !ok {
-		return strictRAGDecision{Outcome: "insufficient_evidence"}
+		return autoRAGDecision{Outcome: "dependency_unavailable"}
 	}
-	result, err := h.ragAssembler.AssembleStrict(ctx, RAGAssemblyInput{
+	result, err := h.ragAssembler.Assemble(ctx, RAGAssemblyInput{
 		ActorUserID:           session.UserID,
 		SessionID:             session.ID,
 		ConversationID:        conversationID,
 		QueryText:             userMessage.Content,
 		SelectedCollectionIDs: selection.CollectionIDs,
 	})
-	if err == nil || errors.Is(err, ErrRAGAnswerGatePending) {
-		if len(result.Evidence) == 0 || len(result.Citations) == 0 {
-			return strictRAGDecision{Outcome: "insufficient_evidence"}
+	if err != nil {
+		if errors.Is(err, ErrRAGInsufficientEvidence) {
+			return autoRAGDecision{Outcome: "no_evidence"}
 		}
-		authority, gateErr := h.authorizeStrictRAGAnswer(ctx, selection, modelRef, result.Citations)
-		if gateErr != nil {
-			if errors.Is(gateErr, ErrRAGAnswerGovernanceRequired) {
-				return strictRAGDecision{Outcome: "answer_governance_required"}
-			}
-			if errors.Is(gateErr, ErrRAGDependencyUnavailable) {
-				return strictRAGDecision{Outcome: "answer_governance_unavailable"}
-			}
-			return strictRAGDecision{Outcome: "dependency_unavailable"}
+		return autoRAGDecision{Outcome: "dependency_unavailable"}
+	}
+	if len(result.Evidence) == 0 || len(result.Citations) == 0 {
+		return autoRAGDecision{Outcome: "no_evidence"}
+	}
+	authority, err := h.authorizeAutoRAGAnswer(ctx, selection, modelRef, result.Citations)
+	if err != nil {
+		if errors.Is(err, ErrRAGAnswerGovernanceRequired) {
+			return autoRAGDecision{Outcome: "answer_governance_required"}
 		}
-		return strictRAGDecision{
-			Outcome:   "answer_gate_pending",
-			Evidence:  result.Evidence,
-			Citations: result.Citations,
-			Authority: &authority,
-		}
+		return autoRAGDecision{Outcome: "dependency_unavailable"}
 	}
-	if errors.Is(err, ErrRAGDependencyUnavailable) {
-		return strictRAGDecision{Outcome: "dependency_unavailable"}
+	return autoRAGDecision{
+		Outcome:   "evidence_ready",
+		Evidence:  result.Evidence,
+		Citations: result.Citations,
+		Authority: &authority,
 	}
-	if errors.Is(err, ErrRAGInsufficientEvidence) {
-		return strictRAGDecision{Outcome: "insufficient_evidence"}
-	}
-
-	return strictRAGDecision{Outcome: "dependency_unavailable"}
 }
 
-func (h *Handler) authorizeStrictRAGAnswer(
+func (h *Handler) authorizeAutoRAGAnswer(
 	ctx context.Context,
 	selection ragSelection,
 	modelRef *ModelRef,
@@ -1774,12 +1463,37 @@ func (h *Handler) authorizeStrictRAGAnswer(
 	})
 }
 
-func strictRAGMessageMetadata(runID string, selection ragSelection, decision strictRAGDecision) map[string]any {
+func mergeAutoRAGProviderMetadata(
+	base map[string]any,
+	decision autoRAGDecision,
+) map[string]any {
+	metadata := make(map[string]any, len(base)+1)
+	for key, value := range base {
+		metadata[key] = value
+	}
+	metadata["knowledge"] = autoRAGAnswerProviderMetadata(decision)
+	return metadata
+}
+
+func autoRAGMessageMetadata(
+	runID string,
+	selection ragSelection,
+	decision autoRAGDecision,
+	extra map[string]any,
+) map[string]any {
+	metadata := map[string]any{"runId": runID}
+	for key, value := range extra {
+		metadata[key] = value
+	}
+	if !selection.Enabled {
+		return metadata
+	}
 	knowledgeMetadata := map[string]any{
-		"mode":                  "strict",
+		"mode":                  "auto",
 		"outcome":               decision.Outcome,
 		"selectedCollectionIds": append([]string(nil), selection.CollectionIDs...),
 		"citationCount":         len(decision.Citations),
+		"evidenceUsed":          len(decision.Citations) > 0,
 	}
 	if len(decision.Citations) > 0 {
 		knowledgeMetadata["citations"] = append([]RAGCitation(nil), decision.Citations...)
@@ -1787,35 +1501,12 @@ func strictRAGMessageMetadata(runID string, selection ragSelection, decision str
 	if decision.Authority != nil {
 		knowledgeMetadata["answerGovernance"] = *decision.Authority
 	}
-	return map[string]any{
-		"runId":     runID,
-		"knowledge": knowledgeMetadata,
+	if decision.Outcome == "dependency_unavailable" ||
+		decision.Outcome == "answer_governance_required" {
+		knowledgeMetadata["degradationReason"] = decision.Outcome
 	}
-}
-
-func streamRunMetadata(runID string, selection ragSelection, knowledgeOutcome string, extra map[string]any) map[string]any {
-	metadata := map[string]any{"runId": runID}
-	for key, value := range extra {
-		metadata[key] = value
-	}
-	if knowledgeMetadata := optionalRAGKnowledgeMetadata(selection, knowledgeOutcome); knowledgeMetadata != nil {
-		metadata["knowledge"] = knowledgeMetadata
-	}
+	metadata["knowledge"] = knowledgeMetadata
 	return metadata
-}
-
-func optionalRAGKnowledgeMetadata(selection ragSelection, outcome string) map[string]any {
-	if selection.Strict || !selection.Enabled {
-		return nil
-	}
-	return map[string]any{
-		"mode":                  "optional",
-		"outcome":               outcome,
-		"selectedCollectionIds": append([]string(nil), selection.CollectionIDs...),
-		"citationCount":         0,
-		"evidenceUsed":          false,
-		"degradationReason":     "no_verified_knowledge_evidence",
-	}
 }
 
 func (h *Handler) resolveStreamProvider(

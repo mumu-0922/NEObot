@@ -4,12 +4,11 @@ import "strings"
 
 type ragSelection struct {
 	Enabled       bool
-	Strict        bool
 	CollectionIDs []string
 }
 
 func extractRAGSelection(config map[string]any, metadata map[string]any) (ragSelection, error) {
-	selection := ragSelection{Strict: ragStrictEnabled(config) || ragStrictEnabled(metadata)}
+	selection := ragSelection{}
 	for _, source := range []map[string]any{config, metadata} {
 		ids, ok, err := collectionIDsFromObject(source)
 		if err != nil {
@@ -22,18 +21,6 @@ func extractRAGSelection(config map[string]any, metadata map[string]any) (ragSel
 		}
 	}
 	return selection, nil
-}
-
-func ragStrictEnabled(values map[string]any) bool {
-	if values == nil {
-		return false
-	}
-	for _, key := range []string{"knowledgeStrict", "strictKnowledge", "ragStrict", "strictRag"} {
-		if value, ok := values[key].(bool); ok && value {
-			return true
-		}
-	}
-	return false
 }
 
 func collectionIDsFromObject(values map[string]any) ([]string, bool, error) {
@@ -73,7 +60,7 @@ func normalizeRAGCollectionIDs(raw any) ([]string, error) {
 	default:
 		return nil, newValidationError("INVALID_RAG_SELECTION", "knowledge collection ids must be strings")
 	}
-	if len(values) > 32 {
+	if len(values) > 8 {
 		return nil, newValidationError("INVALID_RAG_SELECTION", "too many selected knowledge collections")
 	}
 	ids := make([]string, 0, len(values))

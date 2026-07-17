@@ -1289,7 +1289,12 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
   - [ ] G11.9 Auto Knowledge and Web-augmented chat: replace the per-message
         strict evidence gate with conversation-persistent Auto augmentation per
         `docs/tracking/g11-knowledge-auto-rag-plan.md`.
-    - [ ] G11.9A Development Hydration and Auto semantics.
+    - [x] G11.9A Development Hydration and Auto semantics: development mode
+          now injects a database-valid internal Session, server-owned answer
+          governance is provisioned without invalidating search projections,
+          selected Knowledge augments normal streaming with `[K]` citations,
+          misses silently fall back to the model, and the strict refusal/status
+          path plus frontend strict flags are removed.
     - [ ] G11.9B Conversation-persistent multi-Knowledge binding and dedicated
           composer control.
     - [ ] G11.9C Contextual rewrite, Jina query embedding, hybrid/RRF retrieval,

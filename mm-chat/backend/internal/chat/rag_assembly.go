@@ -11,13 +11,11 @@ import (
 
 const (
 	defaultRAGCandidateLimit = 8
-	rawRAGRefusalText        = "I don't have enough verified knowledge-base evidence to answer that."
 )
 
 var (
 	ErrRAGDependencyUnavailable = errors.New("rag dependency unavailable")
 	ErrRAGInsufficientEvidence  = errors.New("rag insufficient evidence")
-	ErrRAGAnswerGatePending     = errors.New("rag answer gate pending")
 )
 
 type RAGCandidateQuery struct {
@@ -57,7 +55,7 @@ func NewRAGAnswerAssembler(candidates RAGCandidateSource, hydrator RAGEvidenceHy
 	return &RAGAnswerAssembler{Candidates: candidates, Hydrator: hydrator, Limit: defaultRAGCandidateLimit}
 }
 
-func (a *RAGAnswerAssembler) AssembleStrict(ctx context.Context, input RAGAssemblyInput) (RAGAssemblyResult, error) {
+func (a *RAGAnswerAssembler) Assemble(ctx context.Context, input RAGAssemblyInput) (RAGAssemblyResult, error) {
 	if a == nil || a.Candidates == nil || a.Hydrator == nil {
 		return RAGAssemblyResult{}, ErrRAGDependencyUnavailable
 	}
@@ -105,12 +103,5 @@ func (a *RAGAnswerAssembler) AssembleStrict(ctx context.Context, input RAGAssemb
 		return RAGAssemblyResult{}, err
 	}
 
-	// G7.7B deliberately stops before answer-provider context injection.  The
-	// next slice must add answer-purpose BYOK/governance consent before hydrated
-	// source text is sent to a model provider.
-	return RAGAssemblyResult{Evidence: evidence, Citations: citations}, ErrRAGAnswerGatePending
-}
-
-func ragRefusalText() string {
-	return rawRAGRefusalText
+	return RAGAssemblyResult{Evidence: evidence, Citations: citations}, nil
 }

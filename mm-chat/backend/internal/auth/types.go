@@ -11,6 +11,7 @@ import (
 
 const (
 	DevelopmentUserID      = "00000000-0000-0000-0000-000000000001"
+	DevelopmentSessionID   = "00000000-0000-0000-0000-000000000002"
 	DevelopmentDisplayName = "Development User"
 
 	defaultUserRole = "user"

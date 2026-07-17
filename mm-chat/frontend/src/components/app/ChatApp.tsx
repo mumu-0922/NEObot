@@ -161,8 +161,6 @@ function buildServerKnowledgeStreamConfig(
   return {
     ...config,
     selectedKnowledgeCollectionIds,
-    ragStrict: true,
-    knowledgeStrict: true,
   };
 }
 
@@ -173,8 +171,6 @@ function buildServerKnowledgeMessageMetadata(
   const metadata = { ...(extra ?? {}) };
   if (selectedKnowledgeCollectionIds.length > 0) {
     metadata.selectedKnowledgeCollectionIds = selectedKnowledgeCollectionIds;
-    metadata.ragStrict = true;
-    metadata.knowledgeStrict = true;
   }
   return Object.keys(metadata).length > 0 ? metadata : undefined;
 }

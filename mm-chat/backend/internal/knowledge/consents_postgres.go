@@ -229,9 +229,12 @@ granted_by_user_id,decided_at,expires_at,created_at,updated_at
 	if err != nil {
 		return ProcessingConsent{}, fmt.Errorf("insert collection consent: %w", err)
 	}
-	processingRevision++
-	if _, err := tx.ExecContext(ctx, `UPDATE knowledge_collections SET collection_processing_revision=$2,updated_at=$3 WHERE id=$1`, input.CollectionID, processingRevision, now); err != nil {
-		return ProcessingConsent{}, fmt.Errorf("advance collection processing revision: %w", err)
+	if collectionConsentAffectsProjection(input.Purposes) ||
+		(found && collectionConsentAffectsProjection(current.Purposes)) {
+		processingRevision++
+		if _, err := tx.ExecContext(ctx, `UPDATE knowledge_collections SET collection_processing_revision=$2,updated_at=$3 WHERE id=$1`, input.CollectionID, processingRevision, now); err != nil {
+			return ProcessingConsent{}, fmt.Errorf("advance collection processing revision: %w", err)
+		}
 	}
 	value := ProcessingConsent{Processor: input.Processor, EndpointID: authority.EndpointID,
 		ModelID: authority.ModelID, ProfileContractHash: authority.ProfileContractHash,
@@ -311,9 +314,11 @@ granted_by_user_id,decided_at,created_at,updated_at
 	if err != nil {
 		return fmt.Errorf("insert revoked collection consent: %w", err)
 	}
-	processingRevision++
-	if _, err := tx.ExecContext(ctx, `UPDATE knowledge_collections SET collection_processing_revision=$2,updated_at=$3 WHERE id=$1`, input.CollectionID, processingRevision, now); err != nil {
-		return fmt.Errorf("advance collection processing revision: %w", err)
+	if collectionConsentAffectsProjection(current.Purposes) {
+		processingRevision++
+		if _, err := tx.ExecContext(ctx, `UPDATE knowledge_collections SET collection_processing_revision=$2,updated_at=$3 WHERE id=$1`, input.CollectionID, processingRevision, now); err != nil {
+			return fmt.Errorf("advance collection processing revision: %w", err)
+		}
 	}
 	authority := authorityFromCurrent(current)
 	value := consentFromRow(input.Processor, current)

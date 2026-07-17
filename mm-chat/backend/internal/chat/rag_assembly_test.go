@@ -9,12 +9,12 @@ import (
 )
 
 func TestRAGAnswerAssemblerReturnsDependencyUnavailableWhenMissingSeams(t *testing.T) {
-	_, err := (*RAGAnswerAssembler)(nil).AssembleStrict(context.Background(), validRAGAssemblyInput())
+	_, err := (*RAGAnswerAssembler)(nil).Assemble(context.Background(), validRAGAssemblyInput())
 	if !errors.Is(err, ErrRAGDependencyUnavailable) {
 		t.Fatalf("error = %v, want ErrRAGDependencyUnavailable", err)
 	}
 
-	_, err = (&RAGAnswerAssembler{}).AssembleStrict(context.Background(), validRAGAssemblyInput())
+	_, err = (&RAGAnswerAssembler{}).Assemble(context.Background(), validRAGAssemblyInput())
 	if !errors.Is(err, ErrRAGDependencyUnavailable) {
 		t.Fatalf("error = %v, want ErrRAGDependencyUnavailable", err)
 	}
@@ -24,7 +24,7 @@ func TestRAGAnswerAssemblerReturnsInsufficientEvidenceWithoutCandidates(t *testi
 	hydrator := &fakeRAGHydrator{}
 	assembler := NewRAGAnswerAssembler(&fakeRAGCandidateSource{}, hydrator)
 
-	_, err := assembler.AssembleStrict(context.Background(), validRAGAssemblyInput())
+	_, err := assembler.Assemble(context.Background(), validRAGAssemblyInput())
 
 	if !errors.Is(err, ErrRAGInsufficientEvidence) {
 		t.Fatalf("error = %v, want ErrRAGInsufficientEvidence", err)
@@ -40,27 +40,27 @@ func TestRAGAnswerAssemblerMapsHydrationRejectionToInsufficientEvidence(t *testi
 		&fakeRAGHydrator{err: knowledge.ErrEvidenceHydrationRejected},
 	)
 
-	_, err := assembler.AssembleStrict(context.Background(), validRAGAssemblyInput())
+	_, err := assembler.Assemble(context.Background(), validRAGAssemblyInput())
 
 	if !errors.Is(err, ErrRAGInsufficientEvidence) {
 		t.Fatalf("error = %v, want ErrRAGInsufficientEvidence", err)
 	}
 }
 
-func TestRAGAnswerAssemblerStopsAtAnswerGateWhenEvidenceHydrates(t *testing.T) {
+func TestRAGAnswerAssemblerReturnsHydratedEvidence(t *testing.T) {
 	source := &fakeRAGCandidateSource{refs: []knowledge.EvidenceCandidateReference{validRAGCandidate()}}
 	hydrator := &fakeRAGHydrator{evidence: []knowledge.HydratedEvidence{validHydratedEvidence()}}
 	assembler := NewRAGAnswerAssembler(source, hydrator)
 
-	result, err := assembler.AssembleStrict(context.Background(), validRAGAssemblyInput())
+	result, err := assembler.Assemble(context.Background(), validRAGAssemblyInput())
 
-	if !errors.Is(err, ErrRAGAnswerGatePending) {
-		t.Fatalf("error = %v, want ErrRAGAnswerGatePending", err)
+	if err != nil {
+		t.Fatalf("Assemble() error = %v", err)
 	}
 	if len(result.Evidence) != 1 || result.Evidence[0].SourceText != "alpha evidence source" {
 		t.Fatalf("evidence = %#v", result.Evidence)
 	}
-	if len(result.Citations) != 1 || result.Citations[0].Marker != "[1]" || result.Citations[0].Snippet != "alpha evidence source" {
+	if len(result.Citations) != 1 || result.Citations[0].Marker != "[K1]" || result.Citations[0].Snippet != "alpha evidence source" {
 		t.Fatalf("citations = %#v", result.Citations)
 	}
 	if source.query.QueryText != "What does alpha say?" || source.query.Limit != defaultRAGCandidateLimit {
@@ -79,7 +79,7 @@ func TestRAGAnswerAssemblerRejectsIncompleteInput(t *testing.T) {
 	input := validRAGAssemblyInput()
 	input.QueryText = "   "
 
-	_, err := assembler.AssembleStrict(context.Background(), input)
+	_, err := assembler.Assemble(context.Background(), input)
 
 	if !errors.Is(err, ErrRAGInsufficientEvidence) {
 		t.Fatalf("error = %v, want ErrRAGInsufficientEvidence", err)

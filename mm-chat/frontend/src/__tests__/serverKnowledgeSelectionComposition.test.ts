@@ -51,15 +51,15 @@ describe("G8.5 server knowledge selection isolation", () => {
     expect(selectionModal).toContain("collectionName: collection.name");
   });
 
-  it("passes selected server collection IDs into strict Go RAG config and metadata", () => {
+  it("passes selected server collection IDs into Auto Go RAG config and metadata", () => {
     expect(attachmentUtils).toContain("KNOWLEDGE_COLLECTION_MIME");
     expect(attachmentUtils).toContain("getKnowledgeAttachmentCollectionIds");
     expect(chatApp).toContain("getServerKnowledgeSelectionIds");
     expect(chatApp).toContain("buildServerKnowledgeStreamConfig");
     expect(chatApp).toContain("buildServerKnowledgeMessageMetadata");
     expect(chatApp).toContain("selectedKnowledgeCollectionIds");
-    expect(chatApp).toContain("ragStrict: true");
-    expect(chatApp).toContain("knowledgeStrict: true");
+    expect(chatApp).not.toContain("ragStrict");
+    expect(chatApp).not.toContain("knowledgeStrict");
     expect(chatApp).toContain("getServerKnowledgeSelectionIdsFromMessage");
   });
 });

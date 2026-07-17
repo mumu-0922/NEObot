@@ -21,7 +21,7 @@ func TestKnowledgeConsentRAGAnswerGovernanceGateRequiresQueryAndCollectionAnswer
 	authority, err := gate.AuthorizeRAGAnswer(context.Background(), RAGAnswerGovernanceInput{
 		ModelRef:              ModelRef{ProviderID: "mock", ModelID: "mock-chat"},
 		SelectedCollectionIDs: []string{"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},
-		Citations:             []RAGCitation{{ID: "cit_1", Marker: "[1]"}},
+		Citations:             []RAGCitation{{ID: "cit_1", Marker: "[K1]"}},
 	})
 
 	if err != nil {
@@ -75,7 +75,7 @@ func TestKnowledgeConsentRAGAnswerGovernanceGateRejectsMissingConsent(t *testing
 			_, err := gate.AuthorizeRAGAnswer(context.Background(), RAGAnswerGovernanceInput{
 				ModelRef:              ModelRef{ProviderID: "mock", ModelID: "mock-chat"},
 				SelectedCollectionIDs: []string{"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},
-				Citations:             []RAGCitation{{ID: "cit_1", Marker: "[1]"}},
+				Citations:             []RAGCitation{{ID: "cit_1", Marker: "[K1]"}},
 			})
 
 			if !errors.Is(err, ErrRAGAnswerGovernanceRequired) {
