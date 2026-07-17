@@ -4567,3 +4567,54 @@ Verification:
 targeted provider/settings/BYOK tests                    passed, 70 tests
 frontend typecheck / ESLint / format                     passed / passed / passed
 ```
+
+## 2026-07-17 — G11.4 Image-model chat dispatch
+
+Objective: make selecting `gpt-image-2` in the ordinary chat composer produce
+and render an image instead of sending the model to the text chat endpoint.
+
+Root cause and runtime evidence:
+
+```text
+10:00 POST /v1/chat/conversations/{id}/stream             502 in 225 ms
+persisted assistant model                                 gpt-image-2
+persisted assistant status/metadata                       failed / PROVIDER_ERROR
+direct /v1/images/generations                             200, image/png
+```
+
+The image executor already worked, but `handleSendServerMessage` always used
+the chat stream. The Go chat handler resolved `gpt-image-2` as a text provider
+and called the incompatible chat-completions endpoint.
+
+Completed scope:
+
+- detect `gpt-image-*`, `dall-e-*`, and `imagen-*` before resolving a text chat
+  provider;
+- keep the existing user-message and SSE contract, emitting
+  `message.started` immediately;
+- call the configured Go image job service, store the result through the
+  existing artifact service, attach the resulting file to the assistant
+  message, finalize it, and return the attachment in `message.completed`;
+- extend assistant create/finalize repository inputs to validate and persist
+  server file attachments using the same ownership checks as user messages;
+- preserve cancellation and fail-closed image error events without exposing
+  upstream response bodies;
+- set Next `experimental.proxyTimeout` to 300 seconds because rewrite proxies
+  otherwise abort streaming backend requests after 30 seconds.
+
+Verification:
+
+```text
+Go full tests / vet                                      passed / passed
+frontend proxy/config targeted tests                    57 passed
+frontend typecheck / ESLint / format                    passed / passed / passed
+Docker backend/frontend source builds                   passed / passed
+live chat SSE through /mm-api                           23 seconds
+live SSE events                                          message.started, message.completed
+live assistant model                                     openai_compatible:gpt-image-2
+live attachment                                          1 image/png, 941812 bytes
+persisted message roles                                  user, assistant
+persisted assistant attachments                          1 after reload
+temporary conversation/file                              deleted; active rows 0/0
+backend/frontend health                                  healthy / healthy
+```

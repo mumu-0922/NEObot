@@ -670,6 +670,11 @@ Slice sequence:
   - [x] G11.3e Provider editor autosave: persist model toggles and provider
         controls without requiring a second manual save, serialize rapid writes,
         and preserve newer local edits while earlier saves complete.
+- [x] G11.4 Image-model chat dispatch: detect image-generation model families
+      before chat-provider resolution, route through the Go image executor,
+      attach stored artifacts to the assistant message, return them through
+      `message.completed`, and allow the Next rewrite proxy to remain open for
+      up to five minutes.
 
 Targeted tests:
 

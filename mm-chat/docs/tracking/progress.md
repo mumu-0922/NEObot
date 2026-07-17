@@ -1260,6 +1260,11 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           provider type now serialize backend writes automatically; name/base
           URL flush on blur, and save responses no longer overwrite newer
           optimistic model selections.
+  - [x] G11.4 Image-model chat dispatch: `gpt-image-*`, `dall-e-*`, and
+        `imagen-*` chat selections now use the real image executor, persist the
+        generated file as an assistant attachment, complete through the normal
+        chat SSE contract, and survive message reload. The same-origin rewrite
+        proxy timeout is five minutes for long generation streams.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

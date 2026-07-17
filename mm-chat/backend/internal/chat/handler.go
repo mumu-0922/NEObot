@@ -34,6 +34,7 @@ type Handler struct {
 	provider           Provider
 	attachmentResolver ProviderAttachmentResolver
 	providerResolver   RuntimeProviderResolver
+	imageGenerator     ImageGenerator
 	activeRuns         *activeRunRegistry
 	cancellationRuns   RunCancellationStore
 	ragAssembler       *RAGAnswerAssembler
@@ -48,6 +49,25 @@ type ProviderAttachmentResolver interface {
 
 type RuntimeProviderResolver interface {
 	ResolveRuntimeProvider(ctx context.Context, provider runtimeconfig.ProviderRuntimeConfig) (Provider, error)
+}
+
+type ImageGenerationRequest struct {
+	ModelRef ModelRef
+	Prompt   string
+}
+
+type GeneratedImageAttachment struct {
+	FileID  string
+	Purpose string
+}
+
+type ImageGenerationResult struct {
+	Attachments []GeneratedImageAttachment
+	Message     string
+}
+
+type ImageGenerator interface {
+	GenerateImage(context.Context, ImageGenerationRequest) (ImageGenerationResult, error)
 }
 
 type ErrorResponse struct {
@@ -217,6 +237,14 @@ func WithProvider(provider Provider) HandlerOption {
 func WithAttachmentResolver(resolver ProviderAttachmentResolver) HandlerOption {
 	return func(h *Handler) {
 		h.attachmentResolver = resolver
+	}
+}
+
+func WithImageGenerator(generator ImageGenerator) HandlerOption {
+	return func(h *Handler) {
+		if generator != nil {
+			h.imageGenerator = generator
+		}
 	}
 }
 
@@ -840,24 +868,6 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusBadRequest, "MODEL_REF_REQUIRED", "modelRef is required")
 		return
 	}
-	streamProvider, err := h.resolveStreamProvider(r.Context(), request.Provider)
-	if err != nil {
-		writeServiceError(w, err)
-		return
-	}
-	if resolver, ok := streamProvider.(ModelRefResolver); ok {
-		resolvedModelRef, err := resolver.ResolveModelRef(*modelRef)
-		if err != nil {
-			writeServiceError(w, err)
-			return
-		}
-		modelRef = &resolvedModelRef
-	} else if validator, ok := streamProvider.(ModelRefValidator); ok {
-		if err := validator.ValidateModelRef(*modelRef); err != nil {
-			writeServiceError(w, err)
-			return
-		}
-	}
 	request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
 	if request.IdempotencyKey == "" {
 		writeError(w, http.StatusBadRequest, "IDEMPOTENCY_KEY_REQUIRED", "idempotencyKey is required")
@@ -882,6 +892,37 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	if userMessage.Role != "user" {
 		writeRequestDecodeError(w, newValidationError("INVALID_USER_MESSAGE_ID", "userMessageId must reference a user message"))
 		return
+	}
+	if isImageGenerationModel(modelRef.ModelID) {
+		h.streamImageGeneration(
+			w,
+			r,
+			flusher,
+			conversationID,
+			userMessage,
+			*modelRef,
+			request.IdempotencyKey,
+		)
+		return
+	}
+
+	streamProvider, err := h.resolveStreamProvider(r.Context(), request.Provider)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	if resolver, ok := streamProvider.(ModelRefResolver); ok {
+		resolvedModelRef, err := resolver.ResolveModelRef(*modelRef)
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		modelRef = &resolvedModelRef
+	} else if validator, ok := streamProvider.(ModelRefValidator); ok {
+		if err := validator.ValidateModelRef(*modelRef); err != nil {
+			writeServiceError(w, err)
+			return
+		}
 	}
 	providerAttachments, err := h.resolveProviderAttachments(r.Context(), userMessage)
 	if err != nil {
@@ -1132,6 +1173,207 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	flusher.Flush()
+}
+
+func isImageGenerationModel(modelID string) bool {
+	modelID = strings.ToLower(strings.TrimSpace(modelID))
+	return strings.HasPrefix(modelID, "gpt-image-") ||
+		strings.HasPrefix(modelID, "dall-e-") ||
+		strings.HasPrefix(modelID, "imagen-")
+}
+
+func (h *Handler) streamImageGeneration(
+	w http.ResponseWriter,
+	r *http.Request,
+	flusher http.Flusher,
+	conversationID string,
+	userMessage Message,
+	modelRef ModelRef,
+	idempotencyKey string,
+) {
+	runID, err := NewUUID()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
+	assistantMessageID, err := NewUUID()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
+	assistantMessage, err := h.service.CreateAssistantMessage(
+		r.Context(),
+		conversationID,
+		CreateAssistantMessageInput{
+			ID:              assistantMessageID,
+			ParentMessageID: userMessage.ID,
+			ModelProvider:   modelRef.ProviderID,
+			ModelID:         modelRef.ModelID,
+			Metadata: map[string]any{
+				"runId": runID,
+				"kind":  "image_generation",
+			},
+			IdempotencyKey: idempotencyKey,
+		},
+	)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+
+	sequence := 1
+	if err := writeSSEEvent(w, "message.started", streamEvent{
+		Type:           "message.started",
+		RunID:          runID,
+		ConversationID: conversationID,
+		MessageID:      assistantMessage.ID,
+		Sequence:       sequence,
+		CreatedAt:      formatTime(time.Now()),
+		Role:           "assistant",
+		ModelRef:       &modelRef,
+	}); err != nil {
+		h.cancelAssistantAfterWriteError(conversationID, assistantMessage.ID, runID, "")
+		return
+	}
+	flusher.Flush()
+
+	if h.imageGenerator == nil {
+		h.failImageGenerationStream(w, flusher, conversationID, assistantMessage, runID, sequence, "IMAGE_JOBS_UNAVAILABLE")
+		return
+	}
+
+	streamCtx, streamCancel := context.WithCancel(r.Context())
+	unregisterRun := h.activeRuns.register(runID, streamCancel)
+	stopCancellationWatch := watchRunCancellation(streamCtx, h.cancellationRuns, runID, streamCancel)
+	defer unregisterRun()
+	defer h.clearRunCancelled(context.Background(), runID)
+	defer stopCancellationWatch()
+	defer streamCancel()
+
+	result, err := h.imageGenerator.GenerateImage(streamCtx, ImageGenerationRequest{
+		ModelRef: modelRef,
+		Prompt:   userMessage.Content,
+	})
+	if err != nil {
+		if streamCtx.Err() != nil || errors.Is(err, context.Canceled) {
+			h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
+				Status: "cancelled",
+				Metadata: map[string]any{
+					"runId":     runID,
+					"kind":      "image_generation",
+					"errorCode": "REQUEST_CANCELLED",
+				},
+			})
+			sequence++
+			_ = writeSSEEvent(w, "message.cancelled", streamEvent{
+				Type:           "message.cancelled",
+				RunID:          runID,
+				ConversationID: conversationID,
+				MessageID:      assistantMessage.ID,
+				Sequence:       sequence,
+				CreatedAt:      formatTime(time.Now()),
+			})
+			flusher.Flush()
+			return
+		}
+		h.failImageGenerationStream(w, flusher, conversationID, assistantMessage, runID, sequence, "IMAGE_PROVIDER_ERROR")
+		return
+	}
+	if len(result.Attachments) == 0 {
+		h.failImageGenerationStream(w, flusher, conversationID, assistantMessage, runID, sequence, "IMAGE_RESPONSE_EMPTY")
+		return
+	}
+
+	attachments := make([]AttachmentInput, 0, len(result.Attachments))
+	for _, attachment := range result.Attachments {
+		attachments = append(attachments, AttachmentInput{
+			Source:  "server",
+			FileID:  attachment.FileID,
+			Purpose: nonEmptyImagePurpose(attachment.Purpose),
+		})
+	}
+	content := strings.TrimSpace(result.Message)
+	if content == "" {
+		content = "Image generated."
+	}
+	assistantMessage, err = h.finalizeAssistantMessage(
+		context.Background(),
+		conversationID,
+		assistantMessage.ID,
+		FinalizeAssistantMessageInput{
+			Status:      "completed",
+			Content:     content,
+			Attachments: attachments,
+			Metadata: map[string]any{
+				"runId":      runID,
+				"kind":       "image_generation",
+				"imageCount": len(attachments),
+			},
+		},
+	)
+	if err != nil {
+		h.failImageGenerationStream(w, flusher, conversationID, assistantMessage, runID, sequence, "IMAGE_PERSIST_FAILED")
+		return
+	}
+
+	sequence++
+	assistantDTO := newMessageDTO(assistantMessage)
+	if err := writeSSEEvent(w, "message.completed", streamEvent{
+		Type:           "message.completed",
+		RunID:          runID,
+		ConversationID: conversationID,
+		MessageID:      assistantMessage.ID,
+		Sequence:       sequence,
+		CreatedAt:      formatTime(time.Now()),
+		Message:        &assistantDTO,
+	}); err != nil {
+		return
+	}
+	flusher.Flush()
+}
+
+func (h *Handler) failImageGenerationStream(
+	w http.ResponseWriter,
+	flusher http.Flusher,
+	conversationID string,
+	assistantMessage Message,
+	runID string,
+	sequence int,
+	errorCode string,
+) {
+	h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
+		Status: "failed",
+		Metadata: map[string]any{
+			"runId":     runID,
+			"kind":      "image_generation",
+			"errorCode": errorCode,
+		},
+	})
+	sequence++
+	_ = writeSSEEvent(w, "message.error", streamEvent{
+		Type:           "message.error",
+		RunID:          runID,
+		ConversationID: conversationID,
+		MessageID:      assistantMessage.ID,
+		Sequence:       sequence,
+		CreatedAt:      formatTime(time.Now()),
+		Error:          &ErrorBody{Code: errorCode, Message: "image generation failed"},
+	})
+	flusher.Flush()
+}
+
+func nonEmptyImagePurpose(value string) string {
+	if value = strings.TrimSpace(value); value != "" {
+		return value
+	}
+	return "image"
 }
 
 func (h *Handler) streamStrictRAG(

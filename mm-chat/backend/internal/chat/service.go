@@ -264,6 +264,11 @@ func (s *Service) CreateAssistantMessage(
 	if input.Metadata == nil {
 		input.Metadata = map[string]any{}
 	}
+	attachments, err := normalizeAttachmentInputs(input.Attachments)
+	if err != nil {
+		return Message{}, err
+	}
+	input.Attachments = attachments
 
 	return s.repo.CreateAssistantMessage(ctx, conversationID, input)
 }
@@ -297,6 +302,11 @@ func (s *Service) FinalizeAssistantMessage(
 	if input.Metadata == nil {
 		input.Metadata = map[string]any{}
 	}
+	attachments, err := normalizeAttachmentInputs(input.Attachments)
+	if err != nil {
+		return Message{}, err
+	}
+	input.Attachments = attachments
 
 	return s.repo.FinalizeAssistantMessage(ctx, conversationID, messageID, input)
 }

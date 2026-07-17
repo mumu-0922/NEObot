@@ -953,6 +953,10 @@ func (r *PostgresRepository) CreateAssistantMessage(
 		}
 		return Message{}, fmt.Errorf("insert assistant message: %w", err)
 	}
+	message.Attachments, err = r.createMessageAttachments(ctx, tx, user.ID, message.ID, input.Attachments)
+	if err != nil {
+		return Message{}, err
+	}
 
 	if _, err := tx.ExecContext(
 		ctx,
@@ -1028,6 +1032,12 @@ func (r *PostgresRepository) FinalizeAssistantMessage(
 	}
 	if err != nil {
 		return Message{}, fmt.Errorf("finalize assistant message: %w", err)
+	}
+	if len(input.Attachments) > 0 {
+		message.Attachments, err = r.createMessageAttachments(ctx, tx, userID, message.ID, input.Attachments)
+		if err != nil {
+			return Message{}, err
+		}
 	}
 
 	if _, err := tx.ExecContext(

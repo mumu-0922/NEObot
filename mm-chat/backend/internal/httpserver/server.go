@@ -89,6 +89,41 @@ type runtimeChatProviderResolver struct {
 	timeout time.Duration
 }
 
+type chatImageGenerator struct {
+	service *imagejobs.Service
+}
+
+func (g chatImageGenerator) GenerateImage(
+	ctx context.Context,
+	request chat.ImageGenerationRequest,
+) (chat.ImageGenerationResult, error) {
+	if g.service == nil {
+		return chat.ImageGenerationResult{}, imagejobs.ErrImageJobsUnavailable
+	}
+	response, err := g.service.Generate(ctx, imagejobs.GenerateRequest{
+		ModelRef: imagejobs.ModelRef{
+			ProviderID: request.ModelRef.ProviderID,
+			ModelID:    request.ModelRef.ModelID,
+		},
+		Prompt: request.Prompt,
+		Count:  1,
+	})
+	if err != nil {
+		return chat.ImageGenerationResult{}, err
+	}
+	attachments := make([]chat.GeneratedImageAttachment, 0, len(response.Images))
+	for _, generated := range response.Images {
+		attachments = append(attachments, chat.GeneratedImageAttachment{
+			FileID:  generated.FileID,
+			Purpose: generated.Purpose,
+		})
+	}
+	return chat.ImageGenerationResult{
+		Attachments: attachments,
+		Message:     response.Message,
+	}, nil
+}
+
 func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 	ctx context.Context,
 	provider runtimeconfig.ProviderRuntimeConfig,
@@ -454,6 +489,9 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		chat.WithRuntimeProviderResolver(runtimeChatProviderResolver{
 			service: runtimeConfigService,
 			timeout: cfg.Provider.Timeout,
+		}),
+		chat.WithImageGenerator(chatImageGenerator{
+			service: resolvedOptions.imageJobService,
 		}),
 	}
 	if resolvedOptions.knowledgeService != nil {

@@ -112,6 +112,7 @@ type CreateAssistantMessageInput struct {
 	ProviderMessageID string
 	Metadata          map[string]any
 	IdempotencyKey    string
+	Attachments       []AttachmentInput
 }
 
 type FinalizeAssistantMessageInput struct {
@@ -119,6 +120,7 @@ type FinalizeAssistantMessageInput struct {
 	Content      string
 	OutputBlocks []any
 	Metadata     map[string]any
+	Attachments  []AttachmentInput
 }
 
 type CancelRunInput struct {

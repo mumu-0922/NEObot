@@ -20,6 +20,7 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     optimizePackageImports: ["lucide-react"],
+    proxyTimeout: 300_000,
   },
   async headers() {
     return [

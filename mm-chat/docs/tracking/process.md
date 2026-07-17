@@ -8193,3 +8193,11 @@ mm-chat/docs/tracking/standalone-parity-sliced-process.md
 Owner browser evidence showed successful model discovery but no provider PUT
 after checkbox changes. The active sliced log records the serialized autosave
 fix and the stale-response overwrite guard.
+
+## 2026-07-17 — G11.4 Image-model chat dispatch cross-reference
+
+The owner selected `gpt-image-2` in normal chat and received a failed empty
+assistant card. Runtime evidence showed the model was incorrectly sent to the
+chat-completions stream. The active sliced process log records the image
+executor dispatch, assistant-attachment persistence, five-minute rewrite proxy
+timeout, real provider proof, and temporary artifact cleanup.

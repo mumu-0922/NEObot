@@ -611,6 +611,58 @@ func TestHandlerStreamsMockAssistantAndPersistsMessages(t *testing.T) {
 	}
 }
 
+func TestHandlerRoutesImageModelsThroughImageGeneratorAndPersistsAttachment(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "draw a corgi"),
+	)
+	generator := &fakeChatImageGenerator{result: ImageGenerationResult{
+		Attachments: []GeneratedImageAttachment{{FileID: testFileID, Purpose: "image"}},
+	}}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(errorProvider{}),
+		WithImageGenerator(generator),
+	)
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"openai_compatible","modelId":"gpt-image-2"},"idempotencyKey":"image-stream-key"}`,
+	)
+
+	assertStreamStatus(t, rec, http.StatusOK)
+	body := rec.Body.String()
+	for _, want := range []string{
+		"event: message.started",
+		"event: message.completed",
+		`"modelId":"gpt-image-2"`,
+		`"fileId":"55555555-5555-4555-8555-555555555555"`,
+		`"purpose":"image"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("image stream body missing %q; body=%s", want, body)
+		}
+	}
+	if !generator.called || generator.request.Prompt != "draw a corgi" {
+		t.Fatalf("image generator request = %#v", generator.request)
+	}
+	messages := repo.messages[testConversationID]
+	if len(messages) != 2 {
+		t.Fatalf("persisted messages = %#v", messages)
+	}
+	assistant := messages[1]
+	if assistant.Status != "completed" || len(assistant.Attachments) != 1 {
+		t.Fatalf("assistant = %#v", assistant)
+	}
+	if assistant.Attachments[0].FileID != testFileID || assistant.Attachments[0].Purpose != "image" {
+		t.Fatalf("assistant attachment = %#v", assistant.Attachments[0])
+	}
+}
+
 func TestHandlerStreamsRepeatedAssistantBranchesForSameUserMessage(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
@@ -2195,6 +2247,7 @@ func (f *fakeRepository) CreateAssistantMessage(
 	message.Content = ""
 	message.Metadata = input.Metadata
 	message.IdempotencyKey = input.IdempotencyKey
+	message.Attachments = fakeAttachments(input.Attachments)
 	f.messages[conversationID] = append(messages, message)
 	for i := range f.conversations {
 		if f.conversations[i].ID == conversationID {
@@ -2221,6 +2274,9 @@ func (f *fakeRepository) FinalizeAssistantMessage(
 		message.Status = input.Status
 		message.Content = input.Content
 		message.OutputBlocks = input.OutputBlocks
+		if len(input.Attachments) > 0 {
+			message.Attachments = fakeAttachments(input.Attachments)
+		}
 		if message.Status == "cancelled" && input.Status == "cancelled" {
 			if message.Metadata == nil {
 				message.Metadata = map[string]any{}
@@ -2392,6 +2448,22 @@ func (p *capturingProvider) StreamChat(_ context.Context, input ProviderRequest)
 type fakeProviderAttachmentResolver struct {
 	attachments map[string]ProviderAttachment
 	err         error
+}
+
+type fakeChatImageGenerator struct {
+	called  bool
+	request ImageGenerationRequest
+	result  ImageGenerationResult
+	err     error
+}
+
+func (g *fakeChatImageGenerator) GenerateImage(
+	_ context.Context,
+	request ImageGenerationRequest,
+) (ImageGenerationResult, error) {
+	g.called = true
+	g.request = request
+	return g.result, g.err
 }
 
 func (r fakeProviderAttachmentResolver) ResolveProviderAttachment(
