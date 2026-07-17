@@ -2,10 +2,11 @@
 
 ## 1. Scope / Trigger
 
-This contract covers G11.9D.1: deterministic planning of structure-aware Parent
-and Child chunks from already validated, source-derived text units. It does not
-yet replace the Native/MinerU baseline, persist new materializations, call Jina,
-or switch the active Index Generation. Those promotion steps remain D.2/D.3.
+This contract covers G11.9D.1 deterministic planning and G11.9D.2.1 Native
+structural artifact projection. It does not yet replace the production Native
+gateway, map MinerU structure, persist a new materialization, call Jina, or
+switch the active Index Generation. Those promotion steps remain D.2.2/D.2.3
+and D.3.
 
 ## 2. Signatures
 
@@ -95,3 +96,36 @@ generation while planning.
 Correct: plan only validated source ranges, preserve heading boundaries and
 protected units, keep the function pure, and leave persistence/provider/cutover
 to separately verified D.2/D.3 stages.
+
+## 8. G11.9D.2.1 Native Structural Artifact Projection
+
+`build_native_structure_artifacts(...)` is the deterministic mapper from one
+source-bound `NativeDocument` to projection-ready Canonical IR v2 and Chunk
+Manifest v2. It is deliberately not called by `NativeSandboxParserGateway`
+until the new chunk profile has a separately staged Search Profile and Index
+Generation.
+
+- headings and standalone text nodes become individual blocks;
+- list items aggregate their descendant text once, while table rows aggregate
+  cells with a fixed `" | "` separator and do not duplicate nested paragraphs;
+- external-target fragments are excluded from indexed text;
+- the Canonical text buffer separates blocks with one newline, while Chunk
+  Manifest v2 uses its frozen `adjacent` empty joiner or `block_separator`
+  double-newline joiner;
+- heading paths contain logical heading block IDs, never display titles;
+- every source unit, structure owner, block, provenance record, span, Parent,
+  Child, profile, and artifact-set identity is deterministic;
+- identity fragments are clipped using exact UTF-8/scalar/line positions;
+  syntax-decoded fragments retain their verified coarse source range instead
+  of inventing byte coordinates;
+- Child overlap reuses the byte-identical previous-child fragment and records
+  `previousChildOrdinal`, `overlapGroupId`, and bounded overlap tokens;
+- Parent `sectionOwnerSeedId` is the structure owner of its first block and
+  Child ordinals remain globally contiguous for Postgres projection.
+
+Required proof includes DOCX heading/paragraph/table-row mapping, Markdown
+heading/list/table/code mapping, long multilingual UTF-8 splitting and exact
+overlap, offline JSON Schema validation, and
+`build_postgres_projection_batch(...)` row construction. Runtime gateway
+replacement, Postgres staging, real Jina spend, and generation cutover are not
+evidence for this slice and must not occur here.

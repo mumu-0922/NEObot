@@ -4974,3 +4974,18 @@ The production RAG image built and imported the packaged planner successfully;
 the active generation ID remained unchanged. D.2 will map Native/MinerU
 artifacts and locators, then stage a new generation without re-upload; D.3 owns
 verification and atomic cutover.
+
+## 2026-07-18 — G11.9D.2.1 Native structural Artifact projection
+
+The first D.2 slice now maps validated Native structure into schema-valid
+Canonical IR v2 and Chunk Manifest v2 without activating it. Headings,
+paragraphs, list items, table rows, code, logical heading ancestry, clipped
+source positions, Parent/Child spans, and exact adjacent overlap survive into
+the existing Postgres projection DTOs.
+
+Three focused DOCX/Markdown/long-multilingual tests, packaged schema gates,
+Ruff, strict Mypy, the production RAG source build, and image import passed.
+The running generation remained
+`46a1c7bb-44ed-4868-9d61-edd557f9d3f0`; the production Native gateway and
+persisted projections were not touched. D.2.2 owns MinerU structure/page
+locators, then D.2.3 may create and embed a new generation without re-upload.

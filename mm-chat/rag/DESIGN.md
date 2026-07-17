@@ -408,6 +408,27 @@ validated Native/MinerU blocks and clip existing locators while satisfying the
 current lineage/hash validators. D.3 alone may verify and atomically promote a
 new Index Generation; planning cannot mutate the active generation.
 
+## G11.9D.2.1 Native structural artifact projection
+
+`mm_chat_rag.native_structure_artifacts` turns a source-bound `NativeDocument`
+into Canonical IR v2 and Chunk Manifest v2 without changing the live parser
+route. A pre-order structural pass selects each source text exactly once:
+standalone text nodes remain blocks, list items aggregate descendant paragraphs,
+and table rows aggregate cells. Heading levels form logical-ID ancestry; raw
+heading titles are never identity inputs for heading paths.
+
+Each block retains stable source-unit and structure-owner IDs. Identity text can
+be clipped to exact raw/scalar/line ranges; syntax-decoded text intentionally
+keeps its verified coarse range. The D.1 planner ranges are then rebound to
+block-relative spans and clipped locators. Parent/Child content, hashes,
+joiners, global Child ordinals, and overlap metadata are deterministic and pass
+the packaged schemas plus the existing Postgres projection builder.
+
+This remains a proof boundary, not a promotion boundary. The production
+`NativeSandboxParserGateway` continues to emit its old baseline until MinerU
+mapping, a versioned Search Profile, new-generation staging, real Jina passage
+embedding, verification, and atomic cutover are completed in later slices.
+
 ## Process topology
 
 One process owns:

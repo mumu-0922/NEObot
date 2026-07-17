@@ -162,9 +162,14 @@ Incremental execution slices:
 - **G11.9D.1** complete: pure deterministic structure-aware chunk planner,
   frozen Parent/Child/overlap bounds, UTF-8-safe source-range references, and
   no runtime generation mutation;
-- **G11.9D.2** map Native and MinerU structural artifacts into validated
-  Canonical IR/Chunk Manifest rows, then stage parse + Jina embeddings in a new
-  generation without re-upload;
+- **G11.9D.2.1** complete: map validated Native headings, paragraphs, lists,
+  table rows, code, source positions, and exact planner ranges into schema-valid
+  Canonical IR/Chunk Manifest artifacts plus Postgres projection DTOs, without
+  changing the production gateway or active generation;
+- **G11.9D.2.2** map equivalent MinerU structure and clipped page/source
+  locators behind the same profile;
+- **G11.9D.2.3** stage Native + MinerU parse projections and Jina passage
+  embeddings in a new generation without re-upload;
 - **G11.9D.3** verify counts/hashes/locators/deletion fences, atomically cut over
   the generation, and prove failed rebuild rollback plus live citations.
 

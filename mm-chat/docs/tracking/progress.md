@@ -1331,6 +1331,13 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
             and no active-generation mutation.
       - [ ] G11.9D.2 Native/MinerU structural artifact projection and staged
             parse + Jina embedding in a new generation without re-upload.
+        - [x] G11.9D.2.1 Native structural units to Canonical IR v2 / Chunk
+              Manifest v2, clipped source locators, exact overlap, schema gate,
+              and Postgres projection proof; production gateway unchanged.
+        - [ ] G11.9D.2.2 MinerU structural/page-locator mapping under the same
+              chunk profile.
+        - [ ] G11.9D.2.3 New-generation parse staging and real Jina passage
+              embedding without re-upload.
       - [ ] G11.9D.3 Generation verification, atomic cutover, failure rollback,
             deletion fencing, and live citation-anchor proof.
     - [ ] G11.9E Go Tavily/Firecrawl/Exa/Bocha/model-built-in Search parity,

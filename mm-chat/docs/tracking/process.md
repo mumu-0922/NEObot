@@ -8310,3 +8310,14 @@ overlap, unit, and document sizes. Detailed contracts, tests, rollback, and the
 D.2/D.3 handoff are recorded in
 `docs/tracking/g11-knowledge-auto-rag-process.md` and
 `docs/contracts/rag-structure-chunking.md`.
+
+## 2026-07-18 — G11.9D.2.1 Native projection cross-reference
+
+Validated Native headings, paragraphs, lists, table rows, code, logical heading
+paths, source locators, planner spans, and exact overlap now project into
+Canonical IR v2 / Chunk Manifest v2 and the existing Postgres DTO builder. This
+is intentionally offline: the production gateway, Jina, persistence, and active
+generation are unchanged. Detailed implementation, verification, rollback, and
+D.2.2/D.2.3 handoff are recorded in
+`docs/tracking/g11-knowledge-auto-rag-process.md` and
+`docs/contracts/rag-structure-chunking.md`.

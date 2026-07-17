@@ -92,6 +92,14 @@ or active-generation cutover. The frozen contract and D.2/D.3 promotion gates
 are documented in
 [`../docs/contracts/rag-structure-chunking.md`](../docs/contracts/rag-structure-chunking.md).
 
+G11.9D.2.1 adds `mm_chat_rag.native_structure_artifacts` as the first consumer
+of that planner. It maps validated Native headings, paragraphs, list items,
+table rows, code, heading ancestry, and verified source positions into
+schema-valid Canonical IR v2 / Chunk Manifest v2, including exact overlap and
+Postgres projection DTO proof. The current production Native gateway still
+uses the baseline profile: this module performs no persistence, provider call,
+or generation mutation until MinerU parity and a new generation are staged.
+
 ## Local quality gates
 
 No command loads repository `.env` files.

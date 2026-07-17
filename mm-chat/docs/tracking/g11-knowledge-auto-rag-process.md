@@ -507,3 +507,66 @@ Rollback: remove the planner and contract only; no runtime caller or persisted
 generation depends on them. Next slice D.2 maps validated Native/MinerU
 structure and locators into the existing Canonical IR/Chunk Manifest contract,
 then stages a new generation without re-upload.
+
+## 2026-07-18 — G11.9D.2.1 Native structural artifact projection
+
+Outcome: the Native half of structural Artifact projection is complete as an
+offline proof boundary. Production `NativeSandboxParserGateway` remains on the
+old text baseline because the new chunk profile is not yet bound to a staged
+Search Profile/Index Generation. No parser route, materialization, provider,
+or active generation was changed.
+
+Added `mm_chat_rag.native_structure_artifacts` with a deterministic flow:
+
+```text
+source-bound NativeDocument
+  -> unique structural units
+  -> D.1 Parent/Child planner
+  -> Canonical IR v2 + clipped Source Locator v2
+  -> Chunk Manifest v2
+  -> build_postgres_projection_batch DTOs
+```
+
+The mapper preserves headings, standalone paragraphs/code, list items, and
+table rows without duplicating their nested Native nodes. Table cells use the
+fixed `" | "` representation; external-target fragments are excluded. Heading
+ancestry uses stable logical block IDs. Exact identity fragments are clipped to
+verified raw/scalar/line ranges, while syntax-decoded fragments keep their
+coarse verified source position rather than fabricating coordinates.
+
+Planner ranges become block-relative chunk spans with deterministic source
+hashes and clipped locators. Adjacent ranges use an empty joiner; cross-block
+ranges use Chunk Manifest v2's frozen double-newline separator. Overlap is a
+byte-identical previous-child fragment with explicit adjacent-child identity.
+Parent section ownership uses its first structural block and Child ordinals are
+globally contiguous for the current Postgres projector.
+
+Verification:
+
+```text
+focused Native Artifact tests             4 passed
+DOCX heading/paragraph/table row           passed
+Markdown heading/list/table/code           passed
+long multilingual Parent/Child/overlap     passed
+UTF-8/CRLF/CR identity locator clipping    passed
+Canonical IR + Chunk Manifest schemas      passed
+Postgres projection DTO proof              passed
+Ruff src/tests                             passed
+strict Mypy src                            passed
+non-socket regression suite                1676 passed / 7 skipped
+production RAG source build                passed
+packaged image import                      64 / callable=True
+active Index Generation                    46a1c7bb-44ed-4868-9d61-edd557f9d3f0
+active-generation mutations                zero
+```
+
+The sandboxed all-test attempt reached `1715 passed / 7 skipped`; its 16
+failures were existing socket/bind/JCS child-runtime gates denied with `EPERM`,
+not assertion failures in this slice. The focused suite, schema gates, static
+checks, source build, and packaged import are green. A host-permission rerun is
+still required for those socket-owning tests.
+
+Rollback: delete the new builder/tests and revert these documentation entries.
+No live caller or persisted row depends on this slice. Next is D.2.2 MinerU
+structure/page-locator mapping; only D.2.3 may stage a new generation and spend
+real Jina passage-embedding quota.
