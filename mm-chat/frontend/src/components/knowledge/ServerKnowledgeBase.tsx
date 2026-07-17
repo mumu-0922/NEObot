@@ -17,8 +17,6 @@ import {
   Plus,
   RefreshCw,
   Save,
-  ShieldCheck,
-  ShieldOff,
   Trash2,
   UploadCloud,
   X,
@@ -27,7 +25,6 @@ import { createNeoChatApiClient } from "@/services/api/client";
 import type {
   KnowledgeCollectionDTO,
   KnowledgeDocumentDTO,
-  ProcessingConsentDTO,
 } from "@/services/api/client";
 import {
   formatBytes as formatLimitBytes,
@@ -38,94 +35,6 @@ import { logDevError } from "@/lib/utils/devLogger";
 interface ServerKnowledgeBaseProps {
   onClose?: () => void;
 }
-
-type ConsentFormState = {
-  processor: string;
-  endpointId: string;
-  modelId: string;
-  purposes: string;
-  dataTypes: string;
-  policyVersion: string;
-  expiresAt: string;
-};
-
-type ConsentPayload = {
-  processor: string;
-  endpointId?: string;
-  modelId?: string;
-  purposes: string[];
-  dataTypes: string[];
-  policyVersion: string;
-  expiresAt?: string;
-};
-
-type ConsentPreset = {
-  key: string;
-  labelKey: string;
-  form: ConsentFormState;
-};
-
-const defaultCollectionConsentForm: ConsentFormState = {
-  processor: "mineru",
-  endpointId: "hosted-main",
-  modelId: "model-stable-20260712",
-  purposes: "parse",
-  dataTypes: "application/pdf",
-  policyVersion: "v1",
-  expiresAt: "",
-};
-
-const defaultQueryConsentForm: ConsentFormState = {
-  processor: "jina",
-  endpointId: "hosted-main",
-  modelId: "jina-embeddings-v4",
-  purposes: "query_embedding, rerank",
-  dataTypes: "text/plain",
-  policyVersion: "v1",
-  expiresAt: "",
-};
-
-const collectionConsentPresets: ConsentPreset[] = [
-  {
-    key: "mineruPdfParse",
-    labelKey: "serverConsentPresetMineruPdfParse",
-    form: defaultCollectionConsentForm,
-  },
-  {
-    key: "jinaPassageEmbedding",
-    labelKey: "serverConsentPresetJinaPassageEmbedding",
-    form: {
-      processor: "jina",
-      endpointId: "hosted-main",
-      modelId: "jina-embeddings-v4",
-      purposes: "passage_embedding",
-      dataTypes: "text/plain",
-      policyVersion: "v1",
-      expiresAt: "",
-    },
-  },
-];
-
-const queryConsentPresets: ConsentPreset[] = [
-  {
-    key: "jinaQueryEmbedding",
-    labelKey: "serverConsentPresetJinaQueryEmbedding",
-    form: defaultQueryConsentForm,
-  },
-  {
-    key: "jinaAnswer",
-    labelKey: "serverConsentPresetJinaAnswer",
-    form: {
-      processor: "jina",
-      endpointId: "hosted-main",
-      modelId: "jina-reranker-v3",
-      purposes: "rerank, answer",
-      dataTypes: "text/plain",
-      policyVersion: "v1",
-      expiresAt: "",
-    },
-  },
-];
 
 const newIdempotencyKey = (prefix: string): string => {
   const randomId = globalThis.crypto?.randomUUID?.();
@@ -147,20 +56,6 @@ const statusClass = (status: string) => {
   }
 };
 
-const consentStatusClass = (status: string) => {
-  switch (status) {
-    case "granted":
-    case "active":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300";
-    case "expired":
-      return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300";
-    case "revoked":
-      return "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300";
-    default:
-      return "border-border bg-muted text-muted-foreground";
-  }
-};
-
 const formatDate = (value: string): string => {
   if (!value) return "—";
   const date = new Date(value);
@@ -169,56 +64,6 @@ const formatDate = (value: string): string => {
 };
 
 const formatBytes = (value: number): string => formatLimitBytes(value);
-
-const splitCsv = (value: string): string[] =>
-  value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-const hasCompleteIdentity = (form: ConsentFormState): boolean => {
-  const hasEndpoint = Boolean(form.endpointId.trim());
-  const hasModel = Boolean(form.modelId.trim());
-  return hasEndpoint === hasModel;
-};
-
-const canSubmitConsent = (form: ConsentFormState): boolean =>
-  Boolean(form.processor.trim()) &&
-  Boolean(form.policyVersion.trim()) &&
-  splitCsv(form.purposes).length > 0 &&
-  splitCsv(form.dataTypes).length > 0 &&
-  hasCompleteIdentity(form);
-
-const toConsentPayload = (form: ConsentFormState): ConsentPayload => {
-  const endpointId = form.endpointId.trim();
-  const modelId = form.modelId.trim();
-  return {
-    processor: form.processor.trim(),
-    endpointId: endpointId || undefined,
-    modelId: modelId || undefined,
-    purposes: splitCsv(form.purposes),
-    dataTypes: splitCsv(form.dataTypes),
-    policyVersion: form.policyVersion.trim(),
-    expiresAt: form.expiresAt.trim() || undefined,
-  };
-};
-
-const sameConsentIdentity = (
-  left: ProcessingConsentDTO,
-  right: ProcessingConsentDTO,
-): boolean =>
-  left.processor === right.processor &&
-  left.endpointId === right.endpointId &&
-  left.modelId === right.modelId;
-
-const upsertConsent = (
-  values: ProcessingConsentDTO[],
-  next: ProcessingConsentDTO,
-): ProcessingConsentDTO[] => {
-  const existing = values.some((item) => sameConsentIdentity(item, next));
-  if (!existing) return [next, ...values];
-  return values.map((item) => (sameConsentIdentity(item, next) ? next : item));
-};
 
 export default function ServerKnowledgeBase({
   onClose,
@@ -232,12 +77,6 @@ export default function ServerKnowledgeBase({
 
   const [collections, setCollections] = useState<KnowledgeCollectionDTO[]>([]);
   const [documents, setDocuments] = useState<KnowledgeDocumentDTO[]>([]);
-  const [collectionConsents, setCollectionConsents] = useState<
-    ProcessingConsentDTO[]
-  >([]);
-  const [queryConsents, setQueryConsents] = useState<ProcessingConsentDTO[]>(
-    [],
-  );
   const [selectedCollectionId, setSelectedCollectionId] = useState<
     string | null
   >(null);
@@ -247,14 +86,6 @@ export default function ServerKnowledgeBase({
   const [editDescription, setEditDescription] = useState("");
   const [loadingCollections, setLoadingCollections] = useState(false);
   const [loadingDocuments, setLoadingDocuments] = useState(false);
-  const [loadingCollectionConsents, setLoadingCollectionConsents] =
-    useState(false);
-  const [loadingQueryConsents, setLoadingQueryConsents] = useState(false);
-  const [collectionConsentForm, setCollectionConsentForm] =
-    useState<ConsentFormState>(defaultCollectionConsentForm);
-  const [queryConsentForm, setQueryConsentForm] = useState<ConsentFormState>(
-    defaultQueryConsentForm,
-  );
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -269,14 +100,10 @@ export default function ServerKnowledgeBase({
     [collections, selectedCollectionId],
   );
   const canManageCollection = selectedCollection?.permissions.manage === true;
-  const canManageCollectionConsent =
-    selectedCollection?.permissions.manageConsent === true;
   const trimmedCollectionName = collectionName.trim();
   const trimmedCollectionDescription = collectionDescription.trim();
   const trimmedEditName = editName.trim();
   const trimmedEditDescription = editDescription.trim();
-  const collectionConsentReady = canSubmitConsent(collectionConsentForm);
-  const queryConsentReady = canSubmitConsent(queryConsentForm);
 
   const showError = useCallback((message: string, caught: unknown) => {
     logDevError(message, caught);
@@ -324,42 +151,6 @@ export default function ServerKnowledgeBase({
     }
   }, [apiClient, knowledgeSupported, selectedCollectionId, showError, t]);
 
-  const refreshCollectionConsents = useCallback(async () => {
-    if (!knowledgeSupported || !selectedCollectionId) {
-      setCollectionConsents([]);
-      return;
-    }
-    setLoadingCollectionConsents(true);
-    setError(null);
-    try {
-      const values = await apiClient.knowledge.listCollectionConsents({
-        collectionId: selectedCollectionId,
-      });
-      setCollectionConsents(values);
-    } catch (caught) {
-      showError(t("serverLoadCollectionConsentsFailed"), caught);
-    } finally {
-      setLoadingCollectionConsents(false);
-    }
-  }, [apiClient, knowledgeSupported, selectedCollectionId, showError, t]);
-
-  const refreshQueryConsents = useCallback(async () => {
-    if (!knowledgeSupported) {
-      setQueryConsents([]);
-      return;
-    }
-    setLoadingQueryConsents(true);
-    setError(null);
-    try {
-      const values = await apiClient.knowledge.listQueryConsents();
-      setQueryConsents(values);
-    } catch (caught) {
-      showError(t("serverLoadQueryConsentsFailed"), caught);
-    } finally {
-      setLoadingQueryConsents(false);
-    }
-  }, [apiClient, knowledgeSupported, showError, t]);
-
   useEffect(() => {
     void refreshCollections();
   }, [refreshCollections]);
@@ -372,14 +163,6 @@ export default function ServerKnowledgeBase({
   useEffect(() => {
     void refreshDocuments();
   }, [refreshDocuments]);
-
-  useEffect(() => {
-    void refreshCollectionConsents();
-  }, [refreshCollectionConsents]);
-
-  useEffect(() => {
-    void refreshQueryConsents();
-  }, [refreshQueryConsents]);
 
   const runAction = async (key: string, action: () => Promise<void>) => {
     setBusyAction(key);
@@ -452,7 +235,6 @@ export default function ServerKnowledgeBase({
         );
         setSelectedCollectionId(null);
         setDocuments([]);
-        setCollectionConsents([]);
         setNotice(t("serverCollectionDeleted"));
         await refreshCollections();
       } catch (caught) {
@@ -541,111 +323,6 @@ export default function ServerKnowledgeBase({
         showError(t("serverReprocessDocumentFailed"), caught);
       }
     });
-  };
-
-  const handleGrantCollectionConsent = () => {
-    if (
-      !selectedCollection ||
-      !canManageCollectionConsent ||
-      !collectionConsentReady
-    ) {
-      return;
-    }
-    const payload = toConsentPayload(collectionConsentForm);
-    void runAction("grant-collection-consent", async () => {
-      try {
-        const consent = await apiClient.knowledge.putCollectionConsent({
-          collectionId: selectedCollection.id,
-          ...payload,
-        });
-        setCollectionConsents((current) => upsertConsent(current, consent));
-        setNotice(t("serverCollectionConsentGranted"));
-      } catch (caught) {
-        showError(t("serverGrantCollectionConsentFailed"), caught);
-      }
-    });
-  };
-
-  const handleRevokeCollectionConsent = (consent: ProcessingConsentDTO) => {
-    if (!selectedCollection || !canManageCollectionConsent) return;
-    if (!window.confirm(t("serverConfirmRevokeConsent"))) return;
-    void runAction(
-      `revoke-collection-consent-${consent.processor}-${consent.modelId}`,
-      async () => {
-        try {
-          await apiClient.knowledge.revokeCollectionConsent({
-            collectionId: selectedCollection.id,
-            processor: consent.processor,
-            endpointId: consent.endpointId,
-            modelId: consent.modelId,
-          });
-          setCollectionConsents((current) =>
-            current.map((item) =>
-              sameConsentIdentity(item, consent)
-                ? {
-                    ...item,
-                    decision: "revoked",
-                    effectiveStatus: "revoked",
-                    expiresAt: undefined,
-                    decidedAt: new Date().toISOString(),
-                  }
-                : item,
-            ),
-          );
-          setNotice(t("serverCollectionConsentRevoked"));
-          await refreshCollectionConsents();
-        } catch (caught) {
-          showError(t("serverRevokeCollectionConsentFailed"), caught);
-        }
-      },
-    );
-  };
-
-  const handleGrantQueryConsent = () => {
-    if (!queryConsentReady) return;
-    const payload = toConsentPayload(queryConsentForm);
-    void runAction("grant-query-consent", async () => {
-      try {
-        const consent = await apiClient.knowledge.putQueryConsent(payload);
-        setQueryConsents((current) => upsertConsent(current, consent));
-        setNotice(t("serverQueryConsentGranted"));
-      } catch (caught) {
-        showError(t("serverGrantQueryConsentFailed"), caught);
-      }
-    });
-  };
-
-  const handleRevokeQueryConsent = (consent: ProcessingConsentDTO) => {
-    if (!window.confirm(t("serverConfirmRevokeConsent"))) return;
-    void runAction(
-      `revoke-query-consent-${consent.processor}-${consent.modelId}`,
-      async () => {
-        try {
-          await apiClient.knowledge.revokeQueryConsent({
-            processor: consent.processor,
-            endpointId: consent.endpointId,
-            modelId: consent.modelId,
-          });
-          setQueryConsents((current) =>
-            current.map((item) =>
-              sameConsentIdentity(item, consent)
-                ? {
-                    ...item,
-                    decision: "revoked",
-                    effectiveStatus: "revoked",
-                    expiresAt: undefined,
-                    decidedAt: new Date().toISOString(),
-                  }
-                : item,
-            ),
-          );
-          setNotice(t("serverQueryConsentRevoked"));
-          await refreshQueryConsents();
-        } catch (caught) {
-          showError(t("serverRevokeQueryConsentFailed"), caught);
-        }
-      },
-    );
   };
 
   if (!knowledgeSupported) {
@@ -859,27 +536,6 @@ export default function ServerKnowledgeBase({
                   </div>
                 </section>
 
-                <ConsentSection
-                  kind="collection"
-                  title={t("serverCollectionConsentHeading")}
-                  description={t("serverCollectionConsentDescription")}
-                  envBackedNote={t("serverConsentEnvBackedNote")}
-                  failClosedNote={t("serverConsentFailClosedNote")}
-                  noConsentText={t("serverNoCollectionConsents")}
-                  loadingText={t("serverLoadingConsents")}
-                  consents={collectionConsents}
-                  form={collectionConsentForm}
-                  presets={collectionConsentPresets}
-                  setForm={setCollectionConsentForm}
-                  canGrant={canManageCollectionConsent}
-                  isLoading={loadingCollectionConsents}
-                  busyAction={busyAction}
-                  isReady={collectionConsentReady}
-                  onGrant={handleGrantCollectionConsent}
-                  onRevoke={handleRevokeCollectionConsent}
-                  onRefresh={refreshCollectionConsents}
-                />
-
                 <section
                   onDragOver={(event) => {
                     event.preventDefault();
@@ -1021,314 +677,9 @@ export default function ServerKnowledgeBase({
                 </section>
               </>
             )}
-
-            <ConsentSection
-              kind="query"
-              title={t("serverQueryConsentHeading")}
-              description={t("serverQueryConsentDescription")}
-              envBackedNote={t("serverConsentEnvBackedNote")}
-              failClosedNote={t("serverConsentFailClosedNote")}
-              noConsentText={t("serverNoQueryConsents")}
-              loadingText={t("serverLoadingConsents")}
-              consents={queryConsents}
-              form={queryConsentForm}
-              presets={queryConsentPresets}
-              setForm={setQueryConsentForm}
-              canGrant
-              isLoading={loadingQueryConsents}
-              busyAction={busyAction}
-              isReady={queryConsentReady}
-              onGrant={handleGrantQueryConsent}
-              onRevoke={handleRevokeQueryConsent}
-              onRefresh={refreshQueryConsents}
-            />
           </div>
         </main>
       </div>
-    </div>
-  );
-}
-
-function ConsentSection({
-  kind,
-  title,
-  description,
-  envBackedNote,
-  failClosedNote,
-  noConsentText,
-  loadingText,
-  consents,
-  form,
-  presets,
-  setForm,
-  canGrant,
-  isLoading,
-  busyAction,
-  isReady,
-  onGrant,
-  onRevoke,
-  onRefresh,
-}: {
-  kind: "collection" | "query";
-  title: string;
-  description: string;
-  envBackedNote: string;
-  failClosedNote: string;
-  noConsentText: string;
-  loadingText: string;
-  consents: ProcessingConsentDTO[];
-  form: ConsentFormState;
-  presets: ConsentPreset[];
-  setForm: React.Dispatch<React.SetStateAction<ConsentFormState>>;
-  canGrant: boolean;
-  isLoading: boolean;
-  busyAction: string | null;
-  isReady: boolean;
-  onGrant: () => void;
-  onRevoke: (consent: ProcessingConsentDTO) => void;
-  onRefresh: () => Promise<void>;
-}) {
-  const t = useTranslations("Knowledge");
-  const disabled = busyAction !== null;
-  const cannotManage = !canGrant && kind === "collection";
-  return (
-    <section className="overflow-hidden rounded-2xl border border-border">
-      <div className="border-b border-border bg-muted/50 px-4 py-3">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div className="min-w-0">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-              <ShieldCheck
-                size={16}
-                className="text-emerald-500"
-                aria-hidden="true"
-              />
-              {title}
-            </h3>
-            <p className="mt-1 text-xs text-muted-foreground">{description}</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => void onRefresh()}
-            disabled={isLoading || disabled}
-            className="inline-flex items-center gap-1.5 self-start rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <RefreshCw
-              size={14}
-              className={isLoading ? "animate-spin" : ""}
-              aria-hidden="true"
-            />
-            {t("serverRefreshConsents")}
-          </button>
-        </div>
-        <div className="mt-3 grid gap-2 text-xs md:grid-cols-2">
-          <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
-            {envBackedNote}
-          </p>
-          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
-            {failClosedNote}
-          </p>
-        </div>
-      </div>
-
-      <div className="space-y-4 p-4">
-        {cannotManage && (
-          <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
-            <ShieldOff size={14} className="mt-0.5 shrink-0" />
-            <span>{t("serverCollectionConsentReadOnly")}</span>
-          </div>
-        )}
-
-        <div className="flex flex-wrap gap-2">
-          {presets.map((preset) => (
-            <button
-              key={preset.key}
-              type="button"
-              onClick={() => setForm(preset.form)}
-              disabled={disabled || !canGrant}
-              className="rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {t(preset.labelKey)}
-            </button>
-          ))}
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-3">
-          <ConsentInput
-            label={t("serverConsentProcessor")}
-            value={form.processor}
-            onChange={(processor) =>
-              setForm((current) => ({ ...current, processor }))
-            }
-            disabled={disabled || !canGrant}
-          />
-          <ConsentInput
-            label={t("serverConsentEndpointId")}
-            value={form.endpointId}
-            onChange={(endpointId) =>
-              setForm((current) => ({ ...current, endpointId }))
-            }
-            disabled={disabled || !canGrant}
-          />
-          <ConsentInput
-            label={t("serverConsentModelId")}
-            value={form.modelId}
-            onChange={(modelId) =>
-              setForm((current) => ({ ...current, modelId }))
-            }
-            disabled={disabled || !canGrant}
-          />
-          <ConsentInput
-            label={t("serverConsentPurposes")}
-            value={form.purposes}
-            onChange={(purposes) =>
-              setForm((current) => ({ ...current, purposes }))
-            }
-            disabled={disabled || !canGrant}
-          />
-          <ConsentInput
-            label={t("serverConsentDataTypes")}
-            value={form.dataTypes}
-            onChange={(dataTypes) =>
-              setForm((current) => ({ ...current, dataTypes }))
-            }
-            disabled={disabled || !canGrant}
-          />
-          <ConsentInput
-            label={t("serverConsentPolicyVersion")}
-            value={form.policyVersion}
-            onChange={(policyVersion) =>
-              setForm((current) => ({ ...current, policyVersion }))
-            }
-            disabled={disabled || !canGrant}
-          />
-          <ConsentInput
-            label={t("serverConsentExpiresAt")}
-            value={form.expiresAt}
-            onChange={(expiresAt) =>
-              setForm((current) => ({ ...current, expiresAt }))
-            }
-            disabled={disabled || !canGrant}
-            className="md:col-span-2"
-          />
-          <button
-            type="button"
-            onClick={onGrant}
-            disabled={!canGrant || !isReady || disabled}
-            className="inline-flex items-center justify-center gap-2 self-end rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <ShieldCheck size={16} aria-hidden="true" />
-            {t("serverGrantConsent")}
-          </button>
-        </div>
-
-        {!hasCompleteIdentity(form) && (
-          <p className="text-xs text-red-600 dark:text-red-300">
-            {t("serverConsentIdentityRequired")}
-          </p>
-        )}
-
-        <div className="overflow-hidden rounded-xl border border-border">
-          {isLoading ? (
-            <EmptyState text={loadingText} />
-          ) : consents.length === 0 ? (
-            <EmptyState text={noConsentText} />
-          ) : (
-            <div className="divide-y divide-border">
-              {consents.map((consent) => (
-                <ConsentRow
-                  key={`${consent.processor}:${consent.endpointId}:${consent.modelId}`}
-                  consent={consent}
-                  disabled={disabled || (kind === "collection" && !canGrant)}
-                  onRevoke={() => onRevoke(consent)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ConsentInput({
-  label,
-  value,
-  onChange,
-  disabled,
-  className = "",
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  disabled: boolean;
-  className?: string;
-}) {
-  return (
-    <label className={`grid gap-1 text-xs font-medium ${className}`}>
-      <span className="text-muted-foreground">{label}</span>
-      <input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        disabled={disabled}
-        className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-normal text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-      />
-    </label>
-  );
-}
-
-function ConsentRow({
-  consent,
-  disabled,
-  onRevoke,
-}: {
-  consent: ProcessingConsentDTO;
-  disabled: boolean;
-  onRevoke: () => void;
-}) {
-  const t = useTranslations("Knowledge");
-  const status = consent.effectiveStatus || consent.decision;
-  return (
-    <div className="grid gap-3 p-4 md:grid-cols-[1fr_auto] md:items-center">
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-semibold text-foreground">
-            {consent.processor}
-          </span>
-          <span
-            className={`rounded-full border px-2 py-0.5 text-xs ${consentStatusClass(status)}`}
-          >
-            {t(`serverConsentStatus.${status}`)}
-          </span>
-        </div>
-        <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-          <span>{consent.endpointId || "default"}</span>
-          <span>{consent.modelId || "default"}</span>
-          <span>{consent.purposes.join(", ")}</span>
-          <span>{consent.dataTypes.join(", ")}</span>
-          <span>{consent.policyVersion}</span>
-          {consent.expiresAt && (
-            <span>
-              {t("serverConsentExpiresAtValue", {
-                value: formatDate(consent.expiresAt),
-              })}
-            </span>
-          )}
-        </div>
-        <p className="mt-1 truncate text-xs text-muted-foreground">
-          {t("serverConsentDecidedAt", {
-            value: formatDate(consent.decidedAt),
-          })}
-        </p>
-      </div>
-      <button
-        type="button"
-        onClick={onRevoke}
-        disabled={disabled || status === "revoked"}
-        className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-300 dark:hover:bg-red-950/30"
-      >
-        <ShieldOff size={14} aria-hidden="true" />
-        {t("serverRevokeConsent")}
-      </button>
     </div>
   );
 }

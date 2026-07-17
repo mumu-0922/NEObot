@@ -4618,3 +4618,43 @@ persisted assistant attachments                          1 after reload
 temporary conversation/file                              deleted; active rows 0/0
 backend/frontend health                                  healthy / healthy
 ```
+
+## 2026-07-17 — G11.5 Uniform single-user authority
+
+Objective: make Knowledge and every other standalone feature follow the same
+single-user ownership model as the original project, without exposing
+multi-user consent administration in the product UI.
+
+Root cause:
+
+```text
+AUTH_MODE=development                                    configured
+Knowledge/query-consent request without Bearer           401
+cause                                                     identity middleware forced Bearer for Team/Knowledge/RAG routes
+secondary gate                                            Knowledge services require an explicit context User
+```
+
+Completed scope:
+
+- development mode now bypasses Session resolution for all non-public routes
+  and explicitly injects the fixed Development Owner for strict services and
+  repository fallbacks alike;
+- stale or valid browser Bearer headers are ignored in development mode, so
+  they cannot switch identity or make the single-user app fail authentication;
+- required mode remains fail-closed and continues validating Bearer Sessions;
+- removed collection/query processing-consent loading, grant, revoke, refresh,
+  forms, and status cards from the server Knowledge interface;
+- retained server-side governance and existing owner consents as internal RAG
+  safety state rather than user-facing multi-user controls.
+
+Verification:
+
+```text
+backend full tests / vet                                  passed / passed
+frontend format / lint / typecheck                        passed / passed / passed
+frontend tests / production build                         854 passed / passed
+Docker backend/frontend source builds                     passed / passed
+live query-consents without Bearer                        200
+live collections with stale Bearer                        200, fixed Personal owner
+backend/frontend health                                   healthy / healthy
+```

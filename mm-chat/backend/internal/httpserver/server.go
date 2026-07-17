@@ -641,14 +641,22 @@ func withSessionIdentity(resolver SessionResolver, requireAuth bool) Middleware 
 				next.ServeHTTP(w, r)
 				return
 			}
+			// Development mode is the independent single-user deployment mode.
+			// Never let a stale browser session switch or block its fixed owner;
+			// inject the owner explicitly for services that reject implicit
+			// repository fallbacks.
+			if !requireAuth {
+				developmentContext := auth.WithUser(
+					r.Context(),
+					auth.UserOrDevelopment(r.Context()),
+				)
+				next.ServeHTTP(w, r.WithContext(developmentContext))
+				return
+			}
 
 			token, ok := bearerToken(r.Header.Get("Authorization"))
 			if !ok {
-				if requireAuth || isIndependentIdentityAPIRequest(r) {
-					writeAuthError(w, auth.ErrSessionNotFound)
-					return
-				}
-				next.ServeHTTP(w, r)
+				writeAuthError(w, auth.ErrSessionNotFound)
 				return
 			}
 			if token == "" {
@@ -669,19 +677,6 @@ func withSessionIdentity(resolver SessionResolver, requireAuth bool) Middleware 
 			next.ServeHTTP(w, r.WithContext(auth.WithAuthenticatedSession(r.Context(), session)))
 		})
 	}
-}
-
-func isIndependentIdentityAPIRequest(r *http.Request) bool {
-	if r == nil {
-		return false
-	}
-	return r.URL.Path == "/v1/teams" || strings.HasPrefix(r.URL.Path, "/v1/teams/") ||
-		r.URL.Path == "/v1/rag/provider-status" ||
-		r.URL.Path == "/v1/knowledge/collections" ||
-		strings.HasPrefix(r.URL.Path, "/v1/knowledge/collections/") ||
-		strings.HasPrefix(r.URL.Path, "/v1/knowledge/documents/") ||
-		r.URL.Path == "/v1/me/knowledge/query-consents" ||
-		strings.HasPrefix(r.URL.Path, "/v1/me/knowledge/query-consents/")
 }
 
 func isPublicWithoutAuthRequest(r *http.Request) bool {

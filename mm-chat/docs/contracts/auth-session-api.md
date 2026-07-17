@@ -182,9 +182,11 @@ rules. `/v1/auth/register` does not exist.
   `credential_revision` stay unchanged while Membership and Session are added.
 - Good: Recovery changes the Password and all old Bearer Tokens immediately
   fail because Postgres is rechecked.
-- Base: local `AUTH_MODE=development` still permits the synthetic Development
-  User on legacy non-Team routes when no Bearer is supplied; `/v1/teams*`
-  always requires and verifies a Bearer Session in both modes.
+- Base: local `AUTH_MODE=development` is a strict single-user identity mode.
+  Every non-public route uses the synthetic Development Owner, and supplied
+  Bearer headers are ignored so a stale browser Session cannot block or switch
+  the active identity. `AUTH_MODE=required` keeps Session verification for all
+  protected routes.
 - Bad: `{ "token": "old-bootstrap-token" }` sent to Login is rejected.
 - Bad: a Redis snapshot for a revoked Session cannot authorize a request.
 - Bad: Team Admin cannot obtain a member's raw Invite Token or Recovery Token,

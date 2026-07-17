@@ -376,9 +376,12 @@ Session. The user must log in again with the new password.
 
 ## Team Services and Invite Delivery
 
-`/v1/teams` and `/v1/teams/` are authenticated routes in both required and
-development modes. Team CRUD and
-membership authorization use Postgres; Invite creation additionally requires
+`/v1/teams` and `/v1/teams/` require a Session only in `AUTH_MODE=required`.
+`AUTH_MODE=development` is the independent single-user mode: every non-public
+request uses the fixed Development Owner and ignores browser Bearer headers.
+The standalone frontend does not expose Team UI, but the backend compatibility
+routes remain available. Team CRUD and membership authorization use Postgres;
+Invite creation additionally requires
 the synchronous SMTP transport, Mail cipher, acceptance URL builder, and the
 running durable Mail Outbox worker. When Mail Invite delivery is entirely
 unconfigured, normal Team operations remain wired while Invite creation fails

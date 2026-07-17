@@ -225,7 +225,7 @@ func TestMetricsEndpointBoundsTeamDynamicLabels(t *testing.T) {
 	assertContains(
 		t,
 		body,
-		`mm_chat_http_requests_total{method="DELETE",path="/v1/teams/{teamId}/invites/{inviteId}",status="401"} 1`,
+		`mm_chat_http_requests_total{method="DELETE",path="/v1/teams/{teamId}/invites/{inviteId}",status="503"} 1`,
 	)
 	if strings.Contains(body, teamID) || strings.Contains(body, inviteID) {
 		t.Fatalf("metrics body leaks raw Team UUID: %s", body)

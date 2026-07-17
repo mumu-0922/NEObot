@@ -1265,6 +1265,11 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         generated file as an assistant attachment, complete through the normal
         chat SSE contract, and survive message reload. The same-origin rewrite
         proxy timeout is five minutes for long generation streams.
+  - [x] G11.5 Uniform single-user authority: development mode now ignores
+        browser Bearer sessions and uses only the fixed Development Owner for
+        Knowledge and every other protected capability; removed collection and
+        query consent-management UI from Knowledge while keeping server-side
+        governance enforcement internal.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

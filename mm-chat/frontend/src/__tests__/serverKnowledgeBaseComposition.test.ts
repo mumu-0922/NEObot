@@ -47,24 +47,6 @@ describe("G8 server knowledge base UI composition", () => {
     expect(serverKnowledgeBase).toContain(
       "apiClient.knowledge.reprocessDocument",
     );
-    expect(serverKnowledgeBase).toContain(
-      "apiClient.knowledge.listCollectionConsents",
-    );
-    expect(serverKnowledgeBase).toContain(
-      "apiClient.knowledge.putCollectionConsent",
-    );
-    expect(serverKnowledgeBase).toContain(
-      "apiClient.knowledge.revokeCollectionConsent",
-    );
-    expect(serverKnowledgeBase).toContain(
-      "apiClient.knowledge.listQueryConsents",
-    );
-    expect(serverKnowledgeBase).toContain(
-      "apiClient.knowledge.putQueryConsent",
-    );
-    expect(serverKnowledgeBase).toContain(
-      "apiClient.knowledge.revokeQueryConsent",
-    );
     expect(serverKnowledgeBase).not.toContain("/v1/knowledge");
     expect(serverKnowledgeBase).not.toContain("/api/rag");
     expect(serverKnowledgeBase).not.toContain("/api/doc-parse");
@@ -96,14 +78,14 @@ describe("G8 server knowledge base UI composition", () => {
     expect(serverKnowledgeBase).not.toContain("allowedCollectionIds");
   });
 
-  it("keeps consent UX server-secret backed and fail-closed", () => {
-    expect(serverKnowledgeBase).toContain("serverConsentEnvBackedNote");
-    expect(serverKnowledgeBase).toContain("serverConsentFailClosedNote");
-    expect(serverKnowledgeBase).toContain("canManageCollectionConsent");
-    expect(serverKnowledgeBase).toContain("defaultCollectionConsentForm");
-    expect(serverKnowledgeBase).toContain("defaultQueryConsentForm");
-    expect(serverKnowledgeBase).toContain("mineru");
-    expect(serverKnowledgeBase).toContain("jina");
+  it("does not expose multi-user consent management in single-user mode", () => {
+    expect(serverKnowledgeBase).not.toContain("ConsentSection");
+    expect(serverKnowledgeBase).not.toContain("listCollectionConsents");
+    expect(serverKnowledgeBase).not.toContain("putCollectionConsent");
+    expect(serverKnowledgeBase).not.toContain("revokeCollectionConsent");
+    expect(serverKnowledgeBase).not.toContain("listQueryConsents");
+    expect(serverKnowledgeBase).not.toContain("putQueryConsent");
+    expect(serverKnowledgeBase).not.toContain("revokeQueryConsent");
     expect(serverKnowledgeBase).not.toContain("apiKey");
     expect(serverKnowledgeBase).not.toContain("apiToken");
     expect(serverKnowledgeBase).not.toContain("RAG_MINERU_API_TOKEN");

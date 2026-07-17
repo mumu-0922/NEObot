@@ -266,7 +266,7 @@ func TestSessionIdentityMiddlewareSetsRequestUser(t *testing.T) {
 		gotUser = auth.UserOrDevelopment(r.Context())
 		gotSession, gotSessionOK = auth.SessionFromContext(r.Context())
 		w.WriteHeader(http.StatusNoContent)
-	}), withSessionIdentity(resolver, false))
+	}), withSessionIdentity(resolver, true))
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/private", nil)
 	req.Header.Set("Authorization", "Bearer raw-token")
@@ -290,7 +290,7 @@ func TestSessionIdentityMiddlewareSetsRequestUser(t *testing.T) {
 func TestSessionIdentityMiddlewareRejectsInvalidSession(t *testing.T) {
 	handler := chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("next handler should not run for invalid bearer token")
-	}), withSessionIdentity(&fakeSessionResolver{err: auth.ErrSessionExpired}, false))
+	}), withSessionIdentity(&fakeSessionResolver{err: auth.ErrSessionExpired}, true))
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/private", nil)
 	req.Header.Set("Authorization", "Bearer expired-token")
@@ -333,6 +333,36 @@ func TestSessionIdentityMiddlewareKeepsDevelopmentFallbackWhenMissingBearer(t *t
 	}
 	if resolver.tokenHash != "" {
 		t.Fatalf("resolver tokenHash = %q, want blank when bearer is missing", resolver.tokenHash)
+	}
+}
+
+func TestSessionIdentityMiddlewareKeepsDevelopmentOwnerWhenBearerIsStale(t *testing.T) {
+	resolver := &fakeSessionResolver{err: auth.ErrSessionExpired}
+	handler := chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserOrDevelopment(r.Context())
+		if user.ID != auth.DevelopmentUserID {
+			t.Fatalf("user = %#v, want fixed development owner", user)
+		}
+		contextUser, ok := auth.UserFromContext(r.Context())
+		if !ok || contextUser.ID != auth.DevelopmentUserID {
+			t.Fatalf("context user = %#v, ok=%v; want explicit development owner", contextUser, ok)
+		}
+		if _, ok := auth.SessionFromContext(r.Context()); ok {
+			t.Fatal("development request unexpectedly received a session identity")
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}), withSessionIdentity(resolver, false))
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/v1/knowledge/collections", nil)
+	request.Header.Set("Authorization", "Bearer stale-browser-session")
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusNoContent, recorder.Body.String())
+	}
+	if resolver.tokenHash != "" {
+		t.Fatalf("resolver tokenHash = %q, want unused in development mode", resolver.tokenHash)
 	}
 }
 
@@ -541,8 +571,8 @@ func TestNewHandlerRegistersRAGProviderStatusRoute(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
 	}
-	if resolver.tokenHash != auth.HashSessionToken("rag-provider-status-session") {
-		t.Fatalf("bearer hash = %q", resolver.tokenHash)
+	if resolver.tokenHash != "" {
+		t.Fatalf("development provider status unexpectedly resolved bearer hash = %q", resolver.tokenHash)
 	}
 	if strings.Contains(rec.Body.String(), "fake-mineru-secret") ||
 		strings.Contains(rec.Body.String(), "fake-jina-secret") {
@@ -561,15 +591,8 @@ func TestNewHandlerRegistersTeamRoutes(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		handler.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusUnauthorized {
-			t.Fatalf("GET %s status = %d, want 401; body=%s", path, rec.Code, rec.Body.String())
-		}
-		var body ErrorResponse
-		if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-			t.Fatalf("decode GET %s response: %v", path, err)
-		}
-		if body.Error.Code != "UNAUTHENTICATED" {
-			t.Fatalf("GET %s code = %q, want UNAUTHENTICATED", path, body.Error.Code)
+		if rec.Code == http.StatusUnauthorized {
+			t.Fatalf("GET %s was blocked by authentication in development mode; body=%s", path, rec.Body.String())
 		}
 	}
 }
@@ -603,13 +626,13 @@ func TestNewHandlerRegistersKnowledgeCollectionRoutes(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(route.method, route.path, nil)
 		handler.ServeHTTP(recorder, request)
-		if recorder.Code != http.StatusUnauthorized {
-			t.Fatalf("%s %s status = %d, want 401; body=%s", route.method, route.path, recorder.Code, recorder.Body.String())
+		if recorder.Code == http.StatusUnauthorized {
+			t.Fatalf("%s %s was blocked by authentication in development mode; body=%s", route.method, route.path, recorder.Body.String())
 		}
 	}
 }
 
-func TestDevelopmentModeTeamRoutesRequireAndVerifyBearer(t *testing.T) {
+func TestDevelopmentModeTeamRoutesAlwaysUseFixedOwner(t *testing.T) {
 	resolver := &fakeSessionResolver{session: auth.Session{
 		ID:          "session-1",
 		UserID:      "77777777-7777-4777-8777-777777777777",
@@ -627,8 +650,8 @@ func TestDevelopmentModeTeamRoutesRequireAndVerifyBearer(t *testing.T) {
 		withoutBearer,
 		httptest.NewRequest(http.MethodGet, "/v1/teams", nil),
 	)
-	if withoutBearer.Code != http.StatusUnauthorized {
-		t.Fatalf("development Team route without bearer status = %d", withoutBearer.Code)
+	if withoutBearer.Code == http.StatusUnauthorized {
+		t.Fatalf("development Team route without bearer was rejected; body=%s", withoutBearer.Body.String())
 	}
 
 	withBearer := httptest.NewRecorder()
@@ -638,8 +661,8 @@ func TestDevelopmentModeTeamRoutesRequireAndVerifyBearer(t *testing.T) {
 	if withBearer.Code != http.StatusServiceUnavailable {
 		t.Fatalf("development Team route with bearer status = %d; body=%s", withBearer.Code, withBearer.Body.String())
 	}
-	if resolver.tokenHash != auth.HashSessionToken("development-team-session") {
-		t.Fatalf("development Team bearer hash = %q", resolver.tokenHash)
+	if resolver.tokenHash != "" {
+		t.Fatalf("development Team route resolved bearer instead of using fixed owner: %q", resolver.tokenHash)
 	}
 }
 
