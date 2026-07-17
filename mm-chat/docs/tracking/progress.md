@@ -1271,6 +1271,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         query consent-management UI from Knowledge while keeping server-side
         governance enforcement internal, and automatically provisions MinerU
         parse plus Jina passage-embedding consent for each new collection.
+  - [x] G11.6 Original Knowledge layout parity: replaced the migration-only
+        split admin layout with the original search + collection-card grid,
+        create/edit modal, detail transition, upload zone, and document-list
+        presentation while retaining Go-backed persistence and processing.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

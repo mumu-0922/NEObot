@@ -4663,3 +4663,38 @@ temporary collection auto-consents                       MinerU parse + Jina pas
 temporary collection cleanup                             deleted; subsequent GET 404
 backend/frontend health                                   healthy / healthy
 ```
+
+## 2026-07-17 — G11.6 Original Knowledge layout parity
+
+Objective: restore the original frontend interaction and visual structure for
+Knowledge without reverting its Go/Postgres/MinIO/RAG backend ownership.
+
+Root cause:
+
+```text
+original frontend                                        search + card grid + modal editing
+migrated ServerKnowledgeBase                             left collection rail + inline admin forms
+reason                                                    G8 server adapter shipped a replacement UI instead of reusing product chrome
+```
+
+Completed scope:
+
+- restored the original collection search bar, responsive card grid, dashed
+  create card, icon/color create/edit modal, breadcrumb detail transition,
+  upload drop zone, and compact document rows;
+- removed the migration-only two-column admin rail and inline create/edit
+  forms;
+- kept only server-required behavior differences: backend persistence,
+  automatic indexing status, explicit refresh, retry/reprocess, and deletion;
+- collection create/update continues to use typed Go API adapters and now also
+  persists the original icon/color choices.
+
+Verification:
+
+```text
+frontend format / lint / typecheck                        passed / passed / passed
+frontend Knowledge composition tests                     7 passed
+frontend full tests / production build                    855 passed / passed
+Docker frontend source build                              passed
+backend/frontend health                                   healthy / healthy
+```

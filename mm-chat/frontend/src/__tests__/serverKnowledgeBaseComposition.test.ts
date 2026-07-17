@@ -78,6 +78,22 @@ describe("G8 server knowledge base UI composition", () => {
     expect(serverKnowledgeBase).not.toContain("allowedCollectionIds");
   });
 
+  it("preserves the original collection grid and modal interaction layout", () => {
+    expect(serverKnowledgeBase).toContain("CreateCollectionCard");
+    expect(serverKnowledgeBase).toContain("ServerCollectionCard");
+    expect(serverKnowledgeBase).toContain("ServerCollectionModal");
+    expect(serverKnowledgeBase).toContain("searchCollectionsPlaceholder");
+    expect(serverKnowledgeBase).toContain("md:grid-cols-2");
+    expect(serverKnowledgeBase).toContain("xl:grid-cols-4");
+    expect(serverKnowledgeBase).toContain("slide-in-from-right-8");
+    expect(serverKnowledgeBase).not.toContain(
+      "lg:grid-cols-[minmax(260px,340px)_1fr]",
+    );
+    expect(serverKnowledgeBase).not.toContain(
+      "serverCollectionNamePlaceholder",
+    );
+  });
+
   it("does not expose multi-user consent management in single-user mode", () => {
     expect(serverKnowledgeBase).not.toContain("ConsentSection");
     expect(serverKnowledgeBase).not.toContain("listCollectionConsents");
