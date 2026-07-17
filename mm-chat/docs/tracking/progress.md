@@ -1282,6 +1282,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         embedding publication to an active document; reprocess is limited to
         failed Versions so an active projection cannot collide with the same
         generation's unique materialization keys.
+  - [x] G11.8 Multilingual Knowledge candidate recall: migration `025` adds
+        bounded exact-phrase and overlapping-bigram signals beside the existing
+        lexical lane, live-proving Chinese evidence queries return candidates
+        while unrelated or unsupported questions remain strict refusals.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

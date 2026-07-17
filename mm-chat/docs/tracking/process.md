@@ -8212,3 +8212,12 @@ unbound-upload cleanup, source-build deployment, and the live DOCX → Native �
 Jina 1024 → Postgres active-document proof. Reprocess is closed to failed
 Versions only; an already published active projection cannot be rebuilt inside
 the same index generation.
+
+## 2026-07-17 — G11.8 multilingual Knowledge recall cross-reference
+
+The first owner strict-RAG question exposed that active Chinese document text
+could not pass the `simple` lexical candidate function. Migration `025` adds
+bounded phrase/bigram recall without weakening selected-collection, active
+projection, reference-only, or Go hydration authorization fences. Live SQL
+proved Chinese evidence queries changed from 0 to 1 candidate while unrelated
+weather and unsupported Lindo-procedure questions remained at 0.

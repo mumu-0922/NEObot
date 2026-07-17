@@ -4779,3 +4779,39 @@ basic derived text baseline. The existing Native Artifact retains structural
 and exact Part positions, but richer table/heading/source-anchor Canonical IR
 mapping remains a later quality slice; it is not required for the current basic
 citation card and strict no-evidence behavior.
+
+## 2026-07-17 — G11.8 Multilingual Knowledge candidate recall
+
+Objective: repair strict Knowledge refusal for Chinese queries whose exact
+evidence existed in an active document but could not pass the English-oriented
+Postgres `simple` lexical candidate gate.
+
+Root cause and scope:
+
+- the active candidate function used `plainto_tsquery('simple', ...)` plus
+  whitespace/punctuation exact terms; PostgreSQL did not segment CJK phrases;
+- migration `025_rag_multilingual_candidate_recall` preserves the existing
+  lexical path and adds bounded exact-phrase plus at-most-64 overlapping
+  alphanumeric bigram signals over authorized active child content;
+- the function still emits references only, keeps selected-collection/current
+  generation/published projection fences, and requires Go reauthorization
+  before source hydration;
+- overlap needs two signals for queries longer than one bigram, preventing the
+  unrelated Chinese smoke from becoming evidence merely because a common
+  character occurs.
+
+Live proof against the owner's active `test` collection:
+
+```text
+query                         before 025   after 025
+研究方向是什么                  0            1
+西北工业大学                    0            1
+今天天气如何                    0            0
+lindo咋申请                     0            0
+Go API runtime role execute       denied-risk  1 candidate
+```
+
+The final `lindo咋申请` refusal is correct for the uploaded document: its
+extracted source is a personal introduction/application essay and contains no
+Lindo application procedure, requirements, or steps. Strict mode must not turn
+filename/topic resemblance into an unsupported answer.
