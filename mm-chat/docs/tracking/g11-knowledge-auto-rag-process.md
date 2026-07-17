@@ -570,3 +570,42 @@ Rollback: delete the new builder/tests and revert these documentation entries.
 No live caller or persisted row depends on this slice. Next is D.2.2 MinerU
 structure/page-locator mapping; only D.2.3 may stage a new generation and spend
 real Jina passage-embedding quota.
+
+## 2026-07-18 — G11.9D.2.2 MinerU structural artifact projection
+
+Outcome: the admitted MinerU page-element half of Artifact projection is
+complete without provider, database, gateway, or generation side effects.
+The mapper consumes the existing decoded and digest-bound archive mapping
+input, using `middle_json.pages[].elements[]` as structure authority instead of
+flattening compatibility `full.md`.
+
+Known heading/text/list/quote/code/table/formula/footnote/header/footer elements
+become Canonical blocks. Table rows and cells render with fixed separators.
+Every page and text span retains the admitted page index and BBox; chunk
+clipping narrows canonical bytes while keeping the source element geometry.
+Unknown text-bearing kinds fail closed, while non-text images are not indexed.
+
+Verification:
+
+```text
+focused MinerU structural tests          2 passed
+combined Mapper/Gateway/planner tests     136 passed
+Ruff src/tests                            passed
+strict Mypy src (60 modules)              passed
+non-socket regression suite               1678 passed / 7 skipped
+synthetic heading/text/table/formula      passed
+page-BBox Postgres projection             passed
+multilingual UTF-8/exact overlap          passed
+Canonical IR + Chunk Manifest schemas     passed
+deterministic replay                      passed
+production RAG source build               passed
+packaged image import                     64 / callable=True
+active Index Generation                   46a1c7bb-44ed-4868-9d61-edd557f9d3f0
+active Index Generation mutations         zero
+```
+
+Rollback: remove the MinerU mapper/tests and this documentation entry. No live
+caller depends on them. D.2.3 must replay a real provider archive to detect
+shape drift, stage Native/MinerU projections in a new generation, spend real
+Jina passage-embedding quota, and leave the current active generation untouched
+until verification.

@@ -4989,3 +4989,16 @@ The running generation remained
 `46a1c7bb-44ed-4868-9d61-edd557f9d3f0`; the production Native gateway and
 persisted projections were not touched. D.2.2 owns MinerU structure/page
 locators, then D.2.3 may create and embed a new generation without re-upload.
+
+## 2026-07-18 — G11.9D.2.2 MinerU structural Artifact projection
+
+The admitted MinerU `pages[].elements[]` contract now maps headings, text,
+tables, formulas, page geometry, and BBoxes into Canonical IR v2, Chunk
+Manifest v2, and existing Postgres projection DTOs. Compatibility `full.md` is
+no longer treated as structure authority in this offline mapper.
+
+Two focused structural tests and 136 combined Mapper/Gateway/planner tests,
+Ruff, strict Mypy, schema validation, multilingual overlap, and deterministic
+replay passed. Production gateways, persisted rows, Jina, and the active
+generation were not touched. D.2.3 owns real-archive replay and staged passage
+embedding.

@@ -429,6 +429,25 @@ This remains a proof boundary, not a promotion boundary. The production
 mapping, a versioned Search Profile, new-generation staging, real Jina passage
 embedding, verification, and atomic cutover are completed in later slices.
 
+## G11.9D.2.2 MinerU structural artifact projection
+
+`mm_chat_rag.mineru_structure_artifacts` consumes the decoded and digest-bound
+archive mapping input. The closed boundary accepts contiguous
+`pages[].elements[]` geometry, maps known text-bearing kinds, renders table
+rows/cells deterministically, and fails on unknown text-bearing elements.
+Non-text images remain outside retrieval text.
+
+Canonical pages and block/chunk locators preserve the admitted page index and
+half-open BBox. Chunk clipping narrows canonical byte anchors but never invents
+finer PDF coordinates. The D.1 planner supplies Parent/Child ranges and exact
+overlap under a MinerU-specific structure profile; schema and Postgres DTO
+projection tests prove the offline boundary.
+
+This does not assert every future MinerU version emits this shape. D.2.3 must
+replay an actual downloaded archive, fail closed on schema drift, stage a new
+generation, and run real Jina passage embeddings before gateway or generation
+cutover.
+
 ## Process topology
 
 One process owns:

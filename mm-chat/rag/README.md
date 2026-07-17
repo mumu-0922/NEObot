@@ -100,6 +100,13 @@ Postgres projection DTO proof. The current production Native gateway still
 uses the baseline profile: this module performs no persistence, provider call,
 or generation mutation until MinerU parity and a new generation are staged.
 
+G11.9D.2.2 adds `mm_chat_rag.mineru_structure_artifacts`. It consumes the
+existing hash-bound MinerU mapping input and treats admitted
+`middle_json.pages[].elements[]` structure—not compatibility `full.md`—as
+authority for heading, text, table, formula, page, and BBox projection. Unknown
+text-bearing kinds fail closed. This mapper is also offline-only until a real
+archive replay and new-generation staging pass D.2.3.
+
 ## Local quality gates
 
 No command loads repository `.env` files.

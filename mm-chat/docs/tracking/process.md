@@ -8311,6 +8311,15 @@ D.2/D.3 handoff are recorded in
 `docs/tracking/g11-knowledge-auto-rag-process.md` and
 `docs/contracts/rag-structure-chunking.md`.
 
+## 2026-07-18 — G11.9D.2.2 MinerU projection cross-reference
+
+Digest-bound MinerU page elements now preserve heading/text/table/formula
+structure and page-BBox locators through Canonical IR, Chunk Manifest, and
+Postgres projection DTOs. The mapper remains offline and fails closed on
+unknown text-bearing shapes. Detailed proof, limitations, rollback, and D.2.3
+handoff are recorded in `docs/tracking/g11-knowledge-auto-rag-process.md` and
+`docs/contracts/rag-structure-chunking.md`.
+
 ## 2026-07-18 — G11.9D.2.1 Native projection cross-reference
 
 Validated Native headings, paragraphs, lists, table rows, code, logical heading

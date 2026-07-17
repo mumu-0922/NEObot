@@ -2,11 +2,11 @@
 
 ## 1. Scope / Trigger
 
-This contract covers G11.9D.1 deterministic planning and G11.9D.2.1 Native
-structural artifact projection. It does not yet replace the production Native
-gateway, map MinerU structure, persist a new materialization, call Jina, or
-switch the active Index Generation. Those promotion steps remain D.2.2/D.2.3
-and D.3.
+This contract covers G11.9D.1 deterministic planning, G11.9D.2.1 Native
+projection, and G11.9D.2.2 admitted MinerU page-element projection. It does not
+yet replace either production gateway, persist a new materialization, call
+Jina, or switch the active Index Generation. Those promotion steps remain
+D.2.3 and D.3.
 
 ## 2. Signatures
 
@@ -129,3 +129,29 @@ overlap, offline JSON Schema validation, and
 `build_postgres_projection_batch(...)` row construction. Runtime gateway
 replacement, Postgres staging, real Jina spend, and generation cutover are not
 evidence for this slice and must not occur here.
+
+## 9. G11.9D.2.2 MinerU Structural Artifact Projection
+
+`build_mineru_structure_artifacts(...)` consumes only the already decoded,
+hash-bound `MinerULocalBatchCanonicalMappingInput`. Its current admitted
+structure contract is `middle_json.pages[].elements[]` with contiguous
+zero-based page indexes, positive page geometry, bounded page BBoxes, and
+closed text-bearing kinds.
+
+- heading/title, text/paragraph, list/list-item, quote, code, table,
+  formula/equation, footnote, header, and footer map to Canonical text blocks;
+- tables render deterministically with `" | "` between cells and newline
+  between rows;
+- non-text image elements are ignored; an unknown element carrying text fails
+  closed so content cannot disappear silently;
+- heading ancestry uses logical block IDs and planner section paths;
+- page objects and block/chunk locators retain admitted page/BBox geometry;
+  clipping narrows only the canonical byte anchor;
+- identities bind source, archive, and role digests under a MinerU-specific
+  structure chunk profile;
+- compatibility `full.md` remains admitted but is not structure authority.
+
+Tests cover the frozen synthetic MinerU heading/text/table/formula corpus,
+page-BBox projection, deterministic replay, schemas, Postgres DTO projection,
+and long multilingual UTF-8/overlap behavior. Real-provider archive replay is
+a D.2.3 prerequisite; unsupported provider shape must fail closed.

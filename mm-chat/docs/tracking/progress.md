@@ -1334,8 +1334,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         - [x] G11.9D.2.1 Native structural units to Canonical IR v2 / Chunk
               Manifest v2, clipped source locators, exact overlap, schema gate,
               and Postgres projection proof; production gateway unchanged.
-        - [ ] G11.9D.2.2 MinerU structural/page-locator mapping under the same
-              chunk profile.
+        - [x] G11.9D.2.2 Admitted MinerU page-element structural mapping,
+              heading/text/table/formula blocks, page-BBox locators,
+              multilingual overlap, schema gate, and Postgres projection proof.
         - [ ] G11.9D.2.3 New-generation parse staging and real Jina passage
               embedding without re-upload.
       - [ ] G11.9D.3 Generation verification, atomic cutover, failure rollback,

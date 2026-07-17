@@ -166,8 +166,9 @@ Incremental execution slices:
   table rows, code, source positions, and exact planner ranges into schema-valid
   Canonical IR/Chunk Manifest artifacts plus Postgres projection DTOs, without
   changing the production gateway or active generation;
-- **G11.9D.2.2** map equivalent MinerU structure and clipped page/source
-  locators behind the same profile;
+- **G11.9D.2.2** complete: map admitted MinerU page elements, headings, text,
+  tables, formulas, page geometry, and clipped canonical anchors behind a
+  MinerU structure profile, with schema and Postgres projection proof;
 - **G11.9D.2.3** stage Native + MinerU parse projections and Jina passage
   embeddings in a new generation without re-upload;
 - **G11.9D.3** verify counts/hashes/locators/deletion fences, atomically cut over
