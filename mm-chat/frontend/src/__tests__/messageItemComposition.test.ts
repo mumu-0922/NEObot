@@ -18,6 +18,10 @@ describe("MessageItem composition", () => {
     expect(messageItem).toContain("MessageAttachmentView");
     expect(messageItem).toContain("ImageGenerationProgress");
     expect(messageItem).toContain("isImageGenerationInProgress");
+    expect(messageItem).toContain("data-message-role={isUserMessage");
+    expect(messageItem).toContain("flex-row-reverse");
+    expect(messageItem).toContain("data-message-bubble");
+    expect(messageItem).toContain("bg-[#95ec69]");
     expect(messageItem).toContain(
       "const skillInvocations = message.skillInvocations || []",
     );

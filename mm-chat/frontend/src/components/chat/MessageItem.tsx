@@ -1035,6 +1035,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
     (isTyping || isWaitingForResponse) && !displayedContent && !hasOutputEvents;
   const isImageGenerationInProgress =
     isLoading && isImageGenerationModel(message.model || "");
+  const isUserMessage = message.role === "user";
 
   // Detect error messages for styling (starts with Error:)
   const isErrorMessage =
@@ -1358,181 +1359,171 @@ const MessageItem: React.FC<MessageItemProps> = ({
           document.body,
         )}
 
-      <div className="message-item group relative flex flex-col md:flex-row gap-2 md:gap-3 rounded-md transition-[background-color,border-color] duration-200 border border-transparent px-3 py-3 bg-gray-50/0 hover:bg-gray-50/80 dark:hover:bg-muted/40">
-        {/* Avatar & Header Section */}
-        <div className="flex items-center w-full md:w-auto justify-between md:justify-start gap-2 md:block md:shrink-0 md:mt-0.5 select-none">
-          <div className="flex items-center gap-2">
-            {message.role === "model" ? (
-              <Tooltip content={message.model || t("model")} position="right">
-                <div className="w-6 h-6 md:w-8 md:h-8 rounded-lg md:rounded-xl bg-red-300 shadow-sm border border-white dark:border-border flex items-center justify-center text-white">
-                  <Bot size={14} className="md:hidden" aria-hidden="true" />
-                  <Bot
-                    size={18}
-                    className="hidden md:block"
-                    aria-hidden="true"
-                  />
-                </div>
-              </Tooltip>
-            ) : (
-              <div className="w-6 h-6 md:w-8 md:h-8 rounded-lg md:rounded-xl bg-green-300 shadow-sm border border-white dark:border-border flex items-center justify-center text-white">
-                <User size={14} className="md:hidden" aria-hidden="true" />
-                <User
-                  size={18}
-                  className="hidden md:block"
-                  aria-hidden="true"
-                />
-              </div>
-            )}
-            <span className="text-sm font-medium text-gray-700 dark:text-foreground md:hidden">
-              {message.role === "model"
-                ? message.model || t("model")
-                : t("user")}
-            </span>
-          </div>
-
-          <Tooltip content={t("sentTime")} position="left">
-            <span className="text-[10px] text-gray-400 dark:text-muted-foreground/70 font-normal md:hidden">
-              {timeString}
-            </span>
+      <div
+        data-message-role={isUserMessage ? "user" : "assistant"}
+        className={`message-item group relative flex items-start gap-2.5 rounded-md border border-transparent px-3 py-3 md:gap-3 ${isUserMessage ? "flex-row-reverse" : "flex-row"}`}
+      >
+        {/* Avatar */}
+        <div className="mt-0.5 shrink-0 select-none">
+          <Tooltip
+            content={isUserMessage ? t("user") : message.model || t("model")}
+            position={isUserMessage ? "left" : "right"}
+          >
+            <div
+              className={`flex size-8 items-center justify-center rounded-xl border border-white text-white shadow-sm dark:border-border ${isUserMessage ? "bg-green-300" : "bg-red-300"}`}
+            >
+              {isUserMessage ? (
+                <User size={18} aria-hidden="true" />
+              ) : (
+                <Bot size={18} aria-hidden="true" />
+              )}
+            </div>
           </Tooltip>
         </div>
 
         {/* Content Area */}
         <div
           ref={visibleMessageContentRef}
-          className="flex-1 min-w-0 pl-1 md:pl-0"
+          className={`flex min-w-0 max-w-[84%] flex-col md:max-w-[78%] ${isUserMessage ? "items-end" : "items-start md:max-w-[88%]"}`}
         >
-          {/* Attachments */}
-          {message.attachments && message.attachments.length > 0 && (
-            <div className="flex flex-wrap gap-3 mb-2">
-              {message.attachments.map((att, idx) => (
-                <MessageAttachmentView
-                  key={att.id}
-                  attachment={att}
-                  onImageClick={() => handleAttachmentClick(idx)}
-                  onDocumentClick={handleDocumentAttachmentClick}
+          <div
+            data-message-bubble
+            className={`min-w-0 max-w-full rounded-2xl px-3.5 py-2.5 shadow-sm md:px-4 md:py-3 ${isUserMessage ? "rounded-tr-sm bg-[#95ec69] text-gray-900 shadow-emerald-900/5 dark:bg-emerald-800 dark:text-emerald-50" : "rounded-tl-sm border border-gray-100 bg-gray-50 text-gray-900 shadow-gray-900/5 dark:border-border dark:bg-muted/70 dark:text-foreground"}`}
+          >
+            {/* Attachments */}
+            {message.attachments && message.attachments.length > 0 && (
+              <div
+                className={`mb-2 flex flex-wrap gap-3 ${isUserMessage ? "justify-end" : "justify-start"}`}
+              >
+                {message.attachments.map((att, idx) => (
+                  <MessageAttachmentView
+                    key={att.id}
+                    attachment={att}
+                    onImageClick={() => handleAttachmentClick(idx)}
+                    onDocumentClick={handleDocumentAttachmentClick}
+                  />
+                ))}
+              </div>
+            )}
+
+            {isEditing ? (
+              message.role === "user" ? (
+                <UserMessageEditor
+                  initialContent={message.content}
+                  onCancel={() => setIsEditing(false)}
+                  onSubmit={async (newContent) => {
+                    await onSubmitUserEdit?.(message.id, newContent);
+                    setIsEditing(false);
+                  }}
                 />
-              ))}
-            </div>
-          )}
-
-          {isEditing ? (
-            message.role === "user" ? (
-              <UserMessageEditor
-                initialContent={message.content}
-                onCancel={() => setIsEditing(false)}
-                onSubmit={async (newContent) => {
-                  await onSubmitUserEdit?.(message.id, newContent);
-                  setIsEditing(false);
-                }}
-              />
-            ) : (
-              <Artifact
-                initialContent={message.content}
-                initialTimestamp={message.timestamp}
-                onSave={(newContent) => {
-                  onEdit(message.id, newContent);
-                  setIsEditing(false);
-                }}
-                onCancel={() => setIsEditing(false)}
-                systemInstruction={getCurrentSession()?.systemInstruction}
-                model={selectedModel}
-              />
-            )
-          ) : (
-            <>
-              {/* RAG Block Component */}
-              <KnowledgeEvidenceBlock knowledge={message.knowledge} />
-              <RAGBlock sources={ragSources} />
-
-              {skillInvocations.length > 0 && (
-                <div className="mb-3 flex flex-wrap gap-1.5">
-                  {skillInvocations.map((skill) => (
-                    <Tooltip
-                      key={`${skill.id}-${skill.mode}`}
-                      content={
-                        skill.description ||
-                        t("skillAppliedTooltip", {
-                          title: skill.title,
-                          mode:
-                            skill.mode === "manual"
-                              ? t("skillModeManual")
-                              : t("skillModeAuto"),
-                        })
-                      }
-                      position="top"
-                      portal
-                    >
-                      <span className="inline-flex max-w-full items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-200">
-                        <Sparkles size={11} aria-hidden="true" />
-                        <span className="truncate">{skill.title}</span>
-                      </span>
-                    </Tooltip>
-                  ))}
-                </div>
-              )}
-
-              {generationError ? (
-                <div
-                  role="alert"
-                  aria-live="polite"
-                  className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm leading-5 text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100"
-                >
-                  <div className="font-semibold">{t("generationFailed")}</div>
-                  <div className="mt-1 wrap-break-word">
-                    {generationError.message}
-                  </div>
-                  {generationError.recoverable ? (
-                    <div className="mt-1 text-xs opacity-80">
-                      {t("generationRecoverable")}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {/* Loading State */}
-              {isLoading ? (
-                isImageGenerationInProgress ? (
-                  <ImageGenerationProgress startedAt={message.timestamp} />
-                ) : (
-                  <div
-                    className="relative -top-0.5 h-8 w-14 text-red-300 dark:text-red-400"
-                    role="status"
-                    aria-label={t("generatingResponse")}
-                  >
-                    <BubblesLoading
-                      className="w-full h-full"
-                      aria-hidden="true"
-                    />
-                  </div>
-                )
               ) : (
-                <MessageOutputRenderer
-                  message={message}
-                  displayedContent={displayedContent}
-                  isTyping={isTyping}
-                  isThinking={isThinking}
-                  isErrorMessage={isErrorMessage}
-                  searchSources={sources}
-                  onFileClick={handleFileClick}
+                <Artifact
+                  initialContent={message.content}
+                  initialTimestamp={message.timestamp}
+                  onSave={(newContent) => {
+                    onEdit(message.id, newContent);
+                    setIsEditing(false);
+                  }}
+                  onCancel={() => setIsEditing(false)}
+                  systemInstruction={getCurrentSession()?.systemInstruction}
+                  model={selectedModel}
                 />
-              )}
-            </>
-          )}
+              )
+            ) : (
+              <>
+                {/* RAG Block Component */}
+                <KnowledgeEvidenceBlock knowledge={message.knowledge} />
+                <RAGBlock sources={ragSources} />
 
-          {ttsError ? (
-            <div
-              role="status"
-              aria-live="polite"
-              className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
-            >
-              {ttsError}
-            </div>
-          ) : null}
+                {skillInvocations.length > 0 && (
+                  <div className="mb-3 flex flex-wrap gap-1.5">
+                    {skillInvocations.map((skill) => (
+                      <Tooltip
+                        key={`${skill.id}-${skill.mode}`}
+                        content={
+                          skill.description ||
+                          t("skillAppliedTooltip", {
+                            title: skill.title,
+                            mode:
+                              skill.mode === "manual"
+                                ? t("skillModeManual")
+                                : t("skillModeAuto"),
+                          })
+                        }
+                        position="top"
+                        portal
+                      >
+                        <span className="inline-flex max-w-full items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-200">
+                          <Sparkles size={11} aria-hidden="true" />
+                          <span className="truncate">{skill.title}</span>
+                        </span>
+                      </Tooltip>
+                    ))}
+                  </div>
+                )}
+
+                {generationError ? (
+                  <div
+                    role="alert"
+                    aria-live="polite"
+                    className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm leading-5 text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100"
+                  >
+                    <div className="font-semibold">{t("generationFailed")}</div>
+                    <div className="mt-1 wrap-break-word">
+                      {generationError.message}
+                    </div>
+                    {generationError.recoverable ? (
+                      <div className="mt-1 text-xs opacity-80">
+                        {t("generationRecoverable")}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {/* Loading State */}
+                {isLoading ? (
+                  isImageGenerationInProgress ? (
+                    <ImageGenerationProgress startedAt={message.timestamp} />
+                  ) : (
+                    <div
+                      className="relative -top-0.5 h-8 w-14 text-red-300 dark:text-red-400"
+                      role="status"
+                      aria-label={t("generatingResponse")}
+                    >
+                      <BubblesLoading
+                        className="w-full h-full"
+                        aria-hidden="true"
+                      />
+                    </div>
+                  )
+                ) : (
+                  <MessageOutputRenderer
+                    message={message}
+                    displayedContent={displayedContent}
+                    isTyping={isTyping}
+                    isThinking={isThinking}
+                    isErrorMessage={isErrorMessage}
+                    searchSources={sources}
+                    onFileClick={handleFileClick}
+                  />
+                )}
+              </>
+            )}
+
+            {ttsError ? (
+              <div
+                role="status"
+                aria-live="polite"
+                className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
+              >
+                {ttsError}
+              </div>
+            ) : null}
+          </div>
 
           {/* Footer / Toolbar */}
           {!isEditing && !isTyping && (
-            <div className="flex items-center justify-between mt-1 h-6 opacity-100 md:opacity-40 md:group-hover:opacity-100 transition-opacity duration-200">
+            <div className="mt-1 flex h-6 w-full items-center justify-between opacity-100 transition-opacity duration-200 md:opacity-40 md:group-hover:opacity-100">
               <div className="flex items-center text-xs text-gray-400 dark:text-muted-foreground/70 select-none [&>span:not(:last-child)]:after:content-['·'] [&>span:not(:last-child)]:after:mx-1 [&>span:not(:last-child)]:after:text-gray-300 dark:[&>span:not(:last-child)]:after:text-border">
                 <span className="hidden md:inline hover:text-gray-600 dark:hover:text-foreground/85 transition-colors cursor-default">
                   <Tooltip
