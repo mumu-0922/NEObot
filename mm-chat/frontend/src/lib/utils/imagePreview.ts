@@ -1,5 +1,5 @@
 import { IMAGE_PREVIEW_LIMITS } from "../../config/limits";
-import { getSafeMarkdownImageSrc } from "../security/clientUrl";
+import { getSafeDisplayImageSrc } from "../security/clientUrl";
 
 export interface PreviewImageInput {
   url: string;
@@ -29,13 +29,13 @@ export function normalizeImagePreviewState(
 
   const requestedIndex = Math.max(0, Math.floor(startIndex));
   const requestedImage = images[requestedIndex];
-  const requestedUrl = getSafeMarkdownImageSrc(requestedImage?.url);
+  const requestedUrl = getSafeDisplayImageSrc(requestedImage?.url);
   const normalized: Array<PreviewImageInput & { originalIndex: number }> = [];
   const seen = new Set<string>();
 
   for (let index = 0; index < images.length; index += 1) {
     const image = images[index];
-    const safeUrl = getSafeMarkdownImageSrc(image?.url);
+    const safeUrl = getSafeDisplayImageSrc(image?.url);
     if (!safeUrl || seen.has(safeUrl)) continue;
 
     normalized.push({

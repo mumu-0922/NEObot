@@ -5,6 +5,22 @@ import en from "../i18n/locales/en";
 import zh from "../i18n/locales/zh";
 
 describe("MessageAttachmentView composition", () => {
+  it("opens image attachments through the shared zoom preview", () => {
+    const attachmentView = readFileSync(
+      resolve(process.cwd(), "src/components/chat/MessageAttachmentView.tsx"),
+      "utf8",
+    );
+    const messageItem = readFileSync(
+      resolve(process.cwd(), "src/components/chat/MessageItem.tsx"),
+      "utf8",
+    );
+
+    expect(attachmentView).toContain('type="button"');
+    expect(attachmentView).toContain("cursor-zoom-in");
+    expect(attachmentView).toContain("onClick={onImageClick}");
+    expect(messageItem).toContain("openImagePreview(previewImages, newIndex)");
+  });
+
   it("exposes readable document cards with localized open actions", () => {
     const attachmentView = readFileSync(
       resolve(process.cwd(), "src/components/chat/MessageAttachmentView.tsx"),

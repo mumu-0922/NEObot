@@ -100,7 +100,7 @@ const MessageAttachmentView: React.FC<MessageAttachmentViewProps> = ({
     return (
       <button
         type="button"
-        className={`group/attachment relative cursor-pointer overflow-hidden rounded-lg border border-gray-200 bg-gray-50 shadow-sm transition-shadow hover:shadow-md dark:border-border dark:bg-muted ${actionButtonFocusClass}`}
+        className={`group/attachment relative cursor-zoom-in overflow-hidden rounded-lg border border-gray-200 bg-gray-50 shadow-sm transition-shadow hover:shadow-md dark:border-border dark:bg-muted ${actionButtonFocusClass}`}
         onClick={onImageClick}
         aria-label={t("previewImageAria", {
           fileName: attachment.fileName,

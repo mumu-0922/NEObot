@@ -3,6 +3,23 @@ import { IMAGE_PREVIEW_LIMITS } from "../config/limits";
 import { normalizeImagePreviewState } from "../lib/utils/imagePreview";
 
 describe("image preview normalization", () => {
+  it("allows same-origin server image attachments", () => {
+    const url = "/mm-api/v1/files/33333333-3333-4333-8333-333333333333/content";
+
+    expect(
+      normalizeImagePreviewState([{ url, description: "generated.png" }]),
+    ).toEqual({
+      images: [
+        {
+          url,
+          alt: undefined,
+          description: "generated.png",
+        },
+      ],
+      currentIndex: 0,
+    });
+  });
+
   it("filters unsafe images and remaps the requested start index", () => {
     const preview = normalizeImagePreviewState(
       [
@@ -62,7 +79,10 @@ describe("image preview normalization", () => {
 
   it("returns null when no safe image remains", () => {
     expect(
-      normalizeImagePreviewState([{ url: "https://localhost/private.png" }]),
+      normalizeImagePreviewState([
+        { url: "https://localhost/private.png" },
+        { url: "//evil.example/image.png" },
+      ]),
     ).toBeNull();
   });
 });
