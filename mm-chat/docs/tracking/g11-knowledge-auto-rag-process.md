@@ -467,3 +467,43 @@ Rollback: leave `RAG_SOURCE_GATEWAY_TOKEN` blank or remove the reranker wiring
 to keep hybrid/RRF Top5. Do not roll back the query-time consent revision rule;
 doing so silently invalidates otherwise current search projections. G11.9D was
 not started.
+
+## 2026-07-17 — G11.9D.1 Structure-aware chunk planning
+
+Outcome: the first D slice is complete without touching the active generation.
+Source inspection proved the database/projection contract already supports
+Parent/Child rows, heading paths, locator summaries, chunk-block spans, and
+overlap counters. The actual baseline defect is earlier: both Native and MinerU
+currently flatten parsed content before constructing their Chunk Manifest.
+
+Added a pure deterministic planner that:
+
+- accepts contiguous validated heading/paragraph/list/table/code/formula units;
+- emits only unit ordinals plus UTF-8-safe half-open byte ranges, so later
+  projection must clip existing locators rather than invent coordinates;
+- keeps Parents inside one heading path, targets 1,200–1,600 tokens, and caps
+  them at 2,000;
+- targets 300–500-token Children with a hard cap of 650 and exact adjacent
+  source-range overlap capped at 100 tokens;
+- preserves protected table/code/formula/heading units while they fit and
+  bounds units, total bytes, kinds, heading paths, and deterministic replay;
+- performs no filesystem/network/database/provider/clock/random operation.
+
+Verification:
+
+```text
+focused Ruff                         passed
+strict Mypy                          passed
+planner unit tests                  10 passed
+deterministic replay                 byte/range identical
+multilingual UTF-8 boundaries        passed
+table-row atomicity                  passed
+RAG production source build         passed
+packaged planner import/proof        parents=1 / children=1
+active Index Generation mutations   zero
+```
+
+Rollback: remove the planner and contract only; no runtime caller or persisted
+generation depends on them. Next slice D.2 maps validated Native/MinerU
+structure and locators into the existing Canonical IR/Chunk Manifest contract,
+then stages a new generation without re-upload.

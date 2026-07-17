@@ -8300,3 +8300,13 @@ query-time and do not advance `collection_processing_revision`; indexed parse
 and passage-embedding authority still does. Full evidence, guarded local repair,
 tests, cleanup, and rollback are recorded in
 `docs/tracking/g11-knowledge-auto-rag-process.md`.
+
+## 2026-07-17 — G11.9D.1 Chunk-planning cross-reference
+
+The first structure-aware reindex slice freezes a pure Parent/Child plan without
+mutating the live generation. It preserves heading sections and protected
+structural units, emits UTF-8-safe source references, and bounds Parent, Child,
+overlap, unit, and document sizes. Detailed contracts, tests, rollback, and the
+D.2/D.3 handoff are recorded in
+`docs/tracking/g11-knowledge-auto-rag-process.md` and
+`docs/contracts/rag-structure-chunking.md`.

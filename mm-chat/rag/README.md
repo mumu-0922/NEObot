@@ -84,6 +84,14 @@ Presence booleans true; this remains Acquisition Evidence only.
 - Replay uses a separate `RAG_REPLAY_DATABASE_URL` and is dry-run unless
   `--execute` is supplied with all CAS/audit inputs.
 
+G11.9D.1 adds a pure structure-aware Parent/Child planner in
+`mm_chat_rag.structure_chunking`. It accepts only validated structural text
+units and returns UTF-8 byte-range plans. It performs no I/O and is not yet
+wired into Native/MinerU runtime parsing, Postgres projection, Jina embedding,
+or active-generation cutover. The frozen contract and D.2/D.3 promotion gates
+are documented in
+[`../docs/contracts/rag-structure-chunking.md`](../docs/contracts/rag-structure-chunking.md).
+
 ## Local quality gates
 
 No command loads repository `.env` files.

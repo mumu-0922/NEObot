@@ -389,6 +389,25 @@ and returns zero-body `FORMAT_UNSUPPORTED` until C1.4 emits verified
 all gates freeze the implementation bytes:
 `6251a7a71ec35d7d55e030b8ca1ef49da8995257734a76e8cd6864c25d88d8c3`.
 
+## G11.9D.1 Structure-aware chunk planning
+
+`mm_chat_rag.structure_chunking` is a pure planning boundary between validated
+parser structure and future Canonical IR/Chunk Manifest projection. It accepts
+closed structural text units and emits only unit ordinals plus UTF-8 byte
+ranges. This prevents the planner from inventing source locators or acquiring
+filesystem, database, network, provider, clock, or randomness authority.
+
+Parents are section-bounded and target 1,200–1,600 estimated tokens with a
+2,000 hard cap. Children target 300–500 with a 650 hard cap and reuse exact
+adjacent atom ranges for bounded overlap. Table rows, headings, code, and
+formulas remain atomic while within the target maximum. All token counts are a
+versioned `ceil(utf8_bytes/4)` planning estimate, not provider-tokenizer truth.
+
+This slice deliberately has no runtime caller. D.2 must map the plan back onto
+validated Native/MinerU blocks and clip existing locators while satisfying the
+current lineage/hash validators. D.3 alone may verify and atomically promote a
+new Index Generation; planning cannot mutate the active generation.
+
 ## Process topology
 
 One process owns:

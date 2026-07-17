@@ -157,6 +157,17 @@ reference-only keyword candidate and authorization boundary.
 Objective: replace the one-document/one-chunk Native baseline with useful
 structure-aware retrieval units.
 
+Incremental execution slices:
+
+- **G11.9D.1** complete: pure deterministic structure-aware chunk planner,
+  frozen Parent/Child/overlap bounds, UTF-8-safe source-range references, and
+  no runtime generation mutation;
+- **G11.9D.2** map Native and MinerU structural artifacts into validated
+  Canonical IR/Chunk Manifest rows, then stage parse + Jina embeddings in a new
+  generation without re-upload;
+- **G11.9D.3** verify counts/hashes/locators/deletion fences, atomically cut over
+  the generation, and prove failed rebuild rollback plus live citations.
+
 Actions:
 
 - preserve headings, paragraphs, lists, table rows, and source locators;

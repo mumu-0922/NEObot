@@ -1325,6 +1325,14 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
             query-time consent revision repair, and real
             applied/failure/two-collection promotion proof.
     - [ ] G11.9D Structure-aware Parent/Child reindex with generation cutover.
+      - [x] G11.9D.1 Pure deterministic chunk planner: section-bounded
+            1,200–2,000-token Parents, typical 300–500-token Children, exact
+            adjacent overlap, protected structural units, UTF-8-safe ranges,
+            and no active-generation mutation.
+      - [ ] G11.9D.2 Native/MinerU structural artifact projection and staged
+            parse + Jina embedding in a new generation without re-upload.
+      - [ ] G11.9D.3 Generation verification, atomic cutover, failure rollback,
+            deletion fencing, and live citation-anchor proof.
     - [ ] G11.9E Go Tavily/Firecrawl/Exa/Bocha/model-built-in Search parity,
           SearXNG removal, and legacy Next search deletion.
     - [ ] G11.9F Postgres-encrypted administrator provider configuration,

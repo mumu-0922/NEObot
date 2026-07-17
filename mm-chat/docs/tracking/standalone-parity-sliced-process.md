@@ -4957,3 +4957,20 @@ collection IDs. Temporary conversations were deleted. Python Ruff/Mypy and 30
 focused tests, Go focused packages/chat tests and vet, source builds, container
 health, and all three live paths passed. Detailed limits, cleanup, and rollback
 are in `docs/tracking/g11-knowledge-auto-rag-process.md`. G11.9D was not entered.
+
+## 2026-07-17 — G11.9D.1 Structure-aware chunk planner
+
+The first reindex slice adds only a pure bounded planner; the active generation
+and current Native/MinerU baseline remain untouched. Repository inspection
+confirmed that Postgres and Python projection already model Parent/Child,
+heading path, locator, span, and overlap data. The missing layer is the
+structure-preserving artifact builder before persistence.
+
+The planner freezes section-bounded 1,200–2,000-token Parents, typical
+300–500-token Children, exact adjacent overlap, protected table/code/formula
+units, UTF-8-safe source ranges, and fixed document/unit limits. Focused Ruff,
+strict Mypy, and ten deterministic/structure/multilingual/error tests passed.
+The production RAG image built and imported the packaged planner successfully;
+the active generation ID remained unchanged. D.2 will map Native/MinerU
+artifacts and locators, then stage a new generation without re-upload; D.3 owns
+verification and atomic cutover.
