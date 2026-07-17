@@ -8265,3 +8265,11 @@ The composer Knowledge icon now shares the neutral tool palette when no
 collection is bound and becomes purple only after selection. Citation headers
 no longer show the redundant `AUTO` badge. Verification and rollback are
 recorded in `docs/tracking/g11-knowledge-auto-rag-process.md`.
+
+## 2026-07-17 — G11.9B.2 Citation helper-copy cross-reference
+
+Expanded Knowledge citations no longer repeat that verified evidence was used;
+the heading, count, and source content already convey it. Dead locale keys were
+removed, and the standalone frontend README now forbids UI copy that merely
+restates visible state. Detailed checks are in
+`docs/tracking/g11-knowledge-auto-rag-process.md`.

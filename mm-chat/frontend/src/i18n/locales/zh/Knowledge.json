@@ -97,7 +97,6 @@
   "errorReadingFile": "读取文件内容出错。",
   "deleteFileFailed": "删除文件失败，请重试。",
   "citationsHeading": "知识引用（{count} 条）",
-  "verifiedEvidenceUsed": "回答已使用经过验证的知识库证据。",
   "knowledgeTemporarilyUnavailable": "知识库暂时不可用，本回答未使用知识库。",
   "serverUnsupportedDescription": "需要启用 server mode、文件与知识库 API 后才能使用服务端知识库。",
   "serverManageDocsSubtitle": "管理服务端文档与自动 RAG 索引",

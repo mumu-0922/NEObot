@@ -321,3 +321,26 @@ frontend/backend health              healthy / healthy
 
 Rollback: restore only the removed badge and prior button classes; no
 conversation binding, retrieval, or citation metadata contract changed.
+
+## 2026-07-17 — G11.9B.2 Citation helper-copy cleanup
+
+Outcome: expanded citation details no longer display the redundant sentence
+“回答已使用经过验证的知识库证据。” The citation heading, count, source title,
+snippet, locator, and collapse interaction already communicate that state.
+
+The unused `verifiedEvidenceUsed` key was removed from all three locale files.
+The standalone frontend README now records the durable UI-copy rule: visible
+helper text must enable an action, explain an error, or resolve real ambiguity;
+it must not merely repeat state already expressed by title, icon, color, count,
+or content.
+
+Verification:
+
+```text
+focused citation/composition tests  9 passed
+frontend ESLint / typecheck         passed / passed
+frontend Prettier check             passed
+```
+
+Rollback: restore the paragraph and all locale keys together. No retrieval,
+citation metadata, or accessibility contract changed.

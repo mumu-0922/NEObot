@@ -4901,3 +4901,15 @@ retrieval or citation metadata.
 
 Focused composition tests passed 6/6; frontend lint, typecheck, formatting, and
 production source build passed; recreated frontend and backend are healthy.
+
+## 2026-07-17 — G11.9B.2 Citation helper-copy cleanup
+
+Owner visual review identified another redundant annotation inside expanded
+Knowledge citations: “回答已使用经过验证的知识库证据。” The heading, count, and
+source card already communicate this, so the sentence and its English,
+Chinese, and Japanese translation keys were removed.
+
+`frontend/README.md` now preserves the general rule: UI helper copy must enable
+an action, explain an error, or resolve real ambiguity rather than restating
+title/icon/color/count/content state. Focused tests passed 9/9; frontend lint,
+typecheck, and formatting passed.

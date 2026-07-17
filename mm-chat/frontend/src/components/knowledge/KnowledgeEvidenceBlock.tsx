@@ -78,7 +78,6 @@ const KnowledgeEvidenceBlock: React.FC<KnowledgeEvidenceBlockProps> = ({
   }
 
   const heading = t("citationsHeading", { count: citations.length });
-  const statusText = t("verifiedEvidenceUsed");
 
   return (
     <div className="mb-3 overflow-hidden rounded-lg border border-purple-200 bg-purple-50/50 transition-colors duration-300 dark:border-purple-800/60 dark:bg-purple-900/10">
@@ -112,9 +111,6 @@ const KnowledgeEvidenceBlock: React.FC<KnowledgeEvidenceBlockProps> = ({
         <div className="overflow-hidden">
           {isExpanded && (
             <div className="border-t border-purple-200/50 bg-white/40 px-3 py-3 dark:border-purple-800/50 dark:bg-card/40">
-              <p className="mb-2 text-[11px] leading-relaxed text-gray-600 dark:text-foreground/80">
-                {statusText}
-              </p>
               <div className="space-y-2">
                 {citations.map((citation) => (
                   <div

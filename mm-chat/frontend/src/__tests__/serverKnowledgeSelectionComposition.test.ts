@@ -105,5 +105,6 @@ describe("G8.5 server knowledge selection isolation", () => {
     expect(evidenceBlock).toContain('t("citationsHeading"');
     expect(evidenceBlock).not.toContain("{knowledge.mode}");
     expect(evidenceBlock).not.toContain("uppercase tracking-wide");
+    expect(evidenceBlock).not.toContain("verifiedEvidenceUsed");
   });
 });

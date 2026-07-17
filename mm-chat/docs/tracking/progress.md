@@ -1304,6 +1304,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
       - [x] G11.9B.1 Knowledge state visual cleanup: the composer Library icon
             is neutral while unbound and purple only while bound, and citation
             headers no longer render the redundant `AUTO` badge.
+      - [x] G11.9B.2 Citation helper-copy cleanup: removed the redundant
+            verified-evidence sentence and its dead locale keys, and recorded
+            the frontend rule against copy that only repeats visible state.
     - [ ] G11.9C Contextual rewrite, Jina query embedding, hybrid/RRF retrieval,
           and Jina rerank.
       - [x] G11.9C.1 Conditional standalone rewrite and dual-query keyword/CJK

@@ -42,6 +42,15 @@ The root `compose.single-server.yml` builds this frontend in server mode and
 provides the persistent `/mm-api` same-origin edge to the private Go service.
 Run the complete stack from `mm-chat/` with the `app` profile.
 
+## UI Copy Discipline
+
+- Keep visible helper copy only when it enables an action, explains an error,
+  or resolves genuine ambiguity.
+- Do not add labels or status sentences that merely repeat a state already
+  communicated by the component title, icon, color, count, or content.
+- Prefer concise labels and existing tooltips over explanatory annotations;
+  remove translation keys when their visible copy is removed.
+
 ## Final Standalone Gate
 
 The frontend is not considered fully migrated until:

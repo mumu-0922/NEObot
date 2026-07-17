@@ -97,7 +97,6 @@
   "errorReadingFile": "ファイルコンテンツの読み込み中にエラーが発生しました。",
   "deleteFileFailed": "ファイルの削除に失敗しました。もう一度お試しください。",
   "citationsHeading": "ナレッジ引用 ({count})",
-  "verifiedEvidenceUsed": "この回答は検証済みのナレッジ証拠を使用しました。",
   "knowledgeTemporarilyUnavailable": "ナレッジは一時的に利用できません。この回答ではナレッジを使用していません。",
   "serverUnsupportedDescription": "サーバーモード、ファイル API、ナレッジ API が有効になるまでサーバーナレッジは使用できません。",
   "serverManageDocsSubtitle": "サーバードキュメントと自動 RAG インデックスを管理",
