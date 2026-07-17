@@ -27,6 +27,7 @@ type Repository interface {
 
 type EvidenceRepository interface {
 	FetchQueryEvidenceCandidates(context.Context, QueryEvidenceCandidatesInput) ([]EvidenceCandidateReference, error)
+	FetchHybridQueryEvidenceCandidates(context.Context, HybridQueryEvidenceCandidatesInput) ([]EvidenceCandidateReference, error)
 	ReauthorizeAndHydrateEvidence(context.Context, ReauthorizeEvidenceInput) ([]HydratedEvidence, error)
 }
 

@@ -1,16 +1,10 @@
-"""Default-off Jina passage-embedding gateway for G7.5.
-
-The gateway is intentionally not registered in production handlers. It accepts
-only an explicitly injected API key (from validated administrator settings in a
-later promotion slice) and maps provider/transport details to stable redacted
-job errors.
-"""
+"""Bounded Jina passage and query embedding gateways."""
 
 from __future__ import annotations
 
 import json
 import math
-from typing import Final, NoReturn, cast
+from typing import Final, NoReturn, Protocol, cast
 
 import httpx
 
@@ -39,15 +33,25 @@ JINA_GATEWAY_STATUS_INVALID: Final = "JINA_GATEWAY_STATUS_INVALID"
 JINA_GATEWAY_RESPONSE_INVALID: Final = "JINA_GATEWAY_RESPONSE_INVALID"
 JINA_GATEWAY_RESPONSE_TOO_LARGE: Final = "JINA_GATEWAY_RESPONSE_TOO_LARGE"
 JINA_EMBEDDINGS_URL: Final = "https://api.jina.ai/v1/embeddings"
-JINA_EMBEDDING_TASK: Final = "retrieval.passage"
+JINA_PASSAGE_EMBEDDING_TASK: Final = "retrieval.passage"
+JINA_QUERY_EMBEDDING_TASK: Final = "retrieval.query"
 JINA_TIMEOUT: Final = httpx.Timeout(connect=5.0, read=30.0, write=15.0, pool=5.0)
 JINA_LIMITS: Final = httpx.Limits(max_connections=1, max_keepalive_connections=1)
 JINA_RETRY_AFTER_SECONDS: Final = 30
 MAX_JINA_API_KEY_BYTES: Final = 4096
 MAX_JINA_RESPONSE_BYTES: Final = 16 * 1024 * 1024
+MAX_JINA_QUERY_BYTES: Final = 2048
 HTTP_OK: Final = 200
 _VISIBLE_ASCII_MIN: Final = 33
 _VISIBLE_ASCII_MAX: Final = 126
+
+
+class QueryEmbeddingGateway(Protocol):
+    """Private query-to-vector seam used by the worker HTTP boundary."""
+
+    async def embed_query(self, query: str) -> tuple[float, ...]:
+        """Return one validated 1024-dimensional retrieval query vector."""
+        ...
 
 
 def build_jina_passage_embedding_handler_dependencies(
@@ -105,6 +109,34 @@ class JinaPassageEmbeddingGateway:
             return _embedding_vectors_from_payload(payload, candidates)
 
 
+class JinaQueryEmbeddingGateway:
+    """Jina-compatible query embedding gateway for private Go retrieval."""
+
+    def __init__(
+        self,
+        api_key: str | None,
+        *,
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
+        self._api_key = _validate_api_key(api_key)
+        self._client = client
+
+    async def embed_query(self, query: str) -> tuple[float, ...]:
+        normalized_query = _normalize_query(query)
+        body = _query_embedding_request_body(normalized_query)
+        if self._client is not None:
+            payload = await _post_embeddings(self._client, self._api_key, body)
+            return _query_embedding_from_payload(payload)
+        async with httpx.AsyncClient(
+            timeout=JINA_TIMEOUT,
+            limits=JINA_LIMITS,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
+            payload = await _post_embeddings(client, self._api_key, body)
+            return _query_embedding_from_payload(payload)
+
+
 def _embedding_request_body(
     candidates: tuple[PassageEmbeddingCandidate, ...],
 ) -> JsonObject:
@@ -116,7 +148,21 @@ def _embedding_request_body(
         "model": DEFAULT_JINA_EMBEDDING_MODEL,
         "return_multivector": False,
         "return_tokenized_input": False,
-        "task": JINA_EMBEDDING_TASK,
+        "task": JINA_PASSAGE_EMBEDDING_TASK,
+        "truncate": False,
+    }
+
+
+def _query_embedding_request_body(query: str) -> JsonObject:
+    return {
+        "dimensions": DEFAULT_JINA_EMBEDDING_DIMENSIONS,
+        "embedding_type": "float",
+        "input": [{"text": query}],
+        "late_chunking": False,
+        "model": DEFAULT_JINA_EMBEDDING_MODEL,
+        "return_multivector": False,
+        "return_tokenized_input": False,
+        "task": JINA_QUERY_EMBEDDING_TASK,
         "truncate": False,
     }
 
@@ -175,6 +221,18 @@ def _embedding_vectors_from_payload(
     if set(by_index) != set(range(len(candidates))):
         _reject_permanent(JOB_HANDLER_EMBEDDING_COUNT_MISMATCH)
     return tuple(by_index[index] for index in range(len(candidates)))
+
+
+def _query_embedding_from_payload(payload: JsonObject) -> tuple[float, ...]:
+    if payload.get("model") != DEFAULT_JINA_EMBEDDING_MODEL:
+        _reject_permanent(JINA_GATEWAY_RESPONSE_INVALID)
+    data = _json_list(payload.get("data"), JINA_GATEWAY_RESPONSE_INVALID)
+    if len(data) != 1:
+        _reject_permanent(JINA_GATEWAY_RESPONSE_INVALID)
+    item = _json_object(data[0], JINA_GATEWAY_RESPONSE_INVALID)
+    if _non_negative_int(item.get("index"), JINA_GATEWAY_RESPONSE_INVALID) != 0:
+        _reject_permanent(JINA_GATEWAY_RESPONSE_INVALID)
+    return _embedding_vector(item.get("embedding"))
 
 
 def _embedding_vector(value: JsonValue | None) -> tuple[float, ...]:
@@ -247,6 +305,15 @@ def _validate_api_key(value: str | None) -> str:
     ):
         _reject_permanent(JINA_GATEWAY_CREDENTIALS_MISSING)
     return value
+
+
+def _normalize_query(value: str) -> str:
+    if not isinstance(value, str):
+        _reject_permanent(JINA_GATEWAY_RESPONSE_INVALID)
+    normalized = value.strip()
+    if not normalized or len(normalized.encode("utf-8")) > MAX_JINA_QUERY_BYTES:
+        _reject_permanent(JINA_GATEWAY_RESPONSE_INVALID)
+    return normalized
 
 
 def _reject_permanent(error_code: str) -> NoReturn:

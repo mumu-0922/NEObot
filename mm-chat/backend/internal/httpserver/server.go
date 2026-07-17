@@ -73,11 +73,18 @@ type options struct {
 	imageJobService      *imagejobs.Service
 	voiceJobService      *voicejobs.Service
 	ragSourceService     *ragsource.Service
+	ragQueryEmbedder     ragproviders.QueryEmbedder
 	runtimeConfigRepo    runtimeconfig.ProviderConfigRepository
 }
 
+type ragEvidenceCandidateFetcher interface {
+	FetchQueryEvidenceCandidates(context.Context, knowledge.QueryEvidenceCandidatesInput) ([]knowledge.EvidenceCandidateReference, error)
+	FetchHybridQueryEvidenceCandidates(context.Context, knowledge.HybridQueryEvidenceCandidatesInput) ([]knowledge.EvidenceCandidateReference, error)
+}
+
 type knowledgeRAGCandidateSource struct {
-	service *knowledge.Service
+	candidates ragEvidenceCandidateFetcher
+	embedder   ragproviders.QueryEmbedder
 }
 
 type fileProviderAttachmentResolver struct {
@@ -284,10 +291,24 @@ func (source knowledgeRAGCandidateSource) FetchEvidenceCandidates(
 	ctx context.Context,
 	query chat.RAGCandidateQuery,
 ) ([]knowledge.EvidenceCandidateReference, error) {
-	if source.service == nil {
+	if source.candidates == nil {
 		return nil, knowledge.ErrDatabaseRequired
 	}
-	return source.service.FetchQueryEvidenceCandidates(ctx, knowledge.QueryEvidenceCandidatesInput{
+	if source.embedder != nil {
+		embedding, err := source.embedder.EmbedQuery(ctx, query.QueryText)
+		if err == nil {
+			return source.candidates.FetchHybridQueryEvidenceCandidates(
+				ctx,
+				knowledge.HybridQueryEvidenceCandidatesInput{
+					CollectionIDs:  query.CollectionIDs,
+					QueryText:      query.QueryText,
+					QueryEmbedding: embedding.Vector,
+					Limit:          query.Limit,
+				},
+			)
+		}
+	}
+	return source.candidates.FetchQueryEvidenceCandidates(ctx, knowledge.QueryEvidenceCandidatesInput{
 		CollectionIDs: query.CollectionIDs,
 		QueryText:     query.QueryText,
 		Limit:         query.Limit,
@@ -451,6 +472,12 @@ func WithRAGSourceService(service *ragsource.Service) Option {
 	}
 }
 
+func WithRAGQueryEmbedder(embedder ragproviders.QueryEmbedder) Option {
+	return func(opts *options) {
+		opts.ragQueryEmbedder = embedder
+	}
+}
+
 func New(cfg config.Config, opts ...Option) *http.Server {
 	return &http.Server{
 		Addr:              cfg.Addr,
@@ -507,7 +534,10 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 			chatOptions,
 			chat.WithRAGAnswerAssembler(
 				chat.NewRAGAnswerAssembler(
-					knowledgeRAGCandidateSource{service: resolvedOptions.knowledgeService},
+					knowledgeRAGCandidateSource{
+						candidates: resolvedOptions.knowledgeService,
+						embedder:   resolvedOptions.ragQueryEmbedder,
+					},
 					resolvedOptions.knowledgeService,
 				),
 			),

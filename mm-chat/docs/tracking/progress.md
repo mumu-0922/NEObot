@@ -1317,8 +1317,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
               environment fallback with every enabled backend-persisted model
               and provisions exact Answer governance/consent for each; real
               `gpt-5.6-sol` answered the active Knowledge query with `[K1]`.
-      - [ ] G11.9C.2 Private Python Jina `retrieval.query` 1024 Dense lane and
-            Postgres hybrid candidate function.
+      - [x] G11.9C.2 Private Python Jina `retrieval.query` 1024 Dense lane,
+            Postgres keyword/Dense RRF function, conservative `8 chars + 0.48`
+            Dense signal gate, and live Go keyword degradation.
       - [ ] G11.9C.3 Jina rerank, evaluated threshold, RRF-only degradation,
             and real cross-collection/failure promotion proof.
     - [ ] G11.9D Structure-aware Parent/Child reindex with generation cutover.

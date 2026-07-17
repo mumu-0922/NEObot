@@ -13,6 +13,7 @@ from mm_chat_rag.jina_gateway import (
     JINA_GATEWAY_REQUEST_FAILED,
     JINA_GATEWAY_STATUS_INVALID,
     JinaPassageEmbeddingGateway,
+    JinaQueryEmbeddingGateway,
     build_jina_passage_embedding_handler_dependencies,
 )
 from mm_chat_rag.job_handler_dependencies import (
@@ -146,6 +147,54 @@ async def test_jina_gateway_empty_candidates_make_no_http_call() -> None:
         gateway = JinaPassageEmbeddingGateway(SECRET, client=client)
         assert await gateway.embed_passages(object(), ()) == ()
 
+    assert calls == 0
+
+
+async def test_jina_gateway_sends_locked_query_request_and_maps_vector() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return _json_response(_embedding_payload(1))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        vector = await JinaQueryEmbeddingGateway(
+            SECRET,
+            client=client,
+        ).embed_query("  semantic question  ")
+
+    assert len(vector) == 1024
+    assert vector[0] == 0.125
+    assert len(requests) == 1
+    body = json.loads(requests[0].content)
+    assert body == {
+        "dimensions": 1024,
+        "embedding_type": "float",
+        "input": [{"text": "semantic question"}],
+        "late_chunking": False,
+        "model": "jina-embeddings-v4",
+        "return_multivector": False,
+        "return_tokenized_input": False,
+        "task": "retrieval.query",
+        "truncate": False,
+    }
+
+
+@pytest.mark.parametrize("query", ["", "   ", "界" * 2049])
+async def test_jina_query_gateway_rejects_unsafe_query_before_http(
+    query: str,
+) -> None:
+    calls = 0
+
+    def forbidden(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("invalid query reached provider")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(forbidden)) as client:
+        gateway = JinaQueryEmbeddingGateway(SECRET, client=client)
+        with pytest.raises(PermanentJobError):
+            await gateway.embed_query(query)
     assert calls == 0
 
 

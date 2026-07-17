@@ -259,6 +259,11 @@ Endpoints on the private listener (default `:8081`):
   `projection=not_ready` is expected before migration `011` and is not a core
   dark-run readiness failure.
 - `GET /metrics`: Prometheus exposition.
+- `POST /internal/retrieval/query-embedding`: internal Bearer-protected Jina
+  `retrieval.query` endpoint. It is available only when both
+  `RAG_JINA_API_KEY` and `RAG_SOURCE_GATEWAY_TOKEN` are configured, accepts one
+  bounded JSON `query`, and returns one validated 1024-dimensional vector. See
+  [`../docs/contracts/rag-query-hybrid-retrieval.md`](../docs/contracts/rag-query-hybrid-retrieval.md).
 
 ## Replay
 

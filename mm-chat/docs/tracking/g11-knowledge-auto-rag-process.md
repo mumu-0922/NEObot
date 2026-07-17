@@ -297,6 +297,60 @@ Rollback: restore the single environment identity only if the administrator UI
 is also prevented from selecting other models. Rolling back one without the
 other recreates the exact live failure.
 
+## 2026-07-17 — G11.9C.2 Jina Dense retrieval and keyword degradation
+
+Outcome: the bounded Dense slice is complete without claiming rerank. Go now
+requests a private 1024-dimensional Jina `retrieval.query` vector, Postgres
+fuses selected-collection keyword/CJK and Dense reference lanes with RRF, and a
+Jina/query-gateway failure falls back to the existing keyword function.
+
+Implemented boundaries:
+
+- Python exposes only `POST /internal/retrieval/query-embedding`, protected by
+  the existing internal Bearer token; request/query/response sizes, exact JSON
+  shape, model, dimensions, finite values, and non-zero norm are bounded;
+- Jina passage indexing remains `retrieval.passage`; query embedding uses
+  `retrieval.query`, both on `jina-embeddings-v4` at 1024 dimensions;
+- Go uses a redirect-disabled, bounded private client and never logs the query,
+  internal token, provider response, or API key;
+- migration `027` preserves selected collection, active generation/head,
+  published materialization, visibility/revision, deletion, active version,
+  ready-vector, reference-only, and later Go reauthorization fences;
+- SQL cosine is computed over the existing `REAL[1024]` projection, then
+  keyword and Dense ranks are fused with deterministic RRF (`k=60`);
+- live calibration proved one absolute threshold was insufficient: the short
+  weather query scored `0.553727`, above relevant paraphrases. The conservative
+  pre-rerank gate therefore requires at least eight query characters and
+  cosine `>= 0.48`. C.3 rerank remains responsible for broader relevance.
+
+Verification:
+
+```text
+Python Ruff / strict Mypy                    passed / passed
+Python focused tests                         20 passed
+Go focused tests / vet                       passed / passed
+temporary Postgres migrations                001 -> 027 passed
+027 runtime role probe                       go_api_runtime execute passed
+Postgres Dense + short-negative integration  2 passed
+private real Jina endpoint                   v4 / 1024 / finite non-zero
+no-lexical-overlap semantic probe             keyword=0 / hybrid=1 / 0.499906
+short weather / long weather / cooking        hybrid=0 / 0 / 0
+real gpt-5.6-sol Knowledge stream             completed / answered / [K1]
+Jina stopped + keyword question               completed / answered / [K1]
+backend/frontend/RAG/Postgres/Redis/MinIO      healthy
+temporary conversations/sessions/database     deleted
+```
+
+The real negative calibration also showed why C.2 must not claim production
+relevance ranking: a Dense embedding score is not a calibrated relevance
+probability. G11.9C.3 remains open for Jina rerank, evaluated thresholds,
+cross-collection TopK, and rerank-only failure proof.
+
+Rollback: disable the query client by leaving the internal token blank or
+remove the query-gateway URL to retain keyword-only behavior. A database
+rollback drops only migration `027`'s hybrid reference function; passage
+vectors, source chunks, hydration ACLs, and conversation data remain intact.
+
 ## 2026-07-17 — G11.9B.1 Knowledge state visual cleanup
 
 Outcome: the composer now communicates Knowledge binding through state rather

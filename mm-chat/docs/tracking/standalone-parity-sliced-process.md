@@ -4913,3 +4913,22 @@ Chinese, and Japanese translation keys were removed.
 an action, explain an error, or resolve real ambiguity rather than restating
 title/icon/color/count/content state. Focused tests passed 9/9; frontend lint,
 typecheck, and formatting passed.
+
+## 2026-07-17 — G11.9C.2 Private Jina Dense retrieval
+
+The Go backend now obtains bounded private `retrieval.query` embeddings from
+the Python RAG service and calls migration `027`'s selected-collection
+keyword/Dense RRF function. Jina/query-gateway failures degrade to the existing
+keyword path; database failures remain visible rather than being mislabeled as
+normal misses.
+
+Live calibration against `test` rejected an unsafe score-only assumption: the
+short weather negative had cosine `0.553727`, while a valid no-lexical-overlap
+paraphrase measured about `0.50`. The pre-rerank Dense lane now requires at
+least eight characters and cosine `>= 0.48`; the semantic probe remained a
+hybrid hit while short/long weather and cooking probes returned none.
+
+Temporary Postgres `001 -> 027`, runtime ACL, Dense integration, real Jina,
+real `gpt-5.6-sol` `answered/[K1]`, and stopped-Jina keyword degradation proofs
+all passed. The disposable database and chat/session rows were deleted;
+credential-bearing proof files were zeroed. G11.9C.3 rerank remains open.

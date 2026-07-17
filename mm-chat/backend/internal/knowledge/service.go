@@ -452,6 +452,20 @@ func (s *Service) FetchQueryEvidenceCandidates(
 	return repo.FetchQueryEvidenceCandidates(ctx, input)
 }
 
+func (s *Service) FetchHybridQueryEvidenceCandidates(
+	ctx context.Context,
+	input HybridQueryEvidenceCandidatesInput,
+) ([]EvidenceCandidateReference, error) {
+	if err := s.requireRepository(); err != nil {
+		return nil, err
+	}
+	repo, ok := s.repo.(EvidenceRepository)
+	if !ok {
+		return nil, ErrDatabaseRequired
+	}
+	return repo.FetchHybridQueryEvidenceCandidates(ctx, input)
+}
+
 func (s *Service) ReauthorizeAndHydrateEvidence(
 	ctx context.Context,
 	input ReauthorizeEvidenceInput,

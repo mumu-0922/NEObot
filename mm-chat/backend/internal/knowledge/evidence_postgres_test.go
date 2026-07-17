@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -160,6 +161,19 @@ func TestPostgresFetchQueryEvidenceCandidatesReturnsBoundedReferences(t *testing
 	if !errors.Is(err, ErrEvidenceHydrationRejected) {
 		t.Fatalf("blank query error = %v, want ErrEvidenceHydrationRejected", err)
 	}
+
+	hybrid, err := repo.FetchHybridQueryEvidenceCandidates(ctx, HybridQueryEvidenceCandidatesInput{
+		CollectionIDs:  []string{fixture.CollectionID},
+		QueryText:      "semantic paraphrase without lexical overlap",
+		QueryEmbedding: repeatedEvidenceVector(0.001),
+		Limit:          4,
+	})
+	if err != nil {
+		t.Fatalf("fetch hybrid candidates error = %v", err)
+	}
+	if len(hybrid) != 1 || hybrid[0].ChildChunkID != fixture.Reference.ChildChunkID || hybrid[0].RankScore <= 0 {
+		t.Fatalf("hybrid candidates = %#v, want Dense reference", hybrid)
+	}
 }
 
 func TestNormalizeReauthorizeEvidenceRejectsUnsafeCandidateShapes(t *testing.T) {
@@ -252,6 +266,84 @@ func TestNormalizeQueryEvidenceCandidatesInputRejectsUnsafeShapes(t *testing.T) 
 		len(normalized.CollectionIDs) != 1 {
 		t.Fatalf("normalized input = %#v", normalized)
 	}
+}
+
+func TestNormalizeHybridQueryEvidenceCandidatesRejectsUnsafeVectors(t *testing.T) {
+	base := HybridQueryEvidenceCandidatesInput{
+		CollectionIDs:  []string{"74000000-0000-4000-8000-000000000004"},
+		QueryText:      "semantic question",
+		QueryEmbedding: repeatedEvidenceVector(0.001),
+		Limit:          8,
+	}
+	cases := []struct {
+		name   string
+		vector []float32
+	}{
+		{name: "short", vector: []float32{0.1}},
+		{name: "zero norm", vector: make([]float32, evidenceQueryEmbeddingDimensions)},
+		{name: "nan", vector: func() []float32 {
+			vector := repeatedEvidenceVector(0.001)
+			vector[10] = float32(math.NaN())
+			return vector
+		}()},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			input := base
+			input.QueryEmbedding = tc.vector
+			if _, err := normalizeHybridQueryEvidenceCandidatesInput(input); !errors.Is(err, ErrEvidenceHydrationRejected) {
+				t.Fatalf("error = %v, want ErrEvidenceHydrationRejected", err)
+			}
+		})
+	}
+
+	normalized, err := normalizeHybridQueryEvidenceCandidatesInput(HybridQueryEvidenceCandidatesInput{
+		CollectionIDs:  append(base.CollectionIDs, base.CollectionIDs[0]),
+		QueryText:      " semantic question ",
+		QueryEmbedding: base.QueryEmbedding,
+	})
+	if err != nil {
+		t.Fatalf("normalize valid hybrid input error = %v", err)
+	}
+	if normalized.Limit != defaultEvidenceCandidateLimit ||
+		normalized.QueryText != base.QueryText ||
+		len(normalized.CollectionIDs) != 1 ||
+		len(normalized.QueryEmbedding) != evidenceQueryEmbeddingDimensions {
+		t.Fatalf("normalized hybrid input = %#v", normalized)
+	}
+}
+
+func TestPostgresHybridCandidatesRejectShortDenseOnlyQuery(t *testing.T) {
+	db := openKnowledgeTestDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if _, err := migration.NewRunner(db, migrationfiles.FS).Up(ctx); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+	fixture := seedEvidenceHydrationFixture(t, ctx, db)
+	seedEvidenceSearchProjection(t, ctx, db, fixture)
+	repo := NewPostgresRepository(db)
+
+	candidates, err := repo.FetchHybridQueryEvidenceCandidates(ctx, HybridQueryEvidenceCandidatesInput{
+		CollectionIDs:  []string{fixture.CollectionID},
+		QueryText:      "今天天气如何？",
+		QueryEmbedding: repeatedEvidenceVector(0.001),
+		Limit:          4,
+	})
+	if err != nil {
+		t.Fatalf("fetch short-query hybrid candidates error = %v", err)
+	}
+	if len(candidates) != 0 {
+		t.Fatalf("short Dense-only candidates = %#v, want none", candidates)
+	}
+}
+
+func repeatedEvidenceVector(value float32) []float32 {
+	vector := make([]float32, evidenceQueryEmbeddingDimensions)
+	for index := range vector {
+		vector[index] = value
+	}
+	return vector
 }
 
 func withEvidenceReference(

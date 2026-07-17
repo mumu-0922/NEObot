@@ -30,6 +30,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/jobaudit"
 	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/plugins"
+	"neo-chat/mm-chat/backend/internal/ragproviders"
 	"neo-chat/mm-chat/backend/internal/ragsource"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
 	"neo-chat/mm-chat/backend/internal/redisstate"
@@ -279,6 +280,17 @@ func main() {
 			ragsource.WithInternalToken(cfg.RAG.SourceGatewayToken),
 		)
 	}
+	ragQueryEmbedder, err := ragproviders.NewQueryEmbeddingClient(
+		cfg.RAG.QueryGatewayURL,
+		cfg.RAG.SourceGatewayToken,
+		0,
+	)
+	if err != nil {
+		_ = redisClient.Close()
+		_ = db.Close()
+		logger.Error("rag_query_embedding_config_failed")
+		os.Exit(1)
+	}
 	if sqlDB := db.SQL(); sqlDB != nil {
 		importRepo = browserimport.NewPostgresRepository(
 			sqlDB,
@@ -302,6 +314,7 @@ func main() {
 		httpserver.WithTeamService(teamRuntime.service),
 		httpserver.WithKnowledgeService(knowledgeService),
 		httpserver.WithRAGSourceService(ragSourceService),
+		httpserver.WithRAGQueryEmbedder(ragQueryEmbedder),
 		httpserver.WithRuntimeConfigRepository(runtimeConfigRepo),
 		httpserver.WithPluginRegistry(pluginRegistry),
 		httpserver.WithPluginAuditRecorder(pluginAuditRecorder),

@@ -94,6 +94,7 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 	}
 	if cfg.RAG.MinerUAPIKey != "" ||
 		cfg.RAG.JinaAPIKey != "" ||
+		cfg.RAG.QueryGatewayURL != "" ||
 		cfg.RAG.SourceGatewayToken != "" {
 		t.Fatalf("RAG secrets = %#v, want blank", cfg.RAG)
 	}
@@ -180,6 +181,7 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 		EnvMaxUploadBytes:         "1048576",
 		EnvRAGMinerUAPIKey:        " fake-mineru-token ",
 		EnvRAGJinaAPIKey:          " fake-jina-key ",
+		EnvRAGQueryGatewayURL:     " http://rag-worker:8081 ",
 		EnvRAGSourceGatewayToken:  " fake-source-gateway-token ",
 		EnvAuthMode:               " required ",
 		EnvAuthBootstrapUserID:    " 77777777-7777-4777-8777-777777777777 ",
@@ -286,6 +288,9 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	if cfg.RAG.JinaAPIKey != "fake-jina-key" {
 		t.Fatalf("RAG.JinaAPIKey = %q, want trimmed fake key", cfg.RAG.JinaAPIKey)
 	}
+	if cfg.RAG.QueryGatewayURL != "http://rag-worker:8081" {
+		t.Fatalf("RAG.QueryGatewayURL = %q", cfg.RAG.QueryGatewayURL)
+	}
 	if cfg.RAG.SourceGatewayToken != "fake-source-gateway-token" {
 		t.Fatalf("RAG.SourceGatewayToken = %q, want trimmed fake token", cfg.RAG.SourceGatewayToken)
 	}
@@ -359,6 +364,7 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 		EnvDefaultMinerUAPIKey:   "\t",
 		EnvRAGJinaAPIKey:         "\n",
 		EnvDefaultJinaAPIKey:     " ",
+		EnvRAGQueryGatewayURL:    " ",
 		EnvRAGSourceGatewayToken: " ",
 		EnvAuthMode:              "\t",
 		EnvAuthBootstrapUserID:   "\t",
@@ -429,6 +435,7 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 	}
 	if cfg.RAG.MinerUAPIKey != "" ||
 		cfg.RAG.JinaAPIKey != "" ||
+		cfg.RAG.QueryGatewayURL != "" ||
 		cfg.RAG.SourceGatewayToken != "" ||
 		cfg.RAG.JinaEmbeddingDimensions != DefaultRAGJinaDimensions ||
 		cfg.RAG.Ready() {

@@ -8,17 +8,19 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const (
-	maxEvidenceHydrationReferences = 16
-	maxEvidenceSelectedCollections = 32
-	defaultEvidenceCandidateLimit  = 8
-	maxEvidenceCandidateLimit      = 50
-	maxEvidenceQueryBytes          = 2048
+	maxEvidenceHydrationReferences   = 16
+	maxEvidenceSelectedCollections   = 32
+	defaultEvidenceCandidateLimit    = 8
+	maxEvidenceCandidateLimit        = 50
+	maxEvidenceQueryBytes            = 2048
+	evidenceQueryEmbeddingDimensions = 1024
 )
 
 var (
@@ -43,6 +45,13 @@ type QueryEvidenceCandidatesInput struct {
 	CollectionIDs []string
 	QueryText     string
 	Limit         int
+}
+
+type HybridQueryEvidenceCandidatesInput struct {
+	CollectionIDs  []string
+	QueryText      string
+	QueryEmbedding []float32
+	Limit          int
 }
 
 type ReauthorizeEvidenceInput struct {
@@ -112,6 +121,57 @@ FROM knowledge_fetch_query_evidence_candidates($1::uuid[], $2, $3)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate query evidence candidates: %w", err)
+	}
+	return candidates, nil
+}
+
+func (r *PostgresRepository) FetchHybridQueryEvidenceCandidates(
+	ctx context.Context,
+	input HybridQueryEvidenceCandidatesInput,
+) ([]EvidenceCandidateReference, error) {
+	if err := r.requireDB(); err != nil {
+		return nil, err
+	}
+	input, err := normalizeHybridQueryEvidenceCandidatesInput(input)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := r.db.QueryContext(ctx, `
+SELECT collection_id, document_id, document_version_id, index_generation_id,
+  materialization_id, parent_chunk_id, child_chunk_id, source_span_hash,
+  content_hash, rank_score
+FROM knowledge_fetch_hybrid_query_evidence_candidates(
+  $1::uuid[], $2, $3::real[], $4
+)
+`, evidenceUUIDArrayLiteral(input.CollectionIDs), input.QueryText,
+		evidenceRealArrayLiteral(input.QueryEmbedding), input.Limit)
+	if err != nil {
+		return nil, fmt.Errorf("fetch hybrid query evidence candidates: %w", err)
+	}
+	defer rows.Close()
+
+	candidates := make([]EvidenceCandidateReference, 0, input.Limit)
+	for rows.Next() {
+		var candidate EvidenceCandidateReference
+		if err := rows.Scan(
+			&candidate.CollectionID,
+			&candidate.DocumentID,
+			&candidate.DocumentVersionID,
+			&candidate.IndexGenerationID,
+			&candidate.MaterializationID,
+			&candidate.ParentChunkID,
+			&candidate.ChildChunkID,
+			&candidate.SourceSpanHash,
+			&candidate.ContentHash,
+			&candidate.RankScore,
+		); err != nil {
+			return nil, fmt.Errorf("scan hybrid query evidence candidate: %w", err)
+		}
+		candidates = append(candidates, candidate)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate hybrid query evidence candidates: %w", err)
 	}
 	return candidates, nil
 }
@@ -226,11 +286,57 @@ func normalizeQueryEvidenceCandidatesInput(
 	return input, nil
 }
 
+func normalizeHybridQueryEvidenceCandidatesInput(
+	input HybridQueryEvidenceCandidatesInput,
+) (HybridQueryEvidenceCandidatesInput, error) {
+	normalized, err := normalizeQueryEvidenceCandidatesInput(QueryEvidenceCandidatesInput{
+		CollectionIDs: input.CollectionIDs,
+		QueryText:     input.QueryText,
+		Limit:         input.Limit,
+	})
+	if err != nil {
+		return input, err
+	}
+	if len(input.QueryEmbedding) != evidenceQueryEmbeddingDimensions {
+		return input, ErrEvidenceHydrationRejected
+	}
+	normSquared := 0.0
+	for _, component := range input.QueryEmbedding {
+		value := float64(component)
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return input, ErrEvidenceHydrationRejected
+		}
+		normSquared += value * value
+	}
+	if normSquared <= 0 || math.IsInf(normSquared, 0) {
+		return input, ErrEvidenceHydrationRejected
+	}
+	input.CollectionIDs = normalized.CollectionIDs
+	input.QueryText = normalized.QueryText
+	input.Limit = normalized.Limit
+	input.QueryEmbedding = append([]float32(nil), input.QueryEmbedding...)
+	return input, nil
+}
+
 func evidenceUUIDArrayLiteral(ids []string) string {
 	if len(ids) == 0 {
 		return "{}"
 	}
 	return "{" + strings.Join(ids, ",") + "}"
+}
+
+func evidenceRealArrayLiteral(values []float32) string {
+	var builder strings.Builder
+	builder.Grow(len(values) * 12)
+	builder.WriteByte('{')
+	for index, value := range values {
+		if index > 0 {
+			builder.WriteByte(',')
+		}
+		builder.WriteString(strconv.FormatFloat(float64(value), 'g', -1, 32))
+	}
+	builder.WriteByte('}')
+	return builder.String()
 }
 
 func normalizeReauthorizeEvidenceInput(input ReauthorizeEvidenceInput) (ReauthorizeEvidenceInput, error) {

@@ -8273,3 +8273,15 @@ the heading, count, and source content already convey it. Dead locale keys were
 removed, and the standalone frontend README now forbids UI copy that merely
 restates visible state. Detailed checks are in
 `docs/tracking/g11-knowledge-auto-rag-process.md`.
+
+## 2026-07-17 — G11.9C.2 Dense retrieval cross-reference
+
+The private Python RAG boundary now produces real Jina
+`retrieval.query`/1024 vectors for Go. Migration `027` fuses the existing
+keyword/CJK lane with selected-collection Dense references through RRF while
+retaining publication, generation, visibility, deletion, and hydration
+authorization fences. Live calibration added a conservative pre-rerank query
+signal gate, and stopping Jina proved the original keyword answer still
+completes with `[K1]`. Full evidence, cleanup, rollback, and the still-open C.3
+rerank boundary are recorded in
+`docs/tracking/g11-knowledge-auto-rag-process.md`.
