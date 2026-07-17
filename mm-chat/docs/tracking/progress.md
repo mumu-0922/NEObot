@@ -1286,6 +1286,21 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         bounded exact-phrase and overlapping-bigram signals beside the existing
         lexical lane, live-proving Chinese evidence queries return candidates
         while unrelated or unsupported questions remain strict refusals.
+  - [ ] G11.9 Auto Knowledge and Web-augmented chat: replace the per-message
+        strict evidence gate with conversation-persistent Auto augmentation per
+        `docs/tracking/g11-knowledge-auto-rag-plan.md`.
+    - [ ] G11.9A Development Hydration and Auto semantics.
+    - [ ] G11.9B Conversation-persistent multi-Knowledge binding and dedicated
+          composer control.
+    - [ ] G11.9C Contextual rewrite, Jina query embedding, hybrid/RRF retrieval,
+          and Jina rerank.
+    - [ ] G11.9D Structure-aware Parent/Child reindex with generation cutover.
+    - [ ] G11.9E Go Tavily/Firecrawl/Exa/Bocha/model-built-in Search parity,
+          SearXNG removal, and legacy Next search deletion.
+    - [ ] G11.9F Postgres-encrypted administrator provider configuration,
+          Docker-Secret master key, and bounded real connection tests.
+    - [ ] G11.9G Knowledge/Web/model fusion, `[K]`/`[W]` citations, diagnostics,
+          and clean-copy/live closure.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 
