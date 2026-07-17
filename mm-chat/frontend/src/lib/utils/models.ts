@@ -1,5 +1,92 @@
 import { ModelInfo } from "@/services/api/chatService";
 
+const IMAGE_GENERATION_MODEL_PREFIXES = [
+  "gpt-image-",
+  "dall-e-",
+  "imagen-",
+] as const;
+
+const IMAGE_ANALYSIS_INTENT_PATTERNS = [
+  /(?:不要|不用|无需|别|禁止|停止).{0,6}(?:生成|创建|创作|制作|设计|画|绘制|生图)/u,
+  /(?:分析|识别|描述|解释|总结|读取|提取).{0,8}(?:这|该|上面|以下)?(?:张|幅|个)?(?:图片|图像|照片|截图)/u,
+  /(?:这|该|上面|以下)(?:张|幅|个)?(?:图片|图像|照片|截图).{0,8}(?:是|有|包含|写了|显示)/u,
+  /(?:图片|图像|照片|截图).{0,8}(?:的)?(?:描述|分析|解释|识别|内容|文字)/u,
+  /(?:analy[sz]e|describe|explain|identify|recognize|read|extract).{0,24}(?:image|picture|photo|screenshot)/i,
+  /(?:do\s+not|don't|dont|never|stop)\s+(?:generate|create|make|design|draw|paint)/i,
+] as const;
+
+const IMAGE_GENERATION_INTENT_PATTERNS = [
+  /(?:生成|创建|创作|制作|设计|做)(?:一|两|三|几|多)?(?:张|幅|个|套)?[^，。！？\n]{0,20}(?:图片|图像|照片|海报|插画|头像|壁纸|封面|配图)/u,
+  /(?:生|出)(?:一|两|三|几|多)?(?:张|幅|个)?图/u,
+  /(?:帮我|请|给我|为我)?(?:画|绘制|描绘)(?:一|两|三|几|个|只|幅|张|些)/u,
+  /(?:generate|create|make|design)\s+(?:an?\s+|some\s+)?(?:image|picture|photo|poster|illustration|avatar|wallpaper|cover)/i,
+  /(?:draw|paint|illustrate)\s+(?:me\s+)?(?:an?\s+|some\s+)?\S+/i,
+] as const;
+
+export interface ImageGenerationRouteOptions {
+  selectedModel: string;
+  availableModels: ModelInfo[];
+  prompt: string;
+  hasAttachments?: boolean;
+}
+
+/**
+ * Keep this capability check aligned with the Go chat handler. The backend
+ * routes these model families through the image job executor instead of chat.
+ */
+export const isImageGenerationModel = (model: string): boolean => {
+  const separatorIndex = model.indexOf(":");
+  const modelId = separatorIndex >= 0 ? model.slice(separatorIndex + 1) : model;
+  const normalizedModelId = modelId.trim().toLowerCase();
+  return IMAGE_GENERATION_MODEL_PREFIXES.some((prefix) =>
+    normalizedModelId.startsWith(prefix),
+  );
+};
+
+export const hasExplicitImageGenerationIntent = (prompt: string): boolean => {
+  const normalizedPrompt = prompt.trim();
+  if (!normalizedPrompt) return false;
+  if (
+    IMAGE_ANALYSIS_INTENT_PATTERNS.some((pattern) =>
+      pattern.test(normalizedPrompt),
+    )
+  ) {
+    return false;
+  }
+  return IMAGE_GENERATION_INTENT_PATTERNS.some((pattern) =>
+    pattern.test(normalizedPrompt),
+  );
+};
+
+/**
+ * Select an enabled image model for an explicit text-to-image request without
+ * changing the user's selected chat model. Existing attachments disable the
+ * automatic route because the current image executor is prompt-only.
+ */
+export const resolveImageGenerationRoute = ({
+  selectedModel,
+  availableModels,
+  prompt,
+  hasAttachments = false,
+}: ImageGenerationRouteOptions): string => {
+  if (
+    isImageGenerationModel(selectedModel) ||
+    hasAttachments ||
+    !hasExplicitImageGenerationIntent(prompt)
+  ) {
+    return selectedModel;
+  }
+
+  const selectedProviderId = selectedModel.split(":", 1)[0];
+  const imageModels = availableModels.filter((model) =>
+    isImageGenerationModel(model.name),
+  );
+  const sameProviderImageModel = imageModels.find(
+    (model) => model.name.split(":", 1)[0] === selectedProviderId,
+  );
+  return sameProviderImageModel?.name || imageModels[0]?.name || selectedModel;
+};
+
 /**
  * Default Gemini models configuration
  */

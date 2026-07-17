@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { parseModelString } from "../lib/utils/model";
-import { resolveSelectedModel } from "../lib/utils/models";
+import {
+  hasExplicitImageGenerationIntent,
+  isImageGenerationModel,
+  resolveImageGenerationRoute,
+  resolveSelectedModel,
+} from "../lib/utils/models";
 import { SERVER_DEFAULT_PROVIDER_ID } from "../lib/defaultConfig/shared";
 import type { ModelInfo } from "../services/api/chatService";
 
@@ -94,5 +99,107 @@ describe("selected model resolution", () => {
 
   it("returns an empty string when no model is available", () => {
     expect(resolveSelectedModel([], "missing:model", "server")).toBe("");
+  });
+});
+
+describe("image generation routing", () => {
+  const imageModels: ModelInfo[] = [
+    ...availableModels,
+    {
+      name: "custom:gpt-image-2",
+      displayName: "GPT Image 2",
+      description: "Image generation",
+      providerName: "Custom",
+    },
+    {
+      name: "server:imagen-4.0-generate-001",
+      displayName: "Imagen 4",
+      description: "Image generation",
+      providerName: "Server",
+    },
+  ];
+
+  it("recognizes only backend-supported image model families", () => {
+    expect(isImageGenerationModel("custom:gpt-image-2")).toBe(true);
+    expect(isImageGenerationModel("server:dall-e-3")).toBe(true);
+    expect(isImageGenerationModel("GEMINI:imagen-4.0-generate-001")).toBe(true);
+    expect(isImageGenerationModel("custom:gpt-4.1")).toBe(false);
+    expect(isImageGenerationModel("GEMINI:gemini-2.5-flash-image")).toBe(false);
+  });
+
+  it("detects explicit Chinese and English generation requests", () => {
+    expect(hasExplicitImageGenerationIntent("帮我生成一张赛博朋克海报")).toBe(
+      true,
+    );
+    expect(hasExplicitImageGenerationIntent("画一只戴墨镜的猫")).toBe(true);
+    expect(
+      hasExplicitImageGenerationIntent("Create an illustration of Mars"),
+    ).toBe(true);
+  });
+
+  it("does not confuse image understanding with image generation", () => {
+    expect(hasExplicitImageGenerationIntent("分析这张图片的内容")).toBe(false);
+    expect(hasExplicitImageGenerationIntent("描述图片里有什么")).toBe(false);
+    expect(hasExplicitImageGenerationIntent("不要生成图片，只回答文字")).toBe(
+      false,
+    );
+    expect(hasExplicitImageGenerationIntent("解释 image generation API")).toBe(
+      false,
+    );
+  });
+
+  it("prefers an image model from the currently selected provider", () => {
+    expect(
+      resolveImageGenerationRoute({
+        selectedModel: "custom:model-a",
+        availableModels: imageModels,
+        prompt: "生成一张图片",
+      }),
+    ).toBe("custom:gpt-image-2");
+  });
+
+  it("falls back to another enabled provider image model", () => {
+    expect(
+      resolveImageGenerationRoute({
+        selectedModel: "missing:model-a",
+        availableModels: imageModels,
+        prompt: "make a poster for the launch",
+      }),
+    ).toBe("custom:gpt-image-2");
+  });
+
+  it("keeps the selected model for attachments, non-image intent, or no image model", () => {
+    expect(
+      resolveImageGenerationRoute({
+        selectedModel: "custom:model-a",
+        availableModels: imageModels,
+        prompt: "生成一张图片",
+        hasAttachments: true,
+      }),
+    ).toBe("custom:model-a");
+    expect(
+      resolveImageGenerationRoute({
+        selectedModel: "custom:model-a",
+        availableModels: imageModels,
+        prompt: "讲讲图像生成的工作原理",
+      }),
+    ).toBe("custom:model-a");
+    expect(
+      resolveImageGenerationRoute({
+        selectedModel: "custom:model-a",
+        availableModels,
+        prompt: "生成一张图片",
+      }),
+    ).toBe("custom:model-a");
+  });
+
+  it("keeps an explicitly selected image model", () => {
+    expect(
+      resolveImageGenerationRoute({
+        selectedModel: "custom:gpt-image-2",
+        availableModels: imageModels,
+        prompt: "a fox in the snow",
+      }),
+    ).toBe("custom:gpt-image-2");
   });
 });

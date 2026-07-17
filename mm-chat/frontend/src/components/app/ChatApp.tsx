@@ -37,7 +37,12 @@ import { useMemoryStore } from "@/store/core/memoryStore";
 import { appDb } from "@/store/storage/storageConfig";
 import { formatModelName } from "@/store/core/settingsStore";
 import { handleTokenUsageUpdate } from "@/lib/utils/message";
-import { buildAvailableModels, resolveSelectedModel } from "@/lib/utils/models";
+import {
+  buildAvailableModels,
+  isImageGenerationModel,
+  resolveImageGenerationRoute,
+  resolveSelectedModel,
+} from "@/lib/utils/models";
 import {
   processMessageForSending,
   createBotMessagePlaceholder,
@@ -1035,6 +1040,13 @@ const ChatApp = () => {
     const generation = beginActiveGeneration();
 
     try {
+      const routedModel = resolveImageGenerationRoute({
+        selectedModel,
+        availableModels,
+        prompt: text,
+        hasAttachments: attachments.length > 0,
+      });
+      const routesToImageGeneration = isImageGenerationModel(routedModel);
       let targetSessionId = serverReadState.currentSessionId;
       if (!targetSessionId) {
         targetSessionId = await createServerSession();
@@ -1080,40 +1092,47 @@ const ChatApp = () => {
             })
           : [];
       if (!isGenerationRunActive(generation)) return;
-      const skillResolution = await resolveSkillsForMessage({
-        message: text,
-        selectedModel,
-        locale,
-        installedSkills,
-        activeSkillIds: effectiveContext.activeSkillIds,
-        autoSelect: false,
-        signal: generation.controller.signal,
-      });
-      if (!isGenerationRunActive(generation)) return;
-      const pluginResolution = await orchestrateServerPlugins({
-        message: text,
-        selectedModel,
-        installedPlugins,
-        pluginConfigs,
-        activePluginIds: effectiveContext.activePluginIds,
-        signal: generation.controller.signal,
-      });
-      if (!isGenerationRunActive(generation)) return;
+      let skillContext = "";
+      let pluginContext = "";
+      if (!routesToImageGeneration) {
+        const skillResolution = await resolveSkillsForMessage({
+          message: text,
+          selectedModel,
+          locale,
+          installedSkills,
+          activeSkillIds: effectiveContext.activeSkillIds,
+          autoSelect: false,
+          signal: generation.controller.signal,
+        });
+        if (!isGenerationRunActive(generation)) return;
+        skillContext = skillResolution.context;
+
+        const pluginResolution = await orchestrateServerPlugins({
+          message: text,
+          selectedModel,
+          installedPlugins,
+          pluginConfigs,
+          activePluginIds: effectiveContext.activePluginIds,
+          signal: generation.controller.signal,
+        });
+        if (!isGenerationRunActive(generation)) return;
+        pluginContext = pluginResolution.context;
+      }
       const systemInstruction = [
         effectiveContext.systemInstruction,
-        skillResolution.context,
-        pluginResolution.context,
+        skillContext,
+        pluginContext,
       ]
         .filter((section): section is string => Boolean(section?.trim()))
         .join("\n\n");
       const runtimeProvider =
-        await buildRuntimeProviderConfigForModel(selectedModel);
+        await buildRuntimeProviderConfigForModel(routedModel);
 
       await sendServerMessageAndStream({
         sessionId: targetSessionId,
         content: text,
         attachments: toServerMessageAttachments(uploadedAttachments),
-        model: selectedModel,
+        model: routedModel,
         config: buildServerKnowledgeStreamConfig(
           serverSessionChatConfig,
           selectedKnowledgeCollectionIds,
