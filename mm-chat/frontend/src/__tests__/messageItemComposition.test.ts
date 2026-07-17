@@ -16,6 +16,8 @@ describe("MessageItem composition", () => {
     );
 
     expect(messageItem).toContain("MessageAttachmentView");
+    expect(messageItem).toContain("ImageGenerationProgress");
+    expect(messageItem).toContain("isImageGenerationInProgress");
     expect(messageItem).toContain(
       "const skillInvocations = message.skillInvocations || []",
     );

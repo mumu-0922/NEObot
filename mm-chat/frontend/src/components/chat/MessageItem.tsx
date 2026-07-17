@@ -16,6 +16,7 @@ import Tooltip from "../ui/Tooltip";
 import Artifact from "../content/Artifact";
 import MessageOutputRenderer from "../content/MessageOutputRenderer";
 import MessageAttachmentView from "./MessageAttachmentView";
+import ImageGenerationProgress from "./ImageGenerationProgress";
 import RAGBlock from "../knowledge/RAGBlock";
 import KnowledgeEvidenceBlock from "../knowledge/KnowledgeEvidenceBlock";
 import AddToKnowledgeModal from "../knowledge/AddToKnowledgeModal";
@@ -71,6 +72,7 @@ import {
 } from "@/lib/utils/markdownFiles";
 import { copyTextToClipboard } from "@/lib/utils/clipboard";
 import { getNextTypewriterFrame } from "@/lib/utils/typewriter";
+import { isImageGenerationModel } from "@/lib/utils/models";
 import {
   createSpeechSynthesisPoller,
   type DisposablePoller,
@@ -1031,6 +1033,8 @@ const MessageItem: React.FC<MessageItemProps> = ({
   );
   const isLoading =
     (isTyping || isWaitingForResponse) && !displayedContent && !hasOutputEvents;
+  const isImageGenerationInProgress =
+    isLoading && isImageGenerationModel(message.model || "");
 
   // Detect error messages for styling (starts with Error:)
   const isErrorMessage =
@@ -1488,16 +1492,20 @@ const MessageItem: React.FC<MessageItemProps> = ({
 
               {/* Loading State */}
               {isLoading ? (
-                <div
-                  className="relative -top-0.5 h-8 w-14 text-red-300 dark:text-red-400"
-                  role="status"
-                  aria-label={t("generatingResponse")}
-                >
-                  <BubblesLoading
-                    className="w-full h-full"
-                    aria-hidden="true"
-                  />
-                </div>
+                isImageGenerationInProgress ? (
+                  <ImageGenerationProgress startedAt={message.timestamp} />
+                ) : (
+                  <div
+                    className="relative -top-0.5 h-8 w-14 text-red-300 dark:text-red-400"
+                    role="status"
+                    aria-label={t("generatingResponse")}
+                  >
+                    <BubblesLoading
+                      className="w-full h-full"
+                      aria-hidden="true"
+                    />
+                  </div>
+                )
               ) : (
                 <MessageOutputRenderer
                   message={message}

@@ -1045,6 +1045,7 @@ describe("chat store server read path", () => {
   it("sends a server user message and streams the assistant into the snapshot only", async () => {
     const localMessage = makeMessage("local-m1", "user");
     const generationSnapshots: unknown[] = [];
+    const draftSnapshots: unknown[] = [];
     mocks.streamService.streamAssistantMessage.mockImplementation(
       async (_input: unknown, handlers?: any) => {
         handlers?.onStarted?.({
@@ -1056,6 +1057,15 @@ describe("chat store server read path", () => {
         });
         generationSnapshots.push(
           useChatStore.getState().serverReadState.generation,
+        );
+        draftSnapshots.push(
+          useChatStore
+            .getState()
+            .serverReadState.activeMessages.map((message) => ({
+              id: message.id,
+              role: message.role,
+              parentMessageId: message.parentMessageId,
+            })),
         );
         handlers?.onDelta?.({
           type: "message.delta",
@@ -1128,6 +1138,12 @@ describe("chat store server read path", () => {
         activeServerRunId: "run-1",
         error: null,
       },
+    ]);
+    expect(draftSnapshots).toEqual([
+      [
+        { id: "m3", role: "user", parentMessageId: undefined },
+        { id: "m4", role: "model", parentMessageId: "m3" },
+      ],
     ]);
     expect(state.serverReadState.generation).toEqual({
       status: "completed",

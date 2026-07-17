@@ -1202,6 +1202,7 @@ export const useChatStore = create<ChatState>()(
                   role: "model",
                   content: "",
                   timestamp: Date.now(),
+                  parentMessageId: userMessage.id,
                   ...(model ? { model } : {}),
                 },
               );
