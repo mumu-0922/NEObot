@@ -92,6 +92,35 @@ func TestKnowledgeConsentRAGAnswerGovernanceGateFailsClosedWhenDependencyMissing
 	}
 }
 
+func TestKnowledgeConsentRAGRerankGovernanceGateRequiresExactRerankConsent(t *testing.T) {
+	collectionID := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	reader := &fakeRAGConsentReader{
+		query: []knowledge.ProcessingConsent{validRerankConsent()},
+		collections: map[string][]knowledge.ProcessingConsent{
+			collectionID: {validRerankConsent()},
+		},
+	}
+	gate := NewKnowledgeConsentRAGRerankGovernanceGate(reader)
+	if err := gate.AuthorizeRAGRerank(context.Background(), []string{collectionID}); err != nil {
+		t.Fatalf("AuthorizeRAGRerank() error = %v", err)
+	}
+
+	reader.query[0].Purposes = []string{"answer"}
+	if err := gate.AuthorizeRAGRerank(context.Background(), []string{collectionID}); !errors.Is(err, ErrRAGRerankGovernanceRequired) {
+		t.Fatalf("wrong-purpose error = %v", err)
+	}
+}
+
+func TestKnowledgeConsentRAGRerankGovernanceGateFailsClosedWithoutDependency(t *testing.T) {
+	err := (*KnowledgeConsentRAGRerankGovernanceGate)(nil).AuthorizeRAGRerank(
+		context.Background(),
+		[]string{"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},
+	)
+	if !errors.Is(err, ErrRAGDependencyUnavailable) {
+		t.Fatalf("error = %v, want ErrRAGDependencyUnavailable", err)
+	}
+}
+
 type fakeRAGConsentReader struct {
 	query           []knowledge.ProcessingConsent
 	collections     map[string][]knowledge.ProcessingConsent
@@ -127,4 +156,12 @@ func validAnswerConsent(processor string, modelID string) knowledge.ProcessingCo
 		Purposes:            []string{"answer"},
 		DataTypes:           []string{"text/plain"},
 	}
+}
+
+func validRerankConsent() knowledge.ProcessingConsent {
+	identity := knowledge.SingleUserRerankIdentity()
+	consent := validAnswerConsent(identity.Processor, identity.ModelID)
+	consent.EndpointID = identity.EndpointID
+	consent.Purposes = []string{"rerank"}
+	return consent
 }

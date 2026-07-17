@@ -26,6 +26,22 @@ class FakeQueryEmbeddingGateway:
         return tuple(0.001 for _ in range(1024))
 
 
+class FakeRerankGateway:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.calls: list[tuple[str, tuple[str, ...]]] = []
+
+    async def rerank(
+        self,
+        query: str,
+        documents: tuple[str, ...],
+    ) -> tuple[tuple[int, float], ...]:
+        self.calls.append((query, documents))
+        if self.fail:
+            raise RetryableJobError("JINA_GATEWAY_REQUEST_FAILED")
+        return tuple((index, 0.75 - index) for index in range(len(documents)))
+
+
 def test_recursive_redaction_removes_credentials_and_payloads() -> None:
     result = redact(
         {
@@ -147,6 +163,70 @@ async def test_private_query_embedding_route_fails_closed_without_leaks() -> Non
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "QUERY_EMBEDDING_UNAVAILABLE"
     assert "must-not-leak" not in response.text
+
+
+async def test_private_rerank_route_authenticates_and_bounds_output() -> None:
+    metrics = Metrics.create()
+    gateway = FakeRerankGateway()
+    app = create_health_app(
+        ReadinessState(),
+        metrics,
+        reranker=gateway,
+        internal_token=INTERNAL_TOKEN,
+    )
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://worker.test",
+    ) as client:
+        assert (
+            await client.post(
+                "/internal/retrieval/rerank",
+                json={"query": "private", "documents": ["source"]},
+            )
+        ).status_code == 401
+        response = await client.post(
+            "/internal/retrieval/rerank",
+            headers={"Authorization": f"Bearer {INTERNAL_TOKEN}"},
+            json={"query": "private", "documents": ["first", "second"]},
+        )
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json() == {
+        "model": "jina-reranker-v3",
+        "results": [
+            {"index": 0, "relevanceScore": 0.75},
+            {"index": 1, "relevanceScore": -0.25},
+        ],
+    }
+    assert gateway.calls == [("private", ("first", "second"))]
+
+
+async def test_private_rerank_route_fails_closed_without_source_leaks() -> None:
+    metrics = Metrics.create()
+    gateway = FakeRerankGateway(fail=True)
+    app = create_health_app(
+        ReadinessState(),
+        metrics,
+        reranker=gateway,
+        internal_token=INTERNAL_TOKEN,
+    )
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://worker.test",
+    ) as client:
+        response = await client.post(
+            "/internal/retrieval/rerank",
+            headers={"Authorization": f"Bearer {INTERNAL_TOKEN}"},
+            json={"query": "private-query", "documents": ["private-source"]},
+        )
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "RERANK_UNAVAILABLE"
+    assert "private-query" not in response.text
+    assert "private-source" not in response.text
 
 
 def test_metrics_have_only_bounded_labels() -> None:

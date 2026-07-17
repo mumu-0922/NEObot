@@ -398,3 +398,72 @@ frontend Prettier check             passed
 
 Rollback: restore the paragraph and all locale keys together. No retrieval,
 citation metadata, or accessibility contract changed.
+
+## 2026-07-17 — G11.9C.3 Jina rerank and global cross-collection TopK
+
+Outcome: G11.9C is complete. Candidate references are globally fused, source
+text is reauthorized and hydrated inside Go, exact query/collection rerank
+consent is checked before egress, and the private Python boundary calls
+`jina-reranker-v3`. Scores `>= 0.0` survive and at most five chunks across all
+selected collections reach answer generation.
+
+Implemented boundaries:
+
+- private `POST /internal/retrieval/rerank` uses the existing internal Bearer,
+  caps the query at 2048 bytes, accepts at most 20 documents/64 KiB each/1 MiB
+  total, and requires one unique finite score for every input index;
+- Jina request pins `top_n` to input count and disables returned documents and
+  embeddings; fixed errors never echo query, source text, keys, token, URL, or
+  provider response;
+- Go authorizes before hydration/egress, hydrates 20 candidates in `16 + 4`
+  batches, prefers a standalone rewritten query, applies the global threshold
+  and Top5, and persists only `rerankStatus=applied|degraded|disabled`;
+- missing governance sends no source text and retains bounded RRF order;
+  provider/response failure degrades to RRF Top5, while consent/DB failure stays
+  an observable dependency error; a valid all-negative rerank is a normal miss;
+- development startup provisions fixed Jina rerank governance plus owner query
+  and all current/future Personal collection consent.
+
+The first source-built live replay exposed one cross-layer defect before
+promotion: adding rerank consent advanced `collection_processing_revision`, but
+rerank is query-time authority and does not change indexed bytes. Both active
+collections became one revision newer than their published materializations,
+so all candidates were correctly fenced out. `collectionConsentAffectsProjection`
+now excludes both `answer` and `rerank`; parse/passage-embedding consent still
+invalidates the projection. Focused unit/Postgres tests cover the rule. The two
+local revisions created by the uncommitted faulty build were restored with
+exact ID/current-revision guards, and a subsequent backend restart preserved
+revision parity.
+
+Real supplier/runtime proof:
+
+```text
+private endpoint model                       jina-reranker-v3
+private endpoint positive/negative score     0.57441278 / -0.08286887
+governance head                              active, head revision 2
+owner query + both collection consents       granted, rerank/text/plain
+real gpt-5.6-sol positive                    completed / answered / [K1]
+positive diagnostic                          rerankStatus=applied
+rerank URL isolated to 127.0.0.1:1           answered / [K1] / degraded
+restored two-collection query                 applied / [K1],[K2]
+citation collection count                    2
+temporary active G11.9C.3 conversations       0
+backend/rag-worker                            healthy / healthy
+```
+
+Verification:
+
+```text
+Python Ruff / strict Mypy                    passed / passed
+Python focused rerank/health tests           30 passed
+Go Knowledge/ragproviders/config tests       passed
+Go focused chat RAG/rerank tests             passed
+Go vet ./...                                 passed
+Docker backend + RAG source builds           passed / passed
+real applied/degraded/cross-collection       passed / passed / passed
+```
+
+Rollback: leave `RAG_SOURCE_GATEWAY_TOKEN` blank or remove the reranker wiring
+to keep hybrid/RRF Top5. Do not roll back the query-time consent revision rule;
+doing so silently invalidates otherwise current search projections. G11.9D was
+not started.

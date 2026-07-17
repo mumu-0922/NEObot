@@ -9,7 +9,10 @@ import (
 	"neo-chat/mm-chat/backend/internal/knowledge"
 )
 
-var ErrRAGAnswerGovernanceRequired = errors.New("rag answer governance required")
+var (
+	ErrRAGAnswerGovernanceRequired = errors.New("rag answer governance required")
+	ErrRAGRerankGovernanceRequired = errors.New("rag rerank governance required")
+)
 
 type RAGAnswerGovernanceInput struct {
 	ModelRef              ModelRef
@@ -30,6 +33,10 @@ type RAGAnswerGovernanceGate interface {
 	AuthorizeRAGAnswer(context.Context, RAGAnswerGovernanceInput) (RAGAnswerAuthority, error)
 }
 
+type RAGRerankGovernanceGate interface {
+	AuthorizeRAGRerank(context.Context, []string) error
+}
+
 type RAGAnswerConsentReader interface {
 	ListQueryConsents(context.Context) ([]knowledge.ProcessingConsent, error)
 	ListCollectionConsents(context.Context, string) ([]knowledge.ProcessingConsent, error)
@@ -39,8 +46,16 @@ type KnowledgeConsentRAGAnswerGovernanceGate struct {
 	Reader RAGAnswerConsentReader
 }
 
+type KnowledgeConsentRAGRerankGovernanceGate struct {
+	Reader RAGAnswerConsentReader
+}
+
 func NewKnowledgeConsentRAGAnswerGovernanceGate(reader RAGAnswerConsentReader) *KnowledgeConsentRAGAnswerGovernanceGate {
 	return &KnowledgeConsentRAGAnswerGovernanceGate{Reader: reader}
+}
+
+func NewKnowledgeConsentRAGRerankGovernanceGate(reader RAGAnswerConsentReader) *KnowledgeConsentRAGRerankGovernanceGate {
+	return &KnowledgeConsentRAGRerankGovernanceGate{Reader: reader}
 }
 
 func (g *KnowledgeConsentRAGAnswerGovernanceGate) AuthorizeRAGAnswer(
@@ -92,10 +107,66 @@ func (g *KnowledgeConsentRAGAnswerGovernanceGate) AuthorizeRAGAnswer(
 }
 
 func selectRAGAnswerConsent(consents []knowledge.ProcessingConsent, providerID string, modelID string) (knowledge.ProcessingConsent, bool) {
+	return selectRAGPurposeConsent(consents, providerID, modelID, "answer")
+}
+
+func (g *KnowledgeConsentRAGRerankGovernanceGate) AuthorizeRAGRerank(
+	ctx context.Context,
+	selectedCollectionIDs []string,
+) error {
+	if g == nil || g.Reader == nil {
+		return ErrRAGDependencyUnavailable
+	}
+	if len(selectedCollectionIDs) == 0 {
+		return ErrRAGRerankGovernanceRequired
+	}
+	identity := knowledge.SingleUserRerankIdentity()
+	queryConsents, err := g.Reader.ListQueryConsents(ctx)
+	if err != nil {
+		return fmt.Errorf("list rag rerank query consents: %w", err)
+	}
+	if _, ok := selectRAGPurposeConsent(
+		queryConsents,
+		identity.Processor,
+		identity.ModelID,
+		"rerank",
+	); !ok {
+		return ErrRAGRerankGovernanceRequired
+	}
+	for _, collectionID := range selectedCollectionIDs {
+		collectionID = strings.TrimSpace(collectionID)
+		if collectionID == "" {
+			return ErrRAGRerankGovernanceRequired
+		}
+		collectionConsents, err := g.Reader.ListCollectionConsents(ctx, collectionID)
+		if err != nil {
+			if errors.Is(err, knowledge.ErrCollectionNotFound) || errors.Is(err, knowledge.ErrUnauthenticated) {
+				return ErrRAGRerankGovernanceRequired
+			}
+			return fmt.Errorf("list rag rerank collection consents: %w", err)
+		}
+		if _, ok := selectRAGPurposeConsent(
+			collectionConsents,
+			identity.Processor,
+			identity.ModelID,
+			"rerank",
+		); !ok {
+			return ErrRAGRerankGovernanceRequired
+		}
+	}
+	return nil
+}
+
+func selectRAGPurposeConsent(
+	consents []knowledge.ProcessingConsent,
+	providerID string,
+	modelID string,
+	purpose string,
+) (knowledge.ProcessingConsent, bool) {
 	providerID = strings.TrimSpace(providerID)
 	modelID = strings.TrimSpace(modelID)
 	for _, consent := range consents {
-		if !ragConsentMatchesModel(consent, providerID, modelID) || !ragConsentAllowsAnswer(consent) {
+		if !ragConsentMatchesModel(consent, providerID, modelID) || !ragConsentAllowsPurpose(consent, purpose) {
 			continue
 		}
 		return consent, true
@@ -115,10 +186,14 @@ func ragConsentMatchesModel(consent knowledge.ProcessingConsent, providerID stri
 }
 
 func ragConsentAllowsAnswer(consent knowledge.ProcessingConsent) bool {
+	return ragConsentAllowsPurpose(consent, "answer")
+}
+
+func ragConsentAllowsPurpose(consent knowledge.ProcessingConsent, purpose string) bool {
 	if consent.Decision != "granted" || consent.EffectiveStatus != "granted" {
 		return false
 	}
-	return containsString(consent.Purposes, "answer") && containsString(consent.DataTypes, "text/plain")
+	return containsString(consent.Purposes, purpose) && containsString(consent.DataTypes, "text/plain")
 }
 
 func containsString(values []string, want string) bool {

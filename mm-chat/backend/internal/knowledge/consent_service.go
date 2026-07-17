@@ -17,7 +17,10 @@ var queryConsentPurposes = map[string]bool{
 
 func collectionConsentAffectsProjection(purposes []string) bool {
 	for _, purpose := range purposes {
-		if strings.TrimSpace(purpose) != "answer" {
+		switch strings.TrimSpace(purpose) {
+		case "answer", "rerank":
+			continue
+		default:
 			return true
 		}
 	}

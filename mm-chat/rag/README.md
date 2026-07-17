@@ -264,6 +264,12 @@ Endpoints on the private listener (default `:8081`):
   `RAG_JINA_API_KEY` and `RAG_SOURCE_GATEWAY_TOKEN` are configured, accepts one
   bounded JSON `query`, and returns one validated 1024-dimensional vector. See
   [`../docs/contracts/rag-query-hybrid-retrieval.md`](../docs/contracts/rag-query-hybrid-retrieval.md).
+- `POST /internal/retrieval/rerank`: internal Bearer-protected
+  `jina-reranker-v3` endpoint. It accepts one bounded query and at most 20
+  already-authorized source documents, disables returned documents/embeddings,
+  and returns exactly one finite score for every input index. Provider failures
+  are fixed and redacted; Go owns consent, fallback, threshold, global Top5,
+  citation, and persisted diagnostic policy.
 
 ## Replay
 

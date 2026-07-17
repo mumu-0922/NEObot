@@ -8,11 +8,13 @@ import (
 	"neo-chat/mm-chat/backend/internal/auth"
 )
 
-func TestCollectionAnswerConsentDoesNotInvalidateSearchProjection(t *testing.T) {
-	if collectionConsentAffectsProjection([]string{"answer"}) {
-		t.Fatal("answer-only consent unexpectedly affects the search projection")
+func TestCollectionQueryTimeConsentsDoNotInvalidateSearchProjection(t *testing.T) {
+	for _, purposes := range [][]string{{"answer"}, {"rerank"}, {"answer", "rerank"}} {
+		if collectionConsentAffectsProjection(purposes) {
+			t.Fatalf("query-time purposes %v unexpectedly affect the search projection", purposes)
+		}
 	}
-	for _, purposes := range [][]string{{"parse"}, {"passage_embedding"}, {"answer", "rerank"}} {
+	for _, purposes := range [][]string{{"parse"}, {"passage_embedding"}, {"parse", "rerank"}} {
 		if !collectionConsentAffectsProjection(purposes) {
 			t.Fatalf("purposes %v must affect the search projection", purposes)
 		}

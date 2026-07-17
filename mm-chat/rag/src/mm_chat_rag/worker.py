@@ -21,6 +21,7 @@ from mm_chat_rag.handlers import (
 from mm_chat_rag.health import ReadinessState, create_health_app
 from mm_chat_rag.jina_gateway import (
     JinaQueryEmbeddingGateway,
+    JinaRerankGateway,
     build_jina_passage_embedding_handler_dependencies,
 )
 from mm_chat_rag.job_handler_dependencies import (
@@ -192,12 +193,15 @@ class Worker:
         await self._refresh_readiness()
 
         query_embedding = None
+        reranker = None
         if self.settings.jina_api_key and self.settings.source_gateway_token:
             query_embedding = JinaQueryEmbeddingGateway(self.settings.jina_api_key)
+            reranker = JinaRerankGateway(self.settings.jina_api_key)
         app = create_health_app(
             self.state,
             self.metrics,
             query_embedding=query_embedding,
+            reranker=reranker,
             internal_token=self.settings.source_gateway_token,
         )
         server = _NoSignalServer(

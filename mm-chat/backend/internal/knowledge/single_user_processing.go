@@ -39,6 +39,28 @@ func SingleUserAnswerGovernanceManifest(identity ProcessorModelIdentity) Governa
 	}
 }
 
+func SingleUserRerankIdentity() ProcessorModelIdentity {
+	return ProcessorModelIdentity{
+		Processor: "jina", EndpointID: "hosted-main", ModelID: "jina-reranker-v3",
+	}
+}
+
+func SingleUserRerankGovernanceManifest() GovernanceManifest {
+	identity := SingleUserRerankIdentity()
+	return GovernanceManifest{
+		Processor:        identity.Processor,
+		EndpointID:       identity.EndpointID,
+		ModelID:          identity.ModelID,
+		ModelAPIVersion:  "api-20260717",
+		AllowedPurposes:  []string{"rerank"},
+		AllowedDataTypes: []string{"text/plain"},
+		Region:           "global",
+		RetentionPolicy:  "none",
+		DeletionContract: "delete",
+		TrainingUse:      "disabled",
+	}
+}
+
 // BootstrapSingleUserNativeProcessing ensures the local parser authority and
 // consent exist for every personal collection. Replaying this operation is
 // idempotent and keeps governance owned by the server rather than the browser.
@@ -140,6 +162,62 @@ func BootstrapSingleUserAnswerProcessing(
 			); consentErr != nil {
 				return fmt.Errorf(
 					"ensure answer consent for collection %s: %w",
+					collection.ID,
+					consentErr,
+				)
+			}
+		}
+		if page.NextCursor == "" {
+			return nil
+		}
+		cursor = page.NextCursor
+	}
+}
+
+// BootstrapSingleUserRerankProcessing grants the fixed owner and every
+// existing personal collection permission to send the query and already
+// reauthorized source text to the server-owned Jina reranker.
+func BootstrapSingleUserRerankProcessing(
+	ctx context.Context,
+	service *Service,
+	governance *GovernanceService,
+	owner auth.User,
+) error {
+	if service == nil || governance == nil {
+		return ErrDatabaseRequired
+	}
+	head, err := governance.Apply(ctx, SingleUserRerankGovernanceManifest())
+	if err != nil {
+		return fmt.Errorf("ensure rerank provider governance: %w", err)
+	}
+	identity := ProcessorModelIdentity{
+		Processor: head.Processor, EndpointID: head.EndpointID, ModelID: head.ModelID,
+	}
+	actorCtx := auth.WithUser(ctx, owner)
+	if _, err := service.PutQueryConsentForModel(actorCtx, identity, PutConsentInput{
+		Purposes: []string{"rerank"}, DataTypes: []string{"text/plain"}, PolicyVersion: "v1",
+	}); err != nil {
+		return fmt.Errorf("ensure owner rerank query consent: %w", err)
+	}
+	cursor := ""
+	for {
+		page, listErr := service.ListCollections(actorCtx, ListCollectionsInput{
+			Scope: ScopePersonal, Cursor: cursor, Limit: maximumPageLimit,
+		})
+		if listErr != nil {
+			return fmt.Errorf("list single-user collections for rerank provider: %w", listErr)
+		}
+		for _, collection := range page.Items {
+			if _, consentErr := service.PutCollectionConsentForModel(
+				actorCtx,
+				collection.ID,
+				identity,
+				PutConsentInput{
+					Purposes: []string{"rerank"}, DataTypes: []string{"text/plain"}, PolicyVersion: "v1",
+				},
+			); consentErr != nil {
+				return fmt.Errorf(
+					"ensure rerank consent for collection %s: %w",
 					collection.ID,
 					consentErr,
 				)

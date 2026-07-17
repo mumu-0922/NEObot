@@ -75,6 +75,7 @@ func autoRAGAnswerProviderMetadata(decision autoRAGDecision) map[string]any {
 		"citationCount":  len(decision.Citations),
 		"citations":      append([]RAGCitation(nil), decision.Citations...),
 		"queryRewritten": decision.QueryRewritten,
+		"rerankStatus":   decision.RerankStatus,
 	}
 	if decision.Authority != nil {
 		metadata["answerGovernance"] = *decision.Authority

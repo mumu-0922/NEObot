@@ -139,6 +139,23 @@ func WithSingleUserAnswerConsent(identity ProcessorModelIdentity) ServiceOption 
 	}
 }
 
+// WithSingleUserRerankConsent makes the server-owned Jina reranker an
+// automatic collection authority for newly created personal Knowledge bases.
+// Existing collections are backfilled by BootstrapSingleUserRerankProcessing.
+func WithSingleUserRerankConsent() ServiceOption {
+	return func(service *Service) {
+		service.automaticCollectionConsents = append(
+			service.automaticCollectionConsents,
+			automaticCollectionConsent{
+				Identity: SingleUserRerankIdentity(),
+				Input: PutConsentInput{
+					Purposes: []string{"rerank"}, DataTypes: []string{"text/plain"}, PolicyVersion: "v1",
+				},
+			},
+		)
+	}
+}
+
 func NewService(repo Repository, options ...ServiceOption) *Service {
 	service := &Service{repo: repo, newID: newUUID}
 	for _, option := range options {

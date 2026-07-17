@@ -74,6 +74,7 @@ type options struct {
 	voiceJobService      *voicejobs.Service
 	ragSourceService     *ragsource.Service
 	ragQueryEmbedder     ragproviders.QueryEmbedder
+	ragReranker          ragproviders.Reranker
 	runtimeConfigRepo    runtimeconfig.ProviderConfigRepository
 }
 
@@ -85,6 +86,31 @@ type ragEvidenceCandidateFetcher interface {
 type knowledgeRAGCandidateSource struct {
 	candidates ragEvidenceCandidateFetcher
 	embedder   ragproviders.QueryEmbedder
+}
+
+type knowledgeRAGReranker struct {
+	client ragproviders.Reranker
+}
+
+func (reranker knowledgeRAGReranker) Rerank(
+	ctx context.Context,
+	query string,
+	documents []string,
+) ([]chat.RAGRerankResult, error) {
+	if reranker.client == nil {
+		return nil, ragproviders.ErrRerankUnavailable
+	}
+	results, err := reranker.client.Rerank(ctx, query, documents)
+	if err != nil {
+		return nil, err
+	}
+	converted := make([]chat.RAGRerankResult, 0, len(results))
+	for _, result := range results {
+		converted = append(converted, chat.RAGRerankResult{
+			Index: result.Index, RelevanceScore: result.RelevanceScore,
+		})
+	}
+	return converted, nil
 }
 
 type fileProviderAttachmentResolver struct {
@@ -478,6 +504,12 @@ func WithRAGQueryEmbedder(embedder ragproviders.QueryEmbedder) Option {
 	}
 }
 
+func WithRAGReranker(reranker ragproviders.Reranker) Option {
+	return func(opts *options) {
+		opts.ragReranker = reranker
+	}
+}
+
 func New(cfg config.Config, opts ...Option) *http.Server {
 	return &http.Server{
 		Addr:              cfg.Addr,
@@ -530,6 +562,18 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		}),
 	}
 	if resolvedOptions.knowledgeService != nil {
+		assemblerOptions := make([]chat.RAGAnswerAssemblerOption, 0, 1)
+		if resolvedOptions.ragReranker != nil {
+			assemblerOptions = append(
+				assemblerOptions,
+				chat.WithRAGEvidenceReranker(
+					knowledgeRAGReranker{client: resolvedOptions.ragReranker},
+					chat.NewKnowledgeConsentRAGRerankGovernanceGate(
+						resolvedOptions.knowledgeService,
+					),
+				),
+			)
+		}
 		chatOptions = append(
 			chatOptions,
 			chat.WithRAGAnswerAssembler(
@@ -539,6 +583,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 						embedder:   resolvedOptions.ragQueryEmbedder,
 					},
 					resolvedOptions.knowledgeService,
+					assemblerOptions...,
 				),
 			),
 			chat.WithRAGAnswerGovernanceGate(

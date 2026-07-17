@@ -81,6 +81,7 @@ const (
 	EnvRAGJinaAPIKey          = "RAG_JINA_API_KEY"
 	EnvDefaultJinaAPIKey      = "DEFAULT_JINA_API_KEY"
 	EnvRAGQueryGatewayURL     = "RAG_QUERY_GATEWAY_URL"
+	EnvRAGRerankGatewayURL    = "RAG_RERANK_GATEWAY_URL"
 	EnvRAGSourceGatewayToken  = "RAG_SOURCE_GATEWAY_TOKEN"
 	EnvAuthMode               = "AUTH_MODE"
 	EnvAuthBootstrapUserID    = "AUTH_BOOTSTRAP_USER_ID"
@@ -171,6 +172,7 @@ type RAGConfig struct {
 	MinerUAPIKey            string
 	JinaAPIKey              string
 	QueryGatewayURL         string
+	RerankGatewayURL        string
 	SourceGatewayToken      string
 	JinaEmbeddingDimensions int
 }
@@ -396,7 +398,12 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 				EnvRAGJinaAPIKey,
 				EnvDefaultJinaAPIKey,
 			),
-			QueryGatewayURL:         optionalEnv(lookup, EnvRAGQueryGatewayURL),
+			QueryGatewayURL: optionalEnv(lookup, EnvRAGQueryGatewayURL),
+			RerankGatewayURL: optionalEnvAliases(
+				lookup,
+				EnvRAGRerankGatewayURL,
+				EnvRAGQueryGatewayURL,
+			),
 			SourceGatewayToken:      optionalEnv(lookup, EnvRAGSourceGatewayToken),
 			JinaEmbeddingDimensions: DefaultRAGJinaDimensions,
 		},

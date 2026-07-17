@@ -1307,7 +1307,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
       - [x] G11.9B.2 Citation helper-copy cleanup: removed the redundant
             verified-evidence sentence and its dead locale keys, and recorded
             the frontend rule against copy that only repeats visible state.
-    - [ ] G11.9C Contextual rewrite, Jina query embedding, hybrid/RRF retrieval,
+    - [x] G11.9C Contextual rewrite, Jina query embedding, hybrid/RRF retrieval,
           and Jina rerank.
       - [x] G11.9C.1 Conditional standalone rewrite and dual-query keyword/CJK
             RRF: only context-dependent follow-ups use the recent six-message
@@ -1320,8 +1320,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
       - [x] G11.9C.2 Private Python Jina `retrieval.query` 1024 Dense lane,
             Postgres keyword/Dense RRF function, conservative `8 chars + 0.48`
             Dense signal gate, and live Go keyword degradation.
-      - [ ] G11.9C.3 Jina rerank, evaluated threshold, RRF-only degradation,
-            and real cross-collection/failure promotion proof.
+      - [x] G11.9C.3 Private `jina-reranker-v3`, global `>= 0.0` threshold and
+            Top5, exact query/collection consent gate, RRF-only degradation,
+            query-time consent revision repair, and real
+            applied/failure/two-collection promotion proof.
     - [ ] G11.9D Structure-aware Parent/Child reindex with generation cutover.
     - [ ] G11.9E Go Tavily/Firecrawl/Exa/Bocha/model-built-in Search parity,
           SearXNG removal, and legacy Next search deletion.

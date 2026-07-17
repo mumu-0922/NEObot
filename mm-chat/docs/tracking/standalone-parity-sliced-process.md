@@ -4932,3 +4932,28 @@ Temporary Postgres `001 -> 027`, runtime ACL, Dense integration, real Jina,
 real `gpt-5.6-sol` `answered/[K1]`, and stopped-Jina keyword degradation proofs
 all passed. The disposable database and chat/session rows were deleted;
 credential-bearing proof files were zeroed. G11.9C.3 rerank remains open.
+
+## 2026-07-17 — G11.9C.3 Private Jina rerank
+
+Go now reauthorizes/hydrates up to 20 global candidates before the private
+Python service submits them to `jina-reranker-v3`. Exact owner-query and every
+selected-collection consent gate source-text egress. Valid scores use the
+evaluated `>= 0.0` threshold and global Top5; governance/provider failure keeps
+bounded pre-rerank RRF order, while DB/consent dependency failures remain
+visible.
+
+The first live replay caught and fixed a projection regression: provisioning
+rerank consent had advanced `collection_processing_revision` even though
+rerank is query-time processing. Rerank-only and Answer-only consent changes no
+longer invalidate published materializations; parse and passage-embedding
+changes still do. Exact guarded repair restored the two local projections, and
+restart preserved revision parity.
+
+Real Jina returned the pinned model and finite positive/negative scores. Real
+`gpt-5.6-sol` produced `answered/[K1]/applied`; isolating only the rerank URL
+produced `answered/[K1]/degraded`; after restoration, one query over both
+selected collections produced `applied` with `[K1]` and `[K2]` from both
+collection IDs. Temporary conversations were deleted. Python Ruff/Mypy and 30
+focused tests, Go focused packages/chat tests and vet, source builds, container
+health, and all three live paths passed. Detailed limits, cleanup, and rollback
+are in `docs/tracking/g11-knowledge-auto-rag-process.md`. G11.9D was not entered.

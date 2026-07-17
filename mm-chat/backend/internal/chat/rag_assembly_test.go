@@ -3,6 +3,8 @@ package chat
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	"neo-chat/mm-chat/backend/internal/knowledge"
@@ -125,6 +127,143 @@ func TestRAGAnswerAssemblerRejectsIncompleteInput(t *testing.T) {
 	}
 }
 
+func TestRAGAnswerAssemblerAppliesGlobalRerankThresholdAndTopK(t *testing.T) {
+	refs, evidence := rerankFixture(6)
+	source := &fakeRAGCandidateSource{refs: refs}
+	hydrator := &mappedRAGHydrator{evidence: evidence}
+	reranker := &fakeRAGEvidenceReranker{results: []RAGRerankResult{
+		{Index: 0, RelevanceScore: -0.1},
+		{Index: 1, RelevanceScore: 0.2},
+		{Index: 2, RelevanceScore: 0.9},
+		{Index: 3, RelevanceScore: 0.4},
+		{Index: 4, RelevanceScore: -0.2},
+		{Index: 5, RelevanceScore: 0.8},
+	}}
+	assembler := NewRAGAnswerAssembler(
+		source,
+		hydrator,
+		WithRAGEvidenceReranker(reranker, fakeRAGRerankGate{}),
+	)
+	assembler.EvidenceLimit = 2
+	input := validRAGAssemblyInput()
+	input.SelectedCollectionIDs = []string{
+		"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+		"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+	}
+	input.RewrittenQueryText = "  standalone semantic query  "
+
+	result, err := assembler.Assemble(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Assemble() error = %v", err)
+	}
+	if result.RerankStatus != ragRerankStatusApplied || len(result.Evidence) != 2 ||
+		result.Evidence[0].ChildChunkID != refs[2].ChildChunkID ||
+		result.Evidence[1].ChildChunkID != refs[5].ChildChunkID {
+		t.Fatalf("reranked result = %#v", result)
+	}
+	if reranker.query != strings.TrimSpace(input.RewrittenQueryText) || len(reranker.documents) != 6 {
+		t.Fatalf("reranker query/documents = %q/%d", reranker.query, len(reranker.documents))
+	}
+	if len(hydrator.inputs) != 1 || len(hydrator.inputs[0].References) != 6 {
+		t.Fatalf("hydration inputs = %#v", hydrator.inputs)
+	}
+}
+
+func TestRAGAnswerAssemblerDegradesToPreRerankOrderOnRerankerFailure(t *testing.T) {
+	refs, evidence := rerankFixture(7)
+	hydrator := &mappedRAGHydrator{evidence: evidence}
+	assembler := NewRAGAnswerAssembler(
+		&fakeRAGCandidateSource{refs: refs},
+		hydrator,
+		WithRAGEvidenceReranker(
+			&fakeRAGEvidenceReranker{err: errors.New("reranker unavailable")},
+			fakeRAGRerankGate{},
+		),
+	)
+
+	result, err := assembler.Assemble(context.Background(), validRAGAssemblyInput())
+	if err != nil {
+		t.Fatalf("Assemble() error = %v", err)
+	}
+	if result.RerankStatus != ragRerankStatusDegraded || len(result.Evidence) != defaultRAGEvidenceLimit {
+		t.Fatalf("degraded result = %#v", result)
+	}
+	for index := range result.Evidence {
+		if result.Evidence[index].ChildChunkID != refs[index].ChildChunkID {
+			t.Fatalf("degraded order[%d] = %s", index, result.Evidence[index].ChildChunkID)
+		}
+	}
+}
+
+func TestRAGAnswerAssemblerTreatsSuccessfulBelowThresholdRerankAsNoEvidence(t *testing.T) {
+	refs, evidence := rerankFixture(2)
+	assembler := NewRAGAnswerAssembler(
+		&fakeRAGCandidateSource{refs: refs},
+		&mappedRAGHydrator{evidence: evidence},
+		WithRAGEvidenceReranker(
+			&fakeRAGEvidenceReranker{results: []RAGRerankResult{
+				{Index: 0, RelevanceScore: -0.1},
+				{Index: 1, RelevanceScore: -0.2},
+			}},
+			fakeRAGRerankGate{},
+		),
+	)
+
+	_, err := assembler.Assemble(context.Background(), validRAGAssemblyInput())
+	if !errors.Is(err, ErrRAGInsufficientEvidence) {
+		t.Fatalf("error = %v, want ErrRAGInsufficientEvidence", err)
+	}
+}
+
+func TestRAGAnswerAssemblerSkipsRerankEgressWithoutGovernance(t *testing.T) {
+	refs, evidence := rerankFixture(7)
+	hydrator := &mappedRAGHydrator{evidence: evidence}
+	reranker := &fakeRAGEvidenceReranker{}
+	assembler := NewRAGAnswerAssembler(
+		&fakeRAGCandidateSource{refs: refs},
+		hydrator,
+		WithRAGEvidenceReranker(
+			reranker,
+			fakeRAGRerankGate{err: ErrRAGRerankGovernanceRequired},
+		),
+	)
+
+	result, err := assembler.Assemble(context.Background(), validRAGAssemblyInput())
+	if err != nil {
+		t.Fatalf("Assemble() error = %v", err)
+	}
+	if result.RerankStatus != ragRerankStatusDegraded || reranker.calls != 0 ||
+		len(hydrator.inputs) != 1 || len(hydrator.inputs[0].References) != defaultRAGEvidenceLimit {
+		t.Fatalf("governance degradation = %#v/%d/%#v", result, reranker.calls, hydrator.inputs)
+	}
+}
+
+func TestRAGAnswerAssemblerHydratesTwentyCandidatesInBoundedBatches(t *testing.T) {
+	refs, evidence := rerankFixture(defaultRAGCandidateLimit)
+	hydrator := &mappedRAGHydrator{evidence: evidence}
+	results := make([]RAGRerankResult, len(refs))
+	for index := range results {
+		results[index] = RAGRerankResult{Index: index, RelevanceScore: float64(index + 1)}
+	}
+	assembler := NewRAGAnswerAssembler(
+		&fakeRAGCandidateSource{refs: refs},
+		hydrator,
+		WithRAGEvidenceReranker(
+			&fakeRAGEvidenceReranker{results: results},
+			fakeRAGRerankGate{},
+		),
+	)
+
+	result, err := assembler.Assemble(context.Background(), validRAGAssemblyInput())
+	if err != nil {
+		t.Fatalf("Assemble() error = %v", err)
+	}
+	if len(hydrator.inputs) != 2 || len(hydrator.inputs[0].References) != 16 ||
+		len(hydrator.inputs[1].References) != 4 || len(result.Evidence) != defaultRAGEvidenceLimit {
+		t.Fatalf("batch sizes/result = %d/%d/%d", len(hydrator.inputs), len(hydrator.inputs[0].References), len(result.Evidence))
+	}
+}
+
 type fakeRAGCandidateSource struct {
 	refs    []knowledge.EvidenceCandidateReference
 	err     error
@@ -149,6 +288,60 @@ type fakeRAGHydrator struct {
 	err      error
 	calls    int
 	input    knowledge.ReauthorizeEvidenceInput
+}
+
+type mappedRAGHydrator struct {
+	evidence map[string]knowledge.HydratedEvidence
+	inputs   []knowledge.ReauthorizeEvidenceInput
+}
+
+func (f *mappedRAGHydrator) ReauthorizeAndHydrateEvidence(
+	_ context.Context,
+	input knowledge.ReauthorizeEvidenceInput,
+) ([]knowledge.HydratedEvidence, error) {
+	f.inputs = append(f.inputs, input)
+	result := make([]knowledge.HydratedEvidence, 0, len(input.References))
+	for _, reference := range input.References {
+		evidence, ok := f.evidence[reference.ChildChunkID]
+		if !ok {
+			return nil, knowledge.ErrEvidenceHydrationRejected
+		}
+		result = append(result, evidence)
+	}
+	return result, nil
+}
+
+type fakeRAGEvidenceReranker struct {
+	results   []RAGRerankResult
+	err       error
+	calls     int
+	query     string
+	documents []string
+}
+
+func (f *fakeRAGEvidenceReranker) Rerank(
+	_ context.Context,
+	query string,
+	documents []string,
+) ([]RAGRerankResult, error) {
+	f.calls++
+	f.query = query
+	f.documents = append([]string(nil), documents...)
+	if f.err != nil {
+		return nil, f.err
+	}
+	return append([]RAGRerankResult(nil), f.results...), nil
+}
+
+type fakeRAGRerankGate struct {
+	err error
+}
+
+func (g fakeRAGRerankGate) AuthorizeRAGRerank(
+	_ context.Context,
+	_ []string,
+) error {
+	return g.err
 }
 
 func (f *fakeRAGHydrator) ReauthorizeAndHydrateEvidence(
@@ -204,4 +397,38 @@ func validHydratedEvidence() knowledge.HydratedEvidence {
 		Locator:           []byte(`{"page":1}`),
 		RankScore:         candidate.RankScore,
 	}
+}
+
+func rerankFixture(count int) (
+	[]knowledge.EvidenceCandidateReference,
+	map[string]knowledge.HydratedEvidence,
+) {
+	references := make([]knowledge.EvidenceCandidateReference, 0, count)
+	evidence := make(map[string]knowledge.HydratedEvidence, count)
+	for index := 0; index < count; index++ {
+		reference := validRAGCandidate()
+		reference.CollectionID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+		if index%2 == 1 {
+			reference.CollectionID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+		}
+		reference.ChildChunkID = fmt.Sprintf("11111111-1111-4111-8111-%012d", index+100)
+		reference.ContentHash = strings.Repeat(fmt.Sprintf("%x", index%15+1), 64)
+		reference.RankScore = 1.0 / float64(index+1)
+		references = append(references, reference)
+		evidence[reference.ChildChunkID] = knowledge.HydratedEvidence{
+			CollectionID:      reference.CollectionID,
+			DocumentID:        reference.DocumentID,
+			DocumentVersionID: reference.DocumentVersionID,
+			IndexGenerationID: reference.IndexGenerationID,
+			MaterializationID: reference.MaterializationID,
+			ParentChunkID:     reference.ParentChunkID,
+			ChildChunkID:      reference.ChildChunkID,
+			SourceSpanHash:    reference.SourceSpanHash,
+			ContentHash:       reference.ContentHash,
+			SourceText:        fmt.Sprintf("authorized source %d", index),
+			Locator:           []byte(`{"page":1}`),
+			RankScore:         reference.RankScore,
+		}
+	}
+	return references, evidence
 }

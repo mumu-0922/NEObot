@@ -79,15 +79,12 @@ func newQueryEmbeddingClient(
 	if rawBaseURL == "" || !validInternalToken(token) || httpClient == nil {
 		return nil, ErrQueryEmbeddingInvalid
 	}
-	parsed, err := url.Parse(rawBaseURL)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
-		parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+	endpoint, err := internalGatewayEndpoint(rawBaseURL, queryEmbeddingPath)
+	if err != nil {
 		return nil, ErrQueryEmbeddingInvalid
 	}
-	parsed.Path = strings.TrimRight(parsed.Path, "/") + queryEmbeddingPath
-	parsed.RawPath = ""
 	return &QueryEmbeddingClient{
-		endpoint: parsed.String(), token: token, httpClient: httpClient,
+		endpoint: endpoint, token: token, httpClient: httpClient,
 	}, nil
 }
 
@@ -168,4 +165,16 @@ func validInternalToken(token string) bool {
 		}
 	}
 	return true
+}
+
+func internalGatewayEndpoint(rawBaseURL string, endpointPath string) (string, error) {
+	parsed, err := url.Parse(rawBaseURL)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
+		parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" ||
+		!strings.HasPrefix(endpointPath, "/") {
+		return "", ErrQueryEmbeddingInvalid
+	}
+	parsed.Path = strings.TrimRight(parsed.Path, "/") + endpointPath
+	parsed.RawPath = ""
+	return parsed.String(), nil
 }

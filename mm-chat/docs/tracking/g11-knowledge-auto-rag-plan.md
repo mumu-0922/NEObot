@@ -130,8 +130,10 @@ Incremental execution slices:
 - **G11.9C.2** complete: private Python query service, Jina
   `retrieval.query` 1024 Dense lane, Postgres hybrid candidate function,
   conservative Dense signal gates, and Go keyword degradation;
-- **G11.9C.3** Jina rerank, evaluated threshold, RRF-only degradation, real
-  cross-collection/failure proof, and final G11.9C promotion.
+- **G11.9C.3** complete: private `jina-reranker-v3`, evaluated `>= 0.0`
+  threshold, RRF-only degradation, query-time consent without index
+  invalidation, real applied/failure/cross-collection proof, and final G11.9C
+  promotion.
 
 Actions:
 

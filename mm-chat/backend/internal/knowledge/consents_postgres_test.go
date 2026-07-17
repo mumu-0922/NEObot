@@ -91,6 +91,20 @@ INSERT INTO knowledge_collections(id,name,scope,team_id) VALUES ($6,'Team','team
 	if answerCollectionRevision != 1 {
 		t.Fatalf("answer-only consent invalidated projection revision: %d", answerCollectionRevision)
 	}
+	if _, err := service.PutCollectionConsentForModel(
+		ownerCtx,
+		answerCollectionID,
+		ProcessorModelIdentity{Processor: "mineru", EndpointID: "hosted-main", ModelID: "model-stable-20260712"},
+		PutConsentInput{Purposes: []string{"rerank"}, DataTypes: []string{"text/plain"}, PolicyVersion: "v1"},
+	); err != nil {
+		t.Fatalf("grant rerank consent: %v", err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT collection_processing_revision FROM knowledge_collections WHERE id=$1`, answerCollectionID).Scan(&answerCollectionRevision); err != nil {
+		t.Fatal(err)
+	}
+	if answerCollectionRevision != 1 {
+		t.Fatalf("rerank-only consent invalidated projection revision: %d", answerCollectionRevision)
+	}
 	var endpointID, modelID, contractHash string
 	if err := db.QueryRowContext(ctx, `SELECT payload->>'endpointId',payload->>'modelId',
 payload->>'profileContractHash' FROM knowledge_outbox

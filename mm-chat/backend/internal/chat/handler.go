@@ -1447,6 +1447,7 @@ type autoRAGDecision struct {
 	Citations      []RAGCitation
 	Authority      *RAGAnswerAuthority
 	QueryRewritten bool
+	RerankStatus   string
 }
 
 func (d autoRAGDecision) ReadyForAnswer() bool {
@@ -1516,6 +1517,7 @@ func (h *Handler) decideAutoRAG(
 		Citations:      result.Citations,
 		Authority:      &authority,
 		QueryRewritten: rewrittenQuery != "",
+		RerankStatus:   result.RerankStatus,
 	}
 }
 
@@ -1567,6 +1569,7 @@ func autoRAGMessageMetadata(
 		"citationCount":         len(decision.Citations),
 		"evidenceUsed":          len(decision.Citations) > 0,
 		"queryRewritten":        decision.QueryRewritten,
+		"rerankStatus":          decision.RerankStatus,
 	}
 	if len(decision.Citations) > 0 {
 		knowledgeMetadata["citations"] = append([]RAGCitation(nil), decision.Citations...)

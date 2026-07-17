@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
@@ -14,6 +15,11 @@ const (
 	defaultRAGCandidateLimit = 20
 	defaultRAGEvidenceLimit  = 5
 	ragRRFConstant           = 60.0
+	ragHydrationBatchLimit   = 16
+	ragRerankScoreThreshold  = 0.0
+	ragRerankStatusDisabled  = "disabled"
+	ragRerankStatusApplied   = "applied"
+	ragRerankStatusDegraded  = "degraded"
 )
 
 var (
@@ -35,9 +41,20 @@ type RAGEvidenceHydrator interface {
 	ReauthorizeAndHydrateEvidence(context.Context, knowledge.ReauthorizeEvidenceInput) ([]knowledge.HydratedEvidence, error)
 }
 
+type RAGRerankResult struct {
+	Index          int
+	RelevanceScore float64
+}
+
+type RAGEvidenceReranker interface {
+	Rerank(context.Context, string, []string) ([]RAGRerankResult, error)
+}
+
 type RAGAnswerAssembler struct {
 	Candidates     RAGCandidateSource
 	Hydrator       RAGEvidenceHydrator
+	Reranker       RAGEvidenceReranker
+	RerankGate     RAGRerankGovernanceGate
 	CandidateLimit int
 	EvidenceLimit  int
 }
@@ -52,17 +69,40 @@ type RAGAssemblyInput struct {
 }
 
 type RAGAssemblyResult struct {
-	Evidence  []knowledge.HydratedEvidence
-	Citations []RAGCitation
+	Evidence     []knowledge.HydratedEvidence
+	Citations    []RAGCitation
+	RerankStatus string
 }
 
-func NewRAGAnswerAssembler(candidates RAGCandidateSource, hydrator RAGEvidenceHydrator) *RAGAnswerAssembler {
-	return &RAGAnswerAssembler{
+type RAGAnswerAssemblerOption func(*RAGAnswerAssembler)
+
+func WithRAGEvidenceReranker(
+	reranker RAGEvidenceReranker,
+	gate RAGRerankGovernanceGate,
+) RAGAnswerAssemblerOption {
+	return func(assembler *RAGAnswerAssembler) {
+		assembler.Reranker = reranker
+		assembler.RerankGate = gate
+	}
+}
+
+func NewRAGAnswerAssembler(
+	candidates RAGCandidateSource,
+	hydrator RAGEvidenceHydrator,
+	options ...RAGAnswerAssemblerOption,
+) *RAGAnswerAssembler {
+	assembler := &RAGAnswerAssembler{
 		Candidates:     candidates,
 		Hydrator:       hydrator,
 		CandidateLimit: defaultRAGCandidateLimit,
 		EvidenceLimit:  defaultRAGEvidenceLimit,
 	}
+	for _, option := range options {
+		if option != nil {
+			option(assembler)
+		}
+	}
+	return assembler
 }
 
 func (a *RAGAnswerAssembler) Assemble(ctx context.Context, input RAGAssemblyInput) (RAGAssemblyResult, error) {
@@ -104,21 +144,56 @@ func (a *RAGAnswerAssembler) Assemble(ctx context.Context, input RAGAssemblyInpu
 	if len(candidates) == 0 {
 		return RAGAssemblyResult{}, ErrRAGInsufficientEvidence
 	}
-	if len(candidates) > evidenceLimit {
+	rerankStatus := ragRerankStatusDisabled
+	useRerank := a.Reranker != nil && a.RerankGate != nil
+	if useRerank {
+		if err := a.RerankGate.AuthorizeRAGRerank(
+			ctx,
+			input.SelectedCollectionIDs,
+		); err != nil {
+			if errors.Is(err, ErrRAGRerankGovernanceRequired) ||
+				errors.Is(err, ErrRAGDependencyUnavailable) {
+				useRerank = false
+				rerankStatus = ragRerankStatusDegraded
+			} else {
+				return RAGAssemblyResult{}, fmt.Errorf("authorize rag rerank: %w", err)
+			}
+		}
+	}
+	if !useRerank && len(candidates) > evidenceLimit {
 		candidates = candidates[:evidenceLimit]
 	}
-	evidence, err := a.Hydrator.ReauthorizeAndHydrateEvidence(ctx, knowledge.ReauthorizeEvidenceInput{
-		ActorUserID:           input.ActorUserID,
-		SessionID:             input.SessionID,
-		ConversationID:        input.ConversationID,
-		SelectedCollectionIDs: append([]string(nil), input.SelectedCollectionIDs...),
-		References:            candidates,
-	})
+	evidence, err := a.hydrateCandidateBatches(ctx, input, candidates)
 	if err != nil {
 		if errors.Is(err, knowledge.ErrEvidenceHydrationRejected) {
 			return RAGAssemblyResult{}, ErrRAGInsufficientEvidence
 		}
 		return RAGAssemblyResult{}, fmt.Errorf("hydrate rag evidence: %w", err)
+	}
+	if len(evidence) == 0 {
+		return RAGAssemblyResult{}, ErrRAGInsufficientEvidence
+	}
+	if useRerank {
+		rerankQuery := input.QueryText
+		if rewritten := strings.TrimSpace(input.RewrittenQueryText); rewritten != "" {
+			rerankQuery = rewritten
+		}
+		documents := make([]string, len(evidence))
+		for index := range evidence {
+			documents[index] = evidence[index].SourceText
+		}
+		scores, rerankErr := a.Reranker.Rerank(ctx, rerankQuery, documents)
+		if rerankErr != nil {
+			rerankStatus = ragRerankStatusDegraded
+		} else if ranked, ok := applyRAGRerank(evidence, scores, evidenceLimit); ok {
+			evidence = ranked
+			rerankStatus = ragRerankStatusApplied
+		} else {
+			rerankStatus = ragRerankStatusDegraded
+		}
+	}
+	if rerankStatus != ragRerankStatusApplied && len(evidence) > evidenceLimit {
+		evidence = evidence[:evidenceLimit]
 	}
 	if len(evidence) == 0 {
 		return RAGAssemblyResult{}, ErrRAGInsufficientEvidence
@@ -129,7 +204,73 @@ func (a *RAGAnswerAssembler) Assemble(ctx context.Context, input RAGAssemblyInpu
 		return RAGAssemblyResult{}, err
 	}
 
-	return RAGAssemblyResult{Evidence: evidence, Citations: citations}, nil
+	return RAGAssemblyResult{
+		Evidence: evidence, Citations: citations, RerankStatus: rerankStatus,
+	}, nil
+}
+
+func (a *RAGAnswerAssembler) hydrateCandidateBatches(
+	ctx context.Context,
+	input RAGAssemblyInput,
+	candidates []knowledge.EvidenceCandidateReference,
+) ([]knowledge.HydratedEvidence, error) {
+	hydrated := make([]knowledge.HydratedEvidence, 0, len(candidates))
+	for start := 0; start < len(candidates); start += ragHydrationBatchLimit {
+		end := min(start+ragHydrationBatchLimit, len(candidates))
+		batch, err := a.Hydrator.ReauthorizeAndHydrateEvidence(
+			ctx,
+			knowledge.ReauthorizeEvidenceInput{
+				ActorUserID:           input.ActorUserID,
+				SessionID:             input.SessionID,
+				ConversationID:        input.ConversationID,
+				SelectedCollectionIDs: append([]string(nil), input.SelectedCollectionIDs...),
+				References:            append([]knowledge.EvidenceCandidateReference(nil), candidates[start:end]...),
+			},
+		)
+		if err != nil {
+			return nil, err
+		}
+		hydrated = append(hydrated, batch...)
+	}
+	if len(hydrated) != len(candidates) {
+		return nil, knowledge.ErrEvidenceHydrationRejected
+	}
+	return hydrated, nil
+}
+
+func applyRAGRerank(
+	evidence []knowledge.HydratedEvidence,
+	results []RAGRerankResult,
+	limit int,
+) ([]knowledge.HydratedEvidence, bool) {
+	if len(evidence) == 0 || len(results) != len(evidence) {
+		return nil, false
+	}
+	seen := make([]bool, len(evidence))
+	ranked := make([]knowledge.HydratedEvidence, 0, len(evidence))
+	for _, result := range results {
+		if result.Index < 0 || result.Index >= len(evidence) || seen[result.Index] ||
+			math.IsNaN(result.RelevanceScore) || math.IsInf(result.RelevanceScore, 0) {
+			return nil, false
+		}
+		seen[result.Index] = true
+		if result.RelevanceScore < ragRerankScoreThreshold {
+			continue
+		}
+		item := evidence[result.Index]
+		item.RankScore = result.RelevanceScore
+		ranked = append(ranked, item)
+	}
+	sort.SliceStable(ranked, func(i, j int) bool {
+		if ranked[i].RankScore != ranked[j].RankScore {
+			return ranked[i].RankScore > ranked[j].RankScore
+		}
+		return ranked[i].ChildChunkID < ranked[j].ChildChunkID
+	})
+	if limit > 0 && len(ranked) > limit {
+		ranked = ranked[:limit]
+	}
+	return ranked, true
 }
 
 func fuseRAGCandidateLanes(

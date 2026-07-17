@@ -126,6 +126,35 @@ func TestServiceAutoProvisionsSingleUserAnswerConsent(t *testing.T) {
 	}
 }
 
+func TestServiceAutoProvisionsSingleUserRerankConsent(t *testing.T) {
+	repo := &fakeRepository{
+		createResult: testCollection("22222222-2222-4222-8222-222222222222"),
+	}
+	service := NewService(
+		repo,
+		WithIDGenerator(func() (string, error) { return repo.createResult.ID, nil }),
+		WithSingleUserCollectionConsents(),
+		WithSingleUserRerankConsent(),
+	)
+	ctx := auth.WithUser(context.Background(), auth.User{ID: testActorID})
+
+	if _, err := service.CreateCollection(ctx, CreateCollectionInput{
+		Name: "Research", Scope: ScopePersonal, IdempotencyKey: "create-with-rerank",
+	}); err != nil {
+		t.Fatalf("CreateCollection() error = %v", err)
+	}
+	if len(repo.putConsents) != 4 {
+		t.Fatalf("automatic consents = %#v, want four", repo.putConsents)
+	}
+	rerank := repo.putConsents[3]
+	identity := SingleUserRerankIdentity()
+	if rerank.Processor != identity.Processor || rerank.EndpointID != identity.EndpointID ||
+		rerank.ModelID != identity.ModelID || !slices.Equal(rerank.Purposes, []string{"rerank"}) ||
+		!slices.Equal(rerank.DataTypes, []string{"text/plain"}) {
+		t.Fatalf("rerank automatic consent = %#v", rerank)
+	}
+}
+
 func TestServiceAutoProvisionsEverySingleUserAnswerConsent(t *testing.T) {
 	repo := &fakeRepository{
 		createResult: testCollection("22222222-2222-4222-8222-222222222222"),
@@ -292,6 +321,44 @@ func TestBootstrapSingleUserAnswerProcessingCanBackfillEveryModel(t *testing.T) 
 		if repo.putConsents[index].ModelID != identity.ModelID {
 			t.Fatalf("answer collection consent[%d] = %#v", index, repo.putConsents[index])
 		}
+	}
+}
+
+func TestBootstrapSingleUserRerankProcessingBackfillsOwnerAndCollections(t *testing.T) {
+	codec, err := teams.NewCursorCodec(teams.CursorKeyring{
+		ActiveKeyID: "test", Keys: map[string][]byte{"test": []byte("01234567890123456789012345678901")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	collection := testCollection("22222222-2222-4222-8222-222222222222")
+	repo := &fakeRepository{listResult: CollectionPageResult{Items: []Collection{collection}}}
+	service := NewService(repo, WithCursorCodec(codec))
+
+	err = BootstrapSingleUserRerankProcessing(
+		context.Background(),
+		service,
+		NewGovernanceService(repo),
+		auth.User{ID: testActorID},
+	)
+	if err != nil {
+		t.Fatalf("BootstrapSingleUserRerankProcessing() error = %v", err)
+	}
+	identity := SingleUserRerankIdentity()
+	if repo.governanceManifest.Processor != identity.Processor ||
+		repo.governanceManifest.ModelID != identity.ModelID ||
+		!slices.Equal(repo.governanceManifest.AllowedPurposes, []string{"rerank"}) {
+		t.Fatalf("rerank governance manifest = %#v", repo.governanceManifest)
+	}
+	if repo.putQueryConsent.ActorUserID != testActorID ||
+		repo.putQueryConsent.ModelID != identity.ModelID ||
+		!slices.Equal(repo.putQueryConsent.Purposes, []string{"rerank"}) {
+		t.Fatalf("rerank query consent = %#v", repo.putQueryConsent)
+	}
+	if len(repo.putConsents) != 1 || repo.putConsents[0].CollectionID != collection.ID ||
+		repo.putConsents[0].ModelID != identity.ModelID ||
+		!slices.Equal(repo.putConsents[0].Purposes, []string{"rerank"}) {
+		t.Fatalf("rerank collection consent = %#v", repo.putConsents)
 	}
 }
 

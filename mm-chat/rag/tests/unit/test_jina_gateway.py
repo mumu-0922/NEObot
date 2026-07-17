@@ -12,8 +12,10 @@ from mm_chat_rag.jina_gateway import (
     JINA_GATEWAY_CREDENTIALS_MISSING,
     JINA_GATEWAY_REQUEST_FAILED,
     JINA_GATEWAY_STATUS_INVALID,
+    JINA_RERANK_URL,
     JinaPassageEmbeddingGateway,
     JinaQueryEmbeddingGateway,
+    JinaRerankGateway,
     build_jina_passage_embedding_handler_dependencies,
 )
 from mm_chat_rag.job_handler_dependencies import (
@@ -80,6 +82,18 @@ def _json_response(payload: object, *, status: int = 200) -> httpx.Response:
         headers={"Content-Type": "application/json; charset=utf-8"},
         content=content,
     )
+
+
+def _rerank_payload(scores: tuple[float, ...]) -> dict[str, Any]:
+    return {
+        "model": "jina-reranker-v3",
+        "results": [
+            {"index": index, "relevance_score": score}
+            for index, score in enumerate(scores)
+        ],
+        "usage": {"total_tokens": 23},
+        "request_id": "sensitive-rerank-request-id",
+    }
 
 
 async def test_jina_gateway_missing_key_fails_before_http() -> None:
@@ -178,6 +192,92 @@ async def test_jina_gateway_sends_locked_query_request_and_maps_vector() -> None
         "task": "retrieval.query",
         "truncate": False,
     }
+
+
+async def test_jina_rerank_gateway_sends_locked_request_and_maps_all_scores() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return _json_response(_rerank_payload((0.8, -0.2)))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        results = await JinaRerankGateway(SECRET, client=client).rerank(
+            "  semantic question  ",
+            ("First authorized passage", "Second authorized passage"),
+        )
+
+    assert results == ((0, 0.8), (1, -0.2))
+    assert len(requests) == 1
+    request = requests[0]
+    assert request.url == httpx.URL(JINA_RERANK_URL)
+    assert request.headers["authorization"] == f"Bearer {SECRET}"
+    assert json.loads(request.content) == {
+        "documents": ["First authorized passage", "Second authorized passage"],
+        "model": "jina-reranker-v3",
+        "query": "semantic question",
+        "return_documents": False,
+        "return_embeddings": False,
+        "top_n": 2,
+    }
+    assert SECRET.encode() not in request.content
+
+
+@pytest.mark.parametrize(
+    "documents",
+    [(), ("",), ("x" * (64 * 1024 + 1),), tuple("doc" for _ in range(21))],
+)
+async def test_jina_rerank_gateway_rejects_unsafe_documents_before_http(
+    documents: tuple[str, ...],
+) -> None:
+    calls = 0
+
+    def forbidden(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("invalid rerank documents reached provider")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(forbidden)) as client:
+        with pytest.raises(PermanentJobError):
+            await JinaRerankGateway(SECRET, client=client).rerank(
+                "query",
+                documents,
+            )
+    assert calls == 0
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        _rerank_payload((0.8,)),
+        {
+            **_rerank_payload((0.8, 0.1)),
+            "results": [
+                {"index": 0, "relevance_score": 0.8},
+                {"index": 0, "relevance_score": 0.1},
+            ],
+        },
+        {
+            **_rerank_payload((0.8, 0.1)),
+            "results": [
+                {"index": 0, "relevance_score": float("nan")},
+                {"index": 1, "relevance_score": 0.1},
+            ],
+        },
+    ],
+)
+async def test_jina_rerank_gateway_rejects_invalid_results(
+    payload: dict[str, Any],
+) -> None:
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: _json_response(payload))
+    ) as client:
+        with pytest.raises(PermanentJobError) as raised:
+            await JinaRerankGateway(SECRET, client=client).rerank(
+                "query",
+                ("first", "second"),
+            )
+    assert "sensitive-rerank-request-id" not in str(raised.value)
 
 
 @pytest.mark.parametrize("query", ["", "   ", "界" * 2049])

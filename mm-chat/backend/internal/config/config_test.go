@@ -95,6 +95,7 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 	if cfg.RAG.MinerUAPIKey != "" ||
 		cfg.RAG.JinaAPIKey != "" ||
 		cfg.RAG.QueryGatewayURL != "" ||
+		cfg.RAG.RerankGatewayURL != "" ||
 		cfg.RAG.SourceGatewayToken != "" {
 		t.Fatalf("RAG secrets = %#v, want blank", cfg.RAG)
 	}
@@ -182,6 +183,7 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 		EnvRAGMinerUAPIKey:        " fake-mineru-token ",
 		EnvRAGJinaAPIKey:          " fake-jina-key ",
 		EnvRAGQueryGatewayURL:     " http://rag-worker:8081 ",
+		EnvRAGRerankGatewayURL:    " http://rag-worker:8082 ",
 		EnvRAGSourceGatewayToken:  " fake-source-gateway-token ",
 		EnvAuthMode:               " required ",
 		EnvAuthBootstrapUserID:    " 77777777-7777-4777-8777-777777777777 ",
@@ -291,6 +293,9 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	if cfg.RAG.QueryGatewayURL != "http://rag-worker:8081" {
 		t.Fatalf("RAG.QueryGatewayURL = %q", cfg.RAG.QueryGatewayURL)
 	}
+	if cfg.RAG.RerankGatewayURL != "http://rag-worker:8082" {
+		t.Fatalf("RAG.RerankGatewayURL = %q", cfg.RAG.RerankGatewayURL)
+	}
 	if cfg.RAG.SourceGatewayToken != "fake-source-gateway-token" {
 		t.Fatalf("RAG.SourceGatewayToken = %q, want trimmed fake token", cfg.RAG.SourceGatewayToken)
 	}
@@ -365,6 +370,7 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 		EnvRAGJinaAPIKey:         "\n",
 		EnvDefaultJinaAPIKey:     " ",
 		EnvRAGQueryGatewayURL:    " ",
+		EnvRAGRerankGatewayURL:   " ",
 		EnvRAGSourceGatewayToken: " ",
 		EnvAuthMode:              "\t",
 		EnvAuthBootstrapUserID:   "\t",
@@ -436,6 +442,7 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 	if cfg.RAG.MinerUAPIKey != "" ||
 		cfg.RAG.JinaAPIKey != "" ||
 		cfg.RAG.QueryGatewayURL != "" ||
+		cfg.RAG.RerankGatewayURL != "" ||
 		cfg.RAG.SourceGatewayToken != "" ||
 		cfg.RAG.JinaEmbeddingDimensions != DefaultRAGJinaDimensions ||
 		cfg.RAG.Ready() {
@@ -449,6 +456,17 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 		cfg.Auth.SMTP.QueueSize != DefaultAuthSMTPQueueSize ||
 		cfg.Auth.SMTP.Timeout != DefaultAuthSMTPTimeout {
 		t.Fatalf("Auth = %#v, want defaults", cfg.Auth)
+	}
+}
+
+func TestLoadFromEnvRerankGatewayFallsBackToQueryGateway(t *testing.T) {
+	values := map[string]string{EnvRAGQueryGatewayURL: "http://rag-worker:8081"}
+	cfg := LoadFromEnv(func(key string) (string, bool) {
+		value, ok := values[key]
+		return value, ok
+	})
+	if cfg.RAG.RerankGatewayURL != cfg.RAG.QueryGatewayURL {
+		t.Fatalf("rerank/query gateway = %q/%q", cfg.RAG.RerankGatewayURL, cfg.RAG.QueryGatewayURL)
 	}
 }
 

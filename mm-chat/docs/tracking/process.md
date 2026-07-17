@@ -8285,3 +8285,18 @@ signal gate, and stopping Jina proved the original keyword answer still
 completes with `[K1]`. Full evidence, cleanup, rollback, and the still-open C.3
 rerank boundary are recorded in
 `docs/tracking/g11-knowledge-auto-rag-process.md`.
+
+## 2026-07-17 — G11.9C.3 Rerank promotion cross-reference
+
+The private Python boundary now calls `jina-reranker-v3` only after Go checks
+exact query/collection consent and reauthorizes/hydrates the global candidate
+set. Evaluated `>= 0.0` scores produce global Top5; rerank-only failure keeps
+hybrid/RRF order. Live promotion passed real `applied`, isolated
+`degraded/[K1]`, and two-collection `[K1]/[K2]` paths.
+
+The live replay also caught that rerank consent incorrectly invalidated current
+search materializations. Rerank and Answer consent are now explicitly
+query-time and do not advance `collection_processing_revision`; indexed parse
+and passage-embedding authority still does. Full evidence, guarded local repair,
+tests, cleanup, and rollback are recorded in
+`docs/tracking/g11-knowledge-auto-rag-process.md`.

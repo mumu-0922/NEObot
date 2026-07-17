@@ -209,10 +209,37 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	ragQueryEmbedder, err := ragproviders.NewQueryEmbeddingClient(
+		cfg.RAG.QueryGatewayURL,
+		cfg.RAG.SourceGatewayToken,
+		0,
+	)
+	if err != nil {
+		_ = redisClient.Close()
+		_ = db.Close()
+		logger.Error("rag_query_embedding_config_failed")
+		os.Exit(1)
+	}
+	ragReranker, err := ragproviders.NewRerankClient(
+		cfg.RAG.RerankGatewayURL,
+		cfg.RAG.SourceGatewayToken,
+		0,
+	)
+	if err != nil {
+		_ = redisClient.Close()
+		_ = db.Close()
+		logger.Error("rag_rerank_config_failed")
+		os.Exit(1)
+	}
+	rerankConfigured := cfg.Auth.Mode == config.AuthModeDevelopment &&
+		ragReranker != nil && strings.TrimSpace(cfg.RAG.JinaAPIKey) != ""
 	knowledgeOptions := []knowledge.ServiceOption{
 		knowledge.WithCursorCodec(teamRuntime.cursor),
 		knowledge.WithObjectStore(objectStore),
 		knowledge.WithSingleUserCollectionConsents(),
+	}
+	if rerankConfigured {
+		knowledgeOptions = append(knowledgeOptions, knowledge.WithSingleUserRerankConsent())
 	}
 	answerIdentities := make([]knowledge.ProcessorModelIdentity, 0)
 	if cfg.Auth.Mode == config.AuthModeDevelopment {
@@ -264,11 +291,19 @@ func main() {
 				}
 			}
 		}
+		if err == nil && rerankConfigured {
+			err = knowledge.BootstrapSingleUserRerankProcessing(
+				bootstrapCtx,
+				knowledgeService,
+				governanceService,
+				auth.User{ID: cfg.Auth.BootstrapUserID, DisplayName: cfg.Auth.BootstrapDisplayName},
+			)
+		}
 		bootstrapCancel()
 		if err != nil {
 			_ = redisClient.Close()
 			_ = db.Close()
-			logger.Error("knowledge_native_processing_bootstrap_failed", slog.String("error", redactSensitiveLogText(err.Error())))
+			logger.Error("knowledge_processing_bootstrap_failed", slog.String("error", redactSensitiveLogText(err.Error())))
 			os.Exit(1)
 		}
 	}
@@ -279,17 +314,6 @@ func main() {
 			objectStore,
 			ragsource.WithInternalToken(cfg.RAG.SourceGatewayToken),
 		)
-	}
-	ragQueryEmbedder, err := ragproviders.NewQueryEmbeddingClient(
-		cfg.RAG.QueryGatewayURL,
-		cfg.RAG.SourceGatewayToken,
-		0,
-	)
-	if err != nil {
-		_ = redisClient.Close()
-		_ = db.Close()
-		logger.Error("rag_query_embedding_config_failed")
-		os.Exit(1)
 	}
 	if sqlDB := db.SQL(); sqlDB != nil {
 		importRepo = browserimport.NewPostgresRepository(
@@ -315,6 +339,7 @@ func main() {
 		httpserver.WithKnowledgeService(knowledgeService),
 		httpserver.WithRAGSourceService(ragSourceService),
 		httpserver.WithRAGQueryEmbedder(ragQueryEmbedder),
+		httpserver.WithRAGReranker(ragReranker),
 		httpserver.WithRuntimeConfigRepository(runtimeConfigRepo),
 		httpserver.WithPluginRegistry(pluginRegistry),
 		httpserver.WithPluginAuditRecorder(pluginAuditRecorder),

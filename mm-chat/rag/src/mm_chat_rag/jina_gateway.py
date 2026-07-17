@@ -1,4 +1,4 @@
-"""Bounded Jina passage and query embedding gateways."""
+"""Bounded Jina passage, query embedding, and rerank gateways."""
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from mm_chat_rag.models import stable_error_code
 from mm_chat_rag.provider_profile import (
     DEFAULT_JINA_EMBEDDING_DIMENSIONS,
     DEFAULT_JINA_EMBEDDING_MODEL,
+    DEFAULT_JINA_RERANK_MODEL,
 )
 from mm_chat_rag.retry import PermanentJobError, RetryableJobError
 
@@ -33,6 +34,7 @@ JINA_GATEWAY_STATUS_INVALID: Final = "JINA_GATEWAY_STATUS_INVALID"
 JINA_GATEWAY_RESPONSE_INVALID: Final = "JINA_GATEWAY_RESPONSE_INVALID"
 JINA_GATEWAY_RESPONSE_TOO_LARGE: Final = "JINA_GATEWAY_RESPONSE_TOO_LARGE"
 JINA_EMBEDDINGS_URL: Final = "https://api.jina.ai/v1/embeddings"
+JINA_RERANK_URL: Final = "https://api.jina.ai/v1/rerank"
 JINA_PASSAGE_EMBEDDING_TASK: Final = "retrieval.passage"
 JINA_QUERY_EMBEDDING_TASK: Final = "retrieval.query"
 JINA_TIMEOUT: Final = httpx.Timeout(connect=5.0, read=30.0, write=15.0, pool=5.0)
@@ -41,6 +43,9 @@ JINA_RETRY_AFTER_SECONDS: Final = 30
 MAX_JINA_API_KEY_BYTES: Final = 4096
 MAX_JINA_RESPONSE_BYTES: Final = 16 * 1024 * 1024
 MAX_JINA_QUERY_BYTES: Final = 2048
+MAX_JINA_RERANK_DOCUMENTS: Final = 20
+MAX_JINA_RERANK_DOCUMENT_BYTES: Final = 64 * 1024
+MAX_JINA_RERANK_TOTAL_DOCUMENT_BYTES: Final = 1024 * 1024
 HTTP_OK: Final = 200
 _VISIBLE_ASCII_MIN: Final = 33
 _VISIBLE_ASCII_MAX: Final = 126
@@ -51,6 +56,18 @@ class QueryEmbeddingGateway(Protocol):
 
     async def embed_query(self, query: str) -> tuple[float, ...]:
         """Return one validated 1024-dimensional retrieval query vector."""
+        ...
+
+
+class RerankGateway(Protocol):
+    """Private query-and-document rerank seam used by the HTTP boundary."""
+
+    async def rerank(
+        self,
+        query: str,
+        documents: tuple[str, ...],
+    ) -> tuple[tuple[int, float], ...]:
+        """Return one validated score for every input document index."""
         ...
 
 
@@ -137,6 +154,49 @@ class JinaQueryEmbeddingGateway:
             return _query_embedding_from_payload(payload)
 
 
+class JinaRerankGateway:
+    """Jina reranker-v3 gateway for already-authorized source text."""
+
+    def __init__(
+        self,
+        api_key: str | None,
+        *,
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
+        self._api_key = _validate_api_key(api_key)
+        self._client = client
+
+    async def rerank(
+        self,
+        query: str,
+        documents: tuple[str, ...],
+    ) -> tuple[tuple[int, float], ...]:
+        normalized_query = _normalize_query(query)
+        normalized_documents = _validate_rerank_documents(documents)
+        body = _rerank_request_body(normalized_query, normalized_documents)
+        if self._client is not None:
+            payload = await _post_json(
+                self._client,
+                self._api_key,
+                JINA_RERANK_URL,
+                body,
+            )
+            return _rerank_results_from_payload(payload, len(normalized_documents))
+        async with httpx.AsyncClient(
+            timeout=JINA_TIMEOUT,
+            limits=JINA_LIMITS,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
+            payload = await _post_json(
+                client,
+                self._api_key,
+                JINA_RERANK_URL,
+                body,
+            )
+            return _rerank_results_from_payload(payload, len(normalized_documents))
+
+
 def _embedding_request_body(
     candidates: tuple[PassageEmbeddingCandidate, ...],
 ) -> JsonObject:
@@ -167,9 +227,29 @@ def _query_embedding_request_body(query: str) -> JsonObject:
     }
 
 
+def _rerank_request_body(query: str, documents: tuple[str, ...]) -> JsonObject:
+    return {
+        "documents": list(documents),
+        "model": DEFAULT_JINA_RERANK_MODEL,
+        "query": query,
+        "return_documents": False,
+        "return_embeddings": False,
+        "top_n": len(documents),
+    }
+
+
 async def _post_embeddings(
     client: httpx.AsyncClient,
     api_key: str,
+    body: JsonObject,
+) -> JsonObject:
+    return await _post_json(client, api_key, JINA_EMBEDDINGS_URL, body)
+
+
+async def _post_json(
+    client: httpx.AsyncClient,
+    api_key: str,
+    url: str,
     body: JsonObject,
 ) -> JsonObject:
     headers = {
@@ -181,7 +261,7 @@ async def _post_embeddings(
     try:
         async with client.stream(
             "POST",
-            JINA_EMBEDDINGS_URL,
+            url,
             headers=headers,
             json=body,
         ) as response:
@@ -235,11 +315,52 @@ def _query_embedding_from_payload(payload: JsonObject) -> tuple[float, ...]:
     return _embedding_vector(item.get("embedding"))
 
 
+def _rerank_results_from_payload(
+    payload: JsonObject,
+    document_count: int,
+) -> tuple[tuple[int, float], ...]:
+    if payload.get("model") != DEFAULT_JINA_RERANK_MODEL:
+        _reject_permanent(JINA_GATEWAY_RESPONSE_INVALID)
+    raw_results = _json_list(
+        payload.get("results"),
+        JINA_GATEWAY_RESPONSE_INVALID,
+    )
+    if len(raw_results) != document_count:
+        _reject_permanent(JINA_GATEWAY_RESPONSE_INVALID)
+    results: list[tuple[int, float]] = []
+    seen: set[int] = set()
+    for raw_result in raw_results:
+        result = _json_object(raw_result, JINA_GATEWAY_RESPONSE_INVALID)
+        if set(result) != {"index", "relevance_score"}:
+            _reject_permanent(JINA_GATEWAY_RESPONSE_INVALID)
+        index = _non_negative_int(
+            result.get("index"),
+            JINA_GATEWAY_RESPONSE_INVALID,
+        )
+        if index >= document_count or index in seen:
+            _reject_permanent(JINA_GATEWAY_RESPONSE_INVALID)
+        seen.add(index)
+        results.append(
+            (
+                index,
+                _finite_number(
+                    result.get("relevance_score"),
+                    JINA_GATEWAY_RESPONSE_INVALID,
+                ),
+            )
+        )
+    if seen != set(range(document_count)):
+        _reject_permanent(JINA_GATEWAY_RESPONSE_INVALID)
+    return tuple(results)
+
+
 def _embedding_vector(value: JsonValue | None) -> tuple[float, ...]:
     raw = _json_list(value, JOB_HANDLER_EMBEDDING_VECTOR_INVALID)
     if len(raw) != DEFAULT_JINA_EMBEDDING_DIMENSIONS:
         _reject_permanent(JOB_HANDLER_EMBEDDING_VECTOR_INVALID)
-    return tuple(_finite_number(item) for item in raw)
+    return tuple(
+        _finite_number(item, JOB_HANDLER_EMBEDDING_VECTOR_INVALID) for item in raw
+    )
 
 
 async def _read_bounded_response(response: httpx.Response) -> bytes:
@@ -282,12 +403,12 @@ def _non_negative_int(value: object, error_code: str) -> int:
     return value
 
 
-def _finite_number(value: JsonValue) -> float:
+def _finite_number(value: JsonValue | None, error_code: str) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
-        _reject_permanent(JOB_HANDLER_EMBEDDING_VECTOR_INVALID)
+        _reject_permanent(error_code)
     number = float(value)
     if not math.isfinite(number):
-        _reject_permanent(JOB_HANDLER_EMBEDDING_VECTOR_INVALID)
+        _reject_permanent(error_code)
     return number
 
 
@@ -314,6 +435,25 @@ def _normalize_query(value: str) -> str:
     if not normalized or len(normalized.encode("utf-8")) > MAX_JINA_QUERY_BYTES:
         _reject_permanent(JINA_GATEWAY_RESPONSE_INVALID)
     return normalized
+
+
+def _validate_rerank_documents(documents: tuple[str, ...]) -> tuple[str, ...]:
+    if (
+        not isinstance(documents, tuple)
+        or not 1 <= len(documents) <= MAX_JINA_RERANK_DOCUMENTS
+    ):
+        _reject_permanent(JINA_GATEWAY_RESPONSE_INVALID)
+    total_bytes = 0
+    for document in documents:
+        if not isinstance(document, str) or not document.strip():
+            _reject_permanent(JINA_GATEWAY_RESPONSE_INVALID)
+        document_bytes = len(document.encode("utf-8"))
+        if document_bytes > MAX_JINA_RERANK_DOCUMENT_BYTES:
+            _reject_permanent(JINA_GATEWAY_RESPONSE_INVALID)
+        total_bytes += document_bytes
+        if total_bytes > MAX_JINA_RERANK_TOTAL_DOCUMENT_BYTES:
+            _reject_permanent(JINA_GATEWAY_RESPONSE_INVALID)
+    return documents
 
 
 def _reject_permanent(error_code: str) -> NoReturn:
