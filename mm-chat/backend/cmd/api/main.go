@@ -188,6 +188,7 @@ func main() {
 		knowledgeRepo,
 		knowledge.WithCursorCodec(teamRuntime.cursor),
 		knowledge.WithObjectStore(objectStore),
+		knowledge.WithSingleUserCollectionConsents(),
 	)
 	var ragSourceService *ragsource.Service
 	if sqlDB != nil {

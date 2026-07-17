@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"testing"
 	"time"
@@ -41,6 +42,72 @@ func TestServiceNormalizesCreateAndBindsActor(t *testing.T) {
 	}
 	if len(input.CreateRequestHash) != 64 {
 		t.Fatalf("request hash length = %d", len(input.CreateRequestHash))
+	}
+}
+
+func TestServiceAutoProvisionsSingleUserCollectionConsents(t *testing.T) {
+	repo := &fakeRepository{
+		createResult: testCollection("22222222-2222-4222-8222-222222222222"),
+	}
+	service := NewService(
+		repo,
+		WithIDGenerator(func() (string, error) { return repo.createResult.ID, nil }),
+		WithSingleUserCollectionConsents(),
+	)
+	ctx := auth.WithUser(context.Background(), auth.User{ID: testActorID})
+
+	collection, err := service.CreateCollection(ctx, CreateCollectionInput{
+		Name: "Research", Scope: ScopePersonal, IdempotencyKey: "create-single-user",
+	})
+	if err != nil {
+		t.Fatalf("CreateCollection() error = %v", err)
+	}
+	if collection.ID != repo.createResult.ID {
+		t.Fatalf("collection id = %q", collection.ID)
+	}
+	if len(repo.putConsents) != 2 {
+		t.Fatalf("automatic consents = %#v, want MinerU and Jina", repo.putConsents)
+	}
+	mineru := repo.putConsents[0]
+	if mineru.CollectionID != collection.ID || mineru.ActorUserID != testActorID ||
+		mineru.Processor != "mineru" || mineru.EndpointID != "hosted-main" ||
+		mineru.ModelID != "mineru-local-batch-v1" ||
+		len(mineru.Purposes) != 1 || mineru.Purposes[0] != "parse" ||
+		len(mineru.DataTypes) != 1 || mineru.DataTypes[0] != "application/pdf" {
+		t.Fatalf("MinerU automatic consent = %#v", mineru)
+	}
+	jina := repo.putConsents[1]
+	if jina.CollectionID != collection.ID || jina.ActorUserID != testActorID ||
+		jina.Processor != "jina" || jina.EndpointID != "hosted-main" ||
+		jina.ModelID != "jina-embeddings-v4" ||
+		len(jina.Purposes) != 1 || jina.Purposes[0] != "passage_embedding" ||
+		len(jina.DataTypes) != 1 || jina.DataTypes[0] != "text/plain" {
+		t.Fatalf("Jina automatic consent = %#v", jina)
+	}
+}
+
+func TestServiceRollsBackCollectionWhenSingleUserConsentProvisioningFails(t *testing.T) {
+	provisionErr := errors.New("governance unavailable")
+	repo := &fakeRepository{
+		createResult:  testCollection("22222222-2222-4222-8222-222222222222"),
+		putConsentErr: provisionErr,
+	}
+	service := NewService(
+		repo,
+		WithIDGenerator(func() (string, error) { return repo.createResult.ID, nil }),
+		WithSingleUserCollectionConsents(),
+	)
+	ctx := auth.WithUser(context.Background(), auth.User{ID: testActorID})
+
+	_, err := service.CreateCollection(ctx, CreateCollectionInput{
+		Name: "Research", Scope: ScopePersonal, IdempotencyKey: "create-rollback",
+	})
+	if !errors.Is(err, provisionErr) {
+		t.Fatalf("CreateCollection() error = %v, want provisioning failure", err)
+	}
+	if repo.deletedCollection.CollectionID != repo.createResult.ID ||
+		repo.deletedCollection.ActorUserID != testActorID {
+		t.Fatalf("rollback delete input = %#v", repo.deletedCollection)
 	}
 }
 
@@ -194,22 +261,25 @@ func TestServiceCreatesServerSelectedReprocessJob(t *testing.T) {
 }
 
 type fakeRepository struct {
-	created          CreateCollectionRepositoryInput
-	createResult     Collection
-	listResult       CollectionPageResult
-	documentResult   Document
-	documentPage     DocumentPageResult
-	contentResult    DocumentContentMetadata
-	versionCreated   CreateDocumentVersionRepositoryInput
-	reprocessCreated ReprocessDocumentRepositoryInput
-	deletedDocument  DeleteDocumentRepositoryInput
-	consents         []ProcessingConsent
-	putConsent       PutCollectionConsentRepositoryInput
-	revokedConsent   CollectionConsentLookupInput
-	queryConsents    []ProcessingConsent
-	putQueryConsent  PutQueryConsentRepositoryInput
-	revokedQuery     QueryConsentLookupInput
-	err              error
+	created           CreateCollectionRepositoryInput
+	createResult      Collection
+	listResult        CollectionPageResult
+	documentResult    Document
+	documentPage      DocumentPageResult
+	contentResult     DocumentContentMetadata
+	versionCreated    CreateDocumentVersionRepositoryInput
+	reprocessCreated  ReprocessDocumentRepositoryInput
+	deletedDocument   DeleteDocumentRepositoryInput
+	consents          []ProcessingConsent
+	putConsent        PutCollectionConsentRepositoryInput
+	putConsents       []PutCollectionConsentRepositoryInput
+	putConsentErr     error
+	revokedConsent    CollectionConsentLookupInput
+	deletedCollection DeleteCollectionRepositoryInput
+	queryConsents     []ProcessingConsent
+	putQueryConsent   PutQueryConsentRepositoryInput
+	revokedQuery      QueryConsentLookupInput
+	err               error
 }
 
 type fakeObjectStore struct {
@@ -243,7 +313,8 @@ func (repo *fakeRepository) GetCollection(context.Context, CollectionLookupInput
 func (repo *fakeRepository) UpdateCollection(context.Context, UpdateCollectionRepositoryInput) (Collection, error) {
 	return repo.createResult, repo.err
 }
-func (repo *fakeRepository) DeleteCollection(context.Context, DeleteCollectionRepositoryInput) error {
+func (repo *fakeRepository) DeleteCollection(_ context.Context, input DeleteCollectionRepositoryInput) error {
+	repo.deletedCollection = input
 	return repo.err
 }
 func (repo *fakeRepository) CreateDocument(context.Context, CreateDocumentRepositoryInput) (Document, error) {
@@ -275,6 +346,10 @@ func (repo *fakeRepository) ListCollectionConsents(context.Context, CollectionCo
 }
 func (repo *fakeRepository) PutCollectionConsent(_ context.Context, input PutCollectionConsentRepositoryInput) (ProcessingConsent, error) {
 	repo.putConsent = input
+	repo.putConsents = append(repo.putConsents, input)
+	if repo.putConsentErr != nil {
+		return ProcessingConsent{}, repo.putConsentErr
+	}
 	if len(repo.consents) == 0 {
 		return ProcessingConsent{}, repo.err
 	}

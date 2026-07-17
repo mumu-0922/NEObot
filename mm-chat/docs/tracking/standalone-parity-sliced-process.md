@@ -4644,6 +4644,9 @@ Completed scope:
 - required mode remains fail-closed and continues validating Bearer Sessions;
 - removed collection/query processing-consent loading, grant, revoke, refresh,
   forms, and status cards from the server Knowledge interface;
+- each new collection now receives server-owned MinerU PDF parse and Jina
+  passage-embedding consent automatically, so removing the UI cannot strand
+  uploads before indexing;
 - retained server-side governance and existing owner consents as internal RAG
   safety state rather than user-facing multi-user controls.
 
@@ -4656,5 +4659,7 @@ frontend tests / production build                         854 passed / passed
 Docker backend/frontend source builds                     passed / passed
 live query-consents without Bearer                        200
 live collections with stale Bearer                        200, fixed Personal owner
+temporary collection auto-consents                       MinerU parse + Jina passage_embedding granted
+temporary collection cleanup                             deleted; subsequent GET 404
 backend/frontend health                                   healthy / healthy
 ```

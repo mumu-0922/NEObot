@@ -44,10 +44,16 @@ var validColors = map[string]struct{}{
 }
 
 type Service struct {
-	repo        Repository
-	cursorCodec *teams.CursorCodec
-	newID       func() (string, error)
-	objectStore storage.ObjectStore
+	repo                        Repository
+	cursorCodec                 *teams.CursorCodec
+	newID                       func() (string, error)
+	objectStore                 storage.ObjectStore
+	automaticCollectionConsents []automaticCollectionConsent
+}
+
+type automaticCollectionConsent struct {
+	Identity ProcessorModelIdentity
+	Input    PutConsentInput
 }
 
 type ServiceOption func(*Service)
@@ -66,6 +72,32 @@ func WithIDGenerator(generator func() (string, error)) ServiceOption {
 
 func WithObjectStore(store storage.ObjectStore) ServiceOption {
 	return func(service *Service) { service.objectStore = store }
+}
+
+// WithSingleUserCollectionConsents makes collection governance an internal
+// server concern for the standalone single-user product. Provider secrets and
+// governance profiles remain server-owned; the browser never submits them.
+func WithSingleUserCollectionConsents() ServiceOption {
+	return func(service *Service) {
+		service.automaticCollectionConsents = []automaticCollectionConsent{
+			{
+				Identity: ProcessorModelIdentity{
+					Processor: "mineru", EndpointID: "hosted-main", ModelID: "mineru-local-batch-v1",
+				},
+				Input: PutConsentInput{
+					Purposes: []string{"parse"}, DataTypes: []string{"application/pdf"}, PolicyVersion: "v1",
+				},
+			},
+			{
+				Identity: ProcessorModelIdentity{
+					Processor: "jina", EndpointID: "hosted-main", ModelID: "jina-embeddings-v4",
+				},
+				Input: PutConsentInput{
+					Purposes: []string{"passage_embedding"}, DataTypes: []string{"text/plain"}, PolicyVersion: "v1",
+				},
+			},
+		}
+	}
 }
 
 func NewService(repo Repository, options ...ServiceOption) *Service {
@@ -98,7 +130,7 @@ func (s *Service) CreateCollection(ctx context.Context, input CreateCollectionIn
 	if err != nil {
 		return Collection{}, err
 	}
-	return s.repo.CreateCollection(ctx, CreateCollectionRepositoryInput{
+	collection, err := s.repo.CreateCollection(ctx, CreateCollectionRepositoryInput{
 		ID:                id,
 		ActorUserID:       actor.ID,
 		Name:              normalized.Name,
@@ -110,6 +142,34 @@ func (s *Service) CreateCollection(ctx context.Context, input CreateCollectionIn
 		IdempotencyKey:    normalized.IdempotencyKey,
 		CreateRequestHash: requestHash,
 	})
+	if err != nil {
+		return Collection{}, err
+	}
+	for _, consent := range s.automaticCollectionConsents {
+		if _, err := s.PutCollectionConsentForModel(
+			ctx,
+			collection.ID,
+			consent.Identity,
+			consent.Input,
+		); err != nil {
+			provisionErr := fmt.Errorf(
+				"provision single-user collection consent for %s: %w",
+				consent.Identity.Processor,
+				err,
+			)
+			if cleanupErr := s.repo.DeleteCollection(ctx, DeleteCollectionRepositoryInput{
+				CollectionID: collection.ID,
+				ActorUserID:  actor.ID,
+			}); cleanupErr != nil {
+				return Collection{}, errors.Join(
+					provisionErr,
+					fmt.Errorf("rollback unprovisioned single-user collection: %w", cleanupErr),
+				)
+			}
+			return Collection{}, provisionErr
+		}
+	}
+	return collection, nil
 }
 
 func (s *Service) ListCollections(ctx context.Context, input ListCollectionsInput) (ApiPage[Collection], error) {

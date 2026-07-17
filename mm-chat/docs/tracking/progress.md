@@ -1269,7 +1269,8 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         browser Bearer sessions and uses only the fixed Development Owner for
         Knowledge and every other protected capability; removed collection and
         query consent-management UI from Knowledge while keeping server-side
-        governance enforcement internal.
+        governance enforcement internal, and automatically provisions MinerU
+        parse plus Jina passage-embedding consent for each new collection.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 
