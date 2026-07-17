@@ -153,3 +153,40 @@ func TestHandlerAdminProviderConfigRequiresDatabaseForUpdate(t *testing.T) {
 		t.Fatalf("body = %s", rec.Body.String())
 	}
 }
+
+func TestHandlerRoutesAdminProviderCollection(t *testing.T) {
+	repo := &fakeProviderConfigRepository{}
+	handler := NewHandler(NewService(
+		config.Config{Provider: config.ProviderConfig{Name: "Env Default", Model: "gpt-env"}},
+		WithProviderConfigRepository(repo),
+	))
+
+	put := httptest.NewRecorder()
+	handler.ServeHTTP(put, httptest.NewRequest(
+		http.MethodPut,
+		"/v1/admin/providers/CUSTOM",
+		strings.NewReader(`{"name":"Custom","type":"OpenAI Compatible","baseUrl":"https://custom.example/v1","models":["gpt-custom"],"enabled":true}`),
+	))
+	if put.Code != http.StatusOK || !strings.Contains(put.Body.String(), `"source":"server-stored"`) {
+		t.Fatalf("put status = %d, body=%s", put.Code, put.Body.String())
+	}
+
+	list := httptest.NewRecorder()
+	handler.ServeHTTP(list, httptest.NewRequest(http.MethodGet, "/v1/admin/providers", nil))
+	if list.Code != http.StatusOK {
+		t.Fatalf("list status = %d, body=%s", list.Code, list.Body.String())
+	}
+	var response AdminProviderConfigsResponse
+	if err := json.Unmarshal(list.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Providers) != 2 || response.Providers[1].ID != "CUSTOM" {
+		t.Fatalf("providers = %#v", response.Providers)
+	}
+
+	deleted := httptest.NewRecorder()
+	handler.ServeHTTP(deleted, httptest.NewRequest(http.MethodDelete, "/v1/admin/providers/CUSTOM", nil))
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("delete status = %d, body=%s", deleted.Code, deleted.Body.String())
+	}
+}

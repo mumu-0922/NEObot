@@ -279,6 +279,23 @@ describe("BYOK secret envelopes", () => {
     ).resolves.toBe("local-provider-secret");
   });
 
+  it("references backend-managed providers without returning secrets", async () => {
+    const { buildProviderRuntimeConfig } = await import("../lib/byok/client");
+
+    await expect(
+      buildProviderRuntimeConfig({
+        id: "CUSTOM",
+        name: "Backend Custom",
+        type: "OpenAI Compatible",
+        baseUrl: "https://custom.example/v1",
+        apiKey: "",
+        enabled: true,
+        models: ["gpt-custom"],
+        isServerManaged: true,
+      }),
+    ).resolves.toEqual({ id: "CUSTOM", source: "server-stored" });
+  });
+
   it("rejects mismatched key ids and contexts", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
       Response.json(await getByokPublicKey()),

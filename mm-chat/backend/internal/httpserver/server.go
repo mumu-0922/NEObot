@@ -110,6 +110,16 @@ func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 		provider.Name = resolved.Name
 		provider.Type = string(resolved.Type)
 		provider.BaseURL = resolved.BaseURL
+	} else if strings.TrimSpace(provider.Source) == "server-stored" {
+		resolved, err := r.service.ResolveStoredProvider(ctx, provider.ID)
+		if err != nil {
+			return nil, mapRuntimeProviderError(err)
+		}
+		apiKey = resolved.APIKey
+		provider.ID = resolved.ID
+		provider.Name = resolved.Name
+		provider.Type = string(resolved.Type)
+		provider.BaseURL = resolved.BaseURL
 	} else {
 		var err error
 		apiKey, err = r.service.ProviderAPIKey(provider)
@@ -506,6 +516,8 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/config", runtimeConfigHandler)
 	mux.Handle("/v1/providers/models", runtimeConfigHandler)
 	mux.Handle("/v1/admin/provider-config", runtimeConfigHandler)
+	mux.Handle("/v1/admin/providers", runtimeConfigHandler)
+	mux.Handle("/v1/admin/providers/", runtimeConfigHandler)
 	mux.Handle("/v1/byok/public-key", runtimeConfigHandler)
 	mux.Handle("/v1/chat/conversations", chatHandler)
 	mux.Handle("/v1/chat/conversations/", chatHandler)

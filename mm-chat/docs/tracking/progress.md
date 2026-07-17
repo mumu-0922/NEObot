@@ -1251,6 +1251,11 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           list and encrypted secret envelope to Postgres `provider_configs`,
           and makes runtime config, model listing, and chat streaming resolve
           the current server-owned provider config.
+    - [x] G11.3d Multi-provider backend authority and model-list repair:
+          restored Add/Delete in server mode, added backend list/upsert/delete
+          lifecycle for custom providers, made chat/model fetch resolve stored
+          providers by ID, stopped save responses from collapsing the fetched
+          model catalog, and configured a stable local BYOK key outside Git.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

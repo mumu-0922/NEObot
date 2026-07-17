@@ -22,5 +22,17 @@ export function createLocalProviderApiShell(): ProviderApi {
       void input;
       throw unsupportedFeature("local server-default provider config update");
     },
+    async listAdminProviderConfigs() {
+      throw unsupportedFeature("local admin provider config list");
+    },
+    async updateAdminProviderConfig(providerId, input) {
+      void providerId;
+      void input;
+      throw unsupportedFeature("local admin provider config update");
+    },
+    async deleteAdminProviderConfig(providerId) {
+      void providerId;
+      throw unsupportedFeature("local admin provider config delete");
+    },
   };
 }

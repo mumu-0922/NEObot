@@ -46,8 +46,10 @@ describe("settings UI primitives", () => {
       "utf8",
     );
 
-    expect(providerSettings).toContain("getServerDefaultConfig");
+    expect(providerSettings).toContain("listAdminProviderConfigs");
     expect(providerSettings).toContain("updateServerDefaultConfig");
+    expect(providerSettings).toContain("updateAdminProviderConfig");
+    expect(providerSettings).toContain("deleteAdminProviderConfig");
     expect(providerSettings).toContain("encryptSecret");
     expect(providerSettings).toContain("BYOK_CONTEXTS");
     expect(providerSettings).toContain("provider(");

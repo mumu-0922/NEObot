@@ -13,6 +13,7 @@ export interface ModelProvider {
   models: string[];
   modelsList?: string[];
   isServerDefault?: boolean;
+  isServerManaged?: boolean;
 }
 
 export interface ModelMetadata {

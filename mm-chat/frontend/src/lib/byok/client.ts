@@ -166,6 +166,13 @@ export async function buildProviderRuntimeConfig(provider: ModelProvider) {
     };
   }
 
+  if (provider.isServerManaged) {
+    return {
+      id: provider.id,
+      source: "server-stored" as const,
+    };
+  }
+
   const apiKey = await resolveProviderApiKey(provider);
   return {
     id: provider.id,

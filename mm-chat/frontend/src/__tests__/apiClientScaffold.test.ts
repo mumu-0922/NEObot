@@ -480,6 +480,37 @@ describe("G3.1 server runtime/auth API adapters", () => {
             source: "server-default",
           });
         }
+        if (String(input).endsWith("/v1/admin/providers")) {
+          return Response.json({
+            providers: [
+              {
+                id: "SERVER_DEFAULT",
+                name: "Admin Default",
+                type: "OpenAI Compatible",
+                baseUrl: "https://sub.example/v1",
+                models: ["gpt-5.5"],
+                enabled: true,
+                hasApiKey: true,
+                source: "server-default",
+              },
+            ],
+          });
+        }
+        if (String(input).endsWith("/v1/admin/providers/CUSTOM")) {
+          if (init?.method === "DELETE") {
+            return new Response(null, { status: 204 });
+          }
+          return Response.json({
+            id: "CUSTOM",
+            name: "Custom",
+            type: "OpenAI Compatible",
+            baseUrl: "https://custom.example/v1",
+            models: ["gpt-custom"],
+            enabled: true,
+            hasApiKey: true,
+            source: "server-stored",
+          });
+        }
         return Response.json({
           kid: "kid",
           alg: "RSA-OAEP-256+A256GCM",
@@ -516,6 +547,21 @@ describe("G3.1 server runtime/auth API adapters", () => {
       source: "server-default",
     });
     await expect(
+      createServerProviderApiShell(http).listAdminProviderConfigs(),
+    ).resolves.toMatchObject({ providers: [{ id: "SERVER_DEFAULT" }] });
+    await expect(
+      createServerProviderApiShell(http).updateAdminProviderConfig("CUSTOM", {
+        name: "Custom",
+        type: "OpenAI Compatible",
+        baseUrl: "https://custom.example/v1",
+        models: ["gpt-custom"],
+        enabled: true,
+      }),
+    ).resolves.toMatchObject({ source: "server-stored" });
+    await expect(
+      createServerProviderApiShell(http).deleteAdminProviderConfig("CUSTOM"),
+    ).resolves.toBeUndefined();
+    await expect(
       createServerByokApiShell(http).getPublicKey(),
     ).resolves.toMatchObject({
       kid: "kid",
@@ -543,6 +589,27 @@ describe("G3.1 server runtime/auth API adapters", () => {
           models: ["gpt-5.5"],
           apiKeySecret: { v: 1 },
         },
+      },
+      {
+        url: "/mm-api/v1/admin/providers",
+        method: "GET",
+        body: undefined,
+      },
+      {
+        url: "/mm-api/v1/admin/providers/CUSTOM",
+        method: "PUT",
+        body: {
+          name: "Custom",
+          type: "OpenAI Compatible",
+          baseUrl: "https://custom.example/v1",
+          models: ["gpt-custom"],
+          enabled: true,
+        },
+      },
+      {
+        url: "/mm-api/v1/admin/providers/CUSTOM",
+        method: "DELETE",
+        body: undefined,
       },
       { url: "/mm-api/v1/byok/public-key", method: "GET", body: undefined },
     ]);

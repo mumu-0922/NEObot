@@ -68,6 +68,10 @@ type AdminProviderConfigResponse struct {
 	Source    string       `json:"source"`
 }
 
+type AdminProviderConfigsResponse struct {
+	Providers []AdminProviderConfigResponse `json:"providers"`
+}
+
 type UpdateAdminProviderConfigRequest struct {
 	Name         string         `json:"name"`
 	Type         string         `json:"type"`

@@ -109,6 +109,7 @@ interface CoreSettingsState {
   updateProvider: (id: string, updates: Partial<ModelProvider>) => void;
   deleteProvider: (id: string) => void;
   toggleProviderEnabled: (id: string) => void;
+  replaceServerManagedProviders: (providers: ModelProvider[]) => void;
   applyServerConfig: (config: PublicServerConfig) => void;
 
   // Default Models Actions
@@ -215,6 +216,18 @@ export const useCoreSettingsStore = create<CoreSettingsState>()(
           };
         });
       },
+
+      replaceServerManagedProviders: (incoming) =>
+        set((state) => {
+          const providers = normalizeModelProviders(incoming);
+          return {
+            providers,
+            defaultModels: pruneUnavailableDefaultModels(
+              state.defaultModels,
+              providers,
+            ),
+          };
+        }),
 
       applyServerConfig: (config) =>
         set((state) => {

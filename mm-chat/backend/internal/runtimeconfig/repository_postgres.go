@@ -59,6 +59,38 @@ LIMIT 1
 	return stored, true, nil
 }
 
+func (r *PostgresProviderConfigRepository) ListProviderConfigs(
+	ctx context.Context,
+	userID string,
+) ([]StoredProviderConfig, error) {
+	if r == nil || r.db == nil {
+		return nil, ErrDatabaseRequired
+	}
+	rows, err := r.db.QueryContext(ctx, `
+SELECT id::text, user_id::text, provider_id, label, encrypted_secret_ref, config
+FROM provider_configs
+WHERE user_id = $1 AND deleted_at IS NULL
+ORDER BY created_at ASC, id ASC
+`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	stored := make([]StoredProviderConfig, 0)
+	for rows.Next() {
+		item, err := scanProviderConfig(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		stored = append(stored, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return stored, nil
+}
+
 func (r *PostgresProviderConfigRepository) UpsertProviderConfig(
 	ctx context.Context,
 	input UpsertProviderConfigInput,
@@ -145,6 +177,32 @@ WHERE id = $1
 	return stored, nil
 }
 
+func (r *PostgresProviderConfigRepository) DeleteProviderConfig(
+	ctx context.Context,
+	userID string,
+	providerID string,
+) error {
+	if r == nil || r.db == nil {
+		return ErrDatabaseRequired
+	}
+	result, err := r.db.ExecContext(ctx, `
+UPDATE provider_configs
+SET deleted_at = now(), updated_at = now()
+WHERE user_id = $1 AND provider_id = $2 AND deleted_at IS NULL
+`, userID, providerID)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return ErrProviderConfigNotFound
+	}
+	return nil
+}
+
 func scanProviderConfigTx(ctx context.Context, tx *sql.Tx, id string) (StoredProviderConfig, bool, error) {
 	var stored StoredProviderConfig
 	var encodedConfig []byte
@@ -174,6 +232,31 @@ WHERE id = $1 AND deleted_at IS NULL
 		}
 	}
 	return stored, true, nil
+}
+
+type rowScanner func(dest ...any) error
+
+func scanProviderConfig(scan rowScanner) (StoredProviderConfig, error) {
+	var stored StoredProviderConfig
+	var encodedConfig []byte
+	var secretRef sql.NullString
+	if err := scan(
+		&stored.ID,
+		&stored.UserID,
+		&stored.ProviderID,
+		&stored.Label,
+		&secretRef,
+		&encodedConfig,
+	); err != nil {
+		return StoredProviderConfig{}, err
+	}
+	stored.EncryptedSecretRef = secretRef.String
+	if len(encodedConfig) > 0 {
+		if err := json.Unmarshal(encodedConfig, &stored.Config); err != nil {
+			return StoredProviderConfig{}, ErrProviderConfigUnsupported
+		}
+	}
+	return stored, nil
 }
 
 func newUUID() (string, error) {

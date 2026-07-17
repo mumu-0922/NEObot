@@ -238,6 +238,13 @@ func (r *fakeProviderConfigRepository) GetProviderConfig(_ context.Context, user
 	return r.stored, true, nil
 }
 
+func (r *fakeProviderConfigRepository) ListProviderConfigs(_ context.Context, userID string) ([]StoredProviderConfig, error) {
+	if !r.ok || r.stored.UserID != userID {
+		return []StoredProviderConfig{}, nil
+	}
+	return []StoredProviderConfig{r.stored}, nil
+}
+
 func (r *fakeProviderConfigRepository) UpsertProviderConfig(_ context.Context, input UpsertProviderConfigInput) (StoredProviderConfig, error) {
 	r.input = input
 	r.stored = StoredProviderConfig{
@@ -250,6 +257,14 @@ func (r *fakeProviderConfigRepository) UpsertProviderConfig(_ context.Context, i
 	}
 	r.ok = true
 	return r.stored, nil
+}
+
+func (r *fakeProviderConfigRepository) DeleteProviderConfig(_ context.Context, userID string, providerID string) error {
+	if !r.ok || r.stored.UserID != userID || r.stored.ProviderID != providerID {
+		return ErrProviderConfigNotFound
+	}
+	r.ok = false
+	return nil
 }
 
 func TestAdminProviderConfigOverridesPublicServerDefault(t *testing.T) {
@@ -322,6 +337,66 @@ func TestUpdateAdminProviderConfigStoresEncryptedSecretEnvelope(t *testing.T) {
 	}
 	if got := repo.input.Config.Models; len(got) != 1 || got[0] != "gpt-5.5" {
 		t.Fatalf("stored models = %#v", got)
+	}
+}
+
+func TestAdminProviderConfigsManageCustomProviderOnBackend(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pemValue := string(pem.EncodeToMemory(&pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
+	}))
+	repo := &fakeProviderConfigRepository{}
+	service := NewService(
+		config.Config{
+			Provider: config.ProviderConfig{Name: "Env Default", Model: "gpt-env"},
+			BYOK:     config.BYOKConfig{PrivateKeyPEM: pemValue},
+		},
+		WithProviderConfigRepository(repo),
+	)
+
+	created, err := service.UpsertAdminProviderConfig(context.Background(), "CUSTOM", UpdateAdminProviderConfigRequest{
+		Name:         "Custom Backend",
+		Type:         "OpenAI Compatible",
+		BaseURL:      "https://custom.example/v1",
+		Models:       []string{"gpt-custom"},
+		Enabled:      true,
+		APIKeySecret: encryptedSecretEnvelope(t, privateKey, "custom-key", "provider:OpenAI Compatible"),
+	})
+	if err != nil {
+		t.Fatalf("UpsertAdminProviderConfig returned error: %v", err)
+	}
+	if created.ID != "CUSTOM" || created.Source != "server-stored" || !created.HasAPIKey {
+		t.Fatalf("created = %#v", created)
+	}
+
+	listed, err := service.AdminProviderConfigs(context.Background())
+	if err != nil {
+		t.Fatalf("AdminProviderConfigs returned error: %v", err)
+	}
+	if len(listed.Providers) != 2 {
+		t.Fatalf("providers = %#v, want env default plus custom", listed.Providers)
+	}
+	if listed.Providers[0].ID != serverDefaultProviderID || listed.Providers[1].ID != "CUSTOM" {
+		t.Fatalf("provider order = %#v", listed.Providers)
+	}
+
+	resolved, err := service.ResolveStoredProvider(context.Background(), "CUSTOM")
+	if err != nil {
+		t.Fatalf("ResolveStoredProvider returned error: %v", err)
+	}
+	if resolved.APIKey != "custom-key" || resolved.BaseURL != "https://custom.example/v1" {
+		t.Fatalf("resolved = %#v", resolved)
+	}
+
+	if err := service.DeleteAdminProviderConfig(context.Background(), "CUSTOM"); err != nil {
+		t.Fatalf("DeleteAdminProviderConfig returned error: %v", err)
+	}
+	if _, err := service.ResolveStoredProvider(context.Background(), "CUSTOM"); err != ErrProviderConfigNotFound {
+		t.Fatalf("resolve deleted err = %v, want ErrProviderConfigNotFound", err)
 	}
 }
 

@@ -8174,3 +8174,16 @@ in the active sliced process entry:
 mm-chat/docs/tracking/standalone-parity-sliced-process.md
 # 2026-07-17 — G11.3c Server Default admin provider persistence
 ```
+
+## 2026-07-17 — G11.3d Multi-provider backend authority cross-reference
+
+Owner browser proof found two regressions after G11.3c: server mode hid the Add
+button, and a successful seven-model response was overwritten by the one-model
+selected list returned from the subsequent config save. The active sliced log
+records the multi-provider backend lifecycle, model-list fix, stable local BYOK
+configuration, source-build deployment, and live proxy/API proof:
+
+```text
+mm-chat/docs/tracking/standalone-parity-sliced-process.md
+# 2026-07-17 — G11.3d Multi-provider backend authority and model-list repair
+```

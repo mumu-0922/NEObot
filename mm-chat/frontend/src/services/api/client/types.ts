@@ -380,7 +380,7 @@ export interface ProviderRuntimeConfigDTO {
   type?: string;
   baseUrl?: string;
   name?: string;
-  source?: "server-default";
+  source?: "server-default" | "server-stored";
   apiKeySecret?: unknown;
   useDefault?: boolean;
 }
@@ -402,7 +402,11 @@ export interface AdminProviderConfigDTO {
   models: string[];
   enabled: boolean;
   hasApiKey: boolean;
-  source: "server-default";
+  source: "server-default" | "server-stored";
+}
+
+export interface AdminProviderConfigsDTO {
+  providers: AdminProviderConfigDTO[];
 }
 
 export interface UpdateAdminProviderConfigInput {
@@ -422,6 +426,12 @@ export interface ProviderApi {
   updateServerDefaultConfig(
     input: UpdateAdminProviderConfigInput,
   ): Promise<AdminProviderConfigDTO>;
+  listAdminProviderConfigs(): Promise<AdminProviderConfigsDTO>;
+  updateAdminProviderConfig(
+    providerId: string,
+    input: UpdateAdminProviderConfigInput,
+  ): Promise<AdminProviderConfigDTO>;
+  deleteAdminProviderConfig(providerId: string): Promise<void>;
 }
 
 export interface GenerateImageInput {

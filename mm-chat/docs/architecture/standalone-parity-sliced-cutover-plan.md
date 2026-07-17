@@ -662,6 +662,11 @@ Slice sequence:
         BYOK envelopes under backend control, and makes `/v1/config`,
         `/v1/providers/models`, and chat streaming resolve the current
         server-owned provider config.
+  - [x] G11.3d Multi-provider backend authority: restore Add/Delete for the
+        administrator UI, persist every configured provider in Postgres, resolve
+        custom provider model/chat requests by backend ID without returning
+        secrets, preserve fetched catalogs independently from selected models,
+        and require a stable BYOK key for restart-safe stored credentials.
 
 Targeted tests:
 

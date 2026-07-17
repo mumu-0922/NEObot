@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 
 	"neo-chat/mm-chat/backend/internal/config"
 )
@@ -35,6 +36,10 @@ func NewHandler(service *Service) *Handler {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, "/v1/admin/providers/") {
+		h.adminProviderConfigByID(w, r)
+		return
+	}
 	switch r.URL.Path {
 	case "/v1/config":
 		h.requireMethod(w, r, http.MethodGet, h.getConfig)
@@ -50,10 +55,52 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Allow", http.MethodGet+", "+http.MethodPut)
 			writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 		}
+	case "/v1/admin/providers":
+		h.requireMethod(w, r, http.MethodGet, h.listAdminProviderConfigs)
 	case "/v1/byok/public-key":
 		h.requireMethod(w, r, http.MethodGet, h.getBYOKPublicKey)
 	default:
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
+	}
+}
+
+func (h *Handler) listAdminProviderConfigs(w http.ResponseWriter, r *http.Request) {
+	response, err := h.service.AdminProviderConfigs(r.Context())
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (h *Handler) adminProviderConfigByID(w http.ResponseWriter, r *http.Request) {
+	providerID := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/v1/admin/providers/"))
+	if providerID == "" || strings.Contains(providerID, "/") {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
+		return
+	}
+	switch r.Method {
+	case http.MethodPut:
+		var request UpdateAdminProviderConfigRequest
+		if err := decodeJSON(w, r, &request); err != nil {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "request body is invalid")
+			return
+		}
+		response, err := h.service.UpsertAdminProviderConfig(r.Context(), providerID, request)
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, response)
+	case http.MethodDelete:
+		if err := h.service.DeleteAdminProviderConfig(r.Context(), providerID); err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		w.Header().Set("Allow", http.MethodPut+", "+http.MethodDelete)
+		writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 	}
 }
 
@@ -152,6 +199,8 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, "PROVIDER_CONFIG_UNSUPPORTED", "provider configuration is unsupported")
 	case errors.Is(err, ErrDatabaseRequired):
 		writeError(w, http.StatusServiceUnavailable, "DATABASE_REQUIRED", "database is required for provider configuration")
+	case errors.Is(err, ErrProviderConfigNotFound):
+		writeError(w, http.StatusNotFound, "PROVIDER_CONFIG_NOT_FOUND", "provider configuration was not found")
 	default:
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "runtime config request failed")
 	}

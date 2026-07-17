@@ -18,6 +18,7 @@
   "apiKeyPlaceholder": "sk-…",
   "keyStoredLocally": "Your key is encrypted locally in this browser.",
   "serverDefaultProviderDesc": "This provider is the backend Server Default admin config. Name, base URL, models, and key are saved on the backend; the key is never returned to the browser.",
+  "serverManagedProviderDesc": "This provider is managed by the backend. Its name, base URL, models, and key persist across refreshes and browsers; the key is never returned to the browser.",
   "enableProvider": "Enable Provider",
   "confirmDeleteAria": "Confirm delete provider {name}",
   "deleteAria": "Delete provider {name}",

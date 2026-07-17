@@ -18,6 +18,7 @@
   "apiKeyPlaceholder": "sk-…",
   "keyStoredLocally": "キーはこのブラウザのローカルに暗号化されて保存されます。",
   "serverDefaultProviderDesc": "このプロバイダーはバックエンドの Server Default 管理者設定です。名前、ベース URL、モデル、キーはバックエンドに保存され、キーはブラウザへ返されません。",
+  "serverManagedProviderDesc": "このプロバイダーはバックエンドで管理されます。名前、ベース URL、モデル、キーは更新後や別ブラウザーでも保持され、キーはブラウザーへ返されません。",
   "enableProvider": "プロバイダーを有効化",
   "confirmDeleteAria": "プロバイダー {name} の削除を確認",
   "deleteAria": "プロバイダー {name} を削除",

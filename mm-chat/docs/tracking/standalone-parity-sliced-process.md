@@ -4456,3 +4456,82 @@ key configuration remains required for durable restart-safe secret decryption;
 without it, env/secret fallback still works but DB-stored envelopes encrypted by
 an ephemeral key cannot survive backend key rotation.
 ```
+
+## 2026-07-17 — G11.3d Multi-provider backend authority and model-list repair
+
+Objective: correct the owner-visible server-mode regressions and make the web
+provider editor a backend-authoritative multi-provider administrator surface.
+
+Root cause:
+
+- G11.3c explicitly hid Add whenever the API client was in server mode, so only
+  `SERVER_DEFAULT` could be edited;
+- the real `/models` request succeeded and returned seven models, but the
+  follow-up config save copied the selected one-model list into `modelsList`,
+  collapsing the visible fetched catalog back to `gpt-5.5`;
+- the deployed backend allowed an ephemeral BYOK key, which is unsuitable for
+  decrypting persisted provider envelopes after restart.
+
+Completed scope:
+
+- added backend collection/item admin routes:
+  `GET /v1/admin/providers`, `PUT /v1/admin/providers/{id}`, and
+  `DELETE /v1/admin/providers/{id}`;
+- extended the Postgres provider repository with list and soft-delete while
+  retaining the existing locked upsert path;
+- added `server-stored` runtime references so model listing and chat resolve a
+  custom provider by backend ID and never require the browser to receive its
+  secret;
+- restored the Add button in server mode, creates a backend draft immediately,
+  saves all provider fields/keys to the backend, loads all backend providers on
+  settings entry, and deletes custom providers from backend storage;
+- retained browser provider metadata only as a non-authoritative UI cache;
+- preserved fetched `modelsList` when saving the selected `models` subset;
+- generated a stable RSA BYOK key and key ID in ignored
+  `.env.single-server`, disabled ephemeral keys, and rebuilt/recreated the
+  backend and frontend through the owner-selected Compose source-build flow.
+
+Security boundary:
+
+```text
+The web UI does not rewrite the host .env file. .env/secret remains the startup
+fallback; Postgres is the live backend configuration authority. API keys cross
+the browser boundary only as BYOK envelopes, are stored encrypted, and are
+reported back only as hasApiKey=true/false.
+```
+
+Verification:
+
+```text
+frontend ESLint / typecheck / format                    passed / passed / passed
+frontend full Vitest                                   841 passed (179 files)
+Go full test suite                                      passed
+Docker Compose backend/frontend source build            passed
+frontend/backend container health                       healthy / healthy
+GET /mm-api/v1/admin/providers                          200, SERVER_DEFAULT listed
+POST /mm-api/v1/providers/models                        200, 7 real models
+temporary custom provider PUT/list/DELETE               passed; proof row removed
+temporary custom BYOK provider model fetch              passed; 7 real models, row purged
+runtime BYOK flags                                      stable=true, ephemeral=false
+```
+
+Live model proof:
+
+```text
+gpt-5.6-sol
+gpt-5.6-terra
+gpt-5.6-luna
+gpt-5.5
+gpt-5.4
+gpt-5.4-mini
+gpt-image-2
+```
+
+Residual risk:
+
+```text
+An encrypted SERVER_DEFAULT envelope created under the former ephemeral key can
+no longer be decrypted by that old key after restart. The configured env API
+key remains the working fallback; the next key save from the web UI replaces
+the stored envelope using the new stable key.
+```
