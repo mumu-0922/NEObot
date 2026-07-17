@@ -1519,9 +1519,9 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                   aria-label={t("manageKnowledgeBases")}
                   aria-pressed={normalizedKnowledgeCollectionIds.length > 0}
                   className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${
-                    showKBModal || normalizedKnowledgeCollectionIds.length > 0
+                    normalizedKnowledgeCollectionIds.length > 0
                       ? "bg-purple-50 text-purple-700 dark:bg-purple-950/35 dark:text-purple-200"
-                      : "text-purple-500 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20"
+                      : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"
                   }`}
                   disabled={isInputBusy || isSavingKnowledgeSelection}
                   onClick={() => setShowKBModal(true)}

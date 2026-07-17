@@ -296,3 +296,28 @@ real provider Knowledge stream       HTTP 200 + message.completed + [K1]
 Rollback: restore the single environment identity only if the administrator UI
 is also prevented from selecting other models. Rolling back one without the
 other recreates the exact live failure.
+
+## 2026-07-17 — G11.9B.1 Knowledge state visual cleanup
+
+Outcome: the composer now communicates Knowledge binding through state rather
+than permanent decoration. With no selected collection, the dedicated Library
+button uses the same neutral gray palette as adjacent tools; after a collection
+is bound it uses the existing purple active treatment. Merely opening the
+selection modal does not mark the control active.
+
+The citation header keeps its count and expand/collapse behavior but removes
+the redundant `AUTO` mode badge. Auto retrieval remains the backend behavior;
+only the unexplained visual label was removed.
+
+Verification:
+
+```text
+focused frontend composition tests  6 passed
+frontend ESLint / typecheck          passed / passed
+frontend Prettier check              passed
+frontend production source build     passed
+frontend/backend health              healthy / healthy
+```
+
+Rollback: restore only the removed badge and prior button classes; no
+conversation binding, retrieval, or citation metadata contract changed.

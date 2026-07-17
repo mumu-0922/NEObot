@@ -1301,6 +1301,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           reactivation, up to eight collections survive DTO/store refresh, and
           server mode exposes persistent removable Knowledge chips outside the
           attachment menu.
+      - [x] G11.9B.1 Knowledge state visual cleanup: the composer Library icon
+            is neutral while unbound and purple only while bound, and citation
+            headers no longer render the redundant `AUTO` badge.
     - [ ] G11.9C Contextual rewrite, Jina query embedding, hybrid/RRF retrieval,
           and Jina rerank.
       - [x] G11.9C.1 Conditional standalone rewrite and dual-query keyword/CJK

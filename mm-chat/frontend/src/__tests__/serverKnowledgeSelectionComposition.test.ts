@@ -18,6 +18,17 @@ describe("G8.5 server knowledge selection isolation", () => {
     resolve(process.cwd(), "src/lib/utils/knowledgeAttachments.ts"),
     "utf8",
   );
+  const messageInput = readFileSync(
+    resolve(process.cwd(), "src/components/chat/MessageInput.tsx"),
+    "utf8",
+  );
+  const evidenceBlock = readFileSync(
+    resolve(
+      process.cwd(),
+      "src/components/knowledge/KnowledgeEvidenceBlock.tsx",
+    ),
+    "utf8",
+  );
 
   it("loads visible personal server collections through the API client", () => {
     expect(selectionModal).toContain("createNeoChatApiClient");
@@ -66,11 +77,6 @@ describe("G8.5 server knowledge selection isolation", () => {
   });
 
   it("uses a dedicated persistent Knowledge control with an eight collection cap", () => {
-    const messageInput = readFileSync(
-      resolve(process.cwd(), "src/components/chat/MessageInput.tsx"),
-      "utf8",
-    );
-
     expect(messageInput).toContain("onKnowledgeCollectionIdsChange");
     expect(messageInput).toContain("conversationKnowledgeEnabled");
     expect(messageInput).toContain("selectedKnowledgeBases");
@@ -81,5 +87,23 @@ describe("G8.5 server knowledge selection isolation", () => {
     expect(selectionModal).toContain("maxSelectedCollections = 8");
     expect(selectionModal).toContain("onSelectCollections");
     expect(selectionModal).toContain('t("saveSelection")');
+  });
+
+  it("colors the Knowledge control only when a collection is selected", () => {
+    expect(messageInput).toContain(
+      'normalizedKnowledgeCollectionIds.length > 0\n                      ? "bg-purple-50 text-purple-700',
+    );
+    expect(messageInput).toContain(
+      ': "text-gray-500 dark:text-muted-foreground hover:text-gray-700',
+    );
+    expect(messageInput).not.toContain(
+      "showKBModal || normalizedKnowledgeCollectionIds.length > 0",
+    );
+  });
+
+  it("keeps citation details without rendering an Auto mode badge", () => {
+    expect(evidenceBlock).toContain('t("citationsHeading"');
+    expect(evidenceBlock).not.toContain("{knowledge.mode}");
+    expect(evidenceBlock).not.toContain("uppercase tracking-wide");
   });
 });

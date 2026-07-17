@@ -96,9 +96,6 @@ const KnowledgeEvidenceBlock: React.FC<KnowledgeEvidenceBlockProps> = ({
           aria-hidden="true"
         />
         <span className="min-w-0 flex-1 truncate text-left">{heading}</span>
-        <span className="shrink-0 rounded-full bg-white/70 px-2 py-0.5 text-[10px] uppercase tracking-wide text-purple-700 dark:bg-card/70 dark:text-purple-200">
-          {knowledge.mode}
-        </span>
         <ChevronDown
           size={14}
           aria-hidden="true"

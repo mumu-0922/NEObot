@@ -4889,3 +4889,15 @@ and collection consent for `gpt-5.6-sol`, `gpt-5.6-terra`, and
 persisted metadata reported `outcome=answered`, `citationCount=1`, and exact
 `openai_compatible/server-default/gpt-5.6-sol` authority. The disposable
 conversation was deleted and its active-row count returned to zero.
+
+## 2026-07-17 — G11.9B.1 Knowledge state visual cleanup
+
+Owner visual review found that the dedicated Knowledge control looked active
+even before a collection was selected, and the citation header exposed an
+unexplained `AUTO` badge. The inactive Library button now matches adjacent gray
+tools, selected state alone applies purple, and opening the modal does not
+change that state. The redundant badge was removed without changing Auto
+retrieval or citation metadata.
+
+Focused composition tests passed 6/6; frontend lint, typecheck, formatting, and
+production source build passed; recreated frontend and backend are healthy.

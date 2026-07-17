@@ -8258,3 +8258,10 @@ backfills their exact Answer governance/consent, and auto-provisions the same
 set for future collections. Source-built live proof returned the expected
 Knowledge answer and `[K1]`; detailed evidence and rollback are recorded in
 `docs/tracking/g11-knowledge-auto-rag-process.md`.
+
+## 2026-07-17 — G11.9B.1 Knowledge visual-state cross-reference
+
+The composer Knowledge icon now shares the neutral tool palette when no
+collection is bound and becomes purple only after selection. Citation headers
+no longer show the redundant `AUTO` badge. Verification and rollback are
+recorded in `docs/tracking/g11-knowledge-auto-rag-process.md`.
