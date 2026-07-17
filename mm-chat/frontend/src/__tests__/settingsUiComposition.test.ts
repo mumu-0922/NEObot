@@ -50,6 +50,10 @@ describe("settings UI primitives", () => {
     expect(providerSettings).toContain("updateServerDefaultConfig");
     expect(providerSettings).toContain("updateAdminProviderConfig");
     expect(providerSettings).toContain("deleteAdminProviderConfig");
+    expect(providerSettings).toContain("queueServerProviderPersist");
+    expect(providerSettings).toContain("providerPersistQueueRef");
+    expect(providerSettings).toContain("onBlur={() =>");
+    expect(providerSettings).not.toContain("models: response.models");
     expect(providerSettings).toContain("encryptSecret");
     expect(providerSettings).toContain("BYOK_CONTEXTS");
     expect(providerSettings).toContain("provider(");

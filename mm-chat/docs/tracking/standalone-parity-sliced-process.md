@@ -4535,3 +4535,35 @@ no longer be decrypted by that old key after restart. The configured env API
 key remains the working fallback; the next key save from the web UI replaces
 the stored envelope using the new stable key.
 ```
+
+## 2026-07-17 — G11.3e Provider editor autosave
+
+Objective: fix the owner-visible case where fetched models appeared and could
+be checked, but switching Settings tabs discarded those checks because no
+backend update was issued.
+
+Runtime evidence before the fix:
+
+```text
+browser POST /v1/providers/models                         200
+browser PUT /v1/admin/provider-config after model checks absent
+Postgres SERVER_DEFAULT models                            ["gpt-5.5"]
+```
+
+Completed scope:
+
+- model checkbox changes now queue an immediate backend save;
+- enable/type changes save automatically;
+- provider name and base URL save on blur, including tab switches;
+- backend saves are serialized so rapid checkbox changes cannot arrive out of
+  order;
+- save responses update only server-management metadata and do not overwrite
+  newer optimistic model selections;
+- the explicit Save to Backend button remains as a manual flush action.
+
+Verification:
+
+```text
+targeted provider/settings/BYOK tests                    passed, 70 tests
+frontend typecheck / ESLint / format                     passed / passed / passed
+```

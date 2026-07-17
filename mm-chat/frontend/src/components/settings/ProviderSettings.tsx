@@ -68,6 +68,7 @@ const ProviderSettings = () => {
   const fetchRequestIdRef = useRef(0);
   const selectedProviderIdRef = useRef<string | null>(null);
   const serverProvidersLoadedRef = useRef(false);
+  const providerPersistQueueRef = useRef<Promise<void>>(Promise.resolve());
   const deleteConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -182,17 +183,31 @@ const ProviderSettings = () => {
         [response.id]: response.hasApiKey,
       }));
       updateProvider(response.id, {
-        name: response.name,
-        type: response.type as any,
-        baseUrl: response.baseUrl,
-        enabled: response.enabled,
-        models: response.models,
         isServerManaged: true,
       });
       return response;
     } finally {
       setSavingProviderId(null);
     }
+  };
+
+  const queueServerProviderPersist = (providerId: string) => {
+    if (!serverModeEnabled) return;
+
+    providerPersistQueueRef.current = providerPersistQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        const latestProvider = useCoreSettingsStore
+          .getState()
+          .providers.find((provider) => provider.id === providerId);
+        if (!latestProvider) return;
+        await persistServerProvider(latestProvider);
+      })
+      .catch((error) => {
+        setFetchError(
+          error instanceof Error ? error.message : t("errorFetchingModels"),
+        );
+      });
   };
 
   const clearDeleteConfirmation = () => {
@@ -353,6 +368,7 @@ const ProviderSettings = () => {
       : [...currentModels, model];
 
     updateProvider(currentProvider.id, { models: newModels });
+    queueServerProviderPersist(currentProvider.id);
   };
 
   const displayModels =
@@ -514,6 +530,9 @@ const ProviderSettings = () => {
                           name: e.target.value,
                         })
                       }
+                      onBlur={() =>
+                        queueServerProviderPersist(currentProvider.id)
+                      }
                       className="w-full px-3 py-2 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-400 transition-[border-color,box-shadow] text-gray-800 dark:text-foreground"
                     />
                   </div>
@@ -531,11 +550,12 @@ const ProviderSettings = () => {
                         id={providerTypeInputId}
                         name="providerType"
                         value={currentProvider.type}
-                        onChange={(e) =>
+                        onChange={(e) => {
                           updateProvider(currentProvider.id, {
                             type: e.target.value as any,
-                          })
-                        }
+                          });
+                          queueServerProviderPersist(currentProvider.id);
+                        }}
                         className="w-full px-3 py-2 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-400 transition-[border-color,box-shadow] appearance-none text-gray-800 dark:text-foreground"
                       >
                         <option value="Gemini">Gemini</option>
@@ -575,6 +595,9 @@ const ProviderSettings = () => {
                         updateProvider(currentProvider.id, {
                           baseUrl: e.target.value,
                         })
+                      }
+                      onBlur={() =>
+                        queueServerProviderPersist(currentProvider.id)
                       }
                       placeholder={
                         currentProvider.type === "Gemini"
@@ -685,11 +708,12 @@ const ProviderSettings = () => {
                         type="checkbox"
                         className="sr-only peer"
                         checked={currentProvider.enabled}
-                        onChange={() =>
+                        onChange={() => {
                           updateProvider(currentProvider.id, {
                             enabled: !currentProvider.enabled,
-                          })
-                        }
+                          });
+                          queueServerProviderPersist(currentProvider.id);
+                        }}
                       />
                       <div className="w-11 h-6 bg-gray-200 dark:bg-accent peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500/60 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-white dark:peer-focus-visible:ring-offset-background rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-transform peer-checked:bg-blue-500 peer-checked:shadow-[0_0_0_3px_rgba(59,130,246,0.18)] dark:peer-checked:bg-blue-400"></div>
                     </div>
@@ -701,7 +725,9 @@ const ProviderSettings = () => {
                     <button
                       type="button"
                       disabled={savingProviderId === currentProvider.id}
-                      onClick={() => persistServerProvider(currentProvider)}
+                      onClick={() =>
+                        queueServerProviderPersist(currentProvider.id)
+                      }
                       className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-[color,background-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 ${
                         savingProviderId === currentProvider.id
                           ? "cursor-not-allowed opacity-70 bg-blue-50 text-blue-500 dark:bg-blue-900/20 dark:text-blue-300"

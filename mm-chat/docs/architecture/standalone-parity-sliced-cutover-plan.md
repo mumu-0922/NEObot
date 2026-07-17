@@ -667,6 +667,9 @@ Slice sequence:
         custom provider model/chat requests by backend ID without returning
         secrets, preserve fetched catalogs independently from selected models,
         and require a stable BYOK key for restart-safe stored credentials.
+  - [x] G11.3e Provider editor autosave: persist model toggles and provider
+        controls without requiring a second manual save, serialize rapid writes,
+        and preserve newer local edits while earlier saves complete.
 
 Targeted tests:
 

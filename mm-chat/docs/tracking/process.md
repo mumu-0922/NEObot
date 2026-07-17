@@ -8187,3 +8187,9 @@ configuration, source-build deployment, and live proxy/API proof:
 mm-chat/docs/tracking/standalone-parity-sliced-process.md
 # 2026-07-17 — G11.3d Multi-provider backend authority and model-list repair
 ```
+
+## 2026-07-17 — G11.3e Provider editor autosave cross-reference
+
+Owner browser evidence showed successful model discovery but no provider PUT
+after checkbox changes. The active sliced log records the serialized autosave
+fix and the stale-response overwrite guard.

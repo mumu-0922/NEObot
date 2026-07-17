@@ -1256,6 +1256,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           lifecycle for custom providers, made chat/model fetch resolve stored
           providers by ID, stopped save responses from collapsing the fetched
           model catalog, and configured a stable local BYOK key outside Git.
+    - [x] G11.3e Provider editor autosave: model selection, enable state, and
+          provider type now serialize backend writes automatically; name/base
+          URL flush on blur, and save responses no longer overwrite newer
+          optimistic model selections.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 
