@@ -39,6 +39,10 @@ from mm_chat_rag.mineru_gateway import (
     MinerUResultArchiveProvider,
     MinerUTextBaselineArchiveParserGateway,
 )
+from mm_chat_rag.native_gateway import (
+    AuthorityRoutingParserGateway,
+    NativeSandboxParserGateway,
+)
 from mm_chat_rag.postgres import PostgresAdapter
 from mm_chat_rag.redis_wakeup import RedisWakeSubscriber
 from mm_chat_rag.settings import Settings, SettingsError
@@ -81,7 +85,10 @@ def build_promoted_job_handler_registry(
                     worker_id=settings.worker_id,
                 ),
             ),
-            parser=MinerUTextBaselineArchiveParserGateway(parse_archive_provider),
+            parser=AuthorityRoutingParserGateway(
+                mineru=MinerUTextBaselineArchiveParserGateway(parse_archive_provider),
+                native=NativeSandboxParserGateway(),
+            ),
             projection=parse_projection,
         )
         handlers["parse"] = admitted_parse_handler_with_dependencies(

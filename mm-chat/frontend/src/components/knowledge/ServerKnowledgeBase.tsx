@@ -339,11 +339,23 @@ export default function ServerKnowledgeBase({
             purpose: "knowledge",
             knowledgeCollectionId: collectionId,
           });
-          await apiClient.knowledge.bindDocument({
-            collectionId,
-            fileId: fileRecord.id,
-            idempotencyKey: newIdempotencyKey("knowledge-document"),
-          });
+          try {
+            await apiClient.knowledge.bindDocument({
+              collectionId,
+              fileId: fileRecord.id,
+              idempotencyKey: newIdempotencyKey("knowledge-document"),
+            });
+          } catch (caught) {
+            try {
+              await apiClient.files.deleteFile(fileRecord.id);
+            } catch (cleanupError) {
+              logDevError("Failed to clean up unbound knowledge file", {
+                cleanupError,
+                fileId: fileRecord.id,
+              });
+            }
+            throw caught;
+          }
         }
         setNotice(t("serverDocumentsBound", { count: accepted.length }));
         await refreshDocuments();
@@ -942,15 +954,17 @@ function ServerDocumentRow({
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-        <button
-          type="button"
-          onClick={onReprocess}
-          disabled={!canManage || busy}
-          aria-label={t("serverReprocessDocument")}
-          className="rounded-lg p-2 text-gray-400 hover:bg-white hover:text-blue-500 disabled:opacity-50 dark:hover:bg-background"
-        >
-          <RefreshCw size={16} aria-hidden="true" />
-        </button>
+        {document.pendingVersion?.status === "failed" && (
+          <button
+            type="button"
+            onClick={onReprocess}
+            disabled={!canManage || busy}
+            aria-label={t("serverReprocessDocument")}
+            className="rounded-lg p-2 text-gray-400 hover:bg-white hover:text-blue-500 disabled:opacity-50 dark:hover:bg-background"
+          >
+            <RefreshCw size={16} aria-hidden="true" />
+          </button>
+        )}
         <button
           type="button"
           onClick={onDelete}

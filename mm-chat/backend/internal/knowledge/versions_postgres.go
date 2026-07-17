@@ -87,7 +87,8 @@ WHERE document_id = $1 AND id = $2 AND status = 'active'
 	if err != nil {
 		return Document{}, err
 	}
-	authority, err := resolveParseAuthority(ctx, tx, collectionID, input.ParseProcessor, file.MIMEType)
+	processor := selectParseProcessor(input.ParseProcessor, file.MIMEType)
+	authority, err := resolveParseAuthority(ctx, tx, collectionID, processor, file.MIMEType)
 	if err != nil {
 		return Document{}, err
 	}
@@ -342,4 +343,14 @@ FOR UPDATE
 		return parseAuthority{}, fmt.Errorf("resolve parse consent: %w", err)
 	}
 	return authority, nil
+}
+
+func selectParseProcessor(requested, mimeType string) string {
+	if requested != automaticParseProcessor {
+		return requested
+	}
+	if mimeType == "application/pdf" {
+		return "mineru"
+	}
+	return nativeParseProcessor
 }

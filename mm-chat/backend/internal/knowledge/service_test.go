@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"slices"
 	"testing"
 	"time"
 
@@ -65,8 +66,8 @@ func TestServiceAutoProvisionsSingleUserCollectionConsents(t *testing.T) {
 	if collection.ID != repo.createResult.ID {
 		t.Fatalf("collection id = %q", collection.ID)
 	}
-	if len(repo.putConsents) != 2 {
-		t.Fatalf("automatic consents = %#v, want MinerU and Jina", repo.putConsents)
+	if len(repo.putConsents) != 3 {
+		t.Fatalf("automatic consents = %#v, want MinerU, Native, and Jina", repo.putConsents)
 	}
 	mineru := repo.putConsents[0]
 	if mineru.CollectionID != collection.ID || mineru.ActorUserID != testActorID ||
@@ -76,7 +77,15 @@ func TestServiceAutoProvisionsSingleUserCollectionConsents(t *testing.T) {
 		len(mineru.DataTypes) != 1 || mineru.DataTypes[0] != "application/pdf" {
 		t.Fatalf("MinerU automatic consent = %#v", mineru)
 	}
-	jina := repo.putConsents[1]
+	native := repo.putConsents[1]
+	if native.CollectionID != collection.ID || native.ActorUserID != testActorID ||
+		native.Processor != nativeParseProcessor || native.EndpointID != nativeParseEndpointID ||
+		native.ModelID != nativeParseModelID ||
+		len(native.Purposes) != 1 || native.Purposes[0] != "parse" ||
+		!slices.Equal(native.DataTypes, nativeParseDataTypes) {
+		t.Fatalf("Native automatic consent = %#v", native)
+	}
+	jina := repo.putConsents[2]
 	if jina.CollectionID != collection.ID || jina.ActorUserID != testActorID ||
 		jina.Processor != "jina" || jina.EndpointID != "hosted-main" ||
 		jina.ModelID != "jina-embeddings-v4" ||
@@ -108,6 +117,39 @@ func TestServiceRollsBackCollectionWhenSingleUserConsentProvisioningFails(t *tes
 	if repo.deletedCollection.CollectionID != repo.createResult.ID ||
 		repo.deletedCollection.ActorUserID != testActorID {
 		t.Fatalf("rollback delete input = %#v", repo.deletedCollection)
+	}
+}
+
+func TestBootstrapSingleUserNativeProcessingBackfillsExistingCollections(t *testing.T) {
+	codec, err := teams.NewCursorCodec(teams.CursorKeyring{
+		ActiveKeyID: "test", Keys: map[string][]byte{"test": []byte("01234567890123456789012345678901")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	collection := testCollection("22222222-2222-4222-8222-222222222222")
+	collection.Scope = ScopePersonal
+	repo := &fakeRepository{listResult: CollectionPageResult{Items: []Collection{collection}}}
+	service := NewService(repo, WithCursorCodec(codec))
+
+	err = BootstrapSingleUserNativeProcessing(
+		context.Background(),
+		service,
+		NewGovernanceService(repo),
+		auth.User{ID: testActorID},
+	)
+	if err != nil {
+		t.Fatalf("BootstrapSingleUserNativeProcessing() error = %v", err)
+	}
+	if repo.governanceManifest.Processor != nativeParseProcessor ||
+		repo.governanceManifest.ModelID != nativeParseModelID {
+		t.Fatalf("native governance manifest = %#v", repo.governanceManifest)
+	}
+	if len(repo.putConsents) != 1 || repo.putConsents[0].CollectionID != collection.ID ||
+		repo.putConsents[0].ActorUserID != testActorID ||
+		repo.putConsents[0].Processor != nativeParseProcessor ||
+		!slices.Equal(repo.putConsents[0].DataTypes, nativeParseDataTypes) {
+		t.Fatalf("native backfill consent = %#v", repo.putConsents)
 	}
 }
 
@@ -225,7 +267,7 @@ func TestServiceCreatesServerSelectedReplacementVersion(t *testing.T) {
 	input := repo.versionCreated
 	expectedHash := sha256.Sum256([]byte(repo.documentResult.ID + "\n55555555-5555-4555-8555-555555555555"))
 	if input.ActorUserID != testActorID || input.VersionID != "33333333-3333-4333-8333-333333333333" ||
-		input.JobID != "44444444-4444-4444-8444-444444444444" || input.ParseProcessor != "mineru" ||
+		input.JobID != "44444444-4444-4444-8444-444444444444" || input.ParseProcessor != automaticParseProcessor ||
 		input.MaterializationID != "66666666-6666-4666-8666-666666666666" ||
 		input.IdempotencyKey != "replace-1" || input.RequestHash != hex.EncodeToString(expectedHash[:]) {
 		t.Fatalf("replacement repository input = %#v", input)
@@ -255,31 +297,32 @@ func TestServiceCreatesServerSelectedReprocessJob(t *testing.T) {
 	if input.JobID != "33333333-3333-4333-8333-333333333333" ||
 		input.MaterializationID != "44444444-4444-4444-8444-444444444444" ||
 		input.ActorUserID != testActorID || input.IdempotencyKey != "reprocess-1" ||
-		input.ParseProcessor != "mineru" || input.RequestHash != hex.EncodeToString(expectedHash[:]) {
+		input.ParseProcessor != automaticParseProcessor || input.RequestHash != hex.EncodeToString(expectedHash[:]) {
 		t.Fatalf("reprocess repository input = %#v", input)
 	}
 }
 
 type fakeRepository struct {
-	created           CreateCollectionRepositoryInput
-	createResult      Collection
-	listResult        CollectionPageResult
-	documentResult    Document
-	documentPage      DocumentPageResult
-	contentResult     DocumentContentMetadata
-	versionCreated    CreateDocumentVersionRepositoryInput
-	reprocessCreated  ReprocessDocumentRepositoryInput
-	deletedDocument   DeleteDocumentRepositoryInput
-	consents          []ProcessingConsent
-	putConsent        PutCollectionConsentRepositoryInput
-	putConsents       []PutCollectionConsentRepositoryInput
-	putConsentErr     error
-	revokedConsent    CollectionConsentLookupInput
-	deletedCollection DeleteCollectionRepositoryInput
-	queryConsents     []ProcessingConsent
-	putQueryConsent   PutQueryConsentRepositoryInput
-	revokedQuery      QueryConsentLookupInput
-	err               error
+	created            CreateCollectionRepositoryInput
+	createResult       Collection
+	listResult         CollectionPageResult
+	documentResult     Document
+	documentPage       DocumentPageResult
+	contentResult      DocumentContentMetadata
+	versionCreated     CreateDocumentVersionRepositoryInput
+	reprocessCreated   ReprocessDocumentRepositoryInput
+	deletedDocument    DeleteDocumentRepositoryInput
+	consents           []ProcessingConsent
+	putConsent         PutCollectionConsentRepositoryInput
+	putConsents        []PutCollectionConsentRepositoryInput
+	putConsentErr      error
+	revokedConsent     CollectionConsentLookupInput
+	deletedCollection  DeleteCollectionRepositoryInput
+	queryConsents      []ProcessingConsent
+	governanceManifest GovernanceManifest
+	putQueryConsent    PutQueryConsentRepositoryInput
+	revokedQuery       QueryConsentLookupInput
+	err                error
 }
 
 type fakeObjectStore struct {
@@ -340,6 +383,15 @@ func (repo *fakeRepository) GetDocument(context.Context, DocumentLookupInput) (D
 }
 func (repo *fakeRepository) GetActiveDocumentContentMetadata(context.Context, DocumentLookupInput) (DocumentContentMetadata, error) {
 	return repo.contentResult, repo.err
+}
+func (repo *fakeRepository) ApplyGovernance(_ context.Context, manifest GovernanceManifest, _ string) (ProcessorGovernanceHead, error) {
+	repo.governanceManifest = manifest
+	return ProcessorGovernanceHead{
+		Processor: manifest.Processor, EndpointID: manifest.EndpointID, ModelID: manifest.ModelID,
+	}, repo.err
+}
+func (repo *fakeRepository) DisableGovernance(context.Context, string, string, string) (ProcessorGovernanceHead, error) {
+	return ProcessorGovernanceHead{}, repo.err
 }
 func (repo *fakeRepository) ListCollectionConsents(context.Context, CollectionConsentLookupInput) ([]ProcessingConsent, error) {
 	return repo.consents, repo.err

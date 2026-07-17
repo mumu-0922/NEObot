@@ -486,23 +486,27 @@ class PostgresAdapter:
                 stable_error_code(JOB_HANDLER_PARSE_ARTIFACT_INVALID)
             )
         payload = _parse_projection_payload(context, batch)
-        row = await self._call(
-            "stage_parse_projection",
-            (
-                context.job_id,
-                self._settings.worker_id,
-                lease_token,
-                materialization_id,
-                payload["artifact_set_id"],
-                payload["source_sha256"],
-                payload["chunk_profile_hash"],
-                Jsonb(payload["blocks"]),
-                Jsonb(payload["parent_chunks"]),
-                Jsonb(payload["child_chunks"]),
-                Jsonb(payload["chunk_block_spans"]),
-                Jsonb(payload["child_search_projections"]),
-            ),
-        )
+        try:
+            row = await self._call(
+                "stage_parse_projection",
+                (
+                    context.job_id,
+                    self._settings.worker_id,
+                    lease_token,
+                    materialization_id,
+                    payload["artifact_set_id"],
+                    payload["source_sha256"],
+                    payload["chunk_profile_hash"],
+                    Jsonb(payload["blocks"]),
+                    Jsonb(payload["parent_chunks"]),
+                    Jsonb(payload["child_chunks"]),
+                    Jsonb(payload["chunk_block_spans"]),
+                    Jsonb(payload["child_search_projections"]),
+                ),
+            )
+        except psycopg.Error as error:
+            _raise_stable_database_error(error)
+            raise
         if not _function_succeeded(row):
             raise PermanentJobError(
                 stable_error_code(JOB_HANDLER_PARSE_ARTIFACT_INVALID)
@@ -785,6 +789,17 @@ def _jsonable(value: object) -> object:
 def _has_database_code(error: psycopg.Error, code: str) -> bool:
     """Match only stable server messages; never expose arbitrary DB text."""
     return error.diag.message_primary == code or str(error) == code
+
+
+def _raise_stable_database_error(error: psycopg.Error) -> None:
+    """Preserve only closed RAG function codes; never expose arbitrary DB text."""
+    code = error.diag.message_primary or str(error)
+    if isinstance(code, str) and code.startswith("RAG_"):
+        try:
+            normalized = stable_error_code(code)
+        except ValueError:
+            return
+        raise PermanentJobError(normalized) from error
 
 
 def _require_context_lease_token(context: ProcessingJobContext) -> uuid.UUID:

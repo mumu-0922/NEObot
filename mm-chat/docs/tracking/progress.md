@@ -1275,6 +1275,13 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         split admin layout with the original search + collection-card grid,
         create/edit modal, detail transition, upload zone, and document-list
         presentation while retaining Go-backed persistence and processing.
+  - [x] G11.7 Native document indexing repair: Go now routes PDF to MinerU and
+        DOCX/PPTX/XLSX/TXT/Markdown/HTML/CSV to the sandboxed Native parser,
+        backfills server-owned Native governance/consent, cleans up future
+        unbound uploads, and live-proved DOCX Native parse plus real Jina 1024
+        embedding publication to an active document; reprocess is limited to
+        failed Versions so an active projection cannot collide with the same
+        generation's unique materialization keys.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

@@ -4698,3 +4698,84 @@ frontend full tests / production build                    855 passed / passed
 Docker frontend source build                              passed
 backend/frontend health                                   healthy / healthy
 ```
+
+## 2026-07-17 — G11.7 Native document indexing repair
+
+Objective: repair the owner-visible `上传并绑定文档失败` error for DOCX while
+keeping PDF on the real MinerU path and preserving the existing Jina/Postgres
+publication boundary.
+
+Runtime evidence before the fix:
+
+```text
+POST /v1/files                                           201
+POST /v1/knowledge/collections/{id}/documents            503
+error                                                    KNOWLEDGE_PROCESSOR_UNAVAILABLE
+failed file MIME                                          application/vnd.openxmlformats-officedocument.wordprocessingml.document
+```
+
+Root cause:
+
+- Go bound every Knowledge document to processor `mineru`;
+- the server-owned MinerU profile/consent correctly allowed only
+  `application/pdf`;
+- the Python worker had complete TXT/Markdown/HTML/CSV/DOCX/PPTX/XLSX Native
+  Parsers, but production parse composition still installed only the MinerU
+  gateway.
+
+Completed scope:
+
+- Go now resolves processor authority from the stored file MIME: PDF uses
+  MinerU; non-PDF supported formats use `native/local/native-parser-v1`;
+- server startup idempotently applies the credential-free Native governance
+  profile and grants its parse consent to all existing Personal collections;
+- new collections automatically receive Native consent alongside MinerU parse
+  and Jina passage-embedding consent;
+- the RAG worker routes by the exact processor authority pinned on the job,
+  executes Native parsing through the existing one-exec child, resource-limit,
+  process-group, and seccomp sandbox, then emits a projection-ready basic text
+  baseline into the existing Jina/Postgres pipeline;
+- failed upload-to-bind attempts now delete only the just-uploaded unbound file,
+  preventing future orphan objects while preserving already bound files.
+- reprocess is now a failed-Version retry only: the UI exposes it only when the
+  pending Version is `failed`, and Go rejects rebuilding an already published
+  active Version in the same index generation before creating another Job or
+  Materialization.
+
+Verification:
+
+```text
+Go full vet / tests                                       passed / passed
+RAG Ruff / format / strict Mypy                          passed / passed / passed
+RAG full tests                                           1701 passed / 7 skipped
+frontend format / lint / typecheck                       passed / passed / passed
+frontend tests / production build                        855 passed / passed
+Docker backend/rag/frontend source build                 passed
+backend/rag/frontend health                              healthy / healthy / healthy
+```
+
+Live replay reused the failed orphan instead of uploading a duplicate:
+
+```text
+file                                                      6824b279-4316-433c-9f85-7d8f85d8110d
+document                                                  a6a20583-949d-4b18-b12c-84f45a3224f2
+bind                                                       201 processing
+parse job                                                  native/native-parser-v1, succeeded, attempt 1
+embedding job                                              jina/jina-embeddings-v4, succeeded, attempt 1
+search projection                                          1 ready row, 1024 dimensions, vector present
+final document/version                                     active / active
+```
+
+The source-built runtime also closed the published-Version retry regression:
+
+```text
+POST active document /reprocess                           400 INVALID_DOCUMENT_PAYLOAD
+message                                                    only failed document versions can be reprocessed
+jobs/materializations/reprocess outbox after request       2 / 1 / 0 (unchanged)
+```
+
+Residual boundary: this first production Native path intentionally projects a
+basic derived text baseline. The existing Native Artifact retains structural
+and exact Part positions, but richer table/heading/source-anchor Canonical IR
+mapping remains a later quality slice; it is not required for the current basic
+citation card and strict no-evidence behavior.

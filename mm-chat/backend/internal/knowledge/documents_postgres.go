@@ -213,7 +213,8 @@ FOR UPDATE
 		return Document{}, ErrFileNotFound
 	}
 
-	authority, err := resolveParseAuthority(ctx, tx, input.CollectionID, input.ParseProcessor, file.MIMEType)
+	processor := selectParseProcessor(input.ParseProcessor, file.MIMEType)
+	authority, err := resolveParseAuthority(ctx, tx, input.CollectionID, processor, file.MIMEType)
 	if err != nil {
 		return Document{}, err
 	}

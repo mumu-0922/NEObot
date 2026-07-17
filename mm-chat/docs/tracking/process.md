@@ -8201,3 +8201,14 @@ assistant card. Runtime evidence showed the model was incorrectly sent to the
 chat-completions stream. The active sliced process log records the image
 executor dispatch, assistant-attachment persistence, five-minute rewrite proxy
 timeout, real provider proof, and temporary artifact cleanup.
+
+## 2026-07-17 — G11.7 Native document indexing repair cross-reference
+
+The original Knowledge UI advertised DOCX and other native formats, but the Go
+bind contract forced every MIME through PDF-only MinerU governance. The active
+sliced process log records MIME-aware processor authority, sandboxed Native
+worker composition, automatic server governance/consent reconciliation,
+unbound-upload cleanup, source-build deployment, and the live DOCX → Native →
+Jina 1024 → Postgres active-document proof. Reprocess is closed to failed
+Versions only; an already published active projection cannot be rebuilt inside
+the same index generation.

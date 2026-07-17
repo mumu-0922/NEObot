@@ -6,6 +6,7 @@ from dataclasses import replace
 from decimal import Decimal
 from typing import cast
 
+import psycopg
 import pytest
 from psycopg.types.json import Jsonb
 
@@ -29,6 +30,7 @@ from mm_chat_rag.postgres import (
     _SQL,
     PostgresAdapter,
     _function_succeeded,
+    _raise_stable_database_error,
     replay_job,
     replay_outbox,
 )
@@ -778,6 +780,16 @@ async def test_parse_projection_gateway_rejects_mismatched_batch_before_db() -> 
 
     assert raised.value.error_code == JOB_HANDLER_PARSE_ARTIFACT_INVALID
     assert connection.calls == []
+
+
+def test_parse_projection_gateway_preserves_only_stable_database_error_codes() -> None:
+    with pytest.raises(PermanentJobError) as raised:
+        _raise_stable_database_error(
+            psycopg.errors.RaiseException("RAG_PARSE_PARENT_CHUNK_PROJECTION_MISMATCH")
+        )
+    assert raised.value.error_code == "RAG_PARSE_PARENT_CHUNK_PROJECTION_MISMATCH"
+
+    _raise_stable_database_error(psycopg.Error("arbitrary database detail"))
 
 
 async def test_purge_projection_gateway_calls_token_fenced_functions() -> None:

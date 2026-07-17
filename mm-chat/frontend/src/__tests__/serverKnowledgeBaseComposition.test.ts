@@ -42,10 +42,16 @@ describe("G8 server knowledge base UI composition", () => {
     );
     expect(serverKnowledgeBase).toContain("apiClient.files.uploadFile");
     expect(serverKnowledgeBase).toContain("apiClient.knowledge.bindDocument");
+    expect(serverKnowledgeBase).toContain(
+      "await apiClient.files.deleteFile(fileRecord.id)",
+    );
     expect(serverKnowledgeBase).toContain("apiClient.knowledge.listDocuments");
     expect(serverKnowledgeBase).toContain("apiClient.knowledge.deleteDocument");
     expect(serverKnowledgeBase).toContain(
       "apiClient.knowledge.reprocessDocument",
+    );
+    expect(serverKnowledgeBase).toContain(
+      'document.pendingVersion?.status === "failed"',
     );
     expect(serverKnowledgeBase).not.toContain("/v1/knowledge");
     expect(serverKnowledgeBase).not.toContain("/api/rag");

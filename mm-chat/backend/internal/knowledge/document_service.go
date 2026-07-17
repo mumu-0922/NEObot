@@ -38,7 +38,7 @@ func (s *Service) CreateDocumentVersion(ctx context.Context, documentID string, 
 	return s.repo.CreateDocumentVersion(ctx, CreateDocumentVersionRepositoryInput{
 		VersionID: ids[0], JobID: ids[1], MaterializationID: ids[2], DocumentID: documentID,
 		ActorUserID: actor.ID, FileID: input.FileID, IdempotencyKey: input.IdempotencyKey,
-		RequestHash: hex.EncodeToString(sum[:]), ParseProcessor: "mineru",
+		RequestHash: hex.EncodeToString(sum[:]), ParseProcessor: automaticParseProcessor,
 	})
 }
 
@@ -69,7 +69,7 @@ func (s *Service) ReprocessDocument(ctx context.Context, documentID string, inpu
 	return s.repo.ReprocessDocument(ctx, ReprocessDocumentRepositoryInput{
 		JobID: ids[0], MaterializationID: ids[1], DocumentID: documentID, ActorUserID: actor.ID,
 		IdempotencyKey: input.IdempotencyKey, RequestHash: hex.EncodeToString(sum[:]),
-		ParseProcessor: "mineru",
+		ParseProcessor: automaticParseProcessor,
 	})
 }
 

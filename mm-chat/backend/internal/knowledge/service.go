@@ -30,7 +30,21 @@ const (
 	collectionCursorSort              = "created_at:desc,id:desc"
 	documentCursorResource            = "knowledge_documents"
 	documentCursorSort                = "created_at:desc,id:desc"
+	automaticParseProcessor           = "auto"
+	nativeParseProcessor              = "native"
+	nativeParseEndpointID             = "local"
+	nativeParseModelID                = "native-parser-v1"
 )
+
+var nativeParseDataTypes = []string{
+	"application/vnd.openxmlformats-officedocument.presentationml.presentation",
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+	"text/csv",
+	"text/html",
+	"text/markdown",
+	"text/plain",
+}
 
 var validIcons = map[string]struct{}{
 	"Folder": {}, "Atom": {}, "BookText": {}, "Microscope": {},
@@ -86,6 +100,14 @@ func WithSingleUserCollectionConsents() ServiceOption {
 				},
 				Input: PutConsentInput{
 					Purposes: []string{"parse"}, DataTypes: []string{"application/pdf"}, PolicyVersion: "v1",
+				},
+			},
+			{
+				Identity: ProcessorModelIdentity{
+					Processor: nativeParseProcessor, EndpointID: nativeParseEndpointID, ModelID: nativeParseModelID,
+				},
+				Input: PutConsentInput{
+					Purposes: []string{"parse"}, DataTypes: append([]string(nil), nativeParseDataTypes...), PolicyVersion: "v1",
 				},
 			},
 			{
@@ -305,7 +327,7 @@ func (s *Service) CreateDocument(ctx context.Context, collectionID string, input
 	return s.repo.CreateDocument(ctx, CreateDocumentRepositoryInput{
 		DocumentID: ids[0], VersionID: ids[1], JobID: ids[2], MaterializationID: ids[3], CollectionID: collectionID,
 		ActorUserID: actor.ID, FileID: input.FileID, IdempotencyKey: input.IdempotencyKey,
-		RequestHash: hex.EncodeToString(sum[:]), ParseProcessor: "mineru",
+		RequestHash: hex.EncodeToString(sum[:]), ParseProcessor: automaticParseProcessor,
 	})
 }
 

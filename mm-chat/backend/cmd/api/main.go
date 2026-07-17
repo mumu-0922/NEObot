@@ -190,6 +190,22 @@ func main() {
 		knowledge.WithObjectStore(objectStore),
 		knowledge.WithSingleUserCollectionConsents(),
 	)
+	if sqlDB != nil {
+		bootstrapCtx, bootstrapCancel := context.WithTimeout(context.Background(), databaseOpenTimeout)
+		err = knowledge.BootstrapSingleUserNativeProcessing(
+			bootstrapCtx,
+			knowledgeService,
+			knowledge.NewGovernanceService(knowledge.NewPostgresRepository(sqlDB)),
+			auth.User{ID: cfg.Auth.BootstrapUserID, DisplayName: cfg.Auth.BootstrapDisplayName},
+		)
+		bootstrapCancel()
+		if err != nil {
+			_ = redisClient.Close()
+			_ = db.Close()
+			logger.Error("knowledge_native_processing_bootstrap_failed", slog.String("error", redactSensitiveLogText(err.Error())))
+			os.Exit(1)
+		}
+	}
 	var ragSourceService *ragsource.Service
 	if sqlDB != nil {
 		ragSourceService = ragsource.NewService(

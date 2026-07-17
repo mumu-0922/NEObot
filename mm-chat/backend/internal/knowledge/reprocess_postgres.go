@@ -78,7 +78,8 @@ SELECT content_hash FROM knowledge_document_versions WHERE document_id=$1 AND id
 `, input.DocumentID, target.ID).Scan(&contentHash); err != nil {
 		return Document{}, fmt.Errorf("resolve reprocess content hash: %w", err)
 	}
-	authority, err := resolveParseAuthority(ctx, tx, collectionID, input.ParseProcessor, target.File.MIMEType)
+	processor := selectParseProcessor(input.ParseProcessor, target.File.MIMEType)
+	authority, err := resolveParseAuthority(ctx, tx, collectionID, processor, target.File.MIMEType)
 	if err != nil {
 		return Document{}, err
 	}
@@ -190,6 +191,24 @@ WHERE document_id=$1 AND status='failed'
 	}
 	if !currentVersionID.Valid {
 		return nil, false, ErrDocumentNotFound
+	}
+	var alreadyIndexed bool
+	if err := tx.QueryRowContext(ctx, `
+SELECT EXISTS (
+  SELECT 1
+  FROM knowledge_document_materializations materialization
+  JOIN knowledge_index_generations generation
+    ON generation.id = materialization.index_generation_id
+  WHERE materialization.document_id = $1
+    AND materialization.document_version_id = $2
+    AND materialization.status = 'published'
+    AND generation.status = 'active'
+)
+`, documentID, currentVersionID.String).Scan(&alreadyIndexed); err != nil {
+		return nil, false, fmt.Errorf("check active reprocess projection: %w", err)
+	}
+	if alreadyIndexed {
+		return nil, false, invalidDocumentPayload("only failed document versions can be reprocessed")
 	}
 	version, err := queryVersionByID(ctx, tx, documentID, currentVersionID.String)
 	return version, false, err
