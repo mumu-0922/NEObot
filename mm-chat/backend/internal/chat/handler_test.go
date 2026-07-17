@@ -620,6 +620,7 @@ func TestHandlerRoutesImageModelsThroughImageGeneratorAndPersistsAttachment(t *t
 	)
 	generator := &fakeChatImageGenerator{result: ImageGenerationResult{
 		Attachments: []GeneratedImageAttachment{{FileID: testFileID, Purpose: "image"}},
+		Message:     "provider-only status",
 	}}
 	handler := NewHandler(
 		NewService(repo),
@@ -657,6 +658,12 @@ func TestHandlerRoutesImageModelsThroughImageGeneratorAndPersistsAttachment(t *t
 	assistant := messages[1]
 	if assistant.Status != "completed" || len(assistant.Attachments) != 1 {
 		t.Fatalf("assistant = %#v", assistant)
+	}
+	if assistant.Content != "" {
+		t.Fatalf("assistant content = %q, want image-only response", assistant.Content)
+	}
+	if strings.Contains(body, "provider-only status") || strings.Contains(body, "Image generated.") {
+		t.Fatalf("image stream leaked status text; body=%s", body)
 	}
 	if assistant.Attachments[0].FileID != testFileID || assistant.Attachments[0].Purpose != "image" {
 		t.Fatalf("assistant attachment = %#v", assistant.Attachments[0])

@@ -162,6 +162,42 @@ describe("chat CRUD DTO mappers", () => {
     );
   });
 
+  it("hides the legacy image generation placeholder while preserving the attachment", () => {
+    const generatedImageMessage: ChatMessageDTO = {
+      ...assistantMessageDto,
+      content: "Image generated.",
+      metadata: { kind: "image_generation" },
+      attachments: [
+        {
+          id: "image-1",
+          source: "server",
+          fileId: "33333333-3333-4333-8333-333333333333",
+          fileName: "generated.png",
+          mimeType: "image/png",
+          size: 123,
+          sha256: "abc",
+          purpose: "image",
+        },
+      ],
+      outputBlocks: [],
+    };
+
+    expect(
+      mapChatMessageDtoToMessage(generatedImageMessage, {
+        baseUrl: "/mm-api",
+      }),
+    ).toMatchObject({
+      content: "",
+      attachments: [
+        expect.objectContaining({
+          fileName: "generated.png",
+          mimeType: "image/png",
+          url: "/mm-api/v1/files/33333333-3333-4333-8333-333333333333/content",
+        }),
+      ],
+    });
+  });
+
   it("fails closed on invalid timestamps and unsupported server roles", () => {
     expect(() => parseServerTimestamp("bad-date", "message.createdAt")).toThrow(
       /invalid message.createdAt/,

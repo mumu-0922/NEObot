@@ -1299,17 +1299,13 @@ func (h *Handler) streamImageGeneration(
 			Purpose: nonEmptyImagePurpose(attachment.Purpose),
 		})
 	}
-	content := strings.TrimSpace(result.Message)
-	if content == "" {
-		content = "Image generated."
-	}
 	assistantMessage, err = h.finalizeAssistantMessage(
 		context.Background(),
 		conversationID,
 		assistantMessage.ID,
 		FinalizeAssistantMessageInput{
 			Status:      "completed",
-			Content:     content,
+			Content:     "",
 			Attachments: attachments,
 			Metadata: map[string]any{
 				"runId":      runID,

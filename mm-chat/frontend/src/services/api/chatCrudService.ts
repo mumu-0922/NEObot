@@ -219,11 +219,12 @@ export function mapChatMessageDtoToMessage(
   const role = mapServerRoleToLegacyRole(message.role);
   const model = modelRefToModelString(message.modelRef);
   const knowledge = normalizeMessageKnowledgeMetadata(message.metadata);
+  const content = normalizeImageGenerationContent(message);
 
   return {
     id: message.id,
     role,
-    content: message.content,
+    content,
     timestamp,
     ...(message.metadata ? { metadata: message.metadata } : {}),
     ...(knowledge ? { knowledge } : {}),
@@ -243,6 +244,17 @@ export function mapChatMessageDtoToMessage(
       : {}),
     ...treeParentFromMetadata(message.metadata),
   };
+}
+
+function normalizeImageGenerationContent(message: ChatMessageDTO): string {
+  const isLegacyImagePlaceholder =
+    message.role === "assistant" &&
+    message.metadata.kind === "image_generation" &&
+    message.content.trim() === "Image generated." &&
+    message.attachments.some((attachment) =>
+      attachment.mimeType.startsWith("image/"),
+    );
+  return isLegacyImagePlaceholder ? "" : message.content;
 }
 
 function treeParentFromMetadata(
