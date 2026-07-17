@@ -120,6 +120,15 @@ conversation binding write path is reverted.
 
 Objective: deliver production-quality multilingual retrieval.
 
+Incremental execution slices:
+
+- **G11.9C.1** conditional standalone-query rewrite, original+rewritten
+  keyword/CJK lanes, deterministic RRF, global candidate 20 and Evidence 5;
+- **G11.9C.2** private Python query service, Jina `retrieval.query` 1024 Dense
+  lane, and Postgres hybrid candidate function;
+- **G11.9C.3** Jina rerank, evaluated threshold, RRF-only degradation, real
+  cross-collection/failure proof, and final G11.9C promotion.
+
 Actions:
 
 - rewrite only context-dependent follow-ups using the recent four to six turns;

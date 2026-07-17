@@ -8233,6 +8233,14 @@ weather query completed without a refusal/status card. Full runtime evidence
 and the answer-consent projection-revision correction are recorded in
 `docs/tracking/g11-knowledge-auto-rag-process.md`.
 
+## 2026-07-17 — G11.9C.1 Contextual retrieval cross-reference
+
+Context-dependent follow-ups now receive a bounded standalone rewrite while the
+original query remains an independent recall lane. Deterministic global RRF
+fuses both keyword/CJK lists before the unchanged Go authorization/hydration
+boundary. Tests, privacy constraints, open Dense/rerank slices, and rollback are
+recorded in `docs/tracking/g11-knowledge-auto-rag-process.md`.
+
 ## 2026-07-17 — G11.9B Persistent Knowledge binding cross-reference
 
 Selected Knowledge is now persisted once in Postgres conversation metadata and

@@ -978,6 +978,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			userMessage,
 			modelRef,
 			ragSelection,
+			streamProvider,
 		)
 		if autoDecision.ReadyForAnswer() {
 			providerPrompt, providerSystemPrompt, err = buildAutoRAGProviderRequest(
@@ -1441,10 +1442,11 @@ func nonEmptyImagePurpose(value string) string {
 }
 
 type autoRAGDecision struct {
-	Outcome   string
-	Evidence  []knowledge.HydratedEvidence
-	Citations []RAGCitation
-	Authority *RAGAnswerAuthority
+	Outcome        string
+	Evidence       []knowledge.HydratedEvidence
+	Citations      []RAGCitation
+	Authority      *RAGAnswerAuthority
+	QueryRewritten bool
 }
 
 func (d autoRAGDecision) ReadyForAnswer() bool {
@@ -1465,16 +1467,31 @@ func (h *Handler) decideAutoRAG(
 	userMessage Message,
 	modelRef *ModelRef,
 	selection ragSelection,
+	provider Provider,
 ) autoRAGDecision {
 	session, ok := auth.SessionFromContext(ctx)
 	if !ok {
 		return autoRAGDecision{Outcome: "dependency_unavailable"}
+	}
+	rewrittenQuery := ""
+	if shouldRewriteRAGQuery(userMessage.Content) {
+		if messages, listErr := h.service.ListMessages(ctx, conversationID); listErr == nil {
+			rewrittenQuery, _ = rewriteRAGQuery(
+				ctx,
+				provider,
+				*modelRef,
+				userMessage.ID,
+				userMessage.Content,
+				messages,
+			)
+		}
 	}
 	result, err := h.ragAssembler.Assemble(ctx, RAGAssemblyInput{
 		ActorUserID:           session.UserID,
 		SessionID:             session.ID,
 		ConversationID:        conversationID,
 		QueryText:             userMessage.Content,
+		RewrittenQueryText:    rewrittenQuery,
 		SelectedCollectionIDs: selection.CollectionIDs,
 	})
 	if err != nil {
@@ -1494,10 +1511,11 @@ func (h *Handler) decideAutoRAG(
 		return autoRAGDecision{Outcome: "dependency_unavailable"}
 	}
 	return autoRAGDecision{
-		Outcome:   "evidence_ready",
-		Evidence:  result.Evidence,
-		Citations: result.Citations,
-		Authority: &authority,
+		Outcome:        "evidence_ready",
+		Evidence:       result.Evidence,
+		Citations:      result.Citations,
+		Authority:      &authority,
+		QueryRewritten: rewrittenQuery != "",
 	}
 }
 
@@ -1548,6 +1566,7 @@ func autoRAGMessageMetadata(
 		"selectedCollectionIds": append([]string(nil), selection.CollectionIDs...),
 		"citationCount":         len(decision.Citations),
 		"evidenceUsed":          len(decision.Citations) > 0,
+		"queryRewritten":        decision.QueryRewritten,
 	}
 	if len(decision.Citations) > 0 {
 		knowledgeMetadata["citations"] = append([]RAGCitation(nil), decision.Citations...)

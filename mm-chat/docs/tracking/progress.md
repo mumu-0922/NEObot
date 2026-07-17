@@ -1303,6 +1303,14 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           attachment menu.
     - [ ] G11.9C Contextual rewrite, Jina query embedding, hybrid/RRF retrieval,
           and Jina rerank.
+      - [x] G11.9C.1 Conditional standalone rewrite and dual-query keyword/CJK
+            RRF: only context-dependent follow-ups use the recent six-message
+            window, original and rewritten lanes are fused globally with
+            deterministic RRF, and at most five of 20 candidates are hydrated.
+      - [ ] G11.9C.2 Private Python Jina `retrieval.query` 1024 Dense lane and
+            Postgres hybrid candidate function.
+      - [ ] G11.9C.3 Jina rerank, evaluated threshold, RRF-only degradation,
+            and real cross-collection/failure promotion proof.
     - [ ] G11.9D Structure-aware Parent/Child reindex with generation cutover.
     - [ ] G11.9E Go Tavily/Firecrawl/Exa/Bocha/model-built-in Search parity,
           SearXNG removal, and legacy Next search deletion.

@@ -4853,3 +4853,18 @@ source builds; recreated container health. Full frontend Vitest passed 855 of
 856, with only the unchanged restricted-sandbox `spawnSync /usr/bin/node EPERM`
 case. Detailed contract, rollback, and the blocked host curl note are recorded
 in `docs/tracking/g11-knowledge-auto-rag-process.md`.
+
+## 2026-07-17 — G11.9C.1 Contextual rewrite and dual-query RRF
+
+The first hybrid-quality slice now rewrites only deictic follow-ups using at
+most six prior messages. Original and standalone queries both execute against
+the existing reference-only keyword/CJK candidate function; exact references
+are fused with deterministic global RRF, broad candidate limit 20, and final
+hydration limit five. Rewrite failure leaves the original lane intact, and
+diagnostics persist only a boolean rather than private query text.
+
+Go all-package compile, vet, focused rewrite/RRF tests, an end-to-end handler
+follow-up test, backend production source build, and recreated health passed.
+Dense Jina query embedding and reranking remain explicitly open as
+G11.9C.2/C.3; details and rollback are in
+`docs/tracking/g11-knowledge-auto-rag-process.md`.

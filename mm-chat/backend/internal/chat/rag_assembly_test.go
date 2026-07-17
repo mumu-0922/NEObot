@@ -63,11 +63,50 @@ func TestRAGAnswerAssemblerReturnsHydratedEvidence(t *testing.T) {
 	if len(result.Citations) != 1 || result.Citations[0].Marker != "[K1]" || result.Citations[0].Snippet != "alpha evidence source" {
 		t.Fatalf("citations = %#v", result.Citations)
 	}
-	if source.query.QueryText != "What does alpha say?" || source.query.Limit != defaultRAGCandidateLimit {
-		t.Fatalf("candidate query = %#v", source.query)
+	if len(source.queries) != 1 || source.queries[0].QueryText != "What does alpha say?" || source.queries[0].Limit != defaultRAGCandidateLimit {
+		t.Fatalf("candidate queries = %#v", source.queries)
 	}
 	if hydrator.input.ActorUserID != DevUserID || hydrator.input.SessionID != "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" {
 		t.Fatalf("hydration input = %#v", hydrator.input)
+	}
+}
+
+func TestRAGAnswerAssemblerSearchesOriginalAndRewrittenQueries(t *testing.T) {
+	source := &fakeRAGCandidateSource{refs: []knowledge.EvidenceCandidateReference{validRAGCandidate()}}
+	hydrator := &fakeRAGHydrator{evidence: []knowledge.HydratedEvidence{validHydratedEvidence()}}
+	assembler := NewRAGAnswerAssembler(source, hydrator)
+	input := validRAGAssemblyInput()
+	input.RewrittenQueryText = "What research direction does the document describe?"
+
+	if _, err := assembler.Assemble(context.Background(), input); err != nil {
+		t.Fatalf("Assemble() error = %v", err)
+	}
+	if len(source.queries) != 2 || source.queries[0].QueryText != "What does alpha say?" || source.queries[1].QueryText != input.RewrittenQueryText {
+		t.Fatalf("candidate queries = %#v", source.queries)
+	}
+	if len(hydrator.input.References) != 1 {
+		t.Fatalf("fused references = %#v, want one deduplicated reference", hydrator.input.References)
+	}
+}
+
+func TestFuseRAGCandidateLanesUsesGlobalRRFAndDeterministicTopK(t *testing.T) {
+	alpha := validRAGCandidate()
+	beta := alpha
+	beta.ChildChunkID = "22222222-2222-4222-8222-222222222223"
+	beta.ContentHash = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	gamma := alpha
+	gamma.ChildChunkID = "33333333-3333-4333-8333-333333333334"
+	gamma.ContentHash = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+
+	fused := fuseRAGCandidateLanes([][]knowledge.EvidenceCandidateReference{
+		{alpha, beta},
+		{beta, gamma},
+	}, 2)
+	if len(fused) != 2 || fused[0].ChildChunkID != beta.ChildChunkID || fused[1].ChildChunkID != alpha.ChildChunkID {
+		t.Fatalf("fused candidates = %#v", fused)
+	}
+	if fused[0].RankScore <= fused[1].RankScore {
+		t.Fatalf("RRF scores = %v <= %v", fused[0].RankScore, fused[1].RankScore)
 	}
 }
 
@@ -87,10 +126,10 @@ func TestRAGAnswerAssemblerRejectsIncompleteInput(t *testing.T) {
 }
 
 type fakeRAGCandidateSource struct {
-	refs  []knowledge.EvidenceCandidateReference
-	err   error
-	calls int
-	query RAGCandidateQuery
+	refs    []knowledge.EvidenceCandidateReference
+	err     error
+	calls   int
+	queries []RAGCandidateQuery
 }
 
 func (f *fakeRAGCandidateSource) FetchEvidenceCandidates(
@@ -98,7 +137,7 @@ func (f *fakeRAGCandidateSource) FetchEvidenceCandidates(
 	query RAGCandidateQuery,
 ) ([]knowledge.EvidenceCandidateReference, error) {
 	f.calls++
-	f.query = query
+	f.queries = append(f.queries, query)
 	if f.err != nil {
 		return nil, f.err
 	}

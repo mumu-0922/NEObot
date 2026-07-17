@@ -71,9 +71,10 @@ func compactCitationLocator(locator json.RawMessage) string {
 
 func autoRAGAnswerProviderMetadata(decision autoRAGDecision) map[string]any {
 	metadata := map[string]any{
-		"mode":          "auto",
-		"citationCount": len(decision.Citations),
-		"citations":     append([]RAGCitation(nil), decision.Citations...),
+		"mode":           "auto",
+		"citationCount":  len(decision.Citations),
+		"citations":      append([]RAGCitation(nil), decision.Citations...),
+		"queryRewritten": decision.QueryRewritten,
 	}
 	if decision.Authority != nil {
 		metadata["answerGovernance"] = *decision.Authority

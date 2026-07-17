@@ -198,3 +198,44 @@ legacy stream payload only together. Backend read compatibility may remain,
 but a rollback must not leave request metadata and conversation metadata as two
 simultaneous long-term authorities. Next slice: G11.9C contextual hybrid
 retrieval and rerank.
+
+## 2026-07-17 — G11.9C.1 Contextual rewrite and dual-query RRF
+
+Outcome: the first bounded G11.9C slice is complete. Independent questions keep
+one retrieval request; only context-dependent follow-ups trigger a bounded model
+rewrite, and retrieval searches both the untouched user question and the
+standalone rewrite.
+
+Implemented flow:
+
+- strong English/Chinese deictic markers gate rewriting; exact identifiers and
+  independent questions do not spend a rewrite call;
+- rewrite input includes at most six prior user/assistant messages, excludes the
+  current message, bounds each history item, preserves exact identifiers, and
+  requests only one standalone query;
+- rewrite failure, empty output, oversize output, or unchanged output silently
+  keeps the original retrieval lane;
+- the assembler fetches up to 20 reference-only candidates for each active
+  query lane, deduplicates exact fenced references, and fuses ranks with
+  deterministic RRF (`k=60`);
+- RRF sorting is global across all selected collections and hydrates at most
+  five references through the unchanged Go reauthorization boundary;
+- persisted Knowledge diagnostics record only `queryRewritten=true|false`, not
+  the private query or conversation content.
+
+Verification:
+
+```text
+Go all-package compile                         passed
+Go vet                                        passed
+focused rewrite / dual-query / RRF tests       passed
+handler end-to-end contextual follow-up test   passed
+Docker backend production source build         passed
+backend/frontend health                        healthy / healthy
+```
+
+This slice deliberately does not claim Dense or rerank completion. The current
+keyword/CJK database function remains the only candidate lane until G11.9C.2
+adds the private Python Jina query-embedding path. Rollback: omit the rewritten
+query from `RAGAssemblyInput` and restore the one-lane fetch; hydration and
+authorization contracts are unchanged.
