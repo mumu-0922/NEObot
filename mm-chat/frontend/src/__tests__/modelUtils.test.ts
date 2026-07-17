@@ -132,6 +132,7 @@ describe("image generation routing", () => {
       true,
     );
     expect(hasExplicitImageGenerationIntent("画一只戴墨镜的猫")).toBe(true);
+    expect(hasExplicitImageGenerationIntent("生一个汤姆猫图片")).toBe(true);
     expect(
       hasExplicitImageGenerationIntent("Create an illustration of Mars"),
     ).toBe(true);

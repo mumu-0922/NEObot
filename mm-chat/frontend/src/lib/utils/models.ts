@@ -18,6 +18,7 @@ const IMAGE_ANALYSIS_INTENT_PATTERNS = [
 const IMAGE_GENERATION_INTENT_PATTERNS = [
   /(?:生成|创建|创作|制作|设计|做)(?:一|两|三|几|多)?(?:张|幅|个|套)?[^，。！？\n]{0,20}(?:图片|图像|照片|海报|插画|头像|壁纸|封面|配图)/u,
   /(?:生|出)(?:一|两|三|几|多)?(?:张|幅|个)?图/u,
+  /(?:^|[，。！？\s])(?:请|帮我|给我|为我)?(?:生|出)(?:一|两|三|几|多)?(?:张|幅|个|套)[^，。！？\n]{0,20}(?:图片|图像|照片|海报|插画|头像|壁纸|封面|配图|图(?=$|[，。！？\s]))/u,
   /(?:帮我|请|给我|为我)?(?:画|绘制|描绘)(?:一|两|三|几|个|只|幅|张|些)/u,
   /(?:generate|create|make|design)\s+(?:an?\s+|some\s+)?(?:image|picture|photo|poster|illustration|avatar|wallpaper|cover)/i,
   /(?:draw|paint|illustrate)\s+(?:me\s+)?(?:an?\s+|some\s+)?\S+/i,
