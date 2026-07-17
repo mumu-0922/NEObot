@@ -126,6 +126,40 @@ func TestServiceAutoProvisionsSingleUserAnswerConsent(t *testing.T) {
 	}
 }
 
+func TestServiceAutoProvisionsEverySingleUserAnswerConsent(t *testing.T) {
+	repo := &fakeRepository{
+		createResult: testCollection("22222222-2222-4222-8222-222222222222"),
+	}
+	identities := []ProcessorModelIdentity{
+		{Processor: "openai_compatible", EndpointID: "server-default", ModelID: "gpt-5.5"},
+		{Processor: "openai_compatible", EndpointID: "server-default", ModelID: "gpt-5.6-sol"},
+	}
+	service := NewService(
+		repo,
+		WithIDGenerator(func() (string, error) { return repo.createResult.ID, nil }),
+		WithSingleUserCollectionConsents(),
+		WithSingleUserAnswerConsent(identities[0]),
+		WithSingleUserAnswerConsent(identities[1]),
+	)
+	ctx := auth.WithUser(context.Background(), auth.User{ID: testActorID})
+
+	if _, err := service.CreateCollection(ctx, CreateCollectionInput{
+		Name: "Research", Scope: ScopePersonal, IdempotencyKey: "create-with-all-answer-models",
+	}); err != nil {
+		t.Fatalf("CreateCollection() error = %v", err)
+	}
+	if len(repo.putConsents) != 5 {
+		t.Fatalf("automatic consents = %#v, want native providers plus two answer models", repo.putConsents)
+	}
+	for index, identity := range identities {
+		answer := repo.putConsents[index+3]
+		if answer.Processor != identity.Processor || answer.EndpointID != identity.EndpointID ||
+			answer.ModelID != identity.ModelID || !slices.Equal(answer.Purposes, []string{"answer"}) {
+			t.Fatalf("answer automatic consent[%d] = %#v", index, answer)
+		}
+	}
+}
+
 func TestServiceRollsBackCollectionWhenSingleUserConsentProvisioningFails(t *testing.T) {
 	provisionErr := errors.New("governance unavailable")
 	repo := &fakeRepository{
@@ -222,6 +256,42 @@ func TestBootstrapSingleUserAnswerProcessingBackfillsOwnerAndCollections(t *test
 		repo.putConsents[0].Processor != identity.Processor ||
 		!slices.Equal(repo.putConsents[0].Purposes, []string{"answer"}) {
 		t.Fatalf("answer collection consents = %#v", repo.putConsents)
+	}
+}
+
+func TestBootstrapSingleUserAnswerProcessingCanBackfillEveryModel(t *testing.T) {
+	codec, err := teams.NewCursorCodec(teams.CursorKeyring{
+		ActiveKeyID: "test", Keys: map[string][]byte{"test": []byte("01234567890123456789012345678901")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	collection := testCollection("22222222-2222-4222-8222-222222222222")
+	repo := &fakeRepository{listResult: CollectionPageResult{Items: []Collection{collection}}}
+	service := NewService(repo, WithCursorCodec(codec))
+	identities := []ProcessorModelIdentity{
+		{Processor: "openai_compatible", EndpointID: "server-default", ModelID: "gpt-5.5"},
+		{Processor: "openai_compatible", EndpointID: "server-default", ModelID: "gpt-5.6-sol"},
+	}
+
+	for _, identity := range identities {
+		if err := BootstrapSingleUserAnswerProcessing(
+			context.Background(),
+			service,
+			NewGovernanceService(repo),
+			auth.User{ID: testActorID},
+			identity,
+		); err != nil {
+			t.Fatalf("BootstrapSingleUserAnswerProcessing(%s) error = %v", identity.ModelID, err)
+		}
+	}
+	if len(repo.putConsents) != len(identities) {
+		t.Fatalf("answer collection consents = %#v, want one per model", repo.putConsents)
+	}
+	for index, identity := range identities {
+		if repo.putConsents[index].ModelID != identity.ModelID {
+			t.Fatalf("answer collection consent[%d] = %#v", index, repo.putConsents[index])
+		}
 	}
 }
 

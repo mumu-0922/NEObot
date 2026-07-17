@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -74,6 +75,10 @@ type runtimeFailure struct {
 
 type teamWorkerReadiness struct {
 	gate teams.InviteDeliveryGate
+}
+
+type answerProviderConfigReader interface {
+	ListProviderConfigs(context.Context, string) ([]runtimeconfig.StoredProviderConfig, error)
 }
 
 func (check teamWorkerReadiness) CheckReady(ctx context.Context) error {
@@ -208,12 +213,31 @@ func main() {
 		knowledge.WithObjectStore(objectStore),
 		knowledge.WithSingleUserCollectionConsents(),
 	}
-	answerIdentity, hasAnswerIdentity := singleUserAnswerIdentity(cfg)
-	if cfg.Auth.Mode == config.AuthModeDevelopment && hasAnswerIdentity {
-		knowledgeOptions = append(
-			knowledgeOptions,
-			knowledge.WithSingleUserAnswerConsent(answerIdentity),
+	answerIdentities := make([]knowledge.ProcessorModelIdentity, 0)
+	if cfg.Auth.Mode == config.AuthModeDevelopment {
+		answerConfigCtx, answerConfigCancel := context.WithTimeout(
+			context.Background(),
+			databaseOpenTimeout,
 		)
+		answerIdentities, err = singleUserAnswerIdentities(
+			answerConfigCtx,
+			cfg,
+			runtimeConfigRepo,
+			cfg.Auth.BootstrapUserID,
+		)
+		answerConfigCancel()
+		if err != nil {
+			_ = redisClient.Close()
+			_ = db.Close()
+			logger.Error("knowledge_answer_processing_config_failed", slog.String("error", redactSensitiveLogText(err.Error())))
+			os.Exit(1)
+		}
+		for _, identity := range answerIdentities {
+			knowledgeOptions = append(
+				knowledgeOptions,
+				knowledge.WithSingleUserAnswerConsent(identity),
+			)
+		}
 	}
 	knowledgeService := knowledge.NewService(knowledgeRepo, knowledgeOptions...)
 	if sqlDB != nil {
@@ -225,14 +249,19 @@ func main() {
 			governanceService,
 			auth.User{ID: cfg.Auth.BootstrapUserID, DisplayName: cfg.Auth.BootstrapDisplayName},
 		)
-		if err == nil && cfg.Auth.Mode == config.AuthModeDevelopment && hasAnswerIdentity {
-			err = knowledge.BootstrapSingleUserAnswerProcessing(
-				bootstrapCtx,
-				knowledgeService,
-				governanceService,
-				auth.User{ID: cfg.Auth.BootstrapUserID, DisplayName: cfg.Auth.BootstrapDisplayName},
-				answerIdentity,
-			)
+		if err == nil && cfg.Auth.Mode == config.AuthModeDevelopment {
+			for _, identity := range answerIdentities {
+				err = knowledge.BootstrapSingleUserAnswerProcessing(
+					bootstrapCtx,
+					knowledgeService,
+					governanceService,
+					auth.User{ID: cfg.Auth.BootstrapUserID, DisplayName: cfg.Auth.BootstrapDisplayName},
+					identity,
+				)
+				if err != nil {
+					break
+				}
+			}
 		}
 		bootstrapCancel()
 		if err != nil {
@@ -428,19 +457,98 @@ func main() {
 	}
 }
 
-func singleUserAnswerIdentity(cfg config.Config) (knowledge.ProcessorModelIdentity, bool) {
-	processor := strings.ToLower(strings.TrimSpace(cfg.Provider.Type))
-	switch processor {
-	case "openai", "openai-compatible":
-		processor = "openai_compatible"
+func singleUserAnswerIdentities(
+	ctx context.Context,
+	cfg config.Config,
+	repo answerProviderConfigReader,
+	ownerUserID string,
+) ([]knowledge.ProcessorModelIdentity, error) {
+	identities := make([]knowledge.ProcessorModelIdentity, 0)
+	appendModels := func(processor string, endpointID string, models []string) {
+		processor = strings.TrimSpace(processor)
+		endpointID = strings.TrimSpace(endpointID)
+		if processor == "" || processor == "none" || endpointID == "" {
+			return
+		}
+		for _, modelID := range models {
+			modelID = strings.TrimSpace(modelID)
+			if modelID == "" {
+				continue
+			}
+			identities = append(identities, knowledge.ProcessorModelIdentity{
+				Processor: processor, EndpointID: endpointID, ModelID: modelID,
+			})
+		}
 	}
-	modelID := strings.TrimSpace(cfg.Provider.Model)
-	if processor == "" || processor == "none" || modelID == "" || strings.Contains(modelID, ",") {
-		return knowledge.ProcessorModelIdentity{}, false
+
+	appendModels(
+		canonicalAnswerProcessor(cfg.Provider.Type),
+		"server-default",
+		splitAnswerModels(cfg.Provider.Model),
+	)
+	if repo != nil {
+		stored, err := repo.ListProviderConfigs(ctx, strings.TrimSpace(ownerUserID))
+		if err != nil {
+			return nil, fmt.Errorf("list configured answer providers: %w", err)
+		}
+		for _, provider := range stored {
+			if !provider.Config.Enabled {
+				continue
+			}
+			providerID := strings.TrimSpace(provider.ProviderID)
+			processor := providerID
+			endpointID := "server-stored"
+			if providerID == "SERVER_DEFAULT" {
+				providerType := string(provider.Config.Type)
+				if strings.TrimSpace(providerType) == "" {
+					providerType = cfg.Provider.Type
+				}
+				processor = canonicalAnswerProcessor(providerType)
+				endpointID = "server-default"
+			}
+			appendModels(processor, endpointID, provider.Config.Models)
+		}
 	}
-	return knowledge.ProcessorModelIdentity{
-		Processor: processor, EndpointID: "server-default", ModelID: modelID,
-	}, true
+
+	sort.Slice(identities, func(i, j int) bool {
+		left := identities[i]
+		right := identities[j]
+		if left.Processor != right.Processor {
+			return left.Processor < right.Processor
+		}
+		if left.EndpointID != right.EndpointID {
+			return left.EndpointID < right.EndpointID
+		}
+		return left.ModelID < right.ModelID
+	})
+	unique := identities[:0]
+	for _, identity := range identities {
+		if len(unique) > 0 && unique[len(unique)-1] == identity {
+			continue
+		}
+		unique = append(unique, identity)
+	}
+	return unique, nil
+}
+
+func canonicalAnswerProcessor(providerType string) string {
+	processor := strings.ToLower(strings.TrimSpace(providerType))
+	processor = strings.NewReplacer("-", "_", " ", "_").Replace(processor)
+	if processor == "openai" || processor == "openai_compatible" {
+		return "openai_compatible"
+	}
+	return processor
+}
+
+func splitAnswerModels(value string) []string {
+	parts := strings.Split(value, ",")
+	models := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if model := strings.TrimSpace(part); model != "" {
+			models = append(models, model)
+		}
+	}
+	return models
 }
 
 func redactSensitiveLogText(value string) string {

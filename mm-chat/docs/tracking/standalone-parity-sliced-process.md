@@ -4868,3 +4868,24 @@ follow-up test, backend production source build, and recreated health passed.
 Dense Jina query embedding and reranking remain explicitly open as
 G11.9C.2/C.3; details and rollback are in
 `docs/tracking/g11-knowledge-auto-rag-process.md`.
+
+## 2026-07-17 — G11.9C.1 Live model-governance regression closure
+
+The first browser replay after G11.9C.1 bound the correct `test` collection but
+showed `知识库暂时不可用`. Runtime metadata isolated the failure to
+`answer_governance_required`: Postgres had exact Answer consent for only the
+environment `gpt-5.5`, while the selected administrator model was
+`openai_compatible/gpt-5.6-sol`.
+
+Startup now derives a deterministic set of Answer identities from the env
+fallback plus all enabled Postgres provider/model records, then provisions
+governance, owner query consent, existing-collection consent, and future
+collection auto-consent for each identity. It reads no provider secret.
+
+After source-building and recreating backend, Postgres contained granted query
+and collection consent for `gpt-5.6-sol`, `gpt-5.6-terra`, and
+`gpt-5.6-luna`. A disposable real-provider conversation using the existing
+`test` collection answered `研究方向是什么？` with “推荐系统” and `[K1]`;
+persisted metadata reported `outcome=answered`, `citationCount=1`, and exact
+`openai_compatible/server-default/gpt-5.6-sol` authority. The disposable
+conversation was deleted and its active-row count returned to zero.

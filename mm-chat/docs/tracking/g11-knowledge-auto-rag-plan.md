@@ -77,6 +77,9 @@ Actions:
 
 - provide development single-user requests with a server-owned, database-valid
   internal Session identity instead of only a User identity;
+- bootstrap answer governance and owner/collection consent for every enabled
+  backend-persisted model, merged with the environment fallback, so changing
+  models in the administrator UI does not silently disable Knowledge;
 - prove candidate -> reauthorization/hydration -> answer-governance -> model
   context end to end against the real `test` collection;
 - change selected-Knowledge handling from forced strict refusal to Auto:

@@ -13,28 +13,104 @@ import (
 
 	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/knowledge"
+	"neo-chat/mm-chat/backend/internal/runtimeconfig"
 	"neo-chat/mm-chat/backend/internal/storage"
 	"neo-chat/mm-chat/backend/internal/teams"
 )
 
-func TestSingleUserAnswerIdentityCanonicalizesConfiguredProvider(t *testing.T) {
-	identity, ok := singleUserAnswerIdentity(config.Config{Provider: config.ProviderConfig{
-		Type: "openai-compatible", Model: "gpt-5.5",
-	}})
-	if !ok || identity != (knowledge.ProcessorModelIdentity{
+func TestSingleUserAnswerIdentitiesMergesConfiguredEnabledModels(t *testing.T) {
+	repo := &fakeAnswerProviderConfigReader{stored: []runtimeconfig.StoredProviderConfig{
+		{
+			ProviderID: "SERVER_DEFAULT",
+			Config: runtimeconfig.StoredProviderConfigPayload{
+				Type:    runtimeconfig.ProviderTypeOpenAICompatible,
+				Models:  []string{" gpt-5.6-sol ", "gpt-5.5", "gpt-5.6-sol"},
+				Enabled: true,
+			},
+			EncryptedSecretRef: "must-not-appear-in-answer-identity",
+		},
+		{
+			ProviderID: "CUSTOM",
+			Config: runtimeconfig.StoredProviderConfigPayload{
+				Type:   runtimeconfig.ProviderTypeOpenAICompatible,
+				Models: []string{"custom-chat"}, Enabled: true,
+			},
+		},
+		{
+			ProviderID: "DISABLED",
+			Config: runtimeconfig.StoredProviderConfigPayload{
+				Models: []string{"disabled-chat"}, Enabled: false,
+			},
+		},
+	}}
+
+	identities, err := singleUserAnswerIdentities(
+		context.Background(),
+		config.Config{Provider: config.ProviderConfig{
+			Type: "openai-compatible", Model: "gpt-5.5, gpt-5.5-mini",
+		}},
+		repo,
+		"owner-1",
+	)
+	if err != nil {
+		t.Fatalf("singleUserAnswerIdentities() error = %v", err)
+	}
+	want := []knowledge.ProcessorModelIdentity{
+		{Processor: "CUSTOM", EndpointID: "server-stored", ModelID: "custom-chat"},
+		{Processor: "openai_compatible", EndpointID: "server-default", ModelID: "gpt-5.5"},
+		{Processor: "openai_compatible", EndpointID: "server-default", ModelID: "gpt-5.5-mini"},
+		{Processor: "openai_compatible", EndpointID: "server-default", ModelID: "gpt-5.6-sol"},
+	}
+	if len(identities) != len(want) {
+		t.Fatalf("singleUserAnswerIdentities() = %#v, want %#v", identities, want)
+	}
+	for index := range want {
+		if identities[index] != want[index] {
+			t.Fatalf("identity[%d] = %#v, want %#v", index, identities[index], want[index])
+		}
+	}
+	if repo.userID != "owner-1" {
+		t.Fatalf("ListProviderConfigs userID = %q", repo.userID)
+	}
+}
+
+func TestSingleUserAnswerIdentitiesFallsBackToEnvironment(t *testing.T) {
+	identities, err := singleUserAnswerIdentities(
+		context.Background(),
+		config.Config{Provider: config.ProviderConfig{
+			Type: "OpenAI Compatible", Model: "gpt-5.5",
+		}},
+		nil,
+		"",
+	)
+	if err != nil {
+		t.Fatalf("singleUserAnswerIdentities() error = %v", err)
+	}
+	want := []knowledge.ProcessorModelIdentity{{
 		Processor: "openai_compatible", EndpointID: "server-default", ModelID: "gpt-5.5",
-	}) {
-		t.Fatalf("singleUserAnswerIdentity() = %#v/%v", identity, ok)
+	}}
+	if len(identities) != 1 || identities[0] != want[0] {
+		t.Fatalf("singleUserAnswerIdentities() = %#v, want %#v", identities, want)
 	}
 
-	if _, ok := singleUserAnswerIdentity(config.Config{}); ok {
-		t.Fatal("blank provider unexpectedly produced answer identity")
+	identities, err = singleUserAnswerIdentities(context.Background(), config.Config{}, nil, "")
+	if err != nil || len(identities) != 0 {
+		t.Fatalf("blank singleUserAnswerIdentities() = %#v/%v, want empty/nil", identities, err)
 	}
-	if _, ok := singleUserAnswerIdentity(config.Config{Provider: config.ProviderConfig{
-		Type: "openai_compatible", Model: "model-a,model-b",
-	}}); ok {
-		t.Fatal("ambiguous provider model list unexpectedly produced answer identity")
-	}
+}
+
+type fakeAnswerProviderConfigReader struct {
+	stored []runtimeconfig.StoredProviderConfig
+	userID string
+	err    error
+}
+
+func (r *fakeAnswerProviderConfigReader) ListProviderConfigs(
+	_ context.Context,
+	userID string,
+) ([]runtimeconfig.StoredProviderConfig, error) {
+	r.userID = userID
+	return append([]runtimeconfig.StoredProviderConfig(nil), r.stored...), r.err
 }
 
 func TestNewRecoveryDeliveryDisabledWhenSMTPBlank(t *testing.T) {

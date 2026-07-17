@@ -239,3 +239,60 @@ keyword/CJK database function remains the only candidate lane until G11.9C.2
 adds the private Python Jina query-embedding path. Rollback: omit the rewritten
 query from `RAGAssemblyInput` and restore the one-lane fetch; hydration and
 authorization contracts are unchanged.
+
+## 2026-07-17 — G11.9C.1 Live model-governance regression closure
+
+Outcome: switching the active administrator-configured model from the
+environment fallback `gpt-5.5` to `gpt-5.6-sol` no longer degrades a valid
+Knowledge hit to `answer_governance_required`.
+
+Root cause:
+
+- conversation binding, candidate recall, and hydration were healthy;
+- the assistant row used `openai_compatible/gpt-5.6-sol`, but startup had
+  provisioned Answer governance and consent only for `PROVIDER_MODEL=gpt-5.5`;
+- the exact model fence therefore rejected otherwise valid evidence and fell
+  back to an ordinary model answer with the dependency notice.
+
+Correction:
+
+- development startup merges the environment model list with every enabled
+  Postgres `provider_configs` model, normalizes the Server Default processor to
+  the runtime `openai_compatible` identity, trims, deduplicates, and sorts the
+  resulting authorities;
+- custom server-stored providers retain their exact provider ID as processor;
+- every identity receives governance, owner query consent, and backfill for all
+  existing Personal collections; new collections receive every configured
+  Answer consent through the same automatic provisioning list;
+- disabled providers and encrypted secret references are ignored by identity
+  derivation, and provider-config read failure keeps startup fail-closed.
+
+Live proof against the active `test` collection:
+
+```text
+stored Server Default models        gpt-5.6-sol/terra/luna, gpt-5.5, gpt-image-2
+gpt-5.6-sol query consent            granted
+gpt-5.6-sol test collection consent granted
+question                            研究方向是什么？
+real answer                          推荐系统 + generated recommendation [K1]
+knowledge outcome                    answered
+citation count                       1
+answer authority                     openai_compatible/server-default/gpt-5.6-sol
+temporary live-proof conversation    deleted; active count 0
+```
+
+Verification:
+
+```text
+Go focused cmd/api + Knowledge tests passed
+Go all-package vet                   passed
+Go full tests                        all non-network packages passed;
+                                     existing sandbox httptest bind denied
+Docker backend production build      passed
+backend/frontend/RAG health          healthy / healthy / healthy
+real provider Knowledge stream       HTTP 200 + message.completed + [K1]
+```
+
+Rollback: restore the single environment identity only if the administrator UI
+is also prevented from selecting other models. Rolling back one without the
+other recreates the exact live failure.

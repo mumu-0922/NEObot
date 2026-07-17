@@ -8248,3 +8248,13 @@ reused by every later message. The dedicated server composer control, removable
 chips, eight-collection validation, explicit unbind behavior, one-time legacy
 migration, tests, source builds, and rollback boundary are recorded in
 `docs/tracking/g11-knowledge-auto-rag-process.md`.
+
+## 2026-07-17 — G11.9C.1 Model-governance regression cross-reference
+
+The selected `gpt-5.6-sol` model initially fell back with
+`answer_governance_required` because startup had provisioned only the `.env`
+`gpt-5.5` identity. Startup now merges all enabled backend-persisted models,
+backfills their exact Answer governance/consent, and auto-provisions the same
+set for future collections. Source-built live proof returned the expected
+Knowledge answer and `[K1]`; detailed evidence and rollback are recorded in
+`docs/tracking/g11-knowledge-auto-rag-process.md`.

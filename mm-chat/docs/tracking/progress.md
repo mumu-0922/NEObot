@@ -1307,6 +1307,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
             RRF: only context-dependent follow-ups use the recent six-message
             window, original and rewritten lanes are fused globally with
             deterministic RRF, and at most five of 20 candidates are hydrated.
+        - [x] G11.9C.1a Live model-governance closure: startup now merges the
+              environment fallback with every enabled backend-persisted model
+              and provisions exact Answer governance/consent for each; real
+              `gpt-5.6-sol` answered the active Knowledge query with `[K1]`.
       - [ ] G11.9C.2 Private Python Jina `retrieval.query` 1024 Dense lane and
             Postgres hybrid candidate function.
       - [ ] G11.9C.3 Jina rerank, evaluated threshold, RRF-only degradation,
