@@ -8,11 +8,17 @@ import React, {
 } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import dynamic from "next/dynamic";
-import { MessageSquarePlus, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import {
+  Bot,
+  MessageSquarePlus,
+  PanelLeftClose,
+  PanelLeftOpen,
+} from "lucide-react";
 import { v7 as uuidv7 } from "uuid";
 
 import Sidebar from "@/components/layout/Sidebar";
 import MessageItem from "@/components/chat/MessageItem";
+import ImageGenerationProgress from "@/components/chat/ImageGenerationProgress";
 import MessageInput, { MessageInputRef } from "@/components/chat/MessageInput";
 import AssistantHeader from "@/components/assistant/AssistantHeader";
 import Tooltip from "@/components/ui/Tooltip";
@@ -271,6 +277,9 @@ const ChatApp = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [activeImageGeneration, setActiveImageGeneration] = useState<{
+    startedAt: number;
+  } | null>(null);
   const {
     isGenerating,
     beginActiveGeneration,
@@ -354,6 +363,14 @@ const ChatApp = () => {
       ) ?? null)
     : getCurrentSession(); // This is just metadata now
   const messages = visibleActiveMessages ?? EMPTY_MESSAGES; // Use activeMessages from store
+  const lastVisibleMessage = messages.at(-1);
+  const hasVisibleImageGenerationMessage = Boolean(
+    activeImageGeneration &&
+    lastVisibleMessage?.role === "model" &&
+    isImageGenerationModel(lastVisibleMessage.model || "") &&
+    (serverReadState.generation.assistantMessageId === lastVisibleMessage.id ||
+      (!lastVisibleMessage.content && !lastVisibleMessage.attachments?.length)),
+  );
   const currentSessionConfig = currentSession?.config;
   const currentSessionWorkspaceId = currentSession?.workspaceId;
   const serverSessionChatConfig = {
@@ -861,7 +878,7 @@ const ChatApp = () => {
         block: "end",
       });
     }
-  }, [messages, isGenerating, welcomeState]);
+  }, [messages, isGenerating, activeImageGeneration, welcomeState]);
 
   // --- Handlers ---
 
@@ -1047,6 +1064,9 @@ const ChatApp = () => {
         hasAttachments: attachments.length > 0,
       });
       const routesToImageGeneration = isImageGenerationModel(routedModel);
+      setActiveImageGeneration(
+        routesToImageGeneration ? { startedAt: Date.now() } : null,
+      );
       let targetSessionId = serverReadState.currentSessionId;
       if (!targetSessionId) {
         targetSessionId = await createServerSession();
@@ -1177,6 +1197,7 @@ const ChatApp = () => {
         error instanceof Error ? error.message : "Server message failed.",
       );
     } finally {
+      setActiveImageGeneration(null);
       finishActiveGeneration(generation);
     }
   };
@@ -2837,6 +2858,21 @@ const ChatApp = () => {
                         </React.Fragment>
                       );
                     })}
+
+                    {isGenerating &&
+                      activeImageGeneration &&
+                      !hasVisibleImageGenerationMessage && (
+                        <div className="message-item flex items-start gap-3 rounded-md border border-transparent px-3 py-3">
+                          <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl border border-white bg-red-300 text-white shadow-sm dark:border-border">
+                            <Bot size={18} aria-hidden="true" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <ImageGenerationProgress
+                              startedAt={activeImageGeneration.startedAt}
+                            />
+                          </div>
+                        </div>
+                      )}
 
                     <div ref={messagesEndRef} />
                   </div>

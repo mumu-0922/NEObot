@@ -19,6 +19,9 @@ describe("ChatApp server mode composition", () => {
     expect(chatApp).toContain("serverReadState.sessions");
     expect(chatApp).toContain("serverReadState.activeMessages");
     expect(chatApp).toContain("sendServerMessageAndStream");
+    expect(chatApp).toContain("activeImageGeneration");
+    expect(chatApp).toContain("ImageGenerationProgress");
+    expect(chatApp).toContain("startedAt: Date.now()");
     expect(chatApp).toContain("uploadMessageAttachmentsForServer");
     expect(chatApp).toContain("buildServerKnowledgeStreamConfig");
     expect(chatApp).toContain("buildServerKnowledgeMessageMetadata");
