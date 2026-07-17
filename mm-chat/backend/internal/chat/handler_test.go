@@ -122,6 +122,126 @@ func TestHandlerUpdatesAndDeletesConversation(t *testing.T) {
 	}
 }
 
+func TestHandlerValidatesConversationKnowledgeBinding(t *testing.T) {
+	repo := newFakeRepository()
+	handler := NewHandler(NewService(repo))
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "Knowledge", 0))
+
+	rec := performRequest(
+		handler,
+		http.MethodPatch,
+		conversationsPath+"/"+testConversationID,
+		`{"config":{"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"]}}`,
+	)
+	assertStatus(t, rec, http.StatusOK)
+	var updated ConversationDTO
+	decodeBody(t, rec, &updated)
+	ids, ok := updated.Config[conversationKnowledgeSelectionKey].([]any)
+	if !ok || len(ids) != 1 || ids[0] != "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" {
+		t.Fatalf("normalized knowledge binding = %#v", updated.Config[conversationKnowledgeSelectionKey])
+	}
+
+	rec = performRequest(
+		handler,
+		http.MethodPatch,
+		conversationsPath+"/"+testConversationID,
+		`{"config":{"selectedKnowledgeCollectionIds":[]}}`,
+	)
+	assertStatus(t, rec, http.StatusOK)
+	decodeBody(t, rec, &updated)
+	ids, ok = updated.Config[conversationKnowledgeSelectionKey].([]any)
+	if !ok || len(ids) != 0 {
+		t.Fatalf("empty knowledge binding = %#v, want []", updated.Config[conversationKnowledgeSelectionKey])
+	}
+
+	rec = performRequest(
+		handler,
+		http.MethodPatch,
+		conversationsPath+"/"+testConversationID,
+		`{"config":{"selectedKnowledgeCollectionIds":["not-a-uuid"]}}`,
+	)
+	assertStatus(t, rec, http.StatusBadRequest)
+	assertErrorCode(t, rec, "INVALID_RAG_SELECTION")
+
+	tooMany := make([]string, 0, 9)
+	for i := 0; i < 9; i++ {
+		tooMany = append(tooMany, fmt.Sprintf("aaaaaaaa-aaaa-4aaa-8aaa-%012d", i))
+	}
+	body, err := json.Marshal(map[string]any{"config": map[string]any{
+		conversationKnowledgeSelectionKey: tooMany,
+	}})
+	if err != nil {
+		t.Fatalf("marshal too many knowledge ids: %v", err)
+	}
+	rec = performRequest(handler, http.MethodPatch, conversationsPath+"/"+testConversationID, string(body))
+	assertStatus(t, rec, http.StatusBadRequest)
+	assertErrorCode(t, rec, "INVALID_RAG_SELECTION")
+}
+
+func TestConversationKnowledgeBindingIsAuthoritativeAndMigratesLegacySelection(t *testing.T) {
+	repo := newFakeRepository()
+	handler := NewHandler(NewService(repo))
+	boundID := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	alternateID := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+
+	conversation := fakeConversation(testConversationID, "Bound", 0)
+	conversation.Metadata = map[string]any{conversationKnowledgeSelectionKey: []string{boundID}}
+	repo.conversations = append(repo.conversations, conversation)
+	selection, err := handler.resolveConversationRAGSelection(
+		context.Background(),
+		testConversationID,
+		map[string]any{"knowledgeCollectionIds": []any{alternateID}},
+		nil,
+		nil,
+	)
+	if err != nil || len(selection.CollectionIDs) != 1 || selection.CollectionIDs[0] != boundID {
+		t.Fatalf("authoritative selection = %#v, err=%v", selection, err)
+	}
+
+	repo.conversations[0].Metadata = map[string]any{conversationKnowledgeSelectionKey: []string{}}
+	selection, err = handler.resolveConversationRAGSelection(
+		context.Background(),
+		testConversationID,
+		map[string]any{"knowledgeCollectionIds": []any{alternateID}},
+		nil,
+		map[string]any{conversationKnowledgeSelectionKey: []any{alternateID}},
+	)
+	if err != nil || selection.Enabled {
+		t.Fatalf("explicit empty binding reactivated legacy selection: %#v, err=%v", selection, err)
+	}
+
+	repo.conversations[0].Metadata = map[string]any{}
+	selection, err = handler.resolveConversationRAGSelection(
+		context.Background(),
+		testConversationID,
+		nil,
+		nil,
+		map[string]any{conversationKnowledgeSelectionKey: []any{alternateID}},
+	)
+	if err != nil || !selection.Enabled || len(selection.CollectionIDs) != 1 || selection.CollectionIDs[0] != alternateID {
+		t.Fatalf("legacy migration selection = %#v, err=%v", selection, err)
+	}
+	migrated, present, err := extractConversationRAGSelection(repo.conversations[0].Metadata)
+	if err != nil || !present || len(migrated.CollectionIDs) != 1 || migrated.CollectionIDs[0] != alternateID {
+		t.Fatalf("persisted migrated binding = %#v, present=%t, err=%v", migrated, present, err)
+	}
+
+	repo.conversations[0].Metadata = map[string]any{}
+	selection, err = handler.resolveConversationRAGSelection(
+		context.Background(),
+		testConversationID,
+		nil,
+		nil,
+		nil,
+	)
+	if err != nil || selection.Enabled {
+		t.Fatalf("new unbound conversation selection = %#v, err=%v", selection, err)
+	}
+	if _, present, _ := extractConversationRAGSelection(repo.conversations[0].Metadata); present {
+		t.Fatal("new unbound conversation unexpectedly persisted a binding")
+	}
+}
+
 func TestHandlerDuplicatesConversation(t *testing.T) {
 	repo := newFakeRepository()
 	handler := NewHandler(NewService(repo))
@@ -1848,6 +1968,15 @@ func (f *fakeRepository) ListConversations(context.Context) ([]Conversation, err
 		}
 	}
 	return items, nil
+}
+
+func (f *fakeRepository) GetConversation(_ context.Context, conversationID string) (Conversation, error) {
+	for _, conversation := range f.conversations {
+		if conversation.ID == conversationID && conversation.DeletedAt == nil {
+			return conversation, nil
+		}
+	}
+	return Conversation{}, ErrConversationNotFound
 }
 
 func (f *fakeRepository) UpdateConversation(

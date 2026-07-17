@@ -38,6 +38,18 @@ describe("chat entity normalization", () => {
       config: {
         activePlugins: ["search", "search", "", "image"],
         activeSkills: ["clarity-rewrite", "clarity-rewrite", "", "summary"],
+        selectedKnowledgeCollectionIds: [
+          " kb-1 ",
+          "kb-1",
+          "kb-2",
+          "kb-3",
+          "kb-4",
+          "kb-5",
+          "kb-6",
+          "kb-7",
+          "kb-8",
+          "kb-9",
+        ],
       },
       compression: {
         compressedContent: "c".repeat(
@@ -57,6 +69,16 @@ describe("chat entity normalization", () => {
     expect(session.config?.activeSkills).toEqual([
       "clarity-rewrite",
       "summary",
+    ]);
+    expect(session.config?.selectedKnowledgeCollectionIds).toEqual([
+      "kb-1",
+      "kb-2",
+      "kb-3",
+      "kb-4",
+      "kb-5",
+      "kb-6",
+      "kb-7",
+      "kb-8",
     ]);
     expect(session.compression?.compressedContent).toHaveLength(
       CONTEXT_COMPRESSION_LIMITS.maxCompressedContentChars,
@@ -88,9 +110,10 @@ describe("chat entity normalization", () => {
         config: {
           activePlugins: [],
           activeSkills: [],
+          selectedKnowledgeCollectionIds: [],
         },
       } as Session).config,
-    ).toEqual({});
+    ).toEqual({ selectedKnowledgeCollectionIds: [] });
   });
 
   it("normalizes workspace metadata, references, and files", () => {

@@ -23,9 +23,11 @@ describe("ChatApp server mode composition", () => {
     expect(chatApp).toContain("ImageGenerationProgress");
     expect(chatApp).toContain("startedAt: Date.now()");
     expect(chatApp).toContain("uploadMessageAttachmentsForServer");
-    expect(chatApp).toContain("buildServerKnowledgeStreamConfig");
-    expect(chatApp).toContain("buildServerKnowledgeMessageMetadata");
+    expect(chatApp).toContain("persistConversationKnowledgeSelection");
+    expect(chatApp).toContain("updateServerSessionConfig");
     expect(chatApp).toContain("selectedKnowledgeCollectionIds");
+    expect(chatApp).not.toContain("buildServerKnowledgeStreamConfig");
+    expect(chatApp).not.toContain("buildServerKnowledgeMessageMetadata");
     expect(chatApp).toContain("chatConfig: composerChatConfig");
     expect(chatApp).toContain("installedPlugins,");
     expect(chatApp).toContain("activePlugins,");

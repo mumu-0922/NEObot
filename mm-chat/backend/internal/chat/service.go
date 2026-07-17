@@ -31,6 +31,9 @@ func (s *Service) CreateConversation(
 	if input.Metadata == nil {
 		input.Metadata = map[string]any{}
 	}
+	if err := normalizeConversationRAGMetadata(input.Metadata); err != nil {
+		return Conversation{}, err
+	}
 
 	return s.repo.CreateConversation(ctx, input)
 }
@@ -41,6 +44,18 @@ func (s *Service) ListConversations(ctx context.Context) ([]Conversation, error)
 	}
 
 	return s.repo.ListConversations(ctx)
+}
+
+func (s *Service) GetConversation(ctx context.Context, conversationID string) (Conversation, error) {
+	if err := s.requireRepository(); err != nil {
+		return Conversation{}, err
+	}
+	conversationID = strings.TrimSpace(conversationID)
+	if !isUUID(conversationID) {
+		return Conversation{}, newValidationError("INVALID_CONVERSATION_ID", "conversation id must be a UUID")
+	}
+
+	return s.repo.GetConversation(ctx, conversationID)
 }
 
 func (s *Service) UpdateConversation(
@@ -75,9 +90,17 @@ func (s *Service) UpdateConversation(
 	if input.MetadataMerge == nil {
 		input.MetadataMerge = map[string]any{}
 	}
+	if err := normalizeConversationRAGMetadata(input.MetadataMerge); err != nil {
+		return Conversation{}, err
+	}
 	if input.ReplaceMetadata != nil && *input.ReplaceMetadata == nil {
 		empty := map[string]any{}
 		input.ReplaceMetadata = &empty
+	}
+	if input.ReplaceMetadata != nil {
+		if err := normalizeConversationRAGMetadata(*input.ReplaceMetadata); err != nil {
+			return Conversation{}, err
+		}
 	}
 
 	return s.repo.UpdateConversation(ctx, conversationID, input)

@@ -12,6 +12,7 @@ const DevUserID = auth.DevelopmentUserID
 type Repository interface {
 	CreateConversation(ctx context.Context, input CreateConversationInput) (Conversation, error)
 	ListConversations(ctx context.Context) ([]Conversation, error)
+	GetConversation(ctx context.Context, conversationID string) (Conversation, error)
 	UpdateConversation(ctx context.Context, conversationID string, input UpdateConversationInput) (Conversation, error)
 	DeleteConversation(ctx context.Context, conversationID string) error
 	DuplicateConversation(ctx context.Context, conversationID string, input DuplicateConversationInput) (Conversation, error)

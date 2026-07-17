@@ -149,6 +149,49 @@ ORDER BY c.updated_at DESC, c.created_at DESC, c.id DESC
 	return conversations, nil
 }
 
+func (r *PostgresRepository) GetConversation(ctx context.Context, conversationID string) (Conversation, error) {
+	if err := r.requireDB(); err != nil {
+		return Conversation{}, err
+	}
+	if !isUUID(conversationID) {
+		return Conversation{}, newValidationError("INVALID_CONVERSATION_ID", "conversation id must be a UUID")
+	}
+	userID := auth.UserOrDevelopment(ctx).ID
+
+	conversation, err := scanConversation(r.db.QueryRowContext(ctx, `
+SELECT
+  c.id,
+  c.user_id,
+  c.title,
+  c.status,
+  c.model_provider,
+  c.model_id,
+  c.system_prompt,
+  c.idempotency_key,
+  c.metadata,
+  c.created_at,
+  c.updated_at,
+  c.deleted_at,
+  (
+    SELECT COUNT(*)::bigint
+    FROM messages
+    WHERE conversation_id = c.id
+      AND deleted_at IS NULL
+  ) AS message_count
+FROM conversations c
+WHERE c.id = $1
+  AND c.user_id = $2
+  AND c.deleted_at IS NULL
+`, conversationID, userID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Conversation{}, ErrConversationNotFound
+	}
+	if err != nil {
+		return Conversation{}, fmt.Errorf("get conversation: %w", err)
+	}
+	return conversation, nil
+}
+
 func (r *PostgresRepository) UpdateConversation(
 	ctx context.Context,
 	conversationID string,

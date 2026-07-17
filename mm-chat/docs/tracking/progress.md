@@ -1295,8 +1295,12 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           selected Knowledge augments normal streaming with `[K]` citations,
           misses silently fall back to the model, and the strict refusal/status
           path plus frontend strict flags are removed.
-    - [ ] G11.9B Conversation-persistent multi-Knowledge binding and dedicated
-          composer control.
+    - [x] G11.9B Conversation-persistent multi-Knowledge binding and dedicated
+          composer control: Postgres conversation metadata is the sole current
+          binding authority, explicit empty selection prevents legacy
+          reactivation, up to eight collections survive DTO/store refresh, and
+          server mode exposes persistent removable Knowledge chips outside the
+          attachment menu.
     - [ ] G11.9C Contextual rewrite, Jina query embedding, hybrid/RRF retrieval,
           and Jina rerank.
     - [ ] G11.9D Structure-aware Parent/Child reindex with generation cutover.

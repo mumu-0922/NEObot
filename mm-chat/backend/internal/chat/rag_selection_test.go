@@ -1,6 +1,9 @@
 package chat
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func TestExtractRAGSelectionParsesConfigAliasesAndDedupe(t *testing.T) {
 	selection, err := extractRAGSelection(map[string]any{
@@ -50,10 +53,35 @@ func TestExtractRAGSelectionRejectsNonStringCollectionID(t *testing.T) {
 func TestExtractRAGSelectionRejectsTooManyCollections(t *testing.T) {
 	ids := make([]any, 9)
 	for i := range ids {
-		ids[i] = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+		ids[i] = fmt.Sprintf("aaaaaaaa-aaaa-4aaa-8aaa-%012d", i)
 	}
 	_, err := extractRAGSelection(map[string]any{"knowledgeCollectionIds": ids}, nil)
 	assertValidationCode(t, err, "INVALID_RAG_SELECTION")
+}
+
+func TestExtractRAGSelectionDeduplicatesBeforeApplyingLimit(t *testing.T) {
+	ids := make([]any, 9)
+	for i := range ids {
+		ids[i] = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	}
+	selection, err := extractRAGSelection(map[string]any{"knowledgeCollectionIds": ids}, nil)
+	if err != nil || len(selection.CollectionIDs) != 1 {
+		t.Fatalf("deduplicated selection = %#v, err=%v", selection, err)
+	}
+}
+
+func TestExtractConversationRAGSelectionDistinguishesMissingAndExplicitEmpty(t *testing.T) {
+	selection, present, err := extractConversationRAGSelection(map[string]any{})
+	if err != nil || present || selection.Enabled {
+		t.Fatalf("missing binding = (%#v, %t, %v), want disabled and absent", selection, present, err)
+	}
+
+	selection, present, err = extractConversationRAGSelection(map[string]any{
+		conversationKnowledgeSelectionKey: []any{},
+	})
+	if err != nil || !present || selection.Enabled || len(selection.CollectionIDs) != 0 {
+		t.Fatalf("empty binding = (%#v, %t, %v), want disabled and present", selection, present, err)
+	}
 }
 
 func assertValidationCode(t *testing.T, err error, want string) {

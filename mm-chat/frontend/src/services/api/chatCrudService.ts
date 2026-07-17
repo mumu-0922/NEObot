@@ -20,6 +20,10 @@ import { normalizeSessionTitle } from "../../lib/chat/entities";
 import { SERVER_DEFAULT_PROVIDER_ID } from "../../lib/defaultConfig/shared";
 import { normalizeMessageKnowledgeMetadata } from "../../lib/knowledge/citations";
 import type { MessageKnowledgeMetadata } from "../../lib/knowledge/types";
+import {
+  MAX_CONVERSATION_KNOWLEDGE_COLLECTIONS,
+  normalizeKnowledgeCollectionIds,
+} from "../../lib/utils/knowledgeAttachments";
 
 const SERVER_DEFAULT_BACKEND_PROVIDER_ID = "openai_compatible";
 
@@ -28,6 +32,7 @@ export interface ChatCrudSessionConfig {
   useReasoning?: boolean;
   activePlugins?: string[];
   activeSkills?: string[];
+  selectedKnowledgeCollectionIds?: string[];
 }
 
 export interface ChatCrudSession {
@@ -329,6 +334,13 @@ function normalizeConversationConfig(
       (value): value is string => typeof value === "string" && value !== "",
     );
     if (activeSkills.length > 0) normalized.activeSkills = activeSkills;
+  }
+  if (Array.isArray(config.selectedKnowledgeCollectionIds)) {
+    normalized.selectedKnowledgeCollectionIds = normalizeKnowledgeCollectionIds(
+      config.selectedKnowledgeCollectionIds.filter(
+        (value): value is string => typeof value === "string",
+      ),
+    ).slice(0, MAX_CONVERSATION_KNOWLEDGE_COLLECTIONS);
   }
 
   return Object.keys(normalized).length > 0 ? normalized : undefined;

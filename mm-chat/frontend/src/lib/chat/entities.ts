@@ -8,6 +8,10 @@ import { ATTACHMENT_LIMITS, CHAT_ENTITY_LIMITS } from "../../config/limits";
 import { normalizePluginIdRefs } from "../plugin/config";
 import { normalizeSkillIdRefs } from "../skills";
 import { normalizeCompressedContent } from "../utils/contextCompression";
+import {
+  MAX_CONVERSATION_KNOWLEDGE_COLLECTIONS,
+  normalizeKnowledgeCollectionIds as normalizeAttachmentKnowledgeCollectionIds,
+} from "../utils/knowledgeAttachments";
 
 const WORKSPACE_COLORS = new Set([
   "blue",
@@ -215,15 +219,27 @@ export function normalizeSessionConfig(
   const {
     activePlugins: rawActivePlugins,
     activeSkills: rawActiveSkills,
+    selectedKnowledgeCollectionIds: rawSelectedKnowledgeCollectionIds,
     ...rest
   } = config;
   const activePlugins = normalizePluginIdRefs(rawActivePlugins);
   const activeSkills = normalizeSkillIdRefs(rawActiveSkills, []);
+  const selectedKnowledgeCollectionIds =
+    normalizeAttachmentKnowledgeCollectionIds(
+      Array.isArray(rawSelectedKnowledgeCollectionIds)
+        ? rawSelectedKnowledgeCollectionIds.filter(
+            (value): value is string => typeof value === "string",
+          )
+        : [],
+    ).slice(0, MAX_CONVERSATION_KNOWLEDGE_COLLECTIONS);
 
   return {
     ...rest,
     ...(activePlugins.length > 0 ? { activePlugins } : {}),
     ...(activeSkills.length > 0 ? { activeSkills } : {}),
+    ...(Array.isArray(rawSelectedKnowledgeCollectionIds)
+      ? { selectedKnowledgeCollectionIds }
+      : {}),
   };
 }
 

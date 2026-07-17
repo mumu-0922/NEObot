@@ -551,6 +551,10 @@ interface ChatState {
     id: string,
     instruction: string,
   ) => Promise<boolean>;
+  updateServerSessionConfig: (
+    id: string,
+    config: SessionConfig,
+  ) => Promise<boolean>;
   toggleServerSessionPin: (id: string) => Promise<boolean>;
   deleteServerSession: (id: string) => Promise<boolean>;
   duplicateServerSession: (id: string) => Promise<string | null>;
@@ -1638,6 +1642,29 @@ export const useChatStore = create<ChatState>()(
           await service.updateConversation({
             conversationId: id,
             systemInstruction: instruction,
+          }),
+        );
+        set((state) => ({
+          serverReadState: {
+            ...state.serverReadState,
+            sessions: state.serverReadState.sessions.map((item) =>
+              item.id === id ? session : item,
+            ),
+            error: null,
+          },
+        }));
+        return true;
+      },
+
+      updateServerSessionConfig: async (id, config) => {
+        const service = createChatCrudService();
+        if (!service.serverEnabled) return false;
+
+        const normalizedConfig = normalizeSessionConfig(config) ?? {};
+        const session = toStoreSessionFromServer(
+          await service.updateConversation({
+            conversationId: id,
+            config: { ...normalizedConfig },
           }),
         );
         set((state) => ({

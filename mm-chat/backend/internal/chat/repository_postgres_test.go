@@ -128,6 +128,13 @@ func TestPostgresUpdateAndDeleteConversation(t *testing.T) {
 	if updated.Metadata["useSearch"] != true || updated.Metadata["useReasoning"] != true || updated.Metadata["pinned"] != true {
 		t.Fatalf("updated metadata = %#v", updated.Metadata)
 	}
+	fetched, err := repo.GetConversation(ctx, conversation.ID)
+	if err != nil {
+		t.Fatalf("GetConversation() error = %v", err)
+	}
+	if fetched.ID != conversation.ID || fetched.Title != "renamed" {
+		t.Fatalf("fetched conversation = %#v", fetched)
+	}
 
 	if err := repo.DeleteConversation(ctx, conversation.ID); err != nil {
 		t.Fatalf("DeleteConversation() error = %v", err)
@@ -141,6 +148,9 @@ func TestPostgresUpdateAndDeleteConversation(t *testing.T) {
 	}
 	if _, err := repo.UpdateConversation(ctx, conversation.ID, UpdateConversationInput{Title: &title}); !errors.Is(err, ErrConversationNotFound) {
 		t.Fatalf("UpdateConversation(deleted) error = %v, want ErrConversationNotFound", err)
+	}
+	if _, err := repo.GetConversation(ctx, conversation.ID); !errors.Is(err, ErrConversationNotFound) {
+		t.Fatalf("GetConversation(deleted) error = %v, want ErrConversationNotFound", err)
 	}
 }
 

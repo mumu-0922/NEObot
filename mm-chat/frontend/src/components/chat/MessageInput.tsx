@@ -34,6 +34,7 @@ import { useTranslations } from "next-intl";
 import { Attachment } from "@/types";
 import { localizePluginMeta } from "@/lib/plugin/localizedMeta";
 import type { ModelInfo } from "@/services/api/chatService";
+import { createNeoChatApiClient } from "@/services/api/client";
 import Tooltip from "../ui/Tooltip";
 import RemoteFileModal from "../modals/RemoteFileModal";
 import KnowledgeSelectionModal from "../knowledge/KnowledgeSelectionModal";
@@ -79,7 +80,11 @@ import {
 } from "@/lib/settings/searchRag";
 import { hasPluginAuthValue } from "@/lib/security/localSecretResolvers";
 import { isPluginAuthRequired } from "@/lib/plugin/config";
-import { isKnowledgeAttachment } from "@/lib/utils/knowledgeAttachments";
+import {
+  isKnowledgeAttachment,
+  MAX_CONVERSATION_KNOWLEDGE_COLLECTIONS,
+  normalizeKnowledgeCollectionIds,
+} from "@/lib/utils/knowledgeAttachments";
 import { createChatDocumentAttachment } from "@/lib/utils/documentAttachments";
 import { polishTextContent } from "@/services/artifactService";
 import { normalizeSkillIdRefs } from "@/lib/skills";
@@ -110,6 +115,10 @@ interface MessageInputProps {
   activeSkillIdsOverride?: readonly string[];
   onActiveSkillIdsChange?: (skillIds: string[]) => void;
   onLocalSessionToolUnavailable?: (action: string) => void;
+  knowledgeCollectionIds?: readonly string[];
+  onKnowledgeCollectionIdsChange?: (
+    collectionIds: string[],
+  ) => void | Promise<void>;
   variant?: MessageInputVariant;
 }
 
@@ -128,6 +137,7 @@ const iconButtonBaseClass =
   "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg";
 
 const loadChatService = () => import("@/services/api/chatService");
+const EMPTY_KNOWLEDGE_COLLECTION_IDS: readonly string[] = [];
 
 const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
   (
@@ -149,6 +159,8 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       activeSkillIdsOverride,
       onActiveSkillIdsChange,
       onLocalSessionToolUnavailable,
+      knowledgeCollectionIds = EMPTY_KNOWLEDGE_COLLECTION_IDS,
+      onKnowledgeCollectionIdsChange,
       variant = "default",
     },
     ref,
@@ -168,6 +180,11 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const [isDragUploadActive, setIsDragUploadActive] = useState(false);
     const [isPolishingInput, setIsPolishingInput] = useState(false);
     const [isParsingAttachments, setIsParsingAttachments] = useState(false);
+    const [isSavingKnowledgeSelection, setIsSavingKnowledgeSelection] =
+      useState(false);
+    const [knowledgeCollectionNames, setKnowledgeCollectionNames] = useState<
+      Record<string, string>
+    >({});
 
     const t = useTranslations("MessageInput");
     const tConfig = useTranslations("Config");
@@ -193,6 +210,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     } = useSettingsStore();
 
     const { providers } = useCoreSettingsStore();
+    const knowledgeApiClient = useMemo(() => createNeoChatApiClient(), []);
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -205,6 +223,52 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const attachTextFallbackInputId = useId();
     const isHeroVariant = variant === "hero";
     const effectiveUseReasoning = isReasoningEnabled ?? chatConfig.useReasoning;
+    const conversationKnowledgeEnabled =
+      typeof onKnowledgeCollectionIdsChange === "function";
+    const normalizedKnowledgeCollectionIds = useMemo(
+      () =>
+        normalizeKnowledgeCollectionIds(
+          knowledgeCollectionIds.filter(
+            (value): value is string => typeof value === "string",
+          ),
+        ).slice(0, MAX_CONVERSATION_KNOWLEDGE_COLLECTIONS),
+      [knowledgeCollectionIds],
+    );
+    const knowledgeCollectionIdsKey =
+      normalizedKnowledgeCollectionIds.join(",");
+
+    useEffect(() => {
+      if (!conversationKnowledgeEnabled || !knowledgeCollectionIdsKey) {
+        setKnowledgeCollectionNames({});
+        return;
+      }
+
+      const controller = new AbortController();
+      const collectionIds = knowledgeCollectionIdsKey.split(",");
+      void Promise.allSettled(
+        collectionIds.map((collectionId) =>
+          knowledgeApiClient.knowledge.getCollection({
+            collectionId,
+            signal: controller.signal,
+          }),
+        ),
+      ).then((results) => {
+        if (controller.signal.aborted) return;
+        const names: Record<string, string> = {};
+        results.forEach((result, index) => {
+          if (result.status === "fulfilled") {
+            names[collectionIds[index]] = result.value.name;
+          }
+        });
+        setKnowledgeCollectionNames(names);
+      });
+
+      return () => controller.abort();
+    }, [
+      conversationKnowledgeEnabled,
+      knowledgeApiClient,
+      knowledgeCollectionIdsKey,
+    ]);
 
     // Browser Speech Rec
     const recognitionRef = useRef<any>(null);
@@ -1069,6 +1133,22 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       appendAttachments(selectedAttachments);
     };
 
+    const persistKnowledgeCollectionIds = async (collectionIds: string[]) => {
+      if (!onKnowledgeCollectionIdsChange) return;
+      const normalizedIds = normalizeKnowledgeCollectionIds(
+        collectionIds,
+      ).slice(0, MAX_CONVERSATION_KNOWLEDGE_COLLECTIONS);
+      setIsSavingKnowledgeSelection(true);
+      try {
+        await onKnowledgeCollectionIdsChange(normalizedIds);
+      } catch (error) {
+        setErrorMsg(t("knowledgeSelectionFailed"));
+        throw error;
+      } finally {
+        setIsSavingKnowledgeSelection(false);
+      }
+    };
+
     // Adjust textarea height
     useEffect(() => {
       if (textareaRef.current) {
@@ -1160,7 +1240,15 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         {showKBModal && (
           <KnowledgeSelectionModal
             onClose={() => setShowKBModal(false)}
-            onSelect={handleKBSelect}
+            {...(conversationKnowledgeEnabled
+              ? {
+                  onSelectCollections: persistKnowledgeCollectionIds,
+                  initialSelectedCollectionIds:
+                    normalizedKnowledgeCollectionIds,
+                  maxSelectedCollections:
+                    MAX_CONVERSATION_KNOWLEDGE_COLLECTIONS,
+                }
+              : { onSelect: handleKBSelect })}
           />
         )}
 
@@ -1220,6 +1308,43 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           onRemove={removeAttachment}
           ariaLabel={t("attachedFiles")}
         />
+
+        {conversationKnowledgeEnabled &&
+          normalizedKnowledgeCollectionIds.length > 0 && (
+            <div
+              className="flex flex-wrap gap-1.5 px-3 pt-2"
+              aria-label={t("selectedKnowledgeBases")}
+            >
+              {normalizedKnowledgeCollectionIds.map((collectionId) => {
+                const name =
+                  knowledgeCollectionNames[collectionId] || collectionId;
+                return (
+                  <span
+                    key={collectionId}
+                    className="inline-flex max-w-56 items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-2.5 py-1 text-xs font-medium text-purple-700 dark:border-purple-800/70 dark:bg-purple-950/35 dark:text-purple-200"
+                  >
+                    <Library size={12} aria-hidden="true" />
+                    <span className="truncate">{name}</span>
+                    <button
+                      type="button"
+                      aria-label={t("removeKnowledgeBase", { name })}
+                      className={`rounded-full p-0.5 hover:bg-purple-200/70 dark:hover:bg-purple-800/60 ${iconButtonFocusClass}`}
+                      disabled={isSavingKnowledgeSelection}
+                      onClick={() => {
+                        void persistKnowledgeCollectionIds(
+                          normalizedKnowledgeCollectionIds.filter(
+                            (id) => id !== collectionId,
+                          ),
+                        ).catch(() => undefined);
+                      }}
+                    >
+                      <X size={11} aria-hidden="true" />
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
 
         {/* Text Input */}
         <label htmlFor={messageInputId} className="sr-only">
@@ -1345,20 +1470,24 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                     </DropdownMenuItem>
                   )}
 
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      setShowKBModal(true);
-                    }}
-                    disabled={isInputBusy}
-                  >
-                    <Library
-                      size={14}
-                      className="text-purple-500 dark:text-purple-400"
-                      aria-hidden="true"
-                    />
-                    <span>{t("knowledgeBase")}</span>
-                  </DropdownMenuItem>
+                  {!conversationKnowledgeEnabled && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onSelect={() => {
+                          setShowKBModal(true);
+                        }}
+                        disabled={isInputBusy}
+                      >
+                        <Library
+                          size={14}
+                          className="text-purple-500 dark:text-purple-400"
+                          aria-hidden="true"
+                        />
+                        <span>{t("knowledgeBase")}</span>
+                      </DropdownMenuItem>
+                    </>
+                  )}
 
                   {(modelCapabilities.attachment ||
                     modelCapabilities.vision ||
@@ -1382,6 +1511,25 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
+
+            {conversationKnowledgeEnabled && (
+              <Tooltip content={t("knowledgeBase")} position="top">
+                <button
+                  type="button"
+                  aria-label={t("manageKnowledgeBases")}
+                  aria-pressed={normalizedKnowledgeCollectionIds.length > 0}
+                  className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${
+                    showKBModal || normalizedKnowledgeCollectionIds.length > 0
+                      ? "bg-purple-50 text-purple-700 dark:bg-purple-950/35 dark:text-purple-200"
+                      : "text-purple-500 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20"
+                  }`}
+                  disabled={isInputBusy || isSavingKnowledgeSelection}
+                  onClick={() => setShowKBModal(true)}
+                >
+                  <Library size={16} aria-hidden="true" />
+                </button>
+              </Tooltip>
+            )}
 
             {/* Skill Toggle Button */}
             <div className="relative">

@@ -56,6 +56,7 @@ const conversationDto: ConversationDTO = {
     useSearch: true,
     useReasoning: "bad",
     activePlugins: ["writer", 42],
+    selectedKnowledgeCollectionIds: [" kb-1 ", "kb-1", 42],
     internalTrace: "must-not-leak",
   },
   createdAt: "2026-07-08T00:00:00Z",
@@ -117,7 +118,11 @@ describe("chat CRUD DTO mappers", () => {
       model: "openai:gpt-5.5",
       pinned: true,
       systemInstruction: "server instruction",
-      config: { useSearch: true, activePlugins: ["writer"] },
+      config: {
+        useSearch: true,
+        activePlugins: ["writer"],
+        selectedKnowledgeCollectionIds: ["kb-1"],
+      },
     });
     expect(session.config).not.toHaveProperty("internalTrace");
     expect(session.config).not.toHaveProperty("useReasoning");

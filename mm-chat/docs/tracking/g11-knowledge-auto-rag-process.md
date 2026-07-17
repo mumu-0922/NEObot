@@ -134,3 +134,67 @@ Rollback surface: remove development Session injection and answer bootstrap,
 restore the prior handler branch, and roll back migration `026`. Do not restore
 the strict refusal UX. Next slice: G11.9B conversation-persistent Knowledge
 binding and the dedicated composer control.
+
+## 2026-07-17 — G11.9B Conversation-persistent Knowledge binding
+
+Outcome: Knowledge selection is now conversation state rather than a field
+repeated on every user/stream request. Selecting once survives the server
+conversation round trip; subsequent send, regenerate, and edited-message branch
+requests no longer carry a competing Knowledge authority.
+
+Frozen contract:
+
+```text
+PATCH /v1/chat/conversations/{conversationId}
+config.selectedKnowledgeCollectionIds = UUID[]
+maximum                                      8
+empty []                                     explicit unbind
+missing key                                  new/unmigrated conversation
+invalid UUID / more than 8                   INVALID_RAG_SELECTION
+```
+
+Implemented flow:
+
+- Go validates, deduplicates, and persists the canonical collection list in
+  `conversations.metadata`, and loads that user-scoped conversation before RAG;
+- a present canonical key wins even when empty, so stale request/message
+  metadata cannot reactivate a removed collection;
+- when the canonical key is missing, one non-empty legacy request or user
+  message selection is normalized and written into the conversation once;
+- frontend conversation DTO mapping preserves canonical IDs including explicit
+  empty arrays, and the server chat store patches/replaces only the returned
+  Postgres-backed session snapshot;
+- server mode exposes a dedicated `Library` control beside the paperclip,
+  seeds the modal from the current conversation, enforces the eight-collection
+  cap, and renders removable persistent chips above the textarea;
+- the local compatibility path keeps the old attachment selector, while server
+  send performs only a bounded one-time migration of an old Knowledge
+  attachment when the conversation has no canonical binding;
+- new blank conversations have no binding. Opening Knowledge before the first
+  message creates the conversation and then saves the chosen binding.
+
+Verification:
+
+```text
+Go all-package compile                                  passed
+Go focused binding/validation/legacy-migration tests   passed
+frontend format / lint / typecheck                     passed / passed / passed
+frontend focused tests                                 47 passed
+frontend full tests                                    855 passed; 1 sandbox-only spawnSync EPERM
+Docker backend/frontend production source build        passed / passed
+backend/frontend recreated health                      healthy / healthy
+```
+
+The unchanged full-suite failure is
+`byokGenerateScript.test.ts: spawnSync /usr/bin/node EPERM`. A same-origin curl
+replay from the restricted host could not be executed because the escalation
+review service returned an unsupported-review-model error; the source-built
+containers themselves reached healthy state. The next owner browser smoke
+should confirm chip naming/removal and refresh persistence before G11.9G final
+closure.
+
+Rollback surface: remove the dedicated control/store action and restore the
+legacy stream payload only together. Backend read compatibility may remain,
+but a rollback must not leave request metadata and conversation metadata as two
+simultaneous long-term authorities. Next slice: G11.9C contextual hybrid
+retrieval and rerank.

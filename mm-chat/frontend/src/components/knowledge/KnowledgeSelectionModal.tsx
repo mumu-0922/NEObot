@@ -30,7 +30,10 @@ import { logDevError } from "@/lib/utils/devLogger";
 
 interface KnowledgeSelectionModalProps {
   onClose: () => void;
-  onSelect: (attachments: Attachment[]) => void;
+  onSelect?: (attachments: Attachment[]) => void;
+  onSelectCollections?: (collectionIds: string[]) => void | Promise<void>;
+  initialSelectedCollectionIds?: readonly string[];
+  maxSelectedCollections?: number;
 }
 
 const menuItemFocusClass =
@@ -46,13 +49,23 @@ const collectionScopeLabelKey = (scope: KnowledgeCollectionDTO["scope"]) =>
 const KnowledgeSelectionModal: React.FC<KnowledgeSelectionModalProps> = ({
   onClose,
   onSelect,
+  onSelectCollections,
+  initialSelectedCollectionIds = [],
+  maxSelectedCollections = 8,
 }) => {
   const t = useTranslations("Knowledge");
   const { collections } = useKnowledgeStore();
   const apiClient = useMemo(() => createNeoChatApiClient(), []);
   const serverKnowledgeEnabled =
     apiClient.mode === "server" && apiClient.capabilities.knowledge;
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(
+    () =>
+      new Set(
+        initialSelectedCollectionIds
+          .slice(0, maxSelectedCollections)
+          .map(collectionKey),
+      ),
+  );
   const [activeCollectionId, setActiveCollectionId] = useState<string | null>(
     null,
   );
@@ -61,6 +74,8 @@ const KnowledgeSelectionModal: React.FC<KnowledgeSelectionModalProps> = ({
   >([]);
   const [serverLoading, setServerLoading] = useState(false);
   const [serverError, setServerError] = useState("");
+  const [selectionError, setSelectionError] = useState("");
+  const [isSavingSelection, setIsSavingSelection] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const listId = useId();
@@ -92,21 +107,50 @@ const KnowledgeSelectionModal: React.FC<KnowledgeSelectionModalProps> = ({
   }, [refreshServerCollections]);
 
   const toggleSelection = (key: string) => {
+    const isSelected = selectedKeys.has(key);
+    if (
+      !isSelected &&
+      serverKnowledgeEnabled &&
+      key.startsWith("collection:") &&
+      Array.from(selectedKeys).filter((item) => item.startsWith("collection:"))
+        .length >= maxSelectedCollections
+    ) {
+      setSelectionError(t("selectionLimit", { max: maxSelectedCollections }));
+      return;
+    }
+
     setSelectedKeys((currentKeys) => {
       const nextKeys = new Set(currentKeys);
-      if (nextKeys.has(key)) {
-        nextKeys.delete(key);
-      } else {
-        nextKeys.add(key);
-      }
+      if (nextKeys.has(key)) nextKeys.delete(key);
+      else nextKeys.add(key);
       return nextKeys;
     });
+    setSelectionError("");
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     const selectedAttachments: Attachment[] = [];
 
     if (serverKnowledgeEnabled) {
+      const collectionIds = Array.from(selectedKeys)
+        .filter((key) => key.startsWith("collection:"))
+        .map((key) => key.slice("collection:".length))
+        .slice(0, maxSelectedCollections);
+      if (onSelectCollections) {
+        setIsSavingSelection(true);
+        setSelectionError("");
+        try {
+          await onSelectCollections(collectionIds);
+          onClose();
+        } catch (error) {
+          logDevError("Failed to save conversation knowledge selection", error);
+          setSelectionError(t("saveSelectionFailed"));
+        } finally {
+          setIsSavingSelection(false);
+        }
+        return;
+      }
+
       for (const key of selectedKeys) {
         if (!key.startsWith("collection:")) continue;
         const collectionId = key.slice("collection:".length);
@@ -122,7 +166,7 @@ const KnowledgeSelectionModal: React.FC<KnowledgeSelectionModalProps> = ({
         );
       }
 
-      onSelect(selectedAttachments);
+      onSelect?.(selectedAttachments);
       onClose();
       return;
     }
@@ -156,7 +200,7 @@ const KnowledgeSelectionModal: React.FC<KnowledgeSelectionModalProps> = ({
       }
     }
 
-    onSelect(selectedAttachments);
+    onSelect?.(selectedAttachments);
     onClose();
   };
 
@@ -457,6 +501,14 @@ const KnowledgeSelectionModal: React.FC<KnowledgeSelectionModalProps> = ({
           className="p-4 overflow-y-auto custom-scrollbar flex-1 space-y-2"
           aria-label={t("collectionsLabel")}
         >
+          {selectionError ? (
+            <div
+              role="status"
+              className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
+            >
+              {selectionError}
+            </div>
+          ) : null}
           {serverKnowledgeEnabled ? (
             serverLoading ? (
               <div className="py-10 text-center text-gray-400">
@@ -503,12 +555,19 @@ const KnowledgeSelectionModal: React.FC<KnowledgeSelectionModalProps> = ({
             </button>
             <button
               type="button"
-              onClick={handleConfirm}
-              disabled={selectedKeys.size === 0}
+              onClick={() => void handleConfirm()}
+              disabled={
+                isSavingSelection ||
+                (!serverKnowledgeEnabled && selectedKeys.size === 0)
+              }
               className="px-6 py-2 text-sm bg-purple-600 hover:bg-purple-700 text-white rounded-xl shadow-lg shadow-purple-500/20 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/60"
             >
               <Check size={16} aria-hidden="true" />
-              {t("attachSelected")}
+              {isSavingSelection
+                ? t("savingSelection")
+                : serverKnowledgeEnabled
+                  ? t("saveSelection")
+                  : t("attachSelected")}
             </button>
           </div>
         </div>

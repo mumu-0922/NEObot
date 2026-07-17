@@ -2,6 +2,8 @@ package chat
 
 import "strings"
 
+const conversationKnowledgeSelectionKey = "selectedKnowledgeCollectionIds"
+
 type ragSelection struct {
 	Enabled       bool
 	CollectionIDs []string
@@ -21,6 +23,37 @@ func extractRAGSelection(config map[string]any, metadata map[string]any) (ragSel
 		}
 	}
 	return selection, nil
+}
+
+func extractConversationRAGSelection(metadata map[string]any) (ragSelection, bool, error) {
+	if metadata == nil {
+		return ragSelection{}, false, nil
+	}
+	raw, ok := metadata[conversationKnowledgeSelectionKey]
+	if !ok {
+		return ragSelection{}, false, nil
+	}
+	ids, err := normalizeRAGCollectionIDs(raw)
+	if err != nil {
+		return ragSelection{}, true, err
+	}
+	return ragSelection{Enabled: len(ids) > 0, CollectionIDs: ids}, true, nil
+}
+
+func normalizeConversationRAGMetadata(metadata map[string]any) error {
+	if metadata == nil {
+		return nil
+	}
+	raw, ok := metadata[conversationKnowledgeSelectionKey]
+	if !ok {
+		return nil
+	}
+	ids, err := normalizeRAGCollectionIDs(raw)
+	if err != nil {
+		return err
+	}
+	metadata[conversationKnowledgeSelectionKey] = ids
+	return nil
 }
 
 func collectionIDsFromObject(values map[string]any) ([]string, bool, error) {
@@ -60,9 +93,6 @@ func normalizeRAGCollectionIDs(raw any) ([]string, error) {
 	default:
 		return nil, newValidationError("INVALID_RAG_SELECTION", "knowledge collection ids must be strings")
 	}
-	if len(values) > 8 {
-		return nil, newValidationError("INVALID_RAG_SELECTION", "too many selected knowledge collections")
-	}
 	ids := make([]string, 0, len(values))
 	seen := map[string]struct{}{}
 	for _, value := range values {
@@ -80,6 +110,9 @@ func normalizeRAGCollectionIDs(raw any) ([]string, error) {
 		key := strings.ToLower(id)
 		if _, ok := seen[key]; ok {
 			continue
+		}
+		if len(ids) >= 8 {
+			return nil, newValidationError("INVALID_RAG_SELECTION", "too many selected knowledge collections")
 		}
 		seen[key] = struct{}{}
 		ids = append(ids, id)

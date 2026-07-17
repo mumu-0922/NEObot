@@ -4832,3 +4832,24 @@ recall. Source-built live proof against `linux do作文.docx` answered
 chat with `outcome=no_evidence` and no refusal card. Detailed identifiers,
 projection repair evidence, checks, and rollback are in
 `docs/tracking/g11-knowledge-auto-rag-process.md`.
+
+## 2026-07-17 — G11.9B Conversation-persistent Knowledge binding
+
+Knowledge selection moved from per-message stream config/metadata to the
+Postgres-backed conversation config key
+`selectedKnowledgeCollectionIds`. Go enforces UUID, dedupe, maximum eight, and
+explicit-empty semantics; conversation state wins over stale request metadata,
+while a non-empty legacy selection is migrated exactly once when the canonical
+key is absent.
+
+The server composer now has a dedicated Knowledge button, a seeded save modal,
+and persistent removable chips. Send, regeneration, and edited-message branch
+streams no longer serialize Knowledge IDs. Local mode retains attachment
+compatibility without becoming a second server authority.
+
+Checks passed: Go all-package compile and focused binding tests; frontend
+format/lint/typecheck; 47 focused frontend tests; backend/frontend production
+source builds; recreated container health. Full frontend Vitest passed 855 of
+856, with only the unchanged restricted-sandbox `spawnSync /usr/bin/node EPERM`
+case. Detailed contract, rollback, and the blocked host curl note are recorded
+in `docs/tracking/g11-knowledge-auto-rag-process.md`.

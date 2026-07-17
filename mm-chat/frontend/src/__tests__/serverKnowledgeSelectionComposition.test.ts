@@ -51,15 +51,35 @@ describe("G8.5 server knowledge selection isolation", () => {
     expect(selectionModal).toContain("collectionName: collection.name");
   });
 
-  it("passes selected server collection IDs into Auto Go RAG config and metadata", () => {
+  it("persists selected collections as the conversation binding authority", () => {
     expect(attachmentUtils).toContain("KNOWLEDGE_COLLECTION_MIME");
     expect(attachmentUtils).toContain("getKnowledgeAttachmentCollectionIds");
-    expect(chatApp).toContain("getServerKnowledgeSelectionIds");
-    expect(chatApp).toContain("buildServerKnowledgeStreamConfig");
-    expect(chatApp).toContain("buildServerKnowledgeMessageMetadata");
+    expect(chatApp).toContain("persistConversationKnowledgeSelection");
+    expect(chatApp).toContain("updateServerSessionConfig");
     expect(chatApp).toContain("selectedKnowledgeCollectionIds");
+    expect(chatApp).toContain("sessionKnowledgeBinding === undefined");
+    expect(chatApp).not.toContain("buildServerKnowledgeStreamConfig");
+    expect(chatApp).not.toContain("buildServerKnowledgeMessageMetadata");
     expect(chatApp).not.toContain("ragStrict");
     expect(chatApp).not.toContain("knowledgeStrict");
-    expect(chatApp).toContain("getServerKnowledgeSelectionIdsFromMessage");
+    expect(chatApp).not.toContain("getServerKnowledgeSelectionIdsFromMessage");
+  });
+
+  it("uses a dedicated persistent Knowledge control with an eight collection cap", () => {
+    const messageInput = readFileSync(
+      resolve(process.cwd(), "src/components/chat/MessageInput.tsx"),
+      "utf8",
+    );
+
+    expect(messageInput).toContain("onKnowledgeCollectionIdsChange");
+    expect(messageInput).toContain("conversationKnowledgeEnabled");
+    expect(messageInput).toContain("selectedKnowledgeBases");
+    expect(messageInput).toContain("removeKnowledgeBase");
+    expect(messageInput).toContain("manageKnowledgeBases");
+    expect(messageInput).toContain("MAX_CONVERSATION_KNOWLEDGE_COLLECTIONS");
+    expect(selectionModal).toContain("initialSelectedCollectionIds");
+    expect(selectionModal).toContain("maxSelectedCollections = 8");
+    expect(selectionModal).toContain("onSelectCollections");
+    expect(selectionModal).toContain('t("saveSelection")');
   });
 });

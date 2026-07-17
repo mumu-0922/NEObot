@@ -3,6 +3,7 @@ import type { Attachment } from "../../types";
 
 export const KNOWLEDGE_COLLECTION_MIME = "application/vnd.neo-chat.collection";
 export const KNOWLEDGE_FILE_MIME = "application/vnd.neo-chat.knowledge-file";
+export const MAX_CONVERSATION_KNOWLEDGE_COLLECTIONS = 8;
 
 export interface KnowledgeFileAttachmentData {
   collectionId: string;

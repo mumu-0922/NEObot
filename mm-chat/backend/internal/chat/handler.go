@@ -857,11 +857,6 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		writeRequestDecodeError(w, err)
 		return
 	}
-	ragSelection, err := extractRAGSelection(request.Config, request.Metadata)
-	if err != nil {
-		writeRequestDecodeError(w, err)
-		return
-	}
 
 	modelRef := request.ModelRef
 	if modelRef == nil {
@@ -891,6 +886,17 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	}
 	if userMessage.Role != "user" {
 		writeRequestDecodeError(w, newValidationError("INVALID_USER_MESSAGE_ID", "userMessageId must reference a user message"))
+		return
+	}
+	ragSelection, err := h.resolveConversationRAGSelection(
+		r.Context(),
+		conversationID,
+		request.Config,
+		request.Metadata,
+		userMessage.Metadata,
+	)
+	if err != nil {
+		writeServiceError(w, err)
 		return
 	}
 	if isImageGenerationModel(modelRef.ModelID) {
@@ -1187,6 +1193,54 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	flusher.Flush()
+}
+
+func (h *Handler) resolveConversationRAGSelection(
+	ctx context.Context,
+	conversationID string,
+	requestConfig map[string]any,
+	requestMetadata map[string]any,
+	userMessageMetadata map[string]any,
+) (ragSelection, error) {
+	conversation, err := h.service.GetConversation(ctx, conversationID)
+	if err != nil {
+		return ragSelection{}, err
+	}
+	selection, bindingPresent, err := extractConversationRAGSelection(conversation.Metadata)
+	if err != nil {
+		return ragSelection{}, err
+	}
+	if bindingPresent {
+		return selection, nil
+	}
+
+	legacySelection, err := extractRAGSelection(requestConfig, requestMetadata)
+	if err != nil {
+		return ragSelection{}, err
+	}
+	if !legacySelection.Enabled {
+		legacySelection, err = extractRAGSelection(nil, userMessageMetadata)
+		if err != nil {
+			return ragSelection{}, err
+		}
+	}
+	if !legacySelection.Enabled {
+		return ragSelection{}, nil
+	}
+
+	updated, err := h.service.UpdateConversation(ctx, conversationID, UpdateConversationInput{
+		MetadataMerge: map[string]any{
+			conversationKnowledgeSelectionKey: legacySelection.CollectionIDs,
+		},
+	})
+	if err != nil {
+		return ragSelection{}, err
+	}
+	migratedSelection, _, err := extractConversationRAGSelection(updated.Metadata)
+	if err != nil {
+		return ragSelection{}, err
+	}
+	return migratedSelection, nil
 }
 
 func isImageGenerationModel(modelID string) bool {

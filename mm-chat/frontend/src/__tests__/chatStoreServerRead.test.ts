@@ -183,6 +183,7 @@ describe("chat store server read path", () => {
         title?: string;
         systemInstruction?: string;
         pinned?: boolean;
+        config?: Session["config"];
       }) => ({
         ...makeServerSession(input.conversationId),
         ...(input.title !== undefined ? { title: input.title } : {}),
@@ -190,6 +191,7 @@ describe("chat store server read path", () => {
           ? { systemInstruction: input.systemInstruction }
           : {}),
         ...(input.pinned !== undefined ? { pinned: input.pinned } : {}),
+        ...(input.config !== undefined ? { config: input.config } : {}),
       }),
     );
     mocks.serverService.deleteConversation.mockResolvedValue(undefined);
@@ -481,6 +483,7 @@ describe("chat store server read path", () => {
         title?: string;
         systemInstruction?: string;
         pinned?: boolean;
+        config?: Session["config"];
       }) => {
         serverSession = {
           ...serverSession,
@@ -489,6 +492,7 @@ describe("chat store server read path", () => {
             ? { systemInstruction: input.systemInstruction }
             : {}),
           ...(input.pinned !== undefined ? { pinned: input.pinned } : {}),
+          ...(input.config !== undefined ? { config: input.config } : {}),
         };
         return serverSession;
       },
@@ -514,6 +518,11 @@ describe("chat store server read path", () => {
     await expect(
       useChatStore.getState().toggleServerSessionPin("c1"),
     ).resolves.toBe(true);
+    await expect(
+      useChatStore.getState().updateServerSessionConfig("c1", {
+        selectedKnowledgeCollectionIds: ["kb-1", "kb-1", "kb-2"],
+      }),
+    ).resolves.toBe(true);
 
     const state = useChatStore.getState();
     expect(state.serverReadState.sessions[0]).toMatchObject({
@@ -521,6 +530,7 @@ describe("chat store server read path", () => {
       title: "Renamed",
       systemInstruction: "be precise",
       pinned: true,
+      config: { selectedKnowledgeCollectionIds: ["kb-1", "kb-2"] },
     });
     expect(state.sessions).toEqual([localSession]);
     expect(mocks.serverService.updateConversation).toHaveBeenNthCalledWith(1, {
@@ -534,6 +544,10 @@ describe("chat store server read path", () => {
     expect(mocks.serverService.updateConversation).toHaveBeenNthCalledWith(3, {
       conversationId: "c1",
       pinned: true,
+    });
+    expect(mocks.serverService.updateConversation).toHaveBeenNthCalledWith(4, {
+      conversationId: "c1",
+      config: { selectedKnowledgeCollectionIds: ["kb-1", "kb-2"] },
     });
     expect(mocks.appDbMock.getItem).not.toHaveBeenCalled();
     expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();

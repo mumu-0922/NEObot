@@ -8232,3 +8232,11 @@ active DOCX answered `研究方向是什么？` with “推荐系统” and `[K1
 weather query completed without a refusal/status card. Full runtime evidence
 and the answer-consent projection-revision correction are recorded in
 `docs/tracking/g11-knowledge-auto-rag-process.md`.
+
+## 2026-07-17 — G11.9B Persistent Knowledge binding cross-reference
+
+Selected Knowledge is now persisted once in Postgres conversation metadata and
+reused by every later message. The dedicated server composer control, removable
+chips, eight-collection validation, explicit unbind behavior, one-time legacy
+migration, tests, source builds, and rollback boundary are recorded in
+`docs/tracking/g11-knowledge-auto-rag-process.md`.
