@@ -186,8 +186,14 @@ Incremental execution slices:
 - **G11.9D.2.3** complete: candidate allocation, mixed Native/MinerU structure
   parsing, real passage embeddings, and per-materialization completeness are
   closed;
-- **G11.9D.3** verify counts/hashes/locators/deletion fences, atomically cut over
-  the generation, and prove failed rebuild rollback plus live citations.
+- **G11.9D.3a** complete: lock the corpus head, prove exact generation-wide
+  document/job/artifact/Block/Parent/Child/vector/locator completeness, freeze a
+  deterministic manifest and counts, and transition only
+  `building -> verified` / `building -> ready` with deterministic replay;
+- **G11.9D.3b** remaining: prove deletion/race fences and failed-candidate
+  rollback while the old generation stays active;
+- **G11.9D.3c** remaining: atomically cut over the verified generation and prove
+  live citations plus old-generation rollback behavior.
 
 Actions:
 

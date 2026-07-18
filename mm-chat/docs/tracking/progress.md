@@ -1355,6 +1355,12 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
               embedding/completeness proof without re-upload.
       - [ ] G11.9D.3 Generation verification, atomic cutover, failure rollback,
             deletion fencing, and live citation-anchor proof.
+        - [x] G11.9D.3a Generation completeness verifier: exact corpus/job/
+              artifact/Block/Parent/Child/vector/locator proof, deterministic
+              manifest replay, frozen counts, `verified/ready` transition, and
+              unchanged active generation.
+        - [ ] G11.9D.3b Deletion/race fencing and failed-candidate rollback.
+        - [ ] G11.9D.3c Atomic generation cutover, live citations, and rollback.
     - [ ] G11.9E Go Tavily/Firecrawl/Exa/Bocha/model-built-in Search parity,
           SearXNG removal, and legacy Next search deletion.
     - [ ] G11.9F Postgres-encrypted administrator provider configuration,

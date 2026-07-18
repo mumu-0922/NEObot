@@ -795,3 +795,70 @@ formal database never received migrations 028–030. G11.9D.3 now owns
 generation-wide Parent/Child counters, deterministic manifest hash,
 building-to-verified transition, deletion-fence/failure proof, atomic cutover,
 and live citations.
+
+## 2026-07-18 — G11.9D.3a Generation completeness verifier
+
+Outcome: migration 031 adds the generation-wide verification boundary without
+exposing promotion. `knowledge_verify_structure_generation(...)` locks the
+expected corpus head, rejects the active generation, and derives exact current
+document coverage, latest Parse/Embedding success, published candidate heads,
+parser artifacts, Blocks, Parent/Child containment, shared profile, locators,
+and ready Jina 1024 vectors entirely from persisted evidence.
+
+The verifier now promotes parser artifact sets from staging to verified inside
+the same transaction, computes ordered versioned row digests for
+materializations/artifacts, Blocks, Parents, and Children/search vectors, then
+freezes one generation manifest and document/Parent/Child counts. It updates
+only candidate generation `building -> verified` and projection state
+`building -> ready`. Calling it again recomputes all evidence and must return
+the identical manifest/counts; it contains no call or grant to the promotion
+function and no active-head update.
+
+The first live call exposed one SQL naming defect: the local `verified_at`
+variable collided with the parser-artifact column inside `UPDATE`. Renaming the
+single transaction timestamp to `verification_time` removed the ambiguity. The
+migration was rolled down and rebuilt before the successful proof, so the final
+evidence exercised the packaged migration rather than an ad hoc database edit.
+
+Live proof rebuilt the real three-document D.2.3 candidate on an ACL-preserving
+clone and completed six credential-backed Parse/Jina jobs. Verification returned
+3 documents, 10 Blocks, 3 Parents, and 3 Children. Immediate verified replay
+returned the same manifest and every count. A negative transaction removed one
+ready vector; the verifier rejected it with
+`RAG_STRUCTURE_VERIFY_PROJECTION_INCOMPLETE`. Connection rollback restored all
+three vectors, three verified parser artifact sets, and the bound
+`verified/ready` manifest.
+
+Verification:
+
+```text
+pending candidate before D.2.3             coverage rejected
+real Parse / Jina jobs                     3 + 3 succeeded
+verified document / Block counts           3 / 10
+verified Parent / Child counts             3 / 3
+generation / projection state              verified / ready
+generation/state manifest equality         true
+deterministic verified replay              hash + all counts stable
+missing ready-vector negative              rejected / rollback restored
+verified parser artifact sets              3
+formal active generation/head revision     unchanged
+Go migration tests                         passed
+Go full tests                              passed
+Go vet                                     passed
+backend/migrate source build               passed
+```
+
+Cleanup removed the worker/backend containers, disposable database, Windows
+result proxy, provider logs, and credential-bearing environment snapshots.
+Final proof showed zero G11.9D.3a temporary resources, formal migration max
+`27`, verifier absent from formal, and the expected formal active generation
+unchanged.
+
+Rollback: migration 031 drops the verifier and revokes its narrow parser-set
+status/verified-time update grant. Production has not applied migrations
+028–031. If rollback is ever required after verification in another database,
+first account for already-verified candidate/artifact rows; the down migration
+removes code/privilege but deliberately does not rewrite historical state.
+
+Remaining work: G11.9D.3b proves deletion/race and failed-candidate rollback;
+G11.9D.3c performs the separately fenced atomic cutover and live citation proof.

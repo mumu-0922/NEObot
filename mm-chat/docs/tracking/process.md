@@ -8336,6 +8336,18 @@ gates, and rollback are recorded in
 `docs/tracking/g11-knowledge-auto-rag-process.md` and
 `docs/contracts/rag-structure-chunking.md`.
 
+## 2026-07-18 — G11.9D.3a verifier cross-reference
+
+The new database-only verifier derives exact candidate coverage, successful
+job pairs, artifacts, Block/Parent/Child/vector/locator lineage, deterministic
+manifest, and frozen counts under the expected corpus-head lock. Real-clone
+proof transitioned only the candidate to `verified/ready`, reproduced the same
+manifest on replay, and rejected a transactionally missing vector. The formal
+active generation did not move. Full defects, tests, cleanup, rollback, and the
+D.3b/D.3c handoff are recorded in
+`docs/tracking/g11-knowledge-auto-rag-process.md` and
+`docs/contracts/rag-structure-chunking.md`.
+
 ## 2026-07-18 — G11.9D.2.2a profile convergence cross-reference
 
 Native and MinerU Chunk Manifests now share one structure profile hash, closing

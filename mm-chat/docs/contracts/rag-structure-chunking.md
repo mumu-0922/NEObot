@@ -5,10 +5,11 @@
 This contract covers G11.9D.1 deterministic planning, G11.9D.2.1 Native
 projection, G11.9D.2.2 admitted MinerU page-element projection,
 G11.9D.2.3a candidate-generation allocation, and G11.9D.2.3b leased candidate
-parse projection. Candidate parsing may persist structure artifacts and create
-pending passage-embedding jobs only. It must not consume Jina, verify the
-candidate, or switch the active Index Generation. Those promotion steps remain
-later D.2.3 and D.3 slices.
+parse projection, G11.9D.2.3c real passage-embedding completeness, and
+G11.9D.3a generation verification. These slices may publish candidate
+materializations and transition only the candidate to `verified/ready`. They
+must not switch the active Index Generation; deletion/race fencing and atomic
+promotion remain D.3b/D.3c.
 
 ## 2. Signatures
 
@@ -445,3 +446,112 @@ generation remained active.
 The candidate projection-state Parent/Child counters, generation manifest,
 `verified` transition, deletion-fence proof, promotion, and live citations are
 deliberately deferred to G11.9D.3.
+
+## 13. G11.9D.3a Generation Completeness Verifier
+
+### Scope / Trigger
+
+After D.2.3 publishes every candidate materialization, one generation-wide
+transaction proves the candidate is complete and freezes its manifest. This is
+the only allowed `building -> verified` boundary and cannot activate it.
+
+### Signature
+
+```sql
+knowledge_verify_structure_generation(
+  index_generation_id UUID,
+  expected_head_revision BIGINT,
+  expected_chunk_profile_hash TEXT
+) RETURNS TABLE(
+  candidate_generation_id UUID,
+  artifact_manifest_hash TEXT,
+  document_count BIGINT,
+  block_count BIGINT,
+  parent_count BIGINT,
+  child_count BIGINT
+)
+```
+
+### Contracts
+
+- the corpus head is locked and must still have the expected revision and a
+  different active generation;
+- the candidate must be `building` with `building` projection state, or an
+  already `verified`/`ready` candidate replaying the same manifest;
+- candidate published document/version/file/content tuples must exactly equal
+  the current active/available corpus set;
+- the latest Parse and Passage Embedding job for every materialization must be
+  `succeeded`, and every candidate document head must point to its published
+  materialization;
+- parser artifact sets must bind the candidate Index Profile and contain
+  blocks; first verification marks those sets `verified` in the same
+  transaction;
+- every materialization has at least one Parent and Child, every Parent has a
+  Child, and every Child has an immutable-lineage-equal ready search row under
+  the expected shared profile and Jina 1024 model;
+- Parent/search locator summaries must match and contain an admitted primary
+  locator;
+- the deterministic manifest hashes ordered materialization, parser-artifact,
+  Block locator/content, Parent locator/content, Child content/lineage, and
+  embedding-vector-hash row digests plus generation/profile/build/count inputs;
+- success atomically writes the same manifest to generation and projection
+  state, freezes document/Parent/Child counts, changes generation to `verified`
+  and state to `ready`, but never updates `active_index_generation_id`.
+
+### Validation & Error Matrix
+
+| Condition | Result |
+| --- | --- |
+| Invalid ID/head/hash argument | `RAG_STRUCTURE_VERIFY_ARGUMENT_INVALID` |
+| Head revision stale, missing active head, or candidate is active | `RAG_STRUCTURE_VERIFY_HEAD_STALE` |
+| Candidate/status missing | `RAG_STRUCTURE_VERIFY_CANDIDATE_MISSING` |
+| State/readiness/outbox floor inconsistent | `RAG_STRUCTURE_VERIFY_STATE_INVALID` |
+| Index/Search/Jina/shared profile mismatch | `RAG_STRUCTURE_VERIFY_PROFILE_MISMATCH` |
+| Exact current document tuple coverage differs | `RAG_STRUCTURE_VERIFY_COVERAGE_INVALID` |
+| Latest Parse/Embedding job incomplete | `RAG_STRUCTURE_VERIFY_JOBS_INCOMPLETE` |
+| Published document heads incomplete | `RAG_STRUCTURE_VERIFY_HEADS_INCOMPLETE` |
+| Parser artifacts/Blocks incomplete | `RAG_STRUCTURE_VERIFY_ARTIFACTS_INCOMPLETE` |
+| Parent/Child/vector/locator lineage incomplete | `RAG_STRUCTURE_VERIFY_PROJECTION_INCOMPLETE` |
+| Verified replay recomputes different manifest/counts | `RAG_STRUCTURE_VERIFY_REPLAY_MISMATCH` |
+
+### Good / Base / Bad Cases
+
+- Good: the complete mixed-format candidate freezes one deterministic manifest,
+  transitions to `verified/ready`, and replays to the identical hash/counts.
+- Base: one published document with one Block, Parent, Child, ready vector, and
+  successful job pair verifies without changing the active head.
+- Bad: missing vector, stale head revision, substituted document/version,
+  unknown profile, unmatched locator, or incomplete latest job aborts the whole
+  transaction.
+
+### Tests Required
+
+- Migration tests assert signature, ownership/grant, closed errors, manifest
+  domain, state transitions, rollback, and absence of promotion/active-head SQL.
+- Disposable-clone proof must run a real D.2.3 candidate, call verification
+  twice to prove deterministic replay, and show generation/state manifest
+  equality plus frozen counts.
+- A transactional negative test removes one ready vector and must receive
+  `RAG_STRUCTURE_VERIFY_PROJECTION_INCOMPLETE`; rollback must restore the
+  verified candidate and all vectors.
+- Formal migration/head state and temporary-resource cleanup must be proved.
+
+### Wrong vs Correct
+
+Wrong: trust terminal job counts or caller-supplied counts and mark the
+candidate verified without hashing immutable projection evidence.
+
+Correct: derive exact coverage/counts and ordered row digests inside the locked
+database transaction, persist one bound manifest, and leave activation to the
+separate D.3c promotion gate.
+
+### Live Proof Boundary
+
+The disposable three-document candidate verified as 3 documents, 10 Blocks,
+3 Parents, and 3 Children. Immediate replay returned the identical manifest and
+counts. Removing one ready vector caused the closed projection-incomplete error;
+the aborted transaction restored all three vectors and the verified/ready
+state. The old generation remained active at the same head revision.
+
+Deletion/race fencing, failed-candidate rollback, atomic promotion, and live
+citations remain G11.9D.3b/D.3c.

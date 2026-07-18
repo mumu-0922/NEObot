@@ -5064,3 +5064,19 @@ runtime functions. All temporary containers, database, proxy, credentials,
 logs, and archives were removed. D.2.3 is closed; generation verification,
 deletion fences, cutover, and citations remain D.3. Detailed evidence is in
 `docs/tracking/g11-knowledge-auto-rag-process.md`.
+
+## 2026-07-18 — G11.9D.3a Generation completeness verifier
+
+Migration 031 now performs candidate-wide pre-cutover verification under the
+corpus head lock. It derives exact current-document coverage, job completion,
+parser artifacts, Blocks, Parent/Child/vector lineage, and locators from
+Postgres, freezes one deterministic manifest/count set, and changes only the
+candidate to `verified/ready`.
+
+The real three-document clone verified as 3 documents, 10 Blocks, 3 Parents,
+and 3 Children; immediate replay returned the same manifest/counts. Removing
+one ready vector in a transaction failed closed and rollback restored all
+evidence. The active generation was unchanged. Temporary provider/runtime state
+was deleted and formal migration remains 27. D.3b/D.3c retain deletion/race,
+rollback, cutover, and citation scope. Detailed evidence is in
+`docs/tracking/g11-knowledge-auto-rag-process.md`.

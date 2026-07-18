@@ -518,9 +518,36 @@ Disposable-clone proof completed three parse and three real embedding jobs on
 their first attempts. The mixed PDF/DOCX candidate exactly covered all current
 documents; three materializations and three document projection heads were
 published; all three shared-profile Children had ready vectors. The active
-generation remained unchanged. G11.9D.3 must compute/freeze the generation
-manifest and projection counts, test deletion fences, transition to `verified`,
-and perform the only atomic cutover.
+generation remained unchanged. G11.9D.3a below computes/freezes the generation
+manifest and projection counts and transitions to `verified`; later gates test
+deletion fences and perform the only atomic cutover.
+
+## G11.9D.3a Generation completeness verification
+
+Migration 031 introduces one `SECURITY DEFINER` verifier callable by the Go
+runtime. It locks the corpus head under an expected revision, rejects the active
+generation as a target, and derives all evidence from Postgres rather than
+accepting caller counts or a caller manifest.
+
+Coverage compares exact current document/version/file/content tuples against
+published candidate materializations. The latest Parse/Embedding pair, parser
+artifact profile/status, Blocks, generation-scoped document heads, Parent/Child
+containment, shared chunk profile, locator summaries, ready Jina 1024 vectors,
+and immutable lineage joins must all close. Artifact sets transition from
+staging to verified in the same transaction.
+
+The manifest uses a versioned domain and hashes stable ordered row digests for
+materializations/artifacts, Block locators/content, Parent locators/content, and
+Child lineage/vector hashes together with generation/profile/build/count
+inputs. On success, generation and projection state receive the same manifest;
+counts are frozen and status becomes `verified/ready`. Replaying a verified
+candidate recomputes everything and must match exactly.
+
+Live proof returned 3 documents, 10 Blocks, 3 Parents, and 3 Children with an
+identical immediate replay. Transactionally removing one ready vector failed
+closed and rollback restored the verified state. The active generation/head
+were unchanged. D.3b owns deletion/race/failure fencing; D.3c alone may promote
+and exercise live citations.
 
 ## Process topology
 

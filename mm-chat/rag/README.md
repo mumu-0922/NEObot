@@ -132,8 +132,18 @@ second embedding path. A credential-backed disposable-clone run processed all
 three candidate embedding jobs once, stored validated
 `jina-embeddings-v4`/1024 vectors for the shared-profile Children, published
 all three materializations and generation-scoped document heads, and proved
-exact document coverage. The candidate remained `building`; generation
-manifest/count verification, atomic cutover, and citations remain G11.9D.3.
+exact document coverage. That boundary deliberately left the candidate
+`building`; G11.9D.3a below now freezes its manifest/counts, while atomic
+cutover and citations remain later gates.
+
+G11.9D.3a adds the database-only
+`knowledge_verify_structure_generation(...)` boundary. It locks the corpus
+head, derives exact current-document coverage and all Block/Parent/Child/vector/
+locator counts from persisted evidence, verifies the latest job pairs and
+generation-scoped heads, marks parser artifact sets verified, and freezes one
+ordered deterministic manifest. Success changes only the candidate to
+`verified` and its projection state to `ready`; deterministic replay must return
+the same manifest/counts. It has no active-head or promotion path.
 
 ## Local quality gates
 
