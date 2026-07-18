@@ -500,6 +500,28 @@ passage-embedding jobs remained pending. The active generation was not changed.
 Jina passage embeddings, completeness verification, cutover, and citation
 proof remain outside this boundary.
 
+## G11.9D.2.3c Candidate passage embedding completeness
+
+No parallel embedding implementation is introduced. The promoted
+`passage_embedding_handler_with_dependencies` fetches generation-bound Child
+search rows, calls Jina with `retrieval.passage`, validates exact Child order,
+count, 1024 finite values, and float32 hashes, then stages each vector through
+the existing least-privilege function.
+
+Per-materialization completeness joins immutable Child/search lineage and
+requires every projection to be ready under `jina-embeddings-v4`/1024 before
+`knowledge_complete_embedding_and_publish(...)` publishes the materialization,
+advances its generation-scoped document head, and commits the leased job. This
+path cannot verify or promote the generation.
+
+Disposable-clone proof completed three parse and three real embedding jobs on
+their first attempts. The mixed PDF/DOCX candidate exactly covered all current
+documents; three materializations and three document projection heads were
+published; all three shared-profile Children had ready vectors. The active
+generation remained unchanged. G11.9D.3 must compute/freeze the generation
+manifest and projection counts, test deletion fences, transition to `verified`,
+and perform the only atomic cutover.
+
 ## Process topology
 
 One process owns:

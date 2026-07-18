@@ -732,3 +732,66 @@ not require a live database rollback.
 Remaining work: run real Jina passage embeddings for the three staged Children,
 verify candidate completeness/hashes/deletion fences, then enter D.3 for atomic
 generation cutover and live citation proof.
+
+## 2026-07-18 — G11.9D.2.3c Real Jina candidate embedding closure
+
+Outcome: D.2.3 is complete without introducing another provider or persistence
+path. The existing promoted passage-embedding handler consumed the shared
+candidate's three pending jobs through real Jina `retrieval.passage`, validated
+1024-dimensional finite vectors and float32 hashes, staged them through the
+token-fenced Postgres gateway, proved each materialization search-complete, and
+published each materialization/document projection head. The candidate stayed
+`building`; no generation verification or promotion function was called.
+
+The first clone attempt produced a false permission failure because the clone
+command used `pg_dump --no-privileges`, stripping the runtime role ACLs that are
+part of the production schema contract. Recreating the clone with ACLs intact
+made the unchanged allocator pass. Future live integration clones must preserve
+grants; testing privileged functions on an ACL-stripped dump is invalid
+evidence.
+
+The final no-mock run cloned the current three-document corpus, applied only
+migrations 028–030, allocated the candidate, and ran one worker with exactly
+`parse,passage_embedding`. A temporary exact-host/path Windows `curl.exe`
+result proxy handled the known Docker/WSL MinerU CDN transport boundary. The
+worker claimed and succeeded six jobs total. Jina and MinerU credentials came
+only from the temporary environment snapshot and were never printed or added
+to Git.
+
+Verification:
+
+```text
+candidate document coverage                 exact 3 / 3
+parse jobs                                  3 succeeded / attempt 1
+real passage-embedding jobs                 3 succeeded / attempt 1
+candidate materializations                  3 published
+materialization manifest/result hashes      3 complete
+shared-profile Children                     3
+ready Jina vectors                          3 x 1024
+candidate document projection heads         3 published
+candidate generation/readiness              building / building
+candidate actual Parents / Children         3 / 3
+formal active generation                    unchanged
+worker job metrics                          6 claimed / 6 succeeded
+raw query URLs / credential patterns logs   0 / 0
+focused Ruff                                passed
+strict Mypy                                 70 modules passed
+focused embedding tests                     86 passed / 1 skipped
+Go migration tests                          passed
+```
+
+Cleanup removed the temporary worker/backend containers, disposable database,
+Windows proxy process/files, logs, and both credential-bearing environment
+snapshots. Final checks showed zero D.2.3c containers/database/files, formal
+migration max `27`, and the expected formal active generation unchanged.
+
+No production code changed in this slice: the goal was to prove the already
+implemented Jina/fenced-publish path against the new structure candidate. The
+contract, plan, design, and process records changed because live evidence now
+closes D.2.3.
+
+Rollback is documentation-only. The disposable state no longer exists and the
+formal database never received migrations 028–030. G11.9D.3 now owns
+generation-wide Parent/Child counters, deterministic manifest hash,
+building-to-verified transition, deletion-fence/failure proof, atomic cutover,
+and live citations.

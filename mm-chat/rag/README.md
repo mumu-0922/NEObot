@@ -124,8 +124,16 @@ structure gateway only for the shared candidate hash. A disposable-clone live
 proof projected one real MinerU PDF and two Native DOCX documents, retained PDF
 page-BBox locators, and created exactly three pending passage-embedding jobs
 without consuming Jina or changing the active generation. Unknown profile or
-processor identities fail closed. Real Jina passage embeddings, candidate
-verification, cutover, and live citations remain later slices.
+processor identities fail closed. Candidate generation verification, cutover,
+and live citations remain later slices.
+
+G11.9D.2.3c reuses the existing admitted Jina passage handler without adding a
+second embedding path. A credential-backed disposable-clone run processed all
+three candidate embedding jobs once, stored validated
+`jina-embeddings-v4`/1024 vectors for the shared-profile Children, published
+all three materializations and generation-scoped document heads, and proved
+exact document coverage. The candidate remained `building`; generation
+manifest/count verification, atomic cutover, and citations remain G11.9D.3.
 
 ## Local quality gates
 

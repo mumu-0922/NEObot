@@ -5045,3 +5045,22 @@ Windows proxy/Chrome state, archives, logs, and credential snapshot were
 deleted; the formal database remains at migration 27. Detailed evidence and
 rollback are in `docs/tracking/g11-knowledge-auto-rag-process.md` and
 `docs/contracts/rag-structure-chunking.md`.
+
+## 2026-07-18 — G11.9D.2.3c Real Jina candidate embedding
+
+The existing credential-backed passage-embedding handler completed the shared
+structure candidate without a second embedding implementation. On a disposable
+three-document clone, all three parse jobs and all three real Jina
+`retrieval.passage` jobs succeeded on their first attempts. Three
+materializations published with complete hashes, three shared-profile Children
+held ready 1024-dimensional vectors, and three candidate document heads pointed
+to published rows.
+
+Exact candidate/current-document coverage passed while the candidate remained
+building and the formal active generation stayed unchanged. The integration
+also proved that disposable dumps must retain role ACLs; `pg_dump
+--no-privileges` creates invalid permission evidence for `SECURITY DEFINER`
+runtime functions. All temporary containers, database, proxy, credentials,
+logs, and archives were removed. D.2.3 is closed; generation verification,
+deletion fences, cutover, and citations remain D.3. Detailed evidence is in
+`docs/tracking/g11-knowledge-auto-rag-process.md`.

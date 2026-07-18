@@ -339,3 +339,109 @@ one real MinerU PDF plus the Native documents. Required evidence is:
 
 This slice does not prove passage embeddings, candidate completeness,
 verification, cutover, or live citations. Those remain later D.2.3/D.3 work.
+
+## 12. G11.9D.2.3c Candidate Passage Embedding Completeness
+
+### Scope / Trigger
+
+After every candidate parse projection succeeds and enqueues exactly one
+passage-embedding job, the existing Jina/Postgres handler may embed and publish
+each candidate materialization. This slice proves that path on the shared
+structure profile; it does not verify or activate the generation.
+
+### Signatures
+
+```sql
+knowledge_fetch_passage_embedding_candidates(
+  job_id UUID, worker_id UUID, lease_token UUID, materialization_id UUID
+)
+
+knowledge_stage_passage_embedding(
+  job_id UUID, worker_id UUID, lease_token UUID, materialization_id UUID,
+  child_chunk_id UUID, embedding_vector REAL[], embedding_vector_sha256 TEXT
+)
+
+knowledge_assert_materialization_search_complete(
+  materialization_id UUID, expected_child_count BIGINT,
+  expected_embedding_model_id TEXT, expected_embedding_dimensions INTEGER
+)
+
+knowledge_complete_embedding_and_publish(
+  embedding_job_id UUID, worker_id UUID, lease_token UUID,
+  materialization_id UUID
+)
+```
+
+Provider input is ordered Child `lexical_text`; provider output must use
+`jina-embeddings-v4`, task `retrieval.passage`, and exactly 1024 finite float32
+values per Child.
+
+### Contracts
+
+- fetch, stage, and completion remain fenced by the current processing job,
+  worker, nonzero lease token, lease expiry, generation, and materialization;
+- every provider vector must correspond one-to-one and in order with the
+  fetched Child IDs; count, ID, dimension, and finite-value drift fails closed;
+- staged vector hashes cover the exact network-to-Postgres float32 lane bytes;
+- materialization completeness requires every Child search projection to be
+  `ready`, 1024-dimensional, model-bound, lineage-equal, and vector-present;
+- completion publishes only that candidate materialization and its
+  generation-scoped document projection head, then commits the embedding job;
+- completion does not set the Index Generation to `verified`, update the active
+  generation ID, or call `knowledge_promote_index_generation(...)`.
+
+### Validation & Error Matrix
+
+| Condition | Result |
+| --- | --- |
+| Missing/stale lease or substituted materialization | `RAG_STALE_JOB_LEASE` or materialization-missing error |
+| Empty/duplicate/malformed candidate rows | fixed embedding-candidate error |
+| Provider count, Child ID, dimension, or finite-value mismatch | fixed Jina/handler vector error |
+| Stage target does not match immutable Child/search lineage | `RAG_PASSAGE_EMBEDDING_TARGET_MISSING` |
+| Ready search count differs from Child count | `RAG_SEARCH_PROJECTION_INCOMPLETE` |
+| Source authority changed before publish | `RAG_EMBEDDING_COMPLETION_AUTHORITY_STALE` |
+
+### Good / Base / Bad Cases
+
+- Good: all mixed-format candidate Children receive real 1024-dimensional
+  vectors, all materializations publish, and the candidate exactly covers the
+  active document set while the active generation remains unchanged.
+- Base: one Child produces one ready search projection and one published
+  materialization through a single embedding job.
+- Bad: one missing vector, stale lease, changed ACL/visibility/processing
+  revision, or unmatched Child lineage rolls back completion.
+
+### Tests Required
+
+- Unit/integration tests cover Jina request task/model, response admission,
+  float32 hash stability, candidate/vector correspondence, fenced Postgres
+  calls, completeness rejection, and terminal-commit behavior.
+- Disposable-clone live proof uses no mocks, asserts exact document coverage,
+  successful parse and embedding jobs, published manifest/result hashes, ready
+  vectors, candidate projection heads, and unchanged active generation.
+- Logs and temporary credential-bearing files must be scanned/removed after
+  proof.
+
+### Wrong vs Correct
+
+Wrong: mark a generation ready because all embedding jobs are terminal, without
+checking exact document coverage, Child/search lineage, vectors, and published
+materialization hashes.
+
+Correct: prove every materialization independently through the fenced handler,
+then leave generation-wide manifest/count verification and atomic cutover to
+D.3.
+
+### Live Proof Boundary
+
+The three-document disposable clone completed three parse and three real Jina
+passage-embedding jobs on their first attempts. All three candidate
+materializations published with manifest/result hashes; all three Children had
+ready shared-profile 1024-dimensional vectors; all three generation-scoped
+document projection heads pointed at published materializations. Exact active
+document coverage passed while the candidate remained `building` and the old
+generation remained active.
+
+The candidate projection-state Parent/Child counters, generation manifest,
+`verified` transition, deletion-fence proof, promotion, and live citations are
+deliberately deferred to G11.9D.3.

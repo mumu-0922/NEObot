@@ -1329,7 +1329,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
             1,200–2,000-token Parents, typical 300–500-token Children, exact
             adjacent overlap, protected structural units, UTF-8-safe ranges,
             and no active-generation mutation.
-      - [ ] G11.9D.2 Native/MinerU structural artifact projection and staged
+      - [x] G11.9D.2 Native/MinerU structural artifact projection and staged
             parse + Jina embedding in a new generation without re-upload.
         - [x] G11.9D.2.1 Native structural units to Canonical IR v2 / Chunk
               Manifest v2, clipped source locators, exact overlap, schema gate,
@@ -1347,7 +1347,11 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
               generation-profile resolution, baseline/structure routing, real
               MinerU `pdf_info` plus two Native DOCX staging proof, three
               pending passage-embedding jobs, and unchanged active generation.
-        - [ ] G11.9D.2.3 New-generation parse staging and real Jina passage
+        - [x] G11.9D.2.3c Real Jina passage embedding: three shared-profile
+              Children received validated 1024-dimensional vectors, three
+              candidate materializations published, exact document coverage
+              proved, and active generation unchanged.
+        - [x] G11.9D.2.3 New-generation parse staging and real Jina passage
               embedding/completeness proof without re-upload.
       - [ ] G11.9D.3 Generation verification, atomic cutover, failure rollback,
             deletion fencing, and live citation-anchor proof.

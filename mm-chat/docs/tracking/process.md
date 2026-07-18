@@ -8311,6 +8311,18 @@ D.2/D.3 handoff are recorded in
 `docs/tracking/g11-knowledge-auto-rag-process.md` and
 `docs/contracts/rag-structure-chunking.md`.
 
+## 2026-07-18 — G11.9D.2.3c embedding closure cross-reference
+
+The shared structure candidate completed three real Jina
+`retrieval.passage`/1024 embedding jobs through the existing fenced handler.
+Exact three-document coverage, published materialization hashes, ready Child
+vectors, and generation-scoped document heads passed on a disposable clone;
+the candidate remained building and the formal active generation did not move.
+The run changed no production code or database state. Full provider evidence,
+ACL-preserving clone lesson, cleanup, D.2.3 closure, and D.3 handoff are recorded
+in `docs/tracking/g11-knowledge-auto-rag-process.md` and
+`docs/contracts/rag-structure-chunking.md`.
+
 ## 2026-07-18 — G11.9D.2.3b candidate parse cross-reference
 
 Lease-fenced generation-profile resolution now preserves baseline parsing while

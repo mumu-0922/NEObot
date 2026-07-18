@@ -178,9 +178,14 @@ Incremental execution slices:
   baseline routing for the active generation, route the shared candidate to
   Native/MinerU structure parsers, and live-stage one real PDF plus two DOCX
   projections while leaving all three passage-embedding jobs pending;
-- **G11.9D.2.3** remaining: obtain real Jina passage embeddings for the staged
-  Children and prove candidate completeness without re-upload or active-head
+- **G11.9D.2.3c** complete: run the existing token-fenced passage-embedding
+  handler against the shared candidate with real Jina 1024-dimensional
+  `retrieval.passage` vectors, publish all three materializations, and prove
+  exact candidate coverage/completeness without re-upload or active-head
   mutation;
+- **G11.9D.2.3** complete: candidate allocation, mixed Native/MinerU structure
+  parsing, real passage embeddings, and per-materialization completeness are
+  closed;
 - **G11.9D.3** verify counts/hashes/locators/deletion fences, atomically cut over
   the generation, and prove failed rebuild rollback plus live citations.
 
