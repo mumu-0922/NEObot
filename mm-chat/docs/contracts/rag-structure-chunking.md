@@ -6,9 +6,9 @@ This contract covers G11.9D.1 deterministic planning, G11.9D.2.1 Native
 projection, G11.9D.2.2 admitted MinerU page-element projection,
 G11.9D.2.3a candidate-generation allocation, and G11.9D.2.3b leased candidate
 parse projection, G11.9D.2.3c real passage-embedding completeness,
-G11.9D.3a generation verification, and G11.9D.3b deletion/failure fencing.
-These slices may publish, verify, or fail a candidate, but must not switch the
-active Index Generation. Successful promotion remains D.3c.
+G11.9D.3a generation verification, G11.9D.3b deletion/failure fencing, and
+G11.9D.3c atomic cutover/rollback. D.3c is the only slice authorized to switch
+the active Index Generation.
 
 ## 2. Signatures
 
@@ -670,3 +670,133 @@ candidate without ever moving the active head.
 Migration 032 down drops the fail function and restores migration 010's
 promotion body. It does not rewrite historical candidate states. Before a
 production downgrade, account for any candidate already marked failed.
+
+## 15. G11.9D.3c Atomic Cutover and Source-Generation Rollback
+
+### Scope / Trigger
+
+After D.3a verification and D.3b stale-candidate fencing pass, the Go runtime
+may perform the first successful promotion. The newly active structure
+generation must immediately serve citation-grade Parent/Child evidence, while
+one guarded operation can restore the exact generation from which that
+candidate was allocated.
+
+### Signatures
+
+```sql
+knowledge_promote_index_generation(
+  index_generation_id UUID,
+  expected_head_revision BIGINT,
+  manifest_hash TEXT
+) RETURNS BOOLEAN
+
+knowledge_rollback_index_generation(
+  active_generation_id UUID,
+  target_generation_id UUID,
+  expected_head_revision BIGINT,
+  active_manifest_hash TEXT,
+  target_manifest_hash TEXT
+) RETURNS BOOLEAN
+```
+
+### Contracts
+
+- migration 033 grants the already fenced promotion function to
+  `go_api_runtime`; no second promotion implementation is introduced;
+- promotion still reruns the D.3a verifier under the D.3b corpus-head lock,
+  then atomically changes old `active/ready -> retired/retired`, candidate
+  `verified/ready -> active/ready`, and advances both head revisions;
+- rollback locks the expected active head and both generation/state rows;
+- the active generation must be a D.2.3 structure rebuild whose immutable
+  allocation snapshot names the requested target as `sourceGenerationId`;
+- active and target manifests must match both generation and projection state;
+- every current active document/version/file/content tuple must still have an
+  exact published target head/materialization plus a complete Parent/Child/
+  ready Jina 1024 projection;
+- historical target materializations that are no longer current do not block
+  rollback; existing query authorization, visibility, revision, and deletion
+  fences continue to hide them;
+- success atomically retires the structure generation, restores only its exact
+  source generation to `active/ready`, advances the head, and cannot be replayed
+  with the stale pre-rollback head revision;
+- rollback is one-step recovery, not generation toggling. Re-entering the
+  structure generation requires a fresh rebuild and verification.
+
+### Validation & Error Matrix
+
+| Condition | Result |
+| --- | --- |
+| Invalid IDs/head/manifests | `RAG_GENERATION_ROLLBACK_ARGUMENT_INVALID` |
+| Active head/revision differs | `RAG_GENERATION_ROLLBACK_HEAD_STALE` |
+| Active generation/state/manifest differs | `RAG_GENERATION_ROLLBACK_ACTIVE_MISMATCH` |
+| Target is not the active rebuild's source | `RAG_GENERATION_ROLLBACK_SOURCE_MISMATCH` |
+| Target is not matching `retired/retired` | `RAG_GENERATION_ROLLBACK_TARGET_MISMATCH` |
+| A current document lacks its exact target bytes/head | `RAG_GENERATION_ROLLBACK_COVERAGE_INVALID` |
+| Target Parent/Child/vector is incomplete | `RAG_GENERATION_ROLLBACK_PROJECTION_INCOMPLETE` |
+| A transition CAS loses | `RAG_GENERATION_ROLLBACK_STATE_STALE` |
+
+### Good / Base / Bad Cases
+
+- Good: promote the verified structure candidate, query/cite its Parent and
+  Child, then atomically restore the exact source generation.
+- Base: the target contains extra historical rows for tombstoned or superseded
+  documents; rollback succeeds, while query fences keep those rows invisible.
+- Bad: a current target vector is missing, a document version changed, the
+  target is not the allocation source, or the head revision is stale; rollback
+  aborts without partially changing either generation.
+
+### Tests Required
+
+- schema tests assert promotion/rollback grants, source binding, coverage and
+  projection fences, atomic status/head transitions, and down revocation;
+- disposable integration must rebuild all current documents through real
+  Native/MinerU Parse and Jina passage embeddings, verify, and promote as
+  `go_api_runtime`;
+- candidate and hydration queries plus a real model stream must return a `[K]`
+  citation bound to the promoted generation, Parent, and Child;
+- transactionally remove one target ready vector and assert rollback rejects
+  it and restores the transaction; then prove successful rollback and stale
+  replay rejection;
+- after rollback, both direct retrieval and a second real model stream must
+  cite the restored generation;
+- migration down/up, full tests/build, formal-database non-mutation, and
+  temporary-resource cleanup must pass.
+
+### Wrong vs Correct
+
+Wrong: treat every historical target materialization or old processing revision
+as current coverage, making the exact previous active generation impossible to
+restore even though query fences already hide stale evidence.
+
+Correct: require exact current document bytes and queryable Parent/Child/vector
+lineage, bind rollback to the candidate's source generation, and leave
+visibility/revision filtering to the same runtime query authority used before
+cutover.
+
+### Live Proof
+
+The ACL-preserving three-document clone completed three Parse and three real
+Jina passage-embedding jobs on their first attempts. Verification froze 3
+documents, 10 Blocks, 3 Parents, and 3 Children. Promotion as
+`go_api_runtime` moved the structure generation to active at head revision 5
+and retired the old generation.
+
+Keyword retrieval returned only the new generation. A real `gpt-5.6-sol`
+stream completed with `answered`, rerank `applied`, `[K1]`, and a citation bound
+to the new generation's Parent and Child. Removing the restored target's ready
+vector inside a transaction caused
+`RAG_GENERATION_ROLLBACK_PROJECTION_INCOMPLETE`; connection rollback restored
+the vector and active head.
+
+The valid rollback returned true, restored the exact source generation at head
+revision 6, and left the structure generation retained as `retired/retired`.
+Direct retrieval and a second real `[K1]` stream both cited the restored
+generation. Replaying the old rollback inputs failed with
+`RAG_GENERATION_ROLLBACK_HEAD_STALE`.
+
+### Rollback
+
+Execute the guarded generation rollback before downgrading if the new
+generation is active. Migration 033 down only drops the rollback function and
+revokes both runtime cutover permissions; it deliberately does not rewrite
+already-transitioned generation state.

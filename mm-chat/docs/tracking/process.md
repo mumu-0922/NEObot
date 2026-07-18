@@ -8361,6 +8361,19 @@ rollback, and the D.3c handoff are recorded in
 `docs/tracking/g11-knowledge-auto-rag-process.md` and
 `docs/contracts/rag-structure-chunking.md`.
 
+## 2026-07-18 — G11.9D.3c atomic-cutover cross-reference
+
+The fenced structure candidate was promoted on a disposable production-shape
+clone after three real Parse and three real Jina jobs plus deterministic
+generation verification. Active-head retrieval and a real model stream emitted
+`[K1]` bound to the new generation's Parent and Child. The new rollback function
+rejected a transactionally missing old vector, then restored the exact source
+generation; direct retrieval and a second real `[K1]` stream switched back to
+that old head, while stale replay failed closed. Migration down/up, cleanup,
+quality gates, and formal-database non-mutation passed. G11.9D is complete; full
+evidence is recorded in `docs/tracking/g11-knowledge-auto-rag-process.md` and
+`docs/contracts/rag-structure-chunking.md`.
+
 ## 2026-07-18 — G11.9D.2.2a profile convergence cross-reference
 
 Native and MinerU Chunk Manifests now share one structure profile hash, closing

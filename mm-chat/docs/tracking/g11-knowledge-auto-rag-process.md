@@ -939,3 +939,94 @@ Remaining work: G11.9D.3c is the sole successful-promotion gate. It must grant
 the narrow cutover caller, rebuild and verify a current candidate, atomically
 switch the head, prove live Parent/Child citations, and exercise the defined
 old-generation rollback behavior.
+
+## 2026-07-18 — G11.9D.3c Atomic cutover, live citations, and rollback
+
+Outcome: G11.9D is complete on a disposable production-shape clone. Migration
+033 grants `go_api_runtime` the D.3b-hardened promotion function rather than
+introducing a second cutover implementation. It also adds
+`knowledge_rollback_index_generation(...)`, a one-step recovery function bound
+to the active structure rebuild's exact source generation, both manifests, the
+expected head revision, current document bytes, and target Parent/Child/ready
+Jina projection completeness.
+
+The first rollback implementation was too strict: it required target
+materialization ACL/visibility/processing revisions to equal current collection
+revisions. The previous active generation legitimately retained a PDF
+materialization at processing revision 4 after its collection advanced to 5;
+the normal query fence already hid that row. Treating visibility as rollback
+coverage made the exact pre-cutover state impossible to restore. The corrected
+contract requires every current document/version/file/content tuple to have its
+exact target head and published materialization, then requires a complete
+Parent/Child/ready-vector path. Historical or revision-stale rows may remain,
+but existing query authority continues to hide them without data leakage.
+
+The final ACL-preserving clone applied migrations 028–033 and allocated a
+three-document candidate from the formal active generation. The temporary
+worker used the existing Native/MinerU structure routes and real Jina
+`retrieval.passage`; all three Parse and all three passage-embedding jobs
+succeeded on attempt one. Three materializations published with three Parents,
+three Children, and three 1024-dimensional ready vectors. The D.3a verifier
+froze 3 documents, 10 Blocks, 3 Parents, and 3 Children.
+
+Promotion executed as `go_api_runtime` and returned true. The structure
+generation became `active/ready`, the old generation became
+`retired/retired`, head revision advanced `4 -> 5`, and corpus projection
+revision reached 12. Active-head keyword retrieval returned the structure
+generation and its exact Parent/Child IDs.
+
+The live application proof created a temporary development conversation bound
+to the selected collection. The first manual stream used the persisted registry
+ID `SERVER_DEFAULT`, but the non-BYOK configured provider contract expects its
+normalized processor identity `openai_compatible`; retrying with that existing
+identity completed. Real `gpt-5.6-sol` returned `answered`, rerank `applied`,
+`[K1]`, and one citation whose generation, Parent, and Child all matched the
+newly active structure projection.
+
+Rollback failure and success were both exercised. Transactionally changing the
+old generation's current ready vector to staging caused
+`RAG_GENERATION_ROLLBACK_PROJECTION_INCOMPLETE`; the failed connection
+transaction restored that vector and left the structure generation active.
+The valid call then returned true, changed the structure generation to
+`retired/retired`, restored the exact source to `active/ready`, and advanced
+head revision `5 -> 6` plus corpus revision `12 -> 13`. Direct retrieval and a
+second real `answered/[K1]` stream both cited the restored generation. Replaying
+the original rollback inputs failed with `RAG_GENERATION_ROLLBACK_HEAD_STALE`.
+
+Verification:
+
+```text
+real Native/MinerU Parse jobs                  3 succeeded / attempt 1
+real Jina passage-embedding jobs              3 succeeded / attempt 1
+verified document / Block / Parent / Child    3 / 10 / 3 / 3
+promotion ACL / execution                     go_api_runtime / true
+post-cutover state                             new active, old retired, head 5
+new-generation direct retrieval               exact generation/Parent/Child
+new-generation real model stream              answered / applied / [K1]
+new-generation citation binding               generation + Parent + Child
+missing old ready-vector rollback negative    rejected / transaction restored
+valid source-generation rollback              true / head 6
+restored-generation retrieval + model stream  old generation / answered / [K1]
+stale rollback replay                          head-stale rejection
+worker metrics                                 6 claimed / 6 succeeded
+migration 033 down/up ACL/state proof          passed
+Go migration + full tests / vet                passed / passed
+backend/migrate source build                   passed
+```
+
+The Windows proxy accepted only the fixed MinerU result host/path and returned
+bounded identity-encoded ZIP bytes; logs contained no credential pattern or
+signed result URL. Cleanup removed the temporary backend/worker containers,
+clone, Windows proxy/script, SQL/SSE outputs, and both credential-bearing env
+snapshots. The formal database remained at migration 27, with migration 033
+functions absent and active generation/head unchanged.
+
+Rollback: if the structure generation is active, call the guarded rollback
+before applying migration 033 down. The down migration only revokes promotion
+and rollback permissions and drops the rollback function; it cannot infer or
+rewrite the desired persisted active generation. Production never received
+migrations 028–033 in this slice.
+
+Remaining work moves to G11.9E: Go Web Search provider parity and SearXNG
+removal. G11.9F/G11.9G still own encrypted administrator provider settings and
+final Knowledge/Web/model fusion plus clean-copy closure.

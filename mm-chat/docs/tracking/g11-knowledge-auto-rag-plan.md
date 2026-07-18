@@ -194,8 +194,15 @@ Incremental execution slices:
   revalidate the verified candidate inside promotion, reject stale coverage,
   atomically and idempotently fail the candidate, and prove a replacement can
   be allocated while the old generation stays active;
-- **G11.9D.3c** remaining: atomically cut over the verified generation and prove
-  live citations plus old-generation rollback behavior.
+- **G11.9D.3c** complete: grant the fenced cutover, atomically activate the
+  verified structure generation, prove real Parent/Child citations, reject an
+  incomplete rollback target, and restore the exact source generation;
+- **G11.9D.3** complete: verification, deletion/concurrency failure fencing,
+  atomic cutover, live citations, and guarded source-generation rollback are
+  closed;
+- **G11.9D** complete: the structure-aware generation was rebuilt from current
+  files without re-upload, verified, activated, queried, cited, and rolled back
+  on a disposable production-shape clone.
 
 Actions:
 

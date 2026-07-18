@@ -572,6 +572,31 @@ allocation. Migration 032 grants only fail rollback to Go and explicitly
 revokes promotion; D.3c owns the first successful promotion, citation proof,
 and old-generation rollback exercise.
 
+## G11.9D.3c Atomic cutover and one-step rollback
+
+Migration 033 exposes the already hardened promotion function to the Go
+runtime. Promotion retains D.3b's head lock and in-transaction D.3a verifier;
+it atomically retires the previous generation, activates the verified structure
+generation, and advances the corpus/head revisions. Retrieval and hydration
+already bind every reference to the active head, so no query-side generation
+switch was added.
+
+Rollback is deliberately asymmetric. The active generation's D.2.3 allocation
+snapshot must name the target as its exact `sourceGenerationId`; both persisted
+manifests and the expected head must match. Each current document/version/file/
+content tuple must still resolve through that target's published head to at
+least one complete Parent/Child/ready Jina vector. Extra historical rows remain
+legal because the existing authorization, visibility, processing-revision, and
+deletion fences already exclude them from retrieval. Success retires the new
+generation and restores its source; returning to the structure generation then
+requires a fresh rebuild rather than an unsafe toggle.
+
+The real clone promoted 3 documents / 10 Blocks / 3 Parents / 3 Children and a
+live `gpt-5.6-sol` answer cited the new generation's exact Parent and Child.
+Removing one old ready vector transactionally rejected rollback and restored
+the active state. Valid rollback advanced the head again; direct retrieval and
+a second real answer cited the restored generation, while stale replay failed.
+
 ## Process topology
 
 One process owns:

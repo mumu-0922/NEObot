@@ -1324,7 +1324,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
             Top5, exact query/collection consent gate, RRF-only degradation,
             query-time consent revision repair, and real
             applied/failure/two-collection promotion proof.
-    - [ ] G11.9D Structure-aware Parent/Child reindex with generation cutover.
+    - [x] G11.9D Structure-aware Parent/Child reindex with generation cutover.
       - [x] G11.9D.1 Pure deterministic chunk planner: section-bounded
             1,200–2,000-token Parents, typical 300–500-token Children, exact
             adjacent overlap, protected structural units, UTF-8-safe ranges,
@@ -1353,7 +1353,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
               proved, and active generation unchanged.
         - [x] G11.9D.2.3 New-generation parse staging and real Jina passage
               embedding/completeness proof without re-upload.
-      - [ ] G11.9D.3 Generation verification, atomic cutover, failure rollback,
+      - [x] G11.9D.3 Generation verification, atomic cutover, failure rollback,
             deletion fencing, and live citation-anchor proof.
         - [x] G11.9D.3a Generation completeness verifier: exact corpus/job/
               artifact/Block/Parent/Child/vector/locator proof, deterministic
@@ -1363,7 +1363,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
               same-head-lock serialization, in-promotion verifier replay,
               stale-coverage rejection, idempotent `failed/failed` transition,
               replacement allocation, and unchanged active generation.
-        - [ ] G11.9D.3c Atomic generation cutover, live citations, and rollback.
+        - [x] G11.9D.3c Atomic generation cutover, real Parent/Child `[K1]`
+              citations, incomplete-target rejection, exact source-generation
+              rollback, stale replay rejection, and down/up proof.
     - [ ] G11.9E Go Tavily/Firecrawl/Exa/Bocha/model-built-in Search parity,
           SearXNG removal, and legacy Next search deletion.
     - [ ] G11.9F Postgres-encrypted administrator provider configuration,

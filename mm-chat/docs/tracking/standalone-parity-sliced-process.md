@@ -5098,3 +5098,21 @@ tests, vet, source build, migration down/up, cleanup, and formal-database
 non-mutation passed. D.3c retains successful cutover, live citations, and
 old-generation rollback. Detailed evidence is in
 `docs/tracking/g11-knowledge-auto-rag-process.md`.
+
+## 2026-07-18 — G11.9D.3c Atomic cutover and live rollback
+
+Migration 033 grants the already fenced promotion and adds rollback bound to
+the structure candidate's exact source generation, manifests, head, current
+document bytes, and target Parent/Child/ready-vector completeness. It permits
+extra historical target rows because the existing query authorization and
+visibility/revision/deletion fences continue to hide them.
+
+The production-shape clone completed three real Parse plus three real Jina jobs,
+verified 3 documents / 10 Blocks / 3 Parents / 3 Children, and promoted the
+structure generation. A real `gpt-5.6-sol` stream returned
+`answered/applied/[K1]` with citation IDs bound to that generation's Parent and
+Child. A missing target vector rejected rollback transactionally; valid
+rollback restored the exact old generation, and a second real `[K1]` stream
+cited it. Stale replay, migration down/up, full quality gates, cleanup, and
+formal-database non-mutation passed. G11.9D is closed; detailed evidence is in
+`docs/tracking/g11-knowledge-auto-rag-process.md`.

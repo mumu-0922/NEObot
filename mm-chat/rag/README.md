@@ -154,6 +154,15 @@ generation unchanged and releasing the rebuild slot. Migration 032 exposes
 only failure rollback to the Go runtime and explicitly revokes promotion;
 D.3c retains successful cutover.
 
+G11.9D.3c grants the D.3b-fenced promotion and adds
+`knowledge_rollback_index_generation(...)`. Rollback is bound to the active
+structure rebuild's exact `sourceGenerationId`, both manifests, the expected
+head, current document/version/file/content coverage, and target
+Parent/Child/ready-vector completeness. A real three-document run activated the
+structure generation, produced an `answered`/`[K1]` citation bound to its Parent
+and Child, then restored the old generation and produced a second `[K1]`
+citation bound to that restored head.
+
 ## Local quality gates
 
 No command loads repository `.env` files.
