@@ -107,6 +107,10 @@ authority for heading, text, table, formula, page, and BBox projection. Unknown
 text-bearing kinds fail closed. This mapper is also offline-only until a real
 archive replay and new-generation staging pass D.2.3.
 
+Native and MinerU structure manifests intentionally share one
+`STRUCTURE_CHUNK_PROFILE_HASH`; one generation cannot admit provider-specific
+chunk hashes.
+
 ## Local quality gates
 
 No command loads repository `.env` files.

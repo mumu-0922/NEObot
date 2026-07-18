@@ -8311,6 +8311,12 @@ D.2/D.3 handoff are recorded in
 `docs/tracking/g11-knowledge-auto-rag-process.md` and
 `docs/contracts/rag-structure-chunking.md`.
 
+## 2026-07-18 — G11.9D.2.2a profile convergence cross-reference
+
+Native and MinerU Chunk Manifests now share one structure profile hash, closing
+the mixed-format generation admission conflict discovered before live staging.
+No runtime generation was created or switched.
+
 ## 2026-07-18 — G11.9D.2.2 MinerU projection cross-reference
 
 Digest-bound MinerU page elements now preserve heading/text/table/formula

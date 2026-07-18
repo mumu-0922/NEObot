@@ -8,6 +8,7 @@ write projections, call providers, or switch an Index Generation.
 from __future__ import annotations
 
 import bisect
+import hashlib
 import math
 from dataclasses import dataclass
 from typing import Final
@@ -21,6 +22,9 @@ PARENT_TARGET_MAX_TOKENS: Final = 1600
 PARENT_HARD_MAX_TOKENS: Final = 2000
 OVERLAP_TARGET_TOKENS: Final = 64
 OVERLAP_MAX_TOKENS: Final = 100
+STRUCTURE_CHUNK_PROFILE_HASH: Final = hashlib.sha256(
+    b"mm-chat.structure-chunk-profile.v1"
+).hexdigest()
 
 _TOKEN_BYTES: Final = 4
 _ATOM_TARGET_TOKENS: Final = OVERLAP_TARGET_TOKENS

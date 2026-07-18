@@ -443,6 +443,11 @@ finer PDF coordinates. The D.1 planner supplies Parent/Child ranges and exact
 overlap under a MinerU-specific structure profile; schema and Postgres DTO
 projection tests prove the offline boundary.
 
+Native and MinerU mapper identities remain distinct, but their Chunk Manifests
+must use the shared `STRUCTURE_CHUNK_PROFILE_HASH`. An Index Generation binds
+one `knowledge_index_profiles.chunk_profile_hash`; provider-specific hashes
+would make mixed PDF/DOCX staging impossible and are forbidden.
+
 This does not assert every future MinerU version emits this shape. D.2.3 must
 replay an actual downloaded archive, fail closed on schema drift, stage a new
 generation, and run real Jina passage embeddings before gateway or generation

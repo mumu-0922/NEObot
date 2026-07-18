@@ -24,6 +24,7 @@ from mm_chat_rag.offline_parser.canonical import (
 )
 from mm_chat_rag.retry import PermanentJobError
 from mm_chat_rag.structure_chunking import (
+    STRUCTURE_CHUNK_PROFILE_HASH,
     ChunkFragmentPlan,
     StructureChunkPlan,
     StructuredTextUnit,
@@ -32,9 +33,7 @@ from mm_chat_rag.structure_chunking import (
 
 MINERU_STRUCTURE_CONTEXT_INVALID: Final = "MINERU_STRUCTURE_CONTEXT_INVALID"
 MINERU_STRUCTURE_ARTIFACT_INVALID: Final = "MINERU_STRUCTURE_ARTIFACT_INVALID"
-MINERU_STRUCTURE_CHUNK_PROFILE_HASH: Final = hashlib.sha256(
-    b"mm-chat.mineru.structure-chunk-profile.v1"
-).hexdigest()
+MINERU_STRUCTURE_CHUNK_PROFILE_HASH: Final = STRUCTURE_CHUNK_PROFILE_HASH
 
 _ARTIFACT_NAMESPACE: Final = uuid.UUID("55c9a965-b2c6-583b-9463-075384a39d7b")
 _BBOX_COORDINATES: Final = 4

@@ -5002,3 +5002,9 @@ Ruff, strict Mypy, schema validation, multilingual overlap, and deterministic
 replay passed. Production gateways, persisted rows, Jina, and the active
 generation were not touched. D.2.3 owns real-archive replay and staged passage
 embedding.
+
+## 2026-07-18 — G11.9D.2.2a Shared structure profile
+
+D.2.3 preflight caught provider-specific Native/MinerU chunk hashes, which
+cannot coexist in one generation profile. Both mappers now bind the shared D.1
+structure hash; no generation or persisted profile was mutated.

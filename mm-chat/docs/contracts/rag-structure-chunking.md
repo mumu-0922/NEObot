@@ -148,7 +148,8 @@ closed text-bearing kinds.
 - page objects and block/chunk locators retain admitted page/BBox geometry;
   clipping narrows only the canonical byte anchor;
 - identities bind source, archive, and role digests under a MinerU-specific
-  structure chunk profile;
+  mapper identity while both Native and MinerU manifests bind the one shared
+  `STRUCTURE_CHUNK_PROFILE_HASH` required by a mixed-format Index Generation;
 - compatibility `full.md` remains admitted but is not structure authority.
 
 Tests cover the frozen synthetic MinerU heading/text/table/formula corpus,

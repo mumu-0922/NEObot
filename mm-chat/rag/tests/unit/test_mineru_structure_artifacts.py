@@ -18,6 +18,7 @@ from mm_chat_rag.mineru_structure_artifacts import (
     MINERU_STRUCTURE_CHUNK_PROFILE_HASH,
     build_mineru_structure_artifacts,
 )
+from mm_chat_rag.native_structure_artifacts import NATIVE_STRUCTURE_CHUNK_PROFILE_HASH
 from mm_chat_rag.offline_parser.canonical import JsonObject, JsonValue
 from mm_chat_rag.projection import ProjectionContext, build_postgres_projection_batch
 from tests.support.parser_contracts import (
@@ -116,6 +117,7 @@ def test_synthetic_mineru_structure_maps_blocks_tables_pages_and_projection() ->
     assert artifacts.chunk_manifest["chunkProfileHash"] == (
         MINERU_STRUCTURE_CHUNK_PROFILE_HASH
     )
+    assert MINERU_STRUCTURE_CHUNK_PROFILE_HASH == NATIVE_STRUCTURE_CHUNK_PROFILE_HASH
     _validate(artifacts.canonical_ir, artifacts.chunk_manifest)
 
     materialization_id = context.materialization_id

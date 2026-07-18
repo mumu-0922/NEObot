@@ -609,3 +609,16 @@ caller depends on them. D.2.3 must replay a real provider archive to detect
 shape drift, stage Native/MinerU projections in a new generation, spend real
 Jina passage-embedding quota, and leave the current active generation untouched
 until verification.
+
+## 2026-07-18 — G11.9D.2.2a Mixed-format profile convergence
+
+D.2.3 preflight found that Native and MinerU had distinct structure chunk
+hashes, while one Index Generation binds exactly one
+`knowledge_index_profiles.chunk_profile_hash`. Real mixed PDF/DOCX staging
+would therefore fail closed. Both mappers now alias the shared D.1
+`STRUCTURE_CHUNK_PROFILE_HASH`; mapper/artifact identities remain distinct.
+
+Ruff, strict Mypy, and 136 combined planner/Native/MinerU/Gateway tests passed;
+the active generation remained `46a1c7bb-44ed-4868-9d61-edd557f9d3f0`.
+
+Rollback is the commit revert only. No live profile or generation was created.

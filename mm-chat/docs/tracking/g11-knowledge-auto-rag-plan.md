@@ -169,6 +169,8 @@ Incremental execution slices:
 - **G11.9D.2.2** complete: map admitted MinerU page elements, headings, text,
   tables, formulas, page geometry, and clipped canonical anchors behind a
   MinerU structure profile, with schema and Postgres projection proof;
+- **G11.9D.2.2a** complete: converge Native and MinerU manifests on one shared
+  structure chunk profile required by mixed-format generation staging;
 - **G11.9D.2.3** stage Native + MinerU parse projections and Jina passage
   embeddings in a new generation without re-upload;
 - **G11.9D.3** verify counts/hashes/locators/deletion fences, atomically cut over
