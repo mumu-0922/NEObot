@@ -8445,3 +8445,13 @@ lint/typecheck/build, live Postgres round-trip, Compose build/health, and
 owner-authorized real negative provider probes passed. Positive credentialed
 activation remains G11.9F. Detailed evidence and the persisted-volume principal
 drift repair are in `docs/tracking/g11-knowledge-auto-rag-process.md`.
+
+## 2026-07-18 — G11.9F.1 provider-vault foundation cross-reference
+
+The unused Go `internal/providersecrets` package now provides a strict bounded
+Docker-Secret keyring loader, context-bound AES-256-GCM envelope, retained-key
+decryption, and active-key rotation primitive. No database, Compose, route,
+runtime provider, `.env`, real Key, or network state changed. Full module,
+tests/race/vet, quality, security, rollback, and F.2 handoff evidence is in
+`docs/contracts/provider-secret-vault.md` and
+`docs/tracking/g11-knowledge-auto-rag-process.md`.

@@ -270,6 +270,21 @@ Actions:
 Verification covers restart persistence, key rotation, ciphertext-only backup,
 redacted errors/logs, failed activation, and provider removal.
 
+Incremental execution slices:
+
+- **G11.9F.1** complete: add an unused, strict Docker-Secret keyring loader
+  and context-bound AES-256-GCM at-rest vault with retained-key rotation tests;
+  do not mutate Postgres, Compose, routes, runtime resolution, or current keys;
+- **G11.9F.2**: cut existing model-provider rows from BYOK ingress envelopes to
+  the vault, add stable keyring configuration plus transactional import/rotate
+  contracts, prove restart persistence, then remove model `.env` fallback;
+- **G11.9F.3**: add Search administrator CRUD/test/activate UI and the sole
+  Postgres-backed Go resolver, then perform one positive real-provider smoke;
+- **G11.9F.4**: add MinerU/Jina administrator records and a scoped Go credential
+  gateway so Python receives neither the vault keyring nor reusable secrets;
+- **G11.9F.5**: reserve the same provider-kind contract for future Voice,
+  complete removal/backup/rotation/redaction/clean-copy proofs, and close F.
+
 ## G11.9G — Knowledge/Web/Model Fusion Closure
 
 Objective: prove the complete Auto product behavior.

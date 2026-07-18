@@ -5160,3 +5160,15 @@ mount exposed a missing API LOGIN; it was repaired with only
 `go_api_runtime`, while schema version 27 and the still-required future
 migrator promotion were left unchanged. Full evidence is in
 `docs/tracking/g11-knowledge-auto-rag-process.md`.
+
+## 2026-07-18 — G11.9F.1 provider secret vault foundation
+
+Added an unused Go at-rest vault with a strict bounded Docker-Secret keyring
+format, context-authenticated AES-256-GCM envelopes, retained previous-key
+decryption, and active-key rotation. Browser BYOK ingress remains separate.
+The slice passed package/full tests, focused race, vet, module, quality, and
+security gates at 81.7% focused coverage without changing Postgres, Compose,
+routes, runtime resolution, `.env`, real credentials, or provider traffic.
+Detailed contracts and rollback are recorded in
+`docs/contracts/provider-secret-vault.md` and
+`docs/tracking/g11-knowledge-auto-rag-process.md`.

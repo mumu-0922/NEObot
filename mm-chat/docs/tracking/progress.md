@@ -1380,6 +1380,16 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
             live Postgres proof, and authorized real-provider negative smoke.
     - [ ] G11.9F Postgres-encrypted administrator provider configuration,
           Docker-Secret master key, and bounded real connection tests.
+      - [x] G11.9F.1 Unused strict keyring loader, context-bound AES-256-GCM
+            vault, retained-key rotation primitive, module docs, and gates;
+            no database, Compose, route, runtime, Key, or network mutation.
+      - [ ] G11.9F.2 Model-provider vault cutover, transactional import/rotate,
+            restart proof, and model-provider `.env` fallback removal.
+      - [ ] G11.9F.3 Search admin CRUD/test/activate UI, Postgres resolver, and
+            positive owner-authorized provider smoke.
+      - [ ] G11.9F.4 MinerU/Jina admin records and scoped Go credential gateway.
+      - [ ] G11.9F.5 Future-Voice provider kind plus final rotation, backup,
+            removal, redaction, and clean-copy closure.
     - [ ] G11.9G Knowledge/Web/model fusion, `[K]`/`[W]` citations, diagnostics,
           and clean-copy/live closure.
 

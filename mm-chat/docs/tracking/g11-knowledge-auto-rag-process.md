@@ -1218,3 +1218,43 @@ Rollback is one commit plus runtime image rollback. No schema was added for Web
 artifacts; they use existing message JSONB. Older code can ignore unknown Search
 blocks. Next is G11.9F administrator provider secrets and positive connection
 tests.
+
+## 2026-07-18 — G11.9F.1 Provider secret vault foundation
+
+Outcome: the first F slice is complete without touching live provider state.
+The new Go `internal/providersecrets` package strictly loads one bounded
+versioned keyring document intended for a read-only Docker Secret. It accepts
+exactly 32-byte unpadded-base64url keys, one declared active key, and a bounded
+set of retained previous keys. It exports no raw key accessor.
+
+Secrets use fresh-nonce AES-256-GCM envelopes. Version, algorithm, key ID, and
+the exact provider record context are authenticated as AAD, so ciphertext
+cannot be copied between model, Search, MinerU, Jina, or future Voice records.
+Envelope and keyring parsing are bounded and closed; errors contain no path,
+key ID, nonce, ciphertext, plaintext, or underlying crypto detail. Rotation
+decrypts with a retained key and re-encrypts with the active key;
+already-current envelopes are stable no-ops.
+
+This deliberately separates browser ingress encryption from at-rest
+encryption: existing BYOK RSA envelopes protect browser-to-Go transport, while
+the future Docker Secret keyring owns restart-stable database ciphertext. F.1
+does not yet mount the Secret, decrypt a current admin envelope, write
+Postgres, register a route, alter Compose, change current `.env`, read a real
+Key, or call a provider.
+
+Verification:
+
+```text
+providersecrets unit tests / coverage             passed / 81.7%
+providersecrets race / vet                        passed / passed
+backend go test ./... / go vet ./...              passed / passed
+focused race (vault/runtimeconfig/httpserver/api) passed
+module completeness / quality / security         passed / passed / passed
+database / Compose / route / runtime mutation     none
+provider network calls / real Key reads           0 / 0
+```
+
+Rollback deletes the unused package and its contract; no persisted data or
+runtime configuration refers to it. G11.9F.2 next adds stable keyring config,
+repository envelope compatibility, transactional import/rotation, restart
+proof, and model-provider fallback removal before any production cutover.
