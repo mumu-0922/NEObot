@@ -8384,6 +8384,19 @@ wiring and final frontend deletion remain E.2/E.3. Full contracts and evidence
 are recorded in `docs/contracts/go-web-search-providers.md` and
 `docs/tracking/g11-knowledge-auto-rag-process.md`.
 
+## 2026-07-18 — G11.9E.2 Go Search execution cross-reference
+
+Go now resolves exactly one server-owned active Search execution and exposes
+authenticated `POST /v1/search` without accepting browser provider settings or
+secrets. Explicit `OpenAI` runtime providers add Responses
+`web_search_preview`; `OpenAI Compatible` remains Chat Completions-only and
+fails the built-in capability check without fallback. Normalized grounded
+sources stream as transient `search.results`; `[W]` persistence and frontend
+cutover remain E.3. Full tests, vet, source build, module/security/quality, and
+redaction gates passed without network calls or Key reads. Detailed evidence is
+in `docs/contracts/go-web-search-providers.md` and
+`docs/tracking/g11-knowledge-auto-rag-process.md`.
+
 ## 2026-07-18 — G11.9D.2.2a profile convergence cross-reference
 
 Native and MinerU Chunk Manifests now share one structure profile hash, closing

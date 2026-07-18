@@ -16,6 +16,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/runtimeconfig"
+	"neo-chat/mm-chat/backend/internal/websearch"
 )
 
 const (
@@ -843,6 +844,88 @@ func TestHandlerForwardsReasoningToggleToProvider(t *testing.T) {
 	assertStreamStatus(t, rec, http.StatusOK)
 	if !provider.input.UseReasoning {
 		t.Fatalf("provider UseReasoning = false, want true; input=%#v", provider.input)
+	}
+}
+
+func TestHandlerUsesSelectedOpenAIModelBuiltInSearchAndStreamsSources(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "latest fixture"),
+	)
+	provider := &modelBuiltInSearchProbe{}
+	searchResolver := &fakeWebSearchResolver{execution: websearch.ActiveExecution{
+		Mode: websearch.ExecutionModelBuiltIn, ModelBuiltIn: websearch.ModelBuiltInOpenAI,
+	}}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithWebSearchService(websearch.NewService(searchResolver)),
+	)
+
+	recorder := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"openai","modelId":"gpt-search"},"config":{"useSearch":true},"idempotencyKey":"stream-key-built-in-search"}`,
+	)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	if provider.ordinaryCalled || !provider.builtInCalled || searchResolver.calls != 1 {
+		t.Fatalf(
+			"ordinary/built-in/resolver calls = %v/%v/%d",
+			provider.ordinaryCalled,
+			provider.builtInCalled,
+			searchResolver.calls,
+		)
+	}
+	for _, want := range []string{
+		"event: search.results",
+		`"type":"search.results"`,
+		`"url":"https://search.example/result"`,
+		`"content":"grounded answer"`,
+		"event: message.completed",
+	} {
+		if !strings.Contains(recorder.Body.String(), want) {
+			t.Fatalf("stream body missing %q; body=%s", want, recorder.Body.String())
+		}
+	}
+}
+
+func TestHandlerRejectsBuiltInSearchForOpenAICompatibleProvider(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "latest fixture"),
+	)
+	provider := &capturingProvider{}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithWebSearchService(websearch.NewService(&fakeWebSearchResolver{
+			execution: websearch.ActiveExecution{
+				Mode: websearch.ExecutionModelBuiltIn, ModelBuiltIn: websearch.ModelBuiltInOpenAI,
+			},
+		})),
+	)
+
+	recorder := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"openai_compatible","modelId":"gpt-search"},"config":{"useSearch":true},"idempotencyKey":"stream-key-unsupported-search"}`,
+	)
+
+	assertStatus(t, recorder, http.StatusNotImplemented)
+	var response ErrorResponse
+	decodeBody(t, recorder, &response)
+	if response.Error.Code != "MODEL_BUILTIN_SEARCH_UNSUPPORTED" {
+		t.Fatalf("error = %#v", response.Error)
+	}
+	if provider.input.Prompt != "" || len(repo.messages[testConversationID]) != 1 {
+		t.Fatalf("provider called or assistant persisted: input=%#v messages=%#v", provider.input, repo.messages[testConversationID])
 	}
 }
 
@@ -2432,6 +2515,51 @@ func (p emptyProvider) StreamChat(context.Context, ProviderRequest) (<-chan Prov
 
 type capturingProvider struct {
 	input ProviderRequest
+}
+
+type fakeWebSearchResolver struct {
+	execution websearch.ActiveExecution
+	err       error
+	calls     int
+}
+
+func (r *fakeWebSearchResolver) ResolveActive(context.Context) (websearch.ActiveExecution, error) {
+	r.calls++
+	return r.execution, r.err
+}
+
+type modelBuiltInSearchProbe struct {
+	ordinaryCalled bool
+	builtInCalled  bool
+}
+
+func (p *modelBuiltInSearchProbe) ModelBuiltInSearchID() websearch.ModelBuiltInProviderID {
+	return websearch.ModelBuiltInOpenAI
+}
+
+func (p *modelBuiltInSearchProbe) StreamChat(
+	context.Context,
+	ProviderRequest,
+) (<-chan ProviderEvent, error) {
+	p.ordinaryCalled = true
+	events := make(chan ProviderEvent)
+	close(events)
+	return events, nil
+}
+
+func (p *modelBuiltInSearchProbe) StreamChatWithModelBuiltInSearch(
+	_ context.Context,
+	_ ProviderRequest,
+) (<-chan ProviderEvent, error) {
+	p.builtInCalled = true
+	events := make(chan ProviderEvent, 2)
+	result := websearch.Result{Sources: []websearch.Source{{
+		Title: "Fixture", URL: "https://search.example/result", Content: "source",
+	}}}
+	events <- ProviderEvent{Type: ProviderEventSearch, Search: &result}
+	events <- ProviderEvent{Type: ProviderEventDelta, Delta: "grounded answer"}
+	close(events)
+	return events, nil
 }
 
 func (p *capturingProvider) StreamChat(_ context.Context, input ProviderRequest) (<-chan ProviderEvent, error) {

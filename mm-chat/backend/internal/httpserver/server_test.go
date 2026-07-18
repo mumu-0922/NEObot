@@ -14,14 +14,45 @@ import (
 	"time"
 
 	"neo-chat/mm-chat/backend/internal/auth"
+	"neo-chat/mm-chat/backend/internal/chat"
 	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/imagejobs"
 	"neo-chat/mm-chat/backend/internal/jobartifacts"
 	"neo-chat/mm-chat/backend/internal/jobaudit"
 	"neo-chat/mm-chat/backend/internal/ragsource"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
+	"neo-chat/mm-chat/backend/internal/runtimeconfig"
 	"neo-chat/mm-chat/backend/internal/voicejobs"
+	"neo-chat/mm-chat/backend/internal/websearch"
 )
+
+func TestRuntimeProviderResolverAdmitsBuiltInSearchOnlyForOpenAI(t *testing.T) {
+	tests := []struct {
+		providerType string
+		wantBuiltIn  bool
+	}{
+		{providerType: "OpenAI", wantBuiltIn: true},
+		{providerType: "OpenAI Compatible", wantBuiltIn: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.providerType, func(t *testing.T) {
+			service := runtimeconfig.NewService(config.Config{Provider: config.ProviderConfig{
+				Type: tt.providerType, BaseURL: "https://provider.example/v1", APIKey: "fixture-key",
+			}})
+			provider, err := (runtimeChatProviderResolver{service: service}).ResolveRuntimeProvider(
+				context.Background(),
+				runtimeconfig.ProviderRuntimeConfig{Source: "server-default"},
+			)
+			if err != nil {
+				t.Fatalf("ResolveRuntimeProvider() error = %v", err)
+			}
+			_, builtIn := provider.(chat.ModelBuiltInSearchProvider)
+			if builtIn != tt.wantBuiltIn {
+				t.Fatalf("built-in capability = %v, want %v", builtIn, tt.wantBuiltIn)
+			}
+		})
+	}
+}
 
 func TestNewHandlerRoutesHealthReadyAndVersion(t *testing.T) {
 	handler := NewHandler(config.Config{Addr: ":0", Version: "route-test"})
@@ -61,6 +92,55 @@ func TestNewHandlerRoutesHealthReadyAndVersion(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNewHandlerRoutesAuthenticatedWebSearchBoundary(t *testing.T) {
+	provider := &httpserverSearchProvider{}
+	handler := NewHandler(
+		config.Config{Addr: ":0", Version: "route-test"},
+		WithWebSearchResolver(httpserverSearchResolver{provider: provider}),
+	)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodPost,
+		websearch.SearchPath,
+		strings.NewReader(`{"query":"fixture","maxResults":2}`),
+	)
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", recorder.Code, recorder.Body.String())
+	}
+	if provider.calls != 1 || !strings.Contains(recorder.Body.String(), "https://search.example/result") {
+		t.Fatalf("provider calls/body = %d/%s", provider.calls, recorder.Body.String())
+	}
+}
+
+type httpserverSearchResolver struct {
+	provider websearch.Provider
+}
+
+func (r httpserverSearchResolver) ResolveActive(context.Context) (websearch.ActiveExecution, error) {
+	return websearch.ActiveExecution{
+		Mode: websearch.ExecutionExternal, External: r.provider,
+	}, nil
+}
+
+type httpserverSearchProvider struct {
+	calls int
+}
+
+func (p *httpserverSearchProvider) ID() websearch.ProviderID { return websearch.ProviderTavily }
+
+func (p *httpserverSearchProvider) Search(
+	_ context.Context,
+	_ websearch.Request,
+) (websearch.Result, error) {
+	p.calls++
+	return websearch.Result{Sources: []websearch.Source{{
+		Title: "Fixture", URL: "https://search.example/result", Content: "result",
+	}}}, nil
 }
 
 func TestMiddlewareSetsSecurityHeaders(t *testing.T) {
@@ -468,6 +548,7 @@ func TestAuthRequiredModeRejectsMissingCredentialsAndKeepsPublicRoutes(t *testin
 		{method: http.MethodDelete, path: "/v1/me/sessions"},
 		{method: http.MethodPost, path: "/v1/auth/logout"},
 		{method: http.MethodPost, path: "/v1/providers/models"},
+		{method: http.MethodPost, path: "/v1/search"},
 		{method: http.MethodGet, path: "/v1/chat/conversations"},
 		{method: http.MethodGet, path: "/v1/files/33333333-3333-4333-8333-333333333333"},
 		{method: http.MethodGet, path: "/v1/import/browser/33333333-3333-4333-8333-333333333333"},

@@ -13,6 +13,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/runtimeconfig"
+	"neo-chat/mm-chat/backend/internal/websearch"
 )
 
 const (
@@ -39,6 +40,7 @@ type Handler struct {
 	cancellationRuns   RunCancellationStore
 	ragAssembler       *RAGAnswerAssembler
 	ragAnswerGate      RAGAnswerGovernanceGate
+	webSearchService   *websearch.Service
 }
 
 type HandlerOption func(*Handler)
@@ -206,18 +208,19 @@ type toolPlanResponse struct {
 }
 
 type streamEvent struct {
-	Type           string          `json:"type"`
-	RunID          string          `json:"runId"`
-	ConversationID string          `json:"conversationId"`
-	MessageID      string          `json:"messageId,omitempty"`
-	Sequence       int             `json:"sequence"`
-	CreatedAt      string          `json:"createdAt"`
-	Role           string          `json:"role,omitempty"`
-	ModelRef       *ModelRef       `json:"modelRef,omitempty"`
-	Delta          string          `json:"delta,omitempty"`
-	Usage          *TokenUsage     `json:"usage,omitempty"`
-	Message        *ChatMessageDTO `json:"message,omitempty"`
-	Error          *ErrorBody      `json:"error,omitempty"`
+	Type           string            `json:"type"`
+	RunID          string            `json:"runId"`
+	ConversationID string            `json:"conversationId"`
+	MessageID      string            `json:"messageId,omitempty"`
+	Sequence       int               `json:"sequence"`
+	CreatedAt      string            `json:"createdAt"`
+	Role           string            `json:"role,omitempty"`
+	ModelRef       *ModelRef         `json:"modelRef,omitempty"`
+	Delta          string            `json:"delta,omitempty"`
+	Usage          *TokenUsage       `json:"usage,omitempty"`
+	Message        *ChatMessageDTO   `json:"message,omitempty"`
+	Error          *ErrorBody        `json:"error,omitempty"`
+	Results        *websearch.Result `json:"results,omitempty"`
 }
 
 type cancelRunResponse struct {
@@ -263,6 +266,14 @@ func WithRAGAnswerAssembler(assembler *RAGAnswerAssembler) HandlerOption {
 func WithRAGAnswerGovernanceGate(gate RAGAnswerGovernanceGate) HandlerOption {
 	return func(h *Handler) {
 		h.ragAnswerGate = gate
+	}
+}
+
+func WithWebSearchService(service *websearch.Service) HandlerOption {
+	return func(h *Handler) {
+		if service != nil && service.Configured() {
+			h.webSearchService = service
+		}
 	}
 }
 
@@ -935,6 +946,15 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		writeServiceError(w, err)
 		return
 	}
+	modelBuiltInSearchProvider, err := h.resolveModelBuiltInSearchProvider(
+		r.Context(),
+		streamProvider,
+		configBool(request.Config, "useSearch"),
+	)
+	if err != nil {
+		writeChatSearchError(w, err)
+		return
+	}
 
 	runID, err := NewUUID()
 	if err != nil {
@@ -1008,7 +1028,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	defer stopCancellationWatch()
 	defer streamCancel()
 
-	events, err := streamProvider.StreamChat(streamCtx, ProviderRequest{
+	providerRequest := ProviderRequest{
 		RunID:              runID,
 		ConversationID:     conversationID,
 		UserMessageID:      userMessage.ID,
@@ -1019,7 +1039,16 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		UseReasoning:       configBool(request.Config, "useReasoning"),
 		ModelRef:           *modelRef,
 		Metadata:           providerMetadata,
-	})
+	}
+	var events <-chan ProviderEvent
+	if modelBuiltInSearchProvider != nil {
+		events, err = modelBuiltInSearchProvider.StreamChatWithModelBuiltInSearch(
+			streamCtx,
+			providerRequest,
+		)
+	} else {
+		events, err = streamProvider.StreamChat(streamCtx, providerRequest)
+	}
 	if err != nil {
 		if streamCtx.Err() != nil || r.Context().Err() != nil || errors.Is(err, context.Canceled) {
 			h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
@@ -1126,6 +1155,24 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				Sequence:       sequence,
 				CreatedAt:      formatTime(time.Now()),
 				Usage:          providerEvent.Usage,
+			}); err != nil {
+				h.cancelAssistantAfterWriteError(conversationID, assistantMessage.ID, runID, content.String())
+				return
+			}
+			flusher.Flush()
+		case ProviderEventSearch:
+			if providerEvent.Search == nil || len(providerEvent.Search.Sources) == 0 {
+				continue
+			}
+			sequence++
+			if err := writeSSEEvent(w, "search.results", streamEvent{
+				Type:           "search.results",
+				RunID:          runID,
+				ConversationID: conversationID,
+				MessageID:      assistantMessage.ID,
+				Sequence:       sequence,
+				CreatedAt:      formatTime(time.Now()),
+				Results:        providerEvent.Search,
 			}); err != nil {
 				h.cancelAssistantAfterWriteError(conversationID, assistantMessage.ID, runID, content.String())
 				return
@@ -1621,6 +1668,57 @@ func (h *Handler) resolveStreamProvider(
 		)
 	}
 	return h.providerResolver.ResolveRuntimeProvider(ctx, *providerConfig)
+}
+
+func (h *Handler) resolveModelBuiltInSearchProvider(
+	ctx context.Context,
+	provider Provider,
+	searchEnabled bool,
+) (ModelBuiltInSearchProvider, error) {
+	if !searchEnabled || h == nil || h.webSearchService == nil ||
+		!h.webSearchService.Configured() {
+		return nil, nil
+	}
+	execution, err := h.webSearchService.ResolveActive(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if execution.Mode != websearch.ExecutionModelBuiltIn {
+		return nil, nil
+	}
+	builtIn, ok := provider.(ModelBuiltInSearchProvider)
+	if !ok || builtIn.ModelBuiltInSearchID() != execution.ModelBuiltIn {
+		return nil, errModelBuiltInSearchUnsupported
+	}
+	return builtIn, nil
+}
+
+func writeChatSearchError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, websearch.ErrNotConfigured):
+		writeError(
+			w, http.StatusServiceUnavailable,
+			"SEARCH_NOT_CONFIGURED", "web search is not configured",
+		)
+	case errors.Is(err, websearch.ErrResolutionFailed):
+		writeError(
+			w, http.StatusServiceUnavailable,
+			"SEARCH_RESOLUTION_FAILED", "web search provider is unavailable",
+		)
+	case errors.Is(err, websearch.ErrInvalidConfig):
+		writeError(
+			w, http.StatusServiceUnavailable,
+			"SEARCH_CONFIG_INVALID", "web search configuration is invalid",
+		)
+	case errors.Is(err, errModelBuiltInSearchUnsupported):
+		writeError(
+			w, http.StatusNotImplemented,
+			"MODEL_BUILTIN_SEARCH_UNSUPPORTED",
+			"configured model provider does not support built-in search",
+		)
+	default:
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "web search resolution failed")
+	}
 }
 
 func (h *Handler) resolveProviderAttachments(ctx context.Context, message Message) ([]ProviderAttachment, error) {

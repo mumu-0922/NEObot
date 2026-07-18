@@ -3,15 +3,27 @@ package chat
 import (
 	"context"
 	"strings"
+
+	"neo-chat/mm-chat/backend/internal/websearch"
 )
 
 const (
-	ProviderEventDelta = "delta"
-	ProviderEventUsage = "usage"
+	ProviderEventDelta  = "delta"
+	ProviderEventUsage  = "usage"
+	ProviderEventSearch = "search"
 )
 
 type Provider interface {
 	StreamChat(ctx context.Context, input ProviderRequest) (<-chan ProviderEvent, error)
+}
+
+type ModelBuiltInSearchProvider interface {
+	Provider
+	ModelBuiltInSearchID() websearch.ModelBuiltInProviderID
+	StreamChatWithModelBuiltInSearch(
+		context.Context,
+		ProviderRequest,
+	) (<-chan ProviderEvent, error)
 }
 
 type ToolPlanner interface {
@@ -73,10 +85,11 @@ type ToolCall struct {
 }
 
 type ProviderEvent struct {
-	Type  string
-	Delta string
-	Usage *TokenUsage
-	Error error
+	Type   string
+	Delta  string
+	Usage  *TokenUsage
+	Search *websearch.Result
+	Error  error
 }
 
 type TokenUsage struct {

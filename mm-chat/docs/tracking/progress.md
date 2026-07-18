@@ -1371,7 +1371,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
       - [x] G11.9E.1 Closed Go external-provider core: exact four-provider
             request/response adapters, shared HTTPS/DNS/IP/redirect/size/error
             fences, normalized bounded results, and no route/Key consumption.
-      - [ ] G11.9E.2 Go execution/service plus supported model-built-in search.
+      - [x] G11.9E.2 Server-owned single-active execution resolver,
+            authenticated Go Search API, redacted fail-closed errors, shared
+            built-in source normalization, and explicit OpenAI Responses Web
+            Search capability with OpenAI-Compatible rejection.
       - [ ] G11.9E.3 Frontend cutover, `[W]` citations, SearXNG/Next route
             deletion, and authorized real-provider smoke.
     - [ ] G11.9F Postgres-encrypted administrator provider configuration,

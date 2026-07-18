@@ -1173,7 +1173,18 @@ func newChatProvider(cfg config.Config) (chat.Provider, error) {
 	switch providerType {
 	case "", "none":
 		return nil, nil
-	case "openai", "openai_compatible", "openai-compatible":
+	case "openai":
+		if cfg.Provider.BaseURL == "" || cfg.Provider.Model == "" || cfg.Provider.APIKey == "" {
+			return nil, nil
+		}
+
+		return chat.NewOpenAIProvider(chat.OpenAICompatibleProviderConfig{
+			BaseURL:      cfg.Provider.BaseURL,
+			APIKey:       cfg.Provider.APIKey,
+			DefaultModel: cfg.Provider.Model,
+			Timeout:      cfg.Provider.Timeout,
+		})
+	case "openai_compatible", "openai-compatible":
 		if cfg.Provider.BaseURL == "" || cfg.Provider.Model == "" || cfg.Provider.APIKey == "" {
 			return nil, nil
 		}

@@ -1074,3 +1074,64 @@ reach the Go package yet, so rollback is file deletion and no persisted state is
 at risk. G11.9E.2 owns the Go execution/service and model-built-in stream
 boundary. G11.9E.3 owns `[W]` citations, frontend cutover, SearXNG/Next route
 deletion, and the authorized real-provider smoke.
+
+## 2026-07-18 — G11.9E.2 Go Search execution and OpenAI built-in boundary
+
+Outcome: the Go execution boundary is complete without moving Search secrets
+or frontend authority prematurely. `backend/internal/websearch` now has a
+server-owned `Resolver`, validated `ActiveExecution` union, `Service`, and
+authenticated `POST /v1/search` handler. A request contains only query, scope,
+and result limit; it cannot select a provider, base URL, Key, or secret
+envelope. The resolver returns exactly one external adapter or one admitted
+model-built-in execution. Mixed/empty selections fail closed, resolver details
+are redacted, and there is still no automatic fallback or fan-out.
+
+The external route re-normalizes provider output and returns `no-store` JSON.
+Selecting model-built-in execution on that route returns
+`MODEL_BUILTIN_SEARCH_REQUIRES_CHAT`, because the provider tool must run inside
+model generation. The normal API binary intentionally has no resolver before
+G11.9F, so the registered route currently returns `SEARCH_NOT_CONFIGURED`
+instead of introducing a second `.env` or browser-owned secret authority.
+
+Runtime provider truth was checked before implementing built-in Search. Go had
+only one OpenAI-compatible Chat Completions implementation and no Gemini chat
+provider. The new `OpenAIProvider` therefore preserves ordinary Chat
+Completions but adds streaming `/responses` requests with
+`web_search_preview` only when the configured runtime type is explicitly
+`OpenAI`. `OpenAI Compatible` does not claim this capability. If the active
+selection requests built-in OpenAI Search against a non-capable provider, chat
+returns `MODEL_BUILTIN_SEARCH_UNSUPPORTED` before creating an assistant
+message; it does not fall back externally.
+
+OpenAI Responses text, URL citations, web-search results/action sources, and
+usage are parsed through redacted bounded SSE frames. Built-in sources share
+the external URL/content/dedupe/UTF-8/result normalizer and emit transient
+`search.results` events. This slice deliberately does not create `[W]` markers,
+output blocks, or persisted citations; E.3 owns those contracts and frontend
+consumption.
+
+Verification:
+
+```text
+focused race (websearch/chat/httpserver/cmd-api)  passed
+focused websearch coverage                       83.4%
+Go full tests / full vet                         passed / passed
+backend API source build                         passed; temp binary removed
+authenticated route matrix                       /v1/search protected
+external resolver/provider calls                 exactly 1 / exactly 1
+request-owned Key/baseURL/provider                rejected by strict JSON body
+OpenAI Responses fixture                          payload/text/sources/usage passed
+built-in source dedupe/cap/URL normalization      passed
+OpenAI vs OpenAI Compatible capability            admitted / rejected
+upstream status/frame/resolver redaction           passed
+module / security / quality / change gates         passed / passed / passed / passed
+provider network calls / Key reads                 0 / 0
+```
+
+No database migration, persisted Search configuration, external request,
+provider quota, frontend file, SearXNG file, or legacy Next route changed.
+Rollback removes the Go route/service wiring and `OpenAIProvider` capability;
+ordinary Chat Completions and the untouched legacy frontend path remain the
+fallback. G11.9E.3 next cuts the frontend to Go, mints and persists `[W]`
+citations, removes SearXNG and the old Next route, and performs the authorized
+real-provider smoke.

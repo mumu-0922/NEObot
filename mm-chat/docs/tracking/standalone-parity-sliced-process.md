@@ -5127,3 +5127,17 @@ and contains no SearXNG path. Module README/DESIGN and the executable contract
 record the trust boundary. E.2/E.3 retain runtime/model-built-in wiring,
 `[W]` citations, frontend cutover, deletion, and live smoke. Detailed evidence
 is in `docs/tracking/g11-knowledge-auto-rag-process.md`.
+
+## 2026-07-18 — G11.9E.2 Go Search execution and OpenAI built-in stream
+
+The Go API now owns a strict single-active Search resolver and authenticated
+`POST /v1/search`; browser bodies cannot carry provider identity, base URL, or
+credentials. External adapters execute once with no fallback. Explicit OpenAI
+providers gain Responses `web_search_preview`, while OpenAI Compatible and the
+currently absent Go Gemini provider cannot claim model-built-in capability.
+Grounded sources use the shared bounded normalizer and emit transient
+`search.results`. The normal binary remains fail-closed until G11.9F supplies
+the Postgres-backed resolver. Full tests/vet/source build and security/quality
+gates passed with no provider spend. E.3 retains frontend cutover, `[W]`
+persistence, SearXNG/Next deletion, and real smoke; detailed evidence is in
+`docs/tracking/g11-knowledge-auto-rag-process.md`.

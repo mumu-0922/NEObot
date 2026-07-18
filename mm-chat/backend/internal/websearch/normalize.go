@@ -54,6 +54,15 @@ func normalizeResult(sources []Source, images []Image, limit int) Result {
 	return result
 }
 
+// NormalizeResult applies the same source fence to provider-owned and
+// model-built-in search results.
+func NormalizeResult(result Result, limit int) Result {
+	if limit < 1 || limit > MaxResults {
+		limit = MaxResults
+	}
+	return normalizeResult(result.Sources, result.Images, limit)
+}
+
 func normalizeResultURL(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" || len(value) > MaxSourceURLBytes {

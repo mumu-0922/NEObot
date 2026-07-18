@@ -37,9 +37,23 @@ const (
 )
 
 var (
-	ErrInvalidConfig  = errors.New("web search provider config is invalid")
-	ErrInvalidRequest = errors.New("web search request is invalid")
+	ErrInvalidConfig            = errors.New("web search provider config is invalid")
+	ErrInvalidRequest           = errors.New("web search request is invalid")
+	ErrNotConfigured            = errors.New("web search is not configured")
+	ErrResolutionFailed         = errors.New("web search provider resolution failed")
+	ErrModelBuiltInRequiresChat = errors.New("model built-in search requires chat execution")
 )
+
+type ExecutionMode string
+
+const (
+	ExecutionExternal     ExecutionMode = "external"
+	ExecutionModelBuiltIn ExecutionMode = "model-built-in"
+)
+
+type ModelBuiltInProviderID string
+
+const ModelBuiltInOpenAI ModelBuiltInProviderID = "openai"
 
 type Request struct {
 	Query      string
@@ -66,6 +80,18 @@ type Result struct {
 type Provider interface {
 	ID() ProviderID
 	Search(context.Context, Request) (Result, error)
+}
+
+// ActiveExecution is resolved only from trusted server configuration. Exactly
+// one of External or ModelBuiltIn is admitted for the selected mode.
+type ActiveExecution struct {
+	Mode         ExecutionMode
+	External     Provider
+	ModelBuiltIn ModelBuiltInProviderID
+}
+
+type Resolver interface {
+	ResolveActive(context.Context) (ActiveExecution, error)
 }
 
 type HTTPDoer interface {

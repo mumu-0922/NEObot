@@ -11,12 +11,37 @@ import (
 	"testing"
 	"time"
 
+	"neo-chat/mm-chat/backend/internal/chat"
 	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/runtimeconfig"
 	"neo-chat/mm-chat/backend/internal/storage"
 	"neo-chat/mm-chat/backend/internal/teams"
 )
+
+func TestNewChatProviderExposesBuiltInSearchOnlyForOpenAI(t *testing.T) {
+	for _, test := range []struct {
+		providerType string
+		wantBuiltIn  bool
+	}{
+		{providerType: "openai", wantBuiltIn: true},
+		{providerType: "openai_compatible", wantBuiltIn: false},
+	} {
+		t.Run(test.providerType, func(t *testing.T) {
+			provider, err := newChatProvider(config.Config{Provider: config.ProviderConfig{
+				Type: test.providerType, BaseURL: "https://provider.example/v1",
+				Model: "gpt-fixture", APIKey: "fixture-key",
+			}})
+			if err != nil {
+				t.Fatalf("newChatProvider() error = %v", err)
+			}
+			_, builtIn := provider.(chat.ModelBuiltInSearchProvider)
+			if builtIn != test.wantBuiltIn {
+				t.Fatalf("built-in capability = %v, want %v", builtIn, test.wantBuiltIn)
+			}
+		})
+	}
+}
 
 func TestSingleUserAnswerIdentitiesMergesConfiguredEnabledModels(t *testing.T) {
 	repo := &fakeAnswerProviderConfigReader{stored: []runtimeconfig.StoredProviderConfig{

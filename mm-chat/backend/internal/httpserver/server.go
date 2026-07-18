@@ -29,6 +29,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/storage"
 	"neo-chat/mm-chat/backend/internal/teams"
 	"neo-chat/mm-chat/backend/internal/voicejobs"
+	"neo-chat/mm-chat/backend/internal/websearch"
 )
 
 const contentTypeJSON = "application/json; charset=utf-8"
@@ -76,6 +77,7 @@ type options struct {
 	ragQueryEmbedder     ragproviders.QueryEmbedder
 	ragReranker          ragproviders.Reranker
 	runtimeConfigRepo    runtimeconfig.ProviderConfigRepository
+	webSearchResolver    websearch.Resolver
 }
 
 type ragEvidenceCandidateFetcher interface {
@@ -198,7 +200,21 @@ func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 	}
 	providerType := strings.ToLower(strings.TrimSpace(provider.Type))
 	switch providerType {
-	case "openai", "openai compatible", "openai_compatible", "openai-compatible", "":
+	case "openai":
+		resolved, err := chat.NewOpenAIProvider(chat.OpenAICompatibleProviderConfig{
+			BaseURL:    runtimeProviderBaseURL(provider),
+			APIKey:     apiKey,
+			ProviderID: strings.TrimSpace(provider.ID),
+			Timeout:    r.timeout,
+		})
+		if err != nil {
+			return nil, chat.ValidationError{
+				Code:    "PROVIDER_CONFIG_UNSUPPORTED",
+				Message: "runtime provider configuration is unsupported",
+			}
+		}
+		return resolved, nil
+	case "openai compatible", "openai_compatible", "openai-compatible", "":
 		resolved, err := chat.NewOpenAICompatibleProvider(chat.OpenAICompatibleProviderConfig{
 			BaseURL:    runtimeProviderBaseURL(provider),
 			APIKey:     apiKey,
@@ -344,6 +360,12 @@ func (source knowledgeRAGCandidateSource) FetchEvidenceCandidates(
 func WithRuntimeConfigRepository(repo runtimeconfig.ProviderConfigRepository) Option {
 	return func(opts *options) {
 		opts.runtimeConfigRepo = repo
+	}
+}
+
+func WithWebSearchResolver(resolver websearch.Resolver) Option {
+	return func(opts *options) {
+		opts.webSearchResolver = resolver
 	}
 }
 
@@ -546,6 +568,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		cfg,
 		runtimeconfig.WithProviderConfigRepository(resolvedOptions.runtimeConfigRepo),
 	)
+	webSearchService := websearch.NewService(resolvedOptions.webSearchResolver)
 	chatOptions := []chat.HandlerOption{
 		chat.WithProvider(resolvedOptions.chatProvider),
 		chat.WithRunCancellationStore(resolvedOptions.runCancellationStore),
@@ -560,6 +583,9 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		chat.WithImageGenerator(chatImageGenerator{
 			service: resolvedOptions.imageJobService,
 		}),
+	}
+	if webSearchService.Configured() {
+		chatOptions = append(chatOptions, chat.WithWebSearchService(webSearchService))
 	}
 	if resolvedOptions.knowledgeService != nil {
 		assemblerOptions := make([]chat.RAGAnswerAssemblerOption, 0, 1)
@@ -622,6 +648,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		plugins.WithAuditRecorder(resolvedOptions.pluginAuditRecorder),
 	))
 	runtimeConfigHandler := runtimeconfig.NewHandler(runtimeConfigService)
+	webSearchHandler := websearch.NewHandler(webSearchService)
 
 	mux.HandleFunc("/health", healthHandler.Health)
 	mux.HandleFunc("/ready", healthHandler.Ready)
@@ -640,6 +667,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/admin/providers", runtimeConfigHandler)
 	mux.Handle("/v1/admin/providers/", runtimeConfigHandler)
 	mux.Handle("/v1/byok/public-key", runtimeConfigHandler)
+	mux.Handle(websearch.SearchPath, webSearchHandler)
 	mux.Handle("/v1/chat/conversations", chatHandler)
 	mux.Handle("/v1/chat/conversations/", chatHandler)
 	mux.Handle("/v1/chat/runs/", chatHandler)
