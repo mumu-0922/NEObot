@@ -1359,7 +1359,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
               artifact/Block/Parent/Child/vector/locator proof, deterministic
               manifest replay, frozen counts, `verified/ready` transition, and
               unchanged active generation.
-        - [ ] G11.9D.3b Deletion/race fencing and failed-candidate rollback.
+        - [x] G11.9D.3b Deletion/race fencing and failed-candidate rollback:
+              same-head-lock serialization, in-promotion verifier replay,
+              stale-coverage rejection, idempotent `failed/failed` transition,
+              replacement allocation, and unchanged active generation.
         - [ ] G11.9D.3c Atomic generation cutover, live citations, and rollback.
     - [ ] G11.9E Go Tavily/Firecrawl/Exa/Bocha/model-built-in Search parity,
           SearXNG removal, and legacy Next search deletion.

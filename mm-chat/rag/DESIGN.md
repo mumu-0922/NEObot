@@ -546,8 +546,31 @@ candidate recomputes everything and must match exactly.
 Live proof returned 3 documents, 10 Blocks, 3 Parents, and 3 Children with an
 identical immediate replay. Transactionally removing one ready vector failed
 closed and rollback restored the verified state. The active generation/head
-were unchanged. D.3b owns deletion/race/failure fencing; D.3c alone may promote
-and exercise live citations.
+were unchanged. D.3c alone may promote and exercise live citations.
+
+## G11.9D.3b Deletion and failed-candidate fencing
+
+Migration 032 replaces the permissive promotion check with a locked verifier
+replay. Promotion first locks the expected corpus head, binds the candidate's
+persisted chunk-profile and manifest, and invokes the generation verifier in
+the same transaction before any active-generation state can move. The existing
+delete path locks that same head before tombstoning document/version rows, so
+the two operations serialize instead of observing incompatible snapshots.
+
+If the recomputed corpus no longer matches, promotion preserves the active
+generation and returns the verifier's closed error. The new fail function then
+locks the same head plus exact candidate state and atomically records
+`verified/ready -> failed/failed`. Identical replay is idempotent; conflicting
+failure codes are rejected. Because only `building|verified` rows consume the
+single-candidate slot, a fresh rebuild can start immediately.
+
+Live proof covered both delete-before-promotion and a real lock race. In the
+race, promotion waited 1,908 ms behind the delete transaction and then failed
+on stale coverage. Two verified candidates were failed and replayed without
+moving the active head, and both failures permitted the next replacement
+allocation. Migration 032 grants only fail rollback to Go and explicitly
+revokes promotion; D.3c owns the first successful promotion, citation proof,
+and old-generation rollback exercise.
 
 ## Process topology
 

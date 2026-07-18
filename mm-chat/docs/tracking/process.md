@@ -8348,6 +8348,19 @@ D.3b/D.3c handoff are recorded in
 `docs/tracking/g11-knowledge-auto-rag-process.md` and
 `docs/contracts/rag-structure-chunking.md`.
 
+## 2026-07-18 — G11.9D.3b cutover-fence cross-reference
+
+Promotion now shares the corpus-head lock with document deletion and reruns the
+full generation verifier before any active state can move. Real-clone proof
+made two verified candidates stale by deletion, rejected both promotions,
+recorded idempotent `failed/failed` rollbacks, and allocated replacements while
+the formal active generation remained unchanged. The concurrent case waited
+1,908 ms behind the delete lock before failing on coverage. No successful
+promotion permission or execution entered this slice. Full evidence, cleanup,
+rollback, and the D.3c handoff are recorded in
+`docs/tracking/g11-knowledge-auto-rag-process.md` and
+`docs/contracts/rag-structure-chunking.md`.
+
 ## 2026-07-18 — G11.9D.2.2a profile convergence cross-reference
 
 Native and MinerU Chunk Manifests now share one structure profile hash, closing

@@ -190,8 +190,10 @@ Incremental execution slices:
   document/job/artifact/Block/Parent/Child/vector/locator completeness, freeze a
   deterministic manifest and counts, and transition only
   `building -> verified` / `building -> ready` with deterministic replay;
-- **G11.9D.3b** remaining: prove deletion/race fences and failed-candidate
-  rollback while the old generation stays active;
+- **G11.9D.3b** complete: serialize delete/promotion on the corpus head,
+  revalidate the verified candidate inside promotion, reject stale coverage,
+  atomically and idempotently fail the candidate, and prove a replacement can
+  be allocated while the old generation stays active;
 - **G11.9D.3c** remaining: atomically cut over the verified generation and prove
   live citations plus old-generation rollback behavior.
 

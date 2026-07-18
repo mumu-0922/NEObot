@@ -5080,3 +5080,21 @@ evidence. The active generation was unchanged. Temporary provider/runtime state
 was deleted and formal migration remains 27. D.3b/D.3c retain deletion/race,
 rollback, cutover, and citation scope. Detailed evidence is in
 `docs/tracking/g11-knowledge-auto-rag-process.md`.
+
+## 2026-07-18 — G11.9D.3b Deletion and failed-candidate fence
+
+Migration 032 now serializes promotion with the existing document-delete path
+on the corpus-head lock and recomputes the full D.3a verifier inside promotion.
+A verified candidate made stale by deletion cannot become active. The new
+exact-manifest failure function atomically and idempotently records
+`failed/failed`, leaves the active head untouched, and releases the single
+candidate slot for another rebuild.
+
+Disposable-clone proof covered delete-before-promotion plus a concurrent race:
+promotion waited 1,908 ms behind the deleting transaction and then failed on
+current-corpus coverage. Two failed-candidate replays and two replacement
+allocations passed; no successful cutover was executed or granted to Go. Full
+tests, vet, source build, migration down/up, cleanup, and formal-database
+non-mutation passed. D.3c retains successful cutover, live citations, and
+old-generation rollback. Detailed evidence is in
+`docs/tracking/g11-knowledge-auto-rag-process.md`.

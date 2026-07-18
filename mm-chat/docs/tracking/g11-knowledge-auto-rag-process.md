@@ -862,3 +862,80 @@ removes code/privilege but deliberately does not rewrite historical state.
 
 Remaining work: G11.9D.3b proves deletion/race and failed-candidate rollback;
 G11.9D.3c performs the separately fenced atomic cutover and live citation proof.
+
+## 2026-07-18 — G11.9D.3b Deletion/concurrency fence and failed rollback
+
+Outcome: migration 032 closes the stale-verified-candidate gap without
+performing a successful cutover. The prior promotion function trusted
+`verified/ready` plus the frozen manifest; deleting a document after
+verification could therefore leave a candidate that no longer represented the
+current corpus. Promotion now locks the expected corpus head, resolves the
+candidate's persisted chunk-profile hash, and reruns
+`knowledge_verify_structure_generation(...)` in the same transaction before
+any active-generation mutation.
+
+The existing `DeleteDocument` transaction already reaches
+`resolvePurgeProjectionBinding`, which locks the same corpus-head row before the
+document/version tombstones commit. No new deletion path was added. Promotion
+and deletion now serialize on one database authority, and the verifier checks
+the post-lock current corpus rather than trusting pre-delete evidence.
+
+Migration 032 also adds `knowledge_fail_structure_generation(...)`. It requires
+the expected head revision, exact candidate manifest, and bounded failure code;
+locks the candidate generation and projection state; and atomically changes
+only `verified/ready -> failed/failed`. An identical call is an idempotent
+success, while a mismatched replay fails closed. The active generation and head
+are never updated. Since the existing candidate uniqueness index covers only
+`building|verified`, the failed row immediately releases the rebuild slot.
+
+The ACL-preserving disposable clone first rebuilt the real three-document
+PDF/DOCX corpus, completed all Parse and real Jina passage-embedding work, and
+verified the candidate. Tombstoning the PDF caused hardened promotion to fail
+with `RAG_STRUCTURE_VERIFY_COVERAGE_INVALID`; failure rollback and immediate
+replay succeeded, and a replacement candidate was allocated for the remaining
+two DOCX documents. That replacement again completed two Parse plus two real
+Jina jobs and verified successfully.
+
+The decisive concurrency proof opened deletion first, locked the corpus head,
+slept two seconds, then tombstoned one DOCX. Promotion began 200 ms later and
+waited 1,908 ms behind that lock. After deletion committed, its in-transaction
+verifier rejected stale coverage with
+`RAG_STRUCTURE_VERIFY_COVERAGE_INVALID`. Active generation
+`46a1c7bb-44ed-4868-9d61-edd557f9d3f0` and head revision `4` were unchanged.
+The second candidate then failed atomically, identical replay returned true,
+and a third one-document `building/building` allocation proved the slot was
+free again.
+
+Verification:
+
+```text
+delete-before-promotion stale candidate       coverage rejected
+concurrent delete/promotion serialization     1,908 ms lock wait
+post-delete promotion                         coverage rejected
+first/second candidate failure state          failed / failed
+identical fail replay                          true / true
+replacement allocation after each failure     succeeded
+successful active cutover                      not executed / not granted
+active generation / head revision              unchanged / 4
+migration 032 down/up replay                    passed
+Go migration + full tests                      passed
+Go vet                                         passed
+backend/migrate source build                   passed
+```
+
+Cleanup removed both D.3b containers, the disposable database, Windows result
+proxy/files, SQL outputs, and credential-bearing environment snapshots. Final
+checks showed zero D.3b temporary resources; the formal database remained at
+migration 27, neither verifier nor failure function existed there, the formal
+promotion body remained pre-fence, and the active generation/head were
+unchanged.
+
+Rollback: migration 032 revokes and drops the failure function and restores
+migration 010's promotion definition. It intentionally does not rewrite
+persisted failed candidates. Production has not applied migrations 028–032, so
+this commit requires no live database rollback.
+
+Remaining work: G11.9D.3c is the sole successful-promotion gate. It must grant
+the narrow cutover caller, rebuild and verify a current candidate, atomically
+switch the head, prove live Parent/Child citations, and exercise the defined
+old-generation rollback behavior.

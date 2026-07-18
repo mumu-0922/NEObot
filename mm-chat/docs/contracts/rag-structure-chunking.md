@@ -5,11 +5,10 @@
 This contract covers G11.9D.1 deterministic planning, G11.9D.2.1 Native
 projection, G11.9D.2.2 admitted MinerU page-element projection,
 G11.9D.2.3a candidate-generation allocation, and G11.9D.2.3b leased candidate
-parse projection, G11.9D.2.3c real passage-embedding completeness, and
-G11.9D.3a generation verification. These slices may publish candidate
-materializations and transition only the candidate to `verified/ready`. They
-must not switch the active Index Generation; deletion/race fencing and atomic
-promotion remain D.3b/D.3c.
+parse projection, G11.9D.2.3c real passage-embedding completeness,
+G11.9D.3a generation verification, and G11.9D.3b deletion/failure fencing.
+These slices may publish, verify, or fail a candidate, but must not switch the
+active Index Generation. Successful promotion remains D.3c.
 
 ## 2. Signatures
 
@@ -553,5 +552,121 @@ counts. Removing one ready vector caused the closed projection-incomplete error;
 the aborted transaction restored all three vectors and the verified/ready
 state. The old generation remained active at the same head revision.
 
-Deletion/race fencing, failed-candidate rollback, atomic promotion, and live
-citations remain G11.9D.3b/D.3c.
+Atomic promotion and live citations remain G11.9D.3c.
+
+## 14. G11.9D.3b Deletion/Promotion Fence and Candidate Failure
+
+### Scope / Trigger
+
+After D.3a verifies a candidate, promotion must revalidate current corpus
+membership under the same corpus-head lock used by document deletion. If a
+delete makes that candidate stale, the candidate must fail without changing
+the active generation and a replacement rebuild must remain possible.
+
+### Signatures
+
+```sql
+knowledge_promote_index_generation(
+  index_generation_id UUID,
+  expected_head_revision BIGINT,
+  manifest_hash TEXT
+) RETURNS BOOLEAN
+
+knowledge_fail_structure_generation(
+  index_generation_id UUID,
+  expected_head_revision BIGINT,
+  expected_manifest_hash TEXT,
+  failure_code TEXT
+) RETURNS BOOLEAN
+```
+
+### Contracts
+
+- promotion locks the expected corpus head before reading candidate state;
+- promotion accepts only the expected `verified/ready` candidate and manifest,
+  resolves its persisted chunk-profile hash, and calls
+  `knowledge_verify_structure_generation(...)` inside the same transaction;
+- the verifier must recompute the same manifest against the current corpus
+  before any active-generation mutation is allowed;
+- the existing document-delete transaction locks the same corpus-head row
+  before tombstoning its document/version, so delete and promotion serialize;
+- fail rollback locks the expected head and candidate rows, requires the exact
+  manifest, and atomically changes only `verified -> failed` and
+  `ready -> failed` while preserving the active generation;
+- replaying the same failed candidate, manifest, head, and failure code returns
+  success without another mutation; a conflicting replay fails closed;
+- failed generations no longer match the one-`building|verified`-candidate
+  unique index, so a replacement rebuild may be allocated immediately;
+- migration 032 grants fail rollback to `go_api_runtime`, but explicitly
+  revokes successful promotion from that role. D.3c owns the first successful
+  cutover.
+
+### Validation & Error Matrix
+
+| Condition | Result |
+| --- | --- |
+| Promotion argument invalid | `RAG_PROMOTION_ARGUMENT_INVALID` |
+| Promotion head stale | `RAG_PROMOTION_HEAD_STALE` |
+| Candidate not `verified/ready` or manifest differs | `RAG_PROMOTION_NOT_READY` |
+| Recomputed manifest differs | `RAG_PROMOTION_FENCE_MISMATCH` |
+| Delete changed current corpus coverage | verifier error, including `RAG_STRUCTURE_VERIFY_COVERAGE_INVALID` |
+| Fail argument invalid | `RAG_STRUCTURE_FAIL_ARGUMENT_INVALID` |
+| Fail head/candidate/state stale | corresponding `RAG_STRUCTURE_FAIL_*` closed error |
+| Failed replay changes failure code/state | `RAG_STRUCTURE_FAIL_REPLAY_MISMATCH` |
+
+### Good / Base / Bad Cases
+
+- Good: a verified candidate whose corpus is still current recomputes the same
+  manifest under the lock; D.3c may then perform the separately authorized
+  cutover.
+- Base: a stale verified candidate is marked `failed/failed`, identical replay
+  succeeds, and a fresh `building` candidate can be allocated.
+- Bad: deletion commits while promotion is waiting; the verifier sees the new
+  corpus, rejects coverage, and the active generation remains unchanged.
+
+### Tests Required
+
+- schema tests assert the shared head lock, in-promotion verifier call, exact
+  manifest fence, failure transitions, idempotent replay checks, narrow grant,
+  and down-migration restoration;
+- disposable integration proof must cover delete-before-promotion and a true
+  concurrent lock race, asserting the closed coverage error and lock wait;
+- call failure rollback twice with identical inputs, then assert
+  `failed/failed`, unchanged active/head, and successful replacement allocation;
+- exercise migration down/up and prove the formal database was not mutated.
+
+### Live Proof
+
+A disposable ACL-preserving clone rebuilt and verified the real PDF plus two
+DOCX corpus. Tombstoning the PDF made the first candidate fail promotion on
+current-document coverage; fail rollback and its immediate replay both
+succeeded, after which a two-DOCX replacement candidate was allocated,
+processed through real MinerU/Native plus Jina passage embeddings, and verified.
+
+For the race proof, the delete transaction locked the corpus head, slept for
+two seconds, and tombstoned one DOCX. Promotion started while that lock was
+held, waited 1,908 ms, then recomputed coverage and failed with
+`RAG_STRUCTURE_VERIFY_COVERAGE_INVALID`. The active generation and head
+revision remained unchanged. The replacement then transitioned to
+`failed/failed`, identical fail replay succeeded, and a new one-document
+`building/building` candidate was allocated.
+
+Migration down/up replay passed. Cleanup removed the clone, both temporary
+containers, Windows result proxy, and credential-bearing environment files;
+the formal database remained at migration 27 with no D.3a/D.3b function and
+the original active generation.
+
+### Wrong vs Correct
+
+Wrong: trust the manifest frozen before a delete, or let deletion and promotion
+inspect different corpus-head snapshots.
+
+Correct: serialize both operations on the corpus head, recompute the verifier
+inside promotion, fail the stale candidate audibly, and allocate a fresh
+candidate without ever moving the active head.
+
+### Rollback
+
+Migration 032 down drops the fail function and restores migration 010's
+promotion body. It does not rewrite historical candidate states. Before a
+production downgrade, account for any candidate already marked failed.

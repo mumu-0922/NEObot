@@ -145,6 +145,15 @@ ordered deterministic manifest. Success changes only the candidate to
 `verified` and its projection state to `ready`; deterministic replay must return
 the same manifest/counts. It has no active-head or promotion path.
 
+G11.9D.3b hardens `knowledge_promote_index_generation(...)` so it locks the
+same corpus-head row as deletion and reruns the D.3a verifier in the promotion
+transaction. A stale verified candidate therefore cannot cross a concurrent
+delete. `knowledge_fail_structure_generation(...)` records the exact manifest
+and failure code as an idempotent `failed/failed` rollback, leaving the active
+generation unchanged and releasing the rebuild slot. Migration 032 exposes
+only failure rollback to the Go runtime and explicitly revokes promotion;
+D.3c retains successful cutover.
+
 ## Local quality gates
 
 No command loads repository `.env` files.
