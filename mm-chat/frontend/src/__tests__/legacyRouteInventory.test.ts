@@ -11,7 +11,6 @@ const expectedTransitionalRoutes = [
   "/api/chat/generate-title",
   "/api/chat/related-questions",
   "/api/health",
-  "/api/search",
   "/api/voice/synthesize",
   "/api/voice/transcribe",
 ] as const;
@@ -38,6 +37,8 @@ const removedG94Routes = [
   "/api/plugins/install",
   "/api/plugins/list",
 ] as const;
+
+const removedG119ERoutes = ["/api/search"] as const;
 
 function collectRouteFiles(directory: string): string[] {
   const entries = readdirSync(directory).sort();
@@ -101,6 +102,16 @@ describe("G9.1 transitional Next API route inventory", () => {
     );
 
     for (const removedRoute of removedG94Routes) {
+      expect(actualRoutes.has(removedRoute)).toBe(false);
+    }
+  });
+
+  it("keeps the G11.9E legacy Search handler deleted", () => {
+    const actualRoutes = new Set(
+      collectRouteFiles(join(process.cwd(), "src/app/api")).map(toApiRoute),
+    );
+
+    for (const removedRoute of removedG119ERoutes) {
       expect(actualRoutes.has(removedRoute)).toBe(false);
     }
   });

@@ -946,7 +946,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		writeServiceError(w, err)
 		return
 	}
-	modelBuiltInSearchProvider, err := h.resolveModelBuiltInSearchProvider(
+	searchExecution, modelBuiltInSearchProvider, err := h.resolveChatSearchExecution(
 		r.Context(),
 		streamProvider,
 		configBool(request.Config, "useSearch"),
@@ -954,6 +954,22 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	if err != nil {
 		writeChatSearchError(w, err)
 		return
+	}
+	webSearchResult := websearch.Result{Sources: []websearch.Source{}, Images: []websearch.Image{}}
+	if searchExecution != nil && searchExecution.Mode == websearch.ExecutionExternal {
+		webSearchResult, err = h.webSearchService.Execute(
+			r.Context(),
+			*searchExecution,
+			websearch.Request{
+				Query:      boundedWebSearchQuery(userMessage.Content),
+				MaxResults: configIntRange(request.Config, "searchResultsLimit", 5, 1, websearch.MaxResults),
+			},
+		)
+		if err != nil {
+			writeChatSearchError(w, err)
+			return
+		}
+		webSearchResult, _ = prepareWebSearchResult(webSearchResult)
 	}
 
 	runID, err := NewUUID()
@@ -1019,6 +1035,20 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			}
 		}
 	}
+	if searchExecution != nil && searchExecution.Mode == websearch.ExecutionExternal {
+		providerPrompt, providerSystemPrompt = buildWebSearchProviderRequest(
+			providerPrompt,
+			providerSystemPrompt,
+			webSearchResult,
+		)
+	}
+	webMessageMetadata := func(decision autoRAGDecision, extra map[string]any) map[string]any {
+		return withWebSearchMessageMetadata(
+			autoRAGMessageMetadata(runID, ragSelection, decision, extra),
+			searchExecution,
+			webSearchResult,
+		)
+	}
 
 	streamCtx, streamCancel := context.WithCancel(r.Context())
 	unregisterRun := h.activeRuns.register(runID, streamCancel)
@@ -1052,14 +1082,16 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	if err != nil {
 		if streamCtx.Err() != nil || r.Context().Err() != nil || errors.Is(err, context.Canceled) {
 			h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
-				Status:   "cancelled",
-				Metadata: autoRAGMessageMetadata(runID, ragSelection, autoDecision, nil),
+				Status:       "cancelled",
+				OutputBlocks: webSearchOutputBlocks(assistantMessage.ID, webSearchResult),
+				Metadata:     webMessageMetadata(autoDecision, nil),
 			})
 			return
 		}
 		h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
-			Status:   "failed",
-			Metadata: autoRAGMessageMetadata(runID, ragSelection, autoDecision, map[string]any{"errorCode": "PROVIDER_ERROR"}),
+			Status:       "failed",
+			OutputBlocks: webSearchOutputBlocks(assistantMessage.ID, webSearchResult),
+			Metadata:     webMessageMetadata(autoDecision, map[string]any{"errorCode": "PROVIDER_ERROR"}),
 		})
 		writeError(w, http.StatusBadGateway, "PROVIDER_ERROR", "provider stream failed")
 		return
@@ -1087,6 +1119,23 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	flusher.Flush()
+	if searchExecution != nil && searchExecution.Mode == websearch.ExecutionExternal &&
+		(len(webSearchResult.Sources) > 0 || len(webSearchResult.Images) > 0) {
+		sequence++
+		if err := writeSSEEvent(w, "search.results", streamEvent{
+			Type:           "search.results",
+			RunID:          runID,
+			ConversationID: conversationID,
+			MessageID:      assistantMessage.ID,
+			Sequence:       sequence,
+			CreatedAt:      formatTime(time.Now()),
+			Results:        &webSearchResult,
+		}); err != nil {
+			h.cancelAssistantAfterWriteError(conversationID, assistantMessage.ID, runID, "")
+			return
+		}
+		flusher.Flush()
+	}
 
 	var content strings.Builder
 	for providerEvent := range events {
@@ -1102,9 +1151,10 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 					CreatedAt:      formatTime(time.Now()),
 				})
 				h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
-					Status:   "cancelled",
-					Content:  content.String(),
-					Metadata: autoRAGMessageMetadata(runID, ragSelection, autoDecision, nil),
+					Status:       "cancelled",
+					Content:      content.String(),
+					OutputBlocks: webSearchOutputBlocks(assistantMessage.ID, webSearchResult),
+					Metadata:     webMessageMetadata(autoDecision, nil),
 				})
 				flusher.Flush()
 				return
@@ -1120,9 +1170,10 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				Error:          &ErrorBody{Code: "PROVIDER_ERROR", Message: "provider stream failed"},
 			})
 			h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
-				Status:   "failed",
-				Content:  content.String(),
-				Metadata: autoRAGMessageMetadata(runID, ragSelection, autoDecision, map[string]any{"errorCode": "PROVIDER_ERROR"}),
+				Status:       "failed",
+				Content:      content.String(),
+				OutputBlocks: webSearchOutputBlocks(assistantMessage.ID, webSearchResult),
+				Metadata:     webMessageMetadata(autoDecision, map[string]any{"errorCode": "PROVIDER_ERROR"}),
 			})
 			flusher.Flush()
 			return
@@ -1164,6 +1215,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			if providerEvent.Search == nil || len(providerEvent.Search.Sources) == 0 {
 				continue
 			}
+			webSearchResult = mergeWebSearchResults(webSearchResult, *providerEvent.Search)
 			sequence++
 			if err := writeSSEEvent(w, "search.results", streamEvent{
 				Type:           "search.results",
@@ -1172,7 +1224,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				MessageID:      assistantMessage.ID,
 				Sequence:       sequence,
 				CreatedAt:      formatTime(time.Now()),
-				Results:        providerEvent.Search,
+				Results:        &webSearchResult,
 			}); err != nil {
 				h.cancelAssistantAfterWriteError(conversationID, assistantMessage.ID, runID, content.String())
 				return
@@ -1193,12 +1245,32 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			CreatedAt:      formatTime(time.Now()),
 		})
 		h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
-			Status:   "cancelled",
-			Content:  content.String(),
-			Metadata: autoRAGMessageMetadata(runID, ragSelection, autoDecision, nil),
+			Status:       "cancelled",
+			Content:      content.String(),
+			OutputBlocks: webSearchOutputBlocks(assistantMessage.ID, webSearchResult),
+			Metadata:     webMessageMetadata(autoDecision, nil),
 		})
 		flusher.Flush()
 		return
+	}
+	if searchExecution != nil && searchExecution.Mode == websearch.ExecutionModelBuiltIn {
+		if delta := missingBuiltInWebCitationDelta(content.String(), webSearchResult); delta != "" {
+			content.WriteString(delta)
+			sequence++
+			if err := writeSSEEvent(w, "message.delta", streamEvent{
+				Type:           "message.delta",
+				RunID:          runID,
+				ConversationID: conversationID,
+				MessageID:      assistantMessage.ID,
+				Sequence:       sequence,
+				CreatedAt:      formatTime(time.Now()),
+				Delta:          delta,
+			}); err != nil {
+				h.cancelAssistantAfterWriteError(conversationID, assistantMessage.ID, runID, content.String())
+				return
+			}
+			flusher.Flush()
+		}
 	}
 
 	assistantMessage, err = h.finalizeAssistantMessage(
@@ -1206,9 +1278,10 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		conversationID,
 		assistantMessage.ID,
 		FinalizeAssistantMessageInput{
-			Status:   "completed",
-			Content:  content.String(),
-			Metadata: autoRAGMessageMetadata(runID, ragSelection, autoDecision.completed(), nil),
+			Status:       "completed",
+			Content:      content.String(),
+			OutputBlocks: webSearchOutputBlocks(assistantMessage.ID, webSearchResult),
+			Metadata:     webMessageMetadata(autoDecision.completed(), nil),
 		},
 	)
 	if err != nil {
@@ -1670,31 +1743,36 @@ func (h *Handler) resolveStreamProvider(
 	return h.providerResolver.ResolveRuntimeProvider(ctx, *providerConfig)
 }
 
-func (h *Handler) resolveModelBuiltInSearchProvider(
+func (h *Handler) resolveChatSearchExecution(
 	ctx context.Context,
 	provider Provider,
 	searchEnabled bool,
-) (ModelBuiltInSearchProvider, error) {
-	if !searchEnabled || h == nil || h.webSearchService == nil ||
-		!h.webSearchService.Configured() {
-		return nil, nil
+) (*websearch.ActiveExecution, ModelBuiltInSearchProvider, error) {
+	if !searchEnabled {
+		return nil, nil, nil
+	}
+	if h == nil || h.webSearchService == nil || !h.webSearchService.Configured() {
+		return nil, nil, websearch.ErrNotConfigured
 	}
 	execution, err := h.webSearchService.ResolveActive(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if execution.Mode != websearch.ExecutionModelBuiltIn {
-		return nil, nil
+		return &execution, nil, nil
 	}
 	builtIn, ok := provider.(ModelBuiltInSearchProvider)
 	if !ok || builtIn.ModelBuiltInSearchID() != execution.ModelBuiltIn {
-		return nil, errModelBuiltInSearchUnsupported
+		return nil, nil, errModelBuiltInSearchUnsupported
 	}
-	return builtIn, nil
+	return &execution, builtIn, nil
 }
 
 func writeChatSearchError(w http.ResponseWriter, err error) {
+	var providerError *websearch.ProviderError
 	switch {
+	case errors.Is(err, websearch.ErrInvalidRequest):
+		writeError(w, http.StatusBadRequest, "INVALID_SEARCH_REQUEST", "search request is invalid")
 	case errors.Is(err, websearch.ErrNotConfigured):
 		writeError(
 			w, http.StatusServiceUnavailable,
@@ -1716,6 +1794,8 @@ func writeChatSearchError(w http.ResponseWriter, err error) {
 			"MODEL_BUILTIN_SEARCH_UNSUPPORTED",
 			"configured model provider does not support built-in search",
 		)
+	case errors.As(err, &providerError):
+		writeError(w, http.StatusBadGateway, "SEARCH_PROVIDER_ERROR", "web search provider failed")
 	default:
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "web search resolution failed")
 	}
@@ -1777,6 +1857,22 @@ func isProviderImageAttachment(attachment Attachment) bool {
 func configBool(config map[string]any, key string) bool {
 	value, ok := config[key].(bool)
 	return ok && value
+}
+
+func configIntRange(config map[string]any, key string, fallback int, minimum int, maximum int) int {
+	value, ok := config[key].(float64)
+	if !ok || value != float64(int(value)) {
+		return fallback
+	}
+	integer := int(value)
+	if integer < minimum || integer > maximum {
+		return fallback
+	}
+	return integer
+}
+
+func boundedWebSearchQuery(value string) string {
+	return truncateWebUTF8(value, websearch.MaxQueryBytes)
 }
 
 func generateTitleWithProvider(

@@ -1648,8 +1648,11 @@ describe("Phase 11.2A server chat CRUD adapter", () => {
               "event: usage.updated",
               'data: {"type":"usage.updated","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":3,"usage":{"total_tokens":3}}',
               "",
+              "event: search.results",
+              'data: {"type":"search.results","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":4,"results":{"sources":[{"title":"Fixture","url":"https://example.test/source","content":"fresh","metadata":{"marker":"[W1]"}}],"images":[]}}',
+              "",
               "event: message.completed",
-              'data: {"type":"message.completed","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":4,"message":{"id":"m2","conversationId":"c1","role":"assistant","status":"completed","content":"hello","sequenceNo":2,"attachments":[],"outputBlocks":[],"metadata":{},"createdAt":"2026-07-08T00:00:02Z","updatedAt":"2026-07-08T00:00:02Z"}}',
+              'data: {"type":"message.completed","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":5,"message":{"id":"m2","conversationId":"c1","role":"assistant","status":"completed","content":"hello","sequenceNo":2,"attachments":[],"outputBlocks":[],"metadata":{},"createdAt":"2026-07-08T00:00:02Z","updatedAt":"2026-07-08T00:00:02Z"}}',
               "",
             ].join("\n"),
             {
@@ -1681,6 +1684,10 @@ describe("Phase 11.2A server chat CRUD adapter", () => {
         onStarted: (event) => events.push(event.type),
         onDelta: (event) => events.push(`${event.type}:${event.delta}`),
         onUsage: (event) => events.push(event.type),
+        onSearch: (event) =>
+          events.push(
+            `${event.type}:${event.results?.sources[0]?.metadata?.marker}`,
+          ),
         onCompleted: (event) => events.push(`${event.type}:${event.messageId}`),
       },
     );
@@ -1693,6 +1700,7 @@ describe("Phase 11.2A server chat CRUD adapter", () => {
       "message.started",
       "message.delta:hel",
       "usage.updated",
+      "search.results:[W1]",
       "message.completed:m2",
     ]);
     expect(requests).toEqual([

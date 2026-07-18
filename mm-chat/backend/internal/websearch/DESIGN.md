@@ -13,12 +13,13 @@
 
 ## Non-goals
 
-- No UI cutover, Key persistence, activation workflow, or connection test yet.
-- No SearXNG/self-hosted HTTP path.
+- No administrator Key persistence, activation workflow, or positive
+  credentialed connection test yet.
+- No retired self-hosted HTTP path.
 - No automatic provider fallback or multi-provider fan-out.
 - No Gemini model-built-in search until a real Go Gemini runtime provider
   exists.
-- No `[W]` citation minting or message persistence in this slice.
+- No conditional Knowledge/Web Router or RRF-style fusion until G11.9G.
 
 ## Flow
 
@@ -38,26 +39,35 @@ authenticated POST /v1/search       Go chat stream with useSearch
                  |              normalized source events
                  v                    |
        normalized Result               v
-                 +-----------> search.results SSE
+                 +-----------> cumulative search.results SSE
+                                      |
+                                      v
+                         [W] output block + metadata
+                                      |
+                                      v
+                           Postgres completion/reload
 ```
 
 ## Decisions
 
-| Decision | Reason |
-| --- | --- |
-| Closed `Provider` interface | Callers cannot select multiple providers inside one request. |
-| Server-owned `Resolver` | API bodies never carry provider IDs, base URLs, or Keys. |
-| Validated `ActiveExecution` union | Exactly one external adapter or one admitted model-built-in capability is active. |
-| Standard library only | Keeps the backend image and dependency surface unchanged. |
-| Inject only `HTTPDoer` | Fixtures inspect exact HTTP without weakening production transport defaults. |
-| HTTPS-only config | Removes the old self-hosted/plain-HTTP SearXNG exception. |
-| Resolve and reject any non-public address before dialing | Blocks loopback/private/link-local DNS rebinding targets. |
-| Disable redirects and environment proxy use | Prevents an admitted host from redirecting or proxying into a forbidden network. |
-| Provider-order normalization | Preserves upstream relevance order while deduplicating and applying the caller cap. |
-| Firecrawl Key optional in this slice | Matches legacy request behavior; G11.9F real connection tests decide activation. |
-| OpenAI type differs from OpenAI Compatible | Only explicit `OpenAI` runtime providers receive the Responses Web Search capability. |
-| Built-in sources use the common normalizer | OpenAI annotations/actions receive the same URL, size, dedupe, and result fences. |
-| External route rejects built-in execution | Built-in tools require model generation and cannot masquerade as a standalone search API. |
+| Decision                                                 | Reason                                                                                                                         |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Closed `Provider` interface                              | Callers cannot select multiple providers inside one request.                                                                   |
+| Server-owned `Resolver`                                  | API bodies never carry provider IDs, base URLs, or Keys.                                                                       |
+| Validated `ActiveExecution` union                        | Exactly one external adapter or one admitted model-built-in capability is active.                                              |
+| Standard library only                                    | Keeps the backend image and dependency surface unchanged.                                                                      |
+| Inject only `HTTPDoer`                                   | Fixtures inspect exact HTTP without weakening production transport defaults.                                                   |
+| HTTPS-only config                                        | Removes the old self-hosted/plain-HTTP SearXNG exception.                                                                      |
+| Resolve and reject any non-public address before dialing | Blocks loopback/private/link-local DNS rebinding targets.                                                                      |
+| Disable redirects and environment proxy use              | Prevents an admitted host from redirecting or proxying into a forbidden network.                                               |
+| Provider-order normalization                             | Preserves upstream relevance order while deduplicating and applying the caller cap.                                            |
+| Firecrawl Key optional in this slice                     | Matches legacy request behavior; G11.9F real connection tests decide activation.                                               |
+| OpenAI type differs from OpenAI Compatible               | Only explicit `OpenAI` runtime providers receive the Responses Web Search capability.                                          |
+| Built-in sources use the common normalizer               | OpenAI annotations/actions receive the same URL, size, dedupe, and result fences.                                              |
+| External route rejects built-in execution                | Built-in tools require model generation and cannot masquerade as a standalone search API.                                      |
+| Resolve once, then `Service.Execute`                     | A request cannot switch active providers between capability selection and execution.                                           |
+| Chat-owned `[W]` artifacts                               | Provider adapters remain transport-only while chat owns prompt markers, output-block shape, and message metadata.              |
+| Built-in marker completion                               | Provider-emitted source annotations are known-used sources, so missing `[W]` markers are appended before terminal persistence. |
 
 ## Security Contract
 
@@ -81,12 +91,14 @@ authenticated POST /v1/search       Go chat stream with useSearch
 - Result URLs are displayed, not fetched; hostname DNS is therefore not
   resolved during normalization. Literal localhost/private IP results are
   rejected.
-- Provider schema drift currently fails or drops malformed rows. G11.9E live
-  smoke will freeze any newly observed admitted shape.
+- Provider schema drift fails or drops malformed rows. A credentialless live
+  Firecrawl call proved the hardened adapter reaches the real endpoint and
+  returns a redacted 4xx `ProviderError`; positive activation remains G11.9F.
 - The normal API binary has no Search resolver until G11.9F; `/v1/search`
   therefore exists but fails closed with `SEARCH_NOT_CONFIGURED`.
-- `search.results` SSE is intentionally not persisted yet; G11.9E.3 owns `[W]`
-  citation minting, output blocks, reload parity, and frontend consumption.
+- External Search runs whenever the existing Search toggle is enabled in this
+  slice. Conditional routing and Knowledge-derived query planning remain
+  G11.9G.
 - Gemini remains unsupported because the Go runtime cannot currently execute a
   Gemini chat request. Capability checks return an explicit unsupported error
   instead of silently using another provider.
@@ -106,3 +118,14 @@ OpenAI Responses Web Search stream capability. Explicit OpenAI providers may
 emit transient `search.results`; OpenAI Compatible providers cannot. No Search
 secret persistence, frontend cutover, real provider spend, or `[W]` persistence
 entered this slice.
+
+### 2026-07-18 — G11.9E.3
+
+Added resolve-once external execution, bounded Web prompt context, cumulative
+built-in source handling, `[W]` markers, Search output blocks, Web metadata,
+Postgres completion/reload parity, typed frontend SSE consumption, and
+server-owned Search availability. Removed the legacy Next route, browser
+provider/Key/Base URL settings, client-side Search preflight, and the retired
+self-hosted provider path. A real Firecrawl negative smoke passed the redacted
+credential-rejection boundary; the configured OpenAI-compatible gateway
+correctly failed its unsupported Responses Web Search probe without fallback.

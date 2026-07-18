@@ -194,8 +194,6 @@ export const ChatRequestSchema = z
       .max(API_INPUT_LIMITS.maxSystemInstructionChars)
       .optional(),
     tools: z.array(ToolSchema).max(64).optional(),
-    enableGoogleSearch: z.boolean().optional(),
-    enableOpenAIWebSearch: z.boolean().optional(),
   })
   .strict()
   .superRefine((request, ctx) => {
@@ -349,40 +347,6 @@ export const PluginInstallSchema = z
   .object({
     plugin: PluginSchema.partial().optional(),
     customInput: z.string().max(2_000_000).optional(),
-  })
-  .strict();
-
-export const SearchRequestSchema = z
-  .object({
-    provider: z.enum([
-      "default",
-      "tavily",
-      "firecrawl",
-      "exa",
-      "bocha",
-      "searxng",
-    ]),
-    query: z.string().min(1).max(4_000),
-    scope: z.string().max(100).optional(),
-    config: z
-      .object({
-        apiKey: z.unknown().optional(),
-        apiKeySecret: EncryptedSecretEnvelopeSchema.optional(),
-        baseUrl: z.string().max(2_048).optional(),
-        useDefault: z.boolean().optional(),
-      })
-      .strict()
-      .superRefine((config, ctx) => {
-        rejectPlainSecretField(
-          config.apiKey,
-          ctx,
-          ["apiKey"],
-          "Search API key",
-        );
-      })
-      .transform((config) => omitPlainSecretField(config, "apiKey"))
-      .optional(),
-    maxResult: z.coerce.number().int().min(1).max(10).optional(),
   })
   .strict();
 

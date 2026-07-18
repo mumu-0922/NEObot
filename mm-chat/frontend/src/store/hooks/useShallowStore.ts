@@ -183,8 +183,6 @@ export const useSearchSettings = () => {
   return useSettingsStore(
     useShallow((state) => ({
       search: state.search,
-      setSearchProvider: state.setSearchProvider,
-      updateSearchConfig: state.updateSearchConfig,
       setSearchResultsLimit: state.setSearchResultsLimit,
     })),
   );

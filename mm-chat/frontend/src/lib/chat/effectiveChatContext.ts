@@ -172,7 +172,6 @@ export function resolveEffectiveChatContext(
     enableHtmlVisualPrompt,
     now,
     selectedModel,
-    provider,
     modelMetadata,
     customModelMetadata,
     chatConfig,
@@ -187,12 +186,9 @@ export function resolveEffectiveChatContext(
     activeSkillIdsOverride,
   } = options;
 
-  const searchConfig =
-    search.provider === "google" ? undefined : search.configs[search.provider];
   const searchCompatibility = getSearchCompatibility({
     searchProvider: search.provider,
-    searchConfig,
-    modelProviderType: provider?.type,
+    searchConfig: search.configs.default,
   });
   const modelCapabilities = getModelCapabilities({
     selectedModel,

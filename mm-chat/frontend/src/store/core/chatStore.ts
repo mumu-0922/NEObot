@@ -59,6 +59,7 @@ import {
 import type {
   AppendUserMessageInput,
   ProviderRuntimeConfigDTO,
+  ServerSearchResult,
 } from "../../services/api/client";
 
 let selectSessionRequestId = 0;
@@ -202,6 +203,34 @@ const toStoreMessageFromServer = (message: ChatCrudMessage): Message => ({
     ? { outputBlocks: message.outputBlocks as MessageOutputBlock[] }
     : {}),
 });
+
+const applyServerSearchResult = (
+  message: Message,
+  result: ServerSearchResult,
+): Message => {
+  const block: Extract<MessageOutputBlock, { type: "search" }> = {
+    id: `${message.id}-web-sources`,
+    type: "search",
+    isSearching: false,
+    sources: result.sources,
+    images: result.images,
+  };
+  const outputBlocks = [...(message.outputBlocks ?? [])];
+  const existingIndex = outputBlocks.findIndex(
+    (candidate) => candidate.type === "search",
+  );
+  if (existingIndex === -1) {
+    outputBlocks.push(block);
+  } else {
+    outputBlocks[existingIndex] = block;
+  }
+  return {
+    ...message,
+    searchSources: result.sources,
+    searchImages: result.images,
+    outputBlocks,
+  };
+};
 
 const getServerReadErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : "Failed to load server chat data.";
@@ -1283,6 +1312,13 @@ export const useChatStore = create<ChatState>()(
                   content: assistantContent,
                 }));
               },
+              onSearch: (event) => {
+                const result = event.results;
+                if (!result) return;
+                updateAssistantDraft(event.messageId, (message) =>
+                  applyServerSearchResult(message, result),
+                );
+              },
             },
           );
 
@@ -1512,6 +1548,13 @@ export const useChatStore = create<ChatState>()(
                   content: assistantContent,
                   parentMessageId: userMessageId,
                 }));
+              },
+              onSearch: (event) => {
+                const result = event.results;
+                if (!result) return;
+                updateAssistantDraft(event.messageId, (message) =>
+                  applyServerSearchResult(message, result),
+                );
               },
             },
           );

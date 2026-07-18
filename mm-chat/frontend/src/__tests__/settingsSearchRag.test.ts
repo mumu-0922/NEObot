@@ -12,39 +12,29 @@ describe("search and RAG settings normalization", () => {
       provider: "unknown",
       resultsLimit: 999,
       configs: {
-        tavily: { apiKey: " key " },
-        searxng: { baseUrl: "" },
-        injected: { apiKey: "bad" },
+        default: { serverAvailable: true },
+        injected: { serverAvailable: true },
       },
     });
 
-    expect(search.provider).toBe("firecrawl");
+    expect(search.provider).toBe("default");
     expect(search.resultsLimit).toBe(SEARCH_CONFIG_LIMITS.maxResultsLimit);
-    expect(search.configs.tavily.apiKey).toBe("key");
-    expect(search.configs.searxng.baseUrl).toBe("http://localhost:8080");
+    expect(search.configs.default.serverAvailable).toBe(true);
     expect(search.configs).not.toHaveProperty("injected");
   });
 
-  it("falls back missing search settings to Firecrawl", () => {
+  it("falls back missing search settings to the server service", () => {
     const search = normalizeSearchSettings(undefined);
 
-    expect(search.provider).toBe("firecrawl");
-    expect(search.configs.firecrawl.apiKey).toBe("");
+    expect(search.provider).toBe("default");
+    expect(search.configs.default.serverAvailable).toBe(false);
   });
 
-  it("trims and caps search API keys and base URLs", () => {
-    const apiKey = ` ${"k".repeat(SEARCH_CONFIG_LIMITS.maxApiKeyChars + 10)}`;
-    const baseUrl = ` https://example.com/${"u".repeat(
-      SEARCH_CONFIG_LIMITS.maxBaseUrlChars,
-    )}`;
-
-    const tavily = normalizeSearchConfig("tavily", { apiKey, baseUrl });
-    const searxng = normalizeSearchConfig("searxng", { baseUrl });
-
-    expect(tavily?.apiKey).toHaveLength(SEARCH_CONFIG_LIMITS.maxApiKeyChars);
-    expect(tavily?.baseUrl).toHaveLength(SEARCH_CONFIG_LIMITS.maxBaseUrlChars);
-    expect(searxng?.baseUrl).toHaveLength(SEARCH_CONFIG_LIMITS.maxBaseUrlChars);
-    expect(normalizeSearchConfig("google", { apiKey })).toBeUndefined();
+  it("accepts only server-owned search availability", () => {
+    expect(normalizeSearchConfig("default", { serverAvailable: true })).toEqual(
+      { serverAvailable: true },
+    );
+    expect(normalizeSearchConfig("tavily", {})).toBeUndefined();
   });
 
   it("normalizes RAG credentials, namespace, and numeric ranges", () => {

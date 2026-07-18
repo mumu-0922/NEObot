@@ -1135,3 +1135,86 @@ ordinary Chat Completions and the untouched legacy frontend path remain the
 fallback. G11.9E.3 next cuts the frontend to Go, mints and persists `[W]`
 citations, removes SearXNG and the old Next route, and performs the authorized
 real-provider smoke.
+
+## 2026-07-18 — G11.9E.3 Go Search frontend cutover and `[W]` persistence
+
+Outcome: G11.9E is complete. A chat request with `useSearch` now resolves one
+server-owned `ActiveExecution` exactly once. External execution calls
+`Service.Execute` on that resolved union, bounds the direct question to 2,048
+bytes, caps the configured result count at 1–10, and injects a total-bounded Web
+evidence section with `[W<n>]` markers after any Knowledge context. Built-in
+OpenAI source events are accumulated and deduplicated; source annotations are
+known-used records, so any missing terminal markers are appended before the
+message completes. No provider fan-out or fallback was added.
+
+Every terminal path persists a bounded `type: "search"` output block and
+redacted `metadata.web` records. Source cards contain stable URL-derived
+citation IDs and markers; provider Keys, upstream bodies, and resolver details
+are absent. A focused live Postgres test finalized, reloaded, duplicated, and
+reloaded an assistant with `answer [W1]` plus its Search JSONB block. The
+isolated `mm_chat_g119e3_test` database and temporary builder image were deleted
+after proof.
+
+The server-mode frontend now types and dispatches `search.results`, updates the
+assistant draft without browser persistence, uses the terminal server message
+as authority, restores Search sources from `outputBlocks`, and linkifies both
+legacy `[1]` and Web `[W1]` while leaving `[K1]` untouched. The Search toggle is
+allowed in server mode and persists on the conversation; result count is sent
+as `searchResultsLimit`. Availability comes only from Go `/v1/config`. Because
+the persisted Search block is intentionally separate from message text, the
+renderer also backfills `message.content` only when no text block exists; this
+keeps both streaming and reload answers visible without duplicating native text
+blocks.
+
+Deleted production/browser authority:
+
+- legacy Next `/api/search` route;
+- browser external adapters, service, outbound policy, client decision
+  preflight, and built-in Search request flags;
+- browser Search Provider/Key/Base URL settings, encrypted Search-secret
+  contexts, legacy default Search env variables, and the retired self-hosted
+  provider type/UI/tests;
+- obsolete route/service inventories and client decision tests.
+
+Verification:
+
+```text
+backend go test ./...                                      passed
+focused race (websearch/chat/httpserver/cmd-api)           passed
+go vet ./...                                               passed
+frontend lint / typecheck                                  passed / passed
+frontend Vitest                                            177 files / 846 tests passed
+frontend production build                                  passed
+built Next route inventory                                 /api/search absent
+live Postgres Search output-block completion/reload        passed
+isolated test database / temporary test image              removed / removed
+Docker Compose backend/frontend build                      passed
+runtime backend / frontend health                          healthy / healthy
+legacy /api/search runtime probe                           404
+Go /v1/search unauthenticated boundary                     401 UNAUTHENTICATED
+real Firecrawl credentialless negative smoke               redacted 4xx ProviderError
+configured gateway model list                              200; no Search model advertised
+configured gateway Responses Web Search capability probe   400 upstream_error
+cross-provider fallback                                    none
+```
+
+The real calls were owner-authorized. No admitted external Search Key exists in
+the current environment, so G11.9E.3 deliberately proves real endpoint/error
+and incompatible-gateway behavior rather than inventing a successful provider.
+G11.9F owns encrypted administrator settings and the positive credentialed
+activation test.
+
+During Compose verification, recreating the old persisted Postgres container
+surfaced pre-existing principal drift: the volume was initialized with
+`neo_chat`, while current Compose expects `neo_chat_api`. The backend failed
+SASL authentication. An idempotent least-privilege `neo_chat_api` LOGIN was
+created with the Compose-local credential and granted only `go_api_runtime`;
+backend and frontend then returned healthy. No migration ran and live schema
+version remained 27. The missing dedicated migrator principal/ownership for
+this old volume remains an explicit promotion prerequisite before any future
+live migration; it was not hidden by granting migration power to the API.
+
+Rollback is one commit plus runtime image rollback. No schema was added for Web
+artifacts; they use existing message JSONB. Older code can ignore unknown Search
+blocks. Next is G11.9F administrator provider secrets and positive connection
+tests.

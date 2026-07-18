@@ -6,94 +6,25 @@ import {
 } from "../lib/settings/searchRag";
 
 describe("search compatibility", () => {
-  it("routes model built-in search by provider capability", () => {
+  it("uses only server-published search availability", () => {
     expect(
       getSearchCompatibility({
-        searchProvider: "google",
-        modelProviderType: "Gemini",
+        searchProvider: "default",
+        searchConfig: { serverAvailable: true },
       }),
-    ).toEqual({
-      enabled: true,
-      mode: "gemini-google",
-      provider: "google",
-    });
+    ).toEqual({ enabled: true, mode: "server", provider: "default" });
 
-    expect(
-      getSearchCompatibility({
-        searchProvider: "google",
-        modelProviderType: "OpenAI",
-      }),
-    ).toEqual({
-      enabled: true,
-      mode: "openai-web",
-      provider: "google",
+    const unavailable = getSearchCompatibility({
+      searchProvider: "default",
+      searchConfig: { serverAvailable: false },
     });
-
-    const result = getSearchCompatibility({
-      searchProvider: "google",
-      modelProviderType: "OpenAI Compatible",
-    });
-
-    expect(result).toEqual({
+    expect(unavailable).toEqual({
       enabled: false,
       mode: "unavailable",
-      provider: "google",
-      reason: "model_builtin_search_unsupported",
+      provider: "default",
+      reason: "server_search_unavailable",
     });
-    expect(getSearchCompatibilityErrorMessage(result)).toContain("external");
-  });
-
-  it("requires API keys for external hosted search providers", () => {
-    expect(
-      getSearchCompatibility({
-        searchProvider: "tavily",
-        searchConfig: { apiKey: "" },
-        modelProviderType: "OpenAI",
-      }),
-    ).toMatchObject({
-      enabled: false,
-      reason: "missing_search_api_key",
-    });
-
-    expect(
-      getSearchCompatibility({
-        searchProvider: "tavily",
-        searchConfig: { apiKey: "tvly-key" },
-        modelProviderType: "OpenAI",
-      }),
-    ).toEqual({
-      enabled: true,
-      mode: "external",
-      provider: "tavily",
-    });
-  });
-
-  it("allows Firecrawl search without an API key", () => {
-    expect(
-      getSearchCompatibility({
-        searchProvider: "firecrawl",
-        searchConfig: { apiKey: "" },
-        modelProviderType: "OpenAI",
-      }),
-    ).toEqual({
-      enabled: true,
-      mode: "external",
-      provider: "firecrawl",
-    });
-  });
-
-  it("requires a base URL for SearXNG and exposes display labels", () => {
-    expect(
-      getSearchCompatibility({
-        searchProvider: "searxng",
-        searchConfig: { baseUrl: "" },
-        modelProviderType: "Gemini",
-      }),
-    ).toMatchObject({
-      enabled: false,
-      reason: "missing_search_base_url",
-    });
-
-    expect(getSearchProviderLabel("searxng")).toBe("SearXNG");
+    expect(getSearchCompatibilityErrorMessage(unavailable)).toContain("server");
+    expect(getSearchProviderLabel("default")).toBe("Server");
   });
 });

@@ -443,7 +443,7 @@ describe("access proxy", () => {
     let response: Response | null = null;
     for (let i = 0; i < 31; i += 1) {
       response = await applyRequestGuards(
-        new NextRequest("https://neo.test/api/search", {
+        new NextRequest("https://neo.test/api/voice/transcribe", {
           method: "POST",
           headers: {
             "x-forwarded-for": "203.0.113.55",

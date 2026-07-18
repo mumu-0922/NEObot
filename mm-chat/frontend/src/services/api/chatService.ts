@@ -3,7 +3,6 @@ import {
   Attachment,
   ChatConfig,
   ImageSource,
-  ModelMetadata,
   Session,
   MessageOutputBlock,
   Source,
@@ -14,7 +13,6 @@ import { useCoreSettingsStore } from "@/store/core/coreSettingsStore";
 import { useMemoryStore } from "@/store/core/memoryStore";
 import { v7 as uuidv7 } from "uuid";
 import { executePluginFunction } from "@/utils/pluginUtils";
-import { createSearchProvider } from "./searchService";
 import { getEnabledPluginFunctions } from "@/lib/plugin/resolve";
 import { parseModelString } from "@/lib/utils/model";
 import { normalizeSessionTitle } from "@/lib/chat/entities";
@@ -30,17 +28,7 @@ import type { ServerBackedAttachment } from "@/lib/utils/serverAttachments";
 import { appendContextToChatInput } from "@/lib/utils/chatInput";
 import { appendDiagramRequestInstructions } from "../../lib/chat/diagramPrompt";
 import { appendHtmlVisualRequestInstructions } from "../../lib/chat/htmlVisualPrompt";
-import {
-  getSearchCompatibility,
-  getSearchCompatibilityErrorMessage,
-} from "@/lib/settings/searchRag";
 import { createMessageOutputBlockBuilder } from "../../lib/chat/messageOutputBlocks";
-import {
-  buildSearchContextForPrompt,
-  createSearchDecisionPrompt,
-  parseSearchDecisionResult,
-  type SearchDecision,
-} from "../../lib/search/decision";
 import {
   createContextCompressionSummaryPrompt,
   mergeCompressedContent,
@@ -55,10 +43,6 @@ import {
   buildProviderRuntimeConfig,
   fetchWithByokRetry,
 } from "../../lib/byok/client";
-import {
-  allocateContextBudget,
-  trimTextToEstimatedTokens,
-} from "../../lib/chat/contextBudget";
 import {
   parseMemoryDreamToolCall,
   parseMemoryRecordToolCall,
@@ -157,71 +141,6 @@ async function executeMemorySearchTool(args: unknown): Promise<unknown> {
   const results = searchMemoryRecords(memories, query, limit);
   state.markMemoriesUsed(results.map((memory) => memory.id));
   return formatMemoryToolResult(results);
-}
-
-function resolveModelMetadata(modelName: string): ModelMetadata | undefined {
-  const { modelMetadata, customModelMetadata } = useSettingsStore.getState();
-  return customModelMetadata[modelName] || modelMetadata[modelName];
-}
-
-function getMessagesContextLength(messages: Message[]): number {
-  return messages.reduce((sum, message) => {
-    const attachmentLength =
-      message.attachments?.reduce(
-        (attachmentSum, attachment) =>
-          attachmentSum +
-          (attachment.fileName?.length || 0) +
-          (attachment.data?.length || 0) +
-          (attachment.url?.length || 0),
-        0,
-      ) || 0;
-
-    return (
-      sum +
-      message.content.length +
-      (message.reasoning?.length || 0) +
-      attachmentLength
-    );
-  }, 0);
-}
-
-function getAttachmentsContextLength(attachments: Attachment[]): number {
-  return attachments.reduce(
-    (sum, attachment) =>
-      sum +
-      (attachment.fileName?.length || 0) +
-      (attachment.data?.length || 0) +
-      (attachment.url?.length || 0),
-    0,
-  );
-}
-
-async function decideExternalSearchUse({
-  model,
-  history,
-  message,
-  signal,
-}: {
-  model: string;
-  history: Message[];
-  message: string;
-  signal?: AbortSignal;
-}): Promise<SearchDecision> {
-  try {
-    const rawDecision = await streamGenerateContent(
-      model,
-      createSearchDecisionPrompt({ history, message }),
-      () => {},
-      signal,
-    );
-    return parseSearchDecisionResult(rawDecision, message);
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      throw error;
-    }
-    logDevWarn("Search decision failed:", error);
-    return { shouldSearch: false, query: message };
-  }
 }
 
 export const executeCode = async (
@@ -598,100 +517,14 @@ export const streamChatResponse = async (
 
   if (!provider) throw new Error("No provider available");
 
-  let effectiveNewMessage = newMessage;
-  const { search } = useSettingsStore.getState();
-  const searchConfig =
-    search.provider === "google" ? undefined : search.configs[search.provider];
-  const searchCompatibility = getSearchCompatibility({
-    searchProvider: search.provider,
-    searchConfig,
-    modelProviderType: provider.type,
-  });
   const outputBlockBuilder = createMessageOutputBlockBuilder();
   const emitOutputBlocks = () => {
     onOutputBlocks?.(outputBlockBuilder.getBlocks());
   };
 
-  if (config?.useSearch && !searchCompatibility.enabled) {
+  if (config?.useSearch) {
     onSearchStatus?.(false, { sources: [], images: [] });
-    throw new Error(getSearchCompatibilityErrorMessage(searchCompatibility));
-  }
-
-  if (
-    config?.useSearch &&
-    onSearchStatus &&
-    searchCompatibility.mode === "external"
-  ) {
-    let externalSearchStarted = false;
-    try {
-      const decision = await decideExternalSearchUse({
-        model,
-        history,
-        message: newMessage,
-        signal,
-      });
-
-      if (!decision.shouldSearch) {
-        onSearchStatus(false, { sources: [], images: [] });
-      } else {
-        outputBlockBuilder.upsertSearch({ isSearching: true });
-        externalSearchStarted = true;
-        onSearchStatus(true);
-        emitOutputBlocks();
-        const searchResults = await createSearchProvider({
-          query: decision.query,
-        });
-        outputBlockBuilder.upsertSearch({
-          isSearching: false,
-          results: searchResults,
-        });
-        onSearchStatus(false, searchResults);
-        emitOutputBlocks();
-
-        if (
-          searchResults.sources.length > 0 ||
-          searchResults.images.length > 0
-        ) {
-          const searchContext = buildSearchContextForPrompt({
-            sources: searchResults.sources,
-            images: searchResults.images,
-          });
-          const metadata = resolveModelMetadata(modelName);
-          const budget = allocateContextBudget({
-            modelInputTokenLimit: metadata?.limit?.context,
-            reservedOutputTokens: metadata?.limit?.output,
-            sources: {
-              history: getMessagesContextLength(history),
-              attachments: getAttachmentsContextLength(attachments),
-              search: searchContext.length,
-            },
-          });
-          const boundedSearchContext = trimTextToEstimatedTokens(
-            searchContext,
-            budget.allocations.search.maxTokens,
-          );
-
-          if (boundedSearchContext) {
-            effectiveNewMessage = appendContextToChatInput(
-              newMessage,
-              boundedSearchContext,
-              { separator: "\n\n" },
-            );
-          }
-        }
-      }
-    } catch (searchError) {
-      logDevWarn("Search preflight failed:", searchError);
-      if (externalSearchStarted) {
-        outputBlockBuilder.upsertSearch({
-          isSearching: false,
-          results: { sources: [], images: [] },
-          error: "Search provider failed",
-        });
-        emitOutputBlocks();
-      }
-      onSearchStatus(false, { sources: [], images: [] });
-    }
+    throw new Error("Web Search requires Go server chat streaming.");
   }
 
   // Get plugin tools if activePlugins is provided
@@ -733,10 +566,10 @@ export const streamChatResponse = async (
     let committedReasoning = "";
     let requestHistory = history as Message[];
     const messageWithSkills = skillsContext?.trim()
-      ? appendContextToChatInput(effectiveNewMessage, skillsContext, {
+      ? appendContextToChatInput(newMessage, skillsContext, {
           separator: "\n\n",
         })
-      : effectiveNewMessage;
+      : newMessage;
     let requestMessage = appendDiagramRequestInstructions(
       appendHtmlVisualRequestInstructions(
         messageWithSkills,
@@ -781,10 +614,6 @@ export const streamChatResponse = async (
             config,
             systemInstruction: userSystemInstruction,
             tools,
-            enableGoogleSearch:
-              config?.useSearch && searchCompatibility.mode === "gemini-google",
-            enableOpenAIWebSearch:
-              config?.useSearch && searchCompatibility.mode === "openai-web",
           }),
           signal,
         }),

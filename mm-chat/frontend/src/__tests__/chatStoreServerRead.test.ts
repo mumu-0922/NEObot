@@ -127,6 +127,8 @@ vi.mock("../services/api/chatStreamService", () => ({
 
 const { appendMessageToParent, normalizeSessionMessageTree } =
   await import("../lib/chat/messageTree");
+const { getMessageOutputBlocks } =
+  await import("../lib/chat/messageOutputBlocks");
 const { useChatStore } = await import("../store/core/chatStore");
 
 const makeServerSession = (id: string): Session => ({
@@ -1060,6 +1062,7 @@ describe("chat store server read path", () => {
     const localMessage = makeMessage("local-m1", "user");
     const generationSnapshots: unknown[] = [];
     const draftSnapshots: unknown[] = [];
+    const searchSnapshots: unknown[] = [];
     mocks.streamService.streamAssistantMessage.mockImplementation(
       async (_input: unknown, handlers?: any) => {
         handlers?.onStarted?.({
@@ -1095,11 +1098,47 @@ describe("chat store server read path", () => {
           messageId: "m4",
           delta: "lo",
         });
+        handlers?.onSearch?.({
+          type: "search.results",
+          runId: "run-1",
+          conversationId: "c1",
+          messageId: "m4",
+          results: {
+            sources: [
+              {
+                title: "Fixture",
+                url: "https://example.test/source",
+                content: "fresh",
+                metadata: { marker: "[W1]" },
+              },
+            ],
+            images: [],
+          },
+        });
+        searchSnapshots.push(
+          useChatStore.getState().serverReadState.activeMessages.at(-1),
+        );
         return {
           status: "completed",
           message: {
             ...makeMessage("m4", "model"),
             content: "hello",
+            outputBlocks: [
+              {
+                id: "m4-web-sources",
+                type: "search",
+                isSearching: false,
+                sources: [
+                  {
+                    title: "Fixture",
+                    url: "https://example.test/source",
+                    content: "fresh",
+                    metadata: { marker: "[W1]" },
+                  },
+                ],
+                images: [],
+              },
+            ],
           },
         };
       },
@@ -1159,6 +1198,23 @@ describe("chat store server read path", () => {
         { id: "m4", role: "model", parentMessageId: "m3" },
       ],
     ]);
+    expect(searchSnapshots).toEqual([
+      expect.objectContaining({
+        id: "m4",
+        searchSources: [
+          expect.objectContaining({ metadata: { marker: "[W1]" } }),
+        ],
+        outputBlocks: [
+          expect.objectContaining({ id: "m4-web-sources", type: "search" }),
+        ],
+      }),
+    ]);
+    expect(getMessageOutputBlocks(searchSnapshots[0] as Message)).toMatchObject(
+      [{ type: "search" }, { type: "text", content: "hello" }],
+    );
+    expect(
+      getMessageOutputBlocks(state.serverReadState.activeMessages[1]),
+    ).toMatchObject([{ type: "search" }, { type: "text", content: "hello" }]);
     expect(state.serverReadState.generation).toEqual({
       status: "completed",
       sessionId: "c1",
@@ -1192,6 +1248,7 @@ describe("chat store server read path", () => {
       expect.objectContaining({
         onStarted: expect.any(Function),
         onDelta: expect.any(Function),
+        onSearch: expect.any(Function),
       }),
     );
     expect(mocks.appDbMock.getItem).not.toHaveBeenCalled();

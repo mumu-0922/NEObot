@@ -71,26 +71,18 @@ describe("server default store injection", () => {
     useCoreSettingsStore.setState(useCoreSettingsStore.getInitialState(), true);
   });
 
-  it("selects default search for fresh settings but preserves persisted search choices", async () => {
+  it("keeps Search server-owned when applying runtime config", async () => {
     const { useSettingsStore } = await import("../store/core/settingsStore");
 
     useSettingsStore.getState().applyServerConfig(serverConfig);
     expect(useSettingsStore.getState().search.provider).toBe("default");
 
     useSettingsStore.setState(useSettingsStore.getInitialState(), true);
-    useSettingsStore.setState((state) => ({
-      search: {
-        ...state.search,
-        provider: "google",
-        configs: {
-          ...state.search.configs,
-          default: { serverAvailable: false },
-        },
-      },
-    }));
-
     useSettingsStore.getState().applyServerConfig(serverConfig);
-    expect(useSettingsStore.getState().search.provider).toBe("google");
+    expect(useSettingsStore.getState().search).toMatchObject({
+      provider: "default",
+      configs: { default: { serverAvailable: true } },
+    });
   });
 
   it("seeds missing task-model defaults without overwriting persisted user choices", async () => {

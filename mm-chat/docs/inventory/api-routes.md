@@ -5,23 +5,22 @@ This inventory maps current Next.js API routes to future `mm-chat` Go backend ow
 ## Summary
 
 Current server routes are mostly proxy/adaptor endpoints around chat
-generation, search, and voice.
+generation and voice. Web Search has moved to Go.
 
 ## Route Table
 
-| Current Route                 | Method | Current Responsibility  | Future Owner                                                 |
-| ----------------------------- | -----: | ----------------------- | ------------------------------------------------------------ |
-| `/api/health`                 |    GET | Health check            | Go `/health`, `/ready`                                       |
-| `/api/access/verify`          |   POST | Access/password gate    | Go auth/access middleware                                    |
-| `/api/chat`                   |   POST | Main chat stream        | Go chat streaming spine                                      |
-| `/api/chat/generate`          |   POST | Simple generate stream  | Go provider generate endpoint                                |
-| `/api/chat/generate-title`    |   POST | Title generation        | Go chat helper or async job                                  |
-| `/api/chat/related-questions` |   POST | Follow-up generation    | Go chat helper                                               |
-| `/api/chat/generate-image`    |   POST | Image generation        | Go provider adapter or later worker                          |
-| `/api/chat/execute-code`      |   POST | Code execution helper   | Separate sandbox service; do not put in core initially       |
-| `/api/search`                 |   POST | Search provider proxy   | Go search proxy with safe outbound policy                    |
-| `/api/voice/transcribe`       |   POST | Speech-to-text          | Go proxy or Python/media service later                       |
-| `/api/voice/synthesize`       |   POST | Text-to-speech          | Go proxy or media service later                              |
+| Current Route                 | Method | Current Responsibility | Future Owner                                           |
+| ----------------------------- | -----: | ---------------------- | ------------------------------------------------------ |
+| `/api/health`                 |    GET | Health check           | Go `/health`, `/ready`                                 |
+| `/api/access/verify`          |   POST | Access/password gate   | Go auth/access middleware                              |
+| `/api/chat`                   |   POST | Main chat stream       | Go chat streaming spine                                |
+| `/api/chat/generate`          |   POST | Simple generate stream | Go provider generate endpoint                          |
+| `/api/chat/generate-title`    |   POST | Title generation       | Go chat helper or async job                            |
+| `/api/chat/related-questions` |   POST | Follow-up generation   | Go chat helper                                         |
+| `/api/chat/generate-image`    |   POST | Image generation       | Go provider adapter or later worker                    |
+| `/api/chat/execute-code`      |   POST | Code execution helper  | Separate sandbox service; do not put in core initially |
+| `/api/voice/transcribe`       |   POST | Speech-to-text         | Go proxy or Python/media service later                 |
+| `/api/voice/synthesize`       |   POST | Text-to-speech         | Go proxy or media service later                        |
 
 ## Retired During G9
 
@@ -41,6 +40,7 @@ generation, search, and voice.
 | `/api/plugins/list`        |           GET | Go `/v1/plugins` through API client                       |
 | `/api/plugins/install`     |          POST | Go `/v1/plugins/install` through API client               |
 | `/api/plugins/execute`     |          POST | Go `/v1/plugins/execute` through API client               |
+| `/api/search`              |          POST | Go chat stream plus authenticated `/v1/search`            |
 
 ## Migration Priority
 

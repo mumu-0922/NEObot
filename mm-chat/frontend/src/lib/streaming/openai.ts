@@ -223,7 +223,6 @@ export interface OpenAIResponsesStreamOptions {
   temperature?: number;
   tools?: any[];
   useReasoning?: boolean;
-  enableWebSearch?: boolean;
   onChunk: (message: SSEMessage) => void;
 }
 
@@ -431,7 +430,6 @@ export async function streamOpenAIResponses(
     temperature,
     tools,
     useReasoning,
-    enableWebSearch,
     onChunk,
   } = options;
 
@@ -445,13 +443,6 @@ export async function streamOpenAIResponses(
   if (instructions) requestParams.instructions = instructions;
   if (temperature !== undefined) requestParams.temperature = temperature;
   const requestTools = tools ? [...tools] : [];
-  if (enableWebSearch) {
-    requestTools.push({ type: "web_search_preview" });
-    requestParams.include = [
-      "web_search_call.results",
-      "web_search_call.action.sources",
-    ];
-  }
   if (requestTools.length > 0) requestParams.tools = requestTools;
   if (useReasoning) {
     requestParams.reasoning = { effort: "high", summary: "auto" };

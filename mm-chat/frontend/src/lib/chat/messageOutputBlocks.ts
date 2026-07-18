@@ -197,7 +197,16 @@ export function createMessageOutputBlockBuilder(
 
 export function getMessageOutputBlocks(message: Message): MessageOutputBlock[] {
   if (message.outputBlocks?.length) {
-    return message.outputBlocks.map(cloneBlock);
+    const blocks = message.outputBlocks.map(cloneBlock);
+    const hasTextBlock = blocks.some((block) => block.type === "text");
+    if (!hasTextBlock && message.content) {
+      blocks.push({
+        id: `${message.id}-server-text`,
+        type: "text",
+        content: message.content,
+      });
+    }
+    return blocks;
   }
 
   const blocks: MessageOutputBlock[] = [];

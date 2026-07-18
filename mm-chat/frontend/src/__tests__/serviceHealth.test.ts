@@ -18,8 +18,6 @@ describe("service health status", () => {
     vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://redis.internal");
     vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "redis-secret");
     vi.stubEnv("DEFAULT_PROVIDER_API_KEY", "provider-secret");
-    vi.stubEnv("DEFAULT_SEARCH_PROVIDER", "tavily");
-    vi.stubEnv("DEFAULT_SEARCH_API_KEY", "search-secret");
     vi.stubEnv("DEFAULT_RAG_BASE_URL", "https://rag.internal");
     vi.stubEnv("DEFAULT_RAG_TOKEN", "rag-secret");
     vi.stubEnv("DEFAULT_DOCUMENT_PARSE_PROVIDER", "mineru");
@@ -39,7 +37,7 @@ describe("service health status", () => {
     expect(health.services.rateLimitStore.status).toBe("available");
     expect(health.services.pluginRegistry.status).toBe("available");
     expect(health.services.defaultModel.status).toBe("available");
-    expect(health.services.search.status).toBe("available");
+    expect(health.services.search.status).toBe("unconfigured");
     expect(health.services.rag.status).toBe("available");
     expect(health.services.voice.status).toBe("available");
     for (const secret of [
@@ -48,7 +46,6 @@ describe("service health status", () => {
       "redis-secret",
       "redis.internal",
       "provider-secret",
-      "search-secret",
       "rag-secret",
       "mineru-secret",
       "llama-secret",

@@ -91,8 +91,7 @@ const DeploymentHealth: React.FC = () => {
   const [runtimeHealth, setRuntimeHealth] =
     useState<ServiceHealthStatus | null>(null);
   const { providers, defaultModels } = useCoreSettingsStore();
-  const { serverConfig, search, rag, voice, installedPlugins } =
-    useSettingsStore();
+  const { serverConfig, rag, voice, installedPlugins } = useSettingsStore();
   const deployment = serverConfig?.deployment;
   const deploymentMode = deployment?.mode || "local";
   const sharedStoresOk =
@@ -109,8 +108,7 @@ const DeploymentHealth: React.FC = () => {
           Boolean(provider.apiKey?.trim())),
     ) ||
     Object.values(defaultModels).some(Boolean);
-  const hasSearch =
-    Boolean(serverConfig?.search.available) || search.provider !== "google";
+  const hasSearch = Boolean(serverConfig?.search.available);
   const hasRag =
     Boolean(serverConfig?.rag.vectorStoreAvailable) ||
     Boolean(serverConfig?.rag.documentProcessingAvailable) ||

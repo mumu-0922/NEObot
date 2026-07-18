@@ -1,10 +1,6 @@
 import "server-only";
 
-import {
-  RAG_LIMITS,
-  SEARCH_CONFIG_LIMITS,
-  SYSTEM_SETTINGS_LIMITS,
-} from "../../config/limits";
+import { RAG_LIMITS, SYSTEM_SETTINGS_LIMITS } from "../../config/limits";
 import { DEFAULT_SYSTEM_SETTINGS } from "../../config/defaults";
 import { normalizeProviderModelId } from "../providers/models";
 import { normalizeSystemSettings } from "../settings/appConfig";
@@ -14,7 +10,6 @@ import type {
   MimoVoiceID,
   ModelMetadata,
   ProviderType,
-  SearchProviderID,
   ServerDefaultVoiceProvider,
   SystemSettings,
   VoiceSettings,
@@ -51,19 +46,6 @@ const MIMO_TTS_VOICE_IDS = new Set<MimoVoiceID>([
   "Chloe",
   "Milo",
   "Dean",
-]);
-
-type ConfigurableSearchProvider = Exclude<
-  SearchProviderID,
-  "default" | "google"
->;
-
-const SEARCH_PROVIDERS = new Set<ConfigurableSearchProvider>([
-  "tavily",
-  "firecrawl",
-  "exa",
-  "bocha",
-  "searxng",
 ]);
 
 function env(name: string): string {
@@ -254,45 +236,6 @@ function normalizeDefaultModels(
         Boolean(entry[1]),
       ),
   ) as Partial<DefaultModels>;
-}
-
-export function getDefaultSearchRuntimeConfig(): {
-  provider: ConfigurableSearchProvider;
-  apiKey?: string;
-  baseUrl?: string;
-} | null {
-  const provider = env("DEFAULT_SEARCH_PROVIDER").toLowerCase();
-  if (!SEARCH_PROVIDERS.has(provider as ConfigurableSearchProvider)) {
-    return null;
-  }
-
-  const typedProvider = provider as ConfigurableSearchProvider;
-  const baseUrl = env("DEFAULT_SEARCH_BASE_URL").slice(
-    0,
-    SEARCH_CONFIG_LIMITS.maxBaseUrlChars,
-  );
-  if (typedProvider === "searxng") {
-    return baseUrl ? { provider: typedProvider, baseUrl } : null;
-  }
-
-  const apiKey = env("DEFAULT_SEARCH_API_KEY");
-  if (typedProvider === "firecrawl") {
-    return {
-      provider: typedProvider,
-      ...(apiKey
-        ? { apiKey: apiKey.slice(0, SEARCH_CONFIG_LIMITS.maxApiKeyChars) }
-        : {}),
-      ...(baseUrl ? { baseUrl } : {}),
-    };
-  }
-
-  if (!apiKey) return null;
-
-  return {
-    provider: typedProvider,
-    apiKey: apiKey.slice(0, SEARCH_CONFIG_LIMITS.maxApiKeyChars),
-    ...(baseUrl ? { baseUrl } : {}),
-  };
 }
 
 export function getDefaultRagRuntimeConfig(): {
@@ -548,7 +491,7 @@ export function getPublicServerConfig(): PublicServerConfig {
         : {},
     },
     search: {
-      available: Boolean(getDefaultSearchRuntimeConfig()),
+      available: false,
     },
     rag: {
       vectorStoreAvailable: Boolean(rag),

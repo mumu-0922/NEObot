@@ -6,7 +6,8 @@ G11.9E.1 ports the legacy external provider adapters from the temporary Next
 route into a closed Go package. G11.9E.2 adds the server-owned active resolver,
 execution service, authenticated Go route, and OpenAI Responses model-built-in
 Search stream. It still does not persist a Search Key, remove frontend code,
-mint/persist `[W]` citations, or activate a provider in the normal API binary.
+or activate a provider in the normal API binary. G11.9E.3 cuts the frontend to
+Go, persists bounded `[W]` artifacts, and deletes the legacy Next Search chain.
 
 ## 2. Signatures
 
@@ -33,6 +34,7 @@ type ActiveExecution struct {
 func NewService(resolver Resolver) *Service
 func (s *Service) ResolveActive(context.Context) (ActiveExecution, error)
 func (s *Service) Search(context.Context, Request) (Result, error)
+func (s *Service) Execute(context.Context, ActiveExecution, Request) (Result, error)
 ```
 
 ```go
@@ -104,26 +106,37 @@ accepted in this request.
 - OpenAI built-in Search posts streaming Responses requests to `/responses`
   with `web_search_preview`, normalizes URL citations and web-search action
   sources, deduplicates at most ten records, and emits `search.results` SSE;
-- built-in source events are transient in E.2. G11.9E.3 owns `[W]` markers,
-  output blocks, persistence, reload, and frontend consumption.
+- chat resolves the active execution once. External Search uses `Execute` on
+  that exact union; built-in selection uses the matching model capability;
+- external results are injected as a total-bounded Web evidence section with
+  `[W1]..[Wn]` markers. Built-in source events are cumulatively deduplicated;
+- terminal messages persist one `type: "search"` output block and redacted
+  `metadata.web` citation records. Completion/reload preserves source order,
+  marker identity, images, and content bounds;
+- `search.results` is consumed by the typed server-mode frontend and terminal
+  `message.completed` replaces the draft with the persisted artifact;
+- the frontend cannot choose a Search provider or send a Search Key/Base URL.
+  Availability comes only from Go `/v1/config`;
+- the legacy Next route, external adapter/service/policy, client preflight,
+  browser Search secrets, and self-hosted provider types are absent.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Result |
-| --- | --- |
-| Unknown provider, missing required Key, unsafe base URL | `ErrInvalidConfig` |
-| Empty/oversized query, invalid scope/limit | `ErrInvalidRequest` |
-| Resolver missing | `ErrNotConfigured` / HTTP `SEARCH_NOT_CONFIGURED` |
-| Resolver fails with internal detail | redacted `ErrResolutionFailed` |
-| Resolver returns zero, mixed, or unsupported execution | `ErrInvalidConfig` |
-| Built-in execution sent to `/v1/search` | HTTP 409 `MODEL_BUILTIN_SEARCH_REQUIRES_CHAT` |
-| Built-in OpenAI selected with a non-capable model provider | HTTP 501 `MODEL_BUILTIN_SEARCH_UNSUPPORTED` |
-| Request build/transport failure | redacted `ProviderError` |
-| Non-2xx provider status | `UPSTREAM_STATUS` plus numeric status |
-| Non-JSON or non-identity response | `RESPONSE_*_INVALID` |
-| Response exceeds 5 MiB | `RESPONSE_TOO_LARGE` |
-| Malformed/trailing JSON | `RESPONSE_DECODE_FAILED` |
-| Invalid/duplicate/oversized result row | row dropped, remaining order retained |
+| Condition                                                  | Result                                            |
+| ---------------------------------------------------------- | ------------------------------------------------- |
+| Unknown provider, missing required Key, unsafe base URL    | `ErrInvalidConfig`                                |
+| Empty/oversized query, invalid scope/limit                 | `ErrInvalidRequest`                               |
+| Resolver missing                                           | `ErrNotConfigured` / HTTP `SEARCH_NOT_CONFIGURED` |
+| Resolver fails with internal detail                        | redacted `ErrResolutionFailed`                    |
+| Resolver returns zero, mixed, or unsupported execution     | `ErrInvalidConfig`                                |
+| Built-in execution sent to `/v1/search`                    | HTTP 409 `MODEL_BUILTIN_SEARCH_REQUIRES_CHAT`     |
+| Built-in OpenAI selected with a non-capable model provider | HTTP 501 `MODEL_BUILTIN_SEARCH_UNSUPPORTED`       |
+| Request build/transport failure                            | redacted `ProviderError`                          |
+| Non-2xx provider status                                    | `UPSTREAM_STATUS` plus numeric status             |
+| Non-JSON or non-identity response                          | `RESPONSE_*_INVALID`                              |
+| Response exceeds 5 MiB                                     | `RESPONSE_TOO_LARGE`                              |
+| Malformed/trailing JSON                                    | `RESPONSE_DECODE_FAILED`                          |
+| Invalid/duplicate/oversized result row                     | row dropped, remaining order retained             |
 
 ## 5. Good / Base / Bad Cases
 
@@ -168,7 +181,12 @@ accepted in this request.
   rejects before creating an assistant message;
 - common HTTP integration proves `/v1/search` is registered and protected in
   required-auth mode;
-- no network or provider quota is consumed in E.1 or E.2.
+- E.3 tests external prompt injection, one resolver/provider call, cumulative
+  built-in results, `[W]` output blocks, metadata, typed SSE consumption,
+  frontend reload rendering, and live Postgres JSONB round-trip;
+- no network or provider quota is consumed in E.1 or E.2. E.3 performs one
+  owner-authorized real Firecrawl credential-rejection smoke and one configured
+  gateway capability probe without exposing credentials or falling back.
 
 ## 7. Wrong vs Correct
 
@@ -178,17 +196,18 @@ multi-provider fallback.
 
 Correct: keep each provider behind one closed adapter, centralize the hardened
 transport and normalizer, resolve the sole active execution on the server,
-distinguish OpenAI from OpenAI Compatible by proven runtime capability, and
-defer encrypted secrets, `[W]` persistence, UI cutover, deletion, and live spend
-to their explicit later gates.
+distinguish OpenAI from OpenAI Compatible by proven runtime capability, persist
+bounded chat-owned `[W]` artifacts, and defer encrypted administrator secrets
+plus positive activation tests to G11.9F.
 
 ## 8. Rollback / Next Gate
 
-Rollback removes the `/v1/search` registration and model-built-in handler option,
-then reverts `OpenAIProvider` to the prior OpenAI-compatible Chat Completions
-constructor. No persisted schema/state changed, the default binary has no
-active Search resolver, and old frontend Search remains untouched.
+Rollback reverts the E.3 commit as one unit: restore the legacy route/UI only
+with its original E.2 code, remove chat Web output-block construction, and keep
+the normal binary resolver unset. No schema migration was added; already
+persisted Search output blocks are ordinary JSONB and remain readable as
+unknown output blocks by older code.
 
-G11.9E.3 must cut the frontend to the Go route/stream, assemble and persist
-`[W]` citation artifacts, remove SearXNG and the legacy Next route, and run the
-authorized real-provider smoke without adding cross-provider fallback.
+G11.9F next adds encrypted Postgres administrator configuration, a Docker
+Secret master key, exactly-one-active validation, and positive bounded real
+connection tests. G11.9G owns conditional Knowledge/Web/model fusion.

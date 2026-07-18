@@ -16,6 +16,7 @@ import type {
   GenerateRelatedQuestionsResponse,
   PlanServerToolsInput,
   ServerPlannedToolCall,
+  ServerSearchResult,
   StreamAssistantMessageInput,
   ServerStreamEvent,
   UpdateConversationInput,
@@ -452,6 +453,12 @@ function dispatchStreamEvent(
     case "usage.updated":
       handlers?.onUsage?.(event);
       return null;
+    case "search.results":
+      handlers?.onSearch?.({
+        ...event,
+        results: normalizeServerSearchResult(event.results),
+      });
+      return null;
     case "message.completed":
       handlers?.onCompleted?.(event);
       return {
@@ -478,6 +485,57 @@ function dispatchStreamEvent(
     default:
       return null;
   }
+}
+
+function normalizeServerSearchResult(value: unknown): ServerSearchResult {
+  if (!isRecord(value) || !Array.isArray(value.sources)) {
+    throw new ApiClientError(
+      "INVALID_SERVER_RESPONSE",
+      "Server returned invalid search results.",
+    );
+  }
+  const images = value.images === undefined ? [] : value.images;
+  if (!Array.isArray(images)) {
+    throw new ApiClientError(
+      "INVALID_SERVER_RESPONSE",
+      "Server returned invalid search images.",
+    );
+  }
+  return {
+    sources: value.sources.map((source) => {
+      if (
+        !isRecord(source) ||
+        typeof source.title !== "string" ||
+        typeof source.url !== "string" ||
+        typeof source.content !== "string"
+      ) {
+        throw new ApiClientError(
+          "INVALID_SERVER_RESPONSE",
+          "Server returned an invalid search source.",
+        );
+      }
+      return {
+        title: source.title,
+        url: source.url,
+        content: source.content,
+        ...(isRecord(source.metadata) ? { metadata: source.metadata } : {}),
+      };
+    }),
+    images: images.map((image) => {
+      if (!isRecord(image) || typeof image.url !== "string") {
+        throw new ApiClientError(
+          "INVALID_SERVER_RESPONSE",
+          "Server returned an invalid search image.",
+        );
+      }
+      return {
+        url: image.url,
+        ...(typeof image.description === "string"
+          ? { description: image.description }
+          : {}),
+      };
+    }),
+  };
 }
 
 async function cancelRunById(

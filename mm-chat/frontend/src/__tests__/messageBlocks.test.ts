@@ -108,4 +108,56 @@ describe("message output blocks", () => {
       "text",
     ]);
   });
+
+  it("renders server message content after persisted search output blocks", () => {
+    const message: Message = {
+      id: "msg_search",
+      role: "model",
+      content: "Answer with [W1].",
+      timestamp: 1,
+      outputBlocks: [
+        {
+          id: "msg_search-web-sources",
+          type: "search",
+          isSearching: false,
+          sources: [
+            {
+              title: "Source",
+              url: "https://example.com",
+              content: "Evidence",
+              metadata: { marker: "[W1]" },
+            },
+          ],
+          images: [],
+        },
+      ],
+    };
+
+    expect(getMessageOutputBlocks(message)).toMatchObject([
+      { type: "search" },
+      {
+        id: "msg_search-server-text",
+        type: "text",
+        content: "Answer with [W1].",
+      },
+    ]);
+  });
+
+  it("does not duplicate content already represented by a text output block", () => {
+    const message: Message = {
+      id: "msg_text",
+      role: "model",
+      content: "Final answer",
+      timestamp: 1,
+      outputBlocks: [
+        {
+          id: "text-1",
+          type: "text",
+          content: "Final answer",
+        },
+      ],
+    };
+
+    expect(getMessageOutputBlocks(message)).toEqual(message.outputBlocks);
+  });
 });

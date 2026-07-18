@@ -2,7 +2,6 @@ import type {
   ModelProvider,
   PluginConfig,
   RAGConfig,
-  SearchServiceConfig,
   VoiceSettings,
 } from "../../types";
 import {
@@ -11,7 +10,7 @@ import {
   LOCAL_SECRET_CONTEXTS,
   type LocalEncryptedSecretEnvelope,
 } from "../security/localSecrets";
-import { normalizeRAGConfig, normalizeSearchSettings } from "./searchRag";
+import { normalizeRAGConfig } from "./searchRag";
 
 export async function migrateLocalSecretField(
   plainSecret: string | undefined,
@@ -49,26 +48,6 @@ export function stripProviderPlainSecret(
     ...provider,
     apiKey: "",
   };
-}
-
-export async function migrateSearchLocalSecrets(search: unknown) {
-  const normalized = normalizeSearchSettings(search);
-  const configs: Record<string, SearchServiceConfig> = {};
-
-  for (const [provider, config] of Object.entries(normalized.configs)) {
-    const apiKeySecret = await migrateLocalSecretField(
-      config.apiKey,
-      config.apiKeySecret,
-      LOCAL_SECRET_CONTEXTS.searchApiKey(provider),
-    );
-    configs[provider] = {
-      ...config,
-      apiKey: "",
-      ...(apiKeySecret ? { apiKeySecret } : {}),
-    };
-  }
-
-  return { ...normalized, configs };
 }
 
 export async function migrateRAGLocalSecrets(rag: unknown): Promise<RAGConfig> {
@@ -165,22 +144,6 @@ export async function migratePluginConfigLocalSecrets(
   );
 
   return Object.fromEntries(migratedEntries);
-}
-
-export function stripSearchPlainSecrets(search: {
-  provider: string;
-  resultsLimit: number;
-  configs: Record<string, SearchServiceConfig>;
-}) {
-  return {
-    ...search,
-    configs: Object.fromEntries(
-      Object.entries(search.configs).map(([provider, config]) => [
-        provider,
-        { ...config, apiKey: "" },
-      ]),
-    ) as Record<string, SearchServiceConfig>,
-  };
 }
 
 export function stripRAGPlainSecrets(rag: RAGConfig): RAGConfig {

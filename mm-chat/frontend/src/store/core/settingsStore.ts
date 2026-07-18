@@ -48,8 +48,6 @@ import {
 import { logDevError } from "../../lib/utils/devLogger";
 import {
   normalizeRAGConfig,
-  normalizeSearchConfig,
-  normalizeSearchProvider,
   normalizeSearchSettings,
 } from "../../lib/settings/searchRag";
 import { getDefaultModelSelectValue } from "../../lib/utils/defaultModels";
@@ -79,11 +77,9 @@ import {
 import {
   migratePluginConfigLocalSecrets,
   migrateRAGLocalSecrets,
-  migrateSearchLocalSecrets,
   migrateVoiceLocalSecrets,
   stripPluginConfigPlainSecrets,
   stripRAGPlainSecrets,
-  stripSearchPlainSecrets,
   stripVoicePlainSecrets,
 } from "../../lib/settings/localSecretMigration";
 
@@ -128,11 +124,6 @@ interface SettingsState {
     resultsLimit: number;
     configs: Record<string, SearchServiceConfig>;
   };
-  setSearchProvider: (provider: SearchProviderID) => void;
-  updateSearchConfig: (
-    provider: string,
-    config: Partial<SearchServiceConfig>,
-  ) => void;
   setSearchResultsLimit: (limit: number) => void;
 
   // RAG Settings
@@ -347,13 +338,6 @@ export const useSettingsStore = create<SettingsState>()(
       serverConfig: null,
       applyServerConfig: (config) =>
         set((state) => {
-          const hadDefaultSearch =
-            state.search.configs.default?.serverAvailable !== undefined;
-          const shouldUseDefaultSearch =
-            config.search.available &&
-            !hadDefaultSearch &&
-            state.search.provider === "firecrawl";
-
           const hasLocalRagVectorStore =
             Boolean(state.rag.url?.trim()) || hasRagToken(state.rag);
           const shouldUseDefaultVectorStore =
@@ -404,11 +388,7 @@ export const useSettingsStore = create<SettingsState>()(
             customModelMetadata: nextCustomModelMetadata,
             search: normalizeSearchSettings({
               ...state.search,
-              provider: shouldUseDefaultSearch
-                ? "default"
-                : state.search.provider,
               configs: {
-                ...state.search.configs,
                 default: { serverAvailable: config.search.available },
               },
             }),
@@ -601,41 +581,12 @@ export const useSettingsStore = create<SettingsState>()(
 
       // Search Settings
       search: {
-        provider: "firecrawl",
+        provider: "default",
         resultsLimit: 5,
         configs: {
-          tavily: { apiKey: "" },
-          firecrawl: { apiKey: "" },
-          exa: { apiKey: "" },
-          bocha: { apiKey: "" },
-          searxng: { baseUrl: "http://localhost:8080" },
+          default: { serverAvailable: false },
         },
       },
-      setSearchProvider: (provider) =>
-        set((state) => ({
-          search: {
-            ...state.search,
-            provider: normalizeSearchProvider(provider),
-          },
-        })),
-      updateSearchConfig: (provider, config) =>
-        set((state) => {
-          const normalizedConfig = normalizeSearchConfig(provider, {
-            ...state.search.configs[provider],
-            ...config,
-          });
-          if (!normalizedConfig) return state;
-
-          return {
-            search: {
-              ...state.search,
-              configs: {
-                ...state.search.configs,
-                [provider]: normalizedConfig,
-              },
-            },
-          };
-        }),
       setSearchResultsLimit: (limit) =>
         set((state) => ({
           search: normalizeSearchSettings({
@@ -1220,7 +1171,7 @@ export const useSettingsStore = create<SettingsState>()(
         const pluginConfigs = await migratePluginConfigLocalSecrets(
           normalizePluginConfigs(state.pluginConfigs, installedPlugins),
         );
-        const search = await migrateSearchLocalSecrets(state.search);
+        const search = normalizeSearchSettings(state.search);
         const rag = await migrateRAGLocalSecrets(state.rag);
         const voice = await migrateVoiceLocalSecrets(state.voice);
         return {
@@ -1299,7 +1250,7 @@ export const useSettingsStore = create<SettingsState>()(
         modelMetadata: state.modelMetadata,
         modelMetadataTimestamp: state.modelMetadataTimestamp,
         customModelMetadata: state.customModelMetadata,
-        search: stripSearchPlainSecrets(state.search),
+        search: normalizeSearchSettings(state.search),
         rag: stripRAGPlainSecrets(state.rag),
         voice: stripVoicePlainSecrets(state.voice),
         activePlugins: state.activePlugins,

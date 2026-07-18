@@ -884,12 +884,74 @@ func TestHandlerUsesSelectedOpenAIModelBuiltInSearchAndStreamsSources(t *testing
 		"event: search.results",
 		`"type":"search.results"`,
 		`"url":"https://search.example/result"`,
-		`"content":"grounded answer"`,
+		`"content":"grounded answer\n\nSources: [W1]"`,
+		`"marker":"[W1]"`,
 		"event: message.completed",
 	} {
 		if !strings.Contains(recorder.Body.String(), want) {
 			t.Fatalf("stream body missing %q; body=%s", want, recorder.Body.String())
 		}
+	}
+	messages := repo.messages[testConversationID]
+	if len(messages) != 2 || len(messages[1].OutputBlocks) != 1 ||
+		!strings.Contains(messages[1].Content, "[W1]") {
+		t.Fatalf("persisted built-in search message = %#v", messages)
+	}
+}
+
+func TestHandlerExecutesExternalSearchOnceAndPersistsWebArtifacts(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "latest external fixture"),
+	)
+	provider := &titleProvider{chunks: []string{"External answer [W1]"}}
+	searchProvider := &fakeWebSearchProvider{result: websearch.Result{
+		Sources: []websearch.Source{{
+			Title: "External Fixture", URL: "https://search.example/external", Content: "fresh source",
+		}},
+	}}
+	searchResolver := &fakeWebSearchResolver{execution: websearch.ActiveExecution{
+		Mode: websearch.ExecutionExternal, External: searchProvider,
+	}}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithWebSearchService(websearch.NewService(searchResolver)),
+	)
+
+	recorder := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"grounded"},"config":{"useSearch":true,"searchResultsLimit":3},"idempotencyKey":"stream-key-external-search"}`,
+	)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	if searchResolver.calls != 1 || searchProvider.calls != 1 {
+		t.Fatalf("resolver/provider calls = %d/%d, want 1/1", searchResolver.calls, searchProvider.calls)
+	}
+	if searchProvider.request.Query != "latest external fixture" || searchProvider.request.MaxResults != 3 {
+		t.Fatalf("search request = %#v", searchProvider.request)
+	}
+	if !strings.Contains(provider.input.Prompt, "[W1] External Fixture") ||
+		!strings.Contains(provider.input.Prompt, "fresh source") ||
+		!strings.Contains(provider.input.SystemPrompt, "matching marker such as [W1]") {
+		t.Fatalf("provider prompt/system = %q / %q", provider.input.Prompt, provider.input.SystemPrompt)
+	}
+	if !strings.Contains(recorder.Body.String(), "event: search.results") ||
+		!strings.Contains(recorder.Body.String(), `"marker":"[W1]"`) {
+		t.Fatalf("stream body = %s", recorder.Body.String())
+	}
+	messages := repo.messages[testConversationID]
+	if len(messages) != 2 || messages[1].Content != "External answer [W1]" ||
+		len(messages[1].OutputBlocks) != 1 {
+		t.Fatalf("persisted external search message = %#v", messages)
+	}
+	webMetadata, ok := messages[1].Metadata["web"].(map[string]any)
+	if !ok || webMetadata["provider"] != "tavily" || webMetadata["citationCount"] != 1 {
+		t.Fatalf("web metadata = %#v", messages[1].Metadata["web"])
 	}
 }
 
@@ -2526,6 +2588,26 @@ type fakeWebSearchResolver struct {
 func (r *fakeWebSearchResolver) ResolveActive(context.Context) (websearch.ActiveExecution, error) {
 	r.calls++
 	return r.execution, r.err
+}
+
+type fakeWebSearchProvider struct {
+	request websearch.Request
+	result  websearch.Result
+	err     error
+	calls   int
+}
+
+func (p *fakeWebSearchProvider) ID() websearch.ProviderID {
+	return websearch.ProviderTavily
+}
+
+func (p *fakeWebSearchProvider) Search(
+	_ context.Context,
+	request websearch.Request,
+) (websearch.Result, error) {
+	p.calls++
+	p.request = request
+	return p.result, p.err
 }
 
 type modelBuiltInSearchProbe struct {

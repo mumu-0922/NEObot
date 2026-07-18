@@ -13,14 +13,17 @@ one active server-side execution, and exposes the authenticated `POST
 - bound and decode provider JSON without logging bodies or credentials;
 - normalize, deduplicate, truncate, and cap source/image results;
 - resolve exactly one active external or model-built-in execution;
+- execute chat against that already-resolved selection without a second
+  resolver read;
 - return stable redacted errors and never fall back to another provider;
 - keep model-built-in execution on the Go chat stream rather than the external
   search route.
 
-SearXNG is intentionally absent. OpenAI Responses Web Search is the only
+The retired self-hosted search path is absent. OpenAI Responses Web Search is the only
 currently admitted model-built-in capability because Go has no Gemini runtime
-provider yet. Administrator persistence and `[W]` citation persistence remain
-later slices.
+provider yet. Chat assigns bounded `[W<n>]` markers, persists a Search output
+block plus redacted Web metadata, and restores the same artifact after reload.
+Administrator provider persistence remains G11.9F.
 
 ## Usage
 
@@ -53,6 +56,7 @@ fails closed with `SEARCH_NOT_CONFIGURED` in the normal API binary.
 - `NewProvider(ProviderID, Config) (Provider, error)`
 - `NewService(Resolver) *Service`
 - `Service.ResolveActive(context.Context) (ActiveExecution, error)`
+- `Service.Execute(context.Context, ActiveExecution, Request) (Result, error)`
 - `Service.Search(context.Context, Request) (Result, error)`
 - `POST /v1/search`
 - `Provider.Search(context.Context, Request) (Result, error)`

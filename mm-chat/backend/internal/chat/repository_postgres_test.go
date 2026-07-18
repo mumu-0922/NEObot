@@ -210,10 +210,17 @@ func TestPostgresDuplicateConversationCopiesMessagesAndAttachments(t *testing.T)
 		t.Fatalf("CreateAssistantMessage() error = %v", err)
 	}
 	if _, err := repo.FinalizeAssistantMessage(ctx, conversation.ID, assistant.ID, FinalizeAssistantMessageInput{
-		Status:       "completed",
-		Content:      "answer",
-		OutputBlocks: []any{map[string]any{"type": "markdown", "content": "answer"}},
-		Metadata:     map[string]any{"runId": mustTestUUID(t)},
+		Status:  "completed",
+		Content: "answer [W1]",
+		OutputBlocks: []any{map[string]any{
+			"id": "web-sources", "type": "search", "isSearching": false,
+			"sources": []any{map[string]any{
+				"title": "Fixture", "url": "https://example.test/source", "content": "fresh",
+				"metadata": map[string]any{"marker": "[W1]"},
+			}},
+			"images": []any{},
+		}},
+		Metadata: map[string]any{"runId": mustTestUUID(t)},
 	}); err != nil {
 		t.Fatalf("FinalizeAssistantMessage() error = %v", err)
 	}
@@ -250,8 +257,18 @@ func TestPostgresDuplicateConversationCopiesMessagesAndAttachments(t *testing.T)
 	if len(messages[0].Attachments) != 1 || messages[0].Attachments[0].FileID != fileRecord.ID {
 		t.Fatalf("duplicated attachments = %#v", messages[0].Attachments)
 	}
-	if messages[1].ParentMessageID != messages[0].ID || messages[1].Content != "answer" || len(messages[1].OutputBlocks) != 1 {
+	if messages[1].ParentMessageID != messages[0].ID || messages[1].Content != "answer [W1]" || len(messages[1].OutputBlocks) != 1 {
 		t.Fatalf("duplicated assistant message = %#v", messages[1])
+	}
+	block, ok := messages[1].OutputBlocks[0].(map[string]any)
+	sources, sourcesOK := block["sources"].([]any)
+	if !ok || block["type"] != "search" || !sourcesOK || len(sources) != 1 {
+		t.Fatalf("duplicated Search output block = %#v", messages[1].OutputBlocks)
+	}
+	source, sourceOK := sources[0].(map[string]any)
+	metadata, metadataOK := source["metadata"].(map[string]any)
+	if !sourceOK || !metadataOK || metadata["marker"] != "[W1]" {
+		t.Fatalf("duplicated Search source = %#v", sources[0])
 	}
 }
 

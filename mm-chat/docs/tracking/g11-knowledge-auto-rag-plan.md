@@ -244,8 +244,11 @@ Incremental execution slices:
   Search API, stable fail-closed execution errors, shared built-in source
   normalization, and explicit OpenAI Responses Web Search capability while
   rejecting built-in Search for OpenAI Compatible providers;
-- **G11.9E.3** remaining: cut the frontend to Go, issue/persist `[W]` citations,
-  delete SearXNG plus legacy Next search, and pass an authorized real smoke.
+- **G11.9E.3** complete: cut the frontend to Go SSE, issue/persist bounded
+  `[W]` citations and Search output blocks, delete the retired self-hosted and
+  legacy Next Search chains, prove live Postgres reload, and pass authorized
+  real-provider negative capability/error smokes without fallback. Positive
+  credentialed activation remains G11.9F.
 
 ## G11.9F — Admin Provider Secrets and Connection Tests
 

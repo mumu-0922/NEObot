@@ -8432,3 +8432,16 @@ generation are unchanged. Detailed implementation, verification, rollback, and
 D.2.2/D.2.3 handoff are recorded in
 `docs/tracking/g11-knowledge-auto-rag-process.md` and
 `docs/contracts/rag-structure-chunking.md`.
+
+## 2026-07-18 — G11.9E.3 Search cutover cross-reference
+
+Go chat now resolves Search once, executes the selected external or built-in
+capability without fallback, emits cumulative `search.results`, and persists
+bounded `[W]` citation/output artifacts through Postgres reload. The frontend
+consumes the Go SSE and server-owned availability; legacy Next Search, browser
+provider/Key/Base URL authority, client preflight, built-in Next flags, and the
+retired self-hosted path are deleted. Backend tests/race/vet, 846 frontend tests,
+lint/typecheck/build, live Postgres round-trip, Compose build/health, and
+owner-authorized real negative provider probes passed. Positive credentialed
+activation remains G11.9F. Detailed evidence and the persisted-volume principal
+drift repair are in `docs/tracking/g11-knowledge-auto-rag-process.md`.

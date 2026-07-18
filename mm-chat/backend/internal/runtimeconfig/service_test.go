@@ -67,6 +67,14 @@ func TestPublicConfigPublishesSharedPluginRegistryWhenDatabaseConfigured(t *test
 	}
 }
 
+func TestPublicConfigPublishesInjectedSearchAvailability(t *testing.T) {
+	service := NewService(config.Config{}, WithSearchAvailable(true))
+
+	if !service.PublicConfig().Search.Available {
+		t.Fatalf("search should be available")
+	}
+}
+
 func TestProviderModelsSupportsOnlyServerDefault(t *testing.T) {
 	service := NewService(config.Config{Provider: config.ProviderConfig{Model: "gpt-a,gpt-b"}})
 

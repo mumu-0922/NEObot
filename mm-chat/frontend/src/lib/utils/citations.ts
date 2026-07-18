@@ -15,10 +15,10 @@ export function linkifyCitationReferences(
     .map((segment, segmentIndex) => {
       if (segmentIndex % 2 === 1) return segment;
 
-      return segment.replace(/\[(\d+)\]/g, (match, value) => {
+      return segment.replace(/\[(W?)(\d+)\]/g, (match, prefix, value) => {
         const sourceIndex = Number.parseInt(value, 10) - 1;
         return sources[sourceIndex]
-          ? `[${value}](${createCitationHref(sourceIndex)})`
+          ? `[${prefix}${value}](${createCitationHref(sourceIndex)})`
           : match;
       });
     })

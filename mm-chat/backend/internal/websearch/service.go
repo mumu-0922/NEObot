@@ -43,6 +43,32 @@ func (s *Service) Search(ctx context.Context, input Request) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	return s.executeNormalized(ctx, execution, normalized)
+}
+
+// Execute runs a request against an already resolved execution. Chat uses this
+// entry point so one request cannot observe two different active providers
+// between capability selection and the outbound search call.
+func (s *Service) Execute(
+	ctx context.Context,
+	execution ActiveExecution,
+	input Request,
+) (Result, error) {
+	if err := validateActiveExecution(execution); err != nil {
+		return Result{}, err
+	}
+	normalized, err := normalizeRequest(input)
+	if err != nil {
+		return Result{}, err
+	}
+	return s.executeNormalized(ctx, execution, normalized)
+}
+
+func (s *Service) executeNormalized(
+	ctx context.Context,
+	execution ActiveExecution,
+	normalized Request,
+) (Result, error) {
 	if execution.Mode == ExecutionModelBuiltIn {
 		return Result{}, ErrModelBuiltInRequiresChat
 	}

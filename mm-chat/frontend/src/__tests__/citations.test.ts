@@ -20,11 +20,13 @@ describe("citation utilities", () => {
     ];
 
     const output = linkifyCitationReferences(
-      "Use [1], but keep `[1]` as code.",
+      "Use [1] and [W1], keep [K1] and `[W1]` as-is.",
       sources,
     );
 
-    expect(output).toBe("Use [1](#citation-0), but keep `[1]` as code.");
+    expect(output).toBe(
+      "Use [1](#citation-0) and [W1](#citation-0), keep [K1] and `[W1]` as-is.",
+    );
     expect(output).not.toContain("example.com");
     expect(output).not.toContain("javascript:");
   });

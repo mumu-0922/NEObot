@@ -264,6 +264,7 @@ export interface ChatStreamHandlers {
   onStarted?: (event: ServerStreamEvent) => void;
   onDelta?: (event: ServerStreamEvent) => void;
   onUsage?: (event: ServerStreamEvent) => void;
+  onSearch?: (event: ServerStreamEvent) => void;
   onCompleted?: (event: ServerStreamEvent) => void;
   onError?: (event: ServerStreamEvent) => void;
   onCancelled?: (event: ServerStreamEvent) => void;
@@ -913,6 +914,7 @@ export type ServerStreamEventType =
   | "message.started"
   | "message.delta"
   | "usage.updated"
+  | "search.results"
   | "message.completed"
   | "message.error"
   | "message.cancelled"
@@ -928,7 +930,25 @@ export interface ServerStreamEvent {
   role?: "assistant";
   delta?: string;
   usage?: unknown;
+  results?: ServerSearchResult;
   message?: ChatMessageDTO;
   error?: ApiErrorEnvelope["error"];
   [key: string]: unknown;
+}
+
+export interface ServerSearchSource {
+  title: string;
+  url: string;
+  content: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ServerSearchImage {
+  url: string;
+  description?: string;
+}
+
+export interface ServerSearchResult {
+  sources: ServerSearchSource[];
+  images: ServerSearchImage[];
 }

@@ -21,7 +21,7 @@ Live source and deployment configuration currently prove:
 - `mm-chat/compose.single-server.yml` builds backend, frontend, and RAG worker
   from the standalone project tree and exposes the same-origin `/mm-api` edge
   to the private Go service;
-- the relocated frontend still registers 11 transitional Next.js `/api/*`
+- the relocated frontend still registers 10 transitional Next.js `/api/*`
   route handlers;
 - the Go backend already registers Auth, Chat, Files, Browser Import, Teams,
   Knowledge Collection/Document/Consent, Health, Readiness, and Metrics routes;
@@ -32,15 +32,15 @@ Live source and deployment configuration currently prove:
 
 ## Completed Migration Spine
 
-| Capability                    | Backend             | Frontend                   | Remaining boundary                            |
-| ----------------------------- | ------------------- | -------------------------- | --------------------------------------------- |
-| Chat CRUD and SSE             | Go                  | Relocated UI wired         | Remove local production path                  |
+| Capability                    | Backend             | Frontend                   | Remaining boundary                                                 |
+| ----------------------------- | ------------------- | -------------------------- | ------------------------------------------------------------------ |
+| Chat CRUD and SSE             | Go                  | Relocated UI wired         | Remove local production path                                       |
 | Files and attachments         | Go + object storage | Relocated UI wired         | G9.5 fenced local persist, OPFS, and chat-message IndexedDB writes |
-| Browser data import           | Go                  | Relocated UI wired         | Keep explicit one-time import                 |
-| Auth and sessions             | Go                  | Partial/legacy UI          | Wire server-only auth lifecycle               |
-| Teams and membership          | Go                  | Not fully wired            | Add UI adapters and screens in existing theme |
-| Knowledge control plane       | Go                  | Local knowledge UI remains | Wire Collections/Documents/Consent to Go      |
-| Offline parser/RAG foundation | Python dark-run     | Not production-visible     | Complete Phase 15.2 gates and Go handlers     |
+| Browser data import           | Go                  | Relocated UI wired         | Keep explicit one-time import                                      |
+| Auth and sessions             | Go                  | Partial/legacy UI          | Wire server-only auth lifecycle                                    |
+| Teams and membership          | Go                  | Not fully wired            | Add UI adapters and screens in existing theme                      |
+| Knowledge control plane       | Go                  | Local knowledge UI remains | Wire Collections/Documents/Consent to Go                           |
+| Offline parser/RAG foundation | Python dark-run     | Not production-visible     | Complete Phase 15.2 gates and Go handlers                          |
 
 ## Legacy Next.js API Route Disposition
 
@@ -86,7 +86,14 @@ adapters passed:
 /api/plugins/list
 ```
 
-The remaining 7 root handlers still require a Go/RAG replacement or an
+The legacy Search route was retired in G11.9E after Go provider parity,
+stream persistence, and frontend cutover passed:
+
+```text
+/api/search -> /v1/search and /v1/chat/conversations/{id}/stream
+```
+
+The remaining 6 root handlers still require a Go/RAG replacement or an
 equivalent server-owned static/catalog implementation:
 
 ```text
@@ -94,7 +101,6 @@ equivalent server-owned static/catalog implementation:
 /api/chat/generate-image
 /api/chat/generate-title
 /api/chat/related-questions
-/api/search
 /api/voice/synthesize
 /api/voice/transcribe
 ```

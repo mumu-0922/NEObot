@@ -147,12 +147,15 @@ describe("local secret envelopes", () => {
 
   it("rejects mismatched contexts", async () => {
     const envelope = await encryptLocalSecret(
-      "search-secret",
-      LOCAL_SECRET_CONTEXTS.searchApiKey("tavily"),
+      "provider-secret",
+      LOCAL_SECRET_CONTEXTS.providerApiKey("provider-a"),
     );
 
     await expect(
-      decryptLocalSecret(envelope, LOCAL_SECRET_CONTEXTS.searchApiKey("exa")),
+      decryptLocalSecret(
+        envelope,
+        LOCAL_SECRET_CONTEXTS.providerApiKey("provider-b"),
+      ),
     ).rejects.toThrow(/context/i);
   });
 

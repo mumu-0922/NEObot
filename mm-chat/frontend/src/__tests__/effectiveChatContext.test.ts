@@ -41,8 +41,8 @@ describe("effective chat context", () => {
         useRAG: true,
       },
       search: {
-        provider: "google",
-        configs: {},
+        provider: "default",
+        configs: { default: { serverAvailable: false } },
       },
       rag: {
         enabled: true,
@@ -126,8 +126,8 @@ describe("effective chat context", () => {
         useRAG: false,
       },
       search: {
-        provider: "google",
-        configs: {},
+        provider: "default",
+        configs: { default: { serverAvailable: false } },
       },
       rag: {
         enabled: false,
@@ -170,7 +170,10 @@ describe("effective chat context", () => {
         temperature: 0.7,
         useRAG: false,
       },
-      search: { provider: "google", configs: {} },
+      search: {
+        provider: "default",
+        configs: { default: { serverAvailable: false } },
+      },
       rag: {
         enabled: false,
         url: "",
@@ -255,8 +258,8 @@ describe("effective chat context", () => {
         useRAG: false,
       },
       search: {
-        provider: "google",
-        configs: {},
+        provider: "default",
+        configs: { default: { serverAvailable: false } },
       },
       rag: {
         enabled: false,
@@ -314,8 +317,8 @@ describe("effective chat context", () => {
         useRAG: false,
       },
       search: {
-        provider: "google",
-        configs: {},
+        provider: "default",
+        configs: { default: { serverAvailable: false } },
       },
       rag: {
         enabled: false,

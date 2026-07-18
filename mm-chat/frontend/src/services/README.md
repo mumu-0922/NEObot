@@ -12,7 +12,6 @@ src/services/
 │   ├── docParseService.ts
 │   ├── pluginService.ts
 │   ├── ragService.ts
-│   ├── searchService.ts
 │   ├── skillService.ts
 │   └── voiceService.ts
 ├── artifactService.ts
@@ -36,10 +35,6 @@ Handles chat generation workflows from the browser side:
 ### `agentService.ts`
 
 Fetches assistant marketplace data and assistant details from app API routes.
-
-### `searchService.ts`
-
-Creates search-provider requests for supported external providers. Search safety and provider-specific validation are enforced by API routes and security helpers.
 
 ### `ragService.ts`
 

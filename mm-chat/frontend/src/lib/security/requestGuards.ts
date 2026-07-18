@@ -24,7 +24,6 @@ const DEFAULT_RATE_LIMIT: RateLimitRule = {
 const RATE_LIMIT_RULES: Array<[RegExp, RateLimitRule]> = [
   [/^\/api\/access\/verify$/, { windowMs: 60_000, maxRequests: 10 }],
   [/^\/api\/chat(?:\/|$)/, { windowMs: 60_000, maxRequests: 60 }],
-  [/^\/api\/search$/, { windowMs: 60_000, maxRequests: 30 }],
   [/^\/api\/voice(?:\/|$)/, { windowMs: 60_000, maxRequests: 20 }],
 ];
 

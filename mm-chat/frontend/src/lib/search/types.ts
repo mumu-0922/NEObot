@@ -1,5 +1,3 @@
-import type { LocalEncryptedSecretEnvelope } from "../security/localSecrets";
-
 export interface Source {
   title: string;
   url: string;
@@ -12,12 +10,8 @@ export interface ImageSource {
   description?: string;
 }
 
-export type SearchProviderID =
-  "default" | "google" | "tavily" | "firecrawl" | "exa" | "bocha" | "searxng";
+export type SearchProviderID = "default";
 
 export interface SearchServiceConfig {
-  apiKey?: string;
-  apiKeySecret?: LocalEncryptedSecretEnvelope;
-  baseUrl?: string;
   serverAvailable?: boolean;
 }

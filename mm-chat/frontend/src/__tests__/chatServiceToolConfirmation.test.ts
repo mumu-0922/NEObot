@@ -53,11 +53,6 @@ vi.mock("@/lib/utils/model", () => ({
   }),
 }));
 
-vi.mock("@/lib/settings/searchRag", () => ({
-  getSearchCompatibility: vi.fn(() => ({ enabled: true, mode: "native" })),
-  getSearchCompatibilityErrorMessage: vi.fn(() => "Search is unavailable"),
-}));
-
 vi.mock("@/lib/utils/chatInput", () => ({
   appendContextToChatInput: vi.fn(
     (message: string, context: string) => `${message}\n\n${context}`,
@@ -83,10 +78,6 @@ vi.mock("@/lib/utils/contextCompression", () => ({
 vi.mock("@/lib/utils/devLogger", () => ({
   logDevError: vi.fn(),
   logDevWarn: vi.fn(),
-}));
-
-vi.mock("../services/api/searchService", () => ({
-  createSearchProvider: vi.fn(),
 }));
 
 const encoder = new TextEncoder();

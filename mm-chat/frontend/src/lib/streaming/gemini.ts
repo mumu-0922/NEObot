@@ -20,7 +20,6 @@ export interface GeminiStreamOptions {
   systemInstruction?: string;
   temperature?: number;
   tools?: any[];
-  enableGoogleSearch?: boolean;
   useReasoning?: boolean;
   onChunk: (message: SSEMessage) => void;
 }
@@ -69,7 +68,6 @@ export async function streamGeminiResponse(options: GeminiStreamOptions) {
     systemInstruction,
     temperature = 1,
     tools,
-    enableGoogleSearch,
     useReasoning,
     onChunk,
   } = options;
@@ -99,9 +97,6 @@ export async function streamGeminiResponse(options: GeminiStreamOptions) {
   const geminiTools: NonNullable<GenerateContentConfig["tools"]> = [];
   if (tools && tools.length > 0) {
     geminiTools.push({ functionDeclarations: tools });
-  }
-  if (enableGoogleSearch) {
-    geminiTools.push({ googleSearch: {} });
   }
   if (geminiTools.length > 0) {
     config.tools = geminiTools;

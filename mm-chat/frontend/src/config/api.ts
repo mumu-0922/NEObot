@@ -22,11 +22,6 @@ export const API_ROUTES = {
     generateImage: "/api/chat/generate-image",
   },
 
-  // 搜索相关
-  search: {
-    query: "/api/search",
-  },
-
   // 语音相关
   voice: {
     transcribe: "/api/voice/transcribe",
@@ -37,17 +32,6 @@ export const API_ROUTES = {
 // ============================================================================
 // 外部服务 URL
 // ============================================================================
-
-/**
- * 搜索服务 URL
- */
-export const SEARCH_SERVICE_URLS = {
-  tavily: "https://api.tavily.com",
-  firecrawl: "https://api.firecrawl.dev",
-  exa: "https://api.exa.ai",
-  bocha: "https://api.bochaai.com",
-  searxng: "http://localhost:8080",
-} as const;
 
 /**
  * AI 服务 URL
@@ -72,7 +56,6 @@ export const DATA_SERVICE_URLS = {
  * 所有外部 API URL（向后兼容）
  */
 export const EXTERNAL_API_URLS = {
-  ...SEARCH_SERVICE_URLS,
   ...AI_SERVICE_URLS,
   ...DATA_SERVICE_URLS,
 } as const;

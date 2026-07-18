@@ -31,9 +31,6 @@ vi.mock("@/lib/providers/providerTypes", async () =>
 vi.mock("@/lib/search/results", async () =>
   vi.importActual("../lib/search/results"),
 );
-vi.mock("@/lib/security/searchPolicy", async () =>
-  vi.importActual("../lib/security/searchPolicy"),
-);
 vi.mock("@/lib/security/urlPolicy", async () =>
   vi.importActual("../lib/security/urlPolicy"),
 );
@@ -84,9 +81,6 @@ const ENV_KEYS = [
   "DEFAULT_MODEL_PROMPT_OPTIMIZATION",
   "DEFAULT_MODEL_RAG_QUERY",
   "DEFAULT_MODEL_MEMORY",
-  "DEFAULT_SEARCH_PROVIDER",
-  "DEFAULT_SEARCH_API_KEY",
-  "DEFAULT_SEARCH_BASE_URL",
   "DEFAULT_RAG_BASE_URL",
   "DEFAULT_RAG_TOKEN",
   "DEFAULT_RAG_TOP_K",
@@ -166,9 +160,6 @@ describe("server default configuration", () => {
       DEFAULT_PROVIDER_API_KEY: "provider-secret",
       DEFAULT_PROVIDER_MODELS: "gpt-4o, gpt-4o-mini, gpt-4o",
       DEFAULT_MODEL_TITLE_GENERATION: "gpt-4o-mini",
-      DEFAULT_SEARCH_PROVIDER: "tavily",
-      DEFAULT_SEARCH_API_KEY: "search-secret",
-      DEFAULT_SEARCH_BASE_URL: "https://search.internal",
       DEFAULT_RAG_BASE_URL: "https://rag.internal",
       DEFAULT_RAG_TOKEN: "rag-secret",
       DEFAULT_RAG_TOP_K: "7",
@@ -199,7 +190,7 @@ describe("server default configuration", () => {
       models: ["gpt-4o", "gpt-4o-mini"],
       defaultModels: { titleGeneration: "gpt-4o-mini" },
     });
-    expect(config.search.available).toBe(true);
+    expect(config.search.available).toBe(false);
     expect(config.rag).toMatchObject({
       vectorStoreAvailable: true,
       documentProcessingAvailable: true,
@@ -227,13 +218,11 @@ describe("server default configuration", () => {
 
     for (const secret of [
       "provider-secret",
-      "search-secret",
       "rag-secret",
       "mineru-secret",
       "llama-secret",
       "eleven-secret",
       "llm.internal",
-      "search.internal",
       "rag.internal",
     ]) {
       expect(serialized).not.toContain(secret);
@@ -250,20 +239,6 @@ describe("server default configuration", () => {
     const config = getPublicServerConfig();
 
     expect(config.system?.enableHtmlVisualPrompt).toBe(false);
-  });
-
-  it("keeps keyless Firecrawl available as a default search provider", async () => {
-    setEnv({
-      DEFAULT_SEARCH_PROVIDER: "firecrawl",
-    });
-
-    const { getDefaultSearchRuntimeConfig, getPublicServerConfig } =
-      await import("../lib/defaultConfig/server");
-
-    expect(getDefaultSearchRuntimeConfig()).toEqual({
-      provider: "firecrawl",
-    });
-    expect(getPublicServerConfig().search.available).toBe(true);
   });
 
   it("does not publish a default voice provider unless it is explicitly configured", async () => {
@@ -480,52 +455,6 @@ describe("server default configuration", () => {
     expect(text).not.toContain("gemini-fallback-secret");
     expect(text).not.toContain("api-fallback-secret");
     expect(text).not.toContain("openai-fallback-secret");
-  });
-
-  it("uses server default search credentials for provider default requests", async () => {
-    setEnv({
-      DEFAULT_SEARCH_PROVIDER: "tavily",
-      DEFAULT_SEARCH_API_KEY: "search-secret",
-      DEFAULT_SEARCH_BASE_URL: "https://search.internal",
-    });
-    mocks.safeFetchJson.mockResolvedValue({
-      response: new Response(null, { status: 200 }),
-      data: {
-        results: [
-          {
-            title: "Result",
-            url: "https://example.com/result",
-            content: "Body",
-          },
-        ],
-        images: [],
-      },
-    });
-
-    const { POST } = await import("../app/api/search/route");
-    const response = await POST(
-      new Request("https://neo.test/api/search", {
-        method: "POST",
-        body: JSON.stringify({
-          provider: "default",
-          query: "neo",
-        }),
-      }) as any,
-    );
-
-    expect(response.status).toBe(200);
-    expect(mocks.safeFetchJson).toHaveBeenCalledWith(
-      "https://search.internal/search",
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: "Bearer search-secret",
-        }),
-      }),
-      expect.any(Object),
-    );
-    expect(JSON.stringify(await response.json())).not.toContain(
-      "search-secret",
-    );
   });
 
   it("publishes Mineru as the default parser without requiring a token", async () => {

@@ -96,21 +96,7 @@ function defaultModelHealth(): ServiceHealthItem {
 }
 
 function searchHealth(): ServiceHealthItem {
-  const provider = env("DEFAULT_SEARCH_PROVIDER").toLowerCase();
-  if (!provider) {
-    return item("search", "unconfigured", "SEARCH_UNCONFIGURED");
-  }
-  if (provider === "searxng") {
-    return env("DEFAULT_SEARCH_BASE_URL")
-      ? item("search", "available", "SEARCH_CONFIGURED")
-      : item("search", "missing_key", "SEARCH_BASE_URL_MISSING");
-  }
-  if (provider === "firecrawl") {
-    return item("search", "available", "SEARCH_CONFIGURED");
-  }
-  return env("DEFAULT_SEARCH_API_KEY")
-    ? item("search", "available", "SEARCH_CONFIGURED")
-    : item("search", "missing_key", "SEARCH_API_KEY_MISSING");
+  return item("search", "unconfigured", "SEARCH_SERVER_MANAGED");
 }
 
 function ragHealth(): ServiceHealthItem {

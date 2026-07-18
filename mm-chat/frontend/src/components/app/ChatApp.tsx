@@ -335,6 +335,7 @@ const ChatApp = () => {
   const currentSessionWorkspaceId = currentSession?.workspaceId;
   const serverSessionChatConfig = {
     useSearch: currentSessionConfig?.useSearch ?? false,
+    searchResultsLimit: search.resultsLimit,
     useReasoning: chatConfig.useReasoning,
     activePlugins,
     activeSkills: activeSkillIds,
@@ -855,6 +856,24 @@ const ChatApp = () => {
 
   const showServerUnsupportedAction = (action: string) => {
     showActionError(`Server mode does not support ${action} yet.`);
+  };
+
+  const toggleServerSearch = async () => {
+    const useSearch = !(currentSession?.config?.useSearch ?? false);
+    if (!visibleCurrentSessionId) {
+      const sessionId = await createServerSession({ config: { useSearch } });
+      if (!sessionId) {
+        throw new Error("Server conversation could not be created.");
+      }
+      return;
+    }
+    const updated = await updateServerSessionConfig(visibleCurrentSessionId, {
+      ...(currentSession?.config ?? {}),
+      useSearch,
+    });
+    if (!updated) {
+      throw new Error("Search selection could not be saved.");
+    }
   };
 
   const persistConversationKnowledgeSelection = async (
@@ -2915,11 +2934,19 @@ const ChatApp = () => {
                   selectedModel={selectedModel}
                   onSelectModel={setModel}
                   isSearchEnabled={composerChatConfig.useSearch}
-                  onToggleSearch={() =>
-                    serverModeEnabled
-                      ? showServerUnsupportedAction("search toggle")
-                      : setChatConfig({ useSearch: !chatConfig.useSearch })
-                  }
+                  onToggleSearch={() => {
+                    if (serverModeEnabled) {
+                      void toggleServerSearch().catch((error) =>
+                        showActionError(
+                          error instanceof Error
+                            ? error.message
+                            : "Search selection could not be saved.",
+                        ),
+                      );
+                      return;
+                    }
+                    setChatConfig({ useSearch: !chatConfig.useSearch });
+                  }}
                   isReasoningEnabled={composerChatConfig.useReasoning}
                   onToggleReasoning={() =>
                     setChatConfig({
@@ -2927,6 +2954,7 @@ const ChatApp = () => {
                     })
                   }
                   localSessionToolsDisabled={serverModeEnabled}
+                  allowSearchWhenSessionToolsDisabled={serverModeEnabled}
                   allowReasoningWhenSessionToolsDisabled={serverModeEnabled}
                   allowSkillsWhenSessionToolsDisabled={serverModeEnabled}
                   allowPluginsWhenSessionToolsDisabled={serverModeEnabled}

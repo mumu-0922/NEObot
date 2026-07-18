@@ -43,8 +43,9 @@ var (
 const maxProviderModelsResponseBytes = 2 << 20
 
 type Service struct {
-	cfg  config.Config
-	repo ProviderConfigRepository
+	cfg             config.Config
+	repo            ProviderConfigRepository
+	searchAvailable bool
 
 	byokMu        sync.Mutex
 	ephemeralBYOK *rsa.PrivateKey
@@ -55,6 +56,12 @@ type ServiceOption func(*Service)
 func WithProviderConfigRepository(repo ProviderConfigRepository) ServiceOption {
 	return func(s *Service) {
 		s.repo = repo
+	}
+}
+
+func WithSearchAvailable(available bool) ServiceOption {
+	return func(s *Service) {
+		s.searchAvailable = available
 	}
 }
 
@@ -126,7 +133,7 @@ func (s *Service) PublicConfigForContext(ctx context.Context) PublicConfig {
 			ModelMetadata: map[string]any{},
 			DefaultModels: map[string]string{},
 		},
-		Search: SearchConfig{Available: false},
+		Search: SearchConfig{Available: s.searchAvailable},
 		RAG: RAGConfig{
 			VectorStoreAvailable:        false,
 			DocumentProcessingAvailable: false,

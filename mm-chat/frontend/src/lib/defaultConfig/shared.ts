@@ -9,7 +9,6 @@ import type {
 } from "../../types";
 
 export const SERVER_DEFAULT_PROVIDER_ID = "SERVER_DEFAULT";
-export const SERVER_DEFAULT_SEARCH_PROVIDER_ID = "default";
 
 export type ServerDefaultProviderSource = "server-default";
 export type PublicDeploymentStoreState = "memory" | "shared" | "missing";

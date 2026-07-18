@@ -1100,8 +1100,14 @@ const MessageItem: React.FC<MessageItemProps> = ({
     },
   });
 
-  // Search Data from Message
-  const sources = message.searchSources || [];
+  const persistedSearchBlock = message.outputBlocks?.find(
+    (block) => block.type === "search",
+  );
+  const sources =
+    message.searchSources ||
+    (persistedSearchBlock?.type === "search"
+      ? persistedSearchBlock.sources
+      : []);
 
   // RAG Data
   const ragSources = message.ragSources || [];

@@ -234,6 +234,7 @@ export type ChatGenerationEvent =
 
 export interface SessionConfig {
   useSearch?: boolean;
+  searchResultsLimit?: number;
   useReasoning?: boolean;
   activePlugins?: string[];
   activeSkills?: string[];

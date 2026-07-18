@@ -56,7 +56,7 @@ Owner directive captured on 2026-07-15:
 search toggle
 ```
 
-The relocated frontend still registers these 11 transitional Next.js routes:
+The relocated frontend still registers these 10 transitional Next.js routes:
 
 ```text
 /api/access/verify
@@ -67,14 +67,13 @@ The relocated frontend still registers these 11 transitional Next.js routes:
 /api/chat/generate-title
 /api/chat/related-questions
 /api/health
-/api/search
 /api/voice/synthesize
 /api/voice/transcribe
 ```
 
 Unfinished domains still include Auth UI lifecycle, Teams UI, Knowledge/RAG UI,
 Plugin final ownership, Provider Settings/BYOK, Voice, Image, Code Execution,
-Search, parser/RAG/citations, production local-mode removal, visual regression,
+Search administration/fusion, parser/RAG/citations, production local-mode removal, visual regression,
 backup/restore proof, and final clean-copy deletion gates.
 
 ## Slice Rule
@@ -313,12 +312,13 @@ Scope:
 
 - `/api/search`;
 - `search toggle` server-mode blocker;
-- provider decision for Firecrawl/SearXNG/other approved source;
+- server-owned decision for the single active Go Search provider;
 - degraded unavailable state when no provider is configured;
 - optional weather/web enrichment boundaries if tied to search UX.
 
-Current owner note: Search was previously paused. Keep implementation paused
-until the owner reopens it, but keep the work item in this cutover backlog.
+G11.9E completed the Go execution boundary, `[W]` persistence, frontend stream
+consumption, and legacy route deletion. Administrator persistence and final
+Knowledge/Web fusion remain G11.9F/G11.9G.
 
 Targeted tests:
 
@@ -606,8 +606,8 @@ Slice sequence:
           for future registry promotion, but it is not a required standalone
           deletion gate.
     - [x] G10.2b.2 Compose source-build proof: `docker compose ... build
-          backend frontend rag-worker` and `docker compose ... up -d backend
-          frontend rag-worker` passed using only the standalone project tree.
+    backend frontend rag-worker` and `docker compose ... up -d backend
+    frontend rag-worker` passed using only the standalone project tree.
 - [x] G10.3 Visual/interaction closure: record desktop and mobile smoke for
       app shell, chat streaming, model/provider visibility, Knowledge citation
       cards, Files/upload when configured, and navigation.
@@ -685,19 +685,19 @@ Targeted tests:
 
 ## Completion Ledger
 
-| Group                                    | Status      | Completion Rule                                                                      |
-| ---------------------------------------- | ----------- | ------------------------------------------------------------------------------------ |
-| G0 Plan Freeze and Guardrails            | Complete    | Docs, indexes, progress, and process log updated                                     |
-| G1 Conversation and Message Operations   | Complete    | G1.1-G1.6 complete; only paused cross-group search toggle remains outside G1         |
-| G2 Related Questions and Agent Catalogs  | Complete    | Related-question/catalog Next routes replaced                                        |
-| G3 Auth, Config, Provider Settings, BYOK | Complete    | Server-auth/config/provider lifecycle verified                                       |
-| G4 Plugin Final Ownership                | Complete    | G4.5c/G4.6b Go ownership and G9.4 Next route deletion complete                       |
-| G5 Search/Web Enrichment                 | Paused      | Owner reopens, then server-owned search passes gates                                 |
-| G6 Voice/Image/Code Jobs                 | In progress | Image generation is reopened through Go artifacts; voice executor remains            |
-| G7 Knowledge/RAG/Citations               | Complete    | Live MinerU + Jina + Postgres strict citation loop passed                            |
-| G8 Teams/Knowledge UI                    | Complete    | G8.1-G8.5 frontend control-plane wiring and isolation smoke passed                   |
-| G9 Data Authority/Route Removal          | Complete    | G9.1-G9.6 route freeze, route deletion, local write-authority, and clean-copy preflight passed |
-| G10 Final Closure/Delete Plan            | In progress | G10.1-G10.3 and build-based G10.2 complete; owner cleanup blocked by G11 parity regressions |
+| Group                                    | Status      | Completion Rule                                                                                    |
+| ---------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------- |
+| G0 Plan Freeze and Guardrails            | Complete    | Docs, indexes, progress, and process log updated                                                   |
+| G1 Conversation and Message Operations   | Complete    | G1.1-G1.6 complete; only paused cross-group search toggle remains outside G1                       |
+| G2 Related Questions and Agent Catalogs  | Complete    | Related-question/catalog Next routes replaced                                                      |
+| G3 Auth, Config, Provider Settings, BYOK | Complete    | Server-auth/config/provider lifecycle verified                                                     |
+| G4 Plugin Final Ownership                | Complete    | G4.5c/G4.6b Go ownership and G9.4 Next route deletion complete                                     |
+| G5 Search/Web Enrichment                 | Paused      | Owner reopens, then server-owned search passes gates                                               |
+| G6 Voice/Image/Code Jobs                 | In progress | Image generation is reopened through Go artifacts; voice executor remains                          |
+| G7 Knowledge/RAG/Citations               | Complete    | Live MinerU + Jina + Postgres strict citation loop passed                                          |
+| G8 Teams/Knowledge UI                    | Complete    | G8.1-G8.5 frontend control-plane wiring and isolation smoke passed                                 |
+| G9 Data Authority/Route Removal          | Complete    | G9.1-G9.6 route freeze, route deletion, local write-authority, and clean-copy preflight passed     |
+| G10 Final Closure/Delete Plan            | In progress | G10.1-G10.3 and build-based G10.2 complete; owner cleanup blocked by G11 parity regressions        |
 | G11 Owner Parity Regression Closure      | Complete    | G11.1 image understanding, G11.2 Team UI removal, and G11.3 browser provider runtime flow complete |
 
 ## Update Discipline

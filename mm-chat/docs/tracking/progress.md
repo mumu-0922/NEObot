@@ -1366,7 +1366,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         - [x] G11.9D.3c Atomic generation cutover, real Parent/Child `[K1]`
               citations, incomplete-target rejection, exact source-generation
               rollback, stale replay rejection, and down/up proof.
-    - [ ] G11.9E Go Tavily/Firecrawl/Exa/Bocha/model-built-in Search parity,
+    - [x] G11.9E Go Tavily/Firecrawl/Exa/Bocha/model-built-in Search parity,
           SearXNG removal, and legacy Next search deletion.
       - [x] G11.9E.1 Closed Go external-provider core: exact four-provider
             request/response adapters, shared HTTPS/DNS/IP/redirect/size/error
@@ -1375,8 +1375,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
             authenticated Go Search API, redacted fail-closed errors, shared
             built-in source normalization, and explicit OpenAI Responses Web
             Search capability with OpenAI-Compatible rejection.
-      - [ ] G11.9E.3 Frontend cutover, `[W]` citations, SearXNG/Next route
-            deletion, and authorized real-provider smoke.
+      - [x] G11.9E.3 Frontend Go SSE cutover, bounded `[W]` citation/output
+            persistence and reload, retired self-hosted/Next chain deletion,
+            live Postgres proof, and authorized real-provider negative smoke.
     - [ ] G11.9F Postgres-encrypted administrator provider configuration,
           Docker-Secret master key, and bounded real connection tests.
     - [ ] G11.9G Knowledge/Web/model fusion, `[K]`/`[W]` citations, diagnostics,

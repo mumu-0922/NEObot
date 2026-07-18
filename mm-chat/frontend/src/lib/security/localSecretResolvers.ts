@@ -2,7 +2,6 @@ import type {
   DocumentParseProvider,
   ModelProvider,
   RAGConfig,
-  SearchServiceConfig,
   VoiceSettings,
 } from "../../types";
 import {
@@ -32,27 +31,6 @@ export async function resolveProviderApiKey(
   return decryptLocalSecret(
     provider.apiKeySecret,
     LOCAL_SECRET_CONTEXTS.providerApiKey(provider.id),
-  );
-}
-
-export function hasSearchApiKey(
-  config: SearchServiceConfig | undefined,
-): boolean {
-  return Boolean(
-    trimSecret(config?.apiKey) || hasLocalSecret(config?.apiKeySecret),
-  );
-}
-
-export async function resolveSearchApiKey(
-  provider: string,
-  config: SearchServiceConfig | undefined,
-): Promise<string | undefined> {
-  const plain = trimSecret(config?.apiKey);
-  if (plain) return plain;
-
-  return decryptLocalSecret(
-    config?.apiKeySecret,
-    LOCAL_SECRET_CONTEXTS.searchApiKey(provider),
   );
 }
 

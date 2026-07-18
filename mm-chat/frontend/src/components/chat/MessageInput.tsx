@@ -53,7 +53,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useChatStore } from "@/store/core/chatStore";
 import { getTaskModel, useSettingsStore } from "@/store/core/settingsStore";
-import { useCoreSettingsStore } from "@/store/core/coreSettingsStore";
 import {
   transcribeAudio,
   startBrowserSpeechRecognition,
@@ -109,6 +108,7 @@ interface MessageInputProps {
   isReasoningEnabled?: boolean;
   onToggleReasoning?: () => void;
   localSessionToolsDisabled?: boolean;
+  allowSearchWhenSessionToolsDisabled?: boolean;
   allowReasoningWhenSessionToolsDisabled?: boolean;
   allowSkillsWhenSessionToolsDisabled?: boolean;
   allowPluginsWhenSessionToolsDisabled?: boolean;
@@ -153,6 +153,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       isReasoningEnabled,
       onToggleReasoning,
       localSessionToolsDisabled = false,
+      allowSearchWhenSessionToolsDisabled = false,
       allowReasoningWhenSessionToolsDisabled = false,
       allowSkillsWhenSessionToolsDisabled = false,
       allowPluginsWhenSessionToolsDisabled = false,
@@ -209,7 +210,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       rag,
     } = useSettingsStore();
 
-    const { providers } = useCoreSettingsStore();
     const knowledgeApiClient = useMemo(() => createNeoChatApiClient(), []);
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -428,58 +428,27 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       return () => document.removeEventListener("keydown", handleEscape);
     }, []);
 
-    const selectedModelProvider = useMemo(() => {
-      if (!selectedModel) return providers.find((provider) => provider.enabled);
-      const { providerId } = parseModelString(selectedModel);
-      return providerId
-        ? providers.find((provider) => provider.id === providerId)
-        : providers.find((provider) => provider.enabled);
-    }, [selectedModel, providers]);
-
     const searchCompatibility = useMemo(() => {
-      const searchConfig =
-        search.provider === "google"
-          ? undefined
-          : search.configs[search.provider];
-
       return getSearchCompatibility({
         searchProvider: search.provider,
-        searchConfig,
-        modelProviderType: selectedModelProvider?.type,
+        searchConfig: search.configs.default,
       });
-    }, [search, selectedModelProvider?.type]);
+    }, [search]);
 
     const getSearchUnavailableMessage = (
       reason: SearchCompatibilityReason | undefined,
     ) => {
       switch (reason) {
-        case "missing_model_provider":
-          return t("searchUnavailableNoProvider");
-        case "google_requires_gemini":
-          return t("searchUnavailableGoogleGemini");
-        case "model_builtin_search_unsupported":
-          return t("searchUnavailableModelBuiltIn");
-        case "missing_search_api_key":
-          return t("searchUnavailableApiKey", {
-            provider: getSearchProviderLabel(searchCompatibility.provider),
-          });
-        case "missing_search_base_url":
-          return t("searchUnavailableBaseUrl", {
-            provider: getSearchProviderLabel(searchCompatibility.provider),
-          });
+        case "server_search_unavailable":
+          return t("searchUnavailableGeneric");
         default:
           return t("searchUnavailableGeneric");
       }
     };
 
-    const searchModeLabel =
-      searchCompatibility.mode === "gemini-google"
-        ? t("searchModeGeminiGoogle")
-        : searchCompatibility.mode === "openai-web"
-          ? t("searchModeOpenAIWeb")
-          : t("searchModeExternal", {
-              provider: getSearchProviderLabel(searchCompatibility.provider),
-            });
+    const searchModeLabel = t("searchModeExternal", {
+      provider: getSearchProviderLabel(searchCompatibility.provider),
+    });
 
     const searchTooltip = !searchCompatibility.enabled
       ? getSearchUnavailableMessage(searchCompatibility.reason)
@@ -495,7 +464,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     );
 
     const handleSearchToggle = () => {
-      if (localSessionToolsDisabled) {
+      if (localSessionToolsDisabled && !allowSearchWhenSessionToolsDisabled) {
         notifyLocalSessionToolUnavailable("search toggle");
         return;
       }

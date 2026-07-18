@@ -9,7 +9,6 @@ import {
   migratePluginConfigLocalSecrets,
   migrateProviderLocalSecret,
   migrateRAGLocalSecrets,
-  migrateSearchLocalSecrets,
   migrateVoiceLocalSecrets,
 } from "../lib/settings/localSecretMigration";
 import { normalizeModelProvider } from "../lib/providers/config";
@@ -45,17 +44,6 @@ describe("local secret settings migration", () => {
   });
 
   it("migrates settings plaintext secrets to encrypted local secrets", async () => {
-    const search = await migrateSearchLocalSecrets({
-      provider: "tavily",
-      resultsLimit: 5,
-      configs: {
-        tavily: { apiKey: "search-secret" },
-        firecrawl: {},
-        exa: {},
-        bocha: {},
-        searxng: { baseUrl: "http://localhost:8080" },
-      },
-    });
     const rag = await migrateRAGLocalSecrets({
       enabled: true,
       url: "https://rag.example",
@@ -89,9 +77,8 @@ describe("local secret settings migration", () => {
         [plugin],
       ),
     );
-    const migrated = { search, rag, voice, pluginConfigs };
+    const migrated = { rag, voice, pluginConfigs };
 
-    expect(JSON.stringify(migrated)).not.toContain("search-secret");
     expect(JSON.stringify(migrated)).not.toContain("rag-secret");
     expect(JSON.stringify(migrated)).not.toContain("mineru-secret");
     expect(JSON.stringify(migrated)).not.toContain("llama-secret");
@@ -99,12 +86,6 @@ describe("local secret settings migration", () => {
     expect(JSON.stringify(migrated)).not.toContain("mimo-secret");
     expect(JSON.stringify(migrated)).not.toContain("plugin-secret");
 
-    await expect(
-      decryptLocalSecret(
-        search.configs.tavily.apiKeySecret,
-        LOCAL_SECRET_CONTEXTS.searchApiKey("tavily"),
-      ),
-    ).resolves.toBe("search-secret");
     await expect(
       decryptLocalSecret(rag.tokenSecret, LOCAL_SECRET_CONTEXTS.ragToken),
     ).resolves.toBe("rag-secret");

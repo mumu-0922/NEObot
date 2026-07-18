@@ -18,7 +18,6 @@ export interface LocalEncryptedSecretEnvelope {
 export const LOCAL_SECRET_CONTEXTS = {
   providerApiKey: (providerId: string) =>
     `local:provider:${providerId}:api-key`,
-  searchApiKey: (provider: string) => `local:search:${provider}:api-key`,
   ragToken: "local:rag:token",
   mineruApiToken: "local:docs:mineru:api-token",
   llamaParseApiKey: "local:docs:llama-parse:api-key",

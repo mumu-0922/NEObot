@@ -564,11 +564,12 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		resolvedOptions.objectStore,
 		files.WithStorageBackend(cfg.Storage.Backend),
 	)
+	webSearchService := websearch.NewService(resolvedOptions.webSearchResolver)
 	runtimeConfigService := runtimeconfig.NewService(
 		cfg,
 		runtimeconfig.WithProviderConfigRepository(resolvedOptions.runtimeConfigRepo),
+		runtimeconfig.WithSearchAvailable(webSearchService.Configured()),
 	)
-	webSearchService := websearch.NewService(resolvedOptions.webSearchResolver)
 	chatOptions := []chat.HandlerOption{
 		chat.WithProvider(resolvedOptions.chatProvider),
 		chat.WithRunCancellationStore(resolvedOptions.runCancellationStore),

@@ -676,7 +676,6 @@ describe("streamed tool-call normalization", () => {
       model: "gpt-test",
       input: [],
       useReasoning: true,
-      enableWebSearch: true,
       onChunk: (message) => messages.push(message),
     });
 
@@ -685,17 +684,8 @@ describe("streamed tool-call normalization", () => {
       effort: "high",
       summary: "auto",
     });
-    expect(request.tools).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ type: "web_search_preview" }),
-      ]),
-    );
-    expect(request.include).toEqual(
-      expect.arrayContaining([
-        "web_search_call.results",
-        "web_search_call.action.sources",
-      ]),
-    );
+    expect(request.tools).toBeUndefined();
+    expect(request.include).toBeUndefined();
     expect(
       reasoningMessages(messages).map((message) => message.content),
     ).toEqual(["Need current info."]);

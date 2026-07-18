@@ -5141,3 +5141,22 @@ the Postgres-backed resolver. Full tests/vet/source build and security/quality
 gates passed with no provider spend. E.3 retains frontend cutover, `[W]`
 persistence, SearXNG/Next deletion, and real smoke; detailed evidence is in
 `docs/tracking/g11-knowledge-auto-rag-process.md`.
+
+## 2026-07-18 — G11.9E.3 Go Search cutover and persistent citations
+
+The frontend no longer owns Search Provider selection, credentials, outbound
+adapters, or `/api/search`. Go resolves exactly one execution, injects bounded
+external evidence or runs explicit OpenAI built-in Search, emits cumulative
+source SSE, and persists stable `[W]` Search output blocks plus redacted Web
+metadata. Refresh/reload uses the server message as authority. The retired
+self-hosted path and all legacy Search env/UI/tests are absent.
+
+Full backend tests/race/vet, frontend lint/typecheck/846 tests/build, a live
+isolated Postgres output-block round-trip, and Compose build/runtime health
+passed. Real Firecrawl credential-rejection and configured-gateway capability
+probes passed as fail-closed negative smokes with no fallback; G11.9F retains
+the first positive credentialed activation. Recreating the old Postgres bind
+mount exposed a missing API LOGIN; it was repaired with only
+`go_api_runtime`, while schema version 27 and the still-required future
+migrator promotion were left unchanged. Full evidence is in
+`docs/tracking/g11-knowledge-auto-rag-process.md`.
