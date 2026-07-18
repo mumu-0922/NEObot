@@ -5116,3 +5116,14 @@ rollback restored the exact old generation, and a second real `[K1]` stream
 cited it. Stale replay, migration down/up, full quality gates, cleanup, and
 formal-database non-mutation passed. G11.9D is closed; detailed evidence is in
 `docs/tracking/g11-knowledge-auto-rag-process.md`.
+
+## 2026-07-18 — G11.9E.1 Go external-search provider core
+
+The new Go `internal/websearch` package ports Tavily, Firecrawl, Exa, and Bocha
+behind one closed interface with exact fixture-tested shapes, HTTPS/DNS/IP/
+redirect/size fences, redacted errors, and bounded normalized results. It has no
+route or Key authority yet, performs no fallback, consumes no provider quota,
+and contains no SearXNG path. Module README/DESIGN and the executable contract
+record the trust boundary. E.2/E.3 retain runtime/model-built-in wiring,
+`[W]` citations, frontend cutover, deletion, and live smoke. Detailed evidence
+is in `docs/tracking/g11-knowledge-auto-rag-process.md`.

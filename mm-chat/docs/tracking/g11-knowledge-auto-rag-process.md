@@ -1030,3 +1030,47 @@ migrations 028–033 in this slice.
 Remaining work moves to G11.9E: Go Web Search provider parity and SearXNG
 removal. G11.9F/G11.9G still own encrypted administrator provider settings and
 final Knowledge/Web/model fusion plus clean-copy closure.
+
+## 2026-07-18 — G11.9E.1 Closed Go external-search providers
+
+Outcome: the first Web Search slice is complete without exposing a route,
+reading a Key, or consuming provider quota. New package
+`backend/internal/websearch` ports the admitted Tavily, Firecrawl, Exa, and
+Bocha request/response shapes from the temporary Next implementation into one
+closed Go `Provider` interface. SearXNG is intentionally absent.
+
+All four adapters share a production-only hardened client: HTTPS base URLs,
+no userinfo/query/fragment/localhost/private literal, no environment proxy, no
+redirect, TLS 1.2+, fixed timeouts, and DNS resolution that rejects the whole
+host if any address is non-public before dialing a checked address. Provider
+responses are identity JSON capped at 5 MiB; query, Key, result counts, source
+content/title/URL, and image fields are separately bounded.
+
+Provider errors expose only provider ID, a stable code, and optional HTTP
+status. They never reflect the API Key, response body, query, or raw transport
+error. Normalization preserves provider order while stripping fragments,
+dropping invalid/private literal URLs and empty content, deduplicating URLs,
+truncating fields safely at UTF-8 boundaries, and enforcing one caller cap.
+There is no fallback or multi-provider fan-out.
+
+Fixture tests cover all four endpoint/auth/payload shapes, legacy content/image
+fallbacks, Tavily string/object images, Firecrawl Key omission, Exa nested
+request fields, Bocha image-title correlation, unsafe endpoints, request bounds,
+private result removal, status redaction, transport redaction, and the 5 MiB
+response ceiling. Focused coverage is 82.7% and focused vet passes.
+
+Verification:
+
+```text
+focused websearch tests / coverage          passed / 82.7%
+Go full tests / full vet                    passed / passed
+backend source build                        passed
+module completeness / security / quality    passed / passed / passed
+provider network calls / Key reads          0 / 0
+```
+
+This slice deliberately leaves the old Next route/UI untouched: callers cannot
+reach the Go package yet, so rollback is file deletion and no persisted state is
+at risk. G11.9E.2 owns the Go execution/service and model-built-in stream
+boundary. G11.9E.3 owns `[W]` citations, frontend cutover, SearXNG/Next route
+deletion, and the authorized real-provider smoke.

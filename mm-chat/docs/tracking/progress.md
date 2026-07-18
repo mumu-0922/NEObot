@@ -1368,6 +1368,12 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
               rollback, stale replay rejection, and down/up proof.
     - [ ] G11.9E Go Tavily/Firecrawl/Exa/Bocha/model-built-in Search parity,
           SearXNG removal, and legacy Next search deletion.
+      - [x] G11.9E.1 Closed Go external-provider core: exact four-provider
+            request/response adapters, shared HTTPS/DNS/IP/redirect/size/error
+            fences, normalized bounded results, and no route/Key consumption.
+      - [ ] G11.9E.2 Go execution/service plus supported model-built-in search.
+      - [ ] G11.9E.3 Frontend cutover, `[W]` citations, SearXNG/Next route
+            deletion, and authorized real-provider smoke.
     - [ ] G11.9F Postgres-encrypted administrator provider configuration,
           Docker-Secret master key, and bounded real connection tests.
     - [ ] G11.9G Knowledge/Web/model fusion, `[K]`/`[W]` citations, diagnostics,

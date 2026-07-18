@@ -8374,6 +8374,16 @@ quality gates, and formal-database non-mutation passed. G11.9D is complete; full
 evidence is recorded in `docs/tracking/g11-knowledge-auto-rag-process.md` and
 `docs/contracts/rag-structure-chunking.md`.
 
+## 2026-07-18 — G11.9E.1 Go search-provider cross-reference
+
+Tavily, Firecrawl, Exa, and Bocha now have one closed Go adapter boundary with
+fixture-tested legacy shapes, hardened outbound HTTPS/DNS/IP/redirect/response
+limits, redacted errors, and bounded normalized results. No route, Key,
+SearXNG, fallback, or provider spend entered this slice. Runtime/model-built-in
+wiring and final frontend deletion remain E.2/E.3. Full contracts and evidence
+are recorded in `docs/contracts/go-web-search-providers.md` and
+`docs/tracking/g11-knowledge-auto-rag-process.md`.
+
 ## 2026-07-18 — G11.9D.2.2a profile convergence cross-reference
 
 Native and MinerU Chunk Manifests now share one structure profile hash, closing

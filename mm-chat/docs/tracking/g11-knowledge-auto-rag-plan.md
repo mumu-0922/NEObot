@@ -235,6 +235,16 @@ Actions:
 Verification uses provider fixtures plus at least one owner-authorized real
 provider call without automatic cross-provider fallback.
 
+Incremental execution slices:
+
+- **G11.9E.1** complete: add the closed Go Tavily/Firecrawl/Exa/Bocha adapter
+  contract, shared HTTPS/DNS/IP/redirect/response bounds, redacted errors, and
+  fixture-tested result normalization without a production route or Key use;
+- **G11.9E.2** remaining: wire the Go search execution/service boundary and
+  supported model-built-in search, keeping exactly one active provider;
+- **G11.9E.3** remaining: cut the frontend to Go, issue/persist `[W]` citations,
+  delete SearXNG plus legacy Next search, and pass an authorized real smoke.
+
 ## G11.9F — Admin Provider Secrets and Connection Tests
 
 Objective: make Postgres the sole authority for all external provider settings
