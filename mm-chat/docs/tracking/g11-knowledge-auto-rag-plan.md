@@ -174,9 +174,13 @@ Incremental execution slices:
 - **G11.9D.2.3a** complete: atomically allocate the one permitted non-active
   rebuild generation, shared Index/Search Profiles, and one staging
   materialization plus pending parse job for every current active document;
-- **G11.9D.2.3** remaining: replay real MinerU output, stage Native + MinerU
-  parse projections, and spend real Jina passage-embedding quota in the
-  candidate generation without re-upload;
+- **G11.9D.2.3b** complete: resolve the leased generation chunk profile, retain
+  baseline routing for the active generation, route the shared candidate to
+  Native/MinerU structure parsers, and live-stage one real PDF plus two DOCX
+  projections while leaving all three passage-embedding jobs pending;
+- **G11.9D.2.3** remaining: obtain real Jina passage embeddings for the staged
+  Children and prove candidate completeness without re-upload or active-head
+  mutation;
 - **G11.9D.3** verify counts/hashes/locators/deletion fences, atomically cut over
   the generation, and prove failed rebuild rollback plus live citations.
 

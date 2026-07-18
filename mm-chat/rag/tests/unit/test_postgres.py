@@ -17,6 +17,7 @@ from mm_chat_rag.job_context import (
 )
 from mm_chat_rag.job_handler_dependencies import (
     JOB_HANDLER_PARSE_ARTIFACT_INVALID,
+    JOB_HANDLER_PARSE_PROFILE_INVALID,
     JOB_HANDLER_SOURCE_INVALID,
     PassageEmbeddingCandidate,
     PassageEmbeddingVector,
@@ -329,6 +330,7 @@ def test_sql_surface_is_select_only_and_function_allowlisted() -> None:
         "fetch_passage_embedding_candidates",
         "stage_passage_embedding",
         "fetch_parse_source_metadata",
+        "resolve_parse_chunk_profile",
         "stage_parse_projection",
         "complete_parse_and_enqueue_embedding",
         "complete_embedding_and_publish",
@@ -669,6 +671,45 @@ async def test_parse_source_metadata_gateway_rejects_invalid_row() -> None:
             ),
         )
     ]
+
+
+async def test_parse_chunk_profile_resolver_calls_token_fenced_function() -> None:
+    worker_id = uuid.uuid4()
+    settings = Settings(
+        database_url="postgresql://worker:secret@db/rag",
+        worker_id=worker_id,
+    )
+    context = parse_context()
+    adapter, connection = adapter_with_rows(
+        [{"chunk_profile_hash": "f" * 64}], settings
+    )
+
+    observed = await adapter.resolve_parse_chunk_profile(context)
+
+    assert observed == "f" * 64
+    assert connection.calls == [
+        (
+            _SQL["resolve_parse_chunk_profile"],
+            (
+                context.job_id,
+                worker_id,
+                context.lease_token,
+                context.index_generation_id,
+                context.materialization_id,
+            ),
+        )
+    ]
+
+
+async def test_parse_chunk_profile_resolver_rejects_missing_row() -> None:
+    context = parse_context()
+    adapter, connection = adapter_with_rows([None])
+
+    with pytest.raises(PermanentJobError) as raised:
+        await adapter.resolve_parse_chunk_profile(context)
+
+    assert raised.value.error_code == JOB_HANDLER_PARSE_PROFILE_INVALID
+    assert len(connection.calls) == 1
 
 
 async def test_parse_projection_gateway_calls_token_fenced_function() -> None:

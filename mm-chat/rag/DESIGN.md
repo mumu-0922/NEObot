@@ -433,25 +433,26 @@ embedding, verification, and atomic cutover are completed in later slices.
 
 `mm_chat_rag.mineru_structure_artifacts` consumes the decoded and digest-bound
 archive mapping input. The closed boundary accepts contiguous
-`pages[].elements[]` geometry, maps known text-bearing kinds, renders table
-rows/cells deterministically, and fails on unknown text-bearing elements.
-Non-text images remain outside retrieval text.
+synthetic `pages[].elements[]` geometry or observed live-provider `pdf_info[]`
+pages, maps known text-bearing kinds, renders table rows/cells deterministically,
+and fails on unknown text-bearing elements. Non-text images remain outside
+retrieval text.
 
 Canonical pages and block/chunk locators preserve the admitted page index and
 half-open BBox. Chunk clipping narrows canonical byte anchors but never invents
 finer PDF coordinates. The D.1 planner supplies Parent/Child ranges and exact
-overlap under a MinerU-specific structure profile; schema and Postgres DTO
-projection tests prove the offline boundary.
+overlap under the shared structure profile; schema and Postgres DTO projection
+tests prove the boundary.
 
 Native and MinerU mapper identities remain distinct, but their Chunk Manifests
 must use the shared `STRUCTURE_CHUNK_PROFILE_HASH`. An Index Generation binds
 one `knowledge_index_profiles.chunk_profile_hash`; provider-specific hashes
 would make mixed PDF/DOCX staging impossible and are forbidden.
 
-This does not assert every future MinerU version emits this shape. D.2.3 must
-replay an actual downloaded archive, fail closed on schema drift, stage a new
-generation, and run real Jina passage embeddings before gateway or generation
-cutover.
+The `pdf_info[]` path combines `para_blocks` and `discarded_blocks`, joins
+`lines[].spans[].content`, orders blocks by BBox/index, and scales PDF points to
+milli-points. This does not assert every future MinerU version emits this shape;
+unrecognized text-bearing shape still fails closed.
 
 ## G11.9D.2.3a Candidate generation rebuild allocation
 
@@ -471,8 +472,33 @@ job. No promotion function or active-head update is reachable from this
 boundary.
 
 This is allocation, not processing or cutover. The current active generation
-remains authoritative while later D.2.3 work replays real MinerU archives,
-projects Native/MinerU artifacts, and obtains real Jina passage embeddings.
+remains authoritative while later slices process and verify the candidate.
+
+## G11.9D.2.3b Candidate structure parse projection
+
+Migration 029 adds a `SECURITY DEFINER` read boundary that resolves the bound
+Index Profile hash only for the current processing lease, worker, lease token,
+generation, and staging materialization. `AuthorityRoutingParserGateway` then
+selects either the existing baseline parser pair or the shared-profile
+structure parser pair; it never trusts a caller-supplied profile and rejects
+unknown profile/processor identities.
+
+Native structure parsing reuses the sandbox admission result before calling
+the deterministic Native artifact builder. MinerU structure parsing reuses the
+source-hash-bound result archive before calling its deterministic builder. The
+existing Postgres parse-projection function remains the only persistence
+boundary and emits pending passage-embedding work after success.
+
+Migration 030 corrects replay timestamp construction by using one database
+timestamp for the successor job and replay audit row. This prevents a replay's
+`available_at` from preceding its later-evaluated `created_at` by microseconds.
+
+The slice was live-proved on a disposable three-document clone with a
+parse-only worker: one real MinerU PDF and two Native DOCX projections staged
+under the shared hash, PDF blocks retained page-BBox locators, and three
+passage-embedding jobs remained pending. The active generation was not changed.
+Jina passage embeddings, completeness verification, cutover, and citation
+proof remain outside this boundary.
 
 ## Process topology
 

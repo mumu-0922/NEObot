@@ -656,3 +656,79 @@ production database. Rollback drops the function and its added profile grant.
 Remaining D.2.3 work owns real MinerU archive replay, candidate parse
 projection, real Jina passage embeddings, verification, and eventual D.3
 cutover.
+
+## 2026-07-18 — G11.9D.2.3b Candidate structure parse projection
+
+Outcome: the candidate generation can now consume its allocated parse jobs
+without changing baseline-generation behavior. Migration 029 adds
+`knowledge_resolve_parse_chunk_profile(...)`, which resolves the generation's
+Index Profile only through the current worker/lease-token/job/materialization
+fence. The Python authority router keeps the old Native/MinerU baseline mappers
+for the baseline hash and selects the shared structure mappers only for the
+shared structure hash. Unknown profiles and processors fail closed.
+
+The first real PDF run exposed provider shape drift rather than a projection
+error. The downloaded MinerU archive used `layout.json.pdf_info[]`, containing
+`para_blocks`, `discarded_blocks`, `page_size`, and line/span content, while the
+frozen synthetic fixture used `pages[].elements[]`. The mapper now admits both
+closed shapes, orders the live blocks by BBox/index, joins span content, scales
+point geometry to milli-points, and still rejects unknown text-bearing shape.
+The saved real archive passed Canonical IR, Chunk Manifest, and Postgres DTO
+validation with four page-BBox blocks.
+
+Live replay found two additional boundary defects. First, the old replay
+function evaluated `clock_timestamp()` independently for `available_at` and
+`created_at`, so the earlier field could precede the later field by
+microseconds and violate `knowledge_processing_jobs_available_after_created`.
+Migration 030 now uses one timestamp for successor and audit fields. Second,
+default `httpx` INFO logging could include a signed result URL. Inline URL query
+redaction plus WARNING thresholds for `httpx`/`httpcore` now prevent that leak;
+the final worker log scan found zero raw query URLs.
+
+The disposable-clone proof used a parse-only worker, the two existing Native
+DOCX sources, and one real MinerU PDF result. Docker/WSL could not fetch the
+provider CDN directly in this environment, so a temporary exact-host/path
+Windows `curl.exe` proxy was used only for the result ZIP and removed afterward.
+No Jina passage-embedding stage was enabled.
+
+Verification:
+
+```text
+real MinerU archive mapping                 4 blocks / 1 parent / 1 child
+latest candidate parse jobs                1 PDF + 2 DOCX / all succeeded
+candidate materializations                 3 staging
+shared structure Child profile             all matched
+PDF locator kind                           page_bbox x4
+passage-embedding jobs                     3 pending / 0 consumed
+active generation                          unchanged
+replay available_at = created_at           true
+raw signed-query URLs in final worker log  0
+focused structure/Postgres/log tests       53 passed
+Ruff check                                 passed
+changed-file Ruff format                   passed
+strict Mypy                                70 modules passed
+RAG full tests                             1740 passed / 7 skipped
+Go migration + full backend tests          passed
+Go vet                                     passed
+backend/migrate/rag-worker source builds   passed
+```
+
+The repository-wide RAG format check still reports the pre-existing clean file
+`src/mm_chat_rag/health.py`; every file changed by this slice passes formatting.
+
+Cleanup removed both `mm-chat-d23b-*` containers, the disposable database,
+the Windows result proxy and isolated Chrome state, downloaded archives, logs,
+and the temporary credential-bearing environment snapshot. Final proof showed
+zero temporary containers/databases, formal migration max `27`, no formal
+allocator function, and the expected formal active generation unchanged.
+
+Rollback: revert migrations 029/030, the profile-aware router/structure gateway
+composition, real-shape mapper fallback, redaction hardening, tests, and these
+documents. Migration 030 down restores the previous replay definition; do not
+roll it back after relying on replay timestamps without first checking pending
+successors. Production has not applied migrations 028–030, so this commit does
+not require a live database rollback.
+
+Remaining work: run real Jina passage embeddings for the three staged Children,
+verify candidate completeness/hashes/deletion fences, then enter D.3 for atomic
+generation cutover and live citation proof.

@@ -1343,8 +1343,12 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
               exact active-document coverage, shared Index/Search Profiles,
               staging materializations, pending parse jobs, and no active
               generation mutation.
+        - [x] G11.9D.2.3b Candidate structure parse projection: lease-fenced
+              generation-profile resolution, baseline/structure routing, real
+              MinerU `pdf_info` plus two Native DOCX staging proof, three
+              pending passage-embedding jobs, and unchanged active generation.
         - [ ] G11.9D.2.3 New-generation parse staging and real Jina passage
-              embedding without re-upload.
+              embedding/completeness proof without re-upload.
       - [ ] G11.9D.3 Generation verification, atomic cutover, failure rollback,
             deletion fencing, and live citation-anchor proof.
     - [ ] G11.9E Go Tavily/Firecrawl/Exa/Bocha/model-built-in Search parity,

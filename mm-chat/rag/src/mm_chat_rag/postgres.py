@@ -23,6 +23,7 @@ from mm_chat_rag.job_handler_dependencies import (
     JOB_HANDLER_EMBEDDING_VECTOR_INVALID,
     JOB_HANDLER_PARSE_ARTIFACT_INVALID,
     JOB_HANDLER_PARSE_COMPLETION_FAILED,
+    JOB_HANDLER_PARSE_PROFILE_INVALID,
     JOB_HANDLER_PURGE_PROJECTION_INVALID,
     JOB_HANDLER_PURGE_VISIBILITY_INVALID,
     JOB_HANDLER_SOURCE_INVALID,
@@ -43,6 +44,8 @@ from mm_chat_rag.query import EvidenceCandidate
 from mm_chat_rag.retry import PermanentJobError
 from mm_chat_rag.settings import Settings
 from mm_chat_rag.source_gateway import FileSourceMetadata
+
+_SHA256_HEX_LENGTH: Final = 64
 
 _SQL: Final[Mapping[str, str]] = {
     "claim_outbox": ("SELECT * FROM knowledge_claim_outbox(%s, %s, %s, %s)"),
@@ -71,6 +74,9 @@ _SQL: Final[Mapping[str, str]] = {
     ),
     "fetch_parse_source_metadata": (
         "SELECT * FROM knowledge_fetch_parse_source_metadata(%s, %s, %s, %s, %s)"
+    ),
+    "resolve_parse_chunk_profile": (
+        "SELECT * FROM knowledge_resolve_parse_chunk_profile(%s, %s, %s, %s, %s)"
     ),
     "stage_parse_projection": (
         "SELECT * FROM knowledge_stage_parse_projection"
@@ -472,6 +478,43 @@ class PostgresAdapter:
             ),
         )
         return _file_source_metadata_from_row(row)
+
+    async def resolve_parse_chunk_profile(self, context: ProcessingJobContext) -> str:
+        """Resolve the leased parse job's generation profile before provider I/O."""
+        lease_token = _require_context_lease_token(context)
+        materialization_id = context.materialization_id
+        if materialization_id is None:
+            raise PermanentJobError(
+                stable_error_code(JOB_HANDLER_PARSE_PROFILE_INVALID)
+            )
+        try:
+            row = await self._call(
+                "resolve_parse_chunk_profile",
+                (
+                    context.job_id,
+                    self._settings.worker_id,
+                    lease_token,
+                    context.index_generation_id,
+                    materialization_id,
+                ),
+            )
+        except psycopg.Error as error:
+            _raise_stable_database_error(error)
+            raise
+        if row is None:
+            raise PermanentJobError(
+                stable_error_code(JOB_HANDLER_PARSE_PROFILE_INVALID)
+            )
+        chunk_profile_hash = _row_text(
+            row,
+            "chunk_profile_hash",
+            JOB_HANDLER_PARSE_PROFILE_INVALID,
+        )
+        if len(chunk_profile_hash) != _SHA256_HEX_LENGTH:
+            raise PermanentJobError(
+                stable_error_code(JOB_HANDLER_PARSE_PROFILE_INVALID)
+            )
+        return chunk_profile_hash
 
     async def stage_parse_projection(
         self,

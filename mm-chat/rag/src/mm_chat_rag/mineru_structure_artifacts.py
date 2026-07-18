@@ -14,8 +14,13 @@ from itertools import pairwise
 from typing import Final, NoReturn, cast
 
 from mm_chat_rag.job_context import ProcessingJobContext
-from mm_chat_rag.job_handler_dependencies import ParsedDocumentArtifacts
-from mm_chat_rag.mineru_gateway import MinerULocalBatchCanonicalMappingInput
+from mm_chat_rag.job_handler_dependencies import DocumentSource, ParsedDocumentArtifacts
+from mm_chat_rag.mineru_gateway import (
+    MINERU_GATEWAY_DEPENDENCY_UNCONFIGURED,
+    MinerULocalBatchCanonicalMappingInput,
+    MinerUResultArchiveProvider,
+    prepare_mineru_structure_mapping_input,
+)
 from mm_chat_rag.models import stable_error_code
 from mm_chat_rag.offline_parser.canonical import (
     JsonObject,
@@ -37,6 +42,7 @@ MINERU_STRUCTURE_CHUNK_PROFILE_HASH: Final = STRUCTURE_CHUNK_PROFILE_HASH
 
 _ARTIFACT_NAMESPACE: Final = uuid.UUID("55c9a965-b2c6-583b-9463-075384a39d7b")
 _BBOX_COORDINATES: Final = 4
+_PAGE_DIMENSIONS: Final = 2
 _MAX_HEADING_LEVEL: Final = 9
 _MIN_OVERLAP_TOKENS: Final = 60
 _KIND_MAP: Final = {
@@ -81,6 +87,37 @@ class _Draft:
     page_index: int
     bbox: tuple[int, int, int, int]
     heading_level: int | None
+
+
+class MinerUStructureArchiveParserGateway:
+    """Turn one real MinerU result archive into shared-profile artifacts."""
+
+    def __init__(
+        self,
+        archive_provider: MinerUResultArchiveProvider | None = None,
+    ) -> None:
+        self._archive_provider = archive_provider
+
+    async def parse_document(
+        self,
+        context: ProcessingJobContext,
+        source: DocumentSource,
+    ) -> ParsedDocumentArtifacts:
+        if context.stage != "parse" or context.materialization_id is None:
+            _reject(MINERU_STRUCTURE_CONTEXT_INVALID)
+        if self._archive_provider is None:
+            _reject(MINERU_GATEWAY_DEPENDENCY_UNCONFIGURED)
+        if (
+            source.content_type != "application/pdf"
+            or hashlib.sha256(source.body).hexdigest() != source.source_sha256
+        ):
+            _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
+        archive_body = await self._archive_provider.fetch_result_archive(
+            context,
+            source,
+        )
+        mapping_input = prepare_mineru_structure_mapping_input(source, archive_body)
+        return build_mineru_structure_artifacts(context, mapping_input)
 
 
 def build_mineru_structure_artifacts(
@@ -190,6 +227,8 @@ def _drafts(
     mapping: MinerULocalBatchCanonicalMappingInput,
 ) -> tuple[tuple[_Draft, ...], tuple[tuple[int, int, int], ...]]:
     raw_pages = mapping.decoded.middle_json.get("pages")
+    if raw_pages is None:
+        return _drafts_from_pdf_info(mapping)
     if not isinstance(raw_pages, list) or not raw_pages:
         _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
     drafts: list[_Draft] = []
@@ -234,6 +273,118 @@ def _drafts(
     if not drafts:
         _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
     return tuple(drafts), tuple(pages)
+
+
+def _drafts_from_pdf_info(
+    mapping: MinerULocalBatchCanonicalMappingInput,
+) -> tuple[tuple[_Draft, ...], tuple[tuple[int, int, int], ...]]:
+    raw_pages = mapping.decoded.middle_json.get("pdf_info")
+    if not isinstance(raw_pages, list) or not raw_pages:
+        _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
+    drafts: list[_Draft] = []
+    pages: list[tuple[int, int, int]] = []
+    previous_page = -1
+    for raw_page in raw_pages:
+        page = _object(raw_page)
+        page_index = _integer_alias(page, "pageIndex", "page_idx")
+        if page_index != previous_page + 1:
+            _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
+        previous_page = page_index
+        raw_size = page.get("page_size")
+        if (
+            not isinstance(raw_size, list)
+            or len(raw_size) != _PAGE_DIMENSIONS
+            or not all(type(value) is int and value > 0 for value in raw_size)
+        ):
+            _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
+        width, height = cast("tuple[int, int]", tuple(raw_size))
+        pages.append((page_index, width * 1000, height * 1000))
+        para_blocks = page.get("para_blocks")
+        discarded_blocks = page.get("discarded_blocks", [])
+        if not isinstance(para_blocks, list) or not isinstance(discarded_blocks, list):
+            _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
+        blocks = [_object(value) for value in (*para_blocks, *discarded_blocks)]
+        blocks.sort(key=_pdf_info_block_order)
+        for block in blocks:
+            raw_kind = block.get("type")
+            if not isinstance(raw_kind, str):
+                _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
+            block_kind = _KIND_MAP.get(raw_kind.casefold())
+            text = _pdf_info_block_text(block)
+            if block_kind is None:
+                if text is not None:
+                    _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
+                continue
+            if text is None or not text.strip() or "\x00" in text:
+                _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
+            bbox = _point_bbox(block, width=width, height=height)
+            heading_level = _heading_level(block) if block_kind == "heading" else None
+            drafts.append(
+                _Draft(
+                    kind=block_kind,
+                    text=text,
+                    page_index=page_index,
+                    bbox=bbox,
+                    heading_level=heading_level,
+                )
+            )
+    if not drafts:
+        _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
+    return tuple(drafts), tuple(pages)
+
+
+def _pdf_info_block_order(block: JsonObject) -> tuple[int, int, int]:
+    raw = block.get("bbox")
+    if (
+        not isinstance(raw, list)
+        or len(raw) != _BBOX_COORDINATES
+        or not all(type(value) is int for value in raw)
+    ):
+        _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
+    index = block.get("index", 0)
+    if type(index) is not int or index < 0:
+        _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
+    return cast("int", raw[1]), cast("int", raw[0]), index
+
+
+def _pdf_info_block_text(block: JsonObject) -> str | None:
+    lines = block.get("lines")
+    if not isinstance(lines, list) or not lines:
+        return None
+    rendered: list[str] = []
+    for raw_line in lines:
+        line = _object(raw_line)
+        spans = line.get("spans")
+        if not isinstance(spans, list) or not spans:
+            _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
+        parts: list[str] = []
+        for raw_span in spans:
+            span = _object(raw_span)
+            content = span.get("content")
+            if not isinstance(content, str) or not content:
+                _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
+            parts.append(content)
+        rendered.append("".join(parts))
+    return "\n".join(rendered)
+
+
+def _point_bbox(
+    value: JsonObject,
+    *,
+    width: int,
+    height: int,
+) -> tuple[int, int, int, int]:
+    raw = value.get("bbox")
+    if (
+        not isinstance(raw, list)
+        or len(raw) != _BBOX_COORDINATES
+        or not all(type(item) is int for item in raw)
+    ):
+        _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
+    x1, y1, x2, y2 = cast("tuple[int, int, int, int]", tuple(raw))
+    if not (0 <= x1 < x2 <= width and 0 <= y1 < y2 <= height):
+        _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
+    return x1 * 1000, y1 * 1000, x2 * 1000, y2 * 1000
 
 
 def _heading_paths(

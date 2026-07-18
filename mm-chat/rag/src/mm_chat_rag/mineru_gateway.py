@@ -1435,12 +1435,22 @@ def _build_text_baseline_parse_artifacts_from_archive(
     *,
     artifact_set_id: uuid.UUID,
 ) -> ParsedDocumentArtifacts:
-    artifacts = _extract_result_archive_artifacts(archive_body)
-    mapping_input = _prepare_canonical_mapping_input(source, artifacts)
+    mapping_input = prepare_mineru_structure_mapping_input(source, archive_body)
     return _build_text_baseline_parse_artifacts(
         mapping_input,
         artifact_set_id=artifact_set_id,
     )
+
+
+def prepare_mineru_structure_mapping_input(
+    source: DocumentSource,
+    archive_body: bytes,
+) -> MinerULocalBatchCanonicalMappingInput:
+    """Validate one downloaded archive and bind its roles to the source PDF."""
+    _validate_pdf_source(source)
+    _validate_source_hash(source)
+    artifacts = _extract_result_archive_artifacts(archive_body)
+    return _prepare_canonical_mapping_input(source, artifacts)
 
 
 def _validate_parser_context(context: object) -> ProcessingJobContext:

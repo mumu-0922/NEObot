@@ -11,13 +11,16 @@ import pytest
 
 from mm_chat_rag.job_context import ProcessingJobContext, ProviderAuthority
 from mm_chat_rag.job_handler_dependencies import DocumentSource, ParsedDocumentArtifacts
+from mm_chat_rag.mineru_gateway import MINERU_TEXT_BASELINE_CHUNK_PROFILE_HASH
 from mm_chat_rag.native_gateway import (
     AuthorityRoutingParserGateway,
     NativeSandboxParserGateway,
+    NativeStructureSandboxParserGateway,
 )
 from mm_chat_rag.offline_parser.native.dispatch import parse_native_source
 from mm_chat_rag.offline_parser.sandbox import SandboxRouteResult
 from mm_chat_rag.projection import ProjectionContext, build_postgres_projection_batch
+from mm_chat_rag.structure_chunking import STRUCTURE_CHUNK_PROFILE_HASH
 
 _DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 _DOCX = (
@@ -114,6 +117,25 @@ async def test_native_docx_gateway_builds_projection_ready_text_baseline() -> No
     assert batch.parent_chunks[0].content == "Minimal DOCX\nUnicode: 文档 café\nCell"
 
 
+@pytest.mark.asyncio
+async def test_native_docx_structure_gateway_preserves_multiple_blocks() -> None:
+    context = _context()
+    source = DocumentSource(
+        body=_DOCX,
+        source_sha256=hashlib.sha256(_DOCX).hexdigest(),
+        content_type=_DOCX_MIME,
+    )
+
+    artifacts = await NativeStructureSandboxParserGateway(
+        _StaticSupervisor()
+    ).parse_document(context, source)
+
+    assert artifacts.chunk_manifest["chunkProfileHash"] == (
+        STRUCTURE_CHUNK_PROFILE_HASH
+    )
+    assert len(artifacts.canonical_ir["blocks"]) == 3
+
+
 class _FakeParser:
     def __init__(self, marker: str) -> None:
         self.marker = marker
@@ -127,11 +149,31 @@ class _FakeParser:
         return cast("ParsedDocumentArtifacts", self.marker)
 
 
+class _FakeProfiles:
+    def __init__(self, chunk_profile_hash: str) -> None:
+        self.chunk_profile_hash = chunk_profile_hash
+        self.calls = 0
+
+    async def resolve_parse_chunk_profile(self, context: ProcessingJobContext) -> str:
+        _ = context
+        self.calls += 1
+        return self.chunk_profile_hash
+
+
 @pytest.mark.asyncio
 async def test_authority_router_uses_pinned_processor_not_mime_guessing() -> None:
     mineru = _FakeParser("mineru")
     native = _FakeParser("native")
-    gateway = AuthorityRoutingParserGateway(mineru=mineru, native=native)
+    structure_mineru = _FakeParser("structure-mineru")
+    structure_native = _FakeParser("structure-native")
+    profiles = _FakeProfiles(MINERU_TEXT_BASELINE_CHUNK_PROFILE_HASH)
+    gateway = AuthorityRoutingParserGateway(
+        profiles=profiles,
+        mineru=mineru,
+        native=native,
+        structure_mineru=structure_mineru,
+        structure_native=structure_native,
+    )
     source = DocumentSource(
         body=_DOCX,
         source_sha256=hashlib.sha256(_DOCX).hexdigest(),
@@ -143,3 +185,31 @@ async def test_authority_router_uses_pinned_processor_not_mime_guessing() -> Non
     assert observed == "native"
     assert native.calls == 1
     assert mineru.calls == 0
+    assert structure_native.calls == 0
+    assert profiles.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_authority_router_uses_structure_gateway_only_for_shared_hash() -> None:
+    mineru = _FakeParser("mineru")
+    native = _FakeParser("native")
+    structure_mineru = _FakeParser("structure-mineru")
+    structure_native = _FakeParser("structure-native")
+    gateway = AuthorityRoutingParserGateway(
+        profiles=_FakeProfiles(STRUCTURE_CHUNK_PROFILE_HASH),
+        mineru=mineru,
+        native=native,
+        structure_mineru=structure_mineru,
+        structure_native=structure_native,
+    )
+    source = DocumentSource(
+        body=_DOCX,
+        source_sha256=hashlib.sha256(_DOCX).hexdigest(),
+        content_type=_DOCX_MIME,
+    )
+
+    observed = await gateway.parse_document(_context(), source)
+
+    assert observed == "structure-native"
+    assert structure_native.calls == 1
+    assert native.calls == 0

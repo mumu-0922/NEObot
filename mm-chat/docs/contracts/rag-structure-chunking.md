@@ -3,11 +3,12 @@
 ## 1. Scope / Trigger
 
 This contract covers G11.9D.1 deterministic planning, G11.9D.2.1 Native
-projection, G11.9D.2.2 admitted MinerU page-element projection, and the
-G11.9D.2.3a candidate-generation rebuild allocator. The allocator may persist
-only a non-active generation and its staging work. It does not yet replace a
-production gateway, call Jina, verify a candidate, or switch the active Index
-Generation. Those promotion steps remain D.2.3 and D.3.
+projection, G11.9D.2.2 admitted MinerU page-element projection,
+G11.9D.2.3a candidate-generation allocation, and G11.9D.2.3b leased candidate
+parse projection. Candidate parsing may persist structure artifacts and create
+pending passage-embedding jobs only. It must not consume Jina, verify the
+candidate, or switch the active Index Generation. Those promotion steps remain
+later D.2.3 and D.3 slices.
 
 ## 2. Signatures
 
@@ -135,9 +136,10 @@ evidence for this slice and must not occur here.
 
 `build_mineru_structure_artifacts(...)` consumes only the already decoded,
 hash-bound `MinerULocalBatchCanonicalMappingInput`. Its current admitted
-structure contract is `middle_json.pages[].elements[]` with contiguous
-zero-based page indexes, positive page geometry, bounded page BBoxes, and
-closed text-bearing kinds.
+structure contract accepts the frozen synthetic `pages[].elements[]` shape and
+the live-provider `pdf_info[]` shape, both with contiguous zero-based page
+indexes, positive page geometry, bounded page BBoxes, and closed text-bearing
+kinds.
 
 - heading/title, text/paragraph, list/list-item, quote, code, table,
   formula/equation, footnote, header, and footer map to Canonical text blocks;
@@ -152,11 +154,15 @@ closed text-bearing kinds.
   mapper identity while both Native and MinerU manifests bind the one shared
   `STRUCTURE_CHUNK_PROFILE_HASH` required by a mixed-format Index Generation;
 - compatibility `full.md` remains admitted but is not structure authority.
+- live `pdf_info[]` pages read `para_blocks` plus `discarded_blocks`, order
+  blocks by BBox/index, join `lines[].spans[].content`, and convert PDF point
+  geometry to integer milli-points; unknown text-bearing blocks still fail
+  closed.
 
 Tests cover the frozen synthetic MinerU heading/text/table/formula corpus,
 page-BBox projection, deterministic replay, schemas, Postgres DTO projection,
-and long multilingual UTF-8/overlap behavior. Real-provider archive replay is
-a D.2.3 prerequisite; unsupported provider shape must fail closed.
+long multilingual UTF-8/overlap behavior, and the observed real-provider
+`pdf_info[]` archive shape. Unsupported provider shape must fail closed.
 
 ## 10. G11.9D.2.3a Candidate Generation Rebuild Allocator
 
@@ -241,3 +247,95 @@ locking the corpus head.
 Correct: compare exact active-document membership under the head lock, let the
 function transaction roll back every partial write, and leave promotion to a
 separate verified boundary.
+
+## 11. G11.9D.2.3b Leased Candidate Parse Projection
+
+`knowledge_resolve_parse_chunk_profile(...)` is the fenced read boundary used
+after a parse job is leased and before parser selection.
+
+```sql
+knowledge_resolve_parse_chunk_profile(
+  job_id UUID,
+  worker_id UUID,
+  lease_token UUID,
+  index_generation_id UUID,
+  materialization_id UUID
+) RETURNS TABLE(chunk_profile_hash TEXT)
+```
+
+### Contracts
+
+- the supplied job must still be `processing`, owned by the supplied worker and
+  lease token, unexpired, and bound to the supplied generation/materialization;
+- the materialization must be `staging` and the generation must be
+  `building`, `verified`, or `active`;
+- the returned value comes from the generation's bound Index Profile, never
+  from request data or parser authority;
+- the baseline profile routes to the existing Native/MinerU text parser, while
+  the shared structure profile routes to `NativeStructureSandboxParserGateway`
+  or `MinerUStructureArchiveParserGateway` according to admitted processor
+  authority;
+- an unknown profile or processor fails closed before projection;
+- successful parse projection may create one pending `passage_embedding` job,
+  but a parse-only worker must not claim it.
+
+Migration `030_rag_processing_job_replay_timestamp_fix` also freezes one
+`replayed_at` value for replay `available_at`, `created_at`, `updated_at`, and
+the replay audit row. This preserves `available_at >= created_at` even when the
+database clock advances between expressions.
+
+### Validation & Error Matrix
+
+| Condition | Result |
+| --- | --- |
+| Null ID or zero lease token | `RAG_PARSE_CHUNK_PROFILE_ARGUMENT_INVALID` |
+| Wrong/expired lease, non-parse job, legacy-unbound job, mismatched binding, non-staging materialization, or unavailable generation | `RAG_PARSE_CHUNK_PROFILE_MISSING` |
+| Bound hash is neither baseline nor shared structure | `NATIVE_PARSER_CHUNK_PROFILE_UNSUPPORTED` |
+| Processor is neither admitted MinerU nor Native | `NATIVE_PARSER_AUTHORITY_UNSUPPORTED` |
+| Real MinerU layout loses/changes text-bearing shape | `MINERU_STRUCTURE_ARTIFACT_INVALID` |
+
+### Good / Base / Bad Cases
+
+- Good: a leased building-generation PDF resolves the shared hash, maps the
+  real archive to page-BBox blocks, and leaves its embedding successor pending.
+- Base: an active-generation document resolving the baseline hash continues
+  through the existing parser with no artifact-profile behavior change.
+- Bad: an expired lease, substituted materialization, unknown profile, or
+  unknown text-bearing provider block fails before projection.
+
+### Tests Required
+
+- Migration tests must cover the function signature, owner/grant, lease/status/
+  materialization/generation fences, and down migration.
+- Unit tests must cover baseline and shared routing for both authorities,
+  unsupported identities, Postgres row validation, real `pdf_info[]` mapping,
+  signed-URL redaction, and replay timestamp SQL shape.
+- Disposable-clone integration must assert the exact live-proof boundary below
+  and must clean up even on failure.
+
+### Wrong vs Correct
+
+Wrong: choose the structure parser from request MIME, processor, or a caller
+hash alone, which could project one generation under another profile.
+
+Correct: resolve the profile through the current leased job and its staging
+materialization, then combine that server-owned profile with admitted processor
+authority before selecting a parser.
+
+### Live Proof Boundary
+
+A disposable clone must stage the complete active corpus and process exactly
+one real MinerU PDF plus the Native documents. Required evidence is:
+
+- every document's latest candidate parse succeeds;
+- all candidate materializations remain `staging` and all Child chunks bind
+  the shared structure profile;
+- PDF blocks retain `page_bbox` locators;
+- passage-embedding jobs exist only as `pending` and no Jina call is consumed;
+- the old active generation ID is unchanged;
+- signed result URLs never appear with query parameters in logs;
+- the clone, temporary containers, provider-result proxy, and downloaded
+  archive are removed after proof.
+
+This slice does not prove passage embeddings, candidate completeness,
+verification, cutover, or live citations. Those remain later D.2.3/D.3 work.

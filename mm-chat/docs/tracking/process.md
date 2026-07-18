@@ -8311,6 +8311,19 @@ D.2/D.3 handoff are recorded in
 `docs/tracking/g11-knowledge-auto-rag-process.md` and
 `docs/contracts/rag-structure-chunking.md`.
 
+## 2026-07-18 — G11.9D.2.3b candidate parse cross-reference
+
+Lease-fenced generation-profile resolution now preserves baseline parsing while
+routing only the shared candidate profile to Native/MinerU structure mappers.
+Disposable-clone proof staged one real MinerU PDF and two Native DOCX documents,
+left all three passage-embedding jobs pending, and kept the formal active
+generation unchanged. The live run also admitted the observed MinerU
+`pdf_info[]` shape, fixed replay timestamp ordering, and prevented signed result
+URL queries from entering logs. Full evidence, cleanup, remaining Jina/cutover
+gates, and rollback are recorded in
+`docs/tracking/g11-knowledge-auto-rag-process.md` and
+`docs/contracts/rag-structure-chunking.md`.
+
 ## 2026-07-18 — G11.9D.2.2a profile convergence cross-reference
 
 Native and MinerU Chunk Manifests now share one structure profile hash, closing

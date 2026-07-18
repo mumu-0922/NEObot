@@ -16,6 +16,7 @@ from mm_chat_rag.mineru_gateway import (
 )
 from mm_chat_rag.mineru_structure_artifacts import (
     MINERU_STRUCTURE_CHUNK_PROFILE_HASH,
+    MinerUStructureArchiveParserGateway,
     build_mineru_structure_artifacts,
 )
 from mm_chat_rag.native_structure_artifacts import NATIVE_STRUCTURE_CHUNK_PROFILE_HASH
@@ -64,6 +65,18 @@ def _mapping(
     *,
     full_markdown: str = "compatibility",
 ) -> MinerULocalBatchCanonicalMappingInput:
+    archive = _archive(middle, full_markdown=full_markdown)
+    source = DocumentSource(
+        body=_PDF,
+        source_sha256=hashlib.sha256(_PDF).hexdigest(),
+        content_type="application/pdf",
+    )
+    gateway = MinerULocalBatchGateway("unit-test-mineru-token")
+    artifacts = gateway.extract_result_archive_artifacts(object(), archive)
+    return gateway.prepare_canonical_mapping_input(object(), source, artifacts)
+
+
+def _archive(middle: bytes, *, full_markdown: str = "compatibility") -> bytes:
     archive = io.BytesIO()
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as output:
         output.writestr("full.md", full_markdown)
@@ -73,14 +86,17 @@ def _mapping(
         )
         output.writestr("layout.json", middle)
         output.writestr("fixture_model.json", '[[{"type":"text"}]]')
-    source = DocumentSource(
-        body=_PDF,
-        source_sha256=hashlib.sha256(_PDF).hexdigest(),
-        content_type="application/pdf",
-    )
-    gateway = MinerULocalBatchGateway("unit-test-mineru-token")
-    artifacts = gateway.extract_result_archive_artifacts(object(), archive.getvalue())
-    return gateway.prepare_canonical_mapping_input(object(), source, artifacts)
+    return archive.getvalue()
+
+
+class _StaticArchiveProvider:
+    async def fetch_result_archive(
+        self,
+        context: ProcessingJobContext,
+        source: DocumentSource,
+    ) -> bytes:
+        _ = context, source
+        return _archive(_MIDDLE)
 
 
 def _objects(value: JsonValue) -> list[JsonObject]:
@@ -145,6 +161,76 @@ def test_synthetic_mineru_structure_maps_blocks_tables_pages_and_projection() ->
         "x2": 540000,
         "y2": 108000,
     }
+
+
+async def test_mineru_structure_archive_gateway_maps_downloaded_roles() -> None:
+    source = DocumentSource(
+        body=_PDF,
+        source_sha256=hashlib.sha256(_PDF).hexdigest(),
+        content_type="application/pdf",
+    )
+
+    artifacts = await MinerUStructureArchiveParserGateway(
+        _StaticArchiveProvider()
+    ).parse_document(_context(), source)
+
+    assert artifacts.chunk_manifest["chunkProfileHash"] == (
+        MINERU_STRUCTURE_CHUNK_PROFILE_HASH
+    )
+    assert len(_objects(artifacts.canonical_ir["blocks"])) == 4
+
+
+def test_real_pdf_info_shape_maps_lines_and_scales_point_geometry() -> None:
+    middle = json.dumps(
+        {
+            "pdf_info": [
+                {
+                    "discarded_blocks": [
+                        {
+                            "bbox": [68, 40, 491, 55],
+                            "index": 0,
+                            "lines": [
+                                {"spans": [{"content": "Header", "type": "text"}]}
+                            ],
+                            "type": "header",
+                        }
+                    ],
+                    "page_idx": 0,
+                    "page_size": [612, 792],
+                    "para_blocks": [
+                        {
+                            "bbox": [68, 57, 287, 73],
+                            "index": 0,
+                            "lines": [
+                                {
+                                    "spans": [
+                                        {"content": "Real ", "type": "text"},
+                                        {"content": "paragraph", "type": "text"},
+                                    ]
+                                }
+                            ],
+                            "type": "text",
+                        }
+                    ],
+                }
+            ]
+        },
+        separators=(",", ":"),
+    ).encode()
+
+    artifacts = build_mineru_structure_artifacts(_context(), _mapping(middle))
+
+    blocks = _objects(artifacts.canonical_ir["blocks"])
+    assert [block["blockType"] for block in blocks] == ["header", "paragraph"]
+    assert artifacts.canonical_ir["textBuffer"]["text"] == "Header\nReal paragraph"
+    assert blocks[0]["locatorSet"]["textAnchors"][0]["sourceFragments"][0]["views"][
+        0
+    ] == {
+        "bboxMilliPoint": [68000, 40000, 491000, 55000],
+        "kind": "page_region",
+        "pageIndex": 0,
+    }
+    _validate(artifacts.canonical_ir, artifacts.chunk_manifest)
 
 
 def test_long_mineru_text_uses_utf8_safe_planner_overlap() -> None:

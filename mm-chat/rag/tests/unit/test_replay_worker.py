@@ -15,6 +15,7 @@ import mm_chat_rag.worker as worker_module
 from mm_chat_rag.handlers import DispatchPlan, JobHandler, JobResult
 from mm_chat_rag.job_context import ProcessingJobContext
 from mm_chat_rag.job_handler_dependencies import DocumentSource
+from mm_chat_rag.mineru_gateway import MINERU_TEXT_BASELINE_CHUNK_PROFILE_HASH
 from mm_chat_rag.models import FunctionReadiness, JobClaim, OutboxClaim
 from mm_chat_rag.projection import PostgresProjectionBatch
 from mm_chat_rag.provider_profile import (
@@ -307,6 +308,16 @@ class FakeParseSourceMetadataGateway:
         )
 
 
+class FakeParseChunkProfileGateway:
+    def __init__(self, calls: list[str]) -> None:
+        self._calls = calls
+
+    async def resolve_parse_chunk_profile(self, context: ProcessingJobContext) -> str:
+        _ = context
+        self._calls.append("profile")
+        return MINERU_TEXT_BASELINE_CHUNK_PROFILE_HASH
+
+
 class FakeSourceObjectGateway:
     def __init__(
         self,
@@ -459,6 +470,7 @@ async def test_worker_factory_promotes_parse_when_dependencies_are_supplied(
     registry = build_promoted_job_handler_registry(
         settings,
         parse_source_metadata=FakeParseSourceMetadataGateway(calls),
+        parse_chunk_profiles=FakeParseChunkProfileGateway(calls),
         parse_projection=projection,
         parse_archive_provider=FakeMinerUArchiveProvider(calls),
         passage_embedding_projection=cast("object", object()),
@@ -468,7 +480,14 @@ async def test_worker_factory_promotes_parse_when_dependencies_are_supplied(
 
     assert result.outcome == "succeeded"
     assert result.terminal_committed is True
-    assert calls == ["metadata", "object", "archive", "stage", "complete_parse"]
+    assert calls == [
+        "metadata",
+        "object",
+        "profile",
+        "archive",
+        "stage",
+        "complete_parse",
+    ]
     assert len(projection.batches) == 1
     assert len(projection.embedding_job_ids) == 1
     assert projection.batches[0].parent_chunks[0].content == (

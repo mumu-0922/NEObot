@@ -17,6 +17,7 @@ _SECRET_KEY_RE: Final = re.compile(
     re.IGNORECASE,
 )
 _URL_RE: Final = re.compile(r"^[a-z][a-z0-9+.-]*://", re.IGNORECASE)
+_INLINE_URL_RE: Final = re.compile(r"https?://[^\s\"']+", re.IGNORECASE)
 _INLINE_SECRET_RE: Final = re.compile(
     r"(?i)\b(authorization|password|secret|token|api[_-]?key)=([^\s,;]+)"
 )
@@ -53,6 +54,7 @@ def redact(value: object, key: str = "") -> object:
         return [redact(item) for item in value]
     if isinstance(value, str):
         safe = _redact_url(value) if _URL_RE.match(value) else value
+        safe = _INLINE_URL_RE.sub(lambda match: _redact_url(match.group()), safe)
         safe = _INLINE_SECRET_RE.sub(r"\1=[REDACTED]", safe)
         return safe if len(safe) <= _MAX_VALUE_LENGTH else f"{safe[:64]}...[TRUNCATED]"
     if value is None or isinstance(value, (bool, int, float)):
@@ -87,3 +89,5 @@ def configure_logging(level: str) -> None:
     root.handlers.clear()
     root.addHandler(handler)
     root.setLevel(level)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)

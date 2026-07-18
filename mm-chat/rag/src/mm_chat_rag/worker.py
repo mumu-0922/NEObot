@@ -43,9 +43,14 @@ from mm_chat_rag.mineru_gateway import (
     MinerUResultArchiveProvider,
     MinerUTextBaselineArchiveParserGateway,
 )
+from mm_chat_rag.mineru_structure_artifacts import (
+    MinerUStructureArchiveParserGateway,
+)
 from mm_chat_rag.native_gateway import (
     AuthorityRoutingParserGateway,
     NativeSandboxParserGateway,
+    NativeStructureSandboxParserGateway,
+    ParseChunkProfileGateway,
 )
 from mm_chat_rag.postgres import PostgresAdapter
 from mm_chat_rag.redis_wakeup import RedisWakeSubscriber
@@ -67,6 +72,7 @@ def build_promoted_job_handler_registry(
     settings: Settings,
     *,
     parse_source_metadata: SourceMetadataGateway | None = None,
+    parse_chunk_profiles: ParseChunkProfileGateway | None = None,
     parse_projection: ParseProjectionGateway | None = None,
     parse_archive_provider: MinerUResultArchiveProvider | None = None,
     passage_embedding_projection: PassageEmbeddingProjectionGateway,
@@ -77,6 +83,7 @@ def build_promoted_job_handler_registry(
     if (
         "parse" in settings.job_stages
         and parse_source_metadata is not None
+        and parse_chunk_profiles is not None
         and parse_projection is not None
         and parse_archive_provider is not None
     ):
@@ -90,8 +97,13 @@ def build_promoted_job_handler_registry(
                 ),
             ),
             parser=AuthorityRoutingParserGateway(
+                profiles=parse_chunk_profiles,
                 mineru=MinerUTextBaselineArchiveParserGateway(parse_archive_provider),
                 native=NativeSandboxParserGateway(),
+                structure_mineru=MinerUStructureArchiveParserGateway(
+                    parse_archive_provider
+                ),
+                structure_native=NativeStructureSandboxParserGateway(),
             ),
             projection=parse_projection,
         )
@@ -147,10 +159,12 @@ class Worker:
         self.dispatch_registry = dispatch_registry
         if job_handlers is JOB_HANDLER_REGISTRY and settings.job_stages:
             parse_source_metadata: SourceMetadataGateway | None = None
+            parse_chunk_profiles: ParseChunkProfileGateway | None = None
             parse_projection: ParseProjectionGateway | None = None
             parse_archive_provider: MinerUResultArchiveProvider | None = None
             if "parse" in settings.job_stages:
                 parse_source_metadata = self.database
+                parse_chunk_profiles = self.database
                 parse_projection = self.database
                 parse_archive_provider = MinerULocalBatchResultArchiveProvider(
                     MinerULocalBatchGateway(
@@ -161,6 +175,7 @@ class Worker:
             self.job_handlers = build_promoted_job_handler_registry(
                 settings,
                 parse_source_metadata=parse_source_metadata,
+                parse_chunk_profiles=parse_chunk_profiles,
                 parse_projection=parse_projection,
                 parse_archive_provider=parse_archive_provider,
                 passage_embedding_projection=self.database,

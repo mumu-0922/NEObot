@@ -61,6 +61,12 @@ def test_recursive_redaction_removes_credentials_and_payloads() -> None:
     }
     assert "TRUNCATED" in str(redact("x" * 600))
     assert redact("token=secret safe") == "token=[REDACTED] safe"
+    assert (
+        redact(
+            'HTTP Request: PUT https://cdn.example.test/file.zip?Signature=secret "200"'
+        )
+        == 'HTTP Request: PUT https://cdn.example.test/file.zip "200"'
+    )
     assert redact("http://host:invalid/path") == "[REDACTED]"
 
 

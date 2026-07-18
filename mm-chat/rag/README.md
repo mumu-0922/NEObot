@@ -86,10 +86,10 @@ Presence booleans true; this remains Acquisition Evidence only.
 
 G11.9D.1 adds a pure structure-aware Parent/Child planner in
 `mm_chat_rag.structure_chunking`. It accepts only validated structural text
-units and returns UTF-8 byte-range plans. It performs no I/O and is not yet
-wired into Native/MinerU runtime parsing, Postgres projection, Jina embedding,
-or active-generation cutover. The frozen contract and D.2/D.3 promotion gates
-are documented in
+units and returns UTF-8 byte-range plans. It performs no I/O. The planner is
+now reachable only when a leased parse job resolves to the shared candidate
+profile; Jina embedding and active-generation cutover remain separate gates.
+The frozen contract and D.2/D.3 promotion gates are documented in
 [`../docs/contracts/rag-structure-chunking.md`](../docs/contracts/rag-structure-chunking.md).
 
 G11.9D.2.1 adds `mm_chat_rag.native_structure_artifacts` as the first consumer
@@ -102,10 +102,9 @@ or generation mutation until MinerU parity and a new generation are staged.
 
 G11.9D.2.2 adds `mm_chat_rag.mineru_structure_artifacts`. It consumes the
 existing hash-bound MinerU mapping input and treats admitted
-`middle_json.pages[].elements[]` structure—not compatibility `full.md`—as
-authority for heading, text, table, formula, page, and BBox projection. Unknown
-text-bearing kinds fail closed. This mapper is also offline-only until a real
-archive replay and new-generation staging pass D.2.3.
+synthetic `middle_json.pages[].elements[]` or live-provider `pdf_info[]`
+structure—not compatibility `full.md`—as authority for heading, text, table,
+formula, page, and BBox projection. Unknown text-bearing kinds fail closed.
 
 Native and MinerU structure manifests intentionally share one
 `STRUCTURE_CHUNK_PROFILE_HASH`; one generation cannot admit provider-specific
@@ -116,8 +115,17 @@ G11.9D.2.3a adds the Postgres
 creates only a non-active `building` generation, shared Index/Search Profiles,
 and exact per-active-document staging materializations plus pending parse jobs.
 It rejects incomplete, substituted, duplicate, or concurrent candidate sets
-and cannot promote the generation. The Python worker does not yet consume
-these jobs; real MinerU/Jina replay remains the next D.2.3 slice.
+and cannot promote the generation.
+
+G11.9D.2.3b adds the lease-fenced
+`knowledge_resolve_parse_chunk_profile(...)` boundary. The worker preserves the
+old text-baseline route for the baseline hash and selects the Native/MinerU
+structure gateway only for the shared candidate hash. A disposable-clone live
+proof projected one real MinerU PDF and two Native DOCX documents, retained PDF
+page-BBox locators, and created exactly three pending passage-embedding jobs
+without consuming Jina or changing the active generation. Unknown profile or
+processor identities fail closed. Real Jina passage embeddings, candidate
+verification, cutover, and live citations remain later slices.
 
 ## Local quality gates
 

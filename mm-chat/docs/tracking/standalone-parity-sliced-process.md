@@ -5022,3 +5022,26 @@ same-cardinality substituted, and duplicate-candidate calls. The valid call
 created sequence 4 with three staging rows and three pending jobs while active
 generation `46a1c7bb-44ed-4868-9d61-edd557f9d3f0` remained unchanged. The
 clone was deleted after proof; migration 028 was not applied to production.
+
+## 2026-07-18 — G11.9D.2.3b Candidate structure parse projection
+
+The leased parse route now resolves its generation-bound chunk profile before
+choosing a parser. Baseline generations retain the existing text mappers; the
+shared candidate profile selects the Native or MinerU structure mapper and
+persists through the existing parse-projection gateway.
+
+A disposable three-document clone projected two Native DOCX files and one real
+MinerU PDF. The live archive's `pdf_info[]` layout was admitted without
+weakening unknown-text fail-closed behavior. All latest parse jobs succeeded,
+the three materializations remained staging, PDF blocks retained page-BBox
+locators, and exactly three passage-embedding jobs remained pending. Jina was
+not consumed and active generation
+`46a1c7bb-44ed-4868-9d61-edd557f9d3f0` did not change.
+
+The live run also produced migration 030 for replay timestamp consistency and
+log hardening for signed result URLs. Python full tests, Go full tests/vet, and
+backend/migrate/rag-worker source builds passed. Temporary containers, clone,
+Windows proxy/Chrome state, archives, logs, and credential snapshot were
+deleted; the formal database remains at migration 27. Detailed evidence and
+rollback are in `docs/tracking/g11-knowledge-auto-rag-process.md` and
+`docs/contracts/rag-structure-chunking.md`.
