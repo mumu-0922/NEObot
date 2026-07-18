@@ -2,6 +2,8 @@
 set -euo pipefail
 
 env_file="${1:-.env.single-server}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+project_dir="$(cd "${script_dir}/.." && pwd)"
 
 if [[ -L "${env_file}" ]]; then
   echo "single-server preflight: env file must not be a symbolic link" >&2
@@ -30,8 +32,13 @@ if [[ "${owner}" != "$(id -u)" ]]; then
   exit 1
 fi
 
-python3 - "${env_file}" <<'PY'
+python3 - "${env_file}" "${project_dir}" <<'PY'
+import base64
+import binascii
+import json
+import os
 import re
+import stat
 import sys
 import ipaddress
 from pathlib import Path
@@ -124,6 +131,8 @@ required = (
     "BACKEND_IMAGE",
     "RAG_IMAGE",
     "MM_CHAT_VERSION",
+    "MM_CHAT_RUNTIME_UID",
+    "MM_CHAT_RUNTIME_GID",
     "MIGRATION_DATABASE_URL",
     "DATABASE_URL",
     "RAG_WORKER_DATABASE_URL",
@@ -145,6 +154,7 @@ required = (
     "PROVIDER_BASE_URL",
     "PROVIDER_MODEL",
     "PROVIDER_API_KEY",
+    "PROVIDER_SECRET_KEYRING_SOURCE",
 )
 for key in required:
     if not values.get(key, "").strip():
@@ -157,6 +167,91 @@ placeholder = re.compile(
 for key in required:
     if placeholder.search(values[key]):
         fail(f"{key} still contains a placeholder")
+
+runtime_ids: dict[str, int] = {}
+for key in ("MM_CHAT_RUNTIME_UID", "MM_CHAT_RUNTIME_GID"):
+    if not re.fullmatch(r"[1-9][0-9]{0,9}", values[key]):
+        fail(f"{key} must be a positive numeric ID")
+    runtime_ids[key] = int(values[key])
+    if runtime_ids[key] > 2_147_483_647:
+        fail(f"{key} must be a positive numeric ID")
+if runtime_ids["MM_CHAT_RUNTIME_UID"] != os.getuid():
+    fail("MM_CHAT_RUNTIME_UID must match the invoking user")
+if runtime_ids["MM_CHAT_RUNTIME_GID"] != os.getgid():
+    fail("MM_CHAT_RUNTIME_GID must match the invoking user's primary group")
+
+keyring_path = Path(values["PROVIDER_SECRET_KEYRING_SOURCE"])
+if not keyring_path.is_absolute():
+    keyring_path = Path(sys.argv[2]) / keyring_path
+try:
+    keyring_lstat = keyring_path.lstat()
+except OSError:
+    fail("PROVIDER_SECRET_KEYRING_SOURCE file is unavailable")
+if stat.S_ISLNK(keyring_lstat.st_mode) or not stat.S_ISREG(keyring_lstat.st_mode):
+    fail("PROVIDER_SECRET_KEYRING_SOURCE must be a regular non-symlink file")
+if keyring_lstat.st_uid != os.getuid():
+    fail("PROVIDER_SECRET_KEYRING_SOURCE must be owned by the invoking user")
+if stat.S_IMODE(keyring_lstat.st_mode) & 0o077:
+    fail("PROVIDER_SECRET_KEYRING_SOURCE must use mode 600")
+if keyring_lstat.st_size < 1 or keyring_lstat.st_size > 65536:
+    fail("PROVIDER_SECRET_KEYRING_SOURCE has an invalid size")
+
+class DuplicateKey(ValueError):
+    pass
+
+def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise DuplicateKey
+        result[key] = value
+    return result
+
+try:
+    keyring = json.loads(
+        keyring_path.read_text(encoding="utf-8"),
+        object_pairs_hook=unique_object,
+    )
+except (OSError, UnicodeError, json.JSONDecodeError, DuplicateKey):
+    fail("PROVIDER_SECRET_KEYRING_SOURCE is invalid")
+if not isinstance(keyring, dict) or set(keyring) != {"v", "activeKid", "keys"}:
+    fail("PROVIDER_SECRET_KEYRING_SOURCE is invalid")
+active_kid = keyring.get("activeKid")
+keys = keyring.get("keys")
+if (
+    keyring.get("v") != 1
+    or not isinstance(active_kid, str)
+    or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", active_kid)
+    or not isinstance(keys, list)
+    or not 1 <= len(keys) <= 16
+):
+    fail("PROVIDER_SECRET_KEYRING_SOURCE is invalid")
+key_ids: set[str] = set()
+for item in keys:
+    if not isinstance(item, dict) or set(item) != {"kid", "key"}:
+        fail("PROVIDER_SECRET_KEYRING_SOURCE is invalid")
+    kid = item.get("kid")
+    encoded = item.get("key")
+    if (
+        not isinstance(kid, str)
+        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", kid)
+        or kid in key_ids
+        or not isinstance(encoded, str)
+    ):
+        fail("PROVIDER_SECRET_KEYRING_SOURCE is invalid")
+    try:
+        decoded = base64.b64decode(
+            encoded + "=" * (-len(encoded) % 4),
+            altchars=b"-_",
+            validate=True,
+        )
+    except (ValueError, binascii.Error):
+        fail("PROVIDER_SECRET_KEYRING_SOURCE is invalid")
+    if len(decoded) != 32 or base64.urlsafe_b64encode(decoded).decode().rstrip("=") != encoded:
+        fail("PROVIDER_SECRET_KEYRING_SOURCE is invalid")
+    key_ids.add(kid)
+if active_kid not in key_ids:
+    fail("PROVIDER_SECRET_KEYRING_SOURCE is invalid")
 
 if values.get("AUTH_MODE") != "required":
     fail("AUTH_MODE must be required for promotion")

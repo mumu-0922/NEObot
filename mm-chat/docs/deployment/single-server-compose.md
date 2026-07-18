@@ -20,7 +20,9 @@ mm-chat/frontend/Dockerfile            # standalone Next.js server image
 mm-chat/rag/Dockerfile                 # Python dark-run worker image
 mm-chat/scripts/preflight-single-server.sh # production promotion gate
 mm-chat/scripts/compose-single-server-production.sh # clean-env production entrypoint
+mm-chat/scripts/init-provider-keyring.sh # one-time provider vault bootstrap
 mm-chat/compose.production.yml          # removes all production build paths
+mm-chat/secrets/                        # provider vault Docker Secret source, gitignored
 mm-chat/data/                          # runtime volumes, gitignored
 mm-chat/backup/                        # backup output, gitignored
 ```
@@ -32,7 +34,24 @@ cd mm-chat
 cp .env.single-server.example .env.single-server
 # Edit every change-me value. Team key placeholders are intentionally unusable
 # until replaced with independently generated keys.
+./scripts/init-provider-keyring.sh
 ```
+
+Set `MM_CHAT_RUNTIME_UID` and `MM_CHAT_RUNTIME_GID` to the output of `id -u`
+and `id -g`. Docker Compose implements file-backed secrets as read-only bind
+mounts and preserves the source UID/GID and mode. The `backend` and `admin`
+services therefore run as that non-root host identity so they can read the
+mode-`600` keyring without widening host permissions. Production preflight
+rejects mismatched or root/invalid IDs.
+
+`init-provider-keyring.sh` creates `secrets/provider-keyring.json` atomically
+with one random 32-byte active key and mode `600` under a user-owned mode-`700`
+non-symlink directory. It refuses to overwrite an existing file and prints only
+the path. Set `PROVIDER_SECRET_KEYRING_SOURCE` to another protected regular file
+when an external secret manager materializes the Docker Secret source.
+Production preflight rejects missing, symlinked,
+group/world-readable, oversized, malformed, duplicate-key, or non-canonical
+keyring documents without printing their contents.
 
 Use `--env-file .env.single-server` for operator commands. The Compose file has
 safe placeholders for config validation, but production runs must use the local
@@ -87,6 +106,8 @@ no port is published or proxied.
 | `RAG_MINERU_API_TOKEN`    | Admin-owned MinerU secret for G7 automatic parsing; redacted status only. |
 | `RAG_MINERU_RESULT_PROXY_URL` | Optional internal ZIP download proxy for Docker Desktop/WSL CDN TLS workarounds; default empty. |
 | `RAG_JINA_API_KEY`        | Admin-owned Jina secret for G7 embedding/rerank; redacted status only.    |
+| `PROVIDER_SECRET_KEYRING_SOURCE` | Host-side mode-`600` Docker Secret source; mounted only into Go backend/admin. |
+| `MM_CHAT_RUNTIME_UID` / `MM_CHAT_RUNTIME_GID` | Non-root owner IDs for the file-backed provider Secret; must match `id -u` / `id -g`. |
 
 `POSTGRES_USER` is the empty-volume bootstrap and migrator login referenced by
 `MIGRATION_DATABASE_URL`. The API login inherits only `go_api_runtime` and must
@@ -196,6 +217,8 @@ base file with `build:` enabled.
 
 ```bash
 cd mm-chat
+
+./scripts/init-provider-keyring.sh
 
 docker compose --env-file .env.single-server \
   -f compose.single-server.yml up -d postgres redis minio minio-init

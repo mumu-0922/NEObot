@@ -71,6 +71,9 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 	if cfg.Provider.Timeout != DefaultProviderTimeout {
 		t.Fatalf("Provider.Timeout = %s, want %s", cfg.Provider.Timeout, DefaultProviderTimeout)
 	}
+	if cfg.ProviderSecrets.KeyringFile != "" {
+		t.Fatalf("ProviderSecrets.KeyringFile = %q, want empty", cfg.ProviderSecrets.KeyringFile)
+	}
 	if cfg.Storage.Backend != DefaultStorageBackend {
 		t.Fatalf("Storage.Backend = %q, want %q", cfg.Storage.Backend, DefaultStorageBackend)
 	}
@@ -169,6 +172,7 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 		EnvProviderModel:          " gpt-5.5 ",
 		EnvProviderAPIKey:         " secret-key ",
 		EnvProviderTimeout:        "90s",
+		EnvProviderSecretKeyring:  " /run/secrets/mm_chat_provider_keyring ",
 		EnvStorageBackend:         " MINIO ",
 		EnvLocalStorageDir:        " /srv/mm-chat/files ",
 		EnvS3Endpoint:             " http://minio:9000 ",
@@ -256,6 +260,9 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	}
 	if cfg.Provider.Timeout != 90*time.Second {
 		t.Fatalf("Provider.Timeout = %s, want 90s", cfg.Provider.Timeout)
+	}
+	if cfg.ProviderSecrets.KeyringFile != "/run/secrets/mm_chat_provider_keyring" {
+		t.Fatalf("ProviderSecrets.KeyringFile = %q", cfg.ProviderSecrets.KeyringFile)
 	}
 	if cfg.Storage.Backend != "minio" {
 		t.Fatalf("Storage.Backend = %q, want minio", cfg.Storage.Backend)

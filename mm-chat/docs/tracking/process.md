@@ -8455,3 +8455,22 @@ runtime provider, `.env`, real Key, or network state changed. Full module,
 tests/race/vet, quality, security, rollback, and F.2 handoff evidence is in
 `docs/contracts/provider-secret-vault.md` and
 `docs/tracking/g11-knowledge-auto-rag-process.md`.
+
+## 2026-07-18 — G11.9F.2.1 model-provider vault cutover cross-reference
+
+Administrator model-provider BYOK ingress is now re-encrypted into
+context-bound `A256GCM` vault envelopes before Postgres writes. Legacy BYOK
+rows and the Server Default env secret lazily import on metadata save; custom
+providers cannot inherit the default. A disposable `mm_chat_*_test` database
+proved ciphertext-only storage and fresh-Vault reload, then was deleted while
+the formal schema remained at version 27.
+
+Live Compose restart found and fixed the mode-`600` file-Secret ownership
+boundary: backend/admin now run as the matching configured non-root host
+UID/GID, and preflight rejects drift. Full Go tests/race/vet, preflight,
+Compose, module, quality, security review, image build, mount, and restart
+health passed without provider calls or quota use. Bulk rotation/backup remains
+F2.2; connection-test activation and model `.env` removal remain F2.3. Full
+evidence and asymmetric rollback requirements are in
+`docs/tracking/g11-knowledge-auto-rag-process.md` and
+`docs/contracts/provider-secret-vault.md`.

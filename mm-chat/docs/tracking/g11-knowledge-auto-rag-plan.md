@@ -275,9 +275,14 @@ Incremental execution slices:
 - **G11.9F.1** complete: add an unused, strict Docker-Secret keyring loader
   and context-bound AES-256-GCM at-rest vault with retained-key rotation tests;
   do not mutate Postgres, Compose, routes, runtime resolution, or current keys;
-- **G11.9F.2**: cut existing model-provider rows from BYOK ingress envelopes to
-  the vault, add stable keyring configuration plus transactional import/rotate
-  contracts, prove restart persistence, then remove model `.env` fallback;
+- **G11.9F.2.1** complete: mount a stable mode-`600` Docker Secret keyring for
+  matching non-root backend/admin UIDs, re-encrypt new model-provider BYOK
+  ingress before Postgres writes, dual-read legacy rows, and lazily import
+  legacy/default env secrets on administrator metadata save;
+- **G11.9F.2.2**: transactionally backfill every remaining model-provider row,
+  rotate old vault envelopes, and prove ciphertext-only backup plus restart;
+- **G11.9F.2.3**: require a bounded model-provider connection test before
+  activation, then remove model-provider `.env` runtime fallback;
 - **G11.9F.3**: add Search administrator CRUD/test/activate UI and the sole
   Postgres-backed Go resolver, then perform one positive real-provider smoke;
 - **G11.9F.4**: add MinerU/Jina administrator records and a scoped Go credential

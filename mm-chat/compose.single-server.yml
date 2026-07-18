@@ -96,6 +96,7 @@ x-backend-env: &backend-env
   PROVIDER_MODEL: ${PROVIDER_MODEL:-gpt-5.5}
   PROVIDER_API_KEY: ${PROVIDER_API_KEY:-change-me-provider-key}
   PROVIDER_TIMEOUT: ${PROVIDER_TIMEOUT:-2m}
+  PROVIDER_SECRET_KEYRING_FILE: /run/secrets/mm_chat_provider_keyring
   BYOK_PRIVATE_KEY_PEM: ${BYOK_PRIVATE_KEY_PEM:-}
   BYOK_KEY_ID: ${BYOK_KEY_ID:-}
   BYOK_ALLOW_EPHEMERAL_KEY: ${BYOK_ALLOW_EPHEMERAL_KEY:-true}
@@ -224,7 +225,11 @@ services:
     build: *backend-build
     restart: unless-stopped
     profiles: ["app"]
+    user: "${MM_CHAT_RUNTIME_UID:-1000}:${MM_CHAT_RUNTIME_GID:-1000}"
     environment: *backend-env
+    secrets:
+      - source: mm_chat_provider_keyring
+        target: mm_chat_provider_keyring
     depends_on:
       postgres:
         condition: service_healthy
@@ -467,6 +472,7 @@ services:
     build: *backend-build
     restart: "no"
     profiles: ["ops"]
+    user: "${MM_CHAT_RUNTIME_UID:-1000}:${MM_CHAT_RUNTIME_GID:-1000}"
     environment:
       MM_CHAT_VERSION: ${MM_CHAT_VERSION:-single-server-dev}
       DATABASE_URL: ${DATABASE_URL:-postgres://neo_chat_api:change-me-api-postgres@postgres:5432/neo_chat?sslmode=disable}
@@ -477,6 +483,10 @@ services:
       AUTH_BOOTSTRAP_DISPLAY_NAME: ${AUTH_BOOTSTRAP_DISPLAY_NAME:-Owner}
       RAG_PROVIDER_PROFILE: ${RAG_PROVIDER_PROFILE:-disabled}
       RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED: ${RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED:-false}
+      PROVIDER_SECRET_KEYRING_FILE: /run/secrets/mm_chat_provider_keyring
+    secrets:
+      - source: mm_chat_provider_keyring
+        target: mm_chat_provider_keyring
     depends_on:
       postgres:
         condition: service_healthy
@@ -503,3 +513,7 @@ networks:
 
 volumes:
   parser-ipc:
+
+secrets:
+  mm_chat_provider_keyring:
+    file: ${PROVIDER_SECRET_KEYRING_SOURCE:-./secrets/provider-keyring.json}

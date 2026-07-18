@@ -62,6 +62,7 @@ const (
 	EnvProviderModel          = "PROVIDER_MODEL"
 	EnvProviderAPIKey         = "PROVIDER_API_KEY"
 	EnvProviderTimeout        = "PROVIDER_TIMEOUT"
+	EnvProviderSecretKeyring  = "PROVIDER_SECRET_KEYRING_FILE"
 	EnvBYOKPrivateKeyPEM      = "BYOK_PRIVATE_KEY_PEM"
 	EnvBYOKKeyID              = "BYOK_KEY_ID"
 	EnvBYOKAllowEphemeralKey  = "BYOK_ALLOW_EPHEMERAL_KEY"
@@ -117,12 +118,13 @@ type Config struct {
 
 	Redis RedisConfig
 
-	Provider ProviderConfig
-	BYOK     BYOKConfig
-	Storage  StorageConfig
-	RAG      RAGConfig
-	Auth     AuthConfig
-	Team     TeamConfig
+	Provider        ProviderConfig
+	ProviderSecrets ProviderSecretConfig
+	BYOK            BYOKConfig
+	Storage         StorageConfig
+	RAG             RAGConfig
+	Auth            AuthConfig
+	Team            TeamConfig
 }
 
 // RedisConfig contains non-authoritative temporary-state settings. Redis must
@@ -146,6 +148,13 @@ type ProviderConfig struct {
 	Model   string
 	APIKey  string
 	Timeout time.Duration
+}
+
+// ProviderSecretConfig points to the read-only Docker Secret keyring used for
+// restart-stable provider credential encryption at rest. Key material is read
+// from the file and must never be copied into process environment values.
+type ProviderSecretConfig struct {
+	KeyringFile string
 }
 
 // BYOKConfig contains browser-encryption key settings. Private key material
@@ -363,6 +372,9 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 			Model:   optionalEnv(lookup, EnvProviderModel),
 			APIKey:  optionalEnv(lookup, EnvProviderAPIKey),
 			Timeout: durationEnvOrDefault(lookup, EnvProviderTimeout, DefaultProviderTimeout),
+		},
+		ProviderSecrets: ProviderSecretConfig{
+			KeyringFile: optionalEnv(lookup, EnvProviderSecretKeyring),
 		},
 
 		BYOK: BYOKConfig{

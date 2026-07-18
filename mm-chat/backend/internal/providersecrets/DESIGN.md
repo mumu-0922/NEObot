@@ -10,7 +10,7 @@
 
 ## Non-goals
 
-- No repository migration or runtime credential resolution in G11.9F.1.
+- No repository implementation inside this package.
 - No administrator API, frontend form, connection test, or provider activation.
 - No environment-variable master key fallback.
 - No remote KMS/HSM integration in the single-server phase.
@@ -41,6 +41,7 @@ retained old key --> decrypt old envelope --> encrypt with active key
 | Separate ingress and at-rest encryption | Browser BYOK RSA protects transport; a Docker-Secret keyring owns restart-stable database encryption. |
 | AES-256-GCM | Standard-library AEAD provides confidentiality and integrity with a small envelope. |
 | Versioned strict JSON keyring | One Docker Secret can carry the active and bounded previous keys needed for safe rotation. |
+| Host-owner runtime UID/GID | Compose file secrets retain host mode/ownership; matching a non-root consumer keeps mode `600` readable without running the API as root. |
 | Unpadded base64url keys | Closed portable encoding without whitespace or PEM ambiguity. |
 | Context in authenticated header | Copying ciphertext between provider records fails authentication. |
 | Immutable in-memory key map | Concurrent reads require no locks and callers cannot retrieve raw keys. |
@@ -64,15 +65,30 @@ retained old key --> decrypt old envelope --> encrypt with active key
 
 - The Go process necessarily holds active key material and decrypted provider
   bytes briefly in memory.
-- Rotation is only a primitive in F.1; F.2+ must add transactional row rewrite,
-  restart proof, and old-key removal gates.
-- Docker Secret mounting and removal of provider `.env` fallbacks are deferred
-  until the repository cutover has a tested rollback path.
+- New writes and lazy imports use the vault in F2.1, but bulk rotation remains
+  F2.2; old-key removal is forbidden until its transactional rewrite and
+  restart gates pass.
+- Model-provider `.env` fallback remains rollback-only until the F2.3 bounded
+  connection-test cutover.
 
 ## Change History
+
+### 2026-07-18 — G11.9F.2.1
+
+Wired the vault into model-provider writes and reads, added legacy/env lazy
+import, and mounted the mode-`600` keyring into matching non-root Compose
+consumers. Bulk rotation remains outside the package in F2.2.
 
 ### 2026-07-18 — G11.9F.1
 
 Added the strict Docker-Secret keyring loader, context-bound AES-256-GCM
 envelope, retained-key decryption, and rotation primitive without production
 wiring or persisted-state mutation.
+
+### 2026-07-18 — G11.9F.2.1
+
+Mounted the keyring as a Compose Secret and wired the vault into Go runtime
+configuration. New administrator secrets are converted from BYOK ingress to
+vault envelopes before repository writes. Metadata saves lazily convert legacy
+BYOK rows or the Server Default `.env` secret; reads remain dual-format during
+the bounded rollback window.

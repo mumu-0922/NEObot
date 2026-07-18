@@ -5172,3 +5172,20 @@ routes, runtime resolution, `.env`, real credentials, or provider traffic.
 Detailed contracts and rollback are recorded in
 `docs/contracts/provider-secret-vault.md` and
 `docs/tracking/g11-knowledge-auto-rag-process.md`.
+
+## 2026-07-18 — G11.9F.2.1 model-provider vault write cutover
+
+The Go runtime now converts administrator BYOK ingress and lazy legacy/default
+imports into context-bound `A256GCM` Postgres envelopes. The keyring stays in a
+gitignored mode-`600` Compose Secret mounted only into backend/admin; both run
+as its matching non-root host UID/GID because Compose file Secrets preserve
+source ownership.
+
+A disposable guarded `mm_chat_*_test` database proved ciphertext-only writes
+and fresh-Vault restart decryption, then was deleted. The formal database stayed
+at migration 27. Backend build, read-only Secret mount, explicit restart,
+health, full Go tests/race/vet, preflight/Compose, and quality/security review
+passed without any provider call. F2.2 retains bulk backfill/rotation/backup;
+F2.3 retains connection-test activation and `.env` fallback removal. Detailed
+evidence and old-image rollback limits are recorded in
+`docs/tracking/g11-knowledge-auto-rag-process.md`.

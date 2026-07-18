@@ -54,6 +54,19 @@ func TestRuntimeProviderResolverAdmitsBuiltInSearchOnlyForOpenAI(t *testing.T) {
 	}
 }
 
+func TestMapRuntimeProviderErrorRedactsVaultFailures(t *testing.T) {
+	for _, source := range []error{
+		runtimeconfig.ErrProviderSecretVaultUnavailable,
+		runtimeconfig.ErrProviderSecretInvalid,
+	} {
+		mapped, ok := mapRuntimeProviderError(source).(chat.ValidationError)
+		if !ok || mapped.Code != "PROVIDER_SECRET_UNAVAILABLE" ||
+			mapped.Message != "stored provider secret is unavailable" {
+			t.Fatalf("mapRuntimeProviderError(%v) = %#v", source, mapped)
+		}
+	}
+}
+
 func TestNewHandlerRoutesHealthReadyAndVersion(t *testing.T) {
 	handler := NewHandler(config.Config{Addr: ":0", Version: "route-test"})
 

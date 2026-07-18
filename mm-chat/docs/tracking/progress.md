@@ -1385,6 +1385,12 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
             no database, Compose, route, runtime, Key, or network mutation.
       - [ ] G11.9F.2 Model-provider vault cutover, transactional import/rotate,
             restart proof, and model-provider `.env` fallback removal.
+        - [x] G11.9F.2.1 Stable Docker Secret mount, vault-at-rest writes,
+              legacy dual-read, and lazy legacy/env import on admin save.
+        - [ ] G11.9F.2.2 Transactional bulk backfill/rotation,
+              ciphertext-only backup, and restart proof.
+        - [ ] G11.9F.2.3 Bounded model connection-test activation and model
+              `.env` runtime fallback removal.
       - [ ] G11.9F.3 Search admin CRUD/test/activate UI, Postgres resolver, and
             positive owner-authorized provider smoke.
       - [ ] G11.9F.4 MinerU/Jina admin records and scoped Go credential gateway.

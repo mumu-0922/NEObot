@@ -22,6 +22,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/jobcontrol"
 	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/plugins"
+	"neo-chat/mm-chat/backend/internal/providersecrets"
 	"neo-chat/mm-chat/backend/internal/ragproviders"
 	"neo-chat/mm-chat/backend/internal/ragsource"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
@@ -77,6 +78,7 @@ type options struct {
 	ragQueryEmbedder     ragproviders.QueryEmbedder
 	ragReranker          ragproviders.Reranker
 	runtimeConfigRepo    runtimeconfig.ProviderConfigRepository
+	providerSecretVault  *providersecrets.Vault
 	webSearchResolver    websearch.Resolver
 }
 
@@ -250,6 +252,13 @@ func mapRuntimeProviderError(err error) error {
 			Message: "provider API key is required",
 		}
 	}
+	if errors.Is(err, runtimeconfig.ErrProviderSecretVaultUnavailable) ||
+		errors.Is(err, runtimeconfig.ErrProviderSecretInvalid) {
+		return chat.ValidationError{
+			Code:    "PROVIDER_SECRET_UNAVAILABLE",
+			Message: "stored provider secret is unavailable",
+		}
+	}
 	return err
 }
 
@@ -360,6 +369,12 @@ func (source knowledgeRAGCandidateSource) FetchEvidenceCandidates(
 func WithRuntimeConfigRepository(repo runtimeconfig.ProviderConfigRepository) Option {
 	return func(opts *options) {
 		opts.runtimeConfigRepo = repo
+	}
+}
+
+func WithProviderSecretVault(vault *providersecrets.Vault) Option {
+	return func(opts *options) {
+		opts.providerSecretVault = vault
 	}
 }
 
@@ -568,6 +583,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	runtimeConfigService := runtimeconfig.NewService(
 		cfg,
 		runtimeconfig.WithProviderConfigRepository(resolvedOptions.runtimeConfigRepo),
+		runtimeconfig.WithProviderSecretVault(resolvedOptions.providerSecretVault),
 		runtimeconfig.WithSearchAvailable(webSearchService.Configured()),
 	)
 	chatOptions := []chat.HandlerOption{

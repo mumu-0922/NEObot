@@ -7,6 +7,8 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +20,29 @@ import (
 	"neo-chat/mm-chat/backend/internal/storage"
 	"neo-chat/mm-chat/backend/internal/teams"
 )
+
+func TestNewProviderSecretVaultLoadsConfiguredKeyring(t *testing.T) {
+	vault, err := newProviderSecretVault(config.Config{})
+	if err != nil || vault != nil {
+		t.Fatalf("blank vault = %#v, %v", vault, err)
+	}
+
+	path := filepath.Join(t.TempDir(), "provider-keyring.json")
+	encodedKey := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32))
+	if err := os.WriteFile(
+		path,
+		[]byte(`{"v":1,"activeKid":"model-v1","keys":[{"kid":"model-v1","key":"`+encodedKey+`"}]}`),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	vault, err = newProviderSecretVault(config.Config{
+		ProviderSecrets: config.ProviderSecretConfig{KeyringFile: path},
+	})
+	if err != nil || vault == nil || vault.ActiveKID() != "model-v1" {
+		t.Fatalf("configured vault = %#v, %v", vault, err)
+	}
+}
 
 func TestNewChatProviderExposesBuiltInSearchOnlyForOpenAI(t *testing.T) {
 	for _, test := range []struct {

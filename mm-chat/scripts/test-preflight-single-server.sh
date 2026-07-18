@@ -6,6 +6,7 @@ project_dir="$(cd "${script_dir}/.." && pwd)"
 preflight="${script_dir}/preflight-single-server.sh"
 production_compose="${script_dir}/compose-single-server-production.sh"
 restore_drill="${script_dir}/restore-minio-drill.sh"
+provider_keyring_init="${script_dir}/init-provider-keyring.sh"
 example="${project_dir}/.env.single-server.example"
 temp_dir="$(mktemp -d)"
 trap 'rm -rf "${temp_dir}"' EXIT
@@ -31,17 +32,69 @@ assert_rejected() {
 }
 
 assert_rejected "${example}" "example env cannot be promoted"
+
+generated_keyring="${temp_dir}/generated/provider-keyring.json"
+"${provider_keyring_init}" "${generated_keyring}" "test-generated-v1" >/dev/null
+if [[ "$(stat -c '%a' "${generated_keyring}")" != "600" ]]; then
+  echo "preflight test: generated provider keyring must use mode 600" >&2
+  exit 1
+fi
+if [[ "$(stat -c '%a' "$(dirname "${generated_keyring}")")" != "700" ]]; then
+  echo "preflight test: generated provider keyring parent must use mode 700" >&2
+  exit 1
+fi
+python3 - "${generated_keyring}" <<'PY'
+import base64
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+encoded = payload["keys"][0]["key"]
+decoded = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+if payload["v"] != 1 or payload["activeKid"] != "test-generated-v1" or len(decoded) != 32:
+    raise SystemExit("preflight test: generated provider keyring is invalid")
+PY
+if "${provider_keyring_init}" "${generated_keyring}" "test-generated-v2" >/dev/null 2>&1; then
+  echo "preflight test: provider keyring init overwrote an existing target" >&2
+  exit 1
+fi
+
+mkdir "${temp_dir}/real-parent"
+chmod 700 "${temp_dir}/real-parent"
+ln -s "${temp_dir}/real-parent" "${temp_dir}/linked-parent"
+if "${provider_keyring_init}" \
+  "${temp_dir}/linked-parent/provider-keyring.json" \
+  "test-generated-v2" >/dev/null 2>&1; then
+  echo "preflight test: provider keyring init accepted a symlink parent" >&2
+  exit 1
+fi
+
+mkdir "${temp_dir}/insecure-parent"
+chmod 755 "${temp_dir}/insecure-parent"
+if "${provider_keyring_init}" \
+  "${temp_dir}/insecure-parent/provider-keyring.json" \
+  "test-generated-v2" >/dev/null 2>&1; then
+  echo "preflight test: provider keyring init accepted an insecure parent" >&2
+  exit 1
+fi
+
 if grep -F -- '--ignore-existing' "${restore_drill}" >/dev/null; then
   echo "preflight test: restore drill must fail on bucket-name collision" >&2
   exit 1
 fi
 
 valid="${temp_dir}/valid.env"
+provider_keyring="${temp_dir}/provider-keyring.json"
+printf '%s\n' '{"v":1,"activeKid":"test-v1","keys":[{"kid":"test-v1","key":"MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY"}]}' >"${provider_keyring}"
+chmod 600 "${provider_keyring}"
 sed \
   -e 's|ghcr.io/mumu-0922/neobot-mm-chat-frontend@sha256:replace-with-64-lowercase-hex|ghcr.io/mumu-0922/neobot-mm-chat-frontend@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc|' \
   -e 's|ghcr.io/mumu-0922/neobot-mm-chat@sha256:replace-with-64-lowercase-hex|ghcr.io/mumu-0922/neobot-mm-chat@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|' \
   -e 's|ghcr.io/mumu-0922/neobot-mm-chat-rag@sha256:replace-with-64-lowercase-hex|ghcr.io/mumu-0922/neobot-mm-chat-rag@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|' \
   -e 's|replace-with-release-id|git-deadbeef|' \
+  -e "s|replace-with-host-uid|$(id -u)|" \
+  -e "s|replace-with-host-gid|$(id -g)|" \
   -e 's|change-me-migrator-postgres|test-migrator-password|g' \
   -e 's|change-me-api-postgres|test-api-password|g' \
   -e 's|change-me-rag-worker-postgres|test-rag-worker-password|g' \
@@ -53,9 +106,34 @@ sed \
   -e 's|https://change-me.example/invites/accept|https://chat.internal/invites/accept|' \
   -e 's|https://your-openai-compatible-relay.example/v1|https://relay.internal/v1|' \
   -e 's|change-me-provider-key|test-provider-key-1234567890|' \
+  -e "s|^PROVIDER_SECRET_KEYRING_SOURCE=.*|PROVIDER_SECRET_KEYRING_SOURCE=${provider_keyring}|" \
   "${example}" >"${valid}"
 chmod 600 "${valid}"
 "${preflight}" "${valid}" >/dev/null
+
+runtime_uid_mismatch="${temp_dir}/runtime-uid-mismatch.env"
+sed "s|^MM_CHAT_RUNTIME_UID=.*|MM_CHAT_RUNTIME_UID=$(( $(id -u) + 1 ))|" \
+  "${valid}" >"${runtime_uid_mismatch}"
+chmod 600 "${runtime_uid_mismatch}"
+assert_rejected \
+  "${runtime_uid_mismatch}" \
+  "MM_CHAT_RUNTIME_UID must match the invoking user"
+
+runtime_gid_mismatch="${temp_dir}/runtime-gid-mismatch.env"
+sed "s|^MM_CHAT_RUNTIME_GID=.*|MM_CHAT_RUNTIME_GID=$(( $(id -g) + 1 ))|" \
+  "${valid}" >"${runtime_gid_mismatch}"
+chmod 600 "${runtime_gid_mismatch}"
+assert_rejected \
+  "${runtime_gid_mismatch}" \
+  "MM_CHAT_RUNTIME_GID must match the invoking user's primary group"
+
+invalid_runtime_uid="${temp_dir}/invalid-runtime-uid.env"
+sed 's|^MM_CHAT_RUNTIME_UID=.*|MM_CHAT_RUNTIME_UID=root|' \
+  "${valid}" >"${invalid_runtime_uid}"
+chmod 600 "${invalid_runtime_uid}"
+assert_rejected \
+  "${invalid_runtime_uid}" \
+  "MM_CHAT_RUNTIME_UID must be a positive numeric ID"
 
 missing_migration="${temp_dir}/missing-migration.env"
 grep -v '^MIGRATION_DATABASE_URL=' "${valid}" >"${missing_migration}"
@@ -70,6 +148,36 @@ assert_rejected "${insecure}" "must not be group/world accessible"
 symlinked="${temp_dir}/symlinked.env"
 ln -s "${valid}" "${symlinked}"
 assert_rejected "${symlinked}" "must not be a symbolic link"
+
+missing_provider_keyring="${temp_dir}/missing-provider-keyring.env"
+sed 's|^PROVIDER_SECRET_KEYRING_SOURCE=.*|PROVIDER_SECRET_KEYRING_SOURCE=/missing/provider-keyring.json|' \
+  "${valid}" >"${missing_provider_keyring}"
+chmod 600 "${missing_provider_keyring}"
+assert_rejected \
+  "${missing_provider_keyring}" \
+  "PROVIDER_SECRET_KEYRING_SOURCE file is unavailable"
+
+insecure_keyring="${temp_dir}/insecure-provider-keyring.json"
+cp "${provider_keyring}" "${insecure_keyring}"
+chmod 644 "${insecure_keyring}"
+insecure_keyring_env="${temp_dir}/insecure-provider-keyring.env"
+sed "s|^PROVIDER_SECRET_KEYRING_SOURCE=.*|PROVIDER_SECRET_KEYRING_SOURCE=${insecure_keyring}|" \
+  "${valid}" >"${insecure_keyring_env}"
+chmod 600 "${insecure_keyring_env}"
+assert_rejected \
+  "${insecure_keyring_env}" \
+  "PROVIDER_SECRET_KEYRING_SOURCE must use mode 600"
+
+malformed_keyring="${temp_dir}/malformed-provider-keyring.json"
+printf '%s\n' '{"v":1,"activeKid":"missing","keys":[]}' >"${malformed_keyring}"
+chmod 600 "${malformed_keyring}"
+malformed_keyring_env="${temp_dir}/malformed-provider-keyring.env"
+sed "s|^PROVIDER_SECRET_KEYRING_SOURCE=.*|PROVIDER_SECRET_KEYRING_SOURCE=${malformed_keyring}|" \
+  "${valid}" >"${malformed_keyring_env}"
+chmod 600 "${malformed_keyring_env}"
+assert_rejected \
+  "${malformed_keyring_env}" \
+  "PROVIDER_SECRET_KEYRING_SOURCE is invalid"
 
 placeholder="${temp_dir}/placeholder.env"
 sed 's|^PROVIDER_API_KEY=.*|PROVIDER_API_KEY=change-me-provider-key|' \
@@ -305,11 +413,12 @@ rendered="$({
       --profile app --profile ops --profile rag-worker --profile rag-ops \
       config --format json
 } 2>"${temp_dir}/production-compose.stderr")"
-python3 - "${rendered}" <<'PY'
+python3 - "${rendered}" "$(id -u):$(id -g)" <<'PY'
 import json
 import sys
 
 config = json.loads(sys.argv[1])
+runtime_user = sys.argv[2]
 services = config["services"]
 want_frontend_image = (
     "ghcr.io/mumu-0922/neobot-mm-chat-frontend@sha256:"
@@ -342,6 +451,15 @@ for name in ("backend", "migrate", "admin"):
     assert service["image"] == want_image, (name, service["image"])
     assert "build" not in service, name
 assert list(services["backend"]["networks"]) == ["private", "rag-private"]
+assert services["backend"]["user"] == runtime_user
+assert services["admin"]["user"] == runtime_user
+for name in ("backend", "admin"):
+    assert services[name]["secrets"] == [
+        {
+            "source": "mm_chat_provider_keyring",
+            "target": "mm_chat_provider_keyring",
+        }
+    ]
 assert services["postgres"]["environment"] == {
     "POSTGRES_DB": "neo_chat",
     "POSTGRES_PASSWORD": "test-migrator-password",
@@ -441,6 +559,8 @@ assert frontend["build"]["context"].endswith("/mm-chat/frontend")
 assert frontend["build"]["args"]["NEXT_PUBLIC_API_MODE"] == "server"
 assert frontend["build"]["args"]["NEXT_PUBLIC_API_BASE_URL"] == "/mm-api"
 assert frontend["profiles"] == ["app"]
+assert services["backend"]["user"] == "replace-with-host-uid:replace-with-host-gid"
+assert services["admin"]["user"] == "replace-with-host-uid:replace-with-host-gid"
 rag = services["rag-worker"]
 assert rag["image"] == "ghcr.io/mumu-0922/neobot-mm-chat-rag@sha256:replace-with-64-lowercase-hex"
 assert rag["build"]["context"].endswith("/mm-chat/rag")

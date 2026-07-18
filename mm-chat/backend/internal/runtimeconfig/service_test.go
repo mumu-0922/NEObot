@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"neo-chat/mm-chat/backend/internal/config"
+	"neo-chat/mm-chat/backend/internal/providersecrets"
 )
 
 func TestPublicConfigPublishesServerDefaultProviderWithoutSecret(t *testing.T) {
@@ -325,6 +326,7 @@ func TestUpdateAdminProviderConfigStoresEncryptedSecretEnvelope(t *testing.T) {
 	service := NewService(
 		config.Config{BYOK: config.BYOKConfig{PrivateKeyPEM: pemValue}},
 		WithProviderConfigRepository(repo),
+		WithProviderSecretVault(testProviderSecretVault(t, "model-v1", 11)),
 	)
 
 	response, err := service.UpdateAdminProviderConfig(context.Background(), UpdateAdminProviderConfigRequest{
@@ -343,8 +345,184 @@ func TestUpdateAdminProviderConfigStoresEncryptedSecretEnvelope(t *testing.T) {
 	if repo.input.EncryptedSecretRef == "" || strings.Contains(repo.input.EncryptedSecretRef, "admin-provider-key") {
 		t.Fatalf("encrypted secret ref was not persisted safely: %q", repo.input.EncryptedSecretRef)
 	}
+	if !strings.Contains(repo.input.EncryptedSecretRef, `"alg":"A256GCM"`) ||
+		strings.Contains(repo.input.EncryptedSecretRef, byokAlgorithm) {
+		t.Fatalf("stored secret is not a vault envelope: %q", repo.input.EncryptedSecretRef)
+	}
 	if got := repo.input.Config.Models; len(got) != 1 || got[0] != "gpt-5.5" {
 		t.Fatalf("stored models = %#v", got)
+	}
+}
+
+func TestUpdateAdminProviderConfigRequiresAtRestVault(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pemValue := string(pem.EncodeToMemory(&pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
+	}))
+	service := NewService(
+		config.Config{BYOK: config.BYOKConfig{PrivateKeyPEM: pemValue}},
+		WithProviderConfigRepository(&fakeProviderConfigRepository{}),
+	)
+
+	_, err = service.UpdateAdminProviderConfig(
+		context.Background(),
+		UpdateAdminProviderConfigRequest{
+			Type: "OpenAI Compatible",
+			APIKeySecret: encryptedSecretEnvelope(
+				t, privateKey, "fixture-key", "provider:OpenAI Compatible",
+			),
+		},
+	)
+	if err != ErrProviderSecretVaultUnavailable {
+		t.Fatalf("UpdateAdminProviderConfig error = %v", err)
+	}
+}
+
+func TestStoredVaultSecretSurvivesServiceRestart(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pemValue := string(pem.EncodeToMemory(&pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
+	}))
+	repo := &fakeProviderConfigRepository{}
+	first := NewService(
+		config.Config{BYOK: config.BYOKConfig{PrivateKeyPEM: pemValue}},
+		WithProviderConfigRepository(repo),
+		WithProviderSecretVault(testProviderSecretVault(t, "model-v1", 13)),
+	)
+	_, err = first.UpsertAdminProviderConfig(
+		context.Background(),
+		"CUSTOM",
+		UpdateAdminProviderConfigRequest{
+			Name: "Restarted", Type: "OpenAI Compatible", Enabled: true,
+			APIKeySecret: encryptedSecretEnvelope(
+				t, privateKey, "restart-secret", "provider:OpenAI Compatible",
+			),
+		},
+	)
+	if err != nil {
+		t.Fatalf("first UpsertAdminProviderConfig error = %v", err)
+	}
+
+	second := NewService(
+		config.Config{},
+		WithProviderConfigRepository(repo),
+		WithProviderSecretVault(testProviderSecretVault(t, "model-v1", 13)),
+	)
+	resolved, err := second.ResolveStoredProvider(context.Background(), "CUSTOM")
+	if err != nil {
+		t.Fatalf("second ResolveStoredProvider error = %v", err)
+	}
+	if resolved.APIKey != "restart-secret" {
+		t.Fatalf("resolved secret = %q", resolved.APIKey)
+	}
+
+	repo.stored.ProviderID = "OTHER"
+	if _, err := second.ResolveStoredProvider(context.Background(), "OTHER"); err != ErrProviderSecretInvalid {
+		t.Fatalf("copied envelope error = %v", err)
+	}
+}
+
+func TestServerDefaultMetadataSaveImportsEnvSecretIntoVault(t *testing.T) {
+	repo := &fakeProviderConfigRepository{}
+	vault := testProviderSecretVault(t, "model-v1", 14)
+	service := NewService(
+		config.Config{Provider: config.ProviderConfig{
+			Type: "openai_compatible", APIKey: "env-secret", Model: "gpt-env",
+		}},
+		WithProviderConfigRepository(repo),
+		WithProviderSecretVault(vault),
+	)
+	_, err := service.UpdateAdminProviderConfig(
+		context.Background(),
+		UpdateAdminProviderConfigRequest{
+			Name: "Imported", Type: "OpenAI Compatible", Models: []string{"gpt-env"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("UpdateAdminProviderConfig error = %v", err)
+	}
+	if storedSecretAlgorithm(repo.stored.EncryptedSecretRef) != providersecrets.Algorithm ||
+		strings.Contains(repo.stored.EncryptedSecretRef, "env-secret") {
+		t.Fatalf("stored ref = %q", repo.stored.EncryptedSecretRef)
+	}
+
+	restarted := NewService(
+		config.Config{},
+		WithProviderConfigRepository(repo),
+		WithProviderSecretVault(testProviderSecretVault(t, "model-v1", 14)),
+	)
+	resolved, err := restarted.ResolveServerDefaultProvider(context.Background())
+	if err != nil || resolved.APIKey != "env-secret" {
+		t.Fatalf("restarted resolved = %#v, %v", resolved, err)
+	}
+}
+
+func TestCustomProviderDoesNotInheritEnvDefaultSecret(t *testing.T) {
+	repo := &fakeProviderConfigRepository{}
+	service := NewService(
+		config.Config{Provider: config.ProviderConfig{APIKey: "env-default-secret"}},
+		WithProviderConfigRepository(repo),
+		WithProviderSecretVault(testProviderSecretVault(t, "model-v1", 15)),
+	)
+	created, err := service.UpsertAdminProviderConfig(
+		context.Background(),
+		"CUSTOM",
+		UpdateAdminProviderConfigRequest{Name: "Custom", Type: "OpenAI Compatible"},
+	)
+	if err != nil {
+		t.Fatalf("UpsertAdminProviderConfig error = %v", err)
+	}
+	if created.HasAPIKey || repo.stored.EncryptedSecretRef != "" {
+		t.Fatalf("custom provider inherited default secret: %#v / %q", created, repo.stored.EncryptedSecretRef)
+	}
+}
+
+func TestMetadataSaveMigratesLegacyIngressEnvelopeToVault(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pemValue := string(pem.EncodeToMemory(&pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
+	}))
+	legacy, err := json.Marshal(encryptedSecretEnvelope(
+		t, privateKey, "legacy-secret", "provider:OpenAI Compatible",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := &fakeProviderConfigRepository{
+		ok: true,
+		stored: StoredProviderConfig{
+			UserID: "00000000-0000-0000-0000-000000000001", ProviderID: "CUSTOM",
+			EncryptedSecretRef: string(legacy),
+			Config:             StoredProviderConfigPayload{Type: ProviderTypeOpenAICompatible, Enabled: true},
+		},
+	}
+	service := NewService(
+		config.Config{BYOK: config.BYOKConfig{PrivateKeyPEM: pemValue}},
+		WithProviderConfigRepository(repo),
+		WithProviderSecretVault(testProviderSecretVault(t, "model-v1", 16)),
+	)
+	_, err = service.UpsertAdminProviderConfig(
+		context.Background(),
+		"CUSTOM",
+		UpdateAdminProviderConfigRequest{Name: "Migrated", Type: "OpenAI Compatible", Enabled: true},
+	)
+	if err != nil {
+		t.Fatalf("UpsertAdminProviderConfig error = %v", err)
+	}
+	if storedSecretAlgorithm(repo.stored.EncryptedSecretRef) != providersecrets.Algorithm {
+		t.Fatalf("stored ref was not migrated: %q", repo.stored.EncryptedSecretRef)
 	}
 }
 
@@ -364,6 +542,7 @@ func TestAdminProviderConfigsManageCustomProviderOnBackend(t *testing.T) {
 			BYOK:     config.BYOKConfig{PrivateKeyPEM: pemValue},
 		},
 		WithProviderConfigRepository(repo),
+		WithProviderSecretVault(testProviderSecretVault(t, "model-v1", 12)),
 	)
 
 	created, err := service.UpsertAdminProviderConfig(context.Background(), "CUSTOM", UpdateAdminProviderConfigRequest{
@@ -461,4 +640,20 @@ func TestProviderModelsUsesStoredServerDefaultSecret(t *testing.T) {
 	if got := response.Models; len(got) != 1 || got[0] != "gpt-live" {
 		t.Fatalf("models = %#v", got)
 	}
+}
+
+func testProviderSecretVault(t *testing.T, kid string, fill byte) *providersecrets.Vault {
+	t.Helper()
+	encoded := base64.RawURLEncoding.EncodeToString(
+		[]byte(strings.Repeat(string([]byte{fill}), 32)),
+	)
+	vault, err := providersecrets.NewVault(providersecrets.KeyringConfig{
+		V:         providersecrets.KeyringVersion,
+		ActiveKID: kid,
+		Keys:      []providersecrets.KeyConfig{{KID: kid, Key: encoded}},
+	})
+	if err != nil {
+		t.Fatalf("NewVault() error = %v", err)
+	}
+	return vault
 }

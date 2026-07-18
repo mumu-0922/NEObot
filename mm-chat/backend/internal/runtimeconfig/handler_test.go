@@ -154,6 +154,23 @@ func TestHandlerAdminProviderConfigRequiresDatabaseForUpdate(t *testing.T) {
 	}
 }
 
+func TestHandlerRedactsProviderVaultErrors(t *testing.T) {
+	for _, test := range []struct {
+		err  error
+		code string
+	}{
+		{err: ErrProviderSecretVaultUnavailable, code: "PROVIDER_SECRET_VAULT_UNAVAILABLE"},
+		{err: ErrProviderSecretInvalid, code: "PROVIDER_SECRET_UNAVAILABLE"},
+	} {
+		rec := httptest.NewRecorder()
+		writeServiceError(rec, test.err)
+		if rec.Code != http.StatusServiceUnavailable ||
+			!strings.Contains(rec.Body.String(), test.code) {
+			t.Fatalf("error %v status = %d, body=%s", test.err, rec.Code, rec.Body.String())
+		}
+	}
+}
+
 func TestHandlerRoutesAdminProviderCollection(t *testing.T) {
 	repo := &fakeProviderConfigRepository{}
 	handler := NewHandler(NewService(

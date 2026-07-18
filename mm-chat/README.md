@@ -38,7 +38,16 @@ using real data or provider traffic:
 ```bash
 cp .env.single-server.example .env.single-server
 chmod 600 .env.single-server
+./scripts/init-provider-keyring.sh
 ```
+
+The keyring command creates the gitignored `secrets/provider-keyring.json` with
+mode `600` under a mode-`700` user-owned directory and never prints key
+material. Compose mounts it read-only only into
+the Go `backend` and one-shot `admin` service. Set `MM_CHAT_RUNTIME_UID` and
+`MM_CHAT_RUNTIME_GID` in the env file to `id -u` and `id -g`; Compose
+file-backed secrets preserve host ownership, so those non-root services must
+run as the protected file's owner.
 
 Initialize the database, then start the frontend and backend together:
 

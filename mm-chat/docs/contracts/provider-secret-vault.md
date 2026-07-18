@@ -2,10 +2,10 @@
 
 ## 1. Scope / Trigger
 
-G11.9F.1 creates the restart-stable at-rest encryption primitive required
-before existing administrator provider settings can move from BYOK ingress
-envelopes and `.env` fallback into one Postgres authority. This slice has no
-runtime, database, Compose, API, UI, or provider-network effect.
+G11.9F.1 created the restart-stable at-rest encryption primitive. G11.9F.2.1
+wires it into model-provider administrator writes, runtime reads, and
+single-server Compose without changing schema or calling a provider. Bulk
+rotation/backup and connection-test activation remain later slices.
 
 ## 2. Signatures
 
@@ -17,6 +17,18 @@ func (v *Vault) Encrypt(plaintext []byte, context string) (Envelope, error)
 func (v *Vault) Decrypt(envelope Envelope, context string) ([]byte, error)
 func (v *Vault) NeedsRotation(envelope Envelope) bool
 func (v *Vault) Rotate(envelope Envelope, context string) (Envelope, bool, error)
+func WithProviderSecretVault(vault *providersecrets.Vault) ServiceOption
+func (s *Service) UpsertAdminProviderConfig(context.Context, string, UpdateAdminProviderConfigRequest) (AdminProviderConfigResponse, error)
+func (s *Service) ResolveStoredProvider(context.Context, string) (ResolvedProvider, error)
+```
+
+Runtime/deployment fields:
+
+```text
+PROVIDER_SECRET_KEYRING_SOURCE=<host mode-600 keyring path>
+PROVIDER_SECRET_KEYRING_FILE=/run/secrets/mm_chat_provider_keyring
+MM_CHAT_RUNTIME_UID=<id -u>
+MM_CHAT_RUNTIME_GID=<id -g>
 ```
 
 Keyring file:
@@ -55,6 +67,9 @@ Persistable envelope:
 | Empty/oversized/untrimmed/NUL context | `ErrInvalidContext` |
 | Envelope context differs from expected context | `ErrContextMismatch` |
 | Unknown key, wrong version/algorithm, bad encoding/nonce, tampering | `ErrInvalidEnvelope` |
+| Admin writes a secret without a configured vault | `ErrProviderSecretVaultUnavailable` / HTTP `503 PROVIDER_SECRET_VAULT_UNAVAILABLE` |
+| Stored vault/legacy envelope is corrupt, unknown, or copied | `ErrProviderSecretInvalid` / redacted `PROVIDER_SECRET_UNAVAILABLE` |
+| Runtime UID/GID differs from the mode-`600` source owner | preflight rejection; startup otherwise fails closed |
 
 ## 5. Good / Base / Bad Cases
 
@@ -64,8 +79,13 @@ Persistable envelope:
   every old envelope, verify reload, then remove the old key.
 - Base: an envelope already uses the active key; `Rotate` returns it unchanged
   with `changed=false`.
+- Base migration: metadata-only save converts a legacy BYOK/default env secret
+  to vault ciphertext; a new custom provider remains secretless.
 - Bad: copy a Tavily envelope into a Jina record or alter its header/ciphertext;
   context/authentication validation fails closed.
+- Bad deployment: mount a host UID-owned mode-`600` file into a different
+  container UID; preflight rejects the mismatch instead of widening mode or
+  running the API as root.
 
 ## 6. Tests Required
 
@@ -77,6 +97,13 @@ Persistable envelope:
   envelope;
 - full Go tests, race test for this package, vet, module, quality, and security
   gates.
+- model-provider ingress-to-vault, restart reload, legacy/env lazy import,
+  custom-provider isolation, corrupt/missing-vault redaction, and context-copy
+  rejection;
+- guarded real-Postgres ciphertext-only integration against an isolated
+  `mm_chat_*_test` database, followed by database deletion;
+- Compose render, mode/owner preflight, image build, read-only Secret mount,
+  non-root runtime UID, explicit restart, and health proof.
 
 ## 7. Wrong vs Correct
 
@@ -90,6 +117,36 @@ envelope, and activate the provider only after a bounded connection test.
 ## 8. Rollback / Next Gate
 
 F.1 rollback deletes the unused package and contract; no state exists to
-migrate. G11.9F.2 must add a migration-compatible repository envelope, stable
-keyring configuration, transactional rotation/import behavior, and restart
-proof before any current provider row or `.env` fallback changes.
+migrate. F2.1 mounts the stable keyring and writes vault envelopes while
+retaining dual-read rollback. F2.2 must add transactional bulk backfill/rotation
+and restart proof; F2.3 removes model `.env` fallback only after a bounded
+connection-test activation gate.
+
+The compatibility direction is intentionally one-way: F2.1 reads legacy BYOK
+rows, but an older image cannot read newly written vault envelopes. Before the
+first production administrator save, image rollback is state-free. Afterwards,
+retain the F2.1 image and keyring and restore a pre-cutover Postgres backup
+before starting the older image; never remove the active keyring first.
+
+## 9. G11.9F.2.1 Repository Cutover
+
+- `PROVIDER_SECRET_KEYRING_FILE` contains only the in-container read-only path;
+  raw key material never enters the environment;
+- Compose mounts the host `PROVIDER_SECRET_KEYRING_SOURCE` only into `backend`
+  and `admin`;
+- Compose runs those two consumers as the configured non-root
+  `MM_CHAT_RUNTIME_UID:GID`, which preflight requires to match the mode-`600`
+  keyring owner; this avoids both world-readable key material and a root API;
+- administrator API Key bodies remain RSA BYOK ingress envelopes;
+- Go decrypts ingress, immediately encrypts with the vault context
+  `provider:model:<userId>:<providerId>`, clears the temporary byte slice, and
+  persists only the vault JSON envelope;
+- metadata save lazily imports a valid legacy BYOK row or Server Default env
+  secret; a new custom provider never inherits the default secret;
+- reads accept vault and legacy BYOK algorithms during this rollback slice,
+  but corrupt/unknown envelopes and missing vaults fail with redacted stable
+  errors;
+- no schema migration is needed because `encrypted_secret_ref` already stores
+  an opaque bounded string;
+- bulk backfill, transactional key rotation, activation testing, and env
+  removal remain F2.2/F2.3.

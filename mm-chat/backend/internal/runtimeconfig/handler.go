@@ -195,6 +195,10 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotImplemented, "PROVIDER_MODEL_LIST_UNSUPPORTED", "provider model listing is not available for this provider")
 	case errors.Is(err, ErrProviderSecretRequired):
 		writeError(w, http.StatusBadRequest, "PROVIDER_SECRET_REQUIRED", "provider API key is required")
+	case errors.Is(err, ErrProviderSecretVaultUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "PROVIDER_SECRET_VAULT_UNAVAILABLE", "provider secret vault is unavailable")
+	case errors.Is(err, ErrProviderSecretInvalid):
+		writeError(w, http.StatusServiceUnavailable, "PROVIDER_SECRET_UNAVAILABLE", "stored provider secret is unavailable")
 	case errors.Is(err, ErrProviderConfigUnsupported):
 		writeError(w, http.StatusBadRequest, "PROVIDER_CONFIG_UNSUPPORTED", "provider configuration is unsupported")
 	case errors.Is(err, ErrDatabaseRequired):

@@ -30,6 +30,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/jobaudit"
 	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/plugins"
+	"neo-chat/mm-chat/backend/internal/providersecrets"
 	"neo-chat/mm-chat/backend/internal/ragproviders"
 	"neo-chat/mm-chat/backend/internal/ragsource"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
@@ -95,6 +96,11 @@ func main() {
 	cfg := config.Load()
 	if err := cfg.Validate(); err != nil {
 		logger.Error("config_failed", slog.String("error", redactSensitiveLogText(err.Error())))
+		os.Exit(1)
+	}
+	providerSecretVault, err := newProviderSecretVault(cfg)
+	if err != nil {
+		logger.Error("provider_secret_keyring_failed")
 		os.Exit(1)
 	}
 
@@ -341,6 +347,7 @@ func main() {
 		httpserver.WithRAGQueryEmbedder(ragQueryEmbedder),
 		httpserver.WithRAGReranker(ragReranker),
 		httpserver.WithRuntimeConfigRepository(runtimeConfigRepo),
+		httpserver.WithProviderSecretVault(providerSecretVault),
 		httpserver.WithPluginRegistry(pluginRegistry),
 		httpserver.WithPluginAuditRecorder(pluginAuditRecorder),
 		httpserver.WithLogger(logger),
@@ -493,6 +500,13 @@ func main() {
 	if runtimeErr != nil {
 		os.Exit(1)
 	}
+}
+
+func newProviderSecretVault(cfg config.Config) (*providersecrets.Vault, error) {
+	if strings.TrimSpace(cfg.ProviderSecrets.KeyringFile) == "" {
+		return nil, nil
+	}
+	return providersecrets.LoadVaultFile(cfg.ProviderSecrets.KeyringFile)
 }
 
 func singleUserAnswerIdentities(

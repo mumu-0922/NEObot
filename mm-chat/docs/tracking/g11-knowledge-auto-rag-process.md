@@ -1258,3 +1258,71 @@ Rollback deletes the unused package and its contract; no persisted data or
 runtime configuration refers to it. G11.9F.2 next adds stable keyring config,
 repository envelope compatibility, transactional import/rotation, restart
 proof, and model-provider fallback removal before any production cutover.
+
+## 2026-07-18 — G11.9F.2.1 Model-provider vault write cutover
+
+Outcome: new administrator model-provider secrets are now restart-stable vault
+ciphertext in Postgres. The administrator page still sends the existing RSA
+BYOK ingress envelope. Go decrypts it only at ingress, immediately encrypts the
+bytes with the Docker-Secret vault and record context
+`provider:model:<userId>:<providerId>`, clears the temporary byte slice, and
+persists only the bounded `A256GCM` envelope. Reads accept this envelope and the
+legacy `RSA-OAEP-256+A256GCM` form during the migration window; corrupt,
+unknown, copied-to-another-context, or missing-vault state fails closed through
+redacted errors.
+
+An administrator metadata save lazily imports either a legacy BYOK row or the
+Server Default `PROVIDER_API_KEY` fallback. A new custom provider starts empty
+and cannot inherit that fallback. Clear and replacement operations remain
+available even when an old secret is unusable. No schema migration was needed:
+`provider_configs.encrypted_secret_ref` remains the opaque storage column.
+
+Compose now mounts the gitignored mode-`600` keyring only into `backend` and
+`admin`. Live restart testing caught an ownership trap that static Compose
+rendering could not: file-backed Compose Secrets are read-only bind mounts, so
+the host UID `1000`/mode `600` source was unreadable by the image's UID `100`.
+The first rebuilt backend therefore failed closed with
+`provider_secret_keyring_failed`. The deployment now requires
+`MM_CHAT_RUNTIME_UID/GID` to match the invoking keyring owner and runs only
+those two consumers as that non-root identity. Preflight validates numeric,
+non-root, owner-matching IDs plus the keyring's owner, mode, size, strict JSON,
+canonical key encoding, active key, and duplicate rejection. Backend was then
+healthy before and after an explicit restart with the Secret still read-only.
+
+Live persistence proof used only the isolated `mm_chat_g119f21_test` database.
+It wrote a BYOK ingress request through the real Postgres repository, verified
+the database contained only an `A256GCM` envelope and no plaintext/legacy
+algorithm, reloaded a fresh Vault from the same keyring to simulate restart,
+and resolved the original secret. The test DSN now refuses any database name
+outside `mm_chat_*_test`. The isolated database was force-disconnected and
+deleted; the formal database migration fingerprint stayed unchanged at 27
+rows / version 27.
+
+Verification:
+
+```text
+focused config/vault/runtimeconfig/httpserver/api tests        passed
+Postgres vault write + fresh-vault reload                       passed
+isolated test database / formal database mutation              deleted / none
+backend image build + Secret mount + restart health             passed
+runtime UID / keyring source mode                               non-root match / 600
+backend go test ./... / focused race / go vet ./...             passed
+providersecrets coverage                                       81.7%
+preflight tests / Compose config                               passed / passed
+module / quality / security manual review                      passed
+real provider requests / quota consumed                        0 / 0
+```
+
+The automated security scanner reported two pre-existing test-fixture strings
+as possible hard-coded Keys; both are local `httptest` sentinels and neither is
+a usable credential. No secret value, keyring content, ciphertext, database
+URL, or provider body entered logs or committed files.
+
+Rollback is asymmetric after the first vault write: this release can read old
+BYOK rows, but the previous image cannot read new vault envelopes. Because this
+slice did not mutate the formal provider rows, immediate rollback is still code
+only. After production administrator saves begin, keep this image and keyring
+available and restore a pre-cutover Postgres backup before reverting to the old
+image. Do not remove the current keyring. F2.2 owns transactional bulk
+backfill/rotation, ciphertext backup, and restart proof; F2.3 retains bounded
+connection-test activation and final model-provider `.env` fallback removal.

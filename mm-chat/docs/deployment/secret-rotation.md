@@ -23,6 +23,7 @@ secrets, or copied provider keys.
 | SMTP username/password                         | Go backend Recovery mailer | Restart backend; verify delivery before revoking the old credential.     |
 | Session bearer tokens                          | Browser clients, Postgres  | Revoke through the authenticated session endpoints.                      |
 | `PROVIDER_API_KEY`                             | Go backend provider client | Restart backend; verify chat streaming.                                  |
+| Provider vault keyring                         | Go backend/admin only      | Retain old key until every Postgres envelope is transactionally rotated. |
 | `POSTGRES_PASSWORD` / `MIGRATION_DATABASE_URL` | Bootstrap/migrator         | Rotate together; verify one-shot migration access.                       |
 | API password / `DATABASE_URL`                  | Go API and `admin`         | Restart API; future `admin` runs use the same API runtime login.         |
 | Worker password / `RAG_WORKER_DATABASE_URL`    | RAG Worker                 | Recreate only the long-running Worker.                                   |
@@ -138,14 +139,28 @@ may still need operational cancellation.
 
 ## Provider API Key
 
-```bash
-# edit PROVIDER_API_KEY in mm-chat/.env.single-server
-docker compose --env-file mm-chat/.env.single-server \
-  -f mm-chat/compose.single-server.yml --profile app up -d backend
+In server mode, save the provider Key through the administrator Provider page.
+The browser sends only a BYOK ingress envelope; Go decrypts it transiently,
+re-encrypts it with the Docker Secret vault under the User/Provider context,
+and stores only the AES-256-GCM envelope in `provider_configs`. Reads expose
+only `hasApiKey`.
 
-curl -fsS http://127.0.0.1:8080/ready
-# Run one authenticated chat stream smoke through the frontend or API client.
-```
+During G11.9F.2.1, an existing BYOK envelope or the Server Default
+`PROVIDER_API_KEY` fallback is lazily imported into the vault on the next
+administrator metadata save. The old `.env` value remains rollback-only until
+the explicit F2.2 backfill/restart proof and F2.3 connection-test cutover pass.
+Do not remove it yet.
+
+Do not rotate or remove a vault key merely by editing the keyring file. F2.1
+can read retained keys, but the transactional Postgres rewrite/removal command
+lands in F2.2. Until then, keep the generated active key and the entire keyring
+file stable and backed up separately from Postgres.
+
+Keep the keyring owned by the deployment user with mode `600`, and keep
+`MM_CHAT_RUNTIME_UID` / `MM_CHAT_RUNTIME_GID` synchronized with `id -u` /
+`id -g`. Compose file-backed secrets preserve host ownership; changing either
+ID without changing the owner makes provider-secret loading fail closed at
+startup.
 
 Rollback: restore the old provider key in `.env.single-server` and restart
 `backend`.
