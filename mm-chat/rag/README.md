@@ -111,6 +111,14 @@ Native and MinerU structure manifests intentionally share one
 `STRUCTURE_CHUNK_PROFILE_HASH`; one generation cannot admit provider-specific
 chunk hashes.
 
+G11.9D.2.3a adds the Postgres
+`knowledge_begin_structure_generation_rebuild(...)` allocation boundary. It
+creates only a non-active `building` generation, shared Index/Search Profiles,
+and exact per-active-document staging materializations plus pending parse jobs.
+It rejects incomplete, substituted, duplicate, or concurrent candidate sets
+and cannot promote the generation. The Python worker does not yet consume
+these jobs; real MinerU/Jina replay remains the next D.2.3 slice.
+
 ## Local quality gates
 
 No command loads repository `.env` files.

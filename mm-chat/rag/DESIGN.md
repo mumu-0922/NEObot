@@ -453,6 +453,27 @@ replay an actual downloaded archive, fail closed on schema drift, stage a new
 generation, and run real Jina passage embeddings before gateway or generation
 cutover.
 
+## G11.9D.2.3a Candidate generation rebuild allocation
+
+Migration `028_structure_generation_rebuild_allocator` introduces one
+`SECURITY DEFINER` function owned by `rag_projection_owner`. The Go runtime
+supplies deterministic IDs, request hashes, shared profile hashes, and the
+complete active-document allocation set. Under the corpus-head lock, the
+function rejects another building/verified candidate and verifies exact set
+coverage before creating any durable rebuild state.
+
+The function clones the active embedding/rerank/search provider configuration,
+binds the new Index Profile to the shared Native/MinerU structure chunk hash,
+creates a `building` generation plus projection state, and allocates one
+staging materialization and pending `parse/reprocess` job per document. Parse
+governance authority is inherited from the document's latest admitted parse
+job. No promotion function or active-head update is reachable from this
+boundary.
+
+This is allocation, not processing or cutover. The current active generation
+remains authoritative while later D.2.3 work replays real MinerU archives,
+projects Native/MinerU artifacts, and obtains real Jina passage embeddings.
+
 ## Process topology
 
 One process owns:

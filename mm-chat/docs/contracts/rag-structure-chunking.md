@@ -3,10 +3,11 @@
 ## 1. Scope / Trigger
 
 This contract covers G11.9D.1 deterministic planning, G11.9D.2.1 Native
-projection, and G11.9D.2.2 admitted MinerU page-element projection. It does not
-yet replace either production gateway, persist a new materialization, call
-Jina, or switch the active Index Generation. Those promotion steps remain
-D.2.3 and D.3.
+projection, G11.9D.2.2 admitted MinerU page-element projection, and the
+G11.9D.2.3a candidate-generation rebuild allocator. The allocator may persist
+only a non-active generation and its staging work. It does not yet replace a
+production gateway, call Jina, verify a candidate, or switch the active Index
+Generation. Those promotion steps remain D.2.3 and D.3.
 
 ## 2. Signatures
 
@@ -156,3 +157,87 @@ Tests cover the frozen synthetic MinerU heading/text/table/formula corpus,
 page-BBox projection, deterministic replay, schemas, Postgres DTO projection,
 and long multilingual UTF-8/overlap behavior. Real-provider archive replay is
 a D.2.3 prerequisite; unsupported provider shape must fail closed.
+
+## 10. G11.9D.2.3a Candidate Generation Rebuild Allocator
+
+`knowledge_begin_structure_generation_rebuild(...)` is the sole mutation
+boundary for beginning a structure rebuild. The `SECURITY DEFINER` function is
+owned by `rag_projection_owner` and executable by `go_api_runtime`.
+
+### Signature
+
+```sql
+knowledge_begin_structure_generation_rebuild(
+  index_profile_id UUID,
+  search_profile_id UUID,
+  generation_id UUID,
+  chunk_profile_hash TEXT,
+  base_profile_hash TEXT,
+  parser_manifest_hash TEXT,
+  search_profile_hash TEXT,
+  build_snapshot_hash TEXT,
+  allocations JSONB
+) RETURNS TABLE(
+  candidate_generation_id UUID,
+  allocated_document_count BIGINT,
+  active_generation_id UUID
+)
+```
+
+Each allocation object contains lower-case UUID strings `documentId`,
+`materializationId`, and `jobId`, plus a 64-character lower-case SHA-256
+`requestHash`.
+
+### Contracts
+
+- it locks the corpus projection head and requires an existing active
+  generation;
+- it rejects any existing `building` or `verified` candidate;
+- the supplied allocation set must contain every and only current active,
+  available document exactly once;
+- it clones active provider configuration into caller-identified shared
+  Index/Search Profiles bound to the shared structure chunk profile;
+- it creates one `building` generation and projection-state row, then one
+  `staging` materialization and pending `parse/reprocess` job per document;
+- job processing authority is inherited from that document's latest admitted
+  parse job; IDs and request hashes are supplied by the trusted Go caller;
+- it never calls `knowledge_promote_index_generation` and never updates
+  `active_index_generation_id`.
+
+### Validation & Error Matrix
+
+| Condition | Error |
+| --- | --- |
+| Null ID, invalid hash, non-array/empty allocations | `RAG_STRUCTURE_REBUILD_ARGUMENT_INVALID` |
+| No active generation | `RAG_STRUCTURE_REBUILD_ACTIVE_GENERATION_MISSING` |
+| Existing building/verified candidate | `RAG_STRUCTURE_REBUILD_CANDIDATE_EXISTS` |
+| Missing active Search Profile | `RAG_STRUCTURE_REBUILD_ACTIVE_PROFILE_MISSING` |
+| Count, uniqueness, or exact document set mismatch | `RAG_STRUCTURE_REBUILD_ALLOCATION_COVERAGE_INVALID` |
+| Invalid allocation UUID/hash shape | `RAG_STRUCTURE_REBUILD_ALLOCATION_INVALID` |
+| Document or latest parse authority unavailable | `RAG_STRUCTURE_REBUILD_DOCUMENT_INVALID` |
+
+### Good / Base / Bad Cases
+
+- Good: all active documents are allocated once and receive staging rows while
+  the returned active generation ID remains unchanged.
+- Base: a single active document produces one materialization and one pending
+  parse job in the candidate.
+- Bad: a same-size list substitutes another UUID, omits a document, duplicates
+  a document, or races an existing candidate; the whole call rolls back.
+
+### Tests Required
+
+The migration proof must run against a disposable clone, cover missing and
+same-cardinality wrong allocation sets, reject a second candidate, verify the
+active generation is unchanged, and delete the clone. Real MinerU/Jina work,
+candidate projection, verification, and cutover remain later D.2.3/D.3 slices.
+
+### Wrong vs Correct
+
+Wrong: compare only JSON array count and distinct count, which permits a
+same-cardinality substituted document set, or create candidate rows before
+locking the corpus head.
+
+Correct: compare exact active-document membership under the head lock, let the
+function transaction roll back every partial write, and leave promotion to a
+separate verified boundary.

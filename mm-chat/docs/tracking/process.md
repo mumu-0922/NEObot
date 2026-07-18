@@ -8317,6 +8317,16 @@ Native and MinerU Chunk Manifests now share one structure profile hash, closing
 the mixed-format generation admission conflict discovered before live staging.
 No runtime generation was created or switched.
 
+## 2026-07-18 — G11.9D.2.3a rebuild allocator cross-reference
+
+Migration 028 adds the fail-closed allocation boundary for one non-active
+structure rebuild generation. Disposable-clone proof covered exact
+active-document membership, staging materialization/parse-job counts,
+concurrent-candidate rejection, and an unchanged active generation. Detailed
+defects, verification, cleanup, rollback, and the remaining real MinerU/Jina
+handoff are recorded in `docs/tracking/g11-knowledge-auto-rag-process.md` and
+`docs/contracts/rag-structure-chunking.md`.
+
 ## 2026-07-18 — G11.9D.2.2 MinerU projection cross-reference
 
 Digest-bound MinerU page elements now preserve heading/text/table/formula

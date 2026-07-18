@@ -622,3 +622,37 @@ Ruff, strict Mypy, and 136 combined planner/Native/MinerU/Gateway tests passed;
 the active generation remained `46a1c7bb-44ed-4868-9d61-edd557f9d3f0`.
 
 Rollback is the commit revert only. No live profile or generation was created.
+
+## 2026-07-18 — G11.9D.2.3a Candidate rebuild allocator
+
+Added migration `028_structure_generation_rebuild_allocator` with the
+`knowledge_begin_structure_generation_rebuild(...)` mutation boundary. It
+locks the corpus head, refuses concurrent building/verified candidates,
+requires the allocation JSON to exactly cover every current active/available
+document once, clones active provider settings into shared structure
+Index/Search Profiles, and creates only a non-active building generation,
+projection state, staging materializations, and pending `parse/reprocess` jobs.
+
+The first disposable-clone proof exposed three integration defects before any
+production migration: missing Index Profile grants for the function owner, an
+incorrect collection processing-revision column, and row-lock permissions on
+tables the projection owner intentionally cannot update. After those narrow
+fixes, review found a fourth boundary defect: count equality alone allowed a
+same-cardinality substituted document set. The allocator now proves exact set
+membership as well as count and uniqueness.
+
+Live proof used a disposable clone of the current three-document corpus. Both
+a two-document allocation and a three-entry set with one substituted UUID
+failed with `RAG_STRUCTURE_REBUILD_ALLOCATION_COVERAGE_INVALID`. The valid call
+created generation `33333333-3333-4333-8333-333333333328` as sequence 4 with
+three staging materializations and three pending parse jobs. A second call
+failed with `RAG_STRUCTURE_REBUILD_CANDIDATE_EXISTS`; the active generation
+remained `46a1c7bb-44ed-4868-9d61-edd557f9d3f0`. The disposable database was
+then dropped and absence verified.
+
+Go migration tests, full backend tests, `go vet ./...`, and Compose source
+builds for backend/migrate passed. Migration 028 was not applied to the
+production database. Rollback drops the function and its added profile grant.
+Remaining D.2.3 work owns real MinerU archive replay, candidate parse
+projection, real Jina passage embeddings, verification, and eventual D.3
+cutover.

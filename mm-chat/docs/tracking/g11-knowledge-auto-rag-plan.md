@@ -171,8 +171,12 @@ Incremental execution slices:
   MinerU structure profile, with schema and Postgres projection proof;
 - **G11.9D.2.2a** complete: converge Native and MinerU manifests on one shared
   structure chunk profile required by mixed-format generation staging;
-- **G11.9D.2.3** stage Native + MinerU parse projections and Jina passage
-  embeddings in a new generation without re-upload;
+- **G11.9D.2.3a** complete: atomically allocate the one permitted non-active
+  rebuild generation, shared Index/Search Profiles, and one staging
+  materialization plus pending parse job for every current active document;
+- **G11.9D.2.3** remaining: replay real MinerU output, stage Native + MinerU
+  parse projections, and spend real Jina passage-embedding quota in the
+  candidate generation without re-upload;
 - **G11.9D.3** verify counts/hashes/locators/deletion fences, atomically cut over
   the generation, and prove failed rebuild rollback plus live citations.
 

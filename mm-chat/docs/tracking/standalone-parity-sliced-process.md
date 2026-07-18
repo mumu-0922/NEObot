@@ -5008,3 +5008,17 @@ embedding.
 D.2.3 preflight caught provider-specific Native/MinerU chunk hashes, which
 cannot coexist in one generation profile. Both mappers now bind the shared D.1
 structure hash; no generation or persisted profile was mutated.
+
+## 2026-07-18 — G11.9D.2.3a Candidate rebuild allocator
+
+Migration 028 now allocates one non-active mixed-format rebuild generation
+under the corpus-head lock. It requires exact active-document set coverage,
+clones the active provider configuration into shared structure Index/Search
+Profiles, and creates one staging materialization plus pending parse job per
+document without touching the active generation.
+
+A disposable clone of the three-document corpus rejected incomplete,
+same-cardinality substituted, and duplicate-candidate calls. The valid call
+created sequence 4 with three staging rows and three pending jobs while active
+generation `46a1c7bb-44ed-4868-9d61-edd557f9d3f0` remained unchanged. The
+clone was deleted after proof; migration 028 was not applied to production.
