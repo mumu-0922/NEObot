@@ -20,7 +20,8 @@ The package does not accept browser input, access Postgres, authorize admin
 requests, call providers, or log secrets. G11.9F.2.1 wires it behind the
 existing BYOK ingress envelope: new provider secrets and lazily imported legacy
 defaults are re-encrypted before the repository write. Transactional bulk
-rotation remains G11.9F.2.2.
+backfill/rotation is owned by the administrator command added in G11.9F.2.2;
+this package remains database-agnostic.
 
 ## Keyring Format
 
@@ -40,7 +41,8 @@ rotation remains G11.9F.2.2.
 Production will mount this document read-only from Docker Secret storage. A
 rotation first adds the new active key while retaining the previous key, then
 rewrites every envelope, verifies reload, and only then removes the previous
-key.
+key. `scripts/rotate-provider-keyring.sh` prepares retained-key and
+active-key-only candidate documents without overwriting the current file.
 
 In the single-server Compose deployment the source remains owned by the
 deployment user with mode `600`. Compose preserves that ownership for

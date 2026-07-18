@@ -10,8 +10,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -112,6 +114,203 @@ WHERE provider_id = 'INTEGRATION' AND deleted_at IS NULL
 	if resolved.APIKey != plaintext {
 		t.Fatalf("reloaded provider secret does not match")
 	}
+}
+
+func TestPostgresProviderSecretRewriteBackfillsAndRotatesEveryCiphertextRow(t *testing.T) {
+	db := openRuntimeConfigPostgresIntegrationDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := db.ExecContext(ctx, `DELETE FROM provider_configs`); err != nil {
+		t.Fatalf("clear provider configs: %v", err)
+	}
+
+	privateKey, cfg := providerSecretRewriteBYOKConfig(t)
+	oldVault := providerSecretRewriteVault(t, "old", map[string]byte{"old": 31})
+	rotatingVault := providerSecretRewriteVault(t, "new", map[string]byte{
+		"new": 32,
+		"old": 31,
+	})
+	newOnlyVault := providerSecretRewriteVault(t, "new", map[string]byte{"new": 32})
+	const userID = "00000000-0000-0000-0000-000000000001"
+	providerRows := []providerSecretRewriteRow{
+		providerSecretVaultRewriteRow(
+			t, oldVault, "10000000-0000-0000-0000-000000000001",
+			userID, "OLD", "old-secret", false,
+		),
+		providerSecretLegacyRewriteRow(
+			t, privateKey, "10000000-0000-0000-0000-000000000002",
+			userID, "LEGACY", "legacy-secret",
+		),
+		providerSecretVaultRewriteRow(
+			t, rotatingVault, "10000000-0000-0000-0000-000000000003",
+			userID, "CURRENT", "current-secret", false,
+		),
+		{
+			id: "10000000-0000-0000-0000-000000000004", userID: userID,
+			providerID: "EMPTY", configJSON: `{}`,
+		},
+		providerSecretVaultRewriteRow(
+			t, oldVault, "10000000-0000-0000-0000-000000000005",
+			userID, "DELETED", "deleted-secret", true,
+		),
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO users (id, display_name)
+VALUES ($1, 'Rewrite Test')
+ON CONFLICT (id) DO NOTHING
+`, userID); err != nil {
+		t.Fatalf("insert rewrite user: %v", err)
+	}
+	for _, row := range providerRows {
+		if _, err := db.ExecContext(ctx, `
+INSERT INTO provider_configs (
+  id, user_id, provider_id, label, encrypted_secret_ref, config, deleted_at
+) VALUES ($1, $2, $3, $3, NULLIF($4, ''), $5::jsonb, CASE WHEN $6 THEN now() ELSE NULL END)
+`, row.id, row.userID, row.providerID, row.encryptedSecretRef, row.configJSON, row.deleted); err != nil {
+			t.Fatalf("insert provider %s: %v", row.providerID, err)
+		}
+	}
+
+	rewriter := NewPostgresProviderSecretRewriter(db, cfg, rotatingVault)
+	dryRun, err := rewriter.Rewrite(ctx, ProviderSecretRewriteOptions{})
+	if err != nil {
+		t.Fatalf("dry-run Rewrite() error = %v", err)
+	}
+	if dryRun.TotalRows != 5 || dryRun.SecretRows != 4 || dryRun.ChangedRows != 3 ||
+		dryRun.LegacyRows != 1 || dryRun.EnvRows != 0 || dryRun.RotatedRows != 2 ||
+		dryRun.CurrentRows != 1 || dryRun.EmptyRows != 1 || dryRun.BlockedRows != 0 ||
+		dryRun.Executed {
+		t.Fatalf("dry-run = %#v", dryRun)
+	}
+
+	beforeMismatch := providerSecretRefsByID(t, ctx, db)
+	_, err = rewriter.Rewrite(ctx, ProviderSecretRewriteOptions{
+		Execute: true, ExpectedPlanSHA256: strings.Repeat("0", 64),
+	})
+	if !errors.Is(err, ErrProviderSecretRewritePlanMismatch) {
+		t.Fatalf("mismatched Rewrite() error = %v", err)
+	}
+	if afterMismatch := providerSecretRefsByID(t, ctx, db); !reflect.DeepEqual(afterMismatch, beforeMismatch) {
+		t.Fatal("plan mismatch changed provider ciphertext")
+	}
+
+	executed, err := rewriter.Rewrite(ctx, ProviderSecretRewriteOptions{
+		Execute: true, ExpectedPlanSHA256: dryRun.PlanSHA256,
+	})
+	if err != nil || !executed.Executed || executed.ChangedRows != 3 {
+		t.Fatalf("executed Rewrite() = %#v, %v", executed, err)
+	}
+	wantPlaintext := map[string]string{
+		"OLD": "old-secret", "LEGACY": "legacy-secret",
+		"CURRENT": "current-secret", "DELETED": "deleted-secret",
+	}
+	rows, err := db.QueryContext(ctx, `
+SELECT user_id::text, provider_id, encrypted_secret_ref
+FROM provider_configs
+WHERE encrypted_secret_ref IS NOT NULL
+ORDER BY provider_id
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	seen := 0
+	for rows.Next() {
+		var storedUserID, providerID, encoded string
+		if err := rows.Scan(&storedUserID, &providerID, &encoded); err != nil {
+			t.Fatal(err)
+		}
+		envelope, err := providersecrets.ParseEnvelope(encoded)
+		if err != nil || envelope.KID != "new" || strings.Contains(encoded, byokAlgorithm) {
+			t.Fatalf("rewritten %s envelope = %#v, %v", providerID, envelope, err)
+		}
+		plaintext, err := newOnlyVault.Decrypt(
+			envelope,
+			modelProviderSecretContext(storedUserID, providerID),
+		)
+		if err != nil || string(plaintext) != wantPlaintext[providerID] {
+			t.Fatalf("rewritten %s plaintext = %q, %v", providerID, plaintext, err)
+		}
+		clear(plaintext)
+		seen++
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if seen != 4 {
+		t.Fatalf("rewritten ciphertext rows = %d, want 4", seen)
+	}
+
+	restarted := NewPostgresProviderSecretRewriter(db, config.Config{}, newOnlyVault)
+	audit, err := restarted.Rewrite(ctx, ProviderSecretRewriteOptions{})
+	if err != nil || audit.ChangedRows != 0 ||
+		audit.CurrentRows != 4 || audit.EmptyRows != 1 {
+		t.Fatalf("new-only restart audit = %#v, %v", audit, err)
+	}
+
+	stalePrivateKey, _ := providerSecretRewriteBYOKConfig(t)
+	blocked := providerSecretLegacyRewriteRow(
+		t,
+		stalePrivateKey,
+		"10000000-0000-0000-0000-000000000006",
+		userID,
+		"BLOCKED",
+		"blocked-secret",
+	)
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO provider_configs (
+  id, user_id, provider_id, label, encrypted_secret_ref, config
+) VALUES ($1, $2, $3, $3, $4, $5::jsonb)
+`, blocked.id, blocked.userID, blocked.providerID, blocked.encryptedSecretRef, blocked.configJSON); err != nil {
+		t.Fatalf("insert blocked provider: %v", err)
+	}
+	blockedRewriter := NewPostgresProviderSecretRewriter(db, cfg, newOnlyVault)
+	blockedPlan, err := blockedRewriter.Rewrite(ctx, ProviderSecretRewriteOptions{})
+	if err != nil || blockedPlan.BlockedRows != 1 || blockedPlan.ChangedRows != 0 {
+		t.Fatalf("blocked dry-run = %#v, %v", blockedPlan, err)
+	}
+	beforeBlocked := providerSecretRefsByID(t, ctx, db)
+	_, err = blockedRewriter.Rewrite(ctx, ProviderSecretRewriteOptions{
+		Execute: true, ExpectedPlanSHA256: blockedPlan.PlanSHA256,
+	})
+	if !errors.Is(err, ErrProviderSecretRewriteBlocked) {
+		t.Fatalf("blocked execute error = %v", err)
+	}
+	if afterBlocked := providerSecretRefsByID(t, ctx, db); !reflect.DeepEqual(afterBlocked, beforeBlocked) {
+		t.Fatal("blocked execute changed provider ciphertext")
+	}
+	if _, err := db.ExecContext(ctx, `DELETE FROM provider_configs WHERE id = $1`, blocked.id); err != nil {
+		t.Fatalf("remove blocked fixture: %v", err)
+	}
+}
+
+func providerSecretRefsByID(
+	t *testing.T,
+	ctx context.Context,
+	db *sql.DB,
+) map[string]string {
+	t.Helper()
+	rows, err := db.QueryContext(ctx, `
+SELECT id::text, COALESCE(encrypted_secret_ref, '')
+FROM provider_configs
+ORDER BY id
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	result := make(map[string]string)
+	for rows.Next() {
+		var id, secretRef string
+		if err := rows.Scan(&id, &secretRef); err != nil {
+			t.Fatal(err)
+		}
+		result[id] = secretRef
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return result
 }
 
 func openRuntimeConfigPostgresIntegrationDB(t *testing.T) *sql.DB {

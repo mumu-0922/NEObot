@@ -72,7 +72,8 @@ mm-chat/backup/minio/minio-<UTC>.tar.gz.sha256
 The Postgres dump uses `pg_dump --format=custom --no-owner --no-acl` from the
 `postgres` service. The MinIO backup runs `mc mirror` from the `minio-client`
 Compose service, mirrors `S3_BUCKET`, then archives the mirrored tree as
-`tar.gz`. The MinIO backup container runs as the invoking host UID/GID so the
+`tar.gz`. Both scripts set `umask 077`, so new artifacts and checksums are
+owner-only. The MinIO backup container runs as the invoking host UID/GID so the
 operator can remove temporary staging files after the archive is created.
 
 ## Verify backup checksums

@@ -8474,3 +8474,22 @@ F2.2; connection-test activation and model `.env` removal remain F2.3. Full
 evidence and asymmetric rollback requirements are in
 `docs/tracking/g11-knowledge-auto-rag-process.md` and
 `docs/contracts/provider-secret-vault.md`.
+
+## 2026-07-18 — G11.9F.2.2 transactional rewrite cross-reference
+
+The operator-only model-provider rewrite now defaults to a redacted dry-run,
+binds all source state/actions and the active key into an exact plan SHA, and
+requires that plan plus a verified backup SHA before one locked Serializable
+transaction can backfill legacy or rotate retained-key envelopes. Deleted rows
+are included; unknown/copy/stale/blocked state fails before writes. Keyring
+prepare/prune candidates are closed, owner-only, and no-overwrite.
+
+Disposable Postgres rewrite plus dump/restore proved active-key-only
+ciphertext, rollback on wrong/blocked plans, and absence of plaintext/keyring
+material. Formal cutover used an owner-only full dump and restore drill, then
+rewrote one legacy custom row and one historical Server Default via the still-
+configured env fallback. Final audit is 2 current / 0 changed / 0 blocked;
+backend/frontend are healthy, schema remains version 27, and the pre-rewrite
+backup is retained. No provider request occurred. Full evidence and rollback
+are in `docs/tracking/g11-knowledge-auto-rag-process.md` and
+`docs/deployment/secret-rotation.md`.

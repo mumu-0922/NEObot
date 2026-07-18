@@ -21,6 +21,7 @@ mm-chat/rag/Dockerfile                 # Python dark-run worker image
 mm-chat/scripts/preflight-single-server.sh # production promotion gate
 mm-chat/scripts/compose-single-server-production.sh # clean-env production entrypoint
 mm-chat/scripts/init-provider-keyring.sh # one-time provider vault bootstrap
+mm-chat/scripts/rotate-provider-keyring.sh # retained-key prepare/prune candidates
 mm-chat/compose.production.yml          # removes all production build paths
 mm-chat/secrets/                        # provider vault Docker Secret source, gitignored
 mm-chat/data/                          # runtime volumes, gitignored
@@ -116,6 +117,14 @@ login names and passwords. The `migrate` service receives only
 `MIGRATION_DATABASE_URL`; `admin` deliberately uses the API `DATABASE_URL`, not
 the migrator credential. Production preflight checks separation and syntax
 without printing URL values.
+
+The one-shot `admin provider-secrets-rewrite` command receives the stable BYOK
+ingress key, temporary Server Default env fallback, and provider vault Secret
+only for migration. It defaults to dry-run. Execute additionally requires the
+exact plan SHA and an operator-confirmed verified Postgres-backup SHA; all rows
+are validated and rewritten in one locked Serializable transaction. See
+[`secret-rotation.md`](./secret-rotation.md) for the mandatory backup, blocked
+row, retained-key, restart, prune, and rollback sequence.
 
 Phase 15.2B remains a dark-run boundary:
 

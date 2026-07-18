@@ -5189,3 +5189,19 @@ passed without any provider call. F2.2 retains bulk backfill/rotation/backup;
 F2.3 retains connection-test activation and `.env` fallback removal. Detailed
 evidence and old-image rollback limits are recorded in
 `docs/tracking/g11-knowledge-auto-rag-process.md`.
+
+## 2026-07-18 — G11.9F.2.2 transactional provider-secret rewrite
+
+The standalone admin image now dry-runs and atomically executes an exact-plan
+legacy backfill/retained-key rotation only after an operator confirms a
+checksum-verified Postgres backup. It includes deleted rows, blocks
+unrecoverable custom legacy state, admits the temporary Server Default env
+fallback only for that exact row/action, and emits no ciphertext or key data.
+
+Isolated rewrite, active-key-only restart, dump/restore, wrong-plan/blocked
+rollback, and keyring prepare/prune tests passed. Formal execution retained an
+owner-only pre-rewrite backup, converted two ciphertext rows, left the empty
+deleted row unchanged, and ended at 2 current / 0 changed / 0 blocked with
+healthy frontend/backend and schema version 27. No provider quota was used.
+Detailed evidence is in `docs/tracking/g11-knowledge-auto-rag-process.md` and
+the runbook is in `docs/deployment/secret-rotation.md`.

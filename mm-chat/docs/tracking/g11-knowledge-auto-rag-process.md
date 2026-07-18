@@ -1326,3 +1326,79 @@ available and restore a pre-cutover Postgres backup before reverting to the old
 image. Do not remove the current keyring. F2.2 owns transactional bulk
 backfill/rotation, ciphertext backup, and restart proof; F2.3 retains bounded
 connection-test activation and final model-provider `.env` fallback removal.
+
+## 2026-07-18 — G11.9F.2.2 Transactional backfill and rotation
+
+Outcome: every formal model-provider ciphertext row now uses the current
+Docker-Secret vault key. The new one-shot
+`admin provider-secrets-rewrite` command defaults to dry-run and returns only
+counts plus a deterministic plan SHA. Execute requires that exact SHA and a
+verified pre-rewrite Postgres-backup SHA. It takes one Serializable transaction
+and `SHARE ROW EXCLUSIVE` table lock, reads active and deleted rows in stable ID
+order, validates every row before any update, then rewrites legacy BYOK and
+retained-old-key vault envelopes. A plan/state/key change, malformed or copied
+envelope, duplicate active User/Provider, missing retained key, SQL failure, or
+oversized state aborts the whole transaction.
+
+Deleted ciphertext rows are included so pruning an old key cannot leave hidden
+dependencies. Empty rows remain empty. A well-formed custom legacy row that no
+longer matches the stable BYOK private key is counted as blocked and prevents
+execute. An unreadable active `SERVER_DEFAULT` legacy row may instead bind the
+still-configured env fallback into the exact plan; vault failures never use
+that fallback. The plan digest binds source ciphertext/config/deletion state,
+action, active vault key, and a one-way digest of the fallback secret.
+
+Stored vault and legacy envelopes are now parsed as bounded closed JSON:
+unknown or trailing fields no longer disappear through permissive
+`json.Unmarshal`. `rotate-provider-keyring.sh prepare` creates a new active key
+while retaining old keys; `prune` creates an active-only candidate. Both
+require user-owned mode-`600` input, mode-`700` non-symlink target parent,
+canonical keys, a new target, and never print material. Postgres and MinIO
+backup scripts now set `umask 077`.
+
+The isolated `mm_chat_g119f22_test` proof covered one legacy row, one retained
+old-key row, one current row, one empty row, and one deleted old-key row. Wrong
+plan SHA changed nothing; the correct plan rewrote exactly three rows; a fresh
+active-key-only Vault decrypted all four ciphertexts. A later unrecoverable
+custom fixture produced `blocked_rows=1`, rejected execute, and preserved every
+ref. The test database was deleted.
+
+An isolated custom `pg_dump` was restored into a second database: all four
+ciphertexts were `A256GCM` under the new active key, legacy count was zero, and
+neither fixture plaintext nor keyring bytes appeared in logical dump output.
+Both databases and temporary dumps were deleted; the formal migration
+fingerprint remained 27/27 during that proof.
+
+Formal cutover then ran behind a retained owner-only full Postgres dump and
+restore drill. Initial dry-run found three rows: one decryptable legacy custom
+provider, one unreadable historical `SERVER_DEFAULT` safely mapped to the
+configured env fallback, and one empty deleted row. The exact plan executed two
+updates atomically. Post-restart audit reported two current vault rows, one
+empty row, `changed_rows=0`, and `blocked_rows=0`; backend and frontend remained
+healthy and public runtime config still reported the model provider available.
+The pre-rewrite dump/checksum remains under
+`backup/provider-secrets-f22/` with mode `600` artifacts.
+
+Verification:
+
+```text
+pure plan/action/hash/strict-envelope tests                 passed
+providersecrets focused coverage                            83.1%
+wrong-plan / blocked execute zero-write proof              passed / passed
+live Postgres legacy/old/current/empty/deleted rewrite     passed
+active-key-only Vault restart audit                        passed
+isolated custom dump/restore + plaintext/keyring scan      passed
+formal owner-only backup/checksum + restore drill          passed
+formal exact-plan execute / final no-op audit              2 rows / passed
+formal schema migration                                    none; version 27
+keyring prepare/prune + no-overwrite tests                  passed
+backend/frontend health                                    healthy / healthy
+provider requests / quota                                  0 / 0
+```
+
+Rollback restores the paired pre-rewrite Postgres dump and prior keyring
+selection before restarting backend; restoring only one side can strand
+ciphertext. The provider env fallback remains configured and is not yet sole-
+authority cleanup: F2.3 must perform bounded real connection-test activation,
+then remove model-provider `.env` runtime fallback. No provider call entered
+F2.2.

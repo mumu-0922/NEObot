@@ -483,7 +483,12 @@ services:
       AUTH_BOOTSTRAP_DISPLAY_NAME: ${AUTH_BOOTSTRAP_DISPLAY_NAME:-Owner}
       RAG_PROVIDER_PROFILE: ${RAG_PROVIDER_PROFILE:-disabled}
       RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED: ${RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED:-false}
+      PROVIDER_TYPE: ${PROVIDER_TYPE:-openai_compatible}
+      PROVIDER_API_KEY: ${PROVIDER_API_KEY:-change-me-provider-key}
       PROVIDER_SECRET_KEYRING_FILE: /run/secrets/mm_chat_provider_keyring
+      BYOK_PRIVATE_KEY_PEM: ${BYOK_PRIVATE_KEY_PEM:-}
+      BYOK_KEY_ID: ${BYOK_KEY_ID:-}
+      BYOK_ALLOW_EPHEMERAL_KEY: "false"
     secrets:
       - source: mm_chat_provider_keyring
         target: mm_chat_provider_keyring

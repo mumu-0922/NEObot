@@ -4,8 +4,9 @@
 
 G11.9F.1 created the restart-stable at-rest encryption primitive. G11.9F.2.1
 wires it into model-provider administrator writes, runtime reads, and
-single-server Compose without changing schema or calling a provider. Bulk
-rotation/backup and connection-test activation remain later slices.
+single-server Compose without changing schema or calling a provider. F2.2 adds
+transactional backfill/rotation plus backup/restart proof; connection-test
+activation remains F2.3.
 
 ## 2. Signatures
 
@@ -118,9 +119,9 @@ envelope, and activate the provider only after a bounded connection test.
 
 F.1 rollback deletes the unused package and contract; no state exists to
 migrate. F2.1 mounts the stable keyring and writes vault envelopes while
-retaining dual-read rollback. F2.2 must add transactional bulk backfill/rotation
-and restart proof; F2.3 removes model `.env` fallback only after a bounded
-connection-test activation gate.
+retaining dual-read rollback. F2.2 adds exact-plan transactional bulk
+backfill/rotation plus backup/restore and restart proof. F2.3 removes model
+`.env` fallback only after a bounded connection-test activation gate.
 
 The compatibility direction is intentionally one-way: F2.1 reads legacy BYOK
 rows, but an older image cannot read newly written vault envelopes. Before the
@@ -148,5 +149,53 @@ before starting the older image; never remove the active keyring first.
   errors;
 - no schema migration is needed because `encrypted_secret_ref` already stores
   an opaque bounded string;
-- bulk backfill, transactional key rotation, activation testing, and env
-  removal remain F2.2/F2.3.
+- connection-test activation and env removal remain F2.3.
+
+## 10. G11.9F.2.2 Transactional Rewrite
+
+Operator signature:
+
+```text
+admin provider-secrets-rewrite
+admin provider-secrets-rewrite --execute \
+  --expected-plan-sha256 <dry-run-sha256> \
+  --confirmed-backup-sha256 <verified-dump-sha256>
+```
+
+Contract:
+
+- dry-run is the default and returns only bounded counts plus a SHA-256 plan;
+- the plan binds the active vault key ID plus a domain-separated keyed binding
+  of its bytes, every row ID/User/Provider/config/ciphertext/deletion
+  state/action, and a one-way digest of any Server Default env fallback used by
+  that exact plan;
+- execute requires both the exact dry-run digest and an operator-confirmed,
+  checksum-verified pre-rewrite Postgres backup;
+- one Serializable transaction takes a `SHARE ROW EXCLUSIVE` table lock,
+  validates every active and deleted row before updating any row, then rewrites
+  legacy BYOK and retained-old-key vault envelopes;
+- an unreadable active `SERVER_DEFAULT` legacy row may use the still-configured
+  `PROVIDER_API_KEY` migration fallback; an unreadable custom legacy row is
+  counted as blocked and prevents execute;
+- active duplicate User/Provider records, unknown/malformed/trailing envelope
+  fields, context copy, missing retained keys, stale plan state, oversized
+  state, or any SQL failure aborts the entire transaction;
+- empty rows remain empty, deleted ciphertext rows rotate, and no schema or
+  provider network request is involved;
+- after execute, dry-run must report `changed_rows=0`, `blocked_rows=0`, and all
+  ciphertext rows current before a retained key may be pruned.
+
+Stable failures:
+
+| Condition | Result |
+| --- | --- |
+| Missing DB/vault | `ErrProviderSecretRewriteUnavailable` |
+| Malformed/ambiguous/oversized/context-invalid state | `ErrProviderSecretRewriteInvalid` |
+| Dry-run state or active key changed before execute | `ErrProviderSecretRewritePlanMismatch` |
+| Unrecoverable custom legacy ciphertext exists | `ErrProviderSecretRewriteBlocked` |
+
+Required proof covers pure plan/action/hash tests, plan-mismatch and blocked
+zero-write behavior, real Postgres legacy/old/current/empty/deleted rows,
+active-key-only reload, keyring prepare/prune, owner-only dump/checksum,
+restore drill, plaintext/keyring absence, backend restart, and a final no-op
+audit.

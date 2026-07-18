@@ -49,6 +49,10 @@ the Go `backend` and one-shot `admin` service. Set `MM_CHAT_RUNTIME_UID` and
 file-backed secrets preserve host ownership, so those non-root services must
 run as the protected file's owner.
 
+For an existing deployment, never edit that keyring in place. Use
+`scripts/rotate-provider-keyring.sh` plus the dry-run/backup/exact-plan
+administrator workflow in `docs/deployment/secret-rotation.md`.
+
 Initialize the database, then start the frontend and backend together:
 
 ```bash

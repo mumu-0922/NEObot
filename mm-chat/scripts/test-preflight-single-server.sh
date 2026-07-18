@@ -6,7 +6,10 @@ project_dir="$(cd "${script_dir}/.." && pwd)"
 preflight="${script_dir}/preflight-single-server.sh"
 production_compose="${script_dir}/compose-single-server-production.sh"
 restore_drill="${script_dir}/restore-minio-drill.sh"
+postgres_backup="${script_dir}/backup-postgres.sh"
+minio_backup="${script_dir}/backup-minio.sh"
 provider_keyring_init="${script_dir}/init-provider-keyring.sh"
+provider_keyring_rotate="${script_dir}/rotate-provider-keyring.sh"
 example="${project_dir}/.env.single-server.example"
 temp_dir="$(mktemp -d)"
 trap 'rm -rf "${temp_dir}"' EXIT
@@ -32,6 +35,13 @@ assert_rejected() {
 }
 
 assert_rejected "${example}" "example env cannot be promoted"
+
+for backup_script in "${postgres_backup}" "${minio_backup}"; do
+  if ! grep -Fx 'umask 077' "${backup_script}" >/dev/null; then
+    echo "preflight test: backup scripts must create owner-only artifacts" >&2
+    exit 1
+  fi
+done
 
 generated_keyring="${temp_dir}/generated/provider-keyring.json"
 "${provider_keyring_init}" "${generated_keyring}" "test-generated-v1" >/dev/null
@@ -67,6 +77,42 @@ if "${provider_keyring_init}" \
   "${temp_dir}/linked-parent/provider-keyring.json" \
   "test-generated-v2" >/dev/null 2>&1; then
   echo "preflight test: provider keyring init accepted a symlink parent" >&2
+  exit 1
+fi
+
+prepared_keyring="${temp_dir}/generated/provider-keyring.next.json"
+"${provider_keyring_rotate}" prepare \
+  "${generated_keyring}" "${prepared_keyring}" "test-generated-v2" >/dev/null
+pruned_keyring="${temp_dir}/generated/provider-keyring.final.json"
+"${provider_keyring_rotate}" prune \
+  "${prepared_keyring}" "${pruned_keyring}" >/dev/null
+python3 - "${generated_keyring}" "${prepared_keyring}" "${pruned_keyring}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+source, prepared, pruned = [json.loads(Path(path).read_text()) for path in sys.argv[1:]]
+if source["activeKid"] != "test-generated-v1" or len(source["keys"]) != 1:
+    raise SystemExit("preflight test: rotation changed the source keyring")
+if prepared["activeKid"] != "test-generated-v2" or len(prepared["keys"]) != 2:
+    raise SystemExit("preflight test: prepared keyring did not retain the old key")
+if pruned["activeKid"] != "test-generated-v2" or len(pruned["keys"]) != 1:
+    raise SystemExit("preflight test: pruned keyring retained an old key")
+if prepared["keys"][0] != pruned["keys"][0]:
+    raise SystemExit("preflight test: prune changed the active key")
+for path in sys.argv[1:]:
+    if Path(path).stat().st_mode & 0o777 != 0o600:
+        raise SystemExit("preflight test: rotated keyring mode is not 600")
+PY
+if "${provider_keyring_rotate}" prepare \
+  "${generated_keyring}" "${prepared_keyring}" "test-generated-v3" >/dev/null 2>&1; then
+  echo "preflight test: rotation overwrote an existing target" >&2
+  exit 1
+fi
+if "${provider_keyring_rotate}" prepare \
+  "${generated_keyring}" "${temp_dir}/generated/duplicate.json" \
+  "test-generated-v1" >/dev/null 2>&1; then
+  echo "preflight test: rotation accepted a duplicate key id" >&2
   exit 1
 fi
 
@@ -476,6 +522,8 @@ assert "DATABASE_URL" not in migrate_environment
 admin_environment = services["admin"]["environment"]
 assert "neo_chat_api:test-api-password@postgres" in admin_environment["DATABASE_URL"]
 assert "MIGRATION_DATABASE_URL" not in admin_environment
+assert admin_environment["PROVIDER_API_KEY"] == "test-provider-key-1234567890"
+assert admin_environment["BYOK_ALLOW_EPHEMERAL_KEY"] == "false"
 
 rag = services["rag-worker"]
 want_rag_image = (

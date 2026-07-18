@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -24,6 +26,7 @@ const (
 	maxContextBytes   = 256
 	maxPlaintextBytes = 64 << 10
 	maxKeyringBytes   = 64 << 10
+	maxEnvelopeBytes  = 96 << 10
 )
 
 var (
@@ -41,6 +44,26 @@ type KeyringConfig struct {
 	V         int         `json:"v"`
 	ActiveKID string      `json:"activeKid"`
 	Keys      []KeyConfig `json:"keys"`
+}
+
+// ParseEnvelope decodes one bounded, closed vault envelope. Stored provider
+// ciphertext is untrusted database input and must not gain forward-compatible
+// fields silently.
+func ParseEnvelope(encoded string) (Envelope, error) {
+	var envelope Envelope
+	encoded = strings.TrimSpace(encoded)
+	if encoded == "" || len(encoded) > maxEnvelopeBytes {
+		return envelope, ErrInvalidEnvelope
+	}
+	decoder := json.NewDecoder(strings.NewReader(encoded))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&envelope); err != nil {
+		return Envelope{}, ErrInvalidEnvelope
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return Envelope{}, ErrInvalidEnvelope
+	}
+	return envelope, nil
 }
 
 type KeyConfig struct {
@@ -143,6 +166,26 @@ func (v *Vault) ActiveKID() string {
 		return ""
 	}
 	return v.activeKID
+}
+
+// ActiveKeyBinding returns a domain-separated, keyed binding for an operator
+// plan. It lets a plan detect active-key replacement under a reused key ID
+// without exposing the key or a reusable encryption primitive.
+func (v *Vault) ActiveKeyBinding(purpose string) (string, error) {
+	if v == nil {
+		return "", ErrKeyringUnavailable
+	}
+	if !validContext(purpose) {
+		return "", ErrInvalidContext
+	}
+	key, ok := v.keys[v.activeKID]
+	if !ok {
+		return "", ErrInvalidKeyring
+	}
+	binding := hmac.New(sha256.New, key[:])
+	_, _ = binding.Write([]byte("mm-chat-provider-active-key-binding-v1\x00"))
+	_, _ = binding.Write([]byte(purpose))
+	return base64.RawURLEncoding.EncodeToString(binding.Sum(nil)), nil
 }
 
 func (v *Vault) Encrypt(plaintext []byte, context string) (Envelope, error) {

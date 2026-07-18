@@ -54,6 +54,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		return runGovernanceApply(args[1:], stdin, stdout)
 	case "governance-disable":
 		return runGovernanceDisable(args[1:], stdout)
+	case "provider-secrets-rewrite":
+		return runProviderSecretsRewrite(args[1:], stdout)
 	default:
 		return usageError()
 	}
@@ -366,5 +368,14 @@ func readPasswordLine(reader io.Reader) (string, error) {
 }
 
 func usageError() error {
-	return errors.New("usage: admin bootstrap-identity --email <mailbox> --password-stdin [--user-id <uuid>] [--display-name <name>] | admin disable-account --user-id <uuid> | admin governance-apply --manifest-stdin | admin governance-disable --processor <alias> --endpoint-id <id> [--model-id <id>]")
+	return errors.New(
+		"usage: admin bootstrap-identity --email <mailbox> --password-stdin " +
+			"[--user-id <uuid>] [--display-name <name>] | " +
+			"admin disable-account --user-id <uuid> | " +
+			"admin governance-apply --manifest-stdin | " +
+			"admin governance-disable --processor <alias> --endpoint-id <id> " +
+			"[--model-id <id>] | admin provider-secrets-rewrite " +
+			"[--execute --expected-plan-sha256 <sha256> " +
+			"--confirmed-backup-sha256 <sha256>]",
+	)
 }

@@ -279,8 +279,10 @@ Incremental execution slices:
   matching non-root backend/admin UIDs, re-encrypt new model-provider BYOK
   ingress before Postgres writes, dual-read legacy rows, and lazily import
   legacy/default env secrets on administrator metadata save;
-- **G11.9F.2.2**: transactionally backfill every remaining model-provider row,
-  rotate old vault envelopes, and prove ciphertext-only backup plus restart;
+- **G11.9F.2.2** complete: transactionally backfill every remaining
+  model-provider row, rotate retained-key vault envelopes, reject unrecoverable
+  custom legacy rows, and prove owner-only ciphertext backup/restore plus
+  active-key-only restart;
 - **G11.9F.2.3**: require a bounded model-provider connection test before
   activation, then remove model-provider `.env` runtime fallback;
 - **G11.9F.3**: add Search administrator CRUD/test/activate UI and the sole

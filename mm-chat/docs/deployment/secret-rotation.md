@@ -148,13 +148,66 @@ only `hasApiKey`.
 During G11.9F.2.1, an existing BYOK envelope or the Server Default
 `PROVIDER_API_KEY` fallback is lazily imported into the vault on the next
 administrator metadata save. The old `.env` value remains rollback-only until
-the explicit F2.2 backfill/restart proof and F2.3 connection-test cutover pass.
-Do not remove it yet.
+the F2.3 connection-test cutover passes. F2.2 has backfilled the current model
+rows, but do not remove the env fallback yet.
 
-Do not rotate or remove a vault key merely by editing the keyring file. F2.1
-can read retained keys, but the transactional Postgres rewrite/removal command
-lands in F2.2. Until then, keep the generated active key and the entire keyring
-file stable and backed up separately from Postgres.
+Do not rotate or remove a vault key merely by editing the keyring file. Use the
+closed F2.2 sequence below. Every generated keyring path must be new; the
+scripts refuse overwrite.
+
+```bash
+cd mm-chat
+
+# 1. Prepare a new active key while retaining every existing decrypt key.
+./scripts/rotate-provider-keyring.sh prepare \
+  secrets/provider-keyring.json \
+  secrets/provider-keyring.next.json \
+  provider-<UTC-or-release-id>
+
+# 2. Point PROVIDER_SECRET_KEYRING_SOURCE at the next file, render Compose,
+#    restart backend, then get the exact database rewrite plan.
+docker compose --env-file .env.single-server \
+  -f compose.single-server.yml --profile app up -d backend
+docker compose --env-file .env.single-server \
+  -f compose.single-server.yml --profile ops run --rm admin \
+  provider-secrets-rewrite
+
+# 3. Stop provider writes, create and checksum a pre-rewrite Postgres backup,
+#    and complete its restore drill before execute. Record its SHA-256.
+./scripts/backup-single-server-production.sh .env.single-server
+
+# 4. Execute only the unchanged dry-run plan. The backup SHA is an explicit
+#    operator confirmation and is never printed back by the command.
+docker compose --env-file .env.single-server \
+  -f compose.single-server.yml --profile ops run --rm admin \
+  provider-secrets-rewrite --execute \
+  --expected-plan-sha256 '<dry-run plan_sha256>' \
+  --confirmed-backup-sha256 '<verified Postgres dump sha256>'
+
+# 5. Restart and audit. Require changed_rows=0 and blocked_rows=0.
+docker compose --env-file .env.single-server \
+  -f compose.single-server.yml --profile app up -d backend
+docker compose --env-file .env.single-server \
+  -f compose.single-server.yml --profile ops run --rm admin \
+  provider-secrets-rewrite
+
+# 6. Only after active-key-only restart proof, create a pruned candidate,
+#    switch PROVIDER_SECRET_KEYRING_SOURCE to it, restart, and audit again.
+./scripts/rotate-provider-keyring.sh prune \
+  secrets/provider-keyring.next.json \
+  secrets/provider-keyring.final.json
+```
+
+If dry-run reports `blocked_rows>0`, do not execute. Re-enter or clear the
+affected custom provider through the administrator page, then repeat dry-run
+and backup. An unreadable `SERVER_DEFAULT` legacy row may be replaced only by
+the still-configured Server Default env fallback. Malformed vault rows or
+missing retained keys fail instead of using that fallback.
+
+Keep the previous keyring and pre-rewrite dump offline until the rollback
+window expires. Rollback restores both the previous keyring selection and the
+pre-rewrite Postgres dump, then restarts backend; reverting only one side can
+make ciphertext unreadable.
 
 Keep the keyring owned by the deployment user with mode `600`, and keep
 `MM_CHAT_RUNTIME_UID` / `MM_CHAT_RUNTIME_GID` synchronized with `id -u` /
@@ -162,8 +215,9 @@ Keep the keyring owned by the deployment user with mode `600`, and keep
 ID without changing the owner makes provider-secret loading fail closed at
 startup.
 
-Rollback: restore the old provider key in `.env.single-server` and restart
-`backend`.
+Rollback of the model-provider `.env` value alone remains available only until
+F2.3. Vault rotation rollback always restores the paired keyring and Postgres
+backup described above.
 
 ## Postgres Login Passwords
 

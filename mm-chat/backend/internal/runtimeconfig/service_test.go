@@ -657,3 +657,22 @@ func testProviderSecretVault(t *testing.T, kid string, fill byte) *providersecre
 	}
 	return vault
 }
+
+func TestParseStoredLegacySecretRefIsClosedAndBounded(t *testing.T) {
+	valid := `{"v":1,"kid":"fixture","alg":"RSA-OAEP-256+A256GCM",` +
+		`"wrappedKey":"a","iv":"b","ciphertext":"c","context":"provider:OpenAI"}`
+	if _, err := parseStoredLegacySecretRef(valid); err != nil {
+		t.Fatalf("valid stored legacy envelope error = %v", err)
+	}
+	for name, encoded := range map[string]string{
+		"unknown":  strings.TrimSuffix(valid, "}") + `,"extra":true}`,
+		"trailing": valid + `{}`,
+		"oversize": strings.Repeat("x", maxStoredProviderSecretRefBytes+1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := parseStoredLegacySecretRef(encoded); err != ErrProviderSecretInvalid {
+				t.Fatalf("parseStoredLegacySecretRef() error = %v", err)
+			}
+		})
+	}
+}

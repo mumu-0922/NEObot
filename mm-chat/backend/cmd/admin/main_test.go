@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"neo-chat/mm-chat/backend/internal/knowledge"
+	"neo-chat/mm-chat/backend/internal/runtimeconfig"
 )
 
 type fakeGovernanceDisableService struct {
@@ -78,9 +79,71 @@ func TestAdminRunRequiresExplicitCommandArguments(t *testing.T) {
 		{"governance-apply"},
 		{"governance-disable", "--processor", "mineru"},
 		{"governance-disable", "--processor", "mineru", "--endpoint-id", "default", "--model-id", ""},
+		{"provider-secrets-rewrite", "--execute"},
+		{"provider-secrets-rewrite", "--expected-plan-sha256", strings.Repeat("a", 64)},
+		{"provider-secrets-rewrite", "--confirmed-backup-sha256", strings.Repeat("b", 64)},
 	} {
 		if err := run(args, strings.NewReader("password\n"), &strings.Builder{}); err == nil {
 			t.Fatalf("run(%v) error = nil, want usage error", args)
+		}
+	}
+}
+
+func TestParseProviderSecretRewriteArgsRequiresExactDryRunAndBackupProof(t *testing.T) {
+	dryRun, err := parseProviderSecretRewriteArgs(nil)
+	if err != nil || dryRun.rewrite.Execute || dryRun.rewrite.ExpectedPlanSHA256 != "" {
+		t.Fatalf("dry run = %#v, %v", dryRun, err)
+	}
+
+	plan := strings.Repeat("a", 64)
+	backup := strings.Repeat("b", 64)
+	execute, err := parseProviderSecretRewriteArgs([]string{
+		"--execute",
+		"--expected-plan-sha256", plan,
+		"--confirmed-backup-sha256", backup,
+	})
+	if err != nil || !execute.rewrite.Execute ||
+		execute.rewrite.ExpectedPlanSHA256 != plan ||
+		execute.confirmedBackupSHA256 != backup {
+		t.Fatalf("execute = %#v, %v", execute, err)
+	}
+
+	for _, args := range [][]string{
+		{"--execute", "--expected-plan-sha256", "bad", "--confirmed-backup-sha256", backup},
+		{"--execute", "--expected-plan-sha256", plan, "--confirmed-backup-sha256", "bad"},
+		{"--execute", "--expected-plan-sha256", plan},
+		{"--execute", "--confirmed-backup-sha256", backup},
+		{"extra"},
+	} {
+		if _, err := parseProviderSecretRewriteArgs(args); err == nil {
+			t.Fatalf("parseProviderSecretRewriteArgs(%v) error = nil", args)
+		}
+	}
+}
+
+func TestWriteProviderSecretRewriteResultIsRedacted(t *testing.T) {
+	result := runtimeconfig.ProviderSecretRewriteResult{
+		TotalRows: 6, SecretRows: 5, ChangedRows: 4, LegacyRows: 1,
+		EnvRows: 1, RotatedRows: 2, CurrentRows: 1, EmptyRows: 1, BlockedRows: 1,
+		PlanSHA256: strings.Repeat("c", 64), Executed: true,
+	}
+	var output strings.Builder
+	if err := writeProviderSecretRewriteResult(&output, result); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	for _, want := range []string{
+		"mode=executed", "changed_rows=4", "legacy_rows=1",
+		"env_rows=1", "rotated_rows=2", "blocked_rows=1",
+		"plan_sha256=" + strings.Repeat("c", 64),
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("output %q missing %q", text, want)
+		}
+	}
+	for _, forbidden := range []string{"api_key", "ciphertext", "backup_sha256", "secret="} {
+		if strings.Contains(strings.ToLower(text), forbidden) {
+			t.Fatalf("output contains %q: %q", forbidden, text)
 		}
 	}
 }

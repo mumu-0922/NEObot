@@ -64,6 +64,35 @@ func TestVaultRejectsTamperedAndUnknownKeyEnvelopes(t *testing.T) {
 	}
 }
 
+func TestParseEnvelopeIsClosedAndBounded(t *testing.T) {
+	vault := newTestVault(t, "active", testKey(9))
+	envelope, err := vault.Encrypt([]byte("fixture"), "provider:model:user:provider")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := ParseEnvelope(string(encoded))
+	if err != nil || parsed != envelope {
+		t.Fatalf("ParseEnvelope() = %#v, %v", parsed, err)
+	}
+
+	for name, value := range map[string]string{
+		"empty":    "",
+		"unknown":  strings.TrimSuffix(string(encoded), "}") + `,"extra":true}`,
+		"trailing": string(encoded) + `{}`,
+		"oversize": strings.Repeat("x", maxEnvelopeBytes+1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := ParseEnvelope(value); !errors.Is(err, ErrInvalidEnvelope) {
+				t.Fatalf("ParseEnvelope() error = %v", err)
+			}
+		})
+	}
+}
+
 func TestVaultRejectsInvalidPlaintextAndContext(t *testing.T) {
 	vault := newTestVault(t, "active", testKey(8))
 	if _, err := vault.Encrypt(nil, "provider:model:default"); !errors.Is(err, ErrInvalidPlaintext) {
@@ -113,6 +142,31 @@ func TestVaultRotatesFromRetainedPreviousKey(t *testing.T) {
 	unchanged, changed, err := rotatingVault.Rotate(rotated, rotated.Context)
 	if err != nil || changed || unchanged != rotated {
 		t.Fatalf("current rotation = changed:%v envelope:%#v err:%v", changed, unchanged, err)
+	}
+}
+
+func TestActiveKeyBindingIsStableAndBindsKeyMaterial(t *testing.T) {
+	first := newTestVault(t, "same-kid", testKey(10))
+	same := newTestVault(t, "same-kid", testKey(10))
+	different := newTestVault(t, "same-kid", testKey(11))
+	firstBinding, err := first.ActiveKeyBinding("provider:model:rewrite:v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sameBinding, err := same.ActiveKeyBinding("provider:model:rewrite:v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	differentBinding, err := different.ActiveKeyBinding("provider:model:rewrite:v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if firstBinding == "" || firstBinding != sameBinding ||
+		firstBinding == differentBinding {
+		t.Fatal("active key binding is not stable or did not bind key material")
+	}
+	if _, err := first.ActiveKeyBinding(" bad"); !errors.Is(err, ErrInvalidContext) {
+		t.Fatalf("invalid purpose error = %v", err)
 	}
 }
 

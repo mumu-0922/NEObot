@@ -1387,7 +1387,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
             restart proof, and model-provider `.env` fallback removal.
         - [x] G11.9F.2.1 Stable Docker Secret mount, vault-at-rest writes,
               legacy dual-read, and lazy legacy/env import on admin save.
-        - [ ] G11.9F.2.2 Transactional bulk backfill/rotation,
+        - [x] G11.9F.2.2 Transactional bulk backfill/rotation,
               ciphertext-only backup, and restart proof.
         - [ ] G11.9F.2.3 Bounded model connection-test activation and model
               `.env` runtime fallback removal.

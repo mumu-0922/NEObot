@@ -44,6 +44,7 @@ var (
 )
 
 const maxProviderModelsResponseBytes = 2 << 20
+const maxStoredProviderSecretRefBytes = 96 << 10
 
 type Service struct {
 	cfg             config.Config
@@ -515,8 +516,8 @@ func (s *Service) decryptStoredProviderSecret(
 		if s.providerSecrets == nil {
 			return "", ErrProviderSecretVaultUnavailable
 		}
-		var envelope providersecrets.Envelope
-		if err := json.Unmarshal([]byte(encoded), &envelope); err != nil {
+		envelope, err := providersecrets.ParseEnvelope(encoded)
+		if err != nil {
 			return "", ErrProviderSecretInvalid
 		}
 		plaintext, err := s.providerSecrets.Decrypt(
@@ -533,8 +534,8 @@ func (s *Service) decryptStoredProviderSecret(
 		}
 		return decrypted, nil
 	case byokAlgorithm:
-		var envelope EncryptedSecretEnvelope
-		if err := json.Unmarshal([]byte(encoded), &envelope); err != nil {
+		envelope, err := parseStoredLegacySecretRef(encoded)
+		if err != nil {
 			return "", ErrProviderSecretInvalid
 		}
 		plaintext, err := s.DecryptOptionalSecret(
@@ -587,6 +588,23 @@ func storedSecretAlgorithm(encoded string) string {
 		return ""
 	}
 	return header.Alg
+}
+
+func parseStoredLegacySecretRef(encoded string) (EncryptedSecretEnvelope, error) {
+	var envelope EncryptedSecretEnvelope
+	encoded = strings.TrimSpace(encoded)
+	if encoded == "" || len(encoded) > maxStoredProviderSecretRefBytes {
+		return envelope, ErrProviderSecretInvalid
+	}
+	decoder := json.NewDecoder(strings.NewReader(encoded))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&envelope); err != nil {
+		return EncryptedSecretEnvelope{}, ErrProviderSecretInvalid
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return EncryptedSecretEnvelope{}, ErrProviderSecretInvalid
+	}
+	return envelope, nil
 }
 
 func modelProviderSecretContext(userID string, providerID string) string {
