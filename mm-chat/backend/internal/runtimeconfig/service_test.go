@@ -307,6 +307,24 @@ func (r *fakeProviderConfigRepository) CommitSearchProviderConnection(
 	return r.stored, nil
 }
 
+func (r *fakeProviderConfigRepository) CommitRAGProviderConnection(
+	_ context.Context,
+	input CommitRAGProviderConnectionInput,
+) (StoredProviderConfig, error) {
+	if !r.ok || r.stored.ID != input.ID || r.stored.UserID != input.UserID ||
+		r.stored.ProviderID != input.ProviderID ||
+		r.stored.EncryptedSecretRef != input.ExpectedEncryptedSecretRef ||
+		r.stored.Config.Kind != providerConfigKindRAG ||
+		r.stored.Config.RAGProvider != input.ExpectedRAGProvider ||
+		r.stored.Config.Enabled != input.ExpectedEnabled {
+		return StoredProviderConfig{}, ErrProviderConfigChanged
+	}
+	r.stored.Config.ConnectionTestSHA256 = input.ConnectionTestSHA256
+	r.stored.Config.ConnectionTestedAt = input.ConnectionTestedAt.UTC().Format(time.RFC3339Nano)
+	r.stored.Config.Enabled = input.Enabled
+	return r.stored, nil
+}
+
 func (r *fakeProviderConfigRepository) DeleteProviderConfig(_ context.Context, userID string, providerID string) error {
 	if !r.ok || r.stored.UserID != userID || r.stored.ProviderID != providerID {
 		return ErrProviderConfigNotFound

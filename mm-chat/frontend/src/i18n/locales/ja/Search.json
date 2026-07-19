@@ -24,5 +24,7 @@
   "activated": "{provider} を有効化しました。",
   "deactivated": "{provider} を無効化しました。",
   "deleted": "{provider} の設定を削除しました。",
-  "keyCleared": "API Key を削除しました。"
+  "keyCleared": "API Key を削除しました。",
+  "keyStoredOnServer": "API キーは暗号化されてサーバーに保存されています。",
+  "keyNotStored": "サーバーに API キーは保存されていません。"
 }

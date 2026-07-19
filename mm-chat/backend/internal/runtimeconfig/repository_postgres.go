@@ -333,6 +333,68 @@ WHERE user_id = $1
 	return stored, nil
 }
 
+func (r *PostgresProviderConfigRepository) CommitRAGProviderConnection(
+	ctx context.Context,
+	input CommitRAGProviderConnectionInput,
+) (StoredProviderConfig, error) {
+	if r == nil || r.db == nil {
+		return StoredProviderConfig{}, ErrDatabaseRequired
+	}
+	testedAt := input.ConnectionTestedAt.UTC().Format(time.RFC3339Nano)
+	var stored StoredProviderConfig
+	var encodedConfig []byte
+	var secretRef sql.NullString
+	err := r.db.QueryRowContext(ctx, `
+UPDATE provider_configs
+SET config = jsonb_set(
+        jsonb_set(
+          jsonb_set(config, '{connectionTestSha256}', to_jsonb($7::text), true),
+          '{connectionTestedAt}', to_jsonb($8::text), true
+        ),
+        '{enabled}', to_jsonb($9::boolean), true
+      ),
+    updated_at = now()
+WHERE id = $1
+  AND user_id = $2
+  AND provider_id = $3
+  AND deleted_at IS NULL
+  AND encrypted_secret_ref IS NOT DISTINCT FROM NULLIF($4, '')
+  AND COALESCE(config->>'kind', '') = 'rag'
+  AND COALESCE(config->>'ragProvider', '') = $5
+  AND COALESCE((config->>'enabled')::boolean, false) = $6
+  AND $7 <> ''
+RETURNING id::text, user_id::text, provider_id, label, encrypted_secret_ref, config
+`,
+		input.ID,
+		input.UserID,
+		input.ProviderID,
+		input.ExpectedEncryptedSecretRef,
+		input.ExpectedRAGProvider,
+		input.ExpectedEnabled,
+		input.ConnectionTestSHA256,
+		testedAt,
+		input.Enabled,
+	).Scan(
+		&stored.ID,
+		&stored.UserID,
+		&stored.ProviderID,
+		&stored.Label,
+		&secretRef,
+		&encodedConfig,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return StoredProviderConfig{}, ErrProviderConfigChanged
+		}
+		return StoredProviderConfig{}, err
+	}
+	stored.EncryptedSecretRef = secretRef.String
+	if err := json.Unmarshal(encodedConfig, &stored.Config); err != nil {
+		return StoredProviderConfig{}, ErrProviderConfigUnsupported
+	}
+	return stored, nil
+}
+
 func (r *PostgresProviderConfigRepository) DeleteProviderConfig(
 	ctx context.Context,
 	userID string,

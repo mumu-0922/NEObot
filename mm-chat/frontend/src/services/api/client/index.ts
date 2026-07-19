@@ -8,6 +8,7 @@ import { createLocalImportApiShell } from "./local/importApi";
 import { createLocalKnowledgeApiShell } from "./local/knowledgeApi";
 import { createLocalPluginApiShell } from "./local/pluginApi";
 import { createLocalProviderApiShell } from "./local/providerApi";
+import { createLocalRAGProviderApiShell } from "./local/ragProviderApi";
 import { createLocalSearchProviderApiShell } from "./local/searchProviderApi";
 import { createLocalSettingsApiShell } from "./local/settingsApi";
 import { createLocalTeamApiShell } from "./local/teamApi";
@@ -22,6 +23,7 @@ import { createServerImportApiShell } from "./server/importApi";
 import { createServerKnowledgeApiShell } from "./server/knowledgeApi";
 import { createServerPluginApiShell } from "./server/pluginApi";
 import { createServerProviderApiShell } from "./server/providerApi";
+import { createServerRAGProviderApiShell } from "./server/ragProviderApi";
 import { createServerSearchProviderApiShell } from "./server/searchProviderApi";
 import { createServerSettingsApiShell } from "./server/settingsApi";
 import { createServerTeamApiShell } from "./server/teamApi";
@@ -63,6 +65,9 @@ export function createNeoChatApiClient(
   const searchProviders = serverHttpClient
     ? createServerSearchProviderApiShell(serverHttpClient)
     : createLocalSearchProviderApiShell();
+  const ragProviders = serverHttpClient
+    ? createServerRAGProviderApiShell(serverHttpClient)
+    : createLocalRAGProviderApiShell();
   const byok = serverHttpClient
     ? createServerByokApiShell(serverHttpClient)
     : createLocalByokApiShell();
@@ -95,6 +100,7 @@ export function createNeoChatApiClient(
     settings,
     providers,
     searchProviders,
+    ragProviders,
     byok,
     images,
     chat,

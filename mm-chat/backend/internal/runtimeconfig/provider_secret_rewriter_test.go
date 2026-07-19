@@ -159,6 +159,68 @@ func TestProviderSecretRewriteUsesSearchVaultContextAndBlocksLegacySearchRows(t 
 	}
 }
 
+func TestProviderSecretRewriteUsesRAGVaultContextAndBlocksLegacyRAGRows(t *testing.T) {
+	privateKey, cfg := providerSecretRewriteBYOKConfig(t)
+	oldVault := providerSecretRewriteVault(t, "old", map[string]byte{"old": 36})
+	rotatingVault := providerSecretRewriteVault(t, "new", map[string]byte{
+		"new": 37,
+		"old": 36,
+	})
+	const userID = "00000000-0000-0000-0000-000000000001"
+	old := providerSecretRAGVaultRewriteRow(
+		t, oldVault, "1", userID, RAGProviderMinerU, "old-rag-secret",
+	)
+	current := providerSecretRAGVaultRewriteRow(
+		t, rotatingVault, "2", userID, RAGProviderJina, "current-rag-secret",
+	)
+	plan, err := NewPostgresProviderSecretRewriter(nil, cfg, rotatingVault).
+		buildProviderSecretRewritePlan([]providerSecretRewriteRow{old, current})
+	if err != nil {
+		t.Fatalf("buildProviderSecretRewritePlan() error = %v", err)
+	}
+	if plan.result.RotatedRows != 1 || plan.result.CurrentRows != 1 ||
+		plan.result.BlockedRows != 0 || plan.result.ChangedRows != 1 ||
+		plan.rows[0].action != providerSecretRewriteRotate ||
+		plan.rows[1].action != providerSecretRewriteCurrent {
+		t.Fatalf("RAG rewrite plan = %#v / %#v", plan.result, plan.rows)
+	}
+	legacy := providerSecretLegacyRewriteRow(
+		t, privateKey, "3", userID, ragProviderRecordID(RAGProviderJina),
+		"legacy-rag-secret",
+	)
+	legacy.configJSON = `{"kind":"rag","ragProvider":"jina","enabled":true}`
+	legacyPlan, err := NewPostgresProviderSecretRewriter(nil, cfg, rotatingVault).
+		buildProviderSecretRewritePlan([]providerSecretRewriteRow{legacy})
+	if err != nil || legacyPlan.result.BlockedRows != 1 ||
+		legacyPlan.rows[0].action != providerSecretRewriteBlocked {
+		t.Fatalf("legacy RAG rewrite plan = %#v / %#v / %v", legacyPlan.result, legacyPlan.rows, err)
+	}
+
+	encoded, err := NewPostgresProviderSecretRewriter(nil, cfg, rotatingVault).
+		rewriteProviderSecret(plan.rows[0])
+	if err != nil {
+		t.Fatalf("rewriteProviderSecret() error = %v", err)
+	}
+	envelope, err := providersecrets.ParseEnvelope(encoded)
+	if err != nil || envelope.KID != "new" {
+		t.Fatalf("rewritten RAG envelope = %#v, %v", envelope, err)
+	}
+	plaintext, err := rotatingVault.Decrypt(
+		envelope,
+		ragProviderSecretContext(userID, ragProviderRecordID(RAGProviderMinerU)),
+	)
+	if err != nil || string(plaintext) != "old-rag-secret" {
+		t.Fatalf("rewritten RAG plaintext = %q, %v", plaintext, err)
+	}
+	clear(plaintext)
+	if _, err := rotatingVault.Decrypt(
+		envelope,
+		modelProviderSecretContext(userID, ragProviderRecordID(RAGProviderMinerU)),
+	); err == nil {
+		t.Fatal("RAG envelope decrypted with model-provider context")
+	}
+}
+
 func TestProviderSecretRewriteBlocksUnrecoverableServerDefaultWithoutEnvFallback(t *testing.T) {
 	_, cfg := providerSecretRewriteBYOKConfig(t)
 	stalePrivateKey, _ := providerSecretRewriteBYOKConfig(t)
@@ -213,6 +275,16 @@ func TestProviderSecretRewritePlanRejectsAmbiguousOrInvalidRows(t *testing.T) {
 		[]providerSecretRewriteRow{untrimmed},
 	); !errors.Is(err, ErrProviderSecretRewriteInvalid) {
 		t.Fatalf("untrimmed provider error = %v", err)
+	}
+
+	reserved := providerSecretVaultRewriteRow(
+		t, vault, "5", userID, ragProviderRecordID(RAGProviderJina),
+		"reserved-model-context-secret", false,
+	)
+	if _, err := rewriter.buildProviderSecretRewritePlan(
+		[]providerSecretRewriteRow{reserved},
+	); !errors.Is(err, ErrProviderSecretRewriteInvalid) {
+		t.Fatalf("reserved RAG model context error = %v", err)
 	}
 }
 
@@ -380,6 +452,38 @@ func providerSecretSearchVaultRewriteRow(
 	}
 	configJSON, err := json.Marshal(StoredProviderConfigPayload{
 		Kind: providerConfigKindSearch, SearchProvider: string(providerID), Enabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return providerSecretRewriteRow{
+		id: id, userID: userID, providerID: recordID,
+		encryptedSecretRef: string(encoded), configJSON: string(configJSON),
+	}
+}
+
+func providerSecretRAGVaultRewriteRow(
+	t *testing.T,
+	vault *providersecrets.Vault,
+	id string,
+	userID string,
+	providerID RAGProviderID,
+	plaintext string,
+) providerSecretRewriteRow {
+	t.Helper()
+	recordID := ragProviderRecordID(providerID)
+	envelope, err := vault.Encrypt(
+		[]byte(plaintext), ragProviderSecretContext(userID, recordID),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configJSON, err := json.Marshal(StoredProviderConfigPayload{
+		Kind: providerConfigKindRAG, RAGProvider: string(providerID), Enabled: true,
 	})
 	if err != nil {
 		t.Fatal(err)

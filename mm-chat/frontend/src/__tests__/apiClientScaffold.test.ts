@@ -22,6 +22,7 @@ import { createServerAgentApiShell } from "../services/api/client/server/agentAp
 import { createServerAuthApiShell } from "../services/api/client/server/authApi";
 import { createServerByokApiShell } from "../services/api/client/server/byokApi";
 import { createServerProviderApiShell } from "../services/api/client/server/providerApi";
+import { createServerRAGProviderApiShell } from "../services/api/client/server/ragProviderApi";
 import { createServerSearchProviderApiShell } from "../services/api/client/server/searchProviderApi";
 import { createServerSettingsApiShell } from "../services/api/client/server/settingsApi";
 import { createServerFileApiShell } from "../services/api/client/server/fileApi";
@@ -759,6 +760,109 @@ describe("G11.9F.3 server Search provider API adapter", () => {
       },
       {
         url: "/mm-api/v1/admin/search/providers/tavily",
+        method: "DELETE",
+        body: undefined,
+      },
+    ]);
+  });
+});
+
+describe("G11.9F.4.2 server RAG provider API adapter", () => {
+  it("routes RAG administrator CRUD, test, and activation to Go", async () => {
+    const requests: Array<{ url: string; method?: string; body?: unknown }> =
+      [];
+    const ragProviders = createServerRAGProviderApiShell(
+      createHttpClient({
+        baseUrl: "/mm-api",
+        fetchImpl: async (input, init) => {
+          requests.push({
+            url: String(input),
+            method: init?.method,
+            body: init?.body ? JSON.parse(String(init.body)) : undefined,
+          });
+          if (String(input).endsWith("/v1/admin/rag/providers")) {
+            return Response.json({ providers: [] });
+          }
+          if (init?.method === "DELETE") {
+            return new Response(null, { status: 204 });
+          }
+          if (String(input).endsWith("/test")) {
+            return Response.json({
+              provider: {
+                id: "RAG:JINA",
+                provider: "jina",
+                connectionTestValid: true,
+              },
+              checks: ["embedding", "rerank"],
+            });
+          }
+          if (String(input).endsWith("/activate")) {
+            return Response.json({
+              provider: {
+                id: "RAG:JINA",
+                provider: "jina",
+                enabled: true,
+              },
+              checks: ["embedding", "rerank"],
+            });
+          }
+          return Response.json({
+            id: "RAG:JINA",
+            name: "Jina AI",
+            provider: "jina",
+            enabled: false,
+            hasApiKey: true,
+            connectionTestValid: false,
+            embeddingModel: "jina-embeddings-v4",
+            embeddingDimensions: 1024,
+            rerankModel: "jina-reranker-v3",
+          });
+        },
+      }),
+    );
+
+    await expect(ragProviders.listAdminRAGProviderConfigs()).resolves.toEqual({
+      providers: [],
+    });
+    await expect(
+      ragProviders.updateAdminRAGProviderConfig("jina", {
+        name: "Jina AI",
+        apiKeySecret: { v: 1 },
+      }),
+    ).resolves.toMatchObject({ provider: "jina", hasApiKey: true });
+    await expect(
+      ragProviders.testAdminRAGProviderConnection("jina"),
+    ).resolves.toMatchObject({ checks: ["embedding", "rerank"] });
+    await expect(
+      ragProviders.activateAdminRAGProvider("jina"),
+    ).resolves.toMatchObject({ provider: { enabled: true } });
+    await expect(
+      ragProviders.deleteAdminRAGProviderConfig("jina"),
+    ).resolves.toBeUndefined();
+
+    expect(requests).toEqual([
+      {
+        url: "/mm-api/v1/admin/rag/providers",
+        method: "GET",
+        body: undefined,
+      },
+      {
+        url: "/mm-api/v1/admin/rag/providers/jina",
+        method: "PUT",
+        body: { name: "Jina AI", apiKeySecret: { v: 1 } },
+      },
+      {
+        url: "/mm-api/v1/admin/rag/providers/jina/test",
+        method: "POST",
+        body: undefined,
+      },
+      {
+        url: "/mm-api/v1/admin/rag/providers/jina/activate",
+        method: "POST",
+        body: undefined,
+      },
+      {
+        url: "/mm-api/v1/admin/rag/providers/jina",
         method: "DELETE",
         body: undefined,
       },

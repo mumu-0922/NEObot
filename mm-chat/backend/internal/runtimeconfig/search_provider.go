@@ -89,7 +89,9 @@ type CommitSearchProviderConnectionInput struct {
 
 func IsModelProviderConfig(stored StoredProviderConfig) bool {
 	kind := strings.TrimSpace(stored.Config.Kind)
-	return kind == "" || kind == providerConfigKindModel
+	return (kind == "" || kind == providerConfigKindModel) &&
+		!isReservedSearchProviderRecordID(stored.ProviderID) &&
+		!isReservedRAGProviderRecordID(stored.ProviderID)
 }
 
 func isSearchProviderConfig(stored StoredProviderConfig) bool {
@@ -144,6 +146,9 @@ func storedProviderSecretContext(
 ) (string, bool) {
 	switch strings.TrimSpace(payload.Kind) {
 	case "", providerConfigKindModel:
+		if isReservedSearchProviderRecordID(recordID) || isReservedRAGProviderRecordID(recordID) {
+			return "", false
+		}
 		return modelProviderSecretContext(userID, recordID), true
 	case providerConfigKindSearch:
 		providerID, err := normalizeSearchProviderID(payload.SearchProvider)
@@ -151,6 +156,12 @@ func storedProviderSecretContext(
 			return "", false
 		}
 		return searchProviderSecretContext(userID, recordID), true
+	case providerConfigKindRAG:
+		providerID, err := normalizeRAGProviderID(payload.RAGProvider)
+		if err != nil || recordID != ragProviderRecordID(providerID) {
+			return "", false
+		}
+		return ragProviderSecretContext(userID, recordID), true
 	default:
 		return "", false
 	}

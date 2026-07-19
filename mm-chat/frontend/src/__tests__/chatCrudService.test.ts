@@ -446,6 +446,7 @@ function createMockClient(
     settings: options.settings ?? defaultClient.settings,
     providers: options.providers ?? defaultClient.providers,
     searchProviders: options.searchProviders ?? defaultClient.searchProviders,
+    ragProviders: options.ragProviders ?? defaultClient.ragProviders,
     byok: options.byok ?? defaultClient.byok,
     images: options.images ?? defaultClient.images,
     chat,

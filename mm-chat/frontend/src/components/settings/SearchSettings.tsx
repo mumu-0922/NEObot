@@ -384,6 +384,11 @@ const SearchSettings = () => {
               placeholder={t("apiKeyPlaceholder")}
               maxLength={SEARCH_CONFIG_LIMITS.maxProviderApiKeyChars}
               hasSecret={selectedConfig?.hasApiKey === true}
+              statusText={
+                selectedConfig?.hasApiKey
+                  ? t("keyStoredOnServer")
+                  : t("keyNotStored")
+              }
               onSave={(value) => saveAndTest(selectedProviderId, value)}
               onClear={
                 selectedConfig?.hasApiKey

@@ -301,7 +301,7 @@ Incremental execution slices:
     [`RAG Provider Administrator and Gateway Contract`](../contracts/rag-provider-admin-gateway.md),
     including reserved records, vault contexts, real-test semantics, the
     Python-to-Go operation allowlist, and environment-removal order;
-  - **G11.9F.4.2**: add Postgres/vault MinerU/Jina administrator CRUD,
+  - **G11.9F.4.2** complete: add Postgres/vault MinerU/Jina administrator CRUD,
     save-and-test/activate UI, dynamic provider status, and transition-only
     administrator import of the existing environment Keys;
   - **G11.9F.4.3**: add the closed Go MinerU allocate/poll and Jina passage

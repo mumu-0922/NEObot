@@ -500,6 +500,56 @@ export interface SearchProviderApi {
   deleteAdminSearchProviderConfig(providerId: SearchProviderId): Promise<void>;
 }
 
+export type RAGProviderId = "mineru" | "jina";
+
+export interface AdminRAGProviderConfigDTO {
+  id: string;
+  name: string;
+  provider: RAGProviderId;
+  enabled: boolean;
+  hasApiKey: boolean;
+  connectionTestValid: boolean;
+  connectionTestedAt?: string;
+  embeddingModel?: string;
+  embeddingDimensions?: number;
+  rerankModel?: string;
+  parserModel?: string;
+}
+
+export interface AdminRAGProviderConfigsDTO {
+  providers: AdminRAGProviderConfigDTO[];
+}
+
+export interface UpdateAdminRAGProviderConfigInput {
+  name: string;
+  enabled?: boolean;
+  apiKeySecret?: unknown;
+  clearApiKey?: boolean;
+  signal?: AbortSignal;
+}
+
+export interface AdminRAGProviderConnectionDTO {
+  provider: AdminRAGProviderConfigDTO;
+  checks: string[];
+}
+
+export interface RAGProviderApi {
+  listAdminRAGProviderConfigs(): Promise<AdminRAGProviderConfigsDTO>;
+  updateAdminRAGProviderConfig(
+    providerId: RAGProviderId,
+    input: UpdateAdminRAGProviderConfigInput,
+  ): Promise<AdminRAGProviderConfigDTO>;
+  testAdminRAGProviderConnection(
+    providerId: RAGProviderId,
+    signal?: AbortSignal,
+  ): Promise<AdminRAGProviderConnectionDTO>;
+  activateAdminRAGProvider(
+    providerId: RAGProviderId,
+    signal?: AbortSignal,
+  ): Promise<AdminRAGProviderConnectionDTO>;
+  deleteAdminRAGProviderConfig(providerId: RAGProviderId): Promise<void>;
+}
+
 export interface GenerateImageInput {
   modelRef: ModelRef;
   prompt: string;
@@ -965,6 +1015,7 @@ export interface NeoChatApiClient {
   settings: SettingsApi;
   providers: ProviderApi;
   searchProviders: SearchProviderApi;
+  ragProviders: RAGProviderApi;
   byok: ByokApi;
   images: ImageGenerationApi;
   chat: ChatApi;

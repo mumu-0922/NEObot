@@ -18,6 +18,7 @@ import {
   encryptLocalSecret,
   LOCAL_SECRET_CONTEXTS,
 } from "@/lib/security/localSecrets";
+import RAGProviderAdmin from "./RAGProviderAdmin";
 
 const LLAMA_PARSE_KEY_URL = "https://cloud.llamaindex.ai/";
 const MINERU_KEY_URL = "https://mineru.net/apiManage";
@@ -69,6 +70,8 @@ const RAGSettings = () => {
             <p className="opacity-80">{t("supportDesc")}</p>
           </div>
         </div>
+
+        <RAGProviderAdmin />
 
         {/* Document Processing (LlamaParse) Section */}
         <div className="space-y-4 pt-2">

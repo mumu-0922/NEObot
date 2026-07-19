@@ -56,6 +56,7 @@ type Service struct {
 	repo             ProviderConfigRepository
 	providerSecrets  *providersecrets.Vault
 	searchHTTPClient websearch.HTTPDoer
+	ragHTTPClient    websearch.HTTPDoer
 	searchAvailable  func(context.Context) bool
 
 	byokMu        sync.Mutex
@@ -110,6 +111,7 @@ type StoredProviderConfigPayload struct {
 	Kind                 string       `json:"kind,omitempty"`
 	Type                 ProviderType `json:"type"`
 	SearchProvider       string       `json:"searchProvider,omitempty"`
+	RAGProvider          string       `json:"ragProvider,omitempty"`
 	BaseURL              string       `json:"baseUrl"`
 	Models               []string     `json:"models"`
 	Enabled              bool         `json:"enabled"`

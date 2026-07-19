@@ -1,6 +1,7 @@
 package ragproviders
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -10,8 +11,10 @@ import (
 const contentTypeJSON = "application/json; charset=utf-8"
 
 type Handler struct {
-	cfg config.RAGConfig
+	resolve StatusResolver
 }
+
+type StatusResolver func(context.Context) (StatusResponse, error)
 
 type ErrorResponse struct {
 	Error ErrorBody `json:"error"`
@@ -22,8 +25,17 @@ type ErrorBody struct {
 	Message string `json:"message"`
 }
 
-func NewHandler(cfg config.RAGConfig) *Handler {
-	return &Handler{cfg: cfg}
+func NewHandler(resolve StatusResolver) *Handler {
+	if resolve == nil {
+		resolve = StaticStatusResolver(config.RAGConfig{})
+	}
+	return &Handler{resolve: resolve}
+}
+
+func StaticStatusResolver(cfg config.RAGConfig) StatusResolver {
+	return func(context.Context) (StatusResponse, error) {
+		return Status(cfg), nil
+	}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -38,7 +50,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, Status(h.cfg))
+	status, err := h.resolve(r.Context())
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "RAG_PROVIDER_STATUS_UNAVAILABLE", "RAG provider status is unavailable")
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

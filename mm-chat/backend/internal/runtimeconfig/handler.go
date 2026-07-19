@@ -36,6 +36,11 @@ func NewHandler(service *Service) *Handler {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/v1/admin/rag/providers" ||
+		strings.HasPrefix(r.URL.Path, "/v1/admin/rag/providers/") {
+		h.adminRAGProviderConfig(w, r)
+		return
+	}
 	if r.URL.Path == "/v1/admin/search/providers" ||
 		strings.HasPrefix(r.URL.Path, "/v1/admin/search/providers/") {
 		h.adminSearchProviderConfig(w, r)
@@ -66,6 +71,82 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.requireMethod(w, r, http.MethodGet, h.getBYOKPublicKey)
 	default:
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
+	}
+}
+
+func (h *Handler) adminRAGProviderConfig(w http.ResponseWriter, r *http.Request) {
+	const collectionPath = "/v1/admin/rag/providers"
+	if r.URL.Path == collectionPath {
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", http.MethodGet)
+			writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
+			return
+		}
+		response, err := h.service.AdminRAGProviderConfigs(r.Context())
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, response)
+		return
+	}
+
+	remainder := strings.Trim(strings.TrimPrefix(r.URL.Path, collectionPath+"/"), "/")
+	parts := strings.Split(remainder, "/")
+	providerID := strings.TrimSpace(parts[0])
+	if providerID == "" || len(parts) > 2 {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
+		return
+	}
+	if len(parts) == 2 {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
+			return
+		}
+		var response AdminRAGProviderConnectionResponse
+		var err error
+		switch strings.TrimSpace(parts[1]) {
+		case "test":
+			response, err = h.service.TestAdminRAGProviderConnection(r.Context(), providerID)
+		case "activate":
+			response, err = h.service.ActivateAdminRAGProvider(r.Context(), providerID)
+		default:
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
+			return
+		}
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, response)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPut:
+		var request UpdateAdminRAGProviderConfigRequest
+		if err := decodeJSON(w, r, &request); err != nil {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "request body is invalid")
+			return
+		}
+		response, err := h.service.UpsertAdminRAGProviderConfig(
+			r.Context(), providerID, request,
+		)
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, response)
+	case http.MethodDelete:
+		if err := h.service.DeleteAdminRAGProviderConfig(r.Context(), providerID); err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		w.Header().Set("Allow", http.MethodPut+", "+http.MethodDelete)
+		writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 	}
 }
 
@@ -331,6 +412,20 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadGateway, "SEARCH_PROVIDER_CONNECTION_TEST_FAILED", "search provider connection test failed")
 	case errors.Is(err, ErrSearchProviderConfigChanged):
 		writeError(w, http.StatusConflict, "SEARCH_PROVIDER_CONFIG_CHANGED", "search provider configuration changed during connection testing")
+	case errors.Is(err, ErrRAGProviderConfigUnsupported):
+		writeError(w, http.StatusBadRequest, "RAG_PROVIDER_CONFIG_UNSUPPORTED", "RAG provider configuration is unsupported")
+	case errors.Is(err, ErrRAGProviderNotFound):
+		writeError(w, http.StatusNotFound, "RAG_PROVIDER_NOT_FOUND", "RAG provider configuration was not found")
+	case errors.Is(err, ErrRAGProviderSecretRequired):
+		writeError(w, http.StatusBadRequest, "RAG_PROVIDER_SECRET_REQUIRED", "RAG provider API key is required")
+	case errors.Is(err, ErrRAGProviderSecretVaultUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "RAG_PROVIDER_SECRET_VAULT_UNAVAILABLE", "RAG provider secret vault is unavailable")
+	case errors.Is(err, ErrRAGProviderSecretInvalid):
+		writeError(w, http.StatusServiceUnavailable, "RAG_PROVIDER_SECRET_UNAVAILABLE", "stored RAG provider secret is unavailable")
+	case errors.Is(err, ErrRAGProviderConnectionFailed):
+		writeError(w, http.StatusBadGateway, "RAG_PROVIDER_CONNECTION_TEST_FAILED", "RAG provider connection test failed")
+	case errors.Is(err, ErrRAGProviderConfigChanged):
+		writeError(w, http.StatusConflict, "RAG_PROVIDER_CONFIG_CHANGED", "RAG provider configuration changed during connection testing")
 	default:
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "runtime config request failed")
 	}

@@ -1396,7 +1396,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
       - [ ] G11.9F.4 MinerU/Jina admin records and scoped Go credential gateway.
         - [x] G11.9F.4.1 Administrator/gateway contract, fixed records and
               vault contexts, closed operation boundary, and cutover order.
-        - [ ] G11.9F.4.2 Administrator CRUD/test/activate, Postgres/vault, UI,
+        - [x] G11.9F.4.2 Administrator CRUD/test/activate, Postgres/vault, UI,
               dynamic status, and transition-only env import.
         - [ ] G11.9F.4.3 Scoped Go MinerU/Jina gateway and direct Go query/rerank.
         - [ ] G11.9F.4.4 Python cutover, old route retirement, and provider Key

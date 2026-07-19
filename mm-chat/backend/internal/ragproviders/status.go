@@ -3,8 +3,10 @@ package ragproviders
 import "neo-chat/mm-chat/backend/internal/config"
 
 const (
-	ProviderStatusReady         = "ready"
-	ProviderStatusMissingSecret = "missing_secret"
+	ProviderStatusReady              = "ready"
+	ProviderStatusMissingSecret      = "missing_secret"
+	ProviderStatusActivationRequired = "activation_required"
+	ProviderStatusUnavailable        = "unavailable"
 )
 
 type ProviderState struct {

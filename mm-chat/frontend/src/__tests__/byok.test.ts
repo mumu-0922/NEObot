@@ -316,6 +316,14 @@ describe("BYOK secret envelopes", () => {
     await expect(
       decryptSecretEnvelope(envelope!, BYOK_CONTEXTS.searchProvider("exa")),
     ).rejects.toMatchObject({ name: "AuthenticationError" });
+
+    const ragEnvelope = await encryptSecret(
+      "rag-secret",
+      BYOK_CONTEXTS.ragProvider("jina"),
+    );
+    await expect(
+      decryptSecretEnvelope(ragEnvelope!, BYOK_CONTEXTS.ragProvider("mineru")),
+    ).rejects.toMatchObject({ name: "AuthenticationError" });
   });
 
   it("rejects tampered ciphertext", async () => {

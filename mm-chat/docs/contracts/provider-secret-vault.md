@@ -286,3 +286,32 @@ vault at rest:   provider:search:<userId>:<SEARCH:PROVIDER>
 
 The one-active and connection-attestation behavior is defined in
 [`search-provider-admin.md`](search-provider-admin.md).
+
+## 13. G11.9F.4.2 RAG Provider Contexts
+
+MinerU and Jina administrator Keys use fixed records and distinct contexts:
+
+```text
+browser ingress: provider:rag:<mineru|jina>
+vault at rest:   provider:rag:<userId>:<RAG:MINERU|RAG:JINA>
+```
+
+- RAG rows require `config.kind="rag"`, a matching `config.ragProvider`, and
+  the exact reserved record ID; model and Search readers reject them;
+- MinerU and Jina can both be active because they provide complementary parse
+  and retrieval stages rather than alternative execution choices;
+- save-and-test may import the matching legacy environment Key only when that
+  administrator record has no stored secret. The environment is not a read
+  fallback for dynamic status or the future scoped gateway;
+- activation repeats a bounded real test and binds the exact vault envelope,
+  fixed provider endpoint, parser/model profile, and 1024 Jina dimensions;
+- dynamic `/v1/rag/provider-status` reports ready only when both enabled,
+  attested records decrypt under their own contexts;
+- current and retained-old-key RAG envelopes participate in the common
+  rotation plan. Legacy BYOK RAG rows and reserved IDs using a model context
+  are rejected rather than guessed or migrated across contexts.
+
+The public routes and Python/Go operation boundary are defined in
+[`rag-provider-admin-gateway.md`](rag-provider-admin-gateway.md). F4.2 keeps
+the existing Python provider environment path only for rollback; F4.4 removes
+it after the scoped Go gateway is live.

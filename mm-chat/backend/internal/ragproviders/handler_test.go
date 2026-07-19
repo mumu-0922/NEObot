@@ -11,7 +11,7 @@ import (
 )
 
 func TestProviderStatusReportsMissingSecretsWithoutLeakingValues(t *testing.T) {
-	handler := NewHandler(config.RAGConfig{})
+	handler := NewHandler(StaticStatusResolver(config.RAGConfig{}))
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/rag/provider-status", nil)
 
@@ -48,11 +48,11 @@ func TestProviderStatusReportsMissingSecretsWithoutLeakingValues(t *testing.T) {
 func TestProviderStatusReportsReadyAndRedactsSecrets(t *testing.T) {
 	minerUSecret := "fake-mineru-secret"
 	jinaSecret := "fake-jina-secret"
-	handler := NewHandler(config.RAGConfig{
+	handler := NewHandler(StaticStatusResolver(config.RAGConfig{
 		MinerUAPIKey:            minerUSecret,
 		JinaAPIKey:              jinaSecret,
 		JinaEmbeddingDimensions: config.DefaultRAGJinaDimensions,
-	})
+	}))
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/rag/provider-status", nil)
 
@@ -88,7 +88,7 @@ func TestProviderStatusReportsReadyAndRedactsSecrets(t *testing.T) {
 }
 
 func TestProviderStatusRejectsNonGETWithJSONError(t *testing.T) {
-	handler := NewHandler(config.RAGConfig{})
+	handler := NewHandler(StaticStatusResolver(config.RAGConfig{}))
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/v1/rag/provider-status", nil)
 
@@ -110,7 +110,7 @@ func TestProviderStatusRejectsNonGETWithJSONError(t *testing.T) {
 }
 
 func TestProviderStatusReturnsJSONNotFound(t *testing.T) {
-	handler := NewHandler(config.RAGConfig{})
+	handler := NewHandler(StaticStatusResolver(config.RAGConfig{}))
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/rag/missing", nil)
 

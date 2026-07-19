@@ -24,5 +24,7 @@
   "activated": "Activated {provider}.",
   "deactivated": "Deactivated {provider}.",
   "deleted": "Deleted the {provider} configuration.",
-  "keyCleared": "API Key cleared."
+  "keyCleared": "API Key cleared.",
+  "keyStoredOnServer": "API key is encrypted and stored on the server.",
+  "keyNotStored": "No server API key is stored."
 }

@@ -24,5 +24,7 @@
   "activated": "已激活 {provider}。",
   "deactivated": "已停用 {provider}。",
   "deleted": "已删除 {provider} 配置。",
-  "keyCleared": "API Key 已清除。"
+  "keyCleared": "API Key 已清除。",
+  "keyStoredOnServer": "API Key 已加密保存到服务端。",
+  "keyNotStored": "服务端尚未保存 API Key。"
 }

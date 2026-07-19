@@ -1600,3 +1600,58 @@ then owner-authorized live MinerU/Jina/restart/rotation/rollback closure. The
 current environment path remains unchanged in F4.1, so this documentation-only
 slice has no provider call, quota use, database mutation, runtime change, or
 rollback state.
+
+## 2026-07-19 — G11.9F.4.2 MinerU/Jina administrator persistence
+
+MinerU and Jina now have fixed `RAG:MINERU` and `RAG:JINA` administrator
+records in the shared `provider_configs` table. The Go API implements list,
+save, delete, bounded real test, and activation routes. Browser-entered Keys
+use `provider:rag:<provider>` BYOK ingress and are immediately re-encrypted
+under record-specific Postgres/vault contexts. An empty first administrator
+save can import only the matching transition environment Key; dynamic status
+and stored reads never fall back to it.
+
+MinerU testing executes one fixed Local Batch allocation and discards the
+validated batch/upload capability without uploading a document. Jina testing
+executes fixed non-private `jina-embeddings-v4` and `jina-reranker-v3` probes,
+requiring a finite non-zero 1024-dimensional vector and valid rerank result.
+Activation repeats these calls and commits the exact ciphertext-bound
+attestation with an expected-state fence. Model, Search, and RAG reserved IDs,
+kinds, API lists, vault contexts, and rotation plans remain isolated.
+
+The RAG settings page now shows both fixed server providers, server-stored Key
+state, save-and-test, activate/deactivate, and delete controls. The existing
+manual MinerU BYOK path remains visibly separate and cannot populate automatic
+indexing records. Visual review corrected the shared SecretInput status copy
+for both RAG and Search administrator Keys so it says server, not local,
+storage.
+
+The isolated `mm_chat_g119f42_test` database proved model/Search/RAG vault
+reload, RAG activation fencing, and restart-visible status, then was deleted.
+The deployed source-built Backend/Frontend passed real transition import,
+MinerU allocate, Jina embedding/rerank, activation, Postgres ciphertext/context
+inspection, and backend restart. Both records remained enabled, attested, and
+`ready`; no Key, ciphertext, signed URL, or provider body entered API output or
+logs.
+
+Verification:
+
+```text
+backend go test ./... / focused race / go vet ./...             passed
+frontend format / lint / typecheck / full Vitest               passed / passed / passed / 177 files, 848 tests
+frontend production build / Compose source builds              passed / passed
+isolated Postgres model/Search/RAG vault integration            passed; test database deleted
+real MinerU save/test/activate                                  imported / allocate / active
+real Jina save/test/activate                                    imported / embedding+rerank / active
+Postgres secret format/context                                  A256GCM / distinct provider:rag contexts
+dynamic status before / after backend restart                   ready / ready
+Windows Chrome hydrated RAG settings                            both active / server-stored status
+backend/frontend health                                         healthy / healthy
+```
+
+The owner-only rollback anchor is
+`backup/rag-provider-f42/postgres/postgres-20260719T084040Z.dump` with mode
+`600`, a SHA-256 sidecar, and a successful `pg_restore --list` check. Rolling
+back to F3 restores that dump and the current vault keyring together. F4.2 does
+not remove the provider environment values or change Python execution; F4.3
+adds unused scoped Go operations, then F4.4 performs the cutover and removal.

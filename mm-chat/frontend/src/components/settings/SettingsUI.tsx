@@ -264,6 +264,7 @@ export const SecretInput = ({
   hasSecret,
   onSave,
   onClear,
+  statusText,
   inputClassName = "",
 }: {
   id: string;
@@ -273,6 +274,7 @@ export const SecretInput = ({
   hasSecret: boolean;
   onSave: (value: string) => Promise<void> | void;
   onClear?: () => Promise<void> | void;
+  statusText?: string;
   inputClassName?: string;
 }) => {
   const t = useTranslations("Common");
@@ -344,7 +346,7 @@ export const SecretInput = ({
         ) : null}
       </div>
       <p className="text-[10px] text-gray-500 dark:text-muted-foreground">
-        {hasSecret ? t("secretSaved") : t("secretNotSaved")}
+        {statusText ?? (hasSecret ? t("secretSaved") : t("secretNotSaved"))}
       </p>
     </div>
   );

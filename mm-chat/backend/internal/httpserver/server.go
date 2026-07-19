@@ -671,7 +671,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	imageJobHandler := imagejobs.NewHandler(resolvedOptions.imageJobService)
 	jobControlHandler := jobcontrol.NewHandler(nil)
 	voiceJobHandler := voicejobs.NewHandler(resolvedOptions.voiceJobService)
-	ragProviderHandler := ragproviders.NewHandler(cfg.RAG)
+	ragProviderHandler := ragproviders.NewHandler(runtimeConfigService.RAGProviderStatus)
 	ragSourceHandler := ragsource.NewHandler(resolvedOptions.ragSourceService)
 	pluginHandler := plugins.NewHandler(plugins.NewService(
 		cfg,
@@ -700,6 +700,8 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/admin/providers/", runtimeConfigHandler)
 	mux.Handle("/v1/admin/search/providers", runtimeConfigHandler)
 	mux.Handle("/v1/admin/search/providers/", runtimeConfigHandler)
+	mux.Handle("/v1/admin/rag/providers", runtimeConfigHandler)
+	mux.Handle("/v1/admin/rag/providers/", runtimeConfigHandler)
 	mux.Handle("/v1/byok/public-key", runtimeConfigHandler)
 	mux.Handle(websearch.SearchPath, webSearchHandler)
 	mux.Handle("/v1/chat/conversations", chatHandler)

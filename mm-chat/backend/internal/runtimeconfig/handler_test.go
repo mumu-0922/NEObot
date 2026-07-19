@@ -333,3 +333,78 @@ func TestHandlerMapsSearchProviderAdminErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestHandlerRoutesAdminRAGProviderLifecycle(t *testing.T) {
+	repo := &fakeProviderConfigRepository{}
+	handler := NewHandler(NewService(
+		config.Config{},
+		WithProviderConfigRepository(repo),
+	))
+
+	put := httptest.NewRecorder()
+	handler.ServeHTTP(put, httptest.NewRequest(
+		http.MethodPut,
+		"/v1/admin/rag/providers/jina",
+		strings.NewReader(`{"name":"Jina AI","enabled":false}`),
+	))
+	if put.Code != http.StatusOK ||
+		!strings.Contains(put.Body.String(), `"provider":"jina"`) ||
+		!strings.Contains(put.Body.String(), `"hasApiKey":false`) ||
+		!strings.Contains(put.Body.String(), `"embeddingDimensions":1024`) {
+		t.Fatalf("put status = %d, body=%s", put.Code, put.Body.String())
+	}
+
+	list := httptest.NewRecorder()
+	handler.ServeHTTP(list, httptest.NewRequest(
+		http.MethodGet,
+		"/v1/admin/rag/providers",
+		nil,
+	))
+	if list.Code != http.StatusOK ||
+		!strings.Contains(list.Body.String(), `"providers":[`) {
+		t.Fatalf("list status = %d, body=%s", list.Code, list.Body.String())
+	}
+
+	tested := httptest.NewRecorder()
+	handler.ServeHTTP(tested, httptest.NewRequest(
+		http.MethodPost,
+		"/v1/admin/rag/providers/jina/test",
+		nil,
+	))
+	if tested.Code != http.StatusBadRequest ||
+		!strings.Contains(tested.Body.String(), "RAG_PROVIDER_SECRET_REQUIRED") {
+		t.Fatalf("test status = %d, body=%s", tested.Code, tested.Body.String())
+	}
+
+	deleted := httptest.NewRecorder()
+	handler.ServeHTTP(deleted, httptest.NewRequest(
+		http.MethodDelete,
+		"/v1/admin/rag/providers/jina",
+		nil,
+	))
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("delete status = %d, body=%s", deleted.Code, deleted.Body.String())
+	}
+}
+
+func TestHandlerMapsRAGProviderAdminErrors(t *testing.T) {
+	for _, test := range []struct {
+		err    error
+		status int
+		code   string
+	}{
+		{ErrRAGProviderConfigUnsupported, http.StatusBadRequest, "RAG_PROVIDER_CONFIG_UNSUPPORTED"},
+		{ErrRAGProviderNotFound, http.StatusNotFound, "RAG_PROVIDER_NOT_FOUND"},
+		{ErrRAGProviderSecretRequired, http.StatusBadRequest, "RAG_PROVIDER_SECRET_REQUIRED"},
+		{ErrRAGProviderSecretVaultUnavailable, http.StatusServiceUnavailable, "RAG_PROVIDER_SECRET_VAULT_UNAVAILABLE"},
+		{ErrRAGProviderSecretInvalid, http.StatusServiceUnavailable, "RAG_PROVIDER_SECRET_UNAVAILABLE"},
+		{ErrRAGProviderConnectionFailed, http.StatusBadGateway, "RAG_PROVIDER_CONNECTION_TEST_FAILED"},
+		{ErrRAGProviderConfigChanged, http.StatusConflict, "RAG_PROVIDER_CONFIG_CHANGED"},
+	} {
+		recorder := httptest.NewRecorder()
+		writeServiceError(recorder, test.err)
+		if recorder.Code != test.status || !strings.Contains(recorder.Body.String(), test.code) {
+			t.Fatalf("error %v status = %d, body=%s", test.err, recorder.Code, recorder.Body.String())
+		}
+	}
+}

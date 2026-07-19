@@ -76,5 +76,24 @@ describe("settings UI primitives", () => {
     expect(searchSettings).toContain("encryptSecret");
     expect(searchSettings).toContain("BYOK_CONTEXTS.searchProvider");
     expect(searchSettings).toContain("SecretInput");
+    expect(searchSettings).toContain("keyStoredOnServer");
+  });
+
+  it("wires RAG provider settings to backend admin config and BYOK", () => {
+    const ragProviderAdmin = readFileSync(
+      resolve(process.cwd(), "src/components/settings/RAGProviderAdmin.tsx"),
+      "utf8",
+    );
+
+    expect(ragProviderAdmin).toContain("listAdminRAGProviderConfigs");
+    expect(ragProviderAdmin).toContain("updateAdminRAGProviderConfig");
+    expect(ragProviderAdmin).toContain("testAdminRAGProviderConnection");
+    expect(ragProviderAdmin).toContain("activateAdminRAGProvider");
+    expect(ragProviderAdmin).toContain("deleteAdminRAGProviderConfig");
+    expect(ragProviderAdmin).toContain("encryptSecret");
+    expect(ragProviderAdmin).toContain("BYOK_CONTEXTS.ragProvider");
+    expect(ragProviderAdmin).toContain("SecretInput");
+    expect(ragProviderAdmin).not.toContain("apiKey:");
+    expect(ragProviderAdmin).toContain("providerKeyStoredOnServer");
   });
 });
