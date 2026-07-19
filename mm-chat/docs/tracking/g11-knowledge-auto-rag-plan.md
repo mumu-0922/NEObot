@@ -287,8 +287,14 @@ Incremental execution slices:
   before activation, invalidate the proof on credential/type/endpoint change,
   resolve chat/image execution only from tested Postgres/vault state, and
   remove model-provider `.env` runtime fallback;
-- **G11.9F.3**: add Search administrator CRUD/test/activate UI and the sole
-  Postgres-backed Go resolver, then perform one positive real-provider smoke;
+- **G11.9F.3** complete: the frozen
+  [`Search Provider Administrator Contract`](../contracts/search-provider-admin.md):
+  external Search CRUD/save-and-test/atomic activate UI, the sole
+  Postgres/vault Go resolver, and automatic built-in Search only when no
+  external provider is active and the selected model capability matches are
+  implemented and locally deployed; owner-authorized Tavily Search, chat
+  `[W]` persistence/reload, restart continuity, and no-fallback failure proofs
+  passed with test artifacts cleaned;
 - **G11.9F.4**: add MinerU/Jina administrator records and a scoped Go credential
   gateway so Python receives neither the vault keyring nor reusable secrets;
 - **G11.9F.5**: reserve the same provider-kind contract for future Voice,

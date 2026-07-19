@@ -450,6 +450,56 @@ export interface ProviderApi {
   deleteAdminProviderConfig(providerId: string): Promise<void>;
 }
 
+export type SearchProviderId = "tavily" | "firecrawl" | "exa" | "bocha";
+
+export interface AdminSearchProviderConfigDTO {
+  id: string;
+  name: string;
+  provider: SearchProviderId;
+  baseUrl: string;
+  enabled: boolean;
+  hasApiKey: boolean;
+  connectionTestValid: boolean;
+  connectionTestedAt?: string;
+}
+
+export interface AdminSearchProviderConfigsDTO {
+  providers: AdminSearchProviderConfigDTO[];
+  activeProviderId?: SearchProviderId;
+}
+
+export interface UpdateAdminSearchProviderConfigInput {
+  name: string;
+  baseUrl: string;
+  enabled?: boolean;
+  apiKeySecret?: unknown;
+  clearApiKey?: boolean;
+  signal?: AbortSignal;
+}
+
+export interface AdminSearchProviderConnectionDTO {
+  provider: AdminSearchProviderConfigDTO;
+  sourceCount: number;
+  imageCount: number;
+}
+
+export interface SearchProviderApi {
+  listAdminSearchProviderConfigs(): Promise<AdminSearchProviderConfigsDTO>;
+  updateAdminSearchProviderConfig(
+    providerId: SearchProviderId,
+    input: UpdateAdminSearchProviderConfigInput,
+  ): Promise<AdminSearchProviderConfigDTO>;
+  testAdminSearchProviderConnection(
+    providerId: SearchProviderId,
+    signal?: AbortSignal,
+  ): Promise<AdminSearchProviderConnectionDTO>;
+  activateAdminSearchProvider(
+    providerId: SearchProviderId,
+    signal?: AbortSignal,
+  ): Promise<AdminSearchProviderConnectionDTO>;
+  deleteAdminSearchProviderConfig(providerId: SearchProviderId): Promise<void>;
+}
+
 export interface GenerateImageInput {
   modelRef: ModelRef;
   prompt: string;
@@ -914,6 +964,7 @@ export interface NeoChatApiClient {
   auth: AuthApi;
   settings: SettingsApi;
   providers: ProviderApi;
+  searchProviders: SearchProviderApi;
   byok: ByokApi;
   images: ImageGenerationApi;
   chat: ChatApi;

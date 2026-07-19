@@ -259,3 +259,30 @@ Rollback to an F2.2 image requires the retained keyring and pre-cutover
 Postgres backup. Re-provision the former provider environment values from an
 operator-owned secret source only if that older image requires them; do not
 restore them to an F2.3 deployment.
+
+## 12. G11.9F.3 Search Provider Contexts
+
+Search administrator Keys use the existing BYOK ingress and vault, but never a
+model-provider context:
+
+```text
+browser ingress: provider:search:<tavily|firecrawl|exa|bocha>
+vault at rest:   provider:search:<userId>:<SEARCH:PROVIDER>
+```
+
+- Search rows are identified by `config.kind="search"`, a validated
+  `config.searchProvider`, and the matching reserved `SEARCH:*` record ID;
+- model rows with an empty legacy kind continue to use
+  `provider:model:<userId>:<providerId>`;
+- copied Search/model ciphertext, mismatched provider metadata, unknown kinds,
+  malformed envelopes, and missing retained keys fail before rewrite or
+  runtime resolution;
+- current and retained-old-key Search vault envelopes participate in the same
+  locked rewrite/rotation plan as model rows;
+- legacy BYOK Search rows are blocked rather than guessed through a model
+  ingress context; the administrator must replace that Key explicitly;
+- Search provider Keys have no `.env` fallback. Reads expose only `hasApiKey`,
+  and runtime receives plaintext only for the duration of one resolved call.
+
+The one-active and connection-attestation behavior is defined in
+[`search-provider-admin.md`](search-provider-admin.md).

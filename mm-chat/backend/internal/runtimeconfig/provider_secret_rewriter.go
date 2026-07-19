@@ -294,10 +294,11 @@ func (r *PostgresProviderSecretRewriter) inspectProviderSecret(
 		if err != nil {
 			return "", ErrProviderSecretRewriteInvalid
 		}
-		plaintext, err := r.vault.Decrypt(
-			envelope,
-			modelProviderSecretContext(row.userID, row.providerID),
-		)
+		secretContext, err := r.providerSecretContext(row)
+		if err != nil {
+			return "", err
+		}
+		plaintext, err := r.vault.Decrypt(envelope, secretContext)
 		validPlaintext := strings.TrimSpace(string(plaintext)) != ""
 		clear(plaintext)
 		if err != nil || !validPlaintext {
@@ -308,6 +309,9 @@ func (r *PostgresProviderSecretRewriter) inspectProviderSecret(
 		}
 		return providerSecretRewriteCurrent, nil
 	case byokAlgorithm:
+		if !r.isLegacyModelProvider(row) {
+			return providerSecretRewriteBlocked, nil
+		}
 		envelope, err := parseStoredLegacySecretRef(encoded)
 		if err != nil {
 			return "", ErrProviderSecretRewriteInvalid
@@ -340,15 +344,19 @@ func (r *PostgresProviderSecretRewriter) rewriteProviderSecret(
 		if err != nil {
 			return "", ErrProviderSecretRewriteInvalid
 		}
-		rotated, changed, err := r.vault.Rotate(
-			envelope,
-			modelProviderSecretContext(row.userID, row.providerID),
-		)
+		secretContext, err := r.providerSecretContext(row)
+		if err != nil {
+			return "", err
+		}
+		rotated, changed, err := r.vault.Rotate(envelope, secretContext)
 		if err != nil || !changed {
 			return "", ErrProviderSecretRewriteInvalid
 		}
 		return marshalProviderSecretEnvelope(rotated)
 	case providerSecretRewriteLegacy:
+		if !r.isLegacyModelProvider(row) {
+			return "", ErrProviderSecretRewriteInvalid
+		}
 		envelope, err := parseStoredLegacySecretRef(row.encryptedSecretRef)
 		if err != nil {
 			return "", ErrProviderSecretRewriteInvalid
@@ -366,10 +374,12 @@ func (r *PostgresProviderSecretRewriter) rewriteProviderSecret(
 		}
 		secretBytes := []byte(strings.TrimSpace(plaintext))
 		plaintext = ""
-		vaultEnvelope, err := r.vault.Encrypt(
-			secretBytes,
-			modelProviderSecretContext(row.userID, row.providerID),
-		)
+		secretContext, err := r.providerSecretContext(row)
+		if err != nil {
+			clear(secretBytes)
+			return "", err
+		}
+		vaultEnvelope, err := r.vault.Encrypt(secretBytes, secretContext)
 		clear(secretBytes)
 		if err != nil {
 			return "", ErrProviderSecretRewriteInvalid
@@ -391,6 +401,31 @@ func (r *PostgresProviderSecretRewriter) providerType(
 		return normalizeProviderType(string(payload.Type)), nil
 	}
 	return ProviderTypeOpenAICompatible, nil
+}
+
+func (r *PostgresProviderSecretRewriter) providerSecretContext(
+	row providerSecretRewriteRow,
+) (string, error) {
+	var payload StoredProviderConfigPayload
+	if err := json.Unmarshal([]byte(row.configJSON), &payload); err != nil {
+		return "", ErrProviderSecretRewriteInvalid
+	}
+	secretContext, ok := storedProviderSecretContext(row.userID, row.providerID, payload)
+	if !ok {
+		return "", ErrProviderSecretRewriteInvalid
+	}
+	return secretContext, nil
+}
+
+func (r *PostgresProviderSecretRewriter) isLegacyModelProvider(
+	row providerSecretRewriteRow,
+) bool {
+	var payload StoredProviderConfigPayload
+	if json.Unmarshal([]byte(row.configJSON), &payload) != nil {
+		return false
+	}
+	kind := strings.TrimSpace(payload.Kind)
+	return kind == "" || kind == providerConfigKindModel
 }
 
 func marshalProviderSecretEnvelope(envelope providersecrets.Envelope) (string, error) {

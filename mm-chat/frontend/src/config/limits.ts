@@ -59,6 +59,7 @@ export const SEARCH_CONFIG_LIMITS = {
   minResultsLimit: 1,
   maxResultsLimit: 10,
   maxApiKeyChars: 16_384,
+  maxProviderApiKeyChars: 4_096,
   maxBaseUrlChars: 2_048,
 } as const;
 

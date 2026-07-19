@@ -228,6 +228,7 @@ func encryptedSecretEnvelope(
 
 type fakeProviderConfigRepository struct {
 	stored StoredProviderConfig
+	listed []StoredProviderConfig
 	ok     bool
 	input  UpsertProviderConfigInput
 }
@@ -240,6 +241,15 @@ func (r *fakeProviderConfigRepository) GetProviderConfig(_ context.Context, user
 }
 
 func (r *fakeProviderConfigRepository) ListProviderConfigs(_ context.Context, userID string) ([]StoredProviderConfig, error) {
+	if r.listed != nil {
+		stored := make([]StoredProviderConfig, 0, len(r.listed))
+		for _, item := range r.listed {
+			if item.UserID == userID {
+				stored = append(stored, item)
+			}
+		}
+		return stored, nil
+	}
 	if !r.ok || r.stored.UserID != userID {
 		return []StoredProviderConfig{}, nil
 	}
@@ -268,6 +278,25 @@ func (r *fakeProviderConfigRepository) CommitProviderConnection(
 		r.stored.ProviderID != input.ProviderID ||
 		r.stored.EncryptedSecretRef != input.ExpectedEncryptedSecretRef ||
 		r.stored.Config.Type != input.ExpectedType ||
+		r.stored.Config.BaseURL != input.ExpectedBaseURL ||
+		r.stored.Config.Enabled != input.ExpectedEnabled {
+		return StoredProviderConfig{}, ErrProviderConfigChanged
+	}
+	r.stored.Config.ConnectionTestSHA256 = input.ConnectionTestSHA256
+	r.stored.Config.ConnectionTestedAt = input.ConnectionTestedAt.UTC().Format(time.RFC3339Nano)
+	r.stored.Config.Enabled = input.Enabled
+	return r.stored, nil
+}
+
+func (r *fakeProviderConfigRepository) CommitSearchProviderConnection(
+	_ context.Context,
+	input CommitSearchProviderConnectionInput,
+) (StoredProviderConfig, error) {
+	if !r.ok || r.stored.ID != input.ID || r.stored.UserID != input.UserID ||
+		r.stored.ProviderID != input.ProviderID ||
+		r.stored.EncryptedSecretRef != input.ExpectedEncryptedSecretRef ||
+		r.stored.Config.Kind != providerConfigKindSearch ||
+		r.stored.Config.SearchProvider != input.ExpectedSearchProvider ||
 		r.stored.Config.BaseURL != input.ExpectedBaseURL ||
 		r.stored.Config.Enabled != input.ExpectedEnabled {
 		return StoredProviderConfig{}, ErrProviderConfigChanged

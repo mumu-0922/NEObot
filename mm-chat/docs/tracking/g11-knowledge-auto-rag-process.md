@@ -1493,3 +1493,86 @@ Rollback restores the retained pre-activation Postgres dump together with the
 current vault keyring before starting an F2.2 image. If that older image needs
 the former provider environment settings, recover them only from an
 operator-owned secret source; do not reintroduce them to the F2.3 release.
+
+## 2026-07-19 — G11.9F.3 Search administrator plan freeze
+
+Before code, the Search control-plane contract was frozen in
+`docs/contracts/search-provider-admin.md`. Four external provider records share
+the existing generic `provider_configs` table through reserved IDs and a
+`kind="search"` discriminator. Multiple records may be saved, but activation
+must test the exact Postgres/vault state and disable every other external
+Search row atomically. Runtime never falls back after an active provider
+failure. With no active external record, explicit OpenAI model capability may
+provide built-in Search; OpenAI Compatible remains unsupported. The frontend
+keeps only the conversation Search toggle and administrator save/test/activate
+controls—never a provider Key or runtime provider selector.
+
+## 2026-07-19 — G11.9F.3 Search administrator implementation and live closure
+
+The backend now exposes fixed Tavily, Firecrawl, Exa, and Bocha administrator
+CRUD/test/activate routes. Search records use reserved `SEARCH:*` IDs and
+`kind="search"` in `provider_configs`; model-provider reads, model listing,
+Knowledge answer identities, and vault contexts reject those rows. Browser Keys
+arrive only through `provider:search:<provider>` BYOK envelopes, are immediately
+re-encrypted as `provider:search:<userId>:<recordId>` vault envelopes, and never
+enter `.env` authority.
+
+Activation performs a second bounded real provider request and commits the
+fingerprint plus enabled state in one Serializable transaction that disables
+all other external Search rows for the same user. Runtime reads that sole
+Postgres/vault resolver on every request. A corrupt or multiple active external
+state fails with `SEARCH_RESOLUTION_FAILED` and cannot fall through to an
+otherwise eligible OpenAI model; OpenAI Compatible still cannot claim built-in
+Search. Rotation now derives model versus Search context from the stored kind,
+rotates current Search vault envelopes, and blocks legacy BYOK Search rows
+instead of guessing a model context.
+
+The Search settings page loads server state and provides four fixed provider
+choices, optional Base URL, SecretInput BYOK replacement/clear, save-and-test,
+activate/deactivate, deletion, and concise status/error feedback. Only the Go
+runtime selects the provider used by `/v1/search` and chat.
+
+Verification:
+
+```text
+backend go test ./... / focused race / go vet ./...             passed
+frontend format / lint / typecheck / full Vitest               passed / passed / passed / 177 files, 846 tests
+frontend production build / Compose source builds              passed / passed
+isolated Postgres one-active + fresh-vault reload              passed
+isolated Postgres rotation-context proof / test DB cleanup      passed / deleted
+deployed backend/frontend health                                healthy / healthy
+hydrated Windows Chrome Search settings proof                   four providers / no console startup error
+live reversible no-Key CRUD / cleanup                           200 save / stable 400 / 204 delete / zero rows
+owner Tavily save/test/activate metadata                        active / vault-backed / attested
+real `/v1/search` before / after restart                        200, 3 sources / 200, 1 source
+real model chat Search SSE / persisted metadata                 `search.results` / external+tavily
+terminal and reloaded citation artifacts                        `[W]` + Search block / identical
+forced active endpoint failure                                  502 `SEARCH_PROVIDER_ERROR`, no fallback
+exact config restore / post-restore Search                      backup removed / 200, 1 source
+live conversation cleanup                                       204 delete / 404 reload
+owner-only Postgres rollback dump                               mode 600 / checksum + restore-list valid
+```
+
+The owner entered Tavily through the administrator page; no real Key was
+printed, returned by the API, added to an environment file, or committed.
+`/v1/search` and a real `gpt-5.5` chat consumed Tavily, persisted three bounded
+sources with `[W]` citations, and reloaded the same terminal artifacts before
+and after backend restart. The smoke conversation was then soft-deleted.
+
+The no-fallback runtime proof temporarily replaced only the active row's Base
+URL and matching attestation while retaining an in-database copy of its exact
+config and timestamp. The call remained resolvable but returned the external
+provider's redacted `502 SEARCH_PROVIDER_ERROR`; the unit matrix separately
+proves that a corrupt/multiple active external state cannot fall through to an
+eligible OpenAI model. The first restore command omitted interactive stdin to
+`docker exec`; the mandatory post-restore assertion detected the retained
+backup table and continued 502 before any closeout. The corrected `-i` restore
+reinstated the exact config/timestamp, dropped the backup table, and restored a
+real 200 Tavily result.
+
+The final owner-only rollback anchor is
+`backup/search-activation-f3/postgres/postgres-20260719T080528Z.dump` with a
+mode-600 SHA-256 sidecar and a successful container `pg_restore --list` check.
+Rollback to the pre-F3 image must use that dump or remove the `kind="search"`
+row before startup because the older model-provider control plane does not own
+Search-discriminated records. G11.9F.3 is complete.

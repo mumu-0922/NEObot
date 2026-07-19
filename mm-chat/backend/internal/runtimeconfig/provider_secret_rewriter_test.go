@@ -14,6 +14,7 @@ import (
 
 	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/providersecrets"
+	"neo-chat/mm-chat/backend/internal/websearch"
 )
 
 func TestProviderSecretRewritePlanCoversLegacyRotationCurrentAndDeletedRows(t *testing.T) {
@@ -97,6 +98,64 @@ func TestProviderSecretRewriteReportsUnrecoverableCustomLegacyRow(t *testing.T) 
 		plan.result.ChangedRows != 0 ||
 		plan.rows[0].action != providerSecretRewriteBlocked {
 		t.Fatalf("blocked plan = %#v / %#v", plan.result, plan.rows[0])
+	}
+}
+
+func TestProviderSecretRewriteUsesSearchVaultContextAndBlocksLegacySearchRows(t *testing.T) {
+	privateKey, cfg := providerSecretRewriteBYOKConfig(t)
+	oldVault := providerSecretRewriteVault(t, "old", map[string]byte{"old": 29})
+	rotatingVault := providerSecretRewriteVault(t, "new", map[string]byte{
+		"new": 30,
+		"old": 29,
+	})
+	const userID = "00000000-0000-0000-0000-000000000001"
+	old := providerSecretSearchVaultRewriteRow(
+		t, oldVault, "1", userID, websearch.ProviderTavily, "old-search-secret",
+	)
+	current := providerSecretSearchVaultRewriteRow(
+		t, rotatingVault, "2", userID, websearch.ProviderExa, "current-search-secret",
+	)
+	legacy := providerSecretLegacyRewriteRow(
+		t, privateKey, "3", userID, searchProviderRecordID(websearch.ProviderBocha),
+		"legacy-search-secret",
+	)
+	legacy.configJSON = `{"kind":"search","searchProvider":"bocha","enabled":true}`
+
+	plan, err := NewPostgresProviderSecretRewriter(nil, cfg, rotatingVault).
+		buildProviderSecretRewritePlan([]providerSecretRewriteRow{old, current, legacy})
+	if err != nil {
+		t.Fatalf("buildProviderSecretRewritePlan() error = %v", err)
+	}
+	if plan.result.RotatedRows != 1 || plan.result.CurrentRows != 1 ||
+		plan.result.BlockedRows != 1 || plan.result.ChangedRows != 1 ||
+		plan.rows[0].action != providerSecretRewriteRotate ||
+		plan.rows[1].action != providerSecretRewriteCurrent ||
+		plan.rows[2].action != providerSecretRewriteBlocked {
+		t.Fatalf("search rewrite plan = %#v / %#v", plan.result, plan.rows)
+	}
+
+	encoded, err := NewPostgresProviderSecretRewriter(nil, cfg, rotatingVault).
+		rewriteProviderSecret(plan.rows[0])
+	if err != nil {
+		t.Fatalf("rewriteProviderSecret() error = %v", err)
+	}
+	envelope, err := providersecrets.ParseEnvelope(encoded)
+	if err != nil || envelope.KID != "new" {
+		t.Fatalf("rewritten search envelope = %#v, %v", envelope, err)
+	}
+	plaintext, err := rotatingVault.Decrypt(
+		envelope,
+		searchProviderSecretContext(userID, searchProviderRecordID(websearch.ProviderTavily)),
+	)
+	if err != nil || string(plaintext) != "old-search-secret" {
+		t.Fatalf("rewritten search plaintext = %q, %v", plaintext, err)
+	}
+	clear(plaintext)
+	if _, err := rotatingVault.Decrypt(
+		envelope,
+		modelProviderSecretContext(userID, searchProviderRecordID(websearch.ProviderTavily)),
+	); err == nil {
+		t.Fatal("search envelope decrypted with model-provider context")
 	}
 }
 
@@ -296,5 +355,37 @@ func providerSecretLegacyRewriteRow(
 		id: id, userID: userID, providerID: providerID,
 		encryptedSecretRef: string(encoded),
 		configJSON:         `{"type":"OpenAI Compatible","enabled":true}`,
+	}
+}
+
+func providerSecretSearchVaultRewriteRow(
+	t *testing.T,
+	vault *providersecrets.Vault,
+	id string,
+	userID string,
+	providerID websearch.ProviderID,
+	plaintext string,
+) providerSecretRewriteRow {
+	t.Helper()
+	recordID := searchProviderRecordID(providerID)
+	envelope, err := vault.Encrypt(
+		[]byte(plaintext), searchProviderSecretContext(userID, recordID),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configJSON, err := json.Marshal(StoredProviderConfigPayload{
+		Kind: providerConfigKindSearch, SearchProvider: string(providerID), Enabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return providerSecretRewriteRow{
+		id: id, userID: userID, providerID: recordID,
+		encryptedSecretRef: string(encoded), configJSON: string(configJSON),
 	}
 }

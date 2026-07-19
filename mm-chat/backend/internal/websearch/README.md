@@ -1,6 +1,6 @@
 # Go Web Search Providers
 
-`websearch` is the server-owned Search execution boundary for G11.9E. It ports
+`websearch` is the server-owned Search execution boundary for G11.9E/F. It ports
 the legacy Tavily, Firecrawl, Exa, and Bocha adapters into Go, resolves exactly
 one active server-side execution, and exposes the authenticated `POST
 /v1/search` contract without accepting browser-supplied credentials.
@@ -23,7 +23,9 @@ The retired self-hosted search path is absent. OpenAI Responses Web Search is th
 currently admitted model-built-in capability because Go has no Gemini runtime
 provider yet. Chat assigns bounded `[W<n>]` markers, persists a Search output
 block plus redacted Web metadata, and restores the same artifact after reload.
-Administrator provider persistence remains G11.9F.
+G11.9F.3 stores administrator Search records in Postgres, encrypts Keys with
+the provider vault, and activates one external provider atomically after a
+bounded real connection test.
 
 ## Usage
 
@@ -46,10 +48,15 @@ result, err := service.Search(ctx, websearch.Request{
 Production callers leave `Config.Client` nil. Tests may inject `HTTPDoer` to
 exercise exact provider shapes without network or credential use.
 
-`POST /v1/search` accepts only `query`, `scope`, and `maxResults`. The internal
-`Resolver` supplies the active execution; the request cannot select a provider,
-Key, or base URL. Until G11.9F supplies the Postgres-backed resolver, the route
-fails closed with `SEARCH_NOT_CONFIGURED` in the normal API binary.
+`POST /v1/search` accepts only `query`, `scope`, and `maxResults`. The normal API
+binary supplies the Postgres/vault-backed `Resolver`; the request cannot select
+a provider, Key, or base URL. With no active external record, only a tested,
+enabled explicit OpenAI model provider may supply model-built-in Search.
+
+Administrator configuration is exposed separately at
+`/v1/admin/search/providers`. Multiple external providers may be saved, but
+activation tests the exact stored endpoint/ciphertext and disables every other
+external Search record in the same Serializable transaction.
 
 ## Public API
 

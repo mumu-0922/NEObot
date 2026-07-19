@@ -596,7 +596,10 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		cfg,
 		runtimeconfig.WithProviderConfigRepository(resolvedOptions.runtimeConfigRepo),
 		runtimeconfig.WithProviderSecretVault(resolvedOptions.providerSecretVault),
-		runtimeconfig.WithSearchAvailable(webSearchService.Configured()),
+		runtimeconfig.WithSearchAvailability(func(ctx context.Context) bool {
+			_, err := webSearchService.ResolveActive(ctx)
+			return err == nil
+		}),
 	)
 	chatOptions := []chat.HandlerOption{
 		chat.WithProvider(resolvedOptions.chatProvider),
@@ -695,6 +698,8 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/admin/provider-config", runtimeConfigHandler)
 	mux.Handle("/v1/admin/providers", runtimeConfigHandler)
 	mux.Handle("/v1/admin/providers/", runtimeConfigHandler)
+	mux.Handle("/v1/admin/search/providers", runtimeConfigHandler)
+	mux.Handle("/v1/admin/search/providers/", runtimeConfigHandler)
 	mux.Handle("/v1/byok/public-key", runtimeConfigHandler)
 	mux.Handle(websearch.SearchPath, webSearchHandler)
 	mux.Handle("/v1/chat/conversations", chatHandler)

@@ -24,6 +24,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/providersecrets"
+	"neo-chat/mm-chat/backend/internal/websearch"
 )
 
 const (
@@ -51,10 +52,11 @@ const maxProviderModelsResponseBytes = 2 << 20
 const maxStoredProviderSecretRefBytes = 96 << 10
 
 type Service struct {
-	cfg             config.Config
-	repo            ProviderConfigRepository
-	providerSecrets *providersecrets.Vault
-	searchAvailable bool
+	cfg              config.Config
+	repo             ProviderConfigRepository
+	providerSecrets  *providersecrets.Vault
+	searchHTTPClient websearch.HTTPDoer
+	searchAvailable  func(context.Context) bool
 
 	byokMu        sync.Mutex
 	ephemeralBYOK *rsa.PrivateKey
@@ -70,7 +72,13 @@ func WithProviderConfigRepository(repo ProviderConfigRepository) ServiceOption {
 
 func WithSearchAvailable(available bool) ServiceOption {
 	return func(s *Service) {
-		s.searchAvailable = available
+		s.searchAvailable = func(context.Context) bool { return available }
+	}
+}
+
+func WithSearchAvailability(resolver func(context.Context) bool) ServiceOption {
+	return func(s *Service) {
+		s.searchAvailable = resolver
 	}
 }
 
@@ -85,6 +93,7 @@ type ProviderConfigRepository interface {
 	ListProviderConfigs(ctx context.Context, userID string) ([]StoredProviderConfig, error)
 	UpsertProviderConfig(ctx context.Context, input UpsertProviderConfigInput) (StoredProviderConfig, error)
 	CommitProviderConnection(ctx context.Context, input CommitProviderConnectionInput) (StoredProviderConfig, error)
+	CommitSearchProviderConnection(ctx context.Context, input CommitSearchProviderConnectionInput) (StoredProviderConfig, error)
 	DeleteProviderConfig(ctx context.Context, userID string, providerID string) error
 }
 
@@ -98,7 +107,9 @@ type StoredProviderConfig struct {
 }
 
 type StoredProviderConfigPayload struct {
+	Kind                 string       `json:"kind,omitempty"`
 	Type                 ProviderType `json:"type"`
+	SearchProvider       string       `json:"searchProvider,omitempty"`
 	BaseURL              string       `json:"baseUrl"`
 	Models               []string     `json:"models"`
 	Enabled              bool         `json:"enabled"`
@@ -153,6 +164,10 @@ func (s *Service) PublicConfig() PublicConfig {
 
 func (s *Service) PublicConfigForContext(ctx context.Context) PublicConfig {
 	provider := s.serverDefaultProviderForContext(ctx)
+	searchAvailable := false
+	if s.searchAvailable != nil {
+		searchAvailable = s.searchAvailable(ctx)
+	}
 
 	return PublicConfig{
 		ModelProvider: ModelProviderConfig{
@@ -164,7 +179,7 @@ func (s *Service) PublicConfigForContext(ctx context.Context) PublicConfig {
 			ModelMetadata: map[string]any{},
 			DefaultModels: map[string]string{},
 		},
-		Search: SearchConfig{Available: s.searchAvailable},
+		Search: SearchConfig{Available: searchAvailable},
 		RAG: RAGConfig{
 			VectorStoreAvailable:        false,
 			DocumentProcessingAvailable: false,
@@ -263,16 +278,11 @@ type resolvedServerDefaultProvider struct {
 
 func (s *Service) AdminProviderConfig(ctx context.Context) (AdminProviderConfigResponse, error) {
 	provider := s.serverDefaultProviderForContext(ctx)
-	return AdminProviderConfigResponse{
-		ID:        serverDefaultProviderID,
-		Name:      provider.Name,
-		Type:      provider.Type,
-		BaseURL:   provider.BaseURL,
-		Models:    append([]string(nil), provider.Models...),
-		Enabled:   provider.Enabled,
-		HasAPIKey: strings.TrimSpace(provider.APIKey) != "" || strings.TrimSpace(provider.SecretRef) != "",
-		Source:    "server-default",
-	}, nil
+	return adminProviderResponse(
+		provider,
+		serverDefaultProviderID,
+		"server-default",
+	), nil
 }
 
 func (s *Service) AdminProviderConfigs(ctx context.Context) (AdminProviderConfigsResponse, error) {
@@ -288,6 +298,9 @@ func (s *Service) AdminProviderConfigs(ctx context.Context) (AdminProviderConfig
 	providers := make([]AdminProviderConfigResponse, 0, len(stored)+1)
 	hasDefault := false
 	for _, item := range stored {
+		if !IsModelProviderConfig(item) {
+			continue
+		}
 		if item.ProviderID == serverDefaultProviderID {
 			hasDefault = true
 			resolved := s.resolveStoredServerDefault(item)
@@ -318,7 +331,7 @@ func (s *Service) UpsertAdminProviderConfig(
 		return AdminProviderConfigResponse{}, ErrDatabaseRequired
 	}
 	providerID = strings.TrimSpace(providerID)
-	if providerID == "" || len(providerID) > 128 {
+	if providerID == "" || len(providerID) > 128 || isReservedSearchProviderRecordID(providerID) {
 		return AdminProviderConfigResponse{}, ErrProviderConfigUnsupported
 	}
 	if request.ClearAPIKey && len(request.APIKeySecret) > 0 {
@@ -337,6 +350,9 @@ func (s *Service) UpsertAdminProviderConfig(
 	if stored, ok, err := s.repo.GetProviderConfig(ctx, user.ID, providerID); err != nil {
 		return AdminProviderConfigResponse{}, err
 	} else if ok {
+		if !IsModelProviderConfig(stored) {
+			return AdminProviderConfigResponse{}, ErrProviderConfigUnsupported
+		}
 		currentStored = stored
 		hasCurrent = true
 		if providerID == serverDefaultProviderID {
@@ -411,6 +427,7 @@ func (s *Service) UpsertAdminProviderConfig(
 		Label:              name,
 		EncryptedSecretRef: secretRef,
 		Config: StoredProviderConfigPayload{
+			Kind:                 providerConfigKindModel,
 			Type:                 providerType,
 			BaseURL:              baseURL,
 			Models:               models,
@@ -434,7 +451,8 @@ func (s *Service) DeleteAdminProviderConfig(ctx context.Context, providerID stri
 		return ErrDatabaseRequired
 	}
 	providerID = strings.TrimSpace(providerID)
-	if providerID == "" || providerID == serverDefaultProviderID {
+	if providerID == "" || providerID == serverDefaultProviderID ||
+		isReservedSearchProviderRecordID(providerID) {
 		return ErrProviderConfigUnsupported
 	}
 	return s.repo.DeleteProviderConfig(ctx, auth.UserOrDevelopment(ctx).ID, providerID)
@@ -445,7 +463,7 @@ func (s *Service) serverDefaultProviderForContext(ctx context.Context) resolvedS
 		return emptyServerDefaultProvider()
 	}
 	stored, ok, err := s.repo.GetProviderConfig(ctx, auth.UserOrDevelopment(ctx).ID, serverDefaultProviderID)
-	if err != nil || !ok {
+	if err != nil || !ok || !IsModelProviderConfig(stored) {
 		return emptyServerDefaultProvider()
 	}
 	return s.resolveStoredServerDefault(stored)
@@ -687,6 +705,9 @@ func (s *Service) ResolveServerDefaultProvider(ctx context.Context) (ResolvedPro
 	if !ok {
 		return ResolvedProvider{}, ErrProviderConfigNotFound
 	}
+	if !IsModelProviderConfig(stored) {
+		return ResolvedProvider{}, ErrProviderConfigUnsupported
+	}
 	if !stored.Config.Enabled {
 		return ResolvedProvider{}, ErrProviderDisabled
 	}
@@ -723,6 +744,9 @@ func (s *Service) ResolveStoredProvider(ctx context.Context, providerID string) 
 	}
 	if !ok {
 		return ResolvedProvider{}, ErrProviderConfigNotFound
+	}
+	if !IsModelProviderConfig(stored) {
+		return ResolvedProvider{}, ErrProviderConfigUnsupported
 	}
 	if !stored.Config.Enabled {
 		return ResolvedProvider{}, ErrProviderDisabled

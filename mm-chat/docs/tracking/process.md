@@ -8493,3 +8493,18 @@ backend/frontend are healthy, schema remains version 27, and the pre-rewrite
 backup is retained. No provider request occurred. Full evidence and rollback
 are in `docs/tracking/g11-knowledge-auto-rag-process.md` and
 `docs/deployment/secret-rotation.md`.
+
+## 2026-07-19 — G11.9F.3 Search administrator implementation cross-reference
+
+The four fixed external Search providers now have Postgres/vault-backed
+administrator CRUD, BYOK save-and-test, atomic single activation, dynamic Go
+runtime resolution, kind-aware rotation, and a server-loaded settings page.
+Backend/full frontend gates, isolated one-active/fresh-vault Postgres proof,
+source-build deployment, hydrated Chrome UI inspection, and reversible live
+no-Key CRUD cleanup passed. Owner-entered Tavily then passed positive
+`/v1/search`, real model chat `[W]` persistence/reload, backend restart, and a
+forced active-provider 502 without fallback; exact provider state was restored,
+the smoke conversation was deleted, and an owner-only rollback dump was
+verified. Full evidence and rollback details are recorded in
+`docs/tracking/g11-knowledge-auto-rag-process.md` and
+`docs/contracts/search-provider-admin.md`.

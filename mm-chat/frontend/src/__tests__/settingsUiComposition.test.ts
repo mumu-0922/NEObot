@@ -61,4 +61,20 @@ describe("settings UI primitives", () => {
     expect(providerSettings).toContain("provider(");
     expect(providerSettings).toContain("keyStoredOnServer");
   });
+
+  it("wires Search provider settings to backend admin config and BYOK", () => {
+    const searchSettings = readFileSync(
+      resolve(process.cwd(), "src/components/settings/SearchSettings.tsx"),
+      "utf8",
+    );
+
+    expect(searchSettings).toContain("listAdminSearchProviderConfigs");
+    expect(searchSettings).toContain("updateAdminSearchProviderConfig");
+    expect(searchSettings).toContain("testAdminSearchProviderConnection");
+    expect(searchSettings).toContain("activateAdminSearchProvider");
+    expect(searchSettings).toContain("deleteAdminSearchProviderConfig");
+    expect(searchSettings).toContain("encryptSecret");
+    expect(searchSettings).toContain("BYOK_CONTEXTS.searchProvider");
+    expect(searchSettings).toContain("SecretInput");
+  });
 });

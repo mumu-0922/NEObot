@@ -24,6 +24,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/migration"
 	"neo-chat/mm-chat/backend/internal/providersecrets"
+	"neo-chat/mm-chat/backend/internal/websearch"
 	migrationfiles "neo-chat/mm-chat/backend/migrations"
 )
 
@@ -132,6 +133,107 @@ WHERE provider_id = 'INTEGRATION' AND deleted_at IS NULL
 	}
 	if resolved.APIKey != plaintext {
 		t.Fatalf("reloaded provider secret does not match")
+	}
+}
+
+func TestPostgresSearchProviderActivationKeepsExactlyOneActive(t *testing.T) {
+	db := openRuntimeConfigPostgresIntegrationDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := db.ExecContext(ctx, `DELETE FROM provider_configs`); err != nil {
+		t.Fatalf("clear provider configs: %v", err)
+	}
+	repo := NewPostgresProviderConfigRepository(db)
+	vault := testProviderSecretVault(t, "search-v1", 34)
+	secretWriter := NewService(config.Config{}, WithProviderSecretVault(vault))
+	create := func(providerID websearch.ProviderID) StoredProviderConfig {
+		recordID := searchProviderRecordID(providerID)
+		secretRef, err := secretWriter.encryptSearchProviderSecretAtRest(
+			authDevelopmentUserID(), recordID, string(providerID)+"-fixture-secret",
+		)
+		if err != nil {
+			t.Fatalf("encrypt %s Search secret: %v", providerID, err)
+		}
+		stored, err := repo.UpsertProviderConfig(ctx, UpsertProviderConfigInput{
+			UserID: authDevelopmentUserID(), ProviderID: recordID,
+			Label:              searchProviderDefaultName(providerID),
+			EncryptedSecretRef: secretRef,
+			Config: StoredProviderConfigPayload{
+				Kind: providerConfigKindSearch, SearchProvider: string(providerID),
+			},
+		})
+		if err != nil {
+			t.Fatalf("upsert %s: %v", providerID, err)
+		}
+		return stored
+	}
+	tavily := create(websearch.ProviderTavily)
+	exa := create(websearch.ProviderExa)
+	activate := func(stored StoredProviderConfig) StoredProviderConfig {
+		providerID, err := normalizeSearchProviderID(stored.Config.SearchProvider)
+		if err != nil {
+			t.Fatal(err)
+		}
+		committed, err := repo.CommitSearchProviderConnection(ctx, CommitSearchProviderConnectionInput{
+			ID: stored.ID, UserID: stored.UserID, ProviderID: stored.ProviderID,
+			ExpectedEncryptedSecretRef: stored.EncryptedSecretRef,
+			ExpectedSearchProvider:     stored.Config.SearchProvider,
+			ExpectedBaseURL:            stored.Config.BaseURL,
+			ExpectedEnabled:            stored.Config.Enabled,
+			ConnectionTestSHA256: searchProviderConnectionFingerprint(
+				stored.ProviderID, providerID, stored.Config.BaseURL, stored.EncryptedSecretRef,
+			),
+			ConnectionTestedAt: time.Now().UTC(), Enabled: true,
+		})
+		if err != nil {
+			t.Fatalf("activate %s: %v", stored.ProviderID, err)
+		}
+		return committed
+	}
+	tavily = activate(tavily)
+	if !tavily.Config.Enabled {
+		t.Fatal("Tavily was not activated")
+	}
+	exa = activate(exa)
+	if !exa.Config.Enabled {
+		t.Fatal("Exa was not activated")
+	}
+
+	listed, err := repo.ListProviderConfigs(ctx, authDevelopmentUserID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	active := make([]string, 0, 1)
+	for _, stored := range listed {
+		if isSearchProviderConfig(stored) && stored.Config.Enabled {
+			active = append(active, stored.ProviderID)
+		}
+	}
+	if len(active) != 1 || active[0] != searchProviderRecordID(websearch.ProviderExa) {
+		t.Fatalf("active Search providers = %#v", active)
+	}
+	restarted := NewService(
+		config.Config{},
+		WithProviderConfigRepository(NewPostgresProviderConfigRepository(db)),
+		WithProviderSecretVault(testProviderSecretVault(t, "search-v1", 34)),
+	)
+	execution, err := restarted.ResolveActive(ctx)
+	if err != nil || execution.Mode != websearch.ExecutionExternal ||
+		execution.External == nil || execution.External.ID() != websearch.ProviderExa {
+		t.Fatalf("restarted ResolveActive() = %#v, %v", execution, err)
+	}
+
+	_, err = repo.CommitSearchProviderConnection(ctx, CommitSearchProviderConnectionInput{
+		ID: tavily.ID, UserID: tavily.UserID, ProviderID: tavily.ProviderID,
+		ExpectedEncryptedSecretRef: tavily.EncryptedSecretRef,
+		ExpectedSearchProvider:     tavily.Config.SearchProvider,
+		ExpectedBaseURL:            "https://changed.example",
+		ExpectedEnabled:            false,
+		ConnectionTestSHA256:       "stale-fingerprint",
+		ConnectionTestedAt:         time.Now().UTC(), Enabled: true,
+	})
+	if !errors.Is(err, ErrProviderConfigChanged) {
+		t.Fatalf("stale activation error = %v", err)
 	}
 }
 

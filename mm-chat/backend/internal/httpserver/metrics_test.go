@@ -205,6 +205,19 @@ func TestNormalizeMetricPathBoundsKnownDynamicRoutes(t *testing.T) {
 	}
 }
 
+func TestNormalizeMetricPathBoundsSearchAdministratorRoutes(t *testing.T) {
+	tests := map[string]string{
+		"/v1/admin/search/providers":                 "/v1/admin/search/providers",
+		"/v1/admin/search/providers/tavily":          "/v1/admin/search/providers/{provider}",
+		"/v1/admin/search/providers/tavily/activate": "/v1/admin/search/providers/{provider}/{action}",
+	}
+	for input, want := range tests {
+		if got := normalizeMetricPath(input); got != want {
+			t.Fatalf("normalizeMetricPath(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
 func TestMetricsEndpointBoundsTeamDynamicLabels(t *testing.T) {
 	metrics := NewMetrics("metrics-test", "local")
 	handler := NewHandler(

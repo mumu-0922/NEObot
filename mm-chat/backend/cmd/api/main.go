@@ -339,6 +339,16 @@ func main() {
 		httpserver.WithPluginAuditRecorder(pluginAuditRecorder),
 		httpserver.WithLogger(logger),
 	}
+	if runtimeConfigRepo != nil {
+		serverOptions = append(
+			serverOptions,
+			httpserver.WithWebSearchResolver(runtimeconfig.NewService(
+				cfg,
+				runtimeconfig.WithProviderConfigRepository(runtimeConfigRepo),
+				runtimeconfig.WithProviderSecretVault(providerSecretVault),
+			)),
+		)
+	}
 	if developmentSession != nil {
 		serverOptions = append(serverOptions, httpserver.WithDevelopmentSession(*developmentSession))
 	}
@@ -527,7 +537,8 @@ func singleUserAnswerIdentities(
 			return nil, fmt.Errorf("list configured answer providers: %w", err)
 		}
 		for _, provider := range stored {
-			if !provider.Config.Enabled ||
+			if !runtimeconfig.IsModelProviderConfig(provider) ||
+				!provider.Config.Enabled ||
 				!runtimeconfig.ProviderConnectionTestValid(provider) {
 				continue
 			}

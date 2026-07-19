@@ -14,6 +14,9 @@ import (
 const providerConnectionFingerprintVersion = "model-provider-connection/v1"
 
 func ProviderConnectionTestValid(stored StoredProviderConfig) bool {
+	if !IsModelProviderConfig(stored) {
+		return false
+	}
 	return providerConnectionTestValidForValues(
 		stored.ProviderID,
 		stored.Config.Type,
@@ -182,6 +185,9 @@ func (s *Service) loadProviderForConnectionTest(
 	}
 	if !ok {
 		return StoredProviderConfig{}, resolvedServerDefaultProvider{}, ErrProviderConfigNotFound
+	}
+	if !IsModelProviderConfig(stored) {
+		return StoredProviderConfig{}, resolvedServerDefaultProvider{}, ErrProviderConfigUnsupported
 	}
 	provider := s.resolveStoredProvider(stored)
 	if providerID == serverDefaultProviderID {

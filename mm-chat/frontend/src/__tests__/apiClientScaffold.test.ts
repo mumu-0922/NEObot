@@ -22,6 +22,7 @@ import { createServerAgentApiShell } from "../services/api/client/server/agentAp
 import { createServerAuthApiShell } from "../services/api/client/server/authApi";
 import { createServerByokApiShell } from "../services/api/client/server/byokApi";
 import { createServerProviderApiShell } from "../services/api/client/server/providerApi";
+import { createServerSearchProviderApiShell } from "../services/api/client/server/searchProviderApi";
 import { createServerSettingsApiShell } from "../services/api/client/server/settingsApi";
 import { createServerFileApiShell } from "../services/api/client/server/fileApi";
 import { createServerImageGenerationApiShell } from "../services/api/client/server/imageApi";
@@ -650,6 +651,117 @@ describe("G3.1 server runtime/auth API adapters", () => {
         body: undefined,
       },
       { url: "/mm-api/v1/byok/public-key", method: "GET", body: undefined },
+    ]);
+  });
+});
+
+describe("G11.9F.3 server Search provider API adapter", () => {
+  it("routes Search administrator CRUD, test, and activation to Go", async () => {
+    const requests: Array<{ url: string; method?: string; body?: unknown }> =
+      [];
+    const searchProviders = createServerSearchProviderApiShell(
+      createHttpClient({
+        baseUrl: "/mm-api",
+        fetchImpl: async (input, init) => {
+          requests.push({
+            url: String(input),
+            method: init?.method,
+            body: init?.body ? JSON.parse(String(init.body)) : undefined,
+          });
+          if (String(input).endsWith("/v1/admin/search/providers")) {
+            return Response.json({
+              providers: [],
+              activeProviderId: "",
+            });
+          }
+          if (init?.method === "DELETE") {
+            return new Response(null, { status: 204 });
+          }
+          if (String(input).endsWith("/test")) {
+            return Response.json({
+              provider: {
+                id: "SEARCH:TAVILY",
+                provider: "tavily",
+                connectionTestValid: true,
+              },
+              sourceCount: 1,
+              imageCount: 0,
+            });
+          }
+          if (String(input).endsWith("/activate")) {
+            return Response.json({
+              provider: {
+                id: "SEARCH:TAVILY",
+                provider: "tavily",
+                enabled: true,
+              },
+              sourceCount: 1,
+              imageCount: 0,
+            });
+          }
+          return Response.json({
+            id: "SEARCH:TAVILY",
+            name: "Tavily",
+            provider: "tavily",
+            baseUrl: "https://api.tavily.com",
+            enabled: false,
+            hasApiKey: true,
+            connectionTestValid: false,
+          });
+        },
+      }),
+    );
+
+    await expect(
+      searchProviders.listAdminSearchProviderConfigs(),
+    ).resolves.toEqual({ providers: [], activeProviderId: "" });
+    await expect(
+      searchProviders.updateAdminSearchProviderConfig("tavily", {
+        name: "Tavily",
+        baseUrl: "https://api.tavily.com",
+        apiKeySecret: { v: 1 },
+      }),
+    ).resolves.toMatchObject({ provider: "tavily", hasApiKey: true });
+    await expect(
+      searchProviders.testAdminSearchProviderConnection("tavily"),
+    ).resolves.toMatchObject({ sourceCount: 1 });
+    await expect(
+      searchProviders.activateAdminSearchProvider("tavily"),
+    ).resolves.toMatchObject({ provider: { enabled: true } });
+    await expect(
+      searchProviders.deleteAdminSearchProviderConfig("tavily"),
+    ).resolves.toBeUndefined();
+
+    expect(requests).toEqual([
+      {
+        url: "/mm-api/v1/admin/search/providers",
+        method: "GET",
+        body: undefined,
+      },
+      {
+        url: "/mm-api/v1/admin/search/providers/tavily",
+        method: "PUT",
+        body: {
+          name: "Tavily",
+          baseUrl: "https://api.tavily.com",
+          apiKeySecret: { v: 1 },
+        },
+      },
+      {
+        url: "/mm-api/v1/admin/search/providers/tavily/test",
+        method: "POST",
+        body: undefined,
+      },
+      {
+        url: "/mm-api/v1/admin/search/providers/tavily/activate",
+        method: "POST",
+        body: undefined,
+      },
+      {
+        url: "/mm-api/v1/admin/search/providers/tavily",
+        method: "DELETE",
+        body: undefined,
+      },
     ]);
   });
 });

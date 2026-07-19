@@ -36,6 +36,11 @@ func NewHandler(service *Service) *Handler {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/v1/admin/search/providers" ||
+		strings.HasPrefix(r.URL.Path, "/v1/admin/search/providers/") {
+		h.adminSearchProviderConfig(w, r)
+		return
+	}
 	if strings.HasPrefix(r.URL.Path, "/v1/admin/providers/") {
 		h.adminProviderConfigByID(w, r)
 		return
@@ -61,6 +66,82 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.requireMethod(w, r, http.MethodGet, h.getBYOKPublicKey)
 	default:
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
+	}
+}
+
+func (h *Handler) adminSearchProviderConfig(w http.ResponseWriter, r *http.Request) {
+	const collectionPath = "/v1/admin/search/providers"
+	if r.URL.Path == collectionPath {
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", http.MethodGet)
+			writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
+			return
+		}
+		response, err := h.service.AdminSearchProviderConfigs(r.Context())
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, response)
+		return
+	}
+
+	remainder := strings.Trim(strings.TrimPrefix(r.URL.Path, collectionPath+"/"), "/")
+	parts := strings.Split(remainder, "/")
+	providerID := strings.TrimSpace(parts[0])
+	if providerID == "" || len(parts) > 2 {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
+		return
+	}
+	if len(parts) == 2 {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
+			return
+		}
+		var response AdminSearchProviderConnectionResponse
+		var err error
+		switch strings.TrimSpace(parts[1]) {
+		case "test":
+			response, err = h.service.TestAdminSearchProviderConnection(r.Context(), providerID)
+		case "activate":
+			response, err = h.service.ActivateAdminSearchProvider(r.Context(), providerID)
+		default:
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
+			return
+		}
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, response)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPut:
+		var request UpdateAdminSearchProviderConfigRequest
+		if err := decodeJSON(w, r, &request); err != nil {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "request body is invalid")
+			return
+		}
+		response, err := h.service.UpsertAdminSearchProviderConfig(
+			r.Context(), providerID, request,
+		)
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, response)
+	case http.MethodDelete:
+		if err := h.service.DeleteAdminSearchProviderConfig(r.Context(), providerID); err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		w.Header().Set("Allow", http.MethodPut+", "+http.MethodDelete)
+		writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 	}
 }
 
@@ -240,6 +321,16 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadGateway, "PROVIDER_CONNECTION_TEST_FAILED", "provider connection test failed")
 	case errors.Is(err, ErrProviderConfigChanged):
 		writeError(w, http.StatusConflict, "PROVIDER_CONFIG_CHANGED", "provider configuration changed during connection testing")
+	case errors.Is(err, ErrSearchProviderConfigUnsupported):
+		writeError(w, http.StatusBadRequest, "SEARCH_PROVIDER_CONFIG_UNSUPPORTED", "search provider configuration is unsupported")
+	case errors.Is(err, ErrSearchProviderNotFound):
+		writeError(w, http.StatusNotFound, "SEARCH_PROVIDER_NOT_FOUND", "search provider configuration was not found")
+	case errors.Is(err, ErrSearchProviderSecretRequired):
+		writeError(w, http.StatusBadRequest, "SEARCH_PROVIDER_SECRET_REQUIRED", "search provider API key is required")
+	case errors.Is(err, ErrSearchProviderConnectionFailed):
+		writeError(w, http.StatusBadGateway, "SEARCH_PROVIDER_CONNECTION_TEST_FAILED", "search provider connection test failed")
+	case errors.Is(err, ErrSearchProviderConfigChanged):
+		writeError(w, http.StatusConflict, "SEARCH_PROVIDER_CONFIG_CHANGED", "search provider configuration changed during connection testing")
 	default:
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "runtime config request failed")
 	}

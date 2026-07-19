@@ -238,6 +238,7 @@ function createMockClient(
     auth: options.auth ?? defaultClient.auth,
     settings: options.settings ?? defaultClient.settings,
     providers: options.providers ?? defaultClient.providers,
+    searchProviders: options.searchProviders ?? defaultClient.searchProviders,
     byok: options.byok ?? defaultClient.byok,
     images: options.images ?? defaultClient.images,
     chat: createMockChatApi(),

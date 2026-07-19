@@ -5,6 +5,7 @@ vi.mock("server-only", () => ({}));
 
 import { clearByokPublicKeyCache, encryptSecret } from "../lib/byok/client";
 import { decryptSecretEnvelope, getByokPublicKey } from "../lib/byok/server";
+import { BYOK_CONTEXTS } from "../lib/byok/shared";
 import {
   clearLocalSecretKeyCache,
   encryptLocalSecret,
@@ -301,16 +302,19 @@ describe("BYOK secret envelopes", () => {
       Response.json(await getByokPublicKey()),
     );
 
-    const envelope = await encryptSecret("secret", "search:tavily");
+    const envelope = await encryptSecret(
+      "secret",
+      BYOK_CONTEXTS.searchProvider("tavily"),
+    );
 
     await expect(
       decryptSecretEnvelope(
         { ...envelope!, kid: "other-key" },
-        "search:tavily",
+        BYOK_CONTEXTS.searchProvider("tavily"),
       ),
     ).rejects.toMatchObject({ name: "AuthenticationError" });
     await expect(
-      decryptSecretEnvelope(envelope!, "search:exa"),
+      decryptSecretEnvelope(envelope!, BYOK_CONTEXTS.searchProvider("exa")),
     ).rejects.toMatchObject({ name: "AuthenticationError" });
   });
 

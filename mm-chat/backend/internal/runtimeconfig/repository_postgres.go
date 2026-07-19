@@ -241,6 +241,98 @@ RETURNING id::text, user_id::text, provider_id, label, encrypted_secret_ref, con
 	return stored, nil
 }
 
+func (r *PostgresProviderConfigRepository) CommitSearchProviderConnection(
+	ctx context.Context,
+	input CommitSearchProviderConnectionInput,
+) (StoredProviderConfig, error) {
+	if r == nil || r.db == nil {
+		return StoredProviderConfig{}, ErrDatabaseRequired
+	}
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return StoredProviderConfig{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(
+		ctx,
+		`LOCK TABLE provider_configs IN SHARE ROW EXCLUSIVE MODE`,
+	); err != nil {
+		return StoredProviderConfig{}, err
+	}
+	testedAt := input.ConnectionTestedAt.UTC().Format(time.RFC3339Nano)
+	var stored StoredProviderConfig
+	var encodedConfig []byte
+	var secretRef sql.NullString
+	err = tx.QueryRowContext(ctx, `
+UPDATE provider_configs
+SET config = jsonb_set(
+        jsonb_set(
+          jsonb_set(config, '{connectionTestSha256}', to_jsonb($8::text), true),
+          '{connectionTestedAt}', to_jsonb($9::text), true
+        ),
+        '{enabled}', to_jsonb($10::boolean), true
+      ),
+    updated_at = now()
+WHERE id = $1
+  AND user_id = $2
+  AND provider_id = $3
+  AND deleted_at IS NULL
+  AND encrypted_secret_ref IS NOT DISTINCT FROM NULLIF($4, '')
+  AND COALESCE(config->>'kind', '') = 'search'
+  AND COALESCE(config->>'searchProvider', '') = $5
+  AND COALESCE(config->>'baseUrl', '') = $6
+  AND COALESCE((config->>'enabled')::boolean, false) = $7
+  AND $8 <> ''
+RETURNING id::text, user_id::text, provider_id, label, encrypted_secret_ref, config
+`,
+		input.ID,
+		input.UserID,
+		input.ProviderID,
+		input.ExpectedEncryptedSecretRef,
+		input.ExpectedSearchProvider,
+		input.ExpectedBaseURL,
+		input.ExpectedEnabled,
+		input.ConnectionTestSHA256,
+		testedAt,
+		input.Enabled,
+	).Scan(
+		&stored.ID,
+		&stored.UserID,
+		&stored.ProviderID,
+		&stored.Label,
+		&secretRef,
+		&encodedConfig,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return StoredProviderConfig{}, ErrProviderConfigChanged
+		}
+		return StoredProviderConfig{}, err
+	}
+	if input.Enabled {
+		if _, err := tx.ExecContext(ctx, `
+UPDATE provider_configs
+SET config = jsonb_set(config, '{enabled}', 'false'::jsonb, true),
+    updated_at = now()
+WHERE user_id = $1
+  AND id <> $2
+  AND deleted_at IS NULL
+  AND COALESCE(config->>'kind', '') = 'search'
+  AND COALESCE((config->>'enabled')::boolean, false) = true
+`, input.UserID, input.ID); err != nil {
+			return StoredProviderConfig{}, err
+		}
+	}
+	stored.EncryptedSecretRef = secretRef.String
+	if err := json.Unmarshal(encodedConfig, &stored.Config); err != nil {
+		return StoredProviderConfig{}, ErrProviderConfigUnsupported
+	}
+	if err := tx.Commit(); err != nil {
+		return StoredProviderConfig{}, err
+	}
+	return stored, nil
+}
+
 func (r *PostgresProviderConfigRepository) DeleteProviderConfig(
 	ctx context.Context,
 	userID string,

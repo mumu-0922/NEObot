@@ -8,13 +8,13 @@
   JSON while keeping errors credential/body-free.
 - Produce one deterministic bounded result from exactly one selected provider.
 - Keep the browser from selecting a provider or transmitting Search secrets.
+- Resolve administrator state only from Postgres and the context-bound vault.
 - Admit model-built-in Search only through a proven Go model-provider
   capability.
 
 ## Non-goals
 
-- No administrator Key persistence, activation workflow, or positive
-  credentialed connection test yet.
+- No browser-selected runtime provider, per-request Key, or provider fan-out.
 - No retired self-hosted HTTP path.
 - No automatic provider fallback or multi-provider fan-out.
 - No Gemini model-built-in search until a real Go Gemini runtime provider
@@ -24,6 +24,9 @@
 ## Flow
 
 ```text
+administrator UI --BYOK--> Postgres/vault --bounded test--> atomic active row
+                                            |
+                                            v
 authenticated POST /v1/search       Go chat stream with useSearch
              |                                  |
              +------------+---------------------+
@@ -61,7 +64,9 @@ authenticated POST /v1/search       Go chat stream with useSearch
 | Resolve and reject any non-public address before dialing | Blocks loopback/private/link-local DNS rebinding targets.                                                                      |
 | Disable redirects and environment proxy use              | Prevents an admitted host from redirecting or proxying into a forbidden network.                                               |
 | Provider-order normalization                             | Preserves upstream relevance order while deduplicating and applying the caller cap.                                            |
-| Firecrawl Key optional in this slice                     | Matches legacy request behavior; G11.9F real connection tests decide activation.                                               |
+| Firecrawl adapter keeps legacy optional auth shape       | Administrator activation still requires a non-empty stored Key and a successful bounded test.                                  |
+| Search config uses `kind="search"` reserved rows         | Model and Search records share storage without crossing resolution or vault contexts.                                          |
+| Atomic single-active external provider                   | Serializable activation disables every other Search row for the same user.                                                     |
 | OpenAI type differs from OpenAI Compatible               | Only explicit `OpenAI` runtime providers receive the Responses Web Search capability.                                          |
 | Built-in sources use the common normalizer               | OpenAI annotations/actions receive the same URL, size, dedupe, and result fences.                                              |
 | External route rejects built-in execution                | Built-in tools require model generation and cannot masquerade as a standalone search API.                                      |
@@ -93,9 +98,11 @@ authenticated POST /v1/search       Go chat stream with useSearch
   rejected.
 - Provider schema drift fails or drops malformed rows. A credentialless live
   Firecrawl call proved the hardened adapter reaches the real endpoint and
-  returns a redacted 4xx `ProviderError`; positive activation remains G11.9F.
-- The normal API binary has no Search resolver until G11.9F; `/v1/search`
-  therefore exists but fails closed with `SEARCH_NOT_CONFIGURED`.
+  returns a redacted 4xx `ProviderError`; owner-entered Tavily later passed the
+  F3 positive Search/chat/restart path.
+- The normal API binary resolves Postgres/vault state on every request. With no
+  active external or eligible explicit OpenAI model provider, `/v1/search`
+  fails closed with `SEARCH_NOT_CONFIGURED`.
 - External Search runs whenever the existing Search toggle is enabled in this
   slice. Conditional routing and Knowledge-derived query planning remain
   G11.9G.
@@ -129,3 +136,13 @@ provider/Key/Base URL settings, client-side Search preflight, and the retired
 self-hosted provider path. A real Firecrawl negative smoke passed the redacted
 credential-rejection boundary; the configured OpenAI-compatible gateway
 correctly failed its unsupported Responses Web Search probe without fallback.
+
+### 2026-07-19 — G11.9F.3
+
+Added fixed-provider administrator CRUD, BYOK-to-vault persistence, bounded
+save/test and activation calls, one-active Serializable Postgres commit,
+kind-aware secret rotation, dynamic availability, and the Search settings UI.
+An isolated Postgres proof covered one-active reload and fresh-vault decryption;
+the deployed API passed reversible no-Key CRUD/error cleanup. Owner-entered
+Tavily then passed `/v1/search`, chat `[W]` persistence/reload, backend restart,
+and forced external failure without fallback before exact state restoration.

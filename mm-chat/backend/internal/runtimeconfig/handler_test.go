@@ -261,3 +261,75 @@ func TestHandlerRoutesProviderConnectionTestAndActivation(t *testing.T) {
 		t.Fatalf("wrong method status = %d", wrongMethod.Code)
 	}
 }
+
+func TestHandlerRoutesAdminSearchProviderLifecycle(t *testing.T) {
+	repo := &fakeProviderConfigRepository{}
+	handler := NewHandler(NewService(
+		config.Config{},
+		WithProviderConfigRepository(repo),
+	))
+
+	put := httptest.NewRecorder()
+	handler.ServeHTTP(put, httptest.NewRequest(
+		http.MethodPut,
+		"/v1/admin/search/providers/tavily",
+		strings.NewReader(`{"name":"Tavily","baseUrl":"","enabled":false}`),
+	))
+	if put.Code != http.StatusOK ||
+		!strings.Contains(put.Body.String(), `"provider":"tavily"`) ||
+		!strings.Contains(put.Body.String(), `"hasApiKey":false`) {
+		t.Fatalf("put status = %d, body=%s", put.Code, put.Body.String())
+	}
+
+	list := httptest.NewRecorder()
+	handler.ServeHTTP(list, httptest.NewRequest(
+		http.MethodGet,
+		"/v1/admin/search/providers",
+		nil,
+	))
+	if list.Code != http.StatusOK ||
+		!strings.Contains(list.Body.String(), `"providers":[`) {
+		t.Fatalf("list status = %d, body=%s", list.Code, list.Body.String())
+	}
+
+	tested := httptest.NewRecorder()
+	handler.ServeHTTP(tested, httptest.NewRequest(
+		http.MethodPost,
+		"/v1/admin/search/providers/tavily/test",
+		nil,
+	))
+	if tested.Code != http.StatusBadRequest ||
+		!strings.Contains(tested.Body.String(), "SEARCH_PROVIDER_SECRET_REQUIRED") {
+		t.Fatalf("test status = %d, body=%s", tested.Code, tested.Body.String())
+	}
+
+	deleted := httptest.NewRecorder()
+	handler.ServeHTTP(deleted, httptest.NewRequest(
+		http.MethodDelete,
+		"/v1/admin/search/providers/tavily",
+		nil,
+	))
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("delete status = %d, body=%s", deleted.Code, deleted.Body.String())
+	}
+}
+
+func TestHandlerMapsSearchProviderAdminErrors(t *testing.T) {
+	for _, test := range []struct {
+		err    error
+		status int
+		code   string
+	}{
+		{ErrSearchProviderConfigUnsupported, http.StatusBadRequest, "SEARCH_PROVIDER_CONFIG_UNSUPPORTED"},
+		{ErrSearchProviderNotFound, http.StatusNotFound, "SEARCH_PROVIDER_NOT_FOUND"},
+		{ErrSearchProviderSecretRequired, http.StatusBadRequest, "SEARCH_PROVIDER_SECRET_REQUIRED"},
+		{ErrSearchProviderConnectionFailed, http.StatusBadGateway, "SEARCH_PROVIDER_CONNECTION_TEST_FAILED"},
+		{ErrSearchProviderConfigChanged, http.StatusConflict, "SEARCH_PROVIDER_CONFIG_CHANGED"},
+	} {
+		recorder := httptest.NewRecorder()
+		writeServiceError(recorder, test.err)
+		if recorder.Code != test.status || !strings.Contains(recorder.Body.String(), test.code) {
+			t.Fatalf("error %v status = %d, body=%s", test.err, recorder.Code, recorder.Body.String())
+		}
+	}
+}
