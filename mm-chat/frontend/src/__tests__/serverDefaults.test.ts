@@ -183,12 +183,12 @@ describe("server default configuration", () => {
     const serialized = JSON.stringify(config);
 
     expect(config.modelProvider).toMatchObject({
-      available: true,
+      available: false,
       id: "SERVER_DEFAULT",
-      name: "Hosted Default",
-      type: "OpenAI",
-      models: ["gpt-4o", "gpt-4o-mini"],
-      defaultModels: { titleGeneration: "gpt-4o-mini" },
+      name: "Server Default",
+      type: "OpenAI Compatible",
+      models: [],
+      defaultModels: {},
     });
     expect(config.search.available).toBe(false);
     expect(config.rag).toMatchObject({
@@ -306,118 +306,7 @@ describe("server default configuration", () => {
     }
   });
 
-  it("accepts JSON provider model arrays and publishes sanitized model metadata", async () => {
-    setEnv({
-      DEFAULT_PROVIDER_TYPE: "OpenAI",
-      DEFAULT_PROVIDER_NAME: "Hosted Default",
-      DEFAULT_PROVIDER_API_KEY: "provider-secret",
-      DEFAULT_PROVIDER_MODELS: JSON.stringify([
-        "gpt-4o-mini",
-        {
-          id: "gpt-4o",
-          name: "GPT-4o Hosted",
-          capabilities: {
-            attachment: true,
-            vision: true,
-            audio: true,
-            reasoning: false,
-            tool_call: true,
-          },
-        },
-        { id: "gpt-4o", name: "Duplicate" },
-      ]),
-    });
-
-    const { getPublicServerConfig } =
-      await import("../lib/defaultConfig/server");
-    const config = getPublicServerConfig();
-    const serialized = JSON.stringify(config);
-
-    expect(config.modelProvider.models).toEqual(["gpt-4o-mini", "gpt-4o"]);
-    expect(config.modelProvider.modelMetadata).toEqual({
-      "gpt-4o": {
-        id: "gpt-4o",
-        name: "GPT-4o Hosted",
-        attachment: true,
-        reasoning: false,
-        tool_call: true,
-        modalities: { input: ["image", "audio", "text"] },
-      },
-    });
-    expect(serialized).not.toContain("provider-secret");
-  });
-
-  it("accepts compact provider model capability arrays and falls back to id names", async () => {
-    setEnv({
-      DEFAULT_PROVIDER_TYPE: "OpenAI Compatible",
-      DEFAULT_PROVIDER_NAME: "Hosted Default",
-      DEFAULT_PROVIDER_API_KEY: "provider-secret",
-      DEFAULT_PROVIDER_MODELS: JSON.stringify([
-        {
-          id: "gpt-5.5",
-          capabilities: ["vision", "attachment", "reasoning", "tool_call"],
-        },
-        {
-          id: "gpt-5.4",
-          name: "GPT-5.4",
-          capabilities: {
-            vision: true,
-            audio: false,
-            attachment: true,
-            reasoning: false,
-            tool_call: true,
-          },
-        },
-        "gpt-5.4-mini",
-      ]),
-    });
-
-    const { getPublicServerConfig } =
-      await import("../lib/defaultConfig/server");
-    const config = getPublicServerConfig();
-
-    expect(config.modelProvider.models).toEqual([
-      "gpt-5.5",
-      "gpt-5.4",
-      "gpt-5.4-mini",
-    ]);
-    expect(config.modelProvider.modelMetadata).toEqual({
-      "gpt-5.5": {
-        id: "gpt-5.5",
-        name: "gpt-5.5",
-        attachment: true,
-        reasoning: true,
-        tool_call: true,
-        modalities: { input: ["image", "text"] },
-      },
-      "gpt-5.4": {
-        id: "gpt-5.4",
-        name: "GPT-5.4",
-        attachment: true,
-        reasoning: false,
-        tool_call: true,
-        modalities: { input: ["image", "text"] },
-      },
-    });
-  });
-
-  it("falls back to comma-separated models when provider model JSON is invalid", async () => {
-    setEnv({
-      DEFAULT_PROVIDER_TYPE: "OpenAI",
-      DEFAULT_PROVIDER_API_KEY: "provider-secret",
-      DEFAULT_PROVIDER_MODELS: 'model-a, {"id": "not-json"',
-    });
-
-    const { getPublicServerConfig } =
-      await import("../lib/defaultConfig/server");
-
-    expect(getPublicServerConfig().modelProvider.models).toEqual([
-      "model-a",
-      '{"id": "not-json"',
-    ]);
-  });
-
-  it("publishes a backend-managed model without copying its API key into the frontend", async () => {
+  it("ignores retired frontend model-provider environment defaults", async () => {
     setEnv({
       DEFAULT_PROVIDER_TYPE: "openai_compatible",
       DEFAULT_PROVIDER_NAME: "Server Default",
@@ -429,10 +318,10 @@ describe("server default configuration", () => {
 
     expect(getDefaultProviderRuntimeConfig()).toBeNull();
     expect(getPublicServerConfig().modelProvider).toMatchObject({
-      available: true,
+      available: false,
       name: "Server Default",
       type: "OpenAI Compatible",
-      models: ["gpt-server"],
+      models: [],
     });
   });
 

@@ -74,9 +74,36 @@ func (h *Handler) listAdminProviderConfigs(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *Handler) adminProviderConfigByID(w http.ResponseWriter, r *http.Request) {
-	providerID := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/v1/admin/providers/"))
-	if providerID == "" || strings.Contains(providerID, "/") {
+	remainder := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/admin/providers/"), "/")
+	parts := strings.Split(remainder, "/")
+	providerID := strings.TrimSpace(parts[0])
+	if providerID == "" || len(parts) > 2 {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
+		return
+	}
+	if len(parts) == 2 {
+		action := strings.TrimSpace(parts[1])
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
+			return
+		}
+		var response AdminProviderConnectionResponse
+		var err error
+		switch action {
+		case "test":
+			response, err = h.service.TestAdminProviderConnection(r.Context(), providerID)
+		case "activate":
+			response, err = h.service.ActivateAdminProvider(r.Context(), providerID)
+		default:
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
+			return
+		}
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, response)
 		return
 	}
 	switch r.Method {
@@ -205,6 +232,14 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusServiceUnavailable, "DATABASE_REQUIRED", "database is required for provider configuration")
 	case errors.Is(err, ErrProviderConfigNotFound):
 		writeError(w, http.StatusNotFound, "PROVIDER_CONFIG_NOT_FOUND", "provider configuration was not found")
+	case errors.Is(err, ErrProviderDisabled):
+		writeError(w, http.StatusConflict, "PROVIDER_DISABLED", "provider is disabled")
+	case errors.Is(err, ErrProviderActivationRequired):
+		writeError(w, http.StatusConflict, "PROVIDER_ACTIVATION_REQUIRED", "provider must pass connection testing before activation")
+	case errors.Is(err, ErrProviderConnectionTestFailed):
+		writeError(w, http.StatusBadGateway, "PROVIDER_CONNECTION_TEST_FAILED", "provider connection test failed")
+	case errors.Is(err, ErrProviderConfigChanged):
+		writeError(w, http.StatusConflict, "PROVIDER_CONFIG_CHANGED", "provider configuration changed during connection testing")
 	default:
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "runtime config request failed")
 	}

@@ -77,9 +77,9 @@ Actions:
 
 - provide development single-user requests with a server-owned, database-valid
   internal Session identity instead of only a User identity;
-- bootstrap answer governance and owner/collection consent for every enabled
-  backend-persisted model, merged with the environment fallback, so changing
-  models in the administrator UI does not silently disable Knowledge;
+- bootstrap answer governance and owner/collection consent for every enabled,
+  connection-tested backend-persisted model so changing models in the
+  administrator UI does not silently disable Knowledge;
 - prove candidate -> reauthorization/hydration -> answer-governance -> model
   context end to end against the real `test` collection;
 - change selected-Knowledge handling from forced strict refusal to Auto:
@@ -283,8 +283,10 @@ Incremental execution slices:
   model-provider row, rotate retained-key vault envelopes, reject unrecoverable
   custom legacy rows, and prove owner-only ciphertext backup/restore plus
   active-key-only restart;
-- **G11.9F.2.3**: require a bounded model-provider connection test before
-  activation, then remove model-provider `.env` runtime fallback;
+- **G11.9F.2.3** complete: require a bounded model-provider connection test
+  before activation, invalidate the proof on credential/type/endpoint change,
+  resolve chat/image execution only from tested Postgres/vault state, and
+  remove model-provider `.env` runtime fallback;
 - **G11.9F.3**: add Search administrator CRUD/test/activate UI and the sole
   Postgres-backed Go resolver, then perform one positive real-provider smoke;
 - **G11.9F.4**: add MinerU/Jina administrator records and a scoped Go credential

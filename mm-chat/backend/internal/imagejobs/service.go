@@ -16,9 +16,10 @@ var (
 type ServiceOption func(*Service)
 
 type Service struct {
-	auditRecorder jobaudit.Recorder
-	executor      Executor
-	artifactStore ArtifactStore
+	auditRecorder    jobaudit.Recorder
+	executor         Executor
+	executorResolver ExecutorResolver
+	artifactStore    ArtifactStore
 }
 
 func NewService(options ...ServiceOption) *Service {
@@ -43,6 +44,12 @@ func WithExecutor(executor Executor) ServiceOption {
 	}
 }
 
+func WithExecutorResolver(resolver ExecutorResolver) ServiceOption {
+	return func(service *Service) {
+		service.executorResolver = resolver
+	}
+}
+
 func WithArtifactStore(store ArtifactStore) ServiceOption {
 	return func(service *Service) {
 		service.artifactStore = store
@@ -53,7 +60,25 @@ func (s *Service) Generate(ctx context.Context, request GenerateRequest) (Genera
 	if err := ctx.Err(); err != nil {
 		return GenerateResponse{}, err
 	}
-	if s == nil || s.executor == nil {
+	var executor Executor
+	if s != nil {
+		executor = s.executor
+		if s.executorResolver != nil {
+			resolved, err := s.executorResolver.ResolveImageExecutor(ctx, request.ModelRef)
+			if err != nil {
+				if auditErr := s.recordUnavailable(
+					ctx,
+					request,
+					"IMAGE_EXECUTOR_RESOLUTION_FAILED",
+				); auditErr != nil {
+					return GenerateResponse{}, auditErr
+				}
+				return GenerateResponse{}, err
+			}
+			executor = resolved
+		}
+	}
+	if executor == nil {
 		if err := s.recordUnavailable(ctx, request, "IMAGE_JOBS_UNAVAILABLE"); err != nil {
 			return GenerateResponse{}, err
 		}
@@ -69,7 +94,7 @@ func (s *Service) Generate(ctx context.Context, request GenerateRequest) (Genera
 		return GenerateResponse{}, err
 	}
 
-	result, err := s.executor.Generate(ctx, request)
+	result, err := executor.Generate(ctx, request)
 	if err != nil {
 		return GenerateResponse{}, err
 	}

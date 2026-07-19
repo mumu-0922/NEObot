@@ -3,7 +3,15 @@ package httpserver
 import (
 	"bytes"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"log/slog"
 	"mime/multipart"
@@ -36,12 +44,23 @@ func TestRuntimeProviderResolverAdmitsBuiltInSearchOnlyForOpenAI(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.providerType, func(t *testing.T) {
-			service := runtimeconfig.NewService(config.Config{Provider: config.ProviderConfig{
-				Type: tt.providerType, BaseURL: "https://provider.example/v1", APIKey: "fixture-key",
+			privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+			if err != nil {
+				t.Fatal(err)
+			}
+			service := runtimeconfig.NewService(config.Config{BYOK: config.BYOKConfig{
+				PrivateKeyPEM: string(pem.EncodeToMemory(&pem.Block{
+					Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
+				})),
 			}})
 			provider, err := (runtimeChatProviderResolver{service: service}).ResolveRuntimeProvider(
 				context.Background(),
-				runtimeconfig.ProviderRuntimeConfig{Source: "server-default"},
+				runtimeconfig.ProviderRuntimeConfig{
+					Type: tt.providerType, BaseURL: "https://provider.example/v1",
+					APIKeySecret: runtimeProviderSecretEnvelope(
+						t, privateKey, "fixture-key", "provider:"+tt.providerType,
+					),
+				},
 			)
 			if err != nil {
 				t.Fatalf("ResolveRuntimeProvider() error = %v", err)
@@ -51,6 +70,48 @@ func TestRuntimeProviderResolverAdmitsBuiltInSearchOnlyForOpenAI(t *testing.T) {
 				t.Fatalf("built-in capability = %v, want %v", builtIn, tt.wantBuiltIn)
 			}
 		})
+	}
+}
+
+func runtimeProviderSecretEnvelope(
+	t *testing.T,
+	privateKey *rsa.PrivateKey,
+	plaintext string,
+	secretContext string,
+) map[string]any {
+	t.Helper()
+	aesKey := make([]byte, 32)
+	if _, err := rand.Read(aesKey); err != nil {
+		t.Fatal(err)
+	}
+	block, err := aes.NewCipher(aesKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	iv := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(iv); err != nil {
+		t.Fatal(err)
+	}
+	ciphertext := gcm.Seal(nil, iv, []byte(plaintext), []byte(secretContext))
+	wrappedKey, err := rsa.EncryptOAEP(sha256.New(), rand.Reader, &privateKey.PublicKey, aesKey, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kid := sha256.Sum256(der)
+	return map[string]any{
+		"v": 1, "kid": base64.RawURLEncoding.EncodeToString(kid[:]),
+		"alg": "RSA-OAEP-256+A256GCM", "context": secretContext,
+		"iv":         base64.RawURLEncoding.EncodeToString(iv),
+		"wrappedKey": base64.RawURLEncoding.EncodeToString(wrappedKey),
+		"ciphertext": base64.RawURLEncoding.EncodeToString(ciphertext),
 	}
 }
 

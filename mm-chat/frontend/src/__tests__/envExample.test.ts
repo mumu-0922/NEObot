@@ -21,17 +21,6 @@ const REQUIRED_ENV_KEYS = [
   "NEXT_PUBLIC_API_MODE",
   "NEXT_PUBLIC_API_BASE_URL",
   "MM_CHAT_BACKEND_INTERNAL_URL",
-  "DEFAULT_PROVIDER_TYPE",
-  "DEFAULT_PROVIDER_NAME",
-  "DEFAULT_PROVIDER_BASE_URL",
-  "DEFAULT_PROVIDER_API_KEY",
-  "DEFAULT_PROVIDER_MODELS",
-  "DEFAULT_MODEL_TITLE_GENERATION",
-  "DEFAULT_MODEL_RELATED_QUESTIONS",
-  "DEFAULT_MODEL_CONTEXT_COMPRESSION",
-  "DEFAULT_MODEL_PROMPT_OPTIMIZATION",
-  "DEFAULT_MODEL_RAG_QUERY",
-  "DEFAULT_MODEL_MEMORY",
   "DEFAULT_RAG_BASE_URL",
   "DEFAULT_RAG_TOKEN",
   "DEFAULT_RAG_TOP_K",
@@ -144,22 +133,21 @@ describe(".env.example", () => {
       "PLUGIN_REGISTRY_STORE",
       "UPSTASH_REDIS_REST_URL",
       "UPSTASH_REDIS_REST_TOKEN",
-      "DEFAULT_PROVIDER_TYPE",
-      "DEFAULT_PROVIDER_NAME",
-      "DEFAULT_PROVIDER_MODELS",
     ]) {
       expect(compose).toContain(`${key}:`);
     }
     expect(compose).toContain("AUTH_MODE: ${AUTH_MODE:-required}");
-    expect(compose).toContain(
-      "DEFAULT_PROVIDER_TYPE: ${PROVIDER_TYPE:-openai_compatible}",
-    );
-    expect(compose).toContain(
-      "DEFAULT_PROVIDER_MODELS: ${PROVIDER_MODEL:-gpt-5.5}",
-    );
-    expect(compose).not.toContain(
-      "DEFAULT_PROVIDER_API_KEY: ${PROVIDER_API_KEY",
-    );
+    for (const retired of [
+      "PROVIDER_TYPE:",
+      "DEFAULT_PROVIDER_NAME:",
+      "PROVIDER_BASE_URL:",
+      "PROVIDER_MODEL:",
+      "PROVIDER_API_KEY:",
+      "DEFAULT_PROVIDER_TYPE:",
+      "DEFAULT_PROVIDER_MODELS:",
+    ]) {
+      expect(compose).not.toContain(retired);
+    }
   });
 
   it("keeps Cloudflare dashboard variables during Worker deploys", () => {

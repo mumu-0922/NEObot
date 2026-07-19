@@ -94,10 +94,11 @@ Outbox state.
   with `set -a; . ./mm-chat/backend/.env; set +a`. The Go API reads process
   environment variables; it does not auto-load `.env`, commit provider API keys,
   or print provider API keys.
-- The current real provider path is OpenAI-compatible streaming:
-  `PROVIDER_TYPE=openai_compatible`,
-  `PROVIDER_BASE_URL=<your OpenAI-compatible relay /v1 URL>`,
-  `PROVIDER_MODEL=gpt-5.5`, and a local-only `PROVIDER_API_KEY`.
+- Model-provider settings are configured on the administrator Provider page
+  and stored in Postgres; API Keys are stored only as vault envelopes encrypted
+  by the Docker-Secret keyring. Saving does not activate a provider. Use the
+  page's real connection test/activation action before chat or image execution.
+  `PROVIDER_TIMEOUT` remains an infrastructure bound, not provider authority.
 - The current real object-store path supports `STORAGE_BACKEND=local`,
   `minio`, or `s3`. Use `S3_BUCKET_AUTO_CREATE=false` in production and
   provision the bucket/credentials outside the app release.

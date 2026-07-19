@@ -41,6 +41,10 @@ var (
 	ErrProviderConfigNotFound         = errors.New("provider configuration was not found")
 	ErrProviderSecretVaultUnavailable = errors.New("provider secret vault is unavailable")
 	ErrProviderSecretInvalid          = errors.New("provider secret is invalid")
+	ErrProviderDisabled               = errors.New("provider is disabled")
+	ErrProviderActivationRequired     = errors.New("provider activation is required")
+	ErrProviderConnectionTestFailed   = errors.New("provider connection test failed")
+	ErrProviderConfigChanged          = errors.New("provider configuration changed during connection test")
 )
 
 const maxProviderModelsResponseBytes = 2 << 20
@@ -80,6 +84,7 @@ type ProviderConfigRepository interface {
 	GetProviderConfig(ctx context.Context, userID string, providerID string) (StoredProviderConfig, bool, error)
 	ListProviderConfigs(ctx context.Context, userID string) ([]StoredProviderConfig, error)
 	UpsertProviderConfig(ctx context.Context, input UpsertProviderConfigInput) (StoredProviderConfig, error)
+	CommitProviderConnection(ctx context.Context, input CommitProviderConnectionInput) (StoredProviderConfig, error)
 	DeleteProviderConfig(ctx context.Context, userID string, providerID string) error
 }
 
@@ -93,10 +98,12 @@ type StoredProviderConfig struct {
 }
 
 type StoredProviderConfigPayload struct {
-	Type    ProviderType `json:"type"`
-	BaseURL string       `json:"baseUrl"`
-	Models  []string     `json:"models"`
-	Enabled bool         `json:"enabled"`
+	Type                 ProviderType `json:"type"`
+	BaseURL              string       `json:"baseUrl"`
+	Models               []string     `json:"models"`
+	Enabled              bool         `json:"enabled"`
+	ConnectionTestSHA256 string       `json:"connectionTestSha256,omitempty"`
+	ConnectionTestedAt   string       `json:"connectionTestedAt,omitempty"`
 }
 
 type UpsertProviderConfigInput struct {
@@ -105,6 +112,19 @@ type UpsertProviderConfigInput struct {
 	Label              string
 	EncryptedSecretRef string
 	Config             StoredProviderConfigPayload
+}
+
+type CommitProviderConnectionInput struct {
+	ID                         string
+	UserID                     string
+	ProviderID                 string
+	ExpectedEncryptedSecretRef string
+	ExpectedType               ProviderType
+	ExpectedBaseURL            string
+	ExpectedEnabled            bool
+	ConnectionTestSHA256       string
+	ConnectionTestedAt         time.Time
+	Enabled                    bool
 }
 
 type EncryptedSecretEnvelope struct {
@@ -140,7 +160,7 @@ func (s *Service) PublicConfigForContext(ctx context.Context) PublicConfig {
 			ID:            serverDefaultProviderID,
 			Name:          provider.Name,
 			Type:          provider.Type,
-			Models:        append([]string(nil), provider.Models...),
+			Models:        append([]string{}, provider.Models...),
 			ModelMetadata: map[string]any{},
 			DefaultModels: map[string]string{},
 		},
@@ -197,12 +217,9 @@ func (s *Service) ProviderModelsForContext(ctx context.Context, request Provider
 	}
 	if provider.Source == "server-default" ||
 		(provider.Source == "" && strings.TrimSpace(provider.Type) == "") {
-		resolved := s.serverDefaultProviderForContext(ctx)
-		if resolved.SecretErr != nil {
-			return ProviderModelsResponse{}, resolved.SecretErr
-		}
-		if strings.TrimSpace(resolved.APIKey) == "" {
-			return ProviderModelsResponse{Models: append([]string(nil), resolved.Models...)}, nil
+		resolved, err := s.ResolveServerDefaultProvider(ctx)
+		if err != nil {
+			return ProviderModelsResponse{}, err
 		}
 		if resolved.Type != ProviderTypeOpenAI && resolved.Type != ProviderTypeOpenAICompatible {
 			return ProviderModelsResponse{}, ErrProviderModelsUnsupported
@@ -231,15 +248,17 @@ func (s *Service) ProviderModelsForContext(ctx context.Context, request Provider
 }
 
 type resolvedServerDefaultProvider struct {
-	Name      string
-	Type      ProviderType
-	BaseURL   string
-	Models    []string
-	Enabled   bool
-	Available bool
-	APIKey    string
-	SecretRef string
-	SecretErr error
+	Name                string
+	Type                ProviderType
+	BaseURL             string
+	Models              []string
+	Enabled             bool
+	Available           bool
+	APIKey              string
+	SecretRef           string
+	SecretErr           error
+	ConnectionTestValid bool
+	ConnectionTestedAt  string
 }
 
 func (s *Service) AdminProviderConfig(ctx context.Context) (AdminProviderConfigResponse, error) {
@@ -280,7 +299,7 @@ func (s *Service) AdminProviderConfigs(ctx context.Context) (AdminProviderConfig
 	}
 	if !hasDefault {
 		providers = append([]AdminProviderConfigResponse{
-			adminProviderResponse(s.envServerDefaultProvider(), serverDefaultProviderID, "server-default"),
+			adminProviderResponse(emptyServerDefaultProvider(), serverDefaultProviderID, "server-default"),
 		}, providers...)
 	}
 	return AdminProviderConfigsResponse{Providers: providers}, nil
@@ -308,14 +327,18 @@ func (s *Service) UpsertAdminProviderConfig(
 	user := auth.UserOrDevelopment(ctx)
 
 	current := resolvedServerDefaultProvider{
-		Name: "New Provider", Type: ProviderTypeOpenAICompatible, Enabled: true,
+		Name: "New Provider", Type: ProviderTypeOpenAICompatible,
 	}
 	if providerID == serverDefaultProviderID {
-		current = s.envServerDefaultProvider()
+		current = emptyServerDefaultProvider()
 	}
+	var currentStored StoredProviderConfig
+	hasCurrent := false
 	if stored, ok, err := s.repo.GetProviderConfig(ctx, user.ID, providerID); err != nil {
 		return AdminProviderConfigResponse{}, err
 	} else if ok {
+		currentStored = stored
+		hasCurrent = true
 		if providerID == serverDefaultProviderID {
 			current = s.resolveStoredServerDefault(stored)
 		} else {
@@ -362,20 +385,38 @@ func (s *Service) UpsertAdminProviderConfig(
 		}
 	}
 
-	enabled := request.Enabled
-	if providerID == serverDefaultProviderID {
-		enabled = true
+	connectionTestSHA256 := ""
+	connectionTestedAt := ""
+	connectionTestValid := false
+	if hasCurrent {
+		connectionTestSHA256 = strings.TrimSpace(currentStored.Config.ConnectionTestSHA256)
+		connectionTestedAt = strings.TrimSpace(currentStored.Config.ConnectionTestedAt)
+		connectionTestValid = providerConnectionTestValidForValues(
+			providerID,
+			providerType,
+			baseURL,
+			secretRef,
+			connectionTestSHA256,
+			connectionTestedAt,
+		)
 	}
+	if !connectionTestValid {
+		connectionTestSHA256 = ""
+		connectionTestedAt = ""
+	}
+	enabled := hasCurrent && currentStored.Config.Enabled && request.Enabled && connectionTestValid
 	stored, err := s.repo.UpsertProviderConfig(ctx, UpsertProviderConfigInput{
 		UserID:             user.ID,
 		ProviderID:         providerID,
 		Label:              name,
 		EncryptedSecretRef: secretRef,
 		Config: StoredProviderConfigPayload{
-			Type:    providerType,
-			BaseURL: baseURL,
-			Models:  models,
-			Enabled: enabled,
+			Type:                 providerType,
+			BaseURL:              baseURL,
+			Models:               models,
+			Enabled:              enabled,
+			ConnectionTestSHA256: connectionTestSHA256,
+			ConnectionTestedAt:   connectionTestedAt,
 		},
 	})
 	if err != nil {
@@ -400,64 +441,52 @@ func (s *Service) DeleteAdminProviderConfig(ctx context.Context, providerID stri
 }
 
 func (s *Service) serverDefaultProviderForContext(ctx context.Context) resolvedServerDefaultProvider {
-	base := s.envServerDefaultProvider()
 	if s.repo == nil {
-		return base
+		return emptyServerDefaultProvider()
 	}
 	stored, ok, err := s.repo.GetProviderConfig(ctx, auth.UserOrDevelopment(ctx).ID, serverDefaultProviderID)
 	if err != nil || !ok {
-		return base
+		return emptyServerDefaultProvider()
 	}
 	return s.resolveStoredServerDefault(stored)
 }
 
-func (s *Service) envServerDefaultProvider() resolvedServerDefaultProvider {
-	models := splitModels(s.cfg.Provider.Model)
-	apiKey := strings.TrimSpace(s.cfg.Provider.APIKey)
-	available := len(models) > 0 || apiKey != ""
+func emptyServerDefaultProvider() resolvedServerDefaultProvider {
 	return resolvedServerDefaultProvider{
-		Name:      nonEmpty(s.cfg.Provider.Name, config.DefaultProviderName),
-		Type:      normalizeProviderType(s.cfg.Provider.Type),
-		BaseURL:   strings.TrimSpace(s.cfg.Provider.BaseURL),
-		Models:    models,
-		Enabled:   true,
-		Available: available,
-		APIKey:    apiKey,
+		Name: config.DefaultProviderName,
+		Type: ProviderTypeOpenAICompatible,
 	}
 }
 
 func (s *Service) resolveStoredServerDefault(stored StoredProviderConfig) resolvedServerDefaultProvider {
-	base := s.envServerDefaultProvider()
-	name := nonEmpty(stored.Label, base.Name)
+	name := nonEmpty(stored.Label, config.DefaultProviderName)
 	providerType := stored.Config.Type
 	if providerType == "" {
-		providerType = base.Type
+		providerType = ProviderTypeOpenAICompatible
 	}
 	baseURL := strings.TrimSpace(stored.Config.BaseURL)
-	if baseURL == "" {
-		baseURL = base.BaseURL
-	}
 	models := normalizeModelList(stored.Config.Models)
-	if len(models) == 0 {
-		models = append([]string(nil), base.Models...)
-	}
 	secretRef := strings.TrimSpace(stored.EncryptedSecretRef)
-	apiKey := base.APIKey
+	apiKey := ""
 	var secretErr error
 	if secretRef != "" {
 		apiKey, secretErr = s.decryptStoredProviderSecret(stored, providerType)
 	}
-	available := secretErr == nil && (len(models) > 0 || apiKey != "" || secretRef != "")
+	connectionValid := ProviderConnectionTestValid(stored)
+	enabled := stored.Config.Enabled && connectionValid
+	available := enabled && secretErr == nil && len(models) > 0 && apiKey != ""
 	return resolvedServerDefaultProvider{
-		Name:      name,
-		Type:      providerType,
-		BaseURL:   baseURL,
-		Models:    models,
-		Enabled:   stored.Config.Enabled,
-		Available: available,
-		APIKey:    apiKey,
-		SecretRef: secretRef,
-		SecretErr: secretErr,
+		Name:                name,
+		Type:                providerType,
+		BaseURL:             baseURL,
+		Models:              models,
+		Enabled:             enabled,
+		Available:           available,
+		APIKey:              apiKey,
+		SecretRef:           secretRef,
+		SecretErr:           secretErr,
+		ConnectionTestValid: connectionValid,
+		ConnectionTestedAt:  stored.Config.ConnectionTestedAt,
 	}
 }
 
@@ -473,16 +502,20 @@ func (s *Service) resolveStoredProvider(stored StoredProviderConfig) resolvedSer
 		apiKey, secretErr = s.decryptStoredProviderSecret(stored, providerType)
 	}
 	models := normalizeModelList(stored.Config.Models)
+	connectionValid := ProviderConnectionTestValid(stored)
+	enabled := stored.Config.Enabled && connectionValid
 	return resolvedServerDefaultProvider{
-		Name:      nonEmpty(stored.Label, "New Provider"),
-		Type:      providerType,
-		BaseURL:   strings.TrimSpace(stored.Config.BaseURL),
-		Models:    models,
-		Enabled:   stored.Config.Enabled,
-		Available: secretErr == nil && (len(models) > 0 || apiKey != "" || secretRef != ""),
-		APIKey:    apiKey,
-		SecretRef: secretRef,
-		SecretErr: secretErr,
+		Name:                nonEmpty(stored.Label, "New Provider"),
+		Type:                providerType,
+		BaseURL:             strings.TrimSpace(stored.Config.BaseURL),
+		Models:              models,
+		Enabled:             enabled,
+		Available:           enabled && secretErr == nil && len(models) > 0 && apiKey != "",
+		APIKey:              apiKey,
+		SecretRef:           secretRef,
+		SecretErr:           secretErr,
+		ConnectionTestValid: connectionValid,
+		ConnectionTestedAt:  stored.Config.ConnectionTestedAt,
 	}
 }
 
@@ -491,15 +524,18 @@ func adminProviderResponse(
 	providerID string,
 	source string,
 ) AdminProviderConfigResponse {
+	connectionTestedAt, connectionTestValid := parseProviderConnectionTestState(provider)
 	return AdminProviderConfigResponse{
-		ID:        providerID,
-		Name:      provider.Name,
-		Type:      provider.Type,
-		BaseURL:   provider.BaseURL,
-		Models:    append([]string(nil), provider.Models...),
-		Enabled:   provider.Enabled,
-		HasAPIKey: strings.TrimSpace(provider.APIKey) != "" || strings.TrimSpace(provider.SecretRef) != "",
-		Source:    source,
+		ID:                  providerID,
+		Name:                provider.Name,
+		Type:                provider.Type,
+		BaseURL:             provider.BaseURL,
+		Models:              append([]string{}, provider.Models...),
+		Enabled:             provider.Enabled,
+		HasAPIKey:           strings.TrimSpace(provider.APIKey) != "" || strings.TrimSpace(provider.SecretRef) != "",
+		Source:              source,
+		ConnectionTestValid: connectionTestValid,
+		ConnectionTestedAt:  connectionTestedAt,
 	}
 }
 
@@ -637,7 +673,27 @@ type ResolvedProvider struct {
 }
 
 func (s *Service) ResolveServerDefaultProvider(ctx context.Context) (ResolvedProvider, error) {
-	provider := s.serverDefaultProviderForContext(ctx)
+	if s.repo == nil {
+		return ResolvedProvider{}, ErrDatabaseRequired
+	}
+	stored, ok, err := s.repo.GetProviderConfig(
+		ctx,
+		auth.UserOrDevelopment(ctx).ID,
+		serverDefaultProviderID,
+	)
+	if err != nil {
+		return ResolvedProvider{}, err
+	}
+	if !ok {
+		return ResolvedProvider{}, ErrProviderConfigNotFound
+	}
+	if !stored.Config.Enabled {
+		return ResolvedProvider{}, ErrProviderDisabled
+	}
+	if !ProviderConnectionTestValid(stored) {
+		return ResolvedProvider{}, ErrProviderActivationRequired
+	}
+	provider := s.resolveStoredServerDefault(stored)
 	if provider.SecretErr != nil {
 		return ResolvedProvider{}, provider.SecretErr
 	}
@@ -667,6 +723,12 @@ func (s *Service) ResolveStoredProvider(ctx context.Context, providerID string) 
 	}
 	if !ok {
 		return ResolvedProvider{}, ErrProviderConfigNotFound
+	}
+	if !stored.Config.Enabled {
+		return ResolvedProvider{}, ErrProviderDisabled
+	}
+	if !ProviderConnectionTestValid(stored) {
+		return ResolvedProvider{}, ErrProviderActivationRequired
 	}
 	provider := s.resolveStoredProvider(stored)
 	if provider.SecretErr != nil {

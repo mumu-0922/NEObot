@@ -34,5 +34,15 @@ export function createLocalProviderApiShell(): ProviderApi {
       void providerId;
       throw unsupportedFeature("local admin provider config delete");
     },
+    async testAdminProviderConnection(providerId, signal) {
+      void providerId;
+      void signal;
+      throw unsupportedFeature("local provider connection testing");
+    },
+    async activateAdminProvider(providerId, signal) {
+      void providerId;
+      void signal;
+      throw unsupportedFeature("local provider activation");
+    },
   };
 }

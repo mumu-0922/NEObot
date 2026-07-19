@@ -34,8 +34,8 @@ func TestLiveOpenAICompatibleImageGenerationSmoke(t *testing.T) {
 
 	cfg := config.LoadFromEnv(os.LookupEnv)
 	executor, err := NewOpenAICompatibleExecutor(OpenAICompatibleExecutorConfig{
-		BaseURL: cfg.Provider.BaseURL,
-		APIKey:  cfg.Provider.APIKey,
+		BaseURL: strings.TrimSpace(os.Getenv("MM_CHAT_PROVIDER_LIVE_SMOKE_BASE_URL")),
+		APIKey:  strings.TrimSpace(os.Getenv("MM_CHAT_PROVIDER_LIVE_SMOKE_API_KEY")),
 		Timeout: cfg.Provider.Timeout,
 	})
 	if err != nil {

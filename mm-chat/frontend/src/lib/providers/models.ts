@@ -10,6 +10,16 @@ export function normalizeProviderModelId(value: unknown): string | null {
   return modelId.slice(0, PROVIDER_MODEL_LIMITS.maxModelIdChars);
 }
 
+export function providerModelIdsEqual(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((modelId, index) => modelId === right[index])
+  );
+}
+
 export function extractProviderModelIds(
   providerType: ProviderType,
   data: any,

@@ -184,17 +184,6 @@ func main() {
 		logger.Error("team_config_failed", slog.String("error", redactSensitiveLogText(err.Error())))
 		os.Exit(1)
 	}
-	chatProvider, err := newChatProvider(cfg)
-	if err != nil {
-		_ = redisClient.Close()
-		_ = db.Close()
-		logger.Error("provider_config_failed", slog.String("error", redactSensitiveLogText(err.Error())))
-		os.Exit(1)
-	}
-	if chatProvider == nil && strings.TrimSpace(cfg.Provider.Type) != "" {
-		logger.Warn("provider_disabled", slog.String("provider_type", cfg.Provider.Type))
-	}
-
 	objectStore, err := newObjectStore(cfg)
 	if err != nil {
 		_ = redisClient.Close()
@@ -255,7 +244,6 @@ func main() {
 		)
 		answerIdentities, err = singleUserAnswerIdentities(
 			answerConfigCtx,
-			cfg,
 			runtimeConfigRepo,
 			cfg.Auth.BootstrapUserID,
 		)
@@ -331,7 +319,6 @@ func main() {
 
 	serverOptions := []httpserver.Option{
 		httpserver.WithChatRepository(chatRepo),
-		httpserver.WithChatProvider(chatProvider),
 		httpserver.WithRunCancellationStore(runCancellationStore),
 		httpserver.WithRateLimitStore(rateLimitStore),
 		httpserver.WithSessionResolver(sessionResolver),
@@ -381,6 +368,8 @@ func main() {
 		fileRepo,
 		objectStore,
 		newJobAuditRecorder(logger),
+		runtimeConfigRepo,
+		providerSecretVault,
 	)
 	if err != nil {
 		_ = redisClient.Close()
@@ -511,7 +500,6 @@ func newProviderSecretVault(cfg config.Config) (*providersecrets.Vault, error) {
 
 func singleUserAnswerIdentities(
 	ctx context.Context,
-	cfg config.Config,
 	repo answerProviderConfigReader,
 	ownerUserID string,
 ) ([]knowledge.ProcessorModelIdentity, error) {
@@ -533,18 +521,14 @@ func singleUserAnswerIdentities(
 		}
 	}
 
-	appendModels(
-		canonicalAnswerProcessor(cfg.Provider.Type),
-		"server-default",
-		splitAnswerModels(cfg.Provider.Model),
-	)
 	if repo != nil {
 		stored, err := repo.ListProviderConfigs(ctx, strings.TrimSpace(ownerUserID))
 		if err != nil {
 			return nil, fmt.Errorf("list configured answer providers: %w", err)
 		}
 		for _, provider := range stored {
-			if !provider.Config.Enabled {
+			if !provider.Config.Enabled ||
+				!runtimeconfig.ProviderConnectionTestValid(provider) {
 				continue
 			}
 			providerID := strings.TrimSpace(provider.ProviderID)
@@ -552,9 +536,6 @@ func singleUserAnswerIdentities(
 			endpointID := "server-stored"
 			if providerID == "SERVER_DEFAULT" {
 				providerType := string(provider.Config.Type)
-				if strings.TrimSpace(providerType) == "" {
-					providerType = cfg.Provider.Type
-				}
 				processor = canonicalAnswerProcessor(providerType)
 				endpointID = "server-default"
 			}
@@ -590,17 +571,6 @@ func canonicalAnswerProcessor(providerType string) string {
 		return "openai_compatible"
 	}
 	return processor
-}
-
-func splitAnswerModels(value string) []string {
-	parts := strings.Split(value, ",")
-	models := make([]string, 0, len(parts))
-	for _, part := range parts {
-		if model := strings.TrimSpace(part); model != "" {
-			models = append(models, model)
-		}
-	}
-	return models
 }
 
 func redactSensitiveLogText(value string) string {
@@ -693,9 +663,19 @@ func newImageJobService(
 	fileRepo files.Repository,
 	objectStore storage.ObjectStore,
 	auditRecorder jobaudit.Recorder,
+	providerConfigRepo runtimeconfig.ProviderConfigRepository,
+	providerSecretVault *providersecrets.Vault,
 ) (*imagejobs.Service, error) {
 	options := []imagejobs.ServiceOption{
 		imagejobs.WithAuditRecorder(auditRecorder),
+		imagejobs.WithExecutorResolver(modelProviderImageExecutorResolver{
+			service: runtimeconfig.NewService(
+				cfg,
+				runtimeconfig.WithProviderConfigRepository(providerConfigRepo),
+				runtimeconfig.WithProviderSecretVault(providerSecretVault),
+			),
+			timeout: cfg.Provider.Timeout,
+		}),
 	}
 	if fileRepo != nil && objectStore != nil {
 		options = append(options, imagejobs.WithArtifactStore(jobartifacts.NewService(
@@ -707,35 +687,56 @@ func newImageJobService(
 		)))
 	}
 
-	executor, err := newImageJobExecutor(cfg)
-	if err != nil {
-		return nil, err
-	}
-	if executor != nil {
-		options = append(options, imagejobs.WithExecutor(executor))
-	}
-
 	return imagejobs.NewService(options...), nil
 }
 
-func newImageJobExecutor(cfg config.Config) (imagejobs.Executor, error) {
-	providerType := strings.ToLower(strings.TrimSpace(cfg.Provider.Type))
-	switch providerType {
-	case "", "none":
-		return nil, nil
-	case "openai", "openai_compatible", "openai-compatible":
-		if strings.TrimSpace(cfg.Provider.BaseURL) == "" ||
-			strings.TrimSpace(cfg.Provider.APIKey) == "" {
-			return nil, nil
-		}
-		return imagejobs.NewOpenAICompatibleExecutor(imagejobs.OpenAICompatibleExecutorConfig{
-			BaseURL: cfg.Provider.BaseURL,
-			APIKey:  cfg.Provider.APIKey,
-			Timeout: cfg.Provider.Timeout,
-		})
-	default:
-		return nil, nil
+type modelProviderImageExecutorResolver struct {
+	service *runtimeconfig.Service
+	timeout time.Duration
+}
+
+func (r modelProviderImageExecutorResolver) ResolveImageExecutor(
+	ctx context.Context,
+	modelRef imagejobs.ModelRef,
+) (imagejobs.Executor, error) {
+	if r.service == nil {
+		return nil, imagejobs.ErrImageJobsUnavailable
 	}
+	providerID := strings.TrimSpace(modelRef.ProviderID)
+	var provider runtimeconfig.ResolvedProvider
+	var err error
+	if providerID == "SERVER_DEFAULT" {
+		provider, err = r.service.ResolveServerDefaultProvider(ctx)
+	} else {
+		provider, err = r.service.ResolveStoredProvider(ctx, providerID)
+	}
+	if err != nil || (provider.Type != runtimeconfig.ProviderTypeOpenAI &&
+		provider.Type != runtimeconfig.ProviderTypeOpenAICompatible) {
+		return nil, imagejobs.ErrImageJobsUnavailable
+	}
+	executor, err := imagejobs.NewOpenAICompatibleExecutor(
+		imagejobs.OpenAICompatibleExecutorConfig{
+			BaseURL: provider.BaseURL,
+			APIKey:  provider.APIKey,
+			Timeout: r.timeout,
+		},
+	)
+	if err != nil {
+		return nil, imagejobs.ErrImageJobsUnavailable
+	}
+	return resolvedModelProviderImageExecutor{executor: executor}, nil
+}
+
+type resolvedModelProviderImageExecutor struct {
+	executor imagejobs.Executor
+}
+
+func (e resolvedModelProviderImageExecutor) Generate(
+	ctx context.Context,
+	request imagejobs.GenerateRequest,
+) (imagejobs.GenerateResult, error) {
+	request.ModelRef.ProviderID = "openai_compatible"
+	return e.executor.Generate(ctx, request)
 }
 
 func newVoiceJobService(
@@ -757,35 +758,7 @@ func newVoiceJobService(
 		)))
 	}
 
-	executor, err := newVoiceJobExecutor(cfg)
-	if err != nil {
-		return nil, err
-	}
-	if executor != nil {
-		options = append(options, voicejobs.WithExecutor(executor))
-	}
-
 	return voicejobs.NewService(options...), nil
-}
-
-func newVoiceJobExecutor(cfg config.Config) (voicejobs.Executor, error) {
-	providerType := strings.ToLower(strings.TrimSpace(cfg.Provider.Type))
-	switch providerType {
-	case "", "none":
-		return nil, nil
-	case "openai", "openai_compatible", "openai-compatible":
-		if strings.TrimSpace(cfg.Provider.BaseURL) == "" ||
-			strings.TrimSpace(cfg.Provider.APIKey) == "" {
-			return nil, nil
-		}
-		return voicejobs.NewOpenAICompatibleExecutor(voicejobs.OpenAICompatibleExecutorConfig{
-			BaseURL: cfg.Provider.BaseURL,
-			APIKey:  cfg.Provider.APIKey,
-			Timeout: cfg.Provider.Timeout,
-		})
-	default:
-		return nil, nil
-	}
 }
 
 func newRecoveryDelivery(cfg config.Config) (auth.RecoveryDelivery, error) {
@@ -989,7 +962,6 @@ func keyringReusedSecretField(keys map[string][]byte, cfg config.Config) string 
 		{field: config.EnvDatabaseURL, value: urlCredentialPassword(cfg.DatabaseURL)},
 		{field: config.EnvRedisURL, value: urlCredentialPassword(cfg.Redis.URL)},
 		{field: config.EnvAuthSMTPPassword, value: cfg.Auth.SMTP.Password},
-		{field: config.EnvProviderAPIKey, value: cfg.Provider.APIKey},
 		{field: config.EnvS3SecretAccessKey, value: cfg.Storage.S3.SecretAccessKey},
 	} {
 		if secret.value == "" {
@@ -1180,36 +1152,4 @@ func teamWorkerShutdownTimeout(smtpTimeout time.Duration) time.Duration {
 		return workerTimeout
 	}
 	return shutdownTimeout
-}
-
-func newChatProvider(cfg config.Config) (chat.Provider, error) {
-	providerType := strings.ToLower(strings.TrimSpace(cfg.Provider.Type))
-	switch providerType {
-	case "", "none":
-		return nil, nil
-	case "openai":
-		if cfg.Provider.BaseURL == "" || cfg.Provider.Model == "" || cfg.Provider.APIKey == "" {
-			return nil, nil
-		}
-
-		return chat.NewOpenAIProvider(chat.OpenAICompatibleProviderConfig{
-			BaseURL:      cfg.Provider.BaseURL,
-			APIKey:       cfg.Provider.APIKey,
-			DefaultModel: cfg.Provider.Model,
-			Timeout:      cfg.Provider.Timeout,
-		})
-	case "openai_compatible", "openai-compatible":
-		if cfg.Provider.BaseURL == "" || cfg.Provider.Model == "" || cfg.Provider.APIKey == "" {
-			return nil, nil
-		}
-
-		return chat.NewOpenAICompatibleProvider(chat.OpenAICompatibleProviderConfig{
-			BaseURL:      cfg.Provider.BaseURL,
-			APIKey:       cfg.Provider.APIKey,
-			DefaultModel: cfg.Provider.Model,
-			Timeout:      cfg.Provider.Timeout,
-		})
-	default:
-		return nil, fmt.Errorf("unsupported PROVIDER_TYPE %q", cfg.Provider.Type)
-	}
 }

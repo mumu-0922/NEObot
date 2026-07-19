@@ -259,6 +259,18 @@ func mapRuntimeProviderError(err error) error {
 			Message: "stored provider secret is unavailable",
 		}
 	}
+	if errors.Is(err, runtimeconfig.ErrProviderDisabled) {
+		return chat.ValidationError{
+			Code:    "PROVIDER_DISABLED",
+			Message: "provider is disabled",
+		}
+	}
+	if errors.Is(err, runtimeconfig.ErrProviderActivationRequired) {
+		return chat.ValidationError{
+			Code:    "PROVIDER_ACTIVATION_REQUIRED",
+			Message: "provider must pass connection testing before activation",
+		}
+	}
 	return err
 }
 

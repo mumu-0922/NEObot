@@ -2,14 +2,10 @@ import "server-only";
 
 import { RAG_LIMITS, SYSTEM_SETTINGS_LIMITS } from "../../config/limits";
 import { DEFAULT_SYSTEM_SETTINGS } from "../../config/defaults";
-import { normalizeProviderModelId } from "../providers/models";
 import { normalizeSystemSettings } from "../settings/appConfig";
 import type {
-  DefaultModels,
   DocumentParseProvider,
   MimoVoiceID,
-  ModelMetadata,
-  ProviderType,
   ServerDefaultVoiceProvider,
   SystemSettings,
   VoiceSettings,
@@ -19,8 +15,6 @@ import {
   PublicDeploymentStoreState,
   SERVER_DEFAULT_PROVIDER_ID,
 } from "./shared";
-import { isProviderType } from "../providers/providerTypes";
-import { normalizeModelMetadata } from "../providers/metadata";
 import { getDeploymentMode } from "../security/deployment";
 import {
   DEFAULT_ELEVENLABS_TTS_MODEL,
@@ -29,7 +23,7 @@ import {
 } from "../utils/voiceModels";
 import { normalizeDocumentParseProvider } from "../settings/searchRag";
 
-const DEFAULT_PROVIDER_NAME = "Default";
+const DEFAULT_PROVIDER_NAME = "Server Default";
 const DEFAULT_ELEVENLABS_STT_MODEL = "scribe_v2";
 const DEFAULT_ELEVENLABS_TTS_VOICE_ID: VoiceSettings["ttsVoiceId"] =
   "bIHbv24MWmeRgasZH58o";
@@ -57,118 +51,6 @@ function envWithDefault(name: string, defaultValue: string): string {
   return value === undefined ? defaultValue : value.trim();
 }
 
-function dedupeModels(values: string[]): string[] {
-  const seen = new Set<string>();
-
-  return values.filter((value) => {
-    if (seen.has(value)) return false;
-    seen.add(value);
-    return true;
-  });
-}
-
-function envList(name: string): string[] {
-  return dedupeModels(
-    env(name)
-      .split(",")
-      .map((item) => normalizeProviderModelId(item))
-      .filter((item): item is string => Boolean(item)),
-  );
-}
-
-function readProviderModelCapability(
-  capabilities: unknown,
-  key: string,
-): boolean | undefined {
-  if (Array.isArray(capabilities)) {
-    return capabilities.some(
-      (item) => typeof item === "string" && item.trim().toLowerCase() === key,
-    )
-      ? true
-      : undefined;
-  }
-
-  if (!capabilities || typeof capabilities !== "object") return undefined;
-  const value = (capabilities as Record<string, unknown>)[key];
-  return typeof value === "boolean" ? value : undefined;
-}
-
-function modelMetadataFromEnvObject(
-  value: Record<string, unknown>,
-  modelId: string,
-): ModelMetadata | null {
-  const capabilities = value.capabilities;
-  const inputModalities = [
-    ...(readProviderModelCapability(capabilities, "vision") === true
-      ? ["image"]
-      : []),
-    ...(readProviderModelCapability(capabilities, "audio") === true
-      ? ["audio"]
-      : []),
-  ];
-  if (inputModalities.length > 0) inputModalities.push("text");
-
-  return normalizeModelMetadata(
-    {
-      id: modelId,
-      name: value.name,
-      attachment: readProviderModelCapability(capabilities, "attachment"),
-      reasoning: readProviderModelCapability(capabilities, "reasoning"),
-      tool_call: readProviderModelCapability(capabilities, "tool_call"),
-      ...(inputModalities.length > 0
-        ? { modalities: { input: inputModalities } }
-        : {}),
-    },
-    modelId,
-  );
-}
-
-function getDefaultProviderModels(): {
-  models: string[];
-  modelMetadata: Record<string, ModelMetadata>;
-} {
-  const raw = env("DEFAULT_PROVIDER_MODELS");
-  if (!raw) return { models: [], modelMetadata: {} };
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return { models: envList("DEFAULT_PROVIDER_MODELS"), modelMetadata: {} };
-  }
-
-  if (!Array.isArray(parsed)) {
-    return { models: envList("DEFAULT_PROVIDER_MODELS"), modelMetadata: {} };
-  }
-
-  const models: string[] = [];
-  const modelMetadata: Record<string, ModelMetadata> = {};
-  const seen = new Set<string>();
-
-  for (const item of parsed) {
-    const modelId =
-      typeof item === "string"
-        ? normalizeProviderModelId(item)
-        : item && typeof item === "object"
-          ? normalizeProviderModelId((item as Record<string, unknown>).id)
-          : null;
-    if (!modelId || seen.has(modelId)) continue;
-
-    models.push(modelId);
-    seen.add(modelId);
-
-    if (item && typeof item === "object" && !Array.isArray(item)) {
-      const metadata = modelMetadataFromEnvObject(
-        item as Record<string, unknown>,
-        modelId,
-      );
-      if (metadata) modelMetadata[metadata.id] = metadata;
-    }
-  }
-
-  return { models, modelMetadata };
-}
-
 function envBool(name: string): boolean | undefined {
   const value = env(name).toLowerCase();
   if (!value) return undefined;
@@ -188,54 +70,12 @@ function clampInteger(
   return Math.min(max, Math.max(min, Math.round(parsed)));
 }
 
-function getDefaultProviderType(): ProviderType {
-  const configured = env("DEFAULT_PROVIDER_TYPE");
-  if (isProviderType(configured)) return configured;
-  const normalized = configured.toLowerCase().replace(/[-_]+/g, " ").trim();
-  if (normalized === "openai compatible") return "OpenAI Compatible";
-  if (normalized === "openai") return "OpenAI";
-  if (normalized === "gemini") return "Gemini";
-  return "Gemini";
-}
-
 export function getDefaultProviderApiKey(): string {
-  return env("DEFAULT_PROVIDER_API_KEY");
+  return "";
 }
 
 export function getDefaultProviderRuntimeConfig() {
-  const type = getDefaultProviderType();
-  const apiKey = getDefaultProviderApiKey();
-  if (!apiKey) return null;
-
-  return {
-    type,
-    name: env("DEFAULT_PROVIDER_NAME") || DEFAULT_PROVIDER_NAME,
-    baseUrl: env("DEFAULT_PROVIDER_BASE_URL") || undefined,
-    apiKey,
-  };
-}
-
-function getDefaultModelEnv(): Partial<DefaultModels> {
-  return {
-    titleGeneration: env("DEFAULT_MODEL_TITLE_GENERATION"),
-    relatedQuestions: env("DEFAULT_MODEL_RELATED_QUESTIONS"),
-    contextCompression: env("DEFAULT_MODEL_CONTEXT_COMPRESSION"),
-    promptOptimization: env("DEFAULT_MODEL_PROMPT_OPTIMIZATION"),
-    ragQuery: env("DEFAULT_MODEL_RAG_QUERY"),
-    memory: env("DEFAULT_MODEL_MEMORY"),
-  };
-}
-
-function normalizeDefaultModels(
-  models: Partial<DefaultModels>,
-): Partial<DefaultModels> {
-  return Object.fromEntries(
-    Object.entries(models)
-      .map(([key, value]) => [key, normalizeProviderModelId(value)])
-      .filter((entry): entry is [keyof DefaultModels, string] =>
-        Boolean(entry[1]),
-      ),
-  ) as Partial<DefaultModels>;
+  return null;
 }
 
 export function getDefaultRagRuntimeConfig(): {
@@ -437,11 +277,6 @@ function getPublicStoreState(
 }
 
 export function getPublicServerConfig(): PublicServerConfig {
-  const defaultProvider = getDefaultProviderRuntimeConfig();
-  const defaultProviderModels = getDefaultProviderModels();
-  const defaultProviderAvailable = Boolean(
-    defaultProvider || defaultProviderModels.models.length > 0,
-  );
   const rag = getDefaultRagRuntimeConfig();
   const documentProcessingProvider = getDefaultDocumentParseProvider();
   const documentProcessingAvailable = isDefaultDocumentProcessingAvailable(
@@ -475,20 +310,13 @@ export function getPublicServerConfig(): PublicServerConfig {
 
   return {
     modelProvider: {
-      available: defaultProviderAvailable,
+      available: false,
       id: SERVER_DEFAULT_PROVIDER_ID,
-      name:
-        defaultProvider?.name ||
-        env("DEFAULT_PROVIDER_NAME") ||
-        DEFAULT_PROVIDER_NAME,
-      type: defaultProvider?.type || getDefaultProviderType(),
-      models: defaultProviderAvailable ? defaultProviderModels.models : [],
-      modelMetadata: defaultProviderAvailable
-        ? defaultProviderModels.modelMetadata
-        : {},
-      defaultModels: defaultProviderAvailable
-        ? normalizeDefaultModels(getDefaultModelEnv())
-        : {},
+      name: DEFAULT_PROVIDER_NAME,
+      type: "OpenAI Compatible",
+      models: [],
+      modelMetadata: {},
+      defaultModels: {},
     },
     search: {
       available: false,

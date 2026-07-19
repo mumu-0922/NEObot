@@ -124,6 +124,62 @@ func TestServiceDoesNotCallExecutorWhenAdmissionAuditUnavailable(t *testing.T) {
 	}
 }
 
+func TestServiceResolvesImageExecutorFromModelRef(t *testing.T) {
+	executor := &fakeImageExecutor{}
+	resolver := &fakeImageExecutorResolver{executor: executor}
+	service := NewService(
+		WithExecutorResolver(resolver),
+		WithArtifactStore(&fakeArtifactStore{}),
+		WithAuditRecorder(noopAuditRecorder()),
+	)
+	request := GenerateRequest{
+		ModelRef: ModelRef{ProviderID: "SERVER_DEFAULT", ModelID: "gpt-image-2"},
+		Prompt:   "private prompt",
+	}
+
+	if _, err := service.Generate(context.Background(), request); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if resolver.modelRef != request.ModelRef {
+		t.Fatalf("resolver model ref = %#v, want %#v", resolver.modelRef, request.ModelRef)
+	}
+	if !executor.called || executor.request != request {
+		t.Fatalf("executor called/request = %v/%#v, want true/%#v", executor.called, executor.request, request)
+	}
+}
+
+func TestServiceAuditsImageExecutorResolutionFailure(t *testing.T) {
+	var got jobaudit.Event
+	resolver := &fakeImageExecutorResolver{err: ErrImageJobsUnavailable}
+	service := NewService(
+		WithExecutorResolver(resolver),
+		WithArtifactStore(&fakeArtifactStore{}),
+		WithAuditRecorder(jobaudit.RecorderFunc(func(_ context.Context, event jobaudit.Event) error {
+			got = event
+			return nil
+		})),
+	)
+	request := GenerateRequest{
+		ModelRef: ModelRef{ProviderID: "DISABLED", ModelID: "gpt-image-2"},
+		Prompt:   "private prompt",
+	}
+
+	_, err := service.Generate(context.Background(), request)
+	if !errors.Is(err, ErrImageJobsUnavailable) {
+		t.Fatalf("Generate() error = %v, want ErrImageJobsUnavailable", err)
+	}
+	want := jobaudit.Event{
+		Kind:       jobaudit.KindImageGenerate,
+		Status:     jobaudit.StatusUnavailable,
+		ProviderID: "DISABLED",
+		ModelID:    "gpt-image-2",
+		Reason:     "IMAGE_EXECUTOR_RESOLUTION_FAILED",
+	}
+	if got != want {
+		t.Fatalf("audit event = %#v, want %#v", got, want)
+	}
+}
+
 func TestServiceAuditsAdmittedImageGenerationWithoutPrompt(t *testing.T) {
 	var got jobaudit.Event
 	executor := &fakeImageExecutor{result: GenerateResult{Images: []GeneratedImageResult{
@@ -259,6 +315,20 @@ type fakeImageExecutor struct {
 	request GenerateRequest
 	result  GenerateResult
 	err     error
+}
+
+type fakeImageExecutorResolver struct {
+	modelRef ModelRef
+	executor Executor
+	err      error
+}
+
+func (r *fakeImageExecutorResolver) ResolveImageExecutor(
+	_ context.Context,
+	modelRef ModelRef,
+) (Executor, error) {
+	r.modelRef = modelRef
+	return r.executor, r.err
 }
 
 func (e *fakeImageExecutor) Generate(_ context.Context, request GenerateRequest) (GenerateResult, error) {

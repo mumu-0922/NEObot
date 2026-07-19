@@ -36,7 +36,7 @@ describe("service health status", () => {
     expect(health.services.byok.status).toBe("available");
     expect(health.services.rateLimitStore.status).toBe("available");
     expect(health.services.pluginRegistry.status).toBe("available");
-    expect(health.services.defaultModel.status).toBe("available");
+    expect(health.services.defaultModel.status).toBe("unconfigured");
     expect(health.services.search.status).toBe("unconfigured");
     expect(health.services.rag.status).toBe("available");
     expect(health.services.voice.status).toBe("available");

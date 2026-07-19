@@ -27,6 +27,10 @@ type imagejobs.Executor interface {
     Generate(context.Context, imagejobs.GenerateRequest) (imagejobs.GenerateResult, error)
 }
 
+type imagejobs.ExecutorResolver interface {
+    ResolveImageExecutor(context.Context, imagejobs.ModelRef) (imagejobs.Executor, error)
+}
+
 type ArtifactStore interface {
     Store(context.Context, jobartifacts.StoreInput) (jobartifacts.Artifact, error)
 }
@@ -47,19 +51,18 @@ jobartifacts.StoreInput{
 
 ## 3. Contracts
 
-- Executors are opt-in only via `WithExecutor`.
+- Executors are opt-in only via `WithExecutor` or a bounded
+  `WithExecutorResolver`.
 - Real executor calls require an explicitly configured admitted-job audit
   recorder.
-- `cmd/api` may construct the image job service from server-only
-  `PROVIDER_*`, file repository, and object-store dependencies. Missing
-  provider base URL/API key keeps the executor absent; missing file repository
-  or object store keeps artifact storage absent. These states must fail closed
-  before consuming provider quota.
-- `cmd/api` may construct the voice job service from the same server-only
-  OpenAI-compatible `PROVIDER_*` settings. Missing provider base URL/API key
-  keeps the executor absent; missing file repository or object store keeps TTS
-  artifact storage absent. TTS must fail before provider quota is consumed when
-  artifact storage is absent.
+- `cmd/api` constructs the image job service with a resolver that loads the
+  request's exact enabled, connection-tested provider from Postgres/vault.
+  Missing/disabled/unattested provider state records a sanitized unavailable
+  audit and fails before consuming quota. Missing file repository or object
+  store keeps artifact storage absent and also fails closed.
+- The OpenAI-compatible Voice executor seam remains testable, but `cmd/api`
+  does not wire it from the model-provider credential. Voice stays fail-closed
+  until F.5 adds a dedicated persisted provider contract.
 - Quota-consuming real provider smoke also requires the separate
   `provider-live-smoke-authorization.md` gate.
 - Synthesis and image-generation executor outputs require an artifact store
@@ -130,6 +133,8 @@ Any change enabling or extending media executors must include tests proving:
 - default service still fails closed without executor;
 - unavailable audit errors block executor invocation;
 - absent admitted audit recorder blocks executor invocation;
+- resolver selection receives the exact requested `ModelRef`, and resolver
+  failure records sanitized unavailable audit metadata;
 - missing artifact store blocks synthesis/image executor invocation;
 - successful fake executor output is stored through `jobartifacts`;
 - OpenAI-compatible voice executor tests assert `/audio/speech` JSON shape,

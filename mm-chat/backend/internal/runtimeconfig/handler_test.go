@@ -6,12 +6,13 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"neo-chat/mm-chat/backend/internal/config"
 )
 
 func TestHandlerRoutesRuntimeConfig(t *testing.T) {
-	handler := NewHandler(NewService(config.Config{Provider: config.ProviderConfig{Model: "gpt-test"}}))
+	handler := NewHandler(NewService(config.Config{}))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/config", nil))
 
@@ -22,13 +23,13 @@ func TestHandlerRoutesRuntimeConfig(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if got := response.ModelProvider.Models; len(got) != 1 || got[0] != "gpt-test" {
-		t.Fatalf("models = %#v", got)
+	if response.ModelProvider.Available || len(response.ModelProvider.Models) != 0 {
+		t.Fatalf("model provider = %#v", response.ModelProvider)
 	}
 }
 
-func TestHandlerRoutesProviderModels(t *testing.T) {
-	handler := NewHandler(NewService(config.Config{Provider: config.ProviderConfig{Model: "gpt-test"}}))
+func TestHandlerProviderModelsRequiresServerAuthority(t *testing.T) {
+	handler := NewHandler(NewService(config.Config{}))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(
 		http.MethodPost,
@@ -36,15 +37,9 @@ func TestHandlerRoutesProviderModels(t *testing.T) {
 		strings.NewReader(`{"provider":{"source":"server-default"}}`),
 	))
 
-	if rec.Code != http.StatusOK {
+	if rec.Code != http.StatusServiceUnavailable ||
+		!strings.Contains(rec.Body.String(), "DATABASE_REQUIRED") {
 		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
-	}
-	var response ProviderModelsResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if got := response.Models; len(got) != 1 || got[0] != "gpt-test" {
-		t.Fatalf("models = %#v", got)
 	}
 }
 
@@ -174,7 +169,7 @@ func TestHandlerRedactsProviderVaultErrors(t *testing.T) {
 func TestHandlerRoutesAdminProviderCollection(t *testing.T) {
 	repo := &fakeProviderConfigRepository{}
 	handler := NewHandler(NewService(
-		config.Config{Provider: config.ProviderConfig{Name: "Env Default", Model: "gpt-env"}},
+		config.Config{},
 		WithProviderConfigRepository(repo),
 	))
 
@@ -205,5 +200,64 @@ func TestHandlerRoutesAdminProviderCollection(t *testing.T) {
 	handler.ServeHTTP(deleted, httptest.NewRequest(http.MethodDelete, "/v1/admin/providers/CUSTOM", nil))
 	if deleted.Code != http.StatusNoContent {
 		t.Fatalf("delete status = %d, body=%s", deleted.Code, deleted.Body.String())
+	}
+}
+
+func TestHandlerRoutesProviderConnectionTestAndActivation(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":[{"id":"gpt-live"}]}`))
+	}))
+	defer upstream.Close()
+
+	vault := testProviderSecretVault(t, "handler-v1", 22)
+	repo := &fakeProviderConfigRepository{
+		ok: true,
+		stored: testStoredVaultProvider(
+			t,
+			vault,
+			"CUSTOM",
+			ProviderTypeOpenAICompatible,
+			upstream.URL,
+			"handler-key",
+		),
+	}
+	handler := NewHandler(NewService(
+		config.Config{Provider: config.ProviderConfig{Timeout: time.Second}},
+		WithProviderConfigRepository(repo),
+		WithProviderSecretVault(vault),
+	))
+
+	tested := httptest.NewRecorder()
+	handler.ServeHTTP(tested, httptest.NewRequest(
+		http.MethodPost,
+		"/v1/admin/providers/CUSTOM/test",
+		nil,
+	))
+	if tested.Code != http.StatusOK ||
+		!strings.Contains(tested.Body.String(), `"connectionTestValid":true`) ||
+		!strings.Contains(tested.Body.String(), `"models":["gpt-live"]`) {
+		t.Fatalf("test status = %d, body=%s", tested.Code, tested.Body.String())
+	}
+
+	activated := httptest.NewRecorder()
+	handler.ServeHTTP(activated, httptest.NewRequest(
+		http.MethodPost,
+		"/v1/admin/providers/CUSTOM/activate",
+		nil,
+	))
+	if activated.Code != http.StatusOK ||
+		!strings.Contains(activated.Body.String(), `"enabled":true`) {
+		t.Fatalf("activate status = %d, body=%s", activated.Code, activated.Body.String())
+	}
+
+	wrongMethod := httptest.NewRecorder()
+	handler.ServeHTTP(wrongMethod, httptest.NewRequest(
+		http.MethodGet,
+		"/v1/admin/providers/CUSTOM/test",
+		nil,
+	))
+	if wrongMethod.Code != http.StatusMethodNotAllowed ||
+		wrongMethod.Header().Get("Allow") != http.MethodPost {
+		t.Fatalf("wrong method status = %d", wrongMethod.Code)
 	}
 }

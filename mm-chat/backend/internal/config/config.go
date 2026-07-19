@@ -56,11 +56,6 @@ const (
 	EnvRedisRateLimitEnabled  = "REDIS_RATE_LIMIT_ENABLED"
 	EnvRedisRateLimitRequests = "REDIS_RATE_LIMIT_REQUESTS"
 	EnvRedisRateLimitWindow   = "REDIS_RATE_LIMIT_WINDOW"
-	EnvProviderType           = "PROVIDER_TYPE"
-	EnvProviderName           = "DEFAULT_PROVIDER_NAME"
-	EnvProviderBaseURL        = "PROVIDER_BASE_URL"
-	EnvProviderModel          = "PROVIDER_MODEL"
-	EnvProviderAPIKey         = "PROVIDER_API_KEY"
 	EnvProviderTimeout        = "PROVIDER_TIMEOUT"
 	EnvProviderSecretKeyring  = "PROVIDER_SECRET_KEYRING_FILE"
 	EnvBYOKPrivateKeyPEM      = "BYOK_PRIVATE_KEY_PEM"
@@ -139,14 +134,9 @@ type RedisConfig struct {
 	RateLimitWindow   time.Duration
 }
 
-// ProviderConfig contains outbound model-provider settings. Secrets must never
-// be logged or serialized into API responses.
+// ProviderConfig contains non-secret model-provider transport limits. Provider
+// endpoint metadata and credentials are Postgres/vault-owned.
 type ProviderConfig struct {
-	Type    string
-	Name    string
-	BaseURL string
-	Model   string
-	APIKey  string
 	Timeout time.Duration
 }
 
@@ -366,11 +356,6 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 		},
 
 		Provider: ProviderConfig{
-			Type:    optionalEnv(lookup, EnvProviderType),
-			Name:    envOrDefault(lookup, EnvProviderName, DefaultProviderName),
-			BaseURL: optionalEnv(lookup, EnvProviderBaseURL),
-			Model:   optionalEnv(lookup, EnvProviderModel),
-			APIKey:  optionalEnv(lookup, EnvProviderAPIKey),
 			Timeout: durationEnvOrDefault(lookup, EnvProviderTimeout, DefaultProviderTimeout),
 		},
 		ProviderSecrets: ProviderSecretConfig{

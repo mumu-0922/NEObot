@@ -50,6 +50,32 @@ def fail(message: str) -> None:
     raise SystemExit(1)
 
 
+def parse_byok_private_key(value: str) -> str:
+    if len(value) > 32768 or not (
+        value.startswith("'") and value.endswith("'")
+    ):
+        fail("BYOK_PRIVATE_KEY_PEM must use a bounded single-quoted escaped PEM")
+    inner = value[1:-1]
+    if "'" in inner or "\\" in inner.replace(r"\n", ""):
+        fail("BYOK_PRIVATE_KEY_PEM contains unsupported escaping")
+    decoded = inner.replace(r"\n", "\n")
+    match = re.fullmatch(
+        r"-----BEGIN (?P<label>RSA PRIVATE KEY|PRIVATE KEY)-----\n"
+        r"(?P<body>(?:[A-Za-z0-9+/]+={0,2}\n)+)"
+        r"-----END (?P=label)-----\n?",
+        decoded,
+    )
+    if match is None:
+        fail("BYOK_PRIVATE_KEY_PEM must contain one escaped RSA private PEM")
+    try:
+        der = base64.b64decode("".join(match.group("body").splitlines()), validate=True)
+    except (binascii.Error, ValueError):
+        fail("BYOK_PRIVATE_KEY_PEM body must use canonical base64")
+    if not der or len(der) > 16384:
+        fail("BYOK_PRIVATE_KEY_PEM body size is invalid")
+    return inner
+
+
 def parse_env(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
     for number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
@@ -67,7 +93,9 @@ def parse_env(path: Path) -> dict[str, str]:
             fail(f"reserved env name at line {number}")
         if key in values:
             fail(f"duplicate env name at line {number}")
-        if any(
+        if key == "BYOK_PRIVATE_KEY_PEM" and value:
+            value = parse_byok_private_key(value)
+        elif any(
             character.isspace()
             or ord(character) < 0x20
             or ord(character) == 0x7F
@@ -151,9 +179,6 @@ required = (
     "TEAM_MAIL_ACTIVE_KEY_ID",
     "TEAM_MAIL_KEYRING",
     "TEAM_INVITE_ACCEPT_URL_BASE",
-    "PROVIDER_BASE_URL",
-    "PROVIDER_MODEL",
-    "PROVIDER_API_KEY",
     "PROVIDER_SECRET_KEYRING_SOURCE",
 )
 for key in required:
@@ -341,22 +366,6 @@ for pair in invite_url.query.split("&"):
     key = unquote(pair.split("=", 1)[0]).strip()
     if key.casefold() == "token":
         fail("TEAM_INVITE_ACCEPT_URL_BASE must not contain a token query parameter")
-
-try:
-    provider_url = urlsplit(values["PROVIDER_BASE_URL"])
-    _ = provider_url.port
-except ValueError:
-    fail("PROVIDER_BASE_URL must be a valid HTTPS URL")
-if (
-    provider_url.scheme != "https"
-    or not provider_url.hostname
-    or not valid_hostname(provider_url.hostname)
-):
-    fail("PROVIDER_BASE_URL must be an HTTPS URL")
-if provider_url.username is not None or provider_url.password is not None:
-    fail("PROVIDER_BASE_URL must not contain user info")
-if provider_url.fragment:
-    fail("PROVIDER_BASE_URL must not contain a fragment")
 
 print("single-server preflight: passed")
 PY

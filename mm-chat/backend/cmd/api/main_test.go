@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"neo-chat/mm-chat/backend/internal/chat"
 	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/runtimeconfig"
@@ -44,30 +43,6 @@ func TestNewProviderSecretVaultLoadsConfiguredKeyring(t *testing.T) {
 	}
 }
 
-func TestNewChatProviderExposesBuiltInSearchOnlyForOpenAI(t *testing.T) {
-	for _, test := range []struct {
-		providerType string
-		wantBuiltIn  bool
-	}{
-		{providerType: "openai", wantBuiltIn: true},
-		{providerType: "openai_compatible", wantBuiltIn: false},
-	} {
-		t.Run(test.providerType, func(t *testing.T) {
-			provider, err := newChatProvider(config.Config{Provider: config.ProviderConfig{
-				Type: test.providerType, BaseURL: "https://provider.example/v1",
-				Model: "gpt-fixture", APIKey: "fixture-key",
-			}})
-			if err != nil {
-				t.Fatalf("newChatProvider() error = %v", err)
-			}
-			_, builtIn := provider.(chat.ModelBuiltInSearchProvider)
-			if builtIn != test.wantBuiltIn {
-				t.Fatalf("built-in capability = %v, want %v", builtIn, test.wantBuiltIn)
-			}
-		})
-	}
-}
-
 func TestSingleUserAnswerIdentitiesMergesConfiguredEnabledModels(t *testing.T) {
 	repo := &fakeAnswerProviderConfigReader{stored: []runtimeconfig.StoredProviderConfig{
 		{
@@ -93,12 +68,18 @@ func TestSingleUserAnswerIdentitiesMergesConfiguredEnabledModels(t *testing.T) {
 			},
 		},
 	}}
+	for index := range repo.stored {
+		if !repo.stored[index].Config.Enabled {
+			continue
+		}
+		repo.stored[index].Config.ConnectionTestSHA256 =
+			runtimeconfig.ProviderConnectionTestFingerprint(repo.stored[index])
+		repo.stored[index].Config.ConnectionTestedAt =
+			time.Now().UTC().Format(time.RFC3339Nano)
+	}
 
 	identities, err := singleUserAnswerIdentities(
 		context.Background(),
-		config.Config{Provider: config.ProviderConfig{
-			Type: "openai-compatible", Model: "gpt-5.5, gpt-5.5-mini",
-		}},
 		repo,
 		"owner-1",
 	)
@@ -108,7 +89,6 @@ func TestSingleUserAnswerIdentitiesMergesConfiguredEnabledModels(t *testing.T) {
 	want := []knowledge.ProcessorModelIdentity{
 		{Processor: "CUSTOM", EndpointID: "server-stored", ModelID: "custom-chat"},
 		{Processor: "openai_compatible", EndpointID: "server-default", ModelID: "gpt-5.5"},
-		{Processor: "openai_compatible", EndpointID: "server-default", ModelID: "gpt-5.5-mini"},
 		{Processor: "openai_compatible", EndpointID: "server-default", ModelID: "gpt-5.6-sol"},
 	}
 	if len(identities) != len(want) {
@@ -124,26 +104,20 @@ func TestSingleUserAnswerIdentitiesMergesConfiguredEnabledModels(t *testing.T) {
 	}
 }
 
-func TestSingleUserAnswerIdentitiesFallsBackToEnvironment(t *testing.T) {
+func TestSingleUserAnswerIdentitiesRequiresPostgresAuthority(t *testing.T) {
 	identities, err := singleUserAnswerIdentities(
 		context.Background(),
-		config.Config{Provider: config.ProviderConfig{
-			Type: "OpenAI Compatible", Model: "gpt-5.5",
-		}},
 		nil,
 		"",
 	)
 	if err != nil {
 		t.Fatalf("singleUserAnswerIdentities() error = %v", err)
 	}
-	want := []knowledge.ProcessorModelIdentity{{
-		Processor: "openai_compatible", EndpointID: "server-default", ModelID: "gpt-5.5",
-	}}
-	if len(identities) != 1 || identities[0] != want[0] {
-		t.Fatalf("singleUserAnswerIdentities() = %#v, want %#v", identities, want)
+	if len(identities) != 0 {
+		t.Fatalf("singleUserAnswerIdentities() = %#v, want empty", identities)
 	}
 
-	identities, err = singleUserAnswerIdentities(context.Background(), config.Config{}, nil, "")
+	identities, err = singleUserAnswerIdentities(context.Background(), nil, "")
 	if err != nil || len(identities) != 0 {
 		t.Fatalf("blank singleUserAnswerIdentities() = %#v/%v, want empty/nil", identities, err)
 	}
@@ -233,49 +207,6 @@ func TestNewRedisStateRejectsEnabledRateLimitWithoutRedisURL(t *testing.T) {
 	if !strings.Contains(err.Error(), config.EnvRedisRateLimitEnabled) ||
 		!strings.Contains(err.Error(), config.EnvRedisURL) {
 		t.Fatalf("newRedisState() error = %v, want mention rate-limit env and redis url", err)
-	}
-}
-
-func TestNewVoiceJobExecutorUsesProviderConfigOptIn(t *testing.T) {
-	executor, err := newVoiceJobExecutor(config.Config{})
-	if err != nil || executor != nil {
-		t.Fatalf("newVoiceJobExecutor(default) = %T/%v, want nil/nil", executor, err)
-	}
-
-	executor, err = newVoiceJobExecutor(config.Config{Provider: config.ProviderConfig{
-		Type:    "openai_compatible",
-		BaseURL: "https://provider.example.test/v1",
-	}})
-	if err != nil || executor != nil {
-		t.Fatalf("newVoiceJobExecutor(no key) = %T/%v, want nil/nil", executor, err)
-	}
-
-	executor, err = newVoiceJobExecutor(config.Config{Provider: config.ProviderConfig{
-		Type:    "openai_compatible",
-		BaseURL: "https://provider.example.test/v1",
-		APIKey:  "secret-key",
-		Timeout: time.Second,
-	}})
-	if err != nil {
-		t.Fatalf("newVoiceJobExecutor(configured) error = %v", err)
-	}
-	if executor == nil {
-		t.Fatal("newVoiceJobExecutor(configured) = nil, want executor")
-	}
-}
-
-func TestNewVoiceJobExecutorRejectsInvalidConfigWithoutSecretLeak(t *testing.T) {
-	secret := "secret-key"
-	_, err := newVoiceJobExecutor(config.Config{Provider: config.ProviderConfig{
-		Type:    "openai_compatible",
-		BaseURL: "://bad-url",
-		APIKey:  secret,
-	}})
-	if err == nil {
-		t.Fatal("newVoiceJobExecutor(invalid URL) error = nil")
-	}
-	if strings.Contains(err.Error(), secret) {
-		t.Fatalf("newVoiceJobExecutor() leaked api key: %v", err)
 	}
 }
 
@@ -447,27 +378,6 @@ func TestNewTeamRuntimeRejectsMalformedAndSharedKeysWithoutLeak(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), encoded) {
 		t.Fatalf("newTeamRuntime() leaked shared key bytes: %v", err)
-	}
-
-	providerSecret := "provider-secret-32-bytes-value!!"
-	if len(providerSecret) != 32 {
-		t.Fatalf("test provider secret length = %d, want 32", len(providerSecret))
-	}
-	cfg = config.Config{
-		Provider: config.ProviderConfig{APIKey: providerSecret},
-		Team: config.TeamConfig{Cursor: config.TeamKeyringConfig{
-			ActiveKeyID: "cursor-v1",
-			Keyring: "cursor-v1=" + base64.StdEncoding.EncodeToString(
-				[]byte(providerSecret),
-			),
-		}},
-	}
-	_, err = newTeamRuntime(nil, cfg)
-	if err == nil || !strings.Contains(err.Error(), config.EnvProviderAPIKey) {
-		t.Fatalf("newTeamRuntime() reused provider key error = %v", err)
-	}
-	if strings.Contains(err.Error(), providerSecret) {
-		t.Fatalf("newTeamRuntime() leaked provider/key bytes: %v", err)
 	}
 
 	for name, tt := range map[string]struct {

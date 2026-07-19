@@ -1,5 +1,7 @@
 package runtimeconfig
 
+import "time"
+
 type ProviderType string
 
 const (
@@ -58,14 +60,16 @@ type ProviderModelsRequest struct {
 }
 
 type AdminProviderConfigResponse struct {
-	ID        string       `json:"id"`
-	Name      string       `json:"name"`
-	Type      ProviderType `json:"type"`
-	BaseURL   string       `json:"baseUrl"`
-	Models    []string     `json:"models"`
-	Enabled   bool         `json:"enabled"`
-	HasAPIKey bool         `json:"hasApiKey"`
-	Source    string       `json:"source"`
+	ID                  string       `json:"id"`
+	Name                string       `json:"name"`
+	Type                ProviderType `json:"type"`
+	BaseURL             string       `json:"baseUrl"`
+	Models              []string     `json:"models"`
+	Enabled             bool         `json:"enabled"`
+	HasAPIKey           bool         `json:"hasApiKey"`
+	Source              string       `json:"source"`
+	ConnectionTestValid bool         `json:"connectionTestValid"`
+	ConnectionTestedAt  *time.Time   `json:"connectionTestedAt,omitempty"`
 }
 
 type AdminProviderConfigsResponse struct {
@@ -94,6 +98,11 @@ type ProviderRuntimeConfig struct {
 
 type ProviderModelsResponse struct {
 	Models []string `json:"models"`
+}
+
+type AdminProviderConnectionResponse struct {
+	Provider AdminProviderConfigResponse `json:"provider"`
+	Models   []string                    `json:"models"`
 }
 
 type BYOKPublicKeyResponse struct {

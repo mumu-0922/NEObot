@@ -29,6 +29,7 @@ import { PROVIDER_CONFIG_LIMITS } from "@/config/limits";
 import { buildProviderRuntimeConfig, encryptSecret } from "@/lib/byok/client";
 import { BYOK_CONTEXTS } from "@/lib/byok/shared";
 import { SERVER_DEFAULT_PROVIDER_ID } from "@/lib/defaultConfig/shared";
+import { providerModelIdsEqual } from "@/lib/providers/models";
 import { createNeoChatApiClient } from "@/services/api/client";
 import {
   encryptLocalSecret,
@@ -57,6 +58,7 @@ const ProviderSettings = () => {
   );
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [fetchSuccess, setFetchSuccess] = useState<string | null>(null);
   const [serverProviderHasApiKey, setServerProviderHasApiKey] = useState<
     Record<string, boolean>
   >({});
@@ -162,9 +164,7 @@ const ProviderSettings = () => {
         type: providerSnapshot.type,
         baseUrl: providerSnapshot.baseUrl || "",
         models: overrides.models ?? providerSnapshot.models ?? [],
-        enabled: providerSnapshot.isServerDefault
-          ? true
-          : providerSnapshot.enabled,
+        enabled: providerSnapshot.enabled,
         ...(overrides.apiKeySecret
           ? { apiKeySecret: overrides.apiKeySecret }
           : {}),
@@ -184,6 +184,7 @@ const ProviderSettings = () => {
       }));
       updateProvider(response.id, {
         isServerManaged: true,
+        enabled: response.enabled,
       });
       return response;
     } finally {
@@ -221,6 +222,7 @@ const ProviderSettings = () => {
   useEffect(() => {
     selectedProviderIdRef.current = selectedProviderId;
     setFetchError(null);
+    setFetchSuccess(null);
     fetchAbortRef.current?.abort();
     fetchAbortRef.current = null;
     setFetchingProviderId(null);
@@ -283,14 +285,26 @@ const ProviderSettings = () => {
 
     setFetchingProviderId(providerSnapshot.id);
     setFetchError(null);
+    setFetchSuccess(null);
     try {
+      let data: { models: string[] };
       if (serverModeEnabled) {
         await persistServerProvider(providerSnapshot);
+        const connection =
+          await createNeoChatApiClient().providers.testAdminProviderConnection(
+            providerSnapshot.id,
+            controller.signal,
+          );
+        data = connection;
+        updateProvider(providerSnapshot.id, {
+          enabled: connection.provider.enabled,
+        });
+      } else {
+        data = await createNeoChatApiClient().providers.listModels({
+          provider: await buildProviderRuntimeConfig(providerSnapshot),
+          signal: controller.signal,
+        });
       }
-      const data = await createNeoChatApiClient().providers.listModels({
-        provider: await buildProviderRuntimeConfig(providerSnapshot),
-        signal: controller.signal,
-      });
 
       if (
         requestId !== fetchRequestIdRef.current ||
@@ -315,6 +329,7 @@ const ProviderSettings = () => {
             { ...providerSnapshot, models: nextModels, modelsList: models },
             { models: nextModels },
           );
+          setFetchSuccess(t("connectionTestPassed"));
         }
       } else {
         updateProvider(providerSnapshot.id, { modelsList: [] });
@@ -338,6 +353,63 @@ const ProviderSettings = () => {
         setFetchingProviderId(null);
       }
     }
+  };
+
+  const handleProviderEnabledChange = () => {
+    if (!currentProvider) return;
+    if (!serverModeEnabled || currentProvider.enabled) {
+      updateProvider(currentProvider.id, {
+        enabled: !currentProvider.enabled,
+      });
+      queueServerProviderPersist(currentProvider.id);
+      return;
+    }
+
+    const providerId = currentProvider.id;
+    setFetchError(null);
+    setFetchSuccess(null);
+    providerPersistQueueRef.current = providerPersistQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        const latestProvider = useCoreSettingsStore
+          .getState()
+          .providers.find((provider) => provider.id === providerId);
+        if (!latestProvider) return;
+        await persistServerProvider(latestProvider);
+        setSavingProviderId(providerId);
+        const response =
+          await createNeoChatApiClient().providers.activateAdminProvider(
+            providerId,
+          );
+        const selectedModels = (latestProvider.models || []).filter((model) =>
+          response.models.includes(model),
+        );
+        const nextModels =
+          selectedModels.length > 0 ? selectedModels : response.models;
+        updateProvider(providerId, {
+          enabled: response.provider.enabled,
+          models: nextModels,
+          modelsList: response.models,
+          isServerManaged: true,
+        });
+        if (!providerModelIdsEqual(nextModels, latestProvider.models)) {
+          await persistServerProvider(
+            { ...latestProvider, enabled: true, models: nextModels },
+            { models: nextModels },
+          );
+        }
+        setFetchSuccess(t("providerActivated"));
+      })
+      .catch((error) => {
+        setFetchError(
+          error instanceof Error ? error.message : t("activationFailed"),
+        );
+      })
+      .finally(() => {
+        setSavingProviderId((current) =>
+          current === providerId ? null : current,
+        );
+      });
   };
 
   const handleAddProvider = async () => {
@@ -708,12 +780,8 @@ const ProviderSettings = () => {
                         type="checkbox"
                         className="sr-only peer"
                         checked={currentProvider.enabled}
-                        onChange={() => {
-                          updateProvider(currentProvider.id, {
-                            enabled: !currentProvider.enabled,
-                          });
-                          queueServerProviderPersist(currentProvider.id);
-                        }}
+                        disabled={savingProviderId === currentProvider.id}
+                        onChange={handleProviderEnabledChange}
                       />
                       <div className="w-11 h-6 bg-gray-200 dark:bg-accent peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500/60 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-white dark:peer-focus-visible:ring-offset-background rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-transform peer-checked:bg-blue-500 peer-checked:shadow-[0_0_0_3px_rgba(59,130,246,0.18)] dark:peer-checked:bg-blue-400"></div>
                     </div>
@@ -805,6 +873,16 @@ const ProviderSettings = () => {
                       aria-hidden="true"
                     />
                     <span>{fetchError}</span>
+                  </div>
+                ) : null}
+                {fetchSuccess ? (
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className="mb-3 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200"
+                  >
+                    <Check size={14} aria-hidden="true" />
+                    <span>{fetchSuccess}</span>
                   </div>
                 ) : null}
                 {displayModels.length > 0 ? (

@@ -1383,13 +1383,13 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
       - [x] G11.9F.1 Unused strict keyring loader, context-bound AES-256-GCM
             vault, retained-key rotation primitive, module docs, and gates;
             no database, Compose, route, runtime, Key, or network mutation.
-      - [ ] G11.9F.2 Model-provider vault cutover, transactional import/rotate,
+      - [x] G11.9F.2 Model-provider vault cutover, transactional import/rotate,
             restart proof, and model-provider `.env` fallback removal.
         - [x] G11.9F.2.1 Stable Docker Secret mount, vault-at-rest writes,
               legacy dual-read, and lazy legacy/env import on admin save.
         - [x] G11.9F.2.2 Transactional bulk backfill/rotation,
               ciphertext-only backup, and restart proof.
-        - [ ] G11.9F.2.3 Bounded model connection-test activation and model
+        - [x] G11.9F.2.3 Bounded model connection-test activation and model
               `.env` runtime fallback removal.
       - [ ] G11.9F.3 Search admin CRUD/test/activate UI, Postgres resolver, and
             positive owner-authorized provider smoke.

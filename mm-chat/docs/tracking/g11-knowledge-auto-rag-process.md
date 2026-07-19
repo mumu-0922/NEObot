@@ -1402,3 +1402,94 @@ ciphertext. The provider env fallback remains configured and is not yet sole-
 authority cleanup: F2.3 must perform bounded real connection-test activation,
 then remove model-provider `.env` runtime fallback. No provider call entered
 F2.2.
+
+## 2026-07-19 — G11.9F.2.3 Connection-test activation and env removal
+
+Outcome: model providers now require a bounded real model-list test before
+activation, and Postgres plus the Docker-Secret-backed vault are the sole
+runtime authority for model settings and credentials. The administrator API
+adds `POST /v1/admin/providers/{id}/test` and `/activate`; the Provider page's
+model refresh uses `test`, while enabling uses `activate`. Disabling remains a
+direct metadata save.
+
+The test allows at most 15 seconds, 2 MiB of response data, and 2048 normalized
+models. Redirects and base URLs containing userinfo, query, or fragment are
+rejected. OpenAI/OpenAI Compatible use Bearer `/models`; Gemini uses
+`x-goog-api-key` `/v1beta/models`. A successful proof binds Provider ID,
+canonical type, normalized base URL, and the exact vault envelope. Changing
+type, endpoint, or Key clears the proof and disables the provider. Postgres
+uses an expected-state conditional update so a concurrent administrator change
+returns `PROVIDER_CONFIG_CHANGED` instead of committing a stale proof.
+
+All runtime resolvers now fail closed for disabled or unattested rows. Public
+config, live model listing, ordinary chat, image generation, and development
+Knowledge answer-governance bootstrap use only valid Postgres/vault providers.
+Image execution resolves `modelRef.providerId` dynamically; the old global
+environment executor is gone. The unrelated legacy model-provider voice
+executor was removed and Voice remains reserved for F.5.
+
+The legacy model-provider variables were removed from Go/Next configuration,
+examples, Compose, and preflight. After the formal provider passed activation,
+the same values were removed from the gitignored `.env.single-server` and the
+backend was force-recreated. Container environment-name inspection confirmed
+that neither backend nor frontend contains them. `PROVIDER_TIMEOUT` and the
+vault keyring settings remain infrastructure inputs.
+
+Formal cutover was protected by an owner-only mode-`600` Postgres dump and
+checksum under `backup/provider-activation-f23/postgres/`. The stored Server
+Default passed activation with seven live model IDs. Public config remained
+available, live model refresh returned seven IDs, a real `gpt-5.5` stream
+completed with the exact requested sentinel, and an intentionally invalid
+Bearer received HTTP 401 without modifying the stored Key. A real
+`gpt-image-2` request resolved the same Postgres/vault provider, stored one
+676237-byte PNG, and returned no redundant message; its test file was then
+soft-deleted.
+
+After `.env` cleanup and backend force-recreation, the original attestation
+timestamp remained valid, model refresh still returned seven IDs, and a second
+real chat stream completed with the exact restart sentinel. Both smoke
+conversations were soft-deleted. The isolated
+`mm_chat_g119f23_test` ciphertext reload proof passed and its database was
+deleted.
+
+Final cross-layer review closed three edge cases before commit: empty provider
+model lists now serialize as `[]` rather than `null`; activation persistence
+compares model IDs by ordered value rather than length alone; and dynamic image
+resolver failures record sanitized unavailable audit metadata without prompt
+or credential content. The final backend/frontend Compose images were rebuilt
+and redeployed; every administrator model list then serialized as an array,
+both containers were healthy and env-free, and a final real chat stream
+completed before its test conversation was soft-deleted.
+
+Release-gate review also fixed a pre-existing contradiction around stable BYOK
+PEM input: Compose/Go accept a single-quoted one-line PEM with literal `\n`,
+while preflight previously rejected every quote and backslash. Preflight now
+admits only that field's bounded RSA PEM grammar and still rejects all other
+quoted/escaped env assignments; positive and negative fixtures pass. The
+current operator deployment intentionally uses local `build`, so it omits the
+immutable `FRONTEND_IMAGE` required by the separate production-promotion gate;
+the preflight test suite and current Compose rendering both pass.
+
+Verification:
+
+```text
+backend go test ./... / focused race / go vet ./...             passed
+frontend format / lint / typecheck / full Vitest               passed / passed / passed / 177 files, 844 tests
+frontend production build                                      passed
+preflight tests / current Compose config                       passed / passed
+backend/frontend local Compose builds                           passed / passed
+isolated Postgres vault reload / test database cleanup         passed / deleted
+formal provider activation / live model refresh                passed / 7 models
+real chat before restart / after restart / final image          passed / passed / passed
+real gpt-image-2 artifact / cleanup                             image/png, 676237 bytes / deleted
+invalid Bearer negative test                                   HTTP 401
+administrator empty-model JSON contract                        [] / passed
+backend/frontend legacy provider env names                     absent / absent
+backend/frontend health after force-recreate                    healthy / healthy
+quality/security scanners / staged secret scan                  passed / no real material
+```
+
+Rollback restores the retained pre-activation Postgres dump together with the
+current vault keyring before starting an F2.2 image. If that older image needs
+the former provider environment settings, recover them only from an
+operator-owned secret source; do not reintroduce them to the F2.3 release.

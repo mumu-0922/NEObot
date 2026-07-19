@@ -89,10 +89,7 @@ function accessPasswordHealth(hosted: boolean): ServiceHealthItem {
 }
 
 function defaultModelHealth(): ServiceHealthItem {
-  if (env("DEFAULT_PROVIDER_API_KEY")) {
-    return item("defaultModel", "available", "DEFAULT_MODEL_CONFIGURED");
-  }
-  return item("defaultModel", "missing_key", "DEFAULT_PROVIDER_KEY_MISSING");
+  return item("defaultModel", "unconfigured", "MODEL_PROVIDER_SERVER_MANAGED");
 }
 
 function searchHealth(): ServiceHealthItem {

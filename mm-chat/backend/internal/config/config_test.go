@@ -56,18 +56,6 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 	if cfg.Redis.RateLimitWindow != DefaultRedisRateLimitWindow {
 		t.Fatalf("Redis.RateLimitWindow = %s, want %s", cfg.Redis.RateLimitWindow, DefaultRedisRateLimitWindow)
 	}
-	if cfg.Provider.Type != "" {
-		t.Fatalf("Provider.Type = %q, want empty", cfg.Provider.Type)
-	}
-	if cfg.Provider.BaseURL != "" {
-		t.Fatalf("Provider.BaseURL = %q, want empty", cfg.Provider.BaseURL)
-	}
-	if cfg.Provider.Model != "" {
-		t.Fatalf("Provider.Model = %q, want empty", cfg.Provider.Model)
-	}
-	if cfg.Provider.APIKey != "" {
-		t.Fatalf("Provider.APIKey = %q, want empty", cfg.Provider.APIKey)
-	}
 	if cfg.Provider.Timeout != DefaultProviderTimeout {
 		t.Fatalf("Provider.Timeout = %s, want %s", cfg.Provider.Timeout, DefaultProviderTimeout)
 	}
@@ -167,10 +155,6 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 		EnvRedisRateLimitEnabled:  "true",
 		EnvRedisRateLimitRequests: "42",
 		EnvRedisRateLimitWindow:   "30s",
-		EnvProviderType:           " openai_compatible ",
-		EnvProviderBaseURL:        " https://sub.example.test/v1/ ",
-		EnvProviderModel:          " gpt-5.5 ",
-		EnvProviderAPIKey:         " secret-key ",
 		EnvProviderTimeout:        "90s",
 		EnvProviderSecretKeyring:  " /run/secrets/mm_chat_provider_keyring ",
 		EnvStorageBackend:         " MINIO ",
@@ -245,18 +229,6 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	}
 	if cfg.Redis.RateLimitWindow != 30*time.Second {
 		t.Fatalf("Redis.RateLimitWindow = %s, want 30s", cfg.Redis.RateLimitWindow)
-	}
-	if cfg.Provider.Type != "openai_compatible" {
-		t.Fatalf("Provider.Type = %q, want openai_compatible", cfg.Provider.Type)
-	}
-	if cfg.Provider.BaseURL != "https://sub.example.test/v1/" {
-		t.Fatalf("Provider.BaseURL = %q", cfg.Provider.BaseURL)
-	}
-	if cfg.Provider.Model != "gpt-5.5" {
-		t.Fatalf("Provider.Model = %q, want gpt-5.5", cfg.Provider.Model)
-	}
-	if cfg.Provider.APIKey != "secret-key" {
-		t.Fatalf("Provider.APIKey = %q, want secret-key", cfg.Provider.APIKey)
 	}
 	if cfg.Provider.Timeout != 90*time.Second {
 		t.Fatalf("Provider.Timeout = %s, want 90s", cfg.Provider.Timeout)
@@ -356,10 +328,6 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 		EnvRedisKeyPrefix:        "\t",
 		EnvRedisRunCancelTTL:     "\n",
 		EnvRedisSessionCacheTTL:  " ",
-		EnvProviderType:          " ",
-		EnvProviderBaseURL:       "\t",
-		EnvProviderModel:         " \n ",
-		EnvProviderAPIKey:        " ",
 		EnvProviderTimeout:       "\t",
 		EnvStorageBackend:        " ",
 		EnvLocalStorageDir:       "\t",
@@ -423,10 +391,6 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 		cfg.Redis.RateLimitRequests != DefaultRedisRateLimitRequests ||
 		cfg.Redis.RateLimitWindow != DefaultRedisRateLimitWindow {
 		t.Fatalf("Redis = %#v, want defaults", cfg.Redis)
-	}
-	if cfg.Provider.Type != "" || cfg.Provider.BaseURL != "" ||
-		cfg.Provider.Model != "" || cfg.Provider.APIKey != "" {
-		t.Fatalf("Provider = %#v, want blank strings", cfg.Provider)
 	}
 	if cfg.Provider.Timeout != DefaultProviderTimeout {
 		t.Fatalf("Provider.Timeout = %s, want %s", cfg.Provider.Timeout, DefaultProviderTimeout)

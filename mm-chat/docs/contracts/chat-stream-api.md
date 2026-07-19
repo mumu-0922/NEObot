@@ -69,8 +69,8 @@ Rules:
 - `conversationId` is path-only and rejected in the body.
 - `userMessageId` is required and must reference an existing `role="user"`
   message in the same conversation.
-- `modelRef` is required. `modelRef.modelId` is sent to the provider; if it is
-  blank, the backend falls back to `PROVIDER_MODEL`.
+- `modelRef` is required and both IDs must be non-empty. `modelRef.modelId` is
+  sent to the resolved provider; there is no environment model fallback.
 - `idempotencyKey` is required and applies to the assistant streaming row only.
 - `content`, `attachments`, `role`, `status`, identity hints, and other
   server-managed message fields are rejected.
@@ -211,39 +211,30 @@ Content-Type: application/json; charset=utf-8
 }
 ```
 
-## 8. OpenAI-Compatible Provider Configuration
+## 8. Server-Owned Provider Configuration
 
-The first real adapter uses the OpenAI-compatible Chat Completions stream
-shape:
+OpenAI-compatible execution uses the Chat Completions stream shape after Go
+resolves an enabled, connection-tested Postgres/vault provider:
 
 ```http
-POST ${PROVIDER_BASE_URL}/chat/completions
-Authorization: Bearer ${PROVIDER_API_KEY}
+POST {stored normalized base URL}/chat/completions
+Authorization: Bearer {vault-decrypted API Key}
 Content-Type: application/json
 Accept: text/event-stream
 ```
 
-Environment variables:
-
-```env
-PROVIDER_TYPE=openai_compatible
-PROVIDER_BASE_URL=https://your-openai-compatible-relay.example/v1
-PROVIDER_MODEL=gpt-5.5
-PROVIDER_API_KEY=change-me
-PROVIDER_TIMEOUT=2m
-```
-
 Runtime rules:
 
-- If `PROVIDER_TYPE` is empty, streaming returns `503 PROVIDER_REQUIRED`.
-- If `PROVIDER_TYPE=openai_compatible` but required provider fields are missing,
-  the provider remains disabled and streaming returns `503 PROVIDER_REQUIRED`.
-- Unsupported provider types fail API startup.
-- `modelRef.providerId` must match the configured single provider:
-  `openai_compatible` plus temporary aliases `openai-compatible` or `openai`.
-  Accepted aliases are persisted and emitted as canonical `openai_compatible`.
-- Provider API keys are process environment only; they are never returned in
-  API responses or committed to the repository.
+- `provider.source="server-default"` resolves `SERVER_DEFAULT`; a stored custom
+  provider uses `source="server-stored"` plus its ID.
+- Disabled providers return `409 PROVIDER_DISABLED`; providers without a valid
+  activation attestation return `409 PROVIDER_ACTIVATION_REQUIRED`.
+- Unsupported stored types/configurations return a stable redacted validation
+  error; they do not fall back to another provider or process environment.
+- Provider API Keys exist only as encrypted Postgres vault envelopes at rest,
+  are decrypted transiently in Go, and are never returned to the browser.
+- `PROVIDER_TIMEOUT` bounds upstream execution but does not supply provider
+  identity, endpoint, model, or credential.
 - Non-`2xx` provider startup responses map to pre-SSE `502 PROVIDER_ERROR`.
 - Malformed provider SSE frames after streaming begins map to scrubbed
   `message.error` frames.

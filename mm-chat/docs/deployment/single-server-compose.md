@@ -45,6 +45,11 @@ services therefore run as that non-root host identity so they can read the
 mode-`600` keyring without widening host permissions. Production preflight
 rejects mismatched or root/invalid IDs.
 
+For stable browser BYOK ingress, encode `BYOK_PRIVATE_KEY_PEM` on one
+single-quoted env line with literal `\n` separators. Production preflight
+accepts only a bounded RSA `PRIVATE KEY` or `RSA PRIVATE KEY` PEM in that exact
+form; other quoting, escaping, interpolation, or non-PEM content is rejected.
+
 `init-provider-keyring.sh` creates `secrets/provider-keyring.json` atomically
 with one random 32-byte active key and mode `600` under a user-owned mode-`700`
 non-symlink directory. It refuses to overwrite an existing file and prints only

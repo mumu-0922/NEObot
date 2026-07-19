@@ -1448,13 +1448,11 @@ code` only; `codeExecution` stays disabled until a real sandbox/executor and
   audit metadata through an explicitly configured audit recorder and must fail
   closed if that recorder is absent or unavailable. The default server remains
   fail-closed, and this seam does not authorize live provider quota usage.
-- G6.5c.2b.1 wires an OpenAI-compatible voice executor behind Go
-  `/v1/voice/transcribe` and `/v1/voice/synthesize` when server-only
-  `PROVIDER_BASE_URL` and `PROVIDER_API_KEY` are present. STT uses
-  `/audio/transcriptions`; TTS uses `/audio/speech` and stores returned audio
-  through backend file/object-storage artifacts. The frontend `voice`
-  capability remains disabled until a later frontend adapter/reopen slice and
-  an authorized configured-provider voice smoke pass.
+- G6.5c.2b.1 originally wired an OpenAI-compatible voice executor through the
+  model-provider environment. G11.9F.2.3 removes that shared credential path;
+  the executor seam and tests remain, but production Voice stays fail-closed
+  until F.5 adds a dedicated persisted Voice-provider contract and an
+  authorized smoke.
 - G6.5c.3a adds only the Go image executor seam. `POST /v1/images/generations`
   may call an explicitly configured executor only when image artifact storage
   and an admitted-job audit recorder are configured. Stored image responses
@@ -1475,13 +1473,12 @@ code` only; `codeExecution` stays disabled until a real sandbox/executor and
   remains disabled until the later route-wiring/capability-reopen slice proves
   the Go HTTP route is configured with the executor, artifact store, admission
   audit recorder, and frontend adapter behavior.
-- G6.5c.3c wires the Go HTTP route in `cmd/api`: when server-only
-  `PROVIDER_BASE_URL` and `PROVIDER_API_KEY` are present for an
-  OpenAI-compatible provider, `/v1/images/generations` may call the image
-  executor and stores results through the backend file/object-storage artifact
-  boundary. Missing provider or storage dependencies still fail closed. The
-  frontend `imageGeneration` capability is still not reopened until the client
-  adapter maps returned artifact metadata to server-backed image attachments.
+- G6.5c.3c wires the Go HTTP route in `cmd/api`; G11.9F.2.3 now resolves the
+  request's exact enabled, connection-tested Postgres/vault provider before
+  creating an OpenAI-compatible image executor. `/v1/images/generations`
+  stores results through the backend file/object-storage artifact boundary.
+  A missing provider, missing valid activation, or missing storage dependency
+  fails closed.
 - G6.5c.3d reopens only `imageGeneration` in configured server mode. The
   frontend image adapter posts `modelRef`, `prompt`, optional `size`, and
   optional `count` to Go `/v1/images/generations`; it consumes only compact
@@ -2101,7 +2098,7 @@ Operational rollback smoke:
 This contract applies when `NEXT_PUBLIC_API_MODE=server` and one or more
 installed plugins are active. The provider credential remains owned by Go;
 plugin auth must remain browser-encrypted when it crosses the API boundary.
-Copying `PROVIDER_API_KEY` into the frontend is forbidden. As of G4.5c.2c,
+Copying any provider API Key into the frontend is forbidden. As of G4.5c.2c,
 server-mode plugin execution routes to Go `/v1/plugins/execute` with
 `pluginId/functionName`; Go resolves built-ins, supplied plugin payloads, and
 custom/OpenAPI manifest installs registered through `/v1/plugins/install`; when
@@ -2357,7 +2354,7 @@ Wrong: expose the Go provider key to restore the legacy browser tool loop.
 
 ```ts
 // Forbidden: browser-visible provider credential.
-const provider = { apiKey: process.env.PROVIDER_API_KEY };
+const provider = { apiKey: "browser-visible-secret" };
 ```
 
 Correct: provider planning remains in Go, and server-mode plugin execution is

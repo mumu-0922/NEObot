@@ -5,8 +5,9 @@
 G11.9F.1 created the restart-stable at-rest encryption primitive. G11.9F.2.1
 wires it into model-provider administrator writes, runtime reads, and
 single-server Compose without changing schema or calling a provider. F2.2 adds
-transactional backfill/rotation plus backup/restart proof; connection-test
-activation remains F2.3.
+transactional backfill/rotation plus backup/restart proof. F2.3 makes a bounded
+real connection test mandatory for activation and removes the model-provider
+environment fallback.
 
 ## 2. Signatures
 
@@ -21,6 +22,9 @@ func (v *Vault) Rotate(envelope Envelope, context string) (Envelope, bool, error
 func WithProviderSecretVault(vault *providersecrets.Vault) ServiceOption
 func (s *Service) UpsertAdminProviderConfig(context.Context, string, UpdateAdminProviderConfigRequest) (AdminProviderConfigResponse, error)
 func (s *Service) ResolveStoredProvider(context.Context, string) (ResolvedProvider, error)
+func (s *Service) TestAdminProviderConnection(context.Context, string) (AdminProviderConnectionResponse, error)
+func (s *Service) ActivateAdminProvider(context.Context, string) (AdminProviderConnectionResponse, error)
+func ProviderConnectionTestValid(StoredProviderConfig) bool
 ```
 
 Runtime/deployment fields:
@@ -71,6 +75,10 @@ Persistable envelope:
 | Admin writes a secret without a configured vault | `ErrProviderSecretVaultUnavailable` / HTTP `503 PROVIDER_SECRET_VAULT_UNAVAILABLE` |
 | Stored vault/legacy envelope is corrupt, unknown, or copied | `ErrProviderSecretInvalid` / redacted `PROVIDER_SECRET_UNAVAILABLE` |
 | Runtime UID/GID differs from the mode-`600` source owner | preflight rejection; startup otherwise fails closed |
+| Provider is disabled | `ErrProviderDisabled` / HTTP `409 PROVIDER_DISABLED` |
+| Connection proof is missing or no longer matches configuration | `ErrProviderActivationRequired` / HTTP `409 PROVIDER_ACTIVATION_REQUIRED` |
+| Bounded upstream connection test fails | `ErrProviderConnectionTestFailed` / HTTP `502 PROVIDER_CONNECTION_TEST_FAILED` |
+| Provider changes while its test is in flight | `ErrProviderConfigChanged` / HTTP `409 PROVIDER_CONFIG_CHANGED` |
 
 ## 5. Good / Base / Bad Cases
 
@@ -87,6 +95,11 @@ Persistable envelope:
 - Bad deployment: mount a host UID-owned mode-`600` file into a different
   container UID; preflight rejects the mismatch instead of widening mode or
   running the API as root.
+- Good activation: test the exact Provider ID/type/normalized base URL/vault
+  envelope, atomically persist its fingerprint and timestamp, then enable it.
+- Bad activation: alter type, base URL, or API Key after testing; the proof is
+  cleared, the provider is disabled, and every runtime resolver fails closed
+  until another successful activation.
 
 ## 6. Tests Required
 
@@ -105,23 +118,31 @@ Persistable envelope:
   `mm_chat_*_test` database, followed by database deletion;
 - Compose render, mode/owner preflight, image build, read-only Secret mount,
   non-root runtime UID, explicit restart, and health proof.
+- connection-test request/response bounds, redirect rejection, OpenAI/Gemini
+  authentication shapes, fingerprint invalidation, concurrent-change fencing,
+  disabled/untested fail-closed resolution, and restart persistence;
+- formal model-list, chat-stream, and image-generation smokes after removing
+  the model-provider environment variables from both Compose and the runtime
+  environment.
 
 ## 7. Wrong vs Correct
 
-Wrong: write the browser RSA envelope or plaintext directly to Postgres and
-depend on an ephemeral process key or `PROVIDER_API_KEY` fallback after restart.
+Wrong: write the browser RSA envelope or plaintext directly to Postgres, trust
+an unchecked `enabled` flag, or depend on an ephemeral process key or provider
+API Key environment fallback after restart.
 
 Correct: decrypt browser ingress only inside Go, re-encrypt with the
 Docker-Secret-backed vault under a record-specific context, persist only that
-envelope, and activate the provider only after a bounded connection test.
+envelope, and activate the exact stored configuration only after a bounded
+connection test.
 
 ## 8. Rollback / Next Gate
 
 F.1 rollback deletes the unused package and contract; no state exists to
 migrate. F2.1 mounts the stable keyring and writes vault envelopes while
 retaining dual-read rollback. F2.2 adds exact-plan transactional bulk
-backfill/rotation plus backup/restore and restart proof. F2.3 removes model
-`.env` fallback only after a bounded connection-test activation gate.
+backfill/rotation plus backup/restore and restart proof. F2.3 has removed model
+`.env` fallback after the bounded connection-test activation gate passed.
 
 The compatibility direction is intentionally one-way: F2.1 reads legacy BYOK
 rows, but an older image cannot read newly written vault envelopes. Before the
@@ -149,7 +170,7 @@ before starting the older image; never remove the active keyring first.
   errors;
 - no schema migration is needed because `encrypted_secret_ref` already stores
   an opaque bounded string;
-- connection-test activation and env removal remain F2.3.
+- connection-test activation and environment removal are completed by F2.3.
 
 ## 10. G11.9F.2.2 Transactional Rewrite
 
@@ -174,9 +195,9 @@ Contract:
 - one Serializable transaction takes a `SHARE ROW EXCLUSIVE` table lock,
   validates every active and deleted row before updating any row, then rewrites
   legacy BYOK and retained-old-key vault envelopes;
-- an unreadable active `SERVER_DEFAULT` legacy row may use the still-configured
-  `PROVIDER_API_KEY` migration fallback; an unreadable custom legacy row is
-  counted as blocked and prevents execute;
+- at the F2.2 cutover only, an unreadable active `SERVER_DEFAULT` legacy row
+  could use the then-configured `PROVIDER_API_KEY` migration fallback; an
+  unreadable custom legacy row was counted as blocked and prevented execute;
 - active duplicate User/Provider records, unknown/malformed/trailing envelope
   fields, context copy, missing retained keys, stale plan state, oversized
   state, or any SQL failure aborts the entire transaction;
@@ -199,3 +220,42 @@ zero-write behavior, real Postgres legacy/old/current/empty/deleted rows,
 active-key-only reload, keyring prepare/prune, owner-only dump/checksum,
 restore drill, plaintext/keyring absence, backend restart, and a final no-op
 audit.
+
+## 11. G11.9F.2.3 Connection-Test Activation
+
+Administrator endpoints:
+
+```text
+POST /v1/admin/providers/{providerId}/test
+POST /v1/admin/providers/{providerId}/activate
+```
+
+Contract:
+
+- `test` performs the bounded real model-list request and commits an attestation
+  without changing a disabled provider to enabled;
+- `activate` performs the same test and atomically commits both attestation and
+  enabled state;
+- the request is capped at 15 seconds, the response at 2 MiB, and normalized
+  model IDs at 2048; redirects, URL userinfo/query/fragment, malformed JSON,
+  non-2xx responses, and unsupported provider types fail closed;
+- OpenAI and OpenAI Compatible use Bearer authentication against `/models`;
+  Gemini uses `x-goog-api-key` against `/v1beta/models`;
+- the SHA-256 attestation binds Provider ID, canonical type, normalized base
+  URL, and the exact encrypted secret reference. It contains no plaintext Key;
+- changing type, base URL, or API Key clears the attestation and disables the
+  provider. Name/model-list-only changes retain a still-valid proof;
+- Postgres commits with expected prior type/base URL/secret/enabled values, so
+  an administrator write racing the network call produces
+  `PROVIDER_CONFIG_CHANGED` rather than blessing stale state;
+- public config, model listing, chat, image generation, and answer-governance
+  bootstrap resolve only enabled providers with a valid attestation;
+- model-provider settings and Keys are now Postgres/vault-only. The legacy
+  model-provider environment variables are not parsed, passed by Compose, or
+  present in backend/frontend containers. `PROVIDER_TIMEOUT` and the
+  Docker-Secret keyring settings remain infrastructure configuration.
+
+Rollback to an F2.2 image requires the retained keyring and pre-cutover
+Postgres backup. Re-provision the former provider environment values from an
+operator-owned secret source only if that older image requires them; do not
+restore them to an F2.3 deployment.

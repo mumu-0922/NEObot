@@ -1,8 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { PROVIDER_MODEL_LIMITS } from "../config/limits";
-import { extractProviderModelIds } from "../lib/providers/models";
+import {
+  extractProviderModelIds,
+  providerModelIdsEqual,
+} from "../lib/providers/models";
 
 describe("provider model extraction", () => {
+  it("compares ordered model selections by value rather than length alone", () => {
+    expect(providerModelIdsEqual(["gpt-a"], ["gpt-a"])).toBe(true);
+    expect(providerModelIdsEqual(["gpt-a"], ["gpt-b"])).toBe(false);
+    expect(providerModelIdsEqual(["gpt-a"], ["gpt-a", "gpt-b"])).toBe(false);
+  });
+
   it("filters Gemini models to generateContent-capable ids", () => {
     expect(
       extractProviderModelIds("Gemini", {

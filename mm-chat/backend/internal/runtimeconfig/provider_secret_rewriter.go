@@ -116,8 +116,7 @@ func (r *PostgresProviderSecretRewriter) Rewrite(
 
 	for _, item := range plan.rows {
 		if item.action != providerSecretRewriteLegacy &&
-			item.action != providerSecretRewriteRotate &&
-			item.action != providerSecretRewriteEnv {
+			item.action != providerSecretRewriteRotate {
 			continue
 		}
 		secretRef, err := r.rewriteProviderSecret(item)
@@ -154,7 +153,6 @@ const (
 	providerSecretRewriteCurrent providerSecretRewriteAction = "current"
 	providerSecretRewriteRotate  providerSecretRewriteAction = "rotate"
 	providerSecretRewriteLegacy  providerSecretRewriteAction = "legacy"
-	providerSecretRewriteEnv     providerSecretRewriteAction = "env-fallback"
 	providerSecretRewriteBlocked providerSecretRewriteAction = "blocked-legacy"
 )
 
@@ -266,10 +264,6 @@ func (r *PostgresProviderSecretRewriter) buildProviderSecretRewritePlan(
 			result.SecretRows++
 			result.LegacyRows++
 			result.ChangedRows++
-		case providerSecretRewriteEnv:
-			result.SecretRows++
-			result.EnvRows++
-			result.ChangedRows++
 		case providerSecretRewriteBlocked:
 			result.SecretRows++
 			result.BlockedRows++
@@ -282,7 +276,7 @@ func (r *PostgresProviderSecretRewriter) buildProviderSecretRewritePlan(
 		return providerSecretRewritePlan{}, ErrProviderSecretRewriteInvalid
 	}
 	result.PlanSHA256 = providerSecretRewritePlanSHA256(
-		r.vault.ActiveKID(), activeKeyBinding, r.cfg.Provider.APIKey, rows,
+		r.vault.ActiveKID(), activeKeyBinding, rows,
 	)
 	return providerSecretRewritePlan{rows: rows, result: result}, nil
 }
@@ -292,9 +286,6 @@ func (r *PostgresProviderSecretRewriter) inspectProviderSecret(
 ) (providerSecretRewriteAction, error) {
 	encoded := strings.TrimSpace(row.encryptedSecretRef)
 	if encoded == "" {
-		if r.canImportServerDefaultEnv(row) {
-			return providerSecretRewriteEnv, nil
-		}
 		return providerSecretRewriteEmpty, nil
 	}
 	switch storedSecretAlgorithm(encoded) {
@@ -332,9 +323,6 @@ func (r *PostgresProviderSecretRewriter) inspectProviderSecret(
 		validPlaintext := strings.TrimSpace(plaintext) != ""
 		plaintext = ""
 		if err != nil || !validPlaintext {
-			if r.canImportServerDefaultEnv(row) {
-				return providerSecretRewriteEnv, nil
-			}
 			return providerSecretRewriteBlocked, nil
 		}
 		return providerSecretRewriteLegacy, nil
@@ -387,30 +375,9 @@ func (r *PostgresProviderSecretRewriter) rewriteProviderSecret(
 			return "", ErrProviderSecretRewriteInvalid
 		}
 		return marshalProviderSecretEnvelope(vaultEnvelope)
-	case providerSecretRewriteEnv:
-		secretBytes := []byte(strings.TrimSpace(r.cfg.Provider.APIKey))
-		if len(secretBytes) == 0 {
-			return "", ErrProviderSecretRewriteInvalid
-		}
-		vaultEnvelope, err := r.vault.Encrypt(
-			secretBytes,
-			modelProviderSecretContext(row.userID, row.providerID),
-		)
-		clear(secretBytes)
-		if err != nil {
-			return "", ErrProviderSecretRewriteInvalid
-		}
-		return marshalProviderSecretEnvelope(vaultEnvelope)
 	default:
 		return "", ErrProviderSecretRewriteInvalid
 	}
-}
-
-func (r *PostgresProviderSecretRewriter) canImportServerDefaultEnv(
-	row providerSecretRewriteRow,
-) bool {
-	return !row.deleted && row.providerID == serverDefaultProviderID &&
-		strings.TrimSpace(r.cfg.Provider.APIKey) != ""
 }
 
 func (r *PostgresProviderSecretRewriter) providerType(
@@ -422,9 +389,6 @@ func (r *PostgresProviderSecretRewriter) providerType(
 	}
 	if payload.Type != "" {
 		return normalizeProviderType(string(payload.Type)), nil
-	}
-	if row.providerID == serverDefaultProviderID {
-		return normalizeProviderType(r.cfg.Provider.Type), nil
 	}
 	return ProviderTypeOpenAICompatible, nil
 }
@@ -440,7 +404,6 @@ func marshalProviderSecretEnvelope(envelope providersecrets.Envelope) (string, e
 func providerSecretRewritePlanSHA256(
 	activeKID string,
 	activeKeyBinding string,
-	envAPIKey string,
 	rows []providerSecretRewriteRow,
 ) string {
 	digest := sha256.New()
@@ -459,10 +422,6 @@ func providerSecretRewritePlanSHA256(
 			writeProviderSecretPlanField(digest, "active")
 		}
 		writeProviderSecretPlanField(digest, string(row.action))
-		if row.action == providerSecretRewriteEnv {
-			envDigest := sha256.Sum256([]byte(strings.TrimSpace(envAPIKey)))
-			writeProviderSecretPlanField(digest, hex.EncodeToString(envDigest[:]))
-		}
 	}
 	return hex.EncodeToString(digest.Sum(nil))
 }

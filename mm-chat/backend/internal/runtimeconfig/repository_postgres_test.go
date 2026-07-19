@@ -82,6 +82,25 @@ func TestPostgresProviderVaultCiphertextSurvivesReload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpsertAdminProviderConfig() error = %v", err)
 	}
+	stored, ok, err := repo.GetProviderConfig(ctx, authDevelopmentUserID(), "INTEGRATION")
+	if err != nil || !ok {
+		t.Fatalf("GetProviderConfig() = %#v/%v/%v", stored, ok, err)
+	}
+	_, err = repo.CommitProviderConnection(ctx, CommitProviderConnectionInput{
+		ID:                         stored.ID,
+		UserID:                     stored.UserID,
+		ProviderID:                 stored.ProviderID,
+		ExpectedEncryptedSecretRef: stored.EncryptedSecretRef,
+		ExpectedType:               stored.Config.Type,
+		ExpectedBaseURL:            stored.Config.BaseURL,
+		ExpectedEnabled:            stored.Config.Enabled,
+		ConnectionTestSHA256:       ProviderConnectionTestFingerprint(stored),
+		ConnectionTestedAt:         time.Now().UTC(),
+		Enabled:                    true,
+	})
+	if err != nil {
+		t.Fatalf("CommitProviderConnection() error = %v", err)
+	}
 
 	var secretRef string
 	var storedConfig string
@@ -114,6 +133,10 @@ WHERE provider_id = 'INTEGRATION' AND deleted_at IS NULL
 	if resolved.APIKey != plaintext {
 		t.Fatalf("reloaded provider secret does not match")
 	}
+}
+
+func authDevelopmentUserID() string {
+	return "00000000-0000-0000-0000-000000000001"
 }
 
 func TestPostgresProviderSecretRewriteBackfillsAndRotatesEveryCiphertextRow(t *testing.T) {

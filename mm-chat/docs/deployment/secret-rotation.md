@@ -22,7 +22,7 @@ secrets, or copied provider keys.
 | Recovery tokens                                | Identity users, Postgres   | One-time, 30 minutes by default; completing Recovery consumes the token. |
 | SMTP username/password                         | Go backend Recovery mailer | Restart backend; verify delivery before revoking the old credential.     |
 | Session bearer tokens                          | Browser clients, Postgres  | Revoke through the authenticated session endpoints.                      |
-| `PROVIDER_API_KEY`                             | Go backend provider client | Restart backend; verify chat streaming.                                  |
+| Model-provider API Key                        | Postgres vault envelope     | Save through Provider admin, activate with a real test, verify chat.      |
 | Provider vault keyring                         | Go backend/admin only      | Retain old key until every Postgres envelope is transactionally rotated. |
 | `POSTGRES_PASSWORD` / `MIGRATION_DATABASE_URL` | Bootstrap/migrator         | Rotate together; verify one-shot migration access.                       |
 | API password / `DATABASE_URL`                  | Go API and `admin`         | Restart API; future `admin` runs use the same API runtime login.         |
@@ -145,11 +145,10 @@ re-encrypts it with the Docker Secret vault under the User/Provider context,
 and stores only the AES-256-GCM envelope in `provider_configs`. Reads expose
 only `hasApiKey`.
 
-During G11.9F.2.1, an existing BYOK envelope or the Server Default
-`PROVIDER_API_KEY` fallback is lazily imported into the vault on the next
-administrator metadata save. The old `.env` value remains rollback-only until
-the F2.3 connection-test cutover passes. F2.2 has backfilled the current model
-rows, but do not remove the env fallback yet.
+G11.9F.2.3 removed the Server Default environment fallback. Saving a changed
+type, base URL, or Key disables the provider and clears its prior connection
+proof. Run the administrator activation action after each such rotation; only
+a successful bounded real test can re-enable runtime use.
 
 Do not rotate or remove a vault key merely by editing the keyring file. Use the
 closed F2.2 sequence below. Every generated keyring path must be new; the
@@ -200,9 +199,10 @@ docker compose --env-file .env.single-server \
 
 If dry-run reports `blocked_rows>0`, do not execute. Re-enter or clear the
 affected custom provider through the administrator page, then repeat dry-run
-and backup. An unreadable `SERVER_DEFAULT` legacy row may be replaced only by
-the still-configured Server Default env fallback. Malformed vault rows or
-missing retained keys fail instead of using that fallback.
+and backup. Historical F2.2 rewrites could replace an unreadable
+`SERVER_DEFAULT` legacy row only while the one-time migration fallback still
+existed. F2.3 runtime has no such fallback: malformed vault rows or missing
+retained keys fail closed.
 
 Keep the previous keyring and pre-rewrite dump offline until the rollback
 window expires. Rollback restores both the previous keyring selection and the
@@ -215,9 +215,9 @@ Keep the keyring owned by the deployment user with mode `600`, and keep
 ID without changing the owner makes provider-secret loading fail closed at
 startup.
 
-Rollback of the model-provider `.env` value alone remains available only until
-F2.3. Vault rotation rollback always restores the paired keyring and Postgres
-backup described above.
+Rollback to a pre-F2.3 image requires the paired keyring and Postgres backup;
+if that image also needs the former provider environment value, recover it from
+an operator-owned secret source. Never reintroduce it to the F2.3 runtime.
 
 ## Postgres Login Passwords
 

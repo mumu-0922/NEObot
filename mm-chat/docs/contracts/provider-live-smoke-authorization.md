@@ -20,6 +20,8 @@ MM_CHAT_PROVIDER_LIVE_SMOKE_APPROVAL=
 MM_CHAT_PROVIDER_LIVE_SMOKE_TARGETS=
 MM_CHAT_PROVIDER_LIVE_SMOKE_RUN_ID=
 MM_CHAT_PROVIDER_LIVE_SMOKE_OUTPUT_DIR=
+MM_CHAT_PROVIDER_LIVE_SMOKE_BASE_URL=
+MM_CHAT_PROVIDER_LIVE_SMOKE_API_KEY=
 MM_CHAT_PROVIDER_LIVE_SMOKE_IMAGE_SIZE=
 ```
 
@@ -59,6 +61,10 @@ err := cfg.Authorize(providersmoke.Target{
 - `MM_CHAT_PROVIDER_LIVE_SMOKE_OUTPUT_DIR` and
   `MM_CHAT_PROVIDER_LIVE_SMOKE_IMAGE_SIZE` are optional smoke-harness settings;
   they do not authorize live calls by themselves.
+- `MM_CHAT_PROVIDER_LIVE_SMOKE_BASE_URL` and
+  `MM_CHAT_PROVIDER_LIVE_SMOKE_API_KEY` are explicit one-off harness inputs for
+  direct executor tests. They are never read by normal API runtime resolution,
+  never persisted, and do not authorize a call without the four gate values.
 
 ## 4. Validation & Error Matrix
 

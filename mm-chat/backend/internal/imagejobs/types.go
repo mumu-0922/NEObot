@@ -48,6 +48,10 @@ type Executor interface {
 	Generate(context.Context, GenerateRequest) (GenerateResult, error)
 }
 
+type ExecutorResolver interface {
+	ResolveImageExecutor(context.Context, ModelRef) (Executor, error)
+}
+
 type ArtifactStore interface {
 	Store(context.Context, jobartifacts.StoreInput) (jobartifacts.Artifact, error)
 }

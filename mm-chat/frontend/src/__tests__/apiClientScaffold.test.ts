@@ -496,6 +496,25 @@ describe("G3.1 server runtime/auth API adapters", () => {
             ],
           });
         }
+        if (
+          String(input).endsWith("/v1/admin/providers/CUSTOM/test") ||
+          String(input).endsWith("/v1/admin/providers/CUSTOM/activate")
+        ) {
+          return Response.json({
+            provider: {
+              id: "CUSTOM",
+              name: "Custom",
+              type: "OpenAI Compatible",
+              baseUrl: "https://custom.example/v1",
+              models: ["gpt-custom"],
+              enabled: String(input).endsWith("/activate"),
+              hasApiKey: true,
+              source: "server-stored",
+              connectionTestValid: true,
+            },
+            models: ["gpt-custom", "gpt-image-2"],
+          });
+        }
         if (String(input).endsWith("/v1/admin/providers/CUSTOM")) {
           if (init?.method === "DELETE") {
             return new Response(null, { status: 204 });
@@ -559,6 +578,15 @@ describe("G3.1 server runtime/auth API adapters", () => {
       }),
     ).resolves.toMatchObject({ source: "server-stored" });
     await expect(
+      createServerProviderApiShell(http).testAdminProviderConnection("CUSTOM"),
+    ).resolves.toMatchObject({
+      provider: { connectionTestValid: true },
+      models: ["gpt-custom", "gpt-image-2"],
+    });
+    await expect(
+      createServerProviderApiShell(http).activateAdminProvider("CUSTOM"),
+    ).resolves.toMatchObject({ provider: { enabled: true } });
+    await expect(
       createServerProviderApiShell(http).deleteAdminProviderConfig("CUSTOM"),
     ).resolves.toBeUndefined();
     await expect(
@@ -605,6 +633,16 @@ describe("G3.1 server runtime/auth API adapters", () => {
           models: ["gpt-custom"],
           enabled: true,
         },
+      },
+      {
+        url: "/mm-api/v1/admin/providers/CUSTOM/test",
+        method: "POST",
+        body: undefined,
+      },
+      {
+        url: "/mm-api/v1/admin/providers/CUSTOM/activate",
+        method: "POST",
+        body: undefined,
       },
       {
         url: "/mm-api/v1/admin/providers/CUSTOM",

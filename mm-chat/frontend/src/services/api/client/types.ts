@@ -404,6 +404,8 @@ export interface AdminProviderConfigDTO {
   enabled: boolean;
   hasApiKey: boolean;
   source: "server-default" | "server-stored";
+  connectionTestValid: boolean;
+  connectionTestedAt?: string;
 }
 
 export interface AdminProviderConfigsDTO {
@@ -421,6 +423,11 @@ export interface UpdateAdminProviderConfigInput {
   signal?: AbortSignal;
 }
 
+export interface AdminProviderConnectionDTO {
+  provider: AdminProviderConfigDTO;
+  models: string[];
+}
+
 export interface ProviderApi {
   listModels(input: ProviderModelsInput): Promise<ProviderModelsResponse>;
   getServerDefaultConfig(): Promise<AdminProviderConfigDTO>;
@@ -432,6 +439,14 @@ export interface ProviderApi {
     providerId: string,
     input: UpdateAdminProviderConfigInput,
   ): Promise<AdminProviderConfigDTO>;
+  testAdminProviderConnection(
+    providerId: string,
+    signal?: AbortSignal,
+  ): Promise<AdminProviderConnectionDTO>;
+  activateAdminProvider(
+    providerId: string,
+    signal?: AbortSignal,
+  ): Promise<AdminProviderConnectionDTO>;
   deleteAdminProviderConfig(providerId: string): Promise<void>;
 }
 

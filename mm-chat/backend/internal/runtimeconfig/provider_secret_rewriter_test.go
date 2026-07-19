@@ -100,12 +100,9 @@ func TestProviderSecretRewriteReportsUnrecoverableCustomLegacyRow(t *testing.T) 
 	}
 }
 
-func TestProviderSecretRewriteUsesEnvForUnrecoverableServerDefault(t *testing.T) {
+func TestProviderSecretRewriteBlocksUnrecoverableServerDefaultWithoutEnvFallback(t *testing.T) {
 	_, cfg := providerSecretRewriteBYOKConfig(t)
 	stalePrivateKey, _ := providerSecretRewriteBYOKConfig(t)
-	cfg.Provider.APIKey = strings.Join(
-		[]string{"env", "server", "default", "fixture"}, "-",
-	)
 	vault := providerSecretRewriteVault(t, "active", map[string]byte{"active": 26})
 	row := providerSecretLegacyRewriteRow(
 		t,
@@ -115,43 +112,14 @@ func TestProviderSecretRewriteUsesEnvForUnrecoverableServerDefault(t *testing.T)
 		serverDefaultProviderID,
 		"unrecoverable-secret",
 	)
-	rewriter := NewPostgresProviderSecretRewriter(nil, cfg, vault)
-	plan, err := rewriter.buildProviderSecretRewritePlan([]providerSecretRewriteRow{row})
+	plan, err := NewPostgresProviderSecretRewriter(nil, cfg, vault).
+		buildProviderSecretRewritePlan([]providerSecretRewriteRow{row})
 	if err != nil {
 		t.Fatalf("buildProviderSecretRewritePlan() error = %v", err)
 	}
-	if plan.result.EnvRows != 1 || plan.result.LegacyRows != 0 ||
-		plan.result.ChangedRows != 1 || plan.rows[0].action != providerSecretRewriteEnv {
-		t.Fatalf("env fallback plan = %#v / %#v", plan.result, plan.rows[0])
-	}
-	encoded, err := rewriter.rewriteProviderSecret(plan.rows[0])
-	if err != nil {
-		t.Fatalf("rewriteProviderSecret() error = %v", err)
-	}
-	envelope, err := providersecrets.ParseEnvelope(encoded)
-	if err != nil {
-		t.Fatal(err)
-	}
-	plaintext, err := vault.Decrypt(
-		envelope,
-		modelProviderSecretContext(row.userID, row.providerID),
-	)
-	if err != nil || string(plaintext) != cfg.Provider.APIKey {
-		t.Fatalf("env fallback plaintext = %q, %v", plaintext, err)
-	}
-	clear(plaintext)
-
-	changedConfig := cfg
-	changedConfig.Provider.APIKey = strings.Join(
-		[]string{"different", "env", "server", "fixture"}, "-",
-	)
-	changed, err := NewPostgresProviderSecretRewriter(nil, changedConfig, vault).
-		buildProviderSecretRewritePlan([]providerSecretRewriteRow{row})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if changed.result.PlanSHA256 == plan.result.PlanSHA256 {
-		t.Fatal("plan hash did not bind the env fallback secret")
+	if plan.result.EnvRows != 0 || plan.result.BlockedRows != 1 ||
+		plan.result.ChangedRows != 0 || plan.rows[0].action != providerSecretRewriteBlocked {
+		t.Fatalf("blocked plan = %#v / %#v", plan.result, plan.rows[0])
 	}
 }
 

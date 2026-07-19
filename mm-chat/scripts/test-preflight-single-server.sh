@@ -150,12 +150,22 @@ sed \
   -e 's|change-me-minio-user-secret|test-minio-app-password|g' \
   -e 's|change-me-base64-32-byte-random-key|MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=|g' \
   -e 's|https://change-me.example/invites/accept|https://chat.internal/invites/accept|' \
-  -e 's|https://your-openai-compatible-relay.example/v1|https://relay.internal/v1|' \
-  -e 's|change-me-provider-key|test-provider-key-1234567890|' \
   -e "s|^PROVIDER_SECRET_KEYRING_SOURCE=.*|PROVIDER_SECRET_KEYRING_SOURCE=${provider_keyring}|" \
   "${example}" >"${valid}"
 chmod 600 "${valid}"
 "${preflight}" "${valid}" >/dev/null
+
+quoted_byok_pem="${temp_dir}/quoted-byok-pem.env"
+sed "s|^BYOK_PRIVATE_KEY_PEM=.*|BYOK_PRIVATE_KEY_PEM='-----BEGIN PRIVATE KEY-----\\\\nYWJj\\\\n-----END PRIVATE KEY-----'|" \
+  "${valid}" >"${quoted_byok_pem}"
+chmod 600 "${quoted_byok_pem}"
+"${preflight}" "${quoted_byok_pem}" >/dev/null
+
+invalid_byok_pem="${temp_dir}/invalid-byok-pem.env"
+sed "s|^BYOK_PRIVATE_KEY_PEM=.*|BYOK_PRIVATE_KEY_PEM='not-a-private-key'|" \
+  "${valid}" >"${invalid_byok_pem}"
+chmod 600 "${invalid_byok_pem}"
+assert_rejected "${invalid_byok_pem}" "BYOK_PRIVATE_KEY_PEM"
 
 runtime_uid_mismatch="${temp_dir}/runtime-uid-mismatch.env"
 sed "s|^MM_CHAT_RUNTIME_UID=.*|MM_CHAT_RUNTIME_UID=$(( $(id -u) + 1 ))|" \
@@ -224,12 +234,6 @@ chmod 600 "${malformed_keyring_env}"
 assert_rejected \
   "${malformed_keyring_env}" \
   "PROVIDER_SECRET_KEYRING_SOURCE is invalid"
-
-placeholder="${temp_dir}/placeholder.env"
-sed 's|^PROVIDER_API_KEY=.*|PROVIDER_API_KEY=change-me-provider-key|' \
-  "${valid}" >"${placeholder}"
-chmod 600 "${placeholder}"
-assert_rejected "${placeholder}" "PROVIDER_API_KEY still contains a placeholder"
 
 migration_user_mismatch="${temp_dir}/migration-user-mismatch.env"
 sed 's|^POSTGRES_USER=.*|POSTGRES_USER=different_migrator|' \
@@ -316,8 +320,8 @@ for interpolation_value in \
   '${UNSET-fallback}' \
   '$$'; do
   interpolation="${temp_dir}/interpolation-$RANDOM.env"
-  grep -v '^PROVIDER_API_KEY=' "${valid}" >"${interpolation}"
-  printf 'PROVIDER_API_KEY=%s\n' "${interpolation_value}" >>"${interpolation}"
+  grep -v '^S3_SECRET_ACCESS_KEY=' "${valid}" >"${interpolation}"
+  printf 'S3_SECRET_ACCESS_KEY=%s\n' "${interpolation_value}" >>"${interpolation}"
   chmod 600 "${interpolation}"
   assert_rejected \
     "${interpolation}" \
@@ -412,25 +416,13 @@ for invalid_invite in \
   assert_rejected "${invite_env}" "TEAM_INVITE_ACCEPT_URL_BASE"
 done
 
-for invalid_provider in \
-  'https://user:password@relay.internal/v1' \
-  'https://relay.internal/v1#fragment' \
-  'https://bad host/v1' \
-  'https://relay.internal:invalid/v1'; do
-  provider_env="${temp_dir}/provider-$RANDOM.env"
-  sed "s|^PROVIDER_BASE_URL=.*|PROVIDER_BASE_URL=${invalid_provider}|" \
-    "${valid}" >"${provider_env}"
-  chmod 600 "${provider_env}"
-  assert_rejected "${provider_env}" "PROVIDER_BASE_URL"
-done
-
 for unsupported_assignment in \
-  'PROVIDER_API_KEY="quoted-value"' \
-  'PROVIDER_API_KEY=value\\twith-escape' \
-  'PROVIDER_API_KEY=value#inline-comment' \
-  'export PROVIDER_API_KEY=value'; do
+  'REDIS_PASSWORD="quoted-value"' \
+  'REDIS_PASSWORD=value\\twith-escape' \
+  'REDIS_PASSWORD=value#inline-comment' \
+  'export REDIS_PASSWORD=value'; do
   syntax_env="${temp_dir}/syntax-$RANDOM.env"
-  grep -v '^PROVIDER_API_KEY=' "${valid}" >"${syntax_env}"
+  grep -v '^REDIS_PASSWORD=' "${valid}" >"${syntax_env}"
   printf '%s\n' "${unsupported_assignment}" >>"${syntax_env}"
   chmod 600 "${syntax_env}"
   assert_rejected "${syntax_env}" "unsupported"
@@ -438,7 +430,7 @@ done
 
 duplicate="${temp_dir}/duplicate.env"
 cp "${valid}" "${duplicate}"
-printf '\nPROVIDER_API_KEY=second-value\n' >>"${duplicate}"
+printf '\nREDIS_PASSWORD=second-value\n' >>"${duplicate}"
 chmod 600 "${duplicate}"
 assert_rejected "${duplicate}" "duplicate env name"
 
@@ -522,8 +514,18 @@ assert "DATABASE_URL" not in migrate_environment
 admin_environment = services["admin"]["environment"]
 assert "neo_chat_api:test-api-password@postgres" in admin_environment["DATABASE_URL"]
 assert "MIGRATION_DATABASE_URL" not in admin_environment
-assert admin_environment["PROVIDER_API_KEY"] == "test-provider-key-1234567890"
 assert admin_environment["BYOK_ALLOW_EPHEMERAL_KEY"] == "false"
+for service_name in ("frontend", "backend", "admin"):
+    for provider_env in (
+        "PROVIDER_TYPE",
+        "DEFAULT_PROVIDER_NAME",
+        "PROVIDER_BASE_URL",
+        "PROVIDER_MODEL",
+        "PROVIDER_API_KEY",
+        "DEFAULT_PROVIDER_TYPE",
+        "DEFAULT_PROVIDER_MODELS",
+    ):
+        assert provider_env not in services[service_name]["environment"]
 
 rag = services["rag-worker"]
 want_rag_image = (

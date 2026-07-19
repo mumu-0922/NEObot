@@ -1,4 +1,5 @@
 import type {
+  AdminProviderConnectionDTO,
   AdminProviderConfigDTO,
   AdminProviderConfigsDTO,
   ProviderApi,
@@ -66,6 +67,24 @@ export function createServerProviderApiShell(
       await httpClient.requestJson<void>(
         `/v1/admin/providers/${encodeURIComponent(providerId)}`,
         { method: "DELETE" },
+      );
+    },
+    async testAdminProviderConnection(
+      providerId: string,
+      signal?: AbortSignal,
+    ): Promise<AdminProviderConnectionDTO> {
+      return httpClient.requestJson<AdminProviderConnectionDTO>(
+        `/v1/admin/providers/${encodeURIComponent(providerId)}/test`,
+        { method: "POST", signal },
+      );
+    },
+    async activateAdminProvider(
+      providerId: string,
+      signal?: AbortSignal,
+    ): Promise<AdminProviderConnectionDTO> {
+      return httpClient.requestJson<AdminProviderConnectionDTO>(
+        `/v1/admin/providers/${encodeURIComponent(providerId)}/activate`,
+        { method: "POST", signal },
       );
     },
   };
