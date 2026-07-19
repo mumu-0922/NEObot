@@ -296,7 +296,23 @@ Incremental execution slices:
   `[W]` persistence/reload, restart continuity, and no-fallback failure proofs
   passed with test artifacts cleaned;
 - **G11.9F.4**: add MinerU/Jina administrator records and a scoped Go credential
-  gateway so Python receives neither the vault keyring nor reusable secrets;
+  gateway so Python receives neither the vault keyring nor reusable secrets:
+  - **G11.9F.4.1** complete: freeze the
+    [`RAG Provider Administrator and Gateway Contract`](../contracts/rag-provider-admin-gateway.md),
+    including reserved records, vault contexts, real-test semantics, the
+    Python-to-Go operation allowlist, and environment-removal order;
+  - **G11.9F.4.2**: add Postgres/vault MinerU/Jina administrator CRUD,
+    save-and-test/activate UI, dynamic provider status, and transition-only
+    administrator import of the existing environment Keys;
+  - **G11.9F.4.3**: add the closed Go MinerU allocate/poll and Jina passage
+    embedding gateway plus direct Go Jina query/rerank adapters, without
+    cutting Python off its current provider environment path yet;
+  - **G11.9F.4.4**: switch Python to the scoped Go operations, retire the old
+    Go-to-Python Jina routes, and remove MinerU/Jina provider Key environment
+    parsing, Compose wiring, examples, and operator values;
+  - **G11.9F.4.5**: prove real MinerU scanned/complex-PDF parsing, Jina 1024
+    indexing/retrieval, restart, rotation, redaction, backup/restore, rollback,
+    and cleanup;
 - **G11.9F.5**: reserve the same provider-kind contract for future Voice,
   complete removal/backup/rotation/redaction/clean-copy proofs, and close F.
 

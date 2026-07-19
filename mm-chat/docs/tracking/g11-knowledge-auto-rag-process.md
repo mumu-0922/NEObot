@@ -1576,3 +1576,27 @@ mode-600 SHA-256 sidecar and a successful container `pg_restore --list` check.
 Rollback to the pre-F3 image must use that dump or remove the `kind="search"`
 row before startup because the older model-provider control plane does not own
 Search-discriminated records. G11.9F.3 is complete.
+
+## 2026-07-19 — G11.9F.4.1 MinerU/Jina control-plane freeze
+
+Before changing runtime credentials, the MinerU/Jina administrator and private
+gateway boundary was frozen in
+`docs/contracts/rag-provider-admin-gateway.md`. The two complementary providers
+use reserved `RAG:MINERU` and `RAG:JINA` records with `kind="rag"`, distinct
+BYOK/vault contexts, real connection attestations, and no model/Search record
+overlap.
+
+The final call direction deliberately avoids a Go -> Python -> Go provider
+cycle. Go directly owns Jina query embedding and reranking. Python may call Go
+only for MinerU allocate/poll and Jina passage embeddings through closed DTOs
+authenticated by the existing internal token. Python never receives the vault
+keyring or a reusable provider Key; Go never exposes a generic provider proxy.
+Provider-issued single-job signed URLs remain bounded in-memory capabilities
+for upload/result handling and are neither persisted nor logged.
+
+F4 is now split into independently testable commits: administrator records and
+vault/UI, unused scoped Go gateways, Python cutover plus environment removal,
+then owner-authorized live MinerU/Jina/restart/rotation/rollback closure. The
+current environment path remains unchanged in F4.1, so this documentation-only
+slice has no provider call, quota use, database mutation, runtime change, or
+rollback state.
