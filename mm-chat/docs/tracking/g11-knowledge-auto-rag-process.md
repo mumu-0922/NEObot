@@ -2066,3 +2066,65 @@ instruction and compact notice, then restores built-in startup failure as a
 terminal provider error while retaining G11.9G.1/G11.9G.2 external behavior.
 G11.9G.4 remains the full live matrix, restart, clean-copy, cleanup, and final
 G11.9 closure.
+
+## 2026-07-19 — G11.9G.4 Live matrix and G11.9 closure
+
+The deployed source-built Backend and Frontend exercised the real
+Postgres/vault Server Default `gpt-5.5`, active Tavily, active structure-aware
+Knowledge generation, Jina 1024-dimensional query embedding, and Jina rerank.
+Six temporary conversations covered model-only, Web-only, Knowledge-only,
+mixed, Search-enabled-but-unnecessary, and normal Knowledge-miss behavior. The
+smoke inspected only terminal status/count/enums; answer and source bodies were
+not copied into logs or documentation.
+
+Live matrix:
+
+```text
+neither              model / Search not requested / no source card
+Web only             web / Tavily / 3 [W] citations / 1 Search block
+Knowledge only       knowledge / answered / 1 [K] citation
+Knowledge + Web      mixed / 1 [K] + 3 [W] / 1 Search block
+Web unnecessary      knowledge_sufficient / Search not requested
+Knowledge miss       no_evidence / model / no empty Knowledge card
+```
+
+The first mixed call encountered one transient Tavily provider failure. Auto
+behaved as designed: it completed from Knowledge, persisted `provider_failed`,
+and did not switch providers. A direct replay of the same bounded derived query
+then returned three sources, and an isolated mixed chat rerun completed with
+one `[K]` and three `[W]` citations. This proves a transient upstream event,
+not a derived-query contract failure; no automatic retry or provider fallback
+was introduced.
+
+Backend, Frontend, and RAG Worker were restarted together and returned healthy.
+After restart, MinerU/Jina status remained `ready`, Jina remained 1024
+dimensions, a real Tavily request returned one source, and the provider-secret
+audit remained `changed_rows=0`, `current_rows=5`, `blocked_rows=0`. A final
+post-restart mixed chat again persisted one `[K]`, three `[W]`, and one Search
+block. Every smoke conversation returned 204 on deletion; the final listing
+found zero G11.9G.4 conversations, and all temporary request/response scripts
+and artifacts were removed.
+
+Final verification:
+
+```text
+live Auto six-case matrix                                passed
+isolated mixed rerun / post-restart mixed rerun          passed / passed
+Backend / Frontend / RAG Worker restart health           healthy / healthy / healthy
+post-restart MinerU/Jina / Tavily                         ready(1024) / 1 source
+provider vault rewrite audit                              changed=0, current=5, blocked=0
+smoke conversation / local artifact cleanup              zero / zero
+single-server production preflight                       passed
+clean-copy frontend format/lint/typecheck/test/build      178 files / 851 tests / passed
+clean-copy Go full                                        passed
+clean-copy Python Ruff/format/Mypy/tests                  1730 passed / 7 skipped
+standalone full                                           passed
+```
+
+The earlier optional Python coverage debt remains unchanged at 89.39% against
+the configured 90% threshold; it is not hidden by the required clean-copy pass.
+F4.5's paired Postgres/keyring backup and active-only rotation remain the
+rollback anchor. Code rollback may revert G11.9G.1 through G11.9G.3 in reverse
+commit order without changing schema or provider state.
+
+G11.9G.4, G11.9G, and the complete G11.9 Auto Knowledge/Web plan are closed.

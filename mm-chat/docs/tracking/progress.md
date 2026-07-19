@@ -1286,7 +1286,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         bounded exact-phrase and overlapping-bigram signals beside the existing
         lexical lane, live-proving Chinese evidence queries return candidates
         while unrelated or unsupported questions remain strict refusals.
-  - [ ] G11.9 Auto Knowledge and Web-augmented chat: replace the per-message
+  - [x] G11.9 Auto Knowledge and Web-augmented chat: replace the per-message
         strict evidence gate with conversation-persistent Auto augmentation per
         `docs/tracking/g11-knowledge-auto-rag-plan.md`.
     - [x] G11.9A Development Hydration and Auto semantics: development mode
@@ -1408,7 +1408,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
             cross-provider exclusion, legacy-row blocking, attestation-safe
             retained-key rotation, retired Voice-env preflight, fail-closed
             runtime, and final clean-copy closure without a real Voice call.
-    - [ ] G11.9G Knowledge/Web/model fusion, `[K]`/`[W]` citations, diagnostics,
+    - [x] G11.9G Knowledge/Web/model fusion, `[K]`/`[W]` citations, diagnostics,
           and clean-copy/live closure.
       - [x] G11.9G.1 Deterministic question/authority Router, Knowledge-first
             ordering, unnecessary-Web skip, redacted decision metadata, and
@@ -1417,7 +1417,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
             and bounded stage/timing diagnostics.
       - [x] G11.9G.3 Model-built-in routing, conflict instructions, combined
             citation persistence/reload, and frontend interaction parity.
-      - [ ] G11.9G.4 Full matrix, live provider smoke, restart, clean-copy,
+      - [x] G11.9G.4 Full matrix, live provider smoke, restart, clean-copy,
             cleanup, and G11.9 closure.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration

@@ -174,3 +174,12 @@ internal/current/conflict instructions, terminal stage outcomes, and combined
 `[K]`/`[W]` reload. A built-in startup failure retries the same selected model
 once without Web; it never switches model or Search provider. The frontend
 shows one compact localized notice only for allowlisted true Web degradation.
+
+### 2026-07-19 — G11.9G.4
+
+The live Auto matrix passed model-only, Tavily-only, Knowledge-only, mixed,
+unnecessary-Web skip, and silent Knowledge-miss cases. A transient Tavily
+failure on the first mixed call degraded correctly; the isolated rerun and the
+post-restart mixed call each persisted one `[K]` and three `[W]` citations.
+All temporary conversations were deleted and full clean-copy verification
+passed.

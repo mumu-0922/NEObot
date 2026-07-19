@@ -359,9 +359,13 @@ Incremental execution slices:
 - **G11.9G.3** complete: close model-built-in Search routing, deterministic conflict
   instructions, combined `[K]`/`[W]` persistence/reload, and frontend citation
   interaction parity;
-- **G11.9G.4**: execute the full matrix, owner-authorized live
+- **G11.9G.4** complete: execute the full matrix, owner-authorized live
   Knowledge/Web/model smoke, restart/clean-copy verification, cleanup, and
   close G11.9.
+
+G11.9 is complete. The final deployed proof used the active structure-aware
+Knowledge generation, Jina query/rerank, Tavily, and `gpt-5.5`; every temporary
+conversation and local smoke artifact was removed after reload verification.
 
 ## Definition of Done
 
