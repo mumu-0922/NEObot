@@ -1655,3 +1655,68 @@ The owner-only rollback anchor is
 back to F3 restores that dump and the current vault keyring together. F4.2 does
 not remove the provider environment values or change Python execution; F4.3
 adds unused scoped Go operations, then F4.4 performs the cutover and removal.
+
+## 2026-07-19 — G11.9F.4.3 Scoped Go provider data plane
+
+Go now owns a closed MinerU/Jina provider data plane behind three private
+operations: MinerU allocate, MinerU poll, and Jina passage embeddings. Each
+request authenticates with the infrastructure-only internal token before body
+parsing. The handler accepts only operation-specific DTOs; an unknown route or
+caller-supplied URL, method, header, provider, model, task, Key, or generic
+operation returns `RAG_PROVIDER_OPERATION_UNSUPPORTED`. There is no credential
+lease, credential read route, or generic HTTP proxy.
+
+Every real operation resolves the exact enabled and attested `RAG:MINERU` or
+`RAG:JINA` row from Postgres, decrypts it with the record-bound vault context,
+and fails closed on missing, disabled, stale, corrupt, copied, or cross-kind
+state. The transition environment Keys are not a runtime fallback for these
+routes. Python still uses its existing provider environment path in this slice;
+switching Python and deleting those variables remains F4.4.
+
+The shared Go provider profile fixes MinerU endpoints/model/capability hosts and
+Jina endpoints/models/dimensions in one package. MinerU allocation always asks
+for OCR, formulas, tables, one safe filename, and `vlm`; polling builds the URL
+from a validated batch ID and admits only the frozen state/result schema. Jina
+passage calls accept unique non-zero UUIDs and bounded text, return ordered
+finite non-zero 1024-dimensional vectors, and never echo upstream metadata.
+The same Go gateway implements direct `retrieval.query` and
+`jina-reranker-v3` adapters, ready for F4.4 to replace the old Go-to-Python
+query/rerank hop without creating a Go -> Python -> Go cycle.
+
+The provider HTTP client disables environment proxies and redirects, requires
+TLS 1.2+, sends identity encoding, accepts JSON only, and enforces 1 MiB MinerU
+and 16 MiB Jina response ceilings. Private request bodies are strict and
+bounded; API errors contain stable codes only. The exact private prefix is
+exempt from browser session auth only so its own constant-time internal-token
+gate can run.
+
+Verification:
+
+```text
+backend full go test / focused race / go vet                     passed
+closed DTO, auth, unknown-control, size, URL/model tests         passed
+Postgres/vault active/stale/copied-context runtime resolver      passed
+Compose source build / deployed backend health                  passed / healthy
+real Go MinerU allocate / immediate poll                         passed / waiting-file
+real deployed Go Jina retrieval.passage                         1024 finite non-zero
+real direct Go Jina retrieval.query / rerank                     passed / passed
+missing internal token / caller controls / unknown operation     401 / 400 / 400
+dynamic RAG status after redeploy                                ready
+Key, Bearer, signed-capability, ciphertext log scan              zero hits
+```
+
+The first direct-adapter live attempt from the WSL host timed out because that
+host path cannot reach Jina without its desktop proxy. The same temporary Go
+test passed inside the production Docker egress network, matching the deployed
+Backend path; its source file and transient environment were removed. The
+deployed private passage call independently proved the production
+Postgres/vault resolver. The MinerU proof intentionally did not upload a file,
+so its remote batch remained `waiting-file` and no source content left the
+system.
+
+F4.3 adds no schema and mutates no application record, so the F4.2 Postgres dump
+and paired vault keyring remain the rollback anchor. Rebuilding commit F4.2
+removes the unused private routes and direct adapters. F4.4 is next: switch the
+Python parse/passage clients, wire Go retrieval to the direct adapter, remove
+the old Python query/rerank routes, and only then delete provider Key environment
+parsing and Compose/operator values.

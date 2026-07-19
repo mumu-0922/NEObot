@@ -15,8 +15,8 @@ import (
 
 const (
 	queryEmbeddingPath           = "/internal/retrieval/query-embedding"
-	queryEmbeddingModel          = "jina-embeddings-v4"
-	queryEmbeddingDimensions     = 1024
+	queryEmbeddingModel          = JinaEmbeddingModel
+	queryEmbeddingDimensions     = JinaEmbeddingDimensions
 	maxQueryEmbeddingQueryBytes  = 2048
 	maxQueryEmbeddingTokenBytes  = 4096
 	maxQueryEmbeddingBodyBytes   = 128 * 1024

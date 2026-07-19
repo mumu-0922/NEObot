@@ -672,6 +672,10 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	jobControlHandler := jobcontrol.NewHandler(nil)
 	voiceJobHandler := voicejobs.NewHandler(resolvedOptions.voiceJobService)
 	ragProviderHandler := ragproviders.NewHandler(runtimeConfigService.RAGProviderStatus)
+	providerGatewayHandler := ragproviders.NewProviderGatewayHandler(
+		cfg.RAG.SourceGatewayToken,
+		ragproviders.NewProviderGateway(runtimeConfigService),
+	)
 	ragSourceHandler := ragsource.NewHandler(resolvedOptions.ragSourceService)
 	pluginHandler := plugins.NewHandler(plugins.NewService(
 		cfg,
@@ -718,6 +722,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/voice/transcribe", voiceJobHandler)
 	mux.Handle("/v1/voice/synthesize", voiceJobHandler)
 	mux.Handle("/v1/rag/provider-status", ragProviderHandler)
+	mux.Handle(ragproviders.InternalProviderPathPrefix, providerGatewayHandler)
 	mux.Handle(ragsource.InternalSourceObjectPath, ragSourceHandler)
 	mux.Handle("/v1/files", fileHandler)
 	mux.Handle("/v1/files/", fileHandler)
@@ -855,6 +860,10 @@ func isPublicWithoutAuthRequest(r *http.Request) bool {
 	case ragsource.InternalSourceObjectPath:
 		return r.Method == http.MethodPost
 	default:
+		if r.Method == http.MethodPost &&
+			strings.HasPrefix(r.URL.Path, ragproviders.InternalProviderPathPrefix) {
+			return true
+		}
 		return r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/agents/")
 	}
 }

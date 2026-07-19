@@ -8,6 +8,7 @@ import (
 
 	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/config"
+	"neo-chat/mm-chat/backend/internal/ragproviders"
 	"neo-chat/mm-chat/backend/internal/websearch"
 )
 
@@ -20,16 +21,16 @@ const (
 	minerUMaxResponseBytes          = 1 << 20
 	jinaMaxResponseBytes            = 16 << 20
 
-	minerUAllocateURL      = "https://mineru.net/api/v4/file-urls/batch"
-	minerUUploadHost       = "mineru.oss-cn-shanghai.aliyuncs.com"
-	minerUUploadPathPrefix = "/api-upload/"
-	minerUModelVersion     = "vlm"
+	minerUAllocateURL      = ragproviders.MinerUAllocateEndpoint
+	minerUUploadHost       = ragproviders.MinerUUploadHost
+	minerUUploadPathPrefix = ragproviders.MinerUUploadPathPrefix
+	minerUModelVersion     = ragproviders.MinerUModelVersion
 
-	jinaEmbeddingsURL  = "https://api.jina.ai/v1/embeddings"
-	jinaRerankURL      = "https://api.jina.ai/v1/rerank"
-	jinaEmbeddingModel = "jina-embeddings-v4"
-	jinaRerankModel    = "jina-reranker-v3"
-	jinaDimensions     = 1024
+	jinaEmbeddingsURL  = ragproviders.JinaEmbeddingsEndpoint
+	jinaRerankURL      = ragproviders.JinaRerankEndpoint
+	jinaEmbeddingModel = ragproviders.JinaEmbeddingModel
+	jinaRerankModel    = ragproviders.JinaRerankModel
+	jinaDimensions     = ragproviders.JinaEmbeddingDimensions
 
 	ragConnectionSentinel = "mm-chat provider connection test"
 )

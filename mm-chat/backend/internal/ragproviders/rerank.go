@@ -14,7 +14,7 @@ import (
 
 const (
 	rerankPath                  = "/internal/retrieval/rerank"
-	rerankModel                 = "jina-reranker-v3"
+	rerankModel                 = JinaRerankModel
 	maxRerankDocuments          = 20
 	maxRerankQueryBytes         = 2048
 	maxRerankDocumentBytes      = 64 * 1024

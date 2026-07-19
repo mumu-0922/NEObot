@@ -1398,7 +1398,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
               vault contexts, closed operation boundary, and cutover order.
         - [x] G11.9F.4.2 Administrator CRUD/test/activate, Postgres/vault, UI,
               dynamic status, and transition-only env import.
-        - [ ] G11.9F.4.3 Scoped Go MinerU/Jina gateway and direct Go query/rerank.
+        - [x] G11.9F.4.3 Scoped Go MinerU/Jina gateway and direct Go query/rerank.
         - [ ] G11.9F.4.4 Python cutover, old route retirement, and provider Key
               environment removal.
         - [ ] G11.9F.4.5 Real-provider, restart, rotation, backup, and rollback

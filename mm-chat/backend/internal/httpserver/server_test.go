@@ -27,6 +27,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/imagejobs"
 	"neo-chat/mm-chat/backend/internal/jobartifacts"
 	"neo-chat/mm-chat/backend/internal/jobaudit"
+	"neo-chat/mm-chat/backend/internal/ragproviders"
 	"neo-chat/mm-chat/backend/internal/ragsource"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
 	"neo-chat/mm-chat/backend/internal/runtimeconfig"
@@ -706,6 +707,41 @@ func TestAuthRequiredModeLetsInternalRAGSourceRouteUseItsOwnTokenGate(t *testing
 	}
 	if body.Error.Code != "RAG_SOURCE_OBJECT_UNAUTHORIZED" {
 		t.Fatalf("error code = %q, want RAG_SOURCE_OBJECT_UNAUTHORIZED", body.Error.Code)
+	}
+}
+
+func TestAuthRequiredModeLetsInternalProviderRoutesUseTheirOwnTokenGate(t *testing.T) {
+	handler := NewHandler(
+		config.Config{
+			Addr:    ":0",
+			Version: "route-test",
+			Auth:    config.AuthConfig{Mode: config.AuthModeRequired},
+			RAG: config.RAGConfig{
+				SourceGatewayToken: "unit-test-rag-provider-token",
+			},
+		},
+	)
+	for _, path := range []string{
+		ragproviders.InternalMinerUAllocatePath,
+		ragproviders.InternalMinerUPollPath,
+		ragproviders.InternalJinaEmbeddingsPath,
+	} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
+		request.Header.Set("Content-Type", "application/json")
+
+		handler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusUnauthorized {
+			t.Fatalf("%s status = %d, want 401; body=%s", path, recorder.Code, recorder.Body.String())
+		}
+		var body ragproviders.ErrorResponse
+		if err := json.NewDecoder(recorder.Body).Decode(&body); err != nil {
+			t.Fatalf("decode %s response: %v", path, err)
+		}
+		if body.Error.Code != "RAG_PROVIDER_GATEWAY_UNAUTHORIZED" {
+			t.Fatalf("%s error code = %q", path, body.Error.Code)
+		}
 	}
 }
 

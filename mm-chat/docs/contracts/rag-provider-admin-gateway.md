@@ -37,6 +37,25 @@ POST /internal/rag/providers/mineru/poll
 POST /internal/rag/providers/jina/embeddings
 ```
 
+The closed private DTOs are:
+
+```text
+allocate request  { filename }
+allocate response { batchId, filename, uploadUrl }
+poll request      { batchId, filename }
+poll response     { batchId, filename, state, resultUrl? }
+embedding request { passages: [{ passageId, text }] }
+embedding response{ model, dimensions, vectors: [{ passageId, embedding }] }
+```
+
+MinerU filenames and batch IDs use bounded safe identifier grammars. Passage
+IDs are non-zero UUIDs; one embedding call admits at most 256 unique passages,
+64 KiB per passage, and 4 MiB of source text. Allocate/poll request bodies are
+bounded to 8 KiB and the embedding request body to 5 MiB. Unknown fields are
+rejected; caller-supplied URL, method, header, provider, model, task, Key, or
+generic operation controls return `RAG_PROVIDER_OPERATION_UNSUPPORTED` before
+provider resolution.
+
 The private routes require `X-MM-Chat-Internal-Token` with the existing
 `RAG_SOURCE_GATEWAY_TOKEN`. They accept closed, bounded JSON DTOs and never
 accept an upstream URL, HTTP method, header, model ID, credential, or generic
@@ -87,6 +106,10 @@ hop is removed, so no Go -> Python -> Go request cycle remains.
 - request/response size, item-count, timeout, redirect, content-type, numeric,
   model, and URL-host validation remain at least as strict as the current
   Python gateways. Go synthesizes every upstream URL and authentication header.
+- the provider HTTP client ignores environment proxies, requires TLS 1.2 or
+  newer, follows no redirect, accepts only identity-encoded JSON, and bounds
+  MinerU/Jina response bodies to 1 MiB/16 MiB. MinerU upload and result
+  capabilities are restricted to the frozen HTTPS hosts and path grammars.
 - `RAG_SOURCE_GATEWAY_TOKEN` remains infrastructure configuration. Provider
   Keys are lazily imported only through an administrator save during the
   transition, then removed from Go/Python config, Compose, examples, and the
