@@ -123,11 +123,35 @@ func (r *PostgresProviderSecretRewriter) Rewrite(
 		if err != nil {
 			return ProviderSecretRewriteResult{}, err
 		}
+		connectionTestSHA256, preserveAttestation, err :=
+			r.rewrittenProviderConnectionAttestation(item, secretRef)
+		if err != nil {
+			return ProviderSecretRewriteResult{}, err
+		}
 		result, err := tx.ExecContext(ctx, `
 UPDATE provider_configs
-SET encrypted_secret_ref = $2, updated_at = now()
-WHERE id = $1 AND encrypted_secret_ref = $3
-`, item.id, secretRef, item.encryptedSecretRef)
+SET encrypted_secret_ref = $2,
+    config = CASE
+      WHEN $4 THEN jsonb_set(
+        config,
+        '{connectionTestSha256}',
+        to_jsonb($5::text),
+        true
+      )
+      ELSE config
+    END,
+    updated_at = now()
+WHERE id = $1
+  AND encrypted_secret_ref = $3
+  AND config = $6::jsonb
+`,
+			item.id,
+			secretRef,
+			item.encryptedSecretRef,
+			preserveAttestation,
+			connectionTestSHA256,
+			item.configJSON,
+		)
 		if err != nil {
 			return ProviderSecretRewriteResult{}, err
 		}

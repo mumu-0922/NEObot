@@ -171,6 +171,43 @@ CDN. When set, the worker still validates the provider `full_zip_url` as
 internal proxy; no MinerU token, Authorization header, cookie, or provider
 secret is forwarded to that proxy.
 
+When this Docker Desktop transport defect is present, run the narrow downloader
+with **Windows Python**, not WSL Python. Docker reaches the Windows listener
+through `host.docker.internal`; a process listening only inside the Ubuntu WSL
+namespace is not equivalent. From Windows PowerShell:
+
+```powershell
+$Project = "\\wsl.localhost\Ubuntu\home\mumu\projects\neo-chat\mm-chat"
+& "$Project\scripts\mineru-result-proxy-windows.ps1" start `
+  -Python "D:\Anaconda\python.exe"
+& "$Project\scripts\mineru-result-proxy-windows.ps1" status
+```
+
+Then set the protected operator environment entry and recreate only the Worker:
+
+```text
+RAG_MINERU_RESULT_PROXY_URL=http://host.docker.internal:18081/mineru-result
+```
+
+```bash
+docker compose --env-file .env.single-server \
+  -f compose.single-server.yml --profile rag-worker \
+  up -d --force-recreate rag-worker
+```
+
+Stop the workaround from PowerShell when direct CDN egress is repaired:
+
+```powershell
+& "$Project\scripts\mineru-result-proxy-windows.ps1" stop
+```
+
+The proxy accepts only `POST /mineru-result` with the closed
+`{ "resultUrl": "..." }` DTO, an exact HTTPS MinerU CDN host/path, no query,
+userinfo, fragment, Authorization, or Cookie, and a 32 MiB ZIP ceiling. The
+signed URL is passed to `curl.exe` through stdin rather than argv and is not
+logged. Keep the listener behind the local Windows firewall; it is an optional
+Desktop workaround, not a general production download proxy.
+
 G7.3 adds an explicit provider-backed runtime profile gate. Keep
 `RAG_PROVIDER_PROFILE=disabled` until the operator intentionally enables
 `mineru_jina_postgres_v1`. Provider-backed `parse` or `passage_embedding`

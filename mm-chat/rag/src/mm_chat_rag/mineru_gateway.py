@@ -846,7 +846,13 @@ def _validate_result_target_url(value: str) -> None:
     parsed = _parse_url(value, error_code=MINERU_GATEWAY_RESULT_URL_INVALID)
     if len(value.encode("utf-8")) > MAX_MINERU_UPLOAD_URL_BYTES:
         _reject_permanent(MINERU_GATEWAY_RESULT_URL_INVALID)
-    if parsed.hostname != MINERU_RESULT_TARGET_HOST:
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != MINERU_RESULT_TARGET_HOST
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.fragment
+    ):
         _reject_permanent(MINERU_GATEWAY_RESULT_URL_INVALID)
     if _url_port(parsed, error_code=MINERU_GATEWAY_RESULT_URL_INVALID) not in {
         None,

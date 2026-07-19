@@ -11,6 +11,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/providersecrets"
@@ -219,6 +220,154 @@ func TestProviderSecretRewriteUsesRAGVaultContextAndBlocksLegacyRAGRows(t *testi
 	); err == nil {
 		t.Fatal("RAG envelope decrypted with model-provider context")
 	}
+}
+
+func TestProviderSecretRewriteRebindsOnlyExistingValidConnectionAttestations(t *testing.T) {
+	oldVault := providerSecretRewriteVault(t, "old", map[string]byte{"old": 38})
+	rotatingVault := providerSecretRewriteVault(t, "new", map[string]byte{
+		"new": 39,
+		"old": 38,
+	})
+	const userID = "00000000-0000-0000-0000-000000000001"
+	testedAt := time.Now().UTC().Format(time.RFC3339Nano)
+
+	model := providerSecretVaultRewriteRow(
+		t, oldVault, "1", userID, "MODEL", "model-secret", false,
+	)
+	model.configJSON = providerSecretRewriteConfigJSON(t, model, func(
+		payload *StoredProviderConfigPayload,
+	) {
+		payload.Type = ProviderTypeOpenAICompatible
+		payload.BaseURL = "https://model.example.test/v1"
+		payload.ConnectionTestedAt = testedAt
+		payload.ConnectionTestSHA256 = providerConnectionFingerprint(
+			model.providerID,
+			payload.Type,
+			payload.BaseURL,
+			model.encryptedSecretRef,
+		)
+	})
+
+	search := providerSecretSearchVaultRewriteRow(
+		t, oldVault, "2", userID, websearch.ProviderTavily, "search-secret",
+	)
+	search.configJSON = providerSecretRewriteConfigJSON(t, search, func(
+		payload *StoredProviderConfigPayload,
+	) {
+		payload.BaseURL = "https://api.tavily.com"
+		payload.ConnectionTestedAt = testedAt
+		payload.ConnectionTestSHA256 = searchProviderConnectionFingerprint(
+			search.providerID,
+			websearch.ProviderTavily,
+			payload.BaseURL,
+			search.encryptedSecretRef,
+		)
+	})
+
+	rag := providerSecretRAGVaultRewriteRow(
+		t, oldVault, "3", userID, RAGProviderJina, "rag-secret",
+	)
+	rag.configJSON = providerSecretRewriteConfigJSON(t, rag, func(
+		payload *StoredProviderConfigPayload,
+	) {
+		payload.ConnectionTestedAt = testedAt
+		payload.ConnectionTestSHA256 = ragProviderConnectionFingerprint(
+			rag.providerID,
+			RAGProviderJina,
+			rag.encryptedSecretRef,
+		)
+	})
+
+	invalid := providerSecretRAGVaultRewriteRow(
+		t, oldVault, "4", userID, RAGProviderMinerU, "invalid-secret",
+	)
+	invalid.configJSON = providerSecretRewriteConfigJSON(t, invalid, func(
+		payload *StoredProviderConfigPayload,
+	) {
+		payload.ConnectionTestedAt = testedAt
+		payload.ConnectionTestSHA256 = strings.Repeat("0", 64)
+	})
+
+	rewriter := NewPostgresProviderSecretRewriter(nil, config.Config{}, rotatingVault)
+	tests := []struct {
+		row  providerSecretRewriteRow
+		want func(string) string
+	}{
+		{model, func(secretRef string) string {
+			return providerConnectionFingerprint(
+				model.providerID,
+				ProviderTypeOpenAICompatible,
+				"https://model.example.test/v1",
+				secretRef,
+			)
+		}},
+		{search, func(secretRef string) string {
+			return searchProviderConnectionFingerprint(
+				search.providerID,
+				websearch.ProviderTavily,
+				"https://api.tavily.com",
+				secretRef,
+			)
+		}},
+		{rag, func(secretRef string) string {
+			return ragProviderConnectionFingerprint(
+				rag.providerID,
+				RAGProviderJina,
+				secretRef,
+			)
+		}},
+	}
+	for _, test := range tests {
+		test.row.action = providerSecretRewriteRotate
+		rewrittenSecretRef, err := rewriter.rewriteProviderSecret(test.row)
+		if err != nil {
+			t.Fatalf("rewriteProviderSecret(%s) error = %v", test.row.providerID, err)
+		}
+		fingerprint, preserve, err := rewriter.rewrittenProviderConnectionAttestation(
+			test.row,
+			rewrittenSecretRef,
+		)
+		if err != nil || !preserve || fingerprint != test.want(rewrittenSecretRef) {
+			t.Fatalf(
+				"rewrittenProviderConnectionAttestation(%s) = %q, %t, %v",
+				test.row.providerID,
+				fingerprint,
+				preserve,
+				err,
+			)
+		}
+	}
+
+	invalid.action = providerSecretRewriteRotate
+	rewrittenSecretRef, err := rewriter.rewriteProviderSecret(invalid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, preserve, err := rewriter.rewrittenProviderConnectionAttestation(
+		invalid,
+		rewrittenSecretRef,
+	)
+	if err != nil || preserve || fingerprint != "" {
+		t.Fatalf("invalid attestation = %q, %t, %v", fingerprint, preserve, err)
+	}
+}
+
+func providerSecretRewriteConfigJSON(
+	t *testing.T,
+	row providerSecretRewriteRow,
+	mutate func(*StoredProviderConfigPayload),
+) string {
+	t.Helper()
+	var payload StoredProviderConfigPayload
+	if err := json.Unmarshal([]byte(row.configJSON), &payload); err != nil {
+		t.Fatal(err)
+	}
+	mutate(&payload)
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(encoded)
 }
 
 func TestProviderSecretRewriteBlocksUnrecoverableServerDefaultWithoutEnvFallback(t *testing.T) {

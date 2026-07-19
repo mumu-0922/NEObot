@@ -1785,3 +1785,92 @@ provider variables from the owner's secret source; they are intentionally not
 retained in the repository or a temporary plaintext backup. F4.5 remains open
 for scanned/complex-PDF closure, rotation, backup/restore, destructive rollback
 rehearsal, and final cleanup proof.
+
+## 2026-07-19 — G11.9F.4.5 Real-provider and live-operations closure
+
+The production database was first found at migration `027`, while the current
+Worker requires migration `029`'s parse/chunk profile resolver. A real PDF job
+therefore failed before provider I/O with a redacted `UndefinedFunction` error.
+After a paired owner-only Postgres/keyring backup passed SHA-256 and
+`pg_restore --list`, migrations `028..033` were applied and the Worker returned
+healthy. Unknown Worker exceptions now log only their exception type, and the
+MinerU result capability validator explicitly rejects non-HTTPS, userinfo, and
+fragments.
+
+The live source was a three-page 47,023-byte PDF with a pure scanned page,
+matrix/table/two-column formulas, and a rotated formula page. MinerU recovered
+the unique scan phrase `cobalt lantern 7319`; parse and passage embedding each
+completed on attempt 1. The active document published one artifact/block,
+one Parent, one Child, and one ready 1024-dimensional Jina vector. Go hybrid
+retrieval found the scan phrase, then direct Jina query embedding and rerank
+both passed.
+
+Docker/WSL could call the MinerU API and upload host but received TLS EOF from
+the result CDN. Windows `curl.exe` could reach the same signed capability. The
+new optional Windows result proxy admits only one strict
+`cdn-mineru.openxlab.org.cn/pdf/*.zip` HTTPS DTO, rejects auth/cookies and URL
+ambiguity, passes the signed URL to curl through stdin, caps ZIPs at 32 MiB,
+and emits no request log. Its PowerShell lifecycle wrapper and the exact
+Docker Desktop setup are documented in `single-server-compose.md`; this local
+transport workaround remains running because the current Desktop path still
+needs it.
+
+The protected operator environment lacked the dedicated Replay URL and the
+database lacked its LOGIN. A new random password was written only to the
+mode-`600` env file, then `rag_replay` was created with no broad attributes and
+granted only `rag_replay_operator`. An isolated Replay-service connection
+proved `current_user=rag_replay` and exact capability membership. The formal
+Replay CLI dry-run then passed, and an execute attempt against an absent Job
+reached the scoped database function and failed its precondition without a
+mutation. No DSN or password entered argv or logs.
+
+The retained-key rotation exposed and fixed one cross-provider invariant bug:
+rewriting a vault envelope changed the exact ciphertext-bound connection
+fingerprint, making four previously valid model/Search/RAG providers appear
+unattested. The rewriter now transactionally rebinds a proof only when the old
+proof is valid and the same credential is re-encrypted under the same context.
+Invalid proofs remain invalid. Unit/race and disposable Postgres integration
+tests cover model, Search, RAG, invalid-proof non-promotion, exact-plan
+execution, and fresh active-key reload.
+
+The final live rotation used a fresh paired backup under
+`backup/rag-provider-f45-final-pre-rewrite-20260719T105026Z/`. Its dump and
+keyring checksums, full disposable restore, current migration replay, and
+fresh-process decryption audit passed before execute. The fixed exact plan
+rotated five ciphertext rows; four valid attestations remained valid and the
+one pre-existing invalid custom-model proof remained invalid. The keyring was
+then pruned to one active key, backend restarted, MinerU/Jina stayed `ready`,
+and the final audit reported `changed_rows=0`, `current_rows=5`, and
+`blocked_rows=0`. Prior paired keyrings/dumps remain owner-only rollback
+anchors and are not committed.
+
+Post-rotation real smokes passed Go `retrieval.query` at 1024 dimensions, Go
+Jina rerank with two results, and Python -> Go `retrieval.passage` at 1024
+dimensions. The scanned-PDF document was then deleted, its purge job reached
+`succeeded`, and its Collection and File were deleted. All three APIs returned
+404, no active job or ready/query-visible Search projection remained, and the
+temporary PDF/state directories were removed. Replay/restore containers and
+temporary harness sources/binaries were also deleted.
+
+Verification:
+
+```text
+real MinerU scanned/formula PDF -> Jina publish        passed / 1024 dimensions
+Go query embedding / rerank / Python passage smoke    passed / 2 / passed
+Replay LOGIN / capability isolation                   rag_replay / exact role
+paired dump/keyring SHA + full restore/decrypt        passed / passed
+fixed retained-key rewrite / active-only restart      5 rows / ready
+valid proof preservation / invalid proof promotion    4 preserved / 0 promoted
+post-rotation audit                                   changed=0, blocked=0
+document purge / Collection / File cleanup            succeeded / 404 / 404
+Python focused safety tests                          134 passed
+Python non-integration suite                         1728 passed
+Go full / focused race / vet                         passed / passed / passed
+preflight / frontend Compose regression              passed / 4 passed
+security / runtime-log secret scan                   0 high findings / passed
+```
+
+Rollback restores one matched dump and keyring as a pair before restarting the
+corresponding image. Never combine the active-only final keyring with a
+pre-rewrite dump, and never restore only ciphertext or only key material.
+G11.9F.4 is complete; G11.9F.5 remains the Voice/final-clean-copy slice.

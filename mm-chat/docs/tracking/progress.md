@@ -1393,7 +1393,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
               `.env` runtime fallback removal.
       - [x] G11.9F.3 Search admin CRUD/test/activate UI, Postgres resolver, and
             positive owner-authorized provider smoke.
-      - [ ] G11.9F.4 MinerU/Jina admin records and scoped Go credential gateway.
+      - [x] G11.9F.4 MinerU/Jina admin records and scoped Go credential gateway.
         - [x] G11.9F.4.1 Administrator/gateway contract, fixed records and
               vault contexts, closed operation boundary, and cutover order.
         - [x] G11.9F.4.2 Administrator CRUD/test/activate, Postgres/vault, UI,
@@ -1401,8 +1401,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         - [x] G11.9F.4.3 Scoped Go MinerU/Jina gateway and direct Go query/rerank.
         - [x] G11.9F.4.4 Python cutover, old route retirement, and provider Key
               environment removal.
-        - [ ] G11.9F.4.5 Real-provider, restart, rotation, backup, and rollback
-              closure.
+        - [x] G11.9F.4.5 Real scanned/complex-PDF provider closure, Replay
+              login recovery, attestation-safe active-only keyring rotation,
+              paired backup/restore, rollback rehearsal, and smoke cleanup.
       - [ ] G11.9F.5 Future-Voice provider kind plus final rotation, backup,
             removal, redaction, and clean-copy closure.
     - [ ] G11.9G Knowledge/Web/model fusion, `[K]`/`[W]` citations, diagnostics,

@@ -197,6 +197,25 @@ docker compose --env-file .env.single-server \
   secrets/provider-keyring.final.json
 ```
 
+The ciphertext-bound connection proof is part of the rewrite invariant. A
+valid model, Search, or RAG attestation is transactionally rebound to the new
+vault envelope without another provider call because the plaintext credential,
+record context, endpoint, and provider profile did not change. A missing or
+invalid proof stays invalid and must not become enabled. Before pruning, verify
+both sides explicitly:
+
+- every provider that was enabled and attested before rotation is still
+  enabled and attested after the backend restart;
+- every provider that was disabled or unattested before rotation remains so;
+- `GET /v1/rag/provider-status` still reports MinerU and Jina `ready` when both
+  were ready before rotation;
+- dry-run reports `changed_rows=0` and `blocked_rows=0`.
+
+If a provider unexpectedly becomes `activation_required`, do not prune the old
+key. Restore the paired pre-rewrite dump and keyring, investigate the rewrite,
+and repeat the exact-plan sequence. Re-running provider activation can recover
+service but is not evidence that master-key rotation preserved state.
+
 If dry-run reports `blocked_rows>0`, do not execute. Re-enter or clear the
 affected custom provider through the administrator page, then repeat dry-run
 and backup. Historical F2.2 rewrites could replace an unreadable

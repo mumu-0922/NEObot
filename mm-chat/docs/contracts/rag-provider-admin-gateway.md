@@ -96,6 +96,11 @@ hop is removed, so no Go -> Python -> Go request cycle remains.
   1024-dimensional embedding and a valid rerank result.
 - the attestation binds User, reserved record ID, provider, fixed endpoint and
   model profile, and the exact encrypted secret reference. It contains no Key.
+- a vault master-key rewrite changes that encrypted reference. The locked
+  rewrite may rebind the fingerprint without a second provider call only when
+  the old fingerprint is already valid and the operation decrypts then
+  re-encrypts the same credential under the same record context. Invalid or
+  absent proofs remain invalid; rotation never activates a provider.
 - Go resolves an enabled, attested Postgres/vault record for every upstream
   call. Missing, disabled, corrupt, copied, or unattested state fails closed;
   there is no `.env` runtime fallback and no cross-provider fallback.
@@ -171,8 +176,9 @@ text, embeddings, and DNS/network details never enter errors or logs.
   status without retaining plaintext, plus legacy manual-BYOK isolation;
 - isolated Postgres integration followed by test-database deletion;
 - owner-authorized real MinerU parse and Jina indexing/retrieval, provider Key
-  rotation, backend/RAG-worker restart, removal of all provider Key env names,
-  and retained rollback backup verification.
+  rotation with valid-attestation preservation and invalid-proof non-promotion,
+  backend/RAG-worker restart, removal of all provider Key env names, and
+  retained rollback backup verification.
 
 ## 7. Wrong vs Correct
 

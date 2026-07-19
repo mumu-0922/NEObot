@@ -203,6 +203,12 @@ Contract:
   state, or any SQL failure aborts the entire transaction;
 - empty rows remain empty, deleted ciphertext rows rotate, and no schema or
   provider network request is involved;
+- connection attestations bind the exact encrypted secret reference. When a
+  row has a valid pre-rotation model, Search, or RAG attestation, the same
+  locked transaction recomputes that fingerprint over the newly encrypted
+  reference while preserving its tested timestamp and enabled state. An
+  absent, malformed, or stale attestation remains invalid and is never
+  promoted by rotation;
 - after execute, dry-run must report `changed_rows=0`, `blocked_rows=0`, and all
   ciphertext rows current before a retained key may be pruned.
 

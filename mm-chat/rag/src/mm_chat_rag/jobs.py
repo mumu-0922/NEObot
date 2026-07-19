@@ -133,7 +133,11 @@ class JobRunner:
                     retry_after_seconds=0,
                     permanent=True,
                 )
-            except Exception:  # noqa: BLE001 - boundary converts to stable code
+            except Exception as error:  # noqa: BLE001 - stable boundary
+                logger.error(
+                    "job_handler_unexpected",
+                    extra={"fields": {"error_type": type(error).__name__}},
+                )
                 await self._finish_failure(
                     job,
                     lease_token,

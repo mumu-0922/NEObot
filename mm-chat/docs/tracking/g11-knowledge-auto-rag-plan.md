@@ -295,7 +295,7 @@ Incremental execution slices:
   implemented and locally deployed; owner-authorized Tavily Search, chat
   `[W]` persistence/reload, restart continuity, and no-fallback failure proofs
   passed with test artifacts cleaned;
-- **G11.9F.4**: add MinerU/Jina administrator records and a scoped Go credential
+- **G11.9F.4** complete: add MinerU/Jina administrator records and a scoped Go credential
   gateway so Python receives neither the vault keyring nor reusable secrets:
   - **G11.9F.4.1** complete: freeze the
     [`RAG Provider Administrator and Gateway Contract`](../contracts/rag-provider-admin-gateway.md),
@@ -310,9 +310,10 @@ Incremental execution slices:
   - **G11.9F.4.4** complete: switch Python to the scoped Go operations, retire the old
     Go-to-Python Jina routes, and remove MinerU/Jina provider Key environment
     parsing, Compose wiring, examples, and operator values;
-  - **G11.9F.4.5**: prove real MinerU scanned/complex-PDF parsing, Jina 1024
-    indexing/retrieval, restart, rotation, redaction, backup/restore, rollback,
-    and cleanup;
+  - **G11.9F.4.5** complete: real scanned/complex-formula PDF parsing, Jina
+    1024-dimensional indexing/query/rerank, Replay-login recovery, active-only
+    keyring rotation with attestation preservation, paired backup/restore,
+    rollback rehearsal, redaction, and destructive smoke cleanup all passed;
 - **G11.9F.5**: reserve the same provider-kind contract for future Voice,
   complete removal/backup/rotation/redaction/clean-copy proofs, and close F.
 

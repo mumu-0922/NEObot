@@ -127,7 +127,9 @@ async def test_retryable_failure_retries_then_dlqs_at_limit() -> None:
     assert dlq_db.finishes == [("failed", "PROVIDER_TIMEOUT", 0)]
 
 
-async def test_permanent_and_unknown_exceptions_use_stable_codes() -> None:
+async def test_permanent_and_unknown_exceptions_use_stable_codes(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     permanent_db = FakeJobDatabase([job()])
     await JobRunner(
         permanent_db,
@@ -144,6 +146,14 @@ async def test_permanent_and_unknown_exceptions_use_stable_codes() -> None:
         {"parse": broken_handler},
     ).process_one()
     assert broken_db.finishes == [("retry", "JOB_HANDLER_ERROR", 30)]
+    unexpected = [
+        record
+        for record in caplog.records
+        if record.message == "job_handler_unexpected"
+    ]
+    assert len(unexpected) == 1
+    assert unexpected[0].fields == {"error_type": "RuntimeError"}
+    assert "provider body" not in caplog.text
 
 
 async def test_missing_handler_is_not_executed() -> None:

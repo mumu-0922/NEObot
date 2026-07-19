@@ -257,11 +257,26 @@ func TestPostgresProviderSecretRewriteBackfillsAndRotatesEveryCiphertextRow(t *t
 	})
 	newOnlyVault := providerSecretRewriteVault(t, "new", map[string]byte{"new": 32})
 	const userID = "00000000-0000-0000-0000-000000000001"
+	oldAttested := providerSecretVaultRewriteRow(
+		t, oldVault, "10000000-0000-0000-0000-000000000001",
+		userID, "OLD", "old-secret", false,
+	)
+	oldAttested.configJSON = providerSecretRewriteConfigJSON(t, oldAttested, func(
+		payload *StoredProviderConfigPayload,
+	) {
+		payload.Type = ProviderTypeOpenAICompatible
+		payload.BaseURL = "https://model.example.test/v1"
+		payload.Enabled = true
+		payload.ConnectionTestedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		payload.ConnectionTestSHA256 = providerConnectionFingerprint(
+			oldAttested.providerID,
+			payload.Type,
+			payload.BaseURL,
+			oldAttested.encryptedSecretRef,
+		)
+	})
 	providerRows := []providerSecretRewriteRow{
-		providerSecretVaultRewriteRow(
-			t, oldVault, "10000000-0000-0000-0000-000000000001",
-			userID, "OLD", "old-secret", false,
-		),
+		oldAttested,
 		providerSecretLegacyRewriteRow(
 			t, privateKey, "10000000-0000-0000-0000-000000000002",
 			userID, "LEGACY", "legacy-secret",
@@ -330,7 +345,7 @@ INSERT INTO provider_configs (
 		"CURRENT": "current-secret", "DELETED": "deleted-secret",
 	}
 	rows, err := db.QueryContext(ctx, `
-SELECT user_id::text, provider_id, encrypted_secret_ref
+SELECT user_id::text, provider_id, encrypted_secret_ref, config
 FROM provider_configs
 WHERE encrypted_secret_ref IS NOT NULL
 ORDER BY provider_id
@@ -342,7 +357,13 @@ ORDER BY provider_id
 	seen := 0
 	for rows.Next() {
 		var storedUserID, providerID, encoded string
-		if err := rows.Scan(&storedUserID, &providerID, &encoded); err != nil {
+		var encodedConfig []byte
+		if err := rows.Scan(
+			&storedUserID,
+			&providerID,
+			&encoded,
+			&encodedConfig,
+		); err != nil {
 			t.Fatal(err)
 		}
 		envelope, err := providersecrets.ParseEnvelope(encoded)
@@ -357,6 +378,19 @@ ORDER BY provider_id
 			t.Fatalf("rewritten %s plaintext = %q, %v", providerID, plaintext, err)
 		}
 		clear(plaintext)
+		if providerID == "OLD" {
+			var payload StoredProviderConfigPayload
+			if err := json.Unmarshal(encodedConfig, &payload); err != nil {
+				t.Fatal(err)
+			}
+			stored := StoredProviderConfig{
+				UserID: storedUserID, ProviderID: providerID,
+				EncryptedSecretRef: encoded, Config: payload,
+			}
+			if !ProviderConnectionTestValid(stored) {
+				t.Fatal("rotated provider lost its valid connection attestation")
+			}
+		}
 		seen++
 	}
 	if err := rows.Err(); err != nil {

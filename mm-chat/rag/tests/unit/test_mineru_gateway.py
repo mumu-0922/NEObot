@@ -850,6 +850,31 @@ async def test_mineru_gateway_download_proxy_still_rejects_bad_result_url() -> N
     assert calls == 0
 
 
+async def test_mineru_gateway_rejects_non_https_result_url_before_proxy() -> None:
+    calls = 0
+
+    def forbidden(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("non-HTTPS result URL reached proxy")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(forbidden)) as client:
+        gateway = MinerULocalBatchGateway(
+            provider_gateway_url=PROVIDER_GATEWAY_URL,
+            internal_token=SECRET,
+            client=client,
+            result_proxy_url=RESULT_PROXY_URL,
+        )
+        with pytest.raises(PermanentJobError) as raised:
+            await gateway.download_result_archive(
+                object(),
+                _done_poll_result("http://cdn-mineru.openxlab.org.cn/pdf/result.zip"),
+            )
+
+    assert raised.value.error_code == MINERU_GATEWAY_RESULT_URL_INVALID
+    assert calls == 0
+
+
 @pytest.mark.parametrize(
     "proxy_url",
     [
