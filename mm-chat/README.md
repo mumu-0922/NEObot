@@ -119,3 +119,7 @@ Detailed deployment, backup, and rollback instructions live in
 [`docs/deployment/`](./docs/deployment/). Migration state is tracked in
 [`docs/tracking/progress.md`](./docs/tracking/progress.md) and
 [`docs/tracking/process.md`](./docs/tracking/process.md).
+The encrypted provider boundary is defined in
+[`docs/contracts/provider-secret-vault.md`](./docs/contracts/provider-secret-vault.md);
+future hosted Voice work must begin from the fail-closed
+[`Voice reservation contract`](./docs/contracts/voice-provider-reservation.md).

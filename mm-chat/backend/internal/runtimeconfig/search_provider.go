@@ -91,7 +91,8 @@ func IsModelProviderConfig(stored StoredProviderConfig) bool {
 	kind := strings.TrimSpace(stored.Config.Kind)
 	return (kind == "" || kind == providerConfigKindModel) &&
 		!isReservedSearchProviderRecordID(stored.ProviderID) &&
-		!isReservedRAGProviderRecordID(stored.ProviderID)
+		!isReservedRAGProviderRecordID(stored.ProviderID) &&
+		!isReservedVoiceProviderRecordID(stored.ProviderID)
 }
 
 func isSearchProviderConfig(stored StoredProviderConfig) bool {
@@ -146,7 +147,9 @@ func storedProviderSecretContext(
 ) (string, bool) {
 	switch strings.TrimSpace(payload.Kind) {
 	case "", providerConfigKindModel:
-		if isReservedSearchProviderRecordID(recordID) || isReservedRAGProviderRecordID(recordID) {
+		if isReservedSearchProviderRecordID(recordID) ||
+			isReservedRAGProviderRecordID(recordID) ||
+			isReservedVoiceProviderRecordID(recordID) {
 			return "", false
 		}
 		return modelProviderSecretContext(userID, recordID), true
@@ -162,6 +165,12 @@ func storedProviderSecretContext(
 			return "", false
 		}
 		return ragProviderSecretContext(userID, recordID), true
+	case providerConfigKindVoice:
+		providerID, ok := normalizeVoiceProviderID(payload.VoiceProvider)
+		if !ok || recordID != voiceProviderRecordID(providerID) {
+			return "", false
+		}
+		return voiceProviderSecretContext(userID, recordID), true
 	default:
 		return "", false
 	}

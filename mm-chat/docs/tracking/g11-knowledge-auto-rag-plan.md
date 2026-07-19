@@ -258,10 +258,13 @@ while keeping the decryption root outside the database.
 Actions:
 
 - add administrator CRUD/activate/test contracts for model, search, MinerU,
-  Jina, and future Voice providers;
+  and Jina providers, while reserving a non-executable provider-kind/vault
+  identity for future Voice providers;
 - encrypt provider secrets with a Docker-Secret-backed master key;
 - expose configured/not-configured state but never plaintext on reads;
-- perform a bounded real connection test before activation;
+- perform a bounded real connection test before activation for every
+  implemented provider; keep the reserved Voice path fail-closed until its
+  future provider-specific test and executor exist;
 - one-time import current provider `.env` values, verify them, then remove
   provider-specific environment fallbacks;
 - keep Python RAG workers from receiving the master key by using a scoped Go
@@ -314,8 +317,14 @@ Incremental execution slices:
     1024-dimensional indexing/query/rerank, Replay-login recovery, active-only
     keyring rotation with attestation preservation, paired backup/restore,
     rollback rehearsal, redaction, and destructive smoke cleanup all passed;
-- **G11.9F.5**: reserve the same provider-kind contract for future Voice,
-  complete removal/backup/rotation/redaction/clean-copy proofs, and close F.
+- **G11.9F.5** complete: reserve exact `VOICE:ELEVENLABS`/`VOICE:MIMO`
+  provider-kind and context-bound vault identities, exclude them from other
+  provider readers, rotate retained-key ciphertext without inventing a
+  connection proof, block legacy BYOK Voice rows, reject old Voice env
+  authority in production preflight, and keep `/v1/voice/*` fail-closed. The
+  final active-only rotation, paired backup/restore, redaction, runtime-health,
+  and clean-copy full gates passed without adding a Voice administrator route,
+  UI, resolver, provider call, or VPS-local TTS runtime. G11.9F is closed.
 
 ## G11.9G — Knowledge/Web/Model Fusion Closure
 

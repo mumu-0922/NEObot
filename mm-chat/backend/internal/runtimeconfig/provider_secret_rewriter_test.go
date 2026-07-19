@@ -222,6 +222,141 @@ func TestProviderSecretRewriteUsesRAGVaultContextAndBlocksLegacyRAGRows(t *testi
 	}
 }
 
+func TestProviderSecretRewriteReservesVoiceVaultContextWithoutAttestation(t *testing.T) {
+	privateKey, cfg := providerSecretRewriteBYOKConfig(t)
+	oldVault := providerSecretRewriteVault(t, "old", map[string]byte{"old": 40})
+	rotatingVault := providerSecretRewriteVault(t, "new", map[string]byte{
+		"new": 41,
+		"old": 40,
+	})
+	const userID = "00000000-0000-0000-0000-000000000001"
+	old := providerSecretVoiceVaultRewriteRow(
+		t,
+		oldVault,
+		"1",
+		userID,
+		voiceProviderElevenLabs,
+		"future-voice-secret",
+	)
+	rewriter := NewPostgresProviderSecretRewriter(nil, cfg, rotatingVault)
+	plan, err := rewriter.buildProviderSecretRewritePlan(
+		[]providerSecretRewriteRow{old},
+	)
+	if err != nil || plan.result.RotatedRows != 1 ||
+		plan.result.ChangedRows != 1 || plan.result.BlockedRows != 0 ||
+		plan.rows[0].action != providerSecretRewriteRotate {
+		t.Fatalf("Voice rewrite plan = %#v / %#v / %v", plan.result, plan.rows, err)
+	}
+
+	row := plan.rows[0]
+	encoded, err := rewriter.rewriteProviderSecret(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelope, err := providersecrets.ParseEnvelope(encoded)
+	if err != nil || envelope.KID != "new" {
+		t.Fatalf("rewritten Voice envelope = %#v, %v", envelope, err)
+	}
+	plaintext, err := rotatingVault.Decrypt(
+		envelope,
+		voiceProviderSecretContext(userID, row.providerID),
+	)
+	if err != nil || string(plaintext) != "future-voice-secret" {
+		t.Fatalf("rewritten Voice plaintext = %q, %v", plaintext, err)
+	}
+	clear(plaintext)
+	for _, wrongContext := range []string{
+		modelProviderSecretContext(userID, row.providerID),
+		searchProviderSecretContext(userID, row.providerID),
+		ragProviderSecretContext(userID, row.providerID),
+		voiceProviderSecretContext(userID, voiceProviderRecordID(voiceProviderMimo)),
+	} {
+		if _, err := rotatingVault.Decrypt(envelope, wrongContext); err == nil {
+			t.Fatalf("Voice envelope decrypted with wrong context %q", wrongContext)
+		}
+	}
+	fingerprint, preserve, err := rewriter.rewrittenProviderConnectionAttestation(
+		row,
+		encoded,
+	)
+	if err != nil || preserve || fingerprint != "" {
+		t.Fatalf("reserved Voice attestation = %q, %t, %v", fingerprint, preserve, err)
+	}
+
+	legacy := providerSecretLegacyRewriteRow(
+		t,
+		privateKey,
+		"2",
+		userID,
+		voiceProviderRecordID(voiceProviderMimo),
+		"legacy-voice-secret",
+	)
+	legacy.configJSON = `{"kind":"voice","voiceProvider":"mimo","enabled":true}`
+	legacyPlan, err := rewriter.buildProviderSecretRewritePlan(
+		[]providerSecretRewriteRow{legacy},
+	)
+	if err != nil || legacyPlan.result.BlockedRows != 1 ||
+		legacyPlan.result.ChangedRows != 0 ||
+		legacyPlan.rows[0].action != providerSecretRewriteBlocked {
+		t.Fatalf(
+			"legacy Voice plan = %#v / %#v / %v",
+			legacyPlan.result,
+			legacyPlan.rows,
+			err,
+		)
+	}
+}
+
+func TestVoiceProviderReservationRejectsReservedModelAndMismatchedIdentity(t *testing.T) {
+	const userID = "00000000-0000-0000-0000-000000000001"
+	for _, recordID := range []string{
+		voiceProviderRecordID(voiceProviderElevenLabs),
+		voiceProviderRecordID(voiceProviderMimo),
+	} {
+		if IsModelProviderConfig(StoredProviderConfig{ProviderID: recordID}) {
+			t.Fatalf("reserved Voice record %s admitted as a model provider", recordID)
+		}
+	}
+	valid := StoredProviderConfigPayload{
+		Kind: providerConfigKindVoice, VoiceProvider: string(voiceProviderElevenLabs),
+	}
+	storedVoice := StoredProviderConfig{
+		ProviderID: voiceProviderRecordID(voiceProviderElevenLabs),
+		Config:     valid,
+	}
+	if IsModelProviderConfig(storedVoice) || isSearchProviderConfig(storedVoice) ||
+		isRAGProviderConfig(storedVoice) {
+		t.Fatal("reserved Voice record admitted by another provider reader")
+	}
+	context, ok := storedProviderSecretContext(
+		userID,
+		voiceProviderRecordID(voiceProviderElevenLabs),
+		valid,
+	)
+	if !ok || context != voiceProviderSecretContext(
+		userID,
+		voiceProviderRecordID(voiceProviderElevenLabs),
+	) {
+		t.Fatalf("reserved Voice context = %q, %t", context, ok)
+	}
+	for _, invalid := range []StoredProviderConfigPayload{
+		{Kind: providerConfigKindVoice, VoiceProvider: "unknown"},
+		{Kind: providerConfigKindVoice, VoiceProvider: string(voiceProviderMimo)},
+	} {
+		if _, ok := storedProviderSecretContext(
+			userID,
+			voiceProviderRecordID(voiceProviderElevenLabs),
+			invalid,
+		); ok {
+			t.Fatalf("invalid Voice identity admitted: %#v", invalid)
+		}
+	}
+	if voiceProviderIngressContext(voiceProviderElevenLabs) !=
+		"provider:voice:elevenlabs" {
+		t.Fatal("Voice ingress context drifted")
+	}
+}
+
 func TestProviderSecretRewriteRebindsOnlyExistingValidConnectionAttestations(t *testing.T) {
 	oldVault := providerSecretRewriteVault(t, "old", map[string]byte{"old": 38})
 	rotatingVault := providerSecretRewriteVault(t, "new", map[string]byte{
@@ -633,6 +768,39 @@ func providerSecretRAGVaultRewriteRow(
 	}
 	configJSON, err := json.Marshal(StoredProviderConfigPayload{
 		Kind: providerConfigKindRAG, RAGProvider: string(providerID), Enabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return providerSecretRewriteRow{
+		id: id, userID: userID, providerID: recordID,
+		encryptedSecretRef: string(encoded), configJSON: string(configJSON),
+	}
+}
+
+func providerSecretVoiceVaultRewriteRow(
+	t *testing.T,
+	vault *providersecrets.Vault,
+	id string,
+	userID string,
+	providerID voiceProviderID,
+	plaintext string,
+) providerSecretRewriteRow {
+	t.Helper()
+	recordID := voiceProviderRecordID(providerID)
+	envelope, err := vault.Encrypt(
+		[]byte(plaintext),
+		voiceProviderSecretContext(userID, recordID),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configJSON, err := json.Marshal(StoredProviderConfigPayload{
+		Kind: providerConfigKindVoice, VoiceProvider: string(providerID), Enabled: true,
 	})
 	if err != nil {
 		t.Fatal(err)

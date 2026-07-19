@@ -1874,3 +1874,67 @@ Rollback restores one matched dump and keyring as a pair before restarting the
 corresponding image. Never combine the active-only final keyring with a
 pre-rewrite dump, and never restore only ciphertext or only key material.
 G11.9F.4 is complete; G11.9F.5 remains the Voice/final-clean-copy slice.
+
+## 2026-07-19 — G11.9F.5 Future Voice reservation and F-group closure
+
+Voice remains deliberately unimplemented at the hosted-provider boundary. F5
+reserves only `config.kind="voice"`, the exact `VOICE:ELEVENLABS` and
+`VOICE:MIMO` record IDs, ingress identities, and per-user context-bound vault
+identities. No administrator Voice route/UI, runtime resolver, provider
+adapter, connection test, environment fallback, or quota-consuming call was
+added. The existing browser `speechSynthesis` fallback remains local, while
+the Go `/v1/voice/*` service has no executor and continues to return the stable
+fail-closed `VOICE_JOBS_UNAVAILABLE` result.
+
+Model, Search, and RAG readers reject every reserved `VOICE:*` identity,
+including an empty-kind legacy row. A retained-key Voice vault envelope can be
+rewritten only under its matching user/record context; cross-provider and
+cross-Voice-record copies fail authentication. Legacy browser-BYOK Voice rows
+are blocked rather than guessed. Because no provider-specific real test exists,
+the rotation path cannot create or preserve a Voice connection attestation.
+The frozen future activation sequence is documented in
+`docs/contracts/voice-provider-reservation.md`.
+
+Production preflight now rejects all legacy ElevenLabs/Mimo Key, model, and
+voice-ID environment names. The rendered production Compose regression checks
+every service, and live Backend, RAG Worker, and Frontend container environment
+name scans found no reusable Voice authority. The legacy frontend example and
+Next Voice handlers remain isolated compatibility code for the later G9
+cleanup; neither is wired into production Compose authority.
+
+F4.5's immediately preceding paired dump/keyring restore, active-key-only
+rotation, rollback rehearsal, and redaction results remain the final destructive
+operations evidence for F. No second no-op rotation or provider spend was
+performed in F5. A fresh live-deployment dry-run reported five current secret rows,
+zero changes, zero legacy/env/rotated rows, and zero blocked rows. MinerU and
+Jina remained `ready` at 1024 dimensions; Backend, Frontend, Postgres, Redis,
+MinIO, and RAG Worker were running, with Backend and RAG Worker healthy.
+
+The standalone structure gate initially exposed one documentation-only absolute
+path back to the outer checkout in the Windows MinerU proxy example. Replacing
+it with `\\wsl.localhost\Ubuntu\path\to\mm-chat` restored clean-copy
+independence. Final verification:
+
+```text
+Voice retained-key rotation / legacy BYOK block            passed / passed
+Voice cross-context + other-provider reader exclusion      passed
+Voice attestation non-promotion                            passed
+production retired-Voice-env preflight / Compose scan      passed / passed
+live container Voice env-name scan                         absent in 3 runtimes
+provider rewrite dry-run                                   changed=0, current=5, blocked=0
+MinerU / Jina live status                                  ready / ready (1024)
+Go full / runtimeconfig race / vet                         passed / passed / passed
+frontend format / lint / typecheck / tests / build         passed / 848 tests
+Python clean-copy lint / format / strict Mypy / tests      passed / 1730 passed, 7 skipped
+standalone structure / full clean-copy                     passed / passed
+```
+
+The optional Python coverage invocation remains a visible quality debt: 1728
+tests passed but total coverage was 89.39% against the configured 90% threshold.
+It does not invalidate the required non-integration or full clean-copy suites,
+but the coverage gap must be closed in a later quality slice rather than hidden.
+
+G11.9F.5 and G11.9F are complete. The next slice is G11.9G Knowledge/Web/model
+fusion closure; a real hosted Voice provider remains deferred until the owner
+selects an API and authorizes its full administrator-test-executor-artifact
+chain.

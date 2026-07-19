@@ -154,17 +154,25 @@ for key, value in values.items():
     if "$" in value:
         fail(f"{key} uses forbidden env interpolation syntax")
 
-retired_rag_provider_env = (
+retired_provider_env = (
     "RAG_MINERU_API_TOKEN",
     "DEFAULT_MINERU_API_TOKEN",
     "RAG_JINA_API_KEY",
     "DEFAULT_JINA_API_KEY",
     "RAG_QUERY_GATEWAY_URL",
     "RAG_RERANK_GATEWAY_URL",
+    "DEFAULT_ELEVENLABS_API_KEY",
+    "DEFAULT_ELEVENLABS_STT_MODEL",
+    "DEFAULT_ELEVENLABS_TTS_MODEL",
+    "DEFAULT_ELEVENLABS_TTS_VOICE_ID",
+    "DEFAULT_MIMO_API_KEY",
+    "DEFAULT_MIMO_STT_MODEL",
+    "DEFAULT_MIMO_TTS_MODEL",
+    "DEFAULT_MIMO_TTS_VOICE_ID",
 )
-for key in retired_rag_provider_env:
+for key in retired_provider_env:
     if key in values:
-        fail(f"{key} is retired; configure RAG providers in the administrator UI")
+        fail(f"{key} is retired; configure providers through the server authority")
 
 required = (
     "FRONTEND_IMAGE",

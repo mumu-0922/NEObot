@@ -1378,7 +1378,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
       - [x] G11.9E.3 Frontend Go SSE cutover, bounded `[W]` citation/output
             persistence and reload, retired self-hosted/Next chain deletion,
             live Postgres proof, and authorized real-provider negative smoke.
-    - [ ] G11.9F Postgres-encrypted administrator provider configuration,
+    - [x] G11.9F Postgres-encrypted administrator provider configuration,
           Docker-Secret master key, and bounded real connection tests.
       - [x] G11.9F.1 Unused strict keyring loader, context-bound AES-256-GCM
             vault, retained-key rotation primitive, module docs, and gates;
@@ -1404,8 +1404,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         - [x] G11.9F.4.5 Real scanned/complex-PDF provider closure, Replay
               login recovery, attestation-safe active-only keyring rotation,
               paired backup/restore, rollback rehearsal, and smoke cleanup.
-      - [ ] G11.9F.5 Future-Voice provider kind plus final rotation, backup,
-            removal, redaction, and clean-copy closure.
+      - [x] G11.9F.5 Future-Voice provider/vault identity reservation,
+            cross-provider exclusion, legacy-row blocking, attestation-safe
+            retained-key rotation, retired Voice-env preflight, fail-closed
+            runtime, and final clean-copy closure without a real Voice call.
     - [ ] G11.9G Knowledge/Web/model fusion, `[K]`/`[W]` citations, diagnostics,
           and clean-copy/live closure.
 

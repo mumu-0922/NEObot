@@ -155,18 +155,26 @@ sed \
 chmod 600 "${valid}"
 "${preflight}" "${valid}" >/dev/null
 
-for retired_rag_env in \
+for retired_provider_env in \
   RAG_MINERU_API_TOKEN \
   DEFAULT_MINERU_API_TOKEN \
   RAG_JINA_API_KEY \
   DEFAULT_JINA_API_KEY \
   RAG_QUERY_GATEWAY_URL \
-  RAG_RERANK_GATEWAY_URL; do
-  retired_env_file="${temp_dir}/retired-${retired_rag_env}.env"
+  RAG_RERANK_GATEWAY_URL \
+  DEFAULT_ELEVENLABS_API_KEY \
+  DEFAULT_ELEVENLABS_STT_MODEL \
+  DEFAULT_ELEVENLABS_TTS_MODEL \
+  DEFAULT_ELEVENLABS_TTS_VOICE_ID \
+  DEFAULT_MIMO_API_KEY \
+  DEFAULT_MIMO_STT_MODEL \
+  DEFAULT_MIMO_TTS_MODEL \
+  DEFAULT_MIMO_TTS_VOICE_ID; do
+  retired_env_file="${temp_dir}/retired-${retired_provider_env}.env"
   cp "${valid}" "${retired_env_file}"
-  printf '%s=%s\n' "${retired_rag_env}" "retired-fixture" >>"${retired_env_file}"
+  printf '%s=%s\n' "${retired_provider_env}" "retired-fixture" >>"${retired_env_file}"
   chmod 600 "${retired_env_file}"
-  assert_rejected "${retired_env_file}" "${retired_rag_env} is retired"
+  assert_rejected "${retired_env_file}" "${retired_provider_env} is retired"
 done
 
 quoted_byok_pem="${temp_dir}/quoted-byok-pem.env"
@@ -541,16 +549,26 @@ for service_name in ("frontend", "backend", "admin"):
     ):
         assert provider_env not in services[service_name]["environment"]
 
-for service_name in ("backend", "admin"):
-    for retired_rag_env in (
-        "RAG_MINERU_API_TOKEN",
-        "DEFAULT_MINERU_API_TOKEN",
-        "RAG_JINA_API_KEY",
-        "DEFAULT_JINA_API_KEY",
-        "RAG_QUERY_GATEWAY_URL",
-        "RAG_RERANK_GATEWAY_URL",
-    ):
-        assert retired_rag_env not in services[service_name]["environment"]
+retired_provider_env = (
+    "RAG_MINERU_API_TOKEN",
+    "DEFAULT_MINERU_API_TOKEN",
+    "RAG_JINA_API_KEY",
+    "DEFAULT_JINA_API_KEY",
+    "RAG_QUERY_GATEWAY_URL",
+    "RAG_RERANK_GATEWAY_URL",
+    "DEFAULT_ELEVENLABS_API_KEY",
+    "DEFAULT_ELEVENLABS_STT_MODEL",
+    "DEFAULT_ELEVENLABS_TTS_MODEL",
+    "DEFAULT_ELEVENLABS_TTS_VOICE_ID",
+    "DEFAULT_MIMO_API_KEY",
+    "DEFAULT_MIMO_STT_MODEL",
+    "DEFAULT_MIMO_TTS_MODEL",
+    "DEFAULT_MIMO_TTS_VOICE_ID",
+)
+for service_name, service in services.items():
+    environment = service.get("environment", {})
+    for retired_env in retired_provider_env:
+        assert retired_env not in environment, (service_name, retired_env)
 
 rag = services["rag-worker"]
 want_rag_image = (

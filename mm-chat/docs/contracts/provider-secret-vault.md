@@ -321,3 +321,16 @@ The public routes and Python/Go operation boundary are defined in
 [`rag-provider-admin-gateway.md`](rag-provider-admin-gateway.md). F4.2 keeps
 the existing Python provider environment path only for rollback; F4.4 removes
 it after the scoped Go gateway is live.
+
+## 14. G11.9F.5 Future Voice Reservation
+
+Future Voice rows reserve `config.kind="voice"`, exact `VOICE:ELEVENLABS` or
+`VOICE:MIMO` record IDs, and vault contexts
+`provider:voice:<userId>:<recordId>`. They are excluded from model, Search, and
+RAG readers. Retained-key vault envelopes can rotate under that context, but
+legacy BYOK Voice rows are blocked and rotation cannot invent an attestation.
+
+F5 intentionally adds no administrator route, provider adapter, connection
+test, runtime resolver, environment Key fallback, or real call. The executable
+reservation and future enablement requirements are frozen in
+[`voice-provider-reservation.md`](voice-provider-reservation.md).

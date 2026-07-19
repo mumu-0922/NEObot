@@ -1451,8 +1451,9 @@ code` only; `codeExecution` stays disabled until a real sandbox/executor and
 - G6.5c.2b.1 originally wired an OpenAI-compatible voice executor through the
   model-provider environment. G11.9F.2.3 removes that shared credential path;
   the executor seam and tests remain, but production Voice stays fail-closed
-  until F.5 adds a dedicated persisted Voice-provider contract and an
-  authorized smoke.
+  after F5 because F5 reserves only dedicated `VOICE:*` Postgres/vault
+  identities. A later implementation still requires administrator
+  save/test/activate, a dedicated resolver/executor, and an authorized smoke.
 - G6.5c.3a adds only the Go image executor seam. `POST /v1/images/generations`
   may call an explicitly configured executor only when image artifact storage
   and an admitted-job audit recorder are configured. Stored image responses

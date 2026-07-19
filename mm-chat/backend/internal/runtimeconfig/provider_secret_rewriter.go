@@ -448,8 +448,10 @@ func (r *PostgresProviderSecretRewriter) isLegacyModelProvider(
 	if json.Unmarshal([]byte(row.configJSON), &payload) != nil {
 		return false
 	}
-	kind := strings.TrimSpace(payload.Kind)
-	return kind == "" || kind == providerConfigKindModel
+	return IsModelProviderConfig(StoredProviderConfig{
+		ProviderID: row.providerID,
+		Config:     payload,
+	})
 }
 
 func marshalProviderSecretEnvelope(envelope providersecrets.Envelope) (string, error) {

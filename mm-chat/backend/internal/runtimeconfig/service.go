@@ -112,6 +112,7 @@ type StoredProviderConfigPayload struct {
 	Type                 ProviderType `json:"type"`
 	SearchProvider       string       `json:"searchProvider,omitempty"`
 	RAGProvider          string       `json:"ragProvider,omitempty"`
+	VoiceProvider        string       `json:"voiceProvider,omitempty"`
 	BaseURL              string       `json:"baseUrl"`
 	Models               []string     `json:"models"`
 	Enabled              bool         `json:"enabled"`

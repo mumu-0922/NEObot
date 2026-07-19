@@ -177,7 +177,7 @@ through `host.docker.internal`; a process listening only inside the Ubuntu WSL
 namespace is not equivalent. From Windows PowerShell:
 
 ```powershell
-$Project = "\\wsl.localhost\Ubuntu\home\mumu\projects\neo-chat\mm-chat"
+$Project = "\\wsl.localhost\Ubuntu\path\to\mm-chat"
 & "$Project\scripts\mineru-result-proxy-windows.ps1" start `
   -Python "D:\Anaconda\python.exe"
 & "$Project\scripts\mineru-result-proxy-windows.ps1" status

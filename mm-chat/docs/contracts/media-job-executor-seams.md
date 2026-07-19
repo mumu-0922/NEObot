@@ -61,8 +61,10 @@ jobartifacts.StoreInput{
   audit and fails before consuming quota. Missing file repository or object
   store keeps artifact storage absent and also fails closed.
 - The OpenAI-compatible Voice executor seam remains testable, but `cmd/api`
-  does not wire it from the model-provider credential. Voice stays fail-closed
-  until F.5 adds a dedicated persisted provider contract.
+  does not wire it from the model-provider credential. F5 reserves dedicated
+  `VOICE:*` Postgres/vault identities but deliberately adds no administrator
+  flow, real test, resolver, or executor. Voice stays fail-closed until the
+  complete future contract in `voice-provider-reservation.md` is implemented.
 - Quota-consuming real provider smoke also requires the separate
   `provider-live-smoke-authorization.md` gate.
 - Synthesis and image-generation executor outputs require an artifact store
