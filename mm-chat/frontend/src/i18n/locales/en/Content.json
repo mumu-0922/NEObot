@@ -112,5 +112,6 @@
   "lengthShortest": "Shortest",
   "toggleVersionHistory": "Toggle version history",
   "cancel": "Cancel",
-  "save": "Save"
+  "save": "Save",
+  "webSearchTemporarilyUnavailable": "Web search is temporarily unavailable. This answer continued without Web results."
 }

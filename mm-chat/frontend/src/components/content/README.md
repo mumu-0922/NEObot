@@ -8,6 +8,7 @@ Content components render model output and tool output in reusable formats.
 - `MarkdownRenderer.tsx` renders Markdown, safe inline HTML visual blocks, code highlighting, math, media references, Mermaid diagrams, mind maps, and rich inline content.
 - `ReasoningBlock.tsx` renders model reasoning summaries or reasoning traces when available.
 - `SourceBlock.tsx` renders web-search sources, image results, citation context, and visible search failure states.
+- `SourceFusionNotice.tsx` renders one compact notice for allowlisted Auto Web degradation and stays hidden for disabled, skipped, or empty-result lanes.
 - `ToolCallBlock.tsx` renders tool-call arguments, execution status, and results.
 
 ## Guidelines

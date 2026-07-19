@@ -1415,7 +1415,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
             frozen fusion contract.
       - [x] G11.9G.2 Knowledge-derived external query, Web failure degradation,
             and bounded stage/timing diagnostics.
-      - [ ] G11.9G.3 Model-built-in routing, conflict instructions, combined
+      - [x] G11.9G.3 Model-built-in routing, conflict instructions, combined
             citation persistence/reload, and frontend interaction parity.
       - [ ] G11.9G.4 Full matrix, live provider smoke, restart, clean-copy,
             cleanup, and G11.9 closure.

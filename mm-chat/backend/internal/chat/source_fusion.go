@@ -7,6 +7,10 @@ import (
 
 const sourceFusionVersion = "source-fusion/v1"
 
+const mixedSourceSystemInstruction = `Use private Knowledge as the authority for internal facts and Web evidence as the authority for current public facts.
+If Knowledge and Web conflict, state the conflict, distinguish their scope or timestamp, and cite both matching [K] and [W] markers.
+Use general model knowledge only for synthesis; do not attach a source marker to unsupported model reasoning.`
+
 type sourceQuestionClass string
 
 const (
@@ -112,6 +116,19 @@ func hasCurrentPublicIntent(question string) bool {
 		}
 	}
 	return false
+}
+
+func applySourceFusionSystemInstruction(
+	baseSystemPrompt string,
+	plan sourceFusionPlan,
+) string {
+	if plan.Authority != sourceAuthorityMixed {
+		return baseSystemPrompt
+	}
+	if baseSystemPrompt = strings.TrimSpace(baseSystemPrompt); baseSystemPrompt != "" {
+		return baseSystemPrompt + "\n\n" + mixedSourceSystemInstruction
+	}
+	return mixedSourceSystemInstruction
 }
 
 func withSourceFusionMessageMetadata(

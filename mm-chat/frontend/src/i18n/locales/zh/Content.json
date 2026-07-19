@@ -112,5 +112,6 @@
   "lengthShortest": "最短",
   "toggleVersionHistory": "切换版本历史",
   "cancel": "取消",
-  "save": "保存"
+  "save": "保存",
+  "webSearchTemporarilyUnavailable": "网络搜索暂时不可用，本回答已在没有网络结果的情况下继续。"
 }

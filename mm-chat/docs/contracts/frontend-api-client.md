@@ -292,6 +292,11 @@ Compatibility notes:
 - Existing message branching/versioning is represented by optional tree/version fields; backend MVP may return empty fields but must not discard them during import or round-trip.
 - Local adapter may keep current `Message` shape internally but must present this DTO at the client boundary.
 - Tool calls stay opaque until plugin sandbox design is complete.
+- Terminal assistant `metadata.fusion` is a server-owned diagnostic object. The
+  client may render only allowlisted degradation reasons; it must not infer a
+  provider, query, or source body from diagnostic fields. Knowledge citations
+  remain in `metadata.knowledge`, while Web citations remain in the persisted
+  Search output block so both survive reload without merging identities.
 
 ### 7.3 Attachment DTO
 

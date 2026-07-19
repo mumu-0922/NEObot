@@ -15,6 +15,7 @@ import MarkdownRenderer from "../content/MarkdownRenderer";
 import Tooltip from "../ui/Tooltip";
 import Artifact from "../content/Artifact";
 import MessageOutputRenderer from "../content/MessageOutputRenderer";
+import SourceFusionNotice from "../content/SourceFusionNotice";
 import MessageAttachmentView from "./MessageAttachmentView";
 import ImageGenerationProgress from "./ImageGenerationProgress";
 import RAGBlock from "../knowledge/RAGBlock";
@@ -1439,6 +1440,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
               <>
                 {/* RAG Block Component */}
                 <KnowledgeEvidenceBlock knowledge={message.knowledge} />
+                <SourceFusionNotice metadata={message.metadata} />
                 <RAGBlock sources={ragSources} />
 
                 {skillInvocations.length > 0 && (

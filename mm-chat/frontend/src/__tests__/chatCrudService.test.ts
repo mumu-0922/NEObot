@@ -167,6 +167,62 @@ describe("chat CRUD DTO mappers", () => {
     );
   });
 
+  it("reloads combined Knowledge and Web citation artifacts", () => {
+    const combined = mapChatMessageDtoToMessage({
+      ...assistantMessageDto,
+      metadata: {
+        knowledge: {
+          mode: "auto",
+          outcome: "answered",
+          selectedCollectionIds: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"],
+          citationCount: 1,
+          citations: [
+            {
+              id: "cit_1",
+              marker: "[K1]",
+              snippet: "private fixture",
+            },
+          ],
+        },
+        fusion: {
+          version: "source-fusion/v1",
+          authority: "mixed",
+          searchRequested: true,
+        },
+      },
+      outputBlocks: [
+        {
+          id: "m2-web-sources",
+          type: "search",
+          isSearching: false,
+          sources: [
+            {
+              title: "Public fixture",
+              url: "https://example.test/public",
+              content: "fresh fixture",
+              metadata: { marker: "[W1]" },
+            },
+          ],
+          images: [],
+        },
+      ],
+    });
+
+    expect(combined.knowledge).toMatchObject({
+      outcome: "answered",
+      citations: [{ marker: "[K1]", snippet: "private fixture" }],
+    });
+    expect(combined.outputBlocks).toMatchObject([
+      {
+        type: "search",
+        sources: [{ metadata: { marker: "[W1]" } }],
+      },
+    ]);
+    expect(combined.metadata).toMatchObject({
+      fusion: { authority: "mixed", searchRequested: true },
+    });
+  });
+
   it("hides the legacy image generation placeholder while preserving the attachment", () => {
     const generatedImageMessage: ChatMessageDTO = {
       ...assistantMessageDto,

@@ -114,3 +114,29 @@ func TestSourceFusionMetadataContainsOnlyBoundedDecisionFields(t *testing.T) {
 		t.Fatalf("fusion metadata leaked private input: %s / %v", encoded, err)
 	}
 }
+
+func TestApplySourceFusionSystemInstructionRequiresConflictDisclosure(t *testing.T) {
+	mixed := applySourceFusionSystemInstruction(
+		"Base instruction.",
+		sourceFusionPlan{Authority: sourceAuthorityMixed},
+	)
+	for _, required := range []string{
+		"Base instruction.",
+		"private Knowledge",
+		"current public facts",
+		"state the conflict",
+		"cite both matching [K] and [W] markers",
+		"do not attach a source marker",
+	} {
+		if !strings.Contains(mixed, required) {
+			t.Fatalf("mixed source instruction missing %q: %s", required, mixed)
+		}
+	}
+	base := "Base instruction."
+	if got := applySourceFusionSystemInstruction(
+		base,
+		sourceFusionPlan{Authority: sourceAuthorityKnowledge},
+	); got != base {
+		t.Fatalf("non-mixed instruction changed: %q", got)
+	}
+}

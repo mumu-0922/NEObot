@@ -356,7 +356,7 @@ Incremental execution slices:
 - **G11.9G.2** complete: run external Web only after Knowledge routing, derive a bounded
   query from the question plus admitted Knowledge, degrade provider failures to
   a normal model answer, and persist redacted stage/timing diagnostics;
-- **G11.9G.3**: close model-built-in Search routing, deterministic conflict
+- **G11.9G.3** complete: close model-built-in Search routing, deterministic conflict
   instructions, combined `[K]`/`[W]` persistence/reload, and frontend citation
   interaction parity;
 - **G11.9G.4**: execute the full matrix, owner-authorized live

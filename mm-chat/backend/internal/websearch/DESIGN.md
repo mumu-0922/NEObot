@@ -166,3 +166,11 @@ IDs. Resolver/config/provider failures become stable redacted degradation
 reasons and continue through available Knowledge or ordinary model reasoning;
 the active provider is never replaced. Persisted stage diagnostics contain
 bounded durations and outcomes but no query or source text.
+
+### 2026-07-19 — G11.9G.3
+
+Closed successful mixed Knowledge/OpenAI built-in Search, deterministic
+internal/current/conflict instructions, terminal stage outcomes, and combined
+`[K]`/`[W]` reload. A built-in startup failure retries the same selected model
+once without Web; it never switches model or Search provider. The frontend
+shows one compact localized notice only for allowlisted true Web degradation.

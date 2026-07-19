@@ -2021,3 +2021,48 @@ call changed in this slice. Rollback removes the derived-query builder and
 diagnostics, restores chat Search errors, and leaves the G11.9G.1 Router intact.
 G11.9G.3 next closes successful model-built-in routing, conflict instructions,
 combined citation reload, and frontend interaction/degradation rendering.
+
+## 2026-07-19 — G11.9G.3 Built-in fusion and citation interaction
+
+The deterministic mixed-source instruction now tells the selected model to use
+private Knowledge for internal facts, Web for current public facts, disclose
+scope/timestamp conflicts, cite both `[K]` and `[W]`, and never attach a source
+marker to unsupported model reasoning. It is injected only for a mixed plan;
+Knowledge-only, Web-only, no-result, and degraded plans do not receive the
+extra instruction.
+
+OpenAI built-in Search now follows the same Knowledge-first Router. A mixed
+fixture proved the provider receives `[K1]` context before built-in execution,
+emits `[W1]`, persists both source identities, and returns both unchanged from
+the message reload API. Built-in stage diagnostics transition from provider
+stream to completed/no-results/degraded. If built-in startup fails before any
+output, Go retries the same selected model once without built-in Web and records
+`provider_failed`; it never switches model or Search provider. Cancellation is
+not mislabeled as Web degradation.
+
+The frontend keeps the existing independent Knowledge citation and Web source
+cards. Server message mapping now has an explicit combined reload regression.
+A small localized amber notice appears only for seven allowlisted true Web
+degradation reasons. Disabled, skipped, normal no-result, unknown metadata, and
+successful source lanes render no extra annotation.
+
+Verification:
+
+```text
+mixed conflict/source-authority instruction                 passed
+Knowledge + OpenAI built-in Search                          passed
+persisted/reloaded [K1] + [W1] + Search block               passed
+built-in startup -> same-model ordinary fallback            passed
+frontend combined reload / notice allowlist                 passed
+frontend focused                                            19 passed
+frontend full                                               178 files / 851 tests
+frontend format / lint / typecheck / production build       passed
+Go full / chat race / vet                                   passed / passed / passed
+Docker Backend/Frontend source build / recreated health     passed / healthy
+```
+
+No database schema or public route changed. Rollback removes the mixed-source
+instruction and compact notice, then restores built-in startup failure as a
+terminal provider error while retaining G11.9G.1/G11.9G.2 external behavior.
+G11.9G.4 remains the full live matrix, restart, clean-copy, cleanup, and final
+G11.9 closure.

@@ -899,6 +899,142 @@ func TestHandlerUsesSelectedOpenAIModelBuiltInSearchAndStreamsSources(t *testing
 	}
 }
 
+func TestHandlerFusesKnowledgeWithBuiltInSearchAndReloadsBothCitations(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(
+			testMessageID,
+			testConversationID,
+			0,
+			"user",
+			"这个内部方向的最新公开进展是什么",
+		),
+	)
+	provider := &modelBuiltInSearchProbe{}
+	searchResolver := &fakeWebSearchResolver{execution: websearch.ActiveExecution{
+		Mode: websearch.ExecutionModelBuiltIn, ModelBuiltIn: websearch.ModelBuiltInOpenAI,
+	}}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithWebSearchService(websearch.NewService(searchResolver)),
+		WithRAGAnswerAssembler(NewRAGAnswerAssembler(
+			&fakeRAGCandidateSource{refs: []knowledge.EvidenceCandidateReference{validRAGCandidate()}},
+			&fakeRAGHydrator{evidence: []knowledge.HydratedEvidence{validHydratedEvidence()}},
+		)),
+		WithRAGAnswerGovernanceGate(&fakeRAGAnswerGovernanceGate{
+			authority: RAGAnswerAuthority{
+				Processor: "openai", ModelID: "gpt-search", CollectionCount: 1,
+			},
+		}),
+	)
+
+	recorder := performAuthenticatedRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"openai","modelId":"gpt-search"},"config":{"useSearch":true},"metadata":{"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-built-in-fusion"}`,
+	)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	if provider.ordinaryCalled || !provider.builtInCalled ||
+		!strings.Contains(provider.input.Prompt, "[K1]") ||
+		!strings.Contains(provider.input.SystemPrompt, "state the conflict") {
+		t.Fatalf("built-in fusion provider = %#v", provider)
+	}
+	messages := repo.messages[testConversationID]
+	if len(messages) != 2 || len(messages[1].OutputBlocks) != 1 {
+		t.Fatalf("built-in fusion messages = %#v", messages)
+	}
+	knowledgeMetadata := messages[1].Metadata["knowledge"].(map[string]any)
+	webMetadata := messages[1].Metadata["web"].(map[string]any)
+	fusionMetadata := messages[1].Metadata["fusion"].(map[string]any)
+	if knowledgeMetadata["citationCount"] != 1 ||
+		webMetadata["citationCount"] != 1 ||
+		fusionMetadata["authority"] != sourceAuthorityMixed {
+		t.Fatalf("combined metadata = %#v", messages[1].Metadata)
+	}
+
+	reload := performAuthenticatedRequest(
+		handler,
+		http.MethodGet,
+		conversationsPath+"/"+testConversationID+"/messages",
+		"",
+	)
+	assertStatus(t, reload, http.StatusOK)
+	for _, want := range []string{
+		`"marker":"[K1]"`,
+		`"marker":"[W1]"`,
+		`"type":"search"`,
+		`"authority":"mixed"`,
+	} {
+		if !strings.Contains(reload.Body.String(), want) {
+			t.Fatalf("reloaded messages missing %q: %s", want, reload.Body.String())
+		}
+	}
+}
+
+func TestHandlerFallsBackWhenBuiltInSearchFailsBeforeStreaming(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(
+			testMessageID,
+			testConversationID,
+			0,
+			"user",
+			"这个内部方向的最新公开进展是什么",
+		),
+	)
+	provider := &builtInSearchStartupFailureProvider{}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithWebSearchService(websearch.NewService(&fakeWebSearchResolver{
+			execution: websearch.ActiveExecution{
+				Mode:         websearch.ExecutionModelBuiltIn,
+				ModelBuiltIn: websearch.ModelBuiltInOpenAI,
+			},
+		})),
+		WithRAGAnswerAssembler(NewRAGAnswerAssembler(
+			&fakeRAGCandidateSource{refs: []knowledge.EvidenceCandidateReference{validRAGCandidate()}},
+			&fakeRAGHydrator{evidence: []knowledge.HydratedEvidence{validHydratedEvidence()}},
+		)),
+		WithRAGAnswerGovernanceGate(&fakeRAGAnswerGovernanceGate{
+			authority: RAGAnswerAuthority{
+				Processor: "openai", ModelID: "gpt-search", CollectionCount: 1,
+			},
+		}),
+	)
+
+	recorder := performAuthenticatedRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"openai","modelId":"gpt-search"},"config":{"useSearch":true},"metadata":{"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-built-in-fallback"}`,
+	)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	if !provider.builtInCalled || !provider.ordinaryCalled ||
+		!strings.Contains(provider.ordinaryInput.Prompt, "[K1]") ||
+		strings.Contains(provider.ordinaryInput.SystemPrompt, "state the conflict") {
+		t.Fatalf("built-in startup fallback = %#v", provider)
+	}
+	message := repo.messages[testConversationID][1]
+	if message.Status != "completed" || message.Content != "ordinary fallback" ||
+		len(message.OutputBlocks) != 0 {
+		t.Fatalf("built-in fallback message = %#v", message)
+	}
+	fusion := message.Metadata["fusion"].(map[string]any)
+	if fusion["authority"] != sourceAuthorityKnowledge ||
+		fusion["degradationReason"] != "provider_failed" {
+		t.Fatalf("built-in fallback fusion = %#v", fusion)
+	}
+}
+
 func TestHandlerExecutesExternalSearchOnceAndPersistsWebArtifacts(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
@@ -1308,6 +1444,10 @@ func TestHandlerSourceFusionDerivesExternalQueryFromKnowledge(t *testing.T) {
 	if !strings.Contains(provider.input.Prompt, "[K1]") ||
 		!strings.Contains(provider.input.Prompt, "[W1]") {
 		t.Fatalf("mixed provider prompt = %q", provider.input.Prompt)
+	}
+	if !strings.Contains(provider.input.SystemPrompt, "state the conflict") ||
+		!strings.Contains(provider.input.SystemPrompt, "cite both matching [K] and [W] markers") {
+		t.Fatalf("mixed provider system prompt = %q", provider.input.SystemPrompt)
 	}
 	fusion := repo.messages[testConversationID][1].Metadata["fusion"].(map[string]any)
 	if fusion["authority"] != sourceAuthorityMixed ||
@@ -2798,6 +2938,37 @@ func (p *fakeWebSearchProvider) Search(
 type modelBuiltInSearchProbe struct {
 	ordinaryCalled bool
 	builtInCalled  bool
+	input          ProviderRequest
+}
+
+type builtInSearchStartupFailureProvider struct {
+	builtInCalled  bool
+	ordinaryCalled bool
+	ordinaryInput  ProviderRequest
+}
+
+func (p *builtInSearchStartupFailureProvider) ModelBuiltInSearchID() websearch.ModelBuiltInProviderID {
+	return websearch.ModelBuiltInOpenAI
+}
+
+func (p *builtInSearchStartupFailureProvider) StreamChat(
+	_ context.Context,
+	input ProviderRequest,
+) (<-chan ProviderEvent, error) {
+	p.ordinaryCalled = true
+	p.ordinaryInput = input
+	events := make(chan ProviderEvent, 1)
+	events <- ProviderEvent{Type: ProviderEventDelta, Delta: "ordinary fallback"}
+	close(events)
+	return events, nil
+}
+
+func (p *builtInSearchStartupFailureProvider) StreamChatWithModelBuiltInSearch(
+	context.Context,
+	ProviderRequest,
+) (<-chan ProviderEvent, error) {
+	p.builtInCalled = true
+	return nil, errors.New("built-in fixture failure")
 }
 
 func (p *modelBuiltInSearchProbe) ModelBuiltInSearchID() websearch.ModelBuiltInProviderID {
@@ -2805,10 +2976,11 @@ func (p *modelBuiltInSearchProbe) ModelBuiltInSearchID() websearch.ModelBuiltInP
 }
 
 func (p *modelBuiltInSearchProbe) StreamChat(
-	context.Context,
-	ProviderRequest,
+	_ context.Context,
+	input ProviderRequest,
 ) (<-chan ProviderEvent, error) {
 	p.ordinaryCalled = true
+	p.input = input
 	events := make(chan ProviderEvent)
 	close(events)
 	return events, nil
@@ -2816,9 +2988,10 @@ func (p *modelBuiltInSearchProbe) StreamChat(
 
 func (p *modelBuiltInSearchProbe) StreamChatWithModelBuiltInSearch(
 	_ context.Context,
-	_ ProviderRequest,
+	input ProviderRequest,
 ) (<-chan ProviderEvent, error) {
 	p.builtInCalled = true
+	p.input = input
 	events := make(chan ProviderEvent, 2)
 	result := websearch.Result{Sources: []websearch.Source{{
 		Title: "Fixture", URL: "https://search.example/result", Content: "source",

@@ -1088,6 +1088,11 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			webSearchResult,
 		)
 	}
+	providerSystemPromptWithoutFusion := providerSystemPrompt
+	providerSystemPrompt = applySourceFusionSystemInstruction(
+		providerSystemPrompt,
+		fusionPlan,
+	)
 	webMessageMetadata := func(decision autoRAGDecision, extra map[string]any) map[string]any {
 		metadata := withWebSearchMessageMetadata(
 			autoRAGMessageMetadata(runID, ragSelection, decision, extra),
@@ -1123,11 +1128,25 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		Metadata:           providerMetadata,
 	}
 	var events <-chan ProviderEvent
+	var builtInSearchStarted time.Time
 	if modelBuiltInSearchProvider != nil {
+		builtInSearchStarted = time.Now()
 		events, err = modelBuiltInSearchProvider.StreamChatWithModelBuiltInSearch(
 			streamCtx,
 			providerRequest,
 		)
+		if err != nil && streamCtx.Err() == nil && r.Context().Err() == nil &&
+			!errors.Is(err, context.Canceled) {
+			fusionDiagnostics.WebExecuteDurationMillis =
+				sourceFusionDurationMillis(builtInSearchStarted)
+			fusionDiagnostics.WebExecuteOutcome = "degraded"
+			fusionDiagnostics.DegradationReason = "provider_failed"
+			fusionPlan = fallbackSourceFusionAuthority(fusionPlan, autoDecision)
+			searchExecution = nil
+			modelBuiltInSearchProvider = nil
+			providerRequest.SystemPrompt = providerSystemPromptWithoutFusion
+			events, err = streamProvider.StreamChat(streamCtx, providerRequest)
+		}
 	} else {
 		events, err = streamProvider.StreamChat(streamCtx, providerRequest)
 	}
@@ -1192,6 +1211,14 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	var content strings.Builder
 	for providerEvent := range events {
 		if providerEvent.Error != nil {
+			if modelBuiltInSearchProvider != nil && streamCtx.Err() == nil &&
+				!errors.Is(providerEvent.Error, context.Canceled) {
+				fusionDiagnostics.WebExecuteDurationMillis =
+					sourceFusionDurationMillis(builtInSearchStarted)
+				fusionDiagnostics.WebExecuteOutcome = "degraded"
+				fusionDiagnostics.DegradationReason = "provider_failed"
+				fusionPlan = fallbackSourceFusionAuthority(fusionPlan, autoDecision)
+			}
 			if streamCtx.Err() != nil {
 				sequence++
 				_ = writeSSEEvent(w, "message.cancelled", streamEvent{
@@ -1267,6 +1294,11 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			if providerEvent.Search == nil || len(providerEvent.Search.Sources) == 0 {
 				continue
 			}
+			if modelBuiltInSearchProvider != nil {
+				fusionDiagnostics.WebExecuteDurationMillis =
+					sourceFusionDurationMillis(builtInSearchStarted)
+				fusionDiagnostics.WebExecuteOutcome = "completed"
+			}
 			webSearchResult = mergeWebSearchResults(webSearchResult, *providerEvent.Search)
 			sequence++
 			if err := writeSSEEvent(w, "search.results", streamEvent{
@@ -1304,6 +1336,13 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		})
 		flusher.Flush()
 		return
+	}
+	if modelBuiltInSearchProvider != nil &&
+		fusionDiagnostics.WebExecuteOutcome == "provider_stream" {
+		fusionDiagnostics.WebExecuteDurationMillis =
+			sourceFusionDurationMillis(builtInSearchStarted)
+		fusionDiagnostics.WebExecuteOutcome = "no_results"
+		fusionPlan = fallbackSourceFusionAuthority(fusionPlan, autoDecision)
 	}
 	if searchExecution != nil && searchExecution.Mode == websearch.ExecutionModelBuiltIn {
 		if delta := missingBuiltInWebCitationDelta(content.String(), webSearchResult); delta != "" {

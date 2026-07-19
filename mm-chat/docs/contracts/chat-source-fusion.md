@@ -61,6 +61,7 @@ remain the only user authorities.
 | Knowledge dependency failure | model continues; optional Web may run |
 | External Web failure | model continues with available Knowledge; degraded metadata |
 | Built-in capability mismatch | degraded metadata; no cross-provider fallback |
+| Built-in startup fails before output | retry same model once without built-in Web |
 | Neither evidence source available | ordinary model answer |
 | `[K]`/`[W]` conflict | present both scopes with both markers |
 
@@ -81,6 +82,7 @@ remain the only user authorities.
 - handler assertions proving skipped Search produces zero resolver/provider I/O;
 - external and built-in Search failure degradation without provider fallback;
 - prompt assertions for source authority and conflict disclosure;
+- successful mixed model-built-in Search plus same-model startup degradation;
 - completed/cancelled/failed message persistence with bounded `[K]`/`[W]`
   artifacts and redacted diagnostics;
 - reload and frontend citation-card interaction;
@@ -101,3 +103,7 @@ Correct:
 Knowledge decision -> deterministic source Router -> optional one-provider Web
   -> source-aware prompt -> model -> persisted [K]/[W] + redacted diagnostics
 ```
+
+The frontend renders Knowledge and Web citation cards independently. It adds
+one compact localized notice only for an allowlisted Web degradation reason;
+disabled, skipped, and no-result lanes render no empty status card.

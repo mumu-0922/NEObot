@@ -112,5 +112,6 @@
   "lengthShortest": "最短",
   "toggleVersionHistory": "変更履歴を切り替え",
   "cancel": "キャンセル",
-  "save": "保存"
+  "save": "保存",
+  "webSearchTemporarilyUnavailable": "Web 検索は一時的に利用できません。Web の結果を使わずに回答を続行しました。"
 }
