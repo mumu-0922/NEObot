@@ -1413,7 +1413,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
       - [x] G11.9G.1 Deterministic question/authority Router, Knowledge-first
             ordering, unnecessary-Web skip, redacted decision metadata, and
             frozen fusion contract.
-      - [ ] G11.9G.2 Knowledge-derived external query, Web failure degradation,
+      - [x] G11.9G.2 Knowledge-derived external query, Web failure degradation,
             and bounded stage/timing diagnostics.
       - [ ] G11.9G.3 Model-built-in routing, conflict instructions, combined
             citation persistence/reload, and frontend interaction parity.

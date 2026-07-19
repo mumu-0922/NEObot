@@ -106,8 +106,10 @@ authenticated POST /v1/search       Go chat stream with useSearch
   fails closed with `SEARCH_NOT_CONFIGURED`.
 - G11.9G.1 places the deterministic source Router after Knowledge retrieval.
   Search never runs when disabled and is skipped when admitted Knowledge is
-  sufficient for a non-current question. Knowledge-derived query planning and
-  provider-failure degradation remain G11.9G.2.
+  sufficient for a non-current question. G11.9G.2 appends at most two admitted
+  Knowledge snippets under a 512-byte context cap for mixed external searches;
+  Auto chat degrades resolution/provider failures without fallback. The direct
+  `/v1/search` diagnostic route retains its explicit fail-closed errors.
 - Gemini remains unsupported because the Go runtime cannot currently execute a
   Gemini chat request. Capability checks return an explicit unsupported error
   instead of silently using another provider.
@@ -155,3 +157,12 @@ Added the deterministic question/authority Router after Knowledge retrieval.
 The user Search toggle remains the hard upper bound, admitted Knowledge can
 skip unnecessary external I/O, current/public questions select a mixed plan,
 and persisted fusion diagnostics contain only stable enums and outcomes.
+
+### 2026-07-19 — G11.9G.2
+
+External Search now executes only after the Knowledge decision. Mixed queries
+may include a bounded admitted Knowledge context without hashes, locators, or
+IDs. Resolver/config/provider failures become stable redacted degradation
+reasons and continue through available Knowledge or ordinary model reasoning;
+the active provider is never replaced. Persisted stage diagnostics contain
+bounded durations and outcomes but no query or source text.

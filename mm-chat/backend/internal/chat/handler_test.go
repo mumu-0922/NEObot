@@ -955,7 +955,7 @@ func TestHandlerExecutesExternalSearchOnceAndPersistsWebArtifacts(t *testing.T) 
 	}
 }
 
-func TestHandlerRejectsBuiltInSearchForOpenAICompatibleProvider(t *testing.T) {
+func TestHandlerDegradesBuiltInSearchForOpenAICompatibleProvider(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
 	repo.messages[testConversationID] = append(
@@ -963,14 +963,15 @@ func TestHandlerRejectsBuiltInSearchForOpenAICompatibleProvider(t *testing.T) {
 		fakeMessage(testMessageID, testConversationID, 0, "user", "latest fixture"),
 	)
 	provider := &capturingProvider{}
+	searchResolver := &fakeWebSearchResolver{
+		execution: websearch.ActiveExecution{
+			Mode: websearch.ExecutionModelBuiltIn, ModelBuiltIn: websearch.ModelBuiltInOpenAI,
+		},
+	}
 	handler := NewHandler(
 		NewService(repo),
 		WithProvider(provider),
-		WithWebSearchService(websearch.NewService(&fakeWebSearchResolver{
-			execution: websearch.ActiveExecution{
-				Mode: websearch.ExecutionModelBuiltIn, ModelBuiltIn: websearch.ModelBuiltInOpenAI,
-			},
-		})),
+		WithWebSearchService(websearch.NewService(searchResolver)),
 	)
 
 	recorder := performRequest(
@@ -980,14 +981,22 @@ func TestHandlerRejectsBuiltInSearchForOpenAICompatibleProvider(t *testing.T) {
 		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"openai_compatible","modelId":"gpt-search"},"config":{"useSearch":true},"idempotencyKey":"stream-key-unsupported-search"}`,
 	)
 
-	assertStatus(t, recorder, http.StatusNotImplemented)
-	var response ErrorResponse
-	decodeBody(t, recorder, &response)
-	if response.Error.Code != "MODEL_BUILTIN_SEARCH_UNSUPPORTED" {
-		t.Fatalf("error = %#v", response.Error)
+	assertStreamStatus(t, recorder, http.StatusOK)
+	if searchResolver.calls != 1 || provider.input.Prompt != "latest fixture" {
+		t.Fatalf(
+			"resolver/provider fallback = %d / %#v",
+			searchResolver.calls,
+			provider.input,
+		)
 	}
-	if provider.input.Prompt != "" || len(repo.messages[testConversationID]) != 1 {
-		t.Fatalf("provider called or assistant persisted: input=%#v messages=%#v", provider.input, repo.messages[testConversationID])
+	messages := repo.messages[testConversationID]
+	if len(messages) != 2 || messages[1].Status != "completed" {
+		t.Fatalf("degraded messages = %#v", messages)
+	}
+	fusion, ok := messages[1].Metadata["fusion"].(map[string]any)
+	if !ok || fusion["authority"] != sourceAuthorityModel ||
+		fusion["degradationReason"] != "model_builtin_unsupported" {
+		t.Fatalf("fusion metadata = %#v", messages[1].Metadata["fusion"])
 	}
 }
 
@@ -1243,6 +1252,124 @@ func TestHandlerSourceFusionSkipsWebWhenKnowledgeIsSufficient(t *testing.T) {
 		fusion["searchRequested"] != false ||
 		fusion["searchReason"] != sourceSearchKnowledgeSufficient {
 		t.Fatalf("fusion metadata = %#v", messages[1].Metadata["fusion"])
+	}
+}
+
+func TestHandlerSourceFusionDerivesExternalQueryFromKnowledge(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(
+			testMessageID,
+			testConversationID,
+			0,
+			"user",
+			"这个研究方向的最新公开进展是什么",
+		),
+	)
+	provider := &titleProvider{chunks: []string{"Mixed answer [K1] [W1]"}}
+	searchProvider := &fakeWebSearchProvider{result: websearch.Result{
+		Sources: []websearch.Source{{
+			Title: "Public update", URL: "https://search.example/update", Content: "fresh update",
+		}},
+	}}
+	searchResolver := &fakeWebSearchResolver{execution: websearch.ActiveExecution{
+		Mode: websearch.ExecutionExternal, External: searchProvider,
+	}}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithWebSearchService(websearch.NewService(searchResolver)),
+		WithRAGAnswerAssembler(NewRAGAnswerAssembler(
+			&fakeRAGCandidateSource{refs: []knowledge.EvidenceCandidateReference{validRAGCandidate()}},
+			&fakeRAGHydrator{evidence: []knowledge.HydratedEvidence{validHydratedEvidence()}},
+		)),
+		WithRAGAnswerGovernanceGate(&fakeRAGAnswerGovernanceGate{
+			authority: RAGAnswerAuthority{
+				Processor: "mock", ModelID: "mock-chat", CollectionCount: 1,
+			},
+		}),
+	)
+
+	recorder := performAuthenticatedRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"config":{"useSearch":true},"metadata":{"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-fusion-mixed"}`,
+	)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	if searchResolver.calls != 1 || searchProvider.calls != 1 ||
+		!strings.Contains(searchProvider.request.Query, "最新公开进展") ||
+		!strings.Contains(searchProvider.request.Query, "alpha evidence source") {
+		t.Fatalf("derived Search request = %#v", searchProvider.request)
+	}
+	if !strings.Contains(provider.input.Prompt, "[K1]") ||
+		!strings.Contains(provider.input.Prompt, "[W1]") {
+		t.Fatalf("mixed provider prompt = %q", provider.input.Prompt)
+	}
+	fusion := repo.messages[testConversationID][1].Metadata["fusion"].(map[string]any)
+	if fusion["authority"] != sourceAuthorityMixed ||
+		fusion["webQueryDerivedFromKnowledge"] != true {
+		t.Fatalf("fusion metadata = %#v", fusion)
+	}
+	stages := fusion["stages"].(map[string]any)
+	webExecute := stages["webExecute"].(map[string]any)
+	if webExecute["outcome"] != "completed" {
+		t.Fatalf("web execute stage = %#v", webExecute)
+	}
+}
+
+func TestHandlerSourceFusionDegradesExternalSearchFailure(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "latest public fixture"),
+	)
+	provider := &titleProvider{chunks: []string{"Normal model fallback"}}
+	searchProvider := &fakeWebSearchProvider{err: &websearch.ProviderError{
+		Provider: websearch.ProviderTavily,
+		Code:     "fixture_failure",
+		Status:   http.StatusBadGateway,
+	}}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithWebSearchService(websearch.NewService(&fakeWebSearchResolver{
+			execution: websearch.ActiveExecution{
+				Mode: websearch.ExecutionExternal, External: searchProvider,
+			},
+		})),
+	)
+
+	recorder := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"config":{"useSearch":true},"idempotencyKey":"stream-key-fusion-web-failure"}`,
+	)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	if provider.input.Prompt != "latest public fixture" ||
+		strings.Contains(provider.input.Prompt, "Relevant Web evidence") {
+		t.Fatalf("fallback provider prompt = %q", provider.input.Prompt)
+	}
+	message := repo.messages[testConversationID][1]
+	if message.Status != "completed" || message.Content != "Normal model fallback" ||
+		len(message.OutputBlocks) != 0 {
+		t.Fatalf("fallback message = %#v", message)
+	}
+	fusion := message.Metadata["fusion"].(map[string]any)
+	if fusion["authority"] != sourceAuthorityModel ||
+		fusion["degradationReason"] != "provider_failed" {
+		t.Fatalf("fusion metadata = %#v", fusion)
+	}
+	stages := fusion["stages"].(map[string]any)
+	webExecute := stages["webExecute"].(map[string]any)
+	if webExecute["outcome"] != "degraded" {
+		t.Fatalf("web execute stage = %#v", webExecute)
 	}
 }
 

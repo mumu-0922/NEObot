@@ -947,6 +947,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	autoDecision := autoRAGDecision{}
+	knowledgeStarted := time.Now()
 	if ragSelection.Enabled {
 		autoDecision = h.decideAutoRAG(
 			r.Context(),
@@ -978,35 +979,75 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			)
 		}
 	}
+	knowledgeDurationMillis := int64(0)
+	if ragSelection.Enabled {
+		knowledgeDurationMillis = sourceFusionDurationMillis(knowledgeStarted)
+	}
+	routerStarted := time.Now()
 	fusionPlan := planSourceFusion(
 		userMessage.Content,
 		configBool(request.Config, "useSearch"),
 		autoDecision,
 	)
-	searchExecution, modelBuiltInSearchProvider, err := h.resolveChatSearchExecution(
+	fusionDiagnostics := newSourceFusionDiagnostics(fusionPlan)
+	fusionDiagnostics.KnowledgeDurationMillis = knowledgeDurationMillis
+	fusionDiagnostics.RouterDurationMillis = sourceFusionDurationMillis(routerStarted)
+	resolveStarted := time.Now()
+	searchExecution, modelBuiltInSearchProvider, searchErr := h.resolveChatSearchExecution(
 		r.Context(),
 		streamProvider,
 		fusionPlan.SearchRequested,
 	)
-	if err != nil {
-		writeChatSearchError(w, err)
-		return
+	if fusionPlan.SearchRequested {
+		fusionDiagnostics.WebResolveDurationMillis = sourceFusionDurationMillis(resolveStarted)
+	}
+	if searchErr != nil {
+		fusionDiagnostics.WebResolveOutcome = "degraded"
+		fusionDiagnostics.WebExecuteOutcome = "not_run"
+		fusionDiagnostics.DegradationReason = sourceSearchDegradationReason(searchErr)
+		fusionPlan = fallbackSourceFusionAuthority(fusionPlan, autoDecision)
+		searchExecution = nil
+		modelBuiltInSearchProvider = nil
+	} else if searchExecution != nil {
+		fusionDiagnostics.WebResolveOutcome = "resolved"
 	}
 	webSearchResult := websearch.Result{Sources: []websearch.Source{}, Images: []websearch.Image{}}
 	if searchExecution != nil && searchExecution.Mode == websearch.ExecutionExternal {
-		webSearchResult, err = h.webSearchService.Execute(
+		searchQuery, derived := buildFusionWebSearchQuery(
+			userMessage.Content,
+			fusionPlan,
+			autoDecision,
+		)
+		fusionDiagnostics.WebQueryDerived = derived
+		executeStarted := time.Now()
+		webSearchResult, searchErr = h.webSearchService.Execute(
 			r.Context(),
 			*searchExecution,
 			websearch.Request{
-				Query:      boundedWebSearchQuery(userMessage.Content),
+				Query:      searchQuery,
 				MaxResults: configIntRange(request.Config, "searchResultsLimit", 5, 1, websearch.MaxResults),
 			},
 		)
-		if err != nil {
-			writeChatSearchError(w, err)
-			return
+		fusionDiagnostics.WebExecuteDurationMillis = sourceFusionDurationMillis(executeStarted)
+		if searchErr != nil {
+			fusionDiagnostics.WebExecuteOutcome = "degraded"
+			fusionDiagnostics.DegradationReason = sourceSearchDegradationReason(searchErr)
+			fusionPlan = fallbackSourceFusionAuthority(fusionPlan, autoDecision)
+			webSearchResult = websearch.Result{
+				Sources: []websearch.Source{}, Images: []websearch.Image{},
+			}
+		} else {
+			webSearchResult, _ = prepareWebSearchResult(webSearchResult)
+			if len(webSearchResult.Sources) == 0 {
+				fusionDiagnostics.WebExecuteOutcome = "no_results"
+				fusionPlan = fallbackSourceFusionAuthority(fusionPlan, autoDecision)
+			} else {
+				fusionDiagnostics.WebExecuteOutcome = "completed"
+			}
 		}
-		webSearchResult, _ = prepareWebSearchResult(webSearchResult)
+	} else if searchExecution != nil &&
+		searchExecution.Mode == websearch.ExecutionModelBuiltIn {
+		fusionDiagnostics.WebExecuteOutcome = "provider_stream"
 	}
 
 	runID, err := NewUUID()
@@ -1053,7 +1094,12 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			searchExecution,
 			webSearchResult,
 		)
-		return withSourceFusionMessageMetadata(metadata, fusionPlan, decision)
+		return withSourceFusionMessageMetadata(
+			metadata,
+			fusionPlan,
+			decision,
+			fusionDiagnostics,
+		)
 	}
 
 	streamCtx, streamCancel := context.WithCancel(r.Context())
@@ -1772,39 +1818,6 @@ func (h *Handler) resolveChatSearchExecution(
 		return nil, nil, errModelBuiltInSearchUnsupported
 	}
 	return &execution, builtIn, nil
-}
-
-func writeChatSearchError(w http.ResponseWriter, err error) {
-	var providerError *websearch.ProviderError
-	switch {
-	case errors.Is(err, websearch.ErrInvalidRequest):
-		writeError(w, http.StatusBadRequest, "INVALID_SEARCH_REQUEST", "search request is invalid")
-	case errors.Is(err, websearch.ErrNotConfigured):
-		writeError(
-			w, http.StatusServiceUnavailable,
-			"SEARCH_NOT_CONFIGURED", "web search is not configured",
-		)
-	case errors.Is(err, websearch.ErrResolutionFailed):
-		writeError(
-			w, http.StatusServiceUnavailable,
-			"SEARCH_RESOLUTION_FAILED", "web search provider is unavailable",
-		)
-	case errors.Is(err, websearch.ErrInvalidConfig):
-		writeError(
-			w, http.StatusServiceUnavailable,
-			"SEARCH_CONFIG_INVALID", "web search configuration is invalid",
-		)
-	case errors.Is(err, errModelBuiltInSearchUnsupported):
-		writeError(
-			w, http.StatusNotImplemented,
-			"MODEL_BUILTIN_SEARCH_UNSUPPORTED",
-			"configured model provider does not support built-in search",
-		)
-	case errors.As(err, &providerError):
-		writeError(w, http.StatusBadGateway, "SEARCH_PROVIDER_ERROR", "web search provider failed")
-	default:
-		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "web search resolution failed")
-	}
 }
 
 func (h *Handler) resolveProviderAttachments(ctx context.Context, message Message) ([]ProviderAttachment, error) {

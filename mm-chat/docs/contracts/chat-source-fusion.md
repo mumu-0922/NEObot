@@ -45,6 +45,10 @@ remain the only user authorities.
 - Diagnostics contain enums, IDs, counts, scores, stages, timings, provider,
   and degradation reason only. They never contain query text, full source text,
   credentials, ciphertext, or signed capabilities.
+- When mixed routing selects external Web, the outbound query may append at
+  most two already-admitted Knowledge snippets with a combined 512-byte cap.
+  This happens only under the user's enabled Search toggle; hashes, locators,
+  IDs, and the derived query are never persisted to diagnostics.
 
 ## 4. Validation and Error Matrix
 

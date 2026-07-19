@@ -1,6 +1,8 @@
 package chat
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"neo-chat/mm-chat/backend/internal/knowledge"
@@ -82,16 +84,33 @@ func TestSourceFusionMetadataContainsOnlyBoundedDecisionFields(t *testing.T) {
 		map[string]any{"runId": "run"},
 		planSourceFusion("latest private fixture", true, autoRAGDecision{Outcome: "no_evidence"}),
 		autoRAGDecision{Outcome: "no_evidence"},
+		sourceFusionDiagnostics{
+			KnowledgeDurationMillis:  4,
+			RouterDurationMillis:     1,
+			WebResolveOutcome:        "resolved",
+			WebResolveDurationMillis: 2,
+			WebExecuteOutcome:        "completed",
+			WebExecuteDurationMillis: 3,
+		},
 	)
 	fusion, ok := metadata["fusion"].(map[string]any)
-	if !ok || len(fusion) != 7 || fusion["version"] != sourceFusionVersion ||
+	if !ok || len(fusion) != 9 || fusion["version"] != sourceFusionVersion ||
 		fusion["authority"] != sourceAuthorityWeb ||
 		fusion["searchRequested"] != true || fusion["knowledgeOutcome"] != "no_evidence" {
 		t.Fatalf("fusion metadata = %#v", metadata["fusion"])
+	}
+	stages, ok := fusion["stages"].(map[string]any)
+	if !ok || len(stages) != 4 {
+		t.Fatalf("fusion stages = %#v", fusion["stages"])
 	}
 	for _, forbidden := range []string{"question", "query", "evidence", "sources", "secret"} {
 		if _, present := fusion[forbidden]; present {
 			t.Fatalf("fusion metadata contains %q: %#v", forbidden, fusion)
 		}
+	}
+	encoded, err := json.Marshal(fusion)
+	if err != nil || strings.Contains(string(encoded), "latest private fixture") ||
+		strings.Contains(string(encoded), "credential-shaped-private-detail") {
+		t.Fatalf("fusion metadata leaked private input: %s / %v", encoded, err)
 	}
 }

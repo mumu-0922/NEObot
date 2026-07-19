@@ -118,6 +118,7 @@ func withSourceFusionMessageMetadata(
 	base map[string]any,
 	plan sourceFusionPlan,
 	knowledge autoRAGDecision,
+	diagnostics sourceFusionDiagnostics,
 ) map[string]any {
 	metadata := ensureObject(base)
 	knowledgeOutcome := strings.TrimSpace(knowledge.Outcome)
@@ -125,13 +126,36 @@ func withSourceFusionMessageMetadata(
 		knowledgeOutcome = "not_selected"
 	}
 	metadata["fusion"] = map[string]any{
-		"version":          sourceFusionVersion,
-		"questionClass":    plan.QuestionClass,
-		"authority":        plan.Authority,
-		"searchEnabled":    plan.SearchEnabled,
-		"searchRequested":  plan.SearchRequested,
-		"searchReason":     plan.SearchReason,
-		"knowledgeOutcome": knowledgeOutcome,
+		"version":                      sourceFusionVersion,
+		"questionClass":                plan.QuestionClass,
+		"authority":                    plan.Authority,
+		"searchEnabled":                plan.SearchEnabled,
+		"searchRequested":              plan.SearchRequested,
+		"searchReason":                 plan.SearchReason,
+		"knowledgeOutcome":             knowledgeOutcome,
+		"webQueryDerivedFromKnowledge": diagnostics.WebQueryDerived,
+		"stages": map[string]any{
+			"knowledge": map[string]any{
+				"outcome":    knowledgeOutcome,
+				"durationMs": diagnostics.KnowledgeDurationMillis,
+			},
+			"router": map[string]any{
+				"outcome":    plan.SearchReason,
+				"durationMs": diagnostics.RouterDurationMillis,
+			},
+			"webResolve": map[string]any{
+				"outcome":    diagnostics.WebResolveOutcome,
+				"durationMs": diagnostics.WebResolveDurationMillis,
+			},
+			"webExecute": map[string]any{
+				"outcome":    diagnostics.WebExecuteOutcome,
+				"durationMs": diagnostics.WebExecuteDurationMillis,
+			},
+		},
+	}
+	if diagnostics.DegradationReason != "" {
+		metadata["fusion"].(map[string]any)["degradationReason"] =
+			diagnostics.DegradationReason
 	}
 	return metadata
 }

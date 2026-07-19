@@ -1978,3 +1978,46 @@ Rollback removes `source_fusion.go`, restores Search resolution directly from
 the toggle, and restores the previous Knowledge preparation location. G11.9G.2
 next adds Knowledge-derived external queries, graceful Web degradation, and
 stage/timing diagnostics.
+
+## 2026-07-19 — G11.9G.2 External fusion and graceful degradation
+
+External Search now runs strictly after Knowledge retrieval, prompt
+validation, and Router selection. For a mixed current/public question, Go may
+append up to two already-admitted Knowledge snippets with a combined 512-byte
+cap to the bounded external query. It sends no source hash, locator, record ID,
+credential, or ciphertext. The derived query is never persisted. A
+Knowledge-free Web query remains the normalized original question.
+
+Auto chat no longer aborts an otherwise useful answer when Search resolution,
+configuration, capability matching, or the one active external provider fails.
+The same selected provider is attempted once, there is no cross-provider
+fallback, and the answer continues with admitted Knowledge or ordinary model
+reasoning. An empty Web result is a normal fallback rather than an error. The
+standalone `/v1/search` diagnostic API remains fail-closed and still returns its
+explicit Search error; only the combined Auto chat policy degrades.
+
+Completed message diagnostics now include bounded Knowledge, Router, Web
+resolution, and Web execution stage outcomes/durations, whether Knowledge
+contributed to the outbound query, and one stable degradation reason. They
+contain no question/query/source body. Knowledge citation scores and IDs remain
+in the existing authorized citation artifacts instead of being duplicated.
+
+Verification:
+
+```text
+mixed Knowledge -> external query/context cap             passed / 512 bytes
+query hash/locator/ID exclusion                            passed
+external success -> [K1] + [W1] provider context          passed
+external provider failure -> ordinary completed answer    passed
+built-in capability mismatch -> ordinary completed answer passed
+no provider fallback                                      passed
+diagnostic stage allowlist / duration clamp               passed / 10 minutes
+Go full / chat race / vet                                  passed / passed / passed
+Docker backend source build / recreated health             passed / healthy
+```
+
+No schema, route, frontend component, provider configuration, or real provider
+call changed in this slice. Rollback removes the derived-query builder and
+diagnostics, restores chat Search errors, and leaves the G11.9G.1 Router intact.
+G11.9G.3 next closes successful model-built-in routing, conflict instructions,
+combined citation reload, and frontend interaction/degradation rendering.
