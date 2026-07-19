@@ -31,18 +31,17 @@ import httpx
 from mm_chat_rag.job_context import ProcessingJobContext
 from mm_chat_rag.job_handler_dependencies import DocumentSource, ParsedDocumentArtifacts
 from mm_chat_rag.models import stable_error_code
+from mm_chat_rag.provider_gateway import GoProviderGateway
 from mm_chat_rag.retry import PermanentJobError, RetryableJobError
 
 type JsonValue = None | bool | int | float | str | list[JsonValue] | JsonObject
 type JsonObject = dict[str, JsonValue]
 
-MINERU_GATEWAY_CREDENTIALS_MISSING: Final = "MINERU_GATEWAY_CREDENTIALS_MISSING"
 MINERU_GATEWAY_DEPENDENCY_UNCONFIGURED: Final = "MINERU_GATEWAY_DEPENDENCY_UNCONFIGURED"
 MINERU_GATEWAY_CONTEXT_INVALID: Final = "MINERU_GATEWAY_CONTEXT_INVALID"
 MINERU_GATEWAY_SOURCE_UNSUPPORTED: Final = "MINERU_GATEWAY_SOURCE_UNSUPPORTED"
 MINERU_GATEWAY_SOURCE_HASH_MISMATCH: Final = "MINERU_GATEWAY_SOURCE_HASH_MISMATCH"
 MINERU_GATEWAY_REQUEST_FAILED: Final = "MINERU_GATEWAY_REQUEST_FAILED"
-MINERU_GATEWAY_STATUS_INVALID: Final = "MINERU_GATEWAY_STATUS_INVALID"
 MINERU_GATEWAY_RESPONSE_INVALID: Final = "MINERU_GATEWAY_RESPONSE_INVALID"
 MINERU_GATEWAY_RESPONSE_TOO_LARGE: Final = "MINERU_GATEWAY_RESPONSE_TOO_LARGE"
 MINERU_GATEWAY_UPLOAD_URL_INVALID: Final = "MINERU_GATEWAY_UPLOAD_URL_INVALID"
@@ -54,9 +53,8 @@ MINERU_GATEWAY_RESULT_NOT_READY: Final = "MINERU_GATEWAY_RESULT_NOT_READY"
 MINERU_GATEWAY_RESULT_FAILED: Final = "MINERU_GATEWAY_RESULT_FAILED"
 MINERU_GATEWAY_ARCHIVE_INVALID: Final = "MINERU_GATEWAY_ARCHIVE_INVALID"
 MINERU_GATEWAY_ARTIFACT_INVALID: Final = "MINERU_GATEWAY_ARTIFACT_INVALID"
-MINERU_ALLOCATE_UPLOAD_URL: Final = "https://mineru.net/api/v4/file-urls/batch"
-MINERU_POLL_PATH_PREFIX: Final = "/api/v4/extract-results/batch/"
-MINERU_POLL_URL_PREFIX: Final = f"https://mineru.net{MINERU_POLL_PATH_PREFIX}"
+MINERU_ALLOCATE_PATH: Final = "/internal/rag/providers/mineru/allocate"
+MINERU_POLL_PATH: Final = "/internal/rag/providers/mineru/poll"
 MINERU_MODEL_VERSION: Final = "vlm"
 MINERU_PDF_CONTENT_TYPE: Final = "application/pdf"
 MINERU_TIMEOUT: Final = httpx.Timeout(connect=5.0, read=30.0, write=15.0, pool=5.0)
@@ -66,7 +64,6 @@ MINERU_RESULT_POLL_INTERVAL_SECONDS: Final = 5.0
 MINERU_RESULT_POLL_MAX_ATTEMPTS: Final = 24
 MINERU_RESULT_POLL_MAX_ATTEMPTS_CEILING: Final = 120
 MINERU_RESULT_POLL_INTERVAL_SECONDS_CEILING: Final = 60.0
-MAX_MINERU_API_TOKEN_BYTES: Final = 4096
 MAX_MINERU_SOURCE_BYTES: Final = 200 * 1024 * 1024
 MAX_MINERU_RESPONSE_BYTES: Final = 1024 * 1024
 MAX_MINERU_UPLOAD_URL_BYTES: Final = 4096
@@ -95,8 +92,6 @@ _VISIBLE_ASCII_MIN: Final = 33
 _VISIBLE_ASCII_MAX: Final = 126
 _SAFE_FILENAME_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$")
 _ID_RE: Final = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
-_DATA_ID_RE: Final = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
-_START_TIME_RE: Final = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
 _SHA256_RE: Final = re.compile(r"^[0-9a-f]{64}$")
 _MINERU_CANONICAL_ROLE_ORDER: Final = (
     "full_markdown",
@@ -367,12 +362,17 @@ class MinerULocalBatchGateway:
 
     def __init__(
         self,
-        api_token: str | None,
         *,
+        provider_gateway_url: str,
+        internal_token: str,
         client: httpx.AsyncClient | None = None,
         result_proxy_url: str | None = None,
     ) -> None:
-        self._api_token = _validate_api_token(api_token)
+        self._provider_gateway = GoProviderGateway(
+            base_url=provider_gateway_url,
+            internal_token=internal_token,
+            client=client,
+        )
         self._client = client
         self._result_proxy_url = _validate_result_proxy_url(result_proxy_url)
 
@@ -387,18 +387,12 @@ class MinerULocalBatchGateway:
         _ = context
         _validate_pdf_source(source)
         safe_filename = _validate_filename(filename)
-        body = _allocate_request_body(safe_filename)
-        if self._client is not None:
-            payload = await _post_allocate(self._client, self._api_token, body)
-            return _allocation_from_payload(payload, filename=safe_filename)
-        async with httpx.AsyncClient(
-            timeout=MINERU_TIMEOUT,
-            limits=MINERU_LIMITS,
-            follow_redirects=False,
-            trust_env=False,
-        ) as client:
-            payload = await _post_allocate(client, self._api_token, body)
-            return _allocation_from_payload(payload, filename=safe_filename)
+        payload = await self._provider_gateway.post_json(
+            MINERU_ALLOCATE_PATH,
+            {"filename": safe_filename},
+            max_response_bytes=MAX_MINERU_RESPONSE_BYTES,
+        )
+        return _allocation_from_payload(payload, filename=safe_filename)
 
     async def upload_document(
         self,
@@ -428,18 +422,12 @@ class MinerULocalBatchGateway:
     ) -> MinerULocalBatchPollResult:
         """Fetch one redacted MinerU batch poll state without downloading ZIPs."""
         _ = context
-        poll_url = _poll_url(allocation)
-        if self._client is not None:
-            payload = await _get_poll_result(self._client, self._api_token, poll_url)
-            return _poll_result_from_payload(payload, allocation=allocation)
-        async with httpx.AsyncClient(
-            timeout=MINERU_TIMEOUT,
-            limits=MINERU_LIMITS,
-            follow_redirects=False,
-            trust_env=False,
-        ) as client:
-            payload = await _get_poll_result(client, self._api_token, poll_url)
-            return _poll_result_from_payload(payload, allocation=allocation)
+        payload = await self._provider_gateway.post_json(
+            MINERU_POLL_PATH,
+            {"batchId": allocation.batch_id, "filename": allocation.filename},
+            max_response_bytes=MAX_MINERU_RESPONSE_BYTES,
+        )
+        return _poll_result_from_payload(payload, allocation=allocation)
 
     async def download_result_archive(
         self,
@@ -603,16 +591,6 @@ class MinerULocalBatchResultArchiveProvider:
         raise AssertionError("unreachable")
 
 
-def _allocate_request_body(filename: str) -> JsonObject:
-    return {
-        "enable_formula": True,
-        "enable_table": True,
-        "files": [{"name": filename}],
-        "is_ocr": True,
-        "model_version": MINERU_MODEL_VERSION,
-    }
-
-
 async def _put_signed_upload(
     client: httpx.AsyncClient,
     upload_url: str,
@@ -694,62 +672,6 @@ async def _post_result_proxy_archive(
         _reject_retryable(MINERU_GATEWAY_REQUEST_FAILED)
 
 
-async def _post_allocate(
-    client: httpx.AsyncClient,
-    api_token: str,
-    body: JsonObject,
-) -> JsonObject:
-    headers = {
-        "Accept": "application/json",
-        "Accept-Encoding": "identity",
-        "Authorization": f"Bearer {api_token}",
-        "Content-Type": "application/json",
-    }
-    try:
-        async with client.stream(
-            "POST",
-            MINERU_ALLOCATE_UPLOAD_URL,
-            headers=headers,
-            json=body,
-        ) as response:
-            if response.status_code != HTTP_OK:
-                _reject_retryable(MINERU_GATEWAY_STATUS_INVALID)
-            return _decode_json_response(await _read_bounded_response(response))
-    except PermanentJobError:
-        raise
-    except RetryableJobError:
-        raise
-    except (httpx.StreamError, httpx.TransportError):
-        _reject_retryable(MINERU_GATEWAY_REQUEST_FAILED)
-
-
-async def _get_poll_result(
-    client: httpx.AsyncClient,
-    api_token: str,
-    poll_url: str,
-) -> JsonObject:
-    headers = {
-        "Accept": "application/json",
-        "Accept-Encoding": "identity",
-        "Authorization": f"Bearer {api_token}",
-    }
-    try:
-        async with client.stream(
-            "GET",
-            poll_url,
-            headers=headers,
-        ) as response:
-            if response.status_code != HTTP_OK:
-                _reject_retryable(MINERU_GATEWAY_STATUS_INVALID)
-            return _decode_json_response(await _read_bounded_response(response))
-    except PermanentJobError:
-        raise
-    except RetryableJobError:
-        raise
-    except (httpx.StreamError, httpx.TransportError):
-        _reject_retryable(MINERU_GATEWAY_REQUEST_FAILED)
-
-
 async def _read_bounded_response(response: httpx.Response) -> bytes:
     if response.is_stream_consumed:
         raw_content = response.content
@@ -764,32 +686,21 @@ async def _read_bounded_response(response: httpx.Response) -> bytes:
     return bytes(raw)
 
 
-def _decode_json_response(raw: bytes) -> JsonObject:
-    try:
-        parsed = json.loads(raw.decode("utf-8", errors="strict"))
-    except (json.JSONDecodeError, UnicodeError):
-        _reject_permanent(MINERU_GATEWAY_RESPONSE_INVALID)
-    return _json_object(parsed, MINERU_GATEWAY_RESPONSE_INVALID)
-
-
 def _allocation_from_payload(
     payload: JsonObject,
     *,
     filename: str,
 ) -> MinerULocalBatchAllocation:
-    if payload.get("code") != 0:
-        _reject_retryable(MINERU_GATEWAY_STATUS_INVALID)
-    data = _json_object(payload.get("data"), MINERU_GATEWAY_RESPONSE_INVALID)
-    batch_id = _text(data.get("batch_id"), MINERU_GATEWAY_RESPONSE_INVALID)
-    raw_urls = _json_list(data.get("file_urls"), MINERU_GATEWAY_RESPONSE_INVALID)
-    upload_urls = tuple(
-        _text(raw_url, MINERU_GATEWAY_UPLOAD_URL_INVALID) for raw_url in raw_urls
-    )
-    if len(upload_urls) != 1:
+    if set(payload) != {"batchId", "filename", "uploadUrl"}:
+        _reject_permanent(MINERU_GATEWAY_RESPONSE_INVALID)
+    batch_id = _text(payload.get("batchId"), MINERU_GATEWAY_RESPONSE_INVALID)
+    response_filename = _text(payload.get("filename"), MINERU_GATEWAY_RESPONSE_INVALID)
+    upload_url = _text(payload.get("uploadUrl"), MINERU_GATEWAY_UPLOAD_URL_INVALID)
+    if response_filename != filename:
         _reject_permanent(MINERU_GATEWAY_RESPONSE_INVALID)
     return MinerULocalBatchAllocation(
         batch_id=batch_id,
-        upload_urls=upload_urls,
+        upload_urls=(upload_url,),
         filename=filename,
     )
 
@@ -799,41 +710,29 @@ def _poll_result_from_payload(
     *,
     allocation: MinerULocalBatchAllocation,
 ) -> MinerULocalBatchPollResult:
-    if payload.get("code") != 0:
-        _reject_retryable(MINERU_GATEWAY_STATUS_INVALID)
-    _closed_fields(payload, {"code", "data", "msg"}, {"trace_id"})
     if (
-        not isinstance(payload["msg"], str)
-        or not payload["msg"]
-        or ("trace_id" in payload and not isinstance(payload["trace_id"], str))
+        not {"batchId", "filename", "state"}
+        <= set(payload)
+        <= {
+            "batchId",
+            "filename",
+            "state",
+            "resultUrl",
+        }
     ):
         _reject_permanent(MINERU_GATEWAY_RESPONSE_INVALID)
-    data = _json_object(payload["data"], MINERU_GATEWAY_RESPONSE_INVALID)
-    _closed_fields(data, {"batch_id", "extract_result"}, set())
-    results = _json_list(data["extract_result"], MINERU_GATEWAY_RESPONSE_INVALID)
-    if data["batch_id"] != allocation.batch_id or len(results) != 1:
-        _reject_permanent(MINERU_GATEWAY_RESPONSE_INVALID)
-    result = _json_object(results[0], MINERU_GATEWAY_RESPONSE_INVALID)
-    _closed_fields(
-        result,
-        {"err_msg", "file_name", "state"},
-        {"data_id", "extract_progress", "full_zip_url"},
-    )
-    state = _text(result["state"], MINERU_GATEWAY_RESPONSE_INVALID)
+    batch_id = _text(payload.get("batchId"), MINERU_GATEWAY_RESPONSE_INVALID)
+    filename = _text(payload.get("filename"), MINERU_GATEWAY_RESPONSE_INVALID)
+    state = _text(payload.get("state"), MINERU_GATEWAY_RESPONSE_INVALID)
     if (
-        state not in _POLL_STATES
-        or result["file_name"] != allocation.filename
-        or not isinstance(result["err_msg"], str)
-        or not _valid_optional_data_id(result)
+        batch_id != allocation.batch_id
+        or filename != allocation.filename
+        or state not in _POLL_STATES
     ):
-        _reject_permanent(MINERU_GATEWAY_RESPONSE_INVALID)
-    if state == "running":
-        _validate_progress(result.get("extract_progress"))
-    elif "extract_progress" in result:
         _reject_permanent(MINERU_GATEWAY_RESPONSE_INVALID)
     if state == "done":
         result_url = _text(
-            result.get("full_zip_url"),
+            payload.get("resultUrl"),
             MINERU_GATEWAY_RESULT_URL_INVALID,
         )
         _validate_result_target_url(result_url)
@@ -843,7 +742,7 @@ def _poll_result_from_payload(
             state=state,
             result_url=result_url,
         )
-    if "full_zip_url" in result or (state == "failed" and not result["err_msg"]):
+    if "resultUrl" in payload:
         _reject_permanent(MINERU_GATEWAY_RESPONSE_INVALID)
     return MinerULocalBatchPollResult(
         batch_id=allocation.batch_id,
@@ -862,16 +761,6 @@ def _json_list(value: object, error_code: str) -> list[JsonValue]:
     if not isinstance(value, list):
         _reject_permanent(error_code)
     return cast("list[JsonValue]", value)
-
-
-def _closed_fields(
-    value: JsonObject,
-    required: set[str],
-    optional: set[str],
-) -> None:
-    fields = set(value)
-    if not required <= fields or not fields <= required | optional:
-        _reject_permanent(MINERU_GATEWAY_RESPONSE_INVALID)
 
 
 def _text(value: object, error_code: str) -> str:
@@ -922,14 +811,6 @@ def _done_result_url(poll_result: MinerULocalBatchPollResult) -> str:
         _reject_permanent(MINERU_GATEWAY_RESULT_URL_INVALID)
     _validate_result_target_url(poll_result.result_url)
     return poll_result.result_url
-
-
-def _poll_url(allocation: MinerULocalBatchAllocation) -> str:
-    if not isinstance(allocation, MinerULocalBatchAllocation):
-        _reject_permanent(MINERU_GATEWAY_RESPONSE_INVALID)
-    if not _ID_RE.fullmatch(allocation.batch_id):
-        _reject_permanent(MINERU_GATEWAY_RESPONSE_INVALID)
-    return f"{MINERU_POLL_URL_PREFIX}{allocation.batch_id}"
 
 
 def _validate_signed_upload_url(value: str) -> None:
@@ -1026,33 +907,6 @@ def _url_port(
         return parsed.port
     except ValueError:
         _reject_permanent(error_code)
-
-
-def _valid_optional_data_id(result: JsonObject) -> bool:
-    if "data_id" not in result:
-        return True
-    value = result["data_id"]
-    return isinstance(value, str) and _DATA_ID_RE.fullmatch(value) is not None
-
-
-def _validate_progress(value: object) -> None:
-    progress = _json_object(value, MINERU_GATEWAY_RESPONSE_INVALID)
-    _closed_fields(
-        progress,
-        {"extracted_pages", "start_time", "total_pages"},
-        set(),
-    )
-    extracted = progress["extracted_pages"]
-    total = progress["total_pages"]
-    if (
-        not _is_nonnegative_int(extracted)
-        or not _is_nonnegative_int(total)
-        or cast("int", total) == 0
-        or cast("int", extracted) > cast("int", total)
-        or not isinstance(progress["start_time"], str)
-        or _START_TIME_RE.fullmatch(progress["start_time"]) is None
-    ):
-        _reject_permanent(MINERU_GATEWAY_RESPONSE_INVALID)
 
 
 def _is_nonnegative_int(value: object) -> bool:
@@ -2060,22 +1914,6 @@ def _safe_dynamic_path(path: str) -> bool:
         and "\\" not in path
         and all(segment not in {"", ".", ".."} for segment in path.split("/")[1:])
     )
-
-
-def _validate_api_token(value: str | None) -> str:
-    if value is None or not isinstance(value, str):
-        _reject_permanent(MINERU_GATEWAY_CREDENTIALS_MISSING)
-    if (
-        not value
-        or value != value.strip()
-        or len(value.encode("utf-8")) > MAX_MINERU_API_TOKEN_BYTES
-        or any(
-            ord(character) < _VISIBLE_ASCII_MIN or ord(character) > _VISIBLE_ASCII_MAX
-            for character in value
-        )
-    ):
-        _reject_permanent(MINERU_GATEWAY_CREDENTIALS_MISSING)
-    return value
 
 
 def _reject_permanent(error_code: str) -> NoReturn:

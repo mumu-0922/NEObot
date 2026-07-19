@@ -134,8 +134,9 @@ func TestAdminJinaProviderSaveTestActivateAndInvalidate(t *testing.T) {
 	}
 }
 
-func TestAdminMinerUProviderImportsEnvironmentOnlyOnSave(t *testing.T) {
-	const fixtureCredential = "mineru-environment-fixture"
+func TestAdminMinerUProviderRequiresBYOKSave(t *testing.T) {
+	privateKey, pemValue := ragProviderTestBYOKKey(t)
+	const fixtureCredential = "mineru-byok-fixture"
 	client := searchHTTPDoerFunc(func(request *http.Request) (*http.Response, error) {
 		if request.URL.String() != minerUAllocateURL ||
 			request.Header.Get("Authorization") != "Bearer "+fixtureCredential {
@@ -155,7 +156,7 @@ func TestAdminMinerUProviderImportsEnvironmentOnlyOnSave(t *testing.T) {
 	vault := testProviderSecretVault(t, "rag-v1", 42)
 	repo := &fakeProviderConfigRepository{}
 	service := NewService(
-		config.Config{RAG: config.RAGConfig{MinerUAPIKey: fixtureCredential}},
+		config.Config{BYOK: config.BYOKConfig{PrivateKeyPEM: pemValue}},
 		WithProviderConfigRepository(repo),
 		WithProviderSecretVault(vault),
 		WithRAGProviderHTTPClient(client),
@@ -168,17 +169,25 @@ func TestAdminMinerUProviderImportsEnvironmentOnlyOnSave(t *testing.T) {
 	saved, err := service.UpsertAdminRAGProviderConfig(
 		context.Background(),
 		"mineru",
-		UpdateAdminRAGProviderConfigRequest{Name: "MinerU"},
+		UpdateAdminRAGProviderConfigRequest{
+			Name: "MinerU",
+			APIKeySecret: encryptedSecretEnvelope(
+				t,
+				privateKey,
+				fixtureCredential,
+				ragProviderIngressContext(RAGProviderMinerU),
+			),
+		},
 	)
 	if err != nil || !saved.HasAPIKey || strings.Contains(repo.stored.EncryptedSecretRef, fixtureCredential) {
-		t.Fatalf("environment import = %#v err=%v", saved, err)
+		t.Fatalf("BYOK save = %#v err=%v", saved, err)
 	}
 	plaintext, err := vault.Decrypt(
 		mustParseProviderSecretEnvelope(t, repo.stored.EncryptedSecretRef),
 		ragProviderSecretContext(repo.stored.UserID, repo.stored.ProviderID),
 	)
 	if err != nil || string(plaintext) != fixtureCredential {
-		t.Fatalf("vault import plaintext mismatch: %v", err)
+		t.Fatalf("vault plaintext mismatch: %v", err)
 	}
 	clear(plaintext)
 	tested, err := service.TestAdminRAGProviderConnection(context.Background(), "mineru")

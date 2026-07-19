@@ -13,7 +13,7 @@ import pytest
 
 import mm_chat_rag.worker as worker_module
 from mm_chat_rag.jina_gateway import (
-    JINA_EMBEDDINGS_URL,
+    JINA_PASSAGE_EMBEDDINGS_PATH,
     build_jina_passage_embedding_handler_dependencies,
 )
 from mm_chat_rag.job_handler_dependencies import (
@@ -22,6 +22,7 @@ from mm_chat_rag.job_handler_dependencies import (
     embedding_vector_sha256,
 )
 from mm_chat_rag.jobs import JobRunner
+from mm_chat_rag.provider_gateway import GO_PROVIDER_INTERNAL_TOKEN_HEADER
 from mm_chat_rag.provider_profile import (
     DEFAULT_JINA_EMBEDDING_DIMENSIONS,
     DEFAULT_JINA_EMBEDDING_MODEL,
@@ -42,7 +43,8 @@ _HASH_E: Final = "e" * 64
 _HASH_F: Final = "f" * 64
 _HASH_0: Final = "0" * 64
 _ENDPOINT_ID: Final = "admin-env"
-_JINA_API_KEY: Final = "unit-test-jina-key"
+_PROVIDER_GATEWAY_URL: Final = "http://backend:8080"
+_PROVIDER_GATEWAY_TOKEN: Final = "unit-test-provider-gateway-token"
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,15 +128,14 @@ async def test_promoted_embedding_job_runner_finishes_live_postgres_job(
         requests.append(request)
         return _json_response(
             {
-                "data": [
+                "model": DEFAULT_JINA_EMBEDDING_MODEL,
+                "dimensions": DEFAULT_JINA_EMBEDDING_DIMENSIONS,
+                "vectors": [
                     {
+                        "passageId": str(fixture.child_chunk_id),
                         "embedding": list(_embedding_vector()),
-                        "index": 0,
-                        "object": "embedding",
                     }
                 ],
-                "model": DEFAULT_JINA_EMBEDDING_MODEL,
-                "object": "list",
             }
         )
 
@@ -143,11 +144,13 @@ async def test_promoted_embedding_job_runner_finishes_live_postgres_job(
 
         def build_with_mocked_jina(
             *,
-            api_key: str | None,
+            provider_gateway_url: str,
+            internal_token: str,
             projection: PassageEmbeddingProjectionGateway | None,
         ) -> PassageEmbeddingHandlerDependencies:
             return original_builder(
-                api_key=api_key,
+                provider_gateway_url=provider_gateway_url,
+                internal_token=internal_token,
                 projection=projection,
                 client=client,
             )
@@ -162,7 +165,8 @@ async def test_promoted_embedding_job_runner_finishes_live_postgres_job(
             dispatch_enabled=True,
             job_stages=("passage_embedding",),
             worker_id=fixture.worker_id,
-            jina_api_key=_JINA_API_KEY,
+            source_gateway_url=_PROVIDER_GATEWAY_URL,
+            source_gateway_token=_PROVIDER_GATEWAY_TOKEN,
             provider_profile=ProviderRuntimeProfile(
                 profile_id=MINERU_JINA_POSTGRES_PROFILE,
                 accepted_draft_wire_contracts=True,
@@ -188,10 +192,14 @@ async def test_promoted_embedding_job_runner_finishes_live_postgres_job(
     assert len(requests) == 1
     request = requests[0]
     assert request.method == "POST"
-    assert request.url == httpx.URL(JINA_EMBEDDINGS_URL)
-    assert request.headers["authorization"] == f"Bearer {_JINA_API_KEY}"
-    assert json.loads(request.content)["input"] == [{"text": fixture.chunk_text}]
-    assert _JINA_API_KEY.encode() not in request.content
+    assert request.url == httpx.URL(
+        f"{_PROVIDER_GATEWAY_URL}{JINA_PASSAGE_EMBEDDINGS_PATH}"
+    )
+    assert request.headers[GO_PROVIDER_INTERNAL_TOKEN_HEADER] == _PROVIDER_GATEWAY_TOKEN
+    assert "authorization" not in request.headers
+    assert json.loads(request.content)["passages"] == [
+        {"passageId": str(fixture.child_chunk_id), "text": fixture.chunk_text}
+    ]
     assert await _job_projection_state(url, fixture) == (
         "succeeded",
         None,

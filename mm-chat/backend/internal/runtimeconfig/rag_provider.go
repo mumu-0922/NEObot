@@ -244,19 +244,6 @@ func (s *Service) UpsertAdminRAGProviderConfig(
 		if err != nil {
 			return AdminRAGProviderConfigResponse{}, err
 		}
-	} else if secretRef == "" {
-		legacy := s.ragProviderEnvironmentSecret(providerID)
-		if legacy != "" {
-			secretRef, err = s.encryptRAGProviderSecretAtRest(
-				user.ID,
-				recordID,
-				legacy,
-			)
-			legacy = ""
-			if err != nil {
-				return AdminRAGProviderConfigResponse{}, err
-			}
-		}
 	}
 
 	connectionTestSHA256 := ""

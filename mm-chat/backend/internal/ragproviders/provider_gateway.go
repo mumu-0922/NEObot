@@ -142,6 +142,18 @@ func validProviderCredential(value string) bool {
 	return true
 }
 
+func validInternalToken(token string) bool {
+	if token == "" || len([]byte(token)) > 4096 {
+		return false
+	}
+	for _, character := range token {
+		if character < 33 || character > 126 {
+			return false
+		}
+	}
+	return true
+}
+
 var (
 	_ ProviderOperations = (*ProviderGateway)(nil)
 	_ QueryEmbedder      = (*ProviderGateway)(nil)

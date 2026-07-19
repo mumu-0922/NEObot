@@ -3,27 +3,14 @@
 ## 1. Scope / Trigger
 
 This contract applies when Go retrieves evidence from selected Knowledge
-collections through the private Python/Jina query-embedding boundary, Postgres
-hybrid candidate function, and private Python/Jina rerank boundary. It covers
-G11.9C.2 and G11.9C.3, including global cross-collection final TopK.
+collections through direct Jina query embedding, the Postgres hybrid candidate
+function, and direct Jina reranking. It covers G11.9C.2, G11.9C.3, and the
+G11.9F.4.4 provider-boundary cutover, including global cross-collection TopK.
+
+Python is not on the query-time retrieval path. It uses the scoped Go provider
+gateway only for background `retrieval.passage` batches and MinerU jobs.
 
 ## 2. Signatures
-
-```http
-POST /internal/retrieval/query-embedding
-Authorization: Bearer <RAG_SOURCE_GATEWAY_TOKEN>
-Content-Type: application/json
-
-{"query":"..."}
-```
-
-```http
-POST /internal/retrieval/rerank
-Authorization: Bearer <RAG_SOURCE_GATEWAY_TOKEN>
-Content-Type: application/json
-
-{"query":"...","documents":["..."]}
-```
 
 ```sql
 knowledge_fetch_hybrid_query_evidence_candidates(
@@ -41,22 +28,26 @@ type Reranker interface {
 }
 ```
 
+The Go `ProviderGateway` implements both interfaces. It resolves the enabled,
+attested `RAG:JINA` Postgres/vault record for every call and synthesizes the
+fixed Jina request. No browser or Python caller supplies an upstream URL,
+header, model, task, or credential.
+
 ## 3. Contracts
 
-- Request body: one exact `query` string; body at most 4096 bytes; trimmed query
-  at most 2048 UTF-8 bytes.
-- Response: exact `model`, `dimensions`, and `embedding` fields; model must be
-  `jina-embeddings-v4`, dimensions and vector length must both be 1024.
-- Jina task: query uses `retrieval.query`; indexed chunks remain
-  `retrieval.passage`.
-- Environment: `RAG_QUERY_GATEWAY_URL` locates the private Python service;
-  `RAG_SOURCE_GATEWAY_TOKEN` authenticates the internal request. A blank token
-  disables the query client and preserves keyword-only retrieval.
-- `RAG_RERANK_GATEWAY_URL` locates the private rerank service and falls back to
-  `RAG_QUERY_GATEWAY_URL` when omitted. Go disables the client when the shared
-  internal token is blank.
-- Postgres returns reference fields and rank only. Source body hydration remains
-  a later Go reauthorization step.
+- Query input is trimmed, non-empty, and at most 2048 UTF-8 bytes.
+- Query embedding pins `jina-embeddings-v4`, `retrieval.query`, and 1024
+  dimensions. The returned vector must be finite, non-zero, and exactly 1024
+  elements.
+- Indexed chunks remain `retrieval.passage`; Python sends them only to
+  `POST /internal/rag/providers/jina/embeddings` with the infrastructure
+  internal token. Go resolves and uses the reusable Jina credential.
+- There is no query/rerank URL environment setting and no Go-to-Python
+  provider hop. Missing, disabled, corrupt, or unattested `RAG:JINA` state is
+  treated as provider unavailability and preserves the documented degraded
+  retrieval behavior.
+- Postgres returns reference fields and rank only. Source-body hydration
+  remains a later Go reauthorization step.
 - Dense candidates require at least eight trimmed query characters and cosine
   `>= 0.48`, then merge with keyword/CJK candidates through RRF `k=60`.
 - Go globally fuses at most 20 references, authorizes rerank consent for the
@@ -69,6 +60,9 @@ type Reranker interface {
 - A successful rerank must return every input index exactly once with a finite
   score. Go keeps scores `>= 0.0`, sorts globally across all selected
   collections, and injects at most five chunks.
+- The provider client ignores environment proxies, follows no redirects,
+  requires TLS 1.2 or newer, accepts identity-encoded JSON only, and bounds the
+  response before decoding.
 - Rerank and Answer are query-time collection authorities. Granting, revoking,
   or expiring rerank-only/answer-only consent must not advance
   `collection_processing_revision` or invalidate an already published search
@@ -78,11 +72,10 @@ type Reranker interface {
 
 | Condition | Result |
 | --- | --- |
-| Missing/invalid internal Bearer | fixed `401 UNAUTHORIZED` |
-| Non-JSON or unknown/missing body field | fixed `4xx` error without query echo |
-| Jina unavailable or provider response invalid | fixed private `503`; Go retries keyword retrieval |
+| Query empty, oversized, or invalid | reject before provider access |
+| `RAG:JINA` absent, disabled, unattested, or vault unavailable | provider unavailable; retain allowed degraded path |
+| Jina unavailable or response invalid | keyword/hybrid fallback where policy permits |
 | Vector not 1024, non-finite, or zero norm | reject before Postgres |
-| Query gateway disabled | keyword-only retrieval |
 | Hybrid Postgres query fails | dependency error; do not disguise as a normal miss |
 | Candidate fails current projection/visibility/deletion fences | omit reference |
 | Go hydration reauthorization fails | omit evidence / follow Auto degradation policy |
@@ -92,8 +85,8 @@ type Reranker interface {
 | Rerank succeeds but every score is below `0.0` | normal `no_evidence` |
 | Rerank succeeds with valid scores | global threshold/Top5, `rerankStatus=applied` |
 
-No error may contain the query, internal token, Jina key, provider response, or
-source text.
+No error or log may contain the query, vault envelope, reusable Jina key,
+provider response body, or source text.
 
 ## 5. Good / Base / Bad Cases
 
@@ -105,38 +98,38 @@ source text.
   embedding cosine is spuriously high; unrelated longer queries below `0.48`
   also return no Dense reference.
 - Rerank good: two selected collections both produce authorized candidates;
-  the provider returns finite scores and Go mints citations in one global order.
-- Rerank base: the rerank endpoint alone is unavailable; the same keyword hit
-  still answers with a citation from pre-rerank hybrid/RRF order.
-- Rerank bad: governance is absent or an index is duplicated/missing/non-finite;
-  no unauthorized text is sent and invalid provider output is never applied.
+  Jina returns finite scores and Go mints citations in one global order.
+- Rerank base: only rerank is unavailable; the same keyword hit still answers
+  with a citation from pre-rerank hybrid/RRF order.
+- Rerank bad: governance is absent or an index is duplicated, missing, or
+  non-finite; no unauthorized text is sent and invalid provider output is never
+  applied.
 
 ## 6. Tests Required
 
-- Python unit: auth, exact body shape, byte bounds, Jina `retrieval.query`
-  request, response/model/vector validation, and redacted failures.
-- Go unit: URL/token validation, redirect rejection, bounded response decoding,
-  hybrid selection, keyword fallback, and visible database failure.
-- Postgres integration: migrations compile from an empty database; runtime roles
-  can execute the function; no-lexical-overlap Dense positive returns a
+- Go unit: exact direct Jina URL/header/model/task shapes, credential resolution,
+  redirect rejection, bounded response decoding, vector validation, hybrid
+  selection, keyword fallback, rerank validation, and visible database failure.
+- Python unit: the retired `/internal/retrieval/query-embedding` and
+  `/internal/retrieval/rerank` paths return `404`; passage embedding uses only
+  the scoped Go DTO and internal token.
+- Postgres integration: migrations compile from an empty database; runtime
+  roles can execute the function; no-lexical-overlap Dense positive returns a
   reference; short Dense-only negative returns none.
-- Live smoke: real Jina returns one finite 1024 vector; semantic positive yields
-  `answered/[K1]`; stopping Jina still lets a keyword positive yield
-  `answered/[K1]`; all disposable rows and databases are removed.
-- Rerank unit: exact private request/response shape, auth and byte limits,
-  redirect rejection, hydration `16 + 4`, consent-before-egress, threshold,
-  global Top5, invalid-response fallback, and query-time consent revision rules.
-- Rerank live: real private endpoint returns the pinned model; normal chat yields
-  `rerankStatus=applied`; rerank-only failure yields `degraded` while still
-  answering with `[K1]`; two selected collections yield one applied global
-  result with citations from both; disposable conversations are removed.
+- Live smoke: the stored/activated Jina provider returns one finite 1024 vector;
+  semantic positive yields `answered/[K1]`; provider degradation still lets a
+  keyword positive yield `answered/[K1]`; disposable rows are removed.
+- Rerank live: normal chat yields `rerankStatus=applied`; rerank-only failure
+  yields `degraded` while still answering with `[K1]`; two selected collections
+  yield one applied global result with citations from both.
 
 ## 7. Wrong vs Correct
 
-Wrong: treat raw cosine as a calibrated relevance probability, send candidate
-text before exact consent/hydration, invalidate the index for query-time
-consent, or silently fall back after a Postgres failure.
+Wrong: keep a Go -> Python -> Go provider cycle, read a Jina key from Python
+environment variables, treat raw cosine as calibrated relevance, send candidate
+text before exact consent/hydration, or silently mask a Postgres failure.
 
-Correct: use the conservative pre-rerank signal gates, keep Jina failure
-keyword-degradable, keep database failure observable, and apply the evaluated
+Correct: Go resolves the attested Postgres/vault credential and calls Jina
+directly, uses conservative pre-rerank gates, keeps provider failure
+keyword-degradable, keeps database failure observable, and applies the evaluated
 rerank threshold only after current-authority hydration.

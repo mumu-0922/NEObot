@@ -25,20 +25,16 @@ type StatusResponse struct {
 	Ready     bool             `json:"ready"`
 }
 
-func Status(cfg config.RAGConfig) StatusResponse {
-	jinaDimensions := cfg.JinaEmbeddingDimensions
-	if jinaDimensions <= 0 {
-		jinaDimensions = config.DefaultRAGJinaDimensions
-	}
-	minerU := providerState(cfg.MinerUConfigured(), 0)
-	jina := providerState(cfg.JinaConfigured(), jinaDimensions)
+func Status() StatusResponse {
+	minerU := providerState(false, 0)
+	jina := providerState(false, config.DefaultRAGJinaDimensions)
 
 	return StatusResponse{
 		Providers: ProviderStatuses{
 			MinerU: minerU,
 			Jina:   jina,
 		},
-		Ready: minerU.Configured && jina.Configured,
+		Ready: false,
 	}
 }
 

@@ -72,12 +72,6 @@ const (
 	EnvS3ForcePathStyle       = "S3_FORCE_PATH_STYLE"
 	EnvS3BucketAutoCreate     = "S3_BUCKET_AUTO_CREATE"
 	EnvMaxUploadBytes         = "MAX_UPLOAD_BYTES"
-	EnvRAGMinerUAPIKey        = "RAG_MINERU_API_TOKEN"
-	EnvDefaultMinerUAPIKey    = "DEFAULT_MINERU_API_TOKEN"
-	EnvRAGJinaAPIKey          = "RAG_JINA_API_KEY"
-	EnvDefaultJinaAPIKey      = "DEFAULT_JINA_API_KEY"
-	EnvRAGQueryGatewayURL     = "RAG_QUERY_GATEWAY_URL"
-	EnvRAGRerankGatewayURL    = "RAG_RERANK_GATEWAY_URL"
 	EnvRAGSourceGatewayToken  = "RAG_SOURCE_GATEWAY_TOKEN"
 	EnvAuthMode               = "AUTH_MODE"
 	EnvAuthBootstrapUserID    = "AUTH_BOOTSTRAP_USER_ID"
@@ -164,28 +158,11 @@ type StorageConfig struct {
 	MaxUploadBytes int64
 }
 
-// RAGConfig contains administrator-owned provider credentials for background
-// Knowledge indexing and retrieval. Secrets must never be logged or serialized
-// into API responses.
+// RAGConfig contains infrastructure-only settings for the private worker-to-Go
+// boundary. Provider credentials are resolved from Postgres/vault at runtime.
 type RAGConfig struct {
-	MinerUAPIKey            string
-	JinaAPIKey              string
-	QueryGatewayURL         string
-	RerankGatewayURL        string
 	SourceGatewayToken      string
 	JinaEmbeddingDimensions int
-}
-
-func (cfg RAGConfig) MinerUConfigured() bool {
-	return strings.TrimSpace(cfg.MinerUAPIKey) != ""
-}
-
-func (cfg RAGConfig) JinaConfigured() bool {
-	return strings.TrimSpace(cfg.JinaAPIKey) != ""
-}
-
-func (cfg RAGConfig) Ready() bool {
-	return cfg.MinerUConfigured() && cfg.JinaConfigured()
 }
 
 // S3Config contains MinIO/S3-compatible object storage settings.
@@ -385,22 +362,6 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 		},
 
 		RAG: RAGConfig{
-			MinerUAPIKey: optionalEnvAliases(
-				lookup,
-				EnvRAGMinerUAPIKey,
-				EnvDefaultMinerUAPIKey,
-			),
-			JinaAPIKey: optionalEnvAliases(
-				lookup,
-				EnvRAGJinaAPIKey,
-				EnvDefaultJinaAPIKey,
-			),
-			QueryGatewayURL: optionalEnv(lookup, EnvRAGQueryGatewayURL),
-			RerankGatewayURL: optionalEnvAliases(
-				lookup,
-				EnvRAGRerankGatewayURL,
-				EnvRAGQueryGatewayURL,
-			),
 			SourceGatewayToken:      optionalEnv(lookup, EnvRAGSourceGatewayToken),
 			JinaEmbeddingDimensions: DefaultRAGJinaDimensions,
 		},
@@ -611,15 +572,6 @@ func optionalEnv(lookup func(string) (string, bool), key string) string {
 	}
 
 	return value
-}
-
-func optionalEnvAliases(lookup func(string) (string, bool), keys ...string) string {
-	for _, key := range keys {
-		if value := optionalEnv(lookup, key); value != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 func intEnvOrDefault(lookup func(string) (string, bool), key string, fallback int) int {

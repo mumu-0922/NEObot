@@ -15,11 +15,10 @@ import mm_chat_rag.mineru_gateway as mineru_module
 from mm_chat_rag.job_context import ProcessingJobContext
 from mm_chat_rag.job_handler_dependencies import DocumentSource
 from mm_chat_rag.mineru_gateway import (
-    MINERU_ALLOCATE_UPLOAD_URL,
+    MINERU_ALLOCATE_PATH,
     MINERU_GATEWAY_ARCHIVE_INVALID,
     MINERU_GATEWAY_ARTIFACT_INVALID,
     MINERU_GATEWAY_CONTEXT_INVALID,
-    MINERU_GATEWAY_CREDENTIALS_MISSING,
     MINERU_GATEWAY_DEPENDENCY_UNCONFIGURED,
     MINERU_GATEWAY_DOWNLOAD_STATUS_INVALID,
     MINERU_GATEWAY_REQUEST_FAILED,
@@ -31,10 +30,9 @@ from mm_chat_rag.mineru_gateway import (
     MINERU_GATEWAY_RESULT_URL_INVALID,
     MINERU_GATEWAY_SOURCE_HASH_MISMATCH,
     MINERU_GATEWAY_SOURCE_UNSUPPORTED,
-    MINERU_GATEWAY_STATUS_INVALID,
     MINERU_GATEWAY_UPLOAD_STATUS_INVALID,
     MINERU_GATEWAY_UPLOAD_URL_INVALID,
-    MINERU_POLL_URL_PREFIX,
+    MINERU_POLL_PATH,
     MINERU_TEXT_BASELINE_ARTIFACT_SET_NAMESPACE,
     MINERU_TEXT_BASELINE_CHUNK_PROFILE_HASH,
     MinerULocalBatchAllocation,
@@ -44,9 +42,16 @@ from mm_chat_rag.mineru_gateway import (
     MinerUTextBaselineArchiveParserGateway,
 )
 from mm_chat_rag.projection import ProjectionContext, build_postgres_projection_batch
+from mm_chat_rag.provider_gateway import (
+    GO_PROVIDER_GATEWAY_CONFIG_INVALID,
+    GO_PROVIDER_GATEWAY_REQUEST_FAILED,
+    GO_PROVIDER_GATEWAY_STATUS_INVALID,
+    GO_PROVIDER_INTERNAL_TOKEN_HEADER,
+)
 from mm_chat_rag.retry import PermanentJobError, RetryableJobError
 
 SECRET = "unit-test-mineru-token"
+PROVIDER_GATEWAY_URL = "http://backend:8080"
 PDF_BODY = b"%PDF-1.7\nfixture\n%%EOF\n"
 ZIP_BODY = b"PK\x03\x04fixture-zip-bytes"
 SIGNED_UPLOAD_URL = (
@@ -88,17 +93,19 @@ def _allocation_payload(
     *,
     batch_id: object = "fixture-batch-id",
     file_urls: object = ("https://upload.invalid/api-upload/fixture.pdf",),
+    filename: object = "fixture.pdf",
     code: object = 0,
 ) -> dict[str, object]:
-    return {
-        "code": code,
-        "data": {
-            "batch_id": batch_id,
-            "file_urls": list(file_urls) if isinstance(file_urls, tuple) else file_urls,
-        },
-        "msg": "ok",
-        "trace_id": "sensitive-trace-id",
+    urls = list(file_urls) if isinstance(file_urls, tuple) else file_urls
+    upload_url = urls[0] if isinstance(urls, list) and urls else ""
+    payload: dict[str, object] = {
+        "batchId": batch_id,
+        "filename": filename,
+        "uploadUrl": upload_url,
     }
+    if code != 0:
+        payload["code"] = code
+    return payload
 
 
 def _json_response(payload: object, *, status: int = 200) -> httpx.Response:
@@ -160,22 +167,30 @@ def _poll_payload(
     full_zip_url: object | None = None,
     code: object = 0,
 ) -> dict[str, object]:
+    _ = err_msg
     result: dict[str, object] = {
-        "err_msg": err_msg,
-        "file_name": file_name,
+        "batchId": batch_id,
+        "filename": file_name,
         "state": state,
     }
     if state == "done":
-        result["full_zip_url"] = RESULT_URL if full_zip_url is None else full_zip_url
-    return {
-        "code": code,
-        "data": {
-            "batch_id": batch_id,
-            "extract_result": [result],
-        },
-        "msg": "ok",
-        "trace_id": "sensitive-trace-id",
-    }
+        result["resultUrl"] = RESULT_URL if full_zip_url is None else full_zip_url
+    if code != 0:
+        result["code"] = code
+    return result
+
+
+def _gateway(
+    *,
+    client: httpx.AsyncClient | None = None,
+    result_proxy_url: str | None = None,
+) -> MinerULocalBatchGateway:
+    return MinerULocalBatchGateway(
+        provider_gateway_url=PROVIDER_GATEWAY_URL,
+        internal_token=SECRET,
+        client=client,
+        result_proxy_url=result_proxy_url,
+    )
 
 
 def _done_poll_result(result_url: str = RESULT_URL) -> MinerULocalBatchPollResult:
@@ -191,7 +206,7 @@ def _mapping_input(
     *,
     text: str = "Alpha 123\n\nBeta",
 ) -> mineru_module.MinerULocalBatchCanonicalMappingInput:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     archive_body = _archive(
         (
             ("full.md", text.encode()),
@@ -211,7 +226,7 @@ def _locator_mapping_input(
     elements: list[dict[str, Any]],
     page: dict[str, Any] | None = None,
 ) -> mineru_module.MinerULocalBatchCanonicalMappingInput:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     page_body = {"elements": elements, "pageIndex": 0}
     if page is not None:
         page_body = {"elements": elements, **page}
@@ -244,7 +259,7 @@ def _locator_mapping_input(
 def _project_locator(
     mapping_input: mineru_module.MinerULocalBatchCanonicalMappingInput,
 ) -> tuple[str, dict[str, Any]]:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     parsed = gateway.build_text_baseline_parse_artifacts(
         object(),
         mapping_input,
@@ -310,9 +325,13 @@ async def test_mineru_gateway_missing_token_fails_before_http() -> None:
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(forbidden)) as client:
         with pytest.raises(PermanentJobError) as raised:
-            MinerULocalBatchGateway(None, client=client)
+            MinerULocalBatchGateway(
+                provider_gateway_url=PROVIDER_GATEWAY_URL,
+                internal_token="",
+                client=client,
+            )
 
-    assert raised.value.error_code == MINERU_GATEWAY_CREDENTIALS_MISSING
+    assert raised.value.error_code == GO_PROVIDER_GATEWAY_CONFIG_INVALID
     assert calls == 0
 
 
@@ -324,7 +343,7 @@ async def test_mineru_gateway_sends_locked_local_batch_allocate_request() -> Non
         return _json_response(_allocation_payload())
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        gateway = _gateway(client=client)
         allocation = await gateway.allocate_upload(
             object(),
             _source(),
@@ -337,15 +356,10 @@ async def test_mineru_gateway_sends_locked_local_batch_allocate_request() -> Non
     assert len(requests) == 1
     request = requests[0]
     assert request.method == "POST"
-    assert request.url == httpx.URL(MINERU_ALLOCATE_UPLOAD_URL)
-    assert request.headers["authorization"] == f"Bearer {SECRET}"
-    assert json.loads(request.content) == {
-        "enable_formula": True,
-        "enable_table": True,
-        "files": [{"name": "fixture.pdf"}],
-        "is_ocr": True,
-        "model_version": "vlm",
-    }
+    assert request.url == httpx.URL(f"{PROVIDER_GATEWAY_URL}{MINERU_ALLOCATE_PATH}")
+    assert request.headers[GO_PROVIDER_INTERNAL_TOKEN_HEADER] == SECRET
+    assert "authorization" not in request.headers
+    assert json.loads(request.content) == {"filename": "fixture.pdf"}
     assert SECRET.encode() not in request.content
 
 
@@ -368,7 +382,7 @@ async def test_mineru_gateway_rejects_unsupported_source_before_http(
         raise AssertionError("invalid source reached provider")
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(forbidden)) as client:
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        gateway = _gateway(client=client)
         with pytest.raises(PermanentJobError) as raised:
             await gateway.allocate_upload(object(), source, filename=filename)
 
@@ -389,7 +403,7 @@ async def test_mineru_gateway_rejects_oversized_pdf_before_http(
         raise AssertionError("oversized source reached provider")
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(forbidden)) as client:
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        gateway = _gateway(client=client)
         with pytest.raises(PermanentJobError) as raised:
             await gateway.allocate_upload(object(), source)
 
@@ -402,25 +416,25 @@ async def test_mineru_gateway_retries_redacted_provider_status() -> None:
         lambda _: _json_response({"error": SECRET}, status=503)
     )
     async with httpx.AsyncClient(transport=transport) as client:
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        gateway = _gateway(client=client)
         with pytest.raises(RetryableJobError) as raised:
             await gateway.allocate_upload(object(), _source())
 
-    assert raised.value.error_code == MINERU_GATEWAY_STATUS_INVALID
+    assert raised.value.error_code == GO_PROVIDER_GATEWAY_STATUS_INVALID
     assert raised.value.retry_after_seconds == 30
     assert SECRET not in str(raised.value)
 
 
-async def test_mineru_gateway_retries_provider_code_failure_redacted() -> None:
+async def test_mineru_gateway_rejects_non_normalized_allocate_body() -> None:
     transport = httpx.MockTransport(
         lambda _: _json_response({"code": 429, "msg": SECRET})
     )
     async with httpx.AsyncClient(transport=transport) as client:
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
-        with pytest.raises(RetryableJobError) as raised:
-            await gateway.allocate_upload(object(), _source())
+        gateway = _gateway(client=client)
+        with pytest.raises(PermanentJobError) as raised:
+            await gateway.allocate_upload(object(), _source(), filename="fixture.pdf")
 
-    assert raised.value.error_code == MINERU_GATEWAY_STATUS_INVALID
+    assert raised.value.error_code == MINERU_GATEWAY_RESPONSE_INVALID
     assert SECRET not in str(raised.value)
 
 
@@ -432,11 +446,11 @@ async def test_mineru_gateway_retries_transport_failure_redacted() -> None:
         )
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        gateway = _gateway(client=client)
         with pytest.raises(RetryableJobError) as raised:
             await gateway.allocate_upload(object(), _source())
 
-    assert raised.value.error_code == MINERU_GATEWAY_REQUEST_FAILED
+    assert raised.value.error_code == GO_PROVIDER_GATEWAY_REQUEST_FAILED
     assert SECRET not in str(raised.value)
 
 
@@ -445,7 +459,7 @@ async def test_mineru_gateway_retries_transport_failure_redacted() -> None:
     [
         ({"code": 0, "data": None}, MINERU_GATEWAY_RESPONSE_INVALID),
         (_allocation_payload(batch_id=""), MINERU_GATEWAY_RESPONSE_INVALID),
-        (_allocation_payload(file_urls=()), MINERU_GATEWAY_RESPONSE_INVALID),
+        (_allocation_payload(file_urls=()), MINERU_GATEWAY_UPLOAD_URL_INVALID),
         (
             _allocation_payload(file_urls=("http://upload.invalid/fixture.pdf",)),
             MINERU_GATEWAY_UPLOAD_URL_INVALID,
@@ -463,9 +477,9 @@ async def test_mineru_gateway_rejects_invalid_allocate_payload(
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(lambda _: _json_response(payload))
     ) as client:
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        gateway = _gateway(client=client)
         with pytest.raises(PermanentJobError) as raised:
-            await gateway.allocate_upload(object(), _source())
+            await gateway.allocate_upload(object(), _source(), filename="fixture.pdf")
 
     assert raised.value.error_code == error_code
     assert "sensitive-trace-id" not in str(raised.value)
@@ -479,7 +493,7 @@ async def test_mineru_gateway_uploads_pdf_to_locked_signed_url() -> None:
         return httpx.Response(204, content=b"")
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        gateway = _gateway(client=client)
         await gateway.upload_document(object(), _source(), _allocation())
 
     assert len(requests) == 1
@@ -520,7 +534,7 @@ async def test_mineru_gateway_rejects_upload_target_before_http(
         raise AssertionError("invalid signed upload target reached provider")
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(forbidden)) as client:
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        gateway = _gateway(client=client)
         with pytest.raises(PermanentJobError) as raised:
             await gateway.upload_document(object(), _source(), _allocation(upload_url))
 
@@ -533,7 +547,7 @@ async def test_mineru_gateway_upload_retries_status_redacted() -> None:
         lambda _: httpx.Response(503, content=SECRET.encode())
     )
     async with httpx.AsyncClient(transport=transport) as client:
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        gateway = _gateway(client=client)
         with pytest.raises(RetryableJobError) as raised:
             await gateway.upload_document(object(), _source(), _allocation())
 
@@ -550,7 +564,7 @@ async def test_mineru_gateway_upload_retries_transport_failure_redacted() -> Non
         )
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        gateway = _gateway(client=client)
         with pytest.raises(RetryableJobError) as raised:
             await gateway.upload_document(object(), _source(), _allocation())
 
@@ -567,7 +581,7 @@ async def test_mineru_gateway_upload_rejects_non_pdf_before_http() -> None:
         raise AssertionError("non-PDF source reached upload target")
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(forbidden)) as client:
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        gateway = _gateway(client=client)
         with pytest.raises(PermanentJobError) as raised:
             await gateway.upload_document(
                 object(),
@@ -587,7 +601,7 @@ async def test_mineru_gateway_polls_locked_batch_result_request() -> None:
         return _json_response(_poll_payload())
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        gateway = _gateway(client=client)
         result = await gateway.poll_batch_result(object(), _allocation())
 
     assert result.batch_id == "fixture-batch-id"
@@ -596,12 +610,17 @@ async def test_mineru_gateway_polls_locked_batch_result_request() -> None:
     assert result.result_url is None
     assert len(requests) == 1
     request = requests[0]
-    assert request.method == "GET"
-    assert request.url == httpx.URL(f"{MINERU_POLL_URL_PREFIX}fixture-batch-id")
-    assert request.headers["authorization"] == f"Bearer {SECRET}"
+    assert request.method == "POST"
+    assert request.url == httpx.URL(f"{PROVIDER_GATEWAY_URL}{MINERU_POLL_PATH}")
+    assert request.headers[GO_PROVIDER_INTERNAL_TOKEN_HEADER] == SECRET
+    assert "authorization" not in request.headers
     assert request.headers["accept"] == "application/json"
     assert request.headers["accept-encoding"] == "identity"
-    assert "content-type" not in request.headers
+    assert request.headers["content-type"] == "application/json"
+    assert json.loads(request.content) == {
+        "batchId": "fixture-batch-id",
+        "filename": "document.pdf",
+    }
 
 
 async def test_mineru_gateway_poll_returns_done_result_url() -> None:
@@ -610,7 +629,7 @@ async def test_mineru_gateway_poll_returns_done_result_url() -> None:
             lambda _: _json_response(_poll_payload(state="done"))
         )
     ) as client:
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        gateway = _gateway(client=client)
         result = await gateway.poll_batch_result(object(), _allocation())
 
     assert result.state == "done"
@@ -619,16 +638,10 @@ async def test_mineru_gateway_poll_returns_done_result_url() -> None:
 
 async def test_mineru_gateway_poll_accepts_running_progress() -> None:
     payload = _poll_payload(state="running")
-    poll_result = payload["data"]["extract_result"][0]  # type: ignore[index]
-    poll_result["extract_progress"] = {
-        "extracted_pages": 1,
-        "start_time": "2026-07-16 12:00:00",
-        "total_pages": 2,
-    }
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(lambda _: _json_response(payload))
     ) as client:
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        gateway = _gateway(client=client)
         result = await gateway.poll_batch_result(object(), _allocation())
 
     assert result.state == "running"
@@ -674,7 +687,6 @@ async def test_mineru_gateway_poll_accepts_running_progress() -> None:
             ),
             MINERU_GATEWAY_RESULT_URL_INVALID,
         ),
-        (_poll_payload(state="failed", err_msg=""), MINERU_GATEWAY_RESPONSE_INVALID),
     ],
 )
 async def test_mineru_gateway_rejects_invalid_poll_payload(
@@ -684,7 +696,7 @@ async def test_mineru_gateway_rejects_invalid_poll_payload(
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(lambda _: _json_response(payload))
     ) as client:
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        gateway = _gateway(client=client)
         with pytest.raises(PermanentJobError) as raised:
             await gateway.poll_batch_result(object(), _allocation())
 
@@ -697,25 +709,25 @@ async def test_mineru_gateway_poll_retries_status_redacted() -> None:
         lambda _: _json_response({"error": SECRET}, status=503)
     )
     async with httpx.AsyncClient(transport=transport) as client:
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        gateway = _gateway(client=client)
         with pytest.raises(RetryableJobError) as raised:
             await gateway.poll_batch_result(object(), _allocation())
 
-    assert raised.value.error_code == MINERU_GATEWAY_STATUS_INVALID
+    assert raised.value.error_code == GO_PROVIDER_GATEWAY_STATUS_INVALID
     assert raised.value.retry_after_seconds == 30
     assert SECRET not in str(raised.value)
 
 
-async def test_mineru_gateway_poll_retries_provider_code_failure_redacted() -> None:
+async def test_mineru_gateway_poll_rejects_non_normalized_body() -> None:
     transport = httpx.MockTransport(
         lambda _: _json_response({"code": 429, "msg": SECRET})
     )
     async with httpx.AsyncClient(transport=transport) as client:
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
-        with pytest.raises(RetryableJobError) as raised:
+        gateway = _gateway(client=client)
+        with pytest.raises(PermanentJobError) as raised:
             await gateway.poll_batch_result(object(), _allocation())
 
-    assert raised.value.error_code == MINERU_GATEWAY_STATUS_INVALID
+    assert raised.value.error_code == MINERU_GATEWAY_RESPONSE_INVALID
     assert SECRET not in str(raised.value)
 
 
@@ -727,11 +739,11 @@ async def test_mineru_gateway_poll_retries_transport_failure_redacted() -> None:
         )
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        gateway = _gateway(client=client)
         with pytest.raises(RetryableJobError) as raised:
             await gateway.poll_batch_result(object(), _allocation())
 
-    assert raised.value.error_code == MINERU_GATEWAY_REQUEST_FAILED
+    assert raised.value.error_code == GO_PROVIDER_GATEWAY_REQUEST_FAILED
     assert SECRET not in str(raised.value)
 
 
@@ -756,7 +768,7 @@ async def test_mineru_gateway_downloads_locked_result_archive() -> None:
             domain="cdn-mineru.openxlab.org.cn",
             path="/",
         )
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        gateway = _gateway(client=client)
         body = await gateway.download_result_archive(object(), _done_poll_result())
 
     assert body == ZIP_BODY
@@ -793,7 +805,8 @@ async def test_mineru_gateway_download_proxy_preserves_result_url_fence() -> Non
             path="/",
         )
         gateway = MinerULocalBatchGateway(
-            SECRET,
+            provider_gateway_url=PROVIDER_GATEWAY_URL,
+            internal_token=SECRET,
             client=client,
             result_proxy_url=RESULT_PROXY_URL,
         )
@@ -822,7 +835,8 @@ async def test_mineru_gateway_download_proxy_still_rejects_bad_result_url() -> N
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(forbidden)) as client:
         gateway = MinerULocalBatchGateway(
-            SECRET,
+            provider_gateway_url=PROVIDER_GATEWAY_URL,
+            internal_token=SECRET,
             client=client,
             result_proxy_url=RESULT_PROXY_URL,
         )
@@ -849,7 +863,7 @@ async def test_mineru_gateway_rejects_unsafe_result_proxy_url(
     proxy_url: str,
 ) -> None:
     with pytest.raises(PermanentJobError) as raised:
-        MinerULocalBatchGateway(SECRET, result_proxy_url=proxy_url)
+        _gateway(result_proxy_url=proxy_url)
 
     assert raised.value.error_code == MINERU_GATEWAY_RESULT_PROXY_INVALID
 
@@ -863,7 +877,7 @@ async def test_mineru_gateway_download_rejects_non_done_before_http() -> None:
         raise AssertionError("non-done poll result reached download target")
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(forbidden)) as client:
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        gateway = _gateway(client=client)
         with pytest.raises(PermanentJobError) as raised:
             await gateway.download_result_archive(
                 object(),
@@ -883,7 +897,7 @@ async def test_mineru_gateway_download_retries_status_redacted() -> None:
         lambda _: httpx.Response(503, content=SECRET.encode())
     )
     async with httpx.AsyncClient(transport=transport) as client:
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        gateway = _gateway(client=client)
         with pytest.raises(RetryableJobError) as raised:
             await gateway.download_result_archive(object(), _done_poll_result())
 
@@ -926,7 +940,7 @@ async def test_mineru_gateway_download_rejects_invalid_response_headers(
             )
         )
     ) as client:
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        gateway = _gateway(client=client)
         with pytest.raises(PermanentJobError) as raised:
             await gateway.download_result_archive(object(), _done_poll_result())
 
@@ -946,7 +960,7 @@ async def test_mineru_gateway_download_rejects_oversized_body(
             )
         )
     ) as client:
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        gateway = _gateway(client=client)
         with pytest.raises(PermanentJobError) as raised:
             await gateway.download_result_archive(object(), _done_poll_result())
 
@@ -961,7 +975,7 @@ async def test_mineru_gateway_download_retries_transport_failure_redacted() -> N
         )
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        gateway = MinerULocalBatchGateway(SECRET, client=client)
+        gateway = _gateway(client=client)
         with pytest.raises(RetryableJobError) as raised:
             await gateway.download_result_archive(object(), _done_poll_result())
 
@@ -975,13 +989,17 @@ async def test_mineru_result_archive_provider_runs_single_batch_sequence() -> No
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
         if request.method == "POST" and request.url == httpx.URL(
-            MINERU_ALLOCATE_UPLOAD_URL
+            f"{PROVIDER_GATEWAY_URL}{MINERU_ALLOCATE_PATH}"
         ):
-            return _json_response(_allocation_payload(file_urls=(SIGNED_UPLOAD_URL,)))
+            return _json_response(
+                _allocation_payload(
+                    file_urls=(SIGNED_UPLOAD_URL,), filename="document.pdf"
+                )
+            )
         if request.method == "PUT" and request.url == httpx.URL(SIGNED_UPLOAD_URL):
             return httpx.Response(204)
-        if request.method == "GET" and request.url == httpx.URL(
-            f"{MINERU_POLL_URL_PREFIX}fixture-batch-id"
+        if request.method == "POST" and request.url == httpx.URL(
+            f"{PROVIDER_GATEWAY_URL}{MINERU_POLL_PATH}"
         ):
             return _json_response(_poll_payload(state="done"))
         if request.method == "GET" and request.url == httpx.URL(RESULT_URL):
@@ -998,9 +1016,7 @@ async def test_mineru_result_archive_provider_runs_single_batch_sequence() -> No
         )
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        provider = MinerULocalBatchResultArchiveProvider(
-            MinerULocalBatchGateway(SECRET, client=client)
-        )
+        provider = MinerULocalBatchResultArchiveProvider(_gateway(client=client))
         archive_body = await provider.fetch_result_archive(_parse_context(), _source())
 
     observed = [
@@ -1008,12 +1024,13 @@ async def test_mineru_result_archive_provider_runs_single_batch_sequence() -> No
     ]
     assert archive_body == ZIP_BODY
     assert observed == [
-        ("POST", MINERU_ALLOCATE_UPLOAD_URL),
+        ("POST", f"{PROVIDER_GATEWAY_URL}{MINERU_ALLOCATE_PATH}"),
         ("PUT", SIGNED_UPLOAD_URL.split("?")[0]),
-        ("GET", f"{MINERU_POLL_URL_PREFIX}fixture-batch-id"),
+        ("POST", f"{PROVIDER_GATEWAY_URL}{MINERU_POLL_PATH}"),
         ("GET", RESULT_URL),
     ]
-    assert requests[0].headers["authorization"] == f"Bearer {SECRET}"
+    assert requests[0].headers[GO_PROVIDER_INTERNAL_TOKEN_HEADER] == SECRET
+    assert "authorization" not in requests[0].headers
     assert "authorization" not in requests[1].headers
     assert "authorization" not in requests[3].headers
 
@@ -1025,23 +1042,22 @@ async def test_mineru_result_archive_provider_polls_same_batch_until_done() -> N
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal poll_count
         requests.append(request)
-        if request.method == "POST":
-            return _json_response(_allocation_payload(file_urls=(SIGNED_UPLOAD_URL,)))
+        if request.method == "POST" and request.url == httpx.URL(
+            f"{PROVIDER_GATEWAY_URL}{MINERU_ALLOCATE_PATH}"
+        ):
+            return _json_response(
+                _allocation_payload(
+                    file_urls=(SIGNED_UPLOAD_URL,), filename="document.pdf"
+                )
+            )
         if request.method == "PUT":
             return httpx.Response(204)
-        if request.method == "GET" and str(request.url).startswith(
-            MINERU_POLL_URL_PREFIX
+        if request.method == "POST" and request.url == httpx.URL(
+            f"{PROVIDER_GATEWAY_URL}{MINERU_POLL_PATH}"
         ):
             poll_count += 1
             if poll_count == 1:
-                payload = _poll_payload(state="running")
-                poll_result = payload["data"]["extract_result"][0]  # type: ignore[index]
-                poll_result["extract_progress"] = {
-                    "extracted_pages": 1,
-                    "start_time": "2026-07-16 12:00:00",
-                    "total_pages": 2,
-                }
-                return _json_response(payload)
+                return _json_response(_poll_payload(state="running"))
             return _json_response(_poll_payload(state="done"))
         if request.method == "GET" and request.url == httpx.URL(RESULT_URL):
             return httpx.Response(
@@ -1056,7 +1072,7 @@ async def test_mineru_result_archive_provider_polls_same_batch_until_done() -> N
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         provider = MinerULocalBatchResultArchiveProvider(
-            MinerULocalBatchGateway(SECRET, client=client),
+            _gateway(client=client),
             poll_interval_seconds=0,
             poll_max_attempts=2,
         )
@@ -1066,10 +1082,10 @@ async def test_mineru_result_archive_provider_polls_same_batch_until_done() -> N
     assert [
         (request.method, str(request.url).split("?")[0]) for request in requests
     ] == [
-        ("POST", MINERU_ALLOCATE_UPLOAD_URL),
+        ("POST", f"{PROVIDER_GATEWAY_URL}{MINERU_ALLOCATE_PATH}"),
         ("PUT", SIGNED_UPLOAD_URL.split("?")[0]),
-        ("GET", f"{MINERU_POLL_URL_PREFIX}fixture-batch-id"),
-        ("GET", f"{MINERU_POLL_URL_PREFIX}fixture-batch-id"),
+        ("POST", f"{PROVIDER_GATEWAY_URL}{MINERU_POLL_PATH}"),
+        ("POST", f"{PROVIDER_GATEWAY_URL}{MINERU_POLL_PATH}"),
         ("GET", RESULT_URL),
     ]
 
@@ -1079,24 +1095,25 @@ async def test_mineru_result_archive_provider_retries_after_poll_exhaustion() ->
 
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        if request.method == "POST":
-            return _json_response(_allocation_payload(file_urls=(SIGNED_UPLOAD_URL,)))
+        if request.method == "POST" and request.url == httpx.URL(
+            f"{PROVIDER_GATEWAY_URL}{MINERU_ALLOCATE_PATH}"
+        ):
+            return _json_response(
+                _allocation_payload(
+                    file_urls=(SIGNED_UPLOAD_URL,), filename="document.pdf"
+                )
+            )
         if request.method == "PUT":
             return httpx.Response(204)
-        if request.method == "GET":
-            payload = _poll_payload(state="running")
-            poll_result = payload["data"]["extract_result"][0]  # type: ignore[index]
-            poll_result["extract_progress"] = {
-                "extracted_pages": 1,
-                "start_time": "2026-07-16 12:00:00",
-                "total_pages": 2,
-            }
-            return _json_response(payload)
+        if request.method == "POST" and request.url == httpx.URL(
+            f"{PROVIDER_GATEWAY_URL}{MINERU_POLL_PATH}"
+        ):
+            return _json_response(_poll_payload(state="running"))
         raise AssertionError(f"unexpected MinerU request {request.method}")
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         provider = MinerULocalBatchResultArchiveProvider(
-            MinerULocalBatchGateway(SECRET, client=client),
+            _gateway(client=client),
             poll_interval_seconds=0,
             poll_max_attempts=3,
         )
@@ -1108,24 +1125,32 @@ async def test_mineru_result_archive_provider_retries_after_poll_exhaustion() ->
     assert [request.method for request in requests] == [
         "POST",
         "PUT",
-        "GET",
-        "GET",
-        "GET",
+        "POST",
+        "POST",
+        "POST",
     ]
 
 
 async def test_mineru_result_archive_provider_rejects_failed_poll_redacted() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.method == "POST":
-            return _json_response(_allocation_payload(file_urls=(SIGNED_UPLOAD_URL,)))
+        if request.method == "POST" and request.url == httpx.URL(
+            f"{PROVIDER_GATEWAY_URL}{MINERU_ALLOCATE_PATH}"
+        ):
+            return _json_response(
+                _allocation_payload(
+                    file_urls=(SIGNED_UPLOAD_URL,), filename="document.pdf"
+                )
+            )
         if request.method == "PUT":
             return httpx.Response(204)
-        return _json_response(_poll_payload(state="failed", err_msg=SECRET))
+        if request.method == "POST" and request.url == httpx.URL(
+            f"{PROVIDER_GATEWAY_URL}{MINERU_POLL_PATH}"
+        ):
+            return _json_response(_poll_payload(state="failed", err_msg=SECRET))
+        raise AssertionError(f"unexpected MinerU request {request.method}")
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        provider = MinerULocalBatchResultArchiveProvider(
-            MinerULocalBatchGateway(SECRET, client=client)
-        )
+        provider = MinerULocalBatchResultArchiveProvider(_gateway(client=client))
         with pytest.raises(PermanentJobError) as raised:
             await provider.fetch_result_archive(_parse_context(), _source())
 
@@ -1142,7 +1167,7 @@ def test_mineru_result_archive_provider_default_off() -> None:
 
 def test_mineru_gateway_validates_result_archive_summary() -> None:
     archive_body = _archive()
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
 
     summary = gateway.validate_result_archive(object(), archive_body)
 
@@ -1168,7 +1193,7 @@ def test_mineru_gateway_validates_result_archive_summary() -> None:
 def test_mineru_gateway_rejects_invalid_result_archive(
     archive_body: bytes,
 ) -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
 
     with pytest.raises(PermanentJobError) as raised:
         gateway.validate_result_archive(object(), archive_body)
@@ -1185,7 +1210,7 @@ def test_mineru_gateway_rejects_duplicate_archive_entries() -> None:
         for name, content in ARCHIVE_ENTRIES[1:]:
             archive.writestr(name, content)
 
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
 
     with pytest.raises(PermanentJobError) as raised:
         gateway.validate_result_archive(object(), output.getvalue())
@@ -1196,7 +1221,7 @@ def test_mineru_gateway_rejects_duplicate_archive_entries() -> None:
 def test_mineru_gateway_rejects_symlink_archive_entry() -> None:
     info = zipfile.ZipInfo("link")
     info.external_attr = (stat.S_IFLNK | 0o777) << 16
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
 
     with pytest.raises(PermanentJobError) as raised:
         gateway.validate_result_archive(object(), _archive_with_extra_info(info, b"x"))
@@ -1205,7 +1230,7 @@ def test_mineru_gateway_rejects_symlink_archive_entry() -> None:
 
 
 def test_mineru_gateway_rejects_crc_mismatch_archive() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
 
     with pytest.raises(PermanentJobError) as raised:
         gateway.validate_result_archive(object(), _corrupt_archive_content(_archive()))
@@ -1217,7 +1242,7 @@ def test_mineru_gateway_rejects_archive_entry_limits(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(mineru_module, "MAX_MINERU_ARCHIVE_ENTRY_BYTES", 1)
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
 
     with pytest.raises(PermanentJobError) as raised:
         gateway.validate_result_archive(object(), _archive())
@@ -1229,7 +1254,7 @@ def test_mineru_gateway_rejects_archive_total_limits(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(mineru_module, "MAX_MINERU_ARCHIVE_TOTAL_BYTES", 1)
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
 
     with pytest.raises(PermanentJobError) as raised:
         gateway.validate_result_archive(object(), _archive())
@@ -1241,7 +1266,7 @@ def test_mineru_gateway_rejects_archive_compression_ratio(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(mineru_module, "MAX_MINERU_ARCHIVE_COMPRESSION_RATIO", 1)
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
 
     with pytest.raises(PermanentJobError) as raised:
         gateway.validate_result_archive(
@@ -1260,7 +1285,7 @@ def test_mineru_gateway_rejects_archive_compression_ratio(
 
 def test_mineru_gateway_extracts_result_archive_artifacts() -> None:
     archive_body = _archive()
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
 
     artifacts = gateway.extract_result_archive_artifacts(object(), archive_body)
 
@@ -1282,7 +1307,7 @@ def test_mineru_gateway_extracts_nested_role_artifacts_without_names() -> None:
             ("nested/extra.txt", b"ignored"),
         )
     )
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
 
     artifacts = gateway.extract_result_archive_artifacts(object(), archive_body)
 
@@ -1294,7 +1319,7 @@ def test_mineru_gateway_extracts_nested_role_artifacts_without_names() -> None:
 
 
 def test_mineru_gateway_rejects_duplicate_archive_roles() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     archive_body = _archive(
         (
             *ARCHIVE_ENTRIES,
@@ -1309,7 +1334,7 @@ def test_mineru_gateway_rejects_duplicate_archive_roles() -> None:
 
 
 def test_mineru_gateway_extract_revalidates_archive() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
 
     with pytest.raises(PermanentJobError) as raised:
         gateway.extract_result_archive_artifacts(object(), b"not-a-zip")
@@ -1318,7 +1343,7 @@ def test_mineru_gateway_extract_revalidates_archive() -> None:
 
 
 def test_mineru_gateway_decodes_result_archive_artifacts() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     archive_body = _archive(
         (
             ("full.md", "正文\n".encode()),
@@ -1339,7 +1364,7 @@ def test_mineru_gateway_decodes_result_archive_artifacts() -> None:
 
 
 def test_mineru_gateway_accepts_array_model_json_from_live_mineru() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     archive_body = _archive(
         (
             ("full.md", b"Live text\n"),
@@ -1356,7 +1381,7 @@ def test_mineru_gateway_accepts_array_model_json_from_live_mineru() -> None:
 
 
 def test_mineru_gateway_rejects_scalar_model_json() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     archive_body = _archive(
         (
             ("full.md", b"Live text\n"),
@@ -1374,7 +1399,7 @@ def test_mineru_gateway_rejects_scalar_model_json() -> None:
 
 
 def test_mineru_gateway_prepares_hash_bound_canonical_mapping_input() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     archive_body = _archive(
         (
             ("full.md", "正文\n".encode()),
@@ -1424,7 +1449,7 @@ def test_mineru_gateway_prepares_hash_bound_canonical_mapping_input() -> None:
 
 
 def test_mineru_gateway_prepare_mapping_input_rejects_source_hash_mismatch() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     artifacts = gateway.extract_result_archive_artifacts(object(), _archive())
     mismatched_source = DocumentSource(
         body=PDF_BODY,
@@ -1443,7 +1468,7 @@ def test_mineru_gateway_prepare_mapping_input_rejects_source_hash_mismatch() -> 
 
 
 def test_mineru_gateway_prepare_mapping_input_reuses_decode_gates() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     artifacts = gateway.extract_result_archive_artifacts(
         object(),
         _archive(
@@ -1467,7 +1492,7 @@ def test_mineru_gateway_prepare_mapping_input_reuses_decode_gates() -> None:
 
 
 def test_mineru_gateway_builds_text_baseline_parse_artifacts() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     text_body = b"Alpha 123\n\nBeta"
     mapping_input = _mapping_input(text="Alpha 123\n\nBeta")
 
@@ -1515,7 +1540,7 @@ def test_mineru_gateway_builds_text_baseline_parse_artifacts() -> None:
 
 
 def test_mineru_gateway_text_baseline_projects_basic_page_locator() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     text = "Synthetic MinerU 文本"
     archive_body = _archive(
         (
@@ -1587,7 +1612,7 @@ def test_mineru_gateway_text_baseline_projects_basic_page_locator() -> None:
 
 
 def test_mineru_gateway_text_baseline_projects_source_text_page_locator() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     text = "E = mc²"
     archive_body = _archive(
         (
@@ -1660,7 +1685,7 @@ def test_mineru_gateway_text_baseline_projects_source_text_page_locator() -> Non
 
 
 def test_mineru_gateway_text_baseline_projects_table_page_locator() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     text = "| key | value |\n| --- | --- |\n| café | 中文 |"
     archive_body = _archive(
         (
@@ -1735,7 +1760,7 @@ def test_mineru_gateway_text_baseline_projects_table_page_locator() -> None:
 
 
 def test_mineru_gateway_text_baseline_projects_image_page_locator() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     text = "![diagram](images/diagram.png)"
     archive_body = _archive(
         (
@@ -1806,7 +1831,7 @@ def test_mineru_gateway_text_baseline_projects_image_page_locator() -> None:
 
 
 def test_mineru_gateway_text_baseline_rejects_ambiguous_page_locator() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     text = "Duplicate locator text"
     archive_body = _archive(
         (
@@ -1859,7 +1884,7 @@ def test_mineru_gateway_text_baseline_rejects_ambiguous_page_locator() -> None:
 
 
 def test_mineru_gateway_text_baseline_rejects_ambiguous_table_locator() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     text = "| a |\n| - |\n| b |"
     archive_body = _archive(
         (
@@ -1915,7 +1940,7 @@ def test_mineru_gateway_text_baseline_rejects_ambiguous_table_locator() -> None:
 
 
 def test_mineru_gateway_text_baseline_rejects_ambiguous_image_locator() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     text = "![diagram](images/diagram.png)"
     archive_body = _archive(
         (
@@ -1990,7 +2015,7 @@ def test_mineru_gateway_text_baseline_falls_back_without_content_match() -> None
 
 
 def test_mineru_gateway_text_baseline_rejects_duplicate_content_matches() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     text = "Duplicate content-list text"
     mapping_input = _locator_mapping_input(
         text=text,
@@ -2038,7 +2063,7 @@ def test_mineru_gateway_text_baseline_rejects_malformed_locator(
     page: dict[str, Any],
     element: dict[str, Any],
 ) -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     text = "Bad locator"
     mapping_input = _locator_mapping_input(
         text=text,
@@ -2077,7 +2102,7 @@ def test_mineru_gateway_text_baseline_does_not_infer_formula_by_kind_only() -> N
 
 
 def test_mineru_gateway_text_baseline_rejects_ambiguous_formula_locator() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     text = "E = mc²"
     mapping_input = _locator_mapping_input(
         text=text,
@@ -2107,7 +2132,7 @@ def test_mineru_gateway_text_baseline_rejects_ambiguous_formula_locator() -> Non
 
 
 def test_mineru_gateway_text_baseline_chunks_long_markdown() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     mapping_input = _mapping_input(text="甲" * 900)
 
     artifacts = gateway.build_text_baseline_parse_artifacts(
@@ -2129,7 +2154,7 @@ def test_mineru_gateway_text_baseline_chunks_long_markdown() -> None:
 
 
 def test_mineru_gateway_text_baseline_rejects_wrong_mapping_input() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
 
     with pytest.raises(PermanentJobError) as raised:
         gateway.build_text_baseline_parse_artifacts(
@@ -2142,7 +2167,7 @@ def test_mineru_gateway_text_baseline_rejects_wrong_mapping_input() -> None:
 
 
 def test_mineru_gateway_composes_archive_to_text_baseline_parse_artifacts() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     archive_body = _archive(
         (
             ("full.md", b"Composed 456\n\nArtifact"),
@@ -2180,7 +2205,7 @@ def test_mineru_gateway_composes_archive_to_text_baseline_parse_artifacts() -> N
 
 
 def test_mineru_gateway_archive_to_text_baseline_rejects_invalid_archive() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
 
     with pytest.raises(PermanentJobError) as raised:
         gateway.build_text_baseline_parse_artifacts_from_archive(
@@ -2194,7 +2219,7 @@ def test_mineru_gateway_archive_to_text_baseline_rejects_invalid_archive() -> No
 
 
 def test_mineru_gateway_archive_to_text_baseline_rejects_source_mismatch() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     mismatched_source = DocumentSource(
         body=PDF_BODY,
         source_sha256="0" * 64,
@@ -2353,7 +2378,7 @@ async def test_mineru_parser_gateway_reuses_archive_validation() -> None:
 def test_mineru_gateway_rejects_invalid_decoded_artifacts(
     entries: tuple[tuple[str, bytes], ...],
 ) -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
     artifacts = gateway.extract_result_archive_artifacts(object(), _archive(entries))
 
     with pytest.raises(PermanentJobError) as raised:
@@ -2363,7 +2388,7 @@ def test_mineru_gateway_rejects_invalid_decoded_artifacts(
 
 
 def test_mineru_gateway_decode_rejects_wrong_artifact_object() -> None:
-    gateway = MinerULocalBatchGateway(SECRET)
+    gateway = _gateway()
 
     with pytest.raises(PermanentJobError) as raised:
         gateway.decode_result_archive_artifacts(object(), object())  # type: ignore[arg-type]

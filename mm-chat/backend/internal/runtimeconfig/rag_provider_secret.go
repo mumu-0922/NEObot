@@ -135,13 +135,3 @@ func (s *Service) decryptStoredRAGProviderSecret(
 	}
 	return decrypted, nil
 }
-
-func (s *Service) ragProviderEnvironmentSecret(providerID RAGProviderID) string {
-	if providerID == RAGProviderMinerU {
-		return strings.TrimSpace(s.cfg.RAG.MinerUAPIKey)
-	}
-	if providerID == RAGProviderJina {
-		return strings.TrimSpace(s.cfg.RAG.JinaAPIKey)
-	}
-	return ""
-}

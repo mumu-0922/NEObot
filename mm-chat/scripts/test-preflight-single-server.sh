@@ -155,6 +155,20 @@ sed \
 chmod 600 "${valid}"
 "${preflight}" "${valid}" >/dev/null
 
+for retired_rag_env in \
+  RAG_MINERU_API_TOKEN \
+  DEFAULT_MINERU_API_TOKEN \
+  RAG_JINA_API_KEY \
+  DEFAULT_JINA_API_KEY \
+  RAG_QUERY_GATEWAY_URL \
+  RAG_RERANK_GATEWAY_URL; do
+  retired_env_file="${temp_dir}/retired-${retired_rag_env}.env"
+  cp "${valid}" "${retired_env_file}"
+  printf '%s=%s\n' "${retired_rag_env}" "retired-fixture" >>"${retired_env_file}"
+  chmod 600 "${retired_env_file}"
+  assert_rejected "${retired_env_file}" "${retired_rag_env} is retired"
+done
+
 quoted_byok_pem="${temp_dir}/quoted-byok-pem.env"
 sed "s|^BYOK_PRIVATE_KEY_PEM=.*|BYOK_PRIVATE_KEY_PEM='-----BEGIN PRIVATE KEY-----\\\\nYWJj\\\\n-----END PRIVATE KEY-----'|" \
   "${valid}" >"${quoted_byok_pem}"
@@ -527,6 +541,17 @@ for service_name in ("frontend", "backend", "admin"):
     ):
         assert provider_env not in services[service_name]["environment"]
 
+for service_name in ("backend", "admin"):
+    for retired_rag_env in (
+        "RAG_MINERU_API_TOKEN",
+        "DEFAULT_MINERU_API_TOKEN",
+        "RAG_JINA_API_KEY",
+        "DEFAULT_JINA_API_KEY",
+        "RAG_QUERY_GATEWAY_URL",
+        "RAG_RERANK_GATEWAY_URL",
+    ):
+        assert retired_rag_env not in services[service_name]["environment"]
+
 rag = services["rag-worker"]
 want_rag_image = (
     "ghcr.io/mumu-0922/neobot-mm-chat-rag@sha256:"
@@ -562,6 +587,12 @@ for forbidden in (
     "S3_ACCESS_KEY_ID",
     "S3_SECRET_ACCESS_KEY",
     "PROVIDER_API_KEY",
+    "RAG_MINERU_API_TOKEN",
+    "DEFAULT_MINERU_API_TOKEN",
+    "RAG_JINA_API_KEY",
+    "DEFAULT_JINA_API_KEY",
+    "RAG_QUERY_GATEWAY_URL",
+    "RAG_RERANK_GATEWAY_URL",
 ):
     assert forbidden not in environment
 assert "/health" in " ".join(rag["healthcheck"]["test"])

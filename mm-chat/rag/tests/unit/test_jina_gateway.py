@@ -8,508 +8,197 @@ import httpx
 import pytest
 
 from mm_chat_rag.jina_gateway import (
-    JINA_EMBEDDINGS_URL,
-    JINA_GATEWAY_CREDENTIALS_MISSING,
-    JINA_GATEWAY_REQUEST_FAILED,
-    JINA_GATEWAY_STATUS_INVALID,
-    JINA_RERANK_URL,
+    JINA_GATEWAY_RESPONSE_INVALID,
+    JINA_PASSAGE_EMBEDDINGS_PATH,
     JinaPassageEmbeddingGateway,
-    JinaQueryEmbeddingGateway,
-    JinaRerankGateway,
     build_jina_passage_embedding_handler_dependencies,
 )
 from mm_chat_rag.job_handler_dependencies import (
     JOB_HANDLER_DEPENDENCY_UNCONFIGURED,
-    JOB_HANDLER_EMBEDDING_COUNT_MISMATCH,
     JOB_HANDLER_EMBEDDING_VECTOR_INVALID,
     PassageEmbeddingCandidate,
-    StagedPassageEmbedding,
-    admitted_passage_embedding_handler_with_dependencies,
 )
-from mm_chat_rag.models import JobClaim
-from mm_chat_rag.provider_profile import (
-    MINERU_JINA_POSTGRES_PROFILE,
-    ProviderRuntimeProfile,
+from mm_chat_rag.provider_gateway import (
+    GO_PROVIDER_GATEWAY_STATUS_INVALID,
+    GO_PROVIDER_INTERNAL_TOKEN_HEADER,
 )
 from mm_chat_rag.retry import PermanentJobError, RetryableJobError
 
-CONTENT_HASH_A = "a" * 64
-CONTENT_HASH_B = "b" * 64
-SECRET = "unit-test-jina-key"
+BASE_URL = "http://backend:8080"
+INTERNAL_TOKEN = "unit-test-provider-gateway-token"
 
 
-def _candidate(content: str, content_hash: str) -> PassageEmbeddingCandidate:
+def _candidate(value: int, content: str) -> PassageEmbeddingCandidate:
     return PassageEmbeddingCandidate(
-        child_chunk_id=uuid.uuid4(),
+        child_chunk_id=uuid.UUID(f"{value:08d}-1111-4111-8111-111111111111"),
         content=content,
-        content_hash=content_hash,
+        content_hash=f"{value:064x}",
     )
 
 
-def _candidates() -> tuple[PassageEmbeddingCandidate, ...]:
-    return (
-        _candidate("First passage", CONTENT_HASH_A),
-        _candidate("Second passage", CONTENT_HASH_B),
-    )
+def _vector(first: float = 0.25) -> list[float]:
+    return [first, *([0.0] * 1023)]
 
 
-def _embedding_payload(
-    count: int,
-    *,
-    dimensions: int = 1024,
-    model: str = "jina-embeddings-v4",
-) -> dict[str, Any]:
-    return {
-        "data": [
-            {
-                "embedding": [0.125 + index / 1000] * dimensions,
-                "index": index,
-                "object": "embedding",
-            }
-            for index in range(count)
-        ],
-        "model": model,
-        "object": "list",
-        "request_id": "sensitive-provider-request-id",
-        "usage": {"prompt_tokens": 11, "total_tokens": 11},
-    }
-
-
-def _json_response(payload: object, *, status: int = 200) -> httpx.Response:
-    content = json.dumps(payload, separators=(",", ":")).encode()
+def _response(payload: object, status: int = 200) -> httpx.Response:
     return httpx.Response(
         status,
-        headers={"Content-Type": "application/json; charset=utf-8"},
-        content=content,
+        headers={"Content-Type": "application/json", "Content-Encoding": "identity"},
+        content=json.dumps(payload).encode(),
     )
 
 
-def _rerank_payload(scores: tuple[float, ...]) -> dict[str, Any]:
-    return {
-        "model": "jina-reranker-v3",
-        "results": [
-            {"index": index, "relevance_score": score}
-            for index, score in enumerate(scores)
-        ],
-        "usage": {"total_tokens": 23},
-        "request_id": "sensitive-rerank-request-id",
-    }
-
-
-async def test_jina_gateway_missing_key_fails_before_http() -> None:
-    calls = 0
-
-    def forbidden(_: httpx.Request) -> httpx.Response:
-        nonlocal calls
-        calls += 1
-        raise AssertionError("missing key reached provider")
-
-    async with httpx.AsyncClient(transport=httpx.MockTransport(forbidden)) as client:
-        with pytest.raises(PermanentJobError) as raised:
-            JinaPassageEmbeddingGateway(None, client=client)
-
-    assert raised.value.error_code == JINA_GATEWAY_CREDENTIALS_MISSING
-    assert calls == 0
-
-
-async def test_jina_gateway_sends_locked_passage_request_and_maps_vectors() -> None:
+async def test_passage_gateway_uses_closed_go_dto_and_restores_candidate_order() -> (
+    None
+):
+    candidates = (_candidate(1, "first"), _candidate(2, "second"))
     requests: list[httpx.Request] = []
-    candidates = _candidates()
 
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        return _json_response(_embedding_payload(len(candidates)))
+        return _response(
+            {
+                "model": "jina-embeddings-v4",
+                "dimensions": 1024,
+                "vectors": [
+                    {
+                        "passageId": str(candidates[1].child_chunk_id),
+                        "embedding": _vector(2.0),
+                    },
+                    {
+                        "passageId": str(candidates[0].child_chunk_id),
+                        "embedding": _vector(1.0),
+                    },
+                ],
+            }
+        )
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        gateway = JinaPassageEmbeddingGateway(SECRET, client=client)
-        vectors = await gateway.embed_passages(object(), candidates)
+        vectors = await JinaPassageEmbeddingGateway(
+            provider_gateway_url=BASE_URL,
+            internal_token=INTERNAL_TOKEN,
+            client=client,
+        ).embed_passages(object(), candidates)
 
-    assert [vector.child_chunk_id for vector in vectors] == [
-        candidate.child_chunk_id for candidate in candidates
+    assert [item.child_chunk_id for item in vectors] == [
+        item.child_chunk_id for item in candidates
     ]
-    assert {len(vector.embedding) for vector in vectors} == {1024}
-    assert [vector.embedding[0] for vector in vectors] == [0.125, 0.126]
+    assert vectors[0].embedding[0] == 1.0
+    assert vectors[1].embedding[0] == 2.0
     assert len(requests) == 1
     request = requests[0]
     assert request.method == "POST"
-    assert request.url == httpx.URL(JINA_EMBEDDINGS_URL)
-    assert request.headers["authorization"] == f"Bearer {SECRET}"
-    body = json.loads(request.content)
-    assert body == {
-        "dimensions": 1024,
-        "embedding_type": "float",
-        "input": [{"text": "First passage"}, {"text": "Second passage"}],
-        "late_chunking": False,
-        "model": "jina-embeddings-v4",
-        "return_multivector": False,
-        "return_tokenized_input": False,
-        "task": "retrieval.passage",
-        "truncate": False,
-    }
-    assert SECRET.encode() not in request.content
-
-
-async def test_jina_gateway_empty_candidates_make_no_http_call() -> None:
-    calls = 0
-
-    def forbidden(_: httpx.Request) -> httpx.Response:
-        nonlocal calls
-        calls += 1
-        raise AssertionError("empty batch reached provider")
-
-    async with httpx.AsyncClient(transport=httpx.MockTransport(forbidden)) as client:
-        gateway = JinaPassageEmbeddingGateway(SECRET, client=client)
-        assert await gateway.embed_passages(object(), ()) == ()
-
-    assert calls == 0
-
-
-async def test_jina_gateway_sends_locked_query_request_and_maps_vector() -> None:
-    requests: list[httpx.Request] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        requests.append(request)
-        return _json_response(_embedding_payload(1))
-
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        vector = await JinaQueryEmbeddingGateway(
-            SECRET,
-            client=client,
-        ).embed_query("  semantic question  ")
-
-    assert len(vector) == 1024
-    assert vector[0] == 0.125
-    assert len(requests) == 1
-    body = json.loads(requests[0].content)
-    assert body == {
-        "dimensions": 1024,
-        "embedding_type": "float",
-        "input": [{"text": "semantic question"}],
-        "late_chunking": False,
-        "model": "jina-embeddings-v4",
-        "return_multivector": False,
-        "return_tokenized_input": False,
-        "task": "retrieval.query",
-        "truncate": False,
-    }
-
-
-async def test_jina_rerank_gateway_sends_locked_request_and_maps_all_scores() -> None:
-    requests: list[httpx.Request] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        requests.append(request)
-        return _json_response(_rerank_payload((0.8, -0.2)))
-
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        results = await JinaRerankGateway(SECRET, client=client).rerank(
-            "  semantic question  ",
-            ("First authorized passage", "Second authorized passage"),
-        )
-
-    assert results == ((0, 0.8), (1, -0.2))
-    assert len(requests) == 1
-    request = requests[0]
-    assert request.url == httpx.URL(JINA_RERANK_URL)
-    assert request.headers["authorization"] == f"Bearer {SECRET}"
+    assert request.url == httpx.URL(f"{BASE_URL}{JINA_PASSAGE_EMBEDDINGS_PATH}")
+    assert request.headers[GO_PROVIDER_INTERNAL_TOKEN_HEADER] == INTERNAL_TOKEN
+    assert "authorization" not in request.headers
     assert json.loads(request.content) == {
-        "documents": ["First authorized passage", "Second authorized passage"],
-        "model": "jina-reranker-v3",
-        "query": "semantic question",
-        "return_documents": False,
-        "return_embeddings": False,
-        "top_n": 2,
+        "passages": [
+            {"passageId": str(item.child_chunk_id), "text": item.content}
+            for item in candidates
+        ]
     }
-    assert SECRET.encode() not in request.content
 
 
-@pytest.mark.parametrize(
-    "documents",
-    [(), ("",), ("x" * (64 * 1024 + 1),), tuple("doc" for _ in range(21))],
-)
-async def test_jina_rerank_gateway_rejects_unsafe_documents_before_http(
-    documents: tuple[str, ...],
-) -> None:
+async def test_passage_gateway_empty_batch_avoids_go_call() -> None:
     calls = 0
 
     def forbidden(_: httpx.Request) -> httpx.Response:
         nonlocal calls
         calls += 1
-        raise AssertionError("invalid rerank documents reached provider")
+        raise AssertionError("empty batch reached Go")
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(forbidden)) as client:
-        with pytest.raises(PermanentJobError):
-            await JinaRerankGateway(SECRET, client=client).rerank(
-                "query",
-                documents,
-            )
+        result = await JinaPassageEmbeddingGateway(
+            provider_gateway_url=BASE_URL,
+            internal_token=INTERNAL_TOKEN,
+            client=client,
+        ).embed_passages(object(), ())
+    assert result == ()
     assert calls == 0
 
 
 @pytest.mark.parametrize(
-    "payload",
+    ("status", "error_type"),
     [
-        _rerank_payload((0.8,)),
-        {
-            **_rerank_payload((0.8, 0.1)),
-            "results": [
-                {"index": 0, "relevance_score": 0.8},
-                {"index": 0, "relevance_score": 0.1},
-            ],
-        },
-        {
-            **_rerank_payload((0.8, 0.1)),
-            "results": [
-                {"index": 0, "relevance_score": float("nan")},
-                {"index": 1, "relevance_score": 0.1},
-            ],
-        },
+        (400, PermanentJobError),
+        (401, PermanentJobError),
+        (409, RetryableJobError),
+        (503, RetryableJobError),
     ],
 )
-async def test_jina_rerank_gateway_rejects_invalid_results(
-    payload: dict[str, Any],
+async def test_passage_gateway_maps_go_status_without_body_leaks(
+    status: int,
+    error_type: type[Exception],
 ) -> None:
-    async with httpx.AsyncClient(
-        transport=httpx.MockTransport(lambda _: _json_response(payload))
-    ) as client:
-        with pytest.raises(PermanentJobError) as raised:
-            await JinaRerankGateway(SECRET, client=client).rerank(
-                "query",
-                ("first", "second"),
-            )
-    assert "sensitive-rerank-request-id" not in str(raised.value)
+    private_body = "private-provider-body"
 
+    def handler(_: httpx.Request) -> httpx.Response:
+        return _response({"error": {"private": private_body}}, status=status)
 
-@pytest.mark.parametrize("query", ["", "   ", "界" * 2049])
-async def test_jina_query_gateway_rejects_unsafe_query_before_http(
-    query: str,
-) -> None:
-    calls = 0
-
-    def forbidden(_: httpx.Request) -> httpx.Response:
-        nonlocal calls
-        calls += 1
-        raise AssertionError("invalid query reached provider")
-
-    async with httpx.AsyncClient(transport=httpx.MockTransport(forbidden)) as client:
-        gateway = JinaQueryEmbeddingGateway(SECRET, client=client)
-        with pytest.raises(PermanentJobError):
-            await gateway.embed_query(query)
-    assert calls == 0
-
-
-async def test_jina_gateway_rejects_provider_count_mismatch() -> None:
-    candidates = _candidates()
-
-    async with httpx.AsyncClient(
-        transport=httpx.MockTransport(lambda _: _json_response(_embedding_payload(1)))
-    ) as client:
-        gateway = JinaPassageEmbeddingGateway(SECRET, client=client)
-        with pytest.raises(PermanentJobError) as raised:
-            await gateway.embed_passages(object(), candidates)
-
-    assert raised.value.error_code == JOB_HANDLER_EMBEDDING_COUNT_MISMATCH
-    assert SECRET not in str(raised.value)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        gateway = JinaPassageEmbeddingGateway(
+            provider_gateway_url=BASE_URL,
+            internal_token=INTERNAL_TOKEN,
+            client=client,
+        )
+        with pytest.raises(error_type) as raised:
+            await gateway.embed_passages(object(), (_candidate(1, "private text"),))
+    assert raised.value.args[0] == GO_PROVIDER_GATEWAY_STATUS_INVALID
+    assert private_body not in str(raised.value)
+    assert INTERNAL_TOKEN not in str(raised.value)
 
 
 @pytest.mark.parametrize(
     "payload",
     [
-        _embedding_payload(1, dimensions=1023),
+        {"model": "wrong", "dimensions": 1024, "vectors": []},
         {
-            **_embedding_payload(1),
-            "data": [
+            "model": "jina-embeddings-v4",
+            "dimensions": 1024,
+            "vectors": [
                 {
-                    "embedding": [0.1] * 1023 + [float("nan")],
-                    "index": 0,
-                    "object": "embedding",
+                    "passageId": str(_candidate(1, "x").child_chunk_id),
+                    "embedding": [0.1],
+                }
+            ],
+        },
+        {
+            "model": "jina-embeddings-v4",
+            "dimensions": 1024,
+            "vectors": [
+                {
+                    "passageId": str(_candidate(1, "x").child_chunk_id),
+                    "embedding": _vector(0.0),
                 }
             ],
         },
     ],
 )
-async def test_jina_gateway_rejects_invalid_vectors(payload: dict[str, Any]) -> None:
-    candidates = (_candidate("Only passage", CONTENT_HASH_A),)
-
-    async with httpx.AsyncClient(
-        transport=httpx.MockTransport(lambda _: _json_response(payload))
-    ) as client:
-        gateway = JinaPassageEmbeddingGateway(SECRET, client=client)
-        with pytest.raises(PermanentJobError) as raised:
-            await gateway.embed_passages(object(), candidates)
-
-    assert raised.value.error_code == JOB_HANDLER_EMBEDDING_VECTOR_INVALID
-    assert "sensitive-provider-request-id" not in str(raised.value)
-
-
-async def test_jina_gateway_retries_redacted_provider_status() -> None:
-    transport = httpx.MockTransport(
-        lambda _: _json_response({"error": SECRET}, status=503)
-    )
-    async with httpx.AsyncClient(transport=transport) as client:
-        gateway = JinaPassageEmbeddingGateway(SECRET, client=client)
-        with pytest.raises(RetryableJobError) as raised:
-            await gateway.embed_passages(
-                object(),
-                (_candidate("Only", CONTENT_HASH_A),),
-            )
-
-    assert raised.value.error_code == JINA_GATEWAY_STATUS_INVALID
-    assert raised.value.retry_after_seconds == 30
-    assert SECRET not in str(raised.value)
-
-
-async def test_jina_gateway_retries_redacted_transport_failure() -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        raise httpx.ReadError(f"sensitive transport detail {SECRET}", request=request)
+async def test_passage_gateway_rejects_invalid_normalized_vectors(
+    payload: dict[str, Any],
+) -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return _response(payload)
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        gateway = JinaPassageEmbeddingGateway(SECRET, client=client)
-        with pytest.raises(RetryableJobError) as raised:
-            await gateway.embed_passages(
-                object(),
-                (_candidate("Only", CONTENT_HASH_A),),
-            )
-
-    assert raised.value.error_code == JINA_GATEWAY_REQUEST_FAILED
-    assert SECRET not in str(raised.value)
-
-
-class FakePassageEmbeddingProjectionGateway:
-    def __init__(self, candidates: tuple[PassageEmbeddingCandidate, ...]) -> None:
-        self._candidates = candidates
-        self.calls: list[str] = []
-        self.staged: list[tuple[StagedPassageEmbedding, ...]] = []
-        self.expected_child_count: int | None = None
-
-    async def fetch_passage_embedding_candidates(
-        self, context: object
-    ) -> tuple[PassageEmbeddingCandidate, ...]:
-        self.calls.append("fetch_candidates")
-        assert context is not None
-        return self._candidates
-
-    async def stage_passage_embeddings(
-        self,
-        context: object,
-        embeddings: tuple[StagedPassageEmbedding, ...],
-    ) -> None:
-        self.calls.append("stage_embeddings")
-        assert context is not None
-        self.staged.append(embeddings)
-
-    async def assert_materialization_search_complete(
-        self,
-        context: object,
-        *,
-        expected_child_count: int,
-    ) -> bool:
-        self.calls.append("assert_complete")
-        assert context is not None
-        self.expected_child_count = expected_child_count
-        return True
-
-    async def complete_embedding_and_publish(self, context: object) -> bool:
-        self.calls.append("complete_publish")
-        assert context is not None
-        return True
-
-
-def _valid_profile() -> ProviderRuntimeProfile:
-    return ProviderRuntimeProfile(
-        profile_id=MINERU_JINA_POSTGRES_PROFILE,
-        accepted_draft_wire_contracts=True,
-    )
-
-
-def _embedding_claim() -> JobClaim:
-    return JobClaim.from_row(
-        {
-            "id": uuid.uuid4(),
-            "stage": "passage_embedding",
-            "operation": "initial",
-            "collection_id": uuid.uuid4(),
-            "document_id": uuid.uuid4(),
-            "document_version_id": uuid.uuid4(),
-            "file_id": uuid.uuid4(),
-            "index_generation_id": uuid.uuid4(),
-            "materialization_id": uuid.uuid4(),
-            "processor": "jina",
-            "endpoint_id": "hosted",
-            "model_id": "jina-embeddings-v4",
-            "governance_profile_id": uuid.uuid4(),
-            "governance_revision": 1,
-            "governance_head_revision": 1,
-            "collection_consent_id": uuid.uuid4(),
-            "collection_consent_revision": 1,
-            "collection_acl_revision": 1,
-            "collection_visibility_epoch": 1,
-            "collection_processing_revision": 1,
-            "document_visibility_epoch": 1,
-            "attempt_count": 1,
-            "max_attempts": 3,
-            "request_hash": "c" * 64,
-            "legacy_projection_unbound": False,
-        }
-    )
-
-
-async def test_jina_dependency_bundle_runs_admitted_embedding_handler() -> None:
-    requests: list[httpx.Request] = []
-    candidates = _candidates()
-    projection = FakePassageEmbeddingProjectionGateway(candidates)
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        requests.append(request)
-        return _json_response(_embedding_payload(len(candidates)))
-
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        dependencies = build_jina_passage_embedding_handler_dependencies(
-            api_key=SECRET,
-            projection=projection,
+        gateway = JinaPassageEmbeddingGateway(
+            provider_gateway_url=BASE_URL,
+            internal_token=INTERNAL_TOKEN,
             client=client,
         )
-        admitted_handler = admitted_passage_embedding_handler_with_dependencies(
-            dependencies,
-            _valid_profile(),
-        )
-        result = await admitted_handler(_embedding_claim())
-
-    assert result.outcome == "succeeded"
-    assert projection.calls == [
-        "fetch_candidates",
-        "stage_embeddings",
-        "assert_complete",
-        "complete_publish",
-    ]
-    assert projection.expected_child_count == 2
-    assert len(projection.staged) == 1
-    staged = projection.staged[0]
-    assert [item.child_chunk_id for item in staged] == [
-        candidate.child_chunk_id for candidate in candidates
-    ]
-    assert {item.embedding_dimensions for item in staged} == {1024}
-    assert {item.embedding_model_id for item in staged} == {"jina-embeddings-v4"}
-    assert all(len(item.embedding_vector_sha256) == 64 for item in staged)
-    assert len(requests) == 1
-    assert requests[0].url == httpx.URL(JINA_EMBEDDINGS_URL)
-
-
-async def test_jina_dependency_bundle_requires_projection_before_http() -> None:
-    calls = 0
-
-    def forbidden(_: httpx.Request) -> httpx.Response:
-        nonlocal calls
-        calls += 1
-        raise AssertionError("unconfigured projection reached provider")
-
-    async with httpx.AsyncClient(transport=httpx.MockTransport(forbidden)) as client:
         with pytest.raises(PermanentJobError) as raised:
-            build_jina_passage_embedding_handler_dependencies(
-                api_key=SECRET,
-                projection=None,
-                client=client,
-            )
+            await gateway.embed_passages(object(), (_candidate(1, "source"),))
+    assert raised.value.error_code in {
+        JINA_GATEWAY_RESPONSE_INVALID,
+        JOB_HANDLER_EMBEDDING_VECTOR_INVALID,
+    }
 
+
+def test_dependency_builder_requires_projection() -> None:
+    with pytest.raises(PermanentJobError) as raised:
+        build_jina_passage_embedding_handler_dependencies(
+            provider_gateway_url=BASE_URL,
+            internal_token=INTERNAL_TOKEN,
+            projection=None,
+        )
     assert raised.value.error_code == JOB_HANDLER_DEPENDENCY_UNCONFIGURED
-    assert calls == 0

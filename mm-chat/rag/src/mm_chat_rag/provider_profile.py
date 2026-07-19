@@ -104,9 +104,9 @@ class ProviderRuntimeProfile:
             )
         if "parse" in enabled_provider_stages and not mineru_configured:
             raise ProviderProfileError(
-                "RAG_MINERU_API_TOKEN is required for provider profile"
+                "MinerU provider gateway is required for provider profile"
             )
         if "passage_embedding" in enabled_provider_stages and not jina_configured:
             raise ProviderProfileError(
-                "RAG_JINA_API_KEY is required for provider profile"
+                "Jina provider gateway is required for provider profile"
             )

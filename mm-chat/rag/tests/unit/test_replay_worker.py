@@ -177,7 +177,6 @@ def test_worker_rejects_missing_stage_handler_and_accepts_synthetic_gate() -> No
         database_url="postgresql://test",
         dispatch_enabled=True,
         job_stages=("parse",),
-        mineru_api_key="fake-mineru-token",
         source_gateway_url="http://backend:8080",
         source_gateway_token=SOURCE_GATEWAY_TOKEN,
         provider_profile=provider_profile(),
@@ -239,7 +238,8 @@ def test_worker_auto_promotes_passage_embedding_stage_from_settings() -> None:
         database_url="postgresql://test",
         dispatch_enabled=True,
         job_stages=("passage_embedding",),
-        jina_api_key="fake-jina-key",
+        source_gateway_url="http://backend:8080",
+        source_gateway_token=SOURCE_GATEWAY_TOKEN,
         provider_profile=provider_profile(),
     )
     worker = Worker(settings)
@@ -254,17 +254,18 @@ def test_worker_auto_promotes_passage_embedding_stage_from_settings() -> None:
 def test_worker_auto_promotes_parse_stage_from_settings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    mineru_tokens: list[str | None] = []
+    mineru_gateways: list[tuple[str, str]] = []
 
     class FakeMinerULocalBatchGateway:
         def __init__(
             self,
-            api_token: str | None,
             *,
+            provider_gateway_url: str,
+            internal_token: str,
             result_proxy_url: str | None = None,
         ) -> None:
             assert result_proxy_url is None
-            mineru_tokens.append(api_token)
+            mineru_gateways.append((provider_gateway_url, internal_token))
 
     monkeypatch.setattr(
         worker_module,
@@ -275,8 +276,6 @@ def test_worker_auto_promotes_parse_stage_from_settings(
         database_url="postgresql://test",
         dispatch_enabled=True,
         job_stages=("parse", "passage_embedding", "purge"),
-        mineru_api_key="fake-mineru-token",
-        jina_api_key="fake-jina-key",
         source_gateway_url="http://backend:8080",
         source_gateway_token=SOURCE_GATEWAY_TOKEN,
         provider_profile=provider_profile(),
@@ -286,7 +285,7 @@ def test_worker_auto_promotes_parse_stage_from_settings(
     worker.validate_promotion_gate()
 
     assert set(worker.job_handlers) == {"parse", "passage_embedding", "purge"}
-    assert mineru_tokens == ["fake-mineru-token"]
+    assert mineru_gateways == [("http://backend:8080", SOURCE_GATEWAY_TOKEN)]
 
 
 class FakeParseSourceMetadataGateway:
@@ -461,7 +460,6 @@ async def test_worker_factory_promotes_parse_when_dependencies_are_supplied(
         database_url="postgresql://test",
         dispatch_enabled=True,
         job_stages=("parse",),
-        mineru_api_key="fake-mineru-token",
         source_gateway_url="http://backend:8080",
         source_gateway_token=SOURCE_GATEWAY_TOKEN,
         provider_profile=provider_profile(),

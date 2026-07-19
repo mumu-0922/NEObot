@@ -44,7 +44,7 @@ func TestResolveRAGProviderCredentialUsesOnlyExactActiveAttestedVaultRecord(t *t
 	stored.Config.ConnectionTestedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	repo := &fakeProviderConfigRepository{ok: true, stored: stored}
 	service := NewService(
-		config.Config{RAG: config.RAGConfig{JinaAPIKey: "environment-must-not-win"}},
+		config.Config{},
 		WithProviderConfigRepository(repo),
 		WithProviderSecretVault(vault),
 	)
@@ -76,10 +76,7 @@ func TestResolveRAGProviderCredentialUsesOnlyExactActiveAttestedVaultRecord(t *t
 func TestResolveRAGProviderCredentialRejectsMissingAndCopiedContextsWithoutEnvFallback(t *testing.T) {
 	vault := testProviderSecretVault(t, "rag-runtime-v1", 48)
 	service := NewService(
-		config.Config{RAG: config.RAGConfig{
-			MinerUAPIKey: "environment-mineru-must-not-win",
-			JinaAPIKey:   "environment-jina-must-not-win",
-		}},
+		config.Config{},
 		WithProviderConfigRepository(&fakeProviderConfigRepository{}),
 		WithProviderSecretVault(vault),
 	)

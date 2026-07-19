@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-
-	"neo-chat/mm-chat/backend/internal/config"
 )
 
 const contentTypeJSON = "application/json; charset=utf-8"
@@ -27,14 +25,14 @@ type ErrorBody struct {
 
 func NewHandler(resolve StatusResolver) *Handler {
 	if resolve == nil {
-		resolve = StaticStatusResolver(config.RAGConfig{})
+		resolve = StaticStatusResolver()
 	}
 	return &Handler{resolve: resolve}
 }
 
-func StaticStatusResolver(cfg config.RAGConfig) StatusResolver {
+func StaticStatusResolver() StatusResolver {
 	return func(context.Context) (StatusResponse, error) {
-		return Status(cfg), nil
+		return Status(), nil
 	}
 }
 

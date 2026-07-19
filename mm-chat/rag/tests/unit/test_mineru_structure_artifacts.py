@@ -28,6 +28,7 @@ from tests.support.parser_contracts import (
 )
 
 _PDF = b"%PDF-1.7\nstructure fixture\n%%EOF\n"
+_PROVIDER_GATEWAY_TOKEN = "unit-test-provider-gateway-token"
 _MIDDLE = (
     Path(__file__).parents[1]
     / "fixtures"
@@ -71,7 +72,10 @@ def _mapping(
         source_sha256=hashlib.sha256(_PDF).hexdigest(),
         content_type="application/pdf",
     )
-    gateway = MinerULocalBatchGateway("unit-test-mineru-token")
+    gateway = MinerULocalBatchGateway(
+        provider_gateway_url="http://backend:8080",
+        internal_token=_PROVIDER_GATEWAY_TOKEN,
+    )
     artifacts = gateway.extract_result_archive_artifacts(object(), archive)
     return gateway.prepare_canonical_mapping_input(object(), source, artifacts)
 

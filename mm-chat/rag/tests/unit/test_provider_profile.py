@@ -143,31 +143,28 @@ def test_provider_profile_rejects_unsupported_values(
         profile.validate_static_contract()
 
 
-def test_provider_stage_gate_redacts_secret_values() -> None:
-    fake_mineru_secret = "fake-mineru-token"
-    fake_jina_secret = "fake-jina-key"
+def test_provider_stage_gate_requires_profile_and_go_gateway() -> None:
     with pytest.raises(SettingsError, match="RAG_PROVIDER_PROFILE") as missing_profile:
         Settings(
             database_url="postgresql://test",
             dispatch_enabled=True,
             job_stages=("parse", "passage_embedding"),
-            mineru_api_key=fake_mineru_secret,
-            jina_api_key=fake_jina_secret,
             source_gateway_url="http://backend:8080",
             source_gateway_token=SOURCE_GATEWAY_TOKEN,
         )
     rendered = str(missing_profile.value)
-    assert fake_mineru_secret not in rendered
-    assert fake_jina_secret not in rendered
+    assert SOURCE_GATEWAY_TOKEN not in rendered
 
-    with pytest.raises(SettingsError, match="RAG_JINA_API_KEY") as missing_jina:
+    with pytest.raises(
+        SettingsError, match="RAG_SOURCE_GATEWAY_URL"
+    ) as missing_gateway:
         Settings(
             database_url="postgresql://test",
             dispatch_enabled=True,
             job_stages=("passage_embedding",),
             provider_profile=valid_profile(),
         )
-    assert fake_jina_secret not in str(missing_jina.value)
+    assert SOURCE_GATEWAY_TOKEN not in str(missing_gateway.value)
 
 
 def test_provider_profile_env_loader_accepts_locked_defaults() -> None:
@@ -176,8 +173,6 @@ def test_provider_profile_env_loader_accepts_locked_defaults() -> None:
             "RAG_WORKER_DATABASE_URL": "postgresql://worker:secret@db/rag",
             "RAG_WORKER_DISPATCH_ENABLED": "true",
             "RAG_WORKER_JOB_STAGES": "parse,passage_embedding",
-            "RAG_MINERU_API_TOKEN": " fake-mineru-token ",
-            "RAG_JINA_API_KEY": " fake-jina-key ",
             "RAG_SOURCE_GATEWAY_URL": "http://backend:8080",
             "RAG_SOURCE_GATEWAY_TOKEN": "fake-source-token",
             "RAG_PROVIDER_PROFILE": MINERU_JINA_POSTGRES_PROFILE,

@@ -29,8 +29,6 @@ def test_safe_dark_run_defaults() -> None:
     assert settings.job_lease_seconds == 90
     assert settings.heartbeat_seconds == 30
     assert settings.redis_channel == "mm-chat:rag:outbox:v1"
-    assert settings.mineru_api_key is None
-    assert settings.jina_api_key is None
     assert settings.source_gateway_url is None
     assert settings.source_gateway_token is None
     assert settings.jina_embedding_dimensions == DEFAULT_JINA_EMBEDDING_DIMENSIONS
@@ -47,11 +45,9 @@ def test_explicit_enabled_configuration() -> None:
         "RAG_WORKER_REDIS_URL": "redis://redis/0",
         "REDIS_KEY_PREFIX": "test:v2",
         "RAG_WORKER_LOG_LEVEL": "warning",
-        "RAG_MINERU_API_TOKEN": " fake-mineru-token ",
         "RAG_MINERU_RESULT_PROXY_URL": (
             " http://host.docker.internal:18081/mineru-result "
         ),
-        "RAG_JINA_API_KEY": " fake-jina-key ",
         "RAG_SOURCE_GATEWAY_URL": " http://backend:8080 ",
         "RAG_SOURCE_GATEWAY_TOKEN": " fake-source-token ",
         "RAG_PROVIDER_PROFILE": MINERU_JINA_POSTGRES_PROFILE,
@@ -62,12 +58,10 @@ def test_explicit_enabled_configuration() -> None:
     assert settings.job_stages == ("parse", "passage_embedding", "purge")
     assert settings.redis_channel == "test:v2:rag:outbox:v1"
     assert settings.log_level == "WARNING"
-    assert settings.mineru_api_key == "fake-mineru-token"
     assert (
         settings.mineru_result_proxy_url
         == "http://host.docker.internal:18081/mineru-result"
     )
-    assert settings.jina_api_key == "fake-jina-key"
     assert settings.source_gateway_url == "http://backend:8080"
     assert settings.source_gateway_token == "fake-source-token"
     assert settings.jina_embedding_dimensions == DEFAULT_JINA_EMBEDDING_DIMENSIONS
@@ -75,13 +69,13 @@ def test_explicit_enabled_configuration() -> None:
     assert settings.provider_profile.accepted_draft_wire_contracts is True
 
 
-def test_dispatch_parse_requires_mineru_secret() -> None:
+def test_dispatch_parse_requires_provider_gateway() -> None:
     env = {
         **base_env(),
         "RAG_WORKER_DISPATCH_ENABLED": "true",
         "RAG_WORKER_JOB_STAGES": "parse",
     }
-    with pytest.raises(SettingsError, match="RAG_MINERU_API_TOKEN"):
+    with pytest.raises(SettingsError, match="RAG_SOURCE_GATEWAY_URL"):
         Settings.from_env(env)
 
 
@@ -90,7 +84,6 @@ def test_dispatch_parse_requires_source_gateway_url_and_token() -> None:
         **base_env(),
         "RAG_WORKER_DISPATCH_ENABLED": "true",
         "RAG_WORKER_JOB_STAGES": "parse",
-        "RAG_MINERU_API_TOKEN": "fake-mineru-token",
     }
     with pytest.raises(SettingsError, match="RAG_SOURCE_GATEWAY_URL"):
         Settings.from_env(env)
@@ -99,13 +92,13 @@ def test_dispatch_parse_requires_source_gateway_url_and_token() -> None:
         Settings.from_env({**env, "RAG_SOURCE_GATEWAY_URL": "http://backend:8080"})
 
 
-def test_dispatch_embedding_requires_jina_secret() -> None:
+def test_dispatch_embedding_requires_provider_gateway() -> None:
     env = {
         **base_env(),
         "RAG_WORKER_DISPATCH_ENABLED": "true",
         "RAG_WORKER_JOB_STAGES": "passage_embedding",
     }
-    with pytest.raises(SettingsError, match="RAG_JINA_API_KEY"):
+    with pytest.raises(SettingsError, match="RAG_SOURCE_GATEWAY_URL"):
         Settings.from_env(env)
 
 
@@ -118,28 +111,30 @@ def test_dispatch_purge_does_not_require_provider_secrets() -> None:
         }
     )
     assert settings.job_stages == ("purge",)
-    assert settings.mineru_api_key is None
-    assert settings.jina_api_key is None
+    assert settings.source_gateway_url is None
+    assert settings.source_gateway_token is None
 
 
-def test_legacy_default_provider_aliases_are_accepted() -> None:
+def test_provider_key_environment_names_are_not_parsed() -> None:
     settings = Settings.from_env(
         {
             **base_env(),
             "RAG_WORKER_DISPATCH_ENABLED": "true",
             "RAG_WORKER_JOB_STAGES": "parse,passage_embedding",
-            "DEFAULT_MINERU_API_TOKEN": " legacy-mineru-token ",
-            "DEFAULT_JINA_API_KEY": " legacy-jina-key ",
+            "RAG_MINERU_API_TOKEN": "must-not-enter-settings",
+            "RAG_JINA_API_KEY": "must-not-enter-settings",
+            "DEFAULT_MINERU_API_TOKEN": "must-not-enter-settings",
+            "DEFAULT_JINA_API_KEY": "must-not-enter-settings",
             "RAG_SOURCE_GATEWAY_URL": "http://backend:8080",
-            "RAG_SOURCE_GATEWAY_TOKEN": "legacy-source-token",
+            "RAG_SOURCE_GATEWAY_TOKEN": "provider-gateway-token",
             "RAG_PROVIDER_PROFILE": MINERU_JINA_POSTGRES_PROFILE,
             "RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED": "true",
         }
     )
-    assert settings.mineru_api_key == "legacy-mineru-token"
-    assert settings.jina_api_key == "legacy-jina-key"
+    assert not hasattr(settings, "mineru_api_key")
+    assert not hasattr(settings, "jina_api_key")
     assert settings.source_gateway_url == "http://backend:8080"
-    assert settings.source_gateway_token == "legacy-source-token"
+    assert settings.source_gateway_token == "provider-gateway-token"
 
 
 @pytest.mark.parametrize(

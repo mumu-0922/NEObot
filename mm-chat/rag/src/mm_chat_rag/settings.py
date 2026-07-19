@@ -54,11 +54,7 @@ _KNOWN_ENV: Final = {
     "RAG_WORKER_HEALTH_PORT",
     "RAG_WORKER_LOG_LEVEL",
     "RAG_WORKER_MAX_RESCAN_CLAIMS",
-    "RAG_MINERU_API_TOKEN",
-    "DEFAULT_MINERU_API_TOKEN",
     "RAG_MINERU_RESULT_PROXY_URL",
-    "RAG_JINA_API_KEY",
-    "DEFAULT_JINA_API_KEY",
     "RAG_SOURCE_GATEWAY_URL",
     "RAG_SOURCE_GATEWAY_TOKEN",
     "RAG_PROVIDER_PROFILE",
@@ -86,14 +82,6 @@ def _required(env: Mapping[str, str], name: str) -> str:
     if not value:
         raise SettingsError(f"{name} is required")
     return value
-
-
-def _optional_alias(env: Mapping[str, str], *names: str) -> str | None:
-    for name in names:
-        value = env.get(name, "").strip()
-        if value:
-            return value
-    return None
 
 
 def _boolean(env: Mapping[str, str], name: str, default: bool) -> bool:
@@ -195,9 +183,7 @@ class Settings:
     log_level: str = "INFO"
     advisory_lock_key: int = 5_567_946_413_527_621_955
     max_rescan_claims: int = 100
-    mineru_api_key: str | None = None
     mineru_result_proxy_url: str | None = None
-    jina_api_key: str | None = None
     source_gateway_url: str | None = None
     source_gateway_token: str | None = None
     jina_embedding_dimensions: int = DEFAULT_JINA_EMBEDDING_DIMENSIONS
@@ -214,37 +200,25 @@ class Settings:
             self.provider_profile.validate_static_contract()
         except ProviderProfileError as error:
             raise SettingsError(str(error)) from error
-        if (
-            self.dispatch_enabled
-            and "parse" in self.job_stages
-            and self.mineru_api_key is None
-        ):
-            raise SettingsError(
-                "RAG_MINERU_API_TOKEN is required when parse dispatch is enabled"
-            )
-        if self.dispatch_enabled and "parse" in self.job_stages:
+        provider_stages = {"parse", "passage_embedding"}.intersection(self.job_stages)
+        if self.dispatch_enabled and provider_stages:
             if self.source_gateway_url is None:
                 raise SettingsError(
-                    "RAG_SOURCE_GATEWAY_URL is required when parse dispatch is enabled"
+                    "RAG_SOURCE_GATEWAY_URL is required for provider dispatch"
                 )
             if self.source_gateway_token is None:
                 raise SettingsError(
-                    "RAG_SOURCE_GATEWAY_TOKEN is required when parse dispatch is "
-                    "enabled"
+                    "RAG_SOURCE_GATEWAY_TOKEN is required for provider dispatch"
                 )
-        if (
-            self.dispatch_enabled
-            and "passage_embedding" in self.job_stages
-            and self.jina_api_key is None
-        ):
-            raise SettingsError(
-                "RAG_JINA_API_KEY is required when embedding dispatch is enabled"
-            )
+        gateway_configured = (
+            self.source_gateway_url is not None
+            and self.source_gateway_token is not None
+        )
         try:
             self.provider_profile.validate_for_job_stages(
                 self.job_stages,
-                mineru_configured=self.mineru_api_key is not None,
-                jina_configured=self.jina_api_key is not None,
+                mineru_configured=gateway_configured,
+                jina_configured=gateway_configured,
             )
         except ProviderProfileError as error:
             raise SettingsError(str(error)) from error
@@ -293,13 +267,9 @@ class Settings:
             raise SettingsError(
                 "RAG_WORKER_JOB_STAGES must be empty while dispatch is disabled"
             )
-        mineru_api_key = _optional_alias(
-            env, "RAG_MINERU_API_TOKEN", "DEFAULT_MINERU_API_TOKEN"
-        )
         mineru_result_proxy_url = _optional_service_url(
             env, "RAG_MINERU_RESULT_PROXY_URL", {"http", "https"}
         )
-        jina_api_key = _optional_alias(env, "RAG_JINA_API_KEY", "DEFAULT_JINA_API_KEY")
         source_gateway_url = _optional_service_url(
             env, "RAG_SOURCE_GATEWAY_URL", {"http", "https"}
         )
@@ -360,28 +330,15 @@ class Settings:
             or DEFAULT_JINA_RERANK_MODEL,
             jina_embedding_dimensions=DEFAULT_JINA_EMBEDDING_DIMENSIONS,
         )
-        if dispatch_enabled and "parse" in job_stages and mineru_api_key is None:
-            raise SettingsError(
-                "RAG_MINERU_API_TOKEN is required when parse dispatch is enabled"
-            )
-        if dispatch_enabled and "parse" in job_stages:
+        if dispatch_enabled and {"parse", "passage_embedding"}.intersection(job_stages):
             if source_gateway_url is None:
                 raise SettingsError(
-                    "RAG_SOURCE_GATEWAY_URL is required when parse dispatch is enabled"
+                    "RAG_SOURCE_GATEWAY_URL is required for provider dispatch"
                 )
             if source_gateway_token is None:
                 raise SettingsError(
-                    "RAG_SOURCE_GATEWAY_TOKEN is required when parse dispatch is "
-                    "enabled"
+                    "RAG_SOURCE_GATEWAY_TOKEN is required for provider dispatch"
                 )
-        if (
-            dispatch_enabled
-            and "passage_embedding" in job_stages
-            and jina_api_key is None
-        ):
-            raise SettingsError(
-                "RAG_JINA_API_KEY is required when embedding dispatch is enabled"
-            )
 
         log_level = env.get("RAG_WORKER_LOG_LEVEL", "INFO").strip().upper()
         if log_level not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
@@ -433,9 +390,7 @@ class Settings:
             max_rescan_claims=_integer(
                 env, "RAG_WORKER_MAX_RESCAN_CLAIMS", 100, 1, 10_000
             ),
-            mineru_api_key=mineru_api_key,
             mineru_result_proxy_url=mineru_result_proxy_url,
-            jina_api_key=jina_api_key,
             source_gateway_url=source_gateway_url,
             source_gateway_token=source_gateway_token,
             jina_embedding_dimensions=DEFAULT_JINA_EMBEDDING_DIMENSIONS,

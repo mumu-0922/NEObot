@@ -154,6 +154,18 @@ for key, value in values.items():
     if "$" in value:
         fail(f"{key} uses forbidden env interpolation syntax")
 
+retired_rag_provider_env = (
+    "RAG_MINERU_API_TOKEN",
+    "DEFAULT_MINERU_API_TOKEN",
+    "RAG_JINA_API_KEY",
+    "DEFAULT_JINA_API_KEY",
+    "RAG_QUERY_GATEWAY_URL",
+    "RAG_RERANK_GATEWAY_URL",
+)
+for key in retired_rag_provider_env:
+    if key in values:
+        fail(f"{key} is retired; configure RAG providers in the administrator UI")
+
 required = (
     "FRONTEND_IMAGE",
     "BACKEND_IMAGE",

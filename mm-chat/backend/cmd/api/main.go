@@ -204,30 +204,14 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	ragQueryEmbedder, err := ragproviders.NewQueryEmbeddingClient(
-		cfg.RAG.QueryGatewayURL,
-		cfg.RAG.SourceGatewayToken,
-		0,
+	providerRuntimeService := runtimeconfig.NewService(
+		cfg,
+		runtimeconfig.WithProviderConfigRepository(runtimeConfigRepo),
+		runtimeconfig.WithProviderSecretVault(providerSecretVault),
 	)
-	if err != nil {
-		_ = redisClient.Close()
-		_ = db.Close()
-		logger.Error("rag_query_embedding_config_failed")
-		os.Exit(1)
-	}
-	ragReranker, err := ragproviders.NewRerankClient(
-		cfg.RAG.RerankGatewayURL,
-		cfg.RAG.SourceGatewayToken,
-		0,
-	)
-	if err != nil {
-		_ = redisClient.Close()
-		_ = db.Close()
-		logger.Error("rag_rerank_config_failed")
-		os.Exit(1)
-	}
+	ragProviderGateway := ragproviders.NewProviderGateway(providerRuntimeService)
 	rerankConfigured := cfg.Auth.Mode == config.AuthModeDevelopment &&
-		ragReranker != nil && strings.TrimSpace(cfg.RAG.JinaAPIKey) != ""
+		runtimeConfigRepo != nil && providerSecretVault != nil
 	knowledgeOptions := []knowledge.ServiceOption{
 		knowledge.WithCursorCodec(teamRuntime.cursor),
 		knowledge.WithObjectStore(objectStore),
@@ -331,8 +315,8 @@ func main() {
 		httpserver.WithTeamService(teamRuntime.service),
 		httpserver.WithKnowledgeService(knowledgeService),
 		httpserver.WithRAGSourceService(ragSourceService),
-		httpserver.WithRAGQueryEmbedder(ragQueryEmbedder),
-		httpserver.WithRAGReranker(ragReranker),
+		httpserver.WithRAGQueryEmbedder(ragProviderGateway),
+		httpserver.WithRAGReranker(ragProviderGateway),
 		httpserver.WithRuntimeConfigRepository(runtimeConfigRepo),
 		httpserver.WithProviderSecretVault(providerSecretVault),
 		httpserver.WithPluginRegistry(pluginRegistry),
@@ -342,11 +326,7 @@ func main() {
 	if runtimeConfigRepo != nil {
 		serverOptions = append(
 			serverOptions,
-			httpserver.WithWebSearchResolver(runtimeconfig.NewService(
-				cfg,
-				runtimeconfig.WithProviderConfigRepository(runtimeConfigRepo),
-				runtimeconfig.WithProviderSecretVault(providerSecretVault),
-			)),
+			httpserver.WithWebSearchResolver(providerRuntimeService),
 		)
 	}
 	if developmentSession != nil {

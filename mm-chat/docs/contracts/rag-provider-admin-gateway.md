@@ -110,10 +110,10 @@ hop is removed, so no Go -> Python -> Go request cycle remains.
   newer, follows no redirect, accepts only identity-encoded JSON, and bounds
   MinerU/Jina response bodies to 1 MiB/16 MiB. MinerU upload and result
   capabilities are restricted to the frozen HTTPS hosts and path grammars.
-- `RAG_SOURCE_GATEWAY_TOKEN` remains infrastructure configuration. Provider
-  Keys are lazily imported only through an administrator save during the
-  transition, then removed from Go/Python config, Compose, examples, and the
-  operator env after the new path passes live activation and restart proof.
+- `RAG_SOURCE_GATEWAY_TOKEN` remains infrastructure configuration. F4.4 removes
+  provider Key and old query/rerank URL parsing from Go/Python config, Compose,
+  examples, and the operator env. Provider credentials are accepted only by
+  administrator save/test/activate and then resolved from Postgres/vault.
 
 ## 4. Validation and Error Matrix
 
@@ -176,7 +176,7 @@ text, embeddings, and DNS/network details never enter errors or logs.
 
 ## 7. Wrong vs Correct
 
-Wrong:
+Retired:
 
 ```python
 JinaPassageEmbeddingGateway(os.environ["RAG_JINA_API_KEY"])

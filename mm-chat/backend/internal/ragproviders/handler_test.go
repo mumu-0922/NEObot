@@ -1,17 +1,16 @@
 package ragproviders
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"neo-chat/mm-chat/backend/internal/config"
 )
 
 func TestProviderStatusReportsMissingSecretsWithoutLeakingValues(t *testing.T) {
-	handler := NewHandler(StaticStatusResolver(config.RAGConfig{}))
+	handler := NewHandler(StaticStatusResolver())
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/rag/provider-status", nil)
 
@@ -36,11 +35,11 @@ func TestProviderStatusReportsMissingSecretsWithoutLeakingValues(t *testing.T) {
 	if body.Providers.Jina.Configured || body.Providers.Jina.Status != ProviderStatusMissingSecret {
 		t.Fatalf("jina status = %#v, want missing secret", body.Providers.Jina)
 	}
-	if body.Providers.Jina.EmbeddingDimensions != config.DefaultRAGJinaDimensions {
+	if body.Providers.Jina.EmbeddingDimensions != JinaEmbeddingDimensions {
 		t.Fatalf(
 			"jina dimensions = %d, want %d",
 			body.Providers.Jina.EmbeddingDimensions,
-			config.DefaultRAGJinaDimensions,
+			JinaEmbeddingDimensions,
 		)
 	}
 }
@@ -48,11 +47,18 @@ func TestProviderStatusReportsMissingSecretsWithoutLeakingValues(t *testing.T) {
 func TestProviderStatusReportsReadyAndRedactsSecrets(t *testing.T) {
 	minerUSecret := "fake-mineru-secret"
 	jinaSecret := "fake-jina-secret"
-	handler := NewHandler(StaticStatusResolver(config.RAGConfig{
-		MinerUAPIKey:            minerUSecret,
-		JinaAPIKey:              jinaSecret,
-		JinaEmbeddingDimensions: config.DefaultRAGJinaDimensions,
-	}))
+	handler := NewHandler(func(context.Context) (StatusResponse, error) {
+		return StatusResponse{
+			Providers: ProviderStatuses{
+				MinerU: ProviderState{Configured: true, Status: ProviderStatusReady},
+				Jina: ProviderState{
+					Configured: true, Status: ProviderStatusReady,
+					EmbeddingDimensions: JinaEmbeddingDimensions,
+				},
+			},
+			Ready: true,
+		}, nil
+	})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/rag/provider-status", nil)
 
@@ -78,17 +84,17 @@ func TestProviderStatusReportsReadyAndRedactsSecrets(t *testing.T) {
 	if !body.Providers.Jina.Configured || body.Providers.Jina.Status != ProviderStatusReady {
 		t.Fatalf("jina status = %#v, want ready", body.Providers.Jina)
 	}
-	if body.Providers.Jina.EmbeddingDimensions != config.DefaultRAGJinaDimensions {
+	if body.Providers.Jina.EmbeddingDimensions != JinaEmbeddingDimensions {
 		t.Fatalf(
 			"jina dimensions = %d, want %d",
 			body.Providers.Jina.EmbeddingDimensions,
-			config.DefaultRAGJinaDimensions,
+			JinaEmbeddingDimensions,
 		)
 	}
 }
 
 func TestProviderStatusRejectsNonGETWithJSONError(t *testing.T) {
-	handler := NewHandler(StaticStatusResolver(config.RAGConfig{}))
+	handler := NewHandler(StaticStatusResolver())
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/v1/rag/provider-status", nil)
 
@@ -110,7 +116,7 @@ func TestProviderStatusRejectsNonGETWithJSONError(t *testing.T) {
 }
 
 func TestProviderStatusReturnsJSONNotFound(t *testing.T) {
-	handler := NewHandler(StaticStatusResolver(config.RAGConfig{}))
+	handler := NewHandler(StaticStatusResolver())
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/rag/missing", nil)
 

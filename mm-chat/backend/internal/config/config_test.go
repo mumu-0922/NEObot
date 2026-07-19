@@ -83,12 +83,8 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 	if cfg.Storage.MaxUploadBytes != DefaultMaxUploadBytes {
 		t.Fatalf("Storage.MaxUploadBytes = %d, want %d", cfg.Storage.MaxUploadBytes, DefaultMaxUploadBytes)
 	}
-	if cfg.RAG.MinerUAPIKey != "" ||
-		cfg.RAG.JinaAPIKey != "" ||
-		cfg.RAG.QueryGatewayURL != "" ||
-		cfg.RAG.RerankGatewayURL != "" ||
-		cfg.RAG.SourceGatewayToken != "" {
-		t.Fatalf("RAG secrets = %#v, want blank", cfg.RAG)
+	if cfg.RAG.SourceGatewayToken != "" {
+		t.Fatalf("RAG infrastructure token = %#v, want blank", cfg.RAG)
 	}
 	if cfg.RAG.JinaEmbeddingDimensions != DefaultRAGJinaDimensions {
 		t.Fatalf(
@@ -96,9 +92,6 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 			cfg.RAG.JinaEmbeddingDimensions,
 			DefaultRAGJinaDimensions,
 		)
-	}
-	if cfg.RAG.Ready() {
-		t.Fatal("RAG.Ready() = true, want false without provider secrets")
 	}
 	if cfg.Auth.Mode != DefaultAuthMode {
 		t.Fatalf("Auth.Mode = %q, want %q", cfg.Auth.Mode, DefaultAuthMode)
@@ -168,10 +161,6 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 		EnvS3ForcePathStyle:       " true ",
 		EnvS3BucketAutoCreate:     " true ",
 		EnvMaxUploadBytes:         "1048576",
-		EnvRAGMinerUAPIKey:        " fake-mineru-token ",
-		EnvRAGJinaAPIKey:          " fake-jina-key ",
-		EnvRAGQueryGatewayURL:     " http://rag-worker:8081 ",
-		EnvRAGRerankGatewayURL:    " http://rag-worker:8082 ",
 		EnvRAGSourceGatewayToken:  " fake-source-gateway-token ",
 		EnvAuthMode:               " required ",
 		EnvAuthBootstrapUserID:    " 77777777-7777-4777-8777-777777777777 ",
@@ -263,18 +252,6 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	if cfg.Storage.MaxUploadBytes != 1048576 {
 		t.Fatalf("Storage.MaxUploadBytes = %d, want 1048576", cfg.Storage.MaxUploadBytes)
 	}
-	if cfg.RAG.MinerUAPIKey != "fake-mineru-token" {
-		t.Fatalf("RAG.MinerUAPIKey = %q, want trimmed fake token", cfg.RAG.MinerUAPIKey)
-	}
-	if cfg.RAG.JinaAPIKey != "fake-jina-key" {
-		t.Fatalf("RAG.JinaAPIKey = %q, want trimmed fake key", cfg.RAG.JinaAPIKey)
-	}
-	if cfg.RAG.QueryGatewayURL != "http://rag-worker:8081" {
-		t.Fatalf("RAG.QueryGatewayURL = %q", cfg.RAG.QueryGatewayURL)
-	}
-	if cfg.RAG.RerankGatewayURL != "http://rag-worker:8082" {
-		t.Fatalf("RAG.RerankGatewayURL = %q", cfg.RAG.RerankGatewayURL)
-	}
 	if cfg.RAG.SourceGatewayToken != "fake-source-gateway-token" {
 		t.Fatalf("RAG.SourceGatewayToken = %q, want trimmed fake token", cfg.RAG.SourceGatewayToken)
 	}
@@ -284,9 +261,6 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 			cfg.RAG.JinaEmbeddingDimensions,
 			DefaultRAGJinaDimensions,
 		)
-	}
-	if !cfg.RAG.Ready() {
-		t.Fatal("RAG.Ready() = false, want true with both provider secrets")
 	}
 	if cfg.Auth.Mode != AuthModeRequired {
 		t.Fatalf("Auth.Mode = %q, want required", cfg.Auth.Mode)
@@ -340,12 +314,6 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 		EnvS3ForcePathStyle:      " ",
 		EnvS3BucketAutoCreate:    "\n",
 		EnvMaxUploadBytes:        "\n",
-		EnvRAGMinerUAPIKey:       " ",
-		EnvDefaultMinerUAPIKey:   "\t",
-		EnvRAGJinaAPIKey:         "\n",
-		EnvDefaultJinaAPIKey:     " ",
-		EnvRAGQueryGatewayURL:    " ",
-		EnvRAGRerankGatewayURL:   " ",
 		EnvRAGSourceGatewayToken: " ",
 		EnvAuthMode:              "\t",
 		EnvAuthBootstrapUserID:   "\t",
@@ -410,14 +378,9 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 		cfg.Storage.S3.BucketAutoCreate {
 		t.Fatalf("Storage.S3 = %#v, want blank/false defaults", cfg.Storage.S3)
 	}
-	if cfg.RAG.MinerUAPIKey != "" ||
-		cfg.RAG.JinaAPIKey != "" ||
-		cfg.RAG.QueryGatewayURL != "" ||
-		cfg.RAG.RerankGatewayURL != "" ||
-		cfg.RAG.SourceGatewayToken != "" ||
-		cfg.RAG.JinaEmbeddingDimensions != DefaultRAGJinaDimensions ||
-		cfg.RAG.Ready() {
-		t.Fatalf("RAG = %#v, want blank secrets and default dimensions", cfg.RAG)
+	if cfg.RAG.SourceGatewayToken != "" ||
+		cfg.RAG.JinaEmbeddingDimensions != DefaultRAGJinaDimensions {
+		t.Fatalf("RAG = %#v, want blank token and default dimensions", cfg.RAG)
 	}
 	if cfg.Auth.Mode != DefaultAuthMode ||
 		cfg.Auth.BootstrapUserID != DefaultAuthBootstrapUserID ||
@@ -427,58 +390,6 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 		cfg.Auth.SMTP.QueueSize != DefaultAuthSMTPQueueSize ||
 		cfg.Auth.SMTP.Timeout != DefaultAuthSMTPTimeout {
 		t.Fatalf("Auth = %#v, want defaults", cfg.Auth)
-	}
-}
-
-func TestLoadFromEnvRerankGatewayFallsBackToQueryGateway(t *testing.T) {
-	values := map[string]string{EnvRAGQueryGatewayURL: "http://rag-worker:8081"}
-	cfg := LoadFromEnv(func(key string) (string, bool) {
-		value, ok := values[key]
-		return value, ok
-	})
-	if cfg.RAG.RerankGatewayURL != cfg.RAG.QueryGatewayURL {
-		t.Fatalf("rerank/query gateway = %q/%q", cfg.RAG.RerankGatewayURL, cfg.RAG.QueryGatewayURL)
-	}
-}
-
-func TestLoadFromEnvAcceptsRAGDefaultAliases(t *testing.T) {
-	cfg := LoadFromEnv(func(key string) (string, bool) {
-		values := map[string]string{
-			EnvDefaultMinerUAPIKey: " legacy-fake-mineru-token ",
-			EnvDefaultJinaAPIKey:   " legacy-fake-jina-key ",
-		}
-		value, ok := values[key]
-		return value, ok
-	})
-
-	if cfg.RAG.MinerUAPIKey != "legacy-fake-mineru-token" {
-		t.Fatalf("RAG.MinerUAPIKey = %q, want legacy alias", cfg.RAG.MinerUAPIKey)
-	}
-	if cfg.RAG.JinaAPIKey != "legacy-fake-jina-key" {
-		t.Fatalf("RAG.JinaAPIKey = %q, want legacy alias", cfg.RAG.JinaAPIKey)
-	}
-	if !cfg.RAG.Ready() {
-		t.Fatal("RAG.Ready() = false, want true with alias secrets")
-	}
-}
-
-func TestLoadFromEnvPrefersRAGSpecificEnvOverDefaultAliases(t *testing.T) {
-	cfg := LoadFromEnv(func(key string) (string, bool) {
-		values := map[string]string{
-			EnvRAGMinerUAPIKey:     " preferred-mineru-token ",
-			EnvDefaultMinerUAPIKey: " legacy-mineru-token ",
-			EnvRAGJinaAPIKey:       " preferred-jina-key ",
-			EnvDefaultJinaAPIKey:   " legacy-jina-key ",
-		}
-		value, ok := values[key]
-		return value, ok
-	})
-
-	if cfg.RAG.MinerUAPIKey != "preferred-mineru-token" {
-		t.Fatalf("RAG.MinerUAPIKey = %q, want specific env", cfg.RAG.MinerUAPIKey)
-	}
-	if cfg.RAG.JinaAPIKey != "preferred-jina-key" {
-		t.Fatalf("RAG.JinaAPIKey = %q, want specific env", cfg.RAG.JinaAPIKey)
 	}
 }
 

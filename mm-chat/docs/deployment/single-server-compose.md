@@ -97,10 +97,10 @@ block startup or replace the Postgres poll and forced rescan.
 The container is fenced to one CPU, 448 MiB RAM, 64 PIDs, a read-only root
 filesystem, a 64 MiB `/tmp` tmpfs, `cap_drop: ALL`, and
 `no-new-privileges`. Its environment contains only the Worker Postgres URL,
-Redis wake settings, bounded Worker controls, and the G7 RAG provider secrets
-when those are configured. It receives no MinIO, S3, chat Provider, or Replay
-credential. The healthcheck calls container-local `GET /health` on port `8081`;
-no port is published or proxied.
+Redis wake settings, bounded Worker controls, and the private Go gateway URL and
+internal token. It receives no MinerU/Jina reusable Key, provider vault keyring,
+MinIO, S3, chat Provider, or Replay credential. The healthcheck calls
+container-local `GET /health` on port `8081`; no port is published or proxied.
 
 | Variable                  | Boundary                                                                  |
 | ------------------------- | ------------------------------------------------------------------------- |
@@ -109,9 +109,9 @@ no port is published or proxied.
 | `DATABASE_URL`            | Non-superuser API login; shared only by `backend` and `admin`.            |
 | `RAG_WORKER_DATABASE_URL` | Worker login inheriting only `rag_worker_executor`.                       |
 | `RAG_REPLAY_DATABASE_URL` | Replay login inheriting only `rag_replay_operator`.                       |
-| `RAG_MINERU_API_TOKEN`    | Admin-owned MinerU secret for G7 automatic parsing; redacted status only. |
 | `RAG_MINERU_RESULT_PROXY_URL` | Optional internal ZIP download proxy for Docker Desktop/WSL CDN TLS workarounds; default empty. |
-| `RAG_JINA_API_KEY`        | Admin-owned Jina secret for G7 embedding/rerank; redacted status only.    |
+| `RAG_SOURCE_GATEWAY_URL`  | Worker-only Go base URL; defaults to `http://backend:8080`.               |
+| `RAG_SOURCE_GATEWAY_TOKEN` | Shared infrastructure token for closed worker-to-Go RAG operations.     |
 | `PROVIDER_SECRET_KEYRING_SOURCE` | Host-side mode-`600` Docker Secret source; mounted only into Go backend/admin. |
 | `MM_CHAT_RUNTIME_UID` / `MM_CHAT_RUNTIME_GID` | Non-root owner IDs for the file-backed provider Secret; must match `id -u` / `id -g`. |
 
@@ -136,9 +136,9 @@ Phase 15.2B remains a dark-run boundary:
 ```text
 RAG_WORKER_DISPATCH_ENABLED=false
 RAG_WORKER_JOB_STAGES=
-RAG_MINERU_API_TOKEN=
 RAG_MINERU_RESULT_PROXY_URL=
-RAG_JINA_API_KEY=
+RAG_SOURCE_GATEWAY_URL=http://backend:8080
+RAG_SOURCE_GATEWAY_TOKEN=<random-internal-token>
 RAG_PROVIDER_PROFILE=disabled
 RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED=false
 RAG_PROVIDER_RETRY_MAX_ATTEMPTS=3
@@ -156,13 +156,13 @@ and metrics mechanics, but it must not claim real Parse, Embedding, Purge, or
 projection work. Healthy `/health` proves process/event-loop liveness only; it
 does not prove projection readiness or that Search/RAG is available.
 
-G7.2 adds the protected Go diagnostic `GET /v1/rag/provider-status`. It reports
-only whether the server-owned MinerU/Jina credentials are configured and the
-locked Jina embedding dimension (`1024`); it never returns key material. Python
-worker dispatch fails closed when `parse` is enabled without
-`RAG_MINERU_API_TOKEN` or `passage_embedding` is enabled without
-`RAG_JINA_API_KEY`. Legacy `DEFAULT_MINERU_API_TOKEN` and
-`DEFAULT_JINA_API_KEY` aliases remain accepted only as migration fallback names.
+The protected Go diagnostic `GET /v1/rag/provider-status` reports only the
+dynamic Postgres/vault activation state and locked Jina embedding dimension
+(`1024`); it never returns key material. MinerU/Jina Keys are configured through
+the administrator webpage and stored only as vault envelopes. Python dispatch
+fails closed when the Go gateway URL/token is absent and never parses reusable
+provider credentials. Go query embedding and rerank also resolve the active
+`RAG:JINA` record directly; there are no query/rerank service URL variables.
 `RAG_MINERU_RESULT_PROXY_URL` is optional and normally empty. It exists only for
 bounded local smoke environments where Docker Desktop/WSL container egress can
 reach MinerU API/upload endpoints but fails TLS handshakes to the MinerU result

@@ -15,7 +15,7 @@ import pytest
 
 import mm_chat_rag.worker as worker_module
 from mm_chat_rag.jina_gateway import (
-    JINA_EMBEDDINGS_URL,
+    JINA_PASSAGE_EMBEDDINGS_PATH,
     build_jina_passage_embedding_handler_dependencies,
 )
 from mm_chat_rag.job_handler_dependencies import (
@@ -31,6 +31,7 @@ from mm_chat_rag.mineru_gateway import (
     MinerULocalBatchGateway,
     MinerULocalBatchPollResult,
 )
+from mm_chat_rag.provider_gateway import GO_PROVIDER_INTERNAL_TOKEN_HEADER
 from mm_chat_rag.provider_profile import (
     DEFAULT_JINA_EMBEDDING_DIMENSIONS,
     DEFAULT_JINA_EMBEDDING_MODEL,
@@ -50,8 +51,6 @@ _MODEL_ID: Final = "mineru-parser-v20260716"
 _ENDPOINT_ID: Final = "hosted-main"
 _JINA_ENDPOINT_ID: Final = "admin-env"
 _JINA_MODEL_ID: Final = DEFAULT_JINA_EMBEDDING_MODEL
-_JINA_API_KEY: Final = "unit-test-jina-key"
-_MINERU_API_KEY: Final = "unit-test-mineru-key"
 _SOURCE_GATEWAY_TOKEN: Final = "unit-test-source-gateway-token"
 _SOURCE_GATEWAY_URL: Final = "http://backend.internal"
 _SIGNED_UPLOAD_URL: Final = (
@@ -268,8 +267,16 @@ def _patch_parse_gateways(
         )
 
     class WorkerFakeMinerULocalBatchGateway(FakeMinerULocalBatchGateway):
-        def __init__(self, api_token: str | None) -> None:
-            assert api_token == _MINERU_API_KEY
+        def __init__(
+            self,
+            *,
+            provider_gateway_url: str,
+            internal_token: str,
+            result_proxy_url: str | None = None,
+        ) -> None:
+            assert provider_gateway_url == _SOURCE_GATEWAY_URL
+            assert internal_token == _SOURCE_GATEWAY_TOKEN
+            assert result_proxy_url is None
             super().__init__(fixture, calls, archive_body)
 
     monkeypatch.setattr(
@@ -292,12 +299,15 @@ def _patch_jina_gateway(
 
     def build_with_mocked_jina(
         *,
-        api_key: str | None,
+        provider_gateway_url: str,
+        internal_token: str,
         projection: PassageEmbeddingProjectionGateway | None,
     ) -> PassageEmbeddingHandlerDependencies:
-        assert api_key == _JINA_API_KEY
+        assert provider_gateway_url == _SOURCE_GATEWAY_URL
+        assert internal_token == _SOURCE_GATEWAY_TOKEN
         return original_jina_builder(
-            api_key=api_key,
+            provider_gateway_url=provider_gateway_url,
+            internal_token=internal_token,
             projection=projection,
             client=jina_client,
         )
@@ -319,8 +329,6 @@ def _settings(
         dispatch_enabled=True,
         job_stages=job_stages,
         worker_id=fixture.worker_id,
-        mineru_api_key=_MINERU_API_KEY,
-        jina_api_key=_JINA_API_KEY if "passage_embedding" in job_stages else None,
         source_gateway_url=_SOURCE_GATEWAY_URL,
         source_gateway_token=_SOURCE_GATEWAY_TOKEN,
         provider_profile=ProviderRuntimeProfile(
@@ -380,7 +388,6 @@ async def test_promoted_parse_job_runner_finishes_live_postgres_job(
     assert request.method == "POST"
     assert str(request.url) == f"{_SOURCE_GATEWAY_URL}/internal/rag/source-object"
     assert _SOURCE_GATEWAY_TOKEN.encode() not in request.content
-    assert _MINERU_API_KEY.encode() not in request.content
     state = await _job_projection_state(url, fixture)
     assert state[:5] == ("succeeded", None, 1, True, True)
     assert all(count > 0 for count in state[5:10])
@@ -418,20 +425,19 @@ async def test_promoted_parse_then_embedding_runner_finishes_live_postgres_chain
         calls.append("jina_embeddings")
         jina_requests.append(request)
         payload = json.loads(request.content)
-        assert payload["model"] == _JINA_MODEL_ID
-        assert payload["dimensions"] == DEFAULT_JINA_EMBEDDING_DIMENSIONS
-        assert payload["input"] == [{"text": chain_text}]
+        assert len(payload["passages"]) == 1
+        assert payload["passages"][0]["text"] == chain_text
+        passage_id = payload["passages"][0]["passageId"]
         return _json_response(
             {
-                "data": [
+                "model": _JINA_MODEL_ID,
+                "dimensions": DEFAULT_JINA_EMBEDDING_DIMENSIONS,
+                "vectors": [
                     {
+                        "passageId": passage_id,
                         "embedding": list(_embedding_vector()),
-                        "index": 0,
-                        "object": "embedding",
                     }
                 ],
-                "model": _JINA_MODEL_ID,
-                "object": "list",
             }
         )
 
@@ -495,9 +501,13 @@ async def test_promoted_parse_then_embedding_runner_finishes_live_postgres_chain
     assert len(jina_requests) == 1
     jina_request = jina_requests[0]
     assert jina_request.method == "POST"
-    assert jina_request.url == httpx.URL(JINA_EMBEDDINGS_URL)
-    assert jina_request.headers["authorization"] == f"Bearer {_JINA_API_KEY}"
-    assert _JINA_API_KEY.encode() not in jina_request.content
+    assert jina_request.url == httpx.URL(
+        f"{_SOURCE_GATEWAY_URL}{JINA_PASSAGE_EMBEDDINGS_PATH}"
+    )
+    assert jina_request.headers[GO_PROVIDER_INTERNAL_TOKEN_HEADER] == (
+        _SOURCE_GATEWAY_TOKEN
+    )
+    assert "authorization" not in jina_request.headers
     state = await _job_projection_state(url, fixture)
     assert state[:5] == ("succeeded", None, 1, True, True)
     assert all(count > 0 for count in state[5:10])
@@ -554,6 +564,18 @@ async def _seed_fixture(url: str, fixture: ParsePromotionFixture) -> None:
                 completed_at = COALESCE(completed_at, clock_timestamp()),
                 updated_at = clock_timestamp()
             WHERE status IN ('pending', 'processing')
+            """
+        )
+        await connection.execute(
+            """
+            UPDATE knowledge_index_generations
+            SET status = 'failed',
+                failure_code = 'TEST_SUPERSEDED',
+                failed_at = clock_timestamp()
+            WHERE status IN ('building', 'verified')
+              AND build_snapshot @> jsonb_build_object(
+                'integrationFixture', 'worker-parse-promotion'
+              )
             """
         )
         await connection.execute(
@@ -745,8 +767,9 @@ async def _seed_fixture(url: str, fixture: ParsePromotionFixture) -> None:
               id, index_profile_id, generation_seq, status, build_snapshot,
               build_snapshot_hash, failure_code, failed_at
             ) VALUES (
-              %s, %s, %s, 'failed', '{}'::jsonb, %s,
-              'TEST_GENERATION', clock_timestamp()
+              %s, %s, %s, 'building',
+              '{"integrationFixture":"worker-parse-promotion"}'::jsonb,
+              %s, NULL, NULL
             )
             """,
             (

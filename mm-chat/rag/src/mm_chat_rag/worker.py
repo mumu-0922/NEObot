@@ -20,8 +20,6 @@ from mm_chat_rag.handlers import (
 )
 from mm_chat_rag.health import ReadinessState, create_health_app
 from mm_chat_rag.jina_gateway import (
-    JinaQueryEmbeddingGateway,
-    JinaRerankGateway,
     build_jina_passage_embedding_handler_dependencies,
 )
 from mm_chat_rag.job_handler_dependencies import (
@@ -113,7 +111,8 @@ def build_promoted_job_handler_registry(
         )
     if "passage_embedding" in settings.job_stages:
         embedding_dependencies = build_jina_passage_embedding_handler_dependencies(
-            api_key=settings.jina_api_key,
+            provider_gateway_url=settings.source_gateway_url or "",
+            internal_token=settings.source_gateway_token or "",
             projection=passage_embedding_projection,
         )
         handlers["passage_embedding"] = (
@@ -168,7 +167,8 @@ class Worker:
                 parse_projection = self.database
                 parse_archive_provider = MinerULocalBatchResultArchiveProvider(
                     MinerULocalBatchGateway(
-                        settings.mineru_api_key,
+                        provider_gateway_url=settings.source_gateway_url or "",
+                        internal_token=settings.source_gateway_token or "",
                         result_proxy_url=settings.mineru_result_proxy_url,
                     )
                 )
@@ -207,18 +207,7 @@ class Worker:
         self.state.worker_lock = "ready"
         await self._refresh_readiness()
 
-        query_embedding = None
-        reranker = None
-        if self.settings.jina_api_key and self.settings.source_gateway_token:
-            query_embedding = JinaQueryEmbeddingGateway(self.settings.jina_api_key)
-            reranker = JinaRerankGateway(self.settings.jina_api_key)
-        app = create_health_app(
-            self.state,
-            self.metrics,
-            query_embedding=query_embedding,
-            reranker=reranker,
-            internal_token=self.settings.source_gateway_token,
-        )
+        app = create_health_app(self.state, self.metrics)
         server = _NoSignalServer(
             uvicorn.Config(
                 app,

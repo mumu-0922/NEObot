@@ -1720,3 +1720,68 @@ removes the unused private routes and direct adapters. F4.4 is next: switch the
 Python parse/passage clients, wire Go retrieval to the direct adapter, remove
 the old Python query/rerank routes, and only then delete provider Key environment
 parsing and Compose/operator values.
+
+## 2026-07-19 — G11.9F.4.4 Provider runtime cutover
+
+Python now invokes only the three closed Go provider operations. MinerU
+allocate/poll uses the scoped gateway before Python consumes the returned
+single-job upload/result capabilities; Jina passage embedding sends bounded
+passage UUID/text DTOs to Go and validates the normalized 1024-dimensional
+response. Python receives only `RAG_SOURCE_GATEWAY_URL` and the infrastructure
+internal token. It no longer parses a MinerU or Jina reusable Key.
+
+Go query embedding and reranking are wired directly to the same runtime
+`ProviderGateway`, which resolves the exact enabled and attested `RAG:JINA`
+Postgres/vault record for every call. The old Go client implementations and the
+Python `/internal/retrieval/query-embedding` and `/internal/retrieval/rerank`
+routes were removed, eliminating the Go -> Python -> Go cycle. The Python
+listener now exposes only health, readiness, and metrics.
+
+The provider Key variables and old query/rerank service URL variables were
+removed from Go/Python parsing, Compose, backend and single-server examples,
+deployment guidance, and the local operator `.env.single-server`. Recreated
+Backend and RAG Worker containers contain none of those environment names.
+`RAG_SOURCE_GATEWAY_URL`, `RAG_SOURCE_GATEWAY_TOKEN`, and the bounded optional
+MinerU result ZIP proxy remain because they carry infrastructure routing or a
+single-job capability, never a reusable provider credential. The legacy
+frontend MinerU manual-BYOK path remains isolated until its planned G9
+retirement.
+
+Live proof used the deployed source-built containers and active Postgres/vault
+records after the operator values were removed:
+
+```text
+Python -> Go -> MinerU allocate / poll                     passed / waiting-file
+Python -> Go -> Jina retrieval.passage                     v4 / 1024
+Go direct Jina retrieval.query                             v4 / 1024
+Go direct Jina rerank                                      v3 / 2 results
+retired Python query-embedding / rerank routes             404 / 404
+old env names in Backend / RAG Worker                      absent / absent
+production retired-env preflight                           six names rejected
+Backend / RAG Worker restart                               healthy / healthy
+dynamic MinerU / Jina status after restart                 ready / ready
+RAG health / readiness                                     200 / 200
+Key, Bearer, signed-capability, ciphertext log scan        zero hits
+```
+
+Static verification passed Go full tests, focused race tests, `go vet`, Python
+Ruff/format/strict Mypy, all 1724 non-integration tests, the frontend Compose
+environment regression, and the single-server production preflight suite. The
+three changed Postgres promotion integrations passed against migrations
+`001..033` in a disposable database whose container was then removed.
+
+The first integration run exposed an old fixture drift rather than a provider
+failure: the fixture inserted its generation as `failed`, while migration `029`
+correctly requires `building|verified|active` before provider I/O. The fixture
+now uses a tagged `building` candidate and safely supersedes only its own prior
+candidate between tests; the clean rerun completed parse and passage embedding.
+An earlier bulk Python run also saw one transient UDS transport timing failure;
+the exact test and the final full suite both passed.
+
+No schema or application row was added by F4.4. The F4.2 Postgres dump and its
+paired vault keyring remain the rollback anchor. Code rollback must restore the
+F4.3 Backend/RAG images and, only for that old runtime, the retired operator
+provider variables from the owner's secret source; they are intentionally not
+retained in the repository or a temporary plaintext backup. F4.5 remains open
+for scanned/complex-PDF closure, rotation, backup/restore, destructive rollback
+rehearsal, and final cleanup proof.

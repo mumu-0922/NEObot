@@ -757,11 +757,6 @@ func TestNewHandlerRegistersRAGProviderStatusRoute(t *testing.T) {
 		config.Config{
 			Addr:    ":0",
 			Version: "route-test",
-			RAG: config.RAGConfig{
-				MinerUAPIKey:            "fake-mineru-secret",
-				JinaAPIKey:              "fake-jina-secret",
-				JinaEmbeddingDimensions: config.DefaultRAGJinaDimensions,
-			},
 		},
 		WithSessionResolver(resolver),
 	)
@@ -776,10 +771,6 @@ func TestNewHandlerRegistersRAGProviderStatusRoute(t *testing.T) {
 	}
 	if resolver.tokenHash != "" {
 		t.Fatalf("development provider status unexpectedly resolved bearer hash = %q", resolver.tokenHash)
-	}
-	if strings.Contains(rec.Body.String(), "fake-mineru-secret") ||
-		strings.Contains(rec.Body.String(), "fake-jina-secret") {
-		t.Fatalf("provider status leaked secret: %s", rec.Body.String())
 	}
 }
 

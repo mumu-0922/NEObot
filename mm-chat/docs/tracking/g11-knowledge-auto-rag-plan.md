@@ -307,7 +307,7 @@ Incremental execution slices:
   - **G11.9F.4.3** complete: add the closed Go MinerU allocate/poll and Jina passage
     embedding gateway plus direct Go Jina query/rerank adapters, without
     cutting Python off its current provider environment path yet;
-  - **G11.9F.4.4**: switch Python to the scoped Go operations, retire the old
+  - **G11.9F.4.4** complete: switch Python to the scoped Go operations, retire the old
     Go-to-Python Jina routes, and remove MinerU/Jina provider Key environment
     parsing, Compose wiring, examples, and operator values;
   - **G11.9F.4.5**: prove real MinerU scanned/complex-PDF parsing, Jina 1024

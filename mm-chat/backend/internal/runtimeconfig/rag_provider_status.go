@@ -12,9 +12,7 @@ import (
 func (s *Service) RAGProviderStatus(
 	ctx context.Context,
 ) (ragproviders.StatusResponse, error) {
-	response := ragproviders.Status(config.RAGConfig{
-		JinaEmbeddingDimensions: config.DefaultRAGJinaDimensions,
-	})
+	response := ragproviders.Status()
 	if s == nil || s.repo == nil {
 		return response, nil
 	}

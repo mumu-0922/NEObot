@@ -372,7 +372,6 @@ async def test_adapter_calls_only_frozen_functions() -> None:
         database_url="postgresql://worker:secret@db/rag",
         dispatch_enabled=True,
         job_stages=("parse",),
-        mineru_api_key="fake-mineru-token",
         source_gateway_url="http://backend:8080",
         source_gateway_token=SOURCE_GATEWAY_TOKEN,
         provider_profile=ProviderRuntimeProfile(

@@ -13,6 +13,12 @@ import (
 
 const providerGatewayTestCredential = "provider-gateway-test-credential"
 
+type queryRoundTripper func(*http.Request) (*http.Response, error)
+
+func (roundTrip queryRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
+	return roundTrip(request)
+}
+
 type gatewayCredentialResolver struct {
 	credential string
 	err        error
