@@ -19,7 +19,8 @@
 - No automatic provider fallback or multi-provider fan-out.
 - No Gemini model-built-in search until a real Go Gemini runtime provider
   exists.
-- No conditional Knowledge/Web Router or RRF-style fusion until G11.9G.
+- No multi-provider Knowledge/Web rank fusion; Knowledge and Web retain
+  separate source identities and deterministic authority rules.
 
 ## Flow
 
@@ -103,9 +104,10 @@ authenticated POST /v1/search       Go chat stream with useSearch
 - The normal API binary resolves Postgres/vault state on every request. With no
   active external or eligible explicit OpenAI model provider, `/v1/search`
   fails closed with `SEARCH_NOT_CONFIGURED`.
-- External Search runs whenever the existing Search toggle is enabled in this
-  slice. Conditional routing and Knowledge-derived query planning remain
-  G11.9G.
+- G11.9G.1 places the deterministic source Router after Knowledge retrieval.
+  Search never runs when disabled and is skipped when admitted Knowledge is
+  sufficient for a non-current question. Knowledge-derived query planning and
+  provider-failure degradation remain G11.9G.2.
 - Gemini remains unsupported because the Go runtime cannot currently execute a
   Gemini chat request. Capability checks return an explicit unsupported error
   instead of silently using another provider.
@@ -146,3 +148,10 @@ An isolated Postgres proof covered one-active reload and fresh-vault decryption;
 the deployed API passed reversible no-Key CRUD/error cleanup. Owner-entered
 Tavily then passed `/v1/search`, chat `[W]` persistence/reload, backend restart,
 and forced external failure without fallback before exact state restoration.
+
+### 2026-07-19 — G11.9G.1
+
+Added the deterministic question/authority Router after Knowledge retrieval.
+The user Search toggle remains the hard upper bound, admitted Knowledge can
+skip unnecessary external I/O, current/public questions select a mixed plan,
+and persisted fusion diagnostics contain only stable enums and outcomes.

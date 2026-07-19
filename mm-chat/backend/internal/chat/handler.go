@@ -946,10 +946,47 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		writeServiceError(w, err)
 		return
 	}
+	autoDecision := autoRAGDecision{}
+	if ragSelection.Enabled {
+		autoDecision = h.decideAutoRAG(
+			r.Context(),
+			conversationID,
+			userMessage,
+			modelRef,
+			ragSelection,
+			streamProvider,
+		)
+	}
+	providerPrompt := userMessage.Content
+	providerSystemPrompt := systemPrompt
+	providerMetadata := request.Metadata
+	if ragSelection.Enabled && autoDecision.ReadyForAnswer() {
+		providerPrompt, providerSystemPrompt, err = buildAutoRAGProviderRequest(
+			userMessage.Content,
+			systemPrompt,
+			autoDecision.Evidence,
+			autoDecision.Citations,
+		)
+		if err != nil {
+			autoDecision = autoRAGDecision{Outcome: "dependency_unavailable"}
+			providerPrompt = userMessage.Content
+			providerSystemPrompt = systemPrompt
+		} else {
+			providerMetadata = mergeAutoRAGProviderMetadata(
+				request.Metadata,
+				autoDecision,
+			)
+		}
+	}
+	fusionPlan := planSourceFusion(
+		userMessage.Content,
+		configBool(request.Config, "useSearch"),
+		autoDecision,
+	)
 	searchExecution, modelBuiltInSearchProvider, err := h.resolveChatSearchExecution(
 		r.Context(),
 		streamProvider,
-		configBool(request.Config, "useSearch"),
+		fusionPlan.SearchRequested,
 	)
 	if err != nil {
 		writeChatSearchError(w, err)
@@ -1003,38 +1040,6 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	providerPrompt := userMessage.Content
-	providerSystemPrompt := systemPrompt
-	providerMetadata := request.Metadata
-	autoDecision := autoRAGDecision{}
-	if ragSelection.Enabled {
-		autoDecision = h.decideAutoRAG(
-			r.Context(),
-			conversationID,
-			userMessage,
-			modelRef,
-			ragSelection,
-			streamProvider,
-		)
-		if autoDecision.ReadyForAnswer() {
-			providerPrompt, providerSystemPrompt, err = buildAutoRAGProviderRequest(
-				userMessage.Content,
-				systemPrompt,
-				autoDecision.Evidence,
-				autoDecision.Citations,
-			)
-			if err != nil {
-				autoDecision = autoRAGDecision{Outcome: "dependency_unavailable"}
-				providerPrompt = userMessage.Content
-				providerSystemPrompt = systemPrompt
-			} else {
-				providerMetadata = mergeAutoRAGProviderMetadata(
-					request.Metadata,
-					autoDecision,
-				)
-			}
-		}
-	}
 	if searchExecution != nil && searchExecution.Mode == websearch.ExecutionExternal {
 		providerPrompt, providerSystemPrompt = buildWebSearchProviderRequest(
 			providerPrompt,
@@ -1043,11 +1048,12 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		)
 	}
 	webMessageMetadata := func(decision autoRAGDecision, extra map[string]any) map[string]any {
-		return withWebSearchMessageMetadata(
+		metadata := withWebSearchMessageMetadata(
 			autoRAGMessageMetadata(runID, ragSelection, decision, extra),
 			searchExecution,
 			webSearchResult,
 		)
+		return withSourceFusionMessageMetadata(metadata, fusionPlan, decision)
 	}
 
 	streamCtx, streamCancel := context.WithCancel(r.Context())

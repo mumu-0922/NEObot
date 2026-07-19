@@ -1410,6 +1410,15 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
             runtime, and final clean-copy closure without a real Voice call.
     - [ ] G11.9G Knowledge/Web/model fusion, `[K]`/`[W]` citations, diagnostics,
           and clean-copy/live closure.
+      - [x] G11.9G.1 Deterministic question/authority Router, Knowledge-first
+            ordering, unnecessary-Web skip, redacted decision metadata, and
+            frozen fusion contract.
+      - [ ] G11.9G.2 Knowledge-derived external query, Web failure degradation,
+            and bounded stage/timing diagnostics.
+      - [ ] G11.9G.3 Model-built-in routing, conflict instructions, combined
+            citation persistence/reload, and frontend interaction parity.
+      - [ ] G11.9G.4 Full matrix, live provider smoke, restart, clean-copy,
+            cleanup, and G11.9 closure.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

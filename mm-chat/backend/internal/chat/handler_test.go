@@ -1188,6 +1188,64 @@ func TestHandlerAutoRAGStreamsAugmentedAnswerAfterGovernance(t *testing.T) {
 	}
 }
 
+func TestHandlerSourceFusionSkipsWebWhenKnowledgeIsSufficient(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "研究方向是什么"),
+	)
+	provider := &titleProvider{chunks: []string{"Knowledge answer [K1]"}}
+	searchProvider := &fakeWebSearchProvider{}
+	searchResolver := &fakeWebSearchResolver{execution: websearch.ActiveExecution{
+		Mode: websearch.ExecutionExternal, External: searchProvider,
+	}}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithWebSearchService(websearch.NewService(searchResolver)),
+		WithRAGAnswerAssembler(NewRAGAnswerAssembler(
+			&fakeRAGCandidateSource{refs: []knowledge.EvidenceCandidateReference{validRAGCandidate()}},
+			&fakeRAGHydrator{evidence: []knowledge.HydratedEvidence{validHydratedEvidence()}},
+		)),
+		WithRAGAnswerGovernanceGate(&fakeRAGAnswerGovernanceGate{
+			authority: RAGAnswerAuthority{
+				Processor: "mock", ModelID: "mock-chat", CollectionCount: 1,
+			},
+		}),
+	)
+
+	recorder := performAuthenticatedRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"config":{"useSearch":true},"metadata":{"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-fusion-knowledge"}`,
+	)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	if searchResolver.calls != 0 || searchProvider.calls != 0 {
+		t.Fatalf(
+			"unnecessary Search calls = resolver %d / provider %d",
+			searchResolver.calls,
+			searchProvider.calls,
+		)
+	}
+	if !strings.Contains(provider.input.Prompt, "[K1]") ||
+		strings.Contains(provider.input.Prompt, "Relevant Web evidence") {
+		t.Fatalf("provider prompt = %q", provider.input.Prompt)
+	}
+	messages := repo.messages[testConversationID]
+	if len(messages) != 2 || len(messages[1].OutputBlocks) != 0 {
+		t.Fatalf("persisted messages = %#v", messages)
+	}
+	fusion, ok := messages[1].Metadata["fusion"].(map[string]any)
+	if !ok || fusion["authority"] != sourceAuthorityKnowledge ||
+		fusion["searchRequested"] != false ||
+		fusion["searchReason"] != sourceSearchKnowledgeSufficient {
+		t.Fatalf("fusion metadata = %#v", messages[1].Metadata["fusion"])
+	}
+}
+
 func TestHandlerAutoRAGFallsBackWhenAnswerGovernanceIsMissing(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))

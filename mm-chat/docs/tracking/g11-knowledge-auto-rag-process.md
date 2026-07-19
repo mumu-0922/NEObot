@@ -1938,3 +1938,43 @@ G11.9F.5 and G11.9F are complete. The next slice is G11.9G Knowledge/Web/model
 fusion closure; a real hosted Voice provider remains deferred until the owner
 selects an API and authorizes its full administrator-test-executor-artifact
 chain.
+
+## 2026-07-19 — G11.9G.1 Deterministic source Router
+
+The source-fusion contract is now frozen in
+`docs/contracts/chat-source-fusion.md`. Go resolves selected Knowledge first,
+validates the exact evidence/citation prompt, then computes one deterministic
+plan from the question class, the Search toggle, and the Knowledge outcome.
+Search disabled is an absolute no-I/O boundary. Relevant Knowledge answers a
+stable non-current question without spending Search quota; current/public
+intent selects a mixed Knowledge/Web authority; a miss or unbound Knowledge
+with Search enabled selects Web; neither source selects ordinary model
+reasoning.
+
+English current-intent markers are token/phrase matched rather than substring
+matched, preventing values such as `unknown` from accidentally matching
+`now`. Chinese intent markers remain bounded literal phrases. The completed
+message stores only fusion version, question class, authority, enabled/requested
+booleans, reason, and Knowledge outcome. It stores no question, rewritten
+query, source text, credential, ciphertext, or signed capability.
+
+Handler execution was reordered only enough to validate Knowledge before
+Search resolution. A bad Knowledge prompt changes to dependency degradation
+before routing, so it cannot incorrectly suppress an otherwise permitted Web
+lane. No route, schema, provider configuration, external provider call, or
+frontend source/component changed in this slice.
+
+Verification:
+
+```text
+pure disabled / Knowledge / Web / mixed / neither matrix       passed
+English substring false-positive guard                         passed
+Search enabled + sufficient Knowledge                          0 resolver / 0 provider calls
+persisted fusion metadata allowlist                             7 bounded fields
+Go full / chat race / vet                                       passed / passed / passed
+```
+
+Rollback removes `source_fusion.go`, restores Search resolution directly from
+the toggle, and restores the previous Knowledge preparation location. G11.9G.2
+next adds Knowledge-derived external queries, graceful Web degradation, and
+stage/timing diagnostics.

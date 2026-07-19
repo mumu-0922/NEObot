@@ -348,6 +348,21 @@ Verification matrix:
 - conversation reload and citation-card interaction;
 - clean-copy source build and live provider/indexing/search smoke.
 
+Incremental execution slices:
+
+- **G11.9G.1** complete: freeze the source-fusion contract and add the deterministic
+  question/authority Router so Search is never called when disabled and may be
+  skipped when relevant Knowledge already answers a non-current question;
+- **G11.9G.2**: run external Web only after Knowledge routing, derive a bounded
+  query from the question plus admitted Knowledge, degrade provider failures to
+  a normal model answer, and persist redacted stage/timing diagnostics;
+- **G11.9G.3**: close model-built-in Search routing, deterministic conflict
+  instructions, combined `[K]`/`[W]` persistence/reload, and frontend citation
+  interaction parity;
+- **G11.9G.4**: execute the full matrix, owner-authorized live
+  Knowledge/Web/model smoke, restart/clean-copy verification, cleanup, and
+  close G11.9.
+
 ## Definition of Done
 
 - Every G11.9 slice is implemented, verified, documented, and committed alone.
