@@ -37,9 +37,13 @@ Stream success response:
 ```http
 HTTP/1.1 200 OK
 Content-Type: text/event-stream; charset=utf-8
-Cache-Control: no-cache
+Cache-Control: no-cache, no-transform
 X-Content-Type-Options: nosniff
 ```
+
+`no-transform` is mandatory. The same-origin Next.js rewrite and any external
+reverse proxy must not compress or buffer SSE frames; ordinary response
+compression remains enabled outside streaming endpoints.
 
 Cancel success response:
 
@@ -248,7 +252,73 @@ The adapter reads `data:` SSE frames, emits `message.delta` for
 `choices[].delta.content`, emits `usage.updated` when a provider chunk includes
 `usage`, and stops on `data: [DONE]`.
 
-## 9. Non-Goals
+## 9. SSE Proxy Transformation Contract
+
+### 9.1 Scope / Trigger
+
+This contract applies whenever a streaming endpoint is served through the
+frontend `/mm-api` rewrite or another compression-capable reverse proxy.
+
+### 9.2 Signatures
+
+Successful text and image streams must return:
+
+```http
+Content-Type: text/event-stream; charset=utf-8
+Cache-Control: no-cache, no-transform
+X-Accel-Buffering: no
+```
+
+### 9.3 Contracts
+
+- Go flushes after each named SSE event.
+- `no-transform` prevents Next or an upstream proxy from applying gzip,
+  deflate, or Brotli to SSE.
+- A proxied streaming response must not contain `Content-Encoding`.
+- Compression for non-SSE pages, JSON, and static assets remains unchanged.
+
+### 9.4 Validation and Error Matrix
+
+| Condition                               | Required result                                                        |
+| --------------------------------------- | ---------------------------------------------------------------------- |
+| SSE response lacks `no-transform`       | regression test fails                                                  |
+| Browser sends `Accept-Encoding`         | response remains unencoded and incremental                             |
+| Provider emits a terminal startup error | existing pre-SSE JSON error contract applies                           |
+| Proxy cannot preserve streaming         | deployment validation fails; do not simulate terminal text as live SSE |
+
+### 9.5 Good / Base / Bad Cases
+
+- Good: browser-like compressed request receives multiple deltas over time and
+  no `Content-Encoding` header.
+- Base: direct Go request receives the same ordered deltas.
+- Bad: response carries `Content-Encoding: gzip` and all deltas arrive with the
+  terminal frame.
+
+### 9.6 Tests Required
+
+- Handler test: every successful stream asserts `text/event-stream` and
+  `Cache-Control` containing `no-transform`.
+- Proxy integration: request `/mm-api/.../stream` with `Accept-Encoding` and
+  assert no response `Content-Encoding` plus more than one delta arrival time.
+- Browser smoke: assert assistant text length increases across multiple DOM
+  samples before the Stop control disappears.
+
+### 9.7 Wrong vs Correct
+
+Wrong:
+
+```http
+Cache-Control: no-cache
+Content-Encoding: gzip
+```
+
+Correct:
+
+```http
+Cache-Control: no-cache, no-transform
+```
+
+## 10. Non-Goals
 
 - Gemini and native OpenAI Responses API adapters.
 - Stream endpoint auth enforcement through the new session-cache substrate.

@@ -1427,6 +1427,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         compact Knowledge, Web, or model status beneath the user message;
         empty assistant drafts show generation status, image progress remains
         separate, and the removed composer-top pipeline bar stays removed.
+  - [x] G11.11 Browser SSE streaming repair: chat and image streams now forbid
+        proxy transformation, preventing Next gzip from buffering all deltas
+        until completion while preserving compression for ordinary responses.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

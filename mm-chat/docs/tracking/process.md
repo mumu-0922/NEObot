@@ -8518,3 +8518,14 @@ production build, Compose source rebuild, and a real Search/provider browser
 flow passed; the temporary smoke conversation was deleted. Exact root cause,
 implementation, evidence, rollback, and the coarse-stage SSE boundary are in
 `docs/tracking/g11-10-chat-generation-progress-process.md`.
+
+## 2026-07-20 — G11.11 browser SSE streaming repair cross-reference
+
+Go and the provider were already emitting and flushing incremental deltas, but
+the same-origin Next rewrite gzip-compressed browser requests and buffered the
+small SSE writes until completion. Successful SSE responses now declare
+`Cache-Control: no-cache, no-transform`; browser-like compressed probes no
+longer receive `Content-Encoding`, and live browser content advances over many
+renders. Full backend tests/race/vet, Compose rebuild/health, and smoke cleanup
+passed. Exact timing evidence and rollback are in
+`docs/tracking/g11-11-sse-streaming-process.md`.

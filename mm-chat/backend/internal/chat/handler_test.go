@@ -2431,6 +2431,9 @@ func assertStreamStatus(t *testing.T, rec *httptest.ResponseRecorder, want int) 
 	if contentType := rec.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "text/event-stream") {
 		t.Fatalf("Content-Type = %q, want text/event-stream", contentType)
 	}
+	if cacheControl := rec.Header().Get("Cache-Control"); !strings.Contains(cacheControl, "no-transform") {
+		t.Fatalf("Cache-Control = %q, want no-transform", cacheControl)
+	}
 }
 
 func assertAutoRAGMetadata(t *testing.T, assistant Message, wantOutcome string, wantCitations int) {
