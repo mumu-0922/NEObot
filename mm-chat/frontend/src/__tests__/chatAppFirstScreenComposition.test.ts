@@ -30,6 +30,8 @@ describe("ChatApp first screen composition", () => {
       'welcomeState === "visible" ? "max-w-2xl" : "max-w-3xl"',
     );
     expect(chatApp).not.toContain("max-w-xl");
+    expect(chatApp).toContain("listAdminProviderConfigs");
+    expect(chatApp).toContain("normalizeServerManagedProviderConfigs");
     expect(chatApp).toContain("shouldShowChatTitleBar");
     expect(chatApp).toContain("shouldShowChatTitleBar &&");
     expect(chatApp).toContain("text-[1.75rem]");

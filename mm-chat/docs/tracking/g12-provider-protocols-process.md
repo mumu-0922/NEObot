@@ -98,3 +98,46 @@ there was no Anthropic credential to spend for a real Claude quota call. The
 HTTP request/stream/tool behavior is proven against wire fixtures and the
 source-built runtime; a real Models/chat/image/tool smoke remains additive when
 the administrator later saves an Anthropic Key. G12 is otherwise closed.
+
+## 2026-07-20 — G12.3 backend-managed provider runtime repair
+
+Live browser evidence showed that user messages were persisted but every
+DeepSeek stream returned HTTP 400 in one to two milliseconds, before any
+provider request. The configured `FOHWSU` record, API Key, connection test, and
+`deepseek-v4-pro` model were valid. A direct server-stored replay returned a
+real streamed answer, isolating the failure to frontend provider identity.
+
+`normalizeModelProvider` was dropping `isServerManaged`. Consequently the
+frontend converted the selected backend record into an empty local BYOK
+configuration instead of `{id:"FOHWSU",source:"server-stored"}`. The marker
+is now retained, administrator provider DTO normalization is shared between
+Settings and Chat, and Chat startup always reloads the authoritative provider
+list before resolving the selected model. Refresh no longer depends on first
+opening Settings.
+
+The provider activation also exposed a restart-only backend defect. Knowledge
+answer governance used the uppercase custom provider ID `FOHWSU` as a
+processor alias even though the governance contract accepts lowercase aliases.
+Custom provider governance aliases are now canonicalized to `fohwsu`; the
+stored provider ID and chat `modelRef.providerId` remain `FOHWSU`.
+
+Verification:
+
+```text
+frontend focused regression tests              25 passed
+frontend format/lint/typecheck                  passed
+frontend broad suite                            181 files / 872 tests passed;
+                                                one unchanged child-process test
+                                                blocked by sandbox EPERM
+frontend Docker production build               passed
+backend cmd/api focused tests                   passed
+backend Docker source build                     passed
+backend/frontend/RAG/Postgres/Redis             healthy
+real Frontend proxy -> Go -> vault -> DeepSeek  passed
+disposable proof conversation cleanup           HTTP 204
+```
+
+The real DeepSeek proof streamed `DEEPSEEK_OK` through the production frontend
+proxy and used only the Postgres-vault reference; no provider Key was exposed
+or copied into browser storage. The failed browser `hi` was also replayed once
+against the real provider and received a persisted assistant response.

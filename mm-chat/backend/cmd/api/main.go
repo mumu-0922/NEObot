@@ -527,7 +527,7 @@ func singleUserAnswerIdentities(
 				continue
 			}
 			providerID := strings.TrimSpace(provider.ProviderID)
-			processor := providerID
+			processor := canonicalAnswerProcessor(providerID)
 			endpointID := "server-stored"
 			if providerID == "SERVER_DEFAULT" {
 				providerType := string(provider.Config.Type)

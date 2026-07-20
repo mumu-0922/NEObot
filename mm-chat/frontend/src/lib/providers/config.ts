@@ -10,6 +10,16 @@ import {
   OPENAI_PROVIDER_TYPE,
   isProviderType,
 } from "./providerTypes";
+import { SERVER_DEFAULT_PROVIDER_ID } from "../defaultConfig/shared";
+
+type ServerManagedProviderConfig = {
+  id: string;
+  name: string;
+  type: string;
+  baseUrl: string;
+  models: string[];
+  enabled: boolean;
+};
 
 function trimString(value: unknown, maxChars: number): string {
   return typeof value === "string" ? value.trim().slice(0, maxChars) : "";
@@ -96,6 +106,7 @@ export function normalizeModelProvider(
     ),
     modelsList,
     ...(raw.isServerDefault ? { isServerDefault: true } : {}),
+    ...(raw.isServerManaged ? { isServerManaged: true } : {}),
   };
 }
 
@@ -115,4 +126,23 @@ export function normalizeModelProviders(value: unknown): ModelProvider[] {
   }
 
   return providers;
+}
+
+export function normalizeServerManagedProviderConfigs(
+  providers: readonly ServerManagedProviderConfig[],
+): ModelProvider[] {
+  return normalizeModelProviders(
+    providers.map((provider) => ({
+      id: provider.id,
+      name: provider.name,
+      type: provider.type,
+      baseUrl: provider.baseUrl,
+      apiKey: "",
+      enabled: provider.enabled,
+      models: provider.models,
+      modelsList: provider.models,
+      isServerDefault: provider.id === SERVER_DEFAULT_PROVIDER_ID,
+      isServerManaged: true,
+    })),
+  );
 }

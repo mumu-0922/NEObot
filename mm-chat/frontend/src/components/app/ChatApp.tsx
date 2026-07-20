@@ -74,6 +74,7 @@ import { normalizeActivePluginIds } from "@/lib/plugin/config";
 import { parseModelString } from "@/lib/utils/model";
 import { logDevError } from "@/lib/utils/devLogger";
 import { SERVER_DEFAULT_PROVIDER_ID } from "@/lib/defaultConfig/shared";
+import { normalizeServerManagedProviderConfigs } from "@/lib/providers/config";
 import {
   getSessionPluginPresetSyncKey,
   shouldApplySessionPluginPreset,
@@ -226,6 +227,7 @@ const ChatApp = () => {
       theme,
       providers,
       updateProvider,
+      replaceServerManagedProviders,
       applyServerConfig: applyCoreServerConfig,
     },
     knowledgeCollections,
@@ -644,16 +646,37 @@ const ChatApp = () => {
 
     const loadServerConfig = async () => {
       try {
-        const config = await apiClientSnapshot.settings.getRuntimeConfig();
+        const [config, adminProviders] = await Promise.all([
+          apiClientSnapshot.settings.getRuntimeConfig(),
+          serverModeEnabled
+            ? apiClientSnapshot.providers.listAdminProviderConfigs()
+            : Promise.resolve(null),
+        ]);
         if (!active) return;
 
         applyCoreServerConfig(config);
         applySettingsServerConfig(config);
+        const normalizedServerProviders = adminProviders
+          ? normalizeServerManagedProviderConfigs(adminProviders.providers)
+          : null;
+        if (normalizedServerProviders) {
+          replaceServerManagedProviders(normalizedServerProviders);
+        }
         setServerConfigResolved(true);
-        if (
-          !config.modelProvider.available ||
-          config.modelProvider.models.length > 0
-        ) {
+        const hasEnabledServerModels = normalizedServerProviders?.some(
+          (provider) => provider.enabled && provider.models.length > 0,
+        );
+        const needsDefaultModelBootstrap = normalizedServerProviders
+          ? !hasEnabledServerModels &&
+            normalizedServerProviders.some(
+              (provider) =>
+                provider.isServerDefault &&
+                provider.enabled &&
+                provider.models.length === 0,
+            )
+          : config.modelProvider.available &&
+            config.modelProvider.models.length === 0;
+        if (!needsDefaultModelBootstrap) {
           setServerModelBootstrapReady(true);
         }
       } catch (error) {
@@ -675,6 +698,8 @@ const ChatApp = () => {
     apiClientSnapshot,
     applySettingsServerConfig,
     coreHasHydrated,
+    replaceServerManagedProviders,
+    serverModeEnabled,
   ]);
 
   useEffect(() => {

@@ -1467,6 +1467,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           administrator configuration and native Models connection test.
     - [x] G12.2 Native Anthropic Messages streaming, Models connection test,
           image/history/usage/tool planning, and frontend provider type.
+    - [x] G12.3 Backend-managed provider identity retention, authoritative
+          startup hydration, custom-governance alias canonicalization, and
+          cleaned real DeepSeek proxy-stream proof.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

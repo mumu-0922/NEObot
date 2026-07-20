@@ -28,8 +28,8 @@ import { SecretInput } from "./SettingsUI";
 import { PROVIDER_CONFIG_LIMITS } from "@/config/limits";
 import { buildProviderRuntimeConfig, encryptSecret } from "@/lib/byok/client";
 import { BYOK_CONTEXTS } from "@/lib/byok/shared";
-import { SERVER_DEFAULT_PROVIDER_ID } from "@/lib/defaultConfig/shared";
 import { providerModelIdsEqual } from "@/lib/providers/models";
+import { normalizeServerManagedProviderConfigs } from "@/lib/providers/config";
 import { createNeoChatApiClient } from "@/services/api/client";
 import {
   encryptLocalSecret,
@@ -120,22 +120,11 @@ const ProviderSettings = () => {
       .then(({ providers: serverProviders }) => {
         if (!active) return;
         const secretState: Record<string, boolean> = {};
+        serverProviders.forEach((provider) => {
+          secretState[provider.id] = provider.hasApiKey;
+        });
         replaceServerManagedProviders(
-          serverProviders.map((provider) => {
-            secretState[provider.id] = provider.hasApiKey;
-            return {
-              id: provider.id,
-              name: provider.name,
-              type: provider.type as any,
-              baseUrl: provider.baseUrl,
-              apiKey: "",
-              enabled: provider.enabled,
-              models: provider.models,
-              modelsList: provider.models,
-              isServerDefault: provider.id === SERVER_DEFAULT_PROVIDER_ID,
-              isServerManaged: true,
-            };
-          }),
+          normalizeServerManagedProviderConfigs(serverProviders),
         );
         setServerProviderHasApiKey(secretState);
       })

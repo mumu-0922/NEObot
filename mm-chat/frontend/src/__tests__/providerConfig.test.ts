@@ -7,6 +7,7 @@ import {
   migrateCoreSettingsState,
   normalizeModelProvider,
   normalizeModelProviders,
+  normalizeServerManagedProviderConfigs,
 } from "../lib/providers/config";
 
 describe("provider config normalization", () => {
@@ -71,6 +72,26 @@ describe("provider config normalization", () => {
         baseUrl: "https://api.anthropic.com",
       })?.type,
     ).toBe("Anthropic");
+  });
+
+  it("preserves backend-managed provider identity through normalization", () => {
+    const [provider] = normalizeServerManagedProviderConfigs([
+      {
+        id: "CUSTOM",
+        name: "Backend Custom",
+        type: "OpenAI Compatible",
+        baseUrl: "https://custom.example/v1",
+        models: ["custom-model"],
+        enabled: true,
+      },
+    ]);
+
+    expect(provider).toMatchObject({
+      id: "CUSTOM",
+      isServerManaged: true,
+    });
+    expect(provider?.isServerDefault).toBeUndefined();
+    expect(normalizeModelProvider(provider)?.isServerManaged).toBe(true);
   });
 
   it("migrates persisted OpenAI providers to OpenAI Compatible", async () => {

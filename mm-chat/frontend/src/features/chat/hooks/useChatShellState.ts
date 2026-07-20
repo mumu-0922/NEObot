@@ -91,6 +91,7 @@ export function useChatShellState() {
       theme: state.theme,
       providers: state.providers,
       updateProvider: state.updateProvider,
+      replaceServerManagedProviders: state.replaceServerManagedProviders,
       applyServerConfig: state.applyServerConfig,
     })),
   );

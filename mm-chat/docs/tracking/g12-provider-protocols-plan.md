@@ -46,6 +46,20 @@ scope.
 - Make transitional local-mode paths fail closed instead of accidentally
   treating Anthropic as Gemini.
 
+### [x] G12.3 — Backend-managed provider runtime repair
+
+- Preserve the `isServerManaged` identity through frontend provider
+  normalization so selected Postgres-backed providers resolve as
+  `{ id, source: "server-stored" }` instead of empty browser BYOK records.
+- Load administrator provider records during the main chat bootstrap rather
+  than only after opening Settings; server state remains authoritative after a
+  refresh.
+- Canonicalize custom provider IDs before using them as Knowledge answer-
+  governance processor aliases, without changing the stored provider ID or
+  model reference.
+- Prove the full frontend-proxy/Go/vault/provider stream with the configured
+  DeepSeek provider and delete the disposable proof conversation.
+
 ## Deferred boundaries
 
 - No provider preset registry or default-URL catalog.

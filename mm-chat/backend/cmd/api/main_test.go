@@ -87,7 +87,7 @@ func TestSingleUserAnswerIdentitiesMergesConfiguredEnabledModels(t *testing.T) {
 		t.Fatalf("singleUserAnswerIdentities() error = %v", err)
 	}
 	want := []knowledge.ProcessorModelIdentity{
-		{Processor: "CUSTOM", EndpointID: "server-stored", ModelID: "custom-chat"},
+		{Processor: "custom", EndpointID: "server-stored", ModelID: "custom-chat"},
 		{Processor: "openai_compatible", EndpointID: "server-default", ModelID: "gpt-5.5"},
 		{Processor: "openai_compatible", EndpointID: "server-default", ModelID: "gpt-5.6-sol"},
 	}
