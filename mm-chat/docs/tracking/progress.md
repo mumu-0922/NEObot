@@ -1423,6 +1423,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
             source authority, and stale-card reload compatibility.
       - [x] G11.9G.6 Explicit-subject Web query isolation with bounded
             context-dependent Knowledge derivation retained.
+  - [x] G11.10 In-thread generation progress: pending server chats now show a
+        compact Knowledge, Web, or model status beneath the user message;
+        empty assistant drafts show generation status, image progress remains
+        separate, and the removed composer-top pipeline bar stays removed.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

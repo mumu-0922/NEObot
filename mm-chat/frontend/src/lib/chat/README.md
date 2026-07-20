@@ -7,6 +7,7 @@ The `src/lib/chat` directory contains chat-domain helpers that are shared by sto
 - `effectiveChatContext.ts` builds the effective provider/search/RAG/plugin/skill context for a request.
 - `entities.ts` normalizes chat-domain entities.
 - `generationLifecycle.ts` coordinates generation state transitions.
+- `generationProgress.ts` infers the pending in-thread status from the question and enabled server sources before the first stream event arrives.
 - `htmlVisualPrompt.ts` builds the optional prompt guidance for safe inline HTML visual output.
 - `messageProcessor.ts` prepares user messages and attachments before sending.
 - `messageOutputBlocks.ts` builds streamed output blocks such as search, reasoning, tool, and content sections.
@@ -40,3 +41,4 @@ const { finalText, finalAttachments, ragSources, userMessage } = processed;
 - Keep provider-specific conversion in lower-level utilities where possible.
 - Add tests for branch behavior, export/import compatibility, and lifecycle transitions.
 - Avoid React imports in this directory.
+- Keep current-public markers in `generationProgress.ts` aligned with the Go source-fusion router.

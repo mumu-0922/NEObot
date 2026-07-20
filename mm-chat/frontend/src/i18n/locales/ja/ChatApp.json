@@ -15,5 +15,8 @@
   "openSidebarAria": "サイドバーを開く",
   "productName": "Neo Chat",
   "newChat": "新規チャット",
-  "newChatAria": "新規チャット"
+  "newChatAria": "新規チャット",
+  "progressSearchingKnowledge": "ナレッジを検索中",
+  "progressSearchingWeb": "ウェブを検索中",
+  "progressGeneratingAnswer": "回答を生成中"
 }

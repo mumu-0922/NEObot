@@ -17,6 +17,7 @@ import Artifact from "../content/Artifact";
 import MessageOutputRenderer from "../content/MessageOutputRenderer";
 import SourceFusionNotice from "../content/SourceFusionNotice";
 import MessageAttachmentView from "./MessageAttachmentView";
+import ChatGenerationProgress from "./ChatGenerationProgress";
 import ImageGenerationProgress from "./ImageGenerationProgress";
 import RAGBlock from "../knowledge/RAGBlock";
 import KnowledgeEvidenceBlock from "../knowledge/KnowledgeEvidenceBlock";
@@ -58,7 +59,6 @@ import {
   Signature,
   FileImage,
 } from "lucide-react";
-import { BubblesLoading } from "../ui/Icons";
 import { useChatStore } from "@/store/core/chatStore";
 import { useUIStore } from "@/store/core/uiStore";
 import { getTaskModel, useSettingsStore } from "@/store/core/settingsStore";
@@ -1493,16 +1493,10 @@ const MessageItem: React.FC<MessageItemProps> = ({
                   isImageGenerationInProgress ? (
                     <ImageGenerationProgress startedAt={message.timestamp} />
                   ) : (
-                    <div
-                      className="relative -top-0.5 h-8 w-14 text-red-300 dark:text-red-400"
-                      role="status"
-                      aria-label={t("generatingResponse")}
-                    >
-                      <BubblesLoading
-                        className="w-full h-full"
-                        aria-hidden="true"
-                      />
-                    </div>
+                    <ChatGenerationProgress
+                      stage="model"
+                      label={t("generatingResponse")}
+                    />
                   )
                 ) : (
                   <MessageOutputRenderer

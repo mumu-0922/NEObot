@@ -8508,3 +8508,13 @@ the smoke conversation was deleted, and an owner-only rollback dump was
 verified. Full evidence and rollback details are recorded in
 `docs/tracking/g11-knowledge-auto-rag-process.md` and
 `docs/contracts/search-provider-admin.md`.
+
+## 2026-07-20 — G11.10 in-thread generation progress cross-reference
+
+The blank pre-stream wait now renders a compact Knowledge, Web, or model status
+inside the conversation, and an empty assistant draft renders generation status
+instead of an unlabelled bubble animation. Focused and full frontend gates,
+production build, Compose source rebuild, and a real Search/provider browser
+flow passed; the temporary smoke conversation was deleted. Exact root cause,
+implementation, evidence, rollback, and the coarse-stage SSE boundary are in
+`docs/tracking/g11-10-chat-generation-progress-process.md`.

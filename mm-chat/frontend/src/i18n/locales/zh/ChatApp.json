@@ -15,5 +15,8 @@
   "openSidebarAria": "打开侧边栏",
   "productName": "Neo Chat",
   "newChat": "新建对话",
-  "newChatAria": "新建对话"
+  "newChatAria": "新建对话",
+  "progressSearchingKnowledge": "正在检索知识库",
+  "progressSearchingWeb": "正在搜索网页",
+  "progressGeneratingAnswer": "正在生成回答"
 }

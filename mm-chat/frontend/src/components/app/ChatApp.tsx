@@ -17,6 +17,7 @@ import {
 import { v7 as uuidv7 } from "uuid";
 
 import Sidebar from "@/components/layout/Sidebar";
+import ChatGenerationProgress from "@/components/chat/ChatGenerationProgress";
 import MessageItem from "@/components/chat/MessageItem";
 import ImageGenerationProgress from "@/components/chat/ImageGenerationProgress";
 import MessageInput, { MessageInputRef } from "@/components/chat/MessageInput";
@@ -86,6 +87,7 @@ import {
   setChatPanelUrlState,
 } from "@/lib/chat/panelUrlState";
 import { buildSearchUpdate } from "@/lib/chat/searchUpdate";
+import { inferPendingChatProgressStage } from "@/lib/chat/generationProgress";
 import { toServerMessageAttachments } from "@/lib/utils/serverAttachments";
 import {
   getKnowledgeAttachmentCollectionIds,
@@ -332,6 +334,20 @@ const ChatApp = () => {
       (!lastVisibleMessage.content && !lastVisibleMessage.attachments?.length)),
   );
   const currentSessionConfig = currentSession?.config;
+  const pendingServerProgressStage =
+    serverModeEnabled &&
+    isGenerating &&
+    !activeImageGeneration &&
+    serverReadState.generation.status === "pending" &&
+    serverReadState.generation.userMessageId === lastVisibleMessage?.id &&
+    lastVisibleMessage?.role === "user"
+      ? inferPendingChatProgressStage({
+          question: lastVisibleMessage.content,
+          searchEnabled: currentSessionConfig?.useSearch ?? false,
+          knowledgeCollectionIds:
+            currentSessionConfig?.selectedKnowledgeCollectionIds,
+        })
+      : null;
   const currentSessionWorkspaceId = currentSession?.workspaceId;
   const serverSessionChatConfig = {
     useSearch: currentSessionConfig?.useSearch ?? false,
@@ -2882,6 +2898,26 @@ const ChatApp = () => {
                           </div>
                         </div>
                       )}
+
+                    {pendingServerProgressStage && (
+                      <div className="message-item flex items-start gap-2.5 rounded-md border border-transparent px-3 py-3 md:gap-3">
+                        <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl border border-white bg-red-300 text-white shadow-sm dark:border-border">
+                          <Bot size={18} aria-hidden="true" />
+                        </div>
+                        <div className="min-w-0 max-w-[84%] rounded-2xl rounded-tl-sm border border-gray-100 bg-gray-50 px-3.5 py-2.5 shadow-sm shadow-gray-900/5 dark:border-border dark:bg-muted/70 md:max-w-[88%] md:px-4 md:py-3">
+                          <ChatGenerationProgress
+                            stage={pendingServerProgressStage}
+                            label={
+                              pendingServerProgressStage === "knowledge"
+                                ? t("progressSearchingKnowledge")
+                                : pendingServerProgressStage === "search"
+                                  ? t("progressSearchingWeb")
+                                  : t("progressGeneratingAnswer")
+                            }
+                          />
+                        </div>
+                      </div>
+                    )}
 
                     <div ref={messagesEndRef} />
                   </div>

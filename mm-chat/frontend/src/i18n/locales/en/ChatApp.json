@@ -15,5 +15,8 @@
   "openSidebarAria": "Open sidebar",
   "productName": "Neo Chat",
   "newChat": "New Chat",
-  "newChatAria": "New chat"
+  "newChatAria": "New chat",
+  "progressSearchingKnowledge": "Searching knowledge",
+  "progressSearchingWeb": "Searching the web",
+  "progressGeneratingAnswer": "Generating answer"
 }
