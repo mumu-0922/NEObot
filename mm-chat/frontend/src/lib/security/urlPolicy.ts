@@ -50,12 +50,14 @@ export interface ProviderRuntimeConfig {
 
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com";
+const DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com";
 
 export function normalizeProviderBaseUrl(
   baseUrl: string | undefined,
   providerType: ProviderRuntimeConfig["type"] | string,
 ): string {
   if (!baseUrl || baseUrl === "default") {
+    if (providerType === "Anthropic") return DEFAULT_ANTHROPIC_BASE_URL;
     return isOpenAIProviderType(providerType)
       ? DEFAULT_OPENAI_BASE_URL
       : DEFAULT_GEMINI_BASE_URL;
@@ -73,6 +75,12 @@ export function normalizeProviderBaseUrl(
     return normalized.replace(/\/v1beta$/, "");
   }
 
+  if (providerType === "Anthropic") {
+    return normalized
+      .replace(/\/v1\/(?:messages|models)$/, "")
+      .replace(/\/v1$/, "");
+  }
+
   return normalized;
 }
 
@@ -84,6 +92,10 @@ export function getProviderModelsUrl(
 
   if (providerType === "Gemini") {
     return `${normalized}/v1beta/models`;
+  }
+
+  if (providerType === "Anthropic") {
+    return `${normalized}/v1/models`;
   }
 
   return `${normalized}/models`;

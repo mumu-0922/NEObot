@@ -14,7 +14,10 @@ import {
   readJsonRequestBody,
 } from "@/lib/api/middleware";
 import { resolveProviderRuntimeConfig } from "@/lib/byok/server";
-import { isOpenAIProviderType } from "@/lib/providers/providerTypes";
+import {
+  isGeminiProviderType,
+  isOpenAIProviderType,
+} from "@/lib/providers/providerTypes";
 import { safeServerLogError } from "@/lib/utils/safeServerLog";
 
 const ExecuteCodeSchema = z.object({
@@ -55,7 +58,7 @@ ${code}
       return NextResponse.json({
         output: response.choices[0].message.content || "No output returned.",
       });
-    } else {
+    } else if (isGeminiProviderType(provider.type)) {
       // Gemini
       const ai = createGeminiClient(provider);
 
@@ -104,6 +107,11 @@ ${code}
 
       return NextResponse.json({ output: response.text || "No output." });
     }
+
+    return NextResponse.json(
+      { error: "This provider does not support code execution here." },
+      { status: 400 },
+    );
   } catch (error: any) {
     safeServerLogError("Code execution error:", error);
     if (error instanceof Error && error.name === "ZodError") {

@@ -52,3 +52,49 @@ was available for an authorized quota smoke; this slice records fixture-backed
 wire proof rather than claiming a live Gemini call. A live smoke can be added
 after an administrator saves and activates a Gemini Key through the existing
 web UI.
+
+## 2026-07-20 — G12.2 native Anthropic Claude
+
+Added an `AnthropicProvider` for the native Messages API at `/v1/messages`.
+It sends `x-api-key` plus the pinned `anthropic-version: 2023-06-01`, supports
+SSE text deltas, bounded provider errors, token usage, system instructions,
+current-branch user/assistant history, JPEG/PNG/GIF/WebP base64 image blocks,
+optional Extended Thinking, cancellation, and native tool-use planning.
+Thinking deltas are deliberately not emitted as answer text.
+Messages and tool requests do not follow upstream redirects, so the custom
+`x-api-key` header cannot be replayed to a redirect target.
+
+The administrator provider contract now accepts `Anthropic` as a protocol and
+tests stored credentials with `GET /v1/models`. Root, `/v1`, `/v1/messages`,
+and `/v1/models` Base URLs normalize to one service root. The existing
+encrypted browser ingress and Postgres vault remain the only credential path;
+no `.env` fallback or vendor preset was added. Transitional Next/local chat,
+image, code, and voice paths fail closed instead of treating Anthropic as
+Gemini, while server chat routes stored Anthropic providers to Go.
+
+Verification:
+
+```text
+backend full tests                              passed
+backend focused race tests                      passed
+backend go vet/source build                     passed
+frontend format/lint/typecheck                  passed
+frontend tests                                  182 files / 872 tests
+frontend production/source image build          passed
+Compose backend/frontend readiness              healthy / HTTP 200
+Compose Postgres/Redis/RAG readiness             healthy
+served production chunks                        Anthropic protocol present
+admin provider list through Go and proxy         HTTP 200
+```
+
+The first Compose restart exposed an unrelated stale RAG image defect: its
+`/app/.venv/bin/rag-worker` entry point was zero bytes, so the container exited
+cleanly and restarted forever. Rebuilding `mm-chat/rag:local` from the current
+source produced a 305-byte launcher; the recreated worker stayed healthy with
+zero restarts. No RAG source or persisted data was changed.
+
+The current database still contains only two OpenAI-compatible providers, so
+there was no Anthropic credential to spend for a real Claude quota call. The
+HTTP request/stream/tool behavior is proven against wire fixtures and the
+source-built runtime; a real Models/chat/image/tool smoke remains additive when
+the administrator later saves an Anthropic Key. G12 is otherwise closed.

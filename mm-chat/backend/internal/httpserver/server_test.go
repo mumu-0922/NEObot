@@ -43,6 +43,7 @@ func TestRuntimeProviderResolverAdmitsBuiltInSearchOnlyForOpenAI(t *testing.T) {
 		{providerType: "OpenAI", wantBuiltIn: true},
 		{providerType: "OpenAI Compatible", wantBuiltIn: false},
 		{providerType: "Gemini", wantBuiltIn: false},
+		{providerType: "Anthropic", wantBuiltIn: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.providerType, func(t *testing.T) {
@@ -74,6 +75,11 @@ func TestRuntimeProviderResolverAdmitsBuiltInSearchOnlyForOpenAI(t *testing.T) {
 			if tt.providerType == "Gemini" {
 				if _, ok := provider.(*chat.GeminiProvider); !ok {
 					t.Fatalf("provider = %T, want *chat.GeminiProvider", provider)
+				}
+			}
+			if tt.providerType == "Anthropic" {
+				if _, ok := provider.(*chat.AnthropicProvider); !ok {
+					t.Fatalf("provider = %T, want *chat.AnthropicProvider", provider)
 				}
 			}
 		})

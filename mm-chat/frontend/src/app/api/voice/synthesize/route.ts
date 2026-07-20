@@ -13,7 +13,10 @@ import {
   decryptSecretEnvelope,
   resolveProviderRuntimeConfig,
 } from "@/lib/byok/server";
-import { isOpenAIProviderType } from "@/lib/providers/providerTypes";
+import {
+  isGeminiProviderType,
+  isOpenAIProviderType,
+} from "@/lib/providers/providerTypes";
 import {
   getDefaultElevenLabsApiKey,
   getDefaultElevenLabsTtsModel,
@@ -266,6 +269,13 @@ export async function POST(request: NextRequest) {
             "Content-Length": audioBuffer.byteLength.toString(),
           },
         });
+      }
+
+      if (!isGeminiProviderType(resolvedProvider.type)) {
+        return NextResponse.json(
+          { error: "This provider does not support speech synthesis here." },
+          { status: 400 },
+        );
       }
 
       const gemini = ProviderFactory.createGeminiClient(resolvedProvider);

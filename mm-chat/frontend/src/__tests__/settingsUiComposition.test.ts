@@ -60,6 +60,9 @@ describe("settings UI primitives", () => {
     expect(providerSettings).toContain("BYOK_CONTEXTS");
     expect(providerSettings).toContain("provider(");
     expect(providerSettings).toContain("keyStoredOnServer");
+    expect(providerSettings).toContain('<option value="Anthropic">');
+    expect(providerSettings).not.toContain('<option value="DeepSeek">');
+    expect(providerSettings).not.toContain('<option value="OpenRouter">');
   });
 
   it("wires Search provider settings to backend admin config and BYOK", () => {

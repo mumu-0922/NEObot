@@ -23,10 +23,12 @@ import { convertAttachmentsToOpenAIResponses } from "../utils/attachments";
 import { convertSchemaToGemini } from "../utils/schema";
 import { logDevWarn } from "../utils/devLogger";
 import {
+  isGeminiProviderType,
   isOpenAIProviderType,
   OPENAI_COMPATIBLE_PROVIDER_TYPE,
 } from "../providers/providerTypes";
 import { safeServerLogError } from "../utils/safeServerLog";
+import { ProviderError } from "../errors";
 
 export interface ChatHandlerOptions {
   provider: ProviderConfig;
@@ -196,7 +198,7 @@ export async function handleChatStream(options: ChatHandlerOptions) {
           useReasoning: config?.useReasoning,
           onChunk: send,
         });
-      } else {
+      } else if (isGeminiProviderType(provider.type)) {
         // Gemini
         await ProviderFactory.assertProviderOutboundAllowed(provider);
         const client = ProviderFactory.createGeminiClient(provider);
@@ -267,6 +269,11 @@ export async function handleChatStream(options: ChatHandlerOptions) {
           useReasoning: config?.useReasoning,
           onChunk: send,
         });
+      } else {
+        throw new ProviderError(
+          "Anthropic is available only through the Go server runtime.",
+          provider.type,
+        );
       }
 
       send({ type: "done" });
@@ -307,7 +314,7 @@ export async function handleSimpleGeneration(
       temperature: 0.7,
     });
     return response.choices[0]?.message?.content || "";
-  } else {
+  } else if (isGeminiProviderType(provider.type)) {
     const client = ProviderFactory.createGeminiClient(provider);
     const result = await client.models.generateContent({
       model: modelName,
@@ -315,4 +322,9 @@ export async function handleSimpleGeneration(
     });
     return result.text || "";
   }
+
+  throw new ProviderError(
+    "Anthropic is available only through the Go server runtime.",
+    provider.type,
+  );
 }

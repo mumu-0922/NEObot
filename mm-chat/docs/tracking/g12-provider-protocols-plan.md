@@ -1,7 +1,8 @@
 # G12 Provider Protocols Plan
 
-Status: in progress. The owner locked Gemini repair first and native Anthropic
-Claude second. Provider presets are explicitly out of scope.
+Status: complete. Gemini server chat and native Anthropic Claude are now
+available as tested wire protocols. Provider presets remain explicitly out of
+scope.
 
 ## Decision
 
@@ -31,7 +32,7 @@ Claude second. Provider presets are explicitly out of scope.
   tool planning through the existing Go Provider contract.
 - Prove that OpenAI-compatible manual Base URLs still resolve exactly as before.
 
-### [ ] G12.2 — Native Anthropic Claude
+### [x] G12.2 — Native Anthropic Claude
 
 - Add the `Anthropic` provider type to the Go runtime contract and existing
   frontend provider editor; do not add named Claude/vendor presets.

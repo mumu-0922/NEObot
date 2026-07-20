@@ -247,7 +247,8 @@ func (s *Service) ProviderModelsForContext(ctx context.Context, request Provider
 	providerType := normalizeProviderType(provider.Type)
 	if providerType != ProviderTypeOpenAI &&
 		providerType != ProviderTypeOpenAICompatible &&
-		providerType != ProviderTypeGemini {
+		providerType != ProviderTypeGemini &&
+		providerType != ProviderTypeAnthropic {
 		return ProviderModelsResponse{}, ErrProviderModelsUnsupported
 	}
 
@@ -271,7 +272,8 @@ func (s *Service) fetchResolvedProviderModels(
 	providerType := normalizeProviderType(string(provider.Type))
 	if providerType != ProviderTypeOpenAI &&
 		providerType != ProviderTypeOpenAICompatible &&
-		providerType != ProviderTypeGemini {
+		providerType != ProviderTypeGemini &&
+		providerType != ProviderTypeAnthropic {
 		return nil, ErrProviderModelsUnsupported
 	}
 	timeout := s.cfg.Provider.Timeout
@@ -984,6 +986,8 @@ func normalizeProviderType(value string) ProviderType {
 	switch normalized {
 	case "gemini", "google_gemini":
 		return ProviderTypeGemini
+	case "anthropic", "anthropic_claude", "claude":
+		return ProviderTypeAnthropic
 	case "openai":
 		return ProviderTypeOpenAI
 	case "openai_compatible", "openai-compatible", "openai compatible":
@@ -1013,6 +1017,9 @@ func providerModelsURL(baseURL string, providerType ProviderType) string {
 	if providerType == ProviderTypeGemini {
 		return normalized + "/v1beta/models"
 	}
+	if providerType == ProviderTypeAnthropic {
+		return normalized + "/v1/models"
+	}
 	return normalized + "/models"
 }
 
@@ -1021,6 +1028,9 @@ func normalizeProviderBaseURL(baseURL string, providerType ProviderType) string 
 	if normalized == "" || normalized == "default" {
 		if providerType == ProviderTypeGemini {
 			return "https://generativelanguage.googleapis.com"
+		}
+		if providerType == ProviderTypeAnthropic {
+			return "https://api.anthropic.com"
 		}
 		return "https://api.openai.com/v1"
 	}
@@ -1031,6 +1041,11 @@ func normalizeProviderBaseURL(baseURL string, providerType ProviderType) string 
 		normalized = strings.TrimSuffix(normalized, "/v1beta/models")
 		normalized = strings.TrimSuffix(normalized, "/v1beta/openai")
 		return strings.TrimSuffix(normalized, "/v1beta")
+	}
+	if providerType == ProviderTypeAnthropic {
+		normalized = strings.TrimSuffix(normalized, "/v1/messages")
+		normalized = strings.TrimSuffix(normalized, "/v1/models")
+		return strings.TrimSuffix(normalized, "/v1")
 	}
 	if providerType == ProviderTypeOpenAI || providerType == ProviderTypeOpenAICompatible {
 		if strings.HasSuffix(normalized, "/v1") {

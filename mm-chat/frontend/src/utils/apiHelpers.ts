@@ -17,7 +17,7 @@ import { logDevError } from "../lib/utils/devLogger";
  * Provider 配置接口
  */
 export interface ProviderConfig {
-  type: "OpenAI" | "Gemini" | "OpenAI Compatible";
+  type: "OpenAI" | "Gemini" | "OpenAI Compatible" | "Anthropic";
   apiKey?: string;
   baseUrl?: string;
 }

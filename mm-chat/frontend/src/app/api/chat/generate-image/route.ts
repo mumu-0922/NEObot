@@ -18,7 +18,10 @@ import {
 import { resolveProviderRuntimeConfig } from "@/lib/byok/server";
 import { normalizeGeneratedImageAttachments } from "@/lib/utils/generatedImages";
 import { safeServerLogError } from "@/lib/utils/safeServerLog";
-import { isOpenAIProviderType } from "@/lib/providers/providerTypes";
+import {
+  isGeminiProviderType,
+  isOpenAIProviderType,
+} from "@/lib/providers/providerTypes";
 
 export async function POST(request: NextRequest) {
   try {
@@ -90,7 +93,7 @@ export async function POST(request: NextRequest) {
         images: [],
         message: "No images generated.",
       });
-    } else {
+    } else if (isGeminiProviderType(provider.type)) {
       // Gemini
       await assertProviderOutboundAllowed(provider);
       const ai = createGeminiClient(provider);
@@ -127,6 +130,11 @@ export async function POST(request: NextRequest) {
         message: "No images generated.",
       });
     }
+
+    return NextResponse.json(
+      { error: "This provider does not support image generation here." },
+      { status: 400 },
+    );
   } catch (error: any) {
     safeServerLogError("Image generation error:", error);
     if (error instanceof Error && error.name === "ZodError") {

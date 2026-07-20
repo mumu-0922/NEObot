@@ -31,7 +31,8 @@ func (s *Service) fetchProviderModelsForConnectionTest(
 	providerType := normalizeProviderType(string(provider.Type))
 	if providerType != ProviderTypeOpenAI &&
 		providerType != ProviderTypeOpenAICompatible &&
-		providerType != ProviderTypeGemini {
+		providerType != ProviderTypeGemini &&
+		providerType != ProviderTypeAnthropic {
 		return nil, ErrProviderConfigUnsupported
 	}
 	timeout := s.cfg.Provider.Timeout
@@ -76,6 +77,9 @@ func fetchProviderModelsBounded(
 	req.Header.Set("Accept", "application/json")
 	if providerType == ProviderTypeGemini {
 		req.Header.Set("x-goog-api-key", apiKey)
+	} else if providerType == ProviderTypeAnthropic {
+		req.Header.Set("x-api-key", apiKey)
+		req.Header.Set("anthropic-version", "2023-06-01")
 	} else {
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}

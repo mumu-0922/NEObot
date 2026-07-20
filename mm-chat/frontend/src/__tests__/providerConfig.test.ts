@@ -63,6 +63,16 @@ describe("provider config normalization", () => {
     ).toBe("OpenAI Compatible");
   });
 
+  it("accepts Anthropic as a provider protocol without a vendor preset", () => {
+    expect(
+      normalizeModelProvider({
+        id: "CLAUDE",
+        type: "Anthropic",
+        baseUrl: "https://api.anthropic.com",
+      })?.type,
+    ).toBe("Anthropic");
+  });
+
   it("migrates persisted OpenAI providers to OpenAI Compatible", async () => {
     const migrated = await migrateCoreSettingsState({
       providers: [

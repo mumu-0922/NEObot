@@ -846,6 +846,45 @@ func TestAdminProviderConnectionSupportsGeminiModelListing(t *testing.T) {
 	}
 }
 
+func TestAdminProviderConnectionSupportsAnthropicModelListing(t *testing.T) {
+	const fixtureCredential = "anthropic-fixture"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" || r.Header.Get("x-api-key") != fixtureCredential ||
+			r.Header.Get("anthropic-version") != "2023-06-01" ||
+			r.Header.Get("Authorization") != "" {
+			t.Fatalf("unexpected Anthropic request path=%q headers=%v", r.URL.Path, r.Header)
+		}
+		_, _ = w.Write([]byte(`{"data":[{"id":"claude-sonnet-4-5"},{"id":"claude-haiku-4-5"}]}`))
+	}))
+	defer upstream.Close()
+
+	vault := testProviderSecretVault(t, "model-v1", 22)
+	repo := &fakeProviderConfigRepository{
+		ok: true,
+		stored: testStoredVaultProvider(
+			t,
+			vault,
+			"ANTHROPIC",
+			ProviderTypeAnthropic,
+			upstream.URL+"/v1/messages",
+			fixtureCredential,
+		),
+	}
+	service := NewService(
+		config.Config{Provider: config.ProviderConfig{Timeout: time.Second}},
+		WithProviderConfigRepository(repo),
+		WithProviderSecretVault(vault),
+	)
+
+	response, err := service.TestAdminProviderConnection(context.Background(), "ANTHROPIC")
+	if err != nil {
+		t.Fatalf("TestAdminProviderConnection error = %v", err)
+	}
+	if got := response.Models; len(got) != 2 || got[0] != "claude-sonnet-4-5" || got[1] != "claude-haiku-4-5" {
+		t.Fatalf("Anthropic models = %#v", got)
+	}
+}
+
 func testStoredVaultProvider(
 	t *testing.T,
 	vault *providersecrets.Vault,

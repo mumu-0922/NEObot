@@ -8,6 +8,7 @@ const (
 	ProviderTypeOpenAICompatible ProviderType = "OpenAI Compatible"
 	ProviderTypeOpenAI           ProviderType = "OpenAI"
 	ProviderTypeGemini           ProviderType = "Gemini"
+	ProviderTypeAnthropic        ProviderType = "Anthropic"
 )
 
 type PublicConfig struct {

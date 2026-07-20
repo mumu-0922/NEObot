@@ -4,7 +4,7 @@
 
 import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
-import { AuthenticationError } from "../errors";
+import { AuthenticationError, ProviderError } from "../errors";
 import {
   getProviderApiKey,
   normalizeProviderBaseUrl,
@@ -13,7 +13,7 @@ import {
   getSafeUrlPolicy,
 } from "../security/urlPolicy";
 import { assertOutboundUrlAllowed } from "../security/safeFetch";
-import { isOpenAIProviderType } from "./providerTypes";
+import { isGeminiProviderType, isOpenAIProviderType } from "./providerTypes";
 
 export type ProviderConfig = ProviderRuntimeConfig;
 
@@ -95,8 +95,15 @@ export class ProviderFactory {
    * 创建客户端（自动选择类型）
    */
   static createClient(provider: ProviderConfig): OpenAI | GoogleGenAI {
-    return isOpenAIProviderType(provider.type)
-      ? this.createOpenAIClient(provider)
-      : this.createGeminiClient(provider);
+    if (isOpenAIProviderType(provider.type)) {
+      return this.createOpenAIClient(provider);
+    }
+    if (isGeminiProviderType(provider.type)) {
+      return this.createGeminiClient(provider);
+    }
+    throw new ProviderError(
+      "Anthropic is available only through the Go server runtime.",
+      provider.type,
+    );
   }
 }

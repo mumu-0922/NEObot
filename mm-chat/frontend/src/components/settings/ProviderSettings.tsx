@@ -105,7 +105,9 @@ const ProviderSettings = () => {
       ? "https://aistudio.google.com/app/apikey"
       : currentProvider?.type === "OpenAI"
         ? "https://platform.openai.com/api-keys"
-        : undefined;
+        : currentProvider?.type === "Anthropic"
+          ? "https://console.anthropic.com/settings/keys"
+          : undefined;
 
   useEffect(() => {
     if (!_hasHydrated || !serverModeEnabled) return;
@@ -631,6 +633,7 @@ const ProviderSettings = () => {
                         className="w-full px-3 py-2 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-400 transition-[border-color,box-shadow] appearance-none text-gray-800 dark:text-foreground"
                       >
                         <option value="Gemini">Gemini</option>
+                        <option value="Anthropic">{t("anthropic")}</option>
                         <option value="OpenAI">{t("openaiResponses")}</option>
                         <option value="OpenAI Compatible">
                           {t("openaiCompatible")}
@@ -674,7 +677,9 @@ const ProviderSettings = () => {
                       placeholder={
                         currentProvider.type === "Gemini"
                           ? t("geminiBaseUrlPlaceholder")
-                          : t("openaiBaseUrlPlaceholder")
+                          : currentProvider.type === "Anthropic"
+                            ? t("anthropicBaseUrlPlaceholder")
+                            : t("openaiBaseUrlPlaceholder")
                       }
                       className="w-full px-3 py-2 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-400 transition-[border-color,box-shadow] font-mono text-gray-600 dark:text-foreground/85"
                     />

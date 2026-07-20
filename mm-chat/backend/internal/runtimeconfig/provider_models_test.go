@@ -111,3 +111,20 @@ func TestFetchProviderModelsBoundedCapsNormalizedModels(t *testing.T) {
 		t.Fatalf("bounded models = first %q, last %q", models[0], models[len(models)-1])
 	}
 }
+
+func TestAnthropicProviderEndpointNormalization(t *testing.T) {
+	for input, want := range map[string]string{
+		"":                                      "https://api.anthropic.com",
+		"default":                               "https://api.anthropic.com",
+		"https://api.anthropic.com/v1":          "https://api.anthropic.com",
+		"https://api.anthropic.com/v1/messages": "https://api.anthropic.com",
+		"https://proxy.example/anthropic/v1/models": "https://proxy.example/anthropic",
+	} {
+		if got := normalizeProviderBaseURL(input, ProviderTypeAnthropic); got != want {
+			t.Fatalf("normalizeProviderBaseURL(%q) = %q, want %q", input, got, want)
+		}
+	}
+	if got := providerModelsURL("https://api.anthropic.com/v1/messages", ProviderTypeAnthropic); got != "https://api.anthropic.com/v1/models" {
+		t.Fatalf("providerModelsURL() = %q", got)
+	}
+}

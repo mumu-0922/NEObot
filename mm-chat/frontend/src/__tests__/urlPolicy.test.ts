@@ -53,6 +53,18 @@ describe("url policy and provider runtime helpers", () => {
     ).toBe("https://generativelanguage.googleapis.com/v1beta/models");
   });
 
+  it("normalizes Anthropic service roots and Models endpoint", () => {
+    expect(
+      normalizeProviderBaseUrl(
+        "https://api.anthropic.com/v1/messages",
+        "Anthropic",
+      ),
+    ).toBe("https://api.anthropic.com");
+    expect(getProviderModelsUrl("default", "Anthropic")).toBe(
+      "https://api.anthropic.com/v1/models",
+    );
+  });
+
   it("does not use legacy provider environment variables as API key fallbacks", () => {
     process.env.GEMINI_API_KEY = "gemini-env-secret";
     process.env.API_KEY = "api-env-secret";
@@ -61,6 +73,7 @@ describe("url policy and provider runtime helpers", () => {
     expect(getProviderApiKey({ type: "Gemini" })).toBe("");
     expect(getProviderApiKey({ type: "OpenAI" })).toBe("");
     expect(getProviderApiKey({ type: "OpenAI Compatible" })).toBe("");
+    expect(getProviderApiKey({ type: "Anthropic" })).toBe("");
   });
 
   it("blocks unsafe plugin URLs by default", () => {
