@@ -389,3 +389,20 @@ post-smoke owner conversation setting                 restored to Off/High
 No provider Key, response text, reasoning text, or private message content was
 recorded. Rollback is the G12.5 implementation commit; no schema or provider
 secret migration is involved.
+
+## 2026-07-21 — G12.5.1 reasoning selection visibility
+
+The reasoning menu previously depended on the small default radio indicator,
+which was too subtle to identify the active effort at a glance. The selected
+row now uses the existing violet reasoning accent in light and dark themes and
+shows an explicit check mark on the right. Selection behavior, persistence,
+provider mapping, and menu labels are unchanged.
+
+Verification:
+
+```text
+focused composition test                             1 / 1 passed
+frontend tests                                       183 files / 879 tests
+frontend lint / typecheck / format / build           passed
+deployed selected-row DOM                            checked + violet + check
+```

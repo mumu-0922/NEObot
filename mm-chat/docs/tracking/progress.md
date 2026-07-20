@@ -1490,6 +1490,8 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           Medium/High plus conditional XHigh/Max UI, server conversation
           persistence, validated Go normalization, OpenAI/Responses and
           Anthropic mappings, live Low/Max provider proofs, and reload proof.
+      - [x] G12.5.1 Selected reasoning effort visibility: the active menu row
+            now uses a violet highlight and explicit check mark.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

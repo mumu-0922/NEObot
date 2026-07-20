@@ -124,6 +124,10 @@ describe("MessageInput composition", () => {
     expect(messageInput).toContain("effectiveUseReasoning");
     expect(messageInput).toContain("reasoningEffortOptions.map");
     expect(messageInput).toContain('value="off"');
+    expect(messageInput).toContain("reasoningEffortItemClass");
+    expect(messageInput).toContain("data-[state=checked]:bg-violet-100");
+    expect(messageInput).toContain("indicator={");
+    expect(messageInput).toContain("<Check");
     expect(messageInput).toContain("!allowReasoningWhenSessionToolsDisabled");
     expect(messageInput).toContain('lower.includes("gpt-5")');
     expect(messageInput.indexOf("{isReasoningSupported && (")).toBeLessThan(

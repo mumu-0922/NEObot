@@ -29,6 +29,7 @@ import {
   Library,
   PencilSparkles,
   Sparkles,
+  Check,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { Attachment, ReasoningEffort } from "@/types";
@@ -140,6 +141,9 @@ const iconButtonFocusClass =
 
 const iconButtonBaseClass =
   "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg";
+
+const reasoningEffortItemClass =
+  "data-[state=checked]:bg-violet-100 data-[state=checked]:font-medium data-[state=checked]:text-violet-700 dark:data-[state=checked]:bg-violet-900/40 dark:data-[state=checked]:text-violet-200";
 
 const loadChatService = () => import("@/services/api/chatService");
 const EMPTY_KNOWLEDGE_COLLECTION_IDS: readonly string[] = [];
@@ -1795,6 +1799,10 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                     <DropdownMenuRadioItem
                       value="off"
                       indicatorPosition="right"
+                      indicator={
+                        <Check size={14} strokeWidth={2.5} aria-hidden="true" />
+                      }
+                      className={reasoningEffortItemClass}
                     >
                       {t("reasoningEffortOff")}
                     </DropdownMenuRadioItem>
@@ -1803,6 +1811,14 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                         key={effort}
                         value={effort}
                         indicatorPosition="right"
+                        indicator={
+                          <Check
+                            size={14}
+                            strokeWidth={2.5}
+                            aria-hidden="true"
+                          />
+                        }
+                        className={reasoningEffortItemClass}
                       >
                         {reasoningEffortLabel(effort)}
                       </DropdownMenuRadioItem>
