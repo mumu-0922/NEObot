@@ -1433,6 +1433,17 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
   - [x] G11.12 Stream scroll follow and composer clearance: manual upward
         scrolling pauses live bottom-follow, returning to the bottom resumes
         it, and measured input height keeps terminal output unobscured.
+  - [ ] G11.13 Server conversation context and memory, executed in separate
+        tested commits per
+        `docs/tracking/g11-conversation-context-memory-plan.md`.
+    - [x] G11.13A Current-branch replay: the browser persists the active parent,
+          Go reconstructs legacy and explicit branches from Postgres, final
+          Knowledge/Web augmentation replaces only the current user item, and
+          Chat Completions plus Responses receive ordered history. A real
+          provider replay survived backend restart and its disposable rows were
+          deleted.
+    - [ ] G11.13B Token-budget soft consolidation with original rows retained.
+    - [ ] G11.13C Optional inspectable durable user memory.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

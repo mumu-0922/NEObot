@@ -45,10 +45,17 @@ type ProviderRequest struct {
 	AssistantMessageID string
 	Prompt             string
 	SystemPrompt       string
+	Messages           []ProviderMessage
 	Attachments        []ProviderAttachment
 	UseReasoning       bool
 	ModelRef           ModelRef
 	Metadata           map[string]any
+}
+
+type ProviderMessage struct {
+	Role        string
+	Content     string
+	Attachments []ProviderAttachment
 }
 
 type ProviderAttachment struct {

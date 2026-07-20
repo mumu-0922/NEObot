@@ -89,9 +89,12 @@ func (p *OpenAICompatibleProvider) StreamChat(
 	}
 
 	payload, err := json.Marshal(openAICompatibleChatCompletionRequest{
-		Model:           model,
-		Stream:          true,
-		Messages:        openAICompatibleMessages(input.SystemPrompt, input.Prompt, input.Attachments),
+		Model:  model,
+		Stream: true,
+		Messages: openAICompatibleMessages(
+			input.SystemPrompt,
+			providerMessagesOrPrompt(input),
+		),
 		ReasoningEffort: openAICompatibleReasoningEffort(input.UseReasoning),
 	})
 	if err != nil {
@@ -245,9 +248,11 @@ func (p *OpenAICompatibleProvider) PlanTools(
 	}
 
 	payload, err := json.Marshal(openAICompatibleChatCompletionRequest{
-		Model:      modelRef.ModelID,
-		Stream:     false,
-		Messages:   openAICompatibleMessages("", input.Prompt, nil),
+		Model:  modelRef.ModelID,
+		Stream: false,
+		Messages: openAICompatibleMessages("", []ProviderMessage{{
+			Role: "user", Content: input.Prompt,
+		}}),
 		Tools:      input.Tools,
 		ToolChoice: "auto",
 	})
@@ -350,8 +355,8 @@ type openAICompatibleImageURLPart struct {
 	URL string `json:"url"`
 }
 
-func openAICompatibleMessages(systemPrompt string, prompt string, attachments []ProviderAttachment) []openAICompatibleMessage {
-	messages := make([]openAICompatibleMessage, 0, 2)
+func openAICompatibleMessages(systemPrompt string, providerMessages []ProviderMessage) []openAICompatibleMessage {
+	messages := make([]openAICompatibleMessage, 0, len(providerMessages)+1)
 	if systemPrompt = strings.TrimSpace(systemPrompt); systemPrompt != "" {
 		messages = append(messages, openAICompatibleMessage{
 			Role:    "system",
@@ -359,12 +364,29 @@ func openAICompatibleMessages(systemPrompt string, prompt string, attachments []
 		})
 	}
 
-	messages = append(messages, openAICompatibleMessage{
-		Role:    "user",
-		Content: openAICompatibleUserContent(prompt, attachments),
-	})
+	for _, message := range providerMessages {
+		content := any(message.Content)
+		if message.Role == "user" {
+			content = openAICompatibleUserContent(message.Content, message.Attachments)
+		}
+		messages = append(messages, openAICompatibleMessage{
+			Role:    message.Role,
+			Content: content,
+		})
+	}
 
 	return messages
+}
+
+func providerMessagesOrPrompt(input ProviderRequest) []ProviderMessage {
+	if len(input.Messages) > 0 {
+		return input.Messages
+	}
+	return []ProviderMessage{{
+		Role:        "user",
+		Content:     input.Prompt,
+		Attachments: input.Attachments,
+	}}
 }
 
 func openAICompatibleUserContent(prompt string, attachments []ProviderAttachment) any {

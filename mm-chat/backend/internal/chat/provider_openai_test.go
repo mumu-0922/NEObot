@@ -136,6 +136,53 @@ func TestOpenAIProviderOrdinaryStreamStillUsesChatCompletions(t *testing.T) {
 	}
 }
 
+func TestOpenAIResponsesWebSearchSendsConversationHistory(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request openAIResponsesRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		if len(request.Input) != 3 {
+			t.Fatalf("input = %#v, want three history items", request.Input)
+		}
+		wantRoles := []string{"user", "assistant", "user"}
+		wantText := []string{"remember amber", "noted", "what color?"}
+		for index := range wantRoles {
+			if request.Input[index].Role != wantRoles[index] ||
+				len(request.Input[index].Content) != 1 ||
+				request.Input[index].Content[0].Text != wantText[index] {
+				t.Fatalf("input[%d] = %#v", index, request.Input[index])
+			}
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"type\":\"response.completed\",\"response\":{}}\n\n"))
+	}))
+	defer server.Close()
+
+	provider, err := NewOpenAIProvider(OpenAICompatibleProviderConfig{
+		BaseURL: server.URL, APIKey: strings.Repeat("x", 32), DefaultModel: "gpt-search",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := provider.StreamChatWithModelBuiltInSearch(context.Background(), ProviderRequest{
+		Messages: []ProviderMessage{
+			{Role: "user", Content: "remember amber"},
+			{Role: "assistant", Content: "noted"},
+			{Role: "user", Content: "what color?"},
+		},
+		ModelRef: ModelRef{ProviderID: "openai", ModelID: "gpt-search"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+	}
+}
+
 func TestOpenAIResponsesFailuresRemainRedacted(t *testing.T) {
 	const apiKey = "responses-key-must-not-leak"
 	tests := []struct {

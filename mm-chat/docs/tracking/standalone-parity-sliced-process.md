@@ -5205,3 +5205,20 @@ deleted row unchanged, and ended at 2 current / 0 changed / 0 blocked with
 healthy frontend/backend and schema version 27. No provider quota was used.
 Detailed evidence is in `docs/tracking/g11-knowledge-auto-rag-process.md` and
 the runbook is in `docs/deployment/secret-rotation.md`.
+
+## 2026-07-20 — G11.13A server conversation context
+
+Go now reconstructs the selected root-to-current-user branch from Postgres and
+sends it through both OpenAI-compatible Chat Completions and OpenAI Responses
+built-in Search. Explicit branch metadata wins, explicit null remains a root,
+and old rows without parents follow the frontend's active-path fallback. Only
+the current user item receives final Knowledge/Web prompt augmentation.
+
+Ordinary browser sends now persist the active leaf as their parent. Full Go and
+frontend gates passed. A real `gpt-5.6-sol` two-turn marker replay still
+recalled the first turn after a backend restart; parent lineage and four
+reloaded messages were verified, then the conversation and captures were
+deleted. Token consolidation and optional durable memory remain separate
+slices. Detailed scope, evidence, and rollback are in
+`docs/tracking/g11-conversation-context-memory-plan.md` and
+`docs/tracking/g11-conversation-context-memory-process.md`.

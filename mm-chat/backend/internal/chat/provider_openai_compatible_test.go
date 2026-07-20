@@ -161,6 +161,52 @@ func TestOpenAICompatibleProviderSendsImageAttachments(t *testing.T) {
 	}
 }
 
+func TestOpenAICompatibleProviderSendsConversationHistory(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload openAICompatibleChatCompletionRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode provider payload: %v", err)
+		}
+		if len(payload.Messages) != 4 {
+			t.Fatalf("messages = %#v, want system plus three conversation messages", payload.Messages)
+		}
+		wantRoles := []string{"system", "user", "assistant", "user"}
+		wantContent := []string{"be consistent", "remember violet", "noted", "what color?"}
+		for index := range wantRoles {
+			if payload.Messages[index].Role != wantRoles[index] || payload.Messages[index].Content != wantContent[index] {
+				t.Fatalf("message[%d] = %#v, want %s/%q", index, payload.Messages[index], wantRoles[index], wantContent[index])
+			}
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer server.Close()
+
+	provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+		BaseURL: server.URL, APIKey: "test-secret-token", DefaultModel: "gpt-test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := provider.StreamChat(context.Background(), ProviderRequest{
+		SystemPrompt: "be consistent",
+		Messages: []ProviderMessage{
+			{Role: "user", Content: "remember violet"},
+			{Role: "assistant", Content: "noted"},
+			{Role: "user", Content: "what color?"},
+		},
+		ModelRef: ModelRef{ProviderID: OpenAICompatibleProviderID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+	}
+}
+
 func TestOpenAICompatibleProviderUsesDefaultModel(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var payload openAICompatibleChatCompletionRequest

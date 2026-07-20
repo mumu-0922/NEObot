@@ -1244,10 +1244,16 @@ const ChatApp = () => {
         .join("\n\n");
       const runtimeProvider =
         await buildRuntimeProviderConfigForModel(routedModel);
+      const latestServerState = useChatStore.getState().serverReadState;
+      const parentMessageId =
+        latestServerState.currentSessionId === targetSessionId
+          ? getActiveMessagePath(latestServerState.activeMessageTree).at(-1)?.id
+          : undefined;
 
       await sendServerMessageAndStream({
         sessionId: targetSessionId,
         content: text,
+        parentMessageId,
         attachments: toServerMessageAttachments(uploadedAttachments),
         model: routedModel,
         config: serverSessionChatConfig,

@@ -847,6 +847,32 @@ func TestHandlerForwardsReasoningToggleToProvider(t *testing.T) {
 	}
 }
 
+func TestHandlerForwardsCurrentConversationBranchToProvider(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "Context", 3))
+	repo.messages[testConversationID] = []Message{
+		fakeMessage("77777777-7777-4777-8777-777777777777", testConversationID, 0, "user", "remember cobalt"),
+		fakeMessage("88888888-8888-4888-8888-888888888888", testConversationID, 1, "assistant", "noted"),
+		fakeMessage(testMessageID, testConversationID, 2, "user", "what color?"),
+	}
+	provider := &capturingProvider{}
+	handler := NewHandler(NewService(repo), WithProvider(provider))
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"context"},"idempotencyKey":"stream-key-context"}`,
+	)
+
+	assertStreamStatus(t, rec, http.StatusOK)
+	assertProviderMessages(t, provider.input.Messages, []ProviderMessage{
+		{Role: "user", Content: "remember cobalt"},
+		{Role: "assistant", Content: "noted"},
+		{Role: "user", Content: "what color?"},
+	})
+}
+
 func TestHandlerUsesSelectedOpenAIModelBuiltInSearchAndStreamsSources(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
@@ -1317,6 +1343,9 @@ func TestHandlerAutoRAGStreamsAugmentedAnswerAfterGovernance(t *testing.T) {
 		!strings.Contains(provider.input.Prompt, "[K1] alpha evidence source") ||
 		!strings.Contains(provider.input.Prompt, "Summarize the indexed source") {
 		t.Fatalf("provider prompt = %q", provider.input.Prompt)
+	}
+	if len(provider.input.Messages) != 1 || provider.input.Messages[0].Content != provider.input.Prompt {
+		t.Fatalf("provider messages did not retain the final grounded prompt: %#v", provider.input.Messages)
 	}
 	if !strings.Contains(provider.input.SystemPrompt, "additional context") ||
 		!strings.Contains(provider.input.SystemPrompt, "Prefer concise answers.") {

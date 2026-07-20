@@ -63,7 +63,7 @@ func (p *OpenAIProvider) StreamChatWithModelBuiltInSearch(
 	payload, err := json.Marshal(openAIResponsesRequest{
 		Model:        modelRef.ModelID,
 		Stream:       true,
-		Input:        openAIResponsesInput(input.Prompt, input.Attachments),
+		Input:        openAIResponsesInput(providerMessagesOrPrompt(input)),
 		Instructions: strings.TrimSpace(input.SystemPrompt),
 		Tools:        []openAIResponsesTool{{Type: "web_search_preview"}},
 		Include: []string{
@@ -161,23 +161,30 @@ type openAIResponsesReasoningConfig struct {
 	Summary string `json:"summary"`
 }
 
-func openAIResponsesInput(prompt string, attachments []ProviderAttachment) []openAIResponsesInputItem {
-	content := make([]openAIResponsesInputPart, 0, len(attachments)+1)
-	if prompt = strings.TrimSpace(prompt); prompt != "" {
-		content = append(content, openAIResponsesInputPart{Type: "input_text", Text: prompt})
-	}
-	for _, attachment := range attachments {
-		mimeType := strings.TrimSpace(attachment.MimeType)
-		if mimeType == "" {
-			mimeType = "application/octet-stream"
+func openAIResponsesInput(messages []ProviderMessage) []openAIResponsesInputItem {
+	input := make([]openAIResponsesInputItem, 0, len(messages))
+	for _, message := range messages {
+		content := make([]openAIResponsesInputPart, 0, len(message.Attachments)+1)
+		if text := strings.TrimSpace(message.Content); text != "" {
+			content = append(content, openAIResponsesInputPart{Type: "input_text", Text: text})
 		}
-		content = append(content, openAIResponsesInputPart{
-			Type: "input_image",
-			ImageURL: "data:" + mimeType + ";base64," +
-				base64.StdEncoding.EncodeToString(attachment.Data),
+		for _, attachment := range message.Attachments {
+			mimeType := strings.TrimSpace(attachment.MimeType)
+			if mimeType == "" {
+				mimeType = "application/octet-stream"
+			}
+			content = append(content, openAIResponsesInputPart{
+				Type: "input_image",
+				ImageURL: "data:" + mimeType + ";base64," +
+					base64.StdEncoding.EncodeToString(attachment.Data),
+			})
+		}
+		input = append(input, openAIResponsesInputItem{
+			Role:    message.Role,
+			Content: content,
 		})
 	}
-	return []openAIResponsesInputItem{{Role: "user", Content: content}}
+	return input
 }
 
 func openAIResponsesReasoning(enabled bool) *openAIResponsesReasoningConfig {

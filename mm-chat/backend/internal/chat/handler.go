@@ -1093,6 +1093,21 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		providerSystemPrompt,
 		fusionPlan,
 	)
+	conversationMessages, err := h.service.ListMessages(r.Context(), conversationID)
+	if err != nil {
+		h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
+			Status:   "failed",
+			Metadata: map[string]any{"runId": runID, "errorCode": "CONTEXT_READ_FAILED"},
+		})
+		writeServiceError(w, err)
+		return
+	}
+	providerMessages := buildProviderConversationMessages(
+		conversationMessages,
+		userMessage.ID,
+		providerPrompt,
+		providerAttachments,
+	)
 	webMessageMetadata := func(decision autoRAGDecision, extra map[string]any) map[string]any {
 		metadata := withWebSearchMessageMetadata(
 			autoRAGMessageMetadata(runID, ragSelection, decision, extra),
@@ -1122,6 +1137,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		AssistantMessageID: assistantMessage.ID,
 		Prompt:             providerPrompt,
 		SystemPrompt:       providerSystemPrompt,
+		Messages:           providerMessages,
 		Attachments:        providerAttachments,
 		UseReasoning:       configBool(request.Config, "useReasoning"),
 		ModelRef:           *modelRef,

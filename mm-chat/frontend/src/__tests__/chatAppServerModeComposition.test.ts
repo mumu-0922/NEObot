@@ -19,6 +19,10 @@ describe("ChatApp server mode composition", () => {
     expect(chatApp).toContain("serverReadState.sessions");
     expect(chatApp).toContain("serverReadState.activeMessages");
     expect(chatApp).toContain("sendServerMessageAndStream");
+    expect(chatApp).toContain(
+      "getActiveMessagePath(latestServerState.activeMessageTree).at(-1)?.id",
+    );
+    expect(chatApp).toContain("parentMessageId,");
     expect(chatApp).toContain("activeImageGeneration");
     expect(chatApp).toContain("ImageGenerationProgress");
     expect(chatApp).toContain("startedAt: Date.now()");

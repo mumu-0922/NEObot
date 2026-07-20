@@ -606,8 +606,8 @@ Slice sequence:
           for future registry promotion, but it is not a required standalone
           deletion gate.
     - [x] G10.2b.2 Compose source-build proof: `docker compose ... build
-    backend frontend rag-worker` and `docker compose ... up -d backend
-    frontend rag-worker` passed using only the standalone project tree.
+backend frontend rag-worker` and `docker compose ... up -d backend
+frontend rag-worker` passed using only the standalone project tree.
 - [x] G10.3 Visual/interaction closure: record desktop and mobile smoke for
       app shell, chat streaming, model/provider visibility, Knowledge citation
       cards, Files/upload when configured, and navigation.
@@ -675,6 +675,14 @@ Slice sequence:
       attach stored artifacts to the assistant message, return them through
       `message.completed`, and allow the Next rewrite proxy to remain open for
       up to five minutes.
+- [ ] G11.13 Server conversation context and memory, sliced according to
+      `../tracking/g11-conversation-context-memory-plan.md`.
+  - [x] G11.13A Current-branch replay: Postgres root-to-current history reaches
+        both provider payload families, legacy null-parent rows remain usable,
+        future ordinary sends persist their active parent, and a real restart
+        smoke preserved the second-turn answer.
+  - [ ] G11.13B Token-budget soft consolidation without original-row deletion.
+  - [ ] G11.13C Optional inspectable durable user memory.
 
 Targeted tests:
 
@@ -685,20 +693,20 @@ Targeted tests:
 
 ## Completion Ledger
 
-| Group                                    | Status      | Completion Rule                                                                                    |
-| ---------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------- |
-| G0 Plan Freeze and Guardrails            | Complete    | Docs, indexes, progress, and process log updated                                                   |
-| G1 Conversation and Message Operations   | Complete    | G1.1-G1.6 complete; only paused cross-group search toggle remains outside G1                       |
-| G2 Related Questions and Agent Catalogs  | Complete    | Related-question/catalog Next routes replaced                                                      |
-| G3 Auth, Config, Provider Settings, BYOK | Complete    | Server-auth/config/provider lifecycle verified                                                     |
-| G4 Plugin Final Ownership                | Complete    | G4.5c/G4.6b Go ownership and G9.4 Next route deletion complete                                     |
-| G5 Search/Web Enrichment                 | Paused      | Owner reopens, then server-owned search passes gates                                               |
-| G6 Voice/Image/Code Jobs                 | In progress | Image generation is reopened through Go artifacts; voice executor remains                          |
-| G7 Knowledge/RAG/Citations               | Complete    | Live MinerU + Jina + Postgres strict citation loop passed                                          |
-| G8 Teams/Knowledge UI                    | Complete    | G8.1-G8.5 frontend control-plane wiring and isolation smoke passed                                 |
-| G9 Data Authority/Route Removal          | Complete    | G9.1-G9.6 route freeze, route deletion, local write-authority, and clean-copy preflight passed     |
-| G10 Final Closure/Delete Plan            | In progress | G10.1-G10.3 and build-based G10.2 complete; owner cleanup blocked by G11 parity regressions        |
-| G11 Owner Parity Regression Closure      | Complete    | G11.1 image understanding, G11.2 Team UI removal, and G11.3 browser provider runtime flow complete |
+| Group                                    | Status      | Completion Rule                                                                                |
+| ---------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------- |
+| G0 Plan Freeze and Guardrails            | Complete    | Docs, indexes, progress, and process log updated                                               |
+| G1 Conversation and Message Operations   | Complete    | G1.1-G1.6 complete; only paused cross-group search toggle remains outside G1                   |
+| G2 Related Questions and Agent Catalogs  | Complete    | Related-question/catalog Next routes replaced                                                  |
+| G3 Auth, Config, Provider Settings, BYOK | Complete    | Server-auth/config/provider lifecycle verified                                                 |
+| G4 Plugin Final Ownership                | Complete    | G4.5c/G4.6b Go ownership and G9.4 Next route deletion complete                                 |
+| G5 Search/Web Enrichment                 | Paused      | Owner reopens, then server-owned search passes gates                                           |
+| G6 Voice/Image/Code Jobs                 | In progress | Image generation is reopened through Go artifacts; voice executor remains                      |
+| G7 Knowledge/RAG/Citations               | Complete    | Live MinerU + Jina + Postgres strict citation loop passed                                      |
+| G8 Teams/Knowledge UI                    | Complete    | G8.1-G8.5 frontend control-plane wiring and isolation smoke passed                             |
+| G9 Data Authority/Route Removal          | Complete    | G9.1-G9.6 route freeze, route deletion, local write-authority, and clean-copy preflight passed |
+| G10 Final Closure/Delete Plan            | In progress | G10.1-G10.3 and build-based G10.2 complete; owner cleanup blocked by G11 parity regressions    |
+| G11 Owner Parity Regression Closure      | In progress | G11.13A context replay complete; token consolidation and optional durable memory remain        |
 
 ## Update Discipline
 
