@@ -32,8 +32,8 @@ func TestOpenAICompatibleProviderStreamsDeltasAndUsage(t *testing.T) {
 		if !payload.Stream {
 			t.Fatalf("stream = false, want true")
 		}
-		if payload.ReasoningEffort != "high" {
-			t.Fatalf("reasoning_effort = %q, want high", payload.ReasoningEffort)
+		if payload.ReasoningEffort != "xhigh" {
+			t.Fatalf("reasoning_effort = %q, want xhigh", payload.ReasoningEffort)
 		}
 		if len(payload.Messages) != 2 {
 			t.Fatalf("messages len = %d, want 2", len(payload.Messages))
@@ -63,10 +63,11 @@ func TestOpenAICompatibleProviderStreamsDeltasAndUsage(t *testing.T) {
 	}
 
 	events, err := provider.StreamChat(context.Background(), ProviderRequest{
-		Prompt:       "hello",
-		SystemPrompt: "be terse",
-		UseReasoning: true,
-		ModelRef:     ModelRef{ProviderID: "openai_compatible", ModelID: "gpt-5.5"},
+		Prompt:          "hello",
+		SystemPrompt:    "be terse",
+		UseReasoning:    true,
+		ReasoningEffort: ReasoningEffortXHigh,
+		ModelRef:        ModelRef{ProviderID: "openai_compatible", ModelID: "gpt-5.5"},
 	})
 	if err != nil {
 		t.Fatalf("StreamChat() error = %v", err)

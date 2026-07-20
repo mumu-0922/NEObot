@@ -241,11 +241,15 @@ export interface SessionConfig {
   useSearch?: boolean;
   searchResultsLimit?: number;
   useReasoning?: boolean;
+  reasoningEffort?: ReasoningEffort;
   activePlugins?: string[];
   activeSkills?: string[];
   selectedKnowledgeCollectionIds?: string[];
   knowledgeCollectionIds?: string[];
 }
+
+export type ReasoningEffort =
+  "auto" | "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface Session {
   id: string;
@@ -294,6 +298,7 @@ export interface Assistant {
 export interface ChatConfig {
   useSearch: boolean;
   useReasoning: boolean;
+  reasoningEffort: ReasoningEffort;
   useRAG?: boolean;
   temperature: number;
 }

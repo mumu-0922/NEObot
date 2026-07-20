@@ -98,8 +98,10 @@ func (p *AnthropicProvider) StreamChat(
 		Messages:  messages,
 	}
 	if input.UseReasoning {
+		budgetTokens := anthropicThinkingBudget(effectiveReasoningEffort(input))
+		request.MaxTokens = anthropicMaxTokens(budgetTokens)
 		request.Thinking = &anthropicThinkingConfig{
-			Type: "enabled", BudgetTokens: defaultAnthropicThinkingTokens,
+			Type: "enabled", BudgetTokens: budgetTokens,
 		}
 	}
 	payload, err := json.Marshal(request)

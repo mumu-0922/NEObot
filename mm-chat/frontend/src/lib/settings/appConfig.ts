@@ -7,6 +7,7 @@ import {
   DEFAULT_SYSTEM_SETTINGS,
 } from "../../config/defaults";
 import type { ChatConfig, SystemSettings } from "../../types";
+import { normalizeReasoningEffort } from "../chat/reasoning";
 
 function clampInteger(
   value: unknown,
@@ -57,6 +58,10 @@ export function normalizeChatConfig(config: unknown): ChatConfig {
       typeof raw.useReasoning === "boolean"
         ? raw.useReasoning
         : DEFAULT_CHAT_CONFIG.useReasoning,
+    reasoningEffort: normalizeReasoningEffort(
+      raw.reasoningEffort,
+      DEFAULT_CHAT_CONFIG.reasoningEffort,
+    ),
     useRAG:
       typeof raw.useRAG === "boolean" ? raw.useRAG : DEFAULT_CHAT_CONFIG.useRAG,
     temperature: clampNumber(

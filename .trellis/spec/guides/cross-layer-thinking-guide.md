@@ -114,6 +114,27 @@ Canonical project example:
 `mm-chat/docs/contracts/media-job-executor-seams.md` defines the executable
 GPT Image request, response, validation, and test contract.
 
+## Semantic Provider Capability Checklist
+
+Use this when one UI control maps to different provider request contracts:
+
+- [ ] Store a provider-neutral semantic value in product state; translate it at
+      the backend boundary instead of exposing one provider's raw budget/enum
+- [ ] Decide and test both persistence scopes: current server-owned entity and
+      the browser default used when a new entity is created
+- [ ] Preserve legacy records that predate the new field with an explicit
+      compatibility fallback
+- [ ] Validate the browser value in Go and clamp model-specific extensions;
+      never forward an arbitrary string to the provider
+- [ ] Keep Auto distinct from Off: Auto uses the provider/model default, while
+      Off disables explicit capability activation
+- [ ] Unit-test every provider mapping and run a deployed selection/reload proof
+      so an in-memory UI update cannot masquerade as durable persistence
+
+Canonical project example:
+`mm-chat/docs/contracts/chat-stream-api.md` owns the reasoning effort request,
+normalization, provider mapping, and backward-compatibility contract.
+
 ---
 
 ## Cross-Platform Template Consistency

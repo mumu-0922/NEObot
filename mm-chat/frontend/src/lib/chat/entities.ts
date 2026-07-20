@@ -7,6 +7,7 @@ import type {
 import { ATTACHMENT_LIMITS, CHAT_ENTITY_LIMITS } from "../../config/limits";
 import { normalizePluginIdRefs } from "../plugin/config";
 import { normalizeSkillIdRefs } from "../skills";
+import { isReasoningEffort, normalizeReasoningEffort } from "./reasoning";
 import { normalizeCompressedContent } from "../utils/contextCompression";
 import {
   MAX_CONVERSATION_KNOWLEDGE_COLLECTIONS,
@@ -220,6 +221,7 @@ export function normalizeSessionConfig(
     activePlugins: rawActivePlugins,
     activeSkills: rawActiveSkills,
     selectedKnowledgeCollectionIds: rawSelectedKnowledgeCollectionIds,
+    reasoningEffort: rawReasoningEffort,
     ...rest
   } = config;
   const activePlugins = normalizePluginIdRefs(rawActivePlugins);
@@ -235,6 +237,9 @@ export function normalizeSessionConfig(
 
   return {
     ...rest,
+    ...(isReasoningEffort(rawReasoningEffort)
+      ? { reasoningEffort: normalizeReasoningEffort(rawReasoningEffort) }
+      : {}),
     ...(activePlugins.length > 0 ? { activePlugins } : {}),
     ...(activeSkills.length > 0 ? { activeSkills } : {}),
     ...(Array.isArray(rawSelectedKnowledgeCollectionIds)

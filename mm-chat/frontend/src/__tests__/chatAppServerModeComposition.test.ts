@@ -65,7 +65,18 @@ describe("ChatApp server mode composition", () => {
     expect(chatApp).toContain(
       "isReasoningEnabled={composerChatConfig.useReasoning}",
     );
-    expect(chatApp).toContain("useReasoning: chatConfig.useReasoning");
+    expect(chatApp).toContain(
+      "reasoningEffort={composerChatConfig.reasoningEffort}",
+    );
+    expect(chatApp).toContain("onReasoningChange={(enabled, effort) =>");
+    expect(chatApp).toContain(
+      "currentSessionConfig?.useReasoning ?? chatConfig.useReasoning",
+    );
+    expect(chatApp).toContain(
+      "currentSessionConfig?.reasoningEffort ?? chatConfig.reasoningEffort",
+    );
+    expect(chatApp).toContain("persistServerReasoningSelection");
+    expect(chatApp).toContain("config: { useReasoning, reasoningEffort }");
     expect(chatApp).not.toContain(
       'showServerUnsupportedAction("chat deletion")',
     );

@@ -340,3 +340,52 @@ The temporary diagnostics were deleted, the final smoke file and conversation
 were deleted, and Server Default/Postgres/Vault configuration was not changed.
 Rollback is the G12.4.3 implementation commit; reverting it restores
 synchronous GPT Image calls and therefore restores the idle-disconnect risk.
+
+## 2026-07-20 — G12.5 model-aware reasoning effort
+
+The previous composer exposed only a boolean. Go translated every enabled
+OpenAI-compatible request to `reasoning_effort: high`, OpenAI Responses used
+`reasoning.effort: high`, and Anthropic always used a 4,096-token thinking
+budget. Users could not choose the quality/latency tradeoff.
+
+Kelivo commit `92db9a4` was inspected at its mobile/desktop reasoning budget UI,
+OpenAI model compatibility matrix, and provider request adapters. Its reusable
+decision is one semantic user setting with provider-specific translation, not
+one raw token budget forwarded to every API. The current
+[OpenAI reasoning guide](https://developers.openai.com/api/docs/guides/reasoning)
+also confirms that supported effort values are model-dependent and may include
+`none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`.
+
+mm-chat now exposes Off, Auto, Low, Medium, and High for reasoning-capable
+models. Known GPT-5.2+ and DeepSeek families additionally expose XHigh; GPT-5.6
+also exposes Max. The selection is persisted in the server conversation config
+and the browser store so reload and new-chat defaults remain coherent. Existing
+`useReasoning=true` records without a level retain High.
+
+The Go boundary accepts only `auto|low|medium|high|xhigh|max`. OpenAI-compatible
+Chat Completions and OpenAI Responses receive model-normalized effort; Auto
+omits the effort field. Unknown compatible models clamp XHigh/Max to High,
+GPT-5.4 Max clamps to XHigh, and GPT-5.6 retains Max. Anthropic maps the same
+levels to 1,024/2,048/4,096/8,192/16,384 thinking tokens and raises
+`max_tokens` when necessary so the thinking budget is always lower.
+
+Verification:
+
+```text
+backend full tests / vet                              passed / passed
+backend focused race tests                            passed
+frontend tests                                       183 files / 879 tests
+frontend lint / typecheck / format                   passed / passed / passed
+backend/frontend production source builds            passed / passed
+backend/frontend/Postgres/Redis/RAG                   healthy
+real gpt-5.6-sol Low                                  completed, 2,587 ms
+real gpt-5.6-sol Max                                  completed, 2,000 ms
+real Low/Max conversation cleanup                     HTTP 204 / HTTP 204
+headless UI options                                   Off through Maximum
+headless Maximum selection + reload                   persisted / restored
+post-smoke owner conversation setting                 restored to Off/High
+```
+
+No provider Key, response text, reasoning text, or private message content was
+recorded. Rollback is the G12.5 implementation commit; no schema or provider
+secret migration is involved.

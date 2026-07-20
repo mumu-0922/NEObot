@@ -117,6 +117,7 @@ describe("chat store persistence", () => {
       chatConfig: {
         useSearch: false,
         useReasoning: false,
+        reasoningEffort: "auto",
         temperature: 0.7,
       },
     });

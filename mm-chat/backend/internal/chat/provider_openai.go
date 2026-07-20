@@ -70,7 +70,11 @@ func (p *OpenAIProvider) StreamChatWithModelBuiltInSearch(
 			"web_search_call.results",
 			"web_search_call.action.sources",
 		},
-		Reasoning: openAIResponsesReasoning(input.UseReasoning),
+		Reasoning: openAIResponsesReasoning(
+			modelRef.ModelID,
+			input.UseReasoning,
+			effectiveReasoningEffort(input),
+		),
 	})
 	if err != nil {
 		return nil, errors.New("openai responses request encode failed")
@@ -157,7 +161,7 @@ type openAIResponsesTool struct {
 }
 
 type openAIResponsesReasoningConfig struct {
-	Effort  string `json:"effort"`
+	Effort  string `json:"effort,omitempty"`
 	Summary string `json:"summary"`
 }
 
@@ -187,11 +191,18 @@ func openAIResponsesInput(messages []ProviderMessage) []openAIResponsesInputItem
 	return input
 }
 
-func openAIResponsesReasoning(enabled bool) *openAIResponsesReasoningConfig {
+func openAIResponsesReasoning(
+	modelID string,
+	enabled bool,
+	requested ReasoningEffort,
+) *openAIResponsesReasoningConfig {
 	if !enabled {
 		return nil
 	}
-	return &openAIResponsesReasoningConfig{Effort: "high", Summary: "auto"}
+	return &openAIResponsesReasoningConfig{
+		Effort:  openAIReasoningEffort(modelID, enabled, requested),
+		Summary: "auto",
+	}
 }
 
 type openAIResponsesSourceAccumulator struct {

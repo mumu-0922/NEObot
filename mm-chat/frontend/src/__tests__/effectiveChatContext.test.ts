@@ -37,6 +37,7 @@ describe("effective chat context", () => {
       chatConfig: {
         useSearch: true,
         useReasoning: true,
+        reasoningEffort: "high",
         temperature: 0.7,
         useRAG: true,
       },
@@ -122,6 +123,7 @@ describe("effective chat context", () => {
       chatConfig: {
         useSearch: false,
         useReasoning: false,
+        reasoningEffort: "auto",
         temperature: 0.7,
         useRAG: false,
       },
@@ -167,6 +169,7 @@ describe("effective chat context", () => {
       chatConfig: {
         useSearch: false,
         useReasoning: false,
+        reasoningEffort: "auto",
         temperature: 0.7,
         useRAG: false,
       },
@@ -254,6 +257,7 @@ describe("effective chat context", () => {
       chatConfig: {
         useSearch: false,
         useReasoning: false,
+        reasoningEffort: "auto",
         temperature: 0.7,
         useRAG: false,
       },
@@ -313,6 +317,7 @@ describe("effective chat context", () => {
       chatConfig: {
         useSearch: false,
         useReasoning: false,
+        reasoningEffort: "auto",
         temperature: 0.7,
         useRAG: false,
       },

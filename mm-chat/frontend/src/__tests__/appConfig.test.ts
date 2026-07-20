@@ -15,14 +15,20 @@ describe("app config normalization", () => {
       normalizeChatConfig({
         useSearch: "yes",
         useReasoning: true,
+        reasoningEffort: "xhigh",
         useRAG: true,
         temperature: 99,
       }),
     ).toEqual({
       useSearch: false,
       useReasoning: true,
+      reasoningEffort: "xhigh",
       useRAG: true,
       temperature: CHAT_CONFIG_LIMITS.maxTemperature,
+    });
+
+    expect(normalizeChatConfig({ reasoningEffort: "invalid" })).toMatchObject({
+      reasoningEffort: "high",
     });
 
     expect(normalizeChatConfig({ temperature: Number.NaN }).temperature).toBe(

@@ -17,6 +17,11 @@ import {
   type ServerAttachmentDTO,
 } from "./client";
 import { normalizeSessionTitle } from "../../lib/chat/entities";
+import {
+  isReasoningEffort,
+  normalizeReasoningEffort,
+} from "../../lib/chat/reasoning";
+import type { ReasoningEffort } from "../../lib/chat/types";
 import { IMAGE_CONTENT_POLICY_VIOLATION_CODE } from "../../lib/chat/types";
 import { SERVER_DEFAULT_PROVIDER_ID } from "../../lib/defaultConfig/shared";
 import { normalizeMessageKnowledgeMetadata } from "../../lib/knowledge/citations";
@@ -31,6 +36,7 @@ const SERVER_DEFAULT_BACKEND_PROVIDER_ID = "openai_compatible";
 export interface ChatCrudSessionConfig {
   useSearch?: boolean;
   useReasoning?: boolean;
+  reasoningEffort?: ReasoningEffort;
   activePlugins?: string[];
   activeSkills?: string[];
   selectedKnowledgeCollectionIds?: string[];
@@ -356,6 +362,11 @@ function normalizeConversationConfig(
   }
   if (typeof config.useReasoning === "boolean") {
     normalized.useReasoning = config.useReasoning;
+  }
+  if (isReasoningEffort(config.reasoningEffort)) {
+    normalized.reasoningEffort = normalizeReasoningEffort(
+      config.reasoningEffort,
+    );
   }
   if (Array.isArray(config.activePlugins)) {
     const activePlugins = config.activePlugins.filter(

@@ -780,6 +780,8 @@ const applySessionConfig = (
     ...currentConfig,
     useSearch: sessionConfig.useSearch ?? currentConfig.useSearch,
     useReasoning: sessionConfig.useReasoning ?? currentConfig.useReasoning,
+    reasoningEffort:
+      sessionConfig.reasoningEffort ?? currentConfig.reasoningEffort,
   };
 };
 

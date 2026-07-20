@@ -56,6 +56,7 @@ const conversationDto: ConversationDTO = {
   config: {
     useSearch: true,
     useReasoning: "bad",
+    reasoningEffort: "high",
     activePlugins: ["writer", 42],
     selectedKnowledgeCollectionIds: [" kb-1 ", "kb-1", 42],
     internalTrace: "must-not-leak",
@@ -121,6 +122,7 @@ describe("chat CRUD DTO mappers", () => {
       systemInstruction: "server instruction",
       config: {
         useSearch: true,
+        reasoningEffort: "high",
         activePlugins: ["writer"],
         selectedKnowledgeCollectionIds: ["kb-1"],
       },

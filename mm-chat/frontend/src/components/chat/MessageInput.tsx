@@ -31,7 +31,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { Attachment } from "@/types";
+import type { Attachment, ReasoningEffort } from "@/types";
 import { localizePluginMeta } from "@/lib/plugin/localizedMeta";
 import type { ModelInfo } from "@/services/api/chatService";
 import { createNeoChatApiClient } from "@/services/api/client";
@@ -93,6 +93,10 @@ import {
   shouldSubmitOnEnter,
   truncateMiddle,
 } from "@/lib/utils/messageInputHelpers";
+import {
+  getReasoningEffortOptions,
+  isReasoningEffort,
+} from "@/lib/chat/reasoning";
 
 type MessageInputVariant = "default" | "hero";
 
@@ -106,7 +110,8 @@ interface MessageInputProps {
   isSearchEnabled?: boolean;
   onToggleSearch?: () => void;
   isReasoningEnabled?: boolean;
-  onToggleReasoning?: () => void;
+  reasoningEffort?: ReasoningEffort;
+  onReasoningChange?: (enabled: boolean, effort: ReasoningEffort) => void;
   localSessionToolsDisabled?: boolean;
   allowSearchWhenSessionToolsDisabled?: boolean;
   allowReasoningWhenSessionToolsDisabled?: boolean;
@@ -151,7 +156,8 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       isSearchEnabled = false,
       onToggleSearch,
       isReasoningEnabled,
-      onToggleReasoning,
+      reasoningEffort,
+      onReasoningChange,
       localSessionToolsDisabled = false,
       allowSearchWhenSessionToolsDisabled = false,
       allowReasoningWhenSessionToolsDisabled = false,
@@ -223,6 +229,8 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const attachTextFallbackInputId = useId();
     const isHeroVariant = variant === "hero";
     const effectiveUseReasoning = isReasoningEnabled ?? chatConfig.useReasoning;
+    const effectiveReasoningEffort =
+      reasoningEffort ?? chatConfig.reasoningEffort;
     const conversationKnowledgeEnabled =
       typeof onKnowledgeCollectionIdsChange === "function";
     const normalizedKnowledgeCollectionIds = useMemo(
@@ -600,6 +608,54 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         lower.includes("r1")
       );
     }, [selectedModel, modelMetadata, customModelMetadata]);
+
+    const reasoningEffortOptions = useMemo(() => {
+      if (!selectedModel) return getReasoningEffortOptions("");
+      return getReasoningEffortOptions(
+        parseModelString(selectedModel).modelName,
+      );
+    }, [selectedModel]);
+
+    const reasoningEffortLabel = (effort: ReasoningEffort): string => {
+      switch (effort) {
+        case "auto":
+          return t("reasoningEffortAuto");
+        case "low":
+          return t("reasoningEffortLow");
+        case "medium":
+          return t("reasoningEffortMedium");
+        case "high":
+          return t("reasoningEffortHigh");
+        case "xhigh":
+          return t("reasoningEffortXHigh");
+        case "max":
+          return t("reasoningEffortMax");
+      }
+    };
+
+    const updateReasoningSelection = (selection: string) => {
+      if (
+        localSessionToolsDisabled &&
+        !allowReasoningWhenSessionToolsDisabled
+      ) {
+        notifyLocalSessionToolUnavailable("reasoning effort");
+        return;
+      }
+      if (selection === "off") {
+        if (onReasoningChange) {
+          onReasoningChange(false, effectiveReasoningEffort);
+        } else {
+          setChatConfig({ useReasoning: false });
+        }
+        return;
+      }
+      if (!isReasoningEffort(selection)) return;
+      if (onReasoningChange) {
+        onReasoningChange(true, selection);
+      } else {
+        setChatConfig({ useReasoning: true, reasoningEffort: selection });
+      }
+    };
 
     // Filter plugins to show only those ready for use
     const validPlugins = useMemo(() => {
@@ -1700,46 +1756,60 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               </DropdownMenu>
             </div>
 
-            {/* Reasoning Button (Conditional) */}
             {isReasoningSupported && (
-              <div>
+              <DropdownMenu>
                 <Tooltip
                   content={
                     effectiveUseReasoning
-                      ? t("disableReasoning")
-                      : t("enableReasoning")
+                      ? t("reasoningCurrent", {
+                          level: reasoningEffortLabel(effectiveReasoningEffort),
+                        })
+                      : t("reasoningEffortOff")
                   }
                   position="top"
                 >
-                  <button
-                    type="button"
-                    aria-label={
-                      effectiveUseReasoning
-                        ? t("disableReasoningAria")
-                        : t("enableReasoningAria")
-                    }
-                    aria-pressed={effectiveUseReasoning}
-                    className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${effectiveUseReasoning ? "text-violet-500 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20" : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"}`}
-                    onClick={() => {
-                      if (
-                        localSessionToolsDisabled &&
-                        !allowReasoningWhenSessionToolsDisabled
-                      ) {
-                        notifyLocalSessionToolUnavailable("reasoning toggle");
-                        return;
-                      }
-                      if (onToggleReasoning) {
-                        onToggleReasoning();
-                        return;
-                      }
-                      setChatConfig({ useReasoning: !chatConfig.useReasoning });
-                    }}
-                    disabled={isInputBusy}
-                  >
-                    <Lightbulb size={16} aria-hidden="true" />
-                  </button>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={t("reasoningMenuAria", {
+                        level: effectiveUseReasoning
+                          ? reasoningEffortLabel(effectiveReasoningEffort)
+                          : t("reasoningEffortOff"),
+                      })}
+                      aria-pressed={effectiveUseReasoning}
+                      className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${effectiveUseReasoning ? "text-violet-500 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20" : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"}`}
+                      disabled={isInputBusy}
+                    >
+                      <Lightbulb size={16} aria-hidden="true" />
+                    </button>
+                  </DropdownMenuTrigger>
                 </Tooltip>
-              </div>
+                <DropdownMenuContent side="top" align="start" className="w-44">
+                  <DropdownMenuLabel>{t("reasoningLevel")}</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup
+                    value={
+                      effectiveUseReasoning ? effectiveReasoningEffort : "off"
+                    }
+                    onValueChange={updateReasoningSelection}
+                  >
+                    <DropdownMenuRadioItem
+                      value="off"
+                      indicatorPosition="right"
+                    >
+                      {t("reasoningEffortOff")}
+                    </DropdownMenuRadioItem>
+                    {reasoningEffortOptions.map((effort) => (
+                      <DropdownMenuRadioItem
+                        key={effort}
+                        value={effort}
+                        indicatorPosition="right"
+                      >
+                        {reasoningEffortLabel(effort)}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
 
             {/* Search Button */}

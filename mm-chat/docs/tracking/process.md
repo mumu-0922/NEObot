@@ -8578,6 +8578,19 @@ artifact, and HTTP 204 file/conversation cleanup passed. Exact evidence and
 rollback are recorded in `docs/tracking/g12-provider-protocols-process.md` and
 `docs/contracts/media-job-executor-seams.md`.
 
+## 2026-07-20 — G12.5 reasoning effort cross-reference
+
+The reasoning lightbulb now opens a model-aware Off/Auto/Low/Medium/High menu,
+adds XHigh for known compatible families and Max for GPT-5.6, and persists the
+choice through the Go-owned conversation config. Go validates and normalizes
+the level before mapping it to Chat Completions, Responses, or Anthropic
+thinking budgets. Full backend/frontend gates, production builds, real
+`gpt-5.6-sol` Low/Max requests with HTTP 204 cleanup, and headless selection/
+reload verification passed. Exact research, contract, and rollback evidence is
+in `docs/tracking/g12-provider-protocols-process.md`,
+`docs/contracts/chat-stream-api.md`, and
+`.trellis/tasks/07-07-mm-chat-server-refactor-design/research/reasoning-effort-kelivo.md`.
+
 ## 2026-07-20 — G12.4.2 image connection failure cross-reference
 
 The owner-visible 17:50 image request exhausted the bounded provider transport

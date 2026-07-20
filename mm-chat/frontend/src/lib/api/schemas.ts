@@ -184,6 +184,9 @@ export const ChatRequestSchema = z
           .max(CHAT_CONFIG_LIMITS.maxTemperature)
           .optional(),
         useReasoning: z.boolean().optional(),
+        reasoningEffort: z
+          .enum(["auto", "low", "medium", "high", "xhigh", "max"])
+          .optional(),
         useSearch: z.boolean().optional(),
         useRAG: z.boolean().optional(),
       })

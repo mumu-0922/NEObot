@@ -95,7 +95,11 @@ func (p *OpenAICompatibleProvider) StreamChat(
 			input.SystemPrompt,
 			providerMessagesOrPrompt(input),
 		),
-		ReasoningEffort: openAICompatibleReasoningEffort(input.UseReasoning),
+		ReasoningEffort: openAIReasoningEffort(
+			model,
+			input.UseReasoning,
+			effectiveReasoningEffort(input),
+		),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("openai-compatible provider request encode failed: %w", err)
@@ -414,13 +418,6 @@ func openAICompatibleUserContent(prompt string, attachments []ProviderAttachment
 		})
 	}
 	return parts
-}
-
-func openAICompatibleReasoningEffort(enabled bool) string {
-	if enabled {
-		return "high"
-	}
-	return ""
 }
 
 func streamOpenAICompatibleEvents(

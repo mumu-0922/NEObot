@@ -12,6 +12,8 @@ import {
   finalizeStreamedToolCall,
 } from "./toolCalls";
 import { normalizeSearchSources } from "../search/results";
+import type { ReasoningEffort } from "../chat/types";
+import { resolveOpenAIReasoningEffort } from "../chat/reasoning";
 
 export interface OpenAIStreamOptions {
   client: OpenAI;
@@ -20,6 +22,7 @@ export interface OpenAIStreamOptions {
   temperature?: number;
   tools?: any[];
   useReasoning?: boolean;
+  reasoningEffort?: ReasoningEffort;
   onChunk: (message: SSEMessage) => void;
 }
 
@@ -223,6 +226,7 @@ export interface OpenAIResponsesStreamOptions {
   temperature?: number;
   tools?: any[];
   useReasoning?: boolean;
+  reasoningEffort?: ReasoningEffort;
   onChunk: (message: SSEMessage) => void;
 }
 
@@ -232,6 +236,7 @@ interface ChatCompletionRequestOptions {
   temperature?: number;
   tools?: any[];
   useReasoning?: boolean;
+  reasoningEffort?: ReasoningEffort;
 }
 
 function normalizeChatCompletionMessages(messages: any[]): any[] {
@@ -261,6 +266,7 @@ function createChatCompletionRequestParams({
   temperature = 1,
   tools,
   useReasoning,
+  reasoningEffort = "high",
 }: ChatCompletionRequestOptions): any {
   const requestParams: any = {
     model,
@@ -278,9 +284,9 @@ function createChatCompletionRequestParams({
     }
   }
 
-  // Add reasoning effort for o1 models if useReasoning is enabled
-  if (isO1Model && useReasoning) {
-    requestParams.reasoning_effort = "high";
+  if (useReasoning) {
+    const effort = resolveOpenAIReasoningEffort(model, reasoningEffort);
+    if (effort) requestParams.reasoning_effort = effort;
   }
 
   return requestParams;
@@ -390,6 +396,7 @@ export async function streamOpenAIChatCompletions(
     temperature = 1,
     tools,
     useReasoning,
+    reasoningEffort,
     onChunk,
   } = options;
 
@@ -400,6 +407,7 @@ export async function streamOpenAIChatCompletions(
     temperature,
     tools,
     useReasoning,
+    reasoningEffort,
   });
 
   const stream = (await client.chat.completions.create(requestParams)) as any;
@@ -430,6 +438,7 @@ export async function streamOpenAIResponses(
     temperature,
     tools,
     useReasoning,
+    reasoningEffort = "high",
     onChunk,
   } = options;
 
@@ -445,7 +454,11 @@ export async function streamOpenAIResponses(
   const requestTools = tools ? [...tools] : [];
   if (requestTools.length > 0) requestParams.tools = requestTools;
   if (useReasoning) {
-    requestParams.reasoning = { effort: "high", summary: "auto" };
+    const effort = resolveOpenAIReasoningEffort(model, reasoningEffort);
+    requestParams.reasoning = {
+      ...(effort ? { effort } : {}),
+      summary: "auto",
+    };
   }
 
   const stream = (await client.responses.create(requestParams)) as any;

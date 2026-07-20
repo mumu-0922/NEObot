@@ -48,6 +48,7 @@ type ProviderRequest struct {
 	Messages           []ProviderMessage
 	Attachments        []ProviderAttachment
 	UseReasoning       bool
+	ReasoningEffort    ReasoningEffort
 	ModelRef           ModelRef
 	Metadata           map[string]any
 }

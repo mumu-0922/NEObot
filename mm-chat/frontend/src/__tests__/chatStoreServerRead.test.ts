@@ -242,6 +242,7 @@ describe("chat store server read path", () => {
       chatConfig: {
         useSearch: false,
         useReasoning: false,
+        reasoningEffort: "auto",
         temperature: 0.7,
       },
     });
@@ -523,6 +524,8 @@ describe("chat store server read path", () => {
     await expect(
       useChatStore.getState().updateServerSessionConfig("c1", {
         selectedKnowledgeCollectionIds: ["kb-1", "kb-1", "kb-2"],
+        useReasoning: true,
+        reasoningEffort: "max",
       }),
     ).resolves.toBe(true);
 
@@ -532,7 +535,11 @@ describe("chat store server read path", () => {
       title: "Renamed",
       systemInstruction: "be precise",
       pinned: true,
-      config: { selectedKnowledgeCollectionIds: ["kb-1", "kb-2"] },
+      config: {
+        selectedKnowledgeCollectionIds: ["kb-1", "kb-2"],
+        useReasoning: true,
+        reasoningEffort: "max",
+      },
     });
     expect(state.sessions).toEqual([localSession]);
     expect(mocks.serverService.updateConversation).toHaveBeenNthCalledWith(1, {
@@ -549,7 +556,11 @@ describe("chat store server read path", () => {
     });
     expect(mocks.serverService.updateConversation).toHaveBeenNthCalledWith(4, {
       conversationId: "c1",
-      config: { selectedKnowledgeCollectionIds: ["kb-1", "kb-2"] },
+      config: {
+        selectedKnowledgeCollectionIds: ["kb-1", "kb-2"],
+        useReasoning: true,
+        reasoningEffort: "max",
+      },
     });
     expect(mocks.appDbMock.getItem).not.toHaveBeenCalled();
     expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();

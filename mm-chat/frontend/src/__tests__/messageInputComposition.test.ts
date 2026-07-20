@@ -106,7 +106,8 @@ describe("MessageInput composition", () => {
     expect(messageInput).toContain("const pluginSelectionDisabled =");
     expect(messageInput).toContain("onLocalSessionToolUnavailable?:");
     expect(messageInput).toContain("isReasoningEnabled?: boolean");
-    expect(messageInput).toContain("onToggleReasoning?: () => void");
+    expect(messageInput).toContain("reasoningEffort?: ReasoningEffort");
+    expect(messageInput).toContain("onReasoningChange?:");
     expect(messageInput).toContain(
       'notifyLocalSessionToolUnavailable("search toggle")',
     );
@@ -117,13 +118,15 @@ describe("MessageInput composition", () => {
       'notifyLocalSessionToolUnavailable("plugins")',
     );
     expect(messageInput).toContain(
-      'notifyLocalSessionToolUnavailable("reasoning toggle")',
+      'notifyLocalSessionToolUnavailable("reasoning effort")',
     );
     expect(messageInput).toContain("activePluginIdsForMenu");
     expect(messageInput).toContain("effectiveUseReasoning");
+    expect(messageInput).toContain("reasoningEffortOptions.map");
+    expect(messageInput).toContain('value="off"');
     expect(messageInput).toContain("!allowReasoningWhenSessionToolsDisabled");
     expect(messageInput).toContain('lower.includes("gpt-5")');
-    expect(messageInput.indexOf("{/* Reasoning Button")).toBeLessThan(
+    expect(messageInput.indexOf("{isReasoningSupported && (")).toBeLessThan(
       messageInput.indexOf("{/* Search Button */}"),
     );
     expect(messageInput.indexOf("{/* Search Button */}")).toBeLessThan(

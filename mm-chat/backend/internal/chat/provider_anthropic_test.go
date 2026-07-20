@@ -97,6 +97,40 @@ func TestAnthropicProviderStreamsHistoryImageThinkingAndUsage(t *testing.T) {
 	}
 }
 
+func TestAnthropicProviderMapsMaximumReasoningToBoundedBudget(t *testing.T) {
+	var request anthropicMessagesRequest
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+	}))
+	defer upstream.Close()
+
+	provider, err := NewAnthropicProvider(AnthropicProviderConfig{
+		BaseURL: upstream.URL, APIKey: "anthropic-key", ProviderID: "ANTHROPIC",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := provider.StreamChat(context.Background(), ProviderRequest{
+		Prompt: "hard problem", UseReasoning: true, ReasoningEffort: ReasoningEffortMax,
+		ModelRef: ModelRef{ProviderID: "ANTHROPIC", ModelID: "claude-opus"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range events {
+	}
+	if request.Thinking == nil || request.Thinking.BudgetTokens != 16_384 {
+		t.Fatalf("thinking = %#v", request.Thinking)
+	}
+	if request.MaxTokens != 20_480 || request.Thinking.BudgetTokens >= request.MaxTokens {
+		t.Fatalf("max_tokens/budget = %d/%d", request.MaxTokens, request.Thinking.BudgetTokens)
+	}
+}
+
 func TestAnthropicProviderPlansNativeTools(t *testing.T) {
 	var request anthropicMessagesRequest
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

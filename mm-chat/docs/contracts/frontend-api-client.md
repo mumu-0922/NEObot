@@ -247,6 +247,7 @@ export interface ConversationSummary {
 export interface ConversationConfig {
   useSearch?: boolean;
   useReasoning?: boolean;
+  reasoningEffort?: "auto" | "low" | "medium" | "high" | "xhigh" | "max";
   useRag?: boolean;
   activePlugins?: string[];
   activeSkills?: string[];

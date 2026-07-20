@@ -501,9 +501,10 @@ the UI can call in the next wiring slice.
       without copying `PROVIDER_API_KEY` into the frontend container.
 - [x] Resolve and inject explicitly selected text skills before every
       server-mode send while leaving search gated.
-- [x] Forward the server-mode reasoning toggle as `useReasoning`, translate it
-      to OpenAI-compatible `reasoning_effort: high`, and keep it omitted when
-      disabled.
+- [x] Forward server-mode `useReasoning` plus model-aware `reasoningEffort`;
+      persist Off/Auto/Low/Medium/High and supported XHigh/Max per conversation,
+      normalize provider payloads in Go, and preserve legacy enabled state as
+      High.
 - [x] Add bounded `POST /v1/chat/tools/plan` provider planning through Go and
       reject invalid, oversized, or unoffered provider tool calls.
 - [x] Execute only active installed plugin functions through the existing
@@ -1485,6 +1486,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
             attribution using the loaded 600-second site configuration, enabled
             `stream: true` plus one non-persisted partial image for
             `gpt-image-*`, and passed a cleaned 67,327 ms complex-poster proof.
+    - [x] G12.5 Model-aware reasoning effort: Kelivo-informed Off/Auto/Low/
+          Medium/High plus conditional XHigh/Max UI, server conversation
+          persistence, validated Go normalization, OpenAI/Responses and
+          Anthropic mappings, live Low/Max provider proofs, and reload proof.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

@@ -12,6 +12,7 @@ import { SSEMessage } from "./sse";
 import { finalizeStreamedToolCall } from "./toolCalls";
 import { normalizeGeneratedImageAttachment } from "../utils/generatedImages";
 import { normalizeSearchSources } from "../search/results";
+import type { ReasoningEffort } from "../chat/types";
 
 export interface GeminiStreamOptions {
   client: GoogleGenAI;
@@ -21,6 +22,7 @@ export interface GeminiStreamOptions {
   temperature?: number;
   tools?: any[];
   useReasoning?: boolean;
+  reasoningEffort?: ReasoningEffort;
   onChunk: (message: SSEMessage) => void;
 }
 
@@ -69,6 +71,7 @@ export async function streamGeminiResponse(options: GeminiStreamOptions) {
     temperature = 1,
     tools,
     useReasoning,
+    reasoningEffort = "high",
     onChunk,
   } = options;
 
@@ -91,7 +94,12 @@ export async function streamGeminiResponse(options: GeminiStreamOptions) {
 
   // Enable thinking mode for reasoning
   if (useReasoning) {
-    config.thinkingConfig = { includeThoughts: true };
+    config.thinkingConfig = {
+      includeThoughts: true,
+      ...(geminiThinkingBudget(reasoningEffort) !== undefined
+        ? { thinkingBudget: geminiThinkingBudget(reasoningEffort) }
+        : {}),
+    };
   }
 
   const geminiTools: NonNullable<GenerateContentConfig["tools"]> = [];
@@ -205,4 +213,20 @@ export async function streamGeminiResponse(options: GeminiStreamOptions) {
       duration: endTime - startTime,
     },
   });
+}
+
+function geminiThinkingBudget(effort: ReasoningEffort): number | undefined {
+  switch (effort) {
+    case "low":
+      return 1_024;
+    case "medium":
+      return 8_192;
+    case "high":
+      return 16_384;
+    case "xhigh":
+    case "max":
+      return 32_768;
+    case "auto":
+      return undefined;
+  }
 }

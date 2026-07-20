@@ -27,13 +27,13 @@ func TestOpenAIProviderStreamsResponsesWebSearch(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
-		if request.Model != "gpt-search" || !request.Stream || request.Instructions != "cite sources" {
+		if request.Model != "gpt-5.6-sol" || !request.Stream || request.Instructions != "cite sources" {
 			t.Fatalf("request = %#v", request)
 		}
 		if len(request.Tools) != 1 || request.Tools[0].Type != "web_search_preview" {
 			t.Fatalf("tools = %#v", request.Tools)
 		}
-		if len(request.Include) != 2 || request.Reasoning == nil || request.Reasoning.Effort != "high" {
+		if len(request.Include) != 2 || request.Reasoning == nil || request.Reasoning.Effort != "max" {
 			t.Fatalf("include/reasoning = %#v/%#v", request.Include, request.Reasoning)
 		}
 		if len(request.Input) != 1 || len(request.Input[0].Content) != 2 {
@@ -69,8 +69,9 @@ func TestOpenAIProviderStreamsResponsesWebSearch(t *testing.T) {
 
 	events, err := provider.StreamChatWithModelBuiltInSearch(context.Background(), ProviderRequest{
 		Prompt: " latest fixture ", SystemPrompt: "cite sources", UseReasoning: true,
-		Attachments: []ProviderAttachment{{MimeType: "image/png", Data: []byte(imageBytes)}},
-		ModelRef:    ModelRef{ProviderID: "openai", ModelID: "gpt-search"},
+		ReasoningEffort: ReasoningEffortMax,
+		Attachments:     []ProviderAttachment{{MimeType: "image/png", Data: []byte(imageBytes)}},
+		ModelRef:        ModelRef{ProviderID: "openai", ModelID: "gpt-5.6-sol"},
 	})
 	if err != nil {
 		t.Fatalf("StreamChatWithModelBuiltInSearch() error = %v", err)

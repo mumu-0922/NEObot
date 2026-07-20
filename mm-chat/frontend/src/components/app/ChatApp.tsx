@@ -32,7 +32,13 @@ import { resolveSkillsForMessage } from "@/services/api/skillService";
 import { orchestrateServerPlugins } from "@/services/api/serverPluginOrchestration";
 import { buildProviderRuntimeConfig } from "@/lib/byok/client";
 import { getAgentDetail } from "@/services/api/agentService";
-import { Message, Attachment, LobeAgent, SessionMessageTree } from "@/types";
+import {
+  Message,
+  Attachment,
+  LobeAgent,
+  ReasoningEffort,
+  SessionMessageTree,
+} from "@/types";
 import { useChatStore } from "@/store/core/chatStore";
 import { useMemoryStore } from "@/store/core/memoryStore";
 import { appDb } from "@/store/storage/storageConfig";
@@ -367,7 +373,9 @@ const ChatApp = () => {
   const serverSessionChatConfig = {
     useSearch: currentSessionConfig?.useSearch ?? false,
     searchResultsLimit: search.resultsLimit,
-    useReasoning: chatConfig.useReasoning,
+    useReasoning: currentSessionConfig?.useReasoning ?? chatConfig.useReasoning,
+    reasoningEffort:
+      currentSessionConfig?.reasoningEffort ?? chatConfig.reasoningEffort,
     activePlugins,
     activeSkills: activeSkillIds,
   };
@@ -979,6 +987,30 @@ const ChatApp = () => {
     });
     if (!updated) {
       throw new Error("Search selection could not be saved.");
+    }
+  };
+
+  const persistServerReasoningSelection = async (
+    useReasoning: boolean,
+    reasoningEffort: ReasoningEffort,
+  ) => {
+    setChatConfig({ useReasoning, reasoningEffort });
+    if (!visibleCurrentSessionId) {
+      const sessionId = await createServerSession({
+        config: { useReasoning, reasoningEffort },
+      });
+      if (!sessionId) {
+        throw new Error("Server conversation could not be created.");
+      }
+      return;
+    }
+    const updated = await updateServerSessionConfig(visibleCurrentSessionId, {
+      ...(currentSession?.config ?? {}),
+      useReasoning,
+      reasoningEffort,
+    });
+    if (!updated) {
+      throw new Error("Reasoning selection could not be saved.");
     }
   };
 
@@ -3098,11 +3130,26 @@ const ChatApp = () => {
                     setChatConfig({ useSearch: !chatConfig.useSearch });
                   }}
                   isReasoningEnabled={composerChatConfig.useReasoning}
-                  onToggleReasoning={() =>
+                  reasoningEffort={composerChatConfig.reasoningEffort}
+                  onReasoningChange={(enabled, effort) => {
+                    if (serverModeEnabled) {
+                      void persistServerReasoningSelection(
+                        enabled,
+                        effort,
+                      ).catch((error) =>
+                        showActionError(
+                          error instanceof Error
+                            ? error.message
+                            : "Reasoning selection could not be saved.",
+                        ),
+                      );
+                      return;
+                    }
                     setChatConfig({
-                      useReasoning: !chatConfig.useReasoning,
-                    })
-                  }
+                      useReasoning: enabled,
+                      reasoningEffort: effort,
+                    });
+                  }}
                   localSessionToolsDisabled={serverModeEnabled}
                   allowSearchWhenSessionToolsDisabled={serverModeEnabled}
                   allowReasoningWhenSessionToolsDisabled={serverModeEnabled}

@@ -1182,6 +1182,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	defer stopCancellationWatch()
 	defer streamCancel()
 
+	useReasoning := configBool(request.Config, "useReasoning")
 	providerRequest := ProviderRequest{
 		RunID:              runID,
 		ConversationID:     conversationID,
@@ -1191,7 +1192,8 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		SystemPrompt:       providerSystemPrompt,
 		Messages:           providerMessages,
 		Attachments:        providerAttachments,
-		UseReasoning:       configBool(request.Config, "useReasoning"),
+		UseReasoning:       useReasoning,
+		ReasoningEffort:    reasoningEffortFromConfig(request.Config, useReasoning),
 		ModelRef:           *modelRef,
 		Metadata:           providerMetadata,
 	}

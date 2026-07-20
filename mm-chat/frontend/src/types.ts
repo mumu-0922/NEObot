@@ -15,6 +15,7 @@ export type {
   MessageOutputBlock,
   MessageTreeNode,
   MessageVersion,
+  ReasoningEffort,
   Session,
   SessionConfig,
   SessionMessageTree,

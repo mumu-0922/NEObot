@@ -66,6 +66,14 @@ export interface StreamAssistantMessageRequest {
   metadata?: JsonObject;
   idempotencyKey: string;
 }
+
+export type ReasoningEffort =
+  | "auto"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "max";
 ```
 
 Rules:
@@ -78,6 +86,16 @@ Rules:
 - `idempotencyKey` is required and applies to the assistant streaming row only.
 - `content`, `attachments`, `role`, `status`, identity hints, and other
   server-managed message fields are rejected.
+- `config.useReasoning=false` disables explicit provider reasoning. When true,
+  `config.reasoningEffort` selects a semantic level. Missing or invalid legacy
+  values normalize to `high`; provider payloads never receive an arbitrary
+  browser string.
+- `auto` omits OpenAI effort so the model chooses its default. `xhigh` and
+  `max` are normalized against the selected model: GPT-5.6 retains `max`,
+  known GPT-5.2+ families retain `xhigh`, and unknown compatible models clamp
+  unsupported extended levels to `high`.
+- Anthropic maps the same semantic level to a bounded `budget_tokens` value and
+  always keeps `max_tokens` greater than the thinking budget.
 - If the frontend has only text content, it must first call
   `POST /v1/chat/conversations/{id}/messages`, then pass the returned user
   message ID into `/stream`.

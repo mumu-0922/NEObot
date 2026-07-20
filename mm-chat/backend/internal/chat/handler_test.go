@@ -913,12 +913,15 @@ func TestHandlerForwardsReasoningToggleToProvider(t *testing.T) {
 		handler,
 		http.MethodPost,
 		conversationsPath+"/"+testConversationID+"/stream",
-		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"reasoning"},"config":{"useReasoning":true},"idempotencyKey":"stream-key-reasoning"}`,
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"reasoning"},"config":{"useReasoning":true,"reasoningEffort":"medium"},"idempotencyKey":"stream-key-reasoning"}`,
 	)
 
 	assertStreamStatus(t, rec, http.StatusOK)
 	if !provider.input.UseReasoning {
 		t.Fatalf("provider UseReasoning = false, want true; input=%#v", provider.input)
+	}
+	if provider.input.ReasoningEffort != ReasoningEffortMedium {
+		t.Fatalf("provider ReasoningEffort = %q, want medium", provider.input.ReasoningEffort)
 	}
 }
 
