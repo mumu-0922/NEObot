@@ -1,11 +1,11 @@
-# Server Conversation Context Contract
+# Server Conversation Context and Durable Memory Contract
 
 ## 1. Scope / Trigger
 
 This contract applies whenever Go builds Provider input for an assistant stream.
 It covers current-branch replay, token budgeting, derived rolling summaries,
-Postgres persistence, and degradation. It does not define long-term user memory
-or a response cache.
+optional durable user memory, Postgres persistence, and degradation. It does
+not define a response cache.
 
 Postgres `messages` remain the only rebuild authority. A summary is a derived
 projection and must never delete, rewrite, or replace source rows.
@@ -155,4 +155,134 @@ authority.
 Retain all messages, validate the exact branch-prefix digest, keep budgets
 server-owned, store only a derived versioned summary, and inject it as guarded
 lower-priority history with a deterministic recent-tail fallback.
+```
+
+## 8. Optional Durable User Memory
+
+### 8.1 Scope / Trigger
+
+Durable Memory is not conversation history and is never required for ordinary
+same-conversation continuity. This contract applies to server-mode Memory CRUD,
+retrieval before an answer Provider call, and opt-in extraction after a
+completed answer. Local compatibility mode remains outside this server
+authority.
+
+### 8.2 Signatures
+
+Migration `035` owns two user-scoped projections:
+
+```text
+user_memory_settings:
+  user_id, enabled, search_enabled, auto_record_enabled,
+  created_at, updated_at
+
+user_memories:
+  id, user_id, memory_type, content, normalized_content, importance, tags,
+  source, source_conversation_id, source_message_id, enabled, last_used_at,
+  created_at, updated_at, deleted_at
+```
+
+Defaults are `enabled=false`, `search_enabled=true`, and
+`auto_record_enabled=false`. Server/Postgres is authoritative through:
+
+```text
+GET    /v1/memories
+POST   /v1/memories
+PATCH  /v1/memories/{id}
+DELETE /v1/memories/{id}
+GET    /v1/memory-settings
+PATCH  /v1/memory-settings
+```
+
+The service boundary exposes settings/CRUD plus:
+
+```go
+SearchRelevant(ctx, query, limit) ([]Memory, error)
+StoreExtracted(ctx, ExtractionInput) ([]Memory, error)
+```
+
+### 8.3 Contracts
+
+Every query is scoped from the authenticated context; client-supplied user IDs
+are forbidden. Delete is immediately invisible and soft-deletes the row. The
+old IndexedDB Memory store may serve local compatibility mode only; server chat
+must neither read nor inject it.
+
+Retrieval runs after Knowledge and Web query construction. It ranks at most 500
+active user rows with normalized lexical/CJK terms, applies a non-zero relevance
+threshold, and returns at most five. No hit means no Memory block. A hit is JSON
+encoded inside a server-owned lower-priority/untrusted instruction; the current
+system and user request always win. Assistant metadata may contain only:
+
+```json
+{
+  "memory": {
+    "retrievedCount": 1,
+    "retrievedIds": ["memory-uuid"],
+    "degradationCode": "read_failed"
+  }
+}
+```
+
+Automatic extraction is allowed only when both `enabled` and
+`auto_record_enabled` are true. It is a bounded background Provider request over
+the raw current user message serialized as untrusted JSON. At most five stable,
+explicit facts/preferences/instructions/projects/warnings/decisions may be
+upserted. One-off requests, questions, search topics, quoted documents,
+Knowledge content, third-party claims, vague context, and credential-like text
+must be rejected. Provider/read/write/parse failure never changes the already
+completed chat answer.
+
+### 8.4 Validation & Error Matrix
+
+| Condition                                   | Required behavior                                      |
+| ------------------------------------------- | ------------------------------------------------------ |
+| missing database                            | `503 DATABASE_REQUIRED`                                |
+| invalid Memory UUID/type/content/importance | `400` bounded validation error                         |
+| another user's or deleted Memory ID         | `404 MEMORY_NOT_FOUND`                                 |
+| edit duplicates another active Memory       | `409 MEMORY_CONFLICT`                                  |
+| Memory or auto-record setting disabled      | zero retrieval/extraction writes                       |
+| no relevant lexical/CJK terms               | no Memory block and no retrieved metadata              |
+| retrieval failure                           | answer continues; bounded `read_failed` metadata only  |
+| extraction Provider/parse/write failure     | completed answer remains completed; no partial Memory  |
+| vague context or credential-like candidate  | reject candidate; never persist content or secret tags |
+
+### 8.5 Good / Base / Bad Cases
+
+- Good: an explicitly enabled stable preference is extracted, then a related
+  question in another conversation retrieves it.
+- Base: Memory is disabled or the request is unrelated, so Provider input has
+  no Memory block.
+- Bad: a generic CJK instruction fragment overlaps an unrelated request; the
+  low-information term is stopped and cannot cross the relevance threshold.
+- Degraded: extraction fails after `message.completed`; the answer and original
+  message rows are unchanged.
+
+### 8.6 Tests Required
+
+- settings defaults/update, manual CRUD, soft delete, and duplicate conflict;
+- authenticated user isolation and no client user-ID field;
+- CJK/Latin related hit, unrelated miss, Top-5 bound, and mark-used behavior;
+- disabled zero-list/zero-create behavior;
+- secret content/tag filtering and Provider failure containment;
+- frontend typed API routes and server-mode IndexedDB exclusion;
+- migration `035` up/down/up plus live Repository round-trip;
+- real Provider extraction, cross-conversation recall, unrelated miss,
+  deletion-immediate behavior, and hard fixture cleanup.
+
+### 8.7 Wrong vs Correct
+
+#### Wrong
+
+```text
+Load all browser Memory into every prompt, or run extraction before the answer
+completes and fail the chat when the second Provider call fails.
+```
+
+#### Correct
+
+```text
+Keep Postgres user-scoped and optional, retrieve at most five relevant entries,
+inject them as guarded lower-priority claims, and run bounded opt-in extraction
+without changing the completed answer.
 ```

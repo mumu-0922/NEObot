@@ -5249,3 +5249,17 @@ messages, summary row, streams, and marker were hard-deleted. Detailed scope,
 tests, and rollback are in
 `docs/tracking/g11-conversation-context-memory-plan.md` and
 `docs/tracking/g11-conversation-context-memory-process.md`.
+
+## 2026-07-20 — G11.13C optional durable user memory
+
+Server mode now stores opt-in long-term Memory and its controls in Postgres
+schema `035`; the existing Settings panel uses authenticated Go CRUD and the
+browser store is excluded from server prompts. Go retrieves at most five
+relevant user rows as guarded lower-priority context and may run bounded
+real-Provider extraction only after explicit enablement. Full gates, disposable
+Postgres down/up/user-isolation proof, live `gpt-5.6-sol` cross-conversation
+recall, unrelated negative, deletion-immediate behavior, source-built health,
+and hard fixture cleanup passed. Detailed contracts, the caught CJK false-hit
+regression, and rollback are in
+`docs/tracking/g11-conversation-context-memory-plan.md` and
+`docs/tracking/g11-conversation-context-memory-process.md`.

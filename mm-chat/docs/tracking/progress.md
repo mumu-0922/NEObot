@@ -1433,7 +1433,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
   - [x] G11.12 Stream scroll follow and composer clearance: manual upward
         scrolling pauses live bottom-follow, returning to the bottom resumes
         it, and measured input height keeps terminal output unobscured.
-  - [ ] G11.13 Server conversation context and memory, executed in separate
+  - [x] G11.13 Server conversation context and memory, executed in separate
         tested commits per
         `docs/tracking/g11-conversation-context-memory-plan.md`.
     - [x] G11.13A Current-branch replay: the browser persists the active parent,
@@ -1449,7 +1449,11 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           messages, and degrade to a recent user-boundary tail. A real long
           `gpt-5.6-sol` summary survived restart and was reused at the same
           version before complete fixture cleanup.
-    - [ ] G11.13C Optional inspectable durable user memory.
+    - [x] G11.13C Optional inspectable durable user memory: Postgres/settings
+          default off, authenticated Go CRUD, bounded relevant-only recall,
+          opt-in real-Provider extraction, immediate deletion, and browser
+          local-store exclusion in server mode. Schema `035`, disposable DB,
+          real cross-chat recall/negative/delete proof, and hard cleanup passed.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

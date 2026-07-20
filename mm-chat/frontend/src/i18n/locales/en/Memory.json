@@ -1,6 +1,7 @@
 {
   "title": "Memory",
   "subtitle": "Stores durable preferences, project facts, instructions, and decisions locally in IndexedDB. Retrieved memories may be sent to the current model as context.",
+  "serverSubtitle": "Durable preferences, project facts, instructions, and decisions are stored by the server and retrieved only when relevant.",
   "enabled": "Enabled",
   "disabled": "Disabled",
   "enableAria": "Enable memory",
@@ -17,6 +18,7 @@
   "memoryCount": "Active memories",
   "dreamLimit": "Dream limit",
   "privacyNote": "Memories stay in this browser by default. Search results are included in the current model request when the memory tool is used.",
+  "serverPrivacyNote": "Memories are stored on the server. Only a small relevant set is sent to the current model as lower-priority context.",
   "addMemory": "Add memory",
   "editMemory": "Edit memory",
   "typeLabel": "Memory type",

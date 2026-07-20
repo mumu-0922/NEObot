@@ -39,6 +39,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/sessioncache"
 	"neo-chat/mm-chat/backend/internal/storage"
 	"neo-chat/mm-chat/backend/internal/teams"
+	"neo-chat/mm-chat/backend/internal/usermemory"
 	"neo-chat/mm-chat/backend/internal/voicejobs"
 )
 
@@ -135,6 +136,7 @@ func main() {
 	var pluginRegistry plugins.Registry
 	var pluginAuditRecorder plugins.AuditRecorder
 	var runtimeConfigRepo runtimeconfig.ProviderConfigRepository
+	var userMemoryRepo usermemory.Repository
 	var sessionResolver httpserver.SessionResolver
 	var developmentSession *auth.Session
 	var authService *auth.Service
@@ -164,6 +166,7 @@ func main() {
 		pluginRegistry = plugins.NewPostgresRegistry(sqlDB, plugins.BuiltInPlugins()...)
 		pluginAuditRecorder = plugins.NewPostgresAuditRecorder(sqlDB)
 		runtimeConfigRepo = runtimeconfig.NewPostgresProviderConfigRepository(sqlDB)
+		userMemoryRepo = usermemory.NewPostgresRepository(sqlDB)
 		sessionResolver = auth.NewSessionResolver(
 			authRepo,
 			auth.WithSessionCache(sessionCache),
@@ -318,6 +321,7 @@ func main() {
 		httpserver.WithRAGQueryEmbedder(ragProviderGateway),
 		httpserver.WithRAGReranker(ragProviderGateway),
 		httpserver.WithRuntimeConfigRepository(runtimeConfigRepo),
+		httpserver.WithUserMemoryRepository(userMemoryRepo),
 		httpserver.WithProviderSecretVault(providerSecretVault),
 		httpserver.WithPluginRegistry(pluginRegistry),
 		httpserver.WithPluginAuditRecorder(pluginAuditRecorder),

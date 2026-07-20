@@ -29,6 +29,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/runtimeconfig"
 	"neo-chat/mm-chat/backend/internal/storage"
 	"neo-chat/mm-chat/backend/internal/teams"
+	"neo-chat/mm-chat/backend/internal/usermemory"
 	"neo-chat/mm-chat/backend/internal/voicejobs"
 	"neo-chat/mm-chat/backend/internal/websearch"
 )
@@ -78,6 +79,7 @@ type options struct {
 	ragQueryEmbedder     ragproviders.QueryEmbedder
 	ragReranker          ragproviders.Reranker
 	runtimeConfigRepo    runtimeconfig.ProviderConfigRepository
+	userMemoryRepo       usermemory.Repository
 	providerSecretVault  *providersecrets.Vault
 	webSearchResolver    websearch.Resolver
 }
@@ -384,6 +386,12 @@ func WithRuntimeConfigRepository(repo runtimeconfig.ProviderConfigRepository) Op
 	}
 }
 
+func WithUserMemoryRepository(repo usermemory.Repository) Option {
+	return func(opts *options) {
+		opts.userMemoryRepo = repo
+	}
+}
+
 func WithProviderSecretVault(vault *providersecrets.Vault) Option {
 	return func(opts *options) {
 		opts.providerSecretVault = vault
@@ -601,6 +609,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 			return err == nil
 		}),
 	)
+	userMemoryService := usermemory.NewService(resolvedOptions.userMemoryRepo)
 	chatOptions := []chat.HandlerOption{
 		chat.WithProvider(resolvedOptions.chatProvider),
 		chat.WithRunCancellationStore(resolvedOptions.runCancellationStore),
@@ -615,6 +624,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		chat.WithImageGenerator(chatImageGenerator{
 			service: resolvedOptions.imageJobService,
 		}),
+		chat.WithUserMemoryService(userMemoryService),
 	}
 	if webSearchService.Configured() {
 		chatOptions = append(chatOptions, chat.WithWebSearchService(webSearchService))
@@ -685,6 +695,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	))
 	runtimeConfigHandler := runtimeconfig.NewHandler(runtimeConfigService)
 	webSearchHandler := websearch.NewHandler(webSearchService)
+	userMemoryHandler := usermemory.NewHandler(userMemoryService)
 
 	mux.HandleFunc("/health", healthHandler.Health)
 	mux.HandleFunc("/ready", healthHandler.Ready)
@@ -712,6 +723,9 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/chat/conversations/", chatHandler)
 	mux.Handle("/v1/chat/runs/", chatHandler)
 	mux.Handle("/v1/chat/tools/plan", chatHandler)
+	mux.Handle("/v1/memories", userMemoryHandler)
+	mux.Handle("/v1/memories/", userMemoryHandler)
+	mux.Handle("/v1/memory-settings", userMemoryHandler)
 	mux.Handle("/v1/agents", agentHandler)
 	mux.Handle("/v1/agents/", agentHandler)
 	mux.Handle("/v1/plugins", pluginHandler)

@@ -1,7 +1,7 @@
 # G11.13 Conversation Context and Memory Plan
 
-Status: active. G11.13A and G11.13B are complete; durable user memory remains a
-deliberately separate slice.
+Status: complete. G11.13A current-branch replay, G11.13B soft consolidation,
+and G11.13C optional durable user memory are closed as separate tested commits.
 
 ## Decision
 
@@ -80,14 +80,40 @@ Acceptance:
   restarts the backend, reuses v1 without regeneration, recalls the marker
   again, and hard-deletes all fixture conversation/message/summary rows.
 
-### [ ] G11.13C — Optional durable user memory
+### [x] G11.13C — Optional durable user memory
 
-- Extract stable preferences/facts separately from conversation summaries.
-- Require explicit user controls to inspect, edit, disable, and delete memory.
-- Retrieve only relevant memory for a request; never inject the entire memory
-  store.
-- Keep memory optional: ordinary same-conversation continuity must not depend
-  on it.
+- Migration `035` stores per-user settings separately from soft-deletable
+  durable entries. Memory defaults off and automatic recording defaults off.
+- The existing Memory Settings panel uses authenticated Go CRUD in server mode
+  to inspect, add, edit, disable, and delete Postgres-backed memory. Its former
+  IndexedDB path remains local-mode compatibility only and is never a server
+  authority.
+- Go performs bounded lexical/CJK relevance ranking over at most 500 active
+  entries and injects at most five matches as lower-priority untrusted system
+  context. Knowledge/query rewriting and Web search run before this step, so
+  memory text is not used as a search query.
+- Successful answers may queue a second ordinary Provider request only when
+  both Memory and automatic recording are explicitly enabled. The extractor
+  receives the raw current user message as JSON, returns at most five stable
+  candidates, rejects vague context and credential-like content, and cannot
+  change the completed answer when it fails.
+- Assistant metadata records only bounded retrieved IDs/counts or a degradation
+  code; it never records Memory content.
+
+Acceptance:
+
+- CRUD, settings defaults, soft deletion, CJK relevance, unrelated misses,
+  disabled zero-read/zero-extraction, secret filtering, Provider failure
+  containment, migration fragments, and frontend server-authority composition
+  tests pass;
+- a disposable Postgres database applies all migrations through `035`, proves
+  per-user isolation and soft deletion, replays `035` down/up, and is removed;
+- the source-built live stack advances to schema `035`; real `gpt-5.6-sol`
+  automatically extracts one unpredictable preference, recalls it in a fresh
+  conversation with matching ID-only metadata, skips it for an unrelated math
+  request, and stops recalling it immediately after deletion;
+- all live conversations, messages, Memory rows, settings, and captures are
+  hard-deleted after proof.
 
 ## Deferred boundaries
 
@@ -107,3 +133,10 @@ ignores `conversation_context_summaries`, so leaving migration `034` applied is
 the lowest-risk rollback. After confirming no newer backend is running, the
 matching down migration may remove only derived summaries. Original messages
 remain authoritative and require no data rollback.
+
+For G11.13C, roll the frontend/backend back before considering schema rollback.
+The prior backend ignores `user_memories` and `user_memory_settings`, so leaving
+`035` applied preserves user-created data and is the preferred rollback. Only
+after every newer instance is stopped and an explicit data-loss decision is
+made may one migration down remove durable Memory rows and settings. It does not
+touch conversations, messages, or conversation summaries.

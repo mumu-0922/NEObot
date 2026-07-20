@@ -110,3 +110,80 @@ Roll back the backend first. The older backend ignores the derived table, so
 leaving `034` applied is safe. If schema rollback is required after all newer
 instances stop, run one migration down; only derived summaries are removed and
 original messages remain untouched.
+
+## 2026-07-20 — G11.13C optional durable user memory
+
+### Root cause and boundary
+
+The migrated frontend still owned long-term Memory in IndexedDB. Its existing
+Settings panel could inspect/edit local rows, `ChatApp` appended selected local
+Memory directly to the outgoing prompt, and a browser-side Provider task wrote
+new rows. That made refresh/device/server behavior inconsistent and violated the
+server/Postgres authority already adopted for chats, files, Knowledge, and
+provider configuration.
+
+Durable Memory is now explicitly separate from both original messages and
+`conversation_context_summaries`. Migration `035` adds user-scoped settings and
+soft-deletable Memory rows with least-privilege `go_api_runtime` grants. Memory
+and automatic recording default off. The former browser store remains only for
+local compatibility mode.
+
+### Closure
+
+- Added authenticated Go routes for settings plus Memory list/create/edit/
+  delete; user identity comes only from request context.
+- Reused the existing Settings UI in server mode through the typed API client.
+  Browser Memory is gated out of server prompt construction.
+- Added deterministic lexical/CJK ranking over active rows, capped at five
+  relevant results. Retrieval occurs after Knowledge/Web query construction and
+  injects JSON entries only as lower-priority untrusted system context.
+- Added opt-in Provider extraction after successful answers. The second request
+  receives only the raw current user message as untrusted JSON, permits at most
+  five stable candidates, rejects vague-context and credential-like output, and
+  cannot alter the completed answer on failure.
+- Assistant metadata contains only retrieved count/IDs or a bounded degradation
+  code, never Memory content.
+
+The first live negative replay found that the low-information CJK bigram
+`只回` could match both a stored “only answer with the code” preference and an
+unrelated “only answer with a number” math request. The ranking stop set now
+removes pronoun/instruction fragments such as `我的`, `回答`, and `只回`; a
+focused regression test and the full live negative replay both pass.
+
+### Verification
+
+Automated gates:
+
+```text
+backend go test ./...                         passed
+backend go vet ./...                          passed
+backend usermemory/chat/migration race tests  passed
+frontend format/lint/typecheck                 passed
+frontend tests                                182 files / 869 tests passed
+frontend production build                     passed
+```
+
+A disposable Postgres 16 container applied every migration through `035`,
+proved settings/CRUD/user isolation/soft deletion through the real Repository,
+replayed `035` down/up, reran the proof, and was removed.
+
+The source-built live stack advanced from schema 34 to 35. A stale BuildKit
+cache was caught because it contained zero-byte API/migrate binaries; the image
+was rejected before migration, rebuilt with `--no-cache`, and its executable
+sizes were checked before `035` ran. Backend and frontend returned healthy.
+
+With Memory and automatic recording temporarily enabled, real `gpt-5.6-sol`
+extracted an unpredictable durable preference. A fresh conversation recalled
+it with matching ID-only metadata; an unrelated arithmetic request had zero
+Memory hits; after API deletion, another fresh conversation also had zero hits
+and did not recover the marker. The four conversations, their messages, the
+Memory row, temporary settings row, captures, IDs, and marker were hard-deleted.
+Post-cleanup counts were `0/0/0`, schema remained 35, and original settings were
+restored.
+
+### Rollback
+
+Roll back frontend/backend first and leave `035` applied so user-created Memory
+survives. The prior runtime ignores both tables. Dropping `035` is a separate
+explicit data-loss action allowed only after every newer instance stops; it
+does not affect conversations, messages, or summaries.

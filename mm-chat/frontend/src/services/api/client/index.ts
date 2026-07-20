@@ -6,6 +6,7 @@ import { createLocalFileApiShell } from "./local/fileApi";
 import { createLocalImageGenerationApiShell } from "./local/imageApi";
 import { createLocalImportApiShell } from "./local/importApi";
 import { createLocalKnowledgeApiShell } from "./local/knowledgeApi";
+import { createLocalMemoryApiShell } from "./local/memoryApi";
 import { createLocalPluginApiShell } from "./local/pluginApi";
 import { createLocalProviderApiShell } from "./local/providerApi";
 import { createLocalRAGProviderApiShell } from "./local/ragProviderApi";
@@ -21,6 +22,7 @@ import { createServerFileApiShell } from "./server/fileApi";
 import { createServerImageGenerationApiShell } from "./server/imageApi";
 import { createServerImportApiShell } from "./server/importApi";
 import { createServerKnowledgeApiShell } from "./server/knowledgeApi";
+import { createServerMemoryApiShell } from "./server/memoryApi";
 import { createServerPluginApiShell } from "./server/pluginApi";
 import { createServerProviderApiShell } from "./server/providerApi";
 import { createServerRAGProviderApiShell } from "./server/ragProviderApi";
@@ -80,6 +82,9 @@ export function createNeoChatApiClient(
   const knowledge = serverHttpClient
     ? createServerKnowledgeApiShell(serverHttpClient)
     : createLocalKnowledgeApiShell();
+  const memories = serverHttpClient
+    ? createServerMemoryApiShell(serverHttpClient)
+    : createLocalMemoryApiShell();
 
   return {
     mode: resolved.mode,
@@ -94,6 +99,7 @@ export function createNeoChatApiClient(
       plugins: serverEnabled,
       teams: serverEnabled,
       knowledge: serverEnabled,
+      memories: serverEnabled,
       imageGeneration: serverEnabled,
     },
     auth,
@@ -110,6 +116,7 @@ export function createNeoChatApiClient(
     agents,
     teams,
     knowledge,
+    memories,
   };
 }
 

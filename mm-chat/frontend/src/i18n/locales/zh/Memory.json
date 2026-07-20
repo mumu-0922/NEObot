@@ -1,6 +1,7 @@
 {
   "title": "记忆",
   "subtitle": "将长期偏好、项目事实、指令和决策保存在本机 IndexedDB 中。被检索到的记忆可能会作为上下文发送给当前模型。",
+  "serverSubtitle": "长期偏好、项目事实、指令和决策由服务器保存，并只按当前问题检索相关内容。",
   "enabled": "已启用",
   "disabled": "已停用",
   "enableAria": "启用记忆",
@@ -17,6 +18,7 @@
   "memoryCount": "活跃记忆",
   "dreamLimit": "整理阈值",
   "privacyNote": "记忆默认只保存在当前浏览器。本地记忆工具被调用时，检索结果会随当前请求发送给模型。",
+  "serverPrivacyNote": "记忆保存在服务器中。只有与当前问题相关的少量记忆会作为低优先级上下文发送给当前模型。",
   "addMemory": "添加记忆",
   "editMemory": "编辑记忆",
   "typeLabel": "记忆类型",

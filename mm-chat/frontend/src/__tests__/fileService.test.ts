@@ -40,6 +40,7 @@ const capabilities = {
   agents: false,
   teams: false,
   knowledge: false,
+  memories: false,
   voice: false,
   imageGeneration: false,
   codeExecution: false,
@@ -262,6 +263,7 @@ function createMockClient(
     agents: options.agents ?? createMockAgentApi(),
     teams: options.teams ?? defaultClient.teams,
     knowledge: options.knowledge ?? defaultClient.knowledge,
+    memories: options.memories ?? defaultClient.memories,
   };
 }
 

@@ -1074,6 +1074,7 @@ const ChatApp = () => {
 
     const memoryState = useMemoryStore.getState();
     const directMemoryContext =
+      !serverModeEnabled &&
       memoryState._hasHydrated &&
       memoryState.settings.enabled &&
       memoryState.settings.searchEnabled

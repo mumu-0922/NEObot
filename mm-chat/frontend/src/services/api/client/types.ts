@@ -1,5 +1,6 @@
 import type { ByokPublicKeyResponse } from "../../../lib/byok/shared";
 import type { PublicServerConfig } from "../../../lib/defaultConfig/shared";
+import type { MemoryRecord, MemoryType } from "../../../lib/memory/types";
 import type {
   PluginExecutionPayload,
   PluginExecutionRequestPayload,
@@ -47,6 +48,7 @@ export interface ApiCapabilities {
   agents: boolean;
   teams: boolean;
   knowledge: boolean;
+  memories: boolean;
   voice: boolean;
   imageGeneration: boolean;
   codeExecution: boolean;
@@ -1007,6 +1009,47 @@ export interface KnowledgeApi {
   revokeQueryConsent(input: QueryProcessingConsentInput): Promise<void>;
 }
 
+export interface DurableMemorySettingsDTO {
+  enabled: boolean;
+  searchEnabled: boolean;
+  autoRecordEnabled: boolean;
+}
+
+export interface MemoryMutationInput {
+  type: MemoryType;
+  content: string;
+  importance?: number;
+  tags?: string[];
+  signal?: AbortSignal;
+}
+
+export interface UpdateMemoryInput extends MemoryMutationInput {
+  memoryId: string;
+}
+
+export interface UpdateDurableMemorySettingsInput {
+  enabled?: boolean;
+  searchEnabled?: boolean;
+  autoRecordEnabled?: boolean;
+  signal?: AbortSignal;
+}
+
+export interface MemoryApi {
+  listMemories(input?: { signal?: AbortSignal }): Promise<MemoryRecord[]>;
+  createMemory(input: MemoryMutationInput): Promise<MemoryRecord>;
+  updateMemory(input: UpdateMemoryInput): Promise<MemoryRecord>;
+  deleteMemory(input: {
+    memoryId: string;
+    signal?: AbortSignal;
+  }): Promise<void>;
+  getSettings(input?: {
+    signal?: AbortSignal;
+  }): Promise<DurableMemorySettingsDTO>;
+  updateSettings(
+    input: UpdateDurableMemorySettingsInput,
+  ): Promise<DurableMemorySettingsDTO>;
+}
+
 export interface NeoChatApiClient {
   mode: ApiMode;
   config: ResolvedApiClientConfig;
@@ -1025,6 +1068,7 @@ export interface NeoChatApiClient {
   agents: AgentApi;
   teams: TeamApi;
   knowledge: KnowledgeApi;
+  memories: MemoryApi;
 }
 
 export type ServerStreamEventType =

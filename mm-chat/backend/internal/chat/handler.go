@@ -13,6 +13,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/runtimeconfig"
+	"neo-chat/mm-chat/backend/internal/usermemory"
 	"neo-chat/mm-chat/backend/internal/websearch"
 )
 
@@ -41,6 +42,7 @@ type Handler struct {
 	ragAssembler        *RAGAnswerAssembler
 	ragAnswerGate       RAGAnswerGovernanceGate
 	webSearchService    *websearch.Service
+	userMemoryService   *usermemory.Service
 	contextBudgetPolicy contextBudgetPolicy
 }
 
@@ -275,6 +277,12 @@ func WithWebSearchService(service *websearch.Service) HandlerOption {
 		if service != nil && service.Configured() {
 			h.webSearchService = service
 		}
+	}
+}
+
+func WithUserMemoryService(service *usermemory.Service) HandlerOption {
+	return func(handler *Handler) {
+		handler.userMemoryService = service
 	}
 }
 
@@ -1090,6 +1098,11 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			webSearchResult,
 		)
 	}
+	providerSystemPrompt, memoryPreparation := h.prepareDurableMemory(
+		r.Context(),
+		userMessage.Content,
+		providerSystemPrompt,
+	)
 	providerSystemPromptWithoutFusion := providerSystemPrompt
 	providerSystemPrompt = applySourceFusionSystemInstruction(
 		providerSystemPrompt,
@@ -1132,7 +1145,8 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			decision,
 			fusionDiagnostics,
 		)
-		return withConversationContextMetadata(metadata, contextPreparation)
+		metadata = withConversationContextMetadata(metadata, contextPreparation)
+		return withDurableMemoryMetadata(metadata, memoryPreparation)
 	}
 
 	streamCtx, streamCancel := context.WithCancel(r.Context())
@@ -1446,6 +1460,14 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	flusher.Flush()
+	h.queueDurableMemoryExtraction(
+		r.Context(),
+		streamProvider,
+		*modelRef,
+		conversationID,
+		userMessage.ID,
+		userMessage.Content,
+	)
 }
 
 func (h *Handler) resolveConversationRAGSelection(

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Brain,
   Database,
@@ -15,7 +15,11 @@ import {
 import { useTranslations } from "next-intl";
 import { MEMORY_LIMITS } from "@/config/limits";
 import { performMemoryDream } from "@/services/api/chatService";
-import { useMemoryStore } from "@/store/core/memoryStore";
+import { createNeoChatApiClient } from "@/services/api/client";
+import {
+  DEFAULT_MEMORY_SETTINGS,
+  useMemoryStore,
+} from "@/store/core/memoryStore";
 import type { MemoryRecord, MemoryType } from "@/types";
 import { CustomSelect, SimpleSwitch } from "./SettingsUI";
 
@@ -44,21 +48,62 @@ function formatDate(timestamp: number | undefined): string {
 
 const MemorySettings = () => {
   const t = useTranslations("Memory");
-  const {
-    settings,
-    memories,
-    dreamStatus,
-    updateMemorySettings,
-    addMemory,
-    updateMemory,
-    removeMemory,
-  } = useMemoryStore();
+  const localMemoryState = useMemoryStore();
+  const apiClient = useMemo(() => createNeoChatApiClient(), []);
+  const serverMode =
+    apiClient.mode === "server" && apiClient.capabilities.memories;
+  const [serverSettings, setServerSettings] = useState<{
+    enabled: boolean;
+    searchEnabled: boolean;
+    autoRecordEnabled: boolean;
+  } | null>(null);
+  const [serverMemories, setServerMemories] = useState<MemoryRecord[]>([]);
+  const [serverLoading, setServerLoading] = useState(serverMode);
+  const [serverSaving, setServerSaving] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [content, setContent] = useState("");
   const [tags, setTags] = useState("");
   const [type, setType] = useState<MemoryType>("fact");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [dreamError, setDreamError] = useState<string | null>(null);
+
+  const settings = serverMode
+    ? {
+        ...DEFAULT_MEMORY_SETTINGS,
+        enabled: serverSettings?.enabled ?? false,
+        searchEnabled: serverSettings?.searchEnabled ?? true,
+        autoRecordEnabled: serverSettings?.autoRecordEnabled ?? false,
+        dreamEnabled: false,
+      }
+    : localMemoryState.settings;
+  const memories = serverMode ? serverMemories : localMemoryState.memories;
+  const dreamStatus = localMemoryState.dreamStatus;
+
+  useEffect(() => {
+    if (!serverMode) return;
+    const controller = new AbortController();
+    setServerLoading(true);
+    setServerError(null);
+    Promise.all([
+      apiClient.memories.getSettings({ signal: controller.signal }),
+      apiClient.memories.listMemories({ signal: controller.signal }),
+    ])
+      .then(([nextSettings, nextMemories]) => {
+        setServerSettings(nextSettings);
+        setServerMemories(nextMemories);
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        setServerError(
+          error instanceof Error ? error.message : "Memory request failed.",
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setServerLoading(false);
+      });
+    return () => controller.abort();
+  }, [apiClient, serverMode]);
 
   const typeOptions = useMemo(
     () =>
@@ -88,7 +133,38 @@ const MemorySettings = () => {
     setType("fact");
   };
 
-  const handleSave = () => {
+  const updateSettings = async (
+    patch: Partial<{
+      enabled: boolean;
+      searchEnabled: boolean;
+      autoRecordEnabled: boolean;
+      dreamEnabled: boolean;
+    }>,
+  ) => {
+    if (!serverMode) {
+      localMemoryState.updateMemorySettings(patch);
+      return;
+    }
+    setServerError(null);
+    try {
+      const next = await apiClient.memories.updateSettings({
+        ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
+        ...(patch.searchEnabled !== undefined
+          ? { searchEnabled: patch.searchEnabled }
+          : {}),
+        ...(patch.autoRecordEnabled !== undefined
+          ? { autoRecordEnabled: patch.autoRecordEnabled }
+          : {}),
+      });
+      setServerSettings(next);
+    } catch (error) {
+      setServerError(
+        error instanceof Error ? error.message : "Memory request failed.",
+      );
+    }
+  };
+
+  const handleSave = async () => {
     if (!content.trim()) return;
     const next = {
       type,
@@ -98,12 +174,36 @@ const MemorySettings = () => {
       importance: 3,
     };
 
-    if (editingId) {
-      updateMemory(editingId, next);
-    } else {
-      addMemory(next);
+    if (!serverMode) {
+      if (editingId) {
+        localMemoryState.updateMemory(editingId, next);
+      } else {
+        localMemoryState.addMemory(next);
+      }
+      resetForm();
+      return;
     }
-    resetForm();
+    setServerSaving(true);
+    setServerError(null);
+    try {
+      const saved = editingId
+        ? await apiClient.memories.updateMemory({
+            memoryId: editingId,
+            ...next,
+          })
+        : await apiClient.memories.createMemory(next);
+      setServerMemories((current) => {
+        const remaining = current.filter((memory) => memory.id !== saved.id);
+        return [saved, ...remaining];
+      });
+      resetForm();
+    } catch (error) {
+      setServerError(
+        error instanceof Error ? error.message : "Memory request failed.",
+      );
+    } finally {
+      setServerSaving(false);
+    }
   };
 
   const handleEdit = (memory: MemoryRecord) => {
@@ -122,6 +222,25 @@ const MemorySettings = () => {
     }
   };
 
+  const handleDelete = async (memoryId: string) => {
+    if (!serverMode) {
+      localMemoryState.removeMemory(memoryId);
+      return;
+    }
+    setServerError(null);
+    try {
+      await apiClient.memories.deleteMemory({ memoryId });
+      setServerMemories((current) =>
+        current.filter((memory) => memory.id !== memoryId),
+      );
+      if (editingId === memoryId) resetForm();
+    } catch (error) {
+      setServerError(
+        error instanceof Error ? error.message : "Memory request failed.",
+      );
+    }
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <div className="space-y-3">
@@ -132,7 +251,7 @@ const MemorySettings = () => {
               {t("title")}
             </h3>
             <p className="mt-1 max-w-2xl text-xs leading-relaxed text-gray-500 dark:text-muted-foreground">
-              {t("subtitle")}
+              {t(serverMode ? "serverSubtitle" : "subtitle")}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -144,7 +263,7 @@ const MemorySettings = () => {
               name="memoryEnabled"
               checked={settings.enabled}
               onChange={() =>
-                updateMemorySettings({ enabled: !settings.enabled })
+                void updateSettings({ enabled: !settings.enabled })
               }
             />
           </div>
@@ -157,7 +276,7 @@ const MemorySettings = () => {
               desc: t("searchToggleDesc"),
               checked: settings.searchEnabled,
               onChange: () =>
-                updateMemorySettings({
+                void updateSettings({
                   searchEnabled: !settings.searchEnabled,
                 }),
             },
@@ -166,19 +285,23 @@ const MemorySettings = () => {
               desc: t("recordToggleDesc"),
               checked: settings.autoRecordEnabled,
               onChange: () =>
-                updateMemorySettings({
+                void updateSettings({
                   autoRecordEnabled: !settings.autoRecordEnabled,
                 }),
             },
-            {
-              label: t("dreamToggle"),
-              desc: t("dreamToggleDesc"),
-              checked: settings.dreamEnabled,
-              onChange: () =>
-                updateMemorySettings({
-                  dreamEnabled: !settings.dreamEnabled,
-                }),
-            },
+            ...(!serverMode
+              ? [
+                  {
+                    label: t("dreamToggle"),
+                    desc: t("dreamToggleDesc"),
+                    checked: settings.dreamEnabled,
+                    onChange: () =>
+                      void updateSettings({
+                        dreamEnabled: !settings.dreamEnabled,
+                      }),
+                  },
+                ]
+              : []),
           ].map((item) => (
             <div
               key={item.label}
@@ -211,19 +334,21 @@ const MemorySettings = () => {
               <Database size={16} className="text-cyan-500" aria-hidden />
               {t("status")}
             </div>
-            <button
-              type="button"
-              onClick={handleDreamNow}
-              disabled={
-                dreamStatus.isRunning ||
-                memories.length <= settings.targetCount ||
-                !settings.enabled
-              }
-              className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-medium text-cyan-700 transition-colors hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-cyan-900/50 dark:bg-cyan-950/30 dark:text-cyan-200"
-            >
-              <Sparkles size={14} aria-hidden />
-              {dreamStatus.isRunning ? t("dreaming") : t("dreamNow")}
-            </button>
+            {!serverMode && (
+              <button
+                type="button"
+                onClick={handleDreamNow}
+                disabled={
+                  dreamStatus.isRunning ||
+                  memories.length <= settings.targetCount ||
+                  !settings.enabled
+                }
+                className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-medium text-cyan-700 transition-colors hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-cyan-900/50 dark:bg-cyan-950/30 dark:text-cyan-200"
+              >
+                <Sparkles size={14} aria-hidden />
+                {dreamStatus.isRunning ? t("dreaming") : t("dreamNow")}
+              </button>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3 text-sm">
@@ -235,22 +360,24 @@ const MemorySettings = () => {
                 {memories.length}
               </div>
             </div>
-            <div className="rounded-lg bg-gray-50 p-3 dark:bg-muted/40">
-              <div className="text-xs text-gray-500 dark:text-muted-foreground">
-                {t("dreamLimit")}
+            {!serverMode && (
+              <div className="rounded-lg bg-gray-50 p-3 dark:bg-muted/40">
+                <div className="text-xs text-gray-500 dark:text-muted-foreground">
+                  {t("dreamLimit")}
+                </div>
+                <div className="mt-1 font-mono text-lg text-gray-900 dark:text-foreground">
+                  {settings.triggerCount} / {settings.targetCount}
+                </div>
               </div>
-              <div className="mt-1 font-mono text-lg text-gray-900 dark:text-foreground">
-                {settings.triggerCount} / {settings.targetCount}
-              </div>
-            </div>
+            )}
           </div>
 
           <p className="text-xs leading-relaxed text-gray-500 dark:text-muted-foreground">
-            {t("privacyNote")}
+            {t(serverMode ? "serverPrivacyNote" : "privacyNote")}
           </p>
-          {(dreamError || dreamStatus.lastError) && (
+          {(serverError || dreamError || dreamStatus.lastError) && (
             <p className="rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-200">
-              {dreamError || dreamStatus.lastError}
+              {serverError || dreamError || dreamStatus.lastError}
             </p>
           )}
 
@@ -280,8 +407,8 @@ const MemorySettings = () => {
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={handleSave}
-                disabled={!content.trim()}
+                onClick={() => void handleSave()}
+                disabled={!content.trim() || serverSaving || serverLoading}
                 className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {editingId ? <Save size={16} /> : <Plus size={16} />}
@@ -363,7 +490,7 @@ const MemorySettings = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => removeMemory(memory.id)}
+                      onClick={() => void handleDelete(memory.id)}
                       aria-label={t("deleteAria")}
                       className="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-950/20"
                     >
