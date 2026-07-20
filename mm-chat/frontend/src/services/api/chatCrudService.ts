@@ -223,7 +223,10 @@ export function mapChatMessageDtoToMessage(
   );
   const role = mapServerRoleToLegacyRole(message.role);
   const model = modelRefToModelString(message.modelRef);
-  const knowledge = normalizeMessageKnowledgeMetadata(message.metadata);
+  const knowledge = normalizeMessageKnowledgeMetadata(
+    message.metadata,
+    message.content,
+  );
   const content = normalizeImageGenerationContent(message);
 
   return {

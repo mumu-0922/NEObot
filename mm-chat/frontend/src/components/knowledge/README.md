@@ -15,3 +15,5 @@ Knowledge components manage local knowledge collections, document status, RAG so
   local `ragService.ts` path is fail-closed.
 - Preserve status labels and error states for long-running document workflows.
 - Avoid loading large file contents directly in presentational components.
+- Render a Knowledge citation only when its exact marker is present in the
+  completed answer; retrieval admission alone is not display authority.

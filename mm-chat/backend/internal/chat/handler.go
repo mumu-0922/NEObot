@@ -1364,6 +1364,13 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		}
 	}
 
+	completedDecision := autoDecision.completed(content.String())
+	fusionPlan = reconcileCompletedSourceFusionAuthority(
+		fusionPlan,
+		content.String(),
+		completedDecision,
+		webSearchResult,
+	)
 	assistantMessage, err = h.finalizeAssistantMessage(
 		context.Background(),
 		conversationID,
@@ -1372,7 +1379,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			Status:       "completed",
 			Content:      content.String(),
 			OutputBlocks: webSearchOutputBlocks(assistantMessage.ID, webSearchResult),
-			Metadata:     webMessageMetadata(autoDecision.completed(), nil),
+			Metadata:     webMessageMetadata(completedDecision, nil),
 		},
 	)
 	if err != nil {
@@ -1666,10 +1673,25 @@ func (d autoRAGDecision) ReadyForAnswer() bool {
 		len(d.Citations) > 0 && d.Authority != nil
 }
 
-func (d autoRAGDecision) completed() autoRAGDecision {
-	if d.ReadyForAnswer() {
-		d.Outcome = "answered"
+func (d autoRAGDecision) completed(content string) autoRAGDecision {
+	if !d.ReadyForAnswer() {
+		return d
 	}
+
+	usedCitations := make([]RAGCitation, 0, len(d.Citations))
+	for _, citation := range d.Citations {
+		if strings.Contains(content, citation.Marker) {
+			usedCitations = append(usedCitations, citation)
+		}
+	}
+	d.Evidence = nil
+	d.Citations = usedCitations
+	if len(usedCitations) == 0 {
+		d.Outcome = "answered_without_knowledge"
+		d.Authority = nil
+		return d
+	}
+	d.Outcome = "answered"
 	return d
 }
 

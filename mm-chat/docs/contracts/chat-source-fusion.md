@@ -23,6 +23,7 @@ questionClass = current_public | knowledge | general
 authority     = mixed | knowledge | web | model
 searchReason  = disabled | current_public | knowledge_sufficient |
                 knowledge_unavailable
+knowledgeOutcome = answered_without_knowledge
 ```
 
 No new public route, request field, provider selection, or database schema is
@@ -38,6 +39,18 @@ remain the only user authorities.
   normal Knowledge miss is not displayed as an error.
 - Private/internal claims prefer `[K]`; current public claims prefer `[W]`;
   model synthesis receives no fabricated source identity.
+- Retrieval admission is not citation use. On successful completion, Go keeps
+  only Knowledge citations whose exact `[K<n>]` marker appears in the final
+  answer. When none remain, `knowledgeOutcome=answered_without_knowledge`, the
+  Knowledge citation count is zero, and no Knowledge answer-governance artifact
+  is persisted.
+- The persisted terminal `authority` is recomputed from valid markers that
+  exist in both the admitted source set and final answer: K+W is `mixed`, K-only
+  is `knowledge`, W-only is `web`, and neither is `model`. A model-invented
+  marker cannot establish authority.
+- The frontend applies the same final-answer marker filter while reading older
+  messages, so stale pre-fix citation metadata cannot render an unused
+  Knowledge card after reload.
 - If `[K]` and `[W]` conflict, the answer must state the different scopes or
   timestamps and cite both instead of silently choosing one.
 - Exactly one already-active Search provider is resolved. There is no provider
@@ -63,6 +76,8 @@ remain the only user authorities.
 | Built-in capability mismatch | degraded metadata; no cross-provider fallback |
 | Built-in startup fails before output | retry same model once without built-in Web |
 | Neither evidence source available | ordinary model answer |
+| Knowledge admitted but final answer has no valid `[K]` | normal answer, zero Knowledge citations, no Knowledge card |
+| Knowledge admitted but final answer uses only valid `[W]` | terminal authority `web`, zero Knowledge citations |
 | `[K]`/`[W]` conflict | present both scopes with both markers |
 
 ## 5. Good / Base / Bad Cases
@@ -73,8 +88,12 @@ remain the only user authorities.
   public source `[W1]` and explains any conflict.
 - Base: no Knowledge and Search disabled; generation is an ordinary model
   answer with no empty source card.
+- Base: related Knowledge reaches generation but does not answer the question;
+  the model omits `[K]`, the terminal result retains only used Web/model
+  authority, and the Knowledge card stays hidden.
 - Bad: Search runs when the toggle is off, a provider error aborts an otherwise
-  useful Auto answer, or a raw private query/source is written to diagnostics.
+  useful Auto answer, an injected-but-unused citation renders as a Knowledge
+  source, or a raw private query/source is written to diagnostics.
 
 ## 6. Tests Required
 
@@ -85,6 +104,10 @@ remain the only user authorities.
 - successful mixed model-built-in Search plus same-model startup degradation;
 - completed/cancelled/failed message persistence with bounded `[K]`/`[W]`
   artifacts and redacted diagnostics;
+- completed-answer reconciliation for K+W, K-only, W-only, neither, partial K
+  use, and invented-marker cases;
+- frontend reload compatibility proving a stored citation without a matching
+  final-answer marker produces no Knowledge card;
 - reload and frontend citation-card interaction;
 - live Knowledge-only, Web-only, both, neither, failure, restart, and clean-copy
   smoke with temporary artifacts removed.
@@ -101,7 +124,8 @@ Correct:
 
 ```text
 Knowledge decision -> deterministic source Router -> optional one-provider Web
-  -> source-aware prompt -> model -> persisted [K]/[W] + redacted diagnostics
+  -> source-aware prompt -> model -> reconcile admitted sources against actual
+     [K]/[W] markers -> persist used citations + terminal authority
 ```
 
 The frontend renders Knowledge and Web citation cards independently. It adds

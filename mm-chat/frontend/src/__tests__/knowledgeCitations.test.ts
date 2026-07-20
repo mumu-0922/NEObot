@@ -66,6 +66,59 @@ describe("Knowledge citation metadata", () => {
     });
   });
 
+  it("drops stored citations that the completed answer did not use", () => {
+    const knowledge = normalizeMessageKnowledgeMetadata(
+      {
+        knowledge: {
+          mode: "auto",
+          outcome: "answered",
+          selectedCollectionIds: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"],
+          citationCount: 1,
+          evidenceUsed: true,
+          citations: [
+            {
+              id: "cit_1",
+              marker: "[K1]",
+              snippet: "related but non-answering evidence",
+            },
+          ],
+        },
+      },
+      "The answer only used a public source [W1].",
+    );
+
+    expect(knowledge).toMatchObject({
+      outcome: "answered_without_knowledge",
+      citationCount: 0,
+      evidenceUsed: false,
+      citations: [],
+    });
+  });
+
+  it("keeps only Knowledge markers present in the completed answer", () => {
+    const knowledge = normalizeMessageKnowledgeMetadata(
+      {
+        knowledge: {
+          mode: "auto",
+          outcome: "answered",
+          citationCount: 2,
+          citations: [
+            { id: "cit_1", marker: "[K1]", snippet: "first evidence" },
+            { id: "cit_2", marker: "[K2]", snippet: "second evidence" },
+          ],
+        },
+      },
+      "The answer uses the second source [K2].",
+    );
+
+    expect(knowledge).toMatchObject({
+      outcome: "answered",
+      citationCount: 1,
+      evidenceUsed: true,
+      citations: [{ marker: "[K2]" }],
+    });
+  });
+
   it("extracts selected collection ids from collection and file attachments", () => {
     const ids = getKnowledgeAttachmentCollectionIds([
       createKnowledgeCollectionAttachment({

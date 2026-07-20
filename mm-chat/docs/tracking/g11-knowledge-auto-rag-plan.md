@@ -361,11 +361,17 @@ Incremental execution slices:
   interaction parity;
 - **G11.9G.4** complete: execute the full matrix, owner-authorized live
   Knowledge/Web/model smoke, restart/clean-copy verification, cleanup, and
-  close G11.9.
+  close G11.9;
+- **G11.9G.5** complete: correct post-closure citation truth by retaining only
+  final-answer `[K]` markers, recomputing terminal source authority from valid
+  used `[K]`/`[W]` markers, and hiding stale pre-fix Knowledge cards on reload.
 
 G11.9 is complete. The final deployed proof used the active structure-aware
 Knowledge generation, Jina query/rerank, Tavily, and `gpt-5.5`; every temporary
 conversation and local smoke artifact was removed after reload verification.
+The G11.9G.5 correction does not replace the evaluated rerank gate with one
+unsafe global cutoff: live useful and unused candidates had overlapping score
+ranges, while final citation-marker use separated the observed cases.
 
 ## Definition of Done
 

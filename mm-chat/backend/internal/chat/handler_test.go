@@ -912,7 +912,7 @@ func TestHandlerFusesKnowledgeWithBuiltInSearchAndReloadsBothCitations(t *testin
 			"这个内部方向的最新公开进展是什么",
 		),
 	)
-	provider := &modelBuiltInSearchProbe{}
+	provider := &modelBuiltInSearchProbe{delta: "grounded answer [K1]"}
 	searchResolver := &fakeWebSearchResolver{execution: websearch.ActiveExecution{
 		Mode: websearch.ExecutionModelBuiltIn, ModelBuiltIn: websearch.ModelBuiltInOpenAI,
 	}}
@@ -1029,7 +1029,8 @@ func TestHandlerFallsBackWhenBuiltInSearchFailsBeforeStreaming(t *testing.T) {
 		t.Fatalf("built-in fallback message = %#v", message)
 	}
 	fusion := message.Metadata["fusion"].(map[string]any)
-	if fusion["authority"] != sourceAuthorityKnowledge ||
+	if fusion["authority"] != sourceAuthorityModel ||
+		fusion["knowledgeOutcome"] != "answered_without_knowledge" ||
 		fusion["degradationReason"] != "provider_failed" {
 		t.Fatalf("built-in fallback fusion = %#v", fusion)
 	}
@@ -1461,6 +1462,65 @@ func TestHandlerSourceFusionDerivesExternalQueryFromKnowledge(t *testing.T) {
 	}
 }
 
+func TestHandlerSourceFusionPersistsOnlyKnowledgeMarkersUsedByAnswer(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "latest public fixture"),
+	)
+	provider := &titleProvider{chunks: []string{"Public answer [W1]"}}
+	searchProvider := &fakeWebSearchProvider{result: websearch.Result{
+		Sources: []websearch.Source{{
+			Title: "Public update", URL: "https://search.example/update", Content: "fresh update",
+		}},
+	}}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithWebSearchService(websearch.NewService(&fakeWebSearchResolver{
+			execution: websearch.ActiveExecution{
+				Mode: websearch.ExecutionExternal, External: searchProvider,
+			},
+		})),
+		WithRAGAnswerAssembler(NewRAGAnswerAssembler(
+			&fakeRAGCandidateSource{refs: []knowledge.EvidenceCandidateReference{validRAGCandidate()}},
+			&fakeRAGHydrator{evidence: []knowledge.HydratedEvidence{validHydratedEvidence()}},
+		)),
+		WithRAGAnswerGovernanceGate(&fakeRAGAnswerGovernanceGate{
+			authority: RAGAnswerAuthority{
+				Processor: "mock", ModelID: "mock-chat", CollectionCount: 1,
+			},
+		}),
+	)
+
+	recorder := performAuthenticatedRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"config":{"useSearch":true},"metadata":{"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-fusion-unused-knowledge"}`,
+	)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	if !strings.Contains(provider.input.Prompt, "[K1]") ||
+		!strings.Contains(provider.input.Prompt, "[W1]") {
+		t.Fatalf("provider prompt = %q", provider.input.Prompt)
+	}
+	message := repo.messages[testConversationID][1]
+	assertAutoRAGMetadata(t, message, "answered_without_knowledge", 0)
+	knowledgeMetadata := message.Metadata["knowledge"].(map[string]any)
+	if _, ok := knowledgeMetadata["citations"]; ok {
+		t.Fatalf("unused Knowledge citation persisted = %#v", knowledgeMetadata)
+	}
+	webMetadata := message.Metadata["web"].(map[string]any)
+	fusionMetadata := message.Metadata["fusion"].(map[string]any)
+	if webMetadata["citationCount"] != 1 ||
+		fusionMetadata["authority"] != sourceAuthorityWeb ||
+		fusionMetadata["knowledgeOutcome"] != "answered_without_knowledge" {
+		t.Fatalf("terminal source metadata = %#v", message.Metadata)
+	}
+}
+
 func TestHandlerSourceFusionDegradesExternalSearchFailure(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
@@ -1545,7 +1605,7 @@ func TestHandlerAutoRAGFallsBackWhenAnswerGovernanceIsMissing(t *testing.T) {
 	assertAutoRAGMetadata(t, repo.messages[testConversationID][1], "answer_governance_required", 0)
 }
 
-func TestHandlerAutoRAGDoesNotRejectAnswerWithoutCitationMarker(t *testing.T) {
+func TestHandlerAutoRAGDoesNotPersistUnusedCitation(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
 	repo.messages[testConversationID] = append(
@@ -1574,7 +1634,19 @@ func TestHandlerAutoRAGDoesNotRejectAnswerWithoutCitationMarker(t *testing.T) {
 	if assistant.Content != "Useful answer without marker" {
 		t.Fatalf("assistant content = %q", assistant.Content)
 	}
-	assertAutoRAGMetadata(t, assistant, "answered", 1)
+	assertAutoRAGMetadata(t, assistant, "answered_without_knowledge", 0)
+	knowledgeMetadata := assistant.Metadata["knowledge"].(map[string]any)
+	if _, ok := knowledgeMetadata["citations"]; ok {
+		t.Fatalf("unused citations persisted = %#v", knowledgeMetadata)
+	}
+	if _, ok := knowledgeMetadata["answerGovernance"]; ok {
+		t.Fatalf("unused answer governance persisted = %#v", knowledgeMetadata)
+	}
+	fusion := assistant.Metadata["fusion"].(map[string]any)
+	if fusion["authority"] != sourceAuthorityModel ||
+		fusion["knowledgeOutcome"] != "answered_without_knowledge" {
+		t.Fatalf("terminal fusion metadata = %#v", fusion)
+	}
 }
 
 func TestHandlerStreamsEmptyAssistantContent(t *testing.T) {
@@ -2939,6 +3011,7 @@ type modelBuiltInSearchProbe struct {
 	ordinaryCalled bool
 	builtInCalled  bool
 	input          ProviderRequest
+	delta          string
 }
 
 type builtInSearchStartupFailureProvider struct {
@@ -2997,7 +3070,11 @@ func (p *modelBuiltInSearchProbe) StreamChatWithModelBuiltInSearch(
 		Title: "Fixture", URL: "https://search.example/result", Content: "source",
 	}}}
 	events <- ProviderEvent{Type: ProviderEventSearch, Search: &result}
-	events <- ProviderEvent{Type: ProviderEventDelta, Delta: "grounded answer"}
+	delta := p.delta
+	if delta == "" {
+		delta = "grounded answer"
+	}
+	events <- ProviderEvent{Type: ProviderEventDelta, Delta: delta}
 	close(events)
 	return events, nil
 }

@@ -96,6 +96,41 @@ func fallbackSourceFusionAuthority(
 	return plan
 }
 
+func reconcileCompletedSourceFusionAuthority(
+	plan sourceFusionPlan,
+	content string,
+	knowledge autoRAGDecision,
+	webResult websearch.Result,
+) sourceFusionPlan {
+	knowledgeUsed := false
+	for _, citation := range knowledge.Citations {
+		if strings.Contains(content, citation.Marker) {
+			knowledgeUsed = true
+			break
+		}
+	}
+	_, webCitations := prepareWebSearchResult(webResult)
+	webUsed := false
+	for _, citation := range webCitations {
+		if strings.Contains(content, citation.Marker) {
+			webUsed = true
+			break
+		}
+	}
+
+	switch {
+	case knowledgeUsed && webUsed:
+		plan.Authority = sourceAuthorityMixed
+	case knowledgeUsed:
+		plan.Authority = sourceAuthorityKnowledge
+	case webUsed:
+		plan.Authority = sourceAuthorityWeb
+	default:
+		plan.Authority = sourceAuthorityModel
+	}
+	return plan
+}
+
 func sourceSearchDegradationReason(err error) string {
 	var providerError *websearch.ProviderError
 	switch {

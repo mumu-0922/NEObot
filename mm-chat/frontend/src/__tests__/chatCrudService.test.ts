@@ -170,6 +170,7 @@ describe("chat CRUD DTO mappers", () => {
   it("reloads combined Knowledge and Web citation artifacts", () => {
     const combined = mapChatMessageDtoToMessage({
       ...assistantMessageDto,
+      content: "Combined private [K1] and public [W1] answer.",
       metadata: {
         knowledge: {
           mode: "auto",
@@ -220,6 +221,35 @@ describe("chat CRUD DTO mappers", () => {
     ]);
     expect(combined.metadata).toMatchObject({
       fusion: { authority: "mixed", searchRequested: true },
+    });
+  });
+
+  it("hides a stale Knowledge card when the answer only cites Web", () => {
+    const webOnly = mapChatMessageDtoToMessage({
+      ...assistantMessageDto,
+      content: "Public answer [W1]",
+      metadata: {
+        knowledge: {
+          mode: "auto",
+          outcome: "answered",
+          citationCount: 1,
+          evidenceUsed: true,
+          citations: [
+            {
+              id: "cit_1",
+              marker: "[K1]",
+              snippet: "related but unused private fixture",
+            },
+          ],
+        },
+      },
+    });
+
+    expect(webOnly.knowledge).toMatchObject({
+      outcome: "answered_without_knowledge",
+      citationCount: 0,
+      evidenceUsed: false,
+      citations: [],
     });
   });
 

@@ -56,28 +56,42 @@ function normalizeKnowledgeCitation(value: unknown): KnowledgeCitation | null {
 
 export function normalizeMessageKnowledgeMetadata(
   metadata: Record<string, unknown> | undefined,
+  answerContent?: string,
 ): MessageKnowledgeMetadata | undefined {
   if (!metadata || !isRecord(metadata.knowledge)) return undefined;
   const knowledge = metadata.knowledge;
+  const reconcileWithAnswer = typeof answerContent === "string";
   const rawCitations = Array.isArray(knowledge.citations)
     ? knowledge.citations
     : [];
   const citations = rawCitations
     .map(normalizeKnowledgeCitation)
-    .filter((citation): citation is KnowledgeCitation => Boolean(citation));
-  const citationCount =
-    typeof knowledge.citationCount === "number" &&
-    Number.isFinite(knowledge.citationCount)
+    .filter((citation): citation is KnowledgeCitation => {
+      if (!citation) return false;
+      return !reconcileWithAnswer || answerContent.includes(citation.marker);
+    });
+  const citationCount = reconcileWithAnswer
+    ? citations.length
+    : typeof knowledge.citationCount === "number" &&
+        Number.isFinite(knowledge.citationCount)
       ? Math.max(0, Math.floor(knowledge.citationCount))
       : citations.length;
+  const storedOutcome = stringValue(knowledge.outcome);
+  const outcome =
+    reconcileWithAnswer &&
+    storedOutcome === "answered" &&
+    citations.length === 0
+      ? "answered_without_knowledge"
+      : storedOutcome;
 
   return {
     mode: "auto",
-    outcome: stringValue(knowledge.outcome),
+    outcome,
     selectedCollectionIds: stringArrayValue(knowledge.selectedCollectionIds),
     citationCount,
-    evidenceUsed:
-      typeof knowledge.evidenceUsed === "boolean"
+    evidenceUsed: reconcileWithAnswer
+      ? citations.length > 0
+      : typeof knowledge.evidenceUsed === "boolean"
         ? knowledge.evidenceUsed
         : citations.length > 0
           ? true

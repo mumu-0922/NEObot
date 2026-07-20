@@ -2128,3 +2128,51 @@ rollback anchor. Code rollback may revert G11.9G.1 through G11.9G.3 in reverse
 commit order without changing schema or provider state.
 
 G11.9G.4, G11.9G, and the complete G11.9 Auto Knowledge/Web plan are closed.
+
+## 2026-07-20 — G11.9G.5 Terminal citation truth correction
+
+A live user report exposed a post-generation truth gap. The selected Knowledge
+collection produced a positive rerank candidate for a current public question,
+but the final answer used only Web markers. The stored message still retained
+the admitted Knowledge citation and the frontend therefore rendered a
+Knowledge card that the answer never cited. A separate unrelated public
+question produced `no_evidence` and correctly rendered no Knowledge card.
+
+The live score audit ruled out a blunt threshold change: the unused candidate
+scored `0.11554055`, while useful cited candidates existed at `0.09505704`,
+`0.12736949`, and `0.21525481`. Raising the global threshold enough to remove
+the false display would also remove valid multilingual evidence. The correction
+therefore preserves the evaluated retrieval gate and closes truth at the
+decisive boundary: final model output.
+
+On completed messages, Go now filters admitted Knowledge citations against the
+exact `[K<n>]` markers present in the final answer. No surviving marker becomes
+`answered_without_knowledge`, citation count zero, with no persisted Knowledge
+answer-governance artifact. Terminal fusion authority is recomputed from valid
+used markers: K+W, K-only, W-only, and neither map to `mixed`, `knowledge`,
+`web`, and `model`. The frontend repeats the citation filter during DTO mapping
+so older pre-fix messages cannot keep rendering stale Knowledge cards after a
+reload.
+
+Verification at implementation time:
+
+```text
+live score/marker audit                                  completed
+Go focused chat tests                                    passed
+Go full / chat race / vet                                passed / passed / passed
+frontend Knowledge/chat mapper regressions               14 passed
+frontend format / lint / typecheck / full tests / build  passed / 854 tests / passed
+source-built Backend / Frontend rebuild                  healthy / healthy
+live unused-related Knowledge -> no Knowledge citation   passed
+live unrelated public question -> Web only               passed
+live relevant private question -> Knowledge only         passed
+standalone structure / temporary conversation cleanup    passed / zero active
+```
+
+No schema, route, provider configuration, credential, external provider call,
+or user-visible annotation was added. The live replay used the existing active
+Server Default model, Tavily, selected `test` collection, and Jina query/rerank;
+it persisted zero Knowledge citations for the unused related candidate, zero
+for the unrelated question, and one for the truly supported private question.
+All temporary smoke state and local response artifacts were removed before the
+slice commit.

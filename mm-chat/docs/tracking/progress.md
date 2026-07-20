@@ -1419,6 +1419,8 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
             citation persistence/reload, and frontend interaction parity.
       - [x] G11.9G.4 Full matrix, live provider smoke, restart, clean-copy,
             cleanup, and G11.9 closure.
+      - [x] G11.9G.5 Terminal Knowledge citation reconciliation, actual-marker
+            source authority, and stale-card reload compatibility.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

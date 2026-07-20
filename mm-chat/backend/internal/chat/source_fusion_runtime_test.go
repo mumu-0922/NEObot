@@ -34,6 +34,44 @@ func TestBuildFusionWebSearchQueryIsBoundedAndSourceMinimal(t *testing.T) {
 	}
 }
 
+func TestReconcileCompletedSourceFusionAuthorityUsesActualMarkers(t *testing.T) {
+	knowledge := autoRAGDecision{
+		Outcome: "answered",
+		Citations: []RAGCitation{
+			{ID: "cit_1", Marker: "[K1]"},
+		},
+	}
+	webResult := websearch.Result{Sources: []websearch.Source{{
+		Title: "Public source", URL: "https://example.test/public", Content: "public evidence",
+	}}}
+	tests := []struct {
+		name      string
+		content   string
+		knowledge autoRAGDecision
+		want      sourceAuthority
+	}{
+		{name: "both", content: "private [K1] public [W1]", knowledge: knowledge, want: sourceAuthorityMixed},
+		{name: "knowledge only", content: "private [K1]", knowledge: knowledge, want: sourceAuthorityKnowledge},
+		{name: "web only", content: "public [W1]", knowledge: autoRAGDecision{}, want: sourceAuthorityWeb},
+		{name: "neither", content: "model synthesis", knowledge: autoRAGDecision{}, want: sourceAuthorityModel},
+		{name: "invented markers", content: "invented [K9] [W9]", knowledge: knowledge, want: sourceAuthorityModel},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plan := reconcileCompletedSourceFusionAuthority(
+				sourceFusionPlan{Authority: sourceAuthorityMixed},
+				tt.content,
+				tt.knowledge,
+				webResult,
+			)
+			if plan.Authority != tt.want {
+				t.Fatalf("authority = %q, want %q", plan.Authority, tt.want)
+			}
+		})
+	}
+}
+
 func TestSourceSearchDegradationReasonIsStableAndRedacted(t *testing.T) {
 	tests := []struct {
 		err  error
