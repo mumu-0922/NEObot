@@ -1430,6 +1430,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
   - [x] G11.11 Browser SSE streaming repair: chat and image streams now forbid
         proxy transformation, preventing Next gzip from buffering all deltas
         until completion while preserving compression for ordinary responses.
+  - [x] G11.12 Stream scroll follow and composer clearance: manual upward
+        scrolling pauses live bottom-follow, returning to the bottom resumes
+        it, and measured input height keeps terminal output unobscured.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

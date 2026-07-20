@@ -8529,3 +8529,13 @@ longer receive `Content-Encoding`, and live browser content advances over many
 renders. Full backend tests/race/vet, Compose rebuild/health, and smoke cleanup
 passed. Exact timing evidence and rollback are in
 `docs/tracking/g11-11-sse-streaming-process.md`.
+
+## 2026-07-20 — G11.12 stream scroll follow cross-reference
+
+Repeated smooth bottom-scroll calls no longer fight the reader during live
+output. Wheel/pointer intent now pauses following, returning to the bottom
+resumes it, programmatic layout movement is ignored, and measured composer
+clearance replaces the undersized fixed bottom reserve. Focused tests,
+lint/typecheck, Docker build, live pause/resume/clearance proof, Compose health,
+and smoke cleanup passed. Exact behavior and rollback are recorded in
+`docs/tracking/g11-12-stream-scroll-follow-process.md`.

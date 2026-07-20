@@ -88,6 +88,12 @@ import {
 } from "@/lib/chat/panelUrlState";
 import { buildSearchUpdate } from "@/lib/chat/searchUpdate";
 import { inferPendingChatProgressStage } from "@/lib/chat/generationProgress";
+import {
+  getChatComposerClearance,
+  getChatScrollDistanceFromBottom,
+  resolveChatScrollFollowOnScroll,
+  resolveChatScrollFollowOnWheel,
+} from "@/lib/chat/scrollFollow";
 import { toServerMessageAttachments } from "@/lib/utils/serverAttachments";
 import {
   getKnowledgeAttachmentCollectionIds,
@@ -242,6 +248,11 @@ const ChatApp = () => {
   const [activeImageGeneration, setActiveImageGeneration] = useState<{
     startedAt: number;
   } | null>(null);
+  const [composerClearance, setComposerClearance] = useState(() =>
+    getChatComposerClearance(0),
+  );
+  const [composerAreaElement, setComposerAreaElement] =
+    useState<HTMLDivElement | null>(null);
   const {
     isGenerating,
     beginActiveGeneration,
@@ -296,9 +307,11 @@ const ChatApp = () => {
     customModelMetadata,
   ]);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
-  const isNearMessageBottomRef = useRef(true);
+  const shouldFollowMessageBottomRef = useRef(true);
+  const lastMessageScrollTopRef = useRef(0);
+  const hasWheelMessageScrollIntentRef = useRef(false);
+  const hasPointerMessageScrollIntentRef = useRef(false);
   const messageInputRef = useRef<MessageInputRef>(null);
   const actionErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -828,34 +841,86 @@ const ChatApp = () => {
     serverModeEnabled,
   ]);
 
-  const updateIsNearMessageBottom = useCallback(() => {
+  const updateMessageScrollFollow = useCallback(() => {
     const container = messagesScrollRef.current;
-    if (!container) {
-      isNearMessageBottomRef.current = true;
-      return;
+    if (!container) return;
+
+    if (
+      hasWheelMessageScrollIntentRef.current ||
+      hasPointerMessageScrollIntentRef.current ||
+      !shouldFollowMessageBottomRef.current
+    ) {
+      shouldFollowMessageBottomRef.current = resolveChatScrollFollowOnScroll({
+        isFollowing: shouldFollowMessageBottomRef.current,
+        previousScrollTop: lastMessageScrollTopRef.current,
+        scrollTop: container.scrollTop,
+        distanceFromBottom: getChatScrollDistanceFromBottom(container),
+      });
+    }
+    lastMessageScrollTopRef.current = container.scrollTop;
+    hasWheelMessageScrollIntentRef.current = false;
+  }, []);
+
+  const handleMessageWheel = useCallback(
+    (event: React.WheelEvent<HTMLDivElement>) => {
+      hasWheelMessageScrollIntentRef.current = true;
+      shouldFollowMessageBottomRef.current = resolveChatScrollFollowOnWheel(
+        shouldFollowMessageBottomRef.current,
+        event.deltaY,
+      );
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const composer = composerAreaElement;
+    if (!composer) return;
+
+    const updateComposerClearance = () => {
+      setComposerClearance(
+        getChatComposerClearance(composer.getBoundingClientRect().height),
+      );
+    };
+    updateComposerClearance();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateComposerClearance);
+      return () =>
+        window.removeEventListener("resize", updateComposerClearance);
     }
 
-    const distanceFromBottom =
-      container.scrollHeight - container.scrollTop - container.clientHeight;
-    isNearMessageBottomRef.current = distanceFromBottom < 160;
-  }, []);
+    const observer = new ResizeObserver(updateComposerClearance);
+    observer.observe(composer);
+    return () => observer.disconnect();
+  }, [composerAreaElement]);
+
+  useEffect(() => {
+    shouldFollowMessageBottomRef.current = true;
+    lastMessageScrollTopRef.current = 0;
+    hasWheelMessageScrollIntentRef.current = false;
+    hasPointerMessageScrollIntentRef.current = false;
+  }, [visibleCurrentSessionId]);
 
   // Scroll to bottom when the user is already following the live stream.
   useEffect(() => {
+    const container = messagesScrollRef.current;
     if (
+      container &&
       welcomeState === "hidden" &&
       (isGenerating || messages.length > 0) &&
-      isNearMessageBottomRef.current
+      shouldFollowMessageBottomRef.current
     ) {
-      const reduceMotion =
-        typeof window !== "undefined" &&
-        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      messagesEndRef.current?.scrollIntoView({
-        behavior: reduceMotion ? "auto" : "smooth",
-        block: "end",
-      });
+      container.scrollTop = container.scrollHeight;
+      lastMessageScrollTopRef.current = container.scrollTop;
     }
-  }, [messages, isGenerating, activeImageGeneration, welcomeState]);
+  }, [
+    activeImageGeneration,
+    composerClearance,
+    isGenerating,
+    messages,
+    visibleCurrentSessionId,
+    welcomeState,
+  ]);
 
   // --- Handlers ---
 
@@ -1229,6 +1294,9 @@ const ChatApp = () => {
   };
 
   const handleSendMessage = async (text: string, attachments: Attachment[]) => {
+    shouldFollowMessageBottomRef.current = true;
+    hasWheelMessageScrollIntentRef.current = false;
+    hasPointerMessageScrollIntentRef.current = false;
     if (serverModeEnabled) {
       await handleSendServerMessage(text, attachments);
       return;
@@ -2775,8 +2843,23 @@ const ChatApp = () => {
             {/* Content */}
             <div
               ref={messagesScrollRef}
-              onScroll={updateIsNearMessageBottom}
-              className="flex-1 px-4 md:px-8 pt-4 md:pt-6 pb-[calc(8rem+env(safe-area-inset-bottom))] relative motion-safe:scroll-smooth scrollbar-overlay"
+              onScroll={updateMessageScrollFollow}
+              onWheel={handleMessageWheel}
+              onPointerDown={() => {
+                hasPointerMessageScrollIntentRef.current = true;
+              }}
+              onPointerUp={() => {
+                hasPointerMessageScrollIntentRef.current = false;
+              }}
+              onPointerCancel={() => {
+                hasPointerMessageScrollIntentRef.current = false;
+              }}
+              style={
+                welcomeState === "hidden"
+                  ? { paddingBottom: `${composerClearance}px` }
+                  : undefined
+              }
+              className="flex-1 px-4 md:px-8 pt-4 md:pt-6 pb-[calc(8rem+env(safe-area-inset-bottom))] relative scrollbar-overlay"
             >
               <div className="w-full max-w-3xl mx-auto min-h-full flex flex-col">
                 {/* Assistant / System Instruction Header */}
@@ -2918,8 +3001,6 @@ const ChatApp = () => {
                         </div>
                       </div>
                     )}
-
-                    <div ref={messagesEndRef} />
                   </div>
                 )}
               </div>
@@ -2929,6 +3010,7 @@ const ChatApp = () => {
 
             {/* Input Area */}
             <div
+              ref={setComposerAreaElement}
               className={`absolute left-0 right-0 z-20 px-4 pointer-events-none md:px-8 motion-safe:transition-[bottom,padding-bottom] motion-safe:duration-300 ${
                 welcomeState === "visible"
                   ? "bottom-[40vh] pb-0 md:bottom-[32vh] md:pb-0"

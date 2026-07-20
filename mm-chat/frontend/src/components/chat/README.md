@@ -17,3 +17,4 @@ Chat components render the main conversation experience: message input, message 
 - Preserve accessibility for interactive message actions.
 - Preserve IME-safe submit behavior and focus restoration in composer and reader flows.
 - Avoid broad store subscriptions; select only the fields each component needs.
+- Keep the final message above the floating composer, pause live bottom-follow on manual upward scrolling, and resume only when the reader returns to the bottom or sends a new prompt.

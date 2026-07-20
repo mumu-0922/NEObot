@@ -14,6 +14,7 @@ The `src/lib/chat` directory contains chat-domain helpers that are shared by sto
 - `messageTree.ts` manages branched message relationships.
 - `postGenerationGuards.ts` handles post-generation safety checks.
 - `searchUpdate.ts` merges streamed search sources and images without duplicating prior entries.
+- `scrollFollow.ts` keeps live bottom-follow under explicit user control and computes floating-composer clearance.
 - `sessionExport.ts` serializes and imports chat session data.
 
 ## Message Processing
@@ -42,3 +43,4 @@ const { finalText, finalAttachments, ragSources, userMessage } = processed;
 - Add tests for branch behavior, export/import compatibility, and lifecycle transitions.
 - Avoid React imports in this directory.
 - Keep current-public markers in `generationProgress.ts` aligned with the Go source-fusion router.
+- Treat upward wheel/pointer intent as authoritative: streamed content must not pull a reader back to the bottom until they return there.
