@@ -623,6 +623,15 @@ frontend rag-worker` passed using only the standalone project tree.
 - [ ] G10.4 Owner-confirmed former-root cleanup: after all gates pass, require
       the exact owner approval phrase before running any generated destructive
       command.
+  - [x] G10.4a Final non-destructive gate refresh: rerun standalone structure
+        and full clean-copy verification at commit `86cb338`, regenerate the
+        former-root dry-run with no manual-review or unclassified paths, create
+        a fresh paired Postgres/MinIO/provider-keyring backup, prove it through
+        disposable database and bucket restores, and leave production data
+        unchanged.
+  - [ ] G10.4b Execute the latest generated deletion block only after the owner
+        sends the exact approval phrase with the verified backup location and
+        commit.
 
 Targeted tests:
 

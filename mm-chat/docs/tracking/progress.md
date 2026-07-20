@@ -1221,6 +1221,13 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           and preserved the server-mode search fail-closed toast.
   - [ ] G10.4 Owner-confirmed former-root cleanup: require the exact owner
         approval phrase before running any generated destructive command.
+    - [x] G10.4a Final non-destructive gate refresh: commit `86cb338` passed
+          structure/full clean-copy verification; the dry-run had no
+          manual-review or unclassified paths; a fresh Postgres/MinIO/provider
+          keyring backup passed checksums plus disposable schema-35 database
+          and 31-object bucket restores; temporary restore state was removed
+          and production remained unchanged.
+    - [ ] G10.4b Owner-authorized execution and post-delete standalone proof.
 
 ## Phase 11 Owner Parity Regression Closure
 

@@ -5263,3 +5263,37 @@ and hard fixture cleanup passed. Detailed contracts, the caught CJK false-hit
 regression, and rollback are in
 `docs/tracking/g11-conversation-context-memory-plan.md` and
 `docs/tracking/g11-conversation-context-memory-process.md`.
+
+## 2026-07-20 — G10.4a final non-destructive gate refresh
+
+Commit `86cb338` was used as the preserved standalone revision. Structure and
+full clean-copy verification passed from `mm-chat/`; the full gate covered
+frontend formatting, lint, typecheck, 182 files / 869 tests, and production
+build, all Go package tests and vet, plus RAG formatting, type checking, and
+1,730 passed / 7 skipped tests.
+
+The former-root deletion planner remained dry-run only. It protected
+`mm-chat/`, `.git`, `.trellis`, `.agents`, `.codex`, and `.vscode`, classified
+only the known legacy application paths as candidates, and reported no
+env/secret manual-review paths and no unclassified paths. No deletion command
+was executed.
+
+A stale Docker Desktop WSL port-forward returned connection resets even though
+the application was healthy inside the containers. Restarting only the backend
+and frontend containers re-registered the published ports; frontend root,
+frontend `/mm-api/ready`, and backend `/ready` then returned HTTP 200 without
+restarting Postgres, MinIO, or Redis.
+
+A fresh owner-only backup set was created at
+`backup/g10-4-pre-delete-20260720T060838Z/`. Its Postgres dump, MinIO archive,
+and provider keyring all passed their own SHA-256 manifests. The dump restored
+into a disposable database with all 35 migrations and current core tables. The
+MinIO archive restored 31 objects into a temporary bucket and five live
+Knowledge object keys from the restored database passed `mc stat`. The drill
+database, bucket, extracted staging files, and sample file were removed;
+production stayed on schema 35 with no disposable Memory or Memory-settings
+rows.
+
+G10.4 remains open. Execution requires the exact owner approval phrase from
+`docs/deployment/former-root-delete-plan.md`, including this backup location and
+commit, followed by an immediate repeat of the full and dry-run gates.
