@@ -1481,6 +1481,12 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
       - [x] G12.4.2 Retried pre-response provider connection failure
             classification, localized terminal guidance, and live-log
             correlation for the owner-visible 17:50 request.
+      - [ ] G12.4.3 Upstream image relay timeout closure: raise the
+            `sub.mumubuku.top` OpenResty/upstream long-request timeout to at
+            least 300 seconds and rerun a cleaned complex-poster proof, or
+            replace Server Default with a Base URL that supports long image
+            requests. Blocked on upstream SSH/panel access or a replacement
+            endpoint; no further mm-chat client retry can close this boundary.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

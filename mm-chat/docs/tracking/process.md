@@ -8565,6 +8565,17 @@ Exact evidence and rollback are recorded in
 `docs/tracking/g12-provider-protocols-process.md` and
 `docs/contracts/media-job-executor-seams.md`.
 
+## 2026-07-20 — G12.4.3 upstream image timeout blocker
+
+Repeated browser and isolated Vault-backed tests proved that the configured
+OpenResty relay closes slow image generation near 60 seconds under HTTP/1.1,
+low quality, and URL-response variants, while DNS/TLS/Models remain fast. Local
+retry and deadline changes cannot cross that earlier external boundary.
+G12.4.3 is recorded as open pending upstream timeout configuration or a
+replacement Base URL; full evidence is in
+`docs/tracking/g12-provider-protocols-process.md` and
+`docs/contracts/media-job-executor-seams.md`.
+
 ## 2026-07-20 — G12.4.2 image connection failure cross-reference
 
 The owner-visible 17:50 image request exhausted the bounded provider transport

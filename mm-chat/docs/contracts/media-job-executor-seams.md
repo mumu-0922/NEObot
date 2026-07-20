@@ -128,6 +128,7 @@ jobartifacts.StoreInput{
 | Chat image provider returns `content_policy_violation`            | chat SSE/database uses `IMAGE_CONTENT_POLICY_VIOLATION`; localized UI asks for a rewrite; no retry  |
 | Chat image provider connection fails again after bounded retry    | chat SSE/database uses `IMAGE_PROVIDER_CONNECTION_ERROR`; localized UI asks the user to retry later |
 | Chat image provider exceeds the shared request deadline           | chat SSE/database uses `IMAGE_PROVIDER_TIMEOUT`; localized UI offers a recoverable retry            |
+| Upstream reverse proxy closes synchronous image calls near 60 s   | external relay blocker; raise upstream timeouts to at least 300 s or use another Base URL           |
 | Legacy alias names a model absent from Server Default             | resolver fails closed before quota; `IMAGE_EXECUTOR_RESOLUTION_FAILED` audit                        |
 | Failed assistant image row is reloaded                            | terminal `generationError`; no progress timer resurrection                                          |
 | Request validation fails before admission                         | `400` with endpoint-specific validation code                                                        |
@@ -147,6 +148,8 @@ jobartifacts.StoreInput{
 - Bad: restoring an empty `status=failed` image row as an active progress card.
 - Bad: retrying a provider content-policy rejection with the unchanged prompt,
   or exposing the provider's policy body in logs/SSE/UI.
+- Bad: increasing only the local Go/Next deadline when the configured upstream
+  OpenResty terminates every slow synchronous image request first.
 - Bad: executor is configured without admitted audit recorder; service returns
   `JOB_AUDIT_UNAVAILABLE` and never calls the executor.
 - Bad: code returns base64 image/audio bytes directly to the frontend.

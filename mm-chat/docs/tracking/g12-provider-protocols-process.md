@@ -272,3 +272,39 @@ live owner request correlation                       IMAGE_PROVIDER_REQUEST_FAIL
 The already-failed row retains its historical generic error code; new attempts
 receive the classified code. Rollback is the G12.4.2 commit only and does not
 alter provider credentials, model selection, persisted images, or schema.
+
+## 2026-07-20 — G12.4.3 upstream 60-second relay blocker
+
+A second owner retry failed after 113,422 ms with the same final
+`IMAGE_PROVIDER_REQUEST_FAILED`. Container DNS, TCP, TLS, and unauthenticated
+`/v1/models` probes remained healthy; five backend-container probes returned in
+0.97–1.94 seconds. The configured endpoint identifies its edge as OpenResty.
+
+An isolated Vault-backed diagnostic then changed one variable at a time while
+never printing the Key, prompt response, URL token, or body:
+
+```text
+HTTP/1.1 + original request shape      TLS alert after 60,389 ms
+HTTP/1.1 + quality=low                 connection close after 63,186 ms
+HTTP/1.1 + quality=low + URL response  TLS alert after 60,388 ms
+```
+
+HTTP/2, response encoding, and requested quality are therefore not the decisive
+cause. The configured reverse proxy or its upstream terminates slow synchronous
+image requests around 60 seconds before an HTTP response is available. The Go
+executor's retry correctly makes a second request, which explains the observed
+106–113 second total, but cannot make a deterministically slow prompt cross the
+external 60-second boundary.
+
+Closure now requires one of two external actions:
+
+1. on the `sub.mumubuku.top` OpenResty route, set the applicable upstream
+   connect/send/read timeout to at least 300 seconds, validate configuration,
+   and reload; or
+2. configure Server Default with a direct/alternate OpenAI-compatible Base URL
+   whose synchronous image route permits requests longer than 60 seconds.
+
+The temporary diagnostic source was deleted, no response image was persisted,
+and the formal Postgres/Vault state was not changed. G12.4.3 remains open until
+upstream access or a replacement endpoint is supplied and a complex-poster
+request completes with cleanup.
