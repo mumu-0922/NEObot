@@ -273,38 +273,70 @@ The already-failed row retains its historical generic error code; new attempts
 receive the classified code. Rollback is the G12.4.2 commit only and does not
 alter provider credentials, model selection, persisted images, or schema.
 
-## 2026-07-20 — G12.4.3 upstream 60-second relay blocker
+## 2026-07-20 — G12.4.3 GPT Image SSE timeout closure
 
-A second owner retry failed after 113,422 ms with the same final
-`IMAGE_PROVIDER_REQUEST_FAILED`. Container DNS, TCP, TLS, and unauthenticated
-`/v1/models` probes remained healthy; five backend-container probes returned in
-0.97–1.94 seconds. The configured endpoint identifies its edge as OpenResty.
-
-An isolated Vault-backed diagnostic then changed one variable at a time while
-never printing the Key, prompt response, URL token, or body:
+The earlier synchronous probes still establish that the calling chain lost its
+connection near 60 seconds, but they did not establish an OpenResty read
+timeout. Owner-side SSH evidence corrected that attribution:
 
 ```text
-HTTP/1.1 + original request shape      TLS alert after 60,389 ms
-HTTP/1.1 + quality=low                 connection close after 63,186 ms
-HTTP/1.1 + quality=low + URL response  TLS alert after 60,388 ms
+active root.conf proxy_connect_timeout / send_timeout / read_timeout  10s / 600s / 600s
+active root.conf send_timeout                                           600s
+nginx -t                                                                passed
+failed request at OpenResty                                             499
+sub2api completion one second later                                     200 + broken pipe
 ```
 
-HTTP/2, response encoding, and requested quality are therefore not the decisive
-cause. The configured reverse proxy or its upstream terminates slow synchronous
-image requests around 60 seconds before an HTTP response is available. The Go
-executor's retry correctly makes a second request, which explains the observed
-106–113 second total, but cannot make a deterministically slow prompt cross the
-external 60-second boundary.
+The 600-second site configuration was loaded by the active worker. `499` means
+OpenResty observed its client disconnect first; `keepalive_timeout 60` is an
+idle post-response setting and is not the upstream response deadline. The old
+claim that this route needed a higher OpenResty timeout is superseded.
 
-Closure now requires one of two external actions:
+The [official Image generation guide](https://developers.openai.com/api/docs/guides/image-generation)
+defines `stream: true` with `partial_images: 0..3`; GPT Image complex prompts
+may take up to two minutes. One requested partial image costs an additional 100
+image output tokens. An isolated Vault-backed request to the configured relay
+proved that its `gpt-image-2` endpoint implements this SSE contract without
+exposing the Key, prompt response, URL token, or image bytes:
 
-1. on the `sub.mumubuku.top` OpenResty route, set the applicable upstream
-   connect/send/read timeout to at least 300 seconds, validate configuration,
-   and reload; or
-2. configure Server Default with a direct/alternate OpenAI-compatible Base URL
-   whose synchronous image route permits requests longer than 60 seconds.
+```text
+HTTP/2 200 text/event-stream headers       12,821 ms
+image_generation.partial_image index=0     42,835 ms
+image_generation.partial_image index=1     78,228 ms
+image_generation.completed                 78,581 ms
+EOF                                         78,581 ms
+```
 
-The temporary diagnostic source was deleted, no response image was persisted,
-and the formal Postgres/Vault state was not changed. G12.4.3 remains open until
-upstream access or a replacement endpoint is supplied and a complex-poster
-request completes with cleanup.
+The Go image executor now selects SSE only for `gpt-image-*`, sends
+`partial_images: 1`, omits the legacy `response_format`, and accepts both relay
+shapes: an image-bearing completed event or the last image-bearing partial
+before an empty completion marker. Other OpenAI-compatible image models keep
+the existing synchronous JSON contract. Partial frames only keep the upstream
+connection active; they are never persisted or exposed as separate chat files.
+
+Debug retrospective: this was a cross-layer contract and implicit-assumption
+failure, amplified by a missing deployed integration test. Raising only local
+deadlines and varying synchronous payload fields treated symptoms; attributing
+`499` to OpenResty treated the observer as the failing caller. Prevention is now
+executable: verify loaded proxy state and status ownership, measure SSE headers
+and events, regression-test both terminal event shapes, and finish with a real
+container-to-provider artifact/cleanup proof. The reusable checklist is in
+`.trellis/spec/guides/cross-layer-thinking-guide.md`.
+
+Verification after rebuilding only the Backend container:
+
+```text
+backend full tests / vet                              passed / passed
+backend focused race tests                            passed
+backend/frontend/Postgres/Redis/RAG                   healthy
+real complex Corgi collaboration poster               message.started -> message.completed
+real stream duration                                  67,327 ms
+real final artifact                                   image/png, 2,235,881 bytes
+positive file/conversation cleanup                    HTTP 204 / HTTP 204
+backend terminal provider failure                     absent
+```
+
+The temporary diagnostics were deleted, the final smoke file and conversation
+were deleted, and Server Default/Postgres/Vault configuration was not changed.
+Rollback is the G12.4.3 implementation commit; reverting it restores
+synchronous GPT Image calls and therefore restores the idle-disconnect risk.

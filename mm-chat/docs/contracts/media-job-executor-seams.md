@@ -128,7 +128,7 @@ jobartifacts.StoreInput{
 | Chat image provider returns `content_policy_violation`            | chat SSE/database uses `IMAGE_CONTENT_POLICY_VIOLATION`; localized UI asks for a rewrite; no retry  |
 | Chat image provider connection fails again after bounded retry    | chat SSE/database uses `IMAGE_PROVIDER_CONNECTION_ERROR`; localized UI asks the user to retry later |
 | Chat image provider exceeds the shared request deadline           | chat SSE/database uses `IMAGE_PROVIDER_TIMEOUT`; localized UI offers a recoverable retry            |
-| Upstream reverse proxy closes synchronous image calls near 60 s   | external relay blocker; raise upstream timeouts to at least 300 s or use another Base URL           |
+| GPT Image generation is slower than an idle intermediary permits | use Image API SSE with one partial image; persist only the final completed/last partial image        |
 | Legacy alias names a model absent from Server Default             | resolver fails closed before quota; `IMAGE_EXECUTOR_RESOLUTION_FAILED` audit                        |
 | Failed assistant image row is reloaded                            | terminal `generationError`; no progress timer resurrection                                          |
 | Request validation fails before admission                         | `400` with endpoint-specific validation code                                                        |
@@ -139,8 +139,10 @@ jobartifacts.StoreInput{
 - Good: fake executor emits `audio/webm` or `image/png` stream, artifact store
   persists it, response returns only file metadata.
 - Good: `openai_compatible:gpt-image-2` uniquely maps to a tested Server
-  Default that explicitly lists `gpt-image-2`, sends `1024x1024` plus
-  `b64_json`, and completes as an image attachment.
+  Default that explicitly lists `gpt-image-2`, sends `1024x1024`,
+  `stream: true`, and `partial_images: 1`, then stores only the final image as
+  an attachment. Non-GPT compatible image models retain synchronous
+  `response_format: "b64_json"` behavior.
 - Base: no executor is configured; endpoints validate request shape, audit
   unavailable status if a recorder exists, then return fail-closed unavailable.
 - Bad: treating `openai_compatible` as a Postgres provider record ID, or
@@ -148,8 +150,9 @@ jobartifacts.StoreInput{
 - Bad: restoring an empty `status=failed` image row as an active progress card.
 - Bad: retrying a provider content-policy rejection with the unchanged prompt,
   or exposing the provider's policy body in logs/SSE/UI.
-- Bad: increasing only the local Go/Next deadline when the configured upstream
-  OpenResty terminates every slow synchronous image request first.
+- Bad: interpreting an OpenResty `499` as a reverse-proxy read timeout without
+  checking which caller disconnected, or persisting paid partial images as
+  separate chat artifacts.
 - Bad: executor is configured without admitted audit recorder; service returns
   `JOB_AUDIT_UNAVAILABLE` and never calls the executor.
 - Bad: code returns base64 image/audio bytes directly to the frontend.
@@ -167,8 +170,10 @@ Any change enabling or extending media executors must include tests proving:
   failure records sanitized unavailable audit metadata;
 - legacy alias tests prove exact Server Default model membership, unknown-model
   rejection, and unchanged stored-provider-ID resolution;
-- image request tests assert `size: "1024x1024"` for chat dispatch and
-  `response_format: "b64_json"` at the provider boundary;
+- image request tests assert `size: "1024x1024"` for chat dispatch; synchronous
+  compatible models assert `response_format: "b64_json"`, while `gpt-image-*`
+  asserts SSE, `partial_images: 1`, no legacy `response_format`, completed-image
+  preference, last-partial fallback, and sanitized malformed-stream failure;
 - frontend stream/store tests assert terminal `generationError` immediately,
   and DTO reload tests assert failed image rows do not restart the timer;
 - provider tests assert a sanitized `content_policy_violation` classification,

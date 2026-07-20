@@ -8565,15 +8565,17 @@ Exact evidence and rollback are recorded in
 `docs/tracking/g12-provider-protocols-process.md` and
 `docs/contracts/media-job-executor-seams.md`.
 
-## 2026-07-20 — G12.4.3 upstream image timeout blocker
+## 2026-07-20 — G12.4.3 GPT Image SSE closure
 
-Repeated browser and isolated Vault-backed tests proved that the configured
-OpenResty relay closes slow image generation near 60 seconds under HTTP/1.1,
-low quality, and URL-response variants, while DNS/TLS/Models remain fast. Local
-retry and deadline changes cannot cross that earlier external boundary.
-G12.4.3 is recorded as open pending upstream timeout configuration or a
-replacement Base URL; full evidence is in
-`docs/tracking/g12-provider-protocols-process.md` and
+SSH evidence showed the active OpenResty route already uses 600-second proxy
+timeouts: its `499` recorded the caller disconnecting, while sub2api completed
+`200` one second later and hit a broken pipe. The previous OpenResty-timeout
+attribution is superseded. The official `gpt-image-2` Image API SSE path was
+proven against the configured relay, then implemented for `gpt-image-*` with
+one non-persisted partial image and final-image fallback. Full Go tests/vet,
+focused race tests, Backend rebuild/health, a 67,327 ms real complex-poster
+artifact, and HTTP 204 file/conversation cleanup passed. Exact evidence and
+rollback are recorded in `docs/tracking/g12-provider-protocols-process.md` and
 `docs/contracts/media-job-executor-seams.md`.
 
 ## 2026-07-20 — G12.4.2 image connection failure cross-reference

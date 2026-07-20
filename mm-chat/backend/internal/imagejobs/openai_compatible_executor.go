@@ -22,8 +22,10 @@ const (
 	openAICompatibleImagesPath              = "/images/generations"
 	openAICompatibleImageResponseFormat     = "b64_json"
 	maxOpenAICompatibleImageResponseBytes   = 8 << 20
+	maxOpenAICompatibleImageStreamBytes     = 32 << 20
 	maxOpenAICompatibleGeneratedImageBytes  = 64 << 20
 	maxOpenAICompatibleImageAttempts        = 2
+	openAICompatibleImagePartialImages      = 1
 	openAICompatibleImageRetryDelay         = 250 * time.Millisecond
 )
 
@@ -81,13 +83,20 @@ func (e *OpenAICompatibleExecutor) Generate(ctx context.Context, request Generat
 		count = defaultImageCount
 	}
 
-	payload, err := json.Marshal(openAICompatibleImageRequest{
-		Model:          modelRef.ModelID,
-		Prompt:         prompt,
-		Size:           strings.TrimSpace(request.Size),
-		N:              count,
-		ResponseFormat: openAICompatibleImageResponseFormat,
-	})
+	stream := supportsOpenAICompatibleImageStreaming(modelRef.ModelID)
+	providerRequest := openAICompatibleImageRequest{
+		Model:  modelRef.ModelID,
+		Prompt: prompt,
+		Size:   strings.TrimSpace(request.Size),
+		N:      count,
+		Stream: stream,
+	}
+	if stream {
+		providerRequest.PartialImages = openAICompatibleImagePartialImages
+	} else {
+		providerRequest.ResponseFormat = openAICompatibleImageResponseFormat
+	}
+	payload, err := json.Marshal(providerRequest)
 	if err != nil {
 		return GenerateResult{}, newProviderStageError(
 			"IMAGE_PROVIDER_REQUEST_ENCODE_FAILED",
@@ -103,7 +112,7 @@ func (e *OpenAICompatibleExecutor) Generate(ctx context.Context, request Generat
 		defer cancel()
 	}
 	for attempt := 1; attempt <= maxOpenAICompatibleImageAttempts; attempt++ {
-		result, err := e.generateAttempt(requestCtx, payload)
+		result, err := e.generateAttempt(requestCtx, payload, stream)
 		if err == nil {
 			return result, nil
 		}
@@ -124,6 +133,7 @@ func (e *OpenAICompatibleExecutor) Generate(ctx context.Context, request Generat
 func (e *OpenAICompatibleExecutor) generateAttempt(
 	ctx context.Context,
 	payload []byte,
+	stream bool,
 ) (GenerateResult, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.endpoint, bytes.NewReader(payload))
 	if err != nil {
@@ -135,7 +145,11 @@ func (e *OpenAICompatibleExecutor) generateAttempt(
 	}
 	req.Header.Set("Authorization", "Bearer "+e.apiKey)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
+	if stream {
+		req.Header.Set("Accept", "text/event-stream, application/json")
+	} else {
+		req.Header.Set("Accept", "application/json")
+	}
 
 	resp, err := e.client.Do(req)
 	if err != nil {
@@ -157,29 +171,9 @@ func (e *OpenAICompatibleExecutor) generateAttempt(
 		}
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxOpenAICompatibleImageResponseBytes+1))
+	decoded, err := decodeOpenAICompatibleImageResponse(resp)
 	if err != nil {
-		return GenerateResult{}, newProviderStageError(
-			"IMAGE_PROVIDER_RESPONSE_READ_FAILED",
-			"openai-compatible image response read failed",
-			err,
-		)
-	}
-	if len(body) > maxOpenAICompatibleImageResponseBytes {
-		return GenerateResult{}, newProviderStageError(
-			"IMAGE_PROVIDER_RESPONSE_TOO_LARGE",
-			"openai-compatible image response is too large",
-			nil,
-		)
-	}
-
-	var decoded openAICompatibleImageResponse
-	if err := json.Unmarshal(body, &decoded); err != nil {
-		return GenerateResult{}, newProviderStageError(
-			"IMAGE_PROVIDER_RESPONSE_DECODE_FAILED",
-			"openai-compatible image response decode failed",
-			err,
-		)
+		return GenerateResult{}, err
 	}
 	if len(decoded.Data) == 0 {
 		return GenerateResult{}, newProviderStageError(
@@ -198,6 +192,127 @@ func (e *OpenAICompatibleExecutor) generateAttempt(
 		images = append(images, image)
 	}
 	return GenerateResult{Images: images}, nil
+}
+
+func decodeOpenAICompatibleImageResponse(
+	resp *http.Response,
+) (openAICompatibleImageResponse, error) {
+	if mediaTypeOnly(resp.Header.Get("Content-Type")) == "text/event-stream" {
+		return decodeOpenAICompatibleImageStream(resp.Body)
+	}
+	return decodeOpenAICompatibleImageJSON(resp.Body)
+}
+
+func decodeOpenAICompatibleImageJSON(
+	bodyReader io.Reader,
+) (openAICompatibleImageResponse, error) {
+	body, err := io.ReadAll(io.LimitReader(bodyReader, maxOpenAICompatibleImageResponseBytes+1))
+	if err != nil {
+		return openAICompatibleImageResponse{}, newProviderStageError(
+			"IMAGE_PROVIDER_RESPONSE_READ_FAILED",
+			"openai-compatible image response read failed",
+			err,
+		)
+	}
+	if len(body) > maxOpenAICompatibleImageResponseBytes {
+		return openAICompatibleImageResponse{}, newProviderStageError(
+			"IMAGE_PROVIDER_RESPONSE_TOO_LARGE",
+			"openai-compatible image response is too large",
+			nil,
+		)
+	}
+
+	var decoded openAICompatibleImageResponse
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		return openAICompatibleImageResponse{}, newProviderStageError(
+			"IMAGE_PROVIDER_RESPONSE_DECODE_FAILED",
+			"openai-compatible image response decode failed",
+			err,
+		)
+	}
+	return decoded, nil
+}
+
+func decodeOpenAICompatibleImageStream(
+	bodyReader io.Reader,
+) (openAICompatibleImageResponse, error) {
+	body, err := io.ReadAll(io.LimitReader(bodyReader, maxOpenAICompatibleImageStreamBytes+1))
+	if err != nil {
+		return openAICompatibleImageResponse{}, newProviderStageError(
+			"IMAGE_PROVIDER_RESPONSE_READ_FAILED",
+			"openai-compatible image stream read failed",
+			err,
+		)
+	}
+	if len(body) > maxOpenAICompatibleImageStreamBytes {
+		return openAICompatibleImageResponse{}, newProviderStageError(
+			"IMAGE_PROVIDER_RESPONSE_TOO_LARGE",
+			"openai-compatible image stream is too large",
+			nil,
+		)
+	}
+
+	normalizedBody := bytes.ReplaceAll(body, []byte("\r\n"), []byte("\n"))
+	completed := make([]openAICompatibleImageData, 0, 1)
+	var lastPartial openAICompatibleImageData
+	for _, frame := range bytes.Split(normalizedBody, []byte("\n\n")) {
+		data := openAICompatibleSSEData(frame)
+		if len(data) == 0 || bytes.Equal(data, []byte("[DONE]")) {
+			continue
+		}
+		var event openAICompatibleImageStreamEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return openAICompatibleImageResponse{}, newProviderStageError(
+				"IMAGE_PROVIDER_RESPONSE_DECODE_FAILED",
+				"openai-compatible image stream decode failed",
+				err,
+			)
+		}
+		item := openAICompatibleImageData{B64JSON: event.B64JSON, URL: event.URL}
+		switch event.Type {
+		case "image_generation.partial_image":
+			if hasOpenAICompatibleImageData(item) {
+				lastPartial = item
+			}
+		case "image_generation.completed":
+			if hasOpenAICompatibleImageData(item) {
+				completed = append(completed, item)
+			}
+		case "error", "image_generation.failed":
+			return openAICompatibleImageResponse{}, newProviderStageError(
+				"IMAGE_PROVIDER_STREAM_FAILED",
+				"openai-compatible image stream failed",
+				nil,
+			)
+		}
+	}
+	if len(completed) > 0 {
+		return openAICompatibleImageResponse{Data: completed}, nil
+	}
+	if hasOpenAICompatibleImageData(lastPartial) {
+		return openAICompatibleImageResponse{Data: []openAICompatibleImageData{lastPartial}}, nil
+	}
+	return openAICompatibleImageResponse{}, nil
+}
+
+func hasOpenAICompatibleImageData(item openAICompatibleImageData) bool {
+	return strings.TrimSpace(item.B64JSON) != "" || strings.TrimSpace(item.URL) != ""
+}
+
+func openAICompatibleSSEData(frame []byte) []byte {
+	var data []byte
+	for _, line := range bytes.Split(frame, []byte("\n")) {
+		line = bytes.TrimSpace(line)
+		if !bytes.HasPrefix(line, []byte("data:")) {
+			continue
+		}
+		value := bytes.TrimSpace(bytes.TrimPrefix(line, []byte("data:")))
+		if len(data) > 0 {
+			data = append(data, '\n')
+		}
+		data = append(data, value...)
+	}
+	return data
 }
 
 func (e *OpenAICompatibleExecutor) generatedImageResult(
@@ -332,6 +447,8 @@ type openAICompatibleImageRequest struct {
 	Size           string `json:"size,omitempty"`
 	N              int    `json:"n,omitempty"`
 	ResponseFormat string `json:"response_format,omitempty"`
+	Stream         bool   `json:"stream,omitempty"`
+	PartialImages  int    `json:"partial_images,omitempty"`
 }
 
 type openAICompatibleImageResponse struct {
@@ -341,6 +458,16 @@ type openAICompatibleImageResponse struct {
 type openAICompatibleImageData struct {
 	B64JSON string `json:"b64_json"`
 	URL     string `json:"url"`
+}
+
+type openAICompatibleImageStreamEvent struct {
+	Type    string `json:"type"`
+	B64JSON string `json:"b64_json"`
+	URL     string `json:"url"`
+}
+
+func supportsOpenAICompatibleImageStreaming(modelID string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelID)), "gpt-image-")
 }
 
 func resolveOpenAICompatibleImageModelRef(modelRef ModelRef) (ModelRef, error) {

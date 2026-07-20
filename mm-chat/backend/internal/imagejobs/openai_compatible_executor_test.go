@@ -25,7 +25,7 @@ func TestOpenAICompatibleExecutorGeneratesFromBase64Response(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
-		if payload.Model != "gpt-image-1" || payload.Prompt != "paint" ||
+		if payload.Model != "image-model" || payload.Prompt != "paint" ||
 			payload.N != 1 || payload.Size != "512x512" ||
 			payload.ResponseFormat != "b64_json" {
 			t.Fatalf("payload = %#v", payload)
@@ -37,7 +37,7 @@ func TestOpenAICompatibleExecutorGeneratesFromBase64Response(t *testing.T) {
 	executor := newTestOpenAICompatibleExecutor(t, client)
 
 	result, err := executor.Generate(context.Background(), GenerateRequest{
-		ModelRef: ModelRef{ProviderID: "openai", ModelID: "gpt-image-1"},
+		ModelRef: ModelRef{ProviderID: "openai", ModelID: "image-model"},
 		Prompt:   "paint",
 		Size:     "512x512",
 		Count:    1,
@@ -62,6 +62,104 @@ func TestOpenAICompatibleExecutorGeneratesFromBase64Response(t *testing.T) {
 	}
 	if string(body) != string(pngBytes) {
 		t.Fatalf("body = %q", string(body))
+	}
+}
+
+func TestOpenAICompatibleExecutorStreamsGPTImageAndPrefersCompletedImage(t *testing.T) {
+	partialBytes := []byte("\x89PNG\r\n\x1a\npartial")
+	completedBytes := []byte("\x89PNG\r\n\x1a\ncompleted")
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if got := r.Header.Get("Accept"); !strings.Contains(got, "text/event-stream") {
+			t.Fatalf("Accept = %q", got)
+		}
+		var payload openAICompatibleImageRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if payload.Model != "gpt-image-2" || !payload.Stream || payload.PartialImages != 1 ||
+			payload.ResponseFormat != "" {
+			t.Fatalf("payload = %#v", payload)
+		}
+		body := imageStreamBody(
+			openAICompatibleImageStreamEvent{
+				Type:    "image_generation.partial_image",
+				B64JSON: base64.StdEncoding.EncodeToString(partialBytes),
+			},
+			openAICompatibleImageStreamEvent{
+				Type:    "image_generation.completed",
+				B64JSON: base64.StdEncoding.EncodeToString(completedBytes),
+			},
+		)
+		return bytesResponse(http.StatusOK, "text/event-stream; charset=utf-8", body), nil
+	})}
+	executor := newTestOpenAICompatibleExecutor(t, client)
+
+	result, err := executor.Generate(context.Background(), GenerateRequest{
+		ModelRef: ModelRef{ProviderID: "openai", ModelID: "gpt-image-2"},
+		Prompt:   "paint",
+	})
+
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	assertGeneratedImageBody(t, result, completedBytes)
+}
+
+func TestOpenAICompatibleExecutorUsesLastPartialWhenCompletedHasNoImage(t *testing.T) {
+	firstPartial := []byte("\x89PNG\r\n\x1a\nfirst")
+	finalPartial := []byte("\x89PNG\r\n\x1a\nfinal")
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		body := imageStreamBody(
+			openAICompatibleImageStreamEvent{
+				Type:    "image_generation.partial_image",
+				B64JSON: base64.StdEncoding.EncodeToString(firstPartial),
+			},
+			openAICompatibleImageStreamEvent{
+				Type:    "image_generation.partial_image",
+				B64JSON: base64.StdEncoding.EncodeToString(finalPartial),
+			},
+			openAICompatibleImageStreamEvent{Type: "image_generation.completed"},
+		)
+		return bytesResponse(http.StatusOK, "text/event-stream", body), nil
+	})}
+	executor := newTestOpenAICompatibleExecutor(t, client)
+
+	result, err := executor.Generate(context.Background(), GenerateRequest{
+		ModelRef: ModelRef{ProviderID: "openai", ModelID: "gpt-image-2"},
+		Prompt:   "paint",
+	})
+
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	assertGeneratedImageBody(t, result, finalPartial)
+}
+
+func TestOpenAICompatibleExecutorRejectsMalformedImageStreamWithoutLeakingData(t *testing.T) {
+	calls := 0
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		return bytesResponse(
+			http.StatusOK,
+			"text/event-stream",
+			[]byte("data: secret-image-stream-content\n\n"),
+		), nil
+	})}
+	executor := newTestOpenAICompatibleExecutor(t, client)
+
+	_, err := executor.Generate(context.Background(), GenerateRequest{
+		ModelRef: ModelRef{ProviderID: "openai", ModelID: "gpt-image-2"},
+		Prompt:   "paint",
+	})
+
+	if got := FailureReason(err); got != "IMAGE_PROVIDER_RESPONSE_DECODE_FAILED" {
+		t.Fatalf("FailureReason() = %q", got)
+	}
+	if err == nil || strings.Contains(err.Error(), "secret-image-stream-content") {
+		t.Fatalf("Generate() leaked provider stream: %v", err)
+	}
+	if calls != maxOpenAICompatibleImageAttempts {
+		t.Fatalf("provider calls = %d, want %d", calls, maxOpenAICompatibleImageAttempts)
 	}
 }
 
@@ -317,5 +415,31 @@ func bytesResponse(status int, contentType string, body []byte) *http.Response {
 		StatusCode: status,
 		Header:     http.Header{"Content-Type": []string{contentType}},
 		Body:       io.NopCloser(strings.NewReader(string(body))),
+	}
+}
+
+func imageStreamBody(events ...openAICompatibleImageStreamEvent) []byte {
+	var body strings.Builder
+	for _, event := range events {
+		encoded, _ := json.Marshal(event)
+		body.WriteString("data: ")
+		body.Write(encoded)
+		body.WriteString("\n\n")
+	}
+	body.WriteString("data: [DONE]\n\n")
+	return []byte(body.String())
+}
+
+func assertGeneratedImageBody(t *testing.T, result GenerateResult, want []byte) {
+	t.Helper()
+	if len(result.Images) != 1 {
+		t.Fatalf("images = %d, want 1", len(result.Images))
+	}
+	got, err := io.ReadAll(result.Images[0].Body)
+	if err != nil {
+		t.Fatalf("read image body: %v", err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("image body = %q, want %q", got, want)
 	}
 }
