@@ -19,7 +19,7 @@ Claude second. Provider presets are explicitly out of scope.
 
 ## Slice sequence
 
-### [ ] G12.1 — Gemini server-runtime closure
+### [x] G12.1 — Gemini server-runtime closure
 
 - Route stored `Gemini` providers through a real Go chat Provider instead of
   returning `PROVIDER_CONFIG_UNSUPPORTED`.

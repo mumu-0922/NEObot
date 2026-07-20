@@ -1463,7 +1463,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           real cross-chat recall/negative/delete proof, and hard cleanup passed.
   - [ ] G12 Gemini and Anthropic provider protocols, executed in separate
         tested commits per `docs/tracking/g12-provider-protocols-plan.md`.
-    - [ ] G12.1 Gemini server-runtime closure while retaining the existing
+    - [x] G12.1 Gemini server-runtime closure while retaining the existing
           administrator configuration and native Models connection test.
     - [ ] G12.2 Native Anthropic Messages streaming, Models connection test,
           image/history/usage/tool planning, and frontend provider type.

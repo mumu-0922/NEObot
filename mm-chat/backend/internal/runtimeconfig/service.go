@@ -12,11 +12,8 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"fmt"
 	"io"
 	"math/big"
-	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -224,10 +221,7 @@ func (s *Service) ProviderModelsForContext(ctx context.Context, request Provider
 		if err != nil {
 			return ProviderModelsResponse{}, err
 		}
-		if resolved.Type != ProviderTypeOpenAI && resolved.Type != ProviderTypeOpenAICompatible {
-			return ProviderModelsResponse{}, ErrProviderModelsUnsupported
-		}
-		models, err := fetchOpenAICompatibleModels(providerModelsURL(resolved.BaseURL, resolved.Type), resolved.APIKey, s.cfg.Provider.Timeout)
+		models, err := s.fetchResolvedProviderModels(ctx, resolved)
 		if err != nil {
 			return ProviderModelsResponse{}, err
 		}
@@ -239,10 +233,7 @@ func (s *Service) ProviderModelsForContext(ctx context.Context, request Provider
 		if err != nil {
 			return ProviderModelsResponse{}, err
 		}
-		if resolved.Type != ProviderTypeOpenAI && resolved.Type != ProviderTypeOpenAICompatible {
-			return ProviderModelsResponse{}, ErrProviderModelsUnsupported
-		}
-		models, err := fetchOpenAICompatibleModels(providerModelsURL(resolved.BaseURL, resolved.Type), resolved.APIKey, s.cfg.Provider.Timeout)
+		models, err := s.fetchResolvedProviderModels(ctx, resolved)
 		if err != nil {
 			return ProviderModelsResponse{}, err
 		}
@@ -254,15 +245,46 @@ func (s *Service) ProviderModelsForContext(ctx context.Context, request Provider
 		return ProviderModelsResponse{}, err
 	}
 	providerType := normalizeProviderType(provider.Type)
-	if providerType != ProviderTypeOpenAI && providerType != ProviderTypeOpenAICompatible {
+	if providerType != ProviderTypeOpenAI &&
+		providerType != ProviderTypeOpenAICompatible &&
+		providerType != ProviderTypeGemini {
 		return ProviderModelsResponse{}, ErrProviderModelsUnsupported
 	}
 
-	models, err := fetchOpenAICompatibleModels(providerModelsURL(provider.BaseURL, providerType), apiKey, s.cfg.Provider.Timeout)
+	timeout := s.cfg.Provider.Timeout
+	if timeout <= 0 || timeout > maxProviderConnectionTestDuration {
+		timeout = maxProviderConnectionTestDuration
+	}
+	models, err := fetchProviderModelsBounded(
+		ctx, providerModelsURL(provider.BaseURL, providerType), providerType, apiKey, timeout,
+	)
 	if err != nil {
 		return ProviderModelsResponse{}, err
 	}
 	return ProviderModelsResponse{Models: models}, nil
+}
+
+func (s *Service) fetchResolvedProviderModels(
+	ctx context.Context,
+	provider ResolvedProvider,
+) ([]string, error) {
+	providerType := normalizeProviderType(string(provider.Type))
+	if providerType != ProviderTypeOpenAI &&
+		providerType != ProviderTypeOpenAICompatible &&
+		providerType != ProviderTypeGemini {
+		return nil, ErrProviderModelsUnsupported
+	}
+	timeout := s.cfg.Provider.Timeout
+	if timeout <= 0 || timeout > maxProviderConnectionTestDuration {
+		timeout = maxProviderConnectionTestDuration
+	}
+	return fetchProviderModelsBounded(
+		ctx,
+		providerModelsURL(provider.BaseURL, providerType),
+		providerType,
+		provider.APIKey,
+		timeout,
+	)
 }
 
 type resolvedServerDefaultProvider struct {
@@ -1006,6 +1028,8 @@ func normalizeProviderBaseURL(baseURL string, providerType ProviderType) string 
 	normalized = strings.TrimSuffix(normalized, "#")
 	normalized = strings.TrimRight(normalized, "/")
 	if providerType == ProviderTypeGemini {
+		normalized = strings.TrimSuffix(normalized, "/v1beta/models")
+		normalized = strings.TrimSuffix(normalized, "/v1beta/openai")
 		return strings.TrimSuffix(normalized, "/v1beta")
 	}
 	if providerType == ProviderTypeOpenAI || providerType == ProviderTypeOpenAICompatible {
@@ -1024,66 +1048,6 @@ type openAIModelsResponse struct {
 
 type openAIModelItem struct {
 	ID string `json:"id"`
-}
-
-func fetchOpenAICompatibleModels(rawURL string, apiKey string, timeout time.Duration) ([]string, error) {
-	parsed, err := url.Parse(strings.TrimSpace(rawURL))
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return nil, ErrProviderConfigUnsupported
-	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return nil, ErrProviderConfigUnsupported
-	}
-
-	client := &http.Client{Timeout: timeout}
-	req, err := http.NewRequest(http.MethodGet, parsed.String(), nil)
-	if err != nil {
-		return nil, ErrProviderConfigUnsupported
-	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("provider model listing request failed: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("provider model listing returned status %d", resp.StatusCode)
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxProviderModelsResponseBytes+1))
-	if err != nil {
-		return nil, fmt.Errorf("provider model listing read failed: %w", err)
-	}
-	if len(body) > maxProviderModelsResponseBytes {
-		return nil, ErrProviderConfigUnsupported
-	}
-
-	var decoded openAIModelsResponse
-	if err := json.Unmarshal(body, &decoded); err != nil {
-		return nil, fmt.Errorf("provider model listing decode failed: %w", err)
-	}
-	models := make([]string, 0, len(decoded.Data)+len(decoded.Models))
-	seen := map[string]struct{}{}
-	addModel := func(model string) {
-		model = strings.TrimSpace(model)
-		if model == "" {
-			return
-		}
-		if _, ok := seen[model]; ok {
-			return
-		}
-		seen[model] = struct{}{}
-		models = append(models, model)
-	}
-	for _, item := range decoded.Data {
-		addModel(item.ID)
-	}
-	for _, model := range decoded.Models {
-		addModel(model)
-	}
-	return models, nil
 }
 
 func authModeToDeploymentMode(mode string) string {

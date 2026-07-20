@@ -42,6 +42,7 @@ func TestRuntimeProviderResolverAdmitsBuiltInSearchOnlyForOpenAI(t *testing.T) {
 	}{
 		{providerType: "OpenAI", wantBuiltIn: true},
 		{providerType: "OpenAI Compatible", wantBuiltIn: false},
+		{providerType: "Gemini", wantBuiltIn: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.providerType, func(t *testing.T) {
@@ -57,7 +58,7 @@ func TestRuntimeProviderResolverAdmitsBuiltInSearchOnlyForOpenAI(t *testing.T) {
 			provider, err := (runtimeChatProviderResolver{service: service}).ResolveRuntimeProvider(
 				context.Background(),
 				runtimeconfig.ProviderRuntimeConfig{
-					Type: tt.providerType, BaseURL: "https://provider.example/v1",
+					Type: tt.providerType, BaseURL: "https://provider.example",
 					APIKeySecret: runtimeProviderSecretEnvelope(
 						t, privateKey, "fixture-key", "provider:"+tt.providerType,
 					),
@@ -69,6 +70,11 @@ func TestRuntimeProviderResolverAdmitsBuiltInSearchOnlyForOpenAI(t *testing.T) {
 			_, builtIn := provider.(chat.ModelBuiltInSearchProvider)
 			if builtIn != tt.wantBuiltIn {
 				t.Fatalf("built-in capability = %v, want %v", builtIn, tt.wantBuiltIn)
+			}
+			if tt.providerType == "Gemini" {
+				if _, ok := provider.(*chat.GeminiProvider); !ok {
+					t.Fatalf("provider = %T, want *chat.GeminiProvider", provider)
+				}
 			}
 		})
 	}

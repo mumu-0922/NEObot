@@ -827,7 +827,7 @@ func TestAdminProviderConnectionSupportsGeminiModelListing(t *testing.T) {
 			vault,
 			"GEMINI",
 			ProviderTypeGemini,
-			upstream.URL,
+			upstream.URL+"/v1beta/openai",
 			fixtureCredential,
 		),
 	}

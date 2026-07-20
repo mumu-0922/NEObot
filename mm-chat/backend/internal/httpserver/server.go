@@ -232,6 +232,20 @@ func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 			}
 		}
 		return resolved, nil
+	case "gemini", "google gemini", "google_gemini":
+		resolved, err := chat.NewGeminiProvider(chat.OpenAICompatibleProviderConfig{
+			BaseURL:    strings.TrimSpace(provider.BaseURL),
+			APIKey:     apiKey,
+			ProviderID: strings.TrimSpace(provider.ID),
+			Timeout:    r.timeout,
+		})
+		if err != nil {
+			return nil, chat.ValidationError{
+				Code:    "PROVIDER_CONFIG_UNSUPPORTED",
+				Message: "runtime provider configuration is unsupported",
+			}
+		}
+		return resolved, nil
 	default:
 		return nil, chat.ValidationError{
 			Code:    "PROVIDER_CONFIG_UNSUPPORTED",
