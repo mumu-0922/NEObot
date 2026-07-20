@@ -22,8 +22,9 @@ func TestBuildFusionWebSearchQueryIsBoundedAndSourceMinimal(t *testing.T) {
 		}},
 		Authority: &RAGAnswerAuthority{Processor: "fixture"},
 	}
-	plan := planSourceFusion("最新公开进展", true, knowledgeDecision)
-	query, derived := buildFusionWebSearchQuery("最新公开进展", plan, knowledgeDecision)
+	question := "这个研究方向的最新公开进展"
+	plan := planSourceFusion(question, true, knowledgeDecision)
+	query, derived := buildFusionWebSearchQuery(question, plan, knowledgeDecision)
 	if !derived || !strings.Contains(query, "Relevant internal context") ||
 		len(query) > websearch.MaxQueryBytes {
 		t.Fatalf("derived query = %q (%d bytes)", query, len(query))
@@ -31,6 +32,26 @@ func TestBuildFusionWebSearchQueryIsBoundedAndSourceMinimal(t *testing.T) {
 	if strings.Contains(query, knowledgeDecision.Citations[0].SourceSpanHash) ||
 		strings.Contains(query, knowledgeDecision.Citations[0].ContentHash) {
 		t.Fatalf("derived query leaked source identity: %q", query)
+	}
+}
+
+func TestBuildFusionWebSearchQueryDoesNotPolluteExplicitSubject(t *testing.T) {
+	evidence := validHydratedEvidence()
+	knowledgeDecision := autoRAGDecision{
+		Outcome:  "evidence_ready",
+		Evidence: []knowledge.HydratedEvidence{evidence},
+		Citations: []RAGCitation{{
+			ID: "cit_1", Marker: "[K1]", Snippet: "推荐系统 HSTU HLLM 生成式推荐",
+		}},
+		Authority: &RAGAnswerAuthority{Processor: "fixture"},
+	}
+	question := "Kimi最新模型是啥"
+	plan := planSourceFusion(question, true, knowledgeDecision)
+
+	query, derived := buildFusionWebSearchQuery(question, plan, knowledgeDecision)
+
+	if derived || query != question || strings.Contains(query, "推荐系统") {
+		t.Fatalf("explicit-subject query = %q, derived=%v", query, derived)
 	}
 }
 

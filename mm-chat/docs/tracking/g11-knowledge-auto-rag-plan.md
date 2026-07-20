@@ -364,7 +364,10 @@ Incremental execution slices:
   close G11.9;
 - **G11.9G.5** complete: correct post-closure citation truth by retaining only
   final-answer `[K]` markers, recomputing terminal source authority from valid
-  used `[K]`/`[W]` markers, and hiding stale pre-fix Knowledge cards on reload.
+  used `[K]`/`[W]` markers, and hiding stale pre-fix Knowledge cards on reload;
+- **G11.9G.6** complete: prevent loosely related Knowledge from polluting an
+  explicit-subject Web query while retaining bounded Knowledge derivation for
+  genuinely context-dependent follow-ups.
 
 G11.9 is complete. The final deployed proof used the active structure-aware
 Knowledge generation, Jina query/rerank, Tavily, and `gpt-5.5`; every temporary

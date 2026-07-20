@@ -106,10 +106,13 @@ authenticated POST /v1/search       Go chat stream with useSearch
   fails closed with `SEARCH_NOT_CONFIGURED`.
 - G11.9G.1 places the deterministic source Router after Knowledge retrieval.
   Search never runs when disabled and is skipped when admitted Knowledge is
-  sufficient for a non-current question. G11.9G.2 appends at most two admitted
-  Knowledge snippets under a 512-byte context cap for mixed external searches;
-  Auto chat degrades resolution/provider failures without fallback. The direct
-  `/v1/search` diagnostic route retains its explicit fail-closed errors.
+  sufficient for a non-current question. G11.9G.2 may append at most two
+  admitted Knowledge snippets under a 512-byte context cap for mixed external
+  searches, but G11.9G.6 limits this to context-dependent questions. Explicit
+  subjects always use the normalized original question so a loose Knowledge
+  candidate cannot pollute Search. Auto chat degrades resolution/provider
+  failures without fallback. The direct `/v1/search` diagnostic route retains
+  its explicit fail-closed errors.
 - Gemini remains unsupported because the Go runtime cannot currently execute a
   Gemini chat request. Capability checks return an explicit unsupported error
   instead of silently using another provider.
@@ -183,3 +186,12 @@ failure on the first mixed call degraded correctly; the isolated rerun and the
 post-restart mixed call each persisted one `[K]` and three `[W]` citations.
 All temporary conversations were deleted and full clean-copy verification
 passed.
+
+### 2026-07-20 — G11.9G.6
+
+Closed Knowledge-to-Web query pollution after a loosely related private
+candidate changed an explicit Kimi Search into recommendation-system results.
+Knowledge snippets are now appended only for context-dependent questions;
+explicit named subjects search the normalized user question unchanged. The
+live Kimi replay returned only Kimi/Moonshot sources while the contextual-query
+gate remained enabled for dependent follow-ups.

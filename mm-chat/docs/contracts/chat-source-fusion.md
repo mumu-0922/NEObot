@@ -58,10 +58,13 @@ remain the only user authorities.
 - Diagnostics contain enums, IDs, counts, scores, stages, timings, provider,
   and degradation reason only. They never contain query text, full source text,
   credentials, ciphertext, or signed capabilities.
-- When mixed routing selects external Web, the outbound query may append at
-  most two already-admitted Knowledge snippets with a combined 512-byte cap.
-  This happens only under the user's enabled Search toggle; hashes, locators,
-  IDs, and the derived query are never persisted to diagnostics.
+- When mixed routing selects external Web, a context-dependent question such
+  as “这个研究方向的最新进展” may append at most two already-admitted Knowledge
+  snippets with a combined 512-byte cap. A question with an explicit subject,
+  such as “Kimi 最新模型”, always searches the normalized original question and
+  cannot be polluted by a loosely related Knowledge candidate. This happens
+  only under the user's enabled Search toggle; hashes, locators, IDs, and the
+  derived query are never persisted to diagnostics.
 
 ## 4. Validation and Error Matrix
 
@@ -71,6 +74,8 @@ remain the only user authorities.
 | Knowledge ready, no current/public intent | Knowledge + model; Web skipped |
 | Current/public intent with Knowledge ready | mixed Knowledge/Web plan |
 | Search enabled and Knowledge miss/unbound | Web + model plan |
+| Explicit-subject public question plus loosely related Knowledge | search original question; `webQueryDerivedFromKnowledge=false` |
+| Context-dependent public follow-up plus admitted Knowledge | bounded Knowledge-derived query is allowed |
 | Knowledge dependency failure | model continues; optional Web may run |
 | External Web failure | model continues with available Knowledge; degraded metadata |
 | Built-in capability mismatch | degraded metadata; no cross-provider fallback |
@@ -91,9 +96,12 @@ remain the only user authorities.
 - Base: related Knowledge reaches generation but does not answer the question;
   the model omits `[K]`, the terminal result retains only used Web/model
   authority, and the Knowledge card stays hidden.
+- Good: “Kimi 最新模型” remains the external Search query even if selected
+  Knowledge mentions other AI models or recommendation systems.
 - Bad: Search runs when the toggle is off, a provider error aborts an otherwise
   useful Auto answer, an injected-but-unused citation renders as a Knowledge
-  source, or a raw private query/source is written to diagnostics.
+  source, explicit search terms are diluted with unrelated Knowledge text, or a
+  raw private query/source is written to diagnostics.
 
 ## 6. Tests Required
 
@@ -108,6 +116,8 @@ remain the only user authorities.
   use, and invented-marker cases;
 - frontend reload compatibility proving a stored citation without a matching
   final-answer marker produces no Knowledge card;
+- explicit-subject query regression proving admitted Knowledge is not appended,
+  plus contextual follow-up regression proving bounded derivation remains;
 - reload and frontend citation-card interaction;
 - live Knowledge-only, Web-only, both, neither, failure, restart, and clean-copy
   smoke with temporary artifacts removed.
@@ -123,7 +133,9 @@ useSearch=true -> always search first -> abort chat on Web failure
 Correct:
 
 ```text
-Knowledge decision -> deterministic source Router -> optional one-provider Web
+Knowledge decision -> deterministic source Router
+  -> explicit subject: original Web query
+  -> contextual reference: optional bounded Knowledge-derived Web query
   -> source-aware prompt -> model -> reconcile admitted sources against actual
      [K]/[W] markers -> persist used citations + terminal authority
 ```

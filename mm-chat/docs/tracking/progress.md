@@ -1421,6 +1421,8 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
             cleanup, and G11.9 closure.
       - [x] G11.9G.5 Terminal Knowledge citation reconciliation, actual-marker
             source authority, and stale-card reload compatibility.
+      - [x] G11.9G.6 Explicit-subject Web query isolation with bounded
+            context-dependent Knowledge derivation retained.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

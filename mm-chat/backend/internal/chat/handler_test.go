@@ -1506,6 +1506,9 @@ func TestHandlerSourceFusionPersistsOnlyKnowledgeMarkersUsedByAnswer(t *testing.
 		!strings.Contains(provider.input.Prompt, "[W1]") {
 		t.Fatalf("provider prompt = %q", provider.input.Prompt)
 	}
+	if searchProvider.request.Query != "latest public fixture" {
+		t.Fatalf("explicit-subject Search query = %q", searchProvider.request.Query)
+	}
 	message := repo.messages[testConversationID][1]
 	assertAutoRAGMetadata(t, message, "answered_without_knowledge", 0)
 	knowledgeMetadata := message.Metadata["knowledge"].(map[string]any)

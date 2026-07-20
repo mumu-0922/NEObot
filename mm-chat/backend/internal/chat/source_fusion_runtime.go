@@ -55,7 +55,8 @@ func buildFusionWebSearchQuery(
 ) (string, bool) {
 	question = boundedWebSearchQuery(strings.Join(strings.Fields(question), " "))
 	if question == "" || !plan.SearchRequested ||
-		plan.Authority != sourceAuthorityMixed || !knowledge.ReadyForAnswer() {
+		plan.Authority != sourceAuthorityMixed || !knowledge.ReadyForAnswer() ||
+		!shouldRewriteRAGQuery(question) {
 		return question, false
 	}
 

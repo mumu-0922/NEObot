@@ -2176,3 +2176,43 @@ it persisted zero Knowledge citations for the unused related candidate, zero
 for the unrelated question, and one for the truly supported private question.
 All temporary smoke state and local response artifacts were removed before the
 slice commit.
+
+## 2026-07-20 — G11.9G.6 Explicit Web query isolation
+
+The owner reported that the same explicit Kimi question returned correct Kimi
+sources before the terminal-citation correction but recommendation-system
+sources afterwards. Runtime evidence confirmed the causal path: all three
+post-rebuild messages recorded `webQueryDerivedFromKnowledge=true`, and their
+five Web results were recommendation/generative-recommendation pages. The
+selected Knowledge candidate was appended to the external query even though
+the user question already contained the complete subject “Kimi”. The earlier
+correct message had also used derivation, so provider ranking variability made
+the latent query-pollution bug visible rather than the G11.9G.5 citation filter
+directly creating it.
+
+The query builder now appends bounded Knowledge context only when the question
+is context-dependent under the existing standalone-query predicate. Explicit
+subjects search the normalized original question unchanged. This preserves the
+useful case for questions such as “这个研究方向的最新公开进展”, while preventing a
+loosely related private candidate from diluting exact names such as Kimi.
+
+Verification:
+
+```text
+explicit-subject / contextual derivation unit regressions passed / passed
+Go full / chat race / vet                              passed / passed / passed
+source-built Backend rebuild / health                  passed / healthy
+live Kimi derived-from-Knowledge flag                  false
+live Kimi Knowledge citations / terminal authority     0 / web
+live Kimi Search sources                               5 Kimi/Moonshot sources
+live contextual derivation flag                        true
+temporary smoke conversations                          zero active
+```
+
+The first contextual live call reached the derived-query branch but Tavily
+returned a transient provider failure and Auto correctly degraded to Knowledge
+without fallback; a manual retry encountered the same upstream/model failure.
+This does not weaken the deterministic positive unit proof or the explicit
+Kimi fix, and no automatic retry or cross-provider fallback was introduced.
+No route, schema, secret, provider setting, frontend annotation, or raw query
+diagnostic was added.
