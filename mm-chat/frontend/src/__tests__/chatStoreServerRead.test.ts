@@ -1339,6 +1339,11 @@ describe("chat store server read path", () => {
       id: "m4",
       role: "model",
       content: "partial",
+      generationError: {
+        code: "PROVIDER_ERROR",
+        message: "provider failed",
+        recoverable: true,
+      },
     });
     expect(state.generation).toEqual({
       status: "failed",
@@ -1397,6 +1402,9 @@ describe("chat store server read path", () => {
       assistantMessageId: "m4",
       activeServerRunId: null,
       error: { message: "Server stream failed." },
+    });
+    expect(state.activeMessages[1]?.generationError).toEqual({
+      message: "Server stream failed.",
     });
     expect(state.error).toBe("Server stream failed.");
     expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();

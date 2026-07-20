@@ -14,11 +14,115 @@ import (
 	"time"
 
 	"neo-chat/mm-chat/backend/internal/config"
+	"neo-chat/mm-chat/backend/internal/imagejobs"
 	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/runtimeconfig"
 	"neo-chat/mm-chat/backend/internal/storage"
 	"neo-chat/mm-chat/backend/internal/teams"
 )
+
+type fakeImageProviderConfigResolver struct {
+	serverDefault runtimeconfig.ResolvedProvider
+	stored        map[string]runtimeconfig.ResolvedProvider
+	defaultCalls  int
+	storedCalls   []string
+}
+
+func (r *fakeImageProviderConfigResolver) ResolveServerDefaultProvider(
+	context.Context,
+) (runtimeconfig.ResolvedProvider, error) {
+	r.defaultCalls++
+	return r.serverDefault, nil
+}
+
+func (r *fakeImageProviderConfigResolver) ResolveStoredProvider(
+	_ context.Context,
+	providerID string,
+) (runtimeconfig.ResolvedProvider, error) {
+	r.storedCalls = append(r.storedCalls, providerID)
+	provider, ok := r.stored[providerID]
+	if !ok {
+		return runtimeconfig.ResolvedProvider{}, runtimeconfig.ErrProviderConfigNotFound
+	}
+	return provider, nil
+}
+
+func TestImageExecutorResolverMapsLegacyAliasToConfiguredServerDefault(t *testing.T) {
+	providerResolver := &fakeImageProviderConfigResolver{
+		serverDefault: runtimeconfig.ResolvedProvider{
+			ID:      "SERVER_DEFAULT",
+			Type:    runtimeconfig.ProviderTypeOpenAICompatible,
+			BaseURL: "https://images.example.test/v1",
+			APIKey:  "fixture-secret",
+			Models:  []string{"gpt-5.5", "gpt-image-2"},
+		},
+	}
+	resolver := modelProviderImageExecutorResolver{service: providerResolver}
+
+	executor, err := resolver.ResolveImageExecutor(context.Background(), imagejobs.ModelRef{
+		ProviderID: "openai_compatible",
+		ModelID:    "gpt-image-2",
+	})
+	if err != nil || executor == nil {
+		t.Fatalf("ResolveImageExecutor() = %T, %v", executor, err)
+	}
+	if providerResolver.defaultCalls != 1 || len(providerResolver.storedCalls) != 0 {
+		t.Fatalf(
+			"provider resolver calls = default:%d stored:%#v",
+			providerResolver.defaultCalls,
+			providerResolver.storedCalls,
+		)
+	}
+}
+
+func TestImageExecutorResolverRejectsLegacyAliasForUnconfiguredModel(t *testing.T) {
+	providerResolver := &fakeImageProviderConfigResolver{
+		serverDefault: runtimeconfig.ResolvedProvider{
+			ID:      "SERVER_DEFAULT",
+			Type:    runtimeconfig.ProviderTypeOpenAICompatible,
+			BaseURL: "https://images.example.test/v1",
+			APIKey:  "fixture-secret",
+			Models:  []string{"gpt-5.5"},
+		},
+	}
+	resolver := modelProviderImageExecutorResolver{service: providerResolver}
+
+	_, err := resolver.ResolveImageExecutor(context.Background(), imagejobs.ModelRef{
+		ProviderID: "openai_compatible",
+		ModelID:    "gpt-image-2",
+	})
+	if !errors.Is(err, imagejobs.ErrImageJobsUnavailable) {
+		t.Fatalf("ResolveImageExecutor() error = %v", err)
+	}
+}
+
+func TestImageExecutorResolverKeepsStoredProviderIDsAuthoritative(t *testing.T) {
+	providerResolver := &fakeImageProviderConfigResolver{stored: map[string]runtimeconfig.ResolvedProvider{
+		"CUSTOM": {
+			ID:      "CUSTOM",
+			Type:    runtimeconfig.ProviderTypeOpenAICompatible,
+			BaseURL: "https://custom-images.example.test/v1",
+			APIKey:  "fixture-secret",
+		},
+	}}
+	resolver := modelProviderImageExecutorResolver{service: providerResolver}
+
+	executor, err := resolver.ResolveImageExecutor(context.Background(), imagejobs.ModelRef{
+		ProviderID: "CUSTOM",
+		ModelID:    "custom-image-model",
+	})
+	if err != nil || executor == nil {
+		t.Fatalf("ResolveImageExecutor() = %T, %v", executor, err)
+	}
+	if providerResolver.defaultCalls != 0 || len(providerResolver.storedCalls) != 1 ||
+		providerResolver.storedCalls[0] != "CUSTOM" {
+		t.Fatalf(
+			"provider resolver calls = default:%d stored:%#v",
+			providerResolver.defaultCalls,
+			providerResolver.storedCalls,
+		)
+	}
+}
 
 func TestNewProviderSecretVaultLoadsConfiguredKeyring(t *testing.T) {
 	vault, err := newProviderSecretVault(config.Config{})

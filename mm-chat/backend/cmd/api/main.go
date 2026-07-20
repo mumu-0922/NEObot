@@ -686,8 +686,13 @@ func newImageJobService(
 }
 
 type modelProviderImageExecutorResolver struct {
-	service *runtimeconfig.Service
+	service imageProviderConfigResolver
 	timeout time.Duration
+}
+
+type imageProviderConfigResolver interface {
+	ResolveServerDefaultProvider(context.Context) (runtimeconfig.ResolvedProvider, error)
+	ResolveStoredProvider(context.Context, string) (runtimeconfig.ResolvedProvider, error)
 }
 
 func (r modelProviderImageExecutorResolver) ResolveImageExecutor(
@@ -698,15 +703,19 @@ func (r modelProviderImageExecutorResolver) ResolveImageExecutor(
 		return nil, imagejobs.ErrImageJobsUnavailable
 	}
 	providerID := strings.TrimSpace(modelRef.ProviderID)
+	legacyServerDefaultAlias := isLegacyServerDefaultImageProviderAlias(providerID)
 	var provider runtimeconfig.ResolvedProvider
 	var err error
-	if providerID == "SERVER_DEFAULT" {
+	if providerID == "SERVER_DEFAULT" || legacyServerDefaultAlias {
 		provider, err = r.service.ResolveServerDefaultProvider(ctx)
 	} else {
 		provider, err = r.service.ResolveStoredProvider(ctx, providerID)
 	}
 	if err != nil || (provider.Type != runtimeconfig.ProviderTypeOpenAI &&
 		provider.Type != runtimeconfig.ProviderTypeOpenAICompatible) {
+		return nil, imagejobs.ErrImageJobsUnavailable
+	}
+	if legacyServerDefaultAlias && !containsExactModel(provider.Models, modelRef.ModelID) {
 		return nil, imagejobs.ErrImageJobsUnavailable
 	}
 	executor, err := imagejobs.NewOpenAICompatibleExecutor(
@@ -720,6 +729,28 @@ func (r modelProviderImageExecutorResolver) ResolveImageExecutor(
 		return nil, imagejobs.ErrImageJobsUnavailable
 	}
 	return resolvedModelProviderImageExecutor{executor: executor}, nil
+}
+
+func isLegacyServerDefaultImageProviderAlias(providerID string) bool {
+	switch strings.ToLower(strings.TrimSpace(providerID)) {
+	case "openai", "openai_compatible", "openai-compatible":
+		return true
+	default:
+		return false
+	}
+}
+
+func containsExactModel(models []string, modelID string) bool {
+	modelID = strings.TrimSpace(modelID)
+	if modelID == "" {
+		return false
+	}
+	for _, candidate := range models {
+		if strings.TrimSpace(candidate) == modelID {
+			return true
+		}
+	}
+	return false
 }
 
 type resolvedModelProviderImageExecutor struct {

@@ -1033,7 +1033,10 @@ const MessageItem: React.FC<MessageItemProps> = ({
     message.toolCalls?.length,
   );
   const isLoading =
-    (isTyping || isWaitingForResponse) && !displayedContent && !hasOutputEvents;
+    (isTyping || isWaitingForResponse) &&
+    !displayedContent &&
+    !hasOutputEvents &&
+    !message.generationError;
   const isImageGenerationInProgress =
     isLoading && isImageGenerationModel(message.model || "");
   const isUserMessage = message.role === "user";

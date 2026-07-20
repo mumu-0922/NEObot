@@ -20,14 +20,47 @@ const (
 	openAICompatibleProviderIDOpenAI        = "openai"
 	openAICompatibleProviderIDHyphenVariant = "openai-compatible"
 	openAICompatibleImagesPath              = "/images/generations"
+	openAICompatibleImageResponseFormat     = "b64_json"
 	maxOpenAICompatibleImageResponseBytes   = 8 << 20
 	maxOpenAICompatibleGeneratedImageBytes  = 64 << 20
 )
 
-var (
-	ErrImageProviderFailed           = errors.New("image provider failed")
-	errOpenAICompatibleImageProvider = ErrImageProviderFailed
-)
+var ErrImageProviderFailed = errors.New("image provider failed")
+
+type providerHTTPError struct {
+	Stage      string
+	StatusCode int
+}
+
+func (e *providerHTTPError) Error() string {
+	return fmt.Sprintf("openai-compatible image %s returned status %d", e.Stage, e.StatusCode)
+}
+
+func (e *providerHTTPError) Unwrap() error { return ErrImageProviderFailed }
+
+func FailureReason(err error) string {
+	if errors.Is(err, ErrImageJobsUnavailable) {
+		return "IMAGE_EXECUTOR_UNAVAILABLE"
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "IMAGE_PROVIDER_TIMEOUT"
+	}
+	if errors.Is(err, context.Canceled) {
+		return "IMAGE_PROVIDER_CANCELLED"
+	}
+	var httpErr *providerHTTPError
+	if errors.As(err, &httpErr) {
+		stage := "REQUEST"
+		if httpErr.Stage == "image fetch" {
+			stage = "FETCH"
+		}
+		return fmt.Sprintf("IMAGE_PROVIDER_%s_HTTP_%d", stage, httpErr.StatusCode)
+	}
+	if errors.Is(err, ErrImageProviderFailed) {
+		return "IMAGE_PROVIDER_REJECTED"
+	}
+	return "IMAGE_PROVIDER_RESPONSE_INVALID"
+}
 
 type OpenAICompatibleExecutorConfig struct {
 	BaseURL    string
@@ -82,10 +115,11 @@ func (e *OpenAICompatibleExecutor) Generate(ctx context.Context, request Generat
 	}
 
 	payload, err := json.Marshal(openAICompatibleImageRequest{
-		Model:  modelRef.ModelID,
-		Prompt: prompt,
-		Size:   strings.TrimSpace(request.Size),
-		N:      count,
+		Model:          modelRef.ModelID,
+		Prompt:         prompt,
+		Size:           strings.TrimSpace(request.Size),
+		N:              count,
+		ResponseFormat: openAICompatibleImageResponseFormat,
 	})
 	if err != nil {
 		return GenerateResult{}, fmt.Errorf("openai-compatible image request encode failed: %w", err)
@@ -112,7 +146,10 @@ func (e *OpenAICompatibleExecutor) Generate(ctx context.Context, request Generat
 	defer resp.Body.Close()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		return GenerateResult{}, fmt.Errorf("%w: status %d", errOpenAICompatibleImageProvider, resp.StatusCode)
+		return GenerateResult{}, &providerHTTPError{
+			Stage:      "request",
+			StatusCode: resp.StatusCode,
+		}
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxOpenAICompatibleImageResponseBytes+1))
@@ -196,7 +233,10 @@ func (e *OpenAICompatibleExecutor) fetchGeneratedImageURL(
 	defer resp.Body.Close()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		return GeneratedImageResult{}, fmt.Errorf("%w: image fetch status %d", errOpenAICompatibleImageProvider, resp.StatusCode)
+		return GeneratedImageResult{}, &providerHTTPError{
+			Stage:      "image fetch",
+			StatusCode: resp.StatusCode,
+		}
 	}
 	content, err := io.ReadAll(io.LimitReader(resp.Body, maxOpenAICompatibleGeneratedImageBytes+1))
 	if err != nil {
@@ -222,10 +262,11 @@ func (e *OpenAICompatibleExecutor) fetchGeneratedImageURL(
 }
 
 type openAICompatibleImageRequest struct {
-	Model  string `json:"model"`
-	Prompt string `json:"prompt"`
-	Size   string `json:"size,omitempty"`
-	N      int    `json:"n,omitempty"`
+	Model          string `json:"model"`
+	Prompt         string `json:"prompt"`
+	Size           string `json:"size,omitempty"`
+	N              int    `json:"n,omitempty"`
+	ResponseFormat string `json:"response_format,omitempty"`
 }
 
 type openAICompatibleImageResponse struct {

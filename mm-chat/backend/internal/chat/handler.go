@@ -29,6 +29,7 @@ const (
 	maxToolNameBytes     = 128
 	maxToolDescBytes     = 2048
 	maxToolParamsBytes   = 32 * 1024
+	defaultChatImageSize = "1024x1024"
 )
 
 type Handler struct {
@@ -59,6 +60,7 @@ type RuntimeProviderResolver interface {
 type ImageGenerationRequest struct {
 	ModelRef ModelRef
 	Prompt   string
+	Size     string
 }
 
 type GeneratedImageAttachment struct {
@@ -1603,6 +1605,7 @@ func (h *Handler) streamImageGeneration(
 	result, err := h.imageGenerator.GenerateImage(streamCtx, ImageGenerationRequest{
 		ModelRef: modelRef,
 		Prompt:   userMessage.Content,
+		Size:     defaultChatImageSize,
 	})
 	if err != nil {
 		if streamCtx.Err() != nil || errors.Is(err, context.Canceled) {

@@ -8539,3 +8539,14 @@ clearance replaces the undersized fixed bottom reserve. Focused tests,
 lint/typecheck, Docker build, live pause/resume/clearance proof, Compose health,
 and smoke cleanup passed. Exact behavior and rollback are recorded in
 `docs/tracking/g11-12-stream-scroll-follow-process.md`.
+
+## 2026-07-20 — G12.4 server image repair cross-reference
+
+Legacy `openai_compatible` image refs now resolve through the exact configured
+Server Default model allowlist, chat preserves the proven `1024x1024` and
+base64 response request shape, and failed live/reloaded image assistants stop
+instead of restarting an infinite progress timer. Full backend/frontend gates,
+production builds, a real 2,407,661-byte `gpt-image-2` chat artifact, an 8 ms
+negative failure, and file/conversation cleanup passed. Exact evidence and
+rollback are recorded in `docs/tracking/g12-provider-protocols-process.md` and
+`docs/contracts/media-job-executor-seams.md`.

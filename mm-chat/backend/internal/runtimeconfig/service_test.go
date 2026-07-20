@@ -630,6 +630,9 @@ func TestAdminProviderConfigsManageCustomProviderOnBackend(t *testing.T) {
 	if resolved.APIKey != "custom-key" || resolved.BaseURL != "https://custom.example/v1" {
 		t.Fatalf("resolved = %#v", resolved)
 	}
+	if len(resolved.Models) != 1 || resolved.Models[0] != "gpt-custom" {
+		t.Fatalf("resolved models = %#v", resolved.Models)
+	}
 
 	if err := service.DeleteAdminProviderConfig(context.Background(), "CUSTOM"); err != nil {
 		t.Fatalf("DeleteAdminProviderConfig returned error: %v", err)

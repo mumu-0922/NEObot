@@ -769,7 +769,8 @@ func TestHandlerRoutesImageModelsThroughImageGeneratorAndPersistsAttachment(t *t
 			t.Fatalf("image stream body missing %q; body=%s", want, body)
 		}
 	}
-	if !generator.called || generator.request.Prompt != "draw a corgi" {
+	if !generator.called || generator.request.Prompt != "draw a corgi" ||
+		generator.request.Size != "1024x1024" {
 		t.Fatalf("image generator request = %#v", generator.request)
 	}
 	messages := repo.messages[testConversationID]

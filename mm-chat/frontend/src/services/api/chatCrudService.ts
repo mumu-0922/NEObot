@@ -66,6 +66,11 @@ export interface ChatCrudMessage {
   metadata?: Record<string, unknown>;
   attachments?: ChatCrudAttachment[];
   model?: string;
+  generationError?: {
+    message: string;
+    recoverable?: boolean;
+    code?: string;
+  };
   outputBlocks?: unknown[];
   knowledge?: MessageKnowledgeMetadata;
   parentMessageId?: string;
@@ -228,6 +233,7 @@ export function mapChatMessageDtoToMessage(
     message.content,
   );
   const content = normalizeImageGenerationContent(message);
+  const generationError = normalizeServerGenerationError(message);
 
   return {
     id: message.id,
@@ -237,6 +243,7 @@ export function mapChatMessageDtoToMessage(
     ...(message.metadata ? { metadata: message.metadata } : {}),
     ...(knowledge ? { knowledge } : {}),
     ...(role === "model" && model ? { model } : {}),
+    ...(generationError ? { generationError } : {}),
     ...(message.attachments.length > 0
       ? {
           attachments: message.attachments.map((attachment) =>
@@ -251,6 +258,29 @@ export function mapChatMessageDtoToMessage(
       ? { parentMessageId: message.parentMessageId }
       : {}),
     ...treeParentFromMetadata(message.metadata),
+  };
+}
+
+function normalizeServerGenerationError(
+  message: ChatMessageDTO,
+): ChatCrudMessage["generationError"] {
+  if (message.role !== "assistant" || message.status !== "failed") {
+    return undefined;
+  }
+
+  const errorCode =
+    typeof message.metadata.errorCode === "string"
+      ? message.metadata.errorCode.trim()
+      : "";
+  const isImageGeneration = message.metadata.kind === "image_generation";
+  return {
+    message:
+      message.content.trim() ||
+      (isImageGeneration
+        ? "Image generation failed."
+        : "Server generation failed."),
+    recoverable: true,
+    ...(errorCode ? { code: errorCode } : {}),
   };
 }
 

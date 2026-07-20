@@ -1,8 +1,9 @@
 # G12 Provider Protocols Plan
 
-Status: complete. Gemini server chat and native Anthropic Claude are now
-available as tested wire protocols. Provider presets remain explicitly out of
-scope.
+Status: complete. Gemini server chat and native Anthropic Claude are available
+as tested wire protocols; backend-managed provider identity and server image
+routing/failure handling are also closed. Provider presets remain explicitly
+out of scope.
 
 ## Decision
 
@@ -59,6 +60,18 @@ scope.
   model reference.
 - Prove the full frontend-proxy/Go/vault/provider stream with the configured
   DeepSeek provider and delete the disposable proof conversation.
+
+### [x] G12.4 — Server image routing and terminal failure repair
+
+- Resolve legacy `openai`, `openai_compatible`, and `openai-compatible` image
+  refs through Server Default only when the exact model is configured there;
+  retain exact Postgres provider IDs for custom providers.
+- Preserve the proven image request shape with `1024x1024` chat size and
+  `response_format: b64_json`.
+- Convert live and reloaded failed image assistants into terminal frontend
+  generation errors instead of indefinitely running progress cards.
+- Prove a real `gpt-image-2` chat SSE artifact and an immediate invalid-model
+  failure, then delete both disposable conversations and the image file.
 
 ## Deferred boundaries
 

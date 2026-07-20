@@ -24,7 +24,9 @@ func TestOpenAICompatibleExecutorGeneratesFromBase64Response(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
-		if payload.Model != "gpt-image-1" || payload.Prompt != "paint" || payload.N != 1 || payload.Size != "512x512" {
+		if payload.Model != "gpt-image-1" || payload.Prompt != "paint" ||
+			payload.N != 1 || payload.Size != "512x512" ||
+			payload.ResponseFormat != "b64_json" {
 			t.Fatalf("payload = %#v", payload)
 		}
 		return jsonResponse(http.StatusOK, openAICompatibleImageResponse{Data: []openAICompatibleImageData{{
@@ -111,6 +113,15 @@ func TestOpenAICompatibleExecutorRejectsBadProviderAndStatusWithoutLeakingBody(t
 	}
 	if strings.Contains(err.Error(), "secret provider body") {
 		t.Fatalf("Generate() leaked provider body: %v", err)
+	}
+	if got := FailureReason(err); got != "IMAGE_PROVIDER_REQUEST_HTTP_401" {
+		t.Fatalf("FailureReason() = %q", got)
+	}
+}
+
+func TestImageFailureReasonClassifiesUnavailableExecutor(t *testing.T) {
+	if got := FailureReason(ErrImageJobsUnavailable); got != "IMAGE_EXECUTOR_UNAVAILABLE" {
+		t.Fatalf("FailureReason() = %q", got)
 	}
 }
 

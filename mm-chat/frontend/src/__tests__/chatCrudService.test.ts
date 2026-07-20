@@ -290,6 +290,34 @@ describe("chat CRUD DTO mappers", () => {
     });
   });
 
+  it("restores failed image messages as terminal errors instead of pending placeholders", () => {
+    const failedImageMessage: ChatMessageDTO = {
+      ...assistantMessageDto,
+      status: "failed",
+      content: "",
+      modelRef: {
+        providerId: "openai_compatible",
+        modelId: "gpt-image-2",
+      },
+      metadata: {
+        kind: "image_generation",
+        errorCode: "IMAGE_PROVIDER_ERROR",
+      },
+      attachments: [],
+      outputBlocks: [],
+    };
+
+    expect(mapChatMessageDtoToMessage(failedImageMessage)).toMatchObject({
+      content: "",
+      model: "openai_compatible:gpt-image-2",
+      generationError: {
+        message: "Image generation failed.",
+        recoverable: true,
+        code: "IMAGE_PROVIDER_ERROR",
+      },
+    });
+  });
+
   it("fails closed on invalid timestamps and unsupported server roles", () => {
     expect(() => parseServerTimestamp("bad-date", "message.createdAt")).toThrow(
       /invalid message.createdAt/,

@@ -141,3 +141,53 @@ The real DeepSeek proof streamed `DEEPSEEK_OK` through the production frontend
 proxy and used only the Postgres-vault reference; no provider Key was exposed
 or copied into browser storage. The failed browser `hi` was also replayed once
 against the real provider and received a persisted assistant response.
+
+## 2026-07-20 — G12.4 server image routing and terminal failure repair
+
+The owner-visible image card continued counting past three minutes even though
+Go had failed the request in 9 ms. Runtime and Postgres evidence showed
+`openai_compatible:gpt-image-2`, `IMAGE_EXECUTOR_RESOLUTION_FAILED`, and an empty
+assistant row with `status=failed`. The image resolver understood only
+`SERVER_DEFAULT` or an exact stored provider record ID, while the frontend
+intentionally retained the legacy `openai_compatible` protocol identity for
+chat/RAG compatibility. Reload mapping then discarded the failed status and
+error metadata, so the empty image assistant looked pending forever.
+
+The resolver now maps the three legacy OpenAI aliases to Server Default only
+when its connection-tested model list contains the exact requested image model.
+Custom record IDs still resolve only their own Postgres/vault record. Resolved
+provider DTOs now carry their model allowlist so that compatibility fallback is
+bounded rather than unconditional.
+
+The migrated Go chat path also differed from the previously proven image call:
+it omitted the chat size and did not request base64 output. Chat image dispatch
+now sends `1024x1024`, and the OpenAI-compatible executor sends
+`response_format: b64_json` while retaining URL-response compatibility. Safe
+failure classification logs only stage/status categories, never provider
+bodies, prompts, signed image URLs, credentials, or bytes.
+
+Frontend DTO reload now maps failed assistant rows and `metadata.errorCode` to
+`generationError`. Live failed stream results apply the same terminal error to
+the assistant draft, and `MessageItem` explicitly excludes generation errors
+from loading inference. A refresh can no longer resurrect the timer.
+
+Verification:
+
+```text
+backend full tests / vet                              passed / passed
+frontend tests                                       182 files / 874 tests
+frontend lint / typecheck / format                   passed / passed / passed
+backend/frontend production source builds            passed / passed
+backend/frontend/Postgres/Redis/RAG                   healthy
+real gpt-image-2 chat SSE                             message.started -> message.completed
+real image artifact                                  image/png, 2,407,661 bytes
+real stream duration                                 88,843 ms
+negative unconfigured image model                    message.error in 8 ms
+positive file/conversation cleanup                   HTTP 204 / HTTP 204
+negative conversation cleanup                        HTTP 204
+```
+
+The provider produced transient failed/timeout attempts during the authorized
+smoke before one complete response; those attempts terminated correctly and
+their conversations were deleted. The final positive request was persisted,
+downloaded, byte-checked, and then removed from file storage and chat state.

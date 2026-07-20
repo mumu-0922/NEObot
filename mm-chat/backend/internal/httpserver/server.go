@@ -146,9 +146,15 @@ func (g chatImageGenerator) GenerateImage(
 			ModelID:    request.ModelRef.ModelID,
 		},
 		Prompt: request.Prompt,
+		Size:   request.Size,
 		Count:  1,
 	})
 	if err != nil {
+		slog.WarnContext(
+			ctx,
+			"image_generation_failed",
+			slog.String("reason", imagejobs.FailureReason(err)),
+		)
 		return chat.ImageGenerationResult{}, err
 	}
 	attachments := make([]chat.GeneratedImageAttachment, 0, len(response.Images))

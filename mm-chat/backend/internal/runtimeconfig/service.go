@@ -715,6 +715,7 @@ type ResolvedProvider struct {
 	Type    ProviderType
 	BaseURL string
 	APIKey  string
+	Models  []string
 }
 
 func (s *Service) ResolveServerDefaultProvider(ctx context.Context) (ResolvedProvider, error) {
@@ -754,6 +755,7 @@ func (s *Service) ResolveServerDefaultProvider(ctx context.Context) (ResolvedPro
 		Type:    provider.Type,
 		BaseURL: provider.BaseURL,
 		APIKey:  provider.APIKey,
+		Models:  append([]string(nil), provider.Models...),
 	}, nil
 }
 
@@ -794,6 +796,7 @@ func (s *Service) ResolveStoredProvider(ctx context.Context, providerID string) 
 		Type:    provider.Type,
 		BaseURL: provider.BaseURL,
 		APIKey:  provider.APIKey,
+		Models:  append([]string(nil), provider.Models...),
 	}, nil
 }
 

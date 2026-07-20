@@ -1461,8 +1461,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           opt-in real-Provider extraction, immediate deletion, and browser
           local-store exclusion in server mode. Schema `035`, disposable DB,
           real cross-chat recall/negative/delete proof, and hard cleanup passed.
-  - [x] G12 Gemini and Anthropic provider protocols, executed in separate
-        tested commits per `docs/tracking/g12-provider-protocols-plan.md`.
+  - [x] G12 Gemini/Anthropic provider protocols plus backend-managed provider
+        and image-runtime repair, executed in separate tested commits per
+        `docs/tracking/g12-provider-protocols-plan.md`.
     - [x] G12.1 Gemini server-runtime closure while retaining the existing
           administrator configuration and native Models connection test.
     - [x] G12.2 Native Anthropic Messages streaming, Models connection test,
@@ -1470,6 +1471,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
     - [x] G12.3 Backend-managed provider identity retention, authoritative
           startup hydration, custom-governance alias canonicalization, and
           cleaned real DeepSeek proxy-stream proof.
+    - [x] G12.4 Bounded legacy image-provider alias resolution, proven
+          `1024x1024`/`b64_json` request shape, terminal failed-image UI state,
+          real `gpt-image-2` chat artifact, negative fail-fast proof, and full
+          smoke cleanup.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 
