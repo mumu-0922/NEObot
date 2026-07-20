@@ -87,6 +87,7 @@ import { buildMobileMessageMetaTooltip } from "@/lib/utils/messageMetaTooltip";
 import { getMessageDisplayTokenCount } from "@/lib/utils/messageTokens";
 import {
   IMAGE_CONTENT_POLICY_VIOLATION_CODE,
+  IMAGE_PROVIDER_CONNECTION_CODE,
   IMAGE_PROVIDER_TIMEOUT_CODE,
 } from "@/lib/chat/types";
 import {
@@ -1052,6 +1053,8 @@ const MessageItem: React.FC<MessageItemProps> = ({
   let generationErrorMessage = generationError?.message;
   if (generationError?.code === IMAGE_CONTENT_POLICY_VIOLATION_CODE) {
     generationErrorMessage = t("imageContentPolicyViolation");
+  } else if (generationError?.code === IMAGE_PROVIDER_CONNECTION_CODE) {
+    generationErrorMessage = t("imageProviderConnectionFailed");
   } else if (generationError?.code === IMAGE_PROVIDER_TIMEOUT_CODE) {
     generationErrorMessage = t("imageProviderTimeout");
   }

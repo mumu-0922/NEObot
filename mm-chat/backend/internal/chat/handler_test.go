@@ -808,6 +808,11 @@ func TestHandlerExposesSanitizedImageGenerationFailures(t *testing.T) {
 			code:    ImageProviderTimeoutCode,
 			message: "image provider timed out",
 		},
+		{
+			name:    "provider connection",
+			code:    ImageProviderConnectionCode,
+			message: "image provider connection failed after retry",
+		},
 	}
 
 	for _, test := range tests {

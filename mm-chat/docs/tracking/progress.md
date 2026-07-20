@@ -1478,6 +1478,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
       - [x] G12.4.1 Sanitized provider policy classification, no-retry policy
             rejection, bounded transient retry, distinct provider-timeout
             guidance, localized terminal UI, and cleaned real proofs.
+      - [x] G12.4.2 Retried pre-response provider connection failure
+            classification, localized terminal guidance, and live-log
+            correlation for the owner-visible 17:50 request.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

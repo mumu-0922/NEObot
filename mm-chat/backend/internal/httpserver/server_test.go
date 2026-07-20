@@ -1309,6 +1309,44 @@ func TestChatImageGeneratorClassifiesProviderTimeout(t *testing.T) {
 	}
 }
 
+func TestChatImageGeneratorClassifiesProviderConnectionFailure(t *testing.T) {
+	executor, err := imagejobs.NewOpenAICompatibleExecutor(
+		imagejobs.OpenAICompatibleExecutorConfig{
+			BaseURL: "https://provider.test/v1",
+			APIKey:  "fixture-key",
+			HTTPClient: &http.Client{Transport: httpRoundTripFunc(
+				func(*http.Request) (*http.Response, error) {
+					return nil, errors.New("fixture connection interrupted")
+				},
+			)},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := imagejobs.NewService(
+		imagejobs.WithExecutor(executor),
+		imagejobs.WithArtifactStore(&fakeHTTPArtifactStore{}),
+		imagejobs.WithAuditRecorder(jobaudit.RecorderFunc(
+			func(context.Context, jobaudit.Event) error { return nil },
+		)),
+	)
+
+	_, err = (chatImageGenerator{service: service}).GenerateImage(
+		context.Background(),
+		chat.ImageGenerationRequest{
+			ModelRef: chat.ModelRef{ProviderID: "openai", ModelID: "gpt-image-2"},
+			Prompt:   "paint",
+			Size:     "1024x1024",
+		},
+	)
+
+	var imageErr *chat.ImageGenerationError
+	if !errors.As(err, &imageErr) || imageErr.Code != chat.ImageProviderConnectionCode {
+		t.Fatalf("GenerateImage() error = %v", err)
+	}
+}
+
 func TestNewHandlerRoutesConfiguredVoiceJobService(t *testing.T) {
 	executor := &fakeHTTPVoiceExecutor{synthesizeResult: voicejobs.SynthesizeResult{
 		JobID:       "job-1",
@@ -1556,6 +1594,12 @@ type fakeHTTPImageExecutor struct {
 	request imagejobs.GenerateRequest
 	result  imagejobs.GenerateResult
 	err     error
+}
+
+type httpRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f httpRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
 }
 
 func (e *fakeHTTPImageExecutor) Generate(

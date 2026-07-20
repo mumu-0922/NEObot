@@ -237,3 +237,38 @@ No prompt, provider body, URL, credential, or image bytes were written to the
 application log. Rollback is the single follow-up commit; reverting it restores
 the generic provider error but must not revert the preceding G12.4 image-route
 repair.
+
+## 2026-07-20 — G12.4.2 provider connection failure classification
+
+The owner-visible 17:50 request for a Corgi/brand collaboration poster did not
+reach an HTTP provider response. The production log correlated the browser
+message append at `09:50:08Z` with terminal
+`IMAGE_PROVIDER_REQUEST_FAILED` at `09:51:55Z`; the stream lasted 106,583 ms.
+This category is emitted only after the executor's single bounded retry also
+fails at the request transport stage. There is no response status or provider
+policy code for this attempt, so the evidence does not support attributing this
+specific failure to prompt moderation.
+
+Request, response-read, generated-image-fetch, and fetch-read transport
+failures now map to terminal chat code `IMAGE_PROVIDER_CONNECTION_ERROR` after
+retry exhaustion. Frontend live/reload rendering retains the code as
+recoverable and shows localized Chinese, English, or Japanese connection
+guidance instead of the generic English provider error. Raw transport errors,
+provider URLs, prompts, credentials, and response bodies remain excluded from
+logs and SSE.
+
+Verification:
+
+```text
+backend full tests / vet                              passed / passed
+backend focused race tests                            passed
+frontend tests                                       182 files / 876 tests
+frontend lint / typecheck / format                   passed / passed / passed
+backend/frontend production source builds            passed / passed
+backend/frontend readiness and frontend proxy health healthy / passed
+live owner request correlation                       IMAGE_PROVIDER_REQUEST_FAILED, 106,583 ms
+```
+
+The already-failed row retains its historical generic error code; new attempts
+receive the classified code. Rollback is the G12.4.2 commit only and does not
+alter provider credentials, model selection, persisted images, or schema.

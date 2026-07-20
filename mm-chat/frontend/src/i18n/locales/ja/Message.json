@@ -28,6 +28,7 @@
   "generationFailed": "生成に失敗しました",
   "generationRecoverable": "「再生成」をクリックしてもう一度お試しください。",
   "imageContentPolicyViolation": "画像プロバイダーのコンテンツポリシーにより拒否されました。表現を変更して再試行してください。",
+  "imageProviderConnectionFailed": "画像プロバイダーへの接続が再試行後も失敗しました。時間をおいて再試行してください。",
   "imageProviderTimeout": "画像プロバイダーがタイムアウトしました。時間をおいて再生成してください。",
   "failedToSynthesize": "音声の合成に失敗しました: {error}",
   "generationTime": "生成時間",

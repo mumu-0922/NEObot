@@ -25,6 +25,8 @@ describe("generation error UI wiring", () => {
     );
     expect(messageItem).toContain("IMAGE_CONTENT_POLICY_VIOLATION_CODE");
     expect(messageItem).toContain('t("imageContentPolicyViolation")');
+    expect(messageItem).toContain("IMAGE_PROVIDER_CONNECTION_CODE");
+    expect(messageItem).toContain('t("imageProviderConnectionFailed")');
     expect(messageItem).toContain("IMAGE_PROVIDER_TIMEOUT_CODE");
     expect(messageItem).toContain('t("imageProviderTimeout")');
 
@@ -36,6 +38,7 @@ describe("generation error UI wiring", () => {
         ),
       ) as Record<string, string>;
       expect(messages.imageContentPolicyViolation).toBeTruthy();
+      expect(messages.imageProviderConnectionFailed).toBeTruthy();
       expect(messages.imageProviderTimeout).toBeTruthy();
     }
   });

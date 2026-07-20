@@ -221,6 +221,30 @@ func TestOpenAICompatibleExecutorDoesNotRetryContentPolicyViolation(t *testing.T
 	}
 }
 
+func TestOpenAICompatibleExecutorClassifiesRetriedConnectionFailure(t *testing.T) {
+	calls := 0
+	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		calls++
+		return nil, errors.New("fixture connection interrupted")
+	})}
+	executor := newTestOpenAICompatibleExecutor(t, client)
+
+	_, err := executor.Generate(context.Background(), GenerateRequest{
+		ModelRef: ModelRef{ProviderID: "openai", ModelID: "image-model"},
+		Prompt:   "paint",
+	})
+
+	if err == nil || !IsProviderConnectionFailure(err) {
+		t.Fatalf("Generate() error = %v, want connection failure", err)
+	}
+	if got := FailureReason(err); got != "IMAGE_PROVIDER_REQUEST_FAILED" {
+		t.Fatalf("FailureReason() = %q", got)
+	}
+	if calls != maxOpenAICompatibleImageAttempts {
+		t.Fatalf("provider calls = %d, want %d", calls, maxOpenAICompatibleImageAttempts)
+	}
+}
+
 func TestOpenAICompatibleExecutorRejectsInvalidImagePayload(t *testing.T) {
 	calls := 0
 	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {

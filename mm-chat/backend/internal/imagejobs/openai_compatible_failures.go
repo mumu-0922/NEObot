@@ -76,6 +76,22 @@ func IsContentPolicyViolation(err error) bool {
 	return errors.As(err, &httpErr) && httpErr.ErrorCode == "CONTENT_POLICY_VIOLATION"
 }
 
+func IsProviderConnectionFailure(err error) bool {
+	var stageErr *providerStageError
+	if !errors.As(err, &stageErr) {
+		return false
+	}
+	switch stageErr.reason {
+	case "IMAGE_PROVIDER_REQUEST_FAILED",
+		"IMAGE_PROVIDER_RESPONSE_READ_FAILED",
+		"IMAGE_PROVIDER_FETCH_FAILED",
+		"IMAGE_PROVIDER_FETCH_READ_FAILED":
+		return true
+	default:
+		return false
+	}
+}
+
 func isRetryableImageProviderError(err error) bool {
 	var httpErr *providerHTTPError
 	if errors.As(err, &httpErr) {

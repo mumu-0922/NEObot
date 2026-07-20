@@ -8564,3 +8564,14 @@ same-prompt image, health checks, and complete smoke cleanup passed.
 Exact evidence and rollback are recorded in
 `docs/tracking/g12-provider-protocols-process.md` and
 `docs/contracts/media-job-executor-seams.md`.
+
+## 2026-07-20 — G12.4.2 image connection failure cross-reference
+
+The owner-visible 17:50 image request exhausted the bounded provider transport
+retry without receiving an HTTP response (`IMAGE_PROVIDER_REQUEST_FAILED`,
+106,583 ms). Go now persists and streams the distinct recoverable
+`IMAGE_PROVIDER_CONNECTION_ERROR`, while the frontend renders localized retry
+guidance and still excludes raw network/provider details. Exact correlation and
+contract changes are recorded in
+`docs/tracking/g12-provider-protocols-process.md` and
+`docs/contracts/media-job-executor-seams.md`.

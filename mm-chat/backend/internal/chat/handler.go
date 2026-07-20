@@ -32,6 +32,7 @@ const (
 	defaultChatImageSize = "1024x1024"
 
 	ImageContentPolicyViolationCode = "IMAGE_CONTENT_POLICY_VIOLATION"
+	ImageProviderConnectionCode     = "IMAGE_PROVIDER_CONNECTION_ERROR"
 	ImageProviderTimeoutCode        = "IMAGE_PROVIDER_TIMEOUT"
 )
 
@@ -1749,6 +1750,8 @@ func imageGenerationStreamErrorCode(err error) string {
 	switch strings.TrimSpace(imageErr.Code) {
 	case ImageContentPolicyViolationCode:
 		return ImageContentPolicyViolationCode
+	case ImageProviderConnectionCode:
+		return ImageProviderConnectionCode
 	case ImageProviderTimeoutCode:
 		return ImageProviderTimeoutCode
 	default:
@@ -1760,6 +1763,8 @@ func imageGenerationStreamErrorMessage(errorCode string) string {
 	switch errorCode {
 	case ImageContentPolicyViolationCode:
 		return "image request was rejected by provider content policy"
+	case ImageProviderConnectionCode:
+		return "image provider connection failed after retry"
 	case ImageProviderTimeoutCode:
 		return "image provider timed out"
 	default:

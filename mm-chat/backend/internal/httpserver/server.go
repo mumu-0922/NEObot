@@ -167,6 +167,12 @@ func (g chatImageGenerator) GenerateImage(
 				Err:  err,
 			}
 		}
+		if imagejobs.IsProviderConnectionFailure(err) {
+			return chat.ImageGenerationResult{}, &chat.ImageGenerationError{
+				Code: chat.ImageProviderConnectionCode,
+				Err:  err,
+			}
+		}
 		return chat.ImageGenerationResult{}, err
 	}
 	attachments := make([]chat.GeneratedImageAttachment, 0, len(response.Images))

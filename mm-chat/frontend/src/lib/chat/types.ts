@@ -5,6 +5,7 @@ import type { MessageKnowledgeMetadata } from "../knowledge/types";
 
 export const IMAGE_CONTENT_POLICY_VIOLATION_CODE =
   "IMAGE_CONTENT_POLICY_VIOLATION";
+export const IMAGE_PROVIDER_CONNECTION_CODE = "IMAGE_PROVIDER_CONNECTION_ERROR";
 export const IMAGE_PROVIDER_TIMEOUT_CODE = "IMAGE_PROVIDER_TIMEOUT";
 
 export interface Attachment {
