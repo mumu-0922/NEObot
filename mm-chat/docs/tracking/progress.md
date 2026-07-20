@@ -1475,6 +1475,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           `1024x1024`/`b64_json` request shape, terminal failed-image UI state,
           real `gpt-image-2` chat artifact, negative fail-fast proof, and full
           smoke cleanup.
+      - [x] G12.4.1 Sanitized provider policy classification, no-retry policy
+            rejection, bounded transient retry, distinct provider-timeout
+            guidance, localized terminal UI, and cleaned real proofs.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

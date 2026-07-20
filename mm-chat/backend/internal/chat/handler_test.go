@@ -792,6 +792,75 @@ func TestHandlerRoutesImageModelsThroughImageGeneratorAndPersistsAttachment(t *t
 	}
 }
 
+func TestHandlerExposesSanitizedImageGenerationFailures(t *testing.T) {
+	tests := []struct {
+		name    string
+		code    string
+		message string
+	}{
+		{
+			name:    "content policy",
+			code:    ImageContentPolicyViolationCode,
+			message: "image request was rejected by provider content policy",
+		},
+		{
+			name:    "provider timeout",
+			code:    ImageProviderTimeoutCode,
+			message: "image provider timed out",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repo := newFakeRepository()
+			repo.conversations = append(
+				repo.conversations,
+				fakeConversation(testConversationID, "First", 0),
+			)
+			repo.messages[testConversationID] = append(
+				repo.messages[testConversationID],
+				fakeMessage(testMessageID, testConversationID, 0, "user", "draw a character"),
+			)
+			handler := NewHandler(
+				NewService(repo),
+				WithProvider(errorProvider{}),
+				WithImageGenerator(&fakeChatImageGenerator{err: &ImageGenerationError{
+					Code: test.code,
+					Err:  errors.New("private upstream detail"),
+				}}),
+			)
+
+			rec := performRequest(
+				handler,
+				http.MethodPost,
+				conversationsPath+"/"+testConversationID+"/stream",
+				`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"openai_compatible","modelId":"gpt-image-2"},"idempotencyKey":"image-failure-key"}`,
+			)
+
+			assertStreamStatus(t, rec, http.StatusOK)
+			body := rec.Body.String()
+			for _, want := range []string{
+				"event: message.started",
+				"event: message.error",
+				`"code":"` + test.code + `"`,
+				`"message":"` + test.message + `"`,
+			} {
+				if !strings.Contains(body, want) {
+					t.Fatalf("failure body missing %q; body=%s", want, body)
+				}
+			}
+			if strings.Contains(body, "private upstream detail") {
+				t.Fatalf("failure leaked upstream detail; body=%s", body)
+			}
+			messages := repo.messages[testConversationID]
+			if len(messages) != 2 || messages[1].Status != "failed" ||
+				messages[1].Metadata["errorCode"] != test.code {
+				t.Fatalf("persisted messages = %#v", messages)
+			}
+		})
+	}
+}
+
 func TestHandlerStreamsRepeatedAssistantBranchesForSameUserMessage(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))

@@ -318,6 +318,32 @@ describe("chat CRUD DTO mappers", () => {
     });
   });
 
+  it("restores image content policy failures as non-recoverable errors", () => {
+    const failedImageMessage: ChatMessageDTO = {
+      ...assistantMessageDto,
+      status: "failed",
+      content: "image request was rejected by provider content policy",
+      modelRef: {
+        providerId: "openai_compatible",
+        modelId: "gpt-image-2",
+      },
+      metadata: {
+        kind: "image_generation",
+        errorCode: "IMAGE_CONTENT_POLICY_VIOLATION",
+      },
+      attachments: [],
+      outputBlocks: [],
+    };
+
+    expect(mapChatMessageDtoToMessage(failedImageMessage)).toMatchObject({
+      generationError: {
+        message: "image request was rejected by provider content policy",
+        recoverable: false,
+        code: "IMAGE_CONTENT_POLICY_VIOLATION",
+      },
+    });
+  });
+
   it("fails closed on invalid timestamps and unsupported server roles", () => {
     expect(() => parseServerTimestamp("bad-date", "message.createdAt")).toThrow(
       /invalid message.createdAt/,

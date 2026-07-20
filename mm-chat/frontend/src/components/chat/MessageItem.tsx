@@ -86,6 +86,10 @@ import { logDevError } from "@/lib/utils/devLogger";
 import { buildMobileMessageMetaTooltip } from "@/lib/utils/messageMetaTooltip";
 import { getMessageDisplayTokenCount } from "@/lib/utils/messageTokens";
 import {
+  IMAGE_CONTENT_POLICY_VIOLATION_CODE,
+  IMAGE_PROVIDER_TIMEOUT_CODE,
+} from "@/lib/chat/types";
+import {
   decodeAttachmentText,
   isTextDocumentMimeType,
 } from "@/lib/utils/documentAttachments";
@@ -1045,6 +1049,12 @@ const MessageItem: React.FC<MessageItemProps> = ({
   const isErrorMessage =
     message.role === "model" && message.content.startsWith("Error:");
   const generationError = message.generationError;
+  let generationErrorMessage = generationError?.message;
+  if (generationError?.code === IMAGE_CONTENT_POLICY_VIOLATION_CODE) {
+    generationErrorMessage = t("imageContentPolicyViolation");
+  } else if (generationError?.code === IMAGE_PROVIDER_TIMEOUT_CODE) {
+    generationErrorMessage = t("imageProviderTimeout");
+  }
 
   // Branch navigation checks
   const hasMultipleBranches = !!branchInfo && branchInfo.count > 1;
@@ -1481,7 +1491,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
                   >
                     <div className="font-semibold">{t("generationFailed")}</div>
                     <div className="mt-1 wrap-break-word">
-                      {generationError.message}
+                      {generationErrorMessage}
                     </div>
                     {generationError.recoverable ? (
                       <div className="mt-1 text-xs opacity-80">

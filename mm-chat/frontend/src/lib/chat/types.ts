@@ -3,6 +3,10 @@ import type { ImageSource, Source } from "../search/types";
 import type { AppliedSkillInvocation } from "../skills/types";
 import type { MessageKnowledgeMetadata } from "../knowledge/types";
 
+export const IMAGE_CONTENT_POLICY_VIOLATION_CODE =
+  "IMAGE_CONTENT_POLICY_VIOLATION";
+export const IMAGE_PROVIDER_TIMEOUT_CODE = "IMAGE_PROVIDER_TIMEOUT";
+
 export interface Attachment {
   id: string;
   mimeType: string;

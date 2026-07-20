@@ -155,6 +155,18 @@ func (g chatImageGenerator) GenerateImage(
 			"image_generation_failed",
 			slog.String("reason", imagejobs.FailureReason(err)),
 		)
+		if imagejobs.IsContentPolicyViolation(err) {
+			return chat.ImageGenerationResult{}, &chat.ImageGenerationError{
+				Code: chat.ImageContentPolicyViolationCode,
+				Err:  err,
+			}
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return chat.ImageGenerationResult{}, &chat.ImageGenerationError{
+				Code: chat.ImageProviderTimeoutCode,
+				Err:  err,
+			}
+		}
 		return chat.ImageGenerationResult{}, err
 	}
 	attachments := make([]chat.GeneratedImageAttachment, 0, len(response.Images))

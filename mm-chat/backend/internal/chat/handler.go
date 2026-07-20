@@ -30,6 +30,9 @@ const (
 	maxToolDescBytes     = 2048
 	maxToolParamsBytes   = 32 * 1024
 	defaultChatImageSize = "1024x1024"
+
+	ImageContentPolicyViolationCode = "IMAGE_CONTENT_POLICY_VIOLATION"
+	ImageProviderTimeoutCode        = "IMAGE_PROVIDER_TIMEOUT"
 )
 
 type Handler struct {
@@ -71,6 +74,25 @@ type GeneratedImageAttachment struct {
 type ImageGenerationResult struct {
 	Attachments []GeneratedImageAttachment
 	Message     string
+}
+
+type ImageGenerationError struct {
+	Code string
+	Err  error
+}
+
+func (e *ImageGenerationError) Error() string {
+	if e == nil || e.Err == nil {
+		return "image generation failed"
+	}
+	return e.Err.Error()
+}
+
+func (e *ImageGenerationError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
 }
 
 type ImageGenerator interface {
@@ -1629,7 +1651,15 @@ func (h *Handler) streamImageGeneration(
 			flusher.Flush()
 			return
 		}
-		h.failImageGenerationStream(w, flusher, conversationID, assistantMessage, runID, sequence, "IMAGE_PROVIDER_ERROR")
+		h.failImageGenerationStream(
+			w,
+			flusher,
+			conversationID,
+			assistantMessage,
+			runID,
+			sequence,
+			imageGenerationStreamErrorCode(err),
+		)
 		return
 	}
 	if len(result.Attachments) == 0 {
@@ -1706,9 +1736,35 @@ func (h *Handler) failImageGenerationStream(
 		MessageID:      assistantMessage.ID,
 		Sequence:       sequence,
 		CreatedAt:      formatTime(time.Now()),
-		Error:          &ErrorBody{Code: errorCode, Message: "image generation failed"},
+		Error:          &ErrorBody{Code: errorCode, Message: imageGenerationStreamErrorMessage(errorCode)},
 	})
 	flusher.Flush()
+}
+
+func imageGenerationStreamErrorCode(err error) string {
+	var imageErr *ImageGenerationError
+	if !errors.As(err, &imageErr) {
+		return "IMAGE_PROVIDER_ERROR"
+	}
+	switch strings.TrimSpace(imageErr.Code) {
+	case ImageContentPolicyViolationCode:
+		return ImageContentPolicyViolationCode
+	case ImageProviderTimeoutCode:
+		return ImageProviderTimeoutCode
+	default:
+		return "IMAGE_PROVIDER_ERROR"
+	}
+}
+
+func imageGenerationStreamErrorMessage(errorCode string) string {
+	switch errorCode {
+	case ImageContentPolicyViolationCode:
+		return "image request was rejected by provider content policy"
+	case ImageProviderTimeoutCode:
+		return "image provider timed out"
+	default:
+		return "image generation failed"
+	}
 }
 
 func nonEmptyImagePurpose(value string) string {

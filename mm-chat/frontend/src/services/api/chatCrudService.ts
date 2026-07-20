@@ -17,6 +17,7 @@ import {
   type ServerAttachmentDTO,
 } from "./client";
 import { normalizeSessionTitle } from "../../lib/chat/entities";
+import { IMAGE_CONTENT_POLICY_VIOLATION_CODE } from "../../lib/chat/types";
 import { SERVER_DEFAULT_PROVIDER_ID } from "../../lib/defaultConfig/shared";
 import { normalizeMessageKnowledgeMetadata } from "../../lib/knowledge/citations";
 import type { MessageKnowledgeMetadata } from "../../lib/knowledge/types";
@@ -279,7 +280,7 @@ function normalizeServerGenerationError(
       (isImageGeneration
         ? "Image generation failed."
         : "Server generation failed."),
-    recoverable: true,
+    recoverable: errorCode !== IMAGE_CONTENT_POLICY_VIOLATION_CODE,
     ...(errorCode ? { code: errorCode } : {}),
   };
 }

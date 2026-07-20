@@ -191,3 +191,49 @@ The provider produced transient failed/timeout attempts during the authorized
 smoke before one complete response; those attempts terminated correctly and
 their conversations were deleted. The final positive request was persisted,
 downloaded, byte-checked, and then removed from file storage and chat state.
+
+## 2026-07-20 — G12.4.1 image policy failure classification
+
+The owner-visible `画个海绵宝宝` failure was replayed against the active
+provider. The upstream returned HTTP 400 with the machine code
+`content_policy_violation`; model selection, Server Default resolution, Key,
+request delivery, and artifact storage were not the failing stages. A
+SpongeBob-like indirect description was rejected the same way, while an
+unrelated original landscape completed normally. Provider moderation is
+therefore the decisive boundary, not an intermittent frontend timeout.
+
+The executor now parses only bounded, allowlisted provider `code`/`type` labels,
+maps every unknown label to `UNRECOGNIZED`, discards the provider message/body,
+and records a sanitized failure category. Transient network, `408`, `429`,
+`5xx`, read/decode/empty-response, and URL-fetch failures receive at most one
+retry inside the original request deadline. HTTP 400 content-policy rejection,
+invalid base64, oversized data, and invalid URLs are permanent failures and are
+not retried.
+
+Go maps the policy rejection to terminal SSE/database code
+`IMAGE_CONTENT_POLICY_VIOLATION`. The frontend preserves that code across
+reload, marks it non-recoverable, and renders localized Chinese, English, or
+Japanese guidance instead of the sanitized English backend message. A provider
+that exhausts the shared request deadline maps separately to recoverable
+`IMAGE_PROVIDER_TIMEOUT` with localized retry guidance.
+
+Verification:
+
+```text
+backend full tests / vet                              passed / passed
+frontend tests                                       182 files / 876 tests
+frontend lint / typecheck / format                   passed / passed / passed
+backend/frontend production source builds            passed / passed
+backend/frontend/Postgres/Redis/RAG                   healthy
+real named-character prompt                          IMAGE_CONTENT_POLICY_VIOLATION, 68,749 ms
+real indirect character prompt                       IMAGE_CONTENT_POLICY_VIOLATION, 66,772 ms
+real original landscape prompt                       image/png, 3,285,229 bytes, 75,710 ms
+post-rebuild named-character replay                   IMAGE_PROVIDER_TIMEOUT, 120,008 ms
+final-build named-character replay                    image/png, 2,283,680 bytes, 79,105 ms
+all smoke conversations/files                        HTTP 204 cleanup
+```
+
+No prompt, provider body, URL, credential, or image bytes were written to the
+application log. Rollback is the single follow-up commit; reverting it restores
+the generic provider error but must not revert the preceding G12.4 image-route
+repair.

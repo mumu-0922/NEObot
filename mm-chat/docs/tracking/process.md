@@ -8550,3 +8550,17 @@ production builds, a real 2,407,661-byte `gpt-image-2` chat artifact, an 8 ms
 negative failure, and file/conversation cleanup passed. Exact evidence and
 rollback are recorded in `docs/tracking/g12-provider-protocols-process.md` and
 `docs/contracts/media-job-executor-seams.md`.
+
+## 2026-07-20 — G12.4.1 image policy failure cross-reference
+
+The failed named-character request was an upstream HTTP 400
+`content_policy_violation`, not a routing, Key, storage, or frontend-progress
+failure. Go now exposes a sanitized terminal policy code, retries only bounded
+transient failures once, distinguishes shared-deadline timeout, and the frontend
+renders localized rewrite/retry guidance. Full backend/frontend gates,
+production builds, two real policy rejections, one post-build timeout, one
+unrelated 3,285,229-byte positive image, one final-build 2,283,680-byte
+same-prompt image, health checks, and complete smoke cleanup passed.
+Exact evidence and rollback are recorded in
+`docs/tracking/g12-provider-protocols-process.md` and
+`docs/contracts/media-job-executor-seams.md`.

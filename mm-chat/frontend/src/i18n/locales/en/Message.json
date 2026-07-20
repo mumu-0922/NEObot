@@ -27,6 +27,8 @@
   "imageGenerationHint": "The image will appear here when it is ready.",
   "generationFailed": "Generation failed",
   "generationRecoverable": "Use Regenerate to try again.",
+  "imageContentPolicyViolation": "The image provider rejected this prompt under its content policy. Rephrase it and try again.",
+  "imageProviderTimeout": "The image provider timed out. Try generating it again later.",
   "failedToSynthesize": "Failed to synthesize speech: {error}",
   "generationTime": "Generation Time",
   "duration": "Duration",

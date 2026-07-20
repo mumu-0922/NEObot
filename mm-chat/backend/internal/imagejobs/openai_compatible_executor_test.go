@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -49,7 +50,10 @@ func TestOpenAICompatibleExecutorGeneratesFromBase64Response(t *testing.T) {
 		t.Fatalf("images = %d, want 1", len(result.Images))
 	}
 	image := result.Images[0]
-	if image.JobID != "image-generate-1" || image.Filename != "generated-1.png" || image.ContentType != "image/png" || image.Size != int64(len(pngBytes)) {
+	if image.JobID != "image-generate-1" ||
+		image.Filename != "generated-1.png" ||
+		image.ContentType != "image/png" ||
+		image.Size != int64(len(pngBytes)) {
 		t.Fatalf("image = %#v", image)
 	}
 	body, err := io.ReadAll(image.Body)
@@ -85,14 +89,46 @@ func TestOpenAICompatibleExecutorGeneratesFromURLResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)
 	}
-	if len(result.Images) != 1 || result.Images[0].ContentType != "image/webp" || result.Images[0].Filename != "generated-1.webp" {
+	if len(result.Images) != 1 ||
+		result.Images[0].ContentType != "image/webp" ||
+		result.Images[0].Filename != "generated-1.webp" {
 		t.Fatalf("images = %#v", result.Images)
+	}
+}
+
+func TestOpenAICompatibleExecutorRetriesTransientEmptyResponseOnce(t *testing.T) {
+	pngBytes := []byte("\x89PNG\r\n\x1a\nretry")
+	calls := 0
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		if calls == 1 {
+			return jsonResponse(http.StatusOK, openAICompatibleImageResponse{}), nil
+		}
+		return jsonResponse(http.StatusOK, openAICompatibleImageResponse{Data: []openAICompatibleImageData{{
+			B64JSON: base64.StdEncoding.EncodeToString(pngBytes),
+		}}}), nil
+	})}
+	executor := newTestOpenAICompatibleExecutor(t, client)
+
+	result, err := executor.Generate(context.Background(), GenerateRequest{
+		ModelRef: ModelRef{ProviderID: "openai", ModelID: "image-model"},
+		Prompt:   "paint",
+	})
+
+	if err != nil || len(result.Images) != 1 || calls != 2 {
+		t.Fatalf("Generate() = images:%d calls:%d err:%v", len(result.Images), calls, err)
 	}
 }
 
 func TestOpenAICompatibleExecutorRejectsBadProviderAndStatusWithoutLeakingBody(t *testing.T) {
 	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		return bytesResponse(http.StatusUnauthorized, "text/plain", []byte("secret provider body")), nil
+		return jsonResponse(http.StatusUnauthorized, map[string]any{
+			"error": map[string]any{
+				"code":    "invalid-api-key",
+				"type":    "authentication_error",
+				"message": "secret provider body",
+			},
+		}), nil
 	})}
 	executor := newTestOpenAICompatibleExecutor(t, client)
 
@@ -114,7 +150,7 @@ func TestOpenAICompatibleExecutorRejectsBadProviderAndStatusWithoutLeakingBody(t
 	if strings.Contains(err.Error(), "secret provider body") {
 		t.Fatalf("Generate() leaked provider body: %v", err)
 	}
-	if got := FailureReason(err); got != "IMAGE_PROVIDER_REQUEST_HTTP_401" {
+	if got := FailureReason(err); got != "IMAGE_PROVIDER_REQUEST_HTTP_401_CODE_INVALID_API_KEY" {
 		t.Fatalf("FailureReason() = %q", got)
 	}
 }
@@ -125,9 +161,73 @@ func TestImageFailureReasonClassifiesUnavailableExecutor(t *testing.T) {
 	}
 }
 
-func TestOpenAICompatibleExecutorRejectsInvalidImagePayload(t *testing.T) {
+func TestImageFailureDetectsContentPolicyViolationWithoutMessageInspection(t *testing.T) {
+	err := &providerHTTPError{
+		Stage:      "request",
+		StatusCode: http.StatusBadRequest,
+		ErrorCode:  "CONTENT_POLICY_VIOLATION",
+	}
+	if !IsContentPolicyViolation(err) {
+		t.Fatal("IsContentPolicyViolation() = false")
+	}
+	if IsContentPolicyViolation(errors.New("content_policy_violation")) {
+		t.Fatal("plain error text must not be trusted as provider identity")
+	}
+}
+
+func TestProviderErrorIdentityDoesNotExposeUnrecognizedLabels(t *testing.T) {
+	code, errorType := providerErrorIdentity([]byte(`{
+		"error": {
+			"code": "provider-secret-value\r\nforged-log-line",
+			"type": "custom-secret-type"
+		}
+	}`))
+
+	if code != "UNRECOGNIZED" || errorType != "UNRECOGNIZED" {
+		t.Fatalf("providerErrorIdentity() = %q, %q", code, errorType)
+	}
+}
+
+func TestOpenAICompatibleExecutorDoesNotRetryContentPolicyViolation(t *testing.T) {
+	calls := 0
 	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		return jsonResponse(http.StatusOK, openAICompatibleImageResponse{Data: []openAICompatibleImageData{{B64JSON: "not-base64"}}}), nil
+		calls++
+		return jsonResponse(http.StatusBadRequest, map[string]any{
+			"error": map[string]any{
+				"code":    "content_policy_violation",
+				"type":    "invalid_request_error",
+				"message": "private provider policy detail",
+			},
+		}), nil
+	})}
+	executor := newTestOpenAICompatibleExecutor(t, client)
+
+	_, err := executor.Generate(context.Background(), GenerateRequest{
+		ModelRef: ModelRef{ProviderID: "openai", ModelID: "image-model"},
+		Prompt:   "paint",
+	})
+
+	if err == nil || !IsContentPolicyViolation(err) {
+		t.Fatalf("Generate() error = %v, want content policy violation", err)
+	}
+	if got := FailureReason(err); got != "IMAGE_PROVIDER_REQUEST_HTTP_400_CODE_CONTENT_POLICY_VIOLATION" {
+		t.Fatalf("FailureReason() = %q", got)
+	}
+	if strings.Contains(err.Error(), "private provider policy detail") {
+		t.Fatalf("Generate() leaked provider body: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("provider calls = %d, want no retry", calls)
+	}
+}
+
+func TestOpenAICompatibleExecutorRejectsInvalidImagePayload(t *testing.T) {
+	calls := 0
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		return jsonResponse(http.StatusOK, openAICompatibleImageResponse{
+			Data: []openAICompatibleImageData{{B64JSON: "not-base64"}},
+		}), nil
 	})}
 	executor := newTestOpenAICompatibleExecutor(t, client)
 
@@ -138,6 +238,28 @@ func TestOpenAICompatibleExecutorRejectsInvalidImagePayload(t *testing.T) {
 
 	if err == nil || !strings.Contains(err.Error(), "invalid base64") {
 		t.Fatalf("Generate() error = %v, want invalid base64", err)
+	}
+	if got := FailureReason(err); got != "IMAGE_PROVIDER_BASE64_INVALID" {
+		t.Fatalf("FailureReason() = %q", got)
+	}
+	if calls != 1 {
+		t.Fatalf("provider calls = %d, want no retry", calls)
+	}
+}
+
+func TestOpenAICompatibleExecutorClassifiesEmptyProviderResponse(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return jsonResponse(http.StatusOK, openAICompatibleImageResponse{}), nil
+	})}
+	executor := newTestOpenAICompatibleExecutor(t, client)
+
+	_, err := executor.Generate(context.Background(), GenerateRequest{
+		ModelRef: ModelRef{ProviderID: "openai", ModelID: "image-model"},
+		Prompt:   "paint",
+	})
+
+	if got := FailureReason(err); got != "IMAGE_PROVIDER_RESPONSE_EMPTY" {
+		t.Fatalf("FailureReason() = %q", got)
 	}
 }
 
