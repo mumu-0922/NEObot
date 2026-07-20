@@ -681,7 +681,10 @@ Slice sequence:
         both provider payload families, legacy null-parent rows remain usable,
         future ordinary sends persist their active parent, and a real restart
         smoke preserved the second-turn answer.
-  - [ ] G11.13B Token-budget soft consolidation without original-row deletion.
+  - [x] G11.13B Server-owned model budgets, versioned Postgres rolling summary,
+        exact branch-prefix validation, deterministic recent-tail degradation,
+        real long-context provider proof, restart reuse, and no original-row
+        deletion.
   - [ ] G11.13C Optional inspectable durable user memory.
 
 Targeted tests:
@@ -706,7 +709,7 @@ Targeted tests:
 | G8 Teams/Knowledge UI                    | Complete    | G8.1-G8.5 frontend control-plane wiring and isolation smoke passed                             |
 | G9 Data Authority/Route Removal          | Complete    | G9.1-G9.6 route freeze, route deletion, local write-authority, and clean-copy preflight passed |
 | G10 Final Closure/Delete Plan            | In progress | G10.1-G10.3 and build-based G10.2 complete; owner cleanup blocked by G11 parity regressions    |
-| G11 Owner Parity Regression Closure      | In progress | G11.13A context replay complete; token consolidation and optional durable memory remain        |
+| G11 Owner Parity Regression Closure      | In progress | G11.13A/B context replay and soft consolidation complete; optional durable memory remains      |
 
 ## Update Discipline
 

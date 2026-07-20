@@ -53,6 +53,7 @@ type ProviderRequest struct {
 }
 
 type ProviderMessage struct {
+	MessageID   string `json:"-"`
 	Role        string
 	Content     string
 	Attachments []ProviderAttachment

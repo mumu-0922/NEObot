@@ -31,16 +31,17 @@ const (
 )
 
 type Handler struct {
-	service            *Service
-	provider           Provider
-	attachmentResolver ProviderAttachmentResolver
-	providerResolver   RuntimeProviderResolver
-	imageGenerator     ImageGenerator
-	activeRuns         *activeRunRegistry
-	cancellationRuns   RunCancellationStore
-	ragAssembler       *RAGAnswerAssembler
-	ragAnswerGate      RAGAnswerGovernanceGate
-	webSearchService   *websearch.Service
+	service             *Service
+	provider            Provider
+	attachmentResolver  ProviderAttachmentResolver
+	providerResolver    RuntimeProviderResolver
+	imageGenerator      ImageGenerator
+	activeRuns          *activeRunRegistry
+	cancellationRuns    RunCancellationStore
+	ragAssembler        *RAGAnswerAssembler
+	ragAnswerGate       RAGAnswerGovernanceGate
+	webSearchService    *websearch.Service
+	contextBudgetPolicy contextBudgetPolicy
 }
 
 type HandlerOption func(*Handler)
@@ -289,8 +290,9 @@ func NewHandler(service *Service, opts ...HandlerOption) *Handler {
 	}
 
 	handler := &Handler{
-		service:    service,
-		activeRuns: newActiveRunRegistry(),
+		service:             service,
+		activeRuns:          newActiveRunRegistry(),
+		contextBudgetPolicy: defaultContextBudgetPolicy(),
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -1108,18 +1110,29 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		providerPrompt,
 		providerAttachments,
 	)
+	contextPreparation := h.prepareConversationContext(
+		r.Context(),
+		conversationID,
+		*modelRef,
+		streamProvider,
+		providerSystemPrompt,
+		providerMessages,
+	)
+	providerMessages = contextPreparation.Messages
+	providerSystemPrompt = contextPreparation.SystemPrompt
 	webMessageMetadata := func(decision autoRAGDecision, extra map[string]any) map[string]any {
 		metadata := withWebSearchMessageMetadata(
 			autoRAGMessageMetadata(runID, ragSelection, decision, extra),
 			searchExecution,
 			webSearchResult,
 		)
-		return withSourceFusionMessageMetadata(
+		metadata = withSourceFusionMessageMetadata(
 			metadata,
 			fusionPlan,
 			decision,
 			fusionDiagnostics,
 		)
+		return withConversationContextMetadata(metadata, contextPreparation)
 	}
 
 	streamCtx, streamCancel := context.WithCancel(r.Context())
@@ -1161,6 +1174,11 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			searchExecution = nil
 			modelBuiltInSearchProvider = nil
 			providerRequest.SystemPrompt = providerSystemPromptWithoutFusion
+			if contextPreparation.UsesSummary {
+				providerRequest.SystemPrompt = appendContextSummaryRuntimeInstruction(
+					providerRequest.SystemPrompt,
+				)
+			}
 			events, err = streamProvider.StreamChat(streamCtx, providerRequest)
 		}
 	} else {

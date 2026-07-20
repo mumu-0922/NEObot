@@ -2,10 +2,15 @@ package chat
 
 import (
 	"context"
+	"encoding/hex"
 	"strings"
 )
 
-const maxMessageAttachments = 20
+const (
+	maxMessageAttachments        = 20
+	maxContextSummaryBytes       = 64 * 1024
+	contextSummaryDigestHexBytes = 32
+)
 
 type Service struct {
 	repo Repository
@@ -146,6 +151,79 @@ func (s *Service) ListMessages(ctx context.Context, conversationID string) ([]Me
 	}
 
 	return s.repo.ListMessages(ctx, conversationID)
+}
+
+func (s *Service) GetConversationContextSummary(
+	ctx context.Context,
+	conversationID string,
+) (ConversationContextSummary, bool, error) {
+	if err := s.requireRepository(); err != nil {
+		return ConversationContextSummary{}, false, err
+	}
+	conversationID = strings.TrimSpace(conversationID)
+	if !isUUID(conversationID) {
+		return ConversationContextSummary{}, false, newValidationError(
+			"INVALID_CONVERSATION_ID",
+			"conversation id must be a UUID",
+		)
+	}
+	return s.repo.GetConversationContextSummary(ctx, conversationID)
+}
+
+func (s *Service) UpsertConversationContextSummary(
+	ctx context.Context,
+	conversationID string,
+	input UpsertConversationContextSummaryInput,
+) (ConversationContextSummary, error) {
+	if err := s.requireRepository(); err != nil {
+		return ConversationContextSummary{}, err
+	}
+	conversationID = strings.TrimSpace(conversationID)
+	if !isUUID(conversationID) {
+		return ConversationContextSummary{}, newValidationError(
+			"INVALID_CONVERSATION_ID",
+			"conversation id must be a UUID",
+		)
+	}
+	input.ModelProvider = strings.TrimSpace(input.ModelProvider)
+	input.ModelID = strings.TrimSpace(input.ModelID)
+	input.SourceFirstMessageID = strings.TrimSpace(input.SourceFirstMessageID)
+	input.SourceLastMessageID = strings.TrimSpace(input.SourceLastMessageID)
+	if !isUUID(input.SourceFirstMessageID) || !isUUID(input.SourceLastMessageID) {
+		return ConversationContextSummary{}, newValidationError(
+			"INVALID_CONTEXT_SUMMARY_BOUNDARY",
+			"context summary boundaries must be message UUIDs",
+		)
+	}
+	if input.SourceMessageCount <= 0 {
+		return ConversationContextSummary{}, newValidationError(
+			"INVALID_CONTEXT_SUMMARY_COUNT",
+			"context summary source message count must be positive",
+		)
+	}
+	input.SourceDigest = strings.ToLower(strings.TrimSpace(input.SourceDigest))
+	decodedDigest, err := hex.DecodeString(input.SourceDigest)
+	if err != nil || len(decodedDigest) != contextSummaryDigestHexBytes {
+		return ConversationContextSummary{}, newValidationError(
+			"INVALID_CONTEXT_SUMMARY_DIGEST",
+			"context summary source digest must be a SHA-256 hex value",
+		)
+	}
+	input.Summary = strings.TrimSpace(input.Summary)
+	if input.Summary == "" || len(input.Summary) > maxContextSummaryBytes {
+		return ConversationContextSummary{}, newValidationError(
+			"INVALID_CONTEXT_SUMMARY",
+			"context summary must be non-empty and at most 64 KiB",
+		)
+	}
+	if input.EstimatedSourceTokens < 0 || input.EstimatedSummaryTokens < 0 {
+		return ConversationContextSummary{}, newValidationError(
+			"INVALID_CONTEXT_SUMMARY_TOKENS",
+			"context summary token estimates must be non-negative",
+		)
+	}
+
+	return s.repo.UpsertConversationContextSummary(ctx, conversationID, input)
 }
 
 func (s *Service) UpdateMessage(

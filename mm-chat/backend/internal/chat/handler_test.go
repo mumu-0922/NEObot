@@ -2502,6 +2502,8 @@ func decodeBody(t *testing.T, rec *httptest.ResponseRecorder, destination any) {
 type fakeRepository struct {
 	conversations []Conversation
 	messages      map[string][]Message
+	summaries     map[string]ConversationContextSummary
+	summaryErr    error
 }
 
 type cancelFailRepository struct {
@@ -2518,7 +2520,53 @@ func (r *cancelFailRepository) CancelRun(
 }
 
 func newFakeRepository() *fakeRepository {
-	return &fakeRepository{messages: map[string][]Message{}}
+	return &fakeRepository{
+		messages:  map[string][]Message{},
+		summaries: map[string]ConversationContextSummary{},
+	}
+}
+
+func (f *fakeRepository) GetConversationContextSummary(
+	_ context.Context,
+	conversationID string,
+) (ConversationContextSummary, bool, error) {
+	if f.summaryErr != nil {
+		return ConversationContextSummary{}, false, f.summaryErr
+	}
+	summary, ok := f.summaries[conversationID]
+	return summary, ok, nil
+}
+
+func (f *fakeRepository) UpsertConversationContextSummary(
+	_ context.Context,
+	conversationID string,
+	input UpsertConversationContextSummaryInput,
+) (ConversationContextSummary, error) {
+	if f.summaryErr != nil {
+		return ConversationContextSummary{}, f.summaryErr
+	}
+	current := f.summaries[conversationID]
+	version := current.Version + 1
+	summary := ConversationContextSummary{
+		ConversationID:         conversationID,
+		Version:                version,
+		ModelProvider:          input.ModelProvider,
+		ModelID:                input.ModelID,
+		SourceFirstMessageID:   input.SourceFirstMessageID,
+		SourceLastMessageID:    input.SourceLastMessageID,
+		SourceMessageCount:     input.SourceMessageCount,
+		SourceDigest:           input.SourceDigest,
+		Summary:                input.Summary,
+		EstimatedSourceTokens:  input.EstimatedSourceTokens,
+		EstimatedSummaryTokens: input.EstimatedSummaryTokens,
+		CreatedAt:              testNow(),
+		UpdatedAt:              testNow(),
+	}
+	if !current.CreatedAt.IsZero() {
+		summary.CreatedAt = current.CreatedAt
+	}
+	f.summaries[conversationID] = summary
+	return summary, nil
 }
 
 func (f *fakeRepository) CreateConversation(

@@ -5222,3 +5222,30 @@ deleted. Token consolidation and optional durable memory remain separate
 slices. Detailed scope, evidence, and rollback are in
 `docs/tracking/g11-conversation-context-memory-plan.md` and
 `docs/tracking/g11-conversation-context-memory-process.md`.
+
+## 2026-07-20 — G11.13B token-budget soft consolidation
+
+The Go answer path now applies conservative server-owned model windows, reserves
+8,192 output plus 2,048 estimation-safety tokens, consolidates after 80% input
+use, and targets 50%. ASCII, multilingual text, framing, and current images are
+estimated without accepting browser limit overrides. Older messages are
+replaced only in Provider input by one untrusted-history assistant summary; the
+recent user-boundary tail and every original Postgres message remain intact.
+
+Migration `034` stores one versioned active summary with exact source message
+boundaries, count, SHA-256 ID/role/content prefix digest, generation model, and
+token estimates. Exact digest matching prevents reuse across edits or sibling
+branches. A valid summary rolls forward from its previous text plus newly
+evicted messages. Read, generation, output-size, persistence, and boundary
+failures use a deterministic recent tail and persist a bounded diagnostic, not
+private history or provider errors.
+
+Full Go gates and a disposable migration/Repository database passed. The live
+schema advanced from 33 to 34. A real `gpt-5.6-sol` conversation crossed the
+high-water mark, summarized 20 old messages into v1, and answered using an
+unpredictable marker present only in that prefix. After backend restart, the
+next answer reused v1 and recalled the marker again. The fixture conversation,
+messages, summary row, streams, and marker were hard-deleted. Detailed scope,
+tests, and rollback are in
+`docs/tracking/g11-conversation-context-memory-plan.md` and
+`docs/tracking/g11-conversation-context-memory-process.md`.

@@ -24,6 +24,8 @@ type Repository interface {
 	CreateAssistantMessage(ctx context.Context, conversationID string, input CreateAssistantMessageInput) (Message, error)
 	FinalizeAssistantMessage(ctx context.Context, conversationID string, messageID string, input FinalizeAssistantMessageInput) (Message, error)
 	CancelRun(ctx context.Context, runID string, input CancelRunInput) (Message, error)
+	GetConversationContextSummary(ctx context.Context, conversationID string) (ConversationContextSummary, bool, error)
+	UpsertConversationContextSummary(ctx context.Context, conversationID string, input UpsertConversationContextSummaryInput) (ConversationContextSummary, error)
 }
 
 type ModelRef struct {
@@ -148,4 +150,32 @@ type Message struct {
 	UpdatedAt         time.Time
 	CompletedAt       *time.Time
 	DeletedAt         *time.Time
+}
+
+type ConversationContextSummary struct {
+	ConversationID         string
+	Version                int
+	ModelProvider          string
+	ModelID                string
+	SourceFirstMessageID   string
+	SourceLastMessageID    string
+	SourceMessageCount     int
+	SourceDigest           string
+	Summary                string
+	EstimatedSourceTokens  int
+	EstimatedSummaryTokens int
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+}
+
+type UpsertConversationContextSummaryInput struct {
+	ModelProvider          string
+	ModelID                string
+	SourceFirstMessageID   string
+	SourceLastMessageID    string
+	SourceMessageCount     int
+	SourceDigest           string
+	Summary                string
+	EstimatedSourceTokens  int
+	EstimatedSummaryTokens int
 }

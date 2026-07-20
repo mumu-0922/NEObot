@@ -8,6 +8,7 @@ Contract documents define stable boundaries before implementation starts.
 - [`file-api.md`](./file-api.md) — Phase 6 backend file upload/download/delete contract above the object-store boundary.
 - [`chat-crud-api.md`](./chat-crud-api.md) — Phase 5.1/6.3 backend REST contract for Postgres-backed conversation CRUD, completed user-message writes, server file attachment links, DB-disabled `503 DATABASE_REQUIRED` behavior, and non-goals.
 - [`chat-stream-api.md`](./chat-stream-api.md) — Phase 5.2/5.4 backend SSE contract for provider-neutral assistant streaming, OpenAI-compatible provider wiring, durable run cancellation, mock-provider tests, and assistant-message finalization.
+- [`conversation-context.md`](./conversation-context.md) — G11.13 server current-branch replay, model-aware input budgets, versioned Postgres rolling summaries, exact prefix validation, guarded untrusted-history injection, and recent-tail degradation.
 - [`media-job-executor-seams.md`](./media-job-executor-seams.md) — G6.5c voice/image executor opt-in seams: admitted audit, artifact storage, fail-closed defaults, no inline bytes, and no quota-consuming provider calls by default.
 - [`provider-live-smoke-authorization.md`](./provider-live-smoke-authorization.md) — G6.5e opt-in authorization contract for any quota-consuming live provider smoke.
 - [`code-execution-sandbox-contract.md`](./code-execution-sandbox-contract.md) — G6.5d hard gate for enabling real code execution: sandbox isolation, storage, audit, cancellation, errors, and required tests.

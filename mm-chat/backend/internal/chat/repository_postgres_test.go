@@ -96,6 +96,83 @@ func TestPostgresCreateMessagePersistsAttachments(t *testing.T) {
 	}
 }
 
+func TestPostgresConversationContextSummaryRoundTrip(t *testing.T) {
+	db := openPostgresIntegrationDB(t)
+	repo := NewPostgresRepository(db)
+	service := NewService(repo)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	conversation, err := repo.CreateConversation(ctx, CreateConversationInput{
+		Title: "context summary",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := repo.CreateMessage(ctx, conversation.ID, CreateMessageInput{
+		Role: "user", Content: "remember cobalt",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	last, err := repo.CreateAssistantMessage(ctx, conversation.ID, CreateAssistantMessageInput{
+		ID: mustTestUUID(t), ParentMessageID: first.ID,
+		ModelProvider: "mock", ModelID: "summary",
+		IdempotencyKey: "context-summary-assistant-" + mustTestUUID(t),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.FinalizeAssistantMessage(ctx, conversation.ID, last.ID, FinalizeAssistantMessageInput{
+		Status: "completed", Content: "noted",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	input := UpsertConversationContextSummaryInput{
+		ModelProvider: "mock", ModelID: "summary",
+		SourceFirstMessageID: first.ID, SourceLastMessageID: last.ID,
+		SourceMessageCount: 2, SourceDigest: strings.Repeat("a", 64),
+		Summary:               "The user asked to remember cobalt.",
+		EstimatedSourceTokens: 12, EstimatedSummaryTokens: 8,
+	}
+	created, err := service.UpsertConversationContextSummary(ctx, conversation.ID, input)
+	if err != nil {
+		t.Fatalf("UpsertConversationContextSummary() error = %v", err)
+	}
+	if created.Version != 1 || created.SourceLastMessageID != last.ID {
+		t.Fatalf("created summary = %#v", created)
+	}
+	loaded, found, err := service.GetConversationContextSummary(ctx, conversation.ID)
+	if err != nil || !found || loaded.Summary != input.Summary {
+		t.Fatalf("loaded summary = %#v, found=%v, err=%v", loaded, found, err)
+	}
+
+	input.Summary = "The user asked to remember cobalt and chose option B."
+	updated, err := service.UpsertConversationContextSummary(ctx, conversation.ID, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Version != 2 || updated.Summary != input.Summary || updated.CreatedAt != created.CreatedAt {
+		t.Fatalf("updated summary = %#v", updated)
+	}
+
+	otherConversation, err := repo.CreateConversation(ctx, CreateConversationInput{Title: "other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherMessage, err := repo.CreateMessage(ctx, otherConversation.ID, CreateMessageInput{
+		Role: "user", Content: "foreign",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input.SourceLastMessageID = otherMessage.ID
+	if _, err := service.UpsertConversationContextSummary(ctx, conversation.ID, input); err == nil {
+		t.Fatal("cross-conversation summary boundary was accepted")
+	}
+}
+
 func TestPostgresUpdateAndDeleteConversation(t *testing.T) {
 	db := openPostgresIntegrationDB(t)
 	repo := NewPostgresRepository(db)

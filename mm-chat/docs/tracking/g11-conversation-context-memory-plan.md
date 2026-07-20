@@ -1,6 +1,7 @@
 # G11.13 Conversation Context and Memory Plan
 
-Status: active. G11.13A is complete; later slices remain deliberately separate.
+Status: active. G11.13A and G11.13B are complete; durable user memory remains a
+deliberately separate slice.
 
 ## Decision
 
@@ -41,16 +42,43 @@ Acceptance:
   a Go backend restart;
 - the disposable conversation and local proof artifacts are deleted.
 
-### [ ] G11.13B — Token-budget soft consolidation
+### [x] G11.13B — Token-budget soft consolidation
 
-- Add model-aware input budgeting before Provider dispatch.
-- Keep a bounded recent raw-message tail and replace older turns with a
-  versioned rolling summary when the high-water mark is crossed.
-- Persist summary source boundaries and generation metadata in Postgres.
-- Never delete the original message rows; rebuilding or changing models must
-  remain possible.
-- Fail safely to a smaller deterministic history window if summary generation
-  is unavailable.
+- Apply a server-owned conservative context-window registry: 32K fallback,
+  16K for `gpt-3.5*`, and 128K for the supported `gpt-4o*`, `gpt-4.1*`,
+  `gpt-5*`, `o1*`, `o3*`, and `o4*` families. Browser request fields cannot
+  raise these limits.
+- Reserve 8,192 output tokens and a 2,048-token estimation safety buffer,
+  trigger consolidation at 80% of the remaining input budget, and target 50%.
+- Estimate ASCII conservatively at four characters per token, non-ASCII at two
+  tokens per rune, message framing explicitly, and each current image at a
+  fixed 1,024-token safety allowance.
+- Keep a user-boundary recent raw-message tail and replace only the older prefix
+  with one server-generated assistant summary plus a server-owned instruction
+  that treats summary content as lower-priority untrusted history.
+- Persist one versioned active summary per conversation in
+  `conversation_context_summaries`, including first/last source message IDs,
+  source count, SHA-256 prefix digest, generation model, and token estimates.
+- Reuse a summary only when its exact ID/role/content prefix digest matches the
+  current branch. Editing or switching a summarized prefix invalidates it.
+- Roll a valid summary forward by supplying the previous summary plus only the
+  newly evicted messages to the summarizer.
+- Never delete or rewrite original messages. Summary generation/read/write,
+  oversize-output, or unsafe-boundary failure falls back to a deterministic
+  recent tail and records only a bounded degradation code in assistant metadata.
+
+Acceptance:
+
+- budget, multilingual estimation, user-boundary selection, branch digest,
+  restart reuse, rolling version, Handler metadata, failure fallback, Service
+  validation, migration, least-privilege Repository, and cross-conversation
+  rejection tests pass;
+- a disposable Postgres database applies migration `034`, round-trips and
+  increments a summary, rejects a foreign boundary, and is deleted;
+- the live stack applies schema `034`; a real long `gpt-5.6-sol` conversation
+  creates summary v1, recalls a marker found only in its summarized prefix,
+  restarts the backend, reuses v1 without regeneration, recalls the marker
+  again, and hard-deletes all fixture conversation/message/summary rows.
 
 ### [ ] G11.13C — Optional durable user memory
 
@@ -73,6 +101,9 @@ Acceptance:
 
 ## Rollback
 
-Revert the G11.13A commit. New `parent_message_id` values are compatible with
-the previous schema and UI, so rollback requires no data migration. Existing
-messages remain authoritative in Postgres.
+For G11.13A, revert its commit; new `parent_message_id` values remain backward
+compatible. For G11.13B, roll the backend back first. The old backend safely
+ignores `conversation_context_summaries`, so leaving migration `034` applied is
+the lowest-risk rollback. After confirming no newer backend is running, the
+matching down migration may remove only derived summaries. Original messages
+remain authoritative and require no data rollback.

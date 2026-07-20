@@ -49,6 +49,7 @@ func buildProviderConversationMessages(
 			continue
 		}
 		providerMessages = append(providerMessages, ProviderMessage{
+			MessageID:   message.ID,
 			Role:        message.Role,
 			Content:     content,
 			Attachments: attachments,

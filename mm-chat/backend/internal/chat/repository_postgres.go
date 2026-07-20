@@ -587,6 +587,163 @@ ORDER BY sequence_no ASC, created_at ASC, id ASC
 	return messages, nil
 }
 
+func (r *PostgresRepository) GetConversationContextSummary(
+	ctx context.Context,
+	conversationID string,
+) (ConversationContextSummary, bool, error) {
+	if err := r.requireDB(); err != nil {
+		return ConversationContextSummary{}, false, err
+	}
+	if !isUUID(conversationID) {
+		return ConversationContextSummary{}, false, newValidationError(
+			"INVALID_CONVERSATION_ID",
+			"conversation id must be a UUID",
+		)
+	}
+
+	userID := auth.UserOrDevelopment(ctx).ID
+	summary, err := scanConversationContextSummary(r.db.QueryRowContext(
+		ctx,
+		conversationContextSummarySelectSQL+`
+JOIN conversations c ON c.id = summary.conversation_id
+WHERE summary.conversation_id = $1
+  AND c.user_id = $2
+  AND c.deleted_at IS NULL
+`,
+		conversationID,
+		userID,
+	))
+	if errors.Is(err, sql.ErrNoRows) {
+		return ConversationContextSummary{}, false, nil
+	}
+	if err != nil {
+		return ConversationContextSummary{}, false, fmt.Errorf(
+			"query conversation context summary: %w",
+			err,
+		)
+	}
+	return summary, true, nil
+}
+
+func (r *PostgresRepository) UpsertConversationContextSummary(
+	ctx context.Context,
+	conversationID string,
+	input UpsertConversationContextSummaryInput,
+) (ConversationContextSummary, error) {
+	if err := r.requireDB(); err != nil {
+		return ConversationContextSummary{}, err
+	}
+	if !isUUID(conversationID) {
+		return ConversationContextSummary{}, newValidationError(
+			"INVALID_CONVERSATION_ID",
+			"conversation id must be a UUID",
+		)
+	}
+
+	userID := auth.UserOrDevelopment(ctx).ID
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ConversationContextSummary{}, fmt.Errorf(
+			"begin context summary upsert: %w",
+			err,
+		)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := lockConversationForUser(ctx, tx, conversationID, userID); err != nil {
+		return ConversationContextSummary{}, err
+	}
+	expectedBoundaries := 2
+	if input.SourceFirstMessageID == input.SourceLastMessageID {
+		expectedBoundaries = 1
+	}
+	var boundaryCount int
+	if err := tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM messages
+WHERE conversation_id = $1
+  AND id IN ($2, $3)
+  AND deleted_at IS NULL
+`, conversationID, input.SourceFirstMessageID, input.SourceLastMessageID).Scan(&boundaryCount); err != nil {
+		return ConversationContextSummary{}, fmt.Errorf(
+			"validate context summary boundaries: %w",
+			err,
+		)
+	}
+	if boundaryCount != expectedBoundaries {
+		return ConversationContextSummary{}, newValidationError(
+			"INVALID_CONTEXT_SUMMARY_BOUNDARY",
+			"context summary boundaries must belong to the conversation",
+		)
+	}
+
+	summary, err := scanConversationContextSummary(tx.QueryRowContext(ctx, `
+INSERT INTO conversation_context_summaries (
+  conversation_id,
+  version,
+  model_provider,
+  model_id,
+  source_first_message_id,
+  source_last_message_id,
+  source_message_count,
+  source_digest,
+  summary,
+  estimated_source_tokens,
+  estimated_summary_tokens
+) VALUES ($1, 1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+ON CONFLICT (conversation_id) DO UPDATE SET
+  version = conversation_context_summaries.version + 1,
+  model_provider = EXCLUDED.model_provider,
+  model_id = EXCLUDED.model_id,
+  source_first_message_id = EXCLUDED.source_first_message_id,
+  source_last_message_id = EXCLUDED.source_last_message_id,
+  source_message_count = EXCLUDED.source_message_count,
+  source_digest = EXCLUDED.source_digest,
+  summary = EXCLUDED.summary,
+  estimated_source_tokens = EXCLUDED.estimated_source_tokens,
+  estimated_summary_tokens = EXCLUDED.estimated_summary_tokens,
+  updated_at = now()
+RETURNING
+  conversation_id,
+  version,
+  model_provider,
+  model_id,
+  source_first_message_id,
+  source_last_message_id,
+  source_message_count,
+  source_digest,
+  summary,
+  estimated_source_tokens,
+  estimated_summary_tokens,
+  created_at,
+  updated_at
+`,
+		conversationID,
+		input.ModelProvider,
+		input.ModelID,
+		input.SourceFirstMessageID,
+		input.SourceLastMessageID,
+		input.SourceMessageCount,
+		input.SourceDigest,
+		input.Summary,
+		input.EstimatedSourceTokens,
+		input.EstimatedSummaryTokens,
+	))
+	if err != nil {
+		return ConversationContextSummary{}, fmt.Errorf(
+			"upsert conversation context summary: %w",
+			err,
+		)
+	}
+	if err := tx.Commit(); err != nil {
+		return ConversationContextSummary{}, fmt.Errorf(
+			"commit context summary upsert: %w",
+			err,
+		)
+	}
+	return summary, nil
+}
+
 func (r *PostgresRepository) UpdateMessage(
 	ctx context.Context,
 	conversationID string,
@@ -1560,6 +1717,24 @@ RETURNING
   deleted_at
 `
 
+const conversationContextSummarySelectSQL = `
+SELECT
+  summary.conversation_id,
+  summary.version,
+  summary.model_provider,
+  summary.model_id,
+  summary.source_first_message_id,
+  summary.source_last_message_id,
+  summary.source_message_count,
+  summary.source_digest,
+  summary.summary,
+  summary.estimated_source_tokens,
+  summary.estimated_summary_tokens,
+  summary.created_at,
+  summary.updated_at
+FROM conversation_context_summaries summary
+`
+
 const attachableFileSelectSQL = `
 SELECT
   id,
@@ -1911,6 +2086,28 @@ func scanMessage(scanner rowScanner) (Message, error) {
 	message.Metadata = decodedMetadata
 
 	return message, nil
+}
+
+func scanConversationContextSummary(
+	scanner rowScanner,
+) (ConversationContextSummary, error) {
+	var summary ConversationContextSummary
+	err := scanner.Scan(
+		&summary.ConversationID,
+		&summary.Version,
+		&summary.ModelProvider,
+		&summary.ModelID,
+		&summary.SourceFirstMessageID,
+		&summary.SourceLastMessageID,
+		&summary.SourceMessageCount,
+		&summary.SourceDigest,
+		&summary.Summary,
+		&summary.EstimatedSourceTokens,
+		&summary.EstimatedSummaryTokens,
+		&summary.CreatedAt,
+		&summary.UpdatedAt,
+	)
+	return summary, err
 }
 
 func mergeConversationMetadata(existing map[string]any, input UpdateConversationInput) map[string]any {

@@ -1442,7 +1442,13 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           Chat Completions plus Responses receive ordered history. A real
           provider replay survived backend restart and its disposable rows were
           deleted.
-    - [ ] G11.13B Token-budget soft consolidation with original rows retained.
+    - [x] G11.13B Token-budget soft consolidation: conservative server-owned
+          model windows reserve output and estimation headroom, cross 80% before
+          compressing toward 50%, persist exact versioned branch-prefix
+          summaries in migration `034`, roll forward without deleting original
+          messages, and degrade to a recent user-boundary tail. A real long
+          `gpt-5.6-sol` summary survived restart and was reused at the same
+          version before complete fixture cleanup.
     - [ ] G11.13C Optional inspectable durable user memory.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
