@@ -801,6 +801,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle(websearch.SearchPath, webSearchHandler)
 	mux.Handle("/v1/chat/conversations", chatHandler)
 	mux.Handle("/v1/chat/conversations/", chatHandler)
+	mux.Handle("/v1/chat/generate", chatHandler)
 	mux.Handle("/v1/chat/runs/", chatHandler)
 	mux.Handle("/v1/chat/tools/plan", chatHandler)
 	mux.Handle("/v1/memories", userMemoryHandler)

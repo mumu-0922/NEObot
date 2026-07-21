@@ -200,6 +200,17 @@ export interface GenerateRelatedQuestionsResponse {
   questions: string[];
 }
 
+export interface GenerateTextInput {
+  modelRef: ModelRef;
+  provider?: ProviderRuntimeConfigDTO;
+  prompt: string;
+  signal?: AbortSignal;
+}
+
+export interface GenerateTextResponse {
+  text: string;
+}
+
 export interface DeleteMessageInput {
   conversationId: string;
   messageId: string;
@@ -292,6 +303,7 @@ export interface ChatApi {
   generateRelatedQuestions(
     input: GenerateRelatedQuestionsInput,
   ): Promise<GenerateRelatedQuestionsResponse>;
+  generateText(input: GenerateTextInput): Promise<GenerateTextResponse>;
   updateMessage(input: UpdateMessageInput): Promise<ChatMessageDTO>;
   deleteMessage(input: DeleteMessageInput): Promise<void>;
   appendUserMessage(input: AppendUserMessageInput): Promise<ChatMessageDTO>;

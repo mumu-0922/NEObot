@@ -14,6 +14,8 @@ import type {
   GenerateConversationTitleResponse,
   GenerateRelatedQuestionsInput,
   GenerateRelatedQuestionsResponse,
+  GenerateTextInput,
+  GenerateTextResponse,
   PlanServerToolsInput,
   ServerPlannedToolCall,
   ServerSearchResult,
@@ -25,6 +27,7 @@ import type {
 import type { HttpClient } from "./httpClient";
 
 const conversationsPath = "/v1/chat/conversations";
+const generateTextPath = "/v1/chat/generate";
 const toolPlanPath = "/v1/chat/tools/plan";
 
 type CreateConversationRequestBody = {
@@ -161,6 +164,29 @@ export function createServerChatApiShell(httpClient: HttpClient): ChatApi {
           },
         );
       return normalizeRelatedQuestionsResponse(response);
+    },
+    async generateText(
+      input: GenerateTextInput,
+    ): Promise<GenerateTextResponse> {
+      const response = await httpClient.requestJson<GenerateTextResponse>(
+        generateTextPath,
+        {
+          method: "POST",
+          body: {
+            modelRef: input.modelRef,
+            provider: input.provider,
+            prompt: input.prompt,
+          },
+          signal: input.signal,
+        },
+      );
+      if (!response || typeof response.text !== "string") {
+        throw new ApiClientError(
+          "INVALID_SERVER_RESPONSE",
+          "Server returned an invalid generated text response.",
+        );
+      }
+      return response;
     },
     async updateMessage(input: UpdateMessageInput): Promise<ChatMessageDTO> {
       return httpClient.requestJson<ChatMessageDTO>(

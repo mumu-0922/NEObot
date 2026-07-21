@@ -1465,6 +1465,49 @@ describe("G6.5c.3d server image generation API adapter", () => {
 });
 
 describe("Phase 11.2A server chat CRUD adapter", () => {
+  it("routes bounded auxiliary text generation through Go", async () => {
+    const requests: Array<{ url: string; method?: string; body?: unknown }> =
+      [];
+    const chat = createServerChatApiShell(
+      createHttpClient({
+        baseUrl: "/mm-api",
+        fetchImpl: async (input, init) => {
+          requests.push({
+            url: String(input),
+            method: init?.method,
+            body: init?.body ? JSON.parse(String(init.body)) : undefined,
+          });
+          return Response.json({ text: "polished content" });
+        },
+      }),
+    );
+
+    await expect(
+      chat.generateText({
+        modelRef: {
+          providerId: "openai_compatible",
+          modelId: "gpt-5.5",
+        },
+        provider: { source: "server-default" },
+        prompt: "polish this",
+      }),
+    ).resolves.toEqual({ text: "polished content" });
+    expect(requests).toEqual([
+      {
+        url: "/mm-api/v1/chat/generate",
+        method: "POST",
+        body: {
+          modelRef: {
+            providerId: "openai_compatible",
+            modelId: "gpt-5.5",
+          },
+          provider: { source: "server-default" },
+          prompt: "polish this",
+        },
+      },
+    ]);
+  });
+
   it("creates conversations through the Go chat endpoint", async () => {
     const requests: Array<{ url: string; body: unknown; method?: string }> = [];
     const chat = createServerChatApiShell(

@@ -18,18 +18,21 @@ import (
 )
 
 const (
-	contentTypeJSON      = "application/json; charset=utf-8"
-	maxRequestBodyBytes  = 1 << 20
-	conversationsPath    = "/v1/chat/conversations"
-	conversationPathBase = conversationsPath + "/"
-	runsPathBase         = "/v1/chat/runs/"
-	toolPlanPath         = "/v1/chat/tools/plan"
-	maxToolPlanPrompt    = 16 * 1024
-	maxToolPlanTools     = 32
-	maxToolNameBytes     = 128
-	maxToolDescBytes     = 2048
-	maxToolParamsBytes   = 32 * 1024
-	defaultChatImageSize = "1024x1024"
+	contentTypeJSON       = "application/json; charset=utf-8"
+	maxRequestBodyBytes   = 1 << 20
+	conversationsPath     = "/v1/chat/conversations"
+	conversationPathBase  = conversationsPath + "/"
+	generateTextPath      = "/v1/chat/generate"
+	runsPathBase          = "/v1/chat/runs/"
+	toolPlanPath          = "/v1/chat/tools/plan"
+	maxToolPlanPrompt     = 16 * 1024
+	maxGenerateTextPrompt = 128 * 1024
+	maxGenerateTextOutput = 256 * 1024
+	maxToolPlanTools      = 32
+	maxToolNameBytes      = 128
+	maxToolDescBytes      = 2048
+	maxToolParamsBytes    = 32 * 1024
+	defaultChatImageSize  = "1024x1024"
 
 	ImageContentPolicyViolationCode = "IMAGE_CONTENT_POLICY_VIOLATION"
 	ImageProviderConnectionCode     = "IMAGE_PROVIDER_CONNECTION_ERROR"
@@ -240,6 +243,16 @@ type toolPlanResponse struct {
 	Calls []ToolCall `json:"calls"`
 }
 
+type generateTextRequest struct {
+	ModelRef *ModelRef                            `json:"modelRef"`
+	Provider *runtimeconfig.ProviderRuntimeConfig `json:"provider"`
+	Prompt   string                               `json:"prompt"`
+}
+
+type generateTextResponse struct {
+	Text string `json:"text"`
+}
+
 type streamEvent struct {
 	Type           string            `json:"type"`
 	RunID          string            `json:"runId"`
@@ -353,11 +366,91 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handleConversationChild(w, r)
 	case strings.HasPrefix(r.URL.Path, runsPathBase):
 		h.handleRunChild(w, r)
+	case r.URL.Path == generateTextPath:
+		h.handleGenerateText(w, r)
 	case r.URL.Path == toolPlanPath:
 		h.handleToolPlan(w, r)
 	default:
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
 	}
+}
+
+func (h *Handler) handleGenerateText(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, http.MethodPost)
+		return
+	}
+
+	var request generateTextRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeRequestDecodeError(w, err)
+		return
+	}
+	prompt := strings.TrimSpace(request.Prompt)
+	if prompt == "" || len(prompt) > maxGenerateTextPrompt {
+		writeError(
+			w,
+			http.StatusBadRequest,
+			"INVALID_GENERATE_TEXT",
+			"prompt is required and must be within limits",
+		)
+		return
+	}
+	if request.ModelRef == nil {
+		writeError(w, http.StatusBadRequest, "MODEL_REF_REQUIRED", "modelRef is required")
+		return
+	}
+
+	provider, _, err := h.resolveStreamProvider(r.Context(), request.Provider)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	modelRef := *request.ModelRef
+	if resolver, ok := provider.(ModelRefResolver); ok {
+		modelRef, err = resolver.ResolveModelRef(modelRef)
+	} else if validator, ok := provider.(ModelRefValidator); ok {
+		err = validator.ValidateModelRef(modelRef)
+	}
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	events, err := provider.StreamChat(ctx, ProviderRequest{
+		Prompt:   prompt,
+		ModelRef: modelRef,
+	})
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "PROVIDER_ERROR", "provider text generation failed")
+		return
+	}
+
+	var generated strings.Builder
+	for event := range events {
+		if event.Error != nil {
+			writeError(w, http.StatusBadGateway, "PROVIDER_ERROR", "provider text generation failed")
+			return
+		}
+		if event.Type != ProviderEventDelta || event.Delta == "" {
+			continue
+		}
+		if generated.Len()+len(event.Delta) > maxGenerateTextOutput {
+			cancel()
+			writeError(
+				w,
+				http.StatusBadGateway,
+				"PROVIDER_RESPONSE_TOO_LARGE",
+				"provider text response exceeded the allowed size",
+			)
+			return
+		}
+		generated.WriteString(event.Delta)
+	}
+
+	writeJSON(w, http.StatusOK, generateTextResponse{Text: generated.String()})
 }
 
 func (h *Handler) handleToolPlan(w http.ResponseWriter, r *http.Request) {

@@ -30,6 +30,9 @@ export function createLocalChatApiShell(): ChatApi {
     async generateRelatedQuestions() {
       throw unsupportedFeature("local related questions adapter wiring");
     },
+    async generateText() {
+      throw unsupportedFeature("local text generation adapter wiring");
+    },
     async updateMessage(): Promise<ChatMessageDTO> {
       throw unsupportedFeature("local chat adapter wiring");
     },

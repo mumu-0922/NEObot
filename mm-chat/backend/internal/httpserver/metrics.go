@@ -400,7 +400,7 @@ func knownMetricPath(path string) (string, bool) {
 	case "/v1/auth/login", "/v1/auth/logout", "/v1/auth/invites/accept",
 		"/v1/auth/recovery/request", "/v1/auth/recovery/complete":
 		return path, true
-	case "/v1/chat/tools/plan":
+	case "/v1/chat/generate", "/v1/chat/tools/plan":
 		return path, true
 	case "/v1/rag/provider-status":
 		return path, true

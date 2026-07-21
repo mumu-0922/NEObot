@@ -269,7 +269,7 @@ export const generateRelatedQuestions = async (
 
   const serverQuestions = await generateServerRelatedQuestionsIfEnabled(
     options.conversationId,
-    modelRefFromTaskModel(targetProvider.id, modelName),
+    modelRefFromTaskModel(targetProvider.id, modelName, targetProvider.type),
   );
   if (serverQuestions) return serverQuestions;
 
@@ -331,12 +331,15 @@ async function generateServerRelatedQuestionsIfEnabled(
 function modelRefFromTaskModel(
   providerId: string | undefined,
   modelName: string,
+  providerType?: string,
 ): ModelRef | undefined {
   const modelId = modelName.trim();
   if (!modelId) return undefined;
   let resolvedProviderId = providerId?.trim();
-  if (resolvedProviderId === SERVER_DEFAULT_PROVIDER_ID || resolvedProviderId) {
-    resolvedProviderId = "openai_compatible";
+  if (resolvedProviderId === SERVER_DEFAULT_PROVIDER_ID) {
+    resolvedProviderId = providerType?.toLowerCase().includes("anthropic")
+      ? "anthropic"
+      : "openai_compatible";
   }
   if (!resolvedProviderId) return undefined;
 
@@ -352,7 +355,11 @@ function resolveServerJobModelRef(modelString: string): ModelRef {
   const provider = providerId
     ? providers.find((candidate) => candidate.id === providerId)
     : providers.find((candidate) => candidate.enabled);
-  const modelRef = modelRefFromTaskModel(provider?.id ?? providerId, modelName);
+  const modelRef = modelRefFromTaskModel(
+    provider?.id ?? providerId,
+    modelName,
+    provider?.type,
+  );
 
   if (!modelRef) {
     throw new Error("No provider found");
@@ -1109,6 +1116,25 @@ export const streamGenerateContent = async (
   if (!provider) throw new Error("No provider found");
 
   try {
+    const client = createNeoChatApiClient();
+    if (client.mode === "server") {
+      const modelRef = modelRefFromTaskModel(
+        provider.id,
+        modelName,
+        provider.type,
+      );
+      if (!modelRef) throw new Error("No model found");
+
+      const response = await client.chat.generateText({
+        modelRef,
+        provider: await buildProviderRuntimeConfig(provider),
+        prompt,
+        signal,
+      });
+      onChunk(response.text);
+      return response.text;
+    }
+
     const response = await fetchWithByokRetry(async () =>
       fetch("/api/chat/generate", {
         method: "POST",

@@ -290,6 +290,9 @@ function createMockChatApi(): ChatApi {
     async generateRelatedQuestions() {
       throw new Error("generateRelatedQuestions not mocked");
     },
+    async generateText() {
+      throw new Error("generateText not mocked");
+    },
     async updateMessage() {
       throw new Error("updateMessage not mocked");
     },

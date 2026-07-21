@@ -220,7 +220,7 @@ describe("BYOK service requests", () => {
           method: "POST",
           body: JSON.stringify({
             modelRef: {
-              providerId: "openai_compatible",
+              providerId: "env-provider",
               modelId: "gemini-title",
             },
           }),
@@ -240,6 +240,60 @@ describe("BYOK service requests", () => {
       } else {
         process.env.NEXT_PUBLIC_API_BASE_URL = previousBaseUrl;
       }
+    }
+  });
+
+  it("routes server-mode content polishing through Go Server Default", async () => {
+    const restoreServerMode = setServerModeEnv();
+    mocks.coreGetState.mockReturnValue({
+      providers: [
+        {
+          ...providerWithoutLocalKey,
+          id: "SERVER_DEFAULT",
+          name: "Server Default",
+          type: "OpenAI Compatible",
+          isServerDefault: true,
+        },
+      ],
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(Response.json({ text: "polished content" }));
+    const { streamGenerateContent } =
+      await import("../services/api/chatService");
+    const onChunk = vi.fn();
+
+    try {
+      await expect(
+        streamGenerateContent(
+          "SERVER_DEFAULT:gemini-title",
+          "polish this",
+          onChunk,
+        ),
+      ).resolves.toBe("polished content");
+      expect(onChunk).toHaveBeenCalledOnce();
+      expect(onChunk).toHaveBeenCalledWith("polished content");
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/mm-api/v1/chat/generate",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            modelRef: {
+              providerId: "openai_compatible",
+              modelId: "gemini-title",
+            },
+            provider: {
+              type: "OpenAI Compatible",
+              name: "Server Default",
+              source: "server-default",
+            },
+            prompt: "polish this",
+          }),
+        }),
+      );
+      expect(fetchMock.mock.calls[0]?.[0]).not.toBe("/api/chat/generate");
+    } finally {
+      restoreServerMode();
     }
   });
 
@@ -317,7 +371,7 @@ describe("BYOK service requests", () => {
           method: "POST",
           body: JSON.stringify({
             modelRef: {
-              providerId: "openai_compatible",
+              providerId: "env-provider",
               modelId: "gemini-title",
             },
             prompt: "paint a quiet UI",

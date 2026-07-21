@@ -678,6 +678,7 @@ func TestAuthRequiredModeRejectsMissingCredentialsAndKeepsPublicRoutes(t *testin
 		{method: http.MethodGet, path: "/v1/admin/task-models"},
 		{method: http.MethodPost, path: "/v1/search"},
 		{method: http.MethodGet, path: "/v1/chat/conversations"},
+		{method: http.MethodPost, path: "/v1/chat/generate"},
 		{method: http.MethodGet, path: "/v1/files/33333333-3333-4333-8333-333333333333"},
 		{method: http.MethodGet, path: "/v1/import/browser/33333333-3333-4333-8333-333333333333"},
 		{method: http.MethodPost, path: "/v1/images/generations"},
@@ -1015,6 +1016,23 @@ func TestNewHandlerRegistersChatRoutesWithDatabaseRequired(t *testing.T) {
 	}
 	if body.Error.Code != "DATABASE_REQUIRED" {
 		t.Fatalf("cancel error code = %q, want %q", body.Error.Code, "DATABASE_REQUIRED")
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(
+		http.MethodPost,
+		"/v1/chat/generate",
+		strings.NewReader(`{"prompt":"polish","modelRef":{"providerId":"mock","modelId":"model"}}`),
+	)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("generate status = %d, want %d; body=%s", rec.Code, http.StatusServiceUnavailable, rec.Body.String())
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode generate error response: %v", err)
+	}
+	if body.Error.Code != "PROVIDER_REQUIRED" {
+		t.Fatalf("generate error code = %q, want %q", body.Error.Code, "PROVIDER_REQUIRED")
 	}
 
 	rec = httptest.NewRecorder()

@@ -424,6 +424,68 @@ func TestHandlerRelatedQuestionsRejectsClientOwnedHistory(t *testing.T) {
 	}
 }
 
+func TestHandlerGeneratesBoundedTextThroughRuntimeProvider(t *testing.T) {
+	provider := &titleProvider{chunks: []string{"polished ", "content"}}
+	resolver := &fakeRuntimeProviderResolver{provider: provider}
+	handler := NewHandler(
+		NewService(nil),
+		WithRuntimeProviderResolver(resolver),
+	)
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		generateTextPath,
+		`{"modelRef":{"providerId":"openai_compatible","modelId":"gpt-test"},"provider":{"source":"server-default"},"prompt":"polish this"}`,
+	)
+	assertStatus(t, rec, http.StatusOK)
+
+	var response generateTextResponse
+	decodeBody(t, rec, &response)
+	if response.Text != "polished content" {
+		t.Fatalf("generated text = %q, want polished content", response.Text)
+	}
+	if resolver.input.Source != "server-default" {
+		t.Fatalf("runtime provider source = %q, want server-default", resolver.input.Source)
+	}
+	if provider.input.Prompt != "polish this" || provider.input.ModelRef.ModelID != "gpt-test" {
+		t.Fatalf("provider input = %#v", provider.input)
+	}
+}
+
+func TestHandlerRejectsInvalidGenerateTextRequests(t *testing.T) {
+	handler := NewHandler(NewService(nil), WithProvider(NewMockProvider()))
+	tests := []struct {
+		name string
+		body string
+		code string
+	}{
+		{name: "missing prompt", body: `{"modelRef":{"providerId":"mock","modelId":"gpt-test"}}`, code: "INVALID_GENERATE_TEXT"},
+		{name: "missing model", body: `{"prompt":"polish this"}`, code: "MODEL_REF_REQUIRED"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			rec := performRequest(handler, http.MethodPost, generateTextPath, test.body)
+			assertStatus(t, rec, http.StatusBadRequest)
+			assertErrorCode(t, rec, test.code)
+		})
+	}
+}
+
+func TestHandlerSanitizesGenerateTextProviderErrors(t *testing.T) {
+	handler := NewHandler(NewService(nil), WithProvider(errorProvider{}))
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		generateTextPath,
+		`{"modelRef":{"providerId":"mock","modelId":"gpt-test"},"prompt":"polish this"}`,
+	)
+	assertStatus(t, rec, http.StatusBadGateway)
+	assertErrorCode(t, rec, "PROVIDER_ERROR")
+	if strings.Contains(rec.Body.String(), "startup failed") {
+		t.Fatalf("provider error leaked in response: %s", rec.Body.String())
+	}
+}
+
 func TestHandlerPlansToolsThroughConfiguredProvider(t *testing.T) {
 	planner := &fakeToolPlanningProvider{
 		calls: []ToolCall{{ID: "call-1", Name: "lookup_weather", Args: map[string]any{"city": "Shanghai"}}},
