@@ -7,7 +7,6 @@ import {
 } from "../config/limits";
 import {
   ChatRequestSchema,
-  DocumentParseSchema,
   EncryptedSecretEnvelopeSchema,
   MessageSchema,
   SimpleGenerateRequestSchema,
@@ -271,16 +270,6 @@ describe("api schemas", () => {
         language: "ja",
       }),
     ).not.toThrow();
-  });
-
-  it("rejects plaintext document parse API keys", () => {
-    expect(() =>
-      DocumentParseSchema.parse({
-        file: new File(["hello"], "doc.txt", { type: "text/plain" }),
-        apiKeySecret: { ...encryptedSecret, context: "docs:llama-parse" },
-        apiKey: "test",
-      }),
-    ).toThrow(/encrypted BYOK secret/i);
   });
 
   it("rejects plaintext voice transcription API keys", () => {

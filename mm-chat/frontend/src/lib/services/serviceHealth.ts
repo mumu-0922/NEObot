@@ -7,18 +7,15 @@ import type {
   ServiceHealthStatus,
 } from "@/types";
 import {
-  getDefaultDocumentParseProvider,
   getDefaultElevenLabsSttModel,
   getDefaultElevenLabsTtsModel,
   getDefaultMimoSttModel,
   getDefaultMimoTtsModel,
   getDefaultVoiceProvider,
-  isDefaultDocumentProcessingAvailable,
 } from "../defaultConfig/server";
 import { getDeploymentMode } from "../security/deployment";
 
-type StoreEnvName =
-  "RATE_LIMIT_STORE" | "DOCUMENT_PARSE_JOB_STORE" | "PLUGIN_REGISTRY_STORE";
+type StoreEnvName = "RATE_LIMIT_STORE" | "PLUGIN_REGISTRY_STORE";
 
 const sharedStoreNames = new Set(["upstash", "redis", "kv"]);
 
@@ -48,7 +45,7 @@ function hasSharedStoreCredentials(): boolean {
 function storeHealth(
   service: Extract<
     ServiceHealthServiceKey,
-    "rateLimitStore" | "documentParseJobStore" | "pluginRegistry"
+    "rateLimitStore" | "pluginRegistry"
   >,
   storeEnvName: StoreEnvName,
   hosted: boolean,
@@ -94,20 +91,6 @@ function defaultModelHealth(): ServiceHealthItem {
 
 function searchHealth(): ServiceHealthItem {
   return item("search", "unconfigured", "SEARCH_SERVER_MANAGED");
-}
-
-function ragHealth(): ServiceHealthItem {
-  const vectorStoreReady = Boolean(
-    env("DEFAULT_RAG_BASE_URL") && env("DEFAULT_RAG_TOKEN"),
-  );
-  const parserReady = isDefaultDocumentProcessingAvailable(
-    getDefaultDocumentParseProvider(),
-  );
-
-  if (vectorStoreReady || parserReady) {
-    return item("rag", "available", "RAG_CONFIGURED");
-  }
-  return item("rag", "unconfigured", "RAG_UNCONFIGURED");
 }
 
 function voiceHealth(): ServiceHealthItem {
@@ -156,11 +139,6 @@ export function getServiceHealthStatus(
         hosted ? "HOSTED_MODE_ENABLED" : "LOCAL_MODE",
       ),
       rateLimitStore: storeHealth("rateLimitStore", "RATE_LIMIT_STORE", hosted),
-      documentParseJobStore: storeHealth(
-        "documentParseJobStore",
-        "DOCUMENT_PARSE_JOB_STORE",
-        hosted,
-      ),
       pluginRegistry: storeHealth(
         "pluginRegistry",
         "PLUGIN_REGISTRY_STORE",
@@ -168,7 +146,6 @@ export function getServiceHealthStatus(
       ),
       defaultModel: defaultModelHealth(),
       search: searchHealth(),
-      rag: ragHealth(),
       voice: voiceHealth(),
     },
   };

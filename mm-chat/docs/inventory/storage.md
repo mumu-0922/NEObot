@@ -1,15 +1,16 @@
 # Storage Inventory
 
-This inventory describes current local-first persistence and the target server-backed replacement.
+This inventory describes the server-backed runtime and the retired browser
+storage that remains readable only for explicit import or cleanup.
 
-## Current Browser Storage
+## Legacy Browser Storage (Import/Cleanup Only)
 
-| Layer | Current Use | Evidence |
-|---|---|---|
-| `localStorage` | Core settings, provider records, selected models, provider API key envelopes | `src/store/core/coreSettingsStore.ts`, `src/store/storage/storageConfig.ts`, `docs/privacy-and-local-data.md` |
-| IndexedDB via `localforage` | Chat metadata, messages, app settings, plugins, skills, assistants, knowledge metadata, memories | `src/store/storage/storageConfig.ts`, `src/store/README.md` |
-| OPFS | Uploaded chat files, workspace files, knowledge-base source files | `src/utils/opfs.ts`, `src/store/core/knowledgeStore.ts`, `src/store/core/chatStore.ts` |
-| In-memory UI state | transient panels, loading flags, modal state | `src/store/core/uiStore.ts` |
+| Layer                       | Current Use                                                                                              | Evidence                                                                                                      |
+| --------------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `localStorage`              | Core settings, provider records, selected models, provider API key envelopes                             | `src/store/core/coreSettingsStore.ts`, `src/store/storage/storageConfig.ts`, `docs/privacy-and-local-data.md` |
+| IndexedDB via `localforage` | Legacy chat/settings/plugin/assistant/knowledge/memory records read by explicit migration tooling        | `src/store/storage/storageConfig.ts`, `src/lib/data/appExport.ts`                                             |
+| OPFS                        | Legacy chat, workspace, image, and knowledge-base file bytes read by export/import or cleared explicitly | `src/utils/opfs.ts`, `src/lib/data/browserImportPackage.ts`, `src/lib/data/clearAppData.ts`                   |
+| In-memory UI state          | transient panels, loading flags, modal state                                                             | `src/store/core/uiStore.ts`                                                                                   |
 
 ## Current Storage Keys
 
@@ -36,17 +37,17 @@ workspaces
 
 Current OPFS URLs use the `opfs://` protocol and are resolved by `src/utils/opfs.ts`.
 
-## Target Server Storage
+## Current Server Storage
 
-| Data | Target | Reason |
-|---|---|---|
-| Users, sessions | Postgres | canonical auth/session records |
-| Conversations, messages | Postgres | durable structured data and queryability |
-| Provider configs | Postgres + encryption | server-side secret boundary |
-| File metadata | Postgres | ownership, size, MIME, SHA, storage key |
-| File bytes | MinIO/S3-compatible object storage | large binary storage, streamable, backup-friendly |
-| Rate limits, cancellation, temp jobs | Redis | fast short-lived state |
-| RAG chunks/index metadata | Postgres + vector/index service later | keep optional sidecar isolated |
+| Data                                 | Target                                | Reason                                            |
+| ------------------------------------ | ------------------------------------- | ------------------------------------------------- |
+| Users, sessions                      | Postgres                              | canonical auth/session records                    |
+| Conversations, messages              | Postgres                              | durable structured data and queryability          |
+| Provider configs                     | Postgres + encryption                 | server-side secret boundary                       |
+| File metadata                        | Postgres                              | ownership, size, MIME, SHA, storage key           |
+| File bytes                           | MinIO/S3-compatible object storage    | large binary storage, streamable, backup-friendly |
+| Rate limits, cancellation, temp jobs | Redis                                 | fast short-lived state                            |
+| RAG chunks/index metadata            | Postgres + vector/index service later | keep optional sidecar isolated                    |
 
 ## File Migration Rule
 

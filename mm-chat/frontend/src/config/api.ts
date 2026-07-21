@@ -46,7 +46,6 @@ export const AI_SERVICE_URLS = {
  * 数据服务 URL
  */
 export const DATA_SERVICE_URLS = {
-  llamaParse: "https://api.cloud.llamaindex.ai/api/v2/parse",
   lobeAgents:
     "https://registry.npmmirror.com/@lobehub/agents-index/v1/files/public",
   apisGuru: "https://api.apis.guru/v2/list.json",
@@ -70,7 +69,7 @@ export const EXTERNAL_API_URLS = {
 export const API_TIMEOUTS = {
   default: 60000, // 60 秒
   short: 10000, // 10 秒（快速操作）
-  long: 300000, // 5 分钟（长时间操作，如文档解析）
+  long: 300000, // 5 分钟（长时间操作，如图片生成）
   streaming: 0, // 流式请求不设超时
 } as const;
 

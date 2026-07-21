@@ -9,7 +9,6 @@ The `src/lib/utils` directory contains small, focused helpers used across chat, 
 - `attachments.ts` converts attachments for model providers.
 - `chatAttachmentFiles.ts` handles chat attachment file records.
 - `workspaceFiles.ts` handles workspace file helpers.
-- `knowledgeFiles.ts` and `knowledgeVectors.ts` support knowledge-base file and vector workflows.
 - `markdownFiles.ts` and `filename.ts` provide file-format and naming helpers.
 
 ### Chat And History
@@ -28,9 +27,8 @@ The `src/lib/utils` directory contains small, focused helpers used across chat, 
 - `defaultModels.ts` resolves effective task model selections.
 - `schema.ts` converts schemas for provider APIs.
 
-### RAG, Search, And Citations
+### Search And Citations
 
-- `rag.ts` processes RAG attachments and local knowledge-base content.
 - `citations.ts` normalizes citation data.
 - `diagramSvg.ts` normalizes generated Mermaid and mind map SVG roots for stable fullscreen and export rendering.
 - `htmlStyle.ts` and `htmlVisualMarkdown.ts` sanitize and normalize safe inline HTML visual output.
@@ -70,14 +68,6 @@ The `src/lib/utils` directory contains small, focused helpers used across chat, 
 
 ```typescript
 import { processAttachmentsForModel } from "@/lib/utils/attachments";
-import { processRAGAttachments } from "@/lib/utils/rag";
-
-const ragResult = await processRAGAttachments(
-  text,
-  kbAttachments,
-  ragConfig,
-  supportsAttachment,
-);
 
 const attachmentResult = await processAttachmentsForModel(
   otherAttachments,

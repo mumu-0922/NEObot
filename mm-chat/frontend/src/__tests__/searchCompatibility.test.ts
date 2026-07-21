@@ -3,7 +3,7 @@ import {
   getSearchCompatibility,
   getSearchCompatibilityErrorMessage,
   getSearchProviderLabel,
-} from "../lib/settings/searchRag";
+} from "../lib/settings/search";
 
 describe("search compatibility", () => {
   it("uses only server-published search availability", () => {

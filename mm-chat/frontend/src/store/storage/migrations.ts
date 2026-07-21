@@ -1,5 +1,5 @@
 import { Message, MessageOutputBlock, ToolCall } from "@/types";
-import { normalizeSearchSettings } from "../../lib/settings/searchRag";
+import { normalizeSearchSettings } from "../../lib/settings/search";
 
 export function normalizeToolCall(toolCall: Partial<ToolCall>): ToolCall {
   let status = toolCall.status;

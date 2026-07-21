@@ -1522,7 +1522,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         per `docs/tracking/g15-task-model-settings-plan.md`.
     - [x] G15.1 Go/Postgres authoritative defaults, immediate administrator
           autosave, browser-local cutover, restart proof, and rollback record.
-  - [ ] G16 Server-only Knowledge/RAG settings consolidation, executed in
+  - [x] G16 Server-only Knowledge/RAG settings consolidation, executed in
         separately tested slices per
         `docs/tracking/g16-server-only-rag-settings-plan.md`.
     - [x] G16.1 Runtime/new-vs-old trace, owner grill, executable contract,
@@ -1531,7 +1531,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           stage-oriented readiness projection.
     - [x] G16.3 Concise Knowledge Service page, two vertical provider cards,
           and truthful deployment health.
-    - [ ] G16.4 Local-RAG code retirement, bounded browser-secret purge, live
+    - [x] G16.4 Local-RAG code retirement, bounded browser-secret purge, live
           Knowledge regression, and clean-copy closure.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration

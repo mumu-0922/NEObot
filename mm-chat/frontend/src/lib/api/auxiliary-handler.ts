@@ -135,25 +135,3 @@ Model: "${clipForAuxiliaryPrompt(lastModelMsg.content)}"`;
     maxChars: AUXILIARY_OUTPUT_LIMITS.maxRelatedQuestionChars,
   });
 }
-
-/**
- * 生成 RAG 查询
- */
-export async function generateRAGQueries(
-  provider: ProviderConfig,
-  modelName: string,
-  userMessage: string,
-): Promise<string[]> {
-  const clippedUserMessage = clipForAuxiliaryPrompt(userMessage);
-  const prompt = `Generate 2-3 search queries to find relevant information for this question:
-
-"${clippedUserMessage}"
-
-Return only the queries, one per line.`;
-
-  const result = await handleSimpleGeneration(provider, modelName, prompt);
-  return parseAuxiliaryStringList(result, {
-    maxItems: AUXILIARY_OUTPUT_LIMITS.maxRagQueries,
-    maxChars: AUXILIARY_OUTPUT_LIMITS.maxRagQueryChars,
-  });
-}

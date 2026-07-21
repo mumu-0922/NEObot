@@ -48,11 +48,6 @@ const serverConfig: PublicServerConfig = {
   search: {
     available: true,
   },
-  rag: {
-    vectorStoreAvailable: false,
-    documentProcessingAvailable: true,
-    documentProcessingProvider: "mineru",
-  },
   voice: {
     elevenLabsAvailable: false,
     mimoAvailable: false,

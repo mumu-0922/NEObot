@@ -141,29 +141,6 @@ function normalizeWorkspaceFiles(files: unknown): Attachment[] {
   return normalized;
 }
 
-function normalizeKnowledgeCollectionIds(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-
-  const ids: string[] = [];
-  const seen = new Set<string>();
-
-  for (const item of value) {
-    const id = trimString(
-      item,
-      CHAT_ENTITY_LIMITS.maxWorkspaceKnowledgeCollectionIdChars,
-    );
-    if (!id || seen.has(id)) continue;
-
-    ids.push(id);
-    seen.add(id);
-    if (ids.length >= CHAT_ENTITY_LIMITS.maxWorkspaceKnowledgeCollections) {
-      break;
-    }
-  }
-
-  return ids;
-}
-
 function normalizeSessionCompression(
   compression: Session["compression"],
 ): Session["compression"] | undefined {
@@ -271,13 +248,18 @@ export function normalizeSession(session: Session): Session {
 }
 
 export function normalizeWorkspace(workspace: Workspace): Workspace {
+  const {
+    knowledgeCollectionIds: _retiredKnowledgeCollectionIds,
+    ...retainedWorkspace
+  } = workspace as Workspace & { knowledgeCollectionIds?: unknown };
+  void _retiredKnowledgeCollectionIds;
   const color = trimString(
     workspace.color,
     CHAT_ENTITY_LIMITS.maxWorkspaceColorChars,
   );
 
   return {
-    ...workspace,
+    ...retainedWorkspace,
     name: trimString(
       workspace.name,
       CHAT_ENTITY_LIMITS.maxWorkspaceNameChars,
@@ -290,9 +272,6 @@ export function normalizeWorkspace(workspace: Workspace): Workspace {
             CHAT_ENTITY_LIMITS.maxWorkspaceSystemPromptChars,
           )
         : undefined,
-    knowledgeCollectionIds: normalizeKnowledgeCollectionIds(
-      workspace.knowledgeCollectionIds,
-    ),
     files: normalizeWorkspaceFiles(workspace.files),
     color: WORKSPACE_COLORS.has(color) ? color : "blue",
     enableSearch: workspace.enableSearch === true,

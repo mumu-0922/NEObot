@@ -11,11 +11,9 @@ export type ServiceHealthServiceKey =
   | "accessPassword"
   | "hostedMode"
   | "rateLimitStore"
-  | "documentParseJobStore"
   | "pluginRegistry"
   | "defaultModel"
   | "search"
-  | "rag"
   | "voice";
 
 export interface ServiceHealthItem {

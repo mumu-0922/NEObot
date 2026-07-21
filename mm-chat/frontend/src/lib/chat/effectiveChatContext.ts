@@ -4,7 +4,6 @@ import type {
   ModelProvider,
   Plugin,
   PluginConfig,
-  RAGConfig,
   SearchProviderID,
   SearchServiceConfig,
   Session,
@@ -16,14 +15,11 @@ import {
   normalizeActivePluginIds,
 } from "../plugin/config";
 import { normalizeSkillIdRefs } from "../skills";
-import {
-  hasPluginAuthValue,
-  hasRagVectorStore,
-} from "../security/localSecretResolvers";
+import { hasPluginAuthValue } from "../security/localSecretResolvers";
 import {
   getSearchCompatibility,
   type SearchCompatibilityResult,
-} from "../settings/searchRag";
+} from "../settings/search";
 import { buildDiagramPromptInstruction } from "./diagramPrompt";
 import { buildHtmlVisualPromptInstruction } from "./htmlVisualPrompt";
 import { parseModelString } from "../utils/model";
@@ -31,7 +27,6 @@ import { parseModelString } from "../utils/model";
 export type CapabilityStatusCode =
   | "ok"
   | "search_unavailable"
-  | "rag_unavailable"
   | "plugin_auth_missing"
   | "attachment_unsupported"
   | "audio_unsupported"
@@ -54,7 +49,6 @@ export interface EffectiveChatContext {
   sessionId: string | null;
   systemInstruction?: string;
   workspaceFiles: Workspace["files"];
-  workspaceKnowledgeCollectionIds: string[];
   activePluginIds: string[];
   activeSkillIds: string[];
   modelCapabilities: ModelCapabilities;
@@ -77,7 +71,6 @@ export interface ResolveEffectiveChatContextOptions {
     provider: SearchProviderID;
     configs: Record<string, SearchServiceConfig>;
   };
-  rag: RAGConfig;
   installedPlugins: Plugin[];
   pluginConfigs: Record<string, PluginConfig>;
   activePlugins: string[];
@@ -176,7 +169,6 @@ export function resolveEffectiveChatContext(
     customModelMetadata,
     chatConfig,
     search,
-    rag,
     installedPlugins,
     pluginConfigs,
     activePlugins,
@@ -227,15 +219,6 @@ export function resolveEffectiveChatContext(
     });
   }
 
-  if (chatConfig.useRAG && (!rag.enabled || !hasRagVectorStore(rag))) {
-    statuses.push({
-      code: "rag_unavailable",
-      level: "warning",
-      message:
-        "RAG is enabled but the vector endpoint or token is not configured.",
-    });
-  }
-
   for (const pluginId of requestedPluginIds) {
     const plugin = installedPlugins.find((item) => item.id === pluginId);
     if (!plugin || !isPluginAuthRequired(plugin) || pluginId === "unsplash") {
@@ -269,7 +252,6 @@ export function resolveEffectiveChatContext(
       now,
     }),
     workspaceFiles: workspace?.files || [],
-    workspaceKnowledgeCollectionIds: workspace?.knowledgeCollectionIds || [],
     activePluginIds,
     activeSkillIds,
     modelCapabilities,

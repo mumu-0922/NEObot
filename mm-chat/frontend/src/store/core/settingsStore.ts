@@ -9,7 +9,6 @@ import {
   LobeAgent,
   VoiceSettings,
   SystemSettings,
-  RAGConfig,
   DefaultModels,
   TextSkill,
   SkillCatalog,
@@ -46,10 +45,7 @@ import {
   normalizeModelMetadataMap,
 } from "@/lib/providers/metadata";
 import { logDevError } from "../../lib/utils/devLogger";
-import {
-  normalizeRAGConfig,
-  normalizeSearchSettings,
-} from "../../lib/settings/searchRag";
+import { normalizeSearchSettings } from "../../lib/settings/search";
 import { getDefaultModelSelectValue } from "../../lib/utils/defaultModels";
 import { readJsonResponseOrThrow } from "../../lib/api/client";
 import {
@@ -69,17 +65,11 @@ import {
   createBrowserAppExportPayload,
   type AppExportPayload,
 } from "../../lib/data/appExport";
-import {
-  hasDocumentParseCredential,
-  hasRagToken,
-  hasPluginAuthValue,
-} from "../../lib/security/localSecretResolvers";
+import { hasPluginAuthValue } from "../../lib/security/localSecretResolvers";
 import {
   migratePluginConfigLocalSecrets,
-  migrateRAGLocalSecrets,
   migrateVoiceLocalSecrets,
   stripPluginConfigPlainSecrets,
-  stripRAGPlainSecrets,
   stripVoicePlainSecrets,
 } from "../../lib/settings/localSecretMigration";
 
@@ -125,10 +115,6 @@ interface SettingsState {
     configs: Record<string, SearchServiceConfig>;
   };
   setSearchResultsLimit: (limit: number) => void;
-
-  // RAG Settings
-  rag: RAGConfig;
-  updateRAGConfig: (config: Partial<RAGConfig>) => void;
 
   // Voice Settings
   voice: VoiceSettings;
@@ -338,17 +324,6 @@ export const useSettingsStore = create<SettingsState>()(
       serverConfig: null,
       applyServerConfig: (config) =>
         set((state) => {
-          const hasLocalRagVectorStore =
-            Boolean(state.rag.url?.trim()) || hasRagToken(state.rag);
-          const shouldUseDefaultVectorStore =
-            config.rag.vectorStoreAvailable &&
-            state.rag.useDefaultVectorStore === undefined &&
-            !hasLocalRagVectorStore;
-          const shouldUseDefaultDocumentProcessing =
-            config.rag.documentProcessingAvailable &&
-            state.rag.useDefaultDocumentProcessing === undefined &&
-            !hasDocumentParseCredential(state.rag);
-
           const hasServerVoiceConfig =
             state.voice.serverDefaultVoiceProvider !== undefined ||
             state.voice.serverDefaultSttAvailable !== undefined ||
@@ -391,35 +366,6 @@ export const useSettingsStore = create<SettingsState>()(
               configs: {
                 default: { serverAvailable: config.search.available },
               },
-            }),
-            rag: normalizeRAGConfig({
-              ...state.rag,
-              serverVectorStoreAvailable: config.rag.vectorStoreAvailable,
-              serverDocumentProcessingAvailable:
-                config.rag.documentProcessingAvailable,
-              ...(shouldUseDefaultVectorStore
-                ? {
-                    enabled: true,
-                    useDefaultVectorStore: true,
-                    ...(config.rag.topK !== undefined
-                      ? { topK: config.rag.topK }
-                      : {}),
-                    ...(config.rag.chunkSize !== undefined
-                      ? { chunkSize: config.rag.chunkSize }
-                      : {}),
-                    ...(config.rag.namespace
-                      ? { namespace: config.rag.namespace }
-                      : {}),
-                  }
-                : {}),
-              ...(shouldUseDefaultDocumentProcessing
-                ? {
-                    documentParseProvider:
-                      config.rag.documentProcessingProvider ||
-                      state.rag.documentParseProvider,
-                    useDefaultDocumentProcessing: true,
-                  }
-                : {}),
             }),
             voice: {
               ...state.voice,
@@ -593,22 +539,6 @@ export const useSettingsStore = create<SettingsState>()(
             ...state.search,
             resultsLimit: limit,
           }),
-        })),
-
-      // RAG Settings
-      rag: {
-        enabled: false,
-        url: "",
-        token: "",
-        topK: 10,
-        chunkSize: 512,
-        documentParseProvider: "mineru",
-        mineruApiToken: "",
-        llamaParseApiKey: "",
-      },
-      updateRAGConfig: (config) =>
-        set((state) => ({
-          rag: normalizeRAGConfig({ ...state.rag, ...config }),
         })),
 
       // Voice Settings
@@ -1153,7 +1083,7 @@ export const useSettingsStore = create<SettingsState>()(
       // Data Management
       exportAllData: async () => createBrowserAppExportPayload(),
       clearAllData: async () => {
-        await clearBrowserAppData(get().rag);
+        await clearBrowserAppData();
         if (typeof window !== "undefined") {
           window.location.reload();
         }
@@ -1172,7 +1102,6 @@ export const useSettingsStore = create<SettingsState>()(
           normalizePluginConfigs(state.pluginConfigs, installedPlugins),
         );
         const search = normalizeSearchSettings(state.search);
-        const rag = await migrateRAGLocalSecrets(state.rag);
         const voice = await migrateVoiceLocalSecrets(state.voice);
         return {
           ...state,
@@ -1201,7 +1130,6 @@ export const useSettingsStore = create<SettingsState>()(
             state.customModelMetadata,
           ),
           search,
-          rag,
           voice,
           activePlugins: normalizeActivePluginIds(
             state.activePlugins,
@@ -1251,7 +1179,6 @@ export const useSettingsStore = create<SettingsState>()(
         modelMetadataTimestamp: state.modelMetadataTimestamp,
         customModelMetadata: state.customModelMetadata,
         search: normalizeSearchSettings(state.search),
-        rag: stripRAGPlainSecrets(state.rag),
         voice: stripVoicePlainSecrets(state.voice),
         activePlugins: state.activePlugins,
         installedPlugins: state.installedPlugins,

@@ -23,10 +23,7 @@ export type {
   Workspace,
 } from "./lib/chat/types";
 export type {
-  Collection,
   KnowledgeCitation,
-  KnowledgeFile,
-  KnowledgeFileStatus,
   MessageKnowledgeMetadata,
 } from "./lib/knowledge/types";
 export type {
@@ -63,13 +60,11 @@ export type {
 export type {
   AppSettings,
   DefaultModels,
-  DocumentParseProvider,
   MemoryDreamStatus,
   MemoryRecord,
   MemorySettings,
   MemorySource,
   MemoryType,
-  RAGConfig,
   SystemSettings,
 } from "./lib/settings/types";
 export type {

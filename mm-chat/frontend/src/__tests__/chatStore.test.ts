@@ -85,7 +85,6 @@ const expectStoredActivePath = (sessionId: string, messages: Message[]) => {
 const makeWorkspace = (id: string, files: Attachment[] = []): Workspace => ({
   id,
   name: id,
-  knowledgeCollectionIds: [],
   files,
   createdAt: 1,
 });

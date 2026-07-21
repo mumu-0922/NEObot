@@ -8,7 +8,6 @@ import {
 import {
   migratePluginConfigLocalSecrets,
   migrateProviderLocalSecret,
-  migrateRAGLocalSecrets,
   migrateVoiceLocalSecrets,
 } from "../lib/settings/localSecretMigration";
 import { normalizeModelProvider } from "../lib/providers/config";
@@ -43,16 +42,7 @@ describe("local secret settings migration", () => {
     ).resolves.toBe("provider-secret");
   });
 
-  it("migrates settings plaintext secrets to encrypted local secrets", async () => {
-    const rag = await migrateRAGLocalSecrets({
-      enabled: true,
-      url: "https://rag.example",
-      token: "rag-secret",
-      topK: 10,
-      chunkSize: 512,
-      mineruApiToken: "mineru-secret",
-      llamaParseApiKey: "llama-secret",
-    });
+  it("migrates voice and plugin plaintext secrets", async () => {
     const voice = await migrateVoiceLocalSecrets({
       elevenLabsApiKey: "voice-secret",
       mimoApiKey: "mimo-secret",
@@ -77,30 +67,12 @@ describe("local secret settings migration", () => {
         [plugin],
       ),
     );
-    const migrated = { rag, voice, pluginConfigs };
+    const migrated = { voice, pluginConfigs };
 
-    expect(JSON.stringify(migrated)).not.toContain("rag-secret");
-    expect(JSON.stringify(migrated)).not.toContain("mineru-secret");
-    expect(JSON.stringify(migrated)).not.toContain("llama-secret");
     expect(JSON.stringify(migrated)).not.toContain("voice-secret");
     expect(JSON.stringify(migrated)).not.toContain("mimo-secret");
     expect(JSON.stringify(migrated)).not.toContain("plugin-secret");
 
-    await expect(
-      decryptLocalSecret(rag.tokenSecret, LOCAL_SECRET_CONTEXTS.ragToken),
-    ).resolves.toBe("rag-secret");
-    await expect(
-      decryptLocalSecret(
-        rag.mineruApiTokenSecret,
-        LOCAL_SECRET_CONTEXTS.mineruApiToken,
-      ),
-    ).resolves.toBe("mineru-secret");
-    await expect(
-      decryptLocalSecret(
-        rag.llamaParseApiKeySecret,
-        LOCAL_SECRET_CONTEXTS.llamaParseApiKey,
-      ),
-    ).resolves.toBe("llama-secret");
     await expect(
       decryptLocalSecret(
         voice.elevenLabsApiKeySecret,

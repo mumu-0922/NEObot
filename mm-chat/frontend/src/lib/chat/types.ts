@@ -245,7 +245,6 @@ export interface SessionConfig {
   activePlugins?: string[];
   activeSkills?: string[];
   selectedKnowledgeCollectionIds?: string[];
-  knowledgeCollectionIds?: string[];
 }
 
 export type ReasoningEffort =
@@ -276,7 +275,6 @@ export interface Workspace {
   id: string;
   name: string;
   systemPrompt?: string;
-  knowledgeCollectionIds: string[];
   files: Attachment[];
   color?: string;
   enableSearch?: boolean;
@@ -299,6 +297,5 @@ export interface ChatConfig {
   useSearch: boolean;
   useReasoning: boolean;
   reasoningEffort: ReasoningEffort;
-  useRAG?: boolean;
   temperature: number;
 }

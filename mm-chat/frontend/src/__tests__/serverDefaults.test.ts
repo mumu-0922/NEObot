@@ -66,7 +66,6 @@ const ENV_KEYS = [
   "DEPLOYMENT_MODE",
   "TRUST_PROXY_HEADERS",
   "RATE_LIMIT_STORE",
-  "DOCUMENT_PARSE_JOB_STORE",
   "PLUGIN_REGISTRY_STORE",
   "UPSTASH_REDIS_REST_URL",
   "UPSTASH_REDIS_REST_TOKEN",
@@ -81,14 +80,6 @@ const ENV_KEYS = [
   "DEFAULT_MODEL_PROMPT_OPTIMIZATION",
   "DEFAULT_MODEL_RAG_QUERY",
   "DEFAULT_MODEL_MEMORY",
-  "DEFAULT_RAG_BASE_URL",
-  "DEFAULT_RAG_TOKEN",
-  "DEFAULT_RAG_TOP_K",
-  "DEFAULT_RAG_CHUNK_SIZE",
-  "DEFAULT_RAG_NAMESPACE",
-  "DEFAULT_DOCUMENT_PARSE_PROVIDER",
-  "DEFAULT_MINERU_API_TOKEN",
-  "DEFAULT_LLAMA_PARSE_API_KEY",
   "DEFAULT_ELEVENLABS_API_KEY",
   "DEFAULT_ELEVENLABS_STT_MODEL",
   "DEFAULT_ELEVENLABS_TTS_MODEL",
@@ -160,14 +151,6 @@ describe("server default configuration", () => {
       DEFAULT_PROVIDER_API_KEY: "provider-secret",
       DEFAULT_PROVIDER_MODELS: "gpt-4o, gpt-4o-mini, gpt-4o",
       DEFAULT_MODEL_TITLE_GENERATION: "gpt-4o-mini",
-      DEFAULT_RAG_BASE_URL: "https://rag.internal",
-      DEFAULT_RAG_TOKEN: "rag-secret",
-      DEFAULT_RAG_TOP_K: "7",
-      DEFAULT_RAG_CHUNK_SIZE: "768",
-      DEFAULT_RAG_NAMESPACE: "tenant-a",
-      DEFAULT_DOCUMENT_PARSE_PROVIDER: "mineru",
-      DEFAULT_MINERU_API_TOKEN: "mineru-secret",
-      DEFAULT_LLAMA_PARSE_API_KEY: "llama-secret",
       DEFAULT_ELEVENLABS_API_KEY: "eleven-secret",
       DEFAULT_ELEVENLABS_STT_MODEL: "scribe_v1",
       DEFAULT_ELEVENLABS_TTS_VOICE_ID: "SAz9YHcvj6GT2YYXdXww",
@@ -191,14 +174,6 @@ describe("server default configuration", () => {
       defaultModels: {},
     });
     expect(config.search.available).toBe(false);
-    expect(config.rag).toMatchObject({
-      vectorStoreAvailable: true,
-      documentProcessingAvailable: true,
-      documentProcessingProvider: "mineru",
-      topK: 7,
-      chunkSize: 768,
-      namespace: "tenant-a",
-    });
     expect(config.voice).toMatchObject({
       elevenLabsAvailable: true,
       mimoAvailable: false,
@@ -216,15 +191,7 @@ describe("server default configuration", () => {
       compressionThreshold: 12,
     });
 
-    for (const secret of [
-      "provider-secret",
-      "rag-secret",
-      "mineru-secret",
-      "llama-secret",
-      "eleven-secret",
-      "llm.internal",
-      "rag.internal",
-    ]) {
+    for (const secret of ["provider-secret", "eleven-secret", "llm.internal"]) {
       expect(serialized).not.toContain(secret);
     }
   });
@@ -275,7 +242,6 @@ describe("server default configuration", () => {
       DEPLOYMENT_MODE: "hosted",
       TRUST_PROXY_HEADERS: "true",
       RATE_LIMIT_STORE: "upstash",
-      DOCUMENT_PARSE_JOB_STORE: "upstash",
       PLUGIN_REGISTRY_STORE: "upstash",
       UPSTASH_REDIS_REST_URL: "https://redis.internal",
       UPSTASH_REDIS_REST_TOKEN: "redis-secret",
@@ -293,7 +259,6 @@ describe("server default configuration", () => {
       byokStableKeyConfigured: true,
       byokEphemeralAllowed: false,
       rateLimitStore: "shared",
-      documentParseJobStore: "shared",
       pluginRegistryStore: "shared",
     });
     for (const secret of [
@@ -344,16 +309,6 @@ describe("server default configuration", () => {
     expect(text).not.toContain("gemini-fallback-secret");
     expect(text).not.toContain("api-fallback-secret");
     expect(text).not.toContain("openai-fallback-secret");
-  });
-
-  it("publishes Mineru as the default parser without requiring a token", async () => {
-    const { getPublicServerConfig } =
-      await import("../lib/defaultConfig/server");
-
-    expect(getPublicServerConfig().rag).toMatchObject({
-      documentProcessingAvailable: true,
-      documentProcessingProvider: "mineru",
-    });
   });
 
   it("uses the server ElevenLabs key for default speech transcription", async () => {

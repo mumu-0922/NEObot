@@ -1,12 +1,10 @@
 import type {
-  AdminRAGProviderConfigDTO,
   AdminRAGProviderConfigsDTO,
   AdminRAGProviderConnectionDTO,
   ConfigureAdminRAGProviderInput,
   RAGProviderApi,
   RAGProviderId,
   RAGProviderStatusDTO,
-  UpdateAdminRAGProviderConfigInput,
 } from "../types";
 import type { HttpClient } from "./httpClient";
 
@@ -38,34 +36,6 @@ export function createServerRAGProviderApiShell(
       return httpClient.requestJson<AdminRAGProviderConnectionDTO>(
         `${adminRAGProviderPath(providerId)}/configure`,
         { method: "POST", body, signal },
-      );
-    },
-    async updateAdminRAGProviderConfig(
-      providerId: RAGProviderId,
-      input: UpdateAdminRAGProviderConfigInput,
-    ): Promise<AdminRAGProviderConfigDTO> {
-      const { signal, ...body } = input;
-      return httpClient.requestJson<AdminRAGProviderConfigDTO>(
-        adminRAGProviderPath(providerId),
-        { method: "PUT", body, signal },
-      );
-    },
-    async testAdminRAGProviderConnection(
-      providerId: RAGProviderId,
-      signal?: AbortSignal,
-    ): Promise<AdminRAGProviderConnectionDTO> {
-      return httpClient.requestJson<AdminRAGProviderConnectionDTO>(
-        `${adminRAGProviderPath(providerId)}/test`,
-        { method: "POST", signal },
-      );
-    },
-    async activateAdminRAGProvider(
-      providerId: RAGProviderId,
-      signal?: AbortSignal,
-    ): Promise<AdminRAGProviderConnectionDTO> {
-      return httpClient.requestJson<AdminRAGProviderConnectionDTO>(
-        `${adminRAGProviderPath(providerId)}/activate`,
-        { method: "POST", signal },
       );
     },
     async deleteAdminRAGProviderConfig(

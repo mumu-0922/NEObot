@@ -192,18 +192,19 @@ func (g chatImageGenerator) GenerateImage(
 func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 	ctx context.Context,
 	provider runtimeconfig.ProviderRuntimeConfig,
-) (chat.Provider, error) {
+) (chat.RuntimeProviderResolution, error) {
 	if r.service == nil {
-		return nil, chat.ValidationError{
+		return chat.RuntimeProviderResolution{}, chat.ValidationError{
 			Code:    "PROVIDER_CONFIG_UNSUPPORTED",
 			Message: "runtime provider configuration is not supported",
 		}
 	}
 	apiKey := ""
+	source := strings.TrimSpace(provider.Source)
 	if strings.TrimSpace(provider.Source) == "server-default" {
 		resolved, err := r.service.ResolveServerDefaultProvider(ctx)
 		if err != nil {
-			return nil, mapRuntimeProviderError(err)
+			return chat.RuntimeProviderResolution{}, mapRuntimeProviderError(err)
 		}
 		apiKey = resolved.APIKey
 		provider.ID = resolved.ID
@@ -213,7 +214,7 @@ func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 	} else if strings.TrimSpace(provider.Source) == "server-stored" {
 		resolved, err := r.service.ResolveStoredProvider(ctx, provider.ID)
 		if err != nil {
-			return nil, mapRuntimeProviderError(err)
+			return chat.RuntimeProviderResolution{}, mapRuntimeProviderError(err)
 		}
 		apiKey = resolved.APIKey
 		provider.ID = resolved.ID
@@ -224,7 +225,7 @@ func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 		var err error
 		apiKey, err = r.service.ProviderAPIKey(provider)
 		if err != nil {
-			return nil, mapRuntimeProviderError(err)
+			return chat.RuntimeProviderResolution{}, mapRuntimeProviderError(err)
 		}
 	}
 	providerType := strings.ToLower(strings.TrimSpace(provider.Type))
@@ -237,12 +238,12 @@ func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 			Timeout:    r.timeout,
 		})
 		if err != nil {
-			return nil, chat.ValidationError{
+			return chat.RuntimeProviderResolution{}, chat.ValidationError{
 				Code:    "PROVIDER_CONFIG_UNSUPPORTED",
 				Message: "runtime provider configuration is unsupported",
 			}
 		}
-		return resolved, nil
+		return runtimeChatProviderResolution(resolved, source, provider), nil
 	case "openai compatible", "openai_compatible", "openai-compatible", "":
 		resolved, err := chat.NewOpenAICompatibleProvider(chat.OpenAICompatibleProviderConfig{
 			BaseURL:    runtimeProviderBaseURL(provider),
@@ -251,12 +252,12 @@ func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 			Timeout:    r.timeout,
 		})
 		if err != nil {
-			return nil, chat.ValidationError{
+			return chat.RuntimeProviderResolution{}, chat.ValidationError{
 				Code:    "PROVIDER_CONFIG_UNSUPPORTED",
 				Message: "runtime provider configuration is unsupported",
 			}
 		}
-		return resolved, nil
+		return runtimeChatProviderResolution(resolved, source, provider), nil
 	case "gemini", "google gemini", "google_gemini":
 		resolved, err := chat.NewGeminiProvider(chat.OpenAICompatibleProviderConfig{
 			BaseURL:    strings.TrimSpace(provider.BaseURL),
@@ -265,12 +266,12 @@ func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 			Timeout:    r.timeout,
 		})
 		if err != nil {
-			return nil, chat.ValidationError{
+			return chat.RuntimeProviderResolution{}, chat.ValidationError{
 				Code:    "PROVIDER_CONFIG_UNSUPPORTED",
 				Message: "runtime provider configuration is unsupported",
 			}
 		}
-		return resolved, nil
+		return runtimeChatProviderResolution(resolved, source, provider), nil
 	case "anthropic", "anthropic claude", "anthropic_claude", "claude":
 		resolved, err := chat.NewAnthropicProvider(chat.AnthropicProviderConfig{
 			BaseURL:    strings.TrimSpace(provider.BaseURL),
@@ -279,17 +280,35 @@ func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 			Timeout:    r.timeout,
 		})
 		if err != nil {
-			return nil, chat.ValidationError{
+			return chat.RuntimeProviderResolution{}, chat.ValidationError{
 				Code:    "PROVIDER_CONFIG_UNSUPPORTED",
 				Message: "runtime provider configuration is unsupported",
 			}
 		}
-		return resolved, nil
+		return runtimeChatProviderResolution(resolved, source, provider), nil
 	default:
-		return nil, chat.ValidationError{
+		return chat.RuntimeProviderResolution{}, chat.ValidationError{
 			Code:    "PROVIDER_CONFIG_UNSUPPORTED",
 			Message: "runtime provider type is not supported",
 		}
+	}
+}
+
+func runtimeChatProviderResolution(
+	provider chat.Provider,
+	source string,
+	config runtimeconfig.ProviderRuntimeConfig,
+) chat.RuntimeProviderResolution {
+	processor := ""
+	switch source {
+	case "server-default":
+		processor = knowledge.CanonicalAnswerProcessor(config.Type)
+	case "server-stored":
+		processor = knowledge.CanonicalAnswerProcessor(config.ID)
+	}
+	return chat.RuntimeProviderResolution{
+		Provider:           provider,
+		RAGAnswerProcessor: processor,
 	}
 }
 

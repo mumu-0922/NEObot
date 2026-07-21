@@ -820,37 +820,10 @@ describe("G11.9F.4.2 server RAG provider API adapter", () => {
               checks: ["embedding", "rerank"],
             });
           }
-          if (String(input).endsWith("/test")) {
-            return Response.json({
-              provider: {
-                id: "RAG:JINA",
-                provider: "jina",
-                connectionTestValid: true,
-              },
-              checks: ["embedding", "rerank"],
-            });
-          }
-          if (String(input).endsWith("/activate")) {
-            return Response.json({
-              provider: {
-                id: "RAG:JINA",
-                provider: "jina",
-                enabled: true,
-              },
-              checks: ["embedding", "rerank"],
-            });
-          }
-          return Response.json({
-            id: "RAG:JINA",
-            name: "Jina AI",
-            provider: "jina",
-            enabled: false,
-            hasApiKey: true,
-            connectionTestValid: false,
-            embeddingModel: "jina-embeddings-v4",
-            embeddingDimensions: 1024,
-            rerankModel: "jina-reranker-v3",
-          });
+          return Response.json(
+            { error: "unexpected request" },
+            { status: 500 },
+          );
         },
       }),
     );
@@ -871,18 +844,6 @@ describe("G11.9F.4.2 server RAG provider API adapter", () => {
       checks: ["embedding", "rerank"],
     });
     await expect(
-      ragProviders.updateAdminRAGProviderConfig("jina", {
-        name: "Jina AI",
-        apiKeySecret: { v: 1 },
-      }),
-    ).resolves.toMatchObject({ provider: "jina", hasApiKey: true });
-    await expect(
-      ragProviders.testAdminRAGProviderConnection("jina"),
-    ).resolves.toMatchObject({ checks: ["embedding", "rerank"] });
-    await expect(
-      ragProviders.activateAdminRAGProvider("jina"),
-    ).resolves.toMatchObject({ provider: { enabled: true } });
-    await expect(
       ragProviders.deleteAdminRAGProviderConfig("jina"),
     ).resolves.toBeUndefined();
 
@@ -901,21 +862,6 @@ describe("G11.9F.4.2 server RAG provider API adapter", () => {
         url: "/mm-api/v1/admin/rag/providers/jina/configure",
         method: "POST",
         body: { apiKeySecret: { v: 1 } },
-      },
-      {
-        url: "/mm-api/v1/admin/rag/providers/jina",
-        method: "PUT",
-        body: { name: "Jina AI", apiKeySecret: { v: 1 } },
-      },
-      {
-        url: "/mm-api/v1/admin/rag/providers/jina/test",
-        method: "POST",
-        body: undefined,
-      },
-      {
-        url: "/mm-api/v1/admin/rag/providers/jina/activate",
-        method: "POST",
-        body: undefined,
       },
       {
         url: "/mm-api/v1/admin/rag/providers/jina",

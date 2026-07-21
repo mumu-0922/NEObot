@@ -1,10 +1,9 @@
 import "server-only";
 
-import { RAG_LIMITS, SYSTEM_SETTINGS_LIMITS } from "../../config/limits";
+import { SYSTEM_SETTINGS_LIMITS } from "../../config/limits";
 import { DEFAULT_SYSTEM_SETTINGS } from "../../config/defaults";
 import { normalizeSystemSettings } from "../settings/appConfig";
 import type {
-  DocumentParseProvider,
   MimoVoiceID,
   ServerDefaultVoiceProvider,
   SystemSettings,
@@ -21,7 +20,6 @@ import {
   isElevenLabsSTTModel,
   isElevenLabsTTSModel,
 } from "../utils/voiceModels";
-import { normalizeDocumentParseProvider } from "../settings/searchRag";
 
 const DEFAULT_PROVIDER_NAME = "Server Default";
 const DEFAULT_ELEVENLABS_STT_MODEL = "scribe_v2";
@@ -76,73 +74,6 @@ export function getDefaultProviderApiKey(): string {
 
 export function getDefaultProviderRuntimeConfig() {
   return null;
-}
-
-export function getDefaultRagRuntimeConfig(): {
-  url: string;
-  token: string;
-  topK?: number;
-  chunkSize?: number;
-  namespace?: string;
-} | null {
-  const url = env("DEFAULT_RAG_BASE_URL").slice(0, RAG_LIMITS.maxBaseUrlChars);
-  const token = env("DEFAULT_RAG_TOKEN").slice(0, RAG_LIMITS.maxTokenChars);
-  if (!url || !token) return null;
-
-  const topK = clampInteger(
-    env("DEFAULT_RAG_TOP_K"),
-    RAG_LIMITS.minTopK,
-    RAG_LIMITS.maxTopK,
-  );
-  const chunkSize = clampInteger(
-    env("DEFAULT_RAG_CHUNK_SIZE"),
-    RAG_LIMITS.minChunkSize,
-    RAG_LIMITS.maxChunkSize,
-  );
-  const namespace = env("DEFAULT_RAG_NAMESPACE").slice(
-    0,
-    RAG_LIMITS.maxNamespaceChars,
-  );
-
-  return {
-    url,
-    token,
-    ...(topK !== undefined ? { topK } : {}),
-    ...(chunkSize !== undefined ? { chunkSize } : {}),
-    ...(namespace ? { namespace } : {}),
-  };
-}
-
-export function getDefaultLlamaParseApiKey(): string {
-  return env("DEFAULT_LLAMA_PARSE_API_KEY").slice(
-    0,
-    RAG_LIMITS.maxLlamaParseApiKeyChars,
-  );
-}
-
-export function getDefaultDocumentParseProvider(): DocumentParseProvider {
-  return normalizeDocumentParseProvider(env("DEFAULT_DOCUMENT_PARSE_PROVIDER"));
-}
-
-export function getDefaultMineruApiToken(): string {
-  return env("DEFAULT_MINERU_API_TOKEN").slice(
-    0,
-    RAG_LIMITS.maxMineruApiTokenChars,
-  );
-}
-
-export function getDefaultDocumentParseToken(
-  provider: DocumentParseProvider,
-): string {
-  return provider === "mineru"
-    ? getDefaultMineruApiToken()
-    : getDefaultLlamaParseApiKey();
-}
-
-export function isDefaultDocumentProcessingAvailable(
-  provider = getDefaultDocumentParseProvider(),
-): boolean {
-  return provider === "mineru" || Boolean(getDefaultLlamaParseApiKey());
 }
 
 export function getDefaultElevenLabsApiKey(): string {
@@ -260,8 +191,7 @@ function getDefaultSystemSettings(): SystemSettings | undefined {
 }
 
 function getPublicStoreState(
-  storeEnvName:
-    "RATE_LIMIT_STORE" | "DOCUMENT_PARSE_JOB_STORE" | "PLUGIN_REGISTRY_STORE",
+  storeEnvName: "RATE_LIMIT_STORE" | "PLUGIN_REGISTRY_STORE",
 ): PublicDeploymentStoreState {
   const mode = getDeploymentMode();
   const store = env(storeEnvName).toLowerCase();
@@ -277,11 +207,6 @@ function getPublicStoreState(
 }
 
 export function getPublicServerConfig(): PublicServerConfig {
-  const rag = getDefaultRagRuntimeConfig();
-  const documentProcessingProvider = getDefaultDocumentParseProvider();
-  const documentProcessingAvailable = isDefaultDocumentProcessingAvailable(
-    documentProcessingProvider,
-  );
   const defaultElevenLabsApiKey = getDefaultElevenLabsApiKey();
   const defaultMimoApiKey = getDefaultMimoApiKey();
   const defaultVoiceProvider = getDefaultVoiceProvider();
@@ -320,14 +245,6 @@ export function getPublicServerConfig(): PublicServerConfig {
     },
     search: {
       available: false,
-    },
-    rag: {
-      vectorStoreAvailable: Boolean(rag),
-      documentProcessingAvailable,
-      ...(documentProcessingAvailable ? { documentProcessingProvider } : {}),
-      ...(rag?.topK !== undefined ? { topK: rag.topK } : {}),
-      ...(rag?.chunkSize !== undefined ? { chunkSize: rag.chunkSize } : {}),
-      ...(rag?.namespace ? { namespace: rag.namespace } : {}),
     },
     voice: {
       ...(defaultVoiceProvider
@@ -371,7 +288,6 @@ export function getPublicServerConfig(): PublicServerConfig {
       byokStableKeyConfigured: Boolean(env("BYOK_PRIVATE_KEY_PEM")),
       byokEphemeralAllowed: envBool("BYOK_ALLOW_EPHEMERAL_KEY") === true,
       rateLimitStore: getPublicStoreState("RATE_LIMIT_STORE"),
-      documentParseJobStore: getPublicStoreState("DOCUMENT_PARSE_JOB_STORE"),
       pluginRegistryStore: getPublicStoreState("PLUGIN_REGISTRY_STORE"),
     },
     ...(system ? { system } : {}),

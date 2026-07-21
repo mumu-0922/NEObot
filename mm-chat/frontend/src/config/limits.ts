@@ -14,45 +14,11 @@ export const VOICE_LIMITS = {
   maxTranscriptionAudioBytes: 25 * 1024 * 1024,
 } as const;
 
-export const DOCUMENT_LIMITS = {
-  maxParseFileBytes: 50 * 1024 * 1024,
-  maxMineruAgentParseFileBytes: 10 * 1024 * 1024,
-  maxMineruZipEntries: 100,
-  maxMineruZipDecompressedBytes: 60 * 1024 * 1024,
-  maxMineruZipCompressionRatio: 100,
-  maxMineruFullMarkdownBytes: 20 * 1024 * 1024,
-  maxMineruFullMarkdownChars: 20 * 1024 * 1024,
-} as const;
-
 export const KNOWLEDGE_LIMITS = {
-  maxCollections: 100,
-  maxCollectionIdChars: 120,
   maxCollectionNameChars: 120,
   maxCollectionDescriptionChars: 1_000,
-  maxCollectionIconChars: 80,
-  maxCollectionColorChars: 40,
   maxFilesPerCollection: 100,
-  maxFileBytes: DOCUMENT_LIMITS.maxParseFileBytes,
-  maxFileIdChars: 120,
-  maxFileNameChars: 512,
-  maxMimeTypeChars: 200,
-  maxPathChars: 4_096,
-  maxErrorChars: 1_000,
-  maxRagIdChars: 160,
-  maxRagChunkCount: 100_000,
-} as const;
-
-export const RAG_LIMITS = {
-  maxItemsPerRequest: 1_000,
-  minTopK: 1,
-  maxTopK: 20,
-  minChunkSize: 256,
-  maxChunkSize: 8_192,
-  maxBaseUrlChars: 2_048,
-  maxTokenChars: 16_384,
-  maxLlamaParseApiKeyChars: 16_384,
-  maxMineruApiTokenChars: 16_384,
-  maxNamespaceChars: 200,
+  maxFileBytes: 50 * 1024 * 1024,
 } as const;
 
 export const SEARCH_CONFIG_LIMITS = {
@@ -127,8 +93,6 @@ export const API_INPUT_LIMITS = {
 export const AUXILIARY_OUTPUT_LIMITS = {
   maxRelatedQuestions: 5,
   maxRelatedQuestionChars: 240,
-  maxRagQueries: 3,
-  maxRagQueryChars: 300,
 } as const;
 
 export const CONTEXT_COMPRESSION_LIMITS = {
@@ -168,8 +132,6 @@ export const CHAT_ENTITY_LIMITS = {
   maxWorkspaceNameChars: 120,
   maxWorkspaceSystemPromptChars: API_INPUT_LIMITS.maxSystemInstructionChars,
   maxWorkspaceColorChars: 40,
-  maxWorkspaceKnowledgeCollections: 100,
-  maxWorkspaceKnowledgeCollectionIdChars: 120,
 } as const;
 
 export const CLIENT_URL_LIMITS = {

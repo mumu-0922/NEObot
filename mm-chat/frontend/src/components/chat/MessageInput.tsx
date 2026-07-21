@@ -77,7 +77,7 @@ import {
   getSearchCompatibility,
   getSearchProviderLabel,
   type SearchCompatibilityReason,
-} from "@/lib/settings/searchRag";
+} from "@/lib/settings/search";
 import { hasPluginAuthValue } from "@/lib/security/localSecretResolvers";
 import { isPluginAuthRequired } from "@/lib/plugin/config";
 import {
@@ -85,7 +85,6 @@ import {
   MAX_CONVERSATION_KNOWLEDGE_COLLECTIONS,
   normalizeKnowledgeCollectionIds,
 } from "@/lib/utils/knowledgeAttachments";
-import { createChatDocumentAttachment } from "@/lib/utils/documentAttachments";
 import { polishTextContent } from "@/services/artifactService";
 import { normalizeSkillIdRefs } from "@/lib/skills";
 import {
@@ -217,7 +216,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       voice,
       updateVoiceSettings,
       search,
-      rag,
     } = useSettingsStore();
 
     const knowledgeApiClient = useMemo(() => createNeoChatApiClient(), []);
@@ -1064,10 +1062,11 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       setIsParsingAttachments(true);
       try {
         for (const file of selection.accepted) {
-          const useNativeAttachment =
-            !documentsOnly && canAttachFileNatively(file);
+          const useRawAttachment =
+            knowledgeApiClient.mode === "server" ||
+            (!documentsOnly && canAttachFileNatively(file));
           try {
-            if (useNativeAttachment) {
+            if (useRawAttachment) {
               const base64 = await fileToBase64(file);
               if (
                 !isMountedRef.current ||
@@ -1085,18 +1084,9 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               });
               continue;
             }
-
-            const result = await createChatDocumentAttachment(file, {
-              id: uuidv7(),
-              rag,
-            });
-            if (
-              !isMountedRef.current ||
-              fileSelectionRunRef.current !== runId
-            ) {
-              return;
-            }
-            newAttachments.push(result.attachment);
+            throw new Error(
+              "Document parsing requires the server-backed file pipeline.",
+            );
           } catch (err) {
             if (
               !isMountedRef.current ||
@@ -1105,16 +1095,14 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               return;
             }
             logInputError(
-              useNativeAttachment
+              useRawAttachment
                 ? "Error reading file"
                 : "Error parsing document attachment",
               err,
             );
             setErrorMsg(
               t(
-                useNativeAttachment
-                  ? "failedToReadFile"
-                  : "failedToParseDocument",
+                useRawAttachment ? "failedToReadFile" : "failedToParseDocument",
                 { fileName: file.name },
               ),
             );
@@ -1156,10 +1144,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
     const removeAttachment = (id: string) => {
       setAttachments((prev) => prev.filter((a) => a.id !== id));
-    };
-
-    const handleKBSelect = (selectedAttachments: Attachment[]) => {
-      appendAttachments(selectedAttachments);
     };
 
     const persistKnowledgeCollectionIds = async (collectionIds: string[]) => {
@@ -1266,18 +1250,12 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           />
         )}
 
-        {showKBModal && (
+        {showKBModal && conversationKnowledgeEnabled && (
           <KnowledgeSelectionModal
             onClose={() => setShowKBModal(false)}
-            {...(conversationKnowledgeEnabled
-              ? {
-                  onSelectCollections: persistKnowledgeCollectionIds,
-                  initialSelectedCollectionIds:
-                    normalizedKnowledgeCollectionIds,
-                  maxSelectedCollections:
-                    MAX_CONVERSATION_KNOWLEDGE_COLLECTIONS,
-                }
-              : { onSelect: handleKBSelect })}
+            onSelectCollections={persistKnowledgeCollectionIds}
+            initialSelectedCollectionIds={normalizedKnowledgeCollectionIds}
+            maxSelectedCollections={MAX_CONVERSATION_KNOWLEDGE_COLLECTIONS}
           />
         )}
 
@@ -1497,25 +1475,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                       />
                       <span>{t("uploadImage")}</span>
                     </DropdownMenuItem>
-                  )}
-
-                  {!conversationKnowledgeEnabled && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onSelect={() => {
-                          setShowKBModal(true);
-                        }}
-                        disabled={isInputBusy}
-                      >
-                        <Library
-                          size={14}
-                          className="text-purple-500 dark:text-purple-400"
-                          aria-hidden="true"
-                        />
-                        <span>{t("knowledgeBase")}</span>
-                      </DropdownMenuItem>
-                    </>
                   )}
 
                   {(modelCapabilities.attachment ||

@@ -152,7 +152,7 @@ describe("chat entity normalization", () => {
     expect(workspace.systemPrompt).toHaveLength(
       CHAT_ENTITY_LIMITS.maxWorkspaceSystemPromptChars,
     );
-    expect(workspace.knowledgeCollectionIds).toEqual(["kb1", "kb2"]);
+    expect(workspace).not.toHaveProperty("knowledgeCollectionIds");
     expect(workspace.files).toHaveLength(1);
     expect(workspace.files[0]?.fileName).toHaveLength(
       ATTACHMENT_LIMITS.maxFileNameChars,

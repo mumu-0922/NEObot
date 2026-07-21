@@ -56,7 +56,7 @@ vi.mock("@/lib/utils/chatInput", () => ({
   clampChatInputText: vi.fn((value) => value),
 }));
 
-vi.mock("@/lib/settings/searchRag", () => ({
+vi.mock("@/lib/settings/search", () => ({
   getSearchCompatibility: vi.fn(() => ({ enabled: true, mode: "none" })),
   getSearchCompatibilityErrorMessage: vi.fn(() => "Search is unavailable"),
 }));
@@ -165,18 +165,13 @@ describe("BYOK service requests", () => {
       .mockResolvedValueOnce(Response.json({ output: "ok" }))
       .mockResolvedValueOnce(Response.json({ questions: ["next?"] }))
       .mockResolvedValueOnce(Response.json({ images: [], message: "done" }));
-    const {
-      executeCode,
-      generateImage,
-      generateRAGSearchQueries,
-      generateRelatedQuestions,
-    } = await import("../services/api/chatService");
+    const { executeCode, generateImage, generateRelatedQuestions } =
+      await import("../services/api/chatService");
 
     await expect(
       executeCode("env-provider:gemini-title", "print('hi')"),
     ).resolves.toBe("ok");
     await expect(generateRelatedQuestions([])).resolves.toEqual(["next?"]);
-    await expect(generateRAGSearchQueries("hello")).resolves.toEqual(["hello"]);
     await expect(
       generateImage("env-provider:gemini-title", "paint a quiet UI"),
     ).resolves.toMatchObject({ message: "done" });

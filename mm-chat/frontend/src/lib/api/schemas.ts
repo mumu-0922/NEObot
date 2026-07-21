@@ -188,7 +188,6 @@ export const ChatRequestSchema = z
           .enum(["auto", "low", "medium", "high", "xhigh", "max"])
           .optional(),
         useSearch: z.boolean().optional(),
-        useRAG: z.boolean().optional(),
       })
       .strict()
       .optional(),
@@ -352,98 +351,6 @@ export const PluginInstallSchema = z
     customInput: z.string().max(2_000_000).optional(),
   })
   .strict();
-
-export const RAGQuerySchema = z
-  .object({
-    text: z.string().min(1).max(200_000),
-    namespace: z.string().max(200).optional(),
-    url: z.string().max(2_048).optional(),
-    token: z.unknown().optional(),
-    tokenSecret: EncryptedSecretEnvelopeSchema.optional(),
-    useDefault: z.boolean().optional(),
-    topK: z.coerce.number().int().min(1).max(50).optional(),
-  })
-  .strict()
-  .superRefine((request, ctx) => {
-    rejectPlainSecretField(request.token, ctx, ["token"], "RAG token");
-    if (!request.useDefault && (!request.url?.trim() || !request.tokenSecret)) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["tokenSecret"],
-        message: "RAG URL and token are required",
-      });
-    }
-  })
-  .transform((request) => omitPlainSecretField(request, "token"));
-
-export const RAGUpsertSchema = z
-  .object({
-    items: z
-      .array(
-        z.object({
-          id: z.string().min(1),
-          data: z.string().min(1).max(200_000),
-          metadata: z.record(z.string(), JsonLikeSchema).optional(),
-        }),
-      )
-      .max(1_000),
-    namespace: z.string().max(200).optional(),
-    url: z.string().max(2_048).optional(),
-    token: z.unknown().optional(),
-    tokenSecret: EncryptedSecretEnvelopeSchema.optional(),
-    useDefault: z.boolean().optional(),
-  })
-  .strict()
-  .superRefine((request, ctx) => {
-    rejectPlainSecretField(request.token, ctx, ["token"], "RAG token");
-    if (!request.useDefault && (!request.url?.trim() || !request.tokenSecret)) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["tokenSecret"],
-        message: "RAG URL and token are required",
-      });
-    }
-  })
-  .transform((request) => omitPlainSecretField(request, "token"));
-
-export const DocumentParseSchema = z
-  .object({
-    file: z.instanceof(File),
-    provider: z.enum(["mineru", "llamaParse"]).default("mineru"),
-    apiKey: z.unknown().optional(),
-    apiToken: z.unknown().optional(),
-    apiKeySecret: EncryptedSecretEnvelopeSchema.optional(),
-    useDefault: z.boolean().optional(),
-  })
-  .strict()
-  .superRefine((request, ctx) => {
-    rejectPlainSecretField(
-      request.apiKey,
-      ctx,
-      ["apiKey"],
-      "Document parse API key",
-    );
-    rejectPlainSecretField(
-      request.apiToken,
-      ctx,
-      ["apiToken"],
-      "Document parse API token",
-    );
-    if (
-      !request.useDefault &&
-      request.provider === "llamaParse" &&
-      !request.apiKeySecret
-    ) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["apiKeySecret"],
-        message: "Document parse API key is required",
-      });
-    }
-  })
-  .transform((request) =>
-    omitPlainSecretField(omitPlainSecretField(request, "apiKey"), "apiToken"),
-  );
 
 export const ImageGenerateRequestSchema = z
   .object({

@@ -1,6 +1,6 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 const removedRoutes = [
   "/api/chat/rag-queries",
@@ -15,12 +15,10 @@ function readSource(path: string): string {
 }
 
 describe("G9.2 legacy RAG/doc-parse route removal", () => {
-  it("keeps frontend services and API config from calling deleted Next routes", () => {
+  it("keeps retained frontend code from calling deleted Next routes", () => {
     const checkedSources = [
       "src/config/api.ts",
       "src/services/api/chatService.ts",
-      "src/services/api/docParseService.ts",
-      "src/services/api/ragService.ts",
       "src/lib/data/clearAppData.ts",
     ].map(readSource);
 
@@ -31,25 +29,38 @@ describe("G9.2 legacy RAG/doc-parse route removal", () => {
     }
   });
 
-  it("makes local RAG and document parsing services fail closed", async () => {
-    const { parseDocumentFile } =
-      await import("../services/api/docParseService");
-    const { deleteFromRAG, queryRAG, upsertToRAG } =
-      await import("../services/api/ragService");
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
+  it("removes the local RAG and document parsing service entrypoints", () => {
+    for (const path of [
+      "src/services/api/docParseService.ts",
+      "src/services/api/ragService.ts",
+      "src/lib/api/docParseJobs.ts",
+      "src/lib/utils/rag.ts",
+      "src/lib/utils/knowledgeFiles.ts",
+      "src/lib/utils/knowledgeVectors.ts",
+      "src/utils/textSplitter.ts",
+    ]) {
+      expect(existsSync(resolve(process.cwd(), path))).toBe(false);
+    }
+  });
 
-    await expect(queryRAG("hello", "collection")).resolves.toEqual([]);
-    await expect(
-      upsertToRAG([{ id: "chunk", data: "body" }], "collection"),
-    ).resolves.toBe(false);
-    await expect(deleteFromRAG(["chunk"], "collection")).resolves.toBe(false);
-    await expect(
-      parseDocumentFile(new File(["pdf"], "scan.pdf"), {
-        provider: "mineru",
-        useDefault: true,
-      }),
-    ).rejects.toThrow(/server Knowledge/i);
+  it("removes retired browser request schemas and provider constants", () => {
+    const retainedSources = [
+      "src/config/api.ts",
+      "src/lib/api/schemas.ts",
+      "src/lib/byok/shared.ts",
+      "src/lib/security/urlPolicy.ts",
+    ].map(readSource);
 
-    expect(fetchSpy).not.toHaveBeenCalled();
+    for (const source of retainedSources) {
+      for (const retired of [
+        "DocumentParseSchema",
+        "RAGQuerySchema",
+        "RAGUpsertSchema",
+        "llamaParse",
+        '"docs"',
+      ]) {
+        expect(source).not.toContain(retired);
+      }
+    }
   });
 });

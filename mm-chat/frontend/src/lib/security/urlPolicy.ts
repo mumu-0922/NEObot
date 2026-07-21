@@ -11,10 +11,8 @@ import { isOpenAIProviderType } from "../providers/providerTypes";
 export type OutboundContext =
   | "provider"
   | "search"
-  | "rag"
   | "plugin"
   | "pluginManifest"
-  | "docs"
   | "voice"
   | "agent"
   | "metadata";
@@ -176,7 +174,6 @@ export function getSafeUrlPolicy(context: OutboundContext): SafeUrlPolicy {
 
   switch (context) {
     case "provider":
-    case "rag":
     case "search":
       return {
         context,
@@ -188,19 +185,6 @@ export function getSafeUrlPolicy(context: OutboundContext): SafeUrlPolicy {
         allowLocalHttp: localNetworkProxyAllowed,
         hostedProxyBlocked:
           profile.mode === "hosted" && !localNetworkProxyAllowed,
-        profile,
-      };
-    case "docs":
-      return {
-        context,
-        allowedProtocols: ["https:"],
-        allowedHosts: [
-          "api.cloud.llamaindex.ai",
-          "mineru.net",
-          "oss-mineru.openxlab.org.cn",
-          "mineru.oss-cn-shanghai.aliyuncs.com",
-          "cdn-mineru.openxlab.org.cn",
-        ],
         profile,
       };
     case "voice":

@@ -161,8 +161,8 @@ describe("local secret envelopes", () => {
 
   it("rejects tampered ciphertext", async () => {
     const envelope = await encryptLocalSecret(
-      "rag-secret",
-      LOCAL_SECRET_CONTEXTS.ragToken,
+      "provider-secret",
+      LOCAL_SECRET_CONTEXTS.providerApiKey("provider-a"),
     );
     expect(envelope).toBeDefined();
 
@@ -172,7 +172,7 @@ describe("local secret envelopes", () => {
           ...envelope!,
           ciphertext: `${envelope!.ciphertext[0] === "A" ? "B" : "A"}${envelope!.ciphertext.slice(1)}`,
         },
-        LOCAL_SECRET_CONTEXTS.ragToken,
+        LOCAL_SECRET_CONTEXTS.providerApiKey("provider-a"),
       ),
     ).rejects.toThrow();
   });

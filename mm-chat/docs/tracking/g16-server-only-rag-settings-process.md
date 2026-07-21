@@ -141,3 +141,101 @@ G16.3 changes only the `mm-chat` frontend and tracking documents. The older
 client/backend PUT, test, and activate compatibility methods deliberately
 remain until G16.4 removes their last code and test references in one bounded
 cutover.
+
+## 2026-07-21 — G16.4 Local-RAG retirement and cutover closure
+
+The final slice removed the browser-owned RAG runtime rather than leaving a
+second inactive implementation behind. The frontend now has only Server
+Knowledge collections, current-chat collection selection, Go upload/bind,
+explicit legacy-browser import, and citation display. Local indexing/query
+services, the local Knowledge store and hydration hook, document-parse job
+client, Local-RAG settings/secrets/types, Workspace Knowledge binding, query
+generation, compatibility translations, and their tests were deleted. The
+backend also retired the older provider PUT/test/activate write sequence and
+removed the obsolete public-config `rag` projection. The remaining contract is
+redacted list, atomic configure, confirmed delete, and capability status.
+
+A versioned startup migration checks both `localStorage` and the
+`neo-chat/app_data` IndexedDB store. It removes only top-level `rag` and
+`state.rag`, writes a completion marker after both sources parse, and preserves
+all other values. Four unit cases cover both stores, idempotency, no-op input,
+and parse-failure atomicity. A fresh dedicated Windows Chrome profile then
+proved the deployed migration: both obsolete objects disappeared, the marker
+became `1`, and injected theme, Search, Voice, Plugin, and unrelated sentinel
+state stayed byte-for-byte equivalent. The dedicated browser process, script,
+output, and profile were removed afterward.
+
+The real Knowledge proof exposed one additional cross-layer defect before
+closure. A Server Default chat carries `ModelRef.providerId=SERVER_DEFAULT`,
+while server-provisioned answer consent is keyed by the authoritative provider
+processor such as `openai_compatible`. Retrieval therefore found evidence but
+answer governance rejected it as `answer_governance_required`. The runtime
+provider resolver now returns a separate server-derived answer processor for
+governance only. The actual provider ModelRef remains unchanged; browser input
+cannot choose the consent identity. Canonicalization is shared with startup
+consent provisioning, and focused handler/runtime tests cover Server Default,
+server-stored, and browser-supplied provider boundaries.
+
+Live proof after rebuilding and restarting the backend:
+
+```text
+provider status after restart                              ready
+MinerU / Jina                                              ready / ready, 1024
+native text upload -> Jina index                           processing -> active
+selected-chat hit                                          ORCHID-7429-ZETA [K1]
+hit metadata                                               answered, citationCount=1
+answer governance                                          openai_compatible/server-default
+rerank                                                     applied
+unrelated Nimbus Harbor query                              no_evidence
+miss metadata                                              citationCount=0
+temporary conversations/document/collection/file           deleted; subsequent reads 404
+temporary collection in list                               absent
+Postgres databases after cleanup                           neo_chat, postgres only
+```
+
+The delete contract is immediate invisibility, not destructive audit-history
+erasure. Post-delete inspection confirmed collection/document/file tombstones
+remain as designed, while their API reads return `404` and retrieval cannot
+reauthorize the retained derived projection rows. No manual production-table
+deletion was used to make the proof pass.
+
+The final staged-reference audit caught a second, non-runtime residue layer:
+unused browser vector splitters, Local-RAG/document-parse request schemas,
+LlamaParse URL/BYOK constants, and the obsolete `DOCUMENT_PARSE_JOB_STORE`
+deployment projection. Those files, tests, environment/Compose wiring, health
+fields, and stale inventory references were removed before commit. The Go
+public-config regression now asserts that neither `rag` nor
+`documentParseJobStore` can reappear in `/v1/config`.
+
+Two runtime recovery notes were captured during verification. An interrupted
+earlier Compose build had produced a zero-byte backend binary and `exec format
+error`; a complete no-cache rebuild restored a non-empty binary and healthy
+container. Later, one rebuild omitted `--env-file .env.single-server`, causing
+the recreated backend to use the Compose default `AUTH_MODE=required`. No
+volume was deleted. Recreating with the explicit env file restored the intended
+development profile and all persisted provider/document state. All subsequent
+Compose commands used the explicit env-file boundary.
+
+Final verification:
+
+```text
+retired backend PUT                                       405, Allow: DELETE
+retired backend /test and /activate                       404 / 404
+/v1/config legacy rag field                               absent
+backend gofmt / go vet ./... / go test ./...              passed
+frontend Prettier / ESLint / TypeScript                   passed
+frontend Vitest                                           185 files / 882 tests passed
+frontend production build                                 passed
+isolated standalone structure gate                        passed
+isolated full clean-copy gate                             passed
+clean-copy Go                                             vet + all tests passed
+clean-copy RAG                                             Ruff/Mypy; 1730 passed, 7 skipped
+Compose backend/frontend                                  healthy / healthy
+git diff --check -- mm-chat                               passed
+former-root application                                   unchanged
+```
+
+No provider Key, browser secret, private document text beyond the disposable
+sentinel, temporary browser profile, temporary test database, or live test
+resource remains. G16 is complete; rollback remains the independent revert of
+the four G16 commits.

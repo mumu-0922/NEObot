@@ -29,6 +29,11 @@ func TestHandlerRoutesRuntimeConfig(t *testing.T) {
 	if response.ModelProvider.Available || len(response.ModelProvider.Models) != 0 {
 		t.Fatalf("model provider = %#v", response.ModelProvider)
 	}
+	for _, retiredField := range []string{`"rag"`, `"documentParseJobStore"`} {
+		if strings.Contains(rec.Body.String(), retiredField) {
+			t.Fatalf("retired field %s remains in public config: %s", retiredField, rec.Body.String())
+		}
+	}
 }
 
 func TestHandlerRoutesAdminTaskModelSettings(t *testing.T) {
@@ -389,24 +394,22 @@ func TestHandlerMapsSearchProviderAdminErrors(t *testing.T) {
 }
 
 func TestHandlerRoutesAdminRAGProviderLifecycle(t *testing.T) {
-	repo := &fakeProviderConfigRepository{}
+	repo := &fakeProviderConfigRepository{
+		ok: true,
+		stored: StoredProviderConfig{
+			ID:         "rag-provider-config-1",
+			UserID:     authDevelopmentUserID(),
+			ProviderID: ragProviderRecordID(RAGProviderJina),
+			Label:      "Jina AI",
+			Config: StoredProviderConfigPayload{
+				Kind: providerConfigKindRAG, RAGProvider: string(RAGProviderJina),
+			},
+		},
+	}
 	handler := NewHandler(NewService(
 		config.Config{},
 		WithProviderConfigRepository(repo),
 	))
-
-	put := httptest.NewRecorder()
-	handler.ServeHTTP(put, httptest.NewRequest(
-		http.MethodPut,
-		"/v1/admin/rag/providers/jina",
-		strings.NewReader(`{"name":"Jina AI","enabled":false}`),
-	))
-	if put.Code != http.StatusOK ||
-		!strings.Contains(put.Body.String(), `"provider":"jina"`) ||
-		!strings.Contains(put.Body.String(), `"hasApiKey":false`) ||
-		!strings.Contains(put.Body.String(), `"embeddingDimensions":1024`) {
-		t.Fatalf("put status = %d, body=%s", put.Code, put.Body.String())
-	}
 
 	list := httptest.NewRecorder()
 	handler.ServeHTTP(list, httptest.NewRequest(
@@ -446,15 +449,25 @@ func TestHandlerRoutesAdminRAGProviderLifecycle(t *testing.T) {
 		)
 	}
 
-	tested := httptest.NewRecorder()
-	handler.ServeHTTP(tested, httptest.NewRequest(
-		http.MethodPost,
+	for _, path := range []string{
 		"/v1/admin/rag/providers/jina/test",
-		nil,
+		"/v1/admin/rag/providers/jina/activate",
+	} {
+		retired := httptest.NewRecorder()
+		handler.ServeHTTP(retired, httptest.NewRequest(http.MethodPost, path, nil))
+		if retired.Code != http.StatusNotFound {
+			t.Fatalf("retired route %s status = %d, body=%s", path, retired.Code, retired.Body.String())
+		}
+	}
+
+	put := httptest.NewRecorder()
+	handler.ServeHTTP(put, httptest.NewRequest(
+		http.MethodPut,
+		"/v1/admin/rag/providers/jina",
+		strings.NewReader(`{"name":"Jina AI"}`),
 	))
-	if tested.Code != http.StatusBadRequest ||
-		!strings.Contains(tested.Body.String(), "RAG_PROVIDER_SECRET_REQUIRED") {
-		t.Fatalf("test status = %d, body=%s", tested.Code, tested.Body.String())
+	if put.Code != http.StatusMethodNotAllowed || put.Header().Get("Allow") != http.MethodDelete {
+		t.Fatalf("retired put status = %d, allow=%q, body=%s", put.Code, put.Header().Get("Allow"), put.Body.String())
 	}
 
 	deleted := httptest.NewRecorder()

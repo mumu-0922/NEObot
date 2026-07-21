@@ -58,7 +58,12 @@ type ProviderAttachmentResolver interface {
 }
 
 type RuntimeProviderResolver interface {
-	ResolveRuntimeProvider(ctx context.Context, provider runtimeconfig.ProviderRuntimeConfig) (Provider, error)
+	ResolveRuntimeProvider(ctx context.Context, provider runtimeconfig.ProviderRuntimeConfig) (RuntimeProviderResolution, error)
+}
+
+type RuntimeProviderResolution struct {
+	Provider           Provider
+	RAGAnswerProcessor string
 }
 
 type ImageGenerationRequest struct {
@@ -958,7 +963,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	streamProvider, err := h.resolveStreamProvider(r.Context(), request.Provider)
+	streamProvider, ragAnswerProcessor, err := h.resolveStreamProvider(r.Context(), request.Provider)
 	if err != nil {
 		writeServiceError(w, err)
 		return
@@ -991,6 +996,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			modelRef,
 			ragSelection,
 			streamProvider,
+			ragAnswerProcessor,
 		)
 	}
 	providerPrompt := userMessage.Content
@@ -1824,6 +1830,7 @@ func (h *Handler) decideAutoRAG(
 	modelRef *ModelRef,
 	selection ragSelection,
 	provider Provider,
+	ragAnswerProcessor string,
 ) autoRAGDecision {
 	session, ok := auth.SessionFromContext(ctx)
 	if !ok {
@@ -1859,7 +1866,13 @@ func (h *Handler) decideAutoRAG(
 	if len(result.Evidence) == 0 || len(result.Citations) == 0 {
 		return autoRAGDecision{Outcome: "no_evidence"}
 	}
-	authority, err := h.authorizeAutoRAGAnswer(ctx, selection, modelRef, result.Citations)
+	governanceModelRef := modelRef
+	if processor := strings.TrimSpace(ragAnswerProcessor); processor != "" {
+		resolved := *modelRef
+		resolved.ProviderID = processor
+		governanceModelRef = &resolved
+	}
+	authority, err := h.authorizeAutoRAGAnswer(ctx, selection, governanceModelRef, result.Citations)
 	if err != nil {
 		if errors.Is(err, ErrRAGAnswerGovernanceRequired) {
 			return autoRAGDecision{Outcome: "answer_governance_required"}
@@ -1943,21 +1956,22 @@ func autoRAGMessageMetadata(
 func (h *Handler) resolveStreamProvider(
 	ctx context.Context,
 	providerConfig *runtimeconfig.ProviderRuntimeConfig,
-) (Provider, error) {
+) (Provider, string, error) {
 	if providerConfig == nil {
 		if h.provider == nil {
-			return nil, ErrProviderRequired
+			return nil, "", ErrProviderRequired
 		}
-		return h.provider, nil
+		return h.provider, "", nil
 	}
 	if strings.TrimSpace(providerConfig.Source) == "server-default" {
 		if h.providerResolver != nil {
-			return h.providerResolver.ResolveRuntimeProvider(ctx, *providerConfig)
+			resolved, err := h.providerResolver.ResolveRuntimeProvider(ctx, *providerConfig)
+			return resolved.Provider, resolved.RAGAnswerProcessor, err
 		}
 		if h.provider == nil {
-			return nil, ErrProviderRequired
+			return nil, "", ErrProviderRequired
 		}
-		return h.provider, nil
+		return h.provider, "", nil
 	}
 	if strings.TrimSpace(providerConfig.Source) == "" &&
 		strings.TrimSpace(providerConfig.ID) == "" &&
@@ -1965,17 +1979,18 @@ func (h *Handler) resolveStreamProvider(
 		strings.TrimSpace(providerConfig.BaseURL) == "" &&
 		len(providerConfig.APIKeySecret) == 0 {
 		if h.provider == nil {
-			return nil, ErrProviderRequired
+			return nil, "", ErrProviderRequired
 		}
-		return h.provider, nil
+		return h.provider, "", nil
 	}
 	if h.providerResolver == nil {
-		return nil, newValidationError(
+		return nil, "", newValidationError(
 			"PROVIDER_CONFIG_UNSUPPORTED",
 			"runtime provider configuration is not supported",
 		)
 	}
-	return h.providerResolver.ResolveRuntimeProvider(ctx, *providerConfig)
+	resolved, err := h.providerResolver.ResolveRuntimeProvider(ctx, *providerConfig)
+	return resolved.Provider, resolved.RAGAnswerProcessor, err
 }
 
 func (h *Handler) resolveChatSearchExecution(

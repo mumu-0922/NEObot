@@ -559,14 +559,6 @@ export interface ConfigureAdminRAGProviderInput {
   signal?: AbortSignal;
 }
 
-export interface UpdateAdminRAGProviderConfigInput {
-  name: string;
-  enabled?: boolean;
-  apiKeySecret?: unknown;
-  clearApiKey?: boolean;
-  signal?: AbortSignal;
-}
-
 export interface AdminRAGProviderConnectionDTO {
   provider: AdminRAGProviderConfigDTO;
   checks: string[];
@@ -578,18 +570,6 @@ export interface RAGProviderApi {
   configureAdminRAGProvider(
     providerId: RAGProviderId,
     input: ConfigureAdminRAGProviderInput,
-  ): Promise<AdminRAGProviderConnectionDTO>;
-  updateAdminRAGProviderConfig(
-    providerId: RAGProviderId,
-    input: UpdateAdminRAGProviderConfigInput,
-  ): Promise<AdminRAGProviderConfigDTO>;
-  testAdminRAGProviderConnection(
-    providerId: RAGProviderId,
-    signal?: AbortSignal,
-  ): Promise<AdminRAGProviderConnectionDTO>;
-  activateAdminRAGProvider(
-    providerId: RAGProviderId,
-    signal?: AbortSignal,
   ): Promise<AdminRAGProviderConnectionDTO>;
   deleteAdminRAGProviderConfig(providerId: RAGProviderId): Promise<void>;
 }

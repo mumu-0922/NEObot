@@ -191,10 +191,6 @@ func (s *Service) PublicConfigForContext(ctx context.Context) PublicConfig {
 			DefaultModelsConfigured: defaultModelsConfigured,
 		},
 		Search: SearchConfig{Available: searchAvailable},
-		RAG: RAGConfig{
-			VectorStoreAvailable:        false,
-			DocumentProcessingAvailable: false,
-		},
 		Voice: VoiceConfig{
 			ElevenLabsAvailable: false,
 			MimoAvailable:       false,
@@ -208,7 +204,6 @@ func (s *Service) PublicConfigForContext(ctx context.Context) PublicConfig {
 			BYOKStableKeyConfigured: strings.TrimSpace(s.cfg.BYOK.PrivateKeyPEM) != "",
 			BYOKEphemeralAllowed:    s.cfg.BYOK.AllowEphemeralKey,
 			RateLimitStore:          publicStoreState(s.cfg.Redis.RateLimitEnabled),
-			DocumentParseJobStore:   "memory",
 			PluginRegistryStore:     pluginRegistryStoreState(s.cfg.DatabaseURL),
 		},
 	}

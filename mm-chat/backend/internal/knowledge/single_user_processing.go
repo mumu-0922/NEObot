@@ -3,9 +3,21 @@ package knowledge
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"neo-chat/mm-chat/backend/internal/auth"
 )
+
+// CanonicalAnswerProcessor maps configured provider identifiers and types to
+// the processor identity used by answer governance and consent records.
+func CanonicalAnswerProcessor(providerType string) string {
+	processor := strings.ToLower(strings.TrimSpace(providerType))
+	processor = strings.NewReplacer("-", "_", " ", "_").Replace(processor)
+	if processor == "openai" || processor == "openai_compatible" {
+		return "openai_compatible"
+	}
+	return processor
+}
 
 // SingleUserNativeGovernanceManifest describes the local, credential-free
 // parser used for non-PDF knowledge documents.

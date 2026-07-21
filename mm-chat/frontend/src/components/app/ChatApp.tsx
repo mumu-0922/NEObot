@@ -44,7 +44,7 @@ import {
 import { useChatStore } from "@/store/core/chatStore";
 import { useCoreSettingsStore } from "@/store/core/coreSettingsStore";
 import { useMemoryStore } from "@/store/core/memoryStore";
-import { appDb } from "@/store/storage/storageConfig";
+import { appDb, STORAGE_KEYS } from "@/store/storage/storageConfig";
 import { formatModelName } from "@/store/core/settingsStore";
 import { handleTokenUsageUpdate } from "@/lib/utils/message";
 import {
@@ -87,6 +87,7 @@ import {
   resolveEffectiveDefaultModels,
 } from "@/lib/utils/defaultModels";
 import { logDevError } from "@/lib/utils/devLogger";
+import { retireBrowserLocalRAGState } from "@/lib/settings/serverOnlyRagMigration";
 import { SERVER_DEFAULT_PROVIDER_ID } from "@/lib/defaultConfig/shared";
 import { normalizeServerManagedProviderConfigs } from "@/lib/providers/config";
 import {
@@ -260,7 +261,6 @@ const ChatApp = () => {
       fetchModelMetadata,
       ensureBuiltInPlugins,
       system,
-      rag,
       search,
       activePlugins,
       installedPlugins,
@@ -280,7 +280,6 @@ const ChatApp = () => {
       replaceServerManagedProviders,
       applyServerConfig: applyCoreServerConfig,
     },
-    knowledgeCollections,
   } = useChatShellState();
 
   const t = useTranslations("ChatApp");
@@ -524,6 +523,17 @@ const ChatApp = () => {
       }
     : chatConfig;
   useChatThemeEffects(theme, system.fontSize);
+
+  useEffect(() => {
+    if (!serverModeEnabled) return;
+    void retireBrowserLocalRAGState({
+      localStorageRef: window.localStorage,
+      indexedDbStore: appDb,
+      settingsKey: STORAGE_KEYS.SETTINGS,
+    }).catch((error) => {
+      logDevError("Server-only RAG browser migration failed:", error);
+    });
+  }, [serverModeEnabled]);
 
   const updateBrowserSearch = useCallback(
     (params: URLSearchParams, historyMode: "push" | "replace") => {
@@ -1331,7 +1341,6 @@ const ChatApp = () => {
         provider: search.provider,
         configs: search.configs,
       },
-      rag,
       installedPlugins,
       pluginConfigs,
       activePlugins,
@@ -1364,10 +1373,6 @@ const ChatApp = () => {
       selectedModel,
       modelMetadata,
       customModelMetadata,
-      ragConfig: rag,
-      knowledgeCollections,
-      workspaceKnowledgeCollectionIds:
-        effectiveContext.workspaceKnowledgeCollectionIds,
     });
 
     const memoryState = useMemoryStore.getState();

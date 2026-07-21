@@ -4,7 +4,6 @@ import { useShallow } from "zustand/react/shallow";
 
 import { useChatStore } from "@/store/core/chatStore";
 import { useCoreSettingsStore } from "@/store/core/coreSettingsStore";
-import { useKnowledgeStore } from "@/store/core/knowledgeStore";
 import { useSettingsStore } from "@/store/core/settingsStore";
 
 export function useChatShellState() {
@@ -69,7 +68,6 @@ export function useChatShellState() {
       fetchModelMetadata: state.fetchModelMetadata,
       ensureBuiltInPlugins: state.ensureBuiltInPlugins,
       system: state.system,
-      rag: state.rag,
       search: state.search,
       activePlugins: state.activePlugins,
       installedPlugins: state.installedPlugins,
@@ -96,14 +94,9 @@ export function useChatShellState() {
     })),
   );
 
-  const knowledgeCollections = useKnowledgeStore(
-    useShallow((state) => state.collections),
-  );
-
   return {
     chat,
     settings,
     core,
-    knowledgeCollections,
   };
 }

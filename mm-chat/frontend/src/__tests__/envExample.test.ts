@@ -12,7 +12,6 @@ const REQUIRED_ENV_KEYS = [
   "ALLOW_LOCAL_NETWORK_PROXY",
   "TRUST_PROXY_HEADERS",
   "RATE_LIMIT_STORE",
-  "DOCUMENT_PARSE_JOB_STORE",
   "PLUGIN_REGISTRY_STORE",
   "UPSTASH_REDIS_REST_URL",
   "UPSTASH_REDIS_REST_TOKEN",
@@ -21,14 +20,6 @@ const REQUIRED_ENV_KEYS = [
   "NEXT_PUBLIC_API_MODE",
   "NEXT_PUBLIC_API_BASE_URL",
   "MM_CHAT_BACKEND_INTERNAL_URL",
-  "DEFAULT_RAG_BASE_URL",
-  "DEFAULT_RAG_TOKEN",
-  "DEFAULT_RAG_TOP_K",
-  "DEFAULT_RAG_CHUNK_SIZE",
-  "DEFAULT_RAG_NAMESPACE",
-  "DEFAULT_DOCUMENT_PARSE_PROVIDER",
-  "DEFAULT_MINERU_API_TOKEN",
-  "DEFAULT_LLAMA_PARSE_API_KEY",
   "DEFAULT_ELEVENLABS_API_KEY",
   "DEFAULT_ELEVENLABS_STT_MODEL",
   "DEFAULT_ELEVENLABS_TTS_MODEL",
@@ -69,7 +60,6 @@ function scanDirectProcessEnvKeys(): Set<string> {
     "src/lib/security/requestGuards.ts",
     "src/lib/security/rateLimitStore.ts",
     "src/lib/plugin/serverRegistry.ts",
-    "src/lib/api/docParseJobs.ts",
     "src/lib/seo.ts",
     "src/config/api.ts",
   ];
@@ -129,7 +119,6 @@ describe(".env.example", () => {
       "AUTH_MODE",
       "TRUST_PROXY_HEADERS",
       "RATE_LIMIT_STORE",
-      "DOCUMENT_PARSE_JOB_STORE",
       "PLUGIN_REGISTRY_STORE",
       "UPSTASH_REDIS_REST_URL",
       "UPSTASH_REDIS_REST_TOKEN",
@@ -145,6 +134,7 @@ describe(".env.example", () => {
       "PROVIDER_API_KEY:",
       "DEFAULT_PROVIDER_TYPE:",
       "DEFAULT_PROVIDER_MODELS:",
+      "DOCUMENT_PARSE_JOB_STORE",
     ]) {
       expect(compose).not.toContain(retired);
     }

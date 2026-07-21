@@ -361,12 +361,6 @@ function resolveServerJobModelRef(modelString: string): ModelRef {
   return modelRef;
 }
 
-export const generateRAGSearchQueries = async (
-  userPrompt: string,
-): Promise<string[]> => {
-  return [userPrompt];
-};
-
 export const generateImage = async (
   modelString: string,
   prompt: string,

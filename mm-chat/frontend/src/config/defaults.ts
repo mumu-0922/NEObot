@@ -43,7 +43,6 @@ export const DEFAULT_CHAT_CONFIG = {
   useSearch: false,
   useReasoning: false,
   reasoningEffort: "high",
-  useRAG: false,
   temperature: 0.7,
 } as const satisfies ChatConfig;
 
@@ -70,23 +69,6 @@ export const DEFAULT_SYSTEM_SETTINGS = {
   enableHtmlVisualPrompt: true,
   fontSize: "medium",
 } as const satisfies SystemSettings;
-
-// ============================================================================
-// RAG 默认配置
-// ============================================================================
-
-/**
- * RAG 配置默认值
- */
-export const DEFAULT_RAG_CONFIG = {
-  enabled: false,
-  url: "",
-  token: "",
-  topK: 5,
-  chunkSize: 1000,
-  llamaParseApiKey: "",
-  namespace: "default",
-} as const;
 
 // ============================================================================
 // 语音默认配置

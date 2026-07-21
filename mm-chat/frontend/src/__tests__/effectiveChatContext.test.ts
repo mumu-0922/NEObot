@@ -21,7 +21,6 @@ describe("effective chat context", () => {
         name: "Workspace",
         color: "blue",
         systemPrompt: "Workspace context.",
-        knowledgeCollectionIds: ["kb-1"],
         createdAt: 1,
         files: [
           { id: "file-1", fileName: "brief.txt", mimeType: "text/plain" },
@@ -39,21 +38,10 @@ describe("effective chat context", () => {
         useReasoning: true,
         reasoningEffort: "high",
         temperature: 0.7,
-        useRAG: true,
       },
       search: {
         provider: "default",
         configs: { default: { serverAvailable: false } },
-      },
-      rag: {
-        enabled: true,
-        url: "",
-        token: "",
-        topK: 10,
-        chunkSize: 512,
-        documentParseProvider: "mineru",
-        mineruApiToken: "",
-        llamaParseApiKey: "",
       },
       installedPlugins: [
         {
@@ -80,7 +68,6 @@ describe("effective chat context", () => {
     });
 
     expect(context.workspaceFiles).toHaveLength(1);
-    expect(context.workspaceKnowledgeCollectionIds).toEqual(["kb-1"]);
     expect(context.systemInstruction).toContain("Global system prompt.");
     expect(context.systemInstruction).toContain("Answer in project voice.");
     expect(context.systemInstruction).toContain("Workspace context.");
@@ -90,11 +77,7 @@ describe("effective chat context", () => {
     expect(context.activePluginIds).toEqual(["free-plugin"]);
     expect(context.activeSkillIds).toEqual(["session-skill"]);
     expect(context.capabilityStatuses.map((status) => status.code)).toEqual(
-      expect.arrayContaining([
-        "search_unavailable",
-        "rag_unavailable",
-        "plugin_auth_missing",
-      ]),
+      expect.arrayContaining(["search_unavailable", "plugin_auth_missing"]),
     );
   });
 
@@ -111,7 +94,6 @@ describe("effective chat context", () => {
         id: "workspace-1",
         name: "Workspace",
         color: "blue",
-        knowledgeCollectionIds: [],
         createdAt: 1,
         files: [],
         activeSkills: ["workspace-skill", "workspace-skill"],
@@ -125,21 +107,10 @@ describe("effective chat context", () => {
         useReasoning: false,
         reasoningEffort: "auto",
         temperature: 0.7,
-        useRAG: false,
       },
       search: {
         provider: "default",
         configs: { default: { serverAvailable: false } },
-      },
-      rag: {
-        enabled: false,
-        url: "",
-        token: "",
-        topK: 10,
-        chunkSize: 512,
-        documentParseProvider: "mineru",
-        mineruApiToken: "",
-        llamaParseApiKey: "",
       },
       installedPlugins: [],
       pluginConfigs: {},
@@ -171,21 +142,10 @@ describe("effective chat context", () => {
         useReasoning: false,
         reasoningEffort: "auto",
         temperature: 0.7,
-        useRAG: false,
       },
       search: {
         provider: "default",
         configs: { default: { serverAvailable: false } },
-      },
-      rag: {
-        enabled: false,
-        url: "",
-        token: "",
-        topK: 10,
-        chunkSize: 512,
-        documentParseProvider: "mineru",
-        mineruApiToken: "",
-        llamaParseApiKey: "",
       },
       installedPlugins: [
         {
@@ -259,21 +219,10 @@ describe("effective chat context", () => {
         useReasoning: false,
         reasoningEffort: "auto",
         temperature: 0.7,
-        useRAG: false,
       },
       search: {
         provider: "default",
         configs: { default: { serverAvailable: false } },
-      },
-      rag: {
-        enabled: false,
-        url: "",
-        token: "",
-        topK: 10,
-        chunkSize: 512,
-        documentParseProvider: "mineru",
-        mineruApiToken: "",
-        llamaParseApiKey: "",
       },
       installedPlugins: [],
       pluginConfigs: {},
@@ -319,21 +268,10 @@ describe("effective chat context", () => {
         useReasoning: false,
         reasoningEffort: "auto",
         temperature: 0.7,
-        useRAG: false,
       },
       search: {
         provider: "default",
         configs: { default: { serverAvailable: false } },
-      },
-      rag: {
-        enabled: false,
-        url: "",
-        token: "",
-        topK: 10,
-        chunkSize: 512,
-        documentParseProvider: "mineru",
-        mineruApiToken: "",
-        llamaParseApiKey: "",
       },
       installedPlugins: [],
       pluginConfigs: {},

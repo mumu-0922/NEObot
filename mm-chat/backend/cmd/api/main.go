@@ -563,12 +563,7 @@ func singleUserAnswerIdentities(
 }
 
 func canonicalAnswerProcessor(providerType string) string {
-	processor := strings.ToLower(strings.TrimSpace(providerType))
-	processor = strings.NewReplacer("-", "_", " ", "_").Replace(processor)
-	if processor == "openai" || processor == "openai_compatible" {
-		return "openai_compatible"
-	}
-	return processor
+	return knowledge.CanonicalAnswerProcessor(providerType)
 }
 
 func redactSensitiveLogText(value string) string {

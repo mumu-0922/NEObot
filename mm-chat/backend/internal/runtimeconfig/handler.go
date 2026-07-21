@@ -135,31 +135,23 @@ func (h *Handler) adminRAGProviderConfig(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if len(parts) == 2 {
+		if strings.TrimSpace(parts[1]) != "configure" {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
+			return
+		}
 		if r.Method != http.MethodPost {
 			w.Header().Set("Allow", http.MethodPost)
 			writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 			return
 		}
-		var response AdminRAGProviderConnectionResponse
-		var err error
-		switch strings.TrimSpace(parts[1]) {
-		case "configure":
-			var request ConfigureAdminRAGProviderRequest
-			if decodeErr := decodeJSON(w, r, &request); decodeErr != nil {
-				writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "request body is invalid")
-				return
-			}
-			response, err = h.service.ConfigureAdminRAGProvider(
-				r.Context(), providerID, request,
-			)
-		case "test":
-			response, err = h.service.TestAdminRAGProviderConnection(r.Context(), providerID)
-		case "activate":
-			response, err = h.service.ActivateAdminRAGProvider(r.Context(), providerID)
-		default:
-			writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
+		var request ConfigureAdminRAGProviderRequest
+		if decodeErr := decodeJSON(w, r, &request); decodeErr != nil {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "request body is invalid")
 			return
 		}
+		response, err := h.service.ConfigureAdminRAGProvider(
+			r.Context(), providerID, request,
+		)
 		if err != nil {
 			writeServiceError(w, err)
 			return
@@ -169,20 +161,6 @@ func (h *Handler) adminRAGProviderConfig(w http.ResponseWriter, r *http.Request)
 	}
 
 	switch r.Method {
-	case http.MethodPut:
-		var request UpdateAdminRAGProviderConfigRequest
-		if err := decodeJSON(w, r, &request); err != nil {
-			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "request body is invalid")
-			return
-		}
-		response, err := h.service.UpsertAdminRAGProviderConfig(
-			r.Context(), providerID, request,
-		)
-		if err != nil {
-			writeServiceError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, response)
 	case http.MethodDelete:
 		if err := h.service.DeleteAdminRAGProviderConfig(r.Context(), providerID); err != nil {
 			writeServiceError(w, err)
@@ -190,7 +168,7 @@ func (h *Handler) adminRAGProviderConfig(w http.ResponseWriter, r *http.Request)
 		}
 		w.WriteHeader(http.StatusNoContent)
 	default:
-		w.Header().Set("Allow", http.MethodPut+", "+http.MethodDelete)
+		w.Header().Set("Allow", http.MethodDelete)
 		writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 	}
 }

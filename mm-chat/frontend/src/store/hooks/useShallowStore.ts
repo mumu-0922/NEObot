@@ -2,7 +2,6 @@ import { useShallow } from "zustand/react/shallow";
 import { useChatStore } from "../core/chatStore";
 import { useSettingsStore } from "../core/settingsStore";
 import { useCoreSettingsStore } from "../core/coreSettingsStore";
-import { useKnowledgeStore } from "../core/knowledgeStore";
 import { useUIStore } from "../core/uiStore";
 
 /**
@@ -188,42 +187,11 @@ export const useSearchSettings = () => {
   );
 };
 
-export const useRAGSettings = () => {
-  return useSettingsStore(
-    useShallow((state) => ({
-      rag: state.rag,
-      updateRAGConfig: state.updateRAGConfig,
-    })),
-  );
-};
-
 export const useVoiceSettings = () => {
   return useSettingsStore(
     useShallow((state) => ({
       voice: state.voice,
       updateVoiceSettings: state.updateVoiceSettings,
-    })),
-  );
-};
-
-// Knowledge Store Hooks
-export const useKnowledgeCollections = () => {
-  return useKnowledgeStore(
-    useShallow((state) => ({
-      collections: state.collections,
-      createCollection: state.createCollection,
-      updateCollection: state.updateCollection,
-      deleteCollection: state.deleteCollection,
-    })),
-  );
-};
-
-export const useKnowledgeFiles = () => {
-  return useKnowledgeStore(
-    useShallow((state) => ({
-      uploadFiles: state.uploadFiles,
-      updateFileContent: state.updateFileContent,
-      deleteFile: state.deleteFile,
     })),
   );
 };

@@ -39,7 +39,7 @@ vi.mock("@/lib/utils/model", () => ({
   }),
 }));
 
-vi.mock("@/lib/settings/searchRag", () => ({
+vi.mock("@/lib/settings/search", () => ({
   getSearchCompatibility: vi.fn(() => ({ enabled: true, mode: "native" })),
   getSearchCompatibilityErrorMessage: vi.fn(() => "Search is unavailable"),
 }));

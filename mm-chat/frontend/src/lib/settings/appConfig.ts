@@ -62,8 +62,6 @@ export function normalizeChatConfig(config: unknown): ChatConfig {
       raw.reasoningEffort,
       DEFAULT_CHAT_CONFIG.reasoningEffort,
     ),
-    useRAG:
-      typeof raw.useRAG === "boolean" ? raw.useRAG : DEFAULT_CHAT_CONFIG.useRAG,
     temperature: clampNumber(
       raw.temperature,
       CHAT_CONFIG_LIMITS.minTemperature,

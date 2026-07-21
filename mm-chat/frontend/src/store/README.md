@@ -9,12 +9,10 @@ src/store/
 ├── core/
 │   ├── chatStore.ts
 │   ├── coreSettingsStore.ts
-│   ├── knowledgeStore.ts
 │   ├── memoryStore.ts
 │   ├── settingsStore.ts
 │   └── uiStore.ts
 ├── hooks/
-│   ├── useHydration.ts
 │   ├── useShallowStore.ts
 │   ├── useStoreSync.ts
 │   └── useStoreWithSSR.ts
@@ -38,15 +36,11 @@ excluded from browser persistence.
 
 ### `settingsStore`
 
-Stores broader app configuration, including system behavior, model metadata, search, RAG, voice, plugins, installed/custom skills, skill catalog and definition caches, custom assistants, and other settings that are better suited to IndexedDB.
+Stores broader app configuration, including system behavior, model metadata, search, voice, plugins, installed/custom skills, skill catalog and definition caches, custom assistants, and other settings that are better suited to IndexedDB.
 
 ### `chatStore`
 
 Owns chat sessions, messages, workspaces, message branching, session export/import state, and session-level configuration. Session and workspace config can include active plugin and skill presets. Message-heavy data is stored separately from session metadata where practical.
-
-### `knowledgeStore`
-
-Owns knowledge collections, file metadata, upload and indexing status, OPFS-backed file records, and RAG chunk metadata.
 
 ### `memoryStore`
 
@@ -95,7 +89,9 @@ const theme = useStoreWithSSR(
 - Use `localStorage` only for browser-owned core preferences that must be
   available immediately. Server-owned task models must be loaded and saved
   through the settings API.
-- Use IndexedDB for larger or structured data such as sessions, messages, plugins, skills, assistants, knowledge metadata, and memories.
+- Use IndexedDB for larger browser-owned or import-source data such as legacy sessions, messages, plugins, skills, assistants, and memories.
+- In server mode, Knowledge state lives behind Go/Postgres/MinIO. The legacy
+  IndexedDB Knowledge key remains readable only for explicit browser-data import.
 - Use OPFS for uploaded file bytes and local file handles.
 - Do not persist transient UI state.
 - Use `partialize` to persist only fields that need to survive reloads.

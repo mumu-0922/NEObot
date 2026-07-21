@@ -9,7 +9,6 @@ import {
   FileText,
   Link,
   UploadCloud,
-  Library,
   Globe,
   Lightbulb,
   Blocks,
@@ -19,7 +18,6 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Workspace, Attachment } from "@/types";
-import { useKnowledgeStore } from "@/store/core/knowledgeStore";
 import { useChatStore } from "@/store/core/chatStore";
 import { useSettingsStore, getTaskModel } from "@/store/core/settingsStore";
 import { v7 as uuidv7 } from "uuid";
@@ -87,16 +85,12 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
   const t = useTranslations("Workspace");
   const tConfig = useTranslations("Config");
   const { createWorkspace, updateWorkspace, deleteWorkspace } = useChatStore();
-  const { collections } = useKnowledgeStore();
   const { installedPlugins, installedSkills } = useSettingsStore();
 
   const [workspaceId] = useState(workspace?.id || uuidv7());
   const [name, setName] = useState(workspace?.name || "");
   const [systemPrompt, setSystemPrompt] = useState(
     workspace?.systemPrompt || "",
-  );
-  const [selectedKBIds, setSelectedKBIds] = useState<Set<string>>(
-    new Set(workspace?.knowledgeCollectionIds || []),
   );
   const [files, setFiles] = useState<Attachment[]>(workspace?.files || []);
   const [selectedColor, setSelectedColor] = useState(
@@ -146,7 +140,6 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
   const presetGroupId = `${modalId}-preset-parameters`;
   const pluginGroupId = `${modalId}-plugins`;
   const skillGroupId = `${modalId}-skills`;
-  const knowledgeGroupId = `${modalId}-knowledge`;
   const fileGroupId = `${modalId}-files`;
   const fileInputId = `${modalId}-file-input`;
   const fileUploadStatusId = `${modalId}-file-upload-status`;
@@ -227,7 +220,6 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
       id: workspaceId,
       name: trimmedName,
       systemPrompt,
-      knowledgeCollectionIds: Array.from(selectedKBIds) as string[],
       files,
       color: selectedColor,
       enableSearch,
@@ -419,13 +411,6 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
       event.preventDefault();
       firstElement.focus({ preventScroll: true });
     }
-  };
-
-  const toggleKB = (id: string) => {
-    const newSet = new Set(selectedKBIds);
-    if (newSet.has(id)) newSet.delete(id);
-    else newSet.add(id);
-    setSelectedKBIds(newSet);
   };
 
   const togglePlugin = (id: string) => {
@@ -775,49 +760,6 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
                     </div>
                   )}
                 </div>
-              </div>
-            </div>
-
-            {/* Knowledge Base */}
-            <div>
-              <div
-                id={knowledgeGroupId}
-                className="text-xs font-semibold text-gray-500 dark:text-muted-foreground mb-2 flex items-center gap-1"
-              >
-                <Library size={12} aria-hidden="true" />{" "}
-                {t("linkedKnowledgeBases")}
-              </div>
-              <div
-                role="group"
-                aria-labelledby={knowledgeGroupId}
-                className="flex flex-wrap gap-2"
-              >
-                {collections.length > 0 ? (
-                  collections.map((col) => (
-                    <button
-                      type="button"
-                      key={col.id}
-                      aria-label={
-                        selectedKBIds.has(col.id)
-                          ? t("unlinkKnowledgeAria", { name: col.name })
-                          : t("linkKnowledgeAria", { name: col.name })
-                      }
-                      aria-pressed={selectedKBIds.has(col.id)}
-                      onClick={() => toggleKB(col.id)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/60 ${
-                        selectedKBIds.has(col.id)
-                          ? "bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300"
-                          : "bg-gray-50 dark:bg-muted border-gray-200 dark:border-border text-gray-600 dark:text-muted-foreground hover:border-gray-300 dark:hover:border-border"
-                      }`}
-                    >
-                      {col.name}
-                    </button>
-                  ))
-                ) : (
-                  <div className="text-xs text-gray-400 italic">
-                    {t("noCollectionsAvailable")}
-                  </div>
-                )}
               </div>
             </div>
 

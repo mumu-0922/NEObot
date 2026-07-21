@@ -67,7 +67,8 @@ describe("MessageInput composition", () => {
       "text-blue-500 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20",
     );
     expect(messageInput).toContain("handlePolishInput");
-    expect(messageInput).toContain("createChatDocumentAttachment");
+    expect(messageInput).not.toContain("createChatDocumentAttachment");
+    expect(messageInput).toContain('knowledgeApiClient.mode === "server"');
     expect(messageInput).toContain("isParsingAttachments");
     expect(messageInput).toContain("isDragUploadActive");
     expect(messageInput).toContain("handleComposerDrop");
@@ -84,8 +85,8 @@ describe("MessageInput composition", () => {
     expect(messageInput).not.toContain(
       "dark:text-amber-300 dark:hover:bg-amber-900/20",
     );
-    expect(messageInput).toContain("text-purple-500 dark:text-purple-400");
-    expect(messageInput).toContain('<span>{t("knowledgeBase")}</span>');
+    expect(messageInput).not.toContain('<span>{t("knowledgeBase")}</span>');
+    expect(messageInput).toContain('aria-label={t("manageKnowledgeBases")}');
     expect(messageInput).toContain("open={showAttachMenu}");
     expect(messageInput).not.toContain("showAttachMenu && hasAttachmentMenu");
     expect(messageInput).toContain("textFallbackInputRef.current?.click()");

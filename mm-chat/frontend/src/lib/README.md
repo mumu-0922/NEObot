@@ -32,7 +32,7 @@ src/lib/
 
 ### API Infrastructure
 
-`src/lib/api` contains request validation, response helpers, upload helpers, chat route handlers, auxiliary generation handlers, document parse jobs, and shared schemas.
+`src/lib/api` contains request validation, response helpers, upload helpers, chat route handlers, auxiliary generation handlers, and shared schemas.
 
 Use this layer for server route concerns such as:
 

@@ -1441,6 +1441,48 @@ func TestHandlerAutoRAGStreamsAugmentedAnswerAfterGovernance(t *testing.T) {
 	}
 }
 
+func TestHandlerUsesResolvedRuntimeProcessorForRAGGovernance(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "Read the selected source"),
+	)
+	provider := &titleProvider{chunks: []string{"Grounded answer [K1]"}}
+	resolver := &fakeRuntimeProviderResolver{
+		provider:           provider,
+		ragAnswerProcessor: "openai_compatible",
+	}
+	gate := &fakeRAGAnswerGovernanceGate{authority: RAGAnswerAuthority{
+		Processor: "openai_compatible", ModelID: "gpt-test", CollectionCount: 1,
+	}}
+	handler := NewHandler(
+		NewService(repo),
+		WithRuntimeProviderResolver(resolver),
+		WithRAGAnswerAssembler(NewRAGAnswerAssembler(
+			&fakeRAGCandidateSource{refs: []knowledge.EvidenceCandidateReference{validRAGCandidate()}},
+			&fakeRAGHydrator{evidence: []knowledge.HydratedEvidence{validHydratedEvidence()}},
+		)),
+		WithRAGAnswerGovernanceGate(gate),
+	)
+
+	rec := performAuthenticatedRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"SERVER_DEFAULT","modelId":"gpt-test"},"provider":{"source":"server-default","type":"OpenAI Compatible"},"metadata":{"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-runtime-rag-governance"}`,
+	)
+
+	assertStreamStatus(t, rec, http.StatusOK)
+	if gate.input.ModelRef.ProviderID != "openai_compatible" || gate.input.ModelRef.ModelID != "gpt-test" {
+		t.Fatalf("governance modelRef = %#v", gate.input.ModelRef)
+	}
+	if provider.input.ModelRef.ProviderID != "SERVER_DEFAULT" {
+		t.Fatalf("provider modelRef = %#v, want runtime provider id unchanged", provider.input.ModelRef)
+	}
+	assertAutoRAGMetadata(t, repo.messages[testConversationID][1], "answered", 1)
+}
+
 func TestHandlerSourceFusionSkipsWebWhenKnowledgeIsSufficient(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
@@ -3283,20 +3325,24 @@ func (r fakeProviderAttachmentResolver) ResolveProviderAttachment(
 }
 
 type fakeRuntimeProviderResolver struct {
-	provider Provider
-	input    runtimeconfig.ProviderRuntimeConfig
-	err      error
+	provider           Provider
+	ragAnswerProcessor string
+	input              runtimeconfig.ProviderRuntimeConfig
+	err                error
 }
 
 func (r *fakeRuntimeProviderResolver) ResolveRuntimeProvider(
 	_ context.Context,
 	provider runtimeconfig.ProviderRuntimeConfig,
-) (Provider, error) {
+) (RuntimeProviderResolution, error) {
 	r.input = provider
 	if r.err != nil {
-		return nil, r.err
+		return RuntimeProviderResolution{}, r.err
 	}
-	return r.provider, nil
+	return RuntimeProviderResolution{
+		Provider:           r.provider,
+		RAGAnswerProcessor: r.ragAnswerProcessor,
+	}, nil
 }
 
 type strictRAGProviderProbe struct {

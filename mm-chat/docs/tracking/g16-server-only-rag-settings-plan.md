@@ -1,6 +1,6 @@
 # G16 Server-Only RAG Settings Plan
 
-Status: in progress. G16 removes the retired browser-owned RAG control plane
+Status: complete. G16 removes the retired browser-owned RAG control plane
 from `mm-chat` and makes the visible Knowledge settings match the deployed
 MinerU, Jina, Go, Python, and Postgres runtime.
 
@@ -58,7 +58,7 @@ MinerU, Jina, Go, Python, and Postgres runtime.
 - Pass focused component/API tests, full frontend gates, and a deployed browser
   reload proof before committing the frontend slice.
 
-### G16.4 Local-RAG retirement and cutover closure
+### G16.4 Local-RAG retirement and cutover closure — complete
 
 - Remove retired Local-RAG settings types, normalization, resolvers, service
   shims, local Knowledge indexing/query branches, and related translations and

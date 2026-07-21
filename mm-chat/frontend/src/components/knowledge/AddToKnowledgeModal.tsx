@@ -1,9 +1,12 @@
 "use client";
-import React, { useEffect, useId, useRef, useState } from "react";
+import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, FileText, Library, Loader2, X } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useKnowledgeStore } from "@/store/core/knowledgeStore";
+import { v7 as uuidv7 } from "uuid";
+import { createNeoChatApiClient } from "@/services/api/client";
+import type { KnowledgeCollectionDTO } from "@/services/api/client";
+import { logDevError } from "@/lib/utils/devLogger";
 
 interface AddToKnowledgeModalProps {
   onClose: () => void;
@@ -17,8 +20,9 @@ const AddToKnowledgeModal: React.FC<AddToKnowledgeModalProps> = ({
   defaultContent,
 }) => {
   const t = useTranslations("Knowledge");
-  const { collections, addTextFileToCollection } = useKnowledgeStore();
-  const [collectionId, setCollectionId] = useState(collections[0]?.id || "");
+  const apiClient = useMemo(() => createNeoChatApiClient(), []);
+  const [collections, setCollections] = useState<KnowledgeCollectionDTO[]>([]);
+  const [collectionId, setCollectionId] = useState("");
   const [title, setTitle] = useState(defaultTitle);
   const [content, setContent] = useState(defaultContent);
   const [isSaving, setIsSaving] = useState(false);
@@ -28,6 +32,24 @@ const AddToKnowledgeModal: React.FC<AddToKnowledgeModalProps> = ({
   const collectionInputId = useId();
   const titleInputId = useId();
   const contentInputId = useId();
+
+  useEffect(() => {
+    let active = true;
+    apiClient.knowledge
+      .listCollections({ limit: 100 })
+      .then((response) => {
+        if (!active) return;
+        setCollections(response.items);
+        setCollectionId((current) => current || response.items[0]?.id || "");
+      })
+      .catch((cause) => {
+        logDevError("Failed to load server knowledge collections", cause);
+        if (active) setError(t("serverLoadCollectionsFailed"));
+      });
+    return () => {
+      active = false;
+    };
+  }, [apiClient, t]);
 
   const effectiveCollectionId = collectionId || collections[0]?.id || "";
   const canSave =
@@ -40,10 +62,36 @@ const AddToKnowledgeModal: React.FC<AddToKnowledgeModalProps> = ({
     if (!canSave) return;
     setIsSaving(true);
     setError("");
+    let uploadedFileId = "";
     try {
-      await addTextFileToCollection(effectiveCollectionId, title, content);
+      const file = new File([content], title.trim(), {
+        type: "text/markdown;charset=utf-8",
+      });
+      const uploaded = await apiClient.files.uploadFile({
+        file,
+        fileName: file.name,
+        purpose: "knowledge",
+        knowledgeCollectionId: effectiveCollectionId,
+      });
+      uploadedFileId = uploaded.id;
+      await apiClient.knowledge.bindDocument({
+        collectionId: effectiveCollectionId,
+        fileId: uploaded.id,
+        idempotencyKey: `knowledge-note-${uuidv7()}`,
+      });
       onClose();
-    } catch {
+    } catch (cause) {
+      if (uploadedFileId) {
+        try {
+          await apiClient.files.deleteFile(uploadedFileId);
+        } catch (cleanupError) {
+          logDevError(
+            "Failed to clean up unbound knowledge note",
+            cleanupError,
+          );
+        }
+      }
+      logDevError("Failed to add content to server knowledge", cause);
       setError(t("addToKnowledgeFailed"));
       setIsSaving(false);
     }

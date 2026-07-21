@@ -11,7 +11,6 @@ vi.mock("../lib/api/chat-handler", () => ({
 }));
 
 import {
-  generateRAGQueries,
   generateRelatedQuestions,
   generateTitle,
 } from "../lib/api/auxiliary-handler";
@@ -78,10 +77,8 @@ describe("auxiliary generation handlers", () => {
     errorSpy.mockRestore();
   });
 
-  it("clips long related-question and RAG query prompts", async () => {
-    mocks.handleSimpleGeneration
-      .mockResolvedValueOnce('["Follow up?"]')
-      .mockResolvedValueOnce("query one\nquery two");
+  it("clips long related-question prompts", async () => {
+    mocks.handleSimpleGeneration.mockResolvedValueOnce('["Follow up?"]');
 
     const longText =
       "x".repeat(API_INPUT_LIMITS.maxAuxiliaryPromptContextChars + 1) +
@@ -101,14 +98,10 @@ describe("auxiliary generation handlers", () => {
         timestamp: 0,
       },
     ]);
-    await generateRAGQueries(provider, "gemini-test", longText);
-
     const relatedPrompt = mocks.handleSimpleGeneration.mock
       .calls[0]?.[2] as string;
-    const ragPrompt = mocks.handleSimpleGeneration.mock.calls[1]?.[2] as string;
 
     expect(relatedPrompt).not.toContain("TEXT_TAIL");
-    expect(ragPrompt).not.toContain("TEXT_TAIL");
   });
 
   it("normalizes related-question JSON output consistently", async () => {
@@ -147,24 +140,5 @@ describe("auxiliary generation handlers", () => {
     expect(new Set(questions.map((q) => q.toLowerCase())).size).toBe(
       questions.length,
     );
-  });
-
-  it("normalizes line-based RAG query output", async () => {
-    mocks.handleSimpleGeneration.mockResolvedValueOnce(
-      [
-        "1. apples",
-        "- Apples",
-        `2) ${"q".repeat(AUXILIARY_OUTPUT_LIMITS.maxRagQueryChars + 20)}`,
-        "bananas",
-        "ignored",
-      ].join("\n"),
-    );
-
-    const queries = await generateRAGQueries(provider, "gemini-test", "fruit");
-
-    expect(queries).toHaveLength(AUXILIARY_OUTPUT_LIMITS.maxRagQueries);
-    expect(queries[0]).toBe("apples");
-    expect(queries[1]).toHaveLength(AUXILIARY_OUTPUT_LIMITS.maxRagQueryChars);
-    expect(queries[2]).toBe("bananas");
   });
 });

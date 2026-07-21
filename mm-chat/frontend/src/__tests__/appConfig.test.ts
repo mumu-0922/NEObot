@@ -16,14 +16,12 @@ describe("app config normalization", () => {
         useSearch: "yes",
         useReasoning: true,
         reasoningEffort: "xhigh",
-        useRAG: true,
         temperature: 99,
       }),
     ).toEqual({
       useSearch: false,
       useReasoning: true,
       reasoningEffort: "xhigh",
-      useRAG: true,
       temperature: CHAT_CONFIG_LIMITS.maxTemperature,
     });
 

@@ -15,13 +15,11 @@ describe("G8 server knowledge base UI composition", () => {
     "utf8",
   );
 
-  it("routes server mode Knowledge Base to the Go-backed component", () => {
+  it("routes Knowledge Base directly to the Go-backed component", () => {
     expect(knowledgeBase).toContain("ServerKnowledgeBase");
-    expect(knowledgeBase).toContain("createNeoChatApiClient");
-    expect(knowledgeBase).toContain('apiClientSnapshot.mode === "server"');
-    expect(knowledgeBase).toContain("apiClientSnapshot.capabilities.knowledge");
-    expect(knowledgeBase).toContain("apiClientSnapshot.capabilities.files");
-    expect(knowledgeBase).toContain("<LocalKnowledgeBase");
+    expect(knowledgeBase).toContain("<ServerKnowledgeBase");
+    expect(knowledgeBase).not.toContain("LocalKnowledgeBase");
+    expect(knowledgeBase).not.toContain("useKnowledgeStore");
   });
 
   it("keeps visible server Knowledge actions behind API client adapters", () => {
@@ -112,6 +110,7 @@ describe("G8 server knowledge base UI composition", () => {
     expect(serverKnowledgeBase).not.toContain("apiToken");
     expect(serverKnowledgeBase).not.toContain("RAG_MINERU_API_TOKEN");
     expect(serverKnowledgeBase).not.toContain("RAG_JINA_API_KEY");
+    expect(serverKnowledgeBase).not.toContain("useKnowledgeStore");
   });
 
   it("ships localized server Knowledge copy for all supported locales", () => {

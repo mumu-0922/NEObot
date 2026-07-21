@@ -56,7 +56,7 @@ func TestRuntimeProviderResolverAdmitsBuiltInSearchOnlyForOpenAI(t *testing.T) {
 					Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
 				})),
 			}})
-			provider, err := (runtimeChatProviderResolver{service: service}).ResolveRuntimeProvider(
+			resolution, err := (runtimeChatProviderResolver{service: service}).ResolveRuntimeProvider(
 				context.Background(),
 				runtimeconfig.ProviderRuntimeConfig{
 					Type: tt.providerType, BaseURL: "https://provider.example",
@@ -68,19 +68,55 @@ func TestRuntimeProviderResolverAdmitsBuiltInSearchOnlyForOpenAI(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ResolveRuntimeProvider() error = %v", err)
 			}
-			_, builtIn := provider.(chat.ModelBuiltInSearchProvider)
+			_, builtIn := resolution.Provider.(chat.ModelBuiltInSearchProvider)
 			if builtIn != tt.wantBuiltIn {
 				t.Fatalf("built-in capability = %v, want %v", builtIn, tt.wantBuiltIn)
 			}
 			if tt.providerType == "Gemini" {
-				if _, ok := provider.(*chat.GeminiProvider); !ok {
-					t.Fatalf("provider = %T, want *chat.GeminiProvider", provider)
+				if _, ok := resolution.Provider.(*chat.GeminiProvider); !ok {
+					t.Fatalf("provider = %T, want *chat.GeminiProvider", resolution.Provider)
 				}
 			}
 			if tt.providerType == "Anthropic" {
-				if _, ok := provider.(*chat.AnthropicProvider); !ok {
-					t.Fatalf("provider = %T, want *chat.AnthropicProvider", provider)
+				if _, ok := resolution.Provider.(*chat.AnthropicProvider); !ok {
+					t.Fatalf("provider = %T, want *chat.AnthropicProvider", resolution.Provider)
 				}
+			}
+		})
+	}
+}
+
+func TestRuntimeChatProviderResolutionUsesServerOwnedAnswerProcessor(t *testing.T) {
+	tests := []struct {
+		name      string
+		source    string
+		config    runtimeconfig.ProviderRuntimeConfig
+		processor string
+	}{
+		{
+			name:      "server default type",
+			source:    "server-default",
+			config:    runtimeconfig.ProviderRuntimeConfig{ID: "SERVER_DEFAULT", Type: "OpenAI Compatible"},
+			processor: "openai_compatible",
+		},
+		{
+			name:      "stored provider id",
+			source:    "server-stored",
+			config:    runtimeconfig.ProviderRuntimeConfig{ID: "FOHWSU", Type: "OpenAI Compatible"},
+			processor: "fohwsu",
+		},
+		{
+			name:      "browser supplied provider has no server consent identity",
+			source:    "",
+			config:    runtimeconfig.ProviderRuntimeConfig{ID: "CUSTOM", Type: "OpenAI Compatible"},
+			processor: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resolution := runtimeChatProviderResolution(nil, tt.source, tt.config)
+			if resolution.RAGAnswerProcessor != tt.processor {
+				t.Fatalf("processor = %q, want %q", resolution.RAGAnswerProcessor, tt.processor)
 			}
 		})
 	}
@@ -639,7 +675,6 @@ func TestAuthRequiredModeRejectsMissingCredentialsAndKeepsPublicRoutes(t *testin
 		{method: http.MethodPost, path: "/v1/admin/search/providers/tavily/test"},
 		{method: http.MethodGet, path: "/v1/admin/rag/providers"},
 		{method: http.MethodPost, path: "/v1/admin/rag/providers/jina/configure"},
-		{method: http.MethodPost, path: "/v1/admin/rag/providers/jina/test"},
 		{method: http.MethodGet, path: "/v1/admin/task-models"},
 		{method: http.MethodPost, path: "/v1/search"},
 		{method: http.MethodGet, path: "/v1/chat/conversations"},

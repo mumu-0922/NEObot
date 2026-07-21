@@ -1,6 +1,5 @@
 import type {
   DefaultModels,
-  DocumentParseProvider,
   ModelMetadata,
   ProviderType,
   ServerDefaultVoiceProvider,
@@ -27,14 +26,6 @@ export interface PublicServerConfig {
   search: {
     available: boolean;
   };
-  rag: {
-    vectorStoreAvailable: boolean;
-    documentProcessingAvailable: boolean;
-    documentProcessingProvider?: DocumentParseProvider;
-    topK?: number;
-    chunkSize?: number;
-    namespace?: string;
-  };
   voice: {
     defaultProvider?: ServerDefaultVoiceProvider;
     elevenLabsAvailable: boolean;
@@ -55,7 +46,6 @@ export interface PublicServerConfig {
     byokStableKeyConfigured: boolean;
     byokEphemeralAllowed: boolean;
     rateLimitStore: PublicDeploymentStoreState;
-    documentParseJobStore: PublicDeploymentStoreState;
     pluginRegistryStore: PublicDeploymentStoreState;
   };
   system?: SystemSettings;

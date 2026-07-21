@@ -75,35 +75,9 @@ type AdminRAGProviderConfigsResponse struct {
 	Providers []AdminRAGProviderConfigResponse `json:"providers"`
 }
 
-type UpdateAdminRAGProviderConfigRequest struct {
-	Name         string         `json:"name"`
-	Enabled      bool           `json:"enabled"`
-	APIKeySecret map[string]any `json:"apiKeySecret"`
-	ClearAPIKey  bool           `json:"clearApiKey"`
-}
-
 type AdminRAGProviderConnectionResponse struct {
 	Provider AdminRAGProviderConfigResponse `json:"provider"`
 	Checks   []string                       `json:"checks"`
-}
-
-type CommitRAGProviderConnectionInput struct {
-	ID                         string
-	UserID                     string
-	ProviderID                 string
-	ExpectedEncryptedSecretRef string
-	ExpectedRAGProvider        string
-	ExpectedEnabled            bool
-	ConnectionTestSHA256       string
-	ConnectionTestedAt         time.Time
-	Enabled                    bool
-}
-
-type ragProviderConnectionRepository interface {
-	CommitRAGProviderConnection(
-		context.Context,
-		CommitRAGProviderConnectionInput,
-	) (StoredProviderConfig, error)
 }
 
 func WithRAGProviderHTTPClient(client websearch.HTTPDoer) ServiceOption {
@@ -188,98 +162,6 @@ func (s *Service) AdminRAGProviderConfigs(
 	return AdminRAGProviderConfigsResponse{Providers: providers}, nil
 }
 
-func (s *Service) UpsertAdminRAGProviderConfig(
-	ctx context.Context,
-	providerValue string,
-	request UpdateAdminRAGProviderConfigRequest,
-) (AdminRAGProviderConfigResponse, error) {
-	if s.repo == nil {
-		return AdminRAGProviderConfigResponse{}, ErrDatabaseRequired
-	}
-	providerID, err := normalizeRAGProviderID(providerValue)
-	if err != nil || (request.ClearAPIKey && len(request.APIKeySecret) > 0) {
-		return AdminRAGProviderConfigResponse{}, ErrRAGProviderConfigUnsupported
-	}
-	recordID := ragProviderRecordID(providerID)
-	user := auth.UserOrDevelopment(ctx)
-	current, hasCurrent, err := s.repo.GetProviderConfig(ctx, user.ID, recordID)
-	if err != nil {
-		return AdminRAGProviderConfigResponse{}, err
-	}
-	if hasCurrent {
-		if _, err := validateStoredRAGProvider(current); err != nil {
-			return AdminRAGProviderConfigResponse{}, err
-		}
-	}
-	name := strings.TrimSpace(request.Name)
-	if name == "" {
-		name = ragProviderDefaultName(providerID)
-	}
-	if len([]byte(name)) > 128 {
-		return AdminRAGProviderConfigResponse{}, ErrRAGProviderConfigUnsupported
-	}
-	secretRef := ""
-	if hasCurrent {
-		secretRef = strings.TrimSpace(current.EncryptedSecretRef)
-	}
-	if request.ClearAPIKey {
-		secretRef = ""
-	} else if len(request.APIKeySecret) > 0 {
-		envelope, err := parseEncryptedSecretEnvelope(request.APIKeySecret)
-		if err != nil {
-			return AdminRAGProviderConfigResponse{}, err
-		}
-		plaintext, err := s.DecryptOptionalSecret(
-			envelope,
-			ragProviderIngressContext(providerID),
-		)
-		if err != nil {
-			return AdminRAGProviderConfigResponse{}, err
-		}
-		secretRef, err = s.encryptRAGProviderSecretAtRest(
-			user.ID,
-			recordID,
-			plaintext,
-		)
-		if err != nil {
-			return AdminRAGProviderConfigResponse{}, err
-		}
-	}
-
-	connectionTestSHA256 := ""
-	connectionTestedAt := ""
-	connectionTestValid := false
-	if hasCurrent {
-		connectionTestSHA256 = strings.TrimSpace(current.Config.ConnectionTestSHA256)
-		connectionTestedAt = strings.TrimSpace(current.Config.ConnectionTestedAt)
-		connectionTestValid = ragProviderConnectionTestValidForValues(
-			recordID,
-			providerID,
-			secretRef,
-			connectionTestSHA256,
-			connectionTestedAt,
-		)
-	}
-	if !connectionTestValid {
-		connectionTestSHA256 = ""
-		connectionTestedAt = ""
-	}
-	enabled := hasCurrent && current.Config.Enabled && request.Enabled && connectionTestValid
-	stored, err := s.repo.UpsertProviderConfig(ctx, UpsertProviderConfigInput{
-		UserID: user.ID, ProviderID: recordID, Label: name,
-		EncryptedSecretRef: secretRef,
-		Config: StoredProviderConfigPayload{
-			Kind: providerConfigKindRAG, RAGProvider: string(providerID),
-			Enabled: enabled, ConnectionTestSHA256: connectionTestSHA256,
-			ConnectionTestedAt: connectionTestedAt,
-		},
-	})
-	if err != nil {
-		return AdminRAGProviderConfigResponse{}, err
-	}
-	return adminRAGProviderResponse(stored, providerID), nil
-}
-
 func (s *Service) DeleteAdminRAGProviderConfig(
 	ctx context.Context,
 	providerValue string,
@@ -310,95 +192,6 @@ func (s *Service) DeleteAdminRAGProviderConfig(
 		return err
 	}
 	return nil
-}
-
-func (s *Service) TestAdminRAGProviderConnection(
-	ctx context.Context,
-	providerValue string,
-) (AdminRAGProviderConnectionResponse, error) {
-	return s.commitAdminRAGProviderConnection(ctx, providerValue, false)
-}
-
-func (s *Service) ActivateAdminRAGProvider(
-	ctx context.Context,
-	providerValue string,
-) (AdminRAGProviderConnectionResponse, error) {
-	return s.commitAdminRAGProviderConnection(ctx, providerValue, true)
-}
-
-func (s *Service) commitAdminRAGProviderConnection(
-	ctx context.Context,
-	providerValue string,
-	activate bool,
-) (AdminRAGProviderConnectionResponse, error) {
-	if s.repo == nil {
-		return AdminRAGProviderConnectionResponse{}, ErrDatabaseRequired
-	}
-	committer, ok := s.repo.(ragProviderConnectionRepository)
-	if !ok {
-		return AdminRAGProviderConnectionResponse{}, ErrDatabaseRequired
-	}
-	providerID, err := normalizeRAGProviderID(providerValue)
-	if err != nil {
-		return AdminRAGProviderConnectionResponse{}, err
-	}
-	recordID := ragProviderRecordID(providerID)
-	userID := auth.UserOrDevelopment(ctx).ID
-	stored, found, err := s.repo.GetProviderConfig(ctx, userID, recordID)
-	if err != nil {
-		return AdminRAGProviderConnectionResponse{}, err
-	}
-	if !found {
-		return AdminRAGProviderConnectionResponse{}, ErrRAGProviderNotFound
-	}
-	if _, err := validateStoredRAGProvider(stored); err != nil {
-		return AdminRAGProviderConnectionResponse{}, err
-	}
-	apiKey, err := s.decryptStoredRAGProviderSecret(stored)
-	if err != nil {
-		return AdminRAGProviderConnectionResponse{}, err
-	}
-	if apiKey == "" {
-		return AdminRAGProviderConnectionResponse{}, ErrRAGProviderSecretRequired
-	}
-	if !validRAGAPIKey(apiKey) {
-		apiKey = ""
-		return AdminRAGProviderConnectionResponse{}, ErrRAGProviderConnectionFailed
-	}
-	testCtx, cancel := context.WithTimeout(ctx, ragConnectionTestTimeout)
-	checks, err := s.testRAGProviderConnection(testCtx, providerID, apiKey)
-	cancel()
-	apiKey = ""
-	if err != nil {
-		return AdminRAGProviderConnectionResponse{}, ErrRAGProviderConnectionFailed
-	}
-	fingerprint := ragProviderConnectionFingerprint(
-		recordID,
-		providerID,
-		stored.EncryptedSecretRef,
-	)
-	committed, err := committer.CommitRAGProviderConnection(
-		ctx,
-		CommitRAGProviderConnectionInput{
-			ID: stored.ID, UserID: stored.UserID, ProviderID: stored.ProviderID,
-			ExpectedEncryptedSecretRef: stored.EncryptedSecretRef,
-			ExpectedRAGProvider:        string(providerID),
-			ExpectedEnabled:            stored.Config.Enabled,
-			ConnectionTestSHA256:       fingerprint,
-			ConnectionTestedAt:         time.Now().UTC(),
-			Enabled:                    activate || stored.Config.Enabled,
-		},
-	)
-	if err != nil {
-		if errors.Is(err, ErrProviderConfigChanged) {
-			return AdminRAGProviderConnectionResponse{}, ErrRAGProviderConfigChanged
-		}
-		return AdminRAGProviderConnectionResponse{}, err
-	}
-	return AdminRAGProviderConnectionResponse{
-		Provider: adminRAGProviderResponse(committed, providerID),
-		Checks:   checks,
-	}, nil
 }
 
 func validateStoredRAGProvider(

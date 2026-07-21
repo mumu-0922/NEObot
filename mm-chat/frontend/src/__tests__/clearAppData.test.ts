@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { RAGConfig } from "../types";
 
 const { appDbMock, dirMock, localforageClearMock, removeMock } = vi.hoisted(
   () => {
@@ -45,17 +44,6 @@ vi.mock("../store/storage/storageConfig", () => ({
 const { clearBrowserAppData } = await import("../lib/data/clearAppData");
 const { deleteOPFSDirectory } = await import("../utils/opfs");
 
-const ragConfig: RAGConfig = {
-  enabled: true,
-  url: "https://rag.example.com",
-  token: "secret",
-  topK: 10,
-  chunkSize: 512,
-  documentParseProvider: "mineru",
-  mineruApiToken: "",
-  llamaParseApiKey: "",
-};
-
 describe("clear app data", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -63,7 +51,7 @@ describe("clear app data", () => {
   });
 
   it("cleans local OPFS and browser stores without calling removed RAG routes", async () => {
-    await clearBrowserAppData(ragConfig);
+    await clearBrowserAppData();
 
     expect(fetch).not.toHaveBeenCalled();
     expect(dirMock).toHaveBeenCalledWith("knowledge-base");
@@ -82,7 +70,7 @@ describe("clear app data", () => {
       vi.fn(() => Promise.reject(new Error("RAG endpoint removed"))),
     );
 
-    await clearBrowserAppData(ragConfig);
+    await clearBrowserAppData();
 
     expect(fetch).not.toHaveBeenCalled();
     expect(dirMock).toHaveBeenCalledWith("knowledge-base");

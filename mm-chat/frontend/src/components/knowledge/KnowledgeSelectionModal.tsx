@@ -1,4 +1,5 @@
 "use client";
+
 import React, {
   useCallback,
   useEffect,
@@ -8,449 +9,110 @@ import React, {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { Check, Folder, Library, Loader2, RefreshCw, X } from "lucide-react";
 import { useTranslations } from "next-intl";
-import {
-  X,
-  Check,
-  Library,
-  FileText,
-  Folder,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
-import { useKnowledgeStore } from "@/store/core/knowledgeStore";
-import { Attachment, Collection } from "@/types";
-import {
-  createKnowledgeCollectionAttachment,
-  createKnowledgeFileAttachment,
-} from "@/lib/utils/knowledgeAttachments";
+import { logDevError } from "@/lib/utils/devLogger";
 import { createNeoChatApiClient } from "@/services/api/client";
 import type { KnowledgeCollectionDTO } from "@/services/api/client";
-import { logDevError } from "@/lib/utils/devLogger";
 
 interface KnowledgeSelectionModalProps {
   onClose: () => void;
-  onSelect?: (attachments: Attachment[]) => void;
-  onSelectCollections?: (collectionIds: string[]) => void | Promise<void>;
+  onSelectCollections: (collectionIds: string[]) => void | Promise<void>;
   initialSelectedCollectionIds?: readonly string[];
   maxSelectedCollections?: number;
 }
 
-const menuItemFocusClass =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/60";
-
-const collectionKey = (collectionId: string) => `collection:${collectionId}`;
-const fileKey = (collectionId: string, fileId: string) =>
-  `file:${collectionId}:${fileId}`;
-
-const collectionScopeLabelKey = (scope: KnowledgeCollectionDTO["scope"]) =>
-  `serverScope.${scope}` as const;
-
-const KnowledgeSelectionModal: React.FC<KnowledgeSelectionModalProps> = ({
+const KnowledgeSelectionModal = ({
   onClose,
-  onSelect,
   onSelectCollections,
   initialSelectedCollectionIds = [],
   maxSelectedCollections = 8,
-}) => {
+}: KnowledgeSelectionModalProps) => {
   const t = useTranslations("Knowledge");
-  const { collections } = useKnowledgeStore();
   const apiClient = useMemo(() => createNeoChatApiClient(), []);
-  const serverKnowledgeEnabled =
-    apiClient.mode === "server" && apiClient.capabilities.knowledge;
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(
+  const [collections, setCollections] = useState<KnowledgeCollectionDTO[]>([]);
+  const [selectedIds, setSelectedIds] = useState(
     () =>
-      new Set(
-        initialSelectedCollectionIds
-          .slice(0, maxSelectedCollections)
-          .map(collectionKey),
-      ),
+      new Set(initialSelectedCollectionIds.slice(0, maxSelectedCollections)),
   );
-  const [activeCollectionId, setActiveCollectionId] = useState<string | null>(
-    null,
-  );
-  const [serverCollections, setServerCollections] = useState<
-    KnowledgeCollectionDTO[]
-  >([]);
-  const [serverLoading, setServerLoading] = useState(false);
-  const [serverError, setServerError] = useState("");
-  const [selectionError, setSelectionError] = useState("");
-  const [isSavingSelection, setIsSavingSelection] = useState(false);
-  const dialogRef = useRef<HTMLDivElement>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
   const titleId = useId();
-  const listId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
 
-  const activeCollection = useMemo(
-    () =>
-      collections.find((collection) => collection.id === activeCollectionId),
-    [activeCollectionId, collections],
-  );
-
-  const refreshServerCollections = useCallback(async () => {
-    if (!serverKnowledgeEnabled) return;
-
-    setServerLoading(true);
-    setServerError("");
+  const refreshCollections = useCallback(async () => {
+    setLoading(true);
+    setError("");
     try {
-      const page = await apiClient.knowledge.listCollections({ limit: 100 });
-      setServerCollections(page.items);
-    } catch (error) {
-      logDevError("Failed to load server knowledge collections", error);
-      setServerError(t("serverLoadCollectionsFailed"));
+      const response = await apiClient.knowledge.listCollections({
+        limit: 100,
+      });
+      setCollections(response.items);
+    } catch (cause) {
+      logDevError("Failed to load server knowledge collections", cause);
+      setError(t("serverLoadCollectionsFailed"));
     } finally {
-      setServerLoading(false);
+      setLoading(false);
     }
-  }, [apiClient, serverKnowledgeEnabled, t]);
+  }, [apiClient, t]);
 
   useEffect(() => {
-    void refreshServerCollections();
-  }, [refreshServerCollections]);
-
-  const toggleSelection = (key: string) => {
-    const isSelected = selectedKeys.has(key);
-    if (
-      !isSelected &&
-      serverKnowledgeEnabled &&
-      key.startsWith("collection:") &&
-      Array.from(selectedKeys).filter((item) => item.startsWith("collection:"))
-        .length >= maxSelectedCollections
-    ) {
-      setSelectionError(t("selectionLimit", { max: maxSelectedCollections }));
-      return;
-    }
-
-    setSelectedKeys((currentKeys) => {
-      const nextKeys = new Set(currentKeys);
-      if (nextKeys.has(key)) nextKeys.delete(key);
-      else nextKeys.add(key);
-      return nextKeys;
-    });
-    setSelectionError("");
-  };
-
-  const handleConfirm = async () => {
-    const selectedAttachments: Attachment[] = [];
-
-    if (serverKnowledgeEnabled) {
-      const collectionIds = Array.from(selectedKeys)
-        .filter((key) => key.startsWith("collection:"))
-        .map((key) => key.slice("collection:".length))
-        .slice(0, maxSelectedCollections);
-      if (onSelectCollections) {
-        setIsSavingSelection(true);
-        setSelectionError("");
-        try {
-          await onSelectCollections(collectionIds);
-          onClose();
-        } catch (error) {
-          logDevError("Failed to save conversation knowledge selection", error);
-          setSelectionError(t("saveSelectionFailed"));
-        } finally {
-          setIsSavingSelection(false);
-        }
-        return;
-      }
-
-      for (const key of selectedKeys) {
-        if (!key.startsWith("collection:")) continue;
-        const collectionId = key.slice("collection:".length);
-        const collection = serverCollections.find(
-          (item) => item.id === collectionId,
-        );
-        if (!collection) continue;
-        selectedAttachments.push(
-          createKnowledgeCollectionAttachment({
-            collectionId: collection.id,
-            collectionName: collection.name,
-          }),
-        );
-      }
-
-      onSelect?.(selectedAttachments);
-      onClose();
-      return;
-    }
-
-    for (const key of selectedKeys) {
-      if (key.startsWith("collection:")) {
-        const collectionId = key.slice("collection:".length);
-        const collection = collections.find((item) => item.id === collectionId);
-        if (!collection) continue;
-        selectedAttachments.push(
-          createKnowledgeCollectionAttachment({
-            collectionId: collection.id,
-            collectionName: collection.name,
-          }),
-        );
-        continue;
-      }
-
-      if (key.startsWith("file:")) {
-        const [, collectionId, fileId] = key.split(":");
-        const collection = collections.find((item) => item.id === collectionId);
-        const file = collection?.files.find((item) => item.id === fileId);
-        if (!collection || !file) continue;
-        selectedAttachments.push(
-          createKnowledgeFileAttachment({
-            collectionId: collection.id,
-            fileId: file.id,
-            fileName: file.name,
-          }),
-        );
-      }
-    }
-
-    onSelect?.(selectedAttachments);
-    onClose();
-  };
-
-  const renderSelectionDot = (isSelected: boolean) => (
-    <span
-      aria-hidden="true"
-      className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${
-        isSelected
-          ? "bg-purple-500 border-purple-500 text-white"
-          : "border-gray-300 dark:border-input"
-      }`}
-    >
-      {isSelected && <Check size={12} strokeWidth={3} />}
-    </span>
-  );
-
-  const renderCollectionRow = (collection: Collection) => {
-    const key = collectionKey(collection.id);
-    const isSelected = selectedKeys.has(key);
-
-    return (
-      <div
-        key={collection.id}
-        className={`flex items-center gap-2 rounded-xl border p-2 transition-[background-color,border-color,box-shadow] ${
-          isSelected
-            ? "bg-purple-50 dark:bg-purple-900/20 border-purple-500/50"
-            : "bg-white dark:bg-muted border-gray-200 dark:border-border hover:border-purple-300 dark:hover:border-purple-700"
-        }`}
-      >
-        <button
-          type="button"
-          aria-label={
-            isSelected
-              ? t("unselectCollectionAria", { name: collection.name })
-              : t("selectCollectionAria", { name: collection.name })
-          }
-          aria-pressed={isSelected}
-          onClick={() => toggleSelection(key)}
-          className={`shrink-0 rounded-lg p-1 ${menuItemFocusClass}`}
-        >
-          {renderSelectionDot(isSelected)}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveCollectionId(collection.id)}
-          className={`flex min-w-0 flex-1 items-center rounded-lg p-1 text-left ${menuItemFocusClass}`}
-        >
-          <span
-            aria-hidden="true"
-            className={`w-10 h-10 rounded-lg flex items-center justify-center mr-3 ${
-              isSelected
-                ? "bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300"
-                : "bg-gray-100 text-gray-500 dark:bg-accent dark:text-muted-foreground"
-            }`}
-          >
-            <Folder size={20} aria-hidden="true" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium text-gray-800 dark:text-foreground">
-              {collection.name}
-            </span>
-            <span className="flex min-w-0 items-center gap-2 text-xs text-gray-500 dark:text-muted-foreground">
-              <span className="flex shrink-0 items-center gap-1">
-                <FileText size={10} aria-hidden="true" />
-                {t("fileCount", { count: collection.files.length })}
-              </span>
-              <span aria-hidden="true">-</span>
-              <span className="truncate">
-                {collection.description || t("noDescription")}
-              </span>
-            </span>
-          </span>
-          <ChevronRight
-            size={16}
-            className="ml-2 shrink-0 text-gray-400"
-            aria-hidden="true"
-          />
-        </button>
-      </div>
-    );
-  };
-
-  const renderServerCollectionRow = (collection: KnowledgeCollectionDTO) => {
-    const key = collectionKey(collection.id);
-    const isSelected = selectedKeys.has(key);
-
-    return (
-      <button
-        key={collection.id}
-        type="button"
-        aria-label={
-          isSelected
-            ? t("unselectCollectionAria", { name: collection.name })
-            : t("selectCollectionAria", { name: collection.name })
-        }
-        aria-pressed={isSelected}
-        onClick={() => toggleSelection(key)}
-        className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors ${menuItemFocusClass} ${
-          isSelected
-            ? "border-purple-500/50 bg-purple-50 dark:bg-purple-900/20"
-            : "border-gray-200 bg-white hover:border-purple-300 dark:border-border dark:bg-muted"
-        }`}
-      >
-        {renderSelectionDot(isSelected)}
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300">
-          <Folder size={20} aria-hidden="true" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium text-gray-800 dark:text-foreground">
-            {collection.name}
-          </span>
-          <span className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-muted-foreground">
-            <span className="rounded-full border border-border bg-muted px-2 py-0.5">
-              {t(collectionScopeLabelKey(collection.scope))}
-            </span>
-            {collection.permissions.manageConsent && (
-              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
-                {t("serverCanManage")}
-              </span>
-            )}
-            <span className="truncate">
-              {collection.description || t("noDescription")}
-            </span>
-          </span>
-        </span>
-      </button>
-    );
-  };
-
-  const renderFileRow = (collection: Collection) => {
-    const collectionSelectionKey = collectionKey(collection.id);
-    const isCollectionSelected = selectedKeys.has(collectionSelectionKey);
-
-    return (
-      <div className="space-y-2">
-        <button
-          type="button"
-          aria-pressed={isCollectionSelected}
-          onClick={() => toggleSelection(collectionSelectionKey)}
-          className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors ${menuItemFocusClass} ${
-            isCollectionSelected
-              ? "border-purple-500/50 bg-purple-50 dark:bg-purple-900/20"
-              : "border-gray-200 bg-white hover:border-purple-300 dark:border-border dark:bg-muted"
-          }`}
-        >
-          {renderSelectionDot(isCollectionSelected)}
-          <Folder size={18} className="text-purple-500" aria-hidden="true" />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium text-gray-800 dark:text-foreground">
-              {t("selectEntireCollection")}
-            </span>
-            <span className="block truncate text-xs text-gray-500 dark:text-muted-foreground">
-              {collection.name}
-            </span>
-          </span>
-        </button>
-
-        {collection.files.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-200 p-8 text-center text-sm text-gray-400 dark:border-border">
-            {t("noDocuments")}
-          </div>
-        ) : (
-          collection.files.map((file) => {
-            const key = fileKey(collection.id, file.id);
-            const isSelected = selectedKeys.has(key);
-            return (
-              <button
-                type="button"
-                key={file.id}
-                aria-pressed={isSelected}
-                onClick={() => toggleSelection(key)}
-                className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors ${menuItemFocusClass} ${
-                  isSelected
-                    ? "border-purple-500/50 bg-purple-50 dark:bg-purple-900/20"
-                    : "border-gray-200 bg-white hover:border-purple-300 dark:border-border dark:bg-muted"
-                }`}
-              >
-                {renderSelectionDot(isSelected)}
-                <FileText
-                  size={18}
-                  className="text-blue-500"
-                  aria-hidden="true"
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium text-gray-800 dark:text-foreground">
-                    {file.name}
-                  </span>
-                  <span className="block truncate text-xs text-gray-500 dark:text-muted-foreground">
-                    {file.status}
-                  </span>
-                </span>
-              </button>
-            );
-          })
-        )}
-      </div>
-    );
-  };
+    void refreshCollections();
+  }, [refreshCollections]);
 
   useEffect(() => {
-    const previouslyFocused = document.activeElement as HTMLElement | null;
-    const focusableSelector =
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
-
-    const focusFirst = () => {
-      const focusable =
-        dialogRef.current?.querySelectorAll<HTMLElement>(focusableSelector);
-      focusable?.[0]?.focus();
-    };
-
+    const previous = document.activeElement as HTMLElement | null;
+    dialogRef.current?.focus({ preventScroll: true });
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onClose();
-        return;
-      }
-
-      if (event.key !== "Tab") return;
-
-      const focusable = Array.from(
-        dialogRef.current?.querySelectorAll<HTMLElement>(focusableSelector) ||
-          [],
-      ).filter((el) => !el.hasAttribute("disabled"));
-      if (focusable.length === 0) return;
-
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
+      if (event.key === "Escape") onClose();
     };
-
     window.addEventListener("keydown", handleKeyDown);
-    queueMicrotask(focusFirst);
-
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
-      previouslyFocused?.focus?.();
+      previous?.focus?.({ preventScroll: true });
     };
   }, [onClose]);
 
+  const toggleCollection = (collectionId: string) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(collectionId)) {
+        next.delete(collectionId);
+        setError("");
+        return next;
+      }
+      if (next.size >= maxSelectedCollections) {
+        setError(t("selectionLimit", { max: maxSelectedCollections }));
+        return current;
+      }
+      next.add(collectionId);
+      setError("");
+      return next;
+    });
+  };
+
+  const confirmSelection = async () => {
+    const collectionIds = Array.from(selectedIds).slice(
+      0,
+      maxSelectedCollections,
+    );
+    setSaving(true);
+    setError("");
+    try {
+      await onSelectCollections(collectionIds);
+      onClose();
+    } catch (cause) {
+      logDevError("Failed to save conversation knowledge selection", cause);
+      setError(t("saveSelectionFailed"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return createPortal(
     <div
-      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/20 dark:bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/20 p-4 backdrop-blur-sm dark:bg-black/60"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -460,116 +122,127 @@ const KnowledgeSelectionModal: React.FC<KnowledgeSelectionModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="glass-popover w-full max-w-lg rounded-2xl border flex flex-col max-h-[80vh]"
+        tabIndex={-1}
+        className="glass-popover flex max-h-[82vh] w-full max-w-xl flex-col rounded-2xl border outline-none"
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200/50 dark:border-border">
-          <div className="min-w-0">
-            <h3
-              id={titleId}
-              className="text-lg font-bold text-gray-800 dark:text-foreground flex items-center gap-2"
-            >
-              <Library
-                size={20}
-                className="text-purple-500"
-                aria-hidden="true"
-              />
-              {t("selectKnowledgeBase")}
-            </h3>
-            {!serverKnowledgeEnabled && activeCollection ? (
-              <button
-                type="button"
-                onClick={() => setActiveCollectionId(null)}
-                className={`mt-1 inline-flex max-w-full items-center gap-1 text-xs text-gray-500 hover:text-purple-600 dark:text-muted-foreground dark:hover:text-purple-300 ${menuItemFocusClass}`}
-              >
-                <ChevronLeft size={12} aria-hidden="true" />
-                <span className="truncate">{activeCollection.name}</span>
-              </button>
-            ) : null}
-          </div>
+        <div className="flex items-center justify-between border-b border-gray-200/50 px-5 py-4 dark:border-border">
+          <h3
+            id={titleId}
+            className="flex items-center gap-2 text-lg font-semibold"
+          >
+            <Library size={20} className="text-purple-500" aria-hidden="true" />
+            {t("selectKnowledgeBase")}
+          </h3>
           <button
             type="button"
             aria-label={t("closeSelection")}
             onClick={onClose}
-            className="p-1.5 hover:bg-gray-200/50 dark:hover:bg-accent/50 rounded-full transition-colors text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/60"
+            className="rounded-full p-1.5 text-gray-500 hover:bg-gray-200/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/60 dark:hover:bg-accent/50"
           >
             <X size={18} aria-hidden="true" />
           </button>
         </div>
 
-        <div
-          id={listId}
-          className="p-4 overflow-y-auto custom-scrollbar flex-1 space-y-2"
-          aria-label={t("collectionsLabel")}
-        >
-          {selectionError ? (
-            <div
-              role="status"
-              className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
-            >
-              {selectionError}
-            </div>
-          ) : null}
-          {serverKnowledgeEnabled ? (
-            serverLoading ? (
-              <div className="py-10 text-center text-gray-400">
-                <p>{t("serverLoadingCollections")}</p>
-              </div>
-            ) : serverError ? (
-              <div
-                role="status"
-                className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200"
-              >
-                {serverError}
-              </div>
-            ) : serverCollections.length === 0 ? (
-              <div className="py-10 text-center text-gray-400">
-                <p>{t("serverNoCollections")}</p>
-                <p className="mt-1 text-xs">{t("createCollectionFirst")}</p>
-              </div>
-            ) : (
-              serverCollections.map(renderServerCollectionRow)
-            )
-          ) : collections.length === 0 ? (
-            <div className="text-center py-10 text-gray-400">
-              <p>{t("noCollectionsFound")}</p>
-              <p className="text-xs mt-1">{t("createCollectionFirst")}</p>
-            </div>
-          ) : activeCollection ? (
-            renderFileRow(activeCollection)
-          ) : (
-            collections.map(renderCollectionRow)
-          )}
-        </div>
-
-        <div className="p-5 border-t border-gray-200/50 dark:border-border bg-gray-50/50 dark:bg-card/50 flex items-center justify-between gap-3 rounded-b-2xl">
-          <span className="text-xs text-gray-500 dark:text-muted-foreground">
-            {t("selectedCount", { count: selectedKeys.size })}
-          </span>
-          <div className="flex gap-3">
+        <div className="custom-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs text-gray-500 dark:text-muted-foreground">
+              {t("selectedCount", { count: selectedIds.size })}
+            </span>
             <button
               type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-muted-foreground hover:bg-white dark:hover:bg-muted rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/60"
+              onClick={() => void refreshCollections()}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/60 disabled:opacity-50 dark:text-muted-foreground dark:hover:bg-muted"
             >
-              {t("cancel")}
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleConfirm()}
-              disabled={
-                isSavingSelection ||
-                (!serverKnowledgeEnabled && selectedKeys.size === 0)
-              }
-              className="px-6 py-2 text-sm bg-purple-600 hover:bg-purple-700 text-white rounded-xl shadow-lg shadow-purple-500/20 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/60"
-            >
-              <Check size={16} aria-hidden="true" />
-              {isSavingSelection
-                ? t("savingSelection")
-                : serverKnowledgeEnabled
-                  ? t("saveSelection")
-                  : t("attachSelected")}
+              <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+              {t("serverRefreshCollections")}
             </button>
           </div>
+
+          {loading ? (
+            <div
+              role="status"
+              className="flex items-center justify-center gap-2 py-10 text-sm text-gray-500"
+            >
+              <Loader2 size={18} className="animate-spin" aria-hidden="true" />
+              {t("serverLoadingCollections")}
+            </div>
+          ) : collections.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-gray-200 py-10 text-center text-sm text-gray-500 dark:border-border">
+              {t("serverNoCollections")}
+            </div>
+          ) : (
+            collections.map((collection) => {
+              const selected = selectedIds.has(collection.id);
+              return (
+                <button
+                  key={collection.id}
+                  type="button"
+                  aria-pressed={selected}
+                  aria-label={
+                    selected
+                      ? t("unselectCollectionAria", { name: collection.name })
+                      : t("selectCollectionAria", { name: collection.name })
+                  }
+                  onClick={() => toggleCollection(collection.id)}
+                  className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/60 ${
+                    selected
+                      ? "border-purple-500/50 bg-purple-50 dark:bg-purple-900/20"
+                      : "border-gray-200 bg-white hover:border-purple-300 dark:border-border dark:bg-muted"
+                  }`}
+                >
+                  <span
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${selected ? "border-purple-500 bg-purple-500 text-white" : "border-gray-300 dark:border-input"}`}
+                  >
+                    {selected ? <Check size={12} strokeWidth={3} /> : null}
+                  </span>
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300">
+                    <Folder size={20} aria-hidden="true" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">
+                      {collection.name}
+                    </span>
+                    <span className="mt-1 block truncate text-xs text-gray-500 dark:text-muted-foreground">
+                      {collection.description || t("noDescription")}
+                    </span>
+                  </span>
+                </button>
+              );
+            })
+          )}
+
+          {error ? (
+            <div
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200"
+            >
+              {error}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex justify-end gap-3 border-t border-gray-200/50 p-5 dark:border-border">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/60 dark:text-muted-foreground dark:hover:bg-muted"
+          >
+            {t("cancel")}
+          </button>
+          <button
+            type="button"
+            onClick={() => void confirmSelection()}
+            disabled={saving}
+            className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-5 py-2 text-sm font-medium text-white hover:bg-purple-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/60 disabled:opacity-50"
+          >
+            {saving ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <Check size={15} />
+            )}
+            {saving ? t("savingSelection") : t("saveSelection")}
+          </button>
         </div>
       </div>
     </div>,

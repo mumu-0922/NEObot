@@ -8,15 +8,15 @@ consume before server import code is written.
 Current browser data is split across `localStorage`, IndexedDB via
 `localforage`, and OPFS file bytes.
 
-| Area | Current source | Evidence |
-| --- | --- | --- |
-| Core settings | `localStorage` key `neo-chat-core-settings` | `src/store/storage/storageConfig.ts` |
-| App settings | IndexedDB/localforage key `neo-chat-settings` | `src/store/storage/storageConfig.ts` |
-| Chat metadata | IndexedDB/localforage key `neo-chat-storage` | `src/store/core/chatStore.ts` |
-| Per-session messages | IndexedDB/localforage key `session_messages_{sessionId}` | `src/components/layout/Sidebar.tsx` |
-| Knowledge metadata | IndexedDB/localforage key `knowledge-storage` | `src/store/core/knowledgeStore.ts` |
-| Memory metadata | IndexedDB/localforage key `neo-chat-memory` | `src/store/core/memoryStore.ts` |
-| File bytes | OPFS under `chat/`, `images/`, `knowledge-base/`, `workspaces/` | `src/utils/opfs.ts`, `src/lib/data/appExport.ts` |
+| Area                 | Current source                                                  | Evidence                                                          |
+| -------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Core settings        | `localStorage` key `neo-chat-core-settings`                     | `src/store/storage/storageConfig.ts`                              |
+| App settings         | IndexedDB/localforage key `neo-chat-settings`                   | `src/store/storage/storageConfig.ts`                              |
+| Chat metadata        | IndexedDB/localforage key `neo-chat-storage`                    | `src/store/core/chatStore.ts`                                     |
+| Per-session messages | IndexedDB/localforage key `session_messages_{sessionId}`        | `src/components/layout/Sidebar.tsx`                               |
+| Knowledge metadata   | IndexedDB/localforage key `knowledge-storage`                   | `src/store/storage/storageConfig.ts`, `src/lib/data/appExport.ts` |
+| Memory metadata      | IndexedDB/localforage key `neo-chat-memory`                     | `src/store/core/memoryStore.ts`                                   |
+| File bytes           | OPFS under `chat/`, `images/`, `knowledge-base/`, `workspaces/` | `src/utils/opfs.ts`, `src/lib/data/appExport.ts`                  |
 
 ## Existing Full-App JSON Export
 
@@ -61,19 +61,19 @@ state before writing a JSON download.
 
 ## Local Chat Shapes Relevant to Import
 
-| Local field | Import meaning |
-| --- | --- |
-| `Session.id` | Client-only stable ID used for mapping; server generates UUIDs. |
-| `Session.title` | Conversation title. |
-| `Session.updatedAt` | Milliseconds timestamp; convert to UTC RFC3339. |
-| `Session.model` | Parse into provider/model when possible; otherwise keep as metadata. |
-| `Session.systemInstruction` | Maps to conversation `system_prompt`. |
-| `Session.workspaceId` | Optional grouping metadata; workspaces are not canonical server objects yet. |
-| `Message.role = "model"` | Maps to server role `assistant`. |
-| `Message.timestamp` | Milliseconds timestamp; convert to `created_at`/`completed_at`. |
+| Local field                                               | Import meaning                                                                        |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `Session.id`                                              | Client-only stable ID used for mapping; server generates UUIDs.                       |
+| `Session.title`                                           | Conversation title.                                                                   |
+| `Session.updatedAt`                                       | Milliseconds timestamp; convert to UTC RFC3339.                                       |
+| `Session.model`                                           | Parse into provider/model when possible; otherwise keep as metadata.                  |
+| `Session.systemInstruction`                               | Maps to conversation `system_prompt`.                                                 |
+| `Session.workspaceId`                                     | Optional grouping metadata; workspaces are not canonical server objects yet.          |
+| `Message.role = "model"`                                  | Maps to server role `assistant`.                                                      |
+| `Message.timestamp`                                       | Milliseconds timestamp; convert to `created_at`/`completed_at`.                       |
 | `Message.outputBlocks`, `reasoning`, `usage`, `toolCalls` | Preserve in `output_blocks` or scrubbed metadata; do not execute tools during import. |
-| `Attachment.url = opfs://...` | Needs a matching manifest `blobPath` entry and ZIP blob, or a preview warning. |
-| `Attachment.data` | Small inline legacy data; convert to file when size is acceptable. |
+| `Attachment.url = opfs://...`                             | Needs a matching manifest `blobPath` entry and ZIP blob, or a preview warning.        |
+| `Attachment.data`                                         | Small inline legacy data; convert to file when size is acceptable.                    |
 
 ## OPFS Import Risks
 

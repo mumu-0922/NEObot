@@ -223,9 +223,9 @@ func TestNormalizeMetricPathBoundsRAGAdministratorRoutes(t *testing.T) {
 	tests := map[string]string{
 		"/v1/admin/rag/providers":                 "/v1/admin/rag/providers",
 		"/v1/admin/rag/providers/jina":            "/v1/admin/rag/providers/{provider}",
-		"/v1/admin/rag/providers/jina/activate":   "/v1/admin/rag/providers/{provider}/{action}",
 		"/v1/admin/rag/providers/jina/configure":  "/v1/admin/rag/providers/{provider}/{action}",
-		"/v1/admin/rag/providers/mineru/test":     "/v1/admin/rag/providers/{provider}/{action}",
+		"/v1/admin/rag/providers/jina/activate":   unknownMetricPath,
+		"/v1/admin/rag/providers/mineru/test":     unknownMetricPath,
 		"/v1/admin/rag/providers/jina/credential": unknownMetricPath,
 	}
 	for input, want := range tests {

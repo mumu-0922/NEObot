@@ -13,16 +13,10 @@ describe("service health status", () => {
     vi.stubEnv("ACCESS_PASSWORD", "access-secret");
     vi.stubEnv("BYOK_PRIVATE_KEY_PEM", "private-key-secret");
     vi.stubEnv("RATE_LIMIT_STORE", "upstash");
-    vi.stubEnv("DOCUMENT_PARSE_JOB_STORE", "upstash");
     vi.stubEnv("PLUGIN_REGISTRY_STORE", "upstash");
     vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://redis.internal");
     vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "redis-secret");
     vi.stubEnv("DEFAULT_PROVIDER_API_KEY", "provider-secret");
-    vi.stubEnv("DEFAULT_RAG_BASE_URL", "https://rag.internal");
-    vi.stubEnv("DEFAULT_RAG_TOKEN", "rag-secret");
-    vi.stubEnv("DEFAULT_DOCUMENT_PARSE_PROVIDER", "mineru");
-    vi.stubEnv("DEFAULT_MINERU_API_TOKEN", "mineru-secret");
-    vi.stubEnv("DEFAULT_LLAMA_PARSE_API_KEY", "llama-secret");
     vi.stubEnv("DEFAULT_VOICE_PROVIDER", "elevenlabs");
     vi.stubEnv("DEFAULT_ELEVENLABS_API_KEY", "voice-secret");
     vi.stubEnv("DEFAULT_ELEVENLABS_TTS_MODEL", "eleven_flash_v2_5");
@@ -38,7 +32,6 @@ describe("service health status", () => {
     expect(health.services.pluginRegistry.status).toBe("available");
     expect(health.services.defaultModel.status).toBe("unconfigured");
     expect(health.services.search.status).toBe("unconfigured");
-    expect(health.services.rag.status).toBe("available");
     expect(health.services.voice.status).toBe("available");
     for (const secret of [
       "access-secret",
@@ -46,9 +39,6 @@ describe("service health status", () => {
       "redis-secret",
       "redis.internal",
       "provider-secret",
-      "rag-secret",
-      "mineru-secret",
-      "llama-secret",
       "voice-secret",
     ]) {
       expect(serialized).not.toContain(secret);
@@ -69,21 +59,9 @@ describe("service health status", () => {
     });
   });
 
-  it("marks Mineru no-token document parsing as available by default", async () => {
-    const { getServiceHealthStatus } =
-      await import("../lib/services/serviceHealth");
-    const health = getServiceHealthStatus({ now: 1_700_000_000_000 });
-
-    expect(health.services.rag).toMatchObject({
-      status: "available",
-      code: "RAG_CONFIGURED",
-    });
-  });
-
   it("marks hosted missing shared stores as policy blocked", async () => {
     vi.stubEnv("DEPLOYMENT_MODE", "hosted");
     vi.stubEnv("RATE_LIMIT_STORE", "memory");
-    vi.stubEnv("DOCUMENT_PARSE_JOB_STORE", "memory");
     vi.stubEnv("PLUGIN_REGISTRY_STORE", "memory");
 
     const { getServiceHealthStatus } =

@@ -1,16 +1,10 @@
-import type {
-  ModelProvider,
-  PluginConfig,
-  RAGConfig,
-  VoiceSettings,
-} from "../../types";
+import type { ModelProvider, PluginConfig, VoiceSettings } from "../../types";
 import {
   encryptLocalSecret,
   hasLocalSecret,
   LOCAL_SECRET_CONTEXTS,
   type LocalEncryptedSecretEnvelope,
 } from "../security/localSecrets";
-import { normalizeRAGConfig } from "./searchRag";
 
 export async function migrateLocalSecretField(
   plainSecret: string | undefined,
@@ -47,35 +41,6 @@ export function stripProviderPlainSecret(
   return {
     ...provider,
     apiKey: "",
-  };
-}
-
-export async function migrateRAGLocalSecrets(rag: unknown): Promise<RAGConfig> {
-  const normalized = normalizeRAGConfig(rag);
-  const tokenSecret = await migrateLocalSecretField(
-    normalized.token,
-    normalized.tokenSecret,
-    LOCAL_SECRET_CONTEXTS.ragToken,
-  );
-  const mineruApiTokenSecret = await migrateLocalSecretField(
-    normalized.mineruApiToken,
-    normalized.mineruApiTokenSecret,
-    LOCAL_SECRET_CONTEXTS.mineruApiToken,
-  );
-  const llamaParseApiKeySecret = await migrateLocalSecretField(
-    normalized.llamaParseApiKey,
-    normalized.llamaParseApiKeySecret,
-    LOCAL_SECRET_CONTEXTS.llamaParseApiKey,
-  );
-
-  return {
-    ...normalized,
-    token: "",
-    mineruApiToken: "",
-    llamaParseApiKey: "",
-    ...(tokenSecret ? { tokenSecret } : {}),
-    ...(mineruApiTokenSecret ? { mineruApiTokenSecret } : {}),
-    ...(llamaParseApiKeySecret ? { llamaParseApiKeySecret } : {}),
   };
 }
 
@@ -144,15 +109,6 @@ export async function migratePluginConfigLocalSecrets(
   );
 
   return Object.fromEntries(migratedEntries);
-}
-
-export function stripRAGPlainSecrets(rag: RAGConfig): RAGConfig {
-  return {
-    ...rag,
-    token: "",
-    mineruApiToken: "",
-    llamaParseApiKey: "",
-  };
 }
 
 export function stripVoicePlainSecrets(voice: VoiceSettings): VoiceSettings {

@@ -9,9 +9,7 @@ src/services/
 ├── api/
 │   ├── agentService.ts
 │   ├── chatService.ts
-│   ├── docParseService.ts
 │   ├── pluginService.ts
-│   ├── ragService.ts
 │   ├── skillService.ts
 │   └── voiceService.ts
 ├── artifactService.ts
@@ -26,7 +24,7 @@ Handles chat generation workflows from the browser side:
 
 - Streams chat responses.
 - Executes model tool calls through plugin utilities.
-- Generates titles, related questions, RAG search queries, and image outputs.
+- Generates titles, related questions, and image outputs.
 - Prepares history for model APIs.
 - Adds applied skill context and local memory context when enabled by the chat workflow.
 - Runs background context compression.
@@ -35,11 +33,6 @@ Handles chat generation workflows from the browser side:
 ### `agentService.ts`
 
 Fetches assistant marketplace data and assistant details from app API routes.
-
-### `ragService.ts`
-
-Fail-closed compatibility shim for the retired local Next RAG routes. Server
-Knowledge/RAG calls go through the typed Go API client instead.
 
 ### `voiceService.ts`
 
@@ -53,12 +46,6 @@ Fetches plugin marketplace data and installs plugin manifests.
 
 Loads localized text-only skill catalogs, fetches full skill definitions on demand, merges built-in and custom skills, and resolves active skills for a message.
 
-### `docParseService.ts`
-
-Fail-closed compatibility shim for the retired local Next document parsing
-routes. Server document upload/indexing goes through the typed Go API client
-instead.
-
 ## Client-Only Services
 
 ### `artifactService.ts`
@@ -68,6 +55,8 @@ Manages generated artifact creation, editing, continuation, transformation, and 
 ## Design Boundaries
 
 - Components should call services rather than embedding fetch logic directly.
+- Knowledge upload, indexing, retrieval, and citations use the typed Go API
+  client; browser services do not parse or query documents locally.
 - Services may read local settings when a workflow requires browser-owned data.
 - Sensitive user-entered secrets should travel as encrypted BYOK envelopes.
 - Server-only validation and proxy policy should stay in `src/app/api` and `src/lib/security`.

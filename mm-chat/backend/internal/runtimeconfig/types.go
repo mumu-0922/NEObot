@@ -14,7 +14,6 @@ const (
 type PublicConfig struct {
 	ModelProvider ModelProviderConfig `json:"modelProvider"`
 	Search        SearchConfig        `json:"search"`
-	RAG           RAGConfig           `json:"rag"`
 	Voice         VoiceConfig         `json:"voice"`
 	Deployment    DeploymentConfig    `json:"deployment"`
 }
@@ -34,11 +33,6 @@ type SearchConfig struct {
 	Available bool `json:"available"`
 }
 
-type RAGConfig struct {
-	VectorStoreAvailable        bool `json:"vectorStoreAvailable"`
-	DocumentProcessingAvailable bool `json:"documentProcessingAvailable"`
-}
-
 type VoiceConfig struct {
 	ElevenLabsAvailable bool `json:"elevenLabsAvailable"`
 	MimoAvailable       bool `json:"mimoAvailable"`
@@ -53,7 +47,6 @@ type DeploymentConfig struct {
 	BYOKStableKeyConfigured bool   `json:"byokStableKeyConfigured"`
 	BYOKEphemeralAllowed    bool   `json:"byokEphemeralAllowed"`
 	RateLimitStore          string `json:"rateLimitStore"`
-	DocumentParseJobStore   string `json:"documentParseJobStore"`
 	PluginRegistryStore     string `json:"pluginRegistryStore"`
 }
 

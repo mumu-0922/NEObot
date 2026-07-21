@@ -2,23 +2,12 @@ import { v7 as uuidv7 } from "uuid";
 import type { Attachment, Message, Source } from "../../types";
 import type { ModelInfo } from "@/services/api/chatService";
 import {
-  isIndexedKnowledgeFileAttachment,
-  processRAGAttachments,
-  processLocalKBAttachments,
-} from "../utils/rag";
-import {
   separateKBAttachments,
   processAttachmentsForModel,
 } from "../utils/attachments";
-import {
-  createKnowledgeCollectionAttachment,
-  getKnowledgeAttachmentSelectionKey,
-  isKnowledgeFileAttachment,
-} from "../utils/knowledgeAttachments";
 import { parseModelString } from "../utils/model";
 import { resolveOPFSUrl } from "../../utils/opfs";
 import { appendContextToChatInput } from "../utils/chatInput";
-import { hasRagVectorStore } from "../security/localSecretResolvers";
 
 export interface ProcessMessageOptions {
   text: string;
@@ -26,16 +15,6 @@ export interface ProcessMessageOptions {
   selectedModel: string;
   modelMetadata: Record<string, any>;
   customModelMetadata: Record<string, any>;
-  ragConfig: {
-    enabled: boolean;
-    url?: string;
-    token?: string;
-    tokenSecret?: unknown;
-    useDefaultVectorStore?: boolean;
-    serverVectorStoreAvailable?: boolean;
-  };
-  knowledgeCollections: any[];
-  workspaceKnowledgeCollectionIds?: string[];
 }
 
 export interface ProcessedMessageData {
@@ -57,80 +36,18 @@ export async function processMessageForSending(
     selectedModel,
     modelMetadata,
     customModelMetadata,
-    ragConfig,
-    knowledgeCollections,
-    workspaceKnowledgeCollectionIds = [],
   } = options;
 
   let finalText = text;
   let convertedContent = "";
-  let ragSources: Source[] = [];
   const finalAttachments: Attachment[] = [];
 
-  // Separate KB and other attachments
-  const { kbAttachments, otherAttachments } =
-    separateKBAttachments(attachments);
-  const workspaceKBAttachments = workspaceKnowledgeCollectionIds.map((id) => {
-    const collection = knowledgeCollections.find((item) => item.id === id);
-    return createKnowledgeCollectionAttachment({
-      collectionId: id,
-      collectionName: collection?.name || id,
-    });
-  });
-  const allKBAttachments: Attachment[] = [];
-  const seenKnowledgeKeys = new Set<string>();
-  for (const attachment of [...kbAttachments, ...workspaceKBAttachments]) {
-    const key = getKnowledgeAttachmentSelectionKey(attachment);
-    if (!key || seenKnowledgeKeys.has(key)) continue;
-    seenKnowledgeKeys.add(key);
-    allKBAttachments.push(attachment);
-  }
+  const { otherAttachments } = separateKBAttachments(attachments);
 
   // Check model capability
   const { modelName: modelId } = parseModelString(selectedModel);
   const meta = customModelMetadata[modelId] || modelMetadata[modelId];
   const supportAttachment = meta ? (meta.attachment ?? false) : true;
-
-  // Process RAG attachments
-  const hasKB = allKBAttachments.length > 0;
-  const isRagServiceEnabled = ragConfig.enabled && hasRagVectorStore(ragConfig);
-
-  if (hasKB && isRagServiceEnabled) {
-    const fileAttachments = allKBAttachments.filter(isKnowledgeFileAttachment);
-
-    const ragResult = await processRAGAttachments(
-      text,
-      allKBAttachments,
-      ragConfig,
-      supportAttachment,
-      knowledgeCollections,
-    );
-    convertedContent += ragResult.convertedContent;
-    finalAttachments.push(...ragResult.finalAttachments);
-    ragSources = ragResult.ragSources;
-
-    const localFileAttachments = fileAttachments.filter(
-      (attachment) =>
-        !isIndexedKnowledgeFileAttachment(attachment, knowledgeCollections),
-    );
-    if (localFileAttachments.length > 0) {
-      const localResult = await processLocalKBAttachments(
-        localFileAttachments,
-        knowledgeCollections,
-        supportAttachment,
-      );
-      convertedContent += localResult.convertedContent;
-      finalAttachments.push(...localResult.finalAttachments);
-    }
-  } else if (hasKB && !isRagServiceEnabled) {
-    const localResult = await processLocalKBAttachments(
-      allKBAttachments,
-      knowledgeCollections,
-      supportAttachment,
-    );
-    convertedContent += localResult.convertedContent;
-    finalAttachments.push(...localResult.finalAttachments);
-  }
 
   // Process other attachments
   const attachmentResult = await processAttachmentsForModel(
@@ -156,7 +73,7 @@ export async function processMessageForSending(
   return {
     finalText,
     finalAttachments,
-    ragSources,
+    ragSources: [],
     userMessage,
   };
 }

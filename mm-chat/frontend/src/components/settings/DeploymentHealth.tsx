@@ -110,7 +110,6 @@ const DeploymentHealth: React.FC = () => {
   const deploymentMode = deployment?.mode || "local";
   const sharedStoresOk =
     deployment?.rateLimitStore === "shared" &&
-    deployment.documentParseJobStore === "shared" &&
     deployment.pluginRegistryStore === "shared";
   const hasUsableModel =
     Boolean(serverConfig?.modelProvider.available) ||
@@ -135,11 +134,9 @@ const DeploymentHealth: React.FC = () => {
     runtimeToHealthState(runtimeServices?.[service]?.status);
   const runtimeStoreState = runtimeServices
     ? strongestHealthState(
-        [
-          runtimeState("rateLimitStore"),
-          runtimeState("documentParseJobStore"),
-          runtimeState("pluginRegistry"),
-        ].filter((state): state is HealthState => Boolean(state)),
+        [runtimeState("rateLimitStore"), runtimeState("pluginRegistry")].filter(
+          (state): state is HealthState => Boolean(state),
+        ),
       )
     : null;
 
