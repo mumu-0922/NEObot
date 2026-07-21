@@ -80,4 +80,22 @@ describe("chat scroll follow", () => {
       "motion-safe:scroll-smooth scrollbar-overlay",
     );
   });
+
+  it("keeps a persistent draggable native scrollbar on the chat root", () => {
+    const chatApp = readFileSync(
+      resolve(process.cwd(), "src/components/app/ChatApp.tsx"),
+      "utf8",
+    );
+    const globals = readFileSync(
+      resolve(process.cwd(), "src/app/globals.css"),
+      "utf8",
+    );
+
+    expect(chatApp).toContain('className="chat-scrollbar');
+    expect(globals).toContain(".chat-scrollbar {");
+    expect(globals).toContain("overflow-y: scroll");
+    expect(globals).toContain("scrollbar-gutter: stable");
+    expect(globals).toContain(".chat-scrollbar::-webkit-scrollbar-thumb");
+    expect(globals).toContain("width: 12px");
+  });
 });

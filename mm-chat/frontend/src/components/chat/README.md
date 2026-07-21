@@ -10,6 +10,12 @@ Chat components render the main conversation experience: message input, message 
 - `FollowUpQuestions.tsx` renders suggested next questions after a response.
 - `AudioPlayer.tsx` renders audio playback controls for generated or attached audio.
 
+## Scroll contract
+
+- The main conversation root uses `chat-scrollbar`: it must keep a visible
+  native scrollbar and stable gutter so mouse track clicks and thumb dragging
+  remain available without replacing the existing scroll-follow handlers.
+
 ## Guidelines
 
 - Keep chat-domain transformations in `src/lib/chat` or `src/lib/utils`.

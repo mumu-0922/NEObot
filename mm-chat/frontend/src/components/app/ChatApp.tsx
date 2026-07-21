@@ -3011,7 +3011,7 @@ const ChatApp = () => {
                   ? { paddingBottom: `${composerClearance}px` }
                   : undefined
               }
-              className="flex-1 px-4 md:px-8 pt-4 md:pt-6 pb-[calc(8rem+env(safe-area-inset-bottom))] relative scrollbar-overlay"
+              className="chat-scrollbar relative flex-1 px-4 pb-[calc(8rem+env(safe-area-inset-bottom))] pt-4 md:px-8 md:pt-6"
             >
               <div className="w-full max-w-3xl mx-auto min-h-full flex flex-col">
                 {/* Assistant / System Instruction Header */}

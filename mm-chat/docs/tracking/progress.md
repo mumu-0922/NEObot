@@ -1510,6 +1510,12 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           and one-frame collapsed solid hints.
     - [x] G13.5 Immediate root/workspace conversation hover and more-action
           reveal without changing structural sidebar animations.
+  - [ ] G14 Draggable conversation scrollbar and user-message navigation,
+        executed in separately tested slices per
+        `docs/tracking/g14-chat-navigation-plan.md`.
+    - [x] G14.1 Persistent native chat scrollbar with click/drag support.
+    - [ ] G14.2 User-message rail, active-reading highlight, and top/bottom
+          jumps with progressive-render compatibility.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 
