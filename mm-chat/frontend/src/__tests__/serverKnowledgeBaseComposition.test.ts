@@ -72,6 +72,21 @@ describe("G8 server knowledge base UI composition", () => {
     expect(rollbackIndex).toBeGreaterThan(apiDeleteIndex);
   });
 
+  it("supports bounded bulk deletion while retaining failed selections", () => {
+    expect(serverKnowledgeBase).toContain(
+      "deleteKnowledgeDocumentsWithConcurrency",
+    );
+    expect(serverKnowledgeBase).toContain("BULK_DELETE_CONCURRENCY = 3");
+    expect(serverKnowledgeBase).toContain("serverSelectAllDocuments");
+    expect(serverKnowledgeBase).toContain("serverBulkDeleteDocuments");
+    expect(serverKnowledgeBase).toContain(
+      "setSelectedDocumentIds(new Set(result.failedIds))",
+    );
+    expect(en.Knowledge.serverBulkDeleteResult).toBeTruthy();
+    expect(zh.Knowledge.serverBulkDeleteResult).toBeTruthy();
+    expect(ja.Knowledge.serverBulkDeleteResult).toBeTruthy();
+  });
+
   it("keeps caller identity and ACL fields out of server Knowledge UI payloads", () => {
     expect(serverKnowledgeBase).toContain("idempotencyKey");
     expect(serverKnowledgeBase).toContain('scope: "personal"');

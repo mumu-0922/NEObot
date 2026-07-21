@@ -1533,13 +1533,13 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           and truthful deployment health.
     - [x] G16.4 Local-RAG code retirement, bounded browser-secret purge, live
           Knowledge regression, and clean-copy closure.
-  - [ ] G17 Interaction quality, executed in separate tested commits per
+  - [x] G17 Interaction quality, executed in separate tested commits per
         `docs/tracking/g17-interaction-quality-plan.md`.
     - [x] G17.1 Server-routed auxiliary text generation and content-polish
           repair.
     - [x] G17.2 Assistant, Skill, Plugin, and equivalent interaction
           performance optimization.
-    - [ ] G17.3 Knowledge document selection and bounded bulk deletion.
+    - [x] G17.3 Knowledge document selection and bounded bulk deletion.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

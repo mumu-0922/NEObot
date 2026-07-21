@@ -47,6 +47,7 @@ import {
   formatBytes as formatLimitBytes,
   KNOWLEDGE_LIMITS,
 } from "@/config/limits";
+import { deleteKnowledgeDocumentsWithConcurrency } from "@/lib/knowledge/bulkDelete";
 import { logDevError } from "@/lib/utils/devLogger";
 
 interface ServerKnowledgeBaseProps {
@@ -107,6 +108,7 @@ const statusClass = (status: string) => {
 };
 
 const formatBytes = (value: number): string => formatLimitBytes(value);
+const BULK_DELETE_CONCURRENCY = 3;
 
 export default function ServerKnowledgeBase({
   onClose,
@@ -133,10 +135,17 @@ export default function ServerKnowledgeBase({
   const [loadingCollections, setLoadingCollections] = useState(false);
   const [loadingDocuments, setLoadingDocuments] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const selectAllDocumentsRef = useRef<HTMLInputElement | null>(null);
+  const documentsRequestIdRef = useRef(0);
+  const selectedCollectionIdRef = useRef<string | null>(null);
 
   const selectedCollection = useMemo(
     () =>
@@ -146,6 +155,9 @@ export default function ServerKnowledgeBase({
     [collections, selectedCollectionId],
   );
   const canManageCollection = selectedCollection?.permissions.manage === true;
+  const documentsBusy = busyAction !== null || isBulkDeleting;
+  const allDocumentsSelected =
+    documents.length > 0 && selectedDocumentIds.size === documents.length;
   const filteredCollections = useMemo(() => {
     const query = searchTerm.trim().toLocaleLowerCase();
     if (!query) return collections;
@@ -199,26 +211,35 @@ export default function ServerKnowledgeBase({
   }, [apiClient, knowledgeSupported, showError, t]);
 
   const refreshDocuments = useCallback(async () => {
+    const requestId = documentsRequestIdRef.current + 1;
+    documentsRequestIdRef.current = requestId;
+    setSelectedDocumentIds(new Set());
     if (!knowledgeSupported || !selectedCollectionId) {
       setDocuments([]);
+      setLoadingDocuments(false);
       return;
     }
+    const collectionId = selectedCollectionId;
     setLoadingDocuments(true);
     setError(null);
     try {
       const page = await apiClient.knowledge.listDocuments({
-        collectionId: selectedCollectionId,
+        collectionId,
         limit: 100,
       });
+      if (documentsRequestIdRef.current !== requestId) return;
       setDocuments(page.items);
       setDocumentCounts((current) => ({
         ...current,
-        [selectedCollectionId]: page.items.length,
+        [collectionId]: page.items.length,
       }));
     } catch (caught) {
+      if (documentsRequestIdRef.current !== requestId) return;
       showError(t("serverLoadDocumentsFailed"), caught);
     } finally {
-      setLoadingDocuments(false);
+      if (documentsRequestIdRef.current === requestId) {
+        setLoadingDocuments(false);
+      }
     }
   }, [apiClient, knowledgeSupported, selectedCollectionId, showError, t]);
 
@@ -229,6 +250,34 @@ export default function ServerKnowledgeBase({
   useEffect(() => {
     void refreshDocuments();
   }, [refreshDocuments]);
+
+  useEffect(() => {
+    selectedCollectionIdRef.current = selectedCollectionId;
+    setSelectedDocumentIds(new Set());
+  }, [selectedCollectionId]);
+
+  useEffect(() => {
+    const visibleDocumentIds = new Set(
+      documents.map((document) => document.id),
+    );
+    setSelectedDocumentIds((current) => {
+      if (
+        [...current].every((documentId) => visibleDocumentIds.has(documentId))
+      ) {
+        return current;
+      }
+      return new Set(
+        [...current].filter((documentId) => visibleDocumentIds.has(documentId)),
+      );
+    });
+  }, [documents]);
+
+  useEffect(() => {
+    if (selectAllDocumentsRef.current) {
+      selectAllDocumentsRef.current.indeterminate =
+        selectedDocumentIds.size > 0 && !allDocumentsSelected;
+    }
+  }, [allDocumentsSelected, selectedDocumentIds.size]);
 
   const runAction = async (key: string, action: () => Promise<void>) => {
     setBusyAction(key);
@@ -410,6 +459,89 @@ export default function ServerKnowledgeBase({
         showError(t("serverDeleteDocumentFailed"), caught);
       }
     });
+  };
+
+  const handleDocumentSelection = (documentId: string, selected: boolean) => {
+    setSelectedDocumentIds((current) => {
+      const next = new Set(current);
+      if (selected) {
+        next.add(documentId);
+      } else {
+        next.delete(documentId);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllDocuments = (selected: boolean) => {
+    setSelectedDocumentIds(
+      selected ? new Set(documents.map((document) => document.id)) : new Set(),
+    );
+  };
+
+  const handleBulkDeleteDocuments = async () => {
+    if (
+      !canManageCollection ||
+      isBulkDeleting ||
+      busyAction !== null ||
+      !selectedCollectionId
+    ) {
+      return;
+    }
+
+    const documentIds = documents
+      .filter((document) => selectedDocumentIds.has(document.id))
+      .map((document) => document.id);
+    if (documentIds.length === 0) return;
+    if (
+      !window.confirm(
+        t("serverConfirmBulkDeleteDocuments", { count: documentIds.length }),
+      )
+    ) {
+      return;
+    }
+
+    const collectionId = selectedCollectionId;
+    setIsBulkDeleting(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await deleteKnowledgeDocumentsWithConcurrency({
+        documentIds,
+        concurrency: BULK_DELETE_CONCURRENCY,
+        deleteDocument: (documentId) =>
+          apiClient.knowledge.deleteDocument({ documentId }),
+        onDeleted: (documentId) => {
+          if (selectedCollectionIdRef.current !== collectionId) return;
+          setDocuments((current) =>
+            current.filter((document) => document.id !== documentId),
+          );
+          setSelectedDocumentIds((current) => {
+            const next = new Set(current);
+            next.delete(documentId);
+            return next;
+          });
+          setDocumentCounts((current) => ({
+            ...current,
+            [collectionId]: Math.max(0, (current[collectionId] ?? 1) - 1),
+          }));
+        },
+      });
+
+      if (selectedCollectionIdRef.current !== collectionId) return;
+      setSelectedDocumentIds(new Set(result.failedIds));
+      const resultMessage = t("serverBulkDeleteResult", {
+        succeeded: result.succeededIds.length,
+        failed: result.failedIds.length,
+      });
+      if (result.failedIds.length > 0) {
+        setError(resultMessage);
+      } else {
+        setNotice(resultMessage);
+      }
+    } finally {
+      setIsBulkDeleting(false);
+    }
   };
 
   const handleReprocessDocument = (document: KnowledgeDocumentDTO) => {
@@ -620,23 +752,62 @@ export default function ServerKnowledgeBase({
                 </section>
 
                 <section className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-border dark:bg-card/50">
-                  <div className="flex items-center justify-between gap-3 border-b border-gray-100 bg-gray-50/80 p-4 dark:border-border dark:bg-muted/80">
-                    <h3 className="truncate text-sm font-bold text-gray-700 dark:text-foreground">
-                      {t("documentsHeading", { count: documents.length })}
-                    </h3>
-                    <button
-                      type="button"
-                      onClick={() => void refreshDocuments()}
-                      disabled={loadingDocuments || busyAction !== null}
-                      className="rounded-lg p-1.5 text-gray-400 hover:bg-white hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 disabled:opacity-50 dark:hover:bg-background dark:hover:text-foreground"
-                      aria-label={t("serverRefreshDocuments")}
-                    >
-                      <RefreshCw
-                        size={16}
-                        className={loadingDocuments ? "animate-spin" : ""}
-                        aria-hidden="true"
-                      />
-                    </button>
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 bg-gray-50/80 p-4 dark:border-border dark:bg-muted/80">
+                    <div className="flex min-w-0 flex-wrap items-center gap-3">
+                      <h3 className="truncate text-sm font-bold text-gray-700 dark:text-foreground">
+                        {t("documentsHeading", { count: documents.length })}
+                      </h3>
+                      {documents.length > 0 && canManageCollection && (
+                        <label className="flex cursor-pointer items-center gap-2 text-xs text-gray-500 dark:text-muted-foreground">
+                          <input
+                            ref={selectAllDocumentsRef}
+                            type="checkbox"
+                            checked={allDocumentsSelected}
+                            disabled={documentsBusy}
+                            onChange={(event) =>
+                              handleSelectAllDocuments(event.target.checked)
+                            }
+                            className="h-4 w-4 rounded border-gray-300 accent-purple-600"
+                          />
+                          <span>{t("serverSelectAllDocuments")}</span>
+                        </label>
+                      )}
+                      {selectedDocumentIds.size > 0 && (
+                        <span className="text-xs font-medium text-purple-600 dark:text-purple-400">
+                          {t("serverSelectedDocuments", {
+                            count: selectedDocumentIds.size,
+                          })}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {canManageCollection && (
+                        <button
+                          type="button"
+                          onClick={() => void handleBulkDeleteDocuments()}
+                          disabled={
+                            selectedDocumentIds.size === 0 || documentsBusy
+                          }
+                          className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-red-950/30"
+                        >
+                          <Trash2 size={14} aria-hidden="true" />
+                          {t("serverBulkDeleteDocuments")}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void refreshDocuments()}
+                        disabled={loadingDocuments || documentsBusy}
+                        className="rounded-lg p-1.5 text-gray-400 hover:bg-white hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 disabled:opacity-50 dark:hover:bg-background dark:hover:text-foreground"
+                        aria-label={t("serverRefreshDocuments")}
+                      >
+                        <RefreshCw
+                          size={16}
+                          className={loadingDocuments ? "animate-spin" : ""}
+                          aria-hidden="true"
+                        />
+                      </button>
+                    </div>
                   </div>
                   {loadingDocuments ? (
                     <EmptyState text={t("loadingKnowledgeBase")} />
@@ -648,8 +819,12 @@ export default function ServerKnowledgeBase({
                         <ServerDocumentRow
                           key={document.id}
                           document={document}
-                          busy={busyAction !== null}
+                          busy={documentsBusy}
                           canManage={canManageCollection}
+                          selected={selectedDocumentIds.has(document.id)}
+                          onSelectedChange={(selected) =>
+                            handleDocumentSelection(document.id, selected)
+                          }
                           onReprocess={() => handleReprocessDocument(document)}
                           onDelete={() => handleDeleteDocument(document)}
                         />
@@ -918,25 +1093,42 @@ function ServerDocumentRow({
   document,
   busy,
   canManage,
+  selected,
+  onSelectedChange,
   onReprocess,
   onDelete,
 }: {
   document: KnowledgeDocumentDTO;
   busy: boolean;
   canManage: boolean;
+  selected: boolean;
+  onSelectedChange: (selected: boolean) => void;
   onReprocess: () => void;
   onDelete: () => void;
 }) {
   const t = useTranslations("Knowledge");
   const version = document.currentVersion ?? document.pendingVersion;
+  const documentName = version?.file.name ?? document.id;
   return (
-    <div className="group flex items-center gap-3 rounded-lg p-3 hover:bg-gray-50 dark:hover:bg-muted/50">
+    <div
+      className={`group flex items-center gap-3 rounded-lg p-3 hover:bg-gray-50 dark:hover:bg-muted/50 ${
+        selected ? "bg-purple-50/70 dark:bg-purple-950/20" : ""
+      }`}
+    >
+      <input
+        type="checkbox"
+        checked={selected}
+        disabled={!canManage || busy}
+        onChange={(event) => onSelectedChange(event.target.checked)}
+        aria-label={t("serverSelectDocument", { name: documentName })}
+        className="h-4 w-4 shrink-0 rounded border-gray-300 accent-purple-600"
+      />
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-500 dark:bg-blue-900/20">
         <FileText size={20} aria-hidden="true" />
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-gray-700 dark:text-foreground">
-          {version?.file.name ?? document.id}
+          {documentName}
         </p>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-400 dark:text-muted-foreground">
           <span

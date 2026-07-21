@@ -1,6 +1,6 @@
 # G17 Interaction Quality Plan
 
-Status: in progress. G17 repairs auxiliary text generation, removes avoidable
+Status: complete. G17 repairs auxiliary text generation, removes avoidable
 marketplace interaction cost, and adds safe multi-document deletion without
 changing the single-user product model.
 

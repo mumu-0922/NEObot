@@ -96,3 +96,39 @@ The timing smoke used the deployed production image and a clean isolated
 Chromium profile. It is a regression signal rather than a promise about every
 GPU/driver, while the computed-style proof directly confirms that the costly
 fixed backdrop filters are absent.
+
+## 2026-07-21 — G17.3 Knowledge bulk deletion closure
+
+Added document-row selection, select-all for the current collection, selected
+count, one localized confirmation, and a bulk-delete action. The action reuses
+the existing authoritative single-document DELETE adapter with three workers;
+successful documents disappear as their requests finish, while failed
+documents remain visible and selected for retry. Refreshing or changing the
+collection clears selection, and stale document-list responses can no longer
+overwrite a newer collection view.
+
+The concurrency helper has deterministic result ordering and focused coverage
+for the concurrency ceiling, partial failure continuation/retention, and empty
+selection. No Go route, schema, tombstone, outbox, or storage semantics changed.
+
+Verification:
+
+```text
+focused bulk-delete/composition tests                 2 files / 11 tests
+frontend lint / typecheck / format                    passed
+frontend full tests                                   187 files / 891 tests
+frontend production build                             passed
+Compose frontend/backend                              healthy / healthy
+deployed row selection                                1 selected
+deployed select-all                                   2 selected
+deployed confirmation                                 localized count = 2
+deployed bounded bulk deletion                        2 succeeded / 0 failed
+focused partial-failure proof                         succeeded retained order; failed selected
+temporary live collection and four documents          deleted
+temporary Chromium profile and CDP runner             deleted
+recent backend/frontend error logs                    empty
+```
+
+G17 is complete as three independently revertible commits. The bulk-delete UI
+does not weaken immediate invisibility: every successful item still traverses
+the same server deletion boundary used by the original single-item action.
