@@ -1490,6 +1490,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
             bounded recent image history now routes `继续画` back to the same
             image model; multiline flow HTML stays intact, while positioned
             poster code uses the sandbox preview instead of partial execution.
+        - [x] G12.4.4.1 Responsive sandbox canvas fitting: fixed-size poster
+              coordinates now scale down uniformly to the inline iframe while
+              retaining the full canvas and fullscreen detail view.
     - [x] G12.5 Model-aware reasoning effort: Kelivo-informed Off/Auto/Low/
           Medium/High plus conditional XHigh/Max UI, server conversation
           persistence, validated Go normalization, OpenAI/Responses and

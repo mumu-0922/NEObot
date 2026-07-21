@@ -1531,7 +1531,8 @@ code` only; `codeExecution` stays disabled until a real sandbox/executor and
 7. **Wrong vs Correct** — Wrong: classify only the current prompt and pass any
    raw HTML into CommonMark. Correct: combine bounded recent context with the
    prompt, then render only flow-layout HTML in the conversation DOM and
-   isolate poster-style code in a scriptless inline sandbox.
+   isolate poster-style code in a nonce-constrained inline sandbox. Only the
+   app-owned resize script may run; model-authored scripts remain blocked.
 
 ## 14. HTTP Client Rules
 

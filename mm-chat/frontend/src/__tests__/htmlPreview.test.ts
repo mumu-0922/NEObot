@@ -40,15 +40,27 @@ describe("HTML preview srcdoc", () => {
     expect(srcDoc).toContain("Preview truncated");
   });
 
-  it("builds a scriptless, reset visual document for inline sandboxes", () => {
+  it("builds a nonce-constrained, responsive visual sandbox document", () => {
     const srcDoc = createSandboxedHtmlVisualSrcDoc(
-      '<div style="position:relative">Poster</div><script>bad()</script>',
+      '<div style="position:relative;max-width:960px;aspect-ratio:16/9">Poster</div><script>bad()</script>',
     );
 
     expect(srcDoc).toContain("Content-Security-Policy");
     expect(srcDoc).toContain("default-src 'none'");
     expect(srcDoc).toContain("style-src 'unsafe-inline'");
-    expect(srcDoc).toContain("html,body{margin:0");
+    expect(srcDoc).toContain("script-src 'nonce-");
+    expect(srcDoc).toContain("width:960px;height:540px");
+    expect(srcDoc).toContain("Math.min(1,innerWidth/960,innerHeight/540)");
+    expect(srcDoc).toContain('addEventListener("resize",fit');
     expect(srcDoc).not.toContain("installPreviewStorage");
+  });
+
+  it("derives non-default canvas dimensions before fitting", () => {
+    const srcDoc = createSandboxedHtmlVisualSrcDoc(
+      '<section style="max-width:1200px;aspect-ratio:4/3">Visual</section>',
+    );
+
+    expect(srcDoc).toContain("width:1200px;height:900px");
+    expect(srcDoc).toContain("innerWidth/1200,innerHeight/900");
   });
 });

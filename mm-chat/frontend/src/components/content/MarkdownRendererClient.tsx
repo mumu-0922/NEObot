@@ -1252,7 +1252,7 @@ const HtmlVisualSandbox = ({ rawHtml }: { rawHtml: string }) => {
       <iframe
         srcDoc={srcDoc}
         className="block aspect-video w-full border-0 bg-white"
-        sandbox=""
+        sandbox="allow-scripts"
         referrerPolicy="no-referrer"
         title={t("previewHtml")}
       />

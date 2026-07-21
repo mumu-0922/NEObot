@@ -8597,8 +8597,10 @@ The failed `继续画` request was stored as 6,895 characters of `gpt-5.6-sol`
 HTML with no image attachment despite a recent successful `gpt-image-2`
 message. Bounded active-branch context now restores the prior image model for
 explicit continuation language. Complete flex/grid HTML survives CommonMark
-blank lines, while positioned poster HTML uses a scriptless inline sandbox
-instead of partial conversation-DOM execution. Exact evidence and rollback are recorded
+blank lines, while positioned poster HTML uses a nonce-constrained inline
+sandbox instead of partial conversation-DOM execution. Fixed pixel canvases
+are uniformly fitted to the iframe, so inline view no longer requires reading
+mode to expose the right and bottom edges. Exact evidence and rollback are recorded
 in `docs/tracking/g12-provider-protocols-process.md` and the executable contract
 is in `docs/contracts/frontend-api-client.md`.
 

@@ -148,7 +148,9 @@ normalization, provider mapping, and backward-compatibility contract.
       balanced; do not let partial CSS mutate the conversation layout.
 - [ ] Never broaden inline CSS merely to make one generated layout work. Keep
       flow-layout HTML inline; move positioned/transformed layouts to the
-      scriptless inline-sandbox boundary.
+      nonce-constrained inline-sandbox boundary, without `allow-same-origin`.
+- [ ] Fit fixed poster canvases against both iframe width and height; a sandbox
+      boundary alone does not make absolute pixel coordinates responsive.
 - [ ] Re-test an actual persisted failing message after deployment so a small
       synthetic fragment cannot hide parser-boundary differences.
 

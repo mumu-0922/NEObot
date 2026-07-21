@@ -49,7 +49,71 @@ const HTML_PREVIEW_BOOTSTRAP = `<script>
 })();
 </script>`;
 
-const HTML_VISUAL_SANDBOX_HEAD = `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob: https:; style-src 'unsafe-inline'"><style>html,body{margin:0;min-height:100%;background:transparent}body{overflow:auto}</style>`;
+const DEFAULT_HTML_VISUAL_CANVAS_WIDTH = 960;
+const DEFAULT_HTML_VISUAL_CANVAS_HEIGHT = 540;
+
+function clampVisualDimension(value: number, minimum: number): number {
+  return Math.min(1920, Math.max(minimum, Math.round(value)));
+}
+
+function resolveHtmlVisualCanvas(rawHtml: string): {
+  width: number;
+  height: number;
+} {
+  const rootTag = rawHtml.match(
+    /^\s*<(?:div|section|article|aside|main|details|table)\b[^>]*>/i,
+  )?.[0];
+  const rootStyleSource = rootTag || rawHtml;
+  const widthMatch = rootStyleSource.match(
+    /(?:max-width|width)\s*:\s*(\d+(?:\.\d+)?)px/i,
+  );
+  const width = clampVisualDimension(
+    Number.parseFloat(widthMatch?.[1] || "") ||
+      DEFAULT_HTML_VISUAL_CANVAS_WIDTH,
+    320,
+  );
+  const ratioMatch = rootStyleSource.match(
+    /aspect-ratio\s*:\s*(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/i,
+  );
+  const explicitHeightMatch = rootStyleSource.match(
+    /height\s*:\s*(\d+(?:\.\d+)?)px/i,
+  );
+  const ratioWidth = Number.parseFloat(ratioMatch?.[1] || "");
+  const ratioHeight = Number.parseFloat(ratioMatch?.[2] || "");
+  const inferredHeight =
+    ratioWidth > 0 && ratioHeight > 0
+      ? (width * ratioHeight) / ratioWidth
+      : Number.parseFloat(explicitHeightMatch?.[1] || "") ||
+        DEFAULT_HTML_VISUAL_CANVAS_HEIGHT;
+  return {
+    width,
+    height: clampVisualDimension(inferredHeight, 180),
+  };
+}
+
+function createHtmlVisualNonce(): string {
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join(
+    "",
+  );
+}
+
+function createHtmlVisualSandboxHead(
+  nonce: string,
+  width: number,
+  height: number,
+): string {
+  return `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob: https:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}#neo-html-visual-stage{position:absolute;left:50%;top:0;width:${width}px;height:${height}px;transform-origin:top center}</style>`;
+}
+
+function createHtmlVisualFitScript(
+  nonce: string,
+  width: number,
+  height: number,
+): string {
+  return `<script nonce="${nonce}">(()=>{const stage=document.getElementById("neo-html-visual-stage");if(!stage)return;const fit=()=>{const scale=Math.max(0.01,Math.min(1,innerWidth/${width},innerHeight/${height}));stage.style.transform="translateX(-50%) scale("+scale+")"};fit();addEventListener("resize",fit,{passive:true})})()</script>`;
+}
 
 function clampPreviewHtml(rawHtml: string, maxChars: number): string {
   if (rawHtml.length <= maxChars) return rawHtml;
@@ -106,11 +170,19 @@ export function createSandboxedHtmlVisualSrcDoc(
   maxChars: number = HTML_PREVIEW_LIMITS.maxSrcDocChars,
 ): string {
   const finalMaxChars = Math.max(0, Math.floor(maxChars));
-  const prefix = `<!doctype html><html><head>${HTML_VISUAL_SANDBOX_HEAD}</head><body>`;
+  const { width, height } = resolveHtmlVisualCanvas(rawHtml);
+  const nonce = createHtmlVisualNonce();
+  const head = createHtmlVisualSandboxHead(nonce, width, height);
+  const script = createHtmlVisualFitScript(nonce, width, height);
+  const prefix = `<!doctype html><html><head>${head}</head><body><div id="neo-html-visual-stage">`;
+  const bodySuffix = `</div>${script}`;
   const suffix = "</body></html>";
   const html = clampPreviewHtml(
     rawHtml,
-    Math.max(0, finalMaxChars - prefix.length - suffix.length),
+    Math.max(
+      0,
+      finalMaxChars - prefix.length - bodySuffix.length - suffix.length,
+    ),
   );
-  return `${prefix}${html}${suffix}`.slice(0, finalMaxChars);
+  return `${prefix}${html}${bodySuffix}${suffix}`.slice(0, finalMaxChars);
 }

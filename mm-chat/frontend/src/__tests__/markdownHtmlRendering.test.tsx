@@ -196,7 +196,7 @@ describe("MarkdownRenderer HTML support", () => {
 
     expect(html).toContain('data-html-visual-sandbox="true"');
     expect(html).toContain("<iframe");
-    expect(html).toContain('sandbox=""');
+    expect(html).toContain('sandbox="allow-scripts"');
     expect(html).toContain('title="previewHtml"');
     expect(html).toContain("position:relative");
     expect(html).toContain("aspect-ratio:16/9");
@@ -358,7 +358,6 @@ describe("MarkdownRenderer HTML support", () => {
     expect(source).not.toContain("overflow-y-hidden");
     expect(source).toContain("overflow-auto");
     expect(source).toContain('sandbox="allow-scripts"');
-    expect(source).toContain('sandbox=""');
     expect(source).not.toContain("allow-same-origin");
     const toggleCollapseSource = source.slice(
       source.indexOf("const toggleCollapse = () => {"),

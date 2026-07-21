@@ -426,9 +426,11 @@ bug for a conversation-overlay boundary.
 Routing now combines explicit continuation language with at most eight recent
 active-branch messages and prefers the same still-available image model. The
 renderer compacts blank lines only in complete safe flow-layout HTML. Poster
-layouts that need sandbox-only CSS render in a scriptless inline iframe instead
-of being half executed in the message DOM; incomplete streaming tails remain
-inert source until the visual fragment closes.
+layouts that need sandbox-only CSS render in a nonce-constrained inline iframe
+instead of being half executed in the message DOM; incomplete streaming tails
+remain inert source until the visual fragment closes. The sandbox omits
+`allow-same-origin`, denies all sources by default, and permits only an
+app-owned nonce-bearing resize script.
 
 Verification:
 
@@ -436,7 +438,7 @@ Verification:
 focused routing/rendering tests                     5 files / 40 tests
 frontend full tests                                 183 files / 886 tests
 frontend lint / typecheck / format / build          passed
-persisted failing message after deploy              empty sandbox + deny-default CSP
+persisted failing message after deploy              nonce sandbox + deny-default CSP
 conversation-DOM inline/styled leak                  false / false
 real seed image model/attachments                    gpt-image-2 / 1
 browser `继续画` model/attachments                   gpt-image-2 / 1
@@ -447,3 +449,29 @@ disposable conversation delete/readback             204 / 404
 The owner conversation and its historical message were read for this bounded
 reproduction but were not mutated. No prompt, response body, image bytes,
 provider Key, or URL credential was added to logs or committed artifacts.
+
+### G12.4.4.1 responsive sandbox canvas fitting
+
+The first containment pass isolated the positioned poster correctly but left
+its original 960×540 pixel coordinate system unchanged inside a narrower chat
+iframe. The iframe clipped the unscaled right and bottom regions; fullscreen
+appeared correct only because it provided enough width.
+
+The visual document now derives a bounded canvas from the root `max-width` or
+pixel width plus `aspect-ratio`/height, then runs one nonce-authorized fit
+routine on load and iframe resize. It applies one uniform scale against both
+available width and height, never upscales above the authored size, and keeps
+the canvas centered. Model-authored scripts still lack the random nonce and
+remain blocked by CSP and the opaque sandbox origin.
+
+Verification:
+
+```text
+focused preview/rendering tests                     2 files / 22 tests
+frontend full tests                                 183 files / 887 tests
+frontend lint / typecheck / format / build          passed
+deployed inline frame                               617 × 347 px
+authored canvas                                     960 × 540 px
+inline visual screenshot                            full right/bottom visible
+frontend/backend health                             healthy / healthy
+```
