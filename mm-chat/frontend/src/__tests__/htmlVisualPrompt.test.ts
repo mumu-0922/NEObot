@@ -13,6 +13,8 @@ describe("HTML visual prompt helpers", () => {
     expect(instruction).toContain("<html-visual>");
     expect(instruction).toContain("actively use safe inline HTML");
     expect(instruction).toContain("raw HTML");
+    expect(instruction).toContain("normal document flow with flexbox or grid");
+    expect(instruction).toContain("Do not use position");
     expect(instruction).toContain(
       "Do not wrap HTML visual fragments in code fences",
     );
@@ -71,6 +73,10 @@ describe("HTML visual prompt helpers", () => {
     expect(requestMessage).toContain(message);
     expect(requestMessage).toContain("<format_instructions");
     expect(requestMessage).toContain("raw HTML fragments directly");
+    expect(requestMessage).toContain(
+      "normal document flow with flexbox or grid",
+    );
+    expect(requestMessage).toContain("isolated inline HTML sandbox");
     expect(requestMessage).toContain("semantic neon palette");
     expect(requestMessage).toContain("semantic variables");
     expect(requestMessage).toContain("cyan, mint, violet, amber, and rose");

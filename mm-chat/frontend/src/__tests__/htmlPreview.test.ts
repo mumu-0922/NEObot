@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { HTML_PREVIEW_LIMITS } from "../config/limits";
-import { createSandboxedHtmlPreviewSrcDoc } from "../lib/utils/htmlPreview";
+import {
+  createSandboxedHtmlPreviewSrcDoc,
+  createSandboxedHtmlVisualSrcDoc,
+} from "../lib/utils/htmlPreview";
 
 describe("HTML preview srcdoc", () => {
   it("preserves scripts without injecting a restrictive CSP", () => {
@@ -35,5 +38,17 @@ describe("HTML preview srcdoc", () => {
       HTML_PREVIEW_LIMITS.maxSrcDocChars,
     );
     expect(srcDoc).toContain("Preview truncated");
+  });
+
+  it("builds a scriptless, reset visual document for inline sandboxes", () => {
+    const srcDoc = createSandboxedHtmlVisualSrcDoc(
+      '<div style="position:relative">Poster</div><script>bad()</script>',
+    );
+
+    expect(srcDoc).toContain("Content-Security-Policy");
+    expect(srcDoc).toContain("default-src 'none'");
+    expect(srcDoc).toContain("style-src 'unsafe-inline'");
+    expect(srcDoc).toContain("html,body{margin:0");
+    expect(srcDoc).not.toContain("installPreviewStorage");
   });
 });

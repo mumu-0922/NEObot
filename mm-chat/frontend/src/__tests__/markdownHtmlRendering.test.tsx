@@ -63,6 +63,7 @@ vi.mock("@/lib/security/clientUrl", () => ({
 
 vi.mock("@/lib/utils/htmlPreview", () => ({
   createSandboxedHtmlPreviewSrcDoc: (html: string) => html,
+  createSandboxedHtmlVisualSrcDoc: (html: string) => html,
 }));
 
 vi.mock("@/lib/utils/htmlStyle", async () =>
@@ -143,6 +144,87 @@ describe("MarkdownRenderer HTML support", () => {
     expect(html).toContain("gap:12px");
     expect(html).toContain("Hello");
     expect(html).toContain("HTML");
+  });
+
+  it("keeps complete multiline HTML visuals intact across internal blank lines", async () => {
+    const { default: MarkdownRenderer } =
+      await import("../components/content/MarkdownRendererClient");
+
+    const html = renderToStaticMarkup(
+      <MarkdownRenderer
+        content={[
+          "## Poster",
+          "",
+          '<div style="display:grid; grid-template-columns:1fr 1fr; overflow:hidden">',
+          '  <div style="background:#fff7f0">Left panel</div>',
+          "",
+          '  <section style="display:flex; padding:20px">',
+          '    <p style="margin:0; color:#5b1420">Complete visual</p>',
+          "  </section>",
+          "</div>",
+          "",
+          "**Footer**",
+        ].join("\n")}
+      />,
+    );
+
+    expect(html).toContain("<h2>Poster</h2>");
+    expect(html).toContain("display:grid");
+    expect(html).toContain("grid-template-columns:1fr 1fr");
+    expect(html).toContain("Left panel");
+    expect(html).toContain("Complete visual");
+    expect(html).toContain("<strong>Footer</strong>");
+    expect(html).not.toContain("&lt;section");
+    expect(html).not.toContain("group/codeblock");
+  });
+
+  it("moves positioned HTML visuals into an isolated inline sandbox", async () => {
+    const { default: MarkdownRenderer } =
+      await import("../components/content/MarkdownRendererClient");
+
+    const html = renderToStaticMarkup(
+      <MarkdownRenderer
+        content={[
+          '<div style="position:relative; aspect-ratio:16/9; overflow:hidden">',
+          '  <div style="position:absolute; inset:0; background:#d7192d"></div>',
+          "",
+          '  <p style="position:absolute; left:20px; top:20px">Poster</p>',
+          "</div>",
+        ].join("\n")}
+      />,
+    );
+
+    expect(html).toContain('data-html-visual-sandbox="true"');
+    expect(html).toContain("<iframe");
+    expect(html).toContain('sandbox=""');
+    expect(html).toContain('title="previewHtml"');
+    expect(html).toContain("position:relative");
+    expect(html).toContain("aspect-ratio:16/9");
+    expect(html).not.toContain("group/codeblock");
+    expect(html).not.toContain('class="markdown-html-visual"');
+  });
+
+  it("keeps incomplete streaming HTML visual tails as inert source", async () => {
+    const { default: MarkdownRenderer } =
+      await import("../components/content/MarkdownRendererClient");
+
+    const html = renderToStaticMarkup(
+      <MarkdownRenderer
+        isStreaming
+        content={[
+          '<div style="position:relative; overflow:hidden">',
+          '  <div style="position:absolute; inset:0; background:#d7192d"></div>',
+          "",
+          '  <p style="position:absolute; left:20px">Incomplete',
+        ].join("\n")}
+      />,
+    );
+
+    expect(html).toContain("<pre><code");
+    expect(html).toContain("position:relative");
+    expect(html).toContain("Incomplete");
+    expect(html).not.toContain('class="markdown-html-visual"');
+    expect(html).not.toContain('data-html-visual-sandbox="true"');
   });
 
   it("wraps inline HTML in a theme scope and corrects low-contrast colors", async () => {
@@ -276,7 +358,7 @@ describe("MarkdownRenderer HTML support", () => {
     expect(source).not.toContain("overflow-y-hidden");
     expect(source).toContain("overflow-auto");
     expect(source).toContain('sandbox="allow-scripts"');
-    expect(source).not.toContain('sandbox=""');
+    expect(source).toContain('sandbox=""');
     expect(source).not.toContain("allow-same-origin");
     const toggleCollapseSource = source.slice(
       source.indexOf("const toggleCollapse = () => {"),

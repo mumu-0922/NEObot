@@ -46,6 +46,7 @@ import { formatModelName } from "@/store/core/settingsStore";
 import { handleTokenUsageUpdate } from "@/lib/utils/message";
 import {
   buildAvailableModels,
+  findRecentImageGenerationModel,
   isImageGenerationModel,
   resolveImageGenerationRoute,
   resolveSelectedModel,
@@ -1202,6 +1203,9 @@ const ChatApp = () => {
         availableModels,
         prompt: text,
         hasAttachments: attachments.length > 0,
+        recentImageGenerationModel: findRecentImageGenerationModel(
+          serverReadState.activeMessages,
+        ),
       });
       const routesToImageGeneration = isImageGenerationModel(routedModel);
       setActiveImageGeneration(

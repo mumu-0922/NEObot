@@ -42,7 +42,10 @@ import {
   getSafeMarkdownImageSrc,
   getSafeWebHref,
 } from "@/lib/security/clientUrl";
-import { createSandboxedHtmlPreviewSrcDoc } from "@/lib/utils/htmlPreview";
+import {
+  createSandboxedHtmlPreviewSrcDoc,
+  createSandboxedHtmlVisualSrcDoc,
+} from "@/lib/utils/htmlPreview";
 import {
   sanitizeHtmlStyle,
   sanitizeHtmlTableContainerStyle,
@@ -1234,6 +1237,29 @@ const FileCard = ({
   );
 };
 
+const HtmlVisualSandbox = ({ rawHtml }: { rawHtml: string }) => {
+  const t = useTranslations("Content");
+  const srcDoc = React.useMemo(
+    () => createSandboxedHtmlVisualSrcDoc(rawHtml),
+    [rawHtml],
+  );
+
+  return (
+    <div
+      data-html-visual-sandbox="true"
+      className="my-4 w-full overflow-hidden rounded-xl border border-border bg-white shadow-sm"
+    >
+      <iframe
+        srcDoc={srcDoc}
+        className="block aspect-video w-full border-0 bg-white"
+        sandbox=""
+        referrerPolicy="no-referrer"
+        title={t("previewHtml")}
+      />
+    </div>
+  );
+};
+
 const ArtifactBlock = ({
   language,
   rawCode,
@@ -2019,6 +2045,9 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         const rawCode = getRawText(node);
 
         if (match) {
+          if (language === "htmlvisual") {
+            return <HtmlVisualSandbox rawHtml={rawCode} />;
+          }
           return (
             <ArtifactBlock
               language={language}

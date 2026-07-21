@@ -24,6 +24,10 @@ describe("ChatApp server mode composition", () => {
     );
     expect(chatApp).toContain("parentMessageId,");
     expect(chatApp).toContain("activeImageGeneration");
+    expect(chatApp).toContain("findRecentImageGenerationModel");
+    expect(chatApp).toContain(
+      "recentImageGenerationModel: findRecentImageGenerationModel(",
+    );
     expect(chatApp).toContain("ImageGenerationProgress");
     expect(chatApp).toContain("startedAt: Date.now()");
     expect(chatApp).toContain("uploadMessageAttachmentsForServer");

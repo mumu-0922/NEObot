@@ -49,6 +49,8 @@ const HTML_PREVIEW_BOOTSTRAP = `<script>
 })();
 </script>`;
 
+const HTML_VISUAL_SANDBOX_HEAD = `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob: https:; style-src 'unsafe-inline'"><style>html,body{margin:0;min-height:100%;background:transparent}body{overflow:auto}</style>`;
+
 function clampPreviewHtml(rawHtml: string, maxChars: number): string {
   if (rawHtml.length <= maxChars) return rawHtml;
 
@@ -97,4 +99,18 @@ export function createSandboxedHtmlPreviewSrcDoc(
   return srcDoc.length <= finalMaxChars
     ? srcDoc
     : srcDoc.slice(0, finalMaxChars);
+}
+
+export function createSandboxedHtmlVisualSrcDoc(
+  rawHtml: string,
+  maxChars: number = HTML_PREVIEW_LIMITS.maxSrcDocChars,
+): string {
+  const finalMaxChars = Math.max(0, Math.floor(maxChars));
+  const prefix = `<!doctype html><html><head>${HTML_VISUAL_SANDBOX_HEAD}</head><body>`;
+  const suffix = "</body></html>";
+  const html = clampPreviewHtml(
+    rawHtml,
+    Math.max(0, finalMaxChars - prefix.length - suffix.length),
+  );
+  return `${prefix}${html}${suffix}`.slice(0, finalMaxChars);
 }

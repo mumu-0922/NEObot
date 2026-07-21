@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { parseModelString } from "../lib/utils/model";
 import {
+  findRecentImageGenerationModel,
   hasExplicitImageGenerationIntent,
+  hasImageGenerationContinuationIntent,
   isImageGenerationModel,
   resolveImageGenerationRoute,
   resolveSelectedModel,
@@ -138,6 +140,18 @@ describe("image generation routing", () => {
     ).toBe(true);
   });
 
+  it("detects image-generation continuation language", () => {
+    expect(hasImageGenerationContinuationIntent("继续画 柯基联名海报")).toBe(
+      true,
+    );
+    expect(hasImageGenerationContinuationIntent("regenerate the poster")).toBe(
+      true,
+    );
+    expect(hasImageGenerationContinuationIntent("继续分析这张图片")).toBe(
+      false,
+    );
+  });
+
   it("does not confuse image understanding with image generation", () => {
     expect(hasExplicitImageGenerationIntent("分析这张图片的内容")).toBe(false);
     expect(hasExplicitImageGenerationIntent("描述图片里有什么")).toBe(false);
@@ -202,5 +216,46 @@ describe("image generation routing", () => {
         prompt: "a fox in the snow",
       }),
     ).toBe("custom:gpt-image-2");
+  });
+
+  it("continues a recent image generation with the same available model", () => {
+    const recentImageModel = findRecentImageGenerationModel([
+      {
+        id: "image",
+        role: "model",
+        content: "",
+        timestamp: 1,
+        model: "custom:gpt-image-2",
+        metadata: { kind: "image_generation" },
+      },
+      { id: "hi", role: "user", content: "hi", timestamp: 2 },
+      {
+        id: "reply",
+        role: "model",
+        content: "Want to continue drawing?",
+        timestamp: 3,
+        model: "custom:model-a",
+      },
+    ]);
+
+    expect(recentImageModel).toBe("custom:gpt-image-2");
+    expect(
+      resolveImageGenerationRoute({
+        selectedModel: "custom:model-a",
+        availableModels: imageModels,
+        prompt: "继续画 柯基联名海报",
+        recentImageGenerationModel: recentImageModel,
+      }),
+    ).toBe("custom:gpt-image-2");
+  });
+
+  it("does not route ambiguous continuation without recent image context", () => {
+    expect(
+      resolveImageGenerationRoute({
+        selectedModel: "custom:model-a",
+        availableModels: imageModels,
+        prompt: "继续画 柯基联名海报",
+      }),
+    ).toBe("custom:model-a");
   });
 });

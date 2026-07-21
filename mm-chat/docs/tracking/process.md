@@ -8591,6 +8591,17 @@ in `docs/tracking/g12-provider-protocols-process.md`,
 `docs/contracts/chat-stream-api.md`, and
 `.trellis/tasks/07-07-mm-chat-server-refactor-design/research/reasoning-effort-kelivo.md`.
 
+## 2026-07-21 — G12.4.4 image continuation and HTML containment
+
+The failed `继续画` request was stored as 6,895 characters of `gpt-5.6-sol`
+HTML with no image attachment despite a recent successful `gpt-image-2`
+message. Bounded active-branch context now restores the prior image model for
+explicit continuation language. Complete flex/grid HTML survives CommonMark
+blank lines, while positioned poster HTML uses a scriptless inline sandbox
+instead of partial conversation-DOM execution. Exact evidence and rollback are recorded
+in `docs/tracking/g12-provider-protocols-process.md` and the executable contract
+is in `docs/contracts/frontend-api-client.md`.
+
 ## 2026-07-20 — G12.4.2 image connection failure cross-reference
 
 The owner-visible 17:50 image request exhausted the bounded provider transport

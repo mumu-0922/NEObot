@@ -135,6 +135,27 @@ Canonical project example:
 `mm-chat/docs/contracts/chat-stream-api.md` owns the reasoning effort request,
 normalization, provider mapping, and backward-compatibility contract.
 
+
+## Contextual Media Routing and Raw HTML Checklist
+
+- [ ] Test follow-up language against bounded active-branch history, not only
+      the current prompt; require a recent media-generation artifact/model.
+- [ ] Keep analysis/negation phrases on the chat path and preserve attachment
+      restrictions when the media executor is prompt-only.
+- [ ] Remember that CommonMark raw HTML blocks can terminate at internal blank
+      lines even when every HTML tag is balanced.
+- [ ] Keep incomplete streaming visual tails inert until their root fragment is
+      balanced; do not let partial CSS mutate the conversation layout.
+- [ ] Never broaden inline CSS merely to make one generated layout work. Keep
+      flow-layout HTML inline; move positioned/transformed layouts to the
+      scriptless inline-sandbox boundary.
+- [ ] Re-test an actual persisted failing message after deployment so a small
+      synthetic fragment cannot hide parser-boundary differences.
+
+Canonical project example:
+`mm-chat/docs/contracts/frontend-api-client.md` owns contextual image
+continuation and HTML visual fallback behavior.
+
 ---
 
 ## Cross-Platform Template Consistency

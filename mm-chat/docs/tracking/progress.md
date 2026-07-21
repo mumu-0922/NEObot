@@ -1486,6 +1486,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
             attribution using the loaded 600-second site configuration, enabled
             `stream: true` plus one non-persisted partial image for
             `gpt-image-*`, and passed a cleaned 67,327 ms complex-poster proof.
+      - [x] G12.4.4 Contextual image continuation and HTML visual containment:
+            bounded recent image history now routes `继续画` back to the same
+            image model; multiline flow HTML stays intact, while positioned
+            poster code uses the sandbox preview instead of partial execution.
     - [x] G12.5 Model-aware reasoning effort: Kelivo-informed Off/Auto/Low/
           Medium/High plus conditional XHigh/Max UI, server conversation
           persistence, validated Go normalization, OpenAI/Responses and

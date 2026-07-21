@@ -1,4 +1,5 @@
-import { ModelInfo } from "@/services/api/chatService";
+import type { Message } from "@/types";
+import type { ModelInfo } from "@/services/api/chatService";
 
 const IMAGE_GENERATION_MODEL_PREFIXES = [
   "gpt-image-",
@@ -24,11 +25,17 @@ const IMAGE_GENERATION_INTENT_PATTERNS = [
   /(?:draw|paint|illustrate)\s+(?:me\s+)?(?:an?\s+|some\s+)?\S+/i,
 ] as const;
 
+const IMAGE_GENERATION_CONTINUATION_INTENT_PATTERNS = [
+  /(?:继续|接着|再|重新|重来).{0,8}(?:画|绘制|描绘|生图|出图|生成|做图|制作)/u,
+  /(?:continue|keep|resume|redo|regenerate).{0,20}(?:draw|paint|illustrat|generat|creat|image|picture|poster)/i,
+] as const;
+
 export interface ImageGenerationRouteOptions {
   selectedModel: string;
   availableModels: ModelInfo[];
   prompt: string;
   hasAttachments?: boolean;
+  recentImageGenerationModel?: string;
 }
 
 /**
@@ -59,6 +66,41 @@ export const hasExplicitImageGenerationIntent = (prompt: string): boolean => {
   );
 };
 
+export const hasImageGenerationContinuationIntent = (
+  prompt: string,
+): boolean => {
+  const normalizedPrompt = prompt.trim();
+  if (!normalizedPrompt) return false;
+  if (
+    IMAGE_ANALYSIS_INTENT_PATTERNS.some((pattern) =>
+      pattern.test(normalizedPrompt),
+    )
+  ) {
+    return false;
+  }
+  return IMAGE_GENERATION_CONTINUATION_INTENT_PATTERNS.some((pattern) =>
+    pattern.test(normalizedPrompt),
+  );
+};
+
+export const findRecentImageGenerationModel = (
+  messages: readonly Message[],
+  maxLookback = 8,
+): string | undefined => {
+  const start = Math.max(0, messages.length - Math.max(1, maxLookback));
+  for (let index = messages.length - 1; index >= start; index -= 1) {
+    const message = messages[index];
+    if (
+      message.role === "model" &&
+      message.metadata?.kind === "image_generation" &&
+      isImageGenerationModel(message.model || "")
+    ) {
+      return message.model;
+    }
+  }
+  return undefined;
+};
+
 /**
  * Select an enabled image model for an explicit text-to-image request without
  * changing the user's selected chat model. Existing attachments disable the
@@ -69,11 +111,18 @@ export const resolveImageGenerationRoute = ({
   availableModels,
   prompt,
   hasAttachments = false,
+  recentImageGenerationModel,
 }: ImageGenerationRouteOptions): string => {
+  const continuesRecentImageGeneration = Boolean(
+    recentImageGenerationModel &&
+    isImageGenerationModel(recentImageGenerationModel) &&
+    hasImageGenerationContinuationIntent(prompt),
+  );
   if (
     isImageGenerationModel(selectedModel) ||
     hasAttachments ||
-    !hasExplicitImageGenerationIntent(prompt)
+    (!hasExplicitImageGenerationIntent(prompt) &&
+      !continuesRecentImageGeneration)
   ) {
     return selectedModel;
   }
@@ -82,10 +131,18 @@ export const resolveImageGenerationRoute = ({
   const imageModels = availableModels.filter((model) =>
     isImageGenerationModel(model.name),
   );
+  const recentImageModel = imageModels.find(
+    (model) => model.name === recentImageGenerationModel,
+  );
   const sameProviderImageModel = imageModels.find(
     (model) => model.name.split(":", 1)[0] === selectedProviderId,
   );
-  return sameProviderImageModel?.name || imageModels[0]?.name || selectedModel;
+  return (
+    recentImageModel?.name ||
+    sameProviderImageModel?.name ||
+    imageModels[0]?.name ||
+    selectedModel
+  );
 };
 
 /**

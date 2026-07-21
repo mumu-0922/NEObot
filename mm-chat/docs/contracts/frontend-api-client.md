@@ -1501,6 +1501,38 @@ code` only; `codeExecution` stays disabled until a real sandbox/executor and
   remains runtime capability-gated, and local mode must fail closed instead of
   calling removed `/api/plugins/*` routes.
 
+
+### Scenario: contextual image continuation and HTML visual fallback
+
+1. **Scope / Trigger** — Applies when a short follow-up may continue a recent
+   image generation, or model-authored raw HTML contains multiline visual
+   markup.
+2. **Signatures** — `resolveImageGenerationRoute()` accepts optional
+   `recentImageGenerationModel`; `normalizeHtmlVisualMarkdown()` owns raw HTML
+   normalization before `ReactMarkdown`.
+3. **Contracts** — Only an explicit continuation phrase plus an image model
+   found within the active branch's last eight messages may inherit that image
+   model. Attachments still disable automatic text-to-image routing. Complete
+   safe flex/grid HTML visuals have internal blank lines collapsed. Visuals
+   using positioned/offset/transformed/aspect-ratio CSS enter an isolated
+   inline HTML sandbox instead of partial conversation-DOM rendering.
+4. **Validation & Error Matrix** — No recent image context keeps the selected
+   chat model; image-analysis/negation language never becomes generation;
+   unavailable recent image models use the normal provider/image fallback;
+   incomplete/unbalanced visual tails render as inert source; unsafe HTML never
+   receives the complete-safe-visual rewrite.
+5. **Good/Base/Bad Cases** — Good: `继续画…` after a recent `gpt-image-*`
+   result reuses it. Base: `继续分析图片` stays chat. Bad: absolute-positioned
+   poster HTML must not execute partly in the conversation layout.
+6. **Tests Required** — Unit-test explicit/continuation/negative routing,
+   recent-model lookup, blank-line HTML rendering, sandbox-only CSS fallback,
+   and the `ChatApp` route wiring. Deployed proof must inspect both the stored
+   model/attachment result and the previously broken message DOM.
+7. **Wrong vs Correct** — Wrong: classify only the current prompt and pass any
+   raw HTML into CommonMark. Correct: combine bounded recent context with the
+   prompt, then render only flow-layout HTML in the conversation DOM and
+   isolate poster-style code in a scriptless inline sandbox.
+
 ## 14. HTTP Client Rules
 
 Server adapter must centralize HTTP behavior.

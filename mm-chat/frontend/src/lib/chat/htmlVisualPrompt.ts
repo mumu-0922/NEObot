@@ -11,6 +11,7 @@ Use raw HTML fragments directly inside the Markdown body. Suitable fragments inc
 Do not wrap HTML visual fragments in code fences, including html, markdown, md, or unlabeled code fences.
 Allowed elements include div, section, article, aside, main, span, p, details, summary, table, thead, tbody, tr, th, td, ul, ol, li, a, and img.
 Use only inline style attributes for layout, spacing, borders, color, and typography.
+Use normal document flow with flexbox or grid. Do not use position, inset, top, right, bottom, left, transform, or aspect-ratio; layouts that require those properties are rendered inside an isolated inline HTML sandbox instead of the conversation DOM.
 Prefer the app's semantic neon diagram palette: cyan for UI and links, mint for agent logic and success, violet for context or code, amber for tool or warning states, and rose for policy or danger states. Use semantic variables such as var(--html-visual-surface), var(--html-visual-foreground), var(--html-visual-subtle-border), var(--html-visual-info-surface), var(--html-visual-info-foreground), var(--html-visual-knowledge-surface), var(--html-visual-knowledge-foreground), var(--html-visual-success-surface), var(--html-visual-success-foreground), var(--html-visual-warning-surface), var(--html-visual-warning-foreground), var(--html-visual-danger-surface), var(--html-visual-danger-foreground), var(--diagram-line), and var(--markdown-soft-surface) so visual blocks remain readable in light and dark themes.
 Use light or pale backgrounds with dark, readable foreground text by default. Body text, labels, captions, table cells, and headings must use dark foreground variables on light surfaces.
 You may use cyan, mint, violet, amber, and rose hue families for badges, borders, and soft callouts, but use tone-specific foreground variables for text and surface variables only for backgrounds.
@@ -31,6 +32,7 @@ If the user explicitly asks for plain text, pure Markdown, or an HTML code examp
 const HTML_VISUAL_REQUEST_INSTRUCTIONS = `<format_instructions data-html-visual="true">
 For this request, apply the html-visual rules from the system instructions when structure is complex.
 Use safe raw HTML fragments directly in the Markdown body for visual layout when helpful.
+Use normal document flow with flexbox or grid. Do not use position, inset, directional offsets, transform, or aspect-ratio; those layouts are rendered inside an isolated inline HTML sandbox instead of the conversation DOM.
 Prefer the app's semantic neon palette variables and other semantic variables, pale light surfaces, near-navy dark surfaces, very subtle borders, soft separation, and strong foreground/background contrast so the fragment works in light and dark themes.
 Use light or pale backgrounds with dark, readable foreground text. Aim for at least a 4.5:1 foreground/background contrast ratio when both color and background are set.
 Never use surface, border, pastel, or translucent color variables as text color. Use tone-specific foreground variables for text, surface variables for backgrounds, and border variables for borders.

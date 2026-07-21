@@ -406,3 +406,44 @@ frontend tests                                       183 files / 879 tests
 frontend lint / typecheck / format / build           passed
 deployed selected-row DOM                            checked + violet + check
 ```
+
+## 2026-07-21 — G12.4.4 contextual image continuation and HTML containment
+
+The reported short Chinese “continue drawing” follow-up did not reach the image
+executor. Runtime state showed a 6,895-character assistant response from
+`gpt-5.6-sol` with zero attachments, while a successful `gpt-image-2` result
+existed four messages earlier. The old classifier inspected only the current
+prompt and therefore missed continuation language after an intervening chat
+exchange.
+
+That text response was complete and its HTML tags were balanced. The visual
+still broke because CommonMark ended the raw HTML block at internal blank lines:
+the first positioned elements were parsed and the remaining tags became source
+text. The style sanitizer also intentionally excludes positioning, offsets,
+transforms, and aspect ratio, so widening inline CSS would have traded a layout
+bug for a conversation-overlay boundary.
+
+Routing now combines explicit continuation language with at most eight recent
+active-branch messages and prefers the same still-available image model. The
+renderer compacts blank lines only in complete safe flow-layout HTML. Poster
+layouts that need sandbox-only CSS render in a scriptless inline iframe instead
+of being half executed in the message DOM; incomplete streaming tails remain
+inert source until the visual fragment closes.
+
+Verification:
+
+```text
+focused routing/rendering tests                     5 files / 40 tests
+frontend full tests                                 183 files / 886 tests
+frontend lint / typecheck / format / build          passed
+persisted failing message after deploy              empty sandbox + deny-default CSP
+conversation-DOM inline/styled leak                  false / false
+real seed image model/attachments                    gpt-image-2 / 1
+browser `继续画` model/attachments                   gpt-image-2 / 1
+generated files delete/readback                     204 / 404
+disposable conversation delete/readback             204 / 404
+```
+
+The owner conversation and its historical message were read for this bounded
+reproduction but were not mutated. No prompt, response body, image bytes,
+provider Key, or URL credential was added to logs or committed artifacts.
