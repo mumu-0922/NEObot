@@ -221,7 +221,7 @@ const VoiceSettings = () => {
         }));
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+    <div className="space-y-8">
       <h3 className="text-lg font-semibold text-gray-800 dark:text-foreground">
         {t("title")}
       </h3>

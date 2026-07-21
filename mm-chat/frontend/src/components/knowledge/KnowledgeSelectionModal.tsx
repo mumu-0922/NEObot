@@ -112,7 +112,7 @@ const KnowledgeSelectionModal = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/20 p-4 backdrop-blur-sm dark:bg-black/60"
+      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/35 p-4 dark:bg-black/65"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}

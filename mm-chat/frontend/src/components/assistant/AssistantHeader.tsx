@@ -129,7 +129,7 @@ const AssistantHeader: React.FC<AssistantHeaderProps> = ({
   if (!instruction && !isEditing) return null;
 
   return (
-    <div className="bg-white/40 dark:bg-muted/40 backdrop-blur-md border border-gray-200 dark:border-border mb-4 md:mb-6 rounded-xl overflow-hidden shadow-sm">
+    <div className="mb-4 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-border dark:bg-muted md:mb-6">
       <div className="bg-white/30 dark:bg-muted/50 px-4 py-2 border-b border-gray-200 dark:border-border flex items-center justify-between">
         <div className="flex items-center gap-2 font-semibold text-gray-800 dark:text-foreground text-sm">
           <BotMessageSquare

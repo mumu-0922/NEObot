@@ -794,7 +794,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               <div className="w-8 h-8 flex items-center justify-center shrink-0">
                 <Logo className="w-7 h-7" />
               </div>
-              <span className="truncate bg-clip-text text-transparent bg-[linear-gradient(to_right,#00DEB9,#03B2DE,#1D88E1)] animate-in fade-in duration-300 whitespace-nowrap">
+              <span className="truncate whitespace-nowrap bg-clip-text text-transparent bg-[linear-gradient(to_right,#00DEB9,#03B2DE,#1D88E1)]">
                 Neo Chat
               </span>
             </button>
@@ -936,7 +936,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         )}
       </div>
 
-      <div className="min-h-0 flex-1 px-3 pb-2 animate-in fade-in duration-300">
+      <div className="min-h-0 flex-1 px-3 pb-2">
         {isOpen ? (
           <div
             ref={sidebarListRegionRef}

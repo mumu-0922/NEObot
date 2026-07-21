@@ -223,7 +223,7 @@ const CustomPluginModal = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50 p-4"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
           handleClose();
@@ -238,7 +238,7 @@ const CustomPluginModal = ({
         aria-describedby={descriptionId}
         tabIndex={-1}
         onKeyDown={handleKeyDown}
-        className="flex w-full max-w-lg flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-border dark:bg-card"
+        className="flex w-full max-w-lg flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-xl dark:border-border dark:bg-card"
       >
         <div className="flex justify-between items-center">
           <h2
@@ -495,7 +495,7 @@ const PluginDetailsModal = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/20 p-4 backdrop-blur-sm animate-in fade-in duration-200 dark:bg-black/50"
+      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/35 p-4 dark:bg-black/55"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
           handleClose();
@@ -510,7 +510,7 @@ const PluginDetailsModal = ({
         aria-describedby={descriptionId}
         tabIndex={-1}
         onKeyDown={handleKeyDown}
-        className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden overscroll-contain rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-border dark:bg-card"
+        className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden overscroll-contain rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-border dark:bg-card"
       >
         {/* Header */}
         <div className="flex items-start justify-between gap-3 border-b border-gray-100 bg-gray-50/50 px-6 py-4 dark:border-border dark:bg-card/50">
@@ -665,7 +665,7 @@ const PluginDetailsModal = ({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 bg-gray-50/30 dark:bg-background/60">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-gray-50/30 p-6 dark:bg-background/60">
           {activeTab === "tools" && (
             <div
               id={toolsPanelId}
@@ -1051,7 +1051,7 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
   };
 
   return (
-    <div className="flex flex-col h-full w-full relative overflow-hidden animate-in fade-in duration-300">
+    <div className="relative flex h-full w-full flex-col overflow-hidden">
       {/* Detail Modal */}
       {selectedPluginForDetails && (
         <PluginDetailsModal
@@ -1069,7 +1069,7 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
       )}
 
       {/* Header */}
-      <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-3 border-b border-gray-200/50 bg-white/40 px-6 py-4 backdrop-blur-md dark:border-border dark:bg-card/40">
+      <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-3 border-b border-gray-200/50 bg-white/95 px-6 py-4 dark:border-border dark:bg-card/95">
         <div className="flex min-w-0 items-center gap-3">
           <div
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-linear-to-tr from-blue-500 to-purple-500 text-white shadow-lg shadow-blue-500/20"
@@ -1130,8 +1130,7 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
       {/* Search Bar & Filter */}
       <div className="mx-auto flex w-full max-w-7xl shrink-0 gap-3 px-6 pb-6 pt-6">
         <div className="group relative min-w-0 flex-1">
-          <div className="absolute inset-0 bg-blue-500/20 dark:bg-blue-500/10 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-          <div className="relative flex items-center rounded-2xl border border-gray-200 bg-white/60 px-4 py-3 shadow-sm backdrop-blur-xl transition-[border-color,box-shadow] focus-within:border-blue-500/50 focus-within:ring-2 focus-within:ring-blue-500/30 dark:border-border dark:bg-muted/60">
+          <div className="relative flex items-center rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm transition-[border-color,box-shadow] focus-within:border-blue-500/50 focus-within:ring-2 focus-within:ring-blue-500/30 dark:border-border dark:bg-muted">
             <label htmlFor={searchInputId} className="sr-only">
               {t("searchLabel")}
             </label>
@@ -1156,7 +1155,7 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
       </div>
 
       {/* Content Grid */}
-      <div className="flex-1 overflow-y-auto px-6 pb-10 custom-scrollbar">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pb-10 custom-scrollbar [scrollbar-gutter:stable]">
         <div className="max-w-7xl mx-auto flex flex-col min-h-full">
           {/* Installed Section - Always Visible if matching search */}
           {filteredInstalledPlugins.length > 0 && (
@@ -1187,7 +1186,7 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
                   return (
                     <div
                       key={plugin.id}
-                      className="group relative flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white/40 p-4 backdrop-blur-md transition-[border-color,box-shadow] duration-300 hover:border-blue-300 dark:border-border dark:bg-muted/40 dark:hover:border-blue-700"
+                      className="group relative flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 [contain:paint] transition-[border-color,box-shadow] duration-150 hover:border-blue-300 dark:border-border dark:bg-muted dark:hover:border-blue-700"
                     >
                       <div className="mb-3 flex items-center justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-3 overflow-hidden">
@@ -1362,7 +1361,7 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
                     return (
                       <div
                         key={plugin.id}
-                        className="flex h-full flex-col rounded-2xl border border-gray-200 bg-white/40 p-4 backdrop-blur-md transition-[border-color,box-shadow] duration-300 hover:border-blue-300 dark:border-border dark:bg-muted/40 dark:hover:border-blue-700"
+                        className="flex h-full flex-col rounded-2xl border border-gray-200 bg-white p-4 [contain:paint] transition-[border-color,box-shadow] duration-150 hover:border-blue-300 dark:border-border dark:bg-muted dark:hover:border-blue-700"
                       >
                         <div className="mb-3 flex items-center justify-between gap-3">
                           <div className="flex min-w-0 items-center gap-3 overflow-hidden">

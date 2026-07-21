@@ -242,7 +242,7 @@ const MemorySettings = () => {
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+    <div className="space-y-6">
       <div className="space-y-3">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>

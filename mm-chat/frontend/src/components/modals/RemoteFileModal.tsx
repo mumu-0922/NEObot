@@ -237,7 +237,7 @@ const RemoteFileModal: React.FC<RemoteFileModalProps> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/20 dark:bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/35 p-4 dark:bg-black/65"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}

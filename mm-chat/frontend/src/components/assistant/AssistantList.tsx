@@ -82,7 +82,7 @@ const AssistantList: React.FC<AssistantListProps> = ({
                 aria-label={t("selectAssistantAria", {
                   title: agent.meta.title,
                 })}
-                className="group p-2 bg-white/60 dark:bg-muted/60 backdrop-blur-md border border-gray-200 dark:border-border rounded-xl hover:border-red-200/70 dark:hover:border-red-900/50 transition-[border-color,background-color,box-shadow] flex flex-col text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60"
+                className="group flex flex-col rounded-xl border border-gray-200 bg-white p-2 text-left [contain:paint] transition-[border-color,background-color,box-shadow] hover:border-red-200/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 dark:border-border dark:bg-muted dark:hover:border-red-900/50"
                 onClick={() => onSelect(agent)}
               >
                 <div className="flex items-center gap-2">
@@ -103,7 +103,7 @@ const AssistantList: React.FC<AssistantListProps> = ({
               <div
                 key={i}
                 aria-hidden="true"
-                className="p-3 bg-white/50 dark:bg-muted/50 backdrop-blur-md rounded-xl flex flex-col gap-2 animate-pulse border border-gray-200 dark:border-border"
+                className="flex flex-col gap-2 rounded-xl border border-gray-200 bg-white p-3 [contain:paint] animate-pulse dark:border-border dark:bg-muted"
               >
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 bg-gray-200 dark:bg-accent rounded-lg"></div>
@@ -118,4 +118,4 @@ const AssistantList: React.FC<AssistantListProps> = ({
   );
 };
 
-export default AssistantList;
+export default React.memo(AssistantList);

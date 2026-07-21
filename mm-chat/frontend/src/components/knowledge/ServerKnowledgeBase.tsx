@@ -504,8 +504,7 @@ export default function ServerKnowledgeBase({
       {!selectedCollection && (
         <div className="mx-auto flex w-full max-w-7xl shrink-0 gap-3 px-6 pb-6 pt-6">
           <div className="group relative min-w-0 flex-1">
-            <div className="absolute inset-0 rounded-2xl bg-purple-500/20 opacity-0 blur-xl transition-opacity duration-500 group-hover:opacity-100 dark:bg-purple-500/10" />
-            <div className="relative flex items-center rounded-2xl border border-gray-200 bg-white/60 px-4 py-3 shadow-sm backdrop-blur-xl focus-within:border-purple-500/50 focus-within:ring-2 focus-within:ring-purple-500/30 dark:border-border dark:bg-muted/60">
+            <div className="relative flex items-center rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm focus-within:border-purple-500/50 focus-within:ring-2 focus-within:ring-purple-500/30 dark:border-border dark:bg-muted">
               <Search
                 size={20}
                 className="mr-3 text-gray-400"
@@ -540,7 +539,7 @@ export default function ServerKnowledgeBase({
       )}
 
       <div
-        className={`custom-scrollbar flex-1 overflow-y-auto px-6 ${selectedCollection ? "py-6" : "pb-10"}`}
+        className={`custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 [scrollbar-gutter:stable] ${selectedCollection ? "py-6" : "pb-10"}`}
       >
         <div className="mx-auto flex min-h-full max-w-7xl flex-col">
           {!selectedCollection ? (
@@ -776,7 +775,7 @@ function ServerCollectionModal({
   }, []);
   return createPortal(
     <div
-      className="fixed inset-0 z-9999 flex animate-in items-center justify-center bg-black/50 p-4 duration-200 fade-in backdrop-blur-sm"
+      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50 p-4"
       onClick={(event) => {
         if (event.target === event.currentTarget && !busy) onClose();
       }}
@@ -788,7 +787,7 @@ function ServerCollectionModal({
         onKeyDown={(event) => {
           if (event.key === "Escape" && !busy) onClose();
         }}
-        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-border dark:bg-card"
+        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-border dark:bg-card"
       >
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 dark:border-border">
           <h2
@@ -807,7 +806,7 @@ function ServerCollectionModal({
             <X size={20} aria-hidden="true" />
           </button>
         </div>
-        <div className="custom-scrollbar flex-1 space-y-5 overflow-y-auto p-5">
+        <div className="custom-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-5">
           <label className="grid gap-1.5 text-xs font-semibold text-gray-500 dark:text-muted-foreground">
             <span>{t("name")}</span>
             <input
@@ -992,7 +991,7 @@ function Header({
 }) {
   const t = useTranslations("Knowledge");
   return (
-    <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-3 border-b border-gray-200/50 bg-white/40 px-6 py-4 backdrop-blur-md dark:border-border dark:bg-card/40">
+    <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-3 border-b border-gray-200/50 bg-white/95 px-6 py-4 dark:border-border dark:bg-card/95">
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-linear-to-tr from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/20">
           <Library size={20} aria-hidden="true" />

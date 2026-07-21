@@ -1537,7 +1537,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         `docs/tracking/g17-interaction-quality-plan.md`.
     - [x] G17.1 Server-routed auxiliary text generation and content-polish
           repair.
-    - [ ] G17.2 Assistant, Skill, Plugin, and equivalent interaction
+    - [x] G17.2 Assistant, Skill, Plugin, and equivalent interaction
           performance optimization.
     - [ ] G17.3 Knowledge document selection and bounded bulk deletion.
 

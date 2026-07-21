@@ -117,8 +117,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   };
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-background animate-in fade-in duration-300">
-      <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-3 border-b border-border/80 bg-background/85 px-4 py-3 backdrop-blur-md md:px-6">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-background">
+      <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-3 border-b border-border/80 bg-background/95 px-4 py-3 md:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <div
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground ring-1 ring-border"
@@ -186,7 +186,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         </div>
 
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-muted/20 dark:bg-transparent">
-          <div className="flex-1 overflow-y-auto custom-scrollbar">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar [scrollbar-gutter:stable]">
             <div
               id={`settings-panel-${resolvedActiveTab}`}
               role="tabpanel"

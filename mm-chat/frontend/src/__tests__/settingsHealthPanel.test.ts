@@ -55,7 +55,8 @@ describe("settings deployment health panel", () => {
 
     expect(settingsPage).toContain("md:w-60");
     expect(settingsPage).toContain("max-w-5xl");
-    expect(settingsPage).toContain("bg-background/85");
+    expect(settingsPage).toContain("bg-background/95");
+    expect(settingsPage).not.toContain("backdrop-blur-md");
     expect(settingsPage).toContain("border-l-2");
     expect(settingsPage).not.toContain("bg-blue-50 text-blue-600 shadow-sm");
   });

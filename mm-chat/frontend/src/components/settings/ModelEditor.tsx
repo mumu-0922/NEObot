@@ -161,7 +161,7 @@ const ModelEditor = ({
   };
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-black/5 dark:bg-black/50 backdrop-blur-[2px] animate-in fade-in duration-200">
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/15 p-4 dark:bg-black/55">
       <div className="bg-white dark:bg-card w-full max-w-sm rounded-2xl shadow-2xl border border-gray-200 dark:border-border flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-border bg-gray-50/50 dark:bg-muted/50">

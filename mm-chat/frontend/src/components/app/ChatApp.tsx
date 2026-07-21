@@ -3003,7 +3003,7 @@ const ChatApp = () => {
       {/* Mobile Sidebar Overlay Mask */}
       {isSidebarOpen && (
         <div
-          className="fixed inset-0 z-30 bg-black/10 dark:bg-black/50 backdrop-blur-[1px] md:hidden transition-opacity duration-300"
+          className="fixed inset-0 z-30 bg-black/20 transition-opacity duration-150 dark:bg-black/55 md:hidden"
           onClick={() => setIsSidebarOpen(false)}
           aria-hidden="true"
         />

@@ -1,4 +1,11 @@
-import React, { useState, useEffect, useMemo, useRef, useId } from "react";
+import React, {
+  useCallback,
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  useId,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   Search,
@@ -311,7 +318,7 @@ const AssistantEditorModal = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50 p-4"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
           onCloseRef.current();
@@ -325,7 +332,7 @@ const AssistantEditorModal = ({
         aria-labelledby={dialogTitleId}
         tabIndex={-1}
         onKeyDown={handleDialogKeyDown}
-        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden overscroll-contain rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-border dark:bg-card"
+        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden overscroll-contain rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-border dark:bg-card"
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-border">
           <h3
@@ -345,7 +352,7 @@ const AssistantEditorModal = ({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 space-y-4 custom-scrollbar">
           {/* Avatar & Title */}
           <div className="flex gap-4">
             <div className="space-y-1">
@@ -651,7 +658,7 @@ interface AssistantCardProps {
   isDetailLoading?: boolean;
 }
 
-const AssistantCard: React.FC<AssistantCardProps> = ({
+const AssistantCard = React.memo(function AssistantCard({
   agent,
   onClick,
   onEdit,
@@ -659,7 +666,7 @@ const AssistantCard: React.FC<AssistantCardProps> = ({
   onReset,
   hasOverride,
   isDetailLoading,
-}) => {
+}: AssistantCardProps) {
   const t = useTranslations("Assistant");
   const [isDeleteConfirming, setIsDeleteConfirming] = useState(false);
   const [isResetConfirming, setIsResetConfirming] = useState(false);
@@ -770,7 +777,7 @@ const AssistantCard: React.FC<AssistantCardProps> = ({
 
   return (
     <article
-      className={`group relative flex h-full overflow-hidden rounded-2xl border bg-white/40 backdrop-blur-md transition-[border-color,box-shadow] duration-300 dark:bg-muted/40 ${
+      className={`group relative flex h-full overflow-hidden rounded-2xl border bg-white [contain:paint] transition-[border-color,box-shadow] duration-150 dark:bg-muted ${
         hasOverride
           ? "border-rose-200 dark:border-rose-900/50"
           : "border-gray-200 hover:border-rose-300 hover:shadow-lg hover:shadow-rose-500/5 dark:border-border dark:hover:border-rose-700"
@@ -842,7 +849,7 @@ const AssistantCard: React.FC<AssistantCardProps> = ({
           aria-label={t("editAssistantAria", { title: agent.meta.title })}
           aria-busy={isDetailLoading || undefined}
           onClick={(e) => onEdit(e, agent)}
-          className="relative rounded-lg border border-gray-200 bg-white/90 p-1.5 text-gray-500 shadow-sm backdrop-blur-sm transition-colors hover:bg-blue-50 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 disabled:cursor-not-allowed disabled:opacity-60 dark:border-border dark:bg-popover/90 dark:text-muted-foreground dark:hover:bg-blue-900/30 dark:hover:text-blue-400"
+          className="relative rounded-lg border border-gray-200 bg-white p-1.5 text-gray-500 shadow-sm transition-colors hover:bg-blue-50 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 disabled:cursor-not-allowed disabled:opacity-60 dark:border-border dark:bg-popover dark:text-muted-foreground dark:hover:bg-blue-900/30 dark:hover:text-blue-400"
           disabled={isDetailLoading}
         >
           {isDetailLoading ? (
@@ -864,7 +871,7 @@ const AssistantCard: React.FC<AssistantCardProps> = ({
                 : t("deleteAssistantAria", { title: agent.meta.title })
             }
             onClick={handleDeleteClick}
-            className={`rounded-lg border border-gray-200 bg-white/90 p-1.5 shadow-sm backdrop-blur-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 dark:border-border dark:bg-popover/90 ${
+            className={`rounded-lg border border-gray-200 bg-white p-1.5 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 dark:border-border dark:bg-popover ${
               isDeleteConfirming
                 ? "text-red-600 dark:text-red-300"
                 : "text-gray-500 hover:bg-red-50 hover:text-red-600 dark:text-muted-foreground dark:hover:bg-red-900/30 dark:hover:text-red-400"
@@ -886,7 +893,7 @@ const AssistantCard: React.FC<AssistantCardProps> = ({
                 : t("resetAria", { title: agent.meta.title })
             }
             onClick={handleResetClick}
-            className={`rounded-lg border border-gray-200 bg-white/90 p-1.5 shadow-sm backdrop-blur-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60 dark:border-border dark:bg-popover/90 ${
+            className={`rounded-lg border border-gray-200 bg-white p-1.5 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60 dark:border-border dark:bg-popover ${
               isResetConfirming
                 ? "text-amber-600 dark:text-amber-300"
                 : "text-gray-500 hover:bg-amber-50 hover:text-amber-600 dark:text-muted-foreground dark:hover:bg-amber-900/30 dark:hover:text-amber-400"
@@ -902,7 +909,7 @@ const AssistantCard: React.FC<AssistantCardProps> = ({
       </div>
     </article>
   );
-};
+});
 
 const AssistantHub: React.FC<AssistantHubProps> = ({ onClose, onSelect }) => {
   const t = useTranslations("Assistant");
@@ -982,7 +989,7 @@ const AssistantHub: React.FC<AssistantHubProps> = ({ onClose, onSelect }) => {
     load();
   }, [_hasHydrated, locale]);
 
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(async () => {
     const requestId = agentListRequestRef.current + 1;
     agentListRequestRef.current = requestId;
     setIsRefreshing(true);
@@ -1000,7 +1007,7 @@ const AssistantHub: React.FC<AssistantHubProps> = ({ onClose, onSelect }) => {
         setIsRefreshing(false);
       }
     }
-  };
+  }, [locale]);
 
   // Prepare Local Assistants List (Custom + Used + Overridden)
   const localAgents = useMemo(() => {
@@ -1069,13 +1076,14 @@ const AssistantHub: React.FC<AssistantHubProps> = ({ onClose, onSelect }) => {
   }, [mergedApiAgents]);
 
   // Filtering & Sorting for API List
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
   const filteredApiAgents = useMemo(() => {
     return mergedApiAgents.filter((a) => {
       const matchesSearch =
-        a.meta.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        a.meta.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        a.meta.title.toLowerCase().includes(normalizedSearchTerm) ||
+        a.meta.description.toLowerCase().includes(normalizedSearchTerm) ||
         a.meta.tags.some((tag) =>
-          tag.toLowerCase().includes(searchTerm.toLowerCase()),
+          tag.toLowerCase().includes(normalizedSearchTerm),
         );
 
       const matchesCategory =
@@ -1085,16 +1093,16 @@ const AssistantHub: React.FC<AssistantHubProps> = ({ onClose, onSelect }) => {
 
       return matchesSearch && matchesCategory;
     });
-  }, [mergedApiAgents, searchTerm, selectedCategories]);
+  }, [mergedApiAgents, normalizedSearchTerm, selectedCategories]);
 
   // Filtering for Local List
   const filteredLocalAgents = useMemo(() => {
     return localAgents.filter(
       (a) =>
-        a.meta.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        a.meta.description.toLowerCase().includes(searchTerm.toLowerCase()),
+        a.meta.title.toLowerCase().includes(normalizedSearchTerm) ||
+        a.meta.description.toLowerCase().includes(normalizedSearchTerm),
     );
-  }, [localAgents, searchTerm]);
+  }, [localAgents, normalizedSearchTerm]);
 
   // Pagination Logic for API list
   const totalPages = Math.ceil(filteredApiAgents.length / ITEMS_PER_PAGE);
@@ -1113,103 +1121,121 @@ const AssistantHub: React.FC<AssistantHubProps> = ({ onClose, onSelect }) => {
     });
   };
 
-  const handleEditClick = async (e: React.MouseEvent, agent: LobeAgent) => {
-    e.stopPropagation();
-    const requestId = agentDetailRequestRef.current + 1;
-    agentDetailRequestRef.current = requestId;
+  const handleEditClick = useCallback(
+    async (e: React.MouseEvent, agent: LobeAgent) => {
+      e.stopPropagation();
+      const requestId = agentDetailRequestRef.current + 1;
+      agentDetailRequestRef.current = requestId;
 
-    if (agent.isCustom) {
-      // Custom agents already have full data locally
-      setEditingAgent(agent);
-      setShowEditor(true);
-    } else {
-      // For remote agents, fetch the full details to get systemRole
-      setLoadingAgentId(agent.identifier);
-      try {
-        const detail = await getAgentDetail(agent.identifier, locale);
-        if (
-          !isMountedRef.current ||
-          agentDetailRequestRef.current !== requestId
-        ) {
-          return;
-        }
-        // Merge detail config into meta for editing purposes
-        const fullAgent = {
-          ...agent,
-          meta: {
-            ...agent.meta,
-            ...detail.meta, // Refresh meta from details if newer
-            systemRole: detail.config?.systemRole || agent.meta.systemRole,
-          },
-        };
-        setEditingAgent(fullAgent);
-        setShowEditor(true);
-      } catch (error) {
-        if (
-          !isMountedRef.current ||
-          agentDetailRequestRef.current !== requestId
-        ) {
-          return;
-        }
-        logDevError("Failed to load agent details:", error);
-        // Fallback to opening editor with what we have
+      if (agent.isCustom) {
+        // Custom agents already have full data locally
         setEditingAgent(agent);
         setShowEditor(true);
-      } finally {
-        if (
-          isMountedRef.current &&
-          agentDetailRequestRef.current === requestId
-        ) {
-          setLoadingAgentId(null);
+      } else {
+        // For remote agents, fetch the full details to get systemRole
+        setLoadingAgentId(agent.identifier);
+        try {
+          const detail = await getAgentDetail(agent.identifier, locale);
+          if (
+            !isMountedRef.current ||
+            agentDetailRequestRef.current !== requestId
+          ) {
+            return;
+          }
+          // Merge detail config into meta for editing purposes
+          const fullAgent = {
+            ...agent,
+            meta: {
+              ...agent.meta,
+              ...detail.meta, // Refresh meta from details if newer
+              systemRole: detail.config?.systemRole || agent.meta.systemRole,
+            },
+          };
+          setEditingAgent(fullAgent);
+          setShowEditor(true);
+        } catch (error) {
+          if (
+            !isMountedRef.current ||
+            agentDetailRequestRef.current !== requestId
+          ) {
+            return;
+          }
+          logDevError("Failed to load agent details:", error);
+          // Fallback to opening editor with what we have
+          setEditingAgent(agent);
+          setShowEditor(true);
+        } finally {
+          if (
+            isMountedRef.current &&
+            agentDetailRequestRef.current === requestId
+          ) {
+            setLoadingAgentId(null);
+          }
         }
       }
-    }
-  };
+    },
+    [locale],
+  );
 
-  const handleDeleteLocal = (e: React.MouseEvent, identifier: string) => {
-    e.stopPropagation();
-    removeLocalAgent(identifier);
-  };
+  const handleDeleteLocal = useCallback(
+    (e: React.MouseEvent, identifier: string) => {
+      e.stopPropagation();
+      removeLocalAgent(identifier);
+    },
+    [removeLocalAgent],
+  );
 
-  const handleEditorDelete = (identifier: string) => {
-    removeLocalAgent(identifier);
-  };
+  const handleEditorDelete = useCallback(
+    (identifier: string) => {
+      removeLocalAgent(identifier);
+    },
+    [removeLocalAgent],
+  );
 
-  const handleResetOverride = (e: React.MouseEvent, identifier: string) => {
-    e.stopPropagation();
-    resetAgent(identifier);
-  };
+  const handleResetOverride = useCallback(
+    (e: React.MouseEvent, identifier: string) => {
+      e.stopPropagation();
+      resetAgent(identifier);
+    },
+    [resetAgent],
+  );
 
-  const handleSaveAgent = (savedAgent: LobeAgent) => {
-    if (savedAgent.isCustom) {
-      // If editing an existing custom agent vs creating new
-      const exists = customAgents.some(
-        (a) => a.identifier === savedAgent.identifier,
-      );
-      if (exists) {
-        updateAgent(savedAgent.identifier, savedAgent, true);
+  const handleSaveAgent = useCallback(
+    (savedAgent: LobeAgent) => {
+      if (savedAgent.isCustom) {
+        // If editing an existing custom agent vs creating new
+        const exists = customAgents.some(
+          (a) => a.identifier === savedAgent.identifier,
+        );
+        if (exists) {
+          updateAgent(savedAgent.identifier, savedAgent, true);
+        } else {
+          addCustomAgent(savedAgent);
+        }
       } else {
-        addCustomAgent(savedAgent);
+        // Saving an override for a built-in agent
+        updateAgent(savedAgent.identifier, savedAgent, false);
       }
-    } else {
-      // Saving an override for a built-in agent
-      updateAgent(savedAgent.identifier, savedAgent, false);
-    }
-  };
+    },
+    [addCustomAgent, customAgents, updateAgent],
+  );
 
-  const handleCreateNew = () => {
+  const handleCreateNew = useCallback(() => {
     setEditingAgent(undefined);
     setShowEditor(true);
-  };
+  }, []);
 
-  const handleSelectWrapper = (agent: LobeAgent) => {
-    // Record usage for local history
-    recordUsedAgent(agent);
-    onSelect(agent);
-  };
+  const handleSelectWrapper = useCallback(
+    (agent: LobeAgent) => {
+      // Record usage for local history
+      recordUsedAgent(agent);
+      onSelect(agent);
+    },
+    [onSelect, recordUsedAgent],
+  );
 
   return (
-    <div className="flex flex-col h-full w-full relative overflow-hidden animate-in fade-in duration-300">
+    <div className="relative flex h-full w-full flex-col overflow-hidden">
       {showEditor && (
         <AssistantEditorModal
           agent={editingAgent}
@@ -1220,7 +1246,7 @@ const AssistantHub: React.FC<AssistantHubProps> = ({ onClose, onSelect }) => {
       )}
 
       {/* Header */}
-      <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-3 border-b border-gray-200/50 bg-white/40 px-6 py-4 backdrop-blur-md dark:border-border dark:bg-card/40">
+      <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-3 border-b border-gray-200/50 bg-white/95 px-6 py-4 dark:border-border dark:bg-card/95">
         <div className="flex min-w-0 items-center gap-3">
           <div
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-linear-to-tr from-rose-500 to-orange-500 text-white shadow-lg shadow-rose-500/20"
@@ -1266,8 +1292,7 @@ const AssistantHub: React.FC<AssistantHubProps> = ({ onClose, onSelect }) => {
       {/* Search Bar */}
       <div className="mx-auto flex w-full max-w-7xl shrink-0 gap-3 px-6 pb-6 pt-6">
         <div className="group relative min-w-0 flex-1">
-          <div className="absolute inset-0 bg-rose-500/20 dark:bg-rose-500/10 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-          <div className="relative flex items-center rounded-2xl border border-gray-200 bg-white/60 px-4 py-3 shadow-sm backdrop-blur-xl transition-[border-color,box-shadow] focus-within:border-rose-500/50 focus-within:ring-2 focus-within:ring-rose-500/30 dark:border-border dark:bg-muted/60">
+          <div className="relative flex items-center rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm transition-[border-color,box-shadow] focus-within:border-rose-500/50 focus-within:ring-2 focus-within:ring-rose-500/30 dark:border-border dark:bg-muted">
             <label htmlFor={searchInputId} className="sr-only">
               {t("searchLabel")}
             </label>
@@ -1292,7 +1317,7 @@ const AssistantHub: React.FC<AssistantHubProps> = ({ onClose, onSelect }) => {
       </div>
 
       {/* Content Grid */}
-      <div className="flex-1 overflow-y-auto px-6 pb-10 custom-scrollbar">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pb-10 custom-scrollbar [scrollbar-gutter:stable]">
         <div className="max-w-7xl mx-auto flex flex-col min-h-full gap-8">
           {/* Local Assistants Section */}
           <div>

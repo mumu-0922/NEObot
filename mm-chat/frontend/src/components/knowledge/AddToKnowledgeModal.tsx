@@ -144,7 +144,7 @@ const AddToKnowledgeModal: React.FC<AddToKnowledgeModalProps> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/20 p-4 backdrop-blur-sm animate-in fade-in duration-200 dark:bg-black/60"
+      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/35 p-4 dark:bg-black/65"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -174,7 +174,7 @@ const AddToKnowledgeModal: React.FC<AddToKnowledgeModalProps> = ({
           </button>
         </div>
 
-        <div className="custom-scrollbar flex-1 space-y-4 overflow-y-auto p-5">
+        <div className="custom-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-5">
           <div className="space-y-1.5">
             <label
               htmlFor={collectionInputId}

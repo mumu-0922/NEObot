@@ -479,7 +479,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50 p-4"
       onClick={(event) => {
         if (event.target === event.currentTarget) {
           void handleCloseRequest();
@@ -493,7 +493,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
         aria-labelledby={titleId}
         tabIndex={-1}
         onKeyDown={handleModalKeyDown}
-        className="bg-white dark:bg-card w-full max-w-2xl rounded-2xl shadow-2xl border border-gray-200 dark:border-border flex flex-col overflow-hidden max-h-[90vh]"
+        className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-border dark:bg-card"
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-border">
           <h2
@@ -514,7 +514,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6 space-y-6 custom-scrollbar">
           {/* Basic Info */}
           <div className="space-y-4">
             <div className="space-y-1.5">

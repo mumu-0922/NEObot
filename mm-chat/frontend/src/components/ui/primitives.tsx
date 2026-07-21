@@ -304,7 +304,7 @@ export function Dialog({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-9999 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-9999 flex items-center justify-center bg-black/45 p-4">
       <div
         ref={dialogRef}
         role="dialog"
@@ -313,7 +313,7 @@ export function Dialog({
         tabIndex={-1}
         onKeyDown={handleKeyDown}
         className={cx(
-          "max-h-[min(720px,90vh)] w-full max-w-xl overflow-hidden overscroll-contain rounded-lg border border-gray-200 bg-white shadow-2xl dark:border-border dark:bg-background",
+          "max-h-[min(720px,90vh)] w-full max-w-xl overflow-hidden overscroll-contain rounded-lg border border-gray-200 bg-white shadow-xl dark:border-border dark:bg-background",
           focusRing,
           className,
         )}

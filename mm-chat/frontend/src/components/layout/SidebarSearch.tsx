@@ -26,7 +26,7 @@ const SidebarSearch: React.FC<SidebarSearchProps> = ({
   return (
     <div className="px-3 pb-2 shrink-0">
       {isOpen ? (
-        <div className="relative animate-in fade-in duration-300">
+        <div className="relative">
           <Search
             className="absolute left-3 top-2.5 text-gray-400"
             size={16}

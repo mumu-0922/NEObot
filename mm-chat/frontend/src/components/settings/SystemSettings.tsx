@@ -105,7 +105,7 @@ const SystemSettings = () => {
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+    <div className="space-y-8">
       {/* Appearance */}
       <section className="space-y-4">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-foreground">
