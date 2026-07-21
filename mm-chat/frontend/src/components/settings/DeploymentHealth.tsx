@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -10,8 +10,10 @@ import {
 import { useTranslations } from "next-intl";
 import { SERVER_DEFAULT_PROVIDER_ID } from "@/lib/defaultConfig/shared";
 import { readJsonResponseOrThrow } from "@/lib/api/client";
+import { createNeoChatApiClient } from "@/services/api/client";
 import { useCoreSettingsStore } from "@/store/core/coreSettingsStore";
 import { useSettingsStore } from "@/store/core/settingsStore";
+import type { RAGProviderStatusDTO } from "@/services/api/client";
 import type {
   ServiceHealthServiceKey,
   ServiceHealthState,
@@ -86,12 +88,24 @@ function strongestHealthState(states: HealthState[]): HealthState {
   );
 }
 
+function ragHealthState(status?: RAGProviderStatusDTO): HealthState {
+  if (!status) return "warning";
+  if (status.status === "ready") return "ok";
+  if (status.status === "partial") return "warning";
+  return status.providers.mineru.configured || status.providers.jina.configured
+    ? "blocked"
+    : "missing";
+}
+
 const DeploymentHealth: React.FC = () => {
   const t = useTranslations("DeploymentHealth");
   const [runtimeHealth, setRuntimeHealth] =
     useState<ServiceHealthStatus | null>(null);
+  const [ragProviderStatus, setRAGProviderStatus] =
+    useState<RAGProviderStatusDTO>();
+  const client = useMemo(() => createNeoChatApiClient(), []);
   const { providers, defaultModels } = useCoreSettingsStore();
-  const { serverConfig, rag, voice, installedPlugins } = useSettingsStore();
+  const { serverConfig, voice, installedPlugins } = useSettingsStore();
   const deployment = serverConfig?.deployment;
   const deploymentMode = deployment?.mode || "local";
   const sharedStoresOk =
@@ -109,15 +123,6 @@ const DeploymentHealth: React.FC = () => {
     ) ||
     Object.values(defaultModels).some(Boolean);
   const hasSearch = Boolean(serverConfig?.search.available);
-  const hasRag =
-    Boolean(serverConfig?.rag.vectorStoreAvailable) ||
-    Boolean(serverConfig?.rag.documentProcessingAvailable) ||
-    Boolean(rag.url?.trim()) ||
-    Boolean(rag.tokenSecret) ||
-    Boolean(rag.mineruApiToken?.trim()) ||
-    Boolean(rag.mineruApiTokenSecret) ||
-    Boolean(rag.llamaParseApiKey?.trim()) ||
-    Boolean(rag.llamaParseApiKeySecret);
   const hasVoice =
     Boolean(
       serverConfig?.voice.defaultSttAvailable ||
@@ -155,10 +160,29 @@ const DeploymentHealth: React.FC = () => {
         if (!cancelled) setRuntimeHealth(null);
       });
 
+    client.ragProviders
+      .getRAGProviderStatus()
+      .then((status) => {
+        if (!cancelled) setRAGProviderStatus(status);
+      })
+      .catch(() => {
+        if (!cancelled) setRAGProviderStatus(undefined);
+      });
+
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [client]);
+
+  const ragState = ragHealthState(ragProviderStatus);
+  const ragDetail =
+    ragProviderStatus?.status === "ready"
+      ? t("ragReady")
+      : ragProviderStatus?.status === "partial"
+        ? t("ragPartial")
+        : ragState === "missing"
+          ? t("ragMissing")
+          : t("ragUnavailable");
 
   const items: HealthItem[] = [
     {
@@ -226,8 +250,8 @@ const DeploymentHealth: React.FC = () => {
     {
       key: "rag",
       label: t("rag"),
-      state: hasRag ? "ok" : runtimeState("rag") || "missing",
-      detail: hasRag ? t("ragReady") : t("ragMissing"),
+      state: ragState,
+      detail: ragDetail,
     },
     {
       key: "voice",

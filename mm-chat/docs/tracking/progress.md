@@ -1529,7 +1529,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           deletion inventory, verification matrix, and rollback boundaries.
     - [x] G16.2 Atomic real-test-before-commit provider configuration and
           stage-oriented readiness projection.
-    - [ ] G16.3 Concise Knowledge Service page, two vertical provider cards,
+    - [x] G16.3 Concise Knowledge Service page, two vertical provider cards,
           and truthful deployment health.
     - [ ] G16.4 Local-RAG code retirement, bounded browser-secret purge, live
           Knowledge regression, and clean-copy closure.

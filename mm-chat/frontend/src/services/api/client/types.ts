@@ -532,6 +532,33 @@ export interface AdminRAGProviderConfigsDTO {
   providers: AdminRAGProviderConfigDTO[];
 }
 
+export type RAGServiceStatus = "ready" | "partial" | "unavailable";
+
+export type RAGProviderRuntimeStatus =
+  "ready" | "missing_secret" | "activation_required" | "unavailable";
+
+export interface RAGProviderStateDTO {
+  configured: boolean;
+  status: RAGProviderRuntimeStatus;
+  embeddingDimensions?: number;
+}
+
+export interface RAGProviderStatusDTO {
+  providers: Record<RAGProviderId, RAGProviderStateDTO>;
+  status: RAGServiceStatus;
+  capabilities: {
+    pdfParsing: boolean;
+    nativeIndexing: boolean;
+    retrieval: boolean;
+  };
+  ready: boolean;
+}
+
+export interface ConfigureAdminRAGProviderInput {
+  apiKeySecret: unknown;
+  signal?: AbortSignal;
+}
+
 export interface UpdateAdminRAGProviderConfigInput {
   name: string;
   enabled?: boolean;
@@ -547,6 +574,11 @@ export interface AdminRAGProviderConnectionDTO {
 
 export interface RAGProviderApi {
   listAdminRAGProviderConfigs(): Promise<AdminRAGProviderConfigsDTO>;
+  getRAGProviderStatus(signal?: AbortSignal): Promise<RAGProviderStatusDTO>;
+  configureAdminRAGProvider(
+    providerId: RAGProviderId,
+    input: ConfigureAdminRAGProviderInput,
+  ): Promise<AdminRAGProviderConnectionDTO>;
   updateAdminRAGProviderConfig(
     providerId: RAGProviderId,
     input: UpdateAdminRAGProviderConfigInput,

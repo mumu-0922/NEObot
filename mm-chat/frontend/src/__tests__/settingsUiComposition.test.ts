@@ -87,16 +87,30 @@ describe("settings UI primitives", () => {
       resolve(process.cwd(), "src/components/settings/RAGProviderAdmin.tsx"),
       "utf8",
     );
+    const ragSettings = readFileSync(
+      resolve(process.cwd(), "src/components/settings/RAGSettings.tsx"),
+      "utf8",
+    );
 
     expect(ragProviderAdmin).toContain("listAdminRAGProviderConfigs");
-    expect(ragProviderAdmin).toContain("updateAdminRAGProviderConfig");
-    expect(ragProviderAdmin).toContain("testAdminRAGProviderConnection");
-    expect(ragProviderAdmin).toContain("activateAdminRAGProvider");
+    expect(ragProviderAdmin).toContain("getRAGProviderStatus");
+    expect(ragProviderAdmin).toContain("configureAdminRAGProvider");
     expect(ragProviderAdmin).toContain("deleteAdminRAGProviderConfig");
     expect(ragProviderAdmin).toContain("encryptSecret");
     expect(ragProviderAdmin).toContain("BYOK_CONTEXTS.ragProvider");
-    expect(ragProviderAdmin).toContain("SecretInput");
+    expect(ragProviderAdmin).toContain("data-rag-provider={provider.id}");
+    expect(ragProviderAdmin).not.toContain("updateAdminRAGProviderConfig");
+    expect(ragProviderAdmin).not.toContain("testAdminRAGProviderConnection");
+    expect(ragProviderAdmin).not.toContain("activateAdminRAGProvider");
+    expect(ragProviderAdmin).not.toContain("SecretInput");
     expect(ragProviderAdmin).not.toContain("apiKey:");
     expect(ragProviderAdmin).toContain("providerKeyStoredOnServer");
+    expect(ragSettings).not.toContain("LlamaParse");
+    expect(ragSettings).not.toContain("Upstash");
+    expect(ragSettings).not.toContain("rag.enabled");
+    expect(ragSettings).not.toContain("chunkSize");
+    expect(ragSettings).not.toContain("topK");
+    expect(ragSettings).not.toContain("SegmentedControl");
+    expect(ragSettings).not.toContain("SimpleSwitch");
   });
 });

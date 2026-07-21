@@ -32,6 +32,21 @@ describe("settings deployment health panel", () => {
     expect(settingsPage).toContain("resolvedActiveTab");
   });
 
+  it("derives Knowledge health from server provider status only", () => {
+    const deploymentHealth = readFileSync(
+      resolve(process.cwd(), "src/components/settings/DeploymentHealth.tsx"),
+      "utf8",
+    );
+
+    expect(deploymentHealth).toContain("getRAGProviderStatus");
+    expect(deploymentHealth).toContain("ragHealthState");
+    expect(deploymentHealth).toContain('t("ragPartial")');
+    expect(deploymentHealth).toContain('t("ragUnavailable")');
+    expect(deploymentHealth).not.toContain("serverConfig?.rag");
+    expect(deploymentHealth).not.toContain("rag.url");
+    expect(deploymentHealth).not.toContain("llamaParseApiKey");
+  });
+
   it("keeps the existing settings layout while tightening navigation and content width", () => {
     const settingsPage = readFileSync(
       resolve(process.cwd(), "src/components/settings/SettingsPage.tsx"),

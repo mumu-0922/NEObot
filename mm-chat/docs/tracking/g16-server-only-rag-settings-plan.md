@@ -47,7 +47,7 @@ MinerU, Jina, Go, Python, and Postgres runtime.
 - Prove the service/repository/handler behavior and the deployed provider status
   before committing the backend slice.
 
-### G16.3 Knowledge Service page and truthful health
+### G16.3 Knowledge Service page and truthful health — complete
 
 - Replace the mixed `RAGSettings` page with the concise server-only page.
 - Render full MinerU and Jina cards vertically with masked saved state,

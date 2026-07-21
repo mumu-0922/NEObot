@@ -770,7 +770,7 @@ describe("G11.9F.3 server Search provider API adapter", () => {
 });
 
 describe("G11.9F.4.2 server RAG provider API adapter", () => {
-  it("routes RAG administrator CRUD, test, and activation to Go", async () => {
+  it("routes RAG status and atomic administrator configuration to Go", async () => {
     const requests: Array<{ url: string; method?: string; body?: unknown }> =
       [];
     const ragProviders = createServerRAGProviderApiShell(
@@ -785,8 +785,40 @@ describe("G11.9F.4.2 server RAG provider API adapter", () => {
           if (String(input).endsWith("/v1/admin/rag/providers")) {
             return Response.json({ providers: [] });
           }
+          if (String(input).endsWith("/v1/rag/provider-status")) {
+            return Response.json({
+              providers: {
+                mineru: { configured: true, status: "ready" },
+                jina: {
+                  configured: true,
+                  status: "ready",
+                  embeddingDimensions: 1024,
+                },
+              },
+              status: "ready",
+              capabilities: {
+                pdfParsing: true,
+                nativeIndexing: true,
+                retrieval: true,
+              },
+              ready: true,
+            });
+          }
           if (init?.method === "DELETE") {
             return new Response(null, { status: 204 });
+          }
+          if (String(input).endsWith("/configure")) {
+            return Response.json({
+              provider: {
+                id: "RAG:JINA",
+                name: "Jina AI",
+                provider: "jina",
+                enabled: true,
+                hasApiKey: true,
+                connectionTestValid: true,
+              },
+              checks: ["embedding", "rerank"],
+            });
           }
           if (String(input).endsWith("/test")) {
             return Response.json({
@@ -826,6 +858,18 @@ describe("G11.9F.4.2 server RAG provider API adapter", () => {
     await expect(ragProviders.listAdminRAGProviderConfigs()).resolves.toEqual({
       providers: [],
     });
+    await expect(ragProviders.getRAGProviderStatus()).resolves.toMatchObject({
+      status: "ready",
+      capabilities: { retrieval: true },
+    });
+    await expect(
+      ragProviders.configureAdminRAGProvider("jina", {
+        apiKeySecret: { v: 1 },
+      }),
+    ).resolves.toMatchObject({
+      provider: { provider: "jina", enabled: true },
+      checks: ["embedding", "rerank"],
+    });
     await expect(
       ragProviders.updateAdminRAGProviderConfig("jina", {
         name: "Jina AI",
@@ -847,6 +891,16 @@ describe("G11.9F.4.2 server RAG provider API adapter", () => {
         url: "/mm-api/v1/admin/rag/providers",
         method: "GET",
         body: undefined,
+      },
+      {
+        url: "/mm-api/v1/rag/provider-status",
+        method: "GET",
+        body: undefined,
+      },
+      {
+        url: "/mm-api/v1/admin/rag/providers/jina/configure",
+        method: "POST",
+        body: { apiKeySecret: { v: 1 } },
       },
       {
         url: "/mm-api/v1/admin/rag/providers/jina",

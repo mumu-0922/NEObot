@@ -102,3 +102,42 @@ The positive live probe reused the already encrypted server record and changed
 only its connection-test timestamp/attestation. The negative configure probe
 used a disposable invalid browser envelope, consumed no document upload, did
 not replace the record, and left no temporary local file or test database.
+
+## 2026-07-21 — G16.3 server-only page and truthful health
+
+The copied settings surface still rendered the retired browser RAG control
+plane beside the server provider administrator. G16.3 replaces it with one
+Knowledge Service header, capability status, and two always-visible vertical
+cards for MinerU and Jina. Each card accepts a transient browser-encrypted Key,
+uses the G16.2 atomic configure operation, clears the plaintext draft after
+success, and requires a second click before deleting a stored Key.
+
+The page no longer renders the global enable switch, LlamaParse, Upstash,
+browser chunk size, or TopK. Its initial and post-mutation reads use the
+redacted provider list plus `/v1/rag/provider-status`. Deployment Health now
+uses the same server status: `ready` is healthy, MinerU-only `partial` is a
+warning, configured-but-unavailable is blocked, and fully unconfigured is
+missing. It no longer treats public-config RAG flags or browser credentials as
+runtime evidence.
+
+Verification:
+
+```text
+frontend Prettier / ESLint / TypeScript                         passed
+focused API/settings/health tests                              67 passed
+full frontend Vitest                                           191 files / 912 tests passed
+frontend production build                                     passed
+Compose source build + frontend recreate                       passed / healthy
+fresh Windows Chrome Knowledge Service reload                  ready
+visible provider cards                                         MinerU + Jina, vertical
+retired visible controls                                       absent
+fresh Windows Chrome Deployment Health                         Knowledge service healthy
+live provider list/status reads                                200 / 200
+provider Key mutation or real provider quota                   none
+temporary screenshots/profiles                                 removed
+```
+
+G16.3 changes only the `mm-chat` frontend and tracking documents. The older
+client/backend PUT, test, and activate compatibility methods deliberately
+remain until G16.4 removes their last code and test references in one bounded
+cutover.

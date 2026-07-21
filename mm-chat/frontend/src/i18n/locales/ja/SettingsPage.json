@@ -5,7 +5,7 @@
   "tabProviders": "モデルプロバイダー",
   "tabDefaults": "デフォルトモデル",
   "tabSearch": "検索サービス",
-  "tabRag": "RAG サービス",
+  "tabRag": "ナレッジサービス",
   "tabVoice": "音声とスピーチ",
   "tabMemory": "メモリ",
   "tabHealth": "デプロイ状態",

@@ -1,14 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
+  AlertTriangle,
   Check,
+  CheckCircle2,
   Cpu,
   FileScan,
   Loader2,
-  Power,
-  RefreshCw,
   Trash2,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -20,70 +20,89 @@ import type {
   AdminRAGProviderConfigDTO,
   AdminRAGProviderConfigsDTO,
   RAGProviderId,
+  RAGProviderRuntimeStatus,
+  RAGProviderStatusDTO,
 } from "@/services/api/client";
-import { SecretInput } from "./SettingsUI";
 
 const RAG_PROVIDERS: Array<{
   id: RAGProviderId;
   name: string;
-  profile: string;
+  roleKey: "mineruRole" | "jinaRole";
+  Icon: typeof FileScan;
 }> = [
-  { id: "mineru", name: "MinerU", profile: "VLM · OCR · Formula · Table" },
-  {
-    id: "jina",
-    name: "Jina AI",
-    profile: "jina-embeddings-v4 · 1024D · jina-reranker-v3",
-  },
+  { id: "mineru", name: "MinerU", roleKey: "mineruRole", Icon: FileScan },
+  { id: "jina", name: "Jina AI", roleKey: "jinaRole", Icon: Cpu },
 ];
 
-type BusyAction = "save" | "activate" | "deactivate" | "delete" | "clear";
+type BusyAction = "configure" | "remove";
 
-const providerName = (providerId: RAGProviderId) =>
-  RAG_PROVIDERS.find((provider) => provider.id === providerId)?.name ??
-  providerId;
+type Feedback = {
+  providerId: RAGProviderId;
+  kind: "success" | "error";
+  message: string;
+};
+
+const mapProviders = (response: AdminRAGProviderConfigsDTO) => {
+  const next: Partial<Record<RAGProviderId, AdminRAGProviderConfigDTO>> = {};
+  for (const provider of response.providers) {
+    next[provider.provider] = provider;
+  }
+  return next;
+};
+
+const fallbackRuntimeStatus = (
+  config: AdminRAGProviderConfigDTO | undefined,
+): RAGProviderRuntimeStatus => {
+  if (!config?.hasApiKey) return "missing_secret";
+  if (config.enabled && config.connectionTestValid) return "ready";
+  if (config.connectionTestValid) return "activation_required";
+  return "unavailable";
+};
 
 const RAGProviderAdmin = () => {
   const t = useTranslations("RAG");
-  const [selectedProviderId, setSelectedProviderId] =
-    useState<RAGProviderId>("mineru");
+  const client = useMemo(() => createNeoChatApiClient(), []);
   const [providerConfigs, setProviderConfigs] = useState<
     Partial<Record<RAGProviderId, AdminRAGProviderConfigDTO>>
   >({});
+  const [providerStatus, setProviderStatus] = useState<RAGProviderStatusDTO>();
+  const [drafts, setDrafts] = useState<Record<RAGProviderId, string>>({
+    mineru: "",
+    jina: "",
+  });
   const [busy, setBusy] = useState<{
     providerId: RAGProviderId;
     action: BusyAction;
   }>();
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>();
-  const [success, setSuccess] = useState<string>();
-  const [deleteConfirmProviderId, setDeleteConfirmProviderId] =
+  const [loadError, setLoadError] = useState<string>();
+  const [feedback, setFeedback] = useState<Feedback>();
+  const [removeConfirmProviderId, setRemoveConfirmProviderId] =
     useState<RAGProviderId>();
 
-  const applyProviders = useCallback((response: AdminRAGProviderConfigsDTO) => {
-    const next: Partial<Record<RAGProviderId, AdminRAGProviderConfigDTO>> = {};
-    for (const provider of response.providers) {
-      next[provider.provider] = provider;
-    }
-    setProviderConfigs(next);
-  }, []);
-
-  const refreshProviders = useCallback(async () => {
-    const response =
-      await createNeoChatApiClient().ragProviders.listAdminRAGProviderConfigs();
-    applyProviders(response);
-  }, [applyProviders]);
+  const refreshStatus = useCallback(async () => {
+    const status = await client.ragProviders.getRAGProviderStatus();
+    setProviderStatus(status);
+  }, [client]);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
-    createNeoChatApiClient()
-      .ragProviders.listAdminRAGProviderConfigs()
-      .then((response) => {
-        if (active) applyProviders(response);
+    setLoadError(undefined);
+    Promise.all([
+      client.ragProviders.listAdminRAGProviderConfigs(),
+      client.ragProviders.getRAGProviderStatus(),
+    ])
+      .then(([configs, status]) => {
+        if (!active) return;
+        setProviderConfigs(mapProviders(configs));
+        setProviderStatus(status);
       })
       .catch((cause) => {
         if (!active) return;
-        setError(cause instanceof Error ? cause.message : t("requestFailed"));
+        setLoadError(
+          cause instanceof Error ? cause.message : t("requestFailed"),
+        );
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -91,273 +110,299 @@ const RAGProviderAdmin = () => {
     return () => {
       active = false;
     };
-  }, [applyProviders, t]);
+  }, [client, t]);
 
-  useEffect(() => {
-    setError(undefined);
-    setSuccess(undefined);
-    setDeleteConfirmProviderId(undefined);
-  }, [selectedProviderId]);
-
-  const runProviderAction = async (
+  const configureProvider = async (
+    event: FormEvent<HTMLFormElement>,
     providerId: RAGProviderId,
-    action: BusyAction,
-    operation: () => Promise<string>,
   ) => {
-    setBusy({ providerId, action });
-    setError(undefined);
-    setSuccess(undefined);
-    let operationSucceeded = false;
+    event.preventDefault();
+    const apiKey = drafts[providerId].trim();
+    if (!apiKey || busy) return;
+
+    setBusy({ providerId, action: "configure" });
+    setFeedback(undefined);
+    setLoadError(undefined);
+    setRemoveConfirmProviderId(undefined);
     try {
-      const message = await operation();
-      operationSucceeded = true;
-      setSuccess(message);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t("requestFailed"));
-    } finally {
+      const apiKeySecret = await encryptSecret(
+        apiKey,
+        BYOK_CONTEXTS.ragProvider(providerId),
+      );
+      if (!apiKeySecret) throw new Error(t("providerKeyRequired"));
+      const response = await client.ragProviders.configureAdminRAGProvider(
+        providerId,
+        { apiKeySecret },
+      );
+      setProviderConfigs((current) => ({
+        ...current,
+        [providerId]: response.provider,
+      }));
+      setDrafts((current) => ({ ...current, [providerId]: "" }));
+      setFeedback({
+        providerId,
+        kind: "success",
+        message: t("providerConfigured", { count: response.checks.length }),
+      });
       try {
-        await refreshProviders();
-      } catch (cause) {
-        if (operationSucceeded) {
-          setSuccess(undefined);
-          setError(cause instanceof Error ? cause.message : t("requestFailed"));
-        }
+        await refreshStatus();
+      } catch {
+        setLoadError(t("statusRefreshFailed"));
       }
+    } catch (cause) {
+      setFeedback({
+        providerId,
+        kind: "error",
+        message: cause instanceof Error ? cause.message : t("requestFailed"),
+      });
+    } finally {
       setBusy(undefined);
     }
   };
 
-  const saveAndTest = async (providerId: RAGProviderId, apiKey?: string) => {
-    const current = providerConfigs[providerId];
-    await runProviderAction(providerId, "save", async () => {
-      const apiKeySecret = apiKey
-        ? await encryptSecret(apiKey, BYOK_CONTEXTS.ragProvider(providerId))
-        : undefined;
-      const client = createNeoChatApiClient();
-      await client.ragProviders.updateAdminRAGProviderConfig(providerId, {
-        name: providerName(providerId),
-        enabled: current?.enabled ?? false,
-        ...(apiKeySecret ? { apiKeySecret } : {}),
-      });
-      const tested =
-        await client.ragProviders.testAdminRAGProviderConnection(providerId);
-      return t("providerTestPassed", { count: tested.checks.length });
-    });
-  };
-
-  const activateProvider = async (providerId: RAGProviderId) => {
-    await runProviderAction(providerId, "activate", async () => {
-      await createNeoChatApiClient().ragProviders.activateAdminRAGProvider(
-        providerId,
-      );
-      return t("providerActivated", { provider: providerName(providerId) });
-    });
-  };
-
-  const deactivateProvider = async (providerId: RAGProviderId) => {
-    const current = providerConfigs[providerId];
-    if (!current) return;
-    await runProviderAction(providerId, "deactivate", async () => {
-      await createNeoChatApiClient().ragProviders.updateAdminRAGProviderConfig(
-        providerId,
-        { name: current.name, enabled: false },
-      );
-      return t("providerDeactivated", { provider: providerName(providerId) });
-    });
-  };
-
-  const clearApiKey = async (providerId: RAGProviderId) => {
-    const current = providerConfigs[providerId];
-    if (!current) return;
-    await runProviderAction(providerId, "clear", async () => {
-      await createNeoChatApiClient().ragProviders.updateAdminRAGProviderConfig(
-        providerId,
-        { name: current.name, enabled: false, clearApiKey: true },
-      );
-      return t("providerKeyCleared");
-    });
-  };
-
-  const deleteProvider = async (providerId: RAGProviderId) => {
-    if (deleteConfirmProviderId !== providerId) {
-      setDeleteConfirmProviderId(providerId);
+  const removeProvider = async (providerId: RAGProviderId) => {
+    if (busy) return;
+    if (removeConfirmProviderId !== providerId) {
+      setRemoveConfirmProviderId(providerId);
+      setFeedback(undefined);
       return;
     }
-    setDeleteConfirmProviderId(undefined);
-    await runProviderAction(providerId, "delete", async () => {
-      await createNeoChatApiClient().ragProviders.deleteAdminRAGProviderConfig(
+
+    setBusy({ providerId, action: "remove" });
+    setFeedback(undefined);
+    setLoadError(undefined);
+    try {
+      await client.ragProviders.deleteAdminRAGProviderConfig(providerId);
+      setProviderConfigs((current) => {
+        const next = { ...current };
+        delete next[providerId];
+        return next;
+      });
+      setDrafts((current) => ({ ...current, [providerId]: "" }));
+      setRemoveConfirmProviderId(undefined);
+      setFeedback({
         providerId,
-      );
-      return t("providerDeleted", { provider: providerName(providerId) });
-    });
+        kind: "success",
+        message: t("providerRemoved"),
+      });
+      try {
+        await refreshStatus();
+      } catch {
+        setLoadError(t("statusRefreshFailed"));
+      }
+    } catch (cause) {
+      setFeedback({
+        providerId,
+        kind: "error",
+        message: cause instanceof Error ? cause.message : t("requestFailed"),
+      });
+    } finally {
+      setBusy(undefined);
+    }
   };
 
-  const selectedProvider = RAG_PROVIDERS.find(
-    (provider) => provider.id === selectedProviderId,
-  )!;
-  const selectedConfig = providerConfigs[selectedProviderId];
-  const selectedBusy = busy?.providerId === selectedProviderId;
-  const Icon = selectedProviderId === "mineru" ? FileScan : Cpu;
+  const anyConfigured = RAG_PROVIDERS.some(
+    ({ id }) =>
+      providerStatus?.providers[id].configured ||
+      providerConfigs[id]?.hasApiKey,
+  );
+  const serviceStatus = providerStatus?.status ?? "unavailable";
+  const serviceMeta =
+    serviceStatus === "ready"
+      ? {
+          label: t("serviceReady"),
+          Icon: CheckCircle2,
+          className:
+            "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-200",
+        }
+      : serviceStatus === "partial"
+        ? {
+            label: t("servicePartial"),
+            Icon: AlertTriangle,
+            className:
+              "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200",
+          }
+        : {
+            label: anyConfigured
+              ? t("serviceUnavailable")
+              : t("serviceNotConfigured"),
+            Icon: AlertCircle,
+            className:
+              "border-gray-200 bg-gray-50 text-gray-600 dark:border-border dark:bg-muted/50 dark:text-muted-foreground",
+          };
+  const ServiceIcon = serviceMeta.Icon;
 
   return (
-    <div className="space-y-4 rounded-xl border border-gray-200 p-4 dark:border-border">
-      <div className="flex items-center justify-between gap-3">
-        <h4 className="text-sm font-semibold text-gray-800 dark:text-foreground">
-          {t("serverProviders")}
-        </h4>
+    <div className="space-y-4">
+      <div
+        className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium ${serviceMeta.className}`}
+        role="status"
+      >
         {loading ? (
-          <Loader2
-            size={16}
-            className="animate-spin text-gray-400"
-            aria-label={t("providerLoading")}
-          />
-        ) : null}
+          <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+        ) : (
+          <ServiceIcon size={16} aria-hidden="true" />
+        )}
+        <span>{loading ? t("providerLoading") : serviceMeta.label}</span>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      {loadError ? (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300"
+        >
+          <AlertCircle size={16} className="mt-0.5 shrink-0" />
+          <span>{loadError}</span>
+        </div>
+      ) : null}
+
+      <div className="space-y-3">
         {RAG_PROVIDERS.map((provider) => {
           const config = providerConfigs[provider.id];
-          const selected = provider.id === selectedProviderId;
+          const runtimeStatus =
+            providerStatus?.providers[provider.id].status ??
+            fallbackRuntimeStatus(config);
+          const isReady = runtimeStatus === "ready";
+          const hasApiKey =
+            providerStatus?.providers[provider.id].configured ??
+            config?.hasApiKey === true;
+          const isBusy = busy?.providerId === provider.id;
+          const providerFeedback =
+            feedback?.providerId === provider.id ? feedback : undefined;
+          const Icon = provider.Icon;
+
           return (
-            <button
+            <section
               key={provider.id}
-              type="button"
-              aria-pressed={selected}
-              onClick={() => setSelectedProviderId(provider.id)}
-              className={
-                selected
-                  ? "rounded-lg border border-blue-500 bg-blue-50 px-3 py-2 text-left text-sm font-medium text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:bg-blue-500/10 dark:text-blue-300"
-                  : "rounded-lg border border-gray-200 bg-background px-3 py-2 text-left text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-border dark:text-foreground dark:hover:bg-muted"
-              }
+              data-rag-provider={provider.id}
+              className="space-y-4 rounded-xl border border-gray-200 bg-background p-4 dark:border-border"
             >
-              <span className="flex items-center justify-between gap-2">
-                {provider.name}
-                {config?.enabled ? (
-                  <Check
-                    size={14}
-                    className="text-emerald-500"
-                    aria-label={t("providerActive")}
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-start gap-3">
+                  <Icon
+                    size={18}
+                    className="mt-0.5 shrink-0 text-gray-500 dark:text-muted-foreground"
+                    aria-hidden="true"
                   />
-                ) : null}
-              </span>
-            </button>
+                  <div className="min-w-0">
+                    <h3 className="font-medium text-gray-900 dark:text-foreground">
+                      {provider.name}
+                    </h3>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-muted-foreground">
+                      {t(provider.roleKey)}
+                    </p>
+                  </div>
+                </div>
+                <span
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium ${
+                    isReady
+                      ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-200"
+                      : runtimeStatus === "missing_secret"
+                        ? "bg-gray-100 text-gray-600 dark:bg-muted dark:text-muted-foreground"
+                        : "bg-amber-50 text-amber-700 dark:bg-amber-400/10 dark:text-amber-200"
+                  }`}
+                >
+                  {isReady ? <Check size={13} aria-hidden="true" /> : null}
+                  {t(`providerStatus.${runtimeStatus}`)}
+                </span>
+              </div>
+
+              <form
+                className="space-y-2"
+                onSubmit={(event) => configureProvider(event, provider.id)}
+              >
+                <label
+                  htmlFor={`rag-provider-key-${provider.id}`}
+                  className="text-sm font-medium text-gray-700 dark:text-foreground/85"
+                >
+                  API Key
+                </label>
+                <div className="flex flex-wrap gap-2 sm:flex-nowrap">
+                  <input
+                    id={`rag-provider-key-${provider.id}`}
+                    name={`ragProviderKey-${provider.id}`}
+                    type="password"
+                    value={drafts[provider.id]}
+                    onChange={(event) => {
+                      setDrafts((current) => ({
+                        ...current,
+                        [provider.id]: event.target.value,
+                      }));
+                      setRemoveConfirmProviderId(undefined);
+                    }}
+                    maxLength={SEARCH_CONFIG_LIMITS.maxProviderApiKeyChars}
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder={
+                      hasApiKey
+                        ? t("providerReplaceKeyPlaceholder")
+                        : t("providerApiKeyPlaceholder")
+                    }
+                    className="h-10 min-w-0 flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 font-mono text-sm text-gray-800 outline-none transition-[border-color,box-shadow] focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-border dark:bg-muted dark:text-foreground"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!drafts[provider.id].trim() || isBusy}
+                    className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-blue-500 px-4 text-sm font-medium text-white transition-colors hover:bg-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {busy?.action === "configure" && isBusy ? (
+                      <Loader2
+                        size={15}
+                        className="animate-spin"
+                        aria-hidden="true"
+                      />
+                    ) : null}
+                    {t("providerSaveAndTest")}
+                  </button>
+                  {hasApiKey ? (
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => removeProvider(provider.id)}
+                      className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-medium text-gray-600 transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:text-muted-foreground dark:hover:bg-red-500/10 dark:hover:text-red-300"
+                    >
+                      {busy?.action === "remove" && isBusy ? (
+                        <Loader2
+                          size={15}
+                          className="animate-spin"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <Trash2 size={15} aria-hidden="true" />
+                      )}
+                      {removeConfirmProviderId === provider.id
+                        ? t("providerConfirmRemove")
+                        : t("providerRemove")}
+                    </button>
+                  ) : null}
+                </div>
+                <p className="text-xs text-gray-500 dark:text-muted-foreground">
+                  {hasApiKey
+                    ? t("providerKeyStoredOnServer")
+                    : t("providerKeyNotStored")}
+                </p>
+              </form>
+
+              {providerFeedback ? (
+                <div
+                  role={providerFeedback.kind === "error" ? "alert" : "status"}
+                  className={`flex items-start gap-2 rounded-lg px-3 py-2 text-sm ${
+                    providerFeedback.kind === "error"
+                      ? "bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300"
+                      : "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
+                  }`}
+                >
+                  {providerFeedback.kind === "error" ? (
+                    <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                  ) : (
+                    <Check size={16} className="mt-0.5 shrink-0" />
+                  )}
+                  <span>{providerFeedback.message}</span>
+                </div>
+              ) : null}
+            </section>
           );
         })}
-      </div>
-
-      <div className="space-y-4">
-        <div className="flex items-start gap-3">
-          <Icon
-            size={18}
-            className="mt-0.5 shrink-0 text-gray-500 dark:text-muted-foreground"
-            aria-hidden="true"
-          />
-          <div>
-            <p className="font-medium text-gray-800 dark:text-foreground">
-              {selectedProvider.name}
-            </p>
-            <p className="mt-1 text-xs text-gray-500 dark:text-muted-foreground">
-              {selectedConfig?.enabled
-                ? t("providerActive")
-                : selectedConfig?.connectionTestValid
-                  ? t("providerTested")
-                  : selectedConfig?.hasApiKey
-                    ? t("providerSaved")
-                    : t("providerNotConfigured")}
-            </p>
-            <p className="mt-1 text-[10px] text-gray-400 dark:text-muted-foreground">
-              {selectedProvider.profile}
-            </p>
-          </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <label
-            htmlFor={`rag-provider-api-key-${selectedProviderId}`}
-            className="text-sm font-medium text-gray-700 dark:text-foreground/85"
-          >
-            API Key
-          </label>
-          <SecretInput
-            id={`rag-provider-api-key-${selectedProviderId}`}
-            name={`ragProviderApiKey-${selectedProviderId}`}
-            placeholder={t("providerApiKeyPlaceholder")}
-            maxLength={SEARCH_CONFIG_LIMITS.maxProviderApiKeyChars}
-            hasSecret={selectedConfig?.hasApiKey === true}
-            statusText={
-              selectedConfig?.hasApiKey
-                ? t("providerKeyStoredOnServer")
-                : t("providerKeyNotStored")
-            }
-            onSave={(value) => saveAndTest(selectedProviderId, value)}
-            onClear={
-              selectedConfig?.hasApiKey
-                ? () => clearApiKey(selectedProviderId)
-                : undefined
-            }
-          />
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={selectedBusy}
-            onClick={() => saveAndTest(selectedProviderId)}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-500 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {busy?.action === "save" && selectedBusy ? (
-              <Loader2 size={15} className="animate-spin" aria-hidden="true" />
-            ) : (
-              <RefreshCw size={15} aria-hidden="true" />
-            )}
-            {t("providerSaveAndTest")}
-          </button>
-          <button
-            type="button"
-            disabled={selectedBusy || !selectedConfig?.hasApiKey}
-            onClick={() =>
-              selectedConfig?.enabled
-                ? deactivateProvider(selectedProviderId)
-                : activateProvider(selectedProviderId)
-            }
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:text-foreground dark:hover:bg-muted"
-          >
-            <Power size={15} aria-hidden="true" />
-            {selectedConfig?.enabled
-              ? t("providerDeactivate")
-              : t("providerActivate")}
-          </button>
-          <button
-            type="button"
-            disabled={selectedBusy || !selectedConfig}
-            onClick={() => deleteProvider(selectedProviderId)}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:text-muted-foreground dark:hover:bg-red-500/10 dark:hover:text-red-300"
-          >
-            <Trash2 size={15} aria-hidden="true" />
-            {deleteConfirmProviderId === selectedProviderId
-              ? t("providerConfirmDelete")
-              : t("providerDelete")}
-          </button>
-        </div>
-
-        {error ? (
-          <div
-            role="alert"
-            className="flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300"
-          >
-            <AlertCircle size={16} className="mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        ) : null}
-        {success ? (
-          <div
-            role="status"
-            className="flex items-start gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
-          >
-            <Check size={16} className="mt-0.5 shrink-0" />
-            <span>{success}</span>
-          </div>
-        ) : null}
       </div>
     </div>
   );

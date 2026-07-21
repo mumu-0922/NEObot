@@ -2,8 +2,10 @@ import type {
   AdminRAGProviderConfigDTO,
   AdminRAGProviderConfigsDTO,
   AdminRAGProviderConnectionDTO,
+  ConfigureAdminRAGProviderInput,
   RAGProviderApi,
   RAGProviderId,
+  RAGProviderStatusDTO,
   UpdateAdminRAGProviderConfigInput,
 } from "../types";
 import type { HttpClient } from "./httpClient";
@@ -18,6 +20,24 @@ export function createServerRAGProviderApiShell(
     async listAdminRAGProviderConfigs(): Promise<AdminRAGProviderConfigsDTO> {
       return httpClient.requestJson<AdminRAGProviderConfigsDTO>(
         "/v1/admin/rag/providers",
+      );
+    },
+    async getRAGProviderStatus(
+      signal?: AbortSignal,
+    ): Promise<RAGProviderStatusDTO> {
+      return httpClient.requestJson<RAGProviderStatusDTO>(
+        "/v1/rag/provider-status",
+        { signal },
+      );
+    },
+    async configureAdminRAGProvider(
+      providerId: RAGProviderId,
+      input: ConfigureAdminRAGProviderInput,
+    ): Promise<AdminRAGProviderConnectionDTO> {
+      const { signal, ...body } = input;
+      return httpClient.requestJson<AdminRAGProviderConnectionDTO>(
+        `${adminRAGProviderPath(providerId)}/configure`,
+        { method: "POST", body, signal },
       );
     },
     async updateAdminRAGProviderConfig(
