@@ -47,7 +47,7 @@ const ResolvedImage = ({
   if (!src) {
     return (
       <div
-        className={`flex h-full w-full items-center justify-center text-sm text-white/75 transition-[opacity,transform] duration-300 ease-out ${isVisible ? "scale-100 opacity-100" : "scale-90 opacity-0"}`}
+        className={`flex h-full w-full items-center justify-center text-sm text-white/75 ${isVisible ? "opacity-100" : "opacity-0"}`}
         role={hasLoadError ? "alert" : "status"}
         aria-live="polite"
       >
@@ -70,7 +70,7 @@ const ResolvedImage = ({
       decoding="async"
       referrerPolicy="no-referrer"
       draggable={false}
-      className={`max-w-full max-h-full object-contain drop-shadow-2xl transition-[opacity,transform] duration-300 ease-out ${isVisible ? "scale-100 opacity-100" : "scale-90 opacity-0"}`}
+      className={`max-h-full max-w-full select-none object-contain ${isVisible ? "opacity-100" : "opacity-0"}`}
     />
   );
 };
@@ -114,7 +114,7 @@ const ImagePreview = () => {
       });
       closeTimer = setTimeout(() => {
         setShouldRender(false);
-      }, 300); // Match CSS transition duration
+      }, 150);
     }
 
     return () => {
@@ -236,7 +236,7 @@ const ImagePreview = () => {
   return (
     <div
       ref={dialogRef}
-      className={`fixed inset-0 z-9999 flex flex-col bg-black/20 dark:bg-black/80 backdrop-blur-2xl transition-opacity duration-300 ease-in-out ${isVisible ? "opacity-100" : "opacity-0"}`}
+      className={`fixed inset-0 z-9999 flex flex-col bg-black/90 transition-opacity duration-150 ease-out ${isVisible ? "opacity-100" : "opacity-0"}`}
       onClick={closeImagePreview}
       role="dialog"
       aria-modal="true"
@@ -323,9 +323,15 @@ const ImagePreview = () => {
           <TransformWrapper
             initialScale={1}
             minScale={0.5}
-            maxScale={8}
+            maxScale={32}
             centerOnInit={true}
-            wheel={{ step: 0.2 }}
+            centerZoomedOut={true}
+            smooth={true}
+            wheel={{ step: 0.008 }}
+            panning={{ velocityDisabled: true }}
+            velocityAnimation={{ disabled: true }}
+            zoomAnimation={{ disabled: true }}
+            doubleClick={{ step: 0.5, animationTime: 0 }}
           >
             {({ zoomIn, zoomOut, resetTransform }) => (
               <>
@@ -364,6 +370,7 @@ const ImagePreview = () => {
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
+                    willChange: "transform",
                   }}
                 >
                   <ResolvedImage

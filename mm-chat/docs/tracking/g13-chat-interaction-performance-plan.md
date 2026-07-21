@@ -1,0 +1,36 @@
+# G13 Chat Interaction Performance Plan
+
+Status: in progress. Work is split into independently reversible slices; each
+slice must pass focused tests, the full frontend gate, a container rebuild, and
+a deployed browser smoke before commit.
+
+## Slice sequence
+
+### [x] G13.1 — Image preview zoom
+
+- Replace coarse wheel jumps and the `8x` ceiling with fine-grained continuous
+  zoom up to a bounded practical `32x`.
+- Disable inertial/zoom animations that compete with direct pointer input.
+- Remove full-screen blur and large-image filter effects from the transform
+  path while preserving the existing preview controls and focus trap.
+
+### [ ] G13.2 — Long-conversation scrolling
+
+- Profile the existing heavy owner conversation without changing its data.
+- Keep off-screen static messages out of layout/paint work with progressive
+  browser-native containment before considering list virtualization.
+- Lazy-load expensive embedded visual documents and ensure historical messages
+  do not restart streaming/typewriter animation work.
+
+### [ ] G13.3 — Conversation switching
+
+- Add a small bounded in-memory cache for recently loaded server conversations.
+- Render a cached conversation immediately, then revalidate against the Go API;
+  Postgres remains authoritative and browser storage does not regain ownership.
+- Guard asynchronous loads so an older response cannot overwrite a newer
+  selection, and invalidate/update cache entries after conversation mutation.
+
+## Rollback
+
+Each slice has its own commit. Revert only the affected frontend commit; there
+is no database migration, persistent cache, or server-data rewrite.
