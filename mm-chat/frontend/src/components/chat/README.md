@@ -6,6 +6,7 @@ Chat components render the main conversation experience: message input, message 
 
 - `MessageInput.tsx` handles text entry, file attachments, voice input, skill/plugin controls, model-aware controls, and send actions.
 - `MessageItem.tsx` renders a single message with editing, copying, branching, deletion, playback, reading mode, and metadata controls.
+- `ChatMessageNavigator.tsx` renders the desktop user-message rail, active reading marker, and top/bottom controls.
 - `ChatGenerationProgress.tsx` renders the compact in-thread knowledge, web, or model generation status.
 - `FollowUpQuestions.tsx` renders suggested next questions after a response.
 - `AudioPlayer.tsx` renders audio playback controls for generated or attached audio.
@@ -15,6 +16,9 @@ Chat components render the main conversation experience: message input, message 
 - The main conversation root uses `chat-scrollbar`: it must keep a visible
   native scrollbar and stable gutter so mouse track clicks and thumb dragging
   remain available without replacing the existing scroll-follow handlers.
+- User-message navigation stays outside the scroll root and reads stable message
+  IDs. Top pauses live follow, bottom resumes it, and old targets must reveal
+  through the progressive render contract before scrolling.
 
 ## Guidelines
 

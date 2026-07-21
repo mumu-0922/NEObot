@@ -18,5 +18,13 @@
   "newChatAria": "New chat",
   "progressSearchingKnowledge": "Searching knowledge",
   "progressSearchingWeb": "Searching the web",
-  "progressGeneratingAnswer": "Generating answer"
+  "progressGeneratingAnswer": "Generating answer",
+  "userMessageNavigation": "User message navigation",
+  "userMessageFallback": "User message",
+  "attachmentMessagePrefix": "Attachment: ",
+  "jumpToUserMessage": "Jump to user message {index}: {message}",
+  "jumpToConversationTop": "Jump to conversation top",
+  "jumpToConversationBottom": "Jump to conversation bottom",
+  "conversationTop": "Conversation top",
+  "conversationBottom": "Conversation bottom"
 }

@@ -368,6 +368,26 @@ samp {
   background-clip: padding-box;
 }
 
+.chat-message-nav-list {
+  scrollbar-width: none;
+}
+
+.chat-message-nav-list::-webkit-scrollbar {
+  display: none;
+}
+
+.chat-message-navigator:is(:hover, :focus-within) .chat-message-nav-list {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--foreground) 24%, transparent)
+    transparent;
+}
+
+.chat-message-navigator:is(:hover, :focus-within)
+  .chat-message-nav-list::-webkit-scrollbar {
+  display: block;
+  width: 6px;
+}
+
 .markdown-body {
   color: var(--markdown-foreground);
 }

@@ -94,6 +94,7 @@ import {
   decodeAttachmentText,
   isTextDocumentMimeType,
 } from "@/lib/utils/documentAttachments";
+import { getChatMessageElementId } from "@/lib/chat/messageNavigation";
 
 interface MessageItemProps {
   message: Message;
@@ -1383,6 +1384,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
         )}
 
       <div
+        id={getChatMessageElementId(message.id)}
         data-message-role={isUserMessage ? "user" : "assistant"}
         className={`message-item group relative flex items-start gap-2.5 rounded-md border border-transparent px-3 py-3 md:gap-3 ${isUserMessage ? "flex-row-reverse" : "flex-row"}`}
       >

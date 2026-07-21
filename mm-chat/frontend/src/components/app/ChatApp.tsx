@@ -19,6 +19,7 @@ import { v7 as uuidv7 } from "uuid";
 
 import Sidebar from "@/components/layout/Sidebar";
 import ChatGenerationProgress from "@/components/chat/ChatGenerationProgress";
+import ChatMessageNavigator from "@/components/chat/ChatMessageNavigator";
 import MessageItem from "@/components/chat/MessageItem";
 import ImageGenerationProgress from "@/components/chat/ImageGenerationProgress";
 import MessageInput, { MessageInputRef } from "@/components/chat/MessageInput";
@@ -107,6 +108,11 @@ import {
   getInitialChatMessageRenderStart,
   getNextChatMessageRenderStart,
 } from "@/lib/chat/progressiveMessageRendering";
+import {
+  getChatMessageElementId,
+  getChatNavigationRevealStart,
+  getChatNavigationScrollTop,
+} from "@/lib/chat/messageNavigation";
 import { toServerMessageAttachments } from "@/lib/utils/serverAttachments";
 import {
   getKnowledgeAttachmentCollectionIds,
@@ -162,6 +168,33 @@ function getLegacyKnowledgeSelectionIdsForMigration(
 const logChatAppError = logDevError;
 const EMPTY_MESSAGES: Message[] = [];
 const loadChatService = () => import("@/services/api/chatService");
+
+type PendingChatNavigation =
+  { type: "message"; messageId: string } | { type: "top" };
+
+const scrollChatContainerToMessage = (
+  container: HTMLDivElement,
+  messageId: string,
+  behavior: ScrollBehavior,
+) => {
+  const element = document.getElementById(getChatMessageElementId(messageId));
+  if (!element || !container.contains(element)) return false;
+
+  const containerRect = container.getBoundingClientRect();
+  const messageRect = element.getBoundingClientRect();
+  container.scrollTo({
+    top: getChatNavigationScrollTop({
+      scrollTop: container.scrollTop,
+      scrollHeight: container.scrollHeight,
+      clientHeight: container.clientHeight,
+      containerTop: containerRect.top,
+      messageTop: messageRect.top,
+      messageHeight: messageRect.height,
+    }),
+    behavior,
+  });
+  return true;
+};
 
 const ChatApp = () => {
   // --- Global Store ---
@@ -369,6 +402,7 @@ const ChatApp = () => {
     scrollHeight: number;
     scrollTop: number;
   } | null>(null);
+  const pendingChatNavigationRef = useRef<PendingChatNavigation | null>(null);
 
   useEffect(() => {
     if (messageRenderWindow.sessionId !== messageRenderSessionId) {
@@ -381,6 +415,7 @@ const ChatApp = () => {
     if (messageRenderStartIndex <= 0) return;
 
     const revealOlderMessages = () => {
+      if (pendingChatNavigationRef.current) return;
       const container = messagesScrollRef.current;
       pendingMessagePrependRef.current = container
         ? {
@@ -416,8 +451,27 @@ const ChatApp = () => {
   ]);
 
   useLayoutEffect(() => {
+    const pendingNavigation = pendingChatNavigationRef.current;
     const pendingPrepend = pendingMessagePrependRef.current;
     const container = messagesScrollRef.current;
+
+    if (pendingNavigation && container) {
+      pendingChatNavigationRef.current = null;
+      pendingMessagePrependRef.current = null;
+      shouldFollowMessageBottomRef.current = false;
+      if (pendingNavigation.type === "top") {
+        container.scrollTo({ top: 0, behavior: "auto" });
+      } else {
+        scrollChatContainerToMessage(
+          container,
+          pendingNavigation.messageId,
+          "smooth",
+        );
+      }
+      lastMessageScrollTopRef.current = container.scrollTop;
+      return;
+    }
+
     if (!pendingPrepend || !container) return;
 
     pendingMessagePrependRef.current = null;
@@ -990,6 +1044,74 @@ const ChatApp = () => {
     [],
   );
 
+  const handleNavigateToUserMessage = useCallback(
+    (messageId: string) => {
+      const container = messagesScrollRef.current;
+      const messageIndex = messages.findIndex(
+        (message) => message.id === messageId && message.role === "user",
+      );
+      if (!container || messageIndex < 0) return;
+
+      shouldFollowMessageBottomRef.current = false;
+      hasWheelMessageScrollIntentRef.current = false;
+      hasPointerMessageScrollIntentRef.current = false;
+
+      if (
+        messageIndex >= messageRenderStartIndex &&
+        scrollChatContainerToMessage(container, messageId, "smooth")
+      ) {
+        return;
+      }
+
+      pendingMessagePrependRef.current = null;
+      pendingChatNavigationRef.current = { type: "message", messageId };
+      setMessageRenderWindow((current) => {
+        if (current.sessionId !== messageRenderSessionId) return current;
+        return {
+          ...current,
+          startIndex: getChatNavigationRevealStart(
+            current.startIndex,
+            messageIndex,
+          ),
+        };
+      });
+    },
+    [messageRenderSessionId, messageRenderStartIndex, messages],
+  );
+
+  const handleJumpToChatTop = useCallback(() => {
+    const container = messagesScrollRef.current;
+    if (!container) return;
+
+    shouldFollowMessageBottomRef.current = false;
+    hasWheelMessageScrollIntentRef.current = false;
+    hasPointerMessageScrollIntentRef.current = false;
+
+    if (messageRenderStartIndex <= 0) {
+      container.scrollTo({ top: 0, behavior: "auto" });
+      return;
+    }
+
+    pendingMessagePrependRef.current = null;
+    pendingChatNavigationRef.current = { type: "top" };
+    setMessageRenderWindow((current) => {
+      if (current.sessionId !== messageRenderSessionId) return current;
+      return { ...current, startIndex: 0 };
+    });
+  }, [messageRenderSessionId, messageRenderStartIndex]);
+
+  const handleJumpToChatBottom = useCallback(() => {
+    const container = messagesScrollRef.current;
+    if (!container) return;
+
+    pendingChatNavigationRef.current = null;
+    pendingMessagePrependRef.current = null;
+    shouldFollowMessageBottomRef.current = true;
+    hasWheelMessageScrollIntentRef.current = false;
+    hasPointerMessageScrollIntentRef.current = false;
+    container.scrollTo({ top: container.scrollHeight, behavior: "auto" });
+  }, []);
+
   useEffect(() => {
     const composer = composerAreaElement;
     if (!composer) return;
@@ -1017,6 +1139,7 @@ const ChatApp = () => {
     lastMessageScrollTopRef.current = 0;
     hasWheelMessageScrollIntentRef.current = false;
     hasPointerMessageScrollIntentRef.current = false;
+    pendingChatNavigationRef.current = null;
   }, [visibleCurrentSessionId]);
 
   // Scroll to bottom when the user is already following the live stream.
@@ -3156,6 +3279,17 @@ const ChatApp = () => {
                 )}
               </div>
             </div>
+
+            {welcomeState === "hidden" && (
+              <ChatMessageNavigator
+                messages={messages}
+                scrollContainerRef={messagesScrollRef}
+                renderStartIndex={messageRenderStartIndex}
+                onNavigateMessage={handleNavigateToUserMessage}
+                onJumpTop={handleJumpToChatTop}
+                onJumpBottom={handleJumpToChatBottom}
+              />
+            )}
 
             <div className="w-full h-4 md:h-6"></div>
 

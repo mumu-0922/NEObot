@@ -18,5 +18,13 @@
   "newChatAria": "新規チャット",
   "progressSearchingKnowledge": "ナレッジを検索中",
   "progressSearchingWeb": "ウェブを検索中",
-  "progressGeneratingAnswer": "回答を生成中"
+  "progressGeneratingAnswer": "回答を生成中",
+  "userMessageNavigation": "ユーザーメッセージナビゲーション",
+  "userMessageFallback": "ユーザーメッセージ",
+  "attachmentMessagePrefix": "添付：",
+  "jumpToUserMessage": "ユーザーメッセージ {index} に移動：{message}",
+  "jumpToConversationTop": "会話の先頭へ移動",
+  "jumpToConversationBottom": "会話の末尾へ移動",
+  "conversationTop": "会話の先頭",
+  "conversationBottom": "会話の末尾"
 }

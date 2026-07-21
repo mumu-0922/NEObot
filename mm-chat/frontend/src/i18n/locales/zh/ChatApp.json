@@ -18,5 +18,13 @@
   "newChatAria": "新建对话",
   "progressSearchingKnowledge": "正在检索知识库",
   "progressSearchingWeb": "正在搜索网页",
-  "progressGeneratingAnswer": "正在生成回答"
+  "progressGeneratingAnswer": "正在生成回答",
+  "userMessageNavigation": "用户消息导航",
+  "userMessageFallback": "用户消息",
+  "attachmentMessagePrefix": "附件：",
+  "jumpToUserMessage": "跳到第 {index} 条用户消息：{message}",
+  "jumpToConversationTop": "回到会话顶部",
+  "jumpToConversationBottom": "回到会话底部",
+  "conversationTop": "会话顶部",
+  "conversationBottom": "会话底部"
 }

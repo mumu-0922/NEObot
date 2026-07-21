@@ -1,6 +1,6 @@
 # G14 Chat Navigation Plan
 
-Status: in progress. Work is split into independently reversible slices; each
+Status: complete. Work was split into independently reversible slices; each
 slice must pass focused tests, the full frontend gate, a source-image rebuild,
 and a deployed Windows Chrome smoke before commit.
 
@@ -24,7 +24,7 @@ or copied runtime is introduced.
 - Preserve manual-scroll pause, bottom-follow resume, composer clearance, and
   the existing long-message geometry fixes.
 
-### [ ] G14.2 — User-message navigation and edge jumps
+### [x] G14.2 — User-message navigation and edge jumps
 
 - Add a compact right-side user-message rail that expands on hover or keyboard
   focus without covering the native scrollbar.

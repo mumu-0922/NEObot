@@ -41,3 +41,44 @@ The Windows Chrome 150 smoke manipulated only the native scrollbar in a
 disposable browser profile. It did not select, edit, create, or delete any
 conversation or mutate provider, file, browser-authoritative, or database
 state.
+
+## 2026-07-21 — G14.2 user-message navigation and edge jumps
+
+A typed React navigator now derives bounded labels from every user message on
+the active branch, including attachment-only fallbacks. The desktop rail stays
+`44px` wide beside the native scrollbar, expands to `256px` on hover or keyboard
+focus, exposes full accessible button names, and tracks the message nearest the
+scroll root's 40% reading line through one requestAnimationFrame-bounded scroll
+listener. It observes content resize without a global DOM mutation observer.
+
+Each rendered `MessageItem` exposes a stable element ID. A click targets that
+ID with bounded container-local scroll math. If an older message precedes the
+current progressive render window, the pure reveal resolver expands the window
+to that index before the layout effect completes the jump. Jump-to-top also
+reveals the full prefix; jump-to-bottom restores live bottom-follow. The two
+edge controls use one-click immediate movement, while question navigation keeps
+the reference project's smooth positioning.
+
+The first live pass showed that smooth edge jumps across a 15,828px range took
+about 1.75 seconds, so those two controls were changed to immediate movement
+before closure.
+
+Verification:
+
+```text
+focused navigation/scroll/message tests             4 files / 12 tests
+frontend full tests                                 189 files / 905 tests
+frontend lint / typecheck / format / build          passed
+source-built frontend/backend                       healthy / healthy
+deployed collapsed / expanded rail width            44px / 256px
+deployed user entries / active entries              26 / 1
+selected entry                                      user #14 (`hi`)
+selected ID / highlighted ID                        exact match
+selected message center / reading line              0.400 / 0.400
+jump top scrollTop                                   0
+jump bottom scrollTop / distance                    15,828 / 0
+```
+
+The Chrome smoke used the existing conversation read-only and changed only
+scroll position in a disposable profile. It made no chat, file, provider,
+browser-authoritative, or database mutation and consumed no provider quota.
