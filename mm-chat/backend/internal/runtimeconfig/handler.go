@@ -67,11 +67,46 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	case "/v1/admin/providers":
 		h.requireMethod(w, r, http.MethodGet, h.listAdminProviderConfigs)
+	case "/v1/admin/task-models":
+		switch r.Method {
+		case http.MethodGet:
+			h.getAdminTaskModels(w, r)
+		case http.MethodPatch:
+			h.updateAdminTaskModels(w, r)
+		default:
+			w.Header().Set("Allow", http.MethodGet+", "+http.MethodPatch)
+			writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
+		}
 	case "/v1/byok/public-key":
 		h.requireMethod(w, r, http.MethodGet, h.getBYOKPublicKey)
 	default:
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
 	}
+}
+
+func (h *Handler) getAdminTaskModels(w http.ResponseWriter, r *http.Request) {
+	response, err := h.service.AdminTaskModelSettings(r.Context())
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (h *Handler) updateAdminTaskModels(w http.ResponseWriter, r *http.Request) {
+	var request TaskModelSettingsPatch
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "request body is invalid")
+		return
+	}
+	response, err := h.service.UpdateAdminTaskModelSettings(r.Context(), request)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h *Handler) adminRAGProviderConfig(w http.ResponseWriter, r *http.Request) {
@@ -308,6 +343,7 @@ func (h *Handler) requireMethod(
 }
 
 func (h *Handler) getConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, h.service.PublicConfigForContext(r.Context()))
 }
 
@@ -402,6 +438,10 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadGateway, "PROVIDER_CONNECTION_TEST_FAILED", "provider connection test failed")
 	case errors.Is(err, ErrProviderConfigChanged):
 		writeError(w, http.StatusConflict, "PROVIDER_CONFIG_CHANGED", "provider configuration changed during connection testing")
+	case errors.Is(err, ErrTaskModelSettingsInvalid):
+		writeError(w, http.StatusBadRequest, "TASK_MODEL_SETTINGS_INVALID", "task model settings are invalid")
+	case errors.Is(err, ErrTaskModelUnavailable):
+		writeError(w, http.StatusConflict, "TASK_MODEL_UNAVAILABLE", "task model is not available from an enabled provider")
 	case errors.Is(err, ErrSearchProviderConfigUnsupported):
 		writeError(w, http.StatusBadRequest, "SEARCH_PROVIDER_CONFIG_UNSUPPORTED", "search provider configuration is unsupported")
 	case errors.Is(err, ErrSearchProviderNotFound):

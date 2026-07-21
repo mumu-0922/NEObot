@@ -43,6 +43,8 @@ var (
 	ErrProviderActivationRequired     = errors.New("provider activation is required")
 	ErrProviderConnectionTestFailed   = errors.New("provider connection test failed")
 	ErrProviderConfigChanged          = errors.New("provider configuration changed during connection test")
+	ErrTaskModelSettingsInvalid       = errors.New("task model settings are invalid")
+	ErrTaskModelUnavailable           = errors.New("task model is unavailable")
 )
 
 const maxProviderModelsResponseBytes = 2 << 20
@@ -51,6 +53,7 @@ const maxStoredProviderSecretRefBytes = 96 << 10
 type Service struct {
 	cfg              config.Config
 	repo             ProviderConfigRepository
+	taskModelRepo    TaskModelSettingsRepository
 	providerSecrets  *providersecrets.Vault
 	searchHTTPClient websearch.HTTPDoer
 	ragHTTPClient    websearch.HTTPDoer
@@ -65,6 +68,12 @@ type ServiceOption func(*Service)
 func WithProviderConfigRepository(repo ProviderConfigRepository) ServiceOption {
 	return func(s *Service) {
 		s.repo = repo
+	}
+}
+
+func WithTaskModelSettingsRepository(repo TaskModelSettingsRepository) ServiceOption {
+	return func(s *Service) {
+		s.taskModelRepo = repo
 	}
 }
 
@@ -164,6 +173,7 @@ func (s *Service) PublicConfig() PublicConfig {
 
 func (s *Service) PublicConfigForContext(ctx context.Context) PublicConfig {
 	provider := s.serverDefaultProviderForContext(ctx)
+	defaultModels, defaultModelsConfigured := s.publicTaskModels(ctx)
 	searchAvailable := false
 	if s.searchAvailable != nil {
 		searchAvailable = s.searchAvailable(ctx)
@@ -171,13 +181,14 @@ func (s *Service) PublicConfigForContext(ctx context.Context) PublicConfig {
 
 	return PublicConfig{
 		ModelProvider: ModelProviderConfig{
-			Available:     provider.Available,
-			ID:            serverDefaultProviderID,
-			Name:          provider.Name,
-			Type:          provider.Type,
-			Models:        append([]string{}, provider.Models...),
-			ModelMetadata: map[string]any{},
-			DefaultModels: map[string]string{},
+			Available:               provider.Available,
+			ID:                      serverDefaultProviderID,
+			Name:                    provider.Name,
+			Type:                    provider.Type,
+			Models:                  append([]string{}, provider.Models...),
+			ModelMetadata:           map[string]any{},
+			DefaultModels:           defaultModels,
+			DefaultModelsConfigured: defaultModelsConfigured,
 		},
 		Search: SearchConfig{Available: searchAvailable},
 		RAG: RAGConfig{

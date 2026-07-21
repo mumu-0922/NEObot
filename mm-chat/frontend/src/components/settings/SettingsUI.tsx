@@ -22,6 +22,7 @@ export const CustomSelect = ({
   icon: Icon,
   className = "",
   ariaLabel,
+  disabled = false,
 }: {
   value: string;
   onChange: (val: string) => void;
@@ -29,6 +30,7 @@ export const CustomSelect = ({
   icon?: any;
   className?: string;
   ariaLabel?: string;
+  disabled?: boolean;
 }) => {
   const t = useTranslations("Common");
   const [isOpen, setIsOpen] = useState(false);
@@ -37,6 +39,7 @@ export const CustomSelect = ({
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listboxId = useId();
   const hasOptions = options.length > 0;
+  const interactionDisabled = disabled || !hasOptions;
 
   const clearCloseTimer = useCallback(() => {
     if (!closeTimerRef.current) return;
@@ -55,7 +58,7 @@ export const CustomSelect = ({
   }, [clearCloseTimer]);
 
   const handleToggle = () => {
-    if (!hasOptions) return;
+    if (interactionDisabled) return;
 
     if (isOpen) {
       handleClose();
@@ -90,7 +93,7 @@ export const CustomSelect = ({
     <div className={`relative ${className}`} ref={containerRef}>
       <button
         type="button"
-        disabled={!hasOptions}
+        disabled={interactionDisabled}
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={isOpen}

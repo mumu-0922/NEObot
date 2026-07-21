@@ -140,6 +140,59 @@ describe("server default store injection", () => {
     });
   });
 
+  it("replaces browser task models when the server reports authoritative settings", async () => {
+    const { useCoreSettingsStore } =
+      await import("../store/core/coreSettingsStore");
+
+    useCoreSettingsStore.setState((state) => ({
+      ...state,
+      defaultModels: {
+        titleGeneration: "LOCAL:old-title",
+        relatedQuestions: "LOCAL:old-related",
+        contextCompression: "LOCAL:old-compression",
+        promptOptimization: "LOCAL:old-polish",
+        ragQuery: "LOCAL:old-rag",
+        memory: "LOCAL:old-memory",
+      },
+    }));
+
+    useCoreSettingsStore.getState().applyServerConfig({
+      ...serverConfig,
+      modelProvider: {
+        ...serverConfig.modelProvider,
+        defaultModelsConfigured: true,
+        defaultModels: {
+          titleGeneration: "CUSTOM:gpt-title",
+          relatedQuestions: "gemini-default",
+          contextCompression: "CUSTOM:gpt-compress",
+          promptOptimization: "CUSTOM:gpt-polish",
+          ragQuery: "CUSTOM:gpt-rag",
+          memory: "CUSTOM:gpt-memory",
+        },
+      },
+    });
+
+    expect(useCoreSettingsStore.getState().defaultModels).toEqual({
+      titleGeneration: "CUSTOM:gpt-title",
+      relatedQuestions: "SERVER_DEFAULT:gemini-default",
+      contextCompression: "CUSTOM:gpt-compress",
+      promptOptimization: "CUSTOM:gpt-polish",
+      ragQuery: "CUSTOM:gpt-rag",
+      memory: "CUSTOM:gpt-memory",
+    });
+  });
+
+  it("does not persist server-owned task models in browser preferences", async () => {
+    const { useCoreSettingsStore } =
+      await import("../store/core/coreSettingsStore");
+    const partialize = (useCoreSettingsStore as any).persist.getOptions()
+      .partialize;
+
+    expect(partialize(useCoreSettingsStore.getState())).not.toHaveProperty(
+      "defaultModels",
+    );
+  });
+
   it("initializes missing server model metadata without overwriting user edits", async () => {
     const { useSettingsStore } = await import("../store/core/settingsStore");
 

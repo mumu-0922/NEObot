@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   MessageSquarePlus,
   MessageSquareQuote,
@@ -14,15 +14,25 @@ import { useDefaultModels } from "@/store/hooks/useShallowStore";
 import { CustomSelect, GroupedSelectOption } from "./SettingsUI";
 import { DefaultModels } from "@/types";
 import { getDefaultModelSelectValue } from "@/lib/utils/defaultModels";
+import { createNeoChatApiClient } from "@/services/api/client";
+
+type SaveStatus = "idle" | "loading" | "saving" | "saved" | "error";
 
 const DefaultModelSettings = () => {
   const t = useTranslations("DefaultModels");
   const { modelMetadata, customModelMetadata } = useSettingsStore();
   const { providers } = useCoreSettingsStore();
   const { defaultModels, updateDefaultModels } = useDefaultModels();
+  const apiClient = useMemo(() => createNeoChatApiClient(), []);
+  const serverMode = apiClient.mode === "server";
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>(
+    serverMode ? "loading" : "idle",
+  );
+  const [savingKey, setSavingKey] = useState<keyof DefaultModels>();
+  const [saveError, setSaveError] = useState("");
 
-  // Aggregate all enabled models, grouped by Provider
-  const groupedOptions: GroupedSelectOption[] = React.useMemo(() => {
+  const groupedOptions: GroupedSelectOption[] = useMemo(() => {
     return providers
       .filter((p) => p.enabled && p.models.length > 0)
       .map((p) => ({
@@ -41,14 +51,70 @@ const DefaultModelSettings = () => {
       }));
   }, [providers, modelMetadata, customModelMetadata]);
 
-  // Helper to ensure we show a valid value. If state is empty or invalid, show the calculated default.
-  // However, we want to allow the user to see what is *actually* selected in state vs what is falling back.
-  // For the UI, if the state value is empty, we can show the calculated one as the "value" passed to CustomSelect,
-  // effectively pre-selecting it visually.
+  useEffect(() => {
+    if (!serverMode) return;
+    const controller = new AbortController();
+    let active = true;
+    setSaveStatus("loading");
+    setSaveError("");
+
+    apiClient.settings
+      .getTaskModels({ signal: controller.signal })
+      .then(async (response) => {
+        if (!active) return;
+        if (response.configured) {
+          updateDefaultModels(response.models);
+        }
+        setSaveStatus("idle");
+      })
+      .catch((cause) => {
+        if (!active || controller.signal.aborted) return;
+        setSaveStatus("error");
+        setSaveError(cause instanceof Error ? cause.message : t("saveFailed"));
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [apiClient, serverMode, t, updateDefaultModels]);
+
+  useEffect(
+    () => () => {
+      if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+    },
+    [],
+  );
+
+  const saveTaskModel = async (
+    valueKey: keyof DefaultModels,
+    value: string,
+  ) => {
+    const previous = useCoreSettingsStore.getState().defaultModels[valueKey];
+    updateDefaultModels({ [valueKey]: value });
+    if (!serverMode) return;
+
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+    setSavingKey(valueKey);
+    setSaveStatus("saving");
+    setSaveError("");
+    try {
+      const response = await apiClient.settings.updateTaskModels({
+        [valueKey]: value,
+      });
+      updateDefaultModels(response.models);
+      setSaveStatus("saved");
+      statusTimerRef.current = setTimeout(() => setSaveStatus("idle"), 1600);
+    } catch (cause) {
+      updateDefaultModels({ [valueKey]: previous });
+      setSaveStatus("error");
+      setSaveError(cause instanceof Error ? cause.message : t("saveFailed"));
+    } finally {
+      setSavingKey(undefined);
+    }
+  };
+
   const getEffectiveValue = (taskKey: keyof DefaultModels) => {
-    // If stored value exists and is valid (part of current options), return it.
-    // If not, return the calculated fallback.
-    // Note: getTaskModel already handles the "if stored is valid" check.
     return getDefaultModelSelectValue(defaultModels, taskKey, providers);
   };
 
@@ -77,8 +143,9 @@ const DefaultModelSettings = () => {
         <CustomSelect
           ariaLabel={t("defaultModelForAria", { label })}
           value={getEffectiveValue(valueKey)}
-          onChange={(val) => updateDefaultModels({ [valueKey]: val })}
+          onChange={(val) => void saveTaskModel(valueKey, val)}
           options={groupedOptions}
+          disabled={savingKey !== undefined || saveStatus === "loading"}
         />
       </div>
     </div>
@@ -93,6 +160,24 @@ const DefaultModelSettings = () => {
         <p className="text-xs text-gray-500 dark:text-muted-foreground mt-1">
           {t("subtitle")}
         </p>
+        {serverMode && saveStatus !== "idle" && (
+          <p
+            role={saveStatus === "error" ? "alert" : "status"}
+            className={`mt-2 text-xs ${
+              saveStatus === "error"
+                ? "text-red-600 dark:text-red-400"
+                : "text-gray-500 dark:text-muted-foreground"
+            }`}
+          >
+            {saveStatus === "loading"
+              ? t("loading")
+              : saveStatus === "saving"
+                ? t("saving")
+                : saveStatus === "saved"
+                  ? t("saved")
+                  : saveError || t("saveFailed")}
+          </p>
+        )}
       </div>
 
       <div className="flex flex-col gap-3">

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getDefaultModelSelectValue,
   pruneUnavailableDefaultModels,
+  resolveEffectiveDefaultModels,
 } from "../lib/utils/defaultModels";
 import { buildAvailableModels } from "../lib/utils/models";
 import type { DefaultModels, ModelProvider } from "../types";
@@ -68,5 +69,16 @@ describe("default model pruning", () => {
 
   it("does not synthesize Gemini models when no provider is available", () => {
     expect(buildAvailableModels([], {}, {}, () => null)).toEqual([]);
+  });
+
+  it("resolves every task to a concrete available model for server bootstrap", () => {
+    expect(resolveEffectiveDefaultModels(defaultModels, providers)).toEqual({
+      titleGeneration: "A:model-a",
+      relatedQuestions: "A:model-a",
+      contextCompression: "A:model-a",
+      promptOptimization: "A:model-a",
+      ragQuery: "A:model-a",
+      memory: "A:model-a",
+    });
   });
 });

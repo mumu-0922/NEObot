@@ -13,5 +13,9 @@
   "ragQuery": "RAG 查询生成",
   "ragQueryDesc": "用于为知识库生成优化后的检索查询。",
   "memory": "记忆",
-  "memoryDesc": "用于提取、整理并维护长期本地记忆。"
+  "memoryDesc": "用于提取、整理并维护长期记忆。",
+  "loading": "正在读取服务器配置…",
+  "saving": "正在保存…",
+  "saved": "已保存",
+  "saveFailed": "保存失败，已恢复原配置。"
 }

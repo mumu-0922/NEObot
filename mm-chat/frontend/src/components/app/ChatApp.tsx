@@ -42,6 +42,7 @@ import {
   SessionMessageTree,
 } from "@/types";
 import { useChatStore } from "@/store/core/chatStore";
+import { useCoreSettingsStore } from "@/store/core/coreSettingsStore";
 import { useMemoryStore } from "@/store/core/memoryStore";
 import { appDb } from "@/store/storage/storageConfig";
 import { formatModelName } from "@/store/core/settingsStore";
@@ -81,6 +82,10 @@ import {
 } from "@/lib/chat/messageTree";
 import { normalizeActivePluginIds } from "@/lib/plugin/config";
 import { parseModelString } from "@/lib/utils/model";
+import {
+  DEFAULT_MODEL_TASK_KEYS,
+  resolveEffectiveDefaultModels,
+} from "@/lib/utils/defaultModels";
 import { logDevError } from "@/lib/utils/devLogger";
 import { SERVER_DEFAULT_PROVIDER_ID } from "@/lib/defaultConfig/shared";
 import { normalizeServerManagedProviderConfigs } from "@/lib/providers/config";
@@ -809,6 +814,34 @@ const ChatApp = () => {
         if (normalizedServerProviders) {
           replaceServerManagedProviders(normalizedServerProviders);
         }
+        if (
+          config.modelProvider.defaultModelsConfigured === false &&
+          normalizedServerProviders
+        ) {
+          const coreState = useCoreSettingsStore.getState();
+          const bootstrapModels = resolveEffectiveDefaultModels(
+            coreState.defaultModels,
+            normalizedServerProviders,
+          );
+          if (
+            DEFAULT_MODEL_TASK_KEYS.every((key) => bootstrapModels[key] !== "")
+          ) {
+            try {
+              const saved =
+                await apiClientSnapshot.settings.updateTaskModels(
+                  bootstrapModels,
+                );
+              if (active) {
+                useCoreSettingsStore
+                  .getState()
+                  .updateDefaultModels(saved.models);
+              }
+            } catch (error) {
+              logChatAppError("Failed to bootstrap server task models", error);
+            }
+          }
+        }
+        if (!active) return;
         setServerConfigResolved(true);
         const hasEnabledServerModels = normalizedServerProviders?.some(
           (provider) => provider.enabled && provider.models.length > 0,

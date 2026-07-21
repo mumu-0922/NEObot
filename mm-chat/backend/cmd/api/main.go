@@ -136,6 +136,7 @@ func main() {
 	var pluginRegistry plugins.Registry
 	var pluginAuditRecorder plugins.AuditRecorder
 	var runtimeConfigRepo runtimeconfig.ProviderConfigRepository
+	var taskModelRepo runtimeconfig.TaskModelSettingsRepository
 	var userMemoryRepo usermemory.Repository
 	var sessionResolver httpserver.SessionResolver
 	var developmentSession *auth.Session
@@ -166,6 +167,7 @@ func main() {
 		pluginRegistry = plugins.NewPostgresRegistry(sqlDB, plugins.BuiltInPlugins()...)
 		pluginAuditRecorder = plugins.NewPostgresAuditRecorder(sqlDB)
 		runtimeConfigRepo = runtimeconfig.NewPostgresProviderConfigRepository(sqlDB)
+		taskModelRepo = runtimeconfig.NewPostgresTaskModelSettingsRepository(sqlDB)
 		userMemoryRepo = usermemory.NewPostgresRepository(sqlDB)
 		sessionResolver = auth.NewSessionResolver(
 			authRepo,
@@ -321,6 +323,7 @@ func main() {
 		httpserver.WithRAGQueryEmbedder(ragProviderGateway),
 		httpserver.WithRAGReranker(ragProviderGateway),
 		httpserver.WithRuntimeConfigRepository(runtimeConfigRepo),
+		httpserver.WithTaskModelSettingsRepository(taskModelRepo),
 		httpserver.WithUserMemoryRepository(userMemoryRepo),
 		httpserver.WithProviderSecretVault(providerSecretVault),
 		httpserver.WithPluginRegistry(pluginRegistry),

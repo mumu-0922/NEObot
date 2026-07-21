@@ -19,12 +19,66 @@ func TestHandlerRoutesRuntimeConfig(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
 	}
+	if rec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("Cache-Control = %q", rec.Header().Get("Cache-Control"))
+	}
 	var response PublicConfig
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
 	if response.ModelProvider.Available || len(response.ModelProvider.Models) != 0 {
 		t.Fatalf("model provider = %#v", response.ModelProvider)
+	}
+}
+
+func TestHandlerRoutesAdminTaskModelSettings(t *testing.T) {
+	providerRepo := &fakeProviderConfigRepository{
+		ok: true,
+		stored: StoredProviderConfig{
+			UserID: authDevelopmentUserID(), ProviderID: "CUSTOM", Label: "Custom",
+			Config: StoredProviderConfigPayload{
+				Kind: providerConfigKindModel, Models: []string{"gpt-task"}, Enabled: true,
+			},
+		},
+	}
+	handler := NewHandler(NewService(
+		config.Config{},
+		WithProviderConfigRepository(providerRepo),
+		WithTaskModelSettingsRepository(&fakeTaskModelSettingsRepository{}),
+	))
+
+	get := httptest.NewRecorder()
+	handler.ServeHTTP(get, httptest.NewRequest(
+		http.MethodGet, "/v1/admin/task-models", nil,
+	))
+	if get.Code != http.StatusOK || !strings.Contains(get.Body.String(), `"configured":false`) {
+		t.Fatalf("get status = %d, body=%s", get.Code, get.Body.String())
+	}
+	if get.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("task model Cache-Control = %q", get.Header().Get("Cache-Control"))
+	}
+
+	patch := httptest.NewRecorder()
+	handler.ServeHTTP(patch, httptest.NewRequest(
+		http.MethodPatch,
+		"/v1/admin/task-models",
+		strings.NewReader(`{"titleGeneration":"CUSTOM:gpt-task"}`),
+	))
+	if patch.Code != http.StatusOK ||
+		!strings.Contains(patch.Body.String(), `"titleGeneration":"CUSTOM:gpt-task"`) ||
+		!strings.Contains(patch.Body.String(), `"configured":true`) {
+		t.Fatalf("patch status = %d, body=%s", patch.Code, patch.Body.String())
+	}
+
+	invalid := httptest.NewRecorder()
+	handler.ServeHTTP(invalid, httptest.NewRequest(
+		http.MethodPatch,
+		"/v1/admin/task-models",
+		strings.NewReader(`{"memory":"CUSTOM:missing"}`),
+	))
+	if invalid.Code != http.StatusConflict ||
+		!strings.Contains(invalid.Body.String(), "TASK_MODEL_UNAVAILABLE") {
+		t.Fatalf("invalid status = %d, body=%s", invalid.Code, invalid.Body.String())
 	}
 }
 

@@ -6,5 +6,11 @@ export function createLocalSettingsApiShell(): SettingsApi {
     async getRuntimeConfig() {
       throw unsupportedFeature("local runtime config after G9.3 route removal");
     },
+    async getTaskModels() {
+      throw unsupportedFeature("server-owned task model settings");
+    },
+    async updateTaskModels() {
+      throw unsupportedFeature("server-owned task model settings");
+    },
   };
 }

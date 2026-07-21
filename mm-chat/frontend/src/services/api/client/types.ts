@@ -5,7 +5,7 @@ import type {
   PluginExecutionPayload,
   PluginExecutionRequestPayload,
 } from "../../../lib/plugin/execution";
-import type { Plugin } from "../../../types";
+import type { DefaultModels, Plugin } from "../../../types";
 
 export type ApiMode = "local" | "server";
 
@@ -376,6 +376,16 @@ export interface AuthApi {
 
 export interface SettingsApi {
   getRuntimeConfig(): Promise<PublicServerConfig>;
+  getTaskModels(input?: { signal?: AbortSignal }): Promise<AdminTaskModelsDTO>;
+  updateTaskModels(
+    input: Partial<DefaultModels> & { signal?: AbortSignal },
+  ): Promise<AdminTaskModelsDTO>;
+}
+
+export interface AdminTaskModelsDTO {
+  models: DefaultModels;
+  configured: boolean;
+  updatedAt?: string;
 }
 
 export interface ProviderRuntimeConfigDTO {

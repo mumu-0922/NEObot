@@ -24,8 +24,8 @@ import {
 
 /**
  * Core Settings Store
- * Stores theme, language, providers, and defaultModels in localStorage
- * for fast synchronous access during initialization
+ * Stores browser-owned preferences and BYOK provider shells in localStorage.
+ * Server-owned task model defaults are runtime state and are not persisted here.
  */
 
 const EMPTY_DEFAULT_MODELS: DefaultModels = {
@@ -63,7 +63,12 @@ function getServerDefaultModels(
   for (const [task, model] of Object.entries(defaultModels) as Array<
     [keyof DefaultModels, string]
   >) {
-    next[task] = model ? `${SERVER_DEFAULT_PROVIDER_ID}:${model}` : "";
+    const normalized = model?.trim() || "";
+    next[task] = normalized
+      ? normalized.includes(":")
+        ? normalized
+        : `${SERVER_DEFAULT_PROVIDER_ID}:${normalized}`
+      : "";
   }
 
   return next;
@@ -239,10 +244,12 @@ export const useCoreSettingsStore = create<CoreSettingsState>()(
           if (!config.modelProvider.available) {
             return {
               providers: userProviders,
-              defaultModels: pruneUnavailableDefaultModels(
-                state.defaultModels,
-                userProviders,
-              ),
+              defaultModels: config.modelProvider.defaultModelsConfigured
+                ? getServerDefaultModels(config.modelProvider.defaultModels)
+                : pruneUnavailableDefaultModels(
+                    state.defaultModels,
+                    userProviders,
+                  ),
             };
           }
 
@@ -261,10 +268,12 @@ export const useCoreSettingsStore = create<CoreSettingsState>()(
           if (!defaultProvider) {
             return {
               providers: userProviders,
-              defaultModels: pruneUnavailableDefaultModels(
-                state.defaultModels,
-                userProviders,
-              ),
+              defaultModels: config.modelProvider.defaultModelsConfigured
+                ? getServerDefaultModels(config.modelProvider.defaultModels)
+                : pruneUnavailableDefaultModels(
+                    state.defaultModels,
+                    userProviders,
+                  ),
             };
           }
 
@@ -272,11 +281,13 @@ export const useCoreSettingsStore = create<CoreSettingsState>()(
 
           return {
             providers,
-            defaultModels: mergeServerDefaultModels(
-              state.defaultModels,
-              config.modelProvider.defaultModels,
-              providers,
-            ),
+            defaultModels: config.modelProvider.defaultModelsConfigured
+              ? getServerDefaultModels(config.modelProvider.defaultModels)
+              : mergeServerDefaultModels(
+                  state.defaultModels,
+                  config.modelProvider.defaultModels,
+                  providers,
+                ),
           };
         }),
 
@@ -317,7 +328,6 @@ export const useCoreSettingsStore = create<CoreSettingsState>()(
         providers: state.providers
           .filter((provider) => !provider.isServerDefault)
           .map(stripProviderPlainSecret),
-        defaultModels: state.defaultModels,
       }),
       onRehydrateStorage: () => {
         return (state, error) => {

@@ -32,6 +32,9 @@ describe("ChatApp first screen composition", () => {
     expect(chatApp).not.toContain("max-w-xl");
     expect(chatApp).toContain("listAdminProviderConfigs");
     expect(chatApp).toContain("normalizeServerManagedProviderConfigs");
+    expect(chatApp).toContain("defaultModelsConfigured === false");
+    expect(chatApp).toContain("resolveEffectiveDefaultModels");
+    expect(chatApp).toContain("settings.updateTaskModels");
     expect(chatApp).toContain("shouldShowChatTitleBar");
     expect(chatApp).toContain("shouldShowChatTitleBar &&");
     expect(chatApp).toContain("text-[1.75rem]");

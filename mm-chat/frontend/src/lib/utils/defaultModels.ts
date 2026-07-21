@@ -1,5 +1,14 @@
 import type { DefaultModels, ModelProvider } from "../../types";
 
+export const DEFAULT_MODEL_TASK_KEYS: Array<keyof DefaultModels> = [
+  "titleGeneration",
+  "relatedQuestions",
+  "contextCompression",
+  "promptOptimization",
+  "ragQuery",
+  "memory",
+];
+
 function getAvailableModelIds(providers: ModelProvider[]): Set<string> {
   return new Set(
     providers
@@ -59,4 +68,17 @@ export function pruneUnavailableDefaultModels(
   }
 
   return nextDefaultModels;
+}
+
+export function resolveEffectiveDefaultModels(
+  defaultModels: DefaultModels,
+  providers: ModelProvider[],
+): DefaultModels {
+  return DEFAULT_MODEL_TASK_KEYS.reduce<DefaultModels>(
+    (models, task) => ({
+      ...models,
+      [task]: getDefaultModelSelectValue(defaultModels, task, providers),
+    }),
+    { ...defaultModels },
+  );
 }

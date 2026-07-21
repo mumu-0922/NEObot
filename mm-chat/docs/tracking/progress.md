@@ -1518,6 +1518,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           jumps with progressive-render compatibility.
     - [x] G14.3 Fixed-width rail with exactly one hovered/focused title preview
           and immediate mouse-leave dismissal.
+  - [x] G15 Server-owned automation task models, executed as one bounded slice
+        per `docs/tracking/g15-task-model-settings-plan.md`.
+    - [x] G15.1 Go/Postgres authoritative defaults, immediate administrator
+          autosave, browser-local cutover, restart proof, and rollback record.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

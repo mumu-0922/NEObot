@@ -22,6 +22,7 @@ export interface PublicServerConfig {
     models: string[];
     modelMetadata: Record<string, ModelMetadata>;
     defaultModels: Partial<DefaultModels>;
+    defaultModelsConfigured?: boolean;
   };
   search: {
     available: boolean;

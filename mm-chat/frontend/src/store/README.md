@@ -30,7 +30,11 @@ src/store/
 
 ### `coreSettingsStore`
 
-Stores frequently needed core settings such as theme, language, provider records, provider API keys, and default model selections. These values are kept in `localStorage` for fast synchronous access.
+Stores frequently needed core settings such as theme, language, provider
+projections, and automation task model selections. Browser-owned preferences
+and legacy/BYOK provider shells may use `localStorage`; in server mode,
+`defaultModels` is an in-memory projection of Go/Postgres and is deliberately
+excluded from browser persistence.
 
 ### `settingsStore`
 
@@ -88,7 +92,9 @@ const theme = useStoreWithSSR(
 
 ## Persistence Strategy
 
-- Use `localStorage` for small core settings that must be available immediately.
+- Use `localStorage` only for browser-owned core preferences that must be
+  available immediately. Server-owned task models must be loaded and saved
+  through the settings API.
 - Use IndexedDB for larger or structured data such as sessions, messages, plugins, skills, assistants, knowledge metadata, and memories.
 - Use OPFS for uploaded file bytes and local file handles.
 - Do not persist transient UI state.

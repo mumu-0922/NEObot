@@ -20,13 +20,14 @@ type PublicConfig struct {
 }
 
 type ModelProviderConfig struct {
-	Available     bool              `json:"available"`
-	ID            string            `json:"id"`
-	Name          string            `json:"name"`
-	Type          ProviderType      `json:"type"`
-	Models        []string          `json:"models"`
-	ModelMetadata map[string]any    `json:"modelMetadata"`
-	DefaultModels map[string]string `json:"defaultModels"`
+	Available               bool              `json:"available"`
+	ID                      string            `json:"id"`
+	Name                    string            `json:"name"`
+	Type                    ProviderType      `json:"type"`
+	Models                  []string          `json:"models"`
+	ModelMetadata           map[string]any    `json:"modelMetadata"`
+	DefaultModels           map[string]string `json:"defaultModels"`
+	DefaultModelsConfigured *bool             `json:"defaultModelsConfigured,omitempty"`
 }
 
 type SearchConfig struct {

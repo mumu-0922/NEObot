@@ -79,6 +79,7 @@ type options struct {
 	ragQueryEmbedder     ragproviders.QueryEmbedder
 	ragReranker          ragproviders.Reranker
 	runtimeConfigRepo    runtimeconfig.ProviderConfigRepository
+	taskModelRepo        runtimeconfig.TaskModelSettingsRepository
 	userMemoryRepo       usermemory.Repository
 	providerSecretVault  *providersecrets.Vault
 	webSearchResolver    websearch.Resolver
@@ -438,6 +439,12 @@ func WithRuntimeConfigRepository(repo runtimeconfig.ProviderConfigRepository) Op
 	}
 }
 
+func WithTaskModelSettingsRepository(repo runtimeconfig.TaskModelSettingsRepository) Option {
+	return func(opts *options) {
+		opts.taskModelRepo = repo
+	}
+}
+
 func WithUserMemoryRepository(repo usermemory.Repository) Option {
 	return func(opts *options) {
 		opts.userMemoryRepo = repo
@@ -655,6 +662,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	runtimeConfigService := runtimeconfig.NewService(
 		cfg,
 		runtimeconfig.WithProviderConfigRepository(resolvedOptions.runtimeConfigRepo),
+		runtimeconfig.WithTaskModelSettingsRepository(resolvedOptions.taskModelRepo),
 		runtimeconfig.WithProviderSecretVault(resolvedOptions.providerSecretVault),
 		runtimeconfig.WithSearchAvailability(func(ctx context.Context) bool {
 			_, err := webSearchService.ResolveActive(ctx)
@@ -765,6 +773,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/admin/provider-config", runtimeConfigHandler)
 	mux.Handle("/v1/admin/providers", runtimeConfigHandler)
 	mux.Handle("/v1/admin/providers/", runtimeConfigHandler)
+	mux.Handle("/v1/admin/task-models", runtimeConfigHandler)
 	mux.Handle("/v1/admin/search/providers", runtimeConfigHandler)
 	mux.Handle("/v1/admin/search/providers/", runtimeConfigHandler)
 	mux.Handle("/v1/admin/rag/providers", runtimeConfigHandler)

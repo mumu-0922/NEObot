@@ -13,5 +13,9 @@
   "ragQuery": "RAG Query Generation",
   "ragQueryDesc": "Used to generate optimized search queries for the Knowledge Base.",
   "memory": "Memory",
-  "memoryDesc": "Used to extract, consolidate, and maintain long-term local memories."
+  "memoryDesc": "Used to extract, consolidate, and maintain long-term memories.",
+  "loading": "Loading server configuration…",
+  "saving": "Saving…",
+  "saved": "Saved",
+  "saveFailed": "Save failed. The previous setting was restored."
 }

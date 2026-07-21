@@ -111,6 +111,7 @@ Postgres is the source of truth for structured records:
 
 - users and canonical session records
 - provider configuration metadata and encrypted-secret references
+- server-owned automation task model selections
 - conversations and messages
 - versioned derived conversation-context summaries; original messages remain
   the rebuild authority
