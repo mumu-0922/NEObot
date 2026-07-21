@@ -2,6 +2,7 @@
 import React, {
   useState,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useCallback,
@@ -102,6 +103,10 @@ import {
   resolveChatScrollFollowOnScroll,
   resolveChatScrollFollowOnWheel,
 } from "@/lib/chat/scrollFollow";
+import {
+  getInitialChatMessageRenderStart,
+  getNextChatMessageRenderStart,
+} from "@/lib/chat/progressiveMessageRendering";
 import { toServerMessageAttachments } from "@/lib/utils/serverAttachments";
 import {
   getKnowledgeAttachmentCollectionIds,
@@ -347,6 +352,79 @@ const ChatApp = () => {
       ) ?? null)
     : getCurrentSession(); // This is just metadata now
   const messages = visibleActiveMessages ?? EMPTY_MESSAGES; // Use activeMessages from store
+  const messageRenderSessionId = visibleCurrentSessionId ?? "";
+  const [messageRenderWindow, setMessageRenderWindow] = useState(() => ({
+    sessionId: messageRenderSessionId,
+    startIndex: getInitialChatMessageRenderStart(messages.length),
+  }));
+  const messageRenderStartIndex =
+    messageRenderWindow.sessionId === messageRenderSessionId
+      ? Math.min(messageRenderWindow.startIndex, messages.length)
+      : getInitialChatMessageRenderStart(messages.length);
+  const renderedMessages = useMemo(
+    () => messages.slice(messageRenderStartIndex),
+    [messageRenderStartIndex, messages],
+  );
+  const pendingMessagePrependRef = useRef<{
+    scrollHeight: number;
+    scrollTop: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (messageRenderWindow.sessionId !== messageRenderSessionId) {
+      setMessageRenderWindow({
+        sessionId: messageRenderSessionId,
+        startIndex: getInitialChatMessageRenderStart(messages.length),
+      });
+      return;
+    }
+    if (messageRenderStartIndex <= 0) return;
+
+    const revealOlderMessages = () => {
+      const container = messagesScrollRef.current;
+      pendingMessagePrependRef.current = container
+        ? {
+            scrollHeight: container.scrollHeight,
+            scrollTop: container.scrollTop,
+          }
+        : null;
+      React.startTransition(() => {
+        setMessageRenderWindow((current) => {
+          if (current.sessionId !== messageRenderSessionId) return current;
+          return {
+            ...current,
+            startIndex: getNextChatMessageRenderStart(current.startIndex),
+          };
+        });
+      });
+    };
+
+    if (typeof window.requestIdleCallback === "function") {
+      const idleCallbackId = window.requestIdleCallback(revealOlderMessages, {
+        timeout: 120,
+      });
+      return () => window.cancelIdleCallback(idleCallbackId);
+    }
+
+    const timer = window.setTimeout(revealOlderMessages, 32);
+    return () => window.clearTimeout(timer);
+  }, [
+    messageRenderSessionId,
+    messageRenderStartIndex,
+    messageRenderWindow.sessionId,
+    messages.length,
+  ]);
+
+  useLayoutEffect(() => {
+    const pendingPrepend = pendingMessagePrependRef.current;
+    const container = messagesScrollRef.current;
+    if (!pendingPrepend || !container) return;
+
+    pendingMessagePrependRef.current = null;
+    const addedHeight = container.scrollHeight - pendingPrepend.scrollHeight;
+    container.scrollTop = pendingPrepend.scrollTop + Math.max(0, addedHeight);
+    lastMessageScrollTopRef.current = container.scrollTop;
+  }, [messageRenderStartIndex]);
   const lastVisibleMessage = messages.at(-1);
   const hasVisibleImageGenerationMessage = Boolean(
     activeImageGeneration &&
@@ -510,7 +588,13 @@ const ChatApp = () => {
 
   // Logic for Assistant List Animation
   const isChatEmpty =
-    messages.length === 0 && !currentSession?.systemInstruction;
+    messages.length === 0 &&
+    !currentSession?.systemInstruction &&
+    !(
+      serverModeEnabled &&
+      serverReadState.isLoading &&
+      (currentSession?.messageCount ?? 0) > 0
+    );
   const [welcomeState, setWelcomeState] = useState<
     "visible" | "exiting" | "hidden"
   >("hidden");
@@ -2989,7 +3073,8 @@ const ChatApp = () => {
                 {/* Message Stream */}
                 {welcomeState === "hidden" && (
                   <div className="space-y-1 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500 fill-mode-forwards">
-                    {messages.map((msg, idx) => {
+                    {renderedMessages.map((msg, renderedIndex) => {
+                      const idx = messageRenderStartIndex + renderedIndex;
                       const isLastUserMessage =
                         msg.role === "user" &&
                         !messages.slice(idx + 1).some((m) => m.role === "user");

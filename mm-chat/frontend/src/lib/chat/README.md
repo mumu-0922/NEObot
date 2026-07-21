@@ -13,8 +13,10 @@ The `src/lib/chat` directory contains chat-domain helpers that are shared by sto
 - `messageOutputBlocks.ts` builds streamed output blocks such as search, reasoning, tool, and content sections.
 - `messageTree.ts` manages branched message relationships.
 - `postGenerationGuards.ts` handles post-generation safety checks.
+- `progressiveMessageRendering.ts` defines the bounded recent-tail and idle-batch policy used to keep long conversation switches responsive.
 - `searchUpdate.ts` merges streamed search sources and images without duplicating prior entries.
 - `scrollFollow.ts` keeps live bottom-follow under explicit user control and computes floating-composer clearance.
+- `serverConversationCache.ts` owns the bounded, memory-only server conversation snapshot cache used for stale-while-revalidate selection.
 - `sessionExport.ts` serializes and imports chat session data.
 
 ## Message Processing
@@ -44,3 +46,5 @@ const { finalText, finalAttachments, ragSources, userMessage } = processed;
 - Avoid React imports in this directory.
 - Keep current-public markers in `generationProgress.ts` aligned with the Go source-fusion router.
 - Treat upward wheel/pointer intent as authoritative: streamed content must not pull a reader back to the bottom until they return there.
+- Keep server conversation caches memory-only and bounded. Show a snapshot immediately, always revalidate against Go/Postgres, and suppress a second render when the authoritative tree is unchanged.
+- Reveal older long-conversation messages in idle batches and compensate for prepended height so the reader's current viewport remains anchored.

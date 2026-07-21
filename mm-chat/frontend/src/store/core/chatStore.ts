@@ -56,6 +56,12 @@ import {
   createChatStreamService,
   type ChatStreamRunResult,
 } from "../../services/api/chatStreamService";
+import {
+  deleteServerConversationMemorySnapshot,
+  getServerConversationMemorySnapshot,
+  isServerConversationMemorySnapshotCurrent,
+  setServerConversationMemorySnapshot,
+} from "../../lib/chat/serverConversationCache";
 import type {
   AppendUserMessageInput,
   ProviderRuntimeConfigDTO,
@@ -358,6 +364,26 @@ const normalizeServerMessageTree = (messages: Message[]): SessionMessageTree =>
     (tree, message) => appendServerMessageToTree(tree, message),
     createEmptyMessageTree(),
   );
+
+const cacheCurrentServerConversation = (
+  serverReadState: ServerReadState,
+): void => {
+  const conversationId = serverReadState.currentSessionId;
+  if (!conversationId) return;
+
+  const session = serverReadState.sessions.find(
+    (candidate) => candidate.id === conversationId,
+  );
+  const messageCount = getAllMessagesFromTree(
+    serverReadState.activeMessageTree,
+  ).length;
+  if (messageCount === 0 && (session?.messageCount ?? 0) > 0) return;
+
+  setServerConversationMemorySnapshot(
+    conversationId,
+    serverReadState.activeMessageTree,
+  );
+};
 
 const applyServerMessageRemovalToReadState = (
   serverReadState: ServerReadState,
@@ -923,6 +949,7 @@ export const useChatStore = create<ChatState>()(
         const service = createChatCrudService();
         if (!service.serverEnabled) return false;
 
+        cacheCurrentServerConversation(get().serverReadState);
         const requestId = serverReadRequestId + 1;
         serverReadRequestId = requestId;
         set((state) => ({
@@ -946,13 +973,17 @@ export const useChatStore = create<ChatState>()(
             sessions.some((session) => session.id === currentSessionId)
               ? currentSessionId
               : (sessions[0]?.id ?? null);
+          const cachedSnapshot = nextSessionId
+            ? getServerConversationMemorySnapshot(nextSessionId)
+            : null;
 
           set({
             serverReadState: {
               sessions,
               currentSessionId: nextSessionId,
-              activeMessages: [],
-              activeMessageTree: createEmptyMessageTree(),
+              activeMessages: cachedSnapshot?.activeMessages ?? [],
+              activeMessageTree:
+                cachedSnapshot?.activeMessageTree ?? createEmptyMessageTree(),
               generation: createEmptyServerGenerationState(),
               isLoading: false,
               error: null,
@@ -973,6 +1004,7 @@ export const useChatStore = create<ChatState>()(
                 error: getServerReadErrorMessage(error),
               },
             }));
+            cacheCurrentServerConversation(get().serverReadState);
           }
           throw error;
         }
@@ -982,14 +1014,27 @@ export const useChatStore = create<ChatState>()(
         const service = createChatCrudService();
         if (!service.serverEnabled) return false;
 
+        cacheCurrentServerConversation(get().serverReadState);
+        const cachedSnapshot = getServerConversationMemorySnapshot(id);
         const requestId = serverReadRequestId + 1;
         serverReadRequestId = requestId;
         set((state) => ({
           serverReadState: {
             ...state.serverReadState,
+            currentSessionId: id,
+            activeMessages: cachedSnapshot?.activeMessages ?? [],
+            activeMessageTree:
+              cachedSnapshot?.activeMessageTree ?? createEmptyMessageTree(),
             generation: createEmptyServerGenerationState(),
-            isLoading: true,
+            isLoading: !cachedSnapshot,
             error: null,
+            sessions: cachedSnapshot
+              ? state.serverReadState.sessions.map((session) =>
+                  session.id === id
+                    ? { ...session, messageCount: cachedSnapshot.messageCount }
+                    : session,
+                )
+              : state.serverReadState.sessions,
           },
         }));
 
@@ -1000,8 +1045,18 @@ export const useChatStore = create<ChatState>()(
           if (requestId !== serverReadRequestId) return false;
 
           const messageTree = normalizeServerMessageTree(messages);
+          if (
+            cachedSnapshot &&
+            isServerConversationMemorySnapshotCurrent(
+              cachedSnapshot,
+              messageTree,
+            )
+          ) {
+            return true;
+          }
           const activeMessages = getActiveMessagePath(messageTree);
           const allMessageCount = getAllMessagesFromTree(messageTree).length;
+          setServerConversationMemorySnapshot(id, messageTree);
 
           set((state) => ({
             serverReadState: {
@@ -1063,6 +1118,10 @@ export const useChatStore = create<ChatState>()(
               idempotencyKey: options.idempotencyKey ?? uuidv7(),
             }),
           );
+          setServerConversationMemorySnapshot(
+            session.id,
+            createEmptyMessageTree(),
+          );
           if (requestId === serverReadRequestId) {
             set((state) => ({
               serverReadState: {
@@ -1079,6 +1138,7 @@ export const useChatStore = create<ChatState>()(
                 error: null,
               },
             }));
+            cacheCurrentServerConversation(get().serverReadState);
           }
 
           return session.id;
@@ -1102,6 +1162,7 @@ export const useChatStore = create<ChatState>()(
 
         const requestId = serverReadRequestId + 1;
         serverReadRequestId = requestId;
+        deleteServerConversationMemorySnapshot(options.sessionId);
         set((state) => ({
           serverReadState: {
             ...state.serverReadState,
@@ -1134,6 +1195,7 @@ export const useChatStore = create<ChatState>()(
                 error: null,
               },
             }));
+            cacheCurrentServerConversation(get().serverReadState);
           }
 
           return message;
@@ -1160,6 +1222,7 @@ export const useChatStore = create<ChatState>()(
 
         const requestId = serverReadRequestId + 1;
         serverReadRequestId = requestId;
+        deleteServerConversationMemorySnapshot(options.sessionId);
         set((state) => ({
           serverReadState: {
             ...state.serverReadState,
@@ -1392,6 +1455,7 @@ export const useChatStore = create<ChatState>()(
                 },
               };
             });
+            cacheCurrentServerConversation(get().serverReadState);
           }
 
           return result;
@@ -1457,6 +1521,7 @@ export const useChatStore = create<ChatState>()(
 
         const requestId = serverReadRequestId + 1;
         serverReadRequestId = requestId;
+        deleteServerConversationMemorySnapshot(options.sessionId);
         set((current) => ({
           serverReadState: {
             ...current.serverReadState,
@@ -1643,6 +1708,7 @@ export const useChatStore = create<ChatState>()(
                 },
               };
             });
+            cacheCurrentServerConversation(get().serverReadState);
           }
 
           return result;
@@ -1676,6 +1742,7 @@ export const useChatStore = create<ChatState>()(
       },
 
       switchServerMessageVersion: (sessionId, messageId, direction) => {
+        serverReadRequestId += 1;
         let switched = false;
         set((state) => {
           if (state.serverReadState.currentSessionId !== sessionId) {
@@ -1708,6 +1775,9 @@ export const useChatStore = create<ChatState>()(
             },
           };
         });
+        if (switched) {
+          cacheCurrentServerConversation(get().serverReadState);
+        }
         return switched;
       },
 
@@ -1809,7 +1879,9 @@ export const useChatStore = create<ChatState>()(
         const service = createChatCrudService();
         if (!service.serverEnabled) return false;
 
+        serverReadRequestId += 1;
         await service.deleteConversation(id);
+        deleteServerConversationMemorySnapshot(id);
 
         let nextSessionId: string | null = null;
         let shouldSelectNextSession = false;
@@ -1878,6 +1950,7 @@ export const useChatStore = create<ChatState>()(
             toStoreMessageFromServer,
           );
           const messageTree = normalizeSessionMessageTree(messages);
+          setServerConversationMemorySnapshot(session.id, messageTree);
           if (requestId === serverReadRequestId) {
             set((state) => ({
               serverReadState: {
@@ -1931,6 +2004,9 @@ export const useChatStore = create<ChatState>()(
         const service = createChatCrudService();
         if (!service.serverEnabled) return false;
 
+        const requestId = serverReadRequestId + 1;
+        serverReadRequestId = requestId;
+        deleteServerConversationMemorySnapshot(sessionId);
         const message = toStoreMessageFromServer(
           await service.updateMessage({
             conversationId: sessionId,
@@ -1938,6 +2014,7 @@ export const useChatStore = create<ChatState>()(
             content,
           }),
         );
+        if (requestId !== serverReadRequestId) return true;
         set((state) => ({
           serverReadState: applyServerMessageToReadState(
             state.serverReadState,
@@ -1945,6 +2022,7 @@ export const useChatStore = create<ChatState>()(
             message,
           ),
         }));
+        cacheCurrentServerConversation(get().serverReadState);
         return true;
       },
 
@@ -1952,11 +2030,15 @@ export const useChatStore = create<ChatState>()(
         const service = createChatCrudService();
         if (!service.serverEnabled) return false;
 
+        const requestId = serverReadRequestId + 1;
+        serverReadRequestId = requestId;
+        deleteServerConversationMemorySnapshot(sessionId);
         await service.deleteMessage({
           conversationId: sessionId,
           messageId,
           scope: "message",
         });
+        if (requestId !== serverReadRequestId) return true;
         set((state) => ({
           serverReadState: applyServerMessageRemovalToReadState(
             state.serverReadState,
@@ -1965,6 +2047,7 @@ export const useChatStore = create<ChatState>()(
             "message",
           ),
         }));
+        cacheCurrentServerConversation(get().serverReadState);
         return true;
       },
 
@@ -1972,11 +2055,15 @@ export const useChatStore = create<ChatState>()(
         const service = createChatCrudService();
         if (!service.serverEnabled) return false;
 
+        const requestId = serverReadRequestId + 1;
+        serverReadRequestId = requestId;
+        deleteServerConversationMemorySnapshot(sessionId);
         await service.deleteMessage({
           conversationId: sessionId,
           messageId,
           scope: "subsequent",
         });
+        if (requestId !== serverReadRequestId) return true;
         set((state) => ({
           serverReadState: applyServerMessageRemovalToReadState(
             state.serverReadState,
@@ -1985,6 +2072,7 @@ export const useChatStore = create<ChatState>()(
             "subsequent",
           ),
         }));
+        cacheCurrentServerConversation(get().serverReadState);
         return true;
       },
 

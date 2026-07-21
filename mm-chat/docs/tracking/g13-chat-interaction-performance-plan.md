@@ -1,6 +1,6 @@
 # G13 Chat Interaction Performance Plan
 
-Status: in progress. Work is split into independently reversible slices; each
+Status: complete. Work was split into independently reversible slices; each
 slice must pass focused tests, the full frontend gate, a container rebuild, and
 a deployed browser smoke before commit.
 
@@ -22,13 +22,15 @@ a deployed browser smoke before commit.
 - Lazy-load embedded visual documents and remove the floating composer's
   backdrop blur from the scrolling paint path.
 
-### [ ] G13.3 — Conversation switching
+### [x] G13.3 — Conversation switching
 
 - Add a small bounded in-memory cache for recently loaded server conversations.
 - Render a cached conversation immediately, then revalidate against the Go API;
   Postgres remains authoritative and browser storage does not regain ownership.
 - Guard asynchronous loads so an older response cannot overwrite a newer
   selection, and invalidate/update cache entries after conversation mutation.
+- Render the recent message tail first and reveal older messages in idle
+  batches while preserving the current scroll anchor.
 
 ## Rollback
 

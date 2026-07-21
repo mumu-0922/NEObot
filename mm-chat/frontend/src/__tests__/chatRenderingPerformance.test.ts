@@ -31,4 +31,16 @@ describe("chat rendering performance composition", () => {
       /<iframe\s+srcDoc=\{srcDoc\}[\s\S]*?loading="lazy"[\s\S]*?sandbox="allow-scripts"/,
     );
   });
+
+  it("renders long conversations from the recent tail in idle batches", () => {
+    const chatApp = readSource("src/components/app/ChatApp.tsx");
+
+    expect(chatApp).toContain("messages.slice(messageRenderStartIndex)");
+    expect(chatApp).toContain("window.requestIdleCallback");
+    expect(chatApp).toContain("getNextChatMessageRenderStart");
+    expect(chatApp).toContain("pendingMessagePrependRef");
+    expect(chatApp).toContain(
+      "serverReadState.isLoading &&\n      (currentSession?.messageCount ?? 0) > 0",
+    );
+  });
 });

@@ -57,3 +57,44 @@ composer backdrop / inline iframe loading           none / lazy
 
 The owner conversation was profiled read-only. No message, file, session
 configuration, or server state was changed.
+
+## 2026-07-21 — G13.3 conversation switching
+
+Server conversation selection previously waited for every `/messages` request,
+rebuilt the complete tree, and synchronously mounted every historical Markdown
+message before the selected title and content could paint. The 51-message
+conversation took about `231ms` to appear and produced a `183ms` maximum frame
+gap even though its local backend response took only about `20ms`.
+
+A six-entry least-recently-used memory cache now snapshots the immutable active
+tree when leaving or loading a server conversation. Selection immediately uses
+the snapshot, then always revalidates through Go/Postgres. An unchanged result
+keeps the same tree reference and does not trigger a duplicate render; a
+changed result replaces the snapshot. Cache entries are invalidated or updated
+across message mutations and deletion, while the existing request generation
+guard prevents stale reads from overwriting a newer selection.
+
+Long conversations initially mount the eight most recent messages. Older
+messages are prepended in six-message idle batches, and the scroll container is
+adjusted by the added height so the visible last message stays fixed. This is
+render scheduling only: the full server message tree remains available for
+context, branches, edits, and generation from the first selection update.
+
+Verification:
+
+```text
+focused cache/render/store tests                    4 files / 37 tests
+frontend full tests                                 187 files / 897 tests
+frontend lint / typecheck / format / build          passed
+frontend/backend containers                         healthy / healthy
+old 51-message title paint / max frame gap          231ms / 183ms
+new cached 51-message title+tail paint              41-49ms
+new cold 2-message title / full message paint       15-18ms / 23-25ms
+background revalidation                             performed on every switch
+progressive rendered counts                         8,14,20,...,50,51
+last-message bottom during prepend                  236.5px-237.3px
+memory cache bound / browser persistence            6 / none
+```
+
+The browser smoke switched only among existing owner conversations. It did not
+send, edit, delete, or persist any message and did not expose provider secrets.

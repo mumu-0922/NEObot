@@ -129,6 +129,8 @@ const { appendMessageToParent, normalizeSessionMessageTree } =
   await import("../lib/chat/messageTree");
 const { getMessageOutputBlocks } =
   await import("../lib/chat/messageOutputBlocks");
+const { clearServerConversationMemoryCache } =
+  await import("../lib/chat/serverConversationCache");
 const { useChatStore } = await import("../store/core/chatStore");
 
 const makeServerSession = (id: string): Session => ({
@@ -166,6 +168,7 @@ const makeEmptyServerReadState = () => ({
 
 describe("chat store server read path", () => {
   beforeEach(() => {
+    clearServerConversationMemoryCache();
     mocks.storedItems.clear();
     vi.clearAllMocks();
     mocks.createChatCrudService.mockReturnValue(mocks.serverService);
@@ -311,6 +314,71 @@ describe("chat store server read path", () => {
     expect(mocks.serverService.listMessages).toHaveBeenCalledWith("c1");
     expect(mocks.appDbMock.getItem).not.toHaveBeenCalled();
     expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
+  });
+
+  it("shows a recent server conversation immediately and revalidates it", async () => {
+    const c1Message = { ...makeMessage("c1-m1", "user"), content: "cached" };
+    const c2Message = makeMessage("c2-m1", "user");
+    mocks.serverService.listMessages
+      .mockResolvedValueOnce([c1Message])
+      .mockResolvedValueOnce([c2Message]);
+    useChatStore.setState({
+      serverReadState: {
+        ...makeEmptyServerReadState(),
+        sessions: [makeServerSession("c1"), makeServerSession("c2")],
+      },
+    });
+
+    await useChatStore.getState().selectServerSession("c1");
+    await useChatStore.getState().selectServerSession("c2");
+
+    let resolveRevalidation!: (messages: Message[]) => void;
+    mocks.serverService.listMessages.mockReturnValueOnce(
+      new Promise<Message[]>((resolve) => {
+        resolveRevalidation = resolve;
+      }),
+    );
+    const selection = useChatStore.getState().selectServerSession("c1");
+
+    let state = useChatStore.getState().serverReadState;
+    expect(state.currentSessionId).toBe("c1");
+    expect(state.activeMessages.map((message) => message.content)).toEqual([
+      "cached",
+    ]);
+    expect(state.isLoading).toBe(false);
+
+    resolveRevalidation([{ ...c1Message, content: "fresh" }]);
+    await expect(selection).resolves.toBe(true);
+    state = useChatStore.getState().serverReadState;
+    expect(state.activeMessages.map((message) => message.content)).toEqual([
+      "fresh",
+    ]);
+    expect(mocks.serverService.listMessages).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not replace cached message state after an unchanged revalidation", async () => {
+    const c1Message = makeMessage("c1-m1", "user");
+    mocks.serverService.listMessages
+      .mockResolvedValueOnce([c1Message])
+      .mockResolvedValueOnce([makeMessage("c2-m1", "user")])
+      .mockResolvedValueOnce([c1Message]);
+    useChatStore.setState({
+      serverReadState: {
+        ...makeEmptyServerReadState(),
+        sessions: [makeServerSession("c1"), makeServerSession("c2")],
+      },
+    });
+
+    await useChatStore.getState().selectServerSession("c1");
+    await useChatStore.getState().selectServerSession("c2");
+    const selection = useChatStore.getState().selectServerSession("c1");
+    const cachedTree =
+      useChatStore.getState().serverReadState.activeMessageTree;
+
+    await expect(selection).resolves.toBe(true);
+    expect(useChatStore.getState().serverReadState.activeMessageTree).toBe(
+      cachedTree,
+    );
   });
 
   it("reconstructs server message branches from parent metadata", async () => {
