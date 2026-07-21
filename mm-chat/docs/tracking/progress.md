@@ -1527,7 +1527,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         `docs/tracking/g16-server-only-rag-settings-plan.md`.
     - [x] G16.1 Runtime/new-vs-old trace, owner grill, executable contract,
           deletion inventory, verification matrix, and rollback boundaries.
-    - [ ] G16.2 Atomic real-test-before-commit provider configuration and
+    - [x] G16.2 Atomic real-test-before-commit provider configuration and
           stage-oriented readiness projection.
     - [ ] G16.3 Concise Knowledge Service page, two vertical provider cards,
           and truthful deployment health.

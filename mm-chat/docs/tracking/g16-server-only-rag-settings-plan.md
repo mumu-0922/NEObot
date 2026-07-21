@@ -35,7 +35,7 @@ MinerU, Jina, Go, Python, and Postgres runtime.
   contract, deletion inventory, verification matrix, and rollback boundaries.
 - Change documentation only and commit it independently.
 
-### G16.2 Atomic provider configuration and staged readiness
+### G16.2 Atomic provider configuration and staged readiness — complete
 
 - Add one bounded administrator operation that accepts an encrypted transient
   MinerU or Jina Key, validates and tests it, then stores and activates it only
@@ -63,6 +63,9 @@ MinerU, Jina, Go, Python, and Postgres runtime.
 - Remove retired Local-RAG settings types, normalization, resolvers, service
   shims, local Knowledge indexing/query branches, and related translations and
   tests when no server/import caller remains.
+- After the G16.3 client cutover, retire the older RAG administrator PUT/test/
+  activate routes and service methods so only atomic configure, redacted list,
+  and confirmed delete remain writable.
 - Add a bounded persisted-settings migration that deletes the obsolete RAG
   fields without clearing unrelated user preferences.
 - Verify staged provider degradation, server Knowledge upload/index/query,

@@ -311,8 +311,10 @@ vault at rest:   provider:rag:<userId>:<RAG:MINERU|RAG:JINA>
   fallback for dynamic status or the future scoped gateway;
 - activation repeats a bounded real test and binds the exact vault envelope,
   fixed provider endpoint, parser/model profile, and 1024 Jina dimensions;
-- dynamic `/v1/rag/provider-status` reports ready only when both enabled,
-  attested records decrypt under their own contexts;
+- dynamic `/v1/rag/provider-status` reports `ready` only when both enabled,
+  attested records decrypt under their own contexts; Jina-only readiness is
+  `partial` with native indexing/retrieval available and PDF parsing disabled,
+  while missing Jina makes indexing/retrieval unavailable;
 - current and retained-old-key RAG envelopes participate in the common
   rotation plan. Legacy BYOK RAG rows and reserved IDs using a model context
   are rejected rather than guessed or migrated across contexts.

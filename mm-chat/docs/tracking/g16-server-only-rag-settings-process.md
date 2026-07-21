@@ -57,3 +57,48 @@ git diff --check -- mm-chat                                      passed
 pnpm prettier --check G16 plan/process + tracking progress       passed
 runtime or provider mutation                                     none
 ```
+
+## 2026-07-21 — G16.2 atomic provider configuration and staged status
+
+The former administrator flow persisted a replacement Key first, tested the
+stored record second, and activated it in a third request. A failed replacement
+therefore left the bad Key stored and the prior working vault record lost even
+though activation correctly remained false.
+
+G16.2 adds `POST /v1/admin/rag/providers/{provider}/configure`. Go decrypts the
+bounded browser envelope in memory, runs the fixed MinerU allocate probe or the
+Jina embedding-plus-rerank probes, encrypts the tested Key with the provider
+vault, and calls one serializable repository operation. That transaction locks
+the provider table, compares the pre-test record snapshot, and either creates
+or replaces the record with `enabled=true` and a matching attestation. Test,
+vault, database, or concurrency failure leaves the old active row unchanged.
+
+`GET /v1/rag/provider-status` now retains the compatibility `ready` boolean and
+also returns `status` plus `pdfParsing`, `nativeIndexing`, and `retrieval`
+capabilities. Both providers ready is `ready`; Jina ready without MinerU is
+`partial`; missing/unavailable Jina makes indexing/retrieval `unavailable`.
+Existing runtime adapters already resolve the exact provider per stage, so no
+global provider-status gate was introduced.
+
+Verification:
+
+```text
+targeted ragproviders/runtimeconfig/httpserver tests              passed
+backend gofmt / go vet ./... / go test ./...                      passed
+targeted Go race tests                                             passed
+isolated Postgres create -> replace -> stale fence                passed
+isolated database mm_chat_g16_atomic_test after proof             absent
+source-built backend recreate / health                            healthy
+live status                                                       ready; all capabilities true
+live stored MinerU real allocate test                              passed
+live invalid atomic MinerU replacement                             502 expected
+active MinerU redacted record before/after failed replacement     byte-identical
+status after failed replacement                                   ready
+invalid replacement value in backend logs                         zero hits
+change / quality / changed-scope security gates                    passed / passed / passed
+```
+
+The positive live probe reused the already encrypted server record and changed
+only its connection-test timestamp/attestation. The negative configure probe
+used a disposable invalid browser envelope, consumed no document upload, did
+not replace the record, and left no temporary local file or test database.

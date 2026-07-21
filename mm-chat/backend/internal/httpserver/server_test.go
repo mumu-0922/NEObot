@@ -638,6 +638,7 @@ func TestAuthRequiredModeRejectsMissingCredentialsAndKeepsPublicRoutes(t *testin
 		{method: http.MethodGet, path: "/v1/admin/search/providers"},
 		{method: http.MethodPost, path: "/v1/admin/search/providers/tavily/test"},
 		{method: http.MethodGet, path: "/v1/admin/rag/providers"},
+		{method: http.MethodPost, path: "/v1/admin/rag/providers/jina/configure"},
 		{method: http.MethodPost, path: "/v1/admin/rag/providers/jina/test"},
 		{method: http.MethodGet, path: "/v1/admin/task-models"},
 		{method: http.MethodPost, path: "/v1/search"},

@@ -157,12 +157,16 @@ projection work. Healthy `/health` proves process/event-loop liveness only; it
 does not prove projection readiness or that Search/RAG is available.
 
 The protected Go diagnostic `GET /v1/rag/provider-status` reports only the
-dynamic Postgres/vault activation state and locked Jina embedding dimension
-(`1024`); it never returns key material. MinerU/Jina Keys are configured through
-the administrator webpage and stored only as vault envelopes. Python dispatch
-fails closed when the Go gateway URL/token is absent and never parses reusable
-provider credentials. Go query embedding and rerank also resolve the active
-`RAG:JINA` record directly; there are no query/rerank service URL variables.
+dynamic Postgres/vault activation state, stage capabilities, and locked Jina
+embedding dimension (`1024`); it never returns key material. `ready` means both
+providers are ready, `partial` means Jina-backed native indexing/retrieval is
+available while MinerU PDF parsing is not, and `unavailable` means Jina-backed
+indexing/retrieval cannot run. MinerU/Jina Keys are configured through the
+administrator webpage, tested before replacement, and stored only as vault
+envelopes. Python dispatch fails closed when the Go gateway URL/token is absent
+and never parses reusable provider credentials. Go query embedding and rerank
+also resolve the active `RAG:JINA` record directly; there are no query/rerank
+service URL variables.
 `RAG_MINERU_RESULT_PROXY_URL` is optional and normally empty. It exists only for
 bounded local smoke environments where Docker Desktop/WSL container egress can
 reach MinerU API/upload endpoints but fails TLS handshakes to the MinerU result

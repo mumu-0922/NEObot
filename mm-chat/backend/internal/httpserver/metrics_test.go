@@ -224,6 +224,7 @@ func TestNormalizeMetricPathBoundsRAGAdministratorRoutes(t *testing.T) {
 		"/v1/admin/rag/providers":                 "/v1/admin/rag/providers",
 		"/v1/admin/rag/providers/jina":            "/v1/admin/rag/providers/{provider}",
 		"/v1/admin/rag/providers/jina/activate":   "/v1/admin/rag/providers/{provider}/{action}",
+		"/v1/admin/rag/providers/jina/configure":  "/v1/admin/rag/providers/{provider}/{action}",
 		"/v1/admin/rag/providers/mineru/test":     "/v1/admin/rag/providers/{provider}/{action}",
 		"/v1/admin/rag/providers/jina/credential": unknownMetricPath,
 	}

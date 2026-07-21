@@ -122,6 +122,7 @@ func (h *Handler) adminRAGProviderConfig(w http.ResponseWriter, r *http.Request)
 			writeServiceError(w, err)
 			return
 		}
+		w.Header().Set("Cache-Control", "no-store")
 		writeJSON(w, http.StatusOK, response)
 		return
 	}
@@ -142,6 +143,15 @@ func (h *Handler) adminRAGProviderConfig(w http.ResponseWriter, r *http.Request)
 		var response AdminRAGProviderConnectionResponse
 		var err error
 		switch strings.TrimSpace(parts[1]) {
+		case "configure":
+			var request ConfigureAdminRAGProviderRequest
+			if decodeErr := decodeJSON(w, r, &request); decodeErr != nil {
+				writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "request body is invalid")
+				return
+			}
+			response, err = h.service.ConfigureAdminRAGProvider(
+				r.Context(), providerID, request,
+			)
 		case "test":
 			response, err = h.service.TestAdminRAGProviderConnection(r.Context(), providerID)
 		case "activate":

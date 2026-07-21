@@ -10,8 +10,9 @@ the private Python-to-Go provider boundary.
 This gate does not redesign parsing or retrieval. MinerU remains the PDF
 parser for scanned and formula-heavy documents. Jina remains
 `jina-embeddings-v4` at 1024 dimensions plus `jina-reranker-v3`.
-The legacy frontend MinerU BYOK/manual-parse path remains isolated during G7
-and is not an input to automatic indexing; its retirement stays in G9.
+The legacy frontend MinerU BYOK/manual-parse path was isolated from automatic
+indexing and its Next routes were removed in G9. G16 removes the remaining
+browser control surface and settings state.
 
 ## 2. Signatures
 
@@ -19,6 +20,7 @@ Administrator routes:
 
 ```text
 GET    /v1/admin/rag/providers
+POST   /v1/admin/rag/providers/{provider}/configure
 PUT    /v1/admin/rag/providers/{provider}
 DELETE /v1/admin/rag/providers/{provider}
 POST   /v1/admin/rag/providers/{provider}/test
@@ -28,6 +30,14 @@ POST   /v1/admin/rag/providers/{provider}/activate
 `provider` is exactly `mineru` or `jina`. Reads expose `hasApiKey`, enabled
 state, connection-test state, and the fixed public model profile, but no
 plaintext, browser envelope, vault envelope, or upstream response body.
+
+`configure` is the G16 single-step administrator operation. It accepts exactly
+one browser-encrypted `apiKeySecret`, performs the same bounded real provider
+test against the transient plaintext, and only then atomically replaces the
+vault record, connection attestation, and enabled state. A failed test or stale
+record snapshot performs no provider-config mutation. The older PUT/test/
+activate operations remain temporarily backward compatible until the frontend
+cutover removes their callers.
 
 Private provider routes:
 
@@ -83,9 +93,11 @@ hop is removed, so no Go -> Python -> Go request cycle remains.
   envelope.
 - the legacy manual-parse MinerU BYOK never populates, overrides, or falls back
   into these administrator records or the G7 automatic-indexing resolver.
-- save-and-test performs a real bounded test. Activation repeats the test and
-  atomically commits the attestation and enabled state for the exact stored
-  record. Key changes clear the proof and disable that provider.
+- G16 `configure` performs a real bounded test before persistence and atomically
+  commits the new vault envelope, attestation, and enabled state for the exact
+  record. Invalid replacements preserve the prior working envelope and proof.
+  The older save/test/activate sequence remains a compatibility path during the
+  bounded frontend cutover.
 - MinerU testing performs one fixed-name Local Batch allocation, validates one
   batch ID and one provider-signed upload capability, then discards both
   without uploading a document. Signed upload/result URLs returned during
@@ -101,6 +113,12 @@ hop is removed, so no Go -> Python -> Go request cycle remains.
   the old fingerprint is already valid and the operation decrypts then
   re-encrypts the same credential under the same record context. Invalid or
   absent proofs remain invalid; rotation never activates a provider.
+- Provider status is stage-oriented. Both ready records produce `status=ready`;
+  ready Jina with unavailable MinerU produces `status=partial`, keeps native
+  indexing and retrieval available, and reports PDF parsing unavailable. When
+  Jina is unavailable, indexing/retrieval capabilities are false even if the
+  independent MinerU parse stage is ready. The legacy `ready` boolean remains
+  true only when both records are ready.
 - Go resolves an enabled, attested Postgres/vault record for every upstream
   call. Missing, disabled, corrupt, copied, or unattested state fails closed;
   there is no `.env` runtime fallback and no cross-provider fallback.
@@ -141,9 +159,10 @@ text, embeddings, and DNS/network details never enter errors or logs.
 
 ## 5. Good / Base / Bad Cases
 
-- Good: save and activate both records, restart Go and Python without provider
-  Key environment variables, auto-index one scanned PDF through MinerU and
-  Jina, then retrieve its 1024-dimensional evidence through Go.
+- Good: configure both records with test-before-commit, restart Go and Python
+  without provider Key environment variables, auto-index one scanned PDF
+  through MinerU and Jina, then retrieve its 1024-dimensional evidence through
+  Go.
 - Base: only Jina is active. Query/rerank can run, but PDF auto-index that
   requires MinerU fails with a stable provider-unavailable state rather than
   silently using a different parser profile.
@@ -162,9 +181,10 @@ text, embeddings, and DNS/network details never enter errors or logs.
 - BYOK ingress contexts, RAG vault contexts, context-copy rejection,
   retained-key rotation, ciphertext-only backup/restore, and fresh-process
   reload;
-- MinerU allocate probe and Jina embedding-plus-rerank test fixtures, real-test
-  failure, zero activation on failure, fingerprint invalidation, concurrent
-  change fencing, and activation persistence;
+- MinerU allocate probe and Jina embedding-plus-rerank test fixtures,
+  test-before-commit replacement, exact prior-record preservation on failure,
+  fingerprint invalidation, concurrent change fencing, atomic activation
+  persistence, and isolated Postgres create/replace/stale-snapshot proof;
 - internal-token constant-time rejection, closed-operation routing, strict JSON,
   body/item/response/timeout bounds, no redirects, fixed upstream URL/model/
   authentication shapes, and no credential-return path;
@@ -197,7 +217,7 @@ POST /internal/provider-proxy { url, method, headers, body }
 Correct:
 
 ```text
-administrator BYOK -> Go -> Postgres/vault -> bounded activation
+administrator BYOK -> transient real test -> atomic Postgres/vault activation
 Python closed DTO + internal token -> Go scoped operation -> exact provider
 Go runtime retrieval -> direct Jina adapter -> normalized evidence
 ```

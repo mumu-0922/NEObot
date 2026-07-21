@@ -58,7 +58,21 @@ func (s *Service) RAGProviderStatus(
 			response.Providers.Jina = state
 		}
 	}
-	response.Ready = response.Providers.MinerU.Status == ragproviders.ProviderStatusReady &&
-		response.Providers.Jina.Status == ragproviders.ProviderStatusReady
+	minerUReady := response.Providers.MinerU.Status == ragproviders.ProviderStatusReady
+	jinaReady := response.Providers.Jina.Status == ragproviders.ProviderStatusReady
+	response.Capabilities = ragproviders.Capabilities{
+		PDFParsing:     minerUReady,
+		NativeIndexing: jinaReady,
+		Retrieval:      jinaReady,
+	}
+	response.Ready = minerUReady && jinaReady
+	switch {
+	case response.Ready:
+		response.Status = ragproviders.ServiceStatusReady
+	case jinaReady:
+		response.Status = ragproviders.ServiceStatusPartial
+	default:
+		response.Status = ragproviders.ServiceStatusUnavailable
+	}
 	return response, nil
 }

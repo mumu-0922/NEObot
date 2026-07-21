@@ -114,8 +114,11 @@ func TestAdminJinaProviderSaveTestActivateAndInvalidate(t *testing.T) {
 	}
 	status, err := service.RAGProviderStatus(context.Background())
 	if err != nil || status.Ready ||
+		status.Status != ragproviders.ServiceStatusPartial ||
 		status.Providers.Jina.Status != ragproviders.ProviderStatusReady ||
-		status.Providers.MinerU.Status != ragproviders.ProviderStatusMissingSecret {
+		status.Providers.MinerU.Status != ragproviders.ProviderStatusMissingSecret ||
+		status.Capabilities.PDFParsing || !status.Capabilities.NativeIndexing ||
+		!status.Capabilities.Retrieval {
 		t.Fatalf("Jina-only status = %#v, %v", status, err)
 	}
 
@@ -286,9 +289,12 @@ func TestRAGProviderStatusRequiresBothAttestedVaultRecords(t *testing.T) {
 	)
 	status, err := service.RAGProviderStatus(context.Background())
 	if err != nil || !status.Ready ||
+		status.Status != ragproviders.ServiceStatusReady ||
 		status.Providers.MinerU.Status != ragproviders.ProviderStatusReady ||
 		status.Providers.Jina.Status != ragproviders.ProviderStatusReady ||
-		status.Providers.Jina.EmbeddingDimensions != jinaDimensions {
+		status.Providers.Jina.EmbeddingDimensions != jinaDimensions ||
+		!status.Capabilities.PDFParsing || !status.Capabilities.NativeIndexing ||
+		!status.Capabilities.Retrieval {
 		t.Fatalf("RAG provider status = %#v, %v", status, err)
 	}
 
@@ -305,7 +311,10 @@ func TestRAGProviderStatusRequiresBothAttestedVaultRecords(t *testing.T) {
 	)
 	status, err = service.RAGProviderStatus(context.Background())
 	if err != nil || status.Ready ||
-		status.Providers.Jina.Status != ragproviders.ProviderStatusUnavailable {
+		status.Status != ragproviders.ServiceStatusUnavailable ||
+		status.Providers.Jina.Status != ragproviders.ProviderStatusUnavailable ||
+		!status.Capabilities.PDFParsing || status.Capabilities.NativeIndexing ||
+		status.Capabilities.Retrieval {
 		t.Fatalf("copied-context RAG status = %#v, %v", status, err)
 	}
 }

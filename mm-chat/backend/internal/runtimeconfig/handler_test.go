@@ -415,8 +415,35 @@ func TestHandlerRoutesAdminRAGProviderLifecycle(t *testing.T) {
 		nil,
 	))
 	if list.Code != http.StatusOK ||
+		list.Header().Get("Cache-Control") != "no-store" ||
 		!strings.Contains(list.Body.String(), `"providers":[`) {
 		t.Fatalf("list status = %d, body=%s", list.Code, list.Body.String())
+	}
+
+	configure := httptest.NewRecorder()
+	handler.ServeHTTP(configure, httptest.NewRequest(
+		http.MethodPost,
+		"/v1/admin/rag/providers/jina/configure",
+		strings.NewReader(`{}`),
+	))
+	if configure.Code != http.StatusBadRequest ||
+		!strings.Contains(configure.Body.String(), "RAG_PROVIDER_SECRET_REQUIRED") {
+		t.Fatalf("configure status = %d, body=%s", configure.Code, configure.Body.String())
+	}
+
+	invalidConfigure := httptest.NewRecorder()
+	handler.ServeHTTP(invalidConfigure, httptest.NewRequest(
+		http.MethodPost,
+		"/v1/admin/rag/providers/jina/configure",
+		strings.NewReader(`{"apiKeySecret":{},"unexpected":true}`),
+	))
+	if invalidConfigure.Code != http.StatusBadRequest ||
+		!strings.Contains(invalidConfigure.Body.String(), "INVALID_REQUEST") {
+		t.Fatalf(
+			"invalid configure status = %d, body=%s",
+			invalidConfigure.Code,
+			invalidConfigure.Body.String(),
+		)
 	}
 
 	tested := httptest.NewRecorder()

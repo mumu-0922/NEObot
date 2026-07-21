@@ -29,6 +29,9 @@ func TestProviderStatusReportsMissingSecretsWithoutLeakingValues(t *testing.T) {
 	if body.Ready {
 		t.Fatal("ready = true, want false without provider secrets")
 	}
+	if body.Status != ServiceStatusUnavailable || body.Capabilities != (Capabilities{}) {
+		t.Fatalf("service status = %#v, want unavailable with no capabilities", body)
+	}
 	if body.Providers.MinerU.Configured || body.Providers.MinerU.Status != ProviderStatusMissingSecret {
 		t.Fatalf("mineru status = %#v, want missing secret", body.Providers.MinerU)
 	}
@@ -56,6 +59,10 @@ func TestProviderStatusReportsReadyAndRedactsSecrets(t *testing.T) {
 					EmbeddingDimensions: JinaEmbeddingDimensions,
 				},
 			},
+			Status: ServiceStatusReady,
+			Capabilities: Capabilities{
+				PDFParsing: true, NativeIndexing: true, Retrieval: true,
+			},
 			Ready: true,
 		}, nil
 	})
@@ -77,6 +84,10 @@ func TestProviderStatusReportsReadyAndRedactsSecrets(t *testing.T) {
 	}
 	if !body.Ready {
 		t.Fatal("ready = false, want true")
+	}
+	if body.Status != ServiceStatusReady || !body.Capabilities.PDFParsing ||
+		!body.Capabilities.NativeIndexing || !body.Capabilities.Retrieval {
+		t.Fatalf("service status = %#v, want ready with all capabilities", body)
 	}
 	if !body.Providers.MinerU.Configured || body.Providers.MinerU.Status != ProviderStatusReady {
 		t.Fatalf("mineru status = %#v, want ready", body.Providers.MinerU)

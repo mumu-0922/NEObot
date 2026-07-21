@@ -427,7 +427,7 @@ func knownMetricPath(path string) (string, bool) {
 		case 6:
 			return "/v1/admin/rag/providers/{provider}", true
 		case 7:
-			if parts[6] == "test" || parts[6] == "activate" {
+			if parts[6] == "configure" || parts[6] == "test" || parts[6] == "activate" {
 				return "/v1/admin/rag/providers/{provider}/{action}", true
 			}
 		}

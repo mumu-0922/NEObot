@@ -7,6 +7,9 @@ const (
 	ProviderStatusMissingSecret      = "missing_secret"
 	ProviderStatusActivationRequired = "activation_required"
 	ProviderStatusUnavailable        = "unavailable"
+	ServiceStatusReady               = "ready"
+	ServiceStatusPartial             = "partial"
+	ServiceStatusUnavailable         = "unavailable"
 )
 
 type ProviderState struct {
@@ -20,9 +23,17 @@ type ProviderStatuses struct {
 	Jina   ProviderState `json:"jina"`
 }
 
+type Capabilities struct {
+	PDFParsing     bool `json:"pdfParsing"`
+	NativeIndexing bool `json:"nativeIndexing"`
+	Retrieval      bool `json:"retrieval"`
+}
+
 type StatusResponse struct {
-	Providers ProviderStatuses `json:"providers"`
-	Ready     bool             `json:"ready"`
+	Providers    ProviderStatuses `json:"providers"`
+	Status       string           `json:"status"`
+	Capabilities Capabilities     `json:"capabilities"`
+	Ready        bool             `json:"ready"`
 }
 
 func Status() StatusResponse {
@@ -34,7 +45,8 @@ func Status() StatusResponse {
 			MinerU: minerU,
 			Jina:   jina,
 		},
-		Ready: false,
+		Status: ServiceStatusUnavailable,
+		Ready:  false,
 	}
 }
 

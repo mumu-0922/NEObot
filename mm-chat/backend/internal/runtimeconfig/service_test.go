@@ -227,10 +227,12 @@ func encryptedSecretEnvelope(
 }
 
 type fakeProviderConfigRepository struct {
-	stored StoredProviderConfig
-	listed []StoredProviderConfig
-	ok     bool
-	input  UpsertProviderConfigInput
+	stored         StoredProviderConfig
+	listed         []StoredProviderConfig
+	ok             bool
+	input          UpsertProviderConfigInput
+	configureErr   error
+	configureCalls int
 }
 
 func (r *fakeProviderConfigRepository) GetProviderConfig(_ context.Context, userID string, providerID string) (StoredProviderConfig, bool, error) {
@@ -322,6 +324,42 @@ func (r *fakeProviderConfigRepository) CommitRAGProviderConnection(
 	r.stored.Config.ConnectionTestSHA256 = input.ConnectionTestSHA256
 	r.stored.Config.ConnectionTestedAt = input.ConnectionTestedAt.UTC().Format(time.RFC3339Nano)
 	r.stored.Config.Enabled = input.Enabled
+	return r.stored, nil
+}
+
+func (r *fakeProviderConfigRepository) ConfigureRAGProviderConnection(
+	_ context.Context,
+	input ConfigureRAGProviderConnectionInput,
+) (StoredProviderConfig, error) {
+	r.configureCalls++
+	if r.configureErr != nil {
+		return StoredProviderConfig{}, r.configureErr
+	}
+	if input.ExpectedExists != r.ok {
+		return StoredProviderConfig{}, ErrProviderConfigChanged
+	}
+	if input.ExpectedExists &&
+		(r.stored.ID != input.ExpectedID ||
+			r.stored.EncryptedSecretRef != input.ExpectedEncryptedSecretRef ||
+			r.stored.Config.Kind != providerConfigKindRAG ||
+			r.stored.Config.RAGProvider != input.ExpectedRAGProvider ||
+			r.stored.Config.Enabled != input.ExpectedEnabled) {
+		return StoredProviderConfig{}, ErrProviderConfigChanged
+	}
+	id := r.stored.ID
+	if !r.ok || id == "" {
+		id = "configured-rag-provider-1"
+	}
+	r.stored = StoredProviderConfig{
+		ID: id, UserID: input.UserID, ProviderID: input.ProviderID,
+		Label: input.Label, EncryptedSecretRef: input.EncryptedSecretRef,
+		Config: StoredProviderConfigPayload{
+			Kind: providerConfigKindRAG, RAGProvider: input.RAGProvider,
+			Enabled: true, ConnectionTestSHA256: input.ConnectionTestSHA256,
+			ConnectionTestedAt: input.ConnectionTestedAt.UTC().Format(time.RFC3339Nano),
+		},
+	}
+	r.ok = true
 	return r.stored, nil
 }
 
