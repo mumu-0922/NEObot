@@ -27,6 +27,12 @@ interface ChatMessageNavigatorProps {
   onJumpBottom: () => void;
 }
 
+interface ChatNavigationPreview {
+  key: string;
+  label: string;
+  top: number;
+}
+
 const EDGE_THRESHOLD_PX = 2;
 const DESKTOP_NAVIGATION_QUERY = "(min-width: 1024px)";
 
@@ -43,7 +49,10 @@ const ChatMessageNavigator: React.FC<ChatMessageNavigatorProps> = ({
   const [isAtTop, setIsAtTop] = useState(true);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [isDesktopNavigation, setIsDesktopNavigation] = useState(false);
+  const [navigationPreview, setNavigationPreview] =
+    useState<ChatNavigationPreview | null>(null);
   const frameRef = useRef<number | null>(null);
+  const navigatorRef = useRef<HTMLElement>(null);
   const emptyLabel = t("userMessageFallback");
   const attachmentPrefix = t("attachmentMessagePrefix");
   const navigationItems = useMemo(
@@ -136,35 +145,82 @@ const ChatMessageNavigator: React.FC<ChatMessageNavigatorProps> = ({
     scrollContainerRef,
   ]);
 
+  const showNavigationPreview = useCallback(
+    (element: HTMLButtonElement, key: string, label: string) => {
+      const navigator = navigatorRef.current;
+      if (!navigator) return;
+      const navigatorRect = navigator.getBoundingClientRect();
+      const elementRect = element.getBoundingClientRect();
+      setNavigationPreview({
+        key,
+        label,
+        top: elementRect.top - navigatorRect.top + elementRect.height / 2,
+      });
+    },
+    [],
+  );
+
+  const hideNavigationPreview = useCallback((key: string) => {
+    setNavigationPreview((current) => (current?.key === key ? null : current));
+  }, []);
+
   if (!isDesktopNavigation || navigationItems.length === 0) return null;
 
   return (
     <nav
+      ref={navigatorRef}
       aria-label={t("userMessageNavigation")}
-      className="chat-message-navigator group/chat-message-nav absolute right-4 top-1/2 z-20 hidden max-h-[70vh] w-11 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-transparent bg-transparent py-1 text-sm text-muted-foreground motion-safe:transition-[width,background-color,border-color,box-shadow] motion-safe:duration-150 hover:w-64 hover:border-border hover:bg-background hover:shadow-lg focus-within:w-64 focus-within:border-border focus-within:bg-background focus-within:shadow-lg lg:flex"
+      onMouseLeave={() => setNavigationPreview(null)}
+      className="chat-message-navigator absolute right-4 top-1/2 z-20 hidden max-h-[70vh] w-11 -translate-y-1/2 flex-col overflow-visible rounded-2xl bg-transparent py-1 text-sm text-muted-foreground lg:flex"
     >
+      {navigationPreview && (
+        <div
+          data-chat-navigation-preview
+          aria-hidden="true"
+          style={{ top: navigationPreview.top }}
+          className="pointer-events-none absolute right-full z-10 mr-2 max-w-72 -translate-y-1/2 truncate whitespace-nowrap rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground shadow-md"
+        >
+          {navigationPreview.label}
+        </div>
+      )}
+
       <button
         type="button"
         aria-label={t("jumpToConversationTop")}
         onClick={onJumpTop}
+        onMouseEnter={(event) =>
+          showNavigationPreview(
+            event.currentTarget,
+            "top",
+            t("conversationTop"),
+          )
+        }
+        onMouseLeave={() => hideNavigationPreview("top")}
+        onFocus={(event) =>
+          showNavigationPreview(
+            event.currentTarget,
+            "top",
+            t("conversationTop"),
+          )
+        }
+        onBlur={() => hideNavigationPreview("top")}
         className={`flex h-9 w-full shrink-0 items-center justify-end gap-3 rounded-lg px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 ${
           isAtTop ? "text-blue-500" : "hover:bg-muted hover:text-foreground"
         }`}
       >
-        <span className="min-w-0 flex-1 truncate text-right opacity-0 group-hover/chat-message-nav:opacity-100 group-focus-within/chat-message-nav:opacity-100">
-          {t("conversationTop")}
-        </span>
         <ArrowUpToLine size={17} className="shrink-0" aria-hidden="true" />
       </button>
 
-      <div className="chat-message-nav-list min-h-0 flex-1 overflow-y-auto overscroll-contain py-1">
+      <div
+        onScroll={() => setNavigationPreview(null)}
+        className="chat-message-nav-list min-h-0 flex-1 overflow-y-auto overscroll-contain py-1"
+      >
         {navigationItems.map((item, index) => {
           const isActive = item.id === activeMessageId;
           return (
             <button
               key={item.id}
               type="button"
-              title={item.label}
               data-message-id={item.id}
               aria-label={t("jumpToUserMessage", {
                 index: index + 1,
@@ -172,15 +228,20 @@ const ChatMessageNavigator: React.FC<ChatMessageNavigatorProps> = ({
               })}
               aria-current={isActive ? "location" : undefined}
               onClick={() => onNavigateMessage(item.id)}
+              onMouseEnter={(event) =>
+                showNavigationPreview(event.currentTarget, item.id, item.label)
+              }
+              onMouseLeave={() => hideNavigationPreview(item.id)}
+              onFocus={(event) =>
+                showNavigationPreview(event.currentTarget, item.id, item.label)
+              }
+              onBlur={() => hideNavigationPreview(item.id)}
               className={`flex min-h-8 w-full items-center justify-end gap-3 rounded-lg px-3 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 ${
                 isActive
                   ? "text-blue-500"
                   : "hover:bg-muted hover:text-foreground"
               }`}
             >
-              <span className="min-w-0 flex-1 truncate text-right opacity-0 group-hover/chat-message-nav:opacity-100 group-focus-within/chat-message-nav:opacity-100">
-                {item.label}
-              </span>
               <span
                 className={`h-1.5 shrink-0 rounded-full ${
                   isActive ? "w-7 bg-blue-500" : "w-4 bg-border"
@@ -196,13 +257,26 @@ const ChatMessageNavigator: React.FC<ChatMessageNavigatorProps> = ({
         type="button"
         aria-label={t("jumpToConversationBottom")}
         onClick={onJumpBottom}
+        onMouseEnter={(event) =>
+          showNavigationPreview(
+            event.currentTarget,
+            "bottom",
+            t("conversationBottom"),
+          )
+        }
+        onMouseLeave={() => hideNavigationPreview("bottom")}
+        onFocus={(event) =>
+          showNavigationPreview(
+            event.currentTarget,
+            "bottom",
+            t("conversationBottom"),
+          )
+        }
+        onBlur={() => hideNavigationPreview("bottom")}
         className={`flex h-9 w-full shrink-0 items-center justify-end gap-3 rounded-lg px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 ${
           isAtBottom ? "text-blue-500" : "hover:bg-muted hover:text-foreground"
         }`}
       >
-        <span className="min-w-0 flex-1 truncate text-right opacity-0 group-hover/chat-message-nav:opacity-100 group-focus-within/chat-message-nav:opacity-100">
-          {t("conversationBottom")}
-        </span>
         <ArrowDownToLine size={17} className="shrink-0" aria-hidden="true" />
       </button>
     </nav>

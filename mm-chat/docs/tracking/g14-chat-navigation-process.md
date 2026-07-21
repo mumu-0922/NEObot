@@ -82,3 +82,31 @@ jump bottom scrollTop / distance                    15,828 / 0
 The Chrome smoke used the existing conversation read-only and changed only
 scroll position in a disposable profile. It made no chat, file, provider,
 browser-authoritative, or database mutation and consumed no provider quota.
+
+## 2026-07-21 — G14.3 per-item navigation title preview
+
+The rail no longer expands to show every message title. It remains `44px` wide
+and renders one pointer-transparent floating preview for only the hovered or
+keyboard-focused message, top control, or bottom control. Item mouse leave,
+blur, rail mouse leave, and list scroll clear the preview directly. Native
+`title` attributes were removed so the browser cannot leave a delayed second
+tooltip behind.
+
+Verification:
+
+```text
+focused navigation tests                             2 files / 4 tests
+frontend full tests                                 189 files / 905 tests
+frontend lint / typecheck / format / build          passed
+deployed frontend container                         healthy
+deployed rail width before / hover / after          44px / 44px / 44px
+deployed user entries                               26
+preview count on first / second hover               1 / 1
+preview count next frame after mouse leave          0
+native title attributes                             0
+top / bottom preview                                会话顶部 / 会话底部
+```
+
+The live proof used Windows Chrome 150 against `http://localhost:18080` and
+the existing conversation read-only. It changed only pointer position and
+created no chat, file, provider, browser-authoritative, or database state.

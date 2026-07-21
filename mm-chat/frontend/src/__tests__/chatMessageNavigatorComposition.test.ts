@@ -31,6 +31,12 @@ describe("ChatMessageNavigator composition", () => {
     expect(navigator).toContain('aria-current={isActive ? "location"');
     expect(navigator).toContain("data-message-id={item.id}");
     expect(navigator).toContain("window.matchMedia(DESKTOP_NAVIGATION_QUERY)");
+    expect(navigator).toContain("data-chat-navigation-preview");
+    expect(navigator).toContain("onMouseEnter={(event) =>");
+    expect(navigator).toContain("onMouseLeave={() => hideNavigationPreview");
+    expect(navigator).toContain("pointer-events-none");
+    expect(navigator).not.toContain("hover:w-64");
+    expect(navigator).not.toContain("group-hover/chat-message-nav");
     expect(navigator).toContain('t("jumpToConversationTop")');
     expect(navigator).toContain('t("jumpToConversationBottom")');
     expect(navigator).toContain("ResizeObserver");

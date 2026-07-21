@@ -19,6 +19,10 @@ Chat components render the main conversation experience: message input, message 
 - User-message navigation stays outside the scroll root and reads stable message
   IDs. Top pauses live follow, bottom resumes it, and old targets must reveal
   through the progressive render contract before scrolling.
+- The desktop navigation rail stays fixed-width. A message or edge-control title
+  may appear only for the currently hovered or keyboard-focused item and must
+  disappear immediately on mouse leave or blur; do not restore whole-rail
+  expansion or delayed native `title` tooltips.
 
 ## Guidelines
 

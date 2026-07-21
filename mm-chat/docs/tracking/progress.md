@@ -1516,6 +1516,8 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
     - [x] G14.1 Persistent native chat scrollbar with click/drag support.
     - [x] G14.2 User-message rail, active-reading highlight, and top/bottom
           jumps with progressive-render compatibility.
+    - [x] G14.3 Fixed-width rail with exactly one hovered/focused title preview
+          and immediate mouse-leave dismissal.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

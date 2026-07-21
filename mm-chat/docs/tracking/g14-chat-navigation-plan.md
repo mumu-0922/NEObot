@@ -37,9 +37,19 @@ or copied runtime is introduced.
 - Keep the rail out of constrained mobile layouts while retaining the native
   scrollbar and existing touch scrolling.
 
+### [x] G14.3 — Per-item navigation title preview
+
+- Keep the desktop rail fixed at `44px`; hovering or focusing the rail must not
+  expand the whole navigation list.
+- Show exactly one floating title for the currently hovered or keyboard-focused
+  message or edge control.
+- Remove the preview immediately on item mouse leave, blur, rail mouse leave, or
+  navigation-list scroll, without a delayed native `title` tooltip.
+
 ## Rollback
 
 Each slice has its own commit. G14.1 is CSS plus one scroll-root class. G14.2
-adds an isolated frontend component/helper and bounded ChatApp wiring. Neither
-slice changes APIs, Postgres, Redis, MinIO, provider calls, or persisted chat
-data.
+adds an isolated frontend component/helper and bounded ChatApp wiring. G14.3
+changes only the rail's title-preview interaction and its regression contract.
+None of the slices changes APIs, Postgres, Redis, MinIO, provider calls, or
+persisted chat data.
