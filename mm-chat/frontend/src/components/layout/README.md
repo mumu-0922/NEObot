@@ -16,3 +16,5 @@ Layout components define app navigation, workspace structure, and global shell b
 - Expanded primary navigation rows already expose text and must render without
   a duplicate Tooltip. Collapsed rows may use an instant solid hint, and their
   direct hover highlight must not interpolate color or background state.
+- Root and workspace conversation rows follow the same direct-pointer rule;
+  their background and more-actions reveal must not use hover transitions.

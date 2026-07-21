@@ -42,6 +42,17 @@ a deployed browser smoke before commit.
   preserving the animated glass default everywhere else.
 - Verify rapid cross-row movement in the deployed Windows Chrome runtime.
 
+### [x] G13.5 — Conversation-list hover response
+
+- Remove the remaining color/background interpolation from the shared session
+  row renderer used by root and workspace conversations.
+- Reveal each row's more-actions control on the current pointer target without
+  an opacity delay.
+- Preserve structural section/sidebar animation; only direct pointer feedback
+  becomes immediate.
+- Compare the same deployed conversation row before and after the change in
+  Windows Chrome.
+
 ## Rollback
 
 Each slice has its own commit. Revert only the affected frontend commit; there

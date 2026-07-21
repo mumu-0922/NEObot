@@ -601,7 +601,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       <div
         key={session.id}
         className={`
-          group relative flex items-center rounded-lg py-2 pl-3 pr-2 text-sm transition-[color,background-color] duration-200
+          group relative flex items-center rounded-lg py-2 pl-3 pr-2 text-sm
           ${
             isActive
               ? "bg-gray-100/80 font-medium text-gray-800 dark:bg-accent/60 dark:text-foreground"
@@ -664,7 +664,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <button
               type="button"
               aria-label={t("moreActionsAria", { title: session.title })}
-              className={`absolute right-2 rounded-lg p-1 opacity-100 transition-[opacity,background-color] hover:bg-white/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 md:opacity-0 md:group-hover:opacity-100 dark:hover:bg-accent ${contextMenu?.sessionId === session.id ? "opacity-100" : ""}`}
+              className={`absolute right-2 rounded-lg p-1 opacity-100 hover:bg-white/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 md:opacity-0 md:group-hover:opacity-100 dark:hover:bg-accent ${contextMenu?.sessionId === session.id ? "opacity-100" : ""}`}
               onClick={(e) => handleContextMenu(e, session.id)}
             >
               <MoreVertical size={14} aria-hidden="true" />

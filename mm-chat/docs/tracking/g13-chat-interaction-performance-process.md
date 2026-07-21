@@ -135,3 +135,34 @@ documented env file restored the established `127.0.0.1:18080` mapping without
 configuration changes. The final smoke used a disposable Windows Chrome 150
 profile and only changed/restored sidebar presentation state; it did not alter
 chat, provider, file, or database data.
+
+## 2026-07-21 — G13.5 conversation-list hover response
+
+The primary-navigation fix did not cover `renderSessionItem`. Every root and
+workspace conversation row still interpolated color/background for `200ms`,
+and its more-actions button faded over `150ms`. A deployed baseline on the
+inactive `画个海绵宝宝` row confirmed that after `30ms` the background had only
+reached alpha `0.0678` of its final `0.8`, while the action opacity was only
+`0.174`. The apparent lag was therefore CSS transition latency, not list
+rendering, scrolling, cache, or server latency.
+
+The shared session row and its action reveal now update directly from CSS
+hover state. Section expansion, sidebar width, and other structural animations
+remain unchanged.
+
+Verification:
+
+```text
+focused sidebar tests                               1 file / 4 tests
+frontend full tests                                 187 files / 900 tests
+frontend lint / typecheck / format / build          passed
+source-built frontend/backend                       healthy / healthy
+old row/action transition                           0.2s / 0.15s
+old 30ms background alpha / action opacity          0.0678 / 0.174
+new visible conversation row transitions            0s / 0s
+new immediate background alpha / action opacity     0.8 / 1
+```
+
+The same disposable Windows Chrome 150 profile and existing conversations were
+used read-only. No conversation was selected, changed, created, or deleted;
+provider, file, browser-authoritative, and database state were untouched.

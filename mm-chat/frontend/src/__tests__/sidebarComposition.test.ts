@@ -54,4 +54,18 @@ describe("Sidebar composition", () => {
       "text-sm font-medium transition-[color,background-color] focus-visible",
     );
   });
+
+  it("keeps conversation hover and action reveal immediate", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/components/layout/Sidebar.tsx"),
+      "utf8",
+    );
+
+    expect(source).not.toContain(
+      "text-sm transition-[color,background-color] duration-200",
+    );
+    expect(source).not.toContain(
+      "opacity-100 transition-[opacity,background-color]",
+    );
+  });
 });

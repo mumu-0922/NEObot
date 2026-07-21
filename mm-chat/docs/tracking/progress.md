@@ -1508,6 +1508,8 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           response guard, and progressive historical-message rendering.
     - [x] G13.4 Direct expanded sidebar hover, no duplicate navigation Tooltip,
           and one-frame collapsed solid hints.
+    - [x] G13.5 Immediate root/workspace conversation hover and more-action
+          reveal without changing structural sidebar animations.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 
