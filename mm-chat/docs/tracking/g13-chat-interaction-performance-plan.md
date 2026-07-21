@@ -14,13 +14,13 @@ a deployed browser smoke before commit.
 - Remove full-screen blur and large-image filter effects from the transform
   path while preserving the existing preview controls and focus trap.
 
-### [ ] G13.2 — Long-conversation scrolling
+### [x] G13.2 — Long-conversation scrolling
 
 - Profile the existing heavy owner conversation without changing its data.
-- Keep off-screen static messages out of layout/paint work with progressive
-  browser-native containment before considering list virtualization.
-- Lazy-load expensive embedded visual documents and ensure historical messages
-  do not restart streaming/typewriter animation work.
+- Remove nested fixed-size `content-visibility` containment that changes the
+  scroll range as long messages approach the viewport.
+- Lazy-load embedded visual documents and remove the floating composer's
+  backdrop blur from the scrolling paint path.
 
 ### [ ] G13.3 — Conversation switching
 

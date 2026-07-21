@@ -32,7 +32,9 @@ describe("MessageInput composition", () => {
     expect(messageInput).not.toContain("MoreHorizontal");
     expect(messageInput).not.toContain("Mobile Tools Menu");
     expect(messageInput).not.toContain("handleAttachClick");
-    expect(messageInput).toContain("glass-shell relative flex w-full flex-col");
+    expect(messageInput).toContain(
+      "glass-shell chat-composer-surface relative flex w-full flex-col",
+    );
     expect(messageInput).toContain("variant?: MessageInputVariant");
     expect(messageInput).toContain('variant = "default"');
     expect(messageInput).toContain("isHeroVariant");

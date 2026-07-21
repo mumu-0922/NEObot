@@ -2997,30 +2997,28 @@ const ChatApp = () => {
 
                       return (
                         <React.Fragment key={msg.id}>
-                          <div className="[content-visibility:auto] [contain-intrinsic-size:0_240px]">
-                            <MessageItem
-                              message={msg}
-                              branchInfo={getMessageBranchInfo(
-                                visibleActiveMessageTree,
-                                msg.id,
-                              )}
-                              onEdit={handleEditMessage}
-                              onDelete={handleDeleteMessage}
-                              canEditUserMessage={
-                                msg.role === "user" && !isLastUserMessage
-                              }
-                              onSubmitUserEdit={handleSubmitUserMessageEdit}
-                              onRetract={
-                                isLastUserMessage
-                                  ? () => handleRetractMessage(msg)
-                                  : undefined
-                              }
-                              isLast={isLastMessage}
-                              isTyping={isGenerating && isLastMessage}
-                              onRegenerate={() => handleRegenerate(msg.id)}
-                              onVersionChange={handleVersionChange}
-                            />
-                          </div>
+                          <MessageItem
+                            message={msg}
+                            branchInfo={getMessageBranchInfo(
+                              visibleActiveMessageTree,
+                              msg.id,
+                            )}
+                            onEdit={handleEditMessage}
+                            onDelete={handleDeleteMessage}
+                            canEditUserMessage={
+                              msg.role === "user" && !isLastUserMessage
+                            }
+                            onSubmitUserEdit={handleSubmitUserMessageEdit}
+                            onRetract={
+                              isLastUserMessage
+                                ? () => handleRetractMessage(msg)
+                                : undefined
+                            }
+                            isLast={isLastMessage}
+                            isTyping={isGenerating && isLastMessage}
+                            onRegenerate={() => handleRegenerate(msg.id)}
+                            onVersionChange={handleVersionChange}
+                          />
                           {msg.role === "model" &&
                             isLastMessage &&
                             !isGenerating &&
