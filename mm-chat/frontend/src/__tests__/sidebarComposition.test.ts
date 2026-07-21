@@ -38,4 +38,20 @@ describe("Sidebar composition", () => {
     expect(source).toContain("isSearchingChats || expandedSections[ws.id]");
     expect(source).not.toContain("newExpanded[w.id] = true");
   });
+
+  it("keeps expanded navigation direct and collapsed tooltips immediate", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/components/layout/Sidebar.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("const SidebarNavTooltip");
+    expect(source).toContain("if (isOpen) return children");
+    expect(source).toContain('motion="instant"');
+    expect(source).toContain('surface="solid"');
+    expect(source.match(/^\s*<SidebarNavTooltip /gm)).toHaveLength(5);
+    expect(source).not.toContain(
+      "text-sm font-medium transition-[color,background-color] focus-visible",
+    );
+  });
 });

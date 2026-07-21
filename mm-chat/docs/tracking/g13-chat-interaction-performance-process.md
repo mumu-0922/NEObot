@@ -98,3 +98,40 @@ memory cache bound / browser persistence            6 / none
 
 The browser smoke switched only among existing owner conversations. It did not
 send, edit, delete, or persist any message and did not expose provider secrets.
+
+## 2026-07-21 — G13.4 sidebar hover response
+
+The expanded primary navigation wrapped every already-labelled row in its own
+Tooltip. Each pointer crossing therefore overlapped a `150ms` opacity/scale
+exit with the next entry, while `glass-popover` applied a `22px` backdrop blur
+and the row itself interpolated color/background state. That combination made
+the old target appear to follow the pointer.
+
+The checked `sub2api` implementation keeps expanded rows direct and only adds a
+collapsed-state hint. Its separate help Tooltip also changes visibility on
+enter/leave without opacity, scale, or blur animation. `mm-chat` now applies
+the same boundary to Assistant, Skill, Plugin, Knowledge, and Settings: open
+rows render directly with no hover transition; collapsed rows use an instant
+solid Tooltip. Other Tooltip consumers retain their existing default motion.
+
+Verification:
+
+```text
+focused sidebar/Tooltip tests                       2 files / 6 tests
+frontend full tests                                 187 files / 899 tests
+frontend lint / typecheck / format / build          passed
+source-built frontend/backend                       healthy / healthy
+expanded row transition duration                    0s on all 5 rows
+expanded first-frame pointer match                  5 / 5 (1.2-2.8ms)
+expanded duplicate visible Tooltip                  0 / 5
+collapsed Tooltip settle                            8.51-16.91ms
+collapsed Tooltip transition / backdrop filter      0s / none
+```
+
+The source image built successfully. An initial recreate omitted the required
+`.env.single-server` operator file and selected Compose's fallback port `3000`,
+which Docker Desktop rejected through `/forwards/expose`; recreating with the
+documented env file restored the established `127.0.0.1:18080` mapping without
+configuration changes. The final smoke used a disposable Windows Chrome 150
+profile and only changed/restored sidebar presentation state; it did not alter
+chat, provider, file, or database data.

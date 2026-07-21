@@ -1499,6 +1499,15 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           Anthropic mappings, live Low/Max provider proofs, and reload proof.
       - [x] G12.5.1 Selected reasoning effort visibility: the active menu row
             now uses a violet highlight and explicit check mark.
+  - [x] G13 Chat interaction performance, executed in separately tested slices
+        per `docs/tracking/g13-chat-interaction-performance-plan.md`.
+    - [x] G13.1 Fine-grained high-ceiling image preview zoom without transform-
+          path blur or inertial animation.
+    - [x] G13.2 Stable long-conversation scroll geometry and lighter paint path.
+    - [x] G13.3 Bounded memory conversation cache, server revalidation, stale-
+          response guard, and progressive historical-message rendering.
+    - [x] G13.4 Direct expanded sidebar hover, no duplicate navigation Tooltip,
+          and one-frame collapsed solid hints.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

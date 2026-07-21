@@ -18,6 +18,8 @@ interface TooltipProps {
   position?: "top" | "bottom" | "left" | "right";
   autoDismissMs?: number;
   portal?: boolean;
+  motion?: "animated" | "instant";
+  surface?: "glass" | "solid";
 }
 
 const DEFAULT_AUTO_DISMISS_MS = 1800;
@@ -42,6 +44,8 @@ const Tooltip: React.FC<TooltipProps> = ({
   position = "top",
   autoDismissMs = DEFAULT_AUTO_DISMISS_MS,
   portal = false,
+  motion = "animated",
+  surface = "glass",
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [portalStyle, setPortalStyle] =
@@ -181,11 +185,22 @@ const Tooltip: React.FC<TooltipProps> = ({
     });
   }, [children, tooltipId]);
 
-  const tooltipClassName = `glass-popover ${
+  const surfaceClassName =
+    surface === "solid"
+      ? "bg-white shadow-lg dark:bg-gray-900"
+      : "glass-popover";
+  const motionClassName =
+    motion === "animated"
+      ? "transition-[opacity,transform] duration-150 motion-reduce:transition-none"
+      : "";
+  const visibilityClassName = isVisible
+    ? "opacity-100 scale-100"
+    : motion === "animated"
+      ? "opacity-0 scale-95"
+      : "opacity-0";
+  const tooltipClassName = `${surfaceClassName} ${
     portal ? "fixed z-9999" : "absolute z-101"
-  } px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-foreground border rounded-lg whitespace-nowrap pointer-events-none transition-[opacity,transform] duration-150 motion-reduce:transition-none ${
-    isVisible ? "opacity-100 scale-100" : "opacity-0 scale-95"
-  } ${portal ? "" : positionClasses[position]}`;
+  } px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-foreground border rounded-lg whitespace-nowrap pointer-events-none ${motionClassName} ${visibilityClassName} ${portal ? "" : positionClasses[position]}`;
 
   const tooltipNode = (
     <div

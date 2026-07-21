@@ -32,6 +32,16 @@ a deployed browser smoke before commit.
 - Render the recent message tail first and reveal older messages in idle
   batches while preserving the current scroll anchor.
 
+### [x] G13.4 — Sidebar hover response
+
+- Follow the proven `sub2api` navigation boundary: expanded rows already have
+  labels and therefore must not render duplicate navigation tooltips.
+- Remove color/background transitions from latency-sensitive primary rows so
+  hover follows the current pointer target without visual interpolation.
+- Keep collapsed navigation accessible with an immediate, solid tooltip while
+  preserving the animated glass default everywhere else.
+- Verify rapid cross-row movement in the deployed Windows Chrome runtime.
+
 ## Rollback
 
 Each slice has its own commit. Revert only the affected frontend commit; there

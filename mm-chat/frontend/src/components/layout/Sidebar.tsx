@@ -124,6 +124,32 @@ const getSidebarFocusableElements = (container: HTMLElement | null) => {
   ).filter((element) => !element.getAttribute("aria-hidden"));
 };
 
+interface SidebarNavTooltipProps {
+  isOpen: boolean;
+  content: React.ReactNode;
+  children: React.ReactElement;
+}
+
+const SidebarNavTooltip: React.FC<SidebarNavTooltipProps> = ({
+  isOpen,
+  content,
+  children,
+}) => {
+  if (isOpen) return children;
+
+  return (
+    <Tooltip
+      content={content}
+      position="right"
+      className="w-full justify-center"
+      motion="instant"
+      surface="solid"
+    >
+      {children}
+    </Tooltip>
+  );
+};
+
 const Sidebar: React.FC<SidebarProps> = ({
   sessions,
   currentSessionId,
@@ -805,17 +831,13 @@ const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       <div className="px-3 pb-2 space-y-1 shrink-0">
-        <Tooltip
-          content={t("assistantHub")}
-          position="right"
-          className={isOpen ? "w-full" : "w-full justify-center"}
-        >
+        <SidebarNavTooltip isOpen={isOpen} content={t("assistantHub")}>
           <button
             type="button"
             aria-label={t("openAssistantHub")}
             aria-current={isAssistantHubOpen ? "page" : undefined}
             onClick={onOpenAssistantHub}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/60 ${
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/60 ${
               isAssistantHubOpen
                 ? "bg-rose-50 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400"
                 : "text-gray-600 dark:text-muted-foreground hover:bg-gray-100/80 dark:hover:bg-muted/60"
@@ -828,19 +850,15 @@ const Sidebar: React.FC<SidebarProps> = ({
             />
             {isOpen && <span className="truncate">{t("assistantHub")}</span>}
           </button>
-        </Tooltip>
+        </SidebarNavTooltip>
 
-        <Tooltip
-          content={t("skillMarket")}
-          position="right"
-          className={isOpen ? "w-full" : "w-full justify-center"}
-        >
+        <SidebarNavTooltip isOpen={isOpen} content={t("skillMarket")}>
           <button
             type="button"
             aria-label={t("openSkillMarket")}
             aria-current={isSkillMarketOpen ? "page" : undefined}
             onClick={onOpenSkillMarket}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 ${
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 ${
               isSkillMarketOpen
                 ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"
                 : "text-gray-600 dark:text-muted-foreground hover:bg-gray-100/80 dark:hover:bg-muted/60"
@@ -853,19 +871,15 @@ const Sidebar: React.FC<SidebarProps> = ({
             />
             {isOpen && <span className="truncate">{t("skillMarket")}</span>}
           </button>
-        </Tooltip>
+        </SidebarNavTooltip>
 
-        <Tooltip
-          content={t("pluginMarket")}
-          position="right"
-          className={isOpen ? "w-full" : "w-full justify-center"}
-        >
+        <SidebarNavTooltip isOpen={isOpen} content={t("pluginMarket")}>
           <button
             type="button"
             aria-label={t("openPluginMarket")}
             aria-current={isPluginMarketOpen ? "page" : undefined}
             onClick={onOpenPluginMarket}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 ${
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 ${
               isPluginMarketOpen
                 ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
                 : "text-gray-600 dark:text-muted-foreground hover:bg-gray-100/80 dark:hover:bg-muted/60"
@@ -878,19 +892,15 @@ const Sidebar: React.FC<SidebarProps> = ({
             />
             {isOpen && <span className="truncate">{t("pluginMarket")}</span>}
           </button>
-        </Tooltip>
+        </SidebarNavTooltip>
 
-        <Tooltip
-          content={t("knowledgeBase")}
-          position="right"
-          className={isOpen ? "w-full" : "w-full justify-center"}
-        >
+        <SidebarNavTooltip isOpen={isOpen} content={t("knowledgeBase")}>
           <button
             type="button"
             aria-label={t("openKnowledgeBase")}
             aria-current={isKnowledgeBaseOpen ? "page" : undefined}
             onClick={onOpenKnowledgeBase}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/60 ${
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/60 ${
               isKnowledgeBaseOpen
                 ? "bg-purple-50 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400"
                 : "text-gray-600 dark:text-muted-foreground hover:bg-gray-100/80 dark:hover:bg-muted/60"
@@ -903,7 +913,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             />
             {isOpen && <span className="truncate">{t("knowledgeBase")}</span>}
           </button>
-        </Tooltip>
+        </SidebarNavTooltip>
       </div>
 
       <div className="shrink-0">
@@ -1184,17 +1194,13 @@ const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       <div className="shrink-0 border-t border-gray-200/50 p-3 dark:border-border">
-        <Tooltip
-          content={t("settings")}
-          position="right"
-          className={isOpen ? "w-full" : "w-full justify-center"}
-        >
+        <SidebarNavTooltip isOpen={isOpen} content={t("settings")}>
           <button
             type="button"
             aria-label={t("openSettings")}
             aria-current={isSettingsOpen ? "page" : undefined}
             onClick={onOpenSettings}
-            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 ${
+            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 ${
               isSettingsOpen
                 ? "bg-slate-100 text-slate-700 dark:bg-sidebar-accent dark:text-sidebar-accent-foreground"
                 : "text-gray-600 hover:bg-gray-100/80 dark:text-muted-foreground dark:hover:bg-muted/60"
@@ -1207,7 +1213,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             />
             {isOpen && <span className="truncate">{t("settings")}</span>}
           </button>
-        </Tooltip>
+        </SidebarNavTooltip>
       </div>
 
       {/* Session Context Menu */}

@@ -30,4 +30,18 @@ describe("Tooltip composition", () => {
     expect(tooltip).toContain('window.addEventListener("scroll"');
     expect(tooltip).toContain('window.addEventListener("resize"');
   });
+
+  it("supports an instant solid mode for latency-sensitive navigation", () => {
+    const tooltip = readFileSync(
+      resolve(process.cwd(), "src/components/ui/Tooltip.tsx"),
+      "utf8",
+    );
+
+    expect(tooltip).toContain('motion?: "animated" | "instant"');
+    expect(tooltip).toContain('surface?: "glass" | "solid"');
+    expect(tooltip).toContain('motion = "animated"');
+    expect(tooltip).toContain('surface = "glass"');
+    expect(tooltip).toContain('motion === "animated"');
+    expect(tooltip).toContain('surface === "solid"');
+  });
 });

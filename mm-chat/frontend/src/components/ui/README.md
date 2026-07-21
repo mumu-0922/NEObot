@@ -17,3 +17,6 @@ The `src/components/ui` directory contains small reusable primitives shared by f
 - Prefer existing primitives before adding new local UI patterns.
 - Preserve keyboard, focus, and screen-reader behavior.
 - Keep visual behavior stable across light and dark themes.
+- `Tooltip` defaults to `motion="animated"` and `surface="glass"`; use the
+  explicit `instant`/`solid` combination only for pointer-latency-sensitive
+  controls, and cover that override with a composition test.
