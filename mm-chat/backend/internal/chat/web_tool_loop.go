@@ -70,13 +70,16 @@ func startRetrievalToolLoop(
 	ctx context.Context,
 	input externalWebToolLoopInput,
 ) <-chan ProviderEvent {
-	events := make(chan ProviderEvent)
+	events := make(chan ProviderEvent, 1)
 	go func() {
 		defer close(events)
 		if toolProvider, ok := input.Provider.(ToolRoundProvider); ok {
 			if runNativeExternalWebToolLoop(ctx, events, toolProvider, input) {
 				return
 			}
+		}
+		if toolLoopWasCancelled(ctx, nil) {
+			return
 		}
 		if externalWebToolEnabled(input) {
 			runCompatibilityExternalWebSearch(ctx, events, input)
@@ -137,6 +140,9 @@ func runNativeExternalWebToolLoop(
 			Continuation:    continuation,
 		})
 		if err != nil {
+			if toolLoopWasCancelled(ctx, err) {
+				return true
+			}
 			if round == 1 && len(continuation) == 0 {
 				return false
 			}
@@ -154,6 +160,9 @@ func runNativeExternalWebToolLoop(
 		bufferedEvents := make([]ProviderEvent, 0)
 		for event := range roundEvents {
 			if event.Error != nil {
+				if toolLoopWasCancelled(ctx, event.Error) {
+					return true
+				}
 				if bufferForcedRound && len(calls) == 0 {
 					return false
 				}
@@ -266,6 +275,12 @@ func runNativeExternalWebToolLoop(
 					return true
 				}
 				current := executeKnowledgeTool(ctx, input.Knowledge, query)
+				if toolLoopWasCancelled(ctx, nil) {
+					cancelled := running
+					cancelled.Status = ProcessStepStatusCancelled
+					sendToolExecutionEvent(ctx, events, cancelled)
+					return true
+				}
 				failure = knowledgeToolFailureCategory(current)
 				if failure != "" {
 					failed := running
@@ -335,6 +350,12 @@ func runNativeExternalWebToolLoop(
 				MaxResults: input.MaxResults,
 			})
 			if searchErr != nil {
+				if toolLoopWasCancelled(ctx, searchErr) {
+					cancelled := running
+					cancelled.Status = ProcessStepStatusCancelled
+					sendToolExecutionEvent(ctx, events, cancelled)
+					return true
+				}
 				failure = sourceSearchDegradationReason(searchErr)
 				failed := running
 				failed.Status = ProcessStepStatusFailed
@@ -460,6 +481,17 @@ func runCompatibilityExternalWebSearch(
 ) {
 	plan, err := planCompatibilityWebSearch(ctx, input)
 	if err != nil {
+		if toolLoopWasCancelled(ctx, err) {
+			cancelled := ProviderToolExecutionEvent{
+				ExecutionID: "compatibility-plan",
+				Name:        searchWebToolName,
+				Status:      ProcessStepStatusCancelled,
+				Round:       1,
+				Mode:        "compatibility",
+			}
+			sendToolExecutionEvent(ctx, events, cancelled)
+			return
+		}
 		failed := ProviderToolExecutionEvent{
 			ExecutionID:     "compatibility-plan",
 			Name:            searchWebToolName,
@@ -496,6 +528,11 @@ func runCompatibilityExternalWebSearch(
 		MaxResults: input.MaxResults,
 	})
 	if searchErr != nil {
+		if toolLoopWasCancelled(ctx, searchErr) {
+			execution.Status = ProcessStepStatusCancelled
+			sendToolExecutionEvent(ctx, events, execution)
+			return
+		}
 		failure := sourceSearchDegradationReason(searchErr)
 		execution.Status = ProcessStepStatusFailed
 		execution.FailureCategory = failure
@@ -533,6 +570,11 @@ func runCompatibilityExternalWebSearch(
 	)
 	request.Messages = replaceLastUserProviderMessage(request.Messages, request.Prompt)
 	streamCompatibilityAnswer(ctx, events, input.Provider, request)
+}
+
+func toolLoopWasCancelled(ctx context.Context, err error) bool {
+	return errors.Is(err, context.Canceled) ||
+		(ctx != nil && errors.Is(ctx.Err(), context.Canceled))
 }
 
 type compatibilityWebSearchPlan struct {
@@ -673,10 +715,22 @@ func sendToolExecutionEvent(
 	execution ProviderToolExecutionEvent,
 ) bool {
 	copy := execution
-	return sendProviderEvent(ctx, events, ProviderEvent{
+	event := ProviderEvent{
 		Type:          ProviderEventToolExecution,
 		ToolExecution: &copy,
-	})
+	}
+	if execution.Status == ProcessStepStatusCancelled {
+		// The operation context is already cancelled when this terminal state is
+		// produced. Prefer the buffered process event before consulting ctx so
+		// the consumer can preserve truthful Tool state without leaking a sender
+		// when the stream consumer has already gone away.
+		select {
+		case events <- event:
+			return true
+		default:
+		}
+	}
+	return sendProviderEvent(ctx, events, event)
 }
 
 func webSearchFailureToolResult(category string) string {

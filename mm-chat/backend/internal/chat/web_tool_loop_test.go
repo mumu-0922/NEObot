@@ -276,7 +276,11 @@ func TestExternalWebToolLoopCancelsInFlightSearch(t *testing.T) {
 		},
 		ForceSearch: true,
 	})
+	var executions []ProviderToolExecutionEvent
 	for event := range events {
+		if event.ToolExecution != nil {
+			executions = append(executions, *event.ToolExecution)
+		}
 		if event.ToolExecution != nil &&
 			event.ToolExecution.Status == ProcessStepStatusRunning {
 			cancel()
@@ -291,6 +295,44 @@ func TestExternalWebToolLoopCancelsInFlightSearch(t *testing.T) {
 	case <-search.cancelled:
 	default:
 		t.Fatal("Search context was not cancelled")
+	}
+	if len(executions) != 2 ||
+		executions[0].Status != ProcessStepStatusRunning ||
+		executions[1].Status != ProcessStepStatusCancelled ||
+		executions[1].FailureCategory != "" {
+		t.Fatalf("cancelled executions = %#v", executions)
+	}
+}
+
+func TestCompatibilityExternalWebSearchCancellationEmitsCancelled(t *testing.T) {
+	provider := &blockingCompatibilityPlannerProvider{started: make(chan struct{})}
+	search := &fakeWebSearchProvider{}
+	ctx, cancel := context.WithCancel(context.Background())
+	events := startExternalWebToolLoop(ctx, externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt:   "blocking planner",
+			ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
+		},
+		SearchService: websearch.NewService(&fakeWebSearchResolver{}),
+		Execution: websearch.ActiveExecution{
+			Mode: websearch.ExecutionExternal, External: search,
+		},
+	})
+	<-provider.started
+	cancel()
+
+	var executions []ProviderToolExecutionEvent
+	for event := range events {
+		if event.ToolExecution != nil {
+			executions = append(executions, *event.ToolExecution)
+		}
+	}
+	if len(executions) != 1 ||
+		executions[0].ExecutionID != "compatibility-plan" ||
+		executions[0].Status != ProcessStepStatusCancelled ||
+		executions[0].FailureCategory != "" || search.calls != 0 {
+		t.Fatalf("cancelled planner executions/search = %#v / %d", executions, search.calls)
 	}
 }
 
@@ -327,6 +369,20 @@ type blockingWebSearchProvider struct {
 	cancelled     chan struct{}
 	startedOnce   sync.Once
 	cancelledOnce sync.Once
+}
+
+type blockingCompatibilityPlannerProvider struct {
+	started     chan struct{}
+	startedOnce sync.Once
+}
+
+func (p *blockingCompatibilityPlannerProvider) StreamChat(
+	ctx context.Context,
+	_ ProviderRequest,
+) (<-chan ProviderEvent, error) {
+	p.startedOnce.Do(func() { close(p.started) })
+	<-ctx.Done()
+	return nil, ctx.Err()
 }
 
 func (p *blockingWebSearchProvider) ID() websearch.ProviderID {

@@ -123,7 +123,9 @@ func toolProcessDetail(event *ProviderToolExecutionEvent) map[string]any {
 	if len(event.CitationMarkers) > 0 {
 		detail["citationMarkers"] = append([]string(nil), event.CitationMarkers...)
 	}
-	if failure := strings.TrimSpace(event.FailureCategory); failure != "" {
+	if event.Status == ProcessStepStatusCancelled {
+		detail["outcome"] = "cancelled"
+	} else if failure := strings.TrimSpace(event.FailureCategory); failure != "" {
 		detail["failureCategory"] = failure
 		detail["outcome"] = "degraded"
 	} else if event.Status == ProcessStepStatusCompleted {

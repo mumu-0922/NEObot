@@ -161,6 +161,31 @@ func TestToolProcessTraceCreatesIndependentKnowledgeAndToolSteps(t *testing.T) {
 	}
 }
 
+func TestToolProcessTracePreservesCancelledOutcome(t *testing.T) {
+	trace := newProcessTrace("message-1")
+	runtime := newToolProcessTrace(trace)
+	cancelledAt := time.Now()
+	updates := runtime.apply(&ProviderToolExecutionEvent{
+		ExecutionID: "compatibility-plan",
+		Name:        searchWebToolName,
+		Status:      ProcessStepStatusCancelled,
+		Round:       1,
+		Mode:        "compatibility",
+	}, cancelledAt)
+	if len(updates) != 4 {
+		t.Fatalf("cancelled updates = %#v", updates)
+	}
+	for _, step := range updates[2:] {
+		if step.Status != ProcessStepStatusCancelled ||
+			step.Detail["outcome"] != "cancelled" {
+			t.Fatalf("cancelled step = %#v", step)
+		}
+		if _, ok := step.Detail["failureCategory"]; ok {
+			t.Fatalf("cancelled step retained failure = %#v", step)
+		}
+	}
+}
+
 func TestProcessReasoningStreamRedactsSecretsSplitAcrossProviderChunks(t *testing.T) {
 	stream := newProcessReasoningStream()
 	var rendered strings.Builder

@@ -3332,6 +3332,86 @@ func TestHandlerCancelRunStopsActiveStream(t *testing.T) {
 	}
 }
 
+func TestHandlerCompatibilityPlannerCancellationPersistsCancelledToolTrace(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "latest fixture"),
+	)
+	provider := &blockingProvider{
+		started: make(chan ProviderRequest, 1),
+		release: make(chan struct{}),
+	}
+	searchProvider := &fakeWebSearchProvider{}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithWebSearchService(websearch.NewService(&fakeWebSearchResolver{
+			execution: websearch.ActiveExecution{
+				Mode: websearch.ExecutionExternal, External: searchProvider,
+			},
+		})),
+	)
+
+	streamDone := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		streamDone <- performRequest(
+			handler,
+			http.MethodPost,
+			conversationsPath+"/"+testConversationID+"/stream",
+			`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"blocking"},"config":{"searchMode":"external"},"idempotencyKey":"stream-key-compatibility-planner-cancel"}`,
+		)
+	}()
+
+	var providerRequest ProviderRequest
+	select {
+	case providerRequest = <-provider.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("compatibility planner did not start")
+	}
+	cancelRec := performRequest(
+		handler,
+		http.MethodPost,
+		"/v1/chat/runs/"+providerRequest.RunID+"/cancel",
+		"",
+	)
+	assertStatus(t, cancelRec, http.StatusOK)
+	close(provider.release)
+
+	var streamRec *httptest.ResponseRecorder
+	select {
+	case streamRec = <-streamDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("compatibility planner stream did not stop after cancel")
+	}
+	assertStreamStatus(t, streamRec, http.StatusOK)
+	if body := streamRec.Body.String(); !strings.Contains(body, `"kind":"tool","status":"cancelled"`) ||
+		!strings.Contains(body, `"kind":"web","status":"cancelled"`) ||
+		strings.Contains(body, "planner_failed") {
+		t.Fatalf("compatibility cancellation stream = %s", body)
+	}
+
+	messages := repo.messages[testConversationID]
+	if len(messages) != 2 || messages[1].Status != "cancelled" ||
+		len(messages[1].OutputBlocks) != 0 || searchProvider.calls != 0 {
+		t.Fatalf("compatibility cancellation message/search = %#v / %d", messages, searchProvider.calls)
+	}
+	steps, ok := messages[1].Metadata[processTraceMetadataKey].([]ProcessStep)
+	if !ok || len(steps) != 3 {
+		t.Fatalf("compatibility cancellation trace = %#v", messages[1].Metadata[processTraceMetadataKey])
+	}
+	for _, step := range steps {
+		if step.Status != ProcessStepStatusCancelled ||
+			step.Detail["outcome"] != "cancelled" {
+			t.Fatalf("compatibility cancellation step = %#v", step)
+		}
+		if _, exists := step.Detail["failureCategory"]; exists {
+			t.Fatalf("compatibility cancellation retained failure = %#v", step)
+		}
+	}
+}
+
 func TestHandlerStopsActiveStreamFromCancellationStore(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))

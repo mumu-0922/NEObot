@@ -258,7 +258,11 @@ func TestRetrievalToolLoopCancelsInFlightKnowledgeRetrieval(t *testing.T) {
 		},
 		Knowledge: runtime,
 	})
+	var executions []ProviderToolExecutionEvent
 	for event := range events {
+		if event.ToolExecution != nil {
+			executions = append(executions, *event.ToolExecution)
+		}
 		if event.ToolExecution != nil &&
 			event.ToolExecution.Status == ProcessStepStatusRunning {
 			cancel()
@@ -273,6 +277,12 @@ func TestRetrievalToolLoopCancelsInFlightKnowledgeRetrieval(t *testing.T) {
 	case <-candidates.cancelled:
 	default:
 		t.Fatal("Knowledge retrieval context was not cancelled")
+	}
+	if len(executions) != 2 ||
+		executions[0].Status != ProcessStepStatusRunning ||
+		executions[1].Status != ProcessStepStatusCancelled ||
+		executions[1].FailureCategory != "" {
+		t.Fatalf("cancelled Knowledge executions = %#v", executions)
 	}
 }
 

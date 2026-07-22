@@ -1537,6 +1537,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	}
 
 	var content strings.Builder
+	toolExecutionCancelled := false
 	for providerEvent := range events {
 		if providerEvent.Error != nil {
 			if modelBuiltInSearchProvider != nil && streamCtx.Err() == nil &&
@@ -1758,6 +1759,9 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			flusher.Flush()
 		case ProviderEventToolExecution:
 			execution := providerEvent.ToolExecution
+			if execution != nil && execution.Status == ProcessStepStatusCancelled {
+				toolExecutionCancelled = true
+			}
 			for _, step := range toolTrace.apply(execution, time.Now()) {
 				if err := emitProcessStep(step); err != nil {
 					h.cancelAssistantAfterWriteError(
@@ -1827,6 +1831,18 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 					fusionPlan.SearchRequested = true
 				}
 				fusionPlan = fallbackSourceFusionAuthority(fusionPlan, autoDecision)
+			case ProcessStepStatusCancelled:
+				fusionDiagnostics.WebExecuteDurationMillis =
+					sourceFusionDurationMillis(resolveStarted)
+				fusionDiagnostics.WebExecuteOutcome = "cancelled"
+				fusionDiagnostics.DegradationReason = ""
+				if execution.Mode == "compatibility" &&
+					execution.ExecutionID == "compatibility-plan" {
+					fusionDiagnostics.WebQueryConversationRewriteOutcome = "not_run"
+				} else {
+					fusionDiagnostics.WebQueryConversationRewriteOutcome = "provider_tool"
+					fusionPlan.SearchRequested = true
+				}
 			}
 		case ProviderEventSearch:
 			if providerEvent.Search == nil ||
@@ -1876,7 +1892,8 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		}
 	}
 
-	if streamCtx.Err() != nil || h.isRunCancelled(context.Background(), runID) {
+	if streamCtx.Err() != nil || toolExecutionCancelled ||
+		h.isRunCancelled(context.Background(), runID) {
 		streamCancel()
 		_ = emitReasoningDelta(reasoning.flush())
 		for _, step := range reconcileProcessTraceCitations(

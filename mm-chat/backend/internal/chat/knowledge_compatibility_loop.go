@@ -18,7 +18,7 @@ func startCompatibilityKnowledgeLoop(
 	ctx context.Context,
 	input compatibilityKnowledgeLoopInput,
 ) <-chan ProviderEvent {
-	events := make(chan ProviderEvent)
+	events := make(chan ProviderEvent, 1)
 	go func() {
 		defer close(events)
 		request, decision, ok := prepareCompatibilityKnowledgeRequest(
@@ -117,6 +117,12 @@ func prepareCompatibilityKnowledgeRequest(
 	running.Query = query
 	running.Arguments = map[string]any{"query": query}
 	decision := executeKnowledgeTool(ctx, input.Runtime, query)
+	if toolLoopWasCancelled(ctx, nil) {
+		cancelled := running
+		cancelled.Status = ProcessStepStatusCancelled
+		sendToolExecutionEvent(ctx, events, cancelled)
+		return input.Request, autoRAGDecision{}, false
+	}
 	failure := knowledgeToolFailureCategory(decision)
 	request := input.Request
 	if failure == "" && decision.ReadyForAnswer() {
