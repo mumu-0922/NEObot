@@ -1712,6 +1712,130 @@ func TestHandlerSourceFusionDerivesExternalQueryFromKnowledge(t *testing.T) {
 	}
 }
 
+func TestHandlerExternalSearchRewritesFollowUpFromConversationContext(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "Contextual Search", 3))
+	repo.messages[testConversationID] = []Message{
+		fakeMessage(
+			"11111111-1111-4111-8111-111111111118",
+			testConversationID,
+			0,
+			"user",
+			"DeepSeek V4 Flash 的上下文是 128K 还是 1M？",
+		),
+		fakeMessage(
+			"11111111-1111-4111-8111-111111111119",
+			testConversationID,
+			1,
+			"assistant",
+			"需要联网核对官方规格。[W9]",
+		),
+		fakeMessage(testMessageID, testConversationID, 2, "user", "你自己联网搜"),
+	}
+	provider := &capturingSequenceProvider{outputs: [][]string{
+		{"DeepSeek V4 Flash 上下文窗口长度 官方文档"},
+		{"官方资料回答 [W1]"},
+	}}
+	searchProvider := &fakeWebSearchProvider{result: websearch.Result{
+		Sources: []websearch.Source{{
+			Title:   "Official model documentation",
+			URL:     "https://example.test/deepseek-v4-flash",
+			Content: "model context specification",
+		}},
+	}}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithWebSearchService(websearch.NewService(&fakeWebSearchResolver{
+			execution: websearch.ActiveExecution{
+				Mode: websearch.ExecutionExternal, External: searchProvider,
+			},
+		})),
+	)
+
+	recorder := performAuthenticatedRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"fixture","modelId":"deepseek-v4-flash"},"config":{"useSearch":true},"idempotencyKey":"stream-key-contextual-web"}`,
+	)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	if searchProvider.request.Query != "DeepSeek V4 Flash 上下文窗口长度 官方文档" {
+		t.Fatalf("contextual Search query = %q", searchProvider.request.Query)
+	}
+	if len(provider.inputs) != 2 ||
+		!strings.Contains(provider.inputs[0].Prompt, "DeepSeek V4 Flash") ||
+		!strings.Contains(provider.inputs[0].Prompt, "你自己联网搜") ||
+		strings.Contains(provider.inputs[0].Prompt, "[W9]") ||
+		!strings.Contains(provider.inputs[1].Prompt, "[W1]") {
+		t.Fatalf("provider inputs = %#v", provider.inputs)
+	}
+	message := repo.messages[testConversationID][3]
+	fusion := message.Metadata["fusion"].(map[string]any)
+	if fusion["webQueryDerivedFromConversation"] != true ||
+		fusion["webQueryRewriteOutcome"] != "rewritten" ||
+		fusion["webQueryDerivedFromKnowledge"] != false {
+		t.Fatalf("fusion metadata = %#v", fusion)
+	}
+}
+
+func TestHandlerExternalSearchRewriteFailureFallsBackToCurrentMessage(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "Contextual Search", 3))
+	repo.messages[testConversationID] = []Message{
+		fakeMessage(
+			"11111111-1111-4111-8111-111111111118",
+			testConversationID,
+			0,
+			"user",
+			"prior subject",
+		),
+		fakeMessage(
+			"11111111-1111-4111-8111-111111111119",
+			testConversationID,
+			1,
+			"assistant",
+			"prior answer",
+		),
+		fakeMessage(testMessageID, testConversationID, 2, "user", "current fallback query"),
+	}
+	provider := &rewriteFailureThenAnswerProvider{}
+	searchProvider := &fakeWebSearchProvider{result: websearch.Result{
+		Sources: []websearch.Source{{
+			Title: "Fallback result", URL: "https://example.test/fallback", Content: "fallback evidence",
+		}},
+	}}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithWebSearchService(websearch.NewService(&fakeWebSearchResolver{
+			execution: websearch.ActiveExecution{
+				Mode: websearch.ExecutionExternal, External: searchProvider,
+			},
+		})),
+	)
+
+	recorder := performAuthenticatedRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"fixture","modelId":"fixture-model"},"config":{"useSearch":true},"idempotencyKey":"stream-key-contextual-web-fallback"}`,
+	)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	if provider.calls != 2 || searchProvider.request.Query != "current fallback query" {
+		t.Fatalf("fallback calls/query = %d / %q", provider.calls, searchProvider.request.Query)
+	}
+	message := repo.messages[testConversationID][3]
+	fusion := message.Metadata["fusion"].(map[string]any)
+	if message.Content != "fallback answer [W1]" ||
+		fusion["webQueryDerivedFromConversation"] != false ||
+		fusion["webQueryRewriteOutcome"] != "failed" {
+		t.Fatalf("fallback message = %#v", message)
+	}
+}
+
 func TestHandlerSourceFusionPersistsOnlyKnowledgeMarkersUsedByAnswer(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
@@ -3331,6 +3455,56 @@ type fakeWebSearchProvider struct {
 	result  websearch.Result
 	err     error
 	calls   int
+}
+
+type capturingSequenceProvider struct {
+	outputs [][]string
+	inputs  []ProviderRequest
+}
+
+type rewriteFailureThenAnswerProvider struct {
+	calls int
+}
+
+func (p *rewriteFailureThenAnswerProvider) StreamChat(
+	ctx context.Context,
+	_ ProviderRequest,
+) (<-chan ProviderEvent, error) {
+	p.calls++
+	if p.calls == 1 {
+		return nil, errors.New("rewrite unavailable")
+	}
+	events := make(chan ProviderEvent, 1)
+	select {
+	case <-ctx.Done():
+		close(events)
+		return events, nil
+	case events <- ProviderEvent{Type: ProviderEventDelta, Delta: "fallback answer [W1]"}:
+	}
+	close(events)
+	return events, nil
+}
+
+func (p *capturingSequenceProvider) StreamChat(
+	ctx context.Context,
+	input ProviderRequest,
+) (<-chan ProviderEvent, error) {
+	p.inputs = append(p.inputs, input)
+	if len(p.inputs) > len(p.outputs) {
+		return nil, errors.New("unexpected provider call")
+	}
+	chunks := p.outputs[len(p.inputs)-1]
+	events := make(chan ProviderEvent, len(chunks))
+	for _, chunk := range chunks {
+		select {
+		case <-ctx.Done():
+			close(events)
+			return events, nil
+		case events <- ProviderEvent{Type: ProviderEventDelta, Delta: chunk}:
+		}
+	}
+	close(events)
+	return events, nil
 }
 
 func (p *fakeWebSearchProvider) ID() websearch.ProviderID {

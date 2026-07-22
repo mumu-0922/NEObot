@@ -1079,6 +1079,11 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		writeServiceError(w, err)
 		return
 	}
+	conversationMessages, err := h.service.ListMessages(r.Context(), conversationID)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
 	autoDecision := autoRAGDecision{}
 	knowledgeStarted := time.Now()
 	if ragSelection.Enabled {
@@ -1090,6 +1095,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			ragSelection,
 			streamProvider,
 			ragAnswerProcessor,
+			conversationMessages,
 		)
 	}
 	providerPrompt := userMessage.Content
@@ -1138,6 +1144,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	if searchErr != nil {
 		fusionDiagnostics.WebResolveOutcome = "degraded"
 		fusionDiagnostics.WebExecuteOutcome = "not_run"
+		fusionDiagnostics.WebQueryConversationRewriteOutcome = "not_run"
 		fusionDiagnostics.DegradationReason = sourceSearchDegradationReason(searchErr)
 		fusionPlan = fallbackSourceFusionAuthority(fusionPlan, autoDecision)
 		searchExecution = nil
@@ -1147,8 +1154,33 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	}
 	webSearchResult := websearch.Result{Sources: []websearch.Source{}, Images: []websearch.Image{}}
 	if searchExecution != nil && searchExecution.Mode == websearch.ExecutionExternal {
-		searchQuery, derived := buildFusionWebSearchQuery(
+		searchQuery := userMessage.Content
+		searchContextMessages := buildProviderConversationMessages(
+			conversationMessages,
+			userMessage.ID,
 			userMessage.Content,
+			nil,
+		)
+		rewrittenQuery, rewriteErr := rewriteWebSearchQuery(
+			r.Context(),
+			streamProvider,
+			*modelRef,
+			userMessage.ID,
+			searchQuery,
+			searchContextMessages,
+		)
+		switch {
+		case rewriteErr != nil:
+			fusionDiagnostics.WebQueryConversationRewriteOutcome = "failed"
+		case rewrittenQuery != "":
+			searchQuery = rewrittenQuery
+			fusionDiagnostics.WebQueryDerivedFromConversation = true
+			fusionDiagnostics.WebQueryConversationRewriteOutcome = "rewritten"
+		default:
+			fusionDiagnostics.WebQueryConversationRewriteOutcome = "unchanged"
+		}
+		searchQuery, derived := buildFusionWebSearchQuery(
+			searchQuery,
 			fusionPlan,
 			autoDecision,
 		)
@@ -1181,6 +1213,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		}
 	} else if searchExecution != nil &&
 		searchExecution.Mode == websearch.ExecutionModelBuiltIn {
+		fusionDiagnostics.WebQueryConversationRewriteOutcome = "provider_managed"
 		fusionDiagnostics.WebExecuteOutcome = "provider_stream"
 	}
 
@@ -1232,15 +1265,6 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		providerSystemPrompt,
 		fusionPlan,
 	)
-	conversationMessages, err := h.service.ListMessages(r.Context(), conversationID)
-	if err != nil {
-		h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
-			Status:   "failed",
-			Metadata: map[string]any{"runId": runID, "errorCode": "CONTEXT_READ_FAILED"},
-		})
-		writeServiceError(w, err)
-		return
-	}
 	providerMessages := buildProviderConversationMessages(
 		conversationMessages,
 		userMessage.ID,
@@ -1929,6 +1953,7 @@ func (h *Handler) decideAutoRAG(
 	selection ragSelection,
 	provider Provider,
 	ragAnswerProcessor string,
+	messages []Message,
 ) autoRAGDecision {
 	session, ok := auth.SessionFromContext(ctx)
 	if !ok {
@@ -1936,16 +1961,14 @@ func (h *Handler) decideAutoRAG(
 	}
 	rewrittenQuery := ""
 	if shouldRewriteRAGQuery(userMessage.Content) {
-		if messages, listErr := h.service.ListMessages(ctx, conversationID); listErr == nil {
-			rewrittenQuery, _ = rewriteRAGQuery(
-				ctx,
-				provider,
-				*modelRef,
-				userMessage.ID,
-				userMessage.Content,
-				messages,
-			)
-		}
+		rewrittenQuery, _ = rewriteRAGQuery(
+			ctx,
+			provider,
+			*modelRef,
+			userMessage.ID,
+			userMessage.Content,
+			messages,
+		)
 	}
 	result, err := h.ragAssembler.Assemble(ctx, RAGAssemblyInput{
 		ActorUserID:           session.UserID,

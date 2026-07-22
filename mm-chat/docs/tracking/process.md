@@ -8647,3 +8647,18 @@ legacy persisted messages. Full Go and Frontend gates, healthy rebuilt Compose
 services, and a real two-turn `gpt-5.6-sol` hit-then-miss replay passed; the
 temporary conversation was deleted. Exact evidence and rollback are recorded
 in `docs/tracking/g18-bm25-pgvector-retrieval-process.md`.
+
+## 2026-07-22 — Conversation-aware external Search repair
+
+The latest owner conversation proved ordinary external Search had regressed to
+literal current-message queries during the Go migration: vague follow-ups
+returned generic AI networking pages, and “你知道你是谁吗？” matched a song.
+The former Next path had used six recent messages to plan a standalone query.
+Go now performs the same bounded, active-branch and runtime-model-aware rewrite
+before Tavily/Firecrawl/Exa/Bocha, fails open to the current message, and stores
+only redacted outcome/derived flags. Full Go gates, a rebuilt healthy Backend,
+and a real three-turn DeepSeek V4 Flash + Tavily replay passed twice for
+contextual follow-ups; both result sets were DeepSeek-specific and all smoke
+state was deleted. Exact evidence and rollback are recorded in
+`docs/tracking/g11-knowledge-auto-rag-process.md` and
+`docs/contracts/chat-source-fusion.md`.

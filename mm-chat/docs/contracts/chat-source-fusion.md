@@ -26,6 +26,22 @@ searchReason  = disabled | current_public | knowledge_sufficient |
 knowledgeOutcome = answered_without_knowledge
 ```
 
+External Search query planning consumes a separate bounded context:
+
+```text
+active conversation branch (latest 6 messages, 1200 bytes each)
+  + latest user message + runtime model identifier
+  -> one standalone Web query (2048 bytes maximum)
+```
+
+Stable redacted diagnostics add:
+
+```text
+webQueryDerivedFromConversation = true | false
+webQueryRewriteOutcome = disabled | skipped | pending | unchanged |
+                         rewritten | failed | not_run | provider_managed
+```
+
 No new public route, request field, provider selection, or database schema is
 introduced. The existing conversation Knowledge binding and `config.useSearch`
 remain the only user authorities.
@@ -55,6 +71,20 @@ remain the only user authorities.
   timestamps and cite both instead of silently choosing one.
 - Exactly one already-active Search provider is resolved. There is no provider
   fan-out or fallback.
+- Before calling an external Search provider, Go asks the selected chat model
+  to rewrite the latest message into one standalone query when prior
+  active-branch history exists. This restores the former Next behavior for
+  ellipsis and references such as “自己联网搜” or “你知道你是谁吗？”. The rewrite
+  receives no attachments, at most six prior messages, and the runtime model
+  identifier so “you/your model/your context window” resolves to the selected
+  model rather than a literal phrase.
+- Rewrite history is untrusted input. The fixed system instruction permits only
+  reference resolution, forbids following history instructions or answering,
+  and requires query-only output. Tavily/Firecrawl/Exa/Bocha receive only the
+  standalone query, never raw conversation history.
+- Empty, unchanged, malformed, oversized, or failed rewrites fall open to the
+  normalized current message. They do not abort Search, change provider, or
+  fail the final chat.
 - Diagnostics contain enums, IDs, counts, scores, stages, timings, provider,
   and degradation reason only. They never contain query text, full source text,
   credentials, ciphertext, or signed capabilities.
@@ -74,6 +104,11 @@ remain the only user authorities.
 | Knowledge ready, no current/public intent | Knowledge + model; Web skipped |
 | Current/public intent with Knowledge ready | mixed Knowledge/Web plan |
 | Search enabled and Knowledge miss/unbound | Web + model plan |
+| External Search with contextual conversation follow-up | rewrite from bounded active-branch history before Search |
+| Follow-up refers to the assistant/model | use runtime model identifier as the standalone query subject |
+| Rewrite returns unchanged/empty output | search normalized current message; `unchanged` |
+| Rewrite provider fails or exceeds the output bound | search normalized current message; `failed`; chat continues |
+| Model-built-in Search | provider manages query planning; `provider_managed` |
 | Explicit-subject public question plus loosely related Knowledge | search original question; `webQueryDerivedFromKnowledge=false` |
 | Context-dependent public follow-up plus admitted Knowledge | bounded Knowledge-derived query is allowed |
 | Knowledge dependency failure | model continues; optional Web may run |
@@ -98,10 +133,16 @@ remain the only user authorities.
   authority, and the Knowledge card stays hidden.
 - Good: “Kimi 最新模型” remains the external Search query even if selected
   Knowledge mentions other AI models or recommendation systems.
+- Good: after a DeepSeek V4 Flash context-window discussion, “你自己联网搜” and
+  “你知道你是谁吗？” produce DeepSeek V4 Flash sources rather than generic
+  networking tutorials or same-named songs.
+- Base: no history or an unchanged/failed rewrite searches the current message
+  and preserves the existing fail-open answer path.
 - Bad: Search runs when the toggle is off, a provider error aborts an otherwise
   useful Auto answer, an injected-but-unused citation renders as a Knowledge
-  source, explicit search terms are diluted with unrelated Knowledge text, or a
-  raw private query/source is written to diagnostics.
+  source, explicit search terms are diluted with unrelated Knowledge text, raw
+  conversation history is sent to the Search provider, or a private query/source
+  is written to diagnostics.
 
 ## 6. Tests Required
 
@@ -118,6 +159,9 @@ remain the only user authorities.
   final-answer marker produces no Knowledge card;
 - explicit-subject query regression proving admitted Knowledge is not appended,
   plus contextual follow-up regression proving bounded derivation remains;
+- conversation-aware external-query regressions proving active-branch bounds,
+  runtime-model reference resolution, historical marker removal, query-only
+  normalization, and failed-rewrite fallback to the current message;
 - reload and frontend citation-card interaction;
 - live Knowledge-only, Web-only, both, neither, failure, restart, and clean-copy
   smoke with temporary artifacts removed.
@@ -134,7 +178,8 @@ Correct:
 
 ```text
 Knowledge decision -> deterministic source Router
-  -> explicit subject: original Web query
+  -> bounded active-branch/model-aware standalone query rewrite
+  -> explicit subject: rewritten or original Web query
   -> contextual reference: optional bounded Knowledge-derived Web query
   -> source-aware prompt -> model -> reconcile admitted sources against actual
      [K]/[W] markers -> persist used citations + terminal authority

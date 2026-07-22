@@ -149,7 +149,12 @@ func normalizeRAGRewrittenQuery(value string) string {
 	value = strings.TrimPrefix(value, "```")
 	value = strings.TrimSuffix(value, "```")
 	value = strings.TrimSpace(value)
-	for _, prefix := range []string{"Standalone retrieval query:", "Standalone query:", "Query:"} {
+	for _, prefix := range []string{
+		"Standalone Web search query:",
+		"Standalone retrieval query:",
+		"Standalone query:",
+		"Query:",
+	} {
 		if strings.HasPrefix(strings.ToLower(value), strings.ToLower(prefix)) {
 			value = strings.TrimSpace(value[len(prefix):])
 			break

@@ -85,18 +85,22 @@ func TestSourceFusionMetadataContainsOnlyBoundedDecisionFields(t *testing.T) {
 		planSourceFusion("latest private fixture", true, autoRAGDecision{Outcome: "no_evidence"}),
 		autoRAGDecision{Outcome: "no_evidence"},
 		sourceFusionDiagnostics{
-			KnowledgeDurationMillis:  4,
-			RouterDurationMillis:     1,
-			WebResolveOutcome:        "resolved",
-			WebResolveDurationMillis: 2,
-			WebExecuteOutcome:        "completed",
-			WebExecuteDurationMillis: 3,
+			KnowledgeDurationMillis:            4,
+			RouterDurationMillis:               1,
+			WebResolveOutcome:                  "resolved",
+			WebResolveDurationMillis:           2,
+			WebExecuteOutcome:                  "completed",
+			WebExecuteDurationMillis:           3,
+			WebQueryDerivedFromConversation:    true,
+			WebQueryConversationRewriteOutcome: "rewritten",
 		},
 	)
 	fusion, ok := metadata["fusion"].(map[string]any)
-	if !ok || len(fusion) != 9 || fusion["version"] != sourceFusionVersion ||
+	if !ok || len(fusion) != 11 || fusion["version"] != sourceFusionVersion ||
 		fusion["authority"] != sourceAuthorityWeb ||
-		fusion["searchRequested"] != true || fusion["knowledgeOutcome"] != "no_evidence" {
+		fusion["searchRequested"] != true || fusion["knowledgeOutcome"] != "no_evidence" ||
+		fusion["webQueryDerivedFromConversation"] != true ||
+		fusion["webQueryRewriteOutcome"] != "rewritten" {
 		t.Fatalf("fusion metadata = %#v", metadata["fusion"])
 	}
 	stages, ok := fusion["stages"].(map[string]any)

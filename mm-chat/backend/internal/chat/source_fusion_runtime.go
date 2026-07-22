@@ -19,14 +19,16 @@ var reservedSourceMarkerPattern = regexp.MustCompile(
 )
 
 type sourceFusionDiagnostics struct {
-	KnowledgeDurationMillis  int64
-	RouterDurationMillis     int64
-	WebResolveOutcome        string
-	WebResolveDurationMillis int64
-	WebExecuteOutcome        string
-	WebExecuteDurationMillis int64
-	WebQueryDerived          bool
-	DegradationReason        string
+	KnowledgeDurationMillis            int64
+	RouterDurationMillis               int64
+	WebResolveOutcome                  string
+	WebResolveDurationMillis           int64
+	WebExecuteOutcome                  string
+	WebExecuteDurationMillis           int64
+	WebQueryDerived                    bool
+	WebQueryDerivedFromConversation    bool
+	WebQueryConversationRewriteOutcome string
+	DegradationReason                  string
 }
 
 func newSourceFusionDiagnostics(plan sourceFusionPlan) sourceFusionDiagnostics {
@@ -37,8 +39,9 @@ func newSourceFusionDiagnostics(plan sourceFusionPlan) sourceFusionDiagnostics {
 		outcome = "skipped"
 	}
 	return sourceFusionDiagnostics{
-		WebResolveOutcome: outcome,
-		WebExecuteOutcome: outcome,
+		WebResolveOutcome:                  outcome,
+		WebExecuteOutcome:                  outcome,
+		WebQueryConversationRewriteOutcome: outcome,
 	}
 }
 

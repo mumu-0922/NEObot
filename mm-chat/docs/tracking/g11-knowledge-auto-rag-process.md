@@ -2216,3 +2216,48 @@ This does not weaken the deterministic positive unit proof or the explicit
 Kimi fix, and no automatic retry or cross-provider fallback was introduced.
 No route, schema, secret, provider setting, frontend annotation, or raw query
 diagnostic was added.
+
+## 2026-07-22 — G11.9G.7 Conversation-aware external Search repair
+
+The owner reported three consecutive external Search results that ignored the
+conversation topic. Runtime inspection of conversation
+`abd5cc8e-5cf6-477b-842a-1eb17eeb1dd1` proved that Tavily itself was operating
+normally but received only the latest literal message. The vague follow-up
+“自己联网搜” therefore returned articles about adding Web Search to different AI
+products, and “你知道你是谁吗？” matched a same-named song. Every affected
+assistant row recorded `webQueryDerivedFromKnowledge=false`; no ordinary
+conversation-derived lane existed.
+
+Source comparison identified a migration parity regression. The former Next
+path asked the selected model to plan a short Search query from the latest six
+conversation messages. The Go source-fusion path retained Knowledge-derived
+enrichment but called external Search with `userMessage.Content` for ordinary
+chat, before conversation context was assembled.
+
+Go now loads the active branch once, strips reserved historical source markers,
+and asks the selected runtime model for one standalone external query from at
+most six prior messages (1200 UTF-8 bytes each), the latest message, and the
+runtime model identifier. The fixed system instruction treats history as
+untrusted, resolves only references/ellipsis, forbids answering, and requires
+query-only output. Attachments and raw history never reach the Search provider.
+Empty, unchanged, oversized, or failed rewrites fall open to the current
+message without changing provider or aborting chat.
+
+Durable diagnostics remain content-free and add only:
+
+```text
+webQueryDerivedFromConversation = true | false
+webQueryRewriteOutcome = unchanged | rewritten | failed | ...
+```
+
+Focused and full Backend gates passed. A source-built Backend then ran a real
+three-turn `deepseek-v4-flash` + Tavily smoke. After a context-window setup
+turn, both ambiguous follow-ups recorded `rewritten / true` and returned five
+DeepSeek-specific sources. The first set covered V4 Flash's context window;
+the second set covered V4 Flash identity/model pages rather than music. The
+temporary conversation and local artifacts were deleted, and Backend readiness
+remained green.
+
+No schema, public route, credential, provider setting, or frontend change was
+introduced. Rollback removes the conversation rewrite helper and its two
+redacted diagnostic fields, restoring current-message-only external queries.

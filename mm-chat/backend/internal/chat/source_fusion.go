@@ -143,14 +143,16 @@ func withSourceFusionMessageMetadata(
 		knowledgeOutcome = "not_selected"
 	}
 	metadata["fusion"] = map[string]any{
-		"version":                      sourceFusionVersion,
-		"questionClass":                plan.QuestionClass,
-		"authority":                    plan.Authority,
-		"searchEnabled":                plan.SearchEnabled,
-		"searchRequested":              plan.SearchRequested,
-		"searchReason":                 plan.SearchReason,
-		"knowledgeOutcome":             knowledgeOutcome,
-		"webQueryDerivedFromKnowledge": diagnostics.WebQueryDerived,
+		"version":                         sourceFusionVersion,
+		"questionClass":                   plan.QuestionClass,
+		"authority":                       plan.Authority,
+		"searchEnabled":                   plan.SearchEnabled,
+		"searchRequested":                 plan.SearchRequested,
+		"searchReason":                    plan.SearchReason,
+		"knowledgeOutcome":                knowledgeOutcome,
+		"webQueryDerivedFromKnowledge":    diagnostics.WebQueryDerived,
+		"webQueryDerivedFromConversation": diagnostics.WebQueryDerivedFromConversation,
+		"webQueryRewriteOutcome":          diagnostics.WebQueryConversationRewriteOutcome,
 		"stages": map[string]any{
 			"knowledge": map[string]any{
 				"outcome":    knowledgeOutcome,
