@@ -227,6 +227,41 @@ describe("chat CRUD DTO mappers", () => {
     });
   });
 
+  it("reloads sanitized provider reasoning and terminal process steps", () => {
+    const assistant = mapChatMessageDtoToMessage({
+      ...assistantMessageDto,
+      metadata: {
+        reasoning: "Provider-returned summary",
+        processTrace: [
+          {
+            id: "m2:generation:1",
+            kind: "generation",
+            status: "completed",
+            labelKey: "process.generation",
+            startedAt: "2026-07-08T00:00:01Z",
+            completedAt: "2026-07-08T00:00:02Z",
+            durationMs: 1000,
+            detail: { outcome: "completed", rawPayload: "drop-me" },
+          },
+        ],
+      },
+    });
+
+    expect(assistant.reasoning).toBe("Provider-returned summary");
+    expect(assistant.processTrace).toEqual([
+      {
+        id: "m2:generation:1",
+        kind: "generation",
+        status: "completed",
+        labelKey: "process.generation",
+        startedAt: "2026-07-08T00:00:01Z",
+        completedAt: "2026-07-08T00:00:02Z",
+        durationMs: 1000,
+        detail: { outcome: "completed" },
+      },
+    ]);
+  });
+
   it("hides a stale Knowledge card when the answer only cites Web", () => {
     const webOnly = mapChatMessageDtoToMessage({
       ...assistantMessageDto,

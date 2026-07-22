@@ -211,7 +211,9 @@ type openAICompatibleMessage struct {
 type openAICompatibleStreamChunk struct {
 	Choices []struct {
 		Delta struct {
-			Content *string `json:"content"`
+			Content          *string         `json:"content"`
+			ReasoningContent json.RawMessage `json:"reasoning_content"`
+			Reasoning        json.RawMessage `json:"reasoning"`
 		} `json:"delta"`
 	} `json:"choices"`
 	Usage *struct {
@@ -483,6 +485,17 @@ func dispatchOpenAICompatibleData(
 	}
 
 	for _, choice := range chunk.Choices {
+		reasoning := openAICompatibleReasoningDelta(
+			choice.Delta.ReasoningContent,
+			choice.Delta.Reasoning,
+		)
+		if reasoning != "" {
+			if !sendProviderEvent(ctx, events, ProviderEvent{
+				Type: ProviderEventReasoningDelta, ReasoningDelta: reasoning,
+			}) {
+				return false, false
+			}
+		}
 		if choice.Delta.Content == nil || *choice.Delta.Content == "" {
 			continue
 		}
@@ -508,6 +521,19 @@ func dispatchOpenAICompatibleData(
 	}
 
 	return true, false
+}
+
+func openAICompatibleReasoningDelta(values ...json.RawMessage) string {
+	for _, value := range values {
+		if len(value) == 0 || string(value) == "null" {
+			continue
+		}
+		var text string
+		if err := json.Unmarshal(value, &text); err == nil {
+			return text
+		}
+	}
+	return ""
 }
 
 func sendProviderEvent(ctx context.Context, events chan<- ProviderEvent, event ProviderEvent) bool {

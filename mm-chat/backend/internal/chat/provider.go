@@ -8,9 +8,10 @@ import (
 )
 
 const (
-	ProviderEventDelta  = "delta"
-	ProviderEventUsage  = "usage"
-	ProviderEventSearch = "search"
+	ProviderEventDelta          = "delta"
+	ProviderEventReasoningDelta = "reasoning.delta"
+	ProviderEventUsage          = "usage"
+	ProviderEventSearch         = "search"
 )
 
 type Provider interface {
@@ -94,11 +95,12 @@ type ToolCall struct {
 }
 
 type ProviderEvent struct {
-	Type   string
-	Delta  string
-	Usage  *TokenUsage
-	Search *websearch.Result
-	Error  error
+	Type           string
+	Delta          string
+	ReasoningDelta string
+	Usage          *TokenUsage
+	Search         *websearch.Result
+	Error          error
 }
 
 type TokenUsage struct {

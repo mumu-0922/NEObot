@@ -393,8 +393,9 @@ type anthropicStreamEnvelope struct {
 		Thinking string `json:"thinking"`
 	} `json:"delta"`
 	ContentBlock *struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
+		Type     string `json:"type"`
+		Text     string `json:"text"`
+		Thinking string `json:"thinking"`
 	} `json:"content_block"`
 	Message *struct {
 		Usage anthropicUsage `json:"usage"`
@@ -471,11 +472,22 @@ func dispatchAnthropicData(
 	}
 	switch envelope.Type {
 	case "ping", "content_block_start", "content_block_stop":
-		if envelope.Type == "content_block_start" && envelope.ContentBlock != nil &&
-			envelope.ContentBlock.Type == "text" && envelope.ContentBlock.Text != "" {
-			return sendProviderEvent(ctx, events, ProviderEvent{
-				Type: ProviderEventDelta, Delta: envelope.ContentBlock.Text,
-			}), false
+		if envelope.Type == "content_block_start" && envelope.ContentBlock != nil {
+			switch envelope.ContentBlock.Type {
+			case "text":
+				if envelope.ContentBlock.Text != "" {
+					return sendProviderEvent(ctx, events, ProviderEvent{
+						Type: ProviderEventDelta, Delta: envelope.ContentBlock.Text,
+					}), false
+				}
+			case "thinking":
+				if envelope.ContentBlock.Thinking != "" {
+					return sendProviderEvent(ctx, events, ProviderEvent{
+						Type:           ProviderEventReasoningDelta,
+						ReasoningDelta: envelope.ContentBlock.Thinking,
+					}), false
+				}
+			}
 		}
 		return true, false
 	case "message_start":
@@ -485,12 +497,25 @@ func dispatchAnthropicData(
 		}
 		return true, false
 	case "content_block_delta":
-		if envelope.Delta.Type != "text_delta" || envelope.Delta.Text == "" {
+		switch envelope.Delta.Type {
+		case "text_delta":
+			if envelope.Delta.Text == "" {
+				return true, false
+			}
+			return sendProviderEvent(ctx, events, ProviderEvent{
+				Type: ProviderEventDelta, Delta: envelope.Delta.Text,
+			}), false
+		case "thinking_delta":
+			if envelope.Delta.Thinking == "" {
+				return true, false
+			}
+			return sendProviderEvent(ctx, events, ProviderEvent{
+				Type:           ProviderEventReasoningDelta,
+				ReasoningDelta: envelope.Delta.Thinking,
+			}), false
+		default:
 			return true, false
 		}
-		return sendProviderEvent(ctx, events, ProviderEvent{
-			Type: ProviderEventDelta, Delta: envelope.Delta.Text,
-		}), false
 	case "message_delta":
 		if envelope.Usage.InputTokens > 0 {
 			state.promptTokens = envelope.Usage.InputTokens

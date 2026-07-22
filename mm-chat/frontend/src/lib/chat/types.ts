@@ -16,6 +16,29 @@ export interface Attachment {
   fileName: string;
 }
 
+export type ProcessStepKind =
+  "reasoning" | "knowledge" | "web" | "tool" | "generation";
+
+export type ProcessStepStatus =
+  | "pending"
+  | "running"
+  | "awaiting_approval"
+  | "completed"
+  | "failed"
+  | "skipped"
+  | "cancelled";
+
+export interface ProcessStep {
+  id: string;
+  kind: ProcessStepKind;
+  status: ProcessStepStatus;
+  labelKey: string;
+  startedAt?: string;
+  completedAt?: string;
+  durationMs?: number;
+  detail?: Record<string, unknown>;
+}
+
 export interface MessageVersion {
   id: string;
   content: string;
@@ -94,6 +117,7 @@ export interface Message {
   parentMessageId?: string;
   treeParentMessageId?: string | null;
   reasoning?: string;
+  processTrace?: ProcessStep[];
   timestamp: number;
   attachments?: Attachment[];
   toolCalls?: ToolCall[];

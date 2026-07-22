@@ -1021,6 +1021,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
     message.content.length === 0 &&
     !message.attachments?.length &&
     !message.reasoning &&
+    !message.processTrace?.length &&
     !message.generationError &&
     !message.searchSources &&
     (!message.toolCalls || message.toolCalls.length === 0);
@@ -1033,6 +1034,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
   const hasOutputEvents = Boolean(
     message.outputBlocks?.length ||
     message.reasoning ||
+    message.processTrace?.length ||
     message.isSearching ||
     message.searchSources?.length ||
     message.searchImages?.length ||

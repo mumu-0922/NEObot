@@ -186,6 +186,40 @@ interface ProcessStep {
 The exact SSE wrapper reuses the existing `runId`, `conversationId`,
 `messageId`, monotonically increasing `sequence`, and `createdAt` fields.
 
+G19.2 activates these two SSE events:
+
+```text
+event: reasoning.delta
+data: { type, runId, conversationId, messageId, sequence, createdAt, delta }
+
+event: process.step.updated
+data: { type, runId, conversationId, messageId, sequence, createdAt, step }
+```
+
+`message.started` remains the first stream event. Every reasoning, process,
+content, usage, Search, and terminal event increments the same stream-local
+`sequence`. The G19.2 foundation uses stable singleton step IDs of
+`<messageId>:<kind>:1`; G19.3 must extend Tool step identity for multiple calls
+without changing existing IDs.
+
+Terminal assistant metadata is:
+
+```json
+{
+  "reasoning": "sanitized provider-returned text or summary",
+  "processTrace": ["sanitized terminal ProcessStep objects"]
+}
+```
+
+Both fields are omitted for an ordinary successful answer that has only a
+Generation step and no provider reasoning. Failed and cancelled Generation
+steps remain durable. Detail fields are allowlisted and bounded; unknown keys
+are dropped before SSE/persistence. Provider reasoning is bounded to 1 MiB for
+persistence and receives credential-pattern redaction.
+Live reasoning keeps a bounded suffix before emission so a credential pattern
+split across adjacent provider chunks is redacted before any complete secret
+can reach the browser.
+
 Rules:
 
 - Provider-returned reasoning is streamed separately from factual process
@@ -206,6 +240,14 @@ Rules:
   system prompts, internal safety instructions, stack traces, SQL, and database
   topology.
 - Reasoning effort, Search mode, and selected Knowledge are independent inputs.
+
+G19.2 deliberately preserves the existing source-fusion execution order.
+Legacy Knowledge and external Web retrieval still complete before the assistant
+SSE starts, so their first `process.step.updated` snapshot is already terminal.
+Provider-returned reasoning and subsequent Generation transitions are live;
+model-built-in Search is live once its provider stream is established. G19.3
+owns live external Search Tool execution, and G19.6 owns live Knowledge Tool
+execution.
 
 ## 7. Web and Knowledge tools
 

@@ -8678,3 +8678,21 @@ G19.1 changes documentation only. The exact scope, contract, rollback, and next
 gate are recorded in `docs/contracts/chat-tool-loop.md`,
 `docs/tracking/g19-tool-loop-process-trace-plan.md`, and
 `docs/tracking/g19-tool-loop-process-trace-process.md`.
+
+## 2026-07-22 — G19.2 durable process-trace foundation
+
+Go now emits ordered `reasoning.delta` and `process.step.updated` SSE, parses
+provider-returned reasoning summaries/thinking across OpenAI Responses,
+OpenAI-compatible/Gemini, and Anthropic, and persists only sanitized terminal
+reasoning plus process steps. Cross-chunk redaction holds back a bounded suffix
+so split API-Key/Bearer values cannot bypass live SSE sanitization. The frontend
+live-upserts the trace, reloads it from server metadata, auto-expands active
+work, auto-collapses completion, and preserves manual panel state without
+touching chat scroll. Ordinary successful Generation-only answers retain no
+empty panel; failures and cancellations stay durable. Full Go
+vet/test/race/build and frontend format/lint/typecheck/test/build gates passed.
+Legacy pre-answer Knowledge/external Web remains unchanged and is projected as
+terminal steps; G19.3 owns the first live external Search Tool Loop. Exact
+contracts, evidence, and rollback are in
+`docs/tracking/g19-tool-loop-process-trace-process.md` and
+`docs/contracts/chat-tool-loop.md`.

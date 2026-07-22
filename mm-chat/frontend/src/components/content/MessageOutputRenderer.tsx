@@ -9,6 +9,7 @@ import ReasoningBlock from "./ReasoningBlock";
 import SourceBlock from "./SourceBlock";
 import ToolCallBlock from "./ToolCallBlock";
 import MemorySearchBlock from "./MemorySearchBlock";
+import ProcessTracePanel from "./ProcessTracePanel";
 
 interface MessageOutputRendererProps {
   message: Message;
@@ -65,10 +66,18 @@ const MessageOutputRenderer: React.FC<MessageOutputRendererProps> = ({
     );
   }, [displayedContent, isTyping, message]);
 
-  if (blocks.length === 0) return null;
+  const hasProcessTrace = Boolean(message.processTrace?.length);
+
+  if (blocks.length === 0 && !hasProcessTrace) return null;
 
   return (
     <div className={isTyping ? "animate-in fade-in duration-500" : ""}>
+      {hasProcessTrace ? (
+        <ProcessTracePanel
+          steps={message.processTrace ?? []}
+          reasoning={message.reasoning}
+        />
+      ) : null}
       {blocks.map((block, index) => {
         switch (block.type) {
           case "text":
@@ -83,6 +92,7 @@ const MessageOutputRenderer: React.FC<MessageOutputRendererProps> = ({
               />
             );
           case "reasoning":
+            if (hasProcessTrace) return null;
             return (
               <ReasoningBlock
                 key={block.id}

@@ -46,6 +46,7 @@ import {
   switchMessageBranch,
   updateMessageInTree,
 } from "../../lib/chat/messageTree";
+import { upsertProcessStep } from "../../lib/chat/processTrace";
 import {
   createChatCrudService,
   type ChatCrudMessage,
@@ -207,6 +208,8 @@ const toStoreMessageFromServer = (message: ChatCrudMessage): Message => ({
     ? { generationError: message.generationError }
     : {}),
   ...(message.metadata ? { metadata: message.metadata } : {}),
+  ...(message.reasoning ? { reasoning: message.reasoning } : {}),
+  ...(message.processTrace ? { processTrace: message.processTrace } : {}),
   ...(message.knowledge ? { knowledge: message.knowledge } : {}),
   ...(message.outputBlocks
     ? { outputBlocks: message.outputBlocks as MessageOutputBlock[] }
@@ -1403,6 +1406,23 @@ export const useChatStore = create<ChatState>()(
                   content: assistantContent,
                 }));
               },
+              onReasoning: (event) => {
+                const delta =
+                  typeof event.delta === "string" ? event.delta : "";
+                if (!delta) return;
+                updateAssistantDraft(event.messageId, (message) => ({
+                  ...message,
+                  reasoning: `${message.reasoning ?? ""}${delta}`,
+                }));
+              },
+              onProcess: (event) => {
+                const step = event.step;
+                if (!step) return;
+                updateAssistantDraft(event.messageId, (message) => ({
+                  ...message,
+                  processTrace: upsertProcessStep(message.processTrace, step),
+                }));
+              },
               onSearch: (event) => {
                 const result = event.results;
                 if (!result) return;
@@ -1653,6 +1673,25 @@ export const useChatStore = create<ChatState>()(
                 updateAssistantDraft(event.messageId, (message) => ({
                   ...message,
                   content: assistantContent,
+                  parentMessageId: userMessageId,
+                }));
+              },
+              onReasoning: (event) => {
+                const delta =
+                  typeof event.delta === "string" ? event.delta : "";
+                if (!delta) return;
+                updateAssistantDraft(event.messageId, (message) => ({
+                  ...message,
+                  reasoning: `${message.reasoning ?? ""}${delta}`,
+                  parentMessageId: userMessageId,
+                }));
+              },
+              onProcess: (event) => {
+                const step = event.step;
+                if (!step) return;
+                updateAssistantDraft(event.messageId, (message) => ({
+                  ...message,
+                  processTrace: upsertProcessStep(message.processTrace, step),
                   parentMessageId: userMessageId,
                 }));
               },

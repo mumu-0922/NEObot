@@ -1941,17 +1941,23 @@ describe("Phase 11.2A server chat CRUD adapter", () => {
               "event: message.started",
               'data: {"type":"message.started","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":1,"createdAt":"2026-07-08T00:00:00Z","role":"assistant"}',
               "",
+              "event: process.step.updated",
+              'data: {"type":"process.step.updated","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":2,"createdAt":"2026-07-08T00:00:01Z","step":{"id":"m2:generation:1","kind":"generation","status":"running","labelKey":"process.generation","startedAt":"2026-07-08T00:00:01Z"}}',
+              "",
+              "event: reasoning.delta",
+              'data: {"type":"reasoning.delta","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":3,"createdAt":"2026-07-08T00:00:01Z","delta":"checked"}',
+              "",
               "event: message.delta",
-              'data: {"type":"message.delta","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":2,"createdAt":"2026-07-08T00:00:01Z","delta":"hel"}',
+              'data: {"type":"message.delta","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":4,"createdAt":"2026-07-08T00:00:01Z","delta":"hel"}',
               "",
               "event: usage.updated",
-              'data: {"type":"usage.updated","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":3,"usage":{"total_tokens":3}}',
+              'data: {"type":"usage.updated","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":5,"usage":{"total_tokens":3}}',
               "",
               "event: search.results",
-              'data: {"type":"search.results","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":4,"results":{"sources":[{"title":"Fixture","url":"https://example.test/source","content":"fresh","metadata":{"marker":"[W1]"}}],"images":[]}}',
+              'data: {"type":"search.results","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":6,"results":{"sources":[{"title":"Fixture","url":"https://example.test/source","content":"fresh","metadata":{"marker":"[W1]"}}],"images":[]}}',
               "",
               "event: message.completed",
-              'data: {"type":"message.completed","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":5,"message":{"id":"m2","conversationId":"c1","role":"assistant","status":"completed","content":"hello","sequenceNo":2,"attachments":[],"outputBlocks":[],"metadata":{},"createdAt":"2026-07-08T00:00:02Z","updatedAt":"2026-07-08T00:00:02Z"}}',
+              'data: {"type":"message.completed","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":7,"message":{"id":"m2","conversationId":"c1","role":"assistant","status":"completed","content":"hello","sequenceNo":2,"attachments":[],"outputBlocks":[],"metadata":{},"createdAt":"2026-07-08T00:00:02Z","updatedAt":"2026-07-08T00:00:02Z"}}',
               "",
             ].join("\n"),
             {
@@ -1981,6 +1987,9 @@ describe("Phase 11.2A server chat CRUD adapter", () => {
       },
       {
         onStarted: (event) => events.push(event.type),
+        onProcess: (event) =>
+          events.push(`${event.type}:${event.step?.status}`),
+        onReasoning: (event) => events.push(`${event.type}:${event.delta}`),
         onDelta: (event) => events.push(`${event.type}:${event.delta}`),
         onUsage: (event) => events.push(event.type),
         onSearch: (event) =>
@@ -1997,6 +2006,8 @@ describe("Phase 11.2A server chat CRUD adapter", () => {
     });
     expect(events).toEqual([
       "message.started",
+      "process.step.updated:running",
+      "reasoning.delta:checked",
       "message.delta:hel",
       "usage.updated",
       "search.results:[W1]",

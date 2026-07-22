@@ -1142,6 +1142,7 @@ describe("chat store server read path", () => {
     const generationSnapshots: unknown[] = [];
     const draftSnapshots: unknown[] = [];
     const searchSnapshots: unknown[] = [];
+    const processSnapshots: unknown[] = [];
     mocks.streamService.streamAssistantMessage.mockImplementation(
       async (_input: unknown, handlers?: any) => {
         handlers?.onStarted?.({
@@ -1162,6 +1163,28 @@ describe("chat store server read path", () => {
               role: message.role,
               parentMessageId: message.parentMessageId,
             })),
+        );
+        handlers?.onProcess?.({
+          type: "process.step.updated",
+          runId: "run-1",
+          conversationId: "c1",
+          messageId: "m4",
+          step: {
+            id: "m4:generation:1",
+            kind: "generation",
+            status: "running",
+            labelKey: "process.generation",
+          },
+        });
+        handlers?.onReasoning?.({
+          type: "reasoning.delta",
+          runId: "run-1",
+          conversationId: "c1",
+          messageId: "m4",
+          delta: "checked",
+        });
+        processSnapshots.push(
+          useChatStore.getState().serverReadState.activeMessages.at(-1),
         );
         handlers?.onDelta?.({
           type: "message.delta",
@@ -1202,6 +1225,16 @@ describe("chat store server read path", () => {
           message: {
             ...makeMessage("m4", "model"),
             content: "hello",
+            reasoning: "checked",
+            processTrace: [
+              {
+                id: "m4:generation:1",
+                kind: "generation",
+                status: "completed",
+                labelKey: "process.generation",
+                durationMs: 1000,
+              },
+            ],
             outputBlocks: [
               {
                 id: "m4-web-sources",
@@ -1288,6 +1321,18 @@ describe("chat store server read path", () => {
         ],
       }),
     ]);
+    expect(processSnapshots).toEqual([
+      expect.objectContaining({
+        id: "m4",
+        reasoning: "checked",
+        processTrace: [
+          expect.objectContaining({
+            id: "m4:generation:1",
+            status: "running",
+          }),
+        ],
+      }),
+    ]);
     expect(getMessageOutputBlocks(searchSnapshots[0] as Message)).toMatchObject(
       [{ type: "search" }, { type: "text", content: "hello" }],
     );
@@ -1301,6 +1346,10 @@ describe("chat store server read path", () => {
       assistantMessageId: "m4",
       activeServerRunId: null,
       error: null,
+    });
+    expect(state.serverReadState.activeMessages[1]).toMatchObject({
+      reasoning: "checked",
+      processTrace: [{ id: "m4:generation:1", status: "completed" }],
     });
     expect(state.currentSessionId).toBe("local");
     expect(state.activeMessages).toEqual([localMessage]);
@@ -1327,6 +1376,8 @@ describe("chat store server read path", () => {
       expect.objectContaining({
         onStarted: expect.any(Function),
         onDelta: expect.any(Function),
+        onReasoning: expect.any(Function),
+        onProcess: expect.any(Function),
         onSearch: expect.any(Function),
       }),
     );

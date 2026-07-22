@@ -267,6 +267,7 @@ type streamEvent struct {
 	Message        *ChatMessageDTO   `json:"message,omitempty"`
 	Error          *ErrorBody        `json:"error,omitempty"`
 	Results        *websearch.Result `json:"results,omitempty"`
+	Step           *ProcessStep      `json:"step,omitempty"`
 }
 
 type cancelRunResponse struct {
@@ -1153,6 +1154,8 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		fusionDiagnostics.WebResolveOutcome = "resolved"
 	}
 	webSearchResult := websearch.Result{Sources: []websearch.Source{}, Images: []websearch.Image{}}
+	webSearchQuery := ""
+	webProcessStarted := resolveStarted
 	if searchExecution != nil && searchExecution.Mode == websearch.ExecutionExternal {
 		searchQuery := userMessage.Content
 		searchContextMessages := buildProviderConversationMessages(
@@ -1184,6 +1187,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			fusionPlan,
 			autoDecision,
 		)
+		webSearchQuery = searchQuery
 		fusionDiagnostics.WebQueryDerived = derived
 		executeStarted := time.Now()
 		webSearchResult, searchErr = h.webSearchService.Execute(
@@ -1216,6 +1220,11 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		fusionDiagnostics.WebQueryConversationRewriteOutcome = "provider_managed"
 		fusionDiagnostics.WebExecuteOutcome = "provider_stream"
 	}
+	webProcessDurationMillis := int64(0)
+	if fusionPlan.SearchRequested &&
+		(searchExecution == nil || searchExecution.Mode == websearch.ExecutionExternal) {
+		webProcessDurationMillis = sourceFusionDurationMillis(webProcessStarted)
+	}
 
 	runID, err := NewUUID()
 	if err != nil {
@@ -1247,6 +1256,24 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		writeServiceError(w, err)
 		return
 	}
+	trace := newProcessTrace(assistantMessage.ID)
+	addLegacyKnowledgeProcessStep(
+		trace,
+		ragSelection,
+		autoDecision,
+		knowledgeStarted,
+		knowledgeDurationMillis,
+	)
+	addLegacyWebProcessStep(
+		trace,
+		fusionPlan,
+		fusionDiagnostics,
+		searchExecution,
+		webSearchQuery,
+		webSearchResult,
+		webProcessStarted,
+		webProcessDurationMillis,
+	)
 
 	if searchExecution != nil && searchExecution.Mode == websearch.ExecutionExternal {
 		providerPrompt, providerSystemPrompt = buildWebSearchProviderRequest(
@@ -1322,8 +1349,19 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	}
 	var events <-chan ProviderEvent
 	var builtInSearchStarted time.Time
+	reasoning := newProcessReasoningStream()
 	if modelBuiltInSearchProvider != nil {
 		builtInSearchStarted = time.Now()
+		startBuiltInWebProcessStep(trace, searchExecution, builtInSearchStarted)
+	}
+	generationStarted := time.Now()
+	trace.start(
+		ProcessStepKindGeneration,
+		"process.generation",
+		generationStarted,
+		map[string]any{"outcome": "streaming"},
+	)
+	if modelBuiltInSearchProvider != nil {
 		events, err = modelBuiltInSearchProvider.StreamChatWithModelBuiltInSearch(
 			streamCtx,
 			providerRequest,
@@ -1334,6 +1372,13 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				sourceFusionDurationMillis(builtInSearchStarted)
 			fusionDiagnostics.WebExecuteOutcome = "degraded"
 			fusionDiagnostics.DegradationReason = "provider_failed"
+			completeBuiltInWebProcessStep(
+				trace,
+				ProcessStepStatusFailed,
+				time.Now(),
+				webSearchResult,
+				"provider_failed",
+			)
 			fusionPlan = fallbackSourceFusionAuthority(fusionPlan, autoDecision)
 			searchExecution = nil
 			modelBuiltInSearchProvider = nil
@@ -1350,17 +1395,27 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	}
 	if err != nil {
 		if streamCtx.Err() != nil || r.Context().Err() != nil || errors.Is(err, context.Canceled) {
+			finishProcessTrace(trace, "cancelled", time.Now(), webSearchResult)
 			h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 				Status:       "cancelled",
 				OutputBlocks: webSearchOutputBlocks(assistantMessage.ID, webSearchResult),
-				Metadata:     webMessageMetadata(autoDecision, nil),
+				Metadata: withProcessTraceMessageMetadata(
+					webMessageMetadata(autoDecision, nil),
+					reasoning.String(),
+					trace,
+				),
 			})
 			return
 		}
+		finishProcessTrace(trace, "failed", time.Now(), webSearchResult)
 		h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 			Status:       "failed",
 			OutputBlocks: webSearchOutputBlocks(assistantMessage.ID, webSearchResult),
-			Metadata:     webMessageMetadata(autoDecision, map[string]any{"errorCode": "PROVIDER_ERROR"}),
+			Metadata: withProcessTraceMessageMetadata(
+				webMessageMetadata(autoDecision, map[string]any{"errorCode": "PROVIDER_ERROR"}),
+				reasoning.String(),
+				trace,
+			),
 		})
 		writeError(w, http.StatusBadGateway, "PROVIDER_ERROR", "provider stream failed")
 		return
@@ -1388,6 +1443,48 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	flusher.Flush()
+	emitProcessStep := func(step ProcessStep) error {
+		sequence++
+		stepCopy := step
+		if err := writeSSEEvent(w, "process.step.updated", streamEvent{
+			Type:           "process.step.updated",
+			RunID:          runID,
+			ConversationID: conversationID,
+			MessageID:      assistantMessage.ID,
+			Sequence:       sequence,
+			CreatedAt:      formatTime(time.Now()),
+			Step:           &stepCopy,
+		}); err != nil {
+			return err
+		}
+		flusher.Flush()
+		return nil
+	}
+	emitReasoningDelta := func(delta string) error {
+		if delta == "" {
+			return nil
+		}
+		sequence++
+		if err := writeSSEEvent(w, "reasoning.delta", streamEvent{
+			Type:           "reasoning.delta",
+			RunID:          runID,
+			ConversationID: conversationID,
+			MessageID:      assistantMessage.ID,
+			Sequence:       sequence,
+			CreatedAt:      formatTime(time.Now()),
+			Delta:          delta,
+		}); err != nil {
+			return err
+		}
+		flusher.Flush()
+		return nil
+	}
+	for _, step := range trace.snapshot() {
+		if err := emitProcessStep(step); err != nil {
+			h.cancelAssistantAfterWriteError(conversationID, assistantMessage.ID, runID, "")
+			return
+		}
+	}
 	if searchExecution != nil && searchExecution.Mode == websearch.ExecutionExternal &&
 		(len(webSearchResult.Sources) > 0 || len(webSearchResult.Images) > 0) {
 		sequence++
@@ -1418,6 +1515,15 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				fusionPlan = fallbackSourceFusionAuthority(fusionPlan, autoDecision)
 			}
 			if streamCtx.Err() != nil {
+				_ = emitReasoningDelta(reasoning.flush())
+				for _, step := range finishProcessTrace(
+					trace,
+					"cancelled",
+					time.Now(),
+					webSearchResult,
+				) {
+					_ = emitProcessStep(step)
+				}
 				sequence++
 				_ = writeSSEEvent(w, "message.cancelled", streamEvent{
 					Type:           "message.cancelled",
@@ -1431,10 +1537,23 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 					Status:       "cancelled",
 					Content:      content.String(),
 					OutputBlocks: webSearchOutputBlocks(assistantMessage.ID, webSearchResult),
-					Metadata:     webMessageMetadata(autoDecision, nil),
+					Metadata: withProcessTraceMessageMetadata(
+						webMessageMetadata(autoDecision, nil),
+						reasoning.String(),
+						trace,
+					),
 				})
 				flusher.Flush()
 				return
+			}
+			_ = emitReasoningDelta(reasoning.flush())
+			for _, step := range finishProcessTrace(
+				trace,
+				"failed",
+				time.Now(),
+				webSearchResult,
+			) {
+				_ = emitProcessStep(step)
 			}
 			sequence++
 			_ = writeSSEEvent(w, "message.error", streamEvent{
@@ -1450,14 +1569,59 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				Status:       "failed",
 				Content:      content.String(),
 				OutputBlocks: webSearchOutputBlocks(assistantMessage.ID, webSearchResult),
-				Metadata:     webMessageMetadata(autoDecision, map[string]any{"errorCode": "PROVIDER_ERROR"}),
+				Metadata: withProcessTraceMessageMetadata(
+					webMessageMetadata(autoDecision, map[string]any{"errorCode": "PROVIDER_ERROR"}),
+					reasoning.String(),
+					trace,
+				),
 			})
 			flusher.Flush()
 			return
 		}
 
 		switch providerEvent.Type {
+		case ProviderEventReasoningDelta:
+			if providerEvent.ReasoningDelta == "" {
+				continue
+			}
+			if _, exists := trace.get(ProcessStepKindReasoning); !exists {
+				step := trace.start(
+					ProcessStepKindReasoning,
+					"process.reasoning",
+					time.Now(),
+					map[string]any{"outcome": "streaming"},
+				)
+				if err := emitProcessStep(step); err != nil {
+					h.cancelAssistantAfterWriteError(
+						conversationID,
+						assistantMessage.ID,
+						runID,
+						content.String(),
+					)
+					return
+				}
+			}
+			if err := emitReasoningDelta(
+				reasoning.append(providerEvent.ReasoningDelta),
+			); err != nil {
+				h.cancelAssistantAfterWriteError(
+					conversationID,
+					assistantMessage.ID,
+					runID,
+					content.String(),
+				)
+				return
+			}
 		case ProviderEventDelta:
+			if err := emitReasoningDelta(reasoning.flush()); err != nil {
+				h.cancelAssistantAfterWriteError(
+					conversationID,
+					assistantMessage.ID,
+					runID,
+					content.String(),
+				)
+				return
+			}
 			content.WriteString(providerEvent.Delta)
 			sequence++
 			if err := writeSSEEvent(w, "message.delta", streamEvent{
@@ -1512,11 +1676,37 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				return
 			}
 			flusher.Flush()
+			if step, ok := completeBuiltInWebProcessStep(
+				trace,
+				ProcessStepStatusCompleted,
+				time.Now(),
+				webSearchResult,
+				"",
+			); ok {
+				if err := emitProcessStep(step); err != nil {
+					h.cancelAssistantAfterWriteError(
+						conversationID,
+						assistantMessage.ID,
+						runID,
+						content.String(),
+					)
+					return
+				}
+			}
 		}
 	}
 
 	if streamCtx.Err() != nil || h.isRunCancelled(context.Background(), runID) {
 		streamCancel()
+		_ = emitReasoningDelta(reasoning.flush())
+		for _, step := range finishProcessTrace(
+			trace,
+			"cancelled",
+			time.Now(),
+			webSearchResult,
+		) {
+			_ = emitProcessStep(step)
+		}
 		sequence++
 		_ = writeSSEEvent(w, "message.cancelled", streamEvent{
 			Type:           "message.cancelled",
@@ -1530,7 +1720,11 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			Status:       "cancelled",
 			Content:      content.String(),
 			OutputBlocks: webSearchOutputBlocks(assistantMessage.ID, webSearchResult),
-			Metadata:     webMessageMetadata(autoDecision, nil),
+			Metadata: withProcessTraceMessageMetadata(
+				webMessageMetadata(autoDecision, nil),
+				reasoning.String(),
+				trace,
+			),
 		})
 		flusher.Flush()
 		return
@@ -1574,6 +1768,31 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		completedDecision,
 		webSearchResult,
 	)
+	if err := emitReasoningDelta(reasoning.flush()); err != nil {
+		h.cancelAssistantAfterWriteError(
+			conversationID,
+			assistantMessage.ID,
+			runID,
+			content.String(),
+		)
+		return
+	}
+	for _, step := range finishProcessTrace(
+		trace,
+		"completed",
+		time.Now(),
+		webSearchResult,
+	) {
+		if err := emitProcessStep(step); err != nil {
+			h.cancelAssistantAfterWriteError(
+				conversationID,
+				assistantMessage.ID,
+				runID,
+				content.String(),
+			)
+			return
+		}
+	}
 	assistantMessage, err = h.finalizeAssistantMessage(
 		context.Background(),
 		conversationID,
@@ -1582,7 +1801,11 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			Status:       "completed",
 			Content:      completedContent,
 			OutputBlocks: webSearchOutputBlocks(assistantMessage.ID, webSearchResult),
-			Metadata:     webMessageMetadata(completedDecision, nil),
+			Metadata: withProcessTraceMessageMetadata(
+				webMessageMetadata(completedDecision, nil),
+				reasoning.String(),
+				trace,
+			),
 		},
 	)
 	if err != nil {

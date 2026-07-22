@@ -5,6 +5,7 @@ import type {
   PluginExecutionPayload,
   PluginExecutionRequestPayload,
 } from "../../../lib/plugin/execution";
+import type { ProcessStep } from "../../../lib/chat/types";
 import type { DefaultModels, Plugin } from "../../../types";
 
 export type ApiMode = "local" | "server";
@@ -276,6 +277,8 @@ export interface ServerPlannedToolCall {
 export interface ChatStreamHandlers {
   onStarted?: (event: ServerStreamEvent) => void;
   onDelta?: (event: ServerStreamEvent) => void;
+  onReasoning?: (event: ServerStreamEvent) => void;
+  onProcess?: (event: ServerStreamEvent) => void;
   onUsage?: (event: ServerStreamEvent) => void;
   onSearch?: (event: ServerStreamEvent) => void;
   onCompleted?: (event: ServerStreamEvent) => void;
@@ -1108,6 +1111,8 @@ export interface NeoChatApiClient {
 export type ServerStreamEventType =
   | "message.started"
   | "message.delta"
+  | "reasoning.delta"
+  | "process.step.updated"
   | "usage.updated"
   | "search.results"
   | "message.completed"
@@ -1124,6 +1129,7 @@ export interface ServerStreamEvent {
   createdAt?: string;
   role?: "assistant";
   delta?: string;
+  step?: ProcessStep;
   usage?: unknown;
   results?: ServerSearchResult;
   message?: ChatMessageDTO;

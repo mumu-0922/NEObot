@@ -1,8 +1,9 @@
 # Planned chat Tool Loop contracts
 
-Status: planned by G19.1. Apply each section only after its owning G19 group is
-promoted; until then the existing `chat-source-fusion.md` runtime contract
-remains authoritative.
+Status: G19.2 process-trace foundation promoted on 2026-07-22; Tool execution,
+three-state Search, and Knowledge Tool sections remain planned. Apply each
+section only after its owning G19 group is promoted. Until G19.3/G19.6, the
+existing `chat-source-fusion.md` execution contract remains authoritative.
 
 ## 1. Scope / Trigger
 
@@ -32,6 +33,18 @@ step ID, `reasoning|knowledge|web|tool|generation` kind,
 `pending|running|awaiting_approval|completed|failed|skipped|cancelled` status,
 timings, label key, and sanitized details.
 
+Active G19.2 SSE signatures:
+
+```text
+reasoning.delta = wrapper + delta:string
+process.step.updated = wrapper + step:ProcessStep
+wrapper = runId + conversationId + messageId + sequence + createdAt
+```
+
+The same monotonically increasing `sequence` covers all chat SSE event types.
+G19.2 singleton IDs are `<messageId>:<kind>:1`; later Tool work must add stable
+per-call identity rather than reusing one Tool step for multiple calls.
+
 ## 3. Contracts
 
 - `off` means zero Search planning, resolver, built-in, and external I/O.
@@ -53,6 +66,19 @@ timings, label key, and sanitized details.
   approval policy before registration.
 - Only current-turn backend-issued markers used by the final reconciled answer
   become Citations; unused results stay in the process trace.
+- G19.2 persists sanitized `reasoning` and `processTrace` in terminal assistant
+  metadata. A successful Generation-only answer omits both fields; failed or
+  cancelled Generation remains durable.
+- Process detail uses an allowlist and bounded values. Unknown fields, raw
+  payloads, source bodies, headers, prompts, SQL, and internal errors are
+  dropped before SSE and persistence.
+- Live reasoning redaction must retain a bounded un-emitted suffix across
+  provider chunks. Sanitizing each chunk independently is forbidden because a
+  split `apiKey=`/value or `Bearer` token can bypass the regex boundary.
+- Until G19.3/G19.6, legacy external Web and Knowledge work finishes before SSE
+  creation and is projected as a terminal step. Do not describe it as live Tool
+  execution. Provider reasoning/Generation transitions are streamed after the
+  provider channel is established.
 
 ## 4. Validation & Error Matrix
 
@@ -67,6 +93,8 @@ timings, label key, and sanitized details.
 | Approval rejected                | do not execute; continue or terminate truthfully |
 | Cancel during Provider/Tool      | cancel both; one terminal cancelled event        |
 | Provider exposes no reasoning    | process only; no fabricated reasoning            |
+| Successful Generation only       | omit empty durable process panel                  |
+| Unknown process detail key       | drop before SSE/persistence                       |
 
 ## 5. Good / Base / Bad Cases
 
@@ -92,6 +120,8 @@ timings, label key, and sanitized details.
 4. Capability mismatch and compatibility-planner tests with no hidden model.
 5. Knowledge hit/miss/deletion plus mixed Knowledge/Web marker truth.
 6. Real selected provider/Search smoke with temporary state deleted.
+7. G19.2 reload mapping, manual expand/collapse authority, and no-empty-panel
+   fixtures across backend and frontend.
 
 ## 7. Wrong vs Correct
 

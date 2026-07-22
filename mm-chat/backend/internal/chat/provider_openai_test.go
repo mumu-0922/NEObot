@@ -48,6 +48,7 @@ func TestOpenAIProviderStreamsResponsesWebSearch(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"type\":\"response.reasoning_summary_text.delta\",\"delta\":\"verified\"}\n\n"))
 		_, _ = w.Write([]byte("data: {\"type\":\"response.output_text.delta\",\"delta\":\"answer \"}\n\n"))
 		_, _ = w.Write([]byte("data: {\"type\":\"response.output_text.annotation.added\",\"annotation\":{\"type\":\"url_citation\",\"title\":\"Alpha\",\"url\":\"https://alpha.example/result#fragment\"}}\n\n"))
 		_, _ = w.Write([]byte("data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"web_search_call\",\"action\":{\"sources\":[{\"title\":\"Alpha duplicate\",\"url\":\"https://alpha.example/result\",\"snippet\":\"duplicate\"},{\"title\":\"Beta\",\"url\":\"https://beta.example/result\",\"snippet\":\"beta source\"}]}}}\n\n"))
@@ -78,6 +79,7 @@ func TestOpenAIProviderStreamsResponsesWebSearch(t *testing.T) {
 	}
 
 	var content strings.Builder
+	var reasoning strings.Builder
 	var sources []websearch.Source
 	var usage *TokenUsage
 	for event := range events {
@@ -87,6 +89,8 @@ func TestOpenAIProviderStreamsResponsesWebSearch(t *testing.T) {
 		switch event.Type {
 		case ProviderEventDelta:
 			content.WriteString(event.Delta)
+		case ProviderEventReasoningDelta:
+			reasoning.WriteString(event.ReasoningDelta)
 		case ProviderEventSearch:
 			if event.Search == nil {
 				t.Fatal("search event result is nil")
@@ -98,6 +102,9 @@ func TestOpenAIProviderStreamsResponsesWebSearch(t *testing.T) {
 	}
 	if content.String() != "answer complete" {
 		t.Fatalf("content = %q", content.String())
+	}
+	if reasoning.String() != "verified" {
+		t.Fatalf("reasoning = %q, want verified", reasoning.String())
 	}
 	if len(sources) != 2 || sources[0].URL != "https://alpha.example/result" || sources[1].Title != "Beta" {
 		t.Fatalf("sources = %#v", sources)

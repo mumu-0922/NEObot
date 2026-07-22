@@ -1546,7 +1546,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
     - [x] G19.1 Kelivo runtime audit, seventeen-question owner lock,
           executable contract, sliced plan, process record, rollback order,
           and no production behavior change.
-    - [ ] G19.2 Durable provider-reasoning/process-step SSE, persistence,
+    - [x] G19.2 Durable provider-reasoning/process-step SSE, persistence,
           reload, and live-expanded/completed-collapsed process panel.
     - [ ] G19.3 OpenAI-compatible/Gemini external `search_web` Tool Loop,
           explicit-search force, Auto no-search, and compatibility planner.

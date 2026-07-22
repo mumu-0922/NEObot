@@ -57,6 +57,7 @@ func TestAnthropicProviderStreamsHistoryImageThinkingAndUsage(t *testing.T) {
 		t.Fatalf("StreamChat() error = %v", err)
 	}
 	var content strings.Builder
+	var reasoning strings.Builder
 	var usage *TokenUsage
 	for event := range events {
 		if event.Error != nil {
@@ -65,12 +66,17 @@ func TestAnthropicProviderStreamsHistoryImageThinkingAndUsage(t *testing.T) {
 		switch event.Type {
 		case ProviderEventDelta:
 			content.WriteString(event.Delta)
+		case ProviderEventReasoningDelta:
+			reasoning.WriteString(event.ReasoningDelta)
 		case ProviderEventUsage:
 			usage = event.Usage
 		}
 	}
 	if content.String() != "Claude" {
 		t.Fatalf("content = %q", content.String())
+	}
+	if reasoning.String() != "hidden" {
+		t.Fatalf("reasoning = %q, want hidden", reasoning.String())
 	}
 	if usage == nil || usage.PromptTokens != 11 || usage.CompletionTokens != 3 || usage.TotalTokens != 14 {
 		t.Fatalf("usage = %#v", usage)

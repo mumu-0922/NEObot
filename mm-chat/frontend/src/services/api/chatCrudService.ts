@@ -23,6 +23,11 @@ import {
 } from "../../lib/chat/reasoning";
 import type { ReasoningEffort } from "../../lib/chat/types";
 import { IMAGE_CONTENT_POLICY_VIOLATION_CODE } from "../../lib/chat/types";
+import type { ProcessStep } from "../../lib/chat/types";
+import {
+  processTraceFromMessageMetadata,
+  reasoningFromMessageMetadata,
+} from "../../lib/chat/processTrace";
 import { SERVER_DEFAULT_PROVIDER_ID } from "../../lib/defaultConfig/shared";
 import {
   normalizeMessageKnowledgeMetadata,
@@ -74,6 +79,8 @@ export interface ChatCrudMessage {
   content: string;
   timestamp: number;
   metadata?: Record<string, unknown>;
+  reasoning?: string;
+  processTrace?: ProcessStep[];
   attachments?: ChatCrudAttachment[];
   model?: string;
   generationError?: {
@@ -247,6 +254,8 @@ export function mapChatMessageDtoToMessage(
     knowledge,
   );
   const generationError = normalizeServerGenerationError(message);
+  const reasoning = reasoningFromMessageMetadata(message.metadata);
+  const processTrace = processTraceFromMessageMetadata(message.metadata);
 
   return {
     id: message.id,
@@ -254,6 +263,8 @@ export function mapChatMessageDtoToMessage(
     content,
     timestamp,
     ...(message.metadata ? { metadata: message.metadata } : {}),
+    ...(reasoning ? { reasoning } : {}),
+    ...(processTrace ? { processTrace } : {}),
     ...(knowledge ? { knowledge } : {}),
     ...(role === "model" && model ? { model } : {}),
     ...(generationError ? { generationError } : {}),

@@ -792,6 +792,76 @@ func TestHandlerStreamsMockAssistantAndPersistsMessages(t *testing.T) {
 	if assistant.ModelProvider != "mock" || assistant.ModelID != "mock-chat" {
 		t.Fatalf("assistant model = %s/%s, want mock/mock-chat", assistant.ModelProvider, assistant.ModelID)
 	}
+	if _, ok := assistant.Metadata[processTraceMetadataKey]; ok {
+		t.Fatalf("ordinary completed assistant persisted an empty process trace: %#v", assistant.Metadata)
+	}
+}
+
+func TestHandlerStreamsAndReloadsSanitizedReasoningProcessTrace(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "Reasoning", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "solve this"),
+	)
+	handler := NewHandler(NewService(repo), WithProvider(reasoningFixtureProvider{}))
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"reasoning"},"config":{"useReasoning":true},"idempotencyKey":"stream-reasoning-trace"}`,
+	)
+	assertStreamStatus(t, rec, http.StatusOK)
+	body := rec.Body.String()
+	for _, want := range []string{
+		"event: process.step.updated",
+		`"kind":"generation","status":"running"`,
+		`"kind":"reasoning","status":"running"`,
+		"event: reasoning.delta",
+		`"kind":"reasoning","status":"completed"`,
+		`"kind":"generation","status":"completed"`,
+		"event: message.completed",
+		"[REDACTED]",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("reasoning stream missing %q; body=%s", want, body)
+		}
+	}
+	if strings.Contains(body, "super-secret-value") {
+		t.Fatalf("reasoning stream leaked fixture secret; body=%s", body)
+	}
+	if strings.Index(body, "event: reasoning.delta") > strings.Index(body, "event: message.delta") {
+		t.Fatalf("reasoning delta was not ordered before answer content; body=%s", body)
+	}
+
+	assistant := repo.messages[testConversationID][1]
+	reasoning, ok := assistant.Metadata[reasoningMetadataKey].(string)
+	if !ok || !strings.Contains(reasoning, "[REDACTED]") || strings.Contains(reasoning, "super-secret-value") {
+		t.Fatalf("persisted reasoning was not sanitized: %#v", assistant.Metadata)
+	}
+	steps, ok := assistant.Metadata[processTraceMetadataKey].([]ProcessStep)
+	if !ok || len(steps) != 2 {
+		t.Fatalf("persisted process trace = %#v, want generation + reasoning", assistant.Metadata[processTraceMetadataKey])
+	}
+	for _, step := range steps {
+		if step.Status != ProcessStepStatusCompleted || step.CompletedAt == "" {
+			t.Fatalf("persisted non-terminal process step: %#v", step)
+		}
+	}
+
+	reload := performRequest(
+		handler,
+		http.MethodGet,
+		conversationsPath+"/"+testConversationID+"/messages",
+		"",
+	)
+	assertStatus(t, reload, http.StatusOK)
+	if reloadedBody := reload.Body.String(); !strings.Contains(reloadedBody, `"processTrace"`) ||
+		!strings.Contains(reloadedBody, `"reasoning"`) ||
+		strings.Contains(reloadedBody, "super-secret-value") {
+		t.Fatalf("reloaded process trace is invalid: %s", reloadedBody)
+	}
 }
 
 func TestHandlerRoutesImageModelsThroughImageGeneratorAndPersistsAttachment(t *testing.T) {
@@ -1244,7 +1314,9 @@ func TestHandlerExecutesExternalSearchOnceAndPersistsWebArtifacts(t *testing.T) 
 		t.Fatalf("provider prompt/system = %q / %q", provider.input.Prompt, provider.input.SystemPrompt)
 	}
 	if !strings.Contains(recorder.Body.String(), "event: search.results") ||
-		!strings.Contains(recorder.Body.String(), `"marker":"[W1]"`) {
+		!strings.Contains(recorder.Body.String(), `"marker":"[W1]"`) ||
+		!strings.Contains(recorder.Body.String(), `"kind":"web","status":"completed"`) ||
+		!strings.Contains(recorder.Body.String(), `"query":"latest external fixture"`) {
 		t.Fatalf("stream body = %s", recorder.Body.String())
 	}
 	messages := repo.messages[testConversationID]
@@ -1255,6 +1327,10 @@ func TestHandlerExecutesExternalSearchOnceAndPersistsWebArtifacts(t *testing.T) 
 	webMetadata, ok := messages[1].Metadata["web"].(map[string]any)
 	if !ok || webMetadata["provider"] != "tavily" || webMetadata["citationCount"] != 1 {
 		t.Fatalf("web metadata = %#v", messages[1].Metadata["web"])
+	}
+	processSteps, ok := messages[1].Metadata[processTraceMetadataKey].([]ProcessStep)
+	if !ok || len(processSteps) != 2 || processSteps[0].Kind != ProcessStepKindWeb {
+		t.Fatalf("external process trace = %#v", messages[1].Metadata[processTraceMetadataKey])
 	}
 }
 
@@ -1419,6 +1495,14 @@ func TestHandlerAutoRAGFallsBackSilentlyWithoutEvidence(t *testing.T) {
 		t.Fatalf("messages = %#v", messages)
 	}
 	assertAutoRAGMetadata(t, messages[1], "no_evidence", 0)
+	if !strings.Contains(rec.Body.String(), `"kind":"knowledge","status":"completed"`) ||
+		!strings.Contains(rec.Body.String(), `"hitCount":0`) {
+		t.Fatalf("knowledge miss process trace missing from stream: %s", rec.Body.String())
+	}
+	processSteps, ok := messages[1].Metadata[processTraceMetadataKey].([]ProcessStep)
+	if !ok || len(processSteps) != 2 || processSteps[0].Kind != ProcessStepKindKnowledge {
+		t.Fatalf("knowledge miss process trace = %#v", messages[1].Metadata[processTraceMetadataKey])
+	}
 }
 
 func TestHandlerAutoRAGFallsBackWithoutCitationWhenRerankerFails(t *testing.T) {
@@ -2443,6 +2527,11 @@ func TestHandlerCancelRunStopsActiveStream(t *testing.T) {
 	if messages[1].Metadata["cancelledBy"] != "api" {
 		t.Fatalf("cancel metadata was overwritten: %#v", messages[1].Metadata)
 	}
+	steps, ok := messages[1].Metadata[processTraceMetadataKey].([]ProcessStep)
+	if !ok || len(steps) != 1 || steps[0].Kind != ProcessStepKindGeneration ||
+		steps[0].Status != ProcessStepStatusCancelled {
+		t.Fatalf("cancelled process trace = %#v", messages[1].Metadata[processTraceMetadataKey])
+	}
 }
 
 func TestHandlerStopsActiveStreamFromCancellationStore(t *testing.T) {
@@ -3437,6 +3526,33 @@ func (p emptyProvider) StreamChat(context.Context, ProviderRequest) (<-chan Prov
 
 type capturingProvider struct {
 	input ProviderRequest
+}
+
+type reasoningFixtureProvider struct{}
+
+func (reasoningFixtureProvider) StreamChat(
+	ctx context.Context,
+	_ ProviderRequest,
+) (<-chan ProviderEvent, error) {
+	events := make(chan ProviderEvent, 4)
+	for _, event := range []ProviderEvent{
+		{
+			Type:           ProviderEventReasoningDelta,
+			ReasoningDelta: "Checking apiKey=super-",
+		},
+		{Type: ProviderEventReasoningDelta, ReasoningDelta: "secret-value before answering. "},
+		{Type: ProviderEventReasoningDelta, ReasoningDelta: "Evidence is sufficient."},
+		{Type: ProviderEventDelta, Delta: "Final answer."},
+	} {
+		select {
+		case <-ctx.Done():
+			close(events)
+			return events, nil
+		case events <- event:
+		}
+	}
+	close(events)
+	return events, nil
 }
 
 type fakeWebSearchResolver struct {

@@ -295,6 +295,12 @@ func dispatchOpenAIResponsesData(
 		}) {
 			return false, false
 		}
+	case "response.reasoning_summary_text.delta":
+		if event.Delta != "" && !sendProviderEvent(ctx, events, ProviderEvent{
+			Type: ProviderEventReasoningDelta, ReasoningDelta: event.Delta,
+		}) {
+			return false, false
+		}
 	case "response.output_text.annotation.added":
 		if !sendOpenAIResponseSources(ctx, events, sources, []any{event.Annotation}, "") {
 			return false, false

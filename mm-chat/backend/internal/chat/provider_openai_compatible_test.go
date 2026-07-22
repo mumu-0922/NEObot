@@ -47,6 +47,8 @@ func TestOpenAICompatibleProviderStreamsDeltasAndUsage(t *testing.T) {
 
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"checked\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"reasoning\":{\"opaque\":true}}}]}\n\n"))
 		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"pong\"}}]}\n\n"))
 		_, _ = w.Write([]byte("data: {\"choices\":[],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":3,\"total_tokens\":5}}\n\n"))
 		_, _ = w.Write([]byte("data: [DONE]\n\n"))
@@ -74,6 +76,7 @@ func TestOpenAICompatibleProviderStreamsDeltasAndUsage(t *testing.T) {
 	}
 
 	var deltas []string
+	var reasoning []string
 	var usage *TokenUsage
 	for event := range events {
 		if event.Error != nil {
@@ -82,6 +85,8 @@ func TestOpenAICompatibleProviderStreamsDeltasAndUsage(t *testing.T) {
 		switch event.Type {
 		case ProviderEventDelta:
 			deltas = append(deltas, event.Delta)
+		case ProviderEventReasoningDelta:
+			reasoning = append(reasoning, event.ReasoningDelta)
 		case ProviderEventUsage:
 			usage = event.Usage
 		}
@@ -89,6 +94,9 @@ func TestOpenAICompatibleProviderStreamsDeltasAndUsage(t *testing.T) {
 
 	if strings.Join(deltas, "") != "pong" {
 		t.Fatalf("deltas = %q, want pong", strings.Join(deltas, ""))
+	}
+	if strings.Join(reasoning, "") != "checked" {
+		t.Fatalf("reasoning = %q, want checked", strings.Join(reasoning, ""))
 	}
 	if usage == nil || usage.PromptTokens != 2 || usage.CompletionTokens != 3 || usage.TotalTokens != 5 {
 		t.Fatalf("usage = %#v", usage)

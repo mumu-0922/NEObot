@@ -102,6 +102,8 @@ Status: complete (2026-07-22).
 
 ## G19.2 Durable process-trace foundation
 
+Status: complete (2026-07-22).
+
 - Define provider-neutral reasoning and process-step event types with stable
   sequence ordering and terminal semantics.
 - Persist a sanitized trace and rendered provider reasoning on the assistant
@@ -113,6 +115,12 @@ Status: complete (2026-07-22).
 Promotion gate: fixture streams prove ordered live steps, reasoning separation,
 terminal persistence/reload, cancellation, redaction, and manual expand/scroll
 behavior through backend, frontend, and production builds.
+
+Passed boundary: G19.2 emits live Provider reasoning and generation transitions,
+hydrates the terminal trace after reload, and projects the unchanged legacy
+Knowledge/external-Web stages as completed steps after `message.started`. It
+does not claim that those pre-answer legacy stages are live. G19.3 moves
+external Search into the streamed Tool Loop; G19.6 does the same for Knowledge.
 
 ## G19.3 OpenAI-compatible/Gemini external Tool Loop
 

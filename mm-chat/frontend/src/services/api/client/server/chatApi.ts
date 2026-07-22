@@ -25,6 +25,7 @@ import type {
   UpdateMessageInput,
 } from "../types";
 import type { HttpClient } from "./httpClient";
+import { normalizeProcessStep } from "@/lib/chat/processTrace";
 
 const conversationsPath = "/v1/chat/conversations";
 const generateTextPath = "/v1/chat/generate";
@@ -476,6 +477,26 @@ function dispatchStreamEvent(
     case "message.delta":
       handlers?.onDelta?.(event);
       return null;
+    case "reasoning.delta":
+      if (typeof event.delta !== "string") {
+        throw new ApiClientError(
+          "INVALID_SERVER_RESPONSE",
+          "Server returned an invalid reasoning delta.",
+        );
+      }
+      handlers?.onReasoning?.(event);
+      return null;
+    case "process.step.updated": {
+      const step = normalizeProcessStep(event.step);
+      if (!step) {
+        throw new ApiClientError(
+          "INVALID_SERVER_RESPONSE",
+          "Server returned an invalid process step.",
+        );
+      }
+      handlers?.onProcess?.({ ...event, step });
+      return null;
+    }
     case "usage.updated":
       handlers?.onUsage?.(event);
       return null;
