@@ -138,6 +138,7 @@ sed \
   -e 's|ghcr.io/mumu-0922/neobot-mm-chat-frontend@sha256:replace-with-64-lowercase-hex|ghcr.io/mumu-0922/neobot-mm-chat-frontend@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc|' \
   -e 's|ghcr.io/mumu-0922/neobot-mm-chat@sha256:replace-with-64-lowercase-hex|ghcr.io/mumu-0922/neobot-mm-chat@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|' \
   -e 's|ghcr.io/mumu-0922/neobot-mm-chat-rag@sha256:replace-with-64-lowercase-hex|ghcr.io/mumu-0922/neobot-mm-chat-rag@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|' \
+  -e 's|ghcr.io/mumu-0922/neobot-mm-chat-postgres@sha256:replace-with-64-lowercase-hex|ghcr.io/mumu-0922/neobot-mm-chat-postgres@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd|' \
   -e 's|replace-with-release-id|git-deadbeef|' \
   -e "s|replace-with-host-uid|$(id -u)|" \
   -e "s|replace-with-host-gid|$(id -g)|" \
@@ -370,6 +371,25 @@ for invalid_frontend_image in \
   assert_rejected "${image_env}" "FRONTEND_IMAGE must use a full immutable sha256 registry digest"
 done
 
+for invalid_postgres_image in \
+  'mm-chat/postgres:17' \
+  'postgres@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd' \
+  'ghcr.io/mumu-0922/neobot-mm-chat-postgres@sha256:abc'; do
+  image_env="${temp_dir}/postgres-image-$RANDOM.env"
+  sed "s|^POSTGRES_IMAGE=.*|POSTGRES_IMAGE=${invalid_postgres_image}|" \
+    "${valid}" >"${image_env}"
+  chmod 600 "${image_env}"
+  assert_rejected \
+    "${image_env}" \
+    "POSTGRES_IMAGE must use a full immutable sha256 registry digest"
+done
+
+old_postgres_data="${temp_dir}/old-postgres-data.env"
+sed 's|^POSTGRES_DATA_DIR=.*|POSTGRES_DATA_DIR=./data/postgres|' \
+  "${valid}" >"${old_postgres_data}"
+chmod 600 "${old_postgres_data}"
+assert_rejected "${old_postgres_data}" "POSTGRES_DATA_DIR must be ./data/postgres17"
+
 same_worker_principal="${temp_dir}/same-worker-principal.env"
 sed 's|postgres://rag_worker:test-rag-worker-password@|postgres://neo_chat_api:test-rag-worker-password@|' \
   "${valid}" >"${same_worker_principal}"
@@ -480,6 +500,28 @@ import sys
 config = json.loads(sys.argv[1])
 runtime_user = sys.argv[2]
 services = config["services"]
+want_postgres_image = (
+    "ghcr.io/mumu-0922/neobot-mm-chat-postgres@sha256:"
+    + "d" * 64
+)
+postgres = services["postgres"]
+assert postgres["image"] == want_postgres_image
+assert "build" not in postgres
+assert len(postgres["volumes"]) == 1
+assert postgres["volumes"][0]["type"] == "bind"
+assert postgres["volumes"][0]["source"].endswith("/mm-chat/data/postgres17")
+assert postgres["volumes"][0]["target"] == "/var/lib/postgresql/data"
+assert int(postgres["mem_limit"]) == 1024 * 1024 * 1024
+assert float(postgres["cpus"]) == 2
+postgres_command = " ".join(postgres["command"])
+for setting in (
+    "shared_preload_libraries=pg_textsearch",
+    "shared_buffers=128MB",
+    "work_mem=4MB",
+    "maintenance_work_mem=64MB",
+    "max_connections=30",
+):
+    assert setting in postgres_command
 want_frontend_image = (
     "ghcr.io/mumu-0922/neobot-mm-chat-frontend@sha256:"
     + "c" * 64
@@ -646,7 +688,7 @@ import sys
 
 config = json.loads(sys.argv[1])
 services = config["services"]
-for name in ("frontend", "backend", "migrate", "admin", "rag-worker", "rag-replay"):
+for name in ("postgres", "frontend", "backend", "migrate", "admin", "rag-worker", "rag-replay"):
     assert "build" in services[name], name
 assert "MIGRATION_DATABASE_URL" not in services["backend"]["environment"]
 assert "DATABASE_URL" not in services["migrate"]["environment"]
@@ -658,6 +700,13 @@ assert frontend["build"]["context"].endswith("/mm-chat/frontend")
 assert frontend["build"]["args"]["NEXT_PUBLIC_API_MODE"] == "server"
 assert frontend["build"]["args"]["NEXT_PUBLIC_API_BASE_URL"] == "/mm-api"
 assert frontend["profiles"] == ["app"]
+postgres = services["postgres"]
+assert postgres["image"] == "ghcr.io/mumu-0922/neobot-mm-chat-postgres@sha256:replace-with-64-lowercase-hex"
+assert postgres["build"]["context"].endswith("/mm-chat/postgres")
+assert postgres["volumes"][0]["source"].endswith("/mm-chat/data/postgres17")
+assert postgres["volumes"][0]["target"] == "/var/lib/postgresql/data"
+assert int(postgres["mem_limit"]) == 1024 * 1024 * 1024
+assert float(postgres["cpus"]) == 2
 assert services["backend"]["user"] == "replace-with-host-uid:replace-with-host-gid"
 assert services["admin"]["user"] == "replace-with-host-uid:replace-with-host-gid"
 rag = services["rag-worker"]

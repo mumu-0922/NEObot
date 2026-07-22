@@ -107,10 +107,10 @@ changing migrations `1–36` or the legacy `REAL[]` production reader.
 
 ### G18.5A PG16-compatible profile pointer
 
-Status: complete (2026-07-22). Group 5 remains in progress.
+Status: complete (2026-07-22). Group 5 later completed under G18.5B.3b.
 
 - Add migration `037` without PG17-only extension types so it can land safely
-  on the current PostgreSQL 16 runtime.
+  on the then-running PostgreSQL 16 runtime.
 - Route the Go candidate reader through a stable server-owned function while
   the pointer defaults to `legacy` revision `1`.
 - Use an operator-only compare-and-swap transition function with immutable
@@ -128,8 +128,7 @@ the profiled function, but effective retrieval remains `ts_rank + REAL[]`.
 
 ### G18.5B PG17 implementation and controlled activation
 
-Status: in progress. G18.5B.1 through G18.5B.3a are complete;
-G18.5B.3b remains pending.
+Status: complete (2026-07-22).
 
 - Promote the reviewed BM25/pgvector DDL into migration `038` after a fresh
   verified PG16 backup is restored into PostgreSQL 17 storage.
@@ -141,7 +140,8 @@ G18.5B.3b remains pending.
 
 #### G18.5B.1 Disposable profile activation candidate
 
-Status: complete (2026-07-22). G18.5B and Group 5 remain in progress.
+Status: complete (2026-07-22). G18.5B and Group 5 later completed under
+G18.5B.3b.
 
 - Keep the embedded migration chain at `1–37` while production is PG16.
 - Connect the profile router to the reviewed PG17 shadow projections under an
@@ -164,7 +164,7 @@ remained `1–37`.
 
 #### G18.5B.2 Operations and resource qualification
 
-Status: complete (2026-07-22). G18.5B remains in progress.
+Status: complete (2026-07-22). G18.5B later completed under G18.5B.3b.
 
 - Add and prove a safe projection-maintenance path for documents published
   while the PG17 profile is active.
@@ -175,7 +175,7 @@ Status: complete (2026-07-22). G18.5B remains in progress.
 
 ##### G18.5B.2a Active-generation publication maintenance
 
-Status: complete (2026-07-22). G18.5B.2 remains in progress.
+Status: complete (2026-07-22). G18.5B.2 later completed under G18.5B.2c.
 
 - Attach maintenance to the durable projection-head mutation already emitted
   by the embedding publication transaction.
@@ -197,7 +197,7 @@ rollback remained green.
 
 ##### G18.5B.2b Generation reindex and corpus-head cutover
 
-Status: complete (2026-07-22). G18.5B.2 remains in progress.
+Status: complete (2026-07-22). G18.5B.2 later completed under G18.5B.2c.
 
 - Bind the projection maintenance/backfill gate to generation rebuild and
   atomic corpus-head cutover so a new active generation never opens empty.
@@ -215,7 +215,7 @@ the exact old references while retaining all candidate projection rows.
 
 ##### G18.5B.2c Resource and restore qualification
 
-Status: complete (2026-07-22). G18.5B.3 remains pending.
+Status: complete (2026-07-22). G18.5B.3 later completed under G18.5B.3b.
 
 - Run representative corpus latency, backfill duration, index-size, RSS/CPU,
   restart, backup/restore, and legacy rollback measurements.
@@ -239,8 +239,7 @@ disposable cleanup.
 
 #### G18.5B.3 Formal migration and blue-green Compose cutover
 
-Status: in progress. Formal migration qualification is complete; the final
-traffic/data-path cutover remains pending explicit approval.
+Status: complete (2026-07-22).
 
 - Freeze the reviewed candidate as migration `038` only after a verified live
   PG16 backup is restored into fresh PG17 storage.
@@ -276,7 +275,7 @@ extensions, and re-up/backfill/activation replay completed at profile revision
 
 ##### G18.5B.3b Production Compose/data-path authority cutover
 
-Status: pending.
+Status: complete (2026-07-22).
 
 - Re-enter a short write-stop window and take a fresh final PostgreSQL/MinIO
   backup immediately before the authority switch.
@@ -285,6 +284,28 @@ Status: pending.
 - Restore, migrate, backfill, activate, start application traffic, and run
   post-cutover health/chat/Knowledge checks with the PG16 data directory and
   backup retained as rollback anchors.
+
+Proof: application writers stopped before the final owner-preserving and
+portable PostgreSQL dumps, role dump, MinIO archive, local configuration, and
+provider-keyring rollback artifacts were created and checksum-verified under
+owner-only permissions. The final source snapshot was PostgreSQL `16.13` at
+migration `036`, with two active collections, four active documents, 13 ready
+of 24 Search rows, and 124 conversations.
+
+The backup restored into fresh `data/postgres17` under the pinned PostgreSQL
+`17.10`, pgvector `0.8.5`, and pg_textsearch `1.3.1` image. Migration
+`037 -> 038`, `11/11` current-authority dual-projection backfill, and
+`pg17_bm25_pgvector_v1@2` activation completed before Compose traffic reopened.
+The Compose-owned database then passed migration no-op, exact live-count,
+reference-only runtime-reader, privilege, 41/41 active MinIO object, direct and
+proxied HTTP health, PostgreSQL restart, and application reconnect checks.
+
+The inherited local Go `DATABASE_URL` still used the database owner. Cutover
+closed that configuration drift by rotating `neo_chat_api`, updating only the
+private env file, and proving the live backend connection now uses the
+dedicated `go_api_runtime` member without direct projection access. The old
+physical `data/postgres` PG16 directory, final backups, MinIO archive, and
+legacy `REAL[]` rows remain intact for the observation/rollback window.
 
 ## G18.6 Optional BGE-M3 shadow benchmark
 

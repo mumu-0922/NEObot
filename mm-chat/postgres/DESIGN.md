@@ -2,9 +2,10 @@
 
 ## Purpose
 
-This image is the G18 storage base for true BM25 plus pgvector. It changes only
-the database runtime. Search projection DDL, shadow reads, and production
-cutover remain separate reviewed groups.
+This image is the production G18 storage base for true BM25 plus pgvector. It
+changes only the database runtime; migration `038`, the retrieval profile
+pointer, and application hydration remain the separately reviewed schema and
+authority boundaries.
 
 ## Reproducibility contract
 
@@ -32,11 +33,20 @@ rechecked by init SQL at runtime.
   `mm-chat/data/postgres` path is available to the restore drill.
 - `POSTGRES_HOST_AUTH_METHOD=trust` is limited to the isolated internal drill
   network. It is not a production default.
-- PostgreSQL 16 rollback restores the preserved logical backup into another
-  fresh PostgreSQL 16 database; it never attempts an in-place downgrade.
+- Production Compose binds only `mm-chat/data/postgres17` to this image,
+  constrains it to 1 GiB / 2 CPUs, and preloads pg_textsearch with the qualified
+  PostgreSQL settings. Production requires an immutable image digest and
+  removes the local build path.
+- PostgreSQL 16 rollback uses the unchanged `mm-chat/data/postgres` directory
+  or restores the preserved logical backup into another fresh PostgreSQL 16
+  database; it never attempts an in-place downgrade.
+- The API runtime login is a non-superuser member of `go_api_runtime`, not the
+  image bootstrap/migration owner, and has no direct projection access.
 
-## Deferred work
+## Production state
 
-G18.3 adds the generation-bound `vector(1024)` shadow projection. G18.4 adds
-the BM25 lane. G18.5 owns any production data migration, profile cutover,
-observation window, and rollback decision.
+G18.3, G18.4, and G18.5 are promoted through formal migration `038`. Production
+runs PostgreSQL `17.10` on `data/postgres17` with
+`pg17_bm25_pgvector_v1@2` active. The PG16 directory, final logical backups,
+MinIO archive, and legacy `REAL[]` rows remain intact until a separate reviewed
+observation-window cleanup authorizes their deletion.

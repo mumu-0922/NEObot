@@ -17,6 +17,10 @@ x-frontend-build: &frontend-build
     NEXT_PUBLIC_API_BASE_URL: /mm-api
     MM_CHAT_BACKEND_INTERNAL_URL: http://backend:8080
 
+x-postgres-build: &postgres-build
+  context: ./postgres
+  dockerfile: Dockerfile
+
 x-postgres-env: &postgres-env
   POSTGRES_DB: ${POSTGRES_DB:-neo_chat}
   POSTGRES_USER: ${POSTGRES_USER:-neo_chat_migrator}
@@ -106,11 +110,26 @@ x-backend-env: &backend-env
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: ${POSTGRES_IMAGE:-mm-chat/postgres:17.10-pg_textsearch1.3.1-pgvector0.8.5}
+    build: *postgres-build
     restart: unless-stopped
+    mem_limit: 1g
+    cpus: 2.0
     environment: *postgres-env
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_textsearch
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - max_connections=30
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      - ${POSTGRES_DATA_DIR:-./data/postgres17}:/var/lib/postgresql/data
     healthcheck:
       test:
         ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']

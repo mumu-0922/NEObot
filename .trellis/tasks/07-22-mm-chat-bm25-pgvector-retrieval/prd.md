@@ -98,13 +98,13 @@ Jina reranking, citations, single-user deployment model, and rollback path.
 
 ### Group 5 — Cutover, operations, and rollback
 
-- [ ] Production candidate reads cut over behind a reversible server feature
+- [x] Production candidate reads cut over behind a reversible server feature
       gate/profile pointer.
 - [x] Restart, concurrent indexing, deletion, reindex, backup/restore, and
       rollback proofs pass.
 - [x] Query latency and PostgreSQL RSS/CPU remain inside the single-server
       deployment budget.
-- [ ] Legacy `REAL[]` compatibility data is retained until the observation
+- [x] Legacy `REAL[]` compatibility data is retained until the observation
       window closes; deletion requires a separate reviewed task.
 
 Progress checkpoint (G18.5A, 2026-07-22):
@@ -117,9 +117,9 @@ Progress checkpoint (G18.5A, 2026-07-22):
       migration rollback while a non-legacy profile is active.
 - [x] Disposable PG16 integration proved exact legacy-reader parity, bounded
       runtime privileges, restart/reapply behavior, and clean rollback.
-- [ ] G18.5B must add the PG17 BM25/pgvector implementation, backfill and
-      activation path, complete the operational/resource gates above, and
-      perform the reviewed blue-green production cutover.
+- [x] G18.5B added the PG17 BM25/pgvector implementation, backfill and
+      activation path, completed the operational/resource gates above, and
+      performed the reviewed blue-green production cutover.
 
 Progress checkpoint (G18.5B.1, 2026-07-22):
 
@@ -130,10 +130,10 @@ Progress checkpoint (G18.5B.1, 2026-07-22):
       active Jina v4/1024 generation, preserves the existing reference-only Go
       SQL signature, survives restart, and rolls back through compare-and-swap
       to exact legacy behavior.
-- [ ] G18.5B.2 must prove concurrent publication, reindex/generation cutover,
+- [x] G18.5B.2 proved concurrent publication, reindex/generation cutover,
       representative latency and PostgreSQL RSS/CPU budgets, and backup/restore
       behavior before the operational SQL can become migration `038`.
-- [ ] G18.5B.3 must create and apply the reviewed formal migration only on the
+- [x] G18.5B.3 created and applied the reviewed formal migration only on the
       restored PG17 target, then cut over Compose/data-path authority with the
       preserved PG16 backup as rollback.
 
@@ -176,7 +176,7 @@ Progress checkpoint (G18.5B.2c, 2026-07-22):
       verification, controlled legacy rollback, and disposable cleanup.
 - [x] G18.5B.3a owns the verified live PG16 backup, restore into fresh PG17
       storage, and formal migration `038` qualification.
-- [ ] G18.5B.3b owns the blue-green production Compose/data-path cutover.
+- [x] G18.5B.3b completed the blue-green production Compose/data-path cutover.
 
 Progress checkpoint (G18.5B.3a, 2026-07-22):
 
@@ -192,9 +192,30 @@ Progress checkpoint (G18.5B.3a, 2026-07-22):
       backfill, activation, and restart all passed.
 - [x] Migration down retained both extensions, all legacy `REAL[]` rows, the
       PG16 backup/data path, and the durable profile pointer/history.
-- [ ] G18.5B.3b must take a fresh stop-window backup and receive explicit
-      approval before switching production Compose/data-path authority to a
-      fresh PG17 directory.
+- [x] G18.5B.3b received explicit approval, took a fresh stop-window backup,
+      and switched production Compose/data-path authority to a fresh PG17
+      directory while retaining the PG16 directory and backups.
+
+Progress checkpoint (G18.5B.3b, 2026-07-22):
+
+- [x] Application writers stopped before checksummed owner-preserving PG16,
+      portable PG16, role, MinIO, env, keyring, and Compose rollback artifacts
+      were created with owner-only permissions.
+- [x] The final backup restored into fresh `data/postgres17` under the pinned
+      1 GiB / 2 CPU PG17 image; exact live counts remained 2 collections,
+      4 documents, 13 ready of 24 search rows, and 124 conversations.
+- [x] Migration `038` created pgvector `0.8.5` and pg_textsearch `1.3.1`,
+      backfilled `11/11` current rows, and activated
+      `pg17_bm25_pgvector_v1@2` before traffic reopened.
+- [x] Compose now owns PG17 on `data/postgres17`; backend, frontend, RAG
+      worker, Redis, MinIO, direct/proxied health, reference-only retrieval,
+      41/41 active MinIO objects, migration replay, and restart/reconnect are
+      verified.
+- [x] The Go runtime login was corrected from the inherited `neo_chat`
+      superuser configuration to dedicated `neo_chat_api`, which is a
+      `go_api_runtime` member without direct projection access.
+- [x] The unchanged physical PG16 `data/postgres` directory, final logical
+      backups, MinIO archive, and legacy `REAL[]` rows remain rollback anchors.
 
 ### Group 6 — Optional BGE-M3 shadow benchmark
 

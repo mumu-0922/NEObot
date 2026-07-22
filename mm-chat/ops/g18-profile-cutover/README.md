@@ -43,15 +43,16 @@ all project-scoped containers, networks, and volumes.
 
 ## Boundary
 
-This harness is not the production Compose cutover. Its reviewed SQL has now
-been frozen as migration `038` and qualified on a verified live PG16 backup
-restored into fresh PG17 storage. Migration `038` deliberately rejects PG16,
-so the still-running PG16 Compose stack must not be rebuilt or rerun against
-the new migration manifest before the separately approved blue-green switch.
+This harness remains disposable and must never be pointed at production. Its
+reviewed SQL is frozen as migration `038`. The separately approved production
+blue-green switch is complete: Compose now owns PostgreSQL `17.10` on
+`data/postgres17`, with pgvector `0.8.5`, pg_textsearch `1.3.1`, and
+`pg17_bm25_pgvector_v1@2` active. The unchanged `data/postgres` PG16 directory
+and final checksummed backups remain rollback authorities.
 
 The maintenance trigger covers publication into active and building
 generations, while the active source view remains bound to the corpus head.
 The representative resource gate, active-PG17 backup/restore gate, live-data
-restore, and formal migration qualification are complete. Only a fresh final
-stop-window backup plus blue-green Compose/data-path authority switch remain
-under G18.5B.3b.
+restore, formal migration qualification, final stop-window backup, production
+data-path switch, application health, runtime-role, MinIO object, migration
+replay, and restart/reconnect proofs are complete under G18.5B.3b.

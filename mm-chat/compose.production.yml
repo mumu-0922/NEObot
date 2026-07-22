@@ -1,4 +1,6 @@
 services:
+  postgres:
+    build: !reset null
   frontend:
     build: !reset null
   backend:

@@ -2,9 +2,10 @@
 
 This document describes the current Postgres runtime for the `mm-chat`
 single-server deployment. The implementation is
-`mm-chat/compose.single-server.yml`: the Go API, Postgres 16, Redis, MinIO, and
-the optional Phase 15.2B dark-run RAG worker run on private Compose networks,
-while only the API is published on `127.0.0.1:8080`.
+`mm-chat/compose.single-server.yml`: the Go API, PostgreSQL 17, Redis, MinIO,
+and the RAG worker run on private Compose networks, while only the API is
+published on `127.0.0.1:8080`. The database runtime is PostgreSQL `17.10` with
+pgvector `0.8.5` and pg_textsearch `1.3.1`.
 
 It complements [`single-server-compose.md`](./single-server-compose.md),
 [`backup-restore.md`](./backup-restore.md), and
@@ -18,12 +19,11 @@ chat, file metadata, imports, Knowledge Collections/Documents/Versions,
 Governance, Consent, processing Jobs, and durable Outbox rows. The current
 runtime includes:
 
-- the `postgres` service with data under `mm-chat/data/postgres/`;
+- the `postgres` service with live data under `mm-chat/data/postgres17/`;
 - the Go `backend` using pgx-backed repositories and DB readiness;
 - the one-shot `migrate` service using embedded SQL migrations;
 - the one-shot `admin` service for supported identity and Governance commands;
-- the optional `rag-worker` profile, defaulted to non-claiming Phase 15.2B
-  dark-run mechanics;
+- the `rag-worker` profile for the independent indexing runtime;
 - the one-shot `rag-replay` profile with a separate operator-only DB login;
 - logical backup and restore scripts under `mm-chat/scripts/`.
 
@@ -40,7 +40,7 @@ public browser
   -> TLS reverse proxy
     -> 127.0.0.1:8080 Go API
       -> postgres:5432 on the private Compose network
-    dark-run rag-worker -> postgres:5432 on the internal rag-private network
+    rag-worker -> postgres:5432 on the internal rag-private network
 ```
 
 Rules:
@@ -66,7 +66,8 @@ Compose health, network, volume, and release assumptions in this runbook.
 ## 3. Data and Configuration
 
 ```text
-mm-chat/data/postgres/               # live PGDATA, gitignored
+mm-chat/data/postgres17/             # live PostgreSQL 17 PGDATA, gitignored
+mm-chat/data/postgres/               # retired PostgreSQL 16 rollback anchor
 mm-chat/backup/postgres/             # logical dumps, gitignored
 mm-chat/.env.single-server.example   # committed template
 mm-chat/.env.single-server           # local production values, gitignored
@@ -74,18 +75,20 @@ mm-chat/.env.single-server           # local production values, gitignored
 
 The current Compose/runtime contract uses:
 
-| Variable                  | Compose default          | Purpose                                                   |
-| ------------------------- | ------------------------ | --------------------------------------------------------- |
-| `POSTGRES_DB`             | `neo_chat`               | Database created by the Postgres container.               |
-| `POSTGRES_USER`           | `neo_chat_migrator`      | Empty-volume bootstrap and migration login only.          |
-| `POSTGRES_PASSWORD`       | placeholder              | Bootstrap/migrator password; replace before promotion.    |
-| `MIGRATION_DATABASE_URL`  | migrator placeholder URL | Required one-shot URL for `POSTGRES_USER`; no fallback.   |
-| `DATABASE_URL`            | API placeholder URL      | `neo_chat_api` URL for the Go API and `admin`.            |
-| `DB_MAX_OPEN_CONNS`       | `10`                     | Maximum open DB connections.                              |
-| `DB_MAX_IDLE_CONNS`       | `5`                      | Maximum idle DB connections.                              |
-| `DB_CONN_MAX_LIFETIME`    | `30m`                    | Maximum connection lifetime.                              |
-| `RAG_WORKER_DATABASE_URL` | Worker placeholder URL   | Long-running least-privilege Worker login.                |
-| `RAG_REPLAY_DATABASE_URL` | Replay placeholder URL   | Operator-only Replay login; not injected into the Worker. |
+| Variable                  | Compose default           | Purpose                                                                                 |
+| ------------------------- | ------------------------- | --------------------------------------------------------------------------------------- |
+| `POSTGRES_IMAGE`          | reviewed local PG17 image | PostgreSQL 17 plus exact retrieval extensions; immutable digest required in production. |
+| `POSTGRES_DATA_DIR`       | `./data/postgres17`       | Fresh PG17 data path; production preflight rejects `./data/postgres`.                   |
+| `POSTGRES_DB`             | `neo_chat`                | Database created by the Postgres container.                                             |
+| `POSTGRES_USER`           | `neo_chat_migrator`       | Empty-volume bootstrap and migration login only.                                        |
+| `POSTGRES_PASSWORD`       | placeholder               | Bootstrap/migrator password; replace before promotion.                                  |
+| `MIGRATION_DATABASE_URL`  | migrator placeholder URL  | Required one-shot URL for `POSTGRES_USER`; no fallback.                                 |
+| `DATABASE_URL`            | API placeholder URL       | `neo_chat_api` URL for the Go API and `admin`.                                          |
+| `DB_MAX_OPEN_CONNS`       | `10`                      | Maximum open DB connections.                                                            |
+| `DB_MAX_IDLE_CONNS`       | `5`                       | Maximum idle DB connections.                                                            |
+| `DB_CONN_MAX_LIFETIME`    | `30m`                     | Maximum connection lifetime.                                                            |
+| `RAG_WORKER_DATABASE_URL` | Worker placeholder URL    | Long-running least-privilege Worker login.                                              |
+| `RAG_REPLAY_DATABASE_URL` | Replay placeholder URL    | Operator-only Replay login; not injected into the Worker.                               |
 
 Keep `MIGRATION_DATABASE_URL` aligned with `POSTGRES_USER`,
 `POSTGRES_PASSWORD`, and `POSTGRES_DB`. The three runtime URLs use the same
@@ -120,10 +123,12 @@ ownership/mode, and immutable image digests without echoing credentials.
 ### Release image fence
 
 Compose resolves `backend`, `migrate`, and `admin` from the same
-`BACKEND_IMAGE`. The RAG profile independently resolves `RAG_IMAGE`.
-Production requires full registry `@sha256:` digests for both; mutable tags are
-allowed only for local development and cannot pass production preflight. The
-production overlay removes every corresponding `build:` path.
+`BACKEND_IMAGE`. The RAG profile independently resolves `RAG_IMAGE`, and the
+database resolves `POSTGRES_IMAGE`. Production requires full registry
+`@sha256:` digests for all release images; mutable tags are allowed only for
+local development and cannot pass production preflight. Local Compose can
+build the PostgreSQL image from `mm-chat/postgres`, while the production
+overlay removes that and every other release `build:` path.
 
 Before every production migration or restart:
 
@@ -136,9 +141,10 @@ cd mm-chat
 
 The preflight validates required production settings without printing their
 values. The production wrapper starts Compose with a clean host environment and
-an override that removes `build:` from backend/migrate/admin. Retain the
-previous backend image ID or registry digest through the rollback window; do
-not prune it after deploying the new image.
+an override that removes `build:` from PostgreSQL, backend/migrate/admin,
+frontend, and RAG services. Retain the previous PostgreSQL and application
+image IDs or registry digests through the rollback window; do not prune them
+after deploying the new release.
 
 ## 4. Health and Readiness
 
@@ -175,7 +181,9 @@ Readiness never mutates schema, creates buckets, or runs migrations.
 
 The Go migration runner owns transaction boundaries, takes a Postgres advisory
 lock, validates migration names/checksums, and records each applied migration
-in `schema_migrations`. The Phase 15.2B schema head is `010`.
+in `schema_migrations`. The current schema head is `038`. Migration `038`
+requires PostgreSQL major `17`, the `pg_textsearch` preload, and exact pgvector
+`0.8.5` / pg_textsearch `1.3.1` extension versions.
 
 Apply migrations from the same immutable `BACKEND_IMAGE` used by `backend` and
 `admin`:
@@ -221,14 +229,14 @@ Inspect migration state without placing credentials in argv or output:
 : "${POSTGRES_DB:?POSTGRES_DB is required}"
 exec psql --set=ON_ERROR_STOP=1 \
   --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" \
-  --command="SELECT version, name FROM schema_migrations ORDER BY version;"
+  --command="SELECT version, name FROM schema_migrations ORDER BY version::INTEGER;"
 '
 ```
 
-Acceptance requires versions `001` through `010`, ending at
-`010_phase15_rag_projection_consistency`. Treat `schema_migrations` as runner
-state, not a domain table. Never use `baseline` routinely; it exists only to
-accept reviewed legacy rows that lack checksums.
+Acceptance requires versions `001` through `038`, ending at
+`038_pg17_bm25_pgvector_retrieval`. Treat `schema_migrations` as runner state,
+not a domain table. Never use `baseline` routinely; it exists only to accept
+reviewed legacy rows that lack checksums.
 
 ### Fresh-install role provisioning
 
@@ -238,7 +246,7 @@ order is:
 
 1. Start Postgres with the bootstrap/migrator fields and set the independently
    required `MIGRATION_DATABASE_URL` to that same login.
-2. Run migrations through `010`. Migration `010` creates and validates the
+2. Run migrations through `038`. Migration `010` creates and validates the
    NOLOGIN capability roles; do not pre-create LOGIN roles with broad grants.
 3. Connect as `POSTGRES_USER`, create the API, Worker, and Replay principals as
    NOLOGIN, assign each password through interactive `psql` input, then enable
@@ -290,9 +298,9 @@ SELECT format('GRANT rag_worker_executor TO %I', :'worker_login') \gexec
 SELECT format('GRANT rag_replay_operator TO %I', :'replay_login') \gexec
 ```
 
-Run this only after `010` succeeds. If any step fails, leave the affected
-principal NOLOGIN, correct the cause, and rerun only the missing safe step; do
-not compensate by granting owner or migrator membership.
+Run this only after the complete migration set succeeds. If any step fails,
+leave the affected principal NOLOGIN, correct the cause, and rerun only the
+missing safe step; do not compensate by granting owner or migrator membership.
 
 ### Live role verification
 
@@ -369,10 +377,10 @@ backup with the recovery record.
 
 The executable temporary-database drill and full restore acceptance are in
 [`backup-restore.md`](./backup-restore.md). Acceptance verifies migrations
-through `010`, Knowledge core table row counts, Consent expiry schema,
-Governance immutability, the purge fence, and sampled Document
-Version/File/object consistency. A production restore is not approved until
-that disposable drill passes.
+through `038`, retrieval profile/readiness, Knowledge core table row counts,
+Consent expiry schema, Governance immutability, the purge fence, and sampled
+Document Version/File/object consistency. A production restore is not approved
+until that disposable drill passes.
 
 ## 7. Rollback and Operational Boundaries
 
@@ -382,15 +390,18 @@ that disposable drill passes.
   from the retained previous image.
 - If schema/data must be restored, stop backend writes and follow the verified
   restore runbook during a maintenance window.
-- Preserve failed-release data for diagnosis; never casually remove
-  `mm-chat/data/postgres/`.
+- Preserve failed-release data for diagnosis; never casually remove either
+  `mm-chat/data/postgres17/` or the retired `mm-chat/data/postgres/` rollback
+  anchor.
 - Postgres stores file metadata and internal object keys; MinIO stores object
   bytes. Restore and verify both sides together.
 - Redis remains non-authoritative temporary state and cannot replace Postgres
   authorization or persistence decisions.
-- The Phase 15.2B `rag-worker` profile remains dark-run with dispatch disabled
-  and an empty stage allowlist. It does not yet parse documents, create
-  embeddings, publish Search Projections, or make RAG available. Stop that
-  profile to roll back Worker mechanics while retaining authoritative
-  Go/Postgres control-plane records and migration `010` unless its guarded down
-  preconditions are proven.
+- A PostgreSQL-major rollback is blue-green: stop writers, restore the retained
+  previous Compose/env authority, and start PG16 only against the preserved
+  `data/postgres` directory or a fresh verified PG16 restore. Never mount that
+  directory into the PG17 image, and never treat `038.down` as an in-place
+  downgrade.
+- Stop the `rag-worker` profile to halt new indexing while retaining
+  authoritative Go/Postgres control-plane records. Do not compensate for a
+  retrieval failure by widening runtime database privileges.

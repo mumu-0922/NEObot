@@ -6,14 +6,15 @@ Apply this contract when changing `mm-chat` lexical or Dense retrieval,
 PostgreSQL extensions/major version, search projections, candidate diagnostics,
 or the production retrieval profile pointer.
 
-The current independent Compose runtime is PostgreSQL 16. PG17-only
-`pg_textsearch`/pgvector DDL must remain in disposable operational modules
-until a reviewed blue-green restore promotes it. Never start PG17 against
-`mm-chat/data/postgres` or another PG16 data directory.
+The current independent Compose runtime is PostgreSQL `17.10` on
+`mm-chat/data/postgres17`, with migration `038` and retrieval profile
+`pg17_bm25_pgvector_v1@2` active. The retired PostgreSQL 16 directory at
+`mm-chat/data/postgres` remains an observation-window rollback anchor. Never
+mount it, or any other PG16 data directory, into the PG17 image.
 
 ## 2. Signatures
 
-Current G18.4 shadow signatures:
+The retained private diagnostic signatures are:
 
 ```sql
 knowledge_backfill_bm25_shadow(
@@ -41,7 +42,7 @@ knowledge_fetch_hybrid_shadow_diagnostics(
 )
 ```
 
-Production remains on:
+Production callers remain on the stable signature:
 
 ```sql
 knowledge_fetch_profiled_query_evidence_candidates(
@@ -49,10 +50,11 @@ knowledge_fetch_profiled_query_evidence_candidates(
 )
 ```
 
-Migration `037` routes that stable signature to the legacy
-`knowledge_fetch_hybrid_query_evidence_candidates(...)` implementation while
-the durable pointer is `legacy`. The PG17 branch must remain fail-closed until
-the reviewed PG17 storage migration exists and has passed its activation gates.
+Migration `037` introduced the durable pointer and routes that stable signature
+to the legacy `knowledge_fetch_hybrid_query_evidence_candidates(...)`
+implementation while the pointer is `legacy`. Migration `038` owns the
+qualified PG17 branch; it may serve only after the exact readiness gate and
+compare-and-swap activation succeed.
 
 Profile mutation is operator-only and compare-and-swap:
 
@@ -68,7 +70,7 @@ knowledge_set_retrieval_profile(
 The accepted profile identities are `legacy` and
 `pg17_bm25_pgvector_v1`; the singleton starts at `legacy` revision `1`.
 
-The PG17 activation candidate adds:
+Migration `038` adds:
 
 ```sql
 knowledge_assert_pg17_retrieval_profile_ready()
@@ -154,13 +156,14 @@ knowledge_assert_pg17_generation_ready(
 - Serialize vector backfill, BM25 backfill, and pointer activation with
   advisory locks `3`, `4`, and `5` acquired in ascending order. Readiness and
   pointer mutation occur inside the same activation call.
-- Keep PG17-only candidate DDL outside embedded migrations until the owned
-  live PG16 backup has restored into a verified fresh PG17 target. Once frozen
-  as migration `038`, require PostgreSQL major `17`, the `pg_textsearch`
-  preload, and exact pgvector `0.8.5` / `pg_textsearch 1.3.1` availability
-  before creating extensions or retrieval objects. During the short interval
-  before the production blue-green switch, do not run the new embedded
-  manifest against the still-running PG16 Compose database.
+- Migration `038` is the production schema boundary. It requires PostgreSQL
+  major `17`, the `pg_textsearch` preload, and exact pgvector `0.8.5` /
+  `pg_textsearch 1.3.1` availability before creating extensions or retrieval
+  objects. The complete migration manifest is no longer compatible with an
+  ordinary PG16 database.
+- `schema_migrations.version` is textual. Operator head checks must order or
+  aggregate it as `version::INTEGER`; lexical descending order incorrectly
+  reports `9` above `38`.
 - When the PG17 profile is active, the AFTER trigger on
   `knowledge_document_projection_heads` is the publication boundary. It must
   populate and verify both projections in the same transaction as the head
@@ -199,29 +202,47 @@ knowledge_assert_pg17_generation_ready(
   v4/1024 authority, and exercise active-profile down refusal plus controlled
   down/re-up. Down retains both extensions, migration `037`, profile history,
   legacy `REAL[]` rows, the original PG16 data path, and its backup.
+- Production Compose must use an immutable `POSTGRES_IMAGE` digest and
+  `POSTGRES_DATA_DIR=./data/postgres17`. Local Compose may build the reviewed
+  image from `mm-chat/postgres`; the production overlay must remove that build
+  path. Preflight rejects the retired `./data/postgres` path.
+- The production image must fail before PostgreSQL startup when `PG_VERSION`
+  is not `17`. A major-version transition is logical backup/restore into fresh
+  storage, never an in-place mount or downgrade.
+- The Go API must connect as a dedicated `neo_chat_api` LOGIN that is not a
+  superuser and inherits only `go_api_runtime`. It may execute the profiled
+  reference-only reader but may not directly select either physical retrieval
+  projection. The API must never use the bootstrap/migration owner at runtime.
+- Production rollback first stops writers, restores the previous Compose/env
+  authority, and starts PG16 against the preserved `data/postgres` directory or
+  a fresh PG16 restore. Do not run migration `038` down as a substitute for a
+  database-major rollback, and do not delete either data path or the final
+  checksummed backup during the observation window.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-|---|---|
-| PG major is not 17 or extension version differs | DDL aborts before creating shadow objects |
-| Generation/profile is null, inactive, or incompatible | `RAG_BM25_SHADOW_ARGUMENT_INVALID` or `RAG_BM25_SHADOW_PROFILE_MISMATCH` |
-| Insert identity does not match current source | `RAG_BM25_SHADOW_SOURCE_MISMATCH` |
-| Derived BM25 text/terms differ | `RAG_BM25_SHADOW_CONTENT_MISMATCH` |
-| Backfill postcondition count differs | `RAG_BM25_SHADOW_BACKFILL_INCOMPLETE` |
-| Collections/query/limit/vector invalid or vector norm is zero | `RAG_HYBRID_SHADOW_ARGUMENT_INVALID` |
-| Document/collection becomes non-current | Candidate disappears immediately; immutable rollback row may remain |
-| Reranker is configured but unavailable/unauthorized/malformed | No Knowledge evidence or citation is minted |
-| Profile compare-and-swap sees a stale expected profile/revision | `RAG_RETRIEVAL_PROFILE_CONFLICT`; pointer/history unchanged |
-| PG17 profile is selected before its implementation is available | `RAG_RETRIEVAL_PROFILE_UNAVAILABLE`; pointer unchanged |
-| Active generation/profile is missing at PG17 activation | `RAG_RETRIEVAL_PROFILE_ACTIVE_GENERATION_MISSING`; pointer unchanged |
-| Either PG17 projection is incomplete or mismatched | `RAG_RETRIEVAL_PROFILE_BACKFILL_INCOMPLETE`; pointer/history unchanged |
-| Active-profile materialization source is absent/incomplete | `RAG_RETRIEVAL_MATERIALIZATION_SOURCE_INCOMPLETE`; head/publish transaction aborts |
-| Post-insert vector or BM25 verification is incomplete | `RAG_RETRIEVAL_MATERIALIZATION_SYNC_INCOMPLETE`; both projection writes and head mutation roll back |
-| Target generation lacks any current document, paired source, vector, or BM25 row | `RAG_RETRIEVAL_GENERATION_BACKFILL_INCOMPLETE`; generation/head transition rolls back atomically |
-| Migration down is attempted under a non-legacy profile | Rollback aborts atomically and migration `037` remains applied |
-| Any representative backfill/latency/storage/memory gate is exceeded | The disposable qualification aborts; migration `038` remains forbidden |
-| Restored PG17 state loses profile, rows, reader behavior, functions, or grants | Restore qualification aborts; no Compose/data-path cutover |
+| Condition                                                                        | Required result                                                                                     |
+| -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| PG major is not 17 or extension version differs                                  | DDL aborts before creating shadow objects                                                           |
+| Generation/profile is null, inactive, or incompatible                            | `RAG_BM25_SHADOW_ARGUMENT_INVALID` or `RAG_BM25_SHADOW_PROFILE_MISMATCH`                            |
+| Insert identity does not match current source                                    | `RAG_BM25_SHADOW_SOURCE_MISMATCH`                                                                   |
+| Derived BM25 text/terms differ                                                   | `RAG_BM25_SHADOW_CONTENT_MISMATCH`                                                                  |
+| Backfill postcondition count differs                                             | `RAG_BM25_SHADOW_BACKFILL_INCOMPLETE`                                                               |
+| Collections/query/limit/vector invalid or vector norm is zero                    | `RAG_HYBRID_SHADOW_ARGUMENT_INVALID`                                                                |
+| Document/collection becomes non-current                                          | Candidate disappears immediately; immutable rollback row may remain                                 |
+| Reranker is configured but unavailable/unauthorized/malformed                    | No Knowledge evidence or citation is minted                                                         |
+| Profile compare-and-swap sees a stale expected profile/revision                  | `RAG_RETRIEVAL_PROFILE_CONFLICT`; pointer/history unchanged                                         |
+| PG17 profile is selected before its implementation is available                  | `RAG_RETRIEVAL_PROFILE_UNAVAILABLE`; pointer unchanged                                              |
+| Active generation/profile is missing at PG17 activation                          | `RAG_RETRIEVAL_PROFILE_ACTIVE_GENERATION_MISSING`; pointer unchanged                                |
+| Either PG17 projection is incomplete or mismatched                               | `RAG_RETRIEVAL_PROFILE_BACKFILL_INCOMPLETE`; pointer/history unchanged                              |
+| Active-profile materialization source is absent/incomplete                       | `RAG_RETRIEVAL_MATERIALIZATION_SOURCE_INCOMPLETE`; head/publish transaction aborts                  |
+| Post-insert vector or BM25 verification is incomplete                            | `RAG_RETRIEVAL_MATERIALIZATION_SYNC_INCOMPLETE`; both projection writes and head mutation roll back |
+| Target generation lacks any current document, paired source, vector, or BM25 row | `RAG_RETRIEVAL_GENERATION_BACKFILL_INCOMPLETE`; generation/head transition rolls back atomically    |
+| Migration down is attempted under a non-legacy profile                           | Rollback aborts atomically and migration `037` remains applied                                      |
+| Any representative backfill/latency/storage/memory gate is exceeded              | The disposable qualification aborts; migration `038` remains forbidden                              |
+| Restored PG17 state loses profile, rows, reader behavior, functions, or grants   | Restore qualification aborts; no Compose/data-path cutover                                          |
+| Production preflight receives a mutable PostgreSQL image or the PG16 data path   | Preflight fails before Compose execution                                                            |
+| Go API connects as the owner/superuser or gains direct projection access         | Promotion/observation verification fails; traffic must not remain promoted                          |
 
 Every SECURITY DEFINER function must pin the current schema followed by
 `pg_catalog, pg_temp` and must not resolve through `$user`.
@@ -280,6 +301,12 @@ The disposable drill must assert:
     versions, current live authority backfills, runtime roles read references
     without direct projection access, active down fails atomically, and
     controlled down/re-up/restart preserves rollback anchors.
+15. Production Compose renders the immutable PG17 image, fresh
+    `data/postgres17` bind mount, 1 GiB / 2 CPU envelope, and reviewed PostgreSQL
+    settings without a production build path; the old PG16 directory remains
+    intact. Live verification proves migration `038`, `11/11/11` readiness,
+    dedicated API/Worker sessions, reference-only reads, MinIO object parity,
+    direct/proxied health, and restart/reconnect behavior.
 
 After the drill, run `go vet ./...`, `go test ./...`, and the frozen G18
 evaluator.

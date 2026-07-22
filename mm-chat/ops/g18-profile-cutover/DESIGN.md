@@ -16,10 +16,10 @@ volume, those reviewed modules were frozen into formal migration `038`.
 
 Migration `038` checks PostgreSQL major `17`, the `pg_textsearch` preload, and
 exact extension versions before creating either extension and any projection
-object. It is intentionally incompatible with PG16. Until the separately
-approved production blue-green switch, the still-running PG16 Compose stack
-must not execute the new manifest; the existing process and data directory
-remain untouched.
+object. It is intentionally incompatible with PG16. The separately approved
+production blue-green switch restored the final PG16 snapshot into fresh
+`data/postgres17`, applied this migration, and activated the PG17 profile. The
+old PG16 data directory remains untouched as a rollback anchor.
 
 ## Activation state machine
 
@@ -161,7 +161,7 @@ again unavailable. The G18.4 and G18.3 down scripts then remove the physical
 candidate projections while retaining the original `REAL[]` source rows,
 legacy reader, pointer, revision, and immutable transition history.
 
-## Remaining boundary
+## Production promotion boundary
 
 This module proves activation, restart durability, concurrent publication,
 generation reindex/cutover, representative synthetic resource budgets, and an
@@ -170,9 +170,24 @@ live PostgreSQL/MinIO backup, owned-role restore into isolated PG17, migration
 `038` extension creation, live-row backfill, active rollback refusal,
 controlled down/re-up, idempotence, runtime role boundaries, and restart.
 
-The only remaining boundary is G18.5B.3b: take a fresh stop-window backup,
-restore into the production green PG17 data path, activate, and switch Compose
-traffic. The old PG16 data directory and backup remain rollback authorities.
+G18.5B.3b stopped application writers, created checksummed PostgreSQL, role,
+MinIO, env, keyring, and Compose rollback artifacts, and restored into fresh
+`data/postgres17`. Migration `037 -> 038`, `11/11` current-authority backfills,
+and `pg17_bm25_pgvector_v1@2` activation completed before traffic reopened.
+
+Production Compose now renders the immutable PG17 image without a build path,
+the 1 GiB / 2 CPU envelope, and the reviewed preload/memory/connection settings.
+The direct and proxied health endpoints, reference-only readers, exact live
+counts, 41/41 active MinIO objects, migration no-op, PostgreSQL restart, and
+application reconnect passed. The live Go connection was also corrected to a
+dedicated non-superuser `neo_chat_api` member of `go_api_runtime`, with no
+direct projection access.
+
+The observation boundary remains: do not delete the physical
+`data/postgres` PG16 directory, final checksummed backup, MinIO archive, or
+legacy `REAL[]` rows without a separate reviewed cleanup. A major-version
+rollback restores the previous Compose/env authority and PG16 storage; it is
+not implemented by running migration `038` down in place.
 
 ## Change history
 
@@ -185,3 +200,5 @@ traffic. The old PG16 data directory and backup remain rollback authorities.
   lookup, and active-PG17 backup/restore proof.
 - 2026-07-22: formal migration `038` qualification against restored live data,
   including extension creation, down/re-up replay, and restart proof.
+- 2026-07-22: production blue-green Compose/data-path cutover, dedicated API
+  runtime-role correction, and restart/reconnect observation proof.

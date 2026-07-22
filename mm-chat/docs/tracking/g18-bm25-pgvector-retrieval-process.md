@@ -962,3 +962,107 @@ old PG16 directory plus backup for rollback.
 
 Next: commit G18.5B.3a alone, then await explicit approval for the production
 cutover. Do not start G18.5B.3b implicitly.
+
+## 2026-07-22 — G18.5B.3b production PG17 Compose/data-path cutover
+
+The user explicitly approved this production authority switch. Application
+writers were stopped before the final source snapshot. The source remained
+PostgreSQL `16.13` at migration `036`; it contained two active collections,
+four active documents, 13 ready of 24 Search rows, and 124 conversations.
+
+The private cutover record is retained under the ignored path below. No secret
+or password hash from it is reproduced in source or logs:
+
+```text
+backup/g18-pg17-production-cutover/20260722T054407Z
+```
+
+The stop-window set contains a portable PostgreSQL dump, an owner-preserving
+dump, original and PG17-compatible role dumps, a post-cutover role dump, a
+MinIO archive, private env/keyring copies, rendered Compose inputs, SHA-256
+files, and execution evidence. The PostgreSQL and MinIO checksums passed. A
+post-cutover permission audit found some non-secret evidence logs had inherited
+`0644`; the entire retained tree was normalized to `0700` directories and
+`0600` files. The role conversion retained attributes and password hashes in
+the private artifact while removing only the three PG16 `GRANTED BY neo_chat`
+clauses that PostgreSQL 17 cannot replay.
+
+The final owner-preserving dump restored into a fresh
+`mm-chat/data/postgres17` directory under the reviewed image:
+
+```text
+PostgreSQL                              17.10
+pgvector                               0.8.5
+pg_textsearch                          1.3.1
+container memory / CPU                 1 GiB / 2
+shared_preload_libraries               pg_textsearch
+shared_buffers / work_mem              128MB / 4MB
+maintenance_work_mem / max_connections 64MB / 30
+```
+
+The normal migration runner applied `037` and `038`. The replay operator then
+backfilled and identity/content-verified all current Jina v4/1024 authority in
+both physical projections before compare-and-swap activation:
+
+```text
+vector inserted / verified             11 / 11
+BM25 inserted / verified               11 / 11
+readiness eligible/vector/BM25          11 / 11 / 11
+profile transition                     legacy@1 -> pg17_bm25_pgvector_v1@2
+```
+
+Compose authority was then moved to the PG17 image and
+`POSTGRES_DATA_DIR=./data/postgres17`. The local Compose path retains the
+reviewed PostgreSQL build for reproducible development; the production overlay
+removes it and requires an immutable `POSTGRES_IMAGE` digest. Production
+preflight also rejects `./data/postgres`, preventing the retired PG16 directory
+from being mounted into PG17.
+
+The first live session audit exposed inherited configuration drift: the Go
+`DATABASE_URL` still used the `neo_chat` database owner. A new random password
+was assigned to the existing dedicated `neo_chat_api` LOGIN, only the ignored
+local env file was updated, and the backend was recreated. The final session
+boundary is:
+
+```text
+backend session                         neo_chat_api
+RAG worker session                      rag_worker
+neo_chat_api superuser                  false
+neo_chat_api capability                 go_api_runtime
+profiled reader EXECUTE                 true
+direct vector/BM25 projection SELECT    false
+```
+
+No runtime credential was added to Git. The final live acceptance passed:
+
+```text
+migration head / replay                 038 / no migrations changed
+retrieval profile / readiness           pg17_bm25_pgvector_v1@2 / 11/11/11
+collections / documents                 2 / 4
+ready / total Search rows               13 / 24
+conversations                           124
+active MinIO objects                    41 / 41
+backend / frontend / RAG worker         healthy / healthy / healthy
+GET 127.0.0.1:8080/health               200
+GET 127.0.0.1:8080/ready                200
+GET 127.0.0.1:18080/                    200
+GET 127.0.0.1:18080/mm-api/health       200
+```
+
+PostgreSQL was restarted after promotion. Migration replay remained a no-op,
+the active profile and exact readiness counts survived, the backend and Worker
+reconnected under their dedicated roles, and the reference-only reader still
+returned the authorized candidate. Recent service logs contained no panic,
+fatal, permission-denied, or connection-refused event.
+
+The old PG16 container was removed, but its physical
+`mm-chat/data/postgres` directory remains unchanged alongside the final logical
+backups and MinIO archive. Legacy `REAL[]` Search rows also remain. These are
+the rollback authorities for the observation window and must not be deleted by
+G18. A major-version rollback stops writers and restores the previous
+Compose/env plus PG16 storage; it never starts PG17 against the PG16 directory
+and never relies on an in-place migration down.
+
+G18.5B and the approved G18 production retrieval cutover are complete. The
+optional BGE-M3 shadow benchmark remains a separate future decision and must
+not mix vector spaces or trigger an implicit production re-embedding.

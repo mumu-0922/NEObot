@@ -178,6 +178,8 @@ required = (
     "FRONTEND_IMAGE",
     "BACKEND_IMAGE",
     "RAG_IMAGE",
+    "POSTGRES_IMAGE",
+    "POSTGRES_DATA_DIR",
     "MM_CHAT_VERSION",
     "MM_CHAT_RUNTIME_UID",
     "MM_CHAT_RUNTIME_GID",
@@ -312,6 +314,10 @@ if not valid_image_digest(values["FRONTEND_IMAGE"]):
     fail("FRONTEND_IMAGE must use a full immutable sha256 registry digest")
 if not valid_image_digest(values["RAG_IMAGE"]):
     fail("RAG_IMAGE must use a full immutable sha256 registry digest")
+if not valid_image_digest(values["POSTGRES_IMAGE"]):
+    fail("POSTGRES_IMAGE must use a full immutable sha256 registry digest")
+if values["POSTGRES_DATA_DIR"] != "./data/postgres17":
+    fail("POSTGRES_DATA_DIR must be ./data/postgres17")
 
 if values["MM_CHAT_VERSION"].lower() in {"dev", "local", "single-server-dev"}:
     fail("MM_CHAT_VERSION must identify the release")
