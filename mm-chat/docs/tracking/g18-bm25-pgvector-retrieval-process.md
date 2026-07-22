@@ -1137,3 +1137,54 @@ The replay document and object were deleted. Migration `041` down deliberately
 retains the safe path because restoring `"$user", public` would recreate the
 object-shadowing vulnerability rather than provide a valid operational
 rollback.
+
+## 2026-07-22 — Turn-scoped Citation authority repair
+
+An owner-visible no-evidence answer displayed `[K1]` and a Knowledge citation
+card even though its persisted metadata said `outcome=no_evidence`,
+`citationCount=0`, and `evidenceUsed=false`. Database inspection proved that
+retrieval had not falsely matched. The model had copied `[K1]` from the prior
+assistant turn, and the completion path used the marker only to downgrade
+authority without removing it from model prose.
+
+This was an implicit-assumption and cross-layer-contract defect: reserved
+source markers were treated as text even though the UI interprets them as
+capabilities. The repair now:
+
+- removes `[K#]` and `[W#]` from historical assistant context before the next
+  provider request;
+- builds a current-turn allowlist only from hydrated Knowledge citations and
+  bounded Web citations;
+- removes unissued markers before completed-authority reconciliation,
+  persistence, and terminal SSE emission;
+- reconciles old persisted Knowledge markers against current-message metadata
+  when the frontend maps server messages.
+
+Focused Backend/Frontend regressions passed, followed by full gates:
+
+```text
+go vet ./...                              pass
+go test -count=1 ./...                    pass
+frontend lint / typecheck                 pass / pass
+frontend tests                            187 files / 893 tests passed
+frontend production build                 pass
+Compose backend / frontend / RAG worker   healthy / healthy / healthy
+direct / proxied health                    200 / 200
+```
+
+A real `gpt-5.6-sol` two-turn replay used collection `test`. The grounded first
+turn answered the fixture budget with one authoritative `[K1]`. The second turn
+asked whether the Knowledge base contained France-capital information and
+completed with:
+
+```text
+outcome / citationCount / evidenceUsed    no_evidence / 0 / false
+terminal content                           no [K1]
+persisted reload                           no [K1]
+Knowledge citation blocks                  0
+```
+
+The temporary conversation was deleted. Existing user conversations and all
+Knowledge documents remained unchanged. Rollback is limited to the nine source
+and test files in the associated fix commit; no migration or data rollback is
+required.

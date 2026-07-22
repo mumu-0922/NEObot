@@ -24,7 +24,10 @@ import {
 import type { ReasoningEffort } from "../../lib/chat/types";
 import { IMAGE_CONTENT_POLICY_VIOLATION_CODE } from "../../lib/chat/types";
 import { SERVER_DEFAULT_PROVIDER_ID } from "../../lib/defaultConfig/shared";
-import { normalizeMessageKnowledgeMetadata } from "../../lib/knowledge/citations";
+import {
+  normalizeMessageKnowledgeMetadata,
+  reconcileMessageKnowledgeContent,
+} from "../../lib/knowledge/citations";
 import type { MessageKnowledgeMetadata } from "../../lib/knowledge/types";
 import {
   MAX_CONVERSATION_KNOWLEDGE_COLLECTIONS,
@@ -239,7 +242,10 @@ export function mapChatMessageDtoToMessage(
     message.metadata,
     message.content,
   );
-  const content = normalizeImageGenerationContent(message);
+  const content = reconcileMessageKnowledgeContent(
+    normalizeImageGenerationContent(message),
+    knowledge,
+  );
   const generationError = normalizeServerGenerationError(message);
 
   return {

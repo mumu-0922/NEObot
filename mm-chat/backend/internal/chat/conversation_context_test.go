@@ -63,6 +63,21 @@ func TestBuildProviderConversationMessagesReplacesOnlyCurrentPrompt(t *testing.T
 	})
 }
 
+func TestBuildProviderConversationMessagesDoesNotCarryTurnScopedMarkersForward(t *testing.T) {
+	messages := []Message{
+		{ID: "u1", Role: "user", Content: "knowledge question"},
+		{ID: "a1", Role: "assistant", Content: "grounded answer [K1] and web [W1]"},
+		{ID: "u2", Role: "user", Content: "unrelated follow up"},
+	}
+
+	got := buildProviderConversationMessages(messages, "u2", "unrelated follow up", nil)
+	assertProviderMessages(t, got, []ProviderMessage{
+		{Role: "user", Content: "knowledge question"},
+		{Role: "assistant", Content: "grounded answer and web"},
+		{Role: "user", Content: "unrelated follow up"},
+	})
+}
+
 func assertProviderMessages(t *testing.T, got []ProviderMessage, want []ProviderMessage) {
 	t.Helper()
 	if len(got) != len(want) {

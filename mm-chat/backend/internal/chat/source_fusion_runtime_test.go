@@ -93,6 +93,25 @@ func TestReconcileCompletedSourceFusionAuthorityUsesActualMarkers(t *testing.T) 
 	}
 }
 
+func TestReconcileProviderSourceMarkersKeepsOnlyCurrentTurnAuthority(t *testing.T) {
+	knowledge := autoRAGDecision{Citations: []RAGCitation{{Marker: "[K1]"}}}
+	webResult := websearch.Result{Sources: []websearch.Source{{
+		Title: "Public source", URL: "https://example.test/public", Content: "public evidence",
+	}}}
+
+	got := reconcileProviderSourceMarkers(
+		"grounded [K1] public [W1] invented [K2] [W9]",
+		knowledge,
+		webResult,
+	)
+	if got != "grounded [K1] public [W1] invented" {
+		t.Fatalf("reconciled content = %q", got)
+	}
+	if got := reconcileProviderSourceMarkers("model fallback [K1]", autoRAGDecision{}, websearch.Result{}); got != "model fallback" {
+		t.Fatalf("no-evidence content = %q", got)
+	}
+}
+
 func TestSourceSearchDegradationReasonIsStableAndRedacted(t *testing.T) {
 	tests := []struct {
 		err  error

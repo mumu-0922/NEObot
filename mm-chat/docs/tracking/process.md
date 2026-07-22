@@ -8634,3 +8634,16 @@ guidance and still excludes raw network/provider details. Exact correlation and
 contract changes are recorded in
 `docs/tracking/g12-provider-protocols-process.md` and
 `docs/contracts/media-job-executor-seams.md`.
+
+## 2026-07-22 — Turn-scoped Knowledge Citation repair
+
+The apparent no-evidence `[K1]` was not a retrieval false positive. Persisted
+metadata proved `no_evidence / citationCount=0 / evidenceUsed=false`; the model
+had copied a reserved marker from the previous assistant turn. Backend history
+assembly now strips prior `[K#]/[W#]`, completion accepts only current-turn
+issued markers, and persistence plus terminal SSE use the reconciled content.
+Frontend server-message mapping also removes unissued Knowledge markers from
+legacy persisted messages. Full Go and Frontend gates, healthy rebuilt Compose
+services, and a real two-turn `gpt-5.6-sol` hit-then-miss replay passed; the
+temporary conversation was deleted. Exact evidence and rollback are recorded
+in `docs/tracking/g18-bm25-pgvector-retrieval-process.md`.

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { normalizeMessageKnowledgeMetadata } from "@/lib/knowledge/citations";
+import {
+  normalizeMessageKnowledgeMetadata,
+  reconcileMessageKnowledgeContent,
+} from "@/lib/knowledge/citations";
 import {
   createKnowledgeCollectionAttachment,
   createKnowledgeFileAttachment,
@@ -117,6 +120,49 @@ describe("Knowledge citation metadata", () => {
       evidenceUsed: true,
       citations: [{ marker: "[K2]" }],
     });
+  });
+
+  it("removes a model-invented marker when the turn has no Knowledge evidence", () => {
+    const knowledge = normalizeMessageKnowledgeMetadata(
+      {
+        knowledge: {
+          outcome: "no_evidence",
+          citationCount: 0,
+          citations: [],
+        },
+      },
+      "General answer [K1]",
+    );
+
+    expect(
+      reconcileMessageKnowledgeContent("General answer [K1]", knowledge),
+    ).toBe("General answer");
+  });
+
+  it("preserves only markers backed by current message metadata", () => {
+    const knowledge = normalizeMessageKnowledgeMetadata(
+      {
+        knowledge: {
+          outcome: "answered",
+          citationCount: 1,
+          citations: [
+            {
+              id: "cit_1",
+              marker: "[K1]",
+              snippet: "grounded fixture",
+            },
+          ],
+        },
+      },
+      "Grounded [K1] invented [K2]",
+    );
+
+    expect(
+      reconcileMessageKnowledgeContent(
+        "Grounded [K1] invented [K2]",
+        knowledge,
+      ),
+    ).toBe("Grounded [K1] invented");
   });
 
   it("extracts selected collection ids from collection and file attachments", () => {

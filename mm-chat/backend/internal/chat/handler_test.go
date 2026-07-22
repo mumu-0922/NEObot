@@ -1902,6 +1902,41 @@ func TestHandlerAutoRAGDoesNotPersistUnusedCitation(t *testing.T) {
 	}
 }
 
+func TestHandlerRemovesUnissuedKnowledgeMarkerFromModelFallback(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "unrelated question"),
+	)
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(&titleProvider{chunks: []string{"General model answer [K1]"}}),
+		WithRAGAnswerAssembler(NewRAGAnswerAssembler(
+			&fakeRAGCandidateSource{},
+			&fakeRAGHydrator{},
+		)),
+	)
+
+	rec := performAuthenticatedRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"metadata":{"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-rag-unissued-marker"}`,
+	)
+
+	assertStreamStatus(t, rec, http.StatusOK)
+	assistant := repo.messages[testConversationID][1]
+	if assistant.Content != "General model answer" {
+		t.Fatalf("assistant content = %q", assistant.Content)
+	}
+	assertAutoRAGMetadata(t, assistant, "no_evidence", 0)
+	if strings.Contains(rec.Body.String(), `"content":"General model answer [K1]"`) ||
+		!strings.Contains(rec.Body.String(), `"content":"General model answer"`) {
+		t.Fatalf("terminal stream retained unissued marker: %s", rec.Body.String())
+	}
+}
+
 func TestHandlerStreamsEmptyAssistantContent(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))

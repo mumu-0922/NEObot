@@ -50,6 +50,20 @@ knowledge_fetch_profiled_query_evidence_candidates(
 )
 ```
 
+Chat completion applies a turn-scoped source-marker reconciliation boundary:
+
+```text
+reconcileProviderSourceMarkers(content, knowledgeDecision, webResult)
+  -> completedContent
+
+reconcileMessageKnowledgeContent(content, knowledgeMetadata)
+  -> displayContent
+```
+
+`completedContent` is the only value used for completed-source authority,
+assistant persistence, and the terminal SSE message. `displayContent` is a
+frontend compatibility guard for messages persisted before this contract.
+
 Migration `037` introduced the durable pointer and routes that stable signature
 to the legacy `knowledge_fetch_hybrid_query_evidence_candidates(...)`
 implementation while the pointer is `legacy`. Migration `038` owns the
@@ -151,6 +165,18 @@ RETURNS TABLE(
 - Candidate indexes are not authorization authorities. Rejoin current
   authority before diagnostics, then reauthorize/hydrate again in Go before
   answer context or citations.
+- Knowledge/Web markers are minted, turn-scoped capabilities rather than model
+  prose. The completion allowlist comes only from the current turn's hydrated
+  Knowledge citations and bounded Web citations. Remove every unissued
+  `[K<number>]` or `[W<number>]` before authority reconciliation, persistence,
+  and the terminal SSE event.
+- Strip reserved source markers from historical assistant messages before
+  sending conversation context to a provider. This preserves the answer text
+  while preventing a model from copying a previous turn's citation capability.
+- The frontend must derive visible Knowledge markers and citation cards from
+  the current message's authoritative `metadata.knowledge.citations`, not from
+  marker-looking prose. It may remove unissued markers while mapping old
+  persisted messages, but it must not invent citation metadata.
 - Resolve bounded BM25/Dense probe IDs through a candidate-driven `LATERAL`
   current-authority lookup. Do not let PostgreSQL decorrelate the authority
   view into a corpus-wide or per-candidate repeated expansion; retain an
@@ -270,6 +296,9 @@ RETURNS TABLE(
 | Collections/query/limit/vector invalid or vector norm is zero                    | `RAG_HYBRID_SHADOW_ARGUMENT_INVALID`                                                                |
 | Document/collection becomes non-current                                          | Candidate disappears immediately; immutable rollback row may remain                                 |
 | Reranker is configured but unavailable/unauthorized/malformed                    | No Knowledge evidence or citation is minted                                                         |
+| Current turn has no evidence but model emits or copies `[K1]`                    | Marker is removed; `no_evidence`, `citationCount=0`, and no citation card remain                     |
+| Model emits a Knowledge/Web marker not present in the current turn allowlist     | Unissued marker is removed before authority, persistence, and terminal SSE                          |
+| Current turn emits a marker backed by current authoritative citation metadata     | Marker and matching citation metadata remain unchanged                                               |
 | Profile compare-and-swap sees a stale expected profile/revision                  | `RAG_RETRIEVAL_PROFILE_CONFLICT`; pointer/history unchanged                                         |
 | PG17 profile is selected before its implementation is available                  | `RAG_RETRIEVAL_PROFILE_UNAVAILABLE`; pointer unchanged                                              |
 | Active generation/profile is missing at PG17 activation                          | `RAG_RETRIEVAL_PROFILE_ACTIVE_GENERATION_MISSING`; pointer unchanged                                |
@@ -296,10 +325,17 @@ Every SECURITY DEFINER function must pin the current schema followed by
 - **Base:** unrelated weather/cooking queries return zero candidates in both
   lexical and Dense lanes; ordinary Model/Web answering may continue without a
   Knowledge citation.
+- **Good:** a grounded turn retains its issued `[K1]`; a later unrelated turn in
+  the same conversation receives the prior answer text without reserved
+  markers and persists no citation-looking prose or card.
+- **Base:** an old persisted `no_evidence` message containing a false `[K1]` is
+  rendered without that marker by the frontend compatibility guard.
 - **Bad:** mixing Jina and BGE vectors because both have 1024 dimensions,
   mounting a PG16 directory into PG17, accepting BM25 score `0`, granting a
   shadow diagnostic to `go_api_runtime`, emitting source text in a report, or
   joining a bounded probe to an authority view that expands the entire corpus.
+- **Bad:** treating any `[K1]` found in model prose or conversation history as
+  proof that current Knowledge evidence was used.
 - **Good:** `neo_chat_api` binds a document through the allocation gateway,
   the Go source endpoint resolves metadata through the token-and-lease-fenced
   function, and the Worker publishes without direct API table privileges.
@@ -359,6 +395,11 @@ The disposable drill must assert:
     source-object fetch, publication, profiled BM25/Dense retrieval, citation,
     deletion invisibility, and fixture cleanup succeed while direct privileges
     on every internal projection relation remain false.
+17. In one real-provider conversation, first ask a fixture-backed question and
+    prove a legitimate `[K1]`; then ask an unrelated no-evidence question and
+    prove the terminal SSE message, persisted reload, and frontend mapping all
+    contain no `[K#]`, `citationCount` is zero, and no Knowledge citation card
+    exists.
 
 After the drill, run `go vet ./...`, `go test ./...`, and the frozen G18
 evaluator.
@@ -405,6 +446,32 @@ ORDER BY probe.score, probe.child_chunk_id;
 The index is explicit, unrelated zeros are rejected, ordering is deterministic,
 and current authority remains the final visibility gate without being
 decorrelated into a corpus-wide join.
+
+### Turn-scoped citation authority
+
+Wrong:
+
+```go
+// Marker-looking model prose is not citation authority.
+completedDecision := decision.completed(providerContent)
+persist(providerContent)
+```
+
+Correct:
+
+```go
+completedContent := reconcileProviderSourceMarkers(
+	providerContent,
+	decision,
+	webResult,
+)
+completedDecision := decision.completed(completedContent)
+persist(completedContent)
+```
+
+Only markers issued from the current turn's authoritative evidence survive.
+Historical assistant markers are removed before provider context assembly, and
+the frontend repeats the Knowledge-side check when loading legacy messages.
 
 ### API projection write boundary
 

@@ -44,6 +44,8 @@ func buildProviderConversationMessages(
 		if message.ID == anchorMessageID {
 			content = currentPrompt
 			attachments = currentAttachments
+		} else if message.Role == "assistant" {
+			content = stripReservedSourceMarkers(content)
 		}
 		if strings.TrimSpace(content) == "" && len(attachments) == 0 {
 			continue

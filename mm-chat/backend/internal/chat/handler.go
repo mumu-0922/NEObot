@@ -1538,10 +1538,15 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		}
 	}
 
-	completedDecision := autoDecision.completed(content.String())
+	completedContent := reconcileProviderSourceMarkers(
+		content.String(),
+		autoDecision,
+		webSearchResult,
+	)
+	completedDecision := autoDecision.completed(completedContent)
 	fusionPlan = reconcileCompletedSourceFusionAuthority(
 		fusionPlan,
-		content.String(),
+		completedContent,
 		completedDecision,
 		webSearchResult,
 	)
@@ -1551,7 +1556,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		assistantMessage.ID,
 		FinalizeAssistantMessageInput{
 			Status:       "completed",
-			Content:      content.String(),
+			Content:      completedContent,
 			OutputBlocks: webSearchOutputBlocks(assistantMessage.ID, webSearchResult),
 			Metadata:     webMessageMetadata(completedDecision, nil),
 		},

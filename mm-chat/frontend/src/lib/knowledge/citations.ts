@@ -1,5 +1,7 @@
 import type { KnowledgeCitation, MessageKnowledgeMetadata } from "./types";
 
+const reservedKnowledgeMarkerPattern = /[\t ]*\[K[0-9]+\]/g;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
@@ -99,4 +101,17 @@ export function normalizeMessageKnowledgeMetadata(
     degradationReason: stringValue(knowledge.degradationReason),
     citations,
   };
+}
+
+export function reconcileMessageKnowledgeContent(
+  content: string,
+  knowledge: MessageKnowledgeMetadata | undefined,
+): string {
+  if (!knowledge) return content;
+  const allowed = new Set(
+    (knowledge.citations || []).map((citation) => citation.marker),
+  );
+  return content.replace(reservedKnowledgeMarkerPattern, (match) =>
+    allowed.has(match.trim()) ? match : "",
+  );
 }

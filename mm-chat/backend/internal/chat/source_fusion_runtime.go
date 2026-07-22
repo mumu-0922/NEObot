@@ -2,6 +2,7 @@ package chat
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 	"time"
 
@@ -11,6 +12,10 @@ import (
 const (
 	maxFusionWebKnowledgeContextBytes = 512
 	maxFusionStageDurationMillis      = int64(10 * 60 * 1000)
+)
+
+var reservedSourceMarkerPattern = regexp.MustCompile(
+	`[\t ]*\[(?:K|W)[0-9]+\]`,
 )
 
 type sourceFusionDiagnostics struct {
@@ -95,6 +100,47 @@ func fallbackSourceFusionAuthority(
 		plan.Authority = sourceAuthorityModel
 	}
 	return plan
+}
+
+// reconcileProviderSourceMarkers treats Knowledge/Web markers as minted,
+// turn-scoped capabilities. A model may see markers in conversation history
+// and copy them into a later answer, but an unissued marker must never survive
+// as a citation-looking claim.
+func reconcileProviderSourceMarkers(
+	content string,
+	knowledge autoRAGDecision,
+	webResult websearch.Result,
+) string {
+	allowed := make(map[string]struct{}, len(knowledge.Citations)+len(webResult.Sources))
+	for _, citation := range knowledge.Citations {
+		if marker := strings.TrimSpace(citation.Marker); marker != "" {
+			allowed[marker] = struct{}{}
+		}
+	}
+	_, webCitations := prepareWebSearchResult(webResult)
+	for _, citation := range webCitations {
+		if marker := strings.TrimSpace(citation.Marker); marker != "" {
+			allowed[marker] = struct{}{}
+		}
+	}
+	return filterReservedSourceMarkers(content, allowed)
+}
+
+func stripReservedSourceMarkers(content string) string {
+	return filterReservedSourceMarkers(content, nil)
+}
+
+func filterReservedSourceMarkers(
+	content string,
+	allowed map[string]struct{},
+) string {
+	return reservedSourceMarkerPattern.ReplaceAllStringFunc(content, func(match string) string {
+		marker := strings.TrimSpace(match)
+		if _, ok := allowed[marker]; ok {
+			return match
+		}
+		return ""
+	})
 }
 
 func reconcileCompletedSourceFusionAuthority(
