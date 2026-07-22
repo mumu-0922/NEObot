@@ -16,11 +16,11 @@ BEGIN
 
   SELECT count(*) INTO migration_count
   FROM schema_migrations
-  WHERE version BETWEEN 1 AND 36
+  WHERE version BETWEEN 1 AND 37
     AND length(checksum) = 64;
-  IF migration_count <> 36
+  IF migration_count <> 37
     OR (SELECT min(version) FROM schema_migrations) <> 1
-    OR (SELECT max(version) FROM schema_migrations) <> 36 THEN
+    OR (SELECT max(version) FROM schema_migrations) <> 37 THEN
     RAISE EXCEPTION 'migration manifest is incomplete';
   END IF;
 
@@ -115,6 +115,6 @@ $extension_contract$;
 \endif
 
 SELECT format(
-  'PASS PG%s migrations=36 authority=1 objects=2 generation=active projection=ready',
+  'PASS PG%s migrations=37 authority=1 objects=2 generation=active projection=ready',
   :expected_major
 ) AS result;

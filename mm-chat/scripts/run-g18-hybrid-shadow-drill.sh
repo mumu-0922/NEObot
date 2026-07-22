@@ -87,9 +87,9 @@ log "starting disposable PostgreSQL 17"
 "${compose[@]}" up -d pg17
 wait_for_ready
 
-log "applying the current 36 production migrations"
+log "applying the current 37 production migrations"
 run_migrate "${report_dir}/migrate-before-shadow.log"
-grep -Fq 'up 036_task_model_settings' \
+grep -Fq 'up 037_rag_retrieval_profile_pointer' \
   "${report_dir}/migrate-before-shadow.log"
 
 log "loading and verifying the G18 authority/projection fixture"

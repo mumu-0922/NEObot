@@ -13,7 +13,7 @@ mm-chat/scripts/run-g18-pgvector-shadow-drill.sh
 ```
 
 The script builds the pinned G18 PostgreSQL image, starts a unique internal
-Compose project, applies the current `1–36` production migrations, loads only
+Compose project, applies the current `1–37` production migrations, loads only
 synthetic rows, and proves:
 
 - transactional and idempotent conversion of compatible Jina v4 vectors;

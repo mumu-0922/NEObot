@@ -12,7 +12,7 @@ From any directory under the repository checkout:
 mm-chat/scripts/run-g18-hybrid-shadow-drill.sh
 ```
 
-The harness builds the pinned PostgreSQL 17 image, applies the current `1–36`
+The harness builds the pinned PostgreSQL 17 image, applies the current `1–37`
 production migrations, loads only synthetic rows, and proves:
 
 - current-generation, published, ready BM25 source admission;

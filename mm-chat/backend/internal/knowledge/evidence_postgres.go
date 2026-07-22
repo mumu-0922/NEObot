@@ -141,7 +141,7 @@ func (r *PostgresRepository) FetchHybridQueryEvidenceCandidates(
 SELECT collection_id, document_id, document_version_id, index_generation_id,
   materialization_id, parent_chunk_id, child_chunk_id, source_span_hash,
   content_hash, rank_score
-FROM knowledge_fetch_hybrid_query_evidence_candidates(
+FROM knowledge_fetch_profiled_query_evidence_candidates(
   $1::uuid[], $2, $3::real[], $4
 )
 `, evidenceUUIDArrayLiteral(input.CollectionIDs), input.QueryText,

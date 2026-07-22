@@ -368,3 +368,99 @@ plan assertions remain the authoritative SQL security tests.
 
 Next: commit G18.4 alone. G18.5 then promotes the reviewed PG17 DDL into the
 normal migration path only after a verified restore to fresh PG17 storage.
+
+## 2026-07-22 — G18.5A PG16-compatible retrieval profile pointer
+
+The first cutover slice deliberately did not add `pg_textsearch`, pgvector
+types, or a PostgreSQL 17 execution branch to the ordinary migrations. The
+running independent service is still PostgreSQL 16, so migration `037` adds
+only an extension-free server-owned pointer and a stable profiled reader. The
+pointer starts at `legacy` revision `1`; the Go repository now calls the
+profiled reader, which delegates row-for-row to the existing
+`ts_rank + REAL[]` function.
+
+`knowledge_set_retrieval_profile(expected, target, revision, reason)` uses a
+row lock plus transaction advisory lock for compare-and-swap transitions. A
+stale expected state raises `RAG_RETRIEVAL_PROFILE_CONFLICT`. Migration `037`
+intentionally raises `RAG_RETRIEVAL_PROFILE_UNAVAILABLE` for
+`pg17_bm25_pgvector_v1`, so an absent schema/backfill cannot be activated.
+Successful future transitions append immutable history. Only
+`rag_replay_operator` may mutate the pointer; `go_api_runtime` and
+`rag_worker_executor` can execute only the reference-shaped candidate reader.
+
+The down migration checks the active profile before dropping any object. A
+non-legacy pointer raises
+`RAG_RETRIEVAL_PROFILE_ROLLBACK_REQUIRES_LEGACY` inside the migration
+transaction, retaining migration `037`, its tables, functions, and state.
+Operators must first roll application traffic back to the legacy profile, then
+remove the migration.
+
+Disposable proof command:
+
+```bash
+./mm-chat/scripts/run-g18-profile-pointer-drill.sh
+```
+
+Final report: `/tmp/mm-chat-g18-profile-pointer.CdhPfb`.
+
+```text
+PASS PG16 migrations=37 authority=1 objects=2 generation=active projection=ready
+PASS G18.5A profile=legacy parity=exact roles=bounded pg17=fail-closed
+PASS G18.5A non-legacy rollback rejected atomically
+PASS G18.5A rollback retained legacy reader
+disposable_database=removed
+```
+
+The proof applied all migrations on synthetic PostgreSQL 16 data, compared the
+complete legacy/profiled result rows, exercised the reader under both runtime
+roles, and exercised idempotent/unavailable/conflicting pointer operations
+under the replay role. It then forced a non-legacy head to validate atomic down
+failure, switched back through the controlled function, rolled down/reapplied,
+and confirmed a fresh restart state of `legacy` revision `1`. No production
+database, bind-mounted data directory, provider, host port, or live retrieval
+profile was touched; the exit trap removed every project-scoped container and
+volume.
+
+The Go repository call was also exercised against a separate disposable PG16
+instance with `MM_CHAT_REQUIRE_POSTGRES_TESTS=true`:
+
+```text
+TestPostgresFetchQueryEvidenceCandidatesReturnsBoundedReferences  passed
+profiled reader returned the expected bounded Dense reference     passed
+temporary PG16 container                                          removed
+```
+
+After migration `037` changed the production manifest, the complete G18.4
+shadow drill was rerun rather than relying on its earlier 36-migration report.
+Report `/tmp/mm-chat-g18-hybrid-shadow.EC2Xg4` passed all seven BM25/Dense/RRF
+cases, both unrelated zero-candidate cases, HNSW/BM25 index plans, deletion
+invisibility, both rollback layers, and cleanup with migrations `1–37`.
+
+Final G18.5A quality gates:
+
+```text
+gofmt / go vet ./...                         passed
+go test -count=1 ./...                       passed
+focused disposable-PG16 repository test     passed
+recorded seven-case evaluator                passed
+schema migration contract test               passed
+bash syntax / diff whitespace                passed
+SECURITY DEFINER paths / role grants          passed live
+temporary G18 containers / volumes            0 / 0
+```
+
+The normal all-package Go run intentionally leaves
+`MM_CHAT_TEST_DATABASE_URL` unset because older chat/browser-import fixtures
+share one database and are not cross-package isolation-safe. Database behavior
+for this slice is covered by the dedicated pointer drill and the focused
+repository test, each with its own disposable PG16 database.
+
+G18.5A does not complete Group 5. Effective production retrieval is still the
+legacy reader, and Compose still targets PostgreSQL 16. G18.5B owns migration
+`038`, the PG17 BM25/pgvector implementation, verified backfill, pointer
+activation, operational/resource proofs, blue-green data-path cutover, and
+rollback from the preserved PG16 backup.
+
+Next: commit G18.5A alone. Then implement G18.5B on disposable PG17 storage;
+do not alter the running database or `mm-chat/data/postgres` before backup and
+restore gates pass.

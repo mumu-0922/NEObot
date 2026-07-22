@@ -107,6 +107,20 @@ Jina reranking, citations, single-user deployment model, and rollback path.
 - [ ] Legacy `REAL[]` compatibility data is retained until the observation
       window closes; deletion requires a separate reviewed task.
 
+Progress checkpoint (G18.5A, 2026-07-22):
+
+- [x] A PostgreSQL 16-compatible migration added the durable server-owned
+      profile pointer and moved the Go candidate reader behind it while the
+      active profile remains `legacy`.
+- [x] The pointer defaults to `legacy` revision `1`, uses compare-and-swap
+      transitions, fails closed for the unavailable PG17 profile, and blocks
+      migration rollback while a non-legacy profile is active.
+- [x] Disposable PG16 integration proved exact legacy-reader parity, bounded
+      runtime privileges, restart/reapply behavior, and clean rollback.
+- [ ] G18.5B must add the PG17 BM25/pgvector implementation, backfill and
+      activation path, complete the operational/resource gates above, and
+      perform the reviewed blue-green production cutover.
+
 ### Group 6 — Optional BGE-M3 shadow benchmark
 
 - [ ] BGE-M3 uses a separate immutable model/profile/generation identity.

@@ -44,12 +44,29 @@ knowledge_fetch_hybrid_shadow_diagnostics(
 Production remains on:
 
 ```sql
-knowledge_fetch_hybrid_query_evidence_candidates(
+knowledge_fetch_profiled_query_evidence_candidates(
   UUID[], TEXT, REAL[], INTEGER
 )
 ```
 
-until the G18.5 profile-pointer cutover.
+Migration `037` routes that stable signature to the legacy
+`knowledge_fetch_hybrid_query_evidence_candidates(...)` implementation while
+the durable pointer is `legacy`. The PG17 branch must remain fail-closed until
+the reviewed PG17 storage migration exists and has passed its activation gates.
+
+Profile mutation is operator-only and compare-and-swap:
+
+```sql
+knowledge_set_retrieval_profile(
+  p_expected_profile TEXT,
+  p_target_profile TEXT,
+  p_expected_revision BIGINT,
+  p_reason TEXT
+) RETURNS TABLE(active_profile TEXT, revision BIGINT)
+```
+
+The accepted profile identities are `legacy` and
+`pg17_bm25_pgvector_v1`; the singleton starts at `legacy` revision `1`.
 
 ## 3. Contracts
 
@@ -72,6 +89,15 @@ until the G18.5 profile-pointer cutover.
   output source text, exact terms, provider credentials, or private queries.
 - Only `rag_replay_operator` receives shadow EXECUTE. Production runtime roles
   receive no shadow table/function privileges.
+- The retrieval profile head is a database-owned singleton with a monotonic
+  revision. Profile mutations use compare-and-swap over expected profile and
+  revision, append immutable transition history, and are executable only by
+  `rag_replay_operator`.
+- A profile target whose schema or verified backfill is unavailable must raise
+  `RAG_RETRIEVAL_PROFILE_UNAVAILABLE` without mutating pointer state.
+- Migration rollback must fail atomically with
+  `RAG_RETRIEVAL_PROFILE_ROLLBACK_REQUIRES_LEGACY` unless the active pointer is
+  `legacy`. Application rollback precedes migration rollback.
 
 ## 4. Validation & Error Matrix
 
@@ -85,6 +111,9 @@ until the G18.5 profile-pointer cutover.
 | Collections/query/limit/vector invalid or vector norm is zero | `RAG_HYBRID_SHADOW_ARGUMENT_INVALID` |
 | Document/collection becomes non-current | Candidate disappears immediately; immutable rollback row may remain |
 | Reranker is configured but unavailable/unauthorized/malformed | No Knowledge evidence or citation is minted |
+| Profile compare-and-swap sees a stale expected profile/revision | `RAG_RETRIEVAL_PROFILE_CONFLICT`; pointer/history unchanged |
+| PG17 profile is selected before its implementation is available | `RAG_RETRIEVAL_PROFILE_UNAVAILABLE`; pointer unchanged |
+| Migration down is attempted under a non-legacy profile | Rollback aborts atomically and migration `037` remains applied |
 
 Every SECURITY DEFINER function must pin the current schema followed by
 `pg_catalog, pg_temp` and must not resolve through `$user`.
@@ -116,6 +145,10 @@ The disposable drill must assert:
 7. a tombstone is immediately invisible without destroying rollback data;
 8. G18.4-only rollback retains G18.3, final rollback retains `REAL[]`, and all
    disposable containers/volumes are removed.
+9. The PG16-compatible profile reader is row-for-row identical to the legacy
+   reader at the default pointer; runtime roles cannot mutate the pointer;
+   unavailable/conflicting transitions and non-legacy migration rollback fail
+   without partial state changes.
 
 After the drill, run `go vet ./...`, `go test ./...`, and the frozen G18
 evaluator.

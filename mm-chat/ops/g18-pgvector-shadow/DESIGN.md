@@ -84,7 +84,7 @@ The shadow DDL intentionally remains outside `backend/migrations` during
 G18.3. The independent project still runs `postgres:16-alpine`; embedding a
 `VECTOR(1024)` migration now would make ordinary `migrate up` fail before the
 blue-green PostgreSQL 17 cutover. The disposable drill therefore applies the
-reviewed DDL only to PG17 and proves that `schema_migrations` remains `1–36`.
+reviewed DDL only to PG17 and proves that `schema_migrations` remains `1–37`.
 
 G18.5 must promote this reviewed DDL into the normal migration sequence only
 after a verified production backup is restored into fresh PG17 storage. It

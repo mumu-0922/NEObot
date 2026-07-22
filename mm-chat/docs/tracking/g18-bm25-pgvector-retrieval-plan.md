@@ -105,6 +105,39 @@ changing migrations `1–36` or the legacy `REAL[]` production reader.
   resource budget, and rollback.
 - Retain `REAL[]` rollback data through the observation window.
 
+### G18.5A PG16-compatible profile pointer
+
+Status: complete (2026-07-22). Group 5 remains in progress.
+
+- Add migration `037` without PG17-only extension types so it can land safely
+  on the current PostgreSQL 16 runtime.
+- Route the Go candidate reader through a stable server-owned function while
+  the pointer defaults to `legacy` revision `1`.
+- Use an operator-only compare-and-swap transition function with immutable
+  history, strict unavailable/conflict errors, and a non-legacy rollback guard.
+- Prove exact legacy parity, bounded role grants, down/reapply, restart state,
+  and disposable cleanup before adding any PG17 implementation.
+
+Promotion proof: the disposable PG16 drill applied all `37` migrations, read
+the synthetic candidate through both the legacy and profiled functions with
+exact row parity, and proved that `go_api_runtime` and `rag_worker_executor`
+cannot mutate profile state. The PG17 target failed closed, a forced non-legacy
+down attempt failed atomically, and controlled return to legacy permitted
+down/reapply while retaining the old reader. The Go production query now uses
+the profiled function, but effective retrieval remains `ts_rank + REAL[]`.
+
+### G18.5B PG17 implementation and controlled activation
+
+Status: pending.
+
+- Promote the reviewed BM25/pgvector DDL into migration `038` after a fresh
+  verified PG16 backup is restored into PostgreSQL 17 storage.
+- Add verified backfill and the real `pg17_bm25_pgvector_v1` reader branch.
+- Prove concurrency, deletion, reindex, restart, backup/restore, latency,
+  PostgreSQL RSS/CPU, activation, and compare-and-swap rollback.
+- Change Compose/data-path authority only after all disposable proofs pass;
+  never start PG17 against the existing PG16 directory.
+
 ## G18.6 Optional BGE-M3 shadow benchmark
 
 - Use a separate immutable embedding generation and never mix vector spaces.

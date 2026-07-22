@@ -103,7 +103,8 @@ PostgreSQL RSS/CPU, deletion/reindex concurrency, and restart behavior on a
 representative corpus before moving the profile pointer.
 
 The PG17-only DDL remains outside `backend/migrations` while the independent
-Compose runtime is PostgreSQL 16. G18.5 must promote the already-reviewed DDL
+Compose runtime is PostgreSQL 16. Migration 037 adds only the extension-free
+legacy profile pointer. G18.5 must promote the already-reviewed PG17 DDL
 only after restoring a verified backup into fresh PG17 storage; it must never
 mount `mm-chat/data/postgres` directly into PG17.
 
