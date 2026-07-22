@@ -34,6 +34,7 @@ type externalWebToolLoopInput struct {
 	MaxResults      int
 	ForceSearch     bool
 	KnowledgeReady  bool
+	Knowledge       *knowledgeToolRuntime
 }
 
 func searchWebToolDefinition() ToolDefinition {
@@ -62,6 +63,13 @@ func startExternalWebToolLoop(
 	ctx context.Context,
 	input externalWebToolLoopInput,
 ) <-chan ProviderEvent {
+	return startRetrievalToolLoop(ctx, input)
+}
+
+func startRetrievalToolLoop(
+	ctx context.Context,
+	input externalWebToolLoopInput,
+) <-chan ProviderEvent {
 	events := make(chan ProviderEvent)
 	go func() {
 		defer close(events)
@@ -70,7 +78,31 @@ func startExternalWebToolLoop(
 				return
 			}
 		}
-		runCompatibilityExternalWebSearch(ctx, events, input)
+		if externalWebToolEnabled(input) {
+			runCompatibilityExternalWebSearch(ctx, events, input)
+			return
+		}
+		if input.Knowledge.enabled() {
+			failed := ProviderToolExecutionEvent{
+				ExecutionID:     "compatibility-knowledge-unavailable",
+				Name:            searchKnowledgeToolName,
+				Status:          ProcessStepStatusFailed,
+				Round:           1,
+				FailureCategory: "tool_unsupported",
+				Mode:            "compatibility",
+			}
+			if !sendToolExecutionEvent(ctx, events, failed) {
+				return
+			}
+			streamCompatibilityAnswer(
+				ctx,
+				events,
+				input.Provider,
+				withKnowledgeUnavailableInstruction(input.Request),
+			)
+			return
+		}
+		streamCompatibilityAnswer(ctx, events, input.Provider, input.Request)
 	}()
 	return events
 }
@@ -84,9 +116,14 @@ func runNativeExternalWebToolLoop(
 	provider ToolRoundProvider,
 	input externalWebToolLoopInput,
 ) bool {
-	tool := searchWebToolDefinition()
+	tools := retrievalToolDefinitions(input)
+	if len(tools) == 0 {
+		streamCompatibilityAnswer(ctx, events, input.Provider, input.Request)
+		return true
+	}
 	continuation := []ProviderToolExchange{}
 	cumulative := websearch.Result{Sources: []websearch.Source{}, Images: []websearch.Image{}}
+	knowledgeDecision := autoRAGDecision{}
 	completedUsage := TokenUsage{}
 	for round := 1; ; round++ {
 		choice := ProviderToolChoiceAuto
@@ -95,7 +132,7 @@ func runNativeExternalWebToolLoop(
 		}
 		roundEvents, err := provider.StreamToolRound(ctx, ProviderRoundRequest{
 			ProviderRequest: input.Request,
-			Tools:           []ToolDefinition{tool},
+			Tools:           tools,
 			ToolChoice:      choice,
 			Continuation:    continuation,
 		})
@@ -189,12 +226,13 @@ func runNativeExternalWebToolLoop(
 		}
 		for callIndex, call := range calls {
 			executionID := fmt.Sprintf("native-%d-%d", round, callIndex+1)
-			query, args, failure := validateSearchWebToolCall(call)
+			name := normalizedToolName(call.Name)
+			query, args, failure := validateRetrievalToolCall(call, input)
 			if failure != "" {
 				execution := ProviderToolExecutionEvent{
 					ExecutionID:     executionID,
 					CallID:          call.ID,
-					Name:            normalizedToolName(call.Name),
+					Name:            name,
 					Status:          ProcessStepStatusFailed,
 					Round:           round,
 					Arguments:       args,
@@ -207,8 +245,73 @@ func runNativeExternalWebToolLoop(
 				exchange.Results = append(exchange.Results, ProviderToolResult{
 					CallID:  call.ID,
 					Name:    call.Name,
-					Content: webSearchFailureToolResult(failure),
+					Content: retrievalToolFailureResult(name, failure),
 					IsError: true,
+				})
+				continue
+			}
+			if name == searchKnowledgeToolName {
+				running := ProviderToolExecutionEvent{
+					ExecutionID: executionID,
+					CallID:      call.ID,
+					Name:        searchKnowledgeToolName,
+					Status:      ProcessStepStatusRunning,
+					Round:       round,
+					Arguments:   args,
+					Query:       query,
+					Mode:        "native",
+				}
+				if !sendToolExecutionEvent(ctx, events, running) {
+					return true
+				}
+				current := executeKnowledgeTool(ctx, input.Knowledge, query)
+				failure = knowledgeToolFailureCategory(current)
+				if failure != "" {
+					failed := running
+					failed.Status = ProcessStepStatusFailed
+					failed.FailureCategory = failure
+					if knowledgeDecision.ReadyForAnswer() {
+						copy := knowledgeDecision
+						failed.Knowledge = &copy
+					} else {
+						copy := current
+						failed.Knowledge = &copy
+					}
+					if !sendToolExecutionEvent(ctx, events, failed) {
+						return true
+					}
+					exchange.Results = append(exchange.Results, ProviderToolResult{
+						CallID: call.ID, Name: call.Name,
+						Content: knowledgeToolFailureResult(failure), IsError: true,
+					})
+					continue
+				}
+				merged := mergeKnowledgeToolDecision(knowledgeDecision, current)
+				knowledgeDecision = merged.Cumulative
+				if merged.Current.ReadyForAnswer() {
+					authority := sourceAuthorityKnowledge
+					if len(cumulative.Sources) > 0 {
+						authority = sourceAuthorityMixed
+					}
+					input.Request.SystemPrompt = applySourceFusionSystemInstruction(
+						input.Request.SystemPrompt,
+						sourceFusionPlan{Authority: authority},
+					)
+				}
+				completed := running
+				completed.Status = ProcessStepStatusCompleted
+				completed.CitationMarkers = ragCitationMarkers(merged.Current.Citations)
+				copy := knowledgeDecision
+				if !copy.ReadyForAnswer() {
+					copy = merged.Current
+				}
+				completed.Knowledge = &copy
+				if !sendToolExecutionEvent(ctx, events, completed) {
+					return true
+				}
+				exchange.Results = append(exchange.Results, ProviderToolResult{
+					CallID: call.ID, Name: call.Name,
+					Content: knowledgeToolSuccessResult(merged.Current),
 				})
 				continue
 			}
@@ -249,7 +352,7 @@ func runNativeExternalWebToolLoop(
 			bounded, _ := prepareWebSearchResult(result)
 			previous := cumulative
 			cumulative = mergeWebSearchResults(cumulative, bounded)
-			if input.KnowledgeReady {
+			if input.KnowledgeReady || knowledgeDecision.ReadyForAnswer() {
 				input.Request.SystemPrompt = applySourceFusionSystemInstruction(
 					input.Request.SystemPrompt,
 					sourceFusionPlan{Authority: sourceAuthorityMixed},
@@ -276,6 +379,52 @@ func runNativeExternalWebToolLoop(
 		}
 		continuation = append(continuation, exchange)
 	}
+}
+
+func retrievalToolDefinitions(input externalWebToolLoopInput) []ToolDefinition {
+	tools := make([]ToolDefinition, 0, 2)
+	if externalWebToolEnabled(input) {
+		// Keep Web first: ProviderToolChoiceRequired names the first offered tool,
+		// preserving the explicit-Search contract when Knowledge is also enabled.
+		tools = append(tools, searchWebToolDefinition())
+	}
+	if input.Knowledge.enabled() {
+		tools = append(tools, searchKnowledgeToolDefinition())
+	}
+	return tools
+}
+
+func externalWebToolEnabled(input externalWebToolLoopInput) bool {
+	return input.SearchService != nil &&
+		input.Execution.Mode == websearch.ExecutionExternal &&
+		input.Execution.External != nil
+}
+
+func validateRetrievalToolCall(
+	call ProviderToolCall,
+	input externalWebToolLoopInput,
+) (string, map[string]any, string) {
+	switch normalizedToolName(call.Name) {
+	case searchWebToolName:
+		if !externalWebToolEnabled(input) {
+			return "", nil, "tool_not_available"
+		}
+		return validateSearchWebToolCall(call)
+	case searchKnowledgeToolName:
+		if !input.Knowledge.enabled() {
+			return "", nil, "tool_not_available"
+		}
+		return validateSearchKnowledgeToolCall(call)
+	default:
+		return "", nil, "unknown_tool"
+	}
+}
+
+func retrievalToolFailureResult(name string, category string) string {
+	if name == searchKnowledgeToolName {
+		return knowledgeToolFailureResult(category)
+	}
+	return webSearchFailureToolResult(category)
 }
 
 func cloneTokenUsage(usage *TokenUsage) *TokenUsage {
@@ -611,6 +760,15 @@ func withWebUnavailableInstruction(request ProviderRequest) ProviderRequest {
 		request.SystemPrompt += "\n\n"
 	}
 	request.SystemPrompt += externalWebUnavailableSystemInstruction
+	return request
+}
+
+func withKnowledgeUnavailableInstruction(request ProviderRequest) ProviderRequest {
+	request.SystemPrompt = strings.TrimSpace(request.SystemPrompt)
+	if request.SystemPrompt != "" {
+		request.SystemPrompt += "\n\n"
+	}
+	request.SystemPrompt += knowledgeToolUnavailableInstruction
 	return request
 }
 

@@ -73,6 +73,7 @@ type ProviderToolExecutionEvent struct {
 	Arguments       map[string]any
 	Query           string
 	Search          *websearch.Result
+	Knowledge       *autoRAGDecision
 	CitationMarkers []string
 	FailureCategory string
 	Mode            string

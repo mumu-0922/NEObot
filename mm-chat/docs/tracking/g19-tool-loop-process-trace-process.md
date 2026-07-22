@@ -403,3 +403,43 @@ adapters, and custom attestation fields while preserving G19.3/G19.4 external
 Tool execution. Persisted JSON needs no schema rollback; legacy `useSearch`
 continues to map to `off|external`. Next: implement and independently commit
 G19.6 Knowledge Tool migration.
+
+## 2026-07-22 — G19.6A Knowledge executor and retrieval-loop foundation
+
+The first Knowledge migration slice is intentionally not promoted through the
+chat Handler yet. It adds the server-owned `search_knowledge` definition and
+executor beside the existing external Web Tool runtime while leaving the
+legacy pre-answer Auto RAG path as current rollback authority.
+
+The Tool schema exposes only one bounded standalone `query`; collection IDs
+are copied from the authenticated conversation selection and never accepted
+from model arguments. Execution reuses the active `RAGAnswerAssembler` and
+answer-governance gate, so candidate retrieval, reranking, final hydration
+reauthorization, deletion visibility, and citation minting retain their
+existing authority boundaries. A normal no-evidence result is returned to the
+model as `ok=true` with an empty source list. Dependency or governance failure
+returns no private evidence and is marked as a failed Tool execution.
+
+The provider-native loop can now register Web and Knowledge together, execute
+them in either order over unlimited rounds, and retain separate `[W#]` and
+`[K#]` namespaces. Repeated Knowledge calls deduplicate by backend citation ID,
+preserve already-issued markers, and cap cumulative Knowledge authority at the
+existing eight-citation boundary. Provider continuation receives only bounded
+snippets/locators; process persistence receives Query, status, counts,
+reranker status, and used marker IDs, never complete Knowledge bodies.
+
+Verification passed:
+
+```text
+go vet ./...
+go test ./...
+go test -race ./...
+go build ./cmd/api
+git diff --check (G19.6A scope)
+```
+
+Fixtures cover server-only collection authority, hit, successful miss,
+governance fail-closed, stable repeated markers, Knowledge -> Web, Web ->
+Knowledge, independent process steps, and unused-marker reconciliation. Next:
+wire the generic retrieval loop into authenticated chat streaming and keep the
+old pre-answer route as an explicit rollback seam until handler parity passes.

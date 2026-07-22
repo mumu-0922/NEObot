@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/websearch"
 )
 
@@ -103,6 +104,60 @@ func TestReconcileProcessTraceCitationsKeepsOnlyMarkersUsedByAnswer(t *testing.T
 	}
 	if _, exists := updates[0].Detail["citationMarkers"]; exists {
 		t.Fatalf("unused markers survived = %#v", updates[0].Detail)
+	}
+}
+
+func TestToolProcessTraceCreatesIndependentKnowledgeAndToolSteps(t *testing.T) {
+	trace := newProcessTrace("message-1")
+	runtime := newToolProcessTrace(trace)
+	startedAt := time.Now()
+	running := &ProviderToolExecutionEvent{
+		ExecutionID: "knowledge-1",
+		Name:        searchKnowledgeToolName,
+		Status:      ProcessStepStatusRunning,
+		Round:       2,
+		Query:       "standalone fixture",
+		Mode:        "native",
+	}
+	updates := runtime.apply(running, startedAt)
+	if len(updates) != 2 || updates[0].Kind != ProcessStepKindTool ||
+		updates[1].Kind != ProcessStepKindKnowledge {
+		t.Fatalf("running updates = %#v", updates)
+	}
+	authority := &RAGAnswerAuthority{
+		Processor: "fixture", ModelID: "fixture", CollectionCount: 1,
+	}
+	completed := *running
+	completed.Status = ProcessStepStatusCompleted
+	completed.CitationMarkers = []string{"[K1]"}
+	completed.Knowledge = &autoRAGDecision{
+		Outcome:      "evidence_ready",
+		Citations:    []RAGCitation{{Marker: "[K1]"}},
+		Authority:    authority,
+		Evidence:     []knowledge.HydratedEvidence{{SourceText: "fixture"}},
+		RerankStatus: ragRerankStatusApplied,
+	}
+	updates = runtime.apply(&completed, startedAt.Add(time.Second))
+	if len(updates) != 2 {
+		t.Fatalf("completed updates = %#v", updates)
+	}
+	for _, step := range updates {
+		if step.Status != ProcessStepStatusCompleted ||
+			step.Detail["outcome"] != "evidence_ready" ||
+			step.Detail["hitCount"] != 1 ||
+			step.Detail["rerankStatus"] != ragRerankStatusApplied {
+			t.Fatalf("completed step = %#v", step)
+		}
+	}
+
+	reconciled := reconcileProcessTraceCitations(trace, "answer without marker")
+	if len(reconciled) != 2 {
+		t.Fatalf("reconciled = %#v", reconciled)
+	}
+	for _, step := range reconciled {
+		if step.Detail["outcome"] != "completed_unreferenced" {
+			t.Fatalf("unreferenced step = %#v", step)
+		}
 	}
 }
 

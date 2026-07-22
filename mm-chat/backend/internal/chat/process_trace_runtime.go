@@ -9,16 +9,18 @@ import (
 )
 
 type toolProcessTrace struct {
-	trace       *processTrace
-	toolStepIDs map[string]string
-	webStepIDs  map[string]string
+	trace            *processTrace
+	toolStepIDs      map[string]string
+	webStepIDs       map[string]string
+	knowledgeStepIDs map[string]string
 }
 
 func newToolProcessTrace(trace *processTrace) *toolProcessTrace {
 	return &toolProcessTrace{
-		trace:       trace,
-		toolStepIDs: map[string]string{},
-		webStepIDs:  map[string]string{},
+		trace:            trace,
+		toolStepIDs:      map[string]string{},
+		webStepIDs:       map[string]string{},
+		knowledgeStepIDs: map[string]string{},
 	}
 }
 
@@ -34,6 +36,7 @@ func (runtime *toolProcessTrace) apply(
 	updates := make([]ProcessStep, 0, 2)
 	toolStepID := runtime.toolStepIDs[event.ExecutionID]
 	webStepID := runtime.webStepIDs[event.ExecutionID]
+	knowledgeStepID := runtime.knowledgeStepIDs[event.ExecutionID]
 	if toolStepID == "" {
 		step := runtime.trace.startNext(
 			ProcessStepKindTool,
@@ -56,6 +59,17 @@ func (runtime *toolProcessTrace) apply(
 		runtime.webStepIDs[event.ExecutionID] = webStepID
 		updates = append(updates, step)
 	}
+	if event.Name == searchKnowledgeToolName && knowledgeStepID == "" {
+		step := runtime.trace.startNext(
+			ProcessStepKindKnowledge,
+			"process.knowledge",
+			at,
+			detail,
+		)
+		knowledgeStepID = step.ID
+		runtime.knowledgeStepIDs[event.ExecutionID] = knowledgeStepID
+		updates = append(updates, step)
+	}
 	if event.Status == ProcessStepStatusRunning {
 		return updates
 	}
@@ -68,6 +82,11 @@ func (runtime *toolProcessTrace) apply(
 	}
 	if webStepID != "" {
 		if step, ok := runtime.trace.transitionID(webStepID, status, at, detail); ok {
+			updates = append(updates, step)
+		}
+	}
+	if knowledgeStepID != "" {
+		if step, ok := runtime.trace.transitionID(knowledgeStepID, status, at, detail); ok {
 			updates = append(updates, step)
 		}
 	}
@@ -91,6 +110,16 @@ func toolProcessDetail(event *ProviderToolExecutionEvent) map[string]any {
 	if event.Search != nil {
 		detail["sourceCount"] = len(event.Search.Sources)
 	}
+	if event.Name == searchKnowledgeToolName {
+		detail["hitCount"] = len(event.CitationMarkers)
+		if event.Knowledge != nil {
+			detail["outcome"] = event.Knowledge.Outcome
+			detail["queryRewritten"] = event.Knowledge.QueryRewritten
+			if rerankStatus := strings.TrimSpace(event.Knowledge.RerankStatus); rerankStatus != "" {
+				detail["rerankStatus"] = rerankStatus
+			}
+		}
+	}
 	if len(event.CitationMarkers) > 0 {
 		detail["citationMarkers"] = append([]string(nil), event.CitationMarkers...)
 	}
@@ -98,7 +127,9 @@ func toolProcessDetail(event *ProviderToolExecutionEvent) map[string]any {
 		detail["failureCategory"] = failure
 		detail["outcome"] = "degraded"
 	} else if event.Status == ProcessStepStatusCompleted {
-		detail["outcome"] = "completed"
+		if _, ok := detail["outcome"]; !ok {
+			detail["outcome"] = "completed"
+		}
 	} else {
 		detail["outcome"] = "running"
 	}
@@ -263,7 +294,8 @@ func reconcileProcessTraceCitations(
 	}
 	updates := make([]ProcessStep, 0)
 	for _, step := range trace.snapshot() {
-		if step.Kind != ProcessStepKindWeb && step.Kind != ProcessStepKindTool {
+		if step.Kind != ProcessStepKindWeb && step.Kind != ProcessStepKindKnowledge &&
+			step.Kind != ProcessStepKindTool {
 			continue
 		}
 		detail := cloneProcessDetail(step.Detail)
@@ -329,7 +361,8 @@ func finishProcessTrace(
 	}
 	for _, current := range trace.snapshot() {
 		if isTerminalProcessStepStatus(current.Status) ||
-			(current.Kind != ProcessStepKindTool && current.Kind != ProcessStepKindWeb) {
+			(current.Kind != ProcessStepKindTool && current.Kind != ProcessStepKindWeb &&
+				current.Kind != ProcessStepKindKnowledge) {
 			continue
 		}
 		detail := cloneProcessDetail(current.Detail)

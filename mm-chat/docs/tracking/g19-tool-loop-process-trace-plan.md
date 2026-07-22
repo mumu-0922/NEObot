@@ -213,6 +213,8 @@ deleted.
 
 ## G19.6 Knowledge Tool migration
 
+Status: in progress.
+
 - Register `search_knowledge` only when the conversation has selected
   collections.
 - Reuse the active BM25 + pgvector, query-expansion, RRF, Jina reranker,
@@ -221,6 +223,23 @@ deleted.
   confusing `[K#]` and `[W#]` authority.
 - Retire the old pre-answer Auto RAG Router only after parity, negative, and
   rollback proofs pass.
+
+Execution slices:
+
+- [x] G19.6A server-authoritative Knowledge executor and generic retrieval
+  loop foundation. The model supplies only a bounded standalone Query; selected
+  collection IDs remain server-owned. Native rounds can execute Knowledge ->
+  Web or Web -> Knowledge, normal misses return a successful empty Tool Result,
+  repeated Knowledge calls preserve stable cumulative `[K#]` markers, and live
+  Tool/Knowledge trace steps carry counts rather than source bodies.
+- [ ] G19.6B connect the generic retrieval loop to chat streaming for selected
+  Knowledge while retaining the legacy pre-answer path as a rollback seam.
+- [ ] G19.6C reconcile terminal Knowledge/Web authority, metadata, citations,
+  cancellation, and reload across handler fixtures.
+- [ ] G19.6D remove the legacy pre-answer Auto RAG authority after fixture
+  parity and pass the full static/test/build gates.
+- [ ] G19.6E pass the real uploaded-document hit/miss/follow-up/mixed/deletion/
+  restart gate, clean all smoke state, and record rollback evidence.
 
 Promotion gate: real uploaded documents prove hit, miss, contextual follow-up,
 mixed current/public evidence, deletion invisibility, no false citation,

@@ -1556,6 +1556,11 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           conversation persistence/inheritance, and tested built-in capability.
     - [ ] G19.6 Selected-Knowledge `search_knowledge` Tool migration with
           active BM25/pgvector/Jina retrieval and truthful `[K]`/`[W]` fusion.
+      - [x] G19.6A Server-authoritative Knowledge executor, stable cumulative
+            `[K#]` minting, mixed native retrieval rounds, and live
+            Tool/Knowledge trace foundation.
+      - [ ] G19.6B-E Handler cutover, terminal authority reconciliation,
+            legacy pre-answer retirement, and real-document promotion proof.
     - [ ] G19.7 Full live matrix, restart, clean-copy, rollback, and smoke-state
           cleanup.
 

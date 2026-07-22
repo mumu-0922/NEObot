@@ -143,4 +143,9 @@ func TestApplySourceFusionSystemInstructionRequiresConflictDisclosure(t *testing
 	); got != base {
 		t.Fatalf("non-mixed instruction changed: %q", got)
 	}
+	if twice := applySourceFusionSystemInstruction(mixed, sourceFusionPlan{
+		Authority: sourceAuthorityMixed,
+	}); twice != mixed || strings.Count(twice, mixedSourceSystemInstruction) != 1 {
+		t.Fatalf("mixed instruction was duplicated: %q", twice)
+	}
 }

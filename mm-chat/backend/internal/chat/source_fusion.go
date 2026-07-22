@@ -126,6 +126,9 @@ func applySourceFusionSystemInstruction(
 	if plan.Authority != sourceAuthorityMixed {
 		return baseSystemPrompt
 	}
+	if strings.Contains(baseSystemPrompt, mixedSourceSystemInstruction) {
+		return baseSystemPrompt
+	}
 	if baseSystemPrompt = strings.TrimSpace(baseSystemPrompt); baseSystemPrompt != "" {
 		return baseSystemPrompt + "\n\n" + mixedSourceSystemInstruction
 	}
