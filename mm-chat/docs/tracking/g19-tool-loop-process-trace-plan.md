@@ -247,15 +247,29 @@ process reload, restart, and complete fixture cleanup.
 
 ## G19.7 Full live matrix and closure
 
-- Verify Search off, ordinary Auto no-search, explicit/current Search,
+Status: complete (2026-07-22).
+
+- [x] Verify Search off, ordinary Auto no-search, explicit/current Search,
   contextual Query generation, Knowledge hit/miss, mixed Knowledge/Web,
   independent reasoning effort, compatibility planning, truthful citations,
   process reload, cancellation, provider failure degradation, and strict mode
   mutual exclusion.
-- Run full backend vet/test/race, frontend format/lint/typecheck/test/build,
+- [x] Run full backend vet/test/race, frontend format/lint/typecheck/test/build,
   Compose source rebuild, restart, clean-copy, and runtime health gates.
-- Delete all temporary conversations/files/documents and record exact rollback
+- [x] Delete all temporary conversations/files/documents and record exact rollback
   anchors before marking G19 complete.
+
+Promotion evidence: external Search `off` made zero Web calls; ordinary Auto
+made zero Web calls; four contextual Queries resolved to `DeepSeek V4 Flash`;
+reasoning `high` persisted independently from Search mode; Knowledge hit/miss
+and mixed `[K1] + [W3]` passed; DeepSeek entered the same-model compatibility
+path; unsupported model-built-in Search failed without external fallback;
+live cancel persisted Message/Generation/Tool/Web as `cancelled` with no
+`planner_failed` or Citation; restart preserved trace/markers; document
+deletion was immediately invisible. Backend full vet/test/race/build,
+Frontend 190-file/911-test/build gates, Compose health, and the full clean-copy
+gate with Python 1730 passed/7 skipped all passed. Every temporary G19.7
+conversation, File, Collection, and local artifact was removed.
 
 ## Rollback order
 

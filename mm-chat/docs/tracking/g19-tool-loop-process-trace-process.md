@@ -594,3 +594,71 @@ G19.6 is promoted. Rollback remains the reverse application of G19.6D through
 G19.6A; no schema, provider setting, secret, or retained user resource changed
 during this promotion. G19.7 owns the complete cross-provider/live/clean-copy
 closure matrix.
+
+## 2026-07-22 — G19.7 full live matrix and closure
+
+The final matrix exercised the deployed source-built runtime rather than only
+fixtures. Search `off` made zero Web calls. External Auto skipped an ordinary
+request, while four contextual Search requests resolved their subject to
+`DeepSeek V4 Flash`. Reasoning effort `high` and Search mode remained
+independently persisted. Knowledge hit/miss, mixed Knowledge/Web, used-marker
+reconciliation, process reload, and immediate document deletion visibility all
+retained the G19.6 authority.
+
+The provider boundary covered both native and compatibility behavior. Real
+DeepSeek entered `mode=compatibility`. An unattested `model_builtin` request
+recorded a failed Web step, completed an ordinary answer, emitted no `[W]`, and
+did not fall back to the active external provider. Backend restart preserved
+the same terminal trace and citation markers. Every temporary conversation,
+File, Collection, and local smoke artifact was deleted; prefixed server
+resource listings returned zero.
+
+The first cancellation replay exposed one final truthfulness defect: the
+assistant Message and Generation were `cancelled`, but compatibility Tool/Web
+steps were persisted as `failed / planner_failed`. The compatibility planner
+was treating every error as degradation, `toolProcessDetail` had no cancelled
+outcome branch, and Handler Web diagnostics had no cancelled case. The fix in
+`94b50f0` now:
+
+- recognizes `context.Canceled` and cancelled operation contexts across the
+  compatibility planner, native/compatibility Web, and Knowledge execution;
+- emits terminal cancelled Tool/source events without a failure category and
+  keeps that event deliverable after operation-context cancellation;
+- persists `detail.outcome=cancelled` and treats a cancelled Tool event as
+  message-cancellation authority; and
+- prevents cancellation from writing degraded Search diagnostics or starting
+  ordinary fallback/continuation.
+
+Focused cancellation tests ran repeatedly to cover event-delivery races. The
+source-built Backend was then rebuilt and recreated. A real
+`deepseek-v4-flash` compatibility-planner cancellation returned one
+`message.cancelled` and reloaded exactly Generation, Tool, and Web steps, all
+`cancelled / outcome=cancelled`, with zero `failureCategory`, zero output
+blocks, zero citation markers, and no `planner_failed`. Both cancellation
+conversations and their local capture state were deleted; no `G19.7`-prefixed
+conversation remained.
+
+Final evidence:
+
+```text
+Search off / external Auto ordinary                        zero Web / zero Web
+contextual Search Queries                                  4, all DeepSeek V4 Flash
+reasoning high / Search mode                               independently persisted
+Knowledge hit / miss / mixed                               [K1] / zero / [K1] + [W3]
+DeepSeek execution                                         compatibility
+unattested model_builtin                                   failed closed; no fallback
+live compatibility cancel                                 Message/Generation/Tool/Web cancelled
+cancel failure category / Citation                        none / zero
+restart trace and marker reload                            passed
+document delete / immediate retrieval                     204 / 404
+Backend gofmt/vet/test/race/build                          passed
+Frontend format/lint/typecheck/test/build                  190 files / 911 tests / passed
+Compose source rebuild / Backend health                    passed / healthy
+clean-copy Go/Frontend/Python                              passed / passed / 1730 passed, 7 skipped
+temporary G19.7 server/local state                         zero
+```
+
+G19 is complete. Rollback anchors remain the ordered G19.6 -> G19.2 reversions
+in the plan; the cancellation-only repair can be reverted independently with
+`94b50f0`. No schema, secret, administrator provider setting, retained user
+conversation, or retained Knowledge object changed during closure.

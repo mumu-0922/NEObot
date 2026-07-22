@@ -141,6 +141,16 @@ The existing run cancellation must cancel the active provider request and any
 in-flight Tool request. A cancelled loop emits exactly one terminal
 `message.cancelled` and cannot later finalize as completed.
 
+Cancellation is not a degraded Tool result. Compatibility planning,
+native/compatibility Web execution, and Knowledge execution must translate
+`context.Canceled` or a cancelled operation context to `cancelled` Tool and
+source steps, omit `failureCategory`, stop fallback/continuation, and retain
+`detail.outcome=cancelled`. The terminal process event must still reach the
+stream consumer after the operation context is cancelled; receiving it is
+also Handler authority to finalize the assistant as cancelled. A provider
+timeout that reports only `context.DeadlineExceeded` remains a provider
+failure unless the run was separately cancelled.
+
 ## 4. Tool capability and compatibility fallback
 
 - A tool-capable current model receives native Tool definitions on the initial
@@ -363,6 +373,7 @@ cite both.
 | Tool arguments malformed/unknown      | reject execution; redacted failed step             |
 | Write/external Tool awaiting approval | pause loop until allow/reject/cancel               |
 | User cancels during Provider/Tool     | cancel both; one terminal cancelled event          |
+| User cancels compatibility planner    | Tool/Web/Generation cancelled; no `planner_failed` |
 | Provider reasoning unavailable        | process only; no fabricated reasoning              |
 | Final answer uses no issued marker    | no Citation card                                   |
 
@@ -376,6 +387,9 @@ cite both.
 5. Strict built-in/external mutual exclusion and no provider fallback.
 6. Ordered reasoning/process SSE, cancellation, redaction, terminal persistence,
    reload, collapsed summary, and manual-scroll behavior.
+   Cancellation must cover compatibility planning, native Web, Knowledge,
+   Handler persistence, no failure category, zero Citation, and repeated runs
+   that detect cancellation-event delivery races.
 7. Knowledge hit/miss/deletion and Knowledge/Web chained evidence.
 8. Current-turn Citation reconciliation for used, unused, copied, and invented
    markers.

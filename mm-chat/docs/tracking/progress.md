@@ -1540,7 +1540,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
     - [x] G17.2 Assistant, Skill, Plugin, and equivalent interaction
           performance optimization.
     - [x] G17.3 Knowledge document selection and bounded bulk deletion.
-  - [ ] G19 Provider-native Tool Loop and durable process trace, executed in
+  - [x] G19 Provider-native Tool Loop and durable process trace, executed in
         separate tested commits per
         `docs/tracking/g19-tool-loop-process-trace-plan.md`.
     - [x] G19.1 Kelivo runtime audit, seventeen-question owner lock,
@@ -1567,7 +1567,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
             pre-answer authority removal.
       - [x] G19.6E real-document hit/miss/follow-up/mixed/deletion/restart
             promotion proof and cleanup.
-    - [ ] G19.7 Full live matrix, restart, clean-copy, rollback, and smoke-state
+    - [x] G19.7 Full live matrix, restart, clean-copy, rollback, and smoke-state
           cleanup.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration

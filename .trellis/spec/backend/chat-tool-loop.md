@@ -167,6 +167,16 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
   authenticated conversation selection remains collection authority. The
   non-Tool/model-built-in compatibility executor is also live after
   `message.started`; pre-SSE Knowledge retrieval is forbidden.
+- Context cancellation is a terminal control state, not Tool degradation. A
+  compatibility planner, native/compatibility Web execution, or Knowledge
+  execution that observes `errors.Is(err, context.Canceled)` or a cancelled
+  operation context emits `ProcessStepStatusCancelled`, carries no
+  `FailureCategory`, stops fallback/continuation, and preserves
+  `detail.outcome=cancelled`. Its terminal process event must remain deliverable
+  after the operation context is cancelled; the Handler treats receipt of that
+  event as message-cancellation authority. A provider timeout that is only
+  `context.DeadlineExceeded` remains a failure unless the run was separately
+  cancelled.
 - Durable Web source blocks and metadata are projected from markers actually
   used by the reconciled answer. Filtering must preserve the originally minted
   marker: retaining only `[W2]` must never rename it to `[W1]`.
@@ -196,6 +206,7 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 | Knowledge miss                   | successful empty result; continue                |
 | Approval rejected                | do not execute; continue or terminate truthfully |
 | Cancel during Provider/Tool      | cancel both; one terminal cancelled event        |
+| Cancel during compatibility plan | Tool/Web/Generation cancelled; no `planner_failed` |
 | Provider exposes no reasoning    | process only; no fabricated reasoning            |
 | Successful Generation only       | omit empty durable process panel                  |
 | Unknown process detail key       | drop before SSE/persistence                       |
@@ -223,6 +234,9 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 2. Search off/Auto skip/explicit Search I/O assertions.
 3. Ordered reasoning/process SSE, terminal persistence, reload, redaction, and
    cancellation.
+   Cancellation fixtures must cover compatibility planning, native Web,
+   Knowledge, Handler persistence, no failure category, zero Citation, and a
+   repeated run that detects event-delivery races.
 4. Capability mismatch and compatibility-planner tests with no hidden model.
 5. Knowledge hit/miss/deletion plus mixed Knowledge/Web marker truth.
 6. Real selected provider/Search smoke must prove ordinary zero-Search,
@@ -243,6 +257,12 @@ Wrong:
 search enabled -> rewrite -> always Search -> answer
 ```
 
+```go
+// User cancellation becomes a false degraded Search failure.
+status := ProcessStepStatusFailed
+failureCategory := "planner_failed"
+```
+
 ```text
 create server conversation -> send first turn with pre-create composer mode
 ```
@@ -259,6 +279,13 @@ search mode + selected Knowledge + capabilities
 
 ```text
 create server conversation -> read returned persisted mode -> send first turn
+```
+
+```go
+if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
+    status = ProcessStepStatusCancelled
+    failureCategory = ""
+}
 ```
 
 Full target contract: `mm-chat/docs/contracts/chat-tool-loop.md`.
