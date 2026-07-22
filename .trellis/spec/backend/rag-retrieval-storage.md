@@ -68,6 +68,19 @@ knowledge_set_retrieval_profile(
 The accepted profile identities are `legacy` and
 `pg17_bm25_pgvector_v1`; the singleton starts at `legacy` revision `1`.
 
+The PG17 activation candidate adds:
+
+```sql
+knowledge_assert_pg17_retrieval_profile_ready()
+RETURNS TABLE(
+  index_generation_id UUID,
+  search_profile_id UUID,
+  eligible_count BIGINT,
+  vector_count BIGINT,
+  bm25_count BIGINT
+)
+```
+
 ## 3. Contracts
 
 - BM25 source admission requires the active corpus head, active generation,
@@ -95,6 +108,17 @@ The accepted profile identities are `legacy` and
   `rag_replay_operator`.
 - A profile target whose schema or verified backfill is unavailable must raise
   `RAG_RETRIEVAL_PROFILE_UNAVAILABLE` without mutating pointer state.
+- PG17 activation must bind the active generation to its unique Jina v4/1024
+  search profile and re-verify every current source row against both physical
+  projections. Matching counts alone are insufficient; identity, hashes,
+  visibility revisions, vector round-trip, normalized terms, and derived BM25
+  text must agree.
+- Serialize vector backfill, BM25 backfill, and pointer activation with
+  advisory locks `3`, `4`, and `5` acquired in ascending order. Readiness and
+  pointer mutation occur inside the same activation call.
+- Keep PG17-only candidate DDL outside embedded migrations while the deployed
+  database is PG16. Promote it to migration `038` only on the verified fresh
+  PG17 restore; otherwise normal PG16 `migrate up` would become unusable.
 - Migration rollback must fail atomically with
   `RAG_RETRIEVAL_PROFILE_ROLLBACK_REQUIRES_LEGACY` unless the active pointer is
   `legacy`. Application rollback precedes migration rollback.
@@ -113,6 +137,8 @@ The accepted profile identities are `legacy` and
 | Reranker is configured but unavailable/unauthorized/malformed | No Knowledge evidence or citation is minted |
 | Profile compare-and-swap sees a stale expected profile/revision | `RAG_RETRIEVAL_PROFILE_CONFLICT`; pointer/history unchanged |
 | PG17 profile is selected before its implementation is available | `RAG_RETRIEVAL_PROFILE_UNAVAILABLE`; pointer unchanged |
+| Active generation/profile is missing at PG17 activation | `RAG_RETRIEVAL_PROFILE_ACTIVE_GENERATION_MISSING`; pointer unchanged |
+| Either PG17 projection is incomplete or mismatched | `RAG_RETRIEVAL_PROFILE_BACKFILL_INCOMPLETE`; pointer/history unchanged |
 | Migration down is attempted under a non-legacy profile | Rollback aborts atomically and migration `037` remains applied |
 
 Every SECURITY DEFINER function must pin the current schema followed by
@@ -149,6 +175,10 @@ The disposable drill must assert:
    reader at the default pointer; runtime roles cannot mutate the pointer;
    unavailable/conflicting transitions and non-legacy migration rollback fail
    without partial state changes.
+10. The PG17 candidate rejects partial backfill, activates only after exact
+    readiness, returns reference-only results under both runtime roles,
+    survives restart, rejects active-profile rollback, and restores exact
+    legacy parity before removing PG17 objects.
 
 After the drill, run `go vet ./...`, `go test ./...`, and the frozen G18
 evaluator.

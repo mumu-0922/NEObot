@@ -138,6 +138,49 @@ Status: pending.
 - Change Compose/data-path authority only after all disposable proofs pass;
   never start PG17 against the existing PG16 directory.
 
+#### G18.5B.1 Disposable profile activation candidate
+
+Status: complete (2026-07-22). G18.5B and Group 5 remain in progress.
+
+- Keep the embedded migration chain at `1–37` while production is PG16.
+- Connect the profile router to the reviewed PG17 shadow projections under an
+  operational-only module.
+- Reject activation until the active Jina v4/1024 generation has complete,
+  identity/content-verified pgvector and BM25 coverage.
+- Prove reference-only runtime reads, bounded privileges, restart persistence,
+  active-profile rollback refusal, controlled legacy rollback, and removal of
+  all PG17 candidate layers without harming migration `037`.
+
+Promotion proof: a disposable PG17 database rejected activation with pgvector
+ready but BM25 absent, then admitted exactly four verified rows in both
+projections and advanced the pointer from `legacy@1` to
+`pg17_bm25_pgvector_v1@2`. Go and worker roles returned the approved identifier
+and semantic winners while a frozen unrelated query returned zero candidates.
+The pointer and reader survived restart. Router down failed while PG17 was
+active; compare-and-swap rollback produced `legacy@3`, restored exact legacy
+row parity, and allowed all candidate objects to be removed while migrations
+remained `1–37`.
+
+#### G18.5B.2 Operations and resource qualification
+
+Status: pending.
+
+- Add and prove a safe projection-maintenance path for documents published
+  while the PG17 profile is active.
+- Prove concurrent publish/delete, generation rebuild/reindex/cutover, restart,
+  and backup/restore without a candidate-visibility gap.
+- Measure representative BM25/pgvector latency, PostgreSQL RSS/CPU, index size,
+  and backfill duration against the single-server budget.
+
+#### G18.5B.3 Formal migration and blue-green Compose cutover
+
+Status: pending.
+
+- Freeze the reviewed candidate as migration `038` only after a verified live
+  PG16 backup is restored into fresh PG17 storage.
+- Apply, backfill, activate, switch Compose/data-path authority, and retain the
+  PG16 backup plus legacy `REAL[]` data through the observation window.
+
 ## G18.6 Optional BGE-M3 shadow benchmark
 
 - Use a separate immutable embedding generation and never mix vector spaces.

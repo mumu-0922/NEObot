@@ -464,3 +464,91 @@ rollback from the preserved PG16 backup.
 Next: commit G18.5A alone. Then implement G18.5B on disposable PG17 storage;
 do not alter the running database or `mm-chat/data/postgres` before backup and
 restore gates pass.
+
+## 2026-07-22 — G18.5B.1 disposable PG17 profile activation candidate
+
+The first PG17 activation slice intentionally remained outside
+`backend/migrations`. Adding a PG17-only migration while the independent stack
+still runs PostgreSQL 16 would break an ordinary `migrate up`. The embedded
+chain therefore remains `1–37`; the new `ops/g18-profile-cutover` module composes
+the already-reviewed G18.3 pgvector and G18.4 BM25 DDL with the smallest profile
+router replacement.
+
+`knowledge_assert_pg17_retrieval_profile_ready()` resolves the active corpus
+generation and its unique `mineru_jina_postgres_v1` Jina v4/1024 search profile.
+It does not trust counts alone: every current source must join both projections
+on immutable identity, hashes, visibility revisions, vector round-trip,
+normalized exact terms, and derived BM25 text. Missing coverage raises
+`RAG_RETRIEVAL_PROFILE_BACKFILL_INCOMPLETE` before pointer history changes.
+
+The PG17 setter acquires the vector, BM25, and pointer advisory locks in order
+`3 -> 4 -> 5`, then performs readiness and compare-and-swap under the locked
+pointer row. The profiled reader preserves the `UUID[], TEXT, REAL[], INTEGER`
+input and reference-only result shape expected by Go. Under the PG17 profile it
+validates the legacy query vector contract, casts to `VECTOR(1024)`, invokes the
+reviewed hybrid implementation as `rag_projection_owner`, and returns only
+immutable references plus fused RRF score. Per-lane diagnostics and source text
+remain unavailable to production roles.
+
+The first disposable run stopped at the fixture boundary and was discarded:
+the G18.4 lexical fixture correctly requires its pgvector prerequisite to be
+backfilled first. The harness was corrected to model the real partial state
+(vector complete, BM25 absent), then prove that activation is still rejected.
+No schema relaxation was made, and the failed disposable project was removed.
+
+Final proof command:
+
+```bash
+./mm-chat/scripts/run-g18-profile-cutover-drill.sh
+```
+
+Final report: `/tmp/mm-chat-g18-profile-cutover.oTuY1M`.
+
+```text
+PASS PG17 migrations=37 authority=1 objects=2 generation=active projection=ready
+PASS G18.5B.1 profile router candidate
+PASS G18.5B.1 backfill=complete activation=pg17 roles=bounded negatives=0
+PASS G18.5B.1 restart retained pg17 profile and reader
+PASS G18.5B.1 controlled rollback restored exact legacy reader
+PASS G18.5B.1 profile router candidate rollback
+PASS G18.5B.1 rollback retained migration 037 and legacy reader
+disposable_database=removed
+```
+
+The proof advanced `legacy@1 -> pg17_bm25_pgvector_v1@2`, returned the approved
+identifier and semantic winners through `go_api_runtime` and
+`rag_worker_executor`, and returned zero candidates for the frozen weather
+negative. Runtime roles could not mutate the pointer or execute the private
+diagnostic. PostgreSQL restart retained the pointer, readiness result, and
+reader. Attempted router down while PG17 was active failed before mutation.
+Controlled compare-and-swap rollback produced `legacy@3`, preserved both
+transition records, restored complete row-level parity with the direct legacy
+function, and then removed the router, BM25, and pgvector candidate layers.
+
+Final G18.5B.1 quality gates:
+
+```text
+profile cutover live PG17 drill                passed
+active-profile rollback guard                 passed atomically
+bash syntax / diff whitespace                 passed
+module README / DESIGN completeness           passed
+go vet ./...                                   passed
+go test -count=1 ./...                         passed
+recorded seven-case evaluator                  passed
+secret / placeholder scan                     passed
+temporary cutover containers / volumes        0 / 0
+```
+
+The generic module/security scanners do not classify SQL as source code. The
+live assertions over SECURITY DEFINER paths, role grants, private diagnostic
+denial, reference-only return fields, activation state, and rollback behavior
+remain the authoritative security proof for this operational SQL.
+
+G18.5B.1 is not a production migration or cutover. It does not yet solve
+projection maintenance during concurrent document publication or generation
+rebuild, and it does not claim representative latency/RSS/CPU or real
+backup/restore results. These are G18.5B.2 gates. Only after they pass may the
+reviewed SQL become migration `038` on the restored PG17 target in G18.5B.3.
+
+Next: commit G18.5B.1 alone, then build the concurrent publication/reindex and
+resource qualification drill without touching the running PG16 service.

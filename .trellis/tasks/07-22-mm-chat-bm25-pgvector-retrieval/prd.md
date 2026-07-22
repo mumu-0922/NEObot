@@ -121,6 +121,22 @@ Progress checkpoint (G18.5A, 2026-07-22):
       activation path, complete the operational/resource gates above, and
       perform the reviewed blue-green production cutover.
 
+Progress checkpoint (G18.5B.1, 2026-07-22):
+
+- [x] A PG17-only operational candidate connected the durable pointer to the
+      reviewed BM25/pgvector projections without adding an incompatible
+      embedded migration to the still-running PG16 deployment.
+- [x] Activation requires complete identity/content-verified coverage of the
+      active Jina v4/1024 generation, preserves the existing reference-only Go
+      SQL signature, survives restart, and rolls back through compare-and-swap
+      to exact legacy behavior.
+- [ ] G18.5B.2 must prove concurrent publication, reindex/generation cutover,
+      representative latency and PostgreSQL RSS/CPU budgets, and backup/restore
+      behavior before the operational SQL can become migration `038`.
+- [ ] G18.5B.3 must create and apply the reviewed formal migration only on the
+      restored PG17 target, then cut over Compose/data-path authority with the
+      preserved PG16 backup as rollback.
+
 ### Group 6 — Optional BGE-M3 shadow benchmark
 
 - [ ] BGE-M3 uses a separate immutable model/profile/generation identity.
