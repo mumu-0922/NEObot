@@ -154,9 +154,13 @@ knowledge_assert_pg17_generation_ready(
 - Serialize vector backfill, BM25 backfill, and pointer activation with
   advisory locks `3`, `4`, and `5` acquired in ascending order. Readiness and
   pointer mutation occur inside the same activation call.
-- Keep PG17-only candidate DDL outside embedded migrations while the deployed
-  database is PG16. Promote it to migration `038` only on the verified fresh
-  PG17 restore; otherwise normal PG16 `migrate up` would become unusable.
+- Keep PG17-only candidate DDL outside embedded migrations until the owned
+  live PG16 backup has restored into a verified fresh PG17 target. Once frozen
+  as migration `038`, require PostgreSQL major `17`, the `pg_textsearch`
+  preload, and exact pgvector `0.8.5` / `pg_textsearch 1.3.1` availability
+  before creating extensions or retrieval objects. During the short interval
+  before the production blue-green switch, do not run the new embedded
+  manifest against the still-running PG16 Compose database.
 - When the PG17 profile is active, the AFTER trigger on
   `knowledge_document_projection_heads` is the publication boundary. It must
   populate and verify both projections in the same transaction as the head
@@ -189,6 +193,12 @@ knowledge_assert_pg17_generation_ready(
   fresh `template0` database, and re-verified for migration idempotence,
   profile revision, active/physical row counts, runtime reader behavior,
   operational functions, and role grants.
+- Formal migration qualification must remove unused preinstalled retrieval
+  extensions from the isolated restored target, prove migration `038` creates
+  the exact versions through the normal runner, backfill only current Jina
+  v4/1024 authority, and exercise active-profile down refusal plus controlled
+  down/re-up. Down retains both extensions, migration `037`, profile history,
+  legacy `REAL[]` rows, the original PG16 data path, and its backup.
 
 ## 4. Validation & Error Matrix
 
@@ -265,6 +275,11 @@ The disposable drill must assert:
     backfill/latency/storage/memory gates; restart and a checksummed logical
     backup/restore preserve exact active/physical rows, profile state, reader
     behavior, functions, and role boundaries.
+14. An owned live PG16 dump restores into isolated PG17, the embedded runner
+    applies `036 -> 037 -> 038`, migration `038` creates both exact extension
+    versions, current live authority backfills, runtime roles read references
+    without direct projection access, active down fails atomically, and
+    controlled down/re-up/restart preserves rollback anchors.
 
 After the drill, run `go vet ./...`, `go test ./...`, and the frozen G18
 evaluator.

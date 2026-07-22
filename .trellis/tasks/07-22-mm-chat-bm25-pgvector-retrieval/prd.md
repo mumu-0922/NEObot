@@ -174,8 +174,27 @@ Progress checkpoint (G18.5B.2c, 2026-07-22):
 - [x] The active PG17 state survived restart, checksummed logical backup,
       restore into a fresh database, migration idempotence, reader/role/row
       verification, controlled legacy rollback, and disposable cleanup.
-- [ ] G18.5B.3 still owns the verified live PG16 backup, restore into fresh
-      PG17 storage, migration `038`, and blue-green Compose/data-path cutover.
+- [x] G18.5B.3a owns the verified live PG16 backup, restore into fresh PG17
+      storage, and formal migration `038` qualification.
+- [ ] G18.5B.3b owns the blue-green production Compose/data-path cutover.
+
+Progress checkpoint (G18.5B.3a, 2026-07-22):
+
+- [x] Checksummed live PostgreSQL and MinIO backups were created without
+      changing the running PG16 service, and the owned PG16 dump plus reviewed
+      PG17-compatible roles restored into an isolated fresh PG17 volume.
+- [x] Formal migration `038` recreated its exact reviewed extensions after
+      they were removed from the restored target, then the embedded runner
+      applied `036 -> 037 -> 038` without `psql` preprocessing.
+- [x] Eleven current-authority Jina v4/1024 rows backfilled and verified in
+      both physical projections; runtime role reads, private-object denial,
+      active-profile rollback refusal, controlled down/re-up, idempotent
+      backfill, activation, and restart all passed.
+- [x] Migration down retained both extensions, all legacy `REAL[]` rows, the
+      PG16 backup/data path, and the durable profile pointer/history.
+- [ ] G18.5B.3b must take a fresh stop-window backup and receive explicit
+      approval before switching production Compose/data-path authority to a
+      fresh PG17 directory.
 
 ### Group 6 — Optional BGE-M3 shadow benchmark
 

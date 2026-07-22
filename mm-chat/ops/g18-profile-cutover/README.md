@@ -1,9 +1,10 @@
 # G18.5B PG17 profile cutover qualification
 
 This disposable harness connects migration `037`'s durable profile pointer to
-the reviewed G18.3 pgvector and G18.4 BM25 shadow projections. It proves the
-activation/rollback state machine on PostgreSQL 17 without adding a PG17-only
-migration to the still-running PostgreSQL 16 deployment.
+the reviewed G18.3 pgvector and G18.4 BM25 shadow projections. It is the frozen
+operational provenance for formal PG17-only migration `038`; it first proved
+the activation/rollback state machine before that migration was applied to the
+isolated restored-live-data PG17 target.
 
 ## Run
 
@@ -42,14 +43,15 @@ all project-scoped containers, networks, and volumes.
 
 ## Boundary
 
-This is not the production migration or Compose cutover. The reviewed schema
-stays under `ops/` until a verified live PG16 backup is restored into fresh
-PG17 storage and the reviewed SQL is frozen as migration `038`. Keeping
-embedded migrations at `1–37` prevents an ordinary migration run from
-breaking the current PG16 service.
+This harness is not the production Compose cutover. Its reviewed SQL has now
+been frozen as migration `038` and qualified on a verified live PG16 backup
+restored into fresh PG17 storage. Migration `038` deliberately rejects PG16,
+so the still-running PG16 Compose stack must not be rebuilt or rerun against
+the new migration manifest before the separately approved blue-green switch.
 
 The maintenance trigger covers publication into active and building
 generations, while the active source view remains bound to the corpus head.
-The representative resource and disposable active-PG17 backup/restore gates
-are complete; live data backup, migration promotion, and blue-green
-Compose/data-path authority remain G18.5B.3 work.
+The representative resource gate, active-PG17 backup/restore gate, live-data
+restore, and formal migration qualification are complete. Only a fresh final
+stop-window backup plus blue-green Compose/data-path authority switch remain
+under G18.5B.3b.

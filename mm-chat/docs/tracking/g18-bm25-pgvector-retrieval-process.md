@@ -806,3 +806,159 @@ remain decisive for this operational module.
 Next: commit G18.5B.2c alone. G18.5B.3 is a separate destructive/traffic
 boundary and must begin with the verified live PG16 backup rather than
 reusing this synthetic database.
+
+## 2026-07-22 — G18.5B.3a restored-live-data migration qualification
+
+This group crossed the backup/restore boundary but not the production traffic
+boundary. The running `mm-chat-postgres-1` remained PostgreSQL `16.13` on
+`mm-chat/data/postgres`, migration head `036`, with two collections, four
+documents, and 13 ready search rows. It was not stopped, migrated, mounted by
+PG17, or pointed at a new image.
+
+Before touching an isolated target, the group created and checksum-verified
+private `0600` rollback artifacts (all ignored by Git):
+
+```text
+backup/postgres/postgres-20260722T044643Z.dump
+backup/g18-pg17-cutover/postgres/postgres16-owned-20260722T044850Z.dump
+backup/g18-pg17-cutover/postgres/postgres16-roles-20260722T044850Z.sql
+backup/g18-pg17-cutover/postgres/postgres17-roles-20260722T044850Z.sql
+backup/g18-pg17-cutover/minio/minio-20260722T044704Z.tar.gz
+```
+
+The owner-preserving live database dump restored into a fresh isolated PG17
+volume. PostgreSQL 17 changed role-membership dump syntax: replaying three
+`GRANTED BY neo_chat` membership clauses from the original PG16 globals dump
+failed. The reviewed derived role file removed only those grantor clauses;
+role attributes and password hashes remained in the private artifact and are
+not reproduced in logs or source. The successful restore report is:
+
+```text
+/tmp/mm-chat-g18-live-restore.qwMrnR
+PostgreSQL                             17.10
+restored migrations                   36/36
+collections / documents               2 / 4
+ready search rows                     13
+role memberships                      3
+vector / pg_textsearch                0.8.5 / 1.3.1
+```
+
+Formal migration `038` freezes, byte-for-byte after removing each operational
+file's `psql` preamble, these already-qualified modules:
+
+```text
+ops/g18-pgvector-shadow/00-shadow-schema.{up,down}.sql
+ops/g18-hybrid-shadow/00-shadow-schema.{up,down}.sql
+ops/g18-profile-cutover/00-profile-router.{up,down}.sql
+ops/g18-profile-cutover/10-active-projection-maintenance.{up,down}.sql
+ops/g18-profile-cutover/15-generation-cutover-fence.{up,down}.sql
+```
+
+The migration adds its own PostgreSQL-major, preload, available-version, and
+exact extension-creation gate. A focused schema test locks the extension,
+projection, candidate-reader, authority rejoin, activation, maintenance,
+generation fence, privilege, rollback, compatibility-data, operational-source
+provenance, and no-`psql`-meta-command contracts.
+
+For the decisive runner proof, the isolated restored target first dropped the
+manually installed `pg_textsearch` and `vector` extensions without `CASCADE`.
+This succeeded because no restored application object depended on them. The
+current statically built `mm-chat-migrate` binary then connected through the
+container Unix socket as the restored database owner; the candidate remained
+on Docker network `none`.
+
+```text
+up 037_rag_retrieval_profile_pointer
+up 038_pg17_bm25_pgvector_retrieval
+migration head                        038
+vector                                0.8.5, owner neo_chat
+pg_textsearch                         1.3.1, owner neo_chat
+```
+
+This proves extension creation and all PG17 DDL execute through the normal
+migration runner transaction rather than `psql` preprocessing. Before
+backfill, readiness failed with
+`RAG_RETRIEVAL_PROFILE_BACKFILL_INCOMPLETE`. The replay operator then received
+only captured generation/profile UUID arguments and completed:
+
+```text
+current vector sources                11
+vector inserted / verified            11 / 11
+current BM25 sources                  11
+BM25 inserted / verified              11 / 11
+activation                            legacy@1 -> pg17@2
+```
+
+The initial operator script attempted to discover generation IDs after
+`SET ROLE rag_replay_operator` and correctly received table permission denial.
+The corrected script resolved only the UUID arguments as the migration owner,
+then changed role before executing backfills and activation; no privilege was
+broadened. Both `go_api_runtime` and `rag_worker_executor` returned one valid
+reference-only candidate from a private, non-printed query derived inside a
+temporary table. They retained no direct SELECT on either projection and no
+EXECUTE on the private hybrid diagnostic; the replay operator retained the
+diagnostic grant.
+
+Running migration down while `pg17_bm25_pgvector_v1@2` was active failed with
+`RAG_RETRIEVAL_PROFILE_ROLLBACK_REQUIRES_LEGACY`. Migration head `038`, the
+pointer, and both projections remained unchanged, proving transactional
+rollback. Controlled compare-and-swap to `legacy@3` then allowed down:
+
+```text
+migration head after down              037
+PG17 projection objects                absent
+vector / pg_textsearch extensions      retained
+legacy embedding column                REAL[] (`_float4`)
+retained legacy search rows             24 (13 ready)
+```
+
+Re-up applied only migration `038`. Both projections backfilled 11 rows again;
+a deliberately stale activation revision failed without pointer mutation,
+then the correct compare-and-swap activated `pg17_bm25_pgvector_v1@4`.
+Immediate replay inserted zero rows and verified all 11 in each projection.
+After PostgreSQL restart, migration replay returned `no migrations changed`,
+readiness remained `11/11/11`, both runtime roles still returned the approved
+reference, and the privilege boundary remained unchanged.
+
+Final proof artifacts:
+
+```text
+/tmp/mm-chat-g18-live-migration
+/tmp/mm-chat-g18-live-restore.qwMrnR
+```
+
+Final G18.5B.3a quality gates:
+
+```text
+formal migration schema/provenance tests       passed
+live restored-data 037 -> 038 runner proof     passed
+backfill / active reader / privilege proof     passed
+active down guard / legacy down / re-up        passed
+restart / migration no-op / readiness          passed
+backup SHA-256 and 0600 permissions            passed
+gofmt / diff whitespace                        passed
+go vet ./...                                   passed
+go test -count=1 ./...                         passed
+recorded seven-case evaluator                  passed
+target secret-shape/manual SQL security scan   passed
+disposable candidate container / volume        removed
+running PG16 service                           healthy and unchanged
+```
+
+The generic security scanner does not classify SQL and reported three
+unchanged key-shaped strings in unrelated existing Go test fixtures when run
+over the whole backend. The target files contain no secret-shaped value. The
+decisive security checks are the migration contract, all 14 SECURITY DEFINER
+functions pinning the captured trusted path, live role/table/function privilege
+assertions, reference-only reader results, and atomic rollback behavior.
+
+G18.5B.3a qualifies the formal migration but deliberately does not switch
+production Compose or data-path authority. Because migration `038` rejects
+PG16, the still-running PG16 stack must not be rebuilt or rerun with the new
+manifest during this short staged interval. G18.5B.3b requires explicit
+cutover approval, a fresh stop-window PostgreSQL/MinIO backup, a fresh PG17
+production data path, post-cutover application checks, and retention of the
+old PG16 directory plus backup for rollback.
+
+Next: commit G18.5B.3a alone, then await explicit approval for the production
+cutover. Do not start G18.5B.3b implicitly.

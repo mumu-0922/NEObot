@@ -128,8 +128,8 @@ the profiled function, but effective retrieval remains `ts_rank + REAL[]`.
 
 ### G18.5B PG17 implementation and controlled activation
 
-Status: in progress. G18.5B.1 through G18.5B.2c are complete;
-G18.5B.3 remains pending.
+Status: in progress. G18.5B.1 through G18.5B.3a are complete;
+G18.5B.3b remains pending.
 
 - Promote the reviewed BM25/pgvector DDL into migration `038` after a fresh
   verified PG16 backup is restored into PostgreSQL 17 storage.
@@ -239,12 +239,52 @@ disposable cleanup.
 
 #### G18.5B.3 Formal migration and blue-green Compose cutover
 
-Status: pending.
+Status: in progress. Formal migration qualification is complete; the final
+traffic/data-path cutover remains pending explicit approval.
 
 - Freeze the reviewed candidate as migration `038` only after a verified live
   PG16 backup is restored into fresh PG17 storage.
 - Apply, backfill, activate, switch Compose/data-path authority, and retain the
   PG16 backup plus legacy `REAL[]` data through the observation window.
+
+##### G18.5B.3a Restored-live-data migration qualification
+
+Status: complete (2026-07-22).
+
+- Create migration `038` from the reviewed pgvector, BM25, profile-router,
+  active-publication, and generation-fence modules, with exact PG17/preload/
+  extension-version gates and no `psql` meta-commands.
+- Restore the owned PG16 logical backup and sanitized PG17-compatible role
+  dump into an isolated fresh PG17 volume before applying the migration.
+- Prove that the embedded migration runner creates both extensions itself,
+  applies `036 -> 037 -> 038`, backfills current live authority, activates the
+  profile, enforces role boundaries, survives restart, rejects active rollback,
+  and supports controlled down/re-up replay.
+
+Proof: the checksummed live backup restored with `36/36` migrations, two
+collections, four documents, and 13 ready search rows. After removing the two
+manually installed but unused extensions, the current migration binary applied
+`037` and `038`; migration `038` recreated pgvector `0.8.5` and
+`pg_textsearch 1.3.1` in its own runner transaction. Eleven current-authority
+Jina v4/1024 rows backfilled and verified in both projections. Both runtime
+roles returned reference-only candidates while retaining no direct projection
+or private-diagnostic access. Active-profile down failed atomically; switching
+to legacy allowed down, retained all 24 legacy `REAL[]` rows and both
+extensions, and re-up/backfill/activation replay completed at profile revision
+`4`. Restart retained migration head `038`, the active profile, and exact
+`11/11/11` readiness.
+
+##### G18.5B.3b Production Compose/data-path authority cutover
+
+Status: pending.
+
+- Re-enter a short write-stop window and take a fresh final PostgreSQL/MinIO
+  backup immediately before the authority switch.
+- Change the production Compose database to the pinned PG17 image and a fresh
+  PG17 data path; never reuse `mm-chat/data/postgres` as the PG17 directory.
+- Restore, migrate, backfill, activate, start application traffic, and run
+  post-cutover health/chat/Knowledge checks with the PG16 data directory and
+  backup retained as rollback anchors.
 
 ## G18.6 Optional BGE-M3 shadow benchmark
 

@@ -7,14 +7,19 @@ pointer and the already-reviewed PG17 BM25/pgvector projections. The Go method,
 SQL input signature, selected-collection authority, reference-only output, and
 post-candidate Go hydration remain unchanged.
 
-## Why this remains operational DDL
+## Operational provenance and formal migration boundary
 
-The independent runtime still uses PostgreSQL 16. Committing a PG17-only
-embedded migration before the blue-green restore would make normal PG16
-`migrate up` fail. This slice therefore proves the exact router behavior under
-`ops/` while leaving the embedded manifest at `1–37`. A later cutover slice may
-promote the reviewed SQL only after the preserved PG16 backup is restored into
-fresh PG17 storage and all operations gates pass.
+The operational modules first proved the exact router behavior while the
+embedded manifest remained at `1–37`. After every operations/resource gate
+passed and the owned live PG16 dump restored into an isolated fresh PG17
+volume, those reviewed modules were frozen into formal migration `038`.
+
+Migration `038` checks PostgreSQL major `17`, the `pg_textsearch` preload, and
+exact extension versions before creating either extension and any projection
+object. It is intentionally incompatible with PG16. Until the separately
+approved production blue-green switch, the still-running PG16 Compose stack
+must not execute the new manifest; the existing process and data directory
+remain untouched.
 
 ## Activation state machine
 
@@ -156,13 +161,18 @@ again unavailable. The G18.4 and G18.3 down scripts then remove the physical
 candidate projections while retaining the original `REAL[]` source rows,
 legacy reader, pointer, revision, and immutable transition history.
 
-## Known limit
+## Remaining boundary
 
-This slice proves activation, restart durability, concurrent publication,
+This module proves activation, restart durability, concurrent publication,
 generation reindex/cutover, representative synthetic resource budgets, and an
-active-PG17 logical backup/restore. It does not read or mutate the live PG16
-database. A verified live PG16 backup, restore into fresh PG17 storage,
-migration `038`, and blue-green Compose/data-path cutover remain mandatory.
+active-PG17 logical backup/restore. G18.5B.3a additionally proved checksummed
+live PostgreSQL/MinIO backup, owned-role restore into isolated PG17, migration
+`038` extension creation, live-row backfill, active rollback refusal,
+controlled down/re-up, idempotence, runtime role boundaries, and restart.
+
+The only remaining boundary is G18.5B.3b: take a fresh stop-window backup,
+restore into the production green PG17 data path, activate, and switch Compose
+traffic. The old PG16 data directory and backup remain rollback authorities.
 
 ## Change history
 
@@ -173,3 +183,5 @@ migration `038`, and blue-green Compose/data-path cutover remain mandatory.
   readiness fence.
 - 2026-07-22: 4096-child resource qualification, candidate-driven authority
   lookup, and active-PG17 backup/restore proof.
+- 2026-07-22: formal migration `038` qualification against restored live data,
+  including extension creation, down/re-up replay, and restart proof.
