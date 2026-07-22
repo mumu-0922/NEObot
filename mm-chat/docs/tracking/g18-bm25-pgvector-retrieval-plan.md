@@ -40,11 +40,22 @@ provider path and remains a comparison guard for later storage groups.
 
 ## G18.2 PostgreSQL 17 image and restore drill
 
+Status: complete (2026-07-22).
+
 - Build and digest-pin a reviewed PostgreSQL 17 image containing
   `pg_textsearch` and pgvector.
 - Restore a disposable PostgreSQL 16 backup into PostgreSQL 17 and verify
   migrations, authority rows, projections, generation heads, and objects.
 - Prove rollback from the preserved PostgreSQL 16 backup.
+
+Promotion proof: the isolated no-host-port harness built PostgreSQL `17.10`
+with `pg_textsearch 1.3.1` and pgvector `0.8.5`, exercised real BM25 and vector
+queries, rejected a PostgreSQL 16 data directory with exit `78`, and restored
+the same synthetic logical backup into fresh PostgreSQL 17 and PostgreSQL 16
+rollback databases. Both restores retained all `36` migrations, the authority
+graph, object references, active generation head, published materialization,
+and ready Parent/Child/Search projection. The source database was unchanged,
+and the harness removed all disposable containers and volumes.
 
 ## G18.3 Shadow pgvector projection
 

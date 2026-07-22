@@ -1,0 +1,120 @@
+x-backend-build: &backend-build
+  context: ../../backend
+  dockerfile: Dockerfile
+
+services:
+  pg16:
+    image: docker.io/library/postgres:16.13-alpine@sha256:4e6e670bb069649261c9c18031f0aded7bb249a5b6664ddec29c013a89310d50
+    restart: "no"
+    environment:
+      POSTGRES_DB: mm_chat_g18_source
+      POSTGRES_USER: postgres
+      POSTGRES_HOST_AUTH_METHOD: trust
+    mem_limit: 768m
+    cpus: 1.0
+    shm_size: 128mb
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - max_connections=30
+    labels:
+      com.mm-chat.phase: g18-postgres17-restore-drill
+      com.mm-chat.ephemeral: "true"
+    volumes:
+      - pg16-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mm_chat_g18_source"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+    networks:
+      - drill
+
+  pg17:
+    image: mm-chat/postgres:17.10-pg_textsearch1.3.1-pgvector0.8.5
+    build:
+      context: ../../postgres
+      dockerfile: Dockerfile
+    restart: "no"
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_HOST_AUTH_METHOD: trust
+    mem_limit: 1024m
+    cpus: 2.0
+    shm_size: 256mb
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_textsearch
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - max_connections=30
+    labels:
+      com.mm-chat.phase: g18-postgres17-restore-drill
+      com.mm-chat.ephemeral: "true"
+    volumes:
+      - pg17-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+    networks:
+      - drill
+
+  migrate16:
+    image: mm-chat/backend:g18-postgres17-restore-drill
+    build: *backend-build
+    restart: "no"
+    profiles: ["ops"]
+    environment:
+      MIGRATION_DATABASE_URL: postgres://postgres@pg16:5432/mm_chat_g18_source?sslmode=disable
+    depends_on:
+      pg16:
+        condition: service_healthy
+    command: ["/usr/local/bin/mm-chat-migrate", "up"]
+    networks:
+      - drill
+
+  migrate17:
+    image: mm-chat/backend:g18-postgres17-restore-drill
+    build: *backend-build
+    restart: "no"
+    profiles: ["ops"]
+    environment:
+      MIGRATION_DATABASE_URL: postgres://postgres@pg17:5432/postgres?sslmode=disable
+    depends_on:
+      pg17:
+        condition: service_healthy
+    command: ["/usr/local/bin/mm-chat-migrate", "up"]
+    networks:
+      - drill
+
+networks:
+  drill:
+    internal: true
+    labels:
+      com.mm-chat.phase: g18-postgres17-restore-drill
+      com.mm-chat.ephemeral: "true"
+
+volumes:
+  pg16-data:
+    labels:
+      com.mm-chat.phase: g18-postgres17-restore-drill
+      com.mm-chat.ephemeral: "true"
+  pg17-data:
+    labels:
+      com.mm-chat.phase: g18-postgres17-restore-drill
+      com.mm-chat.ephemeral: "true"

@@ -97,3 +97,83 @@ synthetic fixtures and left production Knowledge untouched.
 Next: commit G18.1 alone, then start G18.2 with a digest-pinned PostgreSQL 17
 extension image and disposable PostgreSQL 16 backup/restore drill. Do not point
 PostgreSQL 17 at `data/postgres`.
+
+## 2026-07-22 — G18.2 PostgreSQL 17 restore and rollback proof
+
+Added a multi-stage local PostgreSQL image whose build inputs are immutable:
+
+```text
+PostgreSQL base  17.10-bookworm
+base digest      sha256:4f736ae292687621d4dbe0d499ffd024a36bd2ee7d8ca6f2ccd4c800f047b394
+pg_textsearch    1.3.1 / 578ff529894992fb9e67cae4c69424e65c84868e
+archive SHA-256  8632f91231251dc3e19395ef6a0d4d158d5f5920ba420691471771418e2a7cc7
+pgvector         0.8.5 / 159b79aaad5983fb7459c1e3df2897fbb2d11788
+archive SHA-256  9a483fad70ae2e0a50b3dccb6c4b4931d9a07375a1d5815e82b57870448a7d52
+```
+
+The final image copies only installed extension artifacts and licenses from
+the builder. pgvector CPU-native optimization is disabled to avoid binding the
+artifact to the builder CPU. Runtime initialization requires PostgreSQL 17,
+preloaded `pg_textsearch 1.3.1`, and pgvector `0.8.5`. Before delegating to the
+official entrypoint, the wrapper rejects any existing non-17 `PG_VERSION`; a
+synthetic PostgreSQL 16 marker exited `78` and remained unchanged.
+
+The restore harness uses a unique Compose project, internal-only network,
+project-scoped volumes, no host port, no project env file, no provider call,
+and only synthetic authority/projection rows. It never reads or mounts
+`mm-chat/data/postgres`. The exact proof command was:
+
+```bash
+./mm-chat/scripts/run-g18-postgres17-restore-drill.sh
+```
+
+The final successful report was written to
+`/tmp/mm-chat-g18-postgres17.1DHyMN`. The logical backup checksum was verified
+before either restore. Decisive output:
+
+```text
+PASS PostgreSQL 17 extension smoke
+PASS synthetic PG16 authority/projection fixture
+PASS PG16 migrations=36 authority=1 objects=2 generation=active projection=ready
+PASS PG17 migrations=36 authority=1 objects=2 generation=active projection=ready
+PASS PG16 migrations=36 authority=1 objects=2 generation=active projection=ready
+disposable_databases=removed
+```
+
+The extension smoke created a real BM25 index, executed a BM25 winner query,
+and executed a pgvector cosine winner query. The restore checks covered all
+`36` current migrations, collection/document/file authority, parser and source
+object references, the active generation head, projection readiness, published
+materialization, and Parent/Child/Search rows. Running the current migration
+CLI after both restores returned `no migrations changed`. The original PG16
+source was verified again after both restores and retained the same state.
+
+Iteration fixes captured during the drill:
+
+- corrected Compose build contexts from one directory too high;
+- resolved image identity with an explicit `docker build` because
+  `docker compose images -q` has no result before container creation;
+- passed the expected PostgreSQL major through a session-local setting because
+  psql variables do not expand inside a dollar-quoted `DO` block;
+- updated the base pin from PostgreSQL 17.9 to the actually installed and
+  verified PostgreSQL 17.10 digest instead of accepting header/runtime drift;
+- removed random Compose project labels from the reusable image by building it
+  outside the project-scoped Compose build.
+
+Local image evidence:
+
+```text
+tag       mm-chat/postgres:17.10-pg_textsearch1.3.1-pgvector0.8.5
+image id  sha256:f139b5ee69c4742204579a023b55e43bd42cc04382213c5eb8dae764dbef82a1
+size      159679854 bytes
+```
+
+Rollback uses the preserved logical backup to populate a fresh PostgreSQL 16
+database; it never reuses or downgrades PostgreSQL 17 storage. The exit trap
+removed the synthetic databases, containers, network, and volumes. A final
+label check reported `containers=0` and `volumes=0`.
+
+Next: commit G18.2 alone. G18.3 then adds the generation/profile-bound
+`vector(1024)` shadow projection, transactionally reuses only compatible Jina
+v4 `REAL[]` vectors, proves exact/HNSW cosine behavior, and leaves the current
+reader in production.

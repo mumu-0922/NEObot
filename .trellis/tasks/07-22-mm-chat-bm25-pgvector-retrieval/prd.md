@@ -65,14 +65,14 @@ Jina reranking, citations, single-user deployment model, and rollback path.
 
 ### Group 2 — PostgreSQL 17 extension image and restore drill
 
-- [ ] A digest-pinned PostgreSQL 17 image contains reviewed `pg_textsearch` and
+- [x] A digest-pinned PostgreSQL 17 image contains reviewed `pg_textsearch` and
       pgvector versions and passes extension/readiness checks.
-- [ ] A disposable PostgreSQL 16 backup restores into PostgreSQL 17 with all
+- [x] A disposable PostgreSQL 16 backup restores into PostgreSQL 17 with all
       migrations, authoritative rows, object references, and generation heads
       intact.
-- [ ] Starting the new image against a PostgreSQL 16 data directory is guarded
+- [x] Starting the new image against a PostgreSQL 16 data directory is guarded
       and documented as invalid.
-- [ ] Rollback restores the PostgreSQL 16 backup without relying on the upgraded
+- [x] Rollback restores the PostgreSQL 16 backup without relying on the upgraded
       data directory.
 
 ### Group 3 — Shadow vector projection
