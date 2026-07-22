@@ -85,13 +85,15 @@ INSERT INTO files(
 		{
 			DocumentID: "45000000-0000-4000-8000-000000000001", VersionID: "65000000-0000-4000-8000-000000000001",
 			JobID: "75000000-0000-4000-8000-000000000001", CollectionID: collectionID,
-			ActorUserID: ownerID, FileID: fileID, IdempotencyKey: "concurrent-first-bind",
+			MaterializationID: "75000000-0000-4000-8000-000000000003",
+			ActorUserID:       ownerID, FileID: fileID, IdempotencyKey: "concurrent-first-bind",
 			RequestHash: strings.Repeat("b", 64), ParseProcessor: "mineru",
 		},
 		{
 			DocumentID: "45000000-0000-4000-8000-000000000002", VersionID: "65000000-0000-4000-8000-000000000002",
 			JobID: "75000000-0000-4000-8000-000000000002", CollectionID: collectionID,
-			ActorUserID: ownerID, FileID: fileID, IdempotencyKey: "concurrent-first-bind",
+			MaterializationID: "75000000-0000-4000-8000-000000000004",
+			ActorUserID:       ownerID, FileID: fileID, IdempotencyKey: "concurrent-first-bind",
 			RequestHash: strings.Repeat("b", 64), ParseProcessor: "mineru",
 		},
 	}

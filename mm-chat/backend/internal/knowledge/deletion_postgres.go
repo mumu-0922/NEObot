@@ -251,31 +251,27 @@ func resolvePurgeProjectionBinding(
 	if !capabilities.legacyProjectionUnbound {
 		return purgeProjectionBinding{LegacyUnbound: false, MaxAttempts: 8}, nil
 	}
-	var generationID string
-	var materializationID sql.NullString
+	var generationID, materializationID sql.NullString
+	var legacyUnbound bool
+	var maxAttempts int
 	err := tx.QueryRowContext(ctx, `
-SELECT corpus.active_index_generation_id, materialization.id
-FROM knowledge_corpus_projection_head corpus
-LEFT JOIN knowledge_document_projection_heads head
-  ON head.index_generation_id = corpus.active_index_generation_id
-  AND head.document_id = $1
-LEFT JOIN knowledge_document_materializations materialization
-  ON materialization.id = head.active_materialization_id
-  AND materialization.document_version_id = $2
-WHERE corpus.singleton_id = 1 AND corpus.active_index_generation_id IS NOT NULL
-FOR UPDATE OF corpus
-`, documentID, versionID).Scan(&generationID, &materializationID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return purgeProjectionBinding{LegacyUnbound: true, MaxAttempts: 8}, nil
-	}
+SELECT index_generation_id, materialization_id,
+  legacy_projection_unbound, max_attempts
+FROM knowledge_resolve_purge_projection_binding($1, $2)
+`, documentID, versionID).Scan(
+		&generationID,
+		&materializationID,
+		&legacyUnbound,
+		&maxAttempts,
+	)
 	if err != nil {
 		return purgeProjectionBinding{}, fmt.Errorf("resolve purge projection binding: %w", err)
 	}
 	return purgeProjectionBinding{
-		IndexGenerationID: generationID,
+		IndexGenerationID: generationID.String,
 		MaterializationID: materializationID.String,
-		LegacyUnbound:     false,
-		MaxAttempts:       ragProcessingMaxAttempts,
+		LegacyUnbound:     legacyUnbound,
+		MaxAttempts:       maxAttempts,
 	}, nil
 }
 

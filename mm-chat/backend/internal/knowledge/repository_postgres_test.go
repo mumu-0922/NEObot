@@ -207,10 +207,12 @@ INSERT INTO files (
 		"users/"+adminID+"/files/"+replacementFileID, jobID)
 	reprocessInputs := []ReprocessDocumentRepositoryInput{
 		{JobID: "50000000-0000-4000-8000-000000000030", DocumentID: documentID,
-			ActorUserID: adminID, IdempotencyKey: "reprocess-race",
+			MaterializationID: "50000000-0000-4000-8000-000000000040",
+			ActorUserID:       adminID, IdempotencyKey: "reprocess-race",
 			RequestHash: strings.Repeat("6", 64), ParseProcessor: "mineru"},
 		{JobID: "50000000-0000-4000-8000-000000000031", DocumentID: documentID,
-			ActorUserID: adminID, IdempotencyKey: "reprocess-race",
+			MaterializationID: "50000000-0000-4000-8000-000000000041",
+			ActorUserID:       adminID, IdempotencyKey: "reprocess-race",
 			RequestHash: strings.Repeat("6", 64), ParseProcessor: "mineru"},
 	}
 	type reprocessResult struct {
@@ -400,7 +402,8 @@ INSERT INTO files (
 		"users/"+adminID+"/files/"+raceFileB)
 	failedReprocess, err := NewPostgresRepository(db).ReprocessDocument(ctx, ReprocessDocumentRepositoryInput{
 		JobID: "50000000-0000-4000-8000-000000000034", DocumentID: documentID,
-		ActorUserID: adminID, IdempotencyKey: "failed-reprocess",
+		MaterializationID: "50000000-0000-4000-8000-000000000042",
+		ActorUserID:       adminID, IdempotencyKey: "failed-reprocess",
 		RequestHash: strings.Repeat("3", 64), ParseProcessor: "mineru",
 	})
 	if err != nil || failedReprocess.CurrentVersion == nil || failedReprocess.CurrentVersion.ID != versionID ||
@@ -424,10 +427,12 @@ WHERE id='50000000-0000-4000-8000-000000000034'
 `, replacementVersionID)
 	replayRaceInputs := []CreateDocumentVersionRepositoryInput{
 		{VersionID: "50000000-0000-4000-8000-000000000022", JobID: "50000000-0000-4000-8000-000000000023",
-			DocumentID: documentID, ActorUserID: adminID, FileID: raceFileA,
+			MaterializationID: "50000000-0000-4000-8000-000000000043",
+			DocumentID:        documentID, ActorUserID: adminID, FileID: raceFileA,
 			IdempotencyKey: "race-replay", RequestHash: strings.Repeat("1", 64), ParseProcessor: "mineru"},
 		{VersionID: "50000000-0000-4000-8000-000000000024", JobID: "50000000-0000-4000-8000-000000000025",
-			DocumentID: documentID, ActorUserID: adminID, FileID: raceFileA,
+			MaterializationID: "50000000-0000-4000-8000-000000000044",
+			DocumentID:        documentID, ActorUserID: adminID, FileID: raceFileA,
 			IdempotencyKey: "race-replay", RequestHash: strings.Repeat("1", 64), ParseProcessor: "mineru"},
 	}
 	raceRepo := NewPostgresRepository(db)
@@ -477,10 +482,12 @@ WHERE document_version_id=$1
 
 	raceInputs := []CreateDocumentVersionRepositoryInput{
 		{VersionID: "50000000-0000-4000-8000-000000000026", JobID: "50000000-0000-4000-8000-000000000027",
-			DocumentID: documentID, ActorUserID: adminID, FileID: raceFileA,
+			MaterializationID: "50000000-0000-4000-8000-000000000045",
+			DocumentID:        documentID, ActorUserID: adminID, FileID: raceFileA,
 			IdempotencyKey: "race-a", RequestHash: strings.Repeat("2", 64), ParseProcessor: "mineru"},
 		{VersionID: "50000000-0000-4000-8000-000000000028", JobID: "50000000-0000-4000-8000-000000000029",
-			DocumentID: documentID, ActorUserID: adminID, FileID: raceFileB,
+			MaterializationID: "50000000-0000-4000-8000-000000000046",
+			DocumentID:        documentID, ActorUserID: adminID, FileID: raceFileB,
 			IdempotencyKey: "race-b", RequestHash: strings.Repeat("3", 64), ParseProcessor: "mineru"},
 	}
 	raceErrors := make(chan error, len(raceInputs))

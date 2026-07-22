@@ -194,16 +194,7 @@ WHERE document_id=$1 AND status='failed'
 	}
 	var alreadyIndexed bool
 	if err := tx.QueryRowContext(ctx, `
-SELECT EXISTS (
-  SELECT 1
-  FROM knowledge_document_materializations materialization
-  JOIN knowledge_index_generations generation
-    ON generation.id = materialization.index_generation_id
-  WHERE materialization.document_id = $1
-    AND materialization.document_version_id = $2
-    AND materialization.status = 'published'
-    AND generation.status = 'active'
-)
+SELECT knowledge_is_document_version_actively_projected($1, $2)
 `, documentID, currentVersionID.String).Scan(&alreadyIndexed); err != nil {
 		return nil, false, fmt.Errorf("check active reprocess projection: %w", err)
 	}

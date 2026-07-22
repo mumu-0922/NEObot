@@ -127,6 +127,22 @@ while `pg17_bm25_pgvector_v1` is active. That guarded down path is not a
 PostgreSQL-major rollback: production rollback uses the preserved PG16 data
 directory or a fresh verified PG16 restore.
 
+Migrations `039` and `040` preserve the dedicated `neo_chat_api` runtime
+boundary after the PG17 cutover. `039` moves Go upload/reprocess/delete
+projection access behind three projection-owner SECURITY DEFINER gateways;
+`040` lets the token-fenced Go source-object endpoint execute the existing
+lease-fenced source metadata gateway. Neither migration grants direct API
+access to projection tables or changes existing file-table grants. Published
+migration pairs are immutable: `040` is a separate forward fix because `039`
+had already been applied before the source-object runtime boundary was
+exercised.
+
+Migration `041` removes inherited `"$user", public` search paths from every
+SECURITY DEFINER function in the current application schema. It preserves
+function signatures, owners, and grants while pinning lookup to the application
+schema, `pg_catalog`, and `pg_temp`. Its down path intentionally retains the
+safe search path rather than reopening object-shadowing risk.
+
 ## Storage boundaries
 
 Postgres is the source of truth for structured records:

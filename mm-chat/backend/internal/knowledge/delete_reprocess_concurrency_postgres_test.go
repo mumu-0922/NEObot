@@ -88,7 +88,8 @@ func runDocumentDeleteReprocessRace(t *testing.T, deleteFirst bool) {
 	reprocessOperation := func() error {
 		_, err := repo.ReprocessDocument(ctx, ReprocessDocumentRepositoryInput{
 			JobID: deleteRaceReprocessJob, DocumentID: deleteRaceDocumentID,
-			ActorUserID: deleteRaceOwnerID, IdempotencyKey: "delete-race-reprocess",
+			MaterializationID: "74000000-0000-4000-8000-000000000004",
+			ActorUserID:       deleteRaceOwnerID, IdempotencyKey: "delete-race-reprocess",
 			RequestHash: strings.Repeat("d", 64), ParseProcessor: "mineru",
 		})
 		return err
@@ -155,7 +156,8 @@ INSERT INTO files(
 	if _, err := repo.CreateDocument(ctx, CreateDocumentRepositoryInput{
 		DocumentID: deleteRaceDocumentID, VersionID: deleteRaceVersionID,
 		JobID: deleteRaceInitialJobID, CollectionID: deleteRaceCollectionID,
-		ActorUserID: deleteRaceOwnerID, FileID: deleteRaceFileID,
+		MaterializationID: "74000000-0000-4000-8000-000000000003",
+		ActorUserID:       deleteRaceOwnerID, FileID: deleteRaceFileID,
 		IdempotencyKey: "delete-race-initial", RequestHash: strings.Repeat("b", 64),
 		ParseProcessor: "mineru",
 	}); err != nil {

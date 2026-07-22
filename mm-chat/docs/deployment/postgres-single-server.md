@@ -181,9 +181,14 @@ Readiness never mutates schema, creates buckets, or runs migrations.
 
 The Go migration runner owns transaction boundaries, takes a Postgres advisory
 lock, validates migration names/checksums, and records each applied migration
-in `schema_migrations`. The current schema head is `038`. Migration `038`
+in `schema_migrations`. The current schema head is `041`. Migration `038`
 requires PostgreSQL major `17`, the `pg_textsearch` preload, and exact pgvector
-`0.8.5` / pg_textsearch `1.3.1` extension versions.
+`0.8.5` / pg_textsearch `1.3.1` extension versions. Migrations `039` and `040`
+retain the dedicated API role by exposing only hardened document-lifecycle and
+source-metadata function calls; they do not grant direct projection-table
+access. Migration `041` pins every current-schema SECURITY DEFINER function to
+the application schema, `pg_catalog`, and `pg_temp` without changing ownership
+or grants.
 
 Apply migrations from the same immutable `BACKEND_IMAGE` used by `backend` and
 `admin`:
@@ -233,8 +238,8 @@ exec psql --set=ON_ERROR_STOP=1 \
 '
 ```
 
-Acceptance requires versions `001` through `038`, ending at
-`038_pg17_bm25_pgvector_retrieval`. Treat `schema_migrations` as runner state,
+Acceptance requires versions `001` through `041`, ending at
+`041_security_definer_search_path_hardening`. Treat `schema_migrations` as runner state,
 not a domain table. Never use `baseline` routinely; it exists only to accept
 reviewed legacy rows that lack checksums.
 
@@ -246,7 +251,7 @@ order is:
 
 1. Start Postgres with the bootstrap/migrator fields and set the independently
    required `MIGRATION_DATABASE_URL` to that same login.
-2. Run migrations through `038`. Migration `010` creates and validates the
+2. Run migrations through `041`. Migration `010` creates and validates the
    NOLOGIN capability roles; do not pre-create LOGIN roles with broad grants.
 3. Connect as `POSTGRES_USER`, create the API, Worker, and Replay principals as
    NOLOGIN, assign each password through interactive `psql` input, then enable
@@ -377,7 +382,7 @@ backup with the recovery record.
 
 The executable temporary-database drill and full restore acceptance are in
 [`backup-restore.md`](./backup-restore.md). Acceptance verifies migrations
-through `038`, retrieval profile/readiness, Knowledge core table row counts,
+through `041`, retrieval profile/readiness, Knowledge core table row counts,
 Consent expiry schema, Governance immutability, the purge fence, and sampled
 Document Version/File/object consistency. A production restore is not approved
 until that disposable drill passes.

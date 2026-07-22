@@ -1066,3 +1066,74 @@ and never relies on an in-place migration down.
 G18.5B and the approved G18 production retrieval cutover are complete. The
 optional BGE-M3 shadow benchmark remains a separate future decision and must
 not mix vector spaces or trigger an implicit production re-embedding.
+
+## 2026-07-22 — Post-cutover dedicated-API Knowledge lifecycle repair
+
+The first owner-driven TXT upload after the PG17 cutover proved that file bytes
+reached MinIO (`POST /v1/files` returned `201`) but document binding returned
+`500`. PostgreSQL reported that `neo_chat_api`, now correctly limited to
+`go_api_runtime`, could not read `knowledge_corpus_projection_head`. The former
+database-owner runtime had hidden three direct projection-table paths in Go:
+parse materialization allocation, active-projection reprocess detection, and
+purge binding resolution.
+
+Migration `039` added three projection-owner SECURITY DEFINER gateways and the
+Go repositories now call those functions instead of projection tables. The
+allocation gateway accepts only materialization/document/version UUIDs and
+derives every file, hash, revision, epoch, generation, profile, and sequence
+value from current authority inside PostgreSQL. `go_api_runtime` receives only
+EXECUTE and retains no direct projection relation privileges.
+
+The repaired bind returned `201`, then the first Worker retry exposed a second
+owner-runtime assumption: the token-fenced Go source-object endpoint uses the
+API database session, but the existing lease-fenced source metadata function
+was executable only by `rag_worker_executor`. Because `039` was already live
+and its checksum immutable, migration `040` separately granted only that
+function's EXECUTE to `go_api_runtime`; it did not broaden file or projection
+table access.
+
+Clean replay proof used the ignored fixture
+`backup/manual-upload/g18-rag-acceptance.txt` against collection `test`:
+
+```text
+upload / bind                              201 / 201
+document indexing                         uploaded -> active
+source-object gateway                     200
+real Jina query/rerank                    applied
+real model answer                         exact four facts + [K1]
+BM25 exact identifier candidate           1
+go_api_runtime direct projection grants   0 across 7 relations
+delete document / file / conversation     204 / 204 / 204
+deleted document GET / profiled candidate 404 / 0
+migration head                            040
+```
+
+The synthetic document, MinIO-backed file record, and live-model conversation
+were removed after the deletion-invisibility proof. The fixture file remains
+Git-ignored for the owner's manual upload. A separate disposable PG17 database
+then passed the complete `internal/knowledge` integration suite and was
+dropped; the production database was not used as a test schema. Backend
+readiness stayed green.
+
+The subsequent function audit found that 21 older SECURITY DEFINER functions
+still carried the session-derived `"$user", public` path even though the newly
+added gateways were already pinned correctly. Migration `041` hardened every
+current-schema SECURITY DEFINER function without changing its signature, owner,
+or grants. The live post-migration audit and a fresh TXT lifecycle replay
+proved:
+
+```text
+migration head                              041
+SECURITY DEFINER functions                  53
+unsafe search paths / PUBLIC EXECUTE        0 / 0
+SECURITY DEFINER owner                      rag_projection_owner (53)
+go_api_runtime lifecycle gateway EXECUTE    4 / 4
+API direct guarded-relation grants          0 across 9 relations
+upload / bind / indexing                    201 / 201 / active
+delete document / file / deleted GET        204 / 204 / 404
+```
+
+The replay document and object were deleted. Migration `041` down deliberately
+retains the safe path because restoring `"$user", public` would recreate the
+object-shadowing vulnerability rather than provide a valid operational
+rollback.

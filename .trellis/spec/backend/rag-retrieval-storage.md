@@ -7,7 +7,7 @@ PostgreSQL extensions/major version, search projections, candidate diagnostics,
 or the production retrieval profile pointer.
 
 The current independent Compose runtime is PostgreSQL `17.10` on
-`mm-chat/data/postgres17`, with migration `038` and retrieval profile
+`mm-chat/data/postgres17`, with migration `041` and retrieval profile
 `pg17_bm25_pgvector_v1@2` active. The retired PostgreSQL 16 directory at
 `mm-chat/data/postgres` remains an observation-window rollback anchor. Never
 mount it, or any other PG16 data directory, into the PG17 image.
@@ -108,6 +108,29 @@ knowledge_assert_pg17_generation_ready(
   eligible_count BIGINT,
   vector_count BIGINT,
   bm25_count BIGINT
+)
+```
+
+Go API document lifecycle calls cross the projection boundary only through:
+
+```sql
+knowledge_allocate_parse_materialization(UUID, UUID, UUID)
+RETURNS TABLE(
+  index_generation_id UUID,
+  materialization_id UUID,
+  legacy_projection_unbound BOOLEAN,
+  max_attempts INTEGER
+)
+
+knowledge_is_document_version_actively_projected(UUID, UUID)
+RETURNS BOOLEAN
+
+knowledge_resolve_purge_projection_binding(UUID, UUID)
+RETURNS TABLE(
+  index_generation_id UUID,
+  materialization_id UUID,
+  legacy_projection_unbound BOOLEAN,
+  max_attempts INTEGER
 )
 ```
 
@@ -213,6 +236,22 @@ knowledge_assert_pg17_generation_ready(
   superuser and inherits only `go_api_runtime`. It may execute the profiled
   reference-only reader but may not directly select either physical retrieval
   projection. The API must never use the bootstrap/migration owner at runtime.
+- Migration `039` owns the Go API projection gateway. Upload, replacement,
+  reprocess, and deletion code must not read or mutate corpus heads,
+  generations, profiles, materializations, or document projection heads
+  directly. The allocation gateway accepts only materialization/document/
+  version UUIDs and derives file, hash, collection revisions, visibility
+  epochs, generation, profile hash, and sequence under the projection owner.
+- The token-fenced Go source-object HTTP endpoint uses the API database login,
+  not the Python Worker's database login. Migration `040` therefore grants
+  `go_api_runtime` EXECUTE on the existing hardened
+  `knowledge_fetch_parse_source_metadata(...)` function. It must not grant the
+  API any new relation privilege; migration `040` is function-only.
+- Migration `041` hardens every SECURITY DEFINER function in the current
+  application schema, including functions created before the dedicated runtime
+  boundary was enforced. Each function must retain its owner and grants while
+  pinning `search_path` to the current schema, `pg_catalog`, and `pg_temp`.
+  Rollback must not restore `"$user", public`.
 - Production rollback first stops writers, restores the previous Compose/env
   authority, and starts PG16 against the preserved `data/postgres` directory or
   a fresh PG16 restore. Do not run migration `038` down as a substitute for a
@@ -243,6 +282,8 @@ knowledge_assert_pg17_generation_ready(
 | Restored PG17 state loses profile, rows, reader behavior, functions, or grants   | Restore qualification aborts; no Compose/data-path cutover                                          |
 | Production preflight receives a mutable PostgreSQL image or the PG16 data path   | Preflight fails before Compose execution                                                            |
 | Go API connects as the owner/superuser or gains direct projection access         | Promotion/observation verification fails; traffic must not remain promoted                          |
+| API document lifecycle bypasses the `039` gateway                                | Runtime role receives permission denial; do not grant tables, move the operation behind the gateway |
+| Go source-object endpoint lacks the `040` function grant                         | Parse retries with `GO_SOURCE_OBJECT_GATEWAY_REQUEST_FAILED`; add the narrow EXECUTE grant only      |
 
 Every SECURITY DEFINER function must pin the current schema followed by
 `pg_catalog, pg_temp` and must not resolve through `$user`.
@@ -259,6 +300,13 @@ Every SECURITY DEFINER function must pin the current schema followed by
   mounting a PG16 directory into PG17, accepting BM25 score `0`, granting a
   shadow diagnostic to `go_api_runtime`, emitting source text in a report, or
   joining a bounded probe to an authority view that expands the entire corpus.
+- **Good:** `neo_chat_api` binds a document through the allocation gateway,
+  the Go source endpoint resolves metadata through the token-and-lease-fenced
+  function, and the Worker publishes without direct API table privileges.
+- **Base:** no active generation returns a legacy/unbound binding with eight
+  attempts and performs no projection write.
+- **Bad:** restoring upload by granting `go_api_runtime` SELECT/INSERT on
+  projection tables or by switching `DATABASE_URL` back to the migrator.
 
 ## 6. Tests Required
 
@@ -307,6 +355,10 @@ The disposable drill must assert:
     intact. Live verification proves migration `038`, `11/11/11` readiness,
     dedicated API/Worker sessions, reference-only reads, MinIO object parity,
     direct/proxied health, and restart/reconnect behavior.
+16. Under the real `neo_chat_api -> go_api_runtime` boundary, upload/bind,
+    source-object fetch, publication, profiled BM25/Dense retrieval, citation,
+    deletion invisibility, and fixture cleanup succeed while direct privileges
+    on every internal projection relation remain false.
 
 After the drill, run `go vet ./...`, `go test ./...`, and the frozen G18
 evaluator.
@@ -353,3 +405,24 @@ ORDER BY probe.score, probe.child_chunk_id;
 The index is explicit, unrelated zeros are rejected, ordering is deterministic,
 and current authority remains the final visibility gate without being
 decorrelated into a corpus-wide join.
+
+### API projection write boundary
+
+Wrong:
+
+```sql
+GRANT SELECT, INSERT, UPDATE ON knowledge_document_materializations
+TO go_api_runtime;
+```
+
+Correct:
+
+```sql
+GRANT EXECUTE ON FUNCTION knowledge_allocate_parse_materialization(
+  UUID, UUID, UUID
+) TO go_api_runtime;
+```
+
+The SECURITY DEFINER function pins the trusted schema path, derives mutable
+authority fields inside PostgreSQL, and exposes only the binding required by
+Go. Its owner remains `rag_projection_owner`; `PUBLIC` retains no EXECUTE.

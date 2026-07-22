@@ -8565,6 +8565,26 @@ Exact evidence and rollback are recorded in
 `docs/tracking/g12-provider-protocols-process.md` and
 `docs/contracts/media-job-executor-seams.md`.
 
+## 2026-07-22 — Dedicated API Knowledge lifecycle repair
+
+The first post-PG17 manual Knowledge upload exposed direct Go access to
+projection-owner tables that the former database-owner runtime had masked.
+Migrations `039` and `040` now keep upload/reprocess/delete projection work and
+the token-fenced source metadata lookup behind narrow SECURITY DEFINER calls;
+`neo_chat_api` retains zero direct privileges on the seven internal projection
+relations checked. Real TXT upload/indexing, Jina query/rerank, exact BM25,
+model answer with `[K1]`, deletion invisibility, and complete synthetic fixture
+cleanup passed. Full evidence is in
+`docs/tracking/g18-bm25-pgvector-retrieval-process.md`.
+
+The follow-up function audit found 21 older SECURITY DEFINER functions still
+using `"$user", public`. Migration `041` hardened all 53 current-schema
+SECURITY DEFINER functions while preserving owners and grants. Live checks
+returned zero unsafe paths, zero PUBLIC execute grants, and zero direct API
+grants across nine guarded projection relations. A fresh TXT upload/bind reached
+`active`, then deletion returned `204 / 204 / 404` for Document, File, and the
+deleted Document lookup.
+
 ## 2026-07-20 — G12.4.3 GPT Image SSE closure
 
 SSH evidence showed the active OpenResty route already uses 600-second proxy
