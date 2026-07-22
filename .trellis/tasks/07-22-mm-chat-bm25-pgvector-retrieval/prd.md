@@ -137,6 +137,17 @@ Progress checkpoint (G18.5B.1, 2026-07-22):
       restored PG17 target, then cut over Compose/data-path authority with the
       preserved PG16 backup as rollback.
 
+Progress checkpoint (G18.5B.2a, 2026-07-22):
+
+- [x] While the PG17 profile is active, advancing a document projection head
+      transactionally inserts and fully verifies that materialization in both
+      physical projections; failure cannot commit a query-visible head alone.
+- [x] Two independent concurrent publications succeeded without a visibility
+      gap, replay was idempotent, deletion became immediately invisible while
+      rollback rows remained, and restart/legacy rollback still passed.
+- [ ] Generation rebuild/reindex cutover, representative resource/latency
+      qualification, and backup/restore remain G18.5B.2 work.
+
 ### Group 6 — Optional BGE-M3 shadow benchmark
 
 - [ ] BGE-M3 uses a separate immutable model/profile/generation identity.

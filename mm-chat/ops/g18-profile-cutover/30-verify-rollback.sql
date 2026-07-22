@@ -10,6 +10,12 @@ BEGIN
     OR to_regprocedure(
       'knowledge_fetch_hybrid_shadow_diagnostics(uuid[],text,vector,integer)'
     ) IS NOT NULL
+    OR to_regprocedure(
+      'knowledge_sync_pg17_retrieval_materialization(uuid)'
+    ) IS NOT NULL
+    OR to_regprocedure(
+      'knowledge_maintain_pg17_retrieval_on_head()'
+    ) IS NOT NULL
   THEN
     RAISE EXCEPTION 'PG17 cutover objects survived candidate rollback';
   END IF;

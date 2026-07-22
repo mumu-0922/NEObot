@@ -62,6 +62,13 @@ psql_file() {
       --username=postgres --dbname=postgres <"${file}"
 }
 
+psql_command() {
+  local command=$1
+  "${compose[@]}" exec -T pg17 \
+    psql -X --set=ON_ERROR_STOP=1 \
+      --username=postgres --dbname=postgres --command="${command}"
+}
+
 run_migrate() {
   local output=$1
   "${compose[@]}" run --rm --no-deps \
@@ -110,8 +117,38 @@ psql_file "${hybrid_dir}/10-shadow-fixture.sql" \
 log "installing the candidate PG17 profile router and proving activation"
 psql_file "${cutover_dir}/00-profile-router.up.sql" \
   | tee "${report_dir}/router-up.txt"
+psql_file "${cutover_dir}/10-active-projection-maintenance.up.sql" \
+  | tee "${report_dir}/maintenance-up.txt"
 psql_file "${cutover_dir}/20-verify-activation.sql" \
   | tee "${report_dir}/verify-activation.txt"
+
+log "publishing two heads concurrently through active profile maintenance"
+psql_file "${cutover_dir}/40-concurrent-publish-fixture.sql" \
+  | tee "${report_dir}/seed-concurrent-publish.txt"
+psql_command "INSERT INTO knowledge_document_projection_heads(
+  index_generation_id, document_id, active_materialization_id,
+  last_corpus_projection_revision
+) VALUES (
+  '18180000-0000-0000-0000-000000000007',
+  '18400000-0000-0000-0000-000000000002',
+  '18400000-0000-0000-0000-000000000004',
+  3
+);" >"${report_dir}/publish-alpha.txt" 2>&1 &
+alpha_pid=$!
+psql_command "INSERT INTO knowledge_document_projection_heads(
+  index_generation_id, document_id, active_materialization_id,
+  last_corpus_projection_revision
+) VALUES (
+  '18180000-0000-0000-0000-000000000007',
+  '18400000-0000-0000-0000-000000000012',
+  '18400000-0000-0000-0000-000000000014',
+  4
+);" >"${report_dir}/publish-beta.txt" 2>&1 &
+beta_pid=$!
+wait "${alpha_pid}"
+wait "${beta_pid}"
+psql_file "${cutover_dir}/45-verify-concurrent-publish.sql" \
+  | tee "${report_dir}/verify-concurrent-publish.txt"
 
 log "restarting PostgreSQL and proving the durable active profile"
 "${compose[@]}" restart pg17 >/dev/null
@@ -120,6 +157,18 @@ psql_file "${cutover_dir}/25-verify-restart.sql" \
   | tee "${report_dir}/verify-restart.txt"
 
 log "proving router rollback refuses an active PG17 profile"
+set +e
+psql_file "${cutover_dir}/10-active-projection-maintenance.down.sql" \
+  >"${report_dir}/maintenance-rollback-guard.txt" 2>&1
+maintenance_guard_status=$?
+set -e
+if ((maintenance_guard_status == 0)); then
+  printf 'active-profile maintenance rollback unexpectedly succeeded\n' >&2
+  exit 1
+fi
+grep -Fq 'RAG_RETRIEVAL_PROFILE_ROLLBACK_REQUIRES_LEGACY' \
+  "${report_dir}/maintenance-rollback-guard.txt"
+
 set +e
 psql_file "${cutover_dir}/00-profile-router.down.sql" \
   >"${report_dir}/rollback-guard.txt" 2>&1
@@ -135,6 +184,8 @@ grep -Fq 'RAG_RETRIEVAL_PROFILE_ROLLBACK_REQUIRES_LEGACY' \
 log "switching to legacy and rolling back the candidate layers"
 psql_file "${cutover_dir}/27-switch-legacy.sql" \
   | tee "${report_dir}/switch-legacy.txt"
+psql_file "${cutover_dir}/10-active-projection-maintenance.down.sql" \
+  | tee "${report_dir}/maintenance-down.txt"
 psql_file "${cutover_dir}/00-profile-router.down.sql" \
   | tee "${report_dir}/router-down.txt"
 psql_file "${hybrid_dir}/00-shadow-schema.down.sql" \
@@ -149,4 +200,5 @@ run_migrate "${report_dir}/migrate-after-cutover.log"
 grep -Fq 'no migrations changed' "${report_dir}/migrate-after-cutover.log"
 
 log "decisive output"
-grep -h 'PASS G18.5B.1\|PASS PG17' "${report_dir}"/*.txt
+grep -h 'PASS G18.5B.1\|PASS G18.5B.2a\|PASS PG17' \
+  "${report_dir}"/*.txt

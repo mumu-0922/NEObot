@@ -552,3 +552,81 @@ reviewed SQL become migration `038` on the restored PG17 target in G18.5B.3.
 
 Next: commit G18.5B.1 alone, then build the concurrent publication/reindex and
 resource qualification drill without touching the running PG16 service.
+
+## 2026-07-22 — G18.5B.2a active-generation publication maintenance
+
+The production embedding finalizer already publishes in the correct order:
+materialization becomes `published`, the document/version authority becomes
+current, and then `knowledge_document_projection_heads` is inserted or
+advanced—all inside one transaction. G18.5B.2a uses that final head mutation as
+the atomic PG17 maintenance boundary rather than adding a second worker queue
+or letting the browser/API write accelerator tables.
+
+When the pointer is legacy, the new head trigger is a no-op and activation
+readiness remains responsible for closing any pre-activation gap. When the
+pointer is PG17, the trigger calls the projection-owner materialization sync.
+That function acquires advisory locks `3 -> 4`, validates that BM25 and vector
+source views expose the same non-empty current materialization, inserts both
+physical projections, and re-verifies every identity/content field before the
+head mutation may commit. Any failure rolls back the entire surrounding
+publication transaction.
+
+The first fixture attempt correctly failed the existing document lifecycle
+constraint because it tried to insert an `active` document before assigning a
+current version. The fixture was corrected to follow the real transition
+`processing -> active/current`; no constraint was weakened. The failed
+transaction and disposable database were removed.
+
+The extended proof command remained:
+
+```bash
+./mm-chat/scripts/run-g18-profile-cutover-drill.sh
+```
+
+Final report: `/tmp/mm-chat-g18-profile-cutover.hAggco`.
+
+```text
+PASS G18.5B.2a active projection maintenance
+PASS G18.5B.2a concurrent publication fixture staged=2 heads=0
+PASS G18.5B.2a concurrent publish=2 sync=atomic delete=hidden rows=retained
+PASS G18.5B.1 restart retained pg17 profile and reader
+PASS G18.5B.2a active projection maintenance rollback
+PASS G18.5B.1 rollback retained migration 037 and legacy reader
+disposable_database=removed
+```
+
+Two independent psql sessions inserted different document projection heads
+concurrently while `pg17_bm25_pgvector_v1@2` was active. Both transactions
+completed, both materializations appeared in vector and BM25 projections, and
+readiness moved from four to six exact current rows. The production-shaped Go
+reader returned the correct `LIVE_ALPHA` and `LIVE_BETA` children. Replaying one
+materialization as `rag_replay_operator` inserted zero rows and re-verified one.
+
+After tombstoning `LIVE_ALPHA`, it returned zero authorized candidates while
+`LIVE_BETA` remained visible. All six vector and BM25 rows remained physically
+available for rollback, and readiness correctly counted the five current
+sources. PostgreSQL restart retained this state. After pointer rollback to
+legacy, the maintenance trigger/function, router, BM25, and pgvector layers
+rolled down in dependency order while migration `037` and legacy retrieval
+remained intact.
+
+G18.5B.2a closes active-generation publication drift only. A building/verified
+generation is not yet the BM25 authority, so generation rebuild/reindex and
+atomic corpus-head cutover still need a dedicated fence. Representative
+latency, backfill time, index size, RSS/CPU, and backup/restore also remain for
+G18.5B.2b.
+
+Final G18.5B.2a quality gates:
+
+```text
+concurrent PG17 publication/delete drill       passed
+maintenance + router active rollback guards   passed atomically
+bash syntax / diff whitespace                 passed
+go vet ./...                                   passed
+go test -count=1 ./...                         passed
+recorded seven-case evaluator                  passed
+temporary cutover containers / volumes        0 / 0
+```
+
+Next: commit G18.5B.2a alone, then qualify generation cutover and resources on
+a representative disposable corpus.

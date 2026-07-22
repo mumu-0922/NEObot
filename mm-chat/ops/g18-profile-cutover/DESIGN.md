@@ -40,8 +40,41 @@ text. Missing or mismatched projection coverage raises
 The activation function serializes vector backfill, BM25 backfill, and pointer
 mutation with advisory locks `3`, `4`, and `5` in ascending order. The pointer
 row is also locked and compared against the caller's expected profile/revision.
-This slice does not yet claim concurrent publication/reindex fencing; that is a
-required G18.5B.2 operations proof.
+The initial activation function alone does not fence later publication or
+reindex. The following G18.5B.2a maintenance closes active-generation
+publication; generation rebuild/cutover remains a separate gate.
+
+## Active-generation publication maintenance
+
+G18.5B.2a attaches an AFTER trigger to the decisive durable mutation emitted by
+`knowledge_complete_embedding_and_publish(...)`:
+
+```text
+materialization published
+  -> document projection head inserted/advanced
+  -> active PG17 maintenance trigger
+  -> vector + BM25 rows inserted and fully re-verified
+  -> transaction commits
+```
+
+While the pointer is `legacy`, the trigger is a no-op; activation readiness
+later catches any projection gap and requires an operator backfill. While the
+pointer is `pg17_bm25_pgvector_v1`, head mutation and both physical projection
+writes are atomic. A source/conversion/verification failure aborts the head
+mutation and therefore the surrounding embedding-publish transaction.
+
+`knowledge_sync_pg17_retrieval_materialization(UUID)` acquires advisory locks
+`3` then `4`, the same order used by activation, and admits only the active,
+published, current-authority source view. It inserts both projections with
+idempotent conflict handling, then re-verifies complete identity/content
+coverage before returning. Only `rag_replay_operator` can call it directly;
+normal publication reaches it only through the SECURITY DEFINER trigger.
+
+The disposable proof publishes two prepared heads from independent sessions.
+The global locks serialize the small projection critical section without
+weakening the surrounding database authority. Both candidates become visible,
+an idempotent replay inserts zero rows, and tombstoning one document hides it
+immediately while all physical rollback rows remain.
 
 ## Reader and trust boundary
 
@@ -68,8 +101,8 @@ legacy reader, pointer, revision, and immutable transition history.
 
 ## Known limit
 
-This slice proves activation correctness and restart durability on a frozen
-synthetic corpus. It does not yet prove concurrent document publication,
+This slice proves activation, restart durability, and concurrent publication
+into the active generation on a synthetic corpus. It does not yet prove
 generation reindex/cutover, representative latency, PostgreSQL RSS/CPU, or a
 real backup/restore. Those gates remain mandatory before formal migration and
 Compose/data-path cutover.
@@ -77,3 +110,5 @@ Compose/data-path cutover.
 ## Change history
 
 - 2026-07-22: initial disposable PG17 activation and rollback candidate.
+- 2026-07-22: active-generation atomic publication maintenance and concurrent
+  publish/delete proof.

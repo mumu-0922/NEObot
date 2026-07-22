@@ -16,9 +16,9 @@ BEGIN
 
   SELECT * INTO readiness
   FROM knowledge_assert_pg17_retrieval_profile_ready();
-  IF readiness.eligible_count <> 4
-    OR readiness.vector_count <> 4
-    OR readiness.bm25_count <> 4
+  IF readiness.eligible_count <> 5
+    OR readiness.vector_count <> 5
+    OR readiness.bm25_count <> 5
   THEN
     RAISE EXCEPTION 'restart readiness result: %', readiness;
   END IF;

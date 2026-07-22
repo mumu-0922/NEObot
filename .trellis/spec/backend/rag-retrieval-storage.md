@@ -81,6 +81,19 @@ RETURNS TABLE(
 )
 ```
 
+Active-generation publication maintenance uses:
+
+```sql
+knowledge_sync_pg17_retrieval_materialization(
+  p_materialization_id UUID
+) RETURNS TABLE(
+  eligible_count BIGINT,
+  vector_inserted_count BIGINT,
+  bm25_inserted_count BIGINT,
+  verified_count BIGINT
+)
+```
+
 ## 3. Contracts
 
 - BM25 source admission requires the active corpus head, active generation,
@@ -119,6 +132,17 @@ RETURNS TABLE(
 - Keep PG17-only candidate DDL outside embedded migrations while the deployed
   database is PG16. Promote it to migration `038` only on the verified fresh
   PG17 restore; otherwise normal PG16 `migrate up` would become unusable.
+- When the PG17 profile is active, the AFTER trigger on
+  `knowledge_document_projection_heads` is the publication boundary. It must
+  populate and verify both projections in the same transaction as the head
+  mutation; partial projection success or a query-visible unsynchronized head
+  is forbidden.
+- When the pointer is `legacy`, the maintenance trigger is a no-op. Before
+  later PG17 activation, readiness/backfill must close any rows published in
+  that interval.
+- Direct materialization sync is operator-only, idempotent, and locks vector
+  then BM25 (`3 -> 4`). Runtime publication reaches it only through the hardened
+  projection-owner trigger.
 - Migration rollback must fail atomically with
   `RAG_RETRIEVAL_PROFILE_ROLLBACK_REQUIRES_LEGACY` unless the active pointer is
   `legacy`. Application rollback precedes migration rollback.
@@ -139,6 +163,8 @@ RETURNS TABLE(
 | PG17 profile is selected before its implementation is available | `RAG_RETRIEVAL_PROFILE_UNAVAILABLE`; pointer unchanged |
 | Active generation/profile is missing at PG17 activation | `RAG_RETRIEVAL_PROFILE_ACTIVE_GENERATION_MISSING`; pointer unchanged |
 | Either PG17 projection is incomplete or mismatched | `RAG_RETRIEVAL_PROFILE_BACKFILL_INCOMPLETE`; pointer/history unchanged |
+| Active-profile materialization source is absent/incomplete | `RAG_RETRIEVAL_MATERIALIZATION_SOURCE_INCOMPLETE`; head/publish transaction aborts |
+| Post-insert vector or BM25 verification is incomplete | `RAG_RETRIEVAL_MATERIALIZATION_SYNC_INCOMPLETE`; both projection writes and head mutation roll back |
 | Migration down is attempted under a non-legacy profile | Rollback aborts atomically and migration `037` remains applied |
 
 Every SECURITY DEFINER function must pin the current schema followed by
@@ -179,6 +205,10 @@ The disposable drill must assert:
     readiness, returns reference-only results under both runtime roles,
     survives restart, rejects active-profile rollback, and restores exact
     legacy parity before removing PG17 objects.
+11. Two concurrent active-generation head publications populate both
+    projections atomically, become immediately query-visible, replay with zero
+    inserts, retain physical rows after deletion, disappear from authorized
+    reads immediately, and survive restart/rollback checks.
 
 After the drill, run `go vet ./...`, `go test ./...`, and the frozen G18
 evaluator.

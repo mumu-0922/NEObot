@@ -20,6 +20,10 @@ The drill uses only synthetic data and an internal Docker network. It proves:
 - runtime roles can read candidates but cannot mutate the pointer or execute
   private diagnostics;
 - the active pointer and reader survive a PostgreSQL restart;
+- two concurrently published document heads transactionally populate both
+  physical projections and become query-visible without a maintenance gap;
+- deletion immediately removes authority visibility while immutable rollback
+  rows remain, and materialization sync replay is idempotent;
 - rollback is rejected while PG17 is active, then succeeds after an
   operator-controlled compare-and-swap to `legacy`;
 - migration `037` and the legacy `REAL[]` reader remain after all candidate
@@ -34,3 +38,7 @@ This is not the production migration or Compose cutover. The reviewed schema
 stays under `ops/` until the operations/resource drill and a verified live
 PG16 backup/PG17 restore are complete. Keeping embedded migrations at `1–37`
 prevents an ordinary migration run from breaking the current PG16 service.
+
+The current maintenance trigger covers publication into the active generation.
+Generation rebuild/reindex cutover and representative resource budgets remain
+separate gates.

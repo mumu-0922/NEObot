@@ -172,6 +172,37 @@ Status: pending.
 - Measure representative BM25/pgvector latency, PostgreSQL RSS/CPU, index size,
   and backfill duration against the single-server budget.
 
+##### G18.5B.2a Active-generation publication maintenance
+
+Status: complete (2026-07-22). G18.5B.2 remains in progress.
+
+- Attach maintenance to the durable projection-head mutation already emitted
+  by the embedding publication transaction.
+- While PG17 is active, insert and fully verify both physical projections
+  before the publication transaction can commit.
+- Serialize sync and activation in one advisory-lock order; keep direct sync
+  operator-only and idempotent.
+- Prove two independent concurrent publications, query visibility, deletion
+  invisibility with rollback-row retention, restart, and controlled rollback.
+
+Proof: two prepared document heads were inserted from independent PostgreSQL
+sessions after profile activation. Both acquired the projection critical
+section, populated pgvector and BM25, passed exact readiness at six rows, and
+returned their expected candidates through the production-shaped reader. A
+manual replay inserted zero rows. Tombstoning one document immediately removed
+it from authorized results while six immutable physical rows remained; exact
+readiness adjusted to the five still-current sources. Restart and legacy
+rollback remained green.
+
+##### G18.5B.2b Reindex, resources, and restore qualification
+
+Status: pending.
+
+- Bind the projection maintenance/backfill gate to generation rebuild and
+  atomic corpus-head cutover so a new active generation never opens empty.
+- Run representative corpus latency, backfill duration, index-size, RSS/CPU,
+  restart, backup/restore, and legacy rollback measurements.
+
 #### G18.5B.3 Formal migration and blue-green Compose cutover
 
 Status: pending.
