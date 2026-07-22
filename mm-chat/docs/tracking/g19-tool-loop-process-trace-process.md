@@ -542,3 +542,55 @@ Rollback is now code-level: revert this group to restore the retained G19.6B
 pre-answer compatibility seam. Runtime contains no configuration switch that
 can silently reactivate the retired Handler authority. Next: Compose source
 rebuild and the real uploaded-document promotion matrix.
+
+## 2026-07-22 — G19.6E real-document promotion
+
+The current source-built Backend image was rebuilt with the explicit
+`.env.single-server` and `compose.single-server.yml` boundary, recreated, and
+returned healthy. The smoke then created one isolated personal collection,
+uploaded one disposable native-text document, and waited for the real Jina
+1024-dimensional indexing pipeline to publish an active version. Existing
+collections and conversations were not mutated.
+
+The live Server Default `gpt-5.6-sol` and active Tavily provider exercised the
+promoted runtime. Knowledge-only retrieval returned the private sentinel with
+one `[K1]` Citation. A contextual follow-up resolved “it” against conversation
+history and returned a second document fact with one `[K1]`. An unrelated
+question completed with zero `[K#]` markers and zero Citations. The mixed turn
+executed Web, Knowledge, then Web again and retained one `[K1]` plus the
+actually used `[W3]`; the surviving Web marker was not renumbered.
+
+The first direct-API attempt omitted the non-secret Server Default provider
+descriptor that the normal frontend sends and correctly failed before SSE with
+`PROVIDER_REQUIRED`. Supplying `source=server-default` exercised the same
+server-stored credential path as the UI; no Key or provider configuration was
+copied into the harness, and no code change was needed.
+
+Reload before and after a Backend restart preserved completed Tool/Knowledge/
+Web steps and the same terminal marker/Citation authority. Deleting the
+document returned `204`, its immediate read returned `404`, and a fresh
+selected-collection turn could no longer recover the sentinel or mint a
+Knowledge Citation. Cleanup deleted all four temporary conversations, the
+File, and the Collection; resource reads returned `404`, prefixed collection
+and conversation listings returned zero, and all local smoke artifacts were
+removed.
+
+Promotion evidence:
+
+```text
+Backend source build / recreate / readiness                 passed / healthy
+native text upload -> real Jina 1024 index                  active
+Knowledge hit / contextual follow-up                        [K1] / [K1]
+unrelated miss                                              0 [K], 0 Citation
+Knowledge + Tavily mixed Tool Loop                          [K1] + [W3]
+mixed execution order                                       Web -> Knowledge -> Web
+reload / Backend restart / post-restart reload              passed / healthy / passed
+document delete / immediate read / post-delete retrieval    204 / 404 / no evidence
+temporary conversations / File / Collection                deleted / 404
+prefixed server state / local artifacts                     zero / zero
+```
+
+G19.6 is promoted. Rollback remains the reverse application of G19.6D through
+G19.6A; no schema, provider setting, secret, or retained user resource changed
+during this promotion. G19.7 owns the complete cross-provider/live/clean-copy
+closure matrix.

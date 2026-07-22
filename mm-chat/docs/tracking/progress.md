@@ -1554,7 +1554,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           Thinking Block preservation.
     - [x] G19.5 Strict `off | model_builtin | external` globe state,
           conversation persistence/inheritance, and tested built-in capability.
-    - [ ] G19.6 Selected-Knowledge `search_knowledge` Tool migration with
+    - [x] G19.6 Selected-Knowledge `search_knowledge` Tool migration with
           active BM25/pgvector/Jina retrieval and truthful `[K]`/`[W]` fusion.
       - [x] G19.6A Server-authoritative Knowledge executor, stable cumulative
             `[K#]` minting, mixed native retrieval rounds, and live
@@ -1565,7 +1565,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
       - [x] G19.6C-D Terminal authority/citation/cancellation parity plus live
             non-Tool/model-built-in compatibility execution and old Handler
             pre-answer authority removal.
-      - [ ] G19.6E real-document hit/miss/follow-up/mixed/deletion/restart
+      - [x] G19.6E real-document hit/miss/follow-up/mixed/deletion/restart
             promotion proof and cleanup.
     - [ ] G19.7 Full live matrix, restart, clean-copy, rollback, and smoke-state
           cleanup.

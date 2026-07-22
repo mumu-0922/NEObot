@@ -213,7 +213,7 @@ deleted.
 
 ## G19.6 Knowledge Tool migration
 
-Status: in progress.
+Status: complete (2026-07-22).
 
 - Register `search_knowledge` only when the conversation has selected
   collections.
@@ -238,7 +238,7 @@ Execution slices:
   cancellation, and reload across handler fixtures.
 - [x] G19.6D remove the legacy pre-answer Auto RAG authority after fixture
   parity and pass the full static/test/build gates.
-- [ ] G19.6E pass the real uploaded-document hit/miss/follow-up/mixed/deletion/
+- [x] G19.6E pass the real uploaded-document hit/miss/follow-up/mixed/deletion/
   restart gate, clean all smoke state, and record rollback evidence.
 
 Promotion gate: real uploaded documents prove hit, miss, contextual follow-up,

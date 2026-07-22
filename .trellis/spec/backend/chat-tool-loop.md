@@ -1,12 +1,10 @@
 # Planned chat Tool Loop contracts
 
 Status: G19.2 process trace, G19.3 OpenAI-compatible/Gemini external Web, G19.4
-Anthropic Tool Loop, and G19.5 three-state/built-in Search administration
-promoted on 2026-07-22. G19.6A-D adds the server-authoritative Knowledge Tool
-executor, connects it to Tool-round-capable providers, and moves non-Tool and
-model-built-in compatibility retrieval after `message.started`. The Handler no
-longer invokes the old pre-answer Auto RAG authority; the real-document
-promotion gate remains in progress.
+Anthropic Tool Loop, G19.5 three-state/built-in Search administration, and
+G19.6 server-authoritative Knowledge Tool migration were promoted on
+2026-07-22. All selected-Knowledge paths now execute after `message.started`;
+the Handler no longer invokes the old pre-answer Auto RAG authority.
 
 ## 1. Scope / Trigger
 
