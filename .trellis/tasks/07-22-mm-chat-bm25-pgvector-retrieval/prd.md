@@ -87,13 +87,13 @@ Jina reranking, citations, single-user deployment model, and rollback path.
 
 ### Group 4 — BM25 lane and hybrid dual read
 
-- [ ] BM25 indexes only active, published, current-generation child chunks.
-- [ ] Chinese, identifiers, paths, error codes, and exact phrases remain
+- [x] BM25 indexes only active, published, current-generation child chunks.
+- [x] Chinese, identifiers, paths, error codes, and exact phrases remain
       recallable through tested tokenization/exact behavior.
-- [ ] BM25 and pgvector ranks fuse deterministically through RRF.
-- [ ] Shadow results include per-lane ranks and scores without leaking source
+- [x] BM25 and pgvector ranks fuse deterministically through RRF.
+- [x] Shadow results include per-lane ranks and scores without leaking source
       text.
-- [ ] Golden Set quality is not worse than the baseline and false citations are
+- [x] Golden Set quality is not worse than the baseline and false citations are
       reduced to the accepted gate.
 
 ### Group 5 — Cutover, operations, and rollback

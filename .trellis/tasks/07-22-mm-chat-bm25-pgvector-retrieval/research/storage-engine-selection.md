@@ -81,6 +81,26 @@ proves backfill/exact/HNSW/deletion/rollback, and leaves `schema_migrations`
 unchanged. G18.5 owns promotion of that DDL into the normal migration sequence
 after a verified production backup has been restored into fresh PG17 storage.
 
+## Resolved G18.4 query behavior
+
+Live `pg_textsearch 1.3.1` probes established that `<@>` returns a negative
+BM25 score, smaller values rank higher, and an unrelated row receives `0`.
+Shadow reads therefore require `score < 0` and retain the raw negative score in
+diagnostics rather than interpreting it as a probability. The explicit
+`to_bm25query(query, index_name)` form produced a real BM25 index scan.
+
+The `simple` configuration recalls full Chinese terms but does not segment
+arbitrary Chinese substrings. The selected shadow profile appends at most 512
+overlapping CJK ideograph bigrams while leaving Latin text to the normal
+tokenizer. A discarded prototype generated bigrams for all compacted text and
+caused unrelated English queries to match common two-letter fragments. Exact
+terms remain a separate deterministic ordering signal inside the lexical lane.
+
+`pg_textsearch` can apply collection/authority filtering after Top-K selection.
+G18.4 uses bounded 8x overfetch followed by current-authority reauthorization;
+G18.5 must validate selectivity, oversampling, latency, and memory against a
+representative single-server corpus before production cutover.
+
 ## Sources inspected
 
 - `https://github.com/timescale/pg_textsearch` README and PostgreSQL License

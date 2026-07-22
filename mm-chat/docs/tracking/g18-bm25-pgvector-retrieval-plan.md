@@ -79,10 +79,24 @@ hybrid function remains the only production reader.
 
 ## G18.4 BM25 and hybrid dual read
 
+Status: complete (2026-07-22).
+
 - Add BM25 only for active, published, current-generation child chunks.
 - Preserve identifier, path, error-code, phrase, Chinese, and semantic recall.
 - Fuse BM25 and Dense lanes through deterministic RRF and emit only redacted
   shadow diagnostics.
+
+Promotion proof: the PG17-only shadow admitted four synthetic child rows only
+through the active corpus head and current published authority. A real
+`pg_textsearch 1.3.1` index handled identifiers, paths, phrases, exact terms,
+and bounded Chinese ideograph bigrams; the pgvector HNSW lane remained
+generation/profile-bound. Both lanes fused through deterministic `k=60` RRF,
+including the existing original/standalone-rewrite outer query lanes. Seven
+frozen cases passed with both unrelated cases returning zero candidates. The
+diagnostic surface returned references, hashes, ranks, and scores only. After
+tombstoning, stale immutable shadow rows remained for rollback but immediately
+disappeared from authority-bound reads. G18.4 and then G18.3 rolled back without
+changing migrations `1–36` or the legacy `REAL[]` production reader.
 
 ## G18.5 Cutover and rollback
 

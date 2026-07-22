@@ -275,3 +275,96 @@ temporary containers / volumes                  0 / 0
 Next: commit G18.3 alone. G18.4 adds true `pg_textsearch` BM25, compares BM25
 and pgvector lanes through deterministic RRF against the frozen evaluator, and
 keeps all dual-read diagnostics reference-only and server-owned.
+
+## 2026-07-22 — G18.4 BM25 and hybrid dual-read shadow
+
+G18.4 stayed on the PG17-only operational boundary established in G18.3. The
+independent project still runs PostgreSQL 16, so no `pg_textsearch` or `VECTOR`
+DDL was added to `backend/migrations`; the production migration manifest
+remained `1–36` and the `ts_rank + REAL[]` reader remained the only Go reader.
+
+A live extension probe first established the `pg_textsearch 1.3.1` contract:
+`<@>` returns negative BM25 scores, lower is better, and no match is `0`.
+`to_bm25query(query, index_name)` produced a real BM25 index scan. The shadow
+reader therefore filters `score < 0`, preserves raw scores only as diagnostics,
+and never treats them as probabilities.
+
+The new `knowledge_bm25_shadow_sources` view admits only rows under the active
+corpus head, active generation, ready Jina v4/1024 search profile, active
+projection head, published materialization, and current collection/document/
+version visibility. The verified, idempotent backfill derives a BM25 document
+from lexical text, normalized exact terms, and at most 512 CJK ideograph
+bigrams. A trigger rejects forged identity or derived text. BM25 rows remain
+immutable rollback artifacts, but every read rejoins current authority, so a
+tombstone hides them immediately.
+
+One prototype was rejected during the first negative proof: generating bigrams
+for all compacted text caused an unrelated English query to share fragments
+such as `er` with identifiers and policy text. Bigrams are now generated only
+for Chinese ideographs; Latin text remains under the `simple` tokenizer. A
+second correction aligned `context-follow-up` with runtime order: the storage
+case consumes the standalone rewrite, while a separate proof fuses the raw
+follow-up and rewrite result lanes exactly as the Go assembler does. A third
+iteration removed a common word from a temporary negative query and restored
+the frozen G18.1 weather/cooking prompts.
+
+`knowledge_fetch_hybrid_shadow_diagnostics(...)` validates the selected
+collections, query, 1024-dimensional finite/non-zero vector, and result limit.
+It retrieves a bounded 8x BM25 pool plus exact terms, retrieves Dense candidates
+from the G18.3 pgvector projection at the existing `0.48` gate, assigns stable
+per-lane ranks, and fuses them with `1 / (60 + rank)`. It returns UUIDs, hashes,
+BM25/Dense ranks and scores, and final rank/score only. Neither source text nor
+exact terms are output. Only `rag_replay_operator` can execute it; the live
+proof also switched to that role and replayed both backfill and diagnostics
+successfully. `go_api_runtime` and `rag_worker_executor` have no shadow
+privileges.
+
+The exact disposable proof command was:
+
+```bash
+./mm-chat/scripts/run-g18-hybrid-shadow-drill.sh
+```
+
+Final report: `/tmp/mm-chat-g18-hybrid-shadow.B7rYSd`.
+
+```text
+PASS G18.4 BM25 hybrid shadow schema
+PASS G18.4 synthetic hybrid fixture rows=4 collections=2
+Index Scan using idx_knowledge_child_bm25_shadow_text
+Index Scan using idx_knowledge_child_vector_shadow_hnsw
+PASS G18.4 golden=7 bm25+dense=rrf identifiers/cjk=recall negatives=0 deletion=hidden diagnostics=redacted
+PASS G18.4 rollback retained G18.3 vector shadow
+PASS G18.4 final rollback retained legacy REAL[] reader/data
+no migrations changed
+disposable_database=removed
+```
+
+The Golden proof covers exact error/path identifiers, English phrase recall,
+Chinese lexical and bounded-bigram recall, semantic-only Dense ranking,
+standalone context rewrite, cross-collection selection, and two unrelated
+no-evidence cases. Both negative cases returned zero candidates. Repeated
+original/rewrite outer RRF returned identical UUID order. After tombstoning the
+first document, three BM25 and three vector shadow rows remained physically for
+rollback, but both the hybrid shadow reader and legacy production reader
+returned zero candidates for that collection; the separately selected current
+collection still returned its one candidate.
+
+The down sequence removed G18.4 first while proving G18.3 remained, then removed
+G18.3 while retaining four legacy `REAL[]` rows and the production hybrid
+function. All disposable containers and volumes were removed.
+
+Known cutover debt is explicit: `pg_textsearch` may apply low-selectivity scope
+filters after Top-K. The bounded 8x shadow overfetch is not yet a production
+single-server budget. G18.5 must prove representative-corpus selectivity,
+latency, RSS/CPU, concurrent indexing/deletion/reindex, restart, backup/restore,
+and the reversible server-owned profile pointer before cutover.
+
+Final quality gates passed: shell syntax, module completeness, placeholder and
+secret scans, explicit role-grant review, `go vet ./...`, `go test ./...`, and
+the seven-case evaluator (`precision=1`, false-citation rate `0`, no-evidence
+accuracy `1`). The generic module/security scanners do not classify SQL files,
+so the live role, SECURITY DEFINER, forged-insert, diagnostics-shape, and query
+plan assertions remain the authoritative SQL security tests.
+
+Next: commit G18.4 alone. G18.5 then promotes the reviewed PG17 DDL into the
+normal migration path only after a verified restore to fresh PG17 storage.
