@@ -2005,6 +2005,323 @@ func TestHandlerUsesResolvedRuntimeProcessorForRAGGovernance(t *testing.T) {
 	assertAutoRAGMetadata(t, repo.messages[testConversationID][1], "answered", 1)
 }
 
+func TestHandlerStreamsKnowledgeToolWithSearchOffAndReloadsCitation(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "读取选中的内部资料"),
+	)
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{{
+			Type: ProviderEventToolCallCompleted,
+			ToolCall: &ProviderToolCall{
+				ID: "knowledge-off", Name: searchKnowledgeToolName,
+				Arguments: `{"query":"选中的内部资料"}`,
+			},
+		}},
+		{{Type: ProviderEventDelta, Delta: "内部回答 [K1]"}},
+	}}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithRAGAnswerAssembler(NewRAGAnswerAssembler(
+			&fakeRAGCandidateSource{refs: []knowledge.EvidenceCandidateReference{validRAGCandidate()}},
+			&fakeRAGHydrator{evidence: []knowledge.HydratedEvidence{validHydratedEvidence()}},
+		)),
+		WithRAGAnswerGovernanceGate(&fakeRAGAnswerGovernanceGate{
+			authority: RAGAnswerAuthority{
+				Processor: "mock", ModelID: "mock-chat", CollectionCount: 1,
+			},
+		}),
+	)
+
+	recorder := performAuthenticatedRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"config":{"searchMode":"off"},"metadata":{"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-live-knowledge-off"}`,
+	)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	if len(provider.inputs) != 2 || len(provider.inputs[0].Tools) != 1 ||
+		provider.inputs[0].Tools[0].Function.Name != searchKnowledgeToolName ||
+		provider.inputs[0].ToolChoice != ProviderToolChoiceAuto {
+		t.Fatalf("Knowledge-only inputs = %#v", provider.inputs)
+	}
+	body := recorder.Body.String()
+	for _, want := range []string{
+		`"kind":"knowledge","status":"running"`,
+		`"kind":"knowledge","status":"completed"`,
+		`"marker":"[K1]"`,
+		`"content":"内部回答 [K1]"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("stream missing %q: %s", want, body)
+		}
+	}
+	message := repo.messages[testConversationID][1]
+	assertAutoRAGMetadata(t, message, "answered", 1)
+	if fusion := message.Metadata["fusion"].(map[string]any); fusion["authority"] != sourceAuthorityKnowledge ||
+		fusion["searchEnabled"] != false {
+		t.Fatalf("fusion metadata = %#v", fusion)
+	}
+
+	reload := performAuthenticatedRequest(
+		handler,
+		http.MethodGet,
+		conversationsPath+"/"+testConversationID+"/messages",
+		"",
+	)
+	assertStatus(t, reload, http.StatusOK)
+	for _, want := range []string{
+		`"marker":"[K1]"`,
+		`"kind":"knowledge"`,
+		`"citationMarkers":["[K1]"]`,
+	} {
+		if !strings.Contains(reload.Body.String(), want) {
+			t.Fatalf("reload missing %q: %s", want, reload.Body.String())
+		}
+	}
+}
+
+func TestHandlerKnowledgeToolMissContinuesWithoutFalseCitation(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "知识库没有这个问题"),
+	)
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{{
+			Type: ProviderEventToolCallCompleted,
+			ToolCall: &ProviderToolCall{
+				ID: "knowledge-miss", Name: searchKnowledgeToolName,
+				Arguments: `{"query":"完全不相关的问题"}`,
+			},
+		}},
+		{{Type: ProviderEventDelta, Delta: "普通模型回答 [K1]"}},
+	}}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithRAGAnswerAssembler(NewRAGAnswerAssembler(
+			&fakeRAGCandidateSource{},
+			&fakeRAGHydrator{},
+		)),
+		WithRAGAnswerGovernanceGate(&fakeRAGAnswerGovernanceGate{}),
+	)
+
+	recorder := performAuthenticatedRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"config":{"searchMode":"off"},"metadata":{"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-live-knowledge-miss"}`,
+	)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	message := repo.messages[testConversationID][1]
+	if message.Content != "普通模型回答" || strings.Contains(recorder.Body.String(), `"content":"普通模型回答 [K1]"`) {
+		t.Fatalf("miss retained false marker: %#v / %s", message, recorder.Body.String())
+	}
+	assertAutoRAGMetadata(t, message, "no_evidence", 0)
+	trace, ok := message.Metadata[processTraceMetadataKey].([]ProcessStep)
+	if !ok {
+		t.Fatalf("process trace = %#v", message.Metadata[processTraceMetadataKey])
+	}
+	found := false
+	for _, step := range trace {
+		if step.Kind == ProcessStepKindKnowledge {
+			found = true
+			if step.Status != ProcessStepStatusCompleted ||
+				step.Detail["outcome"] != "no_evidence" ||
+				step.Detail["hitCount"] != 0 {
+				t.Fatalf("Knowledge miss step = %#v", step)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("Knowledge miss trace missing = %#v", trace)
+	}
+}
+
+func TestHandlerKnowledgeToolProviderFailureDoesNotPersistUnusedCitation(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "读取资料"),
+	)
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{{
+			Type: ProviderEventToolCallCompleted,
+			ToolCall: &ProviderToolCall{
+				ID: "knowledge-before-failure", Name: searchKnowledgeToolName,
+				Arguments: `{"query":"读取资料"}`,
+			},
+		}},
+		{{Error: errors.New("fixture provider failure")}},
+	}}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithRAGAnswerAssembler(NewRAGAnswerAssembler(
+			&fakeRAGCandidateSource{refs: []knowledge.EvidenceCandidateReference{validRAGCandidate()}},
+			&fakeRAGHydrator{evidence: []knowledge.HydratedEvidence{validHydratedEvidence()}},
+		)),
+		WithRAGAnswerGovernanceGate(&fakeRAGAnswerGovernanceGate{
+			authority: RAGAnswerAuthority{
+				Processor: "mock", ModelID: "mock-chat", CollectionCount: 1,
+			},
+		}),
+	)
+
+	recorder := performAuthenticatedRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"config":{"searchMode":"off"},"metadata":{"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-live-knowledge-provider-failure"}`,
+	)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	message := repo.messages[testConversationID][1]
+	if message.Status != "failed" {
+		t.Fatalf("failed message = %#v", message)
+	}
+	assertAutoRAGMetadata(t, message, "answered_without_knowledge", 0)
+	if fusion := message.Metadata["fusion"].(map[string]any); fusion["authority"] != sourceAuthorityModel ||
+		fusion["knowledgeOutcome"] != "answered_without_knowledge" {
+		t.Fatalf("failed fusion metadata = %#v", fusion)
+	}
+	trace, ok := message.Metadata[processTraceMetadataKey].([]ProcessStep)
+	if !ok {
+		t.Fatalf("process trace = %#v", message.Metadata[processTraceMetadataKey])
+	}
+	for _, step := range trace {
+		if (step.Kind == ProcessStepKindKnowledge || step.Kind == ProcessStepKindTool) &&
+			step.Detail["outcome"] != "completed_unreferenced" {
+			t.Fatalf("unused retrieval trace = %#v", trace)
+		}
+	}
+}
+
+func TestHandlerKnowledgeToolUsesResolvedRuntimeProcessor(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "读取资料"),
+	)
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{{
+			Type: ProviderEventToolCallCompleted,
+			ToolCall: &ProviderToolCall{
+				ID: "knowledge-runtime", Name: searchKnowledgeToolName,
+				Arguments: `{"query":"读取资料"}`,
+			},
+		}},
+		{{Type: ProviderEventDelta, Delta: "回答 [K1]"}},
+	}}
+	resolver := &fakeRuntimeProviderResolver{
+		provider: provider, ragAnswerProcessor: "openai_compatible",
+	}
+	gate := &fakeRAGAnswerGovernanceGate{authority: RAGAnswerAuthority{
+		Processor: "openai_compatible", ModelID: "gpt-test", CollectionCount: 1,
+	}}
+	handler := NewHandler(
+		NewService(repo),
+		WithRuntimeProviderResolver(resolver),
+		WithRAGAnswerAssembler(NewRAGAnswerAssembler(
+			&fakeRAGCandidateSource{refs: []knowledge.EvidenceCandidateReference{validRAGCandidate()}},
+			&fakeRAGHydrator{evidence: []knowledge.HydratedEvidence{validHydratedEvidence()}},
+		)),
+		WithRAGAnswerGovernanceGate(gate),
+	)
+
+	recorder := performAuthenticatedRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"SERVER_DEFAULT","modelId":"gpt-test"},"provider":{"source":"server-default","type":"OpenAI Compatible"},"config":{"searchMode":"off"},"metadata":{"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-live-runtime-knowledge"}`,
+	)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	if gate.input.ModelRef.ProviderID != "openai_compatible" ||
+		gate.input.ModelRef.ModelID != "gpt-test" {
+		t.Fatalf("Knowledge governance modelRef = %#v", gate.input.ModelRef)
+	}
+	if len(provider.inputs) != 2 ||
+		provider.inputs[0].ModelRef.ProviderID != "SERVER_DEFAULT" {
+		t.Fatalf("provider inputs = %#v", provider.inputs)
+	}
+}
+
+func TestHandlerKnowledgeToolUsesModelResolvedFollowUpQuery(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "Follow-up", 3))
+	repo.messages[testConversationID] = []Message{
+		fakeMessage(
+			"11111111-1111-4111-8111-111111111118",
+			testConversationID,
+			0,
+			"user",
+			"DeepSeek V4 Flash 的上下文窗口是多少？",
+		),
+		fakeMessage(
+			"11111111-1111-4111-8111-111111111119",
+			testConversationID,
+			1,
+			"assistant",
+			"需要查询选中的规格资料。[K9]",
+		),
+		fakeMessage(testMessageID, testConversationID, 2, "user", "它到底是多少？"),
+	}
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{{
+			Type: ProviderEventToolCallCompleted,
+			ToolCall: &ProviderToolCall{
+				ID: "knowledge-follow-up", Name: searchKnowledgeToolName,
+				Arguments: `{"query":"DeepSeek V4 Flash 上下文窗口长度"}`,
+			},
+		}},
+		{{Type: ProviderEventDelta, Delta: "规格回答 [K1]"}},
+	}}
+	candidates := &fakeRAGCandidateSource{
+		refs: []knowledge.EvidenceCandidateReference{validRAGCandidate()},
+	}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithRAGAnswerAssembler(NewRAGAnswerAssembler(
+			candidates,
+			&fakeRAGHydrator{evidence: []knowledge.HydratedEvidence{validHydratedEvidence()}},
+		)),
+		WithRAGAnswerGovernanceGate(&fakeRAGAnswerGovernanceGate{
+			authority: RAGAnswerAuthority{
+				Processor: "mock", ModelID: "mock-chat", CollectionCount: 1,
+			},
+		}),
+	)
+
+	recorder := performAuthenticatedRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"config":{"searchMode":"off"},"metadata":{"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-live-knowledge-follow-up"}`,
+	)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	if len(candidates.queries) != 2 ||
+		candidates.queries[0].QueryText != "它到底是多少？" ||
+		candidates.queries[1].QueryText != "DeepSeek V4 Flash 上下文窗口长度" {
+		t.Fatalf("Knowledge query = %#v", candidates.queries)
+	}
+	if len(provider.inputs) != 2 || len(provider.inputs[0].Messages) != 3 ||
+		strings.Contains(provider.inputs[0].Messages[1].Content, "[K9]") {
+		t.Fatalf("provider context = %#v", provider.inputs)
+	}
+}
+
 func TestHandlerSourceFusionSkipsWebWhenKnowledgeIsSufficient(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
@@ -2012,9 +2329,16 @@ func TestHandlerSourceFusionSkipsWebWhenKnowledgeIsSufficient(t *testing.T) {
 		repo.messages[testConversationID],
 		fakeMessage(testMessageID, testConversationID, 0, "user", "研究方向是什么"),
 	)
-	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{{
-		{Type: ProviderEventDelta, Delta: "Knowledge answer [K1]"},
-	}}}
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{{
+			Type: ProviderEventToolCallCompleted,
+			ToolCall: &ProviderToolCall{
+				ID: "call-knowledge", Name: searchKnowledgeToolName,
+				Arguments: `{"query":"研究方向"}`,
+			},
+		}},
+		{{Type: ProviderEventDelta, Delta: "Knowledge answer [K1]"}},
+	}}
 	searchProvider := &fakeWebSearchProvider{}
 	searchResolver := &fakeWebSearchResolver{execution: websearch.ActiveExecution{
 		Mode: websearch.ExecutionExternal, External: searchProvider,
@@ -2049,9 +2373,13 @@ func TestHandlerSourceFusionSkipsWebWhenKnowledgeIsSufficient(t *testing.T) {
 			searchProvider.calls,
 		)
 	}
-	if len(provider.inputs) != 1 ||
-		!strings.Contains(provider.inputs[0].Prompt, "[K1]") ||
-		strings.Contains(provider.inputs[0].Prompt, "Relevant Web evidence") {
+	if len(provider.inputs) != 2 ||
+		strings.Contains(provider.inputs[0].Prompt, "[K1]") ||
+		len(provider.inputs[1].Continuation) != 1 ||
+		!strings.Contains(
+			provider.inputs[1].Continuation[0].Results[0].Content,
+			"[K1]",
+		) || strings.Contains(provider.inputs[0].Prompt, "Relevant Web evidence") {
 		t.Fatalf("provider input = %#v", provider.inputs)
 	}
 	messages := repo.messages[testConversationID]
@@ -2067,7 +2395,7 @@ func TestHandlerSourceFusionSkipsWebWhenKnowledgeIsSufficient(t *testing.T) {
 	}
 }
 
-func TestHandlerSourceFusionDerivesExternalQueryFromKnowledge(t *testing.T) {
+func TestHandlerSourceFusionRunsKnowledgeThenExternalWeb(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
 	repo.messages[testConversationID] = append(
@@ -2077,15 +2405,22 @@ func TestHandlerSourceFusionDerivesExternalQueryFromKnowledge(t *testing.T) {
 			testConversationID,
 			0,
 			"user",
-			"这个研究方向的最新公开进展是什么",
+			"这个研究方向与公开资料有什么差异",
 		),
 	)
 	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
 		{{
 			Type: ProviderEventToolCallCompleted,
 			ToolCall: &ProviderToolCall{
-				ID: "call-mixed", Name: searchWebToolName,
-				Arguments: `{"query":"这个研究方向 最新公开进展"}`,
+				ID: "call-knowledge", Name: searchKnowledgeToolName,
+				Arguments: `{"query":"这个研究方向"}`,
+			},
+		}},
+		{{
+			Type: ProviderEventToolCallCompleted,
+			ToolCall: &ProviderToolCall{
+				ID: "call-web", Name: searchWebToolName,
+				Arguments: `{"query":"研究方向 公开资料 差异"}`,
 			},
 		}},
 		{{Type: ProviderEventDelta, Delta: "Mixed answer [K1] [W1]"}},
@@ -2122,17 +2457,18 @@ func TestHandlerSourceFusionDerivesExternalQueryFromKnowledge(t *testing.T) {
 
 	assertStreamStatus(t, recorder, http.StatusOK)
 	if searchResolver.calls != 1 || searchProvider.calls != 1 ||
-		!strings.Contains(searchProvider.request.Query, "最新公开进展") {
+		!strings.Contains(searchProvider.request.Query, "公开资料") {
 		t.Fatalf("derived Search request = %#v", searchProvider.request)
 	}
-	if len(provider.inputs) != 2 ||
-		!strings.Contains(provider.inputs[0].Prompt, "[K1]") ||
-		!strings.Contains(provider.inputs[1].Continuation[0].Results[0].Content, "[W1]") {
+	if len(provider.inputs) != 3 ||
+		strings.Contains(provider.inputs[0].Prompt, "[K1]") ||
+		!strings.Contains(provider.inputs[1].Continuation[0].Results[0].Content, "[K1]") ||
+		!strings.Contains(provider.inputs[2].Continuation[1].Results[0].Content, "[W1]") {
 		t.Fatalf("mixed provider inputs = %#v", provider.inputs)
 	}
-	if !strings.Contains(provider.inputs[1].SystemPrompt, "state the conflict") ||
-		!strings.Contains(provider.inputs[1].SystemPrompt, "cite both matching [K] and [W] markers") {
-		t.Fatalf("mixed provider system prompt = %q", provider.inputs[1].SystemPrompt)
+	if !strings.Contains(provider.inputs[2].SystemPrompt, "state the conflict") ||
+		!strings.Contains(provider.inputs[2].SystemPrompt, "cite both matching [K] and [W] markers") {
+		t.Fatalf("mixed provider system prompt = %q", provider.inputs[2].SystemPrompt)
 	}
 	fusion := repo.messages[testConversationID][1].Metadata["fusion"].(map[string]any)
 	if fusion["authority"] != sourceAuthorityMixed ||
@@ -2287,6 +2623,13 @@ func TestHandlerSourceFusionPersistsOnlyKnowledgeMarkersUsedByAnswer(t *testing.
 				Arguments: `{"query":"latest public fixture"}`,
 			},
 		}},
+		{{
+			Type: ProviderEventToolCallCompleted,
+			ToolCall: &ProviderToolCall{
+				ID: "call-private", Name: searchKnowledgeToolName,
+				Arguments: `{"query":"selected private fixture"}`,
+			},
+		}},
 		{{Type: ProviderEventDelta, Delta: "Public answer [W1]"}},
 	}}
 	searchProvider := &fakeWebSearchProvider{result: websearch.Result{
@@ -2321,9 +2664,10 @@ func TestHandlerSourceFusionPersistsOnlyKnowledgeMarkersUsedByAnswer(t *testing.
 	)
 
 	assertStreamStatus(t, recorder, http.StatusOK)
-	if len(provider.inputs) != 2 ||
-		!strings.Contains(provider.inputs[0].Prompt, "[K1]") ||
-		!strings.Contains(provider.inputs[1].Continuation[0].Results[0].Content, "[W1]") {
+	if len(provider.inputs) != 3 ||
+		strings.Contains(provider.inputs[0].Prompt, "[K1]") ||
+		!strings.Contains(provider.inputs[1].Continuation[0].Results[0].Content, "[W1]") ||
+		!strings.Contains(provider.inputs[2].Continuation[1].Results[0].Content, "[K1]") {
 		t.Fatalf("provider inputs = %#v", provider.inputs)
 	}
 	if searchProvider.request.Query != "latest public fixture" {

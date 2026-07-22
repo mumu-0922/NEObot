@@ -11,7 +11,7 @@ The first admitted tools are read-only:
 
 ```text
 search_web(query)
-search_knowledge(query, collectionIds)
+search_knowledge(query)
 ```
 
 The generic runtime may admit more tools later only after assigning an explicit
@@ -294,8 +294,11 @@ G19.3 moves external Web retrieval into the live provider loop after the
 assistant SSE starts. Every accepted `search_web` call produces its own running
 and terminal Tool/Web steps. Provider-returned reasoning and Generation remain
 live, and model-built-in Search is live once its provider stream is established.
-Legacy Knowledge still completes before SSE and is projected as a terminal
-step; G19.6 owns live Knowledge Tool execution.
+G19.6B registers selected Knowledge in that live loop for Tool-round-capable
+providers when Search is `off` or `external`. Each accepted call produces live
+Tool/Knowledge steps and returns a bounded Tool Result. The old pre-answer path
+remains only as the current rollback/compatibility seam for non-Tool providers
+and model-built-in Search until the remaining G19.6 parity gates pass.
 
 ## 7. Web and Knowledge tools
 
@@ -315,8 +318,9 @@ step; G19.6 owns live Knowledge Tool execution.
 ### `search_knowledge`
 
 - Registered only when the conversation has selected Knowledge collections.
-- Collection IDs are server-authoritative; a model cannot expand the selected
-  set through Tool arguments.
+- The model argument schema contains only `query`. Collection IDs are
+  server-authoritative and copied from the authenticated conversation
+  selection; a model cannot expand the selected set through Tool arguments.
 - Reuses the active BM25/pgvector, Query Expansion, RRF, Jina reranker,
   authority hydration, deletion visibility, and no-evidence policy.
 - Results receive current-turn `[K#]` capabilities only after the existing

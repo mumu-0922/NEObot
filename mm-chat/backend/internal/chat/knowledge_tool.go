@@ -20,6 +20,7 @@ type knowledgeToolRuntime struct {
 	ActorUserID           string
 	SessionID             string
 	ConversationID        string
+	OriginalQueryText     string
 	SelectedCollectionIDs []string
 	GovernanceModelRef    ModelRef
 }
@@ -96,11 +97,20 @@ func executeKnowledgeTool(
 		len(runtime.SelectedCollectionIDs) == 0 {
 		return autoRAGDecision{Outcome: "dependency_unavailable"}
 	}
+	originalQuery := strings.Join(strings.Fields(runtime.OriginalQueryText), " ")
+	if originalQuery == "" {
+		originalQuery = query
+	}
+	rewrittenQuery := ""
+	if !strings.EqualFold(originalQuery, query) {
+		rewrittenQuery = query
+	}
 	result, err := runtime.Assembler.Assemble(ctx, RAGAssemblyInput{
 		ActorUserID:           runtime.ActorUserID,
 		SessionID:             runtime.SessionID,
 		ConversationID:        runtime.ConversationID,
-		QueryText:             query,
+		QueryText:             originalQuery,
+		RewrittenQueryText:    rewrittenQuery,
 		SelectedCollectionIDs: append([]string(nil), runtime.SelectedCollectionIDs...),
 	})
 	if err != nil {
@@ -127,11 +137,12 @@ func executeKnowledgeTool(
 		return autoRAGDecision{Outcome: "dependency_unavailable"}
 	}
 	return autoRAGDecision{
-		Outcome:      "evidence_ready",
-		Evidence:     result.Evidence,
-		Citations:    result.Citations,
-		Authority:    &authority,
-		RerankStatus: result.RerankStatus,
+		Outcome:        "evidence_ready",
+		Evidence:       result.Evidence,
+		Citations:      result.Citations,
+		Authority:      &authority,
+		QueryRewritten: rewrittenQuery != "",
+		RerankStatus:   result.RerankStatus,
 	}
 }
 

@@ -232,7 +232,7 @@ Execution slices:
   Web or Web -> Knowledge, normal misses return a successful empty Tool Result,
   repeated Knowledge calls preserve stable cumulative `[K#]` markers, and live
   Tool/Knowledge trace steps carry counts rather than source bodies.
-- [ ] G19.6B connect the generic retrieval loop to chat streaming for selected
+- [x] G19.6B connect the generic retrieval loop to chat streaming for selected
   Knowledge while retaining the legacy pre-answer path as a rollback seam.
 - [ ] G19.6C reconcile terminal Knowledge/Web authority, metadata, citations,
   cancellation, and reload across handler fixtures.

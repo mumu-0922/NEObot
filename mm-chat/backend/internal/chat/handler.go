@@ -1085,9 +1085,16 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		writeServiceError(w, err)
 		return
 	}
+	searchMode := searchModeFromConfig(request.Config)
+	_, toolRoundCapable := streamProvider.(ToolRoundProvider)
+	useLiveKnowledgeTool := ragSelection.Enabled && toolRoundCapable &&
+		searchMode != chatSearchModeModelBuiltIn
 	autoDecision := autoRAGDecision{}
+	if useLiveKnowledgeTool {
+		autoDecision.Outcome = "not_requested"
+	}
 	knowledgeStarted := time.Now()
-	if ragSelection.Enabled {
+	if ragSelection.Enabled && !useLiveKnowledgeTool {
 		autoDecision = h.decideAutoRAG(
 			r.Context(),
 			conversationID,
@@ -1102,7 +1109,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	providerPrompt := userMessage.Content
 	providerSystemPrompt := systemPrompt
 	providerMetadata := request.Metadata
-	if ragSelection.Enabled && autoDecision.ReadyForAnswer() {
+	if ragSelection.Enabled && !useLiveKnowledgeTool && autoDecision.ReadyForAnswer() {
 		providerPrompt, providerSystemPrompt, err = buildAutoRAGProviderRequest(
 			userMessage.Content,
 			systemPrompt,
@@ -1121,11 +1128,10 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		}
 	}
 	knowledgeDurationMillis := int64(0)
-	if ragSelection.Enabled {
+	if ragSelection.Enabled && !useLiveKnowledgeTool {
 		knowledgeDurationMillis = sourceFusionDurationMillis(knowledgeStarted)
 	}
 	routerStarted := time.Now()
-	searchMode := searchModeFromConfig(request.Config)
 	forceExternalSearch := searchMode == chatSearchModeExternal &&
 		hasCurrentPublicIntent(userMessage.Content)
 	fusionPlan := planSourceFusion(userMessage.Content, searchMode.enabled(), autoDecision)
@@ -1211,13 +1217,15 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	trace := newProcessTrace(assistantMessage.ID)
-	addLegacyKnowledgeProcessStep(
-		trace,
-		ragSelection,
-		autoDecision,
-		knowledgeStarted,
-		knowledgeDurationMillis,
-	)
+	if !useLiveKnowledgeTool {
+		addLegacyKnowledgeProcessStep(
+			trace,
+			ragSelection,
+			autoDecision,
+			knowledgeStarted,
+			knowledgeDurationMillis,
+		)
+	}
 	addLegacyWebProcessStep(
 		trace,
 		fusionPlan,
@@ -1258,6 +1266,17 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		userMessage.Content,
 		nil,
 	)
+	var knowledgeRuntime *knowledgeToolRuntime
+	if useLiveKnowledgeTool {
+		knowledgeRuntime = h.newKnowledgeToolRuntime(
+			r.Context(),
+			conversationID,
+			userMessage.Content,
+			ragSelection,
+			*modelRef,
+			ragAnswerProcessor,
+		)
+	}
 
 	providerSystemPrompt, memoryPreparation := h.prepareDurableMemory(
 		r.Context(),
@@ -1290,6 +1309,13 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		extra map[string]any,
 		answerContent string,
 	) map[string]any {
+		decision = decision.completed(answerContent)
+		metadataFusionPlan := reconcileCompletedSourceFusionAuthority(
+			fusionPlan,
+			answerContent,
+			decision,
+			webSearchResult,
+		)
 		metadata := withUsedWebSearchMessageMetadata(
 			autoRAGMessageMetadata(runID, ragSelection, decision, extra),
 			messageSearchExecution,
@@ -1298,7 +1324,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		)
 		metadata = withSourceFusionMessageMetadata(
 			metadata,
-			fusionPlan,
+			metadataFusionPlan,
 			decision,
 			fusionDiagnostics,
 		)
@@ -1344,14 +1370,14 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		generationStarted,
 		map[string]any{"outcome": "streaming"},
 	)
-	if searchMode == chatSearchModeExternal && searchExecution != nil &&
-		searchExecution.Mode == websearch.ExecutionExternal {
-		events = startExternalWebToolLoop(streamCtx, externalWebToolLoopInput{
+	if useLiveKnowledgeTool ||
+		(searchMode == chatSearchModeExternal && searchExecution != nil &&
+			searchExecution.Mode == websearch.ExecutionExternal) {
+		toolLoopInput := externalWebToolLoopInput{
 			Provider:        streamProvider,
 			Request:         providerRequest,
 			PlannerMessages: searchPlannerMessages,
 			SearchService:   h.webSearchService,
-			Execution:       *searchExecution,
 			MaxResults: configIntRange(
 				request.Config,
 				"searchResultsLimit",
@@ -1361,7 +1387,13 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			),
 			ForceSearch:    forceExternalSearch,
 			KnowledgeReady: autoDecision.ReadyForAnswer(),
-		})
+			Knowledge:      knowledgeRuntime,
+		}
+		if searchExecution != nil &&
+			searchExecution.Mode == websearch.ExecutionExternal {
+			toolLoopInput.Execution = *searchExecution
+		}
+		events = startRetrievalToolLoop(streamCtx, toolLoopInput)
 	} else if modelBuiltInSearchProvider != nil {
 		events, err = modelBuiltInSearchProvider.StreamChatWithModelBuiltInSearch(
 			streamCtx,
@@ -1529,6 +1561,12 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			}
 			if streamCtx.Err() != nil {
 				_ = emitReasoningDelta(reasoning.flush())
+				for _, step := range reconcileProcessTraceCitations(
+					trace,
+					content.String(),
+				) {
+					_ = emitProcessStep(step)
+				}
 				for _, step := range finishProcessTrace(
 					trace,
 					"cancelled",
@@ -1564,6 +1602,12 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				return
 			}
 			_ = emitReasoningDelta(reasoning.flush())
+			for _, step := range reconcileProcessTraceCitations(
+				trace,
+				content.String(),
+			) {
+				_ = emitProcessStep(step)
+			}
 			for _, step := range finishProcessTrace(
 				trace,
 				"failed",
@@ -1690,6 +1734,27 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 					return
 				}
 			}
+			if execution != nil && execution.Name == searchKnowledgeToolName {
+				if execution.Knowledge != nil {
+					autoDecision = *execution.Knowledge
+				}
+				switch execution.Status {
+				case ProcessStepStatusCompleted, ProcessStepStatusFailed:
+					fusionDiagnostics.KnowledgeDurationMillis =
+						sourceFusionDurationMillis(knowledgeStarted)
+					if autoDecision.ReadyForAnswer() {
+						fusionPlan.Authority = sourceAuthorityKnowledge
+						if len(webSearchResult.Sources) > 0 {
+							fusionPlan.Authority = sourceAuthorityMixed
+						}
+					} else if len(webSearchResult.Sources) > 0 {
+						fusionPlan.Authority = sourceAuthorityWeb
+					} else {
+						fusionPlan.Authority = sourceAuthorityModel
+					}
+				}
+				continue
+			}
 			if execution == nil || execution.Name != searchWebToolName {
 				continue
 			}
@@ -1779,6 +1844,12 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	if streamCtx.Err() != nil || h.isRunCancelled(context.Background(), runID) {
 		streamCancel()
 		_ = emitReasoningDelta(reasoning.flush())
+		for _, step := range reconcileProcessTraceCitations(
+			trace,
+			content.String(),
+		) {
+			_ = emitProcessStep(step)
+		}
 		for _, step := range finishProcessTrace(
 			trace,
 			"cancelled",
@@ -2352,6 +2423,34 @@ func (h *Handler) authorizeAutoRAGAnswer(
 		SelectedCollectionIDs: append([]string(nil), selection.CollectionIDs...),
 		Citations:             append([]RAGCitation(nil), citations...),
 	})
+}
+
+func (h *Handler) newKnowledgeToolRuntime(
+	ctx context.Context,
+	conversationID string,
+	originalQueryText string,
+	selection ragSelection,
+	modelRef ModelRef,
+	ragAnswerProcessor string,
+) *knowledgeToolRuntime {
+	if !selection.Enabled {
+		return nil
+	}
+	session, _ := auth.SessionFromContext(ctx)
+	governanceModelRef := modelRef
+	if processor := strings.TrimSpace(ragAnswerProcessor); processor != "" {
+		governanceModelRef.ProviderID = processor
+	}
+	return &knowledgeToolRuntime{
+		Assembler:             h.ragAssembler,
+		AnswerGate:            h.ragAnswerGate,
+		ActorUserID:           session.UserID,
+		SessionID:             session.ID,
+		ConversationID:        conversationID,
+		OriginalQueryText:     originalQueryText,
+		SelectedCollectionIDs: append([]string(nil), selection.CollectionIDs...),
+		GovernanceModelRef:    governanceModelRef,
+	}
 }
 
 func mergeAutoRAGProviderMetadata(

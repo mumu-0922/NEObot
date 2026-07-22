@@ -127,7 +127,7 @@ func runNativeExternalWebToolLoop(
 	completedUsage := TokenUsage{}
 	for round := 1; ; round++ {
 		choice := ProviderToolChoiceAuto
-		if round == 1 && input.ForceSearch {
+		if round == 1 && input.ForceSearch && externalWebToolEnabled(input) {
 			choice = ProviderToolChoiceRequired
 		}
 		roundEvents, err := provider.StreamToolRound(ctx, ProviderRoundRequest{
@@ -149,7 +149,8 @@ func runNativeExternalWebToolLoop(
 		calls := make([]ProviderToolCall, 0)
 		var roundState any
 		var roundUsage *TokenUsage
-		bufferForcedRound := round == 1 && input.ForceSearch
+		bufferForcedRound := round == 1 && input.ForceSearch &&
+			externalWebToolEnabled(input)
 		bufferedEvents := make([]ProviderEvent, 0)
 		for event := range roundEvents {
 			if event.Error != nil {

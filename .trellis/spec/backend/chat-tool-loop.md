@@ -2,9 +2,11 @@
 
 Status: G19.2 process trace, G19.3 OpenAI-compatible/Gemini external Web, G19.4
 Anthropic Tool Loop, and G19.5 three-state/built-in Search administration
-promoted on 2026-07-22. Knowledge Tool sections remain planned. Apply each
-section only after its owning G19 group is promoted. The old source-fusion path
-remains runtime authority for pre-answer Knowledge until G19.6.
+promoted on 2026-07-22. G19.6A/B adds the server-authoritative Knowledge Tool
+executor and connects it to Tool-round-capable chat providers for `off` and
+`external`; the remaining Knowledge promotion gates are still in progress.
+The old source-fusion path remains a bounded rollback/compatibility seam for
+non-Tool providers and model-built-in Search until G19.6 closes.
 
 ## 1. Scope / Trigger
 
@@ -161,9 +163,12 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 - Live reasoning redaction must retain a bounded un-emitted suffix across
   provider chunks. Sanitizing each chunk independently is forbidden because a
   split `apiKey=`/value or `Bearer` token can bypass the regex boundary.
-- G19.3 external Web work executes after SSE starts and is represented by live
-  Tool/Web steps. Pre-answer Knowledge remains a legacy terminal projection
-  until G19.6; do not describe Knowledge as live Tool execution yet.
+- G19.3 external Web work and G19.6B Tool-capable selected-Knowledge work
+  execute after SSE starts and are represented by live Tool/Web and
+  Tool/Knowledge steps. `search_knowledge` accepts only a bounded Query;
+  authenticated conversation selection remains collection authority. The
+  legacy pre-answer path is not authority for promoted Tool-capable
+  `off|external` turns, but remains the rollback seam named above.
 - Durable Web source blocks and metadata are projected from markers actually
   used by the reconciled answer. Filtering must preserve the originally minted
   marker: retaining only `[W2]` must never rename it to `[W1]`.
@@ -181,7 +186,8 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 | Condition                        | Required behavior                                |
 | -------------------------------- | ------------------------------------------------ |
 | Search off                       | zero Search I/O                                  |
-| Native Tool unsupported          | same-model compatibility plan                    |
+| Native Web Tool unsupported      | same-model compatibility plan                    |
+| Native Knowledge Tool unsupported | bounded legacy rollback seam until G19.6 closes |
 | Tool arguments malformed/unknown | do not execute; redacted failed step             |
 | External Search failure          | truthful degradation; ordinary answer; no `[W]`  |
 | Built-in unsupported             | disabled/degraded; no external fallback          |

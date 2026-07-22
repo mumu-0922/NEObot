@@ -443,3 +443,50 @@ governance fail-closed, stable repeated markers, Knowledge -> Web, Web ->
 Knowledge, independent process steps, and unused-marker reconciliation. Next:
 wire the generic retrieval loop into authenticated chat streaming and keep the
 old pre-answer route as an explicit rollback seam until handler parity passes.
+
+## 2026-07-22 — G19.6B Tool-capable Handler cutover
+
+Authenticated chat streaming now selects live Knowledge execution when the
+current provider implements the normalized Tool-round contract and Search is
+`off` or `external`. With Search off the model receives only
+`search_knowledge`; with external Search it receives Web first plus Knowledge,
+so explicit Search still names Web while Auto turns may choose either order.
+No Knowledge Tool is registered without a selected collection.
+
+The Handler builds Knowledge runtime authority from the authenticated user and
+session, current conversation, selected server collection IDs, and the
+resolved answer-governance processor/model. The model supplies only a Query.
+The current user text and the model-resolved standalone Query feed the existing
+original/rewrite lanes, preserving contextual Query Expansion before active
+BM25/pgvector fusion, Jina reranking, and final hydration reauthorization.
+
+Live terminal execution updates the current-turn Knowledge decision used by
+source-marker reconciliation, message metadata, Knowledge/Web fusion
+authority, and process persistence. A hit can become Knowledge-only or mixed;
+a miss remains a successful `no_evidence` step; unused or failed-answer
+Knowledge markers are removed from both Citation metadata and Tool/Knowledge
+trace marker maps. Provider failure after retrieval therefore cannot persist a
+false Citation. Cancellation continues through the same request context into
+candidate retrieval.
+
+Focused Handler/loop fixtures now prove:
+
+```text
+Search off + selected Knowledge -> live Tool/Knowledge hit + reload
+Knowledge miss -> successful empty result + no false [K1]
+contextual follow-up -> original/rewrite retrieval lanes
+runtime provider processor -> answer-governance authority
+Knowledge -> Web and Web -> Knowledge -> isolated [K1]/[W1]
+provider failure -> completed_unreferenced + zero Citation
+in-flight Knowledge cancellation -> retrieval context cancelled
+go vet ./...
+go test ./...
+go test -race ./...
+go build ./cmd/api
+```
+
+The old pre-answer Auto RAG path is deliberately retained only for non-Tool
+providers and model-built-in Search while the remaining parity and rollback
+proofs run. Next: close terminal fixture parity, decide the built-in mixed
+adapter boundary, then remove this compatibility authority before live
+promotion.

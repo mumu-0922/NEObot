@@ -1559,8 +1559,11 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
       - [x] G19.6A Server-authoritative Knowledge executor, stable cumulative
             `[K#]` minting, mixed native retrieval rounds, and live
             Tool/Knowledge trace foundation.
-      - [ ] G19.6B-E Handler cutover, terminal authority reconciliation,
-            legacy pre-answer retirement, and real-document promotion proof.
+      - [x] G19.6B Tool-capable Handler cutover for Knowledge-only and mixed
+            external retrieval, including live trace, reload, contextual Query
+            Expansion, failure/cancellation, and terminal citation truth.
+      - [ ] G19.6C-E remaining built-in/non-Tool rollback retirement, full
+            parity gates, and real-document promotion proof.
     - [ ] G19.7 Full live matrix, restart, clean-copy, rollback, and smoke-state
           cleanup.
 

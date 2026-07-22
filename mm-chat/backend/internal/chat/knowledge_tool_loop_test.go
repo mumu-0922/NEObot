@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 
 	"neo-chat/mm-chat/backend/internal/knowledge"
@@ -235,6 +236,46 @@ func TestRetrievalToolDefinitionsOmitKnowledgeWithoutSelection(t *testing.T) {
 	}
 }
 
+func TestRetrievalToolLoopCancelsInFlightKnowledgeRetrieval(t *testing.T) {
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{{{
+		Type: ProviderEventToolCallCompleted,
+		ToolCall: &ProviderToolCall{
+			ID: "knowledge-cancel", Name: searchKnowledgeToolName,
+			Arguments: `{"query":"blocking fixture"}`,
+		},
+	}}}}
+	candidates := &blockingRAGCandidateSource{
+		started: make(chan struct{}), cancelled: make(chan struct{}),
+	}
+	runtime := fixtureKnowledgeToolRuntime()
+	runtime.Assembler = NewRAGAnswerAssembler(candidates, &fakeRAGHydrator{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	events := startRetrievalToolLoop(ctx, externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture"},
+		},
+		Knowledge: runtime,
+	})
+	for event := range events {
+		if event.ToolExecution != nil &&
+			event.ToolExecution.Status == ProcessStepStatusRunning {
+			cancel()
+		}
+	}
+	select {
+	case <-candidates.started:
+	default:
+		t.Fatal("Knowledge retrieval did not start")
+	}
+	select {
+	case <-candidates.cancelled:
+	default:
+		t.Fatal("Knowledge retrieval context was not cancelled")
+	}
+}
+
 func fixtureKnowledgeToolRuntime() *knowledgeToolRuntime {
 	return &knowledgeToolRuntime{
 		Assembler: NewRAGAnswerAssembler(
@@ -252,4 +293,21 @@ func fixtureKnowledgeToolRuntime() *knowledgeToolRuntime {
 			ProviderID: "fixture", ModelID: "fixture-model",
 		},
 	}
+}
+
+type blockingRAGCandidateSource struct {
+	started       chan struct{}
+	cancelled     chan struct{}
+	startedOnce   sync.Once
+	cancelledOnce sync.Once
+}
+
+func (source *blockingRAGCandidateSource) FetchEvidenceCandidates(
+	ctx context.Context,
+	_ RAGCandidateQuery,
+) ([]knowledge.EvidenceCandidateReference, error) {
+	source.startedOnce.Do(func() { close(source.started) })
+	<-ctx.Done()
+	source.cancelledOnce.Do(func() { close(source.cancelled) })
+	return nil, ctx.Err()
 }
