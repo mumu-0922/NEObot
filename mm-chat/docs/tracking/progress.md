@@ -1540,6 +1540,24 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
     - [x] G17.2 Assistant, Skill, Plugin, and equivalent interaction
           performance optimization.
     - [x] G17.3 Knowledge document selection and bounded bulk deletion.
+  - [ ] G19 Provider-native Tool Loop and durable process trace, executed in
+        separate tested commits per
+        `docs/tracking/g19-tool-loop-process-trace-plan.md`.
+    - [x] G19.1 Kelivo runtime audit, seventeen-question owner lock,
+          executable contract, sliced plan, process record, rollback order,
+          and no production behavior change.
+    - [ ] G19.2 Durable provider-reasoning/process-step SSE, persistence,
+          reload, and live-expanded/completed-collapsed process panel.
+    - [ ] G19.3 OpenAI-compatible/Gemini external `search_web` Tool Loop,
+          explicit-search force, Auto no-search, and compatibility planner.
+    - [ ] G19.4 Native Anthropic `tool_use`/`tool_result` continuation with
+          Thinking Block preservation.
+    - [ ] G19.5 Strict `off | model_builtin | external` globe state,
+          conversation persistence/inheritance, and tested built-in capability.
+    - [ ] G19.6 Selected-Knowledge `search_knowledge` Tool migration with
+          active BM25/pgvector/Jina retrieval and truthful `[K]`/`[W]` fusion.
+    - [ ] G19.7 Full live matrix, restart, clean-copy, rollback, and smoke-state
+          cleanup.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

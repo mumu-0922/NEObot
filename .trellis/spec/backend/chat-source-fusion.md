@@ -1,5 +1,12 @@
 # Chat source-fusion contracts
 
+> Runtime status: authoritative until the owning G19 Tool Loop groups are
+> promoted. G19.1 is documentation-only. After cutover, the planned
+> [`chat-tool-loop.md`](./chat-tool-loop.md) contract supersedes pre-answer
+> forced Search and permits the explicitly displayed sanitized Query inside the
+> durable process trace; the legacy fusion diagnostics themselves remain
+> query-free.
+
 ## 1. Scope / Trigger
 
 Apply this contract when changing external Web query planning, conversation
@@ -51,16 +58,16 @@ No exact query text is part of message metadata.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-|---|---|
-| Search disabled | no rewrite/provider I/O; `disabled` |
-| Router skips Search | no rewrite/provider I/O; `skipped` |
-| External Search, no prior active-branch history | current query; `unchanged` |
-| Contextual follow-up rewrites successfully | standalone query; `rewritten` and derived flag true |
-| Rewrite returns the original query | original query; `unchanged` |
-| Rewrite provider fails or output exceeds 2048 bytes | current query; `failed`; chat continues |
-| Built-in model Search | provider owns query planning; `provider_managed` |
-| Search resolution fails before rewrite | no query call; `not_run` |
+| Condition                                           | Required result                                     |
+| --------------------------------------------------- | --------------------------------------------------- |
+| Search disabled                                     | no rewrite/provider I/O; `disabled`                 |
+| Router skips Search                                 | no rewrite/provider I/O; `skipped`                  |
+| External Search, no prior active-branch history     | current query; `unchanged`                          |
+| Contextual follow-up rewrites successfully          | standalone query; `rewritten` and derived flag true |
+| Rewrite returns the original query                  | original query; `unchanged`                         |
+| Rewrite provider fails or output exceeds 2048 bytes | current query; `failed`; chat continues             |
+| Built-in model Search                               | provider owns query planning; `provider_managed`    |
+| Search resolution fails before rewrite              | no query call; `not_run`                            |
 
 ## 5. Good / Base / Bad Cases
 

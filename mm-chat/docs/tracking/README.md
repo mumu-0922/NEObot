@@ -12,3 +12,5 @@
 - [`g17-interaction-quality-process.md`](./g17-interaction-quality-process.md) — evidence and verification log for each G17 slice.
 - [`g18-bm25-pgvector-retrieval-plan.md`](./g18-bm25-pgvector-retrieval-plan.md) — staged Golden Set, PostgreSQL 17, BM25, pgvector, cutover, and rollback plan.
 - [`g18-bm25-pgvector-retrieval-process.md`](./g18-bm25-pgvector-retrieval-process.md) — implementation, evaluation, live proof, and rollback evidence for each G18 group.
+- [`g19-tool-loop-process-trace-plan.md`](./g19-tool-loop-process-trace-plan.md) — provider-native Tool Loop, three-state Search, durable process trace, and Knowledge-tool migration plan.
+- [`g19-tool-loop-process-trace-process.md`](./g19-tool-loop-process-trace-process.md) — research, implementation, live proof, cleanup, and rollback evidence for each G19 group.

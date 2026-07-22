@@ -8662,3 +8662,19 @@ contextual follow-ups; both result sets were DeepSeek-specific and all smoke
 state was deleted. Exact evidence and rollback are recorded in
 `docs/tracking/g11-knowledge-auto-rag-process.md` and
 `docs/contracts/chat-source-fusion.md`.
+
+## 2026-07-22 — G19.1 Tool Loop and process-trace contract
+
+The current globe remained forced Search after the conversation-aware Query
+repair because `useSearch=true` still selected Search before the answer model
+ran. Kelivo commit `545f7d67de250283232c9487aa5f4f42e85a7643`
+was audited as a provider-native `tool_choice:auto` reference. Seventeen owner
+decisions now freeze a generic no-count-limit Tool Loop, strict
+`off | model_builtin | external` Search state, same-model compatibility
+planning, truthful provider Reasoning, durable sanitized process steps,
+read-only automatic tools, side-effect approval, and actual-use-only
+Citations. G19 is split into seven independently tested and committed groups;
+G19.1 changes documentation only. The exact scope, contract, rollback, and next
+gate are recorded in `docs/contracts/chat-tool-loop.md`,
+`docs/tracking/g19-tool-loop-process-trace-plan.md`, and
+`docs/tracking/g19-tool-loop-process-trace-process.md`.

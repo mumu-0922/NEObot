@@ -4,10 +4,11 @@
 
 ## Guidelines Index
 
-| Guide | Scope |
-|---|---|
-| [RAG retrieval storage](./rag-retrieval-storage.md) | PostgreSQL major-version, BM25/pgvector shadow, authority, diagnostics, and rollback contracts |
-| [Chat source fusion](./chat-source-fusion.md) | Conversation-aware external Search query rewriting, Knowledge/Web authority, diagnostics, and fallback contracts |
+| Guide                                               | Scope                                                                                                                 |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| [RAG retrieval storage](./rag-retrieval-storage.md) | PostgreSQL major-version, BM25/pgvector shadow, authority, diagnostics, and rollback contracts                        |
+| [Chat source fusion](./chat-source-fusion.md)       | Conversation-aware external Search query rewriting, Knowledge/Web authority, diagnostics, and fallback contracts      |
+| [Planned chat Tool Loop](./chat-tool-loop.md)       | G19 provider-normalized Tool rounds, three-state Search authority, process persistence, approvals, and citation truth |
 
 ## Pre-Development Checklist
 
@@ -27,6 +28,14 @@ For external Search or Knowledge/Web fusion changes:
 3. Keep exact query text and source bodies out of durable diagnostics.
 4. Define rewrite-success, unchanged, and fail-open tests before changing the
    Search request.
+
+For G19 Tool Loop or durable process-trace changes:
+
+1. Read [`chat-tool-loop.md`](./chat-tool-loop.md).
+2. Identify the owning G19 group and keep unpromoted behavior behind the
+   current source-fusion rollback path.
+3. Prove provider-native continuation, cancellation, redaction, and current-
+   turn Citation reconciliation before promotion.
 
 ## Quality Check
 
