@@ -16,6 +16,12 @@ BEGIN
     OR to_regprocedure(
       'knowledge_maintain_pg17_retrieval_on_head()'
     ) IS NOT NULL
+    OR to_regprocedure(
+      'knowledge_assert_pg17_generation_ready(uuid)'
+    ) IS NOT NULL
+    OR to_regprocedure(
+      'knowledge_fence_pg17_generation_cutover()'
+    ) IS NOT NULL
   THEN
     RAISE EXCEPTION 'PG17 cutover objects survived candidate rollback';
   END IF;

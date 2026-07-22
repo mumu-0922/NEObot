@@ -630,3 +630,85 @@ temporary cutover containers / volumes        0 / 0
 
 Next: commit G18.5B.2a alone, then qualify generation cutover and resources on
 a representative disposable corpus.
+
+## 2026-07-22 — G18.5B.2b generation reindex and corpus-head fence
+
+The active-only BM25 source was safe for reads but could not support a PG17
+profile during a structure rebuild: publishing a document head in a `building`
+generation invoked projection maintenance, yet the BM25 source hid that row and
+forced the surrounding publication transaction to fail. Broadening the reader
+source would have been worse because building and retired rows could enter
+production retrieval before the corpus-head cutover.
+
+The fix separates these responsibilities. The new
+`knowledge_bm25_shadow_build_sources` admits current, published document heads
+from `building`, `verified`, `active`, and `retired` generations, matching the
+existing pgvector build source. BM25 insert validation, backfill, and
+materialization sync use that build source. The original
+`knowledge_bm25_shadow_sources` now wraps it with the active singleton corpus
+head and remains the only BM25 reader authority.
+
+`knowledge_assert_pg17_generation_ready(UUID)` verifies a target generation's
+complete current-document coverage, one-to-one BM25/Dense source identity, and
+exact physical vector/BM25 rows. A hardened BEFORE trigger on
+`knowledge_corpus_projection_head.active_index_generation_id` acquires advisory
+locks `3 -> 4` and runs this assertion whenever the PG17 retrieval profile is
+active. Migration `032` promotion and migration `033` rollback both update the
+target generation status before advancing that head, so both operations cross
+the same final transactional fence without rewriting their existing APIs.
+
+The synthetic reindex fixture created three current-document projections in a
+building generation but published only one head first. That first head created
+both physical rows while the active reader returned no candidate-generation
+row. An attempted generation/head transition failed with
+`RAG_RETRIEVAL_GENERATION_BACKFILL_INCOMPLETE`; the caught exception subtransaction
+left the old generation active and the candidate building. After publishing the
+other two heads, exact readiness reported three documents and three paired
+rows. Replaying both backfills inserted zero rows.
+
+Final proof command:
+
+```bash
+./mm-chat/scripts/run-g18-profile-cutover-drill.sh
+```
+
+Final report: `/tmp/mm-chat-g18-profile-cutover.dK6RSH`.
+
+```text
+PASS G18.5B.2b generation cutover fence
+PASS G18.5B.2b reindex fixture building_heads=1 expected_documents=3
+PASS G18.5B.2b reindex partial=rejected promotion=3 rollback=exact
+PASS G18.5B.1 restart retained pg17 profile and reader
+PASS G18.5B.2b generation cutover fence rollback
+PASS G18.5B.1 rollback retained migration 037 and legacy reader
+disposable_database=removed
+```
+
+The successful switch served `LIVE_BETA` only from the candidate generation.
+The reverse switch restored the exact prior child reference, while all three
+candidate vector and BM25 rows remained immutable for diagnosis/rollback. The
+profile stayed PG17 through restart, all candidate down scripts continued to
+reject removal until the profile returned to legacy, and the embedded migration
+manifest remained exactly `1–37`.
+
+Final G18.5B.2b quality gates:
+
+```text
+building-generation + cutover PG17 drill       passed
+incomplete cutover atomic rejection            passed
+promotion / exact rollback reader proof        passed
+restart / down guards / cleanup                 passed
+bash syntax / diff whitespace                   passed
+go vet ./...                                    passed
+go test -count=1 ./...                          passed
+recorded seven-case evaluator                   passed
+temporary cutover containers / volumes         0 / 0
+```
+
+G18.5B.2b does not measure representative query latency, backfill duration,
+index size, or PostgreSQL RSS/CPU, and it is not the real PG16 backup/PG17
+restore. Those remain the isolated G18.5B.2c gate. The running PostgreSQL 16
+service and `mm-chat/data/postgres` were not read, stopped, or modified.
+
+Next: commit G18.5B.2b alone, then build the disposable representative-resource
+and backup/restore qualification before freezing migration `038`.

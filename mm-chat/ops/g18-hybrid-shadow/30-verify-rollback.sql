@@ -4,6 +4,7 @@ DO $rollback_contract$
 BEGIN
   IF to_regclass('knowledge_child_bm25_shadow_projections') IS NOT NULL
     OR to_regclass('knowledge_bm25_shadow_sources') IS NOT NULL
+    OR to_regclass('knowledge_bm25_shadow_build_sources') IS NOT NULL
     OR to_regprocedure(
       'knowledge_backfill_bm25_shadow(uuid,uuid)'
     ) IS NOT NULL

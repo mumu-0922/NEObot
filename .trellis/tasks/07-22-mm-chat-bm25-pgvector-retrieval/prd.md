@@ -145,8 +145,21 @@ Progress checkpoint (G18.5B.2a, 2026-07-22):
 - [x] Two independent concurrent publications succeeded without a visibility
       gap, replay was idempotent, deletion became immediately invisible while
       rollback rows remained, and restart/legacy rollback still passed.
-- [ ] Generation rebuild/reindex cutover, representative resource/latency
-      qualification, and backup/restore remain G18.5B.2 work.
+- [x] Active-generation publication maintenance is complete; generation
+      rebuild/reindex cutover was then closed by G18.5B.2b.
+
+Progress checkpoint (G18.5B.2b, 2026-07-22):
+
+- [x] Building-generation projection heads now populate both PG17 physical
+      projections without entering the active-reader authority view.
+- [x] The corpus-head mutation is fenced by complete current-document,
+      paired-source, and exact physical-projection readiness while the PG17
+      profile is active.
+- [x] An incomplete target generation failed atomically; a complete synthetic
+      generation promoted, served only new references, and rolled back to the
+      exact prior references while retaining immutable candidate rows.
+- [ ] Representative latency/backfill/index-size/RSS/CPU qualification and a
+      verified backup/restore remain G18.5B.2c work.
 
 ### Group 6 — Optional BGE-M3 shadow benchmark
 

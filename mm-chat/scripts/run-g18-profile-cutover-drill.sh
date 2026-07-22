@@ -119,6 +119,8 @@ psql_file "${cutover_dir}/00-profile-router.up.sql" \
   | tee "${report_dir}/router-up.txt"
 psql_file "${cutover_dir}/10-active-projection-maintenance.up.sql" \
   | tee "${report_dir}/maintenance-up.txt"
+psql_file "${cutover_dir}/15-generation-cutover-fence.up.sql" \
+  | tee "${report_dir}/generation-fence-up.txt"
 psql_file "${cutover_dir}/20-verify-activation.sql" \
   | tee "${report_dir}/verify-activation.txt"
 
@@ -150,6 +152,12 @@ wait "${beta_pid}"
 psql_file "${cutover_dir}/45-verify-concurrent-publish.sql" \
   | tee "${report_dir}/verify-concurrent-publish.txt"
 
+log "proving building-generation indexing, fenced promotion, and rollback"
+psql_file "${cutover_dir}/50-generation-reindex-fixture.sql" \
+  | tee "${report_dir}/seed-generation-reindex.txt"
+psql_file "${cutover_dir}/55-verify-generation-reindex.sql" \
+  | tee "${report_dir}/verify-generation-reindex.txt"
+
 log "restarting PostgreSQL and proving the durable active profile"
 "${compose[@]}" restart pg17 >/dev/null
 wait_for_ready
@@ -157,6 +165,18 @@ psql_file "${cutover_dir}/25-verify-restart.sql" \
   | tee "${report_dir}/verify-restart.txt"
 
 log "proving router rollback refuses an active PG17 profile"
+set +e
+psql_file "${cutover_dir}/15-generation-cutover-fence.down.sql" \
+  >"${report_dir}/generation-fence-rollback-guard.txt" 2>&1
+generation_fence_guard_status=$?
+set -e
+if ((generation_fence_guard_status == 0)); then
+  printf 'active-profile generation fence rollback unexpectedly succeeded\n' >&2
+  exit 1
+fi
+grep -Fq 'RAG_RETRIEVAL_PROFILE_ROLLBACK_REQUIRES_LEGACY' \
+  "${report_dir}/generation-fence-rollback-guard.txt"
+
 set +e
 psql_file "${cutover_dir}/10-active-projection-maintenance.down.sql" \
   >"${report_dir}/maintenance-rollback-guard.txt" 2>&1
@@ -184,6 +204,8 @@ grep -Fq 'RAG_RETRIEVAL_PROFILE_ROLLBACK_REQUIRES_LEGACY' \
 log "switching to legacy and rolling back the candidate layers"
 psql_file "${cutover_dir}/27-switch-legacy.sql" \
   | tee "${report_dir}/switch-legacy.txt"
+psql_file "${cutover_dir}/15-generation-cutover-fence.down.sql" \
+  | tee "${report_dir}/generation-fence-down.txt"
 psql_file "${cutover_dir}/10-active-projection-maintenance.down.sql" \
   | tee "${report_dir}/maintenance-down.txt"
 psql_file "${cutover_dir}/00-profile-router.down.sql" \
@@ -200,5 +222,5 @@ run_migrate "${report_dir}/migrate-after-cutover.log"
 grep -Fq 'no migrations changed' "${report_dir}/migrate-after-cutover.log"
 
 log "decisive output"
-grep -h 'PASS G18.5B.1\|PASS G18.5B.2a\|PASS PG17' \
+grep -h 'PASS G18.5B.1\|PASS G18.5B.2a\|PASS G18.5B.2b\|PASS PG17' \
   "${report_dir}"/*.txt

@@ -8,6 +8,8 @@ BEGIN
     'knowledge_child_vector_shadow_projections'
   ) IS NULL OR to_regclass(
     'knowledge_child_bm25_shadow_projections'
+  ) IS NULL OR to_regclass(
+    'knowledge_bm25_shadow_build_sources'
   ) IS NULL THEN
     RAISE EXCEPTION 'G18 active maintenance requires the PG17 profile candidate';
   END IF;
@@ -50,7 +52,7 @@ BEGIN
   PERFORM pg_advisory_xact_lock(1296912978, 4);
 
   SELECT count(*) INTO expected_count
-  FROM knowledge_bm25_shadow_sources source
+  FROM knowledge_bm25_shadow_build_sources source
   WHERE source.materialization_id = p_materialization_id;
   SELECT count(*) INTO vector_source_count
   FROM knowledge_pgvector_shadow_sources source
@@ -125,7 +127,7 @@ BEGIN
     source.collection_visibility_epoch,
     source.collection_processing_revision,
     source.document_visibility_epoch
-  FROM knowledge_bm25_shadow_sources source
+  FROM knowledge_bm25_shadow_build_sources source
   WHERE source.materialization_id = p_materialization_id
   ORDER BY source.child_chunk_id
   ON CONFLICT (child_chunk_id) DO NOTHING;
@@ -157,7 +159,7 @@ BEGIN
   WHERE source.materialization_id = p_materialization_id;
 
   SELECT count(*) INTO verified_bm25_count
-  FROM knowledge_bm25_shadow_sources source
+  FROM knowledge_bm25_shadow_build_sources source
   JOIN knowledge_child_bm25_shadow_projections shadow
     ON shadow.child_chunk_id = source.child_chunk_id
    AND shadow.parent_chunk_id = source.parent_chunk_id

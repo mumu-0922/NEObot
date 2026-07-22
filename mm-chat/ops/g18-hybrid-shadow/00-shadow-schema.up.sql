@@ -102,7 +102,7 @@ BEGIN
 END
 $function$;
 
-CREATE VIEW knowledge_bm25_shadow_sources
+CREATE VIEW knowledge_bm25_shadow_build_sources
 WITH (security_barrier = true)
 AS
 SELECT
@@ -123,9 +123,7 @@ SELECT
   materialization.collection_visibility_epoch,
   materialization.collection_processing_revision,
   materialization.document_visibility_epoch
-FROM knowledge_corpus_projection_head corpus
-JOIN knowledge_child_search_projections search
-  ON search.index_generation_id = corpus.active_index_generation_id
+FROM knowledge_child_search_projections search
 JOIN knowledge_search_profiles search_profile
   ON search_profile.id = search.search_profile_id
  AND search_profile.embedding_processor = 'jina'
@@ -134,7 +132,7 @@ JOIN knowledge_search_profiles search_profile
 JOIN knowledge_index_generations generation
   ON generation.id = search.index_generation_id
  AND generation.index_profile_id = search_profile.index_profile_id
- AND generation.status = 'active'
+ AND generation.status IN ('building', 'verified', 'active', 'retired')
 JOIN knowledge_document_projection_heads document_head
   ON document_head.index_generation_id = search.index_generation_id
  AND document_head.document_id = search.document_id
@@ -174,13 +172,24 @@ JOIN knowledge_child_chunks child
  AND child.source_span_hash = search.source_span_hash
  AND child.chunk_profile_hash = search.chunk_profile_hash
  AND child.content_hash = search.content_hash
-WHERE corpus.singleton_id = 1
-  AND search.status = 'ready'
+WHERE search.status = 'ready'
   AND search.embedding_model_id = 'jina-embeddings-v4'
   AND search.embedding_dimensions = 1024
   AND search.embedding_vector IS NOT NULL
   AND search.embedding_vector_sha256 IS NOT NULL
   AND cardinality(search.embedding_vector) = 1024;
+
+CREATE VIEW knowledge_bm25_shadow_sources
+WITH (security_barrier = true)
+AS
+SELECT source.*
+FROM knowledge_bm25_shadow_build_sources source
+JOIN knowledge_corpus_projection_head corpus
+  ON corpus.active_index_generation_id = source.index_generation_id
+JOIN knowledge_index_generations generation
+  ON generation.id = source.index_generation_id
+ AND generation.status = 'active'
+WHERE corpus.singleton_id = 1;
 
 CREATE TABLE knowledge_child_bm25_shadow_projections (
   child_chunk_id UUID PRIMARY KEY
@@ -255,12 +264,12 @@ SECURITY DEFINER
 SET search_path FROM CURRENT
 AS $function$
 DECLARE
-  source knowledge_bm25_shadow_sources%ROWTYPE;
+  source knowledge_bm25_shadow_build_sources%ROWTYPE;
   expected_terms TEXT[];
   expected_text TEXT;
 BEGIN
   SELECT candidate.* INTO source
-  FROM knowledge_bm25_shadow_sources candidate
+  FROM knowledge_bm25_shadow_build_sources candidate
   WHERE candidate.child_chunk_id = NEW.child_chunk_id
     AND candidate.parent_chunk_id = NEW.parent_chunk_id
     AND candidate.materialization_id = NEW.materialization_id
@@ -343,15 +352,12 @@ BEGIN
     AND profile.embedding_model_id = 'jina-embeddings-v4'
     AND profile.embedding_dimensions = 1024;
   SELECT count(*) INTO generation_matches
-  FROM knowledge_corpus_projection_head corpus
-  JOIN knowledge_index_generations generation
-    ON generation.id = corpus.active_index_generation_id
+  FROM knowledge_index_generations generation
   JOIN knowledge_search_profiles profile
     ON profile.id = p_search_profile_id
    AND profile.index_profile_id = generation.index_profile_id
-  WHERE corpus.singleton_id = 1
-    AND generation.id = p_index_generation_id
-    AND generation.status = 'active';
+  WHERE generation.id = p_index_generation_id
+    AND generation.status IN ('building', 'verified', 'active', 'retired');
   IF profile_matches <> 1 OR generation_matches <> 1 THEN
     RAISE EXCEPTION USING
       ERRCODE = '22023',
@@ -361,7 +367,7 @@ BEGIN
   IF EXISTS (
     SELECT 1
     FROM knowledge_child_bm25_shadow_projections shadow
-    JOIN knowledge_bm25_shadow_sources source
+    JOIN knowledge_bm25_shadow_build_sources source
       ON source.child_chunk_id = shadow.child_chunk_id
     WHERE shadow.index_generation_id = p_index_generation_id
       AND shadow.search_profile_id = p_search_profile_id
@@ -383,7 +389,7 @@ BEGIN
   END IF;
 
   SELECT count(*) INTO v_eligible_count
-  FROM knowledge_bm25_shadow_sources source
+  FROM knowledge_bm25_shadow_build_sources source
   WHERE source.index_generation_id = p_index_generation_id
     AND source.search_profile_id = p_search_profile_id;
 
@@ -416,7 +422,7 @@ BEGIN
     source.collection_visibility_epoch,
     source.collection_processing_revision,
     source.document_visibility_epoch
-  FROM knowledge_bm25_shadow_sources source
+  FROM knowledge_bm25_shadow_build_sources source
   WHERE source.index_generation_id = p_index_generation_id
     AND source.search_profile_id = p_search_profile_id
   ORDER BY source.child_chunk_id
@@ -424,7 +430,7 @@ BEGIN
   GET DIAGNOSTICS v_inserted_count = ROW_COUNT;
 
   SELECT count(*) INTO v_verified_shadow_count
-  FROM knowledge_bm25_shadow_sources source
+  FROM knowledge_bm25_shadow_build_sources source
   JOIN knowledge_child_bm25_shadow_projections shadow
     ON shadow.child_chunk_id = source.child_chunk_id
    AND shadow.parent_chunk_id = source.parent_chunk_id
@@ -730,6 +736,7 @@ ALTER FUNCTION knowledge_bm25_shadow_query_terms(TEXT)
   OWNER TO rag_projection_owner;
 ALTER FUNCTION knowledge_build_bm25_shadow_text(TEXT, TEXT[])
   OWNER TO rag_projection_owner;
+ALTER VIEW knowledge_bm25_shadow_build_sources OWNER TO rag_projection_owner;
 ALTER VIEW knowledge_bm25_shadow_sources OWNER TO rag_projection_owner;
 ALTER TABLE knowledge_child_bm25_shadow_projections
   OWNER TO rag_projection_owner;
@@ -747,6 +754,7 @@ REVOKE ALL ON FUNCTION knowledge_bm25_shadow_query_terms(TEXT)
   FROM PUBLIC;
 REVOKE ALL ON FUNCTION knowledge_build_bm25_shadow_text(TEXT, TEXT[])
   FROM PUBLIC;
+REVOKE ALL ON knowledge_bm25_shadow_build_sources FROM PUBLIC;
 REVOKE ALL ON knowledge_bm25_shadow_sources FROM PUBLIC;
 REVOKE ALL ON knowledge_child_bm25_shadow_projections FROM PUBLIC;
 REVOKE ALL ON FUNCTION knowledge_validate_bm25_shadow_insert()
@@ -757,6 +765,7 @@ REVOKE ALL ON FUNCTION knowledge_fetch_hybrid_shadow_diagnostics(
   UUID[], TEXT, VECTOR, INTEGER
 ) FROM PUBLIC;
 
+GRANT SELECT ON knowledge_bm25_shadow_build_sources TO rag_projection_owner;
 GRANT SELECT ON knowledge_bm25_shadow_sources TO rag_projection_owner;
 GRANT SELECT, INSERT ON knowledge_child_bm25_shadow_projections
   TO rag_projection_owner;

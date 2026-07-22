@@ -64,8 +64,11 @@ writes are atomic. A source/conversion/verification failure aborts the head
 mutation and therefore the surrounding embedding-publish transaction.
 
 `knowledge_sync_pg17_retrieval_materialization(UUID)` acquires advisory locks
-`3` then `4`, the same order used by activation, and admits only the active,
-published, current-authority source view. It inserts both projections with
+`3` then `4`, the same order used by activation. It writes from generation-
+scoped, published, current-document build sources that admit `building`,
+`verified`, `active`, and `retired` generations. The separate reader source
+remains restricted to the active corpus head, so building or rollback rows
+cannot become query authority early. The sync inserts both projections with
 idempotent conflict handling, then re-verifies complete identity/content
 coverage before returning. Only `rag_replay_operator` can call it directly;
 normal publication reaches it only through the SECURITY DEFINER trigger.
@@ -75,6 +78,30 @@ The global locks serialize the small projection critical section without
 weakening the surrounding database authority. Both candidates become visible,
 an idempotent replay inserts zero rows, and tombstoning one document hides it
 immediately while all physical rollback rows remain.
+
+## Generation rebuild and corpus-head fence
+
+G18.5B.2b separates BM25 build admission from read authority. The build source
+allows a rebuilding generation to populate and validate pgvector/BM25 rows as
+each document projection head is published. `knowledge_bm25_shadow_sources`
+still joins the singleton corpus head and therefore exposes only the active
+generation to candidate readers.
+
+`knowledge_assert_pg17_generation_ready(UUID)` requires every current active
+document to have at least one source child in the selected Jina v4/1024 search
+profile. It pairs BM25 and Dense sources on immutable identity and visibility
+fields, then verifies exact vector and BM25 physical rows. A BEFORE trigger on
+`knowledge_corpus_projection_head.active_index_generation_id` acquires locks
+`3 -> 4` and runs that assertion whenever the PG17 retrieval profile is active.
+Because promotion and rollback change generation status before advancing the
+corpus head, both paths cross the same final fence; an incomplete target aborts
+the surrounding transaction without leaving partial generation state.
+
+The disposable proof staged one of three current documents and confirmed the
+head switch failed with `RAG_RETRIEVAL_GENERATION_BACKFILL_INCOMPLETE`. After
+all three heads were published, backfill replay inserted zero rows, promotion
+served only the new child references, and rollback restored the old references
+while retaining the new generation's immutable projection rows.
 
 ## Reader and trust boundary
 
@@ -101,10 +128,10 @@ legacy reader, pointer, revision, and immutable transition history.
 
 ## Known limit
 
-This slice proves activation, restart durability, and concurrent publication
-into the active generation on a synthetic corpus. It does not yet prove
-generation reindex/cutover, representative latency, PostgreSQL RSS/CPU, or a
-real backup/restore. Those gates remain mandatory before formal migration and
+This slice proves activation, restart durability, concurrent publication, and
+generation reindex/cutover on a synthetic corpus. It does not yet prove
+representative latency, PostgreSQL RSS/CPU, index/backfill budgets, or a real
+backup/restore. Those gates remain mandatory before formal migration and
 Compose/data-path cutover.
 
 ## Change history
@@ -112,3 +139,5 @@ Compose/data-path cutover.
 - 2026-07-22: initial disposable PG17 activation and rollback candidate.
 - 2026-07-22: active-generation atomic publication maintenance and concurrent
   publish/delete proof.
+- 2026-07-22: building-generation maintenance plus atomic promotion/rollback
+  readiness fence.

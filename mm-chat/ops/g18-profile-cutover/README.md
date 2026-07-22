@@ -22,6 +22,9 @@ The drill uses only synthetic data and an internal Docker network. It proves:
 - the active pointer and reader survive a PostgreSQL restart;
 - two concurrently published document heads transactionally populate both
   physical projections and become query-visible without a maintenance gap;
+- building-generation heads populate isolated projection rows without becoming
+  active-reader authority; an incomplete corpus-head switch is rejected
+  atomically, while a complete generation can be promoted and rolled back;
 - deletion immediately removes authority visibility while immutable rollback
   rows remain, and materialization sync replay is idempotent;
 - rollback is rejected while PG17 is active, then succeeds after an
@@ -39,6 +42,7 @@ stays under `ops/` until the operations/resource drill and a verified live
 PG16 backup/PG17 restore are complete. Keeping embedded migrations at `1–37`
 prevents an ordinary migration run from breaking the current PG16 service.
 
-The current maintenance trigger covers publication into the active generation.
-Generation rebuild/reindex cutover and representative resource budgets remain
-separate gates.
+The maintenance trigger covers publication into active and building
+generations, while the active source view remains bound to the corpus head.
+Representative resource budgets and a verified backup/restore remain separate
+gates.

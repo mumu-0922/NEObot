@@ -194,12 +194,28 @@ it from authorized results while six immutable physical rows remained; exact
 readiness adjusted to the five still-current sources. Restart and legacy
 rollback remained green.
 
-##### G18.5B.2b Reindex, resources, and restore qualification
+##### G18.5B.2b Generation reindex and corpus-head cutover
 
-Status: pending.
+Status: complete (2026-07-22). G18.5B.2 remains in progress.
 
 - Bind the projection maintenance/backfill gate to generation rebuild and
   atomic corpus-head cutover so a new active generation never opens empty.
+- Keep building-generation write admission separate from active-reader
+  authority.
+- Reject incomplete promotion without partial generation/head state, then
+  prove complete promotion and exact rollback with immutable rows retained.
+
+Proof: a three-document building generation published only one head first. Its
+vector and BM25 rows were maintained, but it remained invisible to the active
+reader and corpus-head cutover failed atomically. Publishing the remaining two
+heads produced complete paired projections; idempotent backfill inserted zero
+rows. Promotion returned only new-generation references, then rollback restored
+the exact old references while retaining all candidate projection rows.
+
+##### G18.5B.2c Resource and restore qualification
+
+Status: pending.
+
 - Run representative corpus latency, backfill duration, index-size, RSS/CPU,
   restart, backup/restore, and legacy rollback measurements.
 

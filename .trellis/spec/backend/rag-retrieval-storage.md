@@ -94,9 +94,24 @@ knowledge_sync_pg17_retrieval_materialization(
 )
 ```
 
+Generation promotion/rollback readiness uses:
+
+```sql
+knowledge_assert_pg17_generation_ready(
+  p_index_generation_id UUID
+) RETURNS TABLE(
+  index_generation_id UUID,
+  search_profile_id UUID,
+  document_count BIGINT,
+  eligible_count BIGINT,
+  vector_count BIGINT,
+  bm25_count BIGINT
+)
+```
+
 ## 3. Contracts
 
-- BM25 source admission requires the active corpus head, active generation,
+- BM25 reader-source admission requires the active corpus head and generation,
   ready Jina v4/1024 search row, active document projection head, published
   materialization, and current collection/document/version visibility.
 - `pg_textsearch <@>` returns a negative raw BM25 score: lower is better and
@@ -143,6 +158,15 @@ knowledge_sync_pg17_retrieval_materialization(
 - Direct materialization sync is operator-only, idempotent, and locks vector
   then BM25 (`3 -> 4`). Runtime publication reaches it only through the hardened
   projection-owner trigger.
+- Separate write admission from read authority. The BM25 build source may admit
+  current published heads from `building`, `verified`, `active`, or `retired`
+  generations, matching the pgvector build source. The BM25 reader source must
+  remain joined to the singleton active corpus head.
+- While the PG17 profile is active, every corpus-head generation change must
+  acquire advisory locks `3 -> 4` and verify complete current-document
+  coverage, paired BM25/vector source identity, and exact physical projection
+  coverage for the target generation. The fence applies equally to promotion
+  and rollback and aborts the surrounding transaction on failure.
 - Migration rollback must fail atomically with
   `RAG_RETRIEVAL_PROFILE_ROLLBACK_REQUIRES_LEGACY` unless the active pointer is
   `legacy`. Application rollback precedes migration rollback.
@@ -165,6 +189,7 @@ knowledge_sync_pg17_retrieval_materialization(
 | Either PG17 projection is incomplete or mismatched | `RAG_RETRIEVAL_PROFILE_BACKFILL_INCOMPLETE`; pointer/history unchanged |
 | Active-profile materialization source is absent/incomplete | `RAG_RETRIEVAL_MATERIALIZATION_SOURCE_INCOMPLETE`; head/publish transaction aborts |
 | Post-insert vector or BM25 verification is incomplete | `RAG_RETRIEVAL_MATERIALIZATION_SYNC_INCOMPLETE`; both projection writes and head mutation roll back |
+| Target generation lacks any current document, paired source, vector, or BM25 row | `RAG_RETRIEVAL_GENERATION_BACKFILL_INCOMPLETE`; generation/head transition rolls back atomically |
 | Migration down is attempted under a non-legacy profile | Rollback aborts atomically and migration `037` remains applied |
 
 Every SECURITY DEFINER function must pin the current schema followed by
@@ -209,6 +234,11 @@ The disposable drill must assert:
     projections atomically, become immediately query-visible, replay with zero
     inserts, retain physical rows after deletion, disappear from authorized
     reads immediately, and survive restart/rollback checks.
+12. A partially indexed building generation receives physical rows but remains
+    absent from the active reader; attempted corpus-head cutover is atomic and
+    rejected. Complete publication permits promotion, serves only target-
+    generation references, and permits exact rollback while retaining both
+    generations' physical rows.
 
 After the drill, run `go vet ./...`, `go test ./...`, and the frozen G18
 evaluator.
