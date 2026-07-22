@@ -12,6 +12,8 @@ const (
 	ProviderEventReasoningDelta = "reasoning.delta"
 	ProviderEventUsage          = "usage"
 	ProviderEventSearch         = "search"
+	ProviderEventSearchStarted  = "search.started"
+	ProviderEventSearchDegraded = "search.degraded"
 )
 
 type Provider interface {
@@ -95,16 +97,17 @@ type ToolCall struct {
 }
 
 type ProviderEvent struct {
-	Type           string
-	Delta          string
-	ReasoningDelta string
-	ToolCallDelta  *ProviderToolCallDelta
-	ToolCall       *ProviderToolCall
-	ToolExecution  *ProviderToolExecutionEvent
-	RoundState     any
-	Usage          *TokenUsage
-	Search         *websearch.Result
-	Error          error
+	Type            string
+	Delta           string
+	ReasoningDelta  string
+	ToolCallDelta   *ProviderToolCallDelta
+	ToolCall        *ProviderToolCall
+	ToolExecution   *ProviderToolExecutionEvent
+	RoundState      any
+	Usage           *TokenUsage
+	Search          *websearch.Result
+	FailureCategory string
+	Error           error
 }
 
 type TokenUsage struct {

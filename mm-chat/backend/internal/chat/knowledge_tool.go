@@ -90,7 +90,7 @@ func executeKnowledgeTool(
 	runtime *knowledgeToolRuntime,
 	query string,
 ) autoRAGDecision {
-	if runtime == nil || runtime.Assembler == nil || runtime.AnswerGate == nil ||
+	if runtime == nil || runtime.Assembler == nil ||
 		strings.TrimSpace(runtime.ActorUserID) == "" ||
 		strings.TrimSpace(runtime.SessionID) == "" ||
 		strings.TrimSpace(runtime.ConversationID) == "" ||
@@ -121,6 +121,9 @@ func executeKnowledgeTool(
 	}
 	if len(result.Evidence) == 0 || len(result.Citations) == 0 {
 		return autoRAGDecision{Outcome: "no_evidence"}
+	}
+	if runtime.AnswerGate == nil {
+		return autoRAGDecision{Outcome: "dependency_unavailable"}
 	}
 	authority, err := runtime.AnswerGate.AuthorizeRAGAnswer(
 		ctx,

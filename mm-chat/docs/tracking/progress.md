@@ -1562,8 +1562,11 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
       - [x] G19.6B Tool-capable Handler cutover for Knowledge-only and mixed
             external retrieval, including live trace, reload, contextual Query
             Expansion, failure/cancellation, and terminal citation truth.
-      - [ ] G19.6C-E remaining built-in/non-Tool rollback retirement, full
-            parity gates, and real-document promotion proof.
+      - [x] G19.6C-D Terminal authority/citation/cancellation parity plus live
+            non-Tool/model-built-in compatibility execution and old Handler
+            pre-answer authority removal.
+      - [ ] G19.6E real-document hit/miss/follow-up/mixed/deletion/restart
+            promotion proof and cleanup.
     - [ ] G19.7 Full live matrix, restart, clean-copy, rollback, and smoke-state
           cleanup.
 

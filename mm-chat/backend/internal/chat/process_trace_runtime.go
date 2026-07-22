@@ -136,44 +136,6 @@ func toolProcessDetail(event *ProviderToolExecutionEvent) map[string]any {
 	return detail
 }
 
-func addLegacyKnowledgeProcessStep(
-	trace *processTrace,
-	selection ragSelection,
-	decision autoRAGDecision,
-	startedAt time.Time,
-	durationMS int64,
-) {
-	if trace == nil || !selection.Enabled {
-		return
-	}
-	status := ProcessStepStatusCompleted
-	outcome := strings.TrimSpace(decision.Outcome)
-	if outcome == "" {
-		outcome = "no_evidence"
-	}
-	if outcome == "dependency_unavailable" ||
-		outcome == "answer_governance_required" {
-		status = ProcessStepStatusFailed
-	}
-	detail := map[string]any{
-		"outcome":        outcome,
-		"hitCount":       len(decision.Citations),
-		"selectedCount":  len(selection.CollectionIDs),
-		"queryRewritten": decision.QueryRewritten,
-	}
-	if status == ProcessStepStatusFailed {
-		detail["failureCategory"] = outcome
-	}
-	trace.add(terminalProcessStep(
-		trace.stepID(ProcessStepKindKnowledge),
-		ProcessStepKindKnowledge,
-		status,
-		startedAt,
-		durationMS,
-		detail,
-	))
-}
-
 func addLegacyWebProcessStep(
 	trace *processTrace,
 	plan sourceFusionPlan,

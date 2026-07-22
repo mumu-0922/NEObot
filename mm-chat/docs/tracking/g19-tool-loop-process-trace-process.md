@@ -490,3 +490,55 @@ providers and model-built-in Search while the remaining parity and rollback
 proofs run. Next: close terminal fixture parity, decide the built-in mixed
 adapter boundary, then remove this compatibility authority before live
 promotion.
+
+## 2026-07-22 — G19.6C/D terminal parity and pre-answer retirement
+
+The Handler no longer calls `decideAutoRAG`, builds Knowledge evidence, or
+projects a completed Knowledge step before `message.started`. The dead
+`decideAutoRAG`, answer-authorization wrapper, and legacy Knowledge trace
+projection were removed. All selected-Knowledge execution now begins inside an
+SSE event source.
+
+Tool-round-capable `off|external` turns retain native model-selected
+`search_knowledge`. Non-Tool providers and `model_builtin` use a bounded live
+compatibility executor: it emits running Tool/Knowledge steps, applies the same
+server-selected collection and governance authority, and then continues into
+the existing same-model external planner, built-in Search provider, or ordinary
+answer stream. Contextual questions retain the original/rewrite retrieval
+lanes. A built-in startup failure emits a failed Web step and continues with
+Knowledge plus a truthful Web-unavailable instruction; it does not restore
+pre-SSE retrieval or switch providers.
+
+Terminal reconciliation now runs for success, provider failure, and
+cancellation. Knowledge metadata is completed against the terminal content,
+fusion authority is recomputed from actually used current-turn `[K#]/[W#]`
+markers, and unused trace marker maps become `completed_unreferenced` before
+persistence. A provider failure after a successful retrieval therefore stores
+no false Citation and no false Knowledge fusion authority.
+
+Fixture coverage includes:
+
+```text
+message.started -> live compatibility Tool/Knowledge running/completed
+non-Tool Knowledge -> same-model external planner -> mixed [K1]/[W1]
+model-built-in Knowledge -> built-in Search -> reload of both authorities
+model-built-in startup failure -> Knowledge-only ordinary fallback
+normal miss / reranker failure / governance failure -> no evidence leak
+provider failure and cancellation -> terminal Citation reconciliation
+```
+
+Full source gates passed from `mm-chat/backend`:
+
+```text
+gofmt -d (G19.6C/D Go scope)
+go vet ./...
+go test ./...
+go test -race ./...
+go build -o /tmp/mm-chat-api-g19.6cd ./cmd/api
+git diff --check (G19.6C/D scope)
+```
+
+Rollback is now code-level: revert this group to restore the retained G19.6B
+pre-answer compatibility seam. Runtime contains no configuration switch that
+can silently reactivate the retired Handler authority. Next: Compose source
+rebuild and the real uploaded-document promotion matrix.

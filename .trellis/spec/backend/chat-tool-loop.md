@@ -2,11 +2,11 @@
 
 Status: G19.2 process trace, G19.3 OpenAI-compatible/Gemini external Web, G19.4
 Anthropic Tool Loop, and G19.5 three-state/built-in Search administration
-promoted on 2026-07-22. G19.6A/B adds the server-authoritative Knowledge Tool
-executor and connects it to Tool-round-capable chat providers for `off` and
-`external`; the remaining Knowledge promotion gates are still in progress.
-The old source-fusion path remains a bounded rollback/compatibility seam for
-non-Tool providers and model-built-in Search until G19.6 closes.
+promoted on 2026-07-22. G19.6A-D adds the server-authoritative Knowledge Tool
+executor, connects it to Tool-round-capable providers, and moves non-Tool and
+model-built-in compatibility retrieval after `message.started`. The Handler no
+longer invokes the old pre-answer Auto RAG authority; the real-document
+promotion gate remains in progress.
 
 ## 1. Scope / Trigger
 
@@ -167,8 +167,8 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
   execute after SSE starts and are represented by live Tool/Web and
   Tool/Knowledge steps. `search_knowledge` accepts only a bounded Query;
   authenticated conversation selection remains collection authority. The
-  legacy pre-answer path is not authority for promoted Tool-capable
-  `off|external` turns, but remains the rollback seam named above.
+  non-Tool/model-built-in compatibility executor is also live after
+  `message.started`; pre-SSE Knowledge retrieval is forbidden.
 - Durable Web source blocks and metadata are projected from markers actually
   used by the reconciled answer. Filtering must preserve the originally minted
   marker: retaining only `[W2]` must never rename it to `[W1]`.
@@ -187,7 +187,7 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 | -------------------------------- | ------------------------------------------------ |
 | Search off                       | zero Search I/O                                  |
 | Native Web Tool unsupported      | same-model compatibility plan                    |
-| Native Knowledge Tool unsupported | bounded legacy rollback seam until G19.6 closes |
+| Native Knowledge Tool unsupported | live compatibility executor; no pre-SSE retrieval |
 | Tool arguments malformed/unknown | do not execute; redacted failed step             |
 | External Search failure          | truthful degradation; ordinary answer; no `[W]`  |
 | Built-in unsupported             | disabled/degraded; no external fallback          |

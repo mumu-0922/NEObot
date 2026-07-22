@@ -1089,48 +1089,15 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	_, toolRoundCapable := streamProvider.(ToolRoundProvider)
 	useLiveKnowledgeTool := ragSelection.Enabled && toolRoundCapable &&
 		searchMode != chatSearchModeModelBuiltIn
+	useCompatibilityKnowledge := ragSelection.Enabled && !useLiveKnowledgeTool
 	autoDecision := autoRAGDecision{}
-	if useLiveKnowledgeTool {
+	if ragSelection.Enabled {
 		autoDecision.Outcome = "not_requested"
 	}
 	knowledgeStarted := time.Now()
-	if ragSelection.Enabled && !useLiveKnowledgeTool {
-		autoDecision = h.decideAutoRAG(
-			r.Context(),
-			conversationID,
-			userMessage,
-			modelRef,
-			ragSelection,
-			streamProvider,
-			ragAnswerProcessor,
-			conversationMessages,
-		)
-	}
 	providerPrompt := userMessage.Content
 	providerSystemPrompt := systemPrompt
 	providerMetadata := request.Metadata
-	if ragSelection.Enabled && !useLiveKnowledgeTool && autoDecision.ReadyForAnswer() {
-		providerPrompt, providerSystemPrompt, err = buildAutoRAGProviderRequest(
-			userMessage.Content,
-			systemPrompt,
-			autoDecision.Evidence,
-			autoDecision.Citations,
-		)
-		if err != nil {
-			autoDecision = autoRAGDecision{Outcome: "dependency_unavailable"}
-			providerPrompt = userMessage.Content
-			providerSystemPrompt = systemPrompt
-		} else {
-			providerMetadata = mergeAutoRAGProviderMetadata(
-				request.Metadata,
-				autoDecision,
-			)
-		}
-	}
-	knowledgeDurationMillis := int64(0)
-	if ragSelection.Enabled && !useLiveKnowledgeTool {
-		knowledgeDurationMillis = sourceFusionDurationMillis(knowledgeStarted)
-	}
 	routerStarted := time.Now()
 	forceExternalSearch := searchMode == chatSearchModeExternal &&
 		hasCurrentPublicIntent(userMessage.Content)
@@ -1150,7 +1117,6 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		fusionDiagnostics.WebExecuteOutcome = "pending"
 		fusionDiagnostics.WebQueryConversationRewriteOutcome = "pending"
 	}
-	fusionDiagnostics.KnowledgeDurationMillis = knowledgeDurationMillis
 	fusionDiagnostics.RouterDurationMillis = sourceFusionDurationMillis(routerStarted)
 	resolveStarted := time.Now()
 	var searchExecution *websearch.ActiveExecution
@@ -1183,7 +1149,9 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	if searchExecution != nil &&
 		searchExecution.Mode == websearch.ExecutionModelBuiltIn {
 		fusionDiagnostics.WebQueryConversationRewriteOutcome = "provider_managed"
-		fusionDiagnostics.WebExecuteOutcome = "provider_stream"
+		if !useCompatibilityKnowledge {
+			fusionDiagnostics.WebExecuteOutcome = "provider_stream"
+		}
 	}
 
 	runID, err := NewUUID()
@@ -1217,15 +1185,6 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	trace := newProcessTrace(assistantMessage.ID)
-	if !useLiveKnowledgeTool {
-		addLegacyKnowledgeProcessStep(
-			trace,
-			ragSelection,
-			autoDecision,
-			knowledgeStarted,
-			knowledgeDurationMillis,
-		)
-	}
 	addLegacyWebProcessStep(
 		trace,
 		fusionPlan,
@@ -1267,7 +1226,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		nil,
 	)
 	var knowledgeRuntime *knowledgeToolRuntime
-	if useLiveKnowledgeTool {
+	if ragSelection.Enabled {
 		knowledgeRuntime = h.newKnowledgeToolRuntime(
 			r.Context(),
 			conversationID,
@@ -1359,7 +1318,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	var builtInSearchStarted time.Time
 	reasoning := newProcessReasoningStream()
 	toolTrace := newToolProcessTrace(trace)
-	if modelBuiltInSearchProvider != nil {
+	if modelBuiltInSearchProvider != nil && !useCompatibilityKnowledge {
 		builtInSearchStarted = time.Now()
 		startBuiltInWebProcessStep(trace, searchExecution, builtInSearchStarted)
 	}
@@ -1372,7 +1331,8 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	)
 	if useLiveKnowledgeTool ||
 		(searchMode == chatSearchModeExternal && searchExecution != nil &&
-			searchExecution.Mode == websearch.ExecutionExternal) {
+			searchExecution.Mode == websearch.ExecutionExternal &&
+			!useCompatibilityKnowledge) {
 		toolLoopInput := externalWebToolLoopInput{
 			Provider:        streamProvider,
 			Request:         providerRequest,
@@ -1394,6 +1354,34 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			toolLoopInput.Execution = *searchExecution
 		}
 		events = startRetrievalToolLoop(streamCtx, toolLoopInput)
+	} else if useCompatibilityKnowledge {
+		compatibilityInput := compatibilityKnowledgeLoopInput{
+			Provider:             streamProvider,
+			Request:              providerRequest,
+			Runtime:              knowledgeRuntime,
+			ConversationMessages: conversationMessages,
+			BuiltInSearch:        modelBuiltInSearchProvider,
+		}
+		if searchExecution != nil &&
+			searchExecution.Mode == websearch.ExecutionExternal {
+			externalInput := externalWebToolLoopInput{
+				Provider:        streamProvider,
+				Request:         providerRequest,
+				PlannerMessages: searchPlannerMessages,
+				SearchService:   h.webSearchService,
+				Execution:       *searchExecution,
+				MaxResults: configIntRange(
+					request.Config,
+					"searchResultsLimit",
+					5,
+					1,
+					websearch.MaxResults,
+				),
+				ForceSearch: forceExternalSearch,
+			}
+			compatibilityInput.ExternalSearch = &externalInput
+		}
+		events = startCompatibilityKnowledgeLoop(streamCtx, compatibilityInput)
 	} else if modelBuiltInSearchProvider != nil {
 		events, err = modelBuiltInSearchProvider.StreamChatWithModelBuiltInSearch(
 			streamCtx,
@@ -1649,6 +1637,53 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		}
 
 		switch providerEvent.Type {
+		case ProviderEventSearchStarted:
+			builtInSearchStarted = time.Now()
+			fusionDiagnostics.WebExecuteOutcome = "provider_stream"
+			step := startBuiltInWebProcessStep(
+				trace,
+				searchExecution,
+				builtInSearchStarted,
+			)
+			if err := emitProcessStep(step); err != nil {
+				h.cancelAssistantAfterWriteError(
+					conversationID,
+					assistantMessage.ID,
+					runID,
+					content.String(),
+				)
+				return
+			}
+		case ProviderEventSearchDegraded:
+			fusionDiagnostics.WebExecuteDurationMillis =
+				sourceFusionDurationMillis(builtInSearchStarted)
+			fusionDiagnostics.WebExecuteOutcome = "degraded"
+			fusionDiagnostics.DegradationReason = strings.TrimSpace(
+				providerEvent.FailureCategory,
+			)
+			if fusionDiagnostics.DegradationReason == "" {
+				fusionDiagnostics.DegradationReason = "provider_failed"
+			}
+			fusionPlan = fallbackSourceFusionAuthority(fusionPlan, autoDecision)
+			if step, ok := completeBuiltInWebProcessStep(
+				trace,
+				ProcessStepStatusFailed,
+				time.Now(),
+				webSearchResult,
+				fusionDiagnostics.DegradationReason,
+			); ok {
+				if err := emitProcessStep(step); err != nil {
+					h.cancelAssistantAfterWriteError(
+						conversationID,
+						assistantMessage.ID,
+						runID,
+						content.String(),
+					)
+					return
+				}
+			}
+			searchExecution = nil
+			modelBuiltInSearchProvider = nil
 		case ProviderEventReasoningDelta:
 			if providerEvent.ReasoningDelta == "" {
 				continue
@@ -2342,87 +2377,6 @@ func (d autoRAGDecision) completed(content string) autoRAGDecision {
 	}
 	d.Outcome = "answered"
 	return d
-}
-
-func (h *Handler) decideAutoRAG(
-	ctx context.Context,
-	conversationID string,
-	userMessage Message,
-	modelRef *ModelRef,
-	selection ragSelection,
-	provider Provider,
-	ragAnswerProcessor string,
-	messages []Message,
-) autoRAGDecision {
-	session, ok := auth.SessionFromContext(ctx)
-	if !ok {
-		return autoRAGDecision{Outcome: "dependency_unavailable"}
-	}
-	rewrittenQuery := ""
-	if shouldRewriteRAGQuery(userMessage.Content) {
-		rewrittenQuery, _ = rewriteRAGQuery(
-			ctx,
-			provider,
-			*modelRef,
-			userMessage.ID,
-			userMessage.Content,
-			messages,
-		)
-	}
-	result, err := h.ragAssembler.Assemble(ctx, RAGAssemblyInput{
-		ActorUserID:           session.UserID,
-		SessionID:             session.ID,
-		ConversationID:        conversationID,
-		QueryText:             userMessage.Content,
-		RewrittenQueryText:    rewrittenQuery,
-		SelectedCollectionIDs: selection.CollectionIDs,
-	})
-	if err != nil {
-		if errors.Is(err, ErrRAGInsufficientEvidence) {
-			return autoRAGDecision{Outcome: "no_evidence"}
-		}
-		return autoRAGDecision{Outcome: "dependency_unavailable"}
-	}
-	if len(result.Evidence) == 0 || len(result.Citations) == 0 {
-		return autoRAGDecision{Outcome: "no_evidence"}
-	}
-	governanceModelRef := modelRef
-	if processor := strings.TrimSpace(ragAnswerProcessor); processor != "" {
-		resolved := *modelRef
-		resolved.ProviderID = processor
-		governanceModelRef = &resolved
-	}
-	authority, err := h.authorizeAutoRAGAnswer(ctx, selection, governanceModelRef, result.Citations)
-	if err != nil {
-		if errors.Is(err, ErrRAGAnswerGovernanceRequired) {
-			return autoRAGDecision{Outcome: "answer_governance_required"}
-		}
-		return autoRAGDecision{Outcome: "dependency_unavailable"}
-	}
-	return autoRAGDecision{
-		Outcome:        "evidence_ready",
-		Evidence:       result.Evidence,
-		Citations:      result.Citations,
-		Authority:      &authority,
-		QueryRewritten: rewrittenQuery != "",
-		RerankStatus:   result.RerankStatus,
-	}
-}
-
-func (h *Handler) authorizeAutoRAGAnswer(
-	ctx context.Context,
-	selection ragSelection,
-	modelRef *ModelRef,
-	citations []RAGCitation,
-) (RAGAnswerAuthority, error) {
-	if h == nil || h.ragAnswerGate == nil || modelRef == nil {
-		return RAGAnswerAuthority{}, ErrRAGDependencyUnavailable
-	}
-	return h.ragAnswerGate.AuthorizeRAGAnswer(ctx, RAGAnswerGovernanceInput{
-		ModelRef:              *modelRef,
-		SelectedCollectionIDs: append([]string(nil), selection.CollectionIDs...),
-		Citations:             append([]RAGCitation(nil), citations...),
-	})
 }
 
 func (h *Handler) newKnowledgeToolRuntime(

@@ -234,9 +234,9 @@ Execution slices:
   Tool/Knowledge trace steps carry counts rather than source bodies.
 - [x] G19.6B connect the generic retrieval loop to chat streaming for selected
   Knowledge while retaining the legacy pre-answer path as a rollback seam.
-- [ ] G19.6C reconcile terminal Knowledge/Web authority, metadata, citations,
+- [x] G19.6C reconcile terminal Knowledge/Web authority, metadata, citations,
   cancellation, and reload across handler fixtures.
-- [ ] G19.6D remove the legacy pre-answer Auto RAG authority after fixture
+- [x] G19.6D remove the legacy pre-answer Auto RAG authority after fixture
   parity and pass the full static/test/build gates.
 - [ ] G19.6E pass the real uploaded-document hit/miss/follow-up/mixed/deletion/
   restart gate, clean all smoke state, and record rollback evidence.

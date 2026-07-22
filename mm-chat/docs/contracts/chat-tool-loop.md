@@ -296,9 +296,12 @@ and terminal Tool/Web steps. Provider-returned reasoning and Generation remain
 live, and model-built-in Search is live once its provider stream is established.
 G19.6B registers selected Knowledge in that live loop for Tool-round-capable
 providers when Search is `off` or `external`. Each accepted call produces live
-Tool/Knowledge steps and returns a bounded Tool Result. The old pre-answer path
-remains only as the current rollback/compatibility seam for non-Tool providers
-and model-built-in Search until the remaining G19.6 parity gates pass.
+Tool/Knowledge steps and returns a bounded Tool Result. G19.6D removes the old
+Handler pre-answer authority. Non-Tool providers and model-built-in Search now
+run the same server-authoritative Knowledge executor after `message.started`,
+then continue through the existing same-model external planner, built-in Search
+stream, or ordinary answer path. This compatibility path is visibly traced and
+never restores pre-SSE retrieval.
 
 ## 7. Web and Knowledge tools
 

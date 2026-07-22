@@ -1180,6 +1180,16 @@ func TestHandlerFusesKnowledgeWithBuiltInSearchAndReloadsBothCitations(t *testin
 		!strings.Contains(provider.input.SystemPrompt, "state the conflict") {
 		t.Fatalf("built-in fusion provider = %#v", provider)
 	}
+	for _, want := range []string{
+		`"kind":"knowledge","status":"running"`,
+		`"kind":"knowledge","status":"completed"`,
+		`"kind":"web","status":"running"`,
+		`"kind":"web","status":"completed"`,
+	} {
+		if !strings.Contains(recorder.Body.String(), want) {
+			t.Fatalf("built-in fusion stream missing %q: %s", want, recorder.Body.String())
+		}
+	}
 	messages := repo.messages[testConversationID]
 	if len(messages) != 2 || len(messages[1].OutputBlocks) != 1 {
 		t.Fatalf("built-in fusion messages = %#v", messages)
@@ -1837,8 +1847,17 @@ func TestHandlerAutoRAGFallsBackSilentlyWithoutEvidence(t *testing.T) {
 		t.Fatalf("knowledge miss process trace missing from stream: %s", rec.Body.String())
 	}
 	processSteps, ok := messages[1].Metadata[processTraceMetadataKey].([]ProcessStep)
-	if !ok || len(processSteps) != 2 || processSteps[0].Kind != ProcessStepKindKnowledge {
+	if !ok || len(processSteps) != 3 {
 		t.Fatalf("knowledge miss process trace = %#v", messages[1].Metadata[processTraceMetadataKey])
+	}
+	foundTool := false
+	foundKnowledge := false
+	for _, step := range processSteps {
+		foundTool = foundTool || step.Kind == ProcessStepKindTool
+		foundKnowledge = foundKnowledge || step.Kind == ProcessStepKindKnowledge
+	}
+	if !foundTool || !foundKnowledge {
+		t.Fatalf("knowledge miss process trace = %#v", processSteps)
 	}
 }
 
@@ -2479,6 +2498,75 @@ func TestHandlerSourceFusionRunsKnowledgeThenExternalWeb(t *testing.T) {
 	webExecute := stages["webExecute"].(map[string]any)
 	if webExecute["outcome"] != "completed" {
 		t.Fatalf("web execute stage = %#v", webExecute)
+	}
+}
+
+func TestHandlerCompatibilityKnowledgeContinuesIntoExternalSearch(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "最新公开资料和内部资料有何差异"),
+	)
+	provider := &capturingSequenceProvider{outputs: [][]string{
+		{`{"shouldSearch":true,"query":"fixture 最新公开资料"}`},
+		{"兼容回答 [K1] [W1]"},
+	}}
+	searchProvider := &fakeWebSearchProvider{result: websearch.Result{Sources: []websearch.Source{{
+		Title: "Public update", URL: "https://search.example/compat", Content: "fresh update",
+	}}}}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithWebSearchService(websearch.NewService(&fakeWebSearchResolver{
+			execution: websearch.ActiveExecution{
+				Mode: websearch.ExecutionExternal, External: searchProvider,
+			},
+		})),
+		WithRAGAnswerAssembler(NewRAGAnswerAssembler(
+			&fakeRAGCandidateSource{refs: []knowledge.EvidenceCandidateReference{validRAGCandidate()}},
+			&fakeRAGHydrator{evidence: []knowledge.HydratedEvidence{validHydratedEvidence()}},
+		)),
+		WithRAGAnswerGovernanceGate(&fakeRAGAnswerGovernanceGate{
+			authority: RAGAnswerAuthority{
+				Processor: "mock", ModelID: "mock-chat", CollectionCount: 1,
+			},
+		}),
+	)
+
+	recorder := performAuthenticatedRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"config":{"searchMode":"external"},"metadata":{"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-compat-knowledge-web"}`,
+	)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	if len(provider.inputs) != 2 || searchProvider.calls != 1 ||
+		!strings.Contains(provider.inputs[1].Prompt, "[K1]") ||
+		!strings.Contains(provider.inputs[1].Prompt, "[W1]") {
+		t.Fatalf("compatibility inputs/search = %#v / %d", provider.inputs, searchProvider.calls)
+	}
+	message := repo.messages[testConversationID][1]
+	assertAutoRAGMetadata(t, message, "answered", 1)
+	if fusion := message.Metadata["fusion"].(map[string]any); fusion["authority"] != sourceAuthorityMixed {
+		t.Fatalf("compatibility fusion = %#v", fusion)
+	}
+	for _, want := range []string{
+		`"kind":"knowledge","status":"running"`,
+		`"kind":"knowledge","status":"completed"`,
+		`"kind":"web","status":"running"`,
+		`"kind":"web","status":"completed"`,
+	} {
+		if !strings.Contains(recorder.Body.String(), want) {
+			t.Fatalf("compatibility stream missing %q: %s", want, recorder.Body.String())
+		}
+	}
+	if started := strings.Index(recorder.Body.String(), "event: message.started"); started < 0 || started > strings.Index(
+		recorder.Body.String(),
+		`"kind":"knowledge","status":"running"`,
+	) {
+		t.Fatalf("Knowledge execution was not live after message.started: %s", recorder.Body.String())
 	}
 }
 
