@@ -100,9 +100,9 @@ Jina reranking, citations, single-user deployment model, and rollback path.
 
 - [ ] Production candidate reads cut over behind a reversible server feature
       gate/profile pointer.
-- [ ] Restart, concurrent indexing, deletion, reindex, backup/restore, and
+- [x] Restart, concurrent indexing, deletion, reindex, backup/restore, and
       rollback proofs pass.
-- [ ] Query latency and PostgreSQL RSS/CPU remain inside the single-server
+- [x] Query latency and PostgreSQL RSS/CPU remain inside the single-server
       deployment budget.
 - [ ] Legacy `REAL[]` compatibility data is retained until the observation
       window closes; deletion requires a separate reviewed task.
@@ -158,8 +158,24 @@ Progress checkpoint (G18.5B.2b, 2026-07-22):
 - [x] An incomplete target generation failed atomically; a complete synthetic
       generation promoted, served only new references, and rolled back to the
       exact prior references while retaining immutable candidate rows.
-- [ ] Representative latency/backfill/index-size/RSS/CPU qualification and a
-      verified backup/restore remain G18.5B.2c work.
+- [x] Representative latency/backfill/index-size/RSS/CPU qualification and a
+      disposable active-PG17 backup/restore completed in G18.5B.2c.
+
+Progress checkpoint (G18.5B.2c, 2026-07-22):
+
+- [x] A 4096-child active-generation publication completed in `11.019s`
+      under the real maintenance trigger and exact dual-projection checks.
+- [x] Thirty production-shaped hybrid reads completed at `230.241ms` P95 and
+      `241.324ms` maximum after candidate-driven authority lookup replaced the
+      corpus-wide rejoin exposed by the first resource run.
+- [x] Combined vector/BM25 physical storage was `64,446,464` bytes and cgroup
+      memory peaked at `347,545,600` bytes under a hard `1 GiB / 2 CPU`
+      container.
+- [x] The active PG17 state survived restart, checksummed logical backup,
+      restore into a fresh database, migration idempotence, reader/role/row
+      verification, controlled legacy rollback, and disposable cleanup.
+- [ ] G18.5B.3 still owns the verified live PG16 backup, restore into fresh
+      PG17 storage, migration `038`, and blue-green Compose/data-path cutover.
 
 ### Group 6 — Optional BGE-M3 shadow benchmark
 

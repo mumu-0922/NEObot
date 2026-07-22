@@ -1,5 +1,16 @@
 \set ON_ERROR_STOP on
 
+\if :{?expected_active_count}
+\else
+  \set expected_active_count 5
+\endif
+
+SELECT set_config(
+  'mm_chat.g18_expected_active_count',
+  :'expected_active_count',
+  false
+);
+
 DO $restart_state_contract$
 DECLARE
   readiness RECORD;
@@ -16,9 +27,12 @@ BEGIN
 
   SELECT * INTO readiness
   FROM knowledge_assert_pg17_retrieval_profile_ready();
-  IF readiness.eligible_count <> 5
-    OR readiness.vector_count <> 5
-    OR readiness.bm25_count <> 5
+  IF readiness.eligible_count <>
+      current_setting('mm_chat.g18_expected_active_count')::BIGINT
+    OR readiness.vector_count <>
+      current_setting('mm_chat.g18_expected_active_count')::BIGINT
+    OR readiness.bm25_count <>
+      current_setting('mm_chat.g18_expected_active_count')::BIGINT
   THEN
     RAISE EXCEPTION 'restart readiness result: %', readiness;
   END IF;

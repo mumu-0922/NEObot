@@ -712,3 +712,97 @@ service and `mm-chat/data/postgres` were not read, stopped, or modified.
 
 Next: commit G18.5B.2b alone, then build the disposable representative-resource
 and backup/restore qualification before freezing migration `038`.
+
+## 2026-07-22 — G18.5B.2c resource and restore qualification
+
+The resource gate extends the same disposable PG17 cutover harness with one
+synthetic 4096-child document. Its Parent/Child/Search rows are loaded first
+without a document projection head. The measured head publication then crosses
+the real active-profile maintenance trigger and must populate and verify all
+4096 pgvector and BM25 rows atomically. This avoids timing an artificial direct
+table copy and keeps the publication boundary identical to production.
+
+The reviewed hard envelope is:
+
+```text
+PG17 container                         1 GiB / 2 CPU
+4096-row publication backfill          <= 120s
+30-query hybrid P95                    <= 500ms
+single-query maximum                   <= 1000ms
+vector + BM25 physical storage         <= 512MiB
+cgroup memory peak                     <= 900MiB
+```
+
+The first representative run failed at `2378.742ms` P95. Physical Dense
+probing was about `20ms` and BM25 probing about `109ms`; `auto_explain` instead
+showed the current-authority rejoin repeatedly expanding the active source
+view, including more than one million shared-buffer hits and millions of rows
+removed by join filters. Removing the view's `security_barrier` alone was not
+enough, and forcing custom plans was tested and discarded. The final reader
+uses bounded `LATERAL` resolution from candidate child IDs, preventing the
+optimizer from decorrelating authority lookup into a corpus-wide join.
+
+This does not weaken the application trust boundary. The accelerator source
+views are owned and readable only by `rag_projection_owner`; `PUBLIC` and
+runtime roles have no direct access. The SECURITY DEFINER reader still emits
+references only, selected-collection/current-authority checks remain inside
+the lookup, and Go reauthorizes/hydrates again before source text or citations
+are exposed. Temporary `auto_explain` instrumentation was removed before the
+clean acceptance run.
+
+Final proof command:
+
+```bash
+./mm-chat/scripts/run-g18-profile-cutover-drill.sh
+```
+
+Clean report: `/tmp/mm-chat-g18-profile-cutover.T5A9GB`.
+
+```text
+publication backfill                    11.019s
+query minimum / average                 184.260ms / 203.057ms
+query P95 / maximum                     230.241ms / 241.324ms
+vector projection + indexes             59,318,272 bytes
+BM25 projection + indexes               5,128,192 bytes
+cgroup memory peak                      347,545,600 bytes
+PASS G18.5B.2c queries=30 p95<=500ms indexes<=512MiB
+PASS G18.5B.2c restore rows=4105 active=4101 profile=pg17
+disposable_database=removed
+```
+
+After the resource run, PostgreSQL restart retained the active profile and
+4101 current rows. The harness created a custom-format logical dump, stored and
+verified its SHA-256, restored it into a fresh `template0` database, and reran
+the migration CLI with `no migrations changed`. Restore verification proved
+all 4105 immutable physical rows, 4101 active-authority rows, profile revision,
+operational functions, runtime reader winner, and bounded replay/runtime role
+grants. The original disposable database then completed the existing guarded
+legacy rollback and removed every candidate layer.
+
+G18.5B.2 is now complete. This remains synthetic qualification and did not
+touch the running PG16 service or `mm-chat/data/postgres`. G18.5B.3 must still
+take and verify the live PG16 backup, restore it into fresh PG17 storage,
+freeze migration `038`, activate the profile, switch Compose/data-path
+authority, and retain both the PG16 backup and legacy `REAL[]` rollback data.
+
+Final G18.5B.2c quality gates:
+
+```text
+clean PG17 resource/restart/restore/rollback drill   passed
+bash syntax / target diff whitespace                passed
+go vet ./...                                        passed
+go test -count=1 ./...                              passed
+recorded seven-case evaluator                       passed
+secret / executable debug scan                      passed
+temporary cutover containers / volumes              0 / 0
+```
+
+The generic quality/security scanners again classified no SQL files, so their
+zero-file result is not treated as proof. The live assertions over
+SECURITY DEFINER ownership/search paths, direct table/view denial, bounded
+function grants, reference-only reads, restored roles, and deletion authority
+remain decisive for this operational module.
+
+Next: commit G18.5B.2c alone. G18.5B.3 is a separate destructive/traffic
+boundary and must begin with the verified live PG16 backup rather than
+reusing this synthetic database.

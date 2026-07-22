@@ -10,6 +10,8 @@ postgres_dir="$(cd -- "${script_dir}/../postgres" && pwd)"
 compose_file="${restore_dir}/compose.yml"
 project="mmchat-g18-cutover-${UID}-$$"
 report_dir="$(mktemp -d /tmp/mm-chat-g18-profile-cutover.XXXXXX)"
+resource_report="${report_dir}/resources.tsv"
+qualified_dump="${report_dir}/pg17-qualified.dump"
 pg17_image_ref="mm-chat/postgres:17.10-pg_textsearch1.3.1-pgvector0.8.5"
 compose=(docker compose -p "${project}" -f "${compose_file}")
 
@@ -54,12 +56,17 @@ wait_for_ready() {
   done
 }
 
-psql_file() {
-  local file=$1
-  shift
+psql_file_db() {
+  local database=$1
+  local file=$2
+  shift 2
   "${compose[@]}" exec -T pg17 \
     psql -X --set=ON_ERROR_STOP=1 "$@" \
-      --username=postgres --dbname=postgres <"${file}"
+      --username=postgres --dbname="${database}" <"${file}"
+}
+
+psql_file() {
+  psql_file_db postgres "$@"
 }
 
 psql_command() {
@@ -71,9 +78,21 @@ psql_command() {
 
 run_migrate() {
   local output=$1
+  local database_url=${2:-postgres://postgres@pg17:5432/postgres?sslmode=disable}
   "${compose[@]}" run --rm --no-deps \
-    -e 'MIGRATION_DATABASE_URL=postgres://postgres@pg17:5432/postgres?sslmode=disable' \
+    -e "MIGRATION_DATABASE_URL=${database_url}" \
     migrate17 2>&1 | tee "${output}"
+}
+
+sample_resources() {
+  local phase=$1
+  local container_id=$2
+  {
+    printf '%s\t' "${phase}"
+    docker stats --no-stream --format \
+      '{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.BlockIO}}\t{{.PIDs}}' \
+      "${container_id}"
+  } >>"${resource_report}"
 }
 
 command -v docker >/dev/null
@@ -87,6 +106,22 @@ docker build --pull=false --tag "${pg17_image_ref}" "${postgres_dir}"
 log "starting disposable PostgreSQL 17"
 "${compose[@]}" up -d pg17
 wait_for_ready
+container_id="$("${compose[@]}" ps -q pg17)"
+read -r memory_limit cpu_limit < <(
+  docker inspect --format '{{.HostConfig.Memory}} {{.HostConfig.NanoCpus}}' \
+    "${container_id}"
+)
+[[ "${memory_limit}" == 1073741824 ]] || {
+  printf 'expected 1GiB PG17 limit, got %s bytes\n' "${memory_limit}" >&2
+  exit 1
+}
+[[ "${cpu_limit}" == 2000000000 ]] || {
+  printf 'expected 2 CPU PG17 limit, got %s NanoCPUs\n' "${cpu_limit}" >&2
+  exit 1
+}
+printf 'phase\tcpu\tmemory\tmemory_percent\tblock_io\tpids\n' \
+  >"${resource_report}"
+sample_resources startup "${container_id}"
 
 log "applying the PG16-compatible production migrations through 037"
 run_migrate "${report_dir}/migrate-before-cutover.log"
@@ -158,11 +193,82 @@ psql_file "${cutover_dir}/50-generation-reindex-fixture.sql" \
 psql_file "${cutover_dir}/55-verify-generation-reindex.sql" \
   | tee "${report_dir}/verify-generation-reindex.txt"
 
+log "loading a 4096-chunk representative single-server corpus"
+psql_file "${cutover_dir}/60-resource-corpus.sql" \
+  | tee "${report_dir}/seed-resource-corpus.txt"
+sample_resources resource-staged "${container_id}"
+
+log "measuring transactional pgvector/BM25 publication backfill"
+backfill_started_ms="$(date +%s%3N)"
+psql_command "INSERT INTO knowledge_document_projection_heads(
+  index_generation_id, document_id, active_materialization_id,
+  last_corpus_projection_revision
+) VALUES (
+  '18180000-0000-0000-0000-000000000007',
+  '18600000-0000-0000-0000-000000000002',
+  '18600000-0000-0000-0000-000000000004',
+  4
+);" | tee "${report_dir}/publish-resource-corpus.txt"
+backfill_finished_ms="$(date +%s%3N)"
+backfill_duration_ms=$((backfill_finished_ms - backfill_started_ms))
+if ((backfill_duration_ms > 120000)); then
+  printf 'representative backfill exceeded 120s: %sms\n' \
+    "${backfill_duration_ms}" >&2
+  exit 1
+fi
+sample_resources resource-indexed "${container_id}"
+
+log "measuring 30 production-shaped hybrid queries and projection size"
+psql_file "${cutover_dir}/65-verify-resource-budget.sql" \
+  | tee "${report_dir}/verify-resource-budget.txt"
+sample_resources resource-queried "${container_id}"
+memory_peak_bytes="$(
+  "${compose[@]}" exec -T pg17 sh -c 'cat /sys/fs/cgroup/memory.peak'
+)"
+if [[ ! "${memory_peak_bytes}" =~ ^[0-9]+$ ]] \
+  || ((memory_peak_bytes > 943718400)); then
+  printf 'PG17 memory peak exceeded 900MiB: %s\n' \
+    "${memory_peak_bytes}" >&2
+  exit 1
+fi
+{
+  printf 'backfill_duration_ms\t%s\n' "${backfill_duration_ms}"
+  printf 'memory_peak_bytes\t%s\n' "${memory_peak_bytes}"
+  printf 'memory_limit_bytes\t%s\n' "${memory_limit}"
+  printf 'cpu_limit_nanocpus\t%s\n' "${cpu_limit}"
+} >"${report_dir}/resource-gates.txt"
+
 log "restarting PostgreSQL and proving the durable active profile"
 "${compose[@]}" restart pg17 >/dev/null
 wait_for_ready
 psql_file "${cutover_dir}/25-verify-restart.sql" \
+  --set=expected_active_count=4101 \
   | tee "${report_dir}/verify-restart.txt"
+sample_resources resource-restarted "${container_id}"
+
+log "backing up and restoring the active qualified PG17 database"
+"${compose[@]}" exec -T pg17 \
+  pg_dump --format=custom --username=postgres --dbname=postgres \
+  >"${qualified_dump}"
+[[ -s "${qualified_dump}" ]]
+(cd "${report_dir}" && sha256sum "$(basename "${qualified_dump}")" \
+  >"$(basename "${qualified_dump}").sha256")
+(cd "${report_dir}" && sha256sum -c \
+  "$(basename "${qualified_dump}").sha256")
+"${compose[@]}" exec -T pg17 \
+  createdb --username=postgres --template=template0 \
+    mm_chat_g18_qualified_restore
+cat "${qualified_dump}" | "${compose[@]}" exec -T pg17 \
+  pg_restore --exit-on-error --username=postgres \
+    --dbname=mm_chat_g18_qualified_restore
+run_migrate "${report_dir}/migrate-qualified-restore.log" \
+  'postgres://postgres@pg17:5432/mm_chat_g18_qualified_restore?sslmode=disable'
+grep -Fq 'no migrations changed' \
+  "${report_dir}/migrate-qualified-restore.log"
+psql_file_db mm_chat_g18_qualified_restore \
+  "${cutover_dir}/70-verify-qualified-restore.sql" \
+  | tee "${report_dir}/verify-qualified-restore.txt"
+sample_resources resource-restored "${container_id}"
 
 log "proving router rollback refuses an active PG17 profile"
 set +e
@@ -222,5 +328,7 @@ run_migrate "${report_dir}/migrate-after-cutover.log"
 grep -Fq 'no migrations changed' "${report_dir}/migrate-after-cutover.log"
 
 log "decisive output"
-grep -h 'PASS G18.5B.1\|PASS G18.5B.2a\|PASS G18.5B.2b\|PASS PG17' \
+grep -h 'PASS G18.5B.1\|PASS G18.5B.2a\|PASS G18.5B.2b\|PASS G18.5B.2c\|PASS PG17' \
   "${report_dir}"/*.txt
+cat "${report_dir}/resource-gates.txt"
+cat "${resource_report}"

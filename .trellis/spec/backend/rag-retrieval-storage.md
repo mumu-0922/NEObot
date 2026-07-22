@@ -126,6 +126,16 @@ knowledge_assert_pg17_generation_ready(
 - Candidate indexes are not authorization authorities. Rejoin current
   authority before diagnostics, then reauthorize/hydrate again in Go before
   answer context or citations.
+- Resolve bounded BM25/Dense probe IDs through a candidate-driven `LATERAL`
+  current-authority lookup. Do not let PostgreSQL decorrelate the authority
+  view into a corpus-wide or per-candidate repeated expansion; retain an
+  optimizer fence such as `OFFSET 0` and prove it with representative latency.
+- The BM25 build/active source views are internal accelerator authorities,
+  owned and directly readable only by `rag_projection_owner`. They do not use
+  `security_barrier`, because it blocks child-ID predicate pushdown and caused
+  corpus-wide materialization. This exception is valid only while `PUBLIC` and
+  runtime roles have no direct `SELECT`, the SECURITY DEFINER reader returns
+  references only, and Go performs final hydration reauthorization.
 - Shadow diagnostics may expose UUIDs, hashes, ranks, and scores only. Do not
   output source text, exact terms, provider credentials, or private queries.
 - Only `rag_replay_operator` receives shadow EXECUTE. Production runtime roles
@@ -170,6 +180,15 @@ knowledge_assert_pg17_generation_ready(
 - Migration rollback must fail atomically with
   `RAG_RETRIEVAL_PROFILE_ROLLBACK_REQUIRES_LEGACY` unless the active pointer is
   `legacy`. Application rollback precedes migration rollback.
+- Pre-cutover resource qualification uses a hard 1 GiB / 2 CPU PG17 container,
+  a 4096-child active-generation publication, 30 production-shaped profiled
+  reads, and these gates: backfill `<= 120s`, query P95 `<= 500ms`, query max
+  `<= 1000ms`, combined vector/BM25 physical storage `<= 512MiB`, and cgroup
+  memory peak `<= 900MiB`.
+- A qualified active-PG17 logical backup must be checksummed, restored into a
+  fresh `template0` database, and re-verified for migration idempotence,
+  profile revision, active/physical row counts, runtime reader behavior,
+  operational functions, and role grants.
 
 ## 4. Validation & Error Matrix
 
@@ -191,6 +210,8 @@ knowledge_assert_pg17_generation_ready(
 | Post-insert vector or BM25 verification is incomplete | `RAG_RETRIEVAL_MATERIALIZATION_SYNC_INCOMPLETE`; both projection writes and head mutation roll back |
 | Target generation lacks any current document, paired source, vector, or BM25 row | `RAG_RETRIEVAL_GENERATION_BACKFILL_INCOMPLETE`; generation/head transition rolls back atomically |
 | Migration down is attempted under a non-legacy profile | Rollback aborts atomically and migration `037` remains applied |
+| Any representative backfill/latency/storage/memory gate is exceeded | The disposable qualification aborts; migration `038` remains forbidden |
+| Restored PG17 state loses profile, rows, reader behavior, functions, or grants | Restore qualification aborts; no Compose/data-path cutover |
 
 Every SECURITY DEFINER function must pin the current schema followed by
 `pg_catalog, pg_temp` and must not resolve through `$user`.
@@ -205,7 +226,8 @@ Every SECURITY DEFINER function must pin the current schema followed by
   Knowledge citation.
 - **Bad:** mixing Jina and BGE vectors because both have 1024 dimensions,
   mounting a PG16 directory into PG17, accepting BM25 score `0`, granting a
-  shadow diagnostic to `go_api_runtime`, or emitting source text in a report.
+  shadow diagnostic to `go_api_runtime`, emitting source text in a report, or
+  joining a bounded probe to an authority view that expands the entire corpus.
 
 ## 6. Tests Required
 
@@ -239,6 +261,10 @@ The disposable drill must assert:
     rejected. Complete publication permits promotion, serves only target-
     generation references, and permits exact rollback while retaining both
     generations' physical rows.
+13. A 4096-child publication and 30 profiled reads pass the fixed single-server
+    backfill/latency/storage/memory gates; restart and a checksummed logical
+    backup/restore preserve exact active/physical rows, profile state, reader
+    behavior, functions, and role boundaries.
 
 After the drill, run `go vet ./...`, `go test ./...`, and the frozen G18
 evaluator.
@@ -260,7 +286,7 @@ or current authority.
 
 ```sql
 WITH probe AS (
-  SELECT child_chunk_id,
+  SELECT child_chunk_id, content_hash,
     bm25_text <@> to_bm25query(p_query, 'reviewed_bm25_index') AS score
   FROM bm25_shadow
   WHERE bm25_text <@> to_bm25query(
@@ -272,9 +298,16 @@ WITH probe AS (
 )
 SELECT probe.child_chunk_id, probe.score
 FROM probe
-JOIN current_authority source USING (child_chunk_id)
+CROSS JOIN LATERAL (
+  SELECT source.child_chunk_id
+  FROM current_authority source
+  WHERE source.child_chunk_id = probe.child_chunk_id
+    AND source.content_hash = probe.content_hash
+  OFFSET 0
+) authorized
 ORDER BY probe.score, probe.child_chunk_id;
 ```
 
 The index is explicit, unrelated zeros are rejected, ordering is deterministic,
-and current authority remains the final visibility gate.
+and current authority remains the final visibility gate without being
+decorrelated into a corpus-wide join.

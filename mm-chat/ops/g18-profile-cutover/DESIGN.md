@@ -1,4 +1,4 @@
-# G18.5B.1 PG17 profile cutover candidate design
+# G18.5B PG17 profile cutover qualification design
 
 ## Goal
 
@@ -103,6 +103,36 @@ all three heads were published, backfill replay inserted zero rows, promotion
 served only the new child references, and rollback restored the old references
 while retaining the new generation's immutable projection rows.
 
+## Resource and restore qualification
+
+G18.5B.2c adds a 4096-child single-user corpus to the already active generation
+without publishing its document projection head. Advancing that one head is
+the measured atomic backfill boundary: the trigger inserts and verifies both
+physical projections before the transaction commits. The hard envelope is a
+1 GiB / 2 CPU PG17 container, 120-second publication backfill, 500 ms query
+P95, 1000 ms query maximum, 512 MiB combined physical projections/indexes, and
+900 MiB cgroup memory peak.
+
+Thirty production-shaped hybrid reads select the real collection, vary exact
+terms and 1024-dimensional query vectors, require the intended child in the
+bounded result, and measure the unchanged profiled reader. The first resource
+attempt exposed a corpus-wide authority rejoin: the optimizer repeatedly
+expanded thousands of active-source rows for a handful of Dense candidates.
+The active BM25 source views are internal, owner-only accelerator authorities;
+they are not exposed to runtime roles and therefore do not use
+`security_barrier`. Candidate reauthorization is driven through a bounded
+`LATERAL` lookup with an optimizer fence so each probe resolves by immutable
+child identity instead of materializing or repeating the whole corpus. The Go
+hydration boundary still performs final authority checks before text or
+citations are emitted.
+
+After resource qualification, the harness restarts PostgreSQL, creates a
+custom-format logical backup of the active PG17 database, records and verifies
+its SHA-256, restores into a fresh `template0` database, and proves migration
+idempotence. The restored database must retain profile revision, active and
+physical row counts, operational functions, runtime reader behavior, and the
+replay/runtime role boundary before rollback testing continues.
+
 ## Reader and trust boundary
 
 On `pg17_bm25_pgvector_v1`,
@@ -128,11 +158,11 @@ legacy reader, pointer, revision, and immutable transition history.
 
 ## Known limit
 
-This slice proves activation, restart durability, concurrent publication, and
-generation reindex/cutover on a synthetic corpus. It does not yet prove
-representative latency, PostgreSQL RSS/CPU, index/backfill budgets, or a real
-backup/restore. Those gates remain mandatory before formal migration and
-Compose/data-path cutover.
+This slice proves activation, restart durability, concurrent publication,
+generation reindex/cutover, representative synthetic resource budgets, and an
+active-PG17 logical backup/restore. It does not read or mutate the live PG16
+database. A verified live PG16 backup, restore into fresh PG17 storage,
+migration `038`, and blue-green Compose/data-path cutover remain mandatory.
 
 ## Change history
 
@@ -141,3 +171,5 @@ Compose/data-path cutover.
   publish/delete proof.
 - 2026-07-22: building-generation maintenance plus atomic promotion/rollback
   readiness fence.
+- 2026-07-22: 4096-child resource qualification, candidate-driven authority
+  lookup, and active-PG17 backup/restore proof.

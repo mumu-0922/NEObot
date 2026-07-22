@@ -103,7 +103,6 @@ END
 $function$;
 
 CREATE VIEW knowledge_bm25_shadow_build_sources
-WITH (security_barrier = true)
 AS
 SELECT
   search.child_chunk_id,
@@ -180,7 +179,6 @@ WHERE search.status = 'ready'
   AND cardinality(search.embedding_vector) = 1024;
 
 CREATE VIEW knowledge_bm25_shadow_sources
-WITH (security_barrier = true)
 AS
 SELECT source.*
 FROM knowledge_bm25_shadow_build_sources source
@@ -599,11 +597,15 @@ BEGIN
     FROM lexical_pool pool
     JOIN knowledge_child_bm25_shadow_projections shadow
       ON shadow.child_chunk_id = pool.child_chunk_id
-    JOIN knowledge_bm25_shadow_sources source
-      ON source.child_chunk_id = shadow.child_chunk_id
-     AND source.index_generation_id = shadow.index_generation_id
-     AND source.search_profile_id = shadow.search_profile_id
-     AND source.content_hash = shadow.content_hash
+    CROSS JOIN LATERAL (
+      SELECT candidate.*
+      FROM knowledge_bm25_shadow_sources candidate
+      WHERE candidate.child_chunk_id = shadow.child_chunk_id
+        AND candidate.index_generation_id = shadow.index_generation_id
+        AND candidate.search_profile_id = shadow.search_profile_id
+        AND candidate.content_hash = shadow.content_hash
+      OFFSET 0
+    ) source
   ), bm25_ranked_unbounded AS (
     SELECT
       authorized.*,
@@ -620,6 +622,20 @@ BEGIN
     SELECT *
     FROM bm25_ranked_unbounded ranked
     WHERE ranked.lane_rank <= p_limit
+  ), dense_probe AS MATERIALIZED (
+    SELECT
+      shadow.child_chunk_id,
+      shadow.index_generation_id,
+      shadow.search_profile_id,
+      shadow.content_hash,
+      shadow.embedding_vector <=> p_query_embedding AS distance
+    FROM knowledge_child_vector_shadow_projections shadow
+    WHERE char_length(normalized_query) >= minimum_dense_query_characters
+      AND shadow.collection_id = ANY(p_collection_ids)
+      AND shadow.embedding_vector <=> p_query_embedding <=
+        1 - minimum_dense_similarity
+    ORDER BY shadow.embedding_vector <=> p_query_embedding
+    LIMIT oversample_limit
   ), dense_scored AS MATERIALIZED (
     SELECT
       source.collection_id,
@@ -631,21 +647,20 @@ BEGIN
       source.child_chunk_id,
       source.source_span_hash,
       source.content_hash,
-      1 - (shadow.embedding_vector <=> p_query_embedding) AS similarity,
+      1 - probe.distance AS similarity,
       source.child_ordinal
-    FROM knowledge_child_vector_shadow_projections shadow
-    JOIN knowledge_bm25_shadow_sources source
-      ON source.child_chunk_id = shadow.child_chunk_id
-     AND source.index_generation_id = shadow.index_generation_id
-     AND source.search_profile_id = shadow.search_profile_id
-     AND source.content_hash = shadow.content_hash
-    JOIN selected_collection selected
-      ON selected.id = source.collection_id
-    WHERE char_length(normalized_query) >= minimum_dense_query_characters
-      AND 1 - (shadow.embedding_vector <=> p_query_embedding) >=
-        minimum_dense_similarity
+    FROM dense_probe probe
+    CROSS JOIN LATERAL (
+      SELECT candidate.*
+      FROM knowledge_bm25_shadow_sources candidate
+      WHERE candidate.child_chunk_id = probe.child_chunk_id
+        AND candidate.index_generation_id = probe.index_generation_id
+        AND candidate.search_profile_id = probe.search_profile_id
+        AND candidate.content_hash = probe.content_hash
+      OFFSET 0
+    ) source
     ORDER BY
-      shadow.embedding_vector <=> p_query_embedding,
+      probe.distance,
       source.child_ordinal,
       source.child_chunk_id
     LIMIT p_limit

@@ -128,7 +128,8 @@ the profiled function, but effective retrieval remains `ts_rank + REAL[]`.
 
 ### G18.5B PG17 implementation and controlled activation
 
-Status: pending.
+Status: in progress. G18.5B.1 through G18.5B.2c are complete;
+G18.5B.3 remains pending.
 
 - Promote the reviewed BM25/pgvector DDL into migration `038` after a fresh
   verified PG16 backup is restored into PostgreSQL 17 storage.
@@ -163,7 +164,7 @@ remained `1–37`.
 
 #### G18.5B.2 Operations and resource qualification
 
-Status: pending.
+Status: complete (2026-07-22). G18.5B remains in progress.
 
 - Add and prove a safe projection-maintenance path for documents published
   while the PG17 profile is active.
@@ -214,10 +215,27 @@ the exact old references while retaining all candidate projection rows.
 
 ##### G18.5B.2c Resource and restore qualification
 
-Status: pending.
+Status: complete (2026-07-22). G18.5B.3 remains pending.
 
 - Run representative corpus latency, backfill duration, index-size, RSS/CPU,
   restart, backup/restore, and legacy rollback measurements.
+
+Proof: under a hard `1 GiB / 2 CPU` PG17 container, one atomic document-head
+publication populated and verified 4096 vector and BM25 rows in `11.019s`.
+Thirty production-shaped hybrid queries returned every intended child with
+`230.241ms` P95 and `241.324ms` maximum latency. The physical vector/BM25
+tables plus indexes used `64,446,464` bytes, and cgroup memory peaked at
+`347,545,600` bytes, below the `900 MiB` gate.
+
+The first resource run exposed a corpus-wide authority rejoin rather than a
+BM25 or pgvector accelerator failure. Candidate-driven `LATERAL` authority
+resolution reduced P95 from more than two seconds to about 230ms while
+preserving current-generation, current-document, selected-collection, and
+reference-only boundaries. The active PG17 database then survived restart,
+custom-format logical backup, SHA-256 verification, restore into a fresh
+database, migration idempotence, exact active/physical row counts, runtime
+reader behavior, role grants, controlled legacy rollback, and complete
+disposable cleanup.
 
 #### G18.5B.3 Formal migration and blue-green Compose cutover
 
