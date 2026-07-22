@@ -45,5 +45,13 @@
   "modelCapabilitiesAria": "モデル機能",
   "keyStoredOnServer": "キーは BYOK で暗号化されてバックエンドに保存され、平文はブラウザに保存されません。",
   "saveServerDefault": "バックエンドに保存",
-  "savingServerDefault": "保存中…"
+  "savingServerDefault": "保存中…",
+  "builtInSearch": "モデル内蔵検索",
+  "builtInSearchDesc": "この OpenAI 互換プロバイダーだけで Responses Web Search を有効にします。選択したモデルの実接続テストが必要です。",
+  "builtInSearchModel": "テストモデルを選択",
+  "testBuiltInSearch": "テストして有効化",
+  "retestBuiltInSearch": "再テスト",
+  "builtInSearchModelRequired": "先にモデルを選択してください。",
+  "builtInSearchTestPassed": "内蔵検索テストに成功し、{count} 件のソースを取得しました。",
+  "builtInSearchTestFailed": "内蔵検索テストに失敗しました。"
 }

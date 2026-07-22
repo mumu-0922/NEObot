@@ -18,10 +18,26 @@ func (s *Service) Configured() bool {
 }
 
 func (s *Service) ResolveActive(ctx context.Context) (ActiveExecution, error) {
+	return s.ResolveExternal(ctx)
+}
+
+func (s *Service) ResolveExternal(ctx context.Context) (ActiveExecution, error) {
 	if !s.Configured() {
 		return ActiveExecution{}, ErrNotConfigured
 	}
-	execution, err := s.resolver.ResolveActive(ctx)
+	var execution ActiveExecution
+	var err error
+	if resolver, ok := s.resolver.(ModeResolver); ok {
+		execution, err = resolver.ResolveExternal(ctx)
+	} else {
+		execution, err = s.resolver.ResolveActive(ctx)
+		if err == nil && execution.Mode == ExecutionModelBuiltIn {
+			if err := validateActiveExecution(execution); err != nil {
+				return ActiveExecution{}, err
+			}
+			return ActiveExecution{}, ErrModelBuiltInRequiresChat
+		}
+	}
 	if err != nil {
 		if errors.Is(err, ErrNotConfigured) {
 			return ActiveExecution{}, ErrNotConfigured
@@ -30,6 +46,51 @@ func (s *Service) ResolveActive(ctx context.Context) (ActiveExecution, error) {
 	}
 	if err := validateActiveExecution(execution); err != nil {
 		return ActiveExecution{}, err
+	}
+	if execution.Mode != ExecutionExternal {
+		return ActiveExecution{}, ErrInvalidConfig
+	}
+	return execution, nil
+}
+
+func (s *Service) ResolveModelBuiltIn(
+	ctx context.Context,
+	request ModelBuiltInResolutionRequest,
+) (ActiveExecution, error) {
+	if !s.Configured() {
+		return ActiveExecution{}, ErrNotConfigured
+	}
+	resolver, ok := s.resolver.(ModeResolver)
+	if !ok {
+		execution, err := s.resolver.ResolveActive(ctx)
+		if err != nil {
+			if errors.Is(err, ErrNotConfigured) {
+				return ActiveExecution{}, ErrNotConfigured
+			}
+			return ActiveExecution{}, ErrResolutionFailed
+		}
+		if err := validateActiveExecution(execution); err != nil {
+			return ActiveExecution{}, err
+		}
+		if execution.Mode != ExecutionModelBuiltIn ||
+			execution.ModelBuiltIn != request.Protocol {
+			return ActiveExecution{}, ErrInvalidConfig
+		}
+		return execution, nil
+	}
+	execution, err := resolver.ResolveModelBuiltIn(ctx, request)
+	if err != nil {
+		if errors.Is(err, ErrNotConfigured) {
+			return ActiveExecution{}, ErrNotConfigured
+		}
+		return ActiveExecution{}, ErrResolutionFailed
+	}
+	if err := validateActiveExecution(execution); err != nil {
+		return ActiveExecution{}, err
+	}
+	if execution.Mode != ExecutionModelBuiltIn ||
+		execution.ModelBuiltIn != request.Protocol {
+		return ActiveExecution{}, ErrInvalidConfig
 	}
 	return execution, nil
 }
@@ -86,11 +147,20 @@ func validateActiveExecution(execution ActiveExecution) error {
 			return ErrInvalidConfig
 		}
 	case ExecutionModelBuiltIn:
-		if execution.External != nil || execution.ModelBuiltIn != ModelBuiltInOpenAI {
+		if execution.External != nil || !isModelBuiltInProviderID(execution.ModelBuiltIn) {
 			return ErrInvalidConfig
 		}
 	default:
 		return ErrInvalidConfig
 	}
 	return nil
+}
+
+func isModelBuiltInProviderID(value ModelBuiltInProviderID) bool {
+	switch value {
+	case ModelBuiltInOpenAI, ModelBuiltInGemini, ModelBuiltInAnthropic:
+		return true
+	default:
+		return false
+	}
 }

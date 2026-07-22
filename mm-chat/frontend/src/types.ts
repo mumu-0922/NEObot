@@ -51,6 +51,8 @@ export type {
   TextSkillRisk,
 } from "./lib/skills/types";
 export type {
+  ModelBuiltInSearchConfig,
+  ModelBuiltInSearchProtocol,
   ModelMetadata,
   ModelProvider,
   ProviderType,

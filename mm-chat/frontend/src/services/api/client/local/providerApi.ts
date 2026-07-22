@@ -44,5 +44,10 @@ export function createLocalProviderApiShell(): ProviderApi {
       void signal;
       throw unsupportedFeature("local provider activation");
     },
+    async testAdminModelBuiltInSearch(providerId, input) {
+      void providerId;
+      void input;
+      throw unsupportedFeature("local model built-in search testing");
+    },
   };
 }

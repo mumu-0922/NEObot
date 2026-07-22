@@ -309,6 +309,24 @@ func (r *fakeProviderConfigRepository) CommitSearchProviderConnection(
 	return r.stored, nil
 }
 
+func (r *fakeProviderConfigRepository) CommitModelBuiltInSearchConnection(
+	_ context.Context,
+	input CommitModelBuiltInSearchConnectionInput,
+) (StoredProviderConfig, error) {
+	if !r.ok || r.stored.ID != input.ID || r.stored.UserID != input.UserID ||
+		r.stored.ProviderID != input.ProviderID ||
+		r.stored.EncryptedSecretRef != input.ExpectedEncryptedSecretRef ||
+		r.stored.Config.Type != input.ExpectedType ||
+		r.stored.Config.BaseURL != input.ExpectedBaseURL ||
+		r.stored.Config.ModelBuiltInSearchProtocol != input.ExpectedProtocol ||
+		r.stored.Config.ModelBuiltInSearchModel != input.ExpectedModel {
+		return StoredProviderConfig{}, ErrProviderConfigChanged
+	}
+	r.stored.Config.ModelBuiltInSearchTestSHA256 = input.ConnectionTestSHA256
+	r.stored.Config.ModelBuiltInSearchTestedAt = input.ConnectionTestedAt.UTC().Format(time.RFC3339Nano)
+	return r.stored, nil
+}
+
 func (r *fakeProviderConfigRepository) ConfigureRAGProviderConnection(
 	_ context.Context,
 	input ConfigureRAGProviderConnectionInput,

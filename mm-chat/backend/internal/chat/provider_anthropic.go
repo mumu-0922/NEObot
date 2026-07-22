@@ -13,6 +13,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"neo-chat/mm-chat/backend/internal/websearch"
 )
 
 const (
@@ -83,6 +85,88 @@ func (p *AnthropicProvider) StreamChat(
 	return p.StreamToolRound(ctx, ProviderRoundRequest{
 		ProviderRequest: input,
 	})
+}
+
+func (p *AnthropicProvider) ModelBuiltInSearchID() websearch.ModelBuiltInProviderID {
+	return websearch.ModelBuiltInAnthropic
+}
+
+func (p *AnthropicProvider) StreamChatWithModelBuiltInSearch(
+	ctx context.Context,
+	input ProviderRequest,
+) (<-chan ProviderEvent, error) {
+	modelRef, err := p.ResolveModelRef(input.ModelRef)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(modelRef.ModelID) == "" {
+		return nil, errors.New("anthropic provider model is required")
+	}
+	messages, err := anthropicMessages(providerMessagesOrPrompt(input))
+	if err != nil {
+		return nil, err
+	}
+	request := anthropicBuiltInSearchRequest{
+		Model: modelRef.ModelID, MaxTokens: defaultAnthropicMaxTokens,
+		Stream: true, System: strings.TrimSpace(input.SystemPrompt), Messages: messages,
+		Tools: []anthropicBuiltInSearchTool{{
+			Type: "web_search_20250305", Name: "web_search", MaxUses: 5,
+		}},
+	}
+	if input.UseReasoning {
+		budgetTokens := anthropicThinkingBudget(effectiveReasoningEffort(input))
+		request.MaxTokens = anthropicMaxTokens(budgetTokens)
+		request.Thinking = &anthropicThinkingConfig{
+			Type: "enabled", BudgetTokens: budgetTokens,
+		}
+	}
+	payload, err := json.Marshal(request)
+	if err != nil {
+		return nil, errors.New("anthropic built-in search request encode failed")
+	}
+	requestCtx := ctx
+	var cancel context.CancelFunc
+	if p.timeout > 0 {
+		requestCtx, cancel = context.WithTimeout(ctx, p.timeout)
+	}
+	req, err := http.NewRequestWithContext(
+		requestCtx, http.MethodPost, p.endpoint, bytes.NewReader(payload),
+	)
+	if err != nil {
+		if cancel != nil {
+			cancel()
+		}
+		return nil, errors.New("anthropic built-in search request build failed")
+	}
+	p.setHeaders(req, "text/event-stream")
+	resp, err := p.client.Do(req)
+	if err != nil {
+		if cancel != nil {
+			cancel()
+		}
+		return nil, errors.New("anthropic built-in search request failed")
+	}
+	if resp == nil || resp.Body == nil || resp.StatusCode < http.StatusOK ||
+		resp.StatusCode >= http.StatusMultipleChoices {
+		if resp != nil && resp.Body != nil {
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+			_ = resp.Body.Close()
+		}
+		if cancel != nil {
+			cancel()
+		}
+		return nil, errors.New("anthropic built-in search provider returned a non-success status")
+	}
+	events := make(chan ProviderEvent)
+	go func() {
+		defer close(events)
+		defer resp.Body.Close()
+		if cancel != nil {
+			defer cancel()
+		}
+		streamAnthropicEvents(ctx, resp.Body, events)
+	}()
+	return events, nil
 }
 
 func (p *AnthropicProvider) StreamToolRound(
@@ -297,6 +381,22 @@ type anthropicMessagesRequest struct {
 	Thinking   *anthropicThinkingConfig `json:"thinking,omitempty"`
 	Tools      []anthropicTool          `json:"tools,omitempty"`
 	ToolChoice *anthropicToolChoice     `json:"tool_choice,omitempty"`
+}
+
+type anthropicBuiltInSearchRequest struct {
+	Model     string                       `json:"model"`
+	MaxTokens int                          `json:"max_tokens"`
+	Stream    bool                         `json:"stream"`
+	System    string                       `json:"system,omitempty"`
+	Messages  []anthropicMessage           `json:"messages"`
+	Thinking  *anthropicThinkingConfig     `json:"thinking,omitempty"`
+	Tools     []anthropicBuiltInSearchTool `json:"tools"`
+}
+
+type anthropicBuiltInSearchTool struct {
+	Type    string `json:"type"`
+	Name    string `json:"name"`
+	MaxUses int    `json:"max_uses,omitempty"`
 }
 
 type anthropicThinkingConfig struct {
@@ -556,6 +656,7 @@ type anthropicStreamEnvelope struct {
 		ID        string          `json:"id"`
 		Name      string          `json:"name"`
 		Input     json.RawMessage `json:"input"`
+		Content   json.RawMessage `json:"content"`
 	} `json:"content_block"`
 	Message *struct {
 		Usage anthropicUsage `json:"usage"`
@@ -576,6 +677,7 @@ type anthropicStreamState struct {
 	toolCalls        map[int]*ProviderToolCall
 	toolOrder        []int
 	completedTools   map[int]bool
+	searchSources    map[string]struct{}
 }
 
 func newAnthropicStreamState() *anthropicStreamState {
@@ -585,6 +687,7 @@ func newAnthropicStreamState() *anthropicStreamState {
 		toolCalls:       map[int]*ProviderToolCall{},
 		toolOrder:       []int{},
 		completedTools:  map[int]bool{},
+		searchSources:   map[string]struct{}{},
 	}
 }
 
@@ -768,10 +871,63 @@ func (state *anthropicStreamState) startContentBlock(
 		return sendProviderEvent(ctx, events, ProviderEvent{
 			Type: ProviderEventToolCallDelta, ToolCallDelta: &delta,
 		})
+	case "web_search_tool_result":
+		delete(state.blockPositions, envelope.Index)
+		sources := anthropicBuiltInSearchSources(block.Content, state.searchSources)
+		if len(sources) > 0 {
+			return sendProviderEvent(ctx, events, ProviderEvent{
+				Type:   ProviderEventSearch,
+				Search: &websearch.Result{Sources: sources, Images: []websearch.Image{}},
+			})
+		}
 	default:
 		delete(state.blockPositions, envelope.Index)
 	}
 	return true
+}
+
+func anthropicBuiltInSearchSources(
+	raw json.RawMessage,
+	seen map[string]struct{},
+) []websearch.Source {
+	if len(raw) == 0 {
+		return nil
+	}
+	var values []struct {
+		Type    string `json:"type"`
+		URL     string `json:"url"`
+		Title   string `json:"title"`
+		PageAge string `json:"page_age"`
+	}
+	if err := json.Unmarshal(raw, &values); err != nil {
+		return nil
+	}
+	sources := make([]websearch.Source, 0, len(values))
+	for _, value := range values {
+		if value.Type != "web_search_result" {
+			continue
+		}
+		urlValue := strings.TrimSpace(value.URL)
+		if urlValue == "" {
+			continue
+		}
+		if _, exists := seen[urlValue]; exists {
+			continue
+		}
+		seen[urlValue] = struct{}{}
+		title := strings.TrimSpace(value.Title)
+		if title == "" {
+			title = "Claude Web Search source"
+		}
+		content := title
+		if pageAge := strings.TrimSpace(value.PageAge); pageAge != "" {
+			content += " (" + pageAge + ")"
+		}
+		sources = append(sources, websearch.Source{
+			Title: title, URL: urlValue, Content: content,
+		})
+	}
+	return sources
 }
 
 func (state *anthropicStreamState) applyContentBlockDelta(

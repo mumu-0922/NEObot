@@ -519,6 +519,32 @@ describe("G3.1 server runtime/auth API adapters", () => {
             models: ["gpt-custom", "gpt-image-2"],
           });
         }
+        if (
+          String(input).endsWith(
+            "/v1/admin/providers/CUSTOM/built-in-search-test",
+          )
+        ) {
+          return Response.json({
+            provider: {
+              id: "CUSTOM",
+              name: "Custom",
+              type: "OpenAI Compatible",
+              baseUrl: "https://custom.example/v1",
+              models: ["gpt-custom"],
+              enabled: true,
+              hasApiKey: true,
+              source: "server-stored",
+              connectionTestValid: true,
+              modelBuiltInSearch: {
+                protocol: "openai_responses",
+                model: "gpt-custom",
+                source: "custom",
+                connectionTestValid: true,
+              },
+            },
+            sourceCount: 1,
+          });
+        }
         if (String(input).endsWith("/v1/admin/providers/CUSTOM")) {
           if (init?.method === "DELETE") {
             return new Response(null, { status: 204 });
@@ -591,6 +617,20 @@ describe("G3.1 server runtime/auth API adapters", () => {
       createServerProviderApiShell(http).activateAdminProvider("CUSTOM"),
     ).resolves.toMatchObject({ provider: { enabled: true } });
     await expect(
+      createServerProviderApiShell(http).testAdminModelBuiltInSearch("CUSTOM", {
+        protocol: "openai_responses",
+        model: "gpt-custom",
+      }),
+    ).resolves.toMatchObject({
+      provider: {
+        modelBuiltInSearch: {
+          model: "gpt-custom",
+          connectionTestValid: true,
+        },
+      },
+      sourceCount: 1,
+    });
+    await expect(
       createServerProviderApiShell(http).deleteAdminProviderConfig("CUSTOM"),
     ).resolves.toBeUndefined();
     await expect(
@@ -647,6 +687,14 @@ describe("G3.1 server runtime/auth API adapters", () => {
         url: "/mm-api/v1/admin/providers/CUSTOM/activate",
         method: "POST",
         body: undefined,
+      },
+      {
+        url: "/mm-api/v1/admin/providers/CUSTOM/built-in-search-test",
+        method: "POST",
+        body: {
+          protocol: "openai_responses",
+          model: "gpt-custom",
+        },
       },
       {
         url: "/mm-api/v1/admin/providers/CUSTOM",

@@ -237,6 +237,82 @@ func TestPostgresSearchProviderActivationKeepsExactlyOneActive(t *testing.T) {
 	}
 }
 
+func TestPostgresModelBuiltInSearchAttestationCommitsOnlyUnchangedConfig(t *testing.T) {
+	db := openRuntimeConfigPostgresIntegrationDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := db.ExecContext(ctx, `DELETE FROM provider_configs`); err != nil {
+		t.Fatalf("clear provider configs: %v", err)
+	}
+
+	repo := NewPostgresProviderConfigRepository(db)
+	stored, err := repo.UpsertProviderConfig(ctx, UpsertProviderConfigInput{
+		UserID: authDevelopmentUserID(), ProviderID: "BUILT_IN_SEARCH_TEST",
+		Label:              "Built-in Search Test",
+		EncryptedSecretRef: "encrypted-secret-ref",
+		Config: StoredProviderConfigPayload{
+			Kind:                       providerConfigKindModel,
+			Type:                       ProviderTypeOpenAICompatible,
+			BaseURL:                    "https://relay.example/v1",
+			Models:                     []string{"gpt-search"},
+			Enabled:                    true,
+			ModelBuiltInSearchProtocol: ModelBuiltInSearchProtocolOpenAIResponses,
+			ModelBuiltInSearchModel:    "gpt-search",
+		},
+	})
+	if err != nil {
+		t.Fatalf("upsert built-in Search provider: %v", err)
+	}
+	fingerprint := modelBuiltInSearchFingerprint(
+		stored,
+		stored.Config.ModelBuiltInSearchProtocol,
+		stored.Config.ModelBuiltInSearchModel,
+	)
+	input := CommitModelBuiltInSearchConnectionInput{
+		ID: stored.ID, UserID: stored.UserID, ProviderID: stored.ProviderID,
+		ExpectedEncryptedSecretRef: stored.EncryptedSecretRef,
+		ExpectedType:               stored.Config.Type,
+		ExpectedBaseURL:            stored.Config.BaseURL,
+		ExpectedProtocol:           stored.Config.ModelBuiltInSearchProtocol,
+		ExpectedModel:              stored.Config.ModelBuiltInSearchModel,
+		ConnectionTestSHA256:       fingerprint,
+		ConnectionTestedAt:         time.Now().UTC(),
+	}
+	committed, err := repo.CommitModelBuiltInSearchConnection(ctx, input)
+	if err != nil {
+		t.Fatalf("commit built-in Search attestation: %v", err)
+	}
+	if !ModelBuiltInSearchConnectionTestValid(committed) ||
+		committed.Config.ModelBuiltInSearchTestSHA256 != fingerprint ||
+		committed.Config.ModelBuiltInSearchTestedAt == "" {
+		t.Fatalf("committed built-in Search config = %#v", committed.Config)
+	}
+
+	staleCases := map[string]func(*CommitModelBuiltInSearchConnectionInput){
+		"base URL": func(value *CommitModelBuiltInSearchConnectionInput) {
+			value.ExpectedBaseURL = "https://changed.example/v1"
+		},
+		"protocol": func(value *CommitModelBuiltInSearchConnectionInput) {
+			value.ExpectedProtocol = ModelBuiltInSearchProtocolGeminiGoogle
+		},
+		"model": func(value *CommitModelBuiltInSearchConnectionInput) {
+			value.ExpectedModel = "gpt-other"
+		},
+	}
+	for name, mutate := range staleCases {
+		t.Run(name, func(t *testing.T) {
+			stale := input
+			mutate(&stale)
+			if _, err := repo.CommitModelBuiltInSearchConnection(
+				ctx,
+				stale,
+			); !errors.Is(err, ErrProviderConfigChanged) {
+				t.Fatalf("stale %s commit error = %v", name, err)
+			}
+		})
+	}
+}
+
 func authDevelopmentUserID() string {
 	return "00000000-0000-0000-0000-000000000001"
 }

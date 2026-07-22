@@ -185,17 +185,29 @@ func TestSearchResolverUsesEligibleOpenAIModelBuiltInOnlyWithoutExternal(t *test
 		WithProviderSecretVault(vault),
 	)
 
-	execution, err := service.ResolveActive(context.Background())
+	execution, err := service.ResolveModelBuiltIn(
+		context.Background(),
+		websearch.ModelBuiltInResolutionRequest{
+			ProviderID: "OPENAI_MODEL", ModelID: "gpt-5",
+			Protocol: websearch.ModelBuiltInOpenAI,
+		},
+	)
 	if err != nil || execution.Mode != websearch.ExecutionModelBuiltIn ||
 		execution.ModelBuiltIn != websearch.ModelBuiltInOpenAI {
-		t.Fatalf("ResolveActive() = %#v, %v", execution, err)
+		t.Fatalf("ResolveModelBuiltIn() = %#v, %v", execution, err)
 	}
 
 	repo.stored.Config.Type = ProviderTypeOpenAICompatible
 	repo.stored.Config.ConnectionTestSHA256 = ProviderConnectionTestFingerprint(repo.stored)
 	repo.stored.Config.ConnectionTestedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	if _, err := service.ResolveActive(context.Background()); !errors.Is(err, websearch.ErrNotConfigured) {
-		t.Fatalf("OpenAI Compatible ResolveActive() error = %v", err)
+	if _, err := service.ResolveModelBuiltIn(
+		context.Background(),
+		websearch.ModelBuiltInResolutionRequest{
+			ProviderID: "OPENAI_MODEL", ModelID: "gpt-5",
+			Protocol: websearch.ModelBuiltInOpenAI,
+		},
+	); !errors.Is(err, websearch.ErrNotConfigured) {
+		t.Fatalf("OpenAI Compatible ResolveModelBuiltIn() error = %v", err)
 	}
 }
 

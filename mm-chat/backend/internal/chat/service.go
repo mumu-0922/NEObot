@@ -36,6 +36,21 @@ func (s *Service) CreateConversation(
 	if input.Metadata == nil {
 		input.Metadata = map[string]any{}
 	}
+	if _, hasMode := input.Metadata["searchMode"]; !hasMode {
+		if _, hasLegacy := input.Metadata["useSearch"]; !hasLegacy {
+			conversations, err := s.repo.ListConversations(ctx)
+			if err != nil {
+				return Conversation{}, err
+			}
+			inherited := inheritedConversationSearchMode(conversations)
+			if err := normalizeConversationSearchMetadata(input.Metadata, &inherited); err != nil {
+				return Conversation{}, err
+			}
+		}
+	}
+	if err := normalizeConversationSearchMetadata(input.Metadata, nil); err != nil {
+		return Conversation{}, err
+	}
 	if err := normalizeConversationRAGMetadata(input.Metadata); err != nil {
 		return Conversation{}, err
 	}
@@ -95,6 +110,9 @@ func (s *Service) UpdateConversation(
 	if input.MetadataMerge == nil {
 		input.MetadataMerge = map[string]any{}
 	}
+	if err := normalizeConversationSearchMetadata(input.MetadataMerge, nil); err != nil {
+		return Conversation{}, err
+	}
 	if err := normalizeConversationRAGMetadata(input.MetadataMerge); err != nil {
 		return Conversation{}, err
 	}
@@ -103,6 +121,9 @@ func (s *Service) UpdateConversation(
 		input.ReplaceMetadata = &empty
 	}
 	if input.ReplaceMetadata != nil {
+		if err := normalizeConversationSearchMetadata(*input.ReplaceMetadata, nil); err != nil {
+			return Conversation{}, err
+		}
 		if err := normalizeConversationRAGMetadata(*input.ReplaceMetadata); err != nil {
 			return Conversation{}, err
 		}

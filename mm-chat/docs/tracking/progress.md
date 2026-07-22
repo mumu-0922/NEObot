@@ -1552,7 +1552,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           explicit-search force, Auto no-search, and compatibility planner.
     - [x] G19.4 Native Anthropic `tool_use`/`tool_result` continuation with
           Thinking Block preservation.
-    - [ ] G19.5 Strict `off | model_builtin | external` globe state,
+    - [x] G19.5 Strict `off | model_builtin | external` globe state,
           conversation persistence/inheritance, and tested built-in capability.
     - [ ] G19.6 Selected-Knowledge `search_knowledge` Tool migration with
           active BM25/pgvector/Jina retrieval and truthful `[K]`/`[W]` fusion.

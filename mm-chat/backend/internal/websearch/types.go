@@ -53,7 +53,17 @@ const (
 
 type ModelBuiltInProviderID string
 
-const ModelBuiltInOpenAI ModelBuiltInProviderID = "openai"
+const (
+	ModelBuiltInOpenAI    ModelBuiltInProviderID = "openai"
+	ModelBuiltInGemini    ModelBuiltInProviderID = "gemini"
+	ModelBuiltInAnthropic ModelBuiltInProviderID = "anthropic"
+)
+
+type ModelBuiltInResolutionRequest struct {
+	ProviderID string
+	ModelID    string
+	Protocol   ModelBuiltInProviderID
+}
 
 type Request struct {
 	Query      string
@@ -92,6 +102,14 @@ type ActiveExecution struct {
 
 type Resolver interface {
 	ResolveActive(context.Context) (ActiveExecution, error)
+}
+
+// ModeResolver keeps external and model-built-in configuration authority on
+// separate paths. A caller that selects one mode must never observe or fall
+// back to an execution configured for the other mode.
+type ModeResolver interface {
+	ResolveExternal(context.Context) (ActiveExecution, error)
+	ResolveModelBuiltIn(context.Context, ModelBuiltInResolutionRequest) (ActiveExecution, error)
 }
 
 type HTTPDoer interface {

@@ -444,9 +444,9 @@ func (s *Service) commitAdminSearchProviderConnection(
 	}, nil
 }
 
-// ResolveActive implements websearch.Resolver from server-owned Postgres/vault
-// state. An active external provider never falls back after resolution.
-func (s *Service) ResolveActive(ctx context.Context) (websearch.ActiveExecution, error) {
+// ResolveExternal resolves only the server-selected external provider. Model
+// built-in Search has a separate provider/model-bound authority path.
+func (s *Service) ResolveExternal(ctx context.Context) (websearch.ActiveExecution, error) {
 	if s == nil || s.repo == nil {
 		return websearch.ActiveExecution{}, websearch.ErrNotConfigured
 	}
@@ -483,20 +483,6 @@ func (s *Service) ResolveActive(ctx context.Context) (websearch.ActiveExecution,
 		return websearch.ActiveExecution{
 			Mode: websearch.ExecutionExternal, External: provider,
 		}, nil
-	}
-	for _, item := range stored {
-		if !IsModelProviderConfig(item) || !item.Config.Enabled ||
-			item.Config.Type != ProviderTypeOpenAI || !ProviderConnectionTestValid(item) {
-			continue
-		}
-		apiKey, err := s.decryptStoredProviderSecret(item, item.Config.Type)
-		if err == nil && strings.TrimSpace(apiKey) != "" {
-			apiKey = ""
-			return websearch.ActiveExecution{
-				Mode:         websearch.ExecutionModelBuiltIn,
-				ModelBuiltIn: websearch.ModelBuiltInOpenAI,
-			}, nil
-		}
 	}
 	return websearch.ActiveExecution{}, websearch.ErrNotConfigured
 }

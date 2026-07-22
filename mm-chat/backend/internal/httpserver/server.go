@@ -130,6 +130,46 @@ type runtimeChatProviderResolver struct {
 	timeout time.Duration
 }
 
+type runtimeModelBuiltInSearchTester struct {
+	timeout time.Duration
+}
+
+func (t runtimeModelBuiltInSearchTester) TestModelBuiltInSearch(
+	ctx context.Context,
+	input runtimeconfig.ModelBuiltInSearchTestInput,
+) (int, error) {
+	if input.Protocol != runtimeconfig.ModelBuiltInSearchProtocolOpenAIResponses {
+		return 0, runtimeconfig.ErrModelBuiltInSearchUnsupported
+	}
+	provider, err := chat.NewOpenAIProvider(chat.OpenAICompatibleProviderConfig{
+		BaseURL: input.BaseURL, APIKey: input.APIKey,
+		ProviderID: input.ProviderID, Timeout: t.timeout,
+	})
+	if err != nil {
+		return 0, err
+	}
+	events, err := provider.StreamChatWithModelBuiltInSearch(ctx, chat.ProviderRequest{
+		Prompt:   "Search the web for the OpenAI official documentation home page and answer briefly.",
+		ModelRef: chat.ModelRef{ProviderID: input.ProviderID, ModelID: input.Model},
+	})
+	if err != nil {
+		return 0, err
+	}
+	sourceCount := 0
+	for event := range events {
+		if event.Error != nil {
+			return 0, event.Error
+		}
+		if event.Type == chat.ProviderEventSearch && event.Search != nil {
+			sourceCount += len(event.Search.Sources)
+		}
+	}
+	if sourceCount <= 0 {
+		return 0, runtimeconfig.ErrModelBuiltInSearchTestFailed
+	}
+	return sourceCount, nil
+}
+
 type chatImageGenerator struct {
 	service *imagejobs.Service
 }
@@ -200,6 +240,8 @@ func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 		}
 	}
 	apiKey := ""
+	modelBuiltInSearchProtocol := ""
+	modelBuiltInSearchTestValid := false
 	source := strings.TrimSpace(provider.Source)
 	if strings.TrimSpace(provider.Source) == "server-default" {
 		resolved, err := r.service.ResolveServerDefaultProvider(ctx)
@@ -211,6 +253,8 @@ func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 		provider.Name = resolved.Name
 		provider.Type = string(resolved.Type)
 		provider.BaseURL = resolved.BaseURL
+		modelBuiltInSearchProtocol = resolved.ModelBuiltInSearchProtocol
+		modelBuiltInSearchTestValid = resolved.ModelBuiltInSearchTestValid
 	} else if strings.TrimSpace(provider.Source) == "server-stored" {
 		resolved, err := r.service.ResolveStoredProvider(ctx, provider.ID)
 		if err != nil {
@@ -221,6 +265,8 @@ func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 		provider.Name = resolved.Name
 		provider.Type = string(resolved.Type)
 		provider.BaseURL = resolved.BaseURL
+		modelBuiltInSearchProtocol = resolved.ModelBuiltInSearchProtocol
+		modelBuiltInSearchTestValid = resolved.ModelBuiltInSearchTestValid
 	} else {
 		var err error
 		apiKey, err = r.service.ProviderAPIKey(provider)
@@ -245,6 +291,19 @@ func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 		}
 		return runtimeChatProviderResolution(resolved, source, provider), nil
 	case "openai compatible", "openai_compatible", "openai-compatible", "":
+		if modelBuiltInSearchTestValid &&
+			modelBuiltInSearchProtocol == runtimeconfig.ModelBuiltInSearchProtocolOpenAIResponses {
+			resolved, err := chat.NewOpenAIProvider(chat.OpenAICompatibleProviderConfig{
+				BaseURL: runtimeProviderBaseURL(provider), APIKey: apiKey,
+				ProviderID: strings.TrimSpace(provider.ID), Timeout: r.timeout,
+			})
+			if err != nil {
+				return chat.RuntimeProviderResolution{}, chat.ValidationError{
+					Code: "PROVIDER_CONFIG_UNSUPPORTED", Message: "runtime provider configuration is unsupported",
+				}
+			}
+			return runtimeChatProviderResolution(resolved, source, provider), nil
+		}
 		resolved, err := chat.NewOpenAICompatibleProvider(chat.OpenAICompatibleProviderConfig{
 			BaseURL:    runtimeProviderBaseURL(provider),
 			APIKey:     apiKey,
@@ -683,6 +742,9 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		runtimeconfig.WithProviderConfigRepository(resolvedOptions.runtimeConfigRepo),
 		runtimeconfig.WithTaskModelSettingsRepository(resolvedOptions.taskModelRepo),
 		runtimeconfig.WithProviderSecretVault(resolvedOptions.providerSecretVault),
+		runtimeconfig.WithModelBuiltInSearchTester(runtimeModelBuiltInSearchTester{
+			timeout: cfg.Provider.Timeout,
+		}),
 		runtimeconfig.WithSearchAvailability(func(ctx context.Context) bool {
 			_, err := webSearchService.ResolveActive(ctx)
 			return err == nil

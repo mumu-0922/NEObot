@@ -8734,3 +8734,19 @@ A real `gpt-5.6-sol + Tavily` shared-loop regression passed and its temporary
 conversation was deleted. Exact evidence and rollback are in
 `docs/tracking/g19-tool-loop-process-trace-process.md` and
 `docs/contracts/chat-tool-loop.md`.
+
+## 2026-07-22 — G19.5 three-state Search and built-in capability administration
+
+The globe now persists exactly one `off | model_builtin | external` mode, new
+conversations inherit the latest server mode, and the first message uses that
+inherited state. Official OpenAI/Gemini/Anthropic built-in Search streams and a
+server-owned custom compatible attestation route are wired without cross-mode
+fallback. Custom proof binds the exact provider, Base URL, encrypted secret,
+protocol, and model and is invalidated by configuration drift. Full Go and
+Frontend gates, disposable Postgres CAS proof, source image rebuild, health,
+mode reload, and Tavily regression passed. The configured compatible relay
+returned no Search sources for all four chat models, correctly retained no
+attestation, and was restored to its original state; no official credential is
+currently available for a positive live vendor call. Exact evidence and
+rollback are in `docs/tracking/g19-tool-loop-process-trace-process.md` and
+`docs/contracts/chat-tool-loop.md`.

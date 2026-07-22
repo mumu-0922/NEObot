@@ -1,6 +1,7 @@
 package runtimeconfig
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -318,6 +319,55 @@ func TestHandlerRoutesProviderConnectionTestAndActivation(t *testing.T) {
 	if wrongMethod.Code != http.StatusMethodNotAllowed ||
 		wrongMethod.Header().Get("Allow") != http.MethodPost {
 		t.Fatalf("wrong method status = %d", wrongMethod.Code)
+	}
+}
+
+func TestHandlerRoutesModelBuiltInSearchAttestation(t *testing.T) {
+	vault := testProviderSecretVault(t, "handler-built-in-v1", 24)
+	stored := testStoredVaultProvider(
+		t,
+		vault,
+		"CUSTOM",
+		ProviderTypeOpenAICompatible,
+		"https://custom.example/v1",
+		"handler-built-in-key",
+	)
+	stored.Config.Models = []string{"gpt-search"}
+	stored.Config.ModelBuiltInSearchProtocol = ModelBuiltInSearchProtocolOpenAIResponses
+	stored.Config.ModelBuiltInSearchModel = "gpt-search"
+	attestStoredProvider(&stored, true)
+	repo := &fakeProviderConfigRepository{ok: true, stored: stored}
+	var tested ModelBuiltInSearchTestInput
+	handler := NewHandler(NewService(
+		config.Config{},
+		WithProviderConfigRepository(repo),
+		WithProviderSecretVault(vault),
+		WithModelBuiltInSearchTester(modelBuiltInSearchTesterFunc(func(
+			_ context.Context,
+			input ModelBuiltInSearchTestInput,
+		) (int, error) {
+			tested = input
+			return 1, nil
+		})),
+	))
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(
+		http.MethodPost,
+		"/v1/admin/providers/CUSTOM/built-in-search-test",
+		strings.NewReader(`{"protocol":"openai_responses","model":"gpt-search"}`),
+	))
+	if recorder.Code != http.StatusOK ||
+		!strings.Contains(recorder.Body.String(), `"sourceCount":1`) ||
+		!strings.Contains(recorder.Body.String(), `"connectionTestValid":true`) ||
+		tested.ProviderID != "CUSTOM" || tested.Model != "gpt-search" ||
+		tested.APIKey != "handler-built-in-key" {
+		t.Fatalf(
+			"built-in test status/body/input = %d / %s / %#v",
+			recorder.Code,
+			recorder.Body.String(),
+			tested,
+		)
 	}
 }
 

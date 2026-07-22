@@ -333,6 +333,75 @@ WHERE user_id = $1
 	return stored, nil
 }
 
+func (r *PostgresProviderConfigRepository) CommitModelBuiltInSearchConnection(
+	ctx context.Context,
+	input CommitModelBuiltInSearchConnectionInput,
+) (StoredProviderConfig, error) {
+	if r == nil || r.db == nil {
+		return StoredProviderConfig{}, ErrDatabaseRequired
+	}
+	testedAt := input.ConnectionTestedAt.UTC().Format(time.RFC3339Nano)
+	var stored StoredProviderConfig
+	var encodedConfig []byte
+	var secretRef sql.NullString
+	err := r.db.QueryRowContext(ctx, `
+UPDATE provider_configs
+SET config = jsonb_set(
+        jsonb_set(
+          config,
+          '{modelBuiltInSearchTestSha256}',
+          to_jsonb($9::text),
+          true
+        ),
+        '{modelBuiltInSearchTestedAt}',
+        to_jsonb($10::text),
+        true
+      ),
+    updated_at = now()
+WHERE id = $1
+  AND user_id = $2
+  AND provider_id = $3
+  AND deleted_at IS NULL
+  AND encrypted_secret_ref IS NOT DISTINCT FROM NULLIF($4, '')
+  AND COALESCE(config->>'kind', '') IN ('', 'model')
+  AND COALESCE(config->>'type', '') = $5
+  AND COALESCE(config->>'baseUrl', '') = $6
+  AND COALESCE(config->>'modelBuiltInSearchProtocol', '') = $7
+  AND COALESCE(config->>'modelBuiltInSearchModel', '') = $8
+  AND $9 <> ''
+RETURNING id::text, user_id::text, provider_id, label, encrypted_secret_ref, config
+`,
+		input.ID,
+		input.UserID,
+		input.ProviderID,
+		input.ExpectedEncryptedSecretRef,
+		string(input.ExpectedType),
+		input.ExpectedBaseURL,
+		input.ExpectedProtocol,
+		input.ExpectedModel,
+		input.ConnectionTestSHA256,
+		testedAt,
+	).Scan(
+		&stored.ID,
+		&stored.UserID,
+		&stored.ProviderID,
+		&stored.Label,
+		&secretRef,
+		&encodedConfig,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return StoredProviderConfig{}, ErrProviderConfigChanged
+		}
+		return StoredProviderConfig{}, err
+	}
+	stored.EncryptedSecretRef = secretRef.String
+	if err := json.Unmarshal(encodedConfig, &stored.Config); err != nil {
+		return StoredProviderConfig{}, ErrProviderConfigUnsupported
+	}
+	return stored, nil
+}
+
 func (r *PostgresProviderConfigRepository) DeleteProviderConfig(
 	ctx context.Context,
 	userID string,

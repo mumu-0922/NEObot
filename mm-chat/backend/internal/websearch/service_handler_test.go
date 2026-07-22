@@ -16,6 +16,32 @@ type fixedResolver struct {
 	calls     int
 }
 
+type fixedModeResolver struct {
+	external       ActiveExecution
+	builtIn        ActiveExecution
+	externalCalls  int
+	builtInCalls   int
+	builtInRequest ModelBuiltInResolutionRequest
+}
+
+func (r *fixedModeResolver) ResolveActive(ctx context.Context) (ActiveExecution, error) {
+	return r.ResolveExternal(ctx)
+}
+
+func (r *fixedModeResolver) ResolveExternal(context.Context) (ActiveExecution, error) {
+	r.externalCalls++
+	return r.external, nil
+}
+
+func (r *fixedModeResolver) ResolveModelBuiltIn(
+	_ context.Context,
+	request ModelBuiltInResolutionRequest,
+) (ActiveExecution, error) {
+	r.builtInCalls++
+	r.builtInRequest = request
+	return r.builtIn, nil
+}
+
 func (r *fixedResolver) ResolveActive(context.Context) (ActiveExecution, error) {
 	r.calls++
 	return r.execution, r.err
@@ -85,7 +111,7 @@ func TestServiceRejectsInvalidOrModelBuiltInExecution(t *testing.T) {
 		{
 			name: "unsupported model built-in",
 			execution: ActiveExecution{
-				Mode: ExecutionModelBuiltIn, ModelBuiltIn: "gemini",
+				Mode: ExecutionModelBuiltIn, ModelBuiltIn: "unknown",
 			},
 			want: ErrInvalidConfig,
 		},
@@ -98,6 +124,48 @@ func TestServiceRejectsInvalidOrModelBuiltInExecution(t *testing.T) {
 				t.Fatalf("Search() error = %v, want %v", err, tt.want)
 			}
 		})
+	}
+}
+
+func TestServiceResolvesSelectedSearchModeWithoutCrossModeFallback(t *testing.T) {
+	provider := &searchProbe{id: ProviderTavily}
+	resolver := &fixedModeResolver{
+		external: ActiveExecution{Mode: ExecutionExternal, External: provider},
+		builtIn: ActiveExecution{
+			Mode: ExecutionModelBuiltIn, ModelBuiltIn: ModelBuiltInAnthropic,
+		},
+	}
+	service := NewService(resolver)
+
+	external, err := service.ResolveExternal(context.Background())
+	if err != nil || external.External != provider ||
+		resolver.externalCalls != 1 || resolver.builtInCalls != 0 {
+		t.Fatalf("external execution = %#v/%v, calls=%d/%d", external, err, resolver.externalCalls, resolver.builtInCalls)
+	}
+
+	request := ModelBuiltInResolutionRequest{
+		ProviderID: "ANTHROPIC", ModelID: "claude-sonnet-4-5",
+		Protocol: ModelBuiltInAnthropic,
+	}
+	builtIn, err := service.ResolveModelBuiltIn(context.Background(), request)
+	if err != nil || builtIn.ModelBuiltIn != ModelBuiltInAnthropic ||
+		resolver.externalCalls != 1 || resolver.builtInCalls != 1 ||
+		resolver.builtInRequest != request {
+		t.Fatalf("built-in execution = %#v/%v, calls=%d/%d request=%#v", builtIn, err, resolver.externalCalls, resolver.builtInCalls, resolver.builtInRequest)
+	}
+
+	resolver.builtIn = resolver.external
+	if _, err := service.ResolveModelBuiltIn(
+		context.Background(),
+		request,
+	); !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("cross-mode built-in resolution error = %v", err)
+	}
+	resolver.external = ActiveExecution{
+		Mode: ExecutionModelBuiltIn, ModelBuiltIn: ModelBuiltInAnthropic,
+	}
+	if _, err := service.ResolveExternal(context.Background()); !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("cross-mode external resolution error = %v", err)
 	}
 }
 

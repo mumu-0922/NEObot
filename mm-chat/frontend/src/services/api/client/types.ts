@@ -433,6 +433,13 @@ export interface AdminProviderConfigDTO {
   source: "server-default" | "server-stored";
   connectionTestValid: boolean;
   connectionTestedAt?: string;
+  modelBuiltInSearch?: {
+    protocol?: string;
+    model?: string;
+    source: "official" | "custom" | "none";
+    connectionTestValid: boolean;
+    connectionTestedAt?: string;
+  };
 }
 
 export interface AdminProviderConfigsDTO {
@@ -447,12 +454,19 @@ export interface UpdateAdminProviderConfigInput {
   enabled?: boolean;
   apiKeySecret?: unknown;
   clearApiKey?: boolean;
+  modelBuiltInSearchProtocol?: string;
+  modelBuiltInSearchModel?: string;
   signal?: AbortSignal;
 }
 
 export interface AdminProviderConnectionDTO {
   provider: AdminProviderConfigDTO;
   models: string[];
+}
+
+export interface AdminModelBuiltInSearchConnectionDTO {
+  provider: AdminProviderConfigDTO;
+  sourceCount: number;
 }
 
 export interface ProviderApi {
@@ -474,6 +488,10 @@ export interface ProviderApi {
     providerId: string,
     signal?: AbortSignal,
   ): Promise<AdminProviderConnectionDTO>;
+  testAdminModelBuiltInSearch(
+    providerId: string,
+    input: { protocol: string; model: string; signal?: AbortSignal },
+  ): Promise<AdminModelBuiltInSearchConnectionDTO>;
   deleteAdminProviderConfig(providerId: string): Promise<void>;
 }
 

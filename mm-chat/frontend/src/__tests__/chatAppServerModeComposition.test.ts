@@ -70,6 +70,10 @@ describe("ChatApp server mode composition", () => {
     expect(chatApp).toContain("persistServerSearchMode(searchMode)");
     expect(chatApp).toContain("searchMode: currentSearchMode");
     expect(chatApp).toContain(
+      "const processingSearchMode = normalizeSearchMode(",
+    );
+    expect(chatApp).toContain("config: processingChatConfig");
+    expect(chatApp).toContain(
       "isReasoningEnabled={composerChatConfig.useReasoning}",
     );
     expect(chatApp).toContain(

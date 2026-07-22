@@ -100,10 +100,11 @@ Provider adapters must preserve their native continuation form:
   matching call ID.
 - Anthropic: assistant `tool_use` followed by user `tool_result`, retaining any
   required Thinking Block/signature.
-- Gemini currently uses Google's documented OpenAI-compatible endpoint and the
-  same `tool_calls`/`role=tool` continuation. A future native Gemini adapter
-  must instead preserve `functionCall`/`functionResponse`, thought signatures,
-  and part ordering.
+- Gemini external function tools currently use Google's documented OpenAI-
+  compatible endpoint and the same `tool_calls`/`role=tool` continuation.
+  Gemini model-built-in Search uses native `streamGenerateContent` with
+  `google_search`; a future native generic Tool adapter must preserve
+  `functionCall`/`functionResponse`, thought signatures, and part ordering.
 
 Streaming Tool arguments may arrive in fragments. Go must accumulate them by
 provider call identity, reject malformed/oversized/unknown arguments, and never
@@ -160,6 +161,25 @@ in-flight Tool request. A cancelled loop emits exactly one terminal
 - Official built-in Search is admitted only through an explicit provider/model
   capability. A custom OpenAI-compatible model requires administrator opt-in
   and a successful bounded real capability test.
+
+Built-in Search authority is provider/model exact:
+
+- official OpenAI uses Responses Web Search, Gemini uses native Google Search,
+  and Anthropic uses `web_search_20250305`;
+- image, audio, realtime, embedding, transcription, and TTS model families are
+  never admitted as chat Search capability;
+- custom OpenAI-compatible providers may opt into `openai_responses` only and
+  must name one model from the provider's persisted model list;
+- `POST /v1/admin/providers/{providerId}/built-in-search-test` performs a real,
+  bounded request and attests only when the provider returns at least one
+  Search source; and
+- the custom attestation fingerprint binds provider ID/type, normalized Base
+  URL, encrypted secret reference, protocol, and exact model. Changing any
+  bound field invalidates the attestation before runtime use.
+
+The external resolver and model-built-in resolver are separate authority
+paths. Neither scans or returns the other mode, and a capability failure
+degrades without a cross-mode fallback.
 
 ## 5. Tool registry and approvals
 

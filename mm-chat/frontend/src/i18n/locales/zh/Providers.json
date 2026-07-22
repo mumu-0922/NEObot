@@ -45,5 +45,13 @@
   "modelCapabilitiesAria": "模型能力",
   "keyStoredOnServer": "密钥会通过 BYOK 加密后保存到后端，浏览器不会保存明文。",
   "saveServerDefault": "保存到后端",
-  "savingServerDefault": "保存中…"
+  "savingServerDefault": "保存中…",
+  "builtInSearch": "模型内置搜索",
+  "builtInSearchDesc": "仅为该 OpenAI Compatible 供应商启用 Responses Web Search，必须选择模型并通过真实测试。",
+  "builtInSearchModel": "选择测试模型",
+  "testBuiltInSearch": "测试并启用",
+  "retestBuiltInSearch": "重新测试",
+  "builtInSearchModelRequired": "请先选择一个模型。",
+  "builtInSearchTestPassed": "内置搜索测试通过，获得 {count} 个来源。",
+  "builtInSearchTestFailed": "内置搜索测试失败。"
 }

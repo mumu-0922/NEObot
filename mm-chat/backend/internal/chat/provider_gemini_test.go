@@ -124,4 +124,57 @@ func TestGeminiProviderRetainsToolPlanner(t *testing.T) {
 	var _ ToolRoundProvider = (*GeminiProvider)(nil)
 	var _ ToolPlanner = (*GeminiProvider)(nil)
 	var _ ModelRefResolver = (*GeminiProvider)(nil)
+	var _ ModelBuiltInSearchProvider = (*GeminiProvider)(nil)
 }
+
+func TestGeminiProviderStreamsNativeGoogleSearchSources(t *testing.T) {
+	var request map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1beta/models/gemini-2.5-flash:streamGenerateContent" ||
+			r.URL.Query().Get("alt") != "sse" || r.Header.Get("x-goog-api-key") != "gemini-key" {
+			t.Fatalf("unexpected Gemini Search request %s", r.URL.Redacted())
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"grounded answer\"}]},\"groundingMetadata\":{\"groundingChunks\":[{\"web\":{\"uri\":\"https://example.com/source\",\"title\":\"Fixture source\"}}]}}],\"usageMetadata\":{\"promptTokenCount\":7,\"candidatesTokenCount\":3,\"totalTokenCount\":10}}\n\n"))
+	}))
+	defer upstream.Close()
+
+	provider, err := NewGeminiProvider(OpenAICompatibleProviderConfig{
+		BaseURL: upstream.URL, APIKey: "gemini-key", ProviderID: "GEMINI",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := provider.StreamChatWithModelBuiltInSearch(
+		context.Background(),
+		ProviderRequest{
+			Prompt:   "latest fixture",
+			ModelRef: ModelRef{ProviderID: "GEMINI", ModelID: "gemini-2.5-flash"},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := ""
+	sourceCount := 0
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		content += event.Delta
+		if event.Search != nil {
+			sourceCount += len(event.Search.Sources)
+		}
+	}
+	tools, _ := request["tools"].([]any)
+	tool, _ := mapValue(toAnySlice(tools), 0)
+	if content != "grounded answer" || sourceCount != 1 || len(tools) != 1 ||
+		tool["google_search"] == nil {
+		t.Fatalf("content/sources/request = %q / %d / %#v", content, sourceCount, request)
+	}
+}
+
+func toAnySlice(values []any) []any { return values }

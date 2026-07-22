@@ -184,6 +184,8 @@ cumulative usage, Citation reload, and `204 -> 404` cleanup.
 
 ## G19.5 Three-state Search and built-in capability administration
 
+Status: complete (2026-07-22).
+
 - Complete the globe popover with `off`, `model_builtin`, and `external`.
 - Persist the exact mode per conversation and the last-used inheritance source
   for new conversations.
@@ -193,7 +195,21 @@ cumulative usage, Citation reload, and `204 -> 404` cleanup.
   double execution.
 
 Promotion gate: mode-transition, reload, model-switch, unsupported-capability,
-no-silent-fallback, and real built-in Search tests pass with the selected model.
+and no-silent-fallback tests pass; provider-native positive fixtures pass; each
+configured custom provider either passes its real source-bearing test or stays
+disabled after a real negative test.
+
+Passed boundary: the globe now exposes one persisted radio choice across all
+three modes. New conversations inherit the latest server-owned mode, including
+the first message created from the empty composer. Official OpenAI, Gemini, and
+Anthropic built-in streams have provider fixtures; custom compatible providers
+must pass an exact provider/model real test whose attestation is invalidated by
+provider, type, Base URL, secret, protocol, or model changes. The deployed
+compatible relay returned no Search sources for all four configured chat
+models, so each real test failed closed and no attestation was retained. The
+original provider state was restored. External Tavily remained independently
+healthy and returned three sources; temporary mode/reload conversations were
+deleted.
 
 ## G19.6 Knowledge Tool migration
 

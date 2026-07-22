@@ -3,6 +3,17 @@ import type { LocalEncryptedSecretEnvelope } from "../security/localSecrets";
 export type ProviderType =
   "Gemini" | "OpenAI" | "OpenAI Compatible" | "Anthropic";
 
+export type ModelBuiltInSearchProtocol =
+  "openai_responses" | "gemini_google_search" | "anthropic_web_search";
+
+export interface ModelBuiltInSearchConfig {
+  protocol?: ModelBuiltInSearchProtocol;
+  model?: string;
+  source: "official" | "custom" | "none";
+  connectionTestValid: boolean;
+  connectionTestedAt?: string;
+}
+
 export interface ModelProvider {
   id: string;
   name: string;
@@ -15,6 +26,7 @@ export interface ModelProvider {
   modelsList?: string[];
   isServerDefault?: boolean;
   isServerManaged?: boolean;
+  modelBuiltInSearch?: ModelBuiltInSearchConfig;
 }
 
 export interface ModelMetadata {

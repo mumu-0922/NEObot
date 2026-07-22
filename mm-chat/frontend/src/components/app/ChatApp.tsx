@@ -1492,6 +1492,15 @@ const ChatApp = () => {
           .getState()
           .serverReadState.sessions.find((s) => s.id === targetSessionId) ||
         currentSession;
+      const processingSearchMode = normalizeSearchMode(
+        sessionForProcessing?.config?.searchMode,
+        sessionForProcessing?.config?.useSearch,
+      );
+      const processingChatConfig = {
+        ...serverSessionChatConfig,
+        searchMode: processingSearchMode,
+        useSearch: searchModeEnabled(processingSearchMode),
+      };
       const effectiveContext =
         getEffectiveContextForSession(sessionForProcessing);
       const legacyKnowledgeCollectionIds =
@@ -1573,7 +1582,7 @@ const ChatApp = () => {
         parentMessageId,
         attachments: toServerMessageAttachments(uploadedAttachments),
         model: routedModel,
-        config: serverSessionChatConfig,
+        config: processingChatConfig,
         provider: runtimeProvider,
         systemInstruction,
         signal: generation.controller.signal,

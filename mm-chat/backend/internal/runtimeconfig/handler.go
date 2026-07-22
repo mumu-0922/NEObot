@@ -280,6 +280,21 @@ func (h *Handler) adminProviderConfigByID(w http.ResponseWriter, r *http.Request
 			response, err = h.service.TestAdminProviderConnection(r.Context(), providerID)
 		case "activate":
 			response, err = h.service.ActivateAdminProvider(r.Context(), providerID)
+		case "built-in-search-test":
+			var request TestAdminModelBuiltInSearchRequest
+			if err := decodeJSON(w, r, &request); err != nil {
+				writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "request body is invalid")
+				return
+			}
+			builtInResponse, testErr := h.service.TestAdminModelBuiltInSearchConnection(
+				r.Context(), providerID, request,
+			)
+			if testErr != nil {
+				writeServiceError(w, testErr)
+				return
+			}
+			writeJSON(w, http.StatusOK, builtInResponse)
+			return
 		default:
 			writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
 			return
@@ -426,6 +441,12 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadGateway, "PROVIDER_CONNECTION_TEST_FAILED", "provider connection test failed")
 	case errors.Is(err, ErrProviderConfigChanged):
 		writeError(w, http.StatusConflict, "PROVIDER_CONFIG_CHANGED", "provider configuration changed during connection testing")
+	case errors.Is(err, ErrModelBuiltInSearchUnsupported):
+		writeError(w, http.StatusBadRequest, "MODEL_BUILT_IN_SEARCH_UNSUPPORTED", "model built-in search configuration is unsupported")
+	case errors.Is(err, ErrModelBuiltInSearchTestFailed):
+		writeError(w, http.StatusBadGateway, "MODEL_BUILT_IN_SEARCH_TEST_FAILED", "model built-in search connection test failed")
+	case errors.Is(err, ErrModelBuiltInSearchConfigChanged):
+		writeError(w, http.StatusConflict, "MODEL_BUILT_IN_SEARCH_CONFIG_CHANGED", "model built-in search configuration changed during connection testing")
 	case errors.Is(err, ErrTaskModelSettingsInvalid):
 		writeError(w, http.StatusBadRequest, "TASK_MODEL_SETTINGS_INVALID", "task model settings are invalid")
 	case errors.Is(err, ErrTaskModelUnavailable):

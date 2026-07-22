@@ -55,16 +55,17 @@ type ProviderModelsRequest struct {
 }
 
 type AdminProviderConfigResponse struct {
-	ID                  string       `json:"id"`
-	Name                string       `json:"name"`
-	Type                ProviderType `json:"type"`
-	BaseURL             string       `json:"baseUrl"`
-	Models              []string     `json:"models"`
-	Enabled             bool         `json:"enabled"`
-	HasAPIKey           bool         `json:"hasApiKey"`
-	Source              string       `json:"source"`
-	ConnectionTestValid bool         `json:"connectionTestValid"`
-	ConnectionTestedAt  *time.Time   `json:"connectionTestedAt,omitempty"`
+	ID                  string                                `json:"id"`
+	Name                string                                `json:"name"`
+	Type                ProviderType                          `json:"type"`
+	BaseURL             string                                `json:"baseUrl"`
+	Models              []string                              `json:"models"`
+	Enabled             bool                                  `json:"enabled"`
+	HasAPIKey           bool                                  `json:"hasApiKey"`
+	Source              string                                `json:"source"`
+	ConnectionTestValid bool                                  `json:"connectionTestValid"`
+	ConnectionTestedAt  *time.Time                            `json:"connectionTestedAt,omitempty"`
+	ModelBuiltInSearch  AdminModelBuiltInSearchConfigResponse `json:"modelBuiltInSearch"`
 }
 
 type AdminProviderConfigsResponse struct {
@@ -72,13 +73,15 @@ type AdminProviderConfigsResponse struct {
 }
 
 type UpdateAdminProviderConfigRequest struct {
-	Name         string         `json:"name"`
-	Type         string         `json:"type"`
-	BaseURL      string         `json:"baseUrl"`
-	Models       []string       `json:"models"`
-	Enabled      bool           `json:"enabled"`
-	APIKeySecret map[string]any `json:"apiKeySecret"`
-	ClearAPIKey  bool           `json:"clearApiKey"`
+	Name                       string         `json:"name"`
+	Type                       string         `json:"type"`
+	BaseURL                    string         `json:"baseUrl"`
+	Models                     []string       `json:"models"`
+	Enabled                    bool           `json:"enabled"`
+	APIKeySecret               map[string]any `json:"apiKeySecret"`
+	ClearAPIKey                bool           `json:"clearApiKey"`
+	ModelBuiltInSearchProtocol *string        `json:"modelBuiltInSearchProtocol,omitempty"`
+	ModelBuiltInSearchModel    *string        `json:"modelBuiltInSearchModel,omitempty"`
 }
 
 type ProviderRuntimeConfig struct {
@@ -98,6 +101,24 @@ type ProviderModelsResponse struct {
 type AdminProviderConnectionResponse struct {
 	Provider AdminProviderConfigResponse `json:"provider"`
 	Models   []string                    `json:"models"`
+}
+
+type AdminModelBuiltInSearchConfigResponse struct {
+	Protocol            string     `json:"protocol,omitempty"`
+	Model               string     `json:"model,omitempty"`
+	Source              string     `json:"source"`
+	ConnectionTestValid bool       `json:"connectionTestValid"`
+	ConnectionTestedAt  *time.Time `json:"connectionTestedAt,omitempty"`
+}
+
+type TestAdminModelBuiltInSearchRequest struct {
+	Protocol string `json:"protocol"`
+	Model    string `json:"model"`
+}
+
+type AdminModelBuiltInSearchConnectionResponse struct {
+	Provider    AdminProviderConfigResponse `json:"provider"`
+	SourceCount int                         `json:"sourceCount"`
 }
 
 type BYOKPublicKeyResponse struct {

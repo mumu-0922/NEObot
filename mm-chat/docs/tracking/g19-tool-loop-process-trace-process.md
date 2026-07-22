@@ -329,3 +329,77 @@ Rollback removes Anthropic `StreamToolRound`, the private round-state replay,
 and cross-round usage aggregation while retaining G19.3 OpenAI-compatible
 execution. Next: implement and independently commit G19.5 three-state Search
 and built-in capability administration.
+
+## 2026-07-22 — G19.5 three-state Search and built-in capability administration
+
+The composer globe now renders one strict radio selection for `off`,
+`model_builtin`, or `external`. Official OpenAI, Gemini, and Anthropic chat
+models are recognized with Responses Web Search, native Gemini
+`google_search`, and Anthropic `web_search_20250305` respectively. Unsupported
+models and unavailable configurations remain visible but disabled with a short
+reason. External and built-in resolver methods are separate, so selecting one
+mode cannot scan, execute, or fall back to the other.
+
+Custom OpenAI-compatible providers expose a server-managed administrator
+opt-in. The administrator selects one persisted model and runs a real bounded
+`openai_responses` Search test. A positive result must contain at least one
+provider Search source before Go commits the attestation. Its fingerprint binds
+provider ID/type, normalized Base URL, encrypted secret reference, protocol,
+and exact model; the Postgres commit uses a compare-and-set update so concurrent
+configuration changes reject the result. No key or attestation is browser
+authority.
+
+Conversation writes normalize the exact three-state mode and the legacy
+`useSearch` mirror. A create request without either field inherits the first
+valid mode from the server's latest-conversation ordering. The frontend also
+re-reads the newly created server session before sending its first message, so
+that first generation cannot accidentally use the pre-create `off` render
+snapshot.
+
+Changed surfaces:
+
+```text
+backend/internal/websearch/{types.go,service.go}
+backend/internal/runtimeconfig/{types.go,service.go,handler.go,repository_postgres.go,model_built_in_search.go}
+backend/internal/chat/{handler.go,service.go,search_mode.go,provider_gemini.go,provider_gemini_search.go,provider_anthropic.go}
+backend/internal/httpserver/server.go
+frontend/src/components/{app/ChatApp.tsx,chat/MessageInput.tsx,settings/ProviderSettings.tsx}
+frontend/src/lib/{chat/searchCapabilities.ts,providers/config.ts,providers/types.ts}
+frontend/src/services/api/client/{types.ts,server/providerApi.ts,local/providerApi.ts}
+frontend/src/i18n/locales/{zh,en,ja}/{MessageInput.json,Providers.json}
+```
+
+Verification:
+
+```text
+focused authority/provider/route/frontend tests                     passed
+disposable Postgres attestation commit/stale-config proof           passed; database dropped
+go vet ./...                                                        passed
+go test ./...                                                       passed
+go test -race ./...                                                 passed
+go build ./cmd/api                                                  passed
+pnpm format:check / lint / typecheck                                passed
+pnpm test                                                           190 files / 911 tests passed
+pnpm build                                                          passed
+Backend/Frontend source image rebuild                               passed
+Backend/Frontend/Postgres health                                    healthy
+mode persist -> inherit -> external update -> inherit -> reload     passed
+temporary mode-proof conversations                                  3 deleted; 0 remain
+real external Tavily regression                                     3 sources / 3 images
+real custom compatible built-in tests                               4 models rejected; 0 attested
+provider built-in configuration after smoke                         restored
+```
+
+The live compatible relay did not return provider Search sources for any of
+its four configured chat models. This is a valid negative capability result,
+not a positive official-provider proof: the new route returned the stable
+failure boundary and retained no attestation. No official OpenAI, Gemini, or
+Anthropic credential is currently configured, so their positive live calls
+remain conditional; native HTTP/provider fixtures cover their promoted code
+paths without mislabeling the relay as official evidence.
+
+Rollback removes the three-state menu addition, native built-in provider
+adapters, and custom attestation fields while preserving G19.3/G19.4 external
+Tool execution. Persisted JSON needs no schema rollback; legacy `useSearch`
+continues to map to `off|external`. Next: implement and independently commit
+G19.6 Knowledge Tool migration.

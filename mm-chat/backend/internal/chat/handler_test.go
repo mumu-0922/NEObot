@@ -1649,7 +1649,7 @@ func TestHandlerDegradesBuiltInSearchForOpenAICompatibleProvider(t *testing.T) {
 	)
 
 	assertStreamStatus(t, recorder, http.StatusOK)
-	if searchResolver.calls != 1 || provider.input.Prompt != "latest fixture" {
+	if searchResolver.calls != 0 || provider.input.Prompt != "latest fixture" {
 		t.Fatalf(
 			"resolver/provider fallback = %d / %#v",
 			searchResolver.calls,
@@ -1664,6 +1664,55 @@ func TestHandlerDegradesBuiltInSearchForOpenAICompatibleProvider(t *testing.T) {
 	if !ok || fusion["authority"] != sourceAuthorityModel ||
 		fusion["degradationReason"] != "model_builtin_unsupported" {
 		t.Fatalf("fusion metadata = %#v", messages[1].Metadata["fusion"])
+	}
+}
+
+func TestHandlerKeepsBuiltInAndExternalSearchResolverAuthoritySeparate(t *testing.T) {
+	externalProvider := &fakeWebSearchProvider{}
+	resolver := &modeAwareWebSearchResolver{
+		externalExecution: websearch.ActiveExecution{
+			Mode: websearch.ExecutionExternal, External: externalProvider,
+		},
+		builtInExecution: websearch.ActiveExecution{
+			Mode: websearch.ExecutionModelBuiltIn, ModelBuiltIn: websearch.ModelBuiltInOpenAI,
+		},
+	}
+	handler := NewHandler(
+		NewService(newFakeRepository()),
+		WithWebSearchService(websearch.NewService(resolver)),
+	)
+	provider := &modelBuiltInSearchProbe{}
+	modelRef := ModelRef{ProviderID: "CUSTOM", ModelID: "gpt-search"}
+
+	execution, builtIn, err := handler.resolveChatSearchExecution(
+		context.Background(), provider, modelRef, true,
+	)
+	if err != nil || execution == nil || builtIn != provider ||
+		resolver.builtInCalls != 1 || resolver.externalCalls != 0 ||
+		resolver.builtInRequest.ProviderID != modelRef.ProviderID ||
+		resolver.builtInRequest.ModelID != modelRef.ModelID ||
+		resolver.builtInRequest.Protocol != websearch.ModelBuiltInOpenAI {
+		t.Fatalf(
+			"built-in resolution = %#v/%T/%v, calls=%d/%d request=%#v",
+			execution,
+			builtIn,
+			err,
+			resolver.builtInCalls,
+			resolver.externalCalls,
+			resolver.builtInRequest,
+		)
+	}
+
+	external, err := handler.resolveExternalSearchExecution(context.Background())
+	if err != nil || external == nil || external.External != externalProvider ||
+		resolver.externalCalls != 1 || resolver.builtInCalls != 1 {
+		t.Fatalf(
+			"external resolution = %#v/%v, calls=%d/%d",
+			external,
+			err,
+			resolver.externalCalls,
+			resolver.builtInCalls,
+		)
 	}
 }
 
@@ -3881,6 +3930,36 @@ type fakeWebSearchResolver struct {
 func (r *fakeWebSearchResolver) ResolveActive(context.Context) (websearch.ActiveExecution, error) {
 	r.calls++
 	return r.execution, r.err
+}
+
+type modeAwareWebSearchResolver struct {
+	externalExecution websearch.ActiveExecution
+	builtInExecution  websearch.ActiveExecution
+	externalCalls     int
+	builtInCalls      int
+	builtInRequest    websearch.ModelBuiltInResolutionRequest
+}
+
+func (r *modeAwareWebSearchResolver) ResolveActive(
+	ctx context.Context,
+) (websearch.ActiveExecution, error) {
+	return r.ResolveExternal(ctx)
+}
+
+func (r *modeAwareWebSearchResolver) ResolveExternal(
+	context.Context,
+) (websearch.ActiveExecution, error) {
+	r.externalCalls++
+	return r.externalExecution, nil
+}
+
+func (r *modeAwareWebSearchResolver) ResolveModelBuiltIn(
+	_ context.Context,
+	request websearch.ModelBuiltInResolutionRequest,
+) (websearch.ActiveExecution, error) {
+	r.builtInCalls++
+	r.builtInRequest = request
+	return r.builtInExecution, nil
 }
 
 type fakeWebSearchProvider struct {

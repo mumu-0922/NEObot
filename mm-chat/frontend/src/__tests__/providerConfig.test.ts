@@ -94,6 +94,34 @@ describe("provider config normalization", () => {
     expect(normalizeModelProvider(provider)?.isServerManaged).toBe(true);
   });
 
+  it("preserves exact built-in Search attestation on backend reload", () => {
+    const [provider] = normalizeServerManagedProviderConfigs([
+      {
+        id: "CUSTOM",
+        name: "Backend Custom",
+        type: "OpenAI Compatible",
+        baseUrl: "https://custom.example/v1",
+        models: ["custom-model"],
+        enabled: true,
+        modelBuiltInSearch: {
+          protocol: "openai_responses",
+          model: "custom-model",
+          source: "custom",
+          connectionTestValid: true,
+          connectionTestedAt: "2026-07-22T10:00:00Z",
+        },
+      },
+    ]);
+
+    expect(provider?.modelBuiltInSearch).toEqual({
+      protocol: "openai_responses",
+      model: "custom-model",
+      source: "custom",
+      connectionTestValid: true,
+      connectionTestedAt: "2026-07-22T10:00:00Z",
+    });
+  });
+
   it("migrates persisted OpenAI providers to OpenAI Compatible", async () => {
     const migrated = await migrateCoreSettingsState({
       providers: [

@@ -1,4 +1,9 @@
-import type { ModelProvider, ProviderType } from "../../types";
+import type {
+  ModelBuiltInSearchConfig,
+  ModelBuiltInSearchProtocol,
+  ModelProvider,
+  ProviderType,
+} from "../../types";
 import {
   PROVIDER_CONFIG_LIMITS,
   PROVIDER_MODEL_LIMITS,
@@ -19,7 +24,47 @@ type ServerManagedProviderConfig = {
   baseUrl: string;
   models: string[];
   enabled: boolean;
+  modelBuiltInSearch?: {
+    protocol?: string;
+    model?: string;
+    source: "official" | "custom" | "none";
+    connectionTestValid: boolean;
+    connectionTestedAt?: string;
+  };
 };
+
+function isModelBuiltInSearchProtocol(
+  value: unknown,
+): value is ModelBuiltInSearchProtocol {
+  return (
+    value === "openai_responses" ||
+    value === "gemini_google_search" ||
+    value === "anthropic_web_search"
+  );
+}
+
+function normalizeModelBuiltInSearchConfig(
+  value: unknown,
+): ModelBuiltInSearchConfig | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const raw = value as Partial<ModelBuiltInSearchConfig>;
+  const source =
+    raw.source === "official" || raw.source === "custom" ? raw.source : "none";
+  return {
+    ...(isModelBuiltInSearchProtocol(raw.protocol)
+      ? { protocol: raw.protocol }
+      : {}),
+    ...(typeof raw.model === "string" && raw.model.trim()
+      ? { model: raw.model.trim().slice(0, 256) }
+      : {}),
+    source,
+    connectionTestValid: raw.connectionTestValid === true,
+    ...(typeof raw.connectionTestedAt === "string" &&
+    raw.connectionTestedAt.trim()
+      ? { connectionTestedAt: raw.connectionTestedAt.trim() }
+      : {}),
+  };
+}
 
 function trimString(value: unknown, maxChars: number): string {
   return typeof value === "string" ? value.trim().slice(0, maxChars) : "";
@@ -87,6 +132,9 @@ export function normalizeModelProvider(
   const type = normalizeProviderType(raw.type || fallback?.type);
   const models = normalizeModelList(raw.models);
   const modelsList = normalizeModelList(raw.modelsList || raw.models);
+  const modelBuiltInSearch = normalizeModelBuiltInSearchConfig(
+    raw.modelBuiltInSearch,
+  );
 
   return {
     id,
@@ -107,6 +155,7 @@ export function normalizeModelProvider(
     modelsList,
     ...(raw.isServerDefault ? { isServerDefault: true } : {}),
     ...(raw.isServerManaged ? { isServerManaged: true } : {}),
+    ...(modelBuiltInSearch ? { modelBuiltInSearch } : {}),
   };
 }
 
@@ -143,6 +192,7 @@ export function normalizeServerManagedProviderConfigs(
       modelsList: provider.models,
       isServerDefault: provider.id === SERVER_DEFAULT_PROVIDER_ID,
       isServerManaged: true,
+      modelBuiltInSearch: provider.modelBuiltInSearch,
     })),
   );
 }

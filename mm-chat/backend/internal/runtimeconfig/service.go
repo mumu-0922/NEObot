@@ -30,34 +30,38 @@ const (
 )
 
 var (
-	ErrBYOKNotConfigured              = errors.New("byok key is not configured")
-	ErrProviderModelsUnsupported      = errors.New("provider model listing is only available for server-default providers")
-	ErrPlaintextProviderSecret        = errors.New("plaintext provider secrets are not accepted")
-	ErrProviderSecretRequired         = errors.New("provider api key is required")
-	ErrProviderConfigUnsupported      = errors.New("provider configuration is unsupported")
-	ErrDatabaseRequired               = errors.New("database is required")
-	ErrProviderConfigNotFound         = errors.New("provider configuration was not found")
-	ErrProviderSecretVaultUnavailable = errors.New("provider secret vault is unavailable")
-	ErrProviderSecretInvalid          = errors.New("provider secret is invalid")
-	ErrProviderDisabled               = errors.New("provider is disabled")
-	ErrProviderActivationRequired     = errors.New("provider activation is required")
-	ErrProviderConnectionTestFailed   = errors.New("provider connection test failed")
-	ErrProviderConfigChanged          = errors.New("provider configuration changed during connection test")
-	ErrTaskModelSettingsInvalid       = errors.New("task model settings are invalid")
-	ErrTaskModelUnavailable           = errors.New("task model is unavailable")
+	ErrBYOKNotConfigured               = errors.New("byok key is not configured")
+	ErrProviderModelsUnsupported       = errors.New("provider model listing is only available for server-default providers")
+	ErrPlaintextProviderSecret         = errors.New("plaintext provider secrets are not accepted")
+	ErrProviderSecretRequired          = errors.New("provider api key is required")
+	ErrProviderConfigUnsupported       = errors.New("provider configuration is unsupported")
+	ErrDatabaseRequired                = errors.New("database is required")
+	ErrProviderConfigNotFound          = errors.New("provider configuration was not found")
+	ErrProviderSecretVaultUnavailable  = errors.New("provider secret vault is unavailable")
+	ErrProviderSecretInvalid           = errors.New("provider secret is invalid")
+	ErrProviderDisabled                = errors.New("provider is disabled")
+	ErrProviderActivationRequired      = errors.New("provider activation is required")
+	ErrProviderConnectionTestFailed    = errors.New("provider connection test failed")
+	ErrProviderConfigChanged           = errors.New("provider configuration changed during connection test")
+	ErrModelBuiltInSearchUnsupported   = errors.New("model built-in search configuration is unsupported")
+	ErrModelBuiltInSearchTestFailed    = errors.New("model built-in search connection test failed")
+	ErrModelBuiltInSearchConfigChanged = errors.New("model built-in search configuration changed during connection testing")
+	ErrTaskModelSettingsInvalid        = errors.New("task model settings are invalid")
+	ErrTaskModelUnavailable            = errors.New("task model is unavailable")
 )
 
 const maxProviderModelsResponseBytes = 2 << 20
 const maxStoredProviderSecretRefBytes = 96 << 10
 
 type Service struct {
-	cfg              config.Config
-	repo             ProviderConfigRepository
-	taskModelRepo    TaskModelSettingsRepository
-	providerSecrets  *providersecrets.Vault
-	searchHTTPClient websearch.HTTPDoer
-	ragHTTPClient    websearch.HTTPDoer
-	searchAvailable  func(context.Context) bool
+	cfg                      config.Config
+	repo                     ProviderConfigRepository
+	taskModelRepo            TaskModelSettingsRepository
+	providerSecrets          *providersecrets.Vault
+	searchHTTPClient         websearch.HTTPDoer
+	ragHTTPClient            websearch.HTTPDoer
+	searchAvailable          func(context.Context) bool
+	modelBuiltInSearchTester ModelBuiltInSearchTester
 
 	byokMu        sync.Mutex
 	ephemeralBYOK *rsa.PrivateKey
@@ -95,12 +99,19 @@ func WithProviderSecretVault(vault *providersecrets.Vault) ServiceOption {
 	}
 }
 
+func WithModelBuiltInSearchTester(tester ModelBuiltInSearchTester) ServiceOption {
+	return func(s *Service) {
+		s.modelBuiltInSearchTester = tester
+	}
+}
+
 type ProviderConfigRepository interface {
 	GetProviderConfig(ctx context.Context, userID string, providerID string) (StoredProviderConfig, bool, error)
 	ListProviderConfigs(ctx context.Context, userID string) ([]StoredProviderConfig, error)
 	UpsertProviderConfig(ctx context.Context, input UpsertProviderConfigInput) (StoredProviderConfig, error)
 	CommitProviderConnection(ctx context.Context, input CommitProviderConnectionInput) (StoredProviderConfig, error)
 	CommitSearchProviderConnection(ctx context.Context, input CommitSearchProviderConnectionInput) (StoredProviderConfig, error)
+	CommitModelBuiltInSearchConnection(ctx context.Context, input CommitModelBuiltInSearchConnectionInput) (StoredProviderConfig, error)
 	DeleteProviderConfig(ctx context.Context, userID string, providerID string) error
 }
 
@@ -114,16 +125,20 @@ type StoredProviderConfig struct {
 }
 
 type StoredProviderConfigPayload struct {
-	Kind                 string       `json:"kind,omitempty"`
-	Type                 ProviderType `json:"type"`
-	SearchProvider       string       `json:"searchProvider,omitempty"`
-	RAGProvider          string       `json:"ragProvider,omitempty"`
-	VoiceProvider        string       `json:"voiceProvider,omitempty"`
-	BaseURL              string       `json:"baseUrl"`
-	Models               []string     `json:"models"`
-	Enabled              bool         `json:"enabled"`
-	ConnectionTestSHA256 string       `json:"connectionTestSha256,omitempty"`
-	ConnectionTestedAt   string       `json:"connectionTestedAt,omitempty"`
+	Kind                         string       `json:"kind,omitempty"`
+	Type                         ProviderType `json:"type"`
+	SearchProvider               string       `json:"searchProvider,omitempty"`
+	RAGProvider                  string       `json:"ragProvider,omitempty"`
+	VoiceProvider                string       `json:"voiceProvider,omitempty"`
+	BaseURL                      string       `json:"baseUrl"`
+	Models                       []string     `json:"models"`
+	Enabled                      bool         `json:"enabled"`
+	ConnectionTestSHA256         string       `json:"connectionTestSha256,omitempty"`
+	ConnectionTestedAt           string       `json:"connectionTestedAt,omitempty"`
+	ModelBuiltInSearchProtocol   string       `json:"modelBuiltInSearchProtocol,omitempty"`
+	ModelBuiltInSearchModel      string       `json:"modelBuiltInSearchModel,omitempty"`
+	ModelBuiltInSearchTestSHA256 string       `json:"modelBuiltInSearchTestSha256,omitempty"`
+	ModelBuiltInSearchTestedAt   string       `json:"modelBuiltInSearchTestedAt,omitempty"`
 }
 
 type UpsertProviderConfigInput struct {
@@ -145,6 +160,32 @@ type CommitProviderConnectionInput struct {
 	ConnectionTestSHA256       string
 	ConnectionTestedAt         time.Time
 	Enabled                    bool
+}
+
+type CommitModelBuiltInSearchConnectionInput struct {
+	ID                         string
+	UserID                     string
+	ProviderID                 string
+	ExpectedEncryptedSecretRef string
+	ExpectedType               ProviderType
+	ExpectedBaseURL            string
+	ExpectedProtocol           string
+	ExpectedModel              string
+	ConnectionTestSHA256       string
+	ConnectionTestedAt         time.Time
+}
+
+type ModelBuiltInSearchTestInput struct {
+	ProviderID string
+	Type       ProviderType
+	BaseURL    string
+	APIKey     string
+	Protocol   string
+	Model      string
+}
+
+type ModelBuiltInSearchTester interface {
+	TestModelBuiltInSearch(context.Context, ModelBuiltInSearchTestInput) (int, error)
 }
 
 type EncryptedSecretEnvelope struct {
@@ -296,17 +337,21 @@ func (s *Service) fetchResolvedProviderModels(
 }
 
 type resolvedServerDefaultProvider struct {
-	Name                string
-	Type                ProviderType
-	BaseURL             string
-	Models              []string
-	Enabled             bool
-	Available           bool
-	APIKey              string
-	SecretRef           string
-	SecretErr           error
-	ConnectionTestValid bool
-	ConnectionTestedAt  string
+	Name                        string
+	Type                        ProviderType
+	BaseURL                     string
+	Models                      []string
+	Enabled                     bool
+	Available                   bool
+	APIKey                      string
+	SecretRef                   string
+	SecretErr                   error
+	ConnectionTestValid         bool
+	ConnectionTestedAt          string
+	ModelBuiltInSearchProtocol  string
+	ModelBuiltInSearchModel     string
+	ModelBuiltInSearchTestValid bool
+	ModelBuiltInSearchTestedAt  string
 }
 
 func (s *Service) AdminProviderConfig(ctx context.Context) (AdminProviderConfigResponse, error) {
@@ -453,6 +498,46 @@ func (s *Service) UpsertAdminProviderConfig(
 		connectionTestSHA256 = ""
 		connectionTestedAt = ""
 	}
+	builtInProtocol := ""
+	builtInModel := ""
+	builtInTestSHA256 := ""
+	builtInTestedAt := ""
+	if hasCurrent && currentStored.Config.Type == ProviderTypeOpenAICompatible {
+		builtInProtocol = strings.TrimSpace(currentStored.Config.ModelBuiltInSearchProtocol)
+		builtInModel = strings.TrimSpace(currentStored.Config.ModelBuiltInSearchModel)
+	}
+	if request.ModelBuiltInSearchProtocol != nil {
+		builtInProtocol = strings.TrimSpace(*request.ModelBuiltInSearchProtocol)
+	}
+	if request.ModelBuiltInSearchModel != nil {
+		builtInModel = strings.TrimSpace(*request.ModelBuiltInSearchModel)
+	}
+	if providerType != ProviderTypeOpenAICompatible {
+		builtInProtocol = ""
+		builtInModel = ""
+	} else {
+		var err error
+		builtInProtocol, builtInModel, err = normalizeCustomModelBuiltInSearch(
+			builtInProtocol,
+			builtInModel,
+		)
+		if err != nil || (builtInProtocol != "" && !modelListContains(models, builtInModel)) {
+			return AdminProviderConfigResponse{}, ErrModelBuiltInSearchUnsupported
+		}
+	}
+	if hasCurrent {
+		candidate := currentStored
+		candidate.EncryptedSecretRef = secretRef
+		candidate.Config.Type = providerType
+		candidate.Config.BaseURL = baseURL
+		candidate.Config.Models = models
+		candidate.Config.ModelBuiltInSearchProtocol = builtInProtocol
+		candidate.Config.ModelBuiltInSearchModel = builtInModel
+		if ModelBuiltInSearchConnectionTestValid(candidate) {
+			builtInTestSHA256 = currentStored.Config.ModelBuiltInSearchTestSHA256
+			builtInTestedAt = currentStored.Config.ModelBuiltInSearchTestedAt
+		}
+	}
 	enabled := hasCurrent && currentStored.Config.Enabled && request.Enabled && connectionTestValid
 	stored, err := s.repo.UpsertProviderConfig(ctx, UpsertProviderConfigInput{
 		UserID:             user.ID,
@@ -460,13 +545,17 @@ func (s *Service) UpsertAdminProviderConfig(
 		Label:              name,
 		EncryptedSecretRef: secretRef,
 		Config: StoredProviderConfigPayload{
-			Kind:                 providerConfigKindModel,
-			Type:                 providerType,
-			BaseURL:              baseURL,
-			Models:               models,
-			Enabled:              enabled,
-			ConnectionTestSHA256: connectionTestSHA256,
-			ConnectionTestedAt:   connectionTestedAt,
+			Kind:                         providerConfigKindModel,
+			Type:                         providerType,
+			BaseURL:                      baseURL,
+			Models:                       models,
+			Enabled:                      enabled,
+			ConnectionTestSHA256:         connectionTestSHA256,
+			ConnectionTestedAt:           connectionTestedAt,
+			ModelBuiltInSearchProtocol:   builtInProtocol,
+			ModelBuiltInSearchModel:      builtInModel,
+			ModelBuiltInSearchTestSHA256: builtInTestSHA256,
+			ModelBuiltInSearchTestedAt:   builtInTestedAt,
 		},
 	})
 	if err != nil {
@@ -527,17 +616,21 @@ func (s *Service) resolveStoredServerDefault(stored StoredProviderConfig) resolv
 	enabled := stored.Config.Enabled && connectionValid
 	available := enabled && secretErr == nil && len(models) > 0 && apiKey != ""
 	return resolvedServerDefaultProvider{
-		Name:                name,
-		Type:                providerType,
-		BaseURL:             baseURL,
-		Models:              models,
-		Enabled:             enabled,
-		Available:           available,
-		APIKey:              apiKey,
-		SecretRef:           secretRef,
-		SecretErr:           secretErr,
-		ConnectionTestValid: connectionValid,
-		ConnectionTestedAt:  stored.Config.ConnectionTestedAt,
+		Name:                        name,
+		Type:                        providerType,
+		BaseURL:                     baseURL,
+		Models:                      models,
+		Enabled:                     enabled,
+		Available:                   available,
+		APIKey:                      apiKey,
+		SecretRef:                   secretRef,
+		SecretErr:                   secretErr,
+		ConnectionTestValid:         connectionValid,
+		ConnectionTestedAt:          stored.Config.ConnectionTestedAt,
+		ModelBuiltInSearchProtocol:  stored.Config.ModelBuiltInSearchProtocol,
+		ModelBuiltInSearchModel:     stored.Config.ModelBuiltInSearchModel,
+		ModelBuiltInSearchTestValid: ModelBuiltInSearchConnectionTestValid(stored),
+		ModelBuiltInSearchTestedAt:  stored.Config.ModelBuiltInSearchTestedAt,
 	}
 }
 
@@ -556,17 +649,21 @@ func (s *Service) resolveStoredProvider(stored StoredProviderConfig) resolvedSer
 	connectionValid := ProviderConnectionTestValid(stored)
 	enabled := stored.Config.Enabled && connectionValid
 	return resolvedServerDefaultProvider{
-		Name:                nonEmpty(stored.Label, "New Provider"),
-		Type:                providerType,
-		BaseURL:             strings.TrimSpace(stored.Config.BaseURL),
-		Models:              models,
-		Enabled:             enabled,
-		Available:           enabled && secretErr == nil && len(models) > 0 && apiKey != "",
-		APIKey:              apiKey,
-		SecretRef:           secretRef,
-		SecretErr:           secretErr,
-		ConnectionTestValid: connectionValid,
-		ConnectionTestedAt:  stored.Config.ConnectionTestedAt,
+		Name:                        nonEmpty(stored.Label, "New Provider"),
+		Type:                        providerType,
+		BaseURL:                     strings.TrimSpace(stored.Config.BaseURL),
+		Models:                      models,
+		Enabled:                     enabled,
+		Available:                   enabled && secretErr == nil && len(models) > 0 && apiKey != "",
+		APIKey:                      apiKey,
+		SecretRef:                   secretRef,
+		SecretErr:                   secretErr,
+		ConnectionTestValid:         connectionValid,
+		ConnectionTestedAt:          stored.Config.ConnectionTestedAt,
+		ModelBuiltInSearchProtocol:  stored.Config.ModelBuiltInSearchProtocol,
+		ModelBuiltInSearchModel:     stored.Config.ModelBuiltInSearchModel,
+		ModelBuiltInSearchTestValid: ModelBuiltInSearchConnectionTestValid(stored),
+		ModelBuiltInSearchTestedAt:  stored.Config.ModelBuiltInSearchTestedAt,
 	}
 }
 
@@ -576,6 +673,7 @@ func adminProviderResponse(
 	source string,
 ) AdminProviderConfigResponse {
 	connectionTestedAt, connectionTestValid := parseProviderConnectionTestState(provider)
+	builtIn := adminModelBuiltInSearchResponse(provider)
 	return AdminProviderConfigResponse{
 		ID:                  providerID,
 		Name:                provider.Name,
@@ -587,7 +685,38 @@ func adminProviderResponse(
 		Source:              source,
 		ConnectionTestValid: connectionTestValid,
 		ConnectionTestedAt:  connectionTestedAt,
+		ModelBuiltInSearch:  builtIn,
 	}
+}
+
+func adminModelBuiltInSearchResponse(
+	provider resolvedServerDefaultProvider,
+) AdminModelBuiltInSearchConfigResponse {
+	if protocol := officialModelBuiltInSearchProtocol(provider.Type); protocol != "" {
+		return AdminModelBuiltInSearchConfigResponse{
+			Protocol:            protocol,
+			Source:              "official",
+			ConnectionTestValid: provider.ConnectionTestValid,
+		}
+	}
+	response := AdminModelBuiltInSearchConfigResponse{
+		Protocol:            strings.TrimSpace(provider.ModelBuiltInSearchProtocol),
+		Model:               strings.TrimSpace(provider.ModelBuiltInSearchModel),
+		Source:              "none",
+		ConnectionTestValid: provider.ModelBuiltInSearchTestValid,
+	}
+	if response.Protocol != "" {
+		response.Source = "custom"
+	}
+	if response.ConnectionTestValid {
+		if testedAt, err := time.Parse(time.RFC3339Nano, provider.ModelBuiltInSearchTestedAt); err == nil {
+			testedAt = testedAt.UTC()
+			response.ConnectionTestedAt = &testedAt
+		} else {
+			response.ConnectionTestValid = false
+		}
+	}
+	return response
 }
 
 func (s *Service) decryptStoredProviderSecret(
@@ -716,12 +845,15 @@ func normalizeModelList(models []string) []string {
 }
 
 type ResolvedProvider struct {
-	ID      string
-	Name    string
-	Type    ProviderType
-	BaseURL string
-	APIKey  string
-	Models  []string
+	ID                          string
+	Name                        string
+	Type                        ProviderType
+	BaseURL                     string
+	APIKey                      string
+	Models                      []string
+	ModelBuiltInSearchProtocol  string
+	ModelBuiltInSearchModel     string
+	ModelBuiltInSearchTestValid bool
 }
 
 func (s *Service) ResolveServerDefaultProvider(ctx context.Context) (ResolvedProvider, error) {
@@ -756,12 +888,15 @@ func (s *Service) ResolveServerDefaultProvider(ctx context.Context) (ResolvedPro
 		return ResolvedProvider{}, ErrProviderSecretRequired
 	}
 	return ResolvedProvider{
-		ID:      serverDefaultProviderID,
-		Name:    provider.Name,
-		Type:    provider.Type,
-		BaseURL: provider.BaseURL,
-		APIKey:  provider.APIKey,
-		Models:  append([]string(nil), provider.Models...),
+		ID:                          serverDefaultProviderID,
+		Name:                        provider.Name,
+		Type:                        provider.Type,
+		BaseURL:                     provider.BaseURL,
+		APIKey:                      provider.APIKey,
+		Models:                      append([]string(nil), provider.Models...),
+		ModelBuiltInSearchProtocol:  provider.ModelBuiltInSearchProtocol,
+		ModelBuiltInSearchModel:     provider.ModelBuiltInSearchModel,
+		ModelBuiltInSearchTestValid: provider.ModelBuiltInSearchTestValid,
 	}, nil
 }
 
@@ -797,12 +932,15 @@ func (s *Service) ResolveStoredProvider(ctx context.Context, providerID string) 
 		return ResolvedProvider{}, ErrProviderSecretRequired
 	}
 	return ResolvedProvider{
-		ID:      providerID,
-		Name:    provider.Name,
-		Type:    provider.Type,
-		BaseURL: provider.BaseURL,
-		APIKey:  provider.APIKey,
-		Models:  append([]string(nil), provider.Models...),
+		ID:                          providerID,
+		Name:                        provider.Name,
+		Type:                        provider.Type,
+		BaseURL:                     provider.BaseURL,
+		APIKey:                      provider.APIKey,
+		Models:                      append([]string(nil), provider.Models...),
+		ModelBuiltInSearchProtocol:  provider.ModelBuiltInSearchProtocol,
+		ModelBuiltInSearchModel:     provider.ModelBuiltInSearchModel,
+		ModelBuiltInSearchTestValid: provider.ModelBuiltInSearchTestValid,
 	}, nil
 }
 

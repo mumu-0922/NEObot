@@ -520,3 +520,48 @@ func TestNormalizeAnthropicServiceBaseURL(t *testing.T) {
 		}
 	}
 }
+
+func TestAnthropicProviderStreamsNativeWebSearchSources(t *testing.T) {
+	var request anthropicBuiltInSearchRequest
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"web_search_tool_result\",\"content\":[{\"type\":\"web_search_result\",\"url\":\"https://example.com/source\",\"title\":\"Fixture source\",\"page_age\":\"today\"}]}}\n\n"))
+		_, _ = w.Write([]byte("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"grounded answer\"}}\n\n"))
+		_, _ = w.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+	}))
+	defer upstream.Close()
+	provider, err := NewAnthropicProvider(AnthropicProviderConfig{
+		BaseURL: upstream.URL, APIKey: "anthropic-key", ProviderID: "ANTHROPIC",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := provider.StreamChatWithModelBuiltInSearch(
+		context.Background(),
+		ProviderRequest{
+			Prompt:   "latest fixture",
+			ModelRef: ModelRef{ProviderID: "ANTHROPIC", ModelID: "claude-sonnet-4-5"},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := ""
+	sourceCount := 0
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		content += event.Delta
+		if event.Search != nil {
+			sourceCount += len(event.Search.Sources)
+		}
+	}
+	if content != "grounded answer" || sourceCount != 1 || len(request.Tools) != 1 ||
+		request.Tools[0].Type != "web_search_20250305" {
+		t.Fatalf("content/sources/request = %q / %d / %#v", content, sourceCount, request)
+	}
+}

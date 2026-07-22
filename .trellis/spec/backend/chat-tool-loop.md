@@ -1,11 +1,10 @@
 # Planned chat Tool Loop contracts
 
-Status: G19.2 process trace, G19.3 OpenAI-compatible/Gemini external Web, and
-G19.4 Anthropic Tool Loop promoted on 2026-07-22. Built-in capability
-administration and Knowledge Tool sections remain planned. Apply each section
-only after its owning G19 group is promoted. The old source-fusion path remains
-rollback authority for external Web and runtime authority for pre-answer
-Knowledge until G19.6.
+Status: G19.2 process trace, G19.3 OpenAI-compatible/Gemini external Web, G19.4
+Anthropic Tool Loop, and G19.5 three-state/built-in Search administration
+promoted on 2026-07-22. Knowledge Tool sections remain planned. Apply each
+section only after its owning G19 group is promoted. The old source-fusion path
+remains runtime authority for pre-answer Knowledge until G19.6.
 
 ## 1. Scope / Trigger
 
@@ -21,6 +20,46 @@ Target conversation Search state:
 searchMode = off | model_builtin | external
 legacy useSearch=false -> off
 legacy useSearch=true  -> external
+```
+
+G19.5 built-in protocols:
+
+```text
+OpenAI official    -> openai_responses
+Gemini official    -> gemini_google_search
+Anthropic official -> anthropic_web_search
+Custom compatible  -> openai_responses + exact tested model only
+```
+
+Resolver and administrator signatures:
+
+```go
+ResolveExternal(context.Context) (websearch.ActiveExecution, error)
+ResolveModelBuiltIn(context.Context, websearch.ModelBuiltInResolutionRequest) (websearch.ActiveExecution, error)
+
+type ModelBuiltInResolutionRequest struct {
+    ProviderID string
+    ModelID    string
+    Protocol   ModelBuiltInProviderID
+}
+```
+
+```http
+POST /v1/admin/providers/{providerId}/built-in-search-test
+Content-Type: application/json
+
+{"protocol":"openai_responses","model":"exact-persisted-model"}
+```
+
+Success returns the normalized administrator provider DTO plus
+`sourceCount > 0`. The provider DTO contains:
+
+```text
+modelBuiltInSearch.protocol?
+modelBuiltInSearch.model?
+modelBuiltInSearch.source = official | custom | none
+modelBuiltInSearch.connectionTestValid
+modelBuiltInSearch.connectionTestedAt?
 ```
 
 Target provider round events:
@@ -88,6 +127,15 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 - `off` means zero Search planning, resolver, built-in, and external I/O.
 - Built-in and external Search are mutually exclusive and never fall back to
   one another.
+- External and model-built-in resolution use separate methods. Do not scan
+  model providers from the external path or external providers from the
+  built-in path.
+- Custom compatible attestation binds provider ID/type, normalized Base URL,
+  encrypted secret reference, protocol, and exact model. Any bound change must
+  invalidate it; commit a positive real test with a Postgres compare-and-set.
+- New conversations with no explicit Search fields inherit the most recently
+  updated conversation mode. The frontend must use the returned server session
+  for the first message rather than a stale pre-create composer snapshot.
 - Native Tools are sent on the initial current-model request with automatic
   selection. Explicit current/Search intent must use the selected Search mode.
 - Tool Calls are accumulated and validated before execution, then returned in
@@ -137,6 +185,10 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 | Tool arguments malformed/unknown | do not execute; redacted failed step             |
 | External Search failure          | truthful degradation; ordinary answer; no `[W]`  |
 | Built-in unsupported             | disabled/degraded; no external fallback          |
+| Invalid persisted Search mode    | `INVALID_SEARCH_MODE`; no write                   |
+| Custom model not exactly tested  | disabled / `MODEL_BUILT_IN_SEARCH_UNSUPPORTED`    |
+| Real test returns zero sources   | `MODEL_BUILT_IN_SEARCH_TEST_FAILED`; no attest    |
+| Config changes during real test  | `MODEL_BUILT_IN_SEARCH_CONFIG_CHANGED`; no attest |
 | Knowledge miss                   | successful empty result; continue                |
 | Approval rejected                | do not execute; continue or terminate truthfully |
 | Cancel during Provider/Tool      | cancel both; one terminal cancelled event        |
@@ -174,6 +226,10 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
    deletion.
 7. G19.2 reload mapping, manual expand/collapse authority, and no-empty-panel
    fixtures across backend and frontend.
+8. G19.5 official provider/model allow and non-chat deny fixtures; custom exact-
+   model attestation, bound-field invalidation, Postgres stale compare-and-set,
+   route DTO, mode reload/inheritance, first-message inheritance, and separate
+   resolver-call assertions.
 
 ## 7. Wrong vs Correct
 
@@ -181,6 +237,10 @@ Wrong:
 
 ```text
 search enabled -> rewrite -> always Search -> answer
+```
+
+```text
+create server conversation -> send first turn with pre-create composer mode
 ```
 
 Correct after the owning G19 promotion:
@@ -191,6 +251,10 @@ search mode + selected Knowledge + capabilities
   -> no Tool Call: answer
   -> Tool Call: validate/execute/trace -> native continuation
   -> reconcile only current-turn used citations -> persist
+```
+
+```text
+create server conversation -> read returned persisted mode -> send first turn
 ```
 
 Full target contract: `mm-chat/docs/contracts/chat-tool-loop.md`.

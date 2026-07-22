@@ -1,4 +1,5 @@
 import type {
+  AdminModelBuiltInSearchConnectionDTO,
   AdminProviderConnectionDTO,
   AdminProviderConfigDTO,
   AdminProviderConfigsDTO,
@@ -85,6 +86,16 @@ export function createServerProviderApiShell(
       return httpClient.requestJson<AdminProviderConnectionDTO>(
         `/v1/admin/providers/${encodeURIComponent(providerId)}/activate`,
         { method: "POST", signal },
+      );
+    },
+    async testAdminModelBuiltInSearch(
+      providerId,
+      input,
+    ): Promise<AdminModelBuiltInSearchConnectionDTO> {
+      const { signal, ...body } = input;
+      return httpClient.requestJson<AdminModelBuiltInSearchConnectionDTO>(
+        `/v1/admin/providers/${encodeURIComponent(providerId)}/built-in-search-test`,
+        { method: "POST", body, signal },
       );
     },
   };

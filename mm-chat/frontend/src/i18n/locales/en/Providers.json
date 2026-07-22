@@ -45,5 +45,13 @@
   "modelCapabilitiesAria": "Model capabilities",
   "keyStoredOnServer": "The key is BYOK-encrypted and stored on the backend; plaintext is not stored in the browser.",
   "saveServerDefault": "Save to backend",
-  "savingServerDefault": "Saving…"
+  "savingServerDefault": "Saving…",
+  "builtInSearch": "Model built-in search",
+  "builtInSearchDesc": "Enable Responses Web Search only for this OpenAI-compatible provider. A selected model must pass a real test.",
+  "builtInSearchModel": "Select test model",
+  "testBuiltInSearch": "Test and enable",
+  "retestBuiltInSearch": "Test again",
+  "builtInSearchModelRequired": "Select a model first.",
+  "builtInSearchTestPassed": "Built-in search passed with {count} sources.",
+  "builtInSearchTestFailed": "Built-in search test failed."
 }

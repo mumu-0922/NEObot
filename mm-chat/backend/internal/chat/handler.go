@@ -1155,7 +1155,9 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		searchExecution, searchErr = h.resolveExternalSearchExecution(r.Context())
 	case chatSearchModeModelBuiltIn:
 		searchExecution, modelBuiltInSearchProvider, searchErr =
-			h.resolveChatSearchExecution(r.Context(), streamProvider, fusionPlan.SearchRequested)
+			h.resolveChatSearchExecution(
+				r.Context(), streamProvider, *modelRef, fusionPlan.SearchRequested,
+			)
 	}
 	if searchMode.enabled() {
 		fusionDiagnostics.WebResolveDurationMillis = sourceFusionDurationMillis(resolveStarted)
@@ -2443,6 +2445,7 @@ func (h *Handler) resolveStreamProvider(
 func (h *Handler) resolveChatSearchExecution(
 	ctx context.Context,
 	provider Provider,
+	modelRef ModelRef,
 	searchEnabled bool,
 ) (*websearch.ActiveExecution, ModelBuiltInSearchProvider, error) {
 	if !searchEnabled {
@@ -2451,15 +2454,25 @@ func (h *Handler) resolveChatSearchExecution(
 	if h == nil || h.webSearchService == nil || !h.webSearchService.Configured() {
 		return nil, nil, websearch.ErrNotConfigured
 	}
-	execution, err := h.webSearchService.ResolveActive(ctx)
+	builtIn, ok := provider.(ModelBuiltInSearchProvider)
+	if !ok {
+		return nil, nil, errModelBuiltInSearchUnsupported
+	}
+	execution, err := h.webSearchService.ResolveModelBuiltIn(
+		ctx,
+		websearch.ModelBuiltInResolutionRequest{
+			ProviderID: modelRef.ProviderID,
+			ModelID:    modelRef.ModelID,
+			Protocol:   builtIn.ModelBuiltInSearchID(),
+		},
+	)
 	if err != nil {
 		return nil, nil, err
 	}
 	if execution.Mode != websearch.ExecutionModelBuiltIn {
-		return &execution, nil, nil
+		return nil, nil, errModelBuiltInSearchUnsupported
 	}
-	builtIn, ok := provider.(ModelBuiltInSearchProvider)
-	if !ok || builtIn.ModelBuiltInSearchID() != execution.ModelBuiltIn {
+	if builtIn.ModelBuiltInSearchID() != execution.ModelBuiltIn {
 		return nil, nil, errModelBuiltInSearchUnsupported
 	}
 	return &execution, builtIn, nil
@@ -2471,7 +2484,7 @@ func (h *Handler) resolveExternalSearchExecution(
 	if h == nil || h.webSearchService == nil || !h.webSearchService.Configured() {
 		return nil, websearch.ErrNotConfigured
 	}
-	execution, err := h.webSearchService.ResolveActive(ctx)
+	execution, err := h.webSearchService.ResolveExternal(ctx)
 	if err != nil {
 		return nil, err
 	}

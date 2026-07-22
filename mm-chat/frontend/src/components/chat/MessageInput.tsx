@@ -53,6 +53,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useChatStore } from "@/store/core/chatStore";
+import { useCoreSettingsStore } from "@/store/core/coreSettingsStore";
 import { getTaskModel, useSettingsStore } from "@/store/core/settingsStore";
 import {
   transcribeAudio,
@@ -97,6 +98,7 @@ import {
   getReasoningEffortOptions,
   isReasoningEffort,
 } from "@/lib/chat/reasoning";
+import { getModelBuiltInSearchAvailability } from "@/lib/chat/searchCapabilities";
 
 type MessageInputVariant = "default" | "hero";
 
@@ -220,6 +222,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       updateVoiceSettings,
       search,
     } = useSettingsStore();
+    const providers = useCoreSettingsStore((state) => state.providers);
 
     const knowledgeApiClient = useMemo(() => createNeoChatApiClient(), []);
 
@@ -448,6 +451,28 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       });
     }, [search]);
 
+    const selectedModelIdentity = useMemo(
+      () => parseModelString(selectedModel),
+      [selectedModel],
+    );
+    const selectedProvider = useMemo(
+      () =>
+        selectedModelIdentity.providerId
+          ? providers.find(
+              (provider) => provider.id === selectedModelIdentity.providerId,
+            )
+          : undefined,
+      [providers, selectedModelIdentity.providerId],
+    );
+    const modelBuiltInSearch = useMemo(
+      () =>
+        getModelBuiltInSearchAvailability({
+          provider: selectedProvider,
+          modelId: selectedModelIdentity.modelName,
+        }),
+      [selectedModelIdentity.modelName, selectedProvider],
+    );
+
     const getSearchUnavailableMessage = (
       reason: SearchCompatibilityReason | undefined,
     ) => {
@@ -462,13 +487,31 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const searchModeLabel = t("searchModeExternal", {
       provider: getSearchProviderLabel(searchCompatibility.provider),
     });
+    const modelBuiltInSearchLabel =
+      modelBuiltInSearch.protocol === "gemini_google_search"
+        ? t("searchModeGeminiGoogle")
+        : modelBuiltInSearch.protocol === "anthropic_web_search"
+          ? t("searchModeAnthropicWeb")
+          : modelBuiltInSearch.protocol === "openai_responses"
+            ? t("searchModeOpenAIWeb")
+            : t("searchModeModelBuiltIn");
+    const modelBuiltInUnavailableMessage =
+      modelBuiltInSearch.reason === "provider_unavailable"
+        ? t("searchUnavailableNoProvider")
+        : modelBuiltInSearch.reason === "admin_test_required"
+          ? t("searchUnavailableAdminTest")
+          : t("searchUnavailableModelBuiltIn");
 
     const isSearchEnabled = searchMode !== "off";
     const searchTooltip =
-      !searchCompatibility.enabled && isSearchEnabled
-        ? getSearchUnavailableMessage(searchCompatibility.reason)
-        : searchMode === "external"
+      searchMode === "external"
+        ? searchCompatibility.enabled
           ? searchModeLabel
+          : getSearchUnavailableMessage(searchCompatibility.reason)
+        : searchMode === "model_builtin"
+          ? modelBuiltInSearch.enabled
+            ? modelBuiltInSearchLabel
+            : modelBuiltInUnavailableMessage
           : t("searchModeOff");
 
     const notifyLocalSessionToolUnavailable = useCallback(
@@ -479,7 +522,8 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     );
 
     const handleSearchModeChange = (value: string) => {
-      if (value !== "off" && value !== "external") return;
+      if (value !== "off" && value !== "model_builtin" && value !== "external")
+        return;
       if (
         value === "external" &&
         localSessionToolsDisabled &&
@@ -490,6 +534,10 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       }
       if (value === "external" && !searchCompatibility.enabled) {
         setErrorMsg(getSearchUnavailableMessage(searchCompatibility.reason));
+        return;
+      }
+      if (value === "model_builtin" && !modelBuiltInSearch.enabled) {
+        setErrorMsg(modelBuiltInUnavailableMessage);
         return;
       }
       onSearchModeChange?.(value);
@@ -1808,7 +1856,9 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                         mode:
                           searchMode === "external"
                             ? searchModeLabel
-                            : t("searchModeOff"),
+                            : searchMode === "model_builtin"
+                              ? modelBuiltInSearchLabel
+                              : t("searchModeOff"),
                       })}
                       aria-pressed={isSearchEnabled}
                       className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${
@@ -1822,7 +1872,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                     </button>
                   </DropdownMenuTrigger>
                 </Tooltip>
-                <DropdownMenuContent side="top" align="start" className="w-44">
+                <DropdownMenuContent side="top" align="start" className="w-64">
                   <DropdownMenuLabel>{t("searchMode")}</DropdownMenuLabel>
                   <DropdownMenuRadioGroup
                     value={searchMode}
@@ -1837,6 +1887,24 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                       className={searchModeItemClass}
                     >
                       {t("searchModeOff")}
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem
+                      value="model_builtin"
+                      disabled={!modelBuiltInSearch.enabled}
+                      indicatorPosition="right"
+                      indicator={
+                        <Check size={14} strokeWidth={2.5} aria-hidden="true" />
+                      }
+                      className={searchModeItemClass}
+                    >
+                      <span className="flex min-w-0 flex-col">
+                        <span>{modelBuiltInSearchLabel}</span>
+                        {!modelBuiltInSearch.enabled && (
+                          <span className="truncate text-[10px] font-normal text-muted-foreground">
+                            {modelBuiltInUnavailableMessage}
+                          </span>
+                        )}
+                      </span>
                     </DropdownMenuRadioItem>
                     <DropdownMenuRadioItem
                       value="external"

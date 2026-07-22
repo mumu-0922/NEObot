@@ -63,6 +63,8 @@ const ProviderSettings = () => {
     Record<string, boolean>
   >({});
   const [savingProviderId, setSavingProviderId] = useState<string | null>(null);
+  const [testingBuiltInSearchProviderId, setTestingBuiltInSearchProviderId] =
+    useState<string | null>(null);
   const [deleteConfirmProviderId, setDeleteConfirmProviderId] = useState<
     string | null
   >(null);
@@ -156,6 +158,14 @@ const ProviderSettings = () => {
         baseUrl: providerSnapshot.baseUrl || "",
         models: overrides.models ?? providerSnapshot.models ?? [],
         enabled: providerSnapshot.enabled,
+        modelBuiltInSearchProtocol:
+          providerSnapshot.type === "OpenAI Compatible"
+            ? providerSnapshot.modelBuiltInSearch?.protocol || ""
+            : "",
+        modelBuiltInSearchModel:
+          providerSnapshot.type === "OpenAI Compatible"
+            ? providerSnapshot.modelBuiltInSearch?.model || ""
+            : "",
         ...(overrides.apiKeySecret
           ? { apiKeySecret: overrides.apiKeySecret }
           : {}),
@@ -173,10 +183,10 @@ const ProviderSettings = () => {
         ...current,
         [response.id]: response.hasApiKey,
       }));
-      updateProvider(response.id, {
-        isServerManaged: true,
-        enabled: response.enabled,
-      });
+      const [normalized] = normalizeServerManagedProviderConfigs([response]);
+      if (normalized) {
+        updateProvider(response.id, normalized);
+      }
       return response;
     } finally {
       setSavingProviderId(null);
@@ -401,6 +411,84 @@ const ProviderSettings = () => {
           current === providerId ? null : current,
         );
       });
+  };
+
+  const handleBuiltInSearchToggle = (enabled: boolean) => {
+    if (!currentProvider || currentProvider.type !== "OpenAI Compatible") {
+      return;
+    }
+    const fallbackModel =
+      currentProvider.modelBuiltInSearch?.model ||
+      currentProvider.models[0] ||
+      displayModels[0] ||
+      "";
+    updateProvider(currentProvider.id, {
+      modelBuiltInSearch: enabled
+        ? {
+            protocol: "openai_responses",
+            model: fallbackModel,
+            source: "custom",
+            connectionTestValid: false,
+          }
+        : {
+            source: "none",
+            connectionTestValid: false,
+          },
+    });
+    queueServerProviderPersist(currentProvider.id);
+  };
+
+  const handleBuiltInSearchModelChange = (model: string) => {
+    if (!currentProvider || currentProvider.type !== "OpenAI Compatible") {
+      return;
+    }
+    updateProvider(currentProvider.id, {
+      modelBuiltInSearch: {
+        protocol: "openai_responses",
+        model,
+        source: "custom",
+        connectionTestValid: false,
+      },
+    });
+    queueServerProviderPersist(currentProvider.id);
+  };
+
+  const handleBuiltInSearchTest = async () => {
+    if (!currentProvider || currentProvider.type !== "OpenAI Compatible") {
+      return;
+    }
+    const protocol = currentProvider.modelBuiltInSearch?.protocol;
+    const model = currentProvider.modelBuiltInSearch?.model;
+    if (protocol !== "openai_responses" || !model) {
+      setFetchError(t("builtInSearchModelRequired"));
+      return;
+    }
+    setFetchError(null);
+    setFetchSuccess(null);
+    setTestingBuiltInSearchProviderId(currentProvider.id);
+    try {
+      await persistServerProvider(currentProvider);
+      const response =
+        await createNeoChatApiClient().providers.testAdminModelBuiltInSearch(
+          currentProvider.id,
+          { protocol, model },
+        );
+      const [normalized] = normalizeServerManagedProviderConfigs([
+        response.provider,
+      ]);
+      if (normalized) {
+        updateProvider(response.provider.id, normalized);
+      }
+      setFetchSuccess(
+        t("builtInSearchTestPassed", { count: response.sourceCount }),
+      );
+    } catch (error) {
+      setFetchError(
+        error instanceof Error ? error.message : t("builtInSearchTestFailed"),
+      );
+    } finally {
+      setTestingBuiltInSearchProviderId(null);
+    }
   };
 
   const handleAddProvider = async () => {
@@ -765,6 +853,79 @@ const ProviderSettings = () => {
                       : t("serverManagedProviderDesc")}
                   </div>
                 )}
+                {serverModeEnabled &&
+                  currentProvider.type === "OpenAI Compatible" && (
+                    <div className="col-span-1 md:col-span-2 space-y-3 rounded-xl border border-gray-200 bg-gray-50/70 px-4 py-3 dark:border-border dark:bg-muted/50">
+                      <label className="flex items-center justify-between gap-4">
+                        <span>
+                          <span className="block text-sm font-medium text-gray-700 dark:text-foreground/85">
+                            {t("builtInSearch")}
+                          </span>
+                          <span className="mt-0.5 block text-xs text-gray-500 dark:text-muted-foreground">
+                            {t("builtInSearchDesc")}
+                          </span>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={
+                            currentProvider.modelBuiltInSearch?.protocol ===
+                            "openai_responses"
+                          }
+                          onChange={(event) =>
+                            handleBuiltInSearchToggle(event.target.checked)
+                          }
+                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </label>
+                      {currentProvider.modelBuiltInSearch?.protocol ===
+                        "openai_responses" && (
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <select
+                            aria-label={t("builtInSearchModel")}
+                            value={
+                              currentProvider.modelBuiltInSearch.model || ""
+                            }
+                            onChange={(event) =>
+                              handleBuiltInSearchModelChange(event.target.value)
+                            }
+                            className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-border dark:bg-background dark:text-foreground"
+                          >
+                            <option value="">{t("builtInSearchModel")}</option>
+                            {currentProvider.models.map((model) => (
+                              <option key={model} value={model}>
+                                {model}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            disabled={
+                              !currentProvider.modelBuiltInSearch.model ||
+                              testingBuiltInSearchProviderId ===
+                                currentProvider.id
+                            }
+                            onClick={() => void handleBuiltInSearchTest()}
+                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <RefreshCw
+                              size={14}
+                              className={
+                                testingBuiltInSearchProviderId ===
+                                currentProvider.id
+                                  ? "animate-spin"
+                                  : ""
+                              }
+                              aria-hidden="true"
+                            />
+                            {currentProvider.modelBuiltInSearch
+                              .connectionTestValid
+                              ? t("retestBuiltInSearch")
+                              : t("testBuiltInSearch")}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 <div className="col-span-1 md:col-span-2 flex items-center justify-between pt-2">
                   <label className="inline-flex items-center cursor-pointer group">
                     <div className="relative">

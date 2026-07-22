@@ -114,6 +114,8 @@ describe("MessageInput composition", () => {
     expect(messageInput).toContain("searchMode?: SearchMode");
     expect(messageInput).toContain("onSearchModeChange?:");
     expect(messageInput).toContain('value="external"');
+    expect(messageInput).toContain('value="model_builtin"');
+    expect(messageInput).toContain("getModelBuiltInSearchAvailability");
     expect(messageInput).toContain("className={searchModeItemClass}");
     expect(messageInput).not.toContain("onToggleSearch");
     expect(messageInput).toContain(
