@@ -197,6 +197,57 @@ func TestExternalWebToolLoopSearchFailureContinuesWithoutWebResult(t *testing.T)
 	if !strings.Contains(result, `"ok":false`) || !strings.Contains(result, "do not use [W] markers") {
 		t.Fatalf("failure tool result = %q", result)
 	}
+	if !provider.inputs[1].Continuation[0].Results[0].IsError {
+		t.Fatal("failed Tool Result was not marked as an error")
+	}
+}
+
+func TestExternalWebToolLoopAggregatesUsageAcrossNativeRounds(t *testing.T) {
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{
+			{Type: ProviderEventUsage, Usage: &TokenUsage{PromptTokens: 2, CompletionTokens: 3, TotalTokens: 5}},
+			{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{ID: "call-1", Name: searchWebToolName, Arguments: `{"query":"first"}`}},
+		},
+		{
+			{Type: ProviderEventUsage, Usage: &TokenUsage{PromptTokens: 5, CompletionTokens: 7, TotalTokens: 12}},
+			{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{ID: "call-2", Name: searchWebToolName, Arguments: `{"query":"second"}`}},
+		},
+		{
+			{Type: ProviderEventDelta, Delta: "answer [W1]"},
+			{Type: ProviderEventUsage, Usage: &TokenUsage{PromptTokens: 11, CompletionTokens: 13, TotalTokens: 24}},
+		},
+	}}
+	search := &fakeWebSearchProvider{result: websearch.Result{Sources: []websearch.Source{{
+		Title: "Fixture", URL: "https://example.test/fixture", Content: "fresh",
+	}}}}
+	events := startExternalWebToolLoop(context.Background(), externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt: "latest", ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
+		},
+		SearchService: websearch.NewService(&fakeWebSearchResolver{}),
+		Execution: websearch.ActiveExecution{
+			Mode: websearch.ExecutionExternal, External: search,
+		},
+		ForceSearch: true,
+	})
+	var usages []TokenUsage
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		if event.Type == ProviderEventUsage && event.Usage != nil {
+			usages = append(usages, *event.Usage)
+		}
+	}
+	if len(usages) != 3 || usages[0].TotalTokens != 5 || usages[1].TotalTokens != 17 ||
+		usages[2].PromptTokens != 18 || usages[2].CompletionTokens != 23 ||
+		usages[2].TotalTokens != 41 {
+		t.Fatalf("aggregated usage = %#v", usages)
+	}
+	if len(provider.inputs) != 3 || len(provider.inputs[2].Continuation) != 2 || search.calls != 2 {
+		t.Fatalf("rounds/continuation/search = %d / %d / %d", len(provider.inputs), len(provider.inputs[2].Continuation), search.calls)
+	}
 }
 
 func TestExternalWebToolLoopCancelsInFlightSearch(t *testing.T) {

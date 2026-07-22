@@ -87,6 +87,7 @@ func runNativeExternalWebToolLoop(
 	tool := searchWebToolDefinition()
 	continuation := []ProviderToolExchange{}
 	cumulative := websearch.Result{Sources: []websearch.Source{}, Images: []websearch.Image{}}
+	completedUsage := TokenUsage{}
 	for round := 1; ; round++ {
 		choice := ProviderToolChoiceAuto
 		if round == 1 && input.ForceSearch {
@@ -109,6 +110,8 @@ func runNativeExternalWebToolLoop(
 		var assistantContent strings.Builder
 		var assistantReasoning strings.Builder
 		calls := make([]ProviderToolCall, 0)
+		var roundState any
+		var roundUsage *TokenUsage
 		bufferForcedRound := round == 1 && input.ForceSearch
 		bufferedEvents := make([]ProviderEvent, 0)
 		for event := range roundEvents {
@@ -141,7 +144,14 @@ func runNativeExternalWebToolLoop(
 			case ProviderEventToolCallDelta:
 				// Normalized fragments stay server-internal. Only validated,
 				// sanitized execution state is exposed as process events.
+			case ProviderEventRoundCompleted:
+				roundState = event.RoundState
 			case ProviderEventUsage:
+				if event.Usage == nil {
+					continue
+				}
+				roundUsage = cloneTokenUsage(event.Usage)
+				event.Usage = addTokenUsage(completedUsage, *roundUsage)
 				if bufferForcedRound {
 					bufferedEvents = append(bufferedEvents, event)
 				} else if !sendProviderEvent(ctx, events, event) {
@@ -161,6 +171,9 @@ func runNativeExternalWebToolLoop(
 			}
 			return true
 		}
+		if roundUsage != nil {
+			completedUsage = addTokenUsageValue(completedUsage, *roundUsage)
+		}
 		for _, event := range bufferedEvents {
 			if !sendProviderEvent(ctx, events, event) {
 				return true
@@ -172,6 +185,7 @@ func runNativeExternalWebToolLoop(
 			AssistantReasoning: assistantReasoning.String(),
 			Calls:              append([]ProviderToolCall(nil), calls...),
 			Results:            make([]ProviderToolResult, 0, len(calls)),
+			ProviderState:      roundState,
 		}
 		for callIndex, call := range calls {
 			executionID := fmt.Sprintf("native-%d-%d", round, callIndex+1)
@@ -194,6 +208,7 @@ func runNativeExternalWebToolLoop(
 					CallID:  call.ID,
 					Name:    call.Name,
 					Content: webSearchFailureToolResult(failure),
+					IsError: true,
 				})
 				continue
 			}
@@ -227,6 +242,7 @@ func runNativeExternalWebToolLoop(
 					CallID:  call.ID,
 					Name:    call.Name,
 					Content: webSearchFailureToolResult(failure),
+					IsError: true,
 				})
 				continue
 			}
@@ -260,6 +276,31 @@ func runNativeExternalWebToolLoop(
 		}
 		continuation = append(continuation, exchange)
 	}
+}
+
+func cloneTokenUsage(usage *TokenUsage) *TokenUsage {
+	if usage == nil {
+		return nil
+	}
+	copy := *usage
+	if copy.TotalTokens == 0 {
+		copy.TotalTokens = copy.PromptTokens + copy.CompletionTokens
+	}
+	return &copy
+}
+
+func addTokenUsage(base TokenUsage, current TokenUsage) *TokenUsage {
+	usage := addTokenUsageValue(base, current)
+	return &usage
+}
+
+func addTokenUsageValue(base TokenUsage, current TokenUsage) TokenUsage {
+	usage := TokenUsage{
+		PromptTokens:     base.PromptTokens + current.PromptTokens,
+		CompletionTokens: base.CompletionTokens + current.CompletionTokens,
+	}
+	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+	return usage
 }
 
 func runCompatibilityExternalWebSearch(

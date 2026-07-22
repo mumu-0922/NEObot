@@ -1,8 +1,8 @@
 # Planned chat Tool Loop contracts
 
-Status: G19.2 process-trace foundation and G19.3 OpenAI-compatible/Gemini
-external Web Tool Loop promoted on 2026-07-22. Anthropic, built-in capability
-administration, and Knowledge Tool sections remain planned. Apply each section
+Status: G19.2 process trace, G19.3 OpenAI-compatible/Gemini external Web, and
+G19.4 Anthropic Tool Loop promoted on 2026-07-22. Built-in capability
+administration and Knowledge Tool sections remain planned. Apply each section
 only after its owning G19 group is promoted. The old source-fusion path remains
 rollback authority for external Web and runtime authority for pre-answer
 Knowledge until G19.6.
@@ -30,7 +30,7 @@ content.delta | reasoning.delta | tool.call.delta |
 tool.call.completed | usage.updated | round.completed | round.error
 ```
 
-Active G19.3 provider seam:
+Active G19.3/G19.4 provider seam:
 
 ```go
 type ToolRoundProvider interface {
@@ -44,12 +44,27 @@ type ProviderRoundRequest struct {
     ToolChoice   string
     Continuation []ProviderToolExchange
 }
+
+type ProviderToolExchange struct {
+    AssistantContent   string
+    AssistantReasoning string
+    Calls              []ProviderToolCall
+    Results            []ProviderToolResult
+    ProviderState      any
+}
 ```
 
 OpenAI-compatible/Gemini continuation is an assistant message containing the
 completed `tool_calls`, followed by one `role=tool` message per matching
 `tool_call_id`. Fragmented names/arguments are accumulated before execution;
 arguments are capped at 64 KiB.
+
+Anthropic continuation uses the same normalized exchange but carries an
+in-memory, provider-private `ProviderState` from `round.completed`. It preserves
+ordered `thinking`/signature, `redacted_thinking`, `text`, and `tool_use`
+blocks, followed by one user message containing matching `tool_result` blocks.
+Failed results set `is_error=true`. Provider state never reaches SSE,
+diagnostics, or persistence.
 
 Target process steps reuse the chat run/message sequence and contain a stable
 step ID, `reasoning|knowledge|web|tool|generation` kind,
@@ -107,6 +122,11 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 - A forced first native round that ignores required Tool choice is buffered and
   discarded before same-model compatibility planning, preventing duplicate
   user-visible answer text.
+- Anthropic explicit Search without Thinking uses named `tool_choice`;
+  extended Thinking uses `auto`, then the same buffered compatibility rule if
+  no Tool Call is returned.
+- Usage is accumulated across native provider rounds without double-counting
+  repeated updates inside the current round.
 
 ## 4. Validation & Error Matrix
 
@@ -123,6 +143,8 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 | Provider exposes no reasoning    | process only; no fabricated reasoning            |
 | Successful Generation only       | omit empty durable process panel                  |
 | Unknown process detail key       | drop before SSE/persistence                       |
+| Anthropic Thinking continuation  | retain block order/signature in memory only       |
+| Anthropic failed Tool Result     | matching `tool_use_id` plus `is_error=true`       |
 
 ## 5. Good / Base / Bad Cases
 

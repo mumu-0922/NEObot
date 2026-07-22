@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestAnthropicProviderStreamsHistoryImageThinkingAndUsage(t *testing.T) {
@@ -170,6 +172,270 @@ func TestAnthropicProviderPlansNativeTools(t *testing.T) {
 	if request.Stream || len(request.Tools) != 1 || request.Tools[0].Name != "lookup_weather" ||
 		request.ToolChoice == nil || request.ToolChoice.Type != "auto" {
 		t.Fatalf("tool request = %#v", request)
+	}
+}
+
+func TestAnthropicProviderStreamsToolUseAndPreservesThinkingContinuation(t *testing.T) {
+	var requests []anthropicMessagesRequest
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request anthropicMessagesRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		requests = append(requests, request)
+		w.Header().Set("Content-Type", "text/event-stream")
+		if len(requests) == 1 {
+			_, _ = w.Write([]byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":11,\"output_tokens\":0}}}\n\n"))
+			_, _ = w.Write([]byte("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"\"}}\n\n"))
+			_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"check sources\"}}\n\n"))
+			_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"sig-123\"}}\n\n"))
+			_, _ = w.Write([]byte("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n"))
+			_, _ = w.Write([]byte("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"search_web\",\"input\":{}}}\n\n"))
+			_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"query\\\":\"}}\n\n"))
+			_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\\\"latest fixture\\\"}\"}}\n\n"))
+			_, _ = w.Write([]byte("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\n"))
+			_, _ = w.Write([]byte("event: message_delta\ndata: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":3}}\n\n"))
+			_, _ = w.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+			return
+		}
+		_, _ = w.Write([]byte("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"answer [W1]\"}}\n\n"))
+		_, _ = w.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+	}))
+	defer upstream.Close()
+
+	provider, err := NewAnthropicProvider(AnthropicProviderConfig{
+		BaseURL: upstream.URL, APIKey: "anthropic-key", ProviderID: "ANTHROPIC",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tool := ToolDefinition{Type: "function", Function: ToolFunctionDefinition{
+		Name: "search_web", Parameters: map[string]any{"type": "object"},
+	}}
+	firstEvents, err := provider.StreamToolRound(context.Background(), ProviderRoundRequest{
+		ProviderRequest: ProviderRequest{
+			Prompt: "latest fixture", UseReasoning: true,
+			ModelRef: ModelRef{ProviderID: "ANTHROPIC", ModelID: "claude-sonnet"},
+		},
+		Tools: []ToolDefinition{tool}, ToolChoice: ProviderToolChoiceRequired,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var call *ProviderToolCall
+	var roundState any
+	var reasoning strings.Builder
+	for event := range firstEvents {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		switch event.Type {
+		case ProviderEventReasoningDelta:
+			reasoning.WriteString(event.ReasoningDelta)
+		case ProviderEventToolCallCompleted:
+			copy := *event.ToolCall
+			call = &copy
+		case ProviderEventRoundCompleted:
+			roundState = event.RoundState
+		}
+	}
+	if call == nil || call.ID != "toolu_1" || call.Name != "search_web" ||
+		call.Arguments != `{"query":"latest fixture"}` || reasoning.String() != "check sources" ||
+		roundState == nil {
+		t.Fatalf("call/reasoning/state = %#v / %q / %#v", call, reasoning.String(), roundState)
+	}
+
+	secondEvents, err := provider.StreamToolRound(context.Background(), ProviderRoundRequest{
+		ProviderRequest: ProviderRequest{
+			Prompt: "latest fixture", UseReasoning: true,
+			ModelRef: ModelRef{ProviderID: "ANTHROPIC", ModelID: "claude-sonnet"},
+		},
+		Tools: []ToolDefinition{tool}, ToolChoice: ProviderToolChoiceAuto,
+		Continuation: []ProviderToolExchange{{
+			Calls: []ProviderToolCall{*call},
+			Results: []ProviderToolResult{{
+				CallID: call.ID, Name: call.Name, Content: `{"ok":true}`,
+			}},
+			ProviderState: roundState,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var answer strings.Builder
+	for event := range secondEvents {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		if event.Type == ProviderEventDelta {
+			answer.WriteString(event.Delta)
+		}
+	}
+	if answer.String() != "answer [W1]" || len(requests) != 2 {
+		t.Fatalf("answer/requests = %q / %d", answer.String(), len(requests))
+	}
+	if requests[0].ToolChoice == nil || requests[0].ToolChoice.Type != "auto" {
+		t.Fatalf("thinking tool choice = %#v", requests[0].ToolChoice)
+	}
+	if len(requests[1].Messages) != 3 {
+		t.Fatalf("continuation messages = %#v", requests[1].Messages)
+	}
+	assistantBlocks, ok := requests[1].Messages[1].Content.([]any)
+	if !ok || len(assistantBlocks) != 2 {
+		t.Fatalf("assistant blocks = %#v", requests[1].Messages[1].Content)
+	}
+	thinking, _ := assistantBlocks[0].(map[string]any)
+	toolUse, _ := assistantBlocks[1].(map[string]any)
+	if thinking["type"] != "thinking" || thinking["thinking"] != "check sources" ||
+		thinking["signature"] != "sig-123" || toolUse["type"] != "tool_use" ||
+		toolUse["id"] != "toolu_1" {
+		t.Fatalf("preserved blocks = %#v", assistantBlocks)
+	}
+	input, _ := toolUse["input"].(map[string]any)
+	if input["query"] != "latest fixture" {
+		t.Fatalf("tool input = %#v", input)
+	}
+	toolResults, ok := requests[1].Messages[2].Content.([]any)
+	if !ok || len(toolResults) != 1 {
+		t.Fatalf("tool results = %#v", requests[1].Messages[2].Content)
+	}
+	result, _ := toolResults[0].(map[string]any)
+	if result["type"] != "tool_result" || result["tool_use_id"] != "toolu_1" ||
+		result["content"] != `{"ok":true}` {
+		t.Fatalf("tool result = %#v", result)
+	}
+}
+
+func TestAnthropicProviderForcesNamedToolWithoutThinking(t *testing.T) {
+	var request anthropicMessagesRequest
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+	}))
+	defer upstream.Close()
+	provider, err := NewAnthropicProvider(AnthropicProviderConfig{
+		BaseURL: upstream.URL, APIKey: "anthropic-key",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := provider.StreamToolRound(context.Background(), ProviderRoundRequest{
+		ProviderRequest: ProviderRequest{
+			Prompt: "search", ModelRef: ModelRef{ProviderID: "anthropic", ModelID: "claude"},
+		},
+		Tools: []ToolDefinition{{Type: "function", Function: ToolFunctionDefinition{
+			Name: "search_web", Parameters: map[string]any{"type": "object"},
+		}}},
+		ToolChoice: ProviderToolChoiceRequired,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range events {
+	}
+	if request.ToolChoice == nil || request.ToolChoice.Type != "tool" ||
+		request.ToolChoice.Name != "search_web" {
+		t.Fatalf("tool choice = %#v", request.ToolChoice)
+	}
+}
+
+func TestAnthropicToolContinuationMarksFailureResult(t *testing.T) {
+	messages, err := appendAnthropicContinuation(nil, []ProviderToolExchange{{
+		Calls: []ProviderToolCall{{
+			ID: "toolu_failure", Name: "search_web", Arguments: `{"query":"fixture"}`,
+		}},
+		Results: []ProviderToolResult{{
+			CallID: "toolu_failure", Name: "search_web", Content: `{"ok":false}`, IsError: true,
+		}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("messages = %#v", messages)
+	}
+	results, ok := messages[1].Content.([]anthropicToolResultBlock)
+	if !ok || len(results) != 1 || !results[0].IsError ||
+		results[0].ToolUseID != "toolu_failure" {
+		t.Fatalf("failure result = %#v", messages[1].Content)
+	}
+}
+
+func TestAnthropicStreamCapsFragmentedToolArguments(t *testing.T) {
+	ctx := context.Background()
+	events := make(chan ProviderEvent, 8)
+	state := newAnthropicStreamState()
+	start := `{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_large","name":"search_web","input":{}}}`
+	if keep, done := dispatchAnthropicData(ctx, start, events, state); !keep || done {
+		t.Fatalf("start keep/done = %v/%v", keep, done)
+	}
+	fragment, err := json.Marshal(map[string]any{
+		"type":  "content_block_delta",
+		"index": 0,
+		"delta": map[string]any{
+			"type":         "input_json_delta",
+			"partial_json": strings.Repeat("x", maxAnthropicToolArgumentsBytes+128),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if keep, done := dispatchAnthropicData(ctx, string(fragment), events, state); !keep || done {
+		t.Fatalf("delta keep/done = %v/%v", keep, done)
+	}
+	stop := `{"type":"content_block_stop","index":0}`
+	if keep, done := dispatchAnthropicData(ctx, stop, events, state); !keep || done {
+		t.Fatalf("stop keep/done = %v/%v", keep, done)
+	}
+	close(events)
+	var completed *ProviderToolCall
+	for event := range events {
+		if event.Type == ProviderEventToolCallCompleted {
+			copy := *event.ToolCall
+			completed = &copy
+		}
+	}
+	if completed == nil || completed.FailureCategory != "arguments_too_large" ||
+		len(completed.Arguments) != maxAnthropicToolArgumentsBytes {
+		t.Fatalf("completed call = %#v", completed)
+	}
+}
+
+func TestAnthropicProviderCancelsStreamingRequest(t *testing.T) {
+	requestCancelled := make(chan struct{})
+	var cancellationObserved atomic.Bool
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+		if cancellationObserved.CompareAndSwap(false, true) {
+			close(requestCancelled)
+		}
+	}))
+	defer upstream.Close()
+	provider, err := NewAnthropicProvider(AnthropicProviderConfig{
+		BaseURL: upstream.URL, APIKey: "anthropic-key",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	events, err := provider.StreamChat(ctx, ProviderRequest{
+		Prompt: "wait", ModelRef: ModelRef{ProviderID: "anthropic", ModelID: "claude"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	for range events {
+	}
+	select {
+	case <-requestCancelled:
+	case <-time.After(time.Second):
+		t.Fatal("Anthropic upstream request was not cancelled")
 	}
 }
 

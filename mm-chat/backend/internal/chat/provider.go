@@ -101,6 +101,7 @@ type ProviderEvent struct {
 	ToolCallDelta  *ProviderToolCallDelta
 	ToolCall       *ProviderToolCall
 	ToolExecution  *ProviderToolExecutionEvent
+	RoundState     any
 	Usage          *TokenUsage
 	Search         *websearch.Result
 	Error          error

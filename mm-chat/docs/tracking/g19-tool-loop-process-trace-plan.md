@@ -157,6 +157,8 @@ cleanup.
 
 ## G19.4 Anthropic Tool Loop
 
+Status: complete (2026-07-22).
+
 - Normalize Anthropic `tool_use` and `tool_result` without converting away
   provider-required block structure.
 - Preserve provider-returned Thinking Blocks/signatures across continuation
@@ -166,6 +168,19 @@ cleanup.
 
 Promotion gate: fixture coverage plus an owner-authorized real Anthropic proof
 when an active tested credential exists. No other provider is used as fallback.
+
+Passed boundary: Anthropic now streams fragmented `tool_use`, carries exact
+ordered Thinking/signature and redacted-Thinking blocks through private
+`round.completed` state, sends matching user `tool_result` blocks with
+`is_error` on failure, and aggregates usage across unlimited native rounds.
+Focused handler/provider fixtures prove live reasoning, Tool/Web progress,
+Search, same-model continuation, reloadable `[W1]` trace markers, 64-KiB input
+rejection, failures, cancellation, and multiple rounds. The live administrator
+store contained zero active tested Anthropic providers, so the conditional real
+Claude proof was correctly not attempted and no alternate provider was called
+as Anthropic evidence. A post-build real `gpt-5.6-sol + Tavily` regression
+proved the shared loop still performs ordinary zero-Search, explicit Search,
+cumulative usage, Citation reload, and `204 -> 404` cleanup.
 
 ## G19.5 Three-state Search and built-in capability administration
 

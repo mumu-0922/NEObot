@@ -23,6 +23,7 @@ const (
 	defaultAnthropicMaxTokens      = 8_192
 	defaultAnthropicThinkingTokens = 4_096
 	maxAnthropicToolPlanBytes      = 2 << 20
+	maxAnthropicToolArgumentsBytes = 64 << 10
 )
 
 var (
@@ -79,6 +80,15 @@ func (p *AnthropicProvider) StreamChat(
 	ctx context.Context,
 	input ProviderRequest,
 ) (<-chan ProviderEvent, error) {
+	return p.StreamToolRound(ctx, ProviderRoundRequest{
+		ProviderRequest: input,
+	})
+}
+
+func (p *AnthropicProvider) StreamToolRound(
+	ctx context.Context,
+	input ProviderRoundRequest,
+) (<-chan ProviderEvent, error) {
 	modelRef, err := p.ResolveModelRef(input.ModelRef)
 	if err != nil {
 		return nil, err
@@ -86,19 +96,30 @@ func (p *AnthropicProvider) StreamChat(
 	if strings.TrimSpace(modelRef.ModelID) == "" {
 		return nil, errors.New("anthropic provider model is required")
 	}
-	messages, err := anthropicMessages(providerMessagesOrPrompt(input))
+	messages, err := anthropicMessages(providerMessagesOrPrompt(input.ProviderRequest))
 	if err != nil {
 		return nil, err
 	}
+	messages, err = appendAnthropicContinuation(messages, input.Continuation)
+	if err != nil {
+		return nil, err
+	}
+	tools := anthropicTools(input.Tools)
 	request := anthropicMessagesRequest{
 		Model:     modelRef.ModelID,
 		MaxTokens: defaultAnthropicMaxTokens,
 		Stream:    true,
 		System:    strings.TrimSpace(input.SystemPrompt),
 		Messages:  messages,
+		Tools:     tools,
+		ToolChoice: anthropicToolChoiceForRound(
+			normalizeProviderToolChoice(input.ToolChoice),
+			tools,
+			input.UseReasoning,
+		),
 	}
 	if input.UseReasoning {
-		budgetTokens := anthropicThinkingBudget(effectiveReasoningEffort(input))
+		budgetTokens := anthropicThinkingBudget(effectiveReasoningEffort(input.ProviderRequest))
 		request.MaxTokens = anthropicMaxTokens(budgetTokens)
 		request.Thinking = &anthropicThinkingConfig{
 			Type: "enabled", BudgetTokens: budgetTokens,
@@ -308,6 +329,18 @@ type anthropicTool struct {
 
 type anthropicToolChoice struct {
 	Type string `json:"type"`
+	Name string `json:"name,omitempty"`
+}
+
+type anthropicToolResultBlock struct {
+	Type      string `json:"type"`
+	ToolUseID string `json:"tool_use_id"`
+	Content   string `json:"content,omitempty"`
+	IsError   bool   `json:"is_error,omitempty"`
+}
+
+type anthropicRoundState struct {
+	AssistantBlocks []map[string]any
 }
 
 type anthropicMessagesResponse struct {
@@ -317,6 +350,124 @@ type anthropicMessagesResponse struct {
 		Name  string         `json:"name"`
 		Input map[string]any `json:"input"`
 	} `json:"content"`
+}
+
+func anthropicTools(definitions []ToolDefinition) []anthropicTool {
+	tools := make([]anthropicTool, 0, len(definitions))
+	for _, definition := range definitions {
+		if definition.Type != "" && definition.Type != "function" {
+			continue
+		}
+		name := strings.TrimSpace(definition.Function.Name)
+		if name == "" {
+			continue
+		}
+		inputSchema := definition.Function.Parameters
+		if inputSchema == nil {
+			inputSchema = map[string]any{"type": "object"}
+		}
+		tools = append(tools, anthropicTool{
+			Name:        name,
+			Description: strings.TrimSpace(definition.Function.Description),
+			InputSchema: inputSchema,
+		})
+	}
+	return tools
+}
+
+func anthropicToolChoiceForRound(
+	choice string,
+	tools []anthropicTool,
+	thinkingEnabled bool,
+) *anthropicToolChoice {
+	if len(tools) == 0 {
+		return nil
+	}
+	if choice == ProviderToolChoiceRequired && !thinkingEnabled {
+		return &anthropicToolChoice{Type: "tool", Name: tools[0].Name}
+	}
+	return &anthropicToolChoice{Type: "auto"}
+}
+
+func appendAnthropicContinuation(
+	messages []anthropicMessage,
+	exchanges []ProviderToolExchange,
+) ([]anthropicMessage, error) {
+	for _, exchange := range exchanges {
+		if len(exchange.Calls) == 0 {
+			continue
+		}
+		blocks := anthropicContinuationBlocks(exchange)
+		if len(blocks) == 0 {
+			return nil, errors.New("anthropic continuation assistant blocks are required")
+		}
+		messages = append(messages, anthropicMessage{
+			Role:    "assistant",
+			Content: blocks,
+		})
+		results := make([]anthropicToolResultBlock, 0, len(exchange.Results))
+		for _, result := range exchange.Results {
+			callID := strings.TrimSpace(result.CallID)
+			if callID == "" {
+				return nil, errors.New("anthropic continuation tool result id is required")
+			}
+			results = append(results, anthropicToolResultBlock{
+				Type:      "tool_result",
+				ToolUseID: callID,
+				Content:   result.Content,
+				IsError:   result.IsError,
+			})
+		}
+		if len(results) == 0 {
+			return nil, errors.New("anthropic continuation tool results are required")
+		}
+		messages = append(messages, anthropicMessage{
+			Role:    "user",
+			Content: results,
+		})
+	}
+	return messages, nil
+}
+
+func anthropicContinuationBlocks(exchange ProviderToolExchange) []map[string]any {
+	if state, ok := exchange.ProviderState.(anthropicRoundState); ok &&
+		len(state.AssistantBlocks) > 0 {
+		return cloneAnthropicAssistantBlocks(state.AssistantBlocks)
+	}
+	if state, ok := exchange.ProviderState.(*anthropicRoundState); ok &&
+		state != nil && len(state.AssistantBlocks) > 0 {
+		return cloneAnthropicAssistantBlocks(state.AssistantBlocks)
+	}
+
+	blocks := make([]map[string]any, 0, len(exchange.Calls)+1)
+	if content := strings.TrimSpace(exchange.AssistantContent); content != "" {
+		blocks = append(blocks, map[string]any{"type": "text", "text": content})
+	}
+	for _, call := range exchange.Calls {
+		input := map[string]any{}
+		if err := json.Unmarshal([]byte(call.Arguments), &input); err != nil || input == nil {
+			input = map[string]any{}
+		}
+		blocks = append(blocks, map[string]any{
+			"type":  "tool_use",
+			"id":    strings.TrimSpace(call.ID),
+			"name":  strings.TrimSpace(call.Name),
+			"input": input,
+		})
+	}
+	return blocks
+}
+
+func cloneAnthropicAssistantBlocks(blocks []map[string]any) []map[string]any {
+	encoded, err := json.Marshal(blocks)
+	if err != nil {
+		return nil
+	}
+	var cloned []map[string]any
+	if err := json.Unmarshal(encoded, &cloned); err != nil {
+		return nil
+	}
+	return cloned
 }
 
 func anthropicMessages(providerMessages []ProviderMessage) ([]anthropicMessage, error) {
@@ -387,15 +538,24 @@ func normalizeAnthropicServiceBaseURL(raw string) (string, error) {
 
 type anthropicStreamEnvelope struct {
 	Type  string `json:"type"`
+	Index int    `json:"index"`
 	Delta struct {
-		Type     string `json:"type"`
-		Text     string `json:"text"`
-		Thinking string `json:"thinking"`
+		Type        string `json:"type"`
+		Text        string `json:"text"`
+		Thinking    string `json:"thinking"`
+		Signature   string `json:"signature"`
+		Data        string `json:"data"`
+		PartialJSON string `json:"partial_json"`
 	} `json:"delta"`
 	ContentBlock *struct {
-		Type     string `json:"type"`
-		Text     string `json:"text"`
-		Thinking string `json:"thinking"`
+		Type      string          `json:"type"`
+		Text      string          `json:"text"`
+		Thinking  string          `json:"thinking"`
+		Signature string          `json:"signature"`
+		Data      string          `json:"data"`
+		ID        string          `json:"id"`
+		Name      string          `json:"name"`
+		Input     json.RawMessage `json:"input"`
 	} `json:"content_block"`
 	Message *struct {
 		Usage anthropicUsage `json:"usage"`
@@ -411,18 +571,33 @@ type anthropicUsage struct {
 type anthropicStreamState struct {
 	promptTokens     int
 	completionTokens int
+	assistantBlocks  []map[string]any
+	blockPositions   map[int]int
+	toolCalls        map[int]*ProviderToolCall
+	toolOrder        []int
+	completedTools   map[int]bool
+}
+
+func newAnthropicStreamState() *anthropicStreamState {
+	return &anthropicStreamState{
+		assistantBlocks: []map[string]any{},
+		blockPositions:  map[int]int{},
+		toolCalls:       map[int]*ProviderToolCall{},
+		toolOrder:       []int{},
+		completedTools:  map[int]bool{},
+	}
 }
 
 func streamAnthropicEvents(ctx context.Context, reader io.Reader, events chan<- ProviderEvent) {
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	state := anthropicStreamState{}
+	state := newAnthropicStreamState()
 	dataLines := make([]string, 0, 1)
 	for scanner.Scan() {
 		line := strings.TrimSuffix(scanner.Text(), "\r")
 		if line == "" {
 			keepReading, done := dispatchAnthropicData(
-				ctx, strings.Join(dataLines, "\n"), events, &state,
+				ctx, strings.Join(dataLines, "\n"), events, state,
 			)
 			if done || !keepReading {
 				return
@@ -437,7 +612,7 @@ func streamAnthropicEvents(ctx context.Context, reader io.Reader, events chan<- 
 	}
 	if len(dataLines) > 0 {
 		keepReading, done := dispatchAnthropicData(
-			ctx, strings.Join(dataLines, "\n"), events, &state,
+			ctx, strings.Join(dataLines, "\n"), events, state,
 		)
 		if done || !keepReading {
 			return
@@ -463,6 +638,9 @@ func dispatchAnthropicData(
 		return true, false
 	}
 	if data == "[DONE]" {
+		if !state.completeRound(ctx, events) {
+			return false, false
+		}
 		return false, true
 	}
 	var envelope anthropicStreamEnvelope
@@ -471,25 +649,12 @@ func dispatchAnthropicData(
 		return false, false
 	}
 	switch envelope.Type {
-	case "ping", "content_block_start", "content_block_stop":
-		if envelope.Type == "content_block_start" && envelope.ContentBlock != nil {
-			switch envelope.ContentBlock.Type {
-			case "text":
-				if envelope.ContentBlock.Text != "" {
-					return sendProviderEvent(ctx, events, ProviderEvent{
-						Type: ProviderEventDelta, Delta: envelope.ContentBlock.Text,
-					}), false
-				}
-			case "thinking":
-				if envelope.ContentBlock.Thinking != "" {
-					return sendProviderEvent(ctx, events, ProviderEvent{
-						Type:           ProviderEventReasoningDelta,
-						ReasoningDelta: envelope.ContentBlock.Thinking,
-					}), false
-				}
-			}
-		}
+	case "ping":
 		return true, false
+	case "content_block_start":
+		return state.startContentBlock(ctx, events, envelope), false
+	case "content_block_stop":
+		return state.stopContentBlock(ctx, events, envelope.Index), false
 	case "message_start":
 		if envelope.Message != nil {
 			state.promptTokens = envelope.Message.Usage.InputTokens
@@ -497,25 +662,7 @@ func dispatchAnthropicData(
 		}
 		return true, false
 	case "content_block_delta":
-		switch envelope.Delta.Type {
-		case "text_delta":
-			if envelope.Delta.Text == "" {
-				return true, false
-			}
-			return sendProviderEvent(ctx, events, ProviderEvent{
-				Type: ProviderEventDelta, Delta: envelope.Delta.Text,
-			}), false
-		case "thinking_delta":
-			if envelope.Delta.Thinking == "" {
-				return true, false
-			}
-			return sendProviderEvent(ctx, events, ProviderEvent{
-				Type:           ProviderEventReasoningDelta,
-				ReasoningDelta: envelope.Delta.Thinking,
-			}), false
-		default:
-			return true, false
-		}
+		return state.applyContentBlockDelta(ctx, events, envelope), false
 	case "message_delta":
 		if envelope.Usage.InputTokens > 0 {
 			state.promptTokens = envelope.Usage.InputTokens
@@ -531,6 +678,9 @@ func dispatchAnthropicData(
 			Type: ProviderEventUsage, Usage: usage,
 		}), false
 	case "message_stop":
+		if !state.completeRound(ctx, events) {
+			return false, false
+		}
 		return false, true
 	case "error":
 		sendProviderEvent(ctx, events, ProviderEvent{Error: errAnthropicStream})
@@ -540,7 +690,226 @@ func dispatchAnthropicData(
 	}
 }
 
+func (state *anthropicStreamState) startContentBlock(
+	ctx context.Context,
+	events chan<- ProviderEvent,
+	envelope anthropicStreamEnvelope,
+) bool {
+	if envelope.ContentBlock == nil {
+		return true
+	}
+	block := envelope.ContentBlock
+	position := len(state.assistantBlocks)
+	state.blockPositions[envelope.Index] = position
+	switch block.Type {
+	case "text":
+		state.assistantBlocks = append(state.assistantBlocks, map[string]any{
+			"type": "text",
+			"text": block.Text,
+		})
+		if block.Text != "" {
+			return sendProviderEvent(ctx, events, ProviderEvent{
+				Type: ProviderEventDelta, Delta: block.Text,
+			})
+		}
+	case "thinking":
+		state.assistantBlocks = append(state.assistantBlocks, map[string]any{
+			"type":      "thinking",
+			"thinking":  block.Thinking,
+			"signature": block.Signature,
+		})
+		if block.Thinking != "" {
+			return sendProviderEvent(ctx, events, ProviderEvent{
+				Type:           ProviderEventReasoningDelta,
+				ReasoningDelta: block.Thinking,
+			})
+		}
+	case "redacted_thinking":
+		state.assistantBlocks = append(state.assistantBlocks, map[string]any{
+			"type": "redacted_thinking",
+			"data": block.Data,
+		})
+	case "tool_use":
+		id := strings.TrimSpace(block.ID)
+		name := strings.TrimSpace(block.Name)
+		call := &ProviderToolCall{
+			CallIndex: envelope.Index,
+			ID:        id,
+			Name:      name,
+		}
+		if len(call.ID) > 256 {
+			call.ID = truncateProcessUTF8(call.ID, 256)
+			call.FailureCategory = "invalid_call_id"
+		}
+		if len(call.Name) > maxToolNameBytes {
+			call.Name = truncateProcessUTF8(call.Name, maxToolNameBytes)
+			call.FailureCategory = "invalid_tool_name"
+		}
+		input := anthropicToolInput(block.Input)
+		if len(input) > 0 {
+			encoded, _ := json.Marshal(input)
+			if string(encoded) != "{}" {
+				call.Arguments = string(encoded)
+			}
+		}
+		state.toolCalls[envelope.Index] = call
+		state.toolOrder = append(state.toolOrder, envelope.Index)
+		state.assistantBlocks = append(state.assistantBlocks, map[string]any{
+			"type":  "tool_use",
+			"id":    call.ID,
+			"name":  call.Name,
+			"input": input,
+		})
+		delta := ProviderToolCallDelta{
+			CallIndex: envelope.Index,
+			ID:        call.ID,
+			NameDelta: call.Name,
+		}
+		return sendProviderEvent(ctx, events, ProviderEvent{
+			Type: ProviderEventToolCallDelta, ToolCallDelta: &delta,
+		})
+	default:
+		delete(state.blockPositions, envelope.Index)
+	}
+	return true
+}
+
+func (state *anthropicStreamState) applyContentBlockDelta(
+	ctx context.Context,
+	events chan<- ProviderEvent,
+	envelope anthropicStreamEnvelope,
+) bool {
+	position, hasBlock := state.blockPositions[envelope.Index]
+	switch envelope.Delta.Type {
+	case "text_delta":
+		if envelope.Delta.Text == "" {
+			return true
+		}
+		if hasBlock {
+			state.assistantBlocks[position]["text"] =
+				stringValue(state.assistantBlocks[position]["text"]) + envelope.Delta.Text
+		}
+		return sendProviderEvent(ctx, events, ProviderEvent{
+			Type: ProviderEventDelta, Delta: envelope.Delta.Text,
+		})
+	case "thinking_delta":
+		if envelope.Delta.Thinking == "" {
+			return true
+		}
+		if hasBlock {
+			state.assistantBlocks[position]["thinking"] =
+				stringValue(state.assistantBlocks[position]["thinking"]) + envelope.Delta.Thinking
+		}
+		return sendProviderEvent(ctx, events, ProviderEvent{
+			Type:           ProviderEventReasoningDelta,
+			ReasoningDelta: envelope.Delta.Thinking,
+		})
+	case "signature_delta":
+		if hasBlock && envelope.Delta.Signature != "" {
+			state.assistantBlocks[position]["signature"] =
+				stringValue(state.assistantBlocks[position]["signature"]) + envelope.Delta.Signature
+		}
+		return true
+	case "redacted_thinking_delta":
+		if hasBlock && envelope.Delta.Data != "" {
+			state.assistantBlocks[position]["data"] =
+				stringValue(state.assistantBlocks[position]["data"]) + envelope.Delta.Data
+		}
+		return true
+	case "input_json_delta", "tool_use_delta":
+		call := state.toolCalls[envelope.Index]
+		if call == nil || envelope.Delta.PartialJSON == "" {
+			return true
+		}
+		fragment := envelope.Delta.PartialJSON
+		remaining := maxAnthropicToolArgumentsBytes - len(call.Arguments)
+		if remaining <= 0 {
+			call.FailureCategory = "arguments_too_large"
+			fragment = ""
+		} else if len(fragment) > remaining {
+			call.Arguments += truncateProcessUTF8(fragment, remaining)
+			call.FailureCategory = "arguments_too_large"
+			fragment = truncateProcessUTF8(fragment, remaining)
+		} else {
+			call.Arguments += fragment
+		}
+		delta := ProviderToolCallDelta{
+			CallIndex:      envelope.Index,
+			ArgumentsDelta: fragment,
+		}
+		return sendProviderEvent(ctx, events, ProviderEvent{
+			Type: ProviderEventToolCallDelta, ToolCallDelta: &delta,
+		})
+	default:
+		return true
+	}
+}
+
+func (state *anthropicStreamState) stopContentBlock(
+	ctx context.Context,
+	events chan<- ProviderEvent,
+	index int,
+) bool {
+	call := state.toolCalls[index]
+	if call == nil || state.completedTools[index] {
+		return true
+	}
+	call.ID = strings.TrimSpace(call.ID)
+	call.Name = strings.TrimSpace(call.Name)
+	call.Arguments = strings.TrimSpace(call.Arguments)
+	if call.ID == "" && call.FailureCategory == "" {
+		call.FailureCategory = "invalid_call_id"
+	}
+	if call.Name == "" && call.FailureCategory == "" {
+		call.FailureCategory = "invalid_tool_name"
+	}
+	if call.Arguments == "" {
+		call.Arguments = "{}"
+	}
+	if position, ok := state.blockPositions[index]; ok {
+		input := map[string]any{}
+		if err := json.Unmarshal([]byte(call.Arguments), &input); err != nil || input == nil {
+			input = map[string]any{}
+		}
+		state.assistantBlocks[position]["input"] = input
+	}
+	state.completedTools[index] = true
+	copy := *call
+	return sendProviderEvent(ctx, events, ProviderEvent{
+		Type: ProviderEventToolCallCompleted, ToolCall: &copy,
+	})
+}
+
+func (state *anthropicStreamState) completeRound(
+	ctx context.Context,
+	events chan<- ProviderEvent,
+) bool {
+	for _, index := range state.toolOrder {
+		if !state.stopContentBlock(ctx, events, index) {
+			return false
+		}
+	}
+	return sendProviderEvent(ctx, events, ProviderEvent{
+		Type: ProviderEventRoundCompleted,
+		RoundState: anthropicRoundState{
+			AssistantBlocks: cloneAnthropicAssistantBlocks(state.assistantBlocks),
+		},
+	})
+}
+
+func anthropicToolInput(raw json.RawMessage) map[string]any {
+	input := map[string]any{}
+	if len(raw) == 0 || string(raw) == "null" {
+		return input
+	}
+	if err := json.Unmarshal(raw, &input); err != nil || input == nil {
+		return map[string]any{}
+	}
+	return input
+}
+
 var _ Provider = (*AnthropicProvider)(nil)
+var _ ToolRoundProvider = (*AnthropicProvider)(nil)
 var _ ToolPlanner = (*AnthropicProvider)(nil)
 var _ ModelRefValidator = (*AnthropicProvider)(nil)
 var _ ModelRefResolver = (*AnthropicProvider)(nil)

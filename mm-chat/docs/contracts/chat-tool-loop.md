@@ -53,8 +53,17 @@ Conceptual round input:
 ```go
 type ProviderRoundRequest struct {
     ProviderRequest
-    Tools []ToolDefinition
-    Continuation []ProviderToolTranscriptItem
+    Tools        []ToolDefinition
+    ToolChoice   string
+    Continuation []ProviderToolExchange
+}
+
+type ProviderToolExchange struct {
+    AssistantContent   string
+    AssistantReasoning string
+    Calls              []ProviderToolCall
+    Results            []ProviderToolResult
+    ProviderState      any
 }
 ```
 
@@ -99,6 +108,24 @@ Provider adapters must preserve their native continuation form:
 Streaming Tool arguments may arrive in fragments. Go must accumulate them by
 provider call identity, reject malformed/oversized/unknown arguments, and never
 execute a Tool before the provider has completed the call.
+
+`round.completed` may carry an in-memory provider-private continuation state.
+Anthropic uses it to preserve the exact ordered assistant `thinking`,
+`redacted_thinking`, `text`, and `tool_use` blocks plus required signatures.
+That state is used only to build the next provider request; it is never sent in
+SSE, placed in process details, or persisted in message metadata. Anthropic
+failure results set `tool_result.is_error=true`. Tool input remains capped at
+64 KiB.
+
+Anthropic extended Thinking does not use a forced named `tool_choice`. An
+explicit Search turn is buffered with `auto`; if Claude returns no Tool Call,
+the existing same-model compatibility path enforces the explicit Search
+contract without exposing the discarded answer. Without Thinking, a forced
+Search names `search_web` directly.
+
+Usage events are cumulative across native rounds. Each round reports its own
+provider usage to the loop; the SSE-visible update adds all completed prior
+rounds exactly once.
 
 There is no product-level maximum Tool Round count, total Tool Call count, or
 per-tool count for this single-user deployment. The loop terminates only when:

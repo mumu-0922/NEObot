@@ -1345,6 +1345,126 @@ func TestHandlerExecutesExternalSearchOnceAndPersistsWebArtifacts(t *testing.T) 
 	}
 }
 
+func TestHandlerStreamsAnthropicNativeSearchAndReloadsProcessTrace(t *testing.T) {
+	var requests []anthropicMessagesRequest
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request anthropicMessagesRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode Anthropic request: %v", err)
+		}
+		requests = append(requests, request)
+		w.Header().Set("Content-Type", "text/event-stream")
+		if len(requests) == 1 {
+			_, _ = w.Write([]byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":2,\"output_tokens\":0}}}\n\n"))
+			_, _ = w.Write([]byte("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"\"}}\n\n"))
+			_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"verify\"}}\n\n"))
+			_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"sig-live\"}}\n\n"))
+			_, _ = w.Write([]byte("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n"))
+			_, _ = w.Write([]byte("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_live\",\"name\":\"search_web\",\"input\":{}}}\n\n"))
+			_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"query\\\":\\\"anthropic fixture\\\"}\"}}\n\n"))
+			_, _ = w.Write([]byte("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\n"))
+			_, _ = w.Write([]byte("event: message_delta\ndata: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":3}}\n\n"))
+			_, _ = w.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+			return
+		}
+		_, _ = w.Write([]byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":5,\"output_tokens\":0}}}\n\n"))
+		_, _ = w.Write([]byte("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"Anthropic answer [W1]\"}}\n\n"))
+		_, _ = w.Write([]byte("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n"))
+		_, _ = w.Write([]byte("event: message_delta\ndata: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":7}}\n\n"))
+		_, _ = w.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+	}))
+	defer upstream.Close()
+
+	provider, err := NewAnthropicProvider(AnthropicProviderConfig{
+		BaseURL: upstream.URL, APIKey: "anthropic-key", ProviderID: "anthropic",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "请联网搜索 Anthropic fixture"),
+	)
+	searchProvider := &fakeWebSearchProvider{result: websearch.Result{Sources: []websearch.Source{{
+		Title: "Anthropic Fixture", URL: "https://example.test/anthropic", Content: "fresh",
+	}}}}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithWebSearchService(websearch.NewService(&fakeWebSearchResolver{execution: websearch.ActiveExecution{
+			Mode: websearch.ExecutionExternal, External: searchProvider,
+		}})),
+	)
+
+	recorder := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"anthropic","modelId":"claude-sonnet"},"config":{"searchMode":"external","useReasoning":true,"reasoningEffort":"medium"},"idempotencyKey":"stream-anthropic-native-tool"}`,
+	)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	body := recorder.Body.String()
+	for _, expected := range []string{
+		"event: reasoning.delta",
+		`"kind":"tool","status":"running"`,
+		`"kind":"web","status":"completed"`,
+		"event: search.results",
+		`"totalTokens":17`,
+		"event: message.completed",
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("stream missing %q: %s", expected, body)
+		}
+	}
+	if strings.Contains(body, "sig-live") {
+		t.Fatal("Anthropic Thinking signature leaked into public SSE")
+	}
+	if len(requests) != 2 || searchProvider.calls != 1 {
+		t.Fatalf("Anthropic requests/Search = %d/%d", len(requests), searchProvider.calls)
+	}
+	assistantBlocks, ok := requests[1].Messages[1].Content.([]any)
+	if !ok || len(assistantBlocks) != 2 {
+		t.Fatalf("assistant continuation = %#v", requests[1].Messages)
+	}
+	thinking, _ := assistantBlocks[0].(map[string]any)
+	if thinking["thinking"] != "verify" || thinking["signature"] != "sig-live" {
+		t.Fatalf("thinking continuation = %#v", thinking)
+	}
+
+	messages := repo.messages[testConversationID]
+	if len(messages) != 2 || messages[1].Content != "Anthropic answer [W1]" ||
+		len(messages[1].OutputBlocks) != 1 {
+		t.Fatalf("persisted Anthropic message = %#v", messages)
+	}
+	persisted, err := json.Marshal(messages[1].Metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(persisted), "sig-live") {
+		t.Fatal("Anthropic Thinking signature leaked into persisted metadata")
+	}
+	steps, ok := messages[1].Metadata[processTraceMetadataKey].([]ProcessStep)
+	if !ok {
+		t.Fatalf("process trace = %#v", messages[1].Metadata[processTraceMetadataKey])
+	}
+	var toolMarkers, webMarkers []string
+	for _, step := range steps {
+		switch step.Kind {
+		case ProcessStepKindTool:
+			toolMarkers, _ = step.Detail["citationMarkers"].([]string)
+		case ProcessStepKindWeb:
+			webMarkers, _ = step.Detail["citationMarkers"].([]string)
+		}
+	}
+	if len(toolMarkers) != 1 || toolMarkers[0] != "[W1]" ||
+		len(webMarkers) != 1 || webMarkers[0] != "[W1]" {
+		t.Fatalf("Anthropic trace markers = %#v", steps)
+	}
+}
+
 func TestHandlerSearchOffSkipsResolverPlannerAndSearch(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))

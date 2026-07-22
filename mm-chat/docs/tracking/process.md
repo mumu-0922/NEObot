@@ -8716,3 +8716,21 @@ steps, and `204 -> 404` temporary-state cleanup. Exact implementation,
 evidence, and rollback are recorded in
 `docs/tracking/g19-tool-loop-process-trace-process.md` and
 `docs/contracts/chat-tool-loop.md`.
+
+## 2026-07-22 — G19.4 native Anthropic Tool Loop
+
+Anthropic now joins the provider-native loop with fragmented `tool_use`
+parsing, matching user `tool_result` continuation, failed-result `is_error`,
+and private preservation of ordered Thinking/signature, redacted-Thinking,
+text, and Tool blocks. The private round state never reaches SSE or storage.
+Extended Thinking uses Auto Tool choice with the existing buffered explicit-
+Search fallback, while non-Thinking explicit Search names `search_web`.
+Native-round usage is now cumulative. Provider/handler fixtures proved
+multiple rounds, live reasoning and Tool/Web steps, persistence/reload,
+64-KiB rejection, failure, and cancellation; all Go gates and the source-built
+Backend passed. No active tested Anthropic credential exists in the live
+administrator store, so the conditional real Claude proof was not attempted.
+A real `gpt-5.6-sol + Tavily` shared-loop regression passed and its temporary
+conversation was deleted. Exact evidence and rollback are in
+`docs/tracking/g19-tool-loop-process-trace-process.md` and
+`docs/contracts/chat-tool-loop.md`.

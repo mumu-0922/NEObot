@@ -11,6 +11,7 @@ const (
 	ProviderEventToolCallDelta     = "tool.call.delta"
 	ProviderEventToolCallCompleted = "tool.call.completed"
 	ProviderEventToolExecution     = "tool.execution"
+	ProviderEventRoundCompleted    = "round.completed"
 
 	ProviderToolChoiceAuto     = "auto"
 	ProviderToolChoiceRequired = "required"
@@ -36,6 +37,7 @@ type ProviderToolExchange struct {
 	AssistantReasoning string
 	Calls              []ProviderToolCall
 	Results            []ProviderToolResult
+	ProviderState      any
 }
 
 type ProviderToolCallDelta struct {
@@ -59,6 +61,7 @@ type ProviderToolResult struct {
 	CallID  string
 	Name    string
 	Content string
+	IsError bool
 }
 
 type ProviderToolExecutionEvent struct {

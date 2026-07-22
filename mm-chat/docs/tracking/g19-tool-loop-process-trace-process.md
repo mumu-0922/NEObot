@@ -250,3 +250,82 @@ Rollback removes the G19.3 Tool-aware provider seam and restores the bounded
 conversation-aware pre-answer external Search path while retaining the G19.2
 reasoning/process foundation. Next: implement and independently commit G19.4
 native Anthropic `tool_use`/`tool_result` continuation.
+
+## 2026-07-22 — G19.4 native Anthropic Tool Loop
+
+`AnthropicProvider` now implements the same `ToolRoundProvider` seam without
+converting Claude's continuation into an OpenAI transcript. It maps function
+definitions to Anthropic `tools`, accumulates fragmented `input_json_delta`
+payloads by content-block index, emits normalized Tool Call completion only at
+block stop, and caps accumulated input at 64 KiB before execution.
+
+Each completed Anthropic round carries a server-private continuation snapshot
+containing only allowlisted ordered assistant blocks. The next request replays
+provider-returned `thinking` plus signature, `redacted_thinking`, `text`, and
+`tool_use` in their original block order, followed by one user message with
+matching `tool_result` blocks. Failed calls set `is_error=true`. Signatures and
+redacted-Thinking data never enter public SSE details or persisted message
+metadata; only rendered reasoning continues through the existing redactor.
+
+Explicit external Search without Thinking uses a named `search_web`
+`tool_choice`. Anthropic extended Thinking uses `auto` for protocol
+compatibility; because the forced first round remains buffered, a no-Tool
+response still moves to the same-model compatibility path without leaking a
+duplicate answer. The generic loop now also reports cumulative usage across
+native rounds while treating repeated updates inside one round as a snapshot,
+not an additive delta.
+
+Changed surfaces:
+
+```text
+backend/internal/chat/provider.go
+backend/internal/chat/provider_tool_round.go
+backend/internal/chat/provider_anthropic.go
+backend/internal/chat/provider_anthropic_test.go
+backend/internal/chat/web_tool_loop.go
+backend/internal/chat/web_tool_loop_test.go
+backend/internal/chat/handler_test.go
+docs/contracts/chat-tool-loop.md
+docs/tracking/g19-tool-loop-process-trace-plan.md
+docs/tracking/g19-tool-loop-process-trace-process.md
+docs/tracking/process.md
+docs/tracking/progress.md
+.trellis/spec/backend/chat-tool-loop.md
+```
+
+Verification:
+
+```text
+Anthropic fragmented Tool/Thinking/signature continuation fixture   passed
+Anthropic named/Thinking Auto Tool choice fixtures                  passed
+Anthropic failure is_error / 64-KiB / cancellation fixtures         passed
+two native Search rounds plus cumulative usage fixture              passed
+handler live SSE/Search/persistence/reload fixture                  passed
+go vet ./...                                                        passed
+go test ./...                                                       passed
+go test -race ./...                                                 passed
+go build ./cmd/api                                                  passed
+Backend source image rebuild/restart                                healthy
+```
+
+The administrator provider list contained two configured providers and zero
+enabled, connection-tested Anthropic providers. The promotion gate makes a real
+Claude call conditional on such a credential, so no Anthropic quota was called
+and no other model was misrepresented as Claude evidence. No credential or
+provider configuration was changed.
+
+After deploying the source-built Backend, a real shared-loop regression used
+the existing `gpt-5.6-sol` plus active Tavily configuration:
+
+```text
+ordinary terminal / Search / Tool-Web IDs        completed / 0 / 0
+explicit terminal / Search / Tool-Web IDs        completed / 1 / 2
+explicit final cumulative usage                  9,390 tokens
+reloaded answer / Search block                    [W] present / 1
+temporary conversation cleanup                   204 -> 404
+```
+
+Rollback removes Anthropic `StreamToolRound`, the private round-state replay,
+and cross-round usage aggregation while retaining G19.3 OpenAI-compatible
+execution. Next: implement and independently commit G19.5 three-state Search
+and built-in capability administration.
