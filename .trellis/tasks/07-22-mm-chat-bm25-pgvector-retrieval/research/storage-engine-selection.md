@@ -68,6 +68,19 @@ does not silently depend on the Docker builder host's instruction set. The
 image entrypoint rejects an existing non-17 `PG_VERSION` before invoking the
 official entrypoint.
 
+## Shadow DDL staging boundary
+
+The independent single-server Compose runtime remains PostgreSQL 16 until the
+reviewed blue-green cutover. Therefore the G18.3 `vector(1024)` DDL must not be
+embedded into the ordinary `1–36` backend migration set yet: PostgreSQL 16's
+current official image has no pgvector type, so doing so would break routine
+`migrate up` before the database transition is authorized.
+
+G18.3 applies the reviewed shadow DDL only to a disposable PostgreSQL 17 clone,
+proves backfill/exact/HNSW/deletion/rollback, and leaves `schema_migrations`
+unchanged. G18.5 owns promotion of that DDL into the normal migration sequence
+after a verified production backup has been restored into fresh PG17 storage.
+
 ## Sources inspected
 
 - `https://github.com/timescale/pg_textsearch` README and PostgreSQL License

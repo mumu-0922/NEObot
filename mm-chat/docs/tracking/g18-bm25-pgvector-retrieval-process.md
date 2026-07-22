@@ -177,3 +177,101 @@ Next: commit G18.2 alone. G18.3 then adds the generation/profile-bound
 `vector(1024)` shadow projection, transactionally reuses only compatible Jina
 v4 `REAL[]` vectors, proves exact/HNSW cosine behavior, and leaves the current
 reader in production.
+
+## 2026-07-22 — G18.3 pgvector shadow projection
+
+The production compatibility boundary was resolved before writing DDL. The
+independent Compose runtime still uses `postgres:16-alpine`; placing a
+`VECTOR(1024)` migration into the ordinary embedded set would make current
+`migrate up` fail before the PostgreSQL 17 blue-green transition. G18.3
+therefore keeps the reviewed shadow DDL in a PG17-only operational module.
+G18.5 must promote it into the normal migration sequence only after a verified
+production backup is restored into fresh PG17 storage.
+
+The shadow source view admits only reference/vector rows whose search profile
+and generation agree, whose model contract is Jina v4/1024, whose source search
+projection is ready, whose materialization is the published document head, and
+whose collection/document/version authority is current. It contains no source
+text.
+
+`knowledge_child_vector_shadow_projections` stores the complete immutable
+identity tuple, visibility revisions, source float32 hash, measured norm, and
+pgvector `vector(1024)`. A validation trigger reauthorizes every insert against
+the source view, requires exact `vector -> REAL[]` round-trip equality, and
+rejects forged identity/hash data. The existing immutable trigger rejects
+update/delete. `go_api_runtime` and `rag_worker_executor` receive no shadow
+privileges; only `rag_replay_operator` can invoke the SECURITY DEFINER backfill.
+
+The backfill takes an explicit generation and search profile, preflights every
+eligible source vector for 1024 dimensions, finite components, and non-zero
+norm, inserts from one snapshot statement, and verifies every eligible
+identity/hash/vector after insertion. Any failure rolls back the statement.
+`ON CONFLICT DO NOTHING` makes a verified replay idempotent. No embedding
+provider is called and no Jina quota is consumed.
+
+The disposable proof command was:
+
+```bash
+./mm-chat/scripts/run-g18-pgvector-shadow-drill.sh
+```
+
+Final report: `/tmp/mm-chat-g18-pgvector-shadow.wKfXMS`.
+
+```text
+PASS G18.3 pgvector shadow schema
+PASS G18.3 synthetic pgvector fixture rows=4 collections=2
+PASS G18.3 golden=7 backfill=4 exact/hnsw=parity acl=2 deletion=hidden invalid=rollback
+PASS G18.3 pgvector shadow rollback
+PASS G18.3 rollback retained legacy REAL[] reader/data
+no migrations changed
+disposable_database=removed
+```
+
+The seven storage cases reuse the frozen G18 case identifiers: four relevant
+single-collection cases, cross-collection retention, and two unrelated
+no-evidence cases. Exact and HNSW queries returned the approved deterministic
+child order at the existing Dense `0.48` gate. `EXPLAIN` proved an actual
+`Index Scan using idx_knowledge_child_vector_shadow_hnsw`, rather than a result
+that happened to come from a sequential scan.
+
+The versioned G18.1 evaluator was rerun against the recorded current-reader
+baseline after the shadow work: all seven cases passed, required lane recall
+and final-context precision remained `1.0`, negative false-citation rate
+remained `0`, and no-evidence accuracy remained `1.0`.
+
+Negative proofs added zero and NaN `REAL[]` candidates one variable at a time.
+Each backfill returned `RAG_PGVECTOR_SHADOW_SOURCE_INVALID`, inserted no partial
+row, and preserved the previous shadow count. A direct insert with a forged
+float32 hash returned `RAG_PGVECTOR_SHADOW_SOURCE_MISMATCH`. After tombstoning
+the first document, its three immutable shadow rows remained available for
+rollback but the authority view and legacy production reader both returned no
+candidate immediately; the separately selected collection remained isolated.
+
+The down script removed only the shadow table, indexes, view, validation
+function, and backfill function. Six legacy `REAL[]` rows (four valid plus two
+purged negative fixtures) and
+`knowledge_fetch_hybrid_query_evidence_candidates(...)` remained. Re-running
+the production migration CLI returned `no migrations changed`, proving the
+manifest still ends at `036` and current PG16 operation is not broken.
+
+Security review found and closed one psql-specific edge before the final run:
+raw psql would otherwise let `SET search_path FROM CURRENT` capture the default
+`"$user", public` path. The up/down DDL now pins the current schema followed by
+`pg_catalog, pg_temp`, and the live contract inspects both SECURITY DEFINER
+functions to reject `$user` or missing catalog/temp entries.
+
+Final quality gates:
+
+```text
+bash syntax / Compose config                    passed
+module completeness / placeholder / secret     passed
+SECURITY DEFINER paths / forbidden grants       2 hardened / 0
+go vet ./...                                    passed
+go test ./...                                   passed
+recorded seven-case evaluator                   passed
+temporary containers / volumes                  0 / 0
+```
+
+Next: commit G18.3 alone. G18.4 adds true `pg_textsearch` BM25, compares BM25
+and pgvector lanes through deterministic RRF against the frozen evaluator, and
+keeps all dual-read diagnostics reference-only and server-owned.

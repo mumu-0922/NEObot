@@ -59,11 +59,23 @@ and the harness removed all disposable containers and volumes.
 
 ## G18.3 Shadow pgvector projection
 
+Status: complete (2026-07-22).
+
 - Add a generation/profile-bound `vector(1024)` projection beside `REAL[]`.
 - Backfill compatible finite Jina v4 vectors transactionally without provider
   calls.
 - Evaluate exact cosine first, then HNSW recall and latency; keep the existing
   reader in production.
+
+Promotion proof: a PG17-only shadow schema copies only current, published,
+ready Jina v4/1024 rows under an explicit generation and search profile. The
+transactional backfill verifies count, full identity, visibility revisions,
+float32 hash, vector round-trip, and norm; repeated execution is idempotent.
+The seven frozen storage cases passed exact/HNSW parity, collection isolation,
+unrelated no-evidence thresholds, immediate tombstone invisibility, zero/NaN
+rejection, real HNSW plan use, and shadow-only rollback. No provider was called,
+the production migration manifest remained `1–36`, and the current `REAL[]`
+hybrid function remains the only production reader.
 
 ## G18.4 BM25 and hybrid dual read
 

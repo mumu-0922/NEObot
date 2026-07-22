@@ -77,13 +77,13 @@ Jina reranking, citations, single-user deployment model, and rollback path.
 
 ### Group 3 — Shadow vector projection
 
-- [ ] A generation/profile-bound `vector(1024)` projection exists alongside the
+- [x] A generation/profile-bound `vector(1024)` projection exists alongside the
       current `REAL[]` projection.
-- [ ] Existing finite 1024-lane Jina vectors backfill transactionally with
+- [x] Existing finite 1024-lane Jina vectors backfill transactionally with
       count, norm, hash, ownership, generation, and deletion validation.
-- [ ] Exact and approximate cosine results pass the Golden Set and ACL/deletion
+- [x] Exact and approximate cosine results pass the Golden Set and ACL/deletion
       tests before HNSW is eligible for promotion.
-- [ ] The existing retrieval path remains the production reader.
+- [x] The existing retrieval path remains the production reader.
 
 ### Group 4 — BM25 lane and hybrid dual read
 
