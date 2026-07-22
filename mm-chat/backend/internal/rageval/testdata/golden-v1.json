@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "mm-chat.rag-golden.v1",
+  "id": "g18-synthetic-retrieval-v1",
+  "description": "Synthetic multilingual retrieval set; all names, identifiers, and evidence aliases are fictitious.",
+  "criteria": {
+    "minimumLaneRecall": {
+      "dense": 1,
+      "lexical": 1,
+      "rewrite_dense": 1
+    },
+    "minimumFinalContextPrecision": 1,
+    "maximumNegativeFalseCitationRate": 0,
+    "minimumNoEvidenceAccuracy": 1,
+    "maximumP95LatencyMilliseconds": 30000
+  },
+  "cases": [
+    {
+      "id": "exact-error-identifier",
+      "category": "exact_identifier",
+      "query": "错误码 E_CONNRESET_742 出现时先检查哪个组件？",
+      "selectedCollectionAliases": ["ops-red"],
+      "expectedRelevantEvidenceIds": ["e-ops-manual"],
+      "expectedNoEvidence": false,
+      "requiredLanes": ["lexical"]
+    },
+    {
+      "id": "zh-lexical-retry",
+      "category": "zh_lexical",
+      "query": "苍梧队列的重试上限是多少？",
+      "selectedCollectionAliases": ["ops-red"],
+      "expectedRelevantEvidenceIds": ["e-ops-manual"],
+      "expectedNoEvidence": false,
+      "requiredLanes": ["lexical"]
+    },
+    {
+      "id": "zh-semantic-retry",
+      "category": "zh_semantic",
+      "query": "上传任务连续失败后系统会怎样处理？",
+      "selectedCollectionAliases": ["ops-red"],
+      "expectedRelevantEvidenceIds": ["e-ops-manual"],
+      "expectedNoEvidence": false,
+      "requiredLanes": ["dense"]
+    },
+    {
+      "id": "context-follow-up",
+      "category": "context_rewrite",
+      "query": "这个队列超过以后呢？",
+      "rewrittenQuery": "苍梧队列超过三次重试后如何处理？",
+      "selectedCollectionAliases": ["ops-red"],
+      "expectedRelevantEvidenceIds": ["e-ops-manual"],
+      "expectedNoEvidence": false,
+      "requiredLanes": ["rewrite_dense"]
+    },
+    {
+      "id": "cross-collection-retention",
+      "category": "cross_collection",
+      "query": "对比赤砂服务和青岚服务的归档保留期限。",
+      "selectedCollectionAliases": ["policy-red", "policy-blue"],
+      "expectedRelevantEvidenceIds": ["e-retention-red", "e-retention-blue"],
+      "expectedNoEvidence": false,
+      "requiredLanes": ["lexical", "dense"]
+    },
+    {
+      "id": "negative-weather",
+      "category": "unrelated_negative",
+      "query": "杭州明天会下雨吗？",
+      "selectedCollectionAliases": ["ops-red", "policy-red", "policy-blue"],
+      "expectedRelevantEvidenceIds": [],
+      "expectedNoEvidence": true,
+      "requiredLanes": []
+    },
+    {
+      "id": "negative-cooking",
+      "category": "unrelated_negative",
+      "query": "How long should fresh pasta boil?",
+      "selectedCollectionAliases": ["ops-red", "policy-red", "policy-blue"],
+      "expectedRelevantEvidenceIds": [],
+      "expectedNoEvidence": true,
+      "requiredLanes": []
+    }
+  ]
+}

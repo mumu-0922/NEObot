@@ -16,11 +16,18 @@ const (
 	defaultRAGEvidenceLimit  = 5
 	ragRRFConstant           = 60.0
 	ragHydrationBatchLimit   = 16
-	ragRerankScoreThreshold  = 0.0
 	ragRerankStatusDisabled  = "disabled"
 	ragRerankStatusApplied   = "applied"
-	ragRerankStatusDegraded  = "degraded"
 )
+
+var ragGoldenRelevancePolicyV1 = ragRelevancePolicy{
+	ID: "g18-jina-reranker-v3-golden-v1", MinimumScore: 0.0,
+}
+
+type ragRelevancePolicy struct {
+	ID           string
+	MinimumScore float64
+}
 
 var (
 	ErrRAGDependencyUnavailable = errors.New("rag dependency unavailable")
@@ -145,7 +152,11 @@ func (a *RAGAnswerAssembler) Assemble(ctx context.Context, input RAGAssemblyInpu
 		return RAGAssemblyResult{}, ErrRAGInsufficientEvidence
 	}
 	rerankStatus := ragRerankStatusDisabled
+	rerankConfigured := a.Reranker != nil || a.RerankGate != nil
 	useRerank := a.Reranker != nil && a.RerankGate != nil
+	if rerankConfigured && !useRerank {
+		return RAGAssemblyResult{}, ErrRAGInsufficientEvidence
+	}
 	if useRerank {
 		if err := a.RerankGate.AuthorizeRAGRerank(
 			ctx,
@@ -153,8 +164,7 @@ func (a *RAGAnswerAssembler) Assemble(ctx context.Context, input RAGAssemblyInpu
 		); err != nil {
 			if errors.Is(err, ErrRAGRerankGovernanceRequired) ||
 				errors.Is(err, ErrRAGDependencyUnavailable) {
-				useRerank = false
-				rerankStatus = ragRerankStatusDegraded
+				return RAGAssemblyResult{}, ErrRAGInsufficientEvidence
 			} else {
 				return RAGAssemblyResult{}, fmt.Errorf("authorize rag rerank: %w", err)
 			}
@@ -184,15 +194,20 @@ func (a *RAGAnswerAssembler) Assemble(ctx context.Context, input RAGAssemblyInpu
 		}
 		scores, rerankErr := a.Reranker.Rerank(ctx, rerankQuery, documents)
 		if rerankErr != nil {
-			rerankStatus = ragRerankStatusDegraded
-		} else if ranked, ok := applyRAGRerank(evidence, scores, evidenceLimit); ok {
+			return RAGAssemblyResult{}, ErrRAGInsufficientEvidence
+		} else if ranked, ok := applyRAGRerank(
+			evidence,
+			scores,
+			evidenceLimit,
+			ragGoldenRelevancePolicyV1,
+		); ok {
 			evidence = ranked
 			rerankStatus = ragRerankStatusApplied
 		} else {
-			rerankStatus = ragRerankStatusDegraded
+			return RAGAssemblyResult{}, ErrRAGInsufficientEvidence
 		}
 	}
-	if rerankStatus != ragRerankStatusApplied && len(evidence) > evidenceLimit {
+	if !useRerank && len(evidence) > evidenceLimit {
 		evidence = evidence[:evidenceLimit]
 	}
 	if len(evidence) == 0 {
@@ -242,8 +257,11 @@ func applyRAGRerank(
 	evidence []knowledge.HydratedEvidence,
 	results []RAGRerankResult,
 	limit int,
+	policy ragRelevancePolicy,
 ) ([]knowledge.HydratedEvidence, bool) {
-	if len(evidence) == 0 || len(results) != len(evidence) {
+	if len(evidence) == 0 || len(results) != len(evidence) ||
+		strings.TrimSpace(policy.ID) == "" || math.IsNaN(policy.MinimumScore) ||
+		math.IsInf(policy.MinimumScore, 0) {
 		return nil, false
 	}
 	seen := make([]bool, len(evidence))
@@ -254,7 +272,7 @@ func applyRAGRerank(
 			return nil, false
 		}
 		seen[result.Index] = true
-		if result.RelevanceScore < ragRerankScoreThreshold {
+		if result.RelevanceScore < policy.MinimumScore {
 			continue
 		}
 		item := evidence[result.Index]

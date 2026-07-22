@@ -1421,6 +1421,45 @@ func TestHandlerAutoRAGFallsBackSilentlyWithoutEvidence(t *testing.T) {
 	assertAutoRAGMetadata(t, messages[1], "no_evidence", 0)
 }
 
+func TestHandlerAutoRAGFallsBackWithoutCitationWhenRerankerFails(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "hello with selected knowledge"),
+	)
+	provider := &titleProvider{chunks: []string{"Plain provider answer"}}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithRAGAnswerAssembler(NewRAGAnswerAssembler(
+			&fakeRAGCandidateSource{refs: []knowledge.EvidenceCandidateReference{validRAGCandidate()}},
+			&fakeRAGHydrator{evidence: []knowledge.HydratedEvidence{validHydratedEvidence()}},
+			WithRAGEvidenceReranker(
+				&fakeRAGEvidenceReranker{err: errors.New("reranker unavailable")},
+				fakeRAGRerankGate{},
+			),
+		)),
+	)
+
+	rec := performAuthenticatedRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"config":{"knowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-rag-rerank-fail-closed"}`,
+	)
+
+	assertStreamStatus(t, rec, http.StatusOK)
+	if provider.input.Prompt != "hello with selected knowledge" || strings.Contains(provider.input.Prompt, "Knowledge evidence") {
+		t.Fatalf("provider prompt = %q", provider.input.Prompt)
+	}
+	messages := repo.messages[testConversationID]
+	if len(messages) != 2 || messages[1].Status != "completed" || messages[1].Content != "Plain provider answer" {
+		t.Fatalf("messages = %#v", messages)
+	}
+	assertAutoRAGMetadata(t, messages[1], "no_evidence", 0)
+}
+
 func TestHandlerAutoRAGRejectsInvalidSelection(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))

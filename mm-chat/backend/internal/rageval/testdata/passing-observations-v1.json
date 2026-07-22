@@ -1,0 +1,98 @@
+{
+  "schemaVersion": "mm-chat.rag-observations.v1",
+  "goldenSetId": "g18-synthetic-retrieval-v1",
+  "capturedOn": "2026-07-22",
+  "captureKind": "deterministic_evaluator_fixture",
+  "profile": {
+    "id": "evaluator-contract-v1",
+    "lexicalEngine": "synthetic",
+    "denseEngine": "synthetic",
+    "embeddingModel": "synthetic-1024",
+    "rerankerModel": "synthetic-reranker",
+    "relevancePolicy": "golden-case-exact",
+    "candidateLimit": 20,
+    "evidenceLimit": 5,
+    "rrfConstant": 60
+  },
+  "cases": [
+    {
+      "caseId": "exact-error-identifier",
+      "laneResults": {
+        "lexical": [{"evidenceId": "e-ops-manual", "rank": 1, "score": 0.91}],
+        "dense": []
+      },
+      "finalContextEvidenceIds": ["e-ops-manual"],
+      "citationEvidenceIds": ["e-ops-manual"],
+      "noEvidence": false,
+      "latencyMilliseconds": 12
+    },
+    {
+      "caseId": "zh-lexical-retry",
+      "laneResults": {
+        "lexical": [{"evidenceId": "e-ops-manual", "rank": 1, "score": 0.83}],
+        "dense": [{"evidenceId": "e-ops-manual", "rank": 1, "score": 0.72}]
+      },
+      "finalContextEvidenceIds": ["e-ops-manual"],
+      "citationEvidenceIds": ["e-ops-manual"],
+      "noEvidence": false,
+      "latencyMilliseconds": 18
+    },
+    {
+      "caseId": "zh-semantic-retry",
+      "laneResults": {
+        "lexical": [],
+        "dense": [{"evidenceId": "e-ops-manual", "rank": 1, "score": 0.68}]
+      },
+      "finalContextEvidenceIds": ["e-ops-manual"],
+      "citationEvidenceIds": ["e-ops-manual"],
+      "noEvidence": false,
+      "latencyMilliseconds": 24
+    },
+    {
+      "caseId": "context-follow-up",
+      "laneResults": {
+        "lexical": [],
+        "dense": [],
+        "rewrite_lexical": [{"evidenceId": "e-ops-manual", "rank": 1, "score": 0.79}],
+        "rewrite_dense": [{"evidenceId": "e-ops-manual", "rank": 1, "score": 0.71}]
+      },
+      "finalContextEvidenceIds": ["e-ops-manual"],
+      "citationEvidenceIds": ["e-ops-manual"],
+      "noEvidence": false,
+      "latencyMilliseconds": 47
+    },
+    {
+      "caseId": "cross-collection-retention",
+      "laneResults": {
+        "lexical": [
+          {"evidenceId": "e-retention-red", "rank": 1, "score": 0.88},
+          {"evidenceId": "e-retention-blue", "rank": 2, "score": 0.81}
+        ],
+        "dense": [
+          {"evidenceId": "e-retention-blue", "rank": 1, "score": 0.76},
+          {"evidenceId": "e-retention-red", "rank": 2, "score": 0.73}
+        ]
+      },
+      "finalContextEvidenceIds": ["e-retention-red", "e-retention-blue"],
+      "citationEvidenceIds": ["e-retention-red", "e-retention-blue"],
+      "noEvidence": false,
+      "latencyMilliseconds": 32
+    },
+    {
+      "caseId": "negative-weather",
+      "laneResults": {"lexical": [], "dense": []},
+      "finalContextEvidenceIds": [],
+      "citationEvidenceIds": [],
+      "noEvidence": true,
+      "latencyMilliseconds": 21
+    },
+    {
+      "caseId": "negative-cooking",
+      "laneResults": {"lexical": [], "dense": []},
+      "finalContextEvidenceIds": [],
+      "citationEvidenceIds": [],
+      "noEvidence": true,
+      "latencyMilliseconds": 19
+    }
+  ]
+}

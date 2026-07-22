@@ -127,7 +127,7 @@ func TestRAGAnswerAssemblerRejectsIncompleteInput(t *testing.T) {
 	}
 }
 
-func TestRAGAnswerAssemblerAppliesGlobalRerankThresholdAndTopK(t *testing.T) {
+func TestRAGAnswerAssemblerAppliesGoldenRelevancePolicyAndTopK(t *testing.T) {
 	refs, evidence := rerankFixture(6)
 	source := &fakeRAGCandidateSource{refs: refs}
 	hydrator := &mappedRAGHydrator{evidence: evidence}
@@ -169,7 +169,7 @@ func TestRAGAnswerAssemblerAppliesGlobalRerankThresholdAndTopK(t *testing.T) {
 	}
 }
 
-func TestRAGAnswerAssemblerDegradesToPreRerankOrderOnRerankerFailure(t *testing.T) {
+func TestRAGAnswerAssemblerFailsClosedOnRerankerFailure(t *testing.T) {
 	refs, evidence := rerankFixture(7)
 	hydrator := &mappedRAGHydrator{evidence: evidence}
 	assembler := NewRAGAnswerAssembler(
@@ -182,16 +182,11 @@ func TestRAGAnswerAssemblerDegradesToPreRerankOrderOnRerankerFailure(t *testing.
 	)
 
 	result, err := assembler.Assemble(context.Background(), validRAGAssemblyInput())
-	if err != nil {
-		t.Fatalf("Assemble() error = %v", err)
+	if !errors.Is(err, ErrRAGInsufficientEvidence) {
+		t.Fatalf("Assemble() result/error = %#v/%v, want fail-closed no evidence", result, err)
 	}
-	if result.RerankStatus != ragRerankStatusDegraded || len(result.Evidence) != defaultRAGEvidenceLimit {
-		t.Fatalf("degraded result = %#v", result)
-	}
-	for index := range result.Evidence {
-		if result.Evidence[index].ChildChunkID != refs[index].ChildChunkID {
-			t.Fatalf("degraded order[%d] = %s", index, result.Evidence[index].ChildChunkID)
-		}
+	if len(result.Evidence) != 0 || len(result.Citations) != 0 || len(hydrator.inputs) != 1 {
+		t.Fatalf("fail-closed result/hydration = %#v/%#v", result, hydrator.inputs)
 	}
 }
 
@@ -215,7 +210,7 @@ func TestRAGAnswerAssemblerTreatsSuccessfulBelowThresholdRerankAsNoEvidence(t *t
 	}
 }
 
-func TestRAGAnswerAssemblerSkipsRerankEgressWithoutGovernance(t *testing.T) {
+func TestRAGAnswerAssemblerFailsClosedWithoutRerankGovernance(t *testing.T) {
 	refs, evidence := rerankFixture(7)
 	hydrator := &mappedRAGHydrator{evidence: evidence}
 	reranker := &fakeRAGEvidenceReranker{}
@@ -229,12 +224,44 @@ func TestRAGAnswerAssemblerSkipsRerankEgressWithoutGovernance(t *testing.T) {
 	)
 
 	result, err := assembler.Assemble(context.Background(), validRAGAssemblyInput())
-	if err != nil {
-		t.Fatalf("Assemble() error = %v", err)
+	if !errors.Is(err, ErrRAGInsufficientEvidence) {
+		t.Fatalf("Assemble() result/error = %#v/%v, want fail-closed no evidence", result, err)
 	}
-	if result.RerankStatus != ragRerankStatusDegraded || reranker.calls != 0 ||
-		len(hydrator.inputs) != 1 || len(hydrator.inputs[0].References) != defaultRAGEvidenceLimit {
-		t.Fatalf("governance degradation = %#v/%d/%#v", result, reranker.calls, hydrator.inputs)
+	if reranker.calls != 0 || len(hydrator.inputs) != 0 || len(result.Citations) != 0 {
+		t.Fatalf("governance fail-closed = %#v/%d/%#v", result, reranker.calls, hydrator.inputs)
+	}
+}
+
+func TestRAGAnswerAssemblerFailsClosedOnPartialRerankConfiguration(t *testing.T) {
+	refs, evidence := rerankFixture(2)
+	assembler := NewRAGAnswerAssembler(
+		&fakeRAGCandidateSource{refs: refs},
+		&mappedRAGHydrator{evidence: evidence},
+		WithRAGEvidenceReranker(&fakeRAGEvidenceReranker{}, nil),
+	)
+
+	result, err := assembler.Assemble(context.Background(), validRAGAssemblyInput())
+	if !errors.Is(err, ErrRAGInsufficientEvidence) || len(result.Citations) != 0 {
+		t.Fatalf("Assemble() result/error = %#v/%v, want fail-closed no evidence", result, err)
+	}
+}
+
+func TestRAGAnswerAssemblerFailsClosedOnMalformedRerankResult(t *testing.T) {
+	refs, evidence := rerankFixture(2)
+	assembler := NewRAGAnswerAssembler(
+		&fakeRAGCandidateSource{refs: refs},
+		&mappedRAGHydrator{evidence: evidence},
+		WithRAGEvidenceReranker(
+			&fakeRAGEvidenceReranker{results: []RAGRerankResult{
+				{Index: 0, RelevanceScore: 0.8},
+			}},
+			fakeRAGRerankGate{},
+		),
+	)
+
+	result, err := assembler.Assemble(context.Background(), validRAGAssemblyInput())
+	if !errors.Is(err, ErrRAGInsufficientEvidence) || len(result.Citations) != 0 {
+		t.Fatalf("Assemble() result/error = %#v/%v, want fail-closed no evidence", result, err)
 	}
 }
 

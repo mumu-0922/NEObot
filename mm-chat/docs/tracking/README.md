@@ -10,3 +10,5 @@
 - [`g13-chat-interaction-performance-process.md`](./g13-chat-interaction-performance-process.md) — implementation and deployed runtime evidence for each G13 slice.
 - [`g17-interaction-quality-plan.md`](./g17-interaction-quality-plan.md) — sliced auxiliary-generation, marketplace-performance, and Knowledge bulk-delete plan.
 - [`g17-interaction-quality-process.md`](./g17-interaction-quality-process.md) — evidence and verification log for each G17 slice.
+- [`g18-bm25-pgvector-retrieval-plan.md`](./g18-bm25-pgvector-retrieval-plan.md) — staged Golden Set, PostgreSQL 17, BM25, pgvector, cutover, and rollback plan.
+- [`g18-bm25-pgvector-retrieval-process.md`](./g18-bm25-pgvector-retrieval-process.md) — implementation, evaluation, live proof, and rollback evidence for each G18 group.

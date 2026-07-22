@@ -1,0 +1,208 @@
+{
+  "schemaVersion": "mm-chat.rag-observations.v1",
+  "goldenSetId": "g18-synthetic-retrieval-v1",
+  "capturedOn": "2026-07-22",
+  "captureKind": "live_disposable_synthetic_current_engine",
+  "profile": {
+    "id": "tsrank-real-array-jina-v1",
+    "lexicalEngine": "postgresql-ts_rank-exact-phrase-cjk-bigram-m026",
+    "denseEngine": "postgresql-real-array-cosine-m027",
+    "embeddingModel": "jina-embeddings-v4-1024",
+    "rerankerModel": "jina-reranker-v3",
+    "relevancePolicy": "rerank-score-gte-0-plus-terminal-marker-filter",
+    "candidateLimit": 20,
+    "evidenceLimit": 5,
+    "rrfConstant": 60
+  },
+  "cases": [
+    {
+      "caseId": "exact-error-identifier",
+      "laneResults": {
+        "dense": [
+          {
+            "evidenceId": "e-ops-manual",
+            "rank": 1,
+            "score": 0.7405144676065238
+          }
+        ],
+        "lexical": [
+          {
+            "evidenceId": "e-ops-manual",
+            "rank": 1,
+            "score": 0.7383297681808472
+          }
+        ]
+      },
+      "finalContextEvidenceIds": [
+        "e-ops-manual"
+      ],
+      "citationEvidenceIds": [
+        "e-ops-manual"
+      ],
+      "noEvidence": false,
+      "latencyMilliseconds": 1427
+    },
+    {
+      "caseId": "zh-lexical-retry",
+      "laneResults": {
+        "dense": [
+          {
+            "evidenceId": "e-ops-manual",
+            "rank": 1,
+            "score": 0.6115561466949279
+          }
+        ],
+        "lexical": [
+          {
+            "evidenceId": "e-ops-manual",
+            "rank": 1,
+            "score": 0.1818181872367859
+          }
+        ]
+      },
+      "finalContextEvidenceIds": [
+        "e-ops-manual"
+      ],
+      "citationEvidenceIds": [
+        "e-ops-manual"
+      ],
+      "noEvidence": false,
+      "latencyMilliseconds": 1986
+    },
+    {
+      "caseId": "zh-semantic-retry",
+      "laneResults": {
+        "dense": [
+          {
+            "evidenceId": "e-ops-manual",
+            "rank": 1,
+            "score": 0.6939464856606793
+          }
+        ],
+        "lexical": [
+          {
+            "evidenceId": "e-ops-manual",
+            "rank": 1,
+            "score": 0.30000001192092896
+          }
+        ]
+      },
+      "finalContextEvidenceIds": [
+        "e-ops-manual"
+      ],
+      "citationEvidenceIds": [
+        "e-ops-manual"
+      ],
+      "noEvidence": false,
+      "latencyMilliseconds": 1158
+    },
+    {
+      "caseId": "context-follow-up",
+      "laneResults": {
+        "dense": [
+          {
+            "evidenceId": "e-ops-manual",
+            "rank": 1,
+            "score": 0.5533448182428616
+          }
+        ],
+        "lexical": [
+          {
+            "evidenceId": "e-ops-manual",
+            "rank": 1,
+            "score": 0.125
+          }
+        ],
+        "rewrite_dense": [
+          {
+            "evidenceId": "e-ops-manual",
+            "rank": 1,
+            "score": 0.6577607691430162
+          }
+        ],
+        "rewrite_lexical": [
+          {
+            "evidenceId": "e-ops-manual",
+            "rank": 1,
+            "score": 0.25
+          }
+        ]
+      },
+      "finalContextEvidenceIds": [
+        "e-ops-manual"
+      ],
+      "citationEvidenceIds": [
+        "e-ops-manual"
+      ],
+      "noEvidence": false,
+      "latencyMilliseconds": 25402
+    },
+    {
+      "caseId": "cross-collection-retention",
+      "laneResults": {
+        "dense": [
+          {
+            "evidenceId": "e-retention-red",
+            "rank": 1,
+            "score": 0.6149775245651035
+          },
+          {
+            "evidenceId": "e-retention-blue",
+            "rank": 2,
+            "score": 0.6076668495175462
+          }
+        ],
+        "lexical": [
+          {
+            "evidenceId": "e-retention-blue",
+            "rank": 1,
+            "score": 0.28125
+          },
+          {
+            "evidenceId": "e-retention-red",
+            "rank": 2,
+            "score": 0.28125
+          }
+        ]
+      },
+      "finalContextEvidenceIds": [
+        "e-retention-red",
+        "e-retention-blue"
+      ],
+      "citationEvidenceIds": [
+        "e-retention-red",
+        "e-retention-blue"
+      ],
+      "noEvidence": false,
+      "latencyMilliseconds": 1655
+    },
+    {
+      "caseId": "negative-weather",
+      "laneResults": {
+        "dense": [],
+        "lexical": []
+      },
+      "finalContextEvidenceIds": [],
+      "citationEvidenceIds": [],
+      "noEvidence": true,
+      "latencyMilliseconds": 8148
+    },
+    {
+      "caseId": "negative-cooking",
+      "laneResults": {
+        "dense": [],
+        "lexical": [
+          {
+            "evidenceId": "e-ops-manual",
+            "rank": 1,
+            "score": 0.1041666641831398
+          }
+        ]
+      },
+      "finalContextEvidenceIds": [],
+      "citationEvidenceIds": [],
+      "noEvidence": true,
+      "latencyMilliseconds": 2565
+    }
+  ]
+}
