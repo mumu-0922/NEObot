@@ -2,6 +2,7 @@ package chat
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -60,6 +61,7 @@ type processTrace struct {
 	messageID string
 	steps     []ProcessStep
 	indexes   map[string]int
+	counters  map[string]int
 }
 
 type processReasoningStream struct {
@@ -118,6 +120,7 @@ func newProcessTrace(messageID string) *processTrace {
 		messageID: strings.TrimSpace(messageID),
 		steps:     []ProcessStep{},
 		indexes:   map[string]int{},
+		counters:  map[string]int{},
 	}
 }
 
@@ -149,8 +152,47 @@ func (trace *processTrace) start(
 	startedAt time.Time,
 	detail map[string]any,
 ) ProcessStep {
+	return trace.startWithID(
+		trace.stepID(kind),
+		kind,
+		labelKey,
+		startedAt,
+		detail,
+	)
+}
+
+func (trace *processTrace) startNext(
+	kind string,
+	labelKey string,
+	startedAt time.Time,
+	detail map[string]any,
+) ProcessStep {
+	var id string
+	for {
+		trace.counters[kind]++
+		id = trace.messageID + ":" + kind + ":" + strconv.Itoa(trace.counters[kind])
+		if _, exists := trace.indexes[id]; !exists {
+			break
+		}
+	}
+	return trace.startWithID(
+		id,
+		kind,
+		labelKey,
+		startedAt,
+		detail,
+	)
+}
+
+func (trace *processTrace) startWithID(
+	id string,
+	kind string,
+	labelKey string,
+	startedAt time.Time,
+	detail map[string]any,
+) ProcessStep {
 	return trace.add(ProcessStep{
-		ID:        trace.stepID(kind),
+		ID:        id,
 		Kind:      kind,
 		Status:    ProcessStepStatusRunning,
 		LabelKey:  labelKey,
@@ -165,7 +207,20 @@ func (trace *processTrace) transition(
 	completedAt time.Time,
 	detail map[string]any,
 ) (ProcessStep, bool) {
-	id := trace.stepID(kind)
+	return trace.transitionID(
+		trace.stepID(kind),
+		status,
+		completedAt,
+		detail,
+	)
+}
+
+func (trace *processTrace) transitionID(
+	id string,
+	status string,
+	completedAt time.Time,
+	detail map[string]any,
+) (ProcessStep, bool) {
 	index, ok := trace.indexes[id]
 	if !ok {
 		return ProcessStep{}, false

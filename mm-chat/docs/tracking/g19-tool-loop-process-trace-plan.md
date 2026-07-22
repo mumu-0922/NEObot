@@ -124,6 +124,8 @@ external Search into the streamed Tool Loop; G19.6 does the same for Knowledge.
 
 ## G19.3 OpenAI-compatible/Gemini external Tool Loop
 
+Status: complete (2026-07-22).
+
 - Extend the provider-neutral chat round with Tool definitions and normalized
   Tool Call events.
 - Parse fragmented streaming arguments, execute `search_web` against the single
@@ -139,6 +141,19 @@ Promotion gate: focused and full Go/frontend gates plus a real DeepSeek/OpenAI-
 compatible + Tavily contextual follow-up prove ordinary chat does not Search,
 explicit/current questions do Search, Tool progress is visible, the final answer
 streams, citations reload truthfully, and all smoke state is deleted.
+
+Passed boundary: OpenAI-compatible and the Gemini Google OpenAI surface now
+stream fragmented Tool Calls, execute live external Search, and continue with
+native assistant `tool_calls` plus matching `role=tool` messages. Unsupported
+Tool requests use a bounded same-model compatibility plan. The composer exposes
+persisted `off` and `external`; `model_builtin` remains a valid data value for
+G19.5. A real `gpt-5.6-sol` + Tavily two-turn replay made zero Search requests
+for the ordinary turn, made two model-requested Search calls for the explicit
+contextual turn, reloaded the used Citation and two Tool/Web trace pairs, and
+returned `404` after deleting the temporary conversation. A final post-build
+replay again proved ordinary zero-Search, one explicit live Search, `[W1]` in
+both reloaded Tool/Web `citationMarkers`, one Search block, and `204 -> 404`
+cleanup.
 
 ## G19.4 Anthropic Tool Loop
 

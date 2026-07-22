@@ -188,6 +188,7 @@ export const ChatRequestSchema = z
           .enum(["auto", "low", "medium", "high", "xhigh", "max"])
           .optional(),
         useSearch: z.boolean().optional(),
+        searchMode: z.enum(["off", "model_builtin", "external"]).optional(),
       })
       .strict()
       .optional(),

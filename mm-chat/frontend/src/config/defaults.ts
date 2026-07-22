@@ -40,6 +40,7 @@ export const DEFAULT_MODEL_PARAMS = {
  * 聊天配置默认值
  */
 export const DEFAULT_CHAT_CONFIG = {
+  searchMode: "off",
   useSearch: false,
   useReasoning: false,
   reasoningEffort: "high",

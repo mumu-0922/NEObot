@@ -98,7 +98,7 @@ describe("chat entity normalization", () => {
           useSearch: true,
         },
       } as Session).config,
-    ).toEqual({ useSearch: true });
+    ).toEqual({ searchMode: "external", useSearch: true });
 
     expect(
       normalizeSession({

@@ -21,6 +21,7 @@ const (
 	openAICompatibleProviderIDOpenAI        = "openai"
 	openAICompatibleProviderIDHyphenVariant = "openai-compatible"
 	maxOpenAICompatibleToolPlanBytes        = 2 << 20
+	maxOpenAICompatibleToolArgumentsBytes   = 64 << 10
 )
 
 var (
@@ -78,6 +79,15 @@ func (p *OpenAICompatibleProvider) StreamChat(
 	ctx context.Context,
 	input ProviderRequest,
 ) (<-chan ProviderEvent, error) {
+	return p.StreamToolRound(ctx, ProviderRoundRequest{
+		ProviderRequest: input,
+	})
+}
+
+func (p *OpenAICompatibleProvider) StreamToolRound(
+	ctx context.Context,
+	input ProviderRoundRequest,
+) (<-chan ProviderEvent, error) {
 	modelRef, err := p.ResolveModelRef(input.ModelRef)
 	if err != nil {
 		return nil, err
@@ -88,23 +98,37 @@ func (p *OpenAICompatibleProvider) StreamChat(
 		return nil, errors.New("openai-compatible provider model is required")
 	}
 
+	messages := openAICompatibleMessages(
+		input.SystemPrompt,
+		providerMessagesOrPrompt(input.ProviderRequest),
+	)
+	messages = appendOpenAICompatibleContinuation(messages, input.Continuation)
 	payload, err := json.Marshal(openAICompatibleChatCompletionRequest{
-		Model:  model,
-		Stream: true,
-		Messages: openAICompatibleMessages(
-			input.SystemPrompt,
-			providerMessagesOrPrompt(input),
+		Model:    model,
+		Stream:   true,
+		Messages: messages,
+		Tools:    input.Tools,
+		ToolChoice: openAICompatibleToolChoice(
+			normalizeProviderToolChoice(input.ToolChoice),
+			input.Tools,
 		),
 		ReasoningEffort: openAIReasoningEffort(
 			model,
 			input.UseReasoning,
-			effectiveReasoningEffort(input),
+			effectiveReasoningEffort(input.ProviderRequest),
 		),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("openai-compatible provider request encode failed: %w", err)
 	}
 
+	return p.streamChatCompletion(ctx, payload)
+}
+
+func (p *OpenAICompatibleProvider) streamChatCompletion(
+	ctx context.Context,
+	payload []byte,
+) (<-chan ProviderEvent, error) {
 	requestCtx := ctx
 	var cancel context.CancelFunc
 	if p.timeout > 0 {
@@ -200,21 +224,46 @@ type openAICompatibleChatCompletionRequest struct {
 	Messages        []openAICompatibleMessage `json:"messages"`
 	ReasoningEffort string                    `json:"reasoning_effort,omitempty"`
 	Tools           []ToolDefinition          `json:"tools,omitempty"`
-	ToolChoice      string                    `json:"tool_choice,omitempty"`
+	ToolChoice      any                       `json:"tool_choice,omitempty"`
 }
 
 type openAICompatibleMessage struct {
-	Role    string `json:"role"`
-	Content any    `json:"content"`
+	Role             string                            `json:"role"`
+	Content          any                               `json:"content"`
+	ReasoningContent string                            `json:"reasoning_content,omitempty"`
+	ToolCalls        []openAICompatibleMessageToolCall `json:"tool_calls,omitempty"`
+	ToolCallID       string                            `json:"tool_call_id,omitempty"`
+}
+
+type openAICompatibleMessageToolCall struct {
+	ID       string                              `json:"id"`
+	Type     string                              `json:"type"`
+	Function openAICompatibleMessageToolFunction `json:"function"`
+}
+
+type openAICompatibleMessageToolFunction struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
 }
 
 type openAICompatibleStreamChunk struct {
 	Choices []struct {
+		Index int `json:"index"`
 		Delta struct {
 			Content          *string         `json:"content"`
 			ReasoningContent json.RawMessage `json:"reasoning_content"`
 			Reasoning        json.RawMessage `json:"reasoning"`
+			ToolCalls        []struct {
+				Index    int    `json:"index"`
+				ID       string `json:"id"`
+				Type     string `json:"type"`
+				Function struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				} `json:"function"`
+			} `json:"tool_calls"`
 		} `json:"delta"`
+		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
 	Usage *struct {
 		PromptTokens     int `json:"prompt_tokens"`
@@ -384,6 +433,67 @@ func openAICompatibleMessages(systemPrompt string, providerMessages []ProviderMe
 	return messages
 }
 
+func appendOpenAICompatibleContinuation(
+	messages []openAICompatibleMessage,
+	exchanges []ProviderToolExchange,
+) []openAICompatibleMessage {
+	for _, exchange := range exchanges {
+		if len(exchange.Calls) == 0 {
+			continue
+		}
+		toolCalls := make([]openAICompatibleMessageToolCall, 0, len(exchange.Calls))
+		for _, call := range exchange.Calls {
+			toolCalls = append(toolCalls, openAICompatibleMessageToolCall{
+				ID:   strings.TrimSpace(call.ID),
+				Type: "function",
+				Function: openAICompatibleMessageToolFunction{
+					Name:      strings.TrimSpace(call.Name),
+					Arguments: strings.TrimSpace(call.Arguments),
+				},
+			})
+		}
+		messages = append(messages, openAICompatibleMessage{
+			Role:             "assistant",
+			Content:          nullableOpenAICompatibleContent(exchange.AssistantContent),
+			ReasoningContent: strings.TrimSpace(exchange.AssistantReasoning),
+			ToolCalls:        toolCalls,
+		})
+		for _, result := range exchange.Results {
+			messages = append(messages, openAICompatibleMessage{
+				Role:       "tool",
+				Content:    result.Content,
+				ToolCallID: strings.TrimSpace(result.CallID),
+			})
+		}
+	}
+	return messages
+}
+
+func nullableOpenAICompatibleContent(value string) any {
+	if value = strings.TrimSpace(value); value != "" {
+		return value
+	}
+	return nil
+}
+
+func openAICompatibleToolChoice(value string, tools []ToolDefinition) any {
+	if len(tools) == 0 {
+		return nil
+	}
+	if value == ProviderToolChoiceRequired && len(tools) > 0 {
+		return map[string]any{
+			"type": "function",
+			"function": map[string]any{
+				"name": strings.TrimSpace(tools[0].Function.Name),
+			},
+		}
+	}
+	if value == ProviderToolChoiceAuto {
+		return ProviderToolChoiceAuto
+	}
+	return nil
+}
+
 func providerMessagesOrPrompt(input ProviderRequest) []ProviderMessage {
 	if len(input.Messages) > 0 {
 		return input.Messages
@@ -431,10 +541,16 @@ func streamOpenAICompatibleEvents(
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	dataLines := make([]string, 0, 1)
+	toolCalls := newOpenAICompatibleToolCallAccumulator()
 	for scanner.Scan() {
 		line := strings.TrimSuffix(scanner.Text(), "\r")
 		if line == "" {
-			keepReading, done := dispatchOpenAICompatibleData(ctx, strings.Join(dataLines, "\n"), events)
+			keepReading, done := dispatchOpenAICompatibleData(
+				ctx,
+				strings.Join(dataLines, "\n"),
+				events,
+				toolCalls,
+			)
 			if done || !keepReading {
 				return
 			}
@@ -449,7 +565,12 @@ func streamOpenAICompatibleEvents(
 	}
 
 	if len(dataLines) > 0 {
-		keepReading, done := dispatchOpenAICompatibleData(ctx, strings.Join(dataLines, "\n"), events)
+		keepReading, done := dispatchOpenAICompatibleData(
+			ctx,
+			strings.Join(dataLines, "\n"),
+			events,
+			toolCalls,
+		)
 		if done || !keepReading {
 			return
 		}
@@ -469,12 +590,16 @@ func dispatchOpenAICompatibleData(
 	ctx context.Context,
 	data string,
 	events chan<- ProviderEvent,
+	toolCalls *openAICompatibleToolCallAccumulator,
 ) (bool, bool) {
 	data = strings.TrimSpace(data)
 	if data == "" {
 		return true, false
 	}
 	if data == "[DONE]" {
+		if !toolCalls.complete(ctx, events) {
+			return false, false
+		}
 		return false, true
 	}
 
@@ -485,6 +610,12 @@ func dispatchOpenAICompatibleData(
 	}
 
 	for _, choice := range chunk.Choices {
+		for _, toolCall := range choice.Delta.ToolCalls {
+			if !toolCalls.append(ctx, events, choice.Index, toolCall.Index, toolCall.ID,
+				toolCall.Type, toolCall.Function.Name, toolCall.Function.Arguments) {
+				return false, false
+			}
+		}
 		reasoning := openAICompatibleReasoningDelta(
 			choice.Delta.ReasoningContent,
 			choice.Delta.Reasoning,
@@ -521,6 +652,117 @@ func dispatchOpenAICompatibleData(
 	}
 
 	return true, false
+}
+
+type openAICompatibleToolCallKey struct {
+	choiceIndex int
+	callIndex   int
+}
+
+type openAICompatibleToolCallAccumulator struct {
+	order []openAICompatibleToolCallKey
+	calls map[openAICompatibleToolCallKey]*ProviderToolCall
+}
+
+func newOpenAICompatibleToolCallAccumulator() *openAICompatibleToolCallAccumulator {
+	return &openAICompatibleToolCallAccumulator{
+		order: []openAICompatibleToolCallKey{},
+		calls: map[openAICompatibleToolCallKey]*ProviderToolCall{},
+	}
+}
+
+func (accumulator *openAICompatibleToolCallAccumulator) append(
+	ctx context.Context,
+	events chan<- ProviderEvent,
+	choiceIndex int,
+	callIndex int,
+	id string,
+	callType string,
+	nameDelta string,
+	argumentsDelta string,
+) bool {
+	key := openAICompatibleToolCallKey{
+		choiceIndex: choiceIndex,
+		callIndex:   callIndex,
+	}
+	call, ok := accumulator.calls[key]
+	if !ok {
+		call = &ProviderToolCall{
+			ChoiceIndex: choiceIndex,
+			CallIndex:   callIndex,
+		}
+		accumulator.calls[key] = call
+		accumulator.order = append(accumulator.order, key)
+	}
+	if callType != "" && callType != "function" {
+		call.FailureCategory = "unsupported_call_type"
+	}
+	if id = strings.TrimSpace(id); id != "" {
+		switch {
+		case call.ID == "":
+			call.ID = id
+		case call.ID != id && !strings.HasSuffix(call.ID, id):
+			call.ID += id
+		}
+		if len(call.ID) > 256 {
+			call.ID = truncateProcessUTF8(call.ID, 256)
+			call.FailureCategory = "invalid_call_id"
+		}
+	}
+	if nameDelta != "" {
+		call.Name += nameDelta
+		if len(call.Name) > maxToolNameBytes {
+			call.Name = truncateProcessUTF8(call.Name, maxToolNameBytes)
+			call.FailureCategory = "invalid_tool_name"
+		}
+	}
+	if argumentsDelta != "" {
+		remaining := maxOpenAICompatibleToolArgumentsBytes - len(call.Arguments)
+		if remaining <= 0 {
+			call.FailureCategory = "arguments_too_large"
+		} else {
+			call.Arguments += truncateProcessUTF8(argumentsDelta, remaining)
+			if len(argumentsDelta) > remaining {
+				call.FailureCategory = "arguments_too_large"
+			}
+		}
+	}
+	delta := ProviderToolCallDelta{
+		ChoiceIndex:    choiceIndex,
+		CallIndex:      callIndex,
+		ID:             id,
+		NameDelta:      nameDelta,
+		ArgumentsDelta: argumentsDelta,
+	}
+	return sendProviderEvent(ctx, events, ProviderEvent{
+		Type:          ProviderEventToolCallDelta,
+		ToolCallDelta: &delta,
+	})
+}
+
+func (accumulator *openAICompatibleToolCallAccumulator) complete(
+	ctx context.Context,
+	events chan<- ProviderEvent,
+) bool {
+	for _, key := range accumulator.order {
+		call := *accumulator.calls[key]
+		call.ID = strings.TrimSpace(call.ID)
+		call.Name = strings.TrimSpace(call.Name)
+		call.Arguments = strings.TrimSpace(call.Arguments)
+		if call.ID == "" {
+			call.ID = fmt.Sprintf("call_%d_%d", call.ChoiceIndex, call.CallIndex)
+		}
+		if call.Name == "" && call.FailureCategory == "" {
+			call.FailureCategory = "invalid_tool_name"
+		}
+		if !sendProviderEvent(ctx, events, ProviderEvent{
+			Type:     ProviderEventToolCallCompleted,
+			ToolCall: &call,
+		}) {
+			return false
+		}
+	}
+	return true
 }
 
 func openAICompatibleReasoningDelta(values ...json.RawMessage) string {

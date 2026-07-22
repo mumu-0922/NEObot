@@ -8,6 +8,7 @@ import {
 } from "../../config/defaults";
 import type { ChatConfig, SystemSettings } from "../../types";
 import { normalizeReasoningEffort } from "../chat/reasoning";
+import { normalizeSearchMode, searchModeEnabled } from "../chat/searchMode";
 
 function clampInteger(
   value: unknown,
@@ -49,11 +50,11 @@ export function normalizeChatConfig(config: unknown): ChatConfig {
   const raw =
     config && typeof config === "object" ? (config as Partial<ChatConfig>) : {};
 
+  const searchMode = normalizeSearchMode(raw.searchMode, raw.useSearch);
+
   return {
-    useSearch:
-      typeof raw.useSearch === "boolean"
-        ? raw.useSearch
-        : DEFAULT_CHAT_CONFIG.useSearch,
+    searchMode,
+    useSearch: searchModeEnabled(searchMode),
     useReasoning:
       typeof raw.useReasoning === "boolean"
         ? raw.useReasoning

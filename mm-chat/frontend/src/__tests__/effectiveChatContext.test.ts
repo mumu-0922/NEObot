@@ -34,6 +34,7 @@ describe("effective chat context", () => {
       modelMetadata: {},
       customModelMetadata: {},
       chatConfig: {
+        searchMode: "external",
         useSearch: true,
         useReasoning: true,
         reasoningEffort: "high",
@@ -103,6 +104,7 @@ describe("effective chat context", () => {
       modelMetadata: {},
       customModelMetadata: {},
       chatConfig: {
+        searchMode: "off",
         useSearch: false,
         useReasoning: false,
         reasoningEffort: "auto",
@@ -138,6 +140,7 @@ describe("effective chat context", () => {
       modelMetadata: {},
       customModelMetadata: {},
       chatConfig: {
+        searchMode: "off",
         useSearch: false,
         useReasoning: false,
         reasoningEffort: "auto",
@@ -215,6 +218,7 @@ describe("effective chat context", () => {
       modelMetadata: {},
       customModelMetadata: {},
       chatConfig: {
+        searchMode: "off",
         useSearch: false,
         useReasoning: false,
         reasoningEffort: "auto",
@@ -264,6 +268,7 @@ describe("effective chat context", () => {
       modelMetadata: {},
       customModelMetadata: {},
       chatConfig: {
+        searchMode: "off",
         useSearch: false,
         useReasoning: false,
         reasoningEffort: "auto",

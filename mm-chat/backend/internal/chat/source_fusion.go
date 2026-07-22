@@ -32,6 +32,7 @@ type sourceSearchReason string
 
 const (
 	sourceSearchDisabled             sourceSearchReason = "disabled"
+	sourceSearchAutoTool             sourceSearchReason = "auto_tool"
 	sourceSearchCurrentPublic        sourceSearchReason = "current_public"
 	sourceSearchKnowledgeSufficient  sourceSearchReason = "knowledge_sufficient"
 	sourceSearchKnowledgeUnavailable sourceSearchReason = "knowledge_unavailable"

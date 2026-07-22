@@ -523,7 +523,10 @@ export const streamChatResponse = async (
     onOutputBlocks?.(outputBlockBuilder.getBlocks());
   };
 
-  if (config?.useSearch) {
+  if (
+    (config?.searchMode !== undefined && config.searchMode !== "off") ||
+    config?.useSearch
+  ) {
     onSearchStatus?.(false, { sources: [], images: [] });
     throw new Error("Web Search requires Go server chat streaming.");
   }

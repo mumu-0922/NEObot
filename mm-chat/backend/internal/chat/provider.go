@@ -98,6 +98,9 @@ type ProviderEvent struct {
 	Type           string
 	Delta          string
 	ReasoningDelta string
+	ToolCallDelta  *ProviderToolCallDelta
+	ToolCall       *ProviderToolCall
+	ToolExecution  *ProviderToolExecutionEvent
 	Usage          *TokenUsage
 	Search         *websearch.Result
 	Error          error

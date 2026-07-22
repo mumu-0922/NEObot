@@ -114,6 +114,7 @@ describe("chat store persistence", () => {
       isActiveSessionLoading: false,
       selectedModel: "model",
       chatConfig: {
+        searchMode: "off",
         useSearch: false,
         useReasoning: false,
         reasoningEffort: "auto",
@@ -207,6 +208,7 @@ describe("chat store persistence", () => {
       workspaceId: "w1",
       systemInstruction: "workspace prompt",
       config: {
+        searchMode: "external" as const,
         useSearch: true,
         useReasoning: false,
         activePlugins: ["search"],
@@ -224,6 +226,7 @@ describe("chat store persistence", () => {
     const sessionId = useChatStore
       .getState()
       .createSession("workspace prompt", "New Chat", "w1", [], {
+        searchMode: "external",
         useSearch: true,
         useReasoning: false,
         activePlugins: ["search"],

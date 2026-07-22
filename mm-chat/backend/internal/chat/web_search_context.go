@@ -103,6 +103,23 @@ func buildWebSearchProviderRequest(
 
 func webSearchOutputBlocks(messageID string, result websearch.Result) []any {
 	bounded, citations := prepareWebSearchResult(result)
+	return webSearchOutputBlocksFromProjection(messageID, bounded, citations)
+}
+
+func usedWebSearchOutputBlocks(
+	messageID string,
+	content string,
+	result websearch.Result,
+) []any {
+	bounded, citations := usedWebSearchProjection(content, result)
+	return webSearchOutputBlocksFromProjection(messageID, bounded, citations)
+}
+
+func webSearchOutputBlocksFromProjection(
+	messageID string,
+	bounded websearch.Result,
+	citations []WebCitation,
+) []any {
 	if len(citations) == 0 && len(bounded.Images) == 0 {
 		return nil
 	}
@@ -139,11 +156,30 @@ func withWebSearchMessageMetadata(
 	execution *websearch.ActiveExecution,
 	result websearch.Result,
 ) map[string]any {
+	bounded, citations := prepareWebSearchResult(result)
+	return withWebSearchMetadataProjection(base, execution, bounded, citations)
+}
+
+func withUsedWebSearchMessageMetadata(
+	base map[string]any,
+	execution *websearch.ActiveExecution,
+	content string,
+	result websearch.Result,
+) map[string]any {
+	bounded, citations := usedWebSearchProjection(content, result)
+	return withWebSearchMetadataProjection(base, execution, bounded, citations)
+}
+
+func withWebSearchMetadataProjection(
+	base map[string]any,
+	execution *websearch.ActiveExecution,
+	bounded websearch.Result,
+	citations []WebCitation,
+) map[string]any {
 	metadata := ensureObject(base)
 	if execution == nil {
 		return metadata
 	}
-	bounded, citations := prepareWebSearchResult(result)
 	provider := string(execution.ModelBuiltIn)
 	if execution.Mode == websearch.ExecutionExternal && execution.External != nil {
 		provider = string(execution.External.ID())
@@ -158,6 +194,27 @@ func withWebSearchMessageMetadata(
 		"citations":     citations,
 	}
 	return metadata
+}
+
+// usedWebSearchProjection keeps the marker minted for each source in the
+// original current-turn result. Filtering [W1] out must not silently rename a
+// surviving [W2] to [W1]. Images have no answer marker, so they remain live
+// retrieval artifacts and are not projected into durable Citations.
+func usedWebSearchProjection(
+	content string,
+	result websearch.Result,
+) (websearch.Result, []WebCitation) {
+	bounded, citations := prepareWebSearchResult(result)
+	used := websearch.Result{Sources: []websearch.Source{}, Images: []websearch.Image{}}
+	usedCitations := make([]WebCitation, 0, len(citations))
+	for index, citation := range citations {
+		if !strings.Contains(content, citation.Marker) {
+			continue
+		}
+		used.Sources = append(used.Sources, bounded.Sources[index])
+		usedCitations = append(usedCitations, citation)
+	}
+	return used, usedCitations
 }
 
 func missingBuiltInWebCitationDelta(content string, result websearch.Result) string {

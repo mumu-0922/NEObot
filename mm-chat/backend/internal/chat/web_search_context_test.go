@@ -72,3 +72,25 @@ func TestMissingBuiltInWebCitationDeltaAddsOnlyMissingMarkers(t *testing.T) {
 		t.Fatalf("delta = %q", got)
 	}
 }
+
+func TestUsedWebSearchProjectionKeepsOriginalMarkerWithoutRenumbering(t *testing.T) {
+	result := websearch.Result{Sources: []websearch.Source{
+		{Title: "Unused", URL: "https://example.test/unused", Content: "unused"},
+		{Title: "Used", URL: "https://example.test/used", Content: "used"},
+	}}
+	bounded, citations := usedWebSearchProjection("answer [W2]", result)
+	if len(bounded.Sources) != 1 || bounded.Sources[0].Title != "Used" ||
+		len(citations) != 1 || citations[0].Marker != "[W2]" {
+		t.Fatalf("projection = %#v / %#v", bounded, citations)
+	}
+	blocks := usedWebSearchOutputBlocks("message-id", "answer [W2]", result)
+	if len(blocks) != 1 {
+		t.Fatalf("blocks = %#v", blocks)
+	}
+	block := blocks[0].(map[string]any)
+	source := block["sources"].([]any)[0].(map[string]any)
+	metadata := source["metadata"].(map[string]any)
+	if metadata["marker"] != "[W2]" {
+		t.Fatalf("source metadata = %#v", metadata)
+	}
+}

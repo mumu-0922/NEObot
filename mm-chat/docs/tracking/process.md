@@ -8696,3 +8696,23 @@ terminal steps; G19.3 owns the first live external Search Tool Loop. Exact
 contracts, evidence, and rollback are in
 `docs/tracking/g19-tool-loop-process-trace-process.md` and
 `docs/contracts/chat-tool-loop.md`.
+
+## 2026-07-22 — G19.3 external Web Tool Loop
+
+OpenAI-compatible and the configured Gemini OpenAI surface now expose
+`search_web` to the current model, stream fragmented Tool Calls, execute the
+single active external provider, and continue with native assistant
+`tool_calls` plus matching Tool results. The persisted Search contract is now
+`off | model_builtin | external`; the composer exposes off/external in this
+group, off performs zero Search work, ordinary external-mode prompts remain
+Auto, and explicit current/online intent is forced. Unsupported native Tools
+use a bounded same-model planner without a hidden model. Final source blocks,
+metadata, and Tool/Web trace markers now contain only citations used by the
+reconciled answer and preserve original marker numbers. Full Backend/Frontend
+gates, source builds, healthy Compose services, and two real
+`gpt-5.6-sol + Tavily` replays passed. The final replay proved ordinary
+zero-Search, live explicit Tool/Web transitions, `[W1]` reload in both trace
+steps, and `204 -> 404` temporary-state cleanup. Exact implementation,
+evidence, and rollback are recorded in
+`docs/tracking/g19-tool-loop-process-trace-process.md` and
+`docs/contracts/chat-tool-loop.md`.

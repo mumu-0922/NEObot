@@ -262,6 +262,7 @@ export type ChatGenerationEvent =
   | { type: "reset" };
 
 export interface SessionConfig {
+  searchMode?: SearchMode;
   useSearch?: boolean;
   searchResultsLimit?: number;
   useReasoning?: boolean;
@@ -270,6 +271,8 @@ export interface SessionConfig {
   activeSkills?: string[];
   selectedKnowledgeCollectionIds?: string[];
 }
+
+export type SearchMode = "off" | "model_builtin" | "external";
 
 export type ReasoningEffort =
   "auto" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -318,6 +321,7 @@ export interface Assistant {
 }
 
 export interface ChatConfig {
+  searchMode: SearchMode;
   useSearch: boolean;
   useReasoning: boolean;
   reasoningEffort: ReasoningEffort;

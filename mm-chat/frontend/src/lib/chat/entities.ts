@@ -8,6 +8,11 @@ import { ATTACHMENT_LIMITS, CHAT_ENTITY_LIMITS } from "../../config/limits";
 import { normalizePluginIdRefs } from "../plugin/config";
 import { normalizeSkillIdRefs } from "../skills";
 import { isReasoningEffort, normalizeReasoningEffort } from "./reasoning";
+import {
+  isSearchMode,
+  normalizeSearchMode,
+  searchModeEnabled,
+} from "./searchMode";
 import { normalizeCompressedContent } from "../utils/contextCompression";
 import {
   MAX_CONVERSATION_KNOWLEDGE_COLLECTIONS,
@@ -199,8 +204,13 @@ export function normalizeSessionConfig(
     activeSkills: rawActiveSkills,
     selectedKnowledgeCollectionIds: rawSelectedKnowledgeCollectionIds,
     reasoningEffort: rawReasoningEffort,
+    searchMode: rawSearchMode,
+    useSearch: rawUseSearch,
     ...rest
   } = config;
+  const hasSearchSelection =
+    isSearchMode(rawSearchMode) || typeof rawUseSearch === "boolean";
+  const searchMode = normalizeSearchMode(rawSearchMode, rawUseSearch);
   const activePlugins = normalizePluginIdRefs(rawActivePlugins);
   const activeSkills = normalizeSkillIdRefs(rawActiveSkills, []);
   const selectedKnowledgeCollectionIds =
@@ -214,6 +224,9 @@ export function normalizeSessionConfig(
 
   return {
     ...rest,
+    ...(hasSearchSelection
+      ? { searchMode, useSearch: searchModeEnabled(searchMode) }
+      : {}),
     ...(isReasoningEffort(rawReasoningEffort)
       ? { reasoningEffort: normalizeReasoningEffort(rawReasoningEffort) }
       : {}),

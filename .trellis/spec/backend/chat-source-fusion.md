@@ -1,11 +1,11 @@
 # Chat source-fusion contracts
 
-> Runtime status: authoritative until the owning G19 Tool Loop groups are
-> promoted. G19.1 is documentation-only. After cutover, the planned
-> [`chat-tool-loop.md`](./chat-tool-loop.md) contract supersedes pre-answer
-> forced Search and permits the explicitly displayed sanitized Query inside the
-> durable process trace; the legacy fusion diagnostics themselves remain
-> query-free.
+> Runtime status: G19.3 promoted external Web planning/execution to the live
+> Tool Loop, so [`chat-tool-loop.md`](./chat-tool-loop.md) is authoritative for
+> external Search. This document remains the rollback contract for that path
+> and the runtime contract for pre-answer Knowledge/source fusion until G19.6.
+> Legacy fusion diagnostics remain query-free; the sanitized displayed Query
+> belongs only to the process trace.
 
 ## 1. Scope / Trigger
 

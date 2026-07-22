@@ -21,7 +21,12 @@ import {
   isReasoningEffort,
   normalizeReasoningEffort,
 } from "../../lib/chat/reasoning";
-import type { ReasoningEffort } from "../../lib/chat/types";
+import type { ReasoningEffort, SearchMode } from "../../lib/chat/types";
+import {
+  isSearchMode,
+  normalizeSearchMode,
+  searchModeEnabled,
+} from "../../lib/chat/searchMode";
 import { IMAGE_CONTENT_POLICY_VIOLATION_CODE } from "../../lib/chat/types";
 import type { ProcessStep } from "../../lib/chat/types";
 import {
@@ -42,6 +47,7 @@ import {
 const SERVER_DEFAULT_BACKEND_PROVIDER_ID = "openai_compatible";
 
 export interface ChatCrudSessionConfig {
+  searchMode?: SearchMode;
   useSearch?: boolean;
   useReasoning?: boolean;
   reasoningEffort?: ReasoningEffort;
@@ -374,8 +380,13 @@ function normalizeConversationConfig(
 ): ChatCrudSessionConfig | undefined {
   const normalized: ChatCrudSessionConfig = {};
 
-  if (typeof config.useSearch === "boolean") {
-    normalized.useSearch = config.useSearch;
+  if (
+    isSearchMode(config.searchMode) ||
+    typeof config.useSearch === "boolean"
+  ) {
+    const searchMode = normalizeSearchMode(config.searchMode, config.useSearch);
+    normalized.searchMode = searchMode;
+    normalized.useSearch = searchModeEnabled(searchMode);
   }
   if (typeof config.useReasoning === "boolean") {
     normalized.useReasoning = config.useReasoning;

@@ -1,9 +1,11 @@
 # Planned chat Tool Loop contracts
 
-Status: G19.2 process-trace foundation promoted on 2026-07-22; Tool execution,
-three-state Search, and Knowledge Tool sections remain planned. Apply each
-section only after its owning G19 group is promoted. Until G19.3/G19.6, the
-existing `chat-source-fusion.md` execution contract remains authoritative.
+Status: G19.2 process-trace foundation and G19.3 OpenAI-compatible/Gemini
+external Web Tool Loop promoted on 2026-07-22. Anthropic, built-in capability
+administration, and Knowledge Tool sections remain planned. Apply each section
+only after its owning G19 group is promoted. The old source-fusion path remains
+rollback authority for external Web and runtime authority for pre-answer
+Knowledge until G19.6.
 
 ## 1. Scope / Trigger
 
@@ -28,6 +30,27 @@ content.delta | reasoning.delta | tool.call.delta |
 tool.call.completed | usage.updated | round.completed | round.error
 ```
 
+Active G19.3 provider seam:
+
+```go
+type ToolRoundProvider interface {
+    Provider
+    StreamToolRound(context.Context, ProviderRoundRequest) (<-chan ProviderEvent, error)
+}
+
+type ProviderRoundRequest struct {
+    ProviderRequest
+    Tools        []ToolDefinition
+    ToolChoice   string
+    Continuation []ProviderToolExchange
+}
+```
+
+OpenAI-compatible/Gemini continuation is an assistant message containing the
+completed `tool_calls`, followed by one `role=tool` message per matching
+`tool_call_id`. Fragmented names/arguments are accumulated before execution;
+arguments are capped at 64 KiB.
+
 Target process steps reuse the chat run/message sequence and contain a stable
 step ID, `reasoning|knowledge|web|tool|generation` kind,
 `pending|running|awaiting_approval|completed|failed|skipped|cancelled` status,
@@ -42,8 +65,8 @@ wrapper = runId + conversationId + messageId + sequence + createdAt
 ```
 
 The same monotonically increasing `sequence` covers all chat SSE event types.
-G19.2 singleton IDs are `<messageId>:<kind>:1`; later Tool work must add stable
-per-call identity rather than reusing one Tool step for multiple calls.
+Singleton steps retain `<messageId>:<kind>:1`; G19.3 allocates each Tool/Web
+execution as the next stable `<messageId>:tool|web:<n>` pair.
 
 ## 3. Contracts
 
@@ -75,10 +98,15 @@ per-call identity rather than reusing one Tool step for multiple calls.
 - Live reasoning redaction must retain a bounded un-emitted suffix across
   provider chunks. Sanitizing each chunk independently is forbidden because a
   split `apiKey=`/value or `Bearer` token can bypass the regex boundary.
-- Until G19.3/G19.6, legacy external Web and Knowledge work finishes before SSE
-  creation and is projected as a terminal step. Do not describe it as live Tool
-  execution. Provider reasoning/Generation transitions are streamed after the
-  provider channel is established.
+- G19.3 external Web work executes after SSE starts and is represented by live
+  Tool/Web steps. Pre-answer Knowledge remains a legacy terminal projection
+  until G19.6; do not describe Knowledge as live Tool execution yet.
+- Durable Web source blocks and metadata are projected from markers actually
+  used by the reconciled answer. Filtering must preserve the originally minted
+  marker: retaining only `[W2]` must never rename it to `[W1]`.
+- A forced first native round that ignores required Tool choice is buffered and
+  discarded before same-model compatibility planning, preventing duplicate
+  user-visible answer text.
 
 ## 4. Validation & Error Matrix
 
@@ -112,14 +140,16 @@ per-call identity rather than reusing one Tool step for multiple calls.
 
 ## 6. Tests Required
 
-1. Fragmented Tool arguments and native continuation fixtures for each
-   provider family.
+1. Fragmented Tool arguments, 64-KiB rejection, forced/Auto choice, and native
+   continuation fixtures for each promoted provider family.
 2. Search off/Auto skip/explicit Search I/O assertions.
 3. Ordered reasoning/process SSE, terminal persistence, reload, redaction, and
    cancellation.
 4. Capability mismatch and compatibility-planner tests with no hidden model.
 5. Knowledge hit/miss/deletion plus mixed Knowledge/Web marker truth.
-6. Real selected provider/Search smoke with temporary state deleted.
+6. Real selected provider/Search smoke must prove ordinary zero-Search,
+   explicit contextual Search, live Tool/Web steps, reload, and temporary-state
+   deletion.
 7. G19.2 reload mapping, manual expand/collapse authority, and no-empty-panel
    fixtures across backend and frontend.
 

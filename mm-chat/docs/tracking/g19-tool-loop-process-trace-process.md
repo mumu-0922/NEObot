@@ -135,3 +135,118 @@ Next: implement and independently commit G19.3 OpenAI-compatible/Gemini
 external `search_web` Tool Loop with Auto no-search, explicit-search force,
 same-model compatibility planning, provider-native continuation, and live Tool
 steps.
+
+## 2026-07-22 — G19.3 OpenAI-compatible/Gemini external Tool Loop
+
+The external globe mode no longer performs pre-answer forced Search. Go now
+offers `search_web(query)` to the selected OpenAI-compatible provider during
+the initial model round, accumulates fragmented Tool Call names/arguments,
+executes the single active external Search provider only after a valid call,
+and continues the same model with assistant `tool_calls` plus matching
+`role=tool` results. The configured Gemini integration uses Google's
+OpenAI-compatible surface and therefore shares this continuation format;
+native Gemini `functionCall`/`functionResponse` remains outside this group.
+
+The provider seam now separates an ordinary content stream from a Tool-aware
+round without changing existing providers. Tool arguments are capped at 64
+KiB, unknown/malformed calls fail as sanitized process steps, every accepted
+execution receives a stable Tool/Web step pair, and usage/content/reasoning
+continue through the existing ordered SSE sequence. There is deliberately no
+product-level Tool Round or Tool Call count limit; request cancellation,
+provider deadlines, terminal errors, and the model stopping Tool Calls remain
+the exit conditions.
+
+Search authority is now the three-state `off | model_builtin | external`
+contract. This group exposes `off` and `external` in the composer while
+retaining `model_builtin` as a persisted value for G19.5. `off` performs zero
+resolver, planner, built-in, or external Search I/O. External mode is Auto for
+ordinary prompts, but explicit online/current intent forces a Search attempt.
+If the selected provider rejects native function calling, the same current
+model performs one bounded JSON `shouldSearch + query` compatibility plan; no
+hidden model or alternate Search provider is used.
+
+Citation projection was tightened at the terminal boundary. Go persists only
+sources whose current-turn markers survive in the reconciled final answer,
+preserves the originally minted marker instead of renumbering a retained
+`[W2]`, and reconciles each completed Tool/Web step to either its actually used
+`citationMarkers` or `completed_unreferenced`. A forced native first round that
+ignores required Tool choice is buffered and discarded before compatibility
+planning so its incorrect answer cannot be emitted twice.
+
+Changed surfaces:
+
+```text
+backend/internal/chat/handler.go
+backend/internal/chat/process_trace.go
+backend/internal/chat/process_trace_runtime.go
+backend/internal/chat/provider.go
+backend/internal/chat/provider_openai_compatible.go
+backend/internal/chat/provider_tool_round.go
+backend/internal/chat/search_mode.go
+backend/internal/chat/source_fusion.go
+backend/internal/chat/web_search_context.go
+backend/internal/chat/web_tool_loop.go
+frontend/src/components/app/ChatApp.tsx
+frontend/src/components/chat/MessageInput.tsx
+frontend/src/config/defaults.ts
+frontend/src/i18n/locales/{en,ja,zh}/MessageInput.json
+frontend/src/lib/api/schemas.ts
+frontend/src/lib/chat/entities.ts
+frontend/src/lib/chat/searchMode.ts
+frontend/src/lib/chat/types.ts
+frontend/src/lib/settings/appConfig.ts
+frontend/src/services/api/chatCrudService.ts
+frontend/src/services/api/chatService.ts
+frontend/src/store/core/chatStore.ts
+frontend/src/types.ts
+frontend/src/__tests__/{appConfig,chatAppServerModeComposition}.test.ts
+frontend/src/__tests__/{chatEntities,chatStore,chatStoreServerRead}.test.ts
+frontend/src/__tests__/{effectiveChatContext,messageInputComposition}.test.ts
+frontend/src/__tests__/searchMode.test.ts
+docs/contracts/chat-tool-loop.md
+docs/tracking/g19-tool-loop-process-trace-plan.md
+docs/tracking/progress.md
+.trellis/spec/backend/chat-source-fusion.md
+.trellis/spec/backend/chat-tool-loop.md
+```
+
+Verification:
+
+```text
+focused Tool Loop/Search-mode/provider/handler tests       passed
+go vet ./...                                                passed
+go test ./...                                               passed
+go test -race ./...                                         passed
+go build ./cmd/api                                          passed
+pnpm format:check                                           passed
+pnpm lint                                                   passed
+pnpm typecheck                                              passed
+pnpm test                                                   189 files / 901 tests passed
+pnpm build                                                  passed
+Backend/Frontend source build and health                    passed / healthy
+```
+
+The first real `gpt-5.6-sol` plus active Tavily replay made no Search request
+for the ordinary turn and two model-requested Search calls for the explicit
+contextual turn. After the final Citation-trace reconciliation build, a fresh
+two-turn replay used an unambiguously static translation as the ordinary
+control and an explicit official-document request as the positive control:
+
+```text
+ordinary terminal / Search events / Tool-Web steps          completed / 0 / 0
+explicit terminal / Search events                           completed / 1
+explicit live Tool-Web transitions                          running -> completed
+final answer / persisted Search block                       [W1] / 1
+reloaded Tool citationMarkers / Web citationMarkers         [W1] / [W1]
+temporary conversation delete / subsequent message read     204 / 404
+```
+
+Two preflight conversations that intentionally exercised incomplete live
+runtime descriptors failed closed with sanitized `PROVIDER_REQUIRED` responses
+and were also deleted (`204`, then `404`). No provider/search configuration,
+credential, existing conversation, schema, or Knowledge behavior was changed.
+
+Rollback removes the G19.3 Tool-aware provider seam and restores the bounded
+conversation-aware pre-answer external Search path while retaining the G19.2
+reasoning/process foundation. Next: implement and independently commit G19.4
+native Anthropic `tool_use`/`tool_result` continuation.

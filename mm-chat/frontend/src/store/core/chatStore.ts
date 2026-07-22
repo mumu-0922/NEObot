@@ -22,6 +22,10 @@ import {
 import { normalizeMessage, normalizeMessages } from "../storage/migrations";
 import { normalizeChatConfig } from "../../lib/settings/appConfig";
 import {
+  normalizeSearchMode,
+  searchModeEnabled,
+} from "../../lib/chat/searchMode";
+import {
   normalizeSession,
   normalizeSessionConfig,
   normalizeSessionTitle,
@@ -805,9 +809,14 @@ const applySessionConfig = (
 ): ChatConfig => {
   if (!sessionConfig) return currentConfig;
 
+  const searchMode = normalizeSearchMode(
+    sessionConfig.searchMode,
+    sessionConfig.useSearch ?? currentConfig.useSearch,
+  );
   return {
     ...currentConfig,
-    useSearch: sessionConfig.useSearch ?? currentConfig.useSearch,
+    searchMode,
+    useSearch: searchModeEnabled(searchMode),
     useReasoning: sessionConfig.useReasoning ?? currentConfig.useReasoning,
     reasoningEffort:
       sessionConfig.reasoningEffort ?? currentConfig.reasoningEffort,

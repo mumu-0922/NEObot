@@ -1104,7 +1104,7 @@ func TestHandlerUsesSelectedOpenAIModelBuiltInSearchAndStreamsSources(t *testing
 		handler,
 		http.MethodPost,
 		conversationsPath+"/"+testConversationID+"/stream",
-		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"openai","modelId":"gpt-search"},"config":{"useSearch":true},"idempotencyKey":"stream-key-built-in-search"}`,
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"openai","modelId":"gpt-search"},"config":{"searchMode":"model_builtin"},"idempotencyKey":"stream-key-built-in-search"}`,
 	)
 
 	assertStreamStatus(t, recorder, http.StatusOK)
@@ -1171,7 +1171,7 @@ func TestHandlerFusesKnowledgeWithBuiltInSearchAndReloadsBothCitations(t *testin
 		handler,
 		http.MethodPost,
 		conversationsPath+"/"+testConversationID+"/stream",
-		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"openai","modelId":"gpt-search"},"config":{"useSearch":true},"metadata":{"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-built-in-fusion"}`,
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"openai","modelId":"gpt-search"},"config":{"searchMode":"model_builtin"},"metadata":{"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-built-in-fusion"}`,
 	)
 
 	assertStreamStatus(t, recorder, http.StatusOK)
@@ -1250,7 +1250,7 @@ func TestHandlerFallsBackWhenBuiltInSearchFailsBeforeStreaming(t *testing.T) {
 		handler,
 		http.MethodPost,
 		conversationsPath+"/"+testConversationID+"/stream",
-		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"openai","modelId":"gpt-search"},"config":{"useSearch":true},"metadata":{"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-built-in-fallback"}`,
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"openai","modelId":"gpt-search"},"config":{"searchMode":"model_builtin"},"metadata":{"selectedKnowledgeCollectionIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]},"idempotencyKey":"stream-key-built-in-fallback"}`,
 	)
 
 	assertStreamStatus(t, recorder, http.StatusOK)
@@ -1279,7 +1279,16 @@ func TestHandlerExecutesExternalSearchOnceAndPersistsWebArtifacts(t *testing.T) 
 		repo.messages[testConversationID],
 		fakeMessage(testMessageID, testConversationID, 0, "user", "latest external fixture"),
 	)
-	provider := &titleProvider{chunks: []string{"External answer [W1]"}}
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{{
+			Type: ProviderEventToolCallCompleted,
+			ToolCall: &ProviderToolCall{
+				ID: "call-external", Name: searchWebToolName,
+				Arguments: `{"query":"latest external fixture"}`,
+			},
+		}},
+		{{Type: ProviderEventDelta, Delta: "External answer [W1]"}},
+	}}
 	searchProvider := &fakeWebSearchProvider{result: websearch.Result{
 		Sources: []websearch.Source{{
 			Title: "External Fixture", URL: "https://search.example/external", Content: "fresh source",
@@ -1308,10 +1317,10 @@ func TestHandlerExecutesExternalSearchOnceAndPersistsWebArtifacts(t *testing.T) 
 	if searchProvider.request.Query != "latest external fixture" || searchProvider.request.MaxResults != 3 {
 		t.Fatalf("search request = %#v", searchProvider.request)
 	}
-	if !strings.Contains(provider.input.Prompt, "[W1] External Fixture") ||
-		!strings.Contains(provider.input.Prompt, "fresh source") ||
-		!strings.Contains(provider.input.SystemPrompt, "matching marker such as [W1]") {
-		t.Fatalf("provider prompt/system = %q / %q", provider.input.Prompt, provider.input.SystemPrompt)
+	if len(provider.inputs) != 2 || len(provider.inputs[1].Continuation) != 1 ||
+		!strings.Contains(provider.inputs[1].Continuation[0].Results[0].Content, "[W1]") ||
+		!strings.Contains(provider.inputs[1].Continuation[0].Results[0].Content, "fresh source") {
+		t.Fatalf("provider continuation = %#v", provider.inputs)
 	}
 	if !strings.Contains(recorder.Body.String(), "event: search.results") ||
 		!strings.Contains(recorder.Body.String(), `"marker":"[W1]"`) ||
@@ -1329,8 +1338,167 @@ func TestHandlerExecutesExternalSearchOnceAndPersistsWebArtifacts(t *testing.T) 
 		t.Fatalf("web metadata = %#v", messages[1].Metadata["web"])
 	}
 	processSteps, ok := messages[1].Metadata[processTraceMetadataKey].([]ProcessStep)
-	if !ok || len(processSteps) != 2 || processSteps[0].Kind != ProcessStepKindWeb {
+	if !ok || len(processSteps) != 3 ||
+		processSteps[1].Kind != ProcessStepKindTool ||
+		processSteps[2].Kind != ProcessStepKindWeb {
 		t.Fatalf("external process trace = %#v", messages[1].Metadata[processTraceMetadataKey])
+	}
+}
+
+func TestHandlerSearchOffSkipsResolverPlannerAndSearch(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "latest fixture"),
+	)
+	provider := &titleProvider{chunks: []string{"ordinary answer"}}
+	searchProvider := &fakeWebSearchProvider{}
+	searchResolver := &fakeWebSearchResolver{execution: websearch.ActiveExecution{
+		Mode: websearch.ExecutionExternal, External: searchProvider,
+	}}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithWebSearchService(websearch.NewService(searchResolver)),
+	)
+
+	recorder := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"config":{"searchMode":"off"},"idempotencyKey":"stream-search-off"}`,
+	)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	if searchResolver.calls != 0 || searchProvider.calls != 0 ||
+		provider.input.Prompt != "latest fixture" {
+		t.Fatalf(
+			"off resolver/search/provider = %d / %d / %#v",
+			searchResolver.calls,
+			searchProvider.calls,
+			provider.input,
+		)
+	}
+	message := repo.messages[testConversationID][1]
+	fusion := message.Metadata["fusion"].(map[string]any)
+	if fusion["searchEnabled"] != false || fusion["searchRequested"] != false {
+		t.Fatalf("off fusion = %#v", fusion)
+	}
+}
+
+func TestHandlerExternalCompatibilityPlannerCanSkipWithoutEmptyProcessPanel(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "rewrite this sentence"),
+	)
+	provider := &capturingSequenceProvider{outputs: [][]string{
+		{`{"shouldSearch":false,"query":""}`},
+		{"rewritten sentence"},
+	}}
+	searchProvider := &fakeWebSearchProvider{}
+	searchResolver := &fakeWebSearchResolver{execution: websearch.ActiveExecution{
+		Mode: websearch.ExecutionExternal, External: searchProvider,
+	}}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithWebSearchService(websearch.NewService(searchResolver)),
+	)
+
+	recorder := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"config":{"searchMode":"external"},"idempotencyKey":"stream-search-auto-skip"}`,
+	)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	if searchResolver.calls != 1 || searchProvider.calls != 0 || len(provider.inputs) != 2 {
+		t.Fatalf(
+			"auto skip resolver/search/provider = %d / %d / %#v",
+			searchResolver.calls,
+			searchProvider.calls,
+			provider.inputs,
+		)
+	}
+	message := repo.messages[testConversationID][1]
+	if message.Content != "rewritten sentence" ||
+		message.Metadata[processTraceMetadataKey] != nil ||
+		strings.Contains(recorder.Body.String(), `"kind":"web"`) ||
+		strings.Contains(recorder.Body.String(), `"kind":"tool"`) {
+		t.Fatalf("auto skip message/stream = %#v / %s", message, recorder.Body.String())
+	}
+	fusion := message.Metadata["fusion"].(map[string]any)
+	if fusion["searchRequested"] != false || fusion["webQueryRewriteOutcome"] != "skipped" {
+		t.Fatalf("auto skip fusion = %#v", fusion)
+	}
+}
+
+func TestHandlerPersistsOnlyUsedWebCitationWithOriginalMarker(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "latest fixture"),
+	)
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{{
+			Type: ProviderEventToolCallCompleted,
+			ToolCall: &ProviderToolCall{
+				ID: "call-citations", Name: searchWebToolName,
+				Arguments: `{"query":"latest fixture"}`,
+			},
+		}},
+		{{Type: ProviderEventDelta, Delta: "answer [W2]"}},
+	}}
+	searchProvider := &fakeWebSearchProvider{result: websearch.Result{Sources: []websearch.Source{
+		{Title: "Unused", URL: "https://example.test/unused", Content: "unused"},
+		{Title: "Used", URL: "https://example.test/used", Content: "used"},
+	}}}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithWebSearchService(websearch.NewService(&fakeWebSearchResolver{execution: websearch.ActiveExecution{
+			Mode: websearch.ExecutionExternal, External: searchProvider,
+		}})),
+	)
+
+	recorder := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"config":{"searchMode":"external"},"idempotencyKey":"stream-used-web-citation"}`,
+	)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	message := repo.messages[testConversationID][1]
+	if len(message.OutputBlocks) != 1 {
+		t.Fatalf("output blocks = %#v", message.OutputBlocks)
+	}
+	encoded, err := json.Marshal(message.OutputBlocks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"marker":"[W2]"`) ||
+		strings.Contains(string(encoded), "https://example.test/unused") {
+		t.Fatalf("durable Web projection = %s", encoded)
+	}
+	webMetadata := message.Metadata["web"].(map[string]any)
+	if webMetadata["sourceCount"] != 1 || webMetadata["citationCount"] != 1 {
+		t.Fatalf("web metadata = %#v", webMetadata)
+	}
+	trace := message.Metadata[processTraceMetadataKey].([]ProcessStep)
+	var webMarkers []string
+	for _, step := range trace {
+		if step.Kind == ProcessStepKindWeb {
+			webMarkers, _ = step.Detail["citationMarkers"].([]string)
+		}
+	}
+	if len(webMarkers) != 1 || webMarkers[0] != "[W2]" {
+		t.Fatalf("Web process citation markers = %#v", trace)
 	}
 }
 
@@ -1357,7 +1525,7 @@ func TestHandlerDegradesBuiltInSearchForOpenAICompatibleProvider(t *testing.T) {
 		handler,
 		http.MethodPost,
 		conversationsPath+"/"+testConversationID+"/stream",
-		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"openai_compatible","modelId":"gpt-search"},"config":{"useSearch":true},"idempotencyKey":"stream-key-unsupported-search"}`,
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"openai_compatible","modelId":"gpt-search"},"config":{"searchMode":"model_builtin"},"idempotencyKey":"stream-key-unsupported-search"}`,
 	)
 
 	assertStreamStatus(t, recorder, http.StatusOK)
@@ -1675,7 +1843,9 @@ func TestHandlerSourceFusionSkipsWebWhenKnowledgeIsSufficient(t *testing.T) {
 		repo.messages[testConversationID],
 		fakeMessage(testMessageID, testConversationID, 0, "user", "研究方向是什么"),
 	)
-	provider := &titleProvider{chunks: []string{"Knowledge answer [K1]"}}
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{{
+		{Type: ProviderEventDelta, Delta: "Knowledge answer [K1]"},
+	}}}
 	searchProvider := &fakeWebSearchProvider{}
 	searchResolver := &fakeWebSearchResolver{execution: websearch.ActiveExecution{
 		Mode: websearch.ExecutionExternal, External: searchProvider,
@@ -1703,16 +1873,17 @@ func TestHandlerSourceFusionSkipsWebWhenKnowledgeIsSufficient(t *testing.T) {
 	)
 
 	assertStreamStatus(t, recorder, http.StatusOK)
-	if searchResolver.calls != 0 || searchProvider.calls != 0 {
+	if searchResolver.calls != 1 || searchProvider.calls != 0 {
 		t.Fatalf(
-			"unnecessary Search calls = resolver %d / provider %d",
+			"Search capability/provider calls = resolver %d / provider %d",
 			searchResolver.calls,
 			searchProvider.calls,
 		)
 	}
-	if !strings.Contains(provider.input.Prompt, "[K1]") ||
-		strings.Contains(provider.input.Prompt, "Relevant Web evidence") {
-		t.Fatalf("provider prompt = %q", provider.input.Prompt)
+	if len(provider.inputs) != 1 ||
+		!strings.Contains(provider.inputs[0].Prompt, "[K1]") ||
+		strings.Contains(provider.inputs[0].Prompt, "Relevant Web evidence") {
+		t.Fatalf("provider input = %#v", provider.inputs)
 	}
 	messages := repo.messages[testConversationID]
 	if len(messages) != 2 || len(messages[1].OutputBlocks) != 0 {
@@ -1721,7 +1892,8 @@ func TestHandlerSourceFusionSkipsWebWhenKnowledgeIsSufficient(t *testing.T) {
 	fusion, ok := messages[1].Metadata["fusion"].(map[string]any)
 	if !ok || fusion["authority"] != sourceAuthorityKnowledge ||
 		fusion["searchRequested"] != false ||
-		fusion["searchReason"] != sourceSearchKnowledgeSufficient {
+		fusion["searchReason"] != sourceSearchAutoTool ||
+		fusion["webQueryRewriteOutcome"] != "skipped" {
 		t.Fatalf("fusion metadata = %#v", messages[1].Metadata["fusion"])
 	}
 }
@@ -1739,7 +1911,16 @@ func TestHandlerSourceFusionDerivesExternalQueryFromKnowledge(t *testing.T) {
 			"这个研究方向的最新公开进展是什么",
 		),
 	)
-	provider := &titleProvider{chunks: []string{"Mixed answer [K1] [W1]"}}
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{{
+			Type: ProviderEventToolCallCompleted,
+			ToolCall: &ProviderToolCall{
+				ID: "call-mixed", Name: searchWebToolName,
+				Arguments: `{"query":"这个研究方向 最新公开进展"}`,
+			},
+		}},
+		{{Type: ProviderEventDelta, Delta: "Mixed answer [K1] [W1]"}},
+	}}
 	searchProvider := &fakeWebSearchProvider{result: websearch.Result{
 		Sources: []websearch.Source{{
 			Title: "Public update", URL: "https://search.example/update", Content: "fresh update",
@@ -1772,21 +1953,21 @@ func TestHandlerSourceFusionDerivesExternalQueryFromKnowledge(t *testing.T) {
 
 	assertStreamStatus(t, recorder, http.StatusOK)
 	if searchResolver.calls != 1 || searchProvider.calls != 1 ||
-		!strings.Contains(searchProvider.request.Query, "最新公开进展") ||
-		!strings.Contains(searchProvider.request.Query, "alpha evidence source") {
+		!strings.Contains(searchProvider.request.Query, "最新公开进展") {
 		t.Fatalf("derived Search request = %#v", searchProvider.request)
 	}
-	if !strings.Contains(provider.input.Prompt, "[K1]") ||
-		!strings.Contains(provider.input.Prompt, "[W1]") {
-		t.Fatalf("mixed provider prompt = %q", provider.input.Prompt)
+	if len(provider.inputs) != 2 ||
+		!strings.Contains(provider.inputs[0].Prompt, "[K1]") ||
+		!strings.Contains(provider.inputs[1].Continuation[0].Results[0].Content, "[W1]") {
+		t.Fatalf("mixed provider inputs = %#v", provider.inputs)
 	}
-	if !strings.Contains(provider.input.SystemPrompt, "state the conflict") ||
-		!strings.Contains(provider.input.SystemPrompt, "cite both matching [K] and [W] markers") {
-		t.Fatalf("mixed provider system prompt = %q", provider.input.SystemPrompt)
+	if !strings.Contains(provider.inputs[1].SystemPrompt, "state the conflict") ||
+		!strings.Contains(provider.inputs[1].SystemPrompt, "cite both matching [K] and [W] markers") {
+		t.Fatalf("mixed provider system prompt = %q", provider.inputs[1].SystemPrompt)
 	}
 	fusion := repo.messages[testConversationID][1].Metadata["fusion"].(map[string]any)
 	if fusion["authority"] != sourceAuthorityMixed ||
-		fusion["webQueryDerivedFromKnowledge"] != true {
+		fusion["webQueryRewriteOutcome"] != "provider_tool" {
 		t.Fatalf("fusion metadata = %#v", fusion)
 	}
 	stages := fusion["stages"].(map[string]any)
@@ -1817,7 +1998,7 @@ func TestHandlerExternalSearchRewritesFollowUpFromConversationContext(t *testing
 		fakeMessage(testMessageID, testConversationID, 2, "user", "你自己联网搜"),
 	}
 	provider := &capturingSequenceProvider{outputs: [][]string{
-		{"DeepSeek V4 Flash 上下文窗口长度 官方文档"},
+		{`{"shouldSearch":true,"query":"DeepSeek V4 Flash 上下文窗口长度 官方文档"}`},
 		{"官方资料回答 [W1]"},
 	}}
 	searchProvider := &fakeWebSearchProvider{result: websearch.Result{
@@ -1849,16 +2030,17 @@ func TestHandlerExternalSearchRewritesFollowUpFromConversationContext(t *testing
 		t.Fatalf("contextual Search query = %q", searchProvider.request.Query)
 	}
 	if len(provider.inputs) != 2 ||
-		!strings.Contains(provider.inputs[0].Prompt, "DeepSeek V4 Flash") ||
-		!strings.Contains(provider.inputs[0].Prompt, "你自己联网搜") ||
-		strings.Contains(provider.inputs[0].Prompt, "[W9]") ||
+		!strings.Contains(provider.inputs[0].SystemPrompt, "Web-search decision") ||
+		!strings.Contains(provider.inputs[0].Messages[0].Content, "DeepSeek V4 Flash") ||
+		!strings.Contains(provider.inputs[0].Messages[2].Content, "你自己联网搜") ||
+		strings.Contains(provider.inputs[0].Messages[1].Content, "[W9]") ||
 		!strings.Contains(provider.inputs[1].Prompt, "[W1]") {
 		t.Fatalf("provider inputs = %#v", provider.inputs)
 	}
 	message := repo.messages[testConversationID][3]
 	fusion := message.Metadata["fusion"].(map[string]any)
-	if fusion["webQueryDerivedFromConversation"] != true ||
-		fusion["webQueryRewriteOutcome"] != "rewritten" ||
+	if fusion["webQueryDerivedFromConversation"] != false ||
+		fusion["webQueryRewriteOutcome"] != "provider_tool" ||
 		fusion["webQueryDerivedFromKnowledge"] != false {
 		t.Fatalf("fusion metadata = %#v", fusion)
 	}
@@ -1908,14 +2090,15 @@ func TestHandlerExternalSearchRewriteFailureFallsBackToCurrentMessage(t *testing
 	)
 
 	assertStreamStatus(t, recorder, http.StatusOK)
-	if provider.calls != 2 || searchProvider.request.Query != "current fallback query" {
-		t.Fatalf("fallback calls/query = %d / %q", provider.calls, searchProvider.request.Query)
+	if provider.calls != 2 || searchProvider.calls != 0 {
+		t.Fatalf("fallback provider/search calls = %d / %d", provider.calls, searchProvider.calls)
 	}
 	message := repo.messages[testConversationID][3]
 	fusion := message.Metadata["fusion"].(map[string]any)
-	if message.Content != "fallback answer [W1]" ||
+	if message.Content != "fallback answer" ||
 		fusion["webQueryDerivedFromConversation"] != false ||
-		fusion["webQueryRewriteOutcome"] != "failed" {
+		fusion["webQueryRewriteOutcome"] != "failed" ||
+		fusion["degradationReason"] != "planner_failed" {
 		t.Fatalf("fallback message = %#v", message)
 	}
 }
@@ -1927,7 +2110,16 @@ func TestHandlerSourceFusionPersistsOnlyKnowledgeMarkersUsedByAnswer(t *testing.
 		repo.messages[testConversationID],
 		fakeMessage(testMessageID, testConversationID, 0, "user", "latest public fixture"),
 	)
-	provider := &titleProvider{chunks: []string{"Public answer [W1]"}}
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{{
+			Type: ProviderEventToolCallCompleted,
+			ToolCall: &ProviderToolCall{
+				ID: "call-public", Name: searchWebToolName,
+				Arguments: `{"query":"latest public fixture"}`,
+			},
+		}},
+		{{Type: ProviderEventDelta, Delta: "Public answer [W1]"}},
+	}}
 	searchProvider := &fakeWebSearchProvider{result: websearch.Result{
 		Sources: []websearch.Source{{
 			Title: "Public update", URL: "https://search.example/update", Content: "fresh update",
@@ -1960,9 +2152,10 @@ func TestHandlerSourceFusionPersistsOnlyKnowledgeMarkersUsedByAnswer(t *testing.
 	)
 
 	assertStreamStatus(t, recorder, http.StatusOK)
-	if !strings.Contains(provider.input.Prompt, "[K1]") ||
-		!strings.Contains(provider.input.Prompt, "[W1]") {
-		t.Fatalf("provider prompt = %q", provider.input.Prompt)
+	if len(provider.inputs) != 2 ||
+		!strings.Contains(provider.inputs[0].Prompt, "[K1]") ||
+		!strings.Contains(provider.inputs[1].Continuation[0].Results[0].Content, "[W1]") {
+		t.Fatalf("provider inputs = %#v", provider.inputs)
 	}
 	if searchProvider.request.Query != "latest public fixture" {
 		t.Fatalf("explicit-subject Search query = %q", searchProvider.request.Query)
@@ -1989,7 +2182,10 @@ func TestHandlerSourceFusionDegradesExternalSearchFailure(t *testing.T) {
 		repo.messages[testConversationID],
 		fakeMessage(testMessageID, testConversationID, 0, "user", "latest public fixture"),
 	)
-	provider := &titleProvider{chunks: []string{"Normal model fallback"}}
+	provider := &capturingSequenceProvider{outputs: [][]string{
+		{`{"shouldSearch":true,"query":"latest public fixture"}`},
+		{"Normal model fallback"},
+	}}
 	searchProvider := &fakeWebSearchProvider{err: &websearch.ProviderError{
 		Provider: websearch.ProviderTavily,
 		Code:     "fixture_failure",
@@ -2013,9 +2209,10 @@ func TestHandlerSourceFusionDegradesExternalSearchFailure(t *testing.T) {
 	)
 
 	assertStreamStatus(t, recorder, http.StatusOK)
-	if provider.input.Prompt != "latest public fixture" ||
-		strings.Contains(provider.input.Prompt, "Relevant Web evidence") {
-		t.Fatalf("fallback provider prompt = %q", provider.input.Prompt)
+	if len(provider.inputs) != 2 ||
+		provider.inputs[1].Prompt != "latest public fixture" ||
+		strings.Contains(provider.inputs[1].Prompt, "Relevant Web evidence") {
+		t.Fatalf("fallback provider inputs = %#v", provider.inputs)
 	}
 	message := repo.messages[testConversationID][1]
 	if message.Status != "completed" || message.Content != "Normal model fallback" ||
@@ -3595,7 +3792,7 @@ func (p *rewriteFailureThenAnswerProvider) StreamChat(
 	case <-ctx.Done():
 		close(events)
 		return events, nil
-	case events <- ProviderEvent{Type: ProviderEventDelta, Delta: "fallback answer [W1]"}:
+	case events <- ProviderEvent{Type: ProviderEventDelta, Delta: "fallback answer"}:
 	}
 	close(events)
 	return events, nil

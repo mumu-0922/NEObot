@@ -243,6 +243,7 @@ describe("chat store server read path", () => {
       serverReadState: makeEmptyServerReadState(),
       selectedModel: "openai:gpt-5.5",
       chatConfig: {
+        searchMode: "off",
         useSearch: false,
         useReasoning: false,
         reasoningEffort: "auto",
@@ -539,7 +540,7 @@ describe("chat store server read path", () => {
       title: "Server Draft",
       modelRef: { providerId: "openai", modelId: "gpt-5.5" },
       systemInstruction: undefined,
-      config: { useSearch: true },
+      config: { searchMode: "external", useSearch: true },
       idempotencyKey: "00000000-0000-7000-8000-000000000001",
     });
     expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
@@ -1366,7 +1367,8 @@ describe("chat store server read path", () => {
         conversationId: "c1",
         userMessageId: "m3",
         modelRef: { providerId: "openai", modelId: "gpt-5.5" },
-        config: { useSearch: true },
+        provider: undefined,
+        config: { searchMode: "external", useSearch: true },
         systemInstruction: undefined,
         systemPrompt: undefined,
         metadata: { source: "stream" },

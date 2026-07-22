@@ -111,6 +111,11 @@ describe("MessageInput composition", () => {
     expect(messageInput).toContain("isReasoningEnabled?: boolean");
     expect(messageInput).toContain("reasoningEffort?: ReasoningEffort");
     expect(messageInput).toContain("onReasoningChange?:");
+    expect(messageInput).toContain("searchMode?: SearchMode");
+    expect(messageInput).toContain("onSearchModeChange?:");
+    expect(messageInput).toContain('value="external"');
+    expect(messageInput).toContain("className={searchModeItemClass}");
+    expect(messageInput).not.toContain("onToggleSearch");
     expect(messageInput).toContain(
       'notifyLocalSessionToolUnavailable("search toggle")',
     );

@@ -91,8 +91,10 @@ Provider adapters must preserve their native continuation form:
   matching call ID.
 - Anthropic: assistant `tool_use` followed by user `tool_result`, retaining any
   required Thinking Block/signature.
-- Gemini: model `functionCall` followed by user `functionResponse`, retaining
-  required thought signatures and part ordering.
+- Gemini currently uses Google's documented OpenAI-compatible endpoint and the
+  same `tool_calls`/`role=tool` continuation. A future native Gemini adapter
+  must instead preserve `functionCall`/`functionResponse`, thought signatures,
+  and part ordering.
 
 Streaming Tool arguments may arrive in fragments. Go must accumulate them by
 provider call identity, reject malformed/oversized/unknown arguments, and never
@@ -198,9 +200,9 @@ data: { type, runId, conversationId, messageId, sequence, createdAt, step }
 
 `message.started` remains the first stream event. Every reasoning, process,
 content, usage, Search, and terminal event increments the same stream-local
-`sequence`. The G19.2 foundation uses stable singleton step IDs of
-`<messageId>:<kind>:1`; G19.3 must extend Tool step identity for multiple calls
-without changing existing IDs.
+`sequence`. Singleton steps use stable `<messageId>:<kind>:1` IDs. G19.3 keeps
+those IDs and assigns every external Tool/Web execution the next stable
+`<messageId>:tool|web:<n>` pair.
 
 Terminal assistant metadata is:
 
@@ -241,13 +243,12 @@ Rules:
   topology.
 - Reasoning effort, Search mode, and selected Knowledge are independent inputs.
 
-G19.2 deliberately preserves the existing source-fusion execution order.
-Legacy Knowledge and external Web retrieval still complete before the assistant
-SSE starts, so their first `process.step.updated` snapshot is already terminal.
-Provider-returned reasoning and subsequent Generation transitions are live;
-model-built-in Search is live once its provider stream is established. G19.3
-owns live external Search Tool execution, and G19.6 owns live Knowledge Tool
-execution.
+G19.3 moves external Web retrieval into the live provider loop after the
+assistant SSE starts. Every accepted `search_web` call produces its own running
+and terminal Tool/Web steps. Provider-returned reasoning and Generation remain
+live, and model-built-in Search is live once its provider stream is established.
+Legacy Knowledge still completes before SSE and is projected as a terminal
+step; G19.6 owns live Knowledge Tool execution.
 
 ## 7. Web and Knowledge tools
 
@@ -260,6 +261,9 @@ execution.
   history.
 - Results are normalized, deduplicated, bounded, treated as untrusted, and
   assigned current-turn `[W#]` capabilities by Go.
+- Tool-unsupported providers use the same selected model for one bounded JSON
+  decision/query pass, then answer with the existing evidence prompt only when
+  that pass requested Search.
 
 ### `search_knowledge`
 
@@ -286,6 +290,9 @@ cite both.
 - Retrieved but unused sources remain available only in the process panel.
 - A completed Search with no used marker records "final answer did not cite"
   in the trace and does not append a synthetic source list.
+- Filtering preserves the marker minted against the original result list. If
+  the answer uses only `[W2]`, its card and metadata remain `[W2]`; projection
+  never renumbers it to `[W1]`.
 
 ## 9. Failure behavior
 

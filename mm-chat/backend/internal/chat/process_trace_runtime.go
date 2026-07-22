@@ -1,11 +1,109 @@
 package chat
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
 	"neo-chat/mm-chat/backend/internal/websearch"
 )
+
+type toolProcessTrace struct {
+	trace       *processTrace
+	toolStepIDs map[string]string
+	webStepIDs  map[string]string
+}
+
+func newToolProcessTrace(trace *processTrace) *toolProcessTrace {
+	return &toolProcessTrace{
+		trace:       trace,
+		toolStepIDs: map[string]string{},
+		webStepIDs:  map[string]string{},
+	}
+}
+
+func (runtime *toolProcessTrace) apply(
+	event *ProviderToolExecutionEvent,
+	at time.Time,
+) []ProcessStep {
+	if runtime == nil || runtime.trace == nil || event == nil ||
+		strings.TrimSpace(event.ExecutionID) == "" {
+		return nil
+	}
+	detail := toolProcessDetail(event)
+	updates := make([]ProcessStep, 0, 2)
+	toolStepID := runtime.toolStepIDs[event.ExecutionID]
+	webStepID := runtime.webStepIDs[event.ExecutionID]
+	if toolStepID == "" {
+		step := runtime.trace.startNext(
+			ProcessStepKindTool,
+			"process.tool",
+			at,
+			detail,
+		)
+		toolStepID = step.ID
+		runtime.toolStepIDs[event.ExecutionID] = toolStepID
+		updates = append(updates, step)
+	}
+	if event.Name == searchWebToolName && webStepID == "" {
+		step := runtime.trace.startNext(
+			ProcessStepKindWeb,
+			"process.web",
+			at,
+			detail,
+		)
+		webStepID = step.ID
+		runtime.webStepIDs[event.ExecutionID] = webStepID
+		updates = append(updates, step)
+	}
+	if event.Status == ProcessStepStatusRunning {
+		return updates
+	}
+	status := normalizeProcessStepStatus(event.Status)
+	if status == "" {
+		status = ProcessStepStatusFailed
+	}
+	if step, ok := runtime.trace.transitionID(toolStepID, status, at, detail); ok {
+		updates = append(updates, step)
+	}
+	if webStepID != "" {
+		if step, ok := runtime.trace.transitionID(webStepID, status, at, detail); ok {
+			updates = append(updates, step)
+		}
+	}
+	return updates
+}
+
+func toolProcessDetail(event *ProviderToolExecutionEvent) map[string]any {
+	detail := map[string]any{
+		"toolName": event.Name,
+		"round":    event.Round,
+		"mode":     event.Mode,
+	}
+	if query := strings.TrimSpace(event.Query); query != "" {
+		detail["query"] = query
+	}
+	if len(event.Arguments) > 0 {
+		if encoded, err := json.Marshal(event.Arguments); err == nil {
+			detail["redactedArgs"] = string(encoded)
+		}
+	}
+	if event.Search != nil {
+		detail["sourceCount"] = len(event.Search.Sources)
+	}
+	if len(event.CitationMarkers) > 0 {
+		detail["citationMarkers"] = append([]string(nil), event.CitationMarkers...)
+	}
+	if failure := strings.TrimSpace(event.FailureCategory); failure != "" {
+		detail["failureCategory"] = failure
+		detail["outcome"] = "degraded"
+	} else if event.Status == ProcessStepStatusCompleted {
+		detail["outcome"] = "completed"
+	} else {
+		detail["outcome"] = "running"
+	}
+	return detail
+}
 
 func addLegacyKnowledgeProcessStep(
 	trace *processTrace,
@@ -134,6 +232,10 @@ func completeBuiltInWebProcessStep(
 		detail = map[string]any{}
 	}
 	detail["sourceCount"] = len(result.Sources)
+	_, citations := prepareWebSearchResult(result)
+	if markers := webCitationMarkers(citations); len(markers) > 0 {
+		detail["citationMarkers"] = markers
+	}
 	switch status {
 	case ProcessStepStatusCompleted:
 		if len(result.Sources) == 0 {
@@ -150,6 +252,43 @@ func completeBuiltInWebProcessStep(
 		detail["outcome"] = "cancelled"
 	}
 	return trace.transition(ProcessStepKindWeb, status, completedAt, detail)
+}
+
+func reconcileProcessTraceCitations(
+	trace *processTrace,
+	content string,
+) []ProcessStep {
+	if trace == nil {
+		return nil
+	}
+	updates := make([]ProcessStep, 0)
+	for _, step := range trace.snapshot() {
+		if step.Kind != ProcessStepKindWeb && step.Kind != ProcessStepKindTool {
+			continue
+		}
+		detail := cloneProcessDetail(step.Detail)
+		rawMarkers, ok := detail["citationMarkers"].([]string)
+		if !ok || len(rawMarkers) == 0 {
+			continue
+		}
+		used := make([]string, 0, len(rawMarkers))
+		for _, marker := range rawMarkers {
+			if strings.Contains(content, marker) {
+				used = append(used, marker)
+			}
+		}
+		if len(used) == 0 {
+			delete(detail, "citationMarkers")
+			if step.Status == ProcessStepStatusCompleted {
+				detail["outcome"] = "completed_unreferenced"
+			}
+		} else {
+			detail["citationMarkers"] = used
+		}
+		step.Detail = detail
+		updates = append(updates, trace.add(step))
+	}
+	return updates
 }
 
 func finishProcessTrace(
@@ -187,6 +326,28 @@ func finishProcessTrace(
 		nil,
 	); ok {
 		updates = append(updates, step)
+	}
+	for _, current := range trace.snapshot() {
+		if isTerminalProcessStepStatus(current.Status) ||
+			(current.Kind != ProcessStepKindTool && current.Kind != ProcessStepKindWeb) {
+			continue
+		}
+		detail := cloneProcessDetail(current.Detail)
+		if detail == nil {
+			detail = map[string]any{}
+		}
+		detail["outcome"] = terminalStatus
+		if failure := processFailureCategory(terminalStatus); failure != "" {
+			detail["failureCategory"] = failure
+		}
+		if step, ok := trace.transitionID(
+			current.ID,
+			stepStatus,
+			completedAt,
+			detail,
+		); ok {
+			updates = append(updates, step)
+		}
 	}
 	if step, ok := trace.transition(
 		ProcessStepKindGeneration,

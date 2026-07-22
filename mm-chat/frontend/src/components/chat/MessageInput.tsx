@@ -32,7 +32,7 @@ import {
   Check,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import type { Attachment, ReasoningEffort } from "@/types";
+import type { Attachment, ReasoningEffort, SearchMode } from "@/types";
 import { localizePluginMeta } from "@/lib/plugin/localizedMeta";
 import type { ModelInfo } from "@/services/api/chatService";
 import { createNeoChatApiClient } from "@/services/api/client";
@@ -107,8 +107,8 @@ interface MessageInputProps {
   availableModels?: ModelInfo[];
   selectedModel?: string;
   onSelectModel?: (model: string) => void;
-  isSearchEnabled?: boolean;
-  onToggleSearch?: () => void;
+  searchMode?: SearchMode;
+  onSearchModeChange?: (mode: SearchMode) => void;
   isReasoningEnabled?: boolean;
   reasoningEffort?: ReasoningEffort;
   onReasoningChange?: (enabled: boolean, effort: ReasoningEffort) => void;
@@ -144,6 +144,9 @@ const iconButtonBaseClass =
 const reasoningEffortItemClass =
   "data-[state=checked]:bg-violet-100 data-[state=checked]:font-medium data-[state=checked]:text-violet-700 dark:data-[state=checked]:bg-violet-900/40 dark:data-[state=checked]:text-violet-200";
 
+const searchModeItemClass =
+  "data-[state=checked]:bg-blue-100 data-[state=checked]:font-medium data-[state=checked]:text-blue-700 dark:data-[state=checked]:bg-blue-900/40 dark:data-[state=checked]:text-blue-200";
+
 const loadChatService = () => import("@/services/api/chatService");
 const EMPTY_KNOWLEDGE_COLLECTION_IDS: readonly string[] = [];
 
@@ -156,8 +159,8 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       availableModels = [],
       selectedModel = "",
       onSelectModel,
-      isSearchEnabled = false,
-      onToggleSearch,
+      searchMode = "off",
+      onSearchModeChange,
       isReasoningEnabled,
       reasoningEffort,
       onReasoningChange,
@@ -460,11 +463,13 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       provider: getSearchProviderLabel(searchCompatibility.provider),
     });
 
-    const searchTooltip = !searchCompatibility.enabled
-      ? getSearchUnavailableMessage(searchCompatibility.reason)
-      : isSearchEnabled
-        ? t("disableSearchWithMode", { mode: searchModeLabel })
-        : t("enableSearchWithMode", { mode: searchModeLabel });
+    const isSearchEnabled = searchMode !== "off";
+    const searchTooltip =
+      !searchCompatibility.enabled && isSearchEnabled
+        ? getSearchUnavailableMessage(searchCompatibility.reason)
+        : searchMode === "external"
+          ? searchModeLabel
+          : t("searchModeOff");
 
     const notifyLocalSessionToolUnavailable = useCallback(
       (action: string) => {
@@ -473,16 +478,21 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       [onLocalSessionToolUnavailable],
     );
 
-    const handleSearchToggle = () => {
-      if (localSessionToolsDisabled && !allowSearchWhenSessionToolsDisabled) {
+    const handleSearchModeChange = (value: string) => {
+      if (value !== "off" && value !== "external") return;
+      if (
+        value === "external" &&
+        localSessionToolsDisabled &&
+        !allowSearchWhenSessionToolsDisabled
+      ) {
         notifyLocalSessionToolUnavailable("search toggle");
         return;
       }
-      if (!searchCompatibility.enabled) {
+      if (value === "external" && !searchCompatibility.enabled) {
         setErrorMsg(getSearchUnavailableMessage(searchCompatibility.reason));
         return;
       }
-      onToggleSearch?.();
+      onSearchModeChange?.(value);
     };
 
     const currentSession = useMemo(
@@ -1788,38 +1798,60 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             )}
 
             {/* Search Button */}
-            {onToggleSearch && (
-              <div>
+            {onSearchModeChange && (
+              <DropdownMenu>
                 <Tooltip content={searchTooltip} position="top">
-                  <button
-                    type="button"
-                    aria-label={
-                      !searchCompatibility.enabled
-                        ? getSearchUnavailableMessage(
-                            searchCompatibility.reason,
-                          )
-                        : isSearchEnabled
-                          ? t("disableSearchAria")
-                          : t("enableSearchAria")
-                    }
-                    aria-disabled={!searchCompatibility.enabled || undefined}
-                    aria-pressed={
-                      isSearchEnabled && searchCompatibility.enabled
-                    }
-                    className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${
-                      isSearchEnabled && searchCompatibility.enabled
-                        ? "text-blue-500 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                        : !searchCompatibility.enabled
-                          ? "text-amber-500 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={t("searchModeMenuAria", {
+                        mode:
+                          searchMode === "external"
+                            ? searchModeLabel
+                            : t("searchModeOff"),
+                      })}
+                      aria-pressed={isSearchEnabled}
+                      className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${
+                        isSearchEnabled
+                          ? "text-blue-500 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
                           : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"
-                    }`}
-                    onClick={handleSearchToggle}
-                    disabled={isInputBusy}
-                  >
-                    <Globe size={16} aria-hidden="true" />
-                  </button>
+                      }`}
+                      disabled={isInputBusy}
+                    >
+                      <Globe size={16} aria-hidden="true" />
+                    </button>
+                  </DropdownMenuTrigger>
                 </Tooltip>
-              </div>
+                <DropdownMenuContent side="top" align="start" className="w-44">
+                  <DropdownMenuLabel>{t("searchMode")}</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup
+                    value={searchMode}
+                    onValueChange={handleSearchModeChange}
+                  >
+                    <DropdownMenuRadioItem
+                      value="off"
+                      indicatorPosition="right"
+                      indicator={
+                        <Check size={14} strokeWidth={2.5} aria-hidden="true" />
+                      }
+                      className={searchModeItemClass}
+                    >
+                      {t("searchModeOff")}
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem
+                      value="external"
+                      disabled={!searchCompatibility.enabled}
+                      indicatorPosition="right"
+                      indicator={
+                        <Check size={14} strokeWidth={2.5} aria-hidden="true" />
+                      }
+                      className={searchModeItemClass}
+                    >
+                      {searchModeLabel}
+                    </DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
 

@@ -19,6 +19,7 @@ export type {
   ProcessStepKind,
   ProcessStepStatus,
   ReasoningEffort,
+  SearchMode,
   Session,
   SessionConfig,
   SessionMessageTree,

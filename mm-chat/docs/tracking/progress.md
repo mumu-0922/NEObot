@@ -1548,7 +1548,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           and no production behavior change.
     - [x] G19.2 Durable provider-reasoning/process-step SSE, persistence,
           reload, and live-expanded/completed-collapsed process panel.
-    - [ ] G19.3 OpenAI-compatible/Gemini external `search_web` Tool Loop,
+    - [x] G19.3 OpenAI-compatible/Gemini external `search_web` Tool Loop,
           explicit-search force, Auto no-search, and compatibility planner.
     - [ ] G19.4 Native Anthropic `tool_use`/`tool_result` continuation with
           Thinking Block preservation.

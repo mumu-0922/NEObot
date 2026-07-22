@@ -19,6 +19,7 @@ describe("app config normalization", () => {
         temperature: 99,
       }),
     ).toEqual({
+      searchMode: "off",
       useSearch: false,
       useReasoning: true,
       reasoningEffort: "xhigh",
@@ -28,6 +29,13 @@ describe("app config normalization", () => {
     expect(normalizeChatConfig({ reasoningEffort: "invalid" })).toMatchObject({
       reasoningEffort: "high",
     });
+    expect(normalizeChatConfig({ useSearch: true })).toMatchObject({
+      searchMode: "external",
+      useSearch: true,
+    });
+    expect(
+      normalizeChatConfig({ searchMode: "off", useSearch: true }),
+    ).toMatchObject({ searchMode: "off", useSearch: false });
 
     expect(normalizeChatConfig({ temperature: Number.NaN }).temperature).toBe(
       DEFAULT_CHAT_CONFIG.temperature,

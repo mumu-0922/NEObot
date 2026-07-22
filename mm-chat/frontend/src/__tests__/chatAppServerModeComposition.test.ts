@@ -65,7 +65,10 @@ describe("ChatApp server mode composition", () => {
     expect(chatApp).toContain(
       "onLocalSessionToolUnavailable={showServerUnsupportedAction}",
     );
-    expect(chatApp).toContain("isSearchEnabled={composerChatConfig.useSearch}");
+    expect(chatApp).toContain("searchMode={composerChatConfig.searchMode}");
+    expect(chatApp).toContain("onSearchModeChange={(searchMode) =>");
+    expect(chatApp).toContain("persistServerSearchMode(searchMode)");
+    expect(chatApp).toContain("searchMode: currentSearchMode");
     expect(chatApp).toContain(
       "isReasoningEnabled={composerChatConfig.useReasoning}",
     );

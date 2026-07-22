@@ -1125,21 +1125,39 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		knowledgeDurationMillis = sourceFusionDurationMillis(knowledgeStarted)
 	}
 	routerStarted := time.Now()
-	fusionPlan := planSourceFusion(
-		userMessage.Content,
-		configBool(request.Config, "useSearch"),
-		autoDecision,
-	)
+	searchMode := searchModeFromConfig(request.Config)
+	forceExternalSearch := searchMode == chatSearchModeExternal &&
+		hasCurrentPublicIntent(userMessage.Content)
+	fusionPlan := planSourceFusion(userMessage.Content, searchMode.enabled(), autoDecision)
+	if searchMode == chatSearchModeExternal {
+		fusionPlan.SearchRequested = false
+		fusionPlan.SearchReason = sourceSearchAutoTool
+		if autoDecision.ReadyForAnswer() {
+			fusionPlan.Authority = sourceAuthorityKnowledge
+		} else {
+			fusionPlan.Authority = sourceAuthorityModel
+		}
+	}
 	fusionDiagnostics := newSourceFusionDiagnostics(fusionPlan)
+	if searchMode == chatSearchModeExternal {
+		fusionDiagnostics.WebResolveOutcome = "pending"
+		fusionDiagnostics.WebExecuteOutcome = "pending"
+		fusionDiagnostics.WebQueryConversationRewriteOutcome = "pending"
+	}
 	fusionDiagnostics.KnowledgeDurationMillis = knowledgeDurationMillis
 	fusionDiagnostics.RouterDurationMillis = sourceFusionDurationMillis(routerStarted)
 	resolveStarted := time.Now()
-	searchExecution, modelBuiltInSearchProvider, searchErr := h.resolveChatSearchExecution(
-		r.Context(),
-		streamProvider,
-		fusionPlan.SearchRequested,
-	)
-	if fusionPlan.SearchRequested {
+	var searchExecution *websearch.ActiveExecution
+	var modelBuiltInSearchProvider ModelBuiltInSearchProvider
+	var searchErr error
+	switch searchMode {
+	case chatSearchModeExternal:
+		searchExecution, searchErr = h.resolveExternalSearchExecution(r.Context())
+	case chatSearchModeModelBuiltIn:
+		searchExecution, modelBuiltInSearchProvider, searchErr =
+			h.resolveChatSearchExecution(r.Context(), streamProvider, fusionPlan.SearchRequested)
+	}
+	if searchMode.enabled() {
 		fusionDiagnostics.WebResolveDurationMillis = sourceFusionDurationMillis(resolveStarted)
 	}
 	if searchErr != nil {
@@ -1154,76 +1172,10 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		fusionDiagnostics.WebResolveOutcome = "resolved"
 	}
 	webSearchResult := websearch.Result{Sources: []websearch.Source{}, Images: []websearch.Image{}}
-	webSearchQuery := ""
-	webProcessStarted := resolveStarted
-	if searchExecution != nil && searchExecution.Mode == websearch.ExecutionExternal {
-		searchQuery := userMessage.Content
-		searchContextMessages := buildProviderConversationMessages(
-			conversationMessages,
-			userMessage.ID,
-			userMessage.Content,
-			nil,
-		)
-		rewrittenQuery, rewriteErr := rewriteWebSearchQuery(
-			r.Context(),
-			streamProvider,
-			*modelRef,
-			userMessage.ID,
-			searchQuery,
-			searchContextMessages,
-		)
-		switch {
-		case rewriteErr != nil:
-			fusionDiagnostics.WebQueryConversationRewriteOutcome = "failed"
-		case rewrittenQuery != "":
-			searchQuery = rewrittenQuery
-			fusionDiagnostics.WebQueryDerivedFromConversation = true
-			fusionDiagnostics.WebQueryConversationRewriteOutcome = "rewritten"
-		default:
-			fusionDiagnostics.WebQueryConversationRewriteOutcome = "unchanged"
-		}
-		searchQuery, derived := buildFusionWebSearchQuery(
-			searchQuery,
-			fusionPlan,
-			autoDecision,
-		)
-		webSearchQuery = searchQuery
-		fusionDiagnostics.WebQueryDerived = derived
-		executeStarted := time.Now()
-		webSearchResult, searchErr = h.webSearchService.Execute(
-			r.Context(),
-			*searchExecution,
-			websearch.Request{
-				Query:      searchQuery,
-				MaxResults: configIntRange(request.Config, "searchResultsLimit", 5, 1, websearch.MaxResults),
-			},
-		)
-		fusionDiagnostics.WebExecuteDurationMillis = sourceFusionDurationMillis(executeStarted)
-		if searchErr != nil {
-			fusionDiagnostics.WebExecuteOutcome = "degraded"
-			fusionDiagnostics.DegradationReason = sourceSearchDegradationReason(searchErr)
-			fusionPlan = fallbackSourceFusionAuthority(fusionPlan, autoDecision)
-			webSearchResult = websearch.Result{
-				Sources: []websearch.Source{}, Images: []websearch.Image{},
-			}
-		} else {
-			webSearchResult, _ = prepareWebSearchResult(webSearchResult)
-			if len(webSearchResult.Sources) == 0 {
-				fusionDiagnostics.WebExecuteOutcome = "no_results"
-				fusionPlan = fallbackSourceFusionAuthority(fusionPlan, autoDecision)
-			} else {
-				fusionDiagnostics.WebExecuteOutcome = "completed"
-			}
-		}
-	} else if searchExecution != nil &&
+	if searchExecution != nil &&
 		searchExecution.Mode == websearch.ExecutionModelBuiltIn {
 		fusionDiagnostics.WebQueryConversationRewriteOutcome = "provider_managed"
 		fusionDiagnostics.WebExecuteOutcome = "provider_stream"
-	}
-	webProcessDurationMillis := int64(0)
-	if fusionPlan.SearchRequested &&
-		(searchExecution == nil || searchExecution.Mode == websearch.ExecutionExternal) {
-		webProcessDurationMillis = sourceFusionDurationMillis(webProcessStarted)
 	}
 
 	runID, err := NewUUID()
@@ -1269,19 +1221,42 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		fusionPlan,
 		fusionDiagnostics,
 		searchExecution,
-		webSearchQuery,
+		"",
 		webSearchResult,
-		webProcessStarted,
-		webProcessDurationMillis,
+		resolveStarted,
+		0,
+	)
+	if searchMode == chatSearchModeExternal && searchExecution == nil &&
+		forceExternalSearch {
+		trace.add(terminalProcessStep(
+			trace.stepID(ProcessStepKindWeb),
+			ProcessStepKindWeb,
+			ProcessStepStatusFailed,
+			resolveStarted,
+			fusionDiagnostics.WebResolveDurationMillis,
+			map[string]any{
+				"mode":            string(chatSearchModeExternal),
+				"outcome":         "degraded",
+				"failureCategory": fusionDiagnostics.DegradationReason,
+			},
+		))
+		providerSystemPrompt = strings.TrimSpace(providerSystemPrompt)
+		if providerSystemPrompt != "" {
+			providerSystemPrompt += "\n\n"
+		}
+		providerSystemPrompt += externalWebUnavailableSystemInstruction
+	}
+	messageSearchExecution := searchExecution
+	if searchMode == chatSearchModeExternal {
+		messageSearchExecution = nil
+	}
+	searchPlannerMessages := buildProviderConversationMessages(
+		conversationMessages,
+		userMessage.ID,
+		userMessage.Content,
+		nil,
 	)
 
-	if searchExecution != nil && searchExecution.Mode == websearch.ExecutionExternal {
-		providerPrompt, providerSystemPrompt = buildWebSearchProviderRequest(
-			providerPrompt,
-			providerSystemPrompt,
-			webSearchResult,
-		)
-	}
 	providerSystemPrompt, memoryPreparation := h.prepareDurableMemory(
 		r.Context(),
 		userMessage.Content,
@@ -1308,10 +1283,15 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	)
 	providerMessages = contextPreparation.Messages
 	providerSystemPrompt = contextPreparation.SystemPrompt
-	webMessageMetadata := func(decision autoRAGDecision, extra map[string]any) map[string]any {
-		metadata := withWebSearchMessageMetadata(
+	webMessageMetadata := func(
+		decision autoRAGDecision,
+		extra map[string]any,
+		answerContent string,
+	) map[string]any {
+		metadata := withUsedWebSearchMessageMetadata(
 			autoRAGMessageMetadata(runID, ragSelection, decision, extra),
-			searchExecution,
+			messageSearchExecution,
+			answerContent,
 			webSearchResult,
 		)
 		metadata = withSourceFusionMessageMetadata(
@@ -1350,6 +1330,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	var events <-chan ProviderEvent
 	var builtInSearchStarted time.Time
 	reasoning := newProcessReasoningStream()
+	toolTrace := newToolProcessTrace(trace)
 	if modelBuiltInSearchProvider != nil {
 		builtInSearchStarted = time.Now()
 		startBuiltInWebProcessStep(trace, searchExecution, builtInSearchStarted)
@@ -1361,7 +1342,25 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		generationStarted,
 		map[string]any{"outcome": "streaming"},
 	)
-	if modelBuiltInSearchProvider != nil {
+	if searchMode == chatSearchModeExternal && searchExecution != nil &&
+		searchExecution.Mode == websearch.ExecutionExternal {
+		events = startExternalWebToolLoop(streamCtx, externalWebToolLoopInput{
+			Provider:        streamProvider,
+			Request:         providerRequest,
+			PlannerMessages: searchPlannerMessages,
+			SearchService:   h.webSearchService,
+			Execution:       *searchExecution,
+			MaxResults: configIntRange(
+				request.Config,
+				"searchResultsLimit",
+				5,
+				1,
+				websearch.MaxResults,
+			),
+			ForceSearch:    forceExternalSearch,
+			KnowledgeReady: autoDecision.ReadyForAnswer(),
+		})
+	} else if modelBuiltInSearchProvider != nil {
 		events, err = modelBuiltInSearchProvider.StreamChatWithModelBuiltInSearch(
 			streamCtx,
 			providerRequest,
@@ -1397,10 +1396,14 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		if streamCtx.Err() != nil || r.Context().Err() != nil || errors.Is(err, context.Canceled) {
 			finishProcessTrace(trace, "cancelled", time.Now(), webSearchResult)
 			h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
-				Status:       "cancelled",
-				OutputBlocks: webSearchOutputBlocks(assistantMessage.ID, webSearchResult),
+				Status: "cancelled",
+				OutputBlocks: usedWebSearchOutputBlocks(
+					assistantMessage.ID,
+					"",
+					webSearchResult,
+				),
 				Metadata: withProcessTraceMessageMetadata(
-					webMessageMetadata(autoDecision, nil),
+					webMessageMetadata(autoDecision, nil, ""),
 					reasoning.String(),
 					trace,
 				),
@@ -1409,10 +1412,18 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		}
 		finishProcessTrace(trace, "failed", time.Now(), webSearchResult)
 		h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
-			Status:       "failed",
-			OutputBlocks: webSearchOutputBlocks(assistantMessage.ID, webSearchResult),
+			Status: "failed",
+			OutputBlocks: usedWebSearchOutputBlocks(
+				assistantMessage.ID,
+				"",
+				webSearchResult,
+			),
 			Metadata: withProcessTraceMessageMetadata(
-				webMessageMetadata(autoDecision, map[string]any{"errorCode": "PROVIDER_ERROR"}),
+				webMessageMetadata(
+					autoDecision,
+					map[string]any{"errorCode": "PROVIDER_ERROR"},
+					"",
+				),
 				reasoning.String(),
 				trace,
 			),
@@ -1534,11 +1545,15 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 					CreatedAt:      formatTime(time.Now()),
 				})
 				h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
-					Status:       "cancelled",
-					Content:      content.String(),
-					OutputBlocks: webSearchOutputBlocks(assistantMessage.ID, webSearchResult),
+					Status:  "cancelled",
+					Content: content.String(),
+					OutputBlocks: usedWebSearchOutputBlocks(
+						assistantMessage.ID,
+						content.String(),
+						webSearchResult,
+					),
 					Metadata: withProcessTraceMessageMetadata(
-						webMessageMetadata(autoDecision, nil),
+						webMessageMetadata(autoDecision, nil, content.String()),
 						reasoning.String(),
 						trace,
 					),
@@ -1566,11 +1581,19 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				Error:          &ErrorBody{Code: "PROVIDER_ERROR", Message: "provider stream failed"},
 			})
 			h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
-				Status:       "failed",
-				Content:      content.String(),
-				OutputBlocks: webSearchOutputBlocks(assistantMessage.ID, webSearchResult),
+				Status:  "failed",
+				Content: content.String(),
+				OutputBlocks: usedWebSearchOutputBlocks(
+					assistantMessage.ID,
+					content.String(),
+					webSearchResult,
+				),
 				Metadata: withProcessTraceMessageMetadata(
-					webMessageMetadata(autoDecision, map[string]any{"errorCode": "PROVIDER_ERROR"}),
+					webMessageMetadata(
+						autoDecision,
+						map[string]any{"errorCode": "PROVIDER_ERROR"},
+						content.String(),
+					),
 					reasoning.String(),
 					trace,
 				),
@@ -1652,8 +1675,61 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				return
 			}
 			flusher.Flush()
+		case ProviderEventToolExecution:
+			execution := providerEvent.ToolExecution
+			for _, step := range toolTrace.apply(execution, time.Now()) {
+				if err := emitProcessStep(step); err != nil {
+					h.cancelAssistantAfterWriteError(
+						conversationID,
+						assistantMessage.ID,
+						runID,
+						content.String(),
+					)
+					return
+				}
+			}
+			if execution == nil || execution.Name != searchWebToolName {
+				continue
+			}
+			switch execution.Status {
+			case ProcessStepStatusRunning:
+				messageSearchExecution = searchExecution
+				fusionPlan.SearchRequested = true
+				if autoDecision.ReadyForAnswer() {
+					fusionPlan.Authority = sourceAuthorityMixed
+				} else {
+					fusionPlan.Authority = sourceAuthorityWeb
+				}
+				fusionDiagnostics.WebQueryConversationRewriteOutcome = "provider_tool"
+				fusionDiagnostics.WebExecuteOutcome = "running"
+			case ProcessStepStatusCompleted:
+				fusionDiagnostics.WebExecuteDurationMillis =
+					sourceFusionDurationMillis(resolveStarted)
+				if execution.Search == nil || len(execution.Search.Sources) == 0 {
+					fusionDiagnostics.WebExecuteOutcome = "no_results"
+				} else {
+					fusionDiagnostics.WebExecuteOutcome = "completed"
+				}
+			case ProcessStepStatusFailed:
+				fusionDiagnostics.WebExecuteDurationMillis =
+					sourceFusionDurationMillis(resolveStarted)
+				fusionDiagnostics.WebExecuteOutcome = "degraded"
+				fusionDiagnostics.DegradationReason = strings.TrimSpace(
+					execution.FailureCategory,
+				)
+				if execution.Mode == "compatibility" &&
+					execution.FailureCategory == "planner_failed" {
+					fusionDiagnostics.WebQueryConversationRewriteOutcome = "failed"
+				} else {
+					fusionDiagnostics.WebQueryConversationRewriteOutcome = "provider_tool"
+					fusionPlan.SearchRequested = true
+				}
+				fusionPlan = fallbackSourceFusionAuthority(fusionPlan, autoDecision)
+			}
 		case ProviderEventSearch:
-			if providerEvent.Search == nil || len(providerEvent.Search.Sources) == 0 {
+			if providerEvent.Search == nil ||
+				(len(providerEvent.Search.Sources) == 0 &&
+					len(providerEvent.Search.Images) == 0) {
 				continue
 			}
 			if modelBuiltInSearchProvider != nil {
@@ -1676,21 +1752,23 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				return
 			}
 			flusher.Flush()
-			if step, ok := completeBuiltInWebProcessStep(
-				trace,
-				ProcessStepStatusCompleted,
-				time.Now(),
-				webSearchResult,
-				"",
-			); ok {
-				if err := emitProcessStep(step); err != nil {
-					h.cancelAssistantAfterWriteError(
-						conversationID,
-						assistantMessage.ID,
-						runID,
-						content.String(),
-					)
-					return
+			if modelBuiltInSearchProvider != nil {
+				if step, ok := completeBuiltInWebProcessStep(
+					trace,
+					ProcessStepStatusCompleted,
+					time.Now(),
+					webSearchResult,
+					"",
+				); ok {
+					if err := emitProcessStep(step); err != nil {
+						h.cancelAssistantAfterWriteError(
+							conversationID,
+							assistantMessage.ID,
+							runID,
+							content.String(),
+						)
+						return
+					}
 				}
 			}
 		}
@@ -1717,17 +1795,27 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			CreatedAt:      formatTime(time.Now()),
 		})
 		h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
-			Status:       "cancelled",
-			Content:      content.String(),
-			OutputBlocks: webSearchOutputBlocks(assistantMessage.ID, webSearchResult),
+			Status:  "cancelled",
+			Content: content.String(),
+			OutputBlocks: usedWebSearchOutputBlocks(
+				assistantMessage.ID,
+				content.String(),
+				webSearchResult,
+			),
 			Metadata: withProcessTraceMessageMetadata(
-				webMessageMetadata(autoDecision, nil),
+				webMessageMetadata(autoDecision, nil, content.String()),
 				reasoning.String(),
 				trace,
 			),
 		})
 		flusher.Flush()
 		return
+	}
+	if searchMode == chatSearchModeExternal &&
+		!fusionPlan.SearchRequested &&
+		fusionDiagnostics.WebExecuteOutcome == "pending" {
+		fusionDiagnostics.WebQueryConversationRewriteOutcome = "skipped"
+		fusionDiagnostics.WebExecuteOutcome = "skipped"
 	}
 	if modelBuiltInSearchProvider != nil &&
 		fusionDiagnostics.WebExecuteOutcome == "provider_stream" {
@@ -1777,6 +1865,17 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		)
 		return
 	}
+	for _, step := range reconcileProcessTraceCitations(trace, completedContent) {
+		if err := emitProcessStep(step); err != nil {
+			h.cancelAssistantAfterWriteError(
+				conversationID,
+				assistantMessage.ID,
+				runID,
+				content.String(),
+			)
+			return
+		}
+	}
 	for _, step := range finishProcessTrace(
 		trace,
 		"completed",
@@ -1798,11 +1897,15 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		conversationID,
 		assistantMessage.ID,
 		FinalizeAssistantMessageInput{
-			Status:       "completed",
-			Content:      completedContent,
-			OutputBlocks: webSearchOutputBlocks(assistantMessage.ID, webSearchResult),
+			Status:  "completed",
+			Content: completedContent,
+			OutputBlocks: usedWebSearchOutputBlocks(
+				assistantMessage.ID,
+				completedContent,
+				webSearchResult,
+			),
 			Metadata: withProcessTraceMessageMetadata(
-				webMessageMetadata(completedDecision, nil),
+				webMessageMetadata(completedDecision, nil, completedContent),
 				reasoning.String(),
 				trace,
 			),
@@ -2360,6 +2463,22 @@ func (h *Handler) resolveChatSearchExecution(
 		return nil, nil, errModelBuiltInSearchUnsupported
 	}
 	return &execution, builtIn, nil
+}
+
+func (h *Handler) resolveExternalSearchExecution(
+	ctx context.Context,
+) (*websearch.ActiveExecution, error) {
+	if h == nil || h.webSearchService == nil || !h.webSearchService.Configured() {
+		return nil, websearch.ErrNotConfigured
+	}
+	execution, err := h.webSearchService.ResolveActive(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if execution.Mode != websearch.ExecutionExternal || execution.External == nil {
+		return nil, websearch.ErrInvalidConfig
+	}
+	return &execution, nil
 }
 
 func (h *Handler) resolveProviderAttachments(ctx context.Context, message Message) ([]ProviderAttachment, error) {

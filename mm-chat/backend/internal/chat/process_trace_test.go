@@ -68,6 +68,44 @@ func TestProcessTraceOmitsOrdinaryCompletedGeneration(t *testing.T) {
 	}
 }
 
+func TestReconcileProcessTraceCitationsKeepsOnlyMarkersUsedByAnswer(t *testing.T) {
+	trace := newProcessTrace("message-1")
+	startedAt := time.Now()
+	step := trace.startNext(
+		ProcessStepKindWeb,
+		"process.web",
+		startedAt,
+		map[string]any{"citationMarkers": []string{"[W1]", "[W2]"}},
+	)
+	trace.transitionID(
+		step.ID,
+		ProcessStepStatusCompleted,
+		startedAt.Add(time.Second),
+		map[string]any{
+			"outcome":         "completed",
+			"sourceCount":     2,
+			"citationMarkers": []string{"[W1]", "[W2]"},
+		},
+	)
+
+	updates := reconcileProcessTraceCitations(trace, "answer [W2]")
+	if len(updates) != 1 {
+		t.Fatalf("updates = %#v", updates)
+	}
+	markers, ok := updates[0].Detail["citationMarkers"].([]string)
+	if !ok || len(markers) != 1 || markers[0] != "[W2]" {
+		t.Fatalf("citation markers = %#v", updates[0].Detail)
+	}
+
+	updates = reconcileProcessTraceCitations(trace, "answer without citation")
+	if len(updates) != 1 || updates[0].Detail["outcome"] != "completed_unreferenced" {
+		t.Fatalf("unreferenced update = %#v", updates)
+	}
+	if _, exists := updates[0].Detail["citationMarkers"]; exists {
+		t.Fatalf("unused markers survived = %#v", updates[0].Detail)
+	}
+}
+
 func TestProcessReasoningStreamRedactsSecretsSplitAcrossProviderChunks(t *testing.T) {
 	stream := newProcessReasoningStream()
 	var rendered strings.Builder

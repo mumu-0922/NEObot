@@ -121,6 +121,7 @@ func TestNormalizeGeminiOpenAIBaseURL(t *testing.T) {
 
 func TestGeminiProviderRetainsToolPlanner(t *testing.T) {
 	var _ Provider = (*GeminiProvider)(nil)
+	var _ ToolRoundProvider = (*GeminiProvider)(nil)
 	var _ ToolPlanner = (*GeminiProvider)(nil)
 	var _ ModelRefResolver = (*GeminiProvider)(nil)
 }

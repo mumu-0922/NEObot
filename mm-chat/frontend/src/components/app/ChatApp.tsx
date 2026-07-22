@@ -39,8 +39,10 @@ import {
   Attachment,
   LobeAgent,
   ReasoningEffort,
+  SearchMode,
   SessionMessageTree,
 } from "@/types";
+import { normalizeSearchMode, searchModeEnabled } from "@/lib/chat/searchMode";
 import { useChatStore } from "@/store/core/chatStore";
 import { useCoreSettingsStore } from "@/store/core/coreSettingsStore";
 import { useMemoryStore } from "@/store/core/memoryStore";
@@ -492,6 +494,10 @@ const ChatApp = () => {
       (!lastVisibleMessage.content && !lastVisibleMessage.attachments?.length)),
   );
   const currentSessionConfig = currentSession?.config;
+  const currentSearchMode = normalizeSearchMode(
+    currentSessionConfig?.searchMode,
+    currentSessionConfig?.useSearch,
+  );
   const pendingServerProgressStage =
     serverModeEnabled &&
     isGenerating &&
@@ -501,14 +507,15 @@ const ChatApp = () => {
     lastVisibleMessage?.role === "user"
       ? inferPendingChatProgressStage({
           question: lastVisibleMessage.content,
-          searchEnabled: currentSessionConfig?.useSearch ?? false,
+          searchEnabled: searchModeEnabled(currentSearchMode),
           knowledgeCollectionIds:
             currentSessionConfig?.selectedKnowledgeCollectionIds,
         })
       : null;
   const currentSessionWorkspaceId = currentSession?.workspaceId;
   const serverSessionChatConfig = {
-    useSearch: currentSessionConfig?.useSearch ?? false,
+    searchMode: currentSearchMode,
+    useSearch: searchModeEnabled(currentSearchMode),
     searchResultsLimit: search.resultsLimit,
     useReasoning: currentSessionConfig?.useReasoning ?? chatConfig.useReasoning,
     reasoningEffort:
@@ -1223,10 +1230,12 @@ const ChatApp = () => {
     showActionError(`Server mode does not support ${action} yet.`);
   };
 
-  const toggleServerSearch = async () => {
-    const useSearch = !(currentSession?.config?.useSearch ?? false);
+  const persistServerSearchMode = async (searchMode: SearchMode) => {
+    const useSearch = searchModeEnabled(searchMode);
     if (!visibleCurrentSessionId) {
-      const sessionId = await createServerSession({ config: { useSearch } });
+      const sessionId = await createServerSession({
+        config: { searchMode, useSearch },
+      });
       if (!sessionId) {
         throw new Error("Server conversation could not be created.");
       }
@@ -1234,6 +1243,7 @@ const ChatApp = () => {
     }
     const updated = await updateServerSessionConfig(visibleCurrentSessionId, {
       ...(currentSession?.config ?? {}),
+      searchMode,
       useSearch,
     });
     if (!updated) {
@@ -3374,10 +3384,10 @@ const ChatApp = () => {
                   availableModels={availableModels}
                   selectedModel={selectedModel}
                   onSelectModel={setModel}
-                  isSearchEnabled={composerChatConfig.useSearch}
-                  onToggleSearch={() => {
+                  searchMode={composerChatConfig.searchMode}
+                  onSearchModeChange={(searchMode) => {
                     if (serverModeEnabled) {
-                      void toggleServerSearch().catch((error) =>
+                      void persistServerSearchMode(searchMode).catch((error) =>
                         showActionError(
                           error instanceof Error
                             ? error.message
@@ -3386,7 +3396,10 @@ const ChatApp = () => {
                       );
                       return;
                     }
-                    setChatConfig({ useSearch: !chatConfig.useSearch });
+                    setChatConfig({
+                      searchMode,
+                      useSearch: searchModeEnabled(searchMode),
+                    });
                   }}
                   isReasoningEnabled={composerChatConfig.useReasoning}
                   reasoningEffort={composerChatConfig.reasoningEffort}

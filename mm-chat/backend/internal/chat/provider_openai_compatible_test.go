@@ -103,6 +103,162 @@ func TestOpenAICompatibleProviderStreamsDeltasAndUsage(t *testing.T) {
 	}
 }
 
+func TestOpenAICompatibleProviderStreamsFragmentedToolCallAndNativeContinuation(t *testing.T) {
+	requestCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		var payload openAICompatibleChatCompletionRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode provider payload: %v", err)
+		}
+		if len(payload.Tools) != 1 || payload.Tools[0].Function.Name != searchWebToolName {
+			t.Fatalf("tools = %#v", payload.Tools)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		switch requestCount {
+		case 1:
+			choice, ok := payload.ToolChoice.(map[string]any)
+			if !ok || choice["type"] != "function" {
+				t.Fatalf("forced tool_choice = %#v", payload.ToolChoice)
+			}
+			_, _ = w.Write([]byte("data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call-1\",\"type\":\"function\",\"function\":{\"name\":\"search_\",\"arguments\":\"{\\\"query\\\":\\\"latest \"}}]}}]}\n\n"))
+			_, _ = w.Write([]byte("data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"name\":\"web\",\"arguments\":\"fixture\\\"}\"}}]}}]}\n\n"))
+			_, _ = w.Write([]byte("data: [DONE]\n\n"))
+		case 2:
+			if payload.ToolChoice != ProviderToolChoiceAuto {
+				t.Fatalf("continuation tool_choice = %#v, want auto", payload.ToolChoice)
+			}
+			if len(payload.Messages) != 3 {
+				t.Fatalf("continuation messages = %#v", payload.Messages)
+			}
+			assistant := payload.Messages[1]
+			if assistant.Role != "assistant" || len(assistant.ToolCalls) != 1 ||
+				assistant.ToolCalls[0].ID != "call-1" ||
+				assistant.ToolCalls[0].Function.Name != searchWebToolName {
+				t.Fatalf("assistant continuation = %#v", assistant)
+			}
+			tool := payload.Messages[2]
+			if tool.Role != "tool" || tool.ToolCallID != "call-1" ||
+				!strings.Contains(tool.Content.(string), "[W1]") {
+				t.Fatalf("tool continuation = %#v", tool)
+			}
+			_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"final [W1]\"}}]}\n\n"))
+			_, _ = w.Write([]byte("data: [DONE]\n\n"))
+		default:
+			t.Fatalf("unexpected provider request %d", requestCount)
+		}
+	}))
+	defer server.Close()
+
+	provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+		BaseURL: server.URL, APIKey: "test-secret-token", DefaultModel: "gpt-test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := ProviderRequest{
+		Prompt: "latest fixture",
+		ModelRef: ModelRef{
+			ProviderID: OpenAICompatibleProviderID,
+			ModelID:    "gpt-test",
+		},
+	}
+	first, err := provider.StreamToolRound(context.Background(), ProviderRoundRequest{
+		ProviderRequest: base,
+		Tools:           []ToolDefinition{searchWebToolDefinition()},
+		ToolChoice:      ProviderToolChoiceRequired,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fragments []ProviderToolCallDelta
+	var call ProviderToolCall
+	for event := range first {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		if event.ToolCallDelta != nil {
+			fragments = append(fragments, *event.ToolCallDelta)
+		}
+		if event.ToolCall != nil {
+			call = *event.ToolCall
+		}
+	}
+	if len(fragments) != 2 || call.ID != "call-1" || call.Name != searchWebToolName ||
+		call.Arguments != `{"query":"latest fixture"}` {
+		t.Fatalf("fragments/call = %#v / %#v", fragments, call)
+	}
+
+	second, err := provider.StreamToolRound(context.Background(), ProviderRoundRequest{
+		ProviderRequest: base,
+		Tools:           []ToolDefinition{searchWebToolDefinition()},
+		ToolChoice:      ProviderToolChoiceAuto,
+		Continuation: []ProviderToolExchange{{
+			Calls: []ProviderToolCall{call},
+			Results: []ProviderToolResult{{
+				CallID:  call.ID,
+				Name:    call.Name,
+				Content: `{"ok":true,"sources":[{"marker":"[W1]"}]}`,
+			}},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var content strings.Builder
+	for event := range second {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		if event.Type == ProviderEventDelta {
+			content.WriteString(event.Delta)
+		}
+	}
+	if content.String() != "final [W1]" || requestCount != 2 {
+		t.Fatalf("content/requests = %q / %d", content.String(), requestCount)
+	}
+}
+
+func TestOpenAICompatibleProviderRejectsOversizedStreamedToolArguments(t *testing.T) {
+	arguments := strings.Repeat("x", maxOpenAICompatibleToolArgumentsBytes+1)
+	reader := strings.NewReader("data: " + mustJSON(t, map[string]any{
+		"choices": []any{map[string]any{
+			"index": 0,
+			"delta": map[string]any{"tool_calls": []any{map[string]any{
+				"index": 0,
+				"id":    "call-large",
+				"type":  "function",
+				"function": map[string]any{
+					"name":      searchWebToolName,
+					"arguments": arguments,
+				},
+			}}},
+		}},
+	}) + "\n\ndata: [DONE]\n\n")
+	events := make(chan ProviderEvent, 8)
+	streamOpenAICompatibleEvents(context.Background(), reader, events)
+	close(events)
+	var completed *ProviderToolCall
+	for event := range events {
+		if event.ToolCall != nil {
+			completed = event.ToolCall
+		}
+	}
+	if completed == nil || completed.FailureCategory != "arguments_too_large" ||
+		len(completed.Arguments) != maxOpenAICompatibleToolArgumentsBytes {
+		t.Fatalf("completed tool call = %#v", completed)
+	}
+}
+
+func mustJSON(t *testing.T, value any) string {
+	t.Helper()
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(encoded)
+}
+
 func TestOpenAICompatibleProviderSendsImageAttachments(t *testing.T) {
 	const imageBytes = "\x89PNG\r\n"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
