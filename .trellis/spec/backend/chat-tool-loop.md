@@ -3,8 +3,9 @@
 Status: G19.2 process trace, G19.3 OpenAI-compatible/Gemini external Web, G19.4
 Anthropic Tool Loop, G19.5 three-state/built-in Search administration, and
 G19.6 server-authoritative Knowledge Tool migration were promoted on
-2026-07-22. All selected-Knowledge paths now execute after `message.started`;
-the Handler no longer invokes the old pre-answer Auto RAG authority.
+2026-07-22. G19.9 continuation recovery was promoted on 2026-07-23. All
+selected-Knowledge paths now execute after `message.started`; the Handler no
+longer invokes the old pre-answer Auto RAG authority.
 
 ## 1. Scope / Trigger
 
@@ -154,6 +155,17 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
   a short context-aware delay only for `REQUEST_FAILED`, HTTP `408`, `429`, or
   `5xx`. It must not re-resolve, switch providers, retry authentication/other
   `4xx` or response/schema failures, or continue after context cancellation.
+- Each successful Web Tool Result contains only sources newly minted by that
+  execution. Prior Tool Results remain in native continuation history, so
+  serializing the cumulative Web corpus again is forbidden. New sources keep
+  their cumulative marker, for example the second execution may return `[W2]`
+  without repeating `[W1]`.
+- If a later native Tool continuation fails after Web or Knowledge evidence is
+  ready but before any answer content was emitted, perform one no-Tools answer
+  stream through the same provider and model with the bounded cumulative
+  evidence prompt. Preserve cumulative usage and existing citation authority.
+  Do not recover after partial answer content, without evidence, after
+  cancellation, or by switching provider/model.
 - Only current-turn backend-issued markers used by the final reconciled answer
   become Citations; unused results stay in the process trace.
 - G19.2 persists sanitized `reasoning` and `processTrace` in terminal assistant
@@ -204,6 +216,9 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 | External Search failure          | truthful degradation; ordinary answer; no `[W]`  |
 | First transient external failure | one same-provider retry; no intermediate failure |
 | Second transient failure         | return final redacted error; normal degradation  |
+| Native continuation fails after evidence, before content | one same-model evidence answer stream |
+| Native continuation fails after partial content | preserve the error; no duplicate answer fallback |
+| Repeated Web source              | empty incremental Tool Result; stable prior marker |
 | Built-in unsupported             | disabled/degraded; no external fallback          |
 | Invalid persisted Search mode    | `INVALID_SEARCH_MODE`; no write                   |
 | Custom model not exactly tested  | disabled / `MODEL_BUILT_IN_SEARCH_UNSUPPORTED`    |
@@ -229,12 +244,16 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
   authority.
 - Good: Tavily transport fails once, the same resolved execution succeeds on
   its only retry, and one truthful Web result enters the Tool continuation.
+- Good: a later native continuation stream fails before answer text; the same
+  model answers once from the already-authorized `[K]`/`[W]` evidence without
+  Tools and cumulative usage remains monotonic.
 - Base: a Tool-unsupported model uses the visible compatibility path and still
   answers if planning fails.
 - Bad: retrying a bad Key/schema response, re-resolving into another provider,
   retrying after cancellation, pre-searching every enabled turn, running
-  built-in and external Search together, fabricating reasoning, or rendering
-  all retrieved sources as Citations.
+  built-in and external Search together, repeating the cumulative Web corpus
+  in every Tool Result, recovering after partial answer text, fabricating
+  reasoning, or rendering all retrieved sources as Citations.
 
 ## 6. Tests Required
 
@@ -260,6 +279,10 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 9. External retry fixtures must prove one recovery after network/`408`/`429`/
    `5xx`, no retry for other `4xx` or response/schema errors, immediate
    cancellation, and the second stable error after two transient failures.
+10. Continuation-recovery fixtures must cover synchronous start failure,
+    in-stream failure, same provider/model, Web-only and mixed Knowledge/Web
+    evidence, no fallback after content, cumulative usage, incremental Web Tool
+    Results, stable markers, and cancellation.
 
 ## 7. Wrong vs Correct
 
@@ -303,6 +326,13 @@ if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
     status = ProcessStepStatusCancelled
     failureCategory = ""
 }
+```
+
+```go
+// The continuation already contains earlier Tool Results. Return only sources
+// added by this execution, then recover a pre-content continuation failure
+// through the same model with bounded evidence and no Tools.
+result := webSearchSuccessToolResult(previous, cumulative)
 ```
 
 Full target contract: `mm-chat/docs/contracts/chat-tool-loop.md`.

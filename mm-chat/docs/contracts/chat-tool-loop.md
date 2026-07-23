@@ -126,7 +126,9 @@ Search names `search_web` directly.
 
 Usage events are cumulative across native rounds. Each round reports its own
 provider usage to the loop; the SSE-visible update adds all completed prior
-rounds exactly once.
+rounds exactly once. A continuation-recovery answer stream inherits that same
+completed-usage base, so its terminal update cannot move the visible count
+backward.
 
 There is no product-level maximum Tool Round count, total Tool Call count, or
 per-tool count for this single-user deployment. The loop terminates only when:
@@ -190,6 +192,31 @@ Built-in Search authority is provider/model exact:
 The external resolver and model-built-in resolver are separate authority
 paths. Neither scans or returns the other mode, and a capability failure
 degrades without a cross-mode fallback.
+
+### Native continuation recovery
+
+Every successful Web execution returns only sources newly added during that
+execution. Earlier Tool Results already remain in the provider-native
+continuation, so repeating all cumulative Web source bodies in every later
+result is forbidden. Markers remain cumulative and stable: a later result may
+contain `[W2]` without repeating or renumbering `[W1]`. A repeat-only Search
+returns `sources: []` and instructs the model to reuse prior Tool Results.
+
+If a later native continuation fails synchronously or in-stream after bounded
+Web or authorized Knowledge evidence exists, Go may perform one recovery answer
+stream with these exact constraints:
+
+- use the same provider instance, `modelRef`, conversation context, and
+  cumulative usage base;
+- disable Tools for the recovery stream and inject only the bounded cumulative
+  Knowledge/Web evidence through the existing answer-context builders;
+- preserve backend-issued markers and the normal final-answer Citation
+  reconciliation; and
+- run only before any answer content was emitted.
+
+Cancellation, no-evidence failures, and failures after partial answer text do
+not recover. They retain their existing terminal behavior. Provider reasoning
+alone does not count as answer content and may precede a recovery answer.
 
 ## 5. Tool registry and approvals
 
@@ -372,6 +399,9 @@ cite both.
 | External Search unavailable/fails     | truthful notice; ordinary answer; no `[W#]`        |
 | First transient external failure      | one same-provider retry; no intermediate notice    |
 | Second transient external failure     | final redacted failure; ordinary answer; no `[W#]` |
+| Continuation fails after evidence, before answer text | same-model no-Tools evidence answer |
+| Continuation fails after partial answer text | terminal failure; no duplicate answer recovery |
+| Later Search adds no source            | empty incremental Tool Result; keep prior markers  |
 | Built-in capability unavailable       | mode disabled or degraded; no external fallback    |
 | Native Tool unsupported               | same-model compatibility planner                   |
 | Compatibility planner fails           | ordinary answer with truthful unavailable notice   |
@@ -405,3 +435,7 @@ cite both.
 10. External Search retry recovery for network/`408`/`429`/`5xx`, no retry for
     other `4xx` or response/schema failures, cancellation during delay, and
     final-error preservation after two transient failures.
+11. Native continuation recovery for synchronous and in-stream failure,
+    Web-only and mixed Knowledge/Web evidence, same provider/model, no recovery
+    after answer content, cumulative usage, incremental Web Tool Results, and
+    stable markers.

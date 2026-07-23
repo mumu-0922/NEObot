@@ -290,16 +290,55 @@ Tavily returned five sources in three calls; the rebuilt Backend completed a
 real `deepseek-v4-flash` compatibility Tool Loop with `[W1]`; cleanup returned
 `204 -> 404`.
 
+## G19.9 Post-closure native continuation recovery
+
+Status: complete (2026-07-23).
+
+- [x] Stop repeating the cumulative Web corpus in every native Tool Result;
+  return only sources added by the current execution while retaining stable
+  cumulative `[W#]` markers.
+- [x] If a later native Tool continuation fails before answer content and
+  bounded Web/Knowledge evidence already exists, answer once through the same
+  provider/model without Tools and preserve cumulative usage/citation truth.
+- [x] Keep cancellation, no-evidence failure, and failure after partial answer
+  content terminal; do not switch provider/model or duplicate user-visible
+  answer text.
+- [x] Pass repeated Web-only, synchronous, in-stream, mixed Knowledge/Web,
+  partial-content, marker, usage, full Go, source-build, live provider, health,
+  and temporary-state cleanup proofs.
+
+Promotion evidence: the owner-visible `gpt-5.6-sol` turn completed two Tavily
+Search executions and then failed during the third provider continuation. The
+existing loop had serialized the full cumulative Web corpus into each Tool
+Result. The repaired loop uses incremental results and a pre-content evidence
+answer recovery. Focused retrieval tests passed 20 times, the complete chat
+package passed 50 times, and Go vet/test/race/build passed. A rebuilt live
+`gpt-5.6-sol + Tavily` run completed after 20 distinct Search Queries with 21
+durable Tool and 21 Web steps, retained only three used `[W4]`/`[W5]`/`[W6]`
+sources, and deleted its temporary conversation with `204 -> 404`. The final
+standalone clean-copy gate passed Frontend 190 files/911 tests, all Go packages,
+and Python 1,730 passed/7 skipped.
+
+The live run lasted 295,914 ms and emitted 1,586,274 SSE bytes, demonstrating
+that the owner-selected no-product-limit policy allows a model to consume most
+of the configured five-minute provider timeout. This is recorded as an
+accepted operational risk; G19.9 does not add a Tool Round or Tool Call limit.
+
 ## Rollback order
 
-1. G19.6 can restore the current Auto RAG preparation path while retaining the
+1. G19.9 can revert incremental Web Tool Results and pre-content evidence
+   recovery independently at code anchor `e57675e` while retaining G19.8
+   Search transport retry.
+2. G19.8 can remove the same-provider external Search transport retry while
+   retaining the native Tool Loop.
+3. G19.6 can restore the current Auto RAG preparation path while retaining the
    generic Tool Loop.
-2. G19.5 can map persisted legacy `useSearch` back to off/external while
+4. G19.5 can map persisted legacy `useSearch` back to off/external while
    retaining external Tool execution.
-3. G19.4 can remove Anthropic Tool execution without affecting OpenAI-
+5. G19.4 can remove Anthropic Tool execution without affecting OpenAI-
    compatible/Gemini.
-4. G19.3 can restore the current pre-answer external Search + standalone Query
+6. G19.3 can restore the current pre-answer external Search + standalone Query
    rewrite while retaining the inert process-trace foundation.
-5. G19.2 can stop emitting/rendering the new trace while preserving existing
+7. G19.2 can stop emitting/rendering the new trace while preserving existing
    assistant content and citation metadata.
-6. G19.1 is documentation-only and has no runtime rollback.
+8. G19.1 is documentation-only and has no runtime rollback.

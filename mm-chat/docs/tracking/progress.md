@@ -1571,6 +1571,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           cleanup.
     - [x] G19.8 Post-closure same-provider transient external Search retry,
           cancellation safety, live Tavily/DeepSeek proof, and cleanup.
+    - [x] G19.9 Incremental Web Tool Results and same-model pre-content
+          continuation recovery, including mixed evidence, cumulative usage,
+          live Tavily stress proof, and cleanup.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

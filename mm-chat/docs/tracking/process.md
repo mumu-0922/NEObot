@@ -8763,3 +8763,23 @@ each, and a real DeepSeek compatibility Tool Loop completed with `[W1]` before
 its temporary conversation was deleted (`204 -> 404`). Exact policy, evidence,
 and rollback are in `docs/tracking/g19-tool-loop-process-trace-process.md` and
 `docs/contracts/chat-tool-loop.md`.
+
+## 2026-07-23 — G19.9 native Tool continuation recovery
+
+An owner-visible `gpt-5.6-sol` turn completed two Tavily searches but failed on
+the third provider continuation with no answer content. Web Tool Results now
+carry only sources added by their own execution instead of repeating the
+cumulative corpus. A synchronous or in-stream continuation failure after
+authorized evidence and before answer text receives one same-provider/model,
+no-Tools evidence answer stream; cancellation, no-evidence, and partial-answer
+failures remain terminal. Cumulative usage and backend marker reconciliation
+remain authoritative. Repeated Web-only and mixed Knowledge/Web fixtures, full
+Go vet/test/race/build, source Backend rebuild/health, and a real 20-Query
+`gpt-5.6-sol + Tavily` stress replay passed. The standalone gate also passed
+Frontend 190 files/911 tests, all Go packages, and Python 1,730 passed/7
+skipped. The answer retained three used sources and the disposable conversation
+was deleted (`204 -> 404`). The live run consumed 295,914 ms of the configured
+five-minute timeout, so unlimited model-directed Tool loops remain an
+explicitly recorded operational risk. Exact evidence and rollback are in
+`docs/tracking/g19-tool-loop-process-trace-process.md` and
+`docs/contracts/chat-tool-loop.md`.

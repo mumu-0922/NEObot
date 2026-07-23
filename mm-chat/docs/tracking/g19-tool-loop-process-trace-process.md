@@ -695,3 +695,74 @@ temporary conversation delete / post-delete read         204 / 404
 No administrator configuration, secret, retained conversation, or provider
 selection changed. Rollback is the isolated external retry code/doc commit;
 the pre-existing degradation path remains intact.
+
+## 2026-07-23 — G19.9 native Tool continuation recovery
+
+The owner-visible `洛阳天气预报` turn was inspected by persisted message and
+process state rather than by its generic frontend error. Both Tavily executions
+completed and returned five sources, but the third `gpt-5.6-sol` provider round
+failed with `provider stream failed`. The assistant persisted `failed` with
+zero answer bytes and 36 reasoning characters. The Search provider, Query
+routing, and external retry path were therefore not the failing boundary.
+
+One disposable replay reproduced the same two-Web-then-third-round failure and
+was deleted. A temporary redacted error-classification probe was then deployed;
+four consecutive real replays succeeded, so it did not capture a more precise
+upstream transport category. The probe was removed before the final source
+build. An intermittent upstream continuation interruption remains the narrow
+runtime cause, while code review found a deterministic amplification defect:
+each later Web Tool Result reserialized the complete cumulative source corpus,
+even though all earlier Tool Results were already present in native
+continuation history.
+
+G19.9 now returns only sources newly minted by each Web execution and preserves
+their cumulative markers. If a later native continuation fails synchronously
+or in-stream after authorized Web/Knowledge evidence exists and before any
+answer content was emitted, the same provider/model performs one no-Tools
+answer stream from the bounded cumulative evidence. Existing backend marker
+reconciliation remains citation authority, cumulative usage includes prior
+native rounds, and cancellation/no-evidence/partial-answer failures do not
+recover.
+
+Regression coverage includes:
+
+```text
+in-stream continuation failure + Web evidence                 recovered
+synchronous continuation start failure + Web evidence         recovered
+Knowledge then Web continuation failure                       [K1] + [W1]
+failure after partial answer content                           no recovery
+repeated Web source                                            sources: []
+new source after prior result                                  stable [W2]
+fallback usage                                                 cumulative
+focused retrieval fixtures, count=20                           passed
+complete internal/chat package, count=50                       passed
+Go vet / test / race / build                                   passed
+standalone Frontend / Go                                       190 files, 911 tests / passed
+standalone Python                                              1,730 passed, 7 skipped
+```
+
+The source Backend was rebuilt and recreated and returned healthy readiness.
+A real Server Default `gpt-5.6-sol + Tavily` stress replay then completed with
+20 distinct Search Queries, 21 durable Tool steps, 21 durable Web steps, 278
+answer deltas, six cumulative usage updates, and one terminal
+`message.completed`. The reconciled answer retained only three actually used
+sources with `[W4]`, `[W5]`, and `[W6]`; its temporary conversation was deleted
+and the subsequent read returned `404`. No owner conversation, provider/search
+configuration, or secret was changed.
+
+The stress replay lasted 295,914 ms and emitted 1,586,274 SSE bytes. This is
+direct evidence that the owner-selected no-product-limit policy can let the
+model consume most of `PROVIDER_TIMEOUT=5m`; the model made far more calls than
+the two required for regression proof. G19.9 intentionally does not override
+that product decision. The remaining operational risk is timeout/cost growth
+from model-directed Tool loops, not silent provider switching or fabricated
+Citation authority.
+
+Root-cause classification is **D: test coverage gap** plus **E: implicit
+assumption**. Multi-round success fixtures existed, but no fixture interrupted
+a continuation after successful evidence, and the implementation assumed the
+upstream continuation would finish. Prevention is now structural incremental
+Tool Results, explicit same-model pre-content recovery, negative partial-answer
+tests, mixed-evidence tests, cumulative-usage tests, and this executable
+contract. Rollback is the isolated G19.9 code/doc commit; G19.8 remains intact.
+The code rollback anchor is `e57675e`.
