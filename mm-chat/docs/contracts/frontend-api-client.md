@@ -681,10 +681,20 @@ Current chunks use event data such as `content`, `reasoning`, `tool_call`, `tool
 ```ts
 export interface FileApi {
   upload(input: UploadFileInput): Promise<FileRecord>;
+  importRemote(input: ImportRemoteFileInput): Promise<FileRecord>;
   getMetadata(fileId: EntityId): Promise<FileRecord>;
   getContent(fileId: EntityId, input?: GetFileContentInput): Promise<Blob>;
   getObjectUrl(fileId: EntityId): Promise<string>;
   delete(fileId: EntityId): Promise<void>;
+}
+
+export interface ImportRemoteFileInput {
+  url: string;
+  purpose: UploadFileInput["purpose"];
+  conversationId?: EntityId;
+  workspaceId?: EntityId;
+  knowledgeCollectionId?: EntityId;
+  clientFileId?: EntityId;
 }
 
 export interface UploadFileInput {
@@ -714,7 +724,11 @@ export interface GetFileContentInput {
 
 Rules:
 
-- Server mode maps to `POST /v1/files`, `GET /v1/files/:id`, `GET /v1/files/:id/content`, `DELETE /v1/files/:id`.
+- Server mode maps to `POST /v1/files`, `POST /v1/files/remote`,
+  `GET /v1/files/:id`, `GET /v1/files/:id/content`, and
+  `DELETE /v1/files/:id`.
+- URL-only composer attachments must be imported first and converted to a
+  server-backed `fileId`; chat message bodies never carry remote URLs.
 - Server mode never exposes MinIO bucket names, `storage_key`, or direct object-store URLs.
 - Local mode wraps OPFS helpers and may return object URLs generated in the browser.
 - Upload validation starts in the client for UX but is authoritative on the backend.
@@ -1876,6 +1890,7 @@ first chat CRUD + stream slice.
 | Client method        | Go endpoint                      | Phase 11 mapping                                            |
 | -------------------- | -------------------------------- | ----------------------------------------------------------- |
 | `files.upload`       | `POST /v1/files`                 | `multipart/form-data` with `file`, `purpose`, optional IDs. |
+| `files.importRemote` | `POST /v1/files/remote`          | JSON public HTTPS URL plus purpose and optional IDs.        |
 | `files.getMetadata`  | `GET /v1/files/{fileId}`         | Returns metadata plus relative `downloadUrl`.               |
 | `files.getContent`   | `GET /v1/files/{fileId}/content` | Optional `?disposition=attachment`.                         |
 | `files.delete`       | `DELETE /v1/files/{fileId}`      | `204 No Content`; no JSON body.                             |

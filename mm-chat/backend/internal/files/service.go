@@ -22,6 +22,7 @@ type Service struct {
 	store          storage.ObjectStore
 	storageBackend string
 	newID          func() (string, error)
+	remoteFetcher  remoteFileFetcher
 }
 
 type ServiceOption func(*Service)
@@ -41,6 +42,7 @@ func NewService(repo Repository, store storage.ObjectStore, opts ...ServiceOptio
 		store:          store,
 		storageBackend: DefaultStorageBackend,
 		newID:          newUUID,
+		remoteFetcher:  newSecureRemoteFileFetcher(),
 	}
 	for _, opt := range opts {
 		if opt != nil {

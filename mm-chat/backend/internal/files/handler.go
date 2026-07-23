@@ -16,8 +16,10 @@ const (
 	contentTypeJSON        = "application/json; charset=utf-8"
 	filesPath              = "/v1/files"
 	filePathBase           = filesPath + "/"
+	remoteFilesPath        = filesPath + "/remote"
 	defaultMaxUploadBytes  = int64(25 << 20)
 	multipartOverheadBytes = int64(1 << 20)
+	maxRemoteRequestBytes  = int64(8 << 10)
 )
 
 type Handler struct {
@@ -45,6 +47,15 @@ type FileRecordDTO struct {
 	Purpose     string `json:"purpose"`
 	CreatedAt   string `json:"createdAt"`
 	DownloadURL string `json:"downloadUrl"`
+}
+
+type RemoteImportRequest struct {
+	URL            string `json:"url"`
+	Purpose        string `json:"purpose"`
+	ConversationID string `json:"conversationId,omitempty"`
+	WorkspaceID    string `json:"workspaceId,omitempty"`
+	CollectionID   string `json:"knowledgeCollectionId,omitempty"`
+	ClientFileID   string `json:"clientFileId,omitempty"`
 }
 
 func WithMaxUploadBytes(maxUploadBytes int64) HandlerOption {
@@ -75,11 +86,47 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.URL.Path == filesPath:
 		h.handleFiles(w, r)
+	case r.URL.Path == remoteFilesPath:
+		h.handleRemoteFile(w, r)
 	case strings.HasPrefix(r.URL.Path, filePathBase):
 		h.handleFileChild(w, r)
 	default:
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
 	}
+}
+
+func (h *Handler) handleRemoteFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, http.MethodPost)
+		return
+	}
+	if err := h.service.requireReady(); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	var request RemoteImportRequest
+	if err := decodeRemoteImportRequest(w, r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_JSON", "request body must be valid JSON")
+		return
+	}
+	maxBytes := h.maxUploadBytes
+	if maxBytes <= 0 {
+		maxBytes = defaultMaxUploadBytes
+	}
+	record, err := h.service.ImportRemote(r.Context(), RemoteImportInput{
+		URL:            request.URL,
+		Purpose:        request.Purpose,
+		ConversationID: request.ConversationID,
+		WorkspaceID:    request.WorkspaceID,
+		CollectionID:   request.CollectionID,
+		ClientFileID:   request.ClientFileID,
+	}, maxBytes)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, newFileRecordDTO(record))
 }
 
 func (h *Handler) handleFiles(w http.ResponseWriter, r *http.Request) {
@@ -277,13 +324,36 @@ func serviceErrorFor(err error) (int, ErrorBody) {
 
 	var validationError ValidationError
 	if errors.As(err, &validationError) {
-		if validationError.Code == "FILE_TOO_LARGE" {
+		switch validationError.Code {
+		case "FILE_TOO_LARGE":
 			return http.StatusRequestEntityTooLarge, ErrorBody{Code: validationError.Code, Message: validationError.Message}
+		case "REMOTE_FETCH_TIMEOUT":
+			return http.StatusGatewayTimeout, ErrorBody{Code: validationError.Code, Message: validationError.Message}
+		case "REMOTE_FETCH_FAILED", "REMOTE_UPSTREAM_STATUS", "REMOTE_DNS_FAILED", "REMOTE_CONTENT_ENCODING_UNSUPPORTED":
+			return http.StatusBadGateway, ErrorBody{Code: validationError.Code, Message: validationError.Message}
 		}
 		return http.StatusBadRequest, ErrorBody{Code: validationError.Code, Message: validationError.Message}
 	}
 
 	return http.StatusInternalServerError, ErrorBody{Code: "INTERNAL_ERROR", Message: "internal server error"}
+}
+
+func decodeRemoteImportRequest(
+	w http.ResponseWriter,
+	r *http.Request,
+	destination any,
+) error {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRemoteRequestBytes)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(destination); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return errors.New("request body must contain one JSON value")
+	}
+	return nil
 }
 
 func methodNotAllowed(w http.ResponseWriter, allow string) {

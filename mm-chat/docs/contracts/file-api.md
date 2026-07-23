@@ -11,6 +11,7 @@ adapter, selected by `STORAGE_BACKEND`.
 
 ```http
 POST   /v1/files
+POST   /v1/files/remote
 GET    /v1/files/{fileId}
 GET    /v1/files/{fileId}/content
 DELETE /v1/files/{fileId}
@@ -28,6 +29,28 @@ DELETE /v1/files/{fileId}
 | `workspaceId`           | no       | Workspace-scoped file metadata.                                                         |
 | `knowledgeCollectionId` | no       | RAG import grouping, later phase.                                                       |
 | `clientFileId`          | no       | Optional frontend retry/correlation ID.                                                 |
+
+## Remote Import Request
+
+`POST /v1/files/remote` accepts bounded JSON and returns the same File Response
+as multipart upload:
+
+```json
+{
+  "url": "https://cdn.example.com/notes.txt",
+  "purpose": "chat",
+  "conversationId": "optional-conversation-id",
+  "clientFileId": "optional-client-id"
+}
+```
+
+The backend downloads the object before message creation, enforces the normal
+upload limit, computes SHA-256, and stores it through the same actor-owned
+ObjectStore and Postgres flow. Only public HTTPS is accepted. Embedded
+credentials, localhost/private/link-local/mixed DNS answers, unsafe redirects,
+non-identity encoding, non-2xx responses, timeouts, empty bodies, and oversized
+bodies fail closed. The source URL is request-only and is not persisted in file
+metadata.
 
 ## File Response
 
@@ -56,6 +79,9 @@ presigned URLs in the MVP.
 | `400` | `FILE_REQUIRED`        | No file part was supplied.                                                   |
 | `400` | `INVALID_FILE_PURPOSE` | Purpose is missing or unsupported.                                           |
 | `413` | `FILE_TOO_LARGE`       | File exceeds `MAX_UPLOAD_BYTES`.                                             |
+| `400` | `REMOTE_URL_INVALID` / `REMOTE_URL_BLOCKED` | Remote URL is malformed or not public HTTPS.                 |
+| `502` | `REMOTE_FETCH_FAILED` / `REMOTE_UPSTREAM_STATUS` | Remote download or upstream response failed.          |
+| `504` | `REMOTE_FETCH_TIMEOUT` | Remote download exceeded the bounded timeout.                                |
 | `404` | `FILE_NOT_FOUND`       | Metadata row is absent or deleted.                                           |
 | `409` | `FILE_IN_USE`          | A live Knowledge Document Version still binds the File.                      |
 | `429` | `RATE_LIMITED`         | Redis rate-limit middleware blocked the request before upload/download work. |
@@ -72,6 +98,10 @@ request multipart
   -> insert files metadata row with sha256, byte_size, object_key
   -> return FileRecord
 ```
+
+Remote import performs the bounded SSRF-safe download first, then enters the
+same `sha256 -> ObjectStore.Put -> files row` flow. A fetch failure creates no
+object and no metadata row.
 
 Rollback rule: if Postgres insert fails after object write, delete the object.
 If object write fails, do not create the metadata row.

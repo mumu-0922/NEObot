@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createNeoChatApiClient } from "../services/api/client";
 import {
   createFileService,
+  type ImportRemoteAttachmentInput,
   mapFileRecordToServerAttachment,
   type UploadChatAttachmentInput,
   uploadMessageAttachmentsForServer,
@@ -113,6 +114,35 @@ describe("Phase 11.4B file service gateway", () => {
     });
   });
 
+  it("imports remote attachments through the server file API", async () => {
+    const service = createFileService({
+      client: createMockClient({
+        async importRemoteFile(input) {
+          expect(input).toMatchObject({
+            url: "https://example.test/notes.txt",
+            purpose: "chat",
+            conversationId: "conversation-1",
+            clientFileId: "remote-1",
+          });
+          return fileRecord;
+        },
+      }),
+    });
+
+    await expect(
+      service.importRemoteAttachment({
+        url: "https://example.test/notes.txt",
+        conversationId: "conversation-1",
+        clientFileId: "remote-1",
+        purpose: "input",
+      }),
+    ).resolves.toMatchObject({
+      source: "server",
+      fileId,
+      purpose: "input",
+    });
+  });
+
   it("delegates metadata and binary downloads", async () => {
     const blob = new Blob(["hello world"], { type: "text/plain" });
     const service = createFileService({
@@ -153,6 +183,14 @@ describe("Phase 11.4B file service gateway", () => {
         code: "SERVER_FILES_DISABLED",
         recoverable: true,
       });
+      await expect(
+        service.importRemoteAttachment({
+          url: "https://example.test/notes.txt",
+        }),
+      ).rejects.toMatchObject({
+        code: "SERVER_FILES_DISABLED",
+        recoverable: true,
+      });
     }
   });
 
@@ -179,6 +217,9 @@ describe("Phase 11.4B file service gateway", () => {
             purpose: input.purpose,
           });
         },
+        async importRemoteAttachment() {
+          throw new Error("importRemoteAttachment should not be called");
+        },
       },
     });
 
@@ -201,28 +242,43 @@ describe("Phase 11.4B file service gateway", () => {
     ]);
   });
 
-  it("rejects URL-only attachments in server upload conversion", async () => {
-    await expect(
-      uploadMessageAttachmentsForServer({
-        conversationId: "conversation-1",
-        attachments: [
-          {
-            id: "remote-attachment",
-            fileName: "remote.txt",
-            mimeType: "text/plain",
-            url: "https://example.test/file.txt",
-          },
-        ],
-        fileService: {
-          async uploadChatAttachment() {
-            throw new Error("uploadChatAttachment should not be called");
-          },
+  it("imports URL-only attachments in server upload conversion", async () => {
+    const calls: ImportRemoteAttachmentInput[] = [];
+    const uploaded = await uploadMessageAttachmentsForServer({
+      conversationId: "conversation-1",
+      attachments: [
+        {
+          id: "remote-attachment",
+          fileName: "remote.txt",
+          mimeType: "text/plain",
+          url: "https://example.test/file.txt",
         },
-      }),
-    ).rejects.toMatchObject({
-      code: "UNSUPPORTED_ATTACHMENT_SOURCE",
-      recoverable: true,
+      ],
+      fileService: {
+        async uploadChatAttachment() {
+          throw new Error("uploadChatAttachment should not be called");
+        },
+        async importRemoteAttachment(input) {
+          calls.push(input);
+          return mapFileRecordToServerAttachment(fileRecord, {
+            baseUrl: "http://backend.test",
+            purpose: input.purpose,
+          });
+        },
+      },
     });
+
+    expect(calls).toEqual([
+      expect.objectContaining({
+        url: "https://example.test/file.txt",
+        conversationId: "conversation-1",
+        clientFileId: "remote-attachment",
+        purpose: "input",
+      }),
+    ]);
+    expect(uploaded).toEqual([
+      expect.objectContaining({ source: "server", fileId, purpose: "input" }),
+    ]);
   });
 });
 
@@ -247,6 +303,9 @@ function createMockClient(
     files: {
       async uploadFile() {
         throw new Error("uploadFile not mocked");
+      },
+      async importRemoteFile() {
+        throw new Error("importRemoteFile not mocked");
       },
       async getFile() {
         throw new Error("getFile not mocked");

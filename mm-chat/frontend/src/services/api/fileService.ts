@@ -27,6 +27,16 @@ export interface UploadChatAttachmentInput {
   signal?: AbortSignal;
 }
 
+export interface ImportRemoteAttachmentInput {
+  url: string;
+  conversationId?: string;
+  workspaceId?: string;
+  knowledgeCollectionId?: string;
+  clientFileId?: string;
+  purpose?: ServerMessageAttachmentPurpose | "chat" | "knowledge";
+  signal?: AbortSignal;
+}
+
 export interface FileServiceOptions {
   config?: ApiClientConfig;
   client?: NeoChatApiClient;
@@ -37,6 +47,9 @@ export interface FileService {
   serverEnabled: boolean;
   uploadChatAttachment(
     input: UploadChatAttachmentInput,
+  ): Promise<ServerBackedAttachment>;
+  importRemoteAttachment(
+    input: ImportRemoteAttachmentInput,
   ): Promise<ServerBackedAttachment>;
   getChatAttachment(
     fileId: string,
@@ -50,7 +63,10 @@ export interface FileService {
 export interface UploadMessageAttachmentsForServerInput {
   attachments: Attachment[];
   conversationId: string;
-  fileService?: Pick<FileService, "uploadChatAttachment">;
+  fileService?: Pick<
+    FileService,
+    "uploadChatAttachment" | "importRemoteAttachment"
+  >;
   signal?: AbortSignal;
 }
 
@@ -81,6 +97,23 @@ export function createFileService(
       const record = await client.files.uploadFile({
         file: input.file as Blob,
         fileName: input.fileName,
+        purpose: "chat",
+        conversationId: input.conversationId,
+        workspaceId: input.workspaceId,
+        knowledgeCollectionId: input.knowledgeCollectionId,
+        clientFileId: input.clientFileId,
+        signal: input.signal,
+      });
+      return mapFileRecordToServerAttachment(record, {
+        baseUrl,
+        purpose: input.purpose,
+      });
+    },
+
+    async importRemoteAttachment(input) {
+      requireServerFiles();
+      const record = await client.files.importRemoteFile({
+        url: input.url,
         purpose: "chat",
         conversationId: input.conversationId,
         workspaceId: input.workspaceId,
@@ -146,6 +179,19 @@ export async function uploadMessageAttachmentsForServer({
       continue;
     }
 
+    if (isPublicRemoteAttachment(attachment)) {
+      uploaded.push(
+        await fileService.importRemoteAttachment({
+          url: attachment.url!,
+          conversationId,
+          clientFileId: attachment.id,
+          purpose: inferServerMessagePurpose(attachment),
+          signal,
+        }),
+      );
+      continue;
+    }
+
     uploaded.push(
       await fileService.uploadChatAttachment({
         file: attachmentToBlob(attachment),
@@ -159,6 +205,15 @@ export async function uploadMessageAttachmentsForServer({
   }
 
   return uploaded;
+}
+
+function isPublicRemoteAttachment(attachment: Attachment): boolean {
+  if (attachment.data || !attachment.url) return false;
+  try {
+    return new URL(attachment.url).protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function attachmentToBlob(attachment: Attachment): Blob {

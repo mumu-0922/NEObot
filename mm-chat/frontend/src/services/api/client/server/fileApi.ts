@@ -5,11 +5,13 @@ import type {
   FileApi,
   FilePurpose,
   FileRecordDTO,
+  ImportRemoteFileInput,
   UploadFileInput,
 } from "../types";
 import type { HttpClient } from "./httpClient";
 
 const filesPath = "/v1/files";
+const remoteFilesPath = `${filesPath}/remote`;
 
 export function createServerFileApiShell(httpClient: HttpClient): FileApi {
   return {
@@ -18,6 +20,33 @@ export function createServerFileApiShell(httpClient: HttpClient): FileApi {
         await httpClient.requestMultipartJson<unknown>(filesPath, {
           method: "POST",
           formData: createUploadFormData(input),
+          signal: input.signal,
+        }),
+      );
+    },
+
+    async importRemoteFile(
+      input: ImportRemoteFileInput,
+    ): Promise<FileRecordDTO> {
+      const url = input.url.trim();
+      if (!url) {
+        throw new ApiClientError(
+          "REMOTE_URL_INVALID",
+          "remote file URL is required",
+        );
+      }
+      return normalizeFileRecord(
+        await httpClient.requestJson<unknown>(remoteFilesPath, {
+          method: "POST",
+          body: removeUndefined({
+            url,
+            purpose: normalizePurpose(input.purpose),
+            conversationId: input.conversationId?.trim() || undefined,
+            workspaceId: input.workspaceId?.trim() || undefined,
+            knowledgeCollectionId:
+              input.knowledgeCollectionId?.trim() || undefined,
+            clientFileId: input.clientFileId?.trim() || undefined,
+          }),
           signal: input.signal,
         }),
       );
@@ -52,6 +81,12 @@ export function createServerFileApiShell(httpClient: HttpClient): FileApi {
       });
     },
   };
+}
+
+function removeUndefined<T extends Record<string, unknown>>(value: T): T {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, item]) => item !== undefined),
+  ) as T;
 }
 
 function createUploadFormData(input: UploadFileInput): FormData {

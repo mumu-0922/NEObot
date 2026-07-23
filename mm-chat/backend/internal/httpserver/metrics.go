@@ -528,6 +528,9 @@ func knownMetricPath(path string) (string, bool) {
 		case 3:
 			return "/v1/files", true
 		case 4:
+			if parts[3] == "remote" {
+				return "/v1/files/remote", true
+			}
 			return "/v1/files/{id}", true
 		case 5:
 			if parts[4] == "content" {

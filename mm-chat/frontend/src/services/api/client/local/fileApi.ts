@@ -6,6 +6,9 @@ export function createLocalFileApiShell(): FileApi {
     async uploadFile(): Promise<FileRecordDTO> {
       throw unsupportedFeature("local file adapter wiring");
     },
+    async importRemoteFile(): Promise<FileRecordDTO> {
+      throw unsupportedFeature("local remote file adapter wiring");
+    },
     async getFile(): Promise<FileRecordDTO> {
       throw unsupportedFeature("local file adapter wiring");
     },

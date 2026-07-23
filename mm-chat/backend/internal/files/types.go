@@ -39,6 +39,15 @@ type UploadInput struct {
 	Body             io.Reader
 }
 
+type RemoteImportInput struct {
+	URL            string
+	Purpose        string
+	ConversationID string
+	WorkspaceID    string
+	CollectionID   string
+	ClientFileID   string
+}
+
 type FileRecord struct {
 	ID               string
 	UserID           string

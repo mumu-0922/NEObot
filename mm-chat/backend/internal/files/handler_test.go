@@ -118,6 +118,88 @@ func TestHandlerUploadErrors(t *testing.T) {
 	})
 }
 
+func TestHandlerImportsRemoteFile(t *testing.T) {
+	repo := newFakeRepository()
+	store := newFakeObjectStore()
+	service := NewService(repo, store)
+	service.newID = func() (string, error) { return testFileID, nil }
+	service.remoteFetcher = remoteFetcherFunc(func(
+		_ context.Context,
+		rawURL string,
+		maxBytes int64,
+	) (fetchedRemoteFile, error) {
+		if rawURL != "https://example.test/notes.txt" || maxBytes != 1024 {
+			t.Fatalf("fetch input = %q/%d", rawURL, maxBytes)
+		}
+		return fetchedRemoteFile{
+			filename: "notes.txt",
+			mimeType: "text/plain",
+			body:     []byte("remote body"),
+		}, nil
+	})
+	handler := NewHandler(service, WithMaxUploadBytes(1024))
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		remoteFilesPath,
+		`{"url":"https://example.test/notes.txt","purpose":"chat","conversationId":"conversation-1","clientFileId":"client-1"}`,
+	)
+	assertStatus(t, rec, http.StatusCreated)
+	var uploaded FileRecordDTO
+	decodeBody(t, rec, &uploaded)
+	if uploaded.ID != testFileID || uploaded.FileName != "notes.txt" || uploaded.Size != int64(len("remote body")) {
+		t.Fatalf("uploaded = %#v", uploaded)
+	}
+	record := repo.records[testFileID]
+	if record.Metadata["conversationId"] != "conversation-1" || record.Metadata["clientFileId"] != "client-1" {
+		t.Fatalf("metadata = %#v", record.Metadata)
+	}
+}
+
+func TestHandlerRemoteImportErrors(t *testing.T) {
+	service := NewService(newFakeRepository(), newFakeObjectStore())
+	service.remoteFetcher = remoteFetcherFunc(func(
+		context.Context,
+		string,
+		int64,
+	) (fetchedRemoteFile, error) {
+		return fetchedRemoteFile{}, newValidationError(
+			"REMOTE_FETCH_TIMEOUT",
+			"remote file download timed out",
+		)
+	})
+	handler := NewHandler(service)
+
+	t.Run("strict JSON", func(t *testing.T) {
+		rec := performRequest(
+			handler,
+			http.MethodPost,
+			remoteFilesPath,
+			`{"url":"https://example.test/a.txt","purpose":"chat","unknown":true}`,
+		)
+		assertStatus(t, rec, http.StatusBadRequest)
+		assertErrorCode(t, rec, "INVALID_JSON")
+	})
+
+	t.Run("timeout", func(t *testing.T) {
+		rec := performRequest(
+			handler,
+			http.MethodPost,
+			remoteFilesPath,
+			`{"url":"https://example.test/a.txt","purpose":"chat"}`,
+		)
+		assertStatus(t, rec, http.StatusGatewayTimeout)
+		assertErrorCode(t, rec, "REMOTE_FETCH_TIMEOUT")
+	})
+
+	t.Run("method", func(t *testing.T) {
+		rec := performRequest(handler, http.MethodGet, remoteFilesPath, "")
+		assertStatus(t, rec, http.StatusMethodNotAllowed)
+		assertErrorCode(t, rec, "METHOD_NOT_ALLOWED")
+	})
+}
+
 func TestHandlerMetadataErrors(t *testing.T) {
 	handler := NewHandler(NewService(newFakeRepository(), newFakeObjectStore()))
 

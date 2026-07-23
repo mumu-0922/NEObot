@@ -1205,6 +1205,12 @@ describe("Phase 11.4A server file API adapter", () => {
         purpose: "chat",
       }),
     ).rejects.toMatchObject({ code: "FEATURE_NOT_IMPLEMENTED" });
+    await expect(
+      client.files.importRemoteFile({
+        url: "https://example.test/notes.txt",
+        purpose: "chat",
+      }),
+    ).rejects.toMatchObject({ code: "FEATURE_NOT_IMPLEMENTED" });
     expect(client.capabilities.files).toBe(false);
   });
 
@@ -1277,6 +1283,52 @@ describe("Phase 11.4A server file API adapter", () => {
           conversationId: "conversation-1",
           workspaceId: "workspace-1",
           knowledgeCollectionId: "knowledge-1",
+          clientFileId: "client-file-1",
+        },
+      },
+    ]);
+  });
+
+  it("imports remote files through bounded server JSON metadata", async () => {
+    const requests: Array<{
+      url: string;
+      method?: string;
+      contentType?: string | null;
+      body: unknown;
+    }> = [];
+    const files = createServerFileApiShell(
+      createHttpClient({
+        baseUrl: "http://backend.test",
+        fetchImpl: async (input, init) => {
+          const headers = new Headers(init?.headers);
+          requests.push({
+            url: String(input),
+            method: init?.method,
+            contentType: headers.get("content-type"),
+            body: JSON.parse(String(init?.body)),
+          });
+          return Response.json(fileRecord, { status: 201 });
+        },
+      }),
+    );
+
+    await expect(
+      files.importRemoteFile({
+        url: " https://example.test/notes.txt ",
+        purpose: "chat",
+        conversationId: " conversation-1 ",
+        clientFileId: " client-file-1 ",
+      }),
+    ).resolves.toEqual(fileRecord);
+    expect(requests).toEqual([
+      {
+        url: "http://backend.test/v1/files/remote",
+        method: "POST",
+        contentType: "application/json",
+        body: {
+          url: "https://example.test/notes.txt",
+          purpose: "chat",
+          conversationId: "conversation-1",
           clientFileId: "client-file-1",
         },
       },

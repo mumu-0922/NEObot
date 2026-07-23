@@ -192,6 +192,7 @@ func TestNormalizeMetricPathBoundsKnownDynamicRoutes(t *testing.T) {
 		"/v1/voice/synthesize":                                                                      "/v1/voice/synthesize",
 		"/v1/admin/task-models":                                                                     "/v1/admin/task-models",
 		"/v1/files/33333333-3333-4333-8333-333333333333":                                            "/v1/files/{id}",
+		"/v1/files/remote":                                                                          "/v1/files/remote",
 		"/v1/import/browser/preview":                                                                "/v1/import/browser/preview",
 		"/v1/import/browser/import-batch-id":                                                        "/v1/import/browser/{id}",
 		"/unknown/33333333-3333-4333-8333-333333333333/detail":                                      unknownMetricPath,

@@ -308,6 +308,9 @@ function createMockFileApi(): FileApi {
     async uploadFile() {
       throw new Error("uploadFile not mocked");
     },
+    async importRemoteFile() {
+      throw new Error("importRemoteFile not mocked");
+    },
     async getFile() {
       throw new Error("getFile not mocked");
     },

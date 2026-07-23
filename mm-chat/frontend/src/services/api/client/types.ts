@@ -148,6 +148,16 @@ export interface UploadFileInput {
   signal?: AbortSignal;
 }
 
+export interface ImportRemoteFileInput {
+  url: string;
+  purpose: FilePurpose;
+  conversationId?: string;
+  workspaceId?: string;
+  knowledgeCollectionId?: string;
+  clientFileId?: string;
+  signal?: AbortSignal;
+}
+
 export interface DownloadFileContentInput {
   fileId: string;
   disposition?: "inline" | "attachment";
@@ -677,6 +687,7 @@ export interface PluginApi {
 
 export interface FileApi {
   uploadFile(input: UploadFileInput): Promise<FileRecordDTO>;
+  importRemoteFile(input: ImportRemoteFileInput): Promise<FileRecordDTO>;
   getFile(
     fileId: string,
     options?: { signal?: AbortSignal },

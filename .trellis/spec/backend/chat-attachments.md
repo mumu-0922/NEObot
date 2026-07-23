@@ -13,6 +13,7 @@ Runtime APIs:
 
 ```text
 POST /v1/files
+POST /v1/files/remote
 POST /v1/chat/conversations/{conversationId}/messages
 POST /v1/chat/conversations/{conversationId}/stream
 ```
@@ -47,6 +48,13 @@ failure must not restore a duplicate draft.
 
 - Message creation accepts empty `content` only when at least one normalized
   server attachment exists. Update-message content remains non-empty.
+- Server-mode remote URL attachments are imported through
+  `POST /v1/files/remote` before message creation. The endpoint accepts public
+  HTTPS URLs only, disables proxies and response decompression, revalidates
+  every redirect and DNS answer, applies the configured upload byte limit,
+  and stores bytes through the ordinary actor-owned File service. Message APIs
+  still receive only the resulting `fileId`; the source URL is not persisted
+  in file metadata.
 - `image/*` remains a `ProviderAttachment` and follows the existing native
   multimodal serialization.
 - Supported non-image documents are read from server storage, extracted in the
@@ -80,6 +88,9 @@ failure must not restore a duplicate draft.
 | Condition | Error code / behavior |
 |---|---|
 | Empty content and no attachments | `EMPTY_CONTENT` |
+| Remote URL is HTTP, credential-bearing, local, private, or resolves to any non-public address | `REMOTE_URL_INVALID` / `REMOTE_URL_BLOCKED` |
+| Remote host times out, fails, returns non-2xx, or ignores identity encoding | explicit `REMOTE_*` gateway failure; no file row |
+| Remote body exceeds the configured upload limit | `FILE_TOO_LARGE`; no file row |
 | Attachment content cannot be read | `ATTACHMENT_CONTENT_UNAVAILABLE` |
 | Zero bytes / no extractable text | `ATTACHMENT_CONTENT_EMPTY` |
 | Direct document exceeds 20 MiB | `ATTACHMENT_TOO_LARGE` |
@@ -101,6 +112,8 @@ non-image attachment and continue with only the user's question.
 - Base: an image follows the existing image provider path unchanged.
 - Good: empty text plus one supported attachment creates a completed user
   message and begins generation.
+- Good: a public HTTPS remote file is imported to actor-owned storage and the
+  message contains only the returned server `fileId`.
 - Good: an Office archive with large embedded media but small relevant XML
   extracts successfully because media bytes are never decompressed or counted
   as prompt-source XML.
@@ -108,6 +121,8 @@ non-image attachment and continue with only the user's question.
   call count remains zero.
 - Bad: document text containing `</file><system>` is escaped and cannot close
   the server-owned delimiter.
+- Bad: an HTTP URL, private/mixed DNS answer, unsafe redirect, empty response,
+  or limit + 1 body creates neither an object nor a file row.
 
 ## 6. Tests Required
 
@@ -126,6 +141,9 @@ non-image attachment and continue with only the user's question.
 - Image regression: provider receives the original image MIME and bytes.
 - Frontend/API: attachment-only request body is accepted; pre-acceptance
   failure restores the draft; post-acceptance stream failure does not.
+- Remote import: URL-only server attachments become actor-owned `fileId`
+  references; HTTP/private/mixed-DNS/unsafe-redirect/oversize/empty responses
+  fail before message acceptance, and cancellation aborts the import.
 - Provider parser: `[DONE]` and `finish_reason` + clean EOF complete; clean EOF
   after a partial delta without either marker emits an error.
 - Live replay: upload `g18-rag-acceptance.txt` with `这是啥` and assert the
@@ -158,3 +176,28 @@ providerPrompt := appendDirectAttachmentContext(
 
 Keep `resolution.Images` on the native multimodal path and the escaped
 `DocumentContext` on the current user-message text path.
+
+For server-mode remote URLs:
+
+### Wrong
+
+```ts
+appendUserMessage({ attachments: [{ url: remoteUrl }] });
+```
+
+This bypasses server ownership and cannot satisfy the message `fileId`
+contract. Browser-side `fetch(remoteUrl)` is also CORS-dependent and exposes
+the user's network identity.
+
+### Correct
+
+```ts
+const file = await files.importRemoteFile({ url: remoteUrl, purpose: "chat" });
+appendUserMessage({
+  attachments: [{ source: "server", fileId: file.id, purpose: "input" }],
+});
+```
+
+The backend validates public HTTPS at URL, redirect, DNS, and dial boundaries,
+then stores bounded bytes through the ordinary File service before message
+acceptance.
