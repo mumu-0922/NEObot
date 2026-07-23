@@ -3,14 +3,25 @@ package websearch
 import (
 	"context"
 	"errors"
+	"net/http"
+	"time"
+)
+
+const (
+	externalSearchMaxAttempts = 2
+	externalSearchRetryDelay  = 250 * time.Millisecond
 )
 
 type Service struct {
-	resolver Resolver
+	resolver   Resolver
+	retryDelay time.Duration
 }
 
 func NewService(resolver Resolver) *Service {
-	return &Service{resolver: resolver}
+	return &Service{
+		resolver:   resolver,
+		retryDelay: externalSearchRetryDelay,
+	}
 }
 
 func (s *Service) Configured() bool {
@@ -133,11 +144,63 @@ func (s *Service) executeNormalized(
 	if execution.Mode == ExecutionModelBuiltIn {
 		return Result{}, ErrModelBuiltInRequiresChat
 	}
-	result, err := execution.External.Search(ctx, normalized)
-	if err != nil {
-		return Result{}, err
+	var lastErr error
+	for attempt := 0; attempt < externalSearchMaxAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return Result{}, err
+		}
+		result, err := execution.External.Search(ctx, normalized)
+		if err == nil {
+			return NormalizeResult(result, normalized.MaxResults), nil
+		}
+		lastErr = err
+		if err := ctx.Err(); err != nil {
+			return Result{}, err
+		}
+		if attempt > 0 || !isTransientProviderError(err) {
+			return Result{}, err
+		}
+		if err := waitForRetry(ctx, s.retryDelay); err != nil {
+			return Result{}, err
+		}
 	}
-	return NormalizeResult(result, normalized.MaxResults), nil
+	return Result{}, lastErr
+}
+
+func isTransientProviderError(err error) bool {
+	var providerError *ProviderError
+	if !errors.As(err, &providerError) {
+		return false
+	}
+	if providerError.Code == "REQUEST_FAILED" {
+		return true
+	}
+	if providerError.Code != "UPSTREAM_STATUS" {
+		return false
+	}
+	return providerError.Status == http.StatusRequestTimeout ||
+		providerError.Status == http.StatusTooManyRequests ||
+		providerError.Status >= http.StatusInternalServerError &&
+			providerError.Status <= 599
+}
+
+func waitForRetry(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			return nil
+		}
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func validateActiveExecution(execution ActiveExecution) error {

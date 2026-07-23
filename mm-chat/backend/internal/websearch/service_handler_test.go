@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fixedResolver struct {
@@ -61,6 +62,50 @@ func (p *searchProbe) Search(_ context.Context, request Request) (Result, error)
 	return p.result, p.err
 }
 
+type scriptedSearchResult struct {
+	result Result
+	err    error
+}
+
+type scriptedSearchProbe struct {
+	id      ProviderID
+	results []scriptedSearchResult
+	calls   []Request
+}
+
+type cancellationSearchProbe struct {
+	err    error
+	called chan struct{}
+	calls  int
+}
+
+func (p *cancellationSearchProbe) ID() ProviderID { return ProviderTavily }
+
+func (p *cancellationSearchProbe) Search(
+	_ context.Context,
+	_ Request,
+) (Result, error) {
+	p.calls++
+	close(p.called)
+	return Result{}, p.err
+}
+
+func (p *scriptedSearchProbe) ID() ProviderID { return p.id }
+
+func (p *scriptedSearchProbe) Search(_ context.Context, request Request) (Result, error) {
+	p.calls = append(p.calls, request)
+	result := p.results[len(p.calls)-1]
+	return result.result, result.err
+}
+
+func newTestService(provider Provider) *Service {
+	service := NewService(&fixedResolver{execution: ActiveExecution{
+		Mode: ExecutionExternal, External: provider,
+	}})
+	service.retryDelay = 0
+	return service
+}
+
 func TestServiceExecutesExactlyOneResolvedExternalProvider(t *testing.T) {
 	provider := &searchProbe{
 		id: ProviderTavily,
@@ -87,6 +132,190 @@ func TestServiceExecutesExactlyOneResolvedExternalProvider(t *testing.T) {
 	}
 	if len(result.Sources) != 1 || result.Sources[0].Title != "Fixture" {
 		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestServiceRetriesTransientExternalSearchFailureOnce(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "transport",
+			err: &ProviderError{
+				Provider: ProviderTavily,
+				Code:     "REQUEST_FAILED",
+			},
+		},
+		{
+			name: "request timeout",
+			err: &ProviderError{
+				Provider: ProviderTavily,
+				Code:     "UPSTREAM_STATUS",
+				Status:   http.StatusRequestTimeout,
+			},
+		},
+		{
+			name: "rate limited",
+			err: &ProviderError{
+				Provider: ProviderTavily,
+				Code:     "UPSTREAM_STATUS",
+				Status:   http.StatusTooManyRequests,
+			},
+		},
+		{
+			name: "server failure",
+			err: &ProviderError{
+				Provider: ProviderTavily,
+				Code:     "UPSTREAM_STATUS",
+				Status:   http.StatusBadGateway,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			provider := &scriptedSearchProbe{
+				id: ProviderTavily,
+				results: []scriptedSearchResult{
+					{err: tt.err},
+					{result: Result{Sources: []Source{{
+						Title:   "Recovered",
+						URL:     "https://example.test/recovered",
+						Content: "answer",
+					}}}},
+				},
+			}
+			result, err := newTestService(provider).Search(
+				context.Background(),
+				Request{Query: "fixture"},
+			)
+			if err != nil || len(result.Sources) != 1 ||
+				result.Sources[0].Title != "Recovered" || len(provider.calls) != 2 {
+				t.Fatalf("Search() = %#v, %v; calls=%d", result, err, len(provider.calls))
+			}
+		})
+	}
+}
+
+func TestServiceDoesNotRetryPermanentExternalSearchFailure(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "authentication",
+			err: &ProviderError{
+				Provider: ProviderTavily,
+				Code:     "UPSTREAM_STATUS",
+				Status:   http.StatusUnauthorized,
+			},
+		},
+		{
+			name: "bad request",
+			err: &ProviderError{
+				Provider: ProviderTavily,
+				Code:     "UPSTREAM_STATUS",
+				Status:   http.StatusBadRequest,
+			},
+		},
+		{
+			name: "schema",
+			err: &ProviderError{
+				Provider: ProviderTavily,
+				Code:     "RESPONSE_DECODE_FAILED",
+			},
+		},
+		{
+			name: "content type",
+			err: &ProviderError{
+				Provider: ProviderTavily,
+				Code:     "RESPONSE_CONTENT_TYPE_INVALID",
+			},
+		},
+		{name: "unclassified", err: errors.New("stable failure")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			provider := &scriptedSearchProbe{
+				id: ProviderTavily,
+				results: []scriptedSearchResult{
+					{err: tt.err},
+					{result: Result{}},
+				},
+			}
+			_, err := newTestService(provider).Search(
+				context.Background(),
+				Request{Query: "fixture"},
+			)
+			if !errors.Is(err, tt.err) || len(provider.calls) != 1 {
+				t.Fatalf("Search() error = %v; calls=%d", err, len(provider.calls))
+			}
+		})
+	}
+}
+
+func TestServiceStopsTransientRetryWhenContextIsCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	provider := &searchProbe{
+		id: ProviderTavily,
+		err: &ProviderError{
+			Provider: ProviderTavily,
+			Code:     "REQUEST_FAILED",
+		},
+	}
+	cancel()
+	_, err := newTestService(provider).Search(ctx, Request{Query: "fixture"})
+	if !errors.Is(err, context.Canceled) || len(provider.calls) != 0 {
+		t.Fatalf("Search() error = %v; calls=%d", err, len(provider.calls))
+	}
+}
+
+func TestServiceReturnsSecondTransientFailure(t *testing.T) {
+	firstErr := &ProviderError{
+		Provider: ProviderTavily,
+		Code:     "REQUEST_FAILED",
+	}
+	secondErr := &ProviderError{
+		Provider: ProviderTavily,
+		Code:     "UPSTREAM_STATUS",
+		Status:   http.StatusServiceUnavailable,
+	}
+	provider := &scriptedSearchProbe{
+		id: ProviderTavily,
+		results: []scriptedSearchResult{
+			{err: firstErr},
+			{err: secondErr},
+		},
+	}
+	_, err := newTestService(provider).Search(
+		context.Background(),
+		Request{Query: "fixture"},
+	)
+	if err != secondErr || len(provider.calls) != 2 {
+		t.Fatalf("Search() error = %v; calls=%d", err, len(provider.calls))
+	}
+}
+
+func TestServiceCancelsDuringTransientRetryDelay(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	provider := &cancellationSearchProbe{
+		called: make(chan struct{}),
+		err: &ProviderError{
+			Provider: ProviderTavily,
+			Code:     "REQUEST_FAILED",
+		},
+	}
+	service := newTestService(provider)
+	service.retryDelay = time.Hour
+	done := make(chan error, 1)
+	go func() {
+		_, err := service.Search(ctx, Request{Query: "fixture"})
+		done <- err
+	}()
+	<-provider.called
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) || provider.calls != 1 {
+		t.Fatalf("Search() error = %v; calls=%d", err, provider.calls)
 	}
 }
 
