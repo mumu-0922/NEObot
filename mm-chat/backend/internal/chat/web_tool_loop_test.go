@@ -202,6 +202,175 @@ func TestExternalWebToolLoopSearchFailureContinuesWithoutWebResult(t *testing.T)
 	}
 }
 
+func TestExternalWebToolLoopRecoversFailedNativeContinuationWithEvidence(t *testing.T) {
+	provider := &scriptedToolRoundProvider{
+		rounds: [][]ProviderEvent{
+			{
+				{Type: ProviderEventUsage, Usage: &TokenUsage{
+					PromptTokens: 2, CompletionTokens: 3, TotalTokens: 5,
+				}},
+				{
+					Type: ProviderEventToolCallCompleted,
+					ToolCall: &ProviderToolCall{
+						ID: "call-1", Name: searchWebToolName,
+						Arguments: `{"query":"latest fixture"}`,
+					},
+				},
+			},
+			{{Error: errors.New("continuation stream failed")}},
+		},
+		chatRounds: [][]ProviderEvent{{
+			{Type: ProviderEventDelta, Delta: "recovered answer [W1]"},
+			{Type: ProviderEventUsage, Usage: &TokenUsage{
+				PromptTokens: 5, CompletionTokens: 7, TotalTokens: 12,
+			}},
+		}},
+	}
+	search := &fakeWebSearchProvider{result: websearch.Result{Sources: []websearch.Source{{
+		Title: "Fixture", URL: "https://example.test/fixture", Content: "fresh",
+	}}}}
+	events := startExternalWebToolLoop(context.Background(), externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt: "latest fixture",
+			Messages: []ProviderMessage{{
+				Role: "user", Content: "latest fixture",
+			}},
+			ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
+		},
+		SearchService: websearch.NewService(&fakeWebSearchResolver{}),
+		Execution: websearch.ActiveExecution{
+			Mode: websearch.ExecutionExternal, External: search,
+		},
+		ForceSearch: true,
+	})
+	var content strings.Builder
+	var usages []TokenUsage
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		if event.Type == ProviderEventDelta {
+			content.WriteString(event.Delta)
+		}
+		if event.Type == ProviderEventUsage && event.Usage != nil {
+			usages = append(usages, *event.Usage)
+		}
+	}
+	if content.String() != "recovered answer [W1]" || search.calls != 1 ||
+		len(provider.inputs) != 2 || len(provider.chatInputs) != 1 ||
+		len(usages) != 2 || usages[1].PromptTokens != 7 ||
+		usages[1].CompletionTokens != 10 || usages[1].TotalTokens != 17 {
+		t.Fatalf(
+			"content/search/tool/chat/usage = %q / %d / %d / %d / %#v",
+			content.String(), search.calls, len(provider.inputs), len(provider.chatInputs), usages,
+		)
+	}
+	fallback := provider.chatInputs[0]
+	if !strings.Contains(fallback.Prompt, "Relevant Web evidence") ||
+		!strings.Contains(fallback.Prompt, "[W1]") ||
+		len(fallback.Messages) != 1 || fallback.Messages[0].Content != fallback.Prompt {
+		t.Fatalf("fallback request = %#v", fallback)
+	}
+}
+
+func TestExternalWebToolLoopRecoversSynchronousContinuationFailureWithEvidence(t *testing.T) {
+	provider := &scriptedToolRoundProvider{
+		rounds: [][]ProviderEvent{{{
+			Type: ProviderEventToolCallCompleted,
+			ToolCall: &ProviderToolCall{
+				ID: "call-1", Name: searchWebToolName,
+				Arguments: `{"query":"latest fixture"}`,
+			},
+		}}},
+		syncErrors: map[int]error{1: errors.New("continuation start failed")},
+		chatRounds: [][]ProviderEvent{{
+			{Type: ProviderEventDelta, Delta: "recovered answer [W1]"},
+		}},
+	}
+	search := &fakeWebSearchProvider{result: websearch.Result{Sources: []websearch.Source{{
+		Title: "Fixture", URL: "https://example.test/fixture", Content: "fresh",
+	}}}}
+	events := startExternalWebToolLoop(context.Background(), externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt: "latest fixture",
+			Messages: []ProviderMessage{{
+				Role: "user", Content: "latest fixture",
+			}},
+			ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
+		},
+		SearchService: websearch.NewService(&fakeWebSearchResolver{}),
+		Execution: websearch.ActiveExecution{
+			Mode: websearch.ExecutionExternal, External: search,
+		},
+		ForceSearch: true,
+	})
+	var content strings.Builder
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		if event.Type == ProviderEventDelta {
+			content.WriteString(event.Delta)
+		}
+	}
+	if content.String() != "recovered answer [W1]" || search.calls != 1 ||
+		len(provider.inputs) != 2 || len(provider.chatInputs) != 1 {
+		t.Fatalf(
+			"content/search/tool/chat = %q / %d / %d / %d",
+			content.String(), search.calls, len(provider.inputs), len(provider.chatInputs),
+		)
+	}
+}
+
+func TestExternalWebToolLoopDoesNotRecoverAfterAnswerContent(t *testing.T) {
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{{
+			Type: ProviderEventToolCallCompleted,
+			ToolCall: &ProviderToolCall{
+				ID: "call-1", Name: searchWebToolName,
+				Arguments: `{"query":"latest fixture"}`,
+			},
+		}},
+		{
+			{Type: ProviderEventDelta, Delta: "partial answer"},
+			{Error: errors.New("continuation stream failed")},
+		},
+	}}
+	search := &fakeWebSearchProvider{result: websearch.Result{Sources: []websearch.Source{{
+		Title: "Fixture", URL: "https://example.test/fixture", Content: "fresh",
+	}}}}
+	events := startExternalWebToolLoop(context.Background(), externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt:   "latest fixture",
+			ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
+		},
+		SearchService: websearch.NewService(&fakeWebSearchResolver{}),
+		Execution: websearch.ActiveExecution{
+			Mode: websearch.ExecutionExternal, External: search,
+		},
+		ForceSearch: true,
+	})
+	var content strings.Builder
+	var gotError bool
+	for event := range events {
+		if event.Type == ProviderEventDelta {
+			content.WriteString(event.Delta)
+		}
+		if event.Error != nil {
+			gotError = true
+		}
+	}
+	if content.String() != "partial answer" || !gotError || len(provider.chatInputs) != 0 {
+		t.Fatalf(
+			"content/error/chat = %q / %v / %d",
+			content.String(), gotError, len(provider.chatInputs),
+		)
+	}
+}
+
 func TestExternalWebToolLoopAggregatesUsageAcrossNativeRounds(t *testing.T) {
 	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
 		{
@@ -247,6 +416,14 @@ func TestExternalWebToolLoopAggregatesUsageAcrossNativeRounds(t *testing.T) {
 	}
 	if len(provider.inputs) != 3 || len(provider.inputs[2].Continuation) != 2 || search.calls != 2 {
 		t.Fatalf("rounds/continuation/search = %d / %d / %d", len(provider.inputs), len(provider.inputs[2].Continuation), search.calls)
+	}
+	continuation := provider.inputs[2].Continuation
+	firstResult := continuation[0].Results[0].Content
+	secondResult := continuation[1].Results[0].Content
+	if !strings.Contains(firstResult, `"marker":"[W1]"`) ||
+		!strings.Contains(secondResult, `"sources":[]`) ||
+		strings.Count(firstResult+secondResult, "https://example.test/fixture") != 1 {
+		t.Fatalf("incremental Tool Results = %q / %q", firstResult, secondResult)
 	}
 }
 
@@ -357,9 +534,27 @@ func TestValidateSearchWebToolCallRejectsMalformedAndUnknownCalls(t *testing.T) 
 	}
 }
 
+func TestWebSearchSuccessToolResultReturnsOnlyNewStableMarkers(t *testing.T) {
+	first := websearch.Source{
+		Title: "First", URL: "https://example.test/first", Content: "one",
+	}
+	second := websearch.Source{
+		Title: "Second", URL: "https://example.test/second", Content: "two",
+	}
+	result := webSearchSuccessToolResult(
+		websearch.Result{Sources: []websearch.Source{first}},
+		websearch.Result{Sources: []websearch.Source{first, second}},
+	)
+	if strings.Contains(result, first.URL) || !strings.Contains(result, second.URL) ||
+		!strings.Contains(result, `"marker":"[W2]"`) {
+		t.Fatalf("incremental result = %q", result)
+	}
+}
+
 type scriptedToolRoundProvider struct {
 	rounds     [][]ProviderEvent
 	chatRounds [][]ProviderEvent
+	syncErrors map[int]error
 	inputs     []ProviderRoundRequest
 	chatInputs []ProviderRequest
 }
@@ -405,6 +600,9 @@ func (p *scriptedToolRoundProvider) StreamToolRound(
 ) (<-chan ProviderEvent, error) {
 	p.inputs = append(p.inputs, input)
 	index := len(p.inputs) - 1
+	if err := p.syncErrors[index]; err != nil {
+		return nil, err
+	}
 	if index >= len(p.rounds) {
 		return nil, errors.New("unexpected tool round")
 	}

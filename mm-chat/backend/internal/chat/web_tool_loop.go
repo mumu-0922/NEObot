@@ -128,6 +128,7 @@ func runNativeExternalWebToolLoop(
 	cumulative := websearch.Result{Sources: []websearch.Source{}, Images: []websearch.Image{}}
 	knowledgeDecision := autoRAGDecision{}
 	completedUsage := TokenUsage{}
+	answerContentEmitted := false
 	for round := 1; ; round++ {
 		choice := ProviderToolChoiceAuto
 		if round == 1 && input.ForceSearch && externalWebToolEnabled(input) {
@@ -145,6 +146,16 @@ func runNativeExternalWebToolLoop(
 			}
 			if round == 1 && len(continuation) == 0 {
 				return false
+			}
+			if !answerContentEmitted && streamRetrievalEvidenceFallback(
+				ctx,
+				events,
+				input,
+				cumulative,
+				knowledgeDecision,
+				completedUsage,
+			) {
+				return true
 			}
 			sendProviderEvent(ctx, events, ProviderEvent{Error: err})
 			return true
@@ -166,6 +177,20 @@ func runNativeExternalWebToolLoop(
 				if bufferForcedRound && len(calls) == 0 {
 					return false
 				}
+				fallbackUsage := completedUsage
+				if roundUsage != nil {
+					fallbackUsage = addTokenUsageValue(fallbackUsage, *roundUsage)
+				}
+				if !answerContentEmitted && streamRetrievalEvidenceFallback(
+					ctx,
+					events,
+					input,
+					cumulative,
+					knowledgeDecision,
+					fallbackUsage,
+				) {
+					return true
+				}
 				sendProviderEvent(ctx, events, event)
 				return true
 			}
@@ -176,6 +201,8 @@ func runNativeExternalWebToolLoop(
 					bufferedEvents = append(bufferedEvents, event)
 				} else if !sendProviderEvent(ctx, events, event) {
 					return true
+				} else if event.Delta != "" {
+					answerContentEmitted = true
 				}
 			case ProviderEventReasoningDelta:
 				assistantReasoning.WriteString(event.ReasoningDelta)
@@ -224,6 +251,9 @@ func runNativeExternalWebToolLoop(
 		for _, event := range bufferedEvents {
 			if !sendProviderEvent(ctx, events, event) {
 				return true
+			}
+			if event.Type == ProviderEventDelta && event.Delta != "" {
+				answerContentEmitted = true
 			}
 		}
 
@@ -396,11 +426,64 @@ func runNativeExternalWebToolLoop(
 			exchange.Results = append(exchange.Results, ProviderToolResult{
 				CallID:  call.ID,
 				Name:    call.Name,
-				Content: webSearchSuccessToolResult(cumulative),
+				Content: webSearchSuccessToolResult(previous, cumulative),
 			})
 		}
 		continuation = append(continuation, exchange)
 	}
+}
+
+func streamRetrievalEvidenceFallback(
+	ctx context.Context,
+	events chan<- ProviderEvent,
+	input externalWebToolLoopInput,
+	webResult websearch.Result,
+	knowledgeDecision autoRAGDecision,
+	completedUsage TokenUsage,
+) bool {
+	request := input.Request
+	hasEvidence := false
+	if knowledgeDecision.ReadyForAnswer() {
+		prompt, systemPrompt, err := buildAutoRAGProviderRequest(
+			request.Prompt,
+			request.SystemPrompt,
+			knowledgeDecision.Evidence,
+			knowledgeDecision.Citations,
+		)
+		if err != nil {
+			return false
+		}
+		request.Prompt = prompt
+		request.SystemPrompt = systemPrompt
+		request.Metadata = mergeAutoRAGProviderMetadata(
+			request.Metadata,
+			knowledgeDecision,
+		)
+		hasEvidence = true
+	}
+	if len(webResult.Sources) > 0 {
+		request.Prompt, request.SystemPrompt = buildWebSearchProviderRequest(
+			request.Prompt,
+			request.SystemPrompt,
+			webResult,
+		)
+		hasEvidence = true
+	}
+	if !hasEvidence {
+		return false
+	}
+	request.Messages = replaceLastUserProviderMessage(
+		request.Messages,
+		request.Prompt,
+	)
+	streamCompatibilityAnswerWithUsageBase(
+		ctx,
+		events,
+		input.Provider,
+		request,
+		completedUsage,
+	)
+	return true
 }
 
 func retrievalToolDefinitions(input externalWebToolLoopInput) []ToolDefinition {
@@ -742,10 +825,21 @@ func webSearchFailureToolResult(category string) string {
 	return string(encoded)
 }
 
-func webSearchSuccessToolResult(result websearch.Result) string {
-	bounded, citations := prepareWebSearchResult(result)
+func webSearchSuccessToolResult(
+	previous websearch.Result,
+	current websearch.Result,
+) string {
+	_, previousCitations := prepareWebSearchResult(previous)
+	seen := make(map[string]struct{}, len(previousCitations))
+	for _, citation := range previousCitations {
+		seen[citation.ID] = struct{}{}
+	}
+	bounded, citations := prepareWebSearchResult(current)
 	sources := make([]map[string]any, 0, len(citations))
 	for index, citation := range citations {
+		if _, exists := seen[citation.ID]; exists {
+			continue
+		}
 		sources = append(sources, map[string]any{
 			"marker":  citation.Marker,
 			"title":   citation.Title,
@@ -753,10 +847,14 @@ func webSearchSuccessToolResult(result websearch.Result) string {
 			"content": bounded.Sources[index].Content,
 		})
 	}
+	instruction := "No new Web sources were found. Use the sources from prior Tool Results and do not invent markers."
+	if len(sources) > 0 {
+		instruction = "Answer the original request and cite only sources actually used with their exact [W#] marker."
+	}
 	encoded, _ := json.Marshal(map[string]any{
 		"ok":          true,
 		"sources":     sources,
-		"instruction": "Answer the original request and cite only sources actually used with their exact [W#] marker.",
+		"instruction": instruction,
 	})
 	return string(encoded)
 }
@@ -797,12 +895,34 @@ func streamCompatibilityAnswer(
 	provider Provider,
 	request ProviderRequest,
 ) {
+	streamCompatibilityAnswerWithUsageBase(
+		ctx,
+		events,
+		provider,
+		request,
+		TokenUsage{},
+	)
+}
+
+func streamCompatibilityAnswerWithUsageBase(
+	ctx context.Context,
+	events chan<- ProviderEvent,
+	provider Provider,
+	request ProviderRequest,
+	completedUsage TokenUsage,
+) {
 	roundEvents, err := provider.StreamChat(ctx, request)
 	if err != nil {
 		sendProviderEvent(ctx, events, ProviderEvent{Error: err})
 		return
 	}
 	for event := range roundEvents {
+		if event.Type == ProviderEventUsage && event.Usage != nil &&
+			(completedUsage.PromptTokens != 0 ||
+				completedUsage.CompletionTokens != 0 ||
+				completedUsage.TotalTokens != 0) {
+			event.Usage = addTokenUsage(completedUsage, *event.Usage)
+		}
 		if !sendProviderEvent(ctx, events, event) {
 			return
 		}

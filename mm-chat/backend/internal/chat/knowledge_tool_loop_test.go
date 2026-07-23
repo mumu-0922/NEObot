@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -131,6 +132,70 @@ func TestRetrievalToolLoopRunsWebThenKnowledge(t *testing.T) {
 	if len(names) != 2 || names[0] != searchWebToolName ||
 		names[1] != searchKnowledgeToolName {
 		t.Fatalf("execution order = %#v", names)
+	}
+}
+
+func TestRetrievalToolLoopRecoversFailedContinuationWithKnowledgeAndWebEvidence(t *testing.T) {
+	provider := &scriptedToolRoundProvider{
+		rounds: [][]ProviderEvent{
+			{{
+				Type: ProviderEventToolCallCompleted,
+				ToolCall: &ProviderToolCall{
+					ID: "knowledge-1", Name: searchKnowledgeToolName,
+					Arguments: `{"query":"internal fixture"}`,
+				},
+			}},
+			{{
+				Type: ProviderEventToolCallCompleted,
+				ToolCall: &ProviderToolCall{
+					ID: "web-1", Name: searchWebToolName,
+					Arguments: `{"query":"public fixture"}`,
+				},
+			}},
+			{{Error: errors.New("continuation stream failed")}},
+		},
+		chatRounds: [][]ProviderEvent{{
+			{Type: ProviderEventDelta, Delta: "recovered [K1] [W1]"},
+		}},
+	}
+	webProvider := &fakeWebSearchProvider{result: websearch.Result{Sources: []websearch.Source{{
+		Title: "Public", URL: "https://example.test/public", Content: "current",
+	}}}}
+	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt: "compare private and public fixtures",
+			Messages: []ProviderMessage{{
+				Role: "user", Content: "compare private and public fixtures",
+			}},
+			ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
+		},
+		SearchService: websearch.NewService(&fakeWebSearchResolver{}),
+		Execution: websearch.ActiveExecution{
+			Mode: websearch.ExecutionExternal, External: webProvider,
+		},
+		Knowledge: fixtureKnowledgeToolRuntime(),
+	})
+	var content strings.Builder
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		if event.Type == ProviderEventDelta {
+			content.WriteString(event.Delta)
+		}
+	}
+	if content.String() != "recovered [K1] [W1]" || len(provider.chatInputs) != 1 {
+		t.Fatalf("content/chat = %q / %d", content.String(), len(provider.chatInputs))
+	}
+	fallback := provider.chatInputs[0]
+	if fallback.ModelRef.ModelID != "fixture-model" ||
+		!strings.Contains(fallback.Prompt, "Relevant Knowledge evidence") ||
+		!strings.Contains(fallback.Prompt, "Relevant Web evidence") ||
+		!strings.Contains(fallback.Prompt, "[K1]") ||
+		!strings.Contains(fallback.Prompt, "[W1]") ||
+		len(fallback.Messages) != 1 || fallback.Messages[0].Content != fallback.Prompt {
+		t.Fatalf("fallback request = %#v", fallback)
 	}
 }
 
