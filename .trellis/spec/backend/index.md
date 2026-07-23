@@ -9,6 +9,7 @@
 | [RAG retrieval storage](./rag-retrieval-storage.md) | PostgreSQL major-version, BM25/pgvector shadow, authority, diagnostics, and rollback contracts                        |
 | [Chat source fusion](./chat-source-fusion.md)       | Conversation-aware external Search query rewriting, Knowledge/Web authority, diagnostics, and fallback contracts      |
 | [Planned chat Tool Loop](./chat-tool-loop.md)       | G19 provider-normalized Tool rounds, three-state Search authority, process persistence, approvals, and citation truth |
+| [Direct chat attachments](./chat-attachments.md)    | Attachment-only messages, native images, bounded document extraction, provider context, and explicit failures       |
 
 ## Pre-Development Checklist
 
@@ -37,6 +38,14 @@ For G19 Tool Loop or durable process-trace changes:
 3. Prove provider-native continuation, cancellation, redaction, and current-
    turn Citation reconciliation before promotion.
 
+For chat upload, attachment parsing, or provider attachment changes:
+
+1. Read [`chat-attachments.md`](./chat-attachments.md).
+2. Trace file bytes from upload storage through the current provider request.
+3. Preserve native images, explicit document failures, context limits, and the
+   untrusted-data boundary.
+4. Prove attachment-only acceptance and pre-acceptance draft restoration.
+
 ## Quality Check
 
 - Run the disposable database drill for the changed storage group.
@@ -46,5 +55,7 @@ For G19 Tool Loop or durable process-trace changes:
 - Update the G18 plan/process records when the retrieval program is affected.
 - Run real external-Search hit/follow-up proof and update the G11 source-fusion
   process when query planning is affected.
+- For attachment changes, run parser units, image-path regression,
+  attachment-only API/UI tests, and one live upload-to-answer replay.
 
 **Language**: All documentation should be written in English.
