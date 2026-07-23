@@ -5297,3 +5297,19 @@ rows.
 G10.4 remains open. Execution requires the exact owner approval phrase from
 `docs/deployment/former-root-delete-plan.md`, including this backup location and
 commit, followed by an immediate repeat of the full and dry-run gates.
+
+## 2026-07-23 — Cutover ledger closure
+
+The sliced plan was reconciled after G19 completion. Its stale G7.5-G7.9 and
+G11.13/G11.13C boxes now point to the already-recorded implementation and live
+proofs, G5 is closed by the server-owned Search/Tool work in G11.9/G19, and the
+completion table no longer treats resolved parity regressions as active work.
+
+The cutover has exactly two non-optional open gates, both already separated by
+owner decision from the completed migration scope: a future hosted Voice/TTS
+provider smoke and the one-shot owner-authorized former-root deletion. Optional
+multi-server/Kubernetes work stays outside this single-server plan. No code,
+runtime state, provider configuration, user data, or destructive command was
+changed or executed during this ledger-only closure. The authoritative current
+list and the Phase 9/15 reconciliation rationale are recorded in
+`docs/tracking/progress.md` and `docs/tracking/process.md`.

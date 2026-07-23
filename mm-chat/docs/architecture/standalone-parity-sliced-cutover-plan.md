@@ -1,11 +1,16 @@
 # Standalone Parity Sliced Cutover Plan
 
+Status: complete for the owner-approved single-server migration scope through
+G19 (2026-07-23). Live Voice/TTS provider integration remains explicitly
+deferred, and former-root deletion remains a separate owner-authorized
+destructive gate. Neither is hidden migration debt.
+
 ## Authority
 
-This is the active remaining-work plan for making `mm-chat/` the only
-standalone project root. It supersedes scattered remaining-work sequencing in
-older roadmap notes, while preserving older architecture/contract documents as
-supporting references for domain details.
+This document is the historical execution authority that made `mm-chat/` the
+only required standalone project root. The authoritative unresolved-item list
+now lives in [`../tracking/progress.md`](../tracking/progress.md). This plan
+still preserves the bounded slice order, evidence, and rollback history.
 
 Active process log: [`../tracking/standalone-parity-sliced-process.md`](../tracking/standalone-parity-sliced-process.md).
 
@@ -31,7 +36,10 @@ Owner directive captured on 2026-07-15:
 - The former root project is deleted only after a separate exact delete plan and
   one-shot owner confirmation.
 
-## Current Evidence Snapshot
+## Intake Evidence Snapshot (2026-07-15, historical)
+
+The following snapshot records the state at plan creation; it is not the
+current remaining-work list.
 
 ### Already Migrated Spine
 
@@ -349,11 +357,13 @@ Slice checklist:
 - [x] G6.2 Go job admission contracts for voice synthesis/transcription: register `/v1/voice/transcribe` and `/v1/voice/synthesize` as validating fail-closed admission routes returning `VOICE_JOBS_UNAVAILABLE` until executors exist.
 - [x] G6.3 Go job admission contracts for image generation: register `/v1/images/generations` as a strict `modelRef + prompt` validating fail-closed admission route returning `IMAGE_JOBS_UNAVAILABLE`.
 - [x] G6.4 Go job admission contracts for code execution: register `/v1/code/executions` as a strict `modelRef + language + code` validating fail-closed admission route returning `CODE_EXECUTION_UNAVAILABLE`.
-- [ ] G6.5 Audit/rate-limit/cancel metadata and enabled-provider smoke.
+- [ ] G6.5 Voice enabled-provider smoke; audit/rate-limit/cancel controls are
+      complete.
   - [x] G6.5a Admission audit metadata: voice/image/code fail-closed services
         record sanitized job events with kind/status/user/provider/model/language/reason and no prompt/code/text/audio payloads.
   - [x] G6.5b Shared job rate-limit and cancellation gates: register fail-closed `/v1/jobs/{jobId}/cancel` and verify job control routes remain under the global rate-limit middleware.
-  - [ ] G6.5c Real voice/image executors with output storage and provider smoke.
+  - [ ] G6.5c Voice live-provider closure; image executor storage and live smoke
+        are complete.
     - [x] G6.5c.1 Storage-only result artifact boundary: add a Go
           `jobartifacts` service that validates image/audio result metadata and
           persists executor outputs only through the backend file/object-storage
@@ -461,11 +471,11 @@ Slice checklist:
 - [x] G7.2 Admin provider config and fail-closed readiness.
 - [x] G7.3 Provider-backed parser/index profile gate.
 - [x] G7.4 Canonical IR to chunks and Postgres projection.
-- [ ] G7.5 Worker dispatch, rebuild, delete, and retry loop.
-- [ ] G7.6 Private query and Go reauthorization.
-- [ ] G7.7 Strict/optional chat answer and basic citations.
-- [ ] G7.8 Live MinerU + Jina + Postgres smoke and operational proof.
-- [ ] G7.9 G8/G9 handoff and G7 closure checklist.
+- [x] G7.5 Worker dispatch, rebuild, delete, and retry loop.
+- [x] G7.6 Private query and Go reauthorization.
+- [x] G7.7 Strict/optional chat answer and basic citations.
+- [x] G7.8 Live MinerU + Jina + Postgres smoke and operational proof.
+- [x] G7.9 G8/G9 handoff and G7 closure checklist.
 
 Targeted tests:
 
@@ -684,7 +694,7 @@ Slice sequence:
       attach stored artifacts to the assistant message, return them through
       `message.completed`, and allow the Next rewrite proxy to remain open for
       up to five minutes.
-- [ ] G11.13 Server conversation context and memory, sliced according to
+- [x] G11.13 Server conversation context and memory, sliced according to
       `../tracking/g11-conversation-context-memory-plan.md`.
   - [x] G11.13A Current-branch replay: Postgres root-to-current history reaches
         both provider payload families, legacy null-parent rows remain usable,
@@ -694,7 +704,7 @@ Slice sequence:
         exact branch-prefix validation, deterministic recent-tail degradation,
         real long-context provider proof, restart reuse, and no original-row
         deletion.
-  - [ ] G11.13C Optional inspectable durable user memory.
+  - [x] G11.13C Optional inspectable durable user memory.
 
 Targeted tests:
 
@@ -705,20 +715,20 @@ Targeted tests:
 
 ## Completion Ledger
 
-| Group                                    | Status      | Completion Rule                                                                                |
-| ---------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------- |
-| G0 Plan Freeze and Guardrails            | Complete    | Docs, indexes, progress, and process log updated                                               |
-| G1 Conversation and Message Operations   | Complete    | G1.1-G1.6 complete; only paused cross-group search toggle remains outside G1                   |
-| G2 Related Questions and Agent Catalogs  | Complete    | Related-question/catalog Next routes replaced                                                  |
-| G3 Auth, Config, Provider Settings, BYOK | Complete    | Server-auth/config/provider lifecycle verified                                                 |
-| G4 Plugin Final Ownership                | Complete    | G4.5c/G4.6b Go ownership and G9.4 Next route deletion complete                                 |
-| G5 Search/Web Enrichment                 | Paused      | Owner reopens, then server-owned search passes gates                                           |
-| G6 Voice/Image/Code Jobs                 | In progress | Image generation is reopened through Go artifacts; voice executor remains                      |
-| G7 Knowledge/RAG/Citations               | Complete    | Live MinerU + Jina + Postgres strict citation loop passed                                      |
-| G8 Teams/Knowledge UI                    | Complete    | G8.1-G8.5 frontend control-plane wiring and isolation smoke passed                             |
-| G9 Data Authority/Route Removal          | Complete    | G9.1-G9.6 route freeze, route deletion, local write-authority, and clean-copy preflight passed |
-| G10 Final Closure/Delete Plan            | In progress | G10.1-G10.3 and build-based G10.2 complete; owner cleanup blocked by G11 parity regressions    |
-| G11 Owner Parity Regression Closure      | In progress | G11.13A/B context replay and soft consolidation complete; optional durable memory remains      |
+| Group                                    | Status   | Completion Rule                                                                                |
+| ---------------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
+| G0 Plan Freeze and Guardrails            | Complete | Docs, indexes, progress, and process log updated                                               |
+| G1 Conversation and Message Operations   | Complete | G1.1-G1.6 complete; only paused cross-group search toggle remains outside G1                   |
+| G2 Related Questions and Agent Catalogs  | Complete | Related-question/catalog Next routes replaced                                                  |
+| G3 Auth, Config, Provider Settings, BYOK | Complete | Server-auth/config/provider lifecycle verified                                                 |
+| G4 Plugin Final Ownership                | Complete | G4.5c/G4.6b Go ownership and G9.4 Next route deletion complete                                 |
+| G5 Search/Web Enrichment                 | Complete | G11.9/G19 provide server-owned three-state Search, Auto Tools, and Citations                   |
+| G6 Voice/Image/Code Jobs                 | Deferred | Hosted Voice provider selection and live smoke are deferred                                    |
+| G7 Knowledge/RAG/Citations               | Complete | Live MinerU + Jina + Postgres strict citation loop passed                                      |
+| G8 Teams/Knowledge UI                    | Complete | G8.1-G8.5 frontend control-plane wiring and isolation smoke passed                             |
+| G9 Data Authority/Route Removal          | Complete | G9.1-G9.6 route freeze, route deletion, local write-authority, and clean-copy preflight passed |
+| G10 Final Closure/Delete Plan            | Pending  | Non-destructive gates passed; G10.4b needs exact owner authorization                           |
+| G11 Owner Parity Regression Closure      | Complete | Single-user UX, providers, context, durable memory, Search, and settings closed                |
 
 ## Update Discipline
 

@@ -1,10 +1,6 @@
 # G19 Provider-Native Tool Loop and Process Trace Plan
 
-Status: in progress. G19 replaces the current pre-answer forced Web path with a
-provider-normalized Tool Loop, adds an inspectable durable process trace, and
-then promotes selected Knowledge retrieval into the same read-only tool
-runtime. The work remains server-owned and is delivered one verified commit at
-a time.
+Status: complete (2026-07-23).
 
 ## Execution rule
 
@@ -227,19 +223,19 @@ Status: complete (2026-07-22).
 Execution slices:
 
 - [x] G19.6A server-authoritative Knowledge executor and generic retrieval
-  loop foundation. The model supplies only a bounded standalone Query; selected
-  collection IDs remain server-owned. Native rounds can execute Knowledge ->
-  Web or Web -> Knowledge, normal misses return a successful empty Tool Result,
-  repeated Knowledge calls preserve stable cumulative `[K#]` markers, and live
-  Tool/Knowledge trace steps carry counts rather than source bodies.
+      loop foundation. The model supplies only a bounded standalone Query; selected
+      collection IDs remain server-owned. Native rounds can execute Knowledge ->
+      Web or Web -> Knowledge, normal misses return a successful empty Tool Result,
+      repeated Knowledge calls preserve stable cumulative `[K#]` markers, and live
+      Tool/Knowledge trace steps carry counts rather than source bodies.
 - [x] G19.6B connect the generic retrieval loop to chat streaming for selected
-  Knowledge while retaining the legacy pre-answer path as a rollback seam.
+      Knowledge while retaining the legacy pre-answer path as a rollback seam.
 - [x] G19.6C reconcile terminal Knowledge/Web authority, metadata, citations,
-  cancellation, and reload across handler fixtures.
+      cancellation, and reload across handler fixtures.
 - [x] G19.6D remove the legacy pre-answer Auto RAG authority after fixture
-  parity and pass the full static/test/build gates.
+      parity and pass the full static/test/build gates.
 - [x] G19.6E pass the real uploaded-document hit/miss/follow-up/mixed/deletion/
-  restart gate, clean all smoke state, and record rollback evidence.
+      restart gate, clean all smoke state, and record rollback evidence.
 
 Promotion gate: real uploaded documents prove hit, miss, contextual follow-up,
 mixed current/public evidence, deletion invisibility, no false citation,
@@ -250,14 +246,14 @@ process reload, restart, and complete fixture cleanup.
 Status: complete (2026-07-22).
 
 - [x] Verify Search off, ordinary Auto no-search, explicit/current Search,
-  contextual Query generation, Knowledge hit/miss, mixed Knowledge/Web,
-  independent reasoning effort, compatibility planning, truthful citations,
-  process reload, cancellation, provider failure degradation, and strict mode
-  mutual exclusion.
+      contextual Query generation, Knowledge hit/miss, mixed Knowledge/Web,
+      independent reasoning effort, compatibility planning, truthful citations,
+      process reload, cancellation, provider failure degradation, and strict mode
+      mutual exclusion.
 - [x] Run full backend vet/test/race, frontend format/lint/typecheck/test/build,
-  Compose source rebuild, restart, clean-copy, and runtime health gates.
+      Compose source rebuild, restart, clean-copy, and runtime health gates.
 - [x] Delete all temporary conversations/files/documents and record exact rollback
-  anchors before marking G19 complete.
+      anchors before marking G19 complete.
 
 Promotion evidence: external Search `off` made zero Web calls; ordinary Auto
 made zero Web calls; four contextual Queries resolved to `DeepSeek V4 Flash`;
@@ -276,12 +272,12 @@ conversation, File, Collection, and local artifact was removed.
 Status: complete (2026-07-23).
 
 - [x] Retry only the already-resolved external provider once after a bounded
-  context-aware delay for transport `REQUEST_FAILED`, HTTP `408`, `429`, and
-  `5xx`.
+      context-aware delay for transport `REQUEST_FAILED`, HTTP `408`, `429`, and
+      `5xx`.
 - [x] Do not retry authentication/other `4xx`, response/schema errors, or
-  cancellation; do not re-resolve, switch provider, or change Citation truth.
+      cancellation; do not re-resolve, switch provider, or change Citation truth.
 - [x] Pass repeated unit, full Go, source-built Compose, real Tavily direct, and
-  DeepSeek compatibility Tool Loop proofs; delete all temporary conversations.
+      DeepSeek compatibility Tool Loop proofs; delete all temporary conversations.
 
 Promotion evidence: the owner-visible failure ended near the existing
 15-second response-header boundary while immediate Tavily repeats succeeded.
@@ -295,17 +291,17 @@ real `deepseek-v4-flash` compatibility Tool Loop with `[W1]`; cleanup returned
 Status: complete (2026-07-23).
 
 - [x] Stop repeating the cumulative Web corpus in every native Tool Result;
-  return only sources added by the current execution while retaining stable
-  cumulative `[W#]` markers.
+      return only sources added by the current execution while retaining stable
+      cumulative `[W#]` markers.
 - [x] If a later native Tool continuation fails before answer content and
-  bounded Web/Knowledge evidence already exists, answer once through the same
-  provider/model without Tools and preserve cumulative usage/citation truth.
+      bounded Web/Knowledge evidence already exists, answer once through the same
+      provider/model without Tools and preserve cumulative usage/citation truth.
 - [x] Keep cancellation, no-evidence failure, and failure after partial answer
-  content terminal; do not switch provider/model or duplicate user-visible
-  answer text.
+      content terminal; do not switch provider/model or duplicate user-visible
+      answer text.
 - [x] Pass repeated Web-only, synchronous, in-stream, mixed Knowledge/Web,
-  partial-content, marker, usage, full Go, source-build, live provider, health,
-  and temporary-state cleanup proofs.
+      partial-content, marker, usage, full Go, source-build, live provider, health,
+      and temporary-state cleanup proofs.
 
 Promotion evidence: the owner-visible `gpt-5.6-sol` turn completed two Tavily
 Search executions and then failed during the third provider continuation. The
@@ -329,15 +325,15 @@ accepted operational risk; G19.9 does not add a Tool Round or Tool Call limit.
 Status: complete (2026-07-23).
 
 - [x] Do not expose a recovery answer until its provider stream closes
-  successfully; discard interrupted recovery content, reasoning, and usage.
+      successfully; discard interrupted recovery content, reasoning, and usage.
 - [x] Retry one interrupted/empty recovery answer once through the exact same
-  provider/model with the same bounded evidence and a concise complete-answer
-  instruction.
+      provider/model with the same bounded evidence and a concise complete-answer
+      instruction.
 - [x] On two failures emit the final error with zero recovery answer content;
-  never retry cancellation and cap the buffer at 1 MiB/8,192 events.
+      never retry cancellation and cap the buffer at 1 MiB/8,192 events.
 - [x] Prove Handler terminal persistence, Citation projection, no partial-draft
-  SSE, repeated fixtures, full Go gates, source build/health, live provider
-  regression, and temporary-state cleanup.
+      SSE, repeated fixtures, full Go gates, source build/health, live provider
+      regression, and temporary-state cleanup.
 
 Promotion evidence: the first post-G19.9 browser replay retrieved two sets of
 five Tavily sources, then the native continuation failed. Its first evidence
@@ -359,14 +355,14 @@ The post-change standalone gate also passed Frontend format/lint/typecheck,
 Status: complete (2026-07-23).
 
 - [x] Retain durable Tool/Web/Knowledge diagnostic steps while displaying a
-  specialized `search_web` or `search_knowledge` execution only once.
+      specialized `search_web` or `search_knowledge` execution only once.
 - [x] Match the hidden generic parent by `toolName` and Round; keep unmatched
-  failures and every custom Tool visible.
+      failures and every custom Tool visible.
 - [x] Use projected rows for active state, count, summary, and duration; remove
-  redundant lifecycle-only outcome captions without rewriting provider
-  reasoning.
+      redundant lifecycle-only outcome captions without rewriting provider
+      reasoning.
 - [x] Cover Web, Knowledge, unmatched, and custom Tool projections and pass the
-  complete Frontend quality/build gate.
+      complete Frontend quality/build gate.
 
 Promotion evidence: the owner-visible successful `东京天气` turn showed one
 backend `search_web` execution twice as `工具调用 · 16s` and `联网搜索 · 16s`
@@ -383,14 +379,14 @@ The isolated code rollback anchor is `de83464`.
 Status: complete (2026-07-23).
 
 - [x] Prove that the selected collection persisted on the owner conversation
-  while the first school question emitted no Knowledge Tool Call.
+      while the first school question emitted no Knowledge Tool Call.
 - [x] Keep Auto Tool behavior, but require the current model to query selected
-  Knowledge before claiming a potentially private/domain fact is unknown or
-  was never provided.
+      Knowledge before claiming a potentially private/domain fact is unknown or
+      was never provided.
 - [x] Preserve ordinary visible-context/general answers and normal empty-result
-  fallback without force-every-turn retrieval.
+      fallback without force-every-turn retrieval.
 - [x] Pass repeated focused fixtures, full Go gates, source rebuild/health, a
-  clean real same-question hit, cleanup, and the full standalone gate.
+      clean real same-question hit, cleanup, and the full standalone gate.
 
 Promotion evidence: owner conversation
 `96c10c7c-2829-4c0e-890d-09d657d720ad` retained selected collection
@@ -429,5 +425,5 @@ Rollback is code anchor `2614512`.
 9. G19.3 can restore the current pre-answer external Search + standalone Query
    rewrite while retaining the inert process-trace foundation.
 10. G19.2 can stop emitting/rendering the new trace while preserving existing
-   assistant content and citation metadata.
+    assistant content and citation metadata.
 11. G19.1 is documentation-only and has no runtime rollback.

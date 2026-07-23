@@ -1,11 +1,17 @@
 # Phase 15.2 单服务器 Python RAG 消费与索引设计
 
-- 状态：Phase 15.2A contracts/bake-off complete；production promotion gates open；runtime implementation pending
+- Status: historical design archive; G7/G18/G19 superseded and completed the
+  production path (2026-07-23)
 - 日期：2026-07-12
 - 前置条件：Phase 15.1D Go/Postgres Knowledge Control Plane 已完成至 migration `009`
 - 适用规模：`≤10` 用户、`≤3` 并发、`≤500` 文件、`≤1GB` 原文
 
-> 本文是当前单服务器实现的唯一执行方案。它收敛了早期 Qdrant-first 候选：第一版不部署 Qdrant、OpenSearch 或 Kubernetes，而在同一个 PostgreSQL 中使用 pgvector、真 BM25 和 Exact Lane。旧文档保留为 Accuracy Research，不得覆盖本文已锁定的部署边界。
+> This document preserves the Phase 15.2 design history; it is no longer an
+> execution queue. `../tracking/progress.md` and the G7/G18/G19 plan/process
+> records own the production outcome. Unchecked items below are historical
+> candidate gates, not current migration tasks. The final profile uses
+> PostgreSQL pgvector, true BM25, and the Exact lane without Qdrant, OpenSearch,
+> or Kubernetes.
 
 ## 1. 已锁定的产品决策
 

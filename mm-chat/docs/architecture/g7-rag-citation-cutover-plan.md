@@ -1,6 +1,9 @@
 # G7 RAG and Citation Cutover Plan
 
-Status: Active G7 cutover plan, created after owner grill on 2026-07-15.
+Status: complete (2026-07-16). G7 delivered the live MinerU + Jina + Postgres
+indexing path, selected-Knowledge query, Go reauthorization, grounded answers,
+and first-version Citation cards. Later G18/G19 work hardened retrieval and
+Tool execution without reopening this cutover.
 
 This document is the working plan for standalone G7. The older Phase 15 design
 files remain authoritative for low-level schema, parser, worker, and ACL
@@ -228,7 +231,7 @@ Validation:
 
 ### G7.5 Worker dispatch, rebuild, delete, and retry loop
 
-Status: In progress.
+Status: completed on 2026-07-16.
 
 G7.5.1 completed on 2026-07-15:
 

@@ -1,15 +1,17 @@
 # Phase 15.2C Generation-bound Parsing/Indexing 实施计划
 
-- 状态：design locked / activation blocked
+- Status: historical design archive; the later G7/G18 migration chain completed
+  production activation (2026-07-23)
 - 日期：2026-07-12
 - 基线：migration `010` 与 Phase 15.2B Durable Consumer dark-run 已完成
 - 目标：建立可恢复、可审计、按 Corpus Generation 隔离的解析、分块、Embedding、
   Search Projection Staging/Verify/Publish 链；在全部 Gate 通过前保持真实消费关闭
 
-> 本计划是 Phase 15.2C 的唯一执行顺序。不得回改已发布 migration `010`，不得先开
-> Dispatch 再补 Handler，也不得把评测候选值提前写成生产 `011`。当前
-> `RAG_WORKER_DISPATCH_ENABLED=false`、空 Handler Registry 和 Legacy Job 排除规则继续
-> 生效，直到本计划的 Activation Gate 明确放行。
+> This plan preserves the original Phase 15.2C order and safety constraints; it
+> is no longer an execution queue. G7/G18 completed production activation with
+> additive migrations, controlled Handler/Dispatch promotion, real providers,
+> and a reversible PostgreSQL 17 profile. Unchecked candidate gates below are
+> not a new backlog; `../tracking/progress.md` owns current status.
 
 ## 1. 本阶段边界
 

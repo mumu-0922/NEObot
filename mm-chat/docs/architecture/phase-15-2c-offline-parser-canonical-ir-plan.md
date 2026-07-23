@@ -1,6 +1,7 @@
 # Phase 15.2C Offline Parser 与 Canonical IR 实施计划
 
-- 状态：implementation plan locked / runtime disabled
+- Status: historical design archive; broad Offline Parser production promotion
+  is retired from the current profile (2026-07-23)
 - 日期：2026-07-13
 - 上位计划：
   [`phase-15-2c-generation-bound-indexing-plan.md`](./phase-15-2c-generation-bound-indexing-plan.md)
@@ -8,10 +9,12 @@
 - 本切片：C1 Offline Parser、Canonical IR v2、Source Locator v2、Quality Gate、
   Parent/Child Chunk Harness
 
-> 本文只允许实现确定性的离线 Harness。不得连接 Postgres、Redis、MinIO、MinerU、
-> Jina 或公网，不得注册 Production Handler，不得开启 Dispatch。扫描或复杂 PDF 在 C1
-> 只返回 `MINERU_REQUIRED`；Provider Adapter、数据库 Staging 与 Runtime Activation
-> 仍由后续切片负责。
+> This document preserves the historical C1 offline-harness boundary; it is no
+> longer a production execution queue. The current complex/scanned-PDF profile
+> uses MinerU, while G7/G18 delivered the required Canonical IR, Chunk/Locator,
+> staging, and activation path. The broader unchecked Offline Parser candidates
+> are outside the current migration backlog unless a new evaluation-backed plan
+> reopens them.
 
 ## 1. 目标、范围与完成定义
 

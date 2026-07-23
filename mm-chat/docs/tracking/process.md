@@ -8837,3 +8837,40 @@ standalone gate passed Frontend 190 files/913 tests, all Go packages, and Python
 1,730 passed/7 skipped. Exact evidence and rollback are in
 `docs/tracking/g19-tool-loop-process-trace-process.md` and
 `docs/contracts/chat-tool-loop.md`.
+
+## 2026-07-23 — Migration plan-ledger reconciliation
+
+The documentation ledger was reconciled against runtime evidence and the later
+bounded migration groups instead of treating every old unchecked Phase 9/15
+design item as a second active backlog. G7 is now recorded complete for live
+MinerU/Jina/Postgres indexing and Citation delivery, G18 complete for the
+Golden-gated PostgreSQL 17 BM25/pgvector cutover, and G19 complete through the
+selected-Knowledge uncertainty guard. The former paused G5 Search entry is
+closed by G11.9/G19, and G8 records both its original delivery and the later
+owner-approved G11 single-user Team retirement.
+
+Earlier experimental requirements that were not selected for the production
+profile are recorded as retired rather than falsely marked implemented. These
+include immutable provider SLA/wire capture fixtures, promotion of the broad
+offline-parser program, restic/R2 as a mandatory local gate, and advanced
+ColBERT/RAPTOR/GraphRAG/visual/table/tenant-specific retrieval. The active
+profile remains MinerU, Jina 1024, PostgreSQL 17 BM25/pgvector, RRF, Jina
+reranking, Go source reauthorization, and server-owned Tool/Citation authority.
+
+The Trellis acceptance ledger was updated to the proven current state:
+standalone frontend, no required former-root dependency, complete capability
+mapping, visual regression, and clean-copy deployment are all closed. The
+destructive guard itself is complete, but no former-root deletion was performed.
+
+After reconciliation, unresolved checkboxes in the authoritative progress
+ledger belong only to three explicit classes:
+
+```text
+G6       hosted Voice/TTS provider selection and authorized live smoke
+G10.4b   one-shot owner-authorized former-root deletion and post-delete proof
+Phase 16 optional multi-server/Kubernetes migration
+```
+
+No application code, runtime configuration, provider secret, user chat,
+Knowledge document, database row, or object-store artifact changed during this
+documentation-only reconciliation.

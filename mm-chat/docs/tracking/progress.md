@@ -2,6 +2,25 @@
 
 Update this file whenever a phase or task is completed. Every `[x]` entry must have a matching dated note in [`process.md`](./process.md).
 
+## Current Remaining Work — Authoritative Ledger
+
+The owner-approved single-server migration and product scope are complete
+through G19. The only unresolved product/operations gates are:
+
+- G6 Voice/TTS live-provider selection and authorized smoke. The Go
+  `/v1/voice/*` seam remains available; a hosted provider is intentionally
+  deferred.
+- G10.4b former-root deletion and post-delete standalone proof. This remains
+  blocked on a separate exact, one-shot owner authorization and is not implied
+  by any other approval.
+- Phase 16 multi-server/Kubernetes work is optional future scope and is not a
+  completion requirement for the current standalone project.
+
+Older Phase 9/15 and cutover entries below are historical execution records.
+They are marked complete when later G7/G18/G19 evidence delivered the outcome,
+or explicitly marked retired when the owner chose a different production
+profile. They are no longer a second active backlog.
+
 ## Planning Rule — New Work Must Be Documented
 
 - [x] Record the rule that new plans and scope changes must be written to docs before implementation.
@@ -15,7 +34,8 @@ Update this file whenever a phase or task is completed. Every `[x]` entry must h
 - [x] Add `docs/tracking/progress.md` as living checklist.
 - [x] Add `docs/tracking/process.md` to record decisions and evidence.
 - [x] Reorganize documentation under `docs/` by category.
-- [ ] Review plan with owner and lock MVP scope.
+- [x] Review the plan with the owner and lock the final single-server scope,
+      including single-user operation and explicit Voice/delete deferrals.
 
 ## Phase 1 — Existing App Inventory
 
@@ -123,12 +143,13 @@ Update this file whenever a phase or task is completed. Every `[x]` entry must h
 Deferred behind Phase 11-14. Keep this original placeholder for history; use
 Phase 15 as the active RAG implementation gate.
 
-- [ ] Define internal RAG API.
-- [ ] Add Python service skeleton.
-- [ ] Add document parsing flow.
-- [ ] Add embedding/indexing flow.
-- [ ] Add retrieval/citation flow.
-- [ ] Superseded by Phase 15: separate strict-grounded fail-closed behavior from
+- [x] Define the internal RAG API; delivered by G7 and the Go-to-RAG Evidence
+      contract.
+- [x] Add the Python service/worker; delivered by Phase 15.2B and G7.5.
+- [x] Add document parsing; delivered by the MinerU production path in G7.5.
+- [x] Add embedding/indexing; delivered by Jina 1024 plus Postgres in G7/G18.
+- [x] Add retrieval/citation; delivered by G7.6-G7.8 and hardened by G18/G19.
+- [x] Superseded by Phase 15: separate strict-grounded fail-closed behavior from
       optional-enrichment chat degradation.
 
 ## Phase 10 — Single-Server Deployment
@@ -708,11 +729,12 @@ the UI can call in the next wiring slice.
       Exact/RRF, logical restore, crash recovery, and rollback.
 - [x] Close the independent xhigh Phase 15.2A review with final
       `P0/P1/P2 = 0/0/0` after rerunning every changed executable assertion.
-- [ ] Promote the production tokenizer/dimension/search DDL only after the
-      Relevance Set, SLO, license, upgrade, and rollback gates pass.
-- [ ] Implement the private Python consumer/worker, applied-event ledger,
+- [x] Promote the production tokenizer/dimension/search DDL after the G18
+      Golden Set, PostgreSQL 17, resource, restore, activation, and rollback
+      gates passed; the active profile is Jina 1024 plus BM25/pgvector.
+- [x] Implement the private Python consumer/worker, applied-event ledger,
       lease fencing, parser routing, artifacts, chunking, embedding, publish,
-      purge, and reconstruction paths.
+      purge, and reconstruction paths; delivered by Phase 15.2B and G7.5.
 
 ##### Phase 15.2B — Durable Consumer dark-run
 
@@ -814,14 +836,16 @@ the UI can call in the next wiring slice.
       ZIP gates, redacted failure states, and v1 compatibility boundary.
 - [x] Implement and review the no-network-by-default MinerU Lifecycle Capture
       CLI without performing a real Provider call or enabling Runtime.
-- [ ] Freeze fixture-citable dynamic-target metadata, Upload/Poll/Download Wire,
-      Result Entry Schema/Content, Citation Locator, recovery, stable errors,
-      immutable build, Region, terms, and SLA for the Local Batch Contract.
+- Retired as a production-promotion gate: the owner selected the live MinerU
+  Local Batch runtime with bounded validation and sanitized failure classes
+  instead of requiring provider SLA/Region metadata to be frozen in committed
+  capture fixtures.
 - [x] Add and verify the Owner-approved explicit private-proxy compatibility
       path after the first Jina Capture proved WSL direct egress unavailable;
       generic proxy variables must remain ignored and no retry is allowed.
-- [ ] Freeze redacted MinerU/Jina wire fixtures, immutable Model/API builds,
-      Provider recovery behavior, license, retention, and SLA.
+- Retired as a production-promotion gate: live provider readiness, versioned
+  server configuration, retry policy, and real-provider smokes replaced a
+  committed immutable-wire/SLA fixture requirement.
 - [x] Lock the C1 no-network Offline Parser and Canonical IR implementation
       plan, including format/security routing, sandbox protocol, Canonical IR
       and Source Locator v2, deterministic manifests, hierarchical chunking,
@@ -855,25 +879,28 @@ the UI can call in the next wiring slice.
       coverage, dependency/JCS/wheel/scanner/Docker gates, and close independent
       review at `P0/P1/P2 = 0/0/0`. Keep MMCP zero-body/non-stageable and all
       Provider/Registry/Dispatch/Postgres/Redis/MinIO/`011/012` paths closed.
-- [ ] Implement and verify the offline parser, Canonical IR, parent/child
-      chunking, Provider fake servers, and deterministic manifests.
-- [ ] Select the production tokenizer/dimension/search profile using real Jina
+- Superseded for the active profile: production parsing uses MinerU; the
+  Canonical IR/chunk/locator and deterministic fake-provider seams needed by
+  that path were delivered in G7.4-G7.5 without promoting the broader offline
+  parser program.
+- [x] Select the production tokenizer/dimension/search profile using real Jina
       vectors and the frozen 80/20 relevance/SLO/license gates, then apply
-      `011`; Phase 15.2E must not reopen the holdout for tuning.
-- [ ] Apply `012`, cut Go producers to Processing Request + Outbox, and add
+      the superseding migration chain through G18 migration `038`; the frozen
+      Golden Set remains the promotion authority.
+- [x] Apply the superseding migrations, cut Go producers to Processing Request
+      plus Outbox, and add
       generation-bound dispatch, gateways, handlers, staging, atomic publish,
-      purge, and rebuild.
-- [ ] Complete Canary, controlled stage activation, legacy reconciliation,
+      purge, and rebuild; delivered by G7.5 and its live lifecycle proofs.
+- [x] Complete Canary, controlled stage activation, legacy reconciliation,
       crash/delete/consent/governance races, and independent review while
-      keeping user Query and production Promotion off; final review must reach
-      `P0/P1/P2 = 0/0/0`.
-- [ ] Implement private hybrid query, Go-side source reauthorization,
+      keeping promotion reversible; later G7/G18 production proofs superseded
+      the earlier query-off constraint.
+- [x] Implement private hybrid query, Go-side source reauthorization,
       strict grounded chat, visible degradation, and clickable citations with
-      minimal frontend change.
-- [ ] Add Compose resource limits, restic/R2 coordinated backup/restore,
-      independent ACL/Consent/deletion/injection/citation/parser corpora, full
-      security/performance/recovery gates, and production promotion review;
-      consume the Phase 15.2C relevance report without reopening its holdout.
+      minimal frontend change; delivered by G7.6-G7.8 and hardened by G18/G19.
+- Resolved for the current single-server profile by G10 backup/restore and G18
+  resource/recovery qualification. The unused restic/R2 and multi-tenant corpus
+  expansion are retired from the current completion gate.
 
 - [x] Replace the single-bootstrap-user ceiling with admin-invited independent
       user sessions and versioned Team membership.
@@ -881,37 +908,42 @@ the UI can call in the next wiring slice.
       per-processor Collection/User Consent schemas and APIs.
 - [x] Enforce Personal-owner and Team-role ACLs across file binding, metadata,
       consent, deletion, and cross-user/cross-team control-plane tests.
-- [ ] Extend those ACL fences through future indexing, query, and citation
-      serving paths.
+- [x] Extend authority fences through indexing, query, and citation serving;
+      Go reauthorization remains authoritative, while Team/multi-user product
+      paths were later retired for the owner-selected single-user deployment.
 - [x] Freeze the canonical block/chunk schema, ACL invariants, and two-level
       corpus-generation/document-materialization profile contract.
-- [ ] Freeze the golden evaluation corpus.
+- [x] Freeze the synthetic Golden evaluation corpus and deterministic evaluator
+      in G18.1.
 - [x] Define the workload-authenticated Go-to-RAG evidence API, Go-side source
       reauthorization, citation minting, and strict/optional failure contracts.
-- [ ] Add private Python query and indexing services, Postgres outbox rescan,
+- [x] Add private Python query and indexing services, Postgres outbox rescan,
       and non-authoritative Redis wake-up/lease/cache handling.
-- [ ] Pass real `knowledge_outbox` consumer duplicate/out-of-order replay,
+- [x] Pass real `knowledge_outbox` consumer duplicate/out-of-order replay,
       contiguous checkpoint, restart/Redis-loss recovery, tombstone
       propagation, and Postgres-to-search projection reconstruction gates.
-- [ ] Preserve original files and structured parser artifacts for reproducible
+- [x] Preserve original files and structured parser artifacts for reproducible
       reindexing.
-- [ ] Add format/page-aware parsing, quality gates, and parent/child/window
+- [x] Add format/page-aware parsing, quality gates, and parent/child/window
       chunking with exact provenance.
 - [x] Bake off the single-server Postgres search projection mechanics using
       pgvector plus true BM25; do not deploy Qdrant for the locked workload.
-- [ ] Pin the production Search Profile after relevance/SLO/license gates.
-- [ ] Add hybrid recall, RRF fusion, measured cross-encoder reranking, dynamic
+- [x] Pin the production Search Profile after relevance, resource, restore, and
+      rollback gates in G18.5.
+- [x] Add hybrid recall, RRF fusion, measured cross-encoder reranking, dynamic
       context expansion, and source-level citations.
-- [ ] Gate contextual retrieval, ColBERT, query decomposition, RAPTOR, and
-      GraphRAG by evaluation and query class.
-- [ ] Gate visual retrieval, sandboxed table execution, and tenant-safe domain
-      adaptation with dedicated relevance, security, privacy, and deletion
-      tests.
-- [ ] Add unified model-job admission control, external-processing governance,
+- Retired from the current profile: ColBERT, query decomposition, RAPTOR, and
+  GraphRAG remain optional experiments and are not required without a new
+  evaluation-backed product plan.
+- Retired from the current profile: visual retrieval, executable tables, and
+  tenant-specific adaptation require separate future security and relevance
+  plans.
+- [x] Add unified model-job admission control, external-processing governance,
       generation/projection revision fencing, and coordinated backup manifests.
-- [ ] Pass parser, retrieval, citation, abstention, deletion, tenant-isolation,
-      injection, backup/restore/tombstone-replay, and strict/optional failure
-      gates on a frozen holdout.
+- [x] Pass parser, retrieval, citation, abstention, deletion, injection,
+      backup/restore/tombstone-replay, and strict/optional failure
+      gates on the current frozen single-user corpus; the former tenant-isolation
+      product requirement was retired with Teams.
 
 ## Active Cutover — Standalone Parity Sliced Migration
 
@@ -966,20 +998,24 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         context and a persisted final Go-stream answer.
   - [x] G4.6b Live deployed-frontend smoke with one installed plugin producing
         bounded context and final Go-stream answer.
-- [ ] G5 Search and Web-Enrichment Toggle: keep paused until owner reopens, then
-      make Search server-owned or explicitly unavailable.
-- [ ] G6 Voice, Image Generation, and Code Execution Jobs: move job routes behind
-      server admission, storage, and audit controls.
+- [x] G5 Search and Web-Enrichment Toggle: reopened and completed through
+      G11.9/G19 with server-owned `off | model_builtin | external` authority,
+      external provider administration, Auto Tool execution, and citations.
+- [ ] G6 Voice/TTS provider closure: Image is live through stored Go artifacts,
+      and Code remains intentionally disabled behind its sandbox contract; only
+      the hosted Voice provider and authorized smoke remain.
   - [x] G6.1 Server-mode fail-closed capability gates: disabled
         `voice`, `imageGeneration`, and `codeExecution` capabilities prevent
         service-layer fallthrough to transitional Next routes.
   - [x] G6.2 Voice synthesis/transcription Go job admission: Go registers validating fail-closed `/v1/voice/transcribe` and `/v1/voice/synthesize` routes.
   - [x] G6.3 Image generation Go job admission: Go registers a strict `modelRef + prompt` fail-closed `/v1/images/generations` route.
   - [x] G6.4 Code execution Go job admission: Go registers a strict `modelRef + language + code` fail-closed `/v1/code/executions` route.
-  - [ ] G6.5 Job audit/rate-limit/cancel metadata and provider smoke.
+  - [ ] G6.5 Voice enabled-provider smoke; shared audit/rate-limit/cancel
+        controls are complete.
     - [x] G6.5a Admission audit metadata: voice/image/code fail-closed services record sanitized job events without prompt/code/text/audio payloads.
     - [x] G6.5b Shared job rate-limit and cancellation gates: fail-closed `/v1/jobs/{jobId}/cancel` is registered and covered by global rate-limit middleware.
-    - [ ] G6.5c Real voice/image executors with output storage and provider smoke.
+    - [ ] G6.5c Voice live-provider closure; the real image executor, storage,
+          and provider smoke are complete.
       - [x] G6.5c.1 Storage-only result artifact boundary: Go validates
             image/audio artifact metadata and stores future executor outputs
             through backend file/object storage without provider calls.
@@ -1135,8 +1171,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         and retrieval-quality upgrades, G9 owns legacy Next RAG/doc-parse route
         removal plus local-authority cleanup, and G10 owns clean-copy/delete
         gates.
-- [ ] G8 Teams and Knowledge UI Wiring: connect existing Go control-plane APIs
-      to the current frontend theme.
+- [x] G8 Teams and Knowledge UI Wiring: the original G8 shell was delivered;
+      G11 later intentionally removed Team UX and kept Knowledge Personal-only
+      for the owner-selected single-user product.
   - [x] G8.1 API client adapter seam: `TeamApi` and `KnowledgeApi` are now
         typed on `NeoChatApiClient`, fail closed in local mode, call Go
         `/v1/teams/*` and `/v1/knowledge/*` in server mode, and expose
@@ -1183,8 +1220,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
         `verify-standalone.sh --full` passed from an isolated `mm-chat/` copy;
         frontend format/lint/typecheck/test/build, Go vet/test, and RAG
         ruff/mypy/pytest all passed without former-root imports/build context.
-- [ ] G10 Operations, Visual Regression, Clean Copy, and Delete Plan: complete
-      final closure gates before any former-root deletion.
+- [ ] G10 Former-root deletion execution: operations, visual regression,
+      clean-copy, backup/restore, and the non-destructive delete gate are
+      complete; only exact owner-authorized execution remains.
   - [x] G10.1 Former-root delete-plan dry run: added a non-destructive
         candidate manifest script, protected-path boundary, approval phrase,
         rollback steps, and deployment-doc index link.

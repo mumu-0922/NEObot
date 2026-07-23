@@ -1,9 +1,10 @@
 # G18 BM25 and pgvector Retrieval Plan
 
-Status: in progress. G18 promotes the independent server RAG path from
-PostgreSQL `ts_rank` plus `REAL[]` cosine scans to true BM25 plus indexed
+Status: complete (2026-07-22). G18 promoted the independent server RAG path
+from PostgreSQL `ts_rank` plus `REAL[]` cosine scans to true BM25 plus indexed
 pgvector retrieval without weakening current authority, deletion, citation,
-or rollback boundaries.
+or rollback boundaries. The optional BGE-M3 comparison remains a separate
+future experiment, not unfinished G18 scope.
 
 ## Execution rule
 
