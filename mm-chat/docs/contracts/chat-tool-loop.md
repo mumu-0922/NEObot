@@ -250,6 +250,13 @@ summary, and `allow once | allow for this conversation | reject`. Credentials,
 raw payloads, and hidden Tool parameters are never rendered. G19's initial Web
 and Knowledge tools are read-only and require no approval.
 
+A native Tool round with selected Knowledge receives a server-owned instruction
+that the selection exists. Before claiming that a potentially user-, project-,
+organization-, or document-specific fact is unknown or was never provided, the
+model must call `search_knowledge` once. This is an Auto guard, not
+force-every-turn retrieval: visible-context/general questions skip it, and an
+empty result remains a successful miss without `[K#]`.
+
 ## 6. Process trace and reasoning
 
 Public process event shape:

@@ -835,3 +835,50 @@ and outcome cases. Frontend format, lint, typecheck, all 190 files/913 tests,
 and production build passed. The source Frontend image rebuilt, recreated, and
 returned healthy. Rollback is the display-only code anchor `de83464`; no schema,
 server state, Search request, Citation, or secret changed.
+
+## 2026-07-23 — G19.12 selected-Knowledge uncertainty guard
+
+The owner screenshot exposed a native Auto Tool false negative rather than a
+retrieval failure. Conversation
+`96c10c7c-2829-4c0e-890d-09d657d720ad` had collection
+`ec6e5c2d-dc7e-4e86-a805-5c912c413ae3` selected before sequence 19 asked
+`我是那个学校的`. Sequence 20 returned “you have not told me” with only
+Generation and Reasoning steps: the current model never issued
+`search_knowledge`, so BM25/pgvector/Jina had no request to execute. Sequence 21
+then explicitly mentioned Knowledge; sequence 22 issued native Round 1,
+retrieved one result, and answered with `[K1]`. This proved routing omission,
+not selection persistence, index readiness, retrieval threshold, or Citation
+projection.
+
+Native rounds with selected Knowledge now receive a server-owned instruction
+and stronger Tool description. The current model must call `search_knowledge`
+once before saying that a potentially user-, project-, organization-, or
+document-specific fact is unknown or was never supplied. Auto semantics remain:
+general questions and requests fully answerable from visible context may skip
+retrieval, and an empty result is a normal successful miss. No pre-SSE retrieval
+path, hidden router model, forced every-turn call, or fabricated `[K#]` was
+added.
+
+Focused definition/loop fixtures passed 50 times, followed by full Go
+vet/test/race/build. The source Backend rebuilt, recreated, and returned healthy.
+The first two disposable live setup probes omitted the required runtime provider
+descriptor, failed closed with `503 PROVIDER_REQUIRED`, and were each deleted
+with `204 -> 404`; they did not exercise the provider. The corrected clean live
+proof created a new empty conversation with the same selected collection and
+asked `我是哪个学校的？`. `gpt-5.6-sol` immediately issued
+`search_knowledge` in native Round 1, retrieval returned one hit with
+`rerankStatus=applied`, and the terminal answer completed as
+`你是西北工业大学的研究生，专业是电子信息。[K1]`. Its temporary conversation
+was deleted and reread as `404`. The full standalone gate then passed Frontend
+190 files/913 tests/build, all Go packages, and Python 1,730 passed/7 skipped.
+
+No owner message, selected collection, administrator setting, secret, index, or
+Citation row was changed. Rollback is the instruction-only code anchor
+`2614512`.
+
+Root-cause classification is **D: test coverage gap** plus **E: implicit
+assumption**. Scripted Tool-loop fixtures proved execution after a model call,
+but implicitly assumed that exposing the Tool was enough for the live model to
+consult it before an uncertainty answer. Prevention is the explicit
+selected-Knowledge instruction contract, definition/instruction fixtures, and a
+clean real replay of the original false-negative question.

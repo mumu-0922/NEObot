@@ -151,6 +151,12 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
   forbidden.
 - Read-only Web/Knowledge tools run automatically. Side effects require an
   approval policy before registration.
+- When selected Knowledge is available to a native Tool round, tell the current
+  model that selected collections exist and require one `search_knowledge` call
+  before it claims a potentially user-, project-, organization-, or document-
+  specific fact is unknown or was never supplied. This remains Auto Tool use:
+  general questions and requests already answerable from visible context skip
+  retrieval, and an empty Knowledge result is a normal miss.
 - External Web execution may retry the exact same resolved provider once after
   a short context-aware delay only for `REQUEST_FAILED`, HTTP `408`, `429`, or
   `5xx`. It must not re-resolve, switch providers, retry authentication/other

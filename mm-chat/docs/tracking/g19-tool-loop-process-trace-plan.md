@@ -378,25 +378,56 @@ fixtures passed 7/7 and the complete Frontend gate passed 190 files/913 tests
 plus build. The source Frontend image rebuilt, recreated, and returned healthy.
 The isolated code rollback anchor is `de83464`.
 
+## G19.12 Selected-Knowledge uncertainty guard
+
+Status: complete (2026-07-23).
+
+- [x] Prove that the selected collection persisted on the owner conversation
+  while the first school question emitted no Knowledge Tool Call.
+- [x] Keep Auto Tool behavior, but require the current model to query selected
+  Knowledge before claiming a potentially private/domain fact is unknown or
+  was never provided.
+- [x] Preserve ordinary visible-context/general answers and normal empty-result
+  fallback without force-every-turn retrieval.
+- [x] Pass repeated focused fixtures, full Go gates, source rebuild/health, a
+  clean real same-question hit, cleanup, and the full standalone gate.
+
+Promotion evidence: owner conversation
+`96c10c7c-2829-4c0e-890d-09d657d720ad` retained selected collection
+`ec6e5c2d-dc7e-4e86-a805-5c912c413ae3`. Sequence 19 asked
+`我是那个学校的`; sequence 20 completed with only Generation/Reasoning and no
+Knowledge step. Sequence 21 explicitly challenged the omission, after which
+sequence 22 called `search_knowledge`, hit once, and answered with `[K1]`.
+G19.12 strengthens the server-owned Tool description and native-round system
+instruction without changing Tool choice from Auto. Focused fixtures passed 50
+times; Go vet/test/race/build and the rebuilt healthy Backend passed. A new
+empty temporary conversation asking `我是哪个学校的？` immediately completed
+through native Knowledge Round 1 with one hit, `rerankStatus=applied`, and
+`[K1]`; cleanup returned `204 -> 404`. The full standalone gate passed Frontend
+190 files/913 tests/build, all Go packages, and Python 1,730 passed/7 skipped.
+Rollback is code anchor `2614512`.
+
 ## Rollback order
 
-1. G19.11 can revert display-only projection at code anchor `de83464` without
+1. G19.12 can revert the selected-Knowledge uncertainty instruction at code
+   anchor `2614512` without changing retrieval or Tool Loop mechanics.
+2. G19.11 can revert display-only projection at code anchor `de83464` without
    changing Backend trace persistence.
-2. G19.10 can revert buffered recovery/retry at code anchor `3d97676` while
+3. G19.10 can revert buffered recovery/retry at code anchor `3d97676` while
    retaining the original G19.9 evidence fallback.
-3. G19.9 can revert incremental Web Tool Results and pre-content evidence
+4. G19.9 can revert incremental Web Tool Results and pre-content evidence
    recovery independently at code anchor `e57675e` while retaining G19.8
    Search transport retry.
-4. G19.8 can remove the same-provider external Search transport retry while
+5. G19.8 can remove the same-provider external Search transport retry while
    retaining the native Tool Loop.
-5. G19.6 can restore the current Auto RAG preparation path while retaining the
+6. G19.6 can restore the current Auto RAG preparation path while retaining the
    generic Tool Loop.
-6. G19.5 can map persisted legacy `useSearch` back to off/external while
+7. G19.5 can map persisted legacy `useSearch` back to off/external while
    retaining external Tool execution.
-7. G19.4 can remove Anthropic Tool execution without affecting OpenAI-
+8. G19.4 can remove Anthropic Tool execution without affecting OpenAI-
    compatible/Gemini.
-8. G19.3 can restore the current pre-answer external Search + standalone Query
+9. G19.3 can restore the current pre-answer external Search + standalone Query
    rewrite while retaining the inert process-trace foundation.
-9. G19.2 can stop emitting/rendering the new trace while preserving existing
+10. G19.2 can stop emitting/rendering the new trace while preserving existing
    assistant content and citation metadata.
-10. G19.1 is documentation-only and has no runtime rollback.
+11. G19.1 is documentation-only and has no runtime rollback.

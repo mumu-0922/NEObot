@@ -8820,3 +8820,20 @@ build passed. The source Frontend image rebuilt and returned healthy. Exact
 evidence and rollback are in
 `docs/tracking/g19-tool-loop-process-trace-process.md` and
 `docs/contracts/chat-tool-loop.md`.
+
+## 2026-07-23 — G19.12 selected-Knowledge uncertainty guard
+
+An owner turn had a selected Knowledge collection but answered “you have not
+told me” without issuing `search_knowledge`; the next explicit Knowledge prompt
+hit the same collection with `[K1]`. This was native Auto Tool routing omission,
+not retrieval failure. Selected-Knowledge native rounds now instruct the current
+model to search once before claiming potentially user/project/organization/
+document-specific information is unknown, while general or visible-context
+questions still skip retrieval and empty results remain normal misses. Focused
+fixtures passed 50 times, full Go gates passed, and the Backend rebuilt healthy.
+A clean real `gpt-5.6-sol` replay of `我是哪个学校的？` immediately produced a
+native Knowledge hit and `[K1]`, then cleaned up with `204 -> 404`. The full
+standalone gate passed Frontend 190 files/913 tests, all Go packages, and Python
+1,730 passed/7 skipped. Exact evidence and rollback are in
+`docs/tracking/g19-tool-loop-process-trace-process.md` and
+`docs/contracts/chat-tool-loop.md`.

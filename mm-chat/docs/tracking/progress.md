@@ -1581,6 +1581,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
     - [x] G19.11 Display-only specialized Tool projection, durable diagnostic
           retention, accurate visible-step summaries, redundant outcome-caption
           removal, complete Frontend gate, and rollback record.
+    - [x] G19.12 Selected-Knowledge uncertainty guard, preserved Auto semantics,
+          repeated/full gates, clean real same-question `[K1]` proof, cleanup,
+          and rollback record.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 
