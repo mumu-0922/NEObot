@@ -1567,6 +1567,66 @@ func TestHandlerExternalCompatibilityPlannerCanSkipWithoutEmptyProcessPanel(t *t
 	}
 }
 
+func TestHandlerCompletesAfterBufferedEvidenceRecoveryRetry(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "latest fixture"),
+	)
+	provider := &scriptedToolRoundProvider{
+		rounds: [][]ProviderEvent{
+			{{
+				Type: ProviderEventToolCallCompleted,
+				ToolCall: &ProviderToolCall{
+					ID: "call-recovery", Name: searchWebToolName,
+					Arguments: `{"query":"latest fixture"}`,
+				},
+			}},
+			{{Error: errors.New("native continuation failed")}},
+		},
+		chatRounds: [][]ProviderEvent{
+			{
+				{Type: ProviderEventDelta, Delta: "discarded partial"},
+				{Error: errors.New("first evidence recovery failed")},
+			},
+			{{Type: ProviderEventDelta, Delta: "recovered answer [W1]"}},
+		},
+	}
+	searchProvider := &fakeWebSearchProvider{result: websearch.Result{Sources: []websearch.Source{{
+		Title: "Used", URL: "https://example.test/used", Content: "used",
+	}}}}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithWebSearchService(websearch.NewService(&fakeWebSearchResolver{execution: websearch.ActiveExecution{
+			Mode: websearch.ExecutionExternal, External: searchProvider,
+		}})),
+	)
+
+	recorder := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"config":{"searchMode":"external"},"idempotencyKey":"stream-buffered-evidence-recovery"}`,
+	)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	body := recorder.Body.String()
+	if !strings.Contains(body, "event: message.completed") ||
+		strings.Contains(body, "event: message.error") ||
+		strings.Contains(body, "discarded partial") ||
+		!strings.Contains(body, "recovered answer [W1]") {
+		t.Fatalf("recovery stream = %s", body)
+	}
+	messages := repo.messages[testConversationID]
+	if len(messages) != 2 || messages[1].Status != "completed" ||
+		messages[1].Content != "recovered answer [W1]" ||
+		len(messages[1].OutputBlocks) != 1 || len(provider.chatInputs) != 2 {
+		t.Fatalf("messages/recovery attempts = %#v / %d", messages, len(provider.chatInputs))
+	}
+}
+
 func TestHandlerPersistsOnlyUsedWebCitationWithOriginalMarker(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))

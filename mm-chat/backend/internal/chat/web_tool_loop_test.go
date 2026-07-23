@@ -269,8 +269,124 @@ func TestExternalWebToolLoopRecoversFailedNativeContinuationWithEvidence(t *test
 	fallback := provider.chatInputs[0]
 	if !strings.Contains(fallback.Prompt, "Relevant Web evidence") ||
 		!strings.Contains(fallback.Prompt, "[W1]") ||
+		!strings.Contains(fallback.SystemPrompt, "prior provider continuation") ||
 		len(fallback.Messages) != 1 || fallback.Messages[0].Content != fallback.Prompt {
 		t.Fatalf("fallback request = %#v", fallback)
+	}
+}
+
+func TestBufferedEvidenceRecoveryRetriesWithoutLeakingPartialAnswer(t *testing.T) {
+	provider := &scriptedToolRoundProvider{chatRounds: [][]ProviderEvent{
+		{
+			{Type: ProviderEventDelta, Delta: "discarded partial"},
+			{Error: errors.New("recovery stream failed")},
+		},
+		{{Type: ProviderEventDelta, Delta: "complete answer [W1]"}},
+	}}
+	events := make(chan ProviderEvent, 4)
+	streamBufferedEvidenceRecoveryAnswer(
+		context.Background(),
+		events,
+		provider,
+		ProviderRequest{ModelRef: ModelRef{ModelID: "fixture-model"}},
+		TokenUsage{},
+	)
+	close(events)
+	var content strings.Builder
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		if event.Type == ProviderEventDelta {
+			content.WriteString(event.Delta)
+		}
+	}
+	if content.String() != "complete answer [W1]" || len(provider.chatInputs) != 2 {
+		t.Fatalf("content/attempts = %q / %d", content.String(), len(provider.chatInputs))
+	}
+}
+
+func TestBufferedEvidenceRecoveryRetriesEmptyCompletedAnswer(t *testing.T) {
+	provider := &scriptedToolRoundProvider{chatRounds: [][]ProviderEvent{
+		{{Type: ProviderEventReasoningDelta, ReasoningDelta: "unfinished"}},
+		{{Type: ProviderEventDelta, Delta: "complete answer [W1]"}},
+	}}
+	events := make(chan ProviderEvent, 4)
+	streamBufferedEvidenceRecoveryAnswer(
+		context.Background(),
+		events,
+		provider,
+		ProviderRequest{ModelRef: ModelRef{ModelID: "fixture-model"}},
+		TokenUsage{},
+	)
+	close(events)
+	var content strings.Builder
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		if event.Type == ProviderEventDelta {
+			content.WriteString(event.Delta)
+		}
+	}
+	if content.String() != "complete answer [W1]" || len(provider.chatInputs) != 2 {
+		t.Fatalf("content/attempts = %q / %d", content.String(), len(provider.chatInputs))
+	}
+}
+
+func TestBufferedEvidenceRecoveryHidesPartialAnswerWhenBothAttemptsFail(t *testing.T) {
+	provider := &scriptedToolRoundProvider{chatRounds: [][]ProviderEvent{
+		{
+			{Type: ProviderEventDelta, Delta: "first partial"},
+			{Error: errors.New("first recovery failed")},
+		},
+		{
+			{Type: ProviderEventDelta, Delta: "second partial"},
+			{Error: errors.New("second recovery failed")},
+		},
+	}}
+	events := make(chan ProviderEvent, 4)
+	streamBufferedEvidenceRecoveryAnswer(
+		context.Background(),
+		events,
+		provider,
+		ProviderRequest{ModelRef: ModelRef{ModelID: "fixture-model"}},
+		TokenUsage{},
+	)
+	close(events)
+	var content strings.Builder
+	var gotError bool
+	for event := range events {
+		if event.Error != nil {
+			gotError = true
+		}
+		if event.Type == ProviderEventDelta {
+			content.WriteString(event.Delta)
+		}
+	}
+	if content.Len() != 0 || !gotError || len(provider.chatInputs) != 2 {
+		t.Fatalf(
+			"content/error/attempts = %q / %v / %d",
+			content.String(), gotError, len(provider.chatInputs),
+		)
+	}
+}
+
+func TestBufferedEvidenceRecoveryDoesNotRetryCancellation(t *testing.T) {
+	provider := &scriptedToolRoundProvider{chatRounds: [][]ProviderEvent{{
+		{Error: context.Canceled},
+	}}}
+	events := make(chan ProviderEvent, 1)
+	streamBufferedEvidenceRecoveryAnswer(
+		context.Background(),
+		events,
+		provider,
+		ProviderRequest{ModelRef: ModelRef{ModelID: "fixture-model"}},
+		TokenUsage{},
+	)
+	close(events)
+	if len(events) != 0 || len(provider.chatInputs) != 1 {
+		t.Fatalf("events/attempts = %d / %d", len(events), len(provider.chatInputs))
 	}
 }
 

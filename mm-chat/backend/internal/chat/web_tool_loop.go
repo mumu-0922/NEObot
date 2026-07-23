@@ -15,6 +15,9 @@ const (
 	maxCompatibilityPlannerOutputBytes  = 4096
 	maxCompatibilityPlannerMessages     = 6
 	maxCompatibilityPlannerMessageBytes = 1200
+	maxEvidenceRecoveryAttempts         = 2
+	maxEvidenceRecoveryEvents           = 8192
+	maxEvidenceRecoveryOutputBytes      = 1 << 20
 )
 
 const compatibilityWebSearchPlannerInstruction = `You are a Web-search decision and query planner for the current chat model.
@@ -24,6 +27,11 @@ Use Web search for current, changing, public, factual, official, or explicitly r
 Resolve pronouns and follow-up references from the bounded conversation. Never answer the user's question.`
 
 const externalWebUnavailableSystemInstruction = `External Web search was requested or needed but is unavailable for this turn. Continue with an ordinary answer. If the answer depends on current or online facts, clearly say that the latest information could not be verified. Do not invent Web citations or [W] markers.`
+
+const retrievalEvidenceRecoverySystemInstruction = `A prior provider continuation was interrupted after evidence retrieval.
+Produce one concise and complete final answer from the original request and the available evidence.
+Keep the answer under 300 Chinese characters or 180 English words, do not use raw HTML, and finish with a complete sentence.
+Do not mention recovery. Cite only backend-issued evidence markers that you actually use.`
 
 type externalWebToolLoopInput struct {
 	Provider        Provider
@@ -472,11 +480,16 @@ func streamRetrievalEvidenceFallback(
 	if !hasEvidence {
 		return false
 	}
+	request.SystemPrompt = strings.TrimSpace(request.SystemPrompt)
+	if request.SystemPrompt != "" {
+		request.SystemPrompt += "\n\n"
+	}
+	request.SystemPrompt += retrievalEvidenceRecoverySystemInstruction
 	request.Messages = replaceLastUserProviderMessage(
 		request.Messages,
 		request.Prompt,
 	)
-	streamCompatibilityAnswerWithUsageBase(
+	streamBufferedEvidenceRecoveryAnswer(
 		ctx,
 		events,
 		input.Provider,
@@ -484,6 +497,82 @@ func streamRetrievalEvidenceFallback(
 		completedUsage,
 	)
 	return true
+}
+
+func streamBufferedEvidenceRecoveryAnswer(
+	ctx context.Context,
+	events chan<- ProviderEvent,
+	provider Provider,
+	request ProviderRequest,
+	completedUsage TokenUsage,
+) {
+	var finalErr error
+	for attempt := 1; attempt <= maxEvidenceRecoveryAttempts; attempt++ {
+		buffered, err := collectBufferedCompatibilityAnswer(
+			ctx,
+			provider,
+			request,
+			completedUsage,
+		)
+		if err == nil {
+			for _, event := range buffered {
+				if !sendProviderEvent(ctx, events, event) {
+					return
+				}
+			}
+			return
+		}
+		if toolLoopWasCancelled(ctx, err) {
+			return
+		}
+		finalErr = err
+	}
+	if finalErr != nil {
+		sendProviderEvent(ctx, events, ProviderEvent{Error: finalErr})
+	}
+}
+
+func collectBufferedCompatibilityAnswer(
+	ctx context.Context,
+	provider Provider,
+	request ProviderRequest,
+	completedUsage TokenUsage,
+) ([]ProviderEvent, error) {
+	roundEvents, err := provider.StreamChat(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	buffered := make([]ProviderEvent, 0)
+	bufferedBytes := 0
+	contentBytes := 0
+	for event := range roundEvents {
+		if event.Error != nil {
+			return nil, event.Error
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		contentBytes += len(event.Delta)
+		bufferedBytes += len(event.Delta) + len(event.ReasoningDelta)
+		if bufferedBytes > maxEvidenceRecoveryOutputBytes ||
+			len(buffered) >= maxEvidenceRecoveryEvents {
+			return nil, errors.New("retrieval evidence recovery output is too large")
+		}
+		if event.Type == ProviderEventUsage && event.Usage != nil &&
+			(completedUsage.PromptTokens != 0 ||
+				completedUsage.CompletionTokens != 0 ||
+				completedUsage.TotalTokens != 0) {
+			event.Usage = addTokenUsage(completedUsage, *event.Usage)
+		}
+		buffered = append(buffered, event)
+	}
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if contentBytes == 0 {
+		return nil, errors.New("retrieval evidence recovery returned no answer")
+	}
+	return buffered, nil
 }
 
 func retrievalToolDefinitions(input externalWebToolLoopInput) []ToolDefinition {
