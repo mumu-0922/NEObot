@@ -811,3 +811,27 @@ not claimed as live-triggered evidence. No owner conversation, administrator
 configuration, secret, or retained Knowledge object was changed. The isolated
 code rollback anchor is `3d97676`; reverting it retains the original G19.9
 single-attempt evidence fallback.
+
+## 2026-07-23 — G19.11 process-trace display projection
+
+The successful owner-visible `东京天气` turn exposed a presentation defect, not
+duplicate Search execution. A single `search_web` execution intentionally
+produced one generic Tool step and one specialized Web diagnostic step from the
+same start/terminal events, so both displayed the same Query, five-source count,
+and 16-second duration. Generation remained the enclosing turn duration, and
+the provider-returned English reasoning summary remained truthful raw evidence.
+
+The frontend now derives a display-only projection from the durable trace. A
+generic `search_web` or `search_knowledge` row is hidden only when a specialized
+Web/Knowledge row with the same `toolName` and Round exists. Unmatched Tool
+failures and custom Tools stay visible. Active state, row count, and summary use
+the projected list; persisted metadata and Backend diagnostic authority remain
+unchanged. Lifecycle-only outcome captions already expressed by localized
+Status are suppressed, while meaningful outcomes such as `degraded` remain.
+Provider reasoning is neither fabricated, translated, nor rewritten.
+
+Focused projection fixtures passed 7/7 across Web, Knowledge, unmatched, custom,
+and outcome cases. Frontend format, lint, typecheck, all 190 files/913 tests,
+and production build passed. The source Frontend image rebuilt, recreated, and
+returned healthy. Rollback is the display-only code anchor `de83464`; no schema,
+server state, Search request, Citation, or secret changed.

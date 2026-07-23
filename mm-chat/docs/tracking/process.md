@@ -8804,3 +8804,19 @@ the retry branch is attributed only to deterministic integration evidence.
 Exact evidence and rollback are in
 `docs/tracking/g19-tool-loop-process-trace-process.md` and
 `docs/contracts/chat-tool-loop.md`.
+
+## 2026-07-23 — G19.11 process-trace display projection
+
+A successful `东京天气` turn rendered the same `search_web` execution as both
+generic Tool and specialized Web rows with identical Query and 16-second
+duration. The Backend trace was correct; the ordinary UI projection was
+duplicative. The frontend now hides a generic Search/Knowledge Tool row only
+when its same-`toolName`, same-Round specialized row exists, while retaining the
+complete durable trace, unmatched failures, and custom Tools. Projected rows
+drive active state and summaries, and redundant lifecycle outcome captions are
+omitted without translating or rewriting provider reasoning. Focused fixtures
+passed 7/7; Frontend format/lint/typecheck, 190 files/913 tests, and production
+build passed. The source Frontend image rebuilt and returned healthy. Exact
+evidence and rollback are in
+`docs/tracking/g19-tool-loop-process-trace-process.md` and
+`docs/contracts/chat-tool-loop.md`.

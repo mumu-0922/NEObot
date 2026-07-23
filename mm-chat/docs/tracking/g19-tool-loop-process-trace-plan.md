@@ -354,23 +354,49 @@ Handler integration rather than misrepresented as live-triggered evidence.
 The post-change standalone gate also passed Frontend format/lint/typecheck,
 190 files/911 tests/build, every Go package, and Python 1,730 passed/7 skipped.
 
+## G19.11 Process-trace display projection
+
+Status: complete (2026-07-23).
+
+- [x] Retain durable Tool/Web/Knowledge diagnostic steps while displaying a
+  specialized `search_web` or `search_knowledge` execution only once.
+- [x] Match the hidden generic parent by `toolName` and Round; keep unmatched
+  failures and every custom Tool visible.
+- [x] Use projected rows for active state, count, summary, and duration; remove
+  redundant lifecycle-only outcome captions without rewriting provider
+  reasoning.
+- [x] Cover Web, Knowledge, unmatched, and custom Tool projections and pass the
+  complete Frontend quality/build gate.
+
+Promotion evidence: the owner-visible successful `东京天气` turn showed one
+backend `search_web` execution twice as `工具调用 · 16s` and `联网搜索 · 16s`
+because both diagnostic steps intentionally share the same event timestamps
+and sanitized detail. Frontend projection now keeps only the specialized row;
+the durable trace remains unchanged for diagnosis. It also omits redundant
+`streaming`/`completed` captions already expressed by localized Status. Focused
+fixtures passed 7/7 and the complete Frontend gate passed 190 files/913 tests
+plus build. The source Frontend image rebuilt, recreated, and returned healthy.
+The isolated code rollback anchor is `de83464`.
+
 ## Rollback order
 
-1. G19.10 can revert buffered recovery/retry at code anchor `3d97676` while
+1. G19.11 can revert display-only projection at code anchor `de83464` without
+   changing Backend trace persistence.
+2. G19.10 can revert buffered recovery/retry at code anchor `3d97676` while
    retaining the original G19.9 evidence fallback.
-2. G19.9 can revert incremental Web Tool Results and pre-content evidence
+3. G19.9 can revert incremental Web Tool Results and pre-content evidence
    recovery independently at code anchor `e57675e` while retaining G19.8
    Search transport retry.
-3. G19.8 can remove the same-provider external Search transport retry while
+4. G19.8 can remove the same-provider external Search transport retry while
    retaining the native Tool Loop.
-4. G19.6 can restore the current Auto RAG preparation path while retaining the
+5. G19.6 can restore the current Auto RAG preparation path while retaining the
    generic Tool Loop.
-5. G19.5 can map persisted legacy `useSearch` back to off/external while
+6. G19.5 can map persisted legacy `useSearch` back to off/external while
    retaining external Tool execution.
-6. G19.4 can remove Anthropic Tool execution without affecting OpenAI-
+7. G19.4 can remove Anthropic Tool execution without affecting OpenAI-
    compatible/Gemini.
-7. G19.3 can restore the current pre-answer external Search + standalone Query
+8. G19.3 can restore the current pre-answer external Search + standalone Query
    rewrite while retaining the inert process-trace foundation.
-8. G19.2 can stop emitting/rendering the new trace while preserving existing
+9. G19.2 can stop emitting/rendering the new trace while preserving existing
    assistant content and citation metadata.
-9. G19.1 is documentation-only and has no runtime rollback.
+10. G19.1 is documentation-only and has no runtime rollback.

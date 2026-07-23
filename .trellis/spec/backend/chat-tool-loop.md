@@ -176,6 +176,15 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 - G19.2 persists sanitized `reasoning` and `processTrace` in terminal assistant
   metadata. A successful Generation-only answer omits both fields; failed or
   cancelled Generation remains durable.
+- Persist the complete diagnostic Tool trace. The frontend display projection
+  hides a generic `search_web`/`search_knowledge` Tool row only when the same
+  `toolName` and Round has its specialized Web/Knowledge row. Unmatched or
+  custom Tool rows remain visible, and summary counts use the projected rows.
+  Do not mutate or discard the durable trace to remove a UI duplicate.
+- Do not repeat lifecycle-only `outcome` details (`running`, `streaming`,
+  `completed`, or `cancelled`) beneath the localized step Status. Meaningful
+  outcomes such as `degraded` remain visible. Provider reasoning stays the
+  sanitized provider-returned text and is not rewritten or translated.
 - Process detail uses an allowlist and bounded values. Unknown fields, raw
   payloads, source bodies, headers, prompts, SQL, and internal errors are
   dropped before SSE and persistence.

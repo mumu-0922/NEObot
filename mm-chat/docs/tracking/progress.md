@@ -1578,6 +1578,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           retry after interrupted or empty recovery, partial-draft isolation,
           bounded output, deterministic Handler proof, live regression, and
           cleanup.
+    - [x] G19.11 Display-only specialized Tool projection, durable diagnostic
+          retention, accurate visible-step summaries, redundant outcome-caption
+          removal, complete Frontend gate, and rollback record.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

@@ -328,6 +328,16 @@ Rules:
   empty completed panel.
 - Persist rendered provider reasoning and sanitized Process Steps so reload and
   conversation switching reproduce the completed view.
+- Keep the durable diagnostic trace complete, but project specialized read-only
+  tools once in the ordinary UI: a generic `search_web`/`search_knowledge`
+  Tool row is hidden only when the same `toolName` and Round has a matching
+  Web/Knowledge row. Unmatched failures and custom Tools remain visible. Panel
+  counts, active state, and summaries use the projected rows without mutating
+  persisted metadata.
+- Do not render lifecycle-only `outcome` details (`running`, `streaming`,
+  `completed`, or `cancelled`) below a Status that already expresses them.
+  Keep meaningful outcomes such as `degraded`. Sanitized provider reasoning is
+  shown as returned; its language is not rewritten or translated.
 - Allowed persisted details include displayed Search Query, redacted Tool
   arguments, hit/source counts, duration, provider/mode identifiers, failure
   category, and Citation mapping.
