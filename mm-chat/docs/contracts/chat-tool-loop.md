@@ -324,6 +324,10 @@ never restores pre-SSE retrieval.
   history.
 - Results are normalized, deduplicated, bounded, treated as untrusted, and
   assigned current-turn `[W#]` capabilities by Go.
+- The same resolved external provider is retried once after a 250 ms
+  context-aware delay only for transport `REQUEST_FAILED`, HTTP `408`, `429`,
+  or `5xx`. Authentication/other `4xx`, schema/response failures, and cancelled
+  contexts do not retry; no retry may re-resolve or switch providers.
 - Tool-unsupported providers use the same selected model for one bounded JSON
   decision/query pass, then answer with the existing evidence prompt only when
   that pass requested Search.
@@ -366,6 +370,8 @@ cite both.
 | Auto decides no Search                | direct answer; no empty Search process/source card |
 | Explicit Search intent                | Search in the selected mode                        |
 | External Search unavailable/fails     | truthful notice; ordinary answer; no `[W#]`        |
+| First transient external failure      | one same-provider retry; no intermediate notice    |
+| Second transient external failure     | final redacted failure; ordinary answer; no `[W#]` |
 | Built-in capability unavailable       | mode disabled or degraded; no external fallback    |
 | Native Tool unsupported               | same-model compatibility planner                   |
 | Compatibility planner fails           | ordinary answer with truthful unavailable notice   |
@@ -396,3 +402,6 @@ cite both.
 9. Full Go vet/test/race, frontend format/lint/typecheck/test/build, Compose
    rebuild/restart/health, clean-copy, real-provider smoke, and complete smoke
    cleanup.
+10. External Search retry recovery for network/`408`/`429`/`5xx`, no retry for
+    other `4xx` or response/schema failures, cancellation during delay, and
+    final-error preservation after two transient failures.

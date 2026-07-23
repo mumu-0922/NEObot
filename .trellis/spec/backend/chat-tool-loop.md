@@ -150,6 +150,10 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
   forbidden.
 - Read-only Web/Knowledge tools run automatically. Side effects require an
   approval policy before registration.
+- External Web execution may retry the exact same resolved provider once after
+  a short context-aware delay only for `REQUEST_FAILED`, HTTP `408`, `429`, or
+  `5xx`. It must not re-resolve, switch providers, retry authentication/other
+  `4xx` or response/schema failures, or continue after context cancellation.
 - Only current-turn backend-issued markers used by the final reconciled answer
   become Citations; unused results stay in the process trace.
 - G19.2 persists sanitized `reasoning` and `processTrace` in terminal assistant
@@ -198,6 +202,8 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 | Native Knowledge Tool unsupported | live compatibility executor; no pre-SSE retrieval |
 | Tool arguments malformed/unknown | do not execute; redacted failed step             |
 | External Search failure          | truthful degradation; ordinary answer; no `[W]`  |
+| First transient external failure | one same-provider retry; no intermediate failure |
+| Second transient failure         | return final redacted error; normal degradation  |
 | Built-in unsupported             | disabled/degraded; no external fallback          |
 | Invalid persisted Search mode    | `INVALID_SEARCH_MODE`; no write                   |
 | Custom model not exactly tested  | disabled / `MODEL_BUILT_IN_SEARCH_UNSUPPORTED`    |
@@ -221,11 +227,14 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
   progress, continues the same model, and keeps only used `[W]` markers.
 - Good: selected Knowledge can run before Web and preserve distinct `[K]`/`[W]`
   authority.
+- Good: Tavily transport fails once, the same resolved execution succeeds on
+  its only retry, and one truthful Web result enters the Tool continuation.
 - Base: a Tool-unsupported model uses the visible compatibility path and still
   answers if planning fails.
-- Bad: pre-searching every enabled turn, running built-in and external Search
-  together, hiding a provider switch, fabricating reasoning, or rendering all
-  retrieved sources as Citations.
+- Bad: retrying a bad Key/schema response, re-resolving into another provider,
+  retrying after cancellation, pre-searching every enabled turn, running
+  built-in and external Search together, fabricating reasoning, or rendering
+  all retrieved sources as Citations.
 
 ## 6. Tests Required
 
@@ -248,6 +257,9 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
    model attestation, bound-field invalidation, Postgres stale compare-and-set,
    route DTO, mode reload/inheritance, first-message inheritance, and separate
    resolver-call assertions.
+9. External retry fixtures must prove one recovery after network/`408`/`429`/
+   `5xx`, no retry for other `4xx` or response/schema errors, immediate
+   cancellation, and the second stable error after two transient failures.
 
 ## 7. Wrong vs Correct
 
@@ -275,6 +287,11 @@ search mode + selected Knowledge + capabilities
   -> no Tool Call: answer
   -> Tool Call: validate/execute/trace -> native continuation
   -> reconcile only current-turn used citations -> persist
+```
+
+```go
+// Retry only the same already-resolved read-only execution once.
+result, err := service.Execute(ctx, execution, request)
 ```
 
 ```text

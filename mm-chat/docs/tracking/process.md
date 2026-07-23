@@ -8750,3 +8750,16 @@ attestation, and was restored to its original state; no official credential is
 currently available for a positive live vendor call. Exact evidence and
 rollback are in `docs/tracking/g19-tool-loop-process-trace-process.md` and
 `docs/contracts/chat-tool-loop.md`.
+
+## 2026-07-23 — G19.8 transient external Search recovery
+
+An owner-visible Tavily request failed at the 15-second response-header
+boundary while immediate repeats succeeded. Go now retries only the same
+resolved external provider once for transport, `408`, `429`, or `5xx`
+failures, stops on cancellation/permanent response errors, and never falls back
+to another provider. Focused tests passed 50 times, full Go gates passed, the
+source Backend rebuilt healthy, three real Tavily calls returned five sources
+each, and a real DeepSeek compatibility Tool Loop completed with `[W1]` before
+its temporary conversation was deleted (`204 -> 404`). Exact policy, evidence,
+and rollback are in `docs/tracking/g19-tool-loop-process-trace-process.md` and
+`docs/contracts/chat-tool-loop.md`.

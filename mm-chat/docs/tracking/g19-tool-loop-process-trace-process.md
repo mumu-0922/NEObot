@@ -662,3 +662,36 @@ G19 is complete. Rollback anchors remain the ordered G19.6 -> G19.2 reversions
 in the plan; the cancellation-only repair can be reverted independently with
 `94b50f0`. No schema, secret, administrator provider setting, retained user
 conversation, or retained Knowledge object changed during closure.
+
+## 2026-07-23 — G19.8 transient external Search recovery
+
+The owner-visible `西安天气预报` turn reached the correct DeepSeek compatibility
+planner and correct Tavily Query, then failed after about 16 seconds with
+`provider_failed`. The active provider remained enabled, Key-backed, and
+attested. A fresh administrator test returned `200`, and three immediate direct
+Tavily calls returned five relevant sources in roughly 1.7 seconds each. The
+failure duration matched the secure client's 15-second response-header timeout,
+so the defect was transient-recovery policy rather than routing, model, Query,
+or provider configuration.
+
+External Search now makes at most two attempts against the exact same resolved
+execution. Only `REQUEST_FAILED`, HTTP `408`, `429`, and `5xx` trigger the one
+250 ms context-aware retry. Authentication/other `4xx`, content type, encoding,
+size, decode/schema failures, and cancellation return immediately. A second
+failure returns its final redacted error to the existing truthful degradation
+path; no provider fallback or Citation behavior changed.
+
+Verification evidence:
+
+```text
+focused websearch tests, count=50                         passed
+Go vet / test / race / build                             passed
+source Backend rebuild / recreate / health               passed / healthy
+real Tavily direct Search, three calls                    200 / 5 sources each
+real DeepSeek compatibility Tool/Web                     completed / [W1]
+temporary conversation delete / post-delete read         204 / 404
+```
+
+No administrator configuration, secret, retained conversation, or provider
+selection changed. Rollback is the isolated external retry code/doc commit;
+the pre-existing degradation path remains intact.

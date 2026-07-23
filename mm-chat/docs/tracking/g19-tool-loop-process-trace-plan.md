@@ -271,6 +271,25 @@ Frontend 190-file/911-test/build gates, Compose health, and the full clean-copy
 gate with Python 1730 passed/7 skipped all passed. Every temporary G19.7
 conversation, File, Collection, and local artifact was removed.
 
+## G19.8 Post-closure transient external Search recovery
+
+Status: complete (2026-07-23).
+
+- [x] Retry only the already-resolved external provider once after a bounded
+  context-aware delay for transport `REQUEST_FAILED`, HTTP `408`, `429`, and
+  `5xx`.
+- [x] Do not retry authentication/other `4xx`, response/schema errors, or
+  cancellation; do not re-resolve, switch provider, or change Citation truth.
+- [x] Pass repeated unit, full Go, source-built Compose, real Tavily direct, and
+  DeepSeek compatibility Tool Loop proofs; delete all temporary conversations.
+
+Promotion evidence: the owner-visible failure ended near the existing
+15-second response-header boundary while immediate Tavily repeats succeeded.
+Focused tests passed 50 times; full Go vet/test/race/build passed; direct
+Tavily returned five sources in three calls; the rebuilt Backend completed a
+real `deepseek-v4-flash` compatibility Tool Loop with `[W1]`; cleanup returned
+`204 -> 404`.
+
 ## Rollback order
 
 1. G19.6 can restore the current Auto RAG preparation path while retaining the

@@ -1569,6 +1569,8 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
             promotion proof and cleanup.
     - [x] G19.7 Full live matrix, restart, clean-copy, rollback, and smoke-state
           cleanup.
+    - [x] G19.8 Post-closure same-provider transient external Search retry,
+          cancellation safety, live Tavily/DeepSeek proof, and cleanup.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

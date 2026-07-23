@@ -17,8 +17,8 @@
 - No browser-selected runtime provider, per-request Key, or provider fan-out.
 - No retired self-hosted HTTP path.
 - No automatic provider fallback or multi-provider fan-out.
-- No Gemini model-built-in search until a real Go Gemini runtime provider
-  exists.
+- No model-built-in Search through the standalone `/v1/search` route; provider
+  tools require their owning chat stream.
 - No multi-provider Knowledge/Web rank fusion; Knowledge and Web retain
   separate source identities and deterministic authority rules.
 
@@ -36,8 +36,8 @@ authenticated POST /v1/search       Go chat stream with useSearch
                           |
               exactly one ActiveExecution
                  /                    \
-          external Provider        OpenAI built-in
-                 |                 Responses Web Search
+          external Provider        model built-in
+                 |                 provider-native Search
                  v                    |
        secure bounded HTTP             v
                  |              normalized source events
@@ -68,10 +68,11 @@ authenticated POST /v1/search       Go chat stream with useSearch
 | Firecrawl adapter keeps legacy optional auth shape       | Administrator activation still requires a non-empty stored Key and a successful bounded test.                                  |
 | Search config uses `kind="search"` reserved rows         | Model and Search records share storage without crossing resolution or vault contexts.                                          |
 | Atomic single-active external provider                   | Serializable activation disables every other Search row for the same user.                                                     |
-| OpenAI type differs from OpenAI Compatible               | Only explicit `OpenAI` runtime providers receive the Responses Web Search capability.                                          |
-| Built-in sources use the common normalizer               | OpenAI annotations/actions receive the same URL, size, dedupe, and result fences.                                              |
+| Official and compatible capabilities stay distinct       | Official OpenAI/Gemini/Anthropic use native protocols; compatible models require exact tested attestation.                     |
+| Built-in sources use the common normalizer               | Provider-native source events receive the same URL, size, dedupe, and result fences.                                           |
 | External route rejects built-in execution                | Built-in tools require model generation and cannot masquerade as a standalone search API.                                      |
 | Resolve once, then `Service.Execute`                     | A request cannot switch active providers between capability selection and execution.                                           |
+| One bounded transient external retry                     | Read-only Search tolerates one transport/`408`/`429`/`5xx` blip while preserving the same provider and request authority.         |
 | Chat-owned `[W]` artifacts                               | Provider adapters remain transport-only while chat owns prompt markers, output-block shape, and message metadata.              |
 | Built-in marker completion                               | Provider-emitted source annotations are known-used sources, so missing `[W]` markers are appended before terminal persistence. |
 
@@ -89,8 +90,11 @@ authenticated POST /v1/search       Go chat stream with useSearch
   session middleware, and returns `Cache-Control: no-store`.
 - Resolver failures are collapsed to stable errors; resolver details never
   cross the HTTP boundary.
-- OpenAI Responses status/body/frame errors are redacted and never include Key,
+- Model-provider status/body/frame errors are redacted and never include Key,
   query, or upstream body.
+- External execution attempts at most twice with a 250 ms context-aware delay.
+  Only transport `REQUEST_FAILED`, `408`, `429`, and `5xx` are retryable;
+  cancellation, other `4xx`, and response/schema failures are not.
 
 ## Known Limits
 
@@ -102,8 +106,8 @@ authenticated POST /v1/search       Go chat stream with useSearch
   returns a redacted 4xx `ProviderError`; owner-entered Tavily later passed the
   F3 positive Search/chat/restart path.
 - The normal API binary resolves Postgres/vault state on every request. With no
-  active external or eligible explicit OpenAI model provider, `/v1/search`
-  fails closed with `SEARCH_NOT_CONFIGURED`.
+  active external provider, `/v1/search` fails closed with
+  `SEARCH_NOT_CONFIGURED`; built-in Search resolves only from chat.
 - G11.9G.1 places the deterministic source Router after Knowledge retrieval.
   Search never runs when disabled and is skipped when admitted Knowledge is
   sufficient for a non-current question. G11.9G.2 may append at most two
@@ -113,9 +117,11 @@ authenticated POST /v1/search       Go chat stream with useSearch
   candidate cannot pollute Search. Auto chat degrades resolution/provider
   failures without fallback. The direct `/v1/search` diagnostic route retains
   its explicit fail-closed errors.
-- Gemini remains unsupported because the Go runtime cannot currently execute a
-  Gemini chat request. Capability checks return an explicit unsupported error
-  instead of silently using another provider.
+- Official OpenAI, Gemini, and Anthropic built-in Search remains provider/model
+  exact. Unsupported or unattested models fail without external fallback.
+- The transient retry is intentionally one extra attempt, not an availability
+  policy. Two transient failures return the second redacted provider error and
+  chat keeps the existing truthful no-Web degradation path.
 
 ## Change History
 
@@ -195,3 +201,12 @@ Knowledge snippets are now appended only for context-dependent questions;
 explicit named subjects search the normalized user question unchanged. The
 live Kimi replay returned only Kimi/Moonshot sources while the contextual-query
 gate remained enabled for dependent follow-ups.
+
+### 2026-07-23 — G19 post-closure transient Search repair
+
+A real Tavily call failed at the 15-second response-header boundary while
+immediate repeats succeeded. External `Service.Search`/`Execute` now retry the
+same resolved provider once after a 250 ms context-aware delay only for
+transport, `408`, `429`, and `5xx` failures. Permanent response/configuration
+errors and cancellation do not retry; exhausted attempts preserve the existing
+redacted degradation and Citation rules.
