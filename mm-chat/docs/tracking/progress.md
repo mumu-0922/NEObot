@@ -1574,6 +1574,10 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
     - [x] G19.9 Incremental Web Tool Results and same-model pre-content
           continuation recovery, including mixed evidence, cumulative usage,
           live Tavily stress proof, and cleanup.
+    - [x] G19.10 Buffered evidence-recovery answers, one exact-provider/model
+          retry after interrupted or empty recovery, partial-draft isolation,
+          bounded output, deterministic Handler proof, live regression, and
+          cleanup.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

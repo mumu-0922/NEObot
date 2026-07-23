@@ -324,21 +324,53 @@ that the owner-selected no-product-limit policy allows a model to consume most
 of the configured five-minute provider timeout. This is recorded as an
 accepted operational risk; G19.9 does not add a Tool Round or Tool Call limit.
 
+## G19.10 Buffered evidence-recovery answer retry
+
+Status: complete (2026-07-23).
+
+- [x] Do not expose a recovery answer until its provider stream closes
+  successfully; discard interrupted recovery content, reasoning, and usage.
+- [x] Retry one interrupted/empty recovery answer once through the exact same
+  provider/model with the same bounded evidence and a concise complete-answer
+  instruction.
+- [x] On two failures emit the final error with zero recovery answer content;
+  never retry cancellation and cap the buffer at 1 MiB/8,192 events.
+- [x] Prove Handler terminal persistence, Citation projection, no partial-draft
+  SSE, repeated fixtures, full Go gates, source build/health, live provider
+  regression, and temporary-state cleanup.
+
+Promotion evidence: the first post-G19.9 browser replay retrieved two sets of
+five Tavily sources, then the native continuation failed. Its first evidence
+recovery produced 1,064 bytes but interrupted at the incomplete phrase
+`出行建议：随身`; because G19.9 streamed recovery deltas immediately, Handler
+truthfully persisted the partial text with `status=failed`. G19.10 buffers the
+recovery answer and retries once before exposing it. Focused recovery and
+Handler integration fixtures passed 50 times; full Go vet/test/race/build and
+the rebuilt healthy Backend passed. A final duplicated-context
+`gpt-5.6-sol + Tavily` regression completed with `[W2]`/`[W3]`, two source
+cards, and `204 -> 404` cleanup. The intermittent provider failure did not
+occur during that final live run, so the retry branch is proven by deterministic
+Handler integration rather than misrepresented as live-triggered evidence.
+The post-change standalone gate also passed Frontend format/lint/typecheck,
+190 files/911 tests/build, every Go package, and Python 1,730 passed/7 skipped.
+
 ## Rollback order
 
-1. G19.9 can revert incremental Web Tool Results and pre-content evidence
+1. G19.10 can revert buffered recovery/retry at code anchor `3d97676` while
+   retaining the original G19.9 evidence fallback.
+2. G19.9 can revert incremental Web Tool Results and pre-content evidence
    recovery independently at code anchor `e57675e` while retaining G19.8
    Search transport retry.
-2. G19.8 can remove the same-provider external Search transport retry while
+3. G19.8 can remove the same-provider external Search transport retry while
    retaining the native Tool Loop.
-3. G19.6 can restore the current Auto RAG preparation path while retaining the
+4. G19.6 can restore the current Auto RAG preparation path while retaining the
    generic Tool Loop.
-4. G19.5 can map persisted legacy `useSearch` back to off/external while
+5. G19.5 can map persisted legacy `useSearch` back to off/external while
    retaining external Tool execution.
-5. G19.4 can remove Anthropic Tool execution without affecting OpenAI-
+6. G19.4 can remove Anthropic Tool execution without affecting OpenAI-
    compatible/Gemini.
-6. G19.3 can restore the current pre-answer external Search + standalone Query
+7. G19.3 can restore the current pre-answer external Search + standalone Query
    rewrite while retaining the inert process-trace foundation.
-7. G19.2 can stop emitting/rendering the new trace while preserving existing
+8. G19.2 can stop emitting/rendering the new trace while preserving existing
    assistant content and citation metadata.
-8. G19.1 is documentation-only and has no runtime rollback.
+9. G19.1 is documentation-only and has no runtime rollback.

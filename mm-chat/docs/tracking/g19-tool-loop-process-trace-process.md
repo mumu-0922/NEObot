@@ -766,3 +766,48 @@ Tool Results, explicit same-model pre-content recovery, negative partial-answer
 tests, mixed-evidence tests, cumulative-usage tests, and this executable
 contract. Rollback is the isolated G19.9 code/doc commit; G19.8 remains intact.
 The code rollback anchor is `e57675e`.
+
+## 2026-07-23 — G19.10 buffered evidence-recovery answer retry
+
+The owner-visible `东京天气` replay reached two successful Tavily executions,
+each with five sources, before the native Tool continuation failed. G19.9 then
+started its same-model evidence recovery and produced 1,064 answer bytes, but
+that provider stream also interrupted at the incomplete phrase
+`出行建议：随身`. Because G19.9 forwarded recovery deltas immediately, Handler
+correctly persisted the incomplete answer as `status=failed` with
+`errorCode=PROVIDER_ERROR`; this was not a frontend-only false error.
+
+Evidence recovery is now server-buffered until its provider stream closes
+successfully. If the first attempt fails or returns no answer, every buffered
+content/reasoning/usage event is discarded and the exact same Provider, Model,
+and bounded Evidence request is retried once. Cancellation is never retried. If
+both attempts fail, the client receives only the final error and zero recovery
+answer content, avoiding a durable partial draft plus red failure state. The
+buffer is bounded to 1 MiB and 8,192 events, and the recovery instruction asks
+for a complete concise response within 300 Chinese characters or 180 English
+words without raw HTML. Prior successful native-round usage remains cumulative.
+
+Deterministic Handler integration proves that a first partial recovery draft
+does not reach SSE or persistence, a second successful attempt completes the
+Message with Citation output blocks, and two failed attempts expose zero answer
+content. Empty-answer retry, cancellation, output bounds, and repeated fixtures
+also passed. Full verification evidence:
+
+```text
+focused recovery/Handler fixtures, count=50                    passed
+full Go vet / test / race / build                              passed
+standalone Frontend / Go                                      190 files, 911 tests / passed
+standalone Python                                             1,730 passed, 7 skipped
+source Backend rebuild / recreate / readiness                  passed / healthy
+final gpt-5.6-sol + Tavily live regression                     message.completed
+final answer / markers                                         818 bytes / [W2], [W3]
+durable Tool/Web steps / source cards                          1 / 1 / 2
+temporary conversation delete / post-delete read               204 / 404
+```
+
+The intermittent upstream break did not recur during the final live regression,
+so the recovery-retry branch is proven by deterministic Handler integration,
+not claimed as live-triggered evidence. No owner conversation, administrator
+configuration, secret, or retained Knowledge object was changed. The isolated
+code rollback anchor is `3d97676`; reverting it retains the original G19.9
+single-attempt evidence fallback.

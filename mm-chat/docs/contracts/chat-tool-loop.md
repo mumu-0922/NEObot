@@ -218,6 +218,16 @@ Cancellation, no-evidence failures, and failures after partial answer text do
 not recover. They retain their existing terminal behavior. Provider reasoning
 alone does not count as answer content and may precede a recovery answer.
 
+The recovery answer is server-buffered until its provider stream closes
+successfully. A failed first attempt is discarded in full and retried once
+through the exact same provider/model/request. Neither partial content,
+reasoning, nor usage from the failed attempt reaches SSE or persistence. The
+successful attempt is then emitted with the prior native-round usage base. If
+both attempts fail, emit the final error with zero recovery answer content.
+Cancellation never retries. Recovery is constrained to 1 MiB/8,192 events and
+uses a concise complete-answer instruction capped at 300 Chinese characters or
+180 English words without raw HTML.
+
 ## 5. Tool registry and approvals
 
 Every registered Tool has server-owned metadata:
@@ -401,6 +411,8 @@ cite both.
 | Second transient external failure     | final redacted failure; ordinary answer; no `[W#]` |
 | Continuation fails after evidence, before answer text | same-model no-Tools evidence answer |
 | Continuation fails after partial answer text | terminal failure; no duplicate answer recovery |
+| First recovery attempt emits partial text then fails | discard all events; retry once |
+| Both recovery attempts fail             | final failure with zero recovery answer content |
 | Later Search adds no source            | empty incremental Tool Result; keep prior markers  |
 | Built-in capability unavailable       | mode disabled or degraded; no external fallback    |
 | Native Tool unsupported               | same-model compatibility planner                   |
@@ -438,4 +450,6 @@ cite both.
 11. Native continuation recovery for synchronous and in-stream failure,
     Web-only and mixed Knowledge/Web evidence, same provider/model, no recovery
     after answer content, cumulative usage, incremental Web Tool Results, and
-    stable markers.
+    stable markers. Recovery tests must also prove buffering, first-attempt
+    partial-draft discard, one retry, both-attempt failure with zero content,
+    empty-answer retry, bounded output, and no retry after cancellation.

@@ -166,6 +166,11 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
   evidence prompt. Preserve cumulative usage and existing citation authority.
   Do not recover after partial answer content, without evidence, after
   cancellation, or by switching provider/model.
+- Buffer a recovery answer until its provider stream closes successfully.
+  Never expose a partial recovery draft. A failed first recovery attempt may be
+  retried once with the exact same provider/model and concise evidence prompt;
+  discard all first-attempt content/reasoning/usage. Both failures emit the
+  final error with zero recovery content. Buffer at most 1 MiB and 8,192 events.
 - Only current-turn backend-issued markers used by the final reconciled answer
   become Citations; unused results stay in the process trace.
 - G19.2 persists sanitized `reasoning` and `processTrace` in terminal assistant
@@ -218,6 +223,8 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 | Second transient failure         | return final redacted error; normal degradation  |
 | Native continuation fails after evidence, before content | one same-model evidence answer stream |
 | Native continuation fails after partial content | preserve the error; no duplicate answer fallback |
+| First recovery answer stream fails after partial content | discard draft; one same-model retry |
+| Both recovery answer streams fail | final failure; expose zero recovery content |
 | Repeated Web source              | empty incremental Tool Result; stable prior marker |
 | Built-in unsupported             | disabled/degraded; no external fallback          |
 | Invalid persisted Search mode    | `INVALID_SEARCH_MODE`; no write                   |
@@ -282,7 +289,8 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 10. Continuation-recovery fixtures must cover synchronous start failure,
     in-stream failure, same provider/model, Web-only and mixed Knowledge/Web
     evidence, no fallback after content, cumulative usage, incremental Web Tool
-    Results, stable markers, and cancellation.
+    Results, stable markers, buffered partial-draft discard, one retry, both-
+    attempt failure, empty-answer retry, output bounds, and cancellation.
 
 ## 7. Wrong vs Correct
 

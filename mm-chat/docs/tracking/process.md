@@ -8783,3 +8783,24 @@ five-minute timeout, so unlimited model-directed Tool loops remain an
 explicitly recorded operational risk. Exact evidence and rollback are in
 `docs/tracking/g19-tool-loop-process-trace-process.md` and
 `docs/contracts/chat-tool-loop.md`.
+
+## 2026-07-23 — G19.10 buffered evidence-recovery answer retry
+
+An owner-visible recovery answer produced 1,064 bytes and then interrupted at
+`出行建议：随身`, so the Backend truthfully persisted a partial answer with a
+failed terminal state. Recovery answers are now buffered server-side and are
+only released after a successful provider-stream close. A failed or empty first
+attempt is discarded and retried once with the exact same provider/model and
+Evidence; cancellation never retries, and two failures expose zero recovery
+content. The buffer is capped at 1 MiB/8,192 events. Deterministic Handler
+integration proved partial-draft isolation, retry completion, Citations, and
+zero-content double failure; repeated focused tests and full Go
+vet/test/race/build passed. The standalone gate passed Frontend 190 files/911
+tests, all Go packages, and Python 1,730 passed/7 skipped. The source Backend
+rebuilt healthy, and a final real
+`gpt-5.6-sol + Tavily` regression completed with `[W2]`/`[W3]`, two source
+cards, and `204 -> 404` cleanup. The intermittent break did not recur live, so
+the retry branch is attributed only to deterministic integration evidence.
+Exact evidence and rollback are in
+`docs/tracking/g19-tool-loop-process-trace-process.md` and
+`docs/contracts/chat-tool-loop.md`.
