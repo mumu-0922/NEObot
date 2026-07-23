@@ -8,6 +8,19 @@ import {
 } from "../lib/utils/chatAttachmentFiles";
 
 describe("chat attachment file selection", () => {
+  it("accepts a file at the 20 MiB direct-context boundary", () => {
+    expect(ATTACHMENT_LIMITS.maxFileBytes).toBe(20 * 1024 * 1024);
+
+    const selection = selectChatAttachmentFiles(0, [
+      { name: "boundary.txt", size: ATTACHMENT_LIMITS.maxFileBytes },
+    ]);
+
+    expect(selection.accepted.map((file) => file.name)).toEqual([
+      "boundary.txt",
+    ]);
+    expect(selection.rejectedBySize).toEqual([]);
+  });
+
   it("rejects oversized files before FileReader work begins", () => {
     const selection = selectChatAttachmentFiles(0, [
       { name: "small.txt", size: 100 },

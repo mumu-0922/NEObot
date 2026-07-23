@@ -70,6 +70,13 @@ describe("MessageInput composition", () => {
     expect(messageInput).not.toContain("createChatDocumentAttachment");
     expect(messageInput).toContain('knowledgeApiClient.mode === "server"');
     expect(messageInput).toContain("isParsingAttachments");
+    expect(messageInput).toContain(
+      "const accepted = await onSend(submittedInput, submittedAttachments)",
+    );
+    expect(messageInput).toContain("restoreSubmittedDraft");
+    expect(messageInput).toContain(
+      "draftRevisionRef.current !== draftRevision",
+    );
     expect(messageInput).toContain("isDragUploadActive");
     expect(messageInput).toContain("handleComposerDrop");
     expect(messageInput).toContain("handleComposerPaste");
@@ -78,6 +85,7 @@ describe("MessageInput composition", () => {
     expect(messageInput).toContain('t("dropFilesTitle")');
     expect(messageInput).toContain("failedToParseDocument");
     expect(messageInput).toContain(".pdf");
+    expect(messageInput).not.toContain(".csv,.doc,.docx");
     expect(messageInput).not.toContain("reader.readAsText");
     expect(messageInput).not.toContain(
       "text-amber-500 hover:bg-amber-50 hover:text-amber-600",

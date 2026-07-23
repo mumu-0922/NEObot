@@ -2,7 +2,7 @@ import type { Attachment } from "@/types";
 
 export const ATTACHMENT_LIMITS = {
   maxCount: 20,
-  maxFileBytes: 5 * 1024 * 1024,
+  maxFileBytes: 20 * 1024 * 1024,
   maxBase64Chars: 30 * 1024 * 1024,
   maxTotalBase64Chars: 30 * 1024 * 1024,
   maxUrlChars: 4_096,

@@ -139,6 +139,7 @@ interface SendServerMessageAndStreamOptions {
   userMessageIdempotencyKey?: string;
   streamIdempotencyKey?: string;
   signal?: AbortSignal;
+  onUserMessageAccepted?: (message: Message) => void;
 }
 
 interface RegenerateServerAssistantMessageOptions {
@@ -1266,6 +1267,7 @@ export const useChatStore = create<ChatState>()(
               idempotencyKey: options.userMessageIdempotencyKey ?? uuidv7(),
             }),
           );
+          options.onUserMessageAccepted?.(userMessage);
 
           if (requestId !== serverReadRequestId) {
             return {

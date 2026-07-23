@@ -103,7 +103,10 @@ import { getModelBuiltInSearchAvailability } from "@/lib/chat/searchCapabilities
 type MessageInputVariant = "default" | "hero";
 
 interface MessageInputProps {
-  onSend: (text: string, attachments: Attachment[]) => void;
+  onSend: (
+    text: string,
+    attachments: Attachment[],
+  ) => boolean | void | Promise<boolean | void>;
   onStop?: () => void;
   disabled: boolean;
   availableModels?: ModelInfo[];
@@ -300,6 +303,9 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const fileSelectionRunRef = useRef(0);
     const polishRunRef = useRef(0);
     const dragDepthRef = useRef(0);
+    const draftRevisionRef = useRef(0);
+    const submissionRunRef = useRef(0);
+    const isSubmittingRef = useRef(false);
 
     const clearRecordingTimer = useCallback(() => {
       if (timerRef.current) {
@@ -400,12 +406,14 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       }
 
       if (accepted.length > 0) {
+        draftRevisionRef.current += 1;
         setAttachments((prev) => [...prev, ...accepted]);
       }
     };
 
     useImperativeHandle(ref, () => ({
       setValue: (value: string) => {
+        draftRevisionRef.current += 1;
         setInput(value);
         requestAnimationFrame(() => {
           if (textareaRef.current) {
@@ -419,6 +427,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         textareaRef.current?.focus();
       },
       setAttachments: (atts: Attachment[]) => {
+        draftRevisionRef.current += 1;
         setAttachments(atts);
       },
     }));
@@ -742,25 +751,62 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         })
       ) {
         e.preventDefault();
-        handleSend();
+        void handleSend();
       }
     };
 
-    const handleSend = () => {
+    const handleSend = async () => {
       if (
         (!input.trim() && attachments.length === 0) ||
         disabled ||
         isParsingAttachments ||
-        !selectedModel
+        !selectedModel ||
+        isSubmittingRef.current
       ) {
         return;
       }
 
-      onSend(input, attachments);
+      const submittedInput = input;
+      const submittedAttachments = attachments;
+      const draftRevision = draftRevisionRef.current;
+      const submissionRun = submissionRunRef.current + 1;
+      submissionRunRef.current = submissionRun;
+      isSubmittingRef.current = true;
       setInput("");
       setAttachments([]);
       if (textareaRef.current) {
         textareaRef.current.style.height = "auto";
+      }
+
+      const restoreSubmittedDraft = () => {
+        if (
+          submissionRunRef.current !== submissionRun ||
+          draftRevisionRef.current !== draftRevision
+        ) {
+          return;
+        }
+        setInput(submittedInput);
+        setAttachments(submittedAttachments);
+        requestAnimationFrame(() => {
+          if (!textareaRef.current) return;
+          textareaRef.current.style.height = "auto";
+          textareaRef.current.style.height =
+            textareaRef.current.scrollHeight + "px";
+        });
+      };
+
+      try {
+        const accepted = await onSend(submittedInput, submittedAttachments);
+        if (accepted === false) {
+          restoreSubmittedDraft();
+        }
+      } catch (error) {
+        logInputError("Failed to send message", error);
+        restoreSubmittedDraft();
+      } finally {
+        if (submissionRunRef.current === submissionRun) {
+          isSubmittingRef.current = false;
+        }
       }
     };
 
@@ -1201,6 +1247,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     };
 
     const removeAttachment = (id: string) => {
+      draftRevisionRef.current += 1;
       setAttachments((prev) => prev.filter((a) => a.id !== id));
     };
 
@@ -1430,7 +1477,10 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           autoComplete="off"
           aria-describedby={errorMsg ? errorMessageId : undefined}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            draftRevisionRef.current += 1;
+            setInput(e.target.value);
+          }}
           onKeyDown={handleKeyDown}
           onPaste={handleComposerPaste}
           disabled={isInputBusy}
@@ -1473,7 +1523,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 onChange={handleTextFallbackSelect}
                 className="hidden"
                 multiple
-                accept="text/*,application/json,application/xml,application/javascript,application/xhtml+xml,application/x-yaml,application/sql,application/graphql,application/ld+json,application/x-sh,application/x-httpd-php,application/typescript,.csv,.doc,.docx,.md,.markdown,.pdf,.ppt,.pptx,.txt,.xls,.xlsx"
+                accept="text/*,application/json,application/xml,application/javascript,application/xhtml+xml,application/x-yaml,application/sql,application/graphql,application/ld+json,application/x-sh,application/x-httpd-php,application/typescript,.csv,.docx,.md,.markdown,.pdf,.pptx,.txt,.xlsx"
               />
 
               <DropdownMenu

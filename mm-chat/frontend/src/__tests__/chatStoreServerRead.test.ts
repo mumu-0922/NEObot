@@ -1140,6 +1140,7 @@ describe("chat store server read path", () => {
 
   it("sends a server user message and streams the assistant into the snapshot only", async () => {
     const localMessage = makeMessage("local-m1", "user");
+    const onUserMessageAccepted = vi.fn();
     const generationSnapshots: unknown[] = [];
     const draftSnapshots: unknown[] = [];
     const searchSnapshots: unknown[] = [];
@@ -1278,6 +1279,7 @@ describe("chat store server read path", () => {
         config: { useSearch: true },
         userMessageIdempotencyKey: "user-key",
         streamIdempotencyKey: "stream-key",
+        onUserMessageAccepted,
       }),
     ).resolves.toMatchObject({ status: "completed" });
 
@@ -1295,6 +1297,9 @@ describe("chat store server read path", () => {
     expect(state.serverReadState.sessions[0]?.messageCount).toBe(2);
     expect(state.serverReadState.isLoading).toBe(false);
     expect(state.serverReadState.error).toBeNull();
+    expect(onUserMessageAccepted).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "m3", role: "user" }),
+    );
     expect(generationSnapshots).toEqual([
       {
         status: "streaming",

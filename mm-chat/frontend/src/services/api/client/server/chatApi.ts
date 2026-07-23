@@ -423,14 +423,15 @@ function updateMessageBody(
 function appendUserMessageBody(
   input: AppendUserMessageInput,
 ): AppendUserMessageRequestBody {
-  if (!input.content.trim()) {
+  const attachments = normalizeServerAttachments(input.attachments);
+  if (!input.content.trim() && !attachments?.length) {
     throw new ApiClientError("EMPTY_CONTENT", "message content is required");
   }
 
   return removeUndefined({
     content: input.content,
     parentMessageId: input.parentMessageId,
-    attachments: normalizeServerAttachments(input.attachments),
+    attachments,
     metadata: input.metadata,
     idempotencyKey: input.idempotencyKey,
   });

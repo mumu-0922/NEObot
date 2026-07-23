@@ -1436,21 +1436,20 @@ const ChatApp = () => {
   const handleSendServerMessage = async (
     text: string,
     attachments: Attachment[],
-  ) => {
-    if ((!text.trim() && attachments.length === 0) || isGenerating) return;
-    if (!text.trim()) {
-      showActionError("Server mode requires message text with attachments.");
-      return;
+  ): Promise<boolean> => {
+    if ((!text.trim() && attachments.length === 0) || isGenerating) {
+      return false;
     }
     if (
       attachments.some((attachment) => !isKnowledgeAttachment(attachment)) &&
       !serverFilesEnabled
     ) {
       showActionError("Server file uploads are not enabled.");
-      return;
+      return false;
     }
 
     const generation = beginActiveGeneration();
+    let messageAccepted = false;
 
     try {
       const routedModel = resolveImageGenerationRoute({
@@ -1534,7 +1533,7 @@ const ChatApp = () => {
               signal: generation.controller.signal,
             })
           : [];
-      if (!isGenerationRunActive(generation)) return;
+      if (!isGenerationRunActive(generation)) return messageAccepted;
       let skillContext = "";
       let pluginContext = "";
       if (!routesToImageGeneration) {
@@ -1547,7 +1546,7 @@ const ChatApp = () => {
           autoSelect: false,
           signal: generation.controller.signal,
         });
-        if (!isGenerationRunActive(generation)) return;
+        if (!isGenerationRunActive(generation)) return messageAccepted;
         skillContext = skillResolution.context;
 
         const pluginResolution = await orchestrateServerPlugins({
@@ -1558,7 +1557,7 @@ const ChatApp = () => {
           activePluginIds: effectiveContext.activePluginIds,
           signal: generation.controller.signal,
         });
-        if (!isGenerationRunActive(generation)) return;
+        if (!isGenerationRunActive(generation)) return messageAccepted;
         pluginContext = pluginResolution.context;
       }
       const systemInstruction = [
@@ -1586,6 +1585,9 @@ const ChatApp = () => {
         provider: runtimeProvider,
         systemInstruction,
         signal: generation.controller.signal,
+        onUserMessageAccepted: () => {
+          messageAccepted = true;
+        },
       });
 
       if (shouldAutoRename) {
@@ -1611,14 +1613,16 @@ const ChatApp = () => {
             logChatAppError("Server chat title generation failed:", error);
           });
       }
+      return messageAccepted;
     } catch (error: any) {
       if (error.name === "AbortError" || generation.controller.signal.aborted) {
-        return;
+        return messageAccepted;
       }
       logChatAppError("Server message generation failed:", error);
       showActionError(
         error instanceof Error ? error.message : "Server message failed.",
       );
+      return messageAccepted;
     } finally {
       setActiveImageGeneration(null);
       finishActiveGeneration(generation);
@@ -1630,8 +1634,7 @@ const ChatApp = () => {
     hasWheelMessageScrollIntentRef.current = false;
     hasPointerMessageScrollIntentRef.current = false;
     if (serverModeEnabled) {
-      await handleSendServerMessage(text, attachments);
-      return;
+      return await handleSendServerMessage(text, attachments);
     }
 
     if ((!text.trim() && attachments.length === 0) || isGenerating) return;

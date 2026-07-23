@@ -1851,7 +1851,7 @@ describe("Phase 11.2A server chat CRUD adapter", () => {
     ]);
   });
 
-  it("appends completed user messages without server-managed fields", async () => {
+  it("appends attachment-only user messages without server-managed fields", async () => {
     const requests: Array<{ url: string; body: unknown; method?: string }> = [];
     const chat = createServerChatApiShell(
       createHttpClient({
@@ -1868,7 +1868,7 @@ describe("Phase 11.2A server chat CRUD adapter", () => {
               conversationId: "conversation/with slash",
               role: "user",
               status: "completed",
-              content: "hello",
+              content: "",
               sequenceNo: 1,
               attachments: [],
               metadata: {},
@@ -1884,7 +1884,7 @@ describe("Phase 11.2A server chat CRUD adapter", () => {
 
     await chat.appendUserMessage({
       conversationId: "conversation/with slash",
-      content: "hello",
+      content: "",
       attachments: [{ fileId: "file-1", purpose: "chat" }],
       metadata: { source: "test" },
       idempotencyKey: "message-key",
@@ -1895,7 +1895,7 @@ describe("Phase 11.2A server chat CRUD adapter", () => {
         url: "http://backend.test/v1/chat/conversations/conversation%2Fwith%20slash/messages",
         method: "POST",
         body: {
-          content: "hello",
+          content: "",
           attachments: [
             { source: "server", fileId: "file-1", purpose: "chat" },
           ],
