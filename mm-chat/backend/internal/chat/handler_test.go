@@ -795,8 +795,10 @@ func TestHandlerStreamsMockAssistantAndPersistsMessages(t *testing.T) {
 	if assistant.ModelProvider != "mock" || assistant.ModelID != "mock-chat" {
 		t.Fatalf("assistant model = %s/%s, want mock/mock-chat", assistant.ModelProvider, assistant.ModelID)
 	}
-	if _, ok := assistant.Metadata[processTraceMetadataKey]; ok {
-		t.Fatalf("ordinary completed assistant persisted an empty process trace: %#v", assistant.Metadata)
+	steps, ok := assistant.Metadata[processTraceMetadataKey].([]ProcessStep)
+	if !ok || len(steps) != 1 || steps[0].Kind != ProcessStepKindGeneration ||
+		steps[0].Status != ProcessStepStatusCompleted {
+		t.Fatalf("ordinary completed assistant process trace = %#v", assistant.Metadata)
 	}
 }
 
@@ -1338,7 +1340,7 @@ func TestHandlerExecutesExternalSearchOnceAndPersistsWebArtifacts(t *testing.T) 
 	if !strings.Contains(recorder.Body.String(), "event: search.results") ||
 		!strings.Contains(recorder.Body.String(), `"marker":"[W1]"`) ||
 		!strings.Contains(recorder.Body.String(), `"kind":"web","status":"completed"`) ||
-		!strings.Contains(recorder.Body.String(), `"query":"latest external fixture"`) {
+		strings.Contains(recorder.Body.String(), `"query":"latest external fixture"`) {
 		t.Fatalf("stream body = %s", recorder.Body.String())
 	}
 	messages := repo.messages[testConversationID]
@@ -1520,7 +1522,7 @@ func TestHandlerSearchOffSkipsResolverPlannerAndSearch(t *testing.T) {
 	}
 }
 
-func TestHandlerExternalCompatibilityPlannerCanSkipWithoutEmptyProcessPanel(t *testing.T) {
+func TestHandlerExternalCompatibilityPlannerCanSkipWithDirectProcessPanel(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
 	repo.messages[testConversationID] = append(
@@ -1558,8 +1560,9 @@ func TestHandlerExternalCompatibilityPlannerCanSkipWithoutEmptyProcessPanel(t *t
 		)
 	}
 	message := repo.messages[testConversationID][1]
-	if message.Content != "rewritten sentence" ||
-		message.Metadata[processTraceMetadataKey] != nil ||
+	steps, ok := message.Metadata[processTraceMetadataKey].([]ProcessStep)
+	if message.Content != "rewritten sentence" || !ok || len(steps) != 1 ||
+		steps[0].Kind != ProcessStepKindGeneration ||
 		strings.Contains(recorder.Body.String(), `"kind":"web"`) ||
 		strings.Contains(recorder.Body.String(), `"kind":"tool"`) {
 		t.Fatalf("auto skip message/stream = %#v / %s", message, recorder.Body.String())
@@ -2677,7 +2680,7 @@ func TestHandlerCompatibilityKnowledgeContinuesIntoExternalSearch(t *testing.T) 
 		fakeMessage(testMessageID, testConversationID, 0, "user", "最新公开资料和内部资料有何差异"),
 	)
 	provider := &capturingSequenceProvider{outputs: [][]string{
-		{`{"shouldSearch":true,"query":"fixture 最新公开资料"}`},
+		{`{"route":"both","knowledgeQuery":"内部资料差异","webQuery":"fixture 最新公开资料"}`},
 		{"兼容回答 [K1] [W1]"},
 	}}
 	searchProvider := &fakeWebSearchProvider{result: websearch.Result{Sources: []websearch.Source{{
@@ -3104,7 +3107,7 @@ func TestHandlerRemovesUnissuedKnowledgeMarkerFromModelFallback(t *testing.T) {
 	if assistant.Content != "General model answer" {
 		t.Fatalf("assistant content = %q", assistant.Content)
 	}
-	assertAutoRAGMetadata(t, assistant, "no_evidence", 0)
+	assertAutoRAGMetadata(t, assistant, "not_requested", 0)
 	if strings.Contains(rec.Body.String(), `"content":"General model answer [K1]"`) ||
 		!strings.Contains(rec.Body.String(), `"content":"General model answer"`) {
 		t.Fatalf("terminal stream retained unissued marker: %s", rec.Body.String())
@@ -4714,6 +4717,7 @@ func (p *fakeWebSearchProvider) Search(
 
 type modelBuiltInSearchProbe struct {
 	ordinaryCalled bool
+	plannerCalled  bool
 	builtInCalled  bool
 	input          ProviderRequest
 	delta          string
@@ -4722,6 +4726,7 @@ type modelBuiltInSearchProbe struct {
 type builtInSearchStartupFailureProvider struct {
 	builtInCalled  bool
 	ordinaryCalled bool
+	plannerCalled  bool
 	ordinaryInput  ProviderRequest
 }
 
@@ -4733,6 +4738,13 @@ func (p *builtInSearchStartupFailureProvider) StreamChat(
 	_ context.Context,
 	input ProviderRequest,
 ) (<-chan ProviderEvent, error) {
+	if strings.Contains(input.SystemPrompt, compatibilityRetrievalPlannerInstruction) {
+		p.plannerCalled = true
+		events := make(chan ProviderEvent, 1)
+		events <- ProviderEvent{Type: ProviderEventDelta, Delta: `{"route":"both","knowledgeQuery":"内部方向","webQuery":"内部方向最新公开进展"}`}
+		close(events)
+		return events, nil
+	}
 	p.ordinaryCalled = true
 	p.ordinaryInput = input
 	events := make(chan ProviderEvent, 1)
@@ -4757,6 +4769,13 @@ func (p *modelBuiltInSearchProbe) StreamChat(
 	_ context.Context,
 	input ProviderRequest,
 ) (<-chan ProviderEvent, error) {
+	if strings.Contains(input.SystemPrompt, compatibilityRetrievalPlannerInstruction) {
+		p.plannerCalled = true
+		events := make(chan ProviderEvent, 1)
+		events <- ProviderEvent{Type: ProviderEventDelta, Delta: `{"route":"both","knowledgeQuery":"内部方向","webQuery":"内部方向最新公开进展"}`}
+		close(events)
+		return events, nil
+	}
 	p.ordinaryCalled = true
 	p.input = input
 	events := make(chan ProviderEvent)
@@ -4885,7 +4904,17 @@ func (p *titleProvider) StreamChat(ctx context.Context, input ProviderRequest) (
 	ch := make(chan ProviderEvent)
 	go func() {
 		defer close(ch)
-		for _, chunk := range p.chunks {
+		chunks := p.chunks
+		if strings.Contains(input.SystemPrompt, compatibilityRetrievalPlannerInstruction) {
+			route := compatibilityRouteKnowledge
+			lowerPrompt := strings.ToLower(input.Prompt)
+			if strings.Contains(lowerPrompt, "unrelated") {
+				route = compatibilityRouteDirect
+			}
+			chunks = []string{`{"route":"` + string(route) + `","knowledgeQuery":"` +
+				strings.ReplaceAll(input.Prompt, `"`, ``) + `","webQuery":""}`}
+		}
+		for _, chunk := range chunks {
 			select {
 			case <-ctx.Done():
 				return

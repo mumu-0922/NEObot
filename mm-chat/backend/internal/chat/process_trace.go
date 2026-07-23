@@ -265,14 +265,7 @@ func (trace *processTrace) shouldPersist(reasoning string) bool {
 	if strings.TrimSpace(reasoning) != "" {
 		return true
 	}
-	for _, step := range trace.steps {
-		if step.Kind != ProcessStepKindGeneration ||
-			step.Status == ProcessStepStatusFailed ||
-			step.Status == ProcessStepStatusCancelled {
-			return true
-		}
-	}
-	return false
+	return len(trace.steps) > 0
 }
 
 func withProcessTraceMessageMetadata(
@@ -329,8 +322,8 @@ func sanitizeProcessDetail(detail map[string]any) map[string]any {
 		return nil
 	}
 	allowed := map[string]struct{}{
-		"query": {}, "redactedArgs": {}, "hitCount": {}, "sourceCount": {},
-		"citationMarkers": {}, "provider": {}, "mode": {}, "outcome": {},
+		"hitCount": {}, "sourceCount": {}, "citationMarkers": {},
+		"provider": {}, "mode": {}, "outcome": {},
 		"failureCategory": {}, "queryRewritten": {}, "rerankStatus": {},
 		"toolName": {},
 		"round":    {}, "selectedCount": {}, "truncated": {},

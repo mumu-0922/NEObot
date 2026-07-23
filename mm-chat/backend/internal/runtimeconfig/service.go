@@ -56,6 +56,8 @@ const maxStoredProviderSecretRefBytes = 96 << 10
 type Service struct {
 	cfg                      config.Config
 	repo                     ProviderConfigRepository
+	toolCapabilityRepo       ToolCapabilityCacheRepository
+	toolCapabilityWarmup     func(context.Context, ToolCapabilityWarmupRequest)
 	taskModelRepo            TaskModelSettingsRepository
 	providerSecrets          *providersecrets.Vault
 	searchHTTPClient         websearch.HTTPDoer
@@ -72,12 +74,23 @@ type ServiceOption func(*Service)
 func WithProviderConfigRepository(repo ProviderConfigRepository) ServiceOption {
 	return func(s *Service) {
 		s.repo = repo
+		if capabilityRepo, ok := repo.(ToolCapabilityCacheRepository); ok {
+			s.toolCapabilityRepo = capabilityRepo
+		}
 	}
 }
 
 func WithTaskModelSettingsRepository(repo TaskModelSettingsRepository) ServiceOption {
 	return func(s *Service) {
 		s.taskModelRepo = repo
+	}
+}
+
+func WithToolCapabilityWarmupScheduler(
+	schedule func(context.Context, ToolCapabilityWarmupRequest),
+) ServiceOption {
+	return func(s *Service) {
+		s.toolCapabilityWarmup = schedule
 	}
 }
 
@@ -125,20 +138,22 @@ type StoredProviderConfig struct {
 }
 
 type StoredProviderConfigPayload struct {
-	Kind                         string       `json:"kind,omitempty"`
-	Type                         ProviderType `json:"type"`
-	SearchProvider               string       `json:"searchProvider,omitempty"`
-	RAGProvider                  string       `json:"ragProvider,omitempty"`
-	VoiceProvider                string       `json:"voiceProvider,omitempty"`
-	BaseURL                      string       `json:"baseUrl"`
-	Models                       []string     `json:"models"`
-	Enabled                      bool         `json:"enabled"`
-	ConnectionTestSHA256         string       `json:"connectionTestSha256,omitempty"`
-	ConnectionTestedAt           string       `json:"connectionTestedAt,omitempty"`
-	ModelBuiltInSearchProtocol   string       `json:"modelBuiltInSearchProtocol,omitempty"`
-	ModelBuiltInSearchModel      string       `json:"modelBuiltInSearchModel,omitempty"`
-	ModelBuiltInSearchTestSHA256 string       `json:"modelBuiltInSearchTestSha256,omitempty"`
-	ModelBuiltInSearchTestedAt   string       `json:"modelBuiltInSearchTestedAt,omitempty"`
+	Kind                         string                            `json:"kind,omitempty"`
+	Type                         ProviderType                      `json:"type"`
+	SearchProvider               string                            `json:"searchProvider,omitempty"`
+	RAGProvider                  string                            `json:"ragProvider,omitempty"`
+	VoiceProvider                string                            `json:"voiceProvider,omitempty"`
+	BaseURL                      string                            `json:"baseUrl"`
+	Models                       []string                          `json:"models"`
+	Enabled                      bool                              `json:"enabled"`
+	ConnectionTestSHA256         string                            `json:"connectionTestSha256,omitempty"`
+	ConnectionTestedAt           string                            `json:"connectionTestedAt,omitempty"`
+	ModelBuiltInSearchProtocol   string                            `json:"modelBuiltInSearchProtocol,omitempty"`
+	ModelBuiltInSearchModel      string                            `json:"modelBuiltInSearchModel,omitempty"`
+	ModelBuiltInSearchTestSHA256 string                            `json:"modelBuiltInSearchTestSha256,omitempty"`
+	ModelBuiltInSearchTestedAt   string                            `json:"modelBuiltInSearchTestedAt,omitempty"`
+	ToolCapabilityDefault        ToolCapabilityOverride            `json:"toolCapabilityDefault,omitempty"`
+	ToolCapabilityModelOverrides map[string]ToolCapabilityOverride `json:"toolCapabilityModelOverrides,omitempty"`
 }
 
 type UpsertProviderConfigInput struct {
@@ -337,21 +352,24 @@ func (s *Service) fetchResolvedProviderModels(
 }
 
 type resolvedServerDefaultProvider struct {
-	Name                        string
-	Type                        ProviderType
-	BaseURL                     string
-	Models                      []string
-	Enabled                     bool
-	Available                   bool
-	APIKey                      string
-	SecretRef                   string
-	SecretErr                   error
-	ConnectionTestValid         bool
-	ConnectionTestedAt          string
-	ModelBuiltInSearchProtocol  string
-	ModelBuiltInSearchModel     string
-	ModelBuiltInSearchTestValid bool
-	ModelBuiltInSearchTestedAt  string
+	Name                         string
+	Type                         ProviderType
+	BaseURL                      string
+	Models                       []string
+	Enabled                      bool
+	Available                    bool
+	APIKey                       string
+	SecretRef                    string
+	SecretErr                    error
+	ConnectionTestValid          bool
+	ConnectionTestedAt           string
+	ModelBuiltInSearchProtocol   string
+	ModelBuiltInSearchModel      string
+	ModelBuiltInSearchTestValid  bool
+	ModelBuiltInSearchTestedAt   string
+	ToolCapabilityDefault        ToolCapabilityOverride
+	ToolCapabilityModelOverrides map[string]ToolCapabilityOverride
+	ToolCapabilityConfigHash     string
 }
 
 func (s *Service) AdminProviderConfig(ctx context.Context) (AdminProviderConfigResponse, error) {
@@ -443,6 +461,38 @@ func (s *Service) UpsertAdminProviderConfig(
 	name := nonEmpty(request.Name, config.DefaultProviderName)
 	baseURL := strings.TrimSpace(request.BaseURL)
 	models := normalizeModelList(request.Models)
+	toolCapabilityDefault := ToolCapabilityAuto
+	toolCapabilityModelOverrides := map[string]ToolCapabilityOverride{}
+	if hasCurrent {
+		toolCapabilityDefault = normalizeToolCapabilityOverride(
+			currentStored.Config.ToolCapabilityDefault,
+		)
+		toolCapabilityModelOverrides = cloneToolCapabilityOverrides(
+			currentStored.Config.ToolCapabilityModelOverrides,
+		)
+	}
+	if request.ToolCapabilityDefault != nil {
+		value, ok := parseToolCapabilityOverride(*request.ToolCapabilityDefault)
+		if !ok {
+			return AdminProviderConfigResponse{}, ErrProviderConfigUnsupported
+		}
+		toolCapabilityDefault = value
+	}
+	if request.ToolCapabilityModelOverrides != nil {
+		var err error
+		toolCapabilityModelOverrides, err = normalizeToolCapabilityModelOverrides(
+			request.ToolCapabilityModelOverrides,
+			models,
+		)
+		if err != nil {
+			return AdminProviderConfigResponse{}, err
+		}
+	} else {
+		toolCapabilityModelOverrides = filterToolCapabilityModelOverrides(
+			toolCapabilityModelOverrides,
+			models,
+		)
+	}
 	secretRef := strings.TrimSpace(current.SecretRef)
 
 	if request.ClearAPIKey {
@@ -556,12 +606,15 @@ func (s *Service) UpsertAdminProviderConfig(
 			ModelBuiltInSearchModel:      builtInModel,
 			ModelBuiltInSearchTestSHA256: builtInTestSHA256,
 			ModelBuiltInSearchTestedAt:   builtInTestedAt,
+			ToolCapabilityDefault:        toolCapabilityDefault,
+			ToolCapabilityModelOverrides: toolCapabilityModelOverrides,
 		},
 	})
 	if err != nil {
 		return AdminProviderConfigResponse{}, err
 	}
 
+	s.scheduleToolCapabilityWarmup(ctx, stored)
 	if providerID == serverDefaultProviderID {
 		return adminProviderResponse(s.resolveStoredServerDefault(stored), providerID, "server-default"), nil
 	}
@@ -616,21 +669,24 @@ func (s *Service) resolveStoredServerDefault(stored StoredProviderConfig) resolv
 	enabled := stored.Config.Enabled && connectionValid
 	available := enabled && secretErr == nil && len(models) > 0 && apiKey != ""
 	return resolvedServerDefaultProvider{
-		Name:                        name,
-		Type:                        providerType,
-		BaseURL:                     baseURL,
-		Models:                      models,
-		Enabled:                     enabled,
-		Available:                   available,
-		APIKey:                      apiKey,
-		SecretRef:                   secretRef,
-		SecretErr:                   secretErr,
-		ConnectionTestValid:         connectionValid,
-		ConnectionTestedAt:          stored.Config.ConnectionTestedAt,
-		ModelBuiltInSearchProtocol:  stored.Config.ModelBuiltInSearchProtocol,
-		ModelBuiltInSearchModel:     stored.Config.ModelBuiltInSearchModel,
-		ModelBuiltInSearchTestValid: ModelBuiltInSearchConnectionTestValid(stored),
-		ModelBuiltInSearchTestedAt:  stored.Config.ModelBuiltInSearchTestedAt,
+		Name:                         name,
+		Type:                         providerType,
+		BaseURL:                      baseURL,
+		Models:                       models,
+		Enabled:                      enabled,
+		Available:                    available,
+		APIKey:                       apiKey,
+		SecretRef:                    secretRef,
+		SecretErr:                    secretErr,
+		ConnectionTestValid:          connectionValid,
+		ConnectionTestedAt:           stored.Config.ConnectionTestedAt,
+		ModelBuiltInSearchProtocol:   stored.Config.ModelBuiltInSearchProtocol,
+		ModelBuiltInSearchModel:      stored.Config.ModelBuiltInSearchModel,
+		ModelBuiltInSearchTestValid:  ModelBuiltInSearchConnectionTestValid(stored),
+		ModelBuiltInSearchTestedAt:   stored.Config.ModelBuiltInSearchTestedAt,
+		ToolCapabilityDefault:        normalizeToolCapabilityOverride(stored.Config.ToolCapabilityDefault),
+		ToolCapabilityModelOverrides: cloneToolCapabilityOverrides(stored.Config.ToolCapabilityModelOverrides),
+		ToolCapabilityConfigHash:     toolCapabilityConfigHash(stored),
 	}
 }
 
@@ -649,21 +705,24 @@ func (s *Service) resolveStoredProvider(stored StoredProviderConfig) resolvedSer
 	connectionValid := ProviderConnectionTestValid(stored)
 	enabled := stored.Config.Enabled && connectionValid
 	return resolvedServerDefaultProvider{
-		Name:                        nonEmpty(stored.Label, "New Provider"),
-		Type:                        providerType,
-		BaseURL:                     strings.TrimSpace(stored.Config.BaseURL),
-		Models:                      models,
-		Enabled:                     enabled,
-		Available:                   enabled && secretErr == nil && len(models) > 0 && apiKey != "",
-		APIKey:                      apiKey,
-		SecretRef:                   secretRef,
-		SecretErr:                   secretErr,
-		ConnectionTestValid:         connectionValid,
-		ConnectionTestedAt:          stored.Config.ConnectionTestedAt,
-		ModelBuiltInSearchProtocol:  stored.Config.ModelBuiltInSearchProtocol,
-		ModelBuiltInSearchModel:     stored.Config.ModelBuiltInSearchModel,
-		ModelBuiltInSearchTestValid: ModelBuiltInSearchConnectionTestValid(stored),
-		ModelBuiltInSearchTestedAt:  stored.Config.ModelBuiltInSearchTestedAt,
+		Name:                         nonEmpty(stored.Label, "New Provider"),
+		Type:                         providerType,
+		BaseURL:                      strings.TrimSpace(stored.Config.BaseURL),
+		Models:                       models,
+		Enabled:                      enabled,
+		Available:                    enabled && secretErr == nil && len(models) > 0 && apiKey != "",
+		APIKey:                       apiKey,
+		SecretRef:                    secretRef,
+		SecretErr:                    secretErr,
+		ConnectionTestValid:          connectionValid,
+		ConnectionTestedAt:           stored.Config.ConnectionTestedAt,
+		ModelBuiltInSearchProtocol:   stored.Config.ModelBuiltInSearchProtocol,
+		ModelBuiltInSearchModel:      stored.Config.ModelBuiltInSearchModel,
+		ModelBuiltInSearchTestValid:  ModelBuiltInSearchConnectionTestValid(stored),
+		ModelBuiltInSearchTestedAt:   stored.Config.ModelBuiltInSearchTestedAt,
+		ToolCapabilityDefault:        normalizeToolCapabilityOverride(stored.Config.ToolCapabilityDefault),
+		ToolCapabilityModelOverrides: cloneToolCapabilityOverrides(stored.Config.ToolCapabilityModelOverrides),
+		ToolCapabilityConfigHash:     toolCapabilityConfigHash(stored),
 	}
 }
 
@@ -686,6 +745,10 @@ func adminProviderResponse(
 		ConnectionTestValid: connectionTestValid,
 		ConnectionTestedAt:  connectionTestedAt,
 		ModelBuiltInSearch:  builtIn,
+		ToolCapability: AdminToolCapabilityConfigResponse{
+			Default:        normalizeToolCapabilityOverride(provider.ToolCapabilityDefault),
+			ModelOverrides: cloneToolCapabilityOverrides(provider.ToolCapabilityModelOverrides),
+		},
 	}
 }
 
@@ -845,15 +908,18 @@ func normalizeModelList(models []string) []string {
 }
 
 type ResolvedProvider struct {
-	ID                          string
-	Name                        string
-	Type                        ProviderType
-	BaseURL                     string
-	APIKey                      string
-	Models                      []string
-	ModelBuiltInSearchProtocol  string
-	ModelBuiltInSearchModel     string
-	ModelBuiltInSearchTestValid bool
+	ID                           string
+	Name                         string
+	Type                         ProviderType
+	BaseURL                      string
+	APIKey                       string
+	Models                       []string
+	ModelBuiltInSearchProtocol   string
+	ModelBuiltInSearchModel      string
+	ModelBuiltInSearchTestValid  bool
+	ToolCapabilityDefault        ToolCapabilityOverride
+	ToolCapabilityModelOverrides map[string]ToolCapabilityOverride
+	ToolCapabilityConfigHash     string
 }
 
 func (s *Service) ResolveServerDefaultProvider(ctx context.Context) (ResolvedProvider, error) {
@@ -888,15 +954,18 @@ func (s *Service) ResolveServerDefaultProvider(ctx context.Context) (ResolvedPro
 		return ResolvedProvider{}, ErrProviderSecretRequired
 	}
 	return ResolvedProvider{
-		ID:                          serverDefaultProviderID,
-		Name:                        provider.Name,
-		Type:                        provider.Type,
-		BaseURL:                     provider.BaseURL,
-		APIKey:                      provider.APIKey,
-		Models:                      append([]string(nil), provider.Models...),
-		ModelBuiltInSearchProtocol:  provider.ModelBuiltInSearchProtocol,
-		ModelBuiltInSearchModel:     provider.ModelBuiltInSearchModel,
-		ModelBuiltInSearchTestValid: provider.ModelBuiltInSearchTestValid,
+		ID:                           serverDefaultProviderID,
+		Name:                         provider.Name,
+		Type:                         provider.Type,
+		BaseURL:                      provider.BaseURL,
+		APIKey:                       provider.APIKey,
+		Models:                       append([]string(nil), provider.Models...),
+		ModelBuiltInSearchProtocol:   provider.ModelBuiltInSearchProtocol,
+		ModelBuiltInSearchModel:      provider.ModelBuiltInSearchModel,
+		ModelBuiltInSearchTestValid:  provider.ModelBuiltInSearchTestValid,
+		ToolCapabilityDefault:        provider.ToolCapabilityDefault,
+		ToolCapabilityModelOverrides: cloneToolCapabilityOverrides(provider.ToolCapabilityModelOverrides),
+		ToolCapabilityConfigHash:     provider.ToolCapabilityConfigHash,
 	}, nil
 }
 
@@ -932,15 +1001,18 @@ func (s *Service) ResolveStoredProvider(ctx context.Context, providerID string) 
 		return ResolvedProvider{}, ErrProviderSecretRequired
 	}
 	return ResolvedProvider{
-		ID:                          providerID,
-		Name:                        provider.Name,
-		Type:                        provider.Type,
-		BaseURL:                     provider.BaseURL,
-		APIKey:                      provider.APIKey,
-		Models:                      append([]string(nil), provider.Models...),
-		ModelBuiltInSearchProtocol:  provider.ModelBuiltInSearchProtocol,
-		ModelBuiltInSearchModel:     provider.ModelBuiltInSearchModel,
-		ModelBuiltInSearchTestValid: provider.ModelBuiltInSearchTestValid,
+		ID:                           providerID,
+		Name:                         provider.Name,
+		Type:                         provider.Type,
+		BaseURL:                      provider.BaseURL,
+		APIKey:                       provider.APIKey,
+		Models:                       append([]string(nil), provider.Models...),
+		ModelBuiltInSearchProtocol:   provider.ModelBuiltInSearchProtocol,
+		ModelBuiltInSearchModel:      provider.ModelBuiltInSearchModel,
+		ModelBuiltInSearchTestValid:  provider.ModelBuiltInSearchTestValid,
+		ToolCapabilityDefault:        provider.ToolCapabilityDefault,
+		ToolCapabilityModelOverrides: cloneToolCapabilityOverrides(provider.ToolCapabilityModelOverrides),
+		ToolCapabilityConfigHash:     provider.ToolCapabilityConfigHash,
 	}, nil
 }
 

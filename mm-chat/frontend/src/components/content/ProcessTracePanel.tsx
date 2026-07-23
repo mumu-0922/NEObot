@@ -16,9 +16,10 @@ import { useTranslations } from "next-intl";
 
 import {
   isProcessStepActive,
-  processOutcomeForDisplay,
+  processReasonCategoryForDisplay,
   projectProcessStepsForDisplay,
   resolveProcessPanelExpanded,
+  summarizeProcessRoute,
 } from "@/lib/chat/processTrace";
 import type { ProcessStep, ProcessStepKind } from "@/types";
 import MarkdownRenderer from "./MarkdownRenderer";
@@ -123,8 +124,7 @@ function ProcessStepRow({ step }: { step: ProcessStep }) {
   const Icon = kindIcons[step.kind];
   const active = isProcessStepActive(step);
   const failed = step.status === "failed" || step.status === "cancelled";
-  const query = stringDetail(step, "query");
-  const outcome = processOutcomeForDisplay(step);
+  const reason = processReasonCategoryForDisplay(step);
   const hitCount = numberDetail(step, "hitCount");
   const sourceCount = numberDetail(step, "sourceCount");
 
@@ -157,18 +157,16 @@ function ProcessStepRow({ step }: { step: ProcessStep }) {
               : ""}
           </span>
         </div>
-        {query ? (
-          <div className="mt-1 truncate text-[11px] text-gray-500 dark:text-muted-foreground/80">
-            {query}
-          </div>
-        ) : null}
-        {hitCount !== undefined || sourceCount !== undefined || outcome ? (
+        {hitCount !== undefined || sourceCount !== undefined ? (
           <div className="mt-0.5 text-[11px] text-gray-400 dark:text-muted-foreground/70">
             {hitCount !== undefined
               ? t("processKnowledgeHits", { count: hitCount })
-              : sourceCount !== undefined
-                ? t("processWebSources", { count: sourceCount })
-                : outcome}
+              : t("processWebSources", { count: sourceCount ?? 0 })}
+          </div>
+        ) : null}
+        {reason ? (
+          <div className="mt-0.5 text-[11px] text-gray-400 dark:text-muted-foreground/70">
+            {processReasonLabel(reason, t)}
           </div>
         ) : null}
       </div>
@@ -187,19 +185,36 @@ function buildProcessSummary(
       ? t("processRunning", { stage: processKindLabel(current.kind, t) })
       : t("processRunningGeneric");
   }
-  const failed = steps.some(
-    (step) => step.status === "failed" || step.status === "cancelled",
-  );
-  const duration = processTraceDuration(steps);
-  return failed
-    ? t("processFinishedWithIssue", {
-        count: steps.length,
-        duration: formatDuration(duration),
-      })
-    : t("processFinished", {
-        count: steps.length,
-        duration: formatDuration(duration),
+  const route = summarizeProcessRoute(steps);
+  switch (route.route) {
+    case "direct":
+      return t("processRouteDirect");
+    case "knowledge":
+      return t("processRouteKnowledge", { count: route.knowledgeSources });
+    case "web":
+      return t("processRouteWeb", { count: route.webSources });
+    case "both":
+      return t("processRouteBoth", {
+        knowledgeCount: route.knowledgeSources,
+        webCount: route.webSources,
       });
+  }
+}
+
+function processReasonLabel(
+  reason: NonNullable<ReturnType<typeof processReasonCategoryForDisplay>>,
+  t: ReturnType<typeof useTranslations<"Content">>,
+): string {
+  switch (reason) {
+    case "knowledge_miss":
+      return t("processReasonKnowledgeMiss");
+    case "web_miss":
+      return t("processReasonWebMiss");
+    case "planner_failed":
+      return t("processReasonPlannerFailed");
+    case "provider_degraded":
+      return t("processReasonProviderDegraded");
+  }
 }
 
 function processKindLabel(
@@ -242,29 +257,9 @@ function processStatusLabel(
   }
 }
 
-function processTraceDuration(steps: ProcessStep[]): number {
-  const starts = steps
-    .map((step) => (step.startedAt ? Date.parse(step.startedAt) : Number.NaN))
-    .filter(Number.isFinite);
-  const completions = steps
-    .map((step) =>
-      step.completedAt ? Date.parse(step.completedAt) : Number.NaN,
-    )
-    .filter(Number.isFinite);
-  if (starts.length > 0 && completions.length > 0) {
-    return Math.max(0, Math.max(...completions) - Math.min(...starts));
-  }
-  return Math.max(0, ...steps.map((step) => step.durationMs ?? 0));
-}
-
 function formatDuration(durationMs: number): string {
   if (durationMs < 1000) return `${Math.round(durationMs)}ms`;
   return `${(durationMs / 1000).toFixed(durationMs < 10_000 ? 1 : 0)}s`;
-}
-
-function stringDetail(step: ProcessStep, key: string): string {
-  const value = step.detail?.[key];
-  return typeof value === "string" ? value : "";
 }
 
 function numberDetail(step: ProcessStep, key: string): number | undefined {

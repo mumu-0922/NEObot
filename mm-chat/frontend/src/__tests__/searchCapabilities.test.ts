@@ -14,6 +14,8 @@ function provider(
     apiKey: "",
     enabled: true,
     models: [],
+    toolCapabilityDefault: "auto",
+    toolCapabilityModelOverrides: {},
     ...overrides,
   };
 }

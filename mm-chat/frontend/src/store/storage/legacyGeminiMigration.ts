@@ -240,6 +240,8 @@ export function buildLegacyGeminiProvider(
     enabled: true,
     models,
     modelsList: models,
+    toolCapabilityDefault: "auto",
+    toolCapabilityModelOverrides: {},
   };
 }
 

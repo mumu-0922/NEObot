@@ -35,6 +35,23 @@ import {
   encryptLocalSecret,
   LOCAL_SECRET_CONTEXTS,
 } from "@/lib/security/localSecrets";
+import type { ToolCapabilityOverride } from "@/types";
+
+type ToolCapabilityModelOverride = Exclude<ToolCapabilityOverride, "auto">;
+
+function selectedToolCapabilityModelOverrides(provider: {
+  models: readonly string[];
+  toolCapabilityModelOverrides: Record<string, ToolCapabilityOverride>;
+}): Record<string, ToolCapabilityModelOverride> {
+  const entries: [string, ToolCapabilityModelOverride][] = [];
+  for (const model of provider.models) {
+    const value = provider.toolCapabilityModelOverrides[model];
+    if (value === "enabled" || value === "disabled") {
+      entries.push([model, value]);
+    }
+  }
+  return Object.fromEntries(entries);
+}
 
 const ProviderSettings = () => {
   const t = useTranslations("Providers");
@@ -152,11 +169,12 @@ const ProviderSettings = () => {
   ) => {
     setSavingProviderId(providerSnapshot.id);
     try {
+      const persistedModels = overrides.models ?? providerSnapshot.models ?? [];
       const input = {
         name: providerSnapshot.name,
         type: providerSnapshot.type,
         baseUrl: providerSnapshot.baseUrl || "",
-        models: overrides.models ?? providerSnapshot.models ?? [],
+        models: persistedModels,
         enabled: providerSnapshot.enabled,
         modelBuiltInSearchProtocol:
           providerSnapshot.type === "OpenAI Compatible"
@@ -166,6 +184,12 @@ const ProviderSettings = () => {
           providerSnapshot.type === "OpenAI Compatible"
             ? providerSnapshot.modelBuiltInSearch?.model || ""
             : "",
+        toolCapabilityDefault: providerSnapshot.toolCapabilityDefault,
+        toolCapabilityModelOverrides: selectedToolCapabilityModelOverrides({
+          models: persistedModels,
+          toolCapabilityModelOverrides:
+            providerSnapshot.toolCapabilityModelOverrides,
+        }),
         ...(overrides.apiKeySecret
           ? { apiKeySecret: overrides.apiKeySecret }
           : {}),
@@ -491,6 +515,28 @@ const ProviderSettings = () => {
     }
   };
 
+  const handleToolCapabilityDefaultChange = (value: ToolCapabilityOverride) => {
+    if (!currentProvider?.isServerManaged) return;
+    updateProvider(currentProvider.id, { toolCapabilityDefault: value });
+    queueServerProviderPersist(currentProvider.id);
+  };
+
+  const handleToolCapabilityModelOverrideChange = (
+    model: string,
+    value: "inherit" | ToolCapabilityModelOverride,
+  ) => {
+    if (!currentProvider?.isServerManaged) return;
+    const entries = Object.entries(
+      currentProvider.toolCapabilityModelOverrides,
+    ).filter(([candidate]) => candidate !== model);
+    if (value !== "inherit") entries.push([model, value]);
+    const nextOverrides = Object.fromEntries(entries);
+    updateProvider(currentProvider.id, {
+      toolCapabilityModelOverrides: nextOverrides,
+    });
+    queueServerProviderPersist(currentProvider.id);
+  };
+
   const handleAddProvider = async () => {
     const newId = addProvider();
     setSelectedProviderId(newId);
@@ -517,8 +563,16 @@ const ProviderSettings = () => {
     const newModels = currentModels.includes(model)
       ? currentModels.filter((m) => m !== model)
       : [...currentModels, model];
+    const nextOverrides = Object.fromEntries(
+      Object.entries(currentProvider.toolCapabilityModelOverrides).filter(
+        ([candidate]) => newModels.includes(candidate),
+      ),
+    );
 
-    updateProvider(currentProvider.id, { models: newModels });
+    updateProvider(currentProvider.id, {
+      models: newModels,
+      toolCapabilityModelOverrides: nextOverrides,
+    });
     queueServerProviderPersist(currentProvider.id);
   };
 
@@ -853,6 +907,44 @@ const ProviderSettings = () => {
                       : t("serverManagedProviderDesc")}
                   </div>
                 )}
+                {serverModeEnabled && currentProvider.isServerManaged && (
+                  <div className="col-span-1 md:col-span-2 space-y-3 rounded-xl border border-gray-200 bg-gray-50/70 px-4 py-3 dark:border-border dark:bg-muted/50">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <label
+                          htmlFor={`${currentProviderDomId}-tool-capability-default`}
+                          className="block text-sm font-medium text-gray-700 dark:text-foreground/85"
+                        >
+                          {t("toolCapabilityDefault")}
+                        </label>
+                        <p className="mt-0.5 text-xs text-gray-500 dark:text-muted-foreground">
+                          {t("toolCapabilityDefaultDesc")}
+                        </p>
+                      </div>
+                      <select
+                        id={`${currentProviderDomId}-tool-capability-default`}
+                        value={currentProvider.toolCapabilityDefault}
+                        onChange={(event) =>
+                          handleToolCapabilityDefaultChange(
+                            event.target.value as ToolCapabilityOverride,
+                          )
+                        }
+                        className="min-w-40 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-border dark:bg-background dark:text-foreground"
+                      >
+                        <option value="auto">{t("toolCapabilityAuto")}</option>
+                        <option value="enabled">
+                          {t("toolCapabilityEnabled")}
+                        </option>
+                        <option value="disabled">
+                          {t("toolCapabilityDisabled")}
+                        </option>
+                      </select>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-muted-foreground">
+                      {t("toolCapabilityModelOverrideDesc")}
+                    </p>
+                  </div>
+                )}
                 {serverModeEnabled &&
                   currentProvider.type === "OpenAI Compatible" && (
                     <div className="col-span-1 md:col-span-2 space-y-3 rounded-xl border border-gray-200 bg-gray-50/70 px-4 py-3 dark:border-border dark:bg-muted/50">
@@ -1077,6 +1169,42 @@ const ProviderSettings = () => {
                             {renderModelCapabilities(model)}
                           </div>
                         </label>
+                        {serverModeEnabled &&
+                          currentProvider.isServerManaged && (
+                            <select
+                              aria-label={t("toolCapabilityModelOverrideAria", {
+                                name: formatModelName(
+                                  model,
+                                  modelMetadata,
+                                  customModelMetadata,
+                                ),
+                              })}
+                              value={
+                                currentProvider.toolCapabilityModelOverrides[
+                                  model
+                                ] || "inherit"
+                              }
+                              disabled={!currentProvider.models.includes(model)}
+                              onChange={(event) =>
+                                handleToolCapabilityModelOverrideChange(
+                                  model,
+                                  event.target.value as
+                                    "inherit" | ToolCapabilityModelOverride,
+                                )
+                              }
+                              className="w-32 shrink-0 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:bg-background dark:text-foreground"
+                            >
+                              <option value="inherit">
+                                {t("toolCapabilityInherit")}
+                              </option>
+                              <option value="enabled">
+                                {t("toolCapabilityEnabled")}
+                              </option>
+                              <option value="disabled">
+                                {t("toolCapabilityDisabled")}
+                              </option>
+                            </select>
+                          )}
                         <button
                           type="button"
                           aria-label={t("editMetadataAria", {

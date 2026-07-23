@@ -155,21 +155,52 @@ failure unless the run was separately cancelled.
 
 ## 4. Tool capability and compatibility fallback
 
-- A tool-capable current model receives native Tool definitions on the initial
-  chat request with automatic tool selection.
+- Capability resolution order is model override, provider default, unexpired
+  shared probe cache, then `unknown`. Overrides use
+  `auto|enabled|disabled`; ordinary users keep `auto`.
+- Administrator provider responses expose
+  `toolCapability.default` plus `toolCapability.modelOverrides`; updates send
+  `toolCapabilityDefault` plus `toolCapabilityModelOverrides`. Per-model
+  `Inherit` removes the map entry, and deselecting a model removes its override.
+- A known tool-capable current model receives native Tool definitions on the
+  initial chat request with automatic tool selection.
 - Explicit Search intent must force `search_web` or native Search within the
   selected mode even when automatic selection would skip it.
-- When the current model/provider cannot perform function calling, external
-  mode may call a compatibility planner through the same selected model:
+- When selected Knowledge is in scope and capability is unsupported or unknown,
+  the same selected model performs one bounded unified plan:
 
 ```json
-{ "shouldSearch": true, "query": "one standalone query" }
+{
+  "route": "direct|knowledge|web|both",
+  "knowledgeQuery": "standalone private query",
+  "webQuery": "standalone public query"
+}
 ```
 
 - The planner consumes bounded active-branch context, treats it as untrusted,
   returns no answer, and never switches model/provider.
-- Planner failure degrades to an ordinary answer with a truthful unavailable
-  notice; it does not search a raw ambiguous phrase or change provider.
+- Planner invalid JSON, oversize output, timeout, or provider failure falls back
+  only on deterministic authority: strong catalog/private signal uses
+  Knowledge, explicitly forced available Search uses Web, and all other turns
+  answer Direct. Failure never defaults to Both.
+- An unknown current turn uses Planner immediately and starts one background
+  singleflight synthetic probe. Provider save/activation also prewarms the first
+  model and matching task models. Neither chat nor provider-save waits for a
+  probe/cache write.
+- The probe contains a fixed fictional Tool and fixed prompt only. It never
+  includes user text, conversation, catalog, source bodies, raw provider
+  payloads, or credentials. A valid matching completed Tool Call records
+  `supported`; explicit Tool incompatibility records `unsupported`; timeout,
+  cancellation, 429, 5xx, transport/ordinary 400, and inconclusive output stay
+  `unknown`.
+- Probe state is shared in
+  `model_tool_capability_cache(provider_config_hash, model_id)` with seven-day
+  supported, 24-hour unsupported, and five-minute unknown TTLs. The config hash
+  binds provider identity/configuration and secret reference hash without
+  storing a credential.
+- Explicit first-round Tool incompatibility writes an asynchronous downgrade
+  and enters Planner in the same turn. Transient provider failures must not
+  masquerade as capability failure.
 - Official built-in Search is admitted only through an explicit provider/model
   capability. A custom OpenAI-compatible model requires administrator opt-in
   and a successful bounded real capability test.
@@ -250,12 +281,12 @@ summary, and `allow once | allow for this conversation | reject`. Credentials,
 raw payloads, and hidden Tool parameters are never rendered. G19's initial Web
 and Knowledge tools are read-only and require no approval.
 
-A native Tool round with selected Knowledge receives a server-owned instruction
-that the selection exists. Before claiming that a potentially user-, project-,
-organization-, or document-specific fact is unknown or was never provided, the
-model must call `search_knowledge` once. This is an Auto guard, not
-force-every-turn retrieval: visible-context/general questions skip it, and an
-empty result remains a successful miss without `[K#]`.
+A selected Knowledge collection is only an allowed private-source scope. Native
+rounds retain Auto Tool choice: clear catalog/private overlap uses Knowledge,
+current public facts use Web, independently necessary private and public
+evidence may use Both, and visible-context/general questions remain Direct.
+Mere uncertainty and “more context” do not force retrieval. An empty result is
+a successful miss without `[K#]`.
 
 ## 6. Process trace and reasoning
 
@@ -314,11 +345,11 @@ Terminal assistant metadata is:
 }
 ```
 
-Both fields are omitted for an ordinary successful answer that has only a
-Generation step and no provider reasoning. Failed and cancelled Generation
-steps remain durable. Detail fields are allowlisted and bounded; unknown keys
-are dropped before SSE/persistence. Provider reasoning is bounded to 1 MiB for
-persistence and receives credential-pattern redaction.
+A successful answer with only a Generation step persists that step so reload
+can display the `Direct` route. Failed and cancelled Generation steps remain
+durable. Detail fields are allowlisted and bounded; unknown keys and exact
+`query`/`redactedArgs` are dropped before SSE/persistence. Provider reasoning is
+bounded to 1 MiB for persistence and receives credential-pattern redaction.
 Live reasoning keeps a bounded suffix before emission so a credential pattern
 split across adjacent provider chunks is redacted before any complete secret
 can reach the browser.
@@ -329,10 +360,10 @@ Rules:
   steps. When a provider exposes no reasoning, the UI may say "Analyzing" as a
   process status but must not fabricate reasoning text.
 - Running generation auto-expands the process panel. Completion collapses it to
-  a one-line duration/stage summary. Manual expansion is authoritative and must
+  a one-line `Direct|Knowledge|Web|Both` summary with source counts. Manual
+  expansion is authoritative and must
   not force chat scroll-to-bottom.
-- Ordinary answers with no reasoning, retrieval, or Tool activity render no
-  empty completed panel.
+- Ordinary answers render a durable `Direct` summary rather than an empty panel.
 - Persist rendered provider reasoning and sanitized Process Steps so reload and
   conversation switching reproduce the completed view.
 - Keep the durable diagnostic trace complete, but project specialized read-only
@@ -345,13 +376,13 @@ Rules:
   `completed`, or `cancelled`) below a Status that already expresses them.
   Keep meaningful outcomes such as `degraded`. Sanitized provider reasoning is
   shown as returned; its language is not rewritten or translated.
-- Allowed persisted details include displayed Search Query, redacted Tool
-  arguments, hit/source counts, duration, provider/mode identifiers, failure
-  category, and Citation mapping.
+- Allowed persisted details include hit/source counts, duration,
+  provider/mode identifiers, allowlisted failure category, and Citation
+  mapping.
 - Forbidden persisted/rendered details include credentials, authorization
-  headers, ciphertext, raw provider events, complete Web/Knowledge bodies,
-  system prompts, internal safety instructions, stack traces, SQL, and database
-  topology.
+  headers, ciphertext, exact queries, redacted/raw Tool arguments, catalog
+  metadata, raw provider events, complete Web/Knowledge bodies, system prompts,
+  internal safety instructions, stack traces, SQL, and database topology.
 - Reasoning effort, Search mode, and selected Knowledge are independent inputs.
 
 G19.3 moves external Web retrieval into the live provider loop after the
@@ -361,11 +392,10 @@ live, and model-built-in Search is live once its provider stream is established.
 G19.6B registers selected Knowledge in that live loop for Tool-round-capable
 providers when Search is `off` or `external`. Each accepted call produces live
 Tool/Knowledge steps and returns a bounded Tool Result. G19.6D removes the old
-Handler pre-answer authority. Non-Tool providers and model-built-in Search now
-run the same server-authoritative Knowledge executor after `message.started`,
-then continue through the existing same-model external planner, built-in Search
-stream, or ordinary answer path. This compatibility path is visibly traced and
-never restores pre-SSE retrieval.
+Handler pre-answer authority. Non-Tool/unknown providers and model-built-in
+Search now run the unified same-model route Planner after `message.started`,
+execute only the selected Knowledge/Web authority, and then answer. This
+compatibility path is visibly traced and never restores pre-SSE retrieval.
 
 ## 7. Web and Knowledge tools
 
@@ -382,13 +412,22 @@ never restores pre-SSE retrieval.
   context-aware delay only for transport `REQUEST_FAILED`, HTTP `408`, `429`,
   or `5xx`. Authentication/other `4xx`, schema/response failures, and cancelled
   contexts do not retry; no retry may re-resolve or switch providers.
-- Tool-unsupported providers use the same selected model for one bounded JSON
-  decision/query pass, then answer with the existing evidence prompt only when
-  that pass requested Search.
+- Web-only Tool-unsupported providers use the same selected model for one
+  bounded decision/query pass. When Knowledge is selected, the unified
+  four-route Planner owns both authorities instead.
 
 ### `search_knowledge`
 
 - Registered only when the conversation has selected Knowledge collections.
+- Before routing, an ACL- and consent-authorized metadata query ranks active
+  collection names/descriptions and filenames against the current question.
+  It sends at most eight collections and 4 KiB total: at most five relevant
+  plus three representative titles per collection, with UTF-8-safe 128-byte
+  name, 512-byte description, and 256-byte title bounds.
+- The catalog is untrusted routing metadata, never answer evidence. Catalog
+  access reads no chunks/body text, embeddings, hydration, or reranker state.
+  Delimiters are escaped, omitted titles do not prove absence, and catalog or
+  governance failure omits the hint without blocking chat or forcing Knowledge.
 - The model argument schema contains only `query`. Collection IDs are
   server-authoritative and copied from the authenticated conversation
   selection; a model cannot expand the selected set through Tool arguments.
@@ -398,9 +437,10 @@ never restores pre-SSE retrieval.
   evidence gate.
 - A normal miss is a successful empty Tool Result, not a user-visible error.
 
-Knowledge and Web may run in either order. Current/public claims prefer Web;
-internal/private claims prefer Knowledge; conflicts disclose scope/time and may
-cite both.
+Knowledge and Web may run in either order only when each authority is relevant.
+Current/public claims use Web; internal/private claims use Knowledge; a genuine
+mixed request may cite both without treating extra material as automatically
+more accurate.
 
 ## 8. Citation truth
 
@@ -432,8 +472,13 @@ cite both.
 | Both recovery attempts fail             | final failure with zero recovery answer content |
 | Later Search adds no source            | empty incremental Tool Result; keep prior markers  |
 | Built-in capability unavailable       | mode disabled or degraded; no external fallback    |
-| Native Tool unsupported               | same-model compatibility planner                   |
-| Compatibility planner fails           | ordinary answer with truthful unavailable notice   |
+| Native Tool unsupported/unknown       | same-model unified compatibility planner           |
+| Auto capability cache miss/expired    | current turn Planner; background singleflight probe |
+| Valid/explicitly incompatible probe   | shared supported/unsupported TTL row               |
+| Transient/inconclusive probe          | shared five-minute unknown retry backoff            |
+| Runtime explicit incompatibility      | async downgrade plus same-turn Planner              |
+| Catalog ACL/consent/read failure      | omit metadata; chat continues without forced RAG    |
+| Compatibility planner fails           | strong Knowledge, forced Web, else Direct; never Both |
 | Knowledge miss                        | empty successful result; continue Model/Web        |
 | Tool arguments malformed/unknown      | reject execution; redacted failed step             |
 | Write/external Tool awaiting approval | pause loop until allow/reject/cancel               |
@@ -441,6 +486,7 @@ cite both.
 | User cancels compatibility planner    | Tool/Web/Generation cancelled; no `planner_failed` |
 | Provider reasoning unavailable        | process only; no fabricated reasoning              |
 | Final answer uses no issued marker    | no Citation card                                   |
+| Exact query/Tool args in process detail | dropped before SSE and persistence               |
 
 ## 10. Required verification
 
@@ -448,7 +494,9 @@ cite both.
    OpenAI-compatible/Gemini and Anthropic formats.
 2. Zero Search I/O with mode off and ordinary Auto no-search.
 3. Explicit/current Search plus contextual follow-up Query correctness.
-4. Compatibility planning only for Tool-unsupported current models.
+4. Native Auto Tool only for known-supported models; unified four-route Planner
+   for unsupported/unknown selected-Knowledge models, with Direct, Knowledge,
+   Web, and Both fixtures.
 5. Strict built-in/external mutual exclusion and no provider fallback.
 6. Ordered reasoning/process SSE, cancellation, redaction, terminal persistence,
    reload, collapsed summary, and manual-scroll behavior.
@@ -470,3 +518,25 @@ cite both.
     stable markers. Recovery tests must also prove buffering, first-attempt
     partial-draft discard, one retry, both-attempt failure with zero content,
     empty-answer retry, bounded output, and no retry after cancellation.
+12. Query-aware catalog CJK/English ranking, five-plus-three title selection,
+    4-KiB/field/collection bounds, ACL/deletion/active-file filtering,
+    governance denial, delimiter escaping, and no body/chunk reads.
+13. Unified Planner invalid JSON, timeout, and provider failure must prove
+    strong Knowledge, forced Web, and no-signal Direct fallbacks respectively;
+    failure never defaults to Both.
+14. Capability override precedence, fixed user-data-free probe payload,
+    valid-call classification, transient unknown, TTL/config-hash isolation,
+    background warmup, singleflight, runtime downgrade, non-blocking cache
+    writes, and optional multi-instance PostgreSQL visibility.
+15. Frontend provider round-trip and Inherit cleanup plus durable query-free
+    Direct/Knowledge/Web/Both summaries, dual source counts, and reason
+    allowlisting.
+
+## 11. Rollback
+
+For a catalog-quality regression, omit `WithKnowledgeRoutingCatalog` from the
+Handler wiring. Native providers retain generic Auto Tool behavior and
+compatibility routing remains bounded; no Knowledge or chat data changes.
+Migration `042_model_tool_capability_cache` contains derived capability state
+only. Its down migration drops the cache table without removing provider
+configuration, credentials, conversations, Knowledge, or Citations.

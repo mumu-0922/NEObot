@@ -92,6 +92,38 @@ func TestKnowledgeConsentRAGAnswerGovernanceGateFailsClosedWhenDependencyMissing
 	}
 }
 
+func TestKnowledgeConsentRoutingCatalogGovernanceGateRequiresEveryCollection(t *testing.T) {
+	first := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	second := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+	reader := &fakeRAGConsentReader{
+		query: []knowledge.ProcessingConsent{validAnswerConsent("mock", "mock-chat")},
+		collections: map[string][]knowledge.ProcessingConsent{
+			first:  {validAnswerConsent("mock", "mock-chat")},
+			second: {validAnswerConsent("mock", "mock-chat")},
+		},
+	}
+	gate := NewKnowledgeConsentRoutingCatalogGovernanceGate(reader)
+	input := RAGRoutingCatalogGovernanceInput{
+		ModelRef:              ModelRef{ProviderID: "mock", ModelID: "mock-chat"},
+		SelectedCollectionIDs: []string{first, second},
+	}
+	if err := gate.AuthorizeRoutingCatalog(context.Background(), input); err != nil {
+		t.Fatalf("AuthorizeRoutingCatalog() error = %v", err)
+	}
+	if len(reader.collectionCalls) != 2 {
+		t.Fatalf("collection calls = %#v", reader.collectionCalls)
+	}
+
+	reader.collections[second] = nil
+	if err := gate.AuthorizeRoutingCatalog(context.Background(), input); !errors.Is(err, ErrRAGRoutingCatalogGovernanceRequired) {
+		t.Fatalf("missing collection consent error = %v", err)
+	}
+	if err := (*KnowledgeConsentRoutingCatalogGovernanceGate)(nil).
+		AuthorizeRoutingCatalog(context.Background(), input); !errors.Is(err, ErrRAGDependencyUnavailable) {
+		t.Fatalf("nil dependency error = %v", err)
+	}
+}
+
 func TestKnowledgeConsentRAGRerankGovernanceGateRequiresExactRerankConsent(t *testing.T) {
 	collectionID := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 	reader := &fakeRAGConsentReader{

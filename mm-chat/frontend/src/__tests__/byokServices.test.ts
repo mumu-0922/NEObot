@@ -85,6 +85,8 @@ const providerWithoutLocalKey: ModelProvider = {
   enabled: true,
   models: ["gemini-title", "audio-model"],
   modelsList: ["gemini-title", "audio-model"],
+  toolCapabilityDefault: "auto",
+  toolCapabilityModelOverrides: {},
 };
 
 function getJsonRequestBody(fetchMock: ReturnType<typeof vi.fn>, index = 0) {

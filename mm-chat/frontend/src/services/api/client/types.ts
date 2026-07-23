@@ -440,6 +440,10 @@ export interface AdminProviderConfigDTO {
     connectionTestValid: boolean;
     connectionTestedAt?: string;
   };
+  toolCapability?: {
+    default?: string;
+    modelOverrides?: Record<string, string>;
+  };
 }
 
 export interface AdminProviderConfigsDTO {
@@ -456,6 +460,8 @@ export interface UpdateAdminProviderConfigInput {
   clearApiKey?: boolean;
   modelBuiltInSearchProtocol?: string;
   modelBuiltInSearchModel?: string;
+  toolCapabilityDefault?: "auto" | "enabled" | "disabled";
+  toolCapabilityModelOverrides?: Record<string, "enabled" | "disabled">;
   signal?: AbortSignal;
 }
 

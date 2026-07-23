@@ -26,6 +26,8 @@ const providers: ModelProvider[] = [
     enabled: true,
     models: ["model-a"],
     modelsList: ["model-a"],
+    toolCapabilityDefault: "auto",
+    toolCapabilityModelOverrides: {},
   },
   {
     id: "B",
@@ -36,6 +38,8 @@ const providers: ModelProvider[] = [
     enabled: false,
     models: ["model-b"],
     modelsList: ["model-b"],
+    toolCapabilityDefault: "auto",
+    toolCapabilityModelOverrides: {},
   },
 ];
 

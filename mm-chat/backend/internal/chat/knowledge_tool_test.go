@@ -26,13 +26,13 @@ func TestSearchKnowledgeToolDefinitionKeepsCollectionAuthorityOnServer(t *testin
 func TestSelectedKnowledgeInstructionPreventsUnknownAnswerBeforeRetrieval(t *testing.T) {
 	request := withSelectedKnowledgeToolInstruction(ProviderRequest{
 		SystemPrompt: "Keep answers concise.",
-	})
+	}, nil)
 	if !strings.HasPrefix(request.SystemPrompt, "Keep answers concise.\n\n") ||
-		!strings.Contains(request.SystemPrompt, "Before claiming that information is unknown") ||
-		!strings.Contains(request.SystemPrompt, "treat an empty result as a normal miss") {
+		!strings.Contains(request.SystemPrompt, "not mandatory or preferred") ||
+		!strings.Contains(request.SystemPrompt, "empty Knowledge result as a normal miss") {
 		t.Fatalf("system prompt = %q", request.SystemPrompt)
 	}
-	idempotent := withSelectedKnowledgeToolInstruction(request)
+	idempotent := withSelectedKnowledgeToolInstruction(request, nil)
 	if idempotent.SystemPrompt != request.SystemPrompt ||
 		strings.Count(idempotent.SystemPrompt, selectedKnowledgeToolInstruction) != 1 {
 		t.Fatalf("instruction was duplicated: %q", idempotent.SystemPrompt)

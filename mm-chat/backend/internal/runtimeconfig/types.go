@@ -4,11 +4,16 @@ import "time"
 
 type ProviderType string
 
+type ToolCapabilityOverride string
+
 const (
-	ProviderTypeOpenAICompatible ProviderType = "OpenAI Compatible"
-	ProviderTypeOpenAI           ProviderType = "OpenAI"
-	ProviderTypeGemini           ProviderType = "Gemini"
-	ProviderTypeAnthropic        ProviderType = "Anthropic"
+	ProviderTypeOpenAICompatible ProviderType           = "OpenAI Compatible"
+	ProviderTypeOpenAI           ProviderType           = "OpenAI"
+	ProviderTypeGemini           ProviderType           = "Gemini"
+	ProviderTypeAnthropic        ProviderType           = "Anthropic"
+	ToolCapabilityAuto           ToolCapabilityOverride = "auto"
+	ToolCapabilityEnabled        ToolCapabilityOverride = "enabled"
+	ToolCapabilityDisabled       ToolCapabilityOverride = "disabled"
 )
 
 type PublicConfig struct {
@@ -66,6 +71,7 @@ type AdminProviderConfigResponse struct {
 	ConnectionTestValid bool                                  `json:"connectionTestValid"`
 	ConnectionTestedAt  *time.Time                            `json:"connectionTestedAt,omitempty"`
 	ModelBuiltInSearch  AdminModelBuiltInSearchConfigResponse `json:"modelBuiltInSearch"`
+	ToolCapability      AdminToolCapabilityConfigResponse     `json:"toolCapability"`
 }
 
 type AdminProviderConfigsResponse struct {
@@ -73,15 +79,17 @@ type AdminProviderConfigsResponse struct {
 }
 
 type UpdateAdminProviderConfigRequest struct {
-	Name                       string         `json:"name"`
-	Type                       string         `json:"type"`
-	BaseURL                    string         `json:"baseUrl"`
-	Models                     []string       `json:"models"`
-	Enabled                    bool           `json:"enabled"`
-	APIKeySecret               map[string]any `json:"apiKeySecret"`
-	ClearAPIKey                bool           `json:"clearApiKey"`
-	ModelBuiltInSearchProtocol *string        `json:"modelBuiltInSearchProtocol,omitempty"`
-	ModelBuiltInSearchModel    *string        `json:"modelBuiltInSearchModel,omitempty"`
+	Name                         string            `json:"name"`
+	Type                         string            `json:"type"`
+	BaseURL                      string            `json:"baseUrl"`
+	Models                       []string          `json:"models"`
+	Enabled                      bool              `json:"enabled"`
+	APIKeySecret                 map[string]any    `json:"apiKeySecret"`
+	ClearAPIKey                  bool              `json:"clearApiKey"`
+	ModelBuiltInSearchProtocol   *string           `json:"modelBuiltInSearchProtocol,omitempty"`
+	ModelBuiltInSearchModel      *string           `json:"modelBuiltInSearchModel,omitempty"`
+	ToolCapabilityDefault        *string           `json:"toolCapabilityDefault,omitempty"`
+	ToolCapabilityModelOverrides map[string]string `json:"toolCapabilityModelOverrides,omitempty"`
 }
 
 type ProviderRuntimeConfig struct {
@@ -109,6 +117,11 @@ type AdminModelBuiltInSearchConfigResponse struct {
 	Source              string     `json:"source"`
 	ConnectionTestValid bool       `json:"connectionTestValid"`
 	ConnectionTestedAt  *time.Time `json:"connectionTestedAt,omitempty"`
+}
+
+type AdminToolCapabilityConfigResponse struct {
+	Default        ToolCapabilityOverride            `json:"default"`
+	ModelOverrides map[string]ToolCapabilityOverride `json:"modelOverrides"`
 }
 
 type TestAdminModelBuiltInSearchRequest struct {

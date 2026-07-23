@@ -517,6 +517,8 @@ type fakeRepository struct {
 	listResult         CollectionPageResult
 	documentResult     Document
 	documentPage       DocumentPageResult
+	routingCatalog     []RoutingCatalogCollection
+	routingCatalogIn   RoutingCatalogRepositoryInput
 	contentResult      DocumentContentMetadata
 	versionCreated     CreateDocumentVersionRepositoryInput
 	reprocessCreated   ReprocessDocumentRepositoryInput
@@ -586,6 +588,10 @@ func (repo *fakeRepository) DeleteDocument(_ context.Context, input DeleteDocume
 }
 func (repo *fakeRepository) ListDocuments(context.Context, ListDocumentsRepositoryInput) (DocumentPageResult, error) {
 	return repo.documentPage, repo.err
+}
+func (repo *fakeRepository) FetchRoutingCatalog(_ context.Context, input RoutingCatalogRepositoryInput) ([]RoutingCatalogCollection, error) {
+	repo.routingCatalogIn = input
+	return repo.routingCatalog, repo.err
 }
 func (repo *fakeRepository) GetDocument(context.Context, DocumentLookupInput) (Document, error) {
 	return repo.documentResult, repo.err

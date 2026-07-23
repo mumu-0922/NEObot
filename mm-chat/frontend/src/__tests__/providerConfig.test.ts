@@ -122,6 +122,65 @@ describe("provider config normalization", () => {
     });
   });
 
+  it("round-trips backend Tool capability defaults and model overrides", () => {
+    const [provider] = normalizeServerManagedProviderConfigs([
+      {
+        id: "CUSTOM",
+        name: "Backend Custom",
+        type: "OpenAI Compatible",
+        baseUrl: "https://custom.example/v1",
+        models: ["model-a", "model-b"],
+        enabled: true,
+        toolCapability: {
+          default: "disabled",
+          modelOverrides: {
+            "model-a": "enabled",
+            "model-b": "disabled",
+          },
+        },
+      },
+    ]);
+
+    expect(provider).toMatchObject({
+      toolCapabilityDefault: "disabled",
+      toolCapabilityModelOverrides: {
+        "model-a": "enabled",
+        "model-b": "disabled",
+      },
+    });
+    expect(normalizeModelProvider(provider)).toMatchObject({
+      toolCapabilityDefault: "disabled",
+      toolCapabilityModelOverrides: {
+        "model-a": "enabled",
+        "model-b": "disabled",
+      },
+    });
+  });
+
+  it("defaults unknown Tool capability values to Auto and drops invalid overrides", () => {
+    const [provider] = normalizeServerManagedProviderConfigs([
+      {
+        id: "CUSTOM",
+        name: "Backend Custom",
+        type: "OpenAI Compatible",
+        baseUrl: "https://custom.example/v1",
+        models: ["selected-model"],
+        enabled: true,
+        toolCapability: {
+          default: "future-value",
+          modelOverrides: {
+            "selected-model": "auto",
+            "missing-model": "enabled",
+            invalid: "future-value",
+          },
+        },
+      },
+    ]);
+
+    expect(provider?.toolCapabilityDefault).toBe("auto");
+    expect(provider?.toolCapabilityModelOverrides).toEqual({});
+  });
+
   it("migrates persisted OpenAI providers to OpenAI Compatible", async () => {
     const migrated = await migrateCoreSettingsState({
       providers: [
@@ -135,6 +194,8 @@ describe("provider config normalization", () => {
     });
 
     expect(migrated.providers?.[0]?.type).toBe("OpenAI Compatible");
+    expect(migrated.providers?.[0]?.toolCapabilityDefault).toBe("auto");
+    expect(migrated.providers?.[0]?.toolCapabilityModelOverrides).toEqual({});
   });
 
   it("filters invalid providers and caps provider/model counts", () => {

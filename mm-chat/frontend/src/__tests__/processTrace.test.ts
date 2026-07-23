@@ -5,10 +5,12 @@ import {
   normalizeProcessStep,
   normalizeProcessTrace,
   processOutcomeForDisplay,
+  processReasonCategoryForDisplay,
   processTraceFromMessageMetadata,
   projectProcessStepsForDisplay,
   reasoningFromMessageMetadata,
   resolveProcessPanelExpanded,
+  summarizeProcessRoute,
   upsertProcessStep,
 } from "../lib/chat/processTrace";
 
@@ -62,7 +64,7 @@ describe("durable process trace", () => {
       kind: "tool",
       status: "running",
       labelKey: "process.tool",
-      detail: { query: "weather shanghai", sourceCount: 2 },
+      detail: { sourceCount: 2 },
     });
     expect(
       normalizeProcessStep({
@@ -206,5 +208,56 @@ describe("durable process trace", () => {
 
     expect(processOutcomeForDisplay(streaming!)).toBe("");
     expect(processOutcomeForDisplay(degraded!)).toBe("degraded");
+  });
+
+  it("summarizes Direct, Knowledge, Web, and Both without exposing queries", () => {
+    expect(summarizeProcessRoute([])).toEqual({
+      route: "direct",
+      knowledgeSources: 0,
+      webSources: 0,
+    });
+    const steps = normalizeProcessTrace([
+      {
+        id: "knowledge-1",
+        kind: "knowledge",
+        status: "completed",
+        labelKey: "process.knowledge",
+        detail: { hitCount: 2, query: "private exact query" },
+      },
+      {
+        id: "web-1",
+        kind: "web",
+        status: "completed",
+        labelKey: "process.web",
+        detail: { sourceCount: 3, rawPayload: "forbidden" },
+      },
+    ]);
+    expect(summarizeProcessRoute(steps)).toEqual({
+      route: "both",
+      knowledgeSources: 2,
+      webSources: 3,
+    });
+    expect(JSON.stringify(steps)).not.toContain("private exact query");
+    expect(JSON.stringify(steps)).not.toContain("forbidden");
+  });
+
+  it("maps only allowlisted reason categories for display", () => {
+    const miss = normalizeProcessStep({
+      id: "knowledge-1",
+      kind: "knowledge",
+      status: "completed",
+      labelKey: "process.knowledge",
+      detail: { outcome: "no_evidence" },
+    });
+    const raw = normalizeProcessStep({
+      id: "web-1",
+      kind: "web",
+      status: "failed",
+      labelKey: "process.web",
+      detail: { failureCategory: "raw upstream stack trace" },
+    });
+    expect(processReasonCategoryForDisplay(miss!)).toBe("knowledge_miss");
+    expect(processReasonCategoryForDisplay(raw!)).toBeUndefined();
+    expect(processOutcomeForDisplay(raw!)).toBe("");
   });
 });

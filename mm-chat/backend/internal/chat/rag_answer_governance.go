@@ -10,8 +10,9 @@ import (
 )
 
 var (
-	ErrRAGAnswerGovernanceRequired = errors.New("rag answer governance required")
-	ErrRAGRerankGovernanceRequired = errors.New("rag rerank governance required")
+	ErrRAGAnswerGovernanceRequired         = errors.New("rag answer governance required")
+	ErrRAGRerankGovernanceRequired         = errors.New("rag rerank governance required")
+	ErrRAGRoutingCatalogGovernanceRequired = errors.New("rag routing catalog governance required")
 )
 
 type RAGAnswerGovernanceInput struct {
@@ -27,6 +28,11 @@ type RAGAnswerAuthority struct {
 	ProfileContractHash string `json:"profileContractHash,omitempty"`
 	PolicyVersion       string `json:"policyVersion,omitempty"`
 	CollectionCount     int    `json:"collectionCount"`
+}
+
+type RAGRoutingCatalogGovernanceInput struct {
+	ModelRef              ModelRef
+	SelectedCollectionIDs []string
 }
 
 type RAGAnswerGovernanceGate interface {
@@ -50,12 +56,61 @@ type KnowledgeConsentRAGRerankGovernanceGate struct {
 	Reader RAGAnswerConsentReader
 }
 
+type KnowledgeConsentRoutingCatalogGovernanceGate struct {
+	Reader RAGAnswerConsentReader
+}
+
 func NewKnowledgeConsentRAGAnswerGovernanceGate(reader RAGAnswerConsentReader) *KnowledgeConsentRAGAnswerGovernanceGate {
 	return &KnowledgeConsentRAGAnswerGovernanceGate{Reader: reader}
 }
 
 func NewKnowledgeConsentRAGRerankGovernanceGate(reader RAGAnswerConsentReader) *KnowledgeConsentRAGRerankGovernanceGate {
 	return &KnowledgeConsentRAGRerankGovernanceGate{Reader: reader}
+}
+
+func NewKnowledgeConsentRoutingCatalogGovernanceGate(
+	reader RAGAnswerConsentReader,
+) *KnowledgeConsentRoutingCatalogGovernanceGate {
+	return &KnowledgeConsentRoutingCatalogGovernanceGate{Reader: reader}
+}
+
+func (g *KnowledgeConsentRoutingCatalogGovernanceGate) AuthorizeRoutingCatalog(
+	ctx context.Context,
+	input RAGRoutingCatalogGovernanceInput,
+) error {
+	if g == nil || g.Reader == nil {
+		return ErrRAGDependencyUnavailable
+	}
+	providerID := strings.TrimSpace(input.ModelRef.ProviderID)
+	modelID := strings.TrimSpace(input.ModelRef.ModelID)
+	if providerID == "" || modelID == "" || len(input.SelectedCollectionIDs) == 0 {
+		return ErrRAGRoutingCatalogGovernanceRequired
+	}
+	queryConsents, err := g.Reader.ListQueryConsents(ctx)
+	if err != nil {
+		return fmt.Errorf("list routing catalog query consents: %w", err)
+	}
+	if _, ok := selectRAGAnswerConsent(queryConsents, providerID, modelID); !ok {
+		return ErrRAGRoutingCatalogGovernanceRequired
+	}
+	for _, collectionID := range input.SelectedCollectionIDs {
+		collectionID = strings.TrimSpace(collectionID)
+		if collectionID == "" {
+			return ErrRAGRoutingCatalogGovernanceRequired
+		}
+		consents, err := g.Reader.ListCollectionConsents(ctx, collectionID)
+		if err != nil {
+			if errors.Is(err, knowledge.ErrCollectionNotFound) ||
+				errors.Is(err, knowledge.ErrUnauthenticated) {
+				return ErrRAGRoutingCatalogGovernanceRequired
+			}
+			return fmt.Errorf("list routing catalog collection consents: %w", err)
+		}
+		if _, ok := selectRAGAnswerConsent(consents, providerID, modelID); !ok {
+			return ErrRAGRoutingCatalogGovernanceRequired
+		}
+	}
+	return nil
 }
 
 func (g *KnowledgeConsentRAGAnswerGovernanceGate) AuthorizeRAGAnswer(

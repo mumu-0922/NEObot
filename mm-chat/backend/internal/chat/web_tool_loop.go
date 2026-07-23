@@ -34,15 +34,18 @@ Keep the answer under 300 Chinese characters or 180 English words, do not use ra
 Do not mention recovery. Cite only backend-issued evidence markers that you actually use.`
 
 type externalWebToolLoopInput struct {
-	Provider        Provider
-	Request         ProviderRequest
-	PlannerMessages []ProviderMessage
-	SearchService   *websearch.Service
-	Execution       websearch.ActiveExecution
-	MaxResults      int
-	ForceSearch     bool
-	KnowledgeReady  bool
-	Knowledge       *knowledgeToolRuntime
+	Provider               Provider
+	Request                ProviderRequest
+	PlannerMessages        []ProviderMessage
+	SearchService          *websearch.Service
+	Execution              websearch.ActiveExecution
+	MaxResults             int
+	ForceSearch            bool
+	KnowledgeReady         bool
+	Knowledge              *knowledgeToolRuntime
+	CapabilityCache        ToolCapabilityCache
+	CapabilityConfigHash   string
+	DisableNativeToolRound bool
 }
 
 func searchWebToolDefinition() ToolDefinition {
@@ -81,7 +84,8 @@ func startRetrievalToolLoop(
 	events := make(chan ProviderEvent, 1)
 	go func() {
 		defer close(events)
-		if toolProvider, ok := input.Provider.(ToolRoundProvider); ok {
+		if toolProvider, ok := input.Provider.(ToolRoundProvider); ok &&
+			!input.DisableNativeToolRound {
 			if runNativeExternalWebToolLoop(ctx, events, toolProvider, input) {
 				return
 			}
@@ -89,28 +93,23 @@ func startRetrievalToolLoop(
 		if toolLoopWasCancelled(ctx, nil) {
 			return
 		}
-		if externalWebToolEnabled(input) {
-			runCompatibilityExternalWebSearch(ctx, events, input)
+		if input.Knowledge.enabled() {
+			compatibilityInput := compatibilityKnowledgeLoopInput{
+				Provider:        input.Provider,
+				Request:         input.Request,
+				Runtime:         input.Knowledge,
+				PlannerMessages: input.PlannerMessages,
+				ForceSearch:     input.ForceSearch,
+			}
+			if externalWebToolEnabled(input) {
+				external := input
+				compatibilityInput.ExternalSearch = &external
+			}
+			runCompatibilityKnowledgeLoop(ctx, events, compatibilityInput)
 			return
 		}
-		if input.Knowledge.enabled() {
-			failed := ProviderToolExecutionEvent{
-				ExecutionID:     "compatibility-knowledge-unavailable",
-				Name:            searchKnowledgeToolName,
-				Status:          ProcessStepStatusFailed,
-				Round:           1,
-				FailureCategory: "tool_unsupported",
-				Mode:            "compatibility",
-			}
-			if !sendToolExecutionEvent(ctx, events, failed) {
-				return
-			}
-			streamCompatibilityAnswer(
-				ctx,
-				events,
-				input.Provider,
-				withKnowledgeUnavailableInstruction(input.Request),
-			)
+		if externalWebToolEnabled(input) {
+			runCompatibilityExternalWebSearch(ctx, events, input)
 			return
 		}
 		streamCompatibilityAnswer(ctx, events, input.Provider, input.Request)
@@ -128,7 +127,7 @@ func runNativeExternalWebToolLoop(
 	input externalWebToolLoopInput,
 ) bool {
 	if input.Knowledge.enabled() {
-		input.Request = withSelectedKnowledgeToolInstruction(input.Request)
+		input.Request = withSelectedKnowledgeToolInstruction(input.Request, input.Knowledge)
 	}
 	tools := retrievalToolDefinitions(input)
 	if len(tools) == 0 {
@@ -156,6 +155,7 @@ func runNativeExternalWebToolLoop(
 				return true
 			}
 			if round == 1 && len(continuation) == 0 {
+				recordRuntimeToolIncompatibility(input, err)
 				return false
 			}
 			if !answerContentEmitted && streamRetrievalEvidenceFallback(
@@ -184,6 +184,11 @@ func runNativeExternalWebToolLoop(
 			if event.Error != nil {
 				if toolLoopWasCancelled(ctx, event.Error) {
 					return true
+				}
+				if round == 1 && len(continuation) == 0 && len(calls) == 0 &&
+					isExplicitToolIncompatibility(event.Error) {
+					recordRuntimeToolIncompatibility(input, event.Error)
+					return false
 				}
 				if bufferForcedRound && len(calls) == 0 {
 					return false
@@ -597,6 +602,34 @@ func externalWebToolEnabled(input externalWebToolLoopInput) bool {
 		input.Execution.External != nil
 }
 
+func recordRuntimeToolIncompatibility(
+	input externalWebToolLoopInput,
+	err error,
+) {
+	if !isExplicitToolIncompatibility(err) || input.CapabilityCache == nil ||
+		strings.TrimSpace(input.CapabilityConfigHash) == "" ||
+		strings.TrimSpace(input.Request.ModelRef.ModelID) == "" {
+		return
+	}
+	cache := input.CapabilityCache
+	configHash := strings.TrimSpace(input.CapabilityConfigHash)
+	modelID := strings.TrimSpace(input.Request.ModelRef.ModelID)
+	go func() {
+		ctx, cancel := context.WithTimeout(
+			context.Background(),
+			toolCapabilityCacheWriteTimeout,
+		)
+		defer cancel()
+		_ = cache.StoreToolCapability(
+			ctx,
+			configHash,
+			modelID,
+			ToolCapabilityUnsupported,
+			"runtime_incompatibility",
+		)
+	}()
+}
+
 func validateRetrievalToolCall(
 	call ProviderToolCall,
 	input externalWebToolLoopInput,
@@ -683,6 +716,25 @@ func runCompatibilityExternalWebSearch(
 	}
 	if !plan.ShouldSearch {
 		streamCompatibilityAnswer(ctx, events, input.Provider, input.Request)
+		return
+	}
+	runCompatibilityExternalWebSearchPlan(ctx, events, input, plan)
+}
+
+func runCompatibilityExternalWebSearchPlan(
+	ctx context.Context,
+	events chan<- ProviderEvent,
+	input externalWebToolLoopInput,
+	plan compatibilityWebSearchPlan,
+) {
+	plan.Query = strings.Join(strings.Fields(plan.Query), " ")
+	if !plan.ShouldSearch || plan.Query == "" || len(plan.Query) > websearch.MaxQueryBytes {
+		streamCompatibilityAnswer(
+			ctx,
+			events,
+			input.Provider,
+			withWebUnavailableInstruction(input.Request),
+		)
 		return
 	}
 

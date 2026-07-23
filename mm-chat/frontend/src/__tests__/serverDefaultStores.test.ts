@@ -97,6 +97,8 @@ describe("server default store injection", () => {
           enabled: true,
           models: ["gemini-flash-latest"],
           modelsList: ["gemini-flash-latest"],
+          toolCapabilityDefault: "auto",
+          toolCapabilityModelOverrides: {},
         },
         {
           id: "CUSTOM",
@@ -107,6 +109,8 @@ describe("server default store injection", () => {
           enabled: true,
           models: ["custom-model"],
           modelsList: ["custom-model"],
+          toolCapabilityDefault: "auto",
+          toolCapabilityModelOverrides: {},
         },
       ],
       defaultModels: {

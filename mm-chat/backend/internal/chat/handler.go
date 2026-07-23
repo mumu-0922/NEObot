@@ -40,18 +40,22 @@ const (
 )
 
 type Handler struct {
-	service             *Service
-	provider            Provider
-	attachmentResolver  ProviderAttachmentResolver
-	providerResolver    RuntimeProviderResolver
-	imageGenerator      ImageGenerator
-	activeRuns          *activeRunRegistry
-	cancellationRuns    RunCancellationStore
-	ragAssembler        *RAGAnswerAssembler
-	ragAnswerGate       RAGAnswerGovernanceGate
-	webSearchService    *websearch.Service
-	userMemoryService   *usermemory.Service
-	contextBudgetPolicy contextBudgetPolicy
+	service                *Service
+	provider               Provider
+	attachmentResolver     ProviderAttachmentResolver
+	providerResolver       RuntimeProviderResolver
+	imageGenerator         ImageGenerator
+	activeRuns             *activeRunRegistry
+	cancellationRuns       RunCancellationStore
+	ragAssembler           *RAGAnswerAssembler
+	ragAnswerGate          RAGAnswerGovernanceGate
+	knowledgeCatalogSource KnowledgeRoutingCatalogSource
+	knowledgeCatalogGate   KnowledgeRoutingCatalogGovernanceGate
+	webSearchService       *websearch.Service
+	userMemoryService      *usermemory.Service
+	contextBudgetPolicy    contextBudgetPolicy
+	toolCapabilityCache    ToolCapabilityCache
+	toolCapabilityProbes   *toolCapabilityProbeGroup
 }
 
 type HandlerOption func(*Handler)
@@ -65,8 +69,11 @@ type RuntimeProviderResolver interface {
 }
 
 type RuntimeProviderResolution struct {
-	Provider           Provider
-	RAGAnswerProcessor string
+	Provider                     Provider
+	RAGAnswerProcessor           string
+	ToolCapabilityPolicy         string
+	ToolCapabilityModelOverrides map[string]string
+	ToolCapabilityConfigHash     string
 }
 
 type ImageGenerationRequest struct {
@@ -316,6 +323,16 @@ func WithRAGAnswerGovernanceGate(gate RAGAnswerGovernanceGate) HandlerOption {
 	}
 }
 
+func WithKnowledgeRoutingCatalog(
+	source KnowledgeRoutingCatalogSource,
+	gate KnowledgeRoutingCatalogGovernanceGate,
+) HandlerOption {
+	return func(h *Handler) {
+		h.knowledgeCatalogSource = source
+		h.knowledgeCatalogGate = gate
+	}
+}
+
 func WithWebSearchService(service *websearch.Service) HandlerOption {
 	return func(h *Handler) {
 		if service != nil && service.Configured() {
@@ -336,15 +353,22 @@ func WithRunCancellationStore(store RunCancellationStore) HandlerOption {
 	}
 }
 
+func WithToolCapabilityCache(cache ToolCapabilityCache) HandlerOption {
+	return func(h *Handler) {
+		h.toolCapabilityCache = cache
+	}
+}
+
 func NewHandler(service *Service, opts ...HandlerOption) *Handler {
 	if service == nil {
 		service = NewService(nil)
 	}
 
 	handler := &Handler{
-		service:             service,
-		activeRuns:          newActiveRunRegistry(),
-		contextBudgetPolicy: defaultContextBudgetPolicy(),
+		service:              service,
+		activeRuns:           newActiveRunRegistry(),
+		contextBudgetPolicy:  defaultContextBudgetPolicy(),
+		toolCapabilityProbes: newToolCapabilityProbeGroup(),
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -402,11 +426,12 @@ func (h *Handler) handleGenerateText(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	provider, _, err := h.resolveStreamProvider(r.Context(), request.Provider)
+	providerResolution, err := h.resolveStreamProvider(r.Context(), request.Provider)
 	if err != nil {
 		writeServiceError(w, err)
 		return
 	}
+	provider := providerResolution.Provider
 	modelRef := *request.ModelRef
 	if resolver, ok := provider.(ModelRefResolver); ok {
 		modelRef, err = resolver.ResolveModelRef(modelRef)
@@ -1057,11 +1082,13 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	streamProvider, ragAnswerProcessor, err := h.resolveStreamProvider(r.Context(), request.Provider)
+	providerResolution, err := h.resolveStreamProvider(r.Context(), request.Provider)
 	if err != nil {
 		writeServiceError(w, err)
 		return
 	}
+	streamProvider := providerResolution.Provider
+	ragAnswerProcessor := providerResolution.RAGAnswerProcessor
 	if resolver, ok := streamProvider.(ModelRefResolver); ok {
 		resolvedModelRef, err := resolver.ResolveModelRef(*modelRef)
 		if err != nil {
@@ -1090,7 +1117,12 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	searchMode := searchModeFromConfig(request.Config)
-	_, toolRoundCapable := streamProvider.(ToolRoundProvider)
+	toolRoundCapable := h.resolveToolRoundCapability(
+		r.Context(),
+		streamProvider,
+		providerResolution,
+		*modelRef,
+	) == ToolCapabilitySupported
 	useLiveKnowledgeTool := ragSelection.Enabled && toolRoundCapable &&
 		searchMode != chatSearchModeModelBuiltIn
 	useCompatibilityKnowledge := ragSelection.Enabled && !useLiveKnowledgeTool
@@ -1247,6 +1279,12 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			*modelRef,
 			ragAnswerProcessor,
 		)
+		prepareKnowledgeRoutingCatalog(
+			r.Context(),
+			h.knowledgeCatalogSource,
+			h.knowledgeCatalogGate,
+			knowledgeRuntime,
+		)
 	}
 
 	providerSystemPrompt, memoryPreparation := h.prepareDurableMemory(
@@ -1357,9 +1395,12 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				1,
 				websearch.MaxResults,
 			),
-			ForceSearch:    forceExternalSearch,
-			KnowledgeReady: autoDecision.ReadyForAnswer(),
-			Knowledge:      knowledgeRuntime,
+			ForceSearch:            forceExternalSearch,
+			KnowledgeReady:         autoDecision.ReadyForAnswer(),
+			Knowledge:              knowledgeRuntime,
+			CapabilityCache:        h.toolCapabilityCache,
+			CapabilityConfigHash:   providerResolution.ToolCapabilityConfigHash,
+			DisableNativeToolRound: !toolRoundCapable,
 		}
 		if searchExecution != nil &&
 			searchExecution.Mode == websearch.ExecutionExternal {
@@ -1372,7 +1413,9 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			Request:              providerRequest,
 			Runtime:              knowledgeRuntime,
 			ConversationMessages: conversationMessages,
+			PlannerMessages:      searchPlannerMessages,
 			BuiltInSearch:        modelBuiltInSearchProvider,
+			ForceSearch:          forceExternalSearch,
 		}
 		if searchExecution != nil &&
 			searchExecution.Mode == websearch.ExecutionExternal {
@@ -2487,22 +2530,21 @@ func autoRAGMessageMetadata(
 func (h *Handler) resolveStreamProvider(
 	ctx context.Context,
 	providerConfig *runtimeconfig.ProviderRuntimeConfig,
-) (Provider, string, error) {
+) (RuntimeProviderResolution, error) {
 	if providerConfig == nil {
 		if h.provider == nil {
-			return nil, "", ErrProviderRequired
+			return RuntimeProviderResolution{}, ErrProviderRequired
 		}
-		return h.provider, "", nil
+		return RuntimeProviderResolution{Provider: h.provider}, nil
 	}
 	if strings.TrimSpace(providerConfig.Source) == "server-default" {
 		if h.providerResolver != nil {
-			resolved, err := h.providerResolver.ResolveRuntimeProvider(ctx, *providerConfig)
-			return resolved.Provider, resolved.RAGAnswerProcessor, err
+			return h.providerResolver.ResolveRuntimeProvider(ctx, *providerConfig)
 		}
 		if h.provider == nil {
-			return nil, "", ErrProviderRequired
+			return RuntimeProviderResolution{}, ErrProviderRequired
 		}
-		return h.provider, "", nil
+		return RuntimeProviderResolution{Provider: h.provider}, nil
 	}
 	if strings.TrimSpace(providerConfig.Source) == "" &&
 		strings.TrimSpace(providerConfig.ID) == "" &&
@@ -2510,18 +2552,17 @@ func (h *Handler) resolveStreamProvider(
 		strings.TrimSpace(providerConfig.BaseURL) == "" &&
 		len(providerConfig.APIKeySecret) == 0 {
 		if h.provider == nil {
-			return nil, "", ErrProviderRequired
+			return RuntimeProviderResolution{}, ErrProviderRequired
 		}
-		return h.provider, "", nil
+		return RuntimeProviderResolution{Provider: h.provider}, nil
 	}
 	if h.providerResolver == nil {
-		return nil, "", newValidationError(
+		return RuntimeProviderResolution{}, newValidationError(
 			"PROVIDER_CONFIG_UNSUPPORTED",
 			"runtime provider configuration is not supported",
 		)
 	}
-	resolved, err := h.providerResolver.ResolveRuntimeProvider(ctx, *providerConfig)
-	return resolved.Provider, resolved.RAGAnswerProcessor, err
+	return h.providerResolver.ResolveRuntimeProvider(ctx, *providerConfig)
 }
 
 func (h *Handler) resolveChatSearchExecution(

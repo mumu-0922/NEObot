@@ -21,6 +21,7 @@ type Repository interface {
 	ReprocessDocument(context.Context, ReprocessDocumentRepositoryInput) (Document, error)
 	DeleteDocument(context.Context, DeleteDocumentRepositoryInput) error
 	ListDocuments(context.Context, ListDocumentsRepositoryInput) (DocumentPageResult, error)
+	FetchRoutingCatalog(context.Context, RoutingCatalogRepositoryInput) ([]RoutingCatalogCollection, error)
 	GetDocument(context.Context, DocumentLookupInput) (Document, error)
 	GetActiveDocumentContentMetadata(context.Context, DocumentLookupInput) (DocumentContentMetadata, error)
 }
@@ -209,6 +210,40 @@ type ListDocumentsRepositoryInput struct {
 type DocumentPageResult struct {
 	Items   []Document
 	HasMore bool
+}
+
+// RoutingCatalogInput requests metadata-only Knowledge discovery for a chat
+// turn. It must never cause chunk reads, embeddings, hydration, or reranking.
+type RoutingCatalogInput struct {
+	CollectionIDs []string
+	QueryText     string
+}
+
+type RoutingCatalogRepositoryInput struct {
+	ActorUserID   string
+	CollectionIDs []string
+	QueryText     string
+	QueryTerms    []string
+}
+
+type RoutingCatalogDocument struct {
+	Title          string
+	RelevanceScore int
+	Representative bool
+	UpdatedAt      time.Time
+}
+
+type RoutingCatalogCollection struct {
+	ID                  string
+	Name                string
+	Description         string
+	ActiveDocumentCount int
+	Documents           []RoutingCatalogDocument
+}
+
+type RoutingCatalog struct {
+	Collections     []RoutingCatalogCollection
+	HasLexicalMatch bool
 }
 
 type DocumentLookupInput struct {

@@ -159,6 +159,8 @@ export const useCoreSettingsStore = create<CoreSettingsState>()(
           enabled: true,
           models: [],
           modelsList: [],
+          toolCapabilityDefault: "auto",
+          toolCapabilityModelOverrides: {},
         };
         set((state) => ({
           providers: normalizeModelProviders([...state.providers, newProvider]),

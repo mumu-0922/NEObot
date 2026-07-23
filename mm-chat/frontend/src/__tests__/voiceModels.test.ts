@@ -18,6 +18,8 @@ const providers: ModelProvider[] = [
     enabled: true,
     models: ["audio:model:latest", "tts-1"],
     modelsList: ["audio:model:latest", "tts-1"],
+    toolCapabilityDefault: "auto",
+    toolCapabilityModelOverrides: {},
   },
   {
     id: "OFF",
@@ -28,6 +30,8 @@ const providers: ModelProvider[] = [
     enabled: false,
     models: ["whisper-1"],
     modelsList: ["whisper-1"],
+    toolCapabilityDefault: "auto",
+    toolCapabilityModelOverrides: {},
   },
 ];
 

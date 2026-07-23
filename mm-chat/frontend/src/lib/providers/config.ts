@@ -3,6 +3,7 @@ import type {
   ModelBuiltInSearchProtocol,
   ModelProvider,
   ProviderType,
+  ToolCapabilityOverride,
 } from "../../types";
 import {
   PROVIDER_CONFIG_LIMITS,
@@ -31,7 +32,34 @@ type ServerManagedProviderConfig = {
     connectionTestValid: boolean;
     connectionTestedAt?: string;
   };
+  toolCapability?: {
+    default?: string;
+    modelOverrides?: Record<string, string>;
+  };
 };
+
+function normalizeToolCapabilityOverride(
+  value: unknown,
+): ToolCapabilityOverride {
+  return value === "enabled" || value === "disabled" ? value : "auto";
+}
+
+function normalizeToolCapabilityModelOverrides(
+  value: unknown,
+  models: readonly string[],
+): Record<string, ToolCapabilityOverride> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+
+  const raw = value as Record<string, unknown>;
+  const entries: [string, ToolCapabilityOverride][] = [];
+  for (const model of models) {
+    const rawOverride = raw[model];
+    if (rawOverride === "enabled" || rawOverride === "disabled") {
+      entries.push([model, rawOverride]);
+    }
+  }
+  return Object.fromEntries(entries);
+}
 
 function isModelBuiltInSearchProtocol(
   value: unknown,
@@ -132,8 +160,18 @@ export function normalizeModelProvider(
   const type = normalizeProviderType(raw.type || fallback?.type);
   const models = normalizeModelList(raw.models);
   const modelsList = normalizeModelList(raw.modelsList || raw.models);
+  const selectedModels = models.filter(
+    (model) => modelsList.length === 0 || modelsList.includes(model),
+  );
   const modelBuiltInSearch = normalizeModelBuiltInSearchConfig(
     raw.modelBuiltInSearch,
+  );
+  const toolCapabilityDefault = normalizeToolCapabilityOverride(
+    raw.toolCapabilityDefault,
+  );
+  const toolCapabilityModelOverrides = normalizeToolCapabilityModelOverrides(
+    raw.toolCapabilityModelOverrides,
+    selectedModels,
   );
 
   return {
@@ -149,13 +187,13 @@ export function normalizeModelProvider(
       ? { apiKeySecret: raw.apiKeySecret }
       : {}),
     enabled: typeof raw.enabled === "boolean" ? raw.enabled : true,
-    models: models.filter(
-      (model) => modelsList.length === 0 || modelsList.includes(model),
-    ),
+    models: selectedModels,
     modelsList,
     ...(raw.isServerDefault ? { isServerDefault: true } : {}),
     ...(raw.isServerManaged ? { isServerManaged: true } : {}),
     ...(modelBuiltInSearch ? { modelBuiltInSearch } : {}),
+    toolCapabilityDefault,
+    toolCapabilityModelOverrides,
   };
 }
 
@@ -193,6 +231,8 @@ export function normalizeServerManagedProviderConfigs(
       isServerDefault: provider.id === SERVER_DEFAULT_PROVIDER_ID,
       isServerManaged: true,
       modelBuiltInSearch: provider.modelBuiltInSearch,
+      toolCapabilityDefault: provider.toolCapability?.default,
+      toolCapabilityModelOverrides: provider.toolCapability?.modelOverrides,
     })),
   );
 }

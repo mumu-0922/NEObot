@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"neo-chat/mm-chat/backend/internal/websearch"
 )
@@ -104,6 +105,53 @@ func TestExternalWebToolLoopNativeAutoSkipsSearchWithoutToolCall(t *testing.T) {
 	if content.String() != "ordinary writing answer" || search.calls != 0 || len(provider.inputs) != 1 ||
 		provider.inputs[0].ToolChoice != ProviderToolChoiceAuto {
 		t.Fatalf("content/search/inputs = %q / %d / %#v", content.String(), search.calls, provider.inputs)
+	}
+}
+
+func TestRetrievalToolLoopExplicitRuntimeIncompatibilityDowngradesAndUsesPlanner(t *testing.T) {
+	provider := &scriptedToolRoundProvider{
+		syncErrors: map[int]error{
+			0: errors.New("tools are not supported by this model"),
+		},
+		chatRounds: [][]ProviderEvent{
+			{{Type: ProviderEventDelta, Delta: `{"route":"direct","knowledgeQuery":"","webQuery":""}`}},
+			{{Type: ProviderEventDelta, Delta: "planner fallback answer"}},
+		},
+	}
+	cache := &capabilityMemoryCache{stored: make(chan capabilityStoredValue, 1)}
+	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt:   "write a greeting",
+			ModelRef: ModelRef{ProviderID: "fixture", ModelID: "model-a"},
+		},
+		Knowledge: &knowledgeToolRuntime{
+			OriginalQueryText:     "write a greeting",
+			SelectedCollectionIDs: []string{"11111111-1111-4111-8111-111111111111"},
+		},
+		CapabilityCache:      cache,
+		CapabilityConfigHash: strings.Repeat("c", 64),
+	})
+	var content strings.Builder
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		if event.Type == ProviderEventDelta {
+			content.WriteString(event.Delta)
+		}
+	}
+	if content.String() != "planner fallback answer" || len(provider.inputs) != 1 ||
+		len(provider.chatInputs) != 2 {
+		t.Fatalf("fallback content/tool/planner = %q / %d / %d", content.String(), len(provider.inputs), len(provider.chatInputs))
+	}
+	select {
+	case stored := <-cache.stored:
+		if stored.status != ToolCapabilityUnsupported || stored.category != "runtime_incompatibility" {
+			t.Fatalf("runtime downgrade = %#v", stored)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("runtime downgrade was not cached")
 	}
 }
 

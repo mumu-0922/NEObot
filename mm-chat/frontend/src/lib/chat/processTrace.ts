@@ -30,9 +30,16 @@ const REDUNDANT_OUTCOME_DETAILS = new Set([
   "streaming",
 ]);
 
+const SAFE_OUTCOME_DETAILS = new Set([
+  "answer_governance_required",
+  "completed_unreferenced",
+  "degraded",
+  "dependency_unavailable",
+  "no_evidence",
+  "no_results",
+]);
+
 const PROCESS_DETAIL_KEYS = new Set([
-  "query",
-  "redactedArgs",
   "hitCount",
   "sourceCount",
   "citationMarkers",
@@ -46,6 +53,17 @@ const PROCESS_DETAIL_KEYS = new Set([
   "selectedCount",
   "truncated",
 ]);
+
+export type ProcessRoute = "direct" | "knowledge" | "web" | "both";
+
+export type ProcessReasonCategory =
+  "knowledge_miss" | "web_miss" | "planner_failed" | "provider_degraded";
+
+export interface ProcessRouteSummary {
+  route: ProcessRoute;
+  knowledgeSources: number;
+  webSources: number;
+}
 
 export function normalizeProcessTrace(value: unknown): ProcessStep[] {
   if (!Array.isArray(value)) return [];
@@ -155,7 +173,63 @@ export function projectProcessStepsForDisplay(
 
 export function processOutcomeForDisplay(step: ProcessStep): string {
   const outcome = processStepStringDetail(step, "outcome");
-  return REDUNDANT_OUTCOME_DETAILS.has(outcome) ? "" : outcome;
+  return REDUNDANT_OUTCOME_DETAILS.has(outcome) ||
+    !SAFE_OUTCOME_DETAILS.has(outcome)
+    ? ""
+    : outcome;
+}
+
+export function summarizeProcessRoute(
+  steps: readonly ProcessStep[],
+): ProcessRouteSummary {
+  const knowledgeSteps = steps.filter((step) => step.kind === "knowledge");
+  const webSteps = steps.filter((step) => step.kind === "web");
+  const knowledgeSources = knowledgeSteps.reduce(
+    (total, step) => total + (processStepNumberDetail(step, "hitCount") ?? 0),
+    0,
+  );
+  const webSources = webSteps.reduce(
+    (total, step) =>
+      total + (processStepNumberDetail(step, "sourceCount") ?? 0),
+    0,
+  );
+  return {
+    route:
+      knowledgeSteps.length > 0 && webSteps.length > 0
+        ? "both"
+        : knowledgeSteps.length > 0
+          ? "knowledge"
+          : webSteps.length > 0
+            ? "web"
+            : "direct",
+    knowledgeSources,
+    webSources,
+  };
+}
+
+export function processReasonCategoryForDisplay(
+  step: ProcessStep,
+): ProcessReasonCategory | undefined {
+  const outcome = processStepStringDetail(step, "outcome");
+  if (step.kind === "knowledge" && outcome === "no_evidence") {
+    return "knowledge_miss";
+  }
+  if (step.kind === "web" && outcome === "no_results") {
+    return "web_miss";
+  }
+  const failure = processStepStringDetail(step, "failureCategory");
+  if (failure === "planner_failed") {
+    return "planner_failed";
+  }
+  if (
+    failure === "provider_failed" ||
+    failure === "dependency_unavailable" ||
+    failure === "unavailable" ||
+    failure === "answer_governance_required"
+  ) {
+    return "provider_degraded";
+  }
+  return undefined;
 }
 
 export function resolveProcessPanelExpanded(

@@ -271,6 +271,8 @@ describe("BYOK secret envelopes", () => {
       enabled: true,
       models: [],
       modelsList: [],
+      toolCapabilityDefault: "auto",
+      toolCapabilityModelOverrides: {},
     });
 
     expect(JSON.stringify(runtime)).not.toContain("local-provider-secret");

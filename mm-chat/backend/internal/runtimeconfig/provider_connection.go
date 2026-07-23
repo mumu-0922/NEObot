@@ -158,6 +158,7 @@ func (s *Service) commitAdminProviderConnection(
 		source = "server-default"
 		resolved = s.resolveStoredServerDefault(committed)
 	}
+	s.scheduleToolCapabilityWarmup(ctx, committed)
 	return AdminProviderConnectionResponse{
 		Provider: adminProviderResponse(resolved, committed.ProviderID, source),
 		Models:   append([]string(nil), models...),

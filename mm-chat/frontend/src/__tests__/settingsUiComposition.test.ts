@@ -54,6 +54,15 @@ describe("settings UI primitives", () => {
     expect(providerSettings).toContain("activateAdminProvider");
     expect(providerSettings).toContain("queueServerProviderPersist");
     expect(providerSettings).toContain("providerPersistQueueRef");
+    expect(providerSettings).toContain("toolCapabilityDefault");
+    expect(providerSettings).toContain("toolCapabilityModelOverrides");
+    expect(providerSettings).toContain("selectedToolCapabilityModelOverrides");
+    expect(providerSettings).toContain(
+      "handleToolCapabilityModelOverrideChange",
+    );
+    expect(providerSettings).toContain("newModels.includes(candidate)");
+    expect(providerSettings).toContain('<option value="inherit">');
+    expect(providerSettings).toContain("currentProvider.isServerManaged");
     expect(providerSettings).toContain("onBlur={() =>");
     expect(providerSettings).not.toContain("models: response.models");
     expect(providerSettings).toContain("encryptSecret");

@@ -130,6 +130,41 @@ type runtimeChatProviderResolver struct {
 	timeout time.Duration
 }
 
+type runtimeToolCapabilityCache struct {
+	service *runtimeconfig.Service
+}
+
+func (cache runtimeToolCapabilityCache) LookupToolCapability(
+	ctx context.Context,
+	configHash string,
+	modelID string,
+) (chat.ToolCapabilityStatus, bool, error) {
+	if cache.service == nil {
+		return chat.ToolCapabilityUnknown, false, nil
+	}
+	entry, found, err := cache.service.LookupToolCapability(ctx, configHash, modelID)
+	return chat.ToolCapabilityStatus(entry.Status), found, err
+}
+
+func (cache runtimeToolCapabilityCache) StoreToolCapability(
+	ctx context.Context,
+	configHash string,
+	modelID string,
+	status chat.ToolCapabilityStatus,
+	category string,
+) error {
+	if cache.service == nil {
+		return nil
+	}
+	return cache.service.StoreToolCapability(
+		ctx,
+		configHash,
+		modelID,
+		runtimeconfig.ToolCapabilityStatus(status),
+		category,
+	)
+}
+
 type runtimeModelBuiltInSearchTester struct {
 	timeout time.Duration
 }
@@ -242,6 +277,9 @@ func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 	apiKey := ""
 	modelBuiltInSearchProtocol := ""
 	modelBuiltInSearchTestValid := false
+	toolCapabilityPolicy := ""
+	toolCapabilityModelOverrides := map[string]string{}
+	toolCapabilityConfigHash := ""
 	source := strings.TrimSpace(provider.Source)
 	if strings.TrimSpace(provider.Source) == "server-default" {
 		resolved, err := r.service.ResolveServerDefaultProvider(ctx)
@@ -255,6 +293,11 @@ func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 		provider.BaseURL = resolved.BaseURL
 		modelBuiltInSearchProtocol = resolved.ModelBuiltInSearchProtocol
 		modelBuiltInSearchTestValid = resolved.ModelBuiltInSearchTestValid
+		toolCapabilityPolicy = string(resolved.ToolCapabilityDefault)
+		for model, value := range resolved.ToolCapabilityModelOverrides {
+			toolCapabilityModelOverrides[model] = string(value)
+		}
+		toolCapabilityConfigHash = resolved.ToolCapabilityConfigHash
 	} else if strings.TrimSpace(provider.Source) == "server-stored" {
 		resolved, err := r.service.ResolveStoredProvider(ctx, provider.ID)
 		if err != nil {
@@ -267,6 +310,11 @@ func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 		provider.BaseURL = resolved.BaseURL
 		modelBuiltInSearchProtocol = resolved.ModelBuiltInSearchProtocol
 		modelBuiltInSearchTestValid = resolved.ModelBuiltInSearchTestValid
+		toolCapabilityPolicy = string(resolved.ToolCapabilityDefault)
+		for model, value := range resolved.ToolCapabilityModelOverrides {
+			toolCapabilityModelOverrides[model] = string(value)
+		}
+		toolCapabilityConfigHash = resolved.ToolCapabilityConfigHash
 	} else {
 		var err error
 		apiKey, err = r.service.ProviderAPIKey(provider)
@@ -289,7 +337,7 @@ func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 				Message: "runtime provider configuration is unsupported",
 			}
 		}
-		return runtimeChatProviderResolution(resolved, source, provider), nil
+		return runtimeChatProviderResolutionWithToolCapability(resolved, source, provider, toolCapabilityPolicy, toolCapabilityModelOverrides, toolCapabilityConfigHash), nil
 	case "openai compatible", "openai_compatible", "openai-compatible", "":
 		if modelBuiltInSearchTestValid &&
 			modelBuiltInSearchProtocol == runtimeconfig.ModelBuiltInSearchProtocolOpenAIResponses {
@@ -302,7 +350,7 @@ func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 					Code: "PROVIDER_CONFIG_UNSUPPORTED", Message: "runtime provider configuration is unsupported",
 				}
 			}
-			return runtimeChatProviderResolution(resolved, source, provider), nil
+			return runtimeChatProviderResolutionWithToolCapability(resolved, source, provider, toolCapabilityPolicy, toolCapabilityModelOverrides, toolCapabilityConfigHash), nil
 		}
 		resolved, err := chat.NewOpenAICompatibleProvider(chat.OpenAICompatibleProviderConfig{
 			BaseURL:    runtimeProviderBaseURL(provider),
@@ -316,7 +364,7 @@ func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 				Message: "runtime provider configuration is unsupported",
 			}
 		}
-		return runtimeChatProviderResolution(resolved, source, provider), nil
+		return runtimeChatProviderResolutionWithToolCapability(resolved, source, provider, toolCapabilityPolicy, toolCapabilityModelOverrides, toolCapabilityConfigHash), nil
 	case "gemini", "google gemini", "google_gemini":
 		resolved, err := chat.NewGeminiProvider(chat.OpenAICompatibleProviderConfig{
 			BaseURL:    strings.TrimSpace(provider.BaseURL),
@@ -330,7 +378,7 @@ func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 				Message: "runtime provider configuration is unsupported",
 			}
 		}
-		return runtimeChatProviderResolution(resolved, source, provider), nil
+		return runtimeChatProviderResolutionWithToolCapability(resolved, source, provider, toolCapabilityPolicy, toolCapabilityModelOverrides, toolCapabilityConfigHash), nil
 	case "anthropic", "anthropic claude", "anthropic_claude", "claude":
 		resolved, err := chat.NewAnthropicProvider(chat.AnthropicProviderConfig{
 			BaseURL:    strings.TrimSpace(provider.BaseURL),
@@ -344,7 +392,7 @@ func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 				Message: "runtime provider configuration is unsupported",
 			}
 		}
-		return runtimeChatProviderResolution(resolved, source, provider), nil
+		return runtimeChatProviderResolutionWithToolCapability(resolved, source, provider, toolCapabilityPolicy, toolCapabilityModelOverrides, toolCapabilityConfigHash), nil
 	default:
 		return chat.RuntimeProviderResolution{}, chat.ValidationError{
 			Code:    "PROVIDER_CONFIG_UNSUPPORTED",
@@ -358,6 +406,24 @@ func runtimeChatProviderResolution(
 	source string,
 	config runtimeconfig.ProviderRuntimeConfig,
 ) chat.RuntimeProviderResolution {
+	return runtimeChatProviderResolutionWithToolCapability(
+		provider,
+		source,
+		config,
+		"",
+		nil,
+		"",
+	)
+}
+
+func runtimeChatProviderResolutionWithToolCapability(
+	provider chat.Provider,
+	source string,
+	config runtimeconfig.ProviderRuntimeConfig,
+	toolCapabilityPolicy string,
+	toolCapabilityModelOverrides map[string]string,
+	toolCapabilityConfigHash string,
+) chat.RuntimeProviderResolution {
 	processor := ""
 	switch source {
 	case "server-default":
@@ -366,8 +432,11 @@ func runtimeChatProviderResolution(
 		processor = knowledge.CanonicalAnswerProcessor(config.ID)
 	}
 	return chat.RuntimeProviderResolution{
-		Provider:           provider,
-		RAGAnswerProcessor: processor,
+		Provider:                     provider,
+		RAGAnswerProcessor:           processor,
+		ToolCapabilityPolicy:         toolCapabilityPolicy,
+		ToolCapabilityModelOverrides: toolCapabilityModelOverrides,
+		ToolCapabilityConfigHash:     toolCapabilityConfigHash,
 	}
 }
 
@@ -742,10 +811,19 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		files.WithStorageBackend(cfg.Storage.Backend),
 	)
 	webSearchService := websearch.NewService(resolvedOptions.webSearchResolver)
+	var chatHandler *chat.Handler
 	runtimeConfigService := runtimeconfig.NewService(
 		cfg,
 		runtimeconfig.WithProviderConfigRepository(resolvedOptions.runtimeConfigRepo),
 		runtimeconfig.WithTaskModelSettingsRepository(resolvedOptions.taskModelRepo),
+		runtimeconfig.WithToolCapabilityWarmupScheduler(func(
+			ctx context.Context,
+			request runtimeconfig.ToolCapabilityWarmupRequest,
+		) {
+			if chatHandler != nil {
+				chatHandler.PrewarmToolCapabilities(ctx, request)
+			}
+		}),
 		runtimeconfig.WithProviderSecretVault(resolvedOptions.providerSecretVault),
 		runtimeconfig.WithModelBuiltInSearchTester(runtimeModelBuiltInSearchTester{
 			timeout: cfg.Provider.Timeout,
@@ -766,6 +844,9 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		chat.WithRuntimeProviderResolver(runtimeChatProviderResolver{
 			service: runtimeConfigService,
 			timeout: cfg.Provider.Timeout,
+		}),
+		chat.WithToolCapabilityCache(runtimeToolCapabilityCache{
+			service: runtimeConfigService,
 		}),
 		chat.WithImageGenerator(chatImageGenerator{
 			service: resolvedOptions.imageJobService,
@@ -803,9 +884,15 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 			chat.WithRAGAnswerGovernanceGate(
 				chat.NewKnowledgeConsentRAGAnswerGovernanceGate(resolvedOptions.knowledgeService),
 			),
+			chat.WithKnowledgeRoutingCatalog(
+				resolvedOptions.knowledgeService,
+				chat.NewKnowledgeConsentRoutingCatalogGovernanceGate(
+					resolvedOptions.knowledgeService,
+				),
+			),
 		)
 	}
-	chatHandler := chat.NewHandler(
+	chatHandler = chat.NewHandler(
 		chat.NewService(resolvedOptions.chatRepository),
 		chatOptions...,
 	)

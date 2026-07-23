@@ -50,7 +50,7 @@ func TestProcessTraceSanitizesDetailsAndReasoning(t *testing.T) {
 	}
 }
 
-func TestProcessTraceOmitsOrdinaryCompletedGeneration(t *testing.T) {
+func TestProcessTracePersistsOrdinaryCompletedGenerationForDirectRoute(t *testing.T) {
 	trace := newProcessTrace("message-1")
 	trace.start(
 		ProcessStepKindGeneration,
@@ -64,8 +64,10 @@ func TestProcessTraceOmitsOrdinaryCompletedGeneration(t *testing.T) {
 		"",
 		trace,
 	)
-	if _, ok := metadata[processTraceMetadataKey]; ok {
-		t.Fatalf("ordinary generation persisted process trace: %#v", metadata)
+	steps, ok := metadata[processTraceMetadataKey].([]ProcessStep)
+	if !ok || len(steps) != 1 || steps[0].Kind != ProcessStepKindGeneration ||
+		steps[0].Status != ProcessStepStatusCompleted {
+		t.Fatalf("ordinary generation process trace = %#v", metadata)
 	}
 }
 

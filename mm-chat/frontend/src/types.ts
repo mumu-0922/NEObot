@@ -56,6 +56,7 @@ export type {
   ModelMetadata,
   ModelProvider,
   ProviderType,
+  ToolCapabilityOverride,
 } from "./lib/providers/types";
 export type {
   ImageSource,

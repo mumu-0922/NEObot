@@ -14,6 +14,8 @@ export interface ModelBuiltInSearchConfig {
   connectionTestedAt?: string;
 }
 
+export type ToolCapabilityOverride = "auto" | "enabled" | "disabled";
+
 export interface ModelProvider {
   id: string;
   name: string;
@@ -27,6 +29,8 @@ export interface ModelProvider {
   isServerDefault?: boolean;
   isServerManaged?: boolean;
   modelBuiltInSearch?: ModelBuiltInSearchConfig;
+  toolCapabilityDefault: ToolCapabilityOverride;
+  toolCapabilityModelOverrides: Record<string, ToolCapabilityOverride>;
 }
 
 export interface ModelMetadata {

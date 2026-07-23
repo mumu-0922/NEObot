@@ -82,7 +82,7 @@ func TestHandlerAutoRAGRewritesContextualFollowUpAndSearchesBothQueries(t *testi
 		fakeMessage(testMessageID, testConversationID, 2, "user", "这个方向有什么成果？"),
 	}
 	provider := &sequenceRAGProvider{outputs: [][]string{
-		{"推荐系统研究方向有什么成果？"},
+		{`{"route":"knowledge","knowledgeQuery":"推荐系统研究方向有什么成果？","webQuery":""}`},
 		{"成果包括个性化推荐实验。[K1]"},
 	}}
 	source := &fakeRAGCandidateSource{refs: []knowledge.EvidenceCandidateReference{validRAGCandidate()}}
