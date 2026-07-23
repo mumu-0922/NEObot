@@ -127,6 +127,9 @@ func runNativeExternalWebToolLoop(
 	provider ToolRoundProvider,
 	input externalWebToolLoopInput,
 ) bool {
+	if input.Knowledge.enabled() {
+		input.Request = withSelectedKnowledgeToolInstruction(input.Request)
+	}
 	tools := retrievalToolDefinitions(input)
 	if len(tools) == 0 {
 		streamCompatibilityAnswer(ctx, events, input.Provider, input.Request)

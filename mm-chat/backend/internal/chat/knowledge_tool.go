@@ -14,6 +14,11 @@ const searchKnowledgeToolName = "search_knowledge"
 
 const knowledgeToolUnavailableInstruction = `Selected Knowledge retrieval is unavailable for this turn. Continue without Knowledge evidence and do not use [K] markers.`
 
+const selectedKnowledgeToolInstruction = `One or more Knowledge collections are selected for this conversation.
+Use search_knowledge when the answer may depend on user-specific, project-specific, organization-specific, or document-specific facts that could be in those collections.
+Before claiming that information is unknown, unavailable, or was never provided, call search_knowledge once with a standalone query.
+Skip Knowledge retrieval for requests fully answerable from the visible conversation or general model knowledge, and treat an empty result as a normal miss.`
+
 type knowledgeToolRuntime struct {
 	Assembler             *RAGAnswerAssembler
 	AnswerGate            RAGAnswerGovernanceGate
@@ -34,7 +39,7 @@ func searchKnowledgeToolDefinition() ToolDefinition {
 		Type: "function",
 		Function: ToolFunctionDefinition{
 			Name:        searchKnowledgeToolName,
-			Description: "Search only the Knowledge collections selected for this conversation. Use one standalone retrieval query that resolves conversation references. Collection access is enforced by the server.",
+			Description: "Search only the Knowledge collections selected for this conversation. Use it for user-, project-, organization-, or document-specific facts that may exist there, and always use it before claiming such information is unknown or was never provided. Skip general questions already answerable from visible context. Use one standalone retrieval query that resolves conversation references. Collection access is enforced by the server.",
 			Parameters: map[string]any{
 				"type":                 "object",
 				"additionalProperties": false,
@@ -49,6 +54,19 @@ func searchKnowledgeToolDefinition() ToolDefinition {
 			},
 		},
 	}
+}
+
+func withSelectedKnowledgeToolInstruction(request ProviderRequest) ProviderRequest {
+	base := strings.TrimSpace(request.SystemPrompt)
+	if strings.Contains(base, selectedKnowledgeToolInstruction) {
+		return request
+	}
+	if base == "" {
+		request.SystemPrompt = selectedKnowledgeToolInstruction
+	} else {
+		request.SystemPrompt = base + "\n\n" + selectedKnowledgeToolInstruction
+	}
+	return request
 }
 
 func validateSearchKnowledgeToolCall(

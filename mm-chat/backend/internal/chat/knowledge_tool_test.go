@@ -16,8 +16,26 @@ func TestSearchKnowledgeToolDefinitionKeepsCollectionAuthorityOnServer(t *testin
 		t.Fatal(err)
 	}
 	if tool.Function.Name != searchKnowledgeToolName ||
-		strings.Contains(string(encoded), "collection") {
+		strings.Contains(string(encoded), "collection") ||
+		!strings.Contains(tool.Function.Description, "before claiming") ||
+		!strings.Contains(tool.Function.Description, "Skip general questions") {
 		t.Fatalf("tool definition leaks collection authority = %#v", tool)
+	}
+}
+
+func TestSelectedKnowledgeInstructionPreventsUnknownAnswerBeforeRetrieval(t *testing.T) {
+	request := withSelectedKnowledgeToolInstruction(ProviderRequest{
+		SystemPrompt: "Keep answers concise.",
+	})
+	if !strings.HasPrefix(request.SystemPrompt, "Keep answers concise.\n\n") ||
+		!strings.Contains(request.SystemPrompt, "Before claiming that information is unknown") ||
+		!strings.Contains(request.SystemPrompt, "treat an empty result as a normal miss") {
+		t.Fatalf("system prompt = %q", request.SystemPrompt)
+	}
+	idempotent := withSelectedKnowledgeToolInstruction(request)
+	if idempotent.SystemPrompt != request.SystemPrompt ||
+		strings.Count(idempotent.SystemPrompt, selectedKnowledgeToolInstruction) != 1 {
+		t.Fatalf("instruction was duplicated: %q", idempotent.SystemPrompt)
 	}
 }
 
