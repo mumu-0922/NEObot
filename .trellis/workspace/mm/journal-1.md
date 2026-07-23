@@ -38,3 +38,36 @@ Cut production Compose and PostgreSQL authority to the fresh PG17 data path, har
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: Reconcile mm-chat migration ledger
+
+**Date**: 2026-07-23
+**Task**: Reconcile mm-chat migration ledger
+**Branch**: `main`
+
+### Summary
+
+Closed stale G7/G18/G19 and Phase 9/15 plan states, preserved only Voice, owner-authorized root deletion, and optional Phase 16 as unresolved work, verified documentation consistency, and archived the completed server-refactor task.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0b43497` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
