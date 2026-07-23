@@ -20,7 +20,7 @@ import (
 
 const testSHA256 = "b94d27b9934d3e08a52e52d7da7dabfadebca7838dfb27f4f9174e65a2f27f21"
 
-func TestPostgresCreateMessagePersistsAttachments(t *testing.T) {
+func TestPostgresCreateMessagePersistsAttachmentOnlyMessages(t *testing.T) {
 	db := openPostgresIntegrationDB(t)
 	repo := NewPostgresRepository(db)
 	fileRepo := filemeta.NewPostgresRepository(db)
@@ -51,7 +51,7 @@ func TestPostgresCreateMessagePersistsAttachments(t *testing.T) {
 
 	message, err := repo.CreateMessage(ctx, conversation.ID, CreateMessageInput{
 		Role:    "user",
-		Content: "with file",
+		Content: "",
 		Attachments: []AttachmentInput{
 			{FileID: fileRecord.ID, Purpose: "image"},
 		},

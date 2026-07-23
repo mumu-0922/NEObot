@@ -335,7 +335,12 @@ func (s *Service) CreateMessage(
 		return Message{}, err
 	}
 	input.Role = role
-	if strings.TrimSpace(input.Content) == "" {
+	attachments, err := normalizeAttachmentInputs(input.Attachments)
+	if err != nil {
+		return Message{}, err
+	}
+	input.Attachments = attachments
+	if strings.TrimSpace(input.Content) == "" && len(input.Attachments) == 0 {
 		return Message{}, newValidationError("EMPTY_CONTENT", "message content is required")
 	}
 	input.ParentMessageID = strings.TrimSpace(input.ParentMessageID)
@@ -346,12 +351,6 @@ func (s *Service) CreateMessage(
 	if input.Metadata == nil {
 		input.Metadata = map[string]any{}
 	}
-	attachments, err := normalizeAttachmentInputs(input.Attachments)
-	if err != nil {
-		return Message{}, err
-	}
-	input.Attachments = attachments
-
 	return s.repo.CreateMessage(ctx, conversationID, input)
 }
 

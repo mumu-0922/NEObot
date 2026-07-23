@@ -542,16 +542,18 @@ func streamOpenAICompatibleEvents(
 
 	dataLines := make([]string, 0, 1)
 	toolCalls := newOpenAICompatibleToolCallAccumulator()
+	completed := false
 	for scanner.Scan() {
 		line := strings.TrimSuffix(scanner.Text(), "\r")
 		if line == "" {
-			keepReading, done := dispatchOpenAICompatibleData(
+			keepReading, eventCompleted := dispatchOpenAICompatibleData(
 				ctx,
 				strings.Join(dataLines, "\n"),
 				events,
 				toolCalls,
 			)
-			if done || !keepReading {
+			completed = completed || eventCompleted
+			if !keepReading {
 				return
 			}
 			dataLines = dataLines[:0]
@@ -565,13 +567,14 @@ func streamOpenAICompatibleEvents(
 	}
 
 	if len(dataLines) > 0 {
-		keepReading, done := dispatchOpenAICompatibleData(
+		keepReading, eventCompleted := dispatchOpenAICompatibleData(
 			ctx,
 			strings.Join(dataLines, "\n"),
 			events,
 			toolCalls,
 		)
-		if done || !keepReading {
+		completed = completed || eventCompleted
+		if !keepReading {
 			return
 		}
 	}
@@ -581,7 +584,7 @@ func streamOpenAICompatibleEvents(
 		return
 	}
 
-	if ctx.Err() == nil {
+	if ctx.Err() == nil && !completed {
 		sendProviderEvent(ctx, events, ProviderEvent{Error: errOpenAICompatibleStream})
 	}
 }
@@ -609,6 +612,7 @@ func dispatchOpenAICompatibleData(
 		return false, false
 	}
 
+	completed := false
 	for _, choice := range chunk.Choices {
 		for _, toolCall := range choice.Delta.ToolCalls {
 			if !toolCalls.append(ctx, events, choice.Index, toolCall.Index, toolCall.ID,
@@ -626,6 +630,9 @@ func dispatchOpenAICompatibleData(
 			}) {
 				return false, false
 			}
+		}
+		if strings.TrimSpace(choice.FinishReason) != "" {
+			completed = true
 		}
 		if choice.Delta.Content == nil || *choice.Delta.Content == "" {
 			continue
@@ -651,7 +658,10 @@ func dispatchOpenAICompatibleData(
 		}
 	}
 
-	return true, false
+	if completed && !toolCalls.complete(ctx, events) {
+		return false, false
+	}
+	return true, completed
 }
 
 type openAICompatibleToolCallKey struct {
@@ -660,8 +670,9 @@ type openAICompatibleToolCallKey struct {
 }
 
 type openAICompatibleToolCallAccumulator struct {
-	order []openAICompatibleToolCallKey
-	calls map[openAICompatibleToolCallKey]*ProviderToolCall
+	order     []openAICompatibleToolCallKey
+	calls     map[openAICompatibleToolCallKey]*ProviderToolCall
+	completed bool
 }
 
 func newOpenAICompatibleToolCallAccumulator() *openAICompatibleToolCallAccumulator {
@@ -744,6 +755,9 @@ func (accumulator *openAICompatibleToolCallAccumulator) complete(
 	ctx context.Context,
 	events chan<- ProviderEvent,
 ) bool {
+	if accumulator.completed {
+		return true
+	}
 	for _, key := range accumulator.order {
 		call := *accumulator.calls[key]
 		call.ID = strings.TrimSpace(call.ID)
@@ -762,6 +776,7 @@ func (accumulator *openAICompatibleToolCallAccumulator) complete(
 			return false
 		}
 	}
+	accumulator.completed = true
 	return true
 }
 

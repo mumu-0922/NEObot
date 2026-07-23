@@ -991,7 +991,12 @@ func (r *PostgresRepository) CreateMessage(
 		return Message{}, err
 	}
 	input.Role = role
-	if strings.TrimSpace(input.Content) == "" {
+	attachments, err := normalizeAttachmentInputs(input.Attachments)
+	if err != nil {
+		return Message{}, err
+	}
+	input.Attachments = attachments
+	if strings.TrimSpace(input.Content) == "" && len(input.Attachments) == 0 {
 		return Message{}, newValidationError("EMPTY_CONTENT", "message content is required")
 	}
 	input.ParentMessageID = strings.TrimSpace(input.ParentMessageID)
@@ -999,12 +1004,6 @@ func (r *PostgresRepository) CreateMessage(
 		return Message{}, newValidationError("INVALID_PARENT_MESSAGE_ID", "parent message id must be a UUID")
 	}
 	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
-	attachments, err := normalizeAttachmentInputs(input.Attachments)
-	if err != nil {
-		return Message{}, err
-	}
-	input.Attachments = attachments
-
 	id, err := r.generateID()
 	if err != nil {
 		return Message{}, err

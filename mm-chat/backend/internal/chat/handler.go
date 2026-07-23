@@ -1075,11 +1075,15 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			return
 		}
 	}
-	providerAttachments, err := h.resolveProviderAttachments(r.Context(), userMessage)
+	attachmentResolution, err := h.resolveProviderMessageAttachments(
+		r.Context(),
+		userMessage,
+	)
 	if err != nil {
 		writeServiceError(w, err)
 		return
 	}
+	providerAttachments := attachmentResolution.Images
 	conversationMessages, err := h.service.ListMessages(r.Context(), conversationID)
 	if err != nil {
 		writeServiceError(w, err)
@@ -1095,8 +1099,16 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		autoDecision.Outcome = "not_requested"
 	}
 	knowledgeStarted := time.Now()
-	providerPrompt := userMessage.Content
+	providerPrompt := appendDirectAttachmentContext(
+		userMessage.Content,
+		attachmentResolution.DocumentContext,
+	)
 	providerSystemPrompt := systemPrompt
+	if attachmentResolution.HasDocuments {
+		providerSystemPrompt = appendDirectAttachmentSystemInstruction(
+			providerSystemPrompt,
+		)
+	}
 	providerMetadata := request.Metadata
 	routerStarted := time.Now()
 	forceExternalSearch := searchMode == chatSearchModeExternal &&
@@ -2562,55 +2574,6 @@ func (h *Handler) resolveExternalSearchExecution(
 		return nil, websearch.ErrInvalidConfig
 	}
 	return &execution, nil
-}
-
-func (h *Handler) resolveProviderAttachments(ctx context.Context, message Message) ([]ProviderAttachment, error) {
-	if len(message.Attachments) == 0 {
-		return nil, nil
-	}
-
-	providerAttachments := make([]ProviderAttachment, 0, len(message.Attachments))
-	for _, attachment := range message.Attachments {
-		if !isProviderImageAttachment(attachment) {
-			continue
-		}
-		if h.attachmentResolver == nil {
-			return nil, newValidationError(
-				"ATTACHMENT_CONTENT_UNAVAILABLE",
-				"image attachment content is not available for provider streaming",
-			)
-		}
-		providerAttachment, err := h.attachmentResolver.ResolveProviderAttachment(ctx, attachment)
-		if err != nil {
-			return nil, err
-		}
-		if len(providerAttachment.Data) == 0 {
-			return nil, newValidationError(
-				"ATTACHMENT_CONTENT_EMPTY",
-				"image attachment content is empty",
-			)
-		}
-		if strings.TrimSpace(providerAttachment.FileID) == "" {
-			providerAttachment.FileID = attachment.FileID
-		}
-		if strings.TrimSpace(providerAttachment.FileName) == "" {
-			providerAttachment.FileName = attachment.FileName
-		}
-		if strings.TrimSpace(providerAttachment.MimeType) == "" {
-			providerAttachment.MimeType = attachment.MimeType
-		}
-		if providerAttachment.Size == 0 {
-			providerAttachment.Size = attachment.Size
-		}
-		if strings.TrimSpace(providerAttachment.SHA256) == "" {
-			providerAttachment.SHA256 = attachment.SHA256
-		}
-		if strings.TrimSpace(providerAttachment.Purpose) == "" {
-			providerAttachment.Purpose = attachment.Purpose
-		}
-		providerAttachments = append(providerAttachments, providerAttachment)
-	}
-	return providerAttachments, nil
 }
 
 func isProviderImageAttachment(attachment Attachment) bool {

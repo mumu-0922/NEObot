@@ -122,7 +122,7 @@ func TestOpenAICompatibleProviderStreamsFragmentedToolCallAndNativeContinuation(
 				t.Fatalf("forced tool_choice = %#v", payload.ToolChoice)
 			}
 			_, _ = w.Write([]byte("data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call-1\",\"type\":\"function\",\"function\":{\"name\":\"search_\",\"arguments\":\"{\\\"query\\\":\\\"latest \"}}]}}]}\n\n"))
-			_, _ = w.Write([]byte("data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"name\":\"web\",\"arguments\":\"fixture\\\"}\"}}]}}]}\n\n"))
+			_, _ = w.Write([]byte("data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"name\":\"web\",\"arguments\":\"fixture\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n"))
 			_, _ = w.Write([]byte("data: [DONE]\n\n"))
 		case 2:
 			if payload.ToolChoice != ProviderToolChoiceAuto {
@@ -173,6 +173,7 @@ func TestOpenAICompatibleProviderStreamsFragmentedToolCallAndNativeContinuation(
 	}
 	var fragments []ProviderToolCallDelta
 	var call ProviderToolCall
+	completedCalls := 0
 	for event := range first {
 		if event.Error != nil {
 			t.Fatal(event.Error)
@@ -181,10 +182,11 @@ func TestOpenAICompatibleProviderStreamsFragmentedToolCallAndNativeContinuation(
 			fragments = append(fragments, *event.ToolCallDelta)
 		}
 		if event.ToolCall != nil {
+			completedCalls++
 			call = *event.ToolCall
 		}
 	}
-	if len(fragments) != 2 || call.ID != "call-1" || call.Name != searchWebToolName ||
+	if len(fragments) != 2 || completedCalls != 1 || call.ID != "call-1" || call.Name != searchWebToolName ||
 		call.Arguments != `{"query":"latest fixture"}` {
 		t.Fatalf("fragments/call = %#v / %#v", fragments, call)
 	}
@@ -626,6 +628,45 @@ func TestOpenAICompatibleProviderEOFWithoutDoneYieldsErrorEvent(t *testing.T) {
 	}
 	if !gotError {
 		t.Fatalf("gotError = false, want true")
+	}
+}
+
+func TestOpenAICompatibleProviderFinishReasonAllowsCleanEOF(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"complete\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"))
+	}))
+	defer server.Close()
+
+	provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+		BaseURL:      server.URL,
+		APIKey:       "test-secret-token",
+		DefaultModel: "gpt-default",
+	})
+	if err != nil {
+		t.Fatalf("NewOpenAICompatibleProvider() error = %v", err)
+	}
+
+	events, err := provider.StreamChat(context.Background(), ProviderRequest{
+		Prompt:   "hello",
+		ModelRef: ModelRef{ProviderID: "openai_compatible"},
+	})
+	if err != nil {
+		t.Fatalf("StreamChat() error = %v", err)
+	}
+
+	var deltas []string
+	for event := range events {
+		if event.Error != nil {
+			t.Fatalf("provider event error = %v", event.Error)
+		}
+		if event.Type == ProviderEventDelta {
+			deltas = append(deltas, event.Delta)
+		}
+	}
+	if strings.Join(deltas, "") != "complete" {
+		t.Fatalf("deltas = %q, want complete", strings.Join(deltas, ""))
 	}
 }
 

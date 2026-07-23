@@ -427,7 +427,7 @@ func (r fileProviderAttachmentResolver) ResolveProviderAttachment(
 	if r.service == nil {
 		return chat.ProviderAttachment{}, chat.ValidationError{
 			Code:    "ATTACHMENT_CONTENT_UNAVAILABLE",
-			Message: "image attachment content is not available for provider streaming",
+			Message: "attachment content is not available for provider streaming",
 		}
 	}
 
@@ -444,6 +444,14 @@ func (r fileProviderAttachmentResolver) ResolveProviderAttachment(
 	if maxBytes <= 0 {
 		maxBytes = config.DefaultMaxUploadBytes
 	}
+	resolvedMIMEType := strings.TrimSpace(record.MimeType)
+	if resolvedMIMEType == "" {
+		resolvedMIMEType = attachment.MimeType
+	}
+	if !strings.HasPrefix(strings.ToLower(resolvedMIMEType), "image/") &&
+		maxBytes > chat.MaxDirectAttachmentBytes {
+		maxBytes = chat.MaxDirectAttachmentBytes
+	}
 	data, err := io.ReadAll(io.LimitReader(reader, maxBytes+1))
 	if err != nil {
 		return chat.ProviderAttachment{}, err
@@ -451,14 +459,11 @@ func (r fileProviderAttachmentResolver) ResolveProviderAttachment(
 	if int64(len(data)) > maxBytes {
 		return chat.ProviderAttachment{}, chat.ValidationError{
 			Code:    "ATTACHMENT_TOO_LARGE",
-			Message: "image attachment is too large for provider streaming",
+			Message: "attachment is too large for direct provider context",
 		}
 	}
 
-	mimeType := strings.TrimSpace(record.MimeType)
-	if mimeType == "" {
-		mimeType = attachment.MimeType
-	}
+	mimeType := resolvedMIMEType
 	fileName := strings.TrimSpace(record.OriginalFilename)
 	if fileName == "" {
 		fileName = attachment.FileName
