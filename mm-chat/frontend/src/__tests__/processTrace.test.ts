@@ -4,7 +4,9 @@ import {
   isProcessStepActive,
   normalizeProcessStep,
   normalizeProcessTrace,
+  processOutcomeForDisplay,
   processTraceFromMessageMetadata,
+  projectProcessStepsForDisplay,
   reasoningFromMessageMetadata,
   resolveProcessPanelExpanded,
   upsertProcessStep,
@@ -113,5 +115,96 @@ describe("durable process trace", () => {
     expect(resolveProcessPanelExpanded(false, null)).toBe(false);
     expect(resolveProcessPanelExpanded(false, true)).toBe(true);
     expect(resolveProcessPanelExpanded(true, false)).toBe(false);
+  });
+
+  it("projects specialized search tools once while retaining backend diagnostics", () => {
+    const steps = normalizeProcessTrace([
+      {
+        id: "tool-1",
+        kind: "tool",
+        status: "completed",
+        labelKey: "process.tool",
+        detail: {
+          toolName: "search_web",
+          round: 1,
+          query: "Tokyo weather",
+        },
+      },
+      {
+        id: "web-1",
+        kind: "web",
+        status: "completed",
+        labelKey: "process.web",
+        detail: {
+          toolName: "search_web",
+          round: 1,
+          query: "Tokyo weather",
+        },
+      },
+      {
+        id: "tool-2",
+        kind: "tool",
+        status: "failed",
+        labelKey: "process.tool",
+        detail: {
+          toolName: "search_web",
+          round: 2,
+          query: "Tokyo forecast",
+        },
+      },
+      {
+        id: "tool-3",
+        kind: "tool",
+        status: "completed",
+        labelKey: "process.tool",
+        detail: { toolName: "search_knowledge", round: 3 },
+      },
+      {
+        id: "knowledge-1",
+        kind: "knowledge",
+        status: "completed",
+        labelKey: "process.knowledge",
+        detail: { toolName: "search_knowledge", round: 3 },
+      },
+      {
+        id: "tool-4",
+        kind: "tool",
+        status: "completed",
+        labelKey: "process.tool",
+        detail: { toolName: "custom_tool", round: 4 },
+      },
+    ]);
+
+    expect(projectProcessStepsForDisplay(steps).map((step) => step.id)).toEqual(
+      ["web-1", "tool-2", "knowledge-1", "tool-4"],
+    );
+    expect(steps.map((step) => step.id)).toEqual([
+      "tool-1",
+      "web-1",
+      "tool-2",
+      "tool-3",
+      "knowledge-1",
+      "tool-4",
+    ]);
+  });
+
+  it("does not repeat lifecycle words already expressed by step status", () => {
+    const streaming = normalizeProcessStep({
+      id: "reasoning-1",
+      kind: "reasoning",
+      status: "completed",
+      labelKey: "process.reasoning",
+      detail: { outcome: "streaming" },
+    });
+    const degraded = normalizeProcessStep({
+      id: "web-1",
+      kind: "web",
+      status: "failed",
+      labelKey: "process.web",
+      detail: { outcome: "degraded" },
+    });
+
+    expect(processOutcomeForDisplay(streaming!)).toBe("");
+    expect(processOutcomeForDisplay(degraded!)).toBe("degraded");
   });
 });

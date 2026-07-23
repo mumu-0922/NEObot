@@ -18,6 +18,18 @@ const PROCESS_STEP_STATUSES = new Set<ProcessStepStatus>([
   "cancelled",
 ]);
 
+const SPECIALIZED_TOOL_KINDS: Readonly<Record<string, ProcessStepKind>> = {
+  search_knowledge: "knowledge",
+  search_web: "web",
+};
+
+const REDUNDANT_OUTCOME_DETAILS = new Set([
+  "cancelled",
+  "completed",
+  "running",
+  "streaming",
+]);
+
 const PROCESS_DETAIL_KEYS = new Set([
   "query",
   "redactedArgs",
@@ -125,6 +137,27 @@ export function isProcessStepActive(step: ProcessStep): boolean {
   );
 }
 
+export function projectProcessStepsForDisplay(
+  steps: ProcessStep[],
+): ProcessStep[] {
+  return steps.filter((step) => {
+    if (step.kind !== "tool") return true;
+    const toolName = processStepStringDetail(step, "toolName");
+    const specializedKind = SPECIALIZED_TOOL_KINDS[toolName];
+    if (!specializedKind) return true;
+    return !steps.some(
+      (candidate) =>
+        candidate.kind === specializedKind &&
+        representsSameToolExecution(step, candidate, toolName),
+    );
+  });
+}
+
+export function processOutcomeForDisplay(step: ProcessStep): string {
+  const outcome = processStepStringDetail(step, "outcome");
+  return REDUNDANT_OUTCOME_DETAILS.has(outcome) ? "" : outcome;
+}
+
 export function resolveProcessPanelExpanded(
   hasActiveStep: boolean,
   manualExpanded: boolean | null,
@@ -166,4 +199,41 @@ function normalizeProcessDetail(
     }
   }
   return Object.keys(detail).length > 0 ? detail : undefined;
+}
+
+function representsSameToolExecution(
+  tool: ProcessStep,
+  specialized: ProcessStep,
+  toolName: string,
+): boolean {
+  if (processStepStringDetail(specialized, "toolName") !== toolName) {
+    return false;
+  }
+  const toolRound = processStepNumberDetail(tool, "round");
+  const specializedRound = processStepNumberDetail(specialized, "round");
+  if (toolRound !== undefined || specializedRound !== undefined) {
+    return toolRound === specializedRound;
+  }
+  const toolQuery = processStepStringDetail(tool, "query");
+  const specializedQuery = processStepStringDetail(specialized, "query");
+  return (
+    toolQuery === "" ||
+    specializedQuery === "" ||
+    toolQuery === specializedQuery
+  );
+}
+
+function processStepStringDetail(step: ProcessStep, key: string): string {
+  const value = step.detail?.[key];
+  return typeof value === "string" ? value : "";
+}
+
+function processStepNumberDetail(
+  step: ProcessStep,
+  key: string,
+): number | undefined {
+  const value = step.detail?.[key];
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }

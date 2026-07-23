@@ -16,6 +16,8 @@ import { useTranslations } from "next-intl";
 
 import {
   isProcessStepActive,
+  processOutcomeForDisplay,
+  projectProcessStepsForDisplay,
   resolveProcessPanelExpanded,
 } from "@/lib/chat/processTrace";
 import type { ProcessStep, ProcessStepKind } from "@/types";
@@ -40,15 +42,19 @@ export default function ProcessTracePanel({
 }: ProcessTracePanelProps) {
   const t = useTranslations("Content");
   const panelId = useId();
-  const hasActiveStep = steps.some(isProcessStepActive);
+  const visibleSteps = useMemo(
+    () => projectProcessStepsForDisplay(steps),
+    [steps],
+  );
+  const hasActiveStep = visibleSteps.some(isProcessStepActive);
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null);
   const isExpanded = resolveProcessPanelExpanded(hasActiveStep, manualExpanded);
   const summary = useMemo(
-    () => buildProcessSummary(steps, hasActiveStep, t),
-    [hasActiveStep, steps, t],
+    () => buildProcessSummary(visibleSteps, hasActiveStep, t),
+    [hasActiveStep, t, visibleSteps],
   );
 
-  if (steps.length === 0) return null;
+  if (visibleSteps.length === 0) return null;
 
   return (
     <div className="mb-3 overflow-hidden rounded-lg border border-gray-200 bg-gray-50/60 dark:border-border dark:bg-muted/25">
@@ -88,7 +94,7 @@ export default function ProcessTracePanel({
         <div className="overflow-hidden">
           <div className="max-h-80 overflow-y-auto border-t border-gray-200/60 bg-white/40 px-3 py-2 custom-scrollbar dark:border-border dark:bg-card/35">
             <ol className="space-y-2" aria-label={t("processSteps")}>
-              {steps.map((step) => (
+              {visibleSteps.map((step) => (
                 <ProcessStepRow key={step.id} step={step} />
               ))}
             </ol>
@@ -118,7 +124,7 @@ function ProcessStepRow({ step }: { step: ProcessStep }) {
   const active = isProcessStepActive(step);
   const failed = step.status === "failed" || step.status === "cancelled";
   const query = stringDetail(step, "query");
-  const outcome = stringDetail(step, "outcome");
+  const outcome = processOutcomeForDisplay(step);
   const hitCount = numberDetail(step, "hitCount");
   const sourceCount = numberDetail(step, "sourceCount");
 
