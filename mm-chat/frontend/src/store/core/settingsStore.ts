@@ -17,7 +17,7 @@ import {
 import {
   AGNES_IMAGE_PLUGIN,
   AGNES_VIDEO_PLUGIN,
-  JINA_READER_PLUGIN,
+  RETIRED_BUILT_IN_PLUGIN_IDS,
   WEATHER_PLUGIN,
   UNSPLASH_PLUGIN,
 } from "@/config/plugins";
@@ -168,7 +168,6 @@ interface SettingsState {
 
 // 内置插件列表
 const BUILT_IN_PLUGINS = [
-  JINA_READER_PLUGIN,
   WEATHER_PLUGIN,
   UNSPLASH_PLUGIN,
   AGNES_IMAGE_PLUGIN,
@@ -177,7 +176,9 @@ const BUILT_IN_PLUGINS = [
 const BUILT_IN_PLUGINS_BY_ID = new Map(
   BUILT_IN_PLUGINS.map((plugin) => [plugin.id, plugin]),
 );
-const REMOVED_BUILT_IN_PLUGIN_IDS = new Set(["image-generation"]);
+const REMOVED_BUILT_IN_PLUGIN_IDS = new Set<string>(
+  RETIRED_BUILT_IN_PLUGIN_IDS,
+);
 const SKILL_ID_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 const removeRemovedBuiltInPlugins = (plugins: readonly Plugin[]): Plugin[] =>

@@ -16,8 +16,8 @@ from typing import Any, Final, NoReturn
 
 from mm_chat_rag.models import JobClaim, stable_error_code
 from mm_chat_rag.provider_profile import (
-    MINERU_JINA_POSTGRES_PROFILE,
     PROVIDER_JOB_STAGES,
+    GenerationEmbeddingProfile,
     ProviderProfileError,
     ProviderRuntimeProfile,
 )
@@ -106,6 +106,8 @@ class ProcessingJobContext:
     authority: ProviderAuthority | None
     lease_token: uuid.UUID | None = None
     runtime_provider_profile_id: str | None = None
+    generation_embedding_profile: GenerationEmbeddingProfile | None = None
+    generation_chunk_profile_hash: str | None = None
 
     @property
     def provider_backed(self) -> bool:
@@ -152,7 +154,12 @@ def admit_processing_job_context(
         _reject(JOB_CONTEXT_PROJECTION_BINDING_MISSING)
 
     authority = _provider_authority(row, stage)
-    profile_id = _validate_provider_profile(job, stage, provider_profile)
+    profile_id = _validate_provider_profile(
+        job,
+        stage,
+        authority,
+        provider_profile,
+    )
 
     return ProcessingJobContext(
         job_id=job_id,
@@ -207,6 +214,7 @@ def _provider_authority(row: Mapping[str, Any], stage: str) -> ProviderAuthority
 def _validate_provider_profile(
     job: JobClaim,
     stage: str,
+    authority: ProviderAuthority | None,
     provider_profile: ProviderRuntimeProfile | None,
 ) -> str | None:
     if stage not in PROVIDER_JOB_STAGES or provider_profile is None:
@@ -215,9 +223,20 @@ def _validate_provider_profile(
         provider_profile.validate_static_contract()
     except ProviderProfileError as error:
         _reject_from(JOB_CONTEXT_PROVIDER_PROFILE_MISMATCH, error)
-    if provider_profile.profile_id != MINERU_JINA_POSTGRES_PROFILE:
+    if not provider_profile.enabled:
         _reject(JOB_CONTEXT_PROVIDER_PROFILE_MISMATCH)
     if job.max_attempts != provider_profile.retry_max_attempts:
+        _reject(JOB_CONTEXT_PROVIDER_PROFILE_MISMATCH)
+    if stage == "passage_embedding" and (
+        authority is None
+        or not provider_profile.admits_embedding_profile(
+            GenerationEmbeddingProfile(
+                processor=authority.processor,
+                model_id=authority.model_id,
+                dimensions=1024,
+            )
+        )
+    ):
         _reject(JOB_CONTEXT_PROVIDER_PROFILE_MISMATCH)
     return provider_profile.profile_id
 

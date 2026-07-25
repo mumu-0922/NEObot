@@ -2,7 +2,7 @@
   "title": "Knowledge Service",
   "subtitle": "Configure the services required for document parsing and knowledge retrieval.",
   "mineruRole": "PDF document parsing",
-  "jinaRole": "Vector indexing and reranking",
+  "siliconflowRole": "Pro/BAAI/bge-m3 indexing and Pro/BAAI/bge-reranker-v2-m3 reranking",
   "serviceReady": "Knowledge services are ready",
   "servicePartial": "Knowledge services are partially available",
   "serviceUnavailable": "Knowledge services are unavailable",

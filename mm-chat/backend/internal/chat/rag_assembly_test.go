@@ -164,8 +164,40 @@ func TestRAGAnswerAssemblerAppliesGoldenRelevancePolicyAndTopK(t *testing.T) {
 	if reranker.query != strings.TrimSpace(input.RewrittenQueryText) || len(reranker.documents) != 6 {
 		t.Fatalf("reranker query/documents = %q/%d", reranker.query, len(reranker.documents))
 	}
+	if !strings.Contains(reranker.documents[0], `Source file metadata (not Citation evidence): "source-0.md"`) ||
+		!strings.Contains(reranker.documents[0], "authorized source 0") {
+		t.Fatalf("reranker document = %q", reranker.documents[0])
+	}
 	if len(hydrator.inputs) != 1 || len(hydrator.inputs[0].References) != 6 {
 		t.Fatalf("hydration inputs = %#v", hydrator.inputs)
+	}
+}
+
+func TestApplyRAGRerankPreservesExplicitSourceNameRouting(t *testing.T) {
+	evidence := []knowledge.HydratedEvidence{
+		{
+			ChildChunkID: "11111111-1111-4111-8111-111111111111",
+			SourceName:   "unrelated.xlsx",
+		},
+		{
+			ChildChunkID: "22222222-2222-4222-8222-222222222222",
+			SourceName:   "rag-eval-xlsx-zh-04.xlsx",
+		},
+	}
+	ranked, ok := applyRAGRerank(
+		evidence,
+		[]RAGRerankResult{
+			{Index: 0, RelevanceScore: 0.99},
+			{Index: 1, RelevanceScore: 0.01},
+		},
+		2,
+		ragGoldenRelevancePolicyV2,
+		"编号 RAGEVAL-XLSX-ZH-04 的例外代码是什么？",
+	)
+	if !ok || len(ranked) != 2 ||
+		ranked[0].SourceName != "rag-eval-xlsx-zh-04.xlsx" ||
+		ranked[0].RankScore <= ranked[1].RankScore {
+		t.Fatalf("source-routed rerank = %#v/%v", ranked, ok)
 	}
 }
 
@@ -339,19 +371,22 @@ func (f *mappedRAGHydrator) ReauthorizeAndHydrateEvidence(
 }
 
 type fakeRAGEvidenceReranker struct {
-	results   []RAGRerankResult
-	err       error
-	calls     int
-	query     string
-	documents []string
+	results      []RAGRerankResult
+	err          error
+	calls        int
+	generationID string
+	query        string
+	documents    []string
 }
 
 func (f *fakeRAGEvidenceReranker) Rerank(
 	_ context.Context,
+	generationID string,
 	query string,
 	documents []string,
 ) ([]RAGRerankResult, error) {
 	f.calls++
+	f.generationID = generationID
 	f.query = query
 	f.documents = append([]string(nil), documents...)
 	if f.err != nil {
@@ -367,6 +402,7 @@ type fakeRAGRerankGate struct {
 func (g fakeRAGRerankGate) AuthorizeRAGRerank(
 	_ context.Context,
 	_ []string,
+	_ string,
 ) error {
 	return g.err
 }
@@ -420,7 +456,11 @@ func validHydratedEvidence() knowledge.HydratedEvidence {
 		ChildChunkID:      candidate.ChildChunkID,
 		SourceSpanHash:    candidate.SourceSpanHash,
 		ContentHash:       candidate.ContentHash,
+		SourceName:        "alpha-source.md",
 		SourceText:        "alpha evidence source",
+		ChildTokenCount:   3,
+		ParentSourceText:  "alpha evidence parent with broader source context",
+		ParentTokenCount:  8,
 		Locator:           []byte(`{"page":1}`),
 		RankScore:         candidate.RankScore,
 	}
@@ -452,6 +492,7 @@ func rerankFixture(count int) (
 			ChildChunkID:      reference.ChildChunkID,
 			SourceSpanHash:    reference.SourceSpanHash,
 			ContentHash:       reference.ContentHash,
+			SourceName:        fmt.Sprintf("source-%d.md", index),
 			SourceText:        fmt.Sprintf("authorized source %d", index),
 			Locator:           []byte(`{"page":1}`),
 			RankScore:         reference.RankScore,

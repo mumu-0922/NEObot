@@ -22,6 +22,7 @@ from mm_chat_rag.offline_parser.canonical import (
     JsonValue,
     canonical_json_bytes,
 )
+from mm_chat_rag.offline_parser.errors import ParserFormat
 from mm_chat_rag.offline_parser.native.model import (
     NativeArtifactError,
     NativeDocument,
@@ -36,9 +37,13 @@ from mm_chat_rag.retry import PermanentJobError
 from mm_chat_rag.structure_chunking import (
     STRUCTURE_CHUNK_PROFILE_HASH,
     ChunkFragmentPlan,
+    DerivedContextPlan,
+    SemanticBoundaryHints,
+    StructureChunkingError,
     StructureChunkPlan,
     StructuredTextUnit,
     plan_structure_chunks,
+    structure_semantic_profile_hash,
 )
 
 NATIVE_STRUCTURE_CONTEXT_INVALID: Final = "NATIVE_STRUCTURE_CONTEXT_INVALID"
@@ -98,6 +103,13 @@ _LOCATOR_STRUCTURE_KINDS: Final = frozenset(
 class _SourceSegment:
     start_byte: int
     end_byte: int
+    node_ordinal: int
+    fragment: NativeFragment
+
+
+@dataclass(frozen=True, slots=True)
+class _NodeFragment:
+    node_ordinal: int
     fragment: NativeFragment
 
 
@@ -129,6 +141,7 @@ def build_native_structure_artifacts(
     artifact: NativeDocument,
     *,
     parser_model: str,
+    semantic_hints: tuple[SemanticBoundaryHints, ...] = (),
 ) -> ParsedDocumentArtifacts:
     """Map one validated Native document into structure-aware parser artifacts."""
     materialization_id = context.materialization_id
@@ -148,6 +161,13 @@ def build_native_structure_artifacts(
         _reject_from(NATIVE_STRUCTURE_ARTIFACT_INVALID, error)
     if source.source_sha256 != artifact.source_sha256:
         _reject(NATIVE_STRUCTURE_ARTIFACT_INVALID)
+    chunk_profile_hash = (
+        context.generation_chunk_profile_hash or NATIVE_STRUCTURE_CHUNK_PROFILE_HASH
+    )
+    try:
+        semantic_profile_hash = structure_semantic_profile_hash(chunk_profile_hash)
+    except StructureChunkingError as error:
+        _reject_from(NATIVE_STRUCTURE_ARTIFACT_INVALID, error)
 
     drafts = _extract_units(artifact)
     if not drafts:
@@ -162,7 +182,11 @@ def build_native_structure_artifacts(
         )
         for unit in projected
     )
-    plan = plan_structure_chunks(planner_units)
+    plan = plan_structure_chunks(
+        planner_units,
+        semantic_hints=semantic_hints,
+        semantic_profile_hash=semantic_profile_hash,
+    )
     artifact_set_id = uuid.uuid5(
         _ARTIFACT_NAMESPACE,
         ":".join(
@@ -170,7 +194,7 @@ def build_native_structure_artifacts(
                 str(materialization_id),
                 source.source_sha256,
                 artifact.artifact_sha256,
-                NATIVE_STRUCTURE_CHUNK_PROFILE_HASH,
+                chunk_profile_hash,
             )
         ),
     )
@@ -195,11 +219,31 @@ def build_native_structure_artifacts(
         plan,
         logical_flow_id=logical_flow_id,
         source_sha256=source.source_sha256,
+        chunk_profile_hash=chunk_profile_hash,
     )
     return ParsedDocumentArtifacts(
         artifact_set_id=artifact_set_id,
         canonical_ir=canonical_ir,
         chunk_manifest=chunk_manifest,
+    )
+
+
+def native_structure_planner_units(
+    artifact: NativeDocument,
+) -> tuple[StructuredTextUnit, ...]:
+    """Expose the exact preplanning units without provider or storage access."""
+    drafts = _extract_units(artifact)
+    if not drafts:
+        _reject(NATIVE_STRUCTURE_ARTIFACT_INVALID)
+    projected, _text = _project_units(artifact, drafts)
+    return tuple(
+        StructuredTextUnit(
+            ordinal=unit.draft.ordinal,
+            kind=unit.draft.kind.value,
+            text=unit.draft.text,
+            heading_path=unit.planner_heading_path,
+        )
+        for unit in projected
     )
 
 
@@ -212,7 +256,7 @@ def _extract_units(artifact: NativeDocument) -> tuple[_UnitDraft, ...]:
     drafts: list[_UnitDraft] = []
 
     def visit(node: NativeNode) -> None:
-        groups: tuple[tuple[NativeFragment, ...], ...] = ()
+        groups: tuple[tuple[_NodeFragment, ...], ...] = ()
         separator = ""
         if node.kind is NativeNodeKind.TABLE_ROW:
             groups = _table_row_groups(node, children)
@@ -221,7 +265,7 @@ def _extract_units(artifact: NativeDocument) -> tuple[_UnitDraft, ...]:
             groups = _descendant_text_groups(node, children)
             separator = "\n"
         else:
-            direct = _eligible_fragments(node.fragments)
+            direct = _eligible_fragments(node)
             if direct:
                 groups = (direct,)
         if groups:
@@ -249,8 +293,8 @@ def _extract_units(artifact: NativeDocument) -> tuple[_UnitDraft, ...]:
 def _table_row_groups(
     row: NativeNode,
     children: dict[int, list[NativeNode]],
-) -> tuple[tuple[NativeFragment, ...], ...]:
-    groups: list[tuple[NativeFragment, ...]] = []
+) -> tuple[tuple[_NodeFragment, ...], ...]:
+    groups: list[tuple[_NodeFragment, ...]] = []
     for child in children.get(row.ordinal, []):
         if child.kind is NativeNodeKind.TABLE_CELL:
             fragments = tuple(
@@ -268,8 +312,8 @@ def _table_row_groups(
 def _descendant_text_groups(
     node: NativeNode,
     children: dict[int, list[NativeNode]],
-) -> tuple[tuple[NativeFragment, ...], ...]:
-    direct = _eligible_fragments(node.fragments)
+) -> tuple[tuple[_NodeFragment, ...], ...]:
+    direct = _eligible_fragments(node)
     if direct:
         return (direct,)
     return tuple(
@@ -280,17 +324,17 @@ def _descendant_text_groups(
 
 
 def _eligible_fragments(
-    fragments: tuple[NativeFragment, ...],
-) -> tuple[NativeFragment, ...]:
+    node: NativeNode,
+) -> tuple[_NodeFragment, ...]:
     return tuple(
-        fragment
-        for fragment in fragments
+        _NodeFragment(node_ordinal=node.ordinal, fragment=fragment)
+        for fragment in node.fragments
         if fragment.role not in _SKIPPED_FRAGMENT_ROLES and fragment.text
     )
 
 
 def _unit_text(
-    groups: tuple[tuple[NativeFragment, ...], ...],
+    groups: tuple[tuple[_NodeFragment, ...], ...],
     *,
     separator: str,
 ) -> tuple[str, tuple[_SourceSegment, ...]]:
@@ -301,14 +345,15 @@ def _unit_text(
         if group_index:
             parts.append(separator)
             offset += len(separator.encode("utf-8"))
-        for fragment in group:
-            encoded = fragment.text.encode("utf-8")
-            parts.append(fragment.text)
+        for item in group:
+            encoded = item.fragment.text.encode("utf-8")
+            parts.append(item.fragment.text)
             segments.append(
                 _SourceSegment(
                     start_byte=offset,
                     end_byte=offset + len(encoded),
-                    fragment=fragment,
+                    node_ordinal=item.node_ordinal,
+                    fragment=item.fragment,
                 )
             )
             offset += len(encoded)
@@ -527,6 +572,7 @@ def _chunk_manifest(
     *,
     logical_flow_id: str,
     source_sha256: str,
+    chunk_profile_hash: str,
 ) -> JsonObject:
     source_unit_ids = _source_unit_ids(artifact)
     parents: list[JsonObject] = []
@@ -550,15 +596,19 @@ def _chunk_manifest(
         logical_id = _hash_seed(
             "native_structure.parent_chunk.v1",
             parent_seed_id,
-            NATIVE_STRUCTURE_CHUNK_PROFILE_HASH,
+            chunk_profile_hash,
         )
         parent_ids[parent.ordinal] = logical_id
         parent_seed_ids[parent.ordinal] = parent_seed_id
         parents.append(
             {
                 "chunkKind": "parent",
-                "chunkProfileHash": NATIVE_STRUCTURE_CHUNK_PROFILE_HASH,
-                "chunkSourceSpanHash": _chunk_source_span_hash(fragments, joiners),
+                "chunkProfileHash": chunk_profile_hash,
+                "chunkSourceSpanHash": _chunk_source_span_hash(
+                    fragments,
+                    joiners,
+                    chunk_profile_hash=chunk_profile_hash,
+                ),
                 "contentBytes": len(content.encode("utf-8")),
                 "contentHash": hashlib.sha256(content.encode("utf-8")).hexdigest(),
                 "joiners": cast("list[JsonValue]", joiners),
@@ -576,30 +626,39 @@ def _chunk_manifest(
 
     children: list[JsonObject] = []
     for child in plan.children:
+        child_plans = (
+            *(context.fragment for context in child.derived_contexts),
+            *child.fragments,
+        )
         fragments = _chunk_fragments(
             artifact,
             units,
-            child.fragments,
+            child_plans,
             source_unit_ids=source_unit_ids,
             child_ordinal=child.ordinal,
             overlap_token_count=child.overlap_before_tokens,
         )
-        joiners = _chunk_joiners(child.fragments)
-        content = _chunk_content(units, child.fragments, joiners)
+        _mark_derived_context_fragments(fragments, child.derived_contexts)
+        joiners = _chunk_joiners(child_plans)
+        content = _chunk_content(units, child_plans, joiners)
         parent_id = parent_ids[child.parent_ordinal]
         child_id = _hash_seed(
             "native_structure.child_chunk.v1",
             parent_id,
             child.ordinal,
             _hash_json(cast("JsonValue", fragments)),
-            NATIVE_STRUCTURE_CHUNK_PROFILE_HASH,
+            chunk_profile_hash,
         )
         children.append(
             {
                 "childOrdinal": child.ordinal,
                 "chunkKind": "child",
-                "chunkProfileHash": NATIVE_STRUCTURE_CHUNK_PROFILE_HASH,
-                "chunkSourceSpanHash": _chunk_source_span_hash(fragments, joiners),
+                "chunkProfileHash": chunk_profile_hash,
+                "chunkSourceSpanHash": _chunk_source_span_hash(
+                    fragments,
+                    joiners,
+                    chunk_profile_hash=chunk_profile_hash,
+                ),
                 "contentBytes": len(content.encode("utf-8")),
                 "contentHash": hashlib.sha256(content.encode("utf-8")).hexdigest(),
                 "joiners": cast("list[JsonValue]", joiners),
@@ -622,7 +681,7 @@ def _chunk_manifest(
         "childAggregateHash": _hash_json(cast("JsonValue", children)),
         "childCount": len(children),
         "children": cast("list[JsonValue]", children),
-        "chunkProfileHash": NATIVE_STRUCTURE_CHUNK_PROFILE_HASH,
+        "chunkProfileHash": chunk_profile_hash,
         "joinerAggregateHash": _hash_json(cast("JsonValue", aggregate_joiners)),
         "joinerCount": len(aggregate_joiners),
         "parentAggregateHash": _hash_json(cast("JsonValue", parents)),
@@ -711,6 +770,34 @@ def _chunk_joiners(
     return result
 
 
+def _mark_derived_context_fragments(
+    fragments: list[JsonObject],
+    contexts: tuple[DerivedContextPlan, ...],
+) -> None:
+    for index, context in enumerate(contexts):
+        fragment = fragments[index]
+        original_hash = cast("str", fragment["fragmentSourceSpanHash"])
+        reuse_group = _hash_seed(
+            "native_structure.derived_context_reuse.v2",
+            original_hash,
+        )
+        fragment.update(
+            {
+                "derived": True,
+                "derivedReason": context.reason,
+                "fragmentKind": "derived_context",
+                "fragmentSourceSpanHash": _hash_seed(
+                    "native_structure.derived_context_fragment.v2",
+                    original_hash,
+                    context.reason,
+                    reuse_group,
+                ),
+                "originalFragmentSourceSpanHash": original_hash,
+                "sourceReuseGroupId": reuse_group,
+            }
+        )
+
+
 def _chunk_content(
     units: tuple[_ProjectedUnit, ...],
     fragments: tuple[ChunkFragmentPlan, ...],
@@ -735,10 +822,12 @@ def _chunk_content(
 def _chunk_source_span_hash(
     fragments: Sequence[JsonObject],
     joiners: Sequence[JsonObject],
+    *,
+    chunk_profile_hash: str,
 ) -> str:
     return _hash_seed(
         "native_structure.chunk_span.v1",
-        NATIVE_STRUCTURE_CHUNK_PROFILE_HASH,
+        chunk_profile_hash,
         _hash_json(cast("JsonValue", list(fragments))),
         _hash_json(cast("JsonValue", list(joiners))),
     )
@@ -768,6 +857,12 @@ def _locator_set(
             overlap_end=overlap_end,
             source_unit_ids=source_unit_ids,
         )
+        views = _fragment_locator_views(
+            artifact,
+            unit,
+            segment,
+            source_position_view=view,
+        )
         anchors.append(
             {
                 "anchorOrdinal": len(anchors),
@@ -776,22 +871,22 @@ def _locator_set(
                 "sourceFragments": [
                     {
                         "fragmentOrdinal": 0,
-                        "views": [
-                            view,
-                            {
-                                "kind": "derived_structure",
-                                "opaqueStructureId": unit.owner_seed_id,
-                                "structureKind": _locator_structure_kind(
-                                    unit.draft.kind
-                                ),
-                            },
-                        ],
+                        "views": views,
                     }
                 ],
             }
         )
     if not anchors:
         segment = _nearest_segment(unit.draft.source_segments, start_byte)
+        views = _fragment_locator_views(
+            artifact,
+            unit,
+            segment,
+            source_position_view=_coarse_source_position_view(
+                segment.fragment.source_position,
+                source_unit_ids,
+            ),
+        )
         anchors.append(
             {
                 "anchorOrdinal": 0,
@@ -800,19 +895,7 @@ def _locator_set(
                 "sourceFragments": [
                     {
                         "fragmentOrdinal": 0,
-                        "views": [
-                            _coarse_source_position_view(
-                                segment.fragment.source_position,
-                                source_unit_ids,
-                            ),
-                            {
-                                "kind": "derived_structure",
-                                "opaqueStructureId": unit.owner_seed_id,
-                                "structureKind": _locator_structure_kind(
-                                    unit.draft.kind
-                                ),
-                            },
-                        ],
+                        "views": views,
                     }
                 ],
             }
@@ -823,6 +906,128 @@ def _locator_set(
         "version": 2,
     }
     return {**base, "aggregateHash": _hash_json(base)}
+
+
+def _fragment_locator_views(
+    artifact: NativeDocument,
+    unit: _ProjectedUnit,
+    segment: _SourceSegment,
+    *,
+    source_position_view: JsonObject,
+) -> list[JsonValue]:
+    views: list[JsonValue] = [source_position_view]
+    structure_view = _format_structure_view(artifact, segment)
+    if structure_view is not None:
+        views.append(structure_view)
+    views.append(
+        {
+            "kind": "derived_structure",
+            "opaqueStructureId": unit.owner_seed_id,
+            "structureKind": _locator_structure_kind(unit.draft.kind),
+        }
+    )
+    return views
+
+
+def _format_structure_view(
+    artifact: NativeDocument,
+    segment: _SourceSegment,
+) -> JsonObject | None:
+    node = artifact.nodes[segment.node_ordinal]
+    if artifact.source_format is ParserFormat.PPTX:
+        shape = _ancestor(artifact, node, NativeNodeKind.SHAPE)
+        if shape is None:
+            return None
+        values = _node_attributes(shape)
+        slide_index = _required_node_integer(values, "slideIndex")
+        shape_id = _required_node_integer(values, "shapeId")
+        shape_ordinal = _required_node_integer(values, "shapeOrdinal")
+        view: JsonObject = {
+            "kind": "slide_shape",
+            "opaqueShapeId": _hash_seed(
+                "native_structure.shape.v1",
+                artifact.artifact_sha256,
+                slide_index,
+                shape_id,
+                shape_ordinal,
+            ),
+            "slideIndex": slide_index,
+        }
+        bbox = tuple(
+            values.get(name)
+            for name in (
+                "bboxX1MilliPoint",
+                "bboxY1MilliPoint",
+                "bboxX2MilliPoint",
+                "bboxY2MilliPoint",
+            )
+        )
+        if all(type(value) is int for value in bbox):
+            x1, y1, x2, y2 = cast("tuple[int, int, int, int]", bbox)
+            if not 0 <= x1 < x2 or not 0 <= y1 < y2:
+                _reject(NATIVE_STRUCTURE_ARTIFACT_INVALID)
+            view["bboxMilliPoint"] = [x1, y1, x2, y2]
+        elif any(value is not None for value in bbox):
+            _reject(NATIVE_STRUCTURE_ARTIFACT_INVALID)
+        return view
+    if artifact.source_format is ParserFormat.XLSX:
+        cell = _ancestor(artifact, node, NativeNodeKind.TABLE_CELL)
+        if cell is None:
+            return None
+        cell_values = _node_attributes(cell)
+        sheet_ordinal = _required_node_integer(cell_values, "sheetOrdinal")
+        start_cell = _required_node_text(cell_values, "startCell")
+        end_cell = _required_node_text(cell_values, "endCell")
+        sheet = _ancestor(artifact, cell, NativeNodeKind.SHEET)
+        if sheet is None:
+            _reject(NATIVE_STRUCTURE_ARTIFACT_INVALID)
+        sheet_values = _node_attributes(sheet)
+        if _required_node_integer(sheet_values, "sheetOrdinal") != sheet_ordinal:
+            _reject(NATIVE_STRUCTURE_ARTIFACT_INVALID)
+        return {
+            "endCell": end_cell,
+            "kind": "sheet_range",
+            "opaqueSheetId": _hash_seed(
+                "native_structure.sheet.v1",
+                artifact.artifact_sha256,
+                sheet_ordinal,
+                _required_node_text(sheet_values, "sheetName"),
+            ),
+            "startCell": start_cell,
+        }
+    return None
+
+
+def _ancestor(
+    artifact: NativeDocument,
+    node: NativeNode,
+    kind: NativeNodeKind,
+) -> NativeNode | None:
+    current = node
+    while True:
+        if current.kind is kind:
+            return current
+        if current.parent_ordinal is None:
+            return None
+        current = artifact.nodes[current.parent_ordinal]
+
+
+def _node_attributes(node: NativeNode) -> dict[str, object]:
+    return {attribute.name: attribute.value for attribute in node.attributes}
+
+
+def _required_node_integer(values: dict[str, object], name: str) -> int:
+    value = values.get(name)
+    if type(value) is not int or value < 0:
+        _reject(NATIVE_STRUCTURE_ARTIFACT_INVALID)
+    return value
+
+
+def _required_node_text(values: dict[str, object], name: str) -> str:
+    value = values.get(name)
+    if not isinstance(value, str) or not value:
+        _reject(NATIVE_STRUCTURE_ARTIFACT_INVALID)
+    return value
 
 
 def _source_position_view(

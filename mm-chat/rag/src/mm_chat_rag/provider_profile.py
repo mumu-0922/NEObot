@@ -11,20 +11,23 @@ from dataclasses import dataclass
 from typing import Final
 
 DISABLED_PROVIDER_PROFILE: Final = "disabled"
-MINERU_JINA_POSTGRES_PROFILE: Final = "mineru_jina_postgres_v1"
+MINERU_SILICONFLOW_POSTGRES_PROFILE: Final = "mineru_siliconflow_postgres_v1"
 SUPPORTED_PROVIDER_PROFILES: Final[frozenset[str]] = frozenset(
-    {DISABLED_PROVIDER_PROFILE, MINERU_JINA_POSTGRES_PROFILE}
+    {
+        DISABLED_PROVIDER_PROFILE,
+        MINERU_SILICONFLOW_POSTGRES_PROFILE,
+    }
 )
-DEFAULT_JINA_EMBEDDING_DIMENSIONS: Final = 1024
 PROVIDER_JOB_STAGES: Final[frozenset[str]] = frozenset({"parse", "passage_embedding"})
 PROVIDER_RETRY_MAX_ATTEMPTS: Final = 3
 DEFAULT_PROVIDER_INITIAL_RETRY_SECONDS: Final = 30
 DEFAULT_PROVIDER_MAX_RETRY_SECONDS: Final = 300
 DEFAULT_PROVIDER_CONCURRENCY: Final = 2
 DEFAULT_MINERU_REQUESTS_PER_MINUTE: Final = 60
-DEFAULT_JINA_REQUESTS_PER_MINUTE: Final = 240
-DEFAULT_JINA_EMBEDDING_MODEL: Final = "jina-embeddings-v4"
-DEFAULT_JINA_RERANK_MODEL: Final = "jina-reranker-v3"
+DEFAULT_SILICONFLOW_EMBEDDING_MODEL: Final = "Pro/BAAI/bge-m3"
+DEFAULT_SILICONFLOW_RERANK_MODEL: Final = "Pro/BAAI/bge-reranker-v2-m3"
+DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS: Final = 1024
+DEFAULT_SILICONFLOW_REQUESTS_PER_MINUTE: Final = 240
 MAX_PROVIDER_RETRY_SECONDS: Final = 3600
 MAX_PROVIDER_CONCURRENCY: Final = 16
 MAX_PROVIDER_REQUESTS_PER_MINUTE: Final = 60_000
@@ -32,6 +35,24 @@ MAX_PROVIDER_REQUESTS_PER_MINUTE: Final = 60_000
 
 class ProviderProfileError(ValueError):
     """Raised when a provider runtime profile is incomplete or unsafe."""
+
+
+@dataclass(frozen=True, slots=True)
+class GenerationEmbeddingProfile:
+    """Generation-bound embedding vector-space identity."""
+
+    processor: str
+    model_id: str
+    dimensions: int
+
+    def validate(self) -> None:
+        if (
+            self.processor == "siliconflow"
+            and self.model_id == DEFAULT_SILICONFLOW_EMBEDDING_MODEL
+            and self.dimensions == DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS
+        ):
+            return
+        raise ProviderProfileError("RAG generation embedding profile is unsupported")
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,10 +66,10 @@ class ProviderRuntimeProfile:
     max_retry_seconds: int = DEFAULT_PROVIDER_MAX_RETRY_SECONDS
     provider_concurrency: int = DEFAULT_PROVIDER_CONCURRENCY
     mineru_requests_per_minute: int = DEFAULT_MINERU_REQUESTS_PER_MINUTE
-    jina_requests_per_minute: int = DEFAULT_JINA_REQUESTS_PER_MINUTE
-    jina_embedding_model: str = DEFAULT_JINA_EMBEDDING_MODEL
-    jina_rerank_model: str = DEFAULT_JINA_RERANK_MODEL
-    jina_embedding_dimensions: int = DEFAULT_JINA_EMBEDDING_DIMENSIONS
+    siliconflow_requests_per_minute: int = DEFAULT_SILICONFLOW_REQUESTS_PER_MINUTE
+    siliconflow_embedding_model: str = DEFAULT_SILICONFLOW_EMBEDDING_MODEL
+    siliconflow_rerank_model: str = DEFAULT_SILICONFLOW_RERANK_MODEL
+    siliconflow_embedding_dimensions: int = DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS
 
     @property
     def enabled(self) -> bool:
@@ -77,21 +98,30 @@ class ProviderRuntimeProfile:
             raise ProviderProfileError("RAG provider concurrency is invalid")
         if not 1 <= self.mineru_requests_per_minute <= MAX_PROVIDER_REQUESTS_PER_MINUTE:
             raise ProviderProfileError("RAG MinerU rate limit is invalid")
-        if not 1 <= self.jina_requests_per_minute <= MAX_PROVIDER_REQUESTS_PER_MINUTE:
-            raise ProviderProfileError("RAG Jina rate limit is invalid")
-        if self.jina_embedding_model != DEFAULT_JINA_EMBEDDING_MODEL:
-            raise ProviderProfileError("RAG Jina embedding model is unsupported")
-        if self.jina_rerank_model != DEFAULT_JINA_RERANK_MODEL:
-            raise ProviderProfileError("RAG Jina rerank model is unsupported")
-        if self.jina_embedding_dimensions != DEFAULT_JINA_EMBEDDING_DIMENSIONS:
-            raise ProviderProfileError("RAG Jina embedding dimensions must be 1024")
+        if not (
+            1
+            <= self.siliconflow_requests_per_minute
+            <= MAX_PROVIDER_REQUESTS_PER_MINUTE
+        ):
+            raise ProviderProfileError("RAG SiliconFlow rate limit is invalid")
+        if self.siliconflow_embedding_model != DEFAULT_SILICONFLOW_EMBEDDING_MODEL:
+            raise ProviderProfileError("RAG SiliconFlow embedding model is unsupported")
+        if self.siliconflow_rerank_model != DEFAULT_SILICONFLOW_RERANK_MODEL:
+            raise ProviderProfileError("RAG SiliconFlow rerank model is unsupported")
+        if (
+            self.siliconflow_embedding_dimensions
+            != DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS
+        ):
+            raise ProviderProfileError(
+                "RAG SiliconFlow embedding dimensions must be 1024"
+            )
 
     def validate_for_job_stages(
         self,
         job_stages: tuple[str, ...],
         *,
         mineru_configured: bool,
-        jina_configured: bool,
+        siliconflow_configured: bool,
     ) -> None:
         """Fail closed before provider-backed job handlers can be promoted."""
         enabled_provider_stages = set(job_stages) & PROVIDER_JOB_STAGES
@@ -106,7 +136,19 @@ class ProviderRuntimeProfile:
             raise ProviderProfileError(
                 "MinerU provider gateway is required for provider profile"
             )
-        if "passage_embedding" in enabled_provider_stages and not jina_configured:
+        if (
+            self.profile_id == MINERU_SILICONFLOW_POSTGRES_PROFILE
+            and "passage_embedding" in enabled_provider_stages
+            and not siliconflow_configured
+        ):
             raise ProviderProfileError(
-                "Jina provider gateway is required for provider profile"
+                "SiliconFlow provider gateway is required for provider profile"
             )
+
+    def admits_embedding_profile(self, profile: GenerationEmbeddingProfile) -> bool:
+        """Admit only vector spaces explicitly covered by the worker profile."""
+        try:
+            profile.validate()
+        except ProviderProfileError:
+            return False
+        return self.profile_id == MINERU_SILICONFLOW_POSTGRES_PROFILE

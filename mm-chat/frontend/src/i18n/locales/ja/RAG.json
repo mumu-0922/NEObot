@@ -2,7 +2,7 @@
   "title": "ナレッジサービス",
   "subtitle": "ドキュメント解析とナレッジ検索に必要なサービスを設定します。",
   "mineruRole": "PDF ドキュメント解析",
-  "jinaRole": "ベクトル索引とリランキング",
+  "siliconflowRole": "Pro/BAAI/bge-m3 ベクトル索引と Pro/BAAI/bge-reranker-v2-m3 リランキング",
   "serviceReady": "ナレッジサービスは利用可能です",
   "servicePartial": "ナレッジサービスは一部利用可能です",
   "serviceUnavailable": "ナレッジサービスは利用できません",

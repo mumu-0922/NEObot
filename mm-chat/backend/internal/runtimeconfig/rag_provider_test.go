@@ -49,11 +49,11 @@ func TestRAGProviderStatusRequiresBothAttestedVaultRecords(t *testing.T) {
 		return stored
 	}
 	minerU := create(RAGProviderMinerU, "mineru-status-fixture")
-	jina := create(RAGProviderJina, "jina-status-fixture")
+	siliconflow := create(RAGProviderSiliconFlow, "siliconflow-status-fixture")
 	service := NewService(
 		config.Config{},
 		WithProviderConfigRepository(&fakeProviderConfigRepository{
-			listed: []StoredProviderConfig{minerU, jina},
+			listed: []StoredProviderConfig{minerU, siliconflow},
 		}),
 		WithProviderSecretVault(vault),
 	)
@@ -61,28 +61,28 @@ func TestRAGProviderStatusRequiresBothAttestedVaultRecords(t *testing.T) {
 	if err != nil || !status.Ready ||
 		status.Status != ragproviders.ServiceStatusReady ||
 		status.Providers.MinerU.Status != ragproviders.ProviderStatusReady ||
-		status.Providers.Jina.Status != ragproviders.ProviderStatusReady ||
-		status.Providers.Jina.EmbeddingDimensions != jinaDimensions ||
+		status.Providers.SiliconFlow.Status != ragproviders.ProviderStatusReady ||
+		status.Providers.SiliconFlow.EmbeddingDimensions != siliconFlowDimensions ||
 		!status.Capabilities.PDFParsing || !status.Capabilities.NativeIndexing ||
 		!status.Capabilities.Retrieval {
 		t.Fatalf("RAG provider status = %#v, %v", status, err)
 	}
 
-	jina.EncryptedSecretRef = minerU.EncryptedSecretRef
-	jina.Config.ConnectionTestSHA256 = ragProviderConnectionFingerprint(
-		jina.ProviderID, RAGProviderJina, jina.EncryptedSecretRef,
+	siliconflow.EncryptedSecretRef = minerU.EncryptedSecretRef
+	siliconflow.Config.ConnectionTestSHA256 = ragProviderConnectionFingerprint(
+		siliconflow.ProviderID, RAGProviderSiliconFlow, siliconflow.EncryptedSecretRef,
 	)
 	service = NewService(
 		config.Config{},
 		WithProviderConfigRepository(&fakeProviderConfigRepository{
-			listed: []StoredProviderConfig{minerU, jina},
+			listed: []StoredProviderConfig{minerU, siliconflow},
 		}),
 		WithProviderSecretVault(vault),
 	)
 	status, err = service.RAGProviderStatus(context.Background())
 	if err != nil || status.Ready ||
 		status.Status != ragproviders.ServiceStatusUnavailable ||
-		status.Providers.Jina.Status != ragproviders.ProviderStatusUnavailable ||
+		status.Providers.SiliconFlow.Status != ragproviders.ProviderStatusUnavailable ||
 		!status.Capabilities.PDFParsing || status.Capabilities.NativeIndexing ||
 		status.Capabilities.Retrieval {
 		t.Fatalf("copied-context RAG status = %#v, %v", status, err)
@@ -131,6 +131,73 @@ func TestRAGConnectionTestRejectsOversizedResponsesAndUnsafeUploadTargets(t *tes
 	}
 }
 
+func TestSiliconFlowConnectionTestUsesFrozenProBGEModels(t *testing.T) {
+	const fixtureCredential = "siliconflow-connection-fixture"
+	var endpoints []string
+	service := NewService(
+		config.Config{},
+		WithRAGProviderHTTPClient(searchHTTPDoerFunc(func(
+			request *http.Request,
+		) (*http.Response, error) {
+			endpoints = append(endpoints, request.URL.String())
+			if request.Header.Get("Authorization") != "Bearer "+fixtureCredential {
+				t.Fatal("SiliconFlow connection test authorization mismatch")
+			}
+			raw, _ := io.ReadAll(request.Body)
+			var body map[string]json.RawMessage
+			if json.Unmarshal(raw, &body) != nil ||
+				strings.Contains(string(raw), fixtureCredential) {
+				t.Fatalf("invalid SiliconFlow connection request: %s", raw)
+			}
+			switch request.URL.String() {
+			case siliconFlowEmbeddingsURL:
+				if len(body) != 3 ||
+					string(body["model"]) != `"`+siliconFlowEmbeddingModel+`"` {
+					t.Fatalf("embedding connection body = %s", raw)
+				}
+				if _, present := body["dimensions"]; present {
+					t.Fatalf("BGE connection request contains dimensions: %s", raw)
+				}
+				return ragProviderJSONResponse(t, map[string]any{
+					"object": "list", "model": siliconFlowEmbeddingModel,
+					"data": []any{map[string]any{
+						"object": "embedding", "index": 0,
+						"embedding": repeatedRAGProviderEmbedding(1),
+					}},
+					"usage": map[string]any{
+						"prompt_tokens": 1, "completion_tokens": 0, "total_tokens": 1,
+					},
+				}), nil
+			case siliconFlowRerankURL:
+				if string(body["model"]) != `"`+siliconFlowRerankModel+`"` ||
+					string(body["return_documents"]) != "false" ||
+					string(body["top_n"]) != "1" {
+					t.Fatalf("rerank connection body = %s", raw)
+				}
+				return ragProviderJSONResponse(t, map[string]any{
+					"id": "rerank-connection-fixture",
+					"results": []any{map[string]any{
+						"index": 0, "relevance_score": 0.9,
+					}},
+				}), nil
+			default:
+				t.Fatalf("unexpected SiliconFlow endpoint %s", request.URL.Redacted())
+				return nil, errors.New("unreachable")
+			}
+		})),
+	)
+	checks, err := service.testRAGProviderConnection(
+		context.Background(),
+		RAGProviderSiliconFlow,
+		fixtureCredential,
+	)
+	if err != nil || strings.Join(checks, ",") != "embedding,rerank" ||
+		strings.Join(endpoints, ",") !=
+			siliconFlowEmbeddingsURL+","+siliconFlowRerankURL {
+		t.Fatalf("SiliconFlow checks=%v endpoints=%v error=%v", checks, endpoints, err)
+	}
+}
+
 func ragProviderTestBYOKKey(t *testing.T) (*rsa.PrivateKey, string) {
 	t.Helper()
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -157,4 +224,10 @@ func ragProviderJSONResponse(t *testing.T, payload any) *http.Response {
 		},
 		Body: io.NopCloser(strings.NewReader(string(raw))),
 	}
+}
+
+func repeatedRAGProviderEmbedding(first float64) []float64 {
+	vector := make([]float64, siliconFlowDimensions)
+	vector[0] = first
+	return vector
 }

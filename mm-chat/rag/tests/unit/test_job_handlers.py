@@ -33,7 +33,7 @@ from mm_chat_rag.job_handlers import (
 )
 from mm_chat_rag.models import JobClaim, stable_error_code
 from mm_chat_rag.provider_profile import (
-    MINERU_JINA_POSTGRES_PROFILE,
+    MINERU_SILICONFLOW_POSTGRES_PROFILE,
     ProviderRuntimeProfile,
 )
 from mm_chat_rag.retry import PermanentJobError
@@ -43,7 +43,7 @@ HASH = "b" * 64
 
 def valid_profile() -> ProviderRuntimeProfile:
     return ProviderRuntimeProfile(
-        profile_id=MINERU_JINA_POSTGRES_PROFILE,
+        profile_id=MINERU_SILICONFLOW_POSTGRES_PROFILE,
         accepted_draft_wire_contracts=True,
     )
 
@@ -110,7 +110,11 @@ def provider_context(**updates: object) -> ProcessingJobContext:
 
 
 def embedding_context() -> ProcessingJobContext:
-    return provider_context(stage="passage_embedding")
+    return provider_context(
+        stage="passage_embedding",
+        processor="siliconflow",
+        model_id="Pro/BAAI/bge-m3",
+    )
 
 
 def purge_context(**updates: object) -> ProcessingJobContext:
@@ -199,7 +203,15 @@ async def test_passage_embedding_skeleton_uses_same_provider_fence() -> None:
     handler = admitted_passage_embedding_handler_skeleton(valid_profile())
 
     with pytest.raises(PermanentJobError) as raised:
-        await handler(claim(provider_row(stage="passage_embedding")))
+        await handler(
+            claim(
+                provider_row(
+                    stage="passage_embedding",
+                    processor="siliconflow",
+                    model_id="Pro/BAAI/bge-m3",
+                )
+            )
+        )
     assert raised.value.error_code == JOB_HANDLER_SKELETON_UNPROMOTED
 
     with pytest.raises(PermanentJobError) as raised:
@@ -230,9 +242,9 @@ async def test_purge_skeleton_forbids_authority_but_allows_null_materialization(
     forbidden = replace(
         context,
         authority=ProviderAuthority(
-            processor="jina",
+            processor="siliconflow",
             endpoint_id="hosted",
-            model_id="jina-embeddings-v4",
+            model_id="Pro/BAAI/bge-m3",
             governance_profile_id=uuid.uuid4(),
             governance_revision=1,
             governance_head_revision=1,

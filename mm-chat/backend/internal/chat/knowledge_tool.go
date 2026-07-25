@@ -187,6 +187,45 @@ type mergedKnowledgeToolDecision struct {
 	Cumulative autoRAGDecision
 }
 
+func mapKnowledgeToolDecisionMarkers(
+	previous autoRAGDecision,
+	current autoRAGDecision,
+) autoRAGDecision {
+	if !current.ReadyForAnswer() {
+		return current
+	}
+	markerByID := make(map[string]string, len(previous.Citations))
+	for _, citation := range previous.Citations {
+		markerByID[citation.ID] = citation.Marker
+	}
+	nextMarker := len(previous.Citations) + 1
+	mappedEvidence := make([]knowledge.HydratedEvidence, 0, len(current.Evidence))
+	mappedCitations := make([]RAGCitation, 0, len(current.Citations))
+	for index, citation := range current.Citations {
+		if index >= len(current.Evidence) {
+			break
+		}
+		if marker := markerByID[citation.ID]; marker != "" {
+			citation.Marker = marker
+		} else {
+			if nextMarker > maxRAGCitations {
+				continue
+			}
+			citation.Marker = "[K" + strconv.Itoa(nextMarker) + "]"
+			nextMarker++
+		}
+		markerByID[citation.ID] = citation.Marker
+		mappedEvidence = append(mappedEvidence, current.Evidence[index])
+		mappedCitations = append(mappedCitations, citation)
+	}
+	if len(mappedCitations) == 0 {
+		return autoRAGDecision{Outcome: "no_evidence"}
+	}
+	current.Evidence = mappedEvidence
+	current.Citations = mappedCitations
+	return current
+}
+
 func mergeKnowledgeToolDecision(
 	previous autoRAGDecision,
 	current autoRAGDecision,
@@ -246,25 +285,58 @@ func mergeKnowledgeToolDecision(
 	return mergedKnowledgeToolDecision{Current: current, Cumulative: cumulative}
 }
 
-func knowledgeToolSuccessResult(decision autoRAGDecision) string {
-	sources := make([]map[string]any, 0, len(decision.Citations))
-	for _, citation := range decision.Citations {
-		sources = append(sources, map[string]any{
-			"marker":  citation.Marker,
-			"content": citation.Snippet,
-			"locator": json.RawMessage(citation.Locator),
+func knowledgeToolSuccessResult(
+	decision autoRAGDecision,
+	maxTokens int,
+) (string, autoRAGDecision, int, error) {
+	if !decision.ReadyForAnswer() {
+		encoded, _ := json.Marshal(map[string]any{
+			"ok":          true,
+			"sources":     []any{},
+			"instruction": "No selected Knowledge evidence matched. Continue without Knowledge citations.",
 		})
+		return string(encoded), decision, 0, nil
 	}
-	instruction := "No selected Knowledge evidence matched. Continue without Knowledge citations."
-	if len(sources) > 0 {
-		instruction = "Answer the original request and cite only Knowledge sources actually used with their exact [K#] marker."
+	effectiveBudget := maxTokens
+	for effectiveBudget > 0 {
+		projection, err := projectKnowledgeEvidence(
+			decision.Evidence,
+			decision.Citations,
+			effectiveBudget,
+		)
+		if err != nil {
+			return "", autoRAGDecision{}, 0, err
+		}
+		sources := make([]map[string]any, 0, len(projection.Blocks))
+		for _, block := range projection.Blocks {
+			source := map[string]any{
+				"marker":  block.Citation.Marker,
+				"content": block.Evidence.SourceText,
+				"locator": json.RawMessage(block.Citation.Locator),
+			}
+			if block.ParentSourceText != "" {
+				source["parentContext"] = block.ParentSourceText
+				source["parentContextAuthority"] =
+					"context_only_citation_remains_matched_child"
+			}
+			sources = append(sources, source)
+		}
+		encoded, _ := json.Marshal(map[string]any{
+			"ok":      true,
+			"sources": sources,
+			"instruction": "Answer the original request and cite only Knowledge " +
+				"sources actually used with their exact [K#] marker.",
+		})
+		usedTokens := estimateProviderTextTokens(string(encoded))
+		if usedTokens <= maxTokens {
+			projected := decision
+			projected.Evidence = projection.Evidence
+			projected.Citations = projection.Citations
+			return string(encoded), projected, usedTokens, nil
+		}
+		effectiveBudget -= usedTokens - maxTokens
 	}
-	encoded, _ := json.Marshal(map[string]any{
-		"ok":          true,
-		"sources":     sources,
-		"instruction": instruction,
-	})
-	return string(encoded)
+	return "", autoRAGDecision{}, 0, ErrRAGInsufficientEvidence
 }
 
 func knowledgeToolFailureResult(category string) string {

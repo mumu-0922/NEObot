@@ -144,9 +144,6 @@
   "serverConsentExpiresAtValue": "过期于 {value}",
   "serverConsentDecidedAt": "决策于 {value}",
   "serverConsentPresetMineruPdfParse": "MinerU PDF 解析",
-  "serverConsentPresetJinaPassageEmbedding": "Jina 段落向量化",
-  "serverConsentPresetJinaQueryEmbedding": "Jina 查询/重排",
-  "serverConsentPresetJinaAnswer": "Jina 重排/回答",
   "serverConsentStatus": {
     "active": "有效",
     "granted": "已授予",

@@ -5,8 +5,8 @@ import uuid
 import pytest
 
 from mm_chat_rag.provider_profile import (
-    DEFAULT_JINA_EMBEDDING_DIMENSIONS,
-    MINERU_JINA_POSTGRES_PROFILE,
+    DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS,
+    MINERU_SILICONFLOW_POSTGRES_PROFILE,
 )
 from mm_chat_rag.settings import (
     ALLOWED_JOB_STAGES,
@@ -31,7 +31,10 @@ def test_safe_dark_run_defaults() -> None:
     assert settings.redis_channel == "mm-chat:rag:outbox:v1"
     assert settings.source_gateway_url is None
     assert settings.source_gateway_token is None
-    assert settings.jina_embedding_dimensions == DEFAULT_JINA_EMBEDDING_DIMENSIONS
+    assert (
+        settings.provider_profile.siliconflow_embedding_dimensions
+        == DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS
+    )
     assert settings.provider_profile.enabled is False
 
 
@@ -50,7 +53,7 @@ def test_explicit_enabled_configuration() -> None:
         ),
         "RAG_SOURCE_GATEWAY_URL": " http://backend:8080 ",
         "RAG_SOURCE_GATEWAY_TOKEN": " fake-source-token ",
-        "RAG_PROVIDER_PROFILE": MINERU_JINA_POSTGRES_PROFILE,
+        "RAG_PROVIDER_PROFILE": MINERU_SILICONFLOW_POSTGRES_PROFILE,
         "RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED": "true",
     }
     settings = Settings.from_env(env)
@@ -64,8 +67,11 @@ def test_explicit_enabled_configuration() -> None:
     )
     assert settings.source_gateway_url == "http://backend:8080"
     assert settings.source_gateway_token == "fake-source-token"
-    assert settings.jina_embedding_dimensions == DEFAULT_JINA_EMBEDDING_DIMENSIONS
-    assert settings.provider_profile.profile_id == MINERU_JINA_POSTGRES_PROFILE
+    assert (
+        settings.provider_profile.siliconflow_embedding_dimensions
+        == DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS
+    )
+    assert settings.provider_profile.profile_id == MINERU_SILICONFLOW_POSTGRES_PROFILE
     assert settings.provider_profile.accepted_draft_wire_contracts is True
 
 
@@ -127,7 +133,7 @@ def test_provider_key_environment_names_are_not_parsed() -> None:
             "DEFAULT_JINA_API_KEY": "must-not-enter-settings",
             "RAG_SOURCE_GATEWAY_URL": "http://backend:8080",
             "RAG_SOURCE_GATEWAY_TOKEN": "provider-gateway-token",
-            "RAG_PROVIDER_PROFILE": MINERU_JINA_POSTGRES_PROFILE,
+            "RAG_PROVIDER_PROFILE": MINERU_SILICONFLOW_POSTGRES_PROFILE,
             "RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED": "true",
         }
     )

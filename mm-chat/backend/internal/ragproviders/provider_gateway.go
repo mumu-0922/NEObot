@@ -8,14 +8,14 @@ import (
 )
 
 const (
-	InternalProviderPathPrefix  = "/internal/rag/providers/"
-	InternalMinerUAllocatePath  = "/internal/rag/providers/mineru/allocate"
-	InternalMinerUPollPath      = "/internal/rag/providers/mineru/poll"
-	InternalJinaEmbeddingsPath  = "/internal/rag/providers/jina/embeddings"
-	InternalProviderTokenHeader = "X-MM-Chat-Internal-Token"
+	InternalProviderPathPrefix        = "/internal/rag/providers/"
+	InternalMinerUAllocatePath        = "/internal/rag/providers/mineru/allocate"
+	InternalMinerUPollPath            = "/internal/rag/providers/mineru/poll"
+	InternalSiliconFlowEmbeddingsPath = "/internal/rag/providers/siliconflow/embeddings"
+	InternalProviderTokenHeader       = "X-MM-Chat-Internal-Token"
 
-	providerIDMinerU = "mineru"
-	providerIDJina   = "jina"
+	providerIDMinerU      = "mineru"
+	providerIDSiliconFlow = "siliconflow"
 )
 
 var (
@@ -109,7 +109,7 @@ type PassageEmbeddingResponse struct {
 type ProviderOperations interface {
 	AllocateMinerU(context.Context, MinerUAllocateRequest) (MinerUAllocation, error)
 	PollMinerU(context.Context, MinerUPollRequest) (MinerUPollResult, error)
-	EmbedPassages(context.Context, PassageEmbeddingRequest) (PassageEmbeddingResponse, error)
+	EmbedSiliconFlowPassages(context.Context, PassageEmbeddingRequest) (PassageEmbeddingResponse, error)
 }
 
 func (gateway *ProviderGateway) resolveCredential(

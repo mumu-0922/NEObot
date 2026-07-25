@@ -19,7 +19,10 @@ from mm_chat_rag.mineru_gateway import MINERU_TEXT_BASELINE_CHUNK_PROFILE_HASH
 from mm_chat_rag.models import FunctionReadiness, JobClaim, OutboxClaim
 from mm_chat_rag.projection import PostgresProjectionBatch
 from mm_chat_rag.provider_profile import (
-    MINERU_JINA_POSTGRES_PROFILE,
+    DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS,
+    DEFAULT_SILICONFLOW_EMBEDDING_MODEL,
+    MINERU_SILICONFLOW_POSTGRES_PROFILE,
+    GenerationEmbeddingProfile,
     ProviderRuntimeProfile,
 )
 from mm_chat_rag.replay import run
@@ -159,7 +162,7 @@ async def job_handler(_: JobClaim) -> JobResult:
 
 def provider_profile() -> ProviderRuntimeProfile:
     return ProviderRuntimeProfile(
-        profile_id=MINERU_JINA_POSTGRES_PROFILE,
+        profile_id=MINERU_SILICONFLOW_POSTGRES_PROFILE,
         accepted_draft_wire_contracts=True,
     )
 
@@ -316,6 +319,17 @@ class FakeParseChunkProfileGateway:
         self._calls.append("profile")
         return MINERU_TEXT_BASELINE_CHUNK_PROFILE_HASH
 
+    async def resolve_generation_embedding_profile(
+        self,
+        context: ProcessingJobContext,
+    ) -> GenerationEmbeddingProfile:
+        assert context.stage == "parse"
+        return GenerationEmbeddingProfile(
+            processor="siliconflow",
+            model_id=DEFAULT_SILICONFLOW_EMBEDDING_MODEL,
+            dimensions=DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS,
+        )
+
 
 class FakeSourceObjectGateway:
     def __init__(
@@ -465,10 +479,12 @@ async def test_worker_factory_promotes_parse_when_dependencies_are_supplied(
         provider_profile=provider_profile(),
     )
 
+    profiles = FakeParseChunkProfileGateway(calls)
     registry = build_promoted_job_handler_registry(
         settings,
         parse_source_metadata=FakeParseSourceMetadataGateway(calls),
-        parse_chunk_profiles=FakeParseChunkProfileGateway(calls),
+        parse_chunk_profiles=profiles,
+        parse_embedding_profiles=profiles,
         parse_projection=projection,
         parse_archive_provider=FakeMinerUArchiveProvider(calls),
         passage_embedding_projection=cast("object", object()),

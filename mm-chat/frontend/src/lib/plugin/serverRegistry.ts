@@ -1,4 +1,7 @@
-import { BUILT_IN_PLUGINS } from "../../config/plugins";
+import {
+  BUILT_IN_PLUGINS,
+  RETIRED_BUILT_IN_PLUGIN_IDS,
+} from "../../config/plugins";
 import type { Plugin } from "../../types";
 import { getDeploymentMode } from "../security/deployment";
 
@@ -21,6 +24,10 @@ function getRegistry(): Map<string, Plugin> {
 
 function getBuiltInPlugin(pluginId: string): Plugin | undefined {
   return BUILT_IN_PLUGINS.find((plugin) => plugin.id === pluginId);
+}
+
+function isRetiredBuiltInPlugin(pluginId: string): boolean {
+  return RETIRED_BUILT_IN_PLUGIN_IDS.some((id) => id === pluginId);
 }
 
 class UpstashServerPluginRegistryStore implements ServerPluginRegistryStore {
@@ -122,7 +129,7 @@ function getServerPluginRegistryStore(): ServerPluginRegistryStore {
 }
 
 export async function registerServerPlugin(plugin: Plugin): Promise<void> {
-  if (getBuiltInPlugin(plugin.id)) {
+  if (getBuiltInPlugin(plugin.id) || isRetiredBuiltInPlugin(plugin.id)) {
     throw new Error(`Plugin id ${plugin.id} is a reserved built-in plugin id`);
   }
 
@@ -140,6 +147,8 @@ export async function registerServerPlugin(plugin: Plugin): Promise<void> {
 export async function getServerPlugin(
   pluginId: string,
 ): Promise<Plugin | undefined> {
+  if (isRetiredBuiltInPlugin(pluginId)) return undefined;
+
   const builtInPlugin = getBuiltInPlugin(pluginId);
   if (builtInPlugin) return builtInPlugin;
 

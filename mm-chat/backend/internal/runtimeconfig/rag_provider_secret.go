@@ -14,6 +14,9 @@ func RAGProviderConnectionTestValid(stored StoredProviderConfig) bool {
 	if !isRAGProviderConfig(stored) {
 		return false
 	}
+	if isRetiredJinaRAGProvider(stored) {
+		return false
+	}
 	providerID, err := validateStoredRAGProvider(stored)
 	if err != nil {
 		return false
@@ -60,14 +63,14 @@ func ragProviderConnectionFingerprint(
 	}
 	if providerID == RAGProviderMinerU {
 		parts = append(parts, minerUAllocateURL, minerUModelVersion)
-	} else if providerID == RAGProviderJina {
+	} else if providerID == RAGProviderSiliconFlow {
 		parts = append(
 			parts,
-			jinaEmbeddingsURL,
-			jinaEmbeddingModel,
+			siliconFlowEmbeddingsURL,
+			siliconFlowEmbeddingModel,
 			"1024",
-			jinaRerankURL,
-			jinaRerankModel,
+			siliconFlowRerankURL,
+			siliconFlowRerankModel,
 		)
 	}
 	parts = append(parts, strings.TrimSpace(secretRef))

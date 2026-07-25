@@ -1,6 +1,4 @@
 {
-  "pluginJinaTitle": "Web Reader (Jina AI)",
-  "pluginJinaDescription": "Converts any URL into LLM-friendly markdown content. Useful for reading documentation, articles, or any webpage context.",
   "pluginWeatherTitle": "Real-time Weather",
   "pluginWeatherDescription": "Get real-time weather information including temperature, conditions, and humidity for any city.",
   "pluginUnsplashTitle": "Unsplash",

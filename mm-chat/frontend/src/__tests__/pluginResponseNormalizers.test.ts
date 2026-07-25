@@ -14,15 +14,6 @@ function plugin(id: string): Plugin {
 }
 
 describe("plugin response normalizers", () => {
-  it("extracts readable Jina markdown payloads", () => {
-    expect(
-      normalizePluginResponse(plugin("jina-web-reader"), {
-        code: 200,
-        data: { content: "# Example\n\nReadable markdown." },
-      }),
-    ).toBe("# Example\n\nReadable markdown.");
-  });
-
   it("normalizes Agnes image responses", () => {
     const response = {
       data: [

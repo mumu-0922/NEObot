@@ -3,32 +3,21 @@
 from __future__ import annotations
 
 import hashlib
-from typing import Final, cast
+from typing import Final
 from urllib.parse import urlsplit
 
 import httpx
 
 from tools.provider_capture_common import (
     HTTP_OK,
-    JINA_EMBED_URL,
-    JINA_MODEL,
-    JINA_RERANK_MODEL,
-    JINA_RERANK_URL,
     MAX_RESPONSE_BYTES,
     MINERU_BATCH_URL,
-    RERANK_DOCUMENT_COUNT,
-    SYNTHETIC_DOCUMENTS,
-    SYNTHETIC_PASSAGE,
     SYNTHETIC_PDF_NAME,
-    SYNTHETIC_QUERY,
     CaptureError,
     JsonObject,
-    JsonValue,
     canonical_json_bytes,
-    finite_number,
     json_list,
     json_object,
-    nonnegative_int,
     request_hash,
     strict_json_object,
     validate_request_target,
@@ -39,21 +28,6 @@ LIMITS: Final = httpx.Limits(max_connections=1, max_keepalive_connections=1)
 _HTTP_REDIRECT_MIN: Final = 300
 _HTTP_REDIRECT_MAX: Final = 400
 _CONTENT_TYPE_PART_LIMIT: Final = 2
-
-
-def capture_jina(client: httpx.Client, api_key: str) -> JsonObject:
-    """Run the immutable three-call Jina plan."""
-    operations: list[JsonValue] = [
-        _capture_jina_embedding(client, api_key, dimensions)
-        for dimensions in (1024, 2048)
-    ]
-    operations.append(_capture_jina_rerank(client, api_key))
-    return {
-        "operationCount": 3,
-        "operations": operations,
-        "provider": "jina",
-        "state": "captured",
-    }
 
 
 def capture_mineru_submit(
@@ -131,65 +105,6 @@ def send_json(
     return strict_json_object(raw), _response_metadata()
 
 
-def _capture_jina_embedding(
-    client: httpx.Client,
-    api_key: str,
-    dimensions: int,
-) -> JsonObject:
-    request_body: JsonObject = {
-        "dimensions": dimensions,
-        "embedding_type": "float",
-        "input": [{"text": SYNTHETIC_PASSAGE}],
-        "late_chunking": False,
-        "model": JINA_MODEL,
-        "return_multivector": False,
-        "return_tokenized_input": False,
-        "task": "retrieval.passage",
-        "truncate": False,
-    }
-    response, metadata = send_json(
-        client,
-        "POST",
-        JINA_EMBED_URL,
-        request_body,
-        api_key,
-    )
-    return {
-        "method": "POST",
-        "operation": f"embedding_{dimensions}",
-        "path": "/v1/embeddings",
-        "requestBodySha256": request_hash(request_body),
-        "response": _validate_embedding_response(response, dimensions),
-        **metadata,
-    }
-
-
-def _capture_jina_rerank(client: httpx.Client, api_key: str) -> JsonObject:
-    request_body: JsonObject = {
-        "documents": list(SYNTHETIC_DOCUMENTS),
-        "model": JINA_RERANK_MODEL,
-        "query": SYNTHETIC_QUERY,
-        "return_documents": False,
-        "return_embeddings": False,
-        "top_n": 2,
-    }
-    response, metadata = send_json(
-        client,
-        "POST",
-        JINA_RERANK_URL,
-        request_body,
-        api_key,
-    )
-    return {
-        "method": "POST",
-        "operation": "rerank",
-        "path": "/v1/rerank",
-        "requestBodySha256": request_hash(request_body),
-        "response": _validate_rerank_response(response),
-        **metadata,
-    }
-
-
 def _unknown_mineru_submission(body_hash: str) -> JsonObject:
     return {
         "operationCount": 1,
@@ -257,69 +172,6 @@ def _response_metadata() -> JsonObject:
         "httpStatus": HTTP_OK,
         "responseContentType": "application/json",
         "responseHeaderNames": ["content-type"],
-    }
-
-
-def _validate_embedding_response(payload: JsonObject, dimensions: int) -> JsonObject:
-    if payload.get("model") != JINA_MODEL:
-        raise CaptureError("JINA_EMBEDDING_SHAPE_INVALID")
-    data = json_list(payload.get("data"), "JINA_EMBEDDING_SHAPE_INVALID")
-    if len(data) != 1:
-        raise CaptureError("JINA_EMBEDDING_SHAPE_INVALID")
-    item = json_object(data[0], "JINA_EMBEDDING_SHAPE_INVALID")
-    index = nonnegative_int(item.get("index"), "JINA_EMBEDDING_SHAPE_INVALID")
-    vector = json_list(item.get("embedding"), "JINA_EMBEDDING_SHAPE_INVALID")
-    if index != 0 or len(vector) != dimensions:
-        raise CaptureError("JINA_EMBEDDING_SHAPE_INVALID")
-    if any(not finite_number(value) for value in vector):
-        raise CaptureError("JINA_EMBEDDING_SHAPE_INVALID")
-    usage = json_object(payload.get("usage"), "JINA_EMBEDDING_SHAPE_INVALID")
-    total_tokens = nonnegative_int(
-        usage.get("total_tokens"), "JINA_EMBEDDING_SHAPE_INVALID"
-    )
-    prompt_value = usage.get("prompt_tokens")
-    prompt_tokens = (
-        nonnegative_int(prompt_value, "JINA_EMBEDDING_SHAPE_INVALID")
-        if prompt_value is not None
-        else None
-    )
-    return {
-        "indexes": [index],
-        "itemCount": 1,
-        "model": JINA_MODEL,
-        "usage": {"promptTokens": prompt_tokens, "totalTokens": total_tokens},
-        "vectorDimension": dimensions,
-    }
-
-
-def _validate_rerank_response(payload: JsonObject) -> JsonObject:
-    if payload.get("model") != JINA_RERANK_MODEL:
-        raise CaptureError("JINA_RERANK_SHAPE_INVALID")
-    results = json_list(payload.get("results"), "JINA_RERANK_SHAPE_INVALID")
-    if len(results) != RERANK_DOCUMENT_COUNT:
-        raise CaptureError("JINA_RERANK_SHAPE_INVALID")
-    indexes: list[JsonValue] = []
-    scores: list[JsonValue] = []
-    for raw_result in results:
-        result = json_object(raw_result, "JINA_RERANK_SHAPE_INVALID")
-        index = nonnegative_int(result.get("index"), "JINA_RERANK_SHAPE_INVALID")
-        score = result.get("relevance_score")
-        if index not in {0, 1} or not finite_number(score):
-            raise CaptureError("JINA_RERANK_SHAPE_INVALID")
-        indexes.append(index)
-        scores.append(cast("int | float", score))
-    if set(cast("list[int]", indexes)) != {0, 1}:
-        raise CaptureError("JINA_RERANK_SHAPE_INVALID")
-    usage = json_object(payload.get("usage"), "JINA_RERANK_SHAPE_INVALID")
-    total_tokens = nonnegative_int(
-        usage.get("total_tokens"), "JINA_RERANK_SHAPE_INVALID"
-    )
-    return {
-        "indexes": indexes,
-        "model": JINA_RERANK_MODEL,
-        "resultCount": RERANK_DOCUMENT_COUNT,
-        "scores": scores,
-        "usage": {"totalTokens": total_tokens},
     }
 
 

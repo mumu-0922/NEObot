@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import uuid
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -15,8 +16,8 @@ from mm_chat_rag.projection import (
     stable_projection_uuid,
 )
 from mm_chat_rag.provider_profile import (
-    DEFAULT_JINA_EMBEDDING_DIMENSIONS,
-    DEFAULT_JINA_EMBEDDING_MODEL,
+    DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS,
+    DEFAULT_SILICONFLOW_EMBEDDING_MODEL,
 )
 from tests.support.parser_contracts import JsonObject, load_strict_json_bytes
 
@@ -80,11 +81,32 @@ def test_canonical_ir_and_chunk_manifest_project_to_complete_postgres_rows() -> 
     assert child.parent_chunk_id == parent.id
     assert search.child_chunk_id == child.id
     assert search.parent_chunk_id == parent.id
-    assert search.embedding_model_id == DEFAULT_JINA_EMBEDDING_MODEL
-    assert search.embedding_dimensions == DEFAULT_JINA_EMBEDDING_DIMENSIONS
+    assert search.embedding_model_id == DEFAULT_SILICONFLOW_EMBEDDING_MODEL
+    assert search.embedding_dimensions == DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS
     assert search.exact_terms == ("dag", "hash", "semantics")
     assert search.locator_summary["schemaVersion"] == "g7.4-locator-summary.v1"
     assert search.locator_summary["primary"] == parent.locator_summary["primary"]
+
+
+def test_projection_propagates_generation_bound_bge_profile() -> None:
+    context = replace(
+        _CONTEXT,
+        embedding_model_id=DEFAULT_SILICONFLOW_EMBEDDING_MODEL,
+        embedding_dimensions=DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS,
+    )
+
+    batch = build_postgres_projection_batch(
+        _fixture("canonical-ir.v2.json"),
+        _fixture("chunk-manifest.v2.json"),
+        context,
+    )
+
+    assert {row.embedding_model_id for row in batch.child_search_projections} == {
+        DEFAULT_SILICONFLOW_EMBEDDING_MODEL
+    }
+    assert {row.embedding_dimensions for row in batch.child_search_projections} == {
+        DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS
+    }
 
 
 def test_projection_ids_are_stable_within_artifact_and_materialization_scope() -> None:

@@ -13,15 +13,15 @@ import (
 const providerGatewayHandlerTestToken = "provider-gateway-handler-test-token"
 
 type fakeProviderOperations struct {
-	allocateResult MinerUAllocation
-	allocateError  error
-	allocateCalls  int
-	pollResult     MinerUPollResult
-	pollError      error
-	pollCalls      int
-	embedResult    PassageEmbeddingResponse
-	embedError     error
-	embedCalls     int
+	allocateResult         MinerUAllocation
+	allocateError          error
+	allocateCalls          int
+	pollResult             MinerUPollResult
+	pollError              error
+	pollCalls              int
+	siliconFlowEmbedResult PassageEmbeddingResponse
+	siliconFlowEmbedError  error
+	siliconFlowEmbedCalls  int
 }
 
 func (operations *fakeProviderOperations) AllocateMinerU(
@@ -40,12 +40,12 @@ func (operations *fakeProviderOperations) PollMinerU(
 	return operations.pollResult, operations.pollError
 }
 
-func (operations *fakeProviderOperations) EmbedPassages(
+func (operations *fakeProviderOperations) EmbedSiliconFlowPassages(
 	_ context.Context,
 	_ PassageEmbeddingRequest,
 ) (PassageEmbeddingResponse, error) {
-	operations.embedCalls++
-	return operations.embedResult, operations.embedError
+	operations.siliconFlowEmbedCalls++
+	return operations.siliconFlowEmbedResult, operations.siliconFlowEmbedError
 }
 
 func TestProviderGatewayHandlerAuthenticatesBeforeParsing(t *testing.T) {
@@ -103,11 +103,12 @@ func TestProviderGatewayHandlerRoutesClosedOperations(t *testing.T) {
 		pollResult: MinerUPollResult{
 			BatchID: "fixture-batch", Filename: "document.pdf", State: "pending",
 		},
-		embedResult: PassageEmbeddingResponse{
-			Model: JinaEmbeddingModel, Dimensions: JinaEmbeddingDimensions,
+		siliconFlowEmbedResult: PassageEmbeddingResponse{
+			Model:      SiliconFlowEmbeddingModel,
+			Dimensions: SiliconFlowEmbeddingDimensions,
 			Vectors: []PassageEmbeddingVector{{
 				PassageID: "11111111-1111-4111-8111-111111111111",
-				Embedding: repeatedProviderGatewayHandlerEmbedding(0.01),
+				Embedding: repeatedProviderGatewayHandlerEmbedding(0.02),
 			}},
 		},
 	}
@@ -118,7 +119,7 @@ func TestProviderGatewayHandlerRoutesClosedOperations(t *testing.T) {
 	}{
 		{InternalMinerUAllocatePath, `{"filename":"document.pdf"}`},
 		{InternalMinerUPollPath, `{"batchId":"fixture-batch","filename":"document.pdf"}`},
-		{InternalJinaEmbeddingsPath, `{"passages":[{"passageId":"11111111-1111-4111-8111-111111111111","text":"fixture"}]}`},
+		{InternalSiliconFlowEmbeddingsPath, `{"passages":[{"passageId":"11111111-1111-4111-8111-111111111111","text":"fixture"}]}`},
 	}
 	for _, tc := range cases {
 		recorder := httptest.NewRecorder()
@@ -136,12 +137,13 @@ func TestProviderGatewayHandlerRoutesClosedOperations(t *testing.T) {
 			t.Fatalf("%s leaked internal token", tc.path)
 		}
 	}
-	if operations.allocateCalls != 1 || operations.pollCalls != 1 || operations.embedCalls != 1 {
+	if operations.allocateCalls != 1 || operations.pollCalls != 1 ||
+		operations.siliconFlowEmbedCalls != 1 {
 		t.Fatalf(
-			"operation calls = allocate:%d poll:%d embed:%d",
+			"operation calls = allocate:%d poll:%d siliconflow:%d",
 			operations.allocateCalls,
 			operations.pollCalls,
-			operations.embedCalls,
+			operations.siliconFlowEmbedCalls,
 		)
 	}
 }
@@ -217,7 +219,7 @@ func assertProviderGatewayErrorCode(
 }
 
 func repeatedProviderGatewayHandlerEmbedding(value float32) []float32 {
-	vector := make([]float32, JinaEmbeddingDimensions)
+	vector := make([]float32, SiliconFlowEmbeddingDimensions)
 	for index := range vector {
 		vector[index] = value
 	}

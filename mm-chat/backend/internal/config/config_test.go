@@ -86,13 +86,6 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 	if cfg.RAG.SourceGatewayToken != "" {
 		t.Fatalf("RAG infrastructure token = %#v, want blank", cfg.RAG)
 	}
-	if cfg.RAG.JinaEmbeddingDimensions != DefaultRAGJinaDimensions {
-		t.Fatalf(
-			"RAG.JinaEmbeddingDimensions = %d, want %d",
-			cfg.RAG.JinaEmbeddingDimensions,
-			DefaultRAGJinaDimensions,
-		)
-	}
 	if cfg.Auth.Mode != DefaultAuthMode {
 		t.Fatalf("Auth.Mode = %q, want %q", cfg.Auth.Mode, DefaultAuthMode)
 	}
@@ -255,13 +248,6 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	if cfg.RAG.SourceGatewayToken != "fake-source-gateway-token" {
 		t.Fatalf("RAG.SourceGatewayToken = %q, want trimmed fake token", cfg.RAG.SourceGatewayToken)
 	}
-	if cfg.RAG.JinaEmbeddingDimensions != DefaultRAGJinaDimensions {
-		t.Fatalf(
-			"RAG.JinaEmbeddingDimensions = %d, want %d",
-			cfg.RAG.JinaEmbeddingDimensions,
-			DefaultRAGJinaDimensions,
-		)
-	}
 	if cfg.Auth.Mode != AuthModeRequired {
 		t.Fatalf("Auth.Mode = %q, want required", cfg.Auth.Mode)
 	}
@@ -378,9 +364,8 @@ func TestLoadFromEnvIgnoresBlankValues(t *testing.T) {
 		cfg.Storage.S3.BucketAutoCreate {
 		t.Fatalf("Storage.S3 = %#v, want blank/false defaults", cfg.Storage.S3)
 	}
-	if cfg.RAG.SourceGatewayToken != "" ||
-		cfg.RAG.JinaEmbeddingDimensions != DefaultRAGJinaDimensions {
-		t.Fatalf("RAG = %#v, want blank token and default dimensions", cfg.RAG)
+	if cfg.RAG.SourceGatewayToken != "" {
+		t.Fatalf("RAG = %#v, want blank token", cfg.RAG)
 	}
 	if cfg.Auth.Mode != DefaultAuthMode ||
 		cfg.Auth.BootstrapUserID != DefaultAuthBootstrapUserID ||

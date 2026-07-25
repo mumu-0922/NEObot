@@ -27,11 +27,16 @@ import type {
 const RAG_PROVIDERS: Array<{
   id: RAGProviderId;
   name: string;
-  roleKey: "mineruRole" | "jinaRole";
+  roleKey: "mineruRole" | "siliconflowRole";
   Icon: typeof FileScan;
 }> = [
   { id: "mineru", name: "MinerU", roleKey: "mineruRole", Icon: FileScan },
-  { id: "jina", name: "Jina AI", roleKey: "jinaRole", Icon: Cpu },
+  {
+    id: "siliconflow",
+    name: "SiliconFlow",
+    roleKey: "siliconflowRole",
+    Icon: Cpu,
+  },
 ];
 
 type BusyAction = "configure" | "remove";
@@ -68,7 +73,7 @@ const RAGProviderAdmin = () => {
   const [providerStatus, setProviderStatus] = useState<RAGProviderStatusDTO>();
   const [drafts, setDrafts] = useState<Record<RAGProviderId, string>>({
     mineru: "",
-    jina: "",
+    siliconflow: "",
   });
   const [busy, setBusy] = useState<{
     providerId: RAGProviderId;
@@ -203,7 +208,7 @@ const RAGProviderAdmin = () => {
 
   const anyConfigured = RAG_PROVIDERS.some(
     ({ id }) =>
-      providerStatus?.providers[id].configured ||
+      providerStatus?.providers[id]?.configured ||
       providerConfigs[id]?.hasApiKey,
   );
   const serviceStatus = providerStatus?.status ?? "unavailable";
@@ -260,11 +265,11 @@ const RAGProviderAdmin = () => {
         {RAG_PROVIDERS.map((provider) => {
           const config = providerConfigs[provider.id];
           const runtimeStatus =
-            providerStatus?.providers[provider.id].status ??
+            providerStatus?.providers[provider.id]?.status ??
             fallbackRuntimeStatus(config);
           const isReady = runtimeStatus === "ready";
           const hasApiKey =
-            providerStatus?.providers[provider.id].configured ??
+            providerStatus?.providers[provider.id]?.configured ??
             config?.hasApiKey === true;
           const isBusy = busy?.providerId === provider.id;
           const providerFeedback =

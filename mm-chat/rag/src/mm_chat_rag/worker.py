@@ -19,10 +19,8 @@ from mm_chat_rag.handlers import (
     JobHandler,
 )
 from mm_chat_rag.health import ReadinessState, create_health_app
-from mm_chat_rag.jina_gateway import (
-    build_jina_passage_embedding_handler_dependencies,
-)
 from mm_chat_rag.job_handler_dependencies import (
+    GenerationEmbeddingProfileGateway,
     ParseHandlerDependencies,
     ParseProjectionGateway,
     PassageEmbeddingProjectionGateway,
@@ -51,8 +49,18 @@ from mm_chat_rag.native_gateway import (
     ParseChunkProfileGateway,
 )
 from mm_chat_rag.postgres import PostgresAdapter
+from mm_chat_rag.provider_profile import MINERU_SILICONFLOW_POSTGRES_PROFILE
 from mm_chat_rag.redis_wakeup import RedisWakeSubscriber
+from mm_chat_rag.retrieval_embedding_gateway import (
+    AuthorityRoutingPassageEmbeddingGateway,
+    build_profiled_passage_embedding_handler_dependencies,
+)
+from mm_chat_rag.semantic_chunking import (
+    PassageSemanticEmbeddingGateway,
+    SemanticBoundaryPlanner,
+)
 from mm_chat_rag.settings import Settings, SettingsError
+from mm_chat_rag.siliconflow_gateway import SiliconFlowPassageEmbeddingGateway
 from mm_chat_rag.source_gateway import (
     GoSourceObjectBytesGateway,
     ObjectStoreDocumentSourceGateway,
@@ -71,6 +79,7 @@ def build_promoted_job_handler_registry(
     *,
     parse_source_metadata: SourceMetadataGateway | None = None,
     parse_chunk_profiles: ParseChunkProfileGateway | None = None,
+    parse_embedding_profiles: GenerationEmbeddingProfileGateway | None = None,
     parse_projection: ParseProjectionGateway | None = None,
     parse_archive_provider: MinerUResultArchiveProvider | None = None,
     passage_embedding_projection: PassageEmbeddingProjectionGateway,
@@ -82,9 +91,21 @@ def build_promoted_job_handler_registry(
         "parse" in settings.job_stages
         and parse_source_metadata is not None
         and parse_chunk_profiles is not None
+        and parse_embedding_profiles is not None
         and parse_projection is not None
         and parse_archive_provider is not None
     ):
+        if settings.provider_profile.profile_id != MINERU_SILICONFLOW_POSTGRES_PROFILE:
+            raise WorkerStartupError("SiliconFlow provider profile is required")
+        semantic_gateway = PassageSemanticEmbeddingGateway(
+            AuthorityRoutingPassageEmbeddingGateway(
+                siliconflow=SiliconFlowPassageEmbeddingGateway(
+                    provider_gateway_url=settings.source_gateway_url or "",
+                    internal_token=settings.source_gateway_token or "",
+                ),
+            )
+        )
+        semantic_planner = SemanticBoundaryPlanner(semantic_gateway)
         parse_dependencies = ParseHandlerDependencies(
             document_source=ObjectStoreDocumentSourceGateway(
                 metadata=parse_source_metadata,
@@ -99,18 +120,24 @@ def build_promoted_job_handler_registry(
                 mineru=MinerUTextBaselineArchiveParserGateway(parse_archive_provider),
                 native=NativeSandboxParserGateway(),
                 structure_mineru=MinerUStructureArchiveParserGateway(
-                    parse_archive_provider
+                    parse_archive_provider,
+                    semantic_planner=semantic_planner,
                 ),
-                structure_native=NativeStructureSandboxParserGateway(),
+                structure_native=NativeStructureSandboxParserGateway(
+                    semantic_planner=semantic_planner,
+                ),
             ),
             projection=parse_projection,
+            embedding_profiles=parse_embedding_profiles,
         )
         handlers["parse"] = admitted_parse_handler_with_dependencies(
             parse_dependencies,
             settings.provider_profile,
         )
     if "passage_embedding" in settings.job_stages:
-        embedding_dependencies = build_jina_passage_embedding_handler_dependencies(
+        if settings.provider_profile.profile_id != MINERU_SILICONFLOW_POSTGRES_PROFILE:
+            raise WorkerStartupError("SiliconFlow provider profile is required")
+        embedding_dependencies = build_profiled_passage_embedding_handler_dependencies(
             provider_gateway_url=settings.source_gateway_url or "",
             internal_token=settings.source_gateway_token or "",
             projection=passage_embedding_projection,
@@ -159,11 +186,13 @@ class Worker:
         if job_handlers is JOB_HANDLER_REGISTRY and settings.job_stages:
             parse_source_metadata: SourceMetadataGateway | None = None
             parse_chunk_profiles: ParseChunkProfileGateway | None = None
+            parse_embedding_profiles: GenerationEmbeddingProfileGateway | None = None
             parse_projection: ParseProjectionGateway | None = None
             parse_archive_provider: MinerUResultArchiveProvider | None = None
             if "parse" in settings.job_stages:
                 parse_source_metadata = self.database
                 parse_chunk_profiles = self.database
+                parse_embedding_profiles = self.database
                 parse_projection = self.database
                 parse_archive_provider = MinerULocalBatchResultArchiveProvider(
                     MinerULocalBatchGateway(
@@ -176,6 +205,7 @@ class Worker:
                 settings,
                 parse_source_metadata=parse_source_metadata,
                 parse_chunk_profiles=parse_chunk_profiles,
+                parse_embedding_profiles=parse_embedding_profiles,
                 parse_projection=parse_projection,
                 parse_archive_provider=parse_archive_provider,
                 passage_embedding_projection=self.database,

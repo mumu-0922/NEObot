@@ -5,6 +5,7 @@ import uuid
 from pathlib import Path
 from typing import cast
 
+from mm_chat_rag.frozen_tokenizer import FROZEN_TOKENIZER
 from mm_chat_rag.job_context import ProcessingJobContext, ProviderAuthority
 from mm_chat_rag.job_handler_dependencies import DocumentSource
 from mm_chat_rag.native_structure_artifacts import (
@@ -17,7 +18,9 @@ from mm_chat_rag.offline_parser.native.docx import parse_docx
 from mm_chat_rag.offline_parser.native.markdown import parse_markdown
 from mm_chat_rag.offline_parser.native.model import NativeDocument
 from mm_chat_rag.offline_parser.native.opc import admit_ooxml_package
+from mm_chat_rag.offline_parser.native.pptx import parse_pptx
 from mm_chat_rag.offline_parser.native.txt import parse_txt
+from mm_chat_rag.offline_parser.native.xlsx import parse_xlsx
 from mm_chat_rag.projection import ProjectionContext, build_postgres_projection_batch
 from tests.support.parser_contracts import (
     JsonObject,
@@ -28,6 +31,8 @@ from tests.support.parser_contracts import (
 
 _CORPUS = Path(__file__).parents[1] / "fixtures" / "parser_corpus" / "golden"
 _DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+_PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 _MATERIALIZATION_ID = uuid.UUID("60000000-0000-0000-0000-000000000001")
 
 
@@ -181,6 +186,70 @@ def test_markdown_maps_heading_lists_table_rows_and_projection_heading_path() ->
     assert "café | 中文" in batch.child_search_projections[0].lexical_text
 
 
+def test_pptx_projects_exact_slide_shape_locator_before_xml_line_fallback() -> None:
+    body = (_CORPUS / "pptx" / "minimal.pptx").read_bytes()
+    artifact = parse_pptx(
+        admit_ooxml_package(body, DEFAULT_CONFIG.native),
+        DEFAULT_CONFIG.native,
+    )
+
+    canonical, chunks, projection_context = _build(body, artifact, _PPTX_MIME)
+
+    blocks = _objects(canonical["blocks"])
+    assert len(blocks) == 1
+    views = _block_views(blocks[0])
+    assert [view["kind"] for view in views] == [
+        "source_text_position",
+        "slide_shape",
+        "derived_structure",
+    ]
+    assert views[1]["slideIndex"] == 0
+    assert views[1]["bboxMilliPoint"] == [72000, 72000, 859402, 150740]
+    _validate_contracts(canonical, chunks)
+
+    batch = build_postgres_projection_batch(canonical, chunks, projection_context)
+    assert batch.blocks[0].locator_kind == "slide_shape"
+    assert batch.blocks[0].locator["slide"] == 0
+    assert all(
+        row.locator_summary["primary"]["kind"] == "slide_shape"
+        for row in batch.child_search_projections
+    )
+
+
+def test_xlsx_projects_every_row_cell_anchor_and_sheet_cell_authority() -> None:
+    body = (_CORPUS / "xlsx" / "representative.xlsx").read_bytes()
+    artifact = parse_xlsx(
+        admit_ooxml_package(body, DEFAULT_CONFIG.native),
+        DEFAULT_CONFIG.native,
+    )
+
+    canonical, chunks, projection_context = _build(body, artifact, _XLSX_MIME)
+
+    blocks = _objects(canonical["blocks"])
+    ranges = [
+        view
+        for block in blocks
+        for view in _block_views(block)
+        if view["kind"] == "sheet_range"
+    ]
+    assert {cast("str", view["startCell"]) for view in ranges} >= {
+        "A1",
+        "A2",
+        "A3",
+        "B1",
+        "C1",
+    }
+    assert any(view["startCell"] == "A3" and view["endCell"] == "B3" for view in ranges)
+    _validate_contracts(canonical, chunks)
+
+    batch = build_postgres_projection_batch(canonical, chunks, projection_context)
+    assert all(row.locator_kind == "sheet_cell" for row in batch.blocks)
+    assert all(
+        row.locator_summary["primary"]["kind"] == "sheet_cell"
+        for row in batch.child_search_projections
+    )
+
+
 def test_long_multilingual_markdown_preserves_utf8_ranges_and_exact_overlap() -> None:
     paragraph = "多语言 café alpha beta gamma delta. " * 900
     body = f"# 长文\n\n{paragraph}\n".encode()
@@ -198,6 +267,12 @@ def test_long_multilingual_markdown_preserves_utf8_ranges_and_exact_overlap() ->
     assert len(children) > len(parents)
     assert any(
         fragment["fragmentKind"] == "window_overlap"
+        for child in children
+        for fragment in _objects(child["spanFragments"])
+    )
+    assert any(
+        fragment["fragmentKind"] == "derived_context"
+        and fragment["derivedReason"] == "heading_context"
         for child in children
         for fragment in _objects(child["spanFragments"])
     )
@@ -235,6 +310,10 @@ def test_long_multilingual_markdown_preserves_utf8_ranges_and_exact_overlap() ->
         row.lexical_text == batch.child_chunks[index].content
         for index, row in enumerate(batch.child_search_projections)
     )
+    assert all(
+        row.token_count == FROZEN_TOKENIZER.count(row.content)
+        for row in batch.child_chunks
+    )
 
 
 def test_identity_locator_clipping_preserves_crlf_and_cr_line_positions() -> None:
@@ -270,3 +349,13 @@ def _block_text(canonical: JsonObject, block: JsonObject) -> str:
     start = cast("int", text_range["startByte"])
     end = cast("int", text_range["endByte"])
     return text.encode()[start:end].decode("utf-8")
+
+
+def _block_views(block: JsonObject) -> list[JsonObject]:
+    locator = cast("JsonObject", block["locatorSet"])
+    return [
+        view
+        for anchor in _objects(locator["textAnchors"])
+        for fragment in _objects(anchor["sourceFragments"])
+        for view in _objects(fragment["views"])
+    ]

@@ -66,8 +66,8 @@ func TestServiceAutoProvisionsSingleUserCollectionConsents(t *testing.T) {
 	if collection.ID != repo.createResult.ID {
 		t.Fatalf("collection id = %q", collection.ID)
 	}
-	if len(repo.putConsents) != 3 {
-		t.Fatalf("automatic consents = %#v, want MinerU, Native, and Jina", repo.putConsents)
+	if len(repo.putConsents) != 2 {
+		t.Fatalf("automatic consents = %#v, want MinerU and Native", repo.putConsents)
 	}
 	mineru := repo.putConsents[0]
 	if mineru.CollectionID != collection.ID || mineru.ActorUserID != testActorID ||
@@ -84,14 +84,6 @@ func TestServiceAutoProvisionsSingleUserCollectionConsents(t *testing.T) {
 		len(native.Purposes) != 1 || native.Purposes[0] != "parse" ||
 		!slices.Equal(native.DataTypes, nativeParseDataTypes) {
 		t.Fatalf("Native automatic consent = %#v", native)
-	}
-	jina := repo.putConsents[2]
-	if jina.CollectionID != collection.ID || jina.ActorUserID != testActorID ||
-		jina.Processor != "jina" || jina.EndpointID != "hosted-main" ||
-		jina.ModelID != "jina-embeddings-v4" ||
-		len(jina.Purposes) != 1 || jina.Purposes[0] != "passage_embedding" ||
-		len(jina.DataTypes) != 1 || jina.DataTypes[0] != "text/plain" {
-		t.Fatalf("Jina automatic consent = %#v", jina)
 	}
 }
 
@@ -115,43 +107,14 @@ func TestServiceAutoProvisionsSingleUserAnswerConsent(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("CreateCollection() error = %v", err)
 	}
-	if len(repo.putConsents) != 4 {
-		t.Fatalf("automatic consents = %#v, want four", repo.putConsents)
+	if len(repo.putConsents) != 3 {
+		t.Fatalf("automatic consents = %#v, want three", repo.putConsents)
 	}
-	answer := repo.putConsents[3]
+	answer := repo.putConsents[2]
 	if answer.Processor != identity.Processor || answer.EndpointID != identity.EndpointID ||
 		answer.ModelID != identity.ModelID || !slices.Equal(answer.Purposes, []string{"answer"}) ||
 		!slices.Equal(answer.DataTypes, []string{"text/plain"}) {
 		t.Fatalf("answer automatic consent = %#v", answer)
-	}
-}
-
-func TestServiceAutoProvisionsSingleUserRerankConsent(t *testing.T) {
-	repo := &fakeRepository{
-		createResult: testCollection("22222222-2222-4222-8222-222222222222"),
-	}
-	service := NewService(
-		repo,
-		WithIDGenerator(func() (string, error) { return repo.createResult.ID, nil }),
-		WithSingleUserCollectionConsents(),
-		WithSingleUserRerankConsent(),
-	)
-	ctx := auth.WithUser(context.Background(), auth.User{ID: testActorID})
-
-	if _, err := service.CreateCollection(ctx, CreateCollectionInput{
-		Name: "Research", Scope: ScopePersonal, IdempotencyKey: "create-with-rerank",
-	}); err != nil {
-		t.Fatalf("CreateCollection() error = %v", err)
-	}
-	if len(repo.putConsents) != 4 {
-		t.Fatalf("automatic consents = %#v, want four", repo.putConsents)
-	}
-	rerank := repo.putConsents[3]
-	identity := SingleUserRerankIdentity()
-	if rerank.Processor != identity.Processor || rerank.EndpointID != identity.EndpointID ||
-		rerank.ModelID != identity.ModelID || !slices.Equal(rerank.Purposes, []string{"rerank"}) ||
-		!slices.Equal(rerank.DataTypes, []string{"text/plain"}) {
-		t.Fatalf("rerank automatic consent = %#v", rerank)
 	}
 }
 
@@ -177,11 +140,11 @@ func TestServiceAutoProvisionsEverySingleUserAnswerConsent(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("CreateCollection() error = %v", err)
 	}
-	if len(repo.putConsents) != 5 {
+	if len(repo.putConsents) != 4 {
 		t.Fatalf("automatic consents = %#v, want native providers plus two answer models", repo.putConsents)
 	}
 	for index, identity := range identities {
-		answer := repo.putConsents[index+3]
+		answer := repo.putConsents[index+2]
 		if answer.Processor != identity.Processor || answer.EndpointID != identity.EndpointID ||
 			answer.ModelID != identity.ModelID || !slices.Equal(answer.Purposes, []string{"answer"}) {
 			t.Fatalf("answer automatic consent[%d] = %#v", index, answer)
@@ -324,7 +287,7 @@ func TestBootstrapSingleUserAnswerProcessingCanBackfillEveryModel(t *testing.T) 
 	}
 }
 
-func TestBootstrapSingleUserRerankProcessingBackfillsOwnerAndCollections(t *testing.T) {
+func TestBootstrapSingleUserSiliconFlowRetrievalProcessingBackfillsOwnerAndCollections(t *testing.T) {
 	codec, err := teams.NewCursorCodec(teams.CursorKeyring{
 		ActiveKeyID: "test", Keys: map[string][]byte{"test": []byte("01234567890123456789012345678901")},
 	})
@@ -335,30 +298,44 @@ func TestBootstrapSingleUserRerankProcessingBackfillsOwnerAndCollections(t *test
 	repo := &fakeRepository{listResult: CollectionPageResult{Items: []Collection{collection}}}
 	service := NewService(repo, WithCursorCodec(codec))
 
-	err = BootstrapSingleUserRerankProcessing(
+	err = BootstrapSingleUserSiliconFlowRetrievalProcessing(
 		context.Background(),
 		service,
 		NewGovernanceService(repo),
 		auth.User{ID: testActorID},
 	)
 	if err != nil {
-		t.Fatalf("BootstrapSingleUserRerankProcessing() error = %v", err)
+		t.Fatalf("BootstrapSingleUserSiliconFlowRetrievalProcessing() error = %v", err)
 	}
-	identity := SingleUserRerankIdentity()
-	if repo.governanceManifest.Processor != identity.Processor ||
-		repo.governanceManifest.ModelID != identity.ModelID ||
-		!slices.Equal(repo.governanceManifest.AllowedPurposes, []string{"rerank"}) {
-		t.Fatalf("rerank governance manifest = %#v", repo.governanceManifest)
+	embeddingIdentity := SingleUserSiliconFlowEmbeddingIdentity()
+	rerankIdentity := SingleUserSiliconFlowRerankIdentity()
+	if len(repo.governanceManifests) != 2 ||
+		repo.governanceManifests[0].Processor != embeddingIdentity.Processor ||
+		repo.governanceManifests[0].ModelID != embeddingIdentity.ModelID ||
+		!slices.Equal(
+			repo.governanceManifests[0].AllowedPurposes,
+			[]string{"passage_embedding", "query_embedding"},
+		) ||
+		repo.governanceManifests[1].Processor != rerankIdentity.Processor ||
+		repo.governanceManifests[1].ModelID != rerankIdentity.ModelID ||
+		!slices.Equal(repo.governanceManifests[1].AllowedPurposes, []string{"rerank"}) {
+		t.Fatalf("SiliconFlow governance manifests = %#v", repo.governanceManifests)
 	}
-	if repo.putQueryConsent.ActorUserID != testActorID ||
-		repo.putQueryConsent.ModelID != identity.ModelID ||
-		!slices.Equal(repo.putQueryConsent.Purposes, []string{"rerank"}) {
-		t.Fatalf("rerank query consent = %#v", repo.putQueryConsent)
+	if len(repo.putQueryConsents) != 2 ||
+		repo.putQueryConsents[0].ActorUserID != testActorID ||
+		repo.putQueryConsents[0].ModelID != embeddingIdentity.ModelID ||
+		!slices.Equal(repo.putQueryConsents[0].Purposes, []string{"query_embedding"}) ||
+		repo.putQueryConsents[1].ModelID != rerankIdentity.ModelID ||
+		!slices.Equal(repo.putQueryConsents[1].Purposes, []string{"rerank"}) {
+		t.Fatalf("SiliconFlow query consents = %#v", repo.putQueryConsents)
 	}
-	if len(repo.putConsents) != 1 || repo.putConsents[0].CollectionID != collection.ID ||
-		repo.putConsents[0].ModelID != identity.ModelID ||
-		!slices.Equal(repo.putConsents[0].Purposes, []string{"rerank"}) {
-		t.Fatalf("rerank collection consent = %#v", repo.putConsents)
+	if len(repo.putConsents) != 2 ||
+		repo.putConsents[0].CollectionID != collection.ID ||
+		repo.putConsents[0].ModelID != embeddingIdentity.ModelID ||
+		!slices.Equal(repo.putConsents[0].Purposes, []string{"passage_embedding"}) ||
+		repo.putConsents[1].ModelID != rerankIdentity.ModelID ||
+		!slices.Equal(repo.putConsents[1].Purposes, []string{"rerank"}) {
+		t.Fatalf("SiliconFlow collection consents = %#v", repo.putConsents)
 	}
 }
 
@@ -512,28 +489,30 @@ func TestServiceCreatesServerSelectedReprocessJob(t *testing.T) {
 }
 
 type fakeRepository struct {
-	created            CreateCollectionRepositoryInput
-	createResult       Collection
-	listResult         CollectionPageResult
-	documentResult     Document
-	documentPage       DocumentPageResult
-	routingCatalog     []RoutingCatalogCollection
-	routingCatalogIn   RoutingCatalogRepositoryInput
-	contentResult      DocumentContentMetadata
-	versionCreated     CreateDocumentVersionRepositoryInput
-	reprocessCreated   ReprocessDocumentRepositoryInput
-	deletedDocument    DeleteDocumentRepositoryInput
-	consents           []ProcessingConsent
-	putConsent         PutCollectionConsentRepositoryInput
-	putConsents        []PutCollectionConsentRepositoryInput
-	putConsentErr      error
-	revokedConsent     CollectionConsentLookupInput
-	deletedCollection  DeleteCollectionRepositoryInput
-	queryConsents      []ProcessingConsent
-	governanceManifest GovernanceManifest
-	putQueryConsent    PutQueryConsentRepositoryInput
-	revokedQuery       QueryConsentLookupInput
-	err                error
+	created             CreateCollectionRepositoryInput
+	createResult        Collection
+	listResult          CollectionPageResult
+	documentResult      Document
+	documentPage        DocumentPageResult
+	routingCatalog      []RoutingCatalogCollection
+	routingCatalogIn    RoutingCatalogRepositoryInput
+	contentResult       DocumentContentMetadata
+	versionCreated      CreateDocumentVersionRepositoryInput
+	reprocessCreated    ReprocessDocumentRepositoryInput
+	deletedDocument     DeleteDocumentRepositoryInput
+	consents            []ProcessingConsent
+	putConsent          PutCollectionConsentRepositoryInput
+	putConsents         []PutCollectionConsentRepositoryInput
+	putConsentErr       error
+	revokedConsent      CollectionConsentLookupInput
+	deletedCollection   DeleteCollectionRepositoryInput
+	queryConsents       []ProcessingConsent
+	governanceManifest  GovernanceManifest
+	governanceManifests []GovernanceManifest
+	putQueryConsent     PutQueryConsentRepositoryInput
+	putQueryConsents    []PutQueryConsentRepositoryInput
+	revokedQuery        QueryConsentLookupInput
+	err                 error
 }
 
 type fakeObjectStore struct {
@@ -601,6 +580,7 @@ func (repo *fakeRepository) GetActiveDocumentContentMetadata(context.Context, Do
 }
 func (repo *fakeRepository) ApplyGovernance(_ context.Context, manifest GovernanceManifest, _ string) (ProcessorGovernanceHead, error) {
 	repo.governanceManifest = manifest
+	repo.governanceManifests = append(repo.governanceManifests, manifest)
 	return ProcessorGovernanceHead{
 		Processor: manifest.Processor, EndpointID: manifest.EndpointID, ModelID: manifest.ModelID,
 	}, repo.err
@@ -631,6 +611,7 @@ func (repo *fakeRepository) ListQueryConsents(context.Context, QueryConsentLooku
 }
 func (repo *fakeRepository) PutQueryConsent(_ context.Context, input PutQueryConsentRepositoryInput) (ProcessingConsent, error) {
 	repo.putQueryConsent = input
+	repo.putQueryConsents = append(repo.putQueryConsents, input)
 	if len(repo.queryConsents) == 0 {
 		return ProcessingConsent{}, repo.err
 	}

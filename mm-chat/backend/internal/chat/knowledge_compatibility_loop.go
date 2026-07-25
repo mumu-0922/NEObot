@@ -47,6 +47,7 @@ type compatibilityKnowledgeLoopInput struct {
 	ExternalSearch       *externalWebToolLoopInput
 	ForceSearch          bool
 	KnowledgeQuery       string
+	ContextBudget        *retrievalContextBudget
 }
 
 func startCompatibilityKnowledgeLoop(
@@ -66,6 +67,15 @@ func runCompatibilityKnowledgeLoop(
 	events chan<- ProviderEvent,
 	input compatibilityKnowledgeLoopInput,
 ) {
+	if input.ContextBudget == nil {
+		webAvailable := (input.ExternalSearch != nil &&
+			externalWebToolEnabled(*input.ExternalSearch)) || input.BuiltInSearch != nil
+		input.ContextBudget = newRetrievalContextBudget(
+			input.Request,
+			input.Runtime.enabled(),
+			webAvailable,
+		)
+	}
 	plan, err := planCompatibilityRetrieval(ctx, input)
 	if err != nil {
 		if toolLoopWasCancelled(ctx, err) {
@@ -116,6 +126,7 @@ func runCompatibilityKnowledgeLoop(
 			external := *input.ExternalSearch
 			external.Request = request
 			external.KnowledgeReady = decision.ReadyForAnswer()
+			external.ContextBudget = input.ContextBudget
 			runCompatibilityExternalWebSearchPlan(ctx, events, external, compatibilityWebSearchPlan{
 				ShouldSearch: true,
 				Query:        plan.WebQuery,
@@ -387,20 +398,30 @@ func prepareCompatibilityKnowledgeRequest(
 	failure := knowledgeToolFailureCategory(decision)
 	request := input.Request
 	if failure == "" && decision.ReadyForAnswer() {
-		prompt, systemPrompt, err := buildAutoRAGProviderRequest(
+		context, err := buildAutoRAGProviderRequest(
 			input.Runtime.OriginalQueryText,
 			request.SystemPrompt,
 			decision.Evidence,
 			decision.Citations,
+			input.ContextBudget.remaining(retrievalEvidenceKnowledge),
 		)
 		if err != nil {
 			decision = autoRAGDecision{Outcome: "dependency_unavailable"}
 			failure = decision.Outcome
 		} else {
-			request.Prompt = prompt
-			request.SystemPrompt = systemPrompt
-			request.Messages = replaceLastUserProviderMessage(request.Messages, prompt)
+			decision.Evidence = context.Evidence
+			decision.Citations = context.Citations
+			request.Prompt = context.Prompt
+			request.SystemPrompt = context.SystemPrompt
+			request.Messages = replaceLastUserProviderMessage(
+				request.Messages,
+				context.Prompt,
+			)
 			request.Metadata = mergeAutoRAGProviderMetadata(request.Metadata, decision)
+			input.ContextBudget.consume(
+				retrievalEvidenceKnowledge,
+				context.EstimatedTokens,
+			)
 		}
 	}
 	terminal := running

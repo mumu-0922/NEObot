@@ -842,6 +842,11 @@ describe("G11.9F.4.2 server RAG provider API adapter", () => {
                   status: "ready",
                   embeddingDimensions: 1024,
                 },
+                siliconflow: {
+                  configured: true,
+                  status: "ready",
+                  embeddingDimensions: 1024,
+                },
               },
               status: "ready",
               capabilities: {
@@ -858,9 +863,9 @@ describe("G11.9F.4.2 server RAG provider API adapter", () => {
           if (String(input).endsWith("/configure")) {
             return Response.json({
               provider: {
-                id: "RAG:JINA",
-                name: "Jina AI",
-                provider: "jina",
+                id: "RAG:SILICONFLOW",
+                name: "SiliconFlow",
+                provider: "siliconflow",
                 enabled: true,
                 hasApiKey: true,
                 connectionTestValid: true,
@@ -884,15 +889,15 @@ describe("G11.9F.4.2 server RAG provider API adapter", () => {
       capabilities: { retrieval: true },
     });
     await expect(
-      ragProviders.configureAdminRAGProvider("jina", {
+      ragProviders.configureAdminRAGProvider("siliconflow", {
         apiKeySecret: { v: 1 },
       }),
     ).resolves.toMatchObject({
-      provider: { provider: "jina", enabled: true },
+      provider: { provider: "siliconflow", enabled: true },
       checks: ["embedding", "rerank"],
     });
     await expect(
-      ragProviders.deleteAdminRAGProviderConfig("jina"),
+      ragProviders.deleteAdminRAGProviderConfig("siliconflow"),
     ).resolves.toBeUndefined();
 
     expect(requests).toEqual([
@@ -907,12 +912,12 @@ describe("G11.9F.4.2 server RAG provider API adapter", () => {
         body: undefined,
       },
       {
-        url: "/mm-api/v1/admin/rag/providers/jina/configure",
+        url: "/mm-api/v1/admin/rag/providers/siliconflow/configure",
         method: "POST",
         body: { apiKeySecret: { v: 1 } },
       },
       {
-        url: "/mm-api/v1/admin/rag/providers/jina",
+        url: "/mm-api/v1/admin/rag/providers/siliconflow",
         method: "DELETE",
         body: undefined,
       },

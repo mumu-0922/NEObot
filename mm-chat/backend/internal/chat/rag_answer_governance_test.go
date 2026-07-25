@@ -126,20 +126,45 @@ func TestKnowledgeConsentRoutingCatalogGovernanceGateRequiresEveryCollection(t *
 
 func TestKnowledgeConsentRAGRerankGovernanceGateRequiresExactRerankConsent(t *testing.T) {
 	collectionID := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	reader := &profiledRAGConsentReader{
+		fakeRAGConsentReader: &fakeRAGConsentReader{
+			query: []knowledge.ProcessingConsent{validRerankConsent()},
+			collections: map[string][]knowledge.ProcessingConsent{
+				collectionID: {validRerankConsent()},
+			},
+		},
+		binding: knowledge.RetrievalProfileBinding{
+			IndexGenerationID: "50000000-0000-4000-8000-000000000001",
+			ProviderID:        "siliconflow",
+			RerankModelID:     "Pro/BAAI/bge-reranker-v2-m3",
+		},
+	}
+	gate := NewKnowledgeConsentRAGRerankGovernanceGate(reader)
+	if err := gate.AuthorizeRAGRerank(context.Background(), []string{collectionID}, reader.binding.IndexGenerationID); err != nil {
+		t.Fatalf("AuthorizeRAGRerank() error = %v", err)
+	}
+
+	reader.query[0].Purposes = []string{"answer"}
+	if err := gate.AuthorizeRAGRerank(context.Background(), []string{collectionID}, reader.binding.IndexGenerationID); !errors.Is(err, ErrRAGRerankGovernanceRequired) {
+		t.Fatalf("wrong-purpose error = %v", err)
+	}
+}
+
+func TestKnowledgeConsentRAGRerankGovernanceGateRejectsMissingGenerationResolver(t *testing.T) {
+	collectionID := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 	reader := &fakeRAGConsentReader{
 		query: []knowledge.ProcessingConsent{validRerankConsent()},
 		collections: map[string][]knowledge.ProcessingConsent{
 			collectionID: {validRerankConsent()},
 		},
 	}
-	gate := NewKnowledgeConsentRAGRerankGovernanceGate(reader)
-	if err := gate.AuthorizeRAGRerank(context.Background(), []string{collectionID}); err != nil {
-		t.Fatalf("AuthorizeRAGRerank() error = %v", err)
-	}
-
-	reader.query[0].Purposes = []string{"answer"}
-	if err := gate.AuthorizeRAGRerank(context.Background(), []string{collectionID}); !errors.Is(err, ErrRAGRerankGovernanceRequired) {
-		t.Fatalf("wrong-purpose error = %v", err)
+	err := NewKnowledgeConsentRAGRerankGovernanceGate(reader).AuthorizeRAGRerank(
+		context.Background(),
+		[]string{collectionID},
+		"50000000-0000-4000-8000-000000000001",
+	)
+	if !errors.Is(err, ErrRAGRerankGovernanceRequired) {
+		t.Fatalf("error = %v, want ErrRAGRerankGovernanceRequired", err)
 	}
 }
 
@@ -147,10 +172,80 @@ func TestKnowledgeConsentRAGRerankGovernanceGateFailsClosedWithoutDependency(t *
 	err := (*KnowledgeConsentRAGRerankGovernanceGate)(nil).AuthorizeRAGRerank(
 		context.Background(),
 		[]string{"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},
+		"50000000-0000-4000-8000-000000000001",
 	)
 	if !errors.Is(err, ErrRAGDependencyUnavailable) {
 		t.Fatalf("error = %v, want ErrRAGDependencyUnavailable", err)
 	}
+}
+
+func TestKnowledgeConsentRAGRerankGovernanceGateUsesGenerationProfile(t *testing.T) {
+	collectionID := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	consent := validAnswerConsent(
+		"siliconflow",
+		"Pro/BAAI/bge-reranker-v2-m3",
+	)
+	consent.EndpointID = "siliconflow-cn-v1"
+	consent.Purposes = []string{"rerank"}
+	reader := &profiledRAGConsentReader{
+		fakeRAGConsentReader: &fakeRAGConsentReader{
+			query: []knowledge.ProcessingConsent{consent},
+			collections: map[string][]knowledge.ProcessingConsent{
+				collectionID: {consent},
+			},
+		},
+		binding: knowledge.RetrievalProfileBinding{
+			IndexGenerationID: "50000000-0000-4000-8000-000000000001",
+			ProviderID:        "siliconflow",
+			RerankModelID:     "Pro/BAAI/bge-reranker-v2-m3",
+		},
+	}
+	gate := NewKnowledgeConsentRAGRerankGovernanceGate(reader)
+	if err := gate.AuthorizeRAGRerank(
+		context.Background(),
+		[]string{collectionID},
+		reader.binding.IndexGenerationID,
+	); err != nil {
+		t.Fatalf("AuthorizeRAGRerank() error = %v", err)
+	}
+}
+
+func TestKnowledgeConsentRAGQueryEmbeddingGateUsesProfileBinding(t *testing.T) {
+	consent := validAnswerConsent("siliconflow", "Pro/BAAI/bge-m3")
+	consent.Purposes = []string{"query_embedding"}
+	reader := &fakeRAGConsentReader{
+		query: []knowledge.ProcessingConsent{consent},
+	}
+	gate := NewKnowledgeConsentRAGQueryEmbeddingGovernanceGate(reader)
+	binding := knowledge.RetrievalProfileBinding{
+		ProviderID: "siliconflow", EmbeddingModelID: "Pro/BAAI/bge-m3",
+	}
+	if err := gate.AuthorizeRAGQueryEmbedding(
+		context.Background(),
+		binding,
+	); err != nil {
+		t.Fatalf("AuthorizeRAGQueryEmbedding() error = %v", err)
+	}
+	reader.query[0].Purposes = []string{"rerank"}
+	if err := gate.AuthorizeRAGQueryEmbedding(
+		context.Background(),
+		binding,
+	); !errors.Is(err, ErrRAGQueryEmbeddingGovernanceRequired) {
+		t.Fatalf("wrong-purpose error = %v", err)
+	}
+}
+
+type profiledRAGConsentReader struct {
+	*fakeRAGConsentReader
+	binding knowledge.RetrievalProfileBinding
+	err     error
+}
+
+func (r *profiledRAGConsentReader) ResolveGenerationRetrievalProfile(
+	_ context.Context,
+	_ string,
+) (knowledge.RetrievalProfileBinding, error) {
+	return r.binding, r.err
 }
 
 type fakeRAGConsentReader struct {
@@ -191,7 +286,7 @@ func validAnswerConsent(processor string, modelID string) knowledge.ProcessingCo
 }
 
 func validRerankConsent() knowledge.ProcessingConsent {
-	identity := knowledge.SingleUserRerankIdentity()
+	identity := knowledge.SingleUserSiliconFlowRerankIdentity()
 	consent := validAnswerConsent(identity.Processor, identity.ModelID)
 	consent.EndpointID = identity.EndpointID
 	consent.Purposes = []string{"rerank"}

@@ -3,6 +3,7 @@ package ragproviders
 import (
 	"context"
 	"errors"
+	"strings"
 )
 
 const (
@@ -37,4 +38,30 @@ type RerankResult struct {
 
 type Reranker interface {
 	Rerank(context.Context, string, []string) ([]RerankResult, error)
+}
+
+func normalizeDirectRerankRequest(
+	query string,
+	documents []string,
+) (string, []string, error) {
+	query = strings.TrimSpace(query)
+	if query == "" || len([]byte(query)) > maxRerankQueryBytes ||
+		len(documents) < 1 || len(documents) > maxRerankDocuments {
+		return "", nil, ErrProviderGatewayInvalid
+	}
+	totalBytes := 0
+	copyDocuments := make([]string, len(documents))
+	for index, document := range documents {
+		documentBytes := len([]byte(document))
+		if strings.TrimSpace(document) == "" ||
+			documentBytes > maxRerankDocumentBytes {
+			return "", nil, ErrProviderGatewayInvalid
+		}
+		totalBytes += documentBytes
+		if totalBytes > maxRerankTotalDocumentBytes {
+			return "", nil, ErrProviderGatewayInvalid
+		}
+		copyDocuments[index] = document
+	}
+	return query, copyDocuments, nil
 }

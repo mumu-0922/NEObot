@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"neo-chat/mm-chat/backend/internal/auth"
-	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/ragproviders"
 )
 
@@ -25,6 +24,9 @@ func (s *Service) RAGProviderStatus(
 		if !isRAGProviderConfig(item) {
 			continue
 		}
+		if isRetiredJinaRAGProvider(item) {
+			continue
+		}
 		providerID, err := validateStoredRAGProvider(item)
 		if err != nil {
 			return ragproviders.StatusResponse{}, err
@@ -37,8 +39,8 @@ func (s *Service) RAGProviderStatus(
 			Configured: strings.TrimSpace(item.EncryptedSecretRef) != "",
 			Status:     ragproviders.ProviderStatusMissingSecret,
 		}
-		if providerID == RAGProviderJina {
-			state.EmbeddingDimensions = config.DefaultRAGJinaDimensions
+		if providerID == RAGProviderSiliconFlow {
+			state.EmbeddingDimensions = ragproviders.SiliconFlowEmbeddingDimensions
 		}
 		if state.Configured {
 			state.Status = ragproviders.ProviderStatusActivationRequired
@@ -55,21 +57,22 @@ func (s *Service) RAGProviderStatus(
 		if providerID == RAGProviderMinerU {
 			response.Providers.MinerU = state
 		} else {
-			response.Providers.Jina = state
+			response.Providers.SiliconFlow = state
 		}
 	}
 	minerUReady := response.Providers.MinerU.Status == ragproviders.ProviderStatusReady
-	jinaReady := response.Providers.Jina.Status == ragproviders.ProviderStatusReady
+	siliconFlowReady := response.Providers.SiliconFlow.Status == ragproviders.ProviderStatusReady
+	retrievalReady := siliconFlowReady
 	response.Capabilities = ragproviders.Capabilities{
 		PDFParsing:     minerUReady,
-		NativeIndexing: jinaReady,
-		Retrieval:      jinaReady,
+		NativeIndexing: retrievalReady,
+		Retrieval:      retrievalReady,
 	}
-	response.Ready = minerUReady && jinaReady
+	response.Ready = minerUReady && retrievalReady
 	switch {
 	case response.Ready:
 		response.Status = ragproviders.ServiceStatusReady
-	case jinaReady:
+	case retrievalReady:
 		response.Status = ragproviders.ServiceStatusPartial
 	default:
 		response.Status = ragproviders.ServiceStatusUnavailable

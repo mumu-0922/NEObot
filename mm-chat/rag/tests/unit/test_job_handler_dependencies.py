@@ -47,7 +47,10 @@ from mm_chat_rag.mineru_gateway import MinerUTextBaselineArchiveParserGateway
 from mm_chat_rag.models import JobClaim, stable_error_code
 from mm_chat_rag.projection import PostgresProjectionBatch
 from mm_chat_rag.provider_profile import (
-    MINERU_JINA_POSTGRES_PROFILE,
+    DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS,
+    DEFAULT_SILICONFLOW_EMBEDDING_MODEL,
+    MINERU_SILICONFLOW_POSTGRES_PROFILE,
+    GenerationEmbeddingProfile,
     ProviderRuntimeProfile,
 )
 from mm_chat_rag.retry import PermanentJobError
@@ -69,7 +72,7 @@ _FIXTURE_ROOT = (
 
 def valid_profile() -> ProviderRuntimeProfile:
     return ProviderRuntimeProfile(
-        profile_id=MINERU_JINA_POSTGRES_PROFILE,
+        profile_id=MINERU_SILICONFLOW_POSTGRES_PROFILE,
         accepted_draft_wire_contracts=True,
     )
 
@@ -127,8 +130,8 @@ def purge_row(**updates: object) -> dict[str, object]:
 def embedding_row(**updates: object) -> dict[str, object]:
     row = provider_row(
         stage="passage_embedding",
-        processor="jina",
-        model_id="jina-embeddings-v4",
+        processor="siliconflow",
+        model_id="Pro/BAAI/bge-m3",
     )
     row.update(updates)
     return row
@@ -220,6 +223,19 @@ class FakeParseProjectionGateway:
         assert embedding_job_id != uuid.UUID(int=0)
         self.embedding_job_ids.append(embedding_job_id)
         return self._completion_committed
+
+
+class FakeGenerationEmbeddingProfileGateway:
+    async def resolve_generation_embedding_profile(
+        self,
+        context: ProcessingJobContext,
+    ) -> GenerationEmbeddingProfile:
+        assert context.stage == "parse"
+        return GenerationEmbeddingProfile(
+            processor="siliconflow",
+            model_id=DEFAULT_SILICONFLOW_EMBEDDING_MODEL,
+            dimensions=DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS,
+        )
 
 
 class FakeMinerUResultArchiveProvider:
@@ -446,6 +462,7 @@ def dependencies(
                 chunk_source_sha256=chunk_source_sha256,
             ),
             projection=projection,
+            embedding_profiles=FakeGenerationEmbeddingProfileGateway(),
         ),
         projection,
     )
@@ -534,6 +551,7 @@ async def test_admitted_parse_handler_stages_mineru_text_baseline_adapter() -> N
             FakeMinerUResultArchiveProvider(calls, mineru_archive())
         ),
         projection=projection,
+        embedding_profiles=FakeGenerationEmbeddingProfileGateway(),
     )
     handler = admitted_parse_handler_with_dependencies(deps, valid_profile())
 

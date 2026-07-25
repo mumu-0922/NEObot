@@ -92,7 +92,8 @@ function ragHealthState(status?: RAGProviderStatusDTO): HealthState {
   if (!status) return "warning";
   if (status.status === "ready") return "ok";
   if (status.status === "partial") return "warning";
-  return status.providers.mineru.configured || status.providers.jina.configured
+  return status.providers.mineru?.configured ||
+    status.providers.siliconflow?.configured
     ? "blocked"
     : "missing";
 }

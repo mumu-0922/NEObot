@@ -46,6 +46,9 @@ func (r *PostgresProviderSecretRewriter) rewrittenProviderConnectionAttestation(
 			rewrittenSecretRef,
 		), true, nil
 	case providerConfigKindRAG:
+		if isRetiredJinaRAGProvider(stored) {
+			return "", false, nil
+		}
 		providerID, err := validateStoredRAGProvider(stored)
 		if err != nil {
 			return "", false, ErrProviderSecretRewriteInvalid

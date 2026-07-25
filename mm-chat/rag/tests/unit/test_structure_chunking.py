@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 from itertools import pairwise
 
 import pytest
 
+from mm_chat_rag.frozen_tokenizer import FROZEN_TOKENIZER
+from mm_chat_rag.semantic_profile import SEMANTIC_BOUNDARY_PROFILE_HASH
 from mm_chat_rag.structure_chunking import (
     CHILD_HARD_MAX_TOKENS,
     CHILD_TARGET_MAX_TOKENS,
@@ -14,9 +17,11 @@ from mm_chat_rag.structure_chunking import (
     PARENT_HARD_MAX_TOKENS,
     PARENT_TARGET_MIN_TOKENS,
     ChildChunkPlan,
+    SemanticBoundaryHints,
     StructureChunkingError,
     StructuredTextUnit,
     plan_structure_chunks,
+    structure_chunk_profile,
 )
 
 
@@ -139,6 +144,91 @@ def test_planner_keeps_typical_children_within_target_maximum() -> None:
     )
 
 
+def test_planner_uses_exact_frozen_token_counts() -> None:
+    text = "English retrieval text 与中文检索文本。" * 180
+    units = (StructuredTextUnit(0, "paragraph", text),)
+
+    plan = plan_structure_chunks(units)
+
+    encoded = text.encode()
+    for chunk in (*plan.parents, *plan.children):
+        parts: list[str] = []
+        previous = None
+        for fragment in chunk.fragments:
+            if previous is not None and not (
+                previous.unit_ordinal == fragment.unit_ordinal
+                and previous.end_byte == fragment.start_byte
+            ):
+                parts.append("\n\n")
+            parts.append(encoded[fragment.start_byte : fragment.end_byte].decode())
+            previous = fragment
+        assert chunk.token_count == FROZEN_TOKENIZER.count("".join(parts))
+    profile = structure_chunk_profile()
+    assert profile["tokenizer"] == {
+        "artifactSha256": FROZEN_TOKENIZER.artifact_sha256,
+        "name": "cl100k_base",
+        "normalization": "none",
+        "profileHash": FROZEN_TOKENIZER.profile_hash,
+        "revision": "openai-public-2022-12-14",
+        "specialTokenPolicy": "encode_ordinary",
+        "vocabularySha256": FROZEN_TOKENIZER.vocabulary_sha256,
+    }
+
+
+def test_planner_admits_hash_bound_semantic_boundaries_for_long_narrative() -> None:
+    first = "Topic alpha has one coherent sentence. " * 180
+    second = "Topic beta discusses a different domain. " * 180
+    text = first + second
+    boundary = len(first.encode())
+    units = (StructuredTextUnit(0, "paragraph", text),)
+    hint = SemanticBoundaryHints(
+        unit_ordinal=0,
+        content_sha256=hashlib.sha256(text.encode()).hexdigest(),
+        embedding_profile_hash=SEMANTIC_BOUNDARY_PROFILE_HASH,
+        boundary_bytes=(boundary,),
+    )
+
+    semantic = plan_structure_chunks(units, semantic_hints=(hint,))
+    fallback = plan_structure_chunks(units)
+
+    assert semantic.diagnostics[0].strategy == "sentence_semantic"
+    assert fallback.diagnostics[0].strategy == "sentence_recursive"
+    semantic_ends = {
+        fragment.end_byte
+        for parent in semantic.parents
+        for fragment in parent.fragments
+        if fragment.unit_ordinal == 0
+    }
+    assert boundary in semantic_ends
+
+
+def test_planner_routes_types_and_excludes_non_indexable_units() -> None:
+    units = (
+        StructuredTextUnit(0, "header", "Repeated page header", indexable=False),
+        StructuredTextUnit(1, "table_row", "header | value"),
+        StructuredTextUnit(2, "code", "def answer():\n    return 42\n"),
+        StructuredTextUnit(3, "json", '{"answer": 42}'),
+        StructuredTextUnit(4, "shape", "Slide conclusion"),
+        StructuredTextUnit(5, "formula", "E = mc^2"),
+    )
+
+    plan = plan_structure_chunks(units)
+
+    assert [item.strategy for item in plan.diagnostics] == [
+        "non_indexable",
+        "table_row_group",
+        "code_logical",
+        "json_subtree",
+        "slide_shape",
+        "formula_atomic",
+    ]
+    assert all(
+        fragment.unit_ordinal != 0
+        for chunk in (*plan.parents, *plan.children)
+        for fragment in chunk.fragments
+    )
+
+
 @pytest.mark.parametrize(
     "units",
     [
@@ -149,6 +239,7 @@ def test_planner_keeps_typical_children_within_target_maximum() -> None:
         (StructuredTextUnit(0, "paragraph", "text", ("",)),),
         (StructuredTextUnit(False, "paragraph", "text"),),
         (StructuredTextUnit(0, "paragraph", "text", ("\ud800",)),),
+        (StructuredTextUnit(0, "paragraph", "text", (), 1),),
     ],
 )
 def test_planner_rejects_invalid_structural_units(
@@ -156,3 +247,32 @@ def test_planner_rejects_invalid_structural_units(
 ) -> None:
     with pytest.raises(StructureChunkingError):
         plan_structure_chunks(units)
+
+
+def test_planner_rejects_stale_or_unmapped_semantic_hints() -> None:
+    units = (StructuredTextUnit(0, "paragraph", "Sentence one. Sentence two."),)
+    stale = SemanticBoundaryHints(
+        unit_ordinal=0,
+        content_sha256="0" * 64,
+        embedding_profile_hash=SEMANTIC_BOUNDARY_PROFILE_HASH,
+        boundary_bytes=(13,),
+    )
+
+    with pytest.raises(StructureChunkingError):
+        plan_structure_chunks(units, semantic_hints=(stale,))
+
+
+def test_planner_rejects_unregistered_semantic_profile() -> None:
+    text = "Sentence one. Sentence two."
+    hint = SemanticBoundaryHints(
+        unit_ordinal=0,
+        content_sha256=hashlib.sha256(text.encode()).hexdigest(),
+        embedding_profile_hash="a" * 64,
+        boundary_bytes=(13,),
+    )
+
+    with pytest.raises(StructureChunkingError):
+        plan_structure_chunks(
+            (StructuredTextUnit(0, "paragraph", text),),
+            semantic_hints=(hint,),
+        )

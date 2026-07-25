@@ -41,8 +41,150 @@ func TestHandlerListsBuiltInRegistry(t *testing.T) {
 	if response.Unavailable {
 		t.Fatal("Unavailable = true, want false")
 	}
-	if !containsPlugin(response.Plugins, "jina-web-reader") || !containsPlugin(response.Plugins, "weather-gpt") {
-		t.Fatalf("plugins = %#v, want built-in plugins", response.Plugins)
+	if containsPlugin(response.Plugins, retiredJinaPluginID) || !containsPlugin(response.Plugins, "weather-gpt") {
+		t.Fatalf("plugins = %#v, want active built-ins without retired Jina", response.Plugins)
+	}
+}
+
+func TestHandlerPermanentlyRetiresJinaBeforeSecretsNetworkOrAudit(t *testing.T) {
+	decryptCalls := 0
+	httpCalls := 0
+	auditCalls := 0
+	service := NewService(
+		config.Config{},
+		WithAllowPrivateNetwork(true),
+		WithSecretDecrypter(func(*runtimeconfig.EncryptedSecretEnvelope, string) (string, error) {
+			decryptCalls++
+			return "must-not-be-used", nil
+		}),
+		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			httpCalls++
+			return jsonResponse(http.StatusOK, `{"ok":true}`), nil
+		})}),
+		WithAuditRecorder(AuditRecorderFunc(func(context.Context, AuditEvent) error {
+			auditCalls++
+			return nil
+		})),
+	)
+
+	cases := []struct {
+		name    string
+		payload ExecuteRequest
+	}{
+		{
+			name: "retired id",
+			payload: func() ExecuteRequest {
+				payload := executePayload("https://plugins.example")
+				payload.Plugin.ID = retiredJinaPluginID
+				return payload
+			}(),
+		},
+		{
+			name:    "retired host under a different id",
+			payload: executePayload("https://R.JINA.AI./reader"),
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.payload.Plugin.Auth = &PluginAuth{Type: "bearer", Required: boolPtr(true)}
+			tc.payload.AuthConfig = &PluginAuthConfig{
+				Type:        "bearer",
+				ValueSecret: &runtimeconfig.EncryptedSecretEnvelope{},
+			}
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(
+				http.MethodPost,
+				"/v1/plugins/execute",
+				bytes.NewReader(mustJSON(t, tc.payload)),
+			)
+
+			NewHandler(service).ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusGone {
+				t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusGone, rec.Body.String())
+			}
+			assertErrorCode(t, rec, "PLUGIN_RETIRED")
+		})
+	}
+	if decryptCalls != 0 || httpCalls != 0 || auditCalls != 0 {
+		t.Fatalf(
+			"retired Jina side effects: decrypt=%d http=%d audit=%d, want all zero",
+			decryptCalls,
+			httpCalls,
+			auditCalls,
+		)
+	}
+}
+
+func TestHandlerRejectsRetiredJinaInstallPathsBeforeNetwork(t *testing.T) {
+	httpCalls := 0
+	service := NewService(
+		config.Config{},
+		WithAllowPrivateNetwork(true),
+		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			httpCalls++
+			return jsonResponse(http.StatusOK, openAPIWeatherSpec("https://plugins.example")), nil
+		})}),
+	)
+
+	cases := []struct {
+		name   string
+		body   map[string]any
+		status int
+		code   string
+	}{
+		{
+			name: "reserved retired id cannot fetch manifest",
+			body: map[string]any{"plugin": map[string]any{
+				"id":          retiredJinaPluginID,
+				"manifestUrl": "https://plugins.example/openapi.json",
+				"functions":   []any{},
+			}},
+			status: http.StatusConflict,
+			code:   "PLUGIN_ID_RESERVED",
+		},
+		{
+			name: "retired manifest host",
+			body: map[string]any{"plugin": map[string]any{
+				"id":          "custom-reader",
+				"manifestUrl": "https://api.jina.ai/openapi.json",
+				"functions":   []any{},
+			}},
+			status: http.StatusGone,
+			code:   "PLUGIN_RETIRED",
+		},
+		{
+			name: "retired base host",
+			body: map[string]any{"plugin": func() *Plugin {
+				plugin := executePayload("https://r.jina.ai").Plugin
+				plugin.ID = "custom-reader"
+				return plugin
+			}()},
+			status: http.StatusGone,
+			code:   "PLUGIN_RETIRED",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(
+				http.MethodPost,
+				"/v1/plugins/install",
+				bytes.NewReader(mustJSON(t, tc.body)),
+			)
+
+			NewHandler(service).ServeHTTP(rec, req)
+
+			if rec.Code != tc.status {
+				t.Fatalf("status = %d, want %d; body=%s", rec.Code, tc.status, rec.Body.String())
+			}
+			assertErrorCode(t, rec, tc.code)
+		})
+	}
+	if httpCalls != 0 {
+		t.Fatalf("retired Jina install made %d HTTP calls, want zero", httpCalls)
 	}
 }
 
@@ -483,6 +625,41 @@ func TestHandlerBlocksPrivatePluginRedirectByDefault(t *testing.T) {
 		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusForbidden, rec.Body.String())
 	}
 	assertErrorCode(t, rec, "PLUGIN_URL_BLOCKED")
+}
+
+func TestHandlerBlocksRedirectToRetiredJinaHost(t *testing.T) {
+	httpCalls := 0
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		httpCalls++
+		if isRetiredJinaHost(r.URL.Hostname()) {
+			t.Fatalf("followed retired Jina redirect to %s", r.URL.String())
+		}
+		return &http.Response{
+			StatusCode: http.StatusFound,
+			Header: http.Header{
+				"Location": []string{"https://r.jina.ai/retired"},
+			},
+			Body:    io.NopCloser(strings.NewReader("")),
+			Request: r,
+		}, nil
+	})}
+	handler := NewHandler(NewService(config.Config{}, WithHTTPClient(client)))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/plugins/execute",
+		bytes.NewReader(mustJSON(t, executePayload("https://93.184.216.34"))),
+	)
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusGone {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusGone, rec.Body.String())
+	}
+	assertErrorCode(t, rec, "PLUGIN_RETIRED")
+	if httpCalls != 1 {
+		t.Fatalf("HTTP calls = %d, want only the pre-redirect request", httpCalls)
+	}
 }
 
 func TestHandlerDecryptsPluginAuthSecret(t *testing.T) {

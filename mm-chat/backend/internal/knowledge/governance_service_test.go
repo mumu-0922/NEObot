@@ -53,6 +53,40 @@ func TestGovernanceServiceNormalizesAndHashesCanonicalManifest(t *testing.T) {
 	}
 }
 
+func TestSiliconFlowGovernanceManifestMatchesMigrationGoldenHashes(t *testing.T) {
+	tests := []struct {
+		manifest GovernanceManifest
+		wantHash string
+	}{
+		{
+			manifest: singleUserSiliconFlowGovernanceManifest(
+				SingleUserSiliconFlowEmbeddingIdentity(),
+				[]string{"passage_embedding", "query_embedding"},
+			),
+			wantHash: "a43c4583c9a2d7179b4f4dc547ac7ada3df9e58a0e07aacc07809bdcc645f81d",
+		},
+		{
+			manifest: singleUserSiliconFlowGovernanceManifest(
+				SingleUserSiliconFlowRerankIdentity(),
+				[]string{"rerank"},
+			),
+			wantHash: "70cb2c1f967acda7cca15c5838465c7f5a1fccec9668c1fa15e7b1900fceb977",
+		},
+	}
+	for _, test := range tests {
+		repo := &fakeGovernanceRepository{}
+		if _, err := NewGovernanceService(repo).Apply(
+			context.Background(),
+			test.manifest,
+		); err != nil {
+			t.Fatal(err)
+		}
+		if repo.hash != test.wantHash {
+			t.Fatalf("manifest hash = %s, want %s", repo.hash, test.wantHash)
+		}
+	}
+}
+
 func TestGovernanceServiceRejectsInvalidAuthorityFields(t *testing.T) {
 	base := GovernanceManifest{Processor: "mineru", EndpointID: "hosted-main", ModelID: "model-stable-20260712", ModelAPIVersion: "api-20260623",
 		AllowedPurposes: []string{"parse"}, AllowedDataTypes: []string{"application/pdf"}, Region: "global",

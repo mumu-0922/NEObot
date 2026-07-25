@@ -89,8 +89,8 @@ func (handler *ProviderGatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.
 		handler.serveMinerUAllocate(w, r)
 	case InternalMinerUPollPath:
 		handler.serveMinerUPoll(w, r)
-	case InternalJinaEmbeddingsPath:
-		handler.serveJinaEmbeddings(w, r)
+	case InternalSiliconFlowEmbeddingsPath:
+		handler.serveSiliconFlowEmbeddings(w, r)
 	}
 }
 
@@ -128,7 +128,7 @@ func (handler *ProviderGatewayHandler) serveMinerUPoll(
 	writeJSON(w, http.StatusOK, result)
 }
 
-func (handler *ProviderGatewayHandler) serveJinaEmbeddings(
+func (handler *ProviderGatewayHandler) serveSiliconFlowEmbeddings(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
@@ -142,7 +142,7 @@ func (handler *ProviderGatewayHandler) serveJinaEmbeddings(
 		writeProviderGatewayRequestError(w, err)
 		return
 	}
-	result, err := handler.operations.EmbedPassages(r.Context(), input)
+	result, err := handler.operations.EmbedSiliconFlowPassages(r.Context(), input)
 	if err != nil {
 		writeProviderGatewayOperationError(w, err)
 		return
@@ -242,7 +242,7 @@ func providerGatewayCallerControlError(err error) bool {
 func isProviderGatewayPath(value string) bool {
 	return value == InternalMinerUAllocatePath ||
 		value == InternalMinerUPollPath ||
-		value == InternalJinaEmbeddingsPath
+		value == InternalSiliconFlowEmbeddingsPath
 }
 
 func providerGatewayTokenEqual(got string, want string) bool {

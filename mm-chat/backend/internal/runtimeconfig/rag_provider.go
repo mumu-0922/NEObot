@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"neo-chat/mm-chat/backend/internal/auth"
-	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/ragproviders"
 	"neo-chat/mm-chat/backend/internal/websearch"
 )
@@ -19,18 +18,18 @@ const (
 	ragConnectionTestTimeout        = 40 * time.Second
 	ragMaxAPIKeyBytes               = 4096
 	minerUMaxResponseBytes          = 1 << 20
-	jinaMaxResponseBytes            = 16 << 20
+	siliconFlowMaxResponseBytes     = 4 << 20
 
 	minerUAllocateURL      = ragproviders.MinerUAllocateEndpoint
 	minerUUploadHost       = ragproviders.MinerUUploadHost
 	minerUUploadPathPrefix = ragproviders.MinerUUploadPathPrefix
 	minerUModelVersion     = ragproviders.MinerUModelVersion
 
-	jinaEmbeddingsURL  = ragproviders.JinaEmbeddingsEndpoint
-	jinaRerankURL      = ragproviders.JinaRerankEndpoint
-	jinaEmbeddingModel = ragproviders.JinaEmbeddingModel
-	jinaRerankModel    = ragproviders.JinaRerankModel
-	jinaDimensions     = ragproviders.JinaEmbeddingDimensions
+	siliconFlowEmbeddingsURL  = ragproviders.SiliconFlowEmbeddingsEndpoint
+	siliconFlowRerankURL      = ragproviders.SiliconFlowRerankEndpoint
+	siliconFlowEmbeddingModel = ragproviders.SiliconFlowEmbeddingModel
+	siliconFlowRerankModel    = ragproviders.SiliconFlowRerankModel
+	siliconFlowDimensions     = ragproviders.SiliconFlowEmbeddingDimensions
 
 	ragConnectionSentinel = "mm-chat provider connection test"
 )
@@ -38,13 +37,15 @@ const (
 type RAGProviderID string
 
 const (
-	RAGProviderMinerU RAGProviderID = "mineru"
-	RAGProviderJina   RAGProviderID = "jina"
+	RAGProviderMinerU      RAGProviderID = "mineru"
+	RAGProviderSiliconFlow RAGProviderID = "siliconflow"
 )
+
+const retiredRAGProviderJina = "jina"
 
 var supportedRAGProviderIDs = []RAGProviderID{
 	RAGProviderMinerU,
-	RAGProviderJina,
+	RAGProviderSiliconFlow,
 }
 
 var (
@@ -97,6 +98,12 @@ func isRAGProviderConfig(stored StoredProviderConfig) bool {
 	return strings.TrimSpace(stored.Config.Kind) == providerConfigKindRAG
 }
 
+func isRetiredJinaRAGProvider(stored StoredProviderConfig) bool {
+	return isRAGProviderConfig(stored) &&
+		strings.EqualFold(strings.TrimSpace(stored.Config.RAGProvider), retiredRAGProviderJina) &&
+		strings.EqualFold(strings.TrimSpace(stored.ProviderID), ragProviderRecordPrefix+"JINA")
+}
+
 func normalizeRAGProviderID(value string) (RAGProviderID, error) {
 	providerID := RAGProviderID(strings.ToLower(strings.TrimSpace(value)))
 	for _, supported := range supportedRAGProviderIDs {
@@ -115,8 +122,8 @@ func ragProviderDefaultName(providerID RAGProviderID) string {
 	if providerID == RAGProviderMinerU {
 		return "MinerU"
 	}
-	if providerID == RAGProviderJina {
-		return "Jina AI"
+	if providerID == RAGProviderSiliconFlow {
+		return "SiliconFlow"
 	}
 	return "RAG Provider"
 }
@@ -142,6 +149,9 @@ func (s *Service) AdminRAGProviderConfigs(
 	byProvider := make(map[RAGProviderID]AdminRAGProviderConfigResponse)
 	for _, item := range stored {
 		if !isRAGProviderConfig(item) {
+			continue
+		}
+		if isRetiredJinaRAGProvider(item) {
 			continue
 		}
 		providerID, err := validateStoredRAGProvider(item)
@@ -229,10 +239,10 @@ func adminRAGProviderResponse(
 	}
 	if providerID == RAGProviderMinerU {
 		response.ParserModel = minerUModelVersion
-	} else if providerID == RAGProviderJina {
-		response.EmbeddingModel = jinaEmbeddingModel
-		response.EmbeddingDimensions = config.DefaultRAGJinaDimensions
-		response.RerankModel = jinaRerankModel
+	} else if providerID == RAGProviderSiliconFlow {
+		response.EmbeddingModel = siliconFlowEmbeddingModel
+		response.EmbeddingDimensions = siliconFlowDimensions
+		response.RerankModel = siliconFlowRerankModel
 	}
 	return response
 }

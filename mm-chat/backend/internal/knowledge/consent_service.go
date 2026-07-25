@@ -218,7 +218,7 @@ func normalizeProcessorModelIdentity(input ProcessorModelIdentity, allowLegacy b
 	if err != nil {
 		return ProcessorModelIdentity{}, invalidConsentPayload("endpointId is invalid")
 	}
-	input.ModelID, err = normalizeGovernanceAlias(input.ModelID, "model id")
+	input.ModelID, err = normalizeGovernanceModelID(input.ModelID)
 	if err != nil {
 		return ProcessorModelIdentity{}, invalidConsentPayload("modelId is invalid")
 	}

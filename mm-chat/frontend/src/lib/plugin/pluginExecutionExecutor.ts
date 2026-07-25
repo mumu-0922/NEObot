@@ -29,6 +29,12 @@ type SafeFetchText = typeof safeFetchText;
 const AGNES_IMAGE_MODEL = "agnes-image-2.1-flash";
 const AGNES_VIDEO_MODEL = "agnes-video-v2.0";
 const AGNES_VIDEO_RESULT_FUNCTION = "get_video_result";
+const RETIRED_JINA_PLUGIN_ID = "jina-web-reader";
+
+function isJinaHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase().replace(/\.$/, "");
+  return normalized === "jina.ai" || normalized.endsWith(".jina.ai");
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -206,6 +212,12 @@ export async function executePluginFunctionRequest({
   }
 
   const urlObj = new URL(path, `${plugin.baseUrl.replace(/\/+$/, "")}/`);
+  if (plugin.id === RETIRED_JINA_PLUGIN_ID || isJinaHostname(urlObj.hostname)) {
+    return NextResponse.json(
+      { error: "Jina-backed plugins are permanently retired" },
+      { status: 410 },
+    );
+  }
   if (method === "GET") {
     for (const key in outboundArgs) {
       if (!consumedArgs.has(key)) {
@@ -226,10 +238,6 @@ export async function executePluginFunctionRequest({
       { error: "Plugin authentication is required" },
       { status: 400 },
     );
-  }
-
-  if (plugin.id === "jina-web-reader") {
-    headers.Accept = "application/json";
   }
 
   if (authValue) {

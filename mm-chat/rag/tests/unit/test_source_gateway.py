@@ -18,7 +18,7 @@ from mm_chat_rag.job_handler_dependencies import (
 )
 from mm_chat_rag.models import JobClaim
 from mm_chat_rag.provider_profile import (
-    MINERU_JINA_POSTGRES_PROFILE,
+    MINERU_SILICONFLOW_POSTGRES_PROFILE,
     ProviderRuntimeProfile,
 )
 from mm_chat_rag.retry import PermanentJobError, RetryableJobError
@@ -39,7 +39,7 @@ INTERNAL_TOKEN = "unit-test-source-gateway-token"
 
 def _profile() -> ProviderRuntimeProfile:
     return ProviderRuntimeProfile(
-        profile_id=MINERU_JINA_POSTGRES_PROFILE,
+        profile_id=MINERU_SILICONFLOW_POSTGRES_PROFILE,
         accepted_draft_wire_contracts=True,
     )
 

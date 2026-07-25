@@ -29,6 +29,10 @@ type Repository interface {
 type EvidenceRepository interface {
 	FetchQueryEvidenceCandidates(context.Context, QueryEvidenceCandidatesInput) ([]EvidenceCandidateReference, error)
 	FetchHybridQueryEvidenceCandidates(context.Context, HybridQueryEvidenceCandidatesInput) ([]EvidenceCandidateReference, error)
+	FetchFencedHybridQueryEvidenceCandidates(context.Context, FencedHybridQueryEvidenceCandidatesInput) ([]EvidenceCandidateReference, error)
+	FetchFencedQueryEvidenceCandidates(context.Context, FencedQueryEvidenceCandidatesInput) ([]EvidenceCandidateReference, error)
+	ResolveActiveRetrievalProfile(context.Context) (RetrievalProfileBinding, error)
+	ResolveGenerationRetrievalProfile(context.Context, string) (RetrievalProfileBinding, error)
 	ReauthorizeAndHydrateEvidence(context.Context, ReauthorizeEvidenceInput) ([]HydratedEvidence, error)
 }
 

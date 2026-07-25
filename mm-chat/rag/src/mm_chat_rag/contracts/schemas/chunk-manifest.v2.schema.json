@@ -196,7 +196,11 @@
           "enum": [
             "table_header",
             "heading_context",
-            "faq_context"
+            "faq_context",
+            "code_signature",
+            "json_path",
+            "sheet_header",
+            "slide_title"
           ]
         },
         "sourceReuseGroupId": {

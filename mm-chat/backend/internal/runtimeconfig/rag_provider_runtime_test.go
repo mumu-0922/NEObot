@@ -13,10 +13,10 @@ import (
 )
 
 func TestResolveRAGProviderCredentialUsesOnlyExactActiveAttestedVaultRecord(t *testing.T) {
-	const credential = "runtime-jina-vault-credential"
+	const credential = "runtime-siliconflow-vault-credential"
 	vault := testProviderSecretVault(t, "rag-runtime-v1", 47)
 	writer := NewService(config.Config{}, WithProviderSecretVault(vault))
-	recordID := ragProviderRecordID(RAGProviderJina)
+	recordID := ragProviderRecordID(RAGProviderSiliconFlow)
 	secretRef, err := writer.encryptRAGProviderSecretAtRest(
 		auth.DevelopmentUserID,
 		recordID,
@@ -29,16 +29,16 @@ func TestResolveRAGProviderCredentialUsesOnlyExactActiveAttestedVaultRecord(t *t
 		ID:                 "rag-runtime-config",
 		UserID:             auth.DevelopmentUserID,
 		ProviderID:         recordID,
-		Label:              "Jina AI",
+		Label:              "SiliconFlow AI",
 		EncryptedSecretRef: secretRef,
 		Config: StoredProviderConfigPayload{
-			Kind: providerConfigKindRAG, RAGProvider: string(RAGProviderJina),
+			Kind: providerConfigKindRAG, RAGProvider: string(RAGProviderSiliconFlow),
 			Enabled: true,
 		},
 	}
 	stored.Config.ConnectionTestSHA256 = ragProviderConnectionFingerprint(
 		stored.ProviderID,
-		RAGProviderJina,
+		RAGProviderSiliconFlow,
 		stored.EncryptedSecretRef,
 	)
 	stored.Config.ConnectionTestedAt = time.Now().UTC().Format(time.RFC3339Nano)
@@ -49,25 +49,25 @@ func TestResolveRAGProviderCredentialUsesOnlyExactActiveAttestedVaultRecord(t *t
 		WithProviderSecretVault(vault),
 	)
 
-	resolved, err := service.ResolveRAGProviderCredential(context.Background(), "jina")
+	resolved, err := service.ResolveRAGProviderCredential(context.Background(), "siliconflow")
 	if err != nil || resolved != credential {
 		t.Fatalf("ResolveRAGProviderCredential() = %q, %v", resolved, err)
 	}
 
 	repo.stored.Config.Enabled = false
-	_, err = service.ResolveRAGProviderCredential(context.Background(), "jina")
+	_, err = service.ResolveRAGProviderCredential(context.Background(), "siliconflow")
 	if !errors.Is(err, ragproviders.ErrProviderGatewayActivationRequired) {
 		t.Fatalf("disabled provider error = %v", err)
 	}
 	repo.stored = stored
 	repo.stored.Config.ConnectionTestSHA256 = strings.Repeat("0", 64)
-	_, err = service.ResolveRAGProviderCredential(context.Background(), "jina")
+	_, err = service.ResolveRAGProviderCredential(context.Background(), "siliconflow")
 	if !errors.Is(err, ragproviders.ErrProviderGatewayActivationRequired) {
 		t.Fatalf("unattested provider error = %v", err)
 	}
 	repo.stored = stored
 	repo.stored.Config.Kind = providerConfigKindSearch
-	_, err = service.ResolveRAGProviderCredential(context.Background(), "jina")
+	_, err = service.ResolveRAGProviderCredential(context.Background(), "siliconflow")
 	if !errors.Is(err, ragproviders.ErrProviderGatewayUnavailable) {
 		t.Fatalf("cross-kind provider error = %v", err)
 	}
@@ -80,7 +80,7 @@ func TestResolveRAGProviderCredentialRejectsMissingAndCopiedContextsWithoutEnvFa
 		WithProviderConfigRepository(&fakeProviderConfigRepository{}),
 		WithProviderSecretVault(vault),
 	)
-	_, err := service.ResolveRAGProviderCredential(context.Background(), "jina")
+	_, err := service.ResolveRAGProviderCredential(context.Background(), "siliconflow")
 	if !errors.Is(err, ragproviders.ErrProviderGatewayNotFound) {
 		t.Fatalf("missing provider error = %v", err)
 	}
@@ -97,16 +97,16 @@ func TestResolveRAGProviderCredentialRejectsMissingAndCopiedContextsWithoutEnvFa
 	stored := StoredProviderConfig{
 		ID:                 "copied-context",
 		UserID:             auth.DevelopmentUserID,
-		ProviderID:         ragProviderRecordID(RAGProviderJina),
+		ProviderID:         ragProviderRecordID(RAGProviderSiliconFlow),
 		EncryptedSecretRef: minerURef,
 		Config: StoredProviderConfigPayload{
-			Kind: providerConfigKindRAG, RAGProvider: string(RAGProviderJina),
+			Kind: providerConfigKindRAG, RAGProvider: string(RAGProviderSiliconFlow),
 			Enabled: true,
 		},
 	}
 	stored.Config.ConnectionTestSHA256 = ragProviderConnectionFingerprint(
 		stored.ProviderID,
-		RAGProviderJina,
+		RAGProviderSiliconFlow,
 		stored.EncryptedSecretRef,
 	)
 	stored.Config.ConnectionTestedAt = time.Now().UTC().Format(time.RFC3339Nano)
@@ -115,9 +115,34 @@ func TestResolveRAGProviderCredentialRejectsMissingAndCopiedContextsWithoutEnvFa
 		WithProviderConfigRepository(&fakeProviderConfigRepository{ok: true, stored: stored}),
 		WithProviderSecretVault(vault),
 	)
-	_, err = service.ResolveRAGProviderCredential(context.Background(), "jina")
+	_, err = service.ResolveRAGProviderCredential(context.Background(), "siliconflow")
 	if !errors.Is(err, ragproviders.ErrProviderGatewayUnavailable) ||
 		strings.Contains(err.Error(), "copied-mineru-credential") {
 		t.Fatalf("copied context error = %v", err)
+	}
+}
+
+func TestResolveRAGProviderCredentialPermanentlyRejectsRetiredJina(t *testing.T) {
+	repo := &fakeProviderConfigRepository{
+		ok: true,
+		stored: StoredProviderConfig{
+			ProviderID: ragProviderRecordPrefix + "JINA",
+			Config: StoredProviderConfigPayload{
+				Kind: providerConfigKindRAG, RAGProvider: retiredRAGProviderJina,
+				Enabled: true,
+			},
+		},
+	}
+	service := NewService(
+		config.Config{},
+		WithProviderConfigRepository(repo),
+	)
+
+	_, err := service.ResolveRAGProviderCredential(context.Background(), "jina")
+	if !errors.Is(err, ragproviders.ErrProviderGatewayUnavailable) {
+		t.Fatalf("retired Jina credential error = %v", err)
+	}
+	if repo.getCalls != 0 {
+		t.Fatalf("retired Jina reached repository %d time(s)", repo.getCalls)
 	}
 }

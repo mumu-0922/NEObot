@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import uuid
+from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
@@ -20,7 +21,11 @@ from mm_chat_rag.native_gateway import (
 from mm_chat_rag.offline_parser.native.dispatch import parse_native_source
 from mm_chat_rag.offline_parser.sandbox import SandboxRouteResult
 from mm_chat_rag.projection import ProjectionContext, build_postgres_projection_batch
-from mm_chat_rag.structure_chunking import STRUCTURE_CHUNK_PROFILE_HASH
+from mm_chat_rag.provider_profile import GenerationEmbeddingProfile
+from mm_chat_rag.structure_chunking import (
+    SILICONFLOW_STRUCTURE_CHUNK_PROFILE_HASH,
+    STRUCTURE_CHUNK_PROFILE_HASH,
+)
 
 _DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 _DOCX = (
@@ -136,15 +141,43 @@ async def test_native_docx_structure_gateway_preserves_multiple_blocks() -> None
     assert len(artifacts.canonical_ir["blocks"]) == 3
 
 
+@pytest.mark.asyncio
+async def test_native_structure_artifact_uses_bge_generation_profile_hash() -> None:
+    context = replace(
+        _context(),
+        generation_embedding_profile=GenerationEmbeddingProfile(
+            processor="siliconflow",
+            model_id="Pro/BAAI/bge-m3",
+            dimensions=1024,
+        ),
+        generation_chunk_profile_hash=SILICONFLOW_STRUCTURE_CHUNK_PROFILE_HASH,
+    )
+    source = DocumentSource(
+        body=_DOCX,
+        source_sha256=hashlib.sha256(_DOCX).hexdigest(),
+        content_type=_DOCX_MIME,
+    )
+
+    artifacts = await NativeStructureSandboxParserGateway(
+        _StaticSupervisor()
+    ).parse_document(context, source)
+
+    assert artifacts.chunk_manifest["chunkProfileHash"] == (
+        SILICONFLOW_STRUCTURE_CHUNK_PROFILE_HASH
+    )
+
+
 class _FakeParser:
     def __init__(self, marker: str) -> None:
         self.marker = marker
         self.calls = 0
+        self.context: ProcessingJobContext | None = None
 
     async def parse_document(
         self, context: ProcessingJobContext, source: DocumentSource
     ) -> ParsedDocumentArtifacts:
-        _ = context, source
+        _ = source
+        self.context = context
         self.calls += 1
         return cast("ParsedDocumentArtifacts", self.marker)
 
@@ -213,3 +246,36 @@ async def test_authority_router_uses_structure_gateway_only_for_shared_hash() ->
     assert observed == "structure-native"
     assert structure_native.calls == 1
     assert native.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_authority_router_keeps_bge_chunk_and_embedding_profiles_together() -> (
+    None
+):
+    structure_native = _FakeParser("structure-native")
+    gateway = AuthorityRoutingParserGateway(
+        profiles=_FakeProfiles(SILICONFLOW_STRUCTURE_CHUNK_PROFILE_HASH),
+        mineru=_FakeParser("mineru"),
+        native=_FakeParser("native"),
+        structure_mineru=_FakeParser("structure-mineru"),
+        structure_native=structure_native,
+    )
+    context = replace(
+        _context(),
+        generation_embedding_profile=GenerationEmbeddingProfile(
+            processor="siliconflow",
+            model_id="Pro/BAAI/bge-m3",
+            dimensions=1024,
+        ),
+    )
+    source = DocumentSource(
+        body=_DOCX,
+        source_sha256=hashlib.sha256(_DOCX).hexdigest(),
+        content_type=_DOCX_MIME,
+    )
+
+    assert await gateway.parse_document(context, source) == "structure-native"
+    assert structure_native.context is not None
+    assert structure_native.context.generation_chunk_profile_hash == (
+        SILICONFLOW_STRUCTURE_CHUNK_PROFILE_HASH
+    )

@@ -19,6 +19,9 @@ const (
 )
 
 var governanceAliasPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
+var governanceModelIDPattern = regexp.MustCompile(
+	`^[A-Za-z0-9][A-Za-z0-9._:/-]*$`,
+)
 var governanceModelVersionPattern = regexp.MustCompile(`^v?[0-9][a-z0-9._-]*$`)
 var governanceAPIVersionPattern = regexp.MustCompile(
 	`^(v?[0-9][a-z0-9._-]*|api-[0-9][a-z0-9._-]*)$`,
@@ -40,9 +43,9 @@ var governancePlaceholderValues = map[string]struct{}{
 }
 
 var governancePolicyValues = map[string]map[string]struct{}{
-	"region":            {"global": {}},
-	"retention policy":  {"none": {}},
-	"deletion contract": {"delete": {}},
+	"region":            {"global": {}, "CN": {}},
+	"retention policy":  {"none": {}, "request-scoped": {}},
+	"deletion contract": {"delete": {}, "provider-request-ephemeral": {}},
 	"training use":      {"disabled": {}},
 }
 
@@ -87,7 +90,7 @@ func (s *GovernanceService) disable(ctx context.Context, processor, endpointID, 
 		return ProcessorGovernanceHead{}, err
 	}
 	if modelID != "" {
-		modelID, err = normalizeGovernanceAlias(modelID, "model id")
+		modelID, err = normalizeGovernanceModelID(modelID)
 		if err != nil {
 			return ProcessorGovernanceHead{}, err
 		}
@@ -109,7 +112,7 @@ func normalizeGovernanceManifest(input GovernanceManifest) (GovernanceManifest, 
 		return input, "", fmt.Errorf("invalid endpoint id")
 	}
 	if strings.TrimSpace(input.ModelID) != "" {
-		input.ModelID, err = normalizeGovernanceAlias(input.ModelID, "model id")
+		input.ModelID, err = normalizeGovernanceModelID(input.ModelID)
 		if err != nil {
 			return input, "", err
 		}
@@ -174,6 +177,15 @@ func normalizeGovernanceAlias(value, label string) (string, error) {
 	value = strings.TrimSpace(value)
 	if len(value) == 0 || len(value) > maximumGovernanceAliasBytes || !governanceAliasPattern.MatchString(value) {
 		return "", fmt.Errorf("invalid %s", label)
+	}
+	return value, nil
+}
+
+func normalizeGovernanceModelID(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if len(value) == 0 || len(value) > maximumGovernanceAliasBytes ||
+		!governanceModelIDPattern.MatchString(value) {
+		return "", fmt.Errorf("invalid model id")
 	}
 	return value, nil
 }

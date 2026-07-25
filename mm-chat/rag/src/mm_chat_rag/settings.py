@@ -15,14 +15,14 @@ from typing import Final, Self
 from urllib.parse import urlsplit
 
 from mm_chat_rag.provider_profile import (
-    DEFAULT_JINA_EMBEDDING_DIMENSIONS,
-    DEFAULT_JINA_EMBEDDING_MODEL,
-    DEFAULT_JINA_REQUESTS_PER_MINUTE,
-    DEFAULT_JINA_RERANK_MODEL,
     DEFAULT_MINERU_REQUESTS_PER_MINUTE,
     DEFAULT_PROVIDER_CONCURRENCY,
     DEFAULT_PROVIDER_INITIAL_RETRY_SECONDS,
     DEFAULT_PROVIDER_MAX_RETRY_SECONDS,
+    DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS,
+    DEFAULT_SILICONFLOW_EMBEDDING_MODEL,
+    DEFAULT_SILICONFLOW_REQUESTS_PER_MINUTE,
+    DEFAULT_SILICONFLOW_RERANK_MODEL,
     DISABLED_PROVIDER_PROFILE,
     PROVIDER_RETRY_MAX_ATTEMPTS,
     ProviderProfileError,
@@ -64,9 +64,9 @@ _KNOWN_ENV: Final = {
     "RAG_PROVIDER_MAX_RETRY_SECONDS",
     "RAG_PROVIDER_CONCURRENCY",
     "RAG_MINERU_REQUESTS_PER_MINUTE",
-    "RAG_JINA_REQUESTS_PER_MINUTE",
-    "RAG_JINA_EMBEDDING_MODEL",
-    "RAG_JINA_RERANK_MODEL",
+    "RAG_SILICONFLOW_REQUESTS_PER_MINUTE",
+    "RAG_SILICONFLOW_EMBEDDING_MODEL",
+    "RAG_SILICONFLOW_RERANK_MODEL",
 }
 _MAX_SOURCE_GATEWAY_TOKEN_BYTES: Final = 4096
 _VISIBLE_ASCII_MIN: Final = 33
@@ -186,7 +186,6 @@ class Settings:
     mineru_result_proxy_url: str | None = None
     source_gateway_url: str | None = None
     source_gateway_token: str | None = None
-    jina_embedding_dimensions: int = DEFAULT_JINA_EMBEDDING_DIMENSIONS
     provider_profile: ProviderRuntimeProfile = field(
         default_factory=ProviderRuntimeProfile
     )
@@ -194,8 +193,6 @@ class Settings:
     def __post_init__(self) -> None:
         """Reject stages outside the SQL claim-function contract."""
         _validate_job_stages(self.job_stages)
-        if self.jina_embedding_dimensions != DEFAULT_JINA_EMBEDDING_DIMENSIONS:
-            raise SettingsError("Jina embedding dimensions must be 1024")
         try:
             self.provider_profile.validate_static_contract()
         except ProviderProfileError as error:
@@ -218,7 +215,7 @@ class Settings:
             self.provider_profile.validate_for_job_stages(
                 self.job_stages,
                 mineru_configured=gateway_configured,
-                jina_configured=gateway_configured,
+                siliconflow_configured=gateway_configured,
             )
         except ProviderProfileError as error:
             raise SettingsError(str(error)) from error
@@ -313,22 +310,24 @@ class Settings:
                 1,
                 60_000,
             ),
-            jina_requests_per_minute=_integer(
+            siliconflow_requests_per_minute=_integer(
                 env,
-                "RAG_JINA_REQUESTS_PER_MINUTE",
-                DEFAULT_JINA_REQUESTS_PER_MINUTE,
+                "RAG_SILICONFLOW_REQUESTS_PER_MINUTE",
+                DEFAULT_SILICONFLOW_REQUESTS_PER_MINUTE,
                 1,
                 60_000,
             ),
-            jina_embedding_model=env.get(
-                "RAG_JINA_EMBEDDING_MODEL", DEFAULT_JINA_EMBEDDING_MODEL
+            siliconflow_embedding_model=env.get(
+                "RAG_SILICONFLOW_EMBEDDING_MODEL",
+                DEFAULT_SILICONFLOW_EMBEDDING_MODEL,
             ).strip()
-            or DEFAULT_JINA_EMBEDDING_MODEL,
-            jina_rerank_model=env.get(
-                "RAG_JINA_RERANK_MODEL", DEFAULT_JINA_RERANK_MODEL
+            or DEFAULT_SILICONFLOW_EMBEDDING_MODEL,
+            siliconflow_rerank_model=env.get(
+                "RAG_SILICONFLOW_RERANK_MODEL",
+                DEFAULT_SILICONFLOW_RERANK_MODEL,
             ).strip()
-            or DEFAULT_JINA_RERANK_MODEL,
-            jina_embedding_dimensions=DEFAULT_JINA_EMBEDDING_DIMENSIONS,
+            or DEFAULT_SILICONFLOW_RERANK_MODEL,
+            siliconflow_embedding_dimensions=(DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS),
         )
         if dispatch_enabled and {"parse", "passage_embedding"}.intersection(job_stages):
             if source_gateway_url is None:
@@ -393,7 +392,6 @@ class Settings:
             mineru_result_proxy_url=mineru_result_proxy_url,
             source_gateway_url=source_gateway_url,
             source_gateway_token=source_gateway_token,
-            jina_embedding_dimensions=DEFAULT_JINA_EMBEDDING_DIMENSIONS,
             provider_profile=provider_profile,
         )
         if settings.heartbeat_seconds * 2 > settings.job_lease_seconds:

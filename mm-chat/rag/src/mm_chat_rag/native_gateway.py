@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Coroutine
+from dataclasses import replace
 from typing import Any, Final, NoReturn, Protocol
 
 from mm_chat_rag.job_context import ProcessingJobContext
 from mm_chat_rag.job_handler_dependencies import DocumentSource, ParsedDocumentArtifacts
 from mm_chat_rag.mineru_gateway import MINERU_TEXT_BASELINE_CHUNK_PROFILE_HASH
 from mm_chat_rag.models import stable_error_code
-from mm_chat_rag.native_structure_artifacts import build_native_structure_artifacts
+from mm_chat_rag.native_structure_artifacts import (
+    build_native_structure_artifacts,
+    native_structure_planner_units,
+)
 from mm_chat_rag.native_text_baseline import build_native_text_baseline_artifacts
 from mm_chat_rag.offline_parser.errors import StableErrorCode
 from mm_chat_rag.offline_parser.native.model import (
@@ -20,7 +24,16 @@ from mm_chat_rag.offline_parser.native.model import (
 )
 from mm_chat_rag.offline_parser.sandbox import SandboxRouteResult, SandboxSupervisor
 from mm_chat_rag.retry import PermanentJobError
-from mm_chat_rag.structure_chunking import STRUCTURE_CHUNK_PROFILE_HASH
+from mm_chat_rag.semantic_chunking import SemanticBoundaryPlanner
+from mm_chat_rag.semantic_profile import semantic_boundary_profile_hash
+from mm_chat_rag.structure_chunking import (
+    SILICONFLOW_STRUCTURE_CHUNK_PROFILE_HASH,
+    STRUCTURE_CHUNK_PROFILE_HASH,
+    SUPPORTED_STRUCTURE_CHUNK_PROFILE_HASHES,
+    SemanticBoundaryHints,
+    StructureChunkingError,
+    structure_semantic_profile_hash,
+)
 
 NATIVE_PARSER_PROCESSOR: Final = "native"
 NATIVE_PARSER_MODEL: Final = "native-parser-v1"
@@ -85,7 +98,12 @@ class AuthorityRoutingParserGateway:
         if authority is None:
             _reject(NATIVE_PARSER_CONTEXT_INVALID)
         chunk_profile_hash = await self._profiles.resolve_parse_chunk_profile(context)
-        if chunk_profile_hash == STRUCTURE_CHUNK_PROFILE_HASH:
+        if chunk_profile_hash in SUPPORTED_STRUCTURE_CHUNK_PROFILE_HASHES:
+            _validate_structure_embedding_profile(context, chunk_profile_hash)
+            context = replace(
+                context,
+                generation_chunk_profile_hash=chunk_profile_hash,
+            )
             parser = _authority_parser(
                 authority.processor,
                 mineru=self._structure_mineru,
@@ -100,6 +118,29 @@ class AuthorityRoutingParserGateway:
         else:
             _reject(NATIVE_PARSER_CHUNK_PROFILE_UNSUPPORTED)
         return await parser.parse_document(context, source)
+
+
+def _validate_structure_embedding_profile(
+    context: ProcessingJobContext,
+    chunk_profile_hash: str,
+) -> None:
+    embedding_profile = context.generation_embedding_profile
+    if embedding_profile is None:
+        if chunk_profile_hash == STRUCTURE_CHUNK_PROFILE_HASH:
+            return
+        _reject(NATIVE_PARSER_CHUNK_PROFILE_UNSUPPORTED)
+    try:
+        observed = semantic_boundary_profile_hash(embedding_profile)
+        expected = structure_semantic_profile_hash(chunk_profile_hash)
+    except (StructureChunkingError, ValueError):
+        _reject(NATIVE_PARSER_CHUNK_PROFILE_UNSUPPORTED)
+    if observed != expected:
+        _reject(NATIVE_PARSER_CHUNK_PROFILE_UNSUPPORTED)
+    if (
+        chunk_profile_hash == SILICONFLOW_STRUCTURE_CHUNK_PROFILE_HASH
+        and embedding_profile.processor != "siliconflow"
+    ):
+        _reject(NATIVE_PARSER_CHUNK_PROFILE_UNSUPPORTED)
 
 
 class NativeSandboxParserGateway:
@@ -127,8 +168,14 @@ class NativeSandboxParserGateway:
 class NativeStructureSandboxParserGateway:
     """Parse Native documents into the shared structure chunk profile."""
 
-    def __init__(self, supervisor: _SandboxGateway | None = None) -> None:
+    def __init__(
+        self,
+        supervisor: _SandboxGateway | None = None,
+        *,
+        semantic_planner: SemanticBoundaryPlanner | None = None,
+    ) -> None:
         self._supervisor = supervisor or SandboxSupervisor()
+        self._semantic_planner = semantic_planner
 
     async def parse_document(
         self,
@@ -136,11 +183,18 @@ class NativeStructureSandboxParserGateway:
         source: DocumentSource,
     ) -> ParsedDocumentArtifacts:
         admitted, artifact = _parse_native_document(context, source, self._supervisor)
+        semantic_hints: tuple[SemanticBoundaryHints, ...] = ()
+        if self._semantic_planner is not None:
+            semantic_hints = await self._semantic_planner.plan(
+                admitted,
+                native_structure_planner_units(artifact),
+            )
         return build_native_structure_artifacts(
             admitted,
             source,
             artifact,
             parser_model=NATIVE_PARSER_MODEL,
+            semantic_hints=semantic_hints,
         )
 
 

@@ -172,7 +172,7 @@ func TestProviderSecretRewriteUsesRAGVaultContextAndBlocksLegacyRAGRows(t *testi
 		t, oldVault, "1", userID, RAGProviderMinerU, "old-rag-secret",
 	)
 	current := providerSecretRAGVaultRewriteRow(
-		t, rotatingVault, "2", userID, RAGProviderJina, "current-rag-secret",
+		t, rotatingVault, "2", userID, RAGProviderSiliconFlow, "current-rag-secret",
 	)
 	plan, err := NewPostgresProviderSecretRewriter(nil, cfg, rotatingVault).
 		buildProviderSecretRewritePlan([]providerSecretRewriteRow{old, current})
@@ -186,7 +186,7 @@ func TestProviderSecretRewriteUsesRAGVaultContextAndBlocksLegacyRAGRows(t *testi
 		t.Fatalf("RAG rewrite plan = %#v / %#v", plan.result, plan.rows)
 	}
 	legacy := providerSecretLegacyRewriteRow(
-		t, privateKey, "3", userID, ragProviderRecordID(RAGProviderJina),
+		t, privateKey, "3", userID, ragProviderRecordPrefix+"JINA",
 		"legacy-rag-secret",
 	)
 	legacy.configJSON = `{"kind":"rag","ragProvider":"jina","enabled":true}`
@@ -400,7 +400,7 @@ func TestProviderSecretRewriteRebindsOnlyExistingValidConnectionAttestations(t *
 	})
 
 	rag := providerSecretRAGVaultRewriteRow(
-		t, oldVault, "3", userID, RAGProviderJina, "rag-secret",
+		t, oldVault, "3", userID, RAGProviderSiliconFlow, "rag-secret",
 	)
 	rag.configJSON = providerSecretRewriteConfigJSON(t, rag, func(
 		payload *StoredProviderConfigPayload,
@@ -408,7 +408,7 @@ func TestProviderSecretRewriteRebindsOnlyExistingValidConnectionAttestations(t *
 		payload.ConnectionTestedAt = testedAt
 		payload.ConnectionTestSHA256 = ragProviderConnectionFingerprint(
 			rag.providerID,
-			RAGProviderJina,
+			RAGProviderSiliconFlow,
 			rag.encryptedSecretRef,
 		)
 	})
@@ -447,7 +447,7 @@ func TestProviderSecretRewriteRebindsOnlyExistingValidConnectionAttestations(t *
 		{rag, func(secretRef string) string {
 			return ragProviderConnectionFingerprint(
 				rag.providerID,
-				RAGProviderJina,
+				RAGProviderSiliconFlow,
 				secretRef,
 			)
 		}},
@@ -562,7 +562,7 @@ func TestProviderSecretRewritePlanRejectsAmbiguousOrInvalidRows(t *testing.T) {
 	}
 
 	reserved := providerSecretVaultRewriteRow(
-		t, vault, "5", userID, ragProviderRecordID(RAGProviderJina),
+		t, vault, "5", userID, ragProviderRecordID(RAGProviderSiliconFlow),
 		"reserved-model-context-secret", false,
 	)
 	if _, err := rewriter.buildProviderSecretRewritePlan(

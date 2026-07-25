@@ -27,7 +27,6 @@ const (
 	DefaultLocalStorageDir        = "./data/files"
 	DefaultS3Region               = "us-east-1"
 	DefaultMaxUploadBytes         = int64(25 << 20)
-	DefaultRAGJinaDimensions      = 1024
 	AuthModeDevelopment           = "development"
 	AuthModeRequired              = "required"
 	DefaultAuthMode               = AuthModeDevelopment
@@ -161,8 +160,7 @@ type StorageConfig struct {
 // RAGConfig contains infrastructure-only settings for the private worker-to-Go
 // boundary. Provider credentials are resolved from Postgres/vault at runtime.
 type RAGConfig struct {
-	SourceGatewayToken      string
-	JinaEmbeddingDimensions int
+	SourceGatewayToken string
 }
 
 // S3Config contains MinIO/S3-compatible object storage settings.
@@ -362,8 +360,7 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 		},
 
 		RAG: RAGConfig{
-			SourceGatewayToken:      optionalEnv(lookup, EnvRAGSourceGatewayToken),
-			JinaEmbeddingDimensions: DefaultRAGJinaDimensions,
+			SourceGatewayToken: optionalEnv(lookup, EnvRAGSourceGatewayToken),
 		},
 
 		Auth: AuthConfig{

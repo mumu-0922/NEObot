@@ -217,7 +217,7 @@ def _batch(fixture: ParseProjectionFixture) -> PostgresProjectionBatch:
                 collection_id=fixture.collection_id,
                 document_id=fixture.document_id,
                 document_version_id=fixture.document_version_id,
-                embedding_model_id="jina-embeddings-v4",
+                embedding_model_id="Pro/BAAI/bge-m3",
                 embedding_dimensions=1024,
                 lexical_text="hello fixture",
                 exact_terms=("fixture", "hello"),

@@ -24,9 +24,21 @@ const (
 )
 
 var (
-	ErrEvidenceHydrationRejected = errors.New("evidence hydration rejected")
-	evidenceHashPattern          = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	ErrEvidenceHydrationRejected         = errors.New("evidence hydration rejected")
+	ErrActiveRetrievalProfileUnavailable = errors.New("active retrieval profile unavailable")
+	ErrRetrievalProfileChanged           = errors.New("retrieval profile changed")
+	evidenceHashPattern                  = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
+
+type RetrievalProfileBinding struct {
+	IndexGenerationID   string
+	SearchProfileID     string
+	RetrievalProfileID  string
+	ProviderID          string
+	EmbeddingModelID    string
+	EmbeddingDimensions int
+	RerankModelID       string
+}
 
 type EvidenceCandidateReference struct {
 	CollectionID      string  `json:"collection_id"`
@@ -54,6 +66,21 @@ type HybridQueryEvidenceCandidatesInput struct {
 	Limit          int
 }
 
+type FencedHybridQueryEvidenceCandidatesInput struct {
+	Binding        RetrievalProfileBinding
+	CollectionIDs  []string
+	QueryText      string
+	QueryEmbedding []float32
+	Limit          int
+}
+
+type FencedQueryEvidenceCandidatesInput struct {
+	Binding       RetrievalProfileBinding
+	CollectionIDs []string
+	QueryText     string
+	Limit         int
+}
+
 type ReauthorizeEvidenceInput struct {
 	ActorUserID           string
 	SessionID             string
@@ -72,7 +99,11 @@ type HydratedEvidence struct {
 	ChildChunkID      string          `json:"childChunkId"`
 	SourceSpanHash    string          `json:"sourceSpanHash"`
 	ContentHash       string          `json:"contentHash"`
+	SourceName        string          `json:"sourceName"`
 	SourceText        string          `json:"sourceText"`
+	ChildTokenCount   int             `json:"childTokenCount"`
+	ParentSourceText  string          `json:"parentSourceText"`
+	ParentTokenCount  int             `json:"parentTokenCount"`
 	Locator           json.RawMessage `json:"locator"`
 	RankScore         float64         `json:"rankScore"`
 }
@@ -176,6 +207,196 @@ FROM knowledge_fetch_profiled_query_evidence_candidates(
 	return candidates, nil
 }
 
+func (r *PostgresRepository) ResolveActiveRetrievalProfile(
+	ctx context.Context,
+) (RetrievalProfileBinding, error) {
+	binding, err := r.resolveRetrievalProfile(
+		ctx,
+		"SELECT * FROM knowledge_resolve_active_retrieval_profile()",
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return RetrievalProfileBinding{}, ErrActiveRetrievalProfileUnavailable
+	}
+	return binding, err
+}
+
+func (r *PostgresRepository) ResolveGenerationRetrievalProfile(
+	ctx context.Context,
+	indexGenerationID string,
+) (RetrievalProfileBinding, error) {
+	indexGenerationID, err := normalizeEvidenceUUID(indexGenerationID)
+	if err != nil {
+		return RetrievalProfileBinding{}, err
+	}
+	return r.resolveRetrievalProfile(
+		ctx,
+		"SELECT * FROM knowledge_resolve_generation_retrieval_profile($1)",
+		indexGenerationID,
+	)
+}
+
+func (r *PostgresRepository) resolveRetrievalProfile(
+	ctx context.Context,
+	query string,
+	args ...any,
+) (RetrievalProfileBinding, error) {
+	if err := r.requireDB(); err != nil {
+		return RetrievalProfileBinding{}, err
+	}
+	var binding RetrievalProfileBinding
+	err := r.db.QueryRowContext(ctx, query, args...).Scan(
+		&binding.IndexGenerationID,
+		&binding.SearchProfileID,
+		&binding.RetrievalProfileID,
+		&binding.ProviderID,
+		&binding.EmbeddingModelID,
+		&binding.EmbeddingDimensions,
+		&binding.RerankModelID,
+	)
+	if err != nil {
+		return RetrievalProfileBinding{}, fmt.Errorf("resolve retrieval profile: %w", err)
+	}
+	binding, err = normalizeRetrievalProfileBinding(binding)
+	if err != nil {
+		return RetrievalProfileBinding{}, err
+	}
+	return binding, nil
+}
+
+func (r *PostgresRepository) FetchFencedHybridQueryEvidenceCandidates(
+	ctx context.Context,
+	input FencedHybridQueryEvidenceCandidatesInput,
+) ([]EvidenceCandidateReference, error) {
+	if err := r.requireDB(); err != nil {
+		return nil, err
+	}
+	binding, err := normalizeRetrievalProfileBinding(input.Binding)
+	if err != nil {
+		return nil, err
+	}
+	if !isExecutableSiliconFlowRetrievalBinding(binding) {
+		return nil, ErrEvidenceHydrationRejected
+	}
+	normalized, err := normalizeHybridQueryEvidenceCandidatesInput(
+		HybridQueryEvidenceCandidatesInput{
+			CollectionIDs:  input.CollectionIDs,
+			QueryText:      input.QueryText,
+			QueryEmbedding: input.QueryEmbedding,
+			Limit:          input.Limit,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := r.db.QueryContext(ctx, `
+SELECT collection_id, document_id, document_version_id, index_generation_id,
+  materialization_id, parent_chunk_id, child_chunk_id, source_span_hash,
+  content_hash, rank_score
+FROM knowledge_fetch_fenced_profiled_query_evidence_candidates(
+  $1, $2, $3::uuid[], $4, $5::real[], $6
+)
+`, binding.IndexGenerationID, binding.SearchProfileID,
+		evidenceUUIDArrayLiteral(normalized.CollectionIDs), normalized.QueryText,
+		evidenceRealArrayLiteral(normalized.QueryEmbedding), normalized.Limit)
+	if err != nil {
+		if isRetrievalProfileChanged(err) {
+			return nil, ErrRetrievalProfileChanged
+		}
+		return nil, fmt.Errorf("fetch fenced hybrid query evidence candidates: %w", err)
+	}
+	defer rows.Close()
+
+	candidates := make([]EvidenceCandidateReference, 0, normalized.Limit)
+	for rows.Next() {
+		var candidate EvidenceCandidateReference
+		if err := rows.Scan(
+			&candidate.CollectionID, &candidate.DocumentID,
+			&candidate.DocumentVersionID, &candidate.IndexGenerationID,
+			&candidate.MaterializationID, &candidate.ParentChunkID,
+			&candidate.ChildChunkID, &candidate.SourceSpanHash,
+			&candidate.ContentHash, &candidate.RankScore,
+		); err != nil {
+			return nil, fmt.Errorf("scan fenced hybrid query evidence candidate: %w", err)
+		}
+		if candidate.IndexGenerationID != binding.IndexGenerationID {
+			return nil, ErrRetrievalProfileChanged
+		}
+		candidates = append(candidates, candidate)
+	}
+	if err := rows.Err(); err != nil {
+		if isRetrievalProfileChanged(err) {
+			return nil, ErrRetrievalProfileChanged
+		}
+		return nil, fmt.Errorf("iterate fenced hybrid query evidence candidates: %w", err)
+	}
+	return candidates, nil
+}
+
+func (r *PostgresRepository) FetchFencedQueryEvidenceCandidates(
+	ctx context.Context,
+	input FencedQueryEvidenceCandidatesInput,
+) ([]EvidenceCandidateReference, error) {
+	if err := r.requireDB(); err != nil {
+		return nil, err
+	}
+	binding, err := normalizeRetrievalProfileBinding(input.Binding)
+	if err != nil {
+		return nil, err
+	}
+	normalized, err := normalizeQueryEvidenceCandidatesInput(
+		QueryEvidenceCandidatesInput{
+			CollectionIDs: input.CollectionIDs,
+			QueryText:     input.QueryText,
+			Limit:         input.Limit,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.db.QueryContext(ctx, `
+SELECT collection_id, document_id, document_version_id, index_generation_id,
+  materialization_id, parent_chunk_id, child_chunk_id, source_span_hash,
+  content_hash, rank_score
+FROM knowledge_fetch_fenced_query_evidence_candidates(
+  $1, $2, $3::uuid[], $4, $5
+)
+`, binding.IndexGenerationID, binding.SearchProfileID,
+		evidenceUUIDArrayLiteral(normalized.CollectionIDs), normalized.QueryText,
+		normalized.Limit)
+	if err != nil {
+		if isRetrievalProfileChanged(err) {
+			return nil, ErrRetrievalProfileChanged
+		}
+		return nil, fmt.Errorf("fetch fenced query evidence candidates: %w", err)
+	}
+	defer rows.Close()
+	candidates := make([]EvidenceCandidateReference, 0, normalized.Limit)
+	for rows.Next() {
+		var candidate EvidenceCandidateReference
+		if err := rows.Scan(
+			&candidate.CollectionID, &candidate.DocumentID,
+			&candidate.DocumentVersionID, &candidate.IndexGenerationID,
+			&candidate.MaterializationID, &candidate.ParentChunkID,
+			&candidate.ChildChunkID, &candidate.SourceSpanHash,
+			&candidate.ContentHash, &candidate.RankScore,
+		); err != nil {
+			return nil, fmt.Errorf("scan fenced query evidence candidate: %w", err)
+		}
+		if candidate.IndexGenerationID != binding.IndexGenerationID {
+			return nil, ErrRetrievalProfileChanged
+		}
+		candidates = append(candidates, candidate)
+	}
+	if err := rows.Err(); err != nil {
+		if isRetrievalProfileChanged(err) {
+			return nil, ErrRetrievalProfileChanged
+		}
+		return nil, fmt.Errorf("iterate fenced query evidence candidates: %w", err)
+	}
+	return candidates, nil
+}
+
 func (r *PostgresRepository) ReauthorizeAndHydrateEvidence(
 	ctx context.Context,
 	input ReauthorizeEvidenceInput,
@@ -195,7 +416,8 @@ func (r *PostgresRepository) ReauthorizeAndHydrateEvidence(
 	rows, err := r.db.QueryContext(ctx, `
 SELECT collection_id, document_id, document_version_id, index_generation_id,
   materialization_id, parent_chunk_id, child_chunk_id, source_span_hash,
-  content_hash, source_text, locator
+  content_hash, source_name, source_text, child_token_count, parent_source_text,
+  parent_token_count, locator
 FROM knowledge_reauthorize_and_hydrate_evidence($1, $2, $3, $4::jsonb)
 `, input.ActorUserID, input.SessionID, input.ConversationID, string(payload))
 	if err != nil {
@@ -220,7 +442,11 @@ FROM knowledge_reauthorize_and_hydrate_evidence($1, $2, $3, $4::jsonb)
 			&evidence.ChildChunkID,
 			&evidence.SourceSpanHash,
 			&evidence.ContentHash,
+			&evidence.SourceName,
 			&evidence.SourceText,
+			&evidence.ChildTokenCount,
+			&evidence.ParentSourceText,
+			&evidence.ParentTokenCount,
 			&locator,
 		); err != nil {
 			return nil, fmt.Errorf("scan evidence hydration: %w", err)
@@ -241,13 +467,25 @@ FROM knowledge_reauthorize_and_hydrate_evidence($1, $2, $3, $4::jsonb)
 	hydrated := make([]HydratedEvidence, 0, len(input.References))
 	for _, reference := range input.References {
 		evidence, ok := byKey[reference.referenceKey()]
-		if !ok || evidence.SourceText == "" || !json.Valid(evidence.Locator) {
+		if !ok || !validHydratedSourceName(evidence.SourceName) ||
+			strings.TrimSpace(evidence.SourceText) == "" ||
+			evidence.ChildTokenCount <= 0 ||
+			strings.TrimSpace(evidence.ParentSourceText) == "" ||
+			evidence.ParentTokenCount <= 0 || !json.Valid(evidence.Locator) {
 			return nil, ErrEvidenceHydrationRejected
 		}
 		evidence.RankScore = reference.RankScore
 		hydrated = append(hydrated, evidence)
 	}
 	return hydrated, nil
+}
+
+func validHydratedSourceName(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" || len([]byte(value)) > 512 {
+		return false
+	}
+	return !strings.ContainsAny(value, "\r\n\x00")
 }
 
 func normalizeQueryEvidenceCandidatesInput(
@@ -316,6 +554,50 @@ func normalizeHybridQueryEvidenceCandidatesInput(
 	input.Limit = normalized.Limit
 	input.QueryEmbedding = append([]float32(nil), input.QueryEmbedding...)
 	return input, nil
+}
+
+func normalizeRetrievalProfileBinding(
+	binding RetrievalProfileBinding,
+) (RetrievalProfileBinding, error) {
+	var err error
+	binding.IndexGenerationID, err = normalizeEvidenceUUID(binding.IndexGenerationID)
+	if err != nil {
+		return binding, err
+	}
+	binding.SearchProfileID, err = normalizeEvidenceUUID(binding.SearchProfileID)
+	if err != nil {
+		return binding, err
+	}
+	binding.RetrievalProfileID = strings.TrimSpace(binding.RetrievalProfileID)
+	binding.ProviderID = strings.TrimSpace(binding.ProviderID)
+	binding.EmbeddingModelID = strings.TrimSpace(binding.EmbeddingModelID)
+	binding.RerankModelID = strings.TrimSpace(binding.RerankModelID)
+	validJina := binding.RetrievalProfileID == "jina_v4_v3" &&
+		binding.ProviderID == "jina" &&
+		binding.EmbeddingModelID == "jina-embeddings-v4" &&
+		binding.EmbeddingDimensions == evidenceQueryEmbeddingDimensions &&
+		binding.RerankModelID == "jina-reranker-v3"
+	validSiliconFlow := isExecutableSiliconFlowRetrievalBinding(binding)
+	if !validJina && !validSiliconFlow {
+		return binding, ErrEvidenceHydrationRejected
+	}
+	return binding, nil
+}
+
+func isExecutableSiliconFlowRetrievalBinding(
+	binding RetrievalProfileBinding,
+) bool {
+	return binding.RetrievalProfileID == "siliconflow_bge_m3_v1" &&
+		binding.ProviderID == "siliconflow" &&
+		binding.EmbeddingModelID == "Pro/BAAI/bge-m3" &&
+		binding.EmbeddingDimensions == evidenceQueryEmbeddingDimensions &&
+		binding.RerankModelID == "Pro/BAAI/bge-reranker-v2-m3"
+}
+
+func isRetrievalProfileChanged(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "40001" &&
+		pgErr.Message == "RAG_RETRIEVAL_PROFILE_CHANGED"
 }
 
 func evidenceUUIDArrayLiteral(ids []string) string {

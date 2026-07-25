@@ -2,7 +2,7 @@
   "title": "知识库服务",
   "subtitle": "配置文档解析和知识检索所需的服务。",
   "mineruRole": "PDF 文档解析",
-  "jinaRole": "向量索引与重排",
+  "siliconflowRole": "Pro/BAAI/bge-m3 向量索引与 Pro/BAAI/bge-reranker-v2-m3 重排",
   "serviceReady": "知识库服务已就绪",
   "servicePartial": "知识库服务部分可用",
   "serviceUnavailable": "知识库服务不可用",

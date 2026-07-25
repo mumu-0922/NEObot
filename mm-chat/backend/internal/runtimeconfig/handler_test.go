@@ -449,10 +449,10 @@ func TestHandlerRoutesAdminRAGProviderLifecycle(t *testing.T) {
 		stored: StoredProviderConfig{
 			ID:         "rag-provider-config-1",
 			UserID:     authDevelopmentUserID(),
-			ProviderID: ragProviderRecordID(RAGProviderJina),
-			Label:      "Jina AI",
+			ProviderID: ragProviderRecordID(RAGProviderSiliconFlow),
+			Label:      "SiliconFlow",
 			Config: StoredProviderConfigPayload{
-				Kind: providerConfigKindRAG, RAGProvider: string(RAGProviderJina),
+				Kind: providerConfigKindRAG, RAGProvider: string(RAGProviderSiliconFlow),
 			},
 		},
 	}
@@ -476,7 +476,7 @@ func TestHandlerRoutesAdminRAGProviderLifecycle(t *testing.T) {
 	configure := httptest.NewRecorder()
 	handler.ServeHTTP(configure, httptest.NewRequest(
 		http.MethodPost,
-		"/v1/admin/rag/providers/jina/configure",
+		"/v1/admin/rag/providers/siliconflow/configure",
 		strings.NewReader(`{}`),
 	))
 	if configure.Code != http.StatusBadRequest ||
@@ -487,7 +487,7 @@ func TestHandlerRoutesAdminRAGProviderLifecycle(t *testing.T) {
 	invalidConfigure := httptest.NewRecorder()
 	handler.ServeHTTP(invalidConfigure, httptest.NewRequest(
 		http.MethodPost,
-		"/v1/admin/rag/providers/jina/configure",
+		"/v1/admin/rag/providers/siliconflow/configure",
 		strings.NewReader(`{"apiKeySecret":{},"unexpected":true}`),
 	))
 	if invalidConfigure.Code != http.StatusBadRequest ||
@@ -513,8 +513,8 @@ func TestHandlerRoutesAdminRAGProviderLifecycle(t *testing.T) {
 	put := httptest.NewRecorder()
 	handler.ServeHTTP(put, httptest.NewRequest(
 		http.MethodPut,
-		"/v1/admin/rag/providers/jina",
-		strings.NewReader(`{"name":"Jina AI"}`),
+		"/v1/admin/rag/providers/siliconflow",
+		strings.NewReader(`{"name":"SiliconFlow"}`),
 	))
 	if put.Code != http.StatusMethodNotAllowed || put.Header().Get("Allow") != http.MethodDelete {
 		t.Fatalf("retired put status = %d, allow=%q, body=%s", put.Code, put.Header().Get("Allow"), put.Body.String())
@@ -523,11 +523,31 @@ func TestHandlerRoutesAdminRAGProviderLifecycle(t *testing.T) {
 	deleted := httptest.NewRecorder()
 	handler.ServeHTTP(deleted, httptest.NewRequest(
 		http.MethodDelete,
-		"/v1/admin/rag/providers/jina",
+		"/v1/admin/rag/providers/siliconflow",
 		nil,
 	))
 	if deleted.Code != http.StatusNoContent {
 		t.Fatalf("delete status = %d, body=%s", deleted.Code, deleted.Body.String())
+	}
+
+	for _, request := range []*http.Request{
+		httptest.NewRequest(
+			http.MethodPost,
+			"/v1/admin/rag/providers/jina/configure",
+			strings.NewReader(`{"apiKeySecret":{"ciphertext":"retired"}}`),
+		),
+		httptest.NewRequest(
+			http.MethodDelete,
+			"/v1/admin/rag/providers/jina",
+			nil,
+		),
+	} {
+		retired := httptest.NewRecorder()
+		handler.ServeHTTP(retired, request)
+		if retired.Code != http.StatusBadRequest ||
+			!strings.Contains(retired.Body.String(), "RAG_PROVIDER_CONFIG_UNSUPPORTED") {
+			t.Fatalf("retired Jina route status=%d body=%s", retired.Code, retired.Body.String())
+		}
 	}
 }
 

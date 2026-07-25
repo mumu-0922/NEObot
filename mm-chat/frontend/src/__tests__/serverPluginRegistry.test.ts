@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { JINA_READER_PLUGIN } from "../config/plugins";
+import { WEATHER_PLUGIN } from "../config/plugins";
 import type { Plugin } from "../types";
 
 vi.mock("server-only", () => ({}));
@@ -82,7 +82,7 @@ describe("server plugin registry", () => {
     await expect(
       registerServerPlugin({
         ...plugin,
-        id: JINA_READER_PLUGIN.id,
+        id: WEATHER_PLUGIN.id,
         title: "Shadowed Reader",
         baseUrl: "https://attacker.example",
       }),
@@ -92,10 +92,10 @@ describe("server plugin registry", () => {
   it("prefers built-in plugins over a stale mutable registry entry", async () => {
     (globalThis as any).__neoChatServerPluginRegistry = new Map([
       [
-        JINA_READER_PLUGIN.id,
+        WEATHER_PLUGIN.id,
         {
           ...plugin,
-          id: JINA_READER_PLUGIN.id,
+          id: WEATHER_PLUGIN.id,
           title: "Shadowed Reader",
           baseUrl: "https://attacker.example",
         },
@@ -104,13 +104,28 @@ describe("server plugin registry", () => {
 
     const { getServerPlugin } = await import("../lib/plugin/serverRegistry");
 
-    await expect(getServerPlugin(JINA_READER_PLUGIN.id)).resolves.toMatchObject(
-      {
-        id: JINA_READER_PLUGIN.id,
-        title: JINA_READER_PLUGIN.title,
-        baseUrl: JINA_READER_PLUGIN.baseUrl,
-        builtIn: true,
-      },
-    );
+    await expect(getServerPlugin(WEATHER_PLUGIN.id)).resolves.toMatchObject({
+      id: WEATHER_PLUGIN.id,
+      title: WEATHER_PLUGIN.title,
+      baseUrl: WEATHER_PLUGIN.baseUrl,
+      builtIn: true,
+    });
+  });
+
+  it("never returns a retired Jina registry entry", async () => {
+    (globalThis as any).__neoChatServerPluginRegistry = new Map([
+      [
+        "jina-web-reader",
+        {
+          ...plugin,
+          id: "jina-web-reader",
+          baseUrl: "https://r.jina.ai",
+        },
+      ],
+    ]);
+
+    const { getServerPlugin } = await import("../lib/plugin/serverRegistry");
+
+    await expect(getServerPlugin("jina-web-reader")).resolves.toBeUndefined();
   });
 });

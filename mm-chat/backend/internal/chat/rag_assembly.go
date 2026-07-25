@@ -20,13 +20,15 @@ const (
 	ragRerankStatusApplied   = "applied"
 )
 
-var ragGoldenRelevancePolicyV1 = ragRelevancePolicy{
-	ID: "g18-jina-reranker-v3-golden-v1", MinimumScore: 0.0,
+var ragGoldenRelevancePolicyV2 = ragRelevancePolicy{
+	ID: "g18-profiled-reranker-golden-v2", MinimumScore: 0.0,
+	ExplicitSourceNameBoost: 2.0,
 }
 
 type ragRelevancePolicy struct {
-	ID           string
-	MinimumScore float64
+	ID                      string
+	MinimumScore            float64
+	ExplicitSourceNameBoost float64
 }
 
 var (
@@ -54,7 +56,7 @@ type RAGRerankResult struct {
 }
 
 type RAGEvidenceReranker interface {
-	Rerank(context.Context, string, []string) ([]RAGRerankResult, error)
+	Rerank(context.Context, string, string, []string) ([]RAGRerankResult, error)
 }
 
 type RAGAnswerAssembler struct {
@@ -151,6 +153,10 @@ func (a *RAGAnswerAssembler) Assemble(ctx context.Context, input RAGAssemblyInpu
 	if len(candidates) == 0 {
 		return RAGAssemblyResult{}, ErrRAGInsufficientEvidence
 	}
+	indexGenerationID, ok := singleRAGCandidateGeneration(candidates)
+	if !ok {
+		return RAGAssemblyResult{}, ErrRAGInsufficientEvidence
+	}
 	rerankStatus := ragRerankStatusDisabled
 	rerankConfigured := a.Reranker != nil || a.RerankGate != nil
 	useRerank := a.Reranker != nil && a.RerankGate != nil
@@ -161,6 +167,7 @@ func (a *RAGAnswerAssembler) Assemble(ctx context.Context, input RAGAssemblyInpu
 		if err := a.RerankGate.AuthorizeRAGRerank(
 			ctx,
 			input.SelectedCollectionIDs,
+			indexGenerationID,
 		); err != nil {
 			if errors.Is(err, ErrRAGRerankGovernanceRequired) ||
 				errors.Is(err, ErrRAGDependencyUnavailable) {
@@ -190,16 +197,23 @@ func (a *RAGAnswerAssembler) Assemble(ctx context.Context, input RAGAssemblyInpu
 		}
 		documents := make([]string, len(evidence))
 		for index := range evidence {
-			documents[index] = evidence[index].SourceText
+			documents[index] = formatRAGRerankDocument(evidence[index])
 		}
-		scores, rerankErr := a.Reranker.Rerank(ctx, rerankQuery, documents)
+		scores, rerankErr := a.Reranker.Rerank(
+			ctx,
+			indexGenerationID,
+			rerankQuery,
+			documents,
+		)
 		if rerankErr != nil {
 			return RAGAssemblyResult{}, ErrRAGInsufficientEvidence
 		} else if ranked, ok := applyRAGRerank(
 			evidence,
 			scores,
 			evidenceLimit,
-			ragGoldenRelevancePolicyV1,
+			ragGoldenRelevancePolicyV2,
+			input.QueryText,
+			input.RewrittenQueryText,
 		); ok {
 			evidence = ranked
 			rerankStatus = ragRerankStatusApplied
@@ -222,6 +236,24 @@ func (a *RAGAnswerAssembler) Assemble(ctx context.Context, input RAGAssemblyInpu
 	return RAGAssemblyResult{
 		Evidence: evidence, Citations: citations, RerankStatus: rerankStatus,
 	}, nil
+}
+
+func singleRAGCandidateGeneration(
+	candidates []knowledge.EvidenceCandidateReference,
+) (string, bool) {
+	if len(candidates) == 0 {
+		return "", false
+	}
+	generationID := strings.TrimSpace(candidates[0].IndexGenerationID)
+	if generationID == "" {
+		return "", false
+	}
+	for _, candidate := range candidates[1:] {
+		if strings.TrimSpace(candidate.IndexGenerationID) != generationID {
+			return "", false
+		}
+	}
+	return generationID, true
 }
 
 func (a *RAGAnswerAssembler) hydrateCandidateBatches(
@@ -258,10 +290,14 @@ func applyRAGRerank(
 	results []RAGRerankResult,
 	limit int,
 	policy ragRelevancePolicy,
+	sourceQueries ...string,
 ) ([]knowledge.HydratedEvidence, bool) {
 	if len(evidence) == 0 || len(results) != len(evidence) ||
 		strings.TrimSpace(policy.ID) == "" || math.IsNaN(policy.MinimumScore) ||
-		math.IsInf(policy.MinimumScore, 0) {
+		math.IsInf(policy.MinimumScore, 0) ||
+		math.IsNaN(policy.ExplicitSourceNameBoost) ||
+		math.IsInf(policy.ExplicitSourceNameBoost, 0) ||
+		policy.ExplicitSourceNameBoost < 0 {
 		return nil, false
 	}
 	seen := make([]bool, len(evidence))
@@ -277,6 +313,12 @@ func applyRAGRerank(
 		}
 		item := evidence[result.Index]
 		item.RankScore = result.RelevanceScore
+		for _, query := range sourceQueries {
+			if knowledge.QueryExplicitlyNamesSource(query, item.SourceName) {
+				item.RankScore += policy.ExplicitSourceNameBoost
+				break
+			}
+		}
 		ranked = append(ranked, item)
 	}
 	sort.SliceStable(ranked, func(i, j int) bool {

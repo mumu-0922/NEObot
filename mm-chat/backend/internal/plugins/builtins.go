@@ -3,34 +3,6 @@ package plugins
 func BuiltInPlugins() []Plugin {
 	return []Plugin{
 		{
-			ID:          "jina-web-reader",
-			Title:       "Web Reader (Jina AI)",
-			Description: "Converts any URL into LLM-friendly markdown content.",
-			LogoURL:     "https://jina.ai/icons/favicon-128x128.png",
-			BaseURL:     "https://r.jina.ai",
-			Category:    "Utilities",
-			BuiltIn:     true,
-			Functions: []PluginFunction{
-				{
-					Name:        "read_webpage",
-					Description: "Reads the content of a specific webpage URL and returns it as clean markdown.",
-					Method:      "GET",
-					Path:        "/{url}",
-					Parameters: map[string]any{
-						"type": "object",
-						"properties": map[string]any{
-							"url": map[string]any{
-								"type":        "string",
-								"description": "The full URL of the webpage to read.",
-							},
-						},
-						"required": []any{"url"},
-					},
-				},
-			},
-			Auth: &PluginAuth{Type: "bearer", Required: boolPtr(false)},
-		},
-		{
 			ID:          "weather-gpt",
 			Title:       "Real-time Weather",
 			Description: "Get real-time weather information for any city.",

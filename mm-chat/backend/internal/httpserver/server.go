@@ -90,24 +90,59 @@ type ragEvidenceCandidateFetcher interface {
 	FetchHybridQueryEvidenceCandidates(context.Context, knowledge.HybridQueryEvidenceCandidatesInput) ([]knowledge.EvidenceCandidateReference, error)
 }
 
+type ragProfiledEvidenceCandidateFetcher interface {
+	ResolveActiveRetrievalProfile(context.Context) (knowledge.RetrievalProfileBinding, error)
+	FetchFencedHybridQueryEvidenceCandidates(context.Context, knowledge.FencedHybridQueryEvidenceCandidatesInput) ([]knowledge.EvidenceCandidateReference, error)
+	FetchFencedQueryEvidenceCandidates(context.Context, knowledge.FencedQueryEvidenceCandidatesInput) ([]knowledge.EvidenceCandidateReference, error)
+}
+
+type ragGenerationRetrievalProfileResolver interface {
+	ResolveGenerationRetrievalProfile(context.Context, string) (knowledge.RetrievalProfileBinding, error)
+}
+
+type ragRetrievalProfileGatewayFactory interface {
+	ForRetrievalProfile(ragproviders.RetrievalProfileID) (*ragproviders.RetrievalProfileGateway, error)
+}
+
 type knowledgeRAGCandidateSource struct {
 	candidates ragEvidenceCandidateFetcher
 	embedder   ragproviders.QueryEmbedder
+	queryGate  chat.RAGQueryEmbeddingGovernanceGate
 }
 
 type knowledgeRAGReranker struct {
-	client ragproviders.Reranker
+	client   ragproviders.Reranker
+	profiles ragGenerationRetrievalProfileResolver
 }
 
 func (reranker knowledgeRAGReranker) Rerank(
 	ctx context.Context,
+	indexGenerationID string,
 	query string,
 	documents []string,
 ) ([]chat.RAGRerankResult, error) {
 	if reranker.client == nil {
 		return nil, ragproviders.ErrRerankUnavailable
 	}
-	results, err := reranker.client.Rerank(ctx, query, documents)
+	client := reranker.client
+	if factory, ok := reranker.client.(ragRetrievalProfileGatewayFactory); ok &&
+		reranker.profiles != nil {
+		binding, err := reranker.profiles.ResolveGenerationRetrievalProfile(
+			ctx,
+			indexGenerationID,
+		)
+		if err != nil {
+			return nil, ragproviders.ErrRerankUnavailable
+		}
+		profileClient, err := factory.ForRetrievalProfile(
+			ragproviders.RetrievalProfileID(binding.RetrievalProfileID),
+		)
+		if err != nil {
+			return nil, ragproviders.ErrRerankUnavailable
+		}
+		client = profileClient
+	}
+	results, err := client.Rerank(ctx, query, documents)
 	if err != nil {
 		return nil, err
 	}
@@ -564,6 +599,97 @@ func (source knowledgeRAGCandidateSource) FetchEvidenceCandidates(
 	if source.candidates == nil {
 		return nil, knowledge.ErrDatabaseRequired
 	}
+	if profiled, ok := source.candidates.(ragProfiledEvidenceCandidateFetcher); ok {
+		if factory, ok := source.embedder.(ragRetrievalProfileGatewayFactory); ok {
+			for attempt := 0; attempt < 2; attempt++ {
+				binding, err := profiled.ResolveActiveRetrievalProfile(ctx)
+				if errors.Is(err, knowledge.ErrActiveRetrievalProfileUnavailable) {
+					return source.fetchLegacyEvidenceCandidates(ctx, query)
+				}
+				if err != nil {
+					return nil, err
+				}
+				if source.queryGate == nil ||
+					source.queryGate.AuthorizeRAGQueryEmbedding(ctx, binding) != nil {
+					candidates, lexicalErr := source.fetchFencedLexical(
+						ctx,
+						profiled,
+						binding,
+						query,
+					)
+					if errors.Is(lexicalErr, knowledge.ErrRetrievalProfileChanged) {
+						continue
+					}
+					return candidates, lexicalErr
+				}
+				profileGateway, err := factory.ForRetrievalProfile(
+					ragproviders.RetrievalProfileID(binding.RetrievalProfileID),
+				)
+				if err != nil {
+					candidates, lexicalErr := source.fetchFencedLexical(
+						ctx,
+						profiled,
+						binding,
+						query,
+					)
+					if errors.Is(lexicalErr, knowledge.ErrRetrievalProfileChanged) {
+						continue
+					}
+					return candidates, lexicalErr
+				}
+				embedding, err := profileGateway.EmbedQuery(ctx, query.QueryText)
+				if err != nil {
+					candidates, lexicalErr := source.fetchFencedLexical(
+						ctx,
+						profiled,
+						binding,
+						query,
+					)
+					if errors.Is(lexicalErr, knowledge.ErrRetrievalProfileChanged) {
+						continue
+					}
+					return candidates, lexicalErr
+				}
+				candidates, err := profiled.FetchFencedHybridQueryEvidenceCandidates(
+					ctx,
+					knowledge.FencedHybridQueryEvidenceCandidatesInput{
+						Binding: binding, CollectionIDs: query.CollectionIDs,
+						QueryText: query.QueryText, QueryEmbedding: embedding.Vector,
+						Limit: query.Limit,
+					},
+				)
+				if errors.Is(err, knowledge.ErrRetrievalProfileChanged) {
+					continue
+				}
+				return candidates, err
+			}
+			return nil, knowledge.ErrRetrievalProfileChanged
+		}
+	}
+	return source.fetchLegacyEvidenceCandidates(ctx, query)
+}
+
+func (source knowledgeRAGCandidateSource) fetchFencedLexical(
+	ctx context.Context,
+	profiled ragProfiledEvidenceCandidateFetcher,
+	binding knowledge.RetrievalProfileBinding,
+	query chat.RAGCandidateQuery,
+) ([]knowledge.EvidenceCandidateReference, error) {
+	return profiled.FetchFencedQueryEvidenceCandidates(
+		ctx,
+		knowledge.FencedQueryEvidenceCandidatesInput{
+			Binding:       binding,
+			CollectionIDs: query.CollectionIDs,
+			QueryText:     query.QueryText,
+			Limit:         query.Limit,
+		},
+	)
+}
+
+func (source knowledgeRAGCandidateSource) fetchLegacyEvidenceCandidates(
+	ctx context.Context,
+	query chat.RAGCandidateQuery,
+) ([]knowledge.EvidenceCandidateReference, error) {
 	if source.embedder != nil {
 		embedding, err := source.embedder.EmbedQuery(ctx, query.QueryText)
 		if err == nil {
@@ -862,7 +988,10 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 			assemblerOptions = append(
 				assemblerOptions,
 				chat.WithRAGEvidenceReranker(
-					knowledgeRAGReranker{client: resolvedOptions.ragReranker},
+					knowledgeRAGReranker{
+						client:   resolvedOptions.ragReranker,
+						profiles: resolvedOptions.knowledgeService,
+					},
 					chat.NewKnowledgeConsentRAGRerankGovernanceGate(
 						resolvedOptions.knowledgeService,
 					),
@@ -876,6 +1005,9 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 					knowledgeRAGCandidateSource{
 						candidates: resolvedOptions.knowledgeService,
 						embedder:   resolvedOptions.ragQueryEmbedder,
+						queryGate: chat.NewKnowledgeConsentRAGQueryEmbeddingGovernanceGate(
+							resolvedOptions.knowledgeService,
+						),
 					},
 					resolvedOptions.knowledgeService,
 					assemblerOptions...,

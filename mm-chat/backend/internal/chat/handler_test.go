@@ -2130,7 +2130,9 @@ func TestHandlerAutoRAGStreamsAugmentedAnswerAfterGovernance(t *testing.T) {
 		t.Fatalf("Auto RAG answer stream body = %s", rec.Body.String())
 	}
 	if !strings.Contains(provider.input.Prompt, "Relevant Knowledge evidence") ||
-		!strings.Contains(provider.input.Prompt, "[K1] alpha evidence source") ||
+		!strings.Contains(provider.input.Prompt, "[K1] Matched Child evidence:") ||
+		!strings.Contains(provider.input.Prompt, "alpha evidence source") ||
+		!strings.Contains(provider.input.Prompt, validHydratedEvidence().ParentSourceText) ||
 		!strings.Contains(provider.input.Prompt, "Summarize the indexed source") {
 		t.Fatalf("provider prompt = %q", provider.input.Prompt)
 	}

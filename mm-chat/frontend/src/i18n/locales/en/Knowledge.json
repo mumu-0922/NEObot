@@ -144,9 +144,6 @@
   "serverConsentExpiresAtValue": "Expires {value}",
   "serverConsentDecidedAt": "Decided {value}",
   "serverConsentPresetMineruPdfParse": "MinerU PDF parse",
-  "serverConsentPresetJinaPassageEmbedding": "Jina passage embedding",
-  "serverConsentPresetJinaQueryEmbedding": "Jina query/rerank",
-  "serverConsentPresetJinaAnswer": "Jina rerank/answer",
   "serverConsentStatus": {
     "active": "Active",
     "granted": "Granted",

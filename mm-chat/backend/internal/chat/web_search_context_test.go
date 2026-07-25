@@ -63,6 +63,28 @@ func TestBuildWebSearchProviderRequestAndArtifacts(t *testing.T) {
 	}
 }
 
+func TestBuildWebSearchProviderRequestAdaptsToTokenBudget(t *testing.T) {
+	result := websearch.Result{Sources: []websearch.Source{{
+		Title: "Large fixture",
+		URL:   "https://example.com/large",
+		Content: strings.Repeat(
+			"large multilingual evidence 内容 ",
+			2000,
+		),
+	}}}
+	context := buildWebSearchProviderRequestWithBudget(
+		"question",
+		"base",
+		result,
+		512,
+	)
+	if len(context.Result.Sources) != 1 ||
+		context.Result.Sources[0].Content == result.Sources[0].Content ||
+		context.EstimatedTokens <= 0 || context.EstimatedTokens > 512 {
+		t.Fatalf("budgeted Web context = %#v", context)
+	}
+}
+
 func TestMissingBuiltInWebCitationDeltaAddsOnlyMissingMarkers(t *testing.T) {
 	result := websearch.Result{Sources: []websearch.Source{
 		{Title: "A", URL: "https://example.com/a", Content: "a"},

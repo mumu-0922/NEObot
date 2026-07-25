@@ -35,28 +35,28 @@ func TestProviderStatusReportsMissingSecretsWithoutLeakingValues(t *testing.T) {
 	if body.Providers.MinerU.Configured || body.Providers.MinerU.Status != ProviderStatusMissingSecret {
 		t.Fatalf("mineru status = %#v, want missing secret", body.Providers.MinerU)
 	}
-	if body.Providers.Jina.Configured || body.Providers.Jina.Status != ProviderStatusMissingSecret {
-		t.Fatalf("jina status = %#v, want missing secret", body.Providers.Jina)
+	if body.Providers.SiliconFlow.Configured || body.Providers.SiliconFlow.Status != ProviderStatusMissingSecret {
+		t.Fatalf("siliconflow status = %#v, want missing secret", body.Providers.SiliconFlow)
 	}
-	if body.Providers.Jina.EmbeddingDimensions != JinaEmbeddingDimensions {
+	if body.Providers.SiliconFlow.EmbeddingDimensions != SiliconFlowEmbeddingDimensions {
 		t.Fatalf(
-			"jina dimensions = %d, want %d",
-			body.Providers.Jina.EmbeddingDimensions,
-			JinaEmbeddingDimensions,
+			"siliconflow dimensions = %d, want %d",
+			body.Providers.SiliconFlow.EmbeddingDimensions,
+			SiliconFlowEmbeddingDimensions,
 		)
 	}
 }
 
 func TestProviderStatusReportsReadyAndRedactsSecrets(t *testing.T) {
 	minerUSecret := "fake-mineru-secret"
-	jinaSecret := "fake-jina-secret"
+	siliconFlowSecret := "fake-siliconflow-secret"
 	handler := NewHandler(func(context.Context) (StatusResponse, error) {
 		return StatusResponse{
 			Providers: ProviderStatuses{
 				MinerU: ProviderState{Configured: true, Status: ProviderStatusReady},
-				Jina: ProviderState{
+				SiliconFlow: ProviderState{
 					Configured: true, Status: ProviderStatusReady,
-					EmbeddingDimensions: JinaEmbeddingDimensions,
+					EmbeddingDimensions: SiliconFlowEmbeddingDimensions,
 				},
 			},
 			Status: ServiceStatusReady,
@@ -75,7 +75,7 @@ func TestProviderStatusReportsReadyAndRedactsSecrets(t *testing.T) {
 		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 	payload := rec.Body.String()
-	if strings.Contains(payload, minerUSecret) || strings.Contains(payload, jinaSecret) {
+	if strings.Contains(payload, minerUSecret) || strings.Contains(payload, siliconFlowSecret) {
 		t.Fatalf("provider status leaked secret value: %s", payload)
 	}
 	var body StatusResponse
@@ -92,14 +92,14 @@ func TestProviderStatusReportsReadyAndRedactsSecrets(t *testing.T) {
 	if !body.Providers.MinerU.Configured || body.Providers.MinerU.Status != ProviderStatusReady {
 		t.Fatalf("mineru status = %#v, want ready", body.Providers.MinerU)
 	}
-	if !body.Providers.Jina.Configured || body.Providers.Jina.Status != ProviderStatusReady {
-		t.Fatalf("jina status = %#v, want ready", body.Providers.Jina)
+	if !body.Providers.SiliconFlow.Configured || body.Providers.SiliconFlow.Status != ProviderStatusReady {
+		t.Fatalf("siliconflow status = %#v, want ready", body.Providers.SiliconFlow)
 	}
-	if body.Providers.Jina.EmbeddingDimensions != JinaEmbeddingDimensions {
+	if body.Providers.SiliconFlow.EmbeddingDimensions != SiliconFlowEmbeddingDimensions {
 		t.Fatalf(
-			"jina dimensions = %d, want %d",
-			body.Providers.Jina.EmbeddingDimensions,
-			JinaEmbeddingDimensions,
+			"siliconflow dimensions = %d, want %d",
+			body.Providers.SiliconFlow.EmbeddingDimensions,
+			SiliconFlowEmbeddingDimensions,
 		)
 	}
 }

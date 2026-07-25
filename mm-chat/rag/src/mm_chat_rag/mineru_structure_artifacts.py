@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from html.parser import HTMLParser
 from itertools import pairwise
 from typing import Final, NoReturn, cast
 
@@ -28,12 +29,17 @@ from mm_chat_rag.offline_parser.canonical import (
     canonical_json_bytes,
 )
 from mm_chat_rag.retry import PermanentJobError
+from mm_chat_rag.semantic_chunking import SemanticBoundaryPlanner
 from mm_chat_rag.structure_chunking import (
     STRUCTURE_CHUNK_PROFILE_HASH,
     ChunkFragmentPlan,
+    DerivedContextPlan,
+    SemanticBoundaryHints,
+    StructureChunkingError,
     StructureChunkPlan,
     StructuredTextUnit,
     plan_structure_chunks,
+    structure_semantic_profile_hash,
 )
 
 MINERU_STRUCTURE_CONTEXT_INVALID: Final = "MINERU_STRUCTURE_CONTEXT_INVALID"
@@ -45,6 +51,11 @@ _BBOX_COORDINATES: Final = 4
 _PAGE_DIMENSIONS: Final = 2
 _MAX_HEADING_LEVEL: Final = 9
 _MIN_OVERLAP_TOKENS: Final = 60
+_MIN_BOILERPLATE_PAGES: Final = 3
+_BOILERPLATE_PAGE_RATIO_NUMERATOR: Final = 1
+_BOILERPLATE_PAGE_RATIO_DENOMINATOR: Final = 2
+_PAGE_EDGE_RATIO_NUMERATOR: Final = 1
+_PAGE_EDGE_RATIO_DENOMINATOR: Final = 5
 _KIND_MAP: Final = {
     "heading": "heading",
     "title": "heading",
@@ -58,9 +69,12 @@ _KIND_MAP: Final = {
     "formula": "formula",
     "equation": "formula",
     "footnote": "footnote",
+    "ref_text": "footnote",
     "header": "header",
     "footer": "footer",
+    "page_number": "footer",
 }
+_NON_INDEXABLE_PDF_INFO_TYPES: Final = frozenset({"page_number"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +92,7 @@ class _Unit:
     parent_block_id: str | None
     text_start: int
     text_end: int
+    non_indexable: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +102,65 @@ class _Draft:
     page_index: int
     bbox: tuple[int, int, int, int]
     heading_level: int | None
+    non_indexable: bool = False
+
+
+class _TableHTMLTextParser(HTMLParser):
+    """Render only bounded table cell text; HTML is never executed or retained."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.rows: list[tuple[str, ...]] = []
+        self._row: list[str] | None = None
+        self._cell_parts: list[str] | None = None
+        self._invalid = False
+
+    def handle_starttag(
+        self,
+        tag: str,
+        attrs: list[tuple[str, str | None]],
+    ) -> None:
+        del attrs
+        normalized = tag.casefold()
+        if normalized == "tr":
+            if self._row is not None or self._cell_parts is not None:
+                self._invalid = True
+            self._row = []
+        elif normalized in {"td", "th"}:
+            if self._row is None or self._cell_parts is not None:
+                self._invalid = True
+            self._cell_parts = []
+        elif normalized == "br" and self._cell_parts is not None:
+            self._cell_parts.append(" ")
+
+    def handle_endtag(self, tag: str) -> None:
+        normalized = tag.casefold()
+        if normalized in {"td", "th"}:
+            if self._row is None or self._cell_parts is None:
+                self._invalid = True
+                return
+            cell = " ".join("".join(self._cell_parts).split()).replace("|", "\\|")
+            self._row.append(cell)
+            self._cell_parts = None
+        elif normalized == "tr":
+            if self._row is None or self._cell_parts is not None:
+                self._invalid = True
+                return
+            if self._row:
+                self.rows.append(tuple(self._row))
+            self._row = None
+
+    def handle_data(self, data: str) -> None:
+        if self._cell_parts is not None:
+            self._cell_parts.append(data)
+
+    def render(self) -> str:
+        if self._invalid or self._row is not None or self._cell_parts is not None:
+            _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
+        rendered = "\n".join(" | ".join(row) for row in self.rows)
+        if not rendered.strip():
+            _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
+        return rendered
 
 
 class MinerUStructureArchiveParserGateway:
@@ -95,8 +169,11 @@ class MinerUStructureArchiveParserGateway:
     def __init__(
         self,
         archive_provider: MinerUResultArchiveProvider | None = None,
+        *,
+        semantic_planner: SemanticBoundaryPlanner | None = None,
     ) -> None:
         self._archive_provider = archive_provider
+        self._semantic_planner = semantic_planner
 
     async def parse_document(
         self,
@@ -117,18 +194,37 @@ class MinerUStructureArchiveParserGateway:
             source,
         )
         mapping_input = prepare_mineru_structure_mapping_input(source, archive_body)
-        return build_mineru_structure_artifacts(context, mapping_input)
+        semantic_hints: tuple[SemanticBoundaryHints, ...] = ()
+        if self._semantic_planner is not None:
+            semantic_hints = await self._semantic_planner.plan(
+                context,
+                mineru_structure_planner_units(mapping_input),
+            )
+        return build_mineru_structure_artifacts(
+            context,
+            mapping_input,
+            semantic_hints=semantic_hints,
+        )
 
 
 def build_mineru_structure_artifacts(
     context: ProcessingJobContext,
     mapping_input: MinerULocalBatchCanonicalMappingInput,
+    *,
+    semantic_hints: tuple[SemanticBoundaryHints, ...] = (),
 ) -> ParsedDocumentArtifacts:
     """Build deterministic structure-aware artifacts from admitted MinerU JSON."""
     if context.stage != "parse" or context.materialization_id is None:
         _reject(MINERU_STRUCTURE_CONTEXT_INVALID)
     if not isinstance(mapping_input, MinerULocalBatchCanonicalMappingInput):
         _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
+    chunk_profile_hash = (
+        context.generation_chunk_profile_hash or MINERU_STRUCTURE_CHUNK_PROFILE_HASH
+    )
+    try:
+        semantic_profile_hash = structure_semantic_profile_hash(chunk_profile_hash)
+    except StructureChunkingError as error:
+        _reject_from(MINERU_STRUCTURE_ARTIFACT_INVALID, error)
     units, text, pages = _units(mapping_input)
     plan = plan_structure_chunks(
         tuple(
@@ -137,9 +233,12 @@ def build_mineru_structure_artifacts(
                 kind=unit.kind,
                 text=unit.text,
                 heading_path=unit.planner_heading_path,
+                indexable=not unit.non_indexable,
             )
             for unit in units
-        )
+        ),
+        semantic_hints=semantic_hints,
+        semantic_profile_hash=semantic_profile_hash,
     )
     materialization_id = context.materialization_id
     artifact_set_id = uuid.uuid5(
@@ -149,7 +248,7 @@ def build_mineru_structure_artifacts(
                 str(materialization_id),
                 mapping_input.source_sha256,
                 mapping_input.archive_sha256,
-                MINERU_STRUCTURE_CHUNK_PROFILE_HASH,
+                chunk_profile_hash,
             )
         ),
     )
@@ -170,7 +269,25 @@ def build_mineru_structure_artifacts(
             units,
             plan,
             flow_id=flow_id,
+            chunk_profile_hash=chunk_profile_hash,
         ),
+    )
+
+
+def mineru_structure_planner_units(
+    mapping_input: MinerULocalBatchCanonicalMappingInput,
+) -> tuple[StructuredTextUnit, ...]:
+    """Expose exact structure units for optional preplanning."""
+    units, _text, _pages = _units(mapping_input)
+    return tuple(
+        StructuredTextUnit(
+            ordinal=unit.ordinal,
+            kind=unit.kind,
+            text=unit.text,
+            heading_path=unit.planner_heading_path,
+            indexable=not unit.non_indexable,
+        )
+        for unit in units
     )
 
 
@@ -178,6 +295,7 @@ def _units(
     mapping: MinerULocalBatchCanonicalMappingInput,
 ) -> tuple[tuple[_Unit, ...], str, tuple[tuple[int, int, int], ...]]:
     drafts, pages = _drafts(mapping)
+    drafts = _mark_repeated_page_boilerplate(drafts, pages)
     heading_stack: list[tuple[int, str]] = []
     units: list[_Unit] = []
     text_parts: list[str] = []
@@ -216,11 +334,66 @@ def _units(
                 parent_block_id=heading_path[-1] if heading_path else None,
                 text_start=offset,
                 text_end=offset + len(encoded),
+                non_indexable=draft.non_indexable,
             )
         )
         text_parts.append(draft.text)
         offset += len(encoded)
     return tuple(units), "".join(text_parts), pages
+
+
+def _mark_repeated_page_boilerplate(
+    drafts: tuple[_Draft, ...],
+    pages: tuple[tuple[int, int, int], ...],
+) -> tuple[_Draft, ...]:
+    """Preserve repeated edge text but exclude it from retrieval projection."""
+    if len(pages) < _MIN_BOILERPLATE_PAGES:
+        return drafts
+    dimensions = {page_index: (width, height) for page_index, width, height in pages}
+    groups: dict[tuple[str, str], list[int]] = {}
+    for index, draft in enumerate(drafts):
+        if draft.kind not in {"header", "footer"}:
+            continue
+        normalized = " ".join(draft.text.casefold().split())
+        if normalized:
+            groups.setdefault((draft.kind, normalized), []).append(index)
+
+    marked: set[int] = set()
+    for (kind, _normalized), indexes in groups.items():
+        page_indexes = {drafts[index].page_index for index in indexes}
+        frequent = (
+            len(page_indexes) >= _MIN_BOILERPLATE_PAGES
+            and len(page_indexes) * _BOILERPLATE_PAGE_RATIO_DENOMINATOR
+            >= len(pages) * _BOILERPLATE_PAGE_RATIO_NUMERATOR
+        )
+        positioned = all(
+            _is_page_edge_boilerplate(drafts[index], dimensions, kind=kind)
+            for index in indexes
+        )
+        if frequent and positioned:
+            marked.update(indexes)
+    return tuple(
+        replace(draft, non_indexable=True) if index in marked else draft
+        for index, draft in enumerate(drafts)
+    )
+
+
+def _is_page_edge_boilerplate(
+    draft: _Draft,
+    dimensions: dict[int, tuple[int, int]],
+    *,
+    kind: str,
+) -> bool:
+    try:
+        _width, height = dimensions[draft.page_index]
+    except KeyError:
+        return False
+    _x1, y1, _x2, y2 = draft.bbox
+    if kind == "header":
+        return y2 * _PAGE_EDGE_RATIO_DENOMINATOR <= height * _PAGE_EDGE_RATIO_NUMERATOR
+    return y1 * _PAGE_EDGE_RATIO_DENOMINATOR >= height * (
+        _PAGE_EDGE_RATIO_DENOMINATOR - _PAGE_EDGE_RATIO_NUMERATOR
+    )
 
 
 def _drafts(
@@ -309,13 +482,18 @@ def _drafts_from_pdf_info(
             raw_kind = block.get("type")
             if not isinstance(raw_kind, str):
                 _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
-            block_kind = _KIND_MAP.get(raw_kind.casefold())
+            normalized_kind = raw_kind.casefold()
+            block_kind = _KIND_MAP.get(normalized_kind)
             text = _pdf_info_block_text(block)
             if block_kind is None:
                 if text is not None:
                     _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
                 continue
-            if text is None or not text.strip() or "\x00" in text:
+            if text is None:
+                if block_kind == "paragraph" and block.get("lines") == []:
+                    continue
+                _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
+            if not text.strip() or "\x00" in text:
                 _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
             bbox = _point_bbox(block, width=width, height=height)
             heading_level = _heading_level(block) if block_kind == "heading" else None
@@ -326,6 +504,7 @@ def _drafts_from_pdf_info(
                     page_index=page_index,
                     bbox=bbox,
                     heading_level=heading_level,
+                    non_indexable=normalized_kind in _NON_INDEXABLE_PDF_INFO_TYPES,
                 )
             )
     if not drafts:
@@ -349,23 +528,44 @@ def _pdf_info_block_order(block: JsonObject) -> tuple[int, int, int]:
 
 def _pdf_info_block_text(block: JsonObject) -> str | None:
     lines = block.get("lines")
-    if not isinstance(lines, list) or not lines:
-        return None
-    rendered: list[str] = []
-    for raw_line in lines:
-        line = _object(raw_line)
-        spans = line.get("spans")
-        if not isinstance(spans, list) or not spans:
-            _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
-        parts: list[str] = []
-        for raw_span in spans:
-            span = _object(raw_span)
-            content = span.get("content")
-            if not isinstance(content, str) or not content:
+    if isinstance(lines, list) and lines:
+        rendered: list[str] = []
+        for raw_line in lines:
+            line = _object(raw_line)
+            spans = line.get("spans")
+            if not isinstance(spans, list) or not spans:
                 _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
-            parts.append(content)
-        rendered.append("".join(parts))
-    return "\n".join(rendered)
+            parts = [_pdf_info_span_text(_object(raw_span)) for raw_span in spans]
+            rendered.append("".join(parts))
+        return "\n".join(rendered)
+    nested_blocks = block.get("blocks")
+    if not isinstance(nested_blocks, list) or not nested_blocks:
+        return None
+    rendered_blocks = [
+        _pdf_info_block_text(_object(raw_block)) for raw_block in nested_blocks
+    ]
+    if any(value is None for value in rendered_blocks):
+        _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
+    return "\n".join(cast("str", value) for value in rendered_blocks)
+
+
+def _pdf_info_span_text(span: JsonObject) -> str:
+    content = span.get("content")
+    if isinstance(content, str) and content:
+        return content
+    if span.get("type") == "table":
+        table_html = span.get("html")
+        if not isinstance(table_html, str) or not table_html:
+            _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
+        parser = _TableHTMLTextParser()
+        try:
+            parser.feed(table_html)
+            parser.close()
+        except (AssertionError, ValueError) as error:
+            _reject_from(MINERU_STRUCTURE_ARTIFACT_INVALID, error)
+        return parser.render()
+    _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
+    raise AssertionError("unreachable")
 
 
 def _point_bbox(
@@ -478,7 +678,10 @@ def _canonical_ir(
                 "blockType": unit.kind,
                 "confidence": 10000,
                 "contentHash": hashlib.sha256(unit.text.encode()).hexdigest(),
-                "flags": {"derived": True, "nonIndexable": False},
+                "flags": {
+                    "derived": True,
+                    "nonIndexable": unit.non_indexable,
+                },
                 "flowSeedId": flow_seed,
                 "headingPath": list(unit.heading_path),
                 "locatorSet": _locator(unit),
@@ -629,6 +832,7 @@ def _chunk_manifest(
     plan: StructureChunkPlan,
     *,
     flow_id: str,
+    chunk_profile_hash: str,
 ) -> JsonObject:
     parents: list[JsonObject] = []
     parent_ids: dict[int, str] = {}
@@ -646,7 +850,7 @@ def _chunk_manifest(
         parents.append(
             {
                 "chunkKind": "parent",
-                "chunkProfileHash": MINERU_STRUCTURE_CHUNK_PROFILE_HASH,
+                "chunkProfileHash": chunk_profile_hash,
                 "chunkSourceSpanHash": _hash(
                     "mineru_structure.chunk_span.v1",
                     _hash_json(cast("JsonValue", fragments)),
@@ -666,12 +870,17 @@ def _chunk_manifest(
         )
     children: list[JsonObject] = []
     for child in plan.children:
+        child_plans = (
+            *(context.fragment for context in child.derived_contexts),
+            *child.fragments,
+        )
         fragments, joiners, content = _chunk_parts(
             units,
-            child.fragments,
+            child_plans,
             child_ordinal=child.ordinal,
             overlap_tokens=child.overlap_before_tokens,
         )
+        _mark_derived_context_fragments(fragments, child.derived_contexts)
         parent_id = parent_ids[child.parent_ordinal]
         child_id = _hash(
             "mineru_structure.child.v1",
@@ -683,7 +892,7 @@ def _chunk_manifest(
             {
                 "childOrdinal": child.ordinal,
                 "chunkKind": "child",
-                "chunkProfileHash": MINERU_STRUCTURE_CHUNK_PROFILE_HASH,
+                "chunkProfileHash": chunk_profile_hash,
                 "chunkSourceSpanHash": _hash(
                     "mineru_structure.chunk_span.v1",
                     _hash_json(cast("JsonValue", fragments)),
@@ -710,7 +919,7 @@ def _chunk_manifest(
         "childAggregateHash": _hash_json(cast("JsonValue", children)),
         "childCount": len(children),
         "children": cast("list[JsonValue]", children),
-        "chunkProfileHash": MINERU_STRUCTURE_CHUNK_PROFILE_HASH,
+        "chunkProfileHash": chunk_profile_hash,
         "joinerAggregateHash": _hash_json(cast("JsonValue", aggregate_joiners)),
         "joinerCount": len(aggregate_joiners),
         "parentAggregateHash": _hash_json(cast("JsonValue", parents)),
@@ -786,6 +995,34 @@ def _chunk_parts(
     return fragments, joiners, "".join(parts)
 
 
+def _mark_derived_context_fragments(
+    fragments: list[JsonObject],
+    contexts: tuple[DerivedContextPlan, ...],
+) -> None:
+    for index, context in enumerate(contexts):
+        fragment = fragments[index]
+        original_hash = cast("str", fragment["fragmentSourceSpanHash"])
+        reuse_group = _hash(
+            "mineru_structure.derived_context_reuse.v2",
+            original_hash,
+        )
+        fragment.update(
+            {
+                "derived": True,
+                "derivedReason": context.reason,
+                "fragmentKind": "derived_context",
+                "fragmentSourceSpanHash": _hash(
+                    "mineru_structure.derived_context_fragment.v2",
+                    original_hash,
+                    context.reason,
+                    reuse_group,
+                ),
+                "originalFragmentSourceSpanHash": original_hash,
+                "sourceReuseGroupId": reuse_group,
+            }
+        )
+
+
 def _bbox(value: JsonObject, *, width: int, height: int) -> tuple[int, int, int, int]:
     raw = value.get("bboxMilliPoint", value.get("bbox"))
     if (
@@ -849,3 +1086,10 @@ def _hash_json(value: JsonValue) -> str:
 
 def _reject(code: str) -> NoReturn:
     raise PermanentJobError(stable_error_code(code))
+
+
+def _reject_from(code: str, cause: Exception) -> NoReturn:
+    try:
+        _reject(code)
+    except PermanentJobError as error:
+        raise error from cause

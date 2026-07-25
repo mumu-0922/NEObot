@@ -46,6 +46,7 @@ type externalWebToolLoopInput struct {
 	CapabilityCache        ToolCapabilityCache
 	CapabilityConfigHash   string
 	DisableNativeToolRound bool
+	ContextBudget          *retrievalContextBudget
 }
 
 func searchWebToolDefinition() ToolDefinition {
@@ -81,6 +82,13 @@ func startRetrievalToolLoop(
 	ctx context.Context,
 	input externalWebToolLoopInput,
 ) <-chan ProviderEvent {
+	if input.ContextBudget == nil {
+		input.ContextBudget = newRetrievalContextBudget(
+			input.Request,
+			input.Knowledge.enabled(),
+			externalWebToolEnabled(input),
+		)
+	}
 	events := make(chan ProviderEvent, 1)
 	go func() {
 		defer close(events)
@@ -348,8 +356,39 @@ func runNativeExternalWebToolLoop(
 					})
 					continue
 				}
-				merged := mergeKnowledgeToolDecision(knowledgeDecision, current)
+				current = mapKnowledgeToolDecisionMarkers(
+					knowledgeDecision,
+					current,
+				)
+				toolResult, projectedCurrent, usedTokens, contextErr :=
+					knowledgeToolSuccessResult(
+						current,
+						input.ContextBudget.remaining(retrievalEvidenceKnowledge),
+					)
+				if contextErr != nil {
+					failed := running
+					failed.Status = ProcessStepStatusFailed
+					failed.FailureCategory = "context_budget_exhausted"
+					if !sendToolExecutionEvent(ctx, events, failed) {
+						return true
+					}
+					exchange.Results = append(exchange.Results, ProviderToolResult{
+						CallID: call.ID, Name: call.Name,
+						Content: knowledgeToolFailureResult(
+							"context_budget_exhausted",
+						), IsError: true,
+					})
+					continue
+				}
+				merged := mergeKnowledgeToolDecision(
+					knowledgeDecision,
+					projectedCurrent,
+				)
 				knowledgeDecision = merged.Cumulative
+				input.ContextBudget.consume(
+					retrievalEvidenceKnowledge,
+					usedTokens,
+				)
 				if merged.Current.ReadyForAnswer() {
 					authority := sourceAuthorityKnowledge
 					if len(cumulative.Sources) > 0 {
@@ -373,7 +412,7 @@ func runNativeExternalWebToolLoop(
 				}
 				exchange.Results = append(exchange.Results, ProviderToolResult{
 					CallID: call.ID, Name: call.Name,
-					Content: knowledgeToolSuccessResult(merged.Current),
+					Content: toolResult,
 				})
 				continue
 			}
@@ -417,9 +456,15 @@ func runNativeExternalWebToolLoop(
 				})
 				continue
 			}
-			bounded, _ := prepareWebSearchResult(result)
 			previous := cumulative
-			cumulative = mergeWebSearchResults(cumulative, bounded)
+			bounded, cumulativeResult, toolResult, usedTokens :=
+				boundedWebSearchSuccessToolResult(
+					previous,
+					result,
+					input.ContextBudget.remaining(retrievalEvidenceWeb),
+				)
+			cumulative = cumulativeResult
+			input.ContextBudget.consume(retrievalEvidenceWeb, usedTokens)
 			if input.KnowledgeReady || knowledgeDecision.ReadyForAnswer() {
 				input.Request.SystemPrompt = applySourceFusionSystemInstruction(
 					input.Request.SystemPrompt,
@@ -442,7 +487,7 @@ func runNativeExternalWebToolLoop(
 			exchange.Results = append(exchange.Results, ProviderToolResult{
 				CallID:  call.ID,
 				Name:    call.Name,
-				Content: webSearchSuccessToolResult(previous, cumulative),
+				Content: toolResult,
 			})
 		}
 		continuation = append(continuation, exchange)
@@ -457,20 +502,30 @@ func streamRetrievalEvidenceFallback(
 	knowledgeDecision autoRAGDecision,
 	completedUsage TokenUsage,
 ) bool {
+	if input.ContextBudget == nil {
+		input.ContextBudget = newRetrievalContextBudget(
+			input.Request,
+			knowledgeDecision.ReadyForAnswer(),
+			len(webResult.Sources) > 0,
+		)
+	}
 	request := input.Request
 	hasEvidence := false
 	if knowledgeDecision.ReadyForAnswer() {
-		prompt, systemPrompt, err := buildAutoRAGProviderRequest(
+		knowledgeContext, err := buildAutoRAGProviderRequest(
 			request.Prompt,
 			request.SystemPrompt,
 			knowledgeDecision.Evidence,
 			knowledgeDecision.Citations,
+			input.ContextBudget.limit(retrievalEvidenceKnowledge),
 		)
 		if err != nil {
 			return false
 		}
-		request.Prompt = prompt
-		request.SystemPrompt = systemPrompt
+		knowledgeDecision.Evidence = knowledgeContext.Evidence
+		knowledgeDecision.Citations = knowledgeContext.Citations
+		request.Prompt = knowledgeContext.Prompt
+		request.SystemPrompt = knowledgeContext.SystemPrompt
 		request.Metadata = mergeAutoRAGProviderMetadata(
 			request.Metadata,
 			knowledgeDecision,
@@ -478,12 +533,17 @@ func streamRetrievalEvidenceFallback(
 		hasEvidence = true
 	}
 	if len(webResult.Sources) > 0 {
-		request.Prompt, request.SystemPrompt = buildWebSearchProviderRequest(
+		webContext := buildWebSearchProviderRequestWithBudget(
 			request.Prompt,
 			request.SystemPrompt,
 			webResult,
+			input.ContextBudget.limit(retrievalEvidenceWeb),
 		)
-		hasEvidence = true
+		if len(webContext.Result.Sources) > 0 {
+			request.Prompt = webContext.Prompt
+			request.SystemPrompt = webContext.SystemPrompt
+			hasEvidence = true
+		}
 	}
 	if !hasEvidence {
 		return false
@@ -727,6 +787,13 @@ func runCompatibilityExternalWebSearchPlan(
 	input externalWebToolLoopInput,
 	plan compatibilityWebSearchPlan,
 ) {
+	if input.ContextBudget == nil {
+		input.ContextBudget = newRetrievalContextBudget(
+			input.Request,
+			input.KnowledgeReady,
+			true,
+		)
+	}
 	plan.Query = strings.Join(strings.Fields(plan.Query), " ")
 	if !plan.ShouldSearch || plan.Query == "" || len(plan.Query) > websearch.MaxQueryBytes {
 		streamCompatibilityAnswer(
@@ -769,7 +836,24 @@ func runCompatibilityExternalWebSearchPlan(
 		streamCompatibilityAnswer(ctx, events, input.Provider, withWebUnavailableInstruction(input.Request))
 		return
 	}
-	bounded, _ := prepareWebSearchResult(result)
+	request := input.Request
+	bounded, _ := prepareWebSearchResultForTokenBudget(
+		result,
+		input.ContextBudget.remaining(retrievalEvidenceWeb),
+	)
+	if input.KnowledgeReady && len(bounded.Sources) > 0 {
+		request.SystemPrompt = applySourceFusionSystemInstruction(
+			request.SystemPrompt,
+			sourceFusionPlan{Authority: sourceAuthorityMixed},
+		)
+	}
+	webContext := buildWebSearchProviderRequestWithBudget(
+		request.Prompt,
+		request.SystemPrompt,
+		bounded,
+		input.ContextBudget.remaining(retrievalEvidenceWeb),
+	)
+	bounded = webContext.Result
 	if !sendProviderEvent(ctx, events, ProviderEvent{
 		Type:   ProviderEventSearch,
 		Search: &bounded,
@@ -783,17 +867,11 @@ func runCompatibilityExternalWebSearchPlan(
 	if !sendToolExecutionEvent(ctx, events, execution) {
 		return
 	}
-	request := input.Request
-	if input.KnowledgeReady {
-		request.SystemPrompt = applySourceFusionSystemInstruction(
-			request.SystemPrompt,
-			sourceFusionPlan{Authority: sourceAuthorityMixed},
-		)
-	}
-	request.Prompt, request.SystemPrompt = buildWebSearchProviderRequest(
-		request.Prompt,
-		request.SystemPrompt,
-		bounded,
+	request.Prompt = webContext.Prompt
+	request.SystemPrompt = webContext.SystemPrompt
+	input.ContextBudget.consume(
+		retrievalEvidenceWeb,
+		webContext.EstimatedTokens,
 	)
 	request.Messages = replaceLastUserProviderMessage(request.Messages, request.Prompt)
 	streamCompatibilityAnswer(ctx, events, input.Provider, request)
@@ -1001,6 +1079,32 @@ func webSearchSuccessToolResult(
 		"instruction": instruction,
 	})
 	return string(encoded)
+}
+
+func boundedWebSearchSuccessToolResult(
+	previous websearch.Result,
+	incoming websearch.Result,
+	maxTokens int,
+) (websearch.Result, websearch.Result, string, int) {
+	effectiveBudget := maxTokens
+	for effectiveBudget > webContextEnvelopeTokens {
+		bounded, _ := prepareWebSearchResultForTokenBudget(
+			incoming,
+			effectiveBudget,
+		)
+		current := mergeWebSearchResults(previous, bounded)
+		content := webSearchSuccessToolResult(previous, current)
+		usedTokens := estimateProviderTextTokens(content)
+		if len(bounded.Sources) == 0 {
+			return bounded, current, content, 0
+		}
+		if usedTokens <= maxTokens {
+			return bounded, current, content, usedTokens
+		}
+		effectiveBudget -= usedTokens - maxTokens
+	}
+	bounded := websearch.Result{Sources: []websearch.Source{}, Images: incoming.Images}
+	return bounded, previous, webSearchSuccessToolResult(previous, previous), 0
 }
 
 func newWebCitationMarkers(

@@ -233,9 +233,11 @@ type fakeProviderConfigRepository struct {
 	input          UpsertProviderConfigInput
 	configureErr   error
 	configureCalls int
+	getCalls       int
 }
 
 func (r *fakeProviderConfigRepository) GetProviderConfig(_ context.Context, userID string, providerID string) (StoredProviderConfig, bool, error) {
+	r.getCalls++
 	if !r.ok || r.stored.UserID != userID || r.stored.ProviderID != providerID {
 		return StoredProviderConfig{}, false, nil
 	}

@@ -17,8 +17,8 @@ from typing import Final, cast
 
 from mm_chat_rag.offline_parser.canonical import JsonObject, JsonValue
 from mm_chat_rag.provider_profile import (
-    DEFAULT_JINA_EMBEDDING_DIMENSIONS,
-    DEFAULT_JINA_EMBEDDING_MODEL,
+    DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS,
+    DEFAULT_SILICONFLOW_EMBEDDING_MODEL,
 )
 
 _SHA256_RE: Final = re.compile(r"^[0-9a-f]{64}$")
@@ -45,6 +45,15 @@ class ProjectionContext:
     artifact_set_id: uuid.UUID
     materialization_id: uuid.UUID
     index_generation_id: uuid.UUID
+    embedding_model_id: str = DEFAULT_SILICONFLOW_EMBEDDING_MODEL
+    embedding_dimensions: int = DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS
+
+    def __post_init__(self) -> None:
+        if (self.embedding_model_id, self.embedding_dimensions) != (
+            DEFAULT_SILICONFLOW_EMBEDDING_MODEL,
+            DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS,
+        ):
+            raise ProjectionError("projection embedding profile is unsupported")
 
 
 @dataclass(frozen=True, slots=True)
@@ -468,8 +477,8 @@ def _project_child_chunks(
                 collection_id=context.collection_id,
                 document_id=context.document_id,
                 document_version_id=context.document_version_id,
-                embedding_model_id=DEFAULT_JINA_EMBEDDING_MODEL,
-                embedding_dimensions=DEFAULT_JINA_EMBEDDING_DIMENSIONS,
+                embedding_model_id=context.embedding_model_id,
+                embedding_dimensions=context.embedding_dimensions,
                 lexical_text=content,
                 exact_terms=extract_exact_terms(content),
                 source_span_hash=source_span_hash,
@@ -554,6 +563,10 @@ def _locator_summary(chunk: JsonObject) -> JsonObject:
     aggregate_hashes: list[JsonValue] = []
     primary: JsonObject | None = None
     for fragment in fragments:
+        fragment_kind = _string(
+            fragment.get("fragmentKind"),
+            "fragment.fragmentKind",
+        )
         locator_set = _object(
             fragment.get("clippedLocatorSet"), "fragment.clippedLocatorSet"
         )
@@ -567,7 +580,8 @@ def _locator_summary(chunk: JsonObject) -> JsonObject:
         }
         locators.append(item)
         aggregate_hashes.append(item["locatorAggregateHash"])
-        primary = primary or item
+        if fragment_kind == "primary" and primary is None:
+            primary = item
     if primary is None:
         raise ProjectionError("chunk requires at least one locator fragment")
     return {
@@ -579,88 +593,95 @@ def _locator_summary(chunk: JsonObject) -> JsonObject:
 
 
 def _best_locator(locator_set: JsonObject) -> tuple[str, JsonObject]:
+    views: list[JsonObject] = []
     for anchor in _objects(locator_set.get("textAnchors"), "locatorSet.textAnchors"):
         for fragment in _objects(
             anchor.get("sourceFragments"), "textAnchor.sourceFragments"
         ):
-            for view in _objects(fragment.get("views"), "sourceFragment.views"):
-                kind = _string(view.get("kind"), "locator view kind")
-                if kind == "page_region":
-                    bbox = _array(
-                        view.get("bboxMilliPoint"), "page_region.bboxMilliPoint"
-                    )
-                    if len(bbox) != _BBOX_COORDINATES:
-                        raise ProjectionError("page bbox must have four coordinates")
-                    return (
-                        "page_bbox",
-                        {
-                            "kind": "page_bbox",
-                            "page": _integer(
-                                view.get("pageIndex"), "page_region.pageIndex"
-                            ),
-                            "x1": _integer(bbox[0], "page_region.x1"),
-                            "y1": _integer(bbox[1], "page_region.y1"),
-                            "x2": _integer(bbox[2], "page_region.x2"),
-                            "y2": _integer(bbox[3], "page_region.y2"),
-                        },
-                    )
-                if kind == "sheet_range":
-                    return (
-                        "sheet_cell",
-                        {
-                            "kind": "sheet_cell",
-                            "sheet": _sha256(
-                                view.get("opaqueSheetId"), "sheet_range.opaqueSheetId"
-                            ),
-                            "startCell": _string(
-                                view.get("startCell"), "sheet_range.startCell"
-                            ),
-                            "endCell": _string(
-                                view.get("endCell"), "sheet_range.endCell"
-                            ),
-                        },
-                    )
-                if kind == "slide_shape":
-                    return (
-                        "slide_shape",
-                        {
-                            "kind": "slide_shape",
-                            "slide": _integer(
-                                view.get("slideIndex"), "slide_shape.slideIndex"
-                            ),
-                            "shape": _shape_integer(
-                                view.get("opaqueShapeId"), "slide_shape.opaqueShapeId"
-                            ),
-                        },
-                    )
-                if kind == "ooxml_path":
-                    return (
-                        "ooxml_part_xpath",
-                        {
-                            "kind": "ooxml_part_xpath",
-                            "part": _sha256(
-                                view.get("opaqueSourceUnitId"),
-                                "ooxml_path.opaqueSourceUnitId",
-                            ),
-                            "xpath": _string(
-                                view.get("canonicalXPathPayloadRef"),
-                                "ooxml_path.canonicalXPathPayloadRef",
-                            ),
-                        },
-                    )
-                if kind == "source_text_position":
-                    return (
-                        "line_range",
-                        {
-                            "kind": "line_range",
-                            "startLine": _integer(
-                                view.get("startLine"), "source_text_position.startLine"
-                            ),
-                            "endLine": _integer(
-                                view.get("endLine"), "source_text_position.endLine"
-                            ),
-                        },
-                    )
+            views.extend(_objects(fragment.get("views"), "sourceFragment.views"))
+    for preferred_kind in (
+        "page_region",
+        "sheet_range",
+        "slide_shape",
+        "ooxml_path",
+        "source_text_position",
+    ):
+        for view in views:
+            kind = _string(view.get("kind"), "locator view kind")
+            if kind != preferred_kind:
+                continue
+            if kind == "page_region":
+                bbox = _array(view.get("bboxMilliPoint"), "page_region.bboxMilliPoint")
+                if len(bbox) != _BBOX_COORDINATES:
+                    raise ProjectionError("page bbox must have four coordinates")
+                return (
+                    "page_bbox",
+                    {
+                        "kind": "page_bbox",
+                        "page": _integer(
+                            view.get("pageIndex"), "page_region.pageIndex"
+                        ),
+                        "x1": _integer(bbox[0], "page_region.x1"),
+                        "y1": _integer(bbox[1], "page_region.y1"),
+                        "x2": _integer(bbox[2], "page_region.x2"),
+                        "y2": _integer(bbox[3], "page_region.y2"),
+                    },
+                )
+            if kind == "sheet_range":
+                return (
+                    "sheet_cell",
+                    {
+                        "kind": "sheet_cell",
+                        "sheet": _sha256(
+                            view.get("opaqueSheetId"), "sheet_range.opaqueSheetId"
+                        ),
+                        "startCell": _string(
+                            view.get("startCell"), "sheet_range.startCell"
+                        ),
+                        "endCell": _string(view.get("endCell"), "sheet_range.endCell"),
+                    },
+                )
+            if kind == "slide_shape":
+                return (
+                    "slide_shape",
+                    {
+                        "kind": "slide_shape",
+                        "slide": _integer(
+                            view.get("slideIndex"), "slide_shape.slideIndex"
+                        ),
+                        "shape": _shape_integer(
+                            view.get("opaqueShapeId"), "slide_shape.opaqueShapeId"
+                        ),
+                    },
+                )
+            if kind == "ooxml_path":
+                return (
+                    "ooxml_part_xpath",
+                    {
+                        "kind": "ooxml_part_xpath",
+                        "part": _sha256(
+                            view.get("opaqueSourceUnitId"),
+                            "ooxml_path.opaqueSourceUnitId",
+                        ),
+                        "xpath": _string(
+                            view.get("canonicalXPathPayloadRef"),
+                            "ooxml_path.canonicalXPathPayloadRef",
+                        ),
+                    },
+                )
+            if kind == "source_text_position":
+                return (
+                    "line_range",
+                    {
+                        "kind": "line_range",
+                        "startLine": _integer(
+                            view.get("startLine"), "source_text_position.startLine"
+                        ),
+                        "endLine": _integer(
+                            view.get("endLine"), "source_text_position.endLine"
+                        ),
+                    },
+                )
     for anchor in _objects(
         locator_set.get("structuralAnchors"), "locatorSet.structuralAnchors"
     ):

@@ -14,7 +14,7 @@ import re
 import struct
 import uuid
 from collections.abc import Coroutine
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Final, NoReturn, Protocol
 
 from mm_chat_rag.handlers import JobHandler, JobResult, with_job_context_admission
@@ -33,8 +33,10 @@ from mm_chat_rag.projection import (
     build_postgres_projection_batch,
 )
 from mm_chat_rag.provider_profile import (
-    DEFAULT_JINA_EMBEDDING_DIMENSIONS,
-    DEFAULT_JINA_EMBEDDING_MODEL,
+    DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS,
+    DEFAULT_SILICONFLOW_EMBEDDING_MODEL,
+    GenerationEmbeddingProfile,
+    ProviderProfileError,
     ProviderRuntimeProfile,
 )
 from mm_chat_rag.retry import PermanentJobError
@@ -121,7 +123,7 @@ class ParsedDocumentArtifacts:
 
 @dataclass(frozen=True, slots=True)
 class PassageEmbeddingCandidate:
-    """One child chunk whose lexical row needs a Jina passage embedding."""
+    """One child chunk whose lexical row needs a profile-bound embedding."""
 
     child_chunk_id: uuid.UUID
     content: str
@@ -142,15 +144,16 @@ class PassageEmbeddingVector:
 
     child_chunk_id: uuid.UUID
     embedding: tuple[float, ...]
-    model_id: str = DEFAULT_JINA_EMBEDDING_MODEL
-    dimensions: int = DEFAULT_JINA_EMBEDDING_DIMENSIONS
+    model_id: str = DEFAULT_SILICONFLOW_EMBEDDING_MODEL
+    dimensions: int = DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS
 
     def __post_init__(self) -> None:
         if self.child_chunk_id == _ZERO_UUID:
             _reject(JOB_HANDLER_EMBEDDING_VECTOR_INVALID)
-        if self.model_id != DEFAULT_JINA_EMBEDDING_MODEL:
-            _reject(JOB_HANDLER_EMBEDDING_VECTOR_INVALID)
-        if self.dimensions != DEFAULT_JINA_EMBEDDING_DIMENSIONS:
+        if not _valid_embedding_profile(
+            self.model_id,
+            self.dimensions,
+        ):
             _reject(JOB_HANDLER_EMBEDDING_VECTOR_INVALID)
         _validate_embedding_vector(self.embedding)
 
@@ -168,9 +171,10 @@ class StagedPassageEmbedding:
     def __post_init__(self) -> None:
         if self.child_chunk_id == _ZERO_UUID:
             _reject(JOB_HANDLER_EMBEDDING_VECTOR_INVALID)
-        if self.embedding_model_id != DEFAULT_JINA_EMBEDDING_MODEL:
-            _reject(JOB_HANDLER_EMBEDDING_VECTOR_INVALID)
-        if self.embedding_dimensions != DEFAULT_JINA_EMBEDDING_DIMENSIONS:
+        if not _valid_embedding_profile(
+            self.embedding_model_id,
+            self.embedding_dimensions,
+        ):
             _reject(JOB_HANDLER_EMBEDDING_VECTOR_INVALID)
         if not _SHA256_RE.fullmatch(self.embedding_vector_sha256):
             _reject(JOB_HANDLER_EMBEDDING_VECTOR_INVALID)
@@ -272,8 +276,17 @@ class ParseProjectionGateway(Protocol):
     ) -> Coroutine[Any, Any, bool]: ...
 
 
+class GenerationEmbeddingProfileGateway(Protocol):
+    """Resolve one parse job's generation-bound embedding vector space."""
+
+    def resolve_generation_embedding_profile(
+        self,
+        context: ProcessingJobContext,
+    ) -> Coroutine[Any, Any, GenerationEmbeddingProfile]: ...
+
+
 class PassageEmbeddingGateway(Protocol):
-    """Provider gateway for Jina passage embeddings."""
+    """Provider gateway for generation-bound passage embeddings."""
 
     def embed_passages(
         self,
@@ -332,18 +345,30 @@ class ParseHandlerDependencies:
     document_source: DocumentSourceGateway | None = None
     parser: ParserGateway | None = None
     projection: ParseProjectionGateway | None = None
+    embedding_profiles: GenerationEmbeddingProfileGateway | None = None
 
     def require_ready(
         self,
-    ) -> tuple[DocumentSourceGateway, ParserGateway, ParseProjectionGateway]:
+    ) -> tuple[
+        DocumentSourceGateway,
+        ParserGateway,
+        ParseProjectionGateway,
+        GenerationEmbeddingProfileGateway,
+    ]:
         """Return configured gateways or fail before any external side effect."""
         if (
             self.document_source is None
             or self.parser is None
             or self.projection is None
+            or self.embedding_profiles is None
         ):
             _reject(JOB_HANDLER_DEPENDENCY_UNCONFIGURED)
-        return self.document_source, self.parser, self.projection
+        return (
+            self.document_source,
+            self.parser,
+            self.projection,
+            self.embedding_profiles,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -384,7 +409,24 @@ async def parse_handler_with_dependencies(
     materialization_id = admitted.materialization_id
     if materialization_id is None:  # pragma: no cover - require_parse_context fence
         _reject(JOB_HANDLER_PARSE_ARTIFACT_INVALID)
-    source_gateway, parser_gateway, projection_gateway = dependencies.require_ready()
+    (
+        source_gateway,
+        parser_gateway,
+        projection_gateway,
+        embedding_profiles,
+    ) = dependencies.require_ready()
+
+    embedding_profile = await embedding_profiles.resolve_generation_embedding_profile(
+        admitted
+    )
+    try:
+        embedding_profile.validate()
+    except ProviderProfileError as error:
+        _reject_from(JOB_HANDLER_PARSE_PROFILE_INVALID, error)
+    admitted = replace(
+        admitted,
+        generation_embedding_profile=embedding_profile,
+    )
 
     source = await source_gateway.fetch_document_source(admitted)
     parsed = await parser_gateway.parse_document(admitted, source)
@@ -400,6 +442,8 @@ async def parse_handler_with_dependencies(
                 artifact_set_id=parsed.artifact_set_id,
                 materialization_id=materialization_id,
                 index_generation_id=admitted.index_generation_id,
+                embedding_model_id=embedding_profile.model_id,
+                embedding_dimensions=embedding_profile.dimensions,
             ),
         )
     except ProjectionError as error:
@@ -435,14 +479,14 @@ async def passage_embedding_handler_with_dependencies(
     context: ProcessingJobContext,
     dependencies: PassageEmbeddingHandlerDependencies,
 ) -> JobResult:
-    """Execute the admitted Jina passage-embedding seam."""
+    """Execute the admitted generation-bound passage-embedding seam."""
     admitted = require_passage_embedding_context(context)
     embedding_gateway, projection_gateway = dependencies.require_ready()
 
     candidates = await projection_gateway.fetch_passage_embedding_candidates(admitted)
     _validate_embedding_candidates(candidates)
     vectors = await embedding_gateway.embed_passages(admitted, candidates)
-    staged = _stage_passage_embedding_vectors(candidates, vectors)
+    staged = _stage_passage_embedding_vectors(admitted, candidates, vectors)
     await projection_gateway.stage_passage_embeddings(admitted, staged)
     complete = await projection_gateway.assert_materialization_search_complete(
         admitted,
@@ -521,22 +565,28 @@ def _validate_embedding_candidates(
 
 
 def _stage_passage_embedding_vectors(
+    context: ProcessingJobContext,
     candidates: tuple[PassageEmbeddingCandidate, ...],
     vectors: tuple[PassageEmbeddingVector, ...],
 ) -> tuple[StagedPassageEmbedding, ...]:
     if len(vectors) != len(candidates):
         _reject(JOB_HANDLER_EMBEDDING_COUNT_MISMATCH)
+    authority = context.authority
+    if authority is None:
+        _reject(JOB_HANDLER_EMBEDDING_VECTOR_INVALID)
     staged: list[StagedPassageEmbedding] = []
     for candidate, vector in zip(candidates, vectors, strict=True):
         if not isinstance(vector, PassageEmbeddingVector):
             _reject(JOB_HANDLER_EMBEDDING_VECTOR_INVALID)
         if vector.child_chunk_id != candidate.child_chunk_id:
             _reject(JOB_HANDLER_EMBEDDING_CHILD_MISMATCH)
+        if vector.model_id != authority.model_id:
+            _reject(JOB_HANDLER_EMBEDDING_VECTOR_INVALID)
         staged.append(
             StagedPassageEmbedding(
                 child_chunk_id=vector.child_chunk_id,
-                embedding_model_id=DEFAULT_JINA_EMBEDDING_MODEL,
-                embedding_dimensions=DEFAULT_JINA_EMBEDDING_DIMENSIONS,
+                embedding_model_id=vector.model_id,
+                embedding_dimensions=vector.dimensions,
                 embedding_vector=vector.embedding,
                 embedding_vector_sha256=embedding_vector_sha256(vector.embedding),
             )
@@ -545,7 +595,7 @@ def _stage_passage_embedding_vectors(
 
 
 def _validate_embedding_vector(embedding: tuple[float, ...]) -> tuple[float, ...]:
-    if len(embedding) != DEFAULT_JINA_EMBEDDING_DIMENSIONS:
+    if len(embedding) != DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS:
         _reject(JOB_HANDLER_EMBEDDING_VECTOR_INVALID)
     values: list[float] = []
     for value in embedding:
@@ -556,6 +606,13 @@ def _validate_embedding_vector(embedding: tuple[float, ...]) -> tuple[float, ...
             _reject(JOB_HANDLER_EMBEDDING_VECTOR_INVALID)
         values.append(number)
     return tuple(values)
+
+
+def _valid_embedding_profile(model_id: str, dimensions: int) -> bool:
+    return (
+        model_id == DEFAULT_SILICONFLOW_EMBEDDING_MODEL
+        and dimensions == DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS
+    )
 
 
 def _validate_purge_invisibility(

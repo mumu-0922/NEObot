@@ -76,11 +76,19 @@ func TestExecuteKnowledgeToolUsesSelectedCollectionsAndMintsEvidence(t *testing.
 		len(gate.input.SelectedCollectionIDs) != 1 {
 		t.Fatalf("governance input = %#v", gate.input)
 	}
-	result := knowledgeToolSuccessResult(decision)
+	result, projected, usedTokens, err := knowledgeToolSuccessResult(decision, 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(result, `"marker":"[K1]"`) ||
 		!strings.Contains(result, `"ok":true`) ||
+		!strings.Contains(result, validHydratedEvidence().SourceText) ||
+		!strings.Contains(result, validHydratedEvidence().ParentSourceText) ||
 		strings.Contains(result, decision.Citations[0].ContentHash) {
 		t.Fatalf("tool result = %s", result)
+	}
+	if !projected.ReadyForAnswer() || usedTokens <= 0 || usedTokens > 4096 {
+		t.Fatalf("projected decision/tokens = %#v/%d", projected, usedTokens)
 	}
 }
 
@@ -101,11 +109,17 @@ func TestExecuteKnowledgeToolTreatsMissAsSuccessfulEmptyResult(t *testing.T) {
 	if decision.Outcome != "no_evidence" || decision.ReadyForAnswer() {
 		t.Fatalf("decision = %#v", decision)
 	}
-	result := knowledgeToolSuccessResult(decision)
+	result, projected, usedTokens, err := knowledgeToolSuccessResult(decision, 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(result, `"ok":true`) ||
 		!strings.Contains(result, `"sources":[]`) ||
 		strings.Contains(result, "[K1]") {
 		t.Fatalf("empty tool result = %s", result)
+	}
+	if projected.Outcome != "no_evidence" || usedTokens != 0 {
+		t.Fatalf("projected empty decision/tokens = %#v/%d", projected, usedTokens)
 	}
 }
 

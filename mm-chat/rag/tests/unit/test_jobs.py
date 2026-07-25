@@ -10,7 +10,7 @@ from mm_chat_rag.jobs import JobRunner
 from mm_chat_rag.metrics import Metrics
 from mm_chat_rag.models import JobClaim
 from mm_chat_rag.provider_profile import (
-    MINERU_JINA_POSTGRES_PROFILE,
+    MINERU_SILICONFLOW_POSTGRES_PROFILE,
     ProviderRuntimeProfile,
 )
 from mm_chat_rag.retry import PermanentJobError, RetryableJobError
@@ -59,7 +59,7 @@ def job(attempt: int = 1, maximum: int = 3) -> JobClaim:
 
 def provider_profile() -> ProviderRuntimeProfile:
     return ProviderRuntimeProfile(
-        profile_id=MINERU_JINA_POSTGRES_PROFILE,
+        profile_id=MINERU_SILICONFLOW_POSTGRES_PROFILE,
         accepted_draft_wire_contracts=True,
     )
 

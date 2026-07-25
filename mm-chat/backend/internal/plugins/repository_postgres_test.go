@@ -45,8 +45,35 @@ func TestPostgresRegistryPersistsInstalledPluginsAndKeepsBuiltInsAuthoritative(t
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
-	if !containsPlugin(listed, "jina-web-reader") || !containsPlugin(listed, plugin.ID) {
-		t.Fatalf("listed plugins missing built-in or persisted plugin: %#v", listed)
+	if containsPlugin(listed, retiredJinaPluginID) || !containsPlugin(listed, plugin.ID) {
+		t.Fatalf("listed plugins include retired Jina or miss persisted plugin: %#v", listed)
+	}
+
+	legacyJina := *executePayload("https://r.jina.ai").Plugin
+	legacyJina.ID = retiredJinaPluginID
+	legacyPayload, err := json.Marshal(legacyJina)
+	if err != nil {
+		t.Fatalf("marshal legacy Jina plugin: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO plugin_registry (plugin_id, plugin, installed_by_user_id, built_in)
+VALUES ($1, $2::jsonb, $3, false)
+ON CONFLICT (plugin_id) DO UPDATE SET plugin = EXCLUDED.plugin
+`, legacyJina.ID, string(legacyPayload), userID); err != nil {
+		t.Fatalf("seed legacy Jina plugin: %v", err)
+	}
+	if got, ok, err := reloaded.Get(ctx, retiredJinaPluginID); err != nil || ok {
+		t.Fatalf("Get(retired Jina) = %#v, ok=%v, err=%v; want hidden", got, ok, err)
+	}
+	listed, err = reloaded.List(ctx)
+	if err != nil {
+		t.Fatalf("List() after legacy Jina seed error = %v", err)
+	}
+	if containsPlugin(listed, retiredJinaPluginID) {
+		t.Fatalf("List() exposed retired Jina registry row: %#v", listed)
+	}
+	if err := reloaded.Save(ctx, legacyJina); err != ErrPluginReservedID {
+		t.Fatalf("Save(retired Jina) error = %v, want ErrPluginReservedID", err)
 	}
 
 	builtin := BuiltInPlugins()[0]

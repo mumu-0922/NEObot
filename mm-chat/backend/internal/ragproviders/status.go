@@ -1,7 +1,5 @@
 package ragproviders
 
-import "neo-chat/mm-chat/backend/internal/config"
-
 const (
 	ProviderStatusReady              = "ready"
 	ProviderStatusMissingSecret      = "missing_secret"
@@ -19,8 +17,8 @@ type ProviderState struct {
 }
 
 type ProviderStatuses struct {
-	MinerU ProviderState `json:"mineru"`
-	Jina   ProviderState `json:"jina"`
+	MinerU      ProviderState `json:"mineru"`
+	SiliconFlow ProviderState `json:"siliconflow"`
 }
 
 type Capabilities struct {
@@ -38,12 +36,12 @@ type StatusResponse struct {
 
 func Status() StatusResponse {
 	minerU := providerState(false, 0)
-	jina := providerState(false, config.DefaultRAGJinaDimensions)
+	siliconFlow := providerState(false, SiliconFlowEmbeddingDimensions)
 
 	return StatusResponse{
 		Providers: ProviderStatuses{
-			MinerU: minerU,
-			Jina:   jina,
+			MinerU:      minerU,
+			SiliconFlow: siliconFlow,
 		},
 		Status: ServiceStatusUnavailable,
 		Ready:  false,

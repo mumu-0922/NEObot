@@ -11,6 +11,7 @@ import (
 
 var (
 	ErrRAGAnswerGovernanceRequired         = errors.New("rag answer governance required")
+	ErrRAGQueryEmbeddingGovernanceRequired = errors.New("rag query embedding governance required")
 	ErrRAGRerankGovernanceRequired         = errors.New("rag rerank governance required")
 	ErrRAGRoutingCatalogGovernanceRequired = errors.New("rag routing catalog governance required")
 )
@@ -40,7 +41,15 @@ type RAGAnswerGovernanceGate interface {
 }
 
 type RAGRerankGovernanceGate interface {
-	AuthorizeRAGRerank(context.Context, []string) error
+	AuthorizeRAGRerank(context.Context, []string, string) error
+}
+
+type RAGQueryEmbeddingGovernanceGate interface {
+	AuthorizeRAGQueryEmbedding(context.Context, knowledge.RetrievalProfileBinding) error
+}
+
+type RAGRetrievalProfileResolver interface {
+	ResolveGenerationRetrievalProfile(context.Context, string) (knowledge.RetrievalProfileBinding, error)
 }
 
 type RAGAnswerConsentReader interface {
@@ -56,6 +65,10 @@ type KnowledgeConsentRAGRerankGovernanceGate struct {
 	Reader RAGAnswerConsentReader
 }
 
+type KnowledgeConsentRAGQueryEmbeddingGovernanceGate struct {
+	Reader RAGAnswerConsentReader
+}
+
 type KnowledgeConsentRoutingCatalogGovernanceGate struct {
 	Reader RAGAnswerConsentReader
 }
@@ -66,6 +79,38 @@ func NewKnowledgeConsentRAGAnswerGovernanceGate(reader RAGAnswerConsentReader) *
 
 func NewKnowledgeConsentRAGRerankGovernanceGate(reader RAGAnswerConsentReader) *KnowledgeConsentRAGRerankGovernanceGate {
 	return &KnowledgeConsentRAGRerankGovernanceGate{Reader: reader}
+}
+
+func NewKnowledgeConsentRAGQueryEmbeddingGovernanceGate(
+	reader RAGAnswerConsentReader,
+) *KnowledgeConsentRAGQueryEmbeddingGovernanceGate {
+	return &KnowledgeConsentRAGQueryEmbeddingGovernanceGate{Reader: reader}
+}
+
+func (g *KnowledgeConsentRAGQueryEmbeddingGovernanceGate) AuthorizeRAGQueryEmbedding(
+	ctx context.Context,
+	binding knowledge.RetrievalProfileBinding,
+) error {
+	if g == nil || g.Reader == nil {
+		return ErrRAGDependencyUnavailable
+	}
+	if strings.TrimSpace(binding.ProviderID) == "" ||
+		strings.TrimSpace(binding.EmbeddingModelID) == "" {
+		return ErrRAGQueryEmbeddingGovernanceRequired
+	}
+	consents, err := g.Reader.ListQueryConsents(ctx)
+	if err != nil {
+		return fmt.Errorf("list rag query embedding consents: %w", err)
+	}
+	if _, ok := selectRAGPurposeConsent(
+		consents,
+		binding.ProviderID,
+		binding.EmbeddingModelID,
+		"query_embedding",
+	); !ok {
+		return ErrRAGQueryEmbeddingGovernanceRequired
+	}
+	return nil
 }
 
 func NewKnowledgeConsentRoutingCatalogGovernanceGate(
@@ -168,6 +213,7 @@ func selectRAGAnswerConsent(consents []knowledge.ProcessingConsent, providerID s
 func (g *KnowledgeConsentRAGRerankGovernanceGate) AuthorizeRAGRerank(
 	ctx context.Context,
 	selectedCollectionIDs []string,
+	indexGenerationID string,
 ) error {
 	if g == nil || g.Reader == nil {
 		return ErrRAGDependencyUnavailable
@@ -175,7 +221,22 @@ func (g *KnowledgeConsentRAGRerankGovernanceGate) AuthorizeRAGRerank(
 	if len(selectedCollectionIDs) == 0 {
 		return ErrRAGRerankGovernanceRequired
 	}
-	identity := knowledge.SingleUserRerankIdentity()
+	resolver, ok := g.Reader.(RAGRetrievalProfileResolver)
+	if !ok {
+		return ErrRAGRerankGovernanceRequired
+	}
+	binding, err := resolver.ResolveGenerationRetrievalProfile(
+		ctx,
+		indexGenerationID,
+	)
+	if err != nil || strings.TrimSpace(binding.ProviderID) == "" ||
+		strings.TrimSpace(binding.RerankModelID) == "" {
+		return ErrRAGRerankGovernanceRequired
+	}
+	identity := knowledge.ProcessorModelIdentity{
+		Processor: binding.ProviderID,
+		ModelID:   binding.RerankModelID,
+	}
 	queryConsents, err := g.Reader.ListQueryConsents(ctx)
 	if err != nil {
 		return fmt.Errorf("list rag rerank query consents: %w", err)

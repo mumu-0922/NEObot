@@ -10,21 +10,6 @@ import { Plugin } from "@/types";
 // ============================================================================
 
 /**
- * Jina Reader 参数 Schema
- */
-const JinaReaderSchema = {
-  type: "object",
-  properties: {
-    url: {
-      type: "string",
-      description:
-        "The full URL of the webpage to read (e.g., https://example.com)",
-    },
-  },
-  required: ["url"],
-};
-
-/**
  * 天气查询参数 Schema
  */
 const WeatherSchema = {
@@ -180,34 +165,6 @@ const AgnesVideoResultSchema = {
 // ============================================================================
 
 /**
- * Jina Web Reader 插件
- * 将任何 URL 转换为 LLM 友好的 Markdown 内容
- */
-export const JINA_READER_PLUGIN: Plugin = {
-  id: "jina-web-reader",
-  title: "Web Reader (Jina AI)",
-  description:
-    "Converts any URL into LLM-friendly markdown content. Useful for reading documentation, articles, or any webpage context.",
-  logoUrl: "https://jina.ai/icons/favicon-128x128.png",
-  manifestUrl: "",
-  baseUrl: "https://r.jina.ai",
-  category: "Utilities",
-  builtIn: true,
-  added: new Date().toISOString(),
-  functions: [
-    {
-      name: "read_webpage",
-      description:
-        "Reads the content of a specific webpage URL and returns it as clean markdown.",
-      method: "GET",
-      path: "/{url}",
-      parameters: JinaReaderSchema,
-    },
-  ],
-  auth: { type: "bearer", required: false },
-};
-
-/**
  * 实时天气插件
  * 获取任何城市的实时天气信息
  */
@@ -343,12 +300,17 @@ export const AGNES_VIDEO_PLUGIN: Plugin = {
  * 所有内置插件
  */
 export const BUILT_IN_PLUGINS: Plugin[] = [
-  JINA_READER_PLUGIN,
   WEATHER_PLUGIN,
   UNSPLASH_PLUGIN,
   AGNES_IMAGE_PLUGIN,
   AGNES_VIDEO_PLUGIN,
 ];
+
+/** Built-in IDs that must be removed from persisted state and never reused. */
+export const RETIRED_BUILT_IN_PLUGIN_IDS = [
+  "image-generation",
+  "jina-web-reader",
+] as const;
 
 /**
  * 插件分类

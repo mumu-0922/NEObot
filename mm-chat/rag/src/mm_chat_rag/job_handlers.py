@@ -17,7 +17,7 @@ from mm_chat_rag.handlers import JobHandler, JobResult, with_job_context_admissi
 from mm_chat_rag.job_context import ProcessingJobContext
 from mm_chat_rag.models import stable_error_code
 from mm_chat_rag.provider_profile import (
-    MINERU_JINA_POSTGRES_PROFILE,
+    MINERU_SILICONFLOW_POSTGRES_PROFILE,
     ProviderRuntimeProfile,
 )
 from mm_chat_rag.retry import PermanentJobError
@@ -59,7 +59,7 @@ async def parse_handler_skeleton(context: ProcessingJobContext) -> JobResult:
 async def passage_embedding_handler_skeleton(
     context: ProcessingJobContext,
 ) -> JobResult:
-    """Validate embedding authority and stop before Jina/Postgres writes."""
+    """Validate embedding authority and stop before provider/Postgres writes."""
     require_passage_embedding_context(context)
     _reject(JOB_HANDLER_SKELETON_UNPROMOTED)
 
@@ -127,7 +127,9 @@ def _require_provider_job_context(
         _reject(JOB_HANDLER_MATERIALIZATION_REQUIRED)
     if admitted.authority is None:
         _reject(JOB_HANDLER_PROVIDER_AUTHORITY_REQUIRED)
-    if admitted.runtime_provider_profile_id != MINERU_JINA_POSTGRES_PROFILE:
+    if admitted.runtime_provider_profile_id not in {
+        MINERU_SILICONFLOW_POSTGRES_PROFILE,
+    }:
         _reject(JOB_HANDLER_PROVIDER_PROFILE_REQUIRED)
     return admitted
 

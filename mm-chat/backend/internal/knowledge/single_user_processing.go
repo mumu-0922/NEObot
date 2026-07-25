@@ -51,24 +51,31 @@ func SingleUserAnswerGovernanceManifest(identity ProcessorModelIdentity) Governa
 	}
 }
 
-func SingleUserRerankIdentity() ProcessorModelIdentity {
+func SingleUserSiliconFlowEmbeddingIdentity() ProcessorModelIdentity {
 	return ProcessorModelIdentity{
-		Processor: "jina", EndpointID: "hosted-main", ModelID: "jina-reranker-v3",
+		Processor: "siliconflow", EndpointID: "siliconflow-cn-v1",
+		ModelID: "Pro/BAAI/bge-m3",
 	}
 }
 
-func SingleUserRerankGovernanceManifest() GovernanceManifest {
-	identity := SingleUserRerankIdentity()
+func SingleUserSiliconFlowRerankIdentity() ProcessorModelIdentity {
+	return ProcessorModelIdentity{
+		Processor: "siliconflow", EndpointID: "siliconflow-cn-v1",
+		ModelID: "Pro/BAAI/bge-reranker-v2-m3",
+	}
+}
+
+func singleUserSiliconFlowGovernanceManifest(
+	identity ProcessorModelIdentity,
+	purposes []string,
+) GovernanceManifest {
 	return GovernanceManifest{
-		Processor:        identity.Processor,
-		EndpointID:       identity.EndpointID,
-		ModelID:          identity.ModelID,
-		ModelAPIVersion:  "api-20260717",
-		AllowedPurposes:  []string{"rerank"},
-		AllowedDataTypes: []string{"text/plain"},
-		Region:           "global",
-		RetentionPolicy:  "none",
-		DeletionContract: "delete",
+		Processor: identity.Processor, EndpointID: identity.EndpointID,
+		ModelID: identity.ModelID, ModelAPIVersion: "v1-2026-07-24",
+		AllowedPurposes:  append([]string(nil), purposes...),
+		AllowedDataTypes: []string{"text/plain"}, Region: "CN",
+		RetentionPolicy:  "request-scoped",
+		DeletionContract: "provider-request-ephemeral",
 		TrainingUse:      "disabled",
 	}
 }
@@ -186,10 +193,9 @@ func BootstrapSingleUserAnswerProcessing(
 	}
 }
 
-// BootstrapSingleUserRerankProcessing grants the fixed owner and every
-// existing personal collection permission to send the query and already
-// reauthorized source text to the server-owned Jina reranker.
-func BootstrapSingleUserRerankProcessing(
+// BootstrapSingleUserSiliconFlowRetrievalProcessing admits the frozen BGE
+// query/passage vector space and reranker for existing personal collections.
+func BootstrapSingleUserSiliconFlowRetrievalProcessing(
 	ctx context.Context,
 	service *Service,
 	governance *GovernanceService,
@@ -198,41 +204,87 @@ func BootstrapSingleUserRerankProcessing(
 	if service == nil || governance == nil {
 		return ErrDatabaseRequired
 	}
-	head, err := governance.Apply(ctx, SingleUserRerankGovernanceManifest())
+	embeddingHead, err := governance.Apply(
+		ctx,
+		singleUserSiliconFlowGovernanceManifest(
+			SingleUserSiliconFlowEmbeddingIdentity(),
+			[]string{"passage_embedding", "query_embedding"},
+		),
+	)
 	if err != nil {
-		return fmt.Errorf("ensure rerank provider governance: %w", err)
+		return fmt.Errorf("ensure SiliconFlow embedding governance: %w", err)
 	}
-	identity := ProcessorModelIdentity{
-		Processor: head.Processor, EndpointID: head.EndpointID, ModelID: head.ModelID,
+	rerankHead, err := governance.Apply(
+		ctx,
+		singleUserSiliconFlowGovernanceManifest(
+			SingleUserSiliconFlowRerankIdentity(),
+			[]string{"rerank"},
+		),
+	)
+	if err != nil {
+		return fmt.Errorf("ensure SiliconFlow rerank governance: %w", err)
+	}
+	embeddingIdentity := ProcessorModelIdentity{
+		Processor: embeddingHead.Processor, EndpointID: embeddingHead.EndpointID,
+		ModelID: embeddingHead.ModelID,
+	}
+	rerankIdentity := ProcessorModelIdentity{
+		Processor: rerankHead.Processor, EndpointID: rerankHead.EndpointID,
+		ModelID: rerankHead.ModelID,
 	}
 	actorCtx := auth.WithUser(ctx, owner)
-	if _, err := service.PutQueryConsentForModel(actorCtx, identity, PutConsentInput{
-		Purposes: []string{"rerank"}, DataTypes: []string{"text/plain"}, PolicyVersion: "v1",
-	}); err != nil {
-		return fmt.Errorf("ensure owner rerank query consent: %w", err)
+	for _, consent := range []struct {
+		identity ProcessorModelIdentity
+		purpose  string
+	}{
+		{identity: embeddingIdentity, purpose: "query_embedding"},
+		{identity: rerankIdentity, purpose: "rerank"},
+	} {
+		if _, err := service.PutQueryConsentForModel(
+			actorCtx,
+			consent.identity,
+			PutConsentInput{
+				Purposes: []string{consent.purpose}, DataTypes: []string{"text/plain"},
+				PolicyVersion: "2026-07-24-siliconflow-pro-bge-approved-v1",
+			},
+		); err != nil {
+			return fmt.Errorf("ensure SiliconFlow %s query consent: %w", consent.purpose, err)
+		}
 	}
+
 	cursor := ""
 	for {
-		page, listErr := service.ListCollections(actorCtx, ListCollectionsInput{
+		page, err := service.ListCollections(actorCtx, ListCollectionsInput{
 			Scope: ScopePersonal, Cursor: cursor, Limit: maximumPageLimit,
 		})
-		if listErr != nil {
-			return fmt.Errorf("list single-user collections for rerank provider: %w", listErr)
+		if err != nil {
+			return fmt.Errorf("list collections for SiliconFlow retrieval: %w", err)
 		}
 		for _, collection := range page.Items {
-			if _, consentErr := service.PutCollectionConsentForModel(
-				actorCtx,
-				collection.ID,
-				identity,
-				PutConsentInput{
-					Purposes: []string{"rerank"}, DataTypes: []string{"text/plain"}, PolicyVersion: "v1",
-				},
-			); consentErr != nil {
-				return fmt.Errorf(
-					"ensure rerank consent for collection %s: %w",
+			for _, consent := range []struct {
+				identity ProcessorModelIdentity
+				purpose  string
+			}{
+				{identity: embeddingIdentity, purpose: "passage_embedding"},
+				{identity: rerankIdentity, purpose: "rerank"},
+			} {
+				if _, err := service.PutCollectionConsentForModel(
+					actorCtx,
 					collection.ID,
-					consentErr,
-				)
+					consent.identity,
+					PutConsentInput{
+						Purposes:      []string{consent.purpose},
+						DataTypes:     []string{"text/plain"},
+						PolicyVersion: "2026-07-24-siliconflow-pro-bge-approved-v1",
+					},
+				); err != nil {
+					return fmt.Errorf(
+						"ensure SiliconFlow %s consent for collection %s: %w",
+						consent.purpose,
+						collection.ID,
+						err,
+					)
+				}
 			}
 		}
 		if page.NextCursor == "" {

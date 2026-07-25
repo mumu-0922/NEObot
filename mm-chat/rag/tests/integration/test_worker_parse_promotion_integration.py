@@ -14,10 +14,6 @@ import psycopg
 import pytest
 
 import mm_chat_rag.worker as worker_module
-from mm_chat_rag.jina_gateway import (
-    JINA_PASSAGE_EMBEDDINGS_PATH,
-    build_jina_passage_embedding_handler_dependencies,
-)
 from mm_chat_rag.job_handler_dependencies import (
     DocumentSource,
     PassageEmbeddingHandlerDependencies,
@@ -33,12 +29,16 @@ from mm_chat_rag.mineru_gateway import (
 )
 from mm_chat_rag.provider_gateway import GO_PROVIDER_INTERNAL_TOKEN_HEADER
 from mm_chat_rag.provider_profile import (
-    DEFAULT_JINA_EMBEDDING_DIMENSIONS,
-    DEFAULT_JINA_EMBEDDING_MODEL,
-    MINERU_JINA_POSTGRES_PROFILE,
+    DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS,
+    DEFAULT_SILICONFLOW_EMBEDDING_MODEL,
+    MINERU_SILICONFLOW_POSTGRES_PROFILE,
     ProviderRuntimeProfile,
 )
+from mm_chat_rag.retrieval_embedding_gateway import (
+    build_profiled_passage_embedding_handler_dependencies,
+)
 from mm_chat_rag.settings import Settings
+from mm_chat_rag.siliconflow_gateway import SILICONFLOW_PASSAGE_EMBEDDINGS_PATH
 from mm_chat_rag.worker import Worker
 
 pytestmark = pytest.mark.integration
@@ -49,8 +49,8 @@ _HASH_C: Final = "c" * 64
 _HASH_0: Final = "0" * 64
 _MODEL_ID: Final = "mineru-parser-v20260716"
 _ENDPOINT_ID: Final = "hosted-main"
-_JINA_ENDPOINT_ID: Final = "admin-env"
-_JINA_MODEL_ID: Final = DEFAULT_JINA_EMBEDDING_MODEL
+_SILICONFLOW_ENDPOINT_ID: Final = "admin-env"
+_SILICONFLOW_MODEL_ID: Final = DEFAULT_SILICONFLOW_EMBEDDING_MODEL
 _SOURCE_GATEWAY_TOKEN: Final = "unit-test-source-gateway-token"
 _SOURCE_GATEWAY_URL: Final = "http://backend.internal"
 _SIGNED_UPLOAD_URL: Final = (
@@ -164,14 +164,14 @@ def _mineru_endpoint_id(fixture: ParsePromotionFixture) -> str:
     return f"{_ENDPOINT_ID}-{fixture.job_id.hex[:8]}"
 
 
-def _jina_endpoint_id(fixture: ParsePromotionFixture) -> str:
-    return f"{_JINA_ENDPOINT_ID}-{fixture.job_id.hex[:8]}"
+def _siliconflow_endpoint_id(fixture: ParsePromotionFixture) -> str:
+    return f"{_SILICONFLOW_ENDPOINT_ID}-{fixture.job_id.hex[:8]}"
 
 
 def _embedding_vector() -> tuple[float, ...]:
     return tuple(
         0.125 + float(index % 17) / 1000
-        for index in range(DEFAULT_JINA_EMBEDDING_DIMENSIONS)
+        for index in range(DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS)
     )
 
 
@@ -291,13 +291,13 @@ def _patch_parse_gateways(
     )
 
 
-def _patch_jina_gateway(
+def _patch_siliconflow_gateway(
     monkeypatch: pytest.MonkeyPatch,
-    jina_client: httpx.AsyncClient,
+    siliconflow_client: httpx.AsyncClient,
 ) -> None:
-    original_jina_builder = build_jina_passage_embedding_handler_dependencies
+    original_siliconflow_builder = build_profiled_passage_embedding_handler_dependencies
 
-    def build_with_mocked_jina(
+    def build_with_mocked_siliconflow(
         *,
         provider_gateway_url: str,
         internal_token: str,
@@ -305,17 +305,17 @@ def _patch_jina_gateway(
     ) -> PassageEmbeddingHandlerDependencies:
         assert provider_gateway_url == _SOURCE_GATEWAY_URL
         assert internal_token == _SOURCE_GATEWAY_TOKEN
-        return original_jina_builder(
+        return original_siliconflow_builder(
             provider_gateway_url=provider_gateway_url,
             internal_token=internal_token,
             projection=projection,
-            client=jina_client,
+            client=siliconflow_client,
         )
 
     monkeypatch.setattr(
         worker_module,
-        "build_jina_passage_embedding_handler_dependencies",
-        build_with_mocked_jina,
+        "build_profiled_passage_embedding_handler_dependencies",
+        build_with_mocked_siliconflow,
     )
 
 
@@ -332,7 +332,7 @@ def _settings(
         source_gateway_url=_SOURCE_GATEWAY_URL,
         source_gateway_token=_SOURCE_GATEWAY_TOKEN,
         provider_profile=ProviderRuntimeProfile(
-            profile_id=MINERU_JINA_POSTGRES_PROFILE,
+            profile_id=MINERU_SILICONFLOW_POSTGRES_PROFILE,
             accepted_draft_wire_contracts=True,
         ),
     )
@@ -400,9 +400,9 @@ async def test_promoted_parse_job_runner_finishes_live_postgres_job(
         True,
         "passage_embedding",
         "initial",
-        "jina",
-        _jina_endpoint_id(fixture),
-        _JINA_MODEL_ID,
+        "siliconflow",
+        _siliconflow_endpoint_id(fixture),
+        _SILICONFLOW_MODEL_ID,
         3,
         fixture.job_id,
         fixture.materialization_id,
@@ -417,21 +417,21 @@ async def test_promoted_parse_then_embedding_runner_finishes_live_postgres_chain
     await _seed_fixture(url, fixture)
     calls: list[str] = []
     source_requests: list[httpx.Request] = []
-    jina_requests: list[httpx.Request] = []
-    chain_text = "G7.5O promoted parse\n\nMinerU to Jina chain smoke"
+    siliconflow_requests: list[httpx.Request] = []
+    chain_text = "G7.5O promoted parse\n\nMinerU to SiliconFlow chain smoke"
     expected_vector_hash = embedding_vector_sha256(_embedding_vector())
 
-    def jina_handler(request: httpx.Request) -> httpx.Response:
-        calls.append("jina_embeddings")
-        jina_requests.append(request)
+    def siliconflow_handler(request: httpx.Request) -> httpx.Response:
+        calls.append("siliconflow_embeddings")
+        siliconflow_requests.append(request)
         payload = json.loads(request.content)
         assert len(payload["passages"]) == 1
         assert payload["passages"][0]["text"] == chain_text
         passage_id = payload["passages"][0]["passageId"]
         return _json_response(
             {
-                "model": _JINA_MODEL_ID,
-                "dimensions": DEFAULT_JINA_EMBEDDING_DIMENSIONS,
+                "model": _SILICONFLOW_MODEL_ID,
+                "dimensions": DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS,
                 "vectors": [
                     {
                         "passageId": passage_id,
@@ -447,7 +447,9 @@ async def test_promoted_parse_then_embedding_runner_finishes_live_postgres_chain
         httpx.AsyncClient(
             transport=_source_handler(fixture, calls, source_requests)
         ) as source_client,
-        httpx.AsyncClient(transport=httpx.MockTransport(jina_handler)) as jina_client,
+        httpx.AsyncClient(
+            transport=httpx.MockTransport(siliconflow_handler)
+        ) as siliconflow_client,
     ):
         _patch_parse_gateways(
             monkeypatch,
@@ -456,7 +458,7 @@ async def test_promoted_parse_then_embedding_runner_finishes_live_postgres_chain
             archive_body=archive_body,
             source_client=source_client,
         )
-        _patch_jina_gateway(monkeypatch, jina_client)
+        _patch_siliconflow_gateway(monkeypatch, siliconflow_client)
         worker = Worker(_settings(fixture, job_stages=("parse", "passage_embedding")))
         worker.validate_promotion_gate()
         assert set(worker.job_handlers) == {"parse", "passage_embedding"}
@@ -477,9 +479,9 @@ async def test_promoted_parse_then_embedding_runner_finishes_live_postgres_chain
                 True,
                 "passage_embedding",
                 "initial",
-                "jina",
-                _jina_endpoint_id(fixture),
-                _JINA_MODEL_ID,
+                "siliconflow",
+                _siliconflow_endpoint_id(fixture),
+                _SILICONFLOW_MODEL_ID,
                 3,
                 fixture.job_id,
                 fixture.materialization_id,
@@ -495,24 +497,24 @@ async def test_promoted_parse_then_embedding_runner_finishes_live_postgres_chain
         "mineru_upload",
         "mineru_poll",
         "mineru_download",
-        "jina_embeddings",
+        "siliconflow_embeddings",
     ]
     assert len(source_requests) == 1
-    assert len(jina_requests) == 1
-    jina_request = jina_requests[0]
-    assert jina_request.method == "POST"
-    assert jina_request.url == httpx.URL(
-        f"{_SOURCE_GATEWAY_URL}{JINA_PASSAGE_EMBEDDINGS_PATH}"
+    assert len(siliconflow_requests) == 1
+    siliconflow_request = siliconflow_requests[0]
+    assert siliconflow_request.method == "POST"
+    assert siliconflow_request.url == httpx.URL(
+        f"{_SOURCE_GATEWAY_URL}{SILICONFLOW_PASSAGE_EMBEDDINGS_PATH}"
     )
-    assert jina_request.headers[GO_PROVIDER_INTERNAL_TOKEN_HEADER] == (
+    assert siliconflow_request.headers[GO_PROVIDER_INTERNAL_TOKEN_HEADER] == (
         _SOURCE_GATEWAY_TOKEN
     )
-    assert "authorization" not in jina_request.headers
+    assert "authorization" not in siliconflow_request.headers
     state = await _job_projection_state(url, fixture)
     assert state[:5] == ("succeeded", None, 1, True, True)
     assert all(count > 0 for count in state[5:10])
     assert state[10] == "ready"
-    assert "MinerU to Jina chain smoke" in state[11]
+    assert "MinerU to SiliconFlow chain smoke" in state[11]
     assert await _embedding_job_state(url, fixture) == (
         "succeeded",
         None,
@@ -520,9 +522,9 @@ async def test_promoted_parse_then_embedding_runner_finishes_live_postgres_chain
         True,
         "passage_embedding",
         "initial",
-        "jina",
-        _jina_endpoint_id(fixture),
-        _JINA_MODEL_ID,
+        "siliconflow",
+        _siliconflow_endpoint_id(fixture),
+        _SILICONFLOW_MODEL_ID,
         3,
         fixture.job_id,
         fixture.materialization_id,
@@ -530,7 +532,7 @@ async def test_promoted_parse_then_embedding_runner_finishes_live_postgres_chain
     assert await _search_embedding_state(url, fixture) == (
         "ready",
         True,
-        DEFAULT_JINA_EMBEDDING_DIMENSIONS,
+        DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS,
         expected_vector_hash,
     )
     assert await _published_materialization_state(url, fixture) == (
@@ -688,17 +690,19 @@ async def _seed_fixture(url: str, fixture: ParsePromotionFixture) -> None:
               retention_policy, deletion_contract, training_use, status,
               governance_revision, manifest_hash
             ) VALUES (
-              %s, 'jina', %s, %s, 'api-20260623', %s,
+              %s, 'siliconflow', %s, %s, 'api-20260623', %s,
               ARRAY['passage_embedding'], ARRAY['text/plain'], 'global', 'none',
               'delete', 'disabled', 'approved', 1, %s
             )
             """,
             (
                 fixture.embedding_governance_profile_id,
-                _jina_endpoint_id(fixture),
-                _JINA_MODEL_ID,
-                _hash_hex("jina-profile-contract", fixture.governance_profile_id),
-                _hash_hex("jina-manifest", fixture.governance_profile_id),
+                _siliconflow_endpoint_id(fixture),
+                _SILICONFLOW_MODEL_ID,
+                _hash_hex(
+                    "siliconflow-profile-contract", fixture.governance_profile_id
+                ),
+                _hash_hex("siliconflow-manifest", fixture.governance_profile_id),
             ),
         )
         await connection.execute(
@@ -706,11 +710,11 @@ async def _seed_fixture(url: str, fixture: ParsePromotionFixture) -> None:
             INSERT INTO processor_governance_heads (
               processor, endpoint_id, model_id, status, active_profile_id,
               active_governance_revision, head_revision
-            ) VALUES ('jina', %s, %s, 'active', %s, 1, 1)
+            ) VALUES ('siliconflow', %s, %s, 'active', %s, 1, 1)
             """,
             (
-                _jina_endpoint_id(fixture),
-                _JINA_MODEL_ID,
+                _siliconflow_endpoint_id(fixture),
+                _SILICONFLOW_MODEL_ID,
                 fixture.embedding_governance_profile_id,
             ),
         )
@@ -722,7 +726,7 @@ async def _seed_fixture(url: str, fixture: ParsePromotionFixture) -> None:
               purposes, data_types, policy_version, decision, consent_revision,
               granted_by_user_id
             ) VALUES (
-              %s, 'collection', %s, 'jina', %s, %s, %s, 1, 1,
+              %s, 'collection', %s, 'siliconflow', %s, %s, %s, 1, 1,
               ARRAY['passage_embedding'], ARRAY['text/plain'], 'g7.5n-python',
               'granted', 1, %s
             )
@@ -730,8 +734,8 @@ async def _seed_fixture(url: str, fixture: ParsePromotionFixture) -> None:
             (
                 fixture.embedding_consent_id,
                 fixture.collection_id,
-                _jina_endpoint_id(fixture),
-                _JINA_MODEL_ID,
+                _siliconflow_endpoint_id(fixture),
+                _SILICONFLOW_MODEL_ID,
                 fixture.embedding_governance_profile_id,
                 fixture.user_id,
             ),
@@ -747,8 +751,8 @@ async def _seed_fixture(url: str, fixture: ParsePromotionFixture) -> None:
               base_profile_hash
             ) VALUES (
               %s, 1, 'canonical-ir-v2', '{}'::jsonb, %s, '{}'::jsonb, %s,
-              'jina', %s, 'jina-embeddings-v4', 'api-20260623',
-              'passage', 'jina', %s, 'jina-reranker-v3',
+              'siliconflow', %s, 'Pro/BAAI/bge-m3', 'api-20260623',
+              'passage', 'siliconflow', %s, 'Pro/BAAI/bge-reranker-v2-m3',
               'api-20260623', %s
             )
             """,
@@ -756,8 +760,8 @@ async def _seed_fixture(url: str, fixture: ParsePromotionFixture) -> None:
                 fixture.index_profile_id,
                 _hash_hex("parser-manifest", fixture.index_profile_id),
                 MINERU_TEXT_BASELINE_CHUNK_PROFILE_HASH,
-                _jina_endpoint_id(fixture),
-                _jina_endpoint_id(fixture),
+                _siliconflow_endpoint_id(fixture),
+                _siliconflow_endpoint_id(fixture),
                 fixture.base_profile_hash,
             ),
         )
@@ -786,8 +790,9 @@ async def _seed_fixture(url: str, fixture: ParsePromotionFixture) -> None:
               embedding_model_id, embedding_dimensions, rerank_processor,
               rerank_model_id, lexical_config, exact_config, profile_hash
             ) VALUES (
-              %s, %s, 'mineru_jina_postgres_v1', 'jina', 'jina-embeddings-v4',
-              1024, 'jina', 'jina-reranker-v3', '{}'::jsonb, '{}'::jsonb, %s
+              %s, %s, 'siliconflow_bge_m3_v1', 'siliconflow', 'Pro/BAAI/bge-m3',
+              1024, 'siliconflow', 'Pro/BAAI/bge-reranker-v2-m3',
+              '{}'::jsonb, '{}'::jsonb, %s
             )
             """,
             (

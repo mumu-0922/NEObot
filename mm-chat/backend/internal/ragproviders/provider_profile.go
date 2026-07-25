@@ -10,9 +10,40 @@ const (
 	MinerUResultPathPrefix   = "/pdf/"
 	MinerUResultPathSuffix   = ".zip"
 
-	JinaEmbeddingsEndpoint  = "https://api.jina.ai/v1/embeddings"
-	JinaRerankEndpoint      = "https://api.jina.ai/v1/rerank"
-	JinaEmbeddingModel      = "jina-embeddings-v4"
-	JinaRerankModel         = "jina-reranker-v3"
-	JinaEmbeddingDimensions = 1024
+	SiliconFlowEmbeddingsEndpoint  = "https://api.siliconflow.cn/v1/embeddings"
+	SiliconFlowRerankEndpoint      = "https://api.siliconflow.cn/v1/rerank"
+	SiliconFlowEmbeddingModel      = "Pro/BAAI/bge-m3"
+	SiliconFlowRerankModel         = "Pro/BAAI/bge-reranker-v2-m3"
+	SiliconFlowEmbeddingDimensions = 1024
 )
+
+type RetrievalProfileID string
+
+const (
+	RetrievalProfileSiliconFlow RetrievalProfileID = "siliconflow_bge_m3_v1"
+)
+
+type RetrievalProfile struct {
+	ID                  RetrievalProfileID
+	ProviderID          string
+	EmbeddingModelID    string
+	EmbeddingDimensions int
+	RerankModelID       string
+}
+
+var SiliconFlowRetrievalProfile = RetrievalProfile{
+	ID:                  RetrievalProfileSiliconFlow,
+	ProviderID:          providerIDSiliconFlow,
+	EmbeddingModelID:    SiliconFlowEmbeddingModel,
+	EmbeddingDimensions: SiliconFlowEmbeddingDimensions,
+	RerankModelID:       SiliconFlowRerankModel,
+}
+
+func ResolveRetrievalProfile(profileID RetrievalProfileID) (RetrievalProfile, error) {
+	switch profileID {
+	case RetrievalProfileSiliconFlow:
+		return SiliconFlowRetrievalProfile, nil
+	default:
+		return RetrievalProfile{}, ErrProviderGatewayOperationUnsupported
+	}
+}

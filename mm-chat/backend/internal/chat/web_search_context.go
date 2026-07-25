@@ -13,6 +13,7 @@ import (
 const (
 	maxWebSourceSnippetBytes = 8 << 10
 	maxWebContextBytes       = 64 << 10
+	webContextEnvelopeTokens = 192
 )
 
 const webSearchSystemInstruction = `Relevant Web evidence is included with the user request.
@@ -25,6 +26,13 @@ type WebCitation struct {
 	Title   string `json:"title"`
 	URL     string `json:"url"`
 	Snippet string `json:"snippet"`
+}
+
+type webSearchProviderContext struct {
+	Prompt          string
+	SystemPrompt    string
+	Result          websearch.Result
+	EstimatedTokens int
 }
 
 func prepareWebSearchResult(input websearch.Result) (websearch.Result, []WebCitation) {
@@ -56,6 +64,44 @@ func prepareWebSearchResult(input websearch.Result) (websearch.Result, []WebCita
 		})
 	}
 	return bounded, citations
+}
+
+func prepareWebSearchResultForTokenBudget(
+	input websearch.Result,
+	maxTokens int,
+) (websearch.Result, []WebCitation) {
+	bounded, _ := prepareWebSearchResult(input)
+	projected := websearch.Result{
+		Sources: []websearch.Source{},
+		Images:  append([]websearch.Image(nil), bounded.Images...),
+	}
+	if maxTokens <= webContextEnvelopeTokens {
+		return projected, nil
+	}
+	remaining := maxTokens - webContextEnvelopeTokens
+	for _, source := range bounded.Sources {
+		overhead := estimateProviderTextTokens(
+			"[W10] "+source.Title+"\nURL: "+source.URL+"\n",
+		) + 8
+		if overhead >= remaining {
+			break
+		}
+		content := truncateProviderTextToTokens(
+			source.Content,
+			remaining-overhead,
+		)
+		if strings.TrimSpace(content) == "" {
+			continue
+		}
+		source.Content = content
+		projected.Sources = append(projected.Sources, source)
+		remaining -= overhead + estimateProviderTextTokens(content)
+		if remaining <= 0 {
+			break
+		}
+	}
+	_, citations := prepareWebSearchResult(projected)
+	return projected, citations
 }
 
 func mergeWebSearchResults(current websearch.Result, incoming websearch.Result) websearch.Result {
@@ -99,6 +145,48 @@ func buildWebSearchProviderRequest(
 	}
 	prompt.WriteString("Answer naturally and cite Web markers for claims that use the evidence above.")
 	return prompt.String(), system.String()
+}
+
+func buildWebSearchProviderRequestWithBudget(
+	basePrompt string,
+	baseSystemPrompt string,
+	result websearch.Result,
+	maxEvidenceTokens int,
+) webSearchProviderContext {
+	effectiveBudget := maxEvidenceTokens
+	for effectiveBudget > webContextEnvelopeTokens {
+		bounded, citations := prepareWebSearchResultForTokenBudget(
+			result,
+			effectiveBudget,
+		)
+		if len(citations) == 0 {
+			return webSearchProviderContext{
+				Prompt: basePrompt, SystemPrompt: baseSystemPrompt,
+				Result: bounded,
+			}
+		}
+		prompt, systemPrompt := buildWebSearchProviderRequest(
+			basePrompt,
+			baseSystemPrompt,
+			bounded,
+		)
+		addedTokens := estimateProviderTextTokens(prompt) +
+			estimateProviderTextTokens(systemPrompt) -
+			estimateProviderTextTokens(basePrompt) -
+			estimateProviderTextTokens(baseSystemPrompt)
+		addedTokens = max(addedTokens, 0)
+		if addedTokens <= maxEvidenceTokens {
+			return webSearchProviderContext{
+				Prompt: prompt, SystemPrompt: systemPrompt, Result: bounded,
+				EstimatedTokens: addedTokens,
+			}
+		}
+		effectiveBudget -= addedTokens - maxEvidenceTokens
+	}
+	return webSearchProviderContext{
+		Prompt: basePrompt, SystemPrompt: baseSystemPrompt,
+		Result: websearch.Result{Sources: []websearch.Source{}, Images: result.Images},
+	}
 }
 
 func webSearchOutputBlocks(messageID string, result websearch.Result) []any {
@@ -249,4 +337,25 @@ func truncateWebUTF8(value string, maxBytes int) string {
 		value = value[:len(value)-1]
 	}
 	return strings.TrimSpace(value)
+}
+
+func truncateProviderTextToTokens(value string, maxTokens int) string {
+	value = strings.TrimSpace(value)
+	if maxTokens <= 0 || value == "" {
+		return ""
+	}
+	if estimateProviderTextTokens(value) <= maxTokens {
+		return value
+	}
+	runes := []rune(value)
+	low, high := 0, len(runes)
+	for low < high {
+		middle := low + (high-low+1)/2
+		if estimateProviderTextTokens(string(runes[:middle])) <= maxTokens {
+			low = middle
+		} else {
+			high = middle - 1
+		}
+	}
+	return strings.TrimSpace(string(runes[:low]))
 }

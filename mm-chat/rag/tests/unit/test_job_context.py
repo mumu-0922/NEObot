@@ -22,7 +22,7 @@ from mm_chat_rag.job_context import (
 )
 from mm_chat_rag.models import JobClaim, stable_error_code
 from mm_chat_rag.provider_profile import (
-    MINERU_JINA_POSTGRES_PROFILE,
+    MINERU_SILICONFLOW_POSTGRES_PROFILE,
     ProviderRuntimeProfile,
 )
 from mm_chat_rag.retry import PermanentJobError
@@ -32,7 +32,7 @@ HASH = "a" * 64
 
 def valid_profile() -> ProviderRuntimeProfile:
     return ProviderRuntimeProfile(
-        profile_id=MINERU_JINA_POSTGRES_PROFILE,
+        profile_id=MINERU_SILICONFLOW_POSTGRES_PROFILE,
         accepted_draft_wire_contracts=True,
     )
 
@@ -120,7 +120,7 @@ def test_provider_job_claim_is_admitted_to_typed_context() -> None:
     assert context.max_attempts == 3
     assert context.request_hash == HASH
     assert context.lease_token == lease_token
-    assert context.runtime_provider_profile_id == MINERU_JINA_POSTGRES_PROFILE
+    assert context.runtime_provider_profile_id == MINERU_SILICONFLOW_POSTGRES_PROFILE
     assert context.authority is not None
     assert context.authority.processor == "mineru"
     assert context.provider_backed is True
@@ -186,7 +186,7 @@ def test_purge_context_rejects_projection_gap_and_provider_authority() -> None:
         JOB_CONTEXT_PROJECTION_BINDING_MISSING,
     )
     assert_permanent(
-        purge_row(processor="jina"),
+        purge_row(processor="siliconflow"),
         JOB_CONTEXT_PURGE_AUTHORITY_FORBIDDEN,
     )
 
@@ -195,6 +195,35 @@ def test_provider_context_rejects_disabled_runtime_profile() -> None:
     with pytest.raises(PermanentJobError) as raised:
         admit_processing_job_context(
             claim(provider_row()), provider_profile=ProviderRuntimeProfile()
+        )
+    assert raised.value.error_code == JOB_CONTEXT_PROVIDER_PROFILE_MISMATCH
+
+
+def test_embedding_context_admits_bge_only_under_hybrid_worker_profile() -> None:
+    row = provider_row(
+        stage="passage_embedding",
+        processor="siliconflow",
+        model_id="Pro/BAAI/bge-m3",
+    )
+    profile = ProviderRuntimeProfile(
+        profile_id=MINERU_SILICONFLOW_POSTGRES_PROFILE,
+        accepted_draft_wire_contracts=True,
+    )
+
+    context = admit_processing_job_context(claim(row), provider_profile=profile)
+
+    assert context.authority is not None
+    assert context.authority.processor == "siliconflow"
+    assert context.authority.model_id == "Pro/BAAI/bge-m3"
+
+    retired_jina_row = provider_row(
+        stage="passage_embedding",
+        processor="jina",
+        model_id="jina-embeddings-v4",
+    )
+    with pytest.raises(PermanentJobError) as raised:
+        admit_processing_job_context(
+            claim(retired_jina_row), provider_profile=valid_profile()
         )
     assert raised.value.error_code == JOB_CONTEXT_PROVIDER_PROFILE_MISMATCH
 

@@ -42,7 +42,6 @@ from tools.provider_capture_evidence import (
 from tools.provider_capture_http import (
     LIMITS,
     TIMEOUT,
-    capture_jina,
     capture_mineru_submit,
 )
 
@@ -118,9 +117,6 @@ def capture(
         follow_redirects=False,
         proxy=proxy_url,
     ) as client:
-        if "jina" in providers:
-            records.append(capture_jina(client, keys["jina"]))
-            budgets["jina"] = {"allowedCalls": 3, "usedCalls": 3}
         if "mineru" in providers:
             pdf = deterministic_synthetic_pdf()
             records.append(capture_mineru_submit(client, keys["mineru"], pdf))
@@ -141,7 +137,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--provider",
-        choices=("all", "jina", "mineru"),
+        choices=("all", "mineru"),
         default="all",
         help="fixed provider subset (default: all)",
     )
@@ -210,8 +206,6 @@ def _execute_cli(args: argparse.Namespace, runtime: CaptureRuntime) -> int:
 
 def _dry_run_operations(providers: tuple[str, ...]) -> list[JsonValue]:
     operations: list[JsonValue] = []
-    if "jina" in providers:
-        operations.extend(_jina_dry_run_operations())
     if "mineru" in providers:
         operations.append(
             {
@@ -225,45 +219,15 @@ def _dry_run_operations(providers: tuple[str, ...]) -> list[JsonValue]:
     return operations
 
 
-def _jina_dry_run_operations() -> list[JsonValue]:
-    operations: list[JsonValue] = [
-        {
-            "count": 1,
-            "dimensions": dimensions,
-            "method": "POST",
-            "path": "/v1/embeddings",
-            "provider": "jina",
-        }
-        for dimensions in (1024, 2048)
-    ]
-    operations.append(
-        {
-            "count": 1,
-            "documentCount": 2,
-            "method": "POST",
-            "path": "/v1/rerank",
-            "provider": "jina",
-        }
-    )
-    return operations
-
-
 def _required_environment(providers: tuple[str, ...]) -> list[JsonValue]:
-    return [
-        name
-        for name, selected in (
-            ("JINA_API_KEY", "jina"),
-            ("MINERU_API_KEY", "mineru"),
-        )
-        if selected in providers
-    ]
+    return ["MINERU_API_KEY"] if "mineru" in providers else []
 
 
 def _load_credentials(
     providers: tuple[str, ...],
     environ: Environment,
 ) -> dict[str, str]:
-    names = {"jina": "JINA_API_KEY", "mineru": "MINERU_API_KEY"}
+    names = {"mineru": "MINERU_API_KEY"}
     result: dict[str, str] = {}
     for provider in providers:
         value = environ.get(names[provider], "")

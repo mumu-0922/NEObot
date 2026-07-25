@@ -237,6 +237,144 @@ def test_real_pdf_info_shape_maps_lines_and_scales_point_geometry() -> None:
     _validate(artifacts.canonical_ir, artifacts.chunk_manifest)
 
 
+def test_real_pdf_info_admits_references_page_numbers_and_empty_text() -> None:
+    middle = json.dumps(
+        {
+            "pdf_info": [
+                {
+                    "discarded_blocks": [
+                        {
+                            "bbox": [290, 760, 304, 775],
+                            "index": 0,
+                            "lines": [{"spans": [{"content": "7", "type": "text"}]}],
+                            "type": "page_number",
+                        }
+                    ],
+                    "page_idx": 0,
+                    "page_size": [612, 792],
+                    "para_blocks": [
+                        {
+                            "bbox": [68, 57, 287, 73],
+                            "index": 0,
+                            "lines": [],
+                            "type": "text",
+                        },
+                        {
+                            "bbox": [68, 100, 540, 132],
+                            "index": 1,
+                            "lines": [
+                                {
+                                    "spans": [
+                                        {
+                                            "content": "Reference entry",
+                                            "type": "text",
+                                        }
+                                    ]
+                                }
+                            ],
+                            "type": "ref_text",
+                        },
+                    ],
+                }
+            ]
+        },
+        separators=(",", ":"),
+    ).encode()
+
+    artifacts = build_mineru_structure_artifacts(_context(), _mapping(middle))
+
+    blocks = _objects(artifacts.canonical_ir["blocks"])
+    assert [block["blockType"] for block in blocks] == ["footnote", "footer"]
+    assert artifacts.canonical_ir["textBuffer"]["text"] == "Reference entry\n7"
+    assert blocks[0]["flags"]["nonIndexable"] is False
+    assert blocks[1]["flags"]["nonIndexable"] is True
+    indexed_block_ids = {
+        fragment["blockLogicalId"]
+        for child in _objects(artifacts.chunk_manifest["children"])
+        for fragment in _objects(child["spanFragments"])
+    }
+    assert blocks[0]["logicalBlockId"] in indexed_block_ids
+    assert blocks[1]["logicalBlockId"] not in indexed_block_ids
+    _validate(artifacts.canonical_ir, artifacts.chunk_manifest)
+
+
+def test_real_pdf_info_renders_nested_table_html_with_caption() -> None:
+    middle = json.dumps(
+        {
+            "pdf_info": [
+                {
+                    "discarded_blocks": [],
+                    "page_idx": 0,
+                    "page_size": [612, 792],
+                    "para_blocks": [
+                        {
+                            "bbox": [68, 100, 540, 260],
+                            "blocks": [
+                                {
+                                    "bbox": [68, 100, 540, 120],
+                                    "index": 0,
+                                    "lines": [
+                                        {
+                                            "spans": [
+                                                {
+                                                    "content": "Evidence table",
+                                                    "type": "text",
+                                                }
+                                            ]
+                                        }
+                                    ],
+                                    "type": "table_caption",
+                                },
+                                {
+                                    "bbox": [68, 130, 540, 260],
+                                    "index": 1,
+                                    "lines": [
+                                        {
+                                            "spans": [
+                                                {
+                                                    "html": (
+                                                        "<table><thead><tr>"
+                                                        "<th>Key</th><th>Value</th>"
+                                                        "</tr></thead><tbody><tr>"
+                                                        "<td>A|1</td>"
+                                                        "<td>42 &amp; exact</td>"
+                                                        "</tr></tbody></table>"
+                                                    ),
+                                                    "type": "table",
+                                                }
+                                            ]
+                                        }
+                                    ],
+                                    "type": "table_body",
+                                },
+                            ],
+                            "index": 0,
+                            "type": "table",
+                        }
+                    ],
+                }
+            ]
+        },
+        separators=(",", ":"),
+    ).encode()
+
+    artifacts = build_mineru_structure_artifacts(_context(), _mapping(middle))
+
+    blocks = _objects(artifacts.canonical_ir["blocks"])
+    assert len(blocks) == 1
+    assert blocks[0]["blockType"] == "table"
+    assert artifacts.canonical_ir["textBuffer"]["text"] == (
+        "Evidence table\nKey | Value\nA\\|1 | 42 & exact"
+    )
+    assert (
+        blocks[0]["locatorSet"]["textAnchors"][0]["sourceFragments"][0]["views"][0][
+            "kind"
+        ]
+        == "page_region"
+    )
+    _validate(artifacts.canonical_ir, artifacts.chunk_manifest)
+
+
 def test_long_mineru_text_uses_utf8_safe_planner_overlap() -> None:
     text = "多语言 café alpha beta gamma. " * 900
     middle = json.dumps(
@@ -280,4 +418,51 @@ def test_long_mineru_text_uses_utf8_safe_planner_overlap() -> None:
                 assert identity in previous
             current.add(identity)
         previous = current
+    _validate(artifacts.canonical_ir, artifacts.chunk_manifest)
+
+
+def test_repeated_page_edge_boilerplate_is_preserved_but_not_indexed() -> None:
+    pages: list[dict[str, object]] = [
+        {
+            "elements": [
+                {
+                    "bboxMilliPoint": [1000, 1000, 500000, 20000],
+                    "kind": "header",
+                    "text": "Confidential report",
+                },
+                {
+                    "bboxMilliPoint": [1000, 50000, 500000, 300000],
+                    "kind": "text",
+                    "text": f"Authoritative page content {page_index}",
+                },
+            ],
+            "heightMilliPoint": 792000,
+            "pageIndex": page_index,
+            "widthMilliPoint": 612000,
+        }
+        for page_index in range(4)
+    ]
+    middle = json.dumps(
+        {"pages": pages},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode()
+
+    artifacts = build_mineru_structure_artifacts(_context(), _mapping(middle))
+
+    blocks = _objects(artifacts.canonical_ir["blocks"])
+    repeated_headers = [block for block in blocks if block["blockType"] == "header"]
+    assert len(repeated_headers) == 4
+    assert all(block["flags"]["nonIndexable"] is True for block in repeated_headers)
+    children = _objects(artifacts.chunk_manifest["children"])
+    indexed_block_ids = {
+        fragment["blockLogicalId"]
+        for child in children
+        for fragment in _objects(child["spanFragments"])
+    }
+    assert all(
+        block["logicalBlockId"] not in indexed_block_ids for block in repeated_headers
+    )
+    paragraphs = [block for block in blocks if block["blockType"] == "paragraph"]
+    assert all(block["logicalBlockId"] in indexed_block_ids for block in paragraphs)
     _validate(artifacts.canonical_ir, artifacts.chunk_manifest)

@@ -25,17 +25,110 @@ func (s *Service) testRAGProviderConnection(
 			return nil, err
 		}
 		return []string{"allocate"}, nil
-	case RAGProviderJina:
-		if err := s.testJinaEmbeddingConnection(ctx, apiKey); err != nil {
+	case RAGProviderSiliconFlow:
+		if err := s.testSiliconFlowEmbeddingConnection(ctx, apiKey); err != nil {
 			return nil, err
 		}
-		if err := s.testJinaRerankConnection(ctx, apiKey); err != nil {
+		if err := s.testSiliconFlowRerankConnection(ctx, apiKey); err != nil {
 			return nil, err
 		}
 		return []string{"embedding", "rerank"}, nil
 	default:
 		return nil, ErrRAGProviderConfigUnsupported
 	}
+}
+
+func (s *Service) testSiliconFlowEmbeddingConnection(
+	ctx context.Context,
+	apiKey string,
+) error {
+	body, err := json.Marshal(map[string]any{
+		"encoding_format": "float",
+		"input":           []string{ragConnectionSentinel},
+		"model":           siliconFlowEmbeddingModel,
+	})
+	if err != nil {
+		return err
+	}
+	payload, err := s.postRAGProviderJSON(
+		ctx,
+		siliconFlowEmbeddingsURL,
+		apiKey,
+		body,
+		siliconFlowMaxResponseBytes,
+	)
+	if err != nil {
+		return err
+	}
+	var response struct {
+		Object string `json:"object"`
+		Model  string `json:"model"`
+		Data   []struct {
+			Object    string    `json:"object"`
+			Index     int       `json:"index"`
+			Embedding []float64 `json:"embedding"`
+		} `json:"data"`
+	}
+	if json.Unmarshal(payload, &response) != nil || response.Object != "list" ||
+		response.Model != siliconFlowEmbeddingModel || len(response.Data) != 1 ||
+		response.Data[0].Object != "embedding" || response.Data[0].Index != 0 ||
+		len(response.Data[0].Embedding) != siliconFlowDimensions {
+		return ErrRAGProviderConnectionFailed
+	}
+	norm := 0.0
+	for _, component := range response.Data[0].Embedding {
+		if math.IsNaN(component) || math.IsInf(component, 0) {
+			return ErrRAGProviderConnectionFailed
+		}
+		norm += component * component
+	}
+	if norm <= 0 || math.IsInf(norm, 0) {
+		return ErrRAGProviderConnectionFailed
+	}
+	return nil
+}
+
+func (s *Service) testSiliconFlowRerankConnection(
+	ctx context.Context,
+	apiKey string,
+) error {
+	body, err := json.Marshal(map[string]any{
+		"documents":        []string{ragConnectionSentinel},
+		"model":            siliconFlowRerankModel,
+		"query":            ragConnectionSentinel,
+		"return_documents": false,
+		"top_n":            1,
+	})
+	if err != nil {
+		return err
+	}
+	payload, err := s.postRAGProviderJSON(
+		ctx,
+		siliconFlowRerankURL,
+		apiKey,
+		body,
+		siliconFlowMaxResponseBytes,
+	)
+	if err != nil {
+		return err
+	}
+	var response struct {
+		ID      string `json:"id"`
+		Results []struct {
+			Index          int     `json:"index"`
+			RelevanceScore float64 `json:"relevance_score"`
+		} `json:"results"`
+	}
+	if json.Unmarshal(payload, &response) != nil ||
+		!validRAGProviderIdentifier(response.ID) || len(response.Results) != 1 ||
+		response.Results[0].Index != 0 ||
+		math.IsNaN(response.Results[0].RelevanceScore) ||
+		math.IsInf(response.Results[0].RelevanceScore, 0) ||
+		response.Results[0].RelevanceScore < 0 ||
+		response.Results[0].RelevanceScore > 1 {
+		return ErrRAGProviderConnectionFailed
+	}
+	return nil
 }
 
 func (s *Service) testMinerUConnection(ctx context.Context, apiKey string) error {
@@ -75,94 +168,6 @@ func (s *Service) testMinerUConnection(ctx context.Context, apiKey string) error
 	return nil
 }
 
-func (s *Service) testJinaEmbeddingConnection(ctx context.Context, apiKey string) error {
-	body, err := json.Marshal(map[string]any{
-		"dimensions":             jinaDimensions,
-		"embedding_type":         "float",
-		"input":                  []map[string]string{{"text": ragConnectionSentinel}},
-		"late_chunking":          false,
-		"model":                  jinaEmbeddingModel,
-		"return_multivector":     false,
-		"return_tokenized_input": false,
-		"task":                   "retrieval.query",
-		"truncate":               false,
-	})
-	if err != nil {
-		return err
-	}
-	payload, err := s.postRAGProviderJSON(
-		ctx,
-		jinaEmbeddingsURL,
-		apiKey,
-		body,
-		jinaMaxResponseBytes,
-	)
-	if err != nil {
-		return err
-	}
-	var response struct {
-		Model string `json:"model"`
-		Data  []struct {
-			Index     int       `json:"index"`
-			Embedding []float64 `json:"embedding"`
-		} `json:"data"`
-	}
-	if json.Unmarshal(payload, &response) != nil ||
-		response.Model != jinaEmbeddingModel || len(response.Data) != 1 ||
-		response.Data[0].Index != 0 || len(response.Data[0].Embedding) != jinaDimensions {
-		return ErrRAGProviderConnectionFailed
-	}
-	norm := 0.0
-	for _, component := range response.Data[0].Embedding {
-		if math.IsNaN(component) || math.IsInf(component, 0) {
-			return ErrRAGProviderConnectionFailed
-		}
-		norm += component * component
-	}
-	if norm <= 0 || math.IsInf(norm, 0) {
-		return ErrRAGProviderConnectionFailed
-	}
-	return nil
-}
-
-func (s *Service) testJinaRerankConnection(ctx context.Context, apiKey string) error {
-	body, err := json.Marshal(map[string]any{
-		"documents":         []string{ragConnectionSentinel},
-		"model":             jinaRerankModel,
-		"query":             ragConnectionSentinel,
-		"return_documents":  false,
-		"return_embeddings": false,
-		"top_n":             1,
-	})
-	if err != nil {
-		return err
-	}
-	payload, err := s.postRAGProviderJSON(
-		ctx,
-		jinaRerankURL,
-		apiKey,
-		body,
-		jinaMaxResponseBytes,
-	)
-	if err != nil {
-		return err
-	}
-	var response struct {
-		Model   string `json:"model"`
-		Results []struct {
-			Index          int     `json:"index"`
-			RelevanceScore float64 `json:"relevance_score"`
-		} `json:"results"`
-	}
-	if json.Unmarshal(payload, &response) != nil || response.Model != jinaRerankModel ||
-		len(response.Results) != 1 || response.Results[0].Index != 0 ||
-		math.IsNaN(response.Results[0].RelevanceScore) ||
-		math.IsInf(response.Results[0].RelevanceScore, 0) {
-		return ErrRAGProviderConnectionFailed
-	}
-	return nil
-}
-
 func (s *Service) postRAGProviderJSON(
 	ctx context.Context,
 	endpoint string,
@@ -170,7 +175,7 @@ func (s *Service) postRAGProviderJSON(
 	body []byte,
 	maxResponseBytes int64,
 ) ([]byte, error) {
-	if maxResponseBytes < 1 || maxResponseBytes > jinaMaxResponseBytes {
+	if maxResponseBytes < 1 || maxResponseBytes > siliconFlowMaxResponseBytes {
 		return nil, ErrRAGProviderConnectionFailed
 	}
 	request, err := http.NewRequestWithContext(

@@ -108,6 +108,8 @@ describe("settings UI primitives", () => {
     expect(ragProviderAdmin).toContain("encryptSecret");
     expect(ragProviderAdmin).toContain("BYOK_CONTEXTS.ragProvider");
     expect(ragProviderAdmin).toContain("data-rag-provider={provider.id}");
+    expect(ragProviderAdmin).toContain('id: "siliconflow"');
+    expect(ragProviderAdmin).toContain('roleKey: "siliconflowRole"');
     expect(ragProviderAdmin).not.toContain("updateAdminRAGProviderConfig");
     expect(ragProviderAdmin).not.toContain("testAdminRAGProviderConnection");
     expect(ragProviderAdmin).not.toContain("activateAdminRAGProvider");

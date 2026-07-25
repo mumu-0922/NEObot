@@ -36,6 +36,7 @@ var (
 	ErrPluginMethodUnsupported   = errors.New("plugin method is not supported")
 	ErrPluginPathArgsMissing     = errors.New("plugin path parameters are missing")
 	ErrPluginURLBlocked          = errors.New("plugin URL is blocked by policy")
+	ErrPluginRetired             = errors.New("plugin is permanently retired")
 	ErrPluginAuthRequired        = errors.New("plugin authentication is required")
 	ErrPluginAuthUnsupported     = errors.New("plugin authentication type is not supported")
 	ErrPluginNotRegistered       = errors.New("plugin is not registered")
@@ -47,6 +48,8 @@ var (
 	ErrPluginResponseTooLarge    = errors.New("plugin response is too large")
 	ErrPluginExecutionPayload    = errors.New("plugin execution payload is invalid")
 )
+
+const retiredJinaPluginID = "jina-web-reader"
 
 type SecretDecrypter func(*runtimeconfig.EncryptedSecretEnvelope, string) (string, error)
 
@@ -226,6 +229,9 @@ func (r *memoryRegistry) Save(_ context.Context, plugin Plugin) error {
 	if id == "" {
 		return ErrPluginExecutionPayload
 	}
+	if isRetiredPluginID(id) {
+		return ErrPluginReservedID
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.plugins[id] = clonePlugin(plugin)
@@ -233,6 +239,9 @@ func (r *memoryRegistry) Save(_ context.Context, plugin Plugin) error {
 }
 
 func (r *memoryRegistry) Get(_ context.Context, pluginID string) (Plugin, bool, error) {
+	if isRetiredPluginID(pluginID) {
+		return Plugin{}, false, nil
+	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	plugin, ok := r.plugins[strings.TrimSpace(pluginID)]
@@ -247,6 +256,9 @@ func (r *memoryRegistry) List(_ context.Context) ([]Plugin, error) {
 	defer r.mu.RUnlock()
 	plugins := make([]Plugin, 0, len(r.plugins))
 	for _, plugin := range r.plugins {
+		if isRetiredPluginID(plugin.ID) {
+			continue
+		}
 		plugins = append(plugins, clonePlugin(plugin))
 	}
 	return plugins, nil
@@ -318,6 +330,10 @@ func (h *Handler) executePlugin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) Execute(ctx context.Context, request ExecuteRequest) (any, error) {
+	if isRetiredPluginID(request.PluginID) ||
+		(request.Plugin != nil && isRetiredPluginID(request.Plugin.ID)) {
+		return nil, ErrPluginRetired
+	}
 	plugin := request.Plugin
 	functionDef := request.FunctionDef
 	auditSource := executionAuditSource(request)
@@ -328,6 +344,9 @@ func (s *Service) Execute(ctx context.Context, request ExecuteRequest) (any, err
 		}
 		plugin = &registeredPlugin
 		functionDef = &registeredFunction
+	}
+	if isRetiredPluginID(plugin.ID) {
+		return nil, ErrPluginRetired
 	}
 	if request.Args == nil {
 		return nil, ErrPluginExecutionPayload
@@ -388,9 +407,6 @@ func (s *Service) Execute(ctx context.Context, request ExecuteRequest) (any, err
 
 	headers := http.Header{}
 	headers.Set("Content-Type", "application/json")
-	if plugin.ID == "jina-web-reader" {
-		headers.Set("Accept", "application/json")
-	}
 	authValue, err := s.resolveAuthValue(plugin, request.AuthConfig)
 	if err != nil {
 		return nil, err
@@ -446,8 +462,8 @@ func (s *Service) Execute(ctx context.Context, request ExecuteRequest) (any, err
 
 	response, err := s.do(httpRequest)
 	if err != nil {
-		if errors.Is(err, ErrPluginURLBlocked) {
-			return nil, ErrPluginURLBlocked
+		if errors.Is(err, ErrPluginURLBlocked) || errors.Is(err, ErrPluginRetired) {
+			return nil, err
 		}
 		return nil, fmt.Errorf("%w: %v", ErrPluginRequestFailed, err)
 	}
@@ -482,6 +498,9 @@ func (s *Service) registerPlugin(ctx context.Context, plugin *Plugin, auditSourc
 		return Plugin{}, ErrPluginExecutionPayload
 	}
 	candidate := clonePlugin(*plugin)
+	if isRetiredPluginID(candidate.ID) {
+		return Plugin{}, ErrPluginReservedID
+	}
 	if err := validatePlugin(candidate); err != nil {
 		return Plugin{}, err
 	}
@@ -512,6 +531,9 @@ func (s *Service) InstallPlugin(ctx context.Context, request InstallRequest) (Pl
 		return Plugin{}, ErrPluginExecutionPayload
 	}
 	candidate := clonePlugin(*request.Plugin)
+	if isRetiredPluginID(candidate.ID) {
+		return Plugin{}, ErrPluginReservedID
+	}
 	if len(candidate.Functions) == 0 && strings.TrimSpace(candidate.ManifestURL) != "" {
 		plugin, err := s.pluginFromManifestURL(ctx, candidate, candidate.ManifestURL)
 		if err != nil {
@@ -575,8 +597,8 @@ func (s *Service) pluginFromManifestURL(ctx context.Context, plugin Plugin, mani
 
 	response, err := s.do(request)
 	if err != nil {
-		if errors.Is(err, ErrPluginURLBlocked) {
-			return Plugin{}, ErrPluginURLBlocked
+		if errors.Is(err, ErrPluginURLBlocked) || errors.Is(err, ErrPluginRetired) {
+			return Plugin{}, err
 		}
 		return Plugin{}, fmt.Errorf("%w: %v", ErrPluginRequestFailed, err)
 	}
@@ -616,6 +638,13 @@ func (s *Service) ListPlugins(ctx context.Context) ([]Plugin, error) {
 	if err != nil {
 		return nil, err
 	}
+	filtered := plugins[:0]
+	for _, plugin := range plugins {
+		if !isRetiredPluginID(plugin.ID) {
+			filtered = append(filtered, plugin)
+		}
+	}
+	plugins = filtered
 	sort.SliceStable(plugins, func(i, j int) bool {
 		if plugins[i].BuiltIn != plugins[j].BuiltIn {
 			return plugins[i].BuiltIn
@@ -630,6 +659,9 @@ func (s *Service) resolveRegisteredPlugin(ctx context.Context, request ExecuteRe
 	functionName := strings.TrimSpace(request.FunctionName)
 	if pluginID == "" || functionName == "" {
 		return Plugin{}, PluginFunction{}, ErrPluginExecutionPayload
+	}
+	if isRetiredPluginID(pluginID) {
+		return Plugin{}, PluginFunction{}, ErrPluginRetired
 	}
 	plugin, ok, err := s.registry.Get(ctx, pluginID)
 	if err != nil {
@@ -685,6 +717,9 @@ func (s *Service) validateOutboundURL(ctx context.Context, parsed *url.URL) erro
 	if host == "" || strings.ContainsAny(host, "\r\n") {
 		return ErrPluginURLBlocked
 	}
+	if isRetiredJinaHost(host) {
+		return ErrPluginRetired
+	}
 	if s.allowPrivateNetwork {
 		return nil
 	}
@@ -708,6 +743,20 @@ func (s *Service) validateOutboundURL(ctx context.Context, parsed *url.URL) erro
 
 func isBlockedIP(ip net.IP) bool {
 	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified()
+}
+
+func isRetiredPluginID(pluginID string) bool {
+	return strings.EqualFold(strings.TrimSpace(pluginID), retiredJinaPluginID)
+}
+
+func isRetiredJinaHost(host string) bool {
+	host = strings.TrimRight(strings.ToLower(strings.TrimSpace(host)), ".")
+	return host == "jina.ai" || strings.HasSuffix(host, ".jina.ai")
+}
+
+func hasRetiredJinaHost(rawURL string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	return err == nil && parsed != nil && isRetiredJinaHost(parsed.Hostname())
 }
 
 func applyAuth(
@@ -828,11 +877,17 @@ func isManifestURL(value string) bool {
 }
 
 func validatePlugin(plugin Plugin) error {
+	if isRetiredPluginID(plugin.ID) {
+		return ErrPluginReservedID
+	}
 	if strings.TrimSpace(plugin.ID) == "" {
 		return ErrPluginExecutionPayload
 	}
 	if strings.TrimSpace(plugin.BaseURL) == "" {
 		return ErrPluginBaseURLMissing
+	}
+	if hasRetiredJinaHost(plugin.BaseURL) || hasRetiredJinaHost(plugin.ManifestURL) {
+		return ErrPluginRetired
 	}
 	if len(plugin.Functions) == 0 {
 		return ErrPluginFunctionMissing
@@ -899,6 +954,8 @@ func (h *Handler) requireMethod(
 
 func writeExecutionError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, ErrPluginRetired):
+		writeError(w, http.StatusGone, "PLUGIN_RETIRED", "plugin is permanently retired")
 	case errors.Is(err, ErrPluginNotRegistered):
 		writeError(w, http.StatusNotFound, "PLUGIN_NOT_REGISTERED", "plugin is not registered")
 	case errors.Is(err, ErrPluginRegistryUnavailable):
@@ -932,6 +989,8 @@ func writeExecutionError(w http.ResponseWriter, err error) {
 
 func writeInstallError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, ErrPluginRetired):
+		writeError(w, http.StatusGone, "PLUGIN_RETIRED", "plugin is permanently retired")
 	case errors.Is(err, ErrPluginManifestInvalid):
 		writeError(w, http.StatusBadRequest, "PLUGIN_MANIFEST_INVALID", "plugin manifest is invalid")
 	case errors.Is(err, ErrPluginBaseURLMissing),

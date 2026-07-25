@@ -15,26 +15,17 @@ from urllib.parse import urlsplit
 type JsonValue = None | bool | int | float | str | list[JsonValue] | JsonObject
 type JsonObject = dict[str, JsonValue]
 
-JINA_HOST: Final = "api.jina.ai"
 MINERU_HOST: Final = "mineru.net"
-JINA_EMBED_URL: Final = f"https://{JINA_HOST}/v1/embeddings"
-JINA_RERANK_URL: Final = f"https://{JINA_HOST}/v1/rerank"
 MINERU_BATCH_URL: Final = f"https://{MINERU_HOST}/api/v4/file-urls/batch"
+# Historical evidence decoding constants. They do not authorize network I/O.
 JINA_MODEL: Final = "jina-embeddings-v4"
 JINA_RERANK_MODEL: Final = "jina-reranker-v3"
-SYNTHETIC_PASSAGE: Final = (
-    "MM Chat synthetic capture passage. No user or knowledge-base data."
-)
-SYNTHETIC_QUERY: Final = "Which document describes deterministic capture?"
-SYNTHETIC_DOCUMENTS: Final = (
-    "Deterministic capture uses synthetic provider inputs.",
-    "Production knowledge is never accepted by this harness.",
-)
 SYNTHETIC_PDF_NAME: Final = "mm-chat-synthetic-capture.pdf"
 MAX_RESPONSE_BYTES: Final = 1_048_576
 MAX_SAFE_INTEGER: Final = (1 << 53) - 1
 HTTP_OK: Final = 200
 JINA_CALL_COUNT: Final = 3
+# Historical evidence shape only; no Jina target is network-allowlisted.
 RERANK_DOCUMENT_COUNT: Final = 2
 OUTPUT_FILE: Final = "provider-capture-evidence.json"
 OUTPUT_DIR_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
@@ -49,8 +40,6 @@ _UNIQUE_LOCAL_IPV6_NETWORK: Final = ipaddress.ip_network("fc00::/7")
 
 _ALLOWED_TARGETS: Final = frozenset(
     {
-        ("POST", JINA_HOST, 443, "/v1/embeddings"),
-        ("POST", JINA_HOST, 443, "/v1/rerank"),
         ("POST", MINERU_HOST, 443, "/api/v4/file-urls/batch"),
     }
 )
@@ -64,8 +53,6 @@ _ERROR_CODES: Final = frozenset(
         "EVIDENCE_SCHEMA_INVALID",
         "EVIDENCE_TARGET_EXISTS",
         "EVIDENCE_WRITE_FAILED",
-        "JINA_EMBEDDING_SHAPE_INVALID",
-        "JINA_RERANK_SHAPE_INVALID",
         "MINERU_SUBMIT_SHAPE_INVALID",
         "MINERU_ARCHIVE_INVALID",
         "MINERU_LIFECYCLE_SHAPE_INVALID",
@@ -249,8 +236,8 @@ def request_hash(body: JsonObject) -> str:
 def selected_providers(provider: str) -> tuple[str, ...]:
     """Return the fixed provider subset."""
     if provider == "all":
-        return ("jina", "mineru")
-    if provider in {"jina", "mineru"}:
+        return ("mineru",)
+    if provider == "mineru":
         return (provider,)
     raise CaptureError("PROVIDER_SELECTION_INVALID")
 

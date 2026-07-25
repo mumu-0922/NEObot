@@ -223,7 +223,10 @@ func main() {
 		knowledge.WithSingleUserCollectionConsents(),
 	}
 	if rerankConfigured {
-		knowledgeOptions = append(knowledgeOptions, knowledge.WithSingleUserRerankConsent())
+		knowledgeOptions = append(
+			knowledgeOptions,
+			knowledge.WithSingleUserSiliconFlowRetrievalConsents(),
+		)
 	}
 	answerIdentities := make([]knowledge.ProcessorModelIdentity, 0)
 	if cfg.Auth.Mode == config.AuthModeDevelopment {
@@ -275,7 +278,7 @@ func main() {
 			}
 		}
 		if err == nil && rerankConfigured {
-			err = knowledge.BootstrapSingleUserRerankProcessing(
+			err = knowledge.BootstrapSingleUserSiliconFlowRetrievalProcessing(
 				bootstrapCtx,
 				knowledgeService,
 				governanceService,

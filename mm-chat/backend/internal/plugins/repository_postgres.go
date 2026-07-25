@@ -28,6 +28,9 @@ func NewPostgresRegistry(db *sql.DB, builtIns ...Plugin) *PostgresRegistry {
 }
 
 func (r *PostgresRegistry) Save(ctx context.Context, plugin Plugin) error {
+	if isRetiredPluginID(plugin.ID) {
+		return ErrPluginReservedID
+	}
 	if r == nil || r.db == nil {
 		return ErrPluginRegistryUnavailable
 	}
@@ -70,6 +73,9 @@ ON CONFLICT (plugin_id) DO UPDATE SET
 
 func (r *PostgresRegistry) Get(ctx context.Context, pluginID string) (Plugin, bool, error) {
 	pluginID = strings.TrimSpace(pluginID)
+	if isRetiredPluginID(pluginID) {
+		return Plugin{}, false, nil
+	}
 	if r == nil || r.db == nil {
 		return r.getBuiltIn(ctx, pluginID)
 	}
@@ -111,8 +117,9 @@ func (r *PostgresRegistry) List(ctx context.Context) ([]Plugin, error) {
 	rows, err := r.db.QueryContext(ctx, `
 SELECT plugin
 FROM plugin_registry
+WHERE lower(trim(plugin_id)) <> lower($1)
 ORDER BY lower(plugin_id)
-`)
+`, retiredJinaPluginID)
 	if err != nil {
 		return nil, fmt.Errorf("list plugin registry: %w", err)
 	}
@@ -132,6 +139,9 @@ ORDER BY lower(plugin_id)
 		plugin, err := unmarshalPlugin(payload)
 		if err != nil {
 			return nil, err
+		}
+		if isRetiredPluginID(plugin.ID) {
+			continue
 		}
 		if _, ok := seen[plugin.ID]; ok {
 			continue

@@ -5,17 +5,6 @@ import (
 	"testing"
 )
 
-func TestNormalizeJinaWebReaderResponse(t *testing.T) {
-	result := normalizePluginResponse(&Plugin{ID: "jina-web-reader"}, map[string]any{
-		"code": float64(200),
-		"data": map[string]any{"content": "# Example\n\nReadable markdown."},
-	})
-
-	if result != "# Example\n\nReadable markdown." {
-		t.Fatalf("result = %#v, want readable markdown", result)
-	}
-}
-
 func TestNormalizeAgnesImageResponse(t *testing.T) {
 	response := map[string]any{
 		"data": []any{map[string]any{

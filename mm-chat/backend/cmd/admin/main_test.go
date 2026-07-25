@@ -227,7 +227,32 @@ func TestProviderWireContractApplyAllowedRequiresExplicitDraftProfile(t *testing
 	t.Setenv(ragProviderProfileEnv, ragDraftAcceptedProviderProfile)
 	t.Setenv(ragProviderProfileDraftAcceptedEnv, "true")
 	if !providerWireContractApplyAllowed() {
-		t.Fatal("providerWireContractApplyAllowed() = false for accepted G7 provider profile")
+		t.Fatal("providerWireContractApplyAllowed() = false for accepted BGE provider profile")
+	}
+}
+
+func TestJinaGovernanceManifestCannotApply(t *testing.T) {
+	t.Setenv(ragProviderProfileEnv, ragDraftAcceptedProviderProfile)
+	t.Setenv(ragProviderProfileDraftAcceptedEnv, "true")
+	payload := `{"processor":"Jina-AI","endpointId":"hosted-main",` +
+		`"modelId":"jina-embeddings-v4","modelApiVersion":"api-20260623",` +
+		`"allowedPurposes":["query_embedding"],` +
+		`"allowedDataTypes":["text/plain"],"region":"global",` +
+		`"retentionPolicy":"none","deletionContract":"delete",` +
+		`"trainingUse":"disabled"}`
+
+	var output strings.Builder
+	err := run(
+		[]string{"governance-apply", "--manifest-stdin"},
+		strings.NewReader(payload),
+		&output,
+	)
+	if !errors.Is(err, errJinaRuntimeRetired) ||
+		err.Error() != jinaRuntimeRetiredErrorCode {
+		t.Fatalf("governance-apply error = %v", err)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("governance-apply output = %q, want empty", output.String())
 	}
 }
 

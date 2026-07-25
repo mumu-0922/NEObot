@@ -30,39 +30,9 @@ from tools.provider_capture import (
 
 _OBSERVED_AT = datetime(2026, 7, 13, 4, 5, 6, tzinfo=UTC)
 _KEYS = {
-    "JINA_API_KEY": "unit-test-jina-credential",
     "MINERU_API_KEY": "unit-test-mineru-credential",
 }
 _PRIVATE_PROXY = "http://172.16.0.2:7890"
-
-
-def _embedding_payload(dimensions: int) -> dict[str, Any]:
-    return {
-        "data": [
-            {
-                "embedding": [0.125] * dimensions,
-                "index": 0,
-                "object": "embedding",
-            }
-        ],
-        "model": "jina-embeddings-v4",
-        "object": "list",
-        "request_id": "sensitive-jina-request-id",
-        "usage": {"prompt_tokens": 11, "total_tokens": 11},
-    }
-
-
-def _rerank_payload() -> dict[str, Any]:
-    return {
-        "model": "jina-reranker-v3",
-        "object": "list",
-        "request_id": "sensitive-jina-rerank-request-id",
-        "results": [
-            {"index": 1, "relevance_score": 0.75},
-            {"index": 0, "relevance_score": 0.25},
-        ],
-        "usage": {"total_tokens": 19},
-    }
 
 
 def _mineru_payload() -> dict[str, Any]:
@@ -115,11 +85,6 @@ def _success_transport(
     def handler(request: httpx.Request) -> httpx.Response:
         if requests is not None:
             requests.append(request)
-        body = json.loads(request.content)
-        if request.url.path == "/v1/embeddings":
-            return _json_response(_embedding_payload(body["dimensions"]))
-        if request.url.path == "/v1/rerank":
-            return _json_response(_rerank_payload())
         if request.url.path == "/api/v4/file-urls/batch":
             return _json_response(_mineru_payload())
         raise AssertionError("unexpected request")
@@ -131,7 +96,7 @@ def _valid_snapshot() -> dict[str, Any]:
     return cast(
         "dict[str, Any]",
         capture(
-            "jina",
+            "mineru",
             observed_at=_OBSERVED_AT,
             runtime=CaptureRuntime(
                 environ=_KEYS,
@@ -232,7 +197,7 @@ def test_execute_missing_key_fails_closed_before_network_or_directory(
         raise AssertionError("missing credentials reached the network")
 
     exit_code = main(
-        ["--execute", "--provider", "jina", "--output-dir", "capture"],
+        ["--execute", "--provider", "mineru", "--output-dir", "capture"],
         runtime=CaptureRuntime(
             environ={},
             transport=httpx.MockTransport(forbidden_network),
@@ -273,7 +238,7 @@ def test_custom_transport_capture_error_is_sanitized(
         raise CaptureError(secret)
 
     exit_code = main(
-        ["--execute", "--provider", "jina", "--output-dir", "capture"],
+        ["--execute", "--provider", "mineru", "--output-dir", "capture"],
         runtime=CaptureRuntime(
             environ=_KEYS,
             transport=httpx.MockTransport(handler),
@@ -289,52 +254,24 @@ def test_custom_transport_capture_error_is_sanitized(
     assert list(tmp_path.iterdir()) == []
 
 
-def test_fixed_jina_plan_makes_exactly_three_calls_with_frozen_semantics() -> None:
-    requests: list[httpx.Request] = []
-    snapshot = capture(
-        "jina",
-        observed_at=_OBSERVED_AT,
-        runtime=CaptureRuntime(
-            environ=_KEYS,
-            transport=_success_transport(requests),
-        ),
-    )
+def test_retired_jina_selection_is_rejected_before_network() -> None:
+    calls = 0
 
-    assert len(requests) == 3
-    assert [request.url.path for request in requests] == [
-        "/v1/embeddings",
-        "/v1/embeddings",
-        "/v1/rerank",
-    ]
-    first = json.loads(requests[0].content)
-    second = json.loads(requests[1].content)
-    assert first["dimensions"] == 1024
-    assert second["dimensions"] == 2048
-    first.pop("dimensions")
-    second.pop("dimensions")
-    assert first == second
-    assert first == {
-        "embedding_type": "float",
-        "input": [
-            {
-                "text": (
-                    "MM Chat synthetic capture passage. No user or knowledge-base data."
-                )
-            }
-        ],
-        "late_chunking": False,
-        "model": "jina-embeddings-v4",
-        "return_multivector": False,
-        "return_tokenized_input": False,
-        "task": "retrieval.passage",
-        "truncate": False,
-    }
-    rerank = json.loads(requests[2].content)
-    assert rerank["model"] == "jina-reranker-v3"
-    assert len(rerank["documents"]) == 2
-    assert rerank["return_documents"] is False
-    assert rerank["return_embeddings"] is False
-    assert snapshot["budgets"] == {"jina": {"allowedCalls": 3, "usedCalls": 3}}
+    def forbidden_network(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("retired Jina selection reached the network")
+
+    with pytest.raises(CaptureError, match="PROVIDER_SELECTION_INVALID"):
+        capture(
+            "jina",
+            observed_at=_OBSERVED_AT,
+            runtime=CaptureRuntime(
+                environ={"JINA_API_KEY": "must-not-be-read"},
+                transport=httpx.MockTransport(forbidden_network),
+            ),
+        )
+    assert calls == 0
 
 
 @pytest.mark.parametrize(
@@ -397,7 +334,7 @@ def test_generic_proxy_environment_is_ignored(
 
     monkeypatch.setattr("tools.provider_capture.httpx.Client", client_factory)
     capture(
-        "jina",
+        "mineru",
         observed_at=_OBSERVED_AT,
         runtime=CaptureRuntime(
             environ=_KEYS
@@ -427,7 +364,7 @@ def test_explicit_private_proxy_is_injected_but_never_recorded(
 
     monkeypatch.setattr("tools.provider_capture.httpx.Client", client_factory)
     snapshot = capture(
-        "jina",
+        "mineru",
         observed_at=_OBSERVED_AT,
         runtime=CaptureRuntime(
             environ=_KEYS | {"PROVIDER_CAPTURE_PROXY_URL": _PRIVATE_PROXY},
@@ -453,7 +390,7 @@ def test_invalid_explicit_proxy_fails_before_network_and_never_echoes_value(
         raise AssertionError("invalid proxy reached network")
 
     exit_code = main(
-        ["--execute", "--provider", "jina", "--output-dir", "capture"],
+        ["--execute", "--provider", "mineru", "--output-dir", "capture"],
         runtime=CaptureRuntime(
             environ=_KEYS | {"PROVIDER_CAPTURE_PROXY_URL": forbidden},
             transport=httpx.MockTransport(handler),
@@ -476,18 +413,12 @@ def test_http_requests_disable_compression_and_do_not_replay_cookies() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        body = json.loads(request.content)
-        payload = (
-            _embedding_payload(body["dimensions"])
-            if request.url.path == "/v1/embeddings"
-            else _rerank_payload()
-        )
-        response = _json_response(payload)
+        response = _json_response(_mineru_payload())
         response.headers["Set-Cookie"] = "provider-session=sensitive"
         return response
 
     capture(
-        "jina",
+        "mineru",
         observed_at=_OBSERVED_AT,
         runtime=CaptureRuntime(
             environ=_KEYS,
@@ -495,7 +426,7 @@ def test_http_requests_disable_compression_and_do_not_replay_cookies() -> None:
         ),
     )
 
-    assert len(requests) == 3
+    assert len(requests) == 1
     assert all(request.headers["accept-encoding"] == "identity" for request in requests)
     assert all("cookie" not in request.headers for request in requests)
 
@@ -531,7 +462,7 @@ def test_redirect_is_rejected_without_following_location() -> None:
 
     with pytest.raises(CaptureError, match="REDIRECT_FORBIDDEN"):
         capture(
-            "jina",
+            "mineru",
             observed_at=_OBSERVED_AT,
             runtime=CaptureRuntime(
                 environ=_KEYS,
@@ -570,7 +501,7 @@ def test_response_content_type_json_and_utf8_are_strict(
     transport = httpx.MockTransport(lambda _: _bytes_response(content, headers=headers))
     with pytest.raises(CaptureError, match=error_code):
         capture(
-            "jina",
+            "mineru",
             observed_at=_OBSERVED_AT,
             runtime=CaptureRuntime(environ=_KEYS, transport=transport),
         )
@@ -602,7 +533,7 @@ def test_response_encoding_and_declared_length_are_fail_closed(
     transport = httpx.MockTransport(lambda _: _bytes_response(b"{}", headers=headers))
     with pytest.raises(CaptureError, match=error_code):
         capture(
-            "jina",
+            "mineru",
             observed_at=_OBSERVED_AT,
             runtime=CaptureRuntime(environ=_KEYS, transport=transport),
         )
@@ -627,7 +558,7 @@ def test_oversize_response_is_stopped_and_rejected() -> None:
     )
     with pytest.raises(CaptureError, match="PROVIDER_RESPONSE_TOO_LARGE"):
         capture(
-            "jina",
+            "mineru",
             observed_at=_OBSERVED_AT,
             runtime=CaptureRuntime(environ=_KEYS, transport=transport),
         )
@@ -870,7 +801,7 @@ def test_execute_rejects_escaping_output_before_network(
         raise AssertionError("invalid destination reached network")
 
     exit_code = main(
-        ["--execute", "--provider", "jina", "--output-dir", "../escape"],
+        ["--execute", "--provider", "mineru", "--output-dir", "../escape"],
         runtime=CaptureRuntime(
             environ=_KEYS,
             transport=httpx.MockTransport(forbidden_network),

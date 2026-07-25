@@ -14,8 +14,6 @@ func normalizePluginResponse(plugin *Plugin, responseData any) any {
 	}
 
 	switch plugin.ID {
-	case "jina-web-reader":
-		return normalizeJinaWebReaderResponse(responseData)
 	case agnesImagePluginID:
 		return normalizeAgnesImageResponse(responseData)
 	case agnesVideoPluginID:
@@ -25,22 +23,6 @@ func normalizePluginResponse(plugin *Plugin, responseData any) any {
 	default:
 		return responseData
 	}
-}
-
-func normalizeJinaWebReaderResponse(responseData any) any {
-	record, ok := asRecord(responseData)
-	if !ok || !numberEquals(record["code"], 200) {
-		return responseData
-	}
-	data, ok := asRecord(record["data"])
-	if !ok {
-		return responseData
-	}
-	content := stringValue(data["content"])
-	if content == "" {
-		return responseData
-	}
-	return content
 }
 
 func normalizeAgnesImageResponse(responseData any) any {
@@ -196,35 +178,4 @@ func nullableExistingValue(record map[string]any, key string) any {
 		return value
 	}
 	return nil
-}
-
-func numberEquals(value any, expected float64) bool {
-	switch typed := value.(type) {
-	case int:
-		return float64(typed) == expected
-	case int8:
-		return float64(typed) == expected
-	case int16:
-		return float64(typed) == expected
-	case int32:
-		return float64(typed) == expected
-	case int64:
-		return float64(typed) == expected
-	case uint:
-		return float64(typed) == expected
-	case uint8:
-		return float64(typed) == expected
-	case uint16:
-		return float64(typed) == expected
-	case uint32:
-		return float64(typed) == expected
-	case uint64:
-		return float64(typed) == expected
-	case float32:
-		return float64(typed) == expected
-	case float64:
-		return typed == expected
-	default:
-		return false
-	}
 }

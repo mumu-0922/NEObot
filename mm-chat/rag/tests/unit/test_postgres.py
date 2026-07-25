@@ -44,7 +44,10 @@ from mm_chat_rag.projection import (
     PostgresProjectionBatch,
 )
 from mm_chat_rag.provider_profile import (
-    MINERU_JINA_POSTGRES_PROFILE,
+    DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS,
+    DEFAULT_SILICONFLOW_EMBEDDING_MODEL,
+    MINERU_SILICONFLOW_POSTGRES_PROFILE,
+    GenerationEmbeddingProfile,
     ProviderRuntimeProfile,
 )
 from mm_chat_rag.retry import PermanentJobError
@@ -295,7 +298,7 @@ def projection_batch(context: ProcessingJobContext) -> PostgresProjectionBatch:
                 collection_id=context.collection_id,
                 document_id=context.document_id,
                 document_version_id=context.document_version_id,
-                embedding_model_id="jina-embeddings-v4",
+                embedding_model_id="Pro/BAAI/bge-m3",
                 embedding_dimensions=1024,
                 lexical_text="hello fixture",
                 exact_terms=("fixture", "hello"),
@@ -331,6 +334,7 @@ def test_sql_surface_is_select_only_and_function_allowlisted() -> None:
         "stage_passage_embedding",
         "fetch_parse_source_metadata",
         "resolve_parse_chunk_profile",
+        "resolve_generation_embedding_profile",
         "stage_parse_projection",
         "complete_parse_and_enqueue_embedding",
         "complete_embedding_and_publish",
@@ -375,7 +379,7 @@ async def test_adapter_calls_only_frozen_functions() -> None:
         source_gateway_url="http://backend:8080",
         source_gateway_token=SOURCE_GATEWAY_TOKEN,
         provider_profile=ProviderRuntimeProfile(
-            profile_id=MINERU_JINA_POSTGRES_PROFILE,
+            profile_id=MINERU_SILICONFLOW_POSTGRES_PROFILE,
             accepted_draft_wire_contracts=True,
         ),
     )
@@ -550,7 +554,7 @@ async def test_passage_embedding_projection_gateway_calls_functions() -> None:
             (
                 context.materialization_id,
                 len(candidates),
-                "jina-embeddings-v4",
+                "Pro/BAAI/bge-m3",
                 1024,
             ),
         ),
@@ -709,6 +713,63 @@ async def test_parse_chunk_profile_resolver_rejects_missing_row() -> None:
 
     assert raised.value.error_code == JOB_HANDLER_PARSE_PROFILE_INVALID
     assert len(connection.calls) == 1
+
+
+async def test_generation_embedding_profile_resolver_is_generation_fenced() -> None:
+    worker_id = uuid.uuid4()
+    settings = Settings(
+        database_url="postgresql://worker:secret@db/rag",
+        worker_id=worker_id,
+    )
+    context = parse_context()
+    adapter, connection = adapter_with_rows(
+        [
+            {
+                "processor": "siliconflow",
+                "embedding_model_id": DEFAULT_SILICONFLOW_EMBEDDING_MODEL,
+                "embedding_dimensions": DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS,
+            }
+        ],
+        settings,
+    )
+
+    observed = await adapter.resolve_generation_embedding_profile(context)
+
+    assert observed == GenerationEmbeddingProfile(
+        processor="siliconflow",
+        model_id=DEFAULT_SILICONFLOW_EMBEDDING_MODEL,
+        dimensions=DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS,
+    )
+    assert connection.calls == [
+        (
+            _SQL["resolve_generation_embedding_profile"],
+            (
+                context.job_id,
+                worker_id,
+                context.lease_token,
+                context.index_generation_id,
+                context.materialization_id,
+            ),
+        )
+    ]
+
+
+async def test_generation_embedding_profile_resolver_rejects_cross_space_row() -> None:
+    context = parse_context()
+    adapter, _connection = adapter_with_rows(
+        [
+            {
+                "processor": "jina",
+                "embedding_model_id": "jina-embeddings-v4",
+                "embedding_dimensions": DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS,
+            }
+        ]
+    )
+
+    with pytest.raises(PermanentJobError) as raised:
+        await adapter.resolve_generation_embedding_profile(context)
+
+    assert raised.value.error_code == JOB_HANDLER_PARSE_PROFILE_INVALID
 
 
 async def test_parse_projection_gateway_calls_token_fenced_function() -> None:

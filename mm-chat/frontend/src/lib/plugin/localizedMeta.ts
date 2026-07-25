@@ -10,8 +10,6 @@
  */
 
 export type ConfigPluginKey =
-  | "pluginJinaTitle"
-  | "pluginJinaDescription"
   | "pluginWeatherTitle"
   | "pluginWeatherDescription"
   | "pluginUnsplashTitle"
@@ -25,10 +23,6 @@ const BUILT_IN_PLUGIN_I18N: Record<
   string,
   { titleKey: ConfigPluginKey; descriptionKey: ConfigPluginKey }
 > = {
-  "jina-web-reader": {
-    titleKey: "pluginJinaTitle",
-    descriptionKey: "pluginJinaDescription",
-  },
   "weather-gpt": {
     titleKey: "pluginWeatherTitle",
     descriptionKey: "pluginWeatherDescription",

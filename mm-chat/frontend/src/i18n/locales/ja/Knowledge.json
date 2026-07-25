@@ -144,9 +144,6 @@
   "serverConsentExpiresAtValue": "期限 {value}",
   "serverConsentDecidedAt": "決定日時 {value}",
   "serverConsentPresetMineruPdfParse": "MinerU PDF 解析",
-  "serverConsentPresetJinaPassageEmbedding": "Jina パッセージ埋め込み",
-  "serverConsentPresetJinaQueryEmbedding": "Jina クエリ/再ランキング",
-  "serverConsentPresetJinaAnswer": "Jina 再ランキング/回答",
   "serverConsentStatus": {
     "active": "有効",
     "granted": "付与済み",

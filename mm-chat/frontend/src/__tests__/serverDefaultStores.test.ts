@@ -240,30 +240,36 @@ describe("server default store injection", () => {
     });
   });
 
-  it("refreshes built-in plugin definitions without dropping saved auth secrets", async () => {
+  it("purges the retired Jina plugin, activation, and saved auth", async () => {
     const { useSettingsStore } = await import("../store/core/settingsStore");
-    const { JINA_READER_PLUGIN } = await import("../config/plugins");
     const { encryptLocalSecret, LOCAL_SECRET_CONTEXTS, hasLocalSecret } =
       await import("../lib/security/localSecrets");
+    const retiredPluginId = "jina-web-reader";
 
     const localValueSecret = await encryptLocalSecret(
       "jina-secret",
-      LOCAL_SECRET_CONTEXTS.pluginAuth(JINA_READER_PLUGIN.id),
+      LOCAL_SECRET_CONTEXTS.pluginAuth(retiredPluginId),
     );
     const staleJinaPlugin: Plugin = {
-      ...JINA_READER_PLUGIN,
+      id: retiredPluginId,
       title: "Old Jina",
-      auth: { type: "none" },
+      description: "Retired reader",
+      logoUrl: "",
+      manifestUrl: "",
+      baseUrl: "https://r.jina.ai",
+      category: "Utilities",
+      builtIn: true,
+      added: new Date().toISOString(),
+      functions: [],
+      auth: { type: "bearer", required: false },
     };
 
     useSettingsStore.setState((state) => ({
       ...state,
-      installedPlugins: state.installedPlugins.map((plugin) =>
-        plugin.id === JINA_READER_PLUGIN.id ? staleJinaPlugin : plugin,
-      ),
-      activePlugins: [JINA_READER_PLUGIN.id],
+      installedPlugins: [...state.installedPlugins, staleJinaPlugin],
+      activePlugins: [retiredPluginId],
       pluginConfigs: {
-        [JINA_READER_PLUGIN.id]: {
+        [retiredPluginId]: {
           disabledFunctions: [],
           auth: {
             type: "bearer",
@@ -277,18 +283,18 @@ describe("server default store injection", () => {
 
     useSettingsStore.getState().ensureBuiltInPlugins();
 
-    const refreshedPlugin = useSettingsStore
+    const retiredPlugin = useSettingsStore
       .getState()
-      .installedPlugins.find((plugin) => plugin.id === JINA_READER_PLUGIN.id);
+      .installedPlugins.find((plugin) => plugin.id === retiredPluginId);
     const savedAuth =
-      useSettingsStore.getState().pluginConfigs[JINA_READER_PLUGIN.id]?.auth;
+      useSettingsStore.getState().pluginConfigs[retiredPluginId]?.auth;
 
-    expect(refreshedPlugin?.title).toBe(JINA_READER_PLUGIN.title);
-    expect(refreshedPlugin?.auth).toEqual({ type: "bearer", required: false });
-    expect(useSettingsStore.getState().activePlugins).toContain(
-      JINA_READER_PLUGIN.id,
+    expect(retiredPlugin).toBeUndefined();
+    expect(useSettingsStore.getState().activePlugins).not.toContain(
+      retiredPluginId,
     );
-    expect(hasLocalSecret(savedAuth?.localValueSecret)).toBe(true);
+    expect(savedAuth).toBeUndefined();
+    expect(hasLocalSecret(savedAuth?.localValueSecret)).toBe(false);
   });
 
   it("keeps plugin auth local secrets in persisted settings snapshots", async () => {

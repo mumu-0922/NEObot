@@ -40,6 +40,12 @@ from mm_chat_rag.models import (
     stable_error_code,
 )
 from mm_chat_rag.projection import PostgresProjectionBatch
+from mm_chat_rag.provider_profile import (
+    DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS,
+    DEFAULT_SILICONFLOW_EMBEDDING_MODEL,
+    GenerationEmbeddingProfile,
+    ProviderProfileError,
+)
 from mm_chat_rag.query import EvidenceCandidate
 from mm_chat_rag.retry import PermanentJobError
 from mm_chat_rag.settings import Settings
@@ -77,6 +83,10 @@ _SQL: Final[Mapping[str, str]] = {
     ),
     "resolve_parse_chunk_profile": (
         "SELECT * FROM knowledge_resolve_parse_chunk_profile(%s, %s, %s, %s, %s)"
+    ),
+    "resolve_generation_embedding_profile": (
+        "SELECT * FROM knowledge_resolve_generation_embedding_profile"
+        "(%s, %s, %s, %s, %s)"
     ),
     "stage_parse_projection": (
         "SELECT * FROM knowledge_stage_parse_projection"
@@ -386,7 +396,7 @@ class PostgresAdapter:
         context: ProcessingJobContext,
         embeddings: tuple[StagedPassageEmbedding, ...],
     ) -> None:
-        """Stage Jina passage embeddings through one token-fenced function per row."""
+        """Stage profile-bound embeddings through one fenced function per row."""
         lease_token = _require_context_lease_token(context)
         for embedding in embeddings:
             row = await self._call(
@@ -422,13 +432,31 @@ class PostgresAdapter:
             raise PermanentJobError(
                 stable_error_code(JOB_HANDLER_EMBEDDING_CANDIDATE_INVALID)
             )
+        model_id = DEFAULT_SILICONFLOW_EMBEDDING_MODEL
+        dimensions = DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS
+        if isinstance(materialization_or_context, ProcessingJobContext):
+            authority = materialization_or_context.authority
+            if authority is not None:
+                profile = GenerationEmbeddingProfile(
+                    processor=authority.processor,
+                    model_id=authority.model_id,
+                    dimensions=DEFAULT_SILICONFLOW_EMBEDDING_DIMENSIONS,
+                )
+                try:
+                    profile.validate()
+                except ProviderProfileError as error:
+                    raise PermanentJobError(
+                        stable_error_code(JOB_HANDLER_EMBEDDING_VECTOR_INVALID)
+                    ) from error
+                model_id = profile.model_id
+                dimensions = profile.dimensions
         row = await self._call(
             "assert_search_complete",
             (
                 materialization_id,
                 expected_child_count,
-                "jina-embeddings-v4",
-                1024,
+                model_id,
+                dimensions,
             ),
         )
         return _function_succeeded(row)
@@ -515,6 +543,60 @@ class PostgresAdapter:
                 stable_error_code(JOB_HANDLER_PARSE_PROFILE_INVALID)
             )
         return chunk_profile_hash
+
+    async def resolve_generation_embedding_profile(
+        self,
+        context: ProcessingJobContext,
+    ) -> GenerationEmbeddingProfile:
+        """Resolve the leased parse job's generation-bound vector space."""
+        lease_token = _require_context_lease_token(context)
+        materialization_id = context.materialization_id
+        if materialization_id is None:
+            raise PermanentJobError(
+                stable_error_code(JOB_HANDLER_PARSE_PROFILE_INVALID)
+            )
+        try:
+            row = await self._call(
+                "resolve_generation_embedding_profile",
+                (
+                    context.job_id,
+                    self._settings.worker_id,
+                    lease_token,
+                    context.index_generation_id,
+                    materialization_id,
+                ),
+            )
+        except psycopg.Error as error:
+            _raise_stable_database_error(error)
+            raise
+        if row is None:
+            raise PermanentJobError(
+                stable_error_code(JOB_HANDLER_PARSE_PROFILE_INVALID)
+            )
+        profile = GenerationEmbeddingProfile(
+            processor=_row_text(
+                row,
+                "processor",
+                JOB_HANDLER_PARSE_PROFILE_INVALID,
+            ),
+            model_id=_row_text(
+                row,
+                "embedding_model_id",
+                JOB_HANDLER_PARSE_PROFILE_INVALID,
+            ),
+            dimensions=_row_positive_int(
+                row,
+                "embedding_dimensions",
+                JOB_HANDLER_PARSE_PROFILE_INVALID,
+            ),
+        )
+        try:
+            profile.validate()
+        except ProviderProfileError as error:
+            raise PermanentJobError(
+                stable_error_code(JOB_HANDLER_PARSE_PROFILE_INVALID)
+            ) from error
+        return profile
 
     async def stage_parse_projection(
         self,

@@ -42,8 +42,8 @@ func TestRuntimeProviderResolverAdmitsBuiltInSearchOnlyForOpenAI(t *testing.T) {
 	}{
 		{providerType: "OpenAI", wantBuiltIn: true},
 		{providerType: "OpenAI Compatible", wantBuiltIn: false},
-		{providerType: "Gemini", wantBuiltIn: false},
-		{providerType: "Anthropic", wantBuiltIn: false},
+		{providerType: "Gemini", wantBuiltIn: true},
+		{providerType: "Anthropic", wantBuiltIn: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.providerType, func(t *testing.T) {
@@ -774,7 +774,7 @@ func TestAuthRequiredModeLetsInternalProviderRoutesUseTheirOwnTokenGate(t *testi
 	for _, path := range []string{
 		ragproviders.InternalMinerUAllocatePath,
 		ragproviders.InternalMinerUPollPath,
-		ragproviders.InternalJinaEmbeddingsPath,
+		ragproviders.InternalSiliconFlowEmbeddingsPath,
 	} {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))

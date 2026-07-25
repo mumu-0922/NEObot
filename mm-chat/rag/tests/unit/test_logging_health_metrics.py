@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 
 import httpx
 from prometheus_client import generate_latest
 
+import mm_chat_rag.logging as logging_module
 from mm_chat_rag.health import ReadinessState, create_health_app
-from mm_chat_rag.logging import RedactedJsonFormatter, redact
+from mm_chat_rag.logging import RedactedJsonFormatter, configure_logging, redact
 from mm_chat_rag.metrics import Metrics
 
 
@@ -59,6 +61,57 @@ def test_json_formatter_never_serializes_exception_text() -> None:
     assert parsed["error_type"] == "RuntimeError"
     assert parsed["fields"]["token"] == "[REDACTED]"
     assert "must-not-leak" not in json.dumps(parsed)
+
+
+def test_redaction_handles_url_and_scalar_edge_cases() -> None:
+    assert logging_module._redact_url("relative/path") == "relative/path"
+    assert logging_module._redact_url("http://[") == "[REDACTED]"
+    assert logging_module._redact_url("http://user:pass@host:8080/path?q=x") == (
+        "http://host:8080/path"
+    )
+    assert redact(None) is None
+    assert redact(True) is True
+    assert redact(7) == 7
+    assert redact(1.5) == 1.5
+    assert redact(uuid.UUID("62000000-0000-4000-8000-000000000001")) == (
+        "62000000-0000-4000-8000-000000000001"
+    )
+
+
+def test_json_formatter_omits_unbound_optional_fields() -> None:
+    record = logging.LogRecord(
+        "test",
+        logging.INFO,
+        __file__,
+        1,
+        "ready",
+        (),
+        exc_info=None,
+    )
+
+    parsed = json.loads(RedactedJsonFormatter().format(record))
+    assert isinstance(parsed.pop("timestamp"), str)
+    assert parsed == {
+        "level": "INFO",
+        "logger": "test",
+        "event": "ready",
+    }
+
+
+def test_configure_logging_installs_redacted_root_handler() -> None:
+    root = logging.getLogger()
+    previous_handlers = list(root.handlers)
+    previous_level = root.level
+    try:
+        configure_logging("DEBUG")
+        assert root.level == logging.DEBUG
+        assert len(root.handlers) == 1
+        assert isinstance(root.handlers[0].formatter, RedactedJsonFormatter)
+        assert logging.getLogger("httpx").level == logging.WARNING
+        assert logging.getLogger("httpcore").level == logging.WARNING
+    finally:
+        root.handlers[:] = previous_handlers
+        root.setLevel(previous_level)
 
 
 async def test_health_readiness_and_metrics_endpoints() -> None:

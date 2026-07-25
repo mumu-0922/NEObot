@@ -110,14 +110,6 @@ func WithSingleUserCollectionConsents() ServiceOption {
 					Purposes: []string{"parse"}, DataTypes: append([]string(nil), nativeParseDataTypes...), PolicyVersion: "v1",
 				},
 			},
-			{
-				Identity: ProcessorModelIdentity{
-					Processor: "jina", EndpointID: "hosted-main", ModelID: "jina-embeddings-v4",
-				},
-				Input: PutConsentInput{
-					Purposes: []string{"passage_embedding"}, DataTypes: []string{"text/plain"}, PolicyVersion: "v1",
-				},
-			},
 		}
 	}
 }
@@ -139,17 +131,26 @@ func WithSingleUserAnswerConsent(identity ProcessorModelIdentity) ServiceOption 
 	}
 }
 
-// WithSingleUserRerankConsent makes the server-owned Jina reranker an
-// automatic collection authority for newly created personal Knowledge bases.
-// Existing collections are backfilled by BootstrapSingleUserRerankProcessing.
-func WithSingleUserRerankConsent() ServiceOption {
+// WithSingleUserSiliconFlowRetrievalConsents provisions both immutable BGE
+// passage embedding and rerank authorities for newly created collections.
+func WithSingleUserSiliconFlowRetrievalConsents() ServiceOption {
 	return func(service *Service) {
 		service.automaticCollectionConsents = append(
 			service.automaticCollectionConsents,
 			automaticCollectionConsent{
-				Identity: SingleUserRerankIdentity(),
+				Identity: SingleUserSiliconFlowEmbeddingIdentity(),
 				Input: PutConsentInput{
-					Purposes: []string{"rerank"}, DataTypes: []string{"text/plain"}, PolicyVersion: "v1",
+					Purposes:      []string{"passage_embedding"},
+					DataTypes:     []string{"text/plain"},
+					PolicyVersion: "2026-07-24-siliconflow-pro-bge-approved-v1",
+				},
+			},
+			automaticCollectionConsent{
+				Identity: SingleUserSiliconFlowRerankIdentity(),
+				Input: PutConsentInput{
+					Purposes:      []string{"rerank"},
+					DataTypes:     []string{"text/plain"},
+					PolicyVersion: "2026-07-24-siliconflow-pro-bge-approved-v1",
 				},
 			},
 		)
@@ -481,6 +482,61 @@ func (s *Service) FetchHybridQueryEvidenceCandidates(
 		return nil, ErrDatabaseRequired
 	}
 	return repo.FetchHybridQueryEvidenceCandidates(ctx, input)
+}
+
+func (s *Service) FetchFencedHybridQueryEvidenceCandidates(
+	ctx context.Context,
+	input FencedHybridQueryEvidenceCandidatesInput,
+) ([]EvidenceCandidateReference, error) {
+	if err := s.requireRepository(); err != nil {
+		return nil, err
+	}
+	repo, ok := s.repo.(EvidenceRepository)
+	if !ok {
+		return nil, ErrDatabaseRequired
+	}
+	return repo.FetchFencedHybridQueryEvidenceCandidates(ctx, input)
+}
+
+func (s *Service) FetchFencedQueryEvidenceCandidates(
+	ctx context.Context,
+	input FencedQueryEvidenceCandidatesInput,
+) ([]EvidenceCandidateReference, error) {
+	if err := s.requireRepository(); err != nil {
+		return nil, err
+	}
+	repo, ok := s.repo.(EvidenceRepository)
+	if !ok {
+		return nil, ErrDatabaseRequired
+	}
+	return repo.FetchFencedQueryEvidenceCandidates(ctx, input)
+}
+
+func (s *Service) ResolveActiveRetrievalProfile(
+	ctx context.Context,
+) (RetrievalProfileBinding, error) {
+	if err := s.requireRepository(); err != nil {
+		return RetrievalProfileBinding{}, err
+	}
+	repo, ok := s.repo.(EvidenceRepository)
+	if !ok {
+		return RetrievalProfileBinding{}, ErrDatabaseRequired
+	}
+	return repo.ResolveActiveRetrievalProfile(ctx)
+}
+
+func (s *Service) ResolveGenerationRetrievalProfile(
+	ctx context.Context,
+	indexGenerationID string,
+) (RetrievalProfileBinding, error) {
+	if err := s.requireRepository(); err != nil {
+		return RetrievalProfileBinding{}, err
+	}
+	repo, ok := s.repo.(EvidenceRepository)
+	if !ok {
+		return RetrievalProfileBinding{}, ErrDatabaseRequired
+	}
+	return repo.ResolveGenerationRetrievalProfile(ctx, indexGenerationID)
 }
 
 func (s *Service) ReauthorizeAndHydrateEvidence(

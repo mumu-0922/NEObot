@@ -1,6 +1,4 @@
 {
-  "pluginJinaTitle": "Web リーダー (Jina AI)",
-  "pluginJinaDescription": "任意の URL を LLM フレンドリーな Markdown コンテンツに変換します。ドキュメント、記事、または任意のウェブページを読み込むのに便利です。",
   "pluginWeatherTitle": "リアルタイム天気予報",
   "pluginWeatherDescription": "任意の都市の気温、天気状況、湿度を含むリアルタイムの天気情報を取得します。",
   "pluginUnsplashTitle": "Unsplash 画像検索",

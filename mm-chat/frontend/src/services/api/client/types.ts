@@ -561,7 +561,7 @@ export interface SearchProviderApi {
   deleteAdminSearchProviderConfig(providerId: SearchProviderId): Promise<void>;
 }
 
-export type RAGProviderId = "mineru" | "jina";
+export type RAGProviderId = "mineru" | "siliconflow";
 
 export interface AdminRAGProviderConfigDTO {
   id: string;

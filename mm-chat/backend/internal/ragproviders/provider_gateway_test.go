@@ -117,46 +117,54 @@ func TestProviderGatewayMinerUAllocateAndPollUseClosedUpstreamRequests(t *testin
 	}
 }
 
-func TestProviderGatewayJinaPassageQueryAndRerankUseDirectFixedProfiles(t *testing.T) {
+func TestProviderGatewaySiliconFlowUsesFrozenProBGEProfile(t *testing.T) {
 	resolver := &gatewayCredentialResolver{credential: providerGatewayTestCredential}
-	var tasks []string
-	var endpoints []string
+	var embeddingCalls int
 	gateway := NewProviderGateway(
 		resolver,
 		WithProviderGatewayHTTPClient(&http.Client{Transport: queryRoundTripper(
 			func(request *http.Request) (*http.Response, error) {
-				endpoints = append(endpoints, request.URL.String())
-				if request.Header.Get("Authorization") != "Bearer "+providerGatewayTestCredential {
-					t.Fatal("Jina authorization header mismatch")
+				if request.Header.Get("Authorization") !=
+					"Bearer "+providerGatewayTestCredential {
+					t.Fatal("SiliconFlow authorization header mismatch")
 				}
 				raw, _ := io.ReadAll(request.Body)
 				if strings.Contains(string(raw), providerGatewayTestCredential) {
-					t.Fatal("Jina request body contains credential")
+					t.Fatal("SiliconFlow request body contains credential")
 				}
 				switch request.URL.String() {
-				case JinaEmbeddingsEndpoint:
-					var body struct {
-						Dimensions int                 `json:"dimensions"`
-						Input      []map[string]string `json:"input"`
-						Model      string              `json:"model"`
-						Task       string              `json:"task"`
-					}
-					if json.Unmarshal(raw, &body) != nil || body.Model != JinaEmbeddingModel ||
-						body.Dimensions != JinaEmbeddingDimensions || len(body.Input) < 1 {
+				case SiliconFlowEmbeddingsEndpoint:
+					embeddingCalls++
+					var body map[string]json.RawMessage
+					if json.Unmarshal(raw, &body) != nil || len(body) != 3 ||
+						string(body["model"]) != `"`+SiliconFlowEmbeddingModel+`"` ||
+						string(body["encoding_format"]) != `"float"` {
 						t.Fatalf("embedding request = %s", raw)
 					}
-					tasks = append(tasks, body.Task)
-					data := make([]map[string]any, 0, len(body.Input))
-					for index := len(body.Input) - 1; index >= 0; index-- {
-						vector := repeatedGatewayEmbedding(float64(index + 1))
-						data = append(data, map[string]any{"index": index, "embedding": vector})
+					if _, present := body["dimensions"]; present {
+						t.Fatalf("BGE request must not contain dimensions: %s", raw)
+					}
+					var inputs []string
+					if json.Unmarshal(body["input"], &inputs) != nil || len(inputs) < 1 {
+						t.Fatalf("embedding inputs = %s", body["input"])
+					}
+					data := make([]map[string]any, 0, len(inputs))
+					for index := len(inputs) - 1; index >= 0; index-- {
+						data = append(data, map[string]any{
+							"object":    "embedding",
+							"index":     index,
+							"embedding": repeatedGatewayEmbedding(float64(index + 1)),
+						})
 					}
 					return gatewayJSONResponse(t, map[string]any{
-						"model": JinaEmbeddingModel,
-						"data":  data,
-						"usage": map[string]any{"total_tokens": 4},
+						"object": "list",
+						"model":  SiliconFlowEmbeddingModel,
+						"data":   data,
+						"usage": map[string]any{
+							"prompt_tokens": 4, "completion_tokens": 0, "total_tokens": 4,
+						},
 					}), nil
-				case JinaRerankEndpoint:
+				case SiliconFlowRerankEndpoint:
 					var body struct {
 						Documents       []string `json:"documents"`
 						Model           string   `json:"model"`
@@ -164,60 +172,130 @@ func TestProviderGatewayJinaPassageQueryAndRerankUseDirectFixedProfiles(t *testi
 						TopN            int      `json:"top_n"`
 						ReturnDocuments bool     `json:"return_documents"`
 					}
-					if json.Unmarshal(raw, &body) != nil || body.Model != JinaRerankModel ||
-						body.Query != "semantic query" || body.TopN != 2 || body.ReturnDocuments ||
-						len(body.Documents) != 2 {
+					if json.Unmarshal(raw, &body) != nil ||
+						body.Model != SiliconFlowRerankModel ||
+						body.Query != "semantic query" || body.TopN != 2 ||
+						body.ReturnDocuments || len(body.Documents) != 2 {
 						t.Fatalf("rerank request = %s", raw)
 					}
 					return gatewayJSONResponse(t, map[string]any{
-						"model": JinaRerankModel,
+						"id": "rerank-fixture",
 						"results": []any{
-							map[string]any{"index": 1, "relevance_score": 0.9},
-							map[string]any{"index": 0, "relevance_score": -0.1},
+							map[string]any{
+								"document": nil, "index": 1, "relevance_score": 0.9,
+							},
+							map[string]any{
+								"document": nil, "index": 0, "relevance_score": 0.1,
+							},
 						},
+						"meta": map[string]any{"tokens": map[string]any{"input_tokens": 4}},
 					}), nil
 				default:
-					t.Fatalf("unexpected Jina request %s", request.URL.Redacted())
+					t.Fatalf("unexpected SiliconFlow request %s", request.URL.Redacted())
 					return nil, errors.New("unreachable")
 				}
 			},
 		)}),
 	)
-
-	passageResponse, err := gateway.EmbedPassages(
+	profile, err := gateway.ForRetrievalProfile(RetrievalProfileSiliconFlow)
+	if err != nil || profile.Profile() != SiliconFlowRetrievalProfile {
+		t.Fatalf("ForRetrievalProfile() = %#v, %v", profile, err)
+	}
+	passages, err := gateway.EmbedSiliconFlowPassages(
 		context.Background(),
 		PassageEmbeddingRequest{Passages: []PassageEmbeddingInput{
 			{PassageID: "11111111-1111-4111-8111-111111111111", Text: "first passage"},
 			{PassageID: "22222222-2222-4222-8222-222222222222", Text: "second passage"},
 		}},
 	)
-	if err != nil {
-		t.Fatalf("EmbedPassages() error = %v", err)
+	if err != nil || passages.Model != SiliconFlowEmbeddingModel ||
+		len(passages.Vectors) != 2 || passages.Vectors[0].Embedding[0] != 1 ||
+		passages.Vectors[1].Embedding[0] != 2 {
+		t.Fatalf("EmbedSiliconFlowPassages() = %#v, %v", passages, err)
 	}
-	if len(passageResponse.Vectors) != 2 || passageResponse.Vectors[0].Embedding[0] != 1 ||
-		passageResponse.Vectors[1].Embedding[0] != 2 ||
-		passageResponse.Vectors[1].PassageID != "22222222-2222-4222-8222-222222222222" {
-		t.Fatalf("passage response = %#v", passageResponse)
+	embedding, err := profile.EmbedQuery(context.Background(), " semantic query ")
+	if err != nil || embedding.ModelID != SiliconFlowEmbeddingModel ||
+		embedding.Dimensions != SiliconFlowEmbeddingDimensions ||
+		len(embedding.Vector) != SiliconFlowEmbeddingDimensions {
+		t.Fatalf("EmbedQuery() = %#v, %v", embedding, err)
 	}
-	query, err := gateway.EmbedQuery(context.Background(), " semantic query ")
-	if err != nil || query.ModelID != JinaEmbeddingModel ||
-		query.Dimensions != JinaEmbeddingDimensions || len(query.Vector) != JinaEmbeddingDimensions {
-		t.Fatalf("EmbedQuery() = %#v, %v", query, err)
-	}
-	reranked, err := gateway.Rerank(
+	reranked, err := profile.Rerank(
 		context.Background(),
 		" semantic query ",
 		[]string{"first source", "second source"},
 	)
-	if err != nil || len(reranked) != 2 || reranked[0].Index != 1 || reranked[1].Index != 0 {
-		t.Fatalf("Rerank() = %#v, %v", reranked, err)
+	if err != nil || len(reranked) != 2 || reranked[0].Index != 1 ||
+		reranked[1].Index != 0 || embeddingCalls != 2 ||
+		strings.Join(resolver.providers, ",") !=
+			"siliconflow,siliconflow,siliconflow" {
+		t.Fatalf(
+			"reranked=%#v err=%v embeddingCalls=%d providers=%v",
+			reranked,
+			err,
+			embeddingCalls,
+			resolver.providers,
+		)
 	}
-	if strings.Join(tasks, ",") != "retrieval.passage,retrieval.query" || len(endpoints) != 3 {
-		t.Fatalf("tasks=%v endpoints=%v", tasks, endpoints)
+}
+
+func TestProviderGatewaySiliconFlowRejectsMalformedProviderResponses(t *testing.T) {
+	zeroVector := make([]float64, SiliconFlowEmbeddingDimensions)
+	cases := []map[string]any{
+		{
+			"object": "list", "model": SiliconFlowEmbeddingModel,
+			"data": []any{map[string]any{
+				"object": "embedding", "index": 0, "embedding": zeroVector,
+			}},
+			"usage": map[string]any{
+				"prompt_tokens": 1, "completion_tokens": 0, "total_tokens": 1,
+			},
+		},
+		{
+			"object": "list", "model": SiliconFlowEmbeddingModel,
+			"data": []any{map[string]any{
+				"object": "embedding", "index": 0,
+				"embedding": repeatedGatewayEmbedding(1), "unexpected": true,
+			}},
+			"usage": map[string]any{
+				"prompt_tokens": 1, "completion_tokens": 0, "total_tokens": 1,
+			},
+		},
 	}
-	for _, endpoint := range endpoints {
-		if strings.Contains(endpoint, "/internal/retrieval/") {
-			t.Fatalf("direct Jina adapter called Python route: %s", endpoint)
+	for _, payload := range cases {
+		raw, _ := json.Marshal(payload)
+		if _, err := normalizeSiliconFlowEmbeddingResponse(raw, 1); !errors.Is(err, ErrProviderGatewayUpstream) {
+			t.Fatalf("malformed embedding response error = %v", err)
+		}
+	}
+
+	for _, payload := range []map[string]any{
+		{
+			"id": "rerank-fixture",
+			"results": []any{
+				map[string]any{"index": 0, "relevance_score": 0.9},
+				map[string]any{"index": 0, "relevance_score": 0.8},
+			},
+		},
+		{
+			"id": "rerank-fixture",
+			"results": []any{
+				map[string]any{"index": 0, "relevance_score": 1.1},
+			},
+		},
+		{
+			"id": "rerank-fixture",
+			"results": []any{
+				map[string]any{
+					"document": map[string]any{"text": "must stay omitted"},
+					"index":    0, "relevance_score": 0.9,
+				},
+			},
+		},
+	} {
+		raw, _ := json.Marshal(payload)
+		count := len(payload["results"].([]any))
+		if _, err := normalizeSiliconFlowRerankResponse(raw, count); !errors.Is(err, ErrProviderGatewayUpstream) {
+			t.Fatalf("malformed rerank response error = %v", err)
 		}
 	}
 }
@@ -237,7 +315,7 @@ func TestProviderGatewayFailsClosedBeforeHTTPAndRedactsProviderBodies(t *testing
 			},
 		)}),
 	)
-	_, err := gateway.EmbedPassages(context.Background(), PassageEmbeddingRequest{
+	_, err := gateway.EmbedSiliconFlowPassages(context.Background(), PassageEmbeddingRequest{
 		Passages: []PassageEmbeddingInput{{PassageID: "bad-id", Text: "private text"}},
 	})
 	if !errors.Is(err, ErrProviderGatewayInvalid) || len(resolver.providers) != 0 || calls != 0 {
@@ -366,7 +444,7 @@ func gatewayJSONResponse(t *testing.T, payload any) *http.Response {
 }
 
 func repeatedGatewayEmbedding(first float64) []float64 {
-	vector := make([]float64, JinaEmbeddingDimensions)
+	vector := make([]float64, SiliconFlowEmbeddingDimensions)
 	vector[0] = first
 	return vector
 }

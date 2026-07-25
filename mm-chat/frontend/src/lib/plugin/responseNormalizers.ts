@@ -93,16 +93,6 @@ export function normalizePluginResponse(
   responseData: unknown,
 ): unknown {
   if (
-    plugin.id === "jina-web-reader" &&
-    isRecord(responseData) &&
-    responseData.code === 200 &&
-    isRecord(responseData.data) &&
-    typeof responseData.data.content === "string"
-  ) {
-    return responseData.data.content;
-  }
-
-  if (
     plugin.id === AGNES_IMAGE_PLUGIN_ID &&
     isRecord(responseData) &&
     Array.isArray(responseData.data)
