@@ -1,0 +1,671 @@
+{
+  "schemaVersion": "neo-chat.rag-promotion-preflight.v2",
+  "captureVersion": "neo-chat.rag-promotion-capture.v6",
+  "promotionEligible": false,
+  "complete": false,
+  "capturedAt": "2026-07-25T10:15:24Z",
+  "inputs": {
+    "goldenRawSha256": "515ec1b598c45aca726735075f3366a64a1dc3a071ca30765ce62f2536e8a1c8",
+    "goldenContentSha256": "17eee60e93dc32733a8b871ccc7176d8a5f02f283eaebc37113fcb40ec43ce8c",
+    "curationRawSha256": "d0fbc33dd621eb10cd7fe7aa3ff68340b912594af97cb316afbe5447f469865b",
+    "humanReviewRawSha256": "39f076402dbbec233b4214b76a442548e13f85c62dd5f98f1bee8992253087f8",
+    "sourceImportRawSha256": "4c727519ef651a1101879c11a8f7de9fed400035351bfdceea49d852a3635645"
+  },
+  "configuration": {
+    "splits": [
+      "development"
+    ],
+    "caseId": "rageval-code-zh-04-f09",
+    "candidateRetrieval": {
+      "profileId": "siliconflow_bge_m3_v1",
+      "providerId": "siliconflow",
+      "embeddingModelId": "Pro/BAAI/bge-m3",
+      "embeddingDimensions": 1024,
+      "rerankModelId": "Pro/BAAI/bge-reranker-v2-m3"
+    },
+    "answerProviderId": "SERVER_DEFAULT",
+    "answerModelId": "gpt-5.6-sol",
+    "providerMaximumAttempts": 26,
+    "providerInitialRetryMilliseconds": 500,
+    "providerMaximumRetryMilliseconds": 60000,
+    "candidateLimit": 50,
+    "rerankLimit": 20,
+    "finalLimit": 10,
+    "maximumContextTokens": 4096,
+    "concurrency": 1,
+    "scoringPolicy": "synthetic-curator-bound-evidence-v4",
+    "generationHeadRevision": 4,
+    "corpusProjectionRevision": 298
+  },
+  "holdout": {
+    "state": "not_executed",
+    "precommittedRunId": "ba1749c9-922e-4ab7-b6c0-37603e582617"
+  },
+  "candidate": {
+    "captureId": "1d983acf-ba7e-4cc9-9dc2-e2d85f9e2217",
+    "profileRole": "candidate",
+    "generationId": "4e9e18ef-c259-440b-9976-b4632e50b419",
+    "artifactManifestHash": "ae72c08e56989f7f831fdf42cedc2d7febb846f92481bd79088b6ac8819f562f",
+    "chunkProfileHash": "36845c249aa551d4d86720c38dfef9eb9e36ed49573a7547d2a5381d5f085d73",
+    "summary": {
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "qualityScore": 1,
+      "p95LatencyMilliseconds": 1106,
+      "averageContextTokens": 1311,
+      "qualityScoreByCriticalSlice": {
+        "chinese": 1,
+        "cross_section": 1,
+        "english": 1,
+        "exact_numeric": 1,
+        "json_code": 1,
+        "pdf": 1,
+        "pptx": 1,
+        "short_fact": 1,
+        "text_markdown_docx": 1,
+        "xlsx_table": 1
+      },
+      "metricsByCriticalSlice": {
+        "chinese": {
+          "recallAt50": 1,
+          "finalRecallAt10": 1,
+          "ndcgAt10": 1,
+          "mrrAt10": 1,
+          "citationCorrectness": 1,
+          "citationCompleteness": 1,
+          "faithfulness": 1,
+          "answerCorrectness": 1,
+          "noAnswerFalseAnswerRate": 0,
+          "tableExactAnswer": 1,
+          "provenanceCellLineage": 1,
+          "aclLeakCount": 0,
+          "deletionLeakCount": 0,
+          "secretLeakCount": 0,
+          "unauthorizedEvidenceLeakCount": 0
+        },
+        "cross_section": {
+          "recallAt50": 1,
+          "finalRecallAt10": 1,
+          "ndcgAt10": 1,
+          "mrrAt10": 1,
+          "citationCorrectness": 1,
+          "citationCompleteness": 1,
+          "faithfulness": 1,
+          "answerCorrectness": 1,
+          "noAnswerFalseAnswerRate": 0,
+          "tableExactAnswer": 1,
+          "provenanceCellLineage": 1,
+          "aclLeakCount": 0,
+          "deletionLeakCount": 0,
+          "secretLeakCount": 0,
+          "unauthorizedEvidenceLeakCount": 0
+        },
+        "english": {
+          "recallAt50": 1,
+          "finalRecallAt10": 1,
+          "ndcgAt10": 1,
+          "mrrAt10": 1,
+          "citationCorrectness": 1,
+          "citationCompleteness": 1,
+          "faithfulness": 1,
+          "answerCorrectness": 1,
+          "noAnswerFalseAnswerRate": 0,
+          "tableExactAnswer": 1,
+          "provenanceCellLineage": 1,
+          "aclLeakCount": 0,
+          "deletionLeakCount": 0,
+          "secretLeakCount": 0,
+          "unauthorizedEvidenceLeakCount": 0
+        },
+        "exact_numeric": {
+          "recallAt50": 1,
+          "finalRecallAt10": 1,
+          "ndcgAt10": 1,
+          "mrrAt10": 1,
+          "citationCorrectness": 1,
+          "citationCompleteness": 1,
+          "faithfulness": 1,
+          "answerCorrectness": 1,
+          "noAnswerFalseAnswerRate": 0,
+          "tableExactAnswer": 1,
+          "provenanceCellLineage": 1,
+          "aclLeakCount": 0,
+          "deletionLeakCount": 0,
+          "secretLeakCount": 0,
+          "unauthorizedEvidenceLeakCount": 0
+        },
+        "json_code": {
+          "recallAt50": 1,
+          "finalRecallAt10": 1,
+          "ndcgAt10": 1,
+          "mrrAt10": 1,
+          "citationCorrectness": 1,
+          "citationCompleteness": 1,
+          "faithfulness": 1,
+          "answerCorrectness": 1,
+          "noAnswerFalseAnswerRate": 0,
+          "tableExactAnswer": 1,
+          "provenanceCellLineage": 1,
+          "aclLeakCount": 0,
+          "deletionLeakCount": 0,
+          "secretLeakCount": 0,
+          "unauthorizedEvidenceLeakCount": 0
+        },
+        "pdf": {
+          "recallAt50": 1,
+          "finalRecallAt10": 1,
+          "ndcgAt10": 1,
+          "mrrAt10": 1,
+          "citationCorrectness": 1,
+          "citationCompleteness": 1,
+          "faithfulness": 1,
+          "answerCorrectness": 1,
+          "noAnswerFalseAnswerRate": 0,
+          "tableExactAnswer": 1,
+          "provenanceCellLineage": 1,
+          "aclLeakCount": 0,
+          "deletionLeakCount": 0,
+          "secretLeakCount": 0,
+          "unauthorizedEvidenceLeakCount": 0
+        },
+        "pptx": {
+          "recallAt50": 1,
+          "finalRecallAt10": 1,
+          "ndcgAt10": 1,
+          "mrrAt10": 1,
+          "citationCorrectness": 1,
+          "citationCompleteness": 1,
+          "faithfulness": 1,
+          "answerCorrectness": 1,
+          "noAnswerFalseAnswerRate": 0,
+          "tableExactAnswer": 1,
+          "provenanceCellLineage": 1,
+          "aclLeakCount": 0,
+          "deletionLeakCount": 0,
+          "secretLeakCount": 0,
+          "unauthorizedEvidenceLeakCount": 0
+        },
+        "short_fact": {
+          "recallAt50": 1,
+          "finalRecallAt10": 1,
+          "ndcgAt10": 1,
+          "mrrAt10": 1,
+          "citationCorrectness": 1,
+          "citationCompleteness": 1,
+          "faithfulness": 1,
+          "answerCorrectness": 1,
+          "noAnswerFalseAnswerRate": 0,
+          "tableExactAnswer": 1,
+          "provenanceCellLineage": 1,
+          "aclLeakCount": 0,
+          "deletionLeakCount": 0,
+          "secretLeakCount": 0,
+          "unauthorizedEvidenceLeakCount": 0
+        },
+        "text_markdown_docx": {
+          "recallAt50": 1,
+          "finalRecallAt10": 1,
+          "ndcgAt10": 1,
+          "mrrAt10": 1,
+          "citationCorrectness": 1,
+          "citationCompleteness": 1,
+          "faithfulness": 1,
+          "answerCorrectness": 1,
+          "noAnswerFalseAnswerRate": 0,
+          "tableExactAnswer": 1,
+          "provenanceCellLineage": 1,
+          "aclLeakCount": 0,
+          "deletionLeakCount": 0,
+          "secretLeakCount": 0,
+          "unauthorizedEvidenceLeakCount": 0
+        },
+        "xlsx_table": {
+          "recallAt50": 1,
+          "finalRecallAt10": 1,
+          "ndcgAt10": 1,
+          "mrrAt10": 1,
+          "citationCorrectness": 1,
+          "citationCompleteness": 1,
+          "faithfulness": 1,
+          "answerCorrectness": 1,
+          "noAnswerFalseAnswerRate": 0,
+          "tableExactAnswer": 1,
+          "provenanceCellLineage": 1,
+          "aclLeakCount": 0,
+          "deletionLeakCount": 0,
+          "secretLeakCount": 0,
+          "unauthorizedEvidenceLeakCount": 0
+        }
+      }
+    },
+    "cases": [
+      {
+        "caseId": "rageval-code-zh-04-f09",
+        "retrievedEvidenceIds": [
+          "chunk:125041ab-13bd-5f81-8d7c-7df79e47936f",
+          "RAGEVAL-CODE-ZH-04:F10",
+          "chunk:646db34c-6f3d-5fc0-9654-eeed48c7e519",
+          "RAGEVAL-CODE-ZH-04:F09",
+          "RAGEVAL-CODE-ZH-04:F08",
+          "RAGEVAL-PPTX-ZH-04:F01",
+          "RAGEVAL-PPTX-ZH-01:F01",
+          "RAGEVAL-PPTX-ZH-03:F01",
+          "RAGEVAL-DOCX-ZH-04:F07",
+          "chunk:dcc76db5-f70c-5947-89b3-c85e32968872",
+          "RAGEVAL-DOCX-ZH-02:F07",
+          "RAGEVAL-PDF-ZH-04:F01",
+          "RAGEVAL-PPTX-ZH-02:F01",
+          "RAGEVAL-DOCX-ZH-01:F07",
+          "RAGEVAL-PDF-ZH-01:F01",
+          "RAGEVAL-DOCX-ZH-05:F07",
+          "chunk:ac10be75-2c92-5901-8f17-d2ef2a5b2bcc",
+          "RAGEVAL-PPTX-ZH-05:F01",
+          "RAGEVAL-DOCX-ZH-03:F07",
+          "RAGEVAL-PDF-ZH-05:F01",
+          "RAGEVAL-CODE-ZH-02:F10",
+          "RAGEVAL-CODE-ZH-01:F10",
+          "RAGEVAL-CODE-ZH-03:F10",
+          "RAGEVAL-CODE-ZH-05:F10",
+          "RAGEVAL-PDF-ZH-03:F01",
+          "chunk:49190e48-4396-556f-a0a2-4fa49b2d3971",
+          "chunk:85a994d0-3f22-537b-82ef-fdc2fc7d36a2",
+          "chunk:73d38216-0893-56fb-8e9f-6f15d1ff5701",
+          "chunk:073416cb-04c0-58c3-a9ff-cf3c936ab372",
+          "RAGEVAL-PDF-ZH-02:F01",
+          "RAGEVAL-PDF-EN-09:F01",
+          "RAGEVAL-DOCX-EN-09:F07",
+          "RAGEVAL-DOCX-EN-08:F07",
+          "RAGEVAL-PDF-EN-10:F01",
+          "RAGEVAL-DOCX-EN-07:F07",
+          "RAGEVAL-DOCX-EN-10:F07",
+          "RAGEVAL-DOCX-EN-06:F07",
+          "RAGEVAL-PDF-EN-08:F01",
+          "RAGEVAL-PDF-EN-07:F01",
+          "RAGEVAL-PDF-EN-06:F01",
+          "RAGEVAL-PPTX-EN-08:F01",
+          "RAGEVAL-PPTX-EN-09:F01",
+          "chunk:3de15b83-5fab-5e5c-b7d0-a1d95c082beb",
+          "chunk:83b7a4bb-7858-5c4e-835d-767517f8f9bc",
+          "RAGEVAL-PPTX-EN-10:F01",
+          "RAGEVAL-PPTX-EN-06:F01",
+          "chunk:e4540fb3-e100-54ea-8fc6-6050c0a4da86",
+          "RAGEVAL-PPTX-EN-07:F01",
+          "RAGEVAL-XLSX-ZH-01:F01",
+          "RAGEVAL-XLSX-ZH-05:F01"
+        ],
+        "finalEvidenceIds": [
+          "RAGEVAL-CODE-ZH-04:F09",
+          "RAGEVAL-CODE-ZH-04:F10",
+          "chunk:646db34c-6f3d-5fc0-9654-eeed48c7e519",
+          "RAGEVAL-CODE-ZH-04:F08",
+          "chunk:125041ab-13bd-5f81-8d7c-7df79e47936f",
+          "RAGEVAL-PPTX-ZH-04:F01",
+          "RAGEVAL-DOCX-ZH-04:F07",
+          "RAGEVAL-PDF-ZH-04:F01",
+          "RAGEVAL-DOCX-ZH-02:F07",
+          "RAGEVAL-DOCX-ZH-01:F07"
+        ],
+        "citationEvidenceIds": [
+          "RAGEVAL-CODE-ZH-04:F09"
+        ],
+        "answerSha256": "63fe45fe783a9b1c9aeeca650cd3b2f76af715fc3c26399ef65d02f9cee38462",
+        "answered": true,
+        "answerCorrectness": 1,
+        "faithfulness": 1,
+        "tableExactAnswer": false,
+        "latencyMilliseconds": 1106,
+        "latencyBreakdown": {
+          "embedQueryMilliseconds": 485,
+          "fetchCandidatesMilliseconds": 133,
+          "hydrateEvidenceMilliseconds": 170,
+          "rerankMilliseconds": 316,
+          "pipelineTotalMilliseconds": 1106
+        },
+        "contextTokens": 1311,
+        "answerUsage": {
+          "promptTokens": 1522,
+          "completionTokens": 17,
+          "totalTokens": 1539
+        },
+        "integrity": {
+          "citationLocatorValid": true,
+          "provenanceValid": true,
+          "cellLineageValid": true
+        },
+        "leakage": {
+          "acl": false,
+          "deletion": false,
+          "secret": false,
+          "unauthorizedEvidence": false
+        }
+      }
+    ]
+  },
+  "slices": {
+    "chinese": {
+      "cases": 1,
+      "evaluated": true,
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "passed": true,
+      "failures": []
+    },
+    "cross_section": {
+      "cases": 0,
+      "evaluated": false,
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "passed": false,
+      "failures": [
+        "slice is not evaluated"
+      ]
+    },
+    "english": {
+      "cases": 0,
+      "evaluated": false,
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "passed": false,
+      "failures": [
+        "slice is not evaluated"
+      ]
+    },
+    "exact_numeric": {
+      "cases": 1,
+      "evaluated": true,
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "passed": true,
+      "failures": []
+    },
+    "json_code": {
+      "cases": 1,
+      "evaluated": true,
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "passed": true,
+      "failures": []
+    },
+    "pdf": {
+      "cases": 0,
+      "evaluated": false,
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "passed": false,
+      "failures": [
+        "slice is not evaluated"
+      ]
+    },
+    "pptx": {
+      "cases": 0,
+      "evaluated": false,
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "passed": false,
+      "failures": [
+        "slice is not evaluated"
+      ]
+    },
+    "short_fact": {
+      "cases": 0,
+      "evaluated": false,
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "passed": false,
+      "failures": [
+        "slice is not evaluated"
+      ]
+    },
+    "text_markdown_docx": {
+      "cases": 1,
+      "evaluated": true,
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "passed": true,
+      "failures": []
+    },
+    "xlsx_table": {
+      "cases": 0,
+      "evaluated": false,
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "passed": false,
+      "failures": [
+        "slice is not evaluated"
+      ]
+    }
+  },
+  "budgets": {
+    "candidateP95LatencyMilliseconds": 1106,
+    "maximumP95LatencyMilliseconds": 1000,
+    "candidateAverageContextTokens": 1311,
+    "maximumAverageContextTokens": 4096,
+    "latencyPassed": false,
+    "contextTokenCostPassed": true
+  }
+}

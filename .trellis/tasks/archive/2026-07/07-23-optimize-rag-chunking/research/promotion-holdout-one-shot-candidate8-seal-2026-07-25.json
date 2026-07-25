@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "neo-chat.rag-promotion-holdout-seal.v1",
+  "captureVersion": "neo-chat.rag-promotion-capture.v6",
+  "state": "execution_started",
+  "holdoutRunId": "ba1749c9-922e-4ab7-b6c0-37603e582617",
+  "ordinal": 1,
+  "executedAt": "2026-07-25T10:44:50Z",
+  "captureId": "7e887707-5657-457c-a518-d754de98e20e",
+  "goldenSetId": "rag-promotion-synthetic-draft-e014f999f48a3a7c",
+  "goldenRawSha256": "515ec1b598c45aca726735075f3366a64a1dc3a071ca30765ce62f2536e8a1c8",
+  "goldenContentSha256": "17eee60e93dc32733a8b871ccc7176d8a5f02f283eaebc37113fcb40ec43ce8c",
+  "curationRawSha256": "d0fbc33dd621eb10cd7fe7aa3ff68340b912594af97cb316afbe5447f469865b",
+  "humanReviewRawSha256": "39f076402dbbec233b4214b76a442548e13f85c62dd5f98f1bee8992253087f8",
+  "sourceImportRawSha256": "4c727519ef651a1101879c11a8f7de9fed400035351bfdceea49d852a3635645",
+  "developmentRawSha256": "1ffc4a6335a7ff092eaca32ed0de2c443a4a1b95ddd9e5aea2d208d29959f7cc",
+  "validationRawSha256": "3569f1a3a0f28bf3c1173b7e166b442d01694fa193081a1e164371e42f77bead",
+  "candidateGenerationId": "4e9e18ef-c259-440b-9976-b4632e50b419",
+  "artifactManifestHash": "ae72c08e56989f7f831fdf42cedc2d7febb846f92481bd79088b6ac8819f562f",
+  "chunkProfileHash": "36845c249aa551d4d86720c38dfef9eb9e36ed49573a7547d2a5381d5f085d73",
+  "retrievalProfile": {
+    "profileId": "siliconflow_bge_m3_v1",
+    "providerId": "siliconflow",
+    "embeddingModelId": "Pro/BAAI/bge-m3",
+    "embeddingDimensions": 1024,
+    "rerankModelId": "Pro/BAAI/bge-reranker-v2-m3"
+  },
+  "answerProviderId": "SERVER_DEFAULT",
+  "answerModelId": "gpt-5.6-sol",
+  "generationHeadRevision": 4,
+  "corpusProjectionRevision": 298,
+  "observationOutputPath": "/evidence/promotion-observations-v1-candidate8-2026-07-25.json"
+}

@@ -1,0 +1,671 @@
+{
+  "schemaVersion": "neo-chat.rag-promotion-preflight.v2",
+  "captureVersion": "neo-chat.rag-promotion-capture.v6",
+  "promotionEligible": false,
+  "complete": false,
+  "capturedAt": "2026-07-25T10:15:35Z",
+  "inputs": {
+    "goldenRawSha256": "515ec1b598c45aca726735075f3366a64a1dc3a071ca30765ce62f2536e8a1c8",
+    "goldenContentSha256": "17eee60e93dc32733a8b871ccc7176d8a5f02f283eaebc37113fcb40ec43ce8c",
+    "curationRawSha256": "d0fbc33dd621eb10cd7fe7aa3ff68340b912594af97cb316afbe5447f469865b",
+    "humanReviewRawSha256": "39f076402dbbec233b4214b76a442548e13f85c62dd5f98f1bee8992253087f8",
+    "sourceImportRawSha256": "4c727519ef651a1101879c11a8f7de9fed400035351bfdceea49d852a3635645"
+  },
+  "configuration": {
+    "splits": [
+      "development"
+    ],
+    "caseId": "rageval-docx-en-08-f08",
+    "candidateRetrieval": {
+      "profileId": "siliconflow_bge_m3_v1",
+      "providerId": "siliconflow",
+      "embeddingModelId": "Pro/BAAI/bge-m3",
+      "embeddingDimensions": 1024,
+      "rerankModelId": "Pro/BAAI/bge-reranker-v2-m3"
+    },
+    "answerProviderId": "SERVER_DEFAULT",
+    "answerModelId": "gpt-5.6-sol",
+    "providerMaximumAttempts": 26,
+    "providerInitialRetryMilliseconds": 500,
+    "providerMaximumRetryMilliseconds": 60000,
+    "candidateLimit": 50,
+    "rerankLimit": 20,
+    "finalLimit": 10,
+    "maximumContextTokens": 4096,
+    "concurrency": 1,
+    "scoringPolicy": "synthetic-curator-bound-evidence-v4",
+    "generationHeadRevision": 4,
+    "corpusProjectionRevision": 298
+  },
+  "holdout": {
+    "state": "not_executed",
+    "precommittedRunId": "ba1749c9-922e-4ab7-b6c0-37603e582617"
+  },
+  "candidate": {
+    "captureId": "a7584495-f033-4e6f-80f4-ca11f29a2200",
+    "profileRole": "candidate",
+    "generationId": "4e9e18ef-c259-440b-9976-b4632e50b419",
+    "artifactManifestHash": "ae72c08e56989f7f831fdf42cedc2d7febb846f92481bd79088b6ac8819f562f",
+    "chunkProfileHash": "36845c249aa551d4d86720c38dfef9eb9e36ed49573a7547d2a5381d5f085d73",
+    "summary": {
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "qualityScore": 1,
+      "p95LatencyMilliseconds": 827,
+      "averageContextTokens": 1286,
+      "qualityScoreByCriticalSlice": {
+        "chinese": 1,
+        "cross_section": 1,
+        "english": 1,
+        "exact_numeric": 1,
+        "json_code": 1,
+        "pdf": 1,
+        "pptx": 1,
+        "short_fact": 1,
+        "text_markdown_docx": 1,
+        "xlsx_table": 1
+      },
+      "metricsByCriticalSlice": {
+        "chinese": {
+          "recallAt50": 1,
+          "finalRecallAt10": 1,
+          "ndcgAt10": 1,
+          "mrrAt10": 1,
+          "citationCorrectness": 1,
+          "citationCompleteness": 1,
+          "faithfulness": 1,
+          "answerCorrectness": 1,
+          "noAnswerFalseAnswerRate": 0,
+          "tableExactAnswer": 1,
+          "provenanceCellLineage": 1,
+          "aclLeakCount": 0,
+          "deletionLeakCount": 0,
+          "secretLeakCount": 0,
+          "unauthorizedEvidenceLeakCount": 0
+        },
+        "cross_section": {
+          "recallAt50": 1,
+          "finalRecallAt10": 1,
+          "ndcgAt10": 1,
+          "mrrAt10": 1,
+          "citationCorrectness": 1,
+          "citationCompleteness": 1,
+          "faithfulness": 1,
+          "answerCorrectness": 1,
+          "noAnswerFalseAnswerRate": 0,
+          "tableExactAnswer": 1,
+          "provenanceCellLineage": 1,
+          "aclLeakCount": 0,
+          "deletionLeakCount": 0,
+          "secretLeakCount": 0,
+          "unauthorizedEvidenceLeakCount": 0
+        },
+        "english": {
+          "recallAt50": 1,
+          "finalRecallAt10": 1,
+          "ndcgAt10": 1,
+          "mrrAt10": 1,
+          "citationCorrectness": 1,
+          "citationCompleteness": 1,
+          "faithfulness": 1,
+          "answerCorrectness": 1,
+          "noAnswerFalseAnswerRate": 0,
+          "tableExactAnswer": 1,
+          "provenanceCellLineage": 1,
+          "aclLeakCount": 0,
+          "deletionLeakCount": 0,
+          "secretLeakCount": 0,
+          "unauthorizedEvidenceLeakCount": 0
+        },
+        "exact_numeric": {
+          "recallAt50": 1,
+          "finalRecallAt10": 1,
+          "ndcgAt10": 1,
+          "mrrAt10": 1,
+          "citationCorrectness": 1,
+          "citationCompleteness": 1,
+          "faithfulness": 1,
+          "answerCorrectness": 1,
+          "noAnswerFalseAnswerRate": 0,
+          "tableExactAnswer": 1,
+          "provenanceCellLineage": 1,
+          "aclLeakCount": 0,
+          "deletionLeakCount": 0,
+          "secretLeakCount": 0,
+          "unauthorizedEvidenceLeakCount": 0
+        },
+        "json_code": {
+          "recallAt50": 1,
+          "finalRecallAt10": 1,
+          "ndcgAt10": 1,
+          "mrrAt10": 1,
+          "citationCorrectness": 1,
+          "citationCompleteness": 1,
+          "faithfulness": 1,
+          "answerCorrectness": 1,
+          "noAnswerFalseAnswerRate": 0,
+          "tableExactAnswer": 1,
+          "provenanceCellLineage": 1,
+          "aclLeakCount": 0,
+          "deletionLeakCount": 0,
+          "secretLeakCount": 0,
+          "unauthorizedEvidenceLeakCount": 0
+        },
+        "pdf": {
+          "recallAt50": 1,
+          "finalRecallAt10": 1,
+          "ndcgAt10": 1,
+          "mrrAt10": 1,
+          "citationCorrectness": 1,
+          "citationCompleteness": 1,
+          "faithfulness": 1,
+          "answerCorrectness": 1,
+          "noAnswerFalseAnswerRate": 0,
+          "tableExactAnswer": 1,
+          "provenanceCellLineage": 1,
+          "aclLeakCount": 0,
+          "deletionLeakCount": 0,
+          "secretLeakCount": 0,
+          "unauthorizedEvidenceLeakCount": 0
+        },
+        "pptx": {
+          "recallAt50": 1,
+          "finalRecallAt10": 1,
+          "ndcgAt10": 1,
+          "mrrAt10": 1,
+          "citationCorrectness": 1,
+          "citationCompleteness": 1,
+          "faithfulness": 1,
+          "answerCorrectness": 1,
+          "noAnswerFalseAnswerRate": 0,
+          "tableExactAnswer": 1,
+          "provenanceCellLineage": 1,
+          "aclLeakCount": 0,
+          "deletionLeakCount": 0,
+          "secretLeakCount": 0,
+          "unauthorizedEvidenceLeakCount": 0
+        },
+        "short_fact": {
+          "recallAt50": 1,
+          "finalRecallAt10": 1,
+          "ndcgAt10": 1,
+          "mrrAt10": 1,
+          "citationCorrectness": 1,
+          "citationCompleteness": 1,
+          "faithfulness": 1,
+          "answerCorrectness": 1,
+          "noAnswerFalseAnswerRate": 0,
+          "tableExactAnswer": 1,
+          "provenanceCellLineage": 1,
+          "aclLeakCount": 0,
+          "deletionLeakCount": 0,
+          "secretLeakCount": 0,
+          "unauthorizedEvidenceLeakCount": 0
+        },
+        "text_markdown_docx": {
+          "recallAt50": 1,
+          "finalRecallAt10": 1,
+          "ndcgAt10": 1,
+          "mrrAt10": 1,
+          "citationCorrectness": 1,
+          "citationCompleteness": 1,
+          "faithfulness": 1,
+          "answerCorrectness": 1,
+          "noAnswerFalseAnswerRate": 0,
+          "tableExactAnswer": 1,
+          "provenanceCellLineage": 1,
+          "aclLeakCount": 0,
+          "deletionLeakCount": 0,
+          "secretLeakCount": 0,
+          "unauthorizedEvidenceLeakCount": 0
+        },
+        "xlsx_table": {
+          "recallAt50": 1,
+          "finalRecallAt10": 1,
+          "ndcgAt10": 1,
+          "mrrAt10": 1,
+          "citationCorrectness": 1,
+          "citationCompleteness": 1,
+          "faithfulness": 1,
+          "answerCorrectness": 1,
+          "noAnswerFalseAnswerRate": 0,
+          "tableExactAnswer": 1,
+          "provenanceCellLineage": 1,
+          "aclLeakCount": 0,
+          "deletionLeakCount": 0,
+          "secretLeakCount": 0,
+          "unauthorizedEvidenceLeakCount": 0
+        }
+      }
+    },
+    "cases": [
+      {
+        "caseId": "rageval-docx-en-08-f08",
+        "retrievedEvidenceIds": [
+          "chunk:43ca473b-c5a9-5aed-a54b-12b9089e49ab",
+          "RAGEVAL-DOCX-EN-08:F08",
+          "RAGEVAL-PPTX-EN-08:F01",
+          "RAGEVAL-DOCX-EN-08:F07",
+          "RAGEVAL-PPTX-EN-06:F01",
+          "RAGEVAL-DOCX-EN-08:F01",
+          "RAGEVAL-PPTX-EN-09:F01",
+          "RAGEVAL-PPTX-EN-10:F01",
+          "RAGEVAL-PPTX-EN-07:F01",
+          "RAGEVAL-DOCX-EN-08:F05",
+          "chunk:99d03fdd-d200-585d-87b8-5dffa3682e52",
+          "chunk:30515a4d-ae2a-55b5-91b1-d07f89e495be",
+          "RAGEVAL-CODE-EN-10:F08",
+          "RAGEVAL-PDF-EN-08:F01",
+          "RAGEVAL-PDF-EN-06:F01",
+          "RAGEVAL-CODE-EN-09:F08",
+          "chunk:9d5fda55-da6b-5a02-9746-99c82672bd4a",
+          "RAGEVAL-CODE-EN-07:F08",
+          "RAGEVAL-CODE-EN-06:F08",
+          "RAGEVAL-PDF-EN-10:F01",
+          "RAGEVAL-PDF-EN-07:F01",
+          "chunk:756ac035-d264-53e8-b6d3-af4e47475ad5",
+          "RAGEVAL-CODE-EN-08:F08",
+          "RAGEVAL-PDF-EN-09:F01",
+          "RAGEVAL-DOCX-EN-10:F03",
+          "RAGEVAL-DOCX-EN-07:F03",
+          "RAGEVAL-DOCX-EN-06:F03",
+          "RAGEVAL-DOCX-EN-09:F03",
+          "chunk:89d20dc2-dbda-59aa-ab7d-17089a58dcf1",
+          "chunk:bb3bd850-99c7-56c8-8853-200532c8623c",
+          "RAGEVAL-XLSX-EN-09:F01",
+          "chunk:afd0b24e-b1bf-54e9-9ef3-38e14caac5bd",
+          "RAGEVAL-XLSX-EN-07:F01",
+          "RAGEVAL-XLSX-EN-10:F01",
+          "chunk:e4540fb3-e100-54ea-8fc6-6050c0a4da86",
+          "RAGEVAL-XLSX-EN-06:F01",
+          "chunk:2c585024-66c3-5550-ab3f-4f6476f5370a",
+          "RAGEVAL-XLSX-EN-08:F01",
+          "chunk:b2cd55cb-8b62-506d-beae-ccaedf674073",
+          "chunk:4eb50439-a69c-5555-8039-d22111374df1",
+          "RAGEVAL-PPTX-ZH-01:F01",
+          "RAGEVAL-PPTX-ZH-05:F01",
+          "chunk:2c3c8c62-4bb3-5b4c-936c-40f224217e48",
+          "RAGEVAL-PPTX-ZH-02:F01",
+          "RAGEVAL-CODE-EN-08:F10",
+          "chunk:123a56ae-fd16-54f5-a443-cb9ed6d088cc",
+          "RAGEVAL-PPTX-ZH-03:F01",
+          "chunk:831f2f06-1057-58b2-bade-396aa69a6b6f",
+          "chunk:9be0a1f3-256b-5d0a-aa17-8cce46bc545d",
+          "RAGEVAL-PPTX-ZH-04:F01"
+        ],
+        "finalEvidenceIds": [
+          "RAGEVAL-DOCX-EN-08:F08",
+          "RAGEVAL-DOCX-EN-08:F07",
+          "RAGEVAL-DOCX-EN-08:F01",
+          "RAGEVAL-DOCX-EN-08:F05",
+          "chunk:43ca473b-c5a9-5aed-a54b-12b9089e49ab",
+          "RAGEVAL-PPTX-EN-08:F01",
+          "RAGEVAL-PPTX-EN-07:F01",
+          "RAGEVAL-PPTX-EN-09:F01",
+          "RAGEVAL-PDF-EN-08:F01",
+          "RAGEVAL-CODE-EN-06:F08"
+        ],
+        "citationEvidenceIds": [
+          "RAGEVAL-DOCX-EN-08:F08"
+        ],
+        "answerSha256": "a2a48275954be477ea71d0c815003b113c693ab2a786dda7c26089bf2afc1b00",
+        "answered": true,
+        "answerCorrectness": 1,
+        "faithfulness": 1,
+        "tableExactAnswer": false,
+        "latencyMilliseconds": 827,
+        "latencyBreakdown": {
+          "embedQueryMilliseconds": 231,
+          "fetchCandidatesMilliseconds": 132,
+          "hydrateEvidenceMilliseconds": 173,
+          "rerankMilliseconds": 288,
+          "pipelineTotalMilliseconds": 827
+        },
+        "contextTokens": 1286,
+        "answerUsage": {
+          "promptTokens": 1645,
+          "completionTokens": 26,
+          "totalTokens": 1671
+        },
+        "integrity": {
+          "citationLocatorValid": true,
+          "provenanceValid": true,
+          "cellLineageValid": true
+        },
+        "leakage": {
+          "acl": false,
+          "deletion": false,
+          "secret": false,
+          "unauthorizedEvidence": false
+        }
+      }
+    ]
+  },
+  "slices": {
+    "chinese": {
+      "cases": 0,
+      "evaluated": false,
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "passed": false,
+      "failures": [
+        "slice is not evaluated"
+      ]
+    },
+    "cross_section": {
+      "cases": 1,
+      "evaluated": true,
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "passed": true,
+      "failures": []
+    },
+    "english": {
+      "cases": 1,
+      "evaluated": true,
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "passed": true,
+      "failures": []
+    },
+    "exact_numeric": {
+      "cases": 1,
+      "evaluated": true,
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "passed": true,
+      "failures": []
+    },
+    "json_code": {
+      "cases": 0,
+      "evaluated": false,
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "passed": false,
+      "failures": [
+        "slice is not evaluated"
+      ]
+    },
+    "pdf": {
+      "cases": 0,
+      "evaluated": false,
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "passed": false,
+      "failures": [
+        "slice is not evaluated"
+      ]
+    },
+    "pptx": {
+      "cases": 0,
+      "evaluated": false,
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "passed": false,
+      "failures": [
+        "slice is not evaluated"
+      ]
+    },
+    "short_fact": {
+      "cases": 0,
+      "evaluated": false,
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "passed": false,
+      "failures": [
+        "slice is not evaluated"
+      ]
+    },
+    "text_markdown_docx": {
+      "cases": 1,
+      "evaluated": true,
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "passed": true,
+      "failures": []
+    },
+    "xlsx_table": {
+      "cases": 0,
+      "evaluated": false,
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "passed": false,
+      "failures": [
+        "slice is not evaluated"
+      ]
+    }
+  },
+  "budgets": {
+    "candidateP95LatencyMilliseconds": 827,
+    "maximumP95LatencyMilliseconds": 1000,
+    "candidateAverageContextTokens": 1286,
+    "maximumAverageContextTokens": 4096,
+    "latencyPassed": true,
+    "contextTokenCostPassed": true
+  }
+}

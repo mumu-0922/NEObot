@@ -1,0 +1,424 @@
+{
+  "schemaVersion": "neo-chat.rag-promotion-preflight.v1",
+  "captureVersion": "neo-chat.rag-promotion-capture.v2",
+  "promotionEligible": false,
+  "complete": false,
+  "capturedAt": "2026-07-24T04:44:20Z",
+  "inputs": {
+    "goldenRawSha256": "515ec1b598c45aca726735075f3366a64a1dc3a071ca30765ce62f2536e8a1c8",
+    "goldenContentSha256": "17eee60e93dc32733a8b871ccc7176d8a5f02f283eaebc37113fcb40ec43ce8c",
+    "curationRawSha256": "d0fbc33dd621eb10cd7fe7aa3ff68340b912594af97cb316afbe5447f469865b",
+    "humanReviewRawSha256": "39f076402dbbec233b4214b76a442548e13f85c62dd5f98f1bee8992253087f8",
+    "sourceImportRawSha256": "4c727519ef651a1101879c11a8f7de9fed400035351bfdceea49d852a3635645"
+  },
+  "configuration": {
+    "splits": [
+      "development",
+      "validation"
+    ],
+    "caseId": "rageval-xlsx-zh-01-f03",
+    "embeddingModelId": "jina-embeddings-v4",
+    "embeddingDimensions": 1024,
+    "rerankModelId": "jina-reranker-v3",
+    "answerProviderId": "SERVER_DEFAULT",
+    "answerModelId": "gpt-5.6-sol",
+    "providerMaximumAttempts": 6,
+    "providerInitialRetryMilliseconds": 500,
+    "candidateLimit": 50,
+    "rerankLimit": 20,
+    "finalLimit": 10,
+    "maximumContextTokens": 4096,
+    "concurrency": 1,
+    "scoringPolicy": "synthetic-curator-bound-evidence-v2",
+    "generationHeadRevision": 4,
+    "corpusProjectionRevision": 243
+  },
+  "holdout": {
+    "state": "not_executed",
+    "precommittedRunId": "ba1749c9-922e-4ab7-b6c0-37603e582617"
+  },
+  "active": {
+    "captureId": "72fc5c9f-8c11-4644-ba28-ab1b7f114d2b",
+    "profileRole": "active",
+    "generationId": "46a1c7bb-44ed-4868-9d61-edd557f9d3f0",
+    "artifactManifestHash": "696828857c568fd81987d7e09be2429eb86da54633b5f4ac4c4507b5a063918c",
+    "chunkProfileHash": "48ac1810a92dcdd61db73646f3c8780e8ebc76b1525145452df7e3c0a819bb03",
+    "summary": {
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 0,
+        "provenanceCellLineage": 0,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "qualityScore": 0.9,
+      "p95LatencyMilliseconds": 5229,
+      "averageContextTokens": 1901,
+      "qualityScoreByCriticalSlice": {
+        "chinese": 0.9,
+        "cross_section": 1,
+        "english": 1,
+        "exact_numeric": 0.9,
+        "json_code": 1,
+        "pdf": 1,
+        "pptx": 1,
+        "short_fact": 1,
+        "text_markdown_docx": 1,
+        "xlsx_table": 0.9
+      }
+    },
+    "cases": [
+      {
+        "caseId": "rageval-xlsx-zh-01-f03",
+        "retrievedEvidenceIds": [
+          "RAGEVAL-XLSX-ZH-01:F03",
+          "RAGEVAL-PPTX-ZH-01:F01",
+          "RAGEVAL-PPTX-ZH-04:F01",
+          "RAGEVAL-PPTX-ZH-05:F01",
+          "RAGEVAL-PPTX-ZH-03:F01",
+          "RAGEVAL-PDF-ZH-01:F01",
+          "RAGEVAL-PDF-ZH-03:F01",
+          "RAGEVAL-DOCX-ZH-05:F01",
+          "RAGEVAL-PPTX-ZH-02:F01",
+          "RAGEVAL-DOCX-ZH-03:F01",
+          "RAGEVAL-DOCX-ZH-04:F01",
+          "RAGEVAL-DOCX-ZH-01:F01",
+          "RAGEVAL-CODE-ZH-04:F08",
+          "RAGEVAL-CODE-ZH-01:F08",
+          "RAGEVAL-PDF-ZH-02:F01",
+          "RAGEVAL-PPTX-EN-06:F01",
+          "RAGEVAL-CODE-ZH-03:F08",
+          "RAGEVAL-DOCX-ZH-02:F01",
+          "RAGEVAL-CODE-ZH-05:F08",
+          "RAGEVAL-PPTX-EN-10:F01",
+          "RAGEVAL-PPTX-EN-08:F01",
+          "RAGEVAL-PDF-ZH-05:F01",
+          "RAGEVAL-DOCX-EN-06:F01",
+          "RAGEVAL-CODE-ZH-02:F08",
+          "RAGEVAL-PDF-EN-06:F01",
+          "RAGEVAL-PPTX-EN-09:F01",
+          "RAGEVAL-PDF-ZH-04:F01",
+          "RAGEVAL-PPTX-EN-07:F01",
+          "RAGEVAL-DOCX-EN-07:F01",
+          "RAGEVAL-PDF-EN-07:F01",
+          "RAGEVAL-DOCX-EN-10:F01",
+          "RAGEVAL-DOCX-EN-09:F01",
+          "RAGEVAL-PDF-EN-10:F01",
+          "RAGEVAL-DOCX-EN-08:F01",
+          "RAGEVAL-CODE-EN-06:F08",
+          "RAGEVAL-CODE-EN-09:F08",
+          "RAGEVAL-XLSX-ZH-04:F01",
+          "RAGEVAL-PDF-EN-09:F01",
+          "RAGEVAL-XLSX-ZH-03:F01",
+          "RAGEVAL-XLSX-ZH-05:F01",
+          "RAGEVAL-XLSX-ZH-02:F01",
+          "RAGEVAL-CODE-EN-10:F08",
+          "RAGEVAL-PDF-EN-08:F01",
+          "RAGEVAL-CODE-EN-08:F08",
+          "RAGEVAL-CODE-EN-07:F08",
+          "RAGEVAL-XLSX-EN-06:F01",
+          "RAGEVAL-XLSX-EN-09:F01",
+          "RAGEVAL-XLSX-EN-10:F01",
+          "RAGEVAL-XLSX-EN-08:F01",
+          "RAGEVAL-XLSX-EN-07:F01"
+        ],
+        "finalEvidenceIds": [
+          "RAGEVAL-XLSX-ZH-01:F03",
+          "RAGEVAL-CODE-ZH-01:F08",
+          "RAGEVAL-PPTX-ZH-01:F01",
+          "RAGEVAL-DOCX-ZH-01:F01",
+          "RAGEVAL-PDF-ZH-01:F01",
+          "RAGEVAL-DOCX-ZH-04:F01",
+          "RAGEVAL-DOCX-ZH-03:F01",
+          "RAGEVAL-PPTX-ZH-04:F01",
+          "RAGEVAL-DOCX-ZH-02:F01",
+          "RAGEVAL-PPTX-ZH-03:F01"
+        ],
+        "citationEvidenceIds": [
+          "RAGEVAL-XLSX-ZH-01:F03"
+        ],
+        "answerSha256": "6a9e554204c915ea09b98befcbcb1a9439c07f021b0aa94131338fcbcf203a72",
+        "answered": true,
+        "answerCorrectness": 1,
+        "faithfulness": 1,
+        "tableExactAnswer": false,
+        "latencyMilliseconds": 5229,
+        "latencyBreakdown": {
+          "embedQueryMilliseconds": 4555,
+          "fetchCandidatesMilliseconds": 100,
+          "hydrateEvidenceMilliseconds": 163,
+          "rerankMilliseconds": 409,
+          "pipelineTotalMilliseconds": 5229
+        },
+        "contextTokens": 1901,
+        "answerUsage": {
+          "promptTokens": 3008,
+          "completionTokens": 19,
+          "totalTokens": 3027
+        },
+        "integrity": {
+          "citationLocatorValid": true,
+          "provenanceValid": true,
+          "cellLineageValid": false
+        },
+        "leakage": {
+          "acl": false,
+          "deletion": false,
+          "secret": false,
+          "unauthorizedEvidence": false
+        }
+      }
+    ]
+  },
+  "candidate": {
+    "captureId": "f989f0f3-f9a8-4420-9e14-d31652dee2f8",
+    "profileRole": "candidate",
+    "generationId": "53cfdad8-4e69-4d9e-a4c0-d2fcaec29696",
+    "artifactManifestHash": "7d5507b73294d5bbcb95862f858d2f9dd9ea3cc3473d078604801244d3a1de9b",
+    "chunkProfileHash": "606d6ac1cca428a05a7dccce0b172aabfba893f02431834cdc75775342db88b1",
+    "summary": {
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "qualityScore": 1,
+      "p95LatencyMilliseconds": 5051,
+      "averageContextTokens": 1877,
+      "qualityScoreByCriticalSlice": {
+        "chinese": 1,
+        "cross_section": 1,
+        "english": 1,
+        "exact_numeric": 1,
+        "json_code": 1,
+        "pdf": 1,
+        "pptx": 1,
+        "short_fact": 1,
+        "text_markdown_docx": 1,
+        "xlsx_table": 1
+      }
+    },
+    "cases": [
+      {
+        "caseId": "rageval-xlsx-zh-01-f03",
+        "retrievedEvidenceIds": [
+          "RAGEVAL-XLSX-ZH-01:F03",
+          "RAGEVAL-PPTX-ZH-01:F01",
+          "RAGEVAL-PPTX-ZH-04:F01",
+          "RAGEVAL-PPTX-ZH-03:F01",
+          "RAGEVAL-PPTX-ZH-05:F01",
+          "RAGEVAL-PPTX-ZH-02:F01",
+          "RAGEVAL-PDF-ZH-03:F01",
+          "chunk:a6bff304-e626-5bf3-9cd8-e542f96ea5f3",
+          "RAGEVAL-PDF-ZH-01:F01",
+          "chunk:0b3e157b-a5b0-5733-9b3d-054394b2a150",
+          "RAGEVAL-PDF-ZH-02:F01",
+          "chunk:2fc7a3ad-9430-5425-ae76-c82c32455e7a",
+          "RAGEVAL-PDF-ZH-05:F01",
+          "chunk:255fbacc-a2bc-5c0b-ab00-a92852a73822",
+          "RAGEVAL-DOCX-ZH-02:F03",
+          "RAGEVAL-DOCX-ZH-04:F03",
+          "RAGEVAL-DOCX-ZH-03:F03",
+          "RAGEVAL-DOCX-ZH-05:F03",
+          "RAGEVAL-PDF-ZH-04:F01",
+          "chunk:e67883d3-f060-5810-8ac0-3490aa80c08a",
+          "RAGEVAL-DOCX-ZH-01:F03",
+          "RAGEVAL-XLSX-ZH-04:F01",
+          "RAGEVAL-XLSX-ZH-05:F01",
+          "RAGEVAL-XLSX-ZH-03:F01",
+          "RAGEVAL-XLSX-ZH-02:F01",
+          "RAGEVAL-CODE-ZH-01:F10",
+          "RAGEVAL-PPTX-EN-06:F01",
+          "chunk:3b6b1b40-f206-552f-91fd-0fd205e291a9",
+          "chunk:bd490102-0a94-5884-b115-0bab2212f57c",
+          "RAGEVAL-PPTX-EN-10:F01",
+          "RAGEVAL-PDF-EN-06:F01",
+          "chunk:7a1c0be5-22fe-550d-9e1d-114c4d409fd2",
+          "RAGEVAL-PPTX-EN-08:F01",
+          "RAGEVAL-CODE-ZH-05:F10",
+          "RAGEVAL-CODE-ZH-02:F10",
+          "chunk:1cf6c3fb-a898-5e52-a7fa-f5218eb81c2d",
+          "RAGEVAL-CODE-ZH-04:F10",
+          "RAGEVAL-CODE-ZH-03:F10",
+          "chunk:3b42f5fa-d414-53c2-8cd6-86a7a37d0712",
+          "chunk:83e301a0-2ab0-5bea-931a-8b6bf0cad952",
+          "chunk:e4524770-e614-5ac1-9efe-e827055e87d5",
+          "RAGEVAL-PPTX-EN-09:F01",
+          "chunk:f221beaa-9e14-50eb-bae0-31f83edba5cc",
+          "chunk:64ed9410-7c18-536a-849f-ce1480329ee2",
+          "RAGEVAL-PPTX-EN-07:F01",
+          "chunk:2d6fb1cb-1da2-5f07-9267-3649880fc093",
+          "chunk:34f29f8e-5216-5868-a448-8b6946563c86",
+          "chunk:3c20a5a2-401f-5609-a82b-a397829e102f",
+          "RAGEVAL-PDF-EN-07:F01",
+          "chunk:68c48908-4510-5969-b6a9-16872d97e041"
+        ],
+        "finalEvidenceIds": [
+          "RAGEVAL-XLSX-ZH-01:F03",
+          "chunk:a6bff304-e626-5bf3-9cd8-e542f96ea5f3",
+          "RAGEVAL-PPTX-ZH-01:F01",
+          "RAGEVAL-PDF-ZH-01:F01",
+          "RAGEVAL-DOCX-ZH-05:F03",
+          "RAGEVAL-DOCX-ZH-03:F03",
+          "RAGEVAL-DOCX-ZH-02:F03",
+          "RAGEVAL-DOCX-ZH-04:F03",
+          "RAGEVAL-PPTX-ZH-03:F01",
+          "chunk:e67883d3-f060-5810-8ac0-3490aa80c08a"
+        ],
+        "citationEvidenceIds": [
+          "RAGEVAL-XLSX-ZH-01:F03"
+        ],
+        "answerSha256": "98e1dcc4515ec72384b48eef6528d05dc23bce546786eb2f3f92be9bca631fb6",
+        "answered": true,
+        "answerCorrectness": 1,
+        "faithfulness": 1,
+        "tableExactAnswer": true,
+        "latencyMilliseconds": 5051,
+        "latencyBreakdown": {
+          "embedQueryMilliseconds": 4555,
+          "fetchCandidatesMilliseconds": 65,
+          "hydrateEvidenceMilliseconds": 91,
+          "rerankMilliseconds": 339,
+          "pipelineTotalMilliseconds": 5051
+        },
+        "contextTokens": 1877,
+        "answerUsage": {
+          "promptTokens": 2137,
+          "completionTokens": 19,
+          "totalTokens": 2156
+        },
+        "integrity": {
+          "citationLocatorValid": true,
+          "provenanceValid": true,
+          "cellLineageValid": true
+        },
+        "leakage": {
+          "acl": false,
+          "deletion": false,
+          "secret": false,
+          "unauthorizedEvidence": false
+        }
+      }
+    ]
+  },
+  "slices": {
+    "chinese": {
+      "cases": 1,
+      "evaluated": true,
+      "activeQualityScore": 0.9,
+      "candidateQualityScore": 1,
+      "passed": true
+    },
+    "cross_section": {
+      "cases": 0,
+      "evaluated": false,
+      "activeQualityScore": 1,
+      "candidateQualityScore": 1,
+      "passed": false
+    },
+    "english": {
+      "cases": 0,
+      "evaluated": false,
+      "activeQualityScore": 1,
+      "candidateQualityScore": 1,
+      "passed": false
+    },
+    "exact_numeric": {
+      "cases": 1,
+      "evaluated": true,
+      "activeQualityScore": 0.9,
+      "candidateQualityScore": 1,
+      "passed": true
+    },
+    "json_code": {
+      "cases": 0,
+      "evaluated": false,
+      "activeQualityScore": 1,
+      "candidateQualityScore": 1,
+      "passed": false
+    },
+    "pdf": {
+      "cases": 0,
+      "evaluated": false,
+      "activeQualityScore": 1,
+      "candidateQualityScore": 1,
+      "passed": false
+    },
+    "pptx": {
+      "cases": 0,
+      "evaluated": false,
+      "activeQualityScore": 1,
+      "candidateQualityScore": 1,
+      "passed": false
+    },
+    "short_fact": {
+      "cases": 0,
+      "evaluated": false,
+      "activeQualityScore": 1,
+      "candidateQualityScore": 1,
+      "passed": false
+    },
+    "text_markdown_docx": {
+      "cases": 0,
+      "evaluated": false,
+      "activeQualityScore": 1,
+      "candidateQualityScore": 1,
+      "passed": false
+    },
+    "xlsx_table": {
+      "cases": 1,
+      "evaluated": true,
+      "activeQualityScore": 0.9,
+      "candidateQualityScore": 1,
+      "passed": true
+    }
+  },
+  "comparison": {
+    "activeQualityScore": 0.9,
+    "candidateQualityScore": 1,
+    "minimumAggregateQualityImprovement": 0.005,
+    "actualAggregateQualityImprovement": 0.09999999999999998,
+    "aggregateQualityImprovementPassed": true,
+    "sliceNoRegressionPassed": false,
+    "regressedSlices": [],
+    "unevaluatedSlices": [
+      "cross_section",
+      "english",
+      "json_code",
+      "pdf",
+      "pptx",
+      "short_fact",
+      "text_markdown_docx"
+    ]
+  },
+  "budgets": {
+    "candidateP95LatencyMilliseconds": 5051,
+    "maximumP95LatencyMilliseconds": 1000,
+    "candidateAverageContextTokens": 1877,
+    "maximumAverageContextTokens": 4096,
+    "latencyPassed": false,
+    "contextTokenCostPassed": true
+  }
+}

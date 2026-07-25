@@ -1,0 +1,1594 @@
+{
+  "schemaVersion": "neo-chat.rag-supplemental-no-answer-report.v1",
+  "captureVersion": "neo-chat.rag-promotion-capture.v6",
+  "promotionEvidence": false,
+  "passed": false,
+  "capturedAt": "2026-07-25T11:18:36Z",
+  "suite": {
+    "id": "candidate8-supplemental-no-answer-2026-07-25",
+    "rawSha256": "ef9d273cf1a25db1165f8c411f985338a485745813639be1412a423cdbafc553",
+    "cases": 50
+  },
+  "candidate": {
+    "generationId": "4e9e18ef-c259-440b-9976-b4632e50b419",
+    "artifactManifestHash": "ae72c08e56989f7f831fdf42cedc2d7febb846f92481bd79088b6ac8819f562f",
+    "chunkProfileHash": "36845c249aa551d4d86720c38dfef9eb9e36ed49573a7547d2a5381d5f085d73",
+    "status": "verified",
+    "readiness": "ready"
+  },
+  "configuration": {
+    "retrievalProvider": {
+      "profileId": "siliconflow_bge_m3_v1",
+      "providerId": "siliconflow",
+      "embeddingModelId": "Pro/BAAI/bge-m3",
+      "embeddingDimensions": 1024,
+      "rerankModelId": "Pro/BAAI/bge-reranker-v2-m3"
+    },
+    "answerProviderId": "SERVER_DEFAULT",
+    "answerModelId": "gpt-5.6-sol",
+    "concurrency": 4,
+    "scoringPolicy": "synthetic-curator-bound-evidence-v4",
+    "generationHeadRevision": 4,
+    "corpusProjectionRevision": 298
+  },
+  "criteria": {
+    "maximumFalseAnswerRate": 0.02,
+    "maximumP95LatencyMilliseconds": 1000,
+    "maximumAverageContextTokens": 4096,
+    "requireZeroCitationEvidence": true,
+    "requireZeroCitationMarkers": true,
+    "requireZeroAuthorityLeakage": true,
+    "requireAbsentSourceAndSubject": true
+  },
+  "summary": {
+    "cases": 50,
+    "falseAnswers": 0,
+    "falseAnswerRate": 0,
+    "casesWithCitationEvidence": 0,
+    "casesWithCitationMarkers": 0,
+    "absentSourceMatches": 0,
+    "absentSubjectMatches": 0,
+    "aclLeaks": 0,
+    "deletionLeaks": 0,
+    "secretLeaks": 0,
+    "unauthorizedEvidenceLeaks": 0,
+    "p95LatencyMilliseconds": 1606,
+    "averageContextTokens": 2212.88,
+    "passed": false,
+    "failures": [
+      "P95 retrieval latency exceeded the budget"
+    ]
+  },
+  "slices": {
+    "chinese": {
+      "cases": 25,
+      "falseAnswers": 0,
+      "falseAnswerRate": 0,
+      "casesWithCitationEvidence": 0,
+      "casesWithCitationMarkers": 0,
+      "absentSourceMatches": 0,
+      "absentSubjectMatches": 0,
+      "aclLeaks": 0,
+      "deletionLeaks": 0,
+      "secretLeaks": 0,
+      "unauthorizedEvidenceLeaks": 0,
+      "p95LatencyMilliseconds": 1624,
+      "averageContextTokens": 2373.12,
+      "passed": false,
+      "failures": [
+        "P95 retrieval latency exceeded the budget"
+      ]
+    },
+    "docx": {
+      "cases": 10,
+      "falseAnswers": 0,
+      "falseAnswerRate": 0,
+      "casesWithCitationEvidence": 0,
+      "casesWithCitationMarkers": 0,
+      "absentSourceMatches": 0,
+      "absentSubjectMatches": 0,
+      "aclLeaks": 0,
+      "deletionLeaks": 0,
+      "secretLeaks": 0,
+      "unauthorizedEvidenceLeaks": 0,
+      "p95LatencyMilliseconds": 531,
+      "averageContextTokens": 2027.3,
+      "passed": true,
+      "failures": []
+    },
+    "english": {
+      "cases": 25,
+      "falseAnswers": 0,
+      "falseAnswerRate": 0,
+      "casesWithCitationEvidence": 0,
+      "casesWithCitationMarkers": 0,
+      "absentSourceMatches": 0,
+      "absentSubjectMatches": 0,
+      "aclLeaks": 0,
+      "deletionLeaks": 0,
+      "secretLeaks": 0,
+      "unauthorizedEvidenceLeaks": 0,
+      "p95LatencyMilliseconds": 605,
+      "averageContextTokens": 2052.64,
+      "passed": true,
+      "failures": []
+    },
+    "json_code": {
+      "cases": 10,
+      "falseAnswers": 0,
+      "falseAnswerRate": 0,
+      "casesWithCitationEvidence": 0,
+      "casesWithCitationMarkers": 0,
+      "absentSourceMatches": 0,
+      "absentSubjectMatches": 0,
+      "aclLeaks": 0,
+      "deletionLeaks": 0,
+      "secretLeaks": 0,
+      "unauthorizedEvidenceLeaks": 0,
+      "p95LatencyMilliseconds": 632,
+      "averageContextTokens": 2176.5,
+      "passed": true,
+      "failures": []
+    },
+    "pdf": {
+      "cases": 10,
+      "falseAnswers": 0,
+      "falseAnswerRate": 0,
+      "casesWithCitationEvidence": 0,
+      "casesWithCitationMarkers": 0,
+      "absentSourceMatches": 0,
+      "absentSubjectMatches": 0,
+      "aclLeaks": 0,
+      "deletionLeaks": 0,
+      "secretLeaks": 0,
+      "unauthorizedEvidenceLeaks": 0,
+      "p95LatencyMilliseconds": 1655,
+      "averageContextTokens": 2072.8,
+      "passed": false,
+      "failures": [
+        "P95 retrieval latency exceeded the budget"
+      ]
+    },
+    "pptx": {
+      "cases": 10,
+      "falseAnswers": 0,
+      "falseAnswerRate": 0,
+      "casesWithCitationEvidence": 0,
+      "casesWithCitationMarkers": 0,
+      "absentSourceMatches": 0,
+      "absentSubjectMatches": 0,
+      "aclLeaks": 0,
+      "deletionLeaks": 0,
+      "secretLeaks": 0,
+      "unauthorizedEvidenceLeaks": 0,
+      "p95LatencyMilliseconds": 692,
+      "averageContextTokens": 2638.1,
+      "passed": true,
+      "failures": []
+    },
+    "xlsx": {
+      "cases": 10,
+      "falseAnswers": 0,
+      "falseAnswerRate": 0,
+      "casesWithCitationEvidence": 0,
+      "casesWithCitationMarkers": 0,
+      "absentSourceMatches": 0,
+      "absentSubjectMatches": 0,
+      "aclLeaks": 0,
+      "deletionLeaks": 0,
+      "secretLeaks": 0,
+      "unauthorizedEvidenceLeaks": 0,
+      "p95LatencyMilliseconds": 562,
+      "averageContextTokens": 2149.7,
+      "passed": true,
+      "failures": []
+    }
+  },
+  "cases": [
+    {
+      "caseId": "supplemental-no-answer-pdf-zh-01",
+      "language": "chinese",
+      "format": "pdf",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 1624,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 561,
+        "fetchCandidatesMilliseconds": 277,
+        "hydrateEvidenceMilliseconds": 466,
+        "rerankMilliseconds": 319,
+        "pipelineTotalMilliseconds": 1624
+      },
+      "contextTokens": 2493,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-pdf-zh-02",
+      "language": "chinese",
+      "format": "pdf",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 1494,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 486,
+        "fetchCandidatesMilliseconds": 226,
+        "hydrateEvidenceMilliseconds": 484,
+        "rerankMilliseconds": 295,
+        "pipelineTotalMilliseconds": 1494
+      },
+      "contextTokens": 2152,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-pdf-zh-03",
+      "language": "chinese",
+      "format": "pdf",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 1606,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 561,
+        "fetchCandidatesMilliseconds": 271,
+        "hydrateEvidenceMilliseconds": 469,
+        "rerankMilliseconds": 303,
+        "pipelineTotalMilliseconds": 1606
+      },
+      "contextTokens": 2253,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-pdf-zh-04",
+      "language": "chinese",
+      "format": "pdf",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 1655,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 561,
+        "fetchCandidatesMilliseconds": 275,
+        "hydrateEvidenceMilliseconds": 471,
+        "rerankMilliseconds": 348,
+        "pipelineTotalMilliseconds": 1655
+      },
+      "contextTokens": 2139,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-pdf-zh-05",
+      "language": "chinese",
+      "format": "pdf",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 45,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 635,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 115,
+        "fetchCandidatesMilliseconds": 113,
+        "hydrateEvidenceMilliseconds": 89,
+        "rerankMilliseconds": 315,
+        "pipelineTotalMilliseconds": 635
+      },
+      "contextTokens": 2616,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-pdf-en-06",
+      "language": "english",
+      "format": "pdf",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 614,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 114,
+        "fetchCandidatesMilliseconds": 110,
+        "hydrateEvidenceMilliseconds": 92,
+        "rerankMilliseconds": 296,
+        "pipelineTotalMilliseconds": 614
+      },
+      "contextTokens": 1713,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-pdf-en-07",
+      "language": "english",
+      "format": "pdf",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 537,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 114,
+        "fetchCandidatesMilliseconds": 99,
+        "hydrateEvidenceMilliseconds": 22,
+        "rerankMilliseconds": 300,
+        "pipelineTotalMilliseconds": 537
+      },
+      "contextTokens": 1967,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-pdf-en-08",
+      "language": "english",
+      "format": "pdf",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 568,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 121,
+        "fetchCandidatesMilliseconds": 90,
+        "hydrateEvidenceMilliseconds": 15,
+        "rerankMilliseconds": 340,
+        "pipelineTotalMilliseconds": 568
+      },
+      "contextTokens": 1774,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-pdf-en-09",
+      "language": "english",
+      "format": "pdf",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 562,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 128,
+        "fetchCandidatesMilliseconds": 99,
+        "hydrateEvidenceMilliseconds": 18,
+        "rerankMilliseconds": 315,
+        "pipelineTotalMilliseconds": 562
+      },
+      "contextTokens": 2019,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-pdf-en-10",
+      "language": "english",
+      "format": "pdf",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 579,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 112,
+        "fetchCandidatesMilliseconds": 103,
+        "hydrateEvidenceMilliseconds": 16,
+        "rerankMilliseconds": 346,
+        "pipelineTotalMilliseconds": 579
+      },
+      "contextTokens": 1602,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-docx-zh-01",
+      "language": "chinese",
+      "format": "docx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 453,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 117,
+        "fetchCandidatesMilliseconds": 20,
+        "hydrateEvidenceMilliseconds": 12,
+        "rerankMilliseconds": 302,
+        "pipelineTotalMilliseconds": 453
+      },
+      "contextTokens": 2456,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-docx-zh-02",
+      "language": "chinese",
+      "format": "docx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 470,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 124,
+        "fetchCandidatesMilliseconds": 20,
+        "hydrateEvidenceMilliseconds": 17,
+        "rerankMilliseconds": 306,
+        "pipelineTotalMilliseconds": 470
+      },
+      "contextTokens": 2019,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-docx-zh-03",
+      "language": "chinese",
+      "format": "docx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 464,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 116,
+        "fetchCandidatesMilliseconds": 25,
+        "hydrateEvidenceMilliseconds": 14,
+        "rerankMilliseconds": 307,
+        "pipelineTotalMilliseconds": 464
+      },
+      "contextTokens": 2387,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-docx-zh-04",
+      "language": "chinese",
+      "format": "docx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 467,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 123,
+        "fetchCandidatesMilliseconds": 19,
+        "hydrateEvidenceMilliseconds": 14,
+        "rerankMilliseconds": 310,
+        "pipelineTotalMilliseconds": 467
+      },
+      "contextTokens": 2505,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-docx-zh-05",
+      "language": "chinese",
+      "format": "docx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 45,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 520,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 129,
+        "fetchCandidatesMilliseconds": 18,
+        "hydrateEvidenceMilliseconds": 11,
+        "rerankMilliseconds": 359,
+        "pipelineTotalMilliseconds": 520
+      },
+      "contextTokens": 2652,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-docx-en-06",
+      "language": "english",
+      "format": "docx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 477,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 134,
+        "fetchCandidatesMilliseconds": 18,
+        "hydrateEvidenceMilliseconds": 15,
+        "rerankMilliseconds": 308,
+        "pipelineTotalMilliseconds": 477
+      },
+      "contextTokens": 1514,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-docx-en-07",
+      "language": "english",
+      "format": "docx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 531,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 175,
+        "fetchCandidatesMilliseconds": 20,
+        "hydrateEvidenceMilliseconds": 16,
+        "rerankMilliseconds": 318,
+        "pipelineTotalMilliseconds": 531
+      },
+      "contextTokens": 1795,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-docx-en-08",
+      "language": "english",
+      "format": "docx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 471,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 118,
+        "fetchCandidatesMilliseconds": 19,
+        "hydrateEvidenceMilliseconds": 15,
+        "rerankMilliseconds": 317,
+        "pipelineTotalMilliseconds": 471
+      },
+      "contextTokens": 1725,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-docx-en-09",
+      "language": "english",
+      "format": "docx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 509,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 115,
+        "fetchCandidatesMilliseconds": 29,
+        "hydrateEvidenceMilliseconds": 18,
+        "rerankMilliseconds": 345,
+        "pipelineTotalMilliseconds": 509
+      },
+      "contextTokens": 1721,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-docx-en-10",
+      "language": "english",
+      "format": "docx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 474,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 131,
+        "fetchCandidatesMilliseconds": 21,
+        "hydrateEvidenceMilliseconds": 15,
+        "rerankMilliseconds": 305,
+        "pipelineTotalMilliseconds": 474
+      },
+      "contextTokens": 1499,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-pptx-zh-01",
+      "language": "chinese",
+      "format": "pptx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 485,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 117,
+        "fetchCandidatesMilliseconds": 17,
+        "hydrateEvidenceMilliseconds": 15,
+        "rerankMilliseconds": 334,
+        "pipelineTotalMilliseconds": 485
+      },
+      "contextTokens": 2574,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-pptx-zh-02",
+      "language": "chinese",
+      "format": "pptx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 692,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 130,
+        "fetchCandidatesMilliseconds": 26,
+        "hydrateEvidenceMilliseconds": 17,
+        "rerankMilliseconds": 518,
+        "pipelineTotalMilliseconds": 692
+      },
+      "contextTokens": 2565,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-pptx-zh-03",
+      "language": "chinese",
+      "format": "pptx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 455,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 115,
+        "fetchCandidatesMilliseconds": 20,
+        "hydrateEvidenceMilliseconds": 16,
+        "rerankMilliseconds": 302,
+        "pipelineTotalMilliseconds": 455
+      },
+      "contextTokens": 2622,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-pptx-zh-04",
+      "language": "chinese",
+      "format": "pptx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 465,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 119,
+        "fetchCandidatesMilliseconds": 22,
+        "hydrateEvidenceMilliseconds": 17,
+        "rerankMilliseconds": 306,
+        "pipelineTotalMilliseconds": 465
+      },
+      "contextTokens": 2567,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-pptx-zh-05",
+      "language": "chinese",
+      "format": "pptx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 45,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 470,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 131,
+        "fetchCandidatesMilliseconds": 19,
+        "hydrateEvidenceMilliseconds": 14,
+        "rerankMilliseconds": 303,
+        "pipelineTotalMilliseconds": 470
+      },
+      "contextTokens": 2570,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-pptx-en-06",
+      "language": "english",
+      "format": "pptx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 475,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 113,
+        "fetchCandidatesMilliseconds": 21,
+        "hydrateEvidenceMilliseconds": 15,
+        "rerankMilliseconds": 324,
+        "pipelineTotalMilliseconds": 475
+      },
+      "contextTokens": 2670,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-pptx-en-07",
+      "language": "english",
+      "format": "pptx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 513,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 129,
+        "fetchCandidatesMilliseconds": 35,
+        "hydrateEvidenceMilliseconds": 17,
+        "rerankMilliseconds": 331,
+        "pipelineTotalMilliseconds": 513
+      },
+      "contextTokens": 2679,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-pptx-en-08",
+      "language": "english",
+      "format": "pptx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 573,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 136,
+        "fetchCandidatesMilliseconds": 97,
+        "hydrateEvidenceMilliseconds": 17,
+        "rerankMilliseconds": 321,
+        "pipelineTotalMilliseconds": 573
+      },
+      "contextTokens": 2672,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-pptx-en-09",
+      "language": "english",
+      "format": "pptx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 559,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 112,
+        "fetchCandidatesMilliseconds": 100,
+        "hydrateEvidenceMilliseconds": 18,
+        "rerankMilliseconds": 326,
+        "pipelineTotalMilliseconds": 559
+      },
+      "contextTokens": 2793,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-pptx-en-10",
+      "language": "english",
+      "format": "pptx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 548,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 118,
+        "fetchCandidatesMilliseconds": 91,
+        "hydrateEvidenceMilliseconds": 15,
+        "rerankMilliseconds": 322,
+        "pipelineTotalMilliseconds": 548
+      },
+      "contextTokens": 2669,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-xlsx-zh-01",
+      "language": "chinese",
+      "format": "xlsx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 562,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 132,
+        "fetchCandidatesMilliseconds": 96,
+        "hydrateEvidenceMilliseconds": 17,
+        "rerankMilliseconds": 315,
+        "pipelineTotalMilliseconds": 562
+      },
+      "contextTokens": 2378,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-xlsx-zh-02",
+      "language": "chinese",
+      "format": "xlsx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 463,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 128,
+        "fetchCandidatesMilliseconds": 18,
+        "hydrateEvidenceMilliseconds": 15,
+        "rerankMilliseconds": 300,
+        "pipelineTotalMilliseconds": 463
+      },
+      "contextTokens": 2107,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-xlsx-zh-03",
+      "language": "chinese",
+      "format": "xlsx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 461,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 116,
+        "fetchCandidatesMilliseconds": 21,
+        "hydrateEvidenceMilliseconds": 15,
+        "rerankMilliseconds": 307,
+        "pipelineTotalMilliseconds": 461
+      },
+      "contextTokens": 2305,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-xlsx-zh-04",
+      "language": "chinese",
+      "format": "xlsx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 454,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 116,
+        "fetchCandidatesMilliseconds": 18,
+        "hydrateEvidenceMilliseconds": 14,
+        "rerankMilliseconds": 303,
+        "pipelineTotalMilliseconds": 454
+      },
+      "contextTokens": 2142,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-xlsx-zh-05",
+      "language": "chinese",
+      "format": "xlsx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 40,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 455,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 123,
+        "fetchCandidatesMilliseconds": 16,
+        "hydrateEvidenceMilliseconds": 12,
+        "rerankMilliseconds": 303,
+        "pipelineTotalMilliseconds": 455
+      },
+      "contextTokens": 2232,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-xlsx-en-06",
+      "language": "english",
+      "format": "xlsx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 482,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 119,
+        "fetchCandidatesMilliseconds": 26,
+        "hydrateEvidenceMilliseconds": 15,
+        "rerankMilliseconds": 320,
+        "pipelineTotalMilliseconds": 482
+      },
+      "contextTokens": 1968,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-xlsx-en-07",
+      "language": "english",
+      "format": "xlsx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 536,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 164,
+        "fetchCandidatesMilliseconds": 19,
+        "hydrateEvidenceMilliseconds": 16,
+        "rerankMilliseconds": 335,
+        "pipelineTotalMilliseconds": 536
+      },
+      "contextTokens": 1999,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-xlsx-en-08",
+      "language": "english",
+      "format": "xlsx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 507,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 160,
+        "fetchCandidatesMilliseconds": 20,
+        "hydrateEvidenceMilliseconds": 16,
+        "rerankMilliseconds": 310,
+        "pipelineTotalMilliseconds": 507
+      },
+      "contextTokens": 2205,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-xlsx-en-09",
+      "language": "english",
+      "format": "xlsx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 468,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 117,
+        "fetchCandidatesMilliseconds": 21,
+        "hydrateEvidenceMilliseconds": 17,
+        "rerankMilliseconds": 312,
+        "pipelineTotalMilliseconds": 468
+      },
+      "contextTokens": 2168,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-xlsx-en-10",
+      "language": "english",
+      "format": "xlsx",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 480,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 118,
+        "fetchCandidatesMilliseconds": 26,
+        "hydrateEvidenceMilliseconds": 16,
+        "rerankMilliseconds": 318,
+        "pipelineTotalMilliseconds": 480
+      },
+      "contextTokens": 1993,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-code-zh-01",
+      "language": "chinese",
+      "format": "json_code",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 455,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 121,
+        "fetchCandidatesMilliseconds": 24,
+        "hydrateEvidenceMilliseconds": 14,
+        "rerankMilliseconds": 294,
+        "pipelineTotalMilliseconds": 455
+      },
+      "contextTokens": 2308,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-code-zh-02",
+      "language": "chinese",
+      "format": "json_code",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 537,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 123,
+        "fetchCandidatesMilliseconds": 24,
+        "hydrateEvidenceMilliseconds": 15,
+        "rerankMilliseconds": 373,
+        "pipelineTotalMilliseconds": 537
+      },
+      "contextTokens": 2118,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-code-zh-03",
+      "language": "chinese",
+      "format": "json_code",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 477,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 121,
+        "fetchCandidatesMilliseconds": 31,
+        "hydrateEvidenceMilliseconds": 19,
+        "rerankMilliseconds": 303,
+        "pipelineTotalMilliseconds": 477
+      },
+      "contextTokens": 2221,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-code-zh-04",
+      "language": "chinese",
+      "format": "json_code",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 467,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 113,
+        "fetchCandidatesMilliseconds": 27,
+        "hydrateEvidenceMilliseconds": 18,
+        "rerankMilliseconds": 306,
+        "pipelineTotalMilliseconds": 467
+      },
+      "contextTokens": 2553,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-code-zh-05",
+      "language": "chinese",
+      "format": "json_code",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 632,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 117,
+        "fetchCandidatesMilliseconds": 122,
+        "hydrateEvidenceMilliseconds": 93,
+        "rerankMilliseconds": 299,
+        "pipelineTotalMilliseconds": 632
+      },
+      "contextTokens": 2394,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-code-en-06",
+      "language": "english",
+      "format": "json_code",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 519,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 118,
+        "fetchCandidatesMilliseconds": 22,
+        "hydrateEvidenceMilliseconds": 16,
+        "rerankMilliseconds": 362,
+        "pipelineTotalMilliseconds": 519
+      },
+      "contextTokens": 2082,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-code-en-07",
+      "language": "english",
+      "format": "json_code",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 547,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 111,
+        "fetchCandidatesMilliseconds": 100,
+        "hydrateEvidenceMilliseconds": 16,
+        "rerankMilliseconds": 318,
+        "pipelineTotalMilliseconds": 547
+      },
+      "contextTokens": 2000,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-code-en-08",
+      "language": "english",
+      "format": "json_code",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 560,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 120,
+        "fetchCandidatesMilliseconds": 94,
+        "hydrateEvidenceMilliseconds": 17,
+        "rerankMilliseconds": 327,
+        "pipelineTotalMilliseconds": 560
+      },
+      "contextTokens": 2040,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-code-en-09",
+      "language": "english",
+      "format": "json_code",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 561,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 122,
+        "fetchCandidatesMilliseconds": 96,
+        "hydrateEvidenceMilliseconds": 15,
+        "rerankMilliseconds": 326,
+        "pipelineTotalMilliseconds": 561
+      },
+      "contextTokens": 2041,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    },
+    {
+      "caseId": "supplemental-no-answer-code-en-10",
+      "language": "english",
+      "format": "json_code",
+      "answered": false,
+      "answerSha256": "8a6b10089bedd2a3eb619080fb096a529b097604cc2cdf5eab8f724025128670",
+      "retrievedEvidenceCount": 50,
+      "finalEvidenceCount": 10,
+      "citationEvidenceCount": 0,
+      "citationMarkerCount": 0,
+      "absentSourceMatched": false,
+      "absentSubjectMatched": false,
+      "latencyMilliseconds": 605,
+      "latencyBreakdown": {
+        "embedQueryMilliseconds": 121,
+        "fetchCandidatesMilliseconds": 101,
+        "hydrateEvidenceMilliseconds": 16,
+        "rerankMilliseconds": 365,
+        "pipelineTotalMilliseconds": 605
+      },
+      "contextTokens": 2008,
+      "leakage": {
+        "acl": false,
+        "deletion": false,
+        "secret": false,
+        "unauthorizedEvidence": false
+      }
+    }
+  ],
+  "failures": [
+    "P95 retrieval latency exceeded the budget",
+    "chinese: P95 retrieval latency exceeded the budget",
+    "pdf: P95 retrieval latency exceeded the budget"
+  ]
+}

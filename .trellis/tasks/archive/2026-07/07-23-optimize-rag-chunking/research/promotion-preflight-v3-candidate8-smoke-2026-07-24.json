@@ -1,0 +1,429 @@
+{
+  "schemaVersion": "neo-chat.rag-promotion-preflight.v1",
+  "captureVersion": "neo-chat.rag-promotion-capture.v3",
+  "promotionEligible": false,
+  "complete": false,
+  "capturedAt": "2026-07-24T08:19:21Z",
+  "inputs": {
+    "goldenRawSha256": "515ec1b598c45aca726735075f3366a64a1dc3a071ca30765ce62f2536e8a1c8",
+    "goldenContentSha256": "17eee60e93dc32733a8b871ccc7176d8a5f02f283eaebc37113fcb40ec43ce8c",
+    "curationRawSha256": "d0fbc33dd621eb10cd7fe7aa3ff68340b912594af97cb316afbe5447f469865b",
+    "humanReviewRawSha256": "39f076402dbbec233b4214b76a442548e13f85c62dd5f98f1bee8992253087f8",
+    "sourceImportRawSha256": "4c727519ef651a1101879c11a8f7de9fed400035351bfdceea49d852a3635645"
+  },
+  "configuration": {
+    "splits": [
+      "development",
+      "validation"
+    ],
+    "activeRetrieval": {
+      "profileId": "jina_v4_v3",
+      "providerId": "jina",
+      "embeddingModelId": "jina-embeddings-v4",
+      "embeddingDimensions": 1024,
+      "rerankModelId": "jina-reranker-v3"
+    },
+    "candidateRetrieval": {
+      "profileId": "siliconflow_bge_m3_v1",
+      "providerId": "siliconflow",
+      "embeddingModelId": "Pro/BAAI/bge-m3",
+      "embeddingDimensions": 1024,
+      "rerankModelId": "Pro/BAAI/bge-reranker-v2-m3"
+    },
+    "answerProviderId": "SERVER_DEFAULT",
+    "answerModelId": "gpt-5.6-sol",
+    "providerMaximumAttempts": 6,
+    "providerInitialRetryMilliseconds": 500,
+    "candidateLimit": 50,
+    "rerankLimit": 20,
+    "finalLimit": 10,
+    "maximumContextTokens": 4096,
+    "concurrency": 1,
+    "scoringPolicy": "synthetic-curator-bound-evidence-v3",
+    "generationHeadRevision": 4,
+    "corpusProjectionRevision": 298
+  },
+  "holdout": {
+    "state": "not_executed",
+    "precommittedRunId": "ba1749c9-922e-4ab7-b6c0-37603e582617"
+  },
+  "active": {
+    "captureId": "71db568a-a18c-49bf-a340-20de67c824ce",
+    "profileRole": "active",
+    "generationId": "46a1c7bb-44ed-4868-9d61-edd557f9d3f0",
+    "artifactManifestHash": "696828857c568fd81987d7e09be2429eb86da54633b5f4ac4c4507b5a063918c",
+    "chunkProfileHash": "48ac1810a92dcdd61db73646f3c8780e8ebc76b1525145452df7e3c0a819bb03",
+    "summary": {
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "qualityScore": 1,
+      "p95LatencyMilliseconds": 8518,
+      "averageContextTokens": 1993,
+      "qualityScoreByCriticalSlice": {
+        "chinese": 1,
+        "cross_section": 1,
+        "english": 1,
+        "exact_numeric": 1,
+        "json_code": 1,
+        "pdf": 1,
+        "pptx": 1,
+        "short_fact": 1,
+        "text_markdown_docx": 1,
+        "xlsx_table": 1
+      }
+    },
+    "cases": [
+      {
+        "caseId": "rageval-pdf-zh-01-f01",
+        "retrievedEvidenceIds": [
+          "RAGEVAL-PDF-ZH-01:F01",
+          "RAGEVAL-PPTX-ZH-01:F01",
+          "RAGEVAL-PDF-ZH-03:F01",
+          "RAGEVAL-PPTX-ZH-04:F01",
+          "RAGEVAL-PPTX-ZH-02:F01",
+          "RAGEVAL-PPTX-ZH-05:F01",
+          "RAGEVAL-PPTX-ZH-03:F01",
+          "RAGEVAL-PDF-ZH-02:F01",
+          "RAGEVAL-DOCX-ZH-05:F01",
+          "RAGEVAL-DOCX-ZH-01:F01",
+          "RAGEVAL-PDF-EN-10:F01",
+          "RAGEVAL-CODE-ZH-04:F08",
+          "RAGEVAL-PDF-ZH-05:F01",
+          "RAGEVAL-DOCX-ZH-04:F01",
+          "RAGEVAL-DOCX-ZH-03:F01",
+          "RAGEVAL-CODE-ZH-01:F08",
+          "RAGEVAL-PDF-ZH-04:F01",
+          "RAGEVAL-PPTX-EN-10:F01",
+          "RAGEVAL-DOCX-ZH-02:F01",
+          "RAGEVAL-PPTX-EN-06:F01",
+          "RAGEVAL-PPTX-EN-09:F01",
+          "RAGEVAL-PDF-EN-09:F01",
+          "RAGEVAL-CODE-ZH-02:F08",
+          "RAGEVAL-DOCX-EN-06:F01",
+          "RAGEVAL-PPTX-EN-08:F01",
+          "RAGEVAL-CODE-ZH-05:F08",
+          "RAGEVAL-PDF-EN-06:F01",
+          "RAGEVAL-PDF-EN-07:F01",
+          "RAGEVAL-PPTX-EN-07:F01",
+          "RAGEVAL-DOCX-EN-07:F01",
+          "RAGEVAL-CODE-ZH-03:F08",
+          "RAGEVAL-DOCX-EN-10:F01",
+          "RAGEVAL-PDF-EN-08:F01",
+          "RAGEVAL-DOCX-EN-08:F01",
+          "RAGEVAL-DOCX-EN-09:F01",
+          "RAGEVAL-CODE-EN-09:F08",
+          "RAGEVAL-XLSX-ZH-02:F01",
+          "RAGEVAL-XLSX-ZH-01:F01",
+          "RAGEVAL-CODE-EN-10:F08",
+          "RAGEVAL-XLSX-ZH-04:F01",
+          "RAGEVAL-XLSX-ZH-03:F01",
+          "RAGEVAL-XLSX-ZH-05:F01",
+          "RAGEVAL-CODE-EN-06:F08",
+          "RAGEVAL-CODE-EN-07:F08",
+          "RAGEVAL-CODE-EN-08:F08"
+        ],
+        "finalEvidenceIds": [
+          "RAGEVAL-PDF-ZH-01:F01",
+          "RAGEVAL-PPTX-ZH-01:F01",
+          "RAGEVAL-CODE-ZH-01:F08",
+          "RAGEVAL-DOCX-ZH-01:F01",
+          "RAGEVAL-PDF-ZH-02:F01",
+          "RAGEVAL-PDF-ZH-04:F01",
+          "RAGEVAL-PDF-ZH-03:F01",
+          "RAGEVAL-PDF-ZH-05:F01",
+          "RAGEVAL-DOCX-ZH-05:F01",
+          "RAGEVAL-PPTX-ZH-02:F01"
+        ],
+        "citationEvidenceIds": [
+          "RAGEVAL-PDF-ZH-01:F01"
+        ],
+        "answerSha256": "bb8ee977da62c7edd31add54e605b88fb858deab62158f47d81262bbd42d4646",
+        "answered": true,
+        "answerCorrectness": 1,
+        "faithfulness": 1,
+        "tableExactAnswer": false,
+        "latencyMilliseconds": 8518,
+        "latencyBreakdown": {
+          "embedQueryMilliseconds": 7770,
+          "fetchCandidatesMilliseconds": 144,
+          "hydrateEvidenceMilliseconds": 123,
+          "rerankMilliseconds": 479,
+          "pipelineTotalMilliseconds": 8518
+        },
+        "contextTokens": 1993,
+        "answerUsage": {
+          "promptTokens": 3133,
+          "completionTokens": 22,
+          "totalTokens": 3155
+        },
+        "integrity": {
+          "citationLocatorValid": true,
+          "provenanceValid": true,
+          "cellLineageValid": true
+        },
+        "leakage": {
+          "acl": false,
+          "deletion": false,
+          "secret": false,
+          "unauthorizedEvidence": false
+        }
+      }
+    ]
+  },
+  "candidate": {
+    "captureId": "f32468f8-4775-498e-8811-54122e3f19c9",
+    "profileRole": "candidate",
+    "generationId": "4e9e18ef-c259-440b-9976-b4632e50b419",
+    "artifactManifestHash": "ae72c08e56989f7f831fdf42cedc2d7febb846f92481bd79088b6ac8819f562f",
+    "chunkProfileHash": "36845c249aa551d4d86720c38dfef9eb9e36ed49573a7547d2a5381d5f085d73",
+    "summary": {
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "qualityScore": 1,
+      "p95LatencyMilliseconds": 850,
+      "averageContextTokens": 2213,
+      "qualityScoreByCriticalSlice": {
+        "chinese": 1,
+        "cross_section": 1,
+        "english": 1,
+        "exact_numeric": 1,
+        "json_code": 1,
+        "pdf": 1,
+        "pptx": 1,
+        "short_fact": 1,
+        "text_markdown_docx": 1,
+        "xlsx_table": 1
+      }
+    },
+    "cases": [
+      {
+        "caseId": "rageval-pdf-zh-01-f01",
+        "retrievedEvidenceIds": [
+          "RAGEVAL-PDF-ZH-01:F01",
+          "RAGEVAL-PPTX-ZH-01:F01",
+          "chunk:ed509c44-20fb-5565-82fb-671cfa2fbe20",
+          "RAGEVAL-PPTX-ZH-05:F01",
+          "chunk:dcc76db5-f70c-5947-89b3-c85e32968872",
+          "RAGEVAL-PPTX-ZH-02:F01",
+          "RAGEVAL-PPTX-ZH-03:F01",
+          "RAGEVAL-PPTX-ZH-04:F01",
+          "RAGEVAL-PDF-ZH-05:F01",
+          "chunk:89d20dc2-dbda-59aa-ab7d-17089a58dcf1",
+          "chunk:73d38216-0893-56fb-8e9f-6f15d1ff5701",
+          "chunk:2c585024-66c3-5550-ab3f-4f6476f5370a",
+          "chunk:85a994d0-3f22-537b-82ef-fdc2fc7d36a2",
+          "chunk:073416cb-04c0-58c3-a9ff-cf3c936ab372",
+          "chunk:bb3bd850-99c7-56c8-8853-200532c8623c",
+          "chunk:49190e48-4396-556f-a0a2-4fa49b2d3971",
+          "chunk:125041ab-13bd-5f81-8d7c-7df79e47936f",
+          "chunk:83b7a4bb-7858-5c4e-835d-767517f8f9bc",
+          "chunk:646db34c-6f3d-5fc0-9654-eeed48c7e519",
+          "RAGEVAL-DOCX-ZH-05:F01",
+          "RAGEVAL-DOCX-ZH-01:F01",
+          "chunk:ac10be75-2c92-5901-8f17-d2ef2a5b2bcc",
+          "RAGEVAL-PDF-EN-10:F01",
+          "chunk:e4540fb3-e100-54ea-8fc6-6050c0a4da86",
+          "RAGEVAL-DOCX-EN-06:F01",
+          "chunk:3de15b83-5fab-5e5c-b7d0-a1d95c082beb",
+          "RAGEVAL-DOCX-EN-09:F01",
+          "RAGEVAL-DOCX-EN-07:F01",
+          "RAGEVAL-DOCX-EN-08:F01",
+          "RAGEVAL-DOCX-EN-10:F01",
+          "RAGEVAL-PDF-ZH-02:F01",
+          "RAGEVAL-PDF-ZH-04:F01",
+          "RAGEVAL-PDF-ZH-03:F01",
+          "RAGEVAL-CODE-ZH-01:F10",
+          "RAGEVAL-DOCX-ZH-03:F01",
+          "RAGEVAL-DOCX-ZH-04:F01",
+          "RAGEVAL-PPTX-EN-10:F01",
+          "RAGEVAL-DOCX-ZH-02:F01",
+          "RAGEVAL-PPTX-EN-09:F01",
+          "RAGEVAL-PPTX-EN-08:F01",
+          "RAGEVAL-PDF-EN-08:F01",
+          "RAGEVAL-PDF-EN-06:F01",
+          "RAGEVAL-PPTX-EN-06:F01",
+          "chunk:123a56ae-fd16-54f5-a443-cb9ed6d088cc",
+          "RAGEVAL-PDF-EN-09:F01",
+          "RAGEVAL-PDF-EN-07:F01",
+          "chunk:9d5fda55-da6b-5a02-9746-99c82672bd4a",
+          "RAGEVAL-PPTX-EN-07:F01",
+          "chunk:4eb50439-a69c-5555-8039-d22111374df1",
+          "RAGEVAL-CODE-ZH-04:F10"
+        ],
+        "finalEvidenceIds": [
+          "RAGEVAL-PDF-ZH-01:F01",
+          "chunk:73d38216-0893-56fb-8e9f-6f15d1ff5701",
+          "RAGEVAL-PPTX-ZH-01:F01",
+          "RAGEVAL-PDF-ZH-05:F01",
+          "chunk:ed509c44-20fb-5565-82fb-671cfa2fbe20",
+          "chunk:dcc76db5-f70c-5947-89b3-c85e32968872",
+          "RAGEVAL-DOCX-ZH-05:F01",
+          "RAGEVAL-PPTX-ZH-04:F01",
+          "RAGEVAL-PPTX-ZH-02:F01",
+          "RAGEVAL-PPTX-ZH-05:F01"
+        ],
+        "citationEvidenceIds": [
+          "RAGEVAL-PDF-ZH-01:F01"
+        ],
+        "answerSha256": "bedf43c990a0460f47cf900ac843915fb31c48d287010cd479cc66e2dcbb4f8c",
+        "answered": true,
+        "answerCorrectness": 1,
+        "faithfulness": 1,
+        "tableExactAnswer": false,
+        "latencyMilliseconds": 850,
+        "latencyBreakdown": {
+          "embedQueryMilliseconds": 295,
+          "fetchCandidatesMilliseconds": 114,
+          "hydrateEvidenceMilliseconds": 119,
+          "rerankMilliseconds": 320,
+          "pipelineTotalMilliseconds": 850
+        },
+        "contextTokens": 2213,
+        "answerUsage": {
+          "promptTokens": 2287,
+          "completionTokens": 35,
+          "totalTokens": 2322
+        },
+        "integrity": {
+          "citationLocatorValid": true,
+          "provenanceValid": true,
+          "cellLineageValid": true
+        },
+        "leakage": {
+          "acl": false,
+          "deletion": false,
+          "secret": false,
+          "unauthorizedEvidence": false
+        }
+      }
+    ]
+  },
+  "slices": {
+    "chinese": {
+      "cases": 1,
+      "evaluated": true,
+      "activeQualityScore": 1,
+      "candidateQualityScore": 1,
+      "passed": true
+    },
+    "cross_section": {
+      "cases": 0,
+      "evaluated": false,
+      "activeQualityScore": 1,
+      "candidateQualityScore": 1,
+      "passed": false
+    },
+    "english": {
+      "cases": 0,
+      "evaluated": false,
+      "activeQualityScore": 1,
+      "candidateQualityScore": 1,
+      "passed": false
+    },
+    "exact_numeric": {
+      "cases": 0,
+      "evaluated": false,
+      "activeQualityScore": 1,
+      "candidateQualityScore": 1,
+      "passed": false
+    },
+    "json_code": {
+      "cases": 0,
+      "evaluated": false,
+      "activeQualityScore": 1,
+      "candidateQualityScore": 1,
+      "passed": false
+    },
+    "pdf": {
+      "cases": 1,
+      "evaluated": true,
+      "activeQualityScore": 1,
+      "candidateQualityScore": 1,
+      "passed": true
+    },
+    "pptx": {
+      "cases": 0,
+      "evaluated": false,
+      "activeQualityScore": 1,
+      "candidateQualityScore": 1,
+      "passed": false
+    },
+    "short_fact": {
+      "cases": 1,
+      "evaluated": true,
+      "activeQualityScore": 1,
+      "candidateQualityScore": 1,
+      "passed": true
+    },
+    "text_markdown_docx": {
+      "cases": 0,
+      "evaluated": false,
+      "activeQualityScore": 1,
+      "candidateQualityScore": 1,
+      "passed": false
+    },
+    "xlsx_table": {
+      "cases": 0,
+      "evaluated": false,
+      "activeQualityScore": 1,
+      "candidateQualityScore": 1,
+      "passed": false
+    }
+  },
+  "comparison": {
+    "activeQualityScore": 1,
+    "candidateQualityScore": 1,
+    "minimumAggregateQualityImprovement": 0.005,
+    "actualAggregateQualityImprovement": 0,
+    "aggregateQualityImprovementPassed": false,
+    "sliceNoRegressionPassed": false,
+    "regressedSlices": [],
+    "unevaluatedSlices": [
+      "cross_section",
+      "english",
+      "exact_numeric",
+      "json_code",
+      "pptx",
+      "text_markdown_docx",
+      "xlsx_table"
+    ]
+  },
+  "budgets": {
+    "candidateP95LatencyMilliseconds": 850,
+    "maximumP95LatencyMilliseconds": 1000,
+    "candidateAverageContextTokens": 2213,
+    "maximumAverageContextTokens": 4096,
+    "latencyPassed": true,
+    "contextTokenCostPassed": true
+  }
+}

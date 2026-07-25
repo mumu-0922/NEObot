@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "neo-chat.rag-promotion-curation-approval-receipt.v1",
+  "decision": "synthetic_draft_queue_approved",
+  "caseCount": 500,
+  "reviewerId": "aaefa8b0-9b7f-4ae2-a7e1-af8aa43ac5d9",
+  "reviewedAt": "2026-07-24T02:21:44Z",
+  "sourceDraftSha256": "13da3b64f0abb7315f22acc238a11adbdf2e0a8eb164deb94a2508a9f57a056f",
+  "curationQueueSha256": "d0fbc33dd621eb10cd7fe7aa3ff68340b912594af97cb316afbe5447f469865b",
+  "caseReviewState": "draft",
+  "promotionEligible": false,
+  "humanReviewedPromotionEvidence": false,
+  "activationExecuted": false
+}

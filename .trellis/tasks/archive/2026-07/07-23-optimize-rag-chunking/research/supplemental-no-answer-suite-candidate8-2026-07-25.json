@@ -1,0 +1,485 @@
+{
+  "schemaVersion": "neo-chat.rag-supplemental-no-answer.v1",
+  "id": "candidate8-supplemental-no-answer-2026-07-25",
+  "description": "Synthetic 50-case no-answer regression bound to Candidate 8; never Promotion evidence and never an Activation authority.",
+  "synthetic": true,
+  "promotionEvidence": false,
+  "createdAt": "2026-07-25T11:00:00Z",
+  "binding": {
+    "goldenSetId": "rag-promotion-synthetic-draft-e014f999f48a3a7c",
+    "goldenRawSha256": "515ec1b598c45aca726735075f3366a64a1dc3a071ca30765ce62f2536e8a1c8",
+    "goldenContentSha256": "17eee60e93dc32733a8b871ccc7176d8a5f02f283eaebc37113fcb40ec43ce8c",
+    "curationRawSha256": "d0fbc33dd621eb10cd7fe7aa3ff68340b912594af97cb316afbe5447f469865b",
+    "humanReviewRawSha256": "39f076402dbbec233b4214b76a442548e13f85c62dd5f98f1bee8992253087f8",
+    "sourceImportRawSha256": "4c727519ef651a1101879c11a8f7de9fed400035351bfdceea49d852a3635645",
+    "collectionId": "516c803c-1e59-46f6-8093-d639655bcb2d",
+    "candidateGenerationId": "4e9e18ef-c259-440b-9976-b4632e50b419",
+    "artifactManifestHash": "ae72c08e56989f7f831fdf42cedc2d7febb846f92481bd79088b6ac8819f562f",
+    "chunkProfileHash": "36845c249aa551d4d86720c38dfef9eb9e36ed49573a7547d2a5381d5f085d73",
+    "retrievalProfileId": "siliconflow_bge_m3_v1",
+    "answerModelId": "gpt-5.6-sol",
+    "generationHeadRevision": 4,
+    "corpusProjectionRevision": 298
+  },
+  "criteria": {
+    "maximumFalseAnswerRate": 0.02,
+    "maximumP95LatencyMilliseconds": 1000,
+    "maximumAverageContextTokens": 4096,
+    "requireZeroCitationEvidence": true,
+    "requireZeroCitationMarkers": true,
+    "requireZeroAuthorityLeakage": true,
+    "requireAbsentSourceAndSubject": true
+  },
+  "cases": [
+    {
+      "id": "supplemental-no-answer-pdf-zh-01",
+      "query": "根据 no-answer-pdf-zh-01.pdf，QZ-NOANSWER-PDF-ZH-01 的核定值是多少？",
+      "language": "chinese",
+      "format": "pdf",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-pdf-zh-01.pdf",
+      "absentSubjectToken": "QZ-NOANSWER-PDF-ZH-01"
+    },
+    {
+      "id": "supplemental-no-answer-pdf-zh-02",
+      "query": "根据 no-answer-pdf-zh-02.pdf，QZ-NOANSWER-PDF-ZH-02 的核定值是多少？",
+      "language": "chinese",
+      "format": "pdf",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-pdf-zh-02.pdf",
+      "absentSubjectToken": "QZ-NOANSWER-PDF-ZH-02"
+    },
+    {
+      "id": "supplemental-no-answer-pdf-zh-03",
+      "query": "根据 no-answer-pdf-zh-03.pdf，QZ-NOANSWER-PDF-ZH-03 的核定值是多少？",
+      "language": "chinese",
+      "format": "pdf",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-pdf-zh-03.pdf",
+      "absentSubjectToken": "QZ-NOANSWER-PDF-ZH-03"
+    },
+    {
+      "id": "supplemental-no-answer-pdf-zh-04",
+      "query": "根据 no-answer-pdf-zh-04.pdf，QZ-NOANSWER-PDF-ZH-04 的核定值是多少？",
+      "language": "chinese",
+      "format": "pdf",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-pdf-zh-04.pdf",
+      "absentSubjectToken": "QZ-NOANSWER-PDF-ZH-04"
+    },
+    {
+      "id": "supplemental-no-answer-pdf-zh-05",
+      "query": "根据 no-answer-pdf-zh-05.pdf，QZ-NOANSWER-PDF-ZH-05 的核定值是多少？",
+      "language": "chinese",
+      "format": "pdf",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-pdf-zh-05.pdf",
+      "absentSubjectToken": "QZ-NOANSWER-PDF-ZH-05"
+    },
+    {
+      "id": "supplemental-no-answer-pdf-en-06",
+      "query": "According to no-answer-pdf-en-06.pdf, what is the approved value for QZ-NOANSWER-PDF-EN-06?",
+      "language": "english",
+      "format": "pdf",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-pdf-en-06.pdf",
+      "absentSubjectToken": "QZ-NOANSWER-PDF-EN-06"
+    },
+    {
+      "id": "supplemental-no-answer-pdf-en-07",
+      "query": "According to no-answer-pdf-en-07.pdf, what is the approved value for QZ-NOANSWER-PDF-EN-07?",
+      "language": "english",
+      "format": "pdf",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-pdf-en-07.pdf",
+      "absentSubjectToken": "QZ-NOANSWER-PDF-EN-07"
+    },
+    {
+      "id": "supplemental-no-answer-pdf-en-08",
+      "query": "According to no-answer-pdf-en-08.pdf, what is the approved value for QZ-NOANSWER-PDF-EN-08?",
+      "language": "english",
+      "format": "pdf",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-pdf-en-08.pdf",
+      "absentSubjectToken": "QZ-NOANSWER-PDF-EN-08"
+    },
+    {
+      "id": "supplemental-no-answer-pdf-en-09",
+      "query": "According to no-answer-pdf-en-09.pdf, what is the approved value for QZ-NOANSWER-PDF-EN-09?",
+      "language": "english",
+      "format": "pdf",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-pdf-en-09.pdf",
+      "absentSubjectToken": "QZ-NOANSWER-PDF-EN-09"
+    },
+    {
+      "id": "supplemental-no-answer-pdf-en-10",
+      "query": "According to no-answer-pdf-en-10.pdf, what is the approved value for QZ-NOANSWER-PDF-EN-10?",
+      "language": "english",
+      "format": "pdf",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-pdf-en-10.pdf",
+      "absentSubjectToken": "QZ-NOANSWER-PDF-EN-10"
+    },
+    {
+      "id": "supplemental-no-answer-docx-zh-01",
+      "query": "根据 no-answer-docx-zh-01.docx，QZ-NOANSWER-DOCX-ZH-01 的核定值是多少？",
+      "language": "chinese",
+      "format": "docx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-docx-zh-01.docx",
+      "absentSubjectToken": "QZ-NOANSWER-DOCX-ZH-01"
+    },
+    {
+      "id": "supplemental-no-answer-docx-zh-02",
+      "query": "根据 no-answer-docx-zh-02.docx，QZ-NOANSWER-DOCX-ZH-02 的核定值是多少？",
+      "language": "chinese",
+      "format": "docx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-docx-zh-02.docx",
+      "absentSubjectToken": "QZ-NOANSWER-DOCX-ZH-02"
+    },
+    {
+      "id": "supplemental-no-answer-docx-zh-03",
+      "query": "根据 no-answer-docx-zh-03.docx，QZ-NOANSWER-DOCX-ZH-03 的核定值是多少？",
+      "language": "chinese",
+      "format": "docx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-docx-zh-03.docx",
+      "absentSubjectToken": "QZ-NOANSWER-DOCX-ZH-03"
+    },
+    {
+      "id": "supplemental-no-answer-docx-zh-04",
+      "query": "根据 no-answer-docx-zh-04.docx，QZ-NOANSWER-DOCX-ZH-04 的核定值是多少？",
+      "language": "chinese",
+      "format": "docx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-docx-zh-04.docx",
+      "absentSubjectToken": "QZ-NOANSWER-DOCX-ZH-04"
+    },
+    {
+      "id": "supplemental-no-answer-docx-zh-05",
+      "query": "根据 no-answer-docx-zh-05.docx，QZ-NOANSWER-DOCX-ZH-05 的核定值是多少？",
+      "language": "chinese",
+      "format": "docx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-docx-zh-05.docx",
+      "absentSubjectToken": "QZ-NOANSWER-DOCX-ZH-05"
+    },
+    {
+      "id": "supplemental-no-answer-docx-en-06",
+      "query": "According to no-answer-docx-en-06.docx, what is the approved value for QZ-NOANSWER-DOCX-EN-06?",
+      "language": "english",
+      "format": "docx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-docx-en-06.docx",
+      "absentSubjectToken": "QZ-NOANSWER-DOCX-EN-06"
+    },
+    {
+      "id": "supplemental-no-answer-docx-en-07",
+      "query": "According to no-answer-docx-en-07.docx, what is the approved value for QZ-NOANSWER-DOCX-EN-07?",
+      "language": "english",
+      "format": "docx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-docx-en-07.docx",
+      "absentSubjectToken": "QZ-NOANSWER-DOCX-EN-07"
+    },
+    {
+      "id": "supplemental-no-answer-docx-en-08",
+      "query": "According to no-answer-docx-en-08.docx, what is the approved value for QZ-NOANSWER-DOCX-EN-08?",
+      "language": "english",
+      "format": "docx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-docx-en-08.docx",
+      "absentSubjectToken": "QZ-NOANSWER-DOCX-EN-08"
+    },
+    {
+      "id": "supplemental-no-answer-docx-en-09",
+      "query": "According to no-answer-docx-en-09.docx, what is the approved value for QZ-NOANSWER-DOCX-EN-09?",
+      "language": "english",
+      "format": "docx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-docx-en-09.docx",
+      "absentSubjectToken": "QZ-NOANSWER-DOCX-EN-09"
+    },
+    {
+      "id": "supplemental-no-answer-docx-en-10",
+      "query": "According to no-answer-docx-en-10.docx, what is the approved value for QZ-NOANSWER-DOCX-EN-10?",
+      "language": "english",
+      "format": "docx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-docx-en-10.docx",
+      "absentSubjectToken": "QZ-NOANSWER-DOCX-EN-10"
+    },
+    {
+      "id": "supplemental-no-answer-pptx-zh-01",
+      "query": "根据 no-answer-pptx-zh-01.pptx，QZ-NOANSWER-PPTX-ZH-01 的核定值是多少？",
+      "language": "chinese",
+      "format": "pptx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-pptx-zh-01.pptx",
+      "absentSubjectToken": "QZ-NOANSWER-PPTX-ZH-01"
+    },
+    {
+      "id": "supplemental-no-answer-pptx-zh-02",
+      "query": "根据 no-answer-pptx-zh-02.pptx，QZ-NOANSWER-PPTX-ZH-02 的核定值是多少？",
+      "language": "chinese",
+      "format": "pptx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-pptx-zh-02.pptx",
+      "absentSubjectToken": "QZ-NOANSWER-PPTX-ZH-02"
+    },
+    {
+      "id": "supplemental-no-answer-pptx-zh-03",
+      "query": "根据 no-answer-pptx-zh-03.pptx，QZ-NOANSWER-PPTX-ZH-03 的核定值是多少？",
+      "language": "chinese",
+      "format": "pptx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-pptx-zh-03.pptx",
+      "absentSubjectToken": "QZ-NOANSWER-PPTX-ZH-03"
+    },
+    {
+      "id": "supplemental-no-answer-pptx-zh-04",
+      "query": "根据 no-answer-pptx-zh-04.pptx，QZ-NOANSWER-PPTX-ZH-04 的核定值是多少？",
+      "language": "chinese",
+      "format": "pptx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-pptx-zh-04.pptx",
+      "absentSubjectToken": "QZ-NOANSWER-PPTX-ZH-04"
+    },
+    {
+      "id": "supplemental-no-answer-pptx-zh-05",
+      "query": "根据 no-answer-pptx-zh-05.pptx，QZ-NOANSWER-PPTX-ZH-05 的核定值是多少？",
+      "language": "chinese",
+      "format": "pptx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-pptx-zh-05.pptx",
+      "absentSubjectToken": "QZ-NOANSWER-PPTX-ZH-05"
+    },
+    {
+      "id": "supplemental-no-answer-pptx-en-06",
+      "query": "According to no-answer-pptx-en-06.pptx, what is the approved value for QZ-NOANSWER-PPTX-EN-06?",
+      "language": "english",
+      "format": "pptx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-pptx-en-06.pptx",
+      "absentSubjectToken": "QZ-NOANSWER-PPTX-EN-06"
+    },
+    {
+      "id": "supplemental-no-answer-pptx-en-07",
+      "query": "According to no-answer-pptx-en-07.pptx, what is the approved value for QZ-NOANSWER-PPTX-EN-07?",
+      "language": "english",
+      "format": "pptx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-pptx-en-07.pptx",
+      "absentSubjectToken": "QZ-NOANSWER-PPTX-EN-07"
+    },
+    {
+      "id": "supplemental-no-answer-pptx-en-08",
+      "query": "According to no-answer-pptx-en-08.pptx, what is the approved value for QZ-NOANSWER-PPTX-EN-08?",
+      "language": "english",
+      "format": "pptx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-pptx-en-08.pptx",
+      "absentSubjectToken": "QZ-NOANSWER-PPTX-EN-08"
+    },
+    {
+      "id": "supplemental-no-answer-pptx-en-09",
+      "query": "According to no-answer-pptx-en-09.pptx, what is the approved value for QZ-NOANSWER-PPTX-EN-09?",
+      "language": "english",
+      "format": "pptx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-pptx-en-09.pptx",
+      "absentSubjectToken": "QZ-NOANSWER-PPTX-EN-09"
+    },
+    {
+      "id": "supplemental-no-answer-pptx-en-10",
+      "query": "According to no-answer-pptx-en-10.pptx, what is the approved value for QZ-NOANSWER-PPTX-EN-10?",
+      "language": "english",
+      "format": "pptx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-pptx-en-10.pptx",
+      "absentSubjectToken": "QZ-NOANSWER-PPTX-EN-10"
+    },
+    {
+      "id": "supplemental-no-answer-xlsx-zh-01",
+      "query": "根据 no-answer-xlsx-zh-01.xlsx，QZ-NOANSWER-XLSX-ZH-01 的核定值是多少？",
+      "language": "chinese",
+      "format": "xlsx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-xlsx-zh-01.xlsx",
+      "absentSubjectToken": "QZ-NOANSWER-XLSX-ZH-01"
+    },
+    {
+      "id": "supplemental-no-answer-xlsx-zh-02",
+      "query": "根据 no-answer-xlsx-zh-02.xlsx，QZ-NOANSWER-XLSX-ZH-02 的核定值是多少？",
+      "language": "chinese",
+      "format": "xlsx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-xlsx-zh-02.xlsx",
+      "absentSubjectToken": "QZ-NOANSWER-XLSX-ZH-02"
+    },
+    {
+      "id": "supplemental-no-answer-xlsx-zh-03",
+      "query": "根据 no-answer-xlsx-zh-03.xlsx，QZ-NOANSWER-XLSX-ZH-03 的核定值是多少？",
+      "language": "chinese",
+      "format": "xlsx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-xlsx-zh-03.xlsx",
+      "absentSubjectToken": "QZ-NOANSWER-XLSX-ZH-03"
+    },
+    {
+      "id": "supplemental-no-answer-xlsx-zh-04",
+      "query": "根据 no-answer-xlsx-zh-04.xlsx，QZ-NOANSWER-XLSX-ZH-04 的核定值是多少？",
+      "language": "chinese",
+      "format": "xlsx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-xlsx-zh-04.xlsx",
+      "absentSubjectToken": "QZ-NOANSWER-XLSX-ZH-04"
+    },
+    {
+      "id": "supplemental-no-answer-xlsx-zh-05",
+      "query": "根据 no-answer-xlsx-zh-05.xlsx，QZ-NOANSWER-XLSX-ZH-05 的核定值是多少？",
+      "language": "chinese",
+      "format": "xlsx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-xlsx-zh-05.xlsx",
+      "absentSubjectToken": "QZ-NOANSWER-XLSX-ZH-05"
+    },
+    {
+      "id": "supplemental-no-answer-xlsx-en-06",
+      "query": "According to no-answer-xlsx-en-06.xlsx, what is the approved value for QZ-NOANSWER-XLSX-EN-06?",
+      "language": "english",
+      "format": "xlsx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-xlsx-en-06.xlsx",
+      "absentSubjectToken": "QZ-NOANSWER-XLSX-EN-06"
+    },
+    {
+      "id": "supplemental-no-answer-xlsx-en-07",
+      "query": "According to no-answer-xlsx-en-07.xlsx, what is the approved value for QZ-NOANSWER-XLSX-EN-07?",
+      "language": "english",
+      "format": "xlsx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-xlsx-en-07.xlsx",
+      "absentSubjectToken": "QZ-NOANSWER-XLSX-EN-07"
+    },
+    {
+      "id": "supplemental-no-answer-xlsx-en-08",
+      "query": "According to no-answer-xlsx-en-08.xlsx, what is the approved value for QZ-NOANSWER-XLSX-EN-08?",
+      "language": "english",
+      "format": "xlsx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-xlsx-en-08.xlsx",
+      "absentSubjectToken": "QZ-NOANSWER-XLSX-EN-08"
+    },
+    {
+      "id": "supplemental-no-answer-xlsx-en-09",
+      "query": "According to no-answer-xlsx-en-09.xlsx, what is the approved value for QZ-NOANSWER-XLSX-EN-09?",
+      "language": "english",
+      "format": "xlsx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-xlsx-en-09.xlsx",
+      "absentSubjectToken": "QZ-NOANSWER-XLSX-EN-09"
+    },
+    {
+      "id": "supplemental-no-answer-xlsx-en-10",
+      "query": "According to no-answer-xlsx-en-10.xlsx, what is the approved value for QZ-NOANSWER-XLSX-EN-10?",
+      "language": "english",
+      "format": "xlsx",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-xlsx-en-10.xlsx",
+      "absentSubjectToken": "QZ-NOANSWER-XLSX-EN-10"
+    },
+    {
+      "id": "supplemental-no-answer-code-zh-01",
+      "query": "根据 no-answer-code-zh-01.md，QZ-NOANSWER-CODE-ZH-01 的核定值是多少？",
+      "language": "chinese",
+      "format": "json_code",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-code-zh-01.md",
+      "absentSubjectToken": "QZ-NOANSWER-CODE-ZH-01"
+    },
+    {
+      "id": "supplemental-no-answer-code-zh-02",
+      "query": "根据 no-answer-code-zh-02.md，QZ-NOANSWER-CODE-ZH-02 的核定值是多少？",
+      "language": "chinese",
+      "format": "json_code",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-code-zh-02.md",
+      "absentSubjectToken": "QZ-NOANSWER-CODE-ZH-02"
+    },
+    {
+      "id": "supplemental-no-answer-code-zh-03",
+      "query": "根据 no-answer-code-zh-03.md，QZ-NOANSWER-CODE-ZH-03 的核定值是多少？",
+      "language": "chinese",
+      "format": "json_code",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-code-zh-03.md",
+      "absentSubjectToken": "QZ-NOANSWER-CODE-ZH-03"
+    },
+    {
+      "id": "supplemental-no-answer-code-zh-04",
+      "query": "根据 no-answer-code-zh-04.md，QZ-NOANSWER-CODE-ZH-04 的核定值是多少？",
+      "language": "chinese",
+      "format": "json_code",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-code-zh-04.md",
+      "absentSubjectToken": "QZ-NOANSWER-CODE-ZH-04"
+    },
+    {
+      "id": "supplemental-no-answer-code-zh-05",
+      "query": "根据 no-answer-code-zh-05.md，QZ-NOANSWER-CODE-ZH-05 的核定值是多少？",
+      "language": "chinese",
+      "format": "json_code",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-code-zh-05.md",
+      "absentSubjectToken": "QZ-NOANSWER-CODE-ZH-05"
+    },
+    {
+      "id": "supplemental-no-answer-code-en-06",
+      "query": "According to no-answer-code-en-06.md, what is the approved value for QZ-NOANSWER-CODE-EN-06?",
+      "language": "english",
+      "format": "json_code",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-code-en-06.md",
+      "absentSubjectToken": "QZ-NOANSWER-CODE-EN-06"
+    },
+    {
+      "id": "supplemental-no-answer-code-en-07",
+      "query": "According to no-answer-code-en-07.md, what is the approved value for QZ-NOANSWER-CODE-EN-07?",
+      "language": "english",
+      "format": "json_code",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-code-en-07.md",
+      "absentSubjectToken": "QZ-NOANSWER-CODE-EN-07"
+    },
+    {
+      "id": "supplemental-no-answer-code-en-08",
+      "query": "According to no-answer-code-en-08.md, what is the approved value for QZ-NOANSWER-CODE-EN-08?",
+      "language": "english",
+      "format": "json_code",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-code-en-08.md",
+      "absentSubjectToken": "QZ-NOANSWER-CODE-EN-08"
+    },
+    {
+      "id": "supplemental-no-answer-code-en-09",
+      "query": "According to no-answer-code-en-09.md, what is the approved value for QZ-NOANSWER-CODE-EN-09?",
+      "language": "english",
+      "format": "json_code",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-code-en-09.md",
+      "absentSubjectToken": "QZ-NOANSWER-CODE-EN-09"
+    },
+    {
+      "id": "supplemental-no-answer-code-en-10",
+      "query": "According to no-answer-code-en-10.md, what is the approved value for QZ-NOANSWER-CODE-EN-10?",
+      "language": "english",
+      "format": "json_code",
+      "expectedNoAnswer": true,
+      "absentSourceName": "no-answer-code-en-10.md",
+      "absentSubjectToken": "QZ-NOANSWER-CODE-EN-10"
+    }
+  ]
+}

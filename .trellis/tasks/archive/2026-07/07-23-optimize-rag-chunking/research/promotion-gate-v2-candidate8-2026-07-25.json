@@ -1,0 +1,338 @@
+{
+  "schemaVersion": "neo-chat-rag-candidate-gate-report.v2",
+  "candidateGenerationId": "4e9e18ef-c259-440b-9976-b4632e50b419",
+  "artifactManifestHash": "ae72c08e56989f7f831fdf42cedc2d7febb846f92481bd79088b6ac8819f562f",
+  "passed": true,
+  "evaluation": {
+    "evaluatorVersion": "neo-chat.rag-promotion-evaluator.v2",
+    "goldenCorpusRawSha256": "515ec1b598c45aca726735075f3366a64a1dc3a071ca30765ce62f2536e8a1c8",
+    "goldenFrozenContentSha256": "17eee60e93dc32733a8b871ccc7176d8a5f02f283eaebc37113fcb40ec43ce8c",
+    "candidateObservationsSha256": "1ef4624733fd9443c3ecda3d551b28d0db815fd7d753321991cebaa44d07702c",
+    "candidateCaptureId": "7e887707-5657-457c-a518-d754de98e20e",
+    "holdoutRunId": "ba1749c9-922e-4ab7-b6c0-37603e582617"
+  },
+  "golden": {
+    "corpusId": "rag-promotion-synthetic-draft-e014f999f48a3a7c",
+    "state": "frozen",
+    "frozenAt": "2026-07-24T02:29:04Z",
+    "totalReviewed": 500,
+    "developmentCount": 300,
+    "validationCount": 100,
+    "holdoutCount": 100,
+    "holdoutRuns": 1
+  },
+  "slices": {
+    "chinese": {
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 0.9985237190142858,
+        "mrrAt10": 0.998,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "cases": 250,
+      "passed": true,
+      "failures": []
+    },
+    "cross_section": {
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "cases": 50,
+      "passed": true,
+      "failures": []
+    },
+    "english": {
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 0.9960159362549801,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "cases": 250,
+      "passed": true,
+      "failures": []
+    },
+    "exact_numeric": {
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "cases": 250,
+      "passed": true,
+      "failures": []
+    },
+    "json_code": {
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 0.9963092975357145,
+        "mrrAt10": 0.995,
+        "citationCorrectness": 0.9900990099009901,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "cases": 100,
+      "passed": true,
+      "failures": []
+    },
+    "pdf": {
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "cases": 100,
+      "passed": true,
+      "failures": []
+    },
+    "pptx": {
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "cases": 100,
+      "passed": true,
+      "failures": []
+    },
+    "short_fact": {
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 0.9985237190142858,
+        "mrrAt10": 0.998,
+        "citationCorrectness": 0.9960159362549801,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "cases": 250,
+      "passed": true,
+      "failures": []
+    },
+    "text_markdown_docx": {
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 0.9981546487678572,
+        "mrrAt10": 0.9975,
+        "citationCorrectness": 0.9950248756218906,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "cases": 200,
+      "passed": true,
+      "failures": []
+    },
+    "xlsx_table": {
+      "metrics": {
+        "recallAt50": 1,
+        "finalRecallAt10": 1,
+        "ndcgAt10": 1,
+        "mrrAt10": 1,
+        "citationCorrectness": 1,
+        "citationCompleteness": 1,
+        "faithfulness": 1,
+        "answerCorrectness": 1,
+        "noAnswerFalseAnswerRate": 0,
+        "tableExactAnswer": 1,
+        "provenanceCellLineage": 1,
+        "aclLeakCount": 0,
+        "deletionLeakCount": 0,
+        "secretLeakCount": 0,
+        "unauthorizedEvidenceLeakCount": 0
+      },
+      "integrity": {
+        "passed": true,
+        "citationLocatorRate": 1,
+        "provenanceRate": 1,
+        "cellLineageRate": 1
+      },
+      "cases": 100,
+      "passed": true,
+      "failures": []
+    }
+  },
+  "metrics": {
+    "recallAt50": 1,
+    "finalRecallAt10": 1,
+    "ndcgAt10": 0.999261859507143,
+    "mrrAt10": 0.999,
+    "citationCorrectness": 0.998003992015968,
+    "citationCompleteness": 1,
+    "faithfulness": 1,
+    "answerCorrectness": 1,
+    "noAnswerFalseAnswerRate": 0,
+    "tableExactAnswer": 1,
+    "provenanceCellLineage": 1,
+    "aclLeakCount": 0,
+    "deletionLeakCount": 0,
+    "secretLeakCount": 0,
+    "unauthorizedEvidenceLeakCount": 0
+  },
+  "budgets": {
+    "candidateP95LatencyMilliseconds": 644,
+    "maximumP95LatencyMilliseconds": 1000,
+    "candidateAverageContextTokens": 1874.856,
+    "maximumAverageContextTokens": 4096,
+    "latencyPassed": true,
+    "contextTokenCostPassed": true
+  },
+  "integrity": {
+    "passed": true,
+    "citationLocatorRate": 1,
+    "provenanceRate": 1,
+    "cellLineageRate": 1
+  },
+  "failures": []
+}
