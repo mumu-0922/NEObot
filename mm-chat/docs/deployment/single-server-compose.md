@@ -102,18 +102,18 @@ internal token. It receives no MinerU/Jina reusable Key, provider vault keyring,
 MinIO, S3, chat Provider, or Replay credential. The healthcheck calls
 container-local `GET /health` on port `8081`; no port is published or proxied.
 
-| Variable                  | Boundary                                                                  |
-| ------------------------- | ------------------------------------------------------------------------- |
-| `RAG_IMAGE`               | Python image; production requires a full registry `@sha256:` digest.      |
-| `MIGRATION_DATABASE_URL`  | Required bootstrap/migrator URL; never falls back to the API URL.         |
-| `DATABASE_URL`            | Non-superuser API login; shared only by `backend` and `admin`.            |
-| `RAG_WORKER_DATABASE_URL` | Worker login inheriting only `rag_worker_executor`.                       |
-| `RAG_REPLAY_DATABASE_URL` | Replay login inheriting only `rag_replay_operator`.                       |
-| `RAG_MINERU_RESULT_PROXY_URL` | Optional internal ZIP download proxy for Docker Desktop/WSL CDN TLS workarounds; default empty. |
-| `RAG_SOURCE_GATEWAY_URL`  | Worker-only Go base URL; defaults to `http://backend:8080`.               |
-| `RAG_SOURCE_GATEWAY_TOKEN` | Shared infrastructure token for closed worker-to-Go RAG operations.     |
-| `PROVIDER_SECRET_KEYRING_SOURCE` | Host-side mode-`600` Docker Secret source; mounted only into Go backend/admin. |
-| `MM_CHAT_RUNTIME_UID` / `MM_CHAT_RUNTIME_GID` | Non-root owner IDs for the file-backed provider Secret; must match `id -u` / `id -g`. |
+| Variable                                      | Boundary                                                                                        |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `RAG_IMAGE`                                   | Python image; production requires a full registry `@sha256:` digest.                            |
+| `MIGRATION_DATABASE_URL`                      | Required bootstrap/migrator URL; never falls back to the API URL.                               |
+| `DATABASE_URL`                                | Non-superuser API login; shared only by `backend` and `admin`.                                  |
+| `RAG_WORKER_DATABASE_URL`                     | Worker login inheriting only `rag_worker_executor`.                                             |
+| `RAG_REPLAY_DATABASE_URL`                     | Replay login inheriting only `rag_replay_operator`.                                             |
+| `RAG_MINERU_RESULT_PROXY_URL`                 | Optional internal ZIP download proxy for Docker Desktop/WSL CDN TLS workarounds; default empty. |
+| `RAG_SOURCE_GATEWAY_URL`                      | Worker-only Go base URL; defaults to `http://backend:8080`.                                     |
+| `RAG_SOURCE_GATEWAY_TOKEN`                    | Shared infrastructure token for closed worker-to-Go RAG operations.                             |
+| `PROVIDER_SECRET_KEYRING_SOURCE`              | Host-side mode-`600` Docker Secret source; mounted only into Go backend/admin.                  |
+| `MM_CHAT_RUNTIME_UID` / `MM_CHAT_RUNTIME_GID` | Non-root owner IDs for the file-backed provider Secret; must match `id -u` / `id -g`.           |
 
 `POSTGRES_USER` is the empty-volume bootstrap and migrator login referenced by
 `MIGRATION_DATABASE_URL`. The API login inherits only `go_api_runtime` and must
@@ -156,17 +156,18 @@ and metrics mechanics, but it must not claim real Parse, Embedding, Purge, or
 projection work. Healthy `/health` proves process/event-loop liveness only; it
 does not prove projection readiness or that Search/RAG is available.
 
-The protected Go diagnostic `GET /v1/rag/provider-status` reports only the
-dynamic Postgres/vault activation state, stage capabilities, and locked Jina
-embedding dimension (`1024`); it never returns key material. `ready` means both
-providers are ready, `partial` means Jina-backed native indexing/retrieval is
-available while MinerU PDF parsing is not, and `unavailable` means Jina-backed
-indexing/retrieval cannot run. MinerU/Jina Keys are configured through the
-administrator webpage, tested before replacement, and stored only as vault
-envelopes. Python dispatch fails closed when the Go gateway URL/token is absent
-and never parses reusable provider credentials. Go query embedding and rerank
-also resolve the active `RAG:JINA` record directly; there are no query/rerank
-service URL variables.
+The protected Go diagnostic `GET /v1/rag/provider-status` reports only dynamic
+Postgres/vault activation state, stage capabilities, and the locked Jina and
+SiliconFlow dimensions (`1024`); it never returns Key material. `ready` means
+MinerU and at least one retrieval provider are ready, `partial` means native
+indexing/retrieval is available while MinerU PDF parsing is not, and
+`unavailable` means neither retrieval profile can run. MinerU/Jina/SiliconFlow
+Keys are configured through the administrator webpage, tested before
+replacement, and stored only as vault envelopes. Python dispatch fails closed
+when the Go gateway URL/token is absent and never parses reusable provider
+credentials. Go query Embedding and Rerank resolve `RAG:JINA` or
+`RAG:SILICONFLOW` from the immutable Generation/Search Profile; there are no
+query/rerank service URL variables.
 `RAG_MINERU_RESULT_PROXY_URL` is optional and normally empty. It exists only for
 bounded local smoke environments where Docker Desktop/WSL container egress can
 reach MinerU API/upload endpoints but fails TLS handshakes to the MinerU result
@@ -214,13 +215,18 @@ Desktop workaround, not a general production download proxy.
 
 G7.3 adds an explicit provider-backed runtime profile gate. Keep
 `RAG_PROVIDER_PROFILE=disabled` until the operator intentionally enables
-`mineru_jina_postgres_v1`. Provider-backed `parse` or `passage_embedding`
+`mineru_siliconflow_postgres_v1`. Provider-backed `parse` or `passage_embedding`
 dispatch requires `RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED=true`, recording
-that the owner accepts the still-draft MinerU/Jina public wire fixture risk for
+that the owner accepts the still-draft MinerU/SiliconFlow public wire risk for
 this sandbox deployment. The profile is config-only in G7.3: it fixes retry
-max attempts at `3`, defaults provider concurrency to `2`, keeps MinerU/Jina
+max attempts at `3`, defaults provider concurrency to `2`, keeps
+MinerU/SiliconFlow
 rate ceilings broad (`60`/`240` requests per minute), and does not add any
 network provider handler by itself.
+
+Jina is permanently retired. Do not set a Jina profile or Key, restore its
+provider record, or run a historical Capture command. Before BGE activation,
+the historical Active Generation may serve only fenced BM25/Citation.
 
 Replay runs as a separate one-shot service so its DSN never enters the
 long-running Worker. Dry-run validates an exact intent without touching the DB:
@@ -351,9 +357,9 @@ Only a credential-free manifest derived from a `lifecycle.state=frozen`
 [`provider-wire-fixture.md`](../contracts/provider-wire-fixture.md) contract may
 be reviewed and supplied on stdin for normal production. For the bounded G7 live
 smoke only, `governance-apply` may proceed when the operator explicitly sets
-`RAG_PROVIDER_PROFILE=mineru_jina_postgres_v1` and
+`RAG_PROVIDER_PROFILE=mineru_siliconflow_postgres_v1` and
 `RAG_PROVIDER_PROFILE_DRAFT_WIRE_ACCEPTED=true`; this records acceptance of the
-still-draft MinerU/Jina wire risk without exposing provider secrets to the admin
+still-draft MinerU/SiliconFlow wire risk without exposing provider secrets to the admin
 container. Without that exact pair, the apply command is intentionally
 unavailable. After C0 closes, record the generated manifest path and exact
 Contract/Terms/Fixture hashes in the release evidence; never pipe the blocked

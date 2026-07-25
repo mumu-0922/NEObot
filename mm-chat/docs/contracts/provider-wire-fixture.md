@@ -1,15 +1,21 @@
 # Provider Wire Fixture Contract
 
-- 状态：C0 intake implemented and reviewed；Remote/Local MinerU and Jina contracts remain `draft`
+- 状态：C0 intake implemented and reviewed；MinerU contracts remain `draft`；
+  Jina fixtures are retired historical evidence
 - 日期：2026-07-13
 - Schema：
   `rag/tests/fixtures/provider_contracts/provider-contract-v1.schema.json`
-- 适用：MinerU Remote URL/Local Upload Batch Parse、Jina Passage Embedding、Jina Rerank
+- 适用：MinerU Remote URL/Local Upload Batch Parse；历史 Jina Evidence 离线审计
 
 > 本 Contract 只允许脱敏公开证据或脱敏实测结果进入 Git。Fixture 通过 Schema 不等于
 > Provider 获准调用；只有 `lifecycle.state=frozen` 且 Freeze Gate 全绿，才能派生
 > Governance Manifest。Credential Availability、`draft`/`verified` Fixture 和 Fake Provider
 > 均不能授权 Egress。
+
+> Migration `050` supersedes the generic lifecycle for Jina: every Jina fixture
+> is permanently non-executable even if its historical fields validate. Jina
+> artifacts may be decoded only for audit and can never derive Governance,
+> Consent, Runtime, Capture, Evaluation, Rebuild, Rollback, or Activation.
 
 ## 1. Authority chain
 

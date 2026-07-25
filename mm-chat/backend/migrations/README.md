@@ -143,6 +143,72 @@ function signatures, owners, and grants while pinning lookup to the application
 schema, `pg_catalog`, and `pg_temp`. Its down path intentionally retains the
 safe search path rather than reopening object-shadowing risk.
 
+The current migration head is `050`. Migration `043` extends the existing
+final-authority evidence hydration boundary with complete matched-Child and
+containing-Parent source text plus their persisted token counts. Parent text is
+answer context only. Its down migration restores the previous Child-only return
+signature.
+
+Migration `044` registers the immutable Structure Chunk Profile v2 descriptor
+and removes generation begin, verify, fail, raw promote, and rollback execution
+from `go_api_runtime`. Only `rag_replay_operator` receives the bounded status,
+rebuild, verification, guarded activation, and rollback gateways. Verification
+never activates a candidate. Guarded activation requires the verified manifest,
+an external gate-report SHA-256, an explicit operator UUID, and the current head
+revision, then appends an immutable activation audit. Do not restore the old API
+runtime grants to work around an operator or network failure.
+
+Migration `045` makes the exact matched Child Search projection the Citation
+locator authority. Verification, promotion re-verification, rollback, and
+final hydration validate canonical locator summaries without requiring a
+Child locator to equal its containing Parent locator. Hydration rejoins the
+ready Search row through the complete Child lineage and returns only its
+locator; the down migration restores the `044` function bodies and role grants.
+
+Migration `046` replaces direct operator access to
+`knowledge_fail_structure_generation(...)` with the exact
+`knowledge_abandon_structure_generation_candidate(...)` gateway. It retains
+the verified-Candidate manifest/head compare-and-swap, fixes the failure code
+to `OPERATOR_ABANDONED`, requires a bounded reason and operator UUID, and writes
+an immutable abandonment audit. `go_api_runtime` receives neither gateway.
+
+Migration `047` adds Generation-scoped evaluation readers and hydrators so a
+verified Candidate can be compared without moving the Active pointer.
+Migration `048` adds a metadata-only source-name lane; filenames may route and
+rank current source-backed Children but never become quoted text or Citation
+authority.
+
+Migration `049` admits an isolated SiliconFlow Search Profile with exact model
+IDs `Pro/BAAI/bge-m3` and `Pro/BAAI/bge-reranker-v2-m3`. It does not activate
+that profile or mutate the Active Jina Generation. Query Embedding, hybrid
+search, BM25 fallback, diagnostics, and Rerank are fenced by the immutable
+Generation/Search Profile tuple; 1024 matching dimensions never authorize
+Jina/BGE vector reuse. Stable readers preserve the `legacy` branch until the
+existing `pg17_bm25_pgvector_v1` pointer is explicitly activated. Down
+migration fails atomically with
+`RAG_SILICONFLOW_ROLLBACK_REQUIRES_BGE_PURGE` while any BGE profile or
+projection remains.
+
+Migration `050` permanently retires Jina runtime without moving the active
+corpus pointer, activating a Candidate, or consuming Holdout. It clears and
+soft-deletes the `RAG:JINA` provider record, deletes the `jina-web-reader`
+registry row, and installs a transition fence that rejects any later Jina
+Generation activation. The historical Active Jina Generation remains only so
+its same-Generation BM25/Citation projection can serve during the BGE
+transition; Dense, Query Embedding, Rerank, Capture, evaluation, rebuild, and
+rollback are forbidden. Vector-consuming hybrid, evaluation, and diagnostic
+functions are wrapped by exact BGE-profile fences; the stable compatibility
+reader routes a historical binding to lexical retrieval and ignores its vector
+argument. The down migration is intentionally irreversible and
+fails with `RAG_JINA_RUNTIME_RETIREMENT_IS_IRREVERSIBLE`.
+
+Candidate promotion after `050` accepts only the Candidate-only
+`neo-chat-rag-candidate-gate-report.v2` evidence contract. Gate-report v1 and
+Active-vs-Candidate observations are historical diagnostics without activation
+authority. Passing Development, Validation, and the one-shot frozen Holdout does
+not activate automatically; an operator must separately approve the exact
+Candidate/report hash transition.
+
 ## Storage boundaries
 
 Postgres is the source of truth for structured records:

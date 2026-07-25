@@ -37,8 +37,9 @@ invent ACL, consent, governance, generation, or projection state.
 
 Provider wire evidence is isolated from production code. A closed Draft 2020-12
 JSON Schema, strict duplicate/NaN/secret/placeholder semantic checks and RFC
-8785 hashes live under `tests/`; public MinerU/Jina evidence is explicitly
-`lifecycle.state=draft` with unresolved facts. `require_frozen()` rejects drafts,
+8785 hashes live under `tests/`; public MinerU evidence and historical Jina
+evidence are explicitly `lifecycle.state=draft` with unresolved facts.
+`require_frozen()` rejects drafts,
 synthetic fixtures, blockers, unknown facts, missing independent reviewers and
 hash drift.
 
@@ -53,9 +54,9 @@ promotion gates pass.
 
 `tools/provider_capture.py` is an operator development tool, not a runtime
 adapter. Its default path emits a canonical redacted plan and performs zero
-network or filesystem writes. Explicit execution uses only process-environment
-Jina/MinerU keys, an exact HTTPS host/port/path allowlist, disabled environment
-proxy trust and redirects, one connection, no retries, fixed timeouts, bounded
+network or filesystem writes. Explicit execution uses only a process-environment
+MinerU key, an exact HTTPS host/port/path allowlist, disabled environment proxy
+trust and redirects, one connection, no retries, fixed timeouts, bounded
 streaming responses, strict UTF-8/JSON, and synthetic inputs generated in code.
 If direct WSL egress is unavailable, the only proxy path is the dedicated
 `PROVIDER_CAPTURE_PROXY_URL`: it must be an uncredentialed literal private or
@@ -63,9 +64,11 @@ loopback HTTP address with an explicit port. Generic proxy variables remain
 ignored, the validated proxy is never recorded, and Provider TLS verification
 and every target/response gate remain active.
 
-Jina execution is exactly two passage embedding calls (1024 and 2048) plus one
-two-document rerank call. The original MinerU execution is a deliberately staged v4
-local-upload Submit only: signed upload and polling budgets are zero. Response
+Jina Capture execution has been removed. Constants and validators for its old
+two-embedding/one-rerank Evidence v1 shape remain offline decoders only; neither
+the CLI selector nor the HTTP target allowlist contains Jina. MinerU execution
+is a deliberately staged v4 local-upload Submit only: signed upload and polling
+budgets are zero. Response
 loss becomes `unknown_submission` and is never retried. Evidence is a closed v1
 canonical JSON snapshot containing only allowlisted metadata, shapes, counts,
 finite scores and hashes; it excludes vectors, text, request IDs, MinerU IDs,
@@ -397,11 +400,14 @@ closed structural text units and emits only unit ordinals plus UTF-8 byte
 ranges. This prevents the planner from inventing source locators or acquiring
 filesystem, database, network, provider, clock, or randomness authority.
 
-Parents are section-bounded and target 1,200–1,600 estimated tokens with a
-2,000 hard cap. Children target 300–500 with a 650 hard cap and reuse exact
-adjacent atom ranges for bounded overlap. Table rows, headings, code, and
-formulas remain atomic while within the target maximum. All token counts are a
-versioned `ceil(utf8_bytes/4)` planning estimate, not provider-tokenizer truth.
+Parents are section-bounded and target 1,200–1,600 frozen-tokenizer tokens with
+a 2,000 hard cap. Children target 300–500 around 400 with a 650 hard cap and
+reuse exact adjacent atom ranges for up to 100 tokens around a 64 target. Table
+rows, headings, code, and formulas remain atomic while they fit; oversized
+protected structures route through type-specific boundaries before a final
+token-aligned UTF-8-safe cut. Counts use the packaged `cl100k_base` ordinary-
+text encoding over the final rendered content, including joiners and admitted
+derived context.
 
 This slice deliberately has no runtime caller. D.2 must map the plan back onto
 validated Native/MinerU blocks and clip existing locators while satisfying the
@@ -426,8 +432,9 @@ the packaged schemas plus the existing Postgres projection builder.
 
 This remains a proof boundary, not a promotion boundary. The production
 `NativeSandboxParserGateway` continues to emit its old baseline until MinerU
-mapping, a versioned Search Profile, new-generation staging, real Jina passage
-embedding, verification, and atomic cutover are completed in later slices.
+mapping, a versioned BGE Search Profile, new-generation staging, SiliconFlow
+passage Embedding, verification, frozen Holdout, and explicit atomic cutover
+are completed in later slices.
 
 ## G11.9D.2.2 MinerU structural artifact projection
 
@@ -451,8 +458,18 @@ would make mixed PDF/DOCX staging impossible and are forbidden.
 
 The `pdf_info[]` path combines `para_blocks` and `discarded_blocks`, joins
 `lines[].spans[].content`, orders blocks by BBox/index, and scales PDF points to
-milli-points. This does not assert every future MinerU version emits this shape;
-unrecognized text-bearing shape still fails closed.
+milli-points. Observed `ref_text` blocks map to citation-grade footnotes;
+provider-classified `page_number` blocks remain provenance-preserved,
+non-indexable footers. An explicit `text` block with `lines=[]` is a skipped
+provider placeholder. This does not assert every future MinerU version emits
+this shape; unrecognized text-bearing shape still fails closed.
+
+Observed tables add one bounded nested lane:
+`table.blocks[].table_body.lines[].spans[].html`. A non-executing
+`HTMLParser` retains only normalized `th`/`td` character data, deterministic
+row/column separators, decoded character references, and escaped source pipes.
+The original HTML is not retained; malformed or empty table state rejects the
+artifact instead of silently dropping cells.
 
 ## G11.9D.2.3a Candidate generation rebuild allocation
 
@@ -473,6 +490,10 @@ boundary.
 
 This is allocation, not processing or cutover. The current active generation
 remains authoritative while later slices process and verify the candidate.
+All Candidate-capable Workers must be stopped before allocation, after which
+one pinned image is selected and started. If different image revisions claim
+jobs in one Candidate, its immutable evidence is mixed; audited abandonment
+and a new sequence are required even when every job succeeded.
 
 ## G11.9D.2.3b Candidate structure parse projection
 
@@ -497,22 +518,23 @@ The slice was live-proved on a disposable three-document clone with a
 parse-only worker: one real MinerU PDF and two Native DOCX projections staged
 under the shared hash, PDF blocks retained page-BBox locators, and three
 passage-embedding jobs remained pending. The active generation was not changed.
-Jina passage embeddings, completeness verification, cutover, and citation
-proof remain outside this boundary.
+Passage Embedding, completeness verification, cutover, and citation proof remain
+outside this boundary; all new execution now uses the BGE Candidate profile.
 
-## G11.9D.2.3c Candidate passage embedding completeness
+## G11.9D.2.3c Historical Jina embedding completeness
 
-No parallel embedding implementation is introduced. The promoted
-`passage_embedding_handler_with_dependencies` fetches generation-bound Child
-search rows, calls Jina with `retrieval.passage`, validates exact Child order,
-count, 1024 finite values, and float32 hashes, then stages each vector through
-the existing least-privilege function.
+This section records pre-retirement evidence; it is not an executable design.
+The former `passage_embedding_handler_with_dependencies` resolved
+generation-bound Child search rows and validated exact order, count, 1024
+finite values, and float32 hashes. Migration `050` removes the Jina adapter and
+forbids new or replayed jobs from selecting that vector space.
 
-Per-materialization completeness joins immutable Child/search lineage and
-requires every projection to be ready under `jina-embeddings-v4`/1024 before
+The current handler admits only the Generation-bound
+`siliconflow_bge_m3_v1` tuple. Per-materialization completeness still joins
+immutable Child/Search lineage before
 `knowledge_complete_embedding_and_publish(...)` publishes the materialization,
 advances its generation-scoped document head, and commits the leased job. This
-path cannot verify or promote the generation.
+path cannot verify, execute Holdout, or promote the Generation.
 
 Disposable-clone proof completed three parse and three real embedding jobs on
 their first attempts. The mixed PDF/DOCX candidate exactly covered all current
@@ -532,9 +554,10 @@ accepting caller counts or a caller manifest.
 Coverage compares exact current document/version/file/content tuples against
 published candidate materializations. The latest Parse/Embedding pair, parser
 artifact profile/status, Blocks, generation-scoped document heads, Parent/Child
-containment, shared chunk profile, locator summaries, ready Jina 1024 vectors,
-and immutable lineage joins must all close. Artifact sets transition from
-staging to verified in the same transaction.
+containment, shared chunk profile, locator summaries, ready profile-bound
+vectors, and immutable lineage joins must all close. Artifact sets transition
+from staging to verified in the same transaction. Historical Jina verification
+does not confer execution or activation authority after migration `050`.
 
 The manifest uses a versioned domain and hashes stable ordered row digests for
 materializations/artifacts, Block locators/content, Parent locators/content, and
@@ -581,11 +604,15 @@ generation, and advances the corpus/head revisions. Retrieval and hydration
 already bind every reference to the active head, so no query-side generation
 switch was added.
 
-Rollback is deliberately asymmetric. The active generation's D.2.3 allocation
+The following rollback proof is historical. Rollback is deliberately
+asymmetric. The active generation's D.2.3 allocation
 snapshot must name the target as its exact `sourceGenerationId`; both persisted
 manifests and the expected head must match. Each current document/version/file/
-content tuple must still resolve through that target's published head to at
-least one complete Parent/Child/ready Jina vector. Extra historical rows remain
+content tuple must still resolve through that target's published head to a
+complete Parent/Child/ready profile-bound projection. Migration `045`
+strengthens this
+from the historical per-document existence check to every target Child. Extra
+historical rows remain
 legal because the existing authorization, visibility, processing-revision, and
 deletion fences already exclude them from retrieval. Success retires the new
 generation and restores its source; returning to the structure generation then
@@ -596,6 +623,168 @@ live `gpt-5.6-sol` answer cited the new generation's exact Parent and Child.
 Removing one old ready vector transactionally rejected rollback and restored
 the active state. Valid rollback advanced the head again; direct retrieval and
 a second real answer cited the restored generation, while stale replay failed.
+
+Migration `044` now supersedes the historical D.3c runtime grant described
+above. `go_api_runtime` can no longer begin, verify, fail, promote, or roll back
+a structure generation. The fenced transition implementation remains, but only
+the dedicated replay operator can reach it through the audited lifecycle below.
+
+Migration `050` further forbids every transition that would reactivate a Jina
+Generation. The pre-050 Jina rollback proof above cannot be used after BGE
+activation. A guarded rollback target must itself be an admitted BGE Generation;
+the historical Jina Active row remains available only for pre-activation
+BM25/Citation service.
+
+Migration `045` also removes the obsolete requirement that every Child Search
+locator equal its containing Parent locator. Verification validates both
+canonical summaries independently; promotion inherits that replay fence, and
+rollback rejects any incomplete or malformed target Child locator.
+
+Native locator construction walks PPTX Paragraph -> Shape -> Slide and XLSX
+Row -> Cell -> Sheet. Projection prefers page, sheet, slide, and OOXML
+structure before generic line positions, yielding `slide_shape` and
+`sheet_cell` Citation authority instead of XML line fallbacks.
+
+## Structure Chunk Profile v2
+
+The v2 candidate profile is a registered immutable descriptor rather than
+an implied set of Python constants:
+
+```text
+Structure profile  606d6ac1cca428a05a7dccce0b172aabfba893f02431834cdc75775342db88b1
+Semantic profile   3c17b8c1ddbed7b0a241dc43bdb24d3615526e94700c0971e585aa25519b409d
+Tokenizer profile  bdff1b0c1c8195fc2fd0a1818bac2ca66a9332a53a5cdf3d434132dff02724a0
+Tokenizer artifact 223921b76ee99bde995b7ff738513eef100fb51d18c93597a113bcffe865b2a7
+Tokenizer vocab    d48a1992b71a810f377931afd97b5b28588e412918a3f2d9e445b019f29dc6e4
+```
+
+`tiktoken==0.13.0` consumes the vendored `cl100k_base` artifact at revision
+`openai-public-2022-12-14`, with no normalization and `encode_ordinary` special-
+token behavior. Loading verifies artifact/vocabulary hashes and exact token-byte
+reconstruction. The persisted knowledge projection is shared by all answer
+models; query-time context assembly adapts to the selected model instead of
+reindexing.
+
+Canonical units select deterministic diagnostics automatically: narrative uses
+semantic hints then sentence-recursive fallback; table/sheet uses header-retained
+row groups; code uses logical regions; JSON uses subtree/path boundaries;
+slides use slide/shape boundaries; formulas remain atomic when possible. A
+derived heading/header/path/signature/title prefix is source-backed, separately
+labeled, excluded from overlap accounting, capped at 96 tokens, and never
+becomes Citation quote authority.
+
+Semantic detection is ingestion-only for indexable narrative units with at
+least 1,200 tokens and 4–4,096 bounded sentences. BGE-M3/1024 sentence vectors
+are cached by Semantic Profile Hash plus content SHA-256. Adjacent cosine
+distance uses the frozen 0.85 percentile, a 0.15 minimum, and at most 128
+boundaries. Provider failure, quota, timeout, or invalid vectors returns no
+hints and falls back deterministically; it never fails document import or
+changes source truth.
+
+## Structure/Search Profile v3 (SiliconFlow Pro BGE)
+
+Migration `049` registers a separate v3 Candidate identity:
+
+```text
+Structure profile  36845c249aa551d4d86720c38dfef9eb9e36ed49573a7547d2a5381d5f085d73
+Semantic profile   f8de6087c6b28fe89b904549e0ddcbe4b51ebb88aecf8232ab07e6ec0d316165
+Embedding model    Pro/BAAI/bge-m3
+Rerank model       Pro/BAAI/bge-reranker-v2-m3
+Vector dimensions  1024
+```
+
+Generation metadata, rather than a process default, selects the passage
+Embedding adapter. The Python Worker calls the bounded SiliconFlow operation
+on the Go Provider Gateway and never receives a reusable provider credential.
+The same admitted BGE Embedding profile produces semantic narrative hints;
+provider failure returns no hints and preserves the deterministic fallback.
+
+Query-time routing resolves the Active Generation/Search Profile before
+Embedding. Both hybrid and lexical SQL readers require that exact binding and
+the PG17 retrieval pointer; a concurrent pointer/generation change raises a
+retryable profile-change error. Provider failure uses only the same bound BM25
+lane. Rerank resolves from the evidence Generation so a later Activation
+cannot change model identity mid-answer.
+
+Historical Jina and BGE rows use separate partial HNSW indexes. Their equal
+dimension count is never treated as compatibility, and no vector or Search
+projection is copied between them. Migration `049` leaves Active unchanged and
+only enables a new Candidate rebuild/evaluation path; migration `050` makes the
+Jina index lineage-only and non-queryable.
+
+## Dynamic Parent expansion and retrieval budgeting
+
+Migration `043` extends final-authority hydration with complete Child text and
+token count plus its Parent text and token count. Migration `045` rejoins the
+ready Search projection through the complete Child lineage and returns its
+locator rather than the wider Parent locator. Answer assembly always admits
+the ranked Child first and keeps every Citation bound to that exact Child. It
+may expand the top hit and positive hits whose score is at least 0.85 of the top
+score, with at most two distinct Parents and deduplication by Parent ID. Parent
+text is labeled context-only and omitted when its incremental cost does not fit.
+
+Knowledge and Web now share one turn-local ledger derived from the selected
+model input budget after current prompt/messages and a 512-token envelope are
+reserved. Retrieval is capped at 40% of the model input budget. A mixed-source
+turn reserves 60% for Knowledge and 40% for Web; a single available lane gets
+the full retrieval allocation. Native Tool results, compatibility prompts, and
+recovery fallback use the same ledger, and Web content is token-trimmed. This
+keeps simultaneous Knowledge + Web behavior without allowing either source to
+consume the whole model window.
+
+## Operator-only candidate lifecycle
+
+Migration `044` registers the complete v2 descriptor and moves candidate state
+mutation behind `rag_replay_operator`. Source-text-free status and document-ID
+allocation gateways expose only the state needed by `rag-replay`. Verification
+freezes a manifest and yields `verified/ready` but explicitly reports
+`promotionEligible=false`; it never activates.
+
+Activation requires a SHA-256-bound `neo-chat-rag-candidate-gate-report.v2`, an
+operator UUID, explicit `--confirm-activation`, and a current Candidate/
+manifest/head match. The immutable activation audit stores Candidate and
+previous-generation IDs, artifact manifest, gate-report hash, operator, and
+head revision before/after. Raw promotion remains ungranted.
+
+Migration `046` also removes direct Replay access to raw Candidate failure.
+`generation-abandon` requires the exact verified Candidate UUID, manifest and
+head revision, an operator UUID, a bounded reason, explicit confirmation, and
+execution flags. It leaves Active unchanged and appends one immutable
+abandonment audit; exact replay is idempotent and conflicting replay fails
+closed.
+
+The report enforces at least 500 human-reviewed questions split exactly
+300/100/100 across Development/Validation/one-shot Holdout, every frozen
+critical slice with at least 50 cases, absolute retrieval,
+faithfulness, Citation, no-answer, and table thresholds, 100% Citation/Locator
+integrity, zero authorization/deletion/secret leakage, and passing latency and
+context-token budgets. Passing evaluation still requires a separate explicit
+operator command. Once an admitted BGE Generation has been Active, exactly one
+complete BGE Last-Known-Good Generation remains the rollback target; historical
+Jina is never that target, and deletion authority overrides retention.
+
+The Candidate-only promotion evaluator uses closed
+`neo-chat.rag-promotion-golden.v1` and
+`neo-chat.rag-promotion-observations.v1` inputs. A draft question is never
+counted as reviewed. Admission requires reviewer UUID/timestamp on every case,
+an exact 60/20/20 split, at least 50 cases in every critical slice and in the
+table-exact cohort, plus a matching canonical frozen-content hash. Candidate
+observations bind the exact frozen corpus and artifact manifest and carry
+exactly one Holdout run whose UUID was committed before corpus freeze. No
+Active/Jina observation, relative-improvement field, or per-slice no-regression
+comparison participates. The emitted v2 gate report binds raw SHA-256 hashes
+for all inputs and is revalidated as a closed, finite, arithmetically consistent
+document before activation. Gate-report v1 is historical only. The checked-in
+template is explicitly draft-only; no synthetic passing promotion corpus is
+checked in.
+
+The deterministic synthetic seed contains 500 source-bound draft questions
+with exact `300/100/100` split counts and 50 table-exact cases. Its companion
+review queue carries expected answers and exact source/File/Document bindings.
+The seed remains immutable at `draft`; only a separate derivative may carry
+recorded case-by-case human review. Even that derivative remains
+`promotionEligible=false` until independent observations and the precommitted
+one-shot Holdout pass.
 
 ## Process topology
 

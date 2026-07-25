@@ -3,133 +3,160 @@
 ## 1. Scope / Trigger
 
 This contract applies when Go retrieves evidence from selected Knowledge
-collections through direct Jina query embedding, the Postgres hybrid candidate
-function, and direct Jina reranking. It covers G11.9C.2, G11.9C.3, and the
-G11.9F.4.4 provider-boundary cutover, including global cross-collection TopK.
+collections through a Generation-selected Search Profile. Migration `050`
+permanently retires Jina execution. Historical Jina Generation/Profile/vector
+rows remain schema-valid audit evidence, but they cannot authorize Query
+Embedding, Dense search, Rerank, configuration, credential resolution, or
+rollback.
+
+Until the verified SiliconFlow Candidate receives explicit Activation
+approval, the legacy Active Generation is served through its same-Generation
+BM25/Citation lane only. After an approved BGE Activation, query-time Dense and
+Rerank use only `siliconflow_bge_m3_v1`.
 
 Python is not on the query-time retrieval path. It uses the scoped Go provider
-gateway only for background `retrieval.passage` batches and MinerU jobs.
+gateway only for background SiliconFlow `retrieval.passage` batches and MinerU
+jobs.
 
 ## 2. Signatures
 
 ```sql
-knowledge_fetch_hybrid_query_evidence_candidates(
-  UUID[], TEXT, REAL[], INTEGER
+knowledge_resolve_active_retrieval_profile()
+
+knowledge_fetch_fenced_profiled_query_evidence_candidates(
+  UUID, UUID, UUID[], TEXT, REAL[], INTEGER
+)
+
+knowledge_fetch_fenced_profiled_lexical_evidence_candidates(
+  UUID, UUID, UUID[], TEXT, INTEGER
 )
 ```
 
 ```go
-type QueryEmbedder interface {
+type RetrievalProfileGateway interface {
     EmbedQuery(context.Context, string) (QueryEmbedding, error)
-}
-
-type Reranker interface {
     Rerank(context.Context, string, []string) ([]RerankResult, error)
 }
 ```
 
-The Go `ProviderGateway` implements both interfaces. It resolves the enabled,
-attested `RAG:JINA` Postgres/vault record for every call and synthesizes the
-fixed Jina request. No browser or Python caller supplies an upstream URL,
-header, model, task, or credential.
+The Go `ProviderGateway` creates an executable retrieval gateway only for the
+immutable SiliconFlow profile. The unbound `EmbedQuery` and `Rerank` methods
+fail closed so callers cannot accidentally use BGE against a historical Jina
+Generation. No browser or Python caller supplies an upstream URL, header,
+model, task, or credential.
 
 ## 3. Contracts
 
 - Query input is trimmed, non-empty, and at most 2048 UTF-8 bytes.
-- Query embedding pins `jina-embeddings-v4`, `retrieval.query`, and 1024
-  dimensions. The returned vector must be finite, non-zero, and exactly 1024
-  elements.
-- Indexed chunks remain `retrieval.passage`; Python sends them only to
-  `POST /internal/rag/providers/jina/embeddings` with the infrastructure
-  internal token. Go resolves and uses the reusable Jina credential.
-- There is no query/rerank URL environment setting and no Go-to-Python
-  provider hop. Missing, disabled, corrupt, or unattested `RAG:JINA` state is
-  treated as provider unavailability and preserves the documented degraded
-  retrieval behavior.
+- A historical Jina or legacy binding never triggers a provider request. It
+  uses the exact bound Generation/Search Profile BM25 lane, then the normal
+  hydration and Citation authority path.
+- A BGE binding pins `Pro/BAAI/bge-m3`, exactly 1024 finite non-zero float32
+  components, and `Pro/BAAI/bge-reranker-v2-m3`. Matching dimensions never
+  authorize Jina/BGE vector reuse.
+- Passage chunks use the matching SiliconFlow private gateway route with the
+  infrastructure internal token. Go resolves the reusable credential; Python
+  receives neither Key nor provider URL.
+- There is no query/rerank URL environment setting and no Go-to-Python-to-Go
+  provider cycle. Missing, disabled, corrupt, or unattested SiliconFlow state
+  degrades only to the same BGE Generation/Profile BM25 lane where policy
+  admits it.
 - Postgres returns reference fields and rank only. Source-body hydration
   remains a later Go reauthorization step.
+- Query vector, hybrid reader, BM25 fallback, diagnostics, and Rerank carry one
+  immutable Generation/Search Profile binding. A concurrent pointer change
+  raises `RAG_RETRIEVAL_PROFILE_CHANGED`; Go retries the complete bind/embed/
+  read flow once.
 - Dense candidates require at least eight trimmed query characters and cosine
-  `>= 0.48`, then merge with keyword/CJK candidates through RRF `k=60`.
-- Go globally fuses at most 20 references, authorizes rerank consent for the
-  owner query and every selected collection, and hydrates/reauthorizes source
-  text in bounded `16 + 4` batches before any source text leaves Go.
-- Jina receives the rewritten standalone query when one exists, otherwise the
-  original query, plus at most 20 authorized documents. The provider request
-  pins `jina-reranker-v3`, `top_n=document count`,
-  `return_documents=false`, and `return_embeddings=false`.
-- A successful rerank must return every input index exactly once with a finite
-  score. Go keeps scores `>= 0.0`, sorts globally across all selected
-  collections, and injects at most five chunks.
+  `>= 0.48`, then merge with keyword/CJK candidates through deterministic RRF
+  `k=60`.
+- Go globally fuses at most 20 references, authorizes provider-specific
+  Rerank consent for the exact evidence Generation, and hydrates/reauthorizes
+  source text in bounded `16 + 4` batches before source text leaves Go.
+- Rerank resolves from the evidence Generation, not a later Active read. It
+  sends the rewritten standalone query when present, otherwise the original,
+  plus at most 20 authorized documents. The request sets
+  `return_documents=false` and `top_n` to the document count. A response may
+  omit `document` or return JSON null; any document body is rejected.
+- A successful Rerank response returns every input index exactly once with a
+  finite score in `[0,1]`. Go applies the versioned v2 ranking policy after
+  Rerank: when the normalized basename of an authorized source file is
+  explicitly present in the original or rewritten query, that document gets a
+  deterministic metadata-only rank boost and its Children retain BGE score
+  order. The filename never becomes quoted evidence or Citation authority.
+  Go then sorts globally across all selected collections and injects at most
+  five chunks.
 - The provider client ignores environment proxies, follows no redirects,
   requires TLS 1.2 or newer, accepts identity-encoded JSON only, and bounds the
   response before decoding.
-- Rerank and Answer are query-time collection authorities. Granting, revoking,
-  or expiring rerank-only/answer-only consent must not advance
-  `collection_processing_revision` or invalidate an already published search
-  materialization. Parse or passage-embedding consent changes still do.
+- Rerank and Answer are query-time collection authorities. Their consent
+  changes do not advance `collection_processing_revision`; Parse or Passage
+  Embedding consent changes still do.
+- Jina plugin ID, Jina hostnames, retired RAG provider records, and historical
+  Jina credentials are rejected before decryption or network access.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Result |
-| --- | --- |
-| Query empty, oversized, or invalid | reject before provider access |
-| `RAG:JINA` absent, disabled, unattested, or vault unavailable | provider unavailable; retain allowed degraded path |
-| Jina unavailable or response invalid | keyword/hybrid fallback where policy permits |
-| Vector not 1024, non-finite, or zero norm | reject before Postgres |
-| Hybrid Postgres query fails | dependency error; do not disguise as a normal miss |
-| Candidate fails current projection/visibility/deletion fences | omit reference |
-| Go hydration reauthorization fails | omit evidence / follow Auto degradation policy |
-| Rerank governance or consent absent | do not send source text; retain bounded hybrid/RRF order |
-| Consent/DB lookup fails | dependency error; do not disguise as a normal miss |
-| Rerank provider unavailable or response invalid | retain hybrid/RRF order, Top5, `rerankStatus=degraded` |
-| Rerank succeeds but every score is below `0.0` | normal `no_evidence` |
-| Rerank succeeds with valid scores | global threshold/Top5, `rerankStatus=applied` |
+| Condition                                                       | Result                                         |
+| --------------------------------------------------------------- | ---------------------------------------------- |
+| Query empty, oversized, or invalid                              | reject before provider access                  |
+| Active/legacy binding is Jina                                   | same-Generation BM25 only; zero Jina requests  |
+| SiliconFlow absent, disabled, unattested, or Vault unavailable  | same-BGE-profile BM25 where admitted           |
+| Generation/Profile or retrieval pointer changes after Embedding | retry complete bind/embed/read once            |
+| Vector is not 1024, finite, and non-zero                        | reject before Postgres                         |
+| BGE vector is paired with a Jina/history binding                | reject as profile changed/invalid              |
+| Hybrid Postgres query fails                                     | dependency error; do not disguise as a miss    |
+| Candidate fails visibility/deletion/authority fences            | omit reference                                 |
+| Hydration reauthorization fails                                 | omit evidence / follow Auto degradation policy |
+| Rerank profile resolver or exact consent is absent              | send no source text; retain bounded RRF order  |
+| Rerank provider/response is unavailable or invalid              | retain RRF Top5; `rerankStatus=degraded`       |
+| Retired Jina plugin/provider/hostname is requested              | fail closed before secret access/network       |
 
-No error or log may contain the query, vault envelope, reusable Jina key,
+No error or log may contain the query, Vault envelope, reusable provider Key,
 provider response body, or source text.
 
 ## 5. Good / Base / Bad Cases
 
-- Good: a long Chinese semantic paraphrase with no lexical candidate crosses
-  the Dense gate and returns the active selected-collection reference.
-- Base: an exact phrase is present in both keyword and Dense lanes and receives
-  deterministic fused rank.
-- Bad: a short weather query cannot enter the Dense-only lane even when its raw
-  embedding cosine is spuriously high; unrelated longer queries below `0.48`
-  also return no Dense reference.
-- Rerank good: two selected collections both produce authorized candidates;
-  Jina returns finite scores and Go mints citations in one global order.
-- Rerank base: only rerank is unavailable; the same keyword hit still answers
-  with a citation from pre-rerank hybrid/RRF order.
-- Rerank bad: governance is absent or an index is duplicated, missing, or
-  non-finite; no unauthorized text is sent and invalid provider output is never
-  applied.
+- Good after approved Activation: a Chinese semantic paraphrase crosses the
+  BGE Dense gate, is reranked by the bound BGE model, and returns an authorized
+  Citation.
+- Base before Activation: the current historical Jina Generation returns an
+  exact keyword hit through fenced BM25 with zero Embedding/Rerank calls.
+- Base after Activation: SiliconFlow is unavailable, so the same BGE
+  Generation/Profile lexical hit remains answerable with a Citation.
+- Bad: a BGE query vector is applied to any Jina projection because both are
+  1024-dimensional, or a Jina credential/adapter is consulted as fallback.
+- Bad: governance is absent, the Generation resolver is unavailable, or a
+  Rerank result index is duplicated/missing/non-finite; no unauthorized text
+  leaves Go.
 
 ## 6. Tests Required
 
-- Go unit: exact direct Jina URL/header/model/task shapes, credential resolution,
+- Go unit: exact SiliconFlow URL/header/model shape, credential resolution,
   redirect rejection, bounded response decoding, vector validation, hybrid
-  selection, keyword fallback, rerank validation, and visible database failure.
-- Python unit: the retired `/internal/retrieval/query-embedding` and
-  `/internal/retrieval/rerank` paths return `404`; passage embedding uses only
-  the scoped Go DTO and internal token.
-- Postgres integration: migrations compile from an empty database; runtime
-  roles can execute the function; no-lexical-overlap Dense positive returns a
-  reference; short Dense-only negative returns none.
-- Live smoke: the stored/activated Jina provider returns one finite 1024 vector;
-  semantic positive yields `answered/[K1]`; provider degradation still lets a
-  keyword positive yield `answered/[K1]`; disposable rows are removed.
-- Rerank live: normal chat yields `rerankStatus=applied`; rerank-only failure
-  yields `degraded` while still answering with `[K1]`; two selected collections
-  yield one applied global result with citations from both.
+  selection, same-profile BM25 fallback, Rerank validation, and visible DB
+  failure.
+- Retirement unit: old Jina Active bindings use lexical-only retrieval;
+  retired plugin IDs/hostnames and provider credentials produce zero decrypt
+  and HTTP calls; redirects to `jina.ai` or subdomains are rejected.
+- Python unit: query-Embedding/Rerank HTTP paths remain absent; passage
+  Embedding uses only the scoped Go DTO/internal token; provider capture cannot
+  select or network to Jina.
+- Postgres integration: migration `050` purges the Jina secret/plugin row,
+  leaves the existing Jina Active row unchanged, keeps Candidate 8
+  `verified/ready`, and rejects every later transition into Jina Active.
+- Live proof before Activation: keyword Knowledge retrieval succeeds through
+  BM25 while network/log capture contains zero `api.jina.ai` and
+  `r.jina.ai` requests.
+- Live proof after explicit Activation only: BGE semantic positive returns a
+  finite vector and Citation; provider degradation remains same-profile BM25.
 
 ## 7. Wrong vs Correct
 
-Wrong: keep a Go -> Python -> Go provider cycle, read a Jina key from Python
-environment variables, treat raw cosine as calibrated relevance, send candidate
-text before exact consent/hydration, or silently mask a Postgres failure.
+Wrong: treat the historical Jina schema tuple as executable, restore a deleted
+Jina Key, use BGE against Jina rows, or compare against Jina during Candidate
+promotion.
 
-Correct: Go resolves the attested Postgres/vault credential and calls Jina
-directly, uses conservative pre-rerank gates, keeps provider failure
-keyword-degradable, keeps database failure observable, and applies the evaluated
-rerank threshold only after current-authority hydration.
+Correct: preserve historical rows for audit, serve the transition window with
+fenced BM25, execute provider work only through the immutable SiliconFlow
+profile, and keep Activation behind a separate explicit owner decision.

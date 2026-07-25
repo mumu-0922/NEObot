@@ -1188,3 +1188,36 @@ The temporary conversation was deleted. Existing user conversations and all
 Knowledge documents remained unchanged. Rollback is limited to the nine source
 and test files in the associated fix commit; no migration or data rollback is
 required.
+
+## 2026-07-24 — Structure Candidate Golden Gate contract
+
+The existing seven-case `mm-chat.rag-golden.v1` fixture remains the synthetic
+G18 storage/retrieval regression check; it is not promotion evidence. A
+separate promotion evaluator now admits only a frozen
+`neo-chat.rag-promotion-golden.v1` corpus with at least 500 individually
+human-reviewed cases, exact 60/20/20 Development/Validation/Holdout allocation,
+at least 50 cases in every critical slice and table-exact cohort, reviewer UUID
+and timestamp on every case, and a matching canonical frozen-content hash.
+
+Active/Candidate `neo-chat.rag-promotion-observations.v1` captures bind the
+exact corpus, Generation, and artifact manifests. They must use independent
+capture IDs and the same one-shot Holdout ID/timestamp with `ordinal=1`. The
+evaluator computes Recall@50, Final Recall@10, nDCG@10, MRR@10, Citation
+correctness/completeness, answer correctness, faithfulness, no-answer false
+answer, table exactness, Locator/provenance/cell integrity, leakage, P95
+latency, and average context tokens. Critical slices cannot regress against
+Active, and aggregate quality must improve by the frozen corpus threshold.
+
+The resulting `neo-chat-rag-candidate-gate-report.v1` binds raw SHA-256 hashes
+for the Golden, Active, and Candidate files. The activation-side Python
+validator now accepts only the exact finite report shape and rechecks counts,
+split ratios, slice comparison, metric floors, aggregate arithmetic, budgets,
+zero leakage, and 100% Locator/provenance/cell integrity. Tests explicitly
+reject 499 cases, weak slices, incorrect splits, drafts, hash drift,
+missing/repeated Holdout, slice regression, non-finite/extra report data, and
+any integrity rate below 100%.
+
+No reviewed production corpus or passing production report was fabricated.
+The checked-in example is a one-case draft template, and the freeze-hash
+command always reports `promotionEligible=false`. The verified Candidate
+remains non-active; `generation-activate` was not run.

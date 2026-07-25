@@ -39,13 +39,24 @@ MM_CHAT_RUNTIME_GID=<id -g>
 Keyring file:
 
 ```json
-{"v":1,"activeKid":"provider-2026-07","keys":[{"kid":"provider-2026-07","key":"<base64url-32-bytes>"}]}
+{
+  "v": 1,
+  "activeKid": "provider-2026-07",
+  "keys": [{ "kid": "provider-2026-07", "key": "<base64url-32-bytes>" }]
+}
 ```
 
 Persistable envelope:
 
 ```json
-{"v":1,"kid":"provider-2026-07","alg":"A256GCM","nonce":"...","ciphertext":"...","context":"provider:search:tavily"}
+{
+  "v": 1,
+  "kid": "provider-2026-07",
+  "alg": "A256GCM",
+  "nonce": "...",
+  "ciphertext": "...",
+  "context": "provider:search:tavily"
+}
 ```
 
 ## 3. Contracts
@@ -63,22 +74,22 @@ Persistable envelope:
 
 ## 4. Validation & Error Matrix
 
-| Condition | Result |
-| --- | --- |
-| Missing/empty path or unreadable file | `ErrKeyringUnavailable` |
-| Non-regular, oversized, malformed, unknown-field, or trailing JSON file | `ErrInvalidKeyring` |
-| Wrong version, duplicate/invalid/missing active key, non-32-byte key | `ErrInvalidKeyring` |
-| Empty/oversized plaintext | `ErrInvalidPlaintext` |
-| Empty/oversized/untrimmed/NUL context | `ErrInvalidContext` |
-| Envelope context differs from expected context | `ErrContextMismatch` |
-| Unknown key, wrong version/algorithm, bad encoding/nonce, tampering | `ErrInvalidEnvelope` |
-| Admin writes a secret without a configured vault | `ErrProviderSecretVaultUnavailable` / HTTP `503 PROVIDER_SECRET_VAULT_UNAVAILABLE` |
-| Stored vault/legacy envelope is corrupt, unknown, or copied | `ErrProviderSecretInvalid` / redacted `PROVIDER_SECRET_UNAVAILABLE` |
-| Runtime UID/GID differs from the mode-`600` source owner | preflight rejection; startup otherwise fails closed |
-| Provider is disabled | `ErrProviderDisabled` / HTTP `409 PROVIDER_DISABLED` |
-| Connection proof is missing or no longer matches configuration | `ErrProviderActivationRequired` / HTTP `409 PROVIDER_ACTIVATION_REQUIRED` |
-| Bounded upstream connection test fails | `ErrProviderConnectionTestFailed` / HTTP `502 PROVIDER_CONNECTION_TEST_FAILED` |
-| Provider changes while its test is in flight | `ErrProviderConfigChanged` / HTTP `409 PROVIDER_CONFIG_CHANGED` |
+| Condition                                                               | Result                                                                             |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Missing/empty path or unreadable file                                   | `ErrKeyringUnavailable`                                                            |
+| Non-regular, oversized, malformed, unknown-field, or trailing JSON file | `ErrInvalidKeyring`                                                                |
+| Wrong version, duplicate/invalid/missing active key, non-32-byte key    | `ErrInvalidKeyring`                                                                |
+| Empty/oversized plaintext                                               | `ErrInvalidPlaintext`                                                              |
+| Empty/oversized/untrimmed/NUL context                                   | `ErrInvalidContext`                                                                |
+| Envelope context differs from expected context                          | `ErrContextMismatch`                                                               |
+| Unknown key, wrong version/algorithm, bad encoding/nonce, tampering     | `ErrInvalidEnvelope`                                                               |
+| Admin writes a secret without a configured vault                        | `ErrProviderSecretVaultUnavailable` / HTTP `503 PROVIDER_SECRET_VAULT_UNAVAILABLE` |
+| Stored vault/legacy envelope is corrupt, unknown, or copied             | `ErrProviderSecretInvalid` / redacted `PROVIDER_SECRET_UNAVAILABLE`                |
+| Runtime UID/GID differs from the mode-`600` source owner                | preflight rejection; startup otherwise fails closed                                |
+| Provider is disabled                                                    | `ErrProviderDisabled` / HTTP `409 PROVIDER_DISABLED`                               |
+| Connection proof is missing or no longer matches configuration          | `ErrProviderActivationRequired` / HTTP `409 PROVIDER_ACTIVATION_REQUIRED`          |
+| Bounded upstream connection test fails                                  | `ErrProviderConnectionTestFailed` / HTTP `502 PROVIDER_CONNECTION_TEST_FAILED`     |
+| Provider changes while its test is in flight                            | `ErrProviderConfigChanged` / HTTP `409 PROVIDER_CONFIG_CHANGED`                    |
 
 ## 5. Good / Base / Bad Cases
 
@@ -214,12 +225,12 @@ Contract:
 
 Stable failures:
 
-| Condition | Result |
-| --- | --- |
-| Missing DB/vault | `ErrProviderSecretRewriteUnavailable` |
-| Malformed/ambiguous/oversized/context-invalid state | `ErrProviderSecretRewriteInvalid` |
-| Dry-run state or active key changed before execute | `ErrProviderSecretRewritePlanMismatch` |
-| Unrecoverable custom legacy ciphertext exists | `ErrProviderSecretRewriteBlocked` |
+| Condition                                           | Result                                 |
+| --------------------------------------------------- | -------------------------------------- |
+| Missing DB/vault                                    | `ErrProviderSecretRewriteUnavailable`  |
+| Malformed/ambiguous/oversized/context-invalid state | `ErrProviderSecretRewriteInvalid`      |
+| Dry-run state or active key changed before execute  | `ErrProviderSecretRewritePlanMismatch` |
+| Unrecoverable custom legacy ciphertext exists       | `ErrProviderSecretRewriteBlocked`      |
 
 Required proof covers pure plan/action/hash tests, plan-mismatch and blocked
 zero-write behavior, real Postgres legacy/old/current/empty/deleted rows,
@@ -295,26 +306,28 @@ The one-active and connection-attestation behavior is defined in
 
 ## 13. G11.9F.4.2 RAG Provider Contexts
 
-MinerU and Jina administrator Keys use fixed records and distinct contexts:
+MinerU, Jina, and SiliconFlow administrator Keys use fixed records and distinct
+contexts:
 
 ```text
-browser ingress: provider:rag:<mineru|jina>
-vault at rest:   provider:rag:<userId>:<RAG:MINERU|RAG:JINA>
+browser ingress: provider:rag:<mineru|jina|siliconflow>
+vault at rest:   provider:rag:<userId>:<RAG:MINERU|RAG:JINA|RAG:SILICONFLOW>
 ```
 
 - RAG rows require `config.kind="rag"`, a matching `config.ragProvider`, and
   the exact reserved record ID; model and Search readers reject them;
-- MinerU and Jina can both be active because they provide complementary parse
-  and retrieval stages rather than alternative execution choices;
+- MinerU is complementary to retrieval. Jina and SiliconFlow are exact
+  alternative retrieval profiles and may coexist for Candidate rebuild and
+  rollback without sharing vectors;
 - save-and-test may import the matching legacy environment Key only when that
   administrator record has no stored secret. The environment is not a read
   fallback for dynamic status or the future scoped gateway;
 - activation repeats a bounded real test and binds the exact vault envelope,
-  fixed provider endpoint, parser/model profile, and 1024 Jina dimensions;
-- dynamic `/v1/rag/provider-status` reports `ready` only when both enabled,
-  attested records decrypt under their own contexts; Jina-only readiness is
-  `partial` with native indexing/retrieval available and PDF parsing disabled,
-  while missing Jina makes indexing/retrieval unavailable;
+  fixed provider endpoint, parser/model profile, and 1024 retrieval dimensions;
+- dynamic `/v1/rag/provider-status` reports `ready` when MinerU and at least one
+  retrieval record decrypt under their own contexts; retrieval-only readiness
+  is `partial` with native indexing/retrieval available and PDF parsing
+  disabled, while missing both retrieval records makes retrieval unavailable;
 - current and retained-old-key RAG envelopes participate in the common
   rotation plan. Legacy BYOK RAG rows and reserved IDs using a model context
   are rejected rather than guessed or migrated across contexts.

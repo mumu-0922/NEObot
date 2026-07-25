@@ -10,8 +10,10 @@ build search projections, or purge data. `DISPATCH_REGISTRY` and
 `JOB_HANDLER_REGISTRY` are intentionally empty until Phase 15.2C promotion.
 
 Phase 15.2C C0 adds **test-only** redacted Provider Contract intake under
-`tests/fixtures/provider_contracts/`. The checked-in MinerU/Jina fixtures remain
-blocked drafts; they do not enable provider calls or production handlers.
+`tests/fixtures/provider_contracts/`. MinerU fixtures remain blocked drafts.
+Checked-in Jina artifacts are accepted only by the historical offline evidence
+decoder: no Jina target is network-allowlisted and no artifact enables a runtime
+provider call or production handler.
 
 Phase 15.2C C1.1 adds installable, versioned Offline Parser schemas under
 `src/mm_chat_rag/contracts/` plus test-only parser corpus and RFC 8785
@@ -87,8 +89,9 @@ Presence booleans true; this remains Acquisition Evidence only.
 G11.9D.1 adds a pure structure-aware Parent/Child planner in
 `mm_chat_rag.structure_chunking`. It accepts only validated structural text
 units and returns UTF-8 byte-range plans. It performs no I/O. The planner is
-now reachable only when a leased parse job resolves to the shared candidate
-profile; Jina embedding and active-generation cutover remain separate gates.
+reachable only when a leased parse job resolves to the shared candidate profile.
+Passage Embedding is now Generation-bound to SiliconFlow BGE; verification,
+frozen Holdout, and explicit activation remain separate gates.
 The frozen contract and D.2/D.3 promotion gates are documented in
 [`../docs/contracts/rag-structure-chunking.md`](../docs/contracts/rag-structure-chunking.md).
 
@@ -104,11 +107,20 @@ G11.9D.2.2 adds `mm_chat_rag.mineru_structure_artifacts`. It consumes the
 existing hash-bound MinerU mapping input and treats admitted
 synthetic `middle_json.pages[].elements[]` or live-provider `pdf_info[]`
 structure—not compatibility `full.md`—as authority for heading, text, table,
-formula, page, and BBox projection. Unknown text-bearing kinds fail closed.
+formula, page, and BBox projection. The live nested
+`table.blocks[].table_body.lines[].spans[].html` lane is reduced to escaped,
+deterministic cell text through a non-executing `HTMLParser`; provider HTML is
+never retained. Unknown text-bearing kinds and malformed tables fail closed.
 
 Native and MinerU structure manifests intentionally share one
 `STRUCTURE_CHUNK_PROFILE_HASH`; one generation cannot admit provider-specific
 chunk hashes.
+
+Native Office locator projection follows structural ownership rather than the
+nearest XML text line. PPTX Paragraphs retain their owning Slide/Shape as
+`slide_shape`; XLSX row fragments retain every owning Cell/Sheet range as
+`sheet_cell`. Projection prefers page/sheet/slide/OOXML structure before the
+generic line fallback, so exact Citation coordinates remain authoritative.
 
 G11.9D.2.3a adds the Postgres
 `knowledge_begin_structure_generation_rebuild(...)` allocation boundary. It
@@ -116,6 +128,12 @@ creates only a non-active `building` generation, shared Index/Search Profiles,
 and exact per-active-document staging materializations plus pending parse jobs.
 It rejects incomplete, substituted, duplicate, or concurrent candidate sets
 and cannot promote the generation.
+
+Operationally, every Worker capable of claiming Candidate jobs must be stopped
+before this allocation call. Select one pinned Worker image, allocate the new
+Candidate, then start only that image. A Candidate touched by multiple image
+revisions must be abandoned and rebuilt; successful jobs or a stable manifest
+do not make mixed-image evidence certifiable.
 
 G11.9D.2.3b adds the lease-fenced
 `knowledge_resolve_parse_chunk_profile(...)` boundary. The worker preserves the
@@ -127,14 +145,12 @@ without consuming Jina or changing the active generation. Unknown profile or
 processor identities fail closed. Candidate generation verification, cutover,
 and live citations remain later slices.
 
-G11.9D.2.3c reuses the existing admitted Jina passage handler without adding a
-second embedding path. A credential-backed disposable-clone run processed all
-three candidate embedding jobs once, stored validated
-`jina-embeddings-v4`/1024 vectors for the shared-profile Children, published
-all three materializations and generation-scoped document heads, and proved
-exact document coverage. That boundary deliberately left the candidate
-`building`; G11.9D.3a below now freezes its manifest/counts, while atomic
-cutover and citations remain later gates.
+G11.9D.2.3c is retained as historical evidence only. Before Jina retirement, a
+credential-backed disposable clone processed three candidate embedding jobs and
+stored validated `jina-embeddings-v4`/1024 vectors. Migration `050` permanently
+made that adapter and vector space non-executable. New and replayed Candidate
+jobs must resolve the SiliconFlow BGE profile; the old evidence cannot authorize
+Embedding, Rerank, evaluation, rebuild, rollback, or activation.
 
 G11.9D.3a adds the database-only
 `knowledge_verify_structure_generation(...)` boundary. It locks the corpus
@@ -339,11 +355,14 @@ Endpoints on the private listener (default `:8081`):
   dark-run readiness failure.
 - `GET /metrics`: Prometheus exposition.
 
-The worker exposes no query-embedding or rerank HTTP routes. Go performs both
-query-time Jina operations directly from the enabled Postgres/vault provider
-record. Background MinerU allocate/poll and Jina passage embedding call the
-scoped Go provider operations with `RAG_SOURCE_GATEWAY_URL` and
-`RAG_SOURCE_GATEWAY_TOKEN`; Python never receives reusable provider Keys. See
+The worker exposes no query-embedding or rerank HTTP routes. SiliconFlow BGE is
+the only executable retrieval provider. Go resolves query Embedding/Rerank from
+the immutable BGE Generation profile and calls the enabled Postgres/vault
+provider record. Background MinerU allocate/poll and SiliconFlow passage
+Embedding use scoped Go provider operations with `RAG_SOURCE_GATEWAY_URL` and
+`RAG_SOURCE_GATEWAY_TOKEN`; Python never receives reusable provider Keys. A
+historical Jina Active Generation may serve only its same-Generation BM25 and
+Citation projection until explicit BGE activation. See
 [`../docs/contracts/rag-query-hybrid-retrieval.md`](../docs/contracts/rag-query-hybrid-retrieval.md)
 and
 [`../docs/contracts/rag-provider-admin-gateway.md`](../docs/contracts/rag-provider-admin-gateway.md).
@@ -368,3 +387,52 @@ RAG_REPLAY_DATABASE_URL='postgresql://...' rag-replay job \
   --reason 'approved incident replay' \
   --execute
 ```
+
+A verified but corpus-stale Structure Candidate is abandoned through the
+audited gateway, never the raw failure function. Dry-run omits the last two
+flags; execution requires both explicit confirmation and the exact frozen
+Candidate state:
+
+```bash
+RAG_REPLAY_DATABASE_URL='postgresql://...' rag-replay generation-abandon \
+  --candidate-generation-id "$CANDIDATE_GENERATION_ID" \
+  --expected-head-revision "$HEAD_REVISION" \
+  --expected-manifest-hash "$ARTIFACT_MANIFEST_SHA256" \
+  --operator-id "$OPERATOR_ID" \
+  --reason 'candidate corpus snapshot is stale' \
+  --confirm-abandon \
+  --execute
+```
+
+The active Trellis task also retains a deterministic 500-case synthetic seed
+queue bound to the exact 50-document source manifest and import receipt. It has
+an exact `300/100/100` split and 50 table-exact cases. The seed remains unchanged
+with all reviews at `draft`; a separate hash-bound derivative may record
+case-by-case human review. Review alone does not set `promotionEligible=true`.
+Candidate-only Development and Validation observations must pass first, followed
+by the single precommitted Holdout run. No Active/Jina comparison is promotion
+evidence, and even a passing v2 report still requires a separate explicit
+activation command.
+
+## SiliconFlow Pro BGE Candidate
+
+The v3 Candidate profile uses `Pro/BAAI/bge-m3` for passage/query Embedding and
+`Pro/BAAI/bge-reranker-v2-m3` for Rerank through the Go Provider Gateway. The
+Worker resolves the passage model from the target Generation; it never chooses
+a model from a process-wide default after a job is claimed. Semantic narrative
+hints use the same admitted BGE profile and retain deterministic
+sentence-recursive fallback on timeout, quota, or malformed response.
+
+Historical Jina and BGE projections remain physically isolated even though both
+have 1024 dimensions. Jina rows are lineage-only and non-queryable. Query-time
+readers carry an immutable BGE Generation/Search Profile binding from Embedding
+through SQL; a pointer race retries once, and provider failure uses only the
+same fenced BM25 lane. Rerank follows the Generation attached to the evidence.
+Migration `049` admits the Candidate profile; migration `050` retires Jina
+runtime without activating BGE, executing Holdout, or mutating Candidate 8.
+
+Promotion uses `neo-chat-rag-candidate-gate-report.v2`, built from one frozen
+Golden corpus plus Candidate-only observations. Gate-report v1 and every
+Active-vs-Candidate comparison are historical diagnostics with no activation
+authority. Development and Validation are repeatable before freeze; Holdout is
+one-shot. Passing gates never activate automatically.

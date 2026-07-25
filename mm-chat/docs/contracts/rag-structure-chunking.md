@@ -7,8 +7,19 @@ projection, G11.9D.2.2 admitted MinerU page-element projection,
 G11.9D.2.3a candidate-generation allocation, and G11.9D.2.3b leased candidate
 parse projection, G11.9D.2.3c real passage-embedding completeness,
 G11.9D.3a generation verification, G11.9D.3b deletion/failure fencing, and
-G11.9D.3c atomic cutover/rollback. D.3c is the only slice authorized to switch
-the active Index Generation.
+G11.9D.3c atomic cutover/rollback. Migration `043` adds bounded Child hydration
+and adaptive Parent expansion. Migration `044` supersedes the old runtime
+cutover grant: only `rag_replay_operator` may begin, verify, activate, or roll
+back a Structure Profile v2 candidate. Migration `045` makes the exact matched
+Child Search projection the Citation locator authority. Migration `046`
+requires an exact, confirmed, and immutably audited operator action before a
+verified Candidate can be abandoned.
+
+Migration `050` permanently retires Jina execution and supersedes every older
+Jina handler, Capture, evaluation, activation, and rollback statement in this
+document. Sections that record G11.9D pre-050 live proofs are historical evidence
+only. Until the BGE Candidate is explicitly activated, the historical Active
+Generation may serve only its same-Generation BM25/Citation projection.
 
 ## 2. Signatures
 
@@ -36,18 +47,22 @@ clip their existing locators; it must not invent source coordinates.
 
 - Input units are non-empty, contiguous in reading order, and use the closed
   heading/paragraph/list/table/code/formula/native structural kind set.
-- Planning is pure and byte-deterministic: no filesystem, network, database,
-  clock, randomness, provider, tokenizer download, or global mutable state.
-- The current conservative token estimate is `ceil(utf8_bytes / 4)`. It is a
-  versioned planning estimate, not a claim about Jina/provider tokenization.
-- Typical Children target 300–500 tokens with a 400-token center and hard cap
-  650. Adjacent children reuse exact atom ranges for up to 100 tokens, targeting
+- Planning is pure and deterministic: no network tokenizer download, database,
+  clock, randomness, or global mutable state. The packaged tokenizer artifact
+  is loaded locally and verified by SHA-256 before planning.
+- Token authority is the frozen `cl100k_base` ordinary-text encoding. Parent,
+  Child, overlap, and derived-context limits count the exact final rendered
+  text, including admitted joiners and prefixes; UTF-8 byte ranges remain the
+  source-location authority, not the size estimate.
+- Typical Children target 300–500 tokens with a 400-token center and hard cap 650. Adjacent children reuse exact atom ranges for up to 100 tokens, targeting
   about 64.
 - Parents target 1,200–1,600 tokens with a hard cap of 2,000. A Parent never
   crosses a `heading_path` change.
 - Table rows, code, formula, heading, and other protected units remain atomic
-  while they fit the 500-token target maximum. Oversized protected units split
-  only at UTF-8-safe scalar boundaries.
+  while they fit. Oversized structures route through type-specific boundaries
+  first: table row groups, code logical regions, JSON subtree paths, slide
+  shapes, or formula-safe boundaries. A tokenizer-aligned hard cut is the final
+  bounded fallback and always remains UTF-8 safe.
 - The planner caps one unit at 4 MiB, the document at 32 MiB, and unit count at
   100,000. Runtime admission may be stricter.
 - Output references preserve source ordering and Parent containment. Overlap
@@ -56,15 +71,15 @@ clip their existing locators; it must not invent source coordinates.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Result |
-| --- | --- |
-| Empty/non-tuple or more than 100,000 units | `StructureChunkingError` |
-| Non-contiguous unit ordinal | `StructureChunkingError` |
-| Unknown structural kind | `StructureChunkingError` |
+| Condition                                     | Result                   |
+| --------------------------------------------- | ------------------------ |
+| Empty/non-tuple or more than 100,000 units    | `StructureChunkingError` |
+| Non-contiguous unit ordinal                   | `StructureChunkingError` |
+| Unknown structural kind                       | `StructureChunkingError` |
 | Empty, NUL, invalid scalar, or oversized text | `StructureChunkingError` |
-| Invalid/oversized heading path | `StructureChunkingError` |
-| No UTF-8-safe forward boundary | `StructureChunkingError` |
-| Parent or Child exceeds its hard token cap | `StructureChunkingError` |
+| Invalid/oversized heading path                | `StructureChunkingError` |
+| No UTF-8-safe forward boundary                | `StructureChunkingError` |
+| Parent or Child exceeds its hard token cap    | `StructureChunkingError` |
 
 Errors are fixed descriptions and must not include source text.
 
@@ -142,7 +157,12 @@ indexes, positive page geometry, bounded page BBoxes, and closed text-bearing
 kinds.
 
 - heading/title, text/paragraph, list/list-item, quote, code, table,
-  formula/equation, footnote, header, and footer map to Canonical text blocks;
+  formula/equation, footnote/`ref_text`, header, footer, and `page_number` map
+  to Canonical text blocks;
+- provider-classified page numbers are preserved as non-indexable footer
+  evidence; an explicit `text` block with `lines=[]` is an empty provider
+  placeholder and is skipped, while malformed or unknown text-bearing blocks
+  still fail closed;
 - tables render deterministically with `" | "` between cells and newline
   between rows;
 - non-text image elements are ignored; an unknown element carrying text fails
@@ -158,11 +178,18 @@ kinds.
   blocks by BBox/index, join `lines[].spans[].content`, and convert PDF point
   geometry to integer milli-points; unknown text-bearing blocks still fail
   closed.
+- live nested tables read only the observed
+  `table.blocks[].table_body.lines[].spans[].html` lane. A bounded
+  `HTMLParser` extracts `th`/`td` character data, decodes character references,
+  escapes source pipes, and emits deterministic rows. The mapper never
+  executes or retains provider HTML, and malformed, nested, or empty cell/row
+  state fails closed.
 
 Tests cover the frozen synthetic MinerU heading/text/table/formula corpus,
 page-BBox projection, deterministic replay, schemas, Postgres DTO projection,
 long multilingual UTF-8/overlap behavior, and the observed real-provider
-`pdf_info[]` archive shape. Unsupported provider shape must fail closed.
+`pdf_info[]` archive shape, including a caption plus nested Table HTML.
+Unsupported provider shape must fail closed.
 
 ## 10. G11.9D.2.3a Candidate Generation Rebuild Allocator
 
@@ -212,15 +239,15 @@ Each allocation object contains lower-case UUID strings `documentId`,
 
 ### Validation & Error Matrix
 
-| Condition | Error |
-| --- | --- |
-| Null ID, invalid hash, non-array/empty allocations | `RAG_STRUCTURE_REBUILD_ARGUMENT_INVALID` |
-| No active generation | `RAG_STRUCTURE_REBUILD_ACTIVE_GENERATION_MISSING` |
-| Existing building/verified candidate | `RAG_STRUCTURE_REBUILD_CANDIDATE_EXISTS` |
-| Missing active Search Profile | `RAG_STRUCTURE_REBUILD_ACTIVE_PROFILE_MISSING` |
-| Count, uniqueness, or exact document set mismatch | `RAG_STRUCTURE_REBUILD_ALLOCATION_COVERAGE_INVALID` |
-| Invalid allocation UUID/hash shape | `RAG_STRUCTURE_REBUILD_ALLOCATION_INVALID` |
-| Document or latest parse authority unavailable | `RAG_STRUCTURE_REBUILD_DOCUMENT_INVALID` |
+| Condition                                          | Error                                               |
+| -------------------------------------------------- | --------------------------------------------------- |
+| Null ID, invalid hash, non-array/empty allocations | `RAG_STRUCTURE_REBUILD_ARGUMENT_INVALID`            |
+| No active generation                               | `RAG_STRUCTURE_REBUILD_ACTIVE_GENERATION_MISSING`   |
+| Existing building/verified candidate               | `RAG_STRUCTURE_REBUILD_CANDIDATE_EXISTS`            |
+| Missing active Search Profile                      | `RAG_STRUCTURE_REBUILD_ACTIVE_PROFILE_MISSING`      |
+| Count, uniqueness, or exact document set mismatch  | `RAG_STRUCTURE_REBUILD_ALLOCATION_COVERAGE_INVALID` |
+| Invalid allocation UUID/hash shape                 | `RAG_STRUCTURE_REBUILD_ALLOCATION_INVALID`          |
+| Document or latest parse authority unavailable     | `RAG_STRUCTURE_REBUILD_DOCUMENT_INVALID`            |
 
 ### Good / Base / Bad Cases
 
@@ -286,13 +313,13 @@ database clock advances between expressions.
 
 ### Validation & Error Matrix
 
-| Condition | Result |
-| --- | --- |
-| Null ID or zero lease token | `RAG_PARSE_CHUNK_PROFILE_ARGUMENT_INVALID` |
-| Wrong/expired lease, non-parse job, legacy-unbound job, mismatched binding, non-staging materialization, or unavailable generation | `RAG_PARSE_CHUNK_PROFILE_MISSING` |
-| Bound hash is neither baseline nor shared structure | `NATIVE_PARSER_CHUNK_PROFILE_UNSUPPORTED` |
-| Processor is neither admitted MinerU nor Native | `NATIVE_PARSER_AUTHORITY_UNSUPPORTED` |
-| Real MinerU layout loses/changes text-bearing shape | `MINERU_STRUCTURE_ARTIFACT_INVALID` |
+| Condition                                                                                                                          | Result                                     |
+| ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| Null ID or zero lease token                                                                                                        | `RAG_PARSE_CHUNK_PROFILE_ARGUMENT_INVALID` |
+| Wrong/expired lease, non-parse job, legacy-unbound job, mismatched binding, non-staging materialization, or unavailable generation | `RAG_PARSE_CHUNK_PROFILE_MISSING`          |
+| Bound hash is neither baseline nor shared structure                                                                                | `NATIVE_PARSER_CHUNK_PROFILE_UNSUPPORTED`  |
+| Processor is neither admitted MinerU nor Native                                                                                    | `NATIVE_PARSER_AUTHORITY_UNSUPPORTED`      |
+| Real MinerU layout loses/changes text-bearing shape                                                                                | `MINERU_STRUCTURE_ARTIFACT_INVALID`        |
 
 ### Good / Base / Bad Cases
 
@@ -392,14 +419,14 @@ values per Child.
 
 ### Validation & Error Matrix
 
-| Condition | Result |
-| --- | --- |
-| Missing/stale lease or substituted materialization | `RAG_STALE_JOB_LEASE` or materialization-missing error |
-| Empty/duplicate/malformed candidate rows | fixed embedding-candidate error |
-| Provider count, Child ID, dimension, or finite-value mismatch | fixed Jina/handler vector error |
-| Stage target does not match immutable Child/search lineage | `RAG_PASSAGE_EMBEDDING_TARGET_MISSING` |
-| Ready search count differs from Child count | `RAG_SEARCH_PROJECTION_INCOMPLETE` |
-| Source authority changed before publish | `RAG_EMBEDDING_COMPLETION_AUTHORITY_STALE` |
+| Condition                                                     | Result                                                 |
+| ------------------------------------------------------------- | ------------------------------------------------------ |
+| Missing/stale lease or substituted materialization            | `RAG_STALE_JOB_LEASE` or materialization-missing error |
+| Empty/duplicate/malformed candidate rows                      | fixed embedding-candidate error                        |
+| Provider count, Child ID, dimension, or finite-value mismatch | fixed Jina/handler vector error                        |
+| Stage target does not match immutable Child/search lineage    | `RAG_PASSAGE_EMBEDDING_TARGET_MISSING`                 |
+| Ready search count differs from Child count                   | `RAG_SEARCH_PROJECTION_INCOMPLETE`                     |
+| Source authority changed before publish                       | `RAG_EMBEDDING_COMPLETION_AUTHORITY_STALE`             |
 
 ### Good / Base / Bad Cases
 
@@ -499,19 +526,19 @@ knowledge_verify_structure_generation(
 
 ### Validation & Error Matrix
 
-| Condition | Result |
-| --- | --- |
-| Invalid ID/head/hash argument | `RAG_STRUCTURE_VERIFY_ARGUMENT_INVALID` |
-| Head revision stale, missing active head, or candidate is active | `RAG_STRUCTURE_VERIFY_HEAD_STALE` |
-| Candidate/status missing | `RAG_STRUCTURE_VERIFY_CANDIDATE_MISSING` |
-| State/readiness/outbox floor inconsistent | `RAG_STRUCTURE_VERIFY_STATE_INVALID` |
-| Index/Search/Jina/shared profile mismatch | `RAG_STRUCTURE_VERIFY_PROFILE_MISMATCH` |
-| Exact current document tuple coverage differs | `RAG_STRUCTURE_VERIFY_COVERAGE_INVALID` |
-| Latest Parse/Embedding job incomplete | `RAG_STRUCTURE_VERIFY_JOBS_INCOMPLETE` |
-| Published document heads incomplete | `RAG_STRUCTURE_VERIFY_HEADS_INCOMPLETE` |
-| Parser artifacts/Blocks incomplete | `RAG_STRUCTURE_VERIFY_ARTIFACTS_INCOMPLETE` |
-| Parent/Child/vector/locator lineage incomplete | `RAG_STRUCTURE_VERIFY_PROJECTION_INCOMPLETE` |
-| Verified replay recomputes different manifest/counts | `RAG_STRUCTURE_VERIFY_REPLAY_MISMATCH` |
+| Condition                                                        | Result                                       |
+| ---------------------------------------------------------------- | -------------------------------------------- |
+| Invalid ID/head/hash argument                                    | `RAG_STRUCTURE_VERIFY_ARGUMENT_INVALID`      |
+| Head revision stale, missing active head, or candidate is active | `RAG_STRUCTURE_VERIFY_HEAD_STALE`            |
+| Candidate/status missing                                         | `RAG_STRUCTURE_VERIFY_CANDIDATE_MISSING`     |
+| State/readiness/outbox floor inconsistent                        | `RAG_STRUCTURE_VERIFY_STATE_INVALID`         |
+| Index/Search/Jina/shared profile mismatch                        | `RAG_STRUCTURE_VERIFY_PROFILE_MISMATCH`      |
+| Exact current document tuple coverage differs                    | `RAG_STRUCTURE_VERIFY_COVERAGE_INVALID`      |
+| Latest Parse/Embedding job incomplete                            | `RAG_STRUCTURE_VERIFY_JOBS_INCOMPLETE`       |
+| Published document heads incomplete                              | `RAG_STRUCTURE_VERIFY_HEADS_INCOMPLETE`      |
+| Parser artifacts/Blocks incomplete                               | `RAG_STRUCTURE_VERIFY_ARTIFACTS_INCOMPLETE`  |
+| Parent/Child/vector/locator lineage incomplete                   | `RAG_STRUCTURE_VERIFY_PROJECTION_INCOMPLETE` |
+| Verified replay recomputes different manifest/counts             | `RAG_STRUCTURE_VERIFY_REPLAY_MISMATCH`       |
 
 ### Good / Base / Bad Cases
 
@@ -603,16 +630,16 @@ knowledge_fail_structure_generation(
 
 ### Validation & Error Matrix
 
-| Condition | Result |
-| --- | --- |
-| Promotion argument invalid | `RAG_PROMOTION_ARGUMENT_INVALID` |
-| Promotion head stale | `RAG_PROMOTION_HEAD_STALE` |
-| Candidate not `verified/ready` or manifest differs | `RAG_PROMOTION_NOT_READY` |
-| Recomputed manifest differs | `RAG_PROMOTION_FENCE_MISMATCH` |
-| Delete changed current corpus coverage | verifier error, including `RAG_STRUCTURE_VERIFY_COVERAGE_INVALID` |
-| Fail argument invalid | `RAG_STRUCTURE_FAIL_ARGUMENT_INVALID` |
-| Fail head/candidate/state stale | corresponding `RAG_STRUCTURE_FAIL_*` closed error |
-| Failed replay changes failure code/state | `RAG_STRUCTURE_FAIL_REPLAY_MISMATCH` |
+| Condition                                          | Result                                                            |
+| -------------------------------------------------- | ----------------------------------------------------------------- |
+| Promotion argument invalid                         | `RAG_PROMOTION_ARGUMENT_INVALID`                                  |
+| Promotion head stale                               | `RAG_PROMOTION_HEAD_STALE`                                        |
+| Candidate not `verified/ready` or manifest differs | `RAG_PROMOTION_NOT_READY`                                         |
+| Recomputed manifest differs                        | `RAG_PROMOTION_FENCE_MISMATCH`                                    |
+| Delete changed current corpus coverage             | verifier error, including `RAG_STRUCTURE_VERIFY_COVERAGE_INVALID` |
+| Fail argument invalid                              | `RAG_STRUCTURE_FAIL_ARGUMENT_INVALID`                             |
+| Fail head/candidate/state stale                    | corresponding `RAG_STRUCTURE_FAIL_*` closed error                 |
+| Failed replay changes failure code/state           | `RAG_STRUCTURE_FAIL_REPLAY_MISMATCH`                              |
 
 ### Good / Base / Bad Cases
 
@@ -724,16 +751,16 @@ knowledge_rollback_index_generation(
 
 ### Validation & Error Matrix
 
-| Condition | Result |
-| --- | --- |
-| Invalid IDs/head/manifests | `RAG_GENERATION_ROLLBACK_ARGUMENT_INVALID` |
-| Active head/revision differs | `RAG_GENERATION_ROLLBACK_HEAD_STALE` |
-| Active generation/state/manifest differs | `RAG_GENERATION_ROLLBACK_ACTIVE_MISMATCH` |
-| Target is not the active rebuild's source | `RAG_GENERATION_ROLLBACK_SOURCE_MISMATCH` |
-| Target is not matching `retired/retired` | `RAG_GENERATION_ROLLBACK_TARGET_MISMATCH` |
-| A current document lacks its exact target bytes/head | `RAG_GENERATION_ROLLBACK_COVERAGE_INVALID` |
-| Target Parent/Child/vector is incomplete | `RAG_GENERATION_ROLLBACK_PROJECTION_INCOMPLETE` |
-| A transition CAS loses | `RAG_GENERATION_ROLLBACK_STATE_STALE` |
+| Condition                                            | Result                                          |
+| ---------------------------------------------------- | ----------------------------------------------- |
+| Invalid IDs/head/manifests                           | `RAG_GENERATION_ROLLBACK_ARGUMENT_INVALID`      |
+| Active head/revision differs                         | `RAG_GENERATION_ROLLBACK_HEAD_STALE`            |
+| Active generation/state/manifest differs             | `RAG_GENERATION_ROLLBACK_ACTIVE_MISMATCH`       |
+| Target is not the active rebuild's source            | `RAG_GENERATION_ROLLBACK_SOURCE_MISMATCH`       |
+| Target is not matching `retired/retired`             | `RAG_GENERATION_ROLLBACK_TARGET_MISMATCH`       |
+| A current document lacks its exact target bytes/head | `RAG_GENERATION_ROLLBACK_COVERAGE_INVALID`      |
+| Target Parent/Child/vector is incomplete             | `RAG_GENERATION_ROLLBACK_PROJECTION_INCOMPLETE` |
+| A transition CAS loses                               | `RAG_GENERATION_ROLLBACK_STATE_STALE`           |
 
 ### Good / Base / Bad Cases
 
@@ -800,3 +827,261 @@ Execute the guarded generation rollback before downgrading if the new
 generation is active. Migration 033 down only drops the rollback function and
 revokes both runtime cutover permissions; it deliberately does not rewrite
 already-transitioned generation state.
+
+## 16. Structure Chunk Profile v2
+
+### Frozen Identity
+
+The production candidate descriptor is immutable and registered by migration
+`044`:
+
+```text
+schema version:          mm-chat.structure-chunk-profile.v2
+structure profile hash: 606d6ac1cca428a05a7dccce0b172aabfba893f02431834cdc75775342db88b1
+semantic profile hash:  3c17b8c1ddbed7b0a241dc43bdb24d3615526e94700c0971e585aa25519b409d
+tokenizer profile hash: bdff1b0c1c8195fc2fd0a1818bac2ca66a9332a53a5cdf3d434132dff02724a0
+```
+
+The tokenizer contract is:
+
+```text
+package:                tiktoken==0.13.0
+name:                   cl100k_base
+revision:               openai-public-2022-12-14
+normalization:          none
+special-token policy:   encode_ordinary
+artifact SHA-256:       223921b76ee99bde995b7ff738513eef100fb51d18c93597a113bcffe865b2a7
+vocabulary SHA-256:     d48a1992b71a810f377931afd97b5b28588e412918a3f2d9e445b019f29dc6e4
+```
+
+The packaged `.tiktoken` artifact is the only vocabulary authority. A missing,
+changed, incomplete, or byte-reconstruction-inconsistent artifact fails before
+chunk planning. Chat-model selection never changes this persisted projection
+and never triggers knowledge reindexing.
+
+### Automatic Routes and Bounds
+
+The profile selects one read-only diagnostic strategy per canonical unit:
+
+| Canonical unit                | Strategy                                             |
+| ----------------------------- | ---------------------------------------------------- |
+| narrative/list/quote/raw HTML | semantic hint, then sentence-recursive fallback      |
+| table/sheet                   | retained header plus row groups, then token fallback |
+| code                          | logical lines/regions, then token fallback           |
+| JSON                          | subtree/path boundaries, then token fallback         |
+| slide/shape/notes             | slide-shape boundaries, then token fallback          |
+| formula                       | atomic when possible, then bounded token fallback    |
+| non-indexable source block    | preserved in Canonical IR, excluded from retrieval   |
+
+Children target `300..500` tokens around `400`, hard-stop at `650`, and reuse
+up to `100` exact adjacent tokens around a `64` target. Parents target
+`1200..1600` and hard-stop at `2000`. A deterministic derived-context prefix is
+limited to `96` tokens and may carry a heading path, table/sheet header, JSON
+path, code signature, or slide title. It is separately labeled and hash-bound;
+only the original source span is quote and Citation authority.
+
+Repeated headers, footers, watermarks, navigation, and provider-classified page
+numbers remain in source artifacts and provenance but are `nonIndexable` for
+Child content, Embedding, and BM25. Repetition admission combines exact text,
+page position, and document frequency; no LLM deletes or rewrites source data.
+
+### Semantic Boundary Profile
+
+Semantic hints are ingestion-only and admitted only for an indexable narrative
+unit of at least `1200` frozen-tokenizer tokens and `4..4096` sentences. BGE-M3
+1024-dimensional sentence embeddings are batched within the admitted
+SiliconFlow request bounds; adjacent cosine distances use
+the frozen `0.85` percentile, minimum distance `0.15`, and at most `128`
+boundaries. Cache identity is `(semantic profile hash, unit content SHA-256)`.
+Provider timeout, quota, malformed vector, or gateway failure returns no hints
+and deterministically falls back to sentence-recursive planning. A semantic
+hint can select a valid boundary but can never cross structure, authorize
+source text, or relax a hard token cap.
+
+## 17. Child-First Retrieval and Shared Answer Budget
+
+Migration `043` keeps candidate ranking on Children and extends final-authority
+hydration with the complete Child text/token count plus its Parent text/token
+count. Migration `045` rejoins the ready Child Search projection at that same
+authority boundary. The Citation snippet, hashes, and locator remain bound to
+the matched Child; the Parent locator may cover a wider source range and is not
+returned as Citation authority.
+
+Answer assembly first admits complete ranked Children. It may then expand the
+top hit and other hits whose positive score is at least `0.85` of the top score,
+with at most two distinct Parents per turn. Parents are deduplicated by
+`ParentChunkID`, are labeled context-only, and never mint an independent
+Citation. When the lane budget is tight, low-ranked Children are omitted before
+any admitted block is truncated; Parent expansion is skipped when its delta
+does not fit.
+
+Knowledge and external Web evidence share one turn-local model budget:
+
+- calculate the selected model's input budget with the existing context policy;
+- subtract current System Prompt, Messages, Prompt, and a `512`-token envelope;
+- cap all retrieval evidence at `40%` of the model input budget;
+- when both lanes are available, reserve `60%` for Knowledge and `40%` for Web;
+- when only one lane is available, it receives the full retrieval allocation;
+- enforce the same ledger for native Tool results, compatibility prompts, and
+  recovery fallback; Web bodies are token-trimmed rather than governed only by
+  a byte ceiling.
+
+No lane may borrow the other lane's fixed share in the mixed-source case. This
+prevents one large Knowledge result or Web response from consuming the answer
+window while preserving simultaneous Knowledge + Web execution.
+
+## 18. Operator-Only Candidate Lifecycle
+
+Migration `044` revokes begin, verify, fail, raw promotion, and rollback from
+`go_api_runtime`. Migration `046` additionally revokes direct failure from
+`rag_replay_operator`; the operator receives only source-text-free status,
+document allocation, registered-profile begin, verification, audited
+abandonment/activation, and guarded rollback gateways. Raw failure and raw
+promotion are not granted.
+
+`rag-replay generation-abandon` is dry-run by default. Execution requires the
+exact Candidate UUID, verified artifact manifest, current head revision,
+operator UUID, a `1..1024` UTF-8 byte reason, and both `--confirm-abandon` and
+`--execute`. The database reuses the verified/ready manifest/head CAS, fixes
+the failure code to `OPERATOR_ABANDONED`, leaves the Active pointer unchanged,
+and appends an immutable audit. Exact replay is idempotent; a changed reason,
+operator, manifest, head, or Candidate fails closed.
+
+`rag-replay generation-verify --execute` freezes the manifest and changes only
+`building/building -> verified/ready`; it never activates. First activation
+requires an explicit `generation-activate --confirm-activation --execute` plus
+an exact gate-report file SHA-256 and operator UUID. The immutable activation
+audit records Candidate ID, previous generation, manifest hash, gate-report
+hash, operator ID, and head revision before/after.
+
+The Candidate-only gate report must contain at least 500 human-reviewed cases
+split exactly `300/100/100` across Development/Validation/one-shot Holdout, at
+least 50 cases for every critical format/language/query slice, the frozen
+absolute retrieval/answer/citation thresholds, 100% Citation/Locator integrity, zero ACL,
+deletion, secret, or unauthorized-evidence leakage, and passing latency/context
+token budgets. A passing report still does not self-activate; the operator must
+issue the explicit audited command.
+
+The current Active generation must remain unchanged until that full report is
+available and separately approved. Once an admitted BGE Generation has been
+Active, retain exactly one complete BGE Last-Known-Good generation for guarded
+compare-and-swap rollback. Historical Jina can never be a rollback target;
+deletion authority continues to override rollback retention.
+
+The executable corpus contract is `neo-chat.rag-promotion-golden.v1`. Draft
+cases are legal curation artifacts but are not admitted: every promotion case
+must carry a reviewer UUID and RFC3339 review timestamp, the corpus must use an
+exact `60/20/20` split, and its canonical content hash must match the frozen
+lifecycle record. Candidate observations bind the exact frozen corpus hash and
+Generation manifest and carry one precommitted `ordinal=1` Holdout run. Active/
+Jina comparisons, relative improvement, and per-slice no-regression do not
+participate. `cmd/rag-eval` emits the closed v2 report schema with raw input
+hashes, metric provenance, exact budgets, and zero source bodies. The
+Python activation validator rechecks the complete closed shape and arithmetic;
+a summary-only report, 499-case corpus, weak slice, draft review, repeated
+Holdout, stale manifest, non-finite number, or sub-100% Locator/provenance/cell
+rate fails closed. The curation and replay procedure is defined in
+[`rag-promotion-golden-workflow.md`](./rag-promotion-golden-workflow.md).
+
+## 19. Exact Child Locator Authority
+
+`knowledge_locator_summary_is_valid(JSONB)` admits only the frozen
+`g7.4-locator-summary.v1` shape, matching primary/fragment entries, ordered
+aggregate hashes, and valid type-specific primary coordinates. Generation
+verification validates Parent context locators and Child Search locators
+independently; it never requires them to be byte-equal. Promotion inherits the
+same fence by re-running verification, and rollback rejects any current target
+Child whose ready Search projection or locator lineage is incomplete.
+
+Final hydration must match the ready Search row through Child, Parent,
+materialization, generation, collection, document/version, Search Profile,
+source-span hash, chunk-profile hash, and content hash. It returns
+`search.locator_summary`, never `parent.locator_summary`. A missing, malformed,
+or substituted Search locator omits the reference so no Knowledge Citation or
+Parent context is minted.
+
+Native Office mapping must expose the structural view before projection:
+
+- PPTX text fragments walk Paragraph -> Shape -> Slide and retain the stable
+  Shape identity, zero-based slide index, and admitted BBox as `slide_shape`;
+- XLSX row fragments retain Cell -> Sheet ancestry and every admitted A1 cell
+  anchor as `sheet_range`, which projects to `sheet_cell`;
+- locator selection uses `page_region`, `sheet_range`, `slide_shape`,
+  `ooxml_path`, then `source_text_position`. Generic OOXML line positions must
+  not mask a more exact slide or sheet locator.
+
+## 20. Candidate Worker Image Fence
+
+A Candidate manifest may contain projection evidence from exactly one admitted
+Worker image revision. Before `generation-begin`, stop every Worker capable of
+claiming Candidate parse or passage-embedding jobs, select/deploy one pinned
+image, allocate the Candidate, and then start only that image. Stopping the old
+Worker after allocation is insufficient because it may already lease a pending
+job.
+
+If more than one Worker image revision claims jobs for the same Candidate, the
+Candidate is not certifiable even when all jobs succeed. Abandon it through
+`generation-abandon` and allocate a new sequence; never repair projection rows
+in place or treat a deterministic verification hash as proof of image purity.
+
+The 2026-07-24 live replay followed this fence and verified sequence `7` twice:
+
+```text
+Candidate UUID:     53cfdad8-4e69-4d9e-a4c0-d2fcaec29696
+documents:          55
+blocks:             846
+Parents / Children: 147 / 150
+maximum Child:      397 tokens
+overlapped Children: 3
+artifact manifest:
+7d5507b73294d5bbcb95862f858d2f9dd9ea3cc3473d078604801244d3a1de9b
+```
+
+Active remained sequence `3`; this replay is structural evidence only and is
+not an activation or human-reviewed Golden result.
+
+## 21. SiliconFlow Pro BGE Candidate Profile v3
+
+Migration `049` registers the next Candidate-only structure and retrieval
+identity without changing the Active Jina Generation:
+
+```text
+structure profile: 36845c249aa551d4d86720c38dfef9eb9e36ed49573a7547d2a5381d5f085d73
+semantic profile:  f8de6087c6b28fe89b904549e0ddcbe4b51ebb88aecf8232ab07e6ec0d316165
+provider profile:  siliconflow_bge_m3_v1
+embedding model:   Pro/BAAI/bge-m3
+rerank model:      Pro/BAAI/bge-reranker-v2-m3
+dimensions:        1024
+```
+
+Passage and query Embedding use the exact SiliconFlow
+`https://api.siliconflow.cn/v1/embeddings` response contract. Rerank uses the
+exact `https://api.siliconflow.cn/v1/rerank` contract. Reusable credentials
+remain inside the Go Provider Gateway; the Python Worker receives only the
+private gateway URL and internal token. The admitted governance profile is
+`CN`, request-scoped, training-disabled, and provider-request-ephemeral.
+
+The Worker resolves the Embedding model from the immutable target Generation
+before staging passage vectors. Query-time Go code resolves the Active
+Generation/Search Profile before calling a provider, authorizes that exact
+model identity, and searches only rows carrying the same Generation and Search
+Profile IDs. If the pointer changes after Embedding, the database raises
+`RAG_RETRIEVAL_PROFILE_CHANGED`; Go resolves and retries once. Provider failure
+may use the same fenced BM25 lane but may never call Jina and apply its vector
+to a BGE index. Rerank resolves from the Generation carried by hydrated
+evidence, not from a later Active-pointer read.
+
+Matching `1024` dimensions are not vector-space compatibility. Jina and BGE
+have separate partial HNSW indexes and exact profile admission. Stable lexical
+and hybrid entrypoints retain the pre-cutover `legacy` behavior; the fenced
+PG17 branch is reachable only while `pg17_bm25_pgvector_v1` is selected. The
+operator diagnostic signature is also Active Generation/Search Profile bound
+and returns references, ranks, and scores only.
+
+Migration `049` performs no Activation or Holdout. Migration `050` then removes
+all Jina runtime authority without moving Active or Candidate. A complete BGE Candidate
+must be rebuilt from source, reconciled to a fenced corpus revision, verified,
+and evaluated through the frozen human-reviewed gates before an explicit
+operator cutover. Its down migration refuses atomically with
+`RAG_SILICONFLOW_ROLLBACK_REQUIRES_BGE_PURGE` while any BGE profile or
+projection remains.

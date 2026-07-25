@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "neo-chat.rag-promotion-golden.v1",
+  "id": "REPLACE_WITH_CORPUS_ID",
+  "description": "DRAFT ONLY: replace this example with reviewed corpus cases; this file is not promotion evidence.",
+  "lifecycle": {
+    "state": "draft"
+  },
+  "criteria": {
+    "maximumP95LatencyMilliseconds": 1000,
+    "maximumAverageContextTokens": 4096,
+    "minimumAggregateQualityImprovement": 0
+  },
+  "cases": [
+    {
+      "id": "REPLACE_WITH_CASE_ID",
+      "query": "REPLACE_WITH_HUMAN_REVIEWED_QUESTION",
+      "split": "development",
+      "slices": ["pdf", "chinese", "short_fact"],
+      "selectedCollectionAliases": ["REPLACE_WITH_REDACTED_COLLECTION_ALIAS"],
+      "expectedRelevantEvidenceIds": ["REPLACE_WITH_REDACTED_EVIDENCE_ID"],
+      "expectedNoAnswer": false,
+      "tableExactAnswerRequired": false,
+      "review": {
+        "state": "draft"
+      }
+    }
+  ]
+}
