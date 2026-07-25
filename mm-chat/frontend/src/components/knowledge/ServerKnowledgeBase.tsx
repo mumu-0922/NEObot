@@ -23,6 +23,7 @@ import {
   ChevronRight,
   CodeXml,
   Coffee,
+  Download,
   FileText,
   Folder,
   GraduationCap,
@@ -48,7 +49,9 @@ import {
   KNOWLEDGE_LIMITS,
 } from "@/config/limits";
 import { deleteKnowledgeDocumentsWithConcurrency } from "@/lib/knowledge/bulkDelete";
+import { triggerBlobDownload } from "@/lib/utils/blobDownload";
 import { logDevError } from "@/lib/utils/devLogger";
+import { sanitizeDownloadFilename } from "@/lib/utils/filename";
 
 interface ServerKnowledgeBaseProps {
   onClose?: () => void;
@@ -146,6 +149,7 @@ export default function ServerKnowledgeBase({
   const selectAllDocumentsRef = useRef<HTMLInputElement | null>(null);
   const documentsRequestIdRef = useRef(0);
   const selectedCollectionIdRef = useRef<string | null>(null);
+  const downloadingDocumentIdsRef = useRef(new Set<string>());
 
   const selectedCollection = useMemo(
     () =>
@@ -561,6 +565,38 @@ export default function ServerKnowledgeBase({
     });
   };
 
+  const handleDownloadDocument = (document: KnowledgeDocumentDTO) => {
+    const currentVersion = document.currentVersion;
+    if (
+      documentsBusy ||
+      document.status !== "active" ||
+      currentVersion?.status !== "active" ||
+      downloadingDocumentIdsRef.current.has(document.id)
+    ) {
+      return;
+    }
+
+    downloadingDocumentIdsRef.current.add(document.id);
+    void runAction(`download-${document.id}`, async () => {
+      try {
+        const downloaded = await apiClient.knowledge.downloadDocumentContent({
+          documentId: document.id,
+        });
+        triggerBlobDownload(
+          downloaded.blob,
+          sanitizeDownloadFilename(
+            currentVersion.file.name,
+            `knowledge-document-${document.id.slice(0, 8)}`,
+          ),
+        );
+      } catch (caught) {
+        showError(t("serverDownloadDocumentFailed"), caught);
+      } finally {
+        downloadingDocumentIdsRef.current.delete(document.id);
+      }
+    });
+  };
+
   if (!knowledgeSupported) {
     return (
       <div className="flex h-full w-full flex-col overflow-hidden bg-gray-50/50 dark:bg-background">
@@ -825,6 +861,7 @@ export default function ServerKnowledgeBase({
                           onSelectedChange={(selected) =>
                             handleDocumentSelection(document.id, selected)
                           }
+                          onDownload={() => handleDownloadDocument(document)}
                           onReprocess={() => handleReprocessDocument(document)}
                           onDelete={() => handleDeleteDocument(document)}
                         />
@@ -1095,6 +1132,7 @@ function ServerDocumentRow({
   canManage,
   selected,
   onSelectedChange,
+  onDownload,
   onReprocess,
   onDelete,
 }: {
@@ -1103,12 +1141,16 @@ function ServerDocumentRow({
   canManage: boolean;
   selected: boolean;
   onSelectedChange: (selected: boolean) => void;
+  onDownload: () => void;
   onReprocess: () => void;
   onDelete: () => void;
 }) {
   const t = useTranslations("Knowledge");
   const version = document.currentVersion ?? document.pendingVersion;
   const documentName = version?.file.name ?? document.id;
+  const canDownload =
+    document.status === "active" &&
+    document.currentVersion?.status === "active";
   return (
     <div
       className={`group flex items-center gap-3 rounded-lg p-3 hover:bg-gray-50 dark:hover:bg-muted/50 ${
@@ -1145,6 +1187,15 @@ function ServerDocumentRow({
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+        <button
+          type="button"
+          onClick={onDownload}
+          disabled={!canDownload || busy}
+          aria-label={t("serverDownloadDocument", { name: documentName })}
+          className="rounded-lg p-2 text-gray-400 hover:bg-white hover:text-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-background"
+        >
+          <Download size={16} aria-hidden="true" />
+        </button>
         {document.pendingVersion?.status === "failed" && (
           <button
             type="button"

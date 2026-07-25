@@ -49,6 +49,14 @@ describe("G8 server knowledge base UI composition", () => {
       "apiClient.knowledge.reprocessDocument",
     );
     expect(serverKnowledgeBase).toContain(
+      "apiClient.knowledge.downloadDocumentContent",
+    );
+    expect(serverKnowledgeBase).toContain("triggerBlobDownload");
+    expect(serverKnowledgeBase).toContain("sanitizeDownloadFilename");
+    expect(serverKnowledgeBase).toContain(
+      'document.currentVersion?.status === "active"',
+    );
+    expect(serverKnowledgeBase).toContain(
       'document.pendingVersion?.status === "failed"',
     );
     expect(serverKnowledgeBase).not.toContain("/v1/knowledge");
@@ -141,5 +149,8 @@ describe("G8 server knowledge base UI composition", () => {
     expect(en.Knowledge.serverSingleUserScope).toBeTruthy();
     expect(zh.Knowledge.serverSingleUserScope).toBeTruthy();
     expect(ja.Knowledge.serverSingleUserScope).toBeTruthy();
+    expect(en.Knowledge.serverDownloadDocument).toBeTruthy();
+    expect(zh.Knowledge.serverDownloadDocumentFailed).toBeTruthy();
+    expect(ja.Knowledge.serverDownloadDocument).toBeTruthy();
   });
 });

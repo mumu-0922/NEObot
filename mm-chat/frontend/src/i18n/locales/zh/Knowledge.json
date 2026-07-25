@@ -77,6 +77,7 @@
   "serverBulkDeleteResult": "批量删除完成：成功 {succeeded} 个，失败 {failed} 个。",
   "serverDocumentReprocessQueued": "已提交文档重处理任务。",
   "serverReprocessDocumentFailed": "提交文档重处理失败。",
+  "serverDownloadDocumentFailed": "下载文档失败。",
   "serverCollections": "服务端合集",
   "serverRefreshCollections": "刷新服务端合集",
   "serverCollectionNamePlaceholder": "合集名称",
@@ -107,6 +108,7 @@
     "tombstoned": "已删除"
   },
   "serverSourceVersion": "v{version}",
+  "serverDownloadDocument": "下载文档 {name}",
   "serverReprocessDocument": "重处理",
   "serverDeleteDocument": "删除",
   "serverCollectionConsentHeading": "合集处理授权",
