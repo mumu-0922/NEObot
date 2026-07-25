@@ -71,3 +71,37 @@ Closed stale G7/G18/G19 and Phase 9/15 plan states, preserved only Voice, owner-
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: Complete structure-aware BGE RAG candidate
+
+**Date**: 2026-07-25
+**Task**: Complete structure-aware BGE RAG candidate
+**Branch**: `main`
+
+### Summary
+
+Implemented structure-first token-aware and semantic chunking, SiliconFlow BGE retrieval, generation promotion gates, Jina runtime retirement, and frozen evaluation evidence; Candidate 8 remains verified/ready without Activation, with Python coverage at 90.14%.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `185e040` | (see git log) |
+| `5b962c2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
