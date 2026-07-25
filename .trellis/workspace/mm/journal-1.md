@@ -105,3 +105,36 @@ Implemented structure-first token-aware and semantic chunking, SiliconFlow BGE r
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: Add knowledge document download
+
+**Date**: 2026-07-26
+**Task**: Add knowledge document download
+**Branch**: `main`
+
+### Summary
+
+Added an accessible per-document download action for active server Knowledge documents using the existing authorized binary API, sanitized source filenames, bounded Blob URL cleanup, localized errors, and regression coverage; full frontend checks and backend Knowledge tests passed.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f02eccb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
