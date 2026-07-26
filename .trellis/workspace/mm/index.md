@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 4
+- **Total Sessions**: 5
 - **Last Active**: 2026-07-26
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~140 | Active |
+| `journal-1.md` | ~174 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 5 | 2026-07-26 | Improve Knowledge citation display | `72feeec`, `9bf434f` | `main` |
 | 4 | 2026-07-26 | Add knowledge document download | `f02eccb` | `main` |
 | 3 | 2026-07-25 | Complete structure-aware BGE RAG candidate | `185e040`, `5b962c2` | `main` |
 | 2 | 2026-07-23 | Reconcile mm-chat migration ledger | `0b43497` | `main` |

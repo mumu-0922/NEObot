@@ -138,3 +138,37 @@ Added an accessible per-document download action for active server Knowledge doc
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: Improve Knowledge citation display
+
+**Date**: 2026-07-26
+**Task**: Improve Knowledge citation display
+**Branch**: `main`
+
+### Summary
+
+Projected authorized source names and typed display locators into Knowledge citations; localized multi-format citation cards without exposing UUIDs or raw locator JSON; added regression tests and the cross-layer display contract.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `72feeec` | (see git log) |
+| `9bf434f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
