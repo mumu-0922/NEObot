@@ -20,6 +20,11 @@ This guide helps you **ask the right questions before coding**.
 | ----------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------ |
 | [Agent Orchestration Guide](./agent-orchestration.md) | Allocate Sub-agents and Review Agents without sacrificing quality | When work may benefit from parallelism or independent review |
 
+Repository layout, cleanup, CI, and runtime-state rules are executable
+operations contracts, not thinking guides. Read
+[`../operations/repository-root-boundary.md`](../operations/repository-root-boundary.md)
+before changing those boundaries.
+
 ---
 
 ## Quick Reference: Thinking Triggers
