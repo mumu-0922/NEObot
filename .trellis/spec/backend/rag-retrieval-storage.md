@@ -4,7 +4,8 @@
 
 Apply this contract when changing `mm-chat` lexical or Dense retrieval,
 PostgreSQL extensions/major version, search projections, candidate diagnostics,
-or the production retrieval profile pointer.
+the production retrieval profile pointer, or the cross-layer Knowledge
+Citation display projection.
 
 The current schema head is migration `050` on PostgreSQL `17.10` with
 `pgvector 0.8.5` and `pg_textsearch 1.3.1`. The durable retrieval pointer still
@@ -136,6 +137,29 @@ knowledge_reauthorize_and_hydrate_evidence(
 
 The Child text, hashes, and locator remain citation authority. Parent text is
 source-backed answer context only and never replaces the matched Child.
+
+The additive Knowledge Citation display projection is:
+
+```text
+RAGCitation {
+  sourceName?: string                 // UTF-8, <= 512 bytes, no controls
+  displayLocator?:
+    | { kind: "page", page: integer }
+    | { kind: "slide", slide: integer }
+    | { kind: "cell_range", startCell: A1, endCell: A1 }
+    | { kind: "line_range", startLine: integer, endLine: integer }
+  locator: raw authority JSON         // retained, never rendered as fallback
+}
+
+normalizeMessageKnowledgeMetadata(untrustedMetadata)
+  -> bounded KnowledgeCitation display fields or safe omission
+
+formatKnowledgeCitationTitle(citation, localizedFallback, localizedLabels)
+  -> "[K#] · <source>" plus an optional localized location
+```
+
+Display page, slide, and line coordinates are one-based integers in
+`[1, 1_000_000_000]`. The durable raw locator, IDs, and hashes are unchanged.
 
 Migration `037` introduced the durable pointer and routes that stable signature
 to the legacy `knowledge_fetch_hybrid_query_evidence_candidates(...)`
@@ -382,6 +406,20 @@ replace the failed source report.
   the current message's authoritative `metadata.knowledge.citations`, not from
   marker-looking prose. It may remove unissued markers while mapping old
   persisted messages, but it must not invent citation metadata.
+- Citation minting may project `sourceName` only from the same reauthorized
+  `HydratedEvidence` used to mint authority. It must unwrap only
+  `g7.4-locator-summary.v1.primary.locator`, require matching kinds, convert
+  zero-based page/slide/line coordinates to one-based display coordinates,
+  uppercase bounded A1 cells, and omit unsupported or malformed locations.
+- `page_bbox`, `slide_shape`, `sheet_cell`, and `line_range` map to the typed
+  display DTO. Opaque sheet hashes, `ooxml_part_xpath`, `text_offset`, XPath
+  payload references, raw locator JSON, UUIDs, and hashes must never become a
+  visible fallback. Legacy top-level human-readable page/sheet/cell/section
+  fields may still render after bounded validation.
+- The frontend must normalize Citation metadata as untrusted input and render
+  source names as ordinary React text. A missing or rejected `sourceName`
+  becomes the localized generic Knowledge-source label; a rejected location
+  is omitted without dropping the underlying Citation authority.
 - Resolve bounded BM25/Dense probe IDs through a candidate-driven `LATERAL`
   current-authority lookup. Do not let PostgreSQL decorrelate the authority
   view into a corpus-wide or per-candidate repeated expansion; retain an
@@ -655,6 +693,9 @@ replace the failed source report.
 | Current turn has no evidence but model emits or copies `[K1]`                              | Marker is removed; `no_evidence`, `citationCount=0`, and no citation card remain                                        |
 | Model emits a Knowledge/Web marker not present in the current turn allowlist               | Unissued marker is removed before authority, persistence, and terminal SSE                                              |
 | Current turn emits a marker backed by current authoritative citation metadata              | Marker and matching citation metadata remain unchanged                                                                  |
+| Authorized Citation has a valid source name and supported canonical locator               | Persist the bounded `sourceName` and typed one-based `displayLocator`; retain raw authority unchanged                   |
+| Source name, schema, kind, coordinate, A1 range, or locator structure is invalid           | Omit the unsafe display field; keep the authoritative Citation and use the localized generic/source-only display        |
+| Citation is old or uses OOXML/text-offset/unknown/opaque locator data                       | Show the safe filename or generic Knowledge-source label only; never stringify JSON or display UUID/hash fallbacks      |
 | Profile compare-and-swap sees a stale expected profile/revision                            | `RAG_RETRIEVAL_PROFILE_CONFLICT`; pointer/history unchanged                                                             |
 | PG17 profile is selected before its implementation is available                            | `RAG_RETRIEVAL_PROFILE_UNAVAILABLE`; pointer unchanged                                                                  |
 | Active generation/profile is missing at PG17 activation                                    | `RAG_RETRIEVAL_PROFILE_ACTIVE_GENERATION_MISSING`; pointer unchanged                                                    |
@@ -718,6 +759,14 @@ Every SECURITY DEFINER function must pin the current schema followed by
   markers and persists no citation-looking prose or card.
 - **Base:** an old persisted `no_evidence` message containing a false `[K1]` is
   rendered without that marker by the frontend compatibility guard.
+- **Good:** a new PDF Citation renders `[K1] · source.pdf · Page 3`; PPTX,
+  XLSX, and line-based evidence render localized slide, cell/range, or
+  line/range labels while the raw locator remains available only as authority.
+- **Base:** a DOCX or old Citation has no safe display locator or source name,
+  so the card renders only the filename or localized `Knowledge source` label.
+- **Bad:** deriving a filename from a UUID, fetching document metadata once per
+  Citation, branching on file extensions, or using `JSON.stringify(locator)`
+  as a visible fallback.
 - **Bad:** mixing Jina and BGE vectors because both have 1024 dimensions,
   mounting a PG16 directory into PG17, accepting BM25 score `0`, granting a
   shadow diagnostic to `go_api_runtime`, emitting source text in a report, or
@@ -922,6 +971,12 @@ The disposable drill must assert:
     and an existing output is byte-for-byte preserved. The live replay records
     `promotionEvidence=false`, changes no Holdout/Active/activation state, and
     makes no Jina request.
+31. Citation display units prove reauthorized source-name projection, every
+    supported canonical locator mapping, one-based conversion, A1 and bound
+    validation, legacy display compatibility, localized fallback, hostile or
+    malformed omission, and the invariant that UUIDs, hashes, opaque sheet/
+    OOXML data, and serialized raw locator JSON are never rendered. Existing
+    Direct, Knowledge, Web, and Both composition tests must remain green.
 
 After the drill, run `go vet ./...`, `go test ./...`, and the frozen G18
 evaluator.
@@ -994,6 +1049,32 @@ persist(completedContent)
 Only markers issued from the current turn's authoritative evidence survive.
 Historical assistant markers are removed before provider context assembly, and
 the frontend repeats the Knowledge-side check when loading legacy messages.
+
+### Citation display projection boundary
+
+Wrong:
+
+```tsx
+const source = citation.documentId;
+const location = JSON.stringify(citation.locator);
+return `${citation.marker} · ${source} · ${location}`;
+```
+
+Correct:
+
+```tsx
+const normalized = normalizeMessageKnowledgeMetadata(untrustedMetadata);
+return formatKnowledgeCitationTitle(
+  normalized.citations[0],
+  t("citationSourceFallback"),
+  localizedLocationLabels,
+);
+```
+
+The backend emits only a bounded display projection from already reauthorized
+evidence. The frontend validates it again, keeps raw locator authority out of
+presentation, and degrades old or unsupported Citations without exposing
+internal identifiers.
 
 ### API projection write boundary
 

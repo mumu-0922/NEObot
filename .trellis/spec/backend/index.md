@@ -6,7 +6,7 @@
 
 | Guide                                               | Scope                                                                                                                 |
 | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| [RAG retrieval storage](./rag-retrieval-storage.md) | PostgreSQL major-version, BM25/pgvector shadow, authority, diagnostics, and rollback contracts                        |
+| [RAG retrieval storage](./rag-retrieval-storage.md) | PostgreSQL retrieval, Citation authority/display, diagnostics, and rollback contracts                              |
 | [Chat source fusion](./chat-source-fusion.md)       | Conversation-aware external Search query rewriting, Knowledge/Web authority, diagnostics, and fallback contracts      |
 | [Planned chat Tool Loop](./chat-tool-loop.md)       | G19 provider-normalized Tool rounds, three-state Search authority, process persistence, approvals, and citation truth |
 | [Direct chat attachments](./chat-attachments.md)    | Attachment-only messages, native images, bounded document extraction, provider context, and explicit failures       |
