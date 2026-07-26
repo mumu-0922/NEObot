@@ -1,3 +1,17 @@
+export type KnowledgeCitationDisplayLocator =
+  | { kind: "page"; page: number }
+  | { kind: "slide"; slide: number }
+  | {
+      kind: "cell_range";
+      startCell: string;
+      endCell: string;
+    }
+  | {
+      kind: "line_range";
+      startLine: number;
+      endLine: number;
+    };
+
 export interface KnowledgeCitation {
   id: string;
   marker: string;
@@ -10,6 +24,8 @@ export interface KnowledgeCitation {
   childChunkId?: string;
   sourceSpanHash?: string;
   contentHash?: string;
+  sourceName?: string;
+  displayLocator?: KnowledgeCitationDisplayLocator;
   locator?: unknown;
   snippet: string;
   rankScore?: number;

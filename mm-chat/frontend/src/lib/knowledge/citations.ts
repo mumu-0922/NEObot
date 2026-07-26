@@ -1,6 +1,13 @@
-import type { KnowledgeCitation, MessageKnowledgeMetadata } from "./types";
+import type {
+  KnowledgeCitation,
+  KnowledgeCitationDisplayLocator,
+  MessageKnowledgeMetadata,
+} from "./types";
 
 const reservedKnowledgeMarkerPattern = /[\t ]*\[K[0-9]+\]/g;
+const maxKnowledgeSourceNameBytes = 512;
+const maxKnowledgeDisplayCoordinate = 1_000_000_000;
+const a1CellPattern = /^[A-Z]{1,4}[1-9][0-9]{0,9}$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -14,6 +21,65 @@ function numberValue(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value)
     ? value
     : undefined;
+}
+
+function knowledgeSourceNameValue(value: unknown): string | undefined {
+  const sourceName = stringValue(value);
+  if (
+    !sourceName ||
+    /[\u0000-\u001f\u007f]/.test(sourceName) ||
+    new TextEncoder().encode(sourceName).length > maxKnowledgeSourceNameBytes
+  ) {
+    return undefined;
+  }
+  return sourceName;
+}
+
+function displayCoordinate(value: unknown): number | undefined {
+  return typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value > 0 &&
+    value <= maxKnowledgeDisplayCoordinate
+    ? value
+    : undefined;
+}
+
+function displayCell(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const cell = value.trim().toUpperCase();
+  return a1CellPattern.test(cell) ? cell : undefined;
+}
+
+function normalizeKnowledgeCitationDisplayLocator(
+  value: unknown,
+): KnowledgeCitationDisplayLocator | undefined {
+  if (!isRecord(value)) return undefined;
+  switch (value.kind) {
+    case "page": {
+      const page = displayCoordinate(value.page);
+      return page ? { kind: "page", page } : undefined;
+    }
+    case "slide": {
+      const slide = displayCoordinate(value.slide);
+      return slide ? { kind: "slide", slide } : undefined;
+    }
+    case "cell_range": {
+      const startCell = displayCell(value.startCell);
+      const endCell = displayCell(value.endCell);
+      return startCell && endCell
+        ? { kind: "cell_range", startCell, endCell }
+        : undefined;
+    }
+    case "line_range": {
+      const startLine = displayCoordinate(value.startLine);
+      const endLine = displayCoordinate(value.endLine);
+      return startLine && endLine && endLine >= startLine
+        ? { kind: "line_range", startLine, endLine }
+        : undefined;
+    }
+    default:
+      return undefined;
+  }
 }
 
 function stringArrayValue(value: unknown): string[] {
@@ -51,6 +117,10 @@ function normalizeKnowledgeCitation(value: unknown): KnowledgeCitation | null {
     childChunkId: stringValue(value.childChunkId),
     sourceSpanHash: stringValue(value.sourceSpanHash),
     contentHash: stringValue(value.contentHash),
+    sourceName: knowledgeSourceNameValue(value.sourceName),
+    displayLocator: normalizeKnowledgeCitationDisplayLocator(
+      value.displayLocator,
+    ),
     locator: value.locator,
     rankScore: numberValue(value.rankScore),
   };

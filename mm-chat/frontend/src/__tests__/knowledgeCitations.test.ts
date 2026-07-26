@@ -22,6 +22,8 @@ describe("Knowledge citation metadata", () => {
             id: "cit_1",
             marker: "[K1]",
             documentId: "doc_1",
+            sourceName: "alpha-source.pdf",
+            displayLocator: { kind: "page", page: 2 },
             locator: { page: 1 },
             snippet: "alpha evidence source",
             rankScore: 0.9,
@@ -41,10 +43,47 @@ describe("Knowledge citation metadata", () => {
           id: "cit_1",
           marker: "[K1]",
           snippet: "alpha evidence source",
+          sourceName: "alpha-source.pdf",
+          displayLocator: { kind: "page", page: 2 },
           locator: { page: 1 },
         },
       ],
     });
+  });
+
+  it("drops unsafe display fields without dropping Citation authority", () => {
+    const knowledge = normalizeMessageKnowledgeMetadata({
+      knowledge: {
+        outcome: "answered",
+        citationCount: 1,
+        citations: [
+          {
+            id: "cit_1",
+            marker: "[K1]",
+            documentId: "doc_1",
+            sourceName: "unsafe\nname.pdf",
+            displayLocator: {
+              kind: "cell_range",
+              startCell: "../A1",
+              endCell: "B2",
+            },
+            locator: { fragments: [{ private: "raw" }] },
+            snippet: "grounded evidence",
+          },
+        ],
+      },
+    });
+
+    expect(knowledge?.citations).toEqual([
+      expect.objectContaining({
+        id: "cit_1",
+        marker: "[K1]",
+        documentId: "doc_1",
+        sourceName: undefined,
+        displayLocator: undefined,
+        locator: { fragments: [{ private: "raw" }] },
+      }),
+    ]);
   });
 
   it("preserves Auto dependency degradation metadata without citations", () => {

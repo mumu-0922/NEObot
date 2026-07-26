@@ -2,50 +2,11 @@
 import React, { useId, useState } from "react";
 import { BookText, ChevronDown, Library, TriangleAlert } from "lucide-react";
 import { useTranslations } from "next-intl";
-import type { KnowledgeCitation, MessageKnowledgeMetadata } from "@/types";
+import { formatKnowledgeCitationTitle } from "@/lib/knowledge/citationDisplay";
+import type { MessageKnowledgeMetadata } from "@/types";
 
 interface KnowledgeEvidenceBlockProps {
   knowledge?: MessageKnowledgeMetadata;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-function formatShortId(id: string | undefined): string | null {
-  if (!id) return null;
-  return id.length > 12 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
-}
-
-function formatLocator(locator: unknown): string | null {
-  if (!isRecord(locator)) return null;
-  const page = locator.page;
-  if (typeof page === "number" && Number.isFinite(page)) {
-    return `p. ${page}`;
-  }
-  const sheet = typeof locator.sheet === "string" ? locator.sheet : null;
-  const cell = typeof locator.cell === "string" ? locator.cell : null;
-  if (sheet && cell) return `${sheet} ${cell}`;
-  if (sheet) return sheet;
-  const section =
-    typeof locator.section === "string" ? locator.section.trim() : "";
-  if (section) return section;
-  try {
-    return JSON.stringify(locator);
-  } catch {
-    return null;
-  }
-}
-
-function citationTitle(citation: KnowledgeCitation): string {
-  const source =
-    formatShortId(citation.documentId) ??
-    formatShortId(citation.collectionId) ??
-    citation.id;
-  const locator = formatLocator(citation.locator);
-  return locator
-    ? `${citation.marker} · ${source} · ${locator}`
-    : `${citation.marker} · ${source}`;
 }
 
 const KnowledgeEvidenceBlock: React.FC<KnowledgeEvidenceBlockProps> = ({
@@ -55,6 +16,20 @@ const KnowledgeEvidenceBlock: React.FC<KnowledgeEvidenceBlockProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const contentId = useId();
   const buttonId = useId();
+
+  const citationTitle = (
+    citation: MessageKnowledgeMetadata["citations"][number],
+  ) =>
+    formatKnowledgeCitationTitle(citation, t("citationSourceFallback"), {
+      page: (page) => t("citationPage", { page }),
+      slide: (slide) => t("citationSlide", { slide }),
+      cell: (cell) => t("citationCell", { cell }),
+      cellRange: (startCell, endCell) =>
+        t("citationCellRange", { startCell, endCell }),
+      line: (line) => t("citationLine", { line }),
+      lineRange: (startLine, endLine) =>
+        t("citationLineRange", { startLine, endLine }),
+    });
 
   if (!knowledge) return null;
 

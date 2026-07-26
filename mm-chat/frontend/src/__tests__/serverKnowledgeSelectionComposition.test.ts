@@ -101,6 +101,10 @@ describe("G8.5 server knowledge selection isolation", () => {
 
   it("keeps citation details without rendering an Auto mode badge", () => {
     expect(evidenceBlock).toContain('t("citationsHeading"');
+    expect(evidenceBlock).toContain("formatKnowledgeCitationTitle");
+    expect(evidenceBlock).not.toContain("JSON.stringify");
+    expect(evidenceBlock).not.toContain("formatShortId");
+    expect(evidenceBlock).not.toContain("citation.documentId");
     expect(evidenceBlock).not.toContain("{knowledge.mode}");
     expect(evidenceBlock).not.toContain("uppercase tracking-wide");
     expect(evidenceBlock).not.toContain("verifiedEvidenceUsed");
