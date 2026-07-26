@@ -30,7 +30,7 @@ parser-harness-smoke = "mm_chat_rag.offline_parser.smoke:main"
 dev = [
   "httpx==0.28.1",
   "jsonschema==4.26.0",
-  "mypy==1.16.1",
+  "mypy==2.3.0",
   "pip-audit==2.9.0",
   "pytest==9.0.3",
   "pytest-asyncio==1.3.0",
