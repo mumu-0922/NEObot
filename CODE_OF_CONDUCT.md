@@ -1,6 +1,6 @@
 # Code of Conduct
 
-Neo Chat is an open-source project for people with different backgrounds,
+MM Chat is an open-source project for people with different backgrounds,
 languages, and levels of experience. We expect contributors and maintainers to
 keep collaboration respectful, focused, and safe.
 

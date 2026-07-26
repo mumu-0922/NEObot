@@ -13,8 +13,31 @@ permissions:
   packages: write
 
 jobs:
-  docker:
+  images:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: backend
+            context: mm-chat/backend
+            suffix: ""
+            build_args: ""
+          - component: frontend
+            context: mm-chat/frontend
+            suffix: -frontend
+            build_args: |
+              NEXT_PUBLIC_API_MODE=server
+              NEXT_PUBLIC_API_BASE_URL=/mm-api
+              MM_CHAT_BACKEND_INTERNAL_URL=http://backend:8080
+          - component: rag
+            context: mm-chat/rag
+            suffix: -rag
+            build_args: ""
+          - component: postgres
+            context: mm-chat/postgres
+            suffix: -postgres
+            build_args: ""
 
     steps:
       - name: Checkout
@@ -33,7 +56,10 @@ jobs:
 
       - name: Normalize image name
         id: image
-        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+        shell: bash
+        run: |
+          base="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/neobot-mm-chat"
+          echo "name=${base}${{ matrix.suffix }}" >> "$GITHUB_OUTPUT"
 
       - name: Extract metadata
         id: meta
@@ -46,13 +72,14 @@ jobs:
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build and push
+      - name: Build and push ${{ matrix.component }}
         uses: docker/build-push-action@v7
         with:
-          context: .
+          context: ${{ matrix.context }}
           platforms: linux/amd64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          build-args: ${{ matrix.build_args }}
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}

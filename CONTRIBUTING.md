@@ -1,58 +1,67 @@
 # Contributing
 
-Thanks for helping improve Neo Chat. The project is local-first and
-self-hosting friendly, so changes should preserve user data ownership, browser
-storage behavior, and hosted deployment safety.
+Thanks for helping improve MM Chat. Product changes belong under `mm-chat/`;
+the repository root only contains GitHub and development-tooling metadata.
 
-## Development Setup
+## Development setup
 
 Requirements:
 
-- Node.js 22
-- pnpm 10.30.3
+- Docker Engine with Compose v2
+- Node.js 22 and pnpm 10.30.3
+- Go 1.25
+- Python 3.13 and uv
 
-Install dependencies and start the app:
+Start the complete stack by following [`mm-chat/README.md`](mm-chat/README.md).
+Never reuse production secrets or runtime data for development fixtures.
 
-```bash
-pnpm install
-pnpm dev
-```
+## Quality checks
 
-Open `http://localhost:3000` and configure at least one model provider in
-Settings.
-
-## Quality Checks
-
-Run the checks before opening a pull request:
+Run the checks for every component you changed:
 
 ```bash
-pnpm format:check
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm build
-pnpm audit --audit-level low
+bash mm-chat/scripts/verify-standalone.sh --full
+
+cd mm-chat/frontend
+corepack pnpm format:check
+corepack pnpm lint
+corepack pnpm typecheck
+corepack pnpm test
+corepack pnpm build
+
+cd ../backend
+go vet ./...
+go test ./...
+
+cd ../rag
+uv sync --frozen --all-groups
+uv run ruff format --check .
+uv run ruff check .
+uv run mypy
+uv run pytest
 ```
 
-Use `pnpm format` to apply Prettier formatting across the repository.
+Also render Compose after deployment changes:
 
-## Pull Request Guidelines
+```bash
+cd mm-chat
+docker compose --env-file .env.single-server.example config --quiet
+```
 
-- Keep changes focused and explain the user-facing behavior being changed.
-- Add tests for bug fixes, data migrations, API routes, and
+## Pull request guidelines
+
+- Keep changes focused and explain user-facing and operational impact.
+- Add tests for bug fixes, migrations, API routes, state changes, and
   security-sensitive behavior.
-- Update docs when changing configuration, deployment behavior, plugins,
-  privacy boundaries, or user workflows.
-- For localization changes, follow `docs/localization-pr-guide.md` and document
-  any intentional English fallback.
-- Do not include real API keys, access passwords, provider secrets, private
-  chat logs, or user files in issues, tests, screenshots, or fixtures.
-- For hosted deployment changes, consider `DEPLOYMENT_MODE=hosted`,
-  local-network proxy restrictions, shared stores, rate limits, and server-side
-  plugin registry requirements.
+- Update `mm-chat/docs/` for configuration, deployment, privacy, storage, or
+  workflow changes.
+- Include screenshots for visible UI changes.
+- Do not include API keys, passwords, provider secrets, private logs, database
+  dumps, object-storage archives, or user files.
+- Preserve `mm-chat/data/`, `mm-chat/secrets/`, `mm-chat/backup/`, and the live
+  `mm-chat/.env.single-server`.
 
-## Reporting Security Issues
+## Reporting security issues
 
-Do not open public issues for vulnerabilities. Use GitHub Security Advisories:
-
-https://github.com/u14app/neo-chat/security/advisories/new
+Do not open public issues for vulnerabilities. Use
+[GitHub Security Advisories](https://github.com/mumu-0922/NEObot/security/advisories/new).

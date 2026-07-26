@@ -1,11 +1,19 @@
 # Changelog
 
-All notable changes to Neo Chat should be documented here.
+All notable changes to MM Chat should be documented here.
 
 This project does not yet follow a formal release cadence. Maintainers should
 group changes under a level-2 heading that matches the release tag, such as
 `## v2.0.0`; the release workflow uses that section as the GitHub release notes
 when the matching tag is pushed.
+
+## Unreleased
+
+- Made `mm-chat/` the sole product root and removed the retired duplicate
+  Next.js application from the repository root.
+- Retargeted repository documentation, CI, dependency updates, and container
+  publishing to the standalone frontend, backend, RAG, and PostgreSQL
+  components.
 
 ## v2.0.0
 

@@ -1,40 +1,40 @@
 # Security Policy
 
-Neo Chat is designed for local-first and self-hosted use. It is not a turnkey
-public multi-user SaaS boundary.
+MM Chat is a self-hosted application with a browser frontend, Go API,
+PostgreSQL, Redis, private MinIO storage, and a private Python RAG worker. It is
+not a turnkey public multi-tenant SaaS boundary.
 
-## Supported Versions
+## Supported versions
 
-Security fixes are handled on the default branch. If release branches are added
-later, this file should be updated with the supported version policy.
+Security fixes are handled on the default branch. If maintained release
+branches are introduced, this policy will list them explicitly.
 
-## Reporting a Vulnerability
+## Reporting a vulnerability
 
-Please report vulnerabilities privately through GitHub Security Advisories:
+Report vulnerabilities privately through
+[GitHub Security Advisories](https://github.com/mumu-0922/NEObot/security/advisories/new).
+Do not include secrets, private chat logs, database dumps, object archives, or
+user files in a public issue.
 
-https://github.com/u14app/neo-chat/security/advisories/new
+A useful report includes:
 
-Do not include secrets, private chat logs, or private user files in a public
-issue. A useful report includes:
+- affected commit or release;
+- affected component (`frontend`, `backend`, `rag`, `postgres`, or deployment);
+- the shortest safe reproduction path and expected impact;
+- deployment topology and relevant non-secret configuration;
+- sanitized logs or proof-of-concept artifacts.
 
-- Affected version or commit.
-- Deployment target: local, Docker, Cloudflare Workers, or another host.
-- `DEPLOYMENT_MODE` and relevant store settings with secrets removed.
-- Reproduction steps and expected impact.
-- Any safe proof-of-concept details.
+## Security boundaries
 
-## Security Boundaries
+- The Go API owns durable identity, chat, Knowledge, consent, and file metadata.
+- PostgreSQL, Redis, MinIO, and the RAG worker remain private Compose services.
+- Browser uploads and Provider credentials cross explicit authenticated or BYOK
+  boundaries; deployments must protect logs, environment files, and upstreams.
+- `mm-chat/data/`, `mm-chat/secrets/`, `mm-chat/backup/`, and
+  `mm-chat/.env.single-server` are runtime state and must never be committed.
+- Production changes must follow the backup, restore-drill, immutable-image,
+  migration, and rollback procedures under `mm-chat/docs/deployment/`.
 
-- Browser storage is the primary durable data store for chats, app settings,
-  plugins, assistants, knowledge metadata, and files.
-- BYOK envelopes prevent user-entered secrets from being sent to server routes
-  as plain request body fields, but deployments must still protect server logs,
-  upstream services, and environment variables.
-- `DEPLOYMENT_MODE=hosted` tightens outbound URL policy and requires shared
-  stores for hosted or multi-instance deployments.
-- `ACCESS_PASSWORD` is a deployment gate, not account authentication or tenant
-  isolation.
-
-Before running Neo Chat as a public service, add account authentication, tenant
-isolation, server-side secret storage, quotas, audit logs, abuse controls, and
-provider spend limits.
+Before public multi-user exposure, review authentication, tenant isolation,
+quotas, auditability, abuse controls, outbound URL policy, and Provider spend
+limits for the intended threat model.

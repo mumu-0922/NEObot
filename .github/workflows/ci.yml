@@ -10,8 +10,28 @@ permissions:
   contents: read
 
 jobs:
-  checks:
+  standalone:
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Verify standalone structure
+        run: bash mm-chat/scripts/verify-standalone.sh
+
+      - name: Render Compose topology
+        run: >-
+          docker compose
+          --project-directory mm-chat
+          --env-file mm-chat/.env.single-server.example
+          -f mm-chat/compose.yml
+          config --quiet
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mm-chat/frontend
 
     steps:
       - name: Checkout
@@ -27,11 +47,12 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+          cache-dependency-path: mm-chat/frontend/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Format Check
+      - name: Check formatting
         run: pnpm format:check
 
       - name: Lint
@@ -46,5 +67,61 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Audit dependencies
-        run: pnpm audit --audit-level low
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mm-chat/backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: mm-chat/backend/go.mod
+          cache-dependency-path: mm-chat/backend/go.sum
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+  rag:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mm-chat/rag
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.10.11"
+          enable-cache: true
+          cache-dependency-glob: mm-chat/rag/uv.lock
+
+      - name: Install dependencies
+        run: uv sync --frozen --all-groups
+
+      - name: Check formatting
+        run: uv run ruff format --check .
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Typecheck
+        run: uv run mypy
+
+      - name: Test
+        run: uv run pytest

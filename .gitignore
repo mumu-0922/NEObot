@@ -1,51 +1,49 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
-
-# testing
-/coverage
-
-# next.js
-/.next/
-/out/
-
-# production
-/build
-
-# misc
-.DS_Store
+# Secrets and local environments
+.env*
+!.env.example
+!**/.env.example
+!/mm-chat/.env.single-server.example
 *.pem
 
-# debug
+# Standalone runtime state: never commit live data, backups, or secrets.
+/mm-chat/.env.single-server
+/mm-chat/.env.single-server.local
+/mm-chat/data/
+/mm-chat/backup/
+/mm-chat/secrets/
+/mm-chat/.release/
+
+# JavaScript / Next.js / Cloudflare
+node_modules/
+.next/
+out/
+build/
+coverage/
+.open-next/
+.wrangler/
+.vercel/
+.dev.vars
+cloudflare-env.d.ts
+*.tsbuildinfo
+next-env.d.ts
+.pnpm-debug.log*
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
-!.env.example
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
-# vercel
-.vercel
-
-# cloudflare/open-next
-.open-next
-.wrangler
-.dev.vars
-cloudflare-env.d.ts
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
-# tmp
-tmp
+# Go and local tooling
+*.test
+*.out
+.DS_Store
+NUL
+tmp/

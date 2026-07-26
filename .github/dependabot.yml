@@ -1,10 +1,46 @@
 version: 2
 updates:
   - package-ecosystem: npm
-    directory: /
+    directory: /mm-chat/frontend
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+
+  - package-ecosystem: gomod
+    directory: /mm-chat/backend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: uv
+    directory: /mm-chat/rag
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: docker
+    directory: /mm-chat/frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: docker
+    directory: /mm-chat/backend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: docker
+    directory: /mm-chat/rag
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: docker
+    directory: /mm-chat/postgres
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
 
   - package-ecosystem: github-actions
     directory: /
