@@ -237,3 +237,34 @@ Verified and externally copied the PG16 logical rollback artifacts, deleted only
 ### Next Steps
 
 - None - task complete
+
+
+## Session 8: Prune obsolete runtime backups
+
+**Date**: 2026-07-26
+**Task**: Prune obsolete runtime backups
+**Branch**: `main`
+
+### Summary
+
+Archived and removed superseded mm-chat backup milestones behind a fixed allowlist, retained the PG17 production-cutover package and latest PostgreSQL dump, verified checksums and temporary PostgreSQL/MinIO restores, and passed full standalone plus live health checks.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
