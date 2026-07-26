@@ -172,3 +172,37 @@ Projected authorized source names and typed display locators into Knowledge cita
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: Remove former root application
+
+**Date**: 2026-07-26
+**Task**: Remove former root application
+**Branch**: `main`
+
+### Summary
+
+Backed up and restore-drilled the former root, removed its duplicate application, retained mm-chat as the sole product root, and retargeted repository automation and documentation.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `35100ac` | (see git log) |
+| `3f133db` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
