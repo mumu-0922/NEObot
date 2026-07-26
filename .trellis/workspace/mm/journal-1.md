@@ -206,3 +206,34 @@ Backed up and restore-drilled the former root, removed its duplicate application
 ### Next Steps
 
 - None - task complete
+
+
+## Session 7: Delete retired PostgreSQL 16 data
+
+**Date**: 2026-07-26
+**Task**: Delete retired PostgreSQL 16 data
+**Branch**: `main`
+
+### Summary
+
+Verified and externally copied the PG16 logical rollback artifacts, deleted only the retired physical PG16 data directory, and confirmed PostgreSQL 17 plus all application health checks remained green.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

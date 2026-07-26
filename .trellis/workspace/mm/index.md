@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 6
+- **Total Sessions**: 7
 - **Last Active**: 2026-07-26
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~208 | Active |
+| `journal-1.md` | ~239 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 7 | 2026-07-26 | Delete retired PostgreSQL 16 data | - | `main` |
 | 6 | 2026-07-26 | Remove former root application | `35100ac`, `3f133db` | `main` |
 | 5 | 2026-07-26 | Improve Knowledge citation display | `72feeec`, `9bf434f` | `main` |
 | 4 | 2026-07-26 | Add knowledge document download | `f02eccb` | `main` |
