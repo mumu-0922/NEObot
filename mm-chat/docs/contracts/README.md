@@ -24,5 +24,6 @@ Contract documents define stable boundaries before implementation starts.
 - [`mineru-lifecycle-capture-harness-plan.md`](./mineru-lifecycle-capture-harness-plan.md) — operator-only Allocate/Upload/Poll/Result lifecycle Capture plan, Evidence v2, dynamic-target/ZIP gates, bounded failures, and rollback boundary.
 - [`mineru-lifecycle-evidence-promotion-plan.md`](./mineru-lifecycle-evidence-promotion-plan.md) — successful Lifecycle Summary-to-Fixture mapping plan, redaction boundary, residual blockers, verification gates, and rollback.
 - [`browser-data-import.md`](./browser-data-import.md) — Phase 8 contract for explicit local-first browser data import, preview validation, ZIP package blobs, idempotency, and rollback.
+- [`memory-benchmark-workflow.md`](./memory-benchmark-workflow.md) — Memory v2 PR1 synthetic-only 500-case Golden lifecycle, strict observation schema, deterministic scorer, immutable report, and non-promotional boundary.
 
 Future contract docs may cover SSE wire examples and database migration contracts.

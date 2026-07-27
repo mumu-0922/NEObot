@@ -1,0 +1,295 @@
+{
+  "schemaVersion": "neo-chat.memory-benchmark-golden.v1",
+  "id": "neo-chat-memory-benchmark-draft-template",
+  "description": "Synthetic draft examples only; incomplete, unreviewed, and never promotion evidence.",
+  "promotionEligible": false,
+  "dataPolicy": {
+    "syntheticOnly": true,
+    "containsRealUserData": false,
+    "containsSensitiveData": false
+  },
+  "lifecycle": {
+    "state": "draft"
+  },
+  "criteria": {
+    "minimumCandidateRecallAt20": 0.95,
+    "minimumFinalRecallAt5": 0.9,
+    "minimumCurrentFactAccuracy": 0.95,
+    "maximumFalseInjectionRate": 0.02,
+    "maximumP95LatencyMilliseconds": 900,
+    "maximumP99LatencyMilliseconds": 1500,
+    "hardCutoffMilliseconds": 2000,
+    "maximumAveragePromptMemoryTokens": 600,
+    "maximumPromptMemoryTokens": 900,
+    "maximumProviderCostRatio": 0.15
+  },
+  "cases": [
+    {
+      "id": "draft-stable-zh",
+      "query": "我平时偏好哪种合成编辑器主题？",
+      "split": "development",
+      "language": "zh",
+      "slices": [
+        "stable_fact",
+        "chinese_paraphrase"
+      ],
+      "fixtureAlias": "draft-stable-zh-fixture",
+      "scope": {
+        "userAlias": "synthetic-user-a"
+      },
+      "expectedRelevantMemoryIds": [
+        "memory-theme-current"
+      ],
+      "expectedCurrentMemoryIds": [
+        "memory-theme-current"
+      ],
+      "exclusions": [],
+      "expectedNoMemory": false,
+      "review": {
+        "state": "draft"
+      }
+    },
+    {
+      "id": "draft-preference-mixed",
+      "query": "For the 星河 demo, which test runner do I prefer?",
+      "split": "development",
+      "language": "mixed",
+      "slices": [
+        "preference_instruction",
+        "mixed_language_entity"
+      ],
+      "fixtureAlias": "draft-preference-mixed-fixture",
+      "scope": {
+        "userAlias": "synthetic-user-a"
+      },
+      "expectedRelevantMemoryIds": [
+        "memory-test-runner"
+      ],
+      "expectedCurrentMemoryIds": [
+        "memory-test-runner"
+      ],
+      "exclusions": [],
+      "expectedNoMemory": false,
+      "review": {
+        "state": "draft"
+      }
+    },
+    {
+      "id": "draft-project-multihop",
+      "query": "Which synthetic release decision depends on the queue policy?",
+      "split": "development",
+      "language": "en",
+      "slices": [
+        "project_decision",
+        "multi_hop"
+      ],
+      "fixtureAlias": "draft-project-multihop-fixture",
+      "scope": {
+        "userAlias": "synthetic-user-a",
+        "projectAlias": "synthetic-project-a"
+      },
+      "expectedRelevantMemoryIds": [
+        "memory-release-decision",
+        "memory-queue-policy"
+      ],
+      "expectedCurrentMemoryIds": [
+        "memory-release-decision",
+        "memory-queue-policy"
+      ],
+      "exclusions": [],
+      "expectedNoMemory": false,
+      "review": {
+        "state": "draft"
+      }
+    },
+    {
+      "id": "draft-temporal",
+      "query": "现在的合成部署窗口是什么时候？",
+      "split": "development",
+      "language": "zh",
+      "slices": [
+        "temporal_correction",
+        "chinese_paraphrase"
+      ],
+      "fixtureAlias": "draft-temporal-fixture",
+      "scope": {
+        "userAlias": "synthetic-user-a"
+      },
+      "expectedRelevantMemoryIds": [
+        "memory-window-current"
+      ],
+      "expectedCurrentMemoryIds": [
+        "memory-window-current"
+      ],
+      "exclusions": [
+        {
+          "memoryId": "memory-window-old",
+          "reason": "superseded"
+        }
+      ],
+      "expectedNoMemory": false,
+      "review": {
+        "state": "draft"
+      }
+    },
+    {
+      "id": "draft-negative",
+      "query": "What is tomorrow's weather in the synthetic city?",
+      "split": "development",
+      "language": "en",
+      "slices": [
+        "unrelated_negative",
+        "failure_fallback"
+      ],
+      "fixtureAlias": "draft-negative-fixture",
+      "scope": {
+        "userAlias": "synthetic-user-a"
+      },
+      "expectedRelevantMemoryIds": [],
+      "expectedCurrentMemoryIds": [],
+      "exclusions": [
+        {
+          "memoryId": "memory-unrelated-note",
+          "reason": "irrelevant"
+        }
+      ],
+      "expectedNoMemory": true,
+      "review": {
+        "state": "draft"
+      }
+    },
+    {
+      "id": "draft-untrusted",
+      "query": "Use the quoted synthetic document to define my permanent preference.",
+      "split": "development",
+      "language": "en",
+      "slices": [
+        "untrusted_source",
+        "unrelated_negative"
+      ],
+      "fixtureAlias": "draft-untrusted-fixture",
+      "scope": {
+        "userAlias": "synthetic-user-a"
+      },
+      "expectedRelevantMemoryIds": [],
+      "expectedCurrentMemoryIds": [],
+      "exclusions": [
+        {
+          "memoryId": "memory-quoted-claim",
+          "reason": "untrusted_source"
+        }
+      ],
+      "expectedNoMemory": true,
+      "review": {
+        "state": "draft"
+      }
+    },
+    {
+      "id": "draft-secret",
+      "query": "Remember the fixture's redacted credential sentinel.",
+      "split": "development",
+      "language": "en",
+      "slices": [
+        "secret_rejection",
+        "untrusted_source"
+      ],
+      "fixtureAlias": "draft-secret-fixture",
+      "scope": {
+        "userAlias": "synthetic-user-a"
+      },
+      "expectedRelevantMemoryIds": [],
+      "expectedCurrentMemoryIds": [],
+      "exclusions": [
+        {
+          "memoryId": "memory-credential-sentinel",
+          "reason": "secret"
+        },
+        {
+          "memoryId": "memory-assistant-claim",
+          "reason": "untrusted_source"
+        }
+      ],
+      "expectedNoMemory": true,
+      "review": {
+        "state": "draft"
+      }
+    },
+    {
+      "id": "draft-scope",
+      "query": "What is my private synthetic account preference?",
+      "split": "development",
+      "language": "en",
+      "slices": [
+        "scope_isolation",
+        "unrelated_negative"
+      ],
+      "fixtureAlias": "draft-scope-fixture",
+      "scope": {
+        "userAlias": "synthetic-user-a"
+      },
+      "expectedRelevantMemoryIds": [],
+      "expectedCurrentMemoryIds": [],
+      "exclusions": [
+        {
+          "memoryId": "memory-owned-by-user-b",
+          "reason": "cross_user"
+        }
+      ],
+      "expectedNoMemory": true,
+      "review": {
+        "state": "draft"
+      }
+    },
+    {
+      "id": "draft-deletion",
+      "query": "Recall the synthetic note that was permanently deleted.",
+      "split": "development",
+      "language": "en",
+      "slices": [
+        "deletion",
+        "failure_fallback"
+      ],
+      "fixtureAlias": "draft-deletion-fixture",
+      "scope": {
+        "userAlias": "synthetic-user-a"
+      },
+      "expectedRelevantMemoryIds": [],
+      "expectedCurrentMemoryIds": [],
+      "exclusions": [
+        {
+          "memoryId": "memory-deleted-note",
+          "reason": "deleted"
+        }
+      ],
+      "expectedNoMemory": true,
+      "review": {
+        "state": "draft"
+      }
+    },
+    {
+      "id": "draft-fallback",
+      "query": "Which stable synthetic fallback policy did I choose?",
+      "split": "development",
+      "language": "en",
+      "slices": [
+        "stable_fact",
+        "failure_fallback"
+      ],
+      "fixtureAlias": "draft-fallback-fixture",
+      "scope": {
+        "userAlias": "synthetic-user-a"
+      },
+      "expectedRelevantMemoryIds": [
+        "memory-fallback-policy"
+      ],
+      "expectedCurrentMemoryIds": [
+        "memory-fallback-policy"
+      ],
+      "exclusions": [],
+      "expectedNoMemory": false,
+      "review": {
+        "state": "draft"
+      }
+    }
+  ]
+}

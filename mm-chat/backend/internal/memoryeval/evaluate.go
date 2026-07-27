@@ -1,0 +1,477 @@
+package memoryeval
+
+import (
+	"errors"
+	"fmt"
+	"math"
+	"math/bits"
+	"sort"
+)
+
+type metricAccumulator struct {
+	cases                 int
+	relevantCases         int
+	negativeCases         int
+	currentFactCases      int
+	currentFactCorrect    int
+	falseInjectionCases   int
+	expectedRelevant      int
+	candidateRelevantHits int
+	finalRelevantHits     int
+	ndcg                  float64
+	mrr                   float64
+	latencies             []int64
+	promptTokens          int
+	maximumPromptTokens   int
+	hardCutoffViolations  int
+	safety                SafetyMetrics
+}
+
+type evaluatedProfile struct {
+	metrics Metrics
+	ranking RankingMetrics
+	budgets Budgets
+	safety  SafetyMetrics
+}
+
+func Evaluate(input EvaluationInput) (Report, error) {
+	if err := validateGoldenSet(input.Golden); err != nil {
+		return Report{}, err
+	}
+	if err := validateGoldenAdmission(input.Golden); err != nil {
+		return Report{}, err
+	}
+	if err := validateObservationSet(input.Observations); err != nil {
+		return Report{}, err
+	}
+	if err := validateBindings(input); err != nil {
+		return Report{}, err
+	}
+
+	profile, err := evaluateCases(
+		input.Golden.Cases,
+		input.Observations.Cases,
+		input.Golden.Criteria,
+	)
+	if err != nil {
+		return Report{}, err
+	}
+	failures := profileFailures(profile, input.Golden.Criteria)
+	costRatio := float64(input.Observations.Costs.MemoryProviderCostMicrounits) /
+		float64(input.Observations.Costs.ChatProviderCostMicrounits)
+	costPassed := providerCostWithinV1Limit(
+		input.Observations.Costs.MemoryProviderCostMicrounits,
+		input.Observations.Costs.ChatProviderCostMicrounits,
+	)
+	if !costPassed {
+		failures = append(failures, "Memory provider cost ratio exceeds criterion")
+	}
+
+	slices := make(map[string]SliceResult, len(criticalSlices))
+	for _, name := range criticalSlices {
+		goldenCases, observations := selectSlice(
+			input.Golden.Cases,
+			input.Observations.Cases,
+			name,
+		)
+		evaluated, err := evaluateCases(goldenCases, observations, input.Golden.Criteria)
+		if err != nil {
+			return Report{}, err
+		}
+		sliceFailures := profileFailures(evaluated, input.Golden.Criteria)
+		sort.Strings(sliceFailures)
+		slices[name] = SliceResult{
+			Cases:              len(goldenCases),
+			Metrics:            evaluated.metrics,
+			RankingDiagnostics: evaluated.ranking,
+			Budgets:            evaluated.budgets,
+			Safety:             evaluated.safety,
+			Passed:             len(sliceFailures) == 0,
+			Failures:           sliceFailures,
+		}
+		for _, failure := range sliceFailures {
+			failures = append(failures, name+": "+failure)
+		}
+	}
+
+	split := splitCounts(input.Golden.Cases)
+	sort.Strings(failures)
+	return Report{
+		SchemaVersion: ReportSchemaVersion,
+		Passed:        len(failures) == 0,
+		Evaluation: EvaluationProvenance{
+			EvaluatorVersion:          EvaluatorVersion,
+			GoldenCorpusRawSHA256:     input.GoldenRawSHA256,
+			GoldenFrozenContentSHA256: input.Golden.Lifecycle.FrozenContentSHA256,
+			ObservationsRawSHA256:     input.ObservationsSHA256,
+			CaptureID:                 input.Observations.CaptureID,
+			HoldoutRunID:              input.Observations.HoldoutRun.ID,
+			FixtureManifestSHA256:     input.Golden.FixtureManifestSHA256,
+		},
+		Golden: GoldenSummary{
+			CorpusID:         input.Golden.ID,
+			State:            input.Golden.Lifecycle.State,
+			FrozenAt:         input.Golden.Lifecycle.FrozenAt,
+			TotalReviewed:    len(input.Golden.Cases),
+			DevelopmentCount: split["development"],
+			ValidationCount:  split["validation"],
+			HoldoutCount:     split["holdout"],
+			HoldoutRuns:      input.Observations.HoldoutRun.Ordinal,
+		},
+		Profile: ProfileSummary{
+			ProfileID:          input.Observations.Profile.ID,
+			ProfileRole:        input.Observations.Profile.Role,
+			ReaderVersion:      input.Observations.Profile.ReaderVersion,
+			Metrics:            profile.metrics,
+			RankingDiagnostics: profile.ranking,
+			Budgets:            profile.budgets,
+			Safety:             profile.safety,
+			ProviderCostRatio:  costRatio,
+			ProviderCostPassed: costPassed,
+		},
+		Slices:   slices,
+		Failures: failures,
+	}, nil
+}
+
+func validateBindings(input EvaluationInput) error {
+	if !validSHA256(input.GoldenRawSHA256) ||
+		!validSHA256(input.ObservationsSHA256) {
+		return errors.New("Memory evaluation raw hashes are invalid")
+	}
+	if input.Observations.GoldenSetID != input.Golden.ID ||
+		input.Observations.GoldenCorpusSHA256 != input.Golden.Lifecycle.FrozenContentSHA256 {
+		return errors.New("Memory observations are not bound to the frozen corpus")
+	}
+	if input.Observations.FixtureManifestSHA256 != input.Golden.FixtureManifestSHA256 {
+		return errors.New("Memory observations are not bound to the fixture manifest")
+	}
+	if input.Observations.HoldoutRun.ID != input.Golden.Lifecycle.HoldoutRunID ||
+		input.Observations.HoldoutRun.Ordinal != 1 {
+		return errors.New("Memory Holdout must have exactly one precommitted run")
+	}
+	frozenAt, _ := parseTimestamp(input.Golden.Lifecycle.FrozenAt)
+	holdoutAt, _ := parseTimestamp(input.Observations.HoldoutRun.ExecutedAt)
+	capturedAt, _ := parseTimestamp(input.Observations.CapturedAt)
+	if holdoutAt.Before(frozenAt) || holdoutAt.After(capturedAt) {
+		return errors.New("Memory Holdout timestamp is outside the frozen capture window")
+	}
+	if len(input.Observations.Cases) != len(input.Golden.Cases) {
+		return errors.New("Memory observations do not exactly match the Golden corpus")
+	}
+	for index, goldenCase := range input.Golden.Cases {
+		if input.Observations.Cases[index].CaseID != goldenCase.ID {
+			return fmt.Errorf("Memory observation order differs at case %q", goldenCase.ID)
+		}
+	}
+	return nil
+}
+
+func evaluateCases(
+	golden []GoldenCase,
+	observations []CaseObservation,
+	criteria Criteria,
+) (evaluatedProfile, error) {
+	observedByCase := make(map[string]CaseObservation, len(observations))
+	for _, item := range observations {
+		if _, duplicate := observedByCase[item.CaseID]; duplicate {
+			return evaluatedProfile{}, fmt.Errorf("duplicate Memory observation case %q", item.CaseID)
+		}
+		observedByCase[item.CaseID] = item
+	}
+	if len(observedByCase) != len(golden) {
+		return evaluatedProfile{}, errors.New("Memory observations do not exactly match selected Golden cases")
+	}
+	accumulator := metricAccumulator{}
+	for _, goldenCase := range golden {
+		observed, ok := observedByCase[goldenCase.ID]
+		if !ok {
+			return evaluatedProfile{}, fmt.Errorf("missing Memory observation case %q", goldenCase.ID)
+		}
+		delete(observedByCase, goldenCase.ID)
+		accumulateCase(&accumulator, goldenCase, observed, criteria)
+	}
+	if len(observedByCase) != 0 {
+		return evaluatedProfile{}, errors.New("Memory observations contain unknown cases")
+	}
+	return accumulator.result(criteria), nil
+}
+
+func accumulateCase(
+	accumulator *metricAccumulator,
+	golden GoldenCase,
+	observed CaseObservation,
+	criteria Criteria,
+) {
+	accumulator.cases++
+	accumulator.latencies = append(accumulator.latencies, observed.LatencyMilliseconds)
+	accumulator.promptTokens += observed.PromptMemoryTokens
+	accumulator.maximumPromptTokens = max(
+		accumulator.maximumPromptTokens,
+		observed.PromptMemoryTokens,
+	)
+	if observed.LatencyMilliseconds > criteria.HardCutoffMilliseconds ||
+		(observed.LatencyMilliseconds >= criteria.HardCutoffMilliseconds &&
+			!observed.HardCutoffApplied) {
+		accumulator.hardCutoffViolations++
+	}
+
+	relevant := stringSet(golden.ExpectedRelevantMemoryIDs)
+	if golden.ExpectedNoMemory {
+		accumulator.negativeCases++
+	} else {
+		accumulator.relevantCases++
+		accumulator.ndcg += ndcgAt5(observed.FinalMemoryIDs, relevant)
+		accumulator.mrr += reciprocalRankAt5(observed.FinalMemoryIDs, relevant)
+	}
+	accumulator.expectedRelevant += len(relevant)
+	accumulator.candidateRelevantHits += countAllowed(observed.CandidateMemoryIDs, relevant)
+	accumulator.finalRelevantHits += countAllowed(observed.FinalMemoryIDs, relevant)
+	if containsUnexpected(observed.InjectedMemoryIDs, relevant) {
+		accumulator.falseInjectionCases++
+	}
+
+	if len(golden.ExpectedCurrentMemoryIDs) > 0 {
+		accumulator.currentFactCases++
+		if currentFactCorrect(golden, observed) {
+			accumulator.currentFactCorrect++
+		}
+	}
+	accumulateSafety(&accumulator.safety, golden, observed)
+}
+
+func currentFactCorrect(golden GoldenCase, observed CaseObservation) bool {
+	injected := stringSet(observed.InjectedMemoryIDs)
+	for _, expected := range golden.ExpectedCurrentMemoryIDs {
+		if _, ok := injected[expected]; !ok {
+			return false
+		}
+	}
+	for _, exclusion := range golden.Exclusions {
+		if exclusion.Reason == "superseded" {
+			if _, leaked := injected[exclusion.MemoryID]; leaked {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func accumulateSafety(
+	safety *SafetyMetrics,
+	golden GoldenCase,
+	observed CaseObservation,
+) {
+	allSurfaces := append([]string(nil), observed.CandidateMemoryIDs...)
+	allSurfaces = append(allSurfaces, observed.FinalMemoryIDs...)
+	allSurfaces = append(allSurfaces, observed.InjectedMemoryIDs...)
+	allSurfaces = append(allSurfaces, observed.PersistedMemoryIDs...)
+	allSurfaces = append(allSurfaces, observed.ProviderSentMemoryIDs...)
+	all := stringSet(allSurfaces)
+	providerSent := stringSet(observed.ProviderSentMemoryIDs)
+
+	leakedReasons := make(map[string]bool)
+	providerLeak := false
+	for _, exclusion := range golden.Exclusions {
+		if _, leaked := all[exclusion.MemoryID]; leaked {
+			leakedReasons[exclusion.Reason] = true
+		}
+		if _, leaked := providerSent[exclusion.MemoryID]; leaked {
+			providerLeak = true
+		}
+	}
+	if leakedReasons["cross_user"] || leakedReasons["out_of_scope"] {
+		safety.CrossUserLeakCount++
+	}
+	if leakedReasons["deleted"] {
+		safety.DeletedMemoryLeakCount++
+	}
+	if leakedReasons["secret"] {
+		safety.SecretLeakCount++
+	}
+	if leakedReasons["untrusted_source"] {
+		safety.UntrustedSourceLeakCount++
+	}
+	if providerLeak {
+		safety.UnauthorizedProviderEgressCount++
+	}
+}
+
+func (value metricAccumulator) result(criteria Criteria) evaluatedProfile {
+	metrics := Metrics{
+		CandidateRecallAt20:  ratio(value.candidateRelevantHits, value.expectedRelevant),
+		FinalRecallAt5:       ratio(value.finalRelevantHits, value.expectedRelevant),
+		CurrentFactAccuracy:  ratio(value.currentFactCorrect, value.currentFactCases),
+		FalseInjectionRate:   ratio(value.falseInjectionCases, value.cases),
+		RelevantCaseCount:    value.relevantCases,
+		NegativeCaseCount:    value.negativeCases,
+		CurrentFactCaseCount: value.currentFactCases,
+		FalseInjectionCases:  value.falseInjectionCases,
+	}
+	ranking := RankingMetrics{
+		NDCGAt5: ratioFloat(value.ndcg, value.relevantCases),
+		MRRAt5:  ratioFloat(value.mrr, value.relevantCases),
+	}
+	budgets := Budgets{
+		P95LatencyMilliseconds:    percentile(value.latencies, 0.95),
+		P99LatencyMilliseconds:    percentile(value.latencies, 0.99),
+		AveragePromptMemoryTokens: ratioFloat(float64(value.promptTokens), value.cases),
+		MaximumPromptMemoryTokens: value.maximumPromptTokens,
+		HardCutoffViolationCount:  value.hardCutoffViolations,
+	}
+	budgets.LatencyPassed = budgets.P95LatencyMilliseconds <=
+		criteria.MaximumP95LatencyMilliseconds &&
+		budgets.P99LatencyMilliseconds <= criteria.MaximumP99LatencyMilliseconds
+	budgets.PromptTokenPassed = budgets.AveragePromptMemoryTokens <=
+		criteria.MaximumAveragePromptMemoryTokens &&
+		budgets.MaximumPromptMemoryTokens <= criteria.MaximumPromptMemoryTokens
+	budgets.HardCutoffPassed = budgets.HardCutoffViolationCount == 0
+	value.safety.Passed = value.safety.CrossUserLeakCount == 0 &&
+		value.safety.DeletedMemoryLeakCount == 0 &&
+		value.safety.SecretLeakCount == 0 &&
+		value.safety.UntrustedSourceLeakCount == 0 &&
+		value.safety.UnauthorizedProviderEgressCount == 0
+	return evaluatedProfile{
+		metrics: metrics,
+		ranking: ranking,
+		budgets: budgets,
+		safety:  value.safety,
+	}
+}
+
+func profileFailures(value evaluatedProfile, criteria Criteria) []string {
+	failures := make([]string, 0)
+	if value.metrics.CandidateRecallAt20 < criteria.MinimumCandidateRecallAt20 {
+		failures = append(failures, "candidate recall@20 below criterion")
+	}
+	if value.metrics.FinalRecallAt5 < criteria.MinimumFinalRecallAt5 {
+		failures = append(failures, "final recall@5 below criterion")
+	}
+	if value.metrics.CurrentFactAccuracy < criteria.MinimumCurrentFactAccuracy {
+		failures = append(failures, "current-fact accuracy below criterion")
+	}
+	if value.metrics.FalseInjectionRate > criteria.MaximumFalseInjectionRate {
+		failures = append(failures, "false-injection rate above criterion")
+	}
+	if !value.budgets.LatencyPassed {
+		failures = append(failures, "Memory recall latency exceeds criterion")
+	}
+	if !value.budgets.PromptTokenPassed {
+		failures = append(failures, "prompt Memory token budget exceeds criterion")
+	}
+	if !value.budgets.HardCutoffPassed {
+		failures = append(failures, "Memory recall hard cutoff was violated")
+	}
+	if !value.safety.Passed {
+		failures = append(failures, "Memory safety or authority leakage was observed")
+	}
+	return failures
+}
+
+func selectSlice(
+	golden []GoldenCase,
+	observations []CaseObservation,
+	name string,
+) ([]GoldenCase, []CaseObservation) {
+	observedByCase := make(map[string]CaseObservation, len(observations))
+	for _, item := range observations {
+		observedByCase[item.CaseID] = item
+	}
+	selectedGolden := make([]GoldenCase, 0)
+	selectedObservations := make([]CaseObservation, 0)
+	for _, item := range golden {
+		if _, ok := stringSet(item.Slices)[name]; !ok {
+			continue
+		}
+		selectedGolden = append(selectedGolden, item)
+		selectedObservations = append(selectedObservations, observedByCase[item.ID])
+	}
+	return selectedGolden, selectedObservations
+}
+
+func countAllowed(values []string, allowed map[string]struct{}) int {
+	count := 0
+	for _, value := range values {
+		if _, ok := allowed[value]; ok {
+			count++
+		}
+	}
+	return count
+}
+
+func containsUnexpected(values []string, allowed map[string]struct{}) bool {
+	for _, value := range values {
+		if _, ok := allowed[value]; !ok {
+			return true
+		}
+	}
+	return false
+}
+
+func reciprocalRankAt5(values []string, relevant map[string]struct{}) float64 {
+	for index, value := range values {
+		if index >= 5 {
+			break
+		}
+		if _, ok := relevant[value]; ok {
+			return 1 / float64(index+1)
+		}
+	}
+	return 0
+}
+
+func ndcgAt5(values []string, relevant map[string]struct{}) float64 {
+	dcg := 0.0
+	for index, value := range values {
+		if index >= 5 {
+			break
+		}
+		if _, ok := relevant[value]; ok {
+			dcg += 1 / math.Log2(float64(index)+2)
+		}
+	}
+	ideal := 0.0
+	for index := 0; index < min(len(relevant), 5); index++ {
+		ideal += 1 / math.Log2(float64(index)+2)
+	}
+	if ideal == 0 {
+		return 1
+	}
+	return dcg / ideal
+}
+
+func ratio(numerator, denominator int) float64 {
+	if denominator == 0 {
+		return 1
+	}
+	return float64(numerator) / float64(denominator)
+}
+
+func ratioFloat(numerator float64, denominator int) float64 {
+	if denominator == 0 {
+		return 1
+	}
+	return numerator / float64(denominator)
+}
+
+func percentile(values []int64, quantile float64) int64 {
+	if len(values) == 0 {
+		return 0
+	}
+	ordered := append([]int64(nil), values...)
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i] < ordered[j] })
+	index := int(math.Ceil(quantile*float64(len(ordered)))) - 1
+	return ordered[max(index, 0)]
+}
+
+func providerCostWithinV1Limit(memoryCost, chatCost uint64) bool {
+	// The v1 criterion is frozen at 0.15 = 3/20. Compare 128-bit products so
+	// large integer microunit totals cannot cross the boundary through float64
+	// rounding or uint64 multiplication overflow.
+	memoryHigh, memoryLow := bits.Mul64(memoryCost, 20)
+	chatHigh, chatLow := bits.Mul64(chatCost, 3)
+	if memoryHigh != chatHigh {
+		return memoryHigh < chatHigh
+	}
+	return memoryLow <= chatLow
+}

@@ -12,6 +12,7 @@
 | [Direct chat attachments](./chat-attachments.md)    | Attachment-only messages, native images, bounded document extraction, provider context, and explicit failures       |
 | [Hosted media provider smoke](./provider-live-smoke.md) | Exact live-provider authorization, one-off credentials, explicit TTS voices, artifacts, and sanitized evidence    |
 | [Hosted TTS production](./hosted-tts-production.md) | Dedicated SiliconFlow Voice authority, exact activation, server-mode playback, per-user cache, and cleanup |
+| [Memory v2 benchmark](./memory-v2-benchmark.md) | Synthetic-only 500-case Golden lifecycle, strict observation/evaluation contracts, immutable reports, and non-promotional boundaries |
 
 ## Pre-Development Checklist
 
@@ -67,6 +68,17 @@ For production hosted TTS administration, runtime, playback, or cache changes:
 4. Prove per-user source ownership, cache reuse, TTL/LRU reclamation, and
    replay-safe object deletion before live activation.
 
+For Memory benchmark, Memory reader, recall-ranking, prompt-injection, or
+reader-promotion changes:
+
+1. Read [`memory-v2-benchmark.md`](./memory-v2-benchmark.md).
+2. Keep corpus inputs synthetic-only and keep committed drafts explicitly
+   ineligible for promotion.
+3. Preserve frozen hashes, exact case order, one-shot Holdout, exclusive report
+   output, and the separation between evaluation evidence and reader authority.
+4. Prove current-fact, false-injection, cross-user, secret, deletion, Provider-
+   egress, latency, token, and cost gates before changing a reader.
+
 ## Quality Check
 
 - Run the disposable database drill for the changed storage group.
@@ -83,5 +95,9 @@ For production hosted TTS administration, runtime, playback, or cache changes:
 - For production TTS changes, also run migration `051` replay/cache integration,
   frontend server-route regressions, Compose rendering, and the standalone full
   gate. Live activation requires a fresh separately authorized Key.
+- For Memory benchmark changes, run focused race tests for `internal/memoryeval`
+  and `cmd/memory-eval`, all backend tests, and `go vet ./...`. Reader/runtime
+  changes additionally require their owning migration, shadow, and rollback
+  gates; PR1 alone does not require Docker or a Live Provider.
 
 **Language**: All documentation should be written in English.
