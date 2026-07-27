@@ -36,6 +36,10 @@ Component roots are `mm-chat/frontend`, `mm-chat/backend`, `mm-chat/rag`, and
   second configuration authority.
 - Root documentation sends all build, test, deployment, backup, and recovery
   commands into `mm-chat/`.
+- Generated frontend output such as `frontend/.next/`,
+  `frontend/.open-next/`, and `frontend/node_modules/` is not standalone source
+  and must be excluded before the isolated copy is inspected for symlinks or
+  absolute paths. Source symlinks remain forbidden.
 - `mm-chat/data/`, `mm-chat/secrets/`, `mm-chat/backup/`, and
   `mm-chat/.env.single-server` are runtime state. Source cleanup must not delete,
   rewrite, archive into Git, or relocate them.
@@ -47,14 +51,15 @@ Component roots are `mm-chat/frontend`, `mm-chat/backend`, `mm-chat/rag`, and
 
 ### 4. Validation and error matrix
 
-| Condition                                                                                   | Required result                 |
-| ------------------------------------------------------------------------------------------- | ------------------------------- |
-| Backup checksum or archive listing fails                                                    | Stop before deletion.           |
-| Restore drill cannot recreate the temporary database or bucket                              | Stop before deletion.           |
-| Candidate path is outside the fixed allowlist                                               | Reject it.                      |
-| Candidate resolves beneath `.git`, `.agents`, `.codex`, `.trellis`, `.vscode`, or `mm-chat` | Reject it.                      |
-| `git status --porcelain -- mm-chat` changes during root cleanup                             | Stop and inspect before commit. |
-| Standalone, component, Compose, or live health gate fails                                   | Do not publish the cleanup.     |
+| Condition                                                                                   | Required result                                                         |
+| ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Backup checksum or archive listing fails                                                    | Stop before deletion.                                                   |
+| Restore drill cannot recreate the temporary database or bucket                              | Stop before deletion.                                                   |
+| Candidate path is outside the fixed allowlist                                               | Reject it.                                                              |
+| Candidate resolves beneath `.git`, `.agents`, `.codex`, `.trellis`, `.vscode`, or `mm-chat` | Reject it.                                                              |
+| `git status --porcelain -- mm-chat` changes during root cleanup                             | Stop and inspect before commit.                                         |
+| A preceding Next/OpenNext build leaves generated symlinks                                   | Exclude the generated output tree; do not weaken source symlink checks. |
+| Standalone, component, Compose, or live health gate fails                                   | Do not publish the cleanup.                                             |
 
 ### 5. Good / base / bad cases
 
@@ -74,6 +79,8 @@ Component roots are `mm-chat/frontend`, `mm-chat/backend`, `mm-chat/rag`, and
 - Assert protected paths remain present and `mm-chat/` tracked state is clean.
 - Run `verify-standalone.sh --full`, frontend format/lint/typecheck/test/build,
   backend vet/test, and RAG Ruff/mypy/pytest.
+- Run the structural gate after both an ordinary Next build and an OpenNext
+  Worker build when their copy boundaries change.
 - Render Compose with example and active env files.
 - Validate workflow YAML/action expressions.
 - Require HTTP 200 from the frontend, backend readiness, same-origin health,

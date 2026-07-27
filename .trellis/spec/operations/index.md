@@ -7,6 +7,7 @@
 | Guide                                                     | Scope                                                                                                     |
 | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | [Repository root boundary](./repository-root-boundary.md) | The thin Git root, `mm-chat/` product root, automation paths, runtime protection, and verification gates. |
+| [Dependency security](./dependency-security.md)           | Lockfile remediation, official-registry audits, override compatibility, and release verification.         |
 
 ## Pre-development checklist
 
@@ -17,6 +18,10 @@ For repository layout, GitHub automation, build entrypoint, or cleanup changes:
 2. Confirm `mm-chat/` remains the only product root.
 3. Identify protected runtime paths before changing files.
 4. Define backup, rollback, and clean-copy verification before deletion.
+
+For dependency or lockfile changes, read
+[`dependency-security.md`](./dependency-security.md) and preserve the frozen
+install plus component/full verification gates.
 
 ## Quality check
 

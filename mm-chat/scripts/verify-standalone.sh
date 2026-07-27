@@ -62,6 +62,7 @@ tar \
   --exclude='./backup' \
   --exclude='./data' \
   --exclude='./frontend/.next' \
+  --exclude='./frontend/.open-next' \
   --exclude='./frontend/node_modules' \
   --exclude='./frontend/tsconfig.tsbuildinfo' \
   --exclude='./rag/.mypy_cache' \
