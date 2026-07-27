@@ -23,7 +23,7 @@ func TestOpenAICompatibleExecutorSynthesizesSpeech(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
-		if payload.Model != "tts-1" || payload.Input != "speak" || payload.Voice != "alloy" {
+		if payload.Model != "FunAudioLLM/CosyVoice2-0.5B" || payload.Input != "speak" || payload.Voice != "FunAudioLLM/CosyVoice2-0.5B:claire" {
 			t.Fatalf("payload = %#v", payload)
 		}
 		return bytesResponse(http.StatusOK, "audio/mpeg", []byte("audio-bytes")), nil
@@ -33,8 +33,9 @@ func TestOpenAICompatibleExecutorSynthesizesSpeech(t *testing.T) {
 	result, err := executor.Synthesize(context.Background(), SynthesizeRequest{
 		Provider: ProviderModel,
 		JobID:    "job-1",
-		ModelID:  "tts-1",
+		ModelID:  "FunAudioLLM/CosyVoice2-0.5B",
 		Text:     "speak",
+		VoiceID:  "FunAudioLLM/CosyVoice2-0.5B:claire",
 	})
 
 	if err != nil {

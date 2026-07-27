@@ -10,6 +10,7 @@
 | [Chat source fusion](./chat-source-fusion.md)       | Conversation-aware external Search query rewriting, Knowledge/Web authority, diagnostics, and fallback contracts      |
 | [Planned chat Tool Loop](./chat-tool-loop.md)       | G19 provider-normalized Tool rounds, three-state Search authority, process persistence, approvals, and citation truth |
 | [Direct chat attachments](./chat-attachments.md)    | Attachment-only messages, native images, bounded document extraction, provider context, and explicit failures       |
+| [Hosted media provider smoke](./provider-live-smoke.md) | Exact live-provider authorization, one-off credentials, explicit TTS voices, artifacts, and sanitized evidence    |
 
 ## Pre-Development Checklist
 
@@ -46,6 +47,15 @@ For chat upload, attachment parsing, or provider attachment changes:
    untrusted-data boundary.
 4. Prove attachment-only acceptance and pre-acceptance draft restoration.
 
+For hosted Voice/Image executor or live-smoke changes:
+
+1. Read [`provider-live-smoke.md`](./provider-live-smoke.md).
+2. Identify the exact kind/provider/model and any provider-qualified voice.
+3. Preserve default denial, one-off credential isolation, and sanitized
+   evidence before making a provider call.
+4. Define offline zero-network tests and independent output validation before
+   running the authorized live smoke.
+
 ## Quality Check
 
 - Run the disposable database drill for the changed storage group.
@@ -57,5 +67,7 @@ For chat upload, attachment parsing, or provider attachment changes:
   process when query planning is affected.
 - For attachment changes, run parser units, image-path regression,
   attachment-only API/UI tests, and one live upload-to-answer replay.
+- For hosted provider smoke changes, run focused executor/gate tests, all Go
+  tests and vet, a diff secret scan, then the exact authorized live command.
 
 **Language**: All documentation should be written in English.

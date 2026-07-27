@@ -18,6 +18,8 @@ import (
 	"neo-chat/mm-chat/backend/internal/providersmoke"
 )
 
+const liveVoiceSmokeVoiceEnv = "MM_CHAT_PROVIDER_LIVE_SMOKE_VOICE"
+
 func TestLiveOpenAICompatibleVoiceSmoke(t *testing.T) {
 	smokeCfg := providersmoke.LoadFromEnv(os.LookupEnv)
 	if !smokeCfg.Enabled {
@@ -25,10 +27,18 @@ func TestLiveOpenAICompatibleVoiceSmoke(t *testing.T) {
 	}
 	target, ok := firstLiveVoiceTarget(smokeCfg.Targets)
 	if !ok {
-		t.Skip("provider live smoke enabled but no voice target configured")
+		t.Fatal("provider live smoke enabled but no voice target configured")
 	}
 	if err := smokeCfg.Authorize(target); err != nil {
 		t.Fatalf("provider live smoke not authorized: %v", err)
+	}
+	var speechVoice string
+	if target.Kind == providersmoke.KindVoiceSynthesize {
+		var err error
+		speechVoice, err = loadLiveVoiceSmokeVoice(os.Getenv)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	cfg := config.LoadFromEnv(os.LookupEnv)
@@ -54,7 +64,8 @@ func TestLiveOpenAICompatibleVoiceSmoke(t *testing.T) {
 		response, err := service.Synthesize(ctx, SynthesizeRequest{
 			Provider: ProviderModel,
 			ModelID:  target.ModelID,
-			Text:     "Short voice smoke test.",
+			Text:     "你好，这是一段简短的语音合成测试。",
+			VoiceID:  speechVoice,
 		})
 		if err != nil {
 			t.Fatalf("live voice synthesize smoke failed: %v", err)
@@ -85,6 +96,31 @@ func TestLiveOpenAICompatibleVoiceSmoke(t *testing.T) {
 		t.Logf("live voice transcribe smoke returned %d transcript characters", len(response.Text))
 	default:
 		t.Fatalf("unsupported voice smoke target kind: %s", target.Kind)
+	}
+}
+
+func loadLiveVoiceSmokeVoice(getenv func(string) string) (string, error) {
+	if getenv == nil {
+		return "", fmt.Errorf("%s is required for synthesis smoke", liveVoiceSmokeVoiceEnv)
+	}
+	voice := strings.TrimSpace(getenv(liveVoiceSmokeVoiceEnv))
+	if voice == "" {
+		return "", fmt.Errorf("%s is required for synthesis smoke", liveVoiceSmokeVoiceEnv)
+	}
+	return voice, nil
+}
+
+func TestLoadLiveVoiceSmokeVoiceRequiresExplicitValue(t *testing.T) {
+	voice, err := loadLiveVoiceSmokeVoice(func(string) string { return "  FunAudioLLM/CosyVoice2-0.5B:claire  " })
+	if err != nil {
+		t.Fatalf("loadLiveVoiceSmokeVoice() error = %v", err)
+	}
+	if voice != "FunAudioLLM/CosyVoice2-0.5B:claire" {
+		t.Fatalf("voice = %q", voice)
+	}
+
+	if _, err := loadLiveVoiceSmokeVoice(func(string) string { return "   " }); err == nil {
+		t.Fatal("loadLiveVoiceSmokeVoice() missing value error = nil")
 	}
 }
 

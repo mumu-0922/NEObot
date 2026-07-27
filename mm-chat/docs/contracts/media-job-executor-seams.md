@@ -109,6 +109,12 @@ jobartifacts.StoreInput{
   artifact storage when needed, and an authorized smoke. OpenAI-compatible
   `/audio/*` remains usable only when the configured relay actually supports
   those endpoints.
+- The 2026-07-27 smoke-first selection is SiliconFlow
+  `FunAudioLLM/CosyVoice2-0.5B` with provider-qualified preset voice
+  `FunAudioLLM/CosyVoice2-0.5B:claire`. The direct live harness requires that
+  voice through `MM_CHAT_PROVIDER_LIVE_SMOKE_VOICE` and must not fall back to
+  `alloy`. This selection authorizes neither production runtime wiring nor
+  speech-to-text coverage; both remain separate work.
 - Responses expose only compact artifact metadata:
   `fileId`, `purpose`, `contentType`, `size`.
 - Responses and audit events must not expose prompt text, synthesis text, audio

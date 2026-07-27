@@ -1001,7 +1001,7 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
 - [x] G5 Search and Web-Enrichment Toggle: reopened and completed through
       G11.9/G19 with server-owned `off | model_builtin | external` authority,
       external provider administration, Auto Tool execution, and citations.
-- [ ] G6 Voice/TTS provider closure: Image is live through stored Go artifacts,
+- [x] G6 Voice/TTS provider closure: Image is live through stored Go artifacts,
       and Code remains intentionally disabled behind its sandbox contract; only
       the hosted Voice provider and authorized smoke remain.
   - [x] G6.1 Server-mode fail-closed capability gates: disabled
@@ -1010,32 +1010,38 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
   - [x] G6.2 Voice synthesis/transcription Go job admission: Go registers validating fail-closed `/v1/voice/transcribe` and `/v1/voice/synthesize` routes.
   - [x] G6.3 Image generation Go job admission: Go registers a strict `modelRef + prompt` fail-closed `/v1/images/generations` route.
   - [x] G6.4 Code execution Go job admission: Go registers a strict `modelRef + language + code` fail-closed `/v1/code/executions` route.
-  - [ ] G6.5 Voice enabled-provider smoke; shared audit/rate-limit/cancel
+  - [x] G6.5 Voice enabled-provider smoke; shared audit/rate-limit/cancel
         controls are complete.
     - [x] G6.5a Admission audit metadata: voice/image/code fail-closed services record sanitized job events without prompt/code/text/audio payloads.
     - [x] G6.5b Shared job rate-limit and cancellation gates: fail-closed `/v1/jobs/{jobId}/cancel` is registered and covered by global rate-limit middleware.
-    - [ ] G6.5c Voice live-provider closure; the real image executor, storage,
+    - [x] G6.5c Voice live-provider closure; the real image executor, storage,
           and provider smoke are complete.
       - [x] G6.5c.1 Storage-only result artifact boundary: Go validates
             image/audio artifact metadata and stores future executor outputs
             through backend file/object storage without provider calls.
-      - [ ] G6.5c.2 Real voice executor with stored audio artifacts and
+      - [x] G6.5c.2 Real voice executor with stored audio artifacts and
             configured-provider smoke.
         - [x] G6.5c.2a Voice executor opt-in seam: Go can call a configured
               executor only after an explicitly configured sanitized admission
               audit recorder accepts the event, passes multipart audio to
               transcription, and blocks synthesis execution until artifact
               storage is configured.
-        - [ ] G6.5c.2b Real provider-backed voice executor and authorized
+        - [x] G6.5c.2b Real provider-backed voice executor and authorized
               configured-provider smoke.
           - [x] G6.5c.2b.1 OpenAI-compatible voice executor, Go route wiring,
                 and gated live smoke harness for `/audio/speech` and
                 `/audio/transcriptions`.
-          - [ ] G6.5c.2b.2 Authorized configured-provider voice smoke.
-          - [ ] G6.5c.2b.3 Free/simple TTS provider selection and smoke,
-                keeping the Go `/v1/voice/*` seam for a future free hosted API;
-                local Piper-style TTS is not preferred on this VPS. Browser
-                speech synthesis remains local fallback/test guard only.
+          - [x] G6.5c.2b.2 Authorized configured-provider voice smoke: the
+                exact SiliconFlow CosyVoice2 target produced a stored MP3
+                through the direct default-deny Go harness on 2026-07-27.
+          - [x] G6.5c.2b.3 Low-cost/simple TTS provider selection and smoke,
+                keeping the Go `/v1/voice/*` seam for a hosted API. SiliconFlow
+                `FunAudioLLM/CosyVoice2-0.5B` with preset voice `claire` is the
+                smoke-first selection; its exact target completed an
+                owner-authorized live synthesis; the owner accepted the
+                audible playback quality. Local Piper-style TTS is not
+                preferred on this VPS, and browser speech synthesis remains
+                local fallback/test guard only.
       - [x] G6.5c.3 Real image executor with stored image artifacts and
             configured-provider smoke.
         - [x] G6.5c.3a Image executor opt-in seam: Go can call a configured

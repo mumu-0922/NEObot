@@ -5313,3 +5313,44 @@ runtime state, provider configuration, user data, or destructive command was
 changed or executed during this ledger-only closure. The authoritative current
 list and the Phase 9/15 reconciliation rationale are recorded in
 `docs/tracking/progress.md` and `docs/tracking/process.md`.
+
+## 2026-07-27 — G6 hosted TTS selection and fail-closed smoke readiness
+
+SiliconFlow `FunAudioLLM/CosyVoice2-0.5B` with provider-qualified preset voice
+`FunAudioLLM/CosyVoice2-0.5B:claire` is now the smoke-first hosted TTS
+selection. ElevenLabs was deferred because its authentication and endpoint
+shape require a dedicated adapter, and MiMo was deferred because its current
+chat-completions audio envelope does not fit the existing Go `/audio/speech`
+executor. Speech-to-text and full production Voice provider/vault/runtime/UI
+wiring are explicitly outside this slice.
+
+The direct Go live harness now requires
+`MM_CHAT_PROVIDER_LIVE_SMOKE_VOICE` for synthesis and passes it as the exact
+request `voice`; it can no longer silently use the executor's OpenAI `alloy`
+fallback. An enabled smoke with no Voice target now fails instead of reporting
+a skip. Environment templates and the live-smoke contract include the new
+input plus a one-off SiliconFlow command that still requires the existing
+enabled flag, exact quota approval, exact model target, sanitized run ID,
+dedicated process-only key, bounded timeout, and operator output directory.
+No normal API runtime path reads these smoke inputs.
+
+Focused Voice/provider-smoke tests, all Go tests and vet, the security scan,
+the standalone structure check, and the full clean-copy gate passed. The full
+gate included frontend format/lint/typecheck, 193 files / 936 tests and a
+production build, all Go packages and vet, plus RAG Ruff/mypy and 1,906 passed /
+7 skipped tests. The ordinary live test remained default-disabled.
+
+The owner then supplied a dedicated one-off Voice credential directly to the
+process. Exact target
+`voice.synthesize:siliconflow:FunAudioLLM/CosyVoice2-0.5B`, explicit voice
+`FunAudioLLM/CosyVoice2-0.5B:claire`, and sanitized run ID
+`siliconflow-cosyvoice2-20260727T110435` passed in 0.59 seconds. The service
+stored one mode-`600`, 58,495-byte MP3 under the operator `/tmp` smoke output
+directory. Independent `file` inspection identified ID3v2.3 plus MPEG Layer
+III, 128 kbps, 24 kHz, mono audio rather than a non-audio success body. The
+credential existed only in the test process environment and was unset on
+exit; it was not copied into source, documentation, logs, or runtime config.
+The owner accepted the resulting Chinese playback quality after the system
+player opened the stored artifact. G6.5c.2b.2 and G6.5c.2b.3 are closed.
+Production provider/vault/runtime wiring remains explicitly outside this
+smoke-first slice.

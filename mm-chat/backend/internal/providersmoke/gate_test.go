@@ -43,14 +43,14 @@ func TestAuthorizeAllowsOnlyExactConfiguredTarget(t *testing.T) {
 	cfg := LoadFromEnv(mapGetenv(map[string]string{
 		EnvEnabled:  "true",
 		EnvApproval: RequiredApproval,
-		EnvTargets:  " image.generate:openai:gpt-image-1 , voice.synthesize:elevenlabs:tts-1 ",
+		EnvTargets:  " image.generate:openai:gpt-image-1 , voice.synthesize:siliconflow:FunAudioLLM/CosyVoice2-0.5B ",
 		EnvRunID:    "run-20260715",
 	}))
 
 	if err := cfg.Authorize(Target{Kind: KindImageGenerate, ProviderID: "openai", ModelID: "gpt-image-1"}); err != nil {
 		t.Fatalf("Authorize() allowed target error = %v", err)
 	}
-	if err := cfg.Authorize(Target{Kind: KindVoiceSynthesize, ProviderID: "elevenlabs", ModelID: "tts-1"}); err != nil {
+	if err := cfg.Authorize(Target{Kind: KindVoiceSynthesize, ProviderID: "siliconflow", ModelID: "FunAudioLLM/CosyVoice2-0.5B"}); err != nil {
 		t.Fatalf("Authorize() second allowed target error = %v", err)
 	}
 
