@@ -301,3 +301,41 @@ Patched Next/OpenNext and vulnerable transitive frontend dependencies, documente
 ### Next Steps
 
 - None - task complete
+
+
+## Session 10: Reconcile completed chat tasks
+
+**Date**: 2026-07-27
+**Task**: Reconcile completed chat tasks
+**Branch**: `main`
+
+### Summary
+
+Reconciled four stale chat tasks against their committed implementations, refreshed targeted Go/frontend gates, completed bounded live Knowledge-routing and remote-file smokes with cleanup, wrote result records, and archived all four tasks.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d9c0d88` | (see git log) |
+| `2433754` | (see git log) |
+| `b63bd7a` | (see git log) |
+| `630fb80` | (see git log) |
+| `337dd19` | (see git log) |
+| `1c41b47` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
