@@ -406,3 +406,36 @@ Audited and tracked the shared Trellis/Codex scaffold while isolating developer,
 ### Next Steps
 
 - None - task complete
+
+
+## Session 13: Verify SiliconFlow hosted TTS smoke
+
+**Date**: 2026-07-27
+**Task**: Verify SiliconFlow hosted TTS smoke
+**Branch**: `main`
+
+### Summary
+
+Selected SiliconFlow CosyVoice2 with the claire voice, made the live harness require an explicit provider-qualified voice, passed offline/full quality gates and an authorized real MP3 synthesis, recorded the owner's accepted playback verdict, and kept production Voice wiring and ASR out of scope.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c0e2c17` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

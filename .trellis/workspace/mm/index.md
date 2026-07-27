@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 12
+- **Total Sessions**: 13
 - **Last Active**: 2026-07-27
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~408 | Active |
+| `journal-1.md` | ~441 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 13 | 2026-07-27 | Verify SiliconFlow hosted TTS smoke | `c0e2c17` | `main` |
 | 12 | 2026-07-27 | Review and track shared Trellis scaffold | `f8bed19` | `main` |
 | 11 | 2026-07-27 | Bootstrap frontend guidelines and isolate journal commits | `e5c8cce`, `1cfa491` | `main` |
 | 10 | 2026-07-27 | Reconcile completed chat tasks | `d9c0d88`, `2433754`, `b63bd7a`, `630fb80`, `337dd19`, `1c41b47` | `main` |
