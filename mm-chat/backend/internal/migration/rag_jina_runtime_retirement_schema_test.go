@@ -3,7 +3,29 @@ package migration
 import (
 	"strings"
 	"testing"
+
+	migrationfiles "neo-chat/mm-chat/backend/migrations"
 )
+
+func TestJinaRuntimeRetirementMigrationMatchesAppliedManifest(t *testing.T) {
+	migrations, err := Load(migrationfiles.FS)
+	if err != nil {
+		t.Fatalf("load migrations: %v", err)
+	}
+
+	const appliedChecksum = "87302c2cf0dee5ce11388795891db4e64dfba4a7086a9906bcbaeab5397519e6"
+	for _, migration := range migrations {
+		if migration.ID() != "050_jina_runtime_retirement" {
+			continue
+		}
+		if migration.Checksum != appliedChecksum {
+			t.Fatalf("migration 050 checksum = %q, want applied manifest %q", migration.Checksum, appliedChecksum)
+		}
+		return
+	}
+
+	t.Fatal("migration 050 is not embedded")
+}
 
 func TestJinaRuntimeRetirementMigrationPermanentlyFencesExecution(t *testing.T) {
 	up := readPhase15SQL(t, "050_jina_runtime_retirement.up.sql")

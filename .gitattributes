@@ -1,0 +1,3 @@
+# Migration 050 was applied with an intentional terminal blank line. Its
+# byte-for-byte checksum is part of the live schema_migrations manifest.
+mm-chat/backend/migrations/050_jina_runtime_retirement.down.sql whitespace=-blank-at-eof

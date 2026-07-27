@@ -8,3 +8,4 @@ BEGIN
     MESSAGE = 'RAG_JINA_RUNTIME_RETIREMENT_IS_IRREVERSIBLE';
 END
 $irreversible_jina_runtime_retirement$;
+

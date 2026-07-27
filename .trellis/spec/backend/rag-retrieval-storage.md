@@ -5,7 +5,9 @@
 Apply this contract when changing `mm-chat` lexical or Dense retrieval,
 PostgreSQL extensions/major version, search projections, candidate diagnostics,
 the production retrieval profile pointer, or the cross-layer Knowledge
-Citation display projection.
+Citation display projection. It also applies when touching any already-applied
+retrieval migration byte, including comments, line endings, or terminal blank
+lines, because the live manifest hashes both SQL directions byte-for-byte.
 
 The current schema head is migration `050` on PostgreSQL `17.10` with
 `pgvector 0.8.5` and `pg_textsearch 1.3.1`. The durable retrieval pointer still
@@ -17,6 +19,17 @@ Holdout. The retired PostgreSQL 16 directory at
 mount it, or any other PG16 data directory, into the PG17 image.
 
 ## 2. Signatures
+
+Applied migration identity is immutable under the runner signature:
+
+```text
+SHA256(<version_name> || NUL || <up.sql bytes> || NUL || <down.sql bytes>)
+```
+
+For `050_jina_runtime_retirement`, the live checksum is
+`87302c2cf0dee5ce11388795891db4e64dfba4a7086a9906bcbaeab5397519e6`.
+Its down file deliberately retains the terminal blank line represented by that
+manifest.
 
 The retained private diagnostic signatures are:
 
@@ -323,6 +336,10 @@ replace the failed source report.
 
 ## 3. Contracts
 
+- Never normalize, reformat, or trim an applied migration. If source drift is
+  discovered, prove the exact applied bytes from repository/runtime evidence,
+  restore those bytes, and pin the live checksum in a regression test. Do not
+  rewrite `schema_migrations.checksum` to bless changed source.
 - BM25 reader-source admission requires the active corpus head and generation,
   the exact historical or BGE Search Profile row, active document projection
   head, published materialization, and current collection/document/version
@@ -680,6 +697,7 @@ replace the failed source report.
 
 | Condition                                                                                  | Required result                                                                                                         |
 | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| Embedded bytes for an applied migration differ from `schema_migrations.checksum`           | Deployment fails before later migrations; restore the exact applied bytes rather than editing the manifest             |
 | PG major is not 17 or extension version differs                                            | DDL aborts before creating shadow objects                                                                               |
 | Generation/profile is null, inactive, or incompatible                                      | `RAG_BM25_SHADOW_ARGUMENT_INVALID` or `RAG_BM25_SHADOW_PROFILE_MISMATCH`                                                |
 | Insert identity does not match current source                                              | `RAG_BM25_SHADOW_SOURCE_MISMATCH`                                                                                       |
@@ -748,6 +766,11 @@ Every SECURITY DEFINER function must pin the current schema followed by
 
 ## 5. Good / Base / Bad Cases
 
+- **Good:** runtime/repository evidence proves a checksum mismatch is one
+  terminal blank line, the exact applied blob is restored, and a checksum test
+  prevents later normalization.
+- **Bad:** updating `schema_migrations.checksum`, skipping validation, or
+  replaying later migrations while the embedded source still differs.
 - **Good (historical qualification only):** a published Jina v4 row retains
   immutable lineage and tombstone behavior without authorizing new provider
   calls.
@@ -840,6 +863,8 @@ Every SECURITY DEFINER function must pin the current schema followed by
 The disposable drill must assert:
 
 1. all current production migrations apply and remain unchanged afterward;
+   the embedded checksum for migration `050` equals the live manifest before
+   any later migration is attempted;
 2. idempotent backfill count/identity/content/hash postconditions;
 3. exact identifiers, paths, phrases, Chinese lexical/bigram recall, semantic
    Dense recall, context rewrite, cross-collection selection, and two unrelated
@@ -1224,3 +1249,25 @@ For the current owner-approved policy, use Warm P95 for the `<=1000ms`
 steady-state decision and retain Cold P95 as visible non-blocking telemetry.
 The immutable 50-case source report keeps its original `passed=false` result;
 policy clarification is not permission to overwrite, rerun, or reclassify it.
+
+### Applied migration byte drift
+
+Wrong:
+
+```sql
+UPDATE schema_migrations
+SET checksum = '<checksum of reformatted source>'
+WHERE version = 50;
+```
+
+Correct:
+
+```text
+prove the exact applied up/down bytes
+-> restore the embedded source byte-for-byte
+-> assert the live checksum in a regression test
+-> rerun the normal migration command
+```
+
+The live manifest is evidence of what executed, not mutable metadata for
+making edited source appear valid.
