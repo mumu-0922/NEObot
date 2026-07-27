@@ -48,15 +48,21 @@ function trimTextBlocksForStreaming(
     .filter((block) => block.type !== "text" || block.content.length > 0);
 }
 
-const MessageOutputRenderer: React.FC<MessageOutputRendererProps> = ({
-  message,
-  displayedContent,
-  isTyping = false,
-  isThinking = false,
-  isErrorMessage = false,
-  searchSources,
-  onFileClick,
-}) => {
+const MessageOutputRenderer = React.forwardRef<
+  HTMLDivElement,
+  MessageOutputRendererProps
+>(function MessageOutputRenderer(
+  {
+    message,
+    displayedContent,
+    isTyping = false,
+    isThinking = false,
+    isErrorMessage = false,
+    searchSources,
+    onFileClick,
+  },
+  ref,
+) {
   const blocks = useMemo(() => {
     const orderedBlocks = getMessageOutputBlocks(message);
     return trimTextBlocksForStreaming(
@@ -71,7 +77,10 @@ const MessageOutputRenderer: React.FC<MessageOutputRendererProps> = ({
   if (blocks.length === 0 && !hasProcessTrace) return null;
 
   return (
-    <div className={isTyping ? "animate-in fade-in duration-500" : ""}>
+    <div
+      ref={ref}
+      className={isTyping ? "animate-in fade-in duration-500" : ""}
+    >
       {hasProcessTrace ? (
         <ProcessTracePanel
           steps={message.processTrace ?? []}
@@ -133,6 +142,6 @@ const MessageOutputRenderer: React.FC<MessageOutputRendererProps> = ({
       })}
     </div>
   );
-};
+});
 
 export default MessageOutputRenderer;

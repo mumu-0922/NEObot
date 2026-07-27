@@ -23,6 +23,7 @@ var (
 	ErrVoiceCacheUnavailable         = errors.New("voice synthesis cache is unavailable")
 	ErrVoiceSourceMessageNotFound    = errors.New("voice synthesis source message was not found")
 	ErrVoiceSourceMessageChanged     = errors.New("voice synthesis source message changed")
+	ErrVoiceReadableTextEmpty        = errors.New("voice synthesis readable text is empty")
 )
 
 const (
@@ -170,6 +171,10 @@ func (s *Service) Synthesize(ctx context.Context, request SynthesizeRequest) (Sy
 		return SynthesizeResponse{}, err
 	}
 	if s.cache == nil {
+		request.Text = projectReadableText(request.Text)
+		if request.Text == "" {
+			return SynthesizeResponse{}, ErrVoiceReadableTextEmpty
+		}
 		return s.generateAndStore(ctx, execution.Executor, request)
 	}
 	request.MessageID = strings.TrimSpace(request.MessageID)
@@ -233,10 +238,13 @@ func (s *Service) synthesizeCached(
 	if strings.TrimSpace(request.Text) != text {
 		return SynthesizeResponse{}, ErrVoiceSourceMessageChanged
 	}
-	request.Text = text
+	request.Text = projectReadableText(text)
+	if request.Text == "" {
+		return SynthesizeResponse{}, ErrVoiceReadableTextEmpty
+	}
 	key := SynthesisCacheKey{
 		MessageID:       source.MessageID,
-		TextSHA256:      synthesisTextDigest(text),
+		TextSHA256:      synthesisTextDigest(request.Text),
 		SourceUpdatedAt: source.UpdatedAt.UTC(),
 		ProviderID:      execution.ProviderID,
 		ModelID:         execution.ModelID,

@@ -25,6 +25,7 @@ import {
   encryptLocalSecret,
   LOCAL_SECRET_CONTEXTS,
 } from "@/lib/security/localSecrets";
+import { createNeoChatApiClient } from "@/services/api/client";
 import SiliconFlowVoiceProviderSettings from "./SiliconFlowVoiceProviderSettings";
 
 const MIMO_STT_MODEL = "mimo-v2.5-asr";
@@ -41,6 +42,7 @@ const VoiceSettings = () => {
     serverConfig,
   } = useSettingsStore();
   const { providers } = useCoreSettingsStore();
+  const serverModeEnabled = createNeoChatApiClient().mode === "server";
 
   const { audioInputModels, audioOutputModels } = useMemo(() => {
     const inputModels: { id: string; name: string }[] = [];
@@ -155,10 +157,10 @@ const VoiceSettings = () => {
       ? [{ value: "default", label: t("providerDefault") }]
       : []),
     { value: "browser", label: t("providerBrowser") },
-    ...(!serverConfig && audioInputModels.length > 0
+    ...(!serverModeEnabled && audioInputModels.length > 0
       ? [{ value: "model", label: t("providerModel") }]
       : []),
-    ...(!serverConfig
+    ...(!serverModeEnabled
       ? [
           { value: "elevenlabs", label: t("providerElevenLabs") },
           { value: "mimo", label: t("providerMimo") },
@@ -171,10 +173,10 @@ const VoiceSettings = () => {
       ? [{ value: "default", label: t("providerDefault") }]
       : []),
     { value: "browser", label: t("providerBrowser") },
-    ...(!serverConfig && audioOutputModels.length > 0
+    ...(!serverModeEnabled && audioOutputModels.length > 0
       ? [{ value: "model", label: t("providerModel") }]
       : []),
-    ...(!serverConfig
+    ...(!serverModeEnabled
       ? [
           { value: "elevenlabs", label: t("providerElevenLabs") },
           { value: "mimo", label: t("providerMimo") },
@@ -238,91 +240,95 @@ const VoiceSettings = () => {
 
       <SiliconFlowVoiceProviderSettings />
 
-      {/* ElevenLabs API Key */}
-      <div className="space-y-2">
-        <label
-          htmlFor="voice-elevenlabs-api-key"
-          className="text-sm font-medium text-gray-700 dark:text-foreground/85 flex justify-between"
-        >
-          {t("elevenLabsApiKey")}
-          <a
-            href={ELEVENLABS_API_KEY_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-blue-500 hover:underline flex items-center gap-1"
-          >
-            {t("getKey")} <ExternalLink size={10} aria-hidden="true" />
-          </a>
-        </label>
-        <div className="relative">
-          <SecretInput
-            id="voice-elevenlabs-api-key"
-            name="elevenLabsApiKey"
-            placeholder={t("elevenLabsKeyPlaceholder")}
-            hasSecret={Boolean(
-              voice.elevenLabsApiKey || voice.elevenLabsApiKeySecret,
-            )}
-            onSave={async (value) =>
-              updateVoiceSettings({
-                elevenLabsApiKey: "",
-                elevenLabsApiKeySecret: await encryptLocalSecret(
-                  value,
-                  LOCAL_SECRET_CONTEXTS.elevenLabsApiKey,
-                ),
-              })
-            }
-            onClear={() =>
-              updateVoiceSettings({
-                elevenLabsApiKey: "",
-                elevenLabsApiKeySecret: undefined,
-              })
-            }
-            inputClassName="min-w-0 flex-1 px-3 py-2 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-400 transition-[background-color,border-color,box-shadow,color] font-mono text-gray-800 dark:text-foreground"
-          />
-        </div>
-      </div>
+      {!serverModeEnabled && (
+        <>
+          {/* ElevenLabs API Key */}
+          <div className="space-y-2">
+            <label
+              htmlFor="voice-elevenlabs-api-key"
+              className="text-sm font-medium text-gray-700 dark:text-foreground/85 flex justify-between"
+            >
+              {t("elevenLabsApiKey")}
+              <a
+                href={ELEVENLABS_API_KEY_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-blue-500 hover:underline flex items-center gap-1"
+              >
+                {t("getKey")} <ExternalLink size={10} aria-hidden="true" />
+              </a>
+            </label>
+            <div className="relative">
+              <SecretInput
+                id="voice-elevenlabs-api-key"
+                name="elevenLabsApiKey"
+                placeholder={t("elevenLabsKeyPlaceholder")}
+                hasSecret={Boolean(
+                  voice.elevenLabsApiKey || voice.elevenLabsApiKeySecret,
+                )}
+                onSave={async (value) =>
+                  updateVoiceSettings({
+                    elevenLabsApiKey: "",
+                    elevenLabsApiKeySecret: await encryptLocalSecret(
+                      value,
+                      LOCAL_SECRET_CONTEXTS.elevenLabsApiKey,
+                    ),
+                  })
+                }
+                onClear={() =>
+                  updateVoiceSettings({
+                    elevenLabsApiKey: "",
+                    elevenLabsApiKeySecret: undefined,
+                  })
+                }
+                inputClassName="min-w-0 flex-1 px-3 py-2 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-400 transition-[background-color,border-color,box-shadow,color] font-mono text-gray-800 dark:text-foreground"
+              />
+            </div>
+          </div>
 
-      {/* Mimo API Key */}
-      <div className="space-y-2">
-        <label
-          htmlFor="voice-mimo-api-key"
-          className="text-sm font-medium text-gray-700 dark:text-foreground/85 flex justify-between"
-        >
-          {t("mimoApiKey")}
-          <a
-            href={MIMO_API_KEY_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-blue-500 hover:underline flex items-center gap-1"
-          >
-            {t("getKey")} <ExternalLink size={10} aria-hidden="true" />
-          </a>
-        </label>
-        <div className="relative">
-          <SecretInput
-            id="voice-mimo-api-key"
-            name="mimoApiKey"
-            placeholder={t("mimoKeyPlaceholder")}
-            hasSecret={Boolean(voice.mimoApiKey || voice.mimoApiKeySecret)}
-            onSave={async (value) =>
-              updateVoiceSettings({
-                mimoApiKey: "",
-                mimoApiKeySecret: await encryptLocalSecret(
-                  value,
-                  LOCAL_SECRET_CONTEXTS.mimoApiKey,
-                ),
-              })
-            }
-            onClear={() =>
-              updateVoiceSettings({
-                mimoApiKey: "",
-                mimoApiKeySecret: undefined,
-              })
-            }
-            inputClassName="min-w-0 flex-1 px-3 py-2 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-400 transition-[background-color,border-color,box-shadow,color] font-mono text-gray-800 dark:text-foreground"
-          />
-        </div>
-      </div>
+          {/* Mimo API Key */}
+          <div className="space-y-2">
+            <label
+              htmlFor="voice-mimo-api-key"
+              className="text-sm font-medium text-gray-700 dark:text-foreground/85 flex justify-between"
+            >
+              {t("mimoApiKey")}
+              <a
+                href={MIMO_API_KEY_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-blue-500 hover:underline flex items-center gap-1"
+              >
+                {t("getKey")} <ExternalLink size={10} aria-hidden="true" />
+              </a>
+            </label>
+            <div className="relative">
+              <SecretInput
+                id="voice-mimo-api-key"
+                name="mimoApiKey"
+                placeholder={t("mimoKeyPlaceholder")}
+                hasSecret={Boolean(voice.mimoApiKey || voice.mimoApiKeySecret)}
+                onSave={async (value) =>
+                  updateVoiceSettings({
+                    mimoApiKey: "",
+                    mimoApiKeySecret: await encryptLocalSecret(
+                      value,
+                      LOCAL_SECRET_CONTEXTS.mimoApiKey,
+                    ),
+                  })
+                }
+                onClear={() =>
+                  updateVoiceSettings({
+                    mimoApiKey: "",
+                    mimoApiKeySecret: undefined,
+                  })
+                }
+                inputClassName="min-w-0 flex-1 px-3 py-2 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-400 transition-[background-color,border-color,box-shadow,color] font-mono text-gray-800 dark:text-foreground"
+              />
+            </div>
+          </div>
+        </>
+      )}
 
       {/* STT Section */}
       <div className="space-y-4">

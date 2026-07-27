@@ -123,6 +123,22 @@ func TestHandlerSynthesizeValidatesRequestBeforeAdmission(t *testing.T) {
 	}
 }
 
+func TestHandlerSynthesizeRejectsMarkupOnlyReadableText(t *testing.T) {
+	handler := NewHandler(NewService(
+		WithExecutor(&fakeVoiceExecutor{}),
+		WithArtifactStore(&fakeArtifactStore{}),
+		WithAuditRecorder(noopAuditRecorder()),
+	))
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(
+		http.MethodPost,
+		synthesizePath,
+		strings.NewReader(`{"text":"<script>hidden()</script>","provider":"default"}`),
+	))
+
+	assertError(t, recorder, http.StatusUnprocessableEntity, "VOICE_READABLE_TEXT_EMPTY")
+}
+
 func TestHandlerSynthesizeRequiresMessageIDForCachedProductionPath(t *testing.T) {
 	handler := NewHandler(NewService(
 		WithSynthesisExecutorResolver(staticSynthesisResolver{execution: SynthesisExecution{

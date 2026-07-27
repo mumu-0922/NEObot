@@ -442,10 +442,10 @@ describe("BYOK service requests", () => {
     try {
       await expect(
         synthesizeSpeech(
-          "hello",
+          "**hello**",
           { ttsProvider: "default" } as any,
           messageId,
-          abortController.signal,
+          { signal: abortController.signal, readableText: "hello" },
         ),
       ).resolves.toBeUndefined();
 
@@ -454,7 +454,7 @@ describe("BYOK service requests", () => {
       expect(fetchMock.mock.calls[0]?.[1]?.signal).toBe(abortController.signal);
       expect(getJsonRequestBody(fetchMock)).toEqual({
         messageId,
-        text: "hello",
+        text: "**hello**",
         provider: "default",
       });
       expect(fetchMock.mock.calls[1]?.[0]).toBe(
@@ -501,10 +501,15 @@ describe("BYOK service requests", () => {
 
     try {
       await expect(
-        synthesizeSpeech("你好，魔尊", {
-          ttsProvider: "browser",
-          ttsLanguage: "zh",
-        } as any),
+        synthesizeSpeech(
+          '**你好，魔尊** <div style="display:none">隐藏</div>',
+          {
+            ttsProvider: "browser",
+            ttsLanguage: "zh",
+          } as any,
+          undefined,
+          { readableText: "你好，魔尊" },
+        ),
       ).resolves.toBeUndefined();
 
       expect(fetchMock).not.toHaveBeenCalled();
@@ -514,6 +519,19 @@ describe("BYOK service requests", () => {
         text: "你好，魔尊",
         lang: "zh-CN",
       });
+
+      await expect(
+        synthesizeSpeech(
+          "**raw source**",
+          {
+            ttsProvider: "browser",
+            ttsLanguage: "zh",
+          } as any,
+          undefined,
+          { readableText: "   " },
+        ),
+      ).resolves.toBeUndefined();
+      expect(speakMock).toHaveBeenCalledTimes(1);
     } finally {
       vi.unstubAllGlobals();
       restoreServerMode();

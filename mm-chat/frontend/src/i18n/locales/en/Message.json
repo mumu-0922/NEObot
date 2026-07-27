@@ -31,6 +31,7 @@
   "imageProviderConnectionFailed": "The image provider connection failed again after retrying. Try again later.",
   "imageProviderTimeout": "The image provider timed out. Try generating it again later.",
   "failedToSynthesize": "Failed to synthesize speech: {error}",
+  "noReadableText": "This message has no visible text to read aloud",
   "generationTime": "Generation Time",
   "duration": "Duration",
   "tokens": "Tokens",

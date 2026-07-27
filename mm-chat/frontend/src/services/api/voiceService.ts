@@ -265,12 +265,19 @@ export const startBrowserSpeechRecognition = (
   return recognition;
 };
 
+export interface SynthesizeSpeechOptions {
+  signal?: AbortSignal;
+  readableText?: string;
+}
+
 export const synthesizeSpeech = async (
   text: string,
   settings: VoiceSettings,
   messageId?: string,
-  signal?: AbortSignal,
+  options: SynthesizeSpeechOptions = {},
 ): Promise<DisposableAudioElement | void> => {
+  const { signal } = options;
+  const speechText = (options.readableText ?? text).trim();
   signal?.throwIfAborted();
   const client = createNeoChatApiClient();
   if (
@@ -288,7 +295,7 @@ export const synthesizeSpeech = async (
   }
 
   if (settings.ttsProvider === "default") {
-    if (!text.trim()) return;
+    if (!speechText) return;
 
     if (client.mode === "server") {
       const normalizedMessageId = messageId?.trim() ?? "";
@@ -327,7 +334,7 @@ export const synthesizeSpeech = async (
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        text,
+        text: speechText,
         provider: "default",
         voiceId: settings.ttsVoiceId,
       }),
@@ -347,7 +354,7 @@ export const synthesizeSpeech = async (
       throw new Error("ElevenLabs API Key is missing");
     }
 
-    if (!text.trim()) return;
+    if (!speechText) return;
 
     const response = await fetchWithByokRetry(async () => {
       const apiKey = await resolveElevenLabsApiKey(settings);
@@ -358,7 +365,7 @@ export const synthesizeSpeech = async (
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          text: text,
+          text: speechText,
           provider: "elevenlabs",
           apiKeySecret: await encryptSecret(apiKey, BYOK_CONTEXTS.elevenLabs),
           voiceId: settings.ttsVoiceId,
@@ -381,7 +388,7 @@ export const synthesizeSpeech = async (
       throw new Error("Mimo API Key is missing");
     }
 
-    if (!text.trim()) return;
+    if (!speechText) return;
 
     const response = await fetchWithByokRetry(async () => {
       const apiKey = await resolveMimoApiKey(settings);
@@ -392,7 +399,7 @@ export const synthesizeSpeech = async (
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          text,
+          text: speechText,
           provider: "mimo",
           apiKeySecret: await encryptSecret(apiKey, BYOK_CONTEXTS.mimo),
           modelId: "mimo-v2.5-tts",
@@ -410,7 +417,7 @@ export const synthesizeSpeech = async (
     return createDisposableAudioFromBlob(await response.blob());
   } else if (settings.ttsProvider === "model") {
     if (!settings.ttsModel) throw new Error("No model selected for TTS");
-    if (!text.trim()) return;
+    if (!speechText) return;
     const ttsModel = settings.ttsModel;
 
     const response = await fetchWithByokRetry(async () => {
@@ -422,7 +429,7 @@ export const synthesizeSpeech = async (
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          text,
+          text: speechText,
           provider: "model",
           modelProvider,
           modelId,
@@ -438,13 +445,15 @@ export const synthesizeSpeech = async (
 
     return createDisposableAudioFromBlob(await response.blob());
   } else {
+    if (!speechText) return;
+
     return new Promise((resolve, reject) => {
       if (typeof window === "undefined" || !("speechSynthesis" in window)) {
         reject(new Error("Browser does not support Speech Synthesis"));
         return;
       }
 
-      const utterance = new SpeechSynthesisUtterance(text);
+      const utterance = new SpeechSynthesisUtterance(speechText);
 
       if (settings.ttsLanguage !== "auto") {
         utterance.lang = getBrowserVoiceLanguage(settings.ttsLanguage);

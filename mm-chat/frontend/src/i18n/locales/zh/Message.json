@@ -31,6 +31,7 @@
   "imageProviderConnectionFailed": "与图片供应商的连接中断，重试后仍未恢复，请稍后再试。",
   "imageProviderTimeout": "图片供应商响应超时，请稍后重新生成。",
   "failedToSynthesize": "语音合成失败：{error}",
+  "noReadableText": "当前消息没有可朗读的可见文字",
   "generationTime": "生成时间",
   "duration": "时长",
   "tokens": "Tokens",

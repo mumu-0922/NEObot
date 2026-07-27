@@ -214,7 +214,7 @@ func openVoiceCachePostgresIntegrationDB(t *testing.T) *sql.DB {
 
 func integrationCacheKey(source SynthesisSource) SynthesisCacheKey {
 	return SynthesisCacheKey{
-		MessageID: source.MessageID, TextSHA256: synthesisTextDigest(strings.TrimSpace(source.Text)),
+		MessageID: source.MessageID, TextSHA256: synthesisTextDigest(projectReadableText(source.Text)),
 		SourceUpdatedAt: source.UpdatedAt, ProviderID: "siliconflow",
 		ModelID: "FunAudioLLM/CosyVoice2-0.5B", VoiceID: "FunAudioLLM/CosyVoice2-0.5B:claire",
 	}

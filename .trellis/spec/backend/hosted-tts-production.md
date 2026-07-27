@@ -19,7 +19,8 @@ POST   /v1/admin/voice/providers/siliconflow/activate
 DELETE /v1/admin/voice/providers/siliconflow
 
 POST /v1/voice/synthesize
-  { "provider": "default", "messageId": "<uuid>", "text": "<current text>" }
+  { "provider": "default", "messageId": "<uuid>",
+    "text": "<current raw message source>" }
   -> { "fileId": "<uuid>", "purpose": "audio",
        "contentType": "audio/*", "size": <integer>, "cached": <boolean> }
 ```
@@ -56,8 +57,21 @@ only `SELECT, INSERT, UPDATE, DELETE` on the two TTS runtime tables to
 - Provider `2xx` bytes must have an audio media type or be independently
   detected as audio. Never label JSON/text/unknown bytes as MP3.
 - The source message must be current and owned by the actor. The cache key binds
-  user, message, source update time, trimmed-text SHA-256, provider, model, and
-  voice. Cache hits make zero provider calls.
+  user, message, source update time, readable-text SHA-256, provider, model,
+  and voice. Cache hits make zero provider calls.
+- The request `text` remains the current raw Markdown/HTML message source and
+  exists only for stale-source validation. After the exact source comparison,
+  hosted synthesis derives provider input from the actor-owned persisted
+  source; it never accepts client-supplied replacement speech text.
+- Hosted readable-text projection removes Markdown formatting syntax, raw HTML
+  tags/attributes/comments, `script`/`style` and hidden element content, image
+  destinations, and link destinations. It preserves visible prose, headings,
+  list/table cells, link labels, citations, inline code, and visible fenced
+  code in reading order, then normalizes whitespace into stable paragraphs.
+- `text_sha256` is the digest of that readable projection. Commit-time source
+  validation reprojects the locked persisted source before comparing the
+  digest. A pre-existing row keyed from raw markup therefore misses and is
+  replaced through the normal replay-safe cleanup path without a migration.
 - Reuse one artifact per user/message, expire after three idle days, enforce a
   100 MiB per-user LRU ceiling, and delete only through the actor-authorized
   File/object boundary. Cleanup claims are replayable after ten minutes.
@@ -73,6 +87,16 @@ only `SELECT, INSERT, UPDATE, DELETE` on the two TTS runtime tables to
   `voiceTranscription=false`, and legacy `voice=false`. Hosted default and
   explicit browser speech are the only server-mode TTS choices; there is no
   silent browser fallback.
+- `VoiceSettings` derives Server mode from `createNeoChatApiClient().mode` and
+  does not render legacy Local-mode model/ElevenLabs/Mimo provider options or
+  ElevenLabs/Mimo browser-stored Key inputs. Keep the dormant Local-mode code
+  as a rollback path. `applyServerConfig` owns normalization of persisted
+  legacy provider selections to the hosted default or Browser speech; do not
+  duplicate that migration in the component.
+- Frontend browser/local synthesis reads normalized `innerText` from the
+  forwarded `MessageOutputRenderer` root at click time. Hosted default still
+  submits raw `message.content` for backend ownership/source validation; the
+  rendered `innerText` must never replace that hosted request field.
 - Read-aloud has one tab-scoped playback owner across all messages and
   conversations. The owner tracks one active message, generation,
   `AbortController`, and either one disposable audio element or one Browser
@@ -103,6 +127,7 @@ only `SELECT, INSERT, UPDATE, DELETE` on the two TTS runtime tables to
 | Legacy synthesis provider selector    | `400 UNSUPPORTED_VOICE_PROVIDER`                                          |
 | Missing/cross-user message            | `404 VOICE_SOURCE_MESSAGE_NOT_FOUND`                                      |
 | Submitted text differs from source    | `409 VOICE_SOURCE_MESSAGE_CHANGED`                                        |
+| Owned source projects to empty text   | `422 VOICE_READABLE_TEXT_EMPTY`; zero Provider I/O                        |
 | Missing cache/artifact dependency     | `VOICE_CACHE_UNAVAILABLE` or `VOICE_ARTIFACT_STORE_UNAVAILABLE`           |
 | Runtime role lacks TTS table DML      | PostgreSQL permission failure before Provider I/O; deploy migration `052` |
 | Artifact metadata/download mismatch   | frontend rejects playback                                                 |
@@ -116,10 +141,17 @@ only `SELECT, INSERT, UPDATE, DELETE` on the two TTS runtime tables to
 ## 5. Good / Base / Bad Cases
 
 - Good: an explicit server-default click resolves the exact Voice vault row,
-  stores one audio artifact, downloads it through `/v1/files/{id}/content`, and
-  a second unchanged click returns `cached=true` without provider I/O.
+  validates the submitted raw source, speaks only the persisted readable-text
+  projection, stores one audio artifact, downloads it through
+  `/v1/files/{id}/content`, and a second unchanged click returns `cached=true`
+  without provider I/O.
 - Base: no active Voice row; public TTS availability is false, browser speech
   remains manually selectable, and server synthesis fails closed.
+- Base: Browser Speech consumes the currently rendered output `innerText` and
+  therefore speaks a link label but not its hidden destination.
+- Base: a persisted Local-mode ElevenLabs/Mimo/model selection enters Server
+  mode, is normalized by `applyServerConfig`, and cannot leave a hidden provider
+  selected in the Voice settings UI.
 - Bad: create TTS tables as the Migration Owner but omit `go_api_runtime` DML,
   or hot-grant production without an embedded forward/down migration pair.
 - Bad: borrow `RAG:SILICONFLOW`, accept `provider="model"`, trust an HTTP 200
@@ -129,12 +161,17 @@ only `SELECT, INSERT, UPDATE, DELETE` on the two TTS runtime tables to
   surface false errors during ordinary navigation.
 - Bad: create hosted playback with a detached `new Audio(objectUrl)`, or revoke
   its Object URL without clearing the media source and removing the node.
+- Bad: send rendered client text as hosted provider authority, send raw
+  Markdown/HTML to the provider, or key cache rows by raw markup. The first
+  permits arbitrary paid synthesis; the latter two speak hidden syntax or
+  reuse stale markup audio.
 
 ## 6. Tests Required
 
 - Unit: encrypted save/test/activate/invalidate, exact resolver tuple,
   non-audio response rejection, legacy selector rejection, sanitized errors,
-  source-text validation, singleflight, rollback, and cleanup replay.
+  source-text validation, readable Markdown/GFM/HTML projection, markup-only
+  rejection before Provider I/O, singleflight, rollback, and cleanup replay.
 - PostgreSQL: `051` plus `052` down/up/down/up, representative existing provider rows,
   cache hit/replacement/cross-user miss, hard TTL, commit-time and worker LRU,
   claim/release/reclaim/complete, and `SET LOCAL ROLE go_api_runtime` proving
@@ -142,7 +179,10 @@ only `SELECT, INSERT, UPDATE, DELETE` on the two TTS runtime tables to
 - Frontend: capability split, hosted metadata normalization, authenticated file
   fetch, MIME/size equality, no server-mode `/api/voice/*` call, Browser-only
   local path, persisted disabled-to-enabled default selection, and signal
-  forwarding through synthesis plus File download.
+  forwarding through synthesis plus File download. Assert hosted requests keep
+  raw source text while Browser/local speech receives normalized rendered
+  `innerText`. Assert Server-mode composition hides legacy Local provider
+  options and Key inputs while the existing Local rollback source remains.
 - Frontend playback: rapid same-message cancellation, A-to-B replacement,
   stale synthesis/audio completion disposal, pending `play()` interruption,
   active-message unmount/release, genuine failure rendering, and Browser Speech
@@ -161,14 +201,20 @@ only `SELECT, INSERT, UPDATE, DELETE` on the two TTS runtime tables to
 ### Wrong
 
 ```text
-RAG:SILICONFLOW key -> provider="model" -> 200 JSON body -> assume audio/mpeg
+raw Markdown/HTML -> Provider -> cache digest of hidden markup
+
+or
+
+rendered client text -> hosted Provider authority
 ```
 
 ### Correct
 
 ```text
 encrypted admin ingress -> VOICE:SILICONFLOW vault + exact attestation
-  -> provider="default" + owned current message
+  -> provider="default" + raw client source validates owned current message
+  -> persisted source -> readable-text projection -> Provider
+  -> readable-text digest for lookup and commit-time locked revalidation
   -> go_api_runtime DML on cache/cleanup tables
   -> bounded audio-validated executor result
   -> File artifact + per-user cache

@@ -78,6 +78,7 @@ import {
   readAloudCoordinator,
   selectReadAloudMessageState,
 } from "@/lib/voice/readAloudCoordinator";
+import { getReadableTextFromElement } from "@/lib/voice/readableText";
 import {
   createTimedStatusResetController,
   type TimedStatusResetController,
@@ -486,6 +487,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
   const readingDialogRef = useRef<HTMLDivElement>(null);
   const imageExportRootRef = useRef<HTMLDivElement>(null);
   const visibleMessageContentRef = useRef<HTMLDivElement>(null);
+  const readAloudContentRef = useRef<HTMLDivElement>(null);
   const readingRestoreFocusRef = useRef<HTMLElement | null>(null);
   const readingDialogTitleId = useId();
   const readingDialogDescriptionId = useId();
@@ -966,8 +968,18 @@ const MessageItem: React.FC<MessageItemProps> = ({
   const handleToggleReadAloud = async () => {
     await readAloudCoordinator.toggle({
       messageId: message.id,
-      synthesize: (signal) =>
-        synthesizeSpeech(message.content, voice, message.id, signal),
+      synthesize: (signal) => {
+        const readableText = getReadableTextFromElement(
+          readAloudContentRef.current,
+        );
+        if (!readableText) {
+          throw new Error(t("noReadableText"));
+        }
+        return synthesizeSpeech(message.content, voice, message.id, {
+          signal,
+          readableText,
+        });
+      },
       formatError: (error) =>
         t("failedToSynthesize", {
           error: error instanceof Error ? error.message : String(error),
@@ -1482,6 +1494,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
                   )
                 ) : (
                   <MessageOutputRenderer
+                    ref={readAloudContentRef}
                     message={message}
                     displayedContent={displayedContent}
                     isTyping={isTyping}

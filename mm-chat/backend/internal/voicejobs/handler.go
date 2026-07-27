@@ -193,6 +193,8 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "VOICE_SOURCE_MESSAGE_NOT_FOUND", "voice source message was not found")
 	case errors.Is(err, ErrVoiceSourceMessageChanged):
 		writeError(w, http.StatusConflict, "VOICE_SOURCE_MESSAGE_CHANGED", "voice source message changed")
+	case errors.Is(err, ErrVoiceReadableTextEmpty):
+		writeError(w, http.StatusUnprocessableEntity, "VOICE_READABLE_TEXT_EMPTY", "voice source message has no readable text")
 	case errors.Is(err, ErrVoiceProviderFailed):
 		writeError(w, http.StatusBadGateway, "VOICE_PROVIDER_ERROR", "voice provider request failed")
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):

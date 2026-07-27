@@ -159,7 +159,7 @@ FOR UPDATE OF message
 		return fmt.Errorf("lock voice synthesis source: %w", err)
 	}
 	if !sourceUpdatedAt.Equal(input.Key.SourceUpdatedAt) ||
-		synthesisTextDigest(strings.TrimSpace(sourceText)) != input.Key.TextSHA256 {
+		synthesisTextDigest(projectReadableText(sourceText)) != input.Key.TextSHA256 {
 		return ErrVoiceSourceMessageChanged
 	}
 

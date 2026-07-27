@@ -251,7 +251,7 @@ func TestServiceSynthesizeStoresExecutorAudioArtifact(t *testing.T) {
 		JobID:    "request-job",
 		VoiceID:  "voice-1",
 		ModelID:  "tts-model",
-		Text:     "private text",
+		Text:     "**private** [text](https://hidden.example/path)",
 	})
 
 	if err != nil {
@@ -277,6 +277,80 @@ func TestServiceSynthesizeStoresExecutorAudioArtifact(t *testing.T) {
 	}
 	if string(body) != "audio" {
 		t.Fatalf("artifact body = %q, want audio", string(body))
+	}
+}
+
+func TestServiceCachedSynthesisProjectsReadableTextAndMissesRawMarkupCache(t *testing.T) {
+	executor := &fakeVoiceExecutor{synthesizeResult: SynthesizeResult{
+		JobID: "job-readable", Filename: "voice.mp3", ContentType: "audio/mpeg",
+		Size: 5, Body: strings.NewReader("audio"),
+	}}
+	store := &fakeArtifactStore{artifact: jobartifacts.Artifact{
+		FileID: "33333333-3333-4333-8333-333333333333", Purpose: "audio",
+		ContentType: "audio/mpeg", Size: 5,
+	}}
+	sourceText := `## Weather
+
+<div style="color:red"><strong>Travel:</strong> stay cool.</div>
+
+[Official](https://hidden.example/path)`
+	updatedAt := time.Now().UTC()
+	cache := &memorySynthesisCache{
+		source: SynthesisSource{
+			MessageID: "22222222-2222-4222-8222-222222222222",
+			Text:      sourceText, UpdatedAt: updatedAt,
+		},
+		cached: CachedSynthesis{FileID: "old-raw-audio", ContentType: "audio/mpeg", Size: 99},
+		key: SynthesisCacheKey{
+			MessageID:       "22222222-2222-4222-8222-222222222222",
+			TextSHA256:      synthesisTextDigest(strings.TrimSpace(sourceText)),
+			SourceUpdatedAt: updatedAt,
+			ProviderID:      "siliconflow", ModelID: "cosy", VoiceID: "claire",
+		},
+	}
+	service := NewService(
+		WithSynthesisExecutorResolver(staticSynthesisResolver{execution: SynthesisExecution{
+			Executor: executor, ProviderID: "siliconflow", ModelID: "cosy", VoiceID: "claire",
+		}}),
+		WithArtifactStore(store),
+		WithArtifactDeleter(&recordingArtifactDeleter{}),
+		WithSynthesisCache(cache),
+		WithAuditRecorder(noopAuditRecorder()),
+	)
+
+	response, err := service.Synthesize(context.Background(), SynthesizeRequest{
+		Provider: ProviderDefault, MessageID: cache.source.MessageID, Text: sourceText,
+	})
+	if err != nil {
+		t.Fatalf("Synthesize() error = %v", err)
+	}
+	if response.Cached || response.FileID != store.artifact.FileID {
+		t.Fatalf("response = %#v, want regenerated readable artifact", response)
+	}
+	if executor.synthesizeRequest.Text != "Weather\nTravel: stay cool.\nOfficial" {
+		t.Fatalf("provider text = %q", executor.synthesizeRequest.Text)
+	}
+	if cache.key.TextSHA256 != synthesisTextDigest(executor.synthesizeRequest.Text) {
+		t.Fatalf("cache digest = %q, want readable-text digest", cache.key.TextSHA256)
+	}
+}
+
+func TestServiceRejectsMarkupOnlySynthesisBeforeProvider(t *testing.T) {
+	executor := &fakeVoiceExecutor{}
+	service := NewService(
+		WithExecutor(executor),
+		WithArtifactStore(&fakeArtifactStore{}),
+		WithAuditRecorder(noopAuditRecorder()),
+	)
+
+	_, err := service.Synthesize(context.Background(), SynthesizeRequest{
+		Provider: ProviderDefault, Text: `<script>hidden()</script>`,
+	})
+	if !errors.Is(err, ErrVoiceReadableTextEmpty) {
+		t.Fatalf("Synthesize() error = %v, want ErrVoiceReadableTextEmpty", err)
+	}
+	if executor.synthesizeCalled {
+		t.Fatal("markup-only source reached provider executor")
 	}
 }
 
