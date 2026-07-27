@@ -8,6 +8,7 @@
 | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | [Repository root boundary](./repository-root-boundary.md) | The thin Git root, `mm-chat/` product root, automation paths, runtime protection, and verification gates. |
 | [Dependency security](./dependency-security.md)           | Lockfile remediation, official-registry audits, override compatibility, and release verification.         |
+| [Session auto-commit](./session-auto-commit.md)           | Exact journal/index staging, commit isolation, ignored paths, and regression tests.                       |
 
 ## Pre-development checklist
 
@@ -22,6 +23,10 @@ For repository layout, GitHub automation, build entrypoint, or cleanup changes:
 For dependency or lockfile changes, read
 [`dependency-security.md`](./dependency-security.md) and preserve the frozen
 install plus component/full verification gates.
+
+For Trellis session recording or Git auto-commit changes, read
+[`session-auto-commit.md`](./session-auto-commit.md). Preserve the caller-owned
+path boundary and pre-existing staged state.
 
 ## Quality check
 
