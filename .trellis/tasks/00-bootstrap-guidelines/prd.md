@@ -21,30 +21,59 @@ the rest conversationally.
 
 ## Status (update the checkboxes as you complete each item)
 
-- [ ] Fill frontend guidelines
-- [ ] Add code examples
+- [x] Fill frontend guidelines
+- [x] Add code examples
+- [x] Restrict `add_session.py` to the journal file and workspace index it writes
+- [x] Add isolated Git regression coverage for session auto-commits
 
 ---
 
 ## Spec files to populate
 
-
 ### Frontend guidelines
 
-| File | What to document |
-|------|------------------|
-| `.trellis/spec/frontend/directory-structure.md` | Component/page/hook organization |
-| `.trellis/spec/frontend/component-guidelines.md` | Component patterns, props conventions |
-| `.trellis/spec/frontend/hook-guidelines.md` | Custom hook naming, patterns |
-| `.trellis/spec/frontend/state-management.md` | State library, patterns, what goes where |
-| `.trellis/spec/frontend/type-safety.md` | TypeScript conventions, type organization |
-| `.trellis/spec/frontend/quality-guidelines.md` | Linting, testing, accessibility |
-
+| File                                             | What to document                          |
+| ------------------------------------------------ | ----------------------------------------- |
+| `.trellis/spec/frontend/directory-structure.md`  | Component/page/hook organization          |
+| `.trellis/spec/frontend/component-guidelines.md` | Component patterns, props conventions     |
+| `.trellis/spec/frontend/hook-guidelines.md`      | Custom hook naming, patterns              |
+| `.trellis/spec/frontend/state-management.md`     | State library, patterns, what goes where  |
+| `.trellis/spec/frontend/type-safety.md`          | TypeScript conventions, type organization |
+| `.trellis/spec/frontend/quality-guidelines.md`   | Linting, testing, accessibility           |
 
 ### Thinking guides (already populated)
 
 `.trellis/spec/guides/` contains general thinking guides pre-filled with
 best practices. Customize only if something clearly doesn't fit this project.
+
+### Session auto-commit safety
+
+`add_session.py` currently derives a broad Trellis path list that includes
+active tasks and the complete task archive. Recording a journal entry must not
+stage or commit either location.
+
+Required behavior:
+
+- Pass the exact journal file written by the current invocation and the
+  developer workspace `index.md` to the auto-commit helper. This includes a
+  newly-created journal file after rotation.
+- Stage only those two repo-relative paths with an explicit pathspec. Never
+  stage the whole `.trellis/` tree and never use `git add -f`.
+- Commit only those two paths. Unrelated changes that were already staged by
+  the developer must remain staged and must not enter the journal commit.
+- Leave dirty active tasks, task archives, and all other untracked or modified
+  files untouched.
+- Preserve `session_auto_commit: false`: journal/index writes still happen,
+  but no Git staging or commit command runs.
+- Preserve the configured journal commit message and the existing warning and
+  skip behavior when Git refuses to add an ignored path.
+
+Regression tests must use isolated temporary Git repositories and cover the
+normal append path, journal rotation, untracked active-task content, dirty
+archive content, pre-staged unrelated content, and the disabled-auto-commit
+configuration. The committed path set must be exactly the target journal and
+workspace index, while pre-existing staged state remains available for the
+developer's later commit.
 
 ---
 
@@ -56,31 +85,32 @@ Search the repo for existing convention docs. If any exist, read them and
 extract the relevant rules into the matching `.trellis/spec/` files —
 usually much faster than documenting from scratch.
 
-| File / Directory | Tool |
-|------|------|
-| `CLAUDE.md` / `CLAUDE.local.md` | Claude Code |
-| `AGENTS.md` | Codex / Claude Code / agent-compatible tools |
-| `.cursorrules` | Cursor |
-| `.cursor/rules/*.mdc` | Cursor (rules directory) |
-| `.windsurfrules` | Windsurf |
-| `.clinerules` | Cline |
-| `.roomodes` | Roo Code |
-| `.github/copilot-instructions.md` | GitHub Copilot |
-| `.vscode/settings.json` → `github.copilot.chat.codeGeneration.instructions` | VS Code Copilot |
-| `CONVENTIONS.md` / `.aider.conf.yml` | aider |
-| `CONTRIBUTING.md` | General project conventions |
-| `.editorconfig` | Editor formatting rules |
+| File / Directory                                                            | Tool                                         |
+| --------------------------------------------------------------------------- | -------------------------------------------- |
+| `CLAUDE.md` / `CLAUDE.local.md`                                             | Claude Code                                  |
+| `AGENTS.md`                                                                 | Codex / Claude Code / agent-compatible tools |
+| `.cursorrules`                                                              | Cursor                                       |
+| `.cursor/rules/*.mdc`                                                       | Cursor (rules directory)                     |
+| `.windsurfrules`                                                            | Windsurf                                     |
+| `.clinerules`                                                               | Cline                                        |
+| `.roomodes`                                                                 | Roo Code                                     |
+| `.github/copilot-instructions.md`                                           | GitHub Copilot                               |
+| `.vscode/settings.json` → `github.copilot.chat.codeGeneration.instructions` | VS Code Copilot                              |
+| `CONVENTIONS.md` / `.aider.conf.yml`                                        | aider                                        |
+| `CONTRIBUTING.md`                                                           | General project conventions                  |
+| `.editorconfig`                                                             | Editor formatting rules                      |
 
 ### Step 2: Analyze the codebase for anything not covered by existing docs
 
 Scan real code to discover patterns. Before writing each spec file:
+
 - Find 2-3 real examples of each pattern in the codebase.
 - Reference real file paths (not hypothetical ones).
 - Document anti-patterns the team clearly avoids.
 
 ### Step 3: Document reality, not ideals
 
-**Critical**: write what the code *actually does*, not what it should do.
+**Critical**: write what the code _actually does_, not what it should do.
 Sub-agents match the spec, so aspirational patterns that don't exist in the
 codebase will cause sub-agents to write code that looks out of place.
 
