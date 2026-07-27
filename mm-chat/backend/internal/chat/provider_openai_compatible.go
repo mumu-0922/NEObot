@@ -189,16 +189,24 @@ func (p *OpenAICompatibleProvider) ValidateModelRef(modelRef ModelRef) error {
 
 func (p *OpenAICompatibleProvider) ResolveModelRef(modelRef ModelRef) (ModelRef, error) {
 	providerID := strings.ToLower(strings.TrimSpace(modelRef.ProviderID))
-	if allowedProviderID := strings.TrimSpace(p.providerID); allowedProviderID != "" &&
-		providerID == strings.ToLower(allowedProviderID) {
-		modelID := strings.TrimSpace(modelRef.ModelID)
-		if modelID == "" {
-			modelID = p.defaultModel
+	if allowedProviderID := strings.TrimSpace(p.providerID); allowedProviderID != "" {
+		switch providerID {
+		case strings.ToLower(allowedProviderID), OpenAICompatibleProviderID,
+			openAICompatibleProviderIDOpenAI, openAICompatibleProviderIDHyphenVariant:
+			modelID := strings.TrimSpace(modelRef.ModelID)
+			if modelID == "" {
+				modelID = p.defaultModel
+			}
+			return ModelRef{
+				ProviderID: allowedProviderID,
+				ModelID:    modelID,
+			}, nil
+		default:
+			return ModelRef{}, ValidationError{
+				Code:    "UNSUPPORTED_PROVIDER",
+				Message: "modelRef.providerId is not supported by the configured provider",
+			}
 		}
-		return ModelRef{
-			ProviderID: allowedProviderID,
-			ModelID:    modelID,
-		}, nil
 	}
 	switch providerID {
 	case OpenAICompatibleProviderID, openAICompatibleProviderIDOpenAI, openAICompatibleProviderIDHyphenVariant:

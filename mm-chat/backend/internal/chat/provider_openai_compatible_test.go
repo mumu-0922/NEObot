@@ -755,3 +755,29 @@ func TestOpenAICompatibleProviderResolvesAliasesToCanonicalModelRef(t *testing.T
 		t.Fatalf("ModelID = %q, want gpt-default", resolved.ModelID)
 	}
 }
+
+func TestOpenAICompatibleProviderResolvesCanonicalAliasToConfiguredProviderID(t *testing.T) {
+	provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+		BaseURL:      "https://example.test/v1",
+		APIKey:       "test-secret-token",
+		DefaultModel: "gpt-default",
+		ProviderID:   "SERVER_DEFAULT",
+	})
+	if err != nil {
+		t.Fatalf("NewOpenAICompatibleProvider() error = %v", err)
+	}
+
+	resolved, err := provider.ResolveModelRef(ModelRef{
+		ProviderID: OpenAICompatibleProviderID,
+		ModelID:    "gpt-search",
+	})
+	if err != nil {
+		t.Fatalf("ResolveModelRef() error = %v", err)
+	}
+	if resolved.ProviderID != "SERVER_DEFAULT" {
+		t.Fatalf("ProviderID = %q, want SERVER_DEFAULT", resolved.ProviderID)
+	}
+	if resolved.ModelID != "gpt-search" {
+		t.Fatalf("ModelID = %q, want gpt-search", resolved.ModelID)
+	}
+}

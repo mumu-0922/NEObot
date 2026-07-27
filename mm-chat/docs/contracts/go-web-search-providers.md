@@ -100,12 +100,27 @@ accepted in this request.
 - selecting model-built-in execution on `/v1/search` returns
   `MODEL_BUILTIN_SEARCH_REQUIRES_CHAT`; it never falls back to an external
   adapter;
-- only runtime providers explicitly typed `OpenAI` implement built-in Search;
-  `OpenAI Compatible` remains on Chat Completions and returns
-  `MODEL_BUILTIN_SEARCH_UNSUPPORTED` when selected for built-in Search;
+- runtime providers explicitly typed `OpenAI` implement built-in Search;
+  `OpenAI Compatible` remains on Chat Completions unless an exact
+  provider/model/protocol connection test attests `openai_responses`, after
+  which that bound runtime uses the same built-in Search path;
 - OpenAI built-in Search posts streaming Responses requests to `/responses`
-  with `web_search_preview`, normalizes URL citations and web-search action
-  sources, deduplicates at most ten records, and emits `search.results` SSE;
+  with the required `web_search` tool, normalizes URL citations and web-search
+  action sources, deduplicates at most ten records, and emits `search.results`
+  SSE;
+- the provider-only request copy appends a bounded public-page/URL-citation
+  requirement to the latest user item so vertical results without URLs do not
+  silently erase Weather and similar Search citations. Persisted messages stay
+  unchanged;
+- Responses history encodes user text as `input_text` and assistant text as
+  `output_text`. Encoding assistant history as `input_text` is invalid and can
+  make otherwise healthy built-in Search fail only on browser follow-up turns;
+- Responses startup retries the exact request once after 200 ms only for a
+  transport failure, HTTP `408`, `429`, or `5xx`. Other `4xx`, cancellation,
+  and in-stream failures are not retried, and no provider/model fallback occurs;
+- completion parsing also reads final `response.output` items because a gateway
+  may omit incremental citation events while retaining citations in the final
+  response;
 - chat resolves the active execution once. External Search uses `Execute` on
   that exact union; built-in selection uses the matching model capability;
 - external results are injected as a total-bounded Web evidence section with

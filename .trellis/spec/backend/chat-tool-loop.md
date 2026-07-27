@@ -92,6 +92,39 @@ Anthropic official -> anthropic_web_search
 Custom compatible  -> openai_responses + exact tested model only
 ```
 
+The active OpenAI Responses built-in request contract is:
+
+```http
+POST {normalizedBaseURL}/responses
+Content-Type: application/json
+
+{
+  "model": "exact-selected-model",
+  "stream": true,
+  "tools": [{ "type": "web_search" }],
+  "tool_choice": "required",
+  "include": [
+    "web_search_call.results",
+    "web_search_call.action.sources"
+  ]
+}
+```
+
+Conversation input-part mapping is role-sensitive:
+
+```text
+user text      -> input_text
+assistant text -> output_text
+```
+
+Configured OpenAI-compatible model identity resolves before capability lookup:
+
+```text
+configured provider ID + accepted canonical alias -> configured provider ID
+unbound provider + accepted alias                -> openai_compatible
+unaccepted alias                                 -> UNSUPPORTED_PROVIDER
+```
+
 Resolver and administrator signatures:
 
 ```go
@@ -194,6 +227,29 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 - Custom compatible attestation binds provider ID/type, normalized Base URL,
   encrypted secret reference, protocol, and exact model. Any bound change must
   invalidate it; commit a positive real test with a Postgres compare-and-set.
+- When a runtime OpenAI-compatible provider has an authoritative configured ID,
+  its accepted `openai_compatible`, `openai`, and `openai-compatible` aliases
+  must resolve back to that ID before built-in capability lookup. Preserve the
+  canonical `openai_compatible` ID only for an unbound provider.
+- Explicit `model_builtin` is a hard request to execute the sole attested Web
+  tool. OpenAI Responses therefore uses `web_search` with
+  `tool_choice=required`; `web_search_preview` and the default Auto choice are
+  forbidden because the former may be rejected by current gateways and the
+  latter permits a false successful turn with zero Search I/O.
+- The OpenAI Responses request copy appends a bounded public-page and accessible
+  URL-citation requirement only to the latest user item. It must not mutate the
+  persisted message or earlier history. This prevents provider-native Weather
+  and similar vertical records containing only `{type,name}` from becoming the
+  only evidence and producing a false zero-source result.
+- Retry Responses startup once with the exact payload after 200 ms only for a
+  transport failure, HTTP `408`, `429`, or `5xx`. Do not retry another `4xx`,
+  cancellation, or an in-stream failure, and never switch provider/model.
+- Parse sources from incremental annotations/output items and from final
+  `response.completed.response.output`; use one accumulator so repeated final
+  projections cannot duplicate citations.
+- Encode Responses history by role. User text is `input_text`; assistant text
+  is `output_text`. A first-turn smoke cannot validate this boundary, so every
+  real browser-path proof must include at least one prior assistant message.
 - New conversations with no explicit Search fields inherit the most recently
   updated conversation mode. The frontend must use the returned server session
   for the first message rather than a stale pre-create composer snapshot.
@@ -355,6 +411,13 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 | Built-in unsupported             | disabled/degraded; no external fallback          |
 | Invalid persisted Search mode    | `INVALID_SEARCH_MODE`; no write                   |
 | Custom model not exactly tested  | disabled / `MODEL_BUILT_IN_SEARCH_UNSUPPORTED`    |
+| Configured provider receives a canonical alias | restore authoritative provider ID before lookup |
+| Unbound compatible receives an accepted alias | canonical `openai_compatible` identity |
+| OpenAI Responses built-in request | required `web_search`; at least one source or truthful `no_results` |
+| Weather/vertical result has no URL | provider-only latest-user directive requests public URL evidence |
+| Responses startup transport/408/429/5xx | one exact retry after 200 ms |
+| Responses startup other 4xx or cancellation | no retry; redacted failure |
+| Assistant history encoded as `input_text` | invalid request; must use `output_text` |
 | Real test returns zero sources   | `MODEL_BUILT_IN_SEARCH_TEST_FAILED`; no attest    |
 | Config changes during real test  | `MODEL_BUILT_IN_SEARCH_CONFIG_CHANGED`; no attest |
 | Knowledge miss                   | successful empty result; continue                |
@@ -381,6 +444,11 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
   Direct.
 - Good: an unknown model answers through same-model Planner immediately while
   one user-data-free probe warms later turns.
+- Good: the frontend sends `openai_compatible`, the configured runtime restores
+  `SERVER_DEFAULT`, the exact attestation resolves, and one required Responses
+  Web call persists normalized sources.
+- Base: an unbound OpenAI-compatible provider still canonicalizes its accepted
+  aliases to `openai_compatible` and has no configured-ID capability lookup.
 - Good: Tavily transport fails once, the same resolved execution succeeds on
   its only retry, and one truthful Web result enters the Tool continuation.
 - Good: a later native continuation stream fails before answer text; the same
@@ -446,6 +514,19 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
     override filtering, Inherit deletion when a model is deselected, query and
     argument redaction, four route summaries, source counts, and reason
     allowlisting.
+16. OpenAI Responses request tests must assert `web_search`,
+    `tool_choice=required`, source includes, and unchanged streaming. Resolver
+    tests must cover both configured-ID restoration and unbound canonicalization;
+    a real isolated chat replay must assert the authoritative persisted model
+    reference, resolved/completed Web stages, at least one Search source, and
+    temporary-conversation deletion.
+17. Responses regressions must prove only the request copy's latest user item
+    receives the URL-source requirement, final-only citations are normalized,
+    one `503` startup response is retried, non-transient `4xx` is not retried,
+    and upstream bodies/credentials remain redacted.
+18. Responses history tests must assert user `input_text` plus assistant
+    `output_text`. The real Search replay must contain a completed assistant
+    turn before the exact browser query and still persist URL Citations.
 
 ## 7. Wrong vs Correct
 
@@ -472,6 +553,11 @@ failureCategory := "planner_failed"
 
 ```text
 create server conversation -> send first turn with pre-create composer mode
+```
+
+```json
+// Wrong: stale tool name plus optional execution.
+{ "tools": [{ "type": "web_search_preview" }] }
 ```
 
 Correct after the owning G19 promotion:
@@ -502,6 +588,14 @@ result, err := service.Execute(ctx, execution, request)
 
 ```text
 create server conversation -> read returned persisted mode -> send first turn
+```
+
+```json
+// Correct: explicit built-in Search must execute the sole attested Web tool.
+{
+  "tools": [{ "type": "web_search" }],
+  "tool_choice": "required"
+}
 ```
 
 ```go

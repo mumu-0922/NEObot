@@ -10,11 +10,15 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"neo-chat/mm-chat/backend/internal/websearch"
 )
 
 const openAIResponsesPath = "/responses"
+
+const openAIResponsesWebSearchInstruction = "Use Web Search to search public web pages for this request and cite accessible URL sources. " +
+	"Do not rely only on a non-URL vertical result."
 
 var (
 	errOpenAIResponsesFrame  = errors.New("openai responses stream parse failed")
@@ -61,11 +65,14 @@ func (p *OpenAIProvider) StreamChatWithModelBuiltInSearch(
 	}
 
 	payload, err := json.Marshal(openAIResponsesRequest{
-		Model:        modelRef.ModelID,
-		Stream:       true,
-		Input:        openAIResponsesInput(providerMessagesOrPrompt(input)),
+		Model:  modelRef.ModelID,
+		Stream: true,
+		Input: openAIResponsesInput(openAIResponsesWebSearchMessages(
+			providerMessagesOrPrompt(input),
+		)),
 		Instructions: strings.TrimSpace(input.SystemPrompt),
-		Tools:        []openAIResponsesTool{{Type: "web_search_preview"}},
+		Tools:        []openAIResponsesTool{{Type: "web_search"}},
+		ToolChoice:   "required",
 		Include: []string{
 			"web_search_call.results",
 			"web_search_call.action.sources",
@@ -85,28 +92,12 @@ func (p *OpenAIProvider) StreamChatWithModelBuiltInSearch(
 	if p.timeout > 0 {
 		requestCtx, cancel = context.WithTimeout(ctx, p.timeout)
 	}
-	req, err := http.NewRequestWithContext(
-		requestCtx,
-		http.MethodPost,
-		p.responsesEndpoint,
-		bytes.NewReader(payload),
-	)
+	resp, err := p.doResponsesRequest(requestCtx, payload)
 	if err != nil {
 		if cancel != nil {
 			cancel()
 		}
-		return nil, errors.New("openai responses request build failed")
-	}
-	req.Header.Set("Authorization", "Bearer "+p.apiKey)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "text/event-stream")
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		if cancel != nil {
-			cancel()
-		}
-		return nil, errors.New("openai responses request failed")
+		return nil, err
 	}
 	if resp == nil || resp.Body == nil {
 		if cancel != nil {
@@ -114,15 +105,6 @@ func (p *OpenAIProvider) StreamChatWithModelBuiltInSearch(
 		}
 		return nil, errors.New("openai responses response is invalid")
 	}
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		_ = resp.Body.Close()
-		if cancel != nil {
-			cancel()
-		}
-		return nil, errors.New("openai responses provider returned a non-success status")
-	}
-
 	events := make(chan ProviderEvent)
 	go func() {
 		defer close(events)
@@ -135,12 +117,77 @@ func (p *OpenAIProvider) StreamChatWithModelBuiltInSearch(
 	return events, nil
 }
 
+func (p *OpenAIProvider) doResponsesRequest(
+	ctx context.Context,
+	payload []byte,
+) (*http.Response, error) {
+	for attempt := 0; attempt < 2; attempt++ {
+		req, err := http.NewRequestWithContext(
+			ctx,
+			http.MethodPost,
+			p.responsesEndpoint,
+			bytes.NewReader(payload),
+		)
+		if err != nil {
+			return nil, errors.New("openai responses request build failed")
+		}
+		req.Header.Set("Authorization", "Bearer "+p.apiKey)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "text/event-stream")
+
+		resp, err := p.client.Do(req)
+		if err != nil {
+			if attempt == 0 && waitOpenAIResponsesRetry(ctx) {
+				continue
+			}
+			return nil, errors.New("openai responses request failed")
+		}
+		if resp != nil && resp.Body != nil &&
+			resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
+			return resp, nil
+		}
+
+		statusCode := 0
+		if resp != nil {
+			statusCode = resp.StatusCode
+			if resp.Body != nil {
+				_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+				_ = resp.Body.Close()
+			}
+		}
+		if attempt == 0 && isTransientOpenAIResponsesStatus(statusCode) &&
+			waitOpenAIResponsesRetry(ctx) {
+			continue
+		}
+		return nil, errors.New("openai responses provider returned a non-success status")
+	}
+	return nil, errors.New("openai responses request failed")
+}
+
+func isTransientOpenAIResponsesStatus(statusCode int) bool {
+	return statusCode == http.StatusRequestTimeout ||
+		statusCode == http.StatusTooManyRequests ||
+		statusCode >= http.StatusInternalServerError
+}
+
+func waitOpenAIResponsesRetry(ctx context.Context) bool {
+	timer := time.NewTimer(200 * time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
 type openAIResponsesRequest struct {
 	Model        string                          `json:"model"`
 	Stream       bool                            `json:"stream"`
 	Input        []openAIResponsesInputItem      `json:"input"`
 	Instructions string                          `json:"instructions,omitempty"`
 	Tools        []openAIResponsesTool           `json:"tools"`
+	ToolChoice   string                          `json:"tool_choice"`
 	Include      []string                        `json:"include"`
 	Reasoning    *openAIResponsesReasoningConfig `json:"reasoning,omitempty"`
 }
@@ -170,7 +217,11 @@ func openAIResponsesInput(messages []ProviderMessage) []openAIResponsesInputItem
 	for _, message := range messages {
 		content := make([]openAIResponsesInputPart, 0, len(message.Attachments)+1)
 		if text := strings.TrimSpace(message.Content); text != "" {
-			content = append(content, openAIResponsesInputPart{Type: "input_text", Text: text})
+			partType := "input_text"
+			if strings.EqualFold(strings.TrimSpace(message.Role), "assistant") {
+				partType = "output_text"
+			}
+			content = append(content, openAIResponsesInputPart{Type: partType, Text: text})
 		}
 		for _, attachment := range message.Attachments {
 			mimeType := strings.TrimSpace(attachment.MimeType)
@@ -189,6 +240,21 @@ func openAIResponsesInput(messages []ProviderMessage) []openAIResponsesInputItem
 		})
 	}
 	return input
+}
+
+func openAIResponsesWebSearchMessages(messages []ProviderMessage) []ProviderMessage {
+	prepared := append([]ProviderMessage(nil), messages...)
+	for index := len(prepared) - 1; index >= 0; index-- {
+		if strings.EqualFold(strings.TrimSpace(prepared[index].Role), "user") {
+			content := strings.TrimSpace(prepared[index].Content)
+			if content != "" {
+				prepared[index].Content = content + "\n\n" +
+					openAIResponsesWebSearchInstruction
+			}
+			break
+		}
+	}
+	return prepared
 }
 
 func openAIResponsesReasoning(
@@ -276,7 +342,8 @@ func dispatchOpenAIResponsesData(
 		Annotation map[string]any `json:"annotation"`
 		Item       map[string]any `json:"item"`
 		Response   struct {
-			Usage *struct {
+			Output []map[string]any `json:"output"`
+			Usage  *struct {
 				InputTokens  int `json:"input_tokens"`
 				OutputTokens int `json:"output_tokens"`
 				TotalTokens  int `json:"total_tokens"`
@@ -287,7 +354,6 @@ func dispatchOpenAIResponsesData(
 		sendProviderEvent(ctx, events, ProviderEvent{Error: errOpenAIResponsesFrame})
 		return false, false
 	}
-
 	switch event.Type {
 	case "response.output_text.delta":
 		if event.Delta != "" && !sendProviderEvent(ctx, events, ProviderEvent{
@@ -310,6 +376,11 @@ func dispatchOpenAIResponsesData(
 			return false, false
 		}
 	case "response.completed":
+		for _, item := range event.Response.Output {
+			if !dispatchOpenAIResponseItem(ctx, events, sources, item) {
+				return false, false
+			}
+		}
 		if event.Response.Usage != nil && !sendProviderEvent(ctx, events, ProviderEvent{
 			Type: ProviderEventUsage,
 			Usage: &TokenUsage{
