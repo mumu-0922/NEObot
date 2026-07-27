@@ -8904,3 +8904,40 @@ RAG/Voice row validation, and cache hit, replacement, cross-user miss, stale
 source, hard TTL, both LRU paths, and cleanup claim replay. Production live
 activation remains pending a fresh dedicated key entered through the
 administrator UI; the earlier one-off smoke credential was not reused.
+
+## 2026-07-27 — SiliconFlow TTS fresh-key production closure
+
+A fresh dedicated SiliconFlow Key was saved only through encrypted
+administrator ingress. The exact CosyVoice2/qualified-`claire` retest returned
+HTTP 200 with non-empty `audio/mpeg`, activation returned HTTP 200, and public
+runtime truth changed to TTS available while STT stayed unavailable. The first
+read-aloud then exposed `permission denied for table tts_audio_cache` before a
+second provider call: migration `051` had created the tables without granting
+the API capability role. Forward migration `052_tts_runtime_role_grants`
+grants only SELECT/INSERT/UPDATE/DELETE on the two TTS tables to
+`go_api_runtime`; ownership and TRUNCATE remain denied. Its down/up/down/up role
+drill, table-lock proof, all Go tests/vet, source Backend rebuild, migration,
+and health restart passed.
+
+The final owner-authorized replay used an isolated source message. Its first
+synthesis returned `cached=false`, `audio/mpeg`, and 65,023 bytes; the File
+content route returned the exact same byte count and independent MIME detection
+confirmed audio. The identical second request returned `cached=true` with the
+same file metadata, while Postgres held exactly one cache row and one live
+artifact. Deleting the conversation and restarting the cleanup worker reduced
+cache/queue state to zero, soft-deleted the File, removed its object, and made
+the content URL return 404. Temporary request/audio/session fixtures were
+removed; the formal Voice provider remains active. This standalone deployment
+uses the unset/false login mode, so middleware authorizes requests as the fixed
+Development Owner; a no-Bearer request here is not anonymous and is not counted
+as a missing-token 401 proof. Required-login ownership behavior remains covered
+by deterministic tests and does not justify another paid call.
+
+The final isolated standalone gate passed Frontend format/lint/typecheck/build
+and 193 files/943 tests, all Go packages, and RAG Ruff/mypy with 1,906 passed
+and 7 skipped. Live Backend, frontend proxy, PostgreSQL, Redis, MinIO, and RAG
+remained healthy after the replay; migration head stayed at `052`, all TTS
+fixture cache rows stayed absent, the cleanup queue stayed empty, and startup logs
+remained free of TTS permission or cleanup failures. One later non-fixture live
+cache row was preserved as user data rather than being folded into test
+cleanup.

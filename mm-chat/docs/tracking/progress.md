@@ -5,10 +5,9 @@ Update this file whenever a phase or task is completed. Every `[x]` entry must h
 ## Current Remaining Work — Authoritative Ledger
 
 The owner-approved single-server migration and product scope are complete
-through G19. The only unresolved product/operations gates are:
+through G19 and the fresh-key SiliconFlow TTS production replay. The only
+unresolved product/operations gates are:
 
-- SiliconFlow TTS production-shape activation/replay with a fresh dedicated
-  administrator-entered key. The previous direct-smoke key is forbidden.
 - G10.4b former-root deletion and post-delete standalone proof. This remains
   blocked on a separate exact, one-shot owner authorization and is not implied
   by any other approval.
@@ -1000,9 +999,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
 - [x] G5 Search and Web-Enrichment Toggle: reopened and completed through
       G11.9/G19 with server-owned `off | model_builtin | external` authority,
       external provider administration, Auto Tool execution, and citations.
-- [ ] G6 Voice/TTS provider closure: Image is live and SiliconFlow TTS code is
-      complete through stored Go artifacts; the fresh-key production replay is
-      still open. STT and Code remain intentionally disabled.
+- [x] G6 Voice/TTS provider closure: Image and SiliconFlow TTS are live through
+      stored Go artifacts, exact-message cache reuse, and cleanup. STT and Code
+      remain intentionally disabled.
   - [x] G6.1 Server-mode fail-closed capability gates: disabled
         `voice`, `imageGeneration`, and `codeExecution` capabilities prevent
         service-layer fallthrough to transitional Next routes.
@@ -1046,10 +1045,11 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
                 TTS-only runtime capability, authenticated artifact playback,
                 one-artifact message reuse, three-day idle expiry, per-user
                 100 MiB LRU, and replay-safe object cleanup are implemented.
-          - [ ] G6.5c.2b.5 Fresh-key production-shape replay: administrator UI
-                save/test/activate, read-aloud playback, cache-hit proof, and
-                destructive fixture cleanup require explicit real-provider
-                authorization. The one-off smoke key must not be reused.
+          - [x] G6.5c.2b.5 Fresh-key production-shape replay: administrator UI
+                save/test/activate, fixed-owner artifact playback, exact second
+                click `cached=true`, source-deletion cleanup, and post-cleanup
+                `404` passed under explicit real-provider authorization. The
+                one-off smoke key was not reused.
       - [x] G6.5c.3 Real image executor with stored image artifacts and
             configured-provider smoke.
         - [x] G6.5c.3a Image executor opt-in seam: Go can call a configured

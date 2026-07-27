@@ -64,6 +64,11 @@ only `SELECT, INSERT, UPDATE, DELETE` on the two TTS runtime tables to
 - The API login must inherit `go_api_runtime`, and that capability role must
   hold DML on both TTS cache tables. Missing grants fail before Provider I/O;
   repair them through a new forward migration, never by editing applied `051`.
+- Establish the deployed authentication mode before interpreting live access
+  evidence. With `AUTH_REQUIRE_LOGIN=false` (including the unset standalone
+  default), middleware injects the fixed Development Owner, so a request
+  without a Bearer token is still owner-authorized. This proves single-user
+  ownership but must not be reported as a missing-token `401` proof.
 - Frontend server mode exposes `voiceSynthesis=true`,
   `voiceTranscription=false`, and legacy `voice=false`. Hosted default and
   explicit browser speech are the only server-mode TTS choices; there is no
@@ -112,7 +117,10 @@ only `SELECT, INSERT, UPDATE, DELETE` on the two TTS runtime tables to
 - Release: all Go tests/vet, frontend format/lint/typecheck/tests/build, Compose
   example and active render, diff secret scan, and standalone full gate.
 - Live: only with explicit authorization and a fresh administrator-entered Key;
-  prove activation, playback, cache hit, and fixture cleanup.
+  prove activation, playback, cache hit, and fixture cleanup. Record whether
+  the actor came from a required login session or the standalone fixed-owner
+  middleware; test missing-token/cross-user rejection only with
+  `AUTH_REQUIRE_LOGIN=true`.
 
 ## 7. Wrong vs Correct
 
