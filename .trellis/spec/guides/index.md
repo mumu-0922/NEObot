@@ -19,6 +19,7 @@ This guide helps you **ask the right questions before coding**.
 | Guide                                                 | Purpose                                                           | When to Use                                                  |
 | ----------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------ |
 | [Agent Orchestration Guide](./agent-orchestration.md) | Allocate Sub-agents and Review Agents without sacrificing quality | When work may benefit from parallelism or independent review |
+| [Code Reuse Guide](./code-reuse-thinking-guide.md)    | Find and extend existing behavior before creating parallel logic  | Before adding utilities, patterns, or mirrored mechanisms    |
 
 Repository layout, cleanup, CI, and runtime-state rules are executable
 operations contracts, not thinking guides. Read
@@ -37,6 +38,14 @@ before changing those boundaries.
 - [ ] Coordination cost may be lower than the time or quality benefit
 
 → Read [Agent Orchestration Guide](./agent-orchestration.md)
+
+### When to Think About Code Reuse
+
+- [ ] A similar helper, contract, or configuration path may already exist
+- [ ] Multiple mechanisms produce or update the same file set
+- [ ] A copied implementation could drift from its source
+
+→ Read [Code Reuse Guide](./code-reuse-thinking-guide.md)
 
 ---
 
