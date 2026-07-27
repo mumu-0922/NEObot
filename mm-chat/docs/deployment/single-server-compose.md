@@ -70,8 +70,10 @@ provider keyring plus an administrator-managed `VOICE:SILICONFLOW` vault row.
 Never promote a key used by the direct live-smoke harness; create a fresh,
 dedicated production key in the SiliconFlow console.
 
-After migration `051_siliconflow_tts_cache` and the new backend/frontend images
-are deployed:
+After migrations `051_siliconflow_tts_cache` and
+`052_tts_runtime_role_grants` plus the new backend/frontend images are
+deployed, verify `go_api_runtime` has DML but not ownership/`TRUNCATE` on both
+TTS tables, then:
 
 1. Open **Settings -> Voice -> SiliconFlow hosted TTS**.
 2. Paste the fresh key. The browser sends an encrypted

@@ -136,22 +136,28 @@ Then run the smoke checks from the pre-release gate.
 - **Redis issue**: flush or recreate Redis only; Postgres/MinIO remain
   authoritative.
 
-### Migration 051 / SiliconFlow TTS rollback
+### Migrations 051-052 / SiliconFlow TTS rollback
 
 Migration `051_siliconflow_tts_cache` adds the exact Voice provider identity
 constraint plus `tts_audio_cache` and `tts_audio_cleanup_queue`. Its down
 migration drops those tables and therefore loses cleanup identity. Do not run
 it while generated objects remain live.
 
+Migration `052_tts_runtime_role_grants` grants the API capability role the
+minimum DML required for synthesis lookup/commit and cleanup claims. Its down
+migration revokes those grants and must run before 051 down. A missing 052 is a
+forward-migration defect: do not hot-grant production or edit applied 051.
+
 For a pre-traffic rollback, deactivate `VOICE:SILICONFLOW`, stop the backend
 and its cleanup worker, drain or explicitly reconcile the cleanup queue through
 the normal File/object deletion path, verify both TTS tables are empty, and
-take verified Postgres and MinIO backups. Then run one `migrate down`, deploy
-the previous images, and verify Voice is fail-closed. Keep the provider
-keyring: the Voice vault row and backups are unreadable without it.
+take verified Postgres and MinIO backups. Run one `migrate down` to revoke 052,
+then a separately approved second down to drop 051, deploy the previous images,
+and verify Voice is fail-closed. Keep the provider keyring: the Voice vault row
+and backups are unreadable without it.
 
 After user traffic or when cached files cannot be reconciled, use a forward fix
-instead of schema rollback. Dropping 051 first can leave untracked audio
+instead of schema rollback. Dropping 051 before 052 or before cleanup can leave untracked audio
 objects; deleting MinIO objects directly first can leave authenticated File and
 cache metadata pointing at missing bytes.
 

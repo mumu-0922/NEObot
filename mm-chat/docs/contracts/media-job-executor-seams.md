@@ -135,24 +135,25 @@ jobartifacts.StoreInput{
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                         | Result                                                                                              |
-| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| No current executor authority                                     | `501 VOICE_JOBS_UNAVAILABLE` or `501 IMAGE_JOBS_UNAVAILABLE`                                        |
-| Executor configured but artifact store absent for synthesis/image | `503 VOICE_ARTIFACT_STORE_UNAVAILABLE` or `503 IMAGE_ARTIFACT_STORE_UNAVAILABLE`                    |
-| Admitted audit recorder absent or failing                         | `503 JOB_AUDIT_UNAVAILABLE`; executor is not called                                                 |
-| Artifact kind/content-type/size/body invalid                      | artifact storage returns an error; no inline payload fallback                                       |
-| Configured voice provider returns a non-2xx, request failure, or non-audio `2xx` body | `502 VOICE_PROVIDER_ERROR`; response body remains sanitized                         |
-| Configured image provider returns a non-2xx or request failure    | `502 IMAGE_PROVIDER_ERROR`; response body remains sanitized                                         |
-| Chat image provider returns `content_policy_violation`            | chat SSE/database uses `IMAGE_CONTENT_POLICY_VIOLATION`; localized UI asks for a rewrite; no retry  |
-| Chat image provider connection fails again after bounded retry    | chat SSE/database uses `IMAGE_PROVIDER_CONNECTION_ERROR`; localized UI asks the user to retry later |
-| Chat image provider exceeds the shared request deadline           | chat SSE/database uses `IMAGE_PROVIDER_TIMEOUT`; localized UI offers a recoverable retry            |
-| GPT Image generation is slower than an idle intermediary permits | use Image API SSE with one partial image; persist only the final completed/last partial image        |
-| Legacy alias names a model absent from Server Default             | resolver fails closed before quota; `IMAGE_EXECUTOR_RESOLUTION_FAILED` audit                        |
-| Failed assistant image row is reloaded                            | terminal `generationError`; no progress timer resurrection                                          |
-| Request validation fails before admission                         | `400` with endpoint-specific validation code                                                        |
-| TTS message is missing/cross-user or changed                      | `404 VOICE_SOURCE_MESSAGE_NOT_FOUND` or `409 VOICE_SOURCE_MESSAGE_CHANGED`                           |
-| TTS cache/artifact cleanup authority is unavailable               | `503 VOICE_CACHE_UNAVAILABLE`; no unmanaged artifact is retained                                    |
-| Context cancelled before admission/execution                      | `408 REQUEST_CANCELLED` at handler boundary                                                         |
+| Condition                                                                             | Result                                                                                              |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| No current executor authority                                                         | `501 VOICE_JOBS_UNAVAILABLE` or `501 IMAGE_JOBS_UNAVAILABLE`                                        |
+| Executor configured but artifact store absent for synthesis/image                     | `503 VOICE_ARTIFACT_STORE_UNAVAILABLE` or `503 IMAGE_ARTIFACT_STORE_UNAVAILABLE`                    |
+| Admitted audit recorder absent or failing                                             | `503 JOB_AUDIT_UNAVAILABLE`; executor is not called                                                 |
+| Artifact kind/content-type/size/body invalid                                          | artifact storage returns an error; no inline payload fallback                                       |
+| Configured voice provider returns a non-2xx, request failure, or non-audio `2xx` body | `502 VOICE_PROVIDER_ERROR`; response body remains sanitized                                         |
+| Configured image provider returns a non-2xx or request failure                        | `502 IMAGE_PROVIDER_ERROR`; response body remains sanitized                                         |
+| Chat image provider returns `content_policy_violation`                                | chat SSE/database uses `IMAGE_CONTENT_POLICY_VIOLATION`; localized UI asks for a rewrite; no retry  |
+| Chat image provider connection fails again after bounded retry                        | chat SSE/database uses `IMAGE_PROVIDER_CONNECTION_ERROR`; localized UI asks the user to retry later |
+| Chat image provider exceeds the shared request deadline                               | chat SSE/database uses `IMAGE_PROVIDER_TIMEOUT`; localized UI offers a recoverable retry            |
+| GPT Image generation is slower than an idle intermediary permits                      | use Image API SSE with one partial image; persist only the final completed/last partial image       |
+| Legacy alias names a model absent from Server Default                                 | resolver fails closed before quota; `IMAGE_EXECUTOR_RESOLUTION_FAILED` audit                        |
+| Failed assistant image row is reloaded                                                | terminal `generationError`; no progress timer resurrection                                          |
+| Request validation fails before admission                                             | `400` with endpoint-specific validation code                                                        |
+| TTS message is missing/cross-user or changed                                          | `404 VOICE_SOURCE_MESSAGE_NOT_FOUND` or `409 VOICE_SOURCE_MESSAGE_CHANGED`                          |
+| TTS cache/artifact cleanup authority is unavailable                                   | `503 VOICE_CACHE_UNAVAILABLE`; no unmanaged artifact is retained                                    |
+| `go_api_runtime` lacks DML on either TTS runtime table                                | PostgreSQL permission failure before Provider I/O; apply forward migration `052`                    |
+| Context cancelled before admission/execution                                          | `408 REQUEST_CANCELLED` at handler boundary                                                         |
 
 ## 5. Good/Base/Bad Cases
 

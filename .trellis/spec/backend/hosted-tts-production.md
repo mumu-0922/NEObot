@@ -37,7 +37,9 @@ voice              FunAudioLLM/CosyVoice2-0.5B:claire
 
 Migration `051_siliconflow_tts_cache` owns
 `provider_configs_voice_identity_check`, `tts_audio_cache`, and
-`tts_audio_cleanup_queue`.
+`tts_audio_cleanup_queue`. Migration `052_tts_runtime_role_grants` grants
+only `SELECT, INSERT, UPDATE, DELETE` on the two TTS runtime tables to
+`go_api_runtime`; it grants neither ownership nor `TRUNCATE`.
 
 ## 3. Contracts
 
@@ -59,6 +61,9 @@ Migration `051_siliconflow_tts_cache` owns
 - Reuse one artifact per user/message, expire after three idle days, enforce a
   100 MiB per-user LRU ceiling, and delete only through the actor-authorized
   File/object boundary. Cleanup claims are replayable after ten minutes.
+- The API login must inherit `go_api_runtime`, and that capability role must
+  hold DML on both TTS cache tables. Missing grants fail before Provider I/O;
+  repair them through a new forward migration, never by editing applied `051`.
 - Frontend server mode exposes `voiceSynthesis=true`,
   `voiceTranscription=false`, and legacy `voice=false`. Hosted default and
   explicit browser speech are the only server-mode TTS choices; there is no
@@ -66,18 +71,19 @@ Migration `051_siliconflow_tts_cache` owns
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Plaintext/malformed admin secret | reject encrypted ingress |
-| Missing Key | `VOICE_PROVIDER_SECRET_REQUIRED` |
-| Test failure or non-audio `2xx` | sanitized provider/test failure; no body leakage |
-| Config changes during test | `VOICE_PROVIDER_CONFIG_CHANGED` |
-| Missing/ambiguous/stale authority | `VOICE_JOBS_UNAVAILABLE`; zero provider call |
-| Legacy synthesis provider selector | `400 UNSUPPORTED_VOICE_PROVIDER` |
-| Missing/cross-user message | `404 VOICE_SOURCE_MESSAGE_NOT_FOUND` |
-| Submitted text differs from source | `409 VOICE_SOURCE_MESSAGE_CHANGED` |
-| Missing cache/artifact dependency | `VOICE_CACHE_UNAVAILABLE` or `VOICE_ARTIFACT_STORE_UNAVAILABLE` |
-| Artifact metadata/download mismatch | frontend rejects playback |
+| Condition                           | Required result                                                           |
+| ----------------------------------- | ------------------------------------------------------------------------- |
+| Plaintext/malformed admin secret    | reject encrypted ingress                                                  |
+| Missing Key                         | `VOICE_PROVIDER_SECRET_REQUIRED`                                          |
+| Test failure or non-audio `2xx`     | sanitized provider/test failure; no body leakage                          |
+| Config changes during test          | `VOICE_PROVIDER_CONFIG_CHANGED`                                           |
+| Missing/ambiguous/stale authority   | `VOICE_JOBS_UNAVAILABLE`; zero provider call                              |
+| Legacy synthesis provider selector  | `400 UNSUPPORTED_VOICE_PROVIDER`                                          |
+| Missing/cross-user message          | `404 VOICE_SOURCE_MESSAGE_NOT_FOUND`                                      |
+| Submitted text differs from source  | `409 VOICE_SOURCE_MESSAGE_CHANGED`                                        |
+| Missing cache/artifact dependency   | `VOICE_CACHE_UNAVAILABLE` or `VOICE_ARTIFACT_STORE_UNAVAILABLE`           |
+| Runtime role lacks TTS table DML    | PostgreSQL permission failure before Provider I/O; deploy migration `052` |
+| Artifact metadata/download mismatch | frontend rejects playback                                                 |
 
 ## 5. Good / Base / Bad Cases
 
@@ -86,6 +92,8 @@ Migration `051_siliconflow_tts_cache` owns
   a second unchanged click returns `cached=true` without provider I/O.
 - Base: no active Voice row; public TTS availability is false, browser speech
   remains manually selectable, and server synthesis fails closed.
+- Bad: create TTS tables as the Migration Owner but omit `go_api_runtime` DML,
+  or hot-grant production without an embedded forward/down migration pair.
 - Bad: borrow `RAG:SILICONFLOW`, accept `provider="model"`, trust an HTTP 200
   containing JSON, or delete MinIO bytes without completing File/cache state.
 
@@ -94,9 +102,10 @@ Migration `051_siliconflow_tts_cache` owns
 - Unit: encrypted save/test/activate/invalidate, exact resolver tuple,
   non-audio response rejection, legacy selector rejection, sanitized errors,
   source-text validation, singleflight, rollback, and cleanup replay.
-- PostgreSQL: `051` down/up/down/up, representative existing provider rows,
+- PostgreSQL: `051` plus `052` down/up/down/up, representative existing provider rows,
   cache hit/replacement/cross-user miss, hard TTL, commit-time and worker LRU,
-  claim/release/reclaim/complete.
+  claim/release/reclaim/complete, and `SET LOCAL ROLE go_api_runtime` proving
+  DML/lock access while ownership and `TRUNCATE` remain denied.
 - Frontend: capability split, hosted metadata normalization, authenticated file
   fetch, MIME/size equality, no server-mode `/api/voice/*` call, Browser-only
   local path, and persisted disabled-to-enabled default selection.
@@ -118,6 +127,7 @@ RAG:SILICONFLOW key -> provider="model" -> 200 JSON body -> assume audio/mpeg
 ```text
 encrypted admin ingress -> VOICE:SILICONFLOW vault + exact attestation
   -> provider="default" + owned current message
+  -> go_api_runtime DML on cache/cleanup tables
   -> bounded audio-validated executor result
   -> File artifact + per-user cache
   -> authenticated download and exact metadata verification

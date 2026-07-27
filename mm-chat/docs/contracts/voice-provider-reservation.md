@@ -83,6 +83,11 @@ is visible and never silently changes engines.
 
 ## 5. Cache and Cleanup Contract
 
+- Migration `052_tts_runtime_role_grants` gives `go_api_runtime` only
+  `SELECT`, `INSERT`, `UPDATE`, and `DELETE` on `tts_audio_cache` and
+  `tts_audio_cleanup_queue`. The API role receives neither ownership nor
+  `TRUNCATE`; both synthesis lookup and the cleanup worker fail before Provider
+  I/O when these grants are missing.
 - Cache authority is per authenticated user and source message. The source
   message must still belong to that user and its current trimmed text must
   match the submitted text.
@@ -110,31 +115,35 @@ is visible and never silently changes engines.
 
 ## 6. Failure Matrix
 
-| Condition | Result |
-| --- | --- |
-| Plaintext or malformed admin secret | encrypted-ingress rejection |
-| Missing Voice Key | `VOICE_PROVIDER_SECRET_REQUIRED` |
-| Real connection test fails | `VOICE_PROVIDER_CONNECTION_TEST_FAILED` |
-| Record changes while testing | `VOICE_PROVIDER_CONFIG_CHANGED` |
-| Missing/ambiguous/stale runtime authority | `VOICE_JOBS_UNAVAILABLE`; zero provider call |
-| Missing artifact/cache dependency | `VOICE_ARTIFACT_STORE_UNAVAILABLE` or `VOICE_CACHE_UNAVAILABLE` |
-| Missing or cross-user source message | `VOICE_SOURCE_MESSAGE_NOT_FOUND` |
-| Submitted text differs from current source | `VOICE_SOURCE_MESSAGE_CHANGED` |
-| Text exceeds 12 KiB | `TEXT_TOO_LONG` |
-| Provider failure | sanitized `VOICE_PROVIDER_ERROR`; no browser fallback |
-| Artifact metadata/content mismatch | frontend rejects playback |
+| Condition                                  | Result                                                                   |
+| ------------------------------------------ | ------------------------------------------------------------------------ |
+| Plaintext or malformed admin secret        | encrypted-ingress rejection                                              |
+| Missing Voice Key                          | `VOICE_PROVIDER_SECRET_REQUIRED`                                         |
+| Real connection test fails                 | `VOICE_PROVIDER_CONNECTION_TEST_FAILED`                                  |
+| Record changes while testing               | `VOICE_PROVIDER_CONFIG_CHANGED`                                          |
+| Missing/ambiguous/stale runtime authority  | `VOICE_JOBS_UNAVAILABLE`; zero provider call                             |
+| Missing artifact/cache dependency          | `VOICE_ARTIFACT_STORE_UNAVAILABLE` or `VOICE_CACHE_UNAVAILABLE`          |
+| Runtime role lacks TTS table DML           | PostgreSQL permission failure before Provider I/O; apply migration `052` |
+| Missing or cross-user source message       | `VOICE_SOURCE_MESSAGE_NOT_FOUND`                                         |
+| Submitted text differs from current source | `VOICE_SOURCE_MESSAGE_CHANGED`                                           |
+| Text exceeds 12 KiB                        | `TEXT_TOO_LONG`                                                          |
+| Provider failure                           | sanitized `VOICE_PROVIDER_ERROR`; no browser fallback                    |
+| Artifact metadata/content mismatch         | frontend rejects playback                                                |
 
 ## 7. Verification and Rollback
 
 Required proof includes encrypted save/test/activate/delete, attestation
 invalidation and rotation, TTS-true/STT-false capability behavior, no legacy
 Next route in server mode, cache hit/replacement/cross-user/TTL/LRU/claim replay,
-051 down/up replay, all frontend and Go gates, Compose rendering, and a secret
-scan. Ordinary tests are zero-network.
+051/052 down/up replay, live `go_api_runtime` DML/lock proof, all frontend and
+Go gates, Compose rendering, and a secret scan. Ordinary tests are
+zero-network.
 
 Migration `051_siliconflow_tts_cache` adds the exact Voice identity constraint,
-`tts_audio_cache`, and `tts_audio_cleanup_queue`. Before rollback, stop the API
-and cleanup worker, drain queued objects, verify no cache rows remain, and take
-Postgres plus object-store backups. Only then roll back 051 and the application
-image. Rolling back the schema first can orphan generated audio. Keep the
-provider keyring while any Voice vault row or backup may need decryption.
+`tts_audio_cache`, and `tts_audio_cleanup_queue`; migration
+`052_tts_runtime_role_grants` adds the runtime DML authority. Before rollback,
+stop the API and cleanup worker, drain queued objects, verify no cache rows
+remain, and take Postgres plus object-store backups. Roll back 052 before 051,
+then deploy the previous application image. Rolling back the schema first can
+orphan generated audio. Keep the provider keyring while any Voice vault row or
+backup may need decryption.
