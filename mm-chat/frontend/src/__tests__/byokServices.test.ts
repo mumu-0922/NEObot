@@ -412,6 +412,7 @@ describe("BYOK service requests", () => {
     const restoreServerMode = setServerModeEnv();
     const fileId = "33333333-3333-4333-8333-333333333333";
     const messageId = "22222222-2222-4222-8222-222222222222";
+    const abortController = new AbortController();
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
       .mockImplementation(async (input, init) => {
@@ -440,11 +441,17 @@ describe("BYOK service requests", () => {
 
     try {
       await expect(
-        synthesizeSpeech("hello", { ttsProvider: "default" } as any, messageId),
+        synthesizeSpeech(
+          "hello",
+          { ttsProvider: "default" } as any,
+          messageId,
+          abortController.signal,
+        ),
       ).resolves.toBeUndefined();
 
       expect(fetchMock).toHaveBeenCalledTimes(2);
       expect(fetchMock.mock.calls[0]?.[0]).toBe("/mm-api/v1/voice/synthesize");
+      expect(fetchMock.mock.calls[0]?.[1]?.signal).toBe(abortController.signal);
       expect(getJsonRequestBody(fetchMock)).toEqual({
         messageId,
         text: "hello",
@@ -453,6 +460,7 @@ describe("BYOK service requests", () => {
       expect(fetchMock.mock.calls[1]?.[0]).toBe(
         `/mm-api/v1/files/${fileId}/content`,
       );
+      expect(fetchMock.mock.calls[1]?.[1]?.signal).toBe(abortController.signal);
       expect(
         fetchMock.mock.calls.some(([url]) =>
           String(url).startsWith("/api/voice/"),

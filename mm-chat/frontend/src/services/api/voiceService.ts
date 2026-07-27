@@ -269,7 +269,9 @@ export const synthesizeSpeech = async (
   text: string,
   settings: VoiceSettings,
   messageId?: string,
+  signal?: AbortSignal,
 ): Promise<DisposableAudioElement | void> => {
+  signal?.throwIfAborted();
   const client = createNeoChatApiClient();
   if (
     client.mode === "server" &&
@@ -296,10 +298,12 @@ export const synthesizeSpeech = async (
       const artifact = await client.voiceJobs.synthesizeVoice({
         messageId: normalizedMessageId,
         text,
+        signal,
       });
       const downloaded = await client.files.downloadFileContent({
         fileId: artifact.fileId,
         disposition: "inline",
+        signal,
       });
       const downloadedType = downloaded.contentType
         .split(";", 1)[0]
@@ -318,6 +322,7 @@ export const synthesizeSpeech = async (
 
     const response = await fetch("/api/voice/synthesize", {
       method: "POST",
+      signal,
       headers: {
         "Content-Type": "application/json",
       },
@@ -348,6 +353,7 @@ export const synthesizeSpeech = async (
       const apiKey = await resolveElevenLabsApiKey(settings);
       return fetch("/api/voice/synthesize", {
         method: "POST",
+        signal,
         headers: {
           "Content-Type": "application/json",
         },
@@ -381,6 +387,7 @@ export const synthesizeSpeech = async (
       const apiKey = await resolveMimoApiKey(settings);
       return fetch("/api/voice/synthesize", {
         method: "POST",
+        signal,
         headers: {
           "Content-Type": "application/json",
         },
@@ -410,6 +417,7 @@ export const synthesizeSpeech = async (
       const { modelProvider, modelId } = await getProviderForModel(ttsModel);
       return fetch("/api/voice/synthesize", {
         method: "POST",
+        signal,
         headers: {
           "Content-Type": "application/json",
         },
@@ -449,6 +457,7 @@ export const synthesizeSpeech = async (
         utterance.voice = voice;
       }
 
+      signal?.throwIfAborted();
       window.speechSynthesis.speak(utterance);
       resolve();
     });

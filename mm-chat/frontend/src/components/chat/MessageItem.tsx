@@ -6,6 +6,7 @@ import React, {
   useEffect,
   useMemo,
   useId,
+  useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
 import { useTranslations } from "next-intl";
@@ -65,7 +66,6 @@ import { getTaskModel, useSettingsStore } from "@/store/core/settingsStore";
 import { streamGenerateContent } from "@/services/api/chatService";
 import { synthesizeSpeech } from "@/services/api/voiceService";
 import { polishTextContent } from "@/services/artifactService";
-import type { DisposableAudioElement } from "@/lib/utils/disposableAudio";
 import { sanitizeDownloadFilename } from "@/lib/utils/filename";
 import {
   normalizeMarkdownGeneratedFile,
@@ -75,9 +75,9 @@ import { copyTextToClipboard } from "@/lib/utils/clipboard";
 import { getNextTypewriterFrame } from "@/lib/utils/typewriter";
 import { isImageGenerationModel } from "@/lib/utils/models";
 import {
-  createSpeechSynthesisPoller,
-  type DisposablePoller,
-} from "@/lib/utils/speechPolling";
+  readAloudCoordinator,
+  selectReadAloudMessageState,
+} from "@/lib/voice/readAloudCoordinator";
 import {
   createTimedStatusResetController,
   type TimedStatusResetController,
@@ -475,11 +475,6 @@ const MessageItem: React.FC<MessageItemProps> = ({
   const displayedContentRef = useRef(displayedContent);
 
   // TTS State
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isTTSLoading, setIsTTSLoading] = useState(false);
-  const [ttsError, setTtsError] = useState<string | null>(null);
-  const currentAudioRef = useRef<DisposableAudioElement | null>(null);
-  const speechPollerRef = useRef<DisposablePoller | null>(null);
   const copyStatusResetRef =
     useRef<TimedStatusResetController<CopyStatus> | null>(null);
   const readerCopyStatusResetRef =
@@ -500,13 +495,17 @@ const MessageItem: React.FC<MessageItemProps> = ({
   const { getCurrentSession, selectedModel, activeMessages } = useChatStore();
   const { openImagePreview } = useUIStore();
   const { voice } = useSettingsStore();
-
-  const stopCurrentAudio = () => {
-    currentAudioRef.current?.dispose();
-    currentAudioRef.current = null;
-    speechPollerRef.current?.dispose();
-    speechPollerRef.current = null;
-  };
+  const readAloudSnapshot = useSyncExternalStore(
+    readAloudCoordinator.subscribe,
+    readAloudCoordinator.getSnapshot,
+    readAloudCoordinator.getServerSnapshot,
+  );
+  const {
+    isActive: isReadAloudActive,
+    isLoading: isTTSLoading,
+    isPlaying,
+    error: ttsError,
+  } = selectReadAloudMessageState(readAloudSnapshot, message.id);
 
   const setCopyFeedback = (status: Exclude<CopyStatus, "idle">) => {
     const controller =
@@ -614,19 +613,19 @@ const MessageItem: React.FC<MessageItemProps> = ({
     };
   }, [readingMode]);
 
-  // Cleanup Audio on unmount
+  // Dispose component-owned feedback resources only on final unmount.
   useEffect(() => {
     return () => {
       copyStatusResetRef.current?.dispose();
       readerCopyStatusResetRef.current?.dispose();
       clearDeleteConfirmTimer();
-      stopCurrentAudio();
-      // Also stop browser synthesis if running
-      if (window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-      }
     };
   }, []);
+
+  // A reused message component must release playback for its previous owner.
+  useEffect(() => {
+    return () => readAloudCoordinator.release(message.id);
+  }, [message.id]);
 
   useEffect(() => {
     if (deleteConfirmTimerRef.current) {
@@ -965,57 +964,16 @@ const MessageItem: React.FC<MessageItemProps> = ({
   };
 
   const handleToggleReadAloud = async () => {
-    if (isPlaying) {
-      // Stop
-      stopCurrentAudio();
-      if (window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-      }
-      setIsPlaying(false);
-    } else {
-      // Start
-      setIsTTSLoading(true);
-      setTtsError(null);
-      try {
-        const audio = await synthesizeSpeech(
-          message.content,
-          voice,
-          message.id,
-        );
-
-        if (audio) {
-          // API Based (Audio Element)
-          currentAudioRef.current = audio;
-          audio.onended = () => {
-            setIsPlaying(false);
-            currentAudioRef.current = null;
-          };
-          await audio.play();
-          setIsPlaying(true);
-        } else {
-          // Browser Based (Fire and forget, but we can detect start)
-          speechPollerRef.current?.dispose();
-          setIsPlaying(true);
-          speechPollerRef.current = createSpeechSynthesisPoller({
-            isSpeaking: () => window.speechSynthesis.speaking,
-            onIdle: () => {
-              speechPollerRef.current = null;
-              setIsPlaying(false);
-            },
-          });
-        }
-      } catch (e) {
-        logMessageItemError("TTS Failed", e);
-        setTtsError(
-          t("failedToSynthesize", {
-            error: e instanceof Error ? e.message : String(e),
-          }),
-        );
-        setIsPlaying(false);
-      } finally {
-        setIsTTSLoading(false);
-      }
-    }
+    await readAloudCoordinator.toggle({
+      messageId: message.id,
+      synthesize: (signal) =>
+        synthesizeSpeech(message.content, voice, message.id, signal),
+      formatError: (error) =>
+        t("failedToSynthesize", {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      onError: (error) => logMessageItemError("TTS Failed", error),
+    });
   };
 
   // Heuristic: If content is empty for a model, we are probably waiting for tokens (Regenerating),
@@ -1678,12 +1636,14 @@ const MessageItem: React.FC<MessageItemProps> = ({
                           <Volume2 size={13} />
                         )
                       }
-                      tooltip={isPlaying ? t("stop") : t("readAloud")}
+                      tooltip={isReadAloudActive ? t("stop") : t("readAloud")}
                       onClick={handleToggleReadAloud}
-                      ariaPressed={isPlaying}
+                      ariaPressed={isReadAloudActive}
                       ariaBusy={isTTSLoading}
                       className={
-                        isPlaying ? "text-blue-500 dark:text-blue-400" : ""
+                        isReadAloudActive
+                          ? "text-blue-500 dark:text-blue-400"
+                          : ""
                       }
                     />
                   </>
@@ -1722,12 +1682,14 @@ const MessageItem: React.FC<MessageItemProps> = ({
                           <Volume2 size={13} />
                         )
                       }
-                      tooltip={isPlaying ? t("stop") : t("readAloud")}
+                      tooltip={isReadAloudActive ? t("stop") : t("readAloud")}
                       onClick={handleToggleReadAloud}
-                      ariaPressed={isPlaying}
+                      ariaPressed={isReadAloudActive}
                       ariaBusy={isTTSLoading}
                       className={
-                        isPlaying ? "text-blue-500 dark:text-blue-400" : ""
+                        isReadAloudActive
+                          ? "text-blue-500 dark:text-blue-400"
+                          : ""
                       }
                     />
                   </>

@@ -6,6 +6,16 @@ type AudioFactory = (src: string) => HTMLAudioElement;
 type ObjectUrlFactory = (blob: Blob) => string;
 type ObjectUrlRevoke = (url: string) => void;
 
+function createAttachedAudio(src: string): HTMLAudioElement {
+  const audio = document.createElement("audio");
+  audio.preload = "auto";
+  audio.hidden = true;
+  audio.setAttribute("aria-hidden", "true");
+  document.body.append(audio);
+  audio.src = src;
+  return audio;
+}
+
 export function attachObjectUrlDisposal(
   audio: HTMLAudioElement,
   objectUrl: string,
@@ -19,6 +29,9 @@ export function attachObjectUrlDisposal(
     audio.removeEventListener("ended", dispose);
     audio.removeEventListener("error", dispose);
     audio.pause();
+    audio.removeAttribute("src");
+    audio.load();
+    audio.remove();
     revokeObjectUrl(objectUrl);
   };
 
@@ -30,7 +43,7 @@ export function attachObjectUrlDisposal(
 
 export function createDisposableAudioFromBlob(
   blob: Blob,
-  audioFactory: AudioFactory = (src) => new Audio(src),
+  audioFactory: AudioFactory = createAttachedAudio,
   createObjectUrl: ObjectUrlFactory = (value) => URL.createObjectURL(value),
   revokeObjectUrl: ObjectUrlRevoke = (url) => URL.revokeObjectURL(url),
 ): DisposableAudioElement {

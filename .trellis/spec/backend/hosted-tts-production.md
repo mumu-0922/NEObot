@@ -73,22 +73,45 @@ only `SELECT, INSERT, UPDATE, DELETE` on the two TTS runtime tables to
   `voiceTranscription=false`, and legacy `voice=false`. Hosted default and
   explicit browser speech are the only server-mode TTS choices; there is no
   silent browser fallback.
+- Read-aloud has one tab-scoped playback owner across all messages and
+  conversations. The owner tracks one active message, generation,
+  `AbortController`, and either one disposable audio element or one Browser
+  Speech poller. Clicking the active message stops it; starting another message
+  invalidates and disposes the older operation before the new one can play;
+  unmounting the active message releases the owner.
+- The frontend passes the owner's `AbortSignal` through hosted synthesis and
+  authenticated File download. Any audio returned to a stale generation is
+  disposed without calling `play()`. A `play()` rejection caused by stop,
+  replacement, or unmount is normal cancellation and must not render a TTS
+  error; a current synthesis, download, or playback failure remains visible.
+- Blob-backed playback creates a hidden, `aria-hidden` `<audio>` node, appends
+  it to `document.body`, and only then assigns the Object URL and calls
+  `play()`. Disposal is idempotent and ordered as pause -> clear `src` ->
+  `load()` -> remove the node -> revoke the Object URL. Do not rely on a
+  detached `new Audio(objectUrl)` for hosted playback: Chromium may reject its
+  pending `play()` as media removed from the document.
 
 ## 4. Validation & Error Matrix
 
-| Condition                           | Required result                                                           |
-| ----------------------------------- | ------------------------------------------------------------------------- |
-| Plaintext/malformed admin secret    | reject encrypted ingress                                                  |
-| Missing Key                         | `VOICE_PROVIDER_SECRET_REQUIRED`                                          |
-| Test failure or non-audio `2xx`     | sanitized provider/test failure; no body leakage                          |
-| Config changes during test          | `VOICE_PROVIDER_CONFIG_CHANGED`                                           |
-| Missing/ambiguous/stale authority   | `VOICE_JOBS_UNAVAILABLE`; zero provider call                              |
-| Legacy synthesis provider selector  | `400 UNSUPPORTED_VOICE_PROVIDER`                                          |
-| Missing/cross-user message          | `404 VOICE_SOURCE_MESSAGE_NOT_FOUND`                                      |
-| Submitted text differs from source  | `409 VOICE_SOURCE_MESSAGE_CHANGED`                                        |
-| Missing cache/artifact dependency   | `VOICE_CACHE_UNAVAILABLE` or `VOICE_ARTIFACT_STORE_UNAVAILABLE`           |
-| Runtime role lacks TTS table DML    | PostgreSQL permission failure before Provider I/O; deploy migration `052` |
-| Artifact metadata/download mismatch | frontend rejects playback                                                 |
+| Condition                             | Required result                                                           |
+| ------------------------------------- | ------------------------------------------------------------------------- |
+| Plaintext/malformed admin secret      | reject encrypted ingress                                                  |
+| Missing Key                           | `VOICE_PROVIDER_SECRET_REQUIRED`                                          |
+| Test failure or non-audio `2xx`       | sanitized provider/test failure; no body leakage                          |
+| Config changes during test            | `VOICE_PROVIDER_CONFIG_CHANGED`                                           |
+| Missing/ambiguous/stale authority     | `VOICE_JOBS_UNAVAILABLE`; zero provider call                              |
+| Legacy synthesis provider selector    | `400 UNSUPPORTED_VOICE_PROVIDER`                                          |
+| Missing/cross-user message            | `404 VOICE_SOURCE_MESSAGE_NOT_FOUND`                                      |
+| Submitted text differs from source    | `409 VOICE_SOURCE_MESSAGE_CHANGED`                                        |
+| Missing cache/artifact dependency     | `VOICE_CACHE_UNAVAILABLE` or `VOICE_ARTIFACT_STORE_UNAVAILABLE`           |
+| Runtime role lacks TTS table DML      | PostgreSQL permission failure before Provider I/O; deploy migration `052` |
+| Artifact metadata/download mismatch   | frontend rejects playback                                                 |
+| Active message clicked again          | abort/dispose current operation; return to idle without an error          |
+| Another message starts                | abort/dispose old owner before new playback; never overlap                |
+| Active message unmounts               | abort/dispose pending or playing work; hidden playback cannot survive     |
+| Stale `play()` rejects after disposal | ignore as lifecycle cancellation; do not log/render synthesis failure     |
+| Blob audio is created                 | append hidden node before assigning Object URL or calling `play()`        |
+| Current synthesis or `play()` fails   | dispose resources and render the localized error for that message         |
 
 ## 5. Good / Base / Bad Cases
 
@@ -101,6 +124,11 @@ only `SELECT, INSERT, UPDATE, DELETE` on the two TTS runtime tables to
   or hot-grant production without an embedded forward/down migration pair.
 - Bad: borrow `RAG:SILICONFLOW`, accept `provider="model"`, trust an HTTP 200
   containing JSON, or delete MinIO bytes without completing File/cache state.
+- Bad: let each `MessageItem` own an independent audio ref or treat a disposed
+  pending `play()` rejection as a provider failure. Both permit overlap or
+  surface false errors during ordinary navigation.
+- Bad: create hosted playback with a detached `new Audio(objectUrl)`, or revoke
+  its Object URL without clearing the media source and removing the node.
 
 ## 6. Tests Required
 
@@ -113,7 +141,13 @@ only `SELECT, INSERT, UPDATE, DELETE` on the two TTS runtime tables to
   DML/lock access while ownership and `TRUNCATE` remain denied.
 - Frontend: capability split, hosted metadata normalization, authenticated file
   fetch, MIME/size equality, no server-mode `/api/voice/*` call, Browser-only
-  local path, and persisted disabled-to-enabled default selection.
+  local path, persisted disabled-to-enabled default selection, and signal
+  forwarding through synthesis plus File download.
+- Frontend playback: rapid same-message cancellation, A-to-B replacement,
+  stale synthesis/audio completion disposal, pending `play()` interruption,
+  active-message unmount/release, genuine failure rendering, and Browser Speech
+  cancellation/poller completion. Assert one active owner, zero overlap, DOM
+  attachment before Object URL assignment, and idempotent ordered disposal.
 - Release: all Go tests/vet, frontend format/lint/typecheck/tests/build, Compose
   example and active render, diff secret scan, and standalone full gate.
 - Live: only with explicit authorization and a fresh administrator-entered Key;
@@ -138,5 +172,8 @@ encrypted admin ingress -> VOICE:SILICONFLOW vault + exact attestation
   -> go_api_runtime DML on cache/cleanup tables
   -> bounded audio-validated executor result
   -> File artifact + per-user cache
-  -> authenticated download and exact metadata verification
+  -> authenticated download with propagated AbortSignal
+  -> exact metadata verification
+  -> hidden audio node attached before Object URL assignment
+  -> tab-scoped generation owner disposes old playback before starting new
 ```
