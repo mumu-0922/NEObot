@@ -373,3 +373,36 @@ Completed the frontend Trellis specs and restricted session auto-commits to the 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: Review and track shared Trellis scaffold
+
+**Date**: 2026-07-27
+**Task**: Review and track shared Trellis scaffold
+**Branch**: `main`
+
+### Summary
+
+Audited and tracked the shared Trellis/Codex scaffold while isolating developer, runtime, update, cache, worktree, and editor state.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f8bed19` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
