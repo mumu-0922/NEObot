@@ -268,3 +268,36 @@ Archived and removed superseded mm-chat backup milestones behind a fixed allowli
 ### Next Steps
 
 - None - task complete
+
+
+## Session 9: Patch frontend dependency vulnerabilities
+
+**Date**: 2026-07-27
+**Task**: Patch frontend dependency vulnerabilities
+**Branch**: `main`
+
+### Summary
+
+Patched Next/OpenNext and vulnerable transitive frontend dependencies, documented bounded dev-tool audit exceptions, hardened standalone source-copy exclusions, and passed full-stack verification.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `23f7e85` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

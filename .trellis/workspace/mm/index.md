@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 8
-- **Last Active**: 2026-07-26
+- **Total Sessions**: 9
+- **Last Active**: 2026-07-27
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~270 | Active |
+| `journal-1.md` | ~303 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 9 | 2026-07-27 | Patch frontend dependency vulnerabilities | `23f7e85` | `main` |
 | 8 | 2026-07-26 | Prune obsolete runtime backups | - | `main` |
 | 7 | 2026-07-26 | Delete retired PostgreSQL 16 data | - | `main` |
 | 6 | 2026-07-26 | Remove former root application | `35100ac`, `3f133db` | `main` |
