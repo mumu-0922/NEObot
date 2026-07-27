@@ -439,3 +439,41 @@ Selected SiliconFlow CosyVoice2 with the claire voice, made the live harness req
 ### Next Steps
 
 - None - task complete
+
+
+## Session 14: SiliconFlow TTS production rollout
+
+**Date**: 2026-07-27
+**Task**: SiliconFlow TTS production rollout
+**Branch**: `main`
+
+### Summary
+
+Deployed the dedicated encrypted SiliconFlow CosyVoice2 TTS path, repaired runtime cache grants with migration 052, proved first synthesis and exact cache reuse through actor-owned File playback, reclaimed disposable artifacts, and passed the full standalone gate.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ccad2a3` | (see git log) |
+| `39672e1` | (see git log) |
+| `baf0c03` | (see git log) |
+| `8bc0a56` | (see git log) |
+| `5debc62` | (see git log) |
+| `8922d2c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
