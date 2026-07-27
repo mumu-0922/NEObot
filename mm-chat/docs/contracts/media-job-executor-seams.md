@@ -9,9 +9,10 @@ jobs:
 - `POST /v1/voice/synthesize`;
 - `POST /v1/images/generations`.
 
-The trigger is any future change that connects a real STT/TTS/image provider,
-executor, worker, queue, or storage backend to these endpoints. The default
-runtime remains fail-closed and must not consume provider quota.
+The trigger is any change that connects or extends a real STT/TTS/image
+provider, executor, worker, queue, or storage backend. TTS and Image now have
+production resolvers, while STT remains fail-closed. Missing authority or
+dependencies must still fail before consuming provider quota.
 
 ## 2. Signatures
 
@@ -33,6 +34,17 @@ type imagejobs.ExecutorResolver interface {
 
 type ArtifactStore interface {
     Store(context.Context, jobartifacts.StoreInput) (jobartifacts.Artifact, error)
+}
+
+type SynthesisExecutorResolver interface {
+    ResolveSynthesisExecutor(context.Context) (SynthesisExecution, error)
+}
+
+type SynthesisCacheRepository interface {
+    ResolveSynthesisSource(context.Context, string) (SynthesisSource, error)
+    GetCachedSynthesis(context.Context, SynthesisCacheKey, time.Time) (CachedSynthesis, bool, error)
+    CommitCachedSynthesis(context.Context, CommitCachedSynthesisInput) error
+    // bounded cleanup prepare/claim/complete/release methods
 }
 ```
 
@@ -60,11 +72,11 @@ jobartifacts.StoreInput{
   Missing/disabled/unattested provider state records a sanitized unavailable
   audit and fails before consuming quota. Missing file repository or object
   store keeps artifact storage absent and also fails closed.
-- The OpenAI-compatible Voice executor seam remains testable, but `cmd/api`
-  does not wire it from the model-provider credential. F5 reserves dedicated
-  `VOICE:*` Postgres/vault identities but deliberately adds no administrator
-  flow, real test, resolver, or executor. Voice stays fail-closed until the
-  complete future contract in `voice-provider-reservation.md` is implemented.
+- `cmd/api` wires TTS only through the dedicated, enabled, connection-attested
+  `VOICE:SILICONFLOW` Postgres/vault record. It never reads a model, Search,
+  RAG, smoke, or environment credential. The exact runtime tuple is
+  `FunAudioLLM/CosyVoice2-0.5B` plus provider-qualified `claire` voice.
+  Transcription has no installed executor and remains fail-closed.
 - Quota-consuming real provider smoke also requires the separate
   `provider-live-smoke-authorization.md` gate.
 - Synthesis and image-generation executor outputs require an artifact store
@@ -98,25 +110,25 @@ jobartifacts.StoreInput{
   to `POST {baseURL}/audio/speech` with JSON `model`, `input`, and `voice`.
   Provider request text/audio and provider response bodies must not be logged or
   returned inline.
-- Owner preference captured 2026-07-15 and refined after the VPS constraint:
-  keep the Go `voicejobs.Executor` seam and `/v1/voice/*` routes for a later
-  free hosted TTS API integration. The current deployment should not default to
-  a local/internal Piper-style VPS executor because bundled/mounted voice files
-  and synthesis CPU are a poor VPS fit. Browser `speechSynthesis` is allowed as
-  an immediate local fallback because it does not call backend voice routes, but
-  it does not close server-owned stored-audio parity. Closing the voice parity
-  gap requires a free/low-cost hosted adapter or compatible relay, sanitized
-  artifact storage when needed, and an authorized smoke. OpenAI-compatible
-  `/audio/*` remains usable only when the configured relay actually supports
-  those endpoints.
-- The 2026-07-27 smoke-first selection is SiliconFlow
+- Owner preference captured 2026-07-15 and finalized 2026-07-27: do not run a
+  local Piper-style VPS executor. Explicit server-default read-aloud uses
+  SiliconFlow; browser `speechSynthesis` remains a separately selected free
+  device-local option and is never a silent provider-error fallback.
+- The 2026-07-27 production selection is SiliconFlow
   `FunAudioLLM/CosyVoice2-0.5B` with provider-qualified preset voice
   `FunAudioLLM/CosyVoice2-0.5B:claire`. The direct live harness requires that
   voice through `MM_CHAT_PROVIDER_LIVE_SMOKE_VOICE` and must not fall back to
-  `alloy`. This selection authorizes neither production runtime wiring nor
-  speech-to-text coverage; both remain separate work.
+  `alloy`. The one-off smoke credential is not production authority; a fresh
+  administrator BYOK credential must pass the production save/test/activate
+  chain. Speech-to-text remains out of scope.
+- Production synthesis requires `messageId` and current source text, admits at
+  most 12 KiB of UTF-8 text, and returns `cached` with the compact artifact
+  metadata. One exact message/text/provider/model/voice artifact is reused,
+  expires after three idle days, and participates in the per-user 100 MiB LRU
+  ceiling. A five-minute worker drains replay-safe replacement/expiry/LRU/
+  source-deletion cleanup through the authenticated File/object boundary.
 - Responses expose only compact artifact metadata:
-  `fileId`, `purpose`, `contentType`, `size`.
+  `fileId`, `purpose`, `contentType`, `size`, plus `cached` for synthesis.
 - Responses and audit events must not expose prompt text, synthesis text, audio
   bytes, image bytes, provider credentials, object-store keys, or direct storage
   URLs.
@@ -125,11 +137,11 @@ jobartifacts.StoreInput{
 
 | Condition                                                         | Result                                                                                              |
 | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| No executor configured                                            | `501 VOICE_JOBS_UNAVAILABLE` or `501 IMAGE_JOBS_UNAVAILABLE`                                        |
+| No current executor authority                                     | `501 VOICE_JOBS_UNAVAILABLE` or `501 IMAGE_JOBS_UNAVAILABLE`                                        |
 | Executor configured but artifact store absent for synthesis/image | `503 VOICE_ARTIFACT_STORE_UNAVAILABLE` or `503 IMAGE_ARTIFACT_STORE_UNAVAILABLE`                    |
 | Admitted audit recorder absent or failing                         | `503 JOB_AUDIT_UNAVAILABLE`; executor is not called                                                 |
 | Artifact kind/content-type/size/body invalid                      | artifact storage returns an error; no inline payload fallback                                       |
-| Configured voice provider returns a non-2xx or request failure    | `502 VOICE_PROVIDER_ERROR`; response body remains sanitized                                         |
+| Configured voice provider returns a non-2xx, request failure, or non-audio `2xx` body | `502 VOICE_PROVIDER_ERROR`; response body remains sanitized                         |
 | Configured image provider returns a non-2xx or request failure    | `502 IMAGE_PROVIDER_ERROR`; response body remains sanitized                                         |
 | Chat image provider returns `content_policy_violation`            | chat SSE/database uses `IMAGE_CONTENT_POLICY_VIOLATION`; localized UI asks for a rewrite; no retry  |
 | Chat image provider connection fails again after bounded retry    | chat SSE/database uses `IMAGE_PROVIDER_CONNECTION_ERROR`; localized UI asks the user to retry later |
@@ -138,6 +150,8 @@ jobartifacts.StoreInput{
 | Legacy alias names a model absent from Server Default             | resolver fails closed before quota; `IMAGE_EXECUTOR_RESOLUTION_FAILED` audit                        |
 | Failed assistant image row is reloaded                            | terminal `generationError`; no progress timer resurrection                                          |
 | Request validation fails before admission                         | `400` with endpoint-specific validation code                                                        |
+| TTS message is missing/cross-user or changed                      | `404 VOICE_SOURCE_MESSAGE_NOT_FOUND` or `409 VOICE_SOURCE_MESSAGE_CHANGED`                           |
+| TTS cache/artifact cleanup authority is unavailable               | `503 VOICE_CACHE_UNAVAILABLE`; no unmanaged artifact is retained                                    |
 | Context cancelled before admission/execution                      | `408 REQUEST_CANCELLED` at handler boundary                                                         |
 
 ## 5. Good/Base/Bad Cases

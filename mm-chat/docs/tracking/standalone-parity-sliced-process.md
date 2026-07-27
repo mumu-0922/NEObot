@@ -5352,5 +5352,22 @@ credential existed only in the test process environment and was unset on
 exit; it was not copied into source, documentation, logs, or runtime config.
 The owner accepted the resulting Chinese playback quality after the system
 player opened the stored artifact. G6.5c.2b.2 and G6.5c.2b.3 are closed.
-Production provider/vault/runtime wiring remains explicitly outside this
-smoke-first slice.
+Production provider/vault/runtime wiring was explicitly outside this
+smoke-first slice and is closed by the following production entry.
+
+## 2026-07-27 — G6 SiliconFlow TTS production integration
+
+The dedicated `VOICE:SILICONFLOW` encrypted administrator save/test/activate
+chain, exact CosyVoice2/`claire` runtime resolver, TTS-only capability split,
+authenticated frontend artifact playback, and bounded cache lifecycle are now
+implemented. STT remains unavailable and browser speech remains an explicit
+free choice rather than an error fallback.
+
+Migration `051` owns one artifact per user/message, three-day idle expiry,
+per-user 100 MiB LRU, and replay-safe deletion through the File/object boundary.
+A disposable PostgreSQL 17 database passed two down/up cycles, compatibility
+with representative existing provider rows, cache ownership/replacement/TTL/
+LRU, and cleanup claim replay. Focused Go and frontend tests passed without
+network access. Final release gates and production activation with a fresh
+administrator-entered key are tracked by the active Trellis task; the exposed
+one-off smoke key is not production authority.

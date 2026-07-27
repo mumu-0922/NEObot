@@ -1,9 +1,9 @@
 # Standalone Parity Sliced Cutover Plan
 
 Status: complete for the owner-approved single-server migration scope through
-G19 (2026-07-23). Live Voice/TTS provider integration remains explicitly
-deferred, and former-root deletion remains a separate owner-authorized
-destructive gate. Neither is hidden migration debt.
+G19 (2026-07-23). SiliconFlow TTS production code is implemented; final
+production-shape activation/replay still requires a fresh administrator-entered
+key. Former-root deletion remains a separate owner-authorized destructive gate.
 
 ## Authority
 
@@ -362,33 +362,36 @@ Slice checklist:
   - [x] G6.5a Admission audit metadata: voice/image/code fail-closed services
         record sanitized job events with kind/status/user/provider/model/language/reason and no prompt/code/text/audio payloads.
   - [x] G6.5b Shared job rate-limit and cancellation gates: register fail-closed `/v1/jobs/{jobId}/cancel` and verify job control routes remain under the global rate-limit middleware.
-  - [ ] G6.5c Voice live-provider closure; image executor storage and live smoke
-        are complete.
+  - [x] G6.5c Voice live-provider closure; image and SiliconFlow TTS executor
+        storage and live smoke are complete.
     - [x] G6.5c.1 Storage-only result artifact boundary: add a Go
           `jobartifacts` service that validates image/audio result metadata and
           persists executor outputs only through the backend file/object-storage
           boundary, without calling real providers.
-    - [ ] G6.5c.2 Real voice executor integration with stored audio artifacts
+    - [x] G6.5c.2 Real voice executor integration with stored audio artifacts
           and configured-provider smoke.
       - [x] G6.5c.2a Voice executor opt-in seam: add a Go executor interface,
             pass multipart audio into the service, require an explicitly
             configured sanitized admission audit recorder before executor calls,
             and require artifact storage before synthesis executors can run.
-      - [ ] G6.5c.2b Real provider-backed voice executor and authorized
+      - [x] G6.5c.2b Real provider-backed voice executor and authorized
             configured-provider smoke.
         - [x] G6.5c.2b.1 OpenAI-compatible voice executor, Go route wiring,
               and gated live smoke harness for `/audio/speech` and
               `/audio/transcriptions`.
-        - [ ] G6.5c.2b.2 Authorized configured-provider voice smoke.
-        - [ ] G6.5c.2b.3 Free/simple TTS provider selection and smoke: keep
-              the Go voice executor interface and `/v1/voice/*` routes as the
-              future free hosted TTS API seam. Do not prioritize a local
-              Piper-style VPS executor because owner constraints reject extra
-              VPS storage/CPU for voice. Browser `speechSynthesis` may remain
-              an immediate local fallback and test guard, but closing this item
-              requires selecting a free/low-cost hosted API or compatible relay,
-              wiring it through the Go executor, storing sanitized artifacts
-              when needed, and running an authorized smoke.
+        - [x] G6.5c.2b.2 Authorized configured-provider voice smoke.
+        - [x] G6.5c.2b.3 Free/simple TTS provider selection and smoke:
+              SiliconFlow CosyVoice2/`claire` passed the exact authorized smoke;
+              local Piper remains rejected by the VPS constraint.
+        - [x] G6.5c.2b.4 Production TTS: dedicated encrypted Voice authority,
+              exact activation, authenticated artifact playback, and bounded
+              three-day/per-user-LRU cache cleanup. Browser speech remains an
+              explicit free selection, not a silent provider fallback.
+        - [ ] G6.5c.2b.5 Production-shape replay: enter a fresh dedicated key
+              through the administrator UI, authorize the real provider calls,
+              prove activate -> read-aloud -> authenticated playback -> cache
+              hit, then remove the test artifacts. The one-off smoke key is
+              forbidden.
     - [x] G6.5c.3 Real image executor integration with stored image artifacts
           and configured-provider smoke.
       - [x] G6.5c.3a Image executor opt-in seam: add a Go executor interface,
@@ -723,7 +726,7 @@ Targeted tests:
 | G3 Auth, Config, Provider Settings, BYOK | Complete | Server-auth/config/provider lifecycle verified                                                 |
 | G4 Plugin Final Ownership                | Complete | G4.5c/G4.6b Go ownership and G9.4 Next route deletion complete                                 |
 | G5 Search/Web Enrichment                 | Complete | G11.9/G19 provide server-owned three-state Search, Auto Tools, and Citations                   |
-| G6 Voice/Image/Code Jobs                 | Deferred | Hosted Voice provider selection and live smoke are deferred                                    |
+| G6 Voice/Image/Code Jobs                 | Ready    | SiliconFlow TTS code is complete; fresh-key production replay is pending; STT/Code stay unavailable |
 | G7 Knowledge/RAG/Citations               | Complete | Live MinerU + Jina + Postgres strict citation loop passed                                      |
 | G8 Teams/Knowledge UI                    | Complete | G8.1-G8.5 frontend control-plane wiring and isolation smoke passed                             |
 | G9 Data Authority/Route Removal          | Complete | G9.1-G9.6 route freeze, route deletion, local write-authority, and clean-copy preflight passed |

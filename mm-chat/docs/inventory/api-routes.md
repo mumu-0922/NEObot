@@ -4,8 +4,9 @@ This inventory maps current Next.js API routes to future `mm-chat` Go backend ow
 
 ## Summary
 
-Current server routes are mostly proxy/adaptor endpoints around chat
-generation and voice. Web Search has moved to Go.
+The retained Next Voice routes are local-mode compatibility handlers. Server
+mode owns TTS in Go and never falls through to them; Web Search has also moved
+to Go.
 
 ## Route Table
 
@@ -19,8 +20,8 @@ generation and voice. Web Search has moved to Go.
 | `/api/chat/related-questions` |   POST | Follow-up generation   | Go chat helper                                         |
 | `/api/chat/generate-image`    |   POST | Image generation       | Go provider adapter or later worker                    |
 | `/api/chat/execute-code`      |   POST | Code execution helper  | Separate sandbox service; do not put in core initially |
-| `/api/voice/transcribe`       |   POST | Speech-to-text         | Go proxy or Python/media service later                 |
-| `/api/voice/synthesize`       |   POST | Text-to-speech         | Go proxy or media service later                        |
+| `/api/voice/transcribe`       |   POST | Local-mode speech-to-text compatibility | Server STT intentionally unavailable      |
+| `/api/voice/synthesize`       |   POST | Local-mode text-to-speech compatibility | Go `/v1/voice/synthesize` in server mode  |
 
 ## Retired During G9
 
@@ -48,7 +49,7 @@ generation and voice. Web Search has moved to Go.
 2. `chat`, `chat/generate` — core streaming path.
 3. `providers/models` — provider metadata and server-side secret isolation.
 4. `files` — new Go endpoints; current app has OPFS rather than server file API.
-5. `voice` — later services after chat spine is stable.
+5. `voice` — TTS is migrated to Go; STT remains intentionally unavailable.
 
 ## Replacement API Sketch
 
@@ -70,6 +71,12 @@ POST   /v1/files
 GET    /v1/files/:id
 GET    /v1/files/:id/content
 DELETE /v1/files/:id
+
+POST   /v1/voice/synthesize
+GET    /v1/admin/voice/providers
+PUT    /v1/admin/voice/providers/:provider
+POST   /v1/admin/voice/providers/:provider/test
+POST   /v1/admin/voice/providers/:provider/activate
 ```
 
 ## Risks

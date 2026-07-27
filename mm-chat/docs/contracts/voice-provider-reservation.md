@@ -1,107 +1,140 @@
-# Future Voice Provider Reservation Contract
+# SiliconFlow Voice Provider Production Contract
 
 ## 1. Scope / Trigger
 
-G11.9F.5 reserves the Postgres/vault identity for a future free or low-cost
-hosted Voice integration without enabling one now. The owner explicitly does
-not want a VPS-local TTS engine and has not selected a hosted API. Therefore
-this slice adds no Voice administrator page, provider request adapter,
-connection test, runtime resolver, environment fallback, or quota-consuming
-smoke.
+This contract owns the production Text-to-Speech path selected on 2026-07-27.
+SiliconFlow CosyVoice2 is server-owned and is invoked only after an explicit
+read-aloud click. Speech-to-text remains unavailable. ElevenLabs and MiMo Voice
+identities remain reserved but are not production executors.
 
-This contract becomes the mandatory starting point when ElevenLabs, Mimo, or a
-replacement hosted STT/TTS provider is implemented later.
+## 2. Exact Authority
 
-## 2. Signatures
-
-Reserved `provider_configs` identities:
+The only production tuple is:
 
 ```text
-provider_id=VOICE:ELEVENLABS  config.kind=voice  config.voiceProvider=elevenlabs
-provider_id=VOICE:MIMO        config.kind=voice  config.voiceProvider=mimo
+provider record: VOICE:SILICONFLOW
+config.kind:     voice
+voiceProvider:   siliconflow
+base URL:        https://api.siliconflow.cn/v1
+model:           FunAudioLLM/CosyVoice2-0.5B
+voice:           FunAudioLLM/CosyVoice2-0.5B:claire
+browser ingress: provider:voice:siliconflow
+vault at rest:   provider:voice:<userId>:VOICE:SILICONFLOW
 ```
 
-Reserved encryption contexts:
+The retained reservations are:
 
 ```text
-future browser ingress: provider:voice:<elevenlabs|mimo>
-vault at rest:          provider:voice:<userId>:<VOICE:PROVIDER>
+VOICE:ELEVENLABS / voiceProvider=elevenlabs
+VOICE:MIMO       / voiceProvider=mimo
 ```
 
-F5 registers **no** `/v1/admin/voice/providers*` route. Existing
-`POST /v1/voice/transcribe` and `POST /v1/voice/synthesize` signatures remain
-unchanged and fail closed because `cmd/api` still installs no Voice executor.
+They have no enabled runtime adapter in this release. Model, Search, and RAG
+rows or credentials never authorize Voice execution.
 
-## 3. Contracts
+## 3. Administrator Lifecycle
 
-- `kind="voice"`, `voiceProvider`, and the `VOICE:*` record ID must agree
-  exactly; the only reserved providers are `elevenlabs` and `mimo`.
-- Model, Search, and RAG readers must reject Voice rows. An empty-kind legacy
-  row cannot claim a `VOICE:*` ID or model vault context.
-- Current/retained-key `A256GCM` Voice envelopes participate in the common
-  exact-plan vault rewrite under the Voice context.
-- Legacy browser BYOK Voice rows are blocked rather than guessed or migrated;
-  a future administrator flow must accept a fresh ingress envelope.
-- Rotation may not create or preserve a Voice connection attestation in F5.
-  No provider-specific real-test contract exists yet, so Voice remains
-  unavailable regardless of a syntactically valid reserved row.
-- No Voice provider Key, model, voice ID, base URL, or reusable credential is
-  added to Go/Python/Compose/operator environment authority.
-- Browser `speechSynthesis` remains an allowed device-local fallback. It does
-  not call `/v1/voice/*`, create a provider row, or close stored-audio parity.
+```text
+GET    /v1/admin/voice/providers
+PUT    /v1/admin/voice/providers/siliconflow
+POST   /v1/admin/voice/providers/siliconflow/test
+POST   /v1/admin/voice/providers/siliconflow/activate
+DELETE /v1/admin/voice/providers/siliconflow
+```
 
-## 4. Validation and Error Matrix
+- `PUT` accepts only an RSA-encrypted BYOK ingress envelope, `enabled`, or
+  `clearApiKey`; plaintext credentials and arbitrary tuple fields are rejected.
+- Go decrypts ingress transiently and persists only an `A256GCM` vault envelope
+  under the exact Voice record context.
+- `test` performs one bounded real `/audio/speech` request and records an
+  attestation without enabling a disabled record.
+- `activate` repeats that test and atomically enables the unchanged record.
+- The attestation binds record ID, provider, base URL, model, voice, and exact
+  encrypted secret reference. Credential rotation or tuple drift invalidates
+  it and disables runtime resolution.
+- List/runtime responses expose only status, tuple metadata, test time, and
+  `hasApiKey`; no plaintext, vault envelope, test text, provider body, or audio
+  bytes are returned.
+
+## 4. Runtime and Capability Contract
+
+`cmd/api` resolves exactly one enabled, currently attested SiliconFlow Voice
+record and creates an `OpenAICompatibleExecutor` for that request. Missing,
+ambiguous, disabled, stale, corrupt, or undecryptable authority fails closed
+before provider execution. There is no environment credential fallback.
+
+Public runtime config advertises:
+
+```text
+voice.defaultProvider="siliconflow"
+voice.defaultTtsAvailable=true
+voice.defaultSttAvailable=false
+```
+
+Frontend API capabilities remain split: `voiceSynthesis=true`,
+`voiceTranscription=false`, and legacy aggregate `voice=false`. Server-default
+read-aloud posts `provider="default" + messageId + text` to
+`POST /v1/voice/synthesize`; the Go HTTP boundary rejects legacy
+`model`/`elevenlabs`/`mimo` synthesis selectors. The frontend downloads
+the returned actor-authorized file through `/v1/files/{fileId}/content`, checks
+audio type and exact size, then uses the disposable object-URL lifecycle.
+Browser `speechSynthesis` is a separate manual free option; provider failure
+is visible and never silently changes engines.
+
+## 5. Cache and Cleanup Contract
+
+- Cache authority is per authenticated user and source message. The source
+  message must still belong to that user and its current trimmed text must
+  match the submitted text.
+- The exact key binds message, source update time, text SHA-256, provider,
+  model, and voice. An unchanged click reuses one artifact and makes no
+  provider request.
+- In-process concurrent first clicks for one user/message share one generation.
+  Cross-process convergence is protected by the transactional one-row-per-
+  user/message constraint and replacement cleanup queue.
+- A changed source or tuple replaces the current artifact and queues the old
+  file for deletion. Cache/file ownership is revalidated inside the commit.
+- A cache hit is invalid after three days without access, even if the periodic
+  worker has not run yet. The worker runs every five minutes and processes a
+  bounded replay-safe cleanup queue.
+- Live cached audio is capped at 100 MiB per user. The current artifact is kept
+  only if it fits; older entries are reclaimed least-recently-used. One user
+  cannot hit, evict, claim, or delete another user's audio.
+- Soft-deleted messages, conversations, users, missing/deleted files, expired
+  entries, replacements, LRU victims, and failed cache commits all converge on
+  the same file/object deletion boundary. Queue claims expire after ten
+  minutes and can be replayed safely.
+- TTS has no product-specific daily spend quota. Existing authentication,
+  global rate limiting, 12 KiB text input, 10 MiB provider output, timeout,
+  audit, and explicit-click controls remain mandatory safety bounds.
+
+## 6. Failure Matrix
 
 | Condition | Result |
 | --- | --- |
-| Unknown `voiceProvider` | reserved context rejected |
-| `VOICE:ELEVENLABS` with `voiceProvider=mimo` | reserved context rejected |
-| `VOICE:*` with empty/model kind | model reader and rewrite reject it |
-| Legacy BYOK Voice envelope | `blocked_rows` increments; execute is blocked |
-| Retained-key Voice vault envelope | rotates under the same Voice context |
-| Voice envelope copied to model/Search/RAG/other Voice record | AES-GCM context mismatch |
-| Reserved Voice row during rotation | no attestation is invented |
-| Voice API call in the current runtime | fail-closed `VOICE_JOBS_UNAVAILABLE` |
+| Plaintext or malformed admin secret | encrypted-ingress rejection |
+| Missing Voice Key | `VOICE_PROVIDER_SECRET_REQUIRED` |
+| Real connection test fails | `VOICE_PROVIDER_CONNECTION_TEST_FAILED` |
+| Record changes while testing | `VOICE_PROVIDER_CONFIG_CHANGED` |
+| Missing/ambiguous/stale runtime authority | `VOICE_JOBS_UNAVAILABLE`; zero provider call |
+| Missing artifact/cache dependency | `VOICE_ARTIFACT_STORE_UNAVAILABLE` or `VOICE_CACHE_UNAVAILABLE` |
+| Missing or cross-user source message | `VOICE_SOURCE_MESSAGE_NOT_FOUND` |
+| Submitted text differs from current source | `VOICE_SOURCE_MESSAGE_CHANGED` |
+| Text exceeds 12 KiB | `TEXT_TOO_LONG` |
+| Provider failure | sanitized `VOICE_PROVIDER_ERROR`; no browser fallback |
+| Artifact metadata/content mismatch | frontend rejects playback |
 
-## 5. Good / Base / Bad Cases
+## 7. Verification and Rollback
 
-- Good: a future retained-key Voice envelope rotates and decrypts only under
-  `provider:voice:<userId>:<matching-record>`, while Voice remains unavailable.
-- Base: no Voice rows exist; public config reports Voice unavailable and the
-  existing executor seam consumes no quota.
-- Bad: reuse `SERVER_DEFAULT`, a model Key, or a `provider:model:*` context to
-  enable Voice.
-- Bad: set `enabled=true` or copy an old fingerprint and treat that as a real
-  Voice connection test.
+Required proof includes encrypted save/test/activate/delete, attestation
+invalidation and rotation, TTS-true/STT-false capability behavior, no legacy
+Next route in server mode, cache hit/replacement/cross-user/TTL/LRU/claim replay,
+051 down/up replay, all frontend and Go gates, Compose rendering, and a secret
+scan. Ordinary tests are zero-network.
 
-## 6. Tests Required
-
-- exact provider/kind/record matching and unknown/mismatch rejection;
-- Model/Search/RAG exclusion for `VOICE:*` rows;
-- retained-key Voice rotation plus fresh active-key decryption;
-- cross-context and cross-Voice-record copy rejection;
-- legacy Voice BYOK blocked with zero changed rows;
-- invalid/unimplemented Voice attestation non-promotion;
-- default `/v1/voice/*` fail-closed behavior and zero network calls;
-- clean-copy scans proving no Voice reusable Key environment authority.
-
-## 7. Wrong vs Correct
-
-Wrong:
-
-```text
-DEFAULT_ELEVENLABS_API_KEY -> model provider resolver -> Voice executor
-```
-
-Correct future chain:
-
-```text
-administrator BYOK -> VOICE:* Postgres/vault row
-  -> provider-specific bounded real test
-  -> exact attestation
-  -> dedicated Voice resolver/executor
-  -> stored audio artifact metadata
-```
-
-Until that complete chain exists, keep the current server Voice runtime
-unavailable rather than adding an environment shortcut.
+Migration `051_siliconflow_tts_cache` adds the exact Voice identity constraint,
+`tts_audio_cache`, and `tts_audio_cleanup_queue`. Before rollback, stop the API
+and cleanup worker, drain queued objects, verify no cache rows remain, and take
+Postgres plus object-store backups. Only then roll back 051 and the application
+image. Rolling back the schema first can orphan generated audio. Keep the
+provider keyring while any Voice vault row or backup may need decryption.

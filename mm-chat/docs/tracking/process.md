@@ -8862,11 +8862,12 @@ standalone frontend, no required former-root dependency, complete capability
 mapping, visual regression, and clean-copy deployment are all closed. The
 destructive guard itself is complete, but no former-root deletion was performed.
 
-After reconciliation, unresolved checkboxes in the authoritative progress
-ledger belong only to three explicit classes:
+After the 2026-07-27 SiliconFlow production implementation, unresolved
+checkboxes in the authoritative progress ledger belong to three explicit
+classes:
 
 ```text
-G6       hosted Voice/TTS provider selection and authorized live smoke
+G6       fresh-key production-shape TTS activation/replay and cleanup
 G10.4b   one-shot owner-authorized former-root deletion and post-delete proof
 Phase 16 optional multi-server/Kubernetes migration
 ```
@@ -8874,3 +8875,32 @@ Phase 16 optional multi-server/Kubernetes migration
 No application code, runtime configuration, provider secret, user chat,
 Knowledge document, database row, or object-store artifact changed during this
 documentation-only reconciliation.
+
+## 2026-07-27 — SiliconFlow TTS production integration
+
+The accepted direct CosyVoice2 smoke tuple is now connected to production
+through a dedicated `VOICE:SILICONFLOW` Postgres/vault authority. Administrator
+save accepts encrypted BYOK ingress only; bounded test and activation bind the
+exact endpoint, model, provider-qualified `claire` voice, and encrypted secret
+reference. Credential/config drift invalidates the proof. Model, Search, RAG,
+smoke, and environment credentials remain non-authoritative.
+
+`cmd/api` installs only a synthesis resolver. Public and frontend capabilities
+advertise TTS while keeping transcription false. Server-default read-aloud
+sends the current message ID/text to Go, receives metadata only, fetches the
+actor-authorized File artifact, and never calls the legacy Next Voice route.
+Browser speech remains a manually selected free path with no silent fallback.
+
+Migration `051_siliconflow_tts_cache` adds exact Voice row constraints, one
+cache artifact per user/message, and a replay-safe cleanup queue. Unchanged
+messages reuse audio; concurrent first clicks converge in-process; three idle
+days are a hard hit boundary; a five-minute worker reclaims expired, replaced,
+source-deleted, orphaned, and per-user 100 MiB LRU objects through the File
+service. No TTS-specific daily spend quota was added.
+
+Focused Go and frontend gates passed. A disposable PostgreSQL 17 database
+passed 051 down/up/down/up replay, representative pre-existing Model/Search/
+RAG/Voice row validation, and cache hit, replacement, cross-user miss, stale
+source, hard TTL, both LRU paths, and cleanup claim replay. Production live
+activation remains pending a fresh dedicated key entered through the
+administrator UI; the earlier one-off smoke credential was not reused.

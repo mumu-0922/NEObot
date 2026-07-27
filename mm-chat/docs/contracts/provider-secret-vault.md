@@ -337,15 +337,33 @@ The public routes and Python/Go operation boundary are defined in
 the existing Python provider environment path only for rollback; F4.4 removes
 it after the scoped Go gateway is live.
 
-## 14. G11.9F.5 Future Voice Reservation
+## 14. SiliconFlow Voice Provider Context
 
-Future Voice rows reserve `config.kind="voice"`, exact `VOICE:ELEVENLABS` or
-`VOICE:MIMO` record IDs, and vault contexts
-`provider:voice:<userId>:<recordId>`. They are excluded from model, Search, and
-RAG readers. Retained-key vault envelopes can rotate under that context, but
-legacy BYOK Voice rows are blocked and rotation cannot invent an attestation.
+Production Voice uses a third provider authority that is never interchangeable
+with Model, Search, or RAG:
 
-F5 intentionally adds no administrator route, provider adapter, connection
-test, runtime resolver, environment Key fallback, or real call. The executable
-reservation and future enablement requirements are frozen in
+```text
+browser ingress: provider:voice:siliconflow
+vault at rest:   provider:voice:<userId>:VOICE:SILICONFLOW
+```
+
+- `VOICE:SILICONFLOW` requires `config.kind="voice"`,
+  `voiceProvider="siliconflow"`, and the fixed CosyVoice2/base-URL/`claire`
+  tuple. `VOICE:ELEVENLABS` and `VOICE:MIMO` remain non-executable reservations.
+- Administrator writes accept only encrypted BYOK ingress. There is no Voice
+  Key environment fallback, no reuse of `RAG:SILICONFLOW`, and no reuse of a
+  model-provider envelope.
+- The production connection attestation binds the exact record, tuple, and
+  encrypted secret reference. Save/clear/credential changes invalidate the
+  proof; activation repeats the bounded real TTS test and commits only if the
+  row is unchanged.
+- Common key rotation recomputes an existing valid SiliconFlow Voice
+  attestation over the rewritten vault envelope while preserving its tested
+  time and enabled state. Missing, malformed, stale, ElevenLabs, or MiMo Voice
+  attestations remain invalid and rotation never invents one.
+- Cross-record or cross-kind ciphertext copies fail AES-GCM context
+  authentication. Runtime resolution exposes plaintext only in-process while
+  constructing the bounded executor and returns no secret material to clients.
+
+The routes, fixed tuple, cache retention, and rollback procedure are defined in
 [`voice-provider-reservation.md`](voice-provider-reservation.md).

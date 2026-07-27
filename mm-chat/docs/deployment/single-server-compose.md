@@ -63,6 +63,42 @@ Use `--env-file .env.single-server` for operator commands. The Compose file has
 safe placeholders for config validation, but production runs must use the local
 secret file.
 
+## SiliconFlow TTS Administration
+
+Production TTS has no API-Key environment variable. It uses the existing
+provider keyring plus an administrator-managed `VOICE:SILICONFLOW` vault row.
+Never promote a key used by the direct live-smoke harness; create a fresh,
+dedicated production key in the SiliconFlow console.
+
+After migration `051_siliconflow_tts_cache` and the new backend/frontend images
+are deployed:
+
+1. Open **Settings -> Voice -> SiliconFlow hosted TTS**.
+2. Paste the fresh key. The browser sends an encrypted
+   `provider:voice:siliconflow` ingress envelope; the response exposes only
+   `hasApiKey` and tuple/test state.
+3. Run **Retest**. This performs one real, quota-consuming bounded CosyVoice2
+   synthesis but does not enable an inactive provider.
+4. Run **Activate**. Activation repeats the real test and atomically binds the
+   exact endpoint/model/`claire` voice and vault fingerprint.
+5. Reload runtime config. Hosted TTS must be available while transcription
+   remains unavailable. Select **Server default** for read-aloud, or select
+   **Browser** explicitly for free device-local speech.
+
+Generation occurs only on a read-aloud click. One unchanged message reuses its
+stored audio. The backend expires entries after three idle days, runs cleanup
+every five minutes, and keeps at most 100 MiB of live TTS cache per user. There
+is intentionally no TTS-specific daily billing quota; monitor and cap spend in
+the provider console. Provider errors remain visible and do not silently fall
+back to browser speech.
+
+Operational checks must not print the key, request text, provider body, object
+key, or audio bytes. Safe checks are `GET /v1/config`, the provider status UI,
+sanitized `job_audit` records, cache/cleanup row counts, authenticated playback,
+and MinIO/file metadata. Deactivation stops new provider execution; cached
+audio is also fail-closed because current provider authority is resolved before
+cache reuse.
+
 ## Services and Profiles
 
 | Service        | Profile      | Purpose                                                                          | Public exposure |

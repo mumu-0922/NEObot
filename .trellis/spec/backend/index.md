@@ -11,6 +11,7 @@
 | [Planned chat Tool Loop](./chat-tool-loop.md)       | G19 provider-normalized Tool rounds, three-state Search authority, process persistence, approvals, and citation truth |
 | [Direct chat attachments](./chat-attachments.md)    | Attachment-only messages, native images, bounded document extraction, provider context, and explicit failures       |
 | [Hosted media provider smoke](./provider-live-smoke.md) | Exact live-provider authorization, one-off credentials, explicit TTS voices, artifacts, and sanitized evidence    |
+| [Hosted TTS production](./hosted-tts-production.md) | Dedicated SiliconFlow Voice authority, exact activation, server-mode playback, per-user cache, and cleanup |
 
 ## Pre-Development Checklist
 
@@ -56,6 +57,16 @@ For hosted Voice/Image executor or live-smoke changes:
 4. Define offline zero-network tests and independent output validation before
    running the authorized live smoke.
 
+For production hosted TTS administration, runtime, playback, or cache changes:
+
+1. Read [`hosted-tts-production.md`](./hosted-tts-production.md).
+2. Trace encrypted ingress -> Voice vault -> exact attestation -> executor ->
+   File artifact -> authenticated frontend playback.
+3. Preserve TTS/STT capability separation and block every server-mode legacy
+   Voice route/provider fallback.
+4. Prove per-user source ownership, cache reuse, TTL/LRU reclamation, and
+   replay-safe object deletion before live activation.
+
 ## Quality Check
 
 - Run the disposable database drill for the changed storage group.
@@ -69,5 +80,8 @@ For hosted Voice/Image executor or live-smoke changes:
   attachment-only API/UI tests, and one live upload-to-answer replay.
 - For hosted provider smoke changes, run focused executor/gate tests, all Go
   tests and vet, a diff secret scan, then the exact authorized live command.
+- For production TTS changes, also run migration `051` replay/cache integration,
+  frontend server-route regressions, Compose rendering, and the standalone full
+  gate. Live activation requires a fresh separately authorized Key.
 
 **Language**: All documentation should be written in English.

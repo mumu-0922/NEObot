@@ -1413,8 +1413,8 @@ Endpoint mapping:
 | `job.cancel`                  | `POST /v1/jobs/{jobId}/cancel` | G6.5b fail-closed cancellation admission; validates job id, then unavailable.         |
 | `code.execute`                | `POST /v1/code/executions`     | G6.4 fail-closed admission; validates `modelRef + language + code`, then unavailable. |
 | `image.generate`              | `POST /v1/images/generations`  | G6.3 fail-closed admission; validates `modelRef + prompt`, then unavailable.          |
-| `voice.transcribe`            | `POST /v1/voice/transcribe`    | G6.2 fail-closed admission; validates multipart shape, then unavailable.              |
-| `voice.synthesize`            | `POST /v1/voice/synthesize`    | G6.2 fail-closed admission; validates JSON shape, then unavailable.                   |
+| `voice.transcribe`            | `POST /v1/voice/transcribe`    | TTS-only release: validated route remains unavailable; no executor is installed.      |
+| `voice.synthesize`            | `POST /v1/voice/synthesize`    | Sends current `messageId + text`; returns bounded stored-audio metadata with `cached`. |
 
 The table above is the long-term server contract. Server mode must not call a
 route until it is implemented by the Go router and explicitly reopened here.
@@ -1435,9 +1435,10 @@ Rules:
 - Local mode must not resurrect G9.3-retired BYOK/config/provider routes; those
   adapters fail closed unless a deliberate import/dev-only path is added later.
 - `RuntimeConfig.capabilities` gates UI visibility for features not yet migrated.
-- G6.1 keeps `voice`, `imageGeneration`, and `codeExecution` capabilities
-  disabled in server mode until Go job execution contracts exist; service-layer
-  calls must fail closed instead of falling through to transitional Next routes.
+- Voice capability truth is split. Server mode exposes
+  `voiceSynthesis=true`, `voiceTranscription=false`, and keeps the legacy
+  aggregate `voice=false`; Image remains enabled and Code remains disabled.
+  Service-layer calls must not fall through to transitional Next routes.
 - G6.2 registers Go `/v1/voice/*` admission routes, but `voice` capability stays
   disabled until real provider execution, output storage, and audit controls are
   implemented and tested.
@@ -1468,12 +1469,24 @@ code` only; `codeExecution` stays disabled until a real sandbox/executor and
   audit metadata through an explicitly configured audit recorder and must fail
   closed if that recorder is absent or unavailable. The default server remains
   fail-closed, and this seam does not authorize live provider quota usage.
-- G6.5c.2b.1 originally wired an OpenAI-compatible voice executor through the
-  model-provider environment. G11.9F.2.3 removes that shared credential path;
-  the executor seam and tests remain, but production Voice stays fail-closed
-  after F5 because F5 reserves only dedicated `VOICE:*` Postgres/vault
-  identities. A later implementation still requires administrator
-  save/test/activate, a dedicated resolver/executor, and an authorized smoke.
+- The production TTS adapter resolves only the enabled, currently attested
+  `VOICE:SILICONFLOW` vault record. The frontend administrator adapter uses
+  `/v1/admin/voice/providers*` and sends only an encrypted BYOK envelope. A
+  server-default read-aloud click sends `provider="default"` plus current
+  `messageId + text` through
+  `voiceJobs.synthesizeVoice`, normalizes UUID/audio/integer/10 MiB metadata,
+  fetches `/v1/files/{fileId}/content` with the authenticated File client,
+  verifies type and exact size, and creates one disposable audio object URL.
+  It never calls `/api/voice/synthesize` in server mode. Browser speech remains
+  an explicit provider choice rather than a failure fallback.
+- The Go synthesis route rejects known legacy `model`, `elevenlabs`, and `mimo`
+  provider selectors instead of silently remapping them to SiliconFlow. A
+  provider `2xx` body that cannot be identified as audio is a sanitized
+  `VOICE_PROVIDER_ERROR`, never an assumed MP3.
+- Runtime `voice.defaultTtsAvailable` controls whether the hosted default is
+  offered. The provider-qualified SiliconFlow voice is server-owned and must
+  not be copied into the persisted `ElevenLabsVoiceID` preference. STT remains
+  unavailable even while hosted TTS is ready.
 - G6.5c.3a adds only the Go image executor seam. `POST /v1/images/generations`
   may call an explicitly configured executor only when image artifact storage
   and an admitted-job audit recorder are configured. Stored image responses
