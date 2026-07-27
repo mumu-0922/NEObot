@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 14
+- **Total Sessions**: 15
 - **Last Active**: 2026-07-27
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~479 | Active |
+| `journal-1.md` | ~512 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 15 | 2026-07-27 | Stabilize read-aloud playback lifecycle | `cb32866` | `main` |
 | 14 | 2026-07-27 | SiliconFlow TTS production rollout | `ccad2a3`, `39672e1`, `baf0c03`, `8bc0a56`, `5debc62`, `8922d2c` | `main` |
 | 13 | 2026-07-27 | Verify SiliconFlow hosted TTS smoke | `c0e2c17` | `main` |
 | 12 | 2026-07-27 | Review and track shared Trellis scaffold | `f8bed19` | `main` |

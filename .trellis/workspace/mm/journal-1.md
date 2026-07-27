@@ -477,3 +477,36 @@ Deployed the dedicated encrypted SiliconFlow CosyVoice2 TTS path, repaired runti
 ### Next Steps
 
 - None - task complete
+
+
+## Session 15: Stabilize read-aloud playback lifecycle
+
+**Date**: 2026-07-27
+**Task**: Stabilize read-aloud playback lifecycle
+**Branch**: `main`
+
+### Summary
+
+Centralized tab-scoped TTS playback ownership, propagated cancellation, attached blob audio before playback, added lifecycle regressions, verified cached artifacts, passed the full standalone gate, and redeployed the frontend stack.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cb32866` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
