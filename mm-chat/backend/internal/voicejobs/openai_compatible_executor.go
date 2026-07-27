@@ -196,7 +196,7 @@ func (e *OpenAICompatibleExecutor) Synthesize(ctx context.Context, request Synth
 
 	resp, err := e.client.Do(req)
 	if err != nil {
-		return SynthesizeResult{}, fmt.Errorf("openai-compatible voice synthesis request failed: %w", err)
+		return SynthesizeResult{}, fmt.Errorf("%w: synthesis request failed", ErrVoiceProviderFailed)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
@@ -206,20 +206,20 @@ func (e *OpenAICompatibleExecutor) Synthesize(ctx context.Context, request Synth
 
 	audio, err := io.ReadAll(io.LimitReader(resp.Body, maxOpenAICompatibleVoiceResponseBytes+1))
 	if err != nil {
-		return SynthesizeResult{}, fmt.Errorf("openai-compatible voice synthesis response read failed: %w", err)
+		return SynthesizeResult{}, fmt.Errorf("%w: synthesis response read failed", ErrVoiceProviderFailed)
 	}
 	if len(audio) == 0 {
-		return SynthesizeResult{}, errors.New("openai-compatible voice synthesis response returned empty audio")
+		return SynthesizeResult{}, fmt.Errorf("%w: synthesis response returned empty audio", ErrVoiceProviderFailed)
 	}
 	if len(audio) > maxOpenAICompatibleVoiceResponseBytes {
-		return SynthesizeResult{}, errors.New("openai-compatible voice synthesis response is too large")
+		return SynthesizeResult{}, fmt.Errorf("%w: synthesis response is too large", ErrVoiceProviderFailed)
 	}
 	contentType := mediaTypeOnly(resp.Header.Get("Content-Type"))
 	if contentType == "" || !strings.HasPrefix(contentType, "audio/") {
 		contentType = http.DetectContentType(audio)
 	}
 	if !strings.HasPrefix(contentType, "audio/") {
-		contentType = "audio/mpeg"
+		return SynthesizeResult{}, fmt.Errorf("%w: synthesis response is not audio", ErrVoiceProviderFailed)
 	}
 	return SynthesizeResult{
 		JobID:       voiceJobID(request.JobID),

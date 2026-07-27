@@ -3,6 +3,7 @@ package voicejobs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -201,6 +202,25 @@ func TestOpenAICompatibleExecutorRejectsProviderFailuresWithoutLeakingBody(t *te
 	}
 	if strings.Contains(err.Error(), "secret provider body") {
 		t.Fatalf("Transcribe() leaked provider body: %v", err)
+	}
+}
+
+func TestOpenAICompatibleExecutorRejectsSuccessfulNonAudioResponse(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return bytesResponse(http.StatusOK, "application/json", []byte(`{"error":"secret provider payload"}`)), nil
+	})}
+	executor := newTestOpenAICompatibleExecutor(t, client)
+
+	_, err := executor.Synthesize(context.Background(), SynthesizeRequest{
+		Provider: ProviderModel,
+		ModelID:  "tts-1",
+		Text:     "private synthesis text",
+	})
+	if !errors.Is(err, ErrVoiceProviderFailed) {
+		t.Fatalf("Synthesize() error = %v, want provider failure", err)
+	}
+	if strings.Contains(err.Error(), "secret provider payload") || strings.Contains(err.Error(), "private synthesis text") {
+		t.Fatalf("Synthesize() leaked sensitive content: %v", err)
 	}
 }
 

@@ -5,18 +5,24 @@ import "strings"
 const (
 	providerConfigKindVoice   = "voice"
 	voiceProviderRecordPrefix = "VOICE:"
+
+	SiliconFlowVoiceBaseURL = "https://api.siliconflow.cn/v1"
+	SiliconFlowVoiceModelID = "FunAudioLLM/CosyVoice2-0.5B"
+	SiliconFlowVoiceID      = "FunAudioLLM/CosyVoice2-0.5B:claire"
 )
 
 type voiceProviderID string
 
 const (
-	voiceProviderElevenLabs voiceProviderID = "elevenlabs"
-	voiceProviderMimo       voiceProviderID = "mimo"
+	voiceProviderElevenLabs  voiceProviderID = "elevenlabs"
+	voiceProviderMimo        voiceProviderID = "mimo"
+	voiceProviderSiliconFlow voiceProviderID = "siliconflow"
 )
 
 var reservedVoiceProviderIDs = [...]voiceProviderID{
 	voiceProviderElevenLabs,
 	voiceProviderMimo,
+	voiceProviderSiliconFlow,
 }
 
 func normalizeVoiceProviderID(value string) (voiceProviderID, bool) {

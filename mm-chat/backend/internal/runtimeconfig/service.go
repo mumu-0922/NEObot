@@ -14,6 +14,7 @@ import (
 	"errors"
 	"io"
 	"math/big"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -62,6 +63,7 @@ type Service struct {
 	providerSecrets          *providersecrets.Vault
 	searchHTTPClient         websearch.HTTPDoer
 	ragHTTPClient            websearch.HTTPDoer
+	voiceHTTPClient          *http.Client
 	searchAvailable          func(context.Context) bool
 	modelBuiltInSearchTester ModelBuiltInSearchTester
 
@@ -124,6 +126,7 @@ type ProviderConfigRepository interface {
 	UpsertProviderConfig(ctx context.Context, input UpsertProviderConfigInput) (StoredProviderConfig, error)
 	CommitProviderConnection(ctx context.Context, input CommitProviderConnectionInput) (StoredProviderConfig, error)
 	CommitSearchProviderConnection(ctx context.Context, input CommitSearchProviderConnectionInput) (StoredProviderConfig, error)
+	CommitVoiceProviderConnection(ctx context.Context, input CommitVoiceProviderConnectionInput) (StoredProviderConfig, error)
 	CommitModelBuiltInSearchConnection(ctx context.Context, input CommitModelBuiltInSearchConnectionInput) (StoredProviderConfig, error)
 	DeleteProviderConfig(ctx context.Context, userID string, providerID string) error
 }
@@ -143,6 +146,8 @@ type StoredProviderConfigPayload struct {
 	SearchProvider               string                            `json:"searchProvider,omitempty"`
 	RAGProvider                  string                            `json:"ragProvider,omitempty"`
 	VoiceProvider                string                            `json:"voiceProvider,omitempty"`
+	VoiceModel                   string                            `json:"voiceModel,omitempty"`
+	VoiceID                      string                            `json:"voiceId,omitempty"`
 	BaseURL                      string                            `json:"baseUrl"`
 	Models                       []string                          `json:"models"`
 	Enabled                      bool                              `json:"enabled"`
@@ -230,6 +235,7 @@ func (s *Service) PublicConfig() PublicConfig {
 func (s *Service) PublicConfigForContext(ctx context.Context) PublicConfig {
 	provider := s.serverDefaultProviderForContext(ctx)
 	defaultModels, defaultModelsConfigured := s.publicTaskModels(ctx)
+	voice := s.publicVoiceConfig(ctx)
 	searchAvailable := false
 	if s.searchAvailable != nil {
 		searchAvailable = s.searchAvailable(ctx)
@@ -247,12 +253,7 @@ func (s *Service) PublicConfigForContext(ctx context.Context) PublicConfig {
 			DefaultModelsConfigured: defaultModelsConfigured,
 		},
 		Search: SearchConfig{Available: searchAvailable},
-		Voice: VoiceConfig{
-			ElevenLabsAvailable: false,
-			MimoAvailable:       false,
-			DefaultSTTAvailable: false,
-			DefaultTTSAvailable: false,
-		},
+		Voice:  voice,
 		Deployment: DeploymentConfig{
 			Mode:                    authModeToDeploymentMode(s.cfg.Auth.Mode),
 			AccessPasswordEnabled:   false,
@@ -427,7 +428,10 @@ func (s *Service) UpsertAdminProviderConfig(
 		return AdminProviderConfigResponse{}, ErrDatabaseRequired
 	}
 	providerID = strings.TrimSpace(providerID)
-	if providerID == "" || len(providerID) > 128 || isReservedSearchProviderRecordID(providerID) {
+	if providerID == "" || len(providerID) > 128 ||
+		isReservedSearchProviderRecordID(providerID) ||
+		isReservedRAGProviderRecordID(providerID) ||
+		isReservedVoiceProviderRecordID(providerID) {
 		return AdminProviderConfigResponse{}, ErrProviderConfigUnsupported
 	}
 	if request.ClearAPIKey && len(request.APIKeySecret) > 0 {
@@ -627,7 +631,9 @@ func (s *Service) DeleteAdminProviderConfig(ctx context.Context, providerID stri
 	}
 	providerID = strings.TrimSpace(providerID)
 	if providerID == "" || providerID == serverDefaultProviderID ||
-		isReservedSearchProviderRecordID(providerID) {
+		isReservedSearchProviderRecordID(providerID) ||
+		isReservedRAGProviderRecordID(providerID) ||
+		isReservedVoiceProviderRecordID(providerID) {
 		return ErrProviderConfigUnsupported
 	}
 	return s.repo.DeleteProviderConfig(ctx, auth.UserOrDevelopment(ctx).ID, providerID)

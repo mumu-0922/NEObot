@@ -81,7 +81,7 @@ func TestHandlerSynthesizeMapsProviderErrorsWithoutLeakingText(t *testing.T) {
 	req := httptest.NewRequest(
 		http.MethodPost,
 		synthesizePath,
-		strings.NewReader(`{"text":"private speech","provider":"model","modelId":"tts-1"}`),
+		strings.NewReader(`{"text":"private speech","provider":"default"}`),
 	)
 
 	handler.ServeHTTP(rec, req)
@@ -103,7 +103,9 @@ func TestHandlerSynthesizeValidatesRequestBeforeAdmission(t *testing.T) {
 		{name: "bad json", body: `{`, status: http.StatusBadRequest, code: "INVALID_REQUEST"},
 		{name: "unknown field", body: `{"text":"hello","provider":"default","secret":"leak"}`, status: http.StatusBadRequest, code: "INVALID_REQUEST"},
 		{name: "unsupported provider", body: `{"text":"hello","provider":"unknown"}`, status: http.StatusBadRequest, code: "UNSUPPORTED_VOICE_PROVIDER"},
+		{name: "legacy provider", body: `{"text":"hello","provider":"model"}`, status: http.StatusBadRequest, code: "UNSUPPORTED_VOICE_PROVIDER"},
 		{name: "empty text", body: `{"text":" ","provider":"default"}`, status: http.StatusBadRequest, code: "TEXT_REQUIRED"},
+		{name: "text too long", body: `{"text":"` + strings.Repeat("界", maxSynthesisTextBytes/3+1) + `","provider":"default"}`, status: http.StatusRequestEntityTooLarge, code: "TEXT_TOO_LONG"},
 	}
 
 	for _, tt := range tests {
@@ -119,6 +121,26 @@ func TestHandlerSynthesizeValidatesRequestBeforeAdmission(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHandlerSynthesizeRequiresMessageIDForCachedProductionPath(t *testing.T) {
+	handler := NewHandler(NewService(
+		WithSynthesisExecutorResolver(staticSynthesisResolver{execution: SynthesisExecution{
+			Executor: &fakeVoiceExecutor{}, ProviderID: "siliconflow", ModelID: "cosy", VoiceID: "claire",
+		}}),
+		WithArtifactStore(&fakeArtifactStore{}),
+		WithArtifactDeleter(&recordingArtifactDeleter{}),
+		WithSynthesisCache(&memorySynthesisCache{}),
+		WithAuditRecorder(noopAuditRecorder()),
+	))
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(
+		http.MethodPost,
+		synthesizePath,
+		strings.NewReader(`{"text":"hello","provider":"default"}`),
+	))
+
+	assertError(t, recorder, http.StatusNotFound, "VOICE_SOURCE_MESSAGE_NOT_FOUND")
 }
 
 func TestHandlerTranscribeFailsClosedAfterAdmission(t *testing.T) {

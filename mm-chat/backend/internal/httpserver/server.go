@@ -1081,6 +1081,8 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/admin/task-models", runtimeConfigHandler)
 	mux.Handle("/v1/admin/search/providers", runtimeConfigHandler)
 	mux.Handle("/v1/admin/search/providers/", runtimeConfigHandler)
+	mux.Handle("/v1/admin/voice/providers", runtimeConfigHandler)
+	mux.Handle("/v1/admin/voice/providers/", runtimeConfigHandler)
 	mux.Handle("/v1/admin/rag/providers", runtimeConfigHandler)
 	mux.Handle("/v1/admin/rag/providers/", runtimeConfigHandler)
 	mux.Handle("/v1/byok/public-key", runtimeConfigHandler)

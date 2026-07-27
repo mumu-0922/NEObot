@@ -39,10 +39,13 @@ type SearchConfig struct {
 }
 
 type VoiceConfig struct {
-	ElevenLabsAvailable bool `json:"elevenLabsAvailable"`
-	MimoAvailable       bool `json:"mimoAvailable"`
-	DefaultSTTAvailable bool `json:"defaultSttAvailable"`
-	DefaultTTSAvailable bool `json:"defaultTtsAvailable"`
+	ElevenLabsAvailable bool   `json:"elevenLabsAvailable"`
+	MimoAvailable       bool   `json:"mimoAvailable"`
+	DefaultSTTAvailable bool   `json:"defaultSttAvailable"`
+	DefaultTTSAvailable bool   `json:"defaultTtsAvailable"`
+	DefaultProvider     string `json:"defaultProvider,omitempty"`
+	TTSModel            string `json:"ttsModel,omitempty"`
+	TTSVoiceID          string `json:"ttsVoiceId,omitempty"`
 }
 
 type DeploymentConfig struct {

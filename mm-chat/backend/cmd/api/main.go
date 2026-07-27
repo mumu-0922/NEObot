@@ -383,6 +383,8 @@ func main() {
 		fileRepo,
 		objectStore,
 		newJobAuditRecorder(logger),
+		providerRuntimeService,
+		sqlDB,
 	)
 	if err != nil {
 		_ = redisClient.Close()
@@ -429,6 +431,11 @@ func main() {
 			}
 		}()
 	}
+	voiceCacheWorkerDone := make(chan struct{})
+	go func() {
+		defer close(voiceCacheWorkerDone)
+		runVoiceCacheCleanupWorker(runtimeCtx, voiceJobService, logger)
+	}()
 	go func() {
 		logger.Info("api_listening", slog.String("addr", cfg.Addr), slog.String("version", cfg.Version))
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -472,6 +479,10 @@ func main() {
 	}
 	if err := waitForBackgroundWorker(workerShutdownCtx, consentExpiryWorkerDone, "consent expiry worker"); err != nil {
 		logger.Error("consent_expiry_worker_shutdown_failed", slog.String("error", err.Error()))
+		runtimeErr = errors.Join(runtimeErr, err)
+	}
+	if err := waitForBackgroundWorker(workerShutdownCtx, voiceCacheWorkerDone, "voice cache cleanup worker"); err != nil {
+		logger.Error("voice_cache_cleanup_worker_shutdown_failed", slog.String("error", err.Error()))
 		runtimeErr = errors.Join(runtimeErr, err)
 	}
 	cancelWorkerShutdown()
@@ -771,21 +782,102 @@ func newVoiceJobService(
 	fileRepo files.Repository,
 	objectStore storage.ObjectStore,
 	auditRecorder jobaudit.Recorder,
+	providerResolver voiceProviderConfigResolver,
+	db *sql.DB,
 ) (*voicejobs.Service, error) {
 	options := []voicejobs.ServiceOption{
 		voicejobs.WithAuditRecorder(auditRecorder),
+		voicejobs.WithSynthesisExecutorResolver(siliconFlowVoiceExecutorResolver{
+			service: providerResolver,
+			timeout: cfg.Provider.Timeout,
+		}),
 	}
 	if fileRepo != nil && objectStore != nil {
+		fileService := files.NewService(
+			fileRepo,
+			objectStore,
+			files.WithStorageBackend(cfg.Storage.Backend),
+		)
 		options = append(options, voicejobs.WithArtifactStore(jobartifacts.NewService(
-			files.NewService(
-				fileRepo,
-				objectStore,
-				files.WithStorageBackend(cfg.Storage.Backend),
-			),
-		)))
+			fileService,
+		)), voicejobs.WithArtifactDeleter(fileService))
+		if db != nil {
+			options = append(options, voicejobs.WithSynthesisCache(
+				voicejobs.NewPostgresSynthesisCacheRepository(db),
+			))
+		}
 	}
 
 	return voicejobs.NewService(options...), nil
+}
+
+type voiceProviderConfigResolver interface {
+	ResolveVoiceProvider(context.Context) (runtimeconfig.ResolvedVoiceProvider, error)
+}
+
+type siliconFlowVoiceExecutorResolver struct {
+	service voiceProviderConfigResolver
+	timeout time.Duration
+}
+
+func (r siliconFlowVoiceExecutorResolver) ResolveSynthesisExecutor(
+	ctx context.Context,
+) (voicejobs.SynthesisExecution, error) {
+	if r.service == nil {
+		return voicejobs.SynthesisExecution{}, voicejobs.ErrVoiceJobsUnavailable
+	}
+	provider, err := r.service.ResolveVoiceProvider(ctx)
+	if err != nil || provider.ProviderID != "siliconflow" ||
+		provider.ModelID != runtimeconfig.SiliconFlowVoiceModelID ||
+		provider.VoiceID != runtimeconfig.SiliconFlowVoiceID {
+		return voicejobs.SynthesisExecution{}, voicejobs.ErrVoiceJobsUnavailable
+	}
+	executor, err := voicejobs.NewOpenAICompatibleExecutor(
+		voicejobs.OpenAICompatibleExecutorConfig{
+			BaseURL:            provider.BaseURL,
+			APIKey:             provider.APIKey,
+			Timeout:            r.timeout,
+			DefaultSpeechModel: provider.ModelID,
+			DefaultSpeechVoice: provider.VoiceID,
+		},
+	)
+	provider.APIKey = ""
+	if err != nil {
+		return voicejobs.SynthesisExecution{}, voicejobs.ErrVoiceJobsUnavailable
+	}
+	return voicejobs.SynthesisExecution{
+		Executor:   executor,
+		ProviderID: "siliconflow",
+		ModelID:    runtimeconfig.SiliconFlowVoiceModelID,
+		VoiceID:    runtimeconfig.SiliconFlowVoiceID,
+	}, nil
+}
+
+func runVoiceCacheCleanupWorker(
+	ctx context.Context,
+	service *voicejobs.Service,
+	logger *slog.Logger,
+) {
+	const cleanupInterval = 5 * time.Minute
+	runCleanup := func() {
+		cleanupCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		if err := service.CleanupArtifacts(cleanupCtx, 64); err != nil &&
+			!errors.Is(err, context.Canceled) {
+			logger.Warn("voice_cache_cleanup_failed", slog.String("error", redactSensitiveLogText(err.Error())))
+		}
+	}
+	runCleanup()
+	ticker := time.NewTicker(cleanupInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			runCleanup()
+		}
+	}
 }
 
 func newRecoveryDelivery(cfg config.Config) (auth.RecoveryDelivery, error) {

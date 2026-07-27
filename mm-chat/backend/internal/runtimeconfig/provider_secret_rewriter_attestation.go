@@ -62,13 +62,21 @@ func (r *PostgresProviderSecretRewriter) rewrittenProviderConnectionAttestation(
 			rewrittenSecretRef,
 		), true, nil
 	case providerConfigKindVoice:
-		providerID, ok := normalizeVoiceProviderID(payload.VoiceProvider)
-		if !ok || stored.ProviderID != voiceProviderRecordID(providerID) {
+		providerID, err := validateStoredVoiceProvider(stored)
+		if err != nil {
 			return "", false, ErrProviderSecretRewriteInvalid
 		}
-		// F5 reserves only the at-rest identity. It must not invent a Voice
-		// connection proof before a future provider-specific real test exists.
-		return "", false, nil
+		if providerID != voiceProviderSiliconFlow || !VoiceProviderConnectionTestValid(stored) {
+			return "", false, nil
+		}
+		return voiceProviderConnectionFingerprint(
+			stored.ProviderID,
+			providerID,
+			payload.BaseURL,
+			payload.VoiceModel,
+			payload.VoiceID,
+			rewrittenSecretRef,
+		), true, nil
 	default:
 		return "", false, ErrProviderSecretRewriteInvalid
 	}

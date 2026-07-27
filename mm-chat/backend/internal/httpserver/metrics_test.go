@@ -221,6 +221,21 @@ func TestNormalizeMetricPathBoundsSearchAdministratorRoutes(t *testing.T) {
 	}
 }
 
+func TestNormalizeMetricPathBoundsVoiceAdministratorRoutes(t *testing.T) {
+	tests := map[string]string{
+		"/v1/admin/voice/providers":                      "/v1/admin/voice/providers",
+		"/v1/admin/voice/providers/siliconflow":          "/v1/admin/voice/providers/{provider}",
+		"/v1/admin/voice/providers/siliconflow/test":     "/v1/admin/voice/providers/{provider}/{action}",
+		"/v1/admin/voice/providers/siliconflow/activate": "/v1/admin/voice/providers/{provider}/{action}",
+		"/v1/admin/voice/providers/siliconflow/clone":    unknownMetricPath,
+	}
+	for input, want := range tests {
+		if got := normalizeMetricPath(input); got != want {
+			t.Fatalf("normalizeMetricPath(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
 func TestNormalizeMetricPathBoundsRAGAdministratorRoutes(t *testing.T) {
 	tests := map[string]string{
 		"/v1/admin/rag/providers":                 "/v1/admin/rag/providers",

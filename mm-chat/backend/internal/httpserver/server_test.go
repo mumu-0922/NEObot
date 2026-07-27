@@ -673,6 +673,8 @@ func TestAuthRequiredModeRejectsMissingCredentialsAndKeepsPublicRoutes(t *testin
 		{method: http.MethodPost, path: "/v1/providers/models"},
 		{method: http.MethodGet, path: "/v1/admin/search/providers"},
 		{method: http.MethodPost, path: "/v1/admin/search/providers/tavily/test"},
+		{method: http.MethodGet, path: "/v1/admin/voice/providers"},
+		{method: http.MethodPost, path: "/v1/admin/voice/providers/siliconflow/test"},
 		{method: http.MethodGet, path: "/v1/admin/rag/providers"},
 		{method: http.MethodPost, path: "/v1/admin/rag/providers/jina/configure"},
 		{method: http.MethodGet, path: "/v1/admin/task-models"},
@@ -1433,7 +1435,7 @@ func TestNewHandlerRoutesConfiguredVoiceJobService(t *testing.T) {
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/v1/voice/synthesize",
-		strings.NewReader(`{"text":"private speech","provider":"model","modelId":"tts-1","jobId":"job-1"}`),
+		strings.NewReader(`{"text":"private speech","provider":"default","modelId":"tts-1","jobId":"job-1"}`),
 	)
 
 	handler.ServeHTTP(rec, req)

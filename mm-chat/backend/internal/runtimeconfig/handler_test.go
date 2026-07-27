@@ -2,7 +2,12 @@ package runtimeconfig
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -420,6 +425,133 @@ func TestHandlerRoutesAdminSearchProviderLifecycle(t *testing.T) {
 	))
 	if deleted.Code != http.StatusNoContent {
 		t.Fatalf("delete status = %d, body=%s", deleted.Code, deleted.Body.String())
+	}
+}
+
+func TestHandlerRoutesEncryptedAdminVoiceProviderLifecycle(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pemValue := string(pem.EncodeToMemory(&pem.Block{
+		Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
+	}))
+	const fixtureCredential = "voice-handler-fixture"
+	repo := &fakeProviderConfigRepository{}
+	service := NewService(
+		config.Config{BYOK: config.BYOKConfig{PrivateKeyPEM: pemValue}},
+		WithProviderConfigRepository(repo),
+		WithProviderSecretVault(testProviderSecretVault(t, "voice-handler-v1", 53)),
+		WithVoiceProviderHTTPClient(&http.Client{Transport: voiceRoundTripperFunc(func(request *http.Request) (*http.Response, error) {
+			if request.Header.Get("Authorization") != "Bearer "+fixtureCredential {
+				t.Fatalf("unexpected Voice authorization header")
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"audio/mpeg"}},
+				Body:       io.NopCloser(strings.NewReader("ID3-handler-audio")),
+			}, nil
+		})}),
+	)
+	handler := NewHandler(service)
+	requestBody, err := json.Marshal(UpdateAdminVoiceProviderConfigRequest{
+		APIKeySecret: encryptedSecretEnvelope(
+			t,
+			privateKey,
+			fixtureCredential,
+			voiceProviderIngressContext(voiceProviderSiliconFlow),
+		),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	put := httptest.NewRecorder()
+	handler.ServeHTTP(put, httptest.NewRequest(
+		http.MethodPut,
+		"/v1/admin/voice/providers/siliconflow",
+		strings.NewReader(string(requestBody)),
+	))
+	if put.Code != http.StatusOK ||
+		!strings.Contains(put.Body.String(), `"provider":"siliconflow"`) ||
+		!strings.Contains(put.Body.String(), `"hasApiKey":true`) ||
+		strings.Contains(put.Body.String(), fixtureCredential) ||
+		storedSecretAlgorithm(repo.stored.EncryptedSecretRef) == byokAlgorithm {
+		t.Fatalf("put status/body = %d / %s", put.Code, put.Body.String())
+	}
+
+	list := httptest.NewRecorder()
+	handler.ServeHTTP(list, httptest.NewRequest(
+		http.MethodGet,
+		"/v1/admin/voice/providers",
+		nil,
+	))
+	if list.Code != http.StatusOK || list.Header().Get("Cache-Control") != "no-store" ||
+		!strings.Contains(list.Body.String(), `"providers":[`) {
+		t.Fatalf("list status/body = %d / %s", list.Code, list.Body.String())
+	}
+
+	tested := httptest.NewRecorder()
+	handler.ServeHTTP(tested, httptest.NewRequest(
+		http.MethodPost,
+		"/v1/admin/voice/providers/siliconflow/test",
+		nil,
+	))
+	if tested.Code != http.StatusOK ||
+		!strings.Contains(tested.Body.String(), `"connectionTestValid":true`) ||
+		!strings.Contains(tested.Body.String(), `"contentType":"audio/mpeg"`) {
+		t.Fatalf("test status/body = %d / %s", tested.Code, tested.Body.String())
+	}
+
+	activated := httptest.NewRecorder()
+	handler.ServeHTTP(activated, httptest.NewRequest(
+		http.MethodPost,
+		"/v1/admin/voice/providers/siliconflow/activate",
+		nil,
+	))
+	if activated.Code != http.StatusOK ||
+		!strings.Contains(activated.Body.String(), `"enabled":true`) {
+		t.Fatalf("activate status/body = %d / %s", activated.Code, activated.Body.String())
+	}
+
+	unknown := httptest.NewRecorder()
+	handler.ServeHTTP(unknown, httptest.NewRequest(
+		http.MethodPost,
+		"/v1/admin/voice/providers/siliconflow/clone",
+		nil,
+	))
+	if unknown.Code != http.StatusNotFound {
+		t.Fatalf("unknown action status = %d, body=%s", unknown.Code, unknown.Body.String())
+	}
+
+	deleted := httptest.NewRecorder()
+	handler.ServeHTTP(deleted, httptest.NewRequest(
+		http.MethodDelete,
+		"/v1/admin/voice/providers/siliconflow",
+		nil,
+	))
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("delete status = %d, body=%s", deleted.Code, deleted.Body.String())
+	}
+}
+
+func TestHandlerMapsVoiceProviderAdminErrors(t *testing.T) {
+	for _, test := range []struct {
+		err    error
+		status int
+		code   string
+	}{
+		{ErrVoiceProviderConfigUnsupported, http.StatusBadRequest, "VOICE_PROVIDER_CONFIG_UNSUPPORTED"},
+		{ErrVoiceProviderNotFound, http.StatusNotFound, "VOICE_PROVIDER_NOT_FOUND"},
+		{ErrVoiceProviderSecretRequired, http.StatusBadRequest, "VOICE_PROVIDER_SECRET_REQUIRED"},
+		{ErrVoiceProviderConnectionFailed, http.StatusBadGateway, "VOICE_PROVIDER_CONNECTION_TEST_FAILED"},
+		{ErrVoiceProviderConfigChanged, http.StatusConflict, "VOICE_PROVIDER_CONFIG_CHANGED"},
+	} {
+		recorder := httptest.NewRecorder()
+		writeServiceError(recorder, test.err)
+		if recorder.Code != test.status || !strings.Contains(recorder.Body.String(), test.code) {
+			t.Fatalf("error %v status = %d, body=%s", test.err, recorder.Code, recorder.Body.String())
+		}
 	}
 }
 

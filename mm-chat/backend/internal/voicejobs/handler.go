@@ -16,6 +16,7 @@ const (
 	transcribePath        = "/v1/voice/transcribe"
 	synthesizePath        = "/v1/voice/synthesize"
 	maxJSONRequestBytes   = 16 << 10
+	maxSynthesisTextBytes = 12 << 10
 	maxMultipartBodyBytes = 25 << 20
 	maxMultipartMemory    = 8 << 20
 )
@@ -116,6 +117,7 @@ func (h *Handler) synthesize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	request.Text = strings.TrimSpace(request.Text)
+	request.MessageID = strings.TrimSpace(request.MessageID)
 	request.JobID = strings.TrimSpace(request.JobID)
 	request.VoiceID = strings.TrimSpace(request.VoiceID)
 	request.ModelID = strings.TrimSpace(request.ModelID)
@@ -124,9 +126,17 @@ func (h *Handler) synthesize(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "UNSUPPORTED_VOICE_PROVIDER", "voice provider is not supported")
 		return
 	}
+	if provider != ProviderDefault {
+		writeError(w, http.StatusBadRequest, "UNSUPPORTED_VOICE_PROVIDER", "voice provider is not supported")
+		return
+	}
 	request.Provider = provider
 	if request.Text == "" {
 		writeError(w, http.StatusBadRequest, "TEXT_REQUIRED", "text is required")
+		return
+	}
+	if len([]byte(request.Text)) > maxSynthesisTextBytes {
+		writeError(w, http.StatusRequestEntityTooLarge, "TEXT_TOO_LONG", "text is too long")
 		return
 	}
 
@@ -177,6 +187,12 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusServiceUnavailable, "VOICE_ARTIFACT_STORE_UNAVAILABLE", "voice artifact storage is not configured")
 	case errors.Is(err, ErrVoiceJobsUnavailable):
 		writeError(w, http.StatusNotImplemented, "VOICE_JOBS_UNAVAILABLE", "voice jobs are not configured")
+	case errors.Is(err, ErrVoiceCacheUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "VOICE_CACHE_UNAVAILABLE", "voice synthesis cache is unavailable")
+	case errors.Is(err, ErrVoiceSourceMessageNotFound):
+		writeError(w, http.StatusNotFound, "VOICE_SOURCE_MESSAGE_NOT_FOUND", "voice source message was not found")
+	case errors.Is(err, ErrVoiceSourceMessageChanged):
+		writeError(w, http.StatusConflict, "VOICE_SOURCE_MESSAGE_CHANGED", "voice source message changed")
 	case errors.Is(err, ErrVoiceProviderFailed):
 		writeError(w, http.StatusBadGateway, "VOICE_PROVIDER_ERROR", "voice provider request failed")
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):

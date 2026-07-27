@@ -394,7 +394,8 @@ func knownMetricPath(path string) (string, bool) {
 	case "/", "/health", "/ready", "/metrics", "/v1/version", "/v1/me",
 		"/v1/me/sessions", "/v1/me/knowledge/query-consents",
 		"/v1/config", "/v1/providers/models", "/v1/byok/public-key",
-		"/v1/admin/search/providers", "/v1/admin/rag/providers",
+		"/v1/admin/search/providers", "/v1/admin/voice/providers",
+		"/v1/admin/rag/providers",
 		"/v1/admin/task-models":
 		return path, true
 	case "/v1/auth/login", "/v1/auth/logout", "/v1/auth/invites/accept",
@@ -418,6 +419,17 @@ func knownMetricPath(path string) (string, bool) {
 		case 7:
 			if parts[6] == "test" || parts[6] == "activate" {
 				return "/v1/admin/search/providers/{provider}/{action}", true
+			}
+		}
+	}
+	if len(parts) >= 6 && parts[1] == "v1" && parts[2] == "admin" &&
+		parts[3] == "voice" && parts[4] == "providers" {
+		switch len(parts) {
+		case 6:
+			return "/v1/admin/voice/providers/{provider}", true
+		case 7:
+			if parts[6] == "test" || parts[6] == "activate" {
+				return "/v1/admin/voice/providers/{provider}/{action}", true
 			}
 		}
 	}

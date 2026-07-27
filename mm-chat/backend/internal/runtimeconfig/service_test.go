@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -311,6 +312,27 @@ func (r *fakeProviderConfigRepository) CommitSearchProviderConnection(
 	return r.stored, nil
 }
 
+func (r *fakeProviderConfigRepository) CommitVoiceProviderConnection(
+	_ context.Context,
+	input CommitVoiceProviderConnectionInput,
+) (StoredProviderConfig, error) {
+	if !r.ok || r.stored.ID != input.ID || r.stored.UserID != input.UserID ||
+		r.stored.ProviderID != input.ProviderID ||
+		r.stored.EncryptedSecretRef != input.ExpectedEncryptedSecretRef ||
+		r.stored.Config.Kind != providerConfigKindVoice ||
+		r.stored.Config.VoiceProvider != input.ExpectedVoiceProvider ||
+		r.stored.Config.BaseURL != input.ExpectedBaseURL ||
+		r.stored.Config.VoiceModel != input.ExpectedVoiceModel ||
+		r.stored.Config.VoiceID != input.ExpectedVoiceID ||
+		r.stored.Config.Enabled != input.ExpectedEnabled {
+		return StoredProviderConfig{}, ErrProviderConfigChanged
+	}
+	r.stored.Config.ConnectionTestSHA256 = input.ConnectionTestSHA256
+	r.stored.Config.ConnectionTestedAt = input.ConnectionTestedAt.UTC().Format(time.RFC3339Nano)
+	r.stored.Config.Enabled = input.Enabled
+	return r.stored, nil
+}
+
 func (r *fakeProviderConfigRepository) CommitModelBuiltInSearchConnection(
 	_ context.Context,
 	input CommitModelBuiltInSearchConnectionInput,
@@ -407,6 +429,29 @@ func TestAdminProviderConfigOverridesPublicServerDefault(t *testing.T) {
 	}
 	if admin.BaseURL != "https://provider.example/v1" || admin.HasAPIKey {
 		t.Fatalf("admin config = %#v", admin)
+	}
+}
+
+func TestGenericModelProviderAdminRejectsReservedProviderAuthorities(t *testing.T) {
+	service := NewService(
+		config.Config{},
+		WithProviderConfigRepository(&fakeProviderConfigRepository{}),
+	)
+	for _, providerID := range []string{
+		"SEARCH:TAVILY",
+		"RAG:SILICONFLOW",
+		"VOICE:SILICONFLOW",
+	} {
+		if _, err := service.UpsertAdminProviderConfig(
+			context.Background(),
+			providerID,
+			UpdateAdminProviderConfigRequest{Name: "Reserved", Type: "OpenAI Compatible"},
+		); !errors.Is(err, ErrProviderConfigUnsupported) {
+			t.Fatalf("UpsertAdminProviderConfig(%q) error = %v", providerID, err)
+		}
+		if err := service.DeleteAdminProviderConfig(context.Background(), providerID); !errors.Is(err, ErrProviderConfigUnsupported) {
+			t.Fatalf("DeleteAdminProviderConfig(%q) error = %v", providerID, err)
+		}
 	}
 }
 
