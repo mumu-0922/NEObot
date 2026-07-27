@@ -16,7 +16,7 @@ export type MimoVoiceID =
   | "Milo"
   | "Dean";
 export type VoiceLanguage = "auto" | "en" | "zh" | "ja";
-export type ServerDefaultVoiceProvider = "elevenlabs" | "mimo";
+export type ServerDefaultVoiceProvider = "elevenlabs" | "mimo" | "siliconflow";
 
 export interface VoiceSettings {
   sttProvider: STTProvider;

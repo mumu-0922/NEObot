@@ -23,6 +23,8 @@ export const phase11Capabilities: ApiCapabilities = {
   knowledge: false,
   memories: false,
   voice: false,
+  voiceSynthesis: false,
+  voiceTranscription: false,
   imageGeneration: false,
   codeExecution: false,
 };

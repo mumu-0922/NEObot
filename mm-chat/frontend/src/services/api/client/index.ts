@@ -13,6 +13,8 @@ import { createLocalRAGProviderApiShell } from "./local/ragProviderApi";
 import { createLocalSearchProviderApiShell } from "./local/searchProviderApi";
 import { createLocalSettingsApiShell } from "./local/settingsApi";
 import { createLocalTeamApiShell } from "./local/teamApi";
+import { createLocalVoiceJobApiShell } from "./local/voiceJobApi";
+import { createLocalVoiceProviderApiShell } from "./local/voiceProviderApi";
 import { phase11Capabilities, resolveApiClientConfig } from "./mode";
 import { createServerAgentApiShell } from "./server/agentApi";
 import { createServerAuthApiShell } from "./server/authApi";
@@ -29,6 +31,8 @@ import { createServerRAGProviderApiShell } from "./server/ragProviderApi";
 import { createServerSearchProviderApiShell } from "./server/searchProviderApi";
 import { createServerSettingsApiShell } from "./server/settingsApi";
 import { createServerTeamApiShell } from "./server/teamApi";
+import { createServerVoiceJobApiShell } from "./server/voiceJobApi";
+import { createServerVoiceProviderApiShell } from "./server/voiceProviderApi";
 import { createHttpClient } from "./server/httpClient";
 import type { ApiClientConfig, NeoChatApiClient } from "./types";
 
@@ -70,6 +74,12 @@ export function createNeoChatApiClient(
   const ragProviders = serverHttpClient
     ? createServerRAGProviderApiShell(serverHttpClient)
     : createLocalRAGProviderApiShell();
+  const voiceProviders = serverHttpClient
+    ? createServerVoiceProviderApiShell(serverHttpClient)
+    : createLocalVoiceProviderApiShell();
+  const voiceJobs = serverHttpClient
+    ? createServerVoiceJobApiShell(serverHttpClient)
+    : createLocalVoiceJobApiShell();
   const byok = serverHttpClient
     ? createServerByokApiShell(serverHttpClient)
     : createLocalByokApiShell();
@@ -101,14 +111,19 @@ export function createNeoChatApiClient(
       knowledge: serverEnabled,
       memories: serverEnabled,
       imageGeneration: serverEnabled,
+      voice: false,
+      voiceSynthesis: serverEnabled,
+      voiceTranscription: false,
     },
     auth,
     settings,
     providers,
     searchProviders,
+    voiceProviders,
     ragProviders,
     byok,
     images,
+    voiceJobs,
     chat,
     files,
     plugins,

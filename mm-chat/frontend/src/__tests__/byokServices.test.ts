@@ -389,13 +389,12 @@ describe("BYOK service requests", () => {
     }
   });
 
-  it("fails closed for server-mode voice jobs without calling legacy routes", async () => {
+  it("fails closed for server-mode voice transcription without calling legacy routes", async () => {
     const restoreServerMode = setServerModeEnv();
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
       .mockRejectedValue(new Error("legacy route must not be called"));
-    const { synthesizeSpeech, transcribeAudio } =
-      await import("../services/api/voiceService");
+    const { transcribeAudio } = await import("../services/api/voiceService");
 
     try {
       await expect(
@@ -403,10 +402,62 @@ describe("BYOK service requests", () => {
           sttProvider: "default",
         } as any),
       ).rejects.toMatchObject({ code: "FEATURE_NOT_IMPLEMENTED" });
-      await expect(
-        synthesizeSpeech("hello", { ttsProvider: "default" } as any),
-      ).rejects.toMatchObject({ code: "FEATURE_NOT_IMPLEMENTED" });
       expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      restoreServerMode();
+    }
+  });
+
+  it("routes server default TTS through Go metadata and authenticated file fetch", async () => {
+    const restoreServerMode = setServerModeEnv();
+    const fileId = "33333333-3333-4333-8333-333333333333";
+    const messageId = "22222222-2222-4222-8222-222222222222";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input, init) => {
+        const url = String(input);
+        if (url === "/mm-api/v1/voice/synthesize") {
+          return Response.json({
+            fileId,
+            purpose: "audio",
+            contentType: "audio/mpeg",
+            size: 5,
+            cached: false,
+          });
+        }
+        if (url === `/mm-api/v1/files/${fileId}/content`) {
+          return new Response("audio", {
+            status: 200,
+            headers: {
+              "content-type": "audio/mpeg",
+              "content-length": "5",
+            },
+          });
+        }
+        throw new Error(`unexpected request ${url} ${String(init?.method)}`);
+      });
+    const { synthesizeSpeech } = await import("../services/api/voiceService");
+
+    try {
+      await expect(
+        synthesizeSpeech("hello", { ttsProvider: "default" } as any, messageId),
+      ).resolves.toBeUndefined();
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[0]?.[0]).toBe("/mm-api/v1/voice/synthesize");
+      expect(getJsonRequestBody(fetchMock)).toEqual({
+        messageId,
+        text: "hello",
+        provider: "default",
+      });
+      expect(fetchMock.mock.calls[1]?.[0]).toBe(
+        `/mm-api/v1/files/${fileId}/content`,
+      );
+      expect(
+        fetchMock.mock.calls.some(([url]) =>
+          String(url).startsWith("/api/voice/"),
+        ),
+      ).toBe(false);
     } finally {
       restoreServerMode();
     }
@@ -457,6 +508,25 @@ describe("BYOK service requests", () => {
       });
     } finally {
       vi.unstubAllGlobals();
+      restoreServerMode();
+    }
+  });
+
+  it("rejects non-default hosted TTS choices without calling legacy routes", async () => {
+    const restoreServerMode = setServerModeEnv();
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("legacy route must not be called"));
+    const { synthesizeSpeech } = await import("../services/api/voiceService");
+
+    try {
+      for (const ttsProvider of ["elevenlabs", "mimo", "model"] as const) {
+        await expect(
+          synthesizeSpeech("hello", { ttsProvider } as any),
+        ).rejects.toMatchObject({ code: "FEATURE_NOT_IMPLEMENTED" });
+      }
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
       restoreServerMode();
     }
   });

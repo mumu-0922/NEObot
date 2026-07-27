@@ -34,7 +34,7 @@ export interface PublicServerConfig {
     defaultTtsAvailable: boolean;
     sttModel?: string;
     ttsModel?: string;
-    ttsVoiceId?: VoiceSettings["ttsVoiceId"];
+    ttsVoiceId?: string;
     mimoSttModel?: string;
     mimoTtsModel?: string;
     mimoTtsVoiceId?: VoiceSettings["mimoTtsVoiceId"];

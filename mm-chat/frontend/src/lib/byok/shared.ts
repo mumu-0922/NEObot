@@ -20,6 +20,7 @@ export const BYOK_CONTEXTS = {
   provider: (providerType: string) => `provider:${providerType}`,
   searchProvider: (provider: string) => `provider:search:${provider}`,
   ragProvider: (provider: string) => `provider:rag:${provider}`,
+  voiceProvider: (provider: string) => `provider:voice:${provider}`,
   elevenLabs: "voice:elevenlabs",
   mimo: "voice:mimo",
   pluginAuth: (pluginId: string) => `plugin:${pluginId}:auth`,

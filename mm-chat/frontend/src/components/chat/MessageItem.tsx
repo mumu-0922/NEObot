@@ -977,7 +977,11 @@ const MessageItem: React.FC<MessageItemProps> = ({
       setIsTTSLoading(true);
       setTtsError(null);
       try {
-        const audio = await synthesizeSpeech(message.content, voice);
+        const audio = await synthesizeSpeech(
+          message.content,
+          voice,
+          message.id,
+        );
 
         if (audio) {
           // API Based (Audio Element)

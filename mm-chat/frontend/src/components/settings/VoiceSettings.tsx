@@ -19,11 +19,13 @@ import {
   ELEVENLABS_TTS_MODELS,
   isElevenLabsSTTModel,
   isElevenLabsTTSModel,
+  isElevenLabsVoiceId,
 } from "@/lib/utils/voiceModels";
 import {
   encryptLocalSecret,
   LOCAL_SECRET_CONTEXTS,
 } from "@/lib/security/localSecrets";
+import SiliconFlowVoiceProviderSettings from "./SiliconFlowVoiceProviderSettings";
 
 const MIMO_STT_MODEL = "mimo-v2.5-asr";
 const MIMO_API_KEY_URL = "https://platform.xiaomimimo.com/";
@@ -153,11 +155,15 @@ const VoiceSettings = () => {
       ? [{ value: "default", label: t("providerDefault") }]
       : []),
     { value: "browser", label: t("providerBrowser") },
-    ...(audioInputModels.length > 0
+    ...(!serverConfig && audioInputModels.length > 0
       ? [{ value: "model", label: t("providerModel") }]
       : []),
-    { value: "elevenlabs", label: t("providerElevenLabs") },
-    { value: "mimo", label: t("providerMimo") },
+    ...(!serverConfig
+      ? [
+          { value: "elevenlabs", label: t("providerElevenLabs") },
+          { value: "mimo", label: t("providerMimo") },
+        ]
+      : []),
   ];
 
   const ttsProviderOptions = [
@@ -165,11 +171,15 @@ const VoiceSettings = () => {
       ? [{ value: "default", label: t("providerDefault") }]
       : []),
     { value: "browser", label: t("providerBrowser") },
-    ...(audioOutputModels.length > 0
+    ...(!serverConfig && audioOutputModels.length > 0
       ? [{ value: "model", label: t("providerModel") }]
       : []),
-    { value: "elevenlabs", label: t("providerElevenLabs") },
-    { value: "mimo", label: t("providerMimo") },
+    ...(!serverConfig
+      ? [
+          { value: "elevenlabs", label: t("providerElevenLabs") },
+          { value: "mimo", label: t("providerMimo") },
+        ]
+      : []),
   ];
 
   const languageOptions = [
@@ -225,6 +235,8 @@ const VoiceSettings = () => {
       <h3 className="text-lg font-semibold text-gray-800 dark:text-foreground">
         {t("title")}
       </h3>
+
+      <SiliconFlowVoiceProviderSettings />
 
       {/* ElevenLabs API Key */}
       <div className="space-y-2">
@@ -447,8 +459,10 @@ const VoiceSettings = () => {
                   if (serverConfig?.voice.defaultProvider === "mimo") {
                     updates.mimoTtsVoiceId =
                       serverConfig.voice.mimoTtsVoiceId || "mimo_default";
-                  } else {
-                    if (serverConfig?.voice.ttsVoiceId) {
+                  } else if (
+                    serverConfig?.voice.defaultProvider === "elevenlabs"
+                  ) {
+                    if (isElevenLabsVoiceId(serverConfig.voice.ttsVoiceId)) {
                       updates.ttsVoiceId = serverConfig.voice.ttsVoiceId;
                     }
                     if (serverConfig?.voice.ttsModel) {

@@ -32,10 +32,16 @@ import {
 } from "../../lib/security/localSecretResolvers";
 import { getBrowserVoiceLanguage } from "../../lib/voice/language";
 
-function getServerModeUnsupportedVoiceJobError(): Error | null {
+function getServerModeUnsupportedVoiceJobError(
+  capability: "synthesis" | "transcription",
+): Error | null {
   const client = createNeoChatApiClient();
-  if (client.mode !== "server" || client.capabilities.voice) return null;
-  return unsupportedFeature("server voice jobs");
+  const available =
+    capability === "synthesis"
+      ? client.capabilities.voiceSynthesis
+      : client.capabilities.voiceTranscription;
+  if (client.mode !== "server" || available) return null;
+  return unsupportedFeature(`server voice ${capability}`);
 }
 
 const getProviderForModel = async (modelString: string) => {
@@ -60,7 +66,7 @@ export const transcribeAudio = async (
   audioBlob: Blob,
   settings: VoiceSettings,
 ): Promise<string> => {
-  const unsupported = getServerModeUnsupportedVoiceJobError();
+  const unsupported = getServerModeUnsupportedVoiceJobError("transcription");
   if (unsupported) throw unsupported;
 
   if (settings.sttProvider === "default") {
@@ -262,14 +268,53 @@ export const startBrowserSpeechRecognition = (
 export const synthesizeSpeech = async (
   text: string,
   settings: VoiceSettings,
+  messageId?: string,
 ): Promise<DisposableAudioElement | void> => {
+  const client = createNeoChatApiClient();
+  if (
+    client.mode === "server" &&
+    settings.ttsProvider !== "default" &&
+    settings.ttsProvider !== "browser"
+  ) {
+    throw unsupportedFeature(
+      `server voice synthesis provider ${settings.ttsProvider}`,
+    );
+  }
   if (settings.ttsProvider !== "browser") {
-    const unsupported = getServerModeUnsupportedVoiceJobError();
+    const unsupported = getServerModeUnsupportedVoiceJobError("synthesis");
     if (unsupported) throw unsupported;
   }
 
   if (settings.ttsProvider === "default") {
     if (!text.trim()) return;
+
+    if (client.mode === "server") {
+      const normalizedMessageId = messageId?.trim() ?? "";
+      if (!normalizedMessageId) {
+        throw new Error("Message id is required for server speech synthesis");
+      }
+      const artifact = await client.voiceJobs.synthesizeVoice({
+        messageId: normalizedMessageId,
+        text,
+      });
+      const downloaded = await client.files.downloadFileContent({
+        fileId: artifact.fileId,
+        disposition: "inline",
+      });
+      const downloadedType = downloaded.contentType
+        .split(";", 1)[0]
+        .trim()
+        .toLowerCase();
+      if (
+        !downloadedType.startsWith("audio/") ||
+        downloadedType !== artifact.contentType.toLowerCase() ||
+        (downloaded.size !== undefined && downloaded.size !== artifact.size) ||
+        downloaded.blob.size !== artifact.size
+      ) {
+        throw new Error("Server returned mismatched voice artifact content");
+      }
+      return createDisposableAudioFromBlob(downloaded.blob);
+    }
 
     const response = await fetch("/api/voice/synthesize", {
       method: "POST",

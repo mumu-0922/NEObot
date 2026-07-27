@@ -47,6 +47,7 @@ import {
 import { logDevError } from "../../lib/utils/devLogger";
 import { normalizeSearchSettings } from "../../lib/settings/search";
 import { getDefaultModelSelectValue } from "../../lib/utils/defaultModels";
+import { isElevenLabsVoiceId } from "../../lib/utils/voiceModels";
 import { readJsonResponseOrThrow } from "../../lib/api/client";
 import {
   isPluginAuthRequired,
@@ -325,26 +326,48 @@ export const useSettingsStore = create<SettingsState>()(
       serverConfig: null,
       applyServerConfig: (config) =>
         set((state) => {
-          const hasServerVoiceConfig =
-            state.voice.serverDefaultVoiceProvider !== undefined ||
-            state.voice.serverDefaultSttAvailable !== undefined ||
-            state.voice.serverDefaultTtsAvailable !== undefined ||
-            state.voice.serverElevenLabsAvailable !== undefined ||
-            state.voice.serverMimoAvailable !== undefined;
-          const shouldUseDefaultStt =
+          let nextSttProvider = state.voice.sttProvider;
+          if (nextSttProvider !== "default" && nextSttProvider !== "browser") {
+            nextSttProvider = config.voice.defaultSttAvailable
+              ? "default"
+              : "browser";
+          } else if (
+            nextSttProvider === "default" &&
+            !config.voice.defaultSttAvailable
+          ) {
+            nextSttProvider = "browser";
+          } else if (
+            nextSttProvider === "browser" &&
             config.voice.defaultSttAvailable &&
-            !hasServerVoiceConfig &&
-            state.voice.sttProvider === "browser";
-          const shouldUseDefaultTts =
+            state.voice.serverDefaultSttAvailable !== true
+          ) {
+            nextSttProvider = "default";
+          }
+
+          let nextTtsProvider = state.voice.ttsProvider;
+          if (nextTtsProvider !== "default" && nextTtsProvider !== "browser") {
+            nextTtsProvider = config.voice.defaultTtsAvailable
+              ? "default"
+              : "browser";
+          } else if (
+            nextTtsProvider === "default" &&
+            !config.voice.defaultTtsAvailable
+          ) {
+            nextTtsProvider = "browser";
+          } else if (
+            nextTtsProvider === "browser" &&
             config.voice.defaultTtsAvailable &&
-            !hasServerVoiceConfig &&
-            state.voice.ttsProvider === "browser";
-          const shouldFallbackDefaultStt =
-            state.voice.sttProvider === "default" &&
-            !config.voice.defaultSttAvailable;
-          const shouldFallbackDefaultTts =
-            state.voice.ttsProvider === "default" &&
-            !config.voice.defaultTtsAvailable;
+            state.voice.serverDefaultTtsAvailable !== true
+          ) {
+            nextTtsProvider = "default";
+          }
+
+          const shouldUseDefaultStt =
+            nextSttProvider === "default" &&
+            state.voice.sttProvider !== "default";
+          const shouldUseDefaultTts =
+            nextTtsProvider === "default" &&
+            state.voice.ttsProvider !== "default";
 
           const isSystemUnchanged =
             JSON.stringify(state.system) ===
@@ -382,12 +405,9 @@ export const useSettingsStore = create<SettingsState>()(
               serverMimoSttModel: config.voice.mimoSttModel,
               serverMimoTtsModel: config.voice.mimoTtsModel,
               serverMimoTtsVoiceId: config.voice.mimoTtsVoiceId,
-              ...(shouldFallbackDefaultStt
-                ? { sttProvider: "browser" as const, sttModel: "" }
-                : {}),
-              ...(shouldFallbackDefaultTts
-                ? { ttsProvider: "browser" as const }
-                : {}),
+              sttProvider: nextSttProvider,
+              ttsProvider: nextTtsProvider,
+              ...(nextSttProvider === "browser" ? { sttModel: "" } : {}),
               ...(shouldUseDefaultStt
                 ? {
                     sttProvider: "default" as const,
@@ -407,8 +427,8 @@ export const useSettingsStore = create<SettingsState>()(
                             config.voice.mimoTtsVoiceId || "mimo_default",
                         }
                       : {}),
-                    ...(config.voice.defaultProvider !== "mimo" &&
-                    config.voice.ttsVoiceId
+                    ...(config.voice.defaultProvider === "elevenlabs" &&
+                    isElevenLabsVoiceId(config.voice.ttsVoiceId)
                       ? { ttsVoiceId: config.voice.ttsVoiceId }
                       : {}),
                   }

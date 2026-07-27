@@ -1,4 +1,4 @@
-import type { ModelProvider } from "@/types";
+import type { ElevenLabsVoiceID, ModelProvider } from "@/types";
 import { parseModelString } from "./model";
 
 export const ELEVENLABS_STT_MODELS = ["scribe_v2", "scribe_v1"] as const;
@@ -12,6 +12,14 @@ export const ELEVENLABS_TTS_MODELS = [
   "eleven_v3",
 ] as const;
 export type ElevenLabsTTSModel = (typeof ELEVENLABS_TTS_MODELS)[number];
+
+export function isElevenLabsVoiceId(
+  voiceId?: string,
+): voiceId is ElevenLabsVoiceID {
+  return (
+    voiceId === "bIHbv24MWmeRgasZH58o" || voiceId === "SAz9YHcvj6GT2YYXdXww"
+  );
+}
 
 export function isElevenLabsSTTModel(
   modelId?: string,

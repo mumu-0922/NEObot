@@ -43,6 +43,8 @@ const capabilities = {
   knowledge: false,
   memories: false,
   voice: false,
+  voiceSynthesis: false,
+  voiceTranscription: false,
   imageGeneration: false,
   codeExecution: false,
 } satisfies ApiCapabilities;
@@ -296,9 +298,11 @@ function createMockClient(
     settings: options.settings ?? defaultClient.settings,
     providers: options.providers ?? defaultClient.providers,
     searchProviders: options.searchProviders ?? defaultClient.searchProviders,
+    voiceProviders: options.voiceProviders ?? defaultClient.voiceProviders,
     ragProviders: options.ragProviders ?? defaultClient.ragProviders,
     byok: options.byok ?? defaultClient.byok,
     images: options.images ?? defaultClient.images,
+    voiceJobs: options.voiceJobs ?? defaultClient.voiceJobs,
     chat: createMockChatApi(),
     files: {
       async uploadFile() {

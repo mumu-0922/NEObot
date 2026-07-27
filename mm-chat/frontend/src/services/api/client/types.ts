@@ -51,6 +51,8 @@ export interface ApiCapabilities {
   knowledge: boolean;
   memories: boolean;
   voice: boolean;
+  voiceSynthesis: boolean;
+  voiceTranscription: boolean;
   imageGeneration: boolean;
   codeExecution: boolean;
 }
@@ -559,6 +561,76 @@ export interface SearchProviderApi {
     signal?: AbortSignal,
   ): Promise<AdminSearchProviderConnectionDTO>;
   deleteAdminSearchProviderConfig(providerId: SearchProviderId): Promise<void>;
+}
+
+export type VoiceProviderId = "siliconflow";
+
+export interface AdminVoiceProviderConfigDTO {
+  id: string;
+  name: string;
+  provider: VoiceProviderId;
+  baseUrl: string;
+  model: string;
+  voice: string;
+  enabled: boolean;
+  hasApiKey: boolean;
+  connectionTestValid: boolean;
+  connectionTestedAt?: string;
+}
+
+export interface AdminVoiceProviderConfigsDTO {
+  providers: AdminVoiceProviderConfigDTO[];
+  activeProviderId?: VoiceProviderId;
+}
+
+export interface UpdateAdminVoiceProviderConfigInput {
+  enabled?: boolean;
+  apiKeySecret?: unknown;
+  clearApiKey?: boolean;
+  signal?: AbortSignal;
+}
+
+export interface AdminVoiceProviderConnectionDTO {
+  provider: AdminVoiceProviderConfigDTO;
+  contentType: string;
+  size: number;
+}
+
+export interface VoiceProviderApi {
+  listAdminVoiceProviderConfigs(): Promise<AdminVoiceProviderConfigsDTO>;
+  updateAdminVoiceProviderConfig(
+    providerId: VoiceProviderId,
+    input: UpdateAdminVoiceProviderConfigInput,
+  ): Promise<AdminVoiceProviderConfigDTO>;
+  testAdminVoiceProviderConnection(
+    providerId: VoiceProviderId,
+    signal?: AbortSignal,
+  ): Promise<AdminVoiceProviderConnectionDTO>;
+  activateAdminVoiceProvider(
+    providerId: VoiceProviderId,
+    signal?: AbortSignal,
+  ): Promise<AdminVoiceProviderConnectionDTO>;
+  deleteAdminVoiceProviderConfig(providerId: VoiceProviderId): Promise<void>;
+}
+
+export interface SynthesizeVoiceInput {
+  messageId: string;
+  text: string;
+  signal?: AbortSignal;
+}
+
+export interface SynthesizedVoiceArtifactDTO {
+  fileId: string;
+  purpose: "audio";
+  contentType: string;
+  size: number;
+  cached: boolean;
+}
+
+export interface VoiceJobApi {
+  synthesizeVoice(
+    input: SynthesizeVoiceInput,
+  ): Promise<SynthesizedVoiceArtifactDTO>;
 }
 
 export type RAGProviderId = "mineru" | "siliconflow";
@@ -1130,9 +1202,11 @@ export interface NeoChatApiClient {
   settings: SettingsApi;
   providers: ProviderApi;
   searchProviders: SearchProviderApi;
+  voiceProviders: VoiceProviderApi;
   ragProviders: RAGProviderApi;
   byok: ByokApi;
   images: ImageGenerationApi;
+  voiceJobs: VoiceJobApi;
   chat: ChatApi;
   files: FileApi;
   plugins: PluginApi;

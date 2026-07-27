@@ -24,6 +24,8 @@ import { createServerByokApiShell } from "../services/api/client/server/byokApi"
 import { createServerProviderApiShell } from "../services/api/client/server/providerApi";
 import { createServerRAGProviderApiShell } from "../services/api/client/server/ragProviderApi";
 import { createServerSearchProviderApiShell } from "../services/api/client/server/searchProviderApi";
+import { createServerVoiceJobApiShell } from "../services/api/client/server/voiceJobApi";
+import { createServerVoiceProviderApiShell } from "../services/api/client/server/voiceProviderApi";
 import { createServerSettingsApiShell } from "../services/api/client/server/settingsApi";
 import { createServerFileApiShell } from "../services/api/client/server/fileApi";
 import { createServerImageGenerationApiShell } from "../services/api/client/server/imageApi";
@@ -147,6 +149,8 @@ describe("Phase 11.1B API mode resolver", () => {
       knowledge: false,
       memories: false,
       voice: false,
+      voiceSynthesis: false,
+      voiceTranscription: false,
       imageGeneration: false,
       codeExecution: false,
     });
@@ -170,6 +174,8 @@ describe("Phase 11.1B API mode resolver", () => {
       knowledge: true,
       memories: true,
       voice: false,
+      voiceSynthesis: true,
+      voiceTranscription: false,
       imageGeneration: true,
       codeExecution: false,
     });
@@ -814,6 +820,153 @@ describe("G11.9F.3 server Search provider API adapter", () => {
         body: undefined,
       },
     ]);
+  });
+});
+
+describe("SiliconFlow Voice server API adapters", () => {
+  const provider = {
+    id: "VOICE:SILICONFLOW",
+    name: "SiliconFlow TTS",
+    provider: "siliconflow",
+    baseUrl: "https://api.siliconflow.cn/v1",
+    model: "FunAudioLLM/CosyVoice2-0.5B",
+    voice: "FunAudioLLM/CosyVoice2-0.5B:claire",
+    enabled: false,
+    hasApiKey: true,
+    connectionTestValid: true,
+    connectionTestedAt: "2026-07-27T08:00:00Z",
+  } as const;
+
+  it("routes encrypted administrator lifecycle requests to Go", async () => {
+    const requests: Array<{ url: string; method?: string; body?: unknown }> =
+      [];
+    const voiceProviders = createServerVoiceProviderApiShell(
+      createHttpClient({
+        baseUrl: "/mm-api",
+        fetchImpl: async (input, init) => {
+          requests.push({
+            url: String(input),
+            method: init?.method,
+            body: init?.body ? JSON.parse(String(init.body)) : undefined,
+          });
+          if (init?.method === "DELETE") {
+            return new Response(null, { status: 204 });
+          }
+          if (String(input).endsWith("/test")) {
+            return Response.json({
+              provider,
+              contentType: "audio/mpeg",
+              size: 4096,
+            });
+          }
+          if (String(input).endsWith("/activate")) {
+            return Response.json({
+              provider: { ...provider, enabled: true },
+              contentType: "audio/mpeg",
+              size: 4096,
+            });
+          }
+          if (String(input).endsWith("/v1/admin/voice/providers")) {
+            return Response.json({ providers: [provider] });
+          }
+          return Response.json(provider);
+        },
+      }),
+    );
+
+    await expect(
+      voiceProviders.listAdminVoiceProviderConfigs(),
+    ).resolves.toMatchObject({ providers: [{ provider: "siliconflow" }] });
+    await expect(
+      voiceProviders.updateAdminVoiceProviderConfig("siliconflow", {
+        enabled: false,
+        apiKeySecret: { v: 1, ciphertext: "encrypted-only" },
+      }),
+    ).resolves.toMatchObject({ hasApiKey: true });
+    await expect(
+      voiceProviders.testAdminVoiceProviderConnection("siliconflow"),
+    ).resolves.toMatchObject({ contentType: "audio/mpeg", size: 4096 });
+    await expect(
+      voiceProviders.activateAdminVoiceProvider("siliconflow"),
+    ).resolves.toMatchObject({ provider: { enabled: true } });
+    await expect(
+      voiceProviders.deleteAdminVoiceProviderConfig("siliconflow"),
+    ).resolves.toBeUndefined();
+
+    expect(requests).toEqual([
+      {
+        url: "/mm-api/v1/admin/voice/providers",
+        method: "GET",
+        body: undefined,
+      },
+      {
+        url: "/mm-api/v1/admin/voice/providers/siliconflow",
+        method: "PUT",
+        body: {
+          enabled: false,
+          apiKeySecret: { v: 1, ciphertext: "encrypted-only" },
+        },
+      },
+      {
+        url: "/mm-api/v1/admin/voice/providers/siliconflow/test",
+        method: "POST",
+        body: undefined,
+      },
+      {
+        url: "/mm-api/v1/admin/voice/providers/siliconflow/activate",
+        method: "POST",
+        body: undefined,
+      },
+      {
+        url: "/mm-api/v1/admin/voice/providers/siliconflow",
+        method: "DELETE",
+        body: undefined,
+      },
+    ]);
+    expect(JSON.stringify(requests)).not.toContain('apiKey"');
+  });
+
+  it("normalizes synthesis metadata and rejects wrong type or size", async () => {
+    const fileId = "33333333-3333-4333-8333-333333333333";
+    const messageId = "22222222-2222-4222-8222-222222222222";
+    const response = vi.fn<() => Promise<Response>>();
+    const voiceJobs = createServerVoiceJobApiShell(
+      createHttpClient({
+        baseUrl: "/mm-api",
+        fetchImpl: async () => response(),
+      }),
+    );
+    const synthesize = () =>
+      voiceJobs.synthesizeVoice({ messageId, text: "hello" });
+
+    response.mockResolvedValueOnce(
+      Response.json({
+        fileId,
+        purpose: "audio",
+        contentType: "audio/mpeg",
+        size: 4096,
+        cached: false,
+      }),
+    );
+    await expect(synthesize()).resolves.toMatchObject({ fileId, size: 4096 });
+
+    for (const invalid of [
+      { contentType: "image/png", size: 4096 },
+      { contentType: "audio/mpeg", size: (10 << 20) + 1 },
+      { contentType: "audio/mpeg", size: 1.5 },
+    ]) {
+      response.mockResolvedValueOnce(
+        Response.json({
+          fileId,
+          purpose: "audio",
+          cached: false,
+          ...invalid,
+        }),
+      );
+      await expect(synthesize()).rejects.toMatchObject({
+        code: "INVALID_SERVER_RESPONSE",
+      });
+    }
   });
 });
 

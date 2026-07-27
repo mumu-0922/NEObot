@@ -80,6 +80,84 @@ describe("server default store injection", () => {
     });
   });
 
+  it("selects hosted SiliconFlow TTS without copying its voice into ElevenLabs state", async () => {
+    const { useSettingsStore } = await import("../store/core/settingsStore");
+    const initialVoiceId = useSettingsStore.getState().voice.ttsVoiceId;
+
+    useSettingsStore.getState().applyServerConfig({
+      ...serverConfig,
+      voice: {
+        ...serverConfig.voice,
+        defaultProvider: "siliconflow",
+        defaultSttAvailable: false,
+        defaultTtsAvailable: true,
+        ttsModel: "FunAudioLLM/CosyVoice2-0.5B",
+        ttsVoiceId: "FunAudioLLM/CosyVoice2-0.5B:claire",
+      },
+    });
+
+    expect(useSettingsStore.getState().voice).toMatchObject({
+      ttsProvider: "default",
+      ttsVoiceId: initialVoiceId,
+      serverDefaultVoiceProvider: "siliconflow",
+      serverDefaultSttAvailable: false,
+      serverDefaultTtsAvailable: true,
+    });
+  });
+
+  it("selects newly activated hosted TTS for an existing disabled server snapshot", async () => {
+    const { useSettingsStore } = await import("../store/core/settingsStore");
+    useSettingsStore.setState((state) => ({
+      voice: {
+        ...state.voice,
+        ttsProvider: "browser",
+        serverDefaultTtsAvailable: false,
+      },
+    }));
+
+    const hostedVoiceConfig = {
+      ...serverConfig,
+      voice: {
+        ...serverConfig.voice,
+        defaultProvider: "siliconflow" as const,
+        defaultTtsAvailable: true,
+        ttsModel: "FunAudioLLM/CosyVoice2-0.5B",
+        ttsVoiceId: "FunAudioLLM/CosyVoice2-0.5B:claire",
+      },
+    };
+    useSettingsStore.getState().applyServerConfig(hostedVoiceConfig);
+    expect(useSettingsStore.getState().voice.ttsProvider).toBe("default");
+
+    useSettingsStore.getState().updateVoiceSettings({ ttsProvider: "browser" });
+    useSettingsStore.getState().applyServerConfig(hostedVoiceConfig);
+    expect(useSettingsStore.getState().voice.ttsProvider).toBe("browser");
+  });
+
+  it("removes unsupported local Voice providers when hosted config becomes authoritative", async () => {
+    const { useSettingsStore } = await import("../store/core/settingsStore");
+    useSettingsStore.setState((state) => ({
+      voice: {
+        ...state.voice,
+        sttProvider: "mimo",
+        ttsProvider: "elevenlabs",
+      },
+    }));
+
+    useSettingsStore.getState().applyServerConfig({
+      ...serverConfig,
+      voice: {
+        ...serverConfig.voice,
+        defaultProvider: "siliconflow",
+        defaultTtsAvailable: true,
+      },
+    });
+
+    expect(useSettingsStore.getState().voice).toMatchObject({
+      sttProvider: "browser",
+      ttsProvider: "default",
+    });
+  });
+
   it("seeds missing task-model defaults without overwriting persisted user choices", async () => {
     const { useCoreSettingsStore } =
       await import("../store/core/coreSettingsStore");
