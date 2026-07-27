@@ -510,3 +510,36 @@ Centralized tab-scoped TTS playback ownership, propagated cancellation, attached
 ### Next Steps
 
 - None - task complete
+
+
+## Session 16: Server voice read-aloud visible text
+
+**Date**: 2026-07-27
+**Task**: Server voice read-aloud visible text
+**Branch**: `main`
+
+### Summary
+
+Projected hosted TTS from authoritative visible text, made Browser speech read rendered innerText, hid legacy Local voice controls in Server mode, passed the full standalone gate, and rebuilt the healthy frontend deployment.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8779d4a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
