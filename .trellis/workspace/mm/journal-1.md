@@ -339,3 +339,37 @@ Reconciled four stale chat tasks against their committed implementations, refres
 ### Next Steps
 
 - None - task complete
+
+
+## Session 11: Bootstrap frontend guidelines and isolate journal commits
+
+**Date**: 2026-07-27
+**Task**: Bootstrap frontend guidelines and isolate journal commits
+**Branch**: `main`
+
+### Summary
+
+Completed the frontend Trellis specs and restricted session auto-commits to the journal/index pathspec with isolated Git regression coverage.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e5c8cce` | (see git log) |
+| `1cfa491` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
