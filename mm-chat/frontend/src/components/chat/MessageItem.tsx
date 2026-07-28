@@ -20,6 +20,7 @@ import SourceFusionNotice from "../content/SourceFusionNotice";
 import MessageAttachmentView from "./MessageAttachmentView";
 import ChatGenerationProgress from "./ChatGenerationProgress";
 import ImageGenerationProgress from "./ImageGenerationProgress";
+import MemoryActivityChip from "./MemoryActivityChip";
 import RAGBlock from "../knowledge/RAGBlock";
 import KnowledgeEvidenceBlock from "../knowledge/KnowledgeEvidenceBlock";
 import AddToKnowledgeModal from "../knowledge/AddToKnowledgeModal";
@@ -1517,6 +1518,10 @@ const MessageItem: React.FC<MessageItemProps> = ({
               </div>
             ) : null}
           </div>
+
+          {message.role === "model" && !isTyping && (
+            <MemoryActivityChip assistantMessageId={message.id} />
+          )}
 
           {/* Footer / Toolbar */}
           {!isEditing && !isTyping && (

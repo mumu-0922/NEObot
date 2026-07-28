@@ -9,6 +9,9 @@ repository root.
 
 - The complete frontend source and static assets now live here.
 - Chat CRUD/SSE, Files, and Browser Import already have Go server adapters.
+- Server Memory settings now expose the PR9 Project/Conversation governance UI,
+  scoped Memory/Review/detail/delete progress, and assistant Activity chip.
+  Local Memory remains hidden rather than deleted in server mode.
 - Legacy Next.js `/api/*` handlers remain temporarily for feature-parity work.
 - `local|server` remains a transition mechanism only. The frozen final runtime
   is server-only with explicit browser-data import.
@@ -41,6 +44,11 @@ corepack pnpm dev
 The root `compose.single-server.yml` builds this frontend in server mode and
 provides the persistent `/mm-api` same-origin edge to the private Go service.
 Run the complete stack from `mm-chat/` with the `app` profile.
+
+The Memory UI is selected by API authority, not a user-facing mode switch:
+`MemorySettings` renders `ServerMemoryGovernance` only when the server Memory
+capability is active, and otherwise retains `LocalMemorySettings` for rollback.
+The server screen never reads or imports the local Zustand Memory store.
 
 ## UI Copy Discipline
 

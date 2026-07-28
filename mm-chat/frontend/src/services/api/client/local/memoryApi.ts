@@ -22,5 +22,47 @@ export function createLocalMemoryApiShell(): MemoryApi {
     async updateSettings(): Promise<DurableMemorySettingsDTO> {
       throw unsupportedFeature("local memory adapter wiring");
     },
+    async getGovernance() {
+      throw unsupportedFeature("server memory governance");
+    },
+    async listProjects() {
+      throw unsupportedFeature("server memory governance");
+    },
+    async createProject() {
+      throw unsupportedFeature("server memory governance");
+    },
+    async updateProject() {
+      throw unsupportedFeature("server memory governance");
+    },
+    async getConversationPolicy() {
+      throw unsupportedFeature("server memory governance");
+    },
+    async updateConversationPolicy() {
+      throw unsupportedFeature("server memory governance");
+    },
+    async createGovernanceMemory() {
+      throw unsupportedFeature("server memory governance");
+    },
+    async updateGovernanceMemory() {
+      throw unsupportedFeature("server memory governance");
+    },
+    async deleteGovernanceMemory() {
+      throw unsupportedFeature("server memory governance");
+    },
+    async getGovernanceMemoryDetail() {
+      throw unsupportedFeature("server memory governance");
+    },
+    async listMemoryReviews() {
+      throw unsupportedFeature("server memory governance");
+    },
+    async decideMemoryReview() {
+      throw unsupportedFeature("server memory governance");
+    },
+    async listMessageMemoryActivities() {
+      throw unsupportedFeature("server memory governance");
+    },
+    async undoMemoryActivity() {
+      throw unsupportedFeature("server memory governance");
+    },
   };
 }

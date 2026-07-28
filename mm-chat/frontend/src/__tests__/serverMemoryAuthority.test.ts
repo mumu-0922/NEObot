@@ -7,6 +7,10 @@ const root = process.cwd();
 describe("server memory authority composition", () => {
   it("uses Go memory APIs in settings and blocks IndexedDB prompt injection in server mode", () => {
     const settings = fs.readFileSync(
+      path.join(root, "src/components/settings/ServerMemoryGovernance.tsx"),
+      "utf8",
+    );
+    const settingsRouter = fs.readFileSync(
       path.join(root, "src/components/settings/MemorySettings.tsx"),
       "utf8",
     );
@@ -15,11 +19,13 @@ describe("server memory authority composition", () => {
       "utf8",
     );
 
-    expect(settings).toContain("apiClient.memories.getSettings");
-    expect(settings).toContain("apiClient.memories.listMemories");
-    expect(settings).toContain("apiClient.memories.createMemory");
-    expect(settings).toContain("apiClient.memories.updateMemory");
-    expect(settings).toContain("apiClient.memories.deleteMemory");
+    expect(settings).toContain("apiClient.memories.getGovernance");
+    expect(settings).toContain("apiClient.memories.createGovernanceMemory");
+    expect(settings).toContain("apiClient.memories.updateGovernanceMemory");
+    expect(settings).toContain("apiClient.memories.deleteGovernanceMemory");
+    expect(settings).toContain("apiClient.memories.decideMemoryReview");
+    expect(settingsRouter).toContain("<ServerMemoryGovernance");
+    expect(settingsRouter).toContain("<LocalMemorySettings");
     expect(chatApp).toMatch(
       /const directMemoryContext =\s*!serverModeEnabled &&/,
     );

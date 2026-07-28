@@ -1,6 +1,21 @@
 import type { ByokPublicKeyResponse } from "../../../lib/byok/shared";
 import type { PublicServerConfig } from "../../../lib/defaultConfig/shared";
-import type { MemoryRecord, MemoryType } from "../../../lib/memory/types";
+import type {
+  ConversationMemoryPolicy,
+  GovernanceMemory,
+  GovernanceMemoryDetail,
+  MemoryActivity,
+  MemoryDeletionProgress,
+  MemoryGovernanceSnapshot,
+  MemoryPolicyMode,
+  MemoryProject,
+  MemoryRecord,
+  MemoryReviewDecisionResult,
+  MemoryReviewSuggestion,
+  MemoryScopeType,
+  MemorySensitivity,
+  MemoryType,
+} from "../../../lib/memory/types";
 import type {
   PluginExecutionPayload,
   PluginExecutionRequestPayload,
@@ -1157,6 +1172,9 @@ export interface DurableMemorySettingsDTO {
   enabled: boolean;
   searchEnabled: boolean;
   autoRecordEnabled: boolean;
+  sensitiveMemoryEnabled: boolean;
+  l2Mode: MemoryPolicyMode;
+  l3Mode: MemoryPolicyMode;
 }
 
 export interface MemoryMutationInput {
@@ -1175,7 +1193,58 @@ export interface UpdateDurableMemorySettingsInput {
   enabled?: boolean;
   searchEnabled?: boolean;
   autoRecordEnabled?: boolean;
+  sensitiveMemoryEnabled?: boolean;
+  l2Mode?: MemoryPolicyMode;
+  l3Mode?: MemoryPolicyMode;
   signal?: AbortSignal;
+}
+
+export interface CreateMemoryProjectInput {
+  name: string;
+  description?: string;
+  signal?: AbortSignal;
+}
+
+export interface UpdateMemoryProjectInput extends CreateMemoryProjectInput {
+  projectId: string;
+  expectedRevision: number;
+  lifecycleStatus: "active" | "archived";
+}
+
+export interface UpdateConversationMemoryPolicyInput {
+  conversationId: string;
+  expectedScopeGeneration: number;
+  projectId?: string;
+  useMode: MemoryPolicyMode;
+  learnMode: MemoryPolicyMode;
+  signal?: AbortSignal;
+}
+
+export interface GovernanceMemoryMutationInput {
+  type: MemoryType;
+  content: string;
+  importance?: number;
+  tags?: string[];
+  scopeType: MemoryScopeType;
+  projectId?: string;
+  conversationId?: string;
+  sensitivity?: MemorySensitivity;
+  signal?: AbortSignal;
+}
+
+export interface UpdateGovernanceMemoryInput extends GovernanceMemoryMutationInput {
+  memoryId: string;
+  expectedRevision: number;
+}
+
+export type MemoryReviewDecision =
+  "keep_current" | "accept_new" | "edit_merge" | "keep_both" | "reject";
+
+export interface MemoryActivityUndoResult {
+  status: "undone" | "review_required";
+  resultCode: string;
+  memoryId?: string;
+  memoryRevision?: number;
 }
 
 export interface MemoryApi {
@@ -1192,6 +1261,53 @@ export interface MemoryApi {
   updateSettings(
     input: UpdateDurableMemorySettingsInput,
   ): Promise<DurableMemorySettingsDTO>;
+  getGovernance(input?: {
+    signal?: AbortSignal;
+  }): Promise<MemoryGovernanceSnapshot>;
+  listProjects(input?: { signal?: AbortSignal }): Promise<MemoryProject[]>;
+  createProject(input: CreateMemoryProjectInput): Promise<MemoryProject>;
+  updateProject(input: UpdateMemoryProjectInput): Promise<MemoryProject>;
+  getConversationPolicy(input: {
+    conversationId: string;
+    signal?: AbortSignal;
+  }): Promise<ConversationMemoryPolicy>;
+  updateConversationPolicy(
+    input: UpdateConversationMemoryPolicyInput,
+  ): Promise<ConversationMemoryPolicy>;
+  createGovernanceMemory(
+    input: GovernanceMemoryMutationInput,
+  ): Promise<GovernanceMemory>;
+  updateGovernanceMemory(
+    input: UpdateGovernanceMemoryInput,
+  ): Promise<GovernanceMemory>;
+  deleteGovernanceMemory(input: {
+    memoryId: string;
+    expectedRevision: number;
+    signal?: AbortSignal;
+  }): Promise<MemoryDeletionProgress>;
+  getGovernanceMemoryDetail(input: {
+    memoryId: string;
+    signal?: AbortSignal;
+  }): Promise<GovernanceMemoryDetail>;
+  listMemoryReviews(input?: {
+    signal?: AbortSignal;
+  }): Promise<MemoryReviewSuggestion[]>;
+  decideMemoryReview(input: {
+    suggestionId: string;
+    decision: MemoryReviewDecision;
+    editedContent?: string;
+    signal?: AbortSignal;
+  }): Promise<MemoryReviewDecisionResult>;
+  listMessageMemoryActivities(input: {
+    assistantMessageId: string;
+    limit?: number;
+    signal?: AbortSignal;
+  }): Promise<MemoryActivity[]>;
+  undoMemoryActivity(input: {
+    activityId: string;
+    expectedRevision: number;
+    signal?: AbortSignal;
+  }): Promise<MemoryActivityUndoResult>;
 }
 
 export interface NeoChatApiClient {

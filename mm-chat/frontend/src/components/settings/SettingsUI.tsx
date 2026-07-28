@@ -234,14 +234,16 @@ export const SimpleSwitch = ({
   ariaLabel,
   id,
   name,
+  disabled = false,
 }: {
   checked: boolean;
   onChange: () => void;
   ariaLabel?: string;
   id?: string;
   name?: string;
+  disabled?: boolean;
 }) => (
-  <label className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center">
+  <label className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center has-disabled:cursor-not-allowed has-disabled:opacity-50">
     <input
       id={id}
       name={name}
@@ -249,6 +251,7 @@ export const SimpleSwitch = ({
       aria-label={ariaLabel}
       className="sr-only peer"
       checked={checked}
+      disabled={disabled}
       onChange={onChange}
     />
     <div

@@ -37,6 +37,13 @@ to the private Go backend.
   frontend/proxy runtime and must never be exposed as a browser credential.
 - Go remains authoritative for Auth, Chat, Files, Import, Teams, Knowledge, and
   all later migrated provider/plugin/RAG operations.
+- In server mode, Go/PostgreSQL is the only Memory authority.
+  `ServerMemoryGovernance` owns Project/Conversation policy, scoped Memory,
+  Review, detail, and operation views; browser-local Memory/Dream is hidden but
+  retained for rollback/import.
+- Per-answer Memory Activity is fetched by assistant message ID, remains
+  component-local, is never copied into persisted message metadata, and uses
+  Activity `subjectRevision` for safe undo.
 - Python RAG is private behind Go; the browser never calls it directly.
 - Existing theme tokens, components, routes, localization, responsiveness, and
   accessibility behavior form the UI compatibility contract.
@@ -54,6 +61,9 @@ to the private Go backend.
 | Legacy `/api/*` remains at final gate             | Standalone cutover fails                                                             |
 | Import/build/runtime reads original root          | Clean-copy gate fails                                                                |
 | Visual baseline changes during relocation         | Visual/interaction parity gate fails                                                 |
+| Server Memory governance request fails            | Keep the last snapshot, show a bounded error, and never fall back to local Memory    |
+| Activity is terminal or reaches 15 empty polls    | Stop polling; do not create background traffic for old answers                       |
+| Memory/Review state changed before mutation       | Surface the stale error and reload governance authority before another action        |
 
 ## 5. Good / Base / Bad Cases
 
@@ -63,6 +73,11 @@ to the private Go backend.
   server mode while its legacy handler stays isolated for transition testing.
 - **Bad:** a failed Go call silently invokes `/api/*`, localforage, OPFS, an
   external provider, MinIO, or the Python RAG service from browser code.
+- **Good:** the server Memory screen uses typed `/mm-api/v1` calls, hides local
+  Memory, and Activity polling stops when the answer is terminal/off-screen.
+- **Bad:** governance failure reads the local Memory store, persists Activity
+  into a message, or sends current hydrated Memory revision instead of the
+  Activity subject revision to undo.
 
 ## 6. Tests Required
 
@@ -70,6 +85,9 @@ to the private Go backend.
   `mm-chat/frontend/`; run server adapter/composition tests only.
 - Domain cutover: run the changed adapter/handler/store tests and one browser
   smoke for that domain.
+- Memory governance: assert server/local composition, all typed URLs/bodies,
+  Activity summary/terminal/undo helpers, loading/empty/error states,
+  accessible names, responsive grids/tabs, and no local fallback.
 - UI preservation: capture agreed desktop/mobile visual baselines and critical
   interaction smoke paths.
 - Final closure: run the entire frontend suite once, then clean-copy Compose,
