@@ -22,6 +22,7 @@
 | [Memory v2 hybrid shadow](./memory-v2-hybrid-shadow.md) | Fixed BGE-M3 vector jobs, Exact/BM25/vector RRF/rerank shadow, budget fallback, old-response fences, and zero prompt injection |
 | [Memory v2 governance](./memory-v2-governance.md) | Project/Conversation policy, scoped governance CRUD, Review decisions, current-only detail/Activity hydration, and governed v1 compatibility |
 | [Memory v2 portability/retention](./memory-v2-portability-retention.md) | Authenticated age export/import, dry-run/confirm fencing, off-host deletion replay, and verified backup-set retention |
+| [Memory v2 L2 Scene](./memory-v2-l2-scene.md) | Same-scope derived Scenes, leased synthesis/embedding/purge, hybrid shadow retrieval, evidence-gated promotion, governance, and rollback |
 
 ## Pre-Development Checklist
 
@@ -190,6 +191,17 @@ backup-set metadata, or retention/prune changes:
 4. Prove restore replay before backend open, projection rebuild, checksum/path/
    symlink fail-closed retention, and clean guarded down/re-up.
 
+For Memory L2 Scene generation, derived search, promotion/rollback, or Scene
+governance changes:
+
+1. Read [`memory-v2-l2-scene.md`](./memory-v2-l2-scene.md).
+2. Keep Scene content derived from current same-scope L1 and preserve
+   member revision/hash/watermark authority across every Provider boundary.
+3. Keep both flags default-off, keep promotion separate from evaluation, and
+   preserve immediate stale/24-hour purge even when Provider work is disabled.
+4. Prove current member/Sensitive/generation authority, zero shadow injection,
+   promotion denial/rollback, least privilege, and clean guarded down/re-up.
+
 ## Quality Check
 
 - Run the disposable database drill for the changed storage group.
@@ -235,5 +247,8 @@ backup-set metadata, or retention/prune changes:
   deletion-replay/projection drill, age tamper and plan-drift tests, retention
   path/checksum/symlink tests, and every gate in
   `memory-v2-portability-retention.md`.
+- For Memory L2 Scene changes, also run the PostgreSQL 17 refresh/member/
+  derived-embedding/search/stale/purge/promotion/replay drill plus every gate
+  in `memory-v2-l2-scene.md`.
 
 **Language**: All documentation should be written in English.

@@ -32,6 +32,11 @@ conversation summaries.
 - optionally run migration `059` exact/BM25/BGE-M3 lanes, deterministic
   RRF(60), BGE rerank, and a 600-target/900-hard token budget as a second
   default-off, zero-injection comparison;
+- optionally run migration `062` same-scope L2 Scene exact/BM25/vector
+  RRF/rerank retrieval under a separate default-off shadow flag; active mode
+  additionally requires the reader flag and database promotion authority;
+- expose Scene profile/list/detail, enable/disable, and rebuild governance
+  without any direct derived-plaintext mutation route;
 - prevent disabled Memory or disabled auto-record from reading/writing entries.
 
 Provider prompt injection remains in `internal/chat`. Durable extraction runs
@@ -59,6 +64,13 @@ matches, shadow, err := service.SearchRelevantWithShadow(
 // remain diagnostics; matches is still the exact v1 prompt/Usage authority.
 matches, hybrid, err := service.SearchRelevantWithHybridShadow(
     ctx, rawUserText, conversationID, assistantMessageID, 5,
+)
+
+// Called only when MEMORY_L2_SCENE_SHADOW_ENABLED=true. Shadow returns no
+// Scenes. Active results require MEMORY_L2_SCENE_READER_ENABLED plus current
+// database authority and are bounded to two Scenes / 500 estimated tokens.
+sceneResult, err := service.SearchRelevantL2Scenes(
+    ctx, rawUserText, conversationID, assistantMessageID, activeRequested,
 )
 
 // Export writes an age-encrypted stream. Import dry-run returns only a
@@ -144,6 +156,16 @@ explicit `--backend-stopped` assertion. Runtime roles have no direct CRUD on
 the import/replay tables, and no portability path calls a Provider or changes
 the v1 Global Top 5 prompt/Usage reader.
 
+Migration `062` adds rebuildable Global/Project L2 Scenes, exact/CJK BM25 and
+fixed BGE-M3 projections, content-free search observations, promotion events,
+and Scene governance. Conversation L1 never becomes a Scene member. Every
+candidate and final result is authorized against current member revisions,
+hashes, scope generation, visibility epoch, Sensitive policy, and the active
+L2 generation. Shadow mode stores only bounded diagnostics and returns no
+prompt content. Active mode appends a separate untrusted
+`<relevant-user-scenes>` block; L1 remains the only Usage authority and every
+L2 failure falls back to the unchanged L1 prompt.
+
 ## Main API
 
 | Boundary                            | Purpose                                                     |
@@ -154,6 +176,7 @@ the v1 Global Top 5 prompt/Usage reader.
 | `SearchRelevant(ctx, query, limit)`         | Relevant-only Top-5 retrieval                                      |
 | `SearchRelevantWithShadow(ctx, query, conversationID, assistantMessageID, limit)` | Unchanged v1 Top 5 plus sanitized comparison diagnostics |
 | `SearchRelevantWithHybridShadow(ctx, query, conversationID, assistantMessageID, limit)` | Unchanged v1 Top 5 plus default-off hybrid diagnostics |
+| `SearchRelevantL2Scenes(ctx, query, conversationID, assistantMessageID, activeRequested)` | Default-off Scene shadow or current authorized active results |
 | `HydrateDirectAction(ctx, input)`           | Bounded current context for the strict direct-user planner          |
 | `ExecuteDirectAction(ctx, input)`           | Local validation plus narrow SQL action capability                  |
 | `ListActivities` / `ListMessageUsages`      | User-scoped polling and answer provenance                           |
@@ -190,6 +213,8 @@ lexical_shadow.go        fail-open PR7 orchestration and diagnostic sanitization
 lexical_shadow_repository_postgres.go  narrow migration-058 compare capability
 hybrid_shadow.go         fail-open PR8 embedding/RRF/rerank/budget orchestration
 hybrid_shadow_repository_postgres.go  narrow migration-059 prepare/record capabilities
+l2_scene.go              fail-open PR11 Scene embedding/RRF/rerank/budget orchestration
+l2_scene_repository_postgres.go  narrow migration-062 Scene search capabilities
 ../memoryworker/embedding_worker.go  lease/source/redaction-fenced embedding orchestration
 action_service.go         direct action validation and application IDs
 privacy.go                shared secret/Sensitive classification and redaction

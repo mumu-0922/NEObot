@@ -152,11 +152,15 @@ cycle.
 | Import creates a second provenance fiction | Imported rows use `source/authority=import`, fresh IDs, and no local message evidence; optional history uses an explicit import actor |
 | Restore resurrects deleted plaintext | Offline replay matches ID+content hash, recreates tombstone/manifest evidence, wipes canonical/revision/evidence plaintext, then rebuilds all eligible projections |
 | Runtime directly edits portability authority | API/admin receives pinned function execution only; API and Memory Worker have no import/replay table CRUD |
+| Conversation L1 widens into a Scene | Migration `062` accepts only Global or one current Project member scope and rejects Conversation members. |
+| Scene output becomes authority | Go/SQL recompute member, sensitivity, watermark, generation, and profile fences; Scene remains derived and has no plaintext PATCH. |
+| Stale Scene reaches an answer | Candidate lanes and final record independently reauthorize current members, scope, epoch, generation, Sensitive policy, and active lifecycle. |
+| Shadow flag disables deletion | Provider-free stale detection and 24-hour purge run before the refresh gate. |
 
-Known limitation: migrations `058`/`059` remain zero-injection shadows and PR9
-Project/Conversation Memory remains governance-only. Semantic/scoped results
-cannot affect answers until a separate frozen benchmark, observation window,
-and reader-promotion decision.
+Known limitation: migration `062` ships in shadow with both rollout flags
+default-off. No formal 500-case benchmark plus seven-day/100-turn canary
+evidence exists, so L2 cannot become active automatically. The v1 Global Top 5
+remains the only default prompt and Usage authority.
 
 ## Verification
 
@@ -195,3 +199,5 @@ rebuild, runtime role denial, and a clean PostgreSQL 17
 - 2026-07-28: migration-061 authenticated encrypted Export/Import, ADD-only
   state-fenced confirm, off-host deletion replay, and full projection rebuild
   (Memory v2 PR10).
+- 2026-07-28: migration-062 same-scope derived L2 Scene lifecycle, hybrid
+  retrieval, governance, evidence-gated promotion, and rollback (Memory v2 PR11).

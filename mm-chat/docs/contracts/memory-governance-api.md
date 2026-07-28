@@ -41,6 +41,31 @@ Conversations, active governance-visible Memory, pending Reviews, deletion
 progress, and sanitized search diagnostics. Diagnostics contain profile,
 status, fallback, counts, token estimate, duration, and time only—never query,
 Memory content copies, embedding, raw score, prompt, or Provider secret.
+Migration `062` extends this response with optional `l2Scene.profile` and
+`l2Scene.scenes` governance state.
+
+### L2 Scene governance
+
+```http
+GET  /v1/memory-governance/scenes/{sceneId}/details
+POST /v1/memory-governance/scenes/{sceneId}/enabled
+     {"expectedRevision":1,"enabled":false}
+POST /v1/memory-governance/scenes/{sceneId}/rebuild
+POST /v1/memory-governance/scenes/rebuild
+```
+
+Scenes are rebuildable Global/Project summaries over current same-scope L1
+Memory. The snapshot exposes profile/generation/L1-reader readiness plus Scene
+scope, topic, content, lifecycle, source watermark, member count, and current-
+source status. Detail hydrates a member Memory and its evidence only while the
+exact member revision/hash/scope/epoch remains current; otherwise it returns a
+changed/deleted marker without reconstructing old plaintext.
+
+There is intentionally no Scene plaintext create or patch route. User
+correction goes through the existing scoped L1 Memory create/update UI, which
+invalidates and rebuilds the derived Scene. Disable/enable and rebuild are
+revision/current-user fenced. Scene promotion remains migration-owner-only and
+cannot be invoked through HTTP.
 
 ### Projects
 
@@ -223,5 +248,5 @@ retain `060` and use a forward fix; never delete user history to force down.
 - Compose validation, preflight regression, backend image binary check,
   security scan, and full isolated standalone verification.
 
-All PR9 verification uses synthetic fixtures. It makes no live Provider call
-and does not read or mutate live user Memory.
+PR9–PR11 verification uses synthetic fixtures and disposable PostgreSQL only.
+It makes no live Provider call and does not read or mutate live user Memory.

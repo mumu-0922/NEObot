@@ -13,8 +13,7 @@
 ## Non-goals
 
 - Switching the v1 Memory reader or HTTP CRUD contract.
-- Review decisions/API/UI, canonical auto-apply, hybrid retrieval, embeddings,
-  L2/L3 summaries, or external Memory engines.
+- L3 Persona, external Memory engines, or any automatic reader promotion.
 - Supporting request-only BYOK after the request ends; capture fails closed
   unless a current Server-owned provider profile can be hydrated.
 
@@ -33,6 +32,9 @@ memory-worker
        -> one atomic shadow/Review/rejected candidate batch
   -> purge: no Provider hydration -> tombstone/epoch-fenced plaintext wipe
   -> review_expire: no Provider hydration -> day-30 proposal plaintext wipe
+  -> l2_scene_purge: no Provider hydration -> stale plaintext/member/projection wipe
+  -> l2_scene_refresh: same-scope current L1 -> strict derived Scene proposal
+  -> l2_scene_embedding: current Scene -> fixed SiliconFlow BGE-M3 projection
   -> complete or bounded retry/dead-letter
 ```
 
@@ -58,6 +60,8 @@ has no direct table access. Those functions execute as the restricted
 | Recheck epoch and targeted tombstones at proposal | A response returned after deletion has no proposal authority | Stale source work dead-letters; content/fact tombstones become hash-only rejection. |
 | Log IDs and error codes only | Source text, secrets, and raw Provider errors are private | Operators diagnose by bounded codes and queue state. |
 | Share strict JSON and privacy primitives | Worker and direct-action planners must not drift on duplicate keys or credential patterns | `internal/strictjson` and `usermemory` own the common fail-closed primitives. |
+| L2 is derived and same-scope only | Conversation facts and model output cannot become broader authority | Refresh accepts only current Global or one Project member set and SQL recomputes every fence. |
+| Scene purge ignores the rollout flag | Disabling Provider work must not weaken deletion | Stale Scene plaintext, members, and projections are still wiped within 24 hours. |
 
 ## Failure and replay contract
 
@@ -70,6 +74,7 @@ has no direct table access. Those functions execute as the restricted
 | Crash on final attempt | PostgreSQL marks `LEASE_EXPIRED` dead-letter. |
 | Stale worker applies/completes | SQL rejects the old worker/lease token. |
 | Duplicate event/job | Unique event/stage/idempotency keys return the first authority. |
+| Scene member/watermark/generation drift | Reject the entire refresh or embedding result; no partial Scene survives. |
 
 Candidate persistence is one transaction per extraction output. The batch hash,
 profile IDs, source/epoch/scope fences, normalized target revisions, and
@@ -109,3 +114,5 @@ outcome stays outside canonical Memory and active readers.
   canonical auto-apply revocation, and provider-free 30-day expiry.
 - 2026-07-28: Memory v2 PR6 reuses the worker's strict/privacy contracts and
   records dead-letter outcomes as link-only assistant Activities.
+- 2026-07-28: Memory v2 PR11 adds default-off, same-scope L2 Scene synthesis,
+  derived embedding, and provider-free 24-hour stale purge lanes.
