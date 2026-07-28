@@ -685,3 +685,56 @@ provider-free 30-day expiry while retaining the v1 reader and API contract.
 
 - Begin PR6 direct-user typed Memory actions, Activity/Usage links, and
   revision-safe undo without switching the v2 reader early.
+
+
+## Session 20: Implement Memory v2 direct actions and Activity/Usage
+
+**Date**: 2026-07-28
+**Task**: Implement Memory v2 direct actions and Activity/Usage
+**Branch**: `main`
+
+### Summary
+
+Implemented PR6 direct-user typed Memory actions, immutable answer Usage,
+link-only Activity polling, and revision-safe undo while retaining the v1
+reader and API contract.
+
+### Main Changes
+
+- Added migration `057` with direct-user action/target authority, immutable
+  answer Usage links, link-only Activity, complete typed revision snapshots,
+  narrow runtime capabilities, and guarded rollback.
+- Added current-completed-user-only lexical gating, strict versioned planning,
+  task-model preference with chat fallback, secret zero-egress, and Go/SQL
+  target, revision, scope, epoch, and generation rebinding.
+- Added direct remember/correct/forget, exact-NOOP silence, Activity/Usage APIs,
+  atomic assistant Usage finalization, revision-safe created/corrected undo,
+  provider-free purge, shared strict JSON/privacy primitives, and executable
+  contracts.
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1415b74` | `feat: add Memory direct actions and Activity/Usage tracking` |
+| `081b92e` | `docs(task): record Memory v2 PR6 progress` |
+
+### Testing
+
+- [OK] Focused race tests, full backend tests, and `go vet ./...`.
+- [OK] Disposable PostgreSQL 17.10 action/undo/purge/replay, runtime-role
+  denial, guarded down, clean down, and re-up drill.
+- [OK] Preflight, Compose rendering, backend image build, diff/format/secret,
+  module, quality, change, and security checks.
+- [OK] Full standalone gate: frontend 954 tests/build, backend tests/vet, and
+  RAG 1,906 passed / 7 skipped.
+
+### Status
+
+[OK] **PR6 completed; parent Memory v2 task remains in progress**
+
+### Next Steps
+
+- Begin PR7 L1 exact/CJK BM25 projection shadow without switching the v2
+  reader or enabling dense retrieval early.

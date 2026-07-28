@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 19
+- **Total Sessions**: 20
 - **Last Active**: 2026-07-28
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~687 | Active |
+| `journal-1.md` | ~731 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 20 | 2026-07-28 | Implement Memory v2 direct actions and Activity/Usage | `1415b74`, `081b92e` | `main` |
 | 19 | 2026-07-28 | Implement Memory v2 candidate and Review shadow | `4a5fbf2`, `290a5cb` | `main` |
 | 18 | 2026-07-28 | Implement Memory v2 provenance and deletion safeguards | `754240c`, `4808e99` | `main` |
 | 17 | 2026-07-28 | Implement Memory v2 durable capture worker | `aed9c76`, `7d187d1` | `main` |
