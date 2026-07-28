@@ -30,9 +30,19 @@ def _start_sidecar(parent: Path) -> tuple[ParserSidecar, threading.Thread, Path]
     thread = threading.Thread(target=sidecar.serve, daemon=True)
     thread.start()
     deadline = time.monotonic() + 5
-    while not socket_path.exists() and time.monotonic() < deadline:
+    ready = False
+    while time.monotonic() < deadline:
+        probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            probe.connect(str(socket_path))
+            ready = True
+            break
+        except OSError:
+            pass
+        finally:
+            probe.close()
         time.sleep(0.01)
-    assert socket_path.exists()
+    assert ready
     return sidecar, thread, socket_path
 
 

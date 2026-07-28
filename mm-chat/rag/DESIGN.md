@@ -245,6 +245,10 @@ Deployment invariants:
 - Test output parent is fixed, mode `0700`, and quota-split at
   `512 MiB / 20000` inodes with one active run and a `256 MiB / 10000` artifact
   ceiling.
+- Unix socket path existence is not readiness: `bind()` creates the path before
+  `listen()` admits connections. Test/startup harnesses must wait for a
+  successful UDS connect (or an explicit listener-ready signal), not only
+  `Path.exists()`, before sending the first asserted invocation.
 
 ### 4. Validation & Error Matrix
 
@@ -260,6 +264,7 @@ Deployment invariants:
 | Child wall deadline / address-space exhaustion                    | `PARSER_TIMEOUT` / `PARSER_MEMORY_LIMIT`                     |
 | Caller cancellation                                               | Controller-local `PARSER_CANCELLED`; never on wire           |
 | EOF/reset/Sidecar death                                           | Controller-local `PARSER_SANDBOX_UNAVAILABLE`; never on wire |
+| Socket path exists but listener is not ready                      | Readiness probe waits/retries; do not classify an asserted invocation yet |
 | Any descendant remains after main child exits                     | kill/reap group and force Sidecar restart                    |
 | No C1.3 parser or no C1.4 Canonical IR                            | wire `FORMAT_UNSUPPORTED`; no fake success                   |
 | Marker/lock/device/inode/PID/mode/ledger mismatch                 | refuse cleanup and retain for review                         |
@@ -284,7 +289,7 @@ Deployment invariants:
   OOXML/XML, PDF, encoding, and limit negatives.
 - Protocol: exact prefix/header/body lengths, canonical JCS, duplicate keys,
   source/binding/result hashes, deadline, response discriminator, tail bytes,
-  and Controller-only errors.
+  Controller-only errors, and a connect-confirmed Sidecar readiness harness.
 - Sandbox: real seccomp install/hash, pidfd/process group, OOM, timeout, cancel,
   double-fork, bounded fork bomb, full descendant reap, and restart gate.
 - Output root: admission flock, quotas, `O_NOFOLLOW`, marker identity, unexpected
