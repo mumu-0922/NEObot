@@ -543,3 +543,44 @@ Projected hosted TTS from authoritative visible text, made Browser speech read r
 ### Next Steps
 
 - None - task complete
+
+
+## Session 17: Implement Memory v2 durable capture worker
+
+**Date**: 2026-07-28
+**Task**: Research memory system architecture (PR3)
+**Branch**: `main`
+
+### Summary
+
+Implemented PR3's ID-only PostgreSQL Memory outbox/jobs, atomic assistant
+finalize capture, private lease-fenced Go Memory Worker, optional Redis wake,
+Server provider/vault reuse, least-privilege role boundary, Compose runtime,
+and guarded rollback while retaining the Global v1 reader and CRUD contract.
+
+### Main Changes
+
+- Added migration `054`, current/N-1 event handling, bounded retry/reclaim,
+  dead-letter, source/profile/generation fences, and restricted SQL functions.
+- Removed request-local extraction goroutines and added the standalone
+  `mm-chat-memory-worker` command to the shared backend image.
+- Added private Compose/preflight/runtime documentation and executable Trellis
+  contracts for the Memory worker boundary.
+
+### Testing
+
+- [OK] Focused Go race tests, full `go test ./...`, and `go vet ./...`.
+- [OK] Disposable PostgreSQL 17.10 `001 -> 054`, guarded down, and re-up drill.
+- [OK] Preflight tests, Compose rendering, module/security/quality scans, and
+  backend image build with the worker binary.
+- [OK] Full standalone gate: frontend 954 tests/build, backend tests/vet, and
+  RAG 1,906 passed / 7 skipped with Ruff and mypy clean.
+
+### Status
+
+[OK] **PR3 completed; parent Memory v2 task remains in progress**
+
+### Next Steps
+
+- Begin PR4 evidence/revision/epoch/tombstone/delete-manifest correctness only
+  after this PR3 batch is committed.
