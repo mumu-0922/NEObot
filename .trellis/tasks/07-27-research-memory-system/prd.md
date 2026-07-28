@@ -5,9 +5,10 @@
 查清 Neo Chat 当前 Server mode 长期记忆的真实运行链路，比较 2026 年主流
 Agent Memory 方案，并在“单服务器、自托管、Go + PostgreSQL + Python RAG”
 约束下，按 `info.md` 第 17 章的 PR1–PR13 顺序实施已冻结的完整 end-state。
-魔尊已于 2026-07-28 明确回复“开始”，构成实施授权；PR1 benchmark contract 已完成，
-当前批次只实施 PR2 的 additive Project/scope/settings schema、既有数据 backfill 与旧
-Memory repository 兼容，不启用 v2 reader、不新增 Project 对外 API、不调用 Live provider。
+魔尊已于 2026-07-28 明确回复“开始”，构成实施授权；PR1 benchmark contract 与 PR2
+Project/scope/settings foundation 已完成。当前批次只实施 PR3 的 durable outbox/jobs、
+独立 Go Memory worker、lease/reclaim/replay 和 assistant finalize 同事务 capture event；
+继续保留 v1 reader，不新增 Project 对外 API，不调用 Live provider。
 
 ## What I Already Know
 
@@ -87,6 +88,33 @@ Memory repository 兼容，不启用 v2 reader、不新增 Project 对外 API、
   且所有新 runtime flags 保持关闭。
 - [x] PR2 migration up/down/re-up、schema/backfill/down guard 测试与既有 repository tests
   通过；存在 Project、非 Global Memory 或用户已修改新策略时 down 必须 fail closed。
+- [x] PR3 新增顺序 migration `054`，且不修改任何已发布 migration 字节；新增 versioned、
+  ID-only `memory_outbox` 与 leased `memory_jobs`，Redis 只能发送 `event_id` wake signal，
+  不得成为 job authority 或保存正文。
+- [x] assistant message finalize 与 eligible `turn.completed` outbox append 位于同一 PostgreSQL
+  transaction；event payload 只含 source/assistant/conversation IDs、scope/profile/generation/
+  hash references，不含 conversation、Memory 正文或 Provider secret。
+- [x] 独立 `memory-worker` command/container 使用 PostgreSQL polling + optional Redis wake、
+  bounded claim、lease expiry reclaim、bounded retry/dead-letter 和 idempotent completion；Redis
+  不可用、worker crash 或滚动重启时 durable jobs 仍可恢复。
+- [x] `memory_worker_runtime` 与 `go_api_runtime`、migration owner 分权；worker 只能经
+  lease/user/source/generation-checked SQL functions claim、hydrate、complete/retry/apply，
+  不获得 messages、user_memories、outbox 或 jobs 的任意跨用户直接 CRUD。
+- [x] Worker 复用现有 Server provider/vault/config 构造与现有 extraction semantics，但 API
+  内 request-local extraction goroutine 被完全移除；不得同时存在 API consumer loop 与独立
+  worker。Offline tests 不调用 Live provider。
+- [x] event schema 显式带 major version，worker 兼容当前 N 与 N-1 major 并 fail closed 拒绝
+  unknown major；duplicate event/idempotency key、stale lease、cross-user hydration 与 source
+  drift 均不得产生重复或越权 apply。
+- [x] v1 Memory CRUD/Recall/prompt injection 与现有 HTTP contract 保持不变；PR3 不提前实现
+  evidence/revision/epoch/tombstone、Review/conflict/temporal、BM25/vector、Project API/UI、
+  L2/L3 或 Hindsight shadow。
+- [x] Compose 增加同 backend image 的 private `memory-worker` service、独立 database URL/
+  pool/concurrency/resource limit/healthcheck；不 publish 外网端口，API 在 worker/Redis 故障时
+  继续聊天和 v1 Recall。
+- [x] PR3 focused race/full test/vet、Compose/preflight、migration up/down/re-up 与 disposable
+  PostgreSQL drill 通过，覆盖 finalize atomicity、duplicate、crash reclaim、stale lease、
+  cross-user denial、worker role无直接表 CRUD及 Redis-down polling。
 
 ## Definition of Done
 
@@ -97,8 +125,11 @@ Memory repository 兼容，不启用 v2 reader、不新增 Project 对外 API、
 - PR1 未修改 runtime、migration、Live 设置、Memory 数据或部署拓扑。
 - PR2 additive schema、backfill、ownership constraints、Global repository compatibility 与
   guarded rollback 均有自动化验证，backend `go test ./...` 与 `go vet ./...` 通过。
-- PR2 未启用新 reader/worker/API/provider；PR3–PR13 继续遵循 `info.md` 的逐批门槛、
-  回滚和单一 authority 约束。
+- PR3 durable event、job lease/replay、独立 worker 拓扑与最小权限 SQL capability 均有自动化
+  验证，backend `go test ./...`、`go vet ./...`、Compose render 与 disposable PostgreSQL
+  drill 通过。
+- PR3 未启用 v2 reader、Project API/UI 或后续 canonical/projection 能力；PR4–PR13 继续
+  遵循 `info.md` 的逐批门槛、回滚和单一 authority 约束。
 
 ## Technical Approach
 
@@ -134,12 +165,15 @@ PostgreSQL v2，外部引擎只能通过可替换 adapter 做 shadow；Hindsight
 
 ## Current Batch Out of Scope
 
-- PR2 不实现 outbox/jobs、evidence/revision/epoch/tombstone、Review/temporal/conflict、
-  projection/BM25/vector、worker、embedding、rerank、UI、Graph DB 或 Hindsight shadow；
-  这些能力只可在后续 PR3–PR13 按门槛逐批实施。
-- PR2 不提供 Project CRUD/API/UI，不启用当前 Memory、自动记录或任何 v2 reader，也不
-  创建、修改、删除或导出 Live 用户 Memory。
-- PR2 不调用 Live provider，不运行 Hindsight 真实 shadow，不生成虚假的人工审核数据。
+- PR3 不实现 evidence/revision/epoch/tombstone/delete manifest、Review/temporal/conflict、
+  projection/BM25/vector、embedding/rerank、L2/L3、Graph DB 或 Hindsight shadow；这些能力
+  只可在后续 PR4–PR13 按门槛逐批实施。
+- PR3 不提供 Project CRUD/API/UI，不切换任何 v2 reader，不修改现有 Memory HTTP payload，
+  也不创建、修改、删除或导出 Live 用户 Memory。
+- PR3 不调用 Live provider，不运行 Hindsight 真实 shadow，不生成虚假的人工审核数据；
+  worker Provider 行为只以 fake/offline tests 验证。
+- PR3 不允许 Redis-only queue、API 内第二 consumer loop、worker 外网端口或 worker 表级
+  跨用户 CRUD grant；回滚是停止 worker/auto-record 并保留 pending event/job，不做数据丢失。
 - 不把 AGENTS/system/project 固定规则迁入概率性 Memory。
 - 不把供应商 benchmark 当作发布门槛；发布必须使用 Neo Chat 中文数据集复测。
 
