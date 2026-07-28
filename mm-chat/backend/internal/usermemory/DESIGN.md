@@ -23,6 +23,10 @@ Settings UI -> typed frontend API -> HTTP Handler -> Service -> Repository
 Chat Handler -> Service.SearchRelevant -> guarded Provider system context
 Chat finalize transaction -> ID-only outbox/job -> private Go Memory Worker
   -> strict Provider candidate/decision -> migration-056 Review shadow proposal
+Current completed user message -> lexical gate -> strict typed action planner
+  -> Go target/scope/revision rebinding -> migration-057 action capability
+Assistant finalize transaction -> immutable migration-057 L1 Usage links
+Activity polling/undo -> user-scoped migration-057 capabilities
 ```
 
 `usermemory` owns storage and deterministic relevance. `internal/chat` owns
@@ -45,6 +49,11 @@ cycle.
 | Canonical revision with one prior snapshot               | Avoid a second mutable fact store while preserving edit evidence                      | Controlled purge is the only permitted revision update |
 | Manual authority wins every automatic conflict           | A model must not silently overwrite an explicit user action                           | PR5 records a pending Review target/revision while canonical remains unchanged |
 | Worker reuses validation but not the legacy write method | Candidate limits must stay aligned without preserving PR3 auto-apply                  | `NormalizeCandidateForStorage` is pure; `StoreExtracted` has no production caller |
+| Direct action planner is proposal-only                   | Model output cannot become user/scope/target authority                                | Go rebinds visible targets and SQL repeats current epoch/generation/revision checks |
+| Direct actions run before Recall                         | The same answer must observe a completed correction/forget, not stale Memory           | Planner failure degrades without blocking the main chat Provider                    |
+| Usage is immutable answer provenance                     | Retry must not rewrite which revision was injected                                     | Exact replay succeeds; changed order/content or length fails atomically              |
+| Activity stores links, not private text                  | Polling must not create a second Memory/candidate fact store                            | Authenticated reads hydrate current visible content or a deleted marker              |
+| Undo is revision fenced                                  | A stale UI action must not overwrite later user changes                                 | Created undo deletes; corrected undo appends restore; stale becomes Review-required  |
 
 ## Validation and limits
 
@@ -55,6 +64,9 @@ cycle.
 - IDs and source IDs must be UUIDs; all SQL writes are parameterized;
 - duplicate create upserts the active normalized row; editing into another
   active row returns `MEMORY_CONFLICT`.
+- direct action planner output is at most 16 KiB, contains at most five target
+  references, uses schema major one, and requires confidence at least `0.80`
+  for mutation; Activity pages are 1–100 and Usage lists are at most five.
 
 ## Threat model and controls
 
@@ -71,6 +83,12 @@ cycle.
 | Deleted Memory resurrected by an old response | Migration `055` rechecks live epoch, source hash, targeted tombstone, and lease at apply |
 | Deleted plaintext retained online        | A provider-free purge job clears canonical/revision/evidence plaintext idempotently |
 | Candidate model output mutates canonical | Migration `056` revokes old worker apply and permits only atomic shadow/Review proposal functions |
+| Assistant/history/tool text triggers direct mutation | Only the current completed `role=user` message passes the lexical gate; planner intent is fixed before Provider input |
+| Forged or stale action target | Go binds IDs/revisions from bounded hydration; SQL rechecks user, scope, epoch, generation, lifecycle, and revision |
+| Secret enters a second Provider/store | Local classification rejects before planner egress and persists only source hash/result code |
+| Usage replay rewrites answer provenance | Per-assistant advisory lock plus exact immutable replay comparison |
+| Deleted/archived/stale Memory leaks through governance APIs | Activity/Usage hydration returns no content and a deleted marker unless every current-state fence passes |
+| Undo resurrects stale state | Current revision/epoch/scope/source snapshot checks fail to `review_required` without mutation |
 
 Known limitation: deterministic lexical/CJK matching is intentionally
 conservative and may miss semantic paraphrases. Any future embedding lane must
@@ -97,3 +115,5 @@ real Provider cross-conversation recall/delete proof.
   (Memory v2 PR4).
 - 2026-07-28: migration-056 candidate/Review shadow and canonical auto-apply
   revocation; v1 reader/API remain unchanged (Memory v2 PR5).
+- 2026-07-28: migration-057 direct-user typed actions, immutable answer Usage,
+  link-only Activity polling, and revision-safe undo (Memory v2 PR6).

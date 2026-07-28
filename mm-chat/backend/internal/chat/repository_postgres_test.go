@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/auth"
 	filemeta "neo-chat/mm-chat/backend/internal/files"
 	"neo-chat/mm-chat/backend/internal/migration"
+	"neo-chat/mm-chat/backend/internal/usermemory"
 	migrationfiles "neo-chat/mm-chat/backend/migrations"
 )
 
@@ -93,6 +95,125 @@ func TestPostgresCreateMessagePersistsAttachmentOnlyMessages(t *testing.T) {
 	}
 	if len(got.Attachments) != 1 || got.Attachments[0].SHA256 != testSHA256 {
 		t.Fatalf("GetMessage() attachments = %#v", got.Attachments)
+	}
+}
+
+func TestFinalizeAssistantMessageRecordsMemoryUsageAtomically(t *testing.T) {
+	db := openPostgresIntegrationDB(t)
+	repo := NewPostgresRepository(db)
+	memoryService := usermemory.NewService(usermemory.NewPostgresRepository(db))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	conversation, err := repo.CreateConversation(ctx, CreateConversationInput{Title: "usage"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	userMessage, err := repo.CreateMessage(ctx, conversation.ID, CreateMessageInput{
+		Role: "user", Content: "How should you answer?",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assistant, err := repo.CreateAssistantMessage(ctx, conversation.ID, CreateAssistantMessageInput{
+		ParentMessageID: userMessage.ID,
+		IdempotencyKey:  "usage-assistant-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := memoryService.CreateManual(ctx, usermemory.Candidate{
+		Type: "preference", Content: "Keep replies concise", Importance: 5,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	memories, err := memoryService.List(ctx)
+	if err != nil || len(memories) == 0 || memories[0].Revision < 1 {
+		t.Fatalf("memory list = %#v/%v", memories, err)
+	}
+	finalized, err := repo.FinalizeAssistantMessage(
+		ctx, conversation.ID, assistant.ID,
+		FinalizeAssistantMessageInput{
+			Status: "completed", Content: "Concise answer",
+			MemoryUsages: []MemoryUsageInput{{
+				MemoryID:  created.ID,
+				Revision:  memories[0].Revision,
+				ScopeType: memories[0].ScopeType,
+			}},
+		},
+	)
+	if err != nil || finalized.Status != "completed" {
+		t.Fatalf("FinalizeAssistantMessage() = %#v/%v", finalized, err)
+	}
+	var usageCount int
+	if err := db.QueryRowContext(ctx, `
+SELECT count(*) FROM message_memory_usages
+WHERE assistant_message_id = $1 AND entity_id = $2 AND entity_revision = $3
+`, assistant.ID, created.ID, memories[0].Revision).Scan(&usageCount); err != nil || usageCount != 1 {
+		t.Fatalf("usage count = %d/%v", usageCount, err)
+	}
+	usageReplay := `[{"memoryId":"` + created.ID + `","revision":` +
+		strconv.FormatInt(memories[0].Revision, 10) + `,"scopeType":"` +
+		memories[0].ScopeType + `"}]`
+	var replayCount int
+	if err := db.QueryRowContext(ctx, `
+SELECT memory_record_message_usages($1::uuid, $2::uuid, $3::uuid, $4::jsonb)
+`, auth.UserOrDevelopment(ctx).ID, conversation.ID, assistant.ID, usageReplay).Scan(
+		&replayCount,
+	); err != nil || replayCount != 1 {
+		t.Fatalf("exact usage replay = %d/%v", replayCount, err)
+	}
+	other, err := memoryService.CreateManual(ctx, usermemory.Candidate{
+		Type: "fact", Content: "The editor is Vim", Importance: 3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conflictingReplay := `[{"memoryId":"` + other.ID +
+		`","revision":1,"scopeType":"global"}]`
+	if _, err := db.ExecContext(ctx, `
+SELECT memory_record_message_usages($1::uuid, $2::uuid, $3::uuid, $4::jsonb)
+`, auth.UserOrDevelopment(ctx).ID, conversation.ID, assistant.ID, conflictingReplay); err == nil ||
+		!strings.Contains(err.Error(), "MEMORY_USAGE_REPLAY_CONFLICT") {
+		t.Fatalf("conflicting usage replay error = %v", err)
+	}
+	var persistedUsageID string
+	if err := db.QueryRowContext(ctx, `
+SELECT entity_id::text FROM message_memory_usages
+WHERE assistant_message_id = $1 AND ordinal = 1
+`, assistant.ID).Scan(&persistedUsageID); err != nil || persistedUsageID != created.ID {
+		t.Fatalf("usage mutated after conflicting replay = %q/%v", persistedUsageID, err)
+	}
+
+	second, err := repo.CreateAssistantMessage(ctx, conversation.ID, CreateAssistantMessageInput{
+		ParentMessageID: userMessage.ID,
+		IdempotencyKey:  "usage-assistant-2",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.FinalizeAssistantMessage(
+		ctx, conversation.ID, second.ID,
+		FinalizeAssistantMessageInput{
+			Status: "completed", Content: "must roll back",
+			MemoryUsages: []MemoryUsageInput{{
+				MemoryID: created.ID, Revision: 99, ScopeType: "global",
+			}},
+		},
+	); err == nil {
+		t.Fatal("stale usage unexpectedly finalized assistant")
+	}
+	var secondStatus string
+	if err := db.QueryRowContext(ctx, `
+SELECT status FROM messages WHERE id = $1
+`, second.ID).Scan(&secondStatus); err != nil || secondStatus != "streaming" {
+		t.Fatalf("rolled-back assistant status = %q/%v", secondStatus, err)
+	}
+	if err := db.QueryRowContext(ctx, `
+SELECT count(*) FROM message_memory_usages WHERE assistant_message_id = $1
+`, second.ID).Scan(&usageCount); err != nil || usageCount != 0 {
+		t.Fatalf("rolled-back usage count = %d/%v", usageCount, err)
 	}
 }
 

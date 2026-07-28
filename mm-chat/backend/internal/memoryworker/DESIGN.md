@@ -57,6 +57,7 @@ has no direct table access. Those functions execute as the restricted
 | Dispatch purge/review expiry before hydration | Cleanup must not load or call a Provider | Both lanes remain available during Provider outages. |
 | Recheck epoch and targeted tombstones at proposal | A response returned after deletion has no proposal authority | Stale source work dead-letters; content/fact tombstones become hash-only rejection. |
 | Log IDs and error codes only | Source text, secrets, and raw Provider errors are private | Operators diagnose by bounded codes and queue state. |
+| Share strict JSON and privacy primitives | Worker and direct-action planners must not drift on duplicate keys or credential patterns | `internal/strictjson` and `usermemory` own the common fail-closed primitives. |
 
 ## Failure and replay contract
 
@@ -106,3 +107,5 @@ outcome stays outside canonical Memory and active readers.
   no-resurrection fences, and provider-free online purge.
 - 2026-07-28: Memory v2 PR5 strict candidate/decision proposals, Review shadow,
   canonical auto-apply revocation, and provider-free 30-day expiry.
+- 2026-07-28: Memory v2 PR6 reuses the worker's strict/privacy contracts and
+  records dead-letter outcomes as link-only assistant Activities.

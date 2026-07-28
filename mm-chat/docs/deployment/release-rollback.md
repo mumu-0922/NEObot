@@ -169,6 +169,31 @@ reconciled empty queue may run one `migrate down`, after every post-`054` API
 writer has stopped. Redis requires no queue migration because it stores only
 best-effort `event_id` wake signals.
 
+### Migrations 055-056 / Memory provenance and Review rollback
+
+Stop every Memory worker before attempting either down migration. Migration
+`056` refuses rollback while candidate batches, Review suggestions/targets/
+evidence, expiry jobs, or non-default canonical temporal/conflict metadata
+exist. Migration `055` refuses rollback while evidence, revisions, tombstones,
+deletion manifests, non-default epochs, AI canonical rows, or purge work exist.
+
+Do not delete proposal, provenance, or deletion history to force these guards.
+After traffic, stop automatic capture and use a forward fix while keeping the
+schema. Clean down/re-up is a disposable/pre-traffic proof only.
+
+### Migration 057 / Memory action, Activity, and Usage rollback
+
+Stop post-`057` API writers before a pre-traffic down. The migration fails with
+`MEMORY_ACTION_ROLLBACK_REQUIRES_EMPTY_HISTORY` while any direct action,
+normalized target, Activity, Usage, or typed prior revision snapshot exists,
+and with `MEMORY_ACTION_ROLLBACK_REQUIRES_V1_SOURCE` while a `direct_user`
+canonical row exists.
+
+Do not delete user Memory/history to bypass either guard. After any PR6 action
+or answer Usage has committed, retain `057` and roll back application behavior
+with a forward-compatible build. A valid clean drill is one-step
+`057 -> 056 -> 057` after all disposable fixture users are removed.
+
 ### Migrations 051-052 / SiliconFlow TTS rollback
 
 Migration `051_siliconflow_tts_cache` adds the exact Voice provider identity

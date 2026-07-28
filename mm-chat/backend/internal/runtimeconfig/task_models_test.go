@@ -115,6 +115,75 @@ func TestTaskModelSettingsRejectUnknownOrDisabledModels(t *testing.T) {
 	}
 }
 
+func TestResolveMemoryTaskModelPrefersConfiguredProvider(t *testing.T) {
+	vault := testProviderSecretVault(t, "task-model-v1", 21)
+	stored := testStoredVaultProvider(
+		t, vault, "CUSTOM", ProviderTypeOpenAICompatible,
+		"https://provider.example/v1", "fixture-secret",
+	)
+	stored.Config.Models = []string{"chat-model", "memory-model"}
+	attestStoredProvider(&stored, true)
+	service := NewService(
+		config.Config{},
+		WithProviderConfigRepository(&fakeProviderConfigRepository{
+			ok: true, stored: stored,
+		}),
+		WithTaskModelSettingsRepository(&fakeTaskModelSettingsRepository{
+			stored: StoredTaskModelSettings{Models: TaskModels{
+				Memory: "CUSTOM:memory-model",
+			}},
+			found: true,
+		}),
+		WithProviderSecretVault(vault),
+	)
+	resolved, found, err := service.ResolveMemoryTaskModel(context.Background())
+	if err != nil || !found || resolved.ModelID != "memory-model" ||
+		resolved.Provider.ID != "CUSTOM" || resolved.Provider.APIKey != "fixture-secret" {
+		t.Fatalf("ResolveMemoryTaskModel() = %#v/%t/%v", resolved, found, err)
+	}
+}
+
+func TestResolveMemoryTaskModelFallsBackOnlyWhenUnconfigured(t *testing.T) {
+	tests := []struct {
+		name    string
+		repo    TaskModelSettingsRepository
+		found   bool
+		wantErr error
+	}{
+		{name: "repository unavailable", repo: nil, found: false},
+		{
+			name: "memory task model empty",
+			repo: &fakeTaskModelSettingsRepository{
+				stored: StoredTaskModelSettings{Models: TaskModels{Memory: ""}},
+				found:  true,
+			},
+			found: false,
+		},
+		{
+			name: "configured model malformed",
+			repo: &fakeTaskModelSettingsRepository{
+				stored: StoredTaskModelSettings{Models: TaskModels{Memory: "malformed"}},
+				found:  true,
+			},
+			found:   false,
+			wantErr: ErrTaskModelSettingsInvalid,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			options := []ServiceOption{}
+			if test.repo != nil {
+				options = append(options, WithTaskModelSettingsRepository(test.repo))
+			}
+			service := NewService(config.Config{}, options...)
+			_, found, err := service.ResolveMemoryTaskModel(context.Background())
+			if found != test.found || !errors.Is(err, test.wantErr) {
+				t.Fatalf("ResolveMemoryTaskModel() = found:%t err:%v", found, err)
+			}
+		})
+	}
+}
+
 func TestPostgresTaskModelSettingsSurviveRepositoryReload(t *testing.T) {
 	db := openRuntimeConfigPostgresIntegrationDB(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

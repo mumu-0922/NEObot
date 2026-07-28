@@ -467,6 +467,42 @@ func (s *Service) FinalizeAssistantMessage(
 		}
 		input.MemoryCapture = &capture
 	}
+	if len(input.MemoryUsages) > 5 {
+		return Message{}, newValidationError(
+			"INVALID_MEMORY_USAGE_COUNT",
+			"assistant memory usage count must not exceed five",
+		)
+	}
+	if input.Status != "completed" && len(input.MemoryUsages) > 0 {
+		return Message{}, newValidationError(
+			"INVALID_MEMORY_USAGE_STATUS",
+			"memory usages require a completed assistant message",
+		)
+	}
+	seenMemoryUsages := make(map[string]struct{}, len(input.MemoryUsages))
+	for index := range input.MemoryUsages {
+		usage := &input.MemoryUsages[index]
+		usage.MemoryID = strings.TrimSpace(usage.MemoryID)
+		usage.ScopeType = strings.ToLower(strings.TrimSpace(usage.ScopeType))
+		if !isUUID(usage.MemoryID) || usage.Revision < 1 {
+			return Message{}, newValidationError(
+				"INVALID_MEMORY_USAGE", "memory usage target is invalid",
+			)
+		}
+		switch usage.ScopeType {
+		case "global", "project", "conversation":
+		default:
+			return Message{}, newValidationError(
+				"INVALID_MEMORY_USAGE", "memory usage scope is invalid",
+			)
+		}
+		if _, duplicate := seenMemoryUsages[usage.MemoryID]; duplicate {
+			return Message{}, newValidationError(
+				"INVALID_MEMORY_USAGE", "memory usage target is duplicated",
+			)
+		}
+		seenMemoryUsages[usage.MemoryID] = struct{}{}
+	}
 
 	return s.repo.FinalizeAssistantMessage(ctx, conversationID, messageID, input)
 }

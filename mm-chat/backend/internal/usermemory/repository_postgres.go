@@ -89,7 +89,7 @@ SELECT
   id, user_id, memory_type, content, normalized_content, importance,
   to_json(tags)::text AS tags,
   source, source_conversation_id, source_message_id, enabled, last_used_at,
-  created_at, updated_at, deleted_at
+  created_at, updated_at, deleted_at, revision, scope_type
 FROM user_memories
 WHERE user_id = $1 AND scope_type = 'global' AND deleted_at IS NULL
 ORDER BY updated_at DESC, id
@@ -102,7 +102,7 @@ LIMIT $2
 
 	memories := make([]Memory, 0)
 	for rows.Next() {
-		memory, err := scanMemory(rows)
+		memory, err := scanRecallMemory(rows)
 		if err != nil {
 			return nil, fmt.Errorf("scan user memory: %w", err)
 		}
@@ -273,6 +273,54 @@ func scanMemory(scanner memoryScanner) (Memory, error) {
 		&memory.CreatedAt,
 		&memory.UpdatedAt,
 		&deletedAt,
+	)
+	if err != nil {
+		return Memory{}, err
+	}
+	if err := json.Unmarshal([]byte(tagsJSON), &memory.Tags); err != nil {
+		return Memory{}, fmt.Errorf("decode memory tags: %w", err)
+	}
+	memory.SourceConversationID = strings.TrimSpace(conversationID.String)
+	memory.SourceMessageID = strings.TrimSpace(messageID.String)
+	if lastUsedAt.Valid {
+		value := lastUsedAt.Time.UTC()
+		memory.LastUsedAt = &value
+	}
+	if deletedAt.Valid {
+		value := deletedAt.Time.UTC()
+		memory.DeletedAt = &value
+	}
+	if memory.Tags == nil {
+		memory.Tags = []string{}
+	}
+	return memory, nil
+}
+
+func scanRecallMemory(scanner memoryScanner) (Memory, error) {
+	var memory Memory
+	var tagsJSON string
+	var conversationID sql.NullString
+	var messageID sql.NullString
+	var lastUsedAt sql.NullTime
+	var deletedAt sql.NullTime
+	err := scanner.Scan(
+		&memory.ID,
+		&memory.UserID,
+		&memory.Type,
+		&memory.Content,
+		&memory.NormalizedContent,
+		&memory.Importance,
+		&tagsJSON,
+		&memory.Source,
+		&conversationID,
+		&messageID,
+		&memory.Enabled,
+		&lastUsedAt,
+		&memory.CreatedAt,
+		&memory.UpdatedAt,
+		&deletedAt,
+		&memory.Revision,
+		&memory.ScopeType,
 	)
 	if err != nil {
 		return Memory{}, err

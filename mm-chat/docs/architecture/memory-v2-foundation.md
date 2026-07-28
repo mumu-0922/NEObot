@@ -1,8 +1,9 @@
 # Memory v2 schema foundation
 
-Memory v2 keeps Go and PostgreSQL authoritative. Migration
-`053_memory_project_scope_settings` adds the Project/scope/settings foundation
-without enabling a new reader, worker, Provider call, or public Project API.
+Memory v2 keeps Go and PostgreSQL authoritative. Migrations `053` through `057`
+add the Project/scope foundation, durable worker, canonical provenance/delete,
+candidate/Review shadow, and direct-user action/Activity/Usage authority. The
+active reader and public Memory CRUD remain the v1 Global contract.
 
 ## Authority model
 
@@ -40,9 +41,31 @@ Go repository explicitly creates and filters `scope_type='global'`; it cannot
 list, edit, delete, or mark a Project/Conversation Memory as used. The new
 `projects` table receives no `go_api_runtime` grant in PR2.
 
+PR3–PR5 add an ID-only PostgreSQL outbox/private worker, revision/evidence/
+tombstone authority, and proposal-only candidate Review shadow. Automatic
+Provider output cannot mutate canonical Memory.
+
+PR6 adds three backend seams without changing the reader or frontend:
+
+```text
+current completed user message
+  -> lexical gate + strict action proposal
+  -> Go and PostgreSQL authority rebinding
+  -> direct remember/correct/forget or Review-required result
+
+assistant finalize -> immutable L1 Usage links
+action/review/dead-letter -> link-only Activity -> safe undo capability
+```
+
+The Memory task model is preferred when configured; only an unconfigured
+Memory task model falls back to the current chat Provider/model. Secret input
+is rejected before this planner call. Activity and Usage rows copy no Memory,
+query, prompt, embedding, or raw score. Authenticated reads hydrate only a
+current visible Memory, otherwise they return a deleted marker.
+
 ## Rollback
 
-Down is allowed only before v2 authority is used. It fails atomically when any
+Migration `053` down is allowed only before v2 authority is used. It fails atomically when any
 Project exists, any Memory is non-Global, Conversation policy/generation has
 changed, or Sensitive/L2/L3 settings differ from their migration defaults.
 
@@ -67,3 +90,9 @@ stop every post-053 backend
 
 After v2 data exists, keep the additive schema and roll back only later feature
 flags/readers. Never delete Projects or scoped Memory merely to make down pass.
+
+Migrations `054`–`057` add their own history/queue guards. In particular,
+`057` cannot roll back while any direct action, normalized target, Activity,
+Usage, typed prior snapshot, or `direct_user` canonical row exists. Prefer a
+forward fix after traffic. A clean pre-traffic drill must replay
+`056 -> 057 -> 056 -> 057` against disposable PostgreSQL 17.

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"neo-chat/mm-chat/backend/internal/chat"
+	"neo-chat/mm-chat/backend/internal/strictjson"
 )
 
 const (
@@ -80,19 +81,7 @@ func (decision *rawDecision) UnmarshalJSON(data []byte) error {
 }
 
 func requireExactJSONKeys(data []byte, required []string) error {
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(data, &fields); err != nil {
-		return err
-	}
-	if len(fields) != len(required) {
-		return errors.New("JSON object field count is invalid")
-	}
-	for _, key := range required {
-		if _, ok := fields[key]; !ok {
-			return fmt.Errorf("required JSON field %q is missing", key)
-		}
-	}
-	return nil
+	return strictjson.RequireExactKeys(data, required)
 }
 
 func extractCandidates(

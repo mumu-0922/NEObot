@@ -40,23 +40,24 @@ const (
 )
 
 type Handler struct {
-	service                *Service
-	provider               Provider
-	attachmentResolver     ProviderAttachmentResolver
-	providerResolver       RuntimeProviderResolver
-	imageGenerator         ImageGenerator
-	activeRuns             *activeRunRegistry
-	cancellationRuns       RunCancellationStore
-	ragAssembler           *RAGAnswerAssembler
-	ragAnswerGate          RAGAnswerGovernanceGate
-	knowledgeCatalogSource KnowledgeRoutingCatalogSource
-	knowledgeCatalogGate   KnowledgeRoutingCatalogGovernanceGate
-	webSearchService       *websearch.Service
-	userMemoryService      *usermemory.Service
-	memoryWakePublisher    MemoryWakePublisher
-	contextBudgetPolicy    contextBudgetPolicy
-	toolCapabilityCache    ToolCapabilityCache
-	toolCapabilityProbes   *toolCapabilityProbeGroup
+	service                      *Service
+	provider                     Provider
+	attachmentResolver           ProviderAttachmentResolver
+	providerResolver             RuntimeProviderResolver
+	imageGenerator               ImageGenerator
+	activeRuns                   *activeRunRegistry
+	cancellationRuns             RunCancellationStore
+	ragAssembler                 *RAGAnswerAssembler
+	ragAnswerGate                RAGAnswerGovernanceGate
+	knowledgeCatalogSource       KnowledgeRoutingCatalogSource
+	knowledgeCatalogGate         KnowledgeRoutingCatalogGovernanceGate
+	webSearchService             *websearch.Service
+	userMemoryService            *usermemory.Service
+	memoryWakePublisher          MemoryWakePublisher
+	memoryActionProviderResolver MemoryActionProviderResolver
+	contextBudgetPolicy          contextBudgetPolicy
+	toolCapabilityCache          ToolCapabilityCache
+	toolCapabilityProbes         *toolCapabilityProbeGroup
 }
 
 type HandlerOption func(*Handler)
@@ -355,6 +356,14 @@ func WithUserMemoryService(service *usermemory.Service) HandlerOption {
 func WithMemoryWakePublisher(publisher MemoryWakePublisher) HandlerOption {
 	return func(handler *Handler) {
 		handler.memoryWakePublisher = publisher
+	}
+}
+
+func WithMemoryActionProviderResolver(
+	resolver MemoryActionProviderResolver,
+) HandlerOption {
+	return func(handler *Handler) {
+		handler.memoryActionProviderResolver = resolver
 	}
 }
 
@@ -1239,6 +1248,14 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		writeServiceError(w, err)
 		return
 	}
+	directMemoryAction := h.prepareDirectMemoryAction(
+		r.Context(),
+		conversationID,
+		userMessage,
+		assistantMessage,
+		streamProvider,
+		*modelRef,
+	)
 	trace := newProcessTrace(assistantMessage.ID)
 	addLegacyWebProcessStep(
 		trace,
@@ -1349,7 +1366,8 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			fusionDiagnostics,
 		)
 		metadata = withConversationContextMetadata(metadata, contextPreparation)
-		return withDurableMemoryMetadata(metadata, memoryPreparation)
+		metadata = withDurableMemoryMetadata(metadata, memoryPreparation)
+		return withDirectMemoryActionMetadata(metadata, directMemoryAction)
 	}
 
 	streamCtx, streamCancel := context.WithCancel(r.Context())
@@ -2136,6 +2154,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				trace,
 			),
 			MemoryCapture: memoryCapture,
+			MemoryUsages:  durableMemoryUsageInputs(memoryPreparation),
 		},
 	)
 	if err != nil {

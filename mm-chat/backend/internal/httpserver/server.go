@@ -167,6 +167,53 @@ type runtimeChatProviderResolver struct {
 	timeout time.Duration
 }
 
+type runtimeMemoryActionProviderResolver struct {
+	service *runtimeconfig.Service
+	timeout time.Duration
+}
+
+func (r runtimeMemoryActionProviderResolver) ResolveMemoryActionProvider(
+	ctx context.Context,
+	fallback chat.Provider,
+	fallbackModel chat.ModelRef,
+) (chat.MemoryActionProviderResolution, error) {
+	if r.service == nil {
+		return chat.MemoryActionProviderResolution{}, runtimeconfig.ErrDatabaseRequired
+	}
+	task, found, err := r.service.ResolveMemoryTaskModel(ctx)
+	if err != nil {
+		return chat.MemoryActionProviderResolution{}, err
+	}
+	if !found {
+		if fallback == nil || strings.TrimSpace(fallbackModel.ModelID) == "" {
+			return chat.MemoryActionProviderResolution{}, chat.ErrProviderRequired
+		}
+		return chat.MemoryActionProviderResolution{
+			Provider: fallback,
+			ModelRef: fallbackModel,
+			Source:   "chat_fallback",
+		}, nil
+	}
+	provider, err := providerfactory.NewChatProvider(providerfactory.ChatConfig{
+		ProviderID: task.Provider.ID,
+		Type:       task.Provider.Type,
+		BaseURL:    task.Provider.BaseURL,
+		APIKey:     task.Provider.APIKey,
+		Timeout:    r.timeout,
+	})
+	if err != nil {
+		return chat.MemoryActionProviderResolution{}, err
+	}
+	return chat.MemoryActionProviderResolution{
+		Provider: provider,
+		ModelRef: chat.ModelRef{
+			ProviderID: task.Provider.ID,
+			ModelID:    task.ModelID,
+		},
+		Source: "task_model_settings.memory",
+	}, nil
+}
+
 type runtimeToolCapabilityCache struct {
 	service *runtimeconfig.Service
 }
@@ -920,6 +967,10 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		}),
 		chat.WithUserMemoryService(userMemoryService),
 		chat.WithMemoryWakePublisher(resolvedOptions.memoryWakePublisher),
+		chat.WithMemoryActionProviderResolver(runtimeMemoryActionProviderResolver{
+			service: runtimeConfigService,
+			timeout: cfg.Provider.Timeout,
+		}),
 	}
 	if webSearchService.Configured() {
 		chatOptions = append(chatOptions, chat.WithWebSearchService(webSearchService))
@@ -1037,6 +1088,9 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/memories", userMemoryHandler)
 	mux.Handle("/v1/memories/", userMemoryHandler)
 	mux.Handle("/v1/memory-settings", userMemoryHandler)
+	mux.Handle("/v1/memory-activities", userMemoryHandler)
+	mux.Handle("/v1/memory-activities/", userMemoryHandler)
+	mux.Handle("/v1/memory-usages", userMemoryHandler)
 	mux.Handle("/v1/agents", agentHandler)
 	mux.Handle("/v1/agents/", agentHandler)
 	mux.Handle("/v1/plugins", pluginHandler)

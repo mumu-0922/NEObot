@@ -17,6 +17,7 @@
 | [Memory v2 worker](./memory-v2-worker.md) | ID-only completed-turn capture, leased PostgreSQL jobs, private Go worker, Redis wake, least privilege, replay, and rollback |
 | [Memory v2 provenance/delete](./memory-v2-provenance-deletion.md) | Canonical revisions, ID/hash evidence, visibility epochs, tombstones, manifests, and provider-free purge |
 | [Memory v2 candidate/Review](./memory-v2-candidate-review.md) | Strict candidate batches, proposal-only conflict/scope/temporal routing, Review shadow, and provider-free expiry |
+| [Memory v2 actions/Activity/Usage](./memory-v2-actions-activity-usage.md) | Current-user typed actions, strict planner authority, immutable Usage, link-only Activity polling, and revision-safe undo |
 
 ## Pre-Development Checklist
 
@@ -126,6 +127,18 @@ routing, or Review expiry changes:
 4. Prove secret zero-plaintext, evidence/scope/target ownership, exact/manual/
    temporal routing, old-apply denial, and guarded down/re-up.
 
+For direct-user Memory actions, answer Usage links, Activity polling, or undo
+changes:
+
+1. Read
+   [`memory-v2-actions-activity-usage.md`](./memory-v2-actions-activity-usage.md).
+2. Preserve current-completed-user-only intent and strict Provider proposal;
+   rebind user, scope, target, revision, epoch, and generation authority.
+3. Keep Usage immutable and Activity link-only; hydrate only current visible
+   content and never reconstruct deleted content from revision history.
+4. Prove secret zero-egress/plaintext, exact NOOP silence, safe/stale undo,
+   direct purge, least privilege, and guarded down/re-up.
+
 ## Quality Check
 
 - Run the disposable database drill for the changed storage group.
@@ -155,5 +168,8 @@ routing, or Review expiry changes:
   drill and every gate in `memory-v2-provenance-deletion.md`.
 - For Memory candidate/Review changes, also run the PostgreSQL 17 proposal and
   expiry drill plus every gate in `memory-v2-candidate-review.md`.
+- For Memory direct action/Activity/Usage changes, also run the PostgreSQL 17
+  action/undo/purge/replay drill plus every gate in
+  `memory-v2-actions-activity-usage.md`.
 
 **Language**: All documentation should be written in English.

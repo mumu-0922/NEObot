@@ -125,6 +125,13 @@ type FinalizeAssistantMessageInput struct {
 	Metadata      map[string]any
 	Attachments   []AttachmentInput
 	MemoryCapture *MemoryCaptureInput
+	MemoryUsages  []MemoryUsageInput
+}
+
+type MemoryUsageInput struct {
+	MemoryID  string
+	Revision  int64
+	ScopeType string
 }
 
 const MemoryCaptureEventSchemaMajor = 2

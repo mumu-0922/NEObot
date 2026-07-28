@@ -1201,6 +1201,18 @@ func (r *PostgresRepository) FinalizeAssistantMessage(
 	if err != nil {
 		return Message{}, err
 	}
+	memoryUsages := make([]map[string]any, 0, len(input.MemoryUsages))
+	for _, usage := range input.MemoryUsages {
+		memoryUsages = append(memoryUsages, map[string]any{
+			"memoryId":  usage.MemoryID,
+			"revision":  usage.Revision,
+			"scopeType": usage.ScopeType,
+		})
+	}
+	memoryUsagesJSON, err := json.Marshal(memoryUsages)
+	if err != nil {
+		return Message{}, fmt.Errorf("marshal memory usages: %w", err)
+	}
 
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1236,6 +1248,24 @@ func (r *PostgresRepository) FinalizeAssistantMessage(
 		message.Attachments, err = r.createMessageAttachments(ctx, tx, userID, message.ID, input.Attachments)
 		if err != nil {
 			return Message{}, err
+		}
+	}
+	if len(input.MemoryUsages) > 0 {
+		var usageCount int
+		if err := tx.QueryRowContext(
+			ctx,
+			`SELECT memory_record_message_usages(
+			  $1::uuid, $2::uuid, $3::uuid, $4::jsonb
+			)`,
+			userID,
+			conversationID,
+			messageID,
+			string(memoryUsagesJSON),
+		).Scan(&usageCount); err != nil {
+			return Message{}, fmt.Errorf("record assistant memory usages: %w", err)
+		}
+		if usageCount != len(input.MemoryUsages) {
+			return Message{}, errors.New("record assistant memory usages: count mismatch")
 		}
 	}
 

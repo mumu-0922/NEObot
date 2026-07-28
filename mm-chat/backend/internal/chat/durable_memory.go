@@ -17,6 +17,33 @@ type durableMemoryPreparation struct {
 	DegradationCode string
 }
 
+func durableMemoryUsageInputs(
+	preparation durableMemoryPreparation,
+) []MemoryUsageInput {
+	if len(preparation.Items) == 0 {
+		return nil
+	}
+	result := make([]MemoryUsageInput, 0, min(len(preparation.Items), usermemory.MaxSearchResults))
+	for _, item := range preparation.Items {
+		if len(result) == usermemory.MaxSearchResults {
+			break
+		}
+		if item.Revision < 1 {
+			continue
+		}
+		scopeType := strings.TrimSpace(item.ScopeType)
+		if scopeType == "" {
+			scopeType = "global"
+		}
+		result = append(result, MemoryUsageInput{
+			MemoryID:  item.ID,
+			Revision:  item.Revision,
+			ScopeType: scopeType,
+		})
+	}
+	return result
+}
+
 func (h *Handler) prepareDurableMemory(
 	ctx context.Context,
 	query string,

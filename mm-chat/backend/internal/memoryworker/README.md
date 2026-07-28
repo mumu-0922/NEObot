@@ -56,10 +56,12 @@ repository_postgres.go   restricted migration-054/055/056 function calls
 provider.go              hydrated Server provider resolution
 extraction.go            bounded versioned extraction/decision Provider calls
 proposal.go              proposal normalization and scope/time/evidence validation
-provider_privacy.go       pre-egress secret/Sensitive classification and bounds
-strict_json.go            duplicate/unknown/trailing Provider JSON rejection
+provider_privacy.go       pre-egress bounds plus shared usermemory redaction
+strict_json.go            adapter to the shared internal/strictjson decoder
 types.go                 job, capture, readiness, and interface contracts
 *_test.go                offline worker, extraction, and failure-path coverage
 ```
 
 See [DESIGN.md](DESIGN.md) for authority, failure, and security decisions.
+The shared strict decoder is documented in
+[`internal/strictjson`](../strictjson/README.md).

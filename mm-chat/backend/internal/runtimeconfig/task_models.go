@@ -33,6 +33,11 @@ type StoredTaskModelSettings struct {
 	UpdatedAt time.Time
 }
 
+type ResolvedTaskModel struct {
+	Provider ResolvedProvider
+	ModelID  string
+}
+
 type AdminTaskModelSettingsResponse struct {
 	Models     TaskModels `json:"models"`
 	Configured bool       `json:"configured"`
@@ -73,6 +78,56 @@ func (s *Service) AdminTaskModelSettings(
 	return AdminTaskModelSettingsResponse{
 		Models: stored.Models, Configured: true, UpdatedAt: &updatedAt,
 	}, nil
+}
+
+func (s *Service) ResolveMemoryTaskModel(
+	ctx context.Context,
+) (ResolvedTaskModel, bool, error) {
+	if s.taskModelRepo == nil {
+		return ResolvedTaskModel{}, false, nil
+	}
+	stored, found, err := s.taskModelRepo.GetTaskModelSettings(
+		ctx, auth.UserOrDevelopment(ctx).ID,
+	)
+	if err != nil {
+		return ResolvedTaskModel{}, false, err
+	}
+	modelRef := strings.TrimSpace(stored.Models.Memory)
+	if !found || modelRef == "" {
+		return ResolvedTaskModel{}, false, nil
+	}
+	if len(modelRef) > maxTaskModelRefBytes {
+		return ResolvedTaskModel{}, false, ErrTaskModelSettingsInvalid
+	}
+	separator := strings.Index(modelRef, ":")
+	if separator <= 0 || separator >= len(modelRef)-1 {
+		return ResolvedTaskModel{}, false, ErrTaskModelSettingsInvalid
+	}
+	providerID := strings.TrimSpace(modelRef[:separator])
+	modelID := strings.TrimSpace(modelRef[separator+1:])
+	if providerID == "" || modelID == "" {
+		return ResolvedTaskModel{}, false, ErrTaskModelSettingsInvalid
+	}
+	var provider ResolvedProvider
+	if providerID == serverDefaultProviderID {
+		provider, err = s.ResolveServerDefaultProvider(ctx)
+	} else {
+		provider, err = s.ResolveStoredProvider(ctx, providerID)
+	}
+	if err != nil {
+		return ResolvedTaskModel{}, false, err
+	}
+	available := false
+	for _, candidate := range provider.Models {
+		if strings.TrimSpace(candidate) == modelID {
+			available = true
+			break
+		}
+	}
+	if !available {
+		return ResolvedTaskModel{}, false, ErrTaskModelUnavailable
+	}
+	return ResolvedTaskModel{Provider: provider, ModelID: modelID}, true, nil
 }
 
 func (s *Service) UpdateAdminTaskModelSettings(

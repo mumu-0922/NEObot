@@ -183,7 +183,7 @@ Readiness never mutates schema, creates buckets, or runs migrations.
 
 The Go migration runner owns transaction boundaries, takes a Postgres advisory
 lock, validates migration names/checksums, and records each applied migration
-in `schema_migrations`. The current schema head is `054`. Migration `038`
+in `schema_migrations`. The current schema head is `057`. Migration `038`
 requires PostgreSQL major `17`, the `pg_textsearch` preload, and exact pgvector
 `0.8.5` / pg_textsearch `1.3.1` extension versions. Migrations `039` and `040`
 retain the dedicated API role by exposing only hardened document-lifecycle and
@@ -195,6 +195,12 @@ authority. Migration `053` adds the inactive Memory v2 Project/scope/settings
 foundation. Migration `054` adds the ID-only durable Memory capture outbox,
 lease-fenced worker capabilities, and guarded rollback; it does not switch the
 Memory reader or add Project API/UI.
+Migration `055` adds canonical evidence/revision/tombstone/deletion-manifest
+authority and provider-free purge. Migration `056` changes automatic capture
+to candidate/Review shadow with provider-free expiry. Migration `057` adds
+direct-user typed actions, immutable assistant Usage links, link-only Activity
+polling, and revision-safe undo; it still does not switch the v1 reader or add
+the PR9 frontend.
 
 Apply migrations from the same immutable `BACKEND_IMAGE` used by `backend` and
 `admin`:
@@ -244,8 +250,8 @@ exec psql --set=ON_ERROR_STOP=1 \
 '
 ```
 
-Acceptance requires versions `001` through `041`, ending at
-`041_security_definer_search_path_hardening`. Treat `schema_migrations` as runner state,
+Acceptance requires versions `001` through `057`, ending at
+`057_memory_actions_activity_usage`. Treat `schema_migrations` as runner state,
 not a domain table. Never use `baseline` routinely; it exists only to accept
 reviewed legacy rows that lack checksums.
 

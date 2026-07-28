@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"neo-chat/mm-chat/backend/internal/usermemory"
 )
 
 const (
@@ -14,25 +16,7 @@ const (
 )
 
 var (
-	secretAssignmentRE = regexp.MustCompile(
-		`(?i)(?:api[ _-]?key|password|passwd|access[ _-]?token|refresh[ _-]?token|` +
-			`client[ _-]?secret|secret|credentials?|otp|recovery[ _-]?code|` +
-			`private[ _-]?key|cvv|cvc|密码|口令|令牌|验证码|恢复码|私钥|密钥|` +
-			`凭证|安全码)\s*` +
-			`(?:is|=|:|：|是|为)\s*["']?[^\s,，;；]{4,}`,
-	)
-	secretTokenRE = regexp.MustCompile(
-		`(?i)(?:\bsk-[a-z0-9_-]{8,}\b|\b(?:eyJ[a-zA-Z0-9_-]{8,}\.){2}` +
-			`[a-zA-Z0-9_-]{8,}\b|authorization\s*:\s*bearer\s+\S+|` +
-			`-----begin [a-z ]+private key-----)`)
-	sensitiveFactRE = regexp.MustCompile(
-		`(?i)(?:\b(?:diagnos(?:is|ed)|disease|cancer|diabetes|salary|income|debt|` +
-			`religion|religious|politic(?:s|al)|sexual orientation|lawsuit|arrested|` +
-			`home address|exact location)\b|` +
-			`诊断|疾病|癌症|糖尿病|工资|收入|负债|宗教|政治观点|性取向|诉讼|被捕|` +
-			`家庭住址|精确位置|住在[^，。！？\s]{2,})`)
-	sentenceRE = regexp.MustCompile(`[^。！？.!?\n]+[。！？.!?]?`)
-	uuidRE     = regexp.MustCompile(
+	uuidRE = regexp.MustCompile(
 		`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-` +
 			`[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`,
 	)
@@ -101,29 +85,14 @@ func prepareDecisionMemories(capture Capture) []decisionMemory {
 }
 
 func redactProviderText(value string, allowSensitive bool) string {
-	segments := sentenceRE.FindAllString(value, -1)
-	if len(segments) == 0 {
-		segments = []string{value}
-	}
-	kept := make([]string, 0, len(segments))
-	for _, segment := range segments {
-		segment = strings.TrimSpace(segment)
-		if segment == "" || classifySensitivity(segment) == sensitivitySecret {
-			continue
-		}
-		if !allowSensitive && classifySensitivity(segment) == sensitivitySensitive {
-			continue
-		}
-		kept = append(kept, segment)
-	}
-	return strings.Join(kept, " ")
+	return usermemory.RedactMemoryProviderText(value, allowSensitive)
 }
 
 func classifySensitivity(value string) int {
-	switch {
-	case secretAssignmentRE.MatchString(value), secretTokenRE.MatchString(value):
+	switch usermemory.ClassifyMemorySensitivity(value) {
+	case usermemory.SensitivitySecret:
 		return sensitivitySecret
-	case sensitiveFactRE.MatchString(value):
+	case usermemory.SensitivitySensitive:
 		return sensitivitySensitive
 	default:
 		return sensitivityNormal
