@@ -148,6 +148,7 @@ container-local `GET /health` on port `8081`; no port is published or proxied.
 | `DATABASE_URL`                                | Non-superuser API login; shared only by `backend` and `admin`.                                  |
 | `MEMORY_WORKER_DATABASE_URL`                  | Memory Worker login inheriting only `memory_worker_runtime`.                                   |
 | `MEMORY_LEXICAL_SHADOW_ENABLED`               | API-only PR7 observation switch; defaults false and never controls projection maintenance or prompt authority. |
+| `MEMORY_HYBRID_SHADOW_ENABLED`                | Shared PR8 API/Memory Worker switch; defaults false, gates all Memory embedding/rerank calls, and never changes v1 prompt/Usage authority. |
 | `RAG_WORKER_DATABASE_URL`                     | Worker login inheriting only `rag_worker_executor`.                                             |
 | `RAG_REPLAY_DATABASE_URL`                     | Replay login inheriting only `rag_replay_operator`.                                             |
 | `RAG_MINERU_RESULT_PROXY_URL`                 | Optional internal ZIP download proxy for Docker Desktop/WSL CDN TLS workarounds; default empty. |

@@ -31,10 +31,25 @@ var searchStopWords = map[string]struct{}{
 }
 
 type Service struct {
-	repo Repository
+	repo           Repository
+	hybridProvider HybridShadowProvider
 }
 
-func NewService(repo Repository) *Service { return &Service{repo: repo} }
+type ServiceOption func(*Service)
+
+func WithHybridShadowProvider(provider HybridShadowProvider) ServiceOption {
+	return func(service *Service) { service.hybridProvider = provider }
+}
+
+func NewService(repo Repository, options ...ServiceOption) *Service {
+	service := &Service{repo: repo}
+	for _, option := range options {
+		if option != nil {
+			option(service)
+		}
+	}
+	return service
+}
 
 func DefaultSettings() Settings {
 	return Settings{SearchEnabled: true}

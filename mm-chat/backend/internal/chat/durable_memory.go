@@ -16,6 +16,7 @@ type durableMemoryPreparation struct {
 	Items           []usermemory.Memory
 	DegradationCode string
 	LexicalShadow   *usermemory.LexicalShadowSummary
+	HybridShadow    *usermemory.HybridShadowSummary
 }
 
 func durableMemoryUsageInputs(
@@ -57,8 +58,19 @@ func (h *Handler) prepareDurableMemory(
 	}
 	var items []usermemory.Memory
 	var shadow *usermemory.LexicalShadowSummary
+	var hybridShadow *usermemory.HybridShadowSummary
 	var err error
-	if h.memoryLexicalShadowEnabled {
+	if h.memoryHybridShadowEnabled {
+		var summary usermemory.HybridShadowSummary
+		items, summary, err = h.userMemoryService.SearchRelevantWithHybridShadow(
+			ctx,
+			query,
+			conversationID,
+			assistantMessageID,
+			usermemory.MaxSearchResults,
+		)
+		hybridShadow = &summary
+	} else if h.memoryLexicalShadowEnabled {
 		var summary usermemory.LexicalShadowSummary
 		items, summary, err = h.userMemoryService.SearchRelevantWithShadow(
 			ctx,
@@ -79,10 +91,14 @@ func (h *Handler) prepareDurableMemory(
 		return systemPrompt, durableMemoryPreparation{DegradationCode: "read_failed"}
 	}
 	if len(items) == 0 {
-		return systemPrompt, durableMemoryPreparation{LexicalShadow: shadow}
+		return systemPrompt, durableMemoryPreparation{
+			LexicalShadow: shadow, HybridShadow: hybridShadow,
+		}
 	}
 	return appendDurableMemoryRuntimeInstruction(systemPrompt, items),
-		durableMemoryPreparation{Items: items, LexicalShadow: shadow}
+		durableMemoryPreparation{
+			Items: items, LexicalShadow: shadow, HybridShadow: hybridShadow,
+		}
 }
 
 func appendDurableMemoryRuntimeInstruction(
@@ -120,7 +136,7 @@ func withDurableMemoryMetadata(
 	preparation durableMemoryPreparation,
 ) map[string]any {
 	if len(preparation.Items) == 0 && preparation.DegradationCode == "" &&
-		preparation.LexicalShadow == nil {
+		preparation.LexicalShadow == nil && preparation.HybridShadow == nil {
 		return metadata
 	}
 	result := cloneDurableMemoryMetadata(metadata)
@@ -139,6 +155,9 @@ func withDurableMemoryMetadata(
 	}
 	if preparation.LexicalShadow != nil {
 		memoryMetadata["lexicalShadow"] = *preparation.LexicalShadow
+	}
+	if preparation.HybridShadow != nil {
+		memoryMetadata["hybridShadow"] = *preparation.HybridShadow
 	}
 	result["memory"] = memoryMetadata
 	return result

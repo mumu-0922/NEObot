@@ -243,9 +243,44 @@ counts, status, and duration. Shadow rows never enter the Provider prompt or
 answer Usage links. A compare failure returns a bounded summary and leaves the
 v1 items and prompt unchanged.
 
+`hybridShadow` is absent unless `MEMORY_HYBRID_SHADOW_ENABLED=true`. When both
+shadow flags are true, Hybrid takes precedence and lexical comparison is not
+run twice. The summary is bounded and content-free:
+
+```json
+{
+  "profile": "memory_hybrid_bge_m3_rrf60_v1",
+  "status": "completed",
+  "resultCode": "OK",
+  "fallbackCode": "NONE",
+  "baselineCount": 1,
+  "exactCount": 2,
+  "bm25Count": 3,
+  "vectorCount": 3,
+  "rrfCount": 3,
+  "rerankCount": 3,
+  "finalCount": 3,
+  "overlapCount": 1,
+  "estimatedTokens": 180,
+  "targetTokensExceeded": false,
+  "durationMillis": 120
+}
+```
+
+Migration `059` keeps the raw current query transiently inside SQL for exact
+source/hash and lexical authority. Query embedding, authorized RRF Top 20
+rerank documents, and Worker embedding bodies pass through deterministic
+secret redaction immediately before Provider egress. A fully removed input
+makes zero corresponding Provider calls and records only a bounded
+`SECRET_REDACTED` fallback/error code. Durable storage contains no query,
+Memory body, embedding, or raw exact/BM25/cosine/RRF/rerank score. Query
+embedding failure skips only the vector lane; rerank failure or the two-second
+cutoff records the completed RRF fallback. Hybrid final IDs remain 0% prompt
+injection: v1 Top 5 and migration-057 Usage links are unchanged.
+
 Automatic extraction is allowed only when both `enabled` and
 `auto_record_enabled` are true. It is a bounded background Provider request over
-the raw current user message serialized as untrusted JSON. At most five stable,
+redacted current context serialized as untrusted JSON. At most five stable,
 explicit facts/preferences/instructions/projects/warnings/decisions may be
 upserted. One-off requests, questions, search topics, quoted documents,
 Knowledge content, third-party claims, vague context, and credential-like text
@@ -265,6 +300,11 @@ completed chat answer.
 | retrieval failure                           | answer continues; bounded `read_failed` metadata only  |
 | lexical shadow disabled                     | zero compare calls and no `lexicalShadow` metadata     |
 | lexical shadow comparison failure           | v1 prompt/Usage and answer remain unchanged; bounded failed summary only |
+| hybrid shadow disabled                      | zero Memory embedding/rerank calls and no `hybridShadow` metadata |
+| secret-only embedding/rerank input          | zero corresponding Provider calls; bounded `SECRET_REDACTED` fallback/error only |
+| query embedding or vector lane failure      | exact/BM25 continue; bounded lexical fallback summary only |
+| rerank failure or cutoff                    | RRF order and 600-target/900-hard budget; v1 prompt/Usage unchanged |
+| result becomes stale during rerank          | `RESULT_STALE`; no stale final link and answer continues |
 | extraction Provider/parse/write failure     | completed answer remains completed; no partial Memory  |
 | vague context or credential-like candidate  | reject candidate; never persist content or secret tags |
 

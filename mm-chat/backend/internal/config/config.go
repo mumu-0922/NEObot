@@ -22,6 +22,7 @@ const (
 	DefaultRedisRateLimitRequests     = 120
 	DefaultRedisRateLimitWindow       = time.Minute
 	DefaultMemoryLexicalShadowEnabled = false
+	DefaultMemoryHybridShadowEnabled  = false
 	DefaultProviderTimeout            = 2 * time.Minute
 	DefaultProviderName               = "Server Default"
 	DefaultStorageBackend             = "local"
@@ -94,6 +95,7 @@ const (
 	EnvTeamMailBackoffBase    = "TEAM_MAIL_WORKER_BACKOFF_BASE"
 	EnvTeamMailBackoffMax     = "TEAM_MAIL_WORKER_BACKOFF_MAX"
 	EnvMemoryLexicalShadow    = "MEMORY_LEXICAL_SHADOW_ENABLED"
+	EnvMemoryHybridShadow     = "MEMORY_HYBRID_SHADOW_ENABLED"
 )
 
 // Config contains the process-level settings required to start the API.
@@ -166,9 +168,10 @@ type RAGConfig struct {
 	SourceGatewayToken string
 }
 
-// MemoryConfig contains provider-free Memory reader rollout switches.
+// MemoryConfig contains default-off Memory reader rollout switches.
 type MemoryConfig struct {
 	LexicalShadowEnabled bool
+	HybridShadowEnabled  bool
 }
 
 // S3Config contains MinIO/S3-compatible object storage settings.
@@ -375,6 +378,11 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 				lookup,
 				EnvMemoryLexicalShadow,
 				DefaultMemoryLexicalShadowEnabled,
+			),
+			HybridShadowEnabled: boolEnvOrDefault(
+				lookup,
+				EnvMemoryHybridShadow,
+				DefaultMemoryHybridShadowEnabled,
 			),
 		},
 

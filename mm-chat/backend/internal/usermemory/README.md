@@ -22,6 +22,9 @@ conversation summaries.
 - rank only relevant lexical/CJK matches and return at most five;
 - optionally compare that unchanged v1 Top 5 with migration `058` exact/CJK
   BM25 lanes while keeping the shadow out of prompts and Usage;
+- optionally run migration `059` exact/BM25/BGE-M3 lanes, deterministic
+  RRF(60), BGE rerank, and a 600-target/900-hard token budget as a second
+  default-off, zero-injection comparison;
 - prevent disabled Memory or disabled auto-record from reading/writing entries.
 
 Provider prompt injection remains in `internal/chat`. Durable extraction runs
@@ -42,6 +45,12 @@ matches, err := service.SearchRelevant(ctx, "keep this concise", 5)
 // Called only when MEMORY_LEXICAL_SHADOW_ENABLED=true. The first return value
 // is still the exact v1 result used by the prompt and Usage recorder.
 matches, shadow, err := service.SearchRelevantWithShadow(
+    ctx, rawUserText, conversationID, assistantMessageID, 5,
+)
+
+// Called only when MEMORY_HYBRID_SHADOW_ENABLED=true. Hybrid final results
+// remain diagnostics; matches is still the exact v1 prompt/Usage authority.
+matches, hybrid, err := service.SearchRelevantWithHybridShadow(
     ctx, rawUserText, conversationID, assistantMessageID, 5,
 )
 ```
@@ -72,6 +81,18 @@ transactional and independent of the rollout flag. The optional
 reader completes; any compare failure becomes a bounded summary and cannot
 change v1 items, prompt text, Usage, or chat success.
 
+Migration `059` adds a fixed `siliconflow_bge_m3_v1` 1024-dimensional vector
+projection, partial HNSW cosine index, and leased embedding jobs. The Memory
+Worker claims those jobs only when the shared hybrid flag is true and can read
+one current Memory plus one exact attested `RAG:SILICONFLOW` credential only
+through narrow capabilities. The raw canonical hash remains the lease
+authority, while the embedding body is a transient deterministic
+secret-redacted copy; a fully removed body is terminally failed without a
+Provider call. Hybrid prepare keeps the raw query only for SQL source/hash and
+lexical authority, while query embedding and authorized RRF rerank use
+secret-redacted transient copies. Durable rows keep only hashes, IDs, revisions,
+lane ordinals, counts, bounded status, token estimates, and duration.
+
 ## Main API
 
 | Boundary                            | Purpose                                                     |
@@ -81,6 +102,7 @@ change v1 items, prompt text, Usage, or chat success.
 | `NewHandler(*Service)`                      | JSON HTTP routes and bounded error mapping                          |
 | `SearchRelevant(ctx, query, limit)`         | Relevant-only Top-5 retrieval                                      |
 | `SearchRelevantWithShadow(ctx, query, conversationID, assistantMessageID, limit)` | Unchanged v1 Top 5 plus sanitized comparison diagnostics |
+| `SearchRelevantWithHybridShadow(ctx, query, conversationID, assistantMessageID, limit)` | Unchanged v1 Top 5 plus default-off hybrid diagnostics |
 | `HydrateDirectAction(ctx, input)`           | Bounded current context for the strict direct-user planner          |
 | `ExecuteDirectAction(ctx, input)`           | Local validation plus narrow SQL action capability                  |
 | `ListActivities` / `ListMessageUsages`      | User-scoped polling and answer provenance                           |
@@ -95,6 +117,9 @@ repository_postgres.go   user-scoped canonical writes and deletion capability
 action_repository_postgres.go  PR6 action, Activity, Usage, and undo capabilities
 lexical_shadow.go        fail-open PR7 orchestration and diagnostic sanitization
 lexical_shadow_repository_postgres.go  narrow migration-058 compare capability
+hybrid_shadow.go         fail-open PR8 embedding/RRF/rerank/budget orchestration
+hybrid_shadow_repository_postgres.go  narrow migration-059 prepare/record capabilities
+../memoryworker/embedding_worker.go  lease/source/redaction-fenced embedding orchestration
 action_service.go         direct action validation and application IDs
 privacy.go                shared secret/Sensitive classification and redaction
 service.go               validation, settings, normalization, relevance

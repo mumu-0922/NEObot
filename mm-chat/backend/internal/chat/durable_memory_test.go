@@ -175,8 +175,9 @@ func TestPrepareDurableMemoryInjectsOnlyRelevantEntries(t *testing.T) {
 	if encoded["retrievedCount"] != 1 || strings.Contains(string(payload), "Keep answers concise") {
 		t.Fatalf("memory metadata leaked content: %#v", metadata)
 	}
-	if repo.shadowCalls != 0 {
-		t.Fatalf("default-off lexical shadow calls = %d", repo.shadowCalls)
+	if repo.shadowCalls != 0 || repo.hybridCalls != 0 {
+		t.Fatalf("default-off shadow calls = lexical:%d hybrid:%d",
+			repo.shadowCalls, repo.hybridCalls)
 	}
 }
 
@@ -223,6 +224,99 @@ func TestPrepareDurableMemoryShadowFailureDoesNotChangePromptOrV1Usage(t *testin
 	}
 }
 
+func TestPrepareDurableMemoryHybridShadowNeverChangesPromptUsageAndWinsFlagPrecedence(t *testing.T) {
+	repo := &chatMemoryRepository{
+		settings: usermemory.Settings{Enabled: true, SearchEnabled: true},
+		memories: []usermemory.Memory{
+			chatMemoryFixture(
+				"11111111-1111-4111-8111-111111111111",
+				"preference",
+				"Keep answers concise",
+				5,
+			),
+		},
+		hybridPreparation: usermemory.HybridShadowPreparation{
+			Summary: usermemory.HybridShadowSummary{
+				ProfileID: usermemory.HybridShadowProfileID,
+				Status:    "pending", ResultCode: "CANDIDATES_READY",
+				FallbackCode: "PROVIDER_UNAVAILABLE", RRFCount: 1,
+			},
+			Candidates: []usermemory.HybridShadowCandidate{{
+				MemoryID: "22222222-2222-4222-8222-222222222222",
+				Revision: 1, ScopeType: "global",
+				Content: "Hybrid-only private candidate",
+			}},
+		},
+		hybridSummary: usermemory.HybridShadowSummary{
+			ProfileID: usermemory.HybridShadowProfileID,
+			Status:    "completed", ResultCode: "OK",
+			FallbackCode: "PROVIDER_UNAVAILABLE", RRFCount: 1, FinalCount: 1,
+		},
+	}
+	handler := NewHandler(
+		NewService(&fakeRepository{}),
+		WithUserMemoryService(usermemory.NewService(repo)),
+		WithMemoryLexicalShadowEnabled(true),
+		WithMemoryHybridShadowEnabled(true),
+	)
+	query := "Please keep this concise"
+	systemPrompt, preparation := handler.prepareDurableMemory(
+		context.Background(), query,
+		"33333333-3333-4333-8333-333333333333",
+		"44444444-4444-4444-8444-444444444444",
+		"Base instruction",
+	)
+	if repo.hybridCalls != 1 || repo.shadowCalls != 0 ||
+		!strings.Contains(systemPrompt, "Keep answers concise") ||
+		strings.Contains(systemPrompt, "Hybrid-only private candidate") {
+		t.Fatalf("hybrid changed prompt/precedence = prompt:%q repo:%#v",
+			systemPrompt, repo)
+	}
+	usages := durableMemoryUsageInputs(preparation)
+	if len(usages) != 1 || usages[0].MemoryID != repo.memories[0].ID {
+		t.Fatalf("hybrid changed Usage = %#v", usages)
+	}
+	metadata := withDurableMemoryMetadata(nil, preparation)
+	payload, err := json.Marshal(metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded := string(payload)
+	if !strings.Contains(encoded, `"hybridShadow"`) ||
+		strings.Contains(encoded, query) ||
+		strings.Contains(encoded, "Hybrid-only private candidate") ||
+		strings.Contains(encoded, `"lexicalShadow"`) {
+		t.Fatalf("hybrid metadata leaked private payload = %s", encoded)
+	}
+}
+
+func TestPrepareDurableMemoryHybridFlagOffMakesZeroShadowCalls(t *testing.T) {
+	repo := &chatMemoryRepository{
+		settings: usermemory.Settings{Enabled: true, SearchEnabled: true},
+		memories: []usermemory.Memory{chatMemoryFixture(
+			"11111111-1111-4111-8111-111111111111",
+			"preference",
+			"Keep answers concise",
+			5,
+		)},
+	}
+	handler := NewHandler(
+		NewService(&fakeRepository{}),
+		WithUserMemoryService(usermemory.NewService(repo)),
+	)
+	_, preparation := handler.prepareDurableMemory(
+		context.Background(),
+		"Please keep this concise",
+		"33333333-3333-4333-8333-333333333333",
+		"44444444-4444-4444-8444-444444444444",
+		"Base instruction",
+	)
+	if repo.hybridCalls != 0 || repo.shadowCalls != 0 || len(preparation.Items) != 1 {
+		t.Fatalf("flag-off shadow calls = hybrid:%d lexical:%d items:%d",
+			repo.hybridCalls, repo.shadowCalls, len(preparation.Items))
+	}
+}
+
 func TestPrepareDurableMemoryDisabledDoesNotReadRows(t *testing.T) {
 	repo := &chatMemoryRepository{settings: usermemory.DefaultSettings()}
 	handler := NewHandler(
@@ -238,14 +332,21 @@ func TestPrepareDurableMemoryDisabledDoesNotReadRows(t *testing.T) {
 }
 
 type chatMemoryRepository struct {
-	settings    usermemory.Settings
-	memories    []usermemory.Memory
-	listCalls   int
-	createCalls int
-	shadowCalls int
-	shadowInput usermemory.LexicalShadowInput
-	shadow      usermemory.LexicalShadowSummary
-	shadowErr   error
+	settings          usermemory.Settings
+	memories          []usermemory.Memory
+	listCalls         int
+	createCalls       int
+	shadowCalls       int
+	shadowInput       usermemory.LexicalShadowInput
+	shadow            usermemory.LexicalShadowSummary
+	shadowErr         error
+	hybridCalls       int
+	hybridPrepare     usermemory.HybridShadowPrepareInput
+	hybridRecord      usermemory.HybridShadowRecordInput
+	hybridPreparation usermemory.HybridShadowPreparation
+	hybridSummary     usermemory.HybridShadowSummary
+	hybridPrepareErr  error
+	hybridRecordErr   error
 }
 
 func (r *chatMemoryRepository) GetSettings(context.Context) (usermemory.Settings, bool, error) {
@@ -291,6 +392,23 @@ func (r *chatMemoryRepository) CompareLexicalShadow(
 	return r.shadow, r.shadowErr
 }
 
+func (r *chatMemoryRepository) PrepareHybridShadow(
+	_ context.Context,
+	input usermemory.HybridShadowPrepareInput,
+) (usermemory.HybridShadowPreparation, error) {
+	r.hybridCalls++
+	r.hybridPrepare = input
+	return r.hybridPreparation, r.hybridPrepareErr
+}
+
+func (r *chatMemoryRepository) RecordHybridShadow(
+	_ context.Context,
+	input usermemory.HybridShadowRecordInput,
+) (usermemory.HybridShadowSummary, error) {
+	r.hybridRecord = input
+	return r.hybridSummary, r.hybridRecordErr
+}
+
 func chatMemoryFixture(id string, memoryType string, content string, importance int) usermemory.Memory {
 	now := time.Now().UTC()
 	return usermemory.Memory{
@@ -301,3 +419,4 @@ func chatMemoryFixture(id string, memoryType string, content string, importance 
 }
 
 var _ usermemory.LexicalShadowRepository = (*chatMemoryRepository)(nil)
+var _ usermemory.HybridShadowRepository = (*chatMemoryRepository)(nil)

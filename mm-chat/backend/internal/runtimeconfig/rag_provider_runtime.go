@@ -46,4 +46,33 @@ func (s *Service) ResolveRAGProviderCredential(
 	return strings.TrimSpace(credential), nil
 }
 
+// ResolveHydratedStoredRAGProviderCredential validates and decrypts one
+// capability-hydrated provider row. It lets the isolated Memory worker retain
+// least-privilege table denial while applying the same enabled/attested/vault
+// checks as the API runtime.
+func (s *Service) ResolveHydratedStoredRAGProviderCredential(
+	stored StoredProviderConfig,
+) (string, error) {
+	stored.ID = strings.TrimSpace(stored.ID)
+	stored.UserID = strings.TrimSpace(stored.UserID)
+	stored.ProviderID = strings.TrimSpace(stored.ProviderID)
+	if s == nil || stored.ID == "" || stored.UserID == "" || stored.ProviderID == "" {
+		return "", ragproviders.ErrProviderGatewayUnavailable
+	}
+	providerID, err := validateStoredRAGProvider(stored)
+	if err != nil || providerID != RAGProviderSiliconFlow ||
+		stored.ProviderID != ragProviderRecordID(providerID) {
+		return "", ragproviders.ErrProviderGatewayUnavailable
+	}
+	if !stored.Config.Enabled || !RAGProviderConnectionTestValid(stored) {
+		return "", ragproviders.ErrProviderGatewayActivationRequired
+	}
+	credential, err := s.decryptStoredRAGProviderSecret(stored)
+	if err != nil || !validRAGAPIKey(credential) {
+		credential = ""
+		return "", ragproviders.ErrProviderGatewayUnavailable
+	}
+	return strings.TrimSpace(credential), nil
+}
+
 var _ ragproviders.ProviderCredentialResolver = (*Service)(nil)

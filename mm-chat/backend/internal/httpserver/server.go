@@ -106,6 +106,26 @@ type ragRetrievalProfileGatewayFactory interface {
 	ForRetrievalProfile(ragproviders.RetrievalProfileID) (*ragproviders.RetrievalProfileGateway, error)
 }
 
+func resolveMemoryHybridProvider(
+	embedder ragproviders.QueryEmbedder,
+) usermemory.HybridShadowProvider {
+	if factory, ok := embedder.(ragRetrievalProfileGatewayFactory); ok {
+		profileGateway, err := factory.ForRetrievalProfile(
+			ragproviders.RetrievalProfileSiliconFlow,
+		)
+		if err == nil && profileGateway != nil &&
+			profileGateway.Profile().ID == ragproviders.RetrievalProfileSiliconFlow {
+			return profileGateway
+		}
+		return nil
+	}
+	if profileGateway, ok := embedder.(*ragproviders.RetrievalProfileGateway); ok &&
+		profileGateway.Profile().ID == ragproviders.RetrievalProfileSiliconFlow {
+		return profileGateway
+	}
+	return nil
+}
+
 type knowledgeRAGCandidateSource struct {
 	candidates ragEvidenceCandidateFetcher
 	embedder   ragproviders.QueryEmbedder
@@ -947,7 +967,20 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 			return err == nil
 		}),
 	)
-	userMemoryService := usermemory.NewService(resolvedOptions.userMemoryRepo)
+	memoryServiceOptions := make([]usermemory.ServiceOption, 0, 1)
+	if cfg.Memory.HybridShadowEnabled {
+		provider := resolveMemoryHybridProvider(resolvedOptions.ragQueryEmbedder)
+		if provider != nil {
+			memoryServiceOptions = append(
+				memoryServiceOptions,
+				usermemory.WithHybridShadowProvider(provider),
+			)
+		}
+	}
+	userMemoryService := usermemory.NewService(
+		resolvedOptions.userMemoryRepo,
+		memoryServiceOptions...,
+	)
 	chatOptions := []chat.HandlerOption{
 		chat.WithProvider(resolvedOptions.chatProvider),
 		chat.WithRunCancellationStore(resolvedOptions.runCancellationStore),
@@ -967,6 +1000,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		}),
 		chat.WithUserMemoryService(userMemoryService),
 		chat.WithMemoryLexicalShadowEnabled(cfg.Memory.LexicalShadowEnabled),
+		chat.WithMemoryHybridShadowEnabled(cfg.Memory.HybridShadowEnabled),
 		chat.WithMemoryWakePublisher(resolvedOptions.memoryWakePublisher),
 		chat.WithMemoryActionProviderResolver(runtimeMemoryActionProviderResolver{
 			service: runtimeConfigService,

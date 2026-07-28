@@ -23,8 +23,26 @@ func TestLoadWorkerConfigDefaults(t *testing.T) {
 	if resolved.maxOpenConns != 4 || resolved.maxIdleConns != 2 ||
 		resolved.concurrency != 2 || resolved.leaseDuration != 2*time.Minute ||
 		resolved.providerTimeout != 45*time.Second ||
-		resolved.redisKeyPrefix != config.DefaultRedisKeyPrefix {
+		resolved.redisKeyPrefix != config.DefaultRedisKeyPrefix ||
+		resolved.hybridShadowEnabled {
 		t.Fatalf("config = %#v", resolved)
+	}
+}
+
+func TestLoadWorkerConfigHybridShadowFlag(t *testing.T) {
+	values := map[string]string{
+		envDatabaseURL:     "postgres://worker:fixture@postgres/neo_chat",
+		envProviderKeyring: "/run/secrets/provider-keyring.json",
+		envHybridShadow:    " true ",
+	}
+	resolved, err := loadWorkerConfig(mapLookup(values))
+	if err != nil || !resolved.hybridShadowEnabled {
+		t.Fatalf("hybrid worker config = %#v/%v", resolved, err)
+	}
+	values[envHybridShadow] = "sometimes"
+	if _, err := loadWorkerConfig(mapLookup(values)); err == nil ||
+		!strings.Contains(err.Error(), envHybridShadow) {
+		t.Fatalf("invalid hybrid flag error = %v", err)
 	}
 }
 

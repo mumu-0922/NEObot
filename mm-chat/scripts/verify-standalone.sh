@@ -113,7 +113,8 @@ compose_json="${temp_dir}/compose.json"
 "${docker_bin}" compose \
   --project-directory "$(docker_path "${copy_dir}")" \
   -f "$(docker_path "${copy_dir}/compose.yml")" \
-  --profile app --profile ops --profile rag-worker --profile rag-ops \
+  --profile app --profile ops --profile memory-worker \
+  --profile rag-worker --profile rag-ops \
   config --format json >"${compose_json}"
 
 python3 - "${compose_json}" "${copy_dir}" <<'PY'
@@ -141,6 +142,7 @@ services = config["services"]
 required = {
     "frontend",
     "backend",
+    "memory-worker",
     "postgres",
     "redis",
     "minio",
@@ -171,6 +173,20 @@ if frontend["environment"]["NEXT_PUBLIC_API_BASE_URL"] != "/mm-api":
     raise SystemExit("standalone verification: frontend API edge is not /mm-api")
 if "backend" not in frontend.get("depends_on", {}):
     raise SystemExit("standalone verification: frontend does not depend on backend")
+
+backend = services["backend"]
+memory_worker = services["memory-worker"]
+if memory_worker.get("profiles") != ["memory-worker"]:
+    raise SystemExit("standalone verification: Memory Worker profile drifted")
+if memory_worker.get("ports"):
+    raise SystemExit("standalone verification: Memory Worker exposes a host port")
+if set(memory_worker.get("networks", {})) != {"private"}:
+    raise SystemExit("standalone verification: Memory Worker is not private-only")
+if (
+    backend["environment"]["MEMORY_HYBRID_SHADOW_ENABLED"]
+    != memory_worker["environment"]["MEMORY_HYBRID_SHADOW_ENABLED"]
+):
+    raise SystemExit("standalone verification: Memory hybrid flags disagree")
 PY
 
 if [[ "${full}" == true ]]; then

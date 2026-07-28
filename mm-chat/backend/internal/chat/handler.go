@@ -54,6 +54,7 @@ type Handler struct {
 	webSearchService             *websearch.Service
 	userMemoryService            *usermemory.Service
 	memoryLexicalShadowEnabled   bool
+	memoryHybridShadowEnabled    bool
 	memoryWakePublisher          MemoryWakePublisher
 	memoryActionProviderResolver MemoryActionProviderResolver
 	contextBudgetPolicy          contextBudgetPolicy
@@ -357,6 +358,12 @@ func WithUserMemoryService(service *usermemory.Service) HandlerOption {
 func WithMemoryLexicalShadowEnabled(enabled bool) HandlerOption {
 	return func(handler *Handler) {
 		handler.memoryLexicalShadowEnabled = enabled
+	}
+}
+
+func WithMemoryHybridShadowEnabled(enabled bool) HandlerOption {
+	return func(handler *Handler) {
+		handler.memoryHybridShadowEnabled = enabled
 	}
 }
 

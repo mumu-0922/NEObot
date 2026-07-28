@@ -19,6 +19,7 @@
 | [Memory v2 candidate/Review](./memory-v2-candidate-review.md) | Strict candidate batches, proposal-only conflict/scope/temporal routing, Review shadow, and provider-free expiry |
 | [Memory v2 actions/Activity/Usage](./memory-v2-actions-activity-usage.md) | Current-user typed actions, strict planner authority, immutable Usage, link-only Activity polling, and revision-safe undo |
 | [Memory v2 lexical shadow](./memory-v2-lexical-shadow.md) | Transactional L1 exact/CJK BM25 projection, current-authority shadow comparison, ID-only diagnostics, and v1 fail-open |
+| [Memory v2 hybrid shadow](./memory-v2-hybrid-shadow.md) | Fixed BGE-M3 vector jobs, Exact/BM25/vector RRF/rerank shadow, budget fallback, old-response fences, and zero prompt injection |
 
 ## Pre-Development Checklist
 
@@ -152,6 +153,17 @@ For Memory exact/CJK BM25 projections or lexical shadow comparison changes:
    the same transaction, shadow failure leaves v1 unchanged, runtime roles lack
    table CRUD, and guarded down/re-up remains clean.
 
+For Memory BGE-M3 projection/jobs, hybrid RRF/rerank, token budget, or hybrid
+shadow switch changes:
+
+1. Read [`memory-v2-hybrid-shadow.md`](./memory-v2-hybrid-shadow.md).
+2. Keep the fixed BGE tuple and pin revision/hash/epoch/scope/projection/
+   Provider authority across claim, hydrate, Provider work, and complete.
+3. Keep all three candidate lanes independently authorized, keep query/content/
+   raw scores out of durable diagnostics, and reauthorize after rerank.
+4. Prove the shared default-off flag makes zero Memory Provider calls, v1
+   prompt/Usage remains byte-authoritative, and guarded down/re-up is clean.
+
 ## Quality Check
 
 - Run the disposable database drill for the changed storage group.
@@ -187,5 +199,8 @@ For Memory exact/CJK BM25 projections or lexical shadow comparison changes:
 - For Memory lexical projection/shadow changes, also run the PostgreSQL 17 CJK
   BM25 projection/authority/replay drill plus every gate in
   `memory-v2-lexical-shadow.md`.
+- For Memory hybrid vector shadow changes, also run the PostgreSQL 17 fake
+  vector/lease/authority/RRF/replay drill plus every gate in
+  `memory-v2-hybrid-shadow.md`.
 
 **Language**: All documentation should be written in English.

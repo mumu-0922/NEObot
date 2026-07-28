@@ -180,6 +180,12 @@ if (
 ):
     fail("MEMORY_LEXICAL_SHADOW_ENABLED must be true or false")
 
+if (
+    "MEMORY_HYBRID_SHADOW_ENABLED" in values
+    and values["MEMORY_HYBRID_SHADOW_ENABLED"] not in {"true", "false"}
+):
+    fail("MEMORY_HYBRID_SHADOW_ENABLED must be true or false")
+
 required = (
     "FRONTEND_IMAGE",
     "BACKEND_IMAGE",

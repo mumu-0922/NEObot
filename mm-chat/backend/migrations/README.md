@@ -278,6 +278,26 @@ status, and duration—never query text, Memory text, prompt, embedding, or raw
 score. Down requires a non-promoted reader and an empty observation history;
 clean re-up rebuilds projection from canonical rows.
 
+Migration `059` extends that canonical-owned projection with the fixed
+`siliconflow_bge_m3_v1` / `Pro/BAAI/bge-m3` / 1024-dimensional vector binding,
+a partial HNSW cosine index, and lease-fenced derived embedding jobs. Jobs pin
+revision, content hash, visibility epoch, scope generation, projection
+generation, and the exact attested `RAG:SILICONFLOW` record timestamp. The
+Memory Worker receives only claim/hydrate/complete/retry capabilities. Raw
+query/content stays at the SQL hash/lease authority boundary; Provider query,
+rerank documents, and embedding bodies use deterministic secret-redacted
+transient copies. A fully removed query is represented only as `redacted` plus
+bounded `SECRET_REDACTED`, and a fully removed embedding body is terminally
+failed without a Provider call.
+
+The API receives only hybrid prepare/record capabilities. Exact Top 20, BM25
+Top 30, and vector Top 30 remain independent before deterministic RRF(60) Top
+20; BGE rerank and the final 600-target/900-hard token selection are transient.
+Durable observations contain no query, Memory body, embedding, or raw score,
+and hybrid results never enter the v1 prompt or Usage. Down requires a
+v1/NULL reader and empty hybrid observation history; clean re-up discards and
+rebuilds only derived vector/job state.
+
 ## Storage boundaries
 
 Postgres is the source of truth for structured records:
@@ -294,6 +314,8 @@ Postgres is the source of truth for structured records:
 - immutable Memory Usage, link-only Activity, and direct-action outcome rows
 - rebuildable Memory exact/CJK BM25 projection plus hash/ID/rank-only shadow
   observations
+- rebuildable BGE-M3 vector projection/jobs plus hash/ID/rank/token-only
+  hybrid observations
 - versioned derived conversation-context summaries; original messages remain
   the rebuild authority
 - file ownership and metadata

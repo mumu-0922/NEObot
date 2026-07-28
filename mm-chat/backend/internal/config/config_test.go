@@ -90,6 +90,10 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 		t.Fatalf("Memory.LexicalShadowEnabled = %v, want %v",
 			cfg.Memory.LexicalShadowEnabled, DefaultMemoryLexicalShadowEnabled)
 	}
+	if cfg.Memory.HybridShadowEnabled != DefaultMemoryHybridShadowEnabled {
+		t.Fatalf("Memory.HybridShadowEnabled = %v, want %v",
+			cfg.Memory.HybridShadowEnabled, DefaultMemoryHybridShadowEnabled)
+	}
 	if cfg.Auth.Mode != DefaultAuthMode {
 		t.Fatalf("Auth.Mode = %q, want %q", cfg.Auth.Mode, DefaultAuthMode)
 	}
@@ -160,6 +164,7 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 		EnvMaxUploadBytes:         "1048576",
 		EnvRAGSourceGatewayToken:  " fake-source-gateway-token ",
 		EnvMemoryLexicalShadow:    " true ",
+		EnvMemoryHybridShadow:     " true ",
 		EnvAuthMode:               " required ",
 		EnvAuthBootstrapUserID:    " 77777777-7777-4777-8777-777777777777 ",
 		EnvAuthBootstrapUserName:  " Server Owner ",
@@ -255,6 +260,9 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	}
 	if !cfg.Memory.LexicalShadowEnabled {
 		t.Fatal("Memory.LexicalShadowEnabled = false, want true")
+	}
+	if !cfg.Memory.HybridShadowEnabled {
+		t.Fatal("Memory.HybridShadowEnabled = false, want true")
 	}
 	if cfg.Auth.Mode != AuthModeRequired {
 		t.Fatalf("Auth.Mode = %q, want required", cfg.Auth.Mode)

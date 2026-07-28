@@ -12,30 +12,39 @@ import (
 )
 
 const (
-	errorUnsupportedSchema  = "UNSUPPORTED_SCHEMA"
-	errorUnsupportedStage   = "UNSUPPORTED_STAGE"
-	errorSourceDrift        = "SOURCE_DRIFT"
-	errorProfileDrift       = "PROFILE_DRIFT"
-	errorProviderInvalid    = "PROVIDER_INVALID"
-	errorProviderFailed     = "PROVIDER_FAILED"
-	errorExtractionInvalid  = "EXTRACTION_INVALID"
-	errorProposalFailed     = "PROPOSAL_FAILED"
-	errorPurgeFailed        = "PURGE_FAILED"
-	errorReviewExpiryFailed = "REVIEW_EXPIRY_FAILED"
+	errorUnsupportedSchema    = "UNSUPPORTED_SCHEMA"
+	errorUnsupportedStage     = "UNSUPPORTED_STAGE"
+	errorSourceDrift          = "SOURCE_DRIFT"
+	errorProfileDrift         = "PROFILE_DRIFT"
+	errorProviderInvalid      = "PROVIDER_INVALID"
+	errorProviderFailed       = "PROVIDER_FAILED"
+	errorExtractionInvalid    = "EXTRACTION_INVALID"
+	errorProposalFailed       = "PROPOSAL_FAILED"
+	errorPurgeFailed          = "PURGE_FAILED"
+	errorReviewExpiryFailed   = "REVIEW_EXPIRY_FAILED"
+	errorEmbeddingSourceDrift = "EMBEDDING_SOURCE_DRIFT"
+	errorEmbeddingHydrate     = "EMBEDDING_HYDRATE_FAILED"
+	errorEmbeddingProvider    = "EMBEDDING_PROVIDER_FAILED"
+	errorEmbeddingInvalid     = "EMBEDDING_VECTOR_INVALID"
+	errorEmbeddingComplete    = "EMBEDDING_COMPLETE_FAILED"
+	errorEmbeddingRedacted    = "EMBEDDING_SECRET_REDACTED"
 )
 
 type Worker struct {
-	repository       Repository
-	providerResolver ProviderResolver
-	workerID         string
-	leaseDuration    time.Duration
-	providerTimeout  time.Duration
-	pollInterval     time.Duration
-	baseBackoff      time.Duration
-	maximumBackoff   time.Duration
-	concurrency      int
-	now              func() time.Time
-	logger           *slog.Logger
+	repository          Repository
+	providerResolver    ProviderResolver
+	embeddingRepository EmbeddingRepository
+	embeddingProvider   MemoryEmbeddingProvider
+	embeddingEnabled    bool
+	workerID            string
+	leaseDuration       time.Duration
+	providerTimeout     time.Duration
+	pollInterval        time.Duration
+	baseBackoff         time.Duration
+	maximumBackoff      time.Duration
+	concurrency         int
+	now                 func() time.Time
+	logger              *slog.Logger
 }
 
 type Option func(*Worker)
@@ -83,6 +92,14 @@ func WithLogger(logger *slog.Logger) Option {
 	}
 }
 
+func WithEmbeddingProvider(provider MemoryEmbeddingProvider) Option {
+	return func(worker *Worker) { worker.embeddingProvider = provider }
+}
+
+func WithEmbeddingEnabled(enabled bool) Option {
+	return func(worker *Worker) { worker.embeddingEnabled = enabled }
+}
+
 func New(
 	repository Repository,
 	providerResolver ProviderResolver,
@@ -112,6 +129,13 @@ func New(
 	}
 	if worker.repository == nil || worker.providerResolver == nil {
 		return nil, errors.New("memory worker repository and provider resolver are required")
+	}
+	if worker.embeddingEnabled {
+		embeddingRepository, ok := worker.repository.(EmbeddingRepository)
+		if !ok || embeddingRepository == nil || worker.embeddingProvider == nil {
+			return nil, errors.New("memory embedding repository and provider are required")
+		}
+		worker.embeddingRepository = embeddingRepository
 	}
 	if strings.TrimSpace(worker.workerID) == "" || worker.leaseDuration < 5*time.Second ||
 		worker.leaseDuration > 15*time.Minute || worker.providerTimeout <= 0 ||
@@ -169,8 +193,14 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	job, found, err := w.repository.Claim(ctx, w.workerID, leaseToken, w.leaseDuration)
-	if err != nil || !found {
+	if err != nil {
 		return false, err
+	}
+	if !found {
+		if w.embeddingEnabled {
+			return w.processEmbeddingOne(ctx)
+		}
+		return false, nil
 	}
 	errorCode, terminal, processErr := w.process(ctx, job)
 	if processErr != nil {

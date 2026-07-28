@@ -13,9 +13,11 @@ const (
 
 var (
 	memorySecretAssignmentRE = regexp.MustCompile(
-		`(?i)(?:api[ _-]?key|password|passwd|access[ _-]?token|refresh[ _-]?token|` +
+		`(?i)(?:api[ _-]?(?:key|token)|password|passwd|access[ _-]?token|` +
+			`refresh[ _-]?token|auth[ _-]?token|session[ _-]?(?:id|token)|token|` +
 			`client[ _-]?secret|secret|credentials?|otp|recovery[ _-]?code|` +
-			`private[ _-]?key|cvv|cvc|密码|口令|令牌|验证码|恢复码|私钥|密钥|` +
+			`cookies?|private[ _-]?key|cvv|cvc|密码|口令|令牌|验证码|恢复码|` +
+			`私钥|密钥|` +
 			`凭证|安全码)\s*` +
 			`(?:is|=|:|：|是|为)\s*["']?[^\s,，;；]{4,}`,
 	)

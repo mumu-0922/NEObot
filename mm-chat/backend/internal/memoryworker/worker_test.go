@@ -5,10 +5,12 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
 	"neo-chat/mm-chat/backend/internal/chat"
+	"neo-chat/mm-chat/backend/internal/ragproviders"
 )
 
 const (
@@ -217,6 +219,198 @@ func TestWorkerExpiresReviewsWithoutHydratingProvider(t *testing.T) {
 	}
 }
 
+func TestWorkerEmbeddingDefaultOffMakesZeroClaimsAndProviderCalls(t *testing.T) {
+	repository := newWorkerTestRepository()
+	repository.found = false
+	repository.embeddingFound = true
+	provider := &workerTestEmbeddingProvider{vector: validWorkerEmbeddingVector()}
+	worker := newWorkerTestInstance(t, repository, &workerTestProvider{})
+
+	processed, err := worker.ProcessOne(context.Background())
+	if err != nil || processed || repository.embeddingClaims != 0 || provider.calls != 0 {
+		t.Fatalf("default-off embedding = processed:%t claims:%d calls:%d err:%v",
+			processed, repository.embeddingClaims, provider.calls, err)
+	}
+}
+
+func TestWorkerEmbedsOnlyAfterCaptureQueueIsIdle(t *testing.T) {
+	repository := newWorkerTestRepository()
+	repository.embeddingFound = true
+	embeddingProvider := &workerTestEmbeddingProvider{vector: validWorkerEmbeddingVector()}
+	worker := newWorkerEmbeddingTestInstance(
+		t,
+		repository,
+		&workerTestProvider{output: validCandidateOutput()},
+		embeddingProvider,
+	)
+
+	processed, err := worker.ProcessOne(context.Background())
+	if err != nil || !processed || repository.completed != 1 ||
+		repository.embeddingClaims != 0 || embeddingProvider.calls != 0 {
+		t.Fatalf("capture priority = processed:%t completed:%d claims:%d calls:%d err:%v",
+			processed, repository.completed, repository.embeddingClaims,
+			embeddingProvider.calls, err)
+	}
+}
+
+func TestWorkerCompletesLeaseFencedEmbedding(t *testing.T) {
+	repository := newWorkerTestRepository()
+	repository.found = false
+	repository.embeddingFound = true
+	provider := &workerTestEmbeddingProvider{vector: validWorkerEmbeddingVector()}
+	worker := newWorkerEmbeddingTestInstance(t, repository, &workerTestProvider{}, provider)
+
+	processed, err := worker.ProcessOne(context.Background())
+	if err != nil || !processed || repository.embeddingHydrates != 1 ||
+		repository.embeddingCompletes != 1 || repository.embeddingRetries != 0 ||
+		provider.calls != 1 || len(repository.completedEmbedding) !=
+		ragproviders.SiliconFlowEmbeddingDimensions {
+		t.Fatalf("embedding success = repository:%#v calls:%d err:%v",
+			repository, provider.calls, err)
+	}
+	if provider.capture.Content != repository.embeddingCapture.Content ||
+		provider.capture.ScopeGeneration != repository.embeddingJob.ScopeGeneration {
+		t.Fatalf("provider capture = %#v", provider.capture)
+	}
+}
+
+func TestWorkerRedactsEmbeddingBodyBeforeProvider(t *testing.T) {
+	repository := newWorkerTestRepository()
+	repository.found = false
+	repository.embeddingFound = true
+	repository.embeddingCapture.Content =
+		"api_key=fixture-private-value. Keep answers concise."
+	provider := &workerTestEmbeddingProvider{vector: validWorkerEmbeddingVector()}
+	worker := newWorkerEmbeddingTestInstance(t, repository, &workerTestProvider{}, provider)
+
+	processed, err := worker.ProcessOne(context.Background())
+	if err != nil || !processed || provider.calls != 1 ||
+		repository.embeddingCompletes != 1 ||
+		strings.Contains(provider.capture.Content, "fixture-private-value") ||
+		!strings.Contains(provider.capture.Content, "Keep answers concise") {
+		t.Fatalf("embedding redaction = repository:%#v provider:%#v err:%v",
+			repository, provider, err)
+	}
+	if !strings.Contains(repository.embeddingCapture.Content, "fixture-private-value") {
+		t.Fatalf("test did not preserve raw repository authority: %#v", repository.embeddingCapture)
+	}
+}
+
+func TestWorkerSecretOnlyEmbeddingMakesZeroProviderCalls(t *testing.T) {
+	repository := newWorkerTestRepository()
+	repository.found = false
+	repository.embeddingFound = true
+	repository.embeddingCapture.Content = "password: fixture-secret-value"
+	provider := &workerTestEmbeddingProvider{vector: validWorkerEmbeddingVector()}
+	worker := newWorkerEmbeddingTestInstance(t, repository, &workerTestProvider{}, provider)
+
+	processed, err := worker.ProcessOne(context.Background())
+	if err != nil || !processed || provider.calls != 0 ||
+		repository.embeddingCompletes != 0 || repository.embeddingRetries != 1 ||
+		repository.embeddingRetryCode != errorEmbeddingRedacted ||
+		!repository.embeddingRetryTerminal {
+		t.Fatalf("secret embedding egress = repository:%#v calls:%d err:%v",
+			repository, provider.calls, err)
+	}
+}
+
+func TestWorkerRejectsEmbeddingAuthorityDriftBeforeProvider(t *testing.T) {
+	repository := newWorkerTestRepository()
+	repository.found = false
+	repository.embeddingFound = true
+	repository.embeddingCapture.VisibilityEpoch++
+	provider := &workerTestEmbeddingProvider{vector: validWorkerEmbeddingVector()}
+	worker := newWorkerEmbeddingTestInstance(t, repository, &workerTestProvider{}, provider)
+
+	processed, err := worker.ProcessOne(context.Background())
+	if err != nil || !processed || provider.calls != 0 ||
+		repository.embeddingRetryCode != errorEmbeddingSourceDrift ||
+		!repository.embeddingRetryTerminal || repository.embeddingCompletes != 0 {
+		t.Fatalf("embedding drift = repository:%#v calls:%d err:%v",
+			repository, provider.calls, err)
+	}
+}
+
+func TestWorkerRetriesTransientEmbeddingHydrationFailure(t *testing.T) {
+	repository := newWorkerTestRepository()
+	repository.found = false
+	repository.embeddingFound = true
+	repository.embeddingHydrateErr = errors.New("temporary database read failure")
+	provider := &workerTestEmbeddingProvider{vector: validWorkerEmbeddingVector()}
+	worker := newWorkerEmbeddingTestInstance(t, repository, &workerTestProvider{}, provider)
+
+	processed, err := worker.ProcessOne(context.Background())
+	if err != nil || !processed || provider.calls != 0 ||
+		repository.embeddingRetryCode != errorEmbeddingHydrate ||
+		repository.embeddingRetryTerminal {
+		t.Fatalf("embedding hydrate retry = repository:%#v calls:%d err:%v",
+			repository, provider.calls, err)
+	}
+}
+
+func TestWorkerRetriesProviderAndDeadLettersInvalidEmbedding(t *testing.T) {
+	tests := []struct {
+		name         string
+		provider     *workerTestEmbeddingProvider
+		wantCode     string
+		wantTerminal bool
+	}{
+		{
+			name: "provider failure", provider: &workerTestEmbeddingProvider{
+				err: errors.New("provider unavailable"),
+			}, wantCode: errorEmbeddingProvider,
+		},
+		{
+			name: "invalid shape", provider: &workerTestEmbeddingProvider{
+				vector: []float32{1},
+			}, wantCode: errorEmbeddingInvalid, wantTerminal: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repository := newWorkerTestRepository()
+			repository.found = false
+			repository.embeddingFound = true
+			worker := newWorkerEmbeddingTestInstance(
+				t,
+				repository,
+				&workerTestProvider{},
+				test.provider,
+			)
+			processed, err := worker.ProcessOne(context.Background())
+			if err != nil || !processed || repository.embeddingCompletes != 0 ||
+				repository.embeddingRetryCode != test.wantCode ||
+				repository.embeddingRetryTerminal != test.wantTerminal {
+				t.Fatalf("embedding failure = repository:%#v err:%v", repository, err)
+			}
+		})
+	}
+}
+
+func TestWorkerRejectsEmbeddingReturnedAfterProviderTimeout(t *testing.T) {
+	repository := newWorkerTestRepository()
+	repository.found = false
+	repository.embeddingFound = true
+	provider := &workerTestEmbeddingProvider{
+		vector:              validWorkerEmbeddingVector(),
+		returnAfterDeadline: true,
+	}
+	worker := newWorkerEmbeddingTestInstance(
+		t,
+		repository,
+		&workerTestProvider{},
+		provider,
+	)
+	worker.providerTimeout = time.Millisecond
+
+	processed, err := worker.ProcessOne(context.Background())
+	if err != nil || !processed || repository.embeddingCompletes != 0 ||
+		repository.embeddingRetryCode != errorEmbeddingProvider ||
+		repository.embeddingRetryTerminal {
+		t.Fatalf("late embedding = repository:%#v err:%v", repository, err)
+	}
+}
+
 func newWorkerTestInstance(
 	t *testing.T,
 	repository *workerTestRepository,
@@ -226,6 +420,30 @@ func newWorkerTestInstance(
 	worker, err := New(
 		repository,
 		workerTestProviderResolver{provider: provider},
+		WithWorkerID("88888888-8888-4888-8888-888888888888"),
+		WithLeaseDuration(time.Minute),
+		WithProviderTimeout(10*time.Second),
+		WithClock(func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }),
+		WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return worker
+}
+
+func newWorkerEmbeddingTestInstance(
+	t *testing.T,
+	repository *workerTestRepository,
+	provider chat.Provider,
+	embeddingProvider MemoryEmbeddingProvider,
+) *Worker {
+	t.Helper()
+	worker, err := New(
+		repository,
+		workerTestProviderResolver{provider: provider},
+		WithEmbeddingEnabled(true),
+		WithEmbeddingProvider(embeddingProvider),
 		WithWorkerID("88888888-8888-4888-8888-888888888888"),
 		WithLeaseDuration(time.Minute),
 		WithProviderTimeout(10*time.Second),
@@ -277,20 +495,33 @@ func (p *workerTestProvider) StreamChat(
 }
 
 type workerTestRepository struct {
-	job           Job
-	capture       Capture
-	found         bool
-	hydrateErr    error
-	proposalErr   error
-	hydrated      int
-	proposed      []CaptureProposal
-	purged        int
-	expired       int
-	completed     int
-	retried       int
-	retryCode     string
-	retryTerminal bool
-	retryAt       time.Time
+	job                    Job
+	capture                Capture
+	found                  bool
+	hydrateErr             error
+	proposalErr            error
+	hydrated               int
+	proposed               []CaptureProposal
+	purged                 int
+	expired                int
+	completed              int
+	retried                int
+	retryCode              string
+	retryTerminal          bool
+	retryAt                time.Time
+	embeddingJob           EmbeddingJob
+	embeddingCapture       EmbeddingCapture
+	embeddingFound         bool
+	embeddingHydrateErr    error
+	embeddingCompleteErr   error
+	embeddingClaims        int
+	embeddingHydrates      int
+	embeddingCompletes     int
+	embeddingRetries       int
+	embeddingRetryCode     string
+	embeddingRetryTerminal bool
+	embeddingRetryAt       time.Time
+	completedEmbedding     []float32
 }
 
 func newWorkerTestRepository() *workerTestRepository {
@@ -304,8 +535,36 @@ func newWorkerTestRepository() *workerTestRepository {
 		ProviderRecordID: testProviderRecord, ModelID: "fixture-model",
 		ProcessingProfile: "fixture-profile",
 	}
+	embeddingUpdatedAt := observedAt.Add(-time.Hour)
+	embeddingJob := EmbeddingJob{
+		JobID:  "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+		UserID: testUserID, MemoryID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+		ProjectionGeneration: 1, MemoryRevision: 2,
+		ContentHash: strings.Repeat("a", 64), VisibilityEpoch: 1,
+		ScopeType: "global", ScopeGeneration: 1,
+		EmbeddingProfileID:  string(ragproviders.RetrievalProfileSiliconFlow),
+		EmbeddingModelID:    ragproviders.SiliconFlowEmbeddingModel,
+		EmbeddingDimensions: ragproviders.SiliconFlowEmbeddingDimensions,
+		AttemptCount:        1, MaxAttempts: 8,
+		ProviderRecordID:        testProviderRecord,
+		ProviderConfigUpdatedAt: embeddingUpdatedAt,
+	}
 	return &workerTestRepository{
-		job: job, found: true,
+		job: job, found: true, embeddingJob: embeddingJob,
+		embeddingCapture: EmbeddingCapture{
+			UserID: embeddingJob.UserID, MemoryID: embeddingJob.MemoryID,
+			Content: "Keep answers concise", ContentHash: embeddingJob.ContentHash,
+			MemoryRevision:          embeddingJob.MemoryRevision,
+			ProjectionGeneration:    embeddingJob.ProjectionGeneration,
+			VisibilityEpoch:         embeddingJob.VisibilityEpoch,
+			ScopeType:               embeddingJob.ScopeType,
+			ScopeGeneration:         embeddingJob.ScopeGeneration,
+			EmbeddingProfileID:      embeddingJob.EmbeddingProfileID,
+			EmbeddingModelID:        embeddingJob.EmbeddingModelID,
+			EmbeddingDimensions:     embeddingJob.EmbeddingDimensions,
+			ProviderRecordID:        embeddingJob.ProviderRecordID,
+			ProviderConfigUpdatedAt: embeddingJob.ProviderConfigUpdatedAt,
+		},
 		capture: Capture{
 			UserID: testUserID,
 			Messages: []CaptureMessage{
@@ -381,6 +640,80 @@ func (r *workerTestRepository) Retry(
 
 func (r *workerTestRepository) CheckReady(context.Context) (Readiness, error) {
 	return Readiness{ConsumerReady: true}, nil
+}
+
+func (r *workerTestRepository) ClaimEmbedding(
+	_ context.Context,
+	workerID string,
+	leaseToken string,
+	_ time.Duration,
+) (EmbeddingJob, bool, error) {
+	r.embeddingClaims++
+	job := r.embeddingJob
+	job.WorkerID = workerID
+	job.LeaseToken = leaseToken
+	return job, r.embeddingFound, nil
+}
+
+func (r *workerTestRepository) HydrateEmbedding(
+	_ context.Context,
+	_ EmbeddingJob,
+) (EmbeddingCapture, error) {
+	r.embeddingHydrates++
+	return r.embeddingCapture, r.embeddingHydrateErr
+}
+
+func (r *workerTestRepository) CompleteEmbedding(
+	_ context.Context,
+	_ EmbeddingJob,
+	vector []float32,
+) error {
+	r.embeddingCompletes++
+	r.completedEmbedding = append([]float32(nil), vector...)
+	return r.embeddingCompleteErr
+}
+
+func (r *workerTestRepository) RetryEmbedding(
+	_ context.Context,
+	_ EmbeddingJob,
+	code string,
+	availableAt time.Time,
+	terminal bool,
+) (string, error) {
+	r.embeddingRetries++
+	r.embeddingRetryCode = code
+	r.embeddingRetryTerminal = terminal
+	r.embeddingRetryAt = availableAt
+	if terminal {
+		return "dead_letter", nil
+	}
+	return "pending", nil
+}
+
+type workerTestEmbeddingProvider struct {
+	vector              []float32
+	err                 error
+	returnAfterDeadline bool
+	capture             EmbeddingCapture
+	calls               int
+}
+
+func (provider *workerTestEmbeddingProvider) EmbedMemory(
+	ctx context.Context,
+	capture EmbeddingCapture,
+) ([]float32, error) {
+	provider.calls++
+	provider.capture = capture
+	if provider.returnAfterDeadline {
+		<-ctx.Done()
+	}
+	return append([]float32(nil), provider.vector...), provider.err
+}
+
+func validWorkerEmbeddingVector() []float32 {
+	vector := make([]float32, ragproviders.SiliconFlowEmbeddingDimensions)
+	vector[0] = 1
+	return vector
 }
 
 func validCandidateOutput() string {

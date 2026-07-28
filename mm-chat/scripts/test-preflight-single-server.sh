@@ -275,6 +275,14 @@ assert_rejected \
   "${invalid_memory_lexical_shadow}" \
   "MEMORY_LEXICAL_SHADOW_ENABLED must be true or false"
 
+invalid_memory_hybrid_shadow="${temp_dir}/invalid-memory-hybrid-shadow.env"
+sed 's|^MEMORY_HYBRID_SHADOW_ENABLED=false$|MEMORY_HYBRID_SHADOW_ENABLED=maybe|' \
+  "${valid}" >"${invalid_memory_hybrid_shadow}"
+chmod 600 "${invalid_memory_hybrid_shadow}"
+assert_rejected \
+  "${invalid_memory_hybrid_shadow}" \
+  "MEMORY_HYBRID_SHADOW_ENABLED must be true or false"
+
 migration_password_mismatch="${temp_dir}/migration-password-mismatch.env"
 sed 's|test-migrator-password@postgres|different-password@postgres|' \
   "${valid}" >"${migration_password_mismatch}"
@@ -596,6 +604,7 @@ backend_environment = services["backend"]["environment"]
 assert "neo_chat_api:test-api-password@postgres" in backend_environment["DATABASE_URL"]
 assert "MIGRATION_DATABASE_URL" not in backend_environment
 assert backend_environment["MEMORY_LEXICAL_SHADOW_ENABLED"] == "false"
+assert backend_environment["MEMORY_HYBRID_SHADOW_ENABLED"] == "false"
 
 memory = services["memory-worker"]
 assert memory["profiles"] == ["memory-worker"]
@@ -613,6 +622,7 @@ assert memory["depends_on"] == {
 }
 memory_environment = memory["environment"]
 assert "memory_worker:test-memory-worker-password@postgres" in memory_environment["MEMORY_WORKER_DATABASE_URL"]
+assert memory_environment["MEMORY_HYBRID_SHADOW_ENABLED"] == "false"
 assert memory_environment["PROVIDER_TIMEOUT"] == "45s"
 assert memory_environment["REDIS_URL"].startswith("redis://")
 assert "DATABASE_URL" not in memory_environment

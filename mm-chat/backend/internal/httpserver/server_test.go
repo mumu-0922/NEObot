@@ -86,6 +86,52 @@ func TestRuntimeProviderResolverAdmitsBuiltInSearchOnlyForOpenAI(t *testing.T) {
 	}
 }
 
+type memoryHybridProfileFactoryFixture struct {
+	gateway   *ragproviders.RetrievalProfileGateway
+	requested ragproviders.RetrievalProfileID
+}
+
+func (fixture *memoryHybridProfileFactoryFixture) EmbedQuery(
+	context.Context,
+	string,
+) (ragproviders.QueryEmbedding, error) {
+	return ragproviders.QueryEmbedding{}, ragproviders.ErrQueryEmbeddingUnavailable
+}
+
+func (fixture *memoryHybridProfileFactoryFixture) ForRetrievalProfile(
+	profileID ragproviders.RetrievalProfileID,
+) (*ragproviders.RetrievalProfileGateway, error) {
+	fixture.requested = profileID
+	return fixture.gateway, nil
+}
+
+func TestResolveMemoryHybridProviderRejectsArbitraryEmbedder(t *testing.T) {
+	if provider := resolveMemoryHybridProvider(fakeRAGQueryEmbedder{}); provider != nil {
+		t.Fatalf("provider = %T, want nil", provider)
+	}
+}
+
+func TestResolveMemoryHybridProviderBindsProviderGatewayToSiliconFlow(t *testing.T) {
+	provider := resolveMemoryHybridProvider(ragproviders.NewProviderGateway(nil))
+	profileGateway, ok := provider.(*ragproviders.RetrievalProfileGateway)
+	if !ok || profileGateway.Profile().ID != ragproviders.RetrievalProfileSiliconFlow {
+		t.Fatalf("provider = %#v, want SiliconFlow retrieval profile gateway", provider)
+	}
+}
+
+func TestResolveMemoryHybridProviderRejectsWrongFactoryProfile(t *testing.T) {
+	factory := &memoryHybridProfileFactoryFixture{
+		gateway: &ragproviders.RetrievalProfileGateway{},
+	}
+	if provider := resolveMemoryHybridProvider(factory); provider != nil {
+		t.Fatalf("provider = %T, want nil", provider)
+	}
+	if factory.requested != ragproviders.RetrievalProfileSiliconFlow {
+		t.Fatalf("requested profile = %q, want %q",
+			factory.requested, ragproviders.RetrievalProfileSiliconFlow)
+	}
+}
+
 func TestRuntimeChatProviderResolutionUsesServerOwnedAnswerProcessor(t *testing.T) {
 	tests := []struct {
 		name      string

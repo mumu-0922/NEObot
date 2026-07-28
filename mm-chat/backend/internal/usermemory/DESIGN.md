@@ -11,7 +11,7 @@
 ## Non-goals
 
 - Replacing original messages or `conversation_context_summaries`.
-- Vector search, response caching, or browser-local server authority.
+- Reader promotion, response caching, or browser-local server authority.
 - Persisting search results, Knowledge text, credentials, or vague one-off
   context as automatic Memory.
 
@@ -30,6 +30,10 @@ Activity polling/undo -> user-scoped migration-057 capabilities
 Canonical Memory transaction -> migration-058 exact/CJK BM25 projection
 Current user message -> unchanged v1 Top 5 -> optional migration-058 shadow
   -> ID/revision/rank-only diagnostics; zero prompt injection
+Canonical projection -> migration-059 leased BGE-M3 embedding job
+Current user message -> exact + BM25 + vector -> RRF(60) -> BGE rerank
+  -> 600-target/900-hard token budget -> ID/revision/rank-only diagnostics
+  -> unchanged v1 prompt/Usage; zero hybrid prompt injection
 ```
 
 `usermemory` owns storage and deterministic relevance. `internal/chat` owns
@@ -60,6 +64,11 @@ cycle.
 | Lexical projection maintenance ignores the shadow flag   | Derived plaintext must never drift while observation is disabled                        | Every canonical/lifecycle/generation mutation refreshes or removes projection in the same transaction |
 | PR7 shadow is not a reader                               | Recall promotion needs separate benchmark and rollout authority                         | v1 remains the only prompt/Usage source; compare errors are bounded metadata only |
 | Exact and CJK BM25 lanes remain independent              | Their behavior must be measurable before PR8 fusion                                     | PostgreSQL records lane ordinals without persisting query, content copies, or raw scores |
+| BGE-M3 vector space is fixed and lease fenced            | Equal dimensions do not authorize model/profile reuse                                   | Jobs pin revision/hash/epoch/scope/projection/provider configuration before completion |
+| RRF(60) fuses independent Top-20/30 lanes                | Exact, BM25, and cosine raw scores are not comparable                                    | Deterministic UUID tie-breaks replace hand-tuned linear weights |
+| Hybrid remains a PR8 shadow, not a reader                | Benchmark and observation gates must precede prompt authority                            | v1 Top 5, prompt, Usage, and chat success remain byte-authoritative |
+| One default-off flag gates all PR8 Provider calls        | API rerank and Worker embedding must not drift operationally                             | Flag false makes zero Memory embedding/rerank calls while projection/jobs remain rebuildable |
+| Provider egress uses redacted transient copies           | SQL/source/hash authority must not be weakened to hide a credential leak                  | Raw query/content stays only at its current authority boundary; secret-only query/document/body skips its Provider lane |
 
 ## Validation and limits
 
@@ -98,12 +107,15 @@ cycle.
 | Shadow ranks unauthorized or stale projection | SQL binds user, scope, Sensitive switch, time, epoch, generation, revision, and hash before either lane |
 | Shadow diagnostics leak private text or scores | Observation rows contain only hashes, IDs, revisions, lane ordinals, counts, status, and duration |
 | Shadow outage changes the answer | `SearchRelevantWithShadow` completes v1 first and converts compare errors to a fixed failure summary |
-| Runtime mutates derived/evidence tables | `go_api_runtime` can execute only the compare function; both runtime roles lack table CRUD |
+| Old embedding response crosses an authority change | The job and completion capability recheck revision, hash, epoch, scope generation, projection generation, and Provider configuration timestamp |
+| Rerank output becomes stale during Provider work | Record reauthorizes every submitted RRF ID/revision against current user/scope/Sensitive/time/epoch/generation authority |
+| Hybrid diagnostics leak content or raw scores | Candidate content is transient only; durable observations contain hashes, IDs, ordinals, bounded counts/status/tokens/duration |
+| Query or canonical Memory leaks a credential to retrieval Provider | Shared deterministic classification redacts query, rerank documents, and embedding bodies immediately before egress; fully redacted input makes zero corresponding Provider calls |
+| Runtime mutates derived/evidence tables | `go_api_runtime` receives only hybrid prepare/record; `memory_worker_runtime` receives only embedding lease capabilities; both lack table CRUD |
 
-Known limitation: deterministic lexical/CJK matching is intentionally
-conservative and may miss semantic paraphrases. Any future embedding lane must
-remain user-scoped, thresholded, bounded, optional, and must preserve the
-no-whole-store-injection contract.
+Known limitation: migration `059` is still a zero-injection shadow. Semantic
+paraphrases may appear in diagnostics, but they cannot affect answers until a
+separate frozen benchmark, observation window, and reader-promotion decision.
 
 ## Verification
 
@@ -129,3 +141,5 @@ real Provider cross-conversation recall/delete proof.
   link-only Activity polling, and revision-safe undo (Memory v2 PR6).
 - 2026-07-28: migration-058 transactional exact/CJK BM25 projection and
   default-off, zero-injection lexical comparison (Memory v2 PR7).
+- 2026-07-28: migration-059 fixed BGE-M3 vector projection, leased embedding,
+  RRF(60), BGE rerank, and bounded zero-injection hybrid comparison (Memory v2 PR8).

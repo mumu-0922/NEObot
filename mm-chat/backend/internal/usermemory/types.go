@@ -16,8 +16,11 @@ const (
 	MaxActionTargets        = 5
 	MaxActivityPage         = 100
 	MaxLexicalShadowResults = 20
+	MaxHybridShadowResults  = 20
 	DirectActionSchemaMajor = 1
 	LexicalShadowProfileID  = "memory_lexical_cjk_bm25_v1"
+	HybridShadowProfileID   = "memory_hybrid_bge_m3_rrf60_v1"
+	HybridEmbeddingProfile  = "siliconflow_bge_m3_v1"
 )
 
 var (
@@ -53,6 +56,14 @@ type ActionRepository interface {
 // prompt/Usage authority and existing repository doubles stay compatible.
 type LexicalShadowRepository interface {
 	CompareLexicalShadow(context.Context, LexicalShadowInput) (LexicalShadowSummary, error)
+}
+
+// HybridShadowRepository is optional. It exposes transient authorized
+// candidate content to the in-process reranker, while durable observations
+// retain only IDs, revisions, ordinals, bounded status, and counts.
+type HybridShadowRepository interface {
+	PrepareHybridShadow(context.Context, HybridShadowPrepareInput) (HybridShadowPreparation, error)
+	RecordHybridShadow(context.Context, HybridShadowRecordInput) (HybridShadowSummary, error)
 }
 
 type Settings struct {
@@ -264,6 +275,66 @@ type LexicalShadowSummary struct {
 	LexicalCount   int    `json:"lexicalCount"`
 	OverlapCount   int    `json:"overlapCount"`
 	DurationMillis int    `json:"durationMillis"`
+}
+
+type HybridShadowPrepareInput struct {
+	ObservationID       string
+	ConversationID      string
+	AssistantMessageID  string
+	QueryHash           string
+	QueryText           string
+	Baseline            []LexicalShadowBaseline
+	QueryEmbedding      []float32
+	QueryEmbeddingState string
+}
+
+type HybridShadowCandidate struct {
+	MemoryID  string `json:"memoryId"`
+	Revision  int64  `json:"revision"`
+	ScopeType string `json:"scopeType"`
+	Content   string `json:"content"`
+}
+
+type HybridShadowRankedItem struct {
+	MemoryID  string `json:"memoryId"`
+	Revision  int64  `json:"revision"`
+	ScopeType string `json:"scopeType"`
+}
+
+type HybridShadowPreparation struct {
+	Summary    HybridShadowSummary
+	Replayed   bool
+	Candidates []HybridShadowCandidate
+}
+
+type HybridShadowRecordInput struct {
+	ObservationID        string
+	AssistantMessageID   string
+	RerankStatus         string
+	FallbackCode         string
+	Reranked             []HybridShadowRankedItem
+	Final                []HybridShadowRankedItem
+	EstimatedTokens      int
+	TargetTokensExceeded bool
+	DurationMillis       int
+}
+
+type HybridShadowSummary struct {
+	ProfileID            string `json:"profile"`
+	Status               string `json:"status"`
+	ResultCode           string `json:"resultCode"`
+	FallbackCode         string `json:"fallbackCode"`
+	BaselineCount        int    `json:"baselineCount"`
+	ExactCount           int    `json:"exactCount"`
+	BM25Count            int    `json:"bm25Count"`
+	VectorCount          int    `json:"vectorCount"`
+	RRFCount             int    `json:"rrfCount"`
+	RerankCount          int    `json:"rerankCount"`
+	FinalCount           int    `json:"finalCount"`
+	OverlapCount         int    `json:"overlapCount"`
+	EstimatedTokens      int    `json:"estimatedTokens"`
+	TargetTokensExceeded bool   `json:"targetTokensExceeded"`
+	DurationMillis       int    `json:"durationMillis"`
 }
 
 type UndoActivityInput struct {

@@ -209,6 +209,20 @@ application build. Only a clean pre-observation database may run
 `058 -> 057 -> 058`; the derived projection is safely discarded on down and
 rebuilt from current canonical Memory on re-up.
 
+### Migration 059 / Memory vector and hybrid shadow rollback
+
+Set `MEMORY_HYBRID_SHADOW_ENABLED=false` in both the API and Memory Worker,
+then stop post-`059` processes. The switch stops new embedding claims and
+hybrid comparisons; it does not mutate the active reader pointer. Down fails
+with `MEMORY_HYBRID_ROLLBACK_REQUIRES_V1_READER` for a non-v1 reader and with
+`MEMORY_HYBRID_ROLLBACK_REQUIRES_EMPTY_OBSERVATIONS` after any hybrid
+observation exists.
+
+Never delete observation evidence to force rollback. After shadow collection
+begins, retain `059` and roll back behavior with the default-off flag. Only a
+clean pre-observation database may run `059 -> 058 -> 059`; its HNSW vectors
+and embedding jobs are derived and rebuild from current canonical projection.
+
 ### Migrations 051-052 / SiliconFlow TTS rollback
 
 Migration `051_siliconflow_tts_cache` adds the exact Voice provider identity

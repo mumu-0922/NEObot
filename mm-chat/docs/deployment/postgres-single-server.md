@@ -85,6 +85,7 @@ The current Compose/runtime contract uses:
 | `MIGRATION_DATABASE_URL`  | migrator placeholder URL  | Required one-shot URL for `POSTGRES_USER`; no fallback.                                 |
 | `DATABASE_URL`            | API placeholder URL       | `neo_chat_api` URL for the Go API and `admin`.                                          |
 | `MEMORY_WORKER_DATABASE_URL` | Memory Worker placeholder URL | Login inheriting only `memory_worker_runtime`.                                      |
+| `MEMORY_HYBRID_SHADOW_ENABLED` | `false` | Shared default-off API/Memory Worker gate for migration-059 embedding and hybrid comparison Provider calls. |
 | `DB_MAX_OPEN_CONNS`       | `10`                      | Maximum open DB connections.                                                            |
 | `DB_MAX_IDLE_CONNS`       | `5`                       | Maximum idle DB connections.                                                            |
 | `DB_CONN_MAX_LIFETIME`    | `30m`                     | Maximum connection lifetime.                                                            |

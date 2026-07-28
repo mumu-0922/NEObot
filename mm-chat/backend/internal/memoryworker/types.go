@@ -126,6 +126,53 @@ type Readiness struct {
 	OldestPendingAt *time.Time
 }
 
+type EmbeddingJob struct {
+	JobID                   string
+	UserID                  string
+	MemoryID                string
+	ProjectionGeneration    int64
+	MemoryRevision          int64
+	ContentHash             string
+	VisibilityEpoch         int64
+	ScopeType               string
+	ProjectID               string
+	ScopeConversationID     string
+	ScopeGeneration         int64
+	EmbeddingProfileID      string
+	EmbeddingModelID        string
+	EmbeddingDimensions     int
+	AttemptCount            int
+	MaxAttempts             int
+	ProviderRecordID        string
+	ProviderConfigUpdatedAt time.Time
+	WorkerID                string
+	LeaseToken              string
+	LeaseExpiresAt          time.Time
+}
+
+type EmbeddingCapture struct {
+	UserID                  string
+	MemoryID                string
+	Content                 string
+	ContentHash             string
+	MemoryRevision          int64
+	ProjectionGeneration    int64
+	VisibilityEpoch         int64
+	ScopeType               string
+	ProjectID               string
+	ScopeConversationID     string
+	ScopeGeneration         int64
+	EmbeddingProfileID      string
+	EmbeddingModelID        string
+	EmbeddingDimensions     int
+	ProviderRecordID        string
+	ProviderID              string
+	ProviderLabel           string
+	EncryptedSecretRef      string
+	ProviderConfig          json.RawMessage
+	ProviderConfigUpdatedAt time.Time
+}
+
 type Repository interface {
 	Claim(context.Context, string, string, time.Duration) (Job, bool, error)
 	Hydrate(context.Context, Job) (Capture, error)
@@ -139,4 +186,15 @@ type Repository interface {
 
 type ProviderResolver interface {
 	Resolve(context.Context, Capture) (chat.Provider, error)
+}
+
+type EmbeddingRepository interface {
+	ClaimEmbedding(context.Context, string, string, time.Duration) (EmbeddingJob, bool, error)
+	HydrateEmbedding(context.Context, EmbeddingJob) (EmbeddingCapture, error)
+	CompleteEmbedding(context.Context, EmbeddingJob, []float32) error
+	RetryEmbedding(context.Context, EmbeddingJob, string, time.Time, bool) (string, error)
+}
+
+type MemoryEmbeddingProvider interface {
+	EmbedMemory(context.Context, EmbeddingCapture) ([]float32, error)
 }

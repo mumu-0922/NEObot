@@ -34,25 +34,27 @@ const (
 	envProviderKeyring  = "PROVIDER_SECRET_KEYRING_FILE"
 	envRedisURL         = "REDIS_URL"
 	envRedisKeyPrefix   = "REDIS_KEY_PREFIX"
+	envHybridShadow     = config.EnvMemoryHybridShadow
 	databaseOpenTimeout = 10 * time.Second
 	redisOpenTimeout    = 2 * time.Second
 	healthcheckTimeout  = 10 * time.Second
 )
 
 type workerConfig struct {
-	databaseURL     string
-	maxOpenConns    int
-	maxIdleConns    int
-	connMaxLifetime time.Duration
-	concurrency     int
-	leaseDuration   time.Duration
-	pollInterval    time.Duration
-	backoffBase     time.Duration
-	backoffMax      time.Duration
-	providerTimeout time.Duration
-	providerKeyring string
-	redisURL        string
-	redisKeyPrefix  string
+	databaseURL         string
+	maxOpenConns        int
+	maxIdleConns        int
+	connMaxLifetime     time.Duration
+	concurrency         int
+	leaseDuration       time.Duration
+	pollInterval        time.Duration
+	backoffBase         time.Duration
+	backoffMax          time.Duration
+	providerTimeout     time.Duration
+	providerKeyring     string
+	redisURL            string
+	redisKeyPrefix      string
+	hybridShadowEnabled bool
 }
 
 func main() {
@@ -113,6 +115,10 @@ func run(
 	worker, err := memoryworker.New(
 		repository,
 		memoryworker.NewStoredProviderResolver(runtimeService, resolved.providerTimeout),
+		memoryworker.WithEmbeddingProvider(
+			memoryworker.NewStoredRAGEmbeddingProvider(runtimeService),
+		),
+		memoryworker.WithEmbeddingEnabled(resolved.hybridShadowEnabled),
 		memoryworker.WithLeaseDuration(resolved.leaseDuration),
 		memoryworker.WithProviderTimeout(resolved.providerTimeout),
 		memoryworker.WithPollInterval(resolved.pollInterval),
@@ -225,14 +231,35 @@ func loadWorkerConfig(lookup func(string) (string, bool)) (workerConfig, error) 
 	if providerTimeout+5*time.Second >= lease {
 		return workerConfig{}, errors.New("PROVIDER_TIMEOUT must be at least 5s below MEMORY_WORKER_LEASE_DURATION")
 	}
+	hybridShadowEnabled, err := boolSetting(lookup, envHybridShadow, false)
+	if err != nil {
+		return workerConfig{}, err
+	}
 	return workerConfig{
 		databaseURL: databaseURL, maxOpenConns: maxOpen, maxIdleConns: maxIdle,
 		connMaxLifetime: connLifetime, concurrency: concurrency,
 		leaseDuration: lease, pollInterval: poll, backoffBase: base,
 		backoffMax: maximum, providerTimeout: providerTimeout,
 		providerKeyring: keyring, redisURL: env(lookup, envRedisURL, ""),
-		redisKeyPrefix: env(lookup, envRedisKeyPrefix, config.DefaultRedisKeyPrefix),
+		redisKeyPrefix:      env(lookup, envRedisKeyPrefix, config.DefaultRedisKeyPrefix),
+		hybridShadowEnabled: hybridShadowEnabled,
 	}, nil
+}
+
+func boolSetting(
+	lookup func(string) (string, bool),
+	name string,
+	fallback bool,
+) (bool, error) {
+	value := env(lookup, name, "")
+	if value == "" {
+		return fallback, nil
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("%s is invalid", name)
+	}
+	return parsed, nil
 }
 
 func env(lookup func(string) (string, bool), name string, fallback string) string {
