@@ -638,35 +638,50 @@ reader and Global-only API contract.
   temporal/conflict/scope routing without switching the v2 reader.
 
 
-## Session 17: Implement Memory v2 candidate and Review shadow
+## Session 19: Implement Memory v2 candidate and Review shadow
 
 **Date**: 2026-07-28
-**Task**: Implement Memory v2 candidate and Review shadow
+**Task**: Research memory system architecture (PR5)
 **Branch**: `main`
 
 ### Summary
 
-Implemented PR5 strict candidate-wide Memory proposals, Review shadow routing, canonical auto-apply revocation, secret/Sensitive privacy guards, and provider-free 30-day expiry; all PostgreSQL, race, Compose, image, and standalone gates passed.
+Implemented PR5 strict candidate-wide Memory proposals, Review shadow routing,
+canonical auto-apply revocation, secret/Sensitive privacy guards, and
+provider-free 30-day expiry while retaining the v1 reader and API contract.
 
 ### Main Changes
 
-(Add details)
+- Added migration `056` canonical temporal/conflict metadata, candidate batch
+  authority, normalized Review target/evidence tables, and guarded rollback.
+- Split extraction and decision prompts, enforced exact strict JSON fields,
+  bounded context/targets, and deterministic secret/Sensitive redaction.
+- Routed exact, manual-conflict, temporal, secret, and unrelated candidates
+  without any canonical mutation; expiry wipes proposal plaintext without a
+  Provider call.
 
 ### Git Commits
 
 | Hash | Message |
 |------|---------|
-| `4a5fbf2` | (see git log) |
-| `290a5cb` | (see git log) |
+| `4a5fbf2` | `feat: add Memory candidate and Review shadow` |
+| `290a5cb` | `docs(task): record Memory v2 PR5 progress` |
 
 ### Testing
 
-- [OK] (Add test results)
+- [OK] Focused race tests, full backend tests, and `go vet ./...`.
+- [OK] Disposable PostgreSQL 17.10 proposal/expiry, guarded down, clean down,
+  and re-up drill.
+- [OK] Preflight, Compose rendering, backend image worker binary, and related
+  quality/security scans.
+- [OK] Full standalone gate: frontend 954 tests/build, backend tests/vet, and
+  RAG 1,906 passed / 7 skipped.
 
 ### Status
 
-[OK] **Completed**
+[OK] **PR5 completed; parent Memory v2 task remains in progress**
 
 ### Next Steps
 
-- None - task complete
+- Begin PR6 direct-user typed Memory actions, Activity/Usage links, and
+  revision-safe undo without switching the v2 reader early.

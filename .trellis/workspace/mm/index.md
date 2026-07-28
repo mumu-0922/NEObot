@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 17
+- **Total Sessions**: 19
 - **Last Active**: 2026-07-28
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~672 | Active |
+| `journal-1.md` | ~687 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,7 +29,9 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
-| 17 | 2026-07-28 | Implement Memory v2 candidate and Review shadow | `4a5fbf2`, `290a5cb` | `main` |
+| 19 | 2026-07-28 | Implement Memory v2 candidate and Review shadow | `4a5fbf2`, `290a5cb` | `main` |
+| 18 | 2026-07-28 | Implement Memory v2 provenance and deletion safeguards | `754240c`, `4808e99` | `main` |
+| 17 | 2026-07-28 | Implement Memory v2 durable capture worker | `aed9c76`, `7d187d1` | `main` |
 | 16 | 2026-07-27 | Server voice read-aloud visible text | `8779d4a` | `main` |
 | 15 | 2026-07-27 | Stabilize read-aloud playback lifecycle | `cb32866` | `main` |
 | 14 | 2026-07-27 | SiliconFlow TTS production rollout | `ccad2a3`, `39672e1`, `baf0c03`, `8bc0a56`, `5debc62`, `8922d2c` | `main` |
