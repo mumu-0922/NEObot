@@ -8,7 +8,10 @@ conversation summaries.
 
 - expose authenticated settings and Memory CRUD at `/v1/memory-settings` and
   `/v1/memories`;
-- persist settings and soft-deletable entries in Postgres migration `035`;
+- persist settings and soft-deletable entries from migration `035`, with the
+  additive Project/scope/settings foundation from migration `053`;
+- keep the current v1 API explicitly Global-only while later v2 readers and
+  Project APIs remain disabled;
 - normalize and validate types, content, importance, tags, and source IDs;
 - rank only relevant lexical/CJK matches and return at most five;
 - prevent disabled Memory or disabled auto-record from reading/writing entries.
@@ -28,6 +31,12 @@ matches, err := service.SearchRelevant(ctx, "keep this concise", 5)
 
 Identity is always read from `auth.UserFromContext` through
 `auth.UserOrDevelopment`; API inputs never accept a user ID.
+
+Migration `053` allows the same normalized content in different scopes. The v1
+repository always inserts `scope_type='global'` and repeats the Global partial
+index predicate in its `ON CONFLICT` target. List/update/delete/mark-used also
+filter Global rows, so this package cannot mutate future Project or
+Conversation Memory before the owning API is introduced.
 
 ## Main API
 

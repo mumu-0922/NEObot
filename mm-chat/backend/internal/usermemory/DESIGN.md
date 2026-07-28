@@ -19,7 +19,7 @@
 
 ```text
 Settings UI -> typed frontend API -> HTTP Handler -> Service -> Repository
-                                                        -> Postgres 035
+                                                        -> Postgres 035 + 053
 Chat Handler -> Service.SearchRelevant -> guarded Provider system context
 Chat completed -> bounded Provider extractor -> Service.StoreExtracted
 ```
@@ -39,6 +39,8 @@ cycle.
 | Retrieval happens after Knowledge/Web query construction | Memory must not rewrite private Knowledge or public-search queries                  | Only the answer Provider sees matches              |
 | Extraction runs after `message.completed`                | Secondary Provider failure cannot fail the answer                                   | A new Memory may appear shortly after completion   |
 | Metadata contains IDs/counts only                        | Diagnostics must not duplicate private text                                         | Full content is available only through Memory CRUD |
+| v1 repository is explicitly Global-only                 | PR2 adds scopes before adding a v2 reader/API                                        | Project/Conversation rows remain invisible to v1 CRUD |
+| Scope uniqueness uses three partial indexes              | Exact overrides must coexist across Global, Project, and Conversation                | `ON CONFLICT` must repeat the Global index predicate |
 
 ## Validation and limits
 
@@ -55,6 +57,7 @@ cycle.
 | Threat                                   | Control                                                                                      |
 | ---------------------------------------- | -------------------------------------------------------------------------------------------- |
 | Cross-user read/write                    | User ID comes from authenticated context and is present in every SQL predicate               |
+| Cross-user Project/Conversation scope    | Composite `(scope_id, user_id)` foreign keys with `ON DELETE RESTRICT`                      |
 | Prompt injection in stored Memory        | JSON encoding plus a server-owned lower-priority/untrusted instruction; current request wins |
 | Secret retention by automatic extraction | Prompt prohibition plus content/tag credential-pattern rejection                             |
 | Whole-store disclosure                   | Relevance threshold and hard Top-5 cap; no-hit means no block                                |
@@ -71,8 +74,11 @@ no-whole-store-injection contract.
 Required coverage includes settings/CRUD, soft delete, duplicate conflict,
 user isolation, related/unrelated CJK relevance, disabled zero-read/zero-write,
 secret filtering, Provider failure containment, migration down/up, frontend
-server authority, and a real Provider cross-conversation recall/delete proof.
+server authority, Global-only v1 isolation, scoped ownership constraints, and a
+real Provider cross-conversation recall/delete proof.
 
 ## Change history
 
 - 2026-07-20: initial Postgres/Go durable Memory boundary (G11.13C).
+- 2026-07-28: migration-053 Project/scope/settings foundation with a guarded
+  rollback and Global-only v1 repository compatibility (Memory v2 PR2).

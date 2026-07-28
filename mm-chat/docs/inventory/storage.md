@@ -43,6 +43,7 @@ Current OPFS URLs use the `opfs://` protocol and are resolved by `src/utils/opfs
 | ------------------------------------ | ------------------------------------- | ------------------------------------------------- |
 | Users, sessions                      | Postgres                              | canonical auth/session records                    |
 | Conversations, messages              | Postgres                              | durable structured data and queryability          |
+| Projects, Memory settings and L1 rows | Postgres                              | canonical scope, policy, and durable Memory authority |
 | Provider configs                     | Postgres + encryption                 | server-side secret boundary                       |
 | File metadata                        | Postgres                              | ownership, size, MIME, SHA, storage key           |
 | File bytes                           | MinIO/S3-compatible object storage    | large binary storage, streamable, backup-friendly |

@@ -143,11 +143,11 @@ function signatures, owners, and grants while pinning lookup to the application
 schema, `pg_catalog`, and `pg_temp`. Its down path intentionally retains the
 safe search path rather than reopening object-shadowing risk.
 
-The current migration head is `050`. Migration `043` extends the existing
-final-authority evidence hydration boundary with complete matched-Child and
-containing-Parent source text plus their persisted token counts. Parent text is
-answer context only. Its down migration restores the previous Child-only return
-signature.
+The current migration head is `053`; the latest retrieval-specific migration
+remains `050`. Migration `043` extends the existing final-authority evidence
+hydration boundary with complete matched-Child and containing-Parent source
+text plus their persisted token counts. Parent text is answer context only. Its
+down migration restores the previous Child-only return signature.
 
 Migration `044` registers the immutable Structure Chunk Profile v2 descriptor
 and removes generation begin, verify, fail, raw promote, and rollback execution
@@ -209,6 +209,22 @@ authority. Passing Development, Validation, and the one-shot frozen Holdout does
 not activate automatically; an operator must separately approve the exact
 Candidate/report hash transition.
 
+Migration `051` adds the SiliconFlow TTS cache and cleanup queue. Migration
+`052` grants the existing API runtime role bounded DML on those two tables.
+
+Migration `053` adds the Memory v2 Project/scope/settings foundation without a
+Project API, worker, Provider call, or reader activation. Existing Memory rows
+are backfilled as generation-one Global rows; existing settings remain
+unchanged and Sensitive defaults off. Composite ownership foreign keys prevent
+cross-user Project/Conversation scope references, and active normalized-content
+uniqueness is split by exact scope. The v1 Go repository remains Global-only.
+Its down path fails closed after any Project/scoped Memory/non-default new
+policy exists. Because the pre-`053` binary uses the replaced Global conflict
+target, stop all pre-`053` backends before applying `053`; start only the
+post-`053` backend afterward. For rollback, stop all post-`053` backends and
+down `053` before deploying the old binary. Do not mix the two writer versions
+after migration.
+
 ## Storage boundaries
 
 Postgres is the source of truth for structured records:
@@ -217,6 +233,7 @@ Postgres is the source of truth for structured records:
 - provider configuration metadata and encrypted-secret references
 - server-owned automation task model selections
 - conversations and messages
+- Projects, Memory settings, and canonical Memory rows
 - versioned derived conversation-context summaries; original messages remain
   the rebuild authority
 - file ownership and metadata

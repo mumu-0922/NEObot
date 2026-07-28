@@ -9,13 +9,14 @@ Citation display projection. It also applies when touching any already-applied
 retrieval migration byte, including comments, line endings, or terminal blank
 lines, because the live manifest hashes both SQL directions byte-for-byte.
 
-The current schema head is migration `050` on PostgreSQL `17.10` with
-`pgvector 0.8.5` and `pg_textsearch 1.3.1`. The durable retrieval pointer still
-accepts `legacy` and `pg17_bm25_pgvector_v1`; migration `049` adds the BGE
-Candidate vector space, and migration `050` permanently retires Jina runtime
-execution without moving the pointer, activating a Generation, or consuming
-Holdout. The retired PostgreSQL 16 directory at
-`mm-chat/data/postgres` remains an observation-window rollback anchor. Never
+The current repository schema head is migration `053` on PostgreSQL `17.10`
+with `pgvector 0.8.5` and `pg_textsearch 1.3.1`; the latest retrieval-specific
+migration remains `050`. The durable retrieval pointer still accepts `legacy`
+and `pg17_bm25_pgvector_v1`; migration `049` adds the BGE Candidate vector
+space, and migration `050` permanently retires Jina runtime execution without
+moving the pointer, activating a Generation, or consuming Holdout. The retired
+PostgreSQL 16 directory at `mm-chat/data/postgres` remains an observation-window
+rollback anchor. Never
 mount it, or any other PG16 data directory, into the PG17 image.
 
 ## 2. Signatures

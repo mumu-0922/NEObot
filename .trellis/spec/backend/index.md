@@ -13,6 +13,7 @@
 | [Hosted media provider smoke](./provider-live-smoke.md) | Exact live-provider authorization, one-off credentials, explicit TTS voices, artifacts, and sanitized evidence    |
 | [Hosted TTS production](./hosted-tts-production.md) | Dedicated SiliconFlow Voice authority, exact activation, server-mode playback, per-user cache, and cleanup |
 | [Memory v2 benchmark](./memory-v2-benchmark.md) | Synthetic-only 500-case Golden lifecycle, strict observation/evaluation contracts, immutable reports, and non-promotional boundaries |
+| [Memory v2 storage](./memory-v2-storage.md) | Project/scope/settings foundation, Global v1 repository compatibility, ownership constraints, and guarded rollback |
 
 ## Pre-Development Checklist
 
@@ -79,6 +80,16 @@ reader-promotion changes:
 4. Prove current-fact, false-injection, cross-user, secret, deletion, Provider-
    egress, latency, token, and cost gates before changing a reader.
 
+For Memory Project, scope, settings, repository, or migration changes:
+
+1. Read [`memory-v2-storage.md`](./memory-v2-storage.md).
+2. Keep Project/Conversation ownership in composite database foreign keys;
+   source provenance is not scope authority.
+3. Preserve the Global-only v1 API until its owning reader/API PR changes the
+   contract explicitly.
+4. Prove additive defaults, backfill, same-scope uniqueness, guarded rollback,
+   and disposable PostgreSQL down/re-up before release.
+
 ## Quality Check
 
 - Run the disposable database drill for the changed storage group.
@@ -99,5 +110,8 @@ reader-promotion changes:
   and `cmd/memory-eval`, all backend tests, and `go vet ./...`. Reader/runtime
   changes additionally require their owning migration, shadow, and rollback
   gates; PR1 alone does not require Docker or a Live Provider.
+- For Memory storage changes, run focused race tests for `internal/usermemory`,
+  `internal/migration`, and `cmd/migrate`; prove the exact migration against a
+  disposable PostgreSQL database before all backend tests and vet.
 
 **Language**: All documentation should be written in English.

@@ -136,6 +136,27 @@ Then run the smoke checks from the pre-release gate.
 - **Redis issue**: flush or recreate Redis only; Postgres/MinIO remain
   authoritative.
 
+### Migration 053 / Memory v2 foundation rollback
+
+Migration `053_memory_project_scope_settings` is additive but replaces the v1
+Global active-content unique index with three exact-scope indexes. The
+post-`053` backend repeats the Global predicate in its Memory `ON CONFLICT`;
+the pre-`053` binary does not. Never run those writer versions together after
+the migration.
+
+Forward deployment also uses a bounded outage: stop every pre-`053` backend,
+apply `053`, and only then start the post-`053` backend. Do not apply `053`
+under a live pre-`053` Memory writer.
+
+Before v2 use, rollback requires a full backend outage: stop every post-`053`
+backend, run one `migrate down`, then deploy the pre-`053` backend. Down fails
+atomically if any Project exists, any Memory is non-Global, Conversation Memory
+policy/generation changed, or Sensitive/L2/L3 settings differ from the
+migration defaults. Do not delete user data to bypass a guard.
+
+Once any v2 authority is in use, retain `053` and roll back only later feature
+flags/readers. Use a forward fix for repository defects.
+
 ### Migrations 051-052 / SiliconFlow TTS rollback
 
 Migration `051_siliconflow_tts_cache` adds the exact Voice provider identity

@@ -181,14 +181,16 @@ Readiness never mutates schema, creates buckets, or runs migrations.
 
 The Go migration runner owns transaction boundaries, takes a Postgres advisory
 lock, validates migration names/checksums, and records each applied migration
-in `schema_migrations`. The current schema head is `041`. Migration `038`
+in `schema_migrations`. The current schema head is `053`. Migration `038`
 requires PostgreSQL major `17`, the `pg_textsearch` preload, and exact pgvector
 `0.8.5` / pg_textsearch `1.3.1` extension versions. Migrations `039` and `040`
 retain the dedicated API role by exposing only hardened document-lifecycle and
 source-metadata function calls; they do not grant direct projection-table
 access. Migration `041` pins every current-schema SECURITY DEFINER function to
 the application schema, `pg_catalog`, and `pg_temp` without changing ownership
-or grants.
+or grants. Migrations `051` and `052` add the bounded SiliconFlow TTS cache
+authority. Migration `053` adds the inactive Memory v2 Project/scope/settings
+foundation; it does not enable a reader, worker, Provider call, or Project API.
 
 Apply migrations from the same immutable `BACKEND_IMAGE` used by `backend` and
 `admin`:

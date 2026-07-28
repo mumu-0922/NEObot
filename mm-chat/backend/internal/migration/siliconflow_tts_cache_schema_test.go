@@ -81,7 +81,7 @@ func TestSiliconFlowTTSRuntimeRoleGrantMigrationLivePostgres(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	runner := NewRunner(db, migrationfiles.FS)
+	runner := NewRunner(db, phase15MigrationFSThrough(t, 52))
 	applied, err := runner.Up(ctx)
 	if err != nil {
 		t.Fatalf("apply migrations through 052: %v", err)

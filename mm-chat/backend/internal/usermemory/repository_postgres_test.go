@@ -52,6 +52,18 @@ INSERT INTO users (id, display_name) VALUES ($1, 'memory fixture')
 	if err != nil || !settings.Enabled || !settings.AutoRecordEnabled {
 		t.Fatalf("UpdateSettings() = %#v/%v", settings, err)
 	}
+	var sensitiveEnabled bool
+	var l2Mode, l3Mode string
+	if err := db.QueryRowContext(ctx, `
+SELECT sensitive_memory_enabled, l2_mode, l3_mode
+FROM user_memory_settings
+WHERE user_id = $1
+`, userAID).Scan(&sensitiveEnabled, &l2Mode, &l3Mode); err != nil {
+		t.Fatalf("read additive settings defaults: %v", err)
+	}
+	if sensitiveEnabled || l2Mode != "inherit" || l3Mode != "inherit" {
+		t.Fatalf("additive settings = sensitive %t, l2 %q, l3 %q", sensitiveEnabled, l2Mode, l3Mode)
+	}
 	created, err := service.CreateManual(ctxA, Candidate{
 		Type: "preference", Content: "Keep answers concise",
 		Importance: 5, Tags: []string{"style"},
@@ -59,6 +71,49 @@ INSERT INTO users (id, display_name) VALUES ($1, 'memory fixture')
 	if err != nil {
 		t.Fatal(err)
 	}
+	var createdScope string
+	if err := db.QueryRowContext(ctx, `
+SELECT scope_type
+FROM user_memories
+WHERE id = $1
+`, created.ID).Scan(&createdScope); err != nil {
+		t.Fatalf("read v1 repository scope: %v", err)
+	}
+	if createdScope != "global" {
+		t.Fatalf("v1 repository created scope %q, want global", createdScope)
+	}
+	duplicate, err := service.CreateManual(ctxA, Candidate{
+		Type: "preference", Content: "Keep answers concise",
+		Importance: 4, Tags: []string{"style"},
+	})
+	if err != nil || duplicate.ID != created.ID {
+		t.Fatalf("same-Global duplicate = %#v/%v, want upsert of %s", duplicate, err, created.ID)
+	}
+
+	projectID, err := newUUID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectMemoryID, err := newUUID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO projects (id, user_id, name)
+VALUES ($1, $2, 'repository isolation fixture');
+INSERT INTO user_memories (
+  id, user_id, memory_type, content, normalized_content, source,
+  scope_type, project_id
+) VALUES ($3, $2, 'preference', $4, $5, 'manual', 'project', $1)
+`, projectID, userAID, projectMemoryID, created.Content, created.NormalizedContent); err != nil {
+		t.Fatalf("insert Project-scoped fixture: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cleanupCancel()
+		_, _ = db.ExecContext(cleanupCtx, `DELETE FROM user_memories WHERE id = $1`, projectMemoryID)
+		_, _ = db.ExecContext(cleanupCtx, `DELETE FROM projects WHERE id = $1`, projectID)
+	})
 
 	listedA, err := service.List(ctxA)
 	if err != nil || len(listedA) != 1 || listedA[0].ID != created.ID {
@@ -72,6 +127,14 @@ INSERT INTO users (id, display_name) VALUES ($1, 'memory fixture')
 		Type: "preference", Content: "stolen", Importance: 3,
 	}); err != ErrMemoryNotFound {
 		t.Fatalf("cross-user update error = %v, want ErrMemoryNotFound", err)
+	}
+	if _, err := service.Update(ctxA, projectMemoryID, Candidate{
+		Type: "preference", Content: "v1 must not mutate Project scope", Importance: 3,
+	}); err != ErrMemoryNotFound {
+		t.Fatalf("v1 Project-scope update error = %v, want ErrMemoryNotFound", err)
+	}
+	if err := service.Delete(ctxA, projectMemoryID); err != ErrMemoryNotFound {
+		t.Fatalf("v1 Project-scope delete error = %v, want ErrMemoryNotFound", err)
 	}
 
 	matches, err := service.SearchRelevant(ctxA, "Please keep the answer concise", 5)

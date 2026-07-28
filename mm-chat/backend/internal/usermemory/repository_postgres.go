@@ -91,7 +91,7 @@ SELECT
   source, source_conversation_id, source_message_id, enabled, last_used_at,
   created_at, updated_at, deleted_at
 FROM user_memories
-WHERE user_id = $1 AND deleted_at IS NULL
+WHERE user_id = $1 AND scope_type = 'global' AND deleted_at IS NULL
 ORDER BY updated_at DESC, id
 LIMIT $2
 `, user.ID, MaxMemories)
@@ -122,13 +122,14 @@ func (r *PostgresRepository) Create(ctx context.Context, input CreateInput) (Mem
 	row := r.db.QueryRowContext(ctx, `
 INSERT INTO user_memories (
   id, user_id, memory_type, content, normalized_content, importance, tags,
-  source, source_conversation_id, source_message_id, enabled
+  source, source_conversation_id, source_message_id, enabled, scope_type
 )
 VALUES (
   $1, $2, $3, $4, $5, $6, $7, $8,
-  NULLIF($9, '')::uuid, NULLIF($10, '')::uuid, $11
+  NULLIF($9, '')::uuid, NULLIF($10, '')::uuid, $11, 'global'
 )
-ON CONFLICT (user_id, normalized_content) WHERE deleted_at IS NULL DO UPDATE SET
+ON CONFLICT (user_id, normalized_content)
+WHERE deleted_at IS NULL AND scope_type = 'global' DO UPDATE SET
   memory_type = EXCLUDED.memory_type,
   content = EXCLUDED.content,
   importance = GREATEST(user_memories.importance, EXCLUDED.importance),
@@ -178,7 +179,7 @@ SET
   tags = $7,
   enabled = $8,
   updated_at = now()
-WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+WHERE id = $1 AND user_id = $2 AND scope_type = 'global' AND deleted_at IS NULL
 RETURNING
   id, user_id, memory_type, content, normalized_content, importance,
   to_json(tags)::text AS tags,
@@ -216,7 +217,7 @@ func (r *PostgresRepository) Delete(ctx context.Context, memoryID string) error 
 	result, err := r.db.ExecContext(ctx, `
 UPDATE user_memories
 SET enabled = false, deleted_at = now(), updated_at = now()
-WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+WHERE id = $1 AND user_id = $2 AND scope_type = 'global' AND deleted_at IS NULL
 `, memoryID, user.ID)
 	if err != nil {
 		return fmt.Errorf("delete user memory: %w", err)
@@ -242,7 +243,11 @@ func (r *PostgresRepository) MarkUsed(ctx context.Context, ids []string, usedAt 
 	_, err := r.db.ExecContext(ctx, `
 UPDATE user_memories
 SET last_used_at = $3
-WHERE user_id = $1 AND id = ANY($2::uuid[]) AND deleted_at IS NULL AND enabled
+WHERE user_id = $1
+  AND id = ANY($2::uuid[])
+  AND scope_type = 'global'
+  AND deleted_at IS NULL
+  AND enabled
 `, user.ID, ids, usedAt.UTC())
 	if err != nil {
 		return fmt.Errorf("mark user memories used: %w", err)
