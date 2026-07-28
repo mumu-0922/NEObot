@@ -223,6 +223,25 @@ begins, retain `059` and roll back behavior with the default-off flag. Only a
 clean pre-observation database may run `059 -> 058 -> 059`; its HNSW vectors
 and embedding jobs are derived and rebuild from current canonical projection.
 
+### Migration 060 / Memory governance rollback
+
+Deploy migration `060` and its matching backend together. The migration
+revokes `go_api_runtime` EXECUTE on the old Global manual upsert/update
+functions, and the post-`060` repository calls classification-aware governance
+wrappers. Do not run a pre-`060` writer against the new grant set.
+
+For a pre-traffic down, stop post-`060` API writers first. Rollback fails with
+`MEMORY_GOVERNANCE_ROLLBACK_REQUIRES_NO_DECISIONS` when the Review decision
+audit is non-empty, `MEMORY_GOVERNANCE_ROLLBACK_REQUIRES_LEGACY_REVIEWS` when a
+legacy Review has been decided, or
+`MEMORY_GOVERNANCE_ROLLBACK_REQUIRES_NO_MOVE_REVISIONS` after a scoped move.
+Clean down restores the old v1 function grants.
+
+Never delete governance/revision history to force rollback. After any PR9
+decision or move exists, retain `060` and deploy a forward fix. Reader rollback
+remains independent because PR9 did not promote lexical/hybrid/scoped Memory
+into prompts or Usage.
+
 ### Migrations 051-052 / SiliconFlow TTS rollback
 
 Migration `051_siliconflow_tts_cache` adds the exact Voice provider identity

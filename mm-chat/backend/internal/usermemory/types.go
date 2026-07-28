@@ -24,12 +24,16 @@ const (
 )
 
 var (
-	ErrDatabaseRequired         = errors.New("memory database is required")
-	ErrMemoryNotFound           = errors.New("memory not found")
-	ErrMemoryConflict           = errors.New("memory content already exists")
-	ErrActionRepositoryRequired = errors.New("memory action repository is required")
-	ErrActivityNotFound         = errors.New("memory activity not found")
-	ErrActivityUndoUnavailable  = errors.New("memory activity undo is unavailable")
+	ErrDatabaseRequired             = errors.New("memory database is required")
+	ErrMemoryNotFound               = errors.New("memory not found")
+	ErrMemoryConflict               = errors.New("memory content already exists")
+	ErrActionRepositoryRequired     = errors.New("memory action repository is required")
+	ErrActivityNotFound             = errors.New("memory activity not found")
+	ErrActivityUndoUnavailable      = errors.New("memory activity undo is unavailable")
+	ErrGovernanceRepositoryRequired = errors.New("memory governance repository is required")
+	ErrMemoryProjectNotFound        = errors.New("memory project not found")
+	ErrConversationPolicyNotFound   = errors.New("conversation memory policy not found")
+	ErrMemoryReviewNotFound         = errors.New("memory review not found")
 )
 
 type Repository interface {
@@ -67,15 +71,21 @@ type HybridShadowRepository interface {
 }
 
 type Settings struct {
-	Enabled           bool `json:"enabled"`
-	SearchEnabled     bool `json:"searchEnabled"`
-	AutoRecordEnabled bool `json:"autoRecordEnabled"`
+	Enabled                bool   `json:"enabled"`
+	SearchEnabled          bool   `json:"searchEnabled"`
+	AutoRecordEnabled      bool   `json:"autoRecordEnabled"`
+	SensitiveMemoryEnabled bool   `json:"sensitiveMemoryEnabled"`
+	L2Mode                 string `json:"l2Mode"`
+	L3Mode                 string `json:"l3Mode"`
 }
 
 type SettingsPatch struct {
-	Enabled           *bool `json:"enabled"`
-	SearchEnabled     *bool `json:"searchEnabled"`
-	AutoRecordEnabled *bool `json:"autoRecordEnabled"`
+	Enabled                *bool   `json:"enabled"`
+	SearchEnabled          *bool   `json:"searchEnabled"`
+	AutoRecordEnabled      *bool   `json:"autoRecordEnabled"`
+	SensitiveMemoryEnabled *bool   `json:"sensitiveMemoryEnabled"`
+	L2Mode                 *string `json:"l2Mode"`
+	L3Mode                 *string `json:"l3Mode"`
 }
 
 type Memory struct {
@@ -229,12 +239,30 @@ type MemoryActivity struct {
 	ReasonCode         string
 	UndoKind           string
 	UndoStatus         string
+	SourceKind         string
+	ScopeType          string
 	MemoryType         string
 	MemoryContent      string
 	MemoryRevision     *int64
 	MemoryDeleted      bool
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
+}
+
+func IsStateConflict(err error) bool {
+	var validationError ValidationError
+	if !errors.As(err, &validationError) {
+		return false
+	}
+	switch validationError.Code {
+	case "MEMORY_GOVERNANCE_REVISION_STALE",
+		"MEMORY_GOVERNANCE_SCOPE_STALE",
+		"MEMORY_GOVERNANCE_REVIEW_STALE",
+		"MEMORY_GOVERNANCE_REPLAY_CONFLICT":
+		return true
+	default:
+		return false
+	}
 }
 
 type MessageMemoryUsage struct {

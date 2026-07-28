@@ -184,7 +184,7 @@ Readiness never mutates schema, creates buckets, or runs migrations.
 
 The Go migration runner owns transaction boundaries, takes a Postgres advisory
 lock, validates migration names/checksums, and records each applied migration
-in `schema_migrations`. The current schema head is `057`. Migration `038`
+in `schema_migrations`. The current schema head is `060`. Migration `038`
 requires PostgreSQL major `17`, the `pg_textsearch` preload, and exact pgvector
 `0.8.5` / pg_textsearch `1.3.1` extension versions. Migrations `039` and `040`
 retain the dedicated API role by exposing only hardened document-lifecycle and
@@ -200,8 +200,12 @@ Migration `055` adds canonical evidence/revision/tombstone/deletion-manifest
 authority and provider-free purge. Migration `056` changes automatic capture
 to candidate/Review shadow with provider-free expiry. Migration `057` adds
 direct-user typed actions, immutable assistant Usage links, link-only Activity
-polling, and revision-safe undo; it still does not switch the v1 reader or add
-the PR9 frontend.
+polling, and revision-safe undo. Migration `058` adds transactional exact/CJK
+BM25 projection and lexical shadow; `059` adds lease-fenced BGE-M3 vector,
+RRF/rerank/budget hybrid shadow. Migration `060` adds Project/Conversation
+policy, scoped governance, Review decisions, current-only detail/Activity
+hydration, and classified legacy Global write wrappers. None of `058`–`060`
+promotes the v1 Global Top 5 reader.
 
 Apply migrations from the same immutable `BACKEND_IMAGE` used by `backend` and
 `admin`:

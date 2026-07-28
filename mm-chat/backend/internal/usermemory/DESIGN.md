@@ -18,8 +18,10 @@
 ## Architecture
 
 ```text
-Settings UI -> typed frontend API -> HTTP Handler -> Service -> Repository
-                                                        -> Postgres 035 + 053 + 055
+Server governance UI -> typed frontend API -> HTTP Handler -> Service
+  -> migration-060 SECURITY DEFINER capabilities -> canonical Memory authority
+Legacy Global UI/API -> migration-060 classified legacy wrappers
+  -> migration-055 canonical write/delete capabilities
 Chat Handler -> Service.SearchRelevant -> guarded Provider system context
 Chat finalize transaction -> ID-only outbox/job -> private Go Memory Worker
   -> strict Provider candidate/decision -> migration-056 Review shadow proposal
@@ -27,6 +29,8 @@ Current completed user message -> lexical gate -> strict typed action planner
   -> Go target/scope/revision rebinding -> migration-057 action capability
 Assistant finalize transaction -> immutable migration-057 L1 Usage links
 Activity polling/undo -> user-scoped migration-057 capabilities
+Project/policy/scoped Memory/Review/detail -> migration-060 governance functions
+Assistant Activity chip -> current-only migration-060 message hydration
 Canonical Memory transaction -> migration-058 exact/CJK BM25 projection
 Current user message -> unchanged v1 Top 5 -> optional migration-058 shadow
   -> ID/revision/rank-only diagnostics; zero prompt injection
@@ -69,6 +73,11 @@ cycle.
 | Hybrid remains a PR8 shadow, not a reader                | Benchmark and observation gates must precede prompt authority                            | v1 Top 5, prompt, Usage, and chat success remain byte-authoritative |
 | One default-off flag gates all PR8 Provider calls        | API rerank and Worker embedding must not drift operationally                             | Flag false makes zero Memory embedding/rerank calls while projection/jobs remain rebuildable |
 | Provider egress uses redacted transient copies           | SQL/source/hash authority must not be weakened to hide a credential leak                  | Raw query/content stays only at its current authority boundary; secret-only query/document/body skips its Provider lane |
+| PR9 governance is not reader promotion                   | Users need control before scoped retrieval is allowed                                      | Project/Conversation Memory is manageable but v1 Global Top 5 remains the only prompt/Usage source |
+| Plaintext is hydrated from current authority only        | Revision/evidence history must not resurrect deleted, disabled, archived, or stale content | Detail and Activity return markers after any lifecycle/epoch/scope-generation fence fails |
+| Content classification is duplicated at Go and SQL       | A client label or alternate repository caller must not downgrade Sensitive/secret content  | Go fails fast; migration `060` wrappers/capabilities reclassify before canonical mutation |
+| Legacy v1 writes use governed wrappers after `060`       | Keeping old runtime EXECUTE would leave a classification bypass                            | Old grants are revoked on up, restored on down, and repository calls must move with migration |
+| Activity undo uses `subjectRevision`                     | Current hydrated revision can differ from the action's undo precondition                    | Frontend sends the immutable Activity subject revision and stale undo becomes Review-required |
 
 ## Validation and limits
 
@@ -112,10 +121,15 @@ cycle.
 | Hybrid diagnostics leak content or raw scores | Candidate content is transient only; durable observations contain hashes, IDs, ordinals, bounded counts/status/tokens/duration |
 | Query or canonical Memory leaks a credential to retrieval Provider | Shared deterministic classification redacts query, rerank documents, and embedding bodies immediately before egress; fully redacted input makes zero corresponding Provider calls |
 | Runtime mutates derived/evidence tables | `go_api_runtime` receives only hybrid prepare/record; `memory_worker_runtime` receives only embedding lease capabilities; both lack table CRUD |
+| Client downgrades Sensitive content to normal | Go classification and migration-060 SQL classification take the stricter result; Sensitive-off and secret-like writes fail |
+| Governance history leaks deleted plaintext | Detail/Activity join current enabled/lifecycle/epoch/scope authority; deleted sources and purged revisions return marker fields only |
+| Old Global writer bypasses PR9 policy | Migration `060` revokes its runtime EXECUTE and grants only classification-aware legacy wrappers |
+| Cross-user or stale Project/policy/Review mutation | Auth-derived user plus revision/generation/target/replay checks execute inside pinned SECURITY DEFINER functions |
 
-Known limitation: migration `059` is still a zero-injection shadow. Semantic
-paraphrases may appear in diagnostics, but they cannot affect answers until a
-separate frozen benchmark, observation window, and reader-promotion decision.
+Known limitation: migrations `058`/`059` remain zero-injection shadows and PR9
+Project/Conversation Memory remains governance-only. Semantic/scoped results
+cannot affect answers until a separate frozen benchmark, observation window,
+and reader-promotion decision.
 
 ## Verification
 
@@ -143,3 +157,6 @@ real Provider cross-conversation recall/delete proof.
   default-off, zero-injection lexical comparison (Memory v2 PR7).
 - 2026-07-28: migration-059 fixed BGE-M3 vector projection, leased embedding,
   RRF(60), BGE rerank, and bounded zero-injection hybrid comparison (Memory v2 PR8).
+- 2026-07-28: migration-060 Project/Conversation policy, scoped governance,
+  Review decisions, current-only detail/Activity hydration, and classified v1
+  compatibility wrappers (Memory v2 PR9).

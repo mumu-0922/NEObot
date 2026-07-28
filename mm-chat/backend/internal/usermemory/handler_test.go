@@ -32,10 +32,13 @@ func TestHandlerMemoryCRUDAndSettings(t *testing.T) {
 		handler,
 		http.MethodPatch,
 		memorySettingsPath,
-		`{"enabled":true,"autoRecordEnabled":true}`,
+		`{"enabled":true,"autoRecordEnabled":true,"sensitiveMemoryEnabled":true,"l2Mode":"off","l3Mode":"on"}`,
 	)
 	if settingsResponse.Code != http.StatusOK ||
-		!strings.Contains(settingsResponse.Body.String(), `"autoRecordEnabled":true`) {
+		!strings.Contains(settingsResponse.Body.String(), `"autoRecordEnabled":true`) ||
+		!strings.Contains(settingsResponse.Body.String(), `"sensitiveMemoryEnabled":true`) ||
+		!strings.Contains(settingsResponse.Body.String(), `"l2Mode":"off"`) ||
+		!strings.Contains(settingsResponse.Body.String(), `"l3Mode":"on"`) {
 		t.Fatalf("updated settings response = %d %s", settingsResponse.Code, settingsResponse.Body.String())
 	}
 

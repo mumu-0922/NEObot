@@ -2,6 +2,7 @@ package usermemory
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"sort"
 	"strings"
@@ -52,7 +53,7 @@ func NewService(repo Repository, options ...ServiceOption) *Service {
 }
 
 func DefaultSettings() Settings {
-	return Settings{SearchEnabled: true}
+	return Settings{SearchEnabled: true, L2Mode: "inherit", L3Mode: "inherit"}
 }
 
 func (s *Service) GetSettings(ctx context.Context) (Settings, error) {
@@ -64,24 +65,62 @@ func (s *Service) GetSettings(ctx context.Context) (Settings, error) {
 		return Settings{}, err
 	}
 	if !ok {
-		return DefaultSettings(), nil
+		settings = DefaultSettings()
 	}
-	return settings, nil
+	return normalizeSettingsDefaults(settings), nil
+}
+
+func normalizeSettingsDefaults(settings Settings) Settings {
+	if settings.L2Mode == "" {
+		settings.L2Mode = "inherit"
+	}
+	if settings.L3Mode == "" {
+		settings.L3Mode = "inherit"
+	}
+	return settings
 }
 
 func (s *Service) UpdateSettings(ctx context.Context, patch SettingsPatch) (Settings, error) {
-	settings, err := s.GetSettings(ctx)
+	if err := s.requireRepository(); err != nil {
+		return Settings{}, err
+	}
+	settings, found, err := s.repo.GetSettings(ctx)
 	if err != nil {
 		return Settings{}, err
 	}
+	if !found {
+		settings = DefaultSettings()
+	}
+	settings = normalizeSettingsDefaults(settings)
 	if patch.Enabled != nil {
 		settings.Enabled = *patch.Enabled
+		if *patch.Enabled && !found {
+			settings.SearchEnabled = true
+			settings.AutoRecordEnabled = true
+		}
 	}
 	if patch.SearchEnabled != nil {
 		settings.SearchEnabled = *patch.SearchEnabled
 	}
 	if patch.AutoRecordEnabled != nil {
 		settings.AutoRecordEnabled = *patch.AutoRecordEnabled
+	}
+	if patch.SensitiveMemoryEnabled != nil {
+		settings.SensitiveMemoryEnabled = *patch.SensitiveMemoryEnabled
+	}
+	if patch.L2Mode != nil {
+		mode := strings.ToLower(strings.TrimSpace(*patch.L2Mode))
+		if _, ok := memoryPolicyModes[mode]; !ok {
+			return Settings{}, validation("INVALID_MEMORY_L2_MODE", "memory L2 mode is invalid")
+		}
+		settings.L2Mode = mode
+	}
+	if patch.L3Mode != nil {
+		mode := strings.ToLower(strings.TrimSpace(*patch.L3Mode))
+		if _, ok := memoryPolicyModes[mode]; !ok {
+			return Settings{}, validation("INVALID_MEMORY_L3_MODE", "memory L3 mode is invalid")
+		}
+		settings.L3Mode = mode
 	}
 	return s.repo.UpsertSettings(ctx, settings)
 }
@@ -101,6 +140,40 @@ func (s *Service) List(ctx context.Context) ([]Memory, error) {
 }
 
 func (s *Service) CreateManual(ctx context.Context, input Candidate) (Memory, error) {
+	normalized, err := normalizeCandidate(input)
+	if err != nil {
+		return Memory{}, err
+	}
+	sensitivity := ClassifyMemorySensitivity(normalized.Content)
+	if sensitivity == SensitivitySecret {
+		return Memory{}, validation("MEMORY_SECRET_REJECTED", "secrets cannot be stored as memory")
+	}
+	if sensitivity == SensitivitySensitive {
+		if _, ok := s.repo.(GovernanceRepository); !ok {
+			return Memory{}, ErrGovernanceRepositoryRequired
+		}
+		memory, createErr := s.CreateGovernanceMemory(ctx, GovernanceMemoryMutationInput{
+			Candidate: normalized, ScopeType: "global", Sensitivity: sensitivity,
+		})
+		if createErr == nil {
+			return governanceMemoryAsLegacy(memory), nil
+		}
+		if !errors.Is(createErr, ErrMemoryConflict) {
+			return Memory{}, createErr
+		}
+		memories, listErr := s.List(ctx)
+		if listErr != nil {
+			return Memory{}, listErr
+		}
+		normalizedContent := normalizeSearchText(normalized.Content)
+		for _, existing := range memories {
+			if existing.ScopeType == "global" &&
+				existing.NormalizedContent == normalizedContent {
+				return existing, nil
+			}
+		}
+		return Memory{}, createErr
+	}
 	return s.create(ctx, input, "manual", "", "")
 }
 
@@ -115,6 +188,33 @@ func (s *Service) Update(ctx context.Context, memoryID string, input Candidate) 
 	normalized, err := normalizeCandidate(input)
 	if err != nil {
 		return Memory{}, err
+	}
+	sensitivity := ClassifyMemorySensitivity(normalized.Content)
+	if sensitivity == SensitivitySecret {
+		return Memory{}, validation("MEMORY_SECRET_REJECTED", "secrets cannot be stored as memory")
+	}
+	if sensitivity == SensitivitySensitive {
+		if _, ok := s.repo.(GovernanceRepository); !ok {
+			return Memory{}, ErrGovernanceRepositoryRequired
+		}
+		memories, listErr := s.List(ctx)
+		if listErr != nil {
+			return Memory{}, listErr
+		}
+		for _, existing := range memories {
+			if existing.ID != memoryID || existing.ScopeType != "global" {
+				continue
+			}
+			updated, updateErr := s.UpdateGovernanceMemory(ctx, GovernanceMemoryMutationInput{
+				MemoryID: memoryID, ExpectedRevision: existing.Revision,
+				Candidate: normalized, ScopeType: "global", Sensitivity: sensitivity,
+			})
+			if updateErr != nil {
+				return Memory{}, updateErr
+			}
+			return governanceMemoryAsLegacy(updated), nil
+		}
+		return Memory{}, ErrMemoryNotFound
 	}
 	return s.repo.Update(ctx, memoryID, UpdateInput{
 		Type:              normalized.Type,
@@ -204,6 +304,11 @@ func (s *Service) SearchRelevant(ctx context.Context, query string, limit int) (
 	scored := make([]scoredMemory, 0, len(memories))
 	for _, memory := range memories {
 		if !memory.Enabled || memory.DeletedAt != nil {
+			continue
+		}
+		sensitivity := ClassifyMemorySensitivity(memory.Content)
+		if sensitivity == SensitivitySecret ||
+			(sensitivity == SensitivitySensitive && !settings.SensitiveMemoryEnabled) {
 			continue
 		}
 		score := relevanceScore(memory, query, queryTerms)

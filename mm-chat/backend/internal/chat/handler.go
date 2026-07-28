@@ -198,6 +198,13 @@ type updateConversationRequest struct {
 	Pinned            *bool          `json:"pinned"`
 }
 
+type updateConversationMemoryPolicyRequest struct {
+	ExpectedScopeGeneration int64  `json:"expectedScopeGeneration"`
+	ProjectID               string `json:"projectId"`
+	UseMode                 string `json:"useMode"`
+	LearnMode               string `json:"learnMode"`
+}
+
 type duplicateConversationRequest struct {
 	Title          string `json:"title"`
 	IdempotencyKey string `json:"idempotencyKey"`
@@ -933,6 +940,10 @@ func (h *Handler) handleConversationChild(w http.ResponseWriter, r *http.Request
 		h.generateRelatedQuestions(w, r, conversationID)
 		return
 	}
+	if child == "memory-policy" {
+		h.handleConversationMemoryPolicy(w, r, conversationID)
+		return
+	}
 	if child != "messages" {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
 		return
@@ -945,6 +956,49 @@ func (h *Handler) handleConversationChild(w http.ResponseWriter, r *http.Request
 		h.createMessage(w, r, conversationID)
 	default:
 		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
+	}
+}
+
+func (h *Handler) handleConversationMemoryPolicy(
+	w http.ResponseWriter,
+	r *http.Request,
+	conversationID string,
+) {
+	if h == nil || h.userMemoryService == nil {
+		writeServiceError(w, usermemory.ErrGovernanceRepositoryRequired)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		policy, err := h.userMemoryService.GetConversationPolicy(r.Context(), conversationID)
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, policy)
+	case http.MethodPatch:
+		var request updateConversationMemoryPolicyRequest
+		if err := decodeJSON(w, r, &request); err != nil {
+			writeRequestDecodeError(w, err)
+			return
+		}
+		policy, err := h.userMemoryService.UpdateConversationPolicy(
+			r.Context(),
+			usermemory.UpdateConversationPolicyInput{
+				ConversationID:          conversationID,
+				ExpectedScopeGeneration: request.ExpectedScopeGeneration,
+				ProjectID:               request.ProjectID,
+				UseMode:                 request.UseMode,
+				LearnMode:               request.LearnMode,
+			},
+		)
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, policy)
+	default:
+		methodNotAllowed(w, http.MethodGet+", "+http.MethodPatch)
 	}
 }
 
@@ -3079,6 +3133,13 @@ func writeServiceError(w http.ResponseWriter, err error) {
 }
 
 func serviceErrorFor(err error) (int, ErrorBody) {
+	var memoryValidation usermemory.ValidationError
+	if usermemory.IsStateConflict(err) && errors.As(err, &memoryValidation) {
+		return http.StatusConflict, ErrorBody{Code: memoryValidation.Code, Message: memoryValidation.Message}
+	}
+	if errors.As(err, &memoryValidation) {
+		return http.StatusBadRequest, ErrorBody{Code: memoryValidation.Code, Message: memoryValidation.Message}
+	}
 	if errors.Is(err, ErrDatabaseRequired) {
 		return http.StatusServiceUnavailable, ErrorBody{Code: "DATABASE_REQUIRED", Message: "database is required for chat endpoints"}
 	}
@@ -3090,6 +3151,12 @@ func serviceErrorFor(err error) (int, ErrorBody) {
 	}
 	if errors.Is(err, ErrMessageNotFound) {
 		return http.StatusNotFound, ErrorBody{Code: "MESSAGE_NOT_FOUND", Message: "message not found"}
+	}
+	if errors.Is(err, usermemory.ErrConversationPolicyNotFound) {
+		return http.StatusNotFound, ErrorBody{Code: "CONVERSATION_MEMORY_POLICY_NOT_FOUND", Message: "conversation memory policy not found"}
+	}
+	if errors.Is(err, usermemory.ErrGovernanceRepositoryRequired) {
+		return http.StatusServiceUnavailable, ErrorBody{Code: "MEMORY_GOVERNANCE_UNAVAILABLE", Message: "memory governance is unavailable"}
 	}
 	if errors.Is(err, ErrIdempotencyConflict) {
 		return http.StatusConflict, ErrorBody{Code: "IDEMPOTENCY_CONFLICT", Message: "idempotency key already exists"}

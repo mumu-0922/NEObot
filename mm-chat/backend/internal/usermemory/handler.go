@@ -16,6 +16,12 @@ const (
 	memoryActivitiesPath     = "/v1/memory-activities"
 	memoryActivitiesPathBase = memoryActivitiesPath + "/"
 	memoryUsagesPath         = "/v1/memory-usages"
+	memoryGovernancePath     = "/v1/memory-governance"
+	memoryGovernancePathBase = memoryGovernancePath + "/"
+	memoryProjectsPath       = "/v1/projects"
+	memoryProjectsPathBase   = memoryProjectsPath + "/"
+	memoryReviewsPath        = "/v1/memory-reviews"
+	memoryReviewsPathBase    = memoryReviewsPath + "/"
 	maxRequestBytes          = 64 * 1024
 )
 
@@ -69,6 +75,8 @@ type MemoryActivityDTO struct {
 	ReasonCode         string `json:"reasonCode"`
 	UndoKind           string `json:"undoKind"`
 	UndoStatus         string `json:"undoStatus"`
+	SourceKind         string `json:"sourceKind,omitempty"`
+	ScopeType          string `json:"scopeType,omitempty"`
 	MemoryType         string `json:"memoryType,omitempty"`
 	MemoryContent      string `json:"memoryContent,omitempty"`
 	MemoryRevision     *int64 `json:"memoryRevision,omitempty"`
@@ -104,6 +112,12 @@ func NewHandler(service *Service) *Handler {
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
+	case r.URL.Path == memoryGovernancePath || strings.HasPrefix(r.URL.Path, memoryGovernancePathBase):
+		h.handleGovernance(w, r)
+	case r.URL.Path == memoryProjectsPath || strings.HasPrefix(r.URL.Path, memoryProjectsPathBase):
+		h.handleProjects(w, r)
+	case r.URL.Path == memoryReviewsPath || strings.HasPrefix(r.URL.Path, memoryReviewsPathBase):
+		h.handleReviews(w, r)
 	case r.URL.Path == memoryActivitiesPath:
 		h.handleActivities(w, r)
 	case strings.HasPrefix(r.URL.Path, memoryActivitiesPathBase):
@@ -143,6 +157,19 @@ func (h *Handler) handleActivities(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		limit = parsed
+	}
+	if assistantMessageID := strings.TrimSpace(r.URL.Query().Get("assistantMessageId")); assistantMessageID != "" {
+		items, err := h.service.ListMessageActivities(r.Context(), assistantMessageID, limit)
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		response := MemoryActivityPage{Items: make([]MemoryActivityDTO, 0, len(items))}
+		for _, item := range items {
+			response.Items = append(response.Items, newMemoryActivityDTO(item))
+		}
+		writeJSON(w, http.StatusOK, response)
+		return
 	}
 	items, err := h.service.ListActivities(
 		r.Context(), r.URL.Query().Get("cursor"), limit,
@@ -358,6 +385,8 @@ func newMemoryActivityDTO(activity MemoryActivity) MemoryActivityDTO {
 		ReasonCode:         activity.ReasonCode,
 		UndoKind:           activity.UndoKind,
 		UndoStatus:         activity.UndoStatus,
+		SourceKind:         activity.SourceKind,
+		ScopeType:          activity.ScopeType,
 		MemoryType:         activity.MemoryType,
 		MemoryContent:      activity.MemoryContent,
 		MemoryRevision:     activity.MemoryRevision,
@@ -394,6 +423,8 @@ func writeDecodeError(w http.ResponseWriter, err error) {
 func writeServiceError(w http.ResponseWriter, err error) {
 	var validationError ValidationError
 	switch {
+	case IsStateConflict(err) && errors.As(err, &validationError):
+		writeError(w, http.StatusConflict, validationError.Code, validationError.Message)
 	case errors.As(err, &validationError):
 		writeError(w, http.StatusBadRequest, validationError.Code, validationError.Message)
 	case errors.Is(err, ErrMemoryNotFound):
@@ -406,6 +437,14 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, "MEMORY_ACTIVITY_UNDO_UNAVAILABLE", "memory activity undo is unavailable")
 	case errors.Is(err, ErrActionRepositoryRequired):
 		writeError(w, http.StatusServiceUnavailable, "MEMORY_ACTIONS_UNAVAILABLE", "memory actions are unavailable")
+	case errors.Is(err, ErrGovernanceRepositoryRequired):
+		writeError(w, http.StatusServiceUnavailable, "MEMORY_GOVERNANCE_UNAVAILABLE", "memory governance is unavailable")
+	case errors.Is(err, ErrMemoryProjectNotFound):
+		writeError(w, http.StatusNotFound, "MEMORY_PROJECT_NOT_FOUND", "memory project not found")
+	case errors.Is(err, ErrConversationPolicyNotFound):
+		writeError(w, http.StatusNotFound, "CONVERSATION_MEMORY_POLICY_NOT_FOUND", "conversation memory policy not found")
+	case errors.Is(err, ErrMemoryReviewNotFound):
+		writeError(w, http.StatusNotFound, "MEMORY_REVIEW_NOT_FOUND", "memory review not found")
 	case errors.Is(err, ErrDatabaseRequired):
 		writeError(w, http.StatusServiceUnavailable, "DATABASE_REQUIRED", "memory database is required")
 	default:

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -331,6 +332,80 @@ func TestPrepareDurableMemoryDisabledDoesNotReadRows(t *testing.T) {
 	}
 }
 
+func TestPrepareDurableMemoryConversationUseOffBlocksV1PromptAndUsage(t *testing.T) {
+	base := &chatMemoryRepository{
+		settings: usermemory.Settings{Enabled: true, SearchEnabled: true},
+		memories: []usermemory.Memory{chatMemoryFixture(
+			"11111111-1111-4111-8111-111111111111",
+			"preference", "Keep answers concise", 5,
+		)},
+	}
+	repo := &chatGovernanceMemoryRepository{
+		chatMemoryRepository: base,
+		policy: usermemory.ConversationMemoryPolicy{
+			ConversationID: "33333333-3333-4333-8333-333333333333",
+			UseMode:        "off", LearnMode: "inherit", EffectiveUse: false,
+		},
+	}
+	handler := NewHandler(
+		NewService(&fakeRepository{}),
+		WithUserMemoryService(usermemory.NewService(repo)),
+		WithMemoryHybridShadowEnabled(true),
+	)
+	systemPrompt, preparation := handler.prepareDurableMemory(
+		context.Background(), "Please keep this concise",
+		repo.policy.ConversationID,
+		"44444444-4444-4444-8444-444444444444", "Base",
+	)
+	if systemPrompt != "Base" || len(preparation.Items) != 0 ||
+		base.listCalls != 0 || base.shadowCalls != 0 || base.hybridCalls != 0 {
+		t.Fatalf("Use=off preparation = prompt:%q prep:%#v repo:%#v",
+			systemPrompt, preparation, base)
+	}
+}
+
+func TestConversationMemoryPolicyRoutesAndStaleConflict(t *testing.T) {
+	repo := &chatGovernanceMemoryRepository{
+		chatMemoryRepository: &chatMemoryRepository{},
+		policy: usermemory.ConversationMemoryPolicy{
+			ConversationID: "33333333-3333-4333-8333-333333333333",
+			UseMode:        "inherit", LearnMode: "inherit", ScopeGeneration: 1,
+		},
+	}
+	handler := NewHandler(
+		NewService(&fakeRepository{}),
+		WithUserMemoryService(usermemory.NewService(repo)),
+	)
+	path := "/v1/chat/conversations/" + repo.policy.ConversationID + "/memory-policy"
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"useMode":"inherit"`) {
+		t.Fatalf("GET policy = %d %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPatch, path, strings.NewReader(
+		`{"expectedScopeGeneration":1,"projectId":"","useMode":"off","learnMode":"on"}`,
+	)))
+	if response.Code != http.StatusOK || repo.updatedPolicy.UseMode != "off" || repo.updatedPolicy.LearnMode != "on" {
+		t.Fatalf("PATCH policy = %d %s input=%#v", response.Code, response.Body.String(), repo.updatedPolicy)
+	}
+
+	repo.updatePolicyErr = usermemory.ValidationError{
+		Code:    "MEMORY_GOVERNANCE_SCOPE_STALE",
+		Message: "memory governance state changed; reload and retry",
+	}
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPatch, path, strings.NewReader(
+		`{"expectedScopeGeneration":1,"projectId":"","useMode":"off","learnMode":"on"}`,
+	)))
+	if response.Code != http.StatusConflict ||
+		!strings.Contains(response.Body.String(), "MEMORY_GOVERNANCE_SCOPE_STALE") {
+		t.Fatalf("stale PATCH policy = %d %s", response.Code, response.Body.String())
+	}
+}
+
 type chatMemoryRepository struct {
 	settings          usermemory.Settings
 	memories          []usermemory.Memory
@@ -420,3 +495,50 @@ func chatMemoryFixture(id string, memoryType string, content string, importance 
 
 var _ usermemory.LexicalShadowRepository = (*chatMemoryRepository)(nil)
 var _ usermemory.HybridShadowRepository = (*chatMemoryRepository)(nil)
+
+type chatGovernanceMemoryRepository struct {
+	*chatMemoryRepository
+	policy          usermemory.ConversationMemoryPolicy
+	updatedPolicy   usermemory.UpdateConversationPolicyInput
+	updatePolicyErr error
+}
+
+func (r *chatGovernanceMemoryRepository) GovernanceSnapshot(context.Context) (usermemory.GovernanceSnapshot, error) {
+	return usermemory.GovernanceSnapshot{}, nil
+}
+func (r *chatGovernanceMemoryRepository) CreateProject(context.Context, usermemory.CreateProjectInput) (usermemory.MemoryProject, error) {
+	return usermemory.MemoryProject{}, nil
+}
+func (r *chatGovernanceMemoryRepository) UpdateProject(context.Context, usermemory.UpdateProjectInput) (usermemory.MemoryProject, error) {
+	return usermemory.MemoryProject{}, nil
+}
+func (r *chatGovernanceMemoryRepository) GetConversationPolicy(context.Context, string) (usermemory.ConversationMemoryPolicy, error) {
+	return r.policy, nil
+}
+func (r *chatGovernanceMemoryRepository) UpdateConversationPolicy(_ context.Context, input usermemory.UpdateConversationPolicyInput) (usermemory.ConversationMemoryPolicy, error) {
+	r.updatedPolicy = input
+	if r.updatePolicyErr != nil {
+		return usermemory.ConversationMemoryPolicy{}, r.updatePolicyErr
+	}
+	return r.policy, nil
+}
+func (r *chatGovernanceMemoryRepository) CreateGovernanceMemory(context.Context, usermemory.GovernanceMemoryMutationInput) (usermemory.GovernanceMemory, error) {
+	return usermemory.GovernanceMemory{}, nil
+}
+func (r *chatGovernanceMemoryRepository) UpdateGovernanceMemory(context.Context, usermemory.GovernanceMemoryMutationInput) (usermemory.GovernanceMemory, error) {
+	return usermemory.GovernanceMemory{}, nil
+}
+func (r *chatGovernanceMemoryRepository) DeleteGovernanceMemory(context.Context, usermemory.GovernanceMemoryDeleteInput) (usermemory.MemoryDeletionProgress, error) {
+	return usermemory.MemoryDeletionProgress{}, nil
+}
+func (r *chatGovernanceMemoryRepository) GovernanceMemoryDetail(context.Context, string) (usermemory.GovernanceMemoryDetail, error) {
+	return usermemory.GovernanceMemoryDetail{}, nil
+}
+func (r *chatGovernanceMemoryRepository) DecideMemoryReview(context.Context, usermemory.MemoryReviewDecisionInput) (usermemory.MemoryReviewDecisionResult, error) {
+	return usermemory.MemoryReviewDecisionResult{}, nil
+}
+func (r *chatGovernanceMemoryRepository) ListMessageActivities(context.Context, string, int) ([]usermemory.MemoryActivity, error) {
+	return nil, nil
+}
+
+var _ usermemory.GovernanceRepository = (*chatGovernanceMemoryRepository)(nil)

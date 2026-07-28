@@ -189,6 +189,82 @@ SELECT
 	}
 }
 
+func TestPostgresLegacyMemorySensitiveGovernance(t *testing.T) {
+	db := openMemoryPostgresIntegrationDB(t)
+	service := NewService(NewPostgresRepository(db))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	userID, err := newUUID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO users (id, display_name) VALUES ($1, 'sensitive fixture')
+`, userID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cleanupCancel()
+		_, _ = db.ExecContext(cleanupCtx, `
+DELETE FROM user_memory_deletion_manifests WHERE user_id = $1;
+DELETE FROM users WHERE id = $1;
+`, userID)
+	})
+
+	userCtx := auth.WithUser(ctx, auth.User{ID: userID, DisplayName: "Sensitive"})
+	enabled := true
+	if _, err := service.UpdateSettings(userCtx, SettingsPatch{
+		Enabled: &enabled, SearchEnabled: &enabled,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.CreateManual(userCtx, Candidate{
+		Type: "fact", Content: "我患有糖尿病", Importance: 5,
+	}); err == nil {
+		t.Fatal("legacy API stored Sensitive Memory while its authority was disabled")
+	}
+	if _, err := service.CreateManual(userCtx, Candidate{
+		Type: "fact", Content: "password: fixture-secret", Importance: 5,
+	}); err == nil {
+		t.Fatal("legacy API stored a secret")
+	}
+	if _, err := service.UpdateSettings(userCtx, SettingsPatch{
+		SensitiveMemoryEnabled: &enabled,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	created, err := service.CreateManual(userCtx, Candidate{
+		Type: "fact", Content: "我患有糖尿病", Importance: 5,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sensitivity string
+	if err := db.QueryRowContext(ctx, `
+SELECT sensitivity FROM user_memories WHERE id = $1 AND user_id = $2
+`, created.ID, userID).Scan(&sensitivity); err != nil || sensitivity != "sensitive" {
+		t.Fatalf("legacy Sensitive classification = %q/%v", sensitivity, err)
+	}
+	matched, err := service.SearchRelevant(userCtx, "糖尿病", 5)
+	if err != nil || len(matched) != 1 || matched[0].ID != created.ID {
+		t.Fatalf("enabled Sensitive recall = %#v/%v", matched, err)
+	}
+	disabled := false
+	if _, err := service.UpdateSettings(userCtx, SettingsPatch{
+		SensitiveMemoryEnabled: &disabled,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	matched, err = service.SearchRelevant(userCtx, "糖尿病", 5)
+	if err != nil || len(matched) != 0 {
+		t.Fatalf("disabled Sensitive recall = %#v/%v", matched, err)
+	}
+	if err := service.Delete(userCtx, created.ID); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func openMemoryPostgresIntegrationDB(t *testing.T) *sql.DB {
 	t.Helper()
 	databaseURL := os.Getenv("MM_CHAT_TEST_DATABASE_URL")

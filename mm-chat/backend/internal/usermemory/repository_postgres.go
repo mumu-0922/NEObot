@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgconn"
-
 	"neo-chat/mm-chat/backend/internal/auth"
 )
 
@@ -29,13 +27,17 @@ func (r *PostgresRepository) GetSettings(ctx context.Context) (Settings, bool, e
 	user := auth.UserOrDevelopment(ctx)
 	var settings Settings
 	err := r.db.QueryRowContext(ctx, `
-SELECT enabled, search_enabled, auto_record_enabled
+SELECT enabled, search_enabled, auto_record_enabled,
+       sensitive_memory_enabled, l2_mode, l3_mode
 FROM user_memory_settings
 WHERE user_id = $1
 `, user.ID).Scan(
 		&settings.Enabled,
 		&settings.SearchEnabled,
 		&settings.AutoRecordEnabled,
+		&settings.SensitiveMemoryEnabled,
+		&settings.L2Mode,
+		&settings.L3Mode,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Settings{}, false, nil
@@ -54,24 +56,35 @@ func (r *PostgresRepository) UpsertSettings(ctx context.Context, input Settings)
 	var settings Settings
 	err := r.db.QueryRowContext(ctx, `
 INSERT INTO user_memory_settings (
-  user_id, enabled, search_enabled, auto_record_enabled
+  user_id, enabled, search_enabled, auto_record_enabled,
+  sensitive_memory_enabled, l2_mode, l3_mode
 )
-VALUES ($1, $2, $3, $4)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 ON CONFLICT (user_id) DO UPDATE SET
   enabled = EXCLUDED.enabled,
   search_enabled = EXCLUDED.search_enabled,
   auto_record_enabled = EXCLUDED.auto_record_enabled,
+  sensitive_memory_enabled = EXCLUDED.sensitive_memory_enabled,
+  l2_mode = EXCLUDED.l2_mode,
+  l3_mode = EXCLUDED.l3_mode,
   updated_at = now()
-RETURNING enabled, search_enabled, auto_record_enabled
+RETURNING enabled, search_enabled, auto_record_enabled,
+          sensitive_memory_enabled, l2_mode, l3_mode
 `,
 		user.ID,
 		input.Enabled,
 		input.SearchEnabled,
 		input.AutoRecordEnabled,
+		input.SensitiveMemoryEnabled,
+		input.L2Mode,
+		input.L3Mode,
 	).Scan(
 		&settings.Enabled,
 		&settings.SearchEnabled,
 		&settings.AutoRecordEnabled,
+		&settings.SensitiveMemoryEnabled,
+		&settings.L2Mode,
+		&settings.L3Mode,
 	)
 	if err != nil {
 		return Settings{}, fmt.Errorf("upsert user memory settings: %w", err)
@@ -122,13 +135,8 @@ func (r *PostgresRepository) Create(ctx context.Context, input CreateInput) (Mem
 		return Memory{}, errors.New("automatic memory writes require a worker lease")
 	}
 	user := auth.UserOrDevelopment(ctx)
-	row := r.db.QueryRowContext(ctx, `
-SELECT
-  id, user_id, memory_type, content, normalized_content, importance,
-  tags_json,
-  source, source_conversation_id, source_message_id, enabled, last_used_at,
-  created_at, updated_at, deleted_at
-FROM memory_upsert_global_manual(
+	memory, err := queryGovernanceJSON[GovernanceMemory](ctx, r, `
+SELECT memory_governance_upsert_global_legacy(
   $1::uuid, $2::uuid, $3, $4, $5, $6::smallint, $7,
   NULLIF($8, '')::uuid, NULLIF($9, '')::uuid, $10
 )
@@ -144,11 +152,10 @@ FROM memory_upsert_global_manual(
 		input.SourceMessageID,
 		input.Enabled,
 	)
-	memory, err := scanMemory(row)
 	if err != nil {
 		return Memory{}, fmt.Errorf("create user memory: %w", err)
 	}
-	return memory, nil
+	return governanceMemoryAsLegacy(memory), nil
 }
 
 func (r *PostgresRepository) Update(ctx context.Context, memoryID string, input UpdateInput) (Memory, error) {
@@ -156,13 +163,8 @@ func (r *PostgresRepository) Update(ctx context.Context, memoryID string, input 
 		return Memory{}, err
 	}
 	user := auth.UserOrDevelopment(ctx)
-	row := r.db.QueryRowContext(ctx, `
-SELECT
-  id, user_id, memory_type, content, normalized_content, importance,
-  tags_json,
-  source, source_conversation_id, source_message_id, enabled, last_used_at,
-  created_at, updated_at, deleted_at
-FROM memory_update_global_manual(
+	memory, err := queryGovernanceJSON[GovernanceMemory](ctx, r, `
+SELECT memory_governance_update_global_legacy(
   $1::uuid, $2::uuid, $3, $4, $5, $6::smallint, $7, $8
 )
 `,
@@ -175,18 +177,13 @@ FROM memory_update_global_manual(
 		input.Tags,
 		input.Enabled,
 	)
-	memory, err := scanMemory(row)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Memory{}, ErrMemoryNotFound
-	}
 	if err != nil {
-		var postgresError *pgconn.PgError
-		if errors.As(err, &postgresError) && postgresError.Code == "23505" {
-			return Memory{}, ErrMemoryConflict
+		if errors.Is(err, ErrMemoryNotFound) || errors.Is(err, ErrMemoryConflict) {
+			return Memory{}, err
 		}
 		return Memory{}, fmt.Errorf("update user memory: %w", err)
 	}
-	return memory, nil
+	return governanceMemoryAsLegacy(memory), nil
 }
 
 func (r *PostgresRepository) Delete(ctx context.Context, memoryID string) error {

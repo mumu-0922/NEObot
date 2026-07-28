@@ -20,6 +20,7 @@
 | [Memory v2 actions/Activity/Usage](./memory-v2-actions-activity-usage.md) | Current-user typed actions, strict planner authority, immutable Usage, link-only Activity polling, and revision-safe undo |
 | [Memory v2 lexical shadow](./memory-v2-lexical-shadow.md) | Transactional L1 exact/CJK BM25 projection, current-authority shadow comparison, ID-only diagnostics, and v1 fail-open |
 | [Memory v2 hybrid shadow](./memory-v2-hybrid-shadow.md) | Fixed BGE-M3 vector jobs, Exact/BM25/vector RRF/rerank shadow, budget fallback, old-response fences, and zero prompt injection |
+| [Memory v2 governance](./memory-v2-governance.md) | Project/Conversation policy, scoped governance CRUD, Review decisions, current-only detail/Activity hydration, and governed v1 compatibility |
 
 ## Pre-Development Checklist
 
@@ -164,6 +165,18 @@ shadow switch changes:
 4. Prove the shared default-off flag makes zero Memory Provider calls, v1
    prompt/Usage remains byte-authoritative, and guarded down/re-up is clean.
 
+For Memory Project/Conversation governance, Review decisions, detail/history,
+assistant Activity UI, or post-`060` v1 CRUD changes:
+
+1. Read [`memory-v2-governance.md`](./memory-v2-governance.md).
+2. Preserve v1 Global Top 5 as the only prompt/Usage reader and keep scoped
+   Memory governance-only.
+3. Bind all plaintext hydration to current enabled/lifecycle/epoch/scope-
+   generation authority; never reconstruct deleted content from revisions.
+4. Prove secret/Sensitive classification in both Go and SQL, legacy write
+   capability revocation, Review replay fences, provider-free purge, and clean
+   guarded down/re-up.
+
 ## Quality Check
 
 - Run the disposable database drill for the changed storage group.
@@ -202,5 +215,8 @@ shadow switch changes:
 - For Memory hybrid vector shadow changes, also run the PostgreSQL 17 fake
   vector/lease/authority/RRF/replay drill plus every gate in
   `memory-v2-hybrid-shadow.md`.
+- For Memory governance changes, also run the PostgreSQL 17 Project/policy/
+  Review/Activity/legacy-wrapper/purge/replay drill plus every gate in
+  `memory-v2-governance.md`.
 
 **Language**: All documentation should be written in English.

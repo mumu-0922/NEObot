@@ -6,13 +6,17 @@ conversation summaries.
 
 ## Responsibilities
 
-- expose authenticated settings and Memory CRUD at `/v1/memory-settings` and
-  `/v1/memories`, plus PR6 Activity polling, Usage inspection, and safe undo;
+- expose authenticated settings and legacy Global CRUD at
+  `/v1/memory-settings` and `/v1/memories`, plus PR9 Project/policy/scoped
+  governance, Review/detail, Activity polling, Usage inspection, and safe undo;
 - persist settings and canonical entries from migration `035`, with the
   additive Project/scope foundation from `053` and provenance/delete authority
   from `055`;
-- keep the current v1 API explicitly Global-only while later v2 readers and
-  Project APIs remain disabled;
+- keep the current v1 prompt/Usage reader explicitly Global-only while PR9
+  Project/Conversation Memory remains governance-only;
+- enforce migration `060` Project revision, Conversation scope-generation,
+  scoped Memory revision/epoch/generation, Review replay, current-only
+  plaintext hydration, and SQL-side secret/Sensitive authority;
 - hydrate and apply explicit current-user `remember|correct|forget` actions
   through migration `057` capabilities without trusting model-supplied user,
   scope, target, or revision authority;
@@ -93,6 +97,17 @@ lexical authority, while query embedding and authorized RRF rerank use
 secret-redacted transient copies. Durable rows keep only hashes, IDs, revisions,
 lane ordinals, counts, bounded status, token estimates, and duration.
 
+Migration `060` adds the authenticated governance snapshot; Project
+create/list/edit/archive/restore; Conversation Project membership and tri-state
+Use/Learn policy; scoped Memory create/update/move/forget/detail; pending Review
+decisions; and assistant-message Activity hydration for the frontend. All
+plaintext reads require current enabled/lifecycle/epoch/scope-generation
+authority. Deleted sources and purged revisions return markers only. The v1
+Global repository now calls classification-aware governance wrappers because
+`go_api_runtime` no longer has EXECUTE on the old manual upsert/update
+functions. This closes the SQL Sensitive/secret bypass without promoting the
+v2 reader.
+
 ## Main API
 
 | Boundary                            | Purpose                                                     |
@@ -107,6 +122,11 @@ lane ordinals, counts, bounded status, token estimates, and duration.
 | `ExecuteDirectAction(ctx, input)`           | Local validation plus narrow SQL action capability                  |
 | `ListActivities` / `ListMessageUsages`      | User-scoped polling and answer provenance                           |
 | `UndoActivity(ctx, id, expectedRevision)`   | Revision-safe created/corrected undo                                |
+| `GovernanceSnapshot(ctx)`                   | Current-user settings/Project/policy/Memory/Review/operation view   |
+| `CreateProject` / `UpdateProject`            | Revision-fenced Project create/archive/restore                      |
+| `GetConversationPolicy` / `UpdateConversationPolicy` | Generation-fenced Project membership and Use/Learn modes   |
+| `CreateGovernanceMemory` / `UpdateGovernanceMemory` / `DeleteGovernanceMemory` | Scoped revision-fenced governance writes |
+| `GovernanceMemoryDetail` / `DecideMemoryReview` / `ListMessageActivities` | Current-only detail, Review, and chip hydration |
 | `NormalizeCandidateForStorage(in)`          | Shared validation/normalization without a write                     |
 
 ## Files
@@ -114,6 +134,9 @@ lane ordinals, counts, bounded status, token estimates, and duration.
 ```text
 handler.go               HTTP contract and DTO mapping
 repository_postgres.go   user-scoped canonical writes and deletion capability
+governance.go             PR9 validation, DTOs, Review hashing, and service operations
+governance_handler.go     PR9 Project/scoped Memory/Review HTTP routes
+governance_repository_postgres.go  migration-060 governance capabilities
 action_repository_postgres.go  PR6 action, Activity, Usage, and undo capabilities
 lexical_shadow.go        fail-open PR7 orchestration and diagnostic sanitization
 lexical_shadow_repository_postgres.go  narrow migration-058 compare capability
@@ -129,4 +152,4 @@ uuid.go                  application-owned UUID generation
 ```
 
 See [DESIGN.md](DESIGN.md) and
-[`docs/contracts/conversation-context.md`](../../../docs/contracts/conversation-context.md).
+[`docs/contracts/memory-governance-api.md`](../../../docs/contracts/memory-governance-api.md).

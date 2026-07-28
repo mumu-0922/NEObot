@@ -56,6 +56,13 @@ func (h *Handler) prepareDurableMemory(
 	if h == nil || h.userMemoryService == nil {
 		return systemPrompt, durableMemoryPreparation{}
 	}
+	allowed, policyErr := h.userMemoryService.ConversationMemoryUseAllowed(ctx, conversationID)
+	if policyErr != nil {
+		return systemPrompt, durableMemoryPreparation{DegradationCode: "policy_read_failed"}
+	}
+	if !allowed {
+		return systemPrompt, durableMemoryPreparation{}
+	}
 	var items []usermemory.Memory
 	var shadow *usermemory.LexicalShadowSummary
 	var hybridShadow *usermemory.HybridShadowSummary

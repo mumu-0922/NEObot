@@ -298,6 +298,24 @@ and hybrid results never enter the v1 prompt or Usage. Down requires a
 v1/NULL reader and empty hybrid observation history; clean re-up discards and
 rebuilds only derived vector/job state.
 
+Migration `060` adds the Memory governance API capability boundary and Review
+decision audit. Authenticated users can create/archive/restore Projects, update
+generation-fenced Conversation Project/Use/Learn policy, govern canonical
+Memory across Global/Project/Conversation scopes, inspect current-authority
+provenance/history/Usage, decide pending Reviews, and hydrate bounded per-answer
+Activity. Secret/Sensitive classification is repeated inside SQL, including
+Review edit-merge. Deleted sources, purged history, and non-current Memory
+return markers instead of reconstructed plaintext. `go_api_runtime` receives
+only pinned SECURITY DEFINER functions and no direct governance-table CRUD.
+
+The migration revokes the old Global manual upsert/update functions from
+`go_api_runtime` and grants classification-aware legacy wrappers instead. The
+matching Go repository must therefore be deployed with `060`; a pre-`060`
+writer will receive permission denied. Down restores the old grants but fails
+closed if Review decisions, decided legacy Reviews, or `move` revisions exist.
+Project/Conversation Memory remains governance-only and the v1 Global Top 5 is
+still the only prompt/Usage reader.
+
 ## Storage boundaries
 
 Postgres is the source of truth for structured records:
@@ -316,6 +334,8 @@ Postgres is the source of truth for structured records:
   observations
 - rebuildable BGE-M3 vector projection/jobs plus hash/ID/rank/token-only
   hybrid observations
+- ID/hash/result-only Memory Review decision audit and authenticated governance
+  capabilities; governance responses hydrate plaintext only from current rows
 - versioned derived conversation-context summaries; original messages remain
   the rebuild authority
 - file ownership and metadata

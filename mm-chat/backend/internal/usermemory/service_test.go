@@ -137,6 +137,33 @@ func TestSearchAndExtractionStopWhenMemoryDisabled(t *testing.T) {
 	}
 }
 
+func TestSearchRelevantEnforcesSensitiveAndSecretEgress(t *testing.T) {
+	repo := &fakeRepository{
+		settings:      Settings{Enabled: true, SearchEnabled: true},
+		settingsFound: true,
+		memories: []Memory{
+			memoryFixture("11111111-1111-4111-8111-111111111111", "fact", "我患有糖尿病", 5),
+			memoryFixture("22222222-2222-4222-8222-222222222222", "fact", "password: fixture-secret", 5),
+		},
+	}
+	service := NewService(repo)
+	for _, query := range []string{"糖尿病", "fixture secret"} {
+		got, err := service.SearchRelevant(context.Background(), query, 5)
+		if err != nil || len(got) != 0 {
+			t.Fatalf("private Memory egress for %q = %#v/%v", query, got, err)
+		}
+	}
+	repo.settings.SensitiveMemoryEnabled = true
+	got, err := service.SearchRelevant(context.Background(), "糖尿病", 5)
+	if err != nil || len(got) != 1 || got[0].Content != "我患有糖尿病" {
+		t.Fatalf("enabled Sensitive recall = %#v/%v", got, err)
+	}
+	got, err = service.SearchRelevant(context.Background(), "fixture secret", 5)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("secret recalled with Sensitive enabled = %#v/%v", got, err)
+	}
+}
+
 func TestMemorySettingsRequireExplicitOptIn(t *testing.T) {
 	repo := &fakeRepository{}
 	service := NewService(repo)
@@ -153,6 +180,47 @@ func TestMemorySettingsRequireExplicitOptIn(t *testing.T) {
 	})
 	if err != nil || !settings.Enabled || !settings.AutoRecordEnabled {
 		t.Fatalf("updated settings = %#v/%v", settings, err)
+	}
+}
+
+func TestFirstMemoryEnableDefaultsUseAndLearnWithoutOverwritingExistingChoice(t *testing.T) {
+	enabled := true
+	fresh := &fakeRepository{}
+	settings, err := NewService(fresh).UpdateSettings(context.Background(), SettingsPatch{
+		Enabled: &enabled,
+	})
+	if err != nil || !settings.Enabled || !settings.SearchEnabled || !settings.AutoRecordEnabled {
+		t.Fatalf("first enable settings = %#v/%v", settings, err)
+	}
+
+	existing := &fakeRepository{
+		settingsFound: true,
+		settings: Settings{
+			SearchEnabled: true, AutoRecordEnabled: false,
+			L2Mode: "inherit", L3Mode: "inherit",
+		},
+	}
+	settings, err = NewService(existing).UpdateSettings(context.Background(), SettingsPatch{
+		Enabled: &enabled,
+	})
+	if err != nil || !settings.Enabled || settings.AutoRecordEnabled {
+		t.Fatalf("existing explicit Learn choice changed = %#v/%v", settings, err)
+	}
+}
+
+func TestSensitiveLegacyWritesFailClosedWithoutGovernanceRepository(t *testing.T) {
+	service := NewService(&fakeRepository{})
+	if _, err := service.CreateManual(context.Background(), Candidate{
+		Type: "fact", Content: "我患有糖尿病", Importance: 4,
+	}); !errors.Is(err, ErrGovernanceRepositoryRequired) {
+		t.Fatalf("sensitive create error = %v", err)
+	}
+	if _, err := service.Update(
+		context.Background(),
+		"11111111-1111-4111-8111-111111111111",
+		Candidate{Type: "fact", Content: "我的工资是测试金额", Importance: 4},
+	); !errors.Is(err, ErrGovernanceRepositoryRequired) {
+		t.Fatalf("sensitive update error = %v", err)
 	}
 }
 
