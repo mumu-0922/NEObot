@@ -584,3 +584,55 @@ and guarded rollback while retaining the Global v1 reader and CRUD contract.
 
 - Begin PR4 evidence/revision/epoch/tombstone/delete-manifest correctness only
   after this PR3 batch is committed.
+
+
+## Session 18: Implement Memory v2 provenance and deletion safeguards
+
+**Date**: 2026-07-28
+**Task**: Research memory system architecture (PR4)
+**Branch**: `main`
+
+### Summary
+
+Implemented PR4's canonical provenance, append-only revision history, per-user
+visibility epoch, authority precedence, targeted tombstones, immediate logical
+deletion, deletion manifests, and provider-free purge while retaining the v1
+reader and Global-only API contract.
+
+### Main Changes
+
+- Added migration `055` with provenance/evidence/revision/state/tombstone and
+  deletion-manifest storage plus narrow manual, worker-apply, delete, and purge
+  SQL capabilities.
+- Enforced surviving user evidence for automatic Memory, manual-authority
+  precedence, stale epoch/source/generation fences, and no automatic
+  resurrection across tombstones.
+- Routed `purge` jobs before Provider hydration, made purge idempotent and
+  lease-fenced, revoked runtime table-delete privilege, and documented the new
+  executable contracts.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `754240c` | `feat: add Memory provenance and deletion safeguards` |
+| `4808e99` | `docs(task): record Memory v2 PR4 progress` |
+
+### Testing
+
+- [OK] Focused Go race tests, full `go test ./...`, and `go vet ./...`.
+- [OK] Disposable PostgreSQL 17.10 `054 -> 055`, backfill, authority/evidence,
+  deletion/purge, guarded down, clean down, and re-up drills.
+- [OK] Preflight tests, Compose rendering, backend image build, and security
+  scan with no new findings.
+- [OK] Full standalone gate: frontend 954 tests/build, backend tests/vet, and
+  RAG 1,906 passed / 7 skipped.
+
+### Status
+
+[OK] **PR4 completed; parent Memory v2 task remains in progress**
+
+### Next Steps
+
+- Begin PR5 capture-candidate proposal, Review shadow, and
+  temporal/conflict/scope routing without switching the v2 reader.
