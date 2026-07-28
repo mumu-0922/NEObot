@@ -263,6 +263,54 @@ func TestNewHandlerRoutesHealthReadyAndVersion(t *testing.T) {
 	}
 }
 
+func TestNewHandlerRegistersMemoryPortabilityRoutes(t *testing.T) {
+	handler := NewHandler(config.Config{Addr: ":0", Version: "route-test"})
+	tests := []struct {
+		name        string
+		path        string
+		body        string
+		contentType string
+		wantStatus  int
+		wantCode    string
+	}{
+		{
+			name: "export", path: "/v1/memory-export",
+			body:        `{"passphrase":"fixture-passphrase","includeHistory":false}`,
+			contentType: "application/json", wantStatus: http.StatusServiceUnavailable,
+			wantCode: "DATABASE_REQUIRED",
+		},
+		{
+			name: "import dry-run", path: "/v1/memory-import/dry-run",
+			contentType: "application/json", wantStatus: http.StatusBadRequest,
+			wantCode: "MEMORY_IMPORT_MULTIPART_INVALID",
+		},
+		{
+			name: "import confirm", path: "/v1/memory-import/confirm",
+			contentType: "application/json", wantStatus: http.StatusBadRequest,
+			wantCode: "MEMORY_IMPORT_MULTIPART_INVALID",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodPost, test.path, strings.NewReader(test.body))
+			request.Header.Set("Content-Type", test.contentType)
+			handler.ServeHTTP(response, request)
+
+			var payload ErrorResponse
+			if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode response: %v body=%s", err, response.Body.String())
+			}
+			if response.Code != test.wantStatus || payload.Error.Code != test.wantCode {
+				t.Fatalf(
+					"response = %d/%s, want %d/%s",
+					response.Code, payload.Error.Code, test.wantStatus, test.wantCode,
+				)
+			}
+		})
+	}
+}
+
 func TestNewHandlerRoutesAuthenticatedWebSearchBoundary(t *testing.T) {
 	provider := &httpserverSearchProvider{}
 	handler := NewHandler(

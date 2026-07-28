@@ -62,9 +62,10 @@ var (
 )
 
 type teamRuntime struct {
-	service *teams.Service
-	worker  *teams.InviteMailOutboxWorker
-	cursor  *teams.CursorCodec
+	service           *teams.Service
+	worker            *teams.InviteMailOutboxWorker
+	cursor            *teams.CursorCodec
+	memoryPortability *usermemory.PortabilityPlanCodec
 }
 
 type teamWorker interface {
@@ -328,6 +329,7 @@ func main() {
 		httpserver.WithRuntimeConfigRepository(runtimeConfigRepo),
 		httpserver.WithTaskModelSettingsRepository(taskModelRepo),
 		httpserver.WithUserMemoryRepository(userMemoryRepo),
+		httpserver.WithMemoryPortabilityPlanCodec(teamRuntime.memoryPortability),
 		httpserver.WithMemoryWakePublisher(redisClient),
 		httpserver.WithProviderSecretVault(providerSecretVault),
 		httpserver.WithPluginRegistry(pluginRegistry),
@@ -915,6 +917,18 @@ func newTeamRuntime(db *sql.DB, cfg config.Config) (*teamRuntime, error) {
 	if cursorCodec != nil {
 		serviceOptions = append(serviceOptions, teams.WithCursorCodec(cursorCodec))
 	}
+	var memoryPortabilityCodec *usermemory.PortabilityPlanCodec
+	if cursorCodec != nil {
+		memoryPortabilityCodec, err = usermemory.NewPortabilityPlanCodec(
+			usermemory.PortabilityPlanKeyring{
+				ActiveKeyID: cfg.Team.Cursor.ActiveKeyID,
+				Keys:        cursorKeys,
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("configure memory portability plan codec: %w", err)
+		}
+	}
 
 	mailKeys, mailCipher, err := newTeamMailCipher(cfg.Team.Mail)
 	if err != nil {
@@ -974,7 +988,9 @@ func newTeamRuntime(db *sql.DB, cfg config.Config) (*teamRuntime, error) {
 		return nil, err
 	}
 
-	runtime := &teamRuntime{cursor: cursorCodec}
+	runtime := &teamRuntime{
+		cursor: cursorCodec, memoryPortability: memoryPortabilityCodec,
+	}
 	if db != nil && mailCipher != nil && smtpTransport != nil &&
 		inviteURLBuilder != nil {
 		workerConfig := normalizedTeamMailWorkerConfig(cfg.Team.MailWorker)

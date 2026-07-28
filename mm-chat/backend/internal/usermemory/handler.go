@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"neo-chat/mm-chat/backend/internal/strictjson"
 )
 
 const (
@@ -22,6 +24,9 @@ const (
 	memoryProjectsPathBase   = memoryProjectsPath + "/"
 	memoryReviewsPath        = "/v1/memory-reviews"
 	memoryReviewsPathBase    = memoryReviewsPath + "/"
+	memoryExportPath         = "/v1/memory-export"
+	memoryImportDryRunPath   = "/v1/memory-import/dry-run"
+	memoryImportConfirmPath  = "/v1/memory-import/confirm"
 	maxRequestBytes          = 64 * 1024
 )
 
@@ -112,6 +117,12 @@ func NewHandler(service *Service) *Handler {
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
+	case r.URL.Path == memoryExportPath:
+		h.handleMemoryExport(w, r)
+	case r.URL.Path == memoryImportDryRunPath:
+		h.handleMemoryImport(w, r, false)
+	case r.URL.Path == memoryImportConfirmPath:
+		h.handleMemoryImport(w, r, true)
 	case r.URL.Path == memoryGovernancePath || strings.HasPrefix(r.URL.Path, memoryGovernancePathBase):
 		h.handleGovernance(w, r)
 	case r.URL.Path == memoryProjectsPath || strings.HasPrefix(r.URL.Path, memoryProjectsPathBase):
@@ -397,19 +408,11 @@ func newMemoryActivityDTO(activity MemoryActivity) MemoryActivityDTO {
 }
 
 func decodeJSON(r *http.Request, target any) error {
-	decoder := json.NewDecoder(io.LimitReader(r.Body, maxRequestBytes+1))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxRequestBytes+1))
+	if err != nil {
 		return err
 	}
-	var extra any
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		if err == nil {
-			return errors.New("request body must contain one JSON object")
-		}
-		return err
-	}
-	return nil
+	return strictjson.Decode(body, maxRequestBytes, target)
 }
 
 func writeDecodeError(w http.ResponseWriter, err error) {
@@ -445,6 +448,9 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "CONVERSATION_MEMORY_POLICY_NOT_FOUND", "conversation memory policy not found")
 	case errors.Is(err, ErrMemoryReviewNotFound):
 		writeError(w, http.StatusNotFound, "MEMORY_REVIEW_NOT_FOUND", "memory review not found")
+	case errors.Is(err, ErrPortabilityRepositoryRequired),
+		errors.Is(err, ErrPortabilityPlanCodecRequired):
+		writeError(w, http.StatusServiceUnavailable, "MEMORY_PORTABILITY_UNAVAILABLE", "memory portability is unavailable")
 	case errors.Is(err, ErrDatabaseRequired):
 		writeError(w, http.StatusServiceUnavailable, "DATABASE_REQUIRED", "memory database is required")
 	default:

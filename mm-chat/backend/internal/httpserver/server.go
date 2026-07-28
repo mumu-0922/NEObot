@@ -53,38 +53,39 @@ type SessionResolver interface {
 }
 
 type options struct {
-	readyChecks          []health.Check
-	logger               *slog.Logger
-	chatRepository       chat.Repository
-	chatProvider         chat.Provider
-	runCancellationStore chat.RunCancellationStore
-	rateLimitStore       ratelimit.Store
-	sessionResolver      SessionResolver
-	developmentSession   *auth.Session
-	authService          *auth.Service
-	fileRepository       files.Repository
-	objectStore          storage.ObjectStore
-	metrics              *Metrics
-	dbStatsProvider      DatabaseStatsProvider
-	maxUploadBytes       int64
-	importRepository     browserimport.Repository
-	maxImportBytes       int64
-	teamService          *teams.Service
-	knowledgeService     *knowledge.Service
-	agentService         *agents.Service
-	pluginRegistry       plugins.Registry
-	pluginAuditRecorder  plugins.AuditRecorder
-	imageJobService      *imagejobs.Service
-	voiceJobService      *voicejobs.Service
-	ragSourceService     *ragsource.Service
-	ragQueryEmbedder     ragproviders.QueryEmbedder
-	ragReranker          ragproviders.Reranker
-	runtimeConfigRepo    runtimeconfig.ProviderConfigRepository
-	taskModelRepo        runtimeconfig.TaskModelSettingsRepository
-	userMemoryRepo       usermemory.Repository
-	memoryWakePublisher  chat.MemoryWakePublisher
-	providerSecretVault  *providersecrets.Vault
-	webSearchResolver    websearch.Resolver
+	readyChecks                []health.Check
+	logger                     *slog.Logger
+	chatRepository             chat.Repository
+	chatProvider               chat.Provider
+	runCancellationStore       chat.RunCancellationStore
+	rateLimitStore             ratelimit.Store
+	sessionResolver            SessionResolver
+	developmentSession         *auth.Session
+	authService                *auth.Service
+	fileRepository             files.Repository
+	objectStore                storage.ObjectStore
+	metrics                    *Metrics
+	dbStatsProvider            DatabaseStatsProvider
+	maxUploadBytes             int64
+	importRepository           browserimport.Repository
+	maxImportBytes             int64
+	teamService                *teams.Service
+	knowledgeService           *knowledge.Service
+	agentService               *agents.Service
+	pluginRegistry             plugins.Registry
+	pluginAuditRecorder        plugins.AuditRecorder
+	imageJobService            *imagejobs.Service
+	voiceJobService            *voicejobs.Service
+	ragSourceService           *ragsource.Service
+	ragQueryEmbedder           ragproviders.QueryEmbedder
+	ragReranker                ragproviders.Reranker
+	runtimeConfigRepo          runtimeconfig.ProviderConfigRepository
+	taskModelRepo              runtimeconfig.TaskModelSettingsRepository
+	userMemoryRepo             usermemory.Repository
+	memoryPortabilityPlanCodec *usermemory.PortabilityPlanCodec
+	memoryWakePublisher        chat.MemoryWakePublisher
+	providerSecretVault        *providersecrets.Vault
+	webSearchResolver          websearch.Resolver
 }
 
 type ragEvidenceCandidateFetcher interface {
@@ -731,6 +732,12 @@ func WithUserMemoryRepository(repo usermemory.Repository) Option {
 	}
 }
 
+func WithMemoryPortabilityPlanCodec(codec *usermemory.PortabilityPlanCodec) Option {
+	return func(opts *options) {
+		opts.memoryPortabilityPlanCodec = codec
+	}
+}
+
 func WithMemoryWakePublisher(publisher chat.MemoryWakePublisher) Option {
 	return func(opts *options) {
 		opts.memoryWakePublisher = publisher
@@ -967,7 +974,17 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 			return err == nil
 		}),
 	)
-	memoryServiceOptions := make([]usermemory.ServiceOption, 0, 1)
+	memoryServiceOptions := make([]usermemory.ServiceOption, 0, 3)
+	memoryServiceOptions = append(
+		memoryServiceOptions,
+		usermemory.WithPortabilityRelease(cfg.Version),
+	)
+	if resolvedOptions.memoryPortabilityPlanCodec != nil {
+		memoryServiceOptions = append(
+			memoryServiceOptions,
+			usermemory.WithPortabilityPlanCodec(resolvedOptions.memoryPortabilityPlanCodec),
+		)
+	}
 	if cfg.Memory.HybridShadowEnabled {
 		provider := resolveMemoryHybridProvider(resolvedOptions.ragQueryEmbedder)
 		if provider != nil {
@@ -1132,6 +1149,9 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/projects/", userMemoryHandler)
 	mux.Handle("/v1/memory-reviews", userMemoryHandler)
 	mux.Handle("/v1/memory-reviews/", userMemoryHandler)
+	mux.Handle("/v1/memory-export", userMemoryHandler)
+	mux.Handle("/v1/memory-import/dry-run", userMemoryHandler)
+	mux.Handle("/v1/memory-import/confirm", userMemoryHandler)
 	mux.Handle("/v1/agents", agentHandler)
 	mux.Handle("/v1/agents/", agentHandler)
 	mux.Handle("/v1/plugins", pluginHandler)

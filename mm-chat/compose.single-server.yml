@@ -544,6 +544,8 @@ services:
     secrets:
       - source: mm_chat_provider_keyring
         target: mm_chat_provider_keyring
+    volumes:
+      - ./backup:/backup
     depends_on:
       postgres:
         condition: service_healthy

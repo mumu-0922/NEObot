@@ -24,16 +24,18 @@ const (
 )
 
 var (
-	ErrDatabaseRequired             = errors.New("memory database is required")
-	ErrMemoryNotFound               = errors.New("memory not found")
-	ErrMemoryConflict               = errors.New("memory content already exists")
-	ErrActionRepositoryRequired     = errors.New("memory action repository is required")
-	ErrActivityNotFound             = errors.New("memory activity not found")
-	ErrActivityUndoUnavailable      = errors.New("memory activity undo is unavailable")
-	ErrGovernanceRepositoryRequired = errors.New("memory governance repository is required")
-	ErrMemoryProjectNotFound        = errors.New("memory project not found")
-	ErrConversationPolicyNotFound   = errors.New("conversation memory policy not found")
-	ErrMemoryReviewNotFound         = errors.New("memory review not found")
+	ErrDatabaseRequired              = errors.New("memory database is required")
+	ErrMemoryNotFound                = errors.New("memory not found")
+	ErrMemoryConflict                = errors.New("memory content already exists")
+	ErrActionRepositoryRequired      = errors.New("memory action repository is required")
+	ErrActivityNotFound              = errors.New("memory activity not found")
+	ErrActivityUndoUnavailable       = errors.New("memory activity undo is unavailable")
+	ErrGovernanceRepositoryRequired  = errors.New("memory governance repository is required")
+	ErrMemoryProjectNotFound         = errors.New("memory project not found")
+	ErrConversationPolicyNotFound    = errors.New("conversation memory policy not found")
+	ErrMemoryReviewNotFound          = errors.New("memory review not found")
+	ErrPortabilityRepositoryRequired = errors.New("memory portability repository is required")
+	ErrPortabilityPlanCodecRequired  = errors.New("memory portability plan codec is required")
 )
 
 type Repository interface {
@@ -258,7 +260,9 @@ func IsStateConflict(err error) bool {
 	case "MEMORY_GOVERNANCE_REVISION_STALE",
 		"MEMORY_GOVERNANCE_SCOPE_STALE",
 		"MEMORY_GOVERNANCE_REVIEW_STALE",
-		"MEMORY_GOVERNANCE_REPLAY_CONFLICT":
+		"MEMORY_GOVERNANCE_REPLAY_CONFLICT",
+		"MEMORY_IMPORT_PLAN_TOKEN_INVALID",
+		"MEMORY_IMPORT_PLAN_STALE":
 		return true
 	default:
 		return false

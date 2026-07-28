@@ -32,14 +32,24 @@ var searchStopWords = map[string]struct{}{
 }
 
 type Service struct {
-	repo           Repository
-	hybridProvider HybridShadowProvider
+	repo             Repository
+	hybridProvider   HybridShadowProvider
+	portabilityCodec *PortabilityPlanCodec
+	release          string
 }
 
 type ServiceOption func(*Service)
 
 func WithHybridShadowProvider(provider HybridShadowProvider) ServiceOption {
 	return func(service *Service) { service.hybridProvider = provider }
+}
+
+func WithPortabilityPlanCodec(codec *PortabilityPlanCodec) ServiceOption {
+	return func(service *Service) { service.portabilityCodec = codec }
+}
+
+func WithPortabilityRelease(release string) ServiceOption {
+	return func(service *Service) { service.release = strings.TrimSpace(release) }
 }
 
 func NewService(repo Repository, options ...ServiceOption) *Service {
