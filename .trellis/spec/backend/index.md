@@ -15,6 +15,7 @@
 | [Memory v2 benchmark](./memory-v2-benchmark.md) | Synthetic-only 500-case Golden lifecycle, strict observation/evaluation contracts, immutable reports, and non-promotional boundaries |
 | [Memory v2 storage](./memory-v2-storage.md) | Project/scope/settings foundation, Global v1 repository compatibility, ownership constraints, and guarded rollback |
 | [Memory v2 worker](./memory-v2-worker.md) | ID-only completed-turn capture, leased PostgreSQL jobs, private Go worker, Redis wake, least privilege, replay, and rollback |
+| [Memory v2 provenance/delete](./memory-v2-provenance-deletion.md) | Canonical revisions, ID/hash evidence, visibility epochs, tombstones, manifests, and provider-free purge |
 
 ## Pre-Development Checklist
 
@@ -101,6 +102,18 @@ hydration, or worker deployment changes:
 4. Prove current/N-1 schema handling, crash reclaim, stale lease denial,
    direct-table denial, Redis-down polling, and guarded down/re-up.
 
+For Memory canonical writes, evidence/revisions, epochs, tombstones, deletion
+manifests, or purge changes:
+
+1. Read
+   [`memory-v2-provenance-deletion.md`](./memory-v2-provenance-deletion.md).
+2. Preserve the v1 Global-only HTTP/reader contract and the one canonical
+   plaintext row.
+3. Trace delete transaction -> immediate invisibility -> tombstone/manifest ->
+   provider-free purge, including the old-response no-resurrection path.
+4. Prove backfill, append-only revisions, cross-user denial, manual precedence,
+   stale epoch/lease denial, idempotent plaintext wipe, and guarded down/re-up.
+
 ## Quality Check
 
 - Run the disposable database drill for the changed storage group.
@@ -126,5 +139,7 @@ hydration, or worker deployment changes:
   disposable PostgreSQL database before all backend tests and vet.
 - For Memory worker changes, run the focused race, PostgreSQL 17 replay,
   preflight/Compose, and backend-image gates defined in `memory-v2-worker.md`.
+- For Memory provenance/delete changes, also run the PostgreSQL 17 deletion
+  drill and every gate in `memory-v2-provenance-deletion.md`.
 
 **Language**: All documentation should be written in English.

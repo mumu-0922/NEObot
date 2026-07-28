@@ -95,6 +95,24 @@ func TestWorkerDeadLettersSourceDrift(t *testing.T) {
 	}
 }
 
+func TestWorkerDeadLettersTombstoneRaisedAfterProviderResponse(t *testing.T) {
+	repository := newWorkerTestRepository()
+	repository.applyErr = errors.New("MEMORY_CAPTURE_CANDIDATE_TOMBSTONED")
+	provider := &workerTestProvider{output: `{"memories":[` +
+		`{"type":"preference","content":"Use concise answers",` +
+		`"importance":5,"tags":["style"]}]}`}
+	worker := newWorkerTestInstance(t, repository, provider)
+
+	processed, err := worker.ProcessOne(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !processed || !repository.retryTerminal ||
+		repository.retryCode != errorSourceDrift || repository.completed != 0 {
+		t.Fatalf("repository = %#v", repository)
+	}
+}
+
 func TestWorkerAcceptsPreviousEventSchemaMajor(t *testing.T) {
 	repository := newWorkerTestRepository()
 	repository.job.EventSchemaMajor = CurrentEventSchemaMajor - 1
@@ -103,6 +121,29 @@ func TestWorkerAcceptsPreviousEventSchemaMajor(t *testing.T) {
 	processed, err := worker.ProcessOne(context.Background())
 	if err != nil || !processed || repository.completed != 1 {
 		t.Fatalf("processed=%t completed=%d error=%v", processed, repository.completed, err)
+	}
+}
+
+func TestWorkerPurgesWithoutHydratingProvider(t *testing.T) {
+	repository := newWorkerTestRepository()
+	repository.job.Stage = "purge"
+	repository.job.SourceConversationID = ""
+	repository.job.SourceMessageID = ""
+	repository.job.AssistantMessageID = ""
+	repository.job.ProviderID = ""
+	repository.job.ProviderRecordID = ""
+	repository.job.ModelID = ""
+	repository.job.ProcessingProfile = ""
+	provider := &workerTestProvider{err: errors.New("must not be called")}
+	worker := newWorkerTestInstance(t, repository, provider)
+
+	processed, err := worker.ProcessOne(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !processed || repository.purged != 1 || repository.hydrated != 0 ||
+		repository.completed != 1 || provider.request.Metadata != nil {
+		t.Fatalf("repository=%#v provider_request=%#v", repository, provider.request)
 	}
 }
 
@@ -163,8 +204,10 @@ type workerTestRepository struct {
 	capture       Capture
 	found         bool
 	hydrateErr    error
+	applyErr      error
 	hydrated      int
 	applied       []usermemory.CreateInput
+	purged        int
 	completed     int
 	retried       int
 	retryCode     string
@@ -215,7 +258,15 @@ func (r *workerTestRepository) ApplyCandidate(
 	input usermemory.CreateInput,
 ) (usermemory.Memory, error) {
 	r.applied = append(r.applied, input)
+	if r.applyErr != nil {
+		return usermemory.Memory{}, r.applyErr
+	}
 	return usermemory.Memory{ID: input.ID, Content: input.Content}, nil
+}
+
+func (r *workerTestRepository) Purge(context.Context, Job) error {
+	r.purged++
+	return nil
 }
 
 func (r *workerTestRepository) Complete(context.Context, Job) error {

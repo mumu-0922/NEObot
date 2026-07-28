@@ -8,8 +8,9 @@ conversation summaries.
 
 - expose authenticated settings and Memory CRUD at `/v1/memory-settings` and
   `/v1/memories`;
-- persist settings and soft-deletable entries from migration `035`, with the
-  additive Project/scope/settings foundation from migration `053`;
+- persist settings and canonical entries from migration `035`, with the
+  additive Project/scope foundation from `053` and provenance/delete authority
+  from `055`;
 - keep the current v1 API explicitly Global-only while later v2 readers and
   Project APIs remain disabled;
 - normalize and validate types, content, importance, tags, and source IDs;
@@ -34,10 +35,11 @@ Identity is always read from `auth.UserFromContext` through
 `auth.UserOrDevelopment`; API inputs never accept a user ID.
 
 Migration `053` allows the same normalized content in different scopes. The v1
-repository always inserts `scope_type='global'` and repeats the Global partial
-index predicate in its `ON CONFLICT` target. List/update/delete/mark-used also
-filter Global rows, so this package cannot mutate future Project or
-Conversation Memory before the owning API is introduced.
+repository remains Global-only. Migration `055` moves manual upsert/update and
+delete behind narrow database capabilities: edits append one prior snapshot,
+and delete atomically hides the row, writes a targeted tombstone and ID/hash-only
+manifest, and enqueues a provider-free purge job. HTTP request and response
+shapes remain unchanged.
 
 ## Main API
 
@@ -53,7 +55,7 @@ Conversation Memory before the owning API is introduced.
 
 ```text
 handler.go               HTTP contract and DTO mapping
-repository_postgres.go   user-scoped SQL and soft deletion
+repository_postgres.go   user-scoped canonical writes and deletion capability
 service.go               validation, settings, normalization, relevance
 types.go                 repository/service contracts
 uuid.go                  application-owned UUID generation

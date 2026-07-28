@@ -40,6 +40,9 @@ INSERT INTO users (id, display_name) VALUES ($1, 'memory fixture')
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cleanupCancel()
+		_, _ = db.ExecContext(cleanupCtx, `
+DELETE FROM user_memory_deletion_manifests WHERE user_id = ANY($1::uuid[])
+`, []string{userAID, userBID})
 		_, _ = db.ExecContext(cleanupCtx, `DELETE FROM users WHERE id = ANY($1::uuid[])`, []string{userAID, userBID})
 	})
 
@@ -103,8 +106,11 @@ INSERT INTO projects (id, user_id, name)
 VALUES ($1, $2, 'repository isolation fixture');
 INSERT INTO user_memories (
   id, user_id, memory_type, content, normalized_content, source,
-  scope_type, project_id
-) VALUES ($3, $2, 'preference', $4, $5, 'manual', 'project', $1)
+  scope_type, project_id, content_hash, authority_kind
+) VALUES (
+  $3, $2, 'preference', $4, $5, 'manual', 'project', $1,
+  encode(sha256(convert_to($4, 'UTF8')), 'hex'), 'manual'
+)
 `, projectID, userAID, projectMemoryID, created.Content, created.NormalizedContent); err != nil {
 		t.Fatalf("insert Project-scoped fixture: %v", err)
 	}
@@ -163,11 +169,23 @@ INSERT INTO user_memories (
 		t.Fatalf("list after delete = %#v/%v", listedA, err)
 	}
 	var deleted bool
+	var tombstones, manifests, purgeJobs, deleteRevisions int
 	if err := db.QueryRowContext(ctx, `
-SELECT deleted_at IS NOT NULL AND NOT enabled
-FROM user_memories WHERE id = $1
-`, created.ID).Scan(&deleted); err != nil || !deleted {
-		t.Fatalf("soft-delete projection = %v/%v", deleted, err)
+
+SELECT
+  (SELECT deleted_at IS NOT NULL AND NOT enabled
+    FROM user_memories WHERE id = $1),
+  (SELECT count(*) FROM user_memory_tombstones WHERE memory_id = $1),
+  (SELECT count(*) FROM user_memory_deletion_manifests WHERE memory_id = $1),
+  (SELECT count(*) FROM memory_jobs WHERE target_memory_id = $1 AND stage = 'purge'),
+  (SELECT count(*) FROM user_memory_revisions
+    WHERE memory_id = $1 AND operation = 'delete')
+`, created.ID).Scan(
+		&deleted, &tombstones, &manifests, &purgeJobs, &deleteRevisions,
+	); err != nil || !deleted || tombstones != 1 || manifests != 1 ||
+		purgeJobs != 1 || deleteRevisions != 1 {
+		t.Fatalf("delete authority = %v/%d/%d/%d/%d/%v", deleted,
+			tombstones, manifests, purgeJobs, deleteRevisions, err)
 	}
 }
 

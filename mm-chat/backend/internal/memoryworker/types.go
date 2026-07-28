@@ -60,6 +60,7 @@ type Repository interface {
 	Claim(context.Context, string, string, time.Duration) (Job, bool, error)
 	Hydrate(context.Context, Job) (Capture, error)
 	ApplyCandidate(context.Context, Job, usermemory.CreateInput) (usermemory.Memory, error)
+	Purge(context.Context, Job) error
 	Complete(context.Context, Job) error
 	Retry(context.Context, Job, string, time.Time, bool) (string, error)
 	CheckReady(context.Context) (Readiness, error)

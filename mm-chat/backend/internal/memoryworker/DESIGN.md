@@ -12,8 +12,8 @@
 ## Non-goals
 
 - Switching the v1 Memory reader or HTTP CRUD contract.
-- Project/Conversation routing, evidence revisions, review/conflict handling,
-  tombstones, embeddings, L2/L3 summaries, or external Memory engines.
+- Project/Conversation routing, semantic review/conflict handling, embeddings,
+  L2/L3 summaries, or external Memory engines.
 - Supporting request-only BYOK after the request ends; capture fails closed
   unless a current Server-owned provider profile can be hydrated.
 
@@ -26,10 +26,10 @@ assistant finalize transaction
 
 memory-worker
   -> PostgreSQL claim + lease token
-  -> source/profile/generation-fenced hydration
-  -> Server provider vault resolution
-  -> bounded extraction and secret filtering
-  -> lease-fenced Global v1 candidate apply
+  -> extract: source/profile/generation/epoch-fenced hydration
+       -> Server provider vault -> bounded extraction
+       -> lease/tombstone-fenced Global candidate apply + evidence/revision
+  -> purge: no Provider hydration -> tombstone/epoch-fenced plaintext wipe
   -> complete or bounded retry/dead-letter
 ```
 
@@ -49,6 +49,8 @@ has no direct table access. Those functions execute as the restricted
 | Lease token on hydrate/apply/complete/retry | Stale processes must lose write authority | Expired or reclaimed attempts cannot finish a job. |
 | Profile/source/generation hashes are pinned | Provider, message, scope, and policy drift must fail closed | Changed state requires a new authoritative event, not stale replay. |
 | Reuse `usermemory.Service.StoreExtracted` | Keep candidate normalization and limits consistent with v1 | PR3 retains Global v1 upsert semantics until the review/revision PR. |
+| Dispatch purge before hydration | Deletion cleanup must not load or call a Provider | Purge remains available during Provider outages. |
+| Recheck epoch and targeted tombstones at apply | A response returned after deletion has no write authority | Stale/tombstoned work dead-letters without resurrection. |
 | Log IDs and error codes only | Source text, secrets, and raw Provider errors are private | Operators diagnose by bounded codes and queue state. |
 
 ## Failure and replay contract
@@ -57,16 +59,16 @@ has no direct table access. Those functions execute as the restricted
 | --- | --- |
 | Redis unavailable | Continue PostgreSQL polling. |
 | Provider timeout/failure | Retry with bounded exponential backoff. |
-| Unknown schema/stage or source/profile drift | Dead-letter without candidate apply. |
+| Unknown schema/stage or source/profile/epoch/tombstone drift | Dead-letter without candidate apply. |
 | Worker crash during a lease | Reclaim after expiry while attempts remain. |
 | Crash on final attempt | PostgreSQL marks `LEASE_EXPIRED` dead-letter. |
 | Stale worker applies/completes | SQL rejects the old worker/lease token. |
 | Duplicate event/job | Unique event/stage/idempotency keys return the first authority. |
 
 Candidate application is per item rather than one candidates-wide transaction.
-Replay safety currently comes from the source/profile fences and normalized
-Global upsert. Evidence/revision-aware atomic proposals belong to later Memory
-v2 batches.
+Replay safety comes from source/profile/epoch/tombstone fences, exact Global
+upsert, append-only revision snapshots, and ID/hash-only evidence. Candidate-wide
+Review proposals and semantic conflict routing belong to PR5.
 
 ## Threat model and controls
 
@@ -74,6 +76,7 @@ v2 batches.
 | --- | --- |
 | Cross-user hydration | Job user, source message, assistant parent, and Conversation ownership are joined and rechecked in SQL. |
 | Stale response resurrects deleted/changed source | Active source, generation, Learn policy, profile timestamp/hash, and live lease are rechecked before every apply. |
+| Purge sends deleted data to a Provider | Stage dispatch invokes the purge capability before any hydration or Provider resolution. |
 | Prompt injection in source text | Source is JSON data under a Server-owned extraction prompt; output is schema-normalized and bounded. |
 | Credential retention | Prompt prohibition plus content/tag credential-pattern rejection; event/job/log payloads contain no plaintext secret. |
 | Compromised worker reads arbitrary tables | Runtime role has function execution only; owner membership and schema creation are forbidden. |
@@ -92,3 +95,5 @@ v2 batches.
 ## Change history
 
 - 2026-07-28: Memory v2 PR3 durable outbox/jobs and private Go worker.
+- 2026-07-28: Memory v2 PR4 evidence/revision-aware apply, epoch/tombstone
+  no-resurrection fences, and provider-free online purge.

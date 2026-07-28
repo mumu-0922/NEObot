@@ -118,32 +118,20 @@ func (r *PostgresRepository) Create(ctx context.Context, input CreateInput) (Mem
 	if err := r.requireDB(); err != nil {
 		return Memory{}, err
 	}
+	if input.Source != "manual" {
+		return Memory{}, errors.New("automatic memory writes require a worker lease")
+	}
 	user := auth.UserOrDevelopment(ctx)
 	row := r.db.QueryRowContext(ctx, `
-INSERT INTO user_memories (
-  id, user_id, memory_type, content, normalized_content, importance, tags,
-  source, source_conversation_id, source_message_id, enabled, scope_type
-)
-VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8,
-  NULLIF($9, '')::uuid, NULLIF($10, '')::uuid, $11, 'global'
-)
-ON CONFLICT (user_id, normalized_content)
-WHERE deleted_at IS NULL AND scope_type = 'global' DO UPDATE SET
-  memory_type = EXCLUDED.memory_type,
-  content = EXCLUDED.content,
-  importance = GREATEST(user_memories.importance, EXCLUDED.importance),
-  tags = EXCLUDED.tags,
-  source = EXCLUDED.source,
-  source_conversation_id = EXCLUDED.source_conversation_id,
-  source_message_id = EXCLUDED.source_message_id,
-  enabled = true,
-  updated_at = now()
-RETURNING
+SELECT
   id, user_id, memory_type, content, normalized_content, importance,
-  to_json(tags)::text AS tags,
+  tags_json,
   source, source_conversation_id, source_message_id, enabled, last_used_at,
   created_at, updated_at, deleted_at
+FROM memory_upsert_global_manual(
+  $1::uuid, $2::uuid, $3, $4, $5, $6::smallint, $7,
+  NULLIF($8, '')::uuid, NULLIF($9, '')::uuid, $10
+)
 `,
 		input.ID,
 		user.ID,
@@ -152,7 +140,6 @@ RETURNING
 		input.NormalizedContent,
 		input.Importance,
 		input.Tags,
-		input.Source,
 		input.SourceConversationID,
 		input.SourceMessageID,
 		input.Enabled,
@@ -170,21 +157,14 @@ func (r *PostgresRepository) Update(ctx context.Context, memoryID string, input 
 	}
 	user := auth.UserOrDevelopment(ctx)
 	row := r.db.QueryRowContext(ctx, `
-UPDATE user_memories
-SET
-  memory_type = $3,
-  content = $4,
-  normalized_content = $5,
-  importance = $6,
-  tags = $7,
-  enabled = $8,
-  updated_at = now()
-WHERE id = $1 AND user_id = $2 AND scope_type = 'global' AND deleted_at IS NULL
-RETURNING
+SELECT
   id, user_id, memory_type, content, normalized_content, importance,
-  to_json(tags)::text AS tags,
+  tags_json,
   source, source_conversation_id, source_message_id, enabled, last_used_at,
   created_at, updated_at, deleted_at
+FROM memory_update_global_manual(
+  $1::uuid, $2::uuid, $3, $4, $5, $6::smallint, $7, $8
+)
 `,
 		memoryID,
 		user.ID,
@@ -214,19 +194,23 @@ func (r *PostgresRepository) Delete(ctx context.Context, memoryID string) error 
 		return err
 	}
 	user := auth.UserOrDevelopment(ctx)
-	result, err := r.db.ExecContext(ctx, `
-UPDATE user_memories
-SET enabled = false, deleted_at = now(), updated_at = now()
-WHERE id = $1 AND user_id = $2 AND scope_type = 'global' AND deleted_at IS NULL
-`, memoryID, user.ID)
-	if err != nil {
+	ids := make([]string, 4)
+	for index := range ids {
+		id, err := newUUID()
+		if err != nil {
+			return err
+		}
+		ids[index] = id
+	}
+	var deleted bool
+	if err := r.db.QueryRowContext(ctx, `
+SELECT memory_delete_global(
+  $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid
+)
+`, user.ID, memoryID, ids[0], ids[1], ids[2], ids[3]).Scan(&deleted); err != nil {
 		return fmt.Errorf("delete user memory: %w", err)
 	}
-	count, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read deleted user memory count: %w", err)
-	}
-	if count == 0 {
+	if !deleted {
 		return ErrMemoryNotFound
 	}
 	return nil

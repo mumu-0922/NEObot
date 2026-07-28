@@ -32,7 +32,9 @@ func (r *PostgresRepository) Claim(
 	}
 	leaseSeconds := int(leaseDuration / time.Second)
 	var job Job
-	var providerRecordID sql.NullString
+	var sourceConversationID, sourceMessageID, assistantMessageID sql.NullString
+	var sourceHash, providerSource, providerID, providerRecordID sql.NullString
+	var modelID, processingProfile sql.NullString
 	var projectScopeGeneration sql.NullInt64
 	err := r.db.QueryRowContext(ctx, `
 SELECT
@@ -51,15 +53,15 @@ FROM memory_worker_claim_job($1::uuid, $2::uuid, $3)
 		&job.Stage,
 		&job.AttemptCount,
 		&job.MaxAttempts,
-		&job.SourceConversationID,
-		&job.SourceMessageID,
-		&job.AssistantMessageID,
-		&job.SourceHash,
-		&job.ProviderSource,
-		&job.ProviderID,
+		&sourceConversationID,
+		&sourceMessageID,
+		&assistantMessageID,
+		&sourceHash,
+		&providerSource,
+		&providerID,
 		&providerRecordID,
-		&job.ModelID,
-		&job.ProcessingProfile,
+		&modelID,
+		&processingProfile,
 		&job.ScopeGeneration,
 		&projectScopeGeneration,
 		&job.VisibilityEpoch,
@@ -71,7 +73,15 @@ FROM memory_worker_claim_job($1::uuid, $2::uuid, $3)
 	if err != nil {
 		return Job{}, false, fmt.Errorf("claim memory job: %w", err)
 	}
+	job.SourceConversationID = sourceConversationID.String
+	job.SourceMessageID = sourceMessageID.String
+	job.AssistantMessageID = assistantMessageID.String
+	job.SourceHash = sourceHash.String
+	job.ProviderSource = providerSource.String
+	job.ProviderID = providerID.String
 	job.ProviderRecordID = providerRecordID.String
+	job.ModelID = modelID.String
+	job.ProcessingProfile = processingProfile.String
 	if projectScopeGeneration.Valid {
 		value := projectScopeGeneration.Int64
 		job.ProjectScopeGeneration = &value
@@ -170,6 +180,22 @@ FROM memory_worker_apply_capture_candidate(
 	memory.SourceConversationID = sourceConversationID.String
 	memory.SourceMessageID = sourceMessageID.String
 	return memory, nil
+}
+
+func (r *PostgresRepository) Purge(ctx context.Context, job Job) error {
+	if r == nil || r.db == nil {
+		return ErrDatabaseRequired
+	}
+	var purged bool
+	if err := r.db.QueryRowContext(ctx, `
+SELECT memory_worker_purge_memory($1::uuid, $2::uuid, $3::uuid)
+`, job.JobID, job.WorkerID, job.LeaseToken).Scan(&purged); err != nil {
+		return fmt.Errorf("purge deleted memory: %w", err)
+	}
+	if !purged {
+		return errors.New("purge deleted memory returned false")
+	}
+	return nil
 }
 
 func (r *PostgresRepository) Complete(ctx context.Context, job Job) error {

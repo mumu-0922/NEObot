@@ -21,6 +21,7 @@ const (
 	errorProviderFailed    = "PROVIDER_FAILED"
 	errorExtractionInvalid = "EXTRACTION_INVALID"
 	errorApplyFailed       = "APPLY_FAILED"
+	errorPurgeFailed       = "PURGE_FAILED"
 )
 
 type Worker struct {
@@ -208,7 +209,15 @@ func (w *Worker) process(ctx context.Context, job Job) (string, bool, error) {
 		job.EventSchemaMajor > CurrentEventSchemaMajor {
 		return errorUnsupportedSchema, true, errors.New("unsupported memory event schema")
 	}
-	if job.Stage != "extract" {
+	switch job.Stage {
+	case "purge":
+		if err := w.repository.Purge(ctx, job); err != nil {
+			return errorPurgeFailed, terminalPurgeError(err), err
+		}
+		return "", false, nil
+	case "extract":
+		// Continue through the Provider-backed extraction path below.
+	default:
 		return errorUnsupportedStage, true, errors.New("unsupported memory job stage")
 	}
 	capture, err := w.repository.Hydrate(ctx, job)
@@ -250,7 +259,7 @@ func (w *Worker) process(ctx context.Context, job Job) (string, bool, error) {
 		Candidates:     candidates,
 	})
 	if err != nil {
-		return errorApplyFailed, false, err
+		return classifyApplyError(err), terminalApplyError(err), err
 	}
 	return "", false, nil
 }
@@ -275,7 +284,9 @@ func (w *Worker) retryDelay(attempt int) time.Duration {
 func classifyHydrationError(err error) string {
 	value := strings.ToUpper(err.Error())
 	switch {
-	case strings.Contains(value, "SOURCE_DRIFT"):
+	case strings.Contains(value, "SOURCE_DRIFT") ||
+		strings.Contains(value, "SOURCE_TOMBSTONED") ||
+		strings.Contains(value, "VISIBILITY_EPOCH_DRIFT"):
 		return errorSourceDrift
 	case strings.Contains(value, "PROFILE_DRIFT"):
 		return errorProfileDrift
@@ -289,8 +300,31 @@ func classifyHydrationError(err error) string {
 func terminalHydrationError(err error) bool {
 	value := strings.ToUpper(err.Error())
 	return strings.Contains(value, "SOURCE_DRIFT") ||
+		strings.Contains(value, "SOURCE_TOMBSTONED") ||
+		strings.Contains(value, "VISIBILITY_EPOCH_DRIFT") ||
 		strings.Contains(value, "PROFILE_DRIFT") ||
 		strings.Contains(value, "PROVIDER_UNAVAILABLE")
+}
+
+func classifyApplyError(err error) string {
+	value := strings.ToUpper(err.Error())
+	if strings.Contains(value, "SOURCE_DRIFT") ||
+		strings.Contains(value, "SOURCE_TOMBSTONED") ||
+		strings.Contains(value, "CANDIDATE_TOMBSTONED") ||
+		strings.Contains(value, "VISIBILITY_EPOCH_DRIFT") {
+		return errorSourceDrift
+	}
+	return errorApplyFailed
+}
+
+func terminalApplyError(err error) bool {
+	return classifyApplyError(err) == errorSourceDrift
+}
+
+func terminalPurgeError(err error) bool {
+	value := strings.ToUpper(err.Error())
+	return strings.Contains(value, "MEMORY_VISIBILITY_EPOCH_DRIFT") ||
+		strings.Contains(value, "MEMORY_PURGE_TARGET_DRIFT")
 }
 
 type leasedMemoryRepository struct {

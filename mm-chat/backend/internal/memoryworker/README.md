@@ -11,6 +11,8 @@ latency.
 - run the existing bounded Memory extraction semantics with a hard timeout;
 - validate, secret-filter, and apply at most five candidates through the
   existing `usermemory.Service` contract;
+- dispatch `purge` jobs before Provider hydration and idempotently wipe deleted
+  canonical/revision/evidence plaintext through migration `055`;
 - retry transient failures, dead-letter terminal drift, and resume expired
   leases after crashes or rolling restarts;
 - report readiness without exposing an HTTP port.
@@ -39,14 +41,14 @@ for the complete environment and role-provisioning contract.
 | `New(Repository, ProviderResolver, ...Option)` | Validate and construct the bounded worker. |
 | `Worker.Run(ctx, wake)` | Poll PostgreSQL continuously and consume optional wake hints. |
 | `Worker.ProcessOne(ctx)` | Claim and finish one lease-fenced job. |
-| `NewPostgresRepository(*sql.DB)` | Call only migration `054` worker capabilities. |
+| `NewPostgresRepository(*sql.DB)` | Call only migration `054`/`055` worker capabilities. |
 | `NewStoredProviderResolver(...)` | Reuse Server provider/vault activation rules. |
 
 ## Files
 
 ```text
 worker.go                polling, retry, schema/stage dispatch, and apply flow
-repository_postgres.go   restricted migration-054 function calls
+repository_postgres.go   restricted migration-054/055 function calls
 provider.go              hydrated Server provider resolution
 extraction.go            bounded prompt, parsing, validation, and secret filter
 types.go                 job, capture, readiness, and interface contracts

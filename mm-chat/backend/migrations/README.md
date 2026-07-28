@@ -143,7 +143,7 @@ function signatures, owners, and grants while pinning lookup to the application
 schema, `pg_catalog`, and `pg_temp`. Its down path intentionally retains the
 safe search path rather than reopening object-shadowing risk.
 
-The current migration head is `054`; the latest retrieval-specific migration
+The current migration head is `055`; the latest retrieval-specific migration
 remains `050`. Migration `043` extends the existing final-authority evidence
 hydration boundary with complete matched-Child and containing-Parent source
 text plus their persisted token counts. Parent text is answer context only. Its
@@ -235,6 +235,18 @@ lease/user/source/generation/profile-fenced claim, hydrate, candidate apply,
 complete, retry, and readiness functions and has no direct table access. Its
 down path refuses to discard any event or job.
 
+Migration `055` adds Memory v2 canonical provenance and deletion correctness.
+Canonical rows gain revision, visibility-epoch, content-hash, authority, and
+extraction-profile fences. ID/hash-only evidence binds automatic Memory to a
+surviving user message; existing AI rows without such evidence are disabled.
+Manual edits and automatic merges append one prior snapshot, while a guarded
+trigger permits only the later plaintext-redaction transition. A Global delete
+atomically becomes invisible, writes a targeted tombstone and deletion manifest
+authority, and appends a provider-free `purge` job. The worker rechecks the live
+lease, epoch, source hash, profile, and tombstone before apply, and purge
+idempotently clears canonical/revision/evidence plaintext. The down path is
+allowed only before provenance or deletion history is used.
+
 ## Storage boundaries
 
 Postgres is the source of truth for structured records:
@@ -245,6 +257,7 @@ Postgres is the source of truth for structured records:
 - conversations and messages
 - Projects, Memory settings, and canonical Memory rows
 - Memory capture outbox events and leased jobs; Redis is never their authority
+- Memory evidence, revisions, tombstones, and ID/hash-only deletion manifests
 - versioned derived conversation-context summaries; original messages remain
   the rebuild authority
 - file ownership and metadata
