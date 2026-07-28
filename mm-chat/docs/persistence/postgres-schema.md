@@ -83,6 +83,10 @@ Out of scope:
 | `036_task_model_settings`                    | Adds server-owned task-specific model references, including Memory extraction. |
 | `053_memory_project_scope_settings`          | Adds Projects, explicit Memory scopes/generations/policy, composite ownership, and guarded rollback while retaining the Global v1 API. |
 | `054_memory_outbox_jobs_worker`              | Adds versioned ID-only Memory capture events, leased/replayable jobs, fenced worker functions, and separate API/worker capability grants. |
+| `055_memory_provenance_deletion`              | Adds canonical revisions/evidence, visibility epochs, tombstones, deletion manifests, and provider-free plaintext purge. |
+| `056_memory_candidate_review_shadow`          | Adds atomic extraction candidate batches, Review/shadow proposals, conflict/temporal metadata, and provider-free expiry. |
+| `057_memory_actions_activity_usage`           | Adds direct-user typed actions, immutable answer Usage, link-only Activity, and revision-safe undo. |
+| `058_memory_lexical_projection_shadow`        | Adds rebuildable exact/CJK BM25 Memory projection and hash/ID/rank-only default-off shadow comparison while retaining v1 prompt authority. |
 
 Published migration pairs are immutable and applied in numeric order. Migration
 SQL contains no transaction-control statements; the Go runner wraps each schema

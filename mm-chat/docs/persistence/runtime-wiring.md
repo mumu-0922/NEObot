@@ -3,7 +3,7 @@
 This document defines the current runtime contract between the Go API,
 migration CLI, Memory Worker, RAG Worker/Replay processes, and Postgres. The
 original connector contract remains in force, while the current schema head is
-`054`.
+`058`.
 
 ## 1. Scope
 
@@ -14,7 +14,8 @@ In scope:
 - Startup connectivity check when DB is enabled.
 - DB-aware `/ready` behavior.
 - Embedded SQL migrations exposed through a Go migration CLI.
-- Schema head `054`, including the durable Memory capture boundary.
+- Schema head `058`, including durable Memory capture, provenance, Review,
+  direct action/Activity/Usage, and lexical shadow boundaries.
 - Operator-facing migration and rollback boundaries.
 
 Out of scope:
@@ -22,8 +23,7 @@ Out of scope:
 - Automatic migrations during API startup.
 - Compose implementation files.
 - MinIO, Redis, browser import, or multi-server deployment details.
-- pgvector/true BM25 accelerator DDL and restricted retrieval Functions planned
-  for a later reversible search-profile migration.
+- Memory vector/RRF/rerank promotion and any lexical-shadow prompt injection.
 
 ## 2. Environment Variables
 
@@ -37,6 +37,7 @@ Out of scope:
 | `DB_MAX_OPEN_CONNS`       | Go API/admin | No       | Maximum open DB connections. Backend default is code-defined when unset.                                         |
 | `DB_MAX_IDLE_CONNS`       | Go API/admin | No       | Maximum idle DB connections. Backend default is code-defined when unset.                                         |
 | `DB_CONN_MAX_LIFETIME`    | Go API/admin | No       | Maximum connection lifetime as a Go duration such as `30m`. Backend default is code-defined when unset.          |
+| `MEMORY_LEXICAL_SHADOW_ENABLED` | Go API | No | Default `false`; enables provider-free migration-058 comparison/diagnostics only, never projection maintenance or prompt injection. |
 
 Rules:
 
@@ -83,8 +84,8 @@ Rules:
 | Route     | URL variable              | LOGIN capability      | Boundary                                                                                       |
 | --------- | ------------------------- | --------------------- | ---------------------------------------------------------------------------------------------- |
 | Migration | `MIGRATION_DATABASE_URL`  | Bootstrap/migrator    | Owns DDL and migration metadata; never used by API, Memory/RAG Worker, or Replay.              |
-| API/admin | `DATABASE_URL`            | `go_api_runtime`      | Explicit `001`–`009` authoritative-table access plus only the `010` API functions it needs.    |
-| Memory Worker | `MEMORY_WORKER_DATABASE_URL` | `memory_worker_runtime` | Executes only lease/source/profile-fenced `054` functions; no direct table DML.          |
+| API/admin | `DATABASE_URL`            | `go_api_runtime`      | Existing API access plus narrow Memory action/Usage/Activity and `058` lexical compare capabilities; no projection/observation table CRUD. |
+| Memory Worker | `MEMORY_WORKER_DATABASE_URL` | `memory_worker_runtime` | Executes only lease/source/profile-fenced Memory job functions; receives no `057`/`058` direct-action or lexical-shadow authority. |
 | Worker    | `RAG_WORKER_DATABASE_URL` | `rag_worker_executor` | Executes `010` Claim/CAS/Publish/Purge functions; no authority-table DML or Replay capability. |
 | Replay    | `RAG_REPLAY_DATABASE_URL` | `rag_replay_operator` | Executes only the `010` replay functions in the operator-triggered one-shot process.           |
 
@@ -104,7 +105,7 @@ or Replay roles.
 | `DATABASE_URL` set, startup passed, DB later fails | Keep process observable.       | `200` if process is alive. | `503` until DB ping recovers.        |
 
 API readiness is connectivity-oriented. It does not run migrations or mutate
-schema. Operators establish schema head `054` before starting a release that
+schema. Operators establish schema head `058` before starting a release that
 depends on it.
 
 ### Phase 14 Readiness Extension

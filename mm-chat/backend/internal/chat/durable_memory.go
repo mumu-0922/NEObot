@@ -15,6 +15,7 @@ const durableMemoryWakeTimeout = 250 * time.Millisecond
 type durableMemoryPreparation struct {
 	Items           []usermemory.Memory
 	DegradationCode string
+	LexicalShadow   *usermemory.LexicalShadowSummary
 }
 
 func durableMemoryUsageInputs(
@@ -47,24 +48,41 @@ func durableMemoryUsageInputs(
 func (h *Handler) prepareDurableMemory(
 	ctx context.Context,
 	query string,
+	conversationID string,
+	assistantMessageID string,
 	systemPrompt string,
 ) (string, durableMemoryPreparation) {
 	if h == nil || h.userMemoryService == nil {
 		return systemPrompt, durableMemoryPreparation{}
 	}
-	items, err := h.userMemoryService.SearchRelevant(
-		ctx,
-		query,
-		usermemory.MaxSearchResults,
-	)
+	var items []usermemory.Memory
+	var shadow *usermemory.LexicalShadowSummary
+	var err error
+	if h.memoryLexicalShadowEnabled {
+		var summary usermemory.LexicalShadowSummary
+		items, summary, err = h.userMemoryService.SearchRelevantWithShadow(
+			ctx,
+			query,
+			conversationID,
+			assistantMessageID,
+			usermemory.MaxSearchResults,
+		)
+		shadow = &summary
+	} else {
+		items, err = h.userMemoryService.SearchRelevant(
+			ctx,
+			query,
+			usermemory.MaxSearchResults,
+		)
+	}
 	if err != nil {
 		return systemPrompt, durableMemoryPreparation{DegradationCode: "read_failed"}
 	}
 	if len(items) == 0 {
-		return systemPrompt, durableMemoryPreparation{}
+		return systemPrompt, durableMemoryPreparation{LexicalShadow: shadow}
 	}
 	return appendDurableMemoryRuntimeInstruction(systemPrompt, items),
-		durableMemoryPreparation{Items: items}
+		durableMemoryPreparation{Items: items, LexicalShadow: shadow}
 }
 
 func appendDurableMemoryRuntimeInstruction(
@@ -101,7 +119,8 @@ func withDurableMemoryMetadata(
 	metadata map[string]any,
 	preparation durableMemoryPreparation,
 ) map[string]any {
-	if len(preparation.Items) == 0 && preparation.DegradationCode == "" {
+	if len(preparation.Items) == 0 && preparation.DegradationCode == "" &&
+		preparation.LexicalShadow == nil {
 		return metadata
 	}
 	result := cloneDurableMemoryMetadata(metadata)
@@ -117,6 +136,9 @@ func withDurableMemoryMetadata(
 	}
 	if preparation.DegradationCode != "" {
 		memoryMetadata["degradationCode"] = preparation.DegradationCode
+	}
+	if preparation.LexicalShadow != nil {
+		memoryMetadata["lexicalShadow"] = *preparation.LexicalShadow
 	}
 	result["memory"] = memoryMetadata
 	return result

@@ -27,6 +27,9 @@ Current completed user message -> lexical gate -> strict typed action planner
   -> Go target/scope/revision rebinding -> migration-057 action capability
 Assistant finalize transaction -> immutable migration-057 L1 Usage links
 Activity polling/undo -> user-scoped migration-057 capabilities
+Canonical Memory transaction -> migration-058 exact/CJK BM25 projection
+Current user message -> unchanged v1 Top 5 -> optional migration-058 shadow
+  -> ID/revision/rank-only diagnostics; zero prompt injection
 ```
 
 `usermemory` owns storage and deterministic relevance. `internal/chat` owns
@@ -54,6 +57,9 @@ cycle.
 | Usage is immutable answer provenance                     | Retry must not rewrite which revision was injected                                     | Exact replay succeeds; changed order/content or length fails atomically              |
 | Activity stores links, not private text                  | Polling must not create a second Memory/candidate fact store                            | Authenticated reads hydrate current visible content or a deleted marker              |
 | Undo is revision fenced                                  | A stale UI action must not overwrite later user changes                                 | Created undo deletes; corrected undo appends restore; stale becomes Review-required  |
+| Lexical projection maintenance ignores the shadow flag   | Derived plaintext must never drift while observation is disabled                        | Every canonical/lifecycle/generation mutation refreshes or removes projection in the same transaction |
+| PR7 shadow is not a reader                               | Recall promotion needs separate benchmark and rollout authority                         | v1 remains the only prompt/Usage source; compare errors are bounded metadata only |
+| Exact and CJK BM25 lanes remain independent              | Their behavior must be measurable before PR8 fusion                                     | PostgreSQL records lane ordinals without persisting query, content copies, or raw scores |
 
 ## Validation and limits
 
@@ -89,6 +95,10 @@ cycle.
 | Usage replay rewrites answer provenance | Per-assistant advisory lock plus exact immutable replay comparison |
 | Deleted/archived/stale Memory leaks through governance APIs | Activity/Usage hydration returns no content and a deleted marker unless every current-state fence passes |
 | Undo resurrects stale state | Current revision/epoch/scope/source snapshot checks fail to `review_required` without mutation |
+| Shadow ranks unauthorized or stale projection | SQL binds user, scope, Sensitive switch, time, epoch, generation, revision, and hash before either lane |
+| Shadow diagnostics leak private text or scores | Observation rows contain only hashes, IDs, revisions, lane ordinals, counts, status, and duration |
+| Shadow outage changes the answer | `SearchRelevantWithShadow` completes v1 first and converts compare errors to a fixed failure summary |
+| Runtime mutates derived/evidence tables | `go_api_runtime` can execute only the compare function; both runtime roles lack table CRUD |
 
 Known limitation: deterministic lexical/CJK matching is intentionally
 conservative and may miss semantic paraphrases. Any future embedding lane must
@@ -117,3 +127,5 @@ real Provider cross-conversation recall/delete proof.
   revocation; v1 reader/API remain unchanged (Memory v2 PR5).
 - 2026-07-28: migration-057 direct-user typed actions, immutable answer Usage,
   link-only Activity polling, and revision-safe undo (Memory v2 PR6).
+- 2026-07-28: migration-058 transactional exact/CJK BM25 projection and
+  default-off, zero-injection lexical comparison (Memory v2 PR7).

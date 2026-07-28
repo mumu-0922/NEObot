@@ -15,7 +15,9 @@ const (
 	MaxExtractedItems       = 5
 	MaxActionTargets        = 5
 	MaxActivityPage         = 100
+	MaxLexicalShadowResults = 20
 	DirectActionSchemaMajor = 1
+	LexicalShadowProfileID  = "memory_lexical_cjk_bm25_v1"
 )
 
 var (
@@ -45,6 +47,12 @@ type ActionRepository interface {
 	ListActivities(context.Context, string, int) ([]MemoryActivity, error)
 	ListMessageUsages(context.Context, string) ([]MessageMemoryUsage, error)
 	UndoActivity(context.Context, UndoActivityInput) (UndoActivityResult, error)
+}
+
+// LexicalShadowRepository is optional so the v1 Repository remains the only
+// prompt/Usage authority and existing repository doubles stay compatible.
+type LexicalShadowRepository interface {
+	CompareLexicalShadow(context.Context, LexicalShadowInput) (LexicalShadowSummary, error)
 }
 
 type Settings struct {
@@ -228,6 +236,34 @@ type MessageMemoryUsage struct {
 	MemoryContent      string
 	MemoryDeleted      bool
 	CreatedAt          time.Time
+}
+
+type LexicalShadowInput struct {
+	ObservationID      string
+	ConversationID     string
+	AssistantMessageID string
+	QueryHash          string
+	QueryText          string
+	Baseline           []LexicalShadowBaseline
+	LexicalLimit       int
+}
+
+type LexicalShadowBaseline struct {
+	MemoryID  string `json:"memoryId"`
+	Revision  int64  `json:"revision"`
+	ScopeType string `json:"scopeType"`
+}
+
+type LexicalShadowSummary struct {
+	ProfileID      string `json:"profile"`
+	Status         string `json:"status"`
+	ResultCode     string `json:"resultCode"`
+	BaselineCount  int    `json:"baselineCount"`
+	ExactCount     int    `json:"exactCount"`
+	BM25Count      int    `json:"bm25Count"`
+	LexicalCount   int    `json:"lexicalCount"`
+	OverlapCount   int    `json:"overlapCount"`
+	DurationMillis int    `json:"durationMillis"`
 }
 
 type UndoActivityInput struct {

@@ -259,6 +259,25 @@ stage clears shadow/pending plaintext after 30 days with a 128-attempt retry
 window. Stop N-1 workers before applying `056`; the down path is allowed only
 before proposal/Review/expiry history or non-default canonical metadata exists.
 
+Migration `057` adds direct-user typed Memory actions, immutable answer Usage
+links, link-only Activity polling, and revision-safe undo. The Go API can call
+only user/source/scope/epoch/generation/revision-fenced functions; neither API
+nor Memory Worker receives direct action, Activity, Usage, or revision-table
+write authority. Its down path refuses to discard any action/governance
+history, typed prior snapshot, or `direct_user` canonical authority.
+
+Migration `058` adds the provider-free Memory lexical projection and shadow
+comparison. Every eligible canonical row gets a rebuildable exact/CJK BM25
+projection bound to its current user, scope, sensitivity, visibility epoch,
+projection generation, revision, and content hash. Internal triggers refresh
+or physically remove derived plaintext in the canonical transaction. The API
+can execute one comparison function; it has no projection/observation table
+CRUD, and the Memory Worker receives no PR7 capability. Durable diagnostics
+contain only query/baseline hashes, IDs, revisions, lane ordinals, counts,
+status, and duration—never query text, Memory text, prompt, embedding, or raw
+score. Down requires a non-promoted reader and an empty observation history;
+clean re-up rebuilds projection from canonical rows.
+
 ## Storage boundaries
 
 Postgres is the source of truth for structured records:
@@ -272,6 +291,9 @@ Postgres is the source of truth for structured records:
 - Memory evidence, revisions, tombstones, and ID/hash-only deletion manifests
 - Memory candidate batch hashes, Review targets/evidence, and bounded
   proposal plaintext pending provider-free expiry
+- immutable Memory Usage, link-only Activity, and direct-action outcome rows
+- rebuildable Memory exact/CJK BM25 projection plus hash/ID/rank-only shadow
+  observations
 - versioned derived conversation-context summaries; original messages remain
   the rebuild authority
 - file ownership and metadata

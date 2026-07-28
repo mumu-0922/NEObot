@@ -86,6 +86,10 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 	if cfg.RAG.SourceGatewayToken != "" {
 		t.Fatalf("RAG infrastructure token = %#v, want blank", cfg.RAG)
 	}
+	if cfg.Memory.LexicalShadowEnabled != DefaultMemoryLexicalShadowEnabled {
+		t.Fatalf("Memory.LexicalShadowEnabled = %v, want %v",
+			cfg.Memory.LexicalShadowEnabled, DefaultMemoryLexicalShadowEnabled)
+	}
 	if cfg.Auth.Mode != DefaultAuthMode {
 		t.Fatalf("Auth.Mode = %q, want %q", cfg.Auth.Mode, DefaultAuthMode)
 	}
@@ -155,6 +159,7 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 		EnvS3BucketAutoCreate:     " true ",
 		EnvMaxUploadBytes:         "1048576",
 		EnvRAGSourceGatewayToken:  " fake-source-gateway-token ",
+		EnvMemoryLexicalShadow:    " true ",
 		EnvAuthMode:               " required ",
 		EnvAuthBootstrapUserID:    " 77777777-7777-4777-8777-777777777777 ",
 		EnvAuthBootstrapUserName:  " Server Owner ",
@@ -247,6 +252,9 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	}
 	if cfg.RAG.SourceGatewayToken != "fake-source-gateway-token" {
 		t.Fatalf("RAG.SourceGatewayToken = %q, want trimmed fake token", cfg.RAG.SourceGatewayToken)
+	}
+	if !cfg.Memory.LexicalShadowEnabled {
+		t.Fatal("Memory.LexicalShadowEnabled = false, want true")
 	}
 	if cfg.Auth.Mode != AuthModeRequired {
 		t.Fatalf("Auth.Mode = %q, want required", cfg.Auth.Mode)

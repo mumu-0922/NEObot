@@ -194,6 +194,21 @@ or answer Usage has committed, retain `057` and roll back application behavior
 with a forward-compatible build. A valid clean drill is one-step
 `057 -> 056 -> 057` after all disposable fixture users are removed.
 
+### Migration 058 / Memory lexical projection and shadow rollback
+
+Set `MEMORY_LEXICAL_SHADOW_ENABLED=false` before rollback and stop post-`058`
+API writers. The flag stops new comparisons only; canonical transactions keep
+projection correct while `058` exists. Down fails with
+`MEMORY_LEXICAL_ROLLBACK_REQUIRES_V1_READER` if any Memory reader profile has
+been promoted, and with `MEMORY_LEXICAL_ROLLBACK_REQUIRES_EMPTY_OBSERVATIONS`
+after any shadow observation exists.
+
+Never delete observation history to force rollback. After observation begins,
+retain `058` and roll back behavior with the default-off flag or a compatible
+application build. Only a clean pre-observation database may run
+`058 -> 057 -> 058`; the derived projection is safely discarded on down and
+rebuilt from current canonical Memory on re-up.
+
 ### Migrations 051-052 / SiliconFlow TTS rollback
 
 Migration `051_siliconflow_tts_cache` adds the exact Voice provider identity

@@ -18,6 +18,7 @@
 | [Memory v2 provenance/delete](./memory-v2-provenance-deletion.md) | Canonical revisions, ID/hash evidence, visibility epochs, tombstones, manifests, and provider-free purge |
 | [Memory v2 candidate/Review](./memory-v2-candidate-review.md) | Strict candidate batches, proposal-only conflict/scope/temporal routing, Review shadow, and provider-free expiry |
 | [Memory v2 actions/Activity/Usage](./memory-v2-actions-activity-usage.md) | Current-user typed actions, strict planner authority, immutable Usage, link-only Activity polling, and revision-safe undo |
+| [Memory v2 lexical shadow](./memory-v2-lexical-shadow.md) | Transactional L1 exact/CJK BM25 projection, current-authority shadow comparison, ID-only diagnostics, and v1 fail-open |
 
 ## Pre-Development Checklist
 
@@ -139,6 +140,18 @@ changes:
 4. Prove secret zero-egress/plaintext, exact NOOP silence, safe/stale undo,
    direct purge, least privilege, and guarded down/re-up.
 
+For Memory exact/CJK BM25 projections or lexical shadow comparison changes:
+
+1. Read [`memory-v2-lexical-shadow.md`](./memory-v2-lexical-shadow.md).
+2. Preserve v1 as the only prompt/Usage reader and keep the shadow flag
+   default-off; do not pull PR8 vector/RRF/rerank into this slice.
+3. Bind every candidate before ranking to current user/scope/Sensitive/epoch/
+   generation/revision/hash authority, and keep observations query/content/
+   raw-score free.
+4. Prove all canonical write/delete/purge paths maintain derived projection in
+   the same transaction, shadow failure leaves v1 unchanged, runtime roles lack
+   table CRUD, and guarded down/re-up remains clean.
+
 ## Quality Check
 
 - Run the disposable database drill for the changed storage group.
@@ -171,5 +184,8 @@ changes:
 - For Memory direct action/Activity/Usage changes, also run the PostgreSQL 17
   action/undo/purge/replay drill plus every gate in
   `memory-v2-actions-activity-usage.md`.
+- For Memory lexical projection/shadow changes, also run the PostgreSQL 17 CJK
+  BM25 projection/authority/replay drill plus every gate in
+  `memory-v2-lexical-shadow.md`.
 
 **Language**: All documentation should be written in English.

@@ -41,6 +41,28 @@ INSERT INTO messages(
 		_, _ = db.ExecContext(cleanupCtx, `DELETE FROM users WHERE id = $1`, userID)
 	})
 	userCtx := auth.WithUser(ctx, auth.User{ID: userID, DisplayName: "direct"})
+	assertProjectionRevision := func(memoryID string, wantRevision int64) {
+		t.Helper()
+		var count int
+		var revision sql.NullInt64
+		if err := db.QueryRowContext(ctx, `
+SELECT count(*), max(memory_revision)
+FROM user_memory_search_projections WHERE memory_id = $1
+`, memoryID).Scan(&count, &revision); err != nil {
+			t.Fatal(err)
+		}
+		if wantRevision == 0 {
+			if count != 0 || revision.Valid {
+				t.Fatalf("projection %s = count:%d revision:%#v, want removed",
+					memoryID, count, revision)
+			}
+			return
+		}
+		if count != 1 || !revision.Valid || revision.Int64 != wantRevision {
+			t.Fatalf("projection %s = count:%d revision:%#v, want %d",
+				memoryID, count, revision, wantRevision)
+		}
+	}
 
 	hydrated, err := service.HydrateDirectAction(userCtx, DirectActionHydrationInput{
 		ConversationID:     conversationID,
@@ -67,6 +89,7 @@ INSERT INTO messages(
 		created.MemoryID == "" || created.MemoryRevision != 1 || created.ActivityID == "" {
 		t.Fatalf("ExecuteDirectAction() = %#v/%v", created, err)
 	}
+	assertProjectionRevision(created.MemoryID, 1)
 	activities, err := service.ListActivities(userCtx, "", 50)
 	if err != nil || len(activities) != 1 || activities[0].Action != "created" ||
 		activities[0].MemoryContent != "I prefer concise replies" ||
@@ -79,6 +102,7 @@ INSERT INTO messages(
 	if err != nil || undone.Status != "undone" || undone.MemoryRevision != 2 {
 		t.Fatalf("UndoActivity() = %#v/%v", undone, err)
 	}
+	assertProjectionRevision(created.MemoryID, 0)
 	activities, err = service.ListActivities(userCtx, "", 50)
 	if err != nil || len(activities) != 1 || !activities[0].MemoryDeleted ||
 		activities[0].MemoryContent != "" || activities[0].UndoStatus != "undone" {
@@ -129,6 +153,7 @@ INSERT INTO messages(
 	if err != nil || remembered.Status != "applied" || remembered.MemoryRevision != 1 {
 		t.Fatalf("remember for correction = %#v/%v", remembered, err)
 	}
+	assertProjectionRevision(remembered.MemoryID, 1)
 
 	correctSource, correctAssistant := addTurn("Correct that memory to light themes")
 	corrected, err := service.ExecuteDirectAction(userCtx, DirectActionExecution{
@@ -151,6 +176,7 @@ INSERT INTO messages(
 		corrected.MemoryRevision != 2 {
 		t.Fatalf("correct direct memory = %#v/%v", corrected, err)
 	}
+	assertProjectionRevision(remembered.MemoryID, 2)
 	staleCreatedUndo, err := service.UndoActivity(
 		userCtx, remembered.ActivityID, remembered.MemoryRevision,
 	)
@@ -164,6 +190,7 @@ INSERT INTO messages(
 	if err != nil || restored.Status != "undone" || restored.MemoryRevision != 3 {
 		t.Fatalf("corrected undo = %#v/%v", restored, err)
 	}
+	assertProjectionRevision(remembered.MemoryID, 3)
 	var restoredContent, restoredType, restoredSource, restoredAuthority, restoredScope string
 	var restoredImportance int
 	var restoredTagCount int
@@ -258,6 +285,7 @@ SELECT resolved_project_id::text FROM memory_user_actions WHERE id = $1
 		forgotten.ResultCode != "DIRECT_FORGOTTEN" || forgotten.MemoryRevision != 4 {
 		t.Fatalf("direct forget = %#v/%v", forgotten, err)
 	}
+	assertProjectionRevision(remembered.MemoryID, 0)
 	workerID, _ := newUUID()
 	leaseToken, _ := newUUID()
 	var purgeJobID string
@@ -325,4 +353,5 @@ SELECT
 		t.Fatalf("purge residue = canonical:%d evidence:%d revisions:%d manifest:%q",
 			canonicalPlaintext, evidenceCount, revisionSnapshotCount, manifestResult)
 	}
+	assertProjectionRevision(remembered.MemoryID, 0)
 }

@@ -53,6 +53,7 @@ type Handler struct {
 	knowledgeCatalogGate         KnowledgeRoutingCatalogGovernanceGate
 	webSearchService             *websearch.Service
 	userMemoryService            *usermemory.Service
+	memoryLexicalShadowEnabled   bool
 	memoryWakePublisher          MemoryWakePublisher
 	memoryActionProviderResolver MemoryActionProviderResolver
 	contextBudgetPolicy          contextBudgetPolicy
@@ -350,6 +351,12 @@ func WithWebSearchService(service *websearch.Service) HandlerOption {
 func WithUserMemoryService(service *usermemory.Service) HandlerOption {
 	return func(handler *Handler) {
 		handler.userMemoryService = service
+	}
+}
+
+func WithMemoryLexicalShadowEnabled(enabled bool) HandlerOption {
+	return func(handler *Handler) {
+		handler.memoryLexicalShadowEnabled = enabled
 	}
 }
 
@@ -1318,6 +1325,8 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	providerSystemPrompt, memoryPreparation := h.prepareDurableMemory(
 		r.Context(),
 		userMessage.Content,
+		conversationID,
+		assistantMessage.ID,
 		providerSystemPrompt,
 	)
 	providerSystemPromptWithoutFusion := providerSystemPrompt

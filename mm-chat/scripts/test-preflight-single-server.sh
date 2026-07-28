@@ -267,6 +267,14 @@ assert_rejected \
   "${migration_user_mismatch}" \
   "MIGRATION_DATABASE_URL user does not match POSTGRES_USER"
 
+invalid_memory_lexical_shadow="${temp_dir}/invalid-memory-lexical-shadow.env"
+sed 's|^MEMORY_LEXICAL_SHADOW_ENABLED=false$|MEMORY_LEXICAL_SHADOW_ENABLED=maybe|' \
+  "${valid}" >"${invalid_memory_lexical_shadow}"
+chmod 600 "${invalid_memory_lexical_shadow}"
+assert_rejected \
+  "${invalid_memory_lexical_shadow}" \
+  "MEMORY_LEXICAL_SHADOW_ENABLED must be true or false"
+
 migration_password_mismatch="${temp_dir}/migration-password-mismatch.env"
 sed 's|test-migrator-password@postgres|different-password@postgres|' \
   "${valid}" >"${migration_password_mismatch}"
@@ -587,6 +595,7 @@ assert services["postgres"]["environment"] == {
 backend_environment = services["backend"]["environment"]
 assert "neo_chat_api:test-api-password@postgres" in backend_environment["DATABASE_URL"]
 assert "MIGRATION_DATABASE_URL" not in backend_environment
+assert backend_environment["MEMORY_LEXICAL_SHADOW_ENABLED"] == "false"
 
 memory = services["memory-worker"]
 assert memory["profiles"] == ["memory-worker"]

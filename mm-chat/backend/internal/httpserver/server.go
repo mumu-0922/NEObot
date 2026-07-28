@@ -966,6 +966,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 			service: resolvedOptions.imageJobService,
 		}),
 		chat.WithUserMemoryService(userMemoryService),
+		chat.WithMemoryLexicalShadowEnabled(cfg.Memory.LexicalShadowEnabled),
 		chat.WithMemoryWakePublisher(resolvedOptions.memoryWakePublisher),
 		chat.WithMemoryActionProviderResolver(runtimeMemoryActionProviderResolver{
 			service: runtimeConfigService,

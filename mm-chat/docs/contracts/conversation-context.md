@@ -219,10 +219,29 @@ system and user request always win. Assistant metadata may contain only:
   "memory": {
     "retrievedCount": 1,
     "retrievedIds": ["memory-uuid"],
-    "degradationCode": "read_failed"
+    "degradationCode": "read_failed",
+    "lexicalShadow": {
+      "profile": "memory_lexical_cjk_bm25_v1",
+      "status": "completed",
+      "resultCode": "OK",
+      "baselineCount": 1,
+      "exactCount": 1,
+      "bm25Count": 1,
+      "lexicalCount": 1,
+      "overlapCount": 1,
+      "durationMillis": 3
+    }
   }
 }
 ```
+
+`lexicalShadow` is absent unless `MEMORY_LEXICAL_SHADOW_ENABLED=true`. It is
+diagnostic only: migration `058` receives the raw current user message
+transiently, verifies it against the current streaming assistant's completed
+user parent, and durably stores only hashes, Memory IDs/revisions, lane ranks,
+counts, status, and duration. Shadow rows never enter the Provider prompt or
+answer Usage links. A compare failure returns a bounded summary and leaves the
+v1 items and prompt unchanged.
 
 Automatic extraction is allowed only when both `enabled` and
 `auto_record_enabled` are true. It is a bounded background Provider request over
@@ -244,6 +263,8 @@ completed chat answer.
 | Memory or auto-record setting disabled      | zero retrieval/extraction writes                       |
 | no relevant lexical/CJK terms               | no Memory block and no retrieved metadata              |
 | retrieval failure                           | answer continues; bounded `read_failed` metadata only  |
+| lexical shadow disabled                     | zero compare calls and no `lexicalShadow` metadata     |
+| lexical shadow comparison failure           | v1 prompt/Usage and answer remain unchanged; bounded failed summary only |
 | extraction Provider/parse/write failure     | completed answer remains completed; no partial Memory  |
 | vague context or credential-like candidate  | reject candidate; never persist content or secret tags |
 

@@ -2,6 +2,7 @@ package usermemory
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -35,6 +36,78 @@ func TestSearchRelevantReturnsOnlyRelatedTopMemory(t *testing.T) {
 	got, err = service.SearchRelevant(context.Background(), "只回答数字：17 乘以 19 等于多少", 5)
 	if err != nil || len(got) != 0 {
 		t.Fatalf("low-information phrase SearchRelevant() = %#v/%v, want empty", got, err)
+	}
+}
+
+func TestSearchRelevantWithShadowKeepsV1AuthorityAndSanitizesDiagnostics(t *testing.T) {
+	base := &fakeRepository{
+		settings:      Settings{Enabled: true, SearchEnabled: true},
+		settingsFound: true,
+		memories: []Memory{
+			memoryFixture("11111111-1111-4111-8111-111111111111", "preference", "Keep answers concise", 5),
+		},
+	}
+	base.memories[0].Revision = 3
+	base.memories[0].ScopeType = "global"
+	repo := &fakeLexicalShadowRepository{
+		fakeRepository: base,
+		summary: LexicalShadowSummary{
+			ProfileID: "forged-profile", Status: "completed", ResultCode: "raw query leaked",
+			BaselineCount: 99, ExactCount: -1, BM25Count: 99,
+			LexicalCount: 99, OverlapCount: 99, DurationMillis: 999999,
+		},
+	}
+	service := NewService(repo)
+	query := "  Please keep this concise  "
+	items, summary, err := service.SearchRelevantWithShadow(
+		context.Background(),
+		query,
+		"22222222-2222-4222-8222-222222222222",
+		"33333333-3333-4333-8333-333333333333",
+		MaxSearchResults,
+	)
+	if err != nil || len(items) != 1 || items[0].ID != base.memories[0].ID {
+		t.Fatalf("SearchRelevantWithShadow() items = %#v/%v", items, err)
+	}
+	if repo.calls != 1 || repo.input.QueryText != query || len(repo.input.Baseline) != 1 ||
+		repo.input.Baseline[0].MemoryID != items[0].ID ||
+		repo.input.Baseline[0].Revision != 3 ||
+		repo.input.LexicalLimit != MaxLexicalShadowResults {
+		t.Fatalf("shadow input = calls:%d input:%#v", repo.calls, repo.input)
+	}
+	if summary.ProfileID != LexicalShadowProfileID || summary.Status != "failed" ||
+		summary.ResultCode != "COMPARE_FAILED" || summary.BaselineCount != MaxSearchResults ||
+		summary.ExactCount != 0 || summary.BM25Count != 30 ||
+		summary.LexicalCount != MaxLexicalShadowResults ||
+		summary.OverlapCount != MaxSearchResults || summary.DurationMillis != 120000 {
+		t.Fatalf("sanitized shadow summary = %#v", summary)
+	}
+}
+
+func TestSearchRelevantWithShadowFailureLeavesV1ResultUnchanged(t *testing.T) {
+	base := &fakeRepository{
+		settings:      Settings{Enabled: true, SearchEnabled: true},
+		settingsFound: true,
+		memories: []Memory{
+			memoryFixture("11111111-1111-4111-8111-111111111111", "preference", "Keep answers concise", 5),
+		},
+	}
+	base.memories[0].Revision = 1
+	base.memories[0].ScopeType = "global"
+	repo := &fakeLexicalShadowRepository{
+		fakeRepository: base,
+		err:            errors.New("query and content must never enter metadata"),
+	}
+	items, summary, err := NewService(repo).SearchRelevantWithShadow(
+		context.Background(),
+		"Please keep this concise",
+		"22222222-2222-4222-8222-222222222222",
+		"33333333-3333-4333-8333-333333333333",
+		MaxSearchResults,
+	)
+	if err != nil || len(items) != 1 || items[0].ID != base.memories[0].ID ||
+		summary.Status != "failed" || summary.ResultCode != "COMPARE_FAILED" {
+		t.Fatalf("failed shadow changed v1 = items:%#v summary:%#v err:%v", items, summary, err)
 	}
 }
 
@@ -193,3 +266,22 @@ func (r *fakeRepository) MarkUsed(_ context.Context, ids []string, _ time.Time) 
 }
 
 var _ Repository = (*fakeRepository)(nil)
+
+type fakeLexicalShadowRepository struct {
+	*fakeRepository
+	input   LexicalShadowInput
+	summary LexicalShadowSummary
+	err     error
+	calls   int
+}
+
+func (r *fakeLexicalShadowRepository) CompareLexicalShadow(
+	_ context.Context,
+	input LexicalShadowInput,
+) (LexicalShadowSummary, error) {
+	r.calls++
+	r.input = input
+	return r.summary, r.err
+}
+
+var _ LexicalShadowRepository = (*fakeLexicalShadowRepository)(nil)

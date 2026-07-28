@@ -10,37 +10,38 @@ import (
 )
 
 const (
-	DefaultAddr                   = ":8080"
-	DefaultVersion                = "dev"
-	DefaultDBMaxOpenConns         = 10
-	DefaultDBMaxIdleConns         = 5
-	DefaultDBConnMaxLifetime      = 30 * time.Minute
-	DefaultRedisKeyPrefix         = "mm-chat"
-	DefaultRedisRunCancelTTL      = 10 * time.Minute
-	DefaultRedisSessionCacheTTL   = 5 * time.Minute
-	DefaultRedisRateLimitEnabled  = false
-	DefaultRedisRateLimitRequests = 120
-	DefaultRedisRateLimitWindow   = time.Minute
-	DefaultProviderTimeout        = 2 * time.Minute
-	DefaultProviderName           = "Server Default"
-	DefaultStorageBackend         = "local"
-	DefaultLocalStorageDir        = "./data/files"
-	DefaultS3Region               = "us-east-1"
-	DefaultMaxUploadBytes         = int64(25 << 20)
-	AuthModeDevelopment           = "development"
-	AuthModeRequired              = "required"
-	DefaultAuthMode               = AuthModeDevelopment
-	DefaultAuthBootstrapUserID    = "00000000-0000-0000-0000-000000000001"
-	DefaultAuthBootstrapUserName  = "Owner"
-	DefaultAuthSessionTTL         = 7 * 24 * time.Hour
-	DefaultAuthRecoveryTTL        = 30 * time.Minute
-	DefaultAuthSMTPQueueSize      = 100
-	DefaultAuthSMTPTimeout        = 10 * time.Second
-	DefaultTeamMailWorkerLease    = 30 * time.Second
-	DefaultTeamMailWorkerPoll     = 500 * time.Millisecond
-	DefaultTeamMailBackoffBase    = 5 * time.Second
-	DefaultTeamMailBackoffMax     = 15 * time.Minute
-	maximumAuthSMTPQueueSize      = 10_000
+	DefaultAddr                       = ":8080"
+	DefaultVersion                    = "dev"
+	DefaultDBMaxOpenConns             = 10
+	DefaultDBMaxIdleConns             = 5
+	DefaultDBConnMaxLifetime          = 30 * time.Minute
+	DefaultRedisKeyPrefix             = "mm-chat"
+	DefaultRedisRunCancelTTL          = 10 * time.Minute
+	DefaultRedisSessionCacheTTL       = 5 * time.Minute
+	DefaultRedisRateLimitEnabled      = false
+	DefaultRedisRateLimitRequests     = 120
+	DefaultRedisRateLimitWindow       = time.Minute
+	DefaultMemoryLexicalShadowEnabled = false
+	DefaultProviderTimeout            = 2 * time.Minute
+	DefaultProviderName               = "Server Default"
+	DefaultStorageBackend             = "local"
+	DefaultLocalStorageDir            = "./data/files"
+	DefaultS3Region                   = "us-east-1"
+	DefaultMaxUploadBytes             = int64(25 << 20)
+	AuthModeDevelopment               = "development"
+	AuthModeRequired                  = "required"
+	DefaultAuthMode                   = AuthModeDevelopment
+	DefaultAuthBootstrapUserID        = "00000000-0000-0000-0000-000000000001"
+	DefaultAuthBootstrapUserName      = "Owner"
+	DefaultAuthSessionTTL             = 7 * 24 * time.Hour
+	DefaultAuthRecoveryTTL            = 30 * time.Minute
+	DefaultAuthSMTPQueueSize          = 100
+	DefaultAuthSMTPTimeout            = 10 * time.Second
+	DefaultTeamMailWorkerLease        = 30 * time.Second
+	DefaultTeamMailWorkerPoll         = 500 * time.Millisecond
+	DefaultTeamMailBackoffBase        = 5 * time.Second
+	DefaultTeamMailBackoffMax         = 15 * time.Minute
+	maximumAuthSMTPQueueSize          = 10_000
 
 	EnvAddr                   = "MM_CHAT_ADDR"
 	EnvVersion                = "MM_CHAT_VERSION"
@@ -92,6 +93,7 @@ const (
 	EnvTeamMailWorkerPoll     = "TEAM_MAIL_WORKER_POLL_INTERVAL"
 	EnvTeamMailBackoffBase    = "TEAM_MAIL_WORKER_BACKOFF_BASE"
 	EnvTeamMailBackoffMax     = "TEAM_MAIL_WORKER_BACKOFF_MAX"
+	EnvMemoryLexicalShadow    = "MEMORY_LEXICAL_SHADOW_ENABLED"
 )
 
 // Config contains the process-level settings required to start the API.
@@ -111,6 +113,7 @@ type Config struct {
 	BYOK            BYOKConfig
 	Storage         StorageConfig
 	RAG             RAGConfig
+	Memory          MemoryConfig
 	Auth            AuthConfig
 	Team            TeamConfig
 }
@@ -161,6 +164,11 @@ type StorageConfig struct {
 // boundary. Provider credentials are resolved from Postgres/vault at runtime.
 type RAGConfig struct {
 	SourceGatewayToken string
+}
+
+// MemoryConfig contains provider-free Memory reader rollout switches.
+type MemoryConfig struct {
+	LexicalShadowEnabled bool
 }
 
 // S3Config contains MinIO/S3-compatible object storage settings.
@@ -361,6 +369,13 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 
 		RAG: RAGConfig{
 			SourceGatewayToken: optionalEnv(lookup, EnvRAGSourceGatewayToken),
+		},
+		Memory: MemoryConfig{
+			LexicalShadowEnabled: boolEnvOrDefault(
+				lookup,
+				EnvMemoryLexicalShadow,
+				DefaultMemoryLexicalShadowEnabled,
+			),
 		},
 
 		Auth: AuthConfig{

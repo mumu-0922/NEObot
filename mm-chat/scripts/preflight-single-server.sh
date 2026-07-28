@@ -174,6 +174,12 @@ for key in retired_provider_env:
     if key in values:
         fail(f"{key} is retired; configure providers through the server authority")
 
+if (
+    "MEMORY_LEXICAL_SHADOW_ENABLED" in values
+    and values["MEMORY_LEXICAL_SHADOW_ENABLED"] not in {"true", "false"}
+):
+    fail("MEMORY_LEXICAL_SHADOW_ENABLED must be true or false")
+
 required = (
     "FRONTEND_IMAGE",
     "BACKEND_IMAGE",

@@ -20,6 +20,8 @@ conversation summaries.
   marker after deletion, disablement, archive, or generation/epoch drift;
 - normalize and validate types, content, importance, tags, and source IDs;
 - rank only relevant lexical/CJK matches and return at most five;
+- optionally compare that unchanged v1 Top 5 with migration `058` exact/CJK
+  BM25 lanes while keeping the shadow out of prompts and Usage;
 - prevent disabled Memory or disabled auto-record from reading/writing entries.
 
 Provider prompt injection remains in `internal/chat`. Durable extraction runs
@@ -36,6 +38,12 @@ service := usermemory.NewService(repo)
 handler := usermemory.NewHandler(service)
 
 matches, err := service.SearchRelevant(ctx, "keep this concise", 5)
+
+// Called only when MEMORY_LEXICAL_SHADOW_ENABLED=true. The first return value
+// is still the exact v1 result used by the prompt and Usage recorder.
+matches, shadow, err := service.SearchRelevantWithShadow(
+    ctx, rawUserText, conversationID, assistantMessageID, 5,
+)
 ```
 
 Identity is always read from `auth.UserFromContext` through
@@ -57,6 +65,13 @@ capabilities. `GET /v1/memory-activities`,
 `GET /v1/memory-usages?assistantMessageId=...` are backend-only governance
 seams until the PR9 frontend.
 
+Migration `058` adds a rebuildable `user_memory_search_projections` table and
+ID/revision/rank-only lexical shadow observations. Projection maintenance is
+transactional and independent of the rollout flag. The optional
+`LexicalShadowRepository` calls one `go_api_runtime` capability after the v1
+reader completes; any compare failure becomes a bounded summary and cannot
+change v1 items, prompt text, Usage, or chat success.
+
 ## Main API
 
 | Boundary                            | Purpose                                                     |
@@ -65,6 +80,7 @@ seams until the PR9 frontend.
 | `NewService(Repository)`                    | Validation, settings, CRUD, relevance, and optional action authority |
 | `NewHandler(*Service)`                      | JSON HTTP routes and bounded error mapping                          |
 | `SearchRelevant(ctx, query, limit)`         | Relevant-only Top-5 retrieval                                      |
+| `SearchRelevantWithShadow(ctx, query, conversationID, assistantMessageID, limit)` | Unchanged v1 Top 5 plus sanitized comparison diagnostics |
 | `HydrateDirectAction(ctx, input)`           | Bounded current context for the strict direct-user planner          |
 | `ExecuteDirectAction(ctx, input)`           | Local validation plus narrow SQL action capability                  |
 | `ListActivities` / `ListMessageUsages`      | User-scoped polling and answer provenance                           |
@@ -77,6 +93,8 @@ seams until the PR9 frontend.
 handler.go               HTTP contract and DTO mapping
 repository_postgres.go   user-scoped canonical writes and deletion capability
 action_repository_postgres.go  PR6 action, Activity, Usage, and undo capabilities
+lexical_shadow.go        fail-open PR7 orchestration and diagnostic sanitization
+lexical_shadow_repository_postgres.go  narrow migration-058 compare capability
 action_service.go         direct action validation and application IDs
 privacy.go                shared secret/Sensitive classification and redaction
 service.go               validation, settings, normalization, relevance
