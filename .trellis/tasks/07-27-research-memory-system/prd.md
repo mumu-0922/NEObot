@@ -9,8 +9,8 @@ Agent Memory 方案，并在“单服务器、自托管、Go + PostgreSQL + Pyth
 Project/scope/settings foundation、PR3 durable capture worker、PR4 provenance/delete
 correctness、PR5 candidate/Review shadow、PR6 direct-user actions/Activity/Usage、PR7 L1
 exact/CJK BM25 projection shadow 与 PR8 BGE-M3/vector hybrid shadow 已完成。继续保留 v1
-reader，不开放 PR9 治理 UI，不调用 Live provider 或回放 Live Memory；下一批为 PR9
-Project/Conversation policy 与 governance UI。
+reader，不调用 Live provider 或回放 Live Memory；当前批次实施 PR9 Project/Conversation
+policy 与 governance UI。
 
 ## What I Already Know
 
@@ -277,6 +277,35 @@ Project/Conversation policy 与 governance UI。
   budget、cross-user/scope/Sensitive/time/stale/delete过滤、exact replay/conflict、flag-off zero calls、
   v1 byte-equivalent prompt/Usage、role denial 与 guarded down/re-up；不调用 Live Provider、不触碰 Live
   Memory，并通过 focused race、backend full test/vet、Compose/preflight、backend image 与 full gate。
+- [x] PR9 新增顺序 migration `060`，且不修改 migration `001`–`059` 已发布字节；只增加
+  user-bound governance snapshot/mutation capabilities、Review decision audit 与 guarded rollback，
+  `go_api_runtime` 不获得 Project/Review/evidence/revision/diagnostic table CRUD。
+- [x] `/v1/memory-settings` 扩展 Sensitive/L2/L3 preference；新增 current-user Project create/list/
+  edit/archive/restore 与 Conversation membership/Use/Learn `inherit|on|off` policy。移动 Conversation
+  必须 revision/generation-fenced，Archive Project 强制 effective Learn=false 但不改用户显式 mode。
+- [x] Governance Memory list/create/update/move/forget 支持 Global/Project/Conversation scope、expected
+  revision、authority/lifecycle/sensitivity/validity badge；旧 `/v1/memories` Global shape保持兼容。
+  Secret manual/edit input在写库前拒绝；Forget 复用 tombstone/manifest/purge 并返回 immediate hidden、
+  online purge 与 8-week backup-expiry 分层状态，不从 revision 恢复 deleted plaintext。
+- [x] Memory detail 只对 current authenticated owner hydrate surviving evidence、append-only revision
+  timeline 与 Usage links；source 删除只返回 marker。Search diagnostics 只返回 profile/status/fallback/
+  counts/tokens/duration，不暴露 query、content、embedding、raw score 或 Provider authority。
+- [x] Pending Review API 支持 keep current、accept new、edit merge、keep both、reject；每次 decision
+  必须重验 suggestion status/expiry/epoch/scope generation/target revisions/Sensitive authority，显式 user
+  actor 才能创建或 supersede canonical，随后擦除 candidate plaintext并保留 ID/hash/result audit。
+- [x] Server Memory governance UI 展示全局 Use/Learn/Sensitive、Project 与 Conversation policy、三层
+  scope Memory、provenance/history/usage、Review actions、Activity 与 delete progress；Local Memory/Dream
+  在 Server mode继续隐藏而非删除，所有 loading/empty/error/stale 状态和键盘/accessible name 完整。
+- [x] Assistant 回答旁 Activity chip 按 assistant message ID 做可见页短轮询，展示 created/corrected/
+  review/failed bounded状态并复用 revision-safe undo；terminal 后停止 polling，不把 candidate/source
+  raw text复制进 message metadata或浏览器持久化。
+- [x] PR9 只让 Conversation `Use Memory=off` 阻断现有 v1 prompt注入，不切换
+  `active_retrieval_profile_id`、不把 hybrid shadow晋升为 reader、不调用 Live Provider；Project/
+  Conversation scoped Memory在后续 promotion 前仅可治理且不进入 v1 prompt/Usage。
+- [x] PR9 static/Go/PostgreSQL/frontend tests 覆盖 cross-user Project/policy/Memory/Review IDOR、revision/
+  generation drift、archive Learn override、secret zero-plaintext、Review decision replay/conflict、deleted
+  source/history/purge状态、Activity polling/undo、Server authority与 a11y；通过 frontend全套、focused
+  race、backend full test/vet、migration `059 -> 060 -> 059 -> 060`、Compose/preflight/image/full gate。
 
 ## Definition of Done
 
@@ -304,6 +333,10 @@ Project/Conversation policy 与 governance UI。
 - PR8 vector projection/embedding lease、三路 RRF/rerank/budget fallback、secret egress guard、
   least-privilege capability 与 guarded rollback 均有自动化验证；hybrid flag 默认关闭，v1
   Top 5、prompt、Usage 与聊天成功仍是唯一 authority。
+- PR9 Project/Conversation policy、scoped governance、Review decision、detail/history/Usage、
+  Activity chip/undo 与 delete progress 均有跨层自动化验证；Go/SQL 双重 Sensitive/secret
+  防线、legacy wrapper capability、current-only plaintext hydration 与 guarded rollback 已通过
+  PostgreSQL 17 实证，v1 Global Top 5 仍为唯一 prompt/Usage authority。
 
 ## Technical Approach
 
@@ -339,16 +372,14 @@ PostgreSQL v2，外部引擎只能通过可替换 adapter 做 shadow；Hindsight
 
 ## Current Batch Out of Scope
 
-- PR8 不 accept/reject/clear PR5 Review suggestion，不做 Project/Conversation settings CRUD、
-  revision timeline、Activity chip 或 Search diagnostics frontend；完整治理 UI 仍归 PR9。
-- PR8 不切换 v2 reader、不提供 reader promotion API、不把 hybrid shadow 注入 prompt；v1 Top 5
-  与 PR6 Usage 继续是唯一实际注入 authority，500-case gate 与真实 shadow观察期仍是后续门槛。
-- PR8 不读取附件、Knowledge、网页、tool output 或 assistant text作为 query；只处理 current
-  authenticated user query与 current canonical L1 Memory，不实现 L2/L3 embedding 或 relation graph。
-- PR8 实现可用的 Provider seam 但不调用 Live provider、不创建/修改/删除/导出 Live 用户 Memory；
-  embedding/rerank 只用 fake/offline fixtures，vector SQL/rollback 只在 disposable PostgreSQL 验证。
-- PR8 不实现 PR10 encrypted Export/Import/backup retention、PR11/12 L2/L3、PR13 Hindsight；down
-  migration 不得丢弃已经产生的 hybrid observation authority。
+- PR9 不切换 v2 reader、不提供 reader promotion API、不把 lexical/hybrid shadow注入 prompt；除
+  Conversation `Use=off` 显式停用外，v1 Global Top 5 与现有 Usage继续是唯一实际注入 authority。
+- PR9 不实现 Project permanent delete。Project先提供 archive/restore；跨 Project/Conversation/L2/L3/
+  backup 的 permanent-delete preview/confirm 与 off-host manifest/8-week实证归 PR10删除闭环。
+- PR9 不实现 encrypted Export/Import/retention/prune/restore replay、L2/L3 derived内容治理或
+  Hindsight；对应能力仍按 PR10–PR13 顺序实施。
+- PR9 不调用 Live Provider、不回放或修改 Live Memory；Review/mutation/删除链只用 disposable
+  PostgreSQL与离线 fixtures验证，任何真实用户治理动作必须由上线后的 authenticated browser触发。
 - PR10 的 authenticated encrypted off-host deletion manifest/export/import/restore replay 与
   14-day/8-week retention/prune、PR11/12 L2/L3、PR13 Hindsight adapter 继续冻结。
 - 不把 AGENTS/system/project 固定规则迁入概率性 Memory。

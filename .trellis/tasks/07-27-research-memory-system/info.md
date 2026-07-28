@@ -1,7 +1,7 @@
 # Neo Chat Server Memory v2 详细技术方案
 
-状态：完整 end-state 设计已冻结并获授权实施；PR1–PR8 已完成，当前仍保留 v1 reader，
-下一批进入 PR9 Project/Conversation policy 与 governance UI。日期：2026-07-28。
+状态：完整 end-state 设计已冻结并获授权实施；PR1–PR9 已完成，当前仍保留 v1 reader，
+下一批进入 PR10 encrypted Export/Import 与 retention/prune/restore replay。日期：2026-07-28。
 
 > 本文覆盖最终生产形态，不把交付范围收缩为 Phase 0/1。后文 Phase 只是为了降低
 > 数据、隐私和回滚风险而安排的落地顺序，不代表 L2/L3、治理 UI、删除闭环、shadow
@@ -1415,7 +1415,10 @@ response 都带 version，消费者拒绝未知 major 而不是猜测字段。
    `059` 实现 BGE-M3 1024d projection、lease-fenced embedding jobs、Exact/BM25/Vector 独立
    lanes、`RRF(k=60)`、BGE rerank 与 600/900 token budget fallback；hybrid flag 默认关闭，
    v1 Top 5/prompt/Usage 保持唯一 authority，PG17、Compose、Docker build 与 full standalone 已通过。
-9. **PR9：Project/Conversation policy + governance UI** — provenance/review/history/delete progress。
+9. **PR9：Project/Conversation policy + governance UI** — 已于 2026-07-28 以 migration
+   `060` 实现 Project archive/restore、Conversation Use/Learn policy、scoped governance、
+   Review decisions、current-only provenance/history/Usage/Activity hydration 与 delete progress；
+   v1 Global Top 5 继续是唯一 prompt/Usage reader。
 10. **PR10：encrypted Export/Import + retention/prune/restore replay**。
 11. **PR11：L2 Scene shadow/promotion** — 独立 generation/reader/rollback。
 12. **PR12：L3 Persona shadow/promotion** — 独立于 L2。
@@ -1498,6 +1501,7 @@ migration、backup/restore 和跨层安全完成后跑
 11. v1 fallback、feature flags、restore replay、rollback drill 和 full standalone gate 通过；
 12. Hindsight 无论成功或失败都不影响 canonical Memory 和正常聊天。
 
-实施已由魔尊于 2026-07-28 明确启动。PR1–PR8 已按第 17 章顺序完成；当前仍未切换
-v2 reader、未开放 Project/Review API/UI、未调用 Live provider 或回放 Live Memory。
-下一批为 PR9 Project/Conversation policy 与 governance UI，后续批次继续按本章门槛推进。
+实施已由魔尊于 2026-07-28 明确启动。PR1–PR9 已按第 17 章顺序完成；当前仍未切换
+v2 reader、未调用 Live provider 或回放 Live Memory。Project/Review API/UI 已开放为治理面，
+Project/Conversation Memory 尚不进入 prompt/Usage。下一批为 PR10 encrypted Export/Import 与
+retention/prune/restore replay，后续批次继续按本章门槛推进。
