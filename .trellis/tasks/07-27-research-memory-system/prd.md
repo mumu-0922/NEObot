@@ -8,9 +8,9 @@ Agent Memory 方案，并在“单服务器、自托管、Go + PostgreSQL + Pyth
 魔尊已于 2026-07-28 明确回复“开始”，构成实施授权；PR1 benchmark contract、PR2
 Project/scope/settings foundation、PR3 durable capture worker、PR4 provenance/delete
 correctness、PR5 candidate/Review shadow、PR6 direct-user actions/Activity/Usage、PR7 L1
-exact/CJK BM25 projection shadow 与 PR8 BGE-M3/vector hybrid shadow 已完成。继续保留 v1
-reader，不调用 Live provider 或回放 Live Memory；当前批次实施 PR9 Project/Conversation
-policy 与 governance UI。
+exact/CJK BM25 projection shadow、PR8 BGE-M3/vector hybrid shadow、PR9 governance 与
+PR10 encrypted portability/retention 已完成。继续保留 v1 reader，不调用 Live provider 或
+回放 Live Memory；下一批为 PR11 L2 Scene shadow/promotion。
 
 ## What I Already Know
 
@@ -306,6 +306,43 @@ policy 与 governance UI。
   generation drift、archive Learn override、secret zero-plaintext、Review decision replay/conflict、deleted
   source/history/purge状态、Activity polling/undo、Server authority与 a11y；通过 frontend全套、focused
   race、backend full test/vet、migration `059 -> 060 -> 059 -> 060`、Compose/preflight/image/full gate。
+- [x] PR10 新增顺序 migration `061`，且不修改 migration `001`–`060` 已发布字节；新增仅含
+  ID/hash/status 的 import batch 与离线 deletion replay authority，扩展 `source=import`/imported
+  revision contract，并保持 runtime role 无 portability/deletion/import 表级 CRUD。
+- [x] Export 生成 versioned passphrase-encrypted `.mm-memory`：外层固定
+  `filippo.io/age v1.3.1` scrypt authenticated stream，内层严格 canonical JSONL manifest/records；
+  manifest 绑定 format/schema、UTC time、release、history flag、counts 与 records SHA-256。Passphrase
+  只存在请求/命令内存，plaintext archive 不落盘，禁止自造加密或把 passphrase 写入 env/log/job/DB。
+- [x] Export 只包含当前用户 Project metadata、settings suggestion、current L1 canonical Memory 的
+  content/type/scope/lifecycle/validity/sensitivity/tags 与可选 revision history；portable refs 不携带源
+  `user_id` authority。不包含 raw chat/conversation metadata、evidence excerpt、projection/vector、L2/L3、
+  outbox/jobs、Usage/Activity/log、Provider request、credential 或部署 secret。
+- [x] Import 严格执行 `decrypt/authenticate -> manifest hash/schema/caps -> local secret detector -> field/
+  scope validation -> dry-run`，硬上限为解密后 256 MiB、50,000 Memory、200,000 revisions、1,000
+  Projects、单 content 2,000 Unicode code points；解析使用 bounded line buffers，不把整个 plaintext
+  archive 放入内存或 staging table。Secret/credential 只返回 ordinal/hash/reason 的 `REJECT`，正文
+  在任何 staging/persistence 前拒绝。
+- [x] Dry-run 只输出 `NOOP|ADD|REVIEW|REJECT|SCOPE_REQUIRED`，并对外部 Project/Conversation refs
+  强制当前 auth user mapping/create/re-scope/skip；外部 user/project/conversation/Memory ID 不能成为
+  authority。Settings 默认只展示建议且 confirm 不应用；冲突只报 `REVIEW`，不得覆盖 canonical。
+- [x] Confirm 必须重新提交同一 encrypted package，并绑定 auth user、package/manifest/mappings/plan
+  hash、短期签名 token、current Memory revisions、Project/Conversation scope generations 与 authority
+  state hash；任何 drift/tamper/expiry 都要求重新 dry-run。只原子写入 `ADD`，source/authority 均为
+  `import`，不伪造 local message evidence；optional imported revision chain 先验证连续 hash 后受控写入。
+- [x] 提供 encrypted off-host deletion manifest export/replay；manifest 只含 event/user/memory/tombstone
+  opaque ID、content hash、scope generation、visibility epoch、deleted/purged time/result，不含正文。
+  Replay 幂等、Provider-free，必须在 backend 未开放时先恢复立即不可见/正文擦除，再全量重建 derived
+  projection；旧 backup 中匹配 ID/hash 的已删 Memory 不得复活。
+- [x] Production backup wrapper 生成统一 backup-set manifest/checksum pair，并标记
+  `daily|weekly|pre-deploy`、exact relative artifact/checksum path、SHA-256、createdAt 与
+  `containsMemoryPlaintext=true`。Retention command 默认 dry-run，daily 14 天、weekly/pre-deploy 8 周，
+  execute 绑定 plan SHA-256；只处理固定 root 内无 symlink 且 artifact/checksum/manifest 全部校验通过的
+  complete set，任何 drift fail closed，孤立或未纳入 set 的文件不删除。
+- [x] PR10 API/UI/CLI/static/PostgreSQL tests 覆盖 age round-trip/wrong passphrase/tamper、unknown/duplicate/
+  trailing JSON、caps、secret zero-persistence、cross-user mapping、plan/token/state drift、confirm replay、
+  history chain、restore-before-open replay、projection rebuild、retention dry-run/path/symlink/checksum/plan
+  drift 与 guarded `060 -> 061 -> 060 -> 061`；不调用 Live Provider、不读取/修改 Live Memory，v1
+  Global Top 5/prompt/Usage 保持唯一 reader authority。
 
 ## Definition of Done
 
@@ -337,6 +374,9 @@ policy 与 governance UI。
   Activity chip/undo 与 delete progress 均有跨层自动化验证；Go/SQL 双重 Sensitive/secret
   防线、legacy wrapper capability、current-only plaintext hydration 与 guarded rollback 已通过
   PostgreSQL 17 实证，v1 Global Top 5 仍为唯一 prompt/Usage authority。
+- PR10 encrypted portability、off-host deletion replay 与 backup retention 均通过 tamper/authority/
+  rollback/restore 实证；plaintext package/passphrase/secret 不落盘或持久化，受支持 restore 不复活
+  deleted Memory，v1 Global Top 5 仍为唯一 prompt/Usage authority。
 
 ## Technical Approach
 
@@ -372,16 +412,15 @@ PostgreSQL v2，外部引擎只能通过可替换 adapter 做 shadow；Hindsight
 
 ## Current Batch Out of Scope
 
-- PR9 不切换 v2 reader、不提供 reader promotion API、不把 lexical/hybrid shadow注入 prompt；除
-  Conversation `Use=off` 显式停用外，v1 Global Top 5 与现有 Usage继续是唯一实际注入 authority。
-- PR9 不实现 Project permanent delete。Project先提供 archive/restore；跨 Project/Conversation/L2/L3/
-  backup 的 permanent-delete preview/confirm 与 off-host manifest/8-week实证归 PR10删除闭环。
-- PR9 不实现 encrypted Export/Import/retention/prune/restore replay、L2/L3 derived内容治理或
-  Hindsight；对应能力仍按 PR10–PR13 顺序实施。
-- PR9 不调用 Live Provider、不回放或修改 Live Memory；Review/mutation/删除链只用 disposable
-  PostgreSQL与离线 fixtures验证，任何真实用户治理动作必须由上线后的 authenticated browser触发。
-- PR10 的 authenticated encrypted off-host deletion manifest/export/import/restore replay 与
-  14-day/8-week retention/prune、PR11/12 L2/L3、PR13 Hindsight adapter 继续冻结。
+- PR10 不切换 v2 reader、不提供 reader promotion API、不把 lexical/hybrid shadow 注入 prompt；除
+  Conversation `Use=off` 显式停用外，v1 Global Top 5 与现有 Usage 继续是唯一实际注入 authority。
+- PR10 只搬运 current L1 canonical Memory 与可选 imported history，不导出 raw Conversation、evidence
+  excerpt、projection/vector、L2/L3、Usage/Activity、Provider payload 或部署 credential。
+- PR10 不自动应用 imported settings，不通过 import 启用 Learn/Use/Sensitive/L2/L3，也不让 conflict
+  覆盖 canonical；settings 仅作为 suggestion，conflict 仅进入 `REVIEW` 结果。
+- PR10 不调用 Live Provider、不回放或修改 Live Memory；Import、deletion replay、retention 与 rollback
+  只用离线 fixtures 和 disposable PostgreSQL 验证。
+- PR11/12 L2/L3 shadow/promotion 与 PR13 Hindsight adapter 继续冻结，后续严格按顺序实施。
 - 不把 AGENTS/system/project 固定规则迁入概率性 Memory。
 - 不把供应商 benchmark 当作发布门槛；发布必须使用 Neo Chat 中文数据集复测。
 

@@ -844,3 +844,72 @@ the v1 reader as the only production authority.
 
 - Begin PR9 Project/Conversation policy and governance UI without switching the
   v2 reader before its frozen promotion gates pass.
+
+
+## Session 23: Implement Memory v2 portability, restore replay, and retention
+
+**Date**: 2026-07-28
+**Task**: Implement Memory v2 PR10 encrypted portability and backup deletion closure
+**Branch**: `main`
+
+### Summary
+
+Implemented PR10 authenticated `age` Export/Import, deterministic dry-run and
+ADD-only confirm fencing, encrypted off-host deletion replay, verified backup-
+set retention, and Server mode governance UI while keeping the v1 Global Top 5
+as the only prompt and Usage reader.
+
+### Main Changes
+
+- Added migration `061` with ID/hash/status-only import and deletion-replay
+  authority, imported revision history, narrow SECURITY DEFINER capabilities,
+  runtime table-CRUD denial, and guarded rollback.
+- Added canonical bounded JSONL inside pinned `filippo.io/age v1.3.1` scrypt
+  streams, current-user scope mapping, secret-before-persistence controls,
+  HMAC package/plan/state fencing, confirm idempotency, and imported
+  supersession mapping.
+- Added operator deletion export/replay and default-dry-run backup retention
+  bound to a deterministic plan hash, with checksum, traversal, and symlink
+  fail-closed behavior.
+- Added Server mode Export/Import UI and typed client boundaries; Local mode
+  remains unsupported and imported settings remain suggestion-only.
+- Hardened final review findings: normalized duplicate mapping rejection,
+  final-chunk authentication before Project secret errors, and dry-run handling
+  for unavailable imported-history scopes.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `19eaafd` | `feat: add encrypted Memory portability` |
+| `3d51e2e` | `feat: add deletion replay and backup retention` |
+| `236646d` | `feat: add Memory portability governance UI` |
+| `203f35c` | `docs: document Memory portability and restore operations` |
+
+The final task-record commit contains this PRD/info/research/journal update.
+Nothing was pushed or archived.
+
+### Testing
+
+- [OK] Focused portability, retention, and migration contract tests.
+- [OK] `go test -race ./internal/usermemory ./internal/migration ./cmd/migrate ./cmd/admin`,
+  full backend tests, and `go vet ./...`.
+- [OK] PostgreSQL 17 portability round-trip, runtime-role denial, deletion
+  replay/projection rebuild, empty apply, guarded `060 -> 061 -> 060 -> 061`,
+  and final disposable database restoration to migration `059`.
+- [OK] Frontend format/lint/typecheck, 198 files / 961 tests, and production
+  build.
+- [OK] Single-server preflight and full standalone gate: frontend 961 tests,
+  backend tests/vet, and RAG 1,906 passed / 7 skipped.
+- [OK] Change, quality, and targeted security gates passed. The whole-frontend
+  scanner reported only pre-existing non-diff detector fixtures/sanitized HTML
+  paths; PR10 production diffs added no Critical/High finding.
+
+### Status
+
+[OK] **PR10 completed; parent Memory v2 task remains in progress**
+
+### Next Steps
+
+- After the approved batched commits, begin PR11 L2 Scene shadow/promotion as a
+  separate rollback domain without promoting the v2 reader early.
