@@ -283,6 +283,18 @@ assert_rejected \
   "${invalid_memory_hybrid_shadow}" \
   "MEMORY_HYBRID_SHADOW_ENABLED must be true or false"
 
+for memory_l2_flag in \
+  MEMORY_L2_SCENE_SHADOW_ENABLED \
+  MEMORY_L2_SCENE_READER_ENABLED; do
+  invalid_memory_l2_flag="${temp_dir}/invalid-${memory_l2_flag}.env"
+  sed "s|^${memory_l2_flag}=false$|${memory_l2_flag}=maybe|" \
+    "${valid}" >"${invalid_memory_l2_flag}"
+  chmod 600 "${invalid_memory_l2_flag}"
+  assert_rejected \
+    "${invalid_memory_l2_flag}" \
+    "${memory_l2_flag} must be true or false"
+done
+
 migration_password_mismatch="${temp_dir}/migration-password-mismatch.env"
 sed 's|test-migrator-password@postgres|different-password@postgres|' \
   "${valid}" >"${migration_password_mismatch}"
@@ -605,6 +617,8 @@ assert "neo_chat_api:test-api-password@postgres" in backend_environment["DATABAS
 assert "MIGRATION_DATABASE_URL" not in backend_environment
 assert backend_environment["MEMORY_LEXICAL_SHADOW_ENABLED"] == "false"
 assert backend_environment["MEMORY_HYBRID_SHADOW_ENABLED"] == "false"
+assert backend_environment["MEMORY_L2_SCENE_SHADOW_ENABLED"] == "false"
+assert backend_environment["MEMORY_L2_SCENE_READER_ENABLED"] == "false"
 
 memory = services["memory-worker"]
 assert memory["profiles"] == ["memory-worker"]
@@ -623,6 +637,8 @@ assert memory["depends_on"] == {
 memory_environment = memory["environment"]
 assert "memory_worker:test-memory-worker-password@postgres" in memory_environment["MEMORY_WORKER_DATABASE_URL"]
 assert memory_environment["MEMORY_HYBRID_SHADOW_ENABLED"] == "false"
+assert memory_environment["MEMORY_L2_SCENE_SHADOW_ENABLED"] == "false"
+assert "MEMORY_L2_SCENE_READER_ENABLED" not in memory_environment
 assert memory_environment["PROVIDER_TIMEOUT"] == "45s"
 assert memory_environment["REDIS_URL"].startswith("redis://")
 assert "DATABASE_URL" not in memory_environment

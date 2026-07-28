@@ -36,6 +36,8 @@ type Worker struct {
 	embeddingRepository EmbeddingRepository
 	embeddingProvider   MemoryEmbeddingProvider
 	embeddingEnabled    bool
+	sceneRepository     SceneRepository
+	sceneShadowEnabled  bool
 	workerID            string
 	leaseDuration       time.Duration
 	providerTimeout     time.Duration
@@ -100,6 +102,10 @@ func WithEmbeddingEnabled(enabled bool) Option {
 	return func(worker *Worker) { worker.embeddingEnabled = enabled }
 }
 
+func WithSceneShadowEnabled(enabled bool) Option {
+	return func(worker *Worker) { worker.sceneShadowEnabled = enabled }
+}
+
 func New(
 	repository Repository,
 	providerResolver ProviderResolver,
@@ -136,6 +142,14 @@ func New(
 			return nil, errors.New("memory embedding repository and provider are required")
 		}
 		worker.embeddingRepository = embeddingRepository
+	}
+	if sceneRepository, ok := worker.repository.(SceneRepository); ok {
+		worker.sceneRepository = sceneRepository
+	} else if worker.sceneShadowEnabled {
+		return nil, errors.New("L2 Scene repository is required")
+	}
+	if worker.sceneShadowEnabled && worker.embeddingProvider == nil {
+		return nil, errors.New("L2 Scene embedding provider is required")
 	}
 	if strings.TrimSpace(worker.workerID) == "" || worker.leaseDuration < 5*time.Second ||
 		worker.leaseDuration > 15*time.Minute || worker.providerTimeout <= 0 ||
@@ -188,6 +202,14 @@ func (w *Worker) runLane(ctx context.Context, wake <-chan struct{}) {
 }
 
 func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
+	// Provider-free stale Scene purge has deletion priority and remains active
+	// even when all L2 Provider work is disabled.
+	if w.sceneRepository != nil {
+		processed, err := w.processSceneOne(ctx, false)
+		if err != nil || processed {
+			return processed, err
+		}
+	}
 	leaseToken, err := chat.NewUUID()
 	if err != nil {
 		return false, err
@@ -198,7 +220,19 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 	}
 	if !found {
 		if w.embeddingEnabled {
-			return w.processEmbeddingOne(ctx)
+			processed, embeddingErr := w.processEmbeddingOne(ctx)
+			if embeddingErr != nil || processed {
+				return processed, embeddingErr
+			}
+		}
+		if w.sceneRepository != nil {
+			processed, sceneErr := w.processSceneOne(ctx, w.sceneShadowEnabled)
+			if sceneErr != nil || processed {
+				return processed, sceneErr
+			}
+			if w.sceneShadowEnabled {
+				return w.processSceneEmbeddingOne(ctx)
+			}
 		}
 		return false, nil
 	}

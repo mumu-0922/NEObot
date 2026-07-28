@@ -23,6 +23,8 @@ const (
 	DefaultRedisRateLimitWindow       = time.Minute
 	DefaultMemoryLexicalShadowEnabled = false
 	DefaultMemoryHybridShadowEnabled  = false
+	DefaultMemoryL2SceneShadowEnabled = false
+	DefaultMemoryL2SceneReaderEnabled = false
 	DefaultProviderTimeout            = 2 * time.Minute
 	DefaultProviderName               = "Server Default"
 	DefaultStorageBackend             = "local"
@@ -96,6 +98,8 @@ const (
 	EnvTeamMailBackoffMax     = "TEAM_MAIL_WORKER_BACKOFF_MAX"
 	EnvMemoryLexicalShadow    = "MEMORY_LEXICAL_SHADOW_ENABLED"
 	EnvMemoryHybridShadow     = "MEMORY_HYBRID_SHADOW_ENABLED"
+	EnvMemoryL2SceneShadow    = "MEMORY_L2_SCENE_SHADOW_ENABLED"
+	EnvMemoryL2SceneReader    = "MEMORY_L2_SCENE_READER_ENABLED"
 )
 
 // Config contains the process-level settings required to start the API.
@@ -172,6 +176,8 @@ type RAGConfig struct {
 type MemoryConfig struct {
 	LexicalShadowEnabled bool
 	HybridShadowEnabled  bool
+	L2SceneShadowEnabled bool
+	L2SceneReaderEnabled bool
 }
 
 // S3Config contains MinIO/S3-compatible object storage settings.
@@ -383,6 +389,16 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 				lookup,
 				EnvMemoryHybridShadow,
 				DefaultMemoryHybridShadowEnabled,
+			),
+			L2SceneShadowEnabled: boolEnvOrDefault(
+				lookup,
+				EnvMemoryL2SceneShadow,
+				DefaultMemoryL2SceneShadowEnabled,
+			),
+			L2SceneReaderEnabled: boolEnvOrDefault(
+				lookup,
+				EnvMemoryL2SceneReader,
+				DefaultMemoryL2SceneReaderEnabled,
 			),
 		},
 

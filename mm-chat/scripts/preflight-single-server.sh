@@ -186,6 +186,13 @@ if (
 ):
     fail("MEMORY_HYBRID_SHADOW_ENABLED must be true or false")
 
+for key in (
+    "MEMORY_L2_SCENE_SHADOW_ENABLED",
+    "MEMORY_L2_SCENE_READER_ENABLED",
+):
+    if key in values and values[key] not in {"true", "false"}:
+        fail(f"{key} must be true or false")
+
 required = (
     "FRONTEND_IMAGE",
     "BACKEND_IMAGE",

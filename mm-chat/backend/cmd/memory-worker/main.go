@@ -35,26 +35,28 @@ const (
 	envRedisURL         = "REDIS_URL"
 	envRedisKeyPrefix   = "REDIS_KEY_PREFIX"
 	envHybridShadow     = config.EnvMemoryHybridShadow
+	envL2SceneShadow    = config.EnvMemoryL2SceneShadow
 	databaseOpenTimeout = 10 * time.Second
 	redisOpenTimeout    = 2 * time.Second
 	healthcheckTimeout  = 10 * time.Second
 )
 
 type workerConfig struct {
-	databaseURL         string
-	maxOpenConns        int
-	maxIdleConns        int
-	connMaxLifetime     time.Duration
-	concurrency         int
-	leaseDuration       time.Duration
-	pollInterval        time.Duration
-	backoffBase         time.Duration
-	backoffMax          time.Duration
-	providerTimeout     time.Duration
-	providerKeyring     string
-	redisURL            string
-	redisKeyPrefix      string
-	hybridShadowEnabled bool
+	databaseURL          string
+	maxOpenConns         int
+	maxIdleConns         int
+	connMaxLifetime      time.Duration
+	concurrency          int
+	leaseDuration        time.Duration
+	pollInterval         time.Duration
+	backoffBase          time.Duration
+	backoffMax           time.Duration
+	providerTimeout      time.Duration
+	providerKeyring      string
+	redisURL             string
+	redisKeyPrefix       string
+	hybridShadowEnabled  bool
+	l2SceneShadowEnabled bool
 }
 
 func main() {
@@ -119,6 +121,7 @@ func run(
 			memoryworker.NewStoredRAGEmbeddingProvider(runtimeService),
 		),
 		memoryworker.WithEmbeddingEnabled(resolved.hybridShadowEnabled),
+		memoryworker.WithSceneShadowEnabled(resolved.l2SceneShadowEnabled),
 		memoryworker.WithLeaseDuration(resolved.leaseDuration),
 		memoryworker.WithProviderTimeout(resolved.providerTimeout),
 		memoryworker.WithPollInterval(resolved.pollInterval),
@@ -235,14 +238,19 @@ func loadWorkerConfig(lookup func(string) (string, bool)) (workerConfig, error) 
 	if err != nil {
 		return workerConfig{}, err
 	}
+	l2SceneShadowEnabled, err := boolSetting(lookup, envL2SceneShadow, false)
+	if err != nil {
+		return workerConfig{}, err
+	}
 	return workerConfig{
 		databaseURL: databaseURL, maxOpenConns: maxOpen, maxIdleConns: maxIdle,
 		connMaxLifetime: connLifetime, concurrency: concurrency,
 		leaseDuration: lease, pollInterval: poll, backoffBase: base,
 		backoffMax: maximum, providerTimeout: providerTimeout,
 		providerKeyring: keyring, redisURL: env(lookup, envRedisURL, ""),
-		redisKeyPrefix:      env(lookup, envRedisKeyPrefix, config.DefaultRedisKeyPrefix),
-		hybridShadowEnabled: hybridShadowEnabled,
+		redisKeyPrefix:       env(lookup, envRedisKeyPrefix, config.DefaultRedisKeyPrefix),
+		hybridShadowEnabled:  hybridShadowEnabled,
+		l2SceneShadowEnabled: l2SceneShadowEnabled,
 	}, nil
 }
 

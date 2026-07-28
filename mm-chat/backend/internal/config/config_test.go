@@ -94,6 +94,14 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 		t.Fatalf("Memory.HybridShadowEnabled = %v, want %v",
 			cfg.Memory.HybridShadowEnabled, DefaultMemoryHybridShadowEnabled)
 	}
+	if cfg.Memory.L2SceneShadowEnabled != DefaultMemoryL2SceneShadowEnabled {
+		t.Fatalf("Memory.L2SceneShadowEnabled = %v, want %v",
+			cfg.Memory.L2SceneShadowEnabled, DefaultMemoryL2SceneShadowEnabled)
+	}
+	if cfg.Memory.L2SceneReaderEnabled != DefaultMemoryL2SceneReaderEnabled {
+		t.Fatalf("Memory.L2SceneReaderEnabled = %v, want %v",
+			cfg.Memory.L2SceneReaderEnabled, DefaultMemoryL2SceneReaderEnabled)
+	}
 	if cfg.Auth.Mode != DefaultAuthMode {
 		t.Fatalf("Auth.Mode = %q, want %q", cfg.Auth.Mode, DefaultAuthMode)
 	}
@@ -165,6 +173,8 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 		EnvRAGSourceGatewayToken:  " fake-source-gateway-token ",
 		EnvMemoryLexicalShadow:    " true ",
 		EnvMemoryHybridShadow:     " true ",
+		EnvMemoryL2SceneShadow:    " true ",
+		EnvMemoryL2SceneReader:    " true ",
 		EnvAuthMode:               " required ",
 		EnvAuthBootstrapUserID:    " 77777777-7777-4777-8777-777777777777 ",
 		EnvAuthBootstrapUserName:  " Server Owner ",
@@ -263,6 +273,12 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	}
 	if !cfg.Memory.HybridShadowEnabled {
 		t.Fatal("Memory.HybridShadowEnabled = false, want true")
+	}
+	if !cfg.Memory.L2SceneShadowEnabled {
+		t.Fatal("Memory.L2SceneShadowEnabled = false, want true")
+	}
+	if !cfg.Memory.L2SceneReaderEnabled {
+		t.Fatal("Memory.L2SceneReaderEnabled = false, want true")
 	}
 	if cfg.Auth.Mode != AuthModeRequired {
 		t.Fatalf("Auth.Mode = %q, want required", cfg.Auth.Mode)

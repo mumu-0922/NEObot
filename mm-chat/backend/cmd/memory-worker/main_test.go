@@ -24,8 +24,25 @@ func TestLoadWorkerConfigDefaults(t *testing.T) {
 		resolved.concurrency != 2 || resolved.leaseDuration != 2*time.Minute ||
 		resolved.providerTimeout != 45*time.Second ||
 		resolved.redisKeyPrefix != config.DefaultRedisKeyPrefix ||
-		resolved.hybridShadowEnabled {
+		resolved.hybridShadowEnabled || resolved.l2SceneShadowEnabled {
 		t.Fatalf("config = %#v", resolved)
+	}
+}
+
+func TestLoadWorkerConfigL2SceneShadowFlag(t *testing.T) {
+	values := map[string]string{
+		envDatabaseURL:     "postgres://worker:fixture@postgres/neo_chat",
+		envProviderKeyring: "/run/secrets/provider-keyring.json",
+		envL2SceneShadow:   " true ",
+	}
+	resolved, err := loadWorkerConfig(mapLookup(values))
+	if err != nil || !resolved.l2SceneShadowEnabled {
+		t.Fatalf("L2 Scene worker config = %#v/%v", resolved, err)
+	}
+	values[envL2SceneShadow] = "sometimes"
+	if _, err := loadWorkerConfig(mapLookup(values)); err == nil ||
+		!strings.Contains(err.Error(), envL2SceneShadow) {
+		t.Fatalf("invalid L2 Scene flag error = %v", err)
 	}
 }
 
