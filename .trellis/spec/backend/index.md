@@ -16,6 +16,7 @@
 | [Memory v2 storage](./memory-v2-storage.md) | Project/scope/settings foundation, Global v1 repository compatibility, ownership constraints, and guarded rollback |
 | [Memory v2 worker](./memory-v2-worker.md) | ID-only completed-turn capture, leased PostgreSQL jobs, private Go worker, Redis wake, least privilege, replay, and rollback |
 | [Memory v2 provenance/delete](./memory-v2-provenance-deletion.md) | Canonical revisions, ID/hash evidence, visibility epochs, tombstones, manifests, and provider-free purge |
+| [Memory v2 candidate/Review](./memory-v2-candidate-review.md) | Strict candidate batches, proposal-only conflict/scope/temporal routing, Review shadow, and provider-free expiry |
 
 ## Pre-Development Checklist
 
@@ -114,6 +115,17 @@ manifests, or purge changes:
 4. Prove backfill, append-only revisions, cross-user denial, manual precedence,
    stale epoch/lease denial, idempotent plaintext wipe, and guarded down/re-up.
 
+For Memory extraction candidates, Review suggestions, conflict/scope/temporal
+routing, or Review expiry changes:
+
+1. Read [`memory-v2-candidate-review.md`](./memory-v2-candidate-review.md).
+2. Preserve candidate-wide atomic proposal and keep every PR5 outcome out of
+   canonical Memory and every active reader.
+3. Trace redacted context -> strict extraction -> bounded decision -> SQL
+   proposal -> committed replay/30-day provider-free expiry.
+4. Prove secret zero-plaintext, evidence/scope/target ownership, exact/manual/
+   temporal routing, old-apply denial, and guarded down/re-up.
+
 ## Quality Check
 
 - Run the disposable database drill for the changed storage group.
@@ -141,5 +153,7 @@ manifests, or purge changes:
   preflight/Compose, and backend-image gates defined in `memory-v2-worker.md`.
 - For Memory provenance/delete changes, also run the PostgreSQL 17 deletion
   drill and every gate in `memory-v2-provenance-deletion.md`.
+- For Memory candidate/Review changes, also run the PostgreSQL 17 proposal and
+  expiry drill plus every gate in `memory-v2-candidate-review.md`.
 
 **Language**: All documentation should be written in English.

@@ -22,7 +22,7 @@ Settings UI -> typed frontend API -> HTTP Handler -> Service -> Repository
                                                         -> Postgres 035 + 053 + 055
 Chat Handler -> Service.SearchRelevant -> guarded Provider system context
 Chat finalize transaction -> ID-only outbox/job -> private Go Memory Worker
-  -> bounded Provider extractor -> lease-fenced Service.StoreExtracted adapter
+  -> strict Provider candidate/decision -> migration-056 Review shadow proposal
 ```
 
 `usermemory` owns storage and deterministic relevance. `internal/chat` owns
@@ -43,7 +43,8 @@ cycle.
 | v1 repository is explicitly Global-only                 | PR2 adds scopes before adding a v2 reader/API                                        | Project/Conversation rows remain invisible to v1 CRUD |
 | Scope uniqueness uses three partial indexes              | Exact overrides must coexist across Global, Project, and Conversation                | `ON CONFLICT` must repeat the Global index predicate |
 | Canonical revision with one prior snapshot               | Avoid a second mutable fact store while preserving edit evidence                      | Controlled purge is the only permitted revision update |
-| Manual authority wins exact automatic collisions         | A model must not silently overwrite an explicit user action                           | Semantic conflict/Review remains deferred to PR5 |
+| Manual authority wins every automatic conflict           | A model must not silently overwrite an explicit user action                           | PR5 records a pending Review target/revision while canonical remains unchanged |
+| Worker reuses validation but not the legacy write method | Candidate limits must stay aligned without preserving PR3 auto-apply                  | `NormalizeCandidateForStorage` is pure; `StoreExtracted` has no production caller |
 
 ## Validation and limits
 
@@ -69,6 +70,7 @@ cycle.
 | Cross-user or stale worker apply         | Migration `054` lease/user/source/generation/profile-fenced functions and no direct table access |
 | Deleted Memory resurrected by an old response | Migration `055` rechecks live epoch, source hash, targeted tombstone, and lease at apply |
 | Deleted plaintext retained online        | A provider-free purge job clears canonical/revision/evidence plaintext idempotently |
+| Candidate model output mutates canonical | Migration `056` revokes old worker apply and permits only atomic shadow/Review proposal functions |
 
 Known limitation: deterministic lexical/CJK matching is intentionally
 conservative and may miss semantic paraphrases. Any future embedding lane must
@@ -93,3 +95,5 @@ real Provider cross-conversation recall/delete proof.
 - 2026-07-28: migration-055 canonical provenance, append-only revisions,
   targeted tombstones, deletion manifests, and online plaintext purge
   (Memory v2 PR4).
+- 2026-07-28: migration-056 candidate/Review shadow and canonical auto-apply
+  revocation; v1 reader/API remain unchanged (Memory v2 PR5).

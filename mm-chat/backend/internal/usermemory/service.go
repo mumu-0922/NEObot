@@ -254,6 +254,18 @@ func (s *Service) create(
 	})
 }
 
+// NormalizeCandidateForStorage applies the canonical Memory validation and
+// normalization contract without performing a write. The durable Memory
+// worker uses this before submitting an untrusted proposal batch to the
+// lease-fenced PostgreSQL capability.
+func NormalizeCandidateForStorage(input Candidate) (Candidate, string, error) {
+	normalized, err := normalizeCandidate(input)
+	if err != nil {
+		return Candidate{}, "", err
+	}
+	return normalized, normalizeSearchText(normalized.Content), nil
+}
+
 func (s *Service) requireRepository() error {
 	if s == nil || s.repo == nil {
 		return ErrDatabaseRequired

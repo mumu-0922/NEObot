@@ -18,8 +18,10 @@ conversation summaries.
 - prevent disabled Memory or disabled auto-record from reading/writing entries.
 
 Provider prompt injection remains in `internal/chat`. Durable extraction runs
-in `internal/memoryworker`, which adapts its lease-fenced candidate writes back
-through `Service.StoreExtracted`; this package still has no Provider dependency.
+in `internal/memoryworker`; PR5 reuses only
+`NormalizeCandidateForStorage` and persists candidate-wide shadow/Review
+proposals through migration `056`. It no longer calls the legacy
+`Service.StoreExtracted` canonical write path.
 
 ## Usage
 
@@ -50,6 +52,7 @@ shapes remain unchanged.
 | `NewHandler(*Service)`              | JSON HTTP routes and bounded error mapping                  |
 | `SearchRelevant(ctx, query, limit)` | Relevant-only Top-5 retrieval                               |
 | `StoreExtracted(ctx, input)`        | Opt-in bounded AI candidate persistence                     |
+| `NormalizeCandidateForStorage(in)`  | Shared validation/normalization without a write              |
 
 ## Files
 

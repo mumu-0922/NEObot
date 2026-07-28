@@ -9,19 +9,19 @@ import (
 	"time"
 
 	"neo-chat/mm-chat/backend/internal/chat"
-	"neo-chat/mm-chat/backend/internal/usermemory"
 )
 
 const (
-	errorUnsupportedSchema = "UNSUPPORTED_SCHEMA"
-	errorUnsupportedStage  = "UNSUPPORTED_STAGE"
-	errorSourceDrift       = "SOURCE_DRIFT"
-	errorProfileDrift      = "PROFILE_DRIFT"
-	errorProviderInvalid   = "PROVIDER_INVALID"
-	errorProviderFailed    = "PROVIDER_FAILED"
-	errorExtractionInvalid = "EXTRACTION_INVALID"
-	errorApplyFailed       = "APPLY_FAILED"
-	errorPurgeFailed       = "PURGE_FAILED"
+	errorUnsupportedSchema  = "UNSUPPORTED_SCHEMA"
+	errorUnsupportedStage   = "UNSUPPORTED_STAGE"
+	errorSourceDrift        = "SOURCE_DRIFT"
+	errorProfileDrift       = "PROFILE_DRIFT"
+	errorProviderInvalid    = "PROVIDER_INVALID"
+	errorProviderFailed     = "PROVIDER_FAILED"
+	errorExtractionInvalid  = "EXTRACTION_INVALID"
+	errorProposalFailed     = "PROPOSAL_FAILED"
+	errorPurgeFailed        = "PURGE_FAILED"
+	errorReviewExpiryFailed = "REVIEW_EXPIRY_FAILED"
 )
 
 type Worker struct {
@@ -215,6 +215,11 @@ func (w *Worker) process(ctx context.Context, job Job) (string, bool, error) {
 			return errorPurgeFailed, terminalPurgeError(err), err
 		}
 		return "", false, nil
+	case "review_expire":
+		if _, err := w.repository.ExpireReviews(ctx, job); err != nil {
+			return errorReviewExpiryFailed, terminalReviewExpiryError(err), err
+		}
+		return "", false, nil
 	case "extract":
 		// Continue through the Provider-backed extraction path below.
 	default:
@@ -229,6 +234,9 @@ func (w *Worker) process(ctx context.Context, job Job) (string, bool, error) {
 		capture.ProcessingProfile != job.ProcessingProfile {
 		return errorProfileDrift, true, ErrProviderProfileInvalid
 	}
+	if capture.ProposalCommitted {
+		return "", false, nil
+	}
 	provider, err := w.providerResolver.Resolve(ctx, capture)
 	if err != nil {
 		return errorProviderInvalid, true, err
@@ -239,28 +247,69 @@ func (w *Worker) process(ctx context.Context, job Job) (string, bool, error) {
 		providerCtx,
 		provider,
 		chat.ModelRef{ProviderID: capture.ProviderID, ModelID: capture.ModelID},
-		capture.UserMessageContent,
+		job,
+		capture,
 	)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 			return errorProviderFailed, false, err
 		}
-		if strings.Contains(err.Error(), "response is not JSON") ||
-			strings.Contains(err.Error(), "decode memory extraction response") ||
+		if strings.Contains(err.Error(), "decode memory extraction response") ||
+			strings.Contains(err.Error(), "candidate count is invalid") ||
 			strings.Contains(err.Error(), "output exceeded limit") {
 			return errorExtractionInvalid, false, err
 		}
 		return errorProviderFailed, false, err
 	}
-	adapter := &leasedMemoryRepository{repository: w.repository, job: job}
-	_, err = usermemory.NewService(adapter).StoreExtracted(ctx, usermemory.ExtractionInput{
-		ConversationID: job.SourceConversationID,
-		MessageID:      job.SourceMessageID,
-		Candidates:     candidates,
+	decisions, err := decideCandidates(
+		providerCtx,
+		provider,
+		chat.ModelRef{ProviderID: capture.ProviderID, ModelID: capture.ModelID},
+		job,
+		capture,
+		candidates,
+	)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			return errorProviderFailed, false, err
+		}
+		if strings.Contains(err.Error(), "decision") ||
+			strings.Contains(err.Error(), "provider JSON") {
+			return errorExtractionInvalid, false, err
+		}
+		return errorProviderFailed, false, err
+	}
+	proposals, err := buildCaptureProposals(job, capture, candidates, decisions)
+	if err != nil {
+		return errorExtractionInvalid, false, err
+	}
+	expiryJobID, err := chat.NewUUID()
+	if err != nil {
+		return errorProposalFailed, false, err
+	}
+	summary, err := w.repository.ProposeCandidates(ctx, job, ProposalBatch{
+		ExpiryJobID:          expiryJobID,
+		CandidateSchemaMajor: CandidateSchemaMajor,
+		ExtractionProfileID: proposalProfile(
+			job.ProcessingProfile, extractionPromptVersion,
+		),
+		DecisionProfileID: proposalProfile(
+			job.ProcessingProfile, decisionPromptVersion,
+		),
+		Candidates: proposals,
 	})
 	if err != nil {
-		return classifyApplyError(err), terminalApplyError(err), err
+		return classifyProposalError(err), terminalProposalError(err), err
 	}
+	w.logger.InfoContext(
+		ctx,
+		"memory_capture_proposed",
+		slog.String("job_id", job.JobID),
+		slog.Int("proposal_count", summary.ProposalCount),
+		slog.Int("shadow_count", summary.ShadowCount),
+		slog.Int("review_count", summary.ReviewCount),
+		slog.Int("rejected_count", summary.RejectedCount),
+	)
 	return "", false, nil
 }
 
@@ -293,7 +342,7 @@ func classifyHydrationError(err error) string {
 	case strings.Contains(value, "PROVIDER_UNAVAILABLE"):
 		return errorProviderInvalid
 	default:
-		return errorApplyFailed
+		return errorProposalFailed
 	}
 }
 
@@ -306,7 +355,7 @@ func terminalHydrationError(err error) bool {
 		strings.Contains(value, "PROVIDER_UNAVAILABLE")
 }
 
-func classifyApplyError(err error) string {
+func classifyProposalError(err error) string {
 	value := strings.ToUpper(err.Error())
 	if strings.Contains(value, "SOURCE_DRIFT") ||
 		strings.Contains(value, "SOURCE_TOMBSTONED") ||
@@ -314,11 +363,11 @@ func classifyApplyError(err error) string {
 		strings.Contains(value, "VISIBILITY_EPOCH_DRIFT") {
 		return errorSourceDrift
 	}
-	return errorApplyFailed
+	return errorProposalFailed
 }
 
-func terminalApplyError(err error) bool {
-	return classifyApplyError(err) == errorSourceDrift
+func terminalProposalError(err error) bool {
+	return classifyProposalError(err) == errorSourceDrift
 }
 
 func terminalPurgeError(err error) bool {
@@ -327,44 +376,8 @@ func terminalPurgeError(err error) bool {
 		strings.Contains(value, "MEMORY_PURGE_TARGET_DRIFT")
 }
 
-type leasedMemoryRepository struct {
-	repository Repository
-	job        Job
-}
-
-func (r *leasedMemoryRepository) GetSettings(context.Context) (usermemory.Settings, bool, error) {
-	return usermemory.Settings{Enabled: true, AutoRecordEnabled: true}, true, nil
-}
-
-func (r *leasedMemoryRepository) Create(
-	ctx context.Context,
-	input usermemory.CreateInput,
-) (usermemory.Memory, error) {
-	if input.Source != "ai" || input.SourceConversationID != r.job.SourceConversationID ||
-		input.SourceMessageID != r.job.SourceMessageID || !input.Enabled {
-		return usermemory.Memory{}, errors.New("memory worker candidate source is invalid")
-	}
-	return r.repository.ApplyCandidate(ctx, r.job, input)
-}
-
-func (r *leasedMemoryRepository) UpsertSettings(context.Context, usermemory.Settings) (usermemory.Settings, error) {
-	return usermemory.Settings{}, errors.New("memory worker settings mutation is forbidden")
-}
-
-func (r *leasedMemoryRepository) List(context.Context) ([]usermemory.Memory, error) {
-	return nil, errors.New("memory worker listing is forbidden")
-}
-
-func (r *leasedMemoryRepository) Update(context.Context, string, usermemory.UpdateInput) (usermemory.Memory, error) {
-	return usermemory.Memory{}, errors.New("memory worker update is forbidden")
-}
-
-func (r *leasedMemoryRepository) Delete(context.Context, string) error {
-	return errors.New("memory worker delete is forbidden")
-}
-
-func (r *leasedMemoryRepository) MarkUsed(context.Context, []string, time.Time) error {
-	return errors.New("memory worker mark-used is forbidden")
+func terminalReviewExpiryError(err error) bool {
+	return false
 }
 
 func (w *Worker) CheckReady(ctx context.Context) (Readiness, error) {

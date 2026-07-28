@@ -6,13 +6,14 @@
   latency or making Redis authoritative.
 - Recover safely from Provider failures, process crashes, lease expiry, and
   rolling restarts.
-- Reuse existing Server provider/vault and `usermemory` validation semantics.
-- Restrict the worker to one leased user's source and candidate-apply path.
+- Reuse existing Server provider/vault and canonical `usermemory` validation
+  semantics without giving model output canonical write authority.
+- Restrict the worker to one leased user's source and atomic proposal path.
 
 ## Non-goals
 
 - Switching the v1 Memory reader or HTTP CRUD contract.
-- Project/Conversation routing, semantic review/conflict handling, embeddings,
+- Review decisions/API/UI, canonical auto-apply, hybrid retrieval, embeddings,
   L2/L3 summaries, or external Memory engines.
 - Supporting request-only BYOK after the request ends; capture fails closed
   unless a current Server-owned provider profile can be hydrated.
@@ -26,10 +27,12 @@ assistant finalize transaction
 
 memory-worker
   -> PostgreSQL claim + lease token
-  -> extract: source/profile/generation/epoch-fenced hydration
-       -> Server provider vault -> bounded extraction
-       -> lease/tombstone-fenced Global candidate apply + evidence/revision
+  -> extract: source/profile/generation/epoch-fenced v2 hydration
+       -> local secret/Sensitive redaction
+       -> strict bounded extraction + conflict proposal
+       -> one atomic shadow/Review/rejected candidate batch
   -> purge: no Provider hydration -> tombstone/epoch-fenced plaintext wipe
+  -> review_expire: no Provider hydration -> day-30 proposal plaintext wipe
   -> complete or bounded retry/dead-letter
 ```
 
@@ -46,11 +49,13 @@ has no direct table access. Those functions execute as the restricted
 | PostgreSQL polling is authoritative | Redis delivery and connectivity are not durable | Redis-down only increases claim latency. |
 | Same backend code/image, separate command | Reuse contracts without coupling worker failure to API availability | Worker gets its own login, pool, healthcheck, and resource limits. |
 | Current and previous event schema majors only | Bound rolling-upgrade compatibility | Unknown majors dead-letter before hydration. |
-| Lease token on hydrate/apply/complete/retry | Stale processes must lose write authority | Expired or reclaimed attempts cannot finish a job. |
+| Lease token on hydrate/propose/complete/retry | Stale processes must lose write authority | Expired or reclaimed attempts cannot finish a job. |
 | Profile/source/generation hashes are pinned | Provider, message, scope, and policy drift must fail closed | Changed state requires a new authoritative event, not stale replay. |
-| Reuse `usermemory.Service.StoreExtracted` | Keep candidate normalization and limits consistent with v1 | PR3 retains Global v1 upsert semantics until the review/revision PR. |
-| Dispatch purge before hydration | Deletion cleanup must not load or call a Provider | Purge remains available during Provider outages. |
-| Recheck epoch and targeted tombstones at apply | A response returned after deletion has no write authority | Stale/tombstoned work dead-letters without resurrection. |
+| Reuse `NormalizeCandidateForStorage` only | Keep canonical normalization/limits without calling the legacy write path | PR5 cannot create or update canonical Memory. |
+| Candidate-wide hash-pinned proposal | Partial Provider output and nondeterministic replay must not become authority | A committed batch resumes without another Provider call. |
+| Separate versioned extraction and decision prompts | Extraction and relation classification have different duties | Both profile hashes are retained on every proposal. |
+| Dispatch purge/review expiry before hydration | Cleanup must not load or call a Provider | Both lanes remain available during Provider outages. |
+| Recheck epoch and targeted tombstones at proposal | A response returned after deletion has no proposal authority | Stale source work dead-letters; content/fact tombstones become hash-only rejection. |
 | Log IDs and error codes only | Source text, secrets, and raw Provider errors are private | Operators diagnose by bounded codes and queue state. |
 
 ## Failure and replay contract
@@ -65,20 +70,22 @@ has no direct table access. Those functions execute as the restricted
 | Stale worker applies/completes | SQL rejects the old worker/lease token. |
 | Duplicate event/job | Unique event/stage/idempotency keys return the first authority. |
 
-Candidate application is per item rather than one candidates-wide transaction.
-Replay safety comes from source/profile/epoch/tombstone fences, exact Global
-upsert, append-only revision snapshots, and ID/hash-only evidence. Candidate-wide
-Review proposals and semantic conflict routing belong to PR5.
+Candidate persistence is one transaction per extraction output. The batch hash,
+profile IDs, source/epoch/scope fences, normalized target revisions, and
+`proposal_committed` resume flag prevent partial or divergent replay. Every PR5
+outcome stays outside canonical Memory and active readers.
 
 ## Threat model and controls
 
 | Threat | Control |
 | --- | --- |
 | Cross-user hydration | Job user, source message, assistant parent, and Conversation ownership are joined and rechecked in SQL. |
-| Stale response resurrects deleted/changed source | Active source, generation, Learn policy, profile timestamp/hash, and live lease are rechecked before every apply. |
+| Stale response survives a deleted/changed source | Active source, generation, Learn policy, profile timestamp/hash, and live lease are rechecked before proposal commit. |
 | Purge sends deleted data to a Provider | Stage dispatch invokes the purge capability before any hydration or Provider resolution. |
-| Prompt injection in source text | Source is JSON data under a Server-owned extraction prompt; output is schema-normalized and bounded. |
-| Credential retention | Prompt prohibition plus content/tag credential-pattern rejection; event/job/log payloads contain no plaintext secret. |
+| Prompt injection in source text | Messages and current Memory are JSON data under separate Server-owned prompts; duplicate/unknown/trailing output is rejected. |
+| Credential retention/egress | Local sentence redaction precedes Provider calls; a secret proposal reaches SQL hash-only and logs remain code/ID-only. |
+| Model spoofs authority or scope | Go restricts IDs to hydrated messages/targets and binds current Project/Conversation; SQL rechecks ownership and revision. |
+| Review plaintext survives forever | A provider-free 128-attempt job expires/wipes shadow and pending proposals at day 30. |
 | Compromised worker reads arbitrary tables | Runtime role has function execution only; owner membership and schema creation are forbidden. |
 | Queue loss during Redis/worker outage | PostgreSQL rows remain pending and reclaimable. |
 
@@ -97,3 +104,5 @@ Review proposals and semantic conflict routing belong to PR5.
 - 2026-07-28: Memory v2 PR3 durable outbox/jobs and private Go worker.
 - 2026-07-28: Memory v2 PR4 evidence/revision-aware apply, epoch/tombstone
   no-resurrection fences, and provider-free online purge.
+- 2026-07-28: Memory v2 PR5 strict candidate/decision proposals, Review shadow,
+  canonical auto-apply revocation, and provider-free 30-day expiry.

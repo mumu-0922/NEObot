@@ -7,12 +7,16 @@ latency.
 ## Responsibilities
 
 - claim bounded jobs through lease-fenced PostgreSQL functions;
-- hydrate only the job's current user message and Server-owned provider profile;
-- run the existing bounded Memory extraction semantics with a hard timeout;
-- validate, secret-filter, and apply at most five candidates through the
-  existing `usermemory.Service` contract;
+- hydrate at most eight current Conversation messages, ten bounded current
+  Memory context rows, and the Server-owned provider profile;
+- redact concrete secrets and disabled Sensitive segments before Provider
+  egress, then strictly decode versioned extraction/decision JSON;
+- atomically persist at most five hash-pinned shadow/Review/rejected proposals
+  without changing canonical Memory;
 - dispatch `purge` jobs before Provider hydration and idempotently wipe deleted
   canonical/revision/evidence plaintext through migration `055`;
+- dispatch `review_expire` before Provider hydration and idempotently wipe
+  candidate/normalized/tag/key plaintext after the fixed 30-day window;
 - retry transient failures, dead-letter terminal drift, and resume expired
   leases after crashes or rolling restarts;
 - report readiness without exposing an HTTP port.
@@ -41,16 +45,19 @@ for the complete environment and role-provisioning contract.
 | `New(Repository, ProviderResolver, ...Option)` | Validate and construct the bounded worker. |
 | `Worker.Run(ctx, wake)` | Poll PostgreSQL continuously and consume optional wake hints. |
 | `Worker.ProcessOne(ctx)` | Claim and finish one lease-fenced job. |
-| `NewPostgresRepository(*sql.DB)` | Call only migration `054`/`055` worker capabilities. |
+| `NewPostgresRepository(*sql.DB)` | Call only migration `054`–`056` worker capabilities. |
 | `NewStoredProviderResolver(...)` | Reuse Server provider/vault activation rules. |
 
 ## Files
 
 ```text
-worker.go                polling, retry, schema/stage dispatch, and apply flow
-repository_postgres.go   restricted migration-054/055 function calls
+worker.go                polling, retry, schema/stage dispatch, and proposal flow
+repository_postgres.go   restricted migration-054/055/056 function calls
 provider.go              hydrated Server provider resolution
-extraction.go            bounded prompt, parsing, validation, and secret filter
+extraction.go            bounded versioned extraction/decision Provider calls
+proposal.go              proposal normalization and scope/time/evidence validation
+provider_privacy.go       pre-egress secret/Sensitive classification and bounds
+strict_json.go            duplicate/unknown/trailing Provider JSON rejection
 types.go                 job, capture, readiness, and interface contracts
 *_test.go                offline worker, extraction, and failure-path coverage
 ```

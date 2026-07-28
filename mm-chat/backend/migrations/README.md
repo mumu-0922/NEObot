@@ -247,6 +247,18 @@ lease, epoch, source hash, profile, and tombstone before apply, and purge
 idempotently clears canonical/revision/evidence plaintext. The down path is
 allowed only before provenance or deletion history is used.
 
+Migration `056` adds Memory v2 candidate and Review shadow authority. Canonical
+rows receive additive lifecycle/conflict/temporal/sensitivity metadata with
+safe defaults, while strict Provider candidates are committed as one bounded,
+hash-pinned proposal batch. Same-scope exact matches become shadow NOOP;
+manual/conflicting/low-confidence/ambiguous-temporal candidates become pending
+Review; secret and Sensitive-disabled candidates retain no plaintext. No PR5
+candidate mutates canonical Memory or reaches the v1 reader. The worker's old
+automatic apply capability is revoked, and a provider-free `review_expire`
+stage clears shadow/pending plaintext after 30 days with a 128-attempt retry
+window. Stop N-1 workers before applying `056`; the down path is allowed only
+before proposal/Review/expiry history or non-default canonical metadata exists.
+
 ## Storage boundaries
 
 Postgres is the source of truth for structured records:
@@ -258,6 +270,8 @@ Postgres is the source of truth for structured records:
 - Projects, Memory settings, and canonical Memory rows
 - Memory capture outbox events and leased jobs; Redis is never their authority
 - Memory evidence, revisions, tombstones, and ID/hash-only deletion manifests
+- Memory candidate batch hashes, Review targets/evidence, and bounded
+  proposal plaintext pending provider-free expiry
 - versioned derived conversation-context summaries; original messages remain
   the rebuild authority
 - file ownership and metadata

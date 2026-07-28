@@ -7,8 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"time"
-
-	"neo-chat/mm-chat/backend/internal/usermemory"
 )
 
 var ErrDatabaseRequired = errors.New("memory worker database is required")
@@ -96,17 +94,21 @@ func (r *PostgresRepository) Hydrate(ctx context.Context, job Job) (Capture, err
 		return Capture{}, ErrDatabaseRequired
 	}
 	var capture Capture
-	var secretRef sql.NullString
-	var providerConfig []byte
+	var projectID, secretRef sql.NullString
+	var contextMessages, currentMemories, providerConfig []byte
 	err := r.db.QueryRowContext(ctx, `
 SELECT
-  user_id::text, user_message_content, provider_record_id::text,
+  user_id::text, context_messages, current_memories,
+  sensitive_memory_enabled, project_id::text, provider_record_id::text,
   provider_id, provider_label, encrypted_secret_ref, provider_config,
-  model_id, processing_profile
-FROM memory_worker_hydrate_capture($1::uuid, $2::uuid, $3::uuid)
+  model_id, processing_profile, proposal_committed
+FROM memory_worker_hydrate_capture_v2($1::uuid, $2::uuid, $3::uuid)
 `, job.JobID, job.WorkerID, job.LeaseToken).Scan(
 		&capture.UserID,
-		&capture.UserMessageContent,
+		&contextMessages,
+		&currentMemories,
+		&capture.SensitiveMemoryEnabled,
+		&projectID,
 		&capture.ProviderRecordID,
 		&capture.ProviderID,
 		&capture.ProviderLabel,
@@ -114,72 +116,61 @@ FROM memory_worker_hydrate_capture($1::uuid, $2::uuid, $3::uuid)
 		&providerConfig,
 		&capture.ModelID,
 		&capture.ProcessingProfile,
+		&capture.ProposalCommitted,
 	)
 	if err != nil {
 		return Capture{}, fmt.Errorf("hydrate memory capture: %w", err)
 	}
 	capture.EncryptedSecretRef = secretRef.String
+	capture.ProjectID = projectID.String
 	capture.ProviderConfig = append(json.RawMessage(nil), providerConfig...)
+	if err := json.Unmarshal(contextMessages, &capture.Messages); err != nil {
+		return Capture{}, fmt.Errorf("decode memory capture context: %w", err)
+	}
+	if err := json.Unmarshal(currentMemories, &capture.CurrentMemories); err != nil {
+		return Capture{}, fmt.Errorf("decode current Memory context: %w", err)
+	}
 	return capture, nil
 }
 
-func (r *PostgresRepository) ApplyCandidate(
+func (r *PostgresRepository) ProposeCandidates(
 	ctx context.Context,
 	job Job,
-	input usermemory.CreateInput,
-) (usermemory.Memory, error) {
+	batch ProposalBatch,
+) (ProposalSummary, error) {
 	if r == nil || r.db == nil {
-		return usermemory.Memory{}, ErrDatabaseRequired
+		return ProposalSummary{}, ErrDatabaseRequired
 	}
+	candidates, err := json.Marshal(batch.Candidates)
+	if err != nil {
+		return ProposalSummary{}, fmt.Errorf("encode memory capture proposals: %w", err)
+	}
+	var summary ProposalSummary
 	row := r.db.QueryRowContext(ctx, `
 SELECT
-  id::text, user_id::text, memory_type, content, normalized_content,
-  importance, tags_json, source, source_conversation_id::text,
-  source_message_id::text, enabled, last_used_at, created_at, updated_at,
-  deleted_at
-FROM memory_worker_apply_capture_candidate(
-  $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8::smallint, $9
+  proposal_count, shadow_count, review_count, rejected_count
+FROM memory_worker_propose_capture_candidates(
+  $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::smallint, $6, $7, $8::jsonb
 )
 `,
 		job.JobID,
 		job.WorkerID,
 		job.LeaseToken,
-		input.ID,
-		input.Type,
-		input.Content,
-		input.NormalizedContent,
-		input.Importance,
-		input.Tags,
+		batch.ExpiryJobID,
+		batch.CandidateSchemaMajor,
+		batch.ExtractionProfileID,
+		batch.DecisionProfileID,
+		string(candidates),
 	)
-	var memory usermemory.Memory
-	var tagsJSON string
-	var sourceConversationID, sourceMessageID sql.NullString
-	err := row.Scan(
-		&memory.ID,
-		&memory.UserID,
-		&memory.Type,
-		&memory.Content,
-		&memory.NormalizedContent,
-		&memory.Importance,
-		&tagsJSON,
-		&memory.Source,
-		&sourceConversationID,
-		&sourceMessageID,
-		&memory.Enabled,
-		&memory.LastUsedAt,
-		&memory.CreatedAt,
-		&memory.UpdatedAt,
-		&memory.DeletedAt,
-	)
-	if err != nil {
-		return usermemory.Memory{}, fmt.Errorf("apply memory capture candidate: %w", err)
+	if err := row.Scan(
+		&summary.ProposalCount,
+		&summary.ShadowCount,
+		&summary.ReviewCount,
+		&summary.RejectedCount,
+	); err != nil {
+		return ProposalSummary{}, fmt.Errorf("propose memory capture candidates: %w", err)
 	}
-	if err := json.Unmarshal([]byte(tagsJSON), &memory.Tags); err != nil {
-		return usermemory.Memory{}, fmt.Errorf("decode memory capture tags: %w", err)
-	}
-	memory.SourceConversationID = sourceConversationID.String
-	memory.SourceMessageID = sourceMessageID.String
-	return memory, nil
+	return summary, nil
 }
 
 func (r *PostgresRepository) Purge(ctx context.Context, job Job) error {
@@ -196,6 +187,19 @@ SELECT memory_worker_purge_memory($1::uuid, $2::uuid, $3::uuid)
 		return errors.New("purge deleted memory returned false")
 	}
 	return nil
+}
+
+func (r *PostgresRepository) ExpireReviews(ctx context.Context, job Job) (int, error) {
+	if r == nil || r.db == nil {
+		return 0, ErrDatabaseRequired
+	}
+	var expired int
+	if err := r.db.QueryRowContext(ctx, `
+SELECT memory_worker_expire_capture_reviews($1::uuid, $2::uuid, $3::uuid)
+`, job.JobID, job.WorkerID, job.LeaseToken).Scan(&expired); err != nil {
+		return 0, fmt.Errorf("expire memory capture reviews: %w", err)
+	}
+	return expired, nil
 }
 
 func (r *PostgresRepository) Complete(ctx context.Context, job Job) error {

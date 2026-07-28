@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"neo-chat/mm-chat/backend/internal/chat"
-	"neo-chat/mm-chat/backend/internal/usermemory"
 )
 
 const (
@@ -23,11 +22,9 @@ const (
 	testProviderRecord = "77777777-7777-4777-8777-777777777777"
 )
 
-func TestWorkerProcessesLeasedCaptureAndCompletes(t *testing.T) {
+func TestWorkerProposesLeasedCaptureWithoutCanonicalApply(t *testing.T) {
 	repository := newWorkerTestRepository()
-	provider := &workerTestProvider{output: `{"memories":[` +
-		`{"type":"preference","content":"Use concise answers",` +
-		`"importance":5,"tags":["style"]}]}`}
+	provider := &workerTestProvider{output: validCandidateOutput()}
 	worker := newWorkerTestInstance(t, repository, provider)
 
 	processed, err := worker.ProcessOne(context.Background())
@@ -35,22 +32,87 @@ func TestWorkerProcessesLeasedCaptureAndCompletes(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !processed || repository.completed != 1 || repository.retried != 0 ||
-		len(repository.applied) != 1 {
-		t.Fatalf("processed=%t completed=%d retried=%d applied=%#v",
-			processed, repository.completed, repository.retried, repository.applied)
+		len(repository.proposed) != 1 {
+		t.Fatalf("processed=%t completed=%d retried=%d proposed=%#v",
+			processed, repository.completed, repository.retried, repository.proposed)
 	}
-	if repository.applied[0].Content != "Use concise answers" ||
-		repository.applied[0].SourceConversationID != testConversationID ||
-		repository.applied[0].SourceMessageID != testMessageID {
-		t.Fatalf("applied = %#v", repository.applied[0])
+	if repository.proposed[0].Content == nil ||
+		*repository.proposed[0].Content != "Use concise answers" ||
+		repository.proposed[0].ProposedScopeType != "global" ||
+		repository.proposed[0].ProposedAction != "ADD" {
+		t.Fatalf("proposal = %#v", repository.proposed[0])
 	}
-	if provider.request.Metadata["purpose"] != "durable-memory-extraction" ||
+	if provider.request.Metadata["purpose"] != "durable-memory-candidate-shadow" ||
 		provider.request.ModelRef.ModelID != "fixture-model" {
 		t.Fatalf("provider request = %#v", provider.request)
 	}
 }
 
-func TestWorkerRetriesProviderFailureWithoutApplying(t *testing.T) {
+func TestWorkerResumesCommittedProposalWithoutProvider(t *testing.T) {
+	repository := newWorkerTestRepository()
+	repository.capture.ProposalCommitted = true
+	provider := &workerTestProvider{err: errors.New("must not be called")}
+	worker := newWorkerTestInstance(t, repository, provider)
+
+	processed, err := worker.ProcessOne(context.Background())
+	if err != nil || !processed || repository.completed != 1 ||
+		len(repository.proposed) != 0 || provider.calls != 0 {
+		t.Fatalf("processed=%t repository=%#v calls=%d error=%v",
+			processed, repository, provider.calls, err)
+	}
+}
+
+func TestWorkerUsesBoundedDecisionProposalForCurrentMemory(t *testing.T) {
+	repository := newWorkerTestRepository()
+	repository.capture.CurrentMemories = []CaptureMemory{{
+		ID: "99999999-9999-4999-8999-999999999999", Revision: 3,
+		Type: "preference", Content: "Use detailed answers",
+		AuthorityKind: "manual", ScopeType: "global", Sensitivity: "normal",
+	}}
+	provider := &workerTestProvider{outputs: []string{
+		validCandidateOutput(),
+		`{"decisions":[{"ordinal":1,"action":"SUPERSEDE",` +
+			`"targetMemoryIds":["99999999-9999-4999-8999-999999999999"]}]}`,
+	}}
+	worker := newWorkerTestInstance(t, repository, provider)
+
+	processed, err := worker.ProcessOne(context.Background())
+	if err != nil || !processed || provider.calls != 2 || len(repository.proposed) != 1 {
+		t.Fatalf("processed=%t calls=%d proposals=%#v error=%v",
+			processed, provider.calls, repository.proposed, err)
+	}
+	proposal := repository.proposed[0]
+	if proposal.ProposedAction != "SUPERSEDE" || len(proposal.TargetMemoryIDs) != 1 ||
+		proposal.TargetMemoryIDs[0] != repository.capture.CurrentMemories[0].ID {
+		t.Fatalf("decision proposal = %#v", proposal)
+	}
+}
+
+func TestWorkerRejectsDecisionTargetSpoofWithoutProposal(t *testing.T) {
+	repository := newWorkerTestRepository()
+	repository.capture.CurrentMemories = []CaptureMemory{{
+		ID: "99999999-9999-4999-8999-999999999999", Revision: 1,
+		Type: "preference", Content: "Use detailed answers",
+		AuthorityKind: "manual", ScopeType: "global", Sensitivity: "normal",
+	}}
+	provider := &workerTestProvider{outputs: []string{
+		validCandidateOutput(),
+		`{"decisions":[{"ordinal":1,"action":"SUPERSEDE",` +
+			`"targetMemoryIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]}]}`,
+	}}
+	worker := newWorkerTestInstance(t, repository, provider)
+
+	processed, err := worker.ProcessOne(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !processed || repository.retryCode != errorExtractionInvalid ||
+		repository.retryTerminal || len(repository.proposed) != 0 {
+		t.Fatalf("repository = %#v", repository)
+	}
+}
+
+func TestWorkerRetriesProviderFailureWithoutProposal(t *testing.T) {
 	repository := newWorkerTestRepository()
 	provider := &workerTestProvider{err: errors.New("provider unavailable")}
 	worker := newWorkerTestInstance(t, repository, provider)
@@ -60,7 +122,7 @@ func TestWorkerRetriesProviderFailureWithoutApplying(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !processed || repository.retried != 1 || repository.retryTerminal ||
-		repository.retryCode != errorProviderFailed || len(repository.applied) != 0 ||
+		repository.retryCode != errorProviderFailed || len(repository.proposed) != 0 ||
 		repository.completed != 0 {
 		t.Fatalf("repository = %#v", repository)
 	}
@@ -95,13 +157,10 @@ func TestWorkerDeadLettersSourceDrift(t *testing.T) {
 	}
 }
 
-func TestWorkerDeadLettersTombstoneRaisedAfterProviderResponse(t *testing.T) {
+func TestWorkerDeadLettersSourceFenceRaisedAfterProviderResponse(t *testing.T) {
 	repository := newWorkerTestRepository()
-	repository.applyErr = errors.New("MEMORY_CAPTURE_CANDIDATE_TOMBSTONED")
-	provider := &workerTestProvider{output: `{"memories":[` +
-		`{"type":"preference","content":"Use concise answers",` +
-		`"importance":5,"tags":["style"]}]}`}
-	worker := newWorkerTestInstance(t, repository, provider)
+	repository.proposalErr = errors.New("MEMORY_CAPTURE_SOURCE_TOMBSTONED")
+	worker := newWorkerTestInstance(t, repository, &workerTestProvider{output: validCandidateOutput()})
 
 	processed, err := worker.ProcessOne(context.Background())
 	if err != nil {
@@ -127,13 +186,7 @@ func TestWorkerAcceptsPreviousEventSchemaMajor(t *testing.T) {
 func TestWorkerPurgesWithoutHydratingProvider(t *testing.T) {
 	repository := newWorkerTestRepository()
 	repository.job.Stage = "purge"
-	repository.job.SourceConversationID = ""
-	repository.job.SourceMessageID = ""
-	repository.job.AssistantMessageID = ""
-	repository.job.ProviderID = ""
-	repository.job.ProviderRecordID = ""
-	repository.job.ModelID = ""
-	repository.job.ProcessingProfile = ""
+	clearProviderJobFields(&repository.job)
 	provider := &workerTestProvider{err: errors.New("must not be called")}
 	worker := newWorkerTestInstance(t, repository, provider)
 
@@ -142,8 +195,25 @@ func TestWorkerPurgesWithoutHydratingProvider(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !processed || repository.purged != 1 || repository.hydrated != 0 ||
-		repository.completed != 1 || provider.request.Metadata != nil {
-		t.Fatalf("repository=%#v provider_request=%#v", repository, provider.request)
+		repository.completed != 1 || provider.calls != 0 {
+		t.Fatalf("repository=%#v calls=%d", repository, provider.calls)
+	}
+}
+
+func TestWorkerExpiresReviewsWithoutHydratingProvider(t *testing.T) {
+	repository := newWorkerTestRepository()
+	repository.job.Stage = "review_expire"
+	clearProviderJobFields(&repository.job)
+	provider := &workerTestProvider{err: errors.New("must not be called")}
+	worker := newWorkerTestInstance(t, repository, provider)
+
+	processed, err := worker.ProcessOne(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !processed || repository.expired != 1 || repository.hydrated != 0 ||
+		repository.completed != 1 || provider.calls != 0 {
+		t.Fatalf("repository=%#v calls=%d", repository, provider.calls)
 	}
 }
 
@@ -181,20 +251,27 @@ func (r workerTestProviderResolver) Resolve(context.Context, Capture) (chat.Prov
 
 type workerTestProvider struct {
 	output  string
+	outputs []string
 	err     error
 	request chat.ProviderRequest
+	calls   int
 }
 
 func (p *workerTestProvider) StreamChat(
 	_ context.Context,
 	request chat.ProviderRequest,
 ) (<-chan chat.ProviderEvent, error) {
+	p.calls++
 	p.request = request
 	if p.err != nil {
 		return nil, p.err
 	}
 	events := make(chan chat.ProviderEvent, 1)
-	events <- chat.ProviderEvent{Type: chat.ProviderEventDelta, Delta: p.output}
+	output := p.output
+	if len(p.outputs) >= p.calls {
+		output = p.outputs[p.calls-1]
+	}
+	events <- chat.ProviderEvent{Type: chat.ProviderEventDelta, Delta: output}
 	close(events)
 	return events, nil
 }
@@ -204,10 +281,11 @@ type workerTestRepository struct {
 	capture       Capture
 	found         bool
 	hydrateErr    error
-	applyErr      error
+	proposalErr   error
 	hydrated      int
-	applied       []usermemory.CreateInput
+	proposed      []CaptureProposal
 	purged        int
+	expired       int
 	completed     int
 	retried       int
 	retryCode     string
@@ -216,6 +294,7 @@ type workerTestRepository struct {
 }
 
 func newWorkerTestRepository() *workerTestRepository {
+	observedAt := time.Date(2026, 7, 28, 8, 0, 0, 0, time.UTC)
 	job := Job{
 		JobID: testJobID, UserID: testUserID, EventID: testEventID,
 		EventSchemaMajor: CurrentEventSchemaMajor, Stage: "extract",
@@ -228,7 +307,11 @@ func newWorkerTestRepository() *workerTestRepository {
 	return &workerTestRepository{
 		job: job, found: true,
 		capture: Capture{
-			UserID: testUserID, UserMessageContent: "Remember that I prefer concise answers",
+			UserID: testUserID,
+			Messages: []CaptureMessage{
+				{ID: testMessageID, Role: "user", Content: "Remember that I prefer concise answers", ObservedAt: observedAt},
+				{ID: testAssistantID, Role: "assistant", Content: "Understood", ObservedAt: observedAt.Add(time.Second)},
+			},
 			ProviderRecordID: testProviderRecord, ProviderID: testProviderID,
 			ModelID: "fixture-model", ProcessingProfile: "fixture-profile",
 		},
@@ -252,21 +335,26 @@ func (r *workerTestRepository) Hydrate(context.Context, Job) (Capture, error) {
 	return r.capture, r.hydrateErr
 }
 
-func (r *workerTestRepository) ApplyCandidate(
+func (r *workerTestRepository) ProposeCandidates(
 	_ context.Context,
 	_ Job,
-	input usermemory.CreateInput,
-) (usermemory.Memory, error) {
-	r.applied = append(r.applied, input)
-	if r.applyErr != nil {
-		return usermemory.Memory{}, r.applyErr
+	batch ProposalBatch,
+) (ProposalSummary, error) {
+	r.proposed = append(r.proposed, batch.Candidates...)
+	if r.proposalErr != nil {
+		return ProposalSummary{}, r.proposalErr
 	}
-	return usermemory.Memory{ID: input.ID, Content: input.Content}, nil
+	return ProposalSummary{ProposalCount: len(batch.Candidates), ShadowCount: len(batch.Candidates)}, nil
 }
 
 func (r *workerTestRepository) Purge(context.Context, Job) error {
 	r.purged++
 	return nil
+}
+
+func (r *workerTestRepository) ExpireReviews(context.Context, Job) (int, error) {
+	r.expired++
+	return 1, nil
 }
 
 func (r *workerTestRepository) Complete(context.Context, Job) error {
@@ -293,4 +381,26 @@ func (r *workerTestRepository) Retry(
 
 func (r *workerTestRepository) CheckReady(context.Context) (Readiness, error) {
 	return Readiness{ConsumerReady: true}, nil
+}
+
+func validCandidateOutput() string {
+	return `{"memories":[{` +
+		`"type":"preference","content":"Use concise answers","importance":5,` +
+		`"confidence":0.95,"tags":["style"],"subjectKey":"user",` +
+		`"factKey":"response.style","sensitivity":"normal",` +
+		`"authorityUserMessageIds":["` + testMessageID + `"],` +
+		`"contextMessageIds":[],"confirmationKind":"explicit_user",` +
+		`"proposedScopeType":"global","scopeConfidence":0.98,` +
+		`"temporalBasis":"none","validFrom":null,"validTo":null,` +
+		`"factExpiresAt":null}]}`
+}
+
+func clearProviderJobFields(job *Job) {
+	job.SourceConversationID = ""
+	job.SourceMessageID = ""
+	job.AssistantMessageID = ""
+	job.ProviderID = ""
+	job.ProviderRecordID = ""
+	job.ModelID = ""
+	job.ProcessingProfile = ""
 }
