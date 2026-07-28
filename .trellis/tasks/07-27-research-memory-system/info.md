@@ -1391,7 +1391,9 @@ response 都带 version，消费者拒绝未知 major 而不是猜测字段。
 
 1. **PR1：benchmark skeleton + contract tests** — 已于 2026-07-28 实现并通过 backend
    focused race/full test/vet；新增内容保持离线，无 runtime 行为变化。
-2. **PR2：Project/scope/settings additive schema + backfill** — flags 全关，旧 API 兼容。
+2. **PR2：Project/scope/settings additive schema + backfill** — 已于 2026-07-28 以 migration
+   `053` 实现；flags 全关，旧 API 保持 Global-only，PG17 已验证 backfill、ownership/
+   scope constraints、runtime role denial、guarded down 与 re-up。
 3. **PR3：outbox/jobs + 独立 Go worker + lease/replay** — 保持 v1 reader。
 4. **PR4：evidence/revision/epoch/tombstone/delete manifest** — 先闭环正确性、备份和隐私。
 5. **PR5：capture candidate + Review + temporal/conflict/scope routing** — 只 shadow，不 auto apply。

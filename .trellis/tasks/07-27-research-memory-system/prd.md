@@ -5,8 +5,9 @@
 查清 Neo Chat 当前 Server mode 长期记忆的真实运行链路，比较 2026 年主流
 Agent Memory 方案，并在“单服务器、自托管、Go + PostgreSQL + Python RAG”
 约束下，按 `info.md` 第 17 章的 PR1–PR13 顺序实施已冻结的完整 end-state。
-魔尊已于 2026-07-28 明确回复“开始”，构成实施授权；当前批次只实施 PR1 的
-benchmark skeleton 与 contract tests，不修改 runtime 行为、migration 或 Live Memory。
+魔尊已于 2026-07-28 明确回复“开始”，构成实施授权；PR1 benchmark contract 已完成，
+当前批次只实施 PR2 的 additive Project/scope/settings schema、既有数据 backfill 与旧
+Memory repository 兼容，不启用 v2 reader、不新增 Project 对外 API、不调用 Live provider。
 
 ## What I Already Know
 
@@ -72,6 +73,20 @@ benchmark skeleton 与 contract tests，不修改 runtime 行为、migration 或
   已人工审核的 500-case frozen benchmark。
 - [x] PR1 不改变 API/runtime 行为，不新增或修改 migration，不调用 Live provider，
   不读取、创建、修改或删除 Live Memory。
+- [x] PR2 新增顺序 migration `053`，且不修改任何既有 migration 字节；新增 Project、
+  Conversation Memory mode/scope generation、Memory settings 与 user memory scope 字段。
+- [x] PR2 保留既有 `user_memory_settings` 三个开关的原值；新设置默认分别为
+  `sensitive_memory_enabled=false`、`l2_mode=inherit`、`l3_mode=inherit`，尤其不得静默
+  开启旧用户的 `auto_record_enabled`。
+- [x] PR2 将所有既有 `user_memories` 回填为 `global` scope、空 Project/Conversation FK、
+  `scope_generation=1`，并以 CHECK、composite ownership FK 与唯一索引阻止跨用户引用
+  和非法 scope 组合。
+- [x] PR2 保持旧 Memory API/CRUD/Recall 行为不变：旧 repository 创建的 Memory 仍为
+  Global，同一用户的 active Global normalized content 仍正确去重。
+- [x] PR2 不新增 Project 对外 API、不切换 v2 reader、不启动 worker、不调用 provider，
+  且所有新 runtime flags 保持关闭。
+- [x] PR2 migration up/down/re-up、schema/backfill/down guard 测试与既有 repository tests
+  通过；存在 Project、非 Global Memory 或用户已修改新策略时 down 必须 fail closed。
 
 ## Definition of Done
 
@@ -80,7 +95,10 @@ benchmark skeleton 与 contract tests，不修改 runtime 行为、migration 或
 - PR1 benchmark contract、validator 与 focused tests 通过，并且 backend `go test ./...`
   与 `go vet ./...` 通过。
 - PR1 未修改 runtime、migration、Live 设置、Memory 数据或部署拓扑。
-- PR2–PR13 继续遵循 `info.md` 的逐批门槛、回滚和单一 authority 约束。
+- PR2 additive schema、backfill、ownership constraints、Global repository compatibility 与
+  guarded rollback 均有自动化验证，backend `go test ./...` 与 `go vet ./...` 通过。
+- PR2 未启用新 reader/worker/API/provider；PR3–PR13 继续遵循 `info.md` 的逐批门槛、
+  回滚和单一 authority 约束。
 
 ## Technical Approach
 
@@ -116,10 +134,12 @@ PostgreSQL v2，外部引擎只能通过可替换 adapter 做 shadow；Hindsight
 
 ## Current Batch Out of Scope
 
-- PR1 不实现 migration、worker、embedding、rerank、UI、Graph DB 或任何 runtime 接线；
-  这些能力只可在后续 PR2–PR13 按门槛逐批实施。
-- PR1 不启用当前 Memory、自动记录，也不创建、修改、删除或导出用户 Memory。
-- PR1 不调用 Live provider，不运行 Hindsight 真实 shadow，不生成虚假的人工审核数据。
+- PR2 不实现 outbox/jobs、evidence/revision/epoch/tombstone、Review/temporal/conflict、
+  projection/BM25/vector、worker、embedding、rerank、UI、Graph DB 或 Hindsight shadow；
+  这些能力只可在后续 PR3–PR13 按门槛逐批实施。
+- PR2 不提供 Project CRUD/API/UI，不启用当前 Memory、自动记录或任何 v2 reader，也不
+  创建、修改、删除或导出 Live 用户 Memory。
+- PR2 不调用 Live provider，不运行 Hindsight 真实 shadow，不生成虚假的人工审核数据。
 - 不把 AGENTS/system/project 固定规则迁入概率性 Memory。
 - 不把供应商 benchmark 当作发布门槛；发布必须使用 Neo Chat 中文数据集复测。
 
