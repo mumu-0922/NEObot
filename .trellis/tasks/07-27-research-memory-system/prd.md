@@ -343,6 +343,52 @@ PR10 encrypted portability/retention 已完成。继续保留 v1 reader，不调
   history chain、restore-before-open replay、projection rebuild、retention dry-run/path/symlink/checksum/plan
   drift 与 guarded `060 -> 061 -> 060 -> 061`；不调用 Live Provider、不读取/修改 Live Memory，v1
   Global Top 5/prompt/Usage 保持唯一 reader authority。
+- [x] PR11 新增顺序 migration `062`，且不修改 migration `001`–`061` 已发布字节；新增 L2 Scene、
+  member revision/hash、derived hybrid projection、leased refresh/embedding/purge job、content-free search
+  observation、promotion event 与独立 L2 reader pointer。L2 始终是可重建 derived data，不得成为第二
+  canonical authority，runtime roles 不获得 Scene/member/projection/job/promotion 表级 CRUD。
+- [x] Scene 只聚合同一用户、同一 Global 或 Project scope 的 current active L1；Conversation L1 不得
+  提升到 Project/Global Scene。每个 Scene 固定记录 topic key、成员 L1 ID/revision/content hash、scope
+  generation、visibility epoch、L2 generation、profile 与全量 source watermark；Provider 输出中的 member
+  ID 必须是本次受权输入集合的子集，所有身份、hash、sensitivity 与 watermark 由本地/SQL 重算。
+- [x] `MEMORY_L2_SCENE_SHADOW_ENABLED=false` 默认关闭 Scene refresh 与 shadow retrieval Provider 调用；
+  flag=false 时 queued refresh 不得 claim，但 provider-free stale/purge 仍可运行。Worker refresh 使用独立
+  lease lane，pin user/scope/Project generation/epoch/L2 generation/profile/Provider record+updatedAt/watermark，
+  strict versioned JSON 最多 8 个 Scene、每个 2–20 个 member；unknown/duplicate/oversized/secret/跨 scope/
+  forged member 或 Provider deadline 后返回均 fail closed，旧响应不得覆盖新 generation。
+- [x] Sensitive 总开关同时约束 L1 hydrate、Scene Provider egress、Scene 落库/projection 与最终注入；
+  secret/credential sentence 在 Provider 前本地删除，完全 redacted scope 零调用，Provider 输出命中 secret
+  拒绝整批且不落 plaintext。Scene sensitivity 取 member 与本地 derived-content classifier 的更严格值，
+  不能信任 Provider label。
+- [x] 任意 L1 canonical create/update/move/disable/supersede/delete、Project archive/generation、visibility
+  epoch 或 Sensitive policy 变化，必须在数据库 authority 层使受影响 Scene 立即 stale、移除 reader
+  projection、推进 L2 generation 并 enqueue current-scope rebuild；read/complete 再逐 member 检查 validity/
+  expiry/revision/hash，时间到期即使尚未物化也不得召回。Stale Scene plaintext/member/projection 24 小时内
+  provider-free purge，account cascade 与 8-week backup retention 继续覆盖 derived data。
+- [x] Scene retrieval 复用固定 Exact/CJK BM25/BGE-M3/RRF(60)/BGE reranker，最多只召回当前 Conversation
+  可见的相关 Global/Project Scene，绝不每轮注入全量 navigation；candidate/final 上限 20/2，L2 hard
+  budget 500 estimated tokens、2s cutoff。每条 candidate 与 Provider 后 final 均重验 user/scope/Sensitive/
+  member/epoch/generation/profile authority，durable observation 只保留 IDs/hash/ordinal/bounded telemetry，
+  不保存 query/content/vector/raw score/Provider secret。
+- [x] L2 profile 必须独立执行 `shadow -> active -> rollback`。Promotion 只能由 migration-owner 的显式
+  capability 完成，且同时验证严格 passing 500-case benchmark report、零 cross-user/secret/delete/provider
+  leak、7 天且至少 100 个 eligible shadow turns、零 dead-letter，以及当前 L1 hybrid reader pointer；
+  evaluator本身仍不能 promotion。当前没有合格正式 evidence，因此 migration 只 seed shadow profile，
+  `MEMORY_L2_SCENE_READER_ENABLED=false` 默认关闭，PR11 发布不得自动写 active pointer 或声称已晋升。
+- [x] Server governance API/UI 展示 L2 server profile/status、用户 generation、每个 Scene 的 scope/topic/
+  content/status/profile/generation/source watermark/member count/更新时间；detail 只 hydrate current member L1
+  与 surviving evidence/source-deleted marker。用户可逐 Scene disable/enable、按 Scene 或全用户 rebuild；
+  “修改 Scene”只能调用既有 governed L1 create/update 后由 stale/rebuild 链生成新 Scene，不提供 derived
+  plaintext PATCH，disabled Scene 不得被后台 refresh 静默重新启用。
+- [x] Active Scene reader 即使 env flag 开启，也必须同时满足数据库 promotion、用户 `l2_mode!=off`、
+  Memory Use/Search、current L1 hybrid pointer、Scene active/current generation/member authority；任一失败或
+  Scene retrieval/provider timeout 都 fail-open 到原 L1 reader。Shadow 永不进入 prompt/Usage；rollback 或
+  flag-off 立即停止 L2 注入且不影响 L1、聊天、canonical Memory 或 L3 generation。
+- [x] PR11 static/Go/PostgreSQL/frontend tests 覆盖 strict Scene JSON、scope/member/watermark spoof、secret/
+  Sensitive zero-egress、lease reclaim/old response、L1 write/delete/expiry stale、24h purge、disabled preserve、
+  exact/BM25/vector/RRF/rerank/budget、shadow zero injection、promotion denial/active/rollback、cross-user/role
+  denial、governance detail/rebuild/a11y 与 guarded `061 -> 062 -> 061 -> 062`；不调用 Live Provider、不读取/
+  修改 Live Memory，并通过 focused race、backend/frontend/RAG full、Compose/preflight/image/full gate。
 
 ## Definition of Done
 
@@ -412,15 +458,16 @@ PostgreSQL v2，外部引擎只能通过可替换 adapter 做 shadow；Hindsight
 
 ## Current Batch Out of Scope
 
-- PR10 不切换 v2 reader、不提供 reader promotion API、不把 lexical/hybrid shadow 注入 prompt；除
-  Conversation `Use=off` 显式停用外，v1 Global Top 5 与现有 Usage 继续是唯一实际注入 authority。
-- PR10 只搬运 current L1 canonical Memory 与可选 imported history，不导出 raw Conversation、evidence
-  excerpt、projection/vector、L2/L3、Usage/Activity、Provider payload 或部署 credential。
-- PR10 不自动应用 imported settings，不通过 import 启用 Learn/Use/Sensitive/L2/L3，也不让 conflict
-  覆盖 canonical；settings 仅作为 suggestion，conflict 仅进入 `REVIEW` 结果。
-- PR10 不调用 Live Provider、不回放或修改 Live Memory；Import、deletion replay、retention 与 rollback
-  只用离线 fixtures 和 disposable PostgreSQL 验证。
-- PR11/12 L2/L3 shadow/promotion 与 PR13 Hindsight adapter 继续冻结，后续严格按顺序实施。
+- PR11 不自动 promotion L1 或 L2，不伪造 500-case/7-day canary evidence；当前默认 flag 与数据库 profile
+  保持 shadow/off，因此 v1 Global Top 5 与既有 Usage 仍是唯一实际 prompt authority。
+- PR11 不让 Conversation-scoped L1 扩散到 Project/Global Scene，不每轮注入全量 Scene navigation，不导出
+  Scene 到 `.mm-memory`，也不让 imported external ID、topic key 或 Provider member ID 成为 authority。
+- PR11 不提供 Scene plaintext PATCH；用户 correction 只写 governed canonical L1，再走同一 stale/rebuild
+  链。Derived Scene/member/projection 不保留被删 L1 plaintext，不从 revision history 重建 current 内容。
+- PR11 不调用 Live Provider、不回放或修改 Live Memory；generation/retrieval/worker 测试只用离线 fake
+  Provider 与 disposable PostgreSQL。生产开启 shadow 或 promotion 仍需单独、可审计的 operator 动作。
+- PR12 L3 Persona 与 PR13 Hindsight adapter 继续冻结，后续严格按顺序实施；L2 promotion/rollback 不得
+  修改 `active_l3_generation` 或 L3 preference。
 - 不把 AGENTS/system/project 固定规则迁入概率性 Memory。
 - 不把供应商 benchmark 当作发布门槛；发布必须使用 Neo Chat 中文数据集复测。
 

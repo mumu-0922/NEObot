@@ -913,3 +913,63 @@ Nothing was pushed or archived.
 
 - After the approved batched commits, begin PR11 L2 Scene shadow/promotion as a
   separate rollback domain without promoting the v2 reader early.
+
+
+## Session 24: Implement Memory v2 L2 Scene shadow and promotion
+
+**Date**: 2026-07-28
+**Task**: Implement Memory v2 PR11 L2 Scene shadow/promotion
+**Branch**: `main`
+
+### Summary
+
+Implemented default-off, same-scope L2 Scenes as rebuildable PostgreSQL-derived
+data with independent generation, leased synthesis/embedding/purge, hybrid
+retrieval, Server governance, and migration-owner-only promotion/rollback while
+retaining v1 L1 as the default prompt and Usage authority.
+
+### Main Changes
+
+- Added migration `062` with Scene/member authority tuples, derived hybrid
+  projection, content-free observations, refresh/embedding/purge jobs,
+  immediate stale plus 24-hour provider-free purge, least-privilege runtime
+  capabilities, promotion evidence gates, and guarded rollback/replay.
+- Added fake-testable Go worker synthesis and derived embedding orchestration,
+  secret/Sensitive zero-egress controls, deadline/lease/profile/watermark
+  fences, exact/CJK BM25/vector RRF/rerank Scene recall, 2-second cutoff, and a
+  hard two-Scene/500-token budget.
+- Wired shadow and active lanes into Chat with independent default-off flags;
+  shadow remains zero-injection, active requires database promotion plus current
+  L1/user/Scene authority, and every failure falls back to unchanged L1.
+- Added typed Server-only governance API/UI for Scene profile, detail,
+  enable/disable, per-Scene/all rebuild, and correction through canonical L1;
+  no Scene plaintext PATCH or Local adapter was introduced.
+- Fixed promotion evidence key ordering and a synthetic canary timestamp
+  precision flake; added static ordering and PostgreSQL microsecond-boundary
+  regression coverage plus the executable L2 code-spec.
+
+### Testing
+
+- [OK] PostgreSQL 17 Scene apply/search/stale/provider-free purge/promotion/
+  active injection/rollback and guarded `061 -> 062 -> 061 -> 062`; promotion
+  lifecycle passed 10 consecutive replays after the precision fix.
+- [OK] Focused race for Memory worker/user memory/migration, full backend tests,
+  and `go vet ./...`.
+- [OK] Frontend format/lint/typecheck, 198 files / 961 tests, and production
+  build.
+- [OK] RAG Ruff/mypy/pytest: 1,906 passed / 7 skipped.
+- [OK] Single-server preflight, Compose clean-copy render, backend image build,
+  full standalone gate, diff check, change/quality gates, and targeted security
+  review. Whole-tree scanner findings were pre-existing test fixtures and
+  sanitized HTML/PEM parser patterns; PR11 diffs added no Critical/High issue.
+- [OK] No Live Provider call and no Live Memory read or mutation.
+
+### Status
+
+[OK] **PR11 completed; parent Memory v2 task remains in progress**
+
+### Next Steps
+
+- After the approved batched commits, begin PR12 L3 Persona shadow/promotion as
+  a separate generation and rollback domain without enabling it before formal
+  evidence passes.
