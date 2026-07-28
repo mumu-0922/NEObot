@@ -1399,7 +1399,10 @@ response 都带 version，消费者拒绝未知 major 而不是猜测字段。
 4. **PR4：evidence/revision/epoch/tombstone/delete manifest** — 已于 2026-07-28 以 migration
    `055` 实现数据库内 provenance/delete authority、旧响应防复活与 provider-free online
    purge；authenticated encrypted off-host manifest/restore replay/retention 仍按顺序归 PR10。
-5. **PR5：capture candidate + Review + temporal/conflict/scope routing** — 只 shadow，不 auto apply。
+5. **PR5：capture candidate + Review + temporal/conflict/scope routing** — 已于 2026-07-28
+   以 migration `056` 实现 strict candidate-wide proposal、secret/Sensitive egress guard、
+   exact/manual/temporal routing、canonical auto-apply revocation 与 provider-free 30-day
+   plaintext expiry；保持 v1 reader/API，PG17、Compose、Docker build 与 full standalone 已通过。
 6. **PR6：direct-user Memory actions + activity/usage links** — typed proposal 与 revision-safe undo。
 7. **PR7：L1 exact/CJK BM25 projection** — shadow 对比 v1，dense 尚未成为依赖。
 8. **PR8：BGE-M3/vector + RRF + rerank + budget fallback** — 0% prompt 注入后过 gate。
@@ -1486,5 +1489,6 @@ migration、backup/restore 和跨层安全完成后跑
 11. v1 fallback、feature flags、restore replay、rollback drill 和 full standalone gate 通过；
 12. Hindsight 无论成功或失败都不影响 canonical Memory 和正常聊天。
 
-实施已由魔尊于 2026-07-28 明确启动。当前 PR1 仅建立离线 benchmark contract，仍不
-触发 migration、PoC、provider 调用或 Live 数据回放；后续批次继续按第 17 章门槛推进。
+实施已由魔尊于 2026-07-28 明确启动。PR1–PR5 已按第 17 章顺序完成；当前仍未切换
+v2 reader、未开放 Project/Review API/UI、未调用 Live provider 或回放 Live Memory。
+PR6 direct-user typed actions 与 revision-safe undo 尚未开始，后续批次继续按本章门槛推进。

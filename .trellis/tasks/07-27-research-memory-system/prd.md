@@ -6,10 +6,10 @@
 Agent Memory 方案，并在“单服务器、自托管、Go + PostgreSQL + Python RAG”
 约束下，按 `info.md` 第 17 章的 PR1–PR13 顺序实施已冻结的完整 end-state。
 魔尊已于 2026-07-28 明确回复“开始”，构成实施授权；PR1 benchmark contract、PR2
-Project/scope/settings foundation 与 PR3 durable capture worker 已完成。当前批次只实施
-PR4 的 canonical provenance、revision、visibility epoch、targeted tombstone、deletion
-manifest authority 与 provider-free purge lane；继续保留 v1 reader 和 Global-only HTTP
-contract，不新增 Project 对外 API，不调用 Live provider。
+Project/scope/settings foundation、PR3 durable capture worker、PR4 provenance/delete
+correctness 与 PR5 candidate/Review shadow 已完成。PR5 的所有自动 candidate 只形成
+不可召回 proposal，不写 active canonical；v1 reader 和 Global-only HTTP contract 保持
+不变，未新增 Review/Project 对外 API，也未调用 Live provider。下一批 PR6 尚未开始。
 
 ## What I Already Know
 
@@ -144,6 +144,39 @@ contract，不新增 Project 对外 API，不调用 Live provider。
   stale epoch/lease、delete immediate invisibility、old response no-resurrection、manual
   precedence、purge idempotency/plaintext wipe、manifest generation 与 guarded down/re-up；
   focused race、backend full test/vet、Compose/preflight 和 full standalone gate 通过。
+- [x] PR5 新增顺序 migration `056`，且不修改任何已发布 migration 字节；为 canonical
+  `user_memories` additive 增加 lifecycle、subject/fact key、confidence、observed/valid/
+  expiry/supersede、sensitivity 与 temporal parser fields，并以 privacy-safe defaults 回填，
+  v1 reader/CRUD response 不因字段存在改变。
+- [x] PR5 新增 candidate batch authority、`user_memory_review_suggestions`、normalized target
+  与 evidence join tables；一个 extract job 的最多 5 条 proposal 必须 candidate-wide atomic、
+  hash-pinned、幂等，重放不得形成第二组 proposal 或部分 commit。Evidence 只存受权
+  message ID/hash，Target 必须绑定同用户 current Memory revision，不能使用 UUID array
+  冒充 ownership/revision authority。
+- [x] Worker extraction contract 升级为 versioned strict JSON：候选显式携带 confidence、
+  sensitivity、subject/fact key、authority/context message IDs、confirmation kind、absolute
+  temporal fields、proposed scope/scope confidence；未知/重复字段、越界 JSON/正文/数组、
+  非当前 Conversation/Project scope、无 surviving user authority 或伪造 target 均 fail closed。
+- [x] Provider 前执行 deterministic secret redaction；secret/credential candidate 永不把正文、
+  tag、key 写入 candidate/review/revision/log，Sensitive 取 model/local classifier 的更严格值，
+  且用户 Sensitive switch 关闭时不得形成可保留的 sensitive proposal。Offline tests 不调用
+  Live Provider。
+- [x] PR5 proposal routing 先做 same-scope exact NOOP，再做 bounded current-target/fact-key
+  conflict；低 confidence、低 scope confidence、ambiguous/relative temporal、manual target、
+  MERGE/SUPERSEDE 或真实冲突只生成 pending Review。高置信无冲突只标记 shadow ADD，
+  任何 outcome 都不得写/更新/supersede active canonical，跨 scope 同 fact 只视为 override。
+- [x] Pending Review 与 shadow proposal 固定 30 天；到期由 provider-free `review_expire`
+  worker lane 自动置 `expired` 并幂等擦除 candidate/normalized/tag/key plaintext，只留 ID/hash/
+  reason/time/result。该 lane 必须在 Provider hydration 前 dispatch，使用 lease/user/batch fence，
+  重试窗口覆盖 24 小时清除 SLA。
+- [x] `memory_worker_runtime` 继续只有窄 SQL function execute、无 candidate/review/canonical
+  table CRUD；PR5 migration 撤销旧自动 apply capability，使 N-1 worker 在 `056` 下不能继续
+  写 canonical。Down 对任何 proposal/review/expiry history 或非默认 canonical metadata
+  fail closed；clean `055 -> 056 -> 055 -> 056` 可重放。
+- [x] PR5 focused race/full test/vet、PostgreSQL 17 replay/drill、Compose/preflight、backend image
+  与 full standalone gate 通过，覆盖 strict candidate parse、secret zero-plaintext、scope/
+  authority/target spoof、exact/manual/conflict/temporal routing、batch replay、crash-after-proposal
+  resume、30-day provider-free expiry、direct-table denial 与 guarded down/re-up。
 
 ## Definition of Done
 
@@ -160,7 +193,9 @@ contract，不新增 Project 对外 API，不调用 Live provider。
 - PR4 provenance/delete/purge correctness 与 least-privilege capability 均有自动化验证，
   backend `go test ./...`、`go vet ./...`、Compose render 与 disposable PostgreSQL drill
   通过；online canonical/revision plaintext purge 可幂等重放且旧 worker 响应不可复活。
-- PR4 未启用 v2 reader、Project API/UI、Review 或 projection 能力；PR5–PR13 继续
+- PR5 candidate/Review shadow、temporal/conflict/scope routing、candidate-wide idempotency 与
+  30-day provider-free plaintext expiry 均有自动化验证；没有自动 candidate 改变 canonical。
+- PR5 未启用 v2 reader、Project/Review API/UI 或 projection 能力；PR6–PR13 继续
   遵循 `info.md` 的逐批门槛、回滚和单一 authority 约束。
 
 ## Technical Approach
@@ -197,19 +232,21 @@ PostgreSQL v2，外部引擎只能通过可替换 adapter 做 shadow；Hindsight
 
 ## Current Batch Out of Scope
 
-- PR4 不实现 PR5 的 Review suggestion、semantic conflict/temporal lifecycle、subject/fact key
-  routing 或 Project/Conversation auto scope；本批只做 exact Global canonical correctness、
-  manual precedence 与 targeted no-resurrection fence。
-- PR4 不提供 Project CRUD/API/UI，不切换任何 v2 reader，不修改现有 Memory HTTP payload，
-  不实现 BM25/vector/rerank、L2/L3、Graph DB 或 Hindsight shadow。
-- PR4 生成数据库内无正文 deletion manifest authority，但独立 Docker-secret key、
-  authenticated encrypted off-host export、restore replay、14-day/8-week prune command 属于
-  PR10；本批不得用普通 SHA-256 冒充签名或宣称尚未实现的 backup 物理过期。
-- PR4 不调用 Live provider，不运行 Hindsight 真实 shadow，不创建、修改、删除或导出 Live
-  用户 Memory；worker 行为只以 fake/offline tests 与 disposable PostgreSQL 验证。
-- PR4 不允许 worker 直接表 CRUD、purge lane hydrate Provider、自动 writer 清 tombstone，
-  或 down migration 丢弃 provenance/delete history；runtime rollback 仍优先停止 Learn/worker
-  并保留 durable state。
+- PR5 只产出 shadow/pending/rejected proposal，绝不 auto ADD/MERGE/SUPERSEDE canonical；
+  不实现 PR6 direct-user typed actions、Review accept/reject/clear API、Activity/Usage 或 undo。
+- PR5 不提供 Project/Conversation/Review CRUD API/UI，不切换 v2 reader，不修改现有 Memory
+  HTTP payload；PR7 exact/CJK BM25 projection、PR8 vector/RRF/rerank 仍冻结，因此 related
+  lookup 只使用 bounded current targets、same-scope exact 与 fact-key authority，不冒充
+  已实现的 hybrid semantic recall。
+- PR5 temporal 只接受 source timestamp 或明确 absolute timestamp；没有 Server-owned user
+  timezone 时，相对/猜测时间只进 Review，不能在 replay 时按运行当天重新解释。普通 Recall
+  仍不启用 as-of/history reader，expiry proposal 也不改变 v1 canonical lifecycle。
+- PR5 不调用 Live provider，不运行 Hindsight 真实 shadow，不创建、修改、删除或导出 Live
+  用户 Memory；Worker/provider 行为只以 fake/offline tests 与 disposable PostgreSQL 验证。
+- PR5 不允许 worker 直接表 CRUD、expiry lane hydrate Provider、模型输出授予 auth/scope/
+  revision authority、自动 writer 清 tombstone，或 down migration 丢弃 proposal/review history。
+- PR10 的 authenticated encrypted off-host deletion manifest/export/import/restore replay 与
+  14-day/8-week retention/prune、PR11/12 L2/L3、PR13 Hindsight adapter 继续冻结。
 - 不把 AGENTS/system/project 固定规则迁入概率性 Memory。
 - 不把供应商 benchmark 当作发布门槛；发布必须使用 Neo Chat 中文数据集复测。
 
