@@ -738,3 +738,54 @@ reader and API contract.
 
 - Begin PR7 L1 exact/CJK BM25 projection shadow without switching the v2
   reader or enabling dense retrieval early.
+
+
+## Session 21: Implement Memory v2 lexical projection shadow
+
+**Date**: 2026-07-28
+**Task**: Implement Memory v2 L1 exact/CJK BM25 projection shadow
+**Branch**: `main`
+
+### Summary
+
+Implemented PR7 transactional exact/CJK BM25 projections and default-off,
+zero-prompt-injection comparison against the v1 reader while keeping v1 Top 5,
+prompt, Usage, and chat success as the only production authority.
+
+### Main Changes
+
+- Added migration `058` with canonical-owned derived projections, exact and
+  `pg_textsearch` BM25 lanes, normalized ID-only observations/results, narrow
+  runtime capability, idempotent replay, and guarded rollback.
+- Added optional Go lexical shadow comparison, bounded metadata sanitization,
+  fail-open chat behavior, and `MEMORY_LEXICAL_SHADOW_ENABLED=false` wiring.
+- Added executable Trellis/runtime/deployment/persistence contracts and static,
+  Go, and disposable PostgreSQL coverage for projection correctness, authority,
+  lifecycle, replay, permissions, and rollback.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2b85c35` | `feat: add Memory lexical projection and shadow comparison` |
+| `058d08d` | `docs(task): record Memory v2 PR7 progress` |
+
+### Testing
+
+- [OK] Focused race tests, full backend `go test ./...`, and `go vet ./...`.
+- [OK] Disposable PostgreSQL 17 backfill, CJK/Latin/punctuation lanes,
+  transaction maintenance, authority/lifecycle/staleness filtering,
+  replay/conflict, runtime-role denial, guarded down, clean down, and re-up.
+- [OK] Preflight, Compose rendering, backend image build, and related
+  quality/security scans.
+- [OK] Full standalone gate: frontend 954 tests/build, backend tests/vet, and
+  RAG 1,906 passed / 7 skipped.
+
+### Status
+
+[OK] **PR7 completed; parent Memory v2 task remains in progress**
+
+### Next Steps
+
+- Begin PR8 BGE-M3/vector, RRF, rerank, and budget fallback as a separate 0%
+  prompt-injection shadow batch without switching the v2 reader early.
