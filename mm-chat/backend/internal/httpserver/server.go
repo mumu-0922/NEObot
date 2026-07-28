@@ -985,7 +985,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 			usermemory.WithPortabilityPlanCodec(resolvedOptions.memoryPortabilityPlanCodec),
 		)
 	}
-	if cfg.Memory.HybridShadowEnabled {
+	if cfg.Memory.HybridShadowEnabled || cfg.Memory.L2SceneShadowEnabled {
 		provider := resolveMemoryHybridProvider(resolvedOptions.ragQueryEmbedder)
 		if provider != nil {
 			memoryServiceOptions = append(
@@ -1018,6 +1018,8 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		chat.WithUserMemoryService(userMemoryService),
 		chat.WithMemoryLexicalShadowEnabled(cfg.Memory.LexicalShadowEnabled),
 		chat.WithMemoryHybridShadowEnabled(cfg.Memory.HybridShadowEnabled),
+		chat.WithMemoryL2SceneShadowEnabled(cfg.Memory.L2SceneShadowEnabled),
+		chat.WithMemoryL2SceneReaderEnabled(cfg.Memory.L2SceneReaderEnabled),
 		chat.WithMemoryWakePublisher(resolvedOptions.memoryWakePublisher),
 		chat.WithMemoryActionProviderResolver(runtimeMemoryActionProviderResolver{
 			service: runtimeConfigService,

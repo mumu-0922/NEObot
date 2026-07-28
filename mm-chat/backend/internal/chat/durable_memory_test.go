@@ -318,6 +318,180 @@ func TestPrepareDurableMemoryHybridFlagOffMakesZeroShadowCalls(t *testing.T) {
 	}
 }
 
+func TestPrepareDurableMemoryL2ShadowNeverChangesPromptOrUsage(t *testing.T) {
+	repo := &chatMemoryRepository{
+		settings: usermemory.Settings{Enabled: true, SearchEnabled: true},
+		memories: []usermemory.Memory{chatMemoryFixture(
+			"11111111-1111-4111-8111-111111111111",
+			"preference",
+			"Keep answers concise",
+			5,
+		)},
+		l2Preparation: usermemory.L2ScenePreparation{
+			Summary: usermemory.L2SceneSearchSummary{
+				ProfileID: usermemory.L2SceneProfileID, Mode: "shadow",
+				Status: "pending", ResultCode: "CANDIDATES_READY",
+				FallbackCode: "PROVIDER_UNAVAILABLE", RRFCount: 1,
+			},
+			Candidates: []usermemory.L2SceneCandidate{{
+				SceneID:  "22222222-2222-4222-8222-222222222222",
+				Revision: 1, ScopeType: "global", Content: "Shadow-only Scene content",
+			}},
+		},
+		l2Result: usermemory.L2SceneSearchResult{
+			Summary: usermemory.L2SceneSearchSummary{
+				ProfileID: usermemory.L2SceneProfileID, Mode: "shadow",
+				Status: "completed", ResultCode: "COMPLETED",
+				FallbackCode: "PROVIDER_UNAVAILABLE", FinalCount: 1,
+			},
+			Scenes: []usermemory.L2SceneCandidate{{
+				SceneID:  "22222222-2222-4222-8222-222222222222",
+				Revision: 1, ScopeType: "global", Content: "Shadow-only Scene content",
+			}},
+		},
+	}
+	handler := NewHandler(
+		NewService(&fakeRepository{}),
+		WithUserMemoryService(usermemory.NewService(repo)),
+		WithMemoryL2SceneShadowEnabled(true),
+	)
+	systemPrompt, preparation := handler.prepareDurableMemory(
+		context.Background(), "Please keep this concise",
+		"33333333-3333-4333-8333-333333333333",
+		"44444444-4444-4444-8444-444444444444", "Base instruction",
+	)
+	if repo.l2PrepareCalls != 1 || repo.l2Prepare.ActiveRequested ||
+		!strings.Contains(systemPrompt, "Keep answers concise") ||
+		strings.Contains(systemPrompt, "Shadow-only Scene content") ||
+		strings.Contains(systemPrompt, "22222222-2222-4222-8222-222222222222") {
+		t.Fatalf("L2 shadow changed prompt = %q repo=%#v", systemPrompt, repo)
+	}
+	usages := durableMemoryUsageInputs(preparation)
+	if len(usages) != 1 || usages[0].MemoryID != repo.memories[0].ID {
+		t.Fatalf("L2 shadow changed Usage = %#v", usages)
+	}
+	payload, err := json.Marshal(withDurableMemoryMetadata(nil, preparation))
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded := string(payload)
+	if !strings.Contains(encoded, `"l2Scene"`) ||
+		strings.Contains(encoded, "Shadow-only Scene content") ||
+		strings.Contains(encoded, "22222222-2222-4222-8222-222222222222") {
+		t.Fatalf("L2 shadow metadata leaked payload = %s", encoded)
+	}
+}
+
+func TestPrepareDurableMemoryL2ActiveUsesSeparatePromptBlockAndL1Usage(t *testing.T) {
+	repo := &chatMemoryRepository{
+		settings: usermemory.Settings{Enabled: true, SearchEnabled: true},
+		memories: []usermemory.Memory{chatMemoryFixture(
+			"11111111-1111-4111-8111-111111111111",
+			"preference", "Keep answers concise", 5,
+		)},
+		l2Preparation: usermemory.L2ScenePreparation{
+			Summary: usermemory.L2SceneSearchSummary{
+				ProfileID: usermemory.L2SceneProfileID, Mode: "active",
+				Status: "pending", ResultCode: "CANDIDATES_READY",
+				FallbackCode: "PROVIDER_UNAVAILABLE", RRFCount: 1,
+			},
+			Candidates: []usermemory.L2SceneCandidate{{
+				SceneID:  "22222222-2222-4222-8222-222222222222",
+				Revision: 1, ScopeType: "project", Content: "The current project uses Go.",
+			}},
+		},
+		l2Result: usermemory.L2SceneSearchResult{
+			Summary: usermemory.L2SceneSearchSummary{
+				ProfileID: usermemory.L2SceneProfileID, Mode: "active",
+				Status: "completed", ResultCode: "COMPLETED",
+				FallbackCode: "PROVIDER_UNAVAILABLE", FinalCount: 1,
+				InjectedCount: 1,
+			},
+			Scenes: []usermemory.L2SceneCandidate{{
+				SceneID:  "22222222-2222-4222-8222-222222222222",
+				Revision: 1, ScopeType: "project", Content: "The current project uses Go.",
+			}},
+		},
+	}
+	handler := NewHandler(
+		NewService(&fakeRepository{}),
+		WithUserMemoryService(usermemory.NewService(repo)),
+		WithMemoryL2SceneShadowEnabled(true),
+		WithMemoryL2SceneReaderEnabled(true),
+	)
+	systemPrompt, preparation := handler.prepareDurableMemory(
+		context.Background(), "Please keep this concise for the current project",
+		"33333333-3333-4333-8333-333333333333",
+		"44444444-4444-4444-8444-444444444444", "Base instruction",
+	)
+	if !repo.l2Prepare.ActiveRequested ||
+		!strings.Contains(systemPrompt, "<relevant-user-memory>") ||
+		!strings.Contains(systemPrompt, "<relevant-user-scenes>") ||
+		!strings.Contains(systemPrompt, "The current project uses Go.") ||
+		strings.Contains(systemPrompt, "22222222-2222-4222-8222-222222222222") {
+		t.Fatalf("L2 active prompt = %q prepare=%#v", systemPrompt, repo.l2Prepare)
+	}
+	if len(preparation.ActiveScenes) != 1 {
+		t.Fatalf("L2 active preparation = %#v", preparation)
+	}
+	usages := durableMemoryUsageInputs(preparation)
+	if len(usages) != 1 || usages[0].MemoryID != repo.memories[0].ID {
+		t.Fatalf("L2 active changed L1 Usage = %#v", usages)
+	}
+}
+
+func TestPrepareDurableMemoryL2FailureFallsBackToL1(t *testing.T) {
+	repo := &chatMemoryRepository{
+		settings: usermemory.Settings{Enabled: true, SearchEnabled: true},
+		memories: []usermemory.Memory{chatMemoryFixture(
+			"11111111-1111-4111-8111-111111111111",
+			"preference", "Keep answers concise", 5,
+		)},
+		l2PrepareErr: errors.New("private Scene database error"),
+	}
+	handler := NewHandler(
+		NewService(&fakeRepository{}),
+		WithUserMemoryService(usermemory.NewService(repo)),
+		WithMemoryL2SceneShadowEnabled(true),
+		WithMemoryL2SceneReaderEnabled(true),
+	)
+	systemPrompt, preparation := handler.prepareDurableMemory(
+		context.Background(), "Please keep this concise",
+		"33333333-3333-4333-8333-333333333333",
+		"44444444-4444-4444-8444-444444444444", "Base instruction",
+	)
+	if !strings.Contains(systemPrompt, "Keep answers concise") ||
+		strings.Contains(systemPrompt, "private Scene database error") ||
+		len(preparation.Items) != 1 || len(preparation.ActiveScenes) != 0 ||
+		preparation.L2Scene == nil || preparation.L2Scene.ResultCode != "PREPARE_FAILED" {
+		t.Fatalf("L2 failure changed L1 = prompt:%q prep:%#v", systemPrompt, preparation)
+	}
+}
+
+func TestPrepareDurableMemoryL2ReaderFlagAloneMakesZeroSceneCalls(t *testing.T) {
+	repo := &chatMemoryRepository{
+		settings: usermemory.Settings{Enabled: true, SearchEnabled: true},
+		memories: []usermemory.Memory{chatMemoryFixture(
+			"11111111-1111-4111-8111-111111111111",
+			"preference", "Keep answers concise", 5,
+		)},
+	}
+	handler := NewHandler(
+		NewService(&fakeRepository{}),
+		WithUserMemoryService(usermemory.NewService(repo)),
+		WithMemoryL2SceneReaderEnabled(true),
+	)
+	_, preparation := handler.prepareDurableMemory(
+		context.Background(), "Please keep this concise",
+		"33333333-3333-4333-8333-333333333333",
+		"44444444-4444-4444-8444-444444444444", "Base instruction",
+	)
+	if repo.l2PrepareCalls != 0 || preparation.L2Scene != nil {
+		t.Fatalf("reader-only flag reached L2 = calls:%d prep:%#v",
+			repo.l2PrepareCalls, preparation)
+	}
+}
+
 func TestPrepareDurableMemoryDisabledDoesNotReadRows(t *testing.T) {
 	repo := &chatMemoryRepository{settings: usermemory.DefaultSettings()}
 	handler := NewHandler(
@@ -422,6 +596,14 @@ type chatMemoryRepository struct {
 	hybridSummary     usermemory.HybridShadowSummary
 	hybridPrepareErr  error
 	hybridRecordErr   error
+	l2PrepareCalls    int
+	l2RecordCalls     int
+	l2Prepare         usermemory.L2ScenePrepareInput
+	l2Record          usermemory.L2SceneRecordInput
+	l2Preparation     usermemory.L2ScenePreparation
+	l2Result          usermemory.L2SceneSearchResult
+	l2PrepareErr      error
+	l2RecordErr       error
 }
 
 func (r *chatMemoryRepository) GetSettings(context.Context) (usermemory.Settings, bool, error) {
@@ -484,6 +666,24 @@ func (r *chatMemoryRepository) RecordHybridShadow(
 	return r.hybridSummary, r.hybridRecordErr
 }
 
+func (r *chatMemoryRepository) PrepareL2SceneSearch(
+	_ context.Context,
+	input usermemory.L2ScenePrepareInput,
+) (usermemory.L2ScenePreparation, error) {
+	r.l2PrepareCalls++
+	r.l2Prepare = input
+	return r.l2Preparation, r.l2PrepareErr
+}
+
+func (r *chatMemoryRepository) RecordL2SceneSearch(
+	_ context.Context,
+	input usermemory.L2SceneRecordInput,
+) (usermemory.L2SceneSearchResult, error) {
+	r.l2RecordCalls++
+	r.l2Record = input
+	return r.l2Result, r.l2RecordErr
+}
+
 func chatMemoryFixture(id string, memoryType string, content string, importance int) usermemory.Memory {
 	now := time.Now().UTC()
 	return usermemory.Memory{
@@ -495,6 +695,7 @@ func chatMemoryFixture(id string, memoryType string, content string, importance 
 
 var _ usermemory.LexicalShadowRepository = (*chatMemoryRepository)(nil)
 var _ usermemory.HybridShadowRepository = (*chatMemoryRepository)(nil)
+var _ usermemory.L2SceneRepository = (*chatMemoryRepository)(nil)
 
 type chatGovernanceMemoryRepository struct {
 	*chatMemoryRepository

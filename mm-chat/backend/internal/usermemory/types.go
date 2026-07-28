@@ -34,6 +34,7 @@ var (
 	ErrMemoryProjectNotFound         = errors.New("memory project not found")
 	ErrConversationPolicyNotFound    = errors.New("conversation memory policy not found")
 	ErrMemoryReviewNotFound          = errors.New("memory review not found")
+	ErrMemoryL2SceneNotFound         = errors.New("memory L2 Scene not found")
 	ErrPortabilityRepositoryRequired = errors.New("memory portability repository is required")
 	ErrPortabilityPlanCodecRequired  = errors.New("memory portability plan codec is required")
 )
@@ -70,6 +71,14 @@ type LexicalShadowRepository interface {
 type HybridShadowRepository interface {
 	PrepareHybridShadow(context.Context, HybridShadowPrepareInput) (HybridShadowPreparation, error)
 	RecordHybridShadow(context.Context, HybridShadowRecordInput) (HybridShadowSummary, error)
+}
+
+// L2SceneRepository exposes only authenticated Scene search capabilities.
+// Scene plaintext remains derived and is returned transiently for rerank or
+// active prompt composition; durable observations remain content-free.
+type L2SceneRepository interface {
+	PrepareL2SceneSearch(context.Context, L2ScenePrepareInput) (L2ScenePreparation, error)
+	RecordL2SceneSearch(context.Context, L2SceneRecordInput) (L2SceneSearchResult, error)
 }
 
 type Settings struct {
@@ -261,6 +270,7 @@ func IsStateConflict(err error) bool {
 		"MEMORY_GOVERNANCE_SCOPE_STALE",
 		"MEMORY_GOVERNANCE_REVIEW_STALE",
 		"MEMORY_GOVERNANCE_REPLAY_CONFLICT",
+		"MEMORY_L2_SCENE_REVISION_STALE",
 		"MEMORY_IMPORT_PLAN_TOKEN_INVALID",
 		"MEMORY_IMPORT_PLAN_STALE":
 		return true
@@ -367,6 +377,68 @@ type HybridShadowSummary struct {
 	EstimatedTokens      int    `json:"estimatedTokens"`
 	TargetTokensExceeded bool   `json:"targetTokensExceeded"`
 	DurationMillis       int    `json:"durationMillis"`
+}
+
+type L2ScenePrepareInput struct {
+	ObservationID       string
+	ConversationID      string
+	AssistantMessageID  string
+	QueryHash           string
+	QueryText           string
+	QueryEmbedding      []float32
+	QueryEmbeddingState string
+	ActiveRequested     bool
+}
+
+type L2SceneCandidate struct {
+	SceneID   string `json:"sceneId"`
+	Revision  int64  `json:"revision"`
+	ScopeType string `json:"scopeType"`
+	Content   string `json:"content"`
+}
+
+type L2SceneRankedItem struct {
+	SceneID  string `json:"sceneId"`
+	Revision int64  `json:"revision"`
+}
+
+type L2ScenePreparation struct {
+	Summary    L2SceneSearchSummary
+	Replayed   bool
+	Candidates []L2SceneCandidate
+}
+
+type L2SceneRecordInput struct {
+	ObservationID      string
+	AssistantMessageID string
+	RerankStatus       string
+	FallbackCode       string
+	Reranked           []L2SceneRankedItem
+	Final              []L2SceneRankedItem
+	EstimatedTokens    int
+	DurationMillis     int
+}
+
+type L2SceneSearchSummary struct {
+	ProfileID       string `json:"profile"`
+	Mode            string `json:"mode"`
+	Status          string `json:"status"`
+	ResultCode      string `json:"resultCode"`
+	FallbackCode    string `json:"fallbackCode"`
+	ExactCount      int    `json:"exactCount"`
+	BM25Count       int    `json:"bm25Count"`
+	VectorCount     int    `json:"vectorCount"`
+	RRFCount        int    `json:"rrfCount"`
+	RerankCount     int    `json:"rerankCount"`
+	FinalCount      int    `json:"finalCount"`
+	InjectedCount   int    `json:"injectedCount"`
+	EstimatedTokens int    `json:"estimatedTokens"`
+	DurationMillis  int    `json:"durationMillis"`
+}
+
+type L2SceneSearchResult struct {
+	Summary L2SceneSearchSummary
+	Scenes  []L2SceneCandidate
 }
 
 type UndoActivityInput struct {

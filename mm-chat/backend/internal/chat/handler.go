@@ -55,6 +55,8 @@ type Handler struct {
 	userMemoryService            *usermemory.Service
 	memoryLexicalShadowEnabled   bool
 	memoryHybridShadowEnabled    bool
+	memoryL2SceneShadowEnabled   bool
+	memoryL2SceneReaderEnabled   bool
 	memoryWakePublisher          MemoryWakePublisher
 	memoryActionProviderResolver MemoryActionProviderResolver
 	contextBudgetPolicy          contextBudgetPolicy
@@ -371,6 +373,18 @@ func WithMemoryLexicalShadowEnabled(enabled bool) HandlerOption {
 func WithMemoryHybridShadowEnabled(enabled bool) HandlerOption {
 	return func(handler *Handler) {
 		handler.memoryHybridShadowEnabled = enabled
+	}
+}
+
+func WithMemoryL2SceneShadowEnabled(enabled bool) HandlerOption {
+	return func(handler *Handler) {
+		handler.memoryL2SceneShadowEnabled = enabled
+	}
+}
+
+func WithMemoryL2SceneReaderEnabled(enabled bool) HandlerOption {
+	return func(handler *Handler) {
+		handler.memoryL2SceneReaderEnabled = enabled
 	}
 }
 
