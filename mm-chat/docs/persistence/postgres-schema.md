@@ -1,8 +1,8 @@
-# Postgres Schema Through Migration 054
+# Postgres Schema Through Migration 061
 
 This document describes the current schema created by the ordered migrations in
 `mm-chat/backend/migrations`, from `001_initial_schema` through
-`054_memory_outbox_jobs_worker`. Phase labels are retained where they
+`061_memory_portability_retention`. Phase labels are retained where they
 explain rollout history; they do not narrow the current schema or its
 implemented repository consumers.
 
@@ -44,14 +44,15 @@ In scope:
   lease-fenced Functions, replay audit, and Collection purge fan-out.
 - Least-privilege capability roles and the database contract used by the
   durable Phase 15.2B dark-run Worker.
-- ID-only Memory capture events, lease/reclaim jobs, and the restricted
-  `memory_worker_runtime` capability used by the private Go Memory Worker.
+- Complete Memory v2 L1 canonical/governance authority through encrypted
+  portability, ID/hash-only deletion replay authority, rebuildable lexical/
+  vector projections, and the restricted API/worker capability roles.
 
 Out of scope:
 
-- MinIO/S3 file-byte storage, Redis data structures, pgvector/true BM25
-  accelerator DDL, real Parser/Embedding/Search execution, automatic migrations
-  during API startup, and deployment topology.
+- MinIO/S3 file-byte storage, Redis data structures, Provider execution,
+  plaintext portability archives, backup artifacts, automatic migrations during
+  API startup, and deployment topology.
 
 ## 2. Baseline Conventions
 
@@ -87,6 +88,9 @@ Out of scope:
 | `056_memory_candidate_review_shadow`          | Adds atomic extraction candidate batches, Review/shadow proposals, conflict/temporal metadata, and provider-free expiry. |
 | `057_memory_actions_activity_usage`           | Adds direct-user typed actions, immutable answer Usage, link-only Activity, and revision-safe undo. |
 | `058_memory_lexical_projection_shadow`        | Adds rebuildable exact/CJK BM25 Memory projection and hash/ID/rank-only default-off shadow comparison while retaining v1 prompt authority. |
+| `059_memory_hybrid_vector_shadow`             | Adds fixed BGE-M3 vector projection/jobs and hash/ID/rank/token-only RRF/rerank shadow observations. |
+| `060_memory_governance_ui`                    | Adds current-user Project/policy/scoped Memory/Review/detail/Activity capabilities, Review decision audit, and classified legacy wrappers. |
+| `061_memory_portability_retention`            | Adds imported source/revision authority, hash-only import batches, encrypted portability capabilities, deletion replay authority, and projection rebuild. |
 
 Published migration pairs are immutable and applied in numeric order. Migration
 SQL contains no transaction-control statements; the Go runner wraps each schema
@@ -490,6 +494,42 @@ lets the future G7.5 worker fail closed unless every child has a ready
 readiness, so dispatch-capable workers fail closed if the G7.4 completion gate
 is absent or unexecutable. pgvector/true BM25 accelerator DDL remains pending in
 a later reversible migration.
+
+### Memory v2 authority and derived tables
+
+Memory v2 deliberately separates canonical user facts, append-only evidence,
+governance/audit authority, durable work, and rebuildable retrieval state:
+
+| Layer | Tables | Contract |
+| --- | --- | --- |
+| Scope/settings/canonical | `projects`, `user_memory_settings`, `user_memories`, Conversation policy columns | Composite user ownership, revision/scope-generation fences, and exactly one canonical plaintext row. |
+| Capture/work | `memory_outbox`, `memory_jobs` | ID-only events plus leased stages; Redis wake-up is non-authoritative. |
+| Provenance/delete | `user_memory_state`, `user_memory_evidence`, `user_memory_revisions`, `user_memory_tombstones`, `user_memory_deletion_manifests` | Current visibility epoch, ID/hash evidence, append-only prior snapshots, immediate hide, and provider-free plaintext purge. |
+| Candidate/governance | `memory_capture_candidate_batches`, `user_memory_review_suggestions`, `user_memory_review_targets`, `user_memory_review_evidence`, `user_memory_review_decisions` | Proposal-wide hash authority, target/evidence joins, pending Review, and ID/hash/result-only decision audit. |
+| User actions/answer links | `memory_user_actions`, `memory_user_action_targets`, `message_memory_activities`, `message_memory_usages` | Typed current-user actions, link-only Activity, and immutable revision-pinned Usage. |
+| Derived retrieval | `user_memory_search_projections`, `user_memory_embedding_jobs`, lexical/hybrid shadow observation/result tables | Rebuildable exact/CJK BM25/BGE-M3 state. Diagnostics omit query/content/raw scores. |
+| Portability/restore | `memory_import_batches`, `memory_deletion_replay_entries` | Import and restore replay keep only user/opaque IDs, hashes, counts, status, result, and time. No package plaintext or passphrase is staged. |
+
+Migration `061` extends `user_memories.source` and revision actors with
+`import`. An imported row receives a fresh local UUID, `source='import'`,
+`authority_kind='import'`, mapped local scope authority, and no fabricated
+message evidence. Imported settings are suggestions outside these tables and
+are never applied by confirm. Conflicts remain Review-only; confirm writes only
+the deterministic `ADD` set.
+
+All portability functions are owner-pinned `SECURITY DEFINER` capabilities with
+trusted schema/`pg_catalog`/`pg_temp` search paths. `go_api_runtime` may execute
+the reviewed export/import/operator functions because the one-shot `admin`
+container shares that login, but neither it nor `memory_worker_runtime` has
+direct CRUD on `memory_import_batches` or
+`memory_deletion_replay_entries`. Deletion replay matches both Memory ID and
+content hash before hiding/wiping a restored row; afterwards it drops and
+rebuilds eligible L1 projections. It performs no Provider call.
+
+The `061` down migration fails closed while any import batch, deletion replay
+entry, imported canonical row, or imported revision remains. A clean rollback
+restores the pre-import source/actor constraints and removes only the new
+portability capabilities/tables.
 
 ## 5. Historical Repository Activation Boundary
 

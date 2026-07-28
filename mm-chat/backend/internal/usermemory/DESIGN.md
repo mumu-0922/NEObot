@@ -31,6 +31,12 @@ Assistant finalize transaction -> immutable migration-057 L1 Usage links
 Activity polling/undo -> user-scoped migration-057 capabilities
 Project/policy/scoped Memory/Review/detail -> migration-060 governance functions
 Assistant Activity chip -> current-only migration-060 message hydration
+Authenticated export -> repeatable-read canonical scan -> canonical JSONL
+  -> age scrypt authenticated stream -> encrypted response temporary file
+Encrypted import -> authenticate/validate/secret gate -> mapped dry-run
+  -> HMAC package/plan/state fence -> atomic migration-061 ADD-only apply
+Deletion authority -> encrypted off-host package -> stopped-backend replay
+  -> ID/hash hide + plaintext wipe -> full projection rebuild
 Canonical Memory transaction -> migration-058 exact/CJK BM25 projection
 Current user message -> unchanged v1 Top 5 -> optional migration-058 shadow
   -> ID/revision/rank-only diagnostics; zero prompt injection
@@ -78,6 +84,11 @@ cycle.
 | Content classification is duplicated at Go and SQL       | A client label or alternate repository caller must not downgrade Sensitive/secret content  | Go fails fast; migration `060` wrappers/capabilities reclassify before canonical mutation |
 | Legacy v1 writes use governed wrappers after `060`       | Keeping old runtime EXECUTE would leave a classification bypass                            | Old grants are revoked on up, restored on down, and repository calls must move with migration |
 | Activity undo uses `subjectRevision`                     | Current hydrated revision can differ from the action's undo precondition                    | Frontend sends the immutable Activity subject revision and stale undo becomes Review-required |
+| Portability plaintext is streaming-only                  | A temporary JSON archive or database staging table becomes a second uncontrolled fact store | Only encrypted temporary HTTP bytes may touch disk; passphrases remain request/stdin memory |
+| External IDs are descriptive, never authoritative        | Source user/Project/Conversation/Memory IDs cannot cross the local ownership boundary        | Package-local refs require current-user mapping and imports receive fresh deterministic local IDs |
+| Import is dry-run then ADD-only confirm                  | NOOP/conflict/scope decisions must be reviewable and stable across concurrent governance      | Ten-minute HMAC binds package, mappings, plan, and current authority state; REVIEW never overwrites canonical |
+| Settings are suggestions only                            | Import must not silently enable Learn, Use, Sensitive, L2, or L3                              | The UI displays them but migration-061 has no settings-apply import capability |
+| Restore replays deletion before backend open             | An older valid backup can resurrect already deleted Memory                                   | Authenticated ID/hash replay wipes matching plaintext and rebuilds projections without a Provider call |
 
 ## Validation and limits
 
@@ -91,6 +102,13 @@ cycle.
 - direct action planner output is at most 16 KiB, contains at most five target
   references, uses schema major one, and requires confidence at least `0.80`
   for mutation; Activity pages are 1–100 and Usage lists are at most five.
+- decrypted portability input is at most 256 MiB, with at most 1,000 Projects,
+  50,000 Memories, 200,000 revisions, 64 KiB per JSONL line, and 2,000 Unicode
+  code points per Memory content; encrypted multipart upload is capped at
+  300 MiB plus 1 MiB framing overhead.
+- passphrases are 12–1,024 bytes; import mappings are at most 256 KiB and plan
+  tokens at most 4 KiB. Unknown, duplicate, trailing, non-canonical, unordered,
+  count/hash-mismatched, or over-limit input fails closed.
 
 ## Threat model and controls
 
@@ -125,6 +143,15 @@ cycle.
 | Governance history leaks deleted plaintext | Detail/Activity join current enabled/lifecycle/epoch/scope authority; deleted sources and purged revisions return marker fields only |
 | Old Global writer bypasses PR9 policy | Migration `060` revokes its runtime EXECUTE and grants only classification-aware legacy wrappers |
 | Cross-user or stale Project/policy/Review mutation | Auth-derived user plus revision/generation/target/replay checks execute inside pinned SECURITY DEFINER functions |
+| Export leaks unrelated or non-current authority | One current-user `REPEATABLE READ, READ ONLY` snapshot emits only current non-deleted L1 canonical rows and mapped Project metadata |
+| Archive/passphrase persists outside request memory | Plaintext is streamed directly through age; HTTP uses encrypted-only mode-0600 temporary files and removes them on every path |
+| Ciphertext is wrong, truncated, or modified | age authentication must complete before a plan or replay transaction can commit |
+| Import uses source IDs for IDOR | Portable refs have no authority; Go normalizes mappings and SQL reauthorizes every Project/Conversation against the authenticated user |
+| Import overwrites a current fact | Deterministic resolution emits REVIEW; confirm accepts only the unchanged ADD set |
+| Token or authority changes after dry-run | HMAC binds user/package/manifest/mappings/plan/state; confirm rebuilds the plan and SQL rechecks authority in the transaction |
+| Import creates a second provenance fiction | Imported rows use `source/authority=import`, fresh IDs, and no local message evidence; optional history uses an explicit import actor |
+| Restore resurrects deleted plaintext | Offline replay matches ID+content hash, recreates tombstone/manifest evidence, wipes canonical/revision/evidence plaintext, then rebuilds all eligible projections |
+| Runtime directly edits portability authority | API/admin receives pinned function execution only; API and Memory Worker have no import/replay table CRUD |
 
 Known limitation: migrations `058`/`059` remain zero-injection shadows and PR9
 Project/Conversation Memory remains governance-only. Semantic/scoped results
@@ -137,7 +164,12 @@ Required coverage includes settings/CRUD, soft delete, duplicate conflict,
 user isolation, related/unrelated CJK relevance, disabled zero-read/zero-write,
 secret filtering, Provider failure containment, migration down/up, frontend
 server authority, Global-only v1 isolation, scoped ownership constraints, and a
-real Provider cross-conversation recall/delete proof.
+real Provider cross-conversation recall/delete proof. Portability additionally
+requires age wrong-passphrase/tamper/truncation tests, strict JSON/multipart and
+hard-cap tests, secret zero-persistence, cross-user mapping denial, plan/token/
+state drift, confirm replay, imported history chains, deletion replay/projection
+rebuild, runtime role denial, and a clean PostgreSQL 17
+`060 -> 061 -> 060 -> 061` drill.
 
 ## Change history
 
@@ -160,3 +192,6 @@ real Provider cross-conversation recall/delete proof.
 - 2026-07-28: migration-060 Project/Conversation policy, scoped governance,
   Review decisions, current-only detail/Activity hydration, and classified v1
   compatibility wrappers (Memory v2 PR9).
+- 2026-07-28: migration-061 authenticated encrypted Export/Import, ADD-only
+  state-fenced confirm, off-host deletion replay, and full projection rebuild
+  (Memory v2 PR10).

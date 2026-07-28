@@ -21,6 +21,7 @@
 | [Memory v2 lexical shadow](./memory-v2-lexical-shadow.md) | Transactional L1 exact/CJK BM25 projection, current-authority shadow comparison, ID-only diagnostics, and v1 fail-open |
 | [Memory v2 hybrid shadow](./memory-v2-hybrid-shadow.md) | Fixed BGE-M3 vector jobs, Exact/BM25/vector RRF/rerank shadow, budget fallback, old-response fences, and zero prompt injection |
 | [Memory v2 governance](./memory-v2-governance.md) | Project/Conversation policy, scoped governance CRUD, Review decisions, current-only detail/Activity hydration, and governed v1 compatibility |
+| [Memory v2 portability/retention](./memory-v2-portability-retention.md) | Authenticated age export/import, dry-run/confirm fencing, off-host deletion replay, and verified backup-set retention |
 
 ## Pre-Development Checklist
 
@@ -177,6 +178,18 @@ assistant Activity UI, or post-`060` v1 CRUD changes:
    capability revocation, Review replay fences, provider-free purge, and clean
    guarded down/re-up.
 
+For Memory Export/Import, imported history, deletion-manifest restore replay,
+backup-set metadata, or retention/prune changes:
+
+1. Read
+   [`memory-v2-portability-retention.md`](./memory-v2-portability-retention.md).
+2. Keep passphrases/plaintext archives out of disk, env, logs, jobs, metrics,
+   and database staging; use the pinned age scrypt authenticated stream.
+3. Reauthorize every external scope against the current user and bind confirm
+   to package/plan/state hashes; conflicts remain Review-only.
+4. Prove restore replay before backend open, projection rebuild, checksum/path/
+   symlink fail-closed retention, and clean guarded down/re-up.
+
 ## Quality Check
 
 - Run the disposable database drill for the changed storage group.
@@ -218,5 +231,9 @@ assistant Activity UI, or post-`060` v1 CRUD changes:
 - For Memory governance changes, also run the PostgreSQL 17 Project/policy/
   Review/Activity/legacy-wrapper/purge/replay drill plus every gate in
   `memory-v2-governance.md`.
+- For Memory portability/retention changes, also run the PostgreSQL 17 import/
+  deletion-replay/projection drill, age tamper and plan-drift tests, retention
+  path/checksum/symlink tests, and every gate in
+  `memory-v2-portability-retention.md`.
 
 **Language**: All documentation should be written in English.

@@ -57,16 +57,22 @@ file metadata in Postgres stays aligned with object bytes in MinIO.
 ```bash
 cd /path/to/mm-chat
 
-./scripts/backup-single-server-production.sh .env.single-server
+./scripts/backup-single-server-production.sh .env.single-server daily
 ```
+
+The optional class is `daily`, `weekly`, or `pre-deploy`; omitted means
+`daily`. One wrapper invocation creates a single verified set ID shared by the
+Postgres and MinIO artifacts.
 
 Outputs:
 
 ```text
-mm-chat/backup/postgres/postgres-<UTC>.dump
-mm-chat/backup/postgres/postgres-<UTC>.dump.sha256
-mm-chat/backup/minio/minio-<UTC>.tar.gz
-mm-chat/backup/minio/minio-<UTC>.tar.gz.sha256
+mm-chat/backup/postgres/postgres-<set-id>.dump
+mm-chat/backup/postgres/postgres-<set-id>.dump.sha256
+mm-chat/backup/minio/minio-<set-id>.tar.gz
+mm-chat/backup/minio/minio-<set-id>.tar.gz.sha256
+mm-chat/backup/sets/<set-id>.json
+mm-chat/backup/sets/<set-id>.json.sha256
 ```
 
 The Postgres dump uses `pg_dump --format=custom --no-owner --no-acl` from the
@@ -75,6 +81,10 @@ Compose service, mirrors `S3_BUCKET`, then archives the mirrored tree as
 `tar.gz`. Both scripts set `umask 077`, so new artifacts and checksums are
 owner-only. The MinIO backup container runs as the invoking host UID/GID so the
 operator can remove temporary staging files after the archive is created.
+The strict set manifest records the class, UTC creation time, exact relative
+artifact/checksum paths, their SHA-256 values, and
+`containsMemoryPlaintext=true`. A failed wrapper run removes every partial file
+for that set and publishes no manifest.
 
 ## Verify backup checksums
 
@@ -90,6 +100,86 @@ Keep the `.sha256` file beside the artifact it signs. If the path inside the
 checksum file no longer matches after moving artifacts, run verification from
 the original parent directory or regenerate a new checksum only after a trusted
 copy has been verified.
+
+Also verify the set manifest before using or pruning a set:
+
+```bash
+(cd mm-chat/backup/sets && sha256sum -c <set-id>.json.sha256)
+```
+
+## Encrypted deletion authority and mandatory restore order
+
+Database backups can predate a user's Memory deletion. A supported restore
+therefore requires the latest full, encrypted off-host deletion package in
+addition to the chosen backup set. Export it after deletion processing and on
+the regular backup schedule; it contains opaque IDs, hashes, epochs, times, and
+result codes only, never Memory content.
+
+```bash
+cd /path/to/mm-chat
+mkdir -p backup/deletions
+read -r -s -p "Deletion package passphrase: " deletion_passphrase; echo
+printf '%s\n' "$deletion_passphrase" | \
+  scripts/compose-single-server-production.sh .env.single-server \
+    --profile ops run --rm -T admin \
+    memory-deletions-export \
+      --output /backup/deletions/deletions-<UTC>.mm-memory-deletions \
+      --passphrase-stdin
+unset deletion_passphrase
+```
+
+The command refuses to overwrite an existing path and publishes a mode-`0600`
+authenticated `age` file. Copy it off-host separately from the database/object
+backup. Never put the passphrase in argv, environment, an env file, a log, or a
+shell history entry.
+
+The production restore sequence is mandatory and must not be reordered:
+
+```text
+keep backend and memory-worker stopped/unopened
+  -> verify and restore one complete Postgres + MinIO backup set
+  -> run migrations from the target release
+  -> replay the latest encrypted deletion package
+  -> rebuild Memory projections (performed by replay)
+  -> verify deletion and projection authority
+  -> open backend and memory-worker
+```
+
+After restoring the database/object pair, apply the target release migrations
+while backend and `memory-worker` remain stopped:
+
+```bash
+scripts/compose-single-server-production.sh .env.single-server \
+  run --rm -T migrate
+```
+
+Then, still before starting backend or `memory-worker`, replay the package:
+
+```bash
+read -r -s -p "Deletion package passphrase: " deletion_passphrase; echo
+printf '%s\n' "$deletion_passphrase" | \
+  scripts/compose-single-server-production.sh .env.single-server \
+    --profile ops run --rm -T admin \
+    memory-deletions-replay \
+      --input /backup/deletions/deletions-<UTC>.mm-memory-deletions \
+      --passphrase-stdin \
+      --backend-stopped
+unset deletion_passphrase
+```
+
+`--backend-stopped` is an explicit operator assertion, not a process detector.
+Replay fully authenticates the package before committing, matches both Memory
+ID and content hash, immediately hides matching restored rows, wipes canonical
+and revision plaintext, recreates tombstone/manifest authority, and rebuilds
+all eligible L1 projections without a Provider call. It is idempotent. Do not
+open the backend if replay reports any `hash_mismatch`; investigate the restored
+set/package pair first. `not_found` is safe only when the deleted row was
+already absent from the selected backup.
+
+Before opening the services, verify that no matching deleted row has visible
+plaintext and no projection targets a deleted/disabled/non-active Memory. Keep
+the exact backup set ID, deletion package SHA-256, replay counters, release ID,
+and verification output with the restore record; never record the passphrase.
 
 ## Postgres restore drill
 
@@ -470,11 +560,39 @@ Minimum schedule for a single-server deployment:
 Retention baseline:
 
 ```text
-daily backups: keep 14 days
-weekly backups: keep 8 weeks if storage allows
-monthly drill references: keep 12 months
-pre-deploy backups: keep through the full rollback window
+daily sets: expire after 14 days
+weekly sets: expire after 56 days
+pre-deploy sets: expire after 56 days
+monthly restore evidence: retain separately according to operator policy
 ```
+
+Retention is set-manifest based, not filename-age based. The command is
+fail-closed and dry-run by default:
+
+```bash
+scripts/compose-single-server-production.sh .env.single-server \
+  --profile ops run --rm -T admin \
+  backup-retention --backup-root /backup
+```
+
+Review the complete deterministic plan and copy the reported
+`plan_sha256`. Execute only that exact freshly recomputed plan:
+
+```bash
+scripts/compose-single-server-production.sh .env.single-server \
+  --profile ops run --rm -T admin \
+  backup-retention --backup-root /backup \
+    --execute --expected-plan-sha256 <64-lowercase-hex>
+```
+
+Every candidate set must have a valid manifest/checksum pair and both verified
+Postgres and MinIO artifact/checksum pairs. The fixed root, `sets` directory,
+every traversed parent, and every file must be non-symlink and resolve beneath
+the root. Missing, duplicate, escaped, changed, or checksum-mismatched paths
+abort the command. Orphans and files not referenced by a verified set are never
+deleted. Execution stops and reports partial-delete counters on the first
+filesystem failure; rerun dry-run after correcting the filesystem, never reuse
+the old plan hash.
 
 Store at least one encrypted copy off-host. Back up deployment secrets and the
 release identifier separately; these scripts intentionally do not archive env
@@ -492,5 +610,14 @@ files, private keys, provider tokens, or Docker images.
   canonical backup set.
 - The scripts validate checksums only after artifact creation; operators must
   verify checksums after transfer and before restore.
+- Backup sets contain Memory plaintext in the Postgres dump. Filesystem mode
+  `0600` is not off-host encryption; encrypt the copied set at rest and protect
+  its key separately.
+- Retention deletion is intentionally not transactional across files. A failed
+  execute stops immediately and reports how far it got; it never guesses that
+  the remainder is safe.
+- Restoring a database without replaying the newest authenticated deletion
+  package can resurrect Memory that the user already deleted. Keep the backend
+  unopened until replay and authority verification finish.
 - Production restore must be tested first in a temporary database/bucket or a
   disposable server.

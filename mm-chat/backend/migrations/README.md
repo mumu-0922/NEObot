@@ -143,7 +143,7 @@ function signatures, owners, and grants while pinning lookup to the application
 schema, `pg_catalog`, and `pg_temp`. Its down path intentionally retains the
 safe search path rather than reopening object-shadowing risk.
 
-The current migration head is `055`; the latest retrieval-specific migration
+The current migration head is `061`; the latest RAG retrieval-specific migration
 remains `050`. Migration `043` extends the existing final-authority evidence
 hydration boundary with complete matched-Child and containing-Parent source
 text plus their persisted token counts. Parent text is answer context only. Its
@@ -315,6 +315,27 @@ writer will receive permission denied. Down restores the old grants but fails
 closed if Review decisions, decided legacy Reviews, or `move` revisions exist.
 Project/Conversation Memory remains governance-only and the v1 Global Top 5 is
 still the only prompt/Usage reader.
+
+Migration `061` adds authenticated Memory portability and restore authority
+without promoting a reader. Export/import use pinned Go `age` v1 scrypt
+streams; SQL sees only current-user snapshot records or an already validated
+ADD-only apply sequence. Imported canonical rows and optional revision history
+use explicit `import` source/actor authority, fresh local UUIDs, mapped local
+scope, and no fabricated message evidence. `memory_import_batches` stores only
+IDs, hashes, counts, status, and timestamps so confirm replay is idempotent;
+package plaintext and passphrases are never staged in PostgreSQL.
+
+The same migration exposes an ID/hash-only deletion-manifest export and a
+Provider-free restore replay. Replay requires both Memory ID and content hash,
+recreates tombstone/manifest authority, immediately disables and wipes matching
+canonical/revision/evidence plaintext, and then rebuilds the complete eligible
+Memory projection. `memory_deletion_replay_entries` records only opaque IDs,
+hashes, bounded result, and replay time. The API/admin runtime receives pinned
+`SECURITY DEFINER` execution only and neither API nor Memory Worker receives
+direct CRUD on either new authority table. Down fails closed once import or
+deletion replay history exists; the clean `060 -> 061 -> 060 -> 061` drill is
+required before release. Backup-set manifests and retention remain filesystem/
+operator behavior and intentionally add no database table.
 
 ## Storage boundaries
 

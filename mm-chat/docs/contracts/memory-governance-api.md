@@ -154,6 +154,38 @@ viewport and the document is visible. It stops on terminal Activity or after
 15 empty/error polls. Activity and candidate/source bodies are not copied into
 message metadata or browser persistence.
 
+### Encrypted portability
+
+Migration `061` extends the authenticated Server Memory surface:
+
+```http
+POST /v1/memory-export
+     {"passphrase":"request-only","includeHistory":true}
+
+POST /v1/memory-import/dry-run
+POST /v1/memory-import/confirm
+Content-Type: multipart/form-data
+package=<encrypted .mm-memory>
+passphrase=<request-only>
+mappings=<strict JSON>
+planToken=<confirm only>
+```
+
+Export returns an `application/octet-stream` attachment with `Cache-Control:
+no-store`. Import accepts one bounded occurrence of each known form field.
+Dry-run returns `NOOP|ADD|REVIEW|REJECT|SCOPE_REQUIRED`, required scope
+mappings, settings suggestions, a deterministic plan hash, and a ten-minute
+token. Confirm requires the same encrypted package and mappings, reauthenticates
+and rebuilds the plan, and writes only unchanged `ADD` rows. Settings are never
+applied and conflicts are never overwritten. Duplicate/unknown JSON or form
+fields, wrong passphrases, modified ciphertext, cross-user mappings, and state
+drift fail closed. Plan/token/state conflicts return `409` and require a new
+dry-run.
+
+Passphrases and plaintext archives are request-local only. The browser keeps
+the selected `File`, passphrase, and token in transient component state; none
+enters Zustand, IndexedDB, or `localStorage`.
+
 ## Errors and stale state
 
 Governance validation errors carry stable `MEMORY_GOVERNANCE_*` codes.
@@ -164,7 +196,9 @@ exist in Global, Project, and Conversation scopes.
 
 Deletion immediately hides Memory, creates the existing tombstone/manifest/
 purge chain, and exposes online purge plus eight-week backup-expiry status.
-PR9 does not prune physical backups or add encrypted Export/Import.
+PR9 did not prune physical backups or add encrypted Export/Import. Migration
+`061` now provides encrypted portability plus operator deletion replay; backup
+retention remains an operator CLI rather than an authenticated browser route.
 
 ## Rollout and rollback
 

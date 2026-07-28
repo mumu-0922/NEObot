@@ -9,6 +9,9 @@ conversation summaries.
 - expose authenticated settings and legacy Global CRUD at
   `/v1/memory-settings` and `/v1/memories`, plus PR9 Project/policy/scoped
   governance, Review/detail, Activity polling, Usage inspection, and safe undo;
+- expose authenticated encrypted portability at `/v1/memory-export`,
+  `/v1/memory-import/dry-run`, and `/v1/memory-import/confirm` without staging a
+  plaintext archive or applying imported settings;
 - persist settings and canonical entries from migration `035`, with the
   additive Project/scope foundation from `053` and provenance/delete authority
   from `055`;
@@ -56,6 +59,19 @@ matches, shadow, err := service.SearchRelevantWithShadow(
 // remain diagnostics; matches is still the exact v1 prompt/Usage authority.
 matches, hybrid, err := service.SearchRelevantWithHybridShadow(
     ctx, rawUserText, conversationID, assistantMessageID, 5,
+)
+
+// Export writes an age-encrypted stream. Import dry-run returns only a
+// deterministic plan; confirm must resubmit the same encrypted package and
+// short-lived plan token.
+exported, err := service.ExportMemoryPackage(
+    ctx, encryptedWriter, passphrase, includeHistory,
+)
+plan, err := service.DryRunMemoryImport(
+    ctx, encryptedReadSeeker, passphrase, mappings,
+)
+result, err := service.ConfirmMemoryImport(
+    ctx, encryptedReadSeeker, passphrase, mappings, plan.PlanToken,
 )
 ```
 
@@ -108,6 +124,26 @@ Global repository now calls classification-aware governance wrappers because
 functions. This closes the SQL Sensitive/secret bypass without promoting the
 v2 reader.
 
+Migration `061` adds canonical JSONL portability inside a pinned
+`filippo.io/age v1.3.1` scrypt-authenticated stream. Export reads one
+`REPEATABLE READ, READ ONLY` snapshot twice so manifest counts/hash and emitted
+records cannot drift. Import fully authenticates and validates bounded records,
+rejects secrets before persistence, maps every external scope back to the
+current user, and classifies each Memory as
+`NOOP|ADD|REVIEW|REJECT|SCOPE_REQUIRED`. Confirm re-authenticates the same
+encrypted package and binds user/package/manifest/mappings/plan/current-state
+hashes through a ten-minute HMAC token. It atomically writes only `ADD` rows
+with fresh local IDs and explicit import authority; settings remain a visible
+suggestion only.
+
+The migration also supports an encrypted, plaintext-free deletion package for
+offline restore. `ReplayEncryptedDeletionPackage` authenticates the complete
+stream before one transaction applies ID+content-hash-fenced hides/wipes and
+then rebuilds projections. The operator CLI requires stdin passphrases and an
+explicit `--backend-stopped` assertion. Runtime roles have no direct CRUD on
+the import/replay tables, and no portability path calls a Provider or changes
+the v1 Global Top 5 prompt/Usage reader.
+
 ## Main API
 
 | Boundary                            | Purpose                                                     |
@@ -127,6 +163,10 @@ v2 reader.
 | `GetConversationPolicy` / `UpdateConversationPolicy` | Generation-fenced Project membership and Use/Learn modes   |
 | `CreateGovernanceMemory` / `UpdateGovernanceMemory` / `DeleteGovernanceMemory` | Scoped revision-fenced governance writes |
 | `GovernanceMemoryDetail` / `DecideMemoryReview` / `ListMessageActivities` | Current-only detail, Review, and chip hydration |
+| `ExportMemoryPackage`                       | Current-user canonical JSONL inside an authenticated age stream      |
+| `DryRunMemoryImport`                        | Strict authenticated parse, scope mapping, and deterministic plan    |
+| `ConfirmMemoryImport`                       | HMAC/state-fenced atomic ADD-only import                              |
+| `ExportDeletionPackage` / `ReplayEncryptedDeletionPackage` | Off-host deletion authority and provider-free restore replay |
 | `NormalizeCandidateForStorage(in)`          | Shared validation/normalization without a write                     |
 
 ## Files
@@ -137,6 +177,14 @@ repository_postgres.go   user-scoped canonical writes and deletion capability
 governance.go             PR9 validation, DTOs, Review hashing, and service operations
 governance_handler.go     PR9 Project/scoped Memory/Review HTTP routes
 governance_repository_postgres.go  migration-060 governance capabilities
+portability_crypto.go     pinned age scrypt stream boundary
+portability_package.go    canonical bounded JSONL parser/writer
+portability_export.go     repeatable-read export orchestration
+portability_plan.go       mapping normalization and short-lived HMAC plan tokens
+portability_service.go    deterministic dry-run and ADD-only confirm
+portability_handler.go    strict JSON/multipart HTTP portability routes
+portability_repository_postgres.go  migration-061 snapshot/apply/replay capabilities
+deletion_portability.go   deletion JSONL export/authenticate/replay orchestration
 action_repository_postgres.go  PR6 action, Activity, Usage, and undo capabilities
 lexical_shadow.go        fail-open PR7 orchestration and diagnostic sanitization
 lexical_shadow_repository_postgres.go  narrow migration-058 compare capability
