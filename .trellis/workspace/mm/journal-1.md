@@ -636,3 +636,37 @@ reader and Global-only API contract.
 
 - Begin PR5 capture-candidate proposal, Review shadow, and
   temporal/conflict/scope routing without switching the v2 reader.
+
+
+## Session 17: Implement Memory v2 candidate and Review shadow
+
+**Date**: 2026-07-28
+**Task**: Implement Memory v2 candidate and Review shadow
+**Branch**: `main`
+
+### Summary
+
+Implemented PR5 strict candidate-wide Memory proposals, Review shadow routing, canonical auto-apply revocation, secret/Sensitive privacy guards, and provider-free 30-day expiry; all PostgreSQL, race, Compose, image, and standalone gates passed.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4a5fbf2` | (see git log) |
+| `290a5cb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
