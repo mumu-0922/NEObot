@@ -104,9 +104,13 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 127
 fi
 
-timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
-staging_dir="$MINIO_BACKUP_DIR/.staging-${timestamp}"
-archive_file="$MINIO_BACKUP_DIR/minio-${timestamp}.tar.gz"
+backup_set_id="${BACKUP_SET_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
+if [[ ! "$backup_set_id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]; then
+  printf 'BACKUP_SET_ID is invalid\n' >&2
+  exit 2
+fi
+staging_dir="$MINIO_BACKUP_DIR/.staging-${backup_set_id}"
+archive_file="$MINIO_BACKUP_DIR/minio-${backup_set_id}.tar.gz"
 tmp_archive="${archive_file}.tmp"
 
 cleanup() {

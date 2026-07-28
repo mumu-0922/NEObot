@@ -637,6 +637,12 @@ admin_environment = services["admin"]["environment"]
 assert "neo_chat_api:test-api-password@postgres" in admin_environment["DATABASE_URL"]
 assert "MIGRATION_DATABASE_URL" not in admin_environment
 assert admin_environment["BYOK_ALLOW_EPHEMERAL_KEY"] == "false"
+assert any(
+    mount["type"] == "bind"
+    and mount["source"].endswith("/backup")
+    and mount["target"] == "/backup"
+    for mount in services["admin"]["volumes"]
+)
 for service_name in ("frontend", "backend", "admin"):
     for provider_env in (
         "PROVIDER_TYPE",

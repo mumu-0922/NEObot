@@ -82,6 +82,10 @@ func TestAdminRunRequiresExplicitCommandArguments(t *testing.T) {
 		{"provider-secrets-rewrite", "--execute"},
 		{"provider-secrets-rewrite", "--expected-plan-sha256", strings.Repeat("a", 64)},
 		{"provider-secrets-rewrite", "--confirmed-backup-sha256", strings.Repeat("b", 64)},
+		{"memory-deletions-export", "--output", "out.mm-memory-deletions"},
+		{"memory-deletions-replay", "--input", "in.mm-memory-deletions", "--passphrase-stdin"},
+		{"backup-retention"},
+		{"backup-retention", "--backup-root", "/backup", "--execute"},
 	} {
 		if err := run(args, strings.NewReader("password\n"), &strings.Builder{}); err == nil {
 			t.Fatalf("run(%v) error = nil, want usage error", args)

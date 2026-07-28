@@ -104,8 +104,12 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 127
 fi
 
-timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
-backup_file="$POSTGRES_BACKUP_DIR/postgres-${timestamp}.dump"
+backup_set_id="${BACKUP_SET_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
+if [[ ! "$backup_set_id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]; then
+  printf 'BACKUP_SET_ID is invalid\n' >&2
+  exit 2
+fi
+backup_file="$POSTGRES_BACKUP_DIR/postgres-${backup_set_id}.dump"
 tmp_file="${backup_file}.tmp"
 
 cleanup() {

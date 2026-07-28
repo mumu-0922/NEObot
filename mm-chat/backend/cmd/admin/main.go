@@ -59,6 +59,12 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		return runGovernanceDisable(args[1:], stdout)
 	case "provider-secrets-rewrite":
 		return runProviderSecretsRewrite(args[1:], stdout)
+	case "memory-deletions-export":
+		return runMemoryDeletionsExport(args[1:], stdin, stdout)
+	case "memory-deletions-replay":
+		return runMemoryDeletionsReplay(args[1:], stdin, stdout)
+	case "backup-retention":
+		return runBackupRetention(args[1:], stdout)
 	default:
 		return usageError()
 	}
@@ -388,6 +394,10 @@ func usageError() error {
 			"admin governance-disable --processor <alias> --endpoint-id <id> " +
 			"[--model-id <id>] | admin provider-secrets-rewrite " +
 			"[--execute --expected-plan-sha256 <sha256> " +
-			"--confirmed-backup-sha256 <sha256>]",
+			"--confirmed-backup-sha256 <sha256>] | " +
+			"admin memory-deletions-export --output <file> --passphrase-stdin | " +
+			"admin memory-deletions-replay --input <file> --passphrase-stdin " +
+			"--backend-stopped | admin backup-retention --backup-root <root> " +
+			"[--execute --expected-plan-sha256 <sha256>]",
 	)
 }
