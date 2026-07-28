@@ -1394,8 +1394,11 @@ response 都带 version，消费者拒绝未知 major 而不是猜测字段。
 2. **PR2：Project/scope/settings additive schema + backfill** — 已于 2026-07-28 以 migration
    `053` 实现；flags 全关，旧 API 保持 Global-only，PG17 已验证 backfill、ownership/
    scope constraints、runtime role denial、guarded down 与 re-up。
-3. **PR3：outbox/jobs + 独立 Go worker + lease/replay** — 保持 v1 reader。
-4. **PR4：evidence/revision/epoch/tombstone/delete manifest** — 先闭环正确性、备份和隐私。
+3. **PR3：outbox/jobs + 独立 Go worker + lease/replay** — 已于 2026-07-28 以 migration
+   `054` 实现；保持 v1 reader，PG17、Compose、Docker build 与 full standalone 已通过。
+4. **PR4：evidence/revision/epoch/tombstone/delete manifest** — 已于 2026-07-28 以 migration
+   `055` 实现数据库内 provenance/delete authority、旧响应防复活与 provider-free online
+   purge；authenticated encrypted off-host manifest/restore replay/retention 仍按顺序归 PR10。
 5. **PR5：capture candidate + Review + temporal/conflict/scope routing** — 只 shadow，不 auto apply。
 6. **PR6：direct-user Memory actions + activity/usage links** — typed proposal 与 revision-safe undo。
 7. **PR7：L1 exact/CJK BM25 projection** — shadow 对比 v1，dense 尚未成为依赖。

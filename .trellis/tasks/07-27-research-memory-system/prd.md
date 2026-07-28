@@ -5,10 +5,11 @@
 查清 Neo Chat 当前 Server mode 长期记忆的真实运行链路，比较 2026 年主流
 Agent Memory 方案，并在“单服务器、自托管、Go + PostgreSQL + Python RAG”
 约束下，按 `info.md` 第 17 章的 PR1–PR13 顺序实施已冻结的完整 end-state。
-魔尊已于 2026-07-28 明确回复“开始”，构成实施授权；PR1 benchmark contract 与 PR2
-Project/scope/settings foundation 已完成。当前批次只实施 PR3 的 durable outbox/jobs、
-独立 Go Memory worker、lease/reclaim/replay 和 assistant finalize 同事务 capture event；
-继续保留 v1 reader，不新增 Project 对外 API，不调用 Live provider。
+魔尊已于 2026-07-28 明确回复“开始”，构成实施授权；PR1 benchmark contract、PR2
+Project/scope/settings foundation 与 PR3 durable capture worker 已完成。当前批次只实施
+PR4 的 canonical provenance、revision、visibility epoch、targeted tombstone、deletion
+manifest authority 与 provider-free purge lane；继续保留 v1 reader 和 Global-only HTTP
+contract，不新增 Project 对外 API，不调用 Live provider。
 
 ## What I Already Know
 
@@ -115,6 +116,34 @@ Project/scope/settings foundation 已完成。当前批次只实施 PR3 的 dura
 - [x] PR3 focused race/full test/vet、Compose/preflight、migration up/down/re-up 与 disposable
   PostgreSQL drill 通过，覆盖 finalize atomicity、duplicate、crash reclaim、stale lease、
   cross-user denial、worker role无直接表 CRUD及 Redis-down polling。
+- [x] PR4 新增顺序 migration `055`，且不修改任何已发布 migration 字节；扩展
+  `user_memories` 的 `revision`、`visibility_epoch`、`content_hash`、`authority_kind`、
+  `extraction_profile_id`，新增 `user_memory_state`、`user_memory_evidence`、
+  `user_memory_revisions`、`user_memory_tombstones` 与无正文 deletion manifest authority。
+- [x] PR4 backfill 必须令每个用户 state 从 epoch 1 起步；既有 manual Memory 成为
+  `manual` authority，只有仍存在、同用户且 role=`user` 的 source message 才能成为
+  evidence；缺少 surviving user evidence 的既有 AI Memory 必须 fail closed 停用，不能
+  凭 assistant 内容或 nullable source 猜 authority。
+- [x] 手工 Create/Update 与 worker apply 必须维护 canonical `content_hash` 和单调
+  `revision`；每次实际 canonical 变更只 append 一条 prior snapshot，revision history
+  除受控 plaintext purge 外不可 UPDATE/DELETE。自动 Memory 至少一条 user evidence，
+  evidence 只保存 message/conversation ID、hash 与 observed time，不复制消息正文。
+- [x] 单条 Global Memory delete 必须在一个 transaction 内锁 user state/target row、立即
+  `deleted_at` + disabled、写 targeted tombstone、无正文 deletion manifest、purge event/job；
+  HTTP payload/状态码保持兼容，提交后 v1 Recall 与 Provider hydration 都不可再看到该条。
+- [x] `memory_jobs` 支持 stage-specific extract/purge shape；purge job 不 hydrate Provider，
+  只经 lease/user/epoch/tombstone-checked SQL capability 幂等擦除 canonical、revision 与
+  evidence plaintext，并记录 bounded result。worker login 继续无表级直接 CRUD。
+- [x] worker apply 必须同时重验 live lease、user、source existence/hash、provider profile/
+  generation、live `visibility_epoch` 与 targeted tombstone；删除发生在 Provider 调用期间时，
+  旧响应不得复活 Memory。自动 candidate 命中 manual authority 时只 NOOP，不得覆盖。
+- [x] PR4 保持 v1 reader、Global-only API 与 response schema 不变，不提前实现 PR5 的
+  Review/conflict/temporal/semantic scope routing，也不实现 PR7+ hybrid/vector reader、
+  PR9 governance UI 或 PR10 encrypted off-host manifest export/replay/retention command。
+- [x] PR4 schema/live PostgreSQL tests 覆盖 backfill、cross-user evidence、revision append-only、
+  stale epoch/lease、delete immediate invisibility、old response no-resurrection、manual
+  precedence、purge idempotency/plaintext wipe、manifest generation 与 guarded down/re-up；
+  focused race、backend full test/vet、Compose/preflight 和 full standalone gate 通过。
 
 ## Definition of Done
 
@@ -128,7 +157,10 @@ Project/scope/settings foundation 已完成。当前批次只实施 PR3 的 dura
 - PR3 durable event、job lease/replay、独立 worker 拓扑与最小权限 SQL capability 均有自动化
   验证，backend `go test ./...`、`go vet ./...`、Compose render 与 disposable PostgreSQL
   drill 通过。
-- PR3 未启用 v2 reader、Project API/UI 或后续 canonical/projection 能力；PR4–PR13 继续
+- PR4 provenance/delete/purge correctness 与 least-privilege capability 均有自动化验证，
+  backend `go test ./...`、`go vet ./...`、Compose render 与 disposable PostgreSQL drill
+  通过；online canonical/revision plaintext purge 可幂等重放且旧 worker 响应不可复活。
+- PR4 未启用 v2 reader、Project API/UI、Review 或 projection 能力；PR5–PR13 继续
   遵循 `info.md` 的逐批门槛、回滚和单一 authority 约束。
 
 ## Technical Approach
@@ -165,15 +197,19 @@ PostgreSQL v2，外部引擎只能通过可替换 adapter 做 shadow；Hindsight
 
 ## Current Batch Out of Scope
 
-- PR3 不实现 evidence/revision/epoch/tombstone/delete manifest、Review/temporal/conflict、
-  projection/BM25/vector、embedding/rerank、L2/L3、Graph DB 或 Hindsight shadow；这些能力
-  只可在后续 PR4–PR13 按门槛逐批实施。
-- PR3 不提供 Project CRUD/API/UI，不切换任何 v2 reader，不修改现有 Memory HTTP payload，
-  也不创建、修改、删除或导出 Live 用户 Memory。
-- PR3 不调用 Live provider，不运行 Hindsight 真实 shadow，不生成虚假的人工审核数据；
-  worker Provider 行为只以 fake/offline tests 验证。
-- PR3 不允许 Redis-only queue、API 内第二 consumer loop、worker 外网端口或 worker 表级
-  跨用户 CRUD grant；回滚是停止 worker/auto-record 并保留 pending event/job，不做数据丢失。
+- PR4 不实现 PR5 的 Review suggestion、semantic conflict/temporal lifecycle、subject/fact key
+  routing 或 Project/Conversation auto scope；本批只做 exact Global canonical correctness、
+  manual precedence 与 targeted no-resurrection fence。
+- PR4 不提供 Project CRUD/API/UI，不切换任何 v2 reader，不修改现有 Memory HTTP payload，
+  不实现 BM25/vector/rerank、L2/L3、Graph DB 或 Hindsight shadow。
+- PR4 生成数据库内无正文 deletion manifest authority，但独立 Docker-secret key、
+  authenticated encrypted off-host export、restore replay、14-day/8-week prune command 属于
+  PR10；本批不得用普通 SHA-256 冒充签名或宣称尚未实现的 backup 物理过期。
+- PR4 不调用 Live provider，不运行 Hindsight 真实 shadow，不创建、修改、删除或导出 Live
+  用户 Memory；worker 行为只以 fake/offline tests 与 disposable PostgreSQL 验证。
+- PR4 不允许 worker 直接表 CRUD、purge lane hydrate Provider、自动 writer 清 tombstone，
+  或 down migration 丢弃 provenance/delete history；runtime rollback 仍优先停止 Learn/worker
+  并保留 durable state。
 - 不把 AGENTS/system/project 固定规则迁入概率性 Memory。
 - 不把供应商 benchmark 当作发布门槛；发布必须使用 Neo Chat 中文数据集复测。
 
