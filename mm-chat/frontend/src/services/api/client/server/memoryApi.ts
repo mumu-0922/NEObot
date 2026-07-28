@@ -20,6 +20,9 @@ import type {
   ConversationMemoryPolicy,
   GovernanceMemory,
   GovernanceMemoryDetail,
+  L2SceneGovernanceDetail,
+  L2SceneGovernanceScene,
+  L2SceneRebuildResult,
   MemoryActivity,
   MemoryDeletionProgress,
   MemoryGovernanceSnapshot,
@@ -182,6 +185,41 @@ export function createServerMemoryApiShell(httpClient: HttpClient): MemoryApi {
       );
     },
 
+    async getL2SceneDetail(input): Promise<L2SceneGovernanceDetail> {
+      return httpClient.requestJson<L2SceneGovernanceDetail>(
+        `${governanceL2ScenePath(input.sceneId)}/details`,
+        { signal: input.signal },
+      );
+    },
+
+    async setL2SceneEnabled(input): Promise<L2SceneGovernanceScene> {
+      return httpClient.requestJson<L2SceneGovernanceScene>(
+        `${governanceL2ScenePath(input.sceneId)}/enabled`,
+        {
+          method: "POST",
+          body: {
+            expectedRevision: input.expectedRevision,
+            enabled: input.enabled,
+          },
+          signal: input.signal,
+        },
+      );
+    },
+
+    async rebuildL2Scene(input): Promise<L2SceneRebuildResult> {
+      return httpClient.requestJson<L2SceneRebuildResult>(
+        `${governanceL2ScenePath(input.sceneId)}/rebuild`,
+        { method: "POST", signal: input.signal },
+      );
+    },
+
+    async rebuildL2Scenes(input = {}): Promise<L2SceneRebuildResult> {
+      return httpClient.requestJson<L2SceneRebuildResult>(
+        `${memoryGovernancePath}/scenes/rebuild`,
+        { method: "POST", signal: input.signal },
+      );
+    },
+
     async listMemoryReviews(input = {}): Promise<MemoryReviewSuggestion[]> {
       const page = await httpClient.requestJson<
         ApiPage<MemoryReviewSuggestion>
@@ -274,6 +312,10 @@ function conversationPolicyPath(conversationId: string): string {
 
 function governanceMemoryPath(memoryId: string): string {
   return `${memoryGovernancePath}/memories/${encodeURIComponent(memoryId)}`;
+}
+
+function governanceL2ScenePath(sceneId: string): string {
+  return `${memoryGovernancePath}/scenes/${encodeURIComponent(sceneId)}`;
 }
 
 function memoryReviewDecisionPath(suggestionId: string): string {

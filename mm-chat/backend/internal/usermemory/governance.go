@@ -34,6 +34,13 @@ type GovernanceRepository interface {
 	ListMessageActivities(context.Context, string, int) ([]MemoryActivity, error)
 }
 
+type L2SceneGovernanceRepository interface {
+	GovernanceL2SceneDetail(context.Context, string) (L2SceneGovernanceDetail, error)
+	SetGovernanceL2SceneEnabled(context.Context, L2SceneEnabledInput) (L2SceneGovernanceScene, error)
+	RebuildGovernanceL2Scene(context.Context, string) (L2SceneRebuildResult, error)
+	RebuildGovernanceL2Scenes(context.Context) (L2SceneRebuildResult, error)
+}
+
 type GovernanceSnapshot struct {
 	Settings      Settings                   `json:"settings"`
 	Projects      []MemoryProject            `json:"projects"`
@@ -42,6 +49,75 @@ type GovernanceSnapshot struct {
 	Reviews       []MemoryReviewSuggestion   `json:"reviews"`
 	Deletions     []MemoryDeletionProgress   `json:"deletions"`
 	Diagnostics   []MemorySearchDiagnostic   `json:"diagnostics"`
+	L2Scene       *L2SceneGovernanceSnapshot `json:"l2Scene,omitempty"`
+}
+
+type L2SceneGovernanceSnapshot struct {
+	Profile L2SceneGovernanceProfile `json:"profile"`
+	Scenes  []L2SceneGovernanceScene `json:"scenes"`
+}
+
+type L2SceneGovernanceProfile struct {
+	ProfileID          string `json:"profileId"`
+	SynthesisProfileID string `json:"synthesisProfileId"`
+	RetrievalProfileID string `json:"retrievalProfileId"`
+	Status             string `json:"status"`
+	Generation         int64  `json:"generation"`
+	L1ReaderReady      bool   `json:"l1ReaderReady"`
+	Active             bool   `json:"active"`
+	ActivatedAt        *int64 `json:"activatedAt,omitempty"`
+	RolledBackAt       *int64 `json:"rolledBackAt,omitempty"`
+}
+
+type L2SceneGovernanceScene struct {
+	ID              string `json:"id"`
+	ScopeType       string `json:"scopeType"`
+	ProjectID       string `json:"projectId,omitempty"`
+	ProjectName     string `json:"projectName,omitempty"`
+	TopicKey        string `json:"topicKey"`
+	Content         string `json:"content"`
+	ContentHash     string `json:"contentHash"`
+	Sensitivity     string `json:"sensitivity"`
+	Status          string `json:"status"`
+	UserDisabled    bool   `json:"userDisabled"`
+	ProfileID       string `json:"profileId"`
+	Generation      int64  `json:"generation"`
+	SourceWatermark string `json:"sourceWatermark"`
+	Revision        int64  `json:"revision"`
+	MemberCount     int    `json:"memberCount"`
+	SourcesCurrent  bool   `json:"sourcesCurrent"`
+	CreatedAt       int64  `json:"createdAt"`
+	UpdatedAt       int64  `json:"updatedAt"`
+	ActivatedAt     *int64 `json:"activatedAt,omitempty"`
+	DisabledAt      *int64 `json:"disabledAt,omitempty"`
+	StaleAt         *int64 `json:"staleAt,omitempty"`
+	PurgeAfter      *int64 `json:"purgeAfter,omitempty"`
+}
+
+type L2SceneGovernanceMember struct {
+	MemoryID    string            `json:"memoryId"`
+	Revision    int64             `json:"revision"`
+	ContentHash string            `json:"contentHash"`
+	Current     bool              `json:"current"`
+	Memory      *GovernanceMemory `json:"memory,omitempty"`
+	Evidence    []MemoryEvidence  `json:"evidence"`
+}
+
+type L2SceneGovernanceDetail struct {
+	Scene   L2SceneGovernanceScene    `json:"scene"`
+	Members []L2SceneGovernanceMember `json:"members"`
+}
+
+type L2SceneEnabledInput struct {
+	SceneID          string
+	ExpectedRevision int64
+	Enabled          bool
+}
+
+type L2SceneRebuildResult struct {
+	JobID      string `json:"jobId,omitempty"`
+	Generation int64  `json:"generation"`
+	JobCount   int    `json:"jobCount,omitempty"`
 }
 
 type MemoryProject struct {
@@ -412,6 +488,70 @@ func (s *Service) GovernanceMemoryDetail(ctx context.Context, memoryID string) (
 	return repo.GovernanceMemoryDetail(ctx, memoryID)
 }
 
+func (s *Service) GovernanceL2SceneDetail(
+	ctx context.Context,
+	sceneID string,
+) (L2SceneGovernanceDetail, error) {
+	repo, err := s.l2SceneGovernanceRepository()
+	if err != nil {
+		return L2SceneGovernanceDetail{}, err
+	}
+	sceneID = strings.TrimSpace(sceneID)
+	if !uuidRE.MatchString(sceneID) {
+		return L2SceneGovernanceDetail{}, validation(
+			"INVALID_MEMORY_L2_SCENE_ID",
+			"memory L2 Scene id must be a UUID",
+		)
+	}
+	return repo.GovernanceL2SceneDetail(ctx, sceneID)
+}
+
+func (s *Service) SetGovernanceL2SceneEnabled(
+	ctx context.Context,
+	input L2SceneEnabledInput,
+) (L2SceneGovernanceScene, error) {
+	repo, err := s.l2SceneGovernanceRepository()
+	if err != nil {
+		return L2SceneGovernanceScene{}, err
+	}
+	input.SceneID = strings.TrimSpace(input.SceneID)
+	if !uuidRE.MatchString(input.SceneID) || input.ExpectedRevision < 1 {
+		return L2SceneGovernanceScene{}, validation(
+			"INVALID_MEMORY_L2_SCENE_REVISION",
+			"memory L2 Scene id or revision is invalid",
+		)
+	}
+	return repo.SetGovernanceL2SceneEnabled(ctx, input)
+}
+
+func (s *Service) RebuildGovernanceL2Scene(
+	ctx context.Context,
+	sceneID string,
+) (L2SceneRebuildResult, error) {
+	repo, err := s.l2SceneGovernanceRepository()
+	if err != nil {
+		return L2SceneRebuildResult{}, err
+	}
+	sceneID = strings.TrimSpace(sceneID)
+	if !uuidRE.MatchString(sceneID) {
+		return L2SceneRebuildResult{}, validation(
+			"INVALID_MEMORY_L2_SCENE_ID",
+			"memory L2 Scene id must be a UUID",
+		)
+	}
+	return repo.RebuildGovernanceL2Scene(ctx, sceneID)
+}
+
+func (s *Service) RebuildGovernanceL2Scenes(
+	ctx context.Context,
+) (L2SceneRebuildResult, error) {
+	repo, err := s.l2SceneGovernanceRepository()
+	if err != nil {
+		return L2SceneRebuildResult{}, err
+	}
+	return repo.RebuildGovernanceL2Scenes(ctx)
+}
+
 func (s *Service) DecideMemoryReview(ctx context.Context, input MemoryReviewDecisionInput) (MemoryReviewDecisionResult, error) {
 	repo, err := s.governanceRepository()
 	if err != nil {
@@ -471,6 +611,17 @@ func (s *Service) governanceRepository() (GovernanceRepository, error) {
 		return nil, err
 	}
 	repo, ok := s.repo.(GovernanceRepository)
+	if !ok {
+		return nil, ErrGovernanceRepositoryRequired
+	}
+	return repo, nil
+}
+
+func (s *Service) l2SceneGovernanceRepository() (L2SceneGovernanceRepository, error) {
+	if err := s.requireRepository(); err != nil {
+		return nil, err
+	}
+	repo, ok := s.repo.(L2SceneGovernanceRepository)
 	if !ok {
 		return nil, ErrGovernanceRepositoryRequired
 	}

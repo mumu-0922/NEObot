@@ -448,6 +448,8 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "CONVERSATION_MEMORY_POLICY_NOT_FOUND", "conversation memory policy not found")
 	case errors.Is(err, ErrMemoryReviewNotFound):
 		writeError(w, http.StatusNotFound, "MEMORY_REVIEW_NOT_FOUND", "memory review not found")
+	case errors.Is(err, ErrMemoryL2SceneNotFound):
+		writeError(w, http.StatusNotFound, "MEMORY_L2_SCENE_NOT_FOUND", "memory L2 Scene not found")
 	case errors.Is(err, ErrPortabilityRepositoryRequired),
 		errors.Is(err, ErrPortabilityPlanCodecRequired):
 		writeError(w, http.StatusServiceUnavailable, "MEMORY_PORTABILITY_UNAVAILABLE", "memory portability is unavailable")

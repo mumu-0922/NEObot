@@ -31,6 +31,14 @@ describe("server memory governance composition", () => {
     expect(governance).toContain("confirmMemoryImport");
     expect(governance).toContain("settingsNeverApplied");
     expect(governance).toContain("planStale");
+    expect(governance).toContain('"scenes"');
+    expect(governance).toContain("getL2SceneDetail");
+    expect(governance).toContain("setL2SceneEnabled");
+    expect(governance).toContain("rebuildL2Scene");
+    expect(governance).toContain("rebuildL2Scenes");
+    expect(governance).toContain("correctSourceMemory");
+    expect(governance).toContain("editMemory(memory)");
+    expect(governance).not.toContain("updateL2Scene");
     expect(governance).not.toContain("localStorage");
     expect(governance).not.toContain("sessionStorage");
     expect(governance).not.toContain("useChatStore");

@@ -15,9 +15,23 @@ import (
 )
 
 func (r *PostgresRepository) GovernanceSnapshot(ctx context.Context) (GovernanceSnapshot, error) {
-	return queryGovernanceJSON[GovernanceSnapshot](ctx, r, `
+	snapshot, err := queryGovernanceJSON[GovernanceSnapshot](ctx, r, `
 SELECT memory_governance_snapshot($1::uuid)
 `, auth.UserOrDevelopment(ctx).ID)
+	if err != nil {
+		return GovernanceSnapshot{}, err
+	}
+	l2Scene, err := queryGovernanceJSON[L2SceneGovernanceSnapshot](ctx, r, `
+SELECT memory_governance_l2_scene_snapshot($1::uuid)
+`, auth.UserOrDevelopment(ctx).ID)
+	if err != nil {
+		return GovernanceSnapshot{}, err
+	}
+	if l2Scene.Scenes == nil {
+		l2Scene.Scenes = []L2SceneGovernanceScene{}
+	}
+	snapshot.L2Scene = &l2Scene
+	return snapshot, nil
 }
 
 func (r *PostgresRepository) CreateProject(ctx context.Context, input CreateProjectInput) (MemoryProject, error) {
@@ -88,6 +102,56 @@ func (r *PostgresRepository) GovernanceMemoryDetail(ctx context.Context, memoryI
 	return queryGovernanceJSON[GovernanceMemoryDetail](ctx, r, `
 SELECT memory_governance_memory_detail($1::uuid, $2::uuid)
 `, auth.UserOrDevelopment(ctx).ID, memoryID)
+}
+
+func (r *PostgresRepository) GovernanceL2SceneDetail(
+	ctx context.Context,
+	sceneID string,
+) (L2SceneGovernanceDetail, error) {
+	detail, err := queryGovernanceJSON[L2SceneGovernanceDetail](ctx, r, `
+SELECT memory_governance_l2_scene_detail($1::uuid, $2::uuid)
+`, auth.UserOrDevelopment(ctx).ID, sceneID)
+	if err != nil {
+		return L2SceneGovernanceDetail{}, err
+	}
+	if detail.Members == nil {
+		detail.Members = []L2SceneGovernanceMember{}
+	}
+	for index := range detail.Members {
+		if detail.Members[index].Evidence == nil {
+			detail.Members[index].Evidence = []MemoryEvidence{}
+		}
+	}
+	return detail, nil
+}
+
+func (r *PostgresRepository) SetGovernanceL2SceneEnabled(
+	ctx context.Context,
+	input L2SceneEnabledInput,
+) (L2SceneGovernanceScene, error) {
+	return queryGovernanceJSON[L2SceneGovernanceScene](ctx, r, `
+SELECT memory_governance_set_l2_scene_enabled(
+  $1::uuid, $2::uuid, $3::bigint, $4
+)
+`, auth.UserOrDevelopment(ctx).ID, input.SceneID, input.ExpectedRevision,
+		input.Enabled)
+}
+
+func (r *PostgresRepository) RebuildGovernanceL2Scene(
+	ctx context.Context,
+	sceneID string,
+) (L2SceneRebuildResult, error) {
+	return queryGovernanceJSON[L2SceneRebuildResult](ctx, r, `
+SELECT memory_governance_rebuild_l2_scene($1::uuid, $2::uuid)
+`, auth.UserOrDevelopment(ctx).ID, sceneID)
+}
+
+func (r *PostgresRepository) RebuildGovernanceL2Scenes(
+	ctx context.Context,
+) (L2SceneRebuildResult, error) {
+	return queryGovernanceJSON[L2SceneRebuildResult](ctx, r, `
+SELECT memory_governance_rebuild_l2_scenes($1::uuid)
+`, auth.UserOrDevelopment(ctx).ID)
 }
 
 func (r *PostgresRepository) DecideMemoryReview(ctx context.Context, input MemoryReviewDecisionInput) (MemoryReviewDecisionResult, error) {
@@ -184,6 +248,12 @@ func mapGovernancePostgresError(err error) error {
 		return fmt.Errorf("memory governance query: %w", err)
 	}
 	switch strings.TrimSpace(postgresError.Message) {
+	case "MEMORY_L2_SCENE_NOT_FOUND":
+		return ErrMemoryL2SceneNotFound
+	case "MEMORY_L2_SCENE_REVISION_STALE":
+		return validation(postgresError.Message, "memory L2 Scene changed; reload and retry")
+	case "MEMORY_L2_SCENE_MUTATION_INVALID":
+		return validation(postgresError.Message, "memory L2 Scene input is invalid")
 	case "MEMORY_GOVERNANCE_PROJECT_NOT_FOUND":
 		return ErrMemoryProjectNotFound
 	case "MEMORY_GOVERNANCE_CONVERSATION_NOT_FOUND":
@@ -210,3 +280,4 @@ func mapGovernancePostgresError(err error) error {
 }
 
 var _ GovernanceRepository = (*PostgresRepository)(nil)
+var _ L2SceneGovernanceRepository = (*PostgresRepository)(nil)

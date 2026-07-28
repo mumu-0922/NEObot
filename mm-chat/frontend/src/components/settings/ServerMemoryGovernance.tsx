@@ -29,6 +29,8 @@ import type {
   ConversationMemoryPolicy,
   GovernanceMemory,
   GovernanceMemoryDetail,
+  L2SceneGovernanceDetail,
+  L2SceneGovernanceScene,
   MemoryGovernanceSnapshot,
   MemoryPolicyMode,
   MemoryProject,
@@ -52,7 +54,7 @@ interface ServerMemoryGovernanceProps {
   apiClient: NeoChatApiClient;
 }
 
-type Section = "memories" | "projects" | "reviews" | "operations";
+type Section = "memories" | "projects" | "scenes" | "reviews" | "operations";
 
 interface MemoryDraft {
   id?: string;
@@ -134,10 +136,16 @@ const ServerMemoryGovernance = ({ apiClient }: ServerMemoryGovernanceProps) => {
   });
   const [detail, setDetail] = useState<GovernanceMemoryDetail | null>(null);
   const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
+  const [sceneDetail, setSceneDetail] =
+    useState<L2SceneGovernanceDetail | null>(null);
+  const [sceneDetailLoadingId, setSceneDetailLoadingId] = useState<
+    string | null
+  >(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, string>>({});
   const loadVersionRef = useRef(0);
   const detailLoadVersionRef = useRef(0);
+  const sceneDetailLoadVersionRef = useRef(0);
   const mutationInFlightRef = useRef(false);
 
   const load = useCallback(
@@ -292,6 +300,55 @@ const ServerMemoryGovernance = ({ apiClient }: ServerMemoryGovernanceProps) => {
     detailLoadVersionRef.current += 1;
     setDetailLoadingId(null);
     setDetail(null);
+  };
+
+  const loadSceneDetail = async (sceneId: string) => {
+    const loadVersion = ++sceneDetailLoadVersionRef.current;
+    setSceneDetailLoadingId(sceneId);
+    setError(null);
+    try {
+      const next = await apiClient.memories.getL2SceneDetail({ sceneId });
+      if (loadVersion === sceneDetailLoadVersionRef.current) {
+        setSceneDetail(next);
+      }
+    } catch (nextError) {
+      if (loadVersion === sceneDetailLoadVersionRef.current) {
+        setError(errorMessage(nextError, t("requestFailed")));
+      }
+    } finally {
+      if (loadVersion === sceneDetailLoadVersionRef.current) {
+        setSceneDetailLoadingId(null);
+      }
+    }
+  };
+
+  const closeSceneDetail = () => {
+    sceneDetailLoadVersionRef.current += 1;
+    setSceneDetailLoadingId(null);
+    setSceneDetail(null);
+  };
+
+  const toggleScene = async (scene: L2SceneGovernanceScene) => {
+    const ok = await mutate(() =>
+      apiClient.memories.setL2SceneEnabled({
+        sceneId: scene.id,
+        expectedRevision: scene.revision,
+        enabled: scene.userDisabled,
+      }),
+    );
+    if (ok && sceneDetail?.scene.id === scene.id) closeSceneDetail();
+  };
+
+  const rebuildScene = async (sceneId: string) => {
+    const ok = await mutate(() =>
+      apiClient.memories.rebuildL2Scene({ sceneId }),
+    );
+    if (ok && sceneDetail?.scene.id === sceneId) closeSceneDetail();
+  };
+
+  const rebuildScenes = async () => {
+    const ok = await mutate(() => apiClient.memories.rebuildL2Scenes());
+    if (ok) closeSceneDetail();
   };
 
   const saveProject = async () => {
@@ -495,26 +552,32 @@ const ServerMemoryGovernance = ({ apiClient }: ServerMemoryGovernanceProps) => {
         aria-label={t("governanceSections")}
         className="flex gap-1 overflow-x-auto border-b border-border"
       >
-        {(["memories", "projects", "reviews", "operations"] as Section[]).map(
-          (item) => (
-            <button
-              key={item}
-              type="button"
-              aria-current={section === item ? "page" : undefined}
-              onClick={() => setSection(item)}
-              className={`whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
-                section === item
-                  ? "border-cyan-500 font-medium text-cyan-700 dark:text-cyan-300"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {t(`section${item[0].toUpperCase()}${item.slice(1)}`)}
-              {item === "reviews" && snapshot.reviews.length > 0
-                ? ` (${snapshot.reviews.length})`
-                : ""}
-            </button>
-          ),
-        )}
+        {(
+          [
+            "memories",
+            "projects",
+            "scenes",
+            "reviews",
+            "operations",
+          ] as Section[]
+        ).map((item) => (
+          <button
+            key={item}
+            type="button"
+            aria-current={section === item ? "page" : undefined}
+            onClick={() => setSection(item)}
+            className={`whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
+              section === item
+                ? "border-cyan-500 font-medium text-cyan-700 dark:text-cyan-300"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {t(`section${item[0].toUpperCase()}${item.slice(1)}`)}
+            {item === "reviews" && snapshot.reviews.length > 0
+              ? ` (${snapshot.reviews.length})`
+              : ""}
+          </button>
+        ))}
       </nav>
 
       {section === "memories" && (
@@ -1031,6 +1094,136 @@ const ServerMemoryGovernance = ({ apiClient }: ServerMemoryGovernanceProps) => {
         </section>
       )}
 
+      {section === "scenes" && (
+        <div className="space-y-4">
+          {!snapshot.l2Scene ? (
+            <EmptyState text={t("l2SceneUnavailable")} />
+          ) : (
+            <>
+              <section
+                aria-label={t("l2SceneProfile")}
+                className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 lg:flex-row lg:items-center lg:justify-between"
+              >
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="font-semibold text-foreground">
+                      {t("l2SceneProfile")}
+                    </h4>
+                    <Badge>{snapshot.l2Scene.profile.status}</Badge>
+                    <Badge>
+                      {t("l2Generation", {
+                        generation: snapshot.l2Scene.profile.generation,
+                      })}
+                    </Badge>
+                    <Badge
+                      tone={
+                        snapshot.l2Scene.profile.l1ReaderReady
+                          ? "default"
+                          : "amber"
+                      }
+                    >
+                      {snapshot.l2Scene.profile.l1ReaderReady
+                        ? t("l1ReaderReady")
+                        : t("l1ReaderNotReady")}
+                    </Badge>
+                  </div>
+                  <p className="mt-2 max-w-3xl text-xs leading-relaxed text-muted-foreground">
+                    {t("l2SceneDerivedNotice")}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => void rebuildScenes()}
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                >
+                  <RefreshCw size={14} aria-hidden />
+                  {t("rebuildAllScenes")}
+                </button>
+              </section>
+
+              <section aria-label={t("l2Scenes")} className="space-y-3">
+                {snapshot.l2Scene.scenes.length === 0 ? (
+                  <EmptyState text={t("noL2Scenes")} />
+                ) : (
+                  snapshot.l2Scene.scenes.map((scene) => (
+                    <article
+                      key={scene.id}
+                      className="rounded-xl border border-border bg-card p-4"
+                    >
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap gap-1.5 text-[11px]">
+                            <Badge>{scene.scopeType}</Badge>
+                            <Badge
+                              tone={
+                                scene.status === "stale" ? "amber" : "default"
+                              }
+                            >
+                              {scene.status}
+                            </Badge>
+                            <Badge>{scene.sensitivity}</Badge>
+                            {!scene.sourcesCurrent && (
+                              <Badge tone="amber">{t("sourcesChanged")}</Badge>
+                            )}
+                          </div>
+                          <h5 className="mt-3 text-sm font-semibold text-foreground">
+                            {scene.topicKey}
+                          </h5>
+                          <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">
+                            {scene.content}
+                          </p>
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            {scene.projectName || t("scopeGlobal")} ·{" "}
+                            {t("sceneMembers", { count: scene.memberCount })} ·
+                            r{scene.revision} · {formatDate(scene.updatedAt)}
+                          </p>
+                          <p className="mt-1 truncate font-mono text-[10px] text-muted-foreground">
+                            {t("sourceWatermark")}: {scene.sourceWatermark}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={saving}
+                            onClick={() => void rebuildScene(scene.id)}
+                            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                          >
+                            <RefreshCw size={14} aria-hidden />
+                            {t("rebuildScene")}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={saving}
+                            onClick={() => void toggleScene(scene)}
+                            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                          >
+                            {scene.userDisabled
+                              ? t("enableScene")
+                              : t("disableScene")}
+                          </button>
+                          <IconButton
+                            label={t("sceneDetails")}
+                            disabled={sceneDetailLoadingId === scene.id}
+                            onClick={() => void loadSceneDetail(scene.id)}
+                          >
+                            {sceneDetailLoadingId === scene.id ? (
+                              <Loader2 size={15} className="animate-spin" />
+                            ) : (
+                              <History size={15} />
+                            )}
+                          </IconButton>
+                        </div>
+                      </div>
+                    </article>
+                  ))
+                )}
+              </section>
+            </>
+          )}
+        </div>
+      )}
+
       {section === "operations" && (
         <div className="grid gap-4 lg:grid-cols-2">
           <MemoryPortabilityPanel
@@ -1113,6 +1306,18 @@ const ServerMemoryGovernance = ({ apiClient }: ServerMemoryGovernanceProps) => {
 
       {detail && (
         <MemoryDetailPanel detail={detail} onClose={closeDetail} t={t} />
+      )}
+
+      {sceneDetail && (
+        <L2SceneDetailPanel
+          detail={sceneDetail}
+          onClose={closeSceneDetail}
+          onCorrect={(memory) => {
+            editMemory(memory);
+            closeSceneDetail();
+          }}
+          t={t}
+        />
       )}
 
       {saving && (
@@ -1818,6 +2023,111 @@ function MemoryDetailPanel({
             </li>
           ))}
         </DetailList>
+      </div>
+    </section>
+  );
+}
+
+function L2SceneDetailPanel({
+  detail,
+  onClose,
+  onCorrect,
+  t,
+}: {
+  detail: L2SceneGovernanceDetail;
+  onClose: () => void;
+  onCorrect: (memory: GovernanceMemory) => void;
+  t: ReturnType<typeof useTranslations<"Memory">>;
+}) {
+  return (
+    <section
+      aria-label={t("sceneDetails")}
+      className="rounded-xl border border-cyan-200 bg-cyan-50/40 p-4 dark:border-cyan-900/60 dark:bg-cyan-950/10"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap gap-1.5 text-[11px]">
+            <Badge>{detail.scene.scopeType}</Badge>
+            <Badge>{detail.scene.status}</Badge>
+            <Badge>
+              {t("sceneMembers", { count: detail.scene.memberCount })}
+            </Badge>
+          </div>
+          <h4 className="mt-2 font-semibold text-foreground">
+            {detail.scene.topicKey}
+          </h4>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">
+            {detail.scene.content}
+          </p>
+        </div>
+        <IconButton label={t("closeSceneDetails")} onClick={onClose}>
+          <X size={16} />
+        </IconButton>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        <h5 className="text-sm font-semibold text-foreground">
+          {t("sceneSources")}
+        </h5>
+        {detail.members.length === 0 ? (
+          <p className="rounded-lg bg-muted p-3 text-xs text-muted-foreground">
+            {t("noSceneSources")}
+          </p>
+        ) : (
+          detail.members.map((member) => (
+            <article
+              key={`${member.memoryId}:${member.revision}`}
+              className="rounded-lg border border-border bg-background p-3"
+            >
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap gap-1.5 text-[11px]">
+                    <Badge tone={member.current ? "default" : "amber"}>
+                      {member.current ? t("sourceCurrent") : t("sourceChanged")}
+                    </Badge>
+                    <Badge>r{member.revision}</Badge>
+                  </div>
+                  <p className="mt-2 text-sm text-foreground">
+                    {member.current && member.memory
+                      ? member.memory.content
+                      : t("sourceUnavailable")}
+                  </p>
+                  <p className="mt-1 truncate font-mono text-[10px] text-muted-foreground">
+                    {member.memoryId}
+                  </p>
+                </div>
+                {member.current && member.memory && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (member.memory) onCorrect(member.memory);
+                    }}
+                    className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <Pencil size={14} aria-hidden />
+                    {t("correctSourceMemory")}
+                  </button>
+                )}
+              </div>
+              <ul className="mt-3 space-y-2 border-t border-border pt-3 text-xs text-muted-foreground">
+                {member.evidence.length === 0 ? (
+                  <li>{t("noEvidence")}</li>
+                ) : (
+                  member.evidence.map((evidence) => (
+                    <li key={`${evidence.messageId}:${evidence.role}`}>
+                      <strong>{evidence.role}</strong> ·{" "}
+                      {evidence.conversationTitle || evidence.conversationId}
+                      <br />
+                      {evidence.sourceDeleted
+                        ? t("sourceDeleted")
+                        : evidence.sourceExcerpt || t("sourceUnavailable")}
+                    </li>
+                  ))
+                )}
+              </ul>
+            </article>
+          ))
+        )}
       </div>
     </section>
   );

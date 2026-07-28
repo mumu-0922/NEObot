@@ -4,6 +4,9 @@ import type {
   ConversationMemoryPolicy,
   GovernanceMemory,
   GovernanceMemoryDetail,
+  L2SceneGovernanceDetail,
+  L2SceneGovernanceScene,
+  L2SceneRebuildResult,
   MemoryActivity,
   MemoryDeletionProgress,
   MemoryGovernanceSnapshot,
@@ -1237,6 +1240,13 @@ export interface UpdateGovernanceMemoryInput extends GovernanceMemoryMutationInp
   expectedRevision: number;
 }
 
+export interface SetL2SceneEnabledInput {
+  sceneId: string;
+  expectedRevision: number;
+  enabled: boolean;
+  signal?: AbortSignal;
+}
+
 export type MemoryImportPlanResult =
   "NOOP" | "ADD" | "REVIEW" | "REJECT" | "SCOPE_REQUIRED";
 
@@ -1353,6 +1363,20 @@ export interface MemoryApi {
     memoryId: string;
     signal?: AbortSignal;
   }): Promise<GovernanceMemoryDetail>;
+  getL2SceneDetail(input: {
+    sceneId: string;
+    signal?: AbortSignal;
+  }): Promise<L2SceneGovernanceDetail>;
+  setL2SceneEnabled(
+    input: SetL2SceneEnabledInput,
+  ): Promise<L2SceneGovernanceScene>;
+  rebuildL2Scene(input: {
+    sceneId: string;
+    signal?: AbortSignal;
+  }): Promise<L2SceneRebuildResult>;
+  rebuildL2Scenes(input?: {
+    signal?: AbortSignal;
+  }): Promise<L2SceneRebuildResult>;
   listMemoryReviews(input?: {
     signal?: AbortSignal;
   }): Promise<MemoryReviewSuggestion[]>;

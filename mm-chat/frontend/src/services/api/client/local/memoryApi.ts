@@ -52,6 +52,18 @@ export function createLocalMemoryApiShell(): MemoryApi {
     async getGovernanceMemoryDetail() {
       throw unsupportedFeature("server memory governance");
     },
+    async getL2SceneDetail() {
+      throw unsupportedFeature("server memory governance");
+    },
+    async setL2SceneEnabled() {
+      throw unsupportedFeature("server memory governance");
+    },
+    async rebuildL2Scene() {
+      throw unsupportedFeature("server memory governance");
+    },
+    async rebuildL2Scenes() {
+      throw unsupportedFeature("server memory governance");
+    },
     async listMemoryReviews() {
       throw unsupportedFeature("server memory governance");
     },

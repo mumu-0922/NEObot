@@ -167,6 +167,30 @@ describe("server durable memory API", () => {
               : governanceMemory(),
           );
         }
+        if (url.endsWith("/v1/memory-governance/scenes/scene-1/details")) {
+          return jsonResponse({
+            scene: l2Scene(),
+            members: [
+              {
+                memoryId: "memory-1",
+                revision: 1,
+                contentHash: "a".repeat(64),
+                current: true,
+                memory: governanceMemory(),
+                evidence: [],
+              },
+            ],
+          });
+        }
+        if (url.endsWith("/v1/memory-governance/scenes/scene-1/enabled")) {
+          return jsonResponse({ ...l2Scene(), status: "disabled" });
+        }
+        if (url.endsWith("/v1/memory-governance/scenes/scene-1/rebuild")) {
+          return jsonResponse({ jobId: "job-1", generation: 2 });
+        }
+        if (url.endsWith("/v1/memory-governance/scenes/rebuild")) {
+          return jsonResponse({ generation: 3, jobCount: 1 });
+        }
         if (url.includes("/v1/memory-reviews/review-1/decision")) {
           return jsonResponse({
             suggestionId: "review-1",
@@ -235,6 +259,16 @@ describe("server durable memory API", () => {
       memoryId: "memory-1",
       expectedRevision: 2,
     });
+    await expect(
+      memories.getL2SceneDetail({ sceneId: "scene-1" }),
+    ).resolves.toMatchObject({ scene: { id: "scene-1" } });
+    await memories.setL2SceneEnabled({
+      sceneId: "scene-1",
+      expectedRevision: 1,
+      enabled: false,
+    });
+    await memories.rebuildL2Scene({ sceneId: "scene-1" });
+    await memories.rebuildL2Scenes();
     await memories.decideMemoryReview({
       suggestionId: "review-1",
       decision: "reject",
@@ -258,6 +292,21 @@ describe("server durable memory API", () => {
         useMode: "off",
         learnMode: "on",
       },
+    });
+    expect(requests).toContainEqual({
+      url: "/mm-api/v1/memory-governance/scenes/scene-1/enabled",
+      method: "POST",
+      body: { expectedRevision: 1, enabled: false },
+    });
+    expect(requests).toContainEqual({
+      url: "/mm-api/v1/memory-governance/scenes/scene-1/rebuild",
+      method: "POST",
+      body: undefined,
+    });
+    expect(requests).toContainEqual({
+      url: "/mm-api/v1/memory-governance/scenes/rebuild",
+      method: "POST",
+      body: undefined,
     });
     expect(requests).toContainEqual({
       url: "/mm-api/v1/memory-governance/memories/memory-1",
@@ -287,6 +336,9 @@ describe("server durable memory API", () => {
     await expect(client.memories.listMemories()).rejects.toMatchObject({
       code: "FEATURE_NOT_IMPLEMENTED",
     });
+    await expect(
+      client.memories.getL2SceneDetail({ sceneId: "scene-1" }),
+    ).rejects.toMatchObject({ code: "FEATURE_NOT_IMPLEMENTED" });
   });
 
   it("exports authenticated packages and keeps import dry-run/confirm multipart-bound", async () => {
@@ -495,6 +547,41 @@ function governanceSnapshot() {
     reviews: [],
     deletions: [],
     diagnostics: [],
+    l2Scene: {
+      profile: {
+        profileId: "memory_l2_scene_v1",
+        synthesisProfileId: "memory_l2_scene_synthesis_v1",
+        retrievalProfileId: "memory_l2_scene_hybrid_bge_m3_rrf60_v1",
+        status: "shadow",
+        generation: 1,
+        l1ReaderReady: false,
+        active: false,
+      },
+      scenes: [l2Scene()],
+    },
+  };
+}
+
+function l2Scene() {
+  return {
+    id: "scene-1",
+    scopeType: "project",
+    projectId: "project-1",
+    projectName: "Neo Chat",
+    topicKey: "project-stack",
+    content: "Neo Chat uses Go",
+    contentHash: "b".repeat(64),
+    sensitivity: "normal",
+    status: "shadow",
+    userDisabled: false,
+    profileId: "memory_l2_scene_v1",
+    generation: 1,
+    sourceWatermark: "c".repeat(64),
+    revision: 1,
+    memberCount: 2,
+    sourcesCurrent: true,
+    createdAt: 1,
+    updatedAt: 1,
   };
 }
 

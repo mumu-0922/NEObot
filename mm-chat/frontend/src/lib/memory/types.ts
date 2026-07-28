@@ -169,6 +169,69 @@ export interface MemoryGovernanceSnapshot {
   reviews: MemoryReviewSuggestion[];
   deletions: MemoryDeletionProgress[];
   diagnostics: MemorySearchDiagnostic[];
+  l2Scene?: L2SceneGovernanceSnapshot;
+}
+
+export interface L2SceneGovernanceSnapshot {
+  profile: L2SceneGovernanceProfile;
+  scenes: L2SceneGovernanceScene[];
+}
+
+export interface L2SceneGovernanceProfile {
+  profileId: string;
+  synthesisProfileId: string;
+  retrievalProfileId: string;
+  status: "shadow" | "active" | "rolled_back";
+  generation: number;
+  l1ReaderReady: boolean;
+  active: boolean;
+  activatedAt?: number;
+  rolledBackAt?: number;
+}
+
+export interface L2SceneGovernanceScene {
+  id: string;
+  scopeType: "global" | "project";
+  projectId?: string;
+  projectName?: string;
+  topicKey: string;
+  content: string;
+  contentHash: string;
+  sensitivity: MemorySensitivity;
+  status: "shadow" | "active" | "disabled" | "stale";
+  userDisabled: boolean;
+  profileId: string;
+  generation: number;
+  sourceWatermark: string;
+  revision: number;
+  memberCount: number;
+  sourcesCurrent: boolean;
+  createdAt: number;
+  updatedAt: number;
+  activatedAt?: number;
+  disabledAt?: number;
+  staleAt?: number;
+  purgeAfter?: number;
+}
+
+export interface L2SceneGovernanceMember {
+  memoryId: string;
+  revision: number;
+  contentHash: string;
+  current: boolean;
+  memory?: GovernanceMemory;
+  evidence: MemoryEvidence[];
+}
+
+export interface L2SceneGovernanceDetail {
+  scene: L2SceneGovernanceScene;
+  members: L2SceneGovernanceMember[];
+}
+
+export interface L2SceneRebuildResult {
+  jobId?: string;
+  generation: number;
+  jobCount?: number;
 }
 
 export interface DurableMemoryGovernanceSettings {

@@ -160,6 +160,39 @@ func TestGovernanceHandlerRoutesAndErrors(t *testing.T) {
 	if response.Code != http.StatusOK || repo.reviewDecision.Decision != "reject" {
 		t.Fatalf("review response = %d %s input=%#v", response.Code, response.Body.String(), repo.reviewDecision)
 	}
+	response = serveMemoryRequest(t, handler, http.MethodGet,
+		memoryGovernancePath+"/scenes/"+governanceMemoryID+"/details", "")
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), governanceMemoryID) {
+		t.Fatalf("Scene detail response = %d %s", response.Code, response.Body.String())
+	}
+	response = serveMemoryRequest(t, handler, http.MethodPost,
+		memoryGovernancePath+"/scenes/"+governanceMemoryID+"/enabled",
+		`{"expectedRevision":2,"enabled":false}`)
+	if response.Code != http.StatusOK || repo.l2Enabled.SceneID != governanceMemoryID ||
+		repo.l2Enabled.ExpectedRevision != 2 || repo.l2Enabled.Enabled {
+		t.Fatalf("Scene enabled response = %d %s input=%#v",
+			response.Code, response.Body.String(), repo.l2Enabled)
+	}
+	response = serveMemoryRequest(t, handler, http.MethodPost,
+		memoryGovernancePath+"/scenes/"+governanceMemoryID+"/rebuild", "")
+	if response.Code != http.StatusOK || repo.l2RebuildID != governanceMemoryID {
+		t.Fatalf("Scene rebuild response = %d %s id=%q",
+			response.Code, response.Body.String(), repo.l2RebuildID)
+	}
+	response = serveMemoryRequest(t, handler, http.MethodPost,
+		memoryGovernancePath+"/scenes/rebuild", "")
+	if response.Code != http.StatusOK || repo.l2RebuildAllCalls != 1 {
+		t.Fatalf("Scene rebuild-all response = %d %s calls=%d",
+			response.Code, response.Body.String(), repo.l2RebuildAllCalls)
+	}
+	response = serveMemoryRequest(t, handler, http.MethodPost,
+		memoryGovernancePath+"/scenes/"+governanceMemoryID+"/enabled",
+		`{"expectedRevision":2}`)
+	if response.Code != http.StatusBadRequest ||
+		!strings.Contains(response.Body.String(), "INVALID_MEMORY_L2_SCENE_ENABLED") {
+		t.Fatalf("missing Scene enabled response = %d %s",
+			response.Code, response.Body.String())
+	}
 	response = serveMemoryRequest(t, handler, http.MethodPost,
 		memoryGovernancePath+"/memories", `{"type":"fact","content":"x","unknown":true}`)
 	if response.Code != http.StatusBadRequest {
@@ -210,6 +243,9 @@ type governanceTestRepository struct {
 	reviewDecision     MemoryReviewDecisionInput
 	activities         []MemoryActivity
 	activityLimit      int
+	l2Enabled          L2SceneEnabledInput
+	l2RebuildID        string
+	l2RebuildAllCalls  int
 }
 
 func (r *governanceTestRepository) GovernanceSnapshot(context.Context) (GovernanceSnapshot, error) {
@@ -261,4 +297,41 @@ func (r *governanceTestRepository) ListMessageActivities(_ context.Context, _ st
 	return append([]MemoryActivity(nil), r.activities...), nil
 }
 
+func (r *governanceTestRepository) GovernanceL2SceneDetail(
+	_ context.Context,
+	sceneID string,
+) (L2SceneGovernanceDetail, error) {
+	return L2SceneGovernanceDetail{
+		Scene:   L2SceneGovernanceScene{ID: sceneID, Revision: 2},
+		Members: []L2SceneGovernanceMember{},
+	}, nil
+}
+
+func (r *governanceTestRepository) SetGovernanceL2SceneEnabled(
+	_ context.Context,
+	input L2SceneEnabledInput,
+) (L2SceneGovernanceScene, error) {
+	r.l2Enabled = input
+	return L2SceneGovernanceScene{
+		ID: input.SceneID, Revision: input.ExpectedRevision + 1,
+		UserDisabled: !input.Enabled,
+	}, nil
+}
+
+func (r *governanceTestRepository) RebuildGovernanceL2Scene(
+	_ context.Context,
+	sceneID string,
+) (L2SceneRebuildResult, error) {
+	r.l2RebuildID = sceneID
+	return L2SceneRebuildResult{JobID: governanceReviewID, Generation: 2}, nil
+}
+
+func (r *governanceTestRepository) RebuildGovernanceL2Scenes(
+	context.Context,
+) (L2SceneRebuildResult, error) {
+	r.l2RebuildAllCalls++
+	return L2SceneRebuildResult{Generation: 3, JobCount: 1}, nil
+}
+
 var _ GovernanceRepository = (*governanceTestRepository)(nil)
+var _ L2SceneGovernanceRepository = (*governanceTestRepository)(nil)
