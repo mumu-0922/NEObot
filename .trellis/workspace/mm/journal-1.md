@@ -789,3 +789,58 @@ prompt, Usage, and chat success as the only production authority.
 
 - Begin PR8 BGE-M3/vector, RRF, rerank, and budget fallback as a separate 0%
   prompt-injection shadow batch without switching the v2 reader early.
+
+
+## Session 22: Implement Memory v2 hybrid vector shadow
+
+**Date**: 2026-07-28
+**Task**: Implement Memory v2 BGE-M3/vector hybrid shadow
+**Branch**: `main`
+
+### Summary
+
+Implemented PR8 default-off, zero-prompt-injection hybrid Memory shadow with
+BGE-M3 vector projections, independent Exact/BM25/Vector lanes, deterministic
+RRF, bounded BGE reranking, and fail-open token-budget fallback while retaining
+the v1 reader as the only production authority.
+
+### Main Changes
+
+- Added migration `059` with fixed 1024d embedding binding, partial HNSW cosine
+  index, lease-fenced embedding jobs, normalized score-free observations/results,
+  narrow runtime capabilities, and guarded rollback/replay.
+- Added worker-side fake-testable embedding orchestration and API-side hybrid
+  comparison with `RRF(k=60)`, rerank fallback, 600-token target, 900-token hard
+  cap, 2-second cutoff, and no impact on v1 Top 5, prompt, Usage, or chat success.
+- Reused the canonical Memory secret detector before embedding and rerank
+  Provider egress, split embedding orchestration out of `worker.go`, and hardened
+  the RAG parser transport test against the UDS bind/listen readiness race.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `dc15869` | `feat: add Memory hybrid vector shadow` |
+| `2bc9517` | `fix: wait for parser sidecar readiness` |
+| `b1e4889` | `docs(task): record Memory v2 PR8 progress` |
+
+### Testing
+
+- [OK] Focused race tests, full backend `go test ./...`, and `go vet ./...`.
+- [OK] Disposable PostgreSQL 17 backfill/invalidation/lease/fence, lane/fusion,
+  role denial, guarded down, clean down, and `058 -> 059 -> 058 -> 059` replay.
+- [OK] Preflight tests, Compose render with API/worker, backend image build, and
+  security scan across 17 changed production files with zero findings.
+- [OK] RAG UDS readiness reproduced and fixed; 50 replays and 15 focused parser
+  transport tests passed.
+- [OK] Full standalone gate: frontend 954 tests/build, backend tests/vet, and
+  RAG 1,906 passed / 7 skipped.
+
+### Status
+
+[OK] **PR8 completed; parent Memory v2 task remains in progress**
+
+### Next Steps
+
+- Begin PR9 Project/Conversation policy and governance UI without switching the
+  v2 reader before its frozen promotion gates pass.
