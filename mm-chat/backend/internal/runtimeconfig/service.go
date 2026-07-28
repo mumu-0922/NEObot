@@ -1022,6 +1022,54 @@ func (s *Service) ResolveStoredProvider(ctx context.Context, providerID string) 
 	}, nil
 }
 
+// ResolveHydratedStoredProvider applies the same model-provider activation and
+// vault checks as the request path to a record already fenced and hydrated by
+// a SECURITY DEFINER worker capability. It performs no repository lookup.
+func (s *Service) ResolveHydratedStoredProvider(
+	stored StoredProviderConfig,
+) (ResolvedProvider, error) {
+	stored.ID = strings.TrimSpace(stored.ID)
+	stored.UserID = strings.TrimSpace(stored.UserID)
+	stored.ProviderID = strings.TrimSpace(stored.ProviderID)
+	if stored.ID == "" || stored.UserID == "" || stored.ProviderID == "" ||
+		!IsModelProviderConfig(stored) {
+		return ResolvedProvider{}, ErrProviderConfigUnsupported
+	}
+	if !stored.Config.Enabled {
+		return ResolvedProvider{}, ErrProviderDisabled
+	}
+	if !ProviderConnectionTestValid(stored) {
+		return ResolvedProvider{}, ErrProviderActivationRequired
+	}
+
+	var provider resolvedServerDefaultProvider
+	if stored.ProviderID == serverDefaultProviderID {
+		provider = s.resolveStoredServerDefault(stored)
+	} else {
+		provider = s.resolveStoredProvider(stored)
+	}
+	if provider.SecretErr != nil {
+		return ResolvedProvider{}, provider.SecretErr
+	}
+	if strings.TrimSpace(provider.APIKey) == "" {
+		return ResolvedProvider{}, ErrProviderSecretRequired
+	}
+	return ResolvedProvider{
+		ID:                           stored.ProviderID,
+		Name:                         provider.Name,
+		Type:                         provider.Type,
+		BaseURL:                      provider.BaseURL,
+		APIKey:                       provider.APIKey,
+		Models:                       append([]string(nil), provider.Models...),
+		ModelBuiltInSearchProtocol:   provider.ModelBuiltInSearchProtocol,
+		ModelBuiltInSearchModel:      provider.ModelBuiltInSearchModel,
+		ModelBuiltInSearchTestValid:  provider.ModelBuiltInSearchTestValid,
+		ToolCapabilityDefault:        provider.ToolCapabilityDefault,
+		ToolCapabilityModelOverrides: cloneToolCapabilityOverrides(provider.ToolCapabilityModelOverrides),
+		ToolCapabilityConfigHash:     provider.ToolCapabilityConfigHash,
+	}, nil
+}
+
 func (s *Service) ProviderAPIKey(provider ProviderRuntimeConfig) (string, error) {
 	if strings.TrimSpace(provider.APIKey) != "" {
 		return "", ErrPlaintextProviderSecret

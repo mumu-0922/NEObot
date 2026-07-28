@@ -1247,6 +1247,40 @@ func (r *PostgresRepository) FinalizeAssistantMessage(
 	); err != nil {
 		return Message{}, fmt.Errorf("touch conversation after assistant finalize: %w", err)
 	}
+	if input.MemoryCapture != nil {
+		capture := input.MemoryCapture
+		var capturedEventID sql.NullString
+		if err := tx.QueryRowContext(
+			ctx,
+			`SELECT memory_append_turn_completed_event(
+			  $1::uuid,
+			  $2::uuid,
+			  $3::uuid,
+			  $4::uuid,
+			  $5::uuid,
+			  $6::uuid,
+			  $7::text,
+			  $8::text,
+			  $9::text,
+			  $10::smallint
+			)`,
+			capture.EventID,
+			capture.JobID,
+			userID,
+			conversationID,
+			capture.UserMessageID,
+			messageID,
+			capture.ProviderSource,
+			capture.ProviderID,
+			capture.ModelID,
+			capture.EventSchemaMajor,
+		).Scan(&capturedEventID); err != nil {
+			return Message{}, fmt.Errorf("append memory capture event: %w", err)
+		}
+		if capturedEventID.Valid {
+			message.memoryEventID = capturedEventID.String
+		}
+	}
 
 	if err := tx.Commit(); err != nil {
 		return Message{}, fmt.Errorf("commit finalize assistant message: %w", err)

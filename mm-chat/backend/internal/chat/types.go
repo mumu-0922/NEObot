@@ -119,11 +119,24 @@ type CreateAssistantMessageInput struct {
 }
 
 type FinalizeAssistantMessageInput struct {
-	Status       string
-	Content      string
-	OutputBlocks []any
-	Metadata     map[string]any
-	Attachments  []AttachmentInput
+	Status        string
+	Content       string
+	OutputBlocks  []any
+	Metadata      map[string]any
+	Attachments   []AttachmentInput
+	MemoryCapture *MemoryCaptureInput
+}
+
+const MemoryCaptureEventSchemaMajor = 2
+
+type MemoryCaptureInput struct {
+	EventID          string
+	JobID            string
+	UserMessageID    string
+	ProviderSource   string
+	ProviderID       string
+	ModelID          string
+	EventSchemaMajor int
 }
 
 type CancelRunInput struct {
@@ -150,6 +163,7 @@ type Message struct {
 	UpdatedAt         time.Time
 	CompletedAt       *time.Time
 	DeletedAt         *time.Time
+	memoryEventID     string
 }
 
 type ConversationContextSummary struct {

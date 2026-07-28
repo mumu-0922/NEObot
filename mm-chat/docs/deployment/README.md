@@ -67,19 +67,20 @@ Outbox state.
   `scripts/compose-single-server-production.sh` so host variables cannot
   override the validated env file and the production override removes every
   `build:` path. Retain both previous image digests through rollback.
-- Database access has four distinct login principals and passwords.
+- Database access has five distinct login principals and passwords.
   `POSTGRES_USER` is the bootstrap/migrator login referenced only by the
   separately required `MIGRATION_DATABASE_URL`; migration never falls back to
   `DATABASE_URL`. The non-superuser, non-`CREATEROLE` API login inherits only
   `go_api_runtime` and supplies `DATABASE_URL` to both `backend` and the
-  one-shot `admin`. Worker and Replay logins inherit `rag_worker_executor` and
+  one-shot `admin`. The Memory Worker login inherits `memory_worker_runtime`;
+  RAG Worker and Replay logins inherit `rag_worker_executor` and
   `rag_replay_operator` respectively. Replay is operator-only and its URL is
-  never injected into the long-running Worker. Preflight validates this
+  never injected into either long-running Worker. Preflight validates this
   boundary without printing values.
-- On a fresh database, run migration `010` first so it creates the NOLOGIN
-  capability roles, then create the API, Worker, and Replay LOGIN principals by
+- On a fresh database, run through migration `054` so `010` and `054` create the
+  NOLOGIN capability roles, then create the API, Memory Worker, RAG Worker, and Replay LOGIN principals by
   secure interactive password input and grant one matching capability to each.
-  Verify role attributes, memberships, and all four live connections before
+  Verify role attributes, memberships, and all five live connections before
   promotion. A guarded `010.down` retains the API capability required by
   migration `009`; never grant API capability to the migrator or projection
   owner as a rollback shortcut.

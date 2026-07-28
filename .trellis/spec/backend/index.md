@@ -14,6 +14,7 @@
 | [Hosted TTS production](./hosted-tts-production.md) | Dedicated SiliconFlow Voice authority, exact activation, server-mode playback, per-user cache, and cleanup |
 | [Memory v2 benchmark](./memory-v2-benchmark.md) | Synthetic-only 500-case Golden lifecycle, strict observation/evaluation contracts, immutable reports, and non-promotional boundaries |
 | [Memory v2 storage](./memory-v2-storage.md) | Project/scope/settings foundation, Global v1 repository compatibility, ownership constraints, and guarded rollback |
+| [Memory v2 worker](./memory-v2-worker.md) | ID-only completed-turn capture, leased PostgreSQL jobs, private Go worker, Redis wake, least privilege, replay, and rollback |
 
 ## Pre-Development Checklist
 
@@ -90,6 +91,16 @@ For Memory Project, scope, settings, repository, or migration changes:
 4. Prove additive defaults, backfill, same-scope uniqueness, guarded rollback,
    and disposable PostgreSQL down/re-up before release.
 
+For Memory completed-turn capture, outbox/jobs, worker, Redis wake, Provider
+hydration, or worker deployment changes:
+
+1. Read [`memory-v2-worker.md`](./memory-v2-worker.md).
+2. Preserve PostgreSQL as authority and keep Redis ID-only/best-effort.
+3. Trace finalize transaction -> claim -> hydrate -> apply -> complete/retry,
+   including every lease/user/source/generation/profile fence.
+4. Prove current/N-1 schema handling, crash reclaim, stale lease denial,
+   direct-table denial, Redis-down polling, and guarded down/re-up.
+
 ## Quality Check
 
 - Run the disposable database drill for the changed storage group.
@@ -113,5 +124,7 @@ For Memory Project, scope, settings, repository, or migration changes:
 - For Memory storage changes, run focused race tests for `internal/usermemory`,
   `internal/migration`, and `cmd/migrate`; prove the exact migration against a
   disposable PostgreSQL database before all backend tests and vet.
+- For Memory worker changes, run the focused race, PostgreSQL 17 replay,
+  preflight/Compose, and backend-image gates defined in `memory-v2-worker.md`.
 
 **Language**: All documentation should be written in English.

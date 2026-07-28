@@ -22,6 +22,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/jobcontrol"
 	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/plugins"
+	"neo-chat/mm-chat/backend/internal/providerfactory"
 	"neo-chat/mm-chat/backend/internal/providersecrets"
 	"neo-chat/mm-chat/backend/internal/ragproviders"
 	"neo-chat/mm-chat/backend/internal/ragsource"
@@ -81,6 +82,7 @@ type options struct {
 	runtimeConfigRepo    runtimeconfig.ProviderConfigRepository
 	taskModelRepo        runtimeconfig.TaskModelSettingsRepository
 	userMemoryRepo       usermemory.Repository
+	memoryWakePublisher  chat.MemoryWakePublisher
 	providerSecretVault  *providersecrets.Vault
 	webSearchResolver    websearch.Resolver
 }
@@ -357,83 +359,29 @@ func (r runtimeChatProviderResolver) ResolveRuntimeProvider(
 			return chat.RuntimeProviderResolution{}, mapRuntimeProviderError(err)
 		}
 	}
-	providerType := strings.ToLower(strings.TrimSpace(provider.Type))
-	switch providerType {
-	case "openai":
-		resolved, err := chat.NewOpenAIProvider(chat.OpenAICompatibleProviderConfig{
-			BaseURL:    runtimeProviderBaseURL(provider),
-			APIKey:     apiKey,
-			ProviderID: strings.TrimSpace(provider.ID),
-			Timeout:    r.timeout,
-		})
-		if err != nil {
-			return chat.RuntimeProviderResolution{}, chat.ValidationError{
-				Code:    "PROVIDER_CONFIG_UNSUPPORTED",
-				Message: "runtime provider configuration is unsupported",
-			}
-		}
-		return runtimeChatProviderResolutionWithToolCapability(resolved, source, provider, toolCapabilityPolicy, toolCapabilityModelOverrides, toolCapabilityConfigHash), nil
-	case "openai compatible", "openai_compatible", "openai-compatible", "":
-		if modelBuiltInSearchTestValid &&
-			modelBuiltInSearchProtocol == runtimeconfig.ModelBuiltInSearchProtocolOpenAIResponses {
-			resolved, err := chat.NewOpenAIProvider(chat.OpenAICompatibleProviderConfig{
-				BaseURL: runtimeProviderBaseURL(provider), APIKey: apiKey,
-				ProviderID: strings.TrimSpace(provider.ID), Timeout: r.timeout,
-			})
-			if err != nil {
-				return chat.RuntimeProviderResolution{}, chat.ValidationError{
-					Code: "PROVIDER_CONFIG_UNSUPPORTED", Message: "runtime provider configuration is unsupported",
-				}
-			}
-			return runtimeChatProviderResolutionWithToolCapability(resolved, source, provider, toolCapabilityPolicy, toolCapabilityModelOverrides, toolCapabilityConfigHash), nil
-		}
-		resolved, err := chat.NewOpenAICompatibleProvider(chat.OpenAICompatibleProviderConfig{
-			BaseURL:    runtimeProviderBaseURL(provider),
-			APIKey:     apiKey,
-			ProviderID: strings.TrimSpace(provider.ID),
-			Timeout:    r.timeout,
-		})
-		if err != nil {
-			return chat.RuntimeProviderResolution{}, chat.ValidationError{
-				Code:    "PROVIDER_CONFIG_UNSUPPORTED",
-				Message: "runtime provider configuration is unsupported",
-			}
-		}
-		return runtimeChatProviderResolutionWithToolCapability(resolved, source, provider, toolCapabilityPolicy, toolCapabilityModelOverrides, toolCapabilityConfigHash), nil
-	case "gemini", "google gemini", "google_gemini":
-		resolved, err := chat.NewGeminiProvider(chat.OpenAICompatibleProviderConfig{
-			BaseURL:    strings.TrimSpace(provider.BaseURL),
-			APIKey:     apiKey,
-			ProviderID: strings.TrimSpace(provider.ID),
-			Timeout:    r.timeout,
-		})
-		if err != nil {
-			return chat.RuntimeProviderResolution{}, chat.ValidationError{
-				Code:    "PROVIDER_CONFIG_UNSUPPORTED",
-				Message: "runtime provider configuration is unsupported",
-			}
-		}
-		return runtimeChatProviderResolutionWithToolCapability(resolved, source, provider, toolCapabilityPolicy, toolCapabilityModelOverrides, toolCapabilityConfigHash), nil
-	case "anthropic", "anthropic claude", "anthropic_claude", "claude":
-		resolved, err := chat.NewAnthropicProvider(chat.AnthropicProviderConfig{
-			BaseURL:    strings.TrimSpace(provider.BaseURL),
-			APIKey:     apiKey,
-			ProviderID: strings.TrimSpace(provider.ID),
-			Timeout:    r.timeout,
-		})
-		if err != nil {
-			return chat.RuntimeProviderResolution{}, chat.ValidationError{
-				Code:    "PROVIDER_CONFIG_UNSUPPORTED",
-				Message: "runtime provider configuration is unsupported",
-			}
-		}
-		return runtimeChatProviderResolutionWithToolCapability(resolved, source, provider, toolCapabilityPolicy, toolCapabilityModelOverrides, toolCapabilityConfigHash), nil
-	default:
+	resolved, err := providerfactory.NewChatProvider(providerfactory.ChatConfig{
+		ProviderID: strings.TrimSpace(provider.ID),
+		Type:       runtimeconfig.ProviderType(provider.Type),
+		BaseURL:    provider.BaseURL,
+		APIKey:     apiKey,
+		Timeout:    r.timeout,
+		UseOpenAIResponses: modelBuiltInSearchTestValid &&
+			modelBuiltInSearchProtocol == runtimeconfig.ModelBuiltInSearchProtocolOpenAIResponses,
+	})
+	if err != nil {
 		return chat.RuntimeProviderResolution{}, chat.ValidationError{
 			Code:    "PROVIDER_CONFIG_UNSUPPORTED",
-			Message: "runtime provider type is not supported",
+			Message: "runtime provider configuration is unsupported",
 		}
 	}
+	return runtimeChatProviderResolutionWithToolCapability(
+		resolved,
+		source,
+		provider,
+		toolCapabilityPolicy,
+		toolCapabilityModelOverrides,
+		toolCapabilityConfigHash,
+	), nil
 }
 
 func runtimeChatProviderResolution(
@@ -509,19 +457,6 @@ func mapRuntimeProviderError(err error) error {
 		}
 	}
 	return err
-}
-
-func runtimeProviderBaseURL(provider runtimeconfig.ProviderRuntimeConfig) string {
-	baseURL := strings.TrimSpace(provider.BaseURL)
-	if baseURL == "" || baseURL == "default" {
-		return "https://api.openai.com/v1"
-	}
-	baseURL = strings.TrimSuffix(baseURL, "#")
-	baseURL = strings.TrimRight(baseURL, "/")
-	if strings.HasSuffix(baseURL, "/v1") {
-		return baseURL
-	}
-	return baseURL + "/v1"
 }
 
 func (r fileProviderAttachmentResolver) ResolveProviderAttachment(
@@ -726,6 +661,12 @@ func WithTaskModelSettingsRepository(repo runtimeconfig.TaskModelSettingsReposit
 func WithUserMemoryRepository(repo usermemory.Repository) Option {
 	return func(opts *options) {
 		opts.userMemoryRepo = repo
+	}
+}
+
+func WithMemoryWakePublisher(publisher chat.MemoryWakePublisher) Option {
+	return func(opts *options) {
+		opts.memoryWakePublisher = publisher
 	}
 }
 
@@ -978,6 +919,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 			service: resolvedOptions.imageJobService,
 		}),
 		chat.WithUserMemoryService(userMemoryService),
+		chat.WithMemoryWakePublisher(resolvedOptions.memoryWakePublisher),
 	}
 	if webSearchService.Configured() {
 		chatOptions = append(chatOptions, chat.WithWebSearchService(webSearchService))

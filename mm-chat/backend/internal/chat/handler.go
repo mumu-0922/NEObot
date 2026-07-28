@@ -53,6 +53,7 @@ type Handler struct {
 	knowledgeCatalogGate   KnowledgeRoutingCatalogGovernanceGate
 	webSearchService       *websearch.Service
 	userMemoryService      *usermemory.Service
+	memoryWakePublisher    MemoryWakePublisher
 	contextBudgetPolicy    contextBudgetPolicy
 	toolCapabilityCache    ToolCapabilityCache
 	toolCapabilityProbes   *toolCapabilityProbeGroup
@@ -62,6 +63,10 @@ type HandlerOption func(*Handler)
 
 type ProviderAttachmentResolver interface {
 	ResolveProviderAttachment(ctx context.Context, attachment Attachment) (ProviderAttachment, error)
+}
+
+type MemoryWakePublisher interface {
+	PublishMemoryWake(ctx context.Context, eventID string) error
 }
 
 type RuntimeProviderResolver interface {
@@ -344,6 +349,12 @@ func WithWebSearchService(service *websearch.Service) HandlerOption {
 func WithUserMemoryService(service *usermemory.Service) HandlerOption {
 	return func(handler *Handler) {
 		handler.userMemoryService = service
+	}
+}
+
+func WithMemoryWakePublisher(publisher MemoryWakePublisher) HandlerOption {
+	return func(handler *Handler) {
+		handler.memoryWakePublisher = publisher
 	}
 }
 
@@ -2072,6 +2083,41 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			return
 		}
 	}
+	memoryCapture, err := newDurableMemoryCapture(
+		userMessage.ID,
+		*modelRef,
+		request.Provider,
+	)
+	if err != nil {
+		h.finalizeAssistantMessage(
+			context.Background(),
+			conversationID,
+			assistantMessage.ID,
+			FinalizeAssistantMessageInput{
+				Status:  "failed",
+				Content: completedContent,
+				Metadata: map[string]any{
+					"runId":     runID,
+					"errorCode": "MEMORY_CAPTURE_ID_FAILED",
+				},
+			},
+		)
+		sequence++
+		_ = writeSSEEvent(w, "message.error", streamEvent{
+			Type:           "message.error",
+			RunID:          runID,
+			ConversationID: conversationID,
+			MessageID:      assistantMessage.ID,
+			Sequence:       sequence,
+			CreatedAt:      formatTime(time.Now()),
+			Error: &ErrorBody{
+				Code:    "INTERNAL_ERROR",
+				Message: "internal server error",
+			},
+		})
+		flusher.Flush()
+		return
+	}
 	assistantMessage, err = h.finalizeAssistantMessage(
 		context.Background(),
 		conversationID,
@@ -2089,6 +2135,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				reasoning.String(),
 				trace,
 			),
+			MemoryCapture: memoryCapture,
 		},
 	)
 	if err != nil {
@@ -2121,14 +2168,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	flusher.Flush()
-	h.queueDurableMemoryExtraction(
-		r.Context(),
-		streamProvider,
-		*modelRef,
-		conversationID,
-		userMessage.ID,
-		userMessage.Content,
-	)
+	h.publishDurableMemoryWake(assistantMessage.memoryEventID)
 }
 
 func (h *Handler) resolveConversationRAGSelection(

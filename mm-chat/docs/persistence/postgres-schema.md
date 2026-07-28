@@ -1,10 +1,10 @@
-# Postgres Schema Through Migration 010
+# Postgres Schema Through Migration 054
 
 This document describes the current schema created by the ordered migrations in
 `mm-chat/backend/migrations`, from `001_initial_schema` through
-`010_phase15_rag_projection_consistency`. Phase labels are retained where they
+`054_memory_outbox_jobs_worker`. Phase labels are retained where they
 explain rollout history; they do not narrow the current schema or its
-implemented repository consumers. Migration `011` does not yet exist.
+implemented repository consumers.
 
 ## 1. Scope
 
@@ -14,6 +14,7 @@ Postgres is the source of truth for structured server data:
 users -> sessions
 users -> provider_configs
 users -> conversations -> messages -> message_attachments -> files
+users -> memory settings/projects/scoped memories -> memory outbox/jobs
 users -> import_batches
 users/sessions/actions -> audit_logs
 users -> credentials/recovery tokens
@@ -43,6 +44,8 @@ In scope:
   lease-fenced Functions, replay audit, and Collection purge fan-out.
 - Least-privilege capability roles and the database contract used by the
   durable Phase 15.2B dark-run Worker.
+- ID-only Memory capture events, lease/reclaim jobs, and the restricted
+  `memory_worker_runtime` capability used by the private Go Memory Worker.
 
 Out of scope:
 
@@ -76,6 +79,10 @@ Out of scope:
 | `008_phase15_governance_immutability`        | Adds a trigger that rejects every `UPDATE` or `DELETE` of a Processor Governance Profile.                                                                                                                                                                  |
 | `009_phase15_consent_expiry_materialization` | Adds `expiry_materialized_at` and an index for current granted Consent rows whose finite expiry is due and not yet materialized.                                                                                                                           |
 | `010_phase15_rag_projection_consistency`     | Adds exact Endpoint/Model Governance and Consent bindings, extension-independent projection schema, lease/ledger/replay/purge Functions, conservative Down guards, and least-privilege capability roles used by the durable dark-run Worker.               |
+| `035_user_memories`                          | Adds Global user Memory settings and canonical Memory rows. |
+| `036_task_model_settings`                    | Adds server-owned task-specific model references, including Memory extraction. |
+| `053_memory_project_scope_settings`          | Adds Projects, explicit Memory scopes/generations/policy, composite ownership, and guarded rollback while retaining the Global v1 API. |
+| `054_memory_outbox_jobs_worker`              | Adds versioned ID-only Memory capture events, leased/replayable jobs, fenced worker functions, and separate API/worker capability grants. |
 
 Published migration pairs are immutable and applied in numeric order. Migration
 SQL contains no transaction-control statements; the Go runner wraps each schema

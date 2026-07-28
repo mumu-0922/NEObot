@@ -185,6 +185,7 @@ required = (
     "MM_CHAT_RUNTIME_GID",
     "MIGRATION_DATABASE_URL",
     "DATABASE_URL",
+    "MEMORY_WORKER_DATABASE_URL",
     "RAG_WORKER_DATABASE_URL",
     "RAG_REPLAY_DATABASE_URL",
     "POSTGRES_DB",
@@ -326,6 +327,7 @@ database_urls = {}
 for key in (
     "MIGRATION_DATABASE_URL",
     "DATABASE_URL",
+    "MEMORY_WORKER_DATABASE_URL",
     "RAG_WORKER_DATABASE_URL",
     "RAG_REPLAY_DATABASE_URL",
 ):
@@ -359,7 +361,7 @@ for key, parsed in database_urls.items():
 
 database_users = [unquote(parsed.username or "") for parsed in database_urls.values()]
 if len(set(database_users)) != len(database_users):
-    fail("migration, API, RAG worker, and RAG replay must use distinct database principals")
+    fail("migration, API, Memory worker, RAG worker, and RAG replay must use distinct database principals")
 
 database_passwords = [
     unquote(parsed.password or "") for parsed in database_urls.values()

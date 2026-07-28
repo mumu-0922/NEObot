@@ -16,8 +16,9 @@ conversation summaries.
 - rank only relevant lexical/CJK matches and return at most five;
 - prevent disabled Memory or disabled auto-record from reading/writing entries.
 
-Provider prompt injection and background extraction live in `internal/chat` so
-this package does not depend on Provider implementations.
+Provider prompt injection remains in `internal/chat`. Durable extraction runs
+in `internal/memoryworker`, which adapts its lease-fenced candidate writes back
+through `Service.StoreExtracted`; this package still has no Provider dependency.
 
 ## Usage
 

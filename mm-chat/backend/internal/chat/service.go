@@ -428,6 +428,45 @@ func (s *Service) FinalizeAssistantMessage(
 		return Message{}, err
 	}
 	input.Attachments = attachments
+	if input.MemoryCapture != nil {
+		capture := *input.MemoryCapture
+		capture.EventID = strings.TrimSpace(capture.EventID)
+		capture.JobID = strings.TrimSpace(capture.JobID)
+		capture.UserMessageID = strings.TrimSpace(capture.UserMessageID)
+		capture.ProviderSource = strings.ToLower(strings.TrimSpace(capture.ProviderSource))
+		capture.ProviderID = strings.TrimSpace(capture.ProviderID)
+		capture.ModelID = strings.TrimSpace(capture.ModelID)
+		if input.Status != "completed" {
+			return Message{}, newValidationError(
+				"INVALID_MEMORY_CAPTURE_STATUS",
+				"memory capture requires a completed assistant message",
+			)
+		}
+		if !isUUID(capture.EventID) || !isUUID(capture.JobID) ||
+			!isUUID(capture.UserMessageID) {
+			return Message{}, newValidationError(
+				"INVALID_MEMORY_CAPTURE_ID",
+				"memory capture ids must be UUIDs",
+			)
+		}
+		switch capture.ProviderSource {
+		case "server-default", "server-stored", "request", "legacy":
+		default:
+			return Message{}, newValidationError(
+				"INVALID_MEMORY_PROVIDER_SOURCE",
+				"memory capture provider source is invalid",
+			)
+		}
+		if capture.ProviderID == "" || len(capture.ProviderID) > 512 ||
+			capture.ModelID == "" || len(capture.ModelID) > 512 ||
+			capture.EventSchemaMajor != MemoryCaptureEventSchemaMajor {
+			return Message{}, newValidationError(
+				"INVALID_MEMORY_PROVIDER_PROFILE",
+				"memory capture provider profile is invalid",
+			)
+		}
+		input.MemoryCapture = &capture
+	}
 
 	return s.repo.FinalizeAssistantMessage(ctx, conversationID, messageID, input)
 }

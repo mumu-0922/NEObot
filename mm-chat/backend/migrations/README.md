@@ -143,7 +143,7 @@ function signatures, owners, and grants while pinning lookup to the application
 schema, `pg_catalog`, and `pg_temp`. Its down path intentionally retains the
 safe search path rather than reopening object-shadowing risk.
 
-The current migration head is `053`; the latest retrieval-specific migration
+The current migration head is `054`; the latest retrieval-specific migration
 remains `050`. Migration `043` extends the existing final-authority evidence
 hydration boundary with complete matched-Child and containing-Parent source
 text plus their persisted token counts. Parent text is answer context only. Its
@@ -225,6 +225,16 @@ post-`053` backend afterward. For rollback, stop all post-`053` backends and
 down `053` before deploying the old binary. Do not mix the two writer versions
 after migration.
 
+Migration `054` adds the Memory v2 durable capture boundary. A completed
+assistant finalize can append an ID-only, major-versioned `turn.completed`
+event and its `extract` job in the same transaction. PostgreSQL owns queue
+state, lease expiry reclaim, bounded retry/dead-letter, and idempotency; Redis
+may only publish an `event_id` wake signal. `go_api_runtime` can execute only
+the append function. The separate `memory_worker_runtime` role can execute
+lease/user/source/generation/profile-fenced claim, hydrate, candidate apply,
+complete, retry, and readiness functions and has no direct table access. Its
+down path refuses to discard any event or job.
+
 ## Storage boundaries
 
 Postgres is the source of truth for structured records:
@@ -234,6 +244,7 @@ Postgres is the source of truth for structured records:
 - server-owned automation task model selections
 - conversations and messages
 - Projects, Memory settings, and canonical Memory rows
+- Memory capture outbox events and leased jobs; Redis is never their authority
 - versioned derived conversation-context summaries; original messages remain
   the rebuild authority
 - file ownership and metadata

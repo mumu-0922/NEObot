@@ -27,7 +27,7 @@ assert_rejected() {
     exit 1
   fi
   if grep -Eqi \
-    'test-(migrator|api|rag-worker|rag-replay|redis)-password|test-minio-(root|app)-password|test-provider-key|different-password' \
+    'test-(migrator|api|memory-worker|rag-worker|rag-replay|redis)-password|test-minio-(root|app)-password|test-provider-key|different-password' \
     <<<"${output}"; then
     echo "preflight test: rejection leaked a fixture secret" >&2
     exit 1
@@ -144,6 +144,7 @@ sed \
   -e "s|replace-with-host-gid|$(id -g)|" \
   -e 's|change-me-migrator-postgres|test-migrator-password|g' \
   -e 's|change-me-api-postgres|test-api-password|g' \
+  -e 's|change-me-memory-worker-postgres|test-memory-worker-password|g' \
   -e 's|change-me-rag-worker-postgres|test-rag-worker-password|g' \
   -e 's|change-me-rag-replay-postgres|test-rag-replay-password|g' \
   -e 's|change-me-redis|test-redis-password|g' \
@@ -277,6 +278,7 @@ assert_rejected \
 for database_key in \
   MIGRATION_DATABASE_URL \
   DATABASE_URL \
+  MEMORY_WORKER_DATABASE_URL \
   RAG_WORKER_DATABASE_URL \
   RAG_REPLAY_DATABASE_URL; do
   invalid_database_url="${temp_dir}/invalid-${database_key}.env"
@@ -312,6 +314,7 @@ assert_rejected \
 
 for database_key in \
   DATABASE_URL \
+  MEMORY_WORKER_DATABASE_URL \
   RAG_WORKER_DATABASE_URL \
   RAG_REPLAY_DATABASE_URL; do
   mismatched_host="${temp_dir}/host-${database_key}.env"
@@ -326,6 +329,7 @@ done
 for database_key in \
   MIGRATION_DATABASE_URL \
   DATABASE_URL \
+  MEMORY_WORKER_DATABASE_URL \
   RAG_WORKER_DATABASE_URL \
   RAG_REPLAY_DATABASE_URL; do
   mismatched_database="${temp_dir}/database-${database_key}.env"
@@ -390,6 +394,12 @@ sed 's|^POSTGRES_DATA_DIR=.*|POSTGRES_DATA_DIR=./data/postgres|' \
 chmod 600 "${old_postgres_data}"
 assert_rejected "${old_postgres_data}" "POSTGRES_DATA_DIR must be ./data/postgres17"
 
+same_memory_principal="${temp_dir}/same-memory-principal.env"
+sed 's|postgres://memory_worker:test-memory-worker-password@|postgres://neo_chat_api:test-memory-worker-password@|' \
+  "${valid}" >"${same_memory_principal}"
+chmod 600 "${same_memory_principal}"
+assert_rejected "${same_memory_principal}" "must use distinct database principals"
+
 same_worker_principal="${temp_dir}/same-worker-principal.env"
 sed 's|postgres://rag_worker:test-rag-worker-password@|postgres://neo_chat_api:test-rag-worker-password@|' \
   "${valid}" >"${same_worker_principal}"
@@ -413,6 +423,12 @@ sed 's|test-api-password@postgres|test-migrator-password@postgres|' \
   "${valid}" >"${same_api_password}"
 chmod 600 "${same_api_password}"
 assert_rejected "${same_api_password}" "database principals must use distinct passwords"
+
+same_memory_password="${temp_dir}/same-memory-password.env"
+sed 's|test-memory-worker-password@postgres|test-api-password@postgres|' \
+  "${valid}" >"${same_memory_password}"
+chmod 600 "${same_memory_password}"
+assert_rejected "${same_memory_password}" "database principals must use distinct passwords"
 
 same_rag_password="${temp_dir}/same-rag-password.env"
 sed 's|test-rag-replay-password@postgres|test-rag-worker-password@postgres|' \
@@ -490,7 +506,7 @@ rendered="$({
   MIGRATION_DATABASE_URL=postgres://override:override@override:5432/override \
   DATABASE_URL=postgres://override:override@override:5432/override \
     "${production_compose}" "${valid}" \
-      --profile app --profile ops --profile rag-worker --profile rag-ops \
+      --profile app --profile ops --profile memory-worker --profile rag-worker --profile rag-ops \
       config --format json
 } 2>"${temp_dir}/production-compose.stderr")"
 python3 - "${rendered}" "$(id -u):$(id -g)" <<'PY'
@@ -548,14 +564,15 @@ want_image = (
     "ghcr.io/mumu-0922/neobot-mm-chat@sha256:"
     + "a" * 64
 )
-for name in ("backend", "migrate", "admin"):
+for name in ("backend", "memory-worker", "migrate", "admin"):
     service = services[name]
     assert service["image"] == want_image, (name, service["image"])
     assert "build" not in service, name
 assert list(services["backend"]["networks"]) == ["private", "rag-private"]
 assert services["backend"]["user"] == runtime_user
+assert services["memory-worker"]["user"] == runtime_user
 assert services["admin"]["user"] == runtime_user
-for name in ("backend", "admin"):
+for name in ("backend", "memory-worker", "admin"):
     assert services[name]["secrets"] == [
         {
             "source": "mm_chat_provider_keyring",
@@ -570,6 +587,28 @@ assert services["postgres"]["environment"] == {
 backend_environment = services["backend"]["environment"]
 assert "neo_chat_api:test-api-password@postgres" in backend_environment["DATABASE_URL"]
 assert "MIGRATION_DATABASE_URL" not in backend_environment
+
+memory = services["memory-worker"]
+assert memory["profiles"] == ["memory-worker"]
+assert "ports" not in memory
+assert memory["read_only"] is True
+assert memory["init"] is True
+assert memory["cap_drop"] == ["ALL"]
+assert "no-new-privileges:true" in memory["security_opt"]
+assert float(memory["cpus"]) <= 0.5
+assert int(memory["pids_limit"]) == 64
+assert int(memory["mem_limit"]) == 192 * 1024 * 1024
+assert list(memory["networks"]) == ["private"]
+assert memory["depends_on"] == {
+    "postgres": {"condition": "service_healthy", "required": True}
+}
+memory_environment = memory["environment"]
+assert "memory_worker:test-memory-worker-password@postgres" in memory_environment["MEMORY_WORKER_DATABASE_URL"]
+assert memory_environment["PROVIDER_TIMEOUT"] == "45s"
+assert memory_environment["REDIS_URL"].startswith("redis://")
+assert "DATABASE_URL" not in memory_environment
+assert "MIGRATION_DATABASE_URL" not in memory_environment
+assert "/usr/local/bin/mm-chat-memory-worker healthcheck" in " ".join(memory["healthcheck"]["test"])
 
 migrate_environment = services["migrate"]["environment"]
 assert "neo_chat_migrator:test-migrator-password@postgres" in migrate_environment["MIGRATION_DATABASE_URL"]
@@ -680,7 +719,7 @@ development_rendered="$(docker compose \
   --project-directory "${project_dir}" \
   --env-file "${example}" \
   -f "${project_dir}/compose.single-server.yml" \
-  --profile app --profile ops --profile rag-worker --profile rag-ops \
+    --profile app --profile ops --profile memory-worker --profile rag-worker --profile rag-ops \
   config --format json)"
 python3 - "${development_rendered}" <<'PY'
 import json
@@ -688,7 +727,7 @@ import sys
 
 config = json.loads(sys.argv[1])
 services = config["services"]
-for name in ("postgres", "frontend", "backend", "migrate", "admin", "rag-worker", "rag-replay"):
+for name in ("postgres", "frontend", "backend", "memory-worker", "migrate", "admin", "rag-worker", "rag-replay"):
     assert "build" in services[name], name
 assert "MIGRATION_DATABASE_URL" not in services["backend"]["environment"]
 assert "DATABASE_URL" not in services["migrate"]["environment"]
@@ -708,7 +747,12 @@ assert postgres["volumes"][0]["target"] == "/var/lib/postgresql/data"
 assert int(postgres["mem_limit"]) == 1024 * 1024 * 1024
 assert float(postgres["cpus"]) == 2
 assert services["backend"]["user"] == "replace-with-host-uid:replace-with-host-gid"
+assert services["memory-worker"]["user"] == "replace-with-host-uid:replace-with-host-gid"
 assert services["admin"]["user"] == "replace-with-host-uid:replace-with-host-gid"
+memory = services["memory-worker"]
+assert memory["profiles"] == ["memory-worker"]
+assert memory["build"]["context"].endswith("/mm-chat/backend")
+assert "ports" not in memory
 rag = services["rag-worker"]
 assert rag["image"] == "ghcr.io/mumu-0922/neobot-mm-chat-rag@sha256:replace-with-64-lowercase-hex"
 assert rag["build"]["context"].endswith("/mm-chat/rag")

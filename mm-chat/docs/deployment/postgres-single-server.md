@@ -32,7 +32,7 @@ before starting a release that requires a newer schema.
 
 ## 2. Network and Port Policy
 
-Postgres has no host `ports:` mapping. `backend`, `migrate`, and `admin` reach
+Postgres has no host `ports:` mapping. `backend`, `memory-worker`, `migrate`, and `admin` reach
 it as `postgres:5432` on the private Compose network.
 
 ```text
@@ -84,6 +84,7 @@ The current Compose/runtime contract uses:
 | `POSTGRES_PASSWORD`       | placeholder               | Bootstrap/migrator password; replace before promotion.                                  |
 | `MIGRATION_DATABASE_URL`  | migrator placeholder URL  | Required one-shot URL for `POSTGRES_USER`; no fallback.                                 |
 | `DATABASE_URL`            | API placeholder URL       | `neo_chat_api` URL for the Go API and `admin`.                                          |
+| `MEMORY_WORKER_DATABASE_URL` | Memory Worker placeholder URL | Login inheriting only `memory_worker_runtime`.                                      |
 | `DB_MAX_OPEN_CONNS`       | `10`                      | Maximum open DB connections.                                                            |
 | `DB_MAX_IDLE_CONNS`       | `5`                       | Maximum idle DB connections.                                                            |
 | `DB_CONN_MAX_LIFETIME`    | `30m`                     | Maximum connection lifetime.                                                            |
@@ -91,7 +92,7 @@ The current Compose/runtime contract uses:
 | `RAG_REPLAY_DATABASE_URL` | Replay placeholder URL    | Operator-only Replay login; not injected into the Worker.                               |
 
 Keep `MIGRATION_DATABASE_URL` aligned with `POSTGRES_USER`,
-`POSTGRES_PASSWORD`, and `POSTGRES_DB`. The three runtime URLs use the same
+`POSTGRES_PASSWORD`, and `POSTGRES_DB`. The four runtime URLs use the same
 database but must not reuse that login or password.
 `sslmode=disable` is acceptable only on this single-host private Docker
 network; use TLS whenever the DB connection crosses hosts or an untrusted
@@ -103,16 +104,17 @@ network. Never print the URL or password in validation output.
 | --------- | ------------------------- | ------------------------------------------ | --------------------- |
 | Migration | `MIGRATION_DATABASE_URL`  | Same bootstrap/migrator as `POSTGRES_USER` | Schema migration only |
 | API/admin | `DATABASE_URL`            | `NOSUPERUSER NOCREATEROLE` runtime login   | `go_api_runtime`      |
+| Memory Worker | `MEMORY_WORKER_DATABASE_URL` | Dedicated long-running login          | `memory_worker_runtime` |
 | Worker    | `RAG_WORKER_DATABASE_URL` | Dedicated long-running login               | `rag_worker_executor` |
 | Replay    | `RAG_REPLAY_DATABASE_URL` | Dedicated operator-only, one-shot login    | `rag_replay_operator` |
 
-All four routes require pairwise-distinct login names and passwords.
+All five routes require pairwise-distinct login names and passwords.
 `MIGRATION_DATABASE_URL` is independently required by `migrate`; an unset or
 invalid value fails the command and never falls back to `DATABASE_URL`.
 `backend` and the one-shot `admin` share the API runtime URL. Neither receives
 the bootstrap/migrator credential.
 
-Migration `010` defines the capability roles as NOLOGIN roles. LOGIN principals
+Migrations `010` and `054` define the capability roles as NOLOGIN roles. LOGIN principals
 inherit only the matching capability shown above. Do not grant the Worker the
 Replay role. Do not grant `go_api_runtime` to `POSTGRES_USER`,
 `rag_projection_owner`, or any owner/migrator role, and do not make the API
@@ -122,7 +124,7 @@ ownership/mode, and immutable image digests without echoing credentials.
 
 ### Release image fence
 
-Compose resolves `backend`, `migrate`, and `admin` from the same
+Compose resolves `backend`, `memory-worker`, `migrate`, and `admin` from the same
 `BACKEND_IMAGE`. The RAG profile independently resolves `RAG_IMAGE`, and the
 database resolves `POSTGRES_IMAGE`. Production requires full registry
 `@sha256:` digests for all release images; mutable tags are allowed only for
@@ -181,7 +183,7 @@ Readiness never mutates schema, creates buckets, or runs migrations.
 
 The Go migration runner owns transaction boundaries, takes a Postgres advisory
 lock, validates migration names/checksums, and records each applied migration
-in `schema_migrations`. The current schema head is `053`. Migration `038`
+in `schema_migrations`. The current schema head is `054`. Migration `038`
 requires PostgreSQL major `17`, the `pg_textsearch` preload, and exact pgvector
 `0.8.5` / pg_textsearch `1.3.1` extension versions. Migrations `039` and `040`
 retain the dedicated API role by exposing only hardened document-lifecycle and
@@ -190,7 +192,9 @@ access. Migration `041` pins every current-schema SECURITY DEFINER function to
 the application schema, `pg_catalog`, and `pg_temp` without changing ownership
 or grants. Migrations `051` and `052` add the bounded SiliconFlow TTS cache
 authority. Migration `053` adds the inactive Memory v2 Project/scope/settings
-foundation; it does not enable a reader, worker, Provider call, or Project API.
+foundation. Migration `054` adds the ID-only durable Memory capture outbox,
+lease-fenced worker capabilities, and guarded rollback; it does not switch the
+Memory reader or add Project API/UI.
 
 Apply migrations from the same immutable `BACKEND_IMAGE` used by `backend` and
 `admin`:
@@ -253,13 +257,13 @@ order is:
 
 1. Start Postgres with the bootstrap/migrator fields and set the independently
    required `MIGRATION_DATABASE_URL` to that same login.
-2. Run migrations through `041`. Migration `010` creates and validates the
-   NOLOGIN capability roles; do not pre-create LOGIN roles with broad grants.
-3. Connect as `POSTGRES_USER`, create the API, Worker, and Replay principals as
+2. Run migrations through `054`. Migrations `010` and `054` create and validate
+   the NOLOGIN capability roles; do not pre-create LOGIN roles with broad grants.
+3. Connect as `POSTGRES_USER`, create the API, Memory Worker, RAG Worker, and Replay principals as
    NOLOGIN, assign each password through interactive `psql` input, then enable
    LOGIN and grant exactly one matching capability.
-4. Store the three runtime URLs in the protected env file, run preflight, and
-   perform the live verification below before starting API, Worker, or Replay.
+4. Store the four runtime URLs in the protected env file, run preflight, and
+   perform the live verification below before starting API or either Worker or Replay.
 
 The following `psql` input contains login names but no password literals.
 Choose deployment-specific names. `\password` prompts twice without echo and
@@ -277,9 +281,14 @@ exec psql --set=ON_ERROR_STOP=1 \
 
 ```psql
 \set api_login 'neo_chat_api'
+\set memory_worker_login 'memory_worker'
 \set worker_login 'rag_worker'
 \set replay_login 'rag_replay'
 
+SELECT format(
+  'CREATE ROLE %I NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOREPLICATION NOBYPASSRLS',
+  :'memory_worker_login'
+) \gexec
 SELECT format(
   'CREATE ROLE %I NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOREPLICATION NOBYPASSRLS',
   :'api_login'
@@ -294,13 +303,16 @@ SELECT format(
 ) \gexec
 
 \password :api_login
+\password :memory_worker_login
 \password :worker_login
 \password :replay_login
 
 SELECT format('ALTER ROLE %I LOGIN', :'api_login') \gexec
+SELECT format('ALTER ROLE %I LOGIN', :'memory_worker_login') \gexec
 SELECT format('ALTER ROLE %I LOGIN', :'worker_login') \gexec
 SELECT format('ALTER ROLE %I LOGIN', :'replay_login') \gexec
 SELECT format('GRANT go_api_runtime TO %I', :'api_login') \gexec
+SELECT format('GRANT memory_worker_runtime TO %I', :'memory_worker_login') \gexec
 SELECT format('GRANT rag_worker_executor TO %I', :'worker_login') \gexec
 SELECT format('GRANT rag_replay_operator TO %I', :'replay_login') \gexec
 ```
@@ -317,6 +329,7 @@ queries deliberately omit `pg_authid.rolpassword`:
 ```psql
 \set migrator_login 'neo_chat_migrator'
 \set api_login 'neo_chat_api'
+\set memory_worker_login 'memory_worker'
 \set worker_login 'rag_worker'
 \set replay_login 'rag_replay'
 
@@ -324,8 +337,9 @@ SELECT rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole,
        rolreplication, rolbypassrls
 FROM pg_roles
 WHERE rolname IN (
-  :'migrator_login', :'api_login', :'worker_login', :'replay_login',
+  :'migrator_login', :'api_login', :'memory_worker_login', :'worker_login', :'replay_login',
   'go_api_runtime', 'rag_projection_owner',
+  'memory_runtime_owner', 'memory_worker_runtime',
   'rag_worker_executor', 'rag_replay_operator'
 )
 ORDER BY rolname;
@@ -334,18 +348,18 @@ SELECT member.rolname AS login_name, granted.rolname AS capability
 FROM pg_auth_members AS membership
 JOIN pg_roles AS member ON member.oid = membership.member
 JOIN pg_roles AS granted ON granted.oid = membership.roleid
-WHERE member.rolname IN (:'api_login', :'worker_login', :'replay_login')
+WHERE member.rolname IN (:'api_login', :'memory_worker_login', :'worker_login', :'replay_login')
 ORDER BY member.rolname, granted.rolname;
 ```
 
-Expected results are exactly the three LOGIN-to-capability edges documented in
+Expected results are exactly the four LOGIN-to-capability edges documented in
 the table. Runtime LOGIN roles are neither superusers nor role creators;
 capability and owner roles are NOLOGIN. The migrator must not inherit
 `go_api_runtime`, and the API login must not inherit an owner/migrator role.
 
-Finally, test each of the four login names separately with `psql --password`.
-This template prompts without echo; repeat it for migrator, API, Worker, and
-Replay, changing only the non-secret login name:
+Finally, test each of the five login names separately with `psql --password`.
+This template prompts without echo; repeat it for migrator, API, Memory Worker,
+RAG Worker, and Replay, changing only the non-secret login name:
 
 ```bash
 ./scripts/compose-single-server-production.sh .env.single-server \

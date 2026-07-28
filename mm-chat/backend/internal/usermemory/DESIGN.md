@@ -21,7 +21,8 @@
 Settings UI -> typed frontend API -> HTTP Handler -> Service -> Repository
                                                         -> Postgres 035 + 053
 Chat Handler -> Service.SearchRelevant -> guarded Provider system context
-Chat completed -> bounded Provider extractor -> Service.StoreExtracted
+Chat finalize transaction -> ID-only outbox/job -> private Go Memory Worker
+  -> bounded Provider extractor -> lease-fenced Service.StoreExtracted adapter
 ```
 
 `usermemory` owns storage and deterministic relevance. `internal/chat` owns
@@ -37,7 +38,7 @@ cycle.
 | Soft delete rows                                         | Delete is immediately invisible while rollback/audit remains possible               | Schema rollback is an explicit data-loss action    |
 | Go lexical/CJK Top-5 before vectors                      | Deterministic, provider-free baseline for a single-server store of at most 500 rows | Semantic-only paraphrases may miss                 |
 | Retrieval happens after Knowledge/Web query construction | Memory must not rewrite private Knowledge or public-search queries                  | Only the answer Provider sees matches              |
-| Extraction runs after `message.completed`                | Secondary Provider failure cannot fail the answer                                   | A new Memory may appear shortly after completion   |
+| Extraction runs in a leased private worker               | Provider/Redis/worker failure cannot fail the completed answer                       | PostgreSQL polling and retry may delay new Memory  |
 | Metadata contains IDs/counts only                        | Diagnostics must not duplicate private text                                         | Full content is available only through Memory CRUD |
 | v1 repository is explicitly Global-only                 | PR2 adds scopes before adding a v2 reader/API                                        | Project/Conversation rows remain invisible to v1 CRUD |
 | Scope uniqueness uses three partial indexes              | Exact overrides must coexist across Global, Project, and Conversation                | `ON CONFLICT` must repeat the Global index predicate |
@@ -62,7 +63,8 @@ cycle.
 | Secret retention by automatic extraction | Prompt prohibition plus content/tag credential-pattern rejection                             |
 | Whole-store disclosure                   | Relevance threshold and hard Top-5 cap; no-hit means no block                                |
 | Browser/server authority split           | `ChatApp` excludes IndexedDB Memory when server mode is active                               |
-| Extraction outage                        | Background bounded timeout; read/parse/write failure does not change answer state            |
+| Extraction outage                        | Durable PostgreSQL jobs, bounded timeout/retry, and lease reclaim; answer state is unchanged  |
+| Cross-user or stale worker apply         | Migration `054` lease/user/source/generation/profile-fenced functions and no direct table access |
 
 Known limitation: deterministic lexical/CJK matching is intentionally
 conservative and may miss semantic paraphrases. Any future embedding lane must
@@ -82,3 +84,5 @@ real Provider cross-conversation recall/delete proof.
 - 2026-07-20: initial Postgres/Go durable Memory boundary (G11.13C).
 - 2026-07-28: migration-053 Project/scope/settings foundation with a guarded
   rollback and Global-only v1 repository compatibility (Memory v2 PR2).
+- 2026-07-28: migration-054 durable capture outbox/jobs and a separate
+  lease-fenced Go Memory Worker (Memory v2 PR3).

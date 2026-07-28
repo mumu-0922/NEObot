@@ -255,6 +255,53 @@ services:
       - private
       - rag-private
 
+  memory-worker:
+    image: ${BACKEND_IMAGE:-mm-chat/backend:local}
+    build: *backend-build
+    restart: unless-stopped
+    profiles: ["memory-worker"]
+    init: true
+    user: "${MM_CHAT_RUNTIME_UID:-1000}:${MM_CHAT_RUNTIME_GID:-1000}"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 192m
+    cpus: 0.5
+    pids_limit: 64
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
+    environment:
+      MEMORY_WORKER_DATABASE_URL: ${MEMORY_WORKER_DATABASE_URL:-postgres://memory_worker:change-me-memory-worker-postgres@postgres:5432/neo_chat?sslmode=disable}
+      MEMORY_WORKER_MAX_OPEN_CONNS: ${MEMORY_WORKER_MAX_OPEN_CONNS:-4}
+      MEMORY_WORKER_MAX_IDLE_CONNS: ${MEMORY_WORKER_MAX_IDLE_CONNS:-2}
+      MEMORY_WORKER_CONN_MAX_LIFETIME: ${MEMORY_WORKER_CONN_MAX_LIFETIME:-30m}
+      MEMORY_WORKER_CONCURRENCY: ${MEMORY_WORKER_CONCURRENCY:-2}
+      MEMORY_WORKER_LEASE_DURATION: ${MEMORY_WORKER_LEASE_DURATION:-2m}
+      MEMORY_WORKER_POLL_INTERVAL: ${MEMORY_WORKER_POLL_INTERVAL:-1s}
+      MEMORY_WORKER_BACKOFF_BASE: ${MEMORY_WORKER_BACKOFF_BASE:-5s}
+      MEMORY_WORKER_BACKOFF_MAX: ${MEMORY_WORKER_BACKOFF_MAX:-15m}
+      PROVIDER_TIMEOUT: ${MEMORY_WORKER_PROVIDER_TIMEOUT:-45s}
+      PROVIDER_SECRET_KEYRING_FILE: /run/secrets/mm_chat_provider_keyring
+      REDIS_URL: ${REDIS_URL:-redis://:change-me-redis@redis:6379/0}
+      REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-mm-chat}
+    secrets:
+      - source: mm_chat_provider_keyring
+        target: mm_chat_provider_keyring
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["/usr/local/bin/mm-chat-memory-worker", "run"]
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/mm-chat-memory-worker", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    networks:
+      - private
+
   frontend:
     image: ${FRONTEND_IMAGE:-mm-chat/frontend:local}
     build: *frontend-build

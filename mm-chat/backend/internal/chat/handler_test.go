@@ -4431,6 +4431,9 @@ func (f *fakeRepository) FinalizeAssistantMessage(
 		completedAt := testNow()
 		message.CompletedAt = &completedAt
 		message.UpdatedAt = completedAt
+		if input.MemoryCapture != nil {
+			message.memoryEventID = input.MemoryCapture.EventID
+		}
 		return *message, nil
 	}
 

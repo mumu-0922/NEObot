@@ -1,19 +1,20 @@
 # Postgres Runtime Wiring
 
 This document defines the current runtime contract between the Go API,
-migration CLI, RAG Worker/Replay processes, and Postgres. The original Phase 4.5
-connector contract remains in force, while the current schema head is `010`.
+migration CLI, Memory Worker, RAG Worker/Replay processes, and Postgres. The
+original connector contract remains in force, while the current schema head is
+`054`.
 
 ## 1. Scope
 
 In scope:
 
-- Separate Migration, API/admin, Worker, and Replay credential routes.
+- Separate Migration, API/admin, Memory Worker, RAG Worker, and Replay credential routes.
 - Postgres connector using the `pgx` driver.
 - Startup connectivity check when DB is enabled.
 - DB-aware `/ready` behavior.
 - Embedded SQL migrations exposed through a Go migration CLI.
-- Schema head `010` and the pending `011` boundary.
+- Schema head `054`, including the durable Memory capture boundary.
 - Operator-facing migration and rollback boundaries.
 
 Out of scope:
@@ -30,6 +31,7 @@ Out of scope:
 | ------------------------- | ------------ | -------- | ---------------------------------------------------------------------------------------------------------------- |
 | `MIGRATION_DATABASE_URL`  | Migration    | Yes      | Dedicated bootstrap/migrator connection string read only by `cmd/migrate`; there is no `DATABASE_URL` fallback.  |
 | `DATABASE_URL`            | API/admin    | No       | API Postgres connection string. Empty means DB disabled mode; non-empty enables startup ping and DB readiness.   |
+| `MEMORY_WORKER_DATABASE_URL` | Memory Worker | Yes   | Dedicated long-running connection with only `memory_worker_runtime`.                                             |
 | `RAG_WORKER_DATABASE_URL` | RAG Worker   | Yes      | Dedicated long-running Worker connection string with only the `rag_worker_executor` capability.                  |
 | `RAG_REPLAY_DATABASE_URL` | RAG Replay   | Execute  | Dedicated one-shot Replay connection string; required for `rag-replay --execute`, not for dry-run intent output. |
 | `DB_MAX_OPEN_CONNS`       | Go API/admin | No       | Maximum open DB connections. Backend default is code-defined when unset.                                         |
@@ -40,12 +42,13 @@ Rules:
 
 - Never log any database URL or credential. Redact URL userinfo before logging.
 - Use pairwise-distinct login names and passwords for Migration, API/admin,
-  Worker, and Replay. They target the same database but do not share runtime
+  Memory Worker, RAG Worker, and Replay. They target the same database but do not share runtime
   capabilities.
 - The migration CLI requires `MIGRATION_DATABASE_URL` and reads no runtime URL.
   An unset or blank value fails closed; it never falls back to `DATABASE_URL`.
-- The API/admin route uses only `DATABASE_URL`; Worker uses only
-  `RAG_WORKER_DATABASE_URL`; executable Replay uses only
+- The API/admin route uses only `DATABASE_URL`; Memory Worker uses only
+  `MEMORY_WORKER_DATABASE_URL`; RAG Worker uses only `RAG_WORKER_DATABASE_URL`;
+  executable Replay uses only
   `RAG_REPLAY_DATABASE_URL`.
 - `sslmode=disable` is acceptable only on a private single-server Docker
   network. Use TLS for cross-host or untrusted networks.
@@ -79,14 +82,15 @@ Rules:
 
 | Route     | URL variable              | LOGIN capability      | Boundary                                                                                       |
 | --------- | ------------------------- | --------------------- | ---------------------------------------------------------------------------------------------- |
-| Migration | `MIGRATION_DATABASE_URL`  | Bootstrap/migrator    | Owns DDL and migration metadata; never used by API, Worker, or Replay.                         |
+| Migration | `MIGRATION_DATABASE_URL`  | Bootstrap/migrator    | Owns DDL and migration metadata; never used by API, Memory/RAG Worker, or Replay.              |
 | API/admin | `DATABASE_URL`            | `go_api_runtime`      | Explicit `001`–`009` authoritative-table access plus only the `010` API functions it needs.    |
+| Memory Worker | `MEMORY_WORKER_DATABASE_URL` | `memory_worker_runtime` | Executes only lease/source/profile-fenced `054` functions; no direct table DML.          |
 | Worker    | `RAG_WORKER_DATABASE_URL` | `rag_worker_executor` | Executes `010` Claim/CAS/Publish/Purge functions; no authority-table DML or Replay capability. |
 | Replay    | `RAG_REPLAY_DATABASE_URL` | `rag_replay_operator` | Executes only the `010` replay functions in the operator-triggered one-shot process.           |
 
-Migration `010` creates and validates the capability roles as `NOLOGIN` roles.
+Migrations `010` and `054` create and validate their capability roles as `NOLOGIN` roles.
 Deployment provisions separate LOGIN principals and grants exactly one matching
-runtime capability to each API, Worker, and Replay login. The migrator does not
+runtime capability to each API, Memory Worker, RAG Worker, and Replay login. The migrator does not
 inherit a runtime capability; `go_api_runtime` does not inherit owner, Worker,
 or Replay roles.
 
@@ -100,7 +104,7 @@ or Replay roles.
 | `DATABASE_URL` set, startup passed, DB later fails | Keep process observable.       | `200` if process is alive. | `503` until DB ping recovers.        |
 
 API readiness is connectivity-oriented. It does not run migrations or mutate
-schema. Operators establish schema head `010` before starting a release that
+schema. Operators establish schema head `054` before starting a release that
 depends on it.
 
 ### Phase 14 Readiness Extension

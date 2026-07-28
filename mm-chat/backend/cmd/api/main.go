@@ -328,6 +328,7 @@ func main() {
 		httpserver.WithRuntimeConfigRepository(runtimeConfigRepo),
 		httpserver.WithTaskModelSettingsRepository(taskModelRepo),
 		httpserver.WithUserMemoryRepository(userMemoryRepo),
+		httpserver.WithMemoryWakePublisher(redisClient),
 		httpserver.WithProviderSecretVault(providerSecretVault),
 		httpserver.WithPluginRegistry(pluginRegistry),
 		httpserver.WithPluginAuditRecorder(pluginAuditRecorder),

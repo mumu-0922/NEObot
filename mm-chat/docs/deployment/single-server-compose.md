@@ -113,6 +113,7 @@ cache reuse.
 | `admin`        | `ops`        | One-shot local identity administration; no HTTP listener.                        | None            |
 | `frontend`     | `app`        | Next.js UI and same-origin `/mm-api` edge on `127.0.0.1:3000`.                   | Localhost only  |
 | `backend`      | `app`        | Go API on `127.0.0.1:8080` for reverse proxy or local smoke tests.               | Localhost only  |
+| `memory-worker` | `memory-worker` | Durable Memory capture consumer using PostgreSQL leases and optional Redis wake. | None         |
 | `minio-client` | `ops`        | Utility container for backup/restore scripts.                                    | None            |
 | `rag-worker`   | `rag-worker` | Phase 15.2B durable-consumer mechanics; dispatch defaults off.                   | None            |
 | `rag-replay`   | `rag-ops`    | One-shot, fail-closed Outbox/Job Replay CLI.                                     | None            |
@@ -145,21 +146,28 @@ container-local `GET /health` on port `8081`; no port is published or proxied.
 | `RAG_IMAGE`                                   | Python image; production requires a full registry `@sha256:` digest.                            |
 | `MIGRATION_DATABASE_URL`                      | Required bootstrap/migrator URL; never falls back to the API URL.                               |
 | `DATABASE_URL`                                | Non-superuser API login; shared only by `backend` and `admin`.                                  |
+| `MEMORY_WORKER_DATABASE_URL`                  | Memory Worker login inheriting only `memory_worker_runtime`.                                   |
 | `RAG_WORKER_DATABASE_URL`                     | Worker login inheriting only `rag_worker_executor`.                                             |
 | `RAG_REPLAY_DATABASE_URL`                     | Replay login inheriting only `rag_replay_operator`.                                             |
 | `RAG_MINERU_RESULT_PROXY_URL`                 | Optional internal ZIP download proxy for Docker Desktop/WSL CDN TLS workarounds; default empty. |
 | `RAG_SOURCE_GATEWAY_URL`                      | Worker-only Go base URL; defaults to `http://backend:8080`.                                     |
 | `RAG_SOURCE_GATEWAY_TOKEN`                    | Shared infrastructure token for closed worker-to-Go RAG operations.                             |
-| `PROVIDER_SECRET_KEYRING_SOURCE`              | Host-side mode-`600` Docker Secret source; mounted only into Go backend/admin.                  |
+| `PROVIDER_SECRET_KEYRING_SOURCE`              | Host-side mode-`600` Docker Secret source; mounted into Go backend/admin/Memory Worker.         |
 | `MM_CHAT_RUNTIME_UID` / `MM_CHAT_RUNTIME_GID` | Non-root owner IDs for the file-backed provider Secret; must match `id -u` / `id -g`.           |
 
 `POSTGRES_USER` is the empty-volume bootstrap and migrator login referenced by
 `MIGRATION_DATABASE_URL`. The API login inherits only `go_api_runtime` and must
-be neither superuser nor `CREATEROLE`. All four routes use pairwise-distinct
+be neither superuser nor `CREATEROLE`. All five routes use pairwise-distinct
 login names and passwords. The `migrate` service receives only
 `MIGRATION_DATABASE_URL`; `admin` deliberately uses the API `DATABASE_URL`, not
 the migrator credential. Production preflight checks separation and syntax
 without printing URL values.
+
+The Memory Worker shares `BACKEND_IMAGE` but has no published port, is
+read-only with all Linux capabilities dropped, and uses a bounded private
+network/pool/concurrency/resource envelope. It depends only on PostgreSQL
+health. Redis failure removes low-latency wakeups but PostgreSQL polling
+continues; API finalize never waits for worker execution or Redis publication.
 
 The one-shot `admin provider-secrets-rewrite` command receives the stable BYOK
 ingress key, temporary Server Default env fallback, and provider vault Secret
@@ -293,7 +301,7 @@ its entrypoint is `/usr/local/bin/mm-chat-admin`. It never receives
 operator-only, one-shot container under the `ops` profile; it is not a
 long-running administration API.
 
-`backend`, `migrate`, and `admin` all resolve the same `BACKEND_IMAGE`; this is
+`backend`, `memory-worker`, `migrate`, and `admin` all resolve the same `BACKEND_IMAGE`; this is
 the release fence that keeps API code, migration SQL, and operator commands on
 one build. Production must set a full registry `@sha256:` digest; mutable tags
 are local-development only and cannot pass promotion preflight. Every
@@ -333,10 +341,10 @@ docker compose --env-file .env.single-server \
 # postgres-single-server.md. A normal no-argument migrate intentionally fails
 # closed when published Governance rows are not covered.
 
-# Fresh install only: stop here. Migration 010 has created the NOLOGIN
-# capability roles; securely create and grant the API, Worker, and Replay
+# Fresh install only: stop here. Migrations 010 and 054 have created the NOLOGIN
+# capability roles; securely create and grant the API, Memory Worker, RAG Worker, and Replay
 # LOGIN principals as documented in postgres-single-server.md. Do not start
-# admin, backend, or rag-worker until live role verification passes.
+# admin, backend, memory-worker, or rag-worker until live role verification passes.
 
 # Read the first Owner password without putting it in argv, an environment
 # variable, or shell history. The command accepts exactly one stdin line.
@@ -350,6 +358,9 @@ unset OWNER_PASSWORD
 
 docker compose --env-file .env.single-server \
   -f compose.single-server.yml --profile app up -d backend
+
+docker compose --env-file .env.single-server \
+  -f compose.single-server.yml --profile memory-worker up -d memory-worker
 
 # Optional Phase 15.2B dark-run only; keep dispatch disabled and stages empty.
 docker compose --env-file .env.single-server \
@@ -651,7 +662,7 @@ tunnel/VPN to the Docker network or host.
    ```bash
    ./scripts/preflight-single-server.sh .env.single-server
    ./scripts/compose-single-server-production.sh .env.single-server \
-     --profile app --profile ops --profile rag-worker --profile rag-ops \
+     --profile app --profile ops --profile memory-worker --profile rag-worker --profile rag-ops \
      config --quiet
    ```
 4. Pull the exact production digest without allowing a build:
@@ -669,9 +680,9 @@ tunnel/VPN to the Docker network or host.
    ./scripts/compose-single-server-production.sh .env.single-server \
      --profile ops run --rm migrate
    ```
-6. On a fresh install, create the three runtime LOGIN principals only after
-   migration `010` has created the NOLOGIN capability roles. On every release,
-   run the live attribute, membership, and four-login connection checks in
+6. On a fresh install, create the four runtime LOGIN principals only after
+   migrations `010` and `054` have created the NOLOGIN capability roles. On every release,
+   run the live attribute, membership, and five-login connection checks in
    [`postgres-single-server.md`](./postgres-single-server.md#live-role-verification).
    Do not promote if the migrator has API capability, the API login has
    owner/migrator membership, or any route shares a login/password.
@@ -681,8 +692,11 @@ tunnel/VPN to the Docker network or host.
    ./scripts/compose-single-server-production.sh .env.single-server \
      --profile app up -d --no-build backend
    ```
-8. Start or recreate the Phase 15.2B Worker only in dark-run mode:
+8. Start the private Memory Worker from the same backend digest, then start or
+   recreate the Phase 15.2B RAG Worker only in dark-run mode:
    ```bash
+   ./scripts/compose-single-server-production.sh .env.single-server \
+     --profile memory-worker up -d --no-build memory-worker
    ./scripts/compose-single-server-production.sh .env.single-server \
      --profile rag-worker pull rag-worker
    ./scripts/compose-single-server-production.sh .env.single-server \
@@ -736,7 +750,7 @@ production env file):
 ```bash
 docker compose --env-file .env.single-server.example \
   -f compose.single-server.yml --profile app --profile ops \
-  --profile rag-worker --profile rag-ops config
+  --profile memory-worker --profile rag-worker --profile rag-ops config
 ```
 
 Runtime validation should start with infra, run `migrate`, then start `backend`;

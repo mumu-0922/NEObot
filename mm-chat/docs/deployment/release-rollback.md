@@ -157,6 +157,18 @@ migration defaults. Do not delete user data to bypass a guard.
 Once any v2 authority is in use, retain `053` and roll back only later feature
 flags/readers. Use a forward fix for repository defects.
 
+### Migration 054 / Memory capture worker rollback
+
+Stop every `memory-worker` instance before rolling back `054`. The down
+migration fails closed with `MEMORY_WORKER_ROLLBACK_REQUIRES_EMPTY_QUEUE` while
+any outbox event or job exists, including completed/dead-letter history. Do not
+delete queued user work to bypass that guard. The safe operational rollback is
+to stop the worker and automatic capture while retaining `054`; chat, v1
+Memory CRUD, and v1 Recall remain available. Only a pre-traffic or explicitly
+reconciled empty queue may run one `migrate down`, after every post-`054` API
+writer has stopped. Redis requires no queue migration because it stores only
+best-effort `event_id` wake signals.
+
 ### Migrations 051-052 / SiliconFlow TTS rollback
 
 Migration `051_siliconflow_tts_cache` adds the exact Voice provider identity
