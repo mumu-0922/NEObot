@@ -7,10 +7,10 @@ Agent Memory 方案，并在“单服务器、自托管、Go + PostgreSQL + Pyth
 约束下，按 `info.md` 第 17 章的 PR1–PR13 顺序实施已冻结的完整 end-state。
 魔尊已于 2026-07-28 明确回复“开始”，构成实施授权；PR1 benchmark contract、PR2
 Project/scope/settings foundation、PR3 durable capture worker、PR4 provenance/delete
-correctness、PR5 candidate/Review shadow、PR6 direct-user actions/Activity/Usage 与 PR7 L1
-exact/CJK BM25 projection shadow 已完成。继续保留 v1 reader，不开放 PR9 治理 UI；下一批
-为 PR8 dense/RRF/rerank 0% prompt-injection shadow，仍不得调用 Live provider 或回放 Live
-Memory。
+correctness、PR5 candidate/Review shadow、PR6 direct-user actions/Activity/Usage、PR7 L1
+exact/CJK BM25 projection shadow 与 PR8 BGE-M3/vector hybrid shadow 已完成。继续保留 v1
+reader，不开放 PR9 治理 UI，不调用 Live provider 或回放 Live Memory；下一批为 PR9
+Project/Conversation policy 与 governance UI。
 
 ## What I Already Know
 
@@ -241,6 +241,42 @@ Memory。
   independence/ranking、exact replay/conflict、shadow-disabled zero calls、shadow failure v1 unchanged、
   role denial 与 guarded down/re-up；focused race、backend full test/vet、Compose/preflight、backend
   image 与 full standalone gate 全部通过。
+- [x] PR8 新增顺序 migration `059`，且不修改 migration `001`–`058` 已发布字节；在 PR7
+  canonical projection 上 additive 增加固定 `siliconflow_bge_m3_v1`/1024d embedding binding、
+  HNSW cosine index、lease-fenced derived embedding jobs，以及 query/content/raw-score-free 的
+  normalized hybrid observation/result links。
+- [x] Canonical create/content/revision/hash 变化必须在同 transaction 使 vector 变为 `pending` 并
+  幂等排队；scope/epoch/generation-only rebind 可安全复用同 profile/content vector。Delete、disable、
+  non-active、purge 继续立即物理删除 projection/job；旧 provider response 不能写回新 revision、
+  hash、epoch、scope generation、projection generation 或 provider config。
+- [x] Memory worker 只有在 `MEMORY_HYBRID_SHADOW_ENABLED=true` 时才 claim embedding job；默认
+  `false` 必须零 Memory embedding/rerank Provider 调用。Worker 只经窄 claim/hydrate/complete/retry
+  capability 读取单条 current Memory 与受权、enabled、attested `RAG:SILICONFLOW` secret；不得表
+  CRUD、批量导出正文或把 plaintext/embedding 写入日志、Activity、Usage、outbox/job payload。
+- [x] Hybrid prepare 只绑定当前 authenticated user/current streaming assistant/current completed user
+  parent 与 active Conversation/Project；Exact Top 20、CJK BM25 Top 30、BGE-M3 cosine Top 30 均在
+  SQL candidate probe 前应用 user/scope/Sensitive/time/epoch/generation/revision/hash/profile fence。
+  Query embedding 缺失/失败时只跳过 vector lane，不得影响 exact/BM25 或聊天。
+- [x] 三路 candidate 按 `RRF(k=60)`、memory ID 去重和 deterministic tie-break 形成 Top 20；不得线性
+  混合不可比 raw scores，raw BM25/cosine/RRF/relevance score 均不得持久化。相同 assistant/query/
+  ordered v1 baseline replay 幂等，任何 payload/profile drift fail closed，不重写首次 completed evidence。
+- [x] 固定 `Pro/BAAI/bge-reranker-v2-m3` 只 rerank 当前已受权的 RRF Top 20 transient Memory 内容；
+  invalid/timeout/failure 降级为 RRF order，query embedding/vector SQL failure 降级 lexical lanes，
+  2s hard cutoff 使用已完成 lane。Shadow final 最多 5 条，按 conservative multilingual estimate
+  保持 hard `≤900` tokens并记录 `600` target telemetry，不通过无限等待换预算。
+- [x] PR8 flag 只控制 vector worker与 hybrid comparison，不修改 `active_retrieval_profile_id`，不让
+  hybrid final 进入 prompt/Usage，也不提供 reader promotion API。v1 Top 5、prompt、Usage、chat
+  success 必须保持唯一 authority；metadata 只暴露固定 profile、bounded status/fallback/counts/
+  tokens/duration/overlap，不暴露 query、Memory content、raw score、内部 user/scope/provider authority。
+- [x] `go_api_runtime` 只能执行 hybrid prepare/record capability；`memory_worker_runtime` 只能执行
+  embedding lease capabilities，二者无 projection/job/observation table CRUD。Down 只允许 v1/NULL
+  reader pointer 且 hybrid observation history为空；clean `058 -> 059 -> 058 -> 059` 可重放，derived
+  vector/job 可安全丢弃并由 re-up 重建。
+- [x] PR8 static/Go/PostgreSQL tests 覆盖 embedding backfill/invalidation/lease/retry/old-response fence、
+  fake-provider vector shape、三 lane independence、RRF determinism、rerank/fallback/timeout、600/900
+  budget、cross-user/scope/Sensitive/time/stale/delete过滤、exact replay/conflict、flag-off zero calls、
+  v1 byte-equivalent prompt/Usage、role denial 与 guarded down/re-up；不调用 Live Provider、不触碰 Live
+  Memory，并通过 focused race、backend full test/vet、Compose/preflight、backend image 与 full gate。
 
 ## Definition of Done
 
@@ -265,6 +301,9 @@ Memory。
   Global CRUD compatibility 保持可用，PR9 前不要求 frontend governance UI。
 - PR7 projection/shadow comparison、least-privilege capability、fail-open chat 与 guarded
   rollback 均有自动化验证；feature flag 默认关闭，v1 prompt 与 Usage authority 未改变。
+- PR8 vector projection/embedding lease、三路 RRF/rerank/budget fallback、secret egress guard、
+  least-privilege capability 与 guarded rollback 均有自动化验证；hybrid flag 默认关闭，v1
+  Top 5、prompt、Usage 与聊天成功仍是唯一 authority。
 
 ## Technical Approach
 
@@ -300,16 +339,16 @@ PostgreSQL v2，外部引擎只能通过可替换 adapter 做 shadow；Hindsight
 
 ## Current Batch Out of Scope
 
-- PR7 不 accept/reject/clear PR5 Review suggestion，不做 Project/Conversation settings CRUD、
+- PR8 不 accept/reject/clear PR5 Review suggestion，不做 Project/Conversation settings CRUD、
   revision timeline、Activity chip 或 Search diagnostics frontend；完整治理 UI 仍归 PR9。
-- PR7 不切换 v2 reader，不把 exact/BM25 shadow 注入 prompt，不实现 PR8 BGE-M3 vector、RRF、
-  reranker、token budget 或 reader promotion。v1 Top 5 与 PR6 Usage 继续是唯一实际注入 authority。
-- PR7 不调用 Provider，不产生 embedding，不读取附件、Knowledge、网页、tool output 或 assistant
-  text作为 query。只对当前 authenticated user message做 bounded provider-free lexical shadow。
-- PR7 不调用 Live provider，不创建、修改、删除或导出 Live 用户 Memory；projection、compare、
-  delete/purge 与 rollback 只在 disposable PostgreSQL/离线 fixtures 验证。
-- PR7 不实现 PR10 encrypted Export/Import/backup retention、PR11/12 L2/L3、PR13 Hindsight；
-  down migration 不得丢弃已经产生的 shadow observation authority。
+- PR8 不切换 v2 reader、不提供 reader promotion API、不把 hybrid shadow 注入 prompt；v1 Top 5
+  与 PR6 Usage 继续是唯一实际注入 authority，500-case gate 与真实 shadow观察期仍是后续门槛。
+- PR8 不读取附件、Knowledge、网页、tool output 或 assistant text作为 query；只处理 current
+  authenticated user query与 current canonical L1 Memory，不实现 L2/L3 embedding 或 relation graph。
+- PR8 实现可用的 Provider seam 但不调用 Live provider、不创建/修改/删除/导出 Live 用户 Memory；
+  embedding/rerank 只用 fake/offline fixtures，vector SQL/rollback 只在 disposable PostgreSQL 验证。
+- PR8 不实现 PR10 encrypted Export/Import/backup retention、PR11/12 L2/L3、PR13 Hindsight；down
+  migration 不得丢弃已经产生的 hybrid observation authority。
 - PR10 的 authenticated encrypted off-host deletion manifest/export/import/restore replay 与
   14-day/8-week retention/prune、PR11/12 L2/L3、PR13 Hindsight adapter 继续冻结。
 - 不把 AGENTS/system/project 固定规则迁入概率性 Memory。
