@@ -4,6 +4,10 @@ import type {
   DurableMemorySettingsDTO,
   GovernanceMemoryMutationInput,
   MemoryApi,
+  MemoryImportConfirmResult,
+  MemoryImportDryRunResult,
+  MemoryImportPackageInput,
+  MemoryImportPlanResult,
   MemoryMutationInput,
   MemoryReviewDecision,
   UpdateConversationMemoryPolicyInput,
@@ -32,6 +36,9 @@ const memoryGovernancePath = "/v1/memory-governance";
 const projectsPath = "/v1/projects";
 const memoryReviewsPath = "/v1/memory-reviews";
 const memoryActivitiesPath = "/v1/memory-activities";
+const memoryExportPath = "/v1/memory-export";
+const memoryImportDryRunPath = "/v1/memory-import/dry-run";
+const memoryImportConfirmPath = "/v1/memory-import/confirm";
 
 export function createServerMemoryApiShell(httpClient: HttpClient): MemoryApi {
   return {
@@ -215,6 +222,41 @@ export function createServerMemoryApiShell(httpClient: HttpClient): MemoryApi {
         },
       );
     },
+
+    async exportMemoryPackage(input): Promise<Blob> {
+      const response = await httpClient.requestBinary(memoryExportPath, {
+        method: "POST",
+        body: {
+          passphrase: input.passphrase,
+          includeHistory: input.includeHistory,
+        },
+        signal: input.signal,
+      });
+      return response.blob;
+    },
+
+    async dryRunMemoryImport(
+      input: MemoryImportPackageInput,
+    ): Promise<MemoryImportDryRunResult> {
+      return normalizeMemoryImportDryRun(
+        await httpClient.requestMultipartJson<unknown>(memoryImportDryRunPath, {
+          method: "POST",
+          formData: memoryImportFormData(input),
+          signal: input.signal,
+        }),
+      );
+    },
+
+    async confirmMemoryImport(input): Promise<MemoryImportConfirmResult> {
+      const formData = memoryImportFormData(input);
+      formData.append("planToken", input.planToken);
+      return normalizeMemoryImportConfirm(
+        await httpClient.requestMultipartJson<unknown>(
+          memoryImportConfirmPath,
+          { method: "POST", formData, signal: input.signal },
+        ),
+      );
+    },
   };
 }
 
@@ -276,4 +318,199 @@ function reviewDecisionBody(
     editedContent:
       decision === "edit_merge" ? (editedContent?.trim() ?? "") : "",
   };
+}
+
+function memoryImportFormData(input: MemoryImportPackageInput): FormData {
+  const formData = new FormData();
+  formData.append("package", input.packageFile, input.packageFile.name);
+  formData.append("passphrase", input.passphrase);
+  formData.append("mappings", JSON.stringify(input.mappings));
+  return formData;
+}
+
+const MEMORY_IMPORT_RESULTS: MemoryImportPlanResult[] = [
+  "NOOP",
+  "ADD",
+  "REVIEW",
+  "REJECT",
+  "SCOPE_REQUIRED",
+];
+
+function normalizeMemoryImportDryRun(value: unknown): MemoryImportDryRunResult {
+  const object = recordValue(value, "memory import dry-run");
+  const rawCounts = recordValue(object.counts, "memory import counts");
+  const counts = Object.fromEntries(
+    MEMORY_IMPORT_RESULTS.map((result) => [
+      result,
+      nonNegativeInteger(rawCounts[result], `memory import ${result} count`),
+    ]),
+  ) as Record<MemoryImportPlanResult, number>;
+  const items = arrayValue(object.items, "memory import items").map(
+    (item, index) => {
+      const candidate = recordValue(item, `memory import item ${index}`);
+      const result = stringValue(candidate.result, "memory import result");
+      if (!MEMORY_IMPORT_RESULTS.includes(result as MemoryImportPlanResult)) {
+        throw new Error("Server returned an invalid memory import result.");
+      }
+      return {
+        ordinal: positiveInteger(candidate.ordinal, "memory import ordinal"),
+        memoryRef: stringValue(candidate.memoryRef, "memory import ref"),
+        recordHash: sha256Value(
+          candidate.recordHash,
+          "memory import record hash",
+        ),
+        result: result as MemoryImportPlanResult,
+        reasonCode: stringValue(candidate.reasonCode, "memory import reason"),
+        ...(typeof candidate.currentHash === "string"
+          ? {
+              currentHash: sha256Value(
+                candidate.currentHash,
+                "memory import current hash",
+              ),
+            }
+          : {}),
+      };
+    },
+  );
+  const scopeRequirements = arrayValue(
+    object.scopeRequirements,
+    "memory import scope requirements",
+  ).map((requirement, index) => {
+    const candidate = recordValue(
+      requirement,
+      `memory import scope requirement ${index}`,
+    );
+    const kind = stringValue(candidate.kind, "memory import scope kind");
+    if (kind !== "project" && kind !== "conversation") {
+      throw new Error("Server returned an invalid memory import scope kind.");
+    }
+    const normalizedKind: "project" | "conversation" = kind;
+    return {
+      kind: normalizedKind,
+      portableRef: stringValue(
+        candidate.portableRef,
+        "memory import portable ref",
+      ),
+      ...(typeof candidate.name === "string" ? { name: candidate.name } : {}),
+      ...(typeof candidate.description === "string"
+        ? { description: candidate.description }
+        : {}),
+    };
+  });
+  const settingsSuggestion = normalizeSettingsSuggestion(
+    object.settingsSuggestion,
+  );
+  return {
+    importId: stringValue(object.importId, "memory import id"),
+    packageSha256: sha256Value(
+      object.packageSha256,
+      "memory import package hash",
+    ),
+    manifestSha256: sha256Value(
+      object.manifestSha256,
+      "memory import manifest hash",
+    ),
+    planSha256: sha256Value(object.planSha256, "memory import plan hash"),
+    planToken: stringValue(object.planToken, "memory import plan token"),
+    expiresAt: positiveInteger(object.expiresAt, "memory import expiry"),
+    counts,
+    items,
+    scopeRequirements,
+    ...(settingsSuggestion ? { settingsSuggestion } : {}),
+  };
+}
+
+function normalizeMemoryImportConfirm(
+  value: unknown,
+): MemoryImportConfirmResult {
+  const object = recordValue(value, "memory import confirmation");
+  if (object.status !== "completed") {
+    throw new Error("Server returned an invalid memory import status.");
+  }
+  return {
+    importId: stringValue(object.importId, "memory import id"),
+    status: "completed",
+    addedProjects: nonNegativeInteger(
+      object.addedProjects,
+      "memory import added Projects",
+    ),
+    addedMemories: nonNegativeInteger(
+      object.addedMemories,
+      "memory import added Memories",
+    ),
+    importedAt: positiveInteger(object.importedAt, "memory import time"),
+  };
+}
+
+function normalizeSettingsSuggestion(
+  value: unknown,
+): DurableMemorySettingsDTO | undefined {
+  if (value === undefined) return undefined;
+  const object = recordValue(value, "memory import settings suggestion");
+  if (
+    typeof object.enabled !== "boolean" ||
+    typeof object.searchEnabled !== "boolean" ||
+    typeof object.autoRecordEnabled !== "boolean" ||
+    typeof object.sensitiveMemoryEnabled !== "boolean" ||
+    !isPolicyMode(object.l2Mode) ||
+    !isPolicyMode(object.l3Mode)
+  ) {
+    throw new Error("Server returned an invalid memory settings suggestion.");
+  }
+  return {
+    enabled: object.enabled,
+    searchEnabled: object.searchEnabled,
+    autoRecordEnabled: object.autoRecordEnabled,
+    sensitiveMemoryEnabled: object.sensitiveMemoryEnabled,
+    l2Mode: object.l2Mode,
+    l3Mode: object.l3Mode,
+  };
+}
+
+function isPolicyMode(value: unknown): value is "inherit" | "on" | "off" {
+  return value === "inherit" || value === "on" || value === "off";
+}
+
+function recordValue(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`Server returned an invalid ${label}.`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function arrayValue(value: unknown, label: string): unknown[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Server returned invalid ${label}.`);
+  }
+  return value;
+}
+
+function stringValue(value: unknown, label: string): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`Server returned an invalid ${label}.`);
+  }
+  return value;
+}
+
+function sha256Value(value: unknown, label: string): string {
+  const text = stringValue(value, label);
+  if (!/^[0-9a-f]{64}$/.test(text)) {
+    throw new Error(`Server returned an invalid ${label}.`);
+  }
+  return text;
+}
+
+function nonNegativeInteger(value: unknown, label: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new Error(`Server returned an invalid ${label}.`);
+  }
+  return value;
+}
+
+function positiveInteger(value: unknown, label: string): number {
+  const number = nonNegativeInteger(value, label);
+  if (number < 1) {
+    throw new Error(`Server returned an invalid ${label}.`);
+  }
+  return number;
 }

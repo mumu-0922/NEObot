@@ -64,5 +64,14 @@ export function createLocalMemoryApiShell(): MemoryApi {
     async undoMemoryActivity() {
       throw unsupportedFeature("server memory governance");
     },
+    async exportMemoryPackage() {
+      throw unsupportedFeature("server memory portability");
+    },
+    async dryRunMemoryImport() {
+      throw unsupportedFeature("server memory portability");
+    },
+    async confirmMemoryImport() {
+      throw unsupportedFeature("server memory portability");
+    },
   };
 }

@@ -39,8 +39,13 @@ to the private Go backend.
   all later migrated provider/plugin/RAG operations.
 - In server mode, Go/PostgreSQL is the only Memory authority.
   `ServerMemoryGovernance` owns Project/Conversation policy, scoped Memory,
-  Review, detail, and operation views; browser-local Memory/Dream is hidden but
-  retained for rollback/import.
+  Review, detail, operation, and encrypted portability views; browser-local
+  Memory/Dream is hidden but retained for rollback/import.
+- Memory Export receives only an encrypted `.mm-memory` Blob. Import sends the
+  selected encrypted File, passphrase, normalized mappings, and optional plan
+  token through the typed server API client. Passphrases, package bytes, and
+  plans remain component-local and are cleared after success; no portability
+  state enters Zustand, localforage, message metadata, or logs.
 - Per-answer Memory Activity is fetched by assistant message ID, remains
   component-local, is never copied into persisted message metadata, and uses
   Activity `subjectRevision` for safe undo.
@@ -64,6 +69,8 @@ to the private Go backend.
 | Server Memory governance request fails            | Keep the last snapshot, show a bounded error, and never fall back to local Memory    |
 | Activity is terminal or reaches 15 empty polls    | Stop polling; do not create background traffic for old answers                       |
 | Memory/Review state changed before mutation       | Surface the stale error and reload governance authority before another action        |
+| Import mapping or authority changes after dry-run | Reject confirm, preserve the encrypted File locally, and require a fresh dry-run     |
+| Export/Import request fails                       | Show a bounded error; never fall back to Local Memory or persist the passphrase      |
 
 ## 5. Good / Base / Bad Cases
 
@@ -74,10 +81,12 @@ to the private Go backend.
 - **Bad:** a failed Go call silently invokes `/api/*`, localforage, OPFS, an
   external provider, MinIO, or the Python RAG service from browser code.
 - **Good:** the server Memory screen uses typed `/mm-api/v1` calls, hides local
-  Memory, and Activity polling stops when the answer is terminal/off-screen.
+  Memory, keeps portability secrets transient, performs dry-run before import
+  confirm, and stops Activity polling when the answer is terminal/off-screen.
 - **Bad:** governance failure reads the local Memory store, persists Activity
-  into a message, or sends current hydrated Memory revision instead of the
-  Activity subject revision to undo.
+  into a message, stores an import passphrase/package in browser persistence,
+  applies settings suggestions, or sends current hydrated Memory revision
+  instead of the Activity subject revision to undo.
 
 ## 6. Tests Required
 
@@ -87,7 +96,10 @@ to the private Go backend.
   smoke for that domain.
 - Memory governance: assert server/local composition, all typed URLs/bodies,
   Activity summary/terminal/undo helpers, loading/empty/error states,
-  accessible names, responsive grids/tabs, and no local fallback.
+  accessible names, responsive grids/tabs, and no local fallback. Portability
+  additionally asserts encrypted Blob download, multipart dry-run/confirm,
+  mapping normalization, transient passphrase handling, and settings
+  suggestion-only rendering.
 - UI preservation: capture agreed desktop/mobile visual baselines and critical
   interaction smoke paths.
 - Final closure: run the entire frontend suite once, then clean-copy Compose,

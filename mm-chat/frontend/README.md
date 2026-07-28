@@ -9,9 +9,10 @@ repository root.
 
 - The complete frontend source and static assets now live here.
 - Chat CRUD/SSE, Files, and Browser Import already have Go server adapters.
-- Server Memory settings now expose the PR9 Project/Conversation governance UI,
-  scoped Memory/Review/detail/delete progress, and assistant Activity chip.
-  Local Memory remains hidden rather than deleted in server mode.
+- Server Memory settings expose Project/Conversation governance, scoped Memory/
+  Review/detail/delete progress, assistant Activity, and PR10 encrypted
+  `.mm-memory` Export/Import with dry-run before confirm. Local Memory remains
+  hidden rather than deleted in server mode.
 - Legacy Next.js `/api/*` handlers remain temporarily for feature-parity work.
 - `local|server` remains a transition mechanism only. The frozen final runtime
   is server-only with explicit browser-data import.
@@ -49,6 +50,9 @@ The Memory UI is selected by API authority, not a user-facing mode switch:
 `MemorySettings` renders `ServerMemoryGovernance` only when the server Memory
 capability is active, and otherwise retains `LocalMemorySettings` for rollback.
 The server screen never reads or imports the local Zustand Memory store.
+Portability passphrases, selected packages, and dry-run plans remain transient
+component state; they are not written to browser persistence. Imported settings
+are displayed as suggestions and are never applied by the frontend.
 
 ## UI Copy Discipline
 

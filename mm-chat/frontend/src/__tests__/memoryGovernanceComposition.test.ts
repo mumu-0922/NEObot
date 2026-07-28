@@ -26,6 +26,14 @@ describe("server memory governance composition", () => {
     expect(governance).toContain("aria-expanded=");
     expect(governance).toContain('role="alert"');
     expect(governance).toContain('role="status"');
+    expect(governance).toContain("exportMemoryPackage");
+    expect(governance).toContain("dryRunMemoryImport");
+    expect(governance).toContain("confirmMemoryImport");
+    expect(governance).toContain("settingsNeverApplied");
+    expect(governance).toContain("planStale");
+    expect(governance).not.toContain("localStorage");
+    expect(governance).not.toContain("sessionStorage");
+    expect(governance).not.toContain("useChatStore");
   });
 
   it("polls Activity only for visible server messages and keeps undo revision-fenced", () => {

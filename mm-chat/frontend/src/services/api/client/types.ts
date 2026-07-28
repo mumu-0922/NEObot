@@ -1237,6 +1237,70 @@ export interface UpdateGovernanceMemoryInput extends GovernanceMemoryMutationInp
   expectedRevision: number;
 }
 
+export type MemoryImportPlanResult =
+  "NOOP" | "ADD" | "REVIEW" | "REJECT" | "SCOPE_REQUIRED";
+
+export interface MemoryImportProjectMapping {
+  mode: "existing" | "create" | "skip";
+  projectId?: string;
+}
+
+export interface MemoryImportConversationMapping {
+  mode: "existing" | "global" | "project" | "skip";
+  conversationId?: string;
+  projectId?: string;
+  projectRef?: string;
+}
+
+export interface MemoryImportMappings {
+  projects: Record<string, MemoryImportProjectMapping>;
+  conversations: Record<string, MemoryImportConversationMapping>;
+}
+
+export interface MemoryImportPlanItem {
+  ordinal: number;
+  memoryRef: string;
+  recordHash: string;
+  result: MemoryImportPlanResult;
+  reasonCode: string;
+  currentHash?: string;
+}
+
+export interface MemoryImportScopeRequirement {
+  kind: "project" | "conversation";
+  portableRef: string;
+  name?: string;
+  description?: string;
+}
+
+export interface MemoryImportDryRunResult {
+  importId: string;
+  packageSha256: string;
+  manifestSha256: string;
+  planSha256: string;
+  planToken: string;
+  expiresAt: number;
+  counts: Record<MemoryImportPlanResult, number>;
+  items: MemoryImportPlanItem[];
+  scopeRequirements: MemoryImportScopeRequirement[];
+  settingsSuggestion?: DurableMemorySettingsDTO;
+}
+
+export interface MemoryImportConfirmResult {
+  importId: string;
+  status: "completed";
+  addedProjects: number;
+  addedMemories: number;
+  importedAt: number;
+}
+
+export interface MemoryImportPackageInput {
+  packageFile: File;
+  passphrase: string;
+  mappings: MemoryImportMappings;
+  signal?: AbortSignal;
+}
+
 export type MemoryReviewDecision =
   "keep_current" | "accept_new" | "edit_merge" | "keep_both" | "reject";
 
@@ -1308,6 +1372,17 @@ export interface MemoryApi {
     expectedRevision: number;
     signal?: AbortSignal;
   }): Promise<MemoryActivityUndoResult>;
+  exportMemoryPackage(input: {
+    passphrase: string;
+    includeHistory: boolean;
+    signal?: AbortSignal;
+  }): Promise<Blob>;
+  dryRunMemoryImport(
+    input: MemoryImportPackageInput,
+  ): Promise<MemoryImportDryRunResult>;
+  confirmMemoryImport(
+    input: MemoryImportPackageInput & { planToken: string },
+  ): Promise<MemoryImportConfirmResult>;
 }
 
 export interface NeoChatApiClient {

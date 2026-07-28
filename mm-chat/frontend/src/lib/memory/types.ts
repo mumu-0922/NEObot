@@ -7,7 +7,7 @@ export type MemoryType =
   | "decision"
   | "context";
 
-export type MemorySource = "manual" | "ai" | "direct_user" | "dream";
+export type MemorySource = "manual" | "ai" | "direct_user" | "import" | "dream";
 
 export type MemoryScopeType = "global" | "project" | "conversation";
 export type MemoryPolicyMode = "inherit" | "on" | "off";

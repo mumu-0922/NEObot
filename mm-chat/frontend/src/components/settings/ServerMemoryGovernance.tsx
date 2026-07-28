@@ -7,6 +7,8 @@ import {
   ChevronUp,
   CircleAlert,
   Database,
+  Download,
+  FileCheck2,
   FolderKanban,
   History,
   Loader2,
@@ -17,6 +19,7 @@ import {
   Search,
   ShieldCheck,
   Trash2,
+  Upload,
   X,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -35,6 +38,11 @@ import type {
   MemoryType,
 } from "@/lib/memory/types";
 import type {
+  MemoryImportConversationMapping,
+  MemoryImportDryRunResult,
+  MemoryImportMappings,
+  MemoryImportProjectMapping,
+  MemoryImportScopeRequirement,
   MemoryReviewDecision,
   NeoChatApiClient,
 } from "@/services/api/client";
@@ -1025,6 +1033,13 @@ const ServerMemoryGovernance = ({ apiClient }: ServerMemoryGovernanceProps) => {
 
       {section === "operations" && (
         <div className="grid gap-4 lg:grid-cols-2">
+          <MemoryPortabilityPanel
+            apiClient={apiClient}
+            snapshot={snapshot}
+            disabled={saving}
+            onImported={load}
+            t={t}
+          />
           <section className="space-y-3 rounded-xl border border-border bg-card p-4">
             <h4 className="flex items-center gap-2 font-semibold text-foreground">
               <Database size={16} className="text-cyan-500" />
@@ -1113,6 +1128,465 @@ const ServerMemoryGovernance = ({ apiClient }: ServerMemoryGovernanceProps) => {
     </div>
   );
 };
+
+function MemoryPortabilityPanel({
+  apiClient,
+  snapshot,
+  disabled,
+  onImported,
+  t,
+}: {
+  apiClient: NeoChatApiClient;
+  snapshot: MemoryGovernanceSnapshot;
+  disabled: boolean;
+  onImported: () => Promise<void>;
+  t: ReturnType<typeof useTranslations<"Memory">>;
+}) {
+  const [exportPassphrase, setExportPassphrase] = useState("");
+  const [includeHistory, setIncludeHistory] = useState(true);
+  const [packageFile, setPackageFile] = useState<File | null>(null);
+  const [importPassphrase, setImportPassphrase] = useState("");
+  const [mappings, setMappings] = useState<MemoryImportMappings>(() =>
+    emptyImportMappings(),
+  );
+  const [plan, setPlan] = useState<MemoryImportDryRunResult | null>(null);
+  const [planStale, setPlanStale] = useState(false);
+  const [busy, setBusy] = useState<"export" | "dry-run" | "confirm" | null>(
+    null,
+  );
+  const [portabilityError, setPortabilityError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const packageInputRef = useRef<HTMLInputElement>(null);
+
+  const exportPackage = async () => {
+    if (exportPassphrase.length < 12 || busy) return;
+    setBusy("export");
+    setPortabilityError(null);
+    setStatus(null);
+    try {
+      const blob = await apiClient.memories.exportMemoryPackage({
+        passphrase: exportPassphrase,
+        includeHistory,
+      });
+      const url = URL.createObjectURL(blob);
+      try {
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = `neo-chat-memory-${new Date()
+          .toISOString()
+          .replaceAll(":", "-")}.mm-memory`;
+        anchor.click();
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+      setExportPassphrase("");
+      setStatus(t("exportComplete"));
+    } catch (nextError) {
+      setPortabilityError(errorMessage(nextError, t("exportFailed")));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const dryRunImport = async () => {
+    if (!packageFile || importPassphrase.length < 12 || busy) return;
+    setBusy("dry-run");
+    setPortabilityError(null);
+    setStatus(null);
+    try {
+      const next = await apiClient.memories.dryRunMemoryImport({
+        packageFile,
+        passphrase: importPassphrase,
+        mappings,
+      });
+      setPlan(next);
+      setPlanStale(false);
+      setStatus(
+        next.scopeRequirements.length > 0
+          ? t("mappingRequired")
+          : t("dryRunComplete"),
+      );
+    } catch (nextError) {
+      setPlan(null);
+      setPlanStale(false);
+      setPortabilityError(errorMessage(nextError, t("importFailed")));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const confirmImport = async () => {
+    if (
+      !packageFile ||
+      !plan ||
+      planStale ||
+      plan.scopeRequirements.length > 0 ||
+      busy
+    ) {
+      return;
+    }
+    setBusy("confirm");
+    setPortabilityError(null);
+    setStatus(null);
+    try {
+      const result = await apiClient.memories.confirmMemoryImport({
+        packageFile,
+        passphrase: importPassphrase,
+        mappings,
+        planToken: plan.planToken,
+      });
+      setStatus(
+        t("importComplete", {
+          memories: result.addedMemories,
+          projects: result.addedProjects,
+        }),
+      );
+      setPackageFile(null);
+      setImportPassphrase("");
+      setMappings(emptyImportMappings());
+      setPlan(null);
+      setPlanStale(false);
+      if (packageInputRef.current) packageInputRef.current.value = "";
+      await onImported();
+    } catch (nextError) {
+      setPortabilityError(errorMessage(nextError, t("confirmImportFailed")));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const updateRequirement = (
+    requirement: MemoryImportScopeRequirement,
+    selection: string,
+  ) => {
+    setMappings((current) => {
+      if (requirement.kind === "project") {
+        const projects = { ...current.projects };
+        const mapping = parseProjectMappingSelection(selection);
+        if (mapping) projects[requirement.portableRef] = mapping;
+        else delete projects[requirement.portableRef];
+        return { ...current, projects };
+      }
+      const conversations = { ...current.conversations };
+      const mapping = parseConversationMappingSelection(selection);
+      if (mapping) conversations[requirement.portableRef] = mapping;
+      else delete conversations[requirement.portableRef];
+      return { ...current, conversations };
+    });
+    setPlanStale(true);
+    setStatus(t("rerunDryRun"));
+  };
+
+  const activeProjects = snapshot.projects.filter(
+    (project) => project.lifecycleStatus === "active",
+  );
+
+  return (
+    <section className="space-y-5 rounded-xl border border-border bg-card p-4 lg:col-span-2">
+      <div>
+        <h4 className="flex items-center gap-2 font-semibold text-foreground">
+          <FileCheck2 size={16} className="text-cyan-500" aria-hidden />
+          {t("portabilityTitle")}
+        </h4>
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          {t("portabilityPrivacy")}
+        </p>
+      </div>
+
+      {portabilityError && (
+        <p role="alert" className="text-xs text-red-700 dark:text-red-300">
+          {portabilityError}
+        </p>
+      )}
+      {status && (
+        <p
+          role="status"
+          aria-live="polite"
+          className="text-xs text-cyan-700 dark:text-cyan-300"
+        >
+          {status}
+        </p>
+      )}
+
+      <div className="grid gap-5 xl:grid-cols-2">
+        <div className="space-y-3 rounded-lg border border-border p-4">
+          <h5 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Download size={15} aria-hidden />
+            {t("exportTitle")}
+          </h5>
+          <label className="block text-xs font-medium text-muted-foreground">
+            {t("packagePassphrase")}
+            <input
+              type="password"
+              autoComplete="new-password"
+              value={exportPassphrase}
+              minLength={12}
+              maxLength={1024}
+              onChange={(event) => setExportPassphrase(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={includeHistory}
+              onChange={(event) => setIncludeHistory(event.target.checked)}
+              className="size-4 rounded border-input"
+            />
+            {t("includeHistory")}
+          </label>
+          <button
+            type="button"
+            disabled={disabled || busy !== null || exportPassphrase.length < 12}
+            onClick={() => void exportPackage()}
+            className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white hover:bg-cyan-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+          >
+            {busy === "export" ? (
+              <Loader2 size={15} className="animate-spin" aria-hidden />
+            ) : (
+              <Download size={15} aria-hidden />
+            )}
+            {t("downloadPackage")}
+          </button>
+        </div>
+
+        <div className="space-y-3 rounded-lg border border-border p-4">
+          <h5 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Upload size={15} aria-hidden />
+            {t("importTitle")}
+          </h5>
+          <label className="block text-xs font-medium text-muted-foreground">
+            {t("encryptedPackage")}
+            <input
+              ref={packageInputRef}
+              type="file"
+              accept=".mm-memory,application/octet-stream"
+              onChange={(event) => {
+                setPackageFile(event.target.files?.[0] ?? null);
+                setMappings(emptyImportMappings());
+                setPlan(null);
+                setPlanStale(false);
+                setStatus(null);
+              }}
+              className="mt-1 block w-full text-xs text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-muted file:px-3 file:py-2 file:text-xs file:font-medium file:text-foreground"
+            />
+          </label>
+          <label className="block text-xs font-medium text-muted-foreground">
+            {t("packagePassphrase")}
+            <input
+              type="password"
+              autoComplete="off"
+              value={importPassphrase}
+              minLength={12}
+              maxLength={1024}
+              onChange={(event) => {
+                setImportPassphrase(event.target.value);
+                if (plan) setPlanStale(true);
+              }}
+              className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
+            />
+          </label>
+          <button
+            type="button"
+            disabled={
+              disabled ||
+              busy !== null ||
+              !packageFile ||
+              importPassphrase.length < 12
+            }
+            onClick={() => void dryRunImport()}
+            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+          >
+            {busy === "dry-run" && (
+              <Loader2 size={15} className="animate-spin" aria-hidden />
+            )}
+            {plan ? t("rerunDryRunButton") : t("startDryRun")}
+          </button>
+        </div>
+      </div>
+
+      {plan && (
+        <div className="space-y-4 border-t border-border pt-4">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            {(
+              ["NOOP", "ADD", "REVIEW", "REJECT", "SCOPE_REQUIRED"] as const
+            ).map((result) => (
+              <div key={result} className="rounded-lg bg-muted p-3 text-center">
+                <div className="text-lg font-semibold text-foreground">
+                  {plan.counts[result]}
+                </div>
+                <div className="text-[10px] text-muted-foreground">
+                  {result}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {plan.scopeRequirements.length > 0 && (
+            <div className="space-y-3">
+              <h5 className="text-sm font-semibold text-foreground">
+                {t("scopeMappings")}
+              </h5>
+              {plan.scopeRequirements.map((requirement) => (
+                <label
+                  key={`${requirement.kind}:${requirement.portableRef}`}
+                  className="block text-xs font-medium text-muted-foreground"
+                >
+                  {requirement.name || requirement.portableRef}
+                  <select
+                    value={mappingSelection(requirement, mappings)}
+                    onChange={(event) =>
+                      updateRequirement(requirement, event.target.value)
+                    }
+                    className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
+                  >
+                    <option value="">{t("selectMapping")}</option>
+                    {requirement.kind === "project" ? (
+                      <>
+                        <option value="create">{t("mappingCreate")}</option>
+                        {activeProjects.map((project) => (
+                          <option
+                            key={project.id}
+                            value={`existing:${project.id}`}
+                          >
+                            {t("mappingExisting", { name: project.name })}
+                          </option>
+                        ))}
+                        <option value="skip">{t("mappingSkip")}</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="global">{t("mappingGlobal")}</option>
+                        {snapshot.conversations.map((conversation) => (
+                          <option
+                            key={conversation.conversationId}
+                            value={`existing:${conversation.conversationId}`}
+                          >
+                            {t("mappingExisting", {
+                              name: conversation.title,
+                            })}
+                          </option>
+                        ))}
+                        {activeProjects.map((project) => (
+                          <option
+                            key={project.id}
+                            value={`project-local:${project.id}`}
+                          >
+                            {t("mappingProject", { name: project.name })}
+                          </option>
+                        ))}
+                        {plan.scopeRequirements
+                          .filter((item) => item.kind === "project")
+                          .map((project) => (
+                            <option
+                              key={project.portableRef}
+                              value={`project-ref:${project.portableRef}`}
+                            >
+                              {t("mappingPackageProject", {
+                                name: project.name || project.portableRef,
+                              })}
+                            </option>
+                          ))}
+                        <option value="skip">{t("mappingSkip")}</option>
+                      </>
+                    )}
+                  </select>
+                </label>
+              ))}
+              <p className="text-xs text-amber-700 dark:text-amber-300">
+                {t("rerunAfterMapping")}
+              </p>
+            </div>
+          )}
+
+          {plan.settingsSuggestion && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-200">
+              <p className="font-semibold">{t("settingsSuggestion")}</p>
+              <p className="mt-1">{t("settingsNeverApplied")}</p>
+            </div>
+          )}
+
+          <button
+            type="button"
+            disabled={
+              disabled ||
+              busy !== null ||
+              planStale ||
+              plan.scopeRequirements.length > 0
+            }
+            onClick={() => void confirmImport()}
+            className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white hover:bg-cyan-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+          >
+            {busy === "confirm" ? (
+              <Loader2 size={15} className="animate-spin" aria-hidden />
+            ) : (
+              <FileCheck2 size={15} aria-hidden />
+            )}
+            {t("confirmImport")}
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function emptyImportMappings(): MemoryImportMappings {
+  return { projects: {}, conversations: {} };
+}
+
+function parseProjectMappingSelection(
+  selection: string,
+): MemoryImportProjectMapping | undefined {
+  if (selection === "create" || selection === "skip") {
+    return { mode: selection };
+  }
+  if (selection.startsWith("existing:")) {
+    return { mode: "existing", projectId: selection.slice(9) };
+  }
+  return undefined;
+}
+
+function parseConversationMappingSelection(
+  selection: string,
+): MemoryImportConversationMapping | undefined {
+  if (selection === "global" || selection === "skip") {
+    return { mode: selection };
+  }
+  if (selection.startsWith("existing:")) {
+    return { mode: "existing", conversationId: selection.slice(9) };
+  }
+  if (selection.startsWith("project-local:")) {
+    return { mode: "project", projectId: selection.slice(14) };
+  }
+  if (selection.startsWith("project-ref:")) {
+    return { mode: "project", projectRef: selection.slice(12) };
+  }
+  return undefined;
+}
+
+function mappingSelection(
+  requirement: MemoryImportScopeRequirement,
+  mappings: MemoryImportMappings,
+): string {
+  if (requirement.kind === "project") {
+    const mapping = mappings.projects[requirement.portableRef];
+    if (!mapping) return "";
+    return mapping.mode === "existing"
+      ? `existing:${mapping.projectId ?? ""}`
+      : mapping.mode;
+  }
+  const mapping = mappings.conversations[requirement.portableRef];
+  if (!mapping) return "";
+  if (mapping.mode === "existing") {
+    return `existing:${mapping.conversationId ?? ""}`;
+  }
+  if (mapping.mode === "project") {
+    return mapping.projectRef
+      ? `project-ref:${mapping.projectRef}`
+      : `project-local:${mapping.projectId ?? ""}`;
+  }
+  return mapping.mode;
+}
 
 function PolicySwitch({
   label,

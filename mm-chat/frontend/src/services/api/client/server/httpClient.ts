@@ -26,6 +26,7 @@ export interface MultipartRequestOptions {
 
 export interface BinaryRequestOptions {
   method?: string;
+  body?: unknown;
   headers?: Record<string, string>;
   signal?: AbortSignal;
 }
@@ -157,10 +158,17 @@ export function createHttpClient(options: HttpClientOptions): HttpClient {
           method: request.method ?? "GET",
           headers: {
             Accept: "application/octet-stream, */*",
+            ...(request.body === undefined
+              ? {}
+              : { "Content-Type": "application/json" }),
             ...authHeaders(getAuthToken()),
             ...options.defaultHeaders,
             ...request.headers,
           },
+          body:
+            request.body === undefined
+              ? undefined
+              : JSON.stringify(request.body),
           signal: request.signal,
         });
       } catch (error) {

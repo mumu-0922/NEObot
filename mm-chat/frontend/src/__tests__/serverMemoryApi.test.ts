@@ -288,6 +288,122 @@ describe("server durable memory API", () => {
       code: "FEATURE_NOT_IMPLEMENTED",
     });
   });
+
+  it("exports authenticated packages and keeps import dry-run/confirm multipart-bound", async () => {
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        requests.push({ url, init });
+        if (url.endsWith("/v1/memory-export")) {
+          return new Response(new Uint8Array([1, 2, 3]), {
+            status: 200,
+            headers: { "Content-Type": "application/octet-stream" },
+          });
+        }
+        if (url.endsWith("/v1/memory-import/dry-run")) {
+          return jsonResponse(memoryImportDryRun());
+        }
+        if (url.endsWith("/v1/memory-import/confirm")) {
+          return jsonResponse({
+            importId: "10000000-0000-4000-8000-000000000001",
+            status: "completed",
+            addedProjects: 1,
+            addedMemories: 2,
+            importedAt: 1_700_000_000_000,
+          });
+        }
+        return jsonResponse(
+          { error: { code: "NOT_FOUND", message: "missing" } },
+          404,
+        );
+      }),
+    );
+
+    const memories = createNeoChatApiClient({
+      env: {
+        NEXT_PUBLIC_API_MODE: "server",
+        NEXT_PUBLIC_API_BASE_URL: "/mm-api",
+      },
+    }).memories;
+    const blob = await memories.exportMemoryPackage({
+      passphrase: "fixture-passphrase",
+      includeHistory: true,
+    });
+    expect(blob.size).toBe(3);
+    const packageFile = new File(
+      [new Uint8Array([4, 5, 6])],
+      "fixture.mm-memory",
+      {
+        type: "application/octet-stream",
+      },
+    );
+    const mappings = {
+      projects: { "project-000001": { mode: "create" as const } },
+      conversations: {},
+    };
+    const dryRun = await memories.dryRunMemoryImport({
+      packageFile,
+      passphrase: "fixture-passphrase",
+      mappings,
+    });
+    expect(dryRun.counts).toEqual({
+      NOOP: 0,
+      ADD: 2,
+      REVIEW: 0,
+      REJECT: 0,
+      SCOPE_REQUIRED: 1,
+    });
+    await expect(
+      memories.confirmMemoryImport({
+        packageFile,
+        passphrase: "fixture-passphrase",
+        mappings,
+        planToken: dryRun.planToken,
+      }),
+    ).resolves.toMatchObject({ status: "completed", addedMemories: 2 });
+
+    expect(JSON.parse(String(requests[0].init?.body))).toEqual({
+      passphrase: "fixture-passphrase",
+      includeHistory: true,
+    });
+    for (const request of requests.slice(1)) {
+      expect(request.init?.body).toBeInstanceOf(FormData);
+      const formData = request.init?.body as FormData;
+      expect(formData.get("package")).toBeInstanceOf(File);
+      expect(formData.get("passphrase")).toBe("fixture-passphrase");
+      expect(formData.get("mappings")).toBe(JSON.stringify(mappings));
+    }
+    expect(
+      (requests[1].init?.headers as Record<string, string>)["Content-Type"],
+    ).toBeUndefined();
+    expect((requests[2].init?.body as FormData).get("planToken")).toBe(
+      "plan-token",
+    );
+  });
+
+  it("rejects malformed memory import plans at the server boundary", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse({ ...memoryImportDryRun(), packageSha256: "not-a-hash" }),
+      ),
+    );
+    const memories = createNeoChatApiClient({
+      env: {
+        NEXT_PUBLIC_API_MODE: "server",
+        NEXT_PUBLIC_API_BASE_URL: "/mm-api",
+      },
+    }).memories;
+    await expect(
+      memories.dryRunMemoryImport({
+        packageFile: new File(["ciphertext"], "fixture.mm-memory"),
+        passphrase: "fixture-passphrase",
+        mappings: { projects: {}, conversations: {} },
+      }),
+    ).rejects.toThrow("invalid memory import package hash");
+  });
 });
 
 function memoryRecord(id: string, source: "manual" | "ai") {
@@ -402,5 +518,47 @@ function memoryActivity() {
     memoryRevision: 1,
     createdAt: 1,
     updatedAt: 1,
+  };
+}
+
+function memoryImportDryRun() {
+  return {
+    importId: "10000000-0000-4000-8000-000000000001",
+    packageSha256: "a".repeat(64),
+    manifestSha256: "b".repeat(64),
+    planSha256: "c".repeat(64),
+    planToken: "plan-token",
+    expiresAt: 1_700_000_600_000,
+    counts: {
+      NOOP: 0,
+      ADD: 2,
+      REVIEW: 0,
+      REJECT: 0,
+      SCOPE_REQUIRED: 1,
+    },
+    items: [
+      {
+        ordinal: 1,
+        memoryRef: "memory-000001",
+        recordHash: "d".repeat(64),
+        result: "ADD",
+        reasonCode: "NEW_MEMORY",
+      },
+    ],
+    scopeRequirements: [
+      {
+        kind: "project",
+        portableRef: "project-000001",
+        name: "Imported Project",
+      },
+    ],
+    settingsSuggestion: {
+      enabled: true,
+      searchEnabled: true,
+      autoRecordEnabled: false,
+      sensitiveMemoryEnabled: false,
+      l2Mode: "inherit",
+      l3Mode: "inherit",
+    },
   };
 }
