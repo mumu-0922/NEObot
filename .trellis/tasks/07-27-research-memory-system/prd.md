@@ -7,9 +7,9 @@ Agent Memory 方案，并在“单服务器、自托管、Go + PostgreSQL + Pyth
 约束下，按 `info.md` 第 17 章的 PR1–PR13 顺序实施已冻结的完整 end-state。
 魔尊已于 2026-07-28 明确回复“开始”，构成实施授权；PR1 benchmark contract、PR2
 Project/scope/settings foundation、PR3 durable capture worker、PR4 provenance/delete
-correctness 与 PR5 candidate/Review shadow 已完成。PR5 的所有自动 candidate 只形成
-不可召回 proposal，不写 active canonical；v1 reader 和 Global-only HTTP contract 保持
-不变，未新增 Review/Project 对外 API，也未调用 Live provider。下一批 PR6 尚未开始。
+correctness 与 PR5 candidate/Review shadow 已完成。当前批次实施 PR6 direct-user typed
+Memory actions、message Activity/Usage links 与 revision-safe undo。继续保留 v1 reader，
+不开放 PR9 治理 UI，不启动 PR7 projection，也不调用 Live provider 或回放 Live Memory。
 
 ## What I Already Know
 
@@ -177,6 +177,36 @@ correctness 与 PR5 candidate/Review shadow 已完成。PR5 的所有自动 cand
   与 full standalone gate 通过，覆盖 strict candidate parse、secret zero-plaintext、scope/
   authority/target spoof、exact/manual/conflict/temporal routing、batch replay、crash-after-proposal
   resume、30-day provider-free expiry、direct-table denial 与 guarded down/re-up。
+- [x] PR6 新增顺序 migration `057`，且不修改任何已发布 migration 字节；新增无 query/
+  prompt/Memory 正文复制的 `message_memory_usages`、`message_memory_activities` 与
+  direct-user action authority/normalized targets，并为 PR6 产生的 revision 保存可安全撤销
+  所需的完整 prior typed snapshot。所有 ownership 使用同用户 composite FK 或窄 SQL 重验。
+- [x] Chat 只对当前、completed、role=`user` 的 source message 运行 fail-closed lexical gate +
+  versioned strict typed action planner；优先使用 Server-owned `task_model_settings.memory`，
+  未配置时只回退到本轮已解析的 chat provider/model。未知/缺失/重复/trailing JSON、低置信、
+  forged target、assistant/Memory/网页/附件/tool text 均不得触发 canonical mutation。
+- [x] `remember|correct|forget` 只能形成 bounded typed proposal；Go 从当前 Conversation 绑定
+  auth user、Project/Conversation scope 和 hydrated target revision，模型不能提供 user/scope ID
+  authority。单一明确 target 才执行；0/多 target、scope 不存在、revision stale 或 exact
+  conflict 只形成 hash/ID-only `review_required` action，不强制覆盖。
+- [x] Direct `remember` 创建 `direct_user` authority canonical；`correct` 在 expected revision
+  仍 current 时 append 一条完整 prior revision 再更新；`forget` 复用 tombstone/manifest/
+  provider-free purge 语义。Secret/credential 只保留 hash/result，任何 direct action 都不能
+  清旧 tombstone，explicit rebuild 必须创建新 canonical row。
+- [x] Assistant finalize transaction 同步写入本轮实际注入的最多 5 条 L1 Usage link，绑定
+  user、assistant、Memory ID/current revision/scope；不保存 query/content/embedding/raw score。
+  Memory 删除后查询只返回 deleted marker，绝不从 revision 恢复旧正文。
+- [x] Pending Review/rejected/dead-letter/direct action 形成 bounded Activity link；exact NOOP
+  不写 Activity。提供 user-scoped cursor/poll API 与 activity undo capability，但 PR9 前不做
+  frontend chip。Undo created 只在 target revision 未变时 Forget；undo corrected 只在 revision
+  未变且完整 prior snapshot 存在时 append restore revision；stale 转 `review_required`，不得覆盖。
+- [x] `go_api_runtime`/`memory_worker_runtime` 只能调用各自窄 capability，无 action/activity/
+  usage/revision 任意写权限；down 对任何 PR6 action/activity/usage/full-snapshot history fail
+  closed，clean `056 -> 057 -> 056 -> 057` 可重放。
+- [x] PR6 strict planner、direct-only authority、scope/target/revision spoof、secret zero-plaintext、
+  remember/correct/forget、usage finalize atomicity、Activity polling、NOOP silence、safe/stale undo、
+  delete/purge 与 guarded down/re-up 均有 Go/static/PostgreSQL 自动化验证；focused race、backend
+  full test/vet、Compose/preflight、backend image 与 full standalone gate 全部通过。
 
 ## Definition of Done
 
@@ -197,6 +227,8 @@ correctness 与 PR5 candidate/Review shadow 已完成。PR5 的所有自动 cand
   30-day provider-free plaintext expiry 均有自动化验证；没有自动 candidate 改变 canonical。
 - PR5 未启用 v2 reader、Project/Review API/UI 或 projection 能力；PR6–PR13 继续
   遵循 `info.md` 的逐批门槛、回滚和单一 authority 约束。
+- PR6 direct actions、Usage/Activity links 与 safe undo 均有自动化验证；v1 reader 与
+  Global CRUD compatibility 保持可用，PR9 前不要求 frontend governance UI。
 
 ## Technical Approach
 
@@ -232,19 +264,17 @@ PostgreSQL v2，外部引擎只能通过可替换 adapter 做 shadow；Hindsight
 
 ## Current Batch Out of Scope
 
-- PR5 只产出 shadow/pending/rejected proposal，绝不 auto ADD/MERGE/SUPERSEDE canonical；
-  不实现 PR6 direct-user typed actions、Review accept/reject/clear API、Activity/Usage 或 undo。
-- PR5 不提供 Project/Conversation/Review CRUD API/UI，不切换 v2 reader，不修改现有 Memory
-  HTTP payload；PR7 exact/CJK BM25 projection、PR8 vector/RRF/rerank 仍冻结，因此 related
-  lookup 只使用 bounded current targets、same-scope exact 与 fact-key authority，不冒充
-  已实现的 hybrid semantic recall。
-- PR5 temporal 只接受 source timestamp 或明确 absolute timestamp；没有 Server-owned user
-  timezone 时，相对/猜测时间只进 Review，不能在 replay 时按运行当天重新解释。普通 Recall
-  仍不启用 as-of/history reader，expiry proposal 也不改变 v1 canonical lifecycle。
-- PR5 不调用 Live provider，不运行 Hindsight 真实 shadow，不创建、修改、删除或导出 Live
-  用户 Memory；Worker/provider 行为只以 fake/offline tests 与 disposable PostgreSQL 验证。
-- PR5 不允许 worker 直接表 CRUD、expiry lane hydrate Provider、模型输出授予 auth/scope/
-  revision authority、自动 writer 清 tombstone，或 down migration 丢弃 proposal/review history。
+- PR6 不 accept/reject/clear PR5 Review suggestion，不做 Project/Conversation settings CRUD、
+  revision timeline 或 Activity chip frontend；完整治理 UI 仍归 PR9。
+- PR6 不切换 v2 reader，不实现 PR7 exact/CJK BM25 projection、PR8 vector/RRF/rerank，Usage
+  只记录当前 v1 实际注入的 L1 rows，不虚构 L2/L3 或 hybrid result。
+- PR6 不让 action planner读取附件、Knowledge、网页、tool output、assistant text 或历史
+  Memory 中的命令；只有当前 authenticated user message 能触发 planner。Planner/Activity
+  failure 必须 fail open 保持聊天可用，但 fail closed 保持 canonical 不变。
+- PR6 不调用 Live provider，不创建、修改、删除或导出 Live 用户 Memory；Planner 只用
+  fake/offline provider tests，写入/undo/purge 只在 disposable PostgreSQL 验证。
+- PR6 不实现 PR10 encrypted Export/Import/backup retention、PR11/12 L2/L3、PR13 Hindsight；
+  down migration 不得丢弃 action/activity/usage 或可撤销 revision authority。
 - PR10 的 authenticated encrypted off-host deletion manifest/export/import/restore replay 与
   14-day/8-week retention/prune、PR11/12 L2/L3、PR13 Hindsight adapter 继续冻结。
 - 不把 AGENTS/system/project 固定规则迁入概率性 Memory。
