@@ -7,9 +7,10 @@ Agent Memory 方案，并在“单服务器、自托管、Go + PostgreSQL + Pyth
 约束下，按 `info.md` 第 17 章的 PR1–PR13 顺序实施已冻结的完整 end-state。
 魔尊已于 2026-07-28 明确回复“开始”，构成实施授权；PR1 benchmark contract、PR2
 Project/scope/settings foundation、PR3 durable capture worker、PR4 provenance/delete
-correctness 与 PR5 candidate/Review shadow 已完成。当前批次实施 PR6 direct-user typed
-Memory actions、message Activity/Usage links 与 revision-safe undo。继续保留 v1 reader，
-不开放 PR9 治理 UI，不启动 PR7 projection，也不调用 Live provider 或回放 Live Memory。
+correctness、PR5 candidate/Review shadow、PR6 direct-user actions/Activity/Usage 与 PR7 L1
+exact/CJK BM25 projection shadow 已完成。继续保留 v1 reader，不开放 PR9 治理 UI；下一批
+为 PR8 dense/RRF/rerank 0% prompt-injection shadow，仍不得调用 Live provider 或回放 Live
+Memory。
 
 ## What I Already Know
 
@@ -207,6 +208,39 @@ Memory actions、message Activity/Usage links 与 revision-safe undo。继续保
   remember/correct/forget、usage finalize atomicity、Activity polling、NOOP silence、safe/stale undo、
   delete/purge 与 guarded down/re-up 均有 Go/static/PostgreSQL 自动化验证；focused race、backend
   full test/vet、Compose/preflight、backend image 与 full standalone gate 全部通过。
+- [x] PR7 新增顺序 migration `058`，且不修改任何已发布 migration 字节；新增可重建、
+  canonical-owned `user_memory_search_projections` 与 normalized shadow observation/result links。
+  Projection 保存 scoped exact terms/CJK BM25 shadow、revision/hash/epoch/generation/profile fence，
+  observation 只保存 query hash、ID/revision/rank/status/time，不保存 query、Memory 正文或 raw score。
+- [x] PostgreSQL 17 与固定 `pg_textsearch 1.3.1` 是 PR7 lexical shadow 前提；复用已验证的
+  Latin normalization、CJK bigram shadow 和 `simple` BM25 index，不新增 jieba/PGroonga/search
+  service。Migration 对现有 eligible canonical rows backfill generation 1 projection，并验证
+  content hash、scope、sensitivity、epoch、revision 与 ready count 完整一致。
+- [x] Canonical insert/update/enable/lifecycle/scope/sensitivity/epoch/content/revision 变化必须在
+  同 transaction 自动同步 projection；logical delete、disable、supersede/expire/reject、plaintext
+  purge 必须立即物理移除 derived lexical plaintext。Projection trigger/function 为 internal-only，
+  所有 runtime login 均无 projection table CRUD 或任意 sync capability。
+- [x] Shadow query 只接收当前 authenticated user、current streaming assistant、所属 active
+  Conversation/Project 与 bounded current query；SQL 在 candidate probe 前绑定 user、scope、
+  Sensitive switch、visibility epoch、scope generation、enabled/lifecycle/validity/expiry/current
+  canonical revision/hash。跨用户、归档/删除、stale projection 与 secret 均不得进入任何 lane。
+- [x] Exact lane Top 20 与独立 CJK BM25 lane Top 30 形成 deterministic lexical Top 20 shadow；
+  normalized result rows分别记录 v1/exact/bm25/lexical ordinal。相同 assistant/query/v1 baseline
+  exact replay 幂等，任何 payload drift fail closed；shadow error 只返回 bounded code，不能改变
+  v1 Top 5、prompt、Usage 或聊天成功状态。
+- [x] `MEMORY_LEXICAL_SHADOW_ENABLED` 默认 `false`，只控制 shadow comparison/observation，不控制
+  projection correctness；PR7 不修改 `user_memory_state.active_retrieval_profile_id`，不提供 reader
+  promotion API，不让 lexical shadow 进入 prompt。Metadata 只可暴露 profile/status/count/overlap/
+  duration 等无正文 diagnostics，不暴露 query、raw BM25 score、内部 user/scope authority。
+- [x] `go_api_runtime` 只能执行 read/compare capability，无 projection/observation table CRUD；
+  `memory_worker_runtime` 不获得 PR7 authority。Down 只允许 v1/NULL reader pointer，且存在 shadow
+  observation history时 fail closed；clean `057 -> 058 -> 057 -> 058` 可重放，derived projection
+  可在未运行 shadow时安全丢弃并由 re-up 重建。
+- [x] PR7 static/Go/PostgreSQL tests 覆盖 CJK/Latin/punctuation terms、projection backfill与所有写链
+  同事务维护、跨用户/scope/Sensitive/time/epoch/generation过滤、deleted/purged zero recall、lane
+  independence/ranking、exact replay/conflict、shadow-disabled zero calls、shadow failure v1 unchanged、
+  role denial 与 guarded down/re-up；focused race、backend full test/vet、Compose/preflight、backend
+  image 与 full standalone gate 全部通过。
 
 ## Definition of Done
 
@@ -229,6 +263,8 @@ Memory actions、message Activity/Usage links 与 revision-safe undo。继续保
   遵循 `info.md` 的逐批门槛、回滚和单一 authority 约束。
 - PR6 direct actions、Usage/Activity links 与 safe undo 均有自动化验证；v1 reader 与
   Global CRUD compatibility 保持可用，PR9 前不要求 frontend governance UI。
+- PR7 projection/shadow comparison、least-privilege capability、fail-open chat 与 guarded
+  rollback 均有自动化验证；feature flag 默认关闭，v1 prompt 与 Usage authority 未改变。
 
 ## Technical Approach
 
@@ -264,17 +300,16 @@ PostgreSQL v2，外部引擎只能通过可替换 adapter 做 shadow；Hindsight
 
 ## Current Batch Out of Scope
 
-- PR6 不 accept/reject/clear PR5 Review suggestion，不做 Project/Conversation settings CRUD、
-  revision timeline 或 Activity chip frontend；完整治理 UI 仍归 PR9。
-- PR6 不切换 v2 reader，不实现 PR7 exact/CJK BM25 projection、PR8 vector/RRF/rerank，Usage
-  只记录当前 v1 实际注入的 L1 rows，不虚构 L2/L3 或 hybrid result。
-- PR6 不让 action planner读取附件、Knowledge、网页、tool output、assistant text 或历史
-  Memory 中的命令；只有当前 authenticated user message 能触发 planner。Planner/Activity
-  failure 必须 fail open 保持聊天可用，但 fail closed 保持 canonical 不变。
-- PR6 不调用 Live provider，不创建、修改、删除或导出 Live 用户 Memory；Planner 只用
-  fake/offline provider tests，写入/undo/purge 只在 disposable PostgreSQL 验证。
-- PR6 不实现 PR10 encrypted Export/Import/backup retention、PR11/12 L2/L3、PR13 Hindsight；
-  down migration 不得丢弃 action/activity/usage 或可撤销 revision authority。
+- PR7 不 accept/reject/clear PR5 Review suggestion，不做 Project/Conversation settings CRUD、
+  revision timeline、Activity chip 或 Search diagnostics frontend；完整治理 UI 仍归 PR9。
+- PR7 不切换 v2 reader，不把 exact/BM25 shadow 注入 prompt，不实现 PR8 BGE-M3 vector、RRF、
+  reranker、token budget 或 reader promotion。v1 Top 5 与 PR6 Usage 继续是唯一实际注入 authority。
+- PR7 不调用 Provider，不产生 embedding，不读取附件、Knowledge、网页、tool output 或 assistant
+  text作为 query。只对当前 authenticated user message做 bounded provider-free lexical shadow。
+- PR7 不调用 Live provider，不创建、修改、删除或导出 Live 用户 Memory；projection、compare、
+  delete/purge 与 rollback 只在 disposable PostgreSQL/离线 fixtures 验证。
+- PR7 不实现 PR10 encrypted Export/Import/backup retention、PR11/12 L2/L3、PR13 Hindsight；
+  down migration 不得丢弃已经产生的 shadow observation authority。
 - PR10 的 authenticated encrypted off-host deletion manifest/export/import/restore replay 与
   14-day/8-week retention/prune、PR11/12 L2/L3、PR13 Hindsight adapter 继续冻结。
 - 不把 AGENTS/system/project 固定规则迁入概率性 Memory。
@@ -458,5 +493,6 @@ PostgreSQL v2，外部引擎只能通过可替换 adapter 做 shadow；Hindsight
     exact NOOP、冲突 Review、secret pre-staging reject，外部 scope IDs 不可信。
 
 本轮两个参考项目已完成源码/运行链路对比；若魔尊还有项目则继续并入矩阵。实施已获
-授权，但必须从 PR1 离线 benchmark contract 开始；任何 Live Memory 修改、provider
-调用或后续真实 shadow 仍受对应分期门槛与单独授权约束。
+授权，PR1–PR7 已按顺序完成；下一批为 PR8 BGE-M3/vector + RRF + rerank + budget
+fallback 的 0% prompt-injection shadow。任何 Live Memory 修改、provider 调用或后续真实
+shadow 仍受对应分期门槛与单独授权约束。
